@@ -444,6 +444,8 @@ connMgr.on('display_state', (ev: { type: 'display_state'; displayOn: boolean }) 
 connMgr.on('connected', () => {
   dinfo('Plugin', `connected (agentType=${proxiedAgentType} prevState=${currentState})`);
   setDaemonConnected(true);
+  // Re-send slot map so bridge knows our layout (covers bridge-starts-after-plugin case)
+  sendSlotMap();
   // Request fresh usage data immediately on connect (covers sleep/wake recovery)
   connMgr.send({ type: 'query_usage' });
 });

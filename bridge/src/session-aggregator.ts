@@ -44,12 +44,13 @@ export async function enrichSessionsWithState(
 
 /**
  * Build an enriched sessions list for multi-session display.
+ * Always includes the own session so single-session mode (agentdeck claude) shows the active session.
  */
 export async function buildEnrichedSessionsList(
   ownSessionId: string,
   ownState: string,
 ): Promise<EnrichedSession[]> {
-  const siblings = listActiveSessions().filter(s => s.agentType !== 'daemon' && s.id !== ownSessionId);
-  const enriched = await enrichSessionsWithState(siblings, ownSessionId, ownState);
+  const all = listActiveSessions().filter(s => s.agentType !== 'daemon');
+  const enriched = await enrichSessionsWithState(all, ownSessionId, ownState);
   return sortSessions(enriched);
 }
