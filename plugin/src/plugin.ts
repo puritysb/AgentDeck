@@ -525,6 +525,10 @@ connMgr.on('display_state', (ev: { type: 'display_state'; displayOn: boolean }) 
 connMgr.on('connected', () => {
   dinfo('Plugin', `connected (agentType=${proxiedAgentType} prevState=${currentState})`);
   setDaemonConnected(true);
+  // Re-send slot map so bridge knows our layout when the WS comes up after
+  // the plugin has already loaded (onWillAppear's first send may have been
+  // dropped because the bridge was not yet connected).
+  sendSlotMap();
   // Announce ourselves so the daemon's Dashboard → Downstream rail can
   // surface a "Stream Deck" row with the physical devices this plugin
   // sees. Without this the daemon treats the WS as an anonymous viewer.

@@ -844,6 +844,8 @@ export async function startSession(opts: SessionOptions): Promise<void> {
       core.wsServer.broadcastExcept(cachedSlotMap, sender);
       broadcastSse(cachedSlotMap);
       core.broadcast(computeButtonState());
+      // Re-broadcast sessions_list so slot buttons populate after plugin startup race
+      core.broadcastSessionsList().catch(() => {});
       return true;
     }
     return false;

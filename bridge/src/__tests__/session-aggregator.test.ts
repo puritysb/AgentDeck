@@ -158,7 +158,7 @@ describe('session-aggregator', () => {
     expect(sessions[0].state).toBeUndefined();
   });
 
-  it('buildEnrichedSessionsList excludes daemon and own session before enrichment', async () => {
+  it('buildEnrichedSessionsList includes own session and excludes daemon', async () => {
     mockListActive.mockReturnValue([
       makeSession({ id: 'own-session', port: 9121, projectName: 'Main' }),
       makeSession({ id: 'daemon-1', port: 9120, projectName: 'Daemon', agentType: 'daemon' }),
@@ -177,15 +177,24 @@ describe('session-aggregator', () => {
       throw new Error(`unexpected url: ${url}`);
     });
 
-    const sessions = await buildEnrichedSessionsList('own-session', 'awaiting_option');
+    const sessions = await buildEnrichedSessionsList('own-session', 'awaiting_option', 'opus-4', 'high');
 
-    expect(sessions).toHaveLength(2);
+    // Order from sortSessions: claude-code group sorted by projectName (Backend, Main)
+    // then codex-cli group (Frontend). Daemon excluded.
+    expect(sessions).toHaveLength(3);
     expect(sessions).toEqual([
       expect.objectContaining({
         id: 'sibling-1',
         projectName: 'Backend',
         state: 'processing',
         modelName: 'opus-4',
+      }),
+      expect.objectContaining({
+        id: 'own-session',
+        projectName: 'Main',
+        state: 'awaiting_option',
+        modelName: 'opus-4',
+        effortLevel: 'high',
       }),
       expect.objectContaining({
         id: 'sibling-2',
@@ -195,5 +204,26 @@ describe('session-aggregator', () => {
         agentType: 'codex-cli',
       }),
     ]);
+  });
+
+  it('buildEnrichedSessionsList returns own session in single-session mode without /health calls', async () => {
+    // single-session mode: only the own session is registered (no daemon, no siblings).
+    // This is the `agentdeck claude` standalone case where session-slot buttons would
+    // otherwise stay "Empty" because the aggregator returned [].
+    mockListActive.mockReturnValue([
+      makeSession({ id: 'own-session', port: 9121, projectName: 'Solo' }),
+    ]);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const sessions = await buildEnrichedSessionsList('own-session', 'idle', 'opus-4');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toEqual(expect.objectContaining({
+      id: 'own-session',
+      projectName: 'Solo',
+      state: 'idle',
+      modelName: 'opus-4',
+    }));
   });
 });

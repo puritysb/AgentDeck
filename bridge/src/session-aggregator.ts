@@ -93,6 +93,10 @@ export async function enrichSessionsWithState(
 
 /**
  * Build an enriched sessions list for multi-session display.
+ *
+ * Includes the own session so single-session mode (`agentdeck claude` without a daemon)
+ * still surfaces the active session. The daemon-server enricher overrides this list in
+ * multi-session setups, so per-session bridges keeping their own entry is safe.
  */
 export async function buildEnrichedSessionsList(
   ownSessionId: string,
@@ -100,7 +104,7 @@ export async function buildEnrichedSessionsList(
   ownModelName?: string,
   ownEffortLevel?: string,
 ): Promise<EnrichedSession[]> {
-  const siblings = listActiveSessions().filter(s => s.agentType !== 'daemon' && s.id !== ownSessionId);
-  const enriched = await enrichSessionsWithState(siblings, ownSessionId, ownState, ownModelName, ownEffortLevel);
+  const all = listActiveSessions().filter(s => s.agentType !== 'daemon');
+  const enriched = await enrichSessionsWithState(all, ownSessionId, ownState, ownModelName, ownEffortLevel);
   return sortSessions(enriched);
 }
