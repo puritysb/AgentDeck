@@ -892,6 +892,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       }
       return true; // consumed
     }
+    if (msg.type === 'deck_slot_map') {
+      // Plugin pushed its keypad layout. Forward to other viewers (extra
+      // plugin instance, dashboard) and re-broadcast sessions_list so slot
+      // buttons populate immediately — without this they would stay "Empty"
+      // until the next 10 s sessions polling tick after the plugin connect.
+      core.wsServer.broadcastExcept(msg as unknown as BridgeEvent, sender);
+      core.broadcastSessionsList().catch(() => {});
+      return true; // consumed
+    }
     return false; // not consumed — pass to command handler
   });
 
