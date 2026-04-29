@@ -1586,24 +1586,36 @@ extension ADOcSessionStatus {
 struct ADSessionInfo: Codable, Equatable {
     var agentType: ADAgentType?
     var alive: Bool
+    var contextPercent: Double?
+    var controlMode: ADControlMode?
+    var currentTask: String?
+    var cwd: String?
     var effortLevel: String?
     var id: String
     var modelName: String?
+    var pid: Double?
     var port: Double
     var projectName: String
     var startedAt: String?
     var state: String?
+    var totalTokens: Double?
 
     enum CodingKeys: String, CodingKey {
         case agentType = "agentType"
         case alive = "alive"
+        case contextPercent = "contextPercent"
+        case controlMode = "controlMode"
+        case currentTask = "currentTask"
+        case cwd = "cwd"
         case effortLevel = "effortLevel"
         case id = "id"
         case modelName = "modelName"
+        case pid = "pid"
         case port = "port"
         case projectName = "projectName"
         case startedAt = "startedAt"
         case state = "state"
+        case totalTokens = "totalTokens"
     }
 }
 
@@ -1628,24 +1640,36 @@ extension ADSessionInfo {
     func with(
         agentType: ADAgentType?? = nil,
         alive: Bool? = nil,
+        contextPercent: Double?? = nil,
+        controlMode: ADControlMode?? = nil,
+        currentTask: String?? = nil,
+        cwd: String?? = nil,
         effortLevel: String?? = nil,
         id: String? = nil,
         modelName: String?? = nil,
+        pid: Double?? = nil,
         port: Double? = nil,
         projectName: String? = nil,
         startedAt: String?? = nil,
-        state: String?? = nil
+        state: String?? = nil,
+        totalTokens: Double?? = nil
     ) -> ADSessionInfo {
         return ADSessionInfo(
             agentType: agentType ?? self.agentType,
             alive: alive ?? self.alive,
+            contextPercent: contextPercent ?? self.contextPercent,
+            controlMode: controlMode ?? self.controlMode,
+            currentTask: currentTask ?? self.currentTask,
+            cwd: cwd ?? self.cwd,
             effortLevel: effortLevel ?? self.effortLevel,
             id: id ?? self.id,
             modelName: modelName ?? self.modelName,
+            pid: pid ?? self.pid,
             port: port ?? self.port,
             projectName: projectName ?? self.projectName,
             startedAt: startedAt ?? self.startedAt,
-            state: state ?? self.state
+            state: state ?? self.state,
+            totalTokens: totalTokens ?? self.totalTokens
         )
     }
 
@@ -1656,6 +1680,11 @@ extension ADSessionInfo {
     func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
         return String(data: try self.jsonData(), encoding: encoding)
     }
+}
+
+enum ADControlMode: String, Codable, Equatable {
+    case managed = "managed"
+    case observed = "observed"
 }
 
 /// Voice assistant pipeline state (wake word → STT → LLM → TTS)

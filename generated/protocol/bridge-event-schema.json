@@ -790,6 +790,22 @@
         "alive": {
           "type": "boolean"
         },
+        "contextPercent": {
+          "type": "number"
+        },
+        "controlMode": {
+          "enum": [
+            "managed",
+            "observed"
+          ],
+          "type": "string"
+        },
+        "currentTask": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
         "effortLevel": {
           "type": "string"
         },
@@ -798,6 +814,9 @@
         },
         "modelName": {
           "type": "string"
+        },
+        "pid": {
+          "type": "number"
         },
         "port": {
           "type": "number"
@@ -810,6 +829,9 @@
         },
         "state": {
           "type": "string"
+        },
+        "totalTokens": {
+          "type": "number"
         }
       },
       "required": [

@@ -91,8 +91,12 @@ npx quicktype \
 
 # Swift 6 strict concurrency rejects non-final Sendable classes. Quicktype's
 # boilerplate JSON helpers don't mark `JSONCodingKey` as final; patch it so
-# the generated file compiles under `-swift-version 6`.
-sed -i '' -e 's/^class JSONCodingKey:/final class JSONCodingKey:/' "$OUT_DIR/GatewayFrame.swift"
+# the generated file compiles under `-swift-version 6`. Use the temp-file
+# rewrite pattern instead of `sed -i` so this works on both BSD sed (macOS)
+# and GNU sed (Linux/CI) — `sed -i ''` is BSD-specific and fails on GNU sed.
+sed -e 's/^class JSONCodingKey:/final class JSONCodingKey:/' \
+  "$OUT_DIR/GatewayFrame.swift" > "$OUT_DIR/GatewayFrame.swift.tmp"
+mv "$OUT_DIR/GatewayFrame.swift.tmp" "$OUT_DIR/GatewayFrame.swift"
 
 echo "   → BridgeEvent.swift"
 echo "   → PluginCommand.swift"

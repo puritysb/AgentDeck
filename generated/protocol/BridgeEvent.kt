@@ -26,6 +26,7 @@ private val klaxon = Klaxon()
     .convert(PromptType::class,          { PromptType.fromValue(it.string!!) },          { "\"${it.value}\"" })
     .convert(Layer::class,               { Layer.fromValue(it.string!!) },               { "\"${it.value}\"" })
     .convert(Outcome::class,             { Outcome.fromValue(it.string!!) },             { "\"${it.value}\"" })
+    .convert(ControlMode::class,         { ControlMode.fromValue(it.string!!) },         { "\"${it.value}\"" })
     .convert(State::class,               { State.fromValue(it.string!!) },               { "\"${it.value}\"" })
     .convert(BridgeEventStatus::class,   { BridgeEventStatus.fromValue(it.string!!) },   { "\"${it.value}\"" })
     .convert(TokenStatus::class,         { TokenStatus.fromValue(it.string!!) },         { "\"${it.value}\"" })
@@ -684,14 +685,33 @@ data class OcSessionStatus (
 data class SessionInfo (
     val agentType: AgentType? = null,
     val alive: Boolean,
+    val contextPercent: Double? = null,
+    val controlMode: ControlMode? = null,
+    val currentTask: String? = null,
+    val cwd: String? = null,
     val effortLevel: String? = null,
     val id: String,
     val modelName: String? = null,
+    val pid: Double? = null,
     val port: Double,
     val projectName: String,
     val startedAt: String? = null,
-    val state: String? = null
+    val state: String? = null,
+    val totalTokens: Double? = null
 )
+
+enum class ControlMode(val value: String) {
+    Managed("managed"),
+    Observed("observed");
+
+    companion object {
+        public fun fromValue(value: String): ControlMode = when (value) {
+            "managed"  -> Managed
+            "observed" -> Observed
+            else       -> throw IllegalArgumentException()
+        }
+    }
+}
 
 /**
  * Voice assistant pipeline state (wake word → STT → LLM → TTS)
