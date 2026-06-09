@@ -184,7 +184,6 @@ static void uiTask(void* param) {
     bool everConnected = false;
     bool prevConnStatus = false;   // Track connection changes for status overlay
     bool prevWifiStatus = false;
-    constexpr uint32_t SPLASH_AUTO_MS = 1500;       // Boot splash → aquarium after 1.5s
 
     while (true) {
         uint32_t now = millis();
@@ -205,14 +204,24 @@ static void uiTask(void* param) {
         if (orientChange) {
             UI::setOrientation(newLandscape);
             // Recreate all screens with new dimensions
+            scrSplash = Screens::splashCreate();
             scrAquarium = Screens::aquariumCreate();
             Screens::permissionCreate(scrAquarium);
             lv_obj_add_event_cb(lv_obj_get_child(scrAquarium, 0), onLongPress, LV_EVENT_LONG_PRESSED, NULL);
             scrTimeline = Screens::timelineCreate();
             scrSettings = Screens::settingsCreate();
             lv_obj_add_event_cb(scrSettings, settingsGesture, LV_EVENT_GESTURE, NULL);
-            lv_screen_load(scrAquarium);
-            currentView = VIEW_AQUARIUM;
+
+            if (currentView == VIEW_SPLASH) {
+                lv_screen_load(scrSplash);
+            } else if (currentView == VIEW_TIMELINE) {
+                lv_screen_load(scrTimeline);
+            } else if (currentView == VIEW_SETTINGS) {
+                lv_screen_load(scrSettings);
+            } else {
+                lv_screen_load(scrAquarium);
+                currentView = VIEW_AQUARIUM;
+            }
         }
 
         // Read view state
@@ -239,19 +248,13 @@ static void uiTask(void* param) {
                 // Connected — go to aquarium immediately
                 lv_screen_load_anim(scrAquarium, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, false);
                 currentView = VIEW_AQUARIUM;
-            } else if (now - splashStartMs > SPLASH_AUTO_MS) {
-                // Not connected but splash timeout — show aquarium with status overlay
-                lv_screen_load_anim(scrAquarium, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, false);
-                currentView = VIEW_AQUARIUM;
-                // Show initial connection status on aquarium
-                // Serial connection counts as connected (no WiFi needed)
+            } else {
+                // Not connected — remain on splash screen with status text
                 if (!Net::wifiConnected() && !Net::serialConnected()) {
-                    Screens::aquariumSetConnectionStatus(ConnOverlayStatus::NO_WIFI);
-                } else if (!connected) {
-                    Screens::aquariumSetConnectionStatus(ConnOverlayStatus::SEARCHING);
+                    Screens::splashSetStatus("No WiFi");
+                } else {
+                    Screens::splashSetStatus("Searching for bridges...");
                 }
-            } else if (Net::wifiConnected()) {
-                Screens::splashSetStatus("Searching for bridges...");
             }
         }
 
@@ -304,8 +307,9 @@ static void uiTask(void* param) {
         // LVGL timer handler
         lv_timer_handler();
 
-        // ~5ms yield for smooth animation
-        vTaskDelay(pdMS_TO_TICKS(5));
+        // ~5ms yield for smooth animation (minimum 1 tick to prevent busy loops on 100Hz systems)
+        uint32_t yield_ticks = pdMS_TO_TICKS(5);
+        vTaskDelay(yield_ticks > 0 ? yield_ticks : 1);
     }
 }
 #else // BOARD_LED8X32

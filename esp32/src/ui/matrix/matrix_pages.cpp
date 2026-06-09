@@ -293,7 +293,7 @@ static void drawFullScreenGauge(CRGB* leds, float percent,
 // ================================================================
 void MatrixPages::renderUsage(CRGB* leds, float animTime) {
     lockState();
-    bool connected = g_state.wsConnected;
+    bool connected = g_state.wsConnected || Net::serialConnected();
     float pct5h = g_state.fiveHourPercent;
     float pct7d = g_state.sevenDayPercent;
     char reset5h[20], reset7d[20];
@@ -346,7 +346,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     // when we've lost connection. The user explicitly wants a clear status
     // screen instead of last-known data.
     lockState();
-    bool connectedFast = g_state.wsConnected;
+    bool connectedFast = g_state.wsConnected || Net::serialConnected();
     unlockState();
     if (!connectedFast) {
         renderDisconnectStatus(leds, animTime);
@@ -354,7 +354,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     }
 
     lockState();
-    bool connected = g_state.wsConnected;
+    bool connected = g_state.wsConnected || Net::serialConnected();
     uint8_t sessionCount = g_state.sessionCount;
     // Crayfish draws only when the Gateway is authenticated — reachability
     // alone (`gatewayConnable`) is not enough. Parity with terrarium renderer.

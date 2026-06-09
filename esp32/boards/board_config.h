@@ -9,6 +9,8 @@
     #include "board_86_box.h"
 #elif defined(BOARD_AMOLED) || defined(BOARD_ROUND_AMOLED)
     #include "board_round_amoled.h"
+#elif defined(BOARD_IDOTMATRIX)
+    #include "board_idotmatrix_s3.h"
 #elif defined(BOARD_LED8X32) || defined(BOARD_ULANZI_TC001)
     #include "board_ulanzi_tc001.h"
 #elif defined(BOARD_TTGO) || defined(BOARD_TTGO_T_DISPLAY)

@@ -3,6 +3,7 @@
 #include "../display.h"
 #include "../../state/agent_state.h"
 #include "config.h"
+#include "net/serial_client.h"
 
 // === Left panel: AgentDeck logo + session list ===
 static lv_obj_t* panelLeft = nullptr;
@@ -505,7 +506,8 @@ void update() {
         lv_obj_add_flag(lblStale, LV_OBJ_FLAG_HIDDEN);
     }
 
-    bool showTankStatus = (p5h >= 0.0f || p7d >= 0.0f);
+    bool connected = hasData && (g_state.wsConnected || Net::serialConnected());
+    bool showTankStatus = connected && (p5h >= 0.0f || p7d >= 0.0f);
     if (firstUpdate || showTankStatus != lastShowTankStatus) {
         firstUpdate = false;
         lastShowTankStatus = showTankStatus;

@@ -6,6 +6,7 @@
 #include "config.h"
 #include <cstring>
 #include <algorithm>
+#include "net/serial_client.h"
 
 using std::min;
 
@@ -157,6 +158,7 @@ void update() {
     if (!widget) return;
 
     lockState();
+    bool hasData = g_state.dataReceived;
     AgentState state = g_state.state;
     char project[40], model[32];
     strncpy(project, g_state.projectName, sizeof(project) - 1);
@@ -166,6 +168,7 @@ void update() {
 
     float p5h = g_state.fiveHourPercent;
     float p7d = g_state.sevenDayPercent;
+    bool connected = hasData && (g_state.wsConnected || Net::serialConnected());
     unlockState();
 
     // Update state label with color
@@ -191,7 +194,7 @@ void update() {
 
     // Update usage gauges
     char buf[16];
-    bool showTankStatus = (p5h >= 0.0f || p7d >= 0.0f);
+    bool showTankStatus = connected && (p5h >= 0.0f || p7d >= 0.0f);
     if (showTankStatus) {
         lv_obj_clear_flag(lblUsage5h, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lblUsage7d, LV_OBJ_FLAG_HIDDEN);

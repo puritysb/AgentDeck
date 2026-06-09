@@ -151,7 +151,8 @@ public:
         {
             auto cfg = _bus_instance.config();
             cfg.spi_host = VSPI_HOST;  // VSPI on ESP32 classic
-            cfg.freq_write = 27000000; // 27MHz (stable SPI write)
+            cfg.dma_channel = 0;       // Disable DMA to bypass Core 3.x DMA issues on ESP32 classic
+            cfg.freq_write = 20000000; // 20MHz (safer SPI write for noise reduction)
             cfg.freq_read  = 16000000;
             cfg.pin_sclk = BOARD_PIN_SPI_SCLK;
             cfg.pin_mosi = BOARD_PIN_SPI_MOSI;
@@ -173,7 +174,7 @@ public:
             cfg.panel_height     = 240;
             cfg.offset_x         = 52;
             cfg.offset_y         = 40;
-            cfg.offset_rotation  = 0;
+            cfg.offset_rotation  = 0;  // TTGO: use setRotation() for runtime control
             cfg.dummy_read_bits  = 8;
             cfg.readable         = false;
             cfg.invert           = BOARD_INVERT;
@@ -473,10 +474,21 @@ static lv_display_t* disp = nullptr;
 // Montserrat 12 + Korean fallback (initialized in displayInit)
 lv_font_t font_kr_12;
 
+static size_t rgb565StrideBytes(uint32_t width) {
+    return ((width * sizeof(uint16_t)) + 31u) & ~31u;
+}
+
 // LVGL flush callback
 static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px_map) {
     uint32_t w = (area->x2 - area->x1 + 1);
     uint32_t h = (area->y2 - area->y1 + 1);
+
+    // Retrieve the actual active draw buffer's stride directly from LVGL
+    lv_draw_buf_t* draw_buf = lv_display_get_buf_active(display);
+    uint32_t stride_pixels = w;
+    if (draw_buf) {
+        stride_pixels = draw_buf->header.stride / sizeof(uint16_t);
+    }
 
 #if defined(BOARD_RGB48)
     static uint32_t flushCount = 0;
@@ -484,25 +496,47 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
     uint32_t now = millis();
     flushCount++;
     if (now - lastFlushMs > 5000 || flushCount < 5) {
-        Serial.printf("[Display] Flush #%u: area(%d,%d %dx%d) px_map=%p\n",
-                      flushCount, area->x1, area->y1, w, h, px_map);
+        Serial.printf("[Display] Flush #%u: area(%d,%d %dx%d) px_map=%p stride_pixels=%u\n",
+                      flushCount, area->x1, area->y1, w, h, px_map, stride_pixels);
         lastFlushMs = now;
     }
 #endif
 
 #if defined(BOARD_RGB48)
-    // RGB panel: pushImage writes directly to DMA framebuffer
+    // RGB panel: pushImage writes directly to DMA framebuffer (handle stride alignment)
     // swap565_t tells LovyanGFX data is already byte-swapped (RGB565_SWAPPED from LVGL)
-    tft.pushImage(area->x1, area->y1, w, h, (lgfx::swap565_t*)px_map);
+    if (stride_pixels == w) {
+        tft.pushImage(area->x1, area->y1, w, h, (lgfx::swap565_t*)px_map);
+    } else {
+        uint16_t* src = (uint16_t*)px_map;
+        for (uint32_t y = 0; y < h; y++) {
+            tft.pushImage(area->x1, area->y1 + y, w, 1, (lgfx::swap565_t*)&src[y * stride_pixels]);
+        }
+    }
 #elif defined(BOARD_IPS35)
-    // AXS15231B via Canvas: draw partial area to buffer, flush only on last area
-    gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t*)px_map, w, h);
+    // AXS15231B via Canvas: draw partial area to buffer, flush only on last area (handle stride alignment)
+    if (stride_pixels == w) {
+        gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t*)px_map, w, h);
+    } else {
+        uint16_t* src = (uint16_t*)px_map;
+        for (uint32_t y = 0; y < h; y++) {
+            gfx->draw16bitBeRGBBitmap(area->x1, area->y1 + y, &src[y * stride_pixels], w, 1);
+        }
+    }
     if (lv_display_flush_is_last(display)) {
         gfx_canvas->flush();
     }
 #elif defined(BOARD_AMOLED)
     // ST77916 QSPI: direct draw (no Canvas needed)
-    gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t*)px_map, w, h);
+    if (stride_pixels == w) {
+        gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t*)px_map, w, h);
+    } else {
+        // Draw line by line to handle stride padding correctly
+        uint16_t* src = (uint16_t*)px_map;
+        for (uint32_t y = 0; y < h; y++) {
+            gfx->draw16bitBeRGBBitmap(area->x1, area->y1 + y, &src[y * stride_pixels], w, 1);
+        }
+    }
 #elif defined(BOARD_IPS10)
     // JD9365 MIPI-DSI. We manually transpose the 1280x800 logical landscape map
     // into the physical 800x1280 portrait panel (rotation 270).
@@ -510,7 +544,7 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
         uint16_t* src = (uint16_t*)px_map;
         for (uint32_t r = 0; r < h; r++) {
             for (uint32_t c = 0; c < w; c++) {
-                rotated_buf[(w - 1 - c) * h + r] = src[r * w + c];
+                rotated_buf[(w - 1 - c) * h + r] = src[r * stride_pixels + c];
             }
         }
         // Map logical coordinate area (1280x800) to physical display (800x1280)
@@ -518,13 +552,28 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
         uint32_t y_native = BOARD_NATIVE_H - area->x2 - 1;
         jc_tft->draw16bitbergbbitmap(x_native, y_native, h, w, rotated_buf);
     } else {
-        jc_tft->draw16bitbergbbitmap(area->x1, area->y1, w, h, (uint16_t*)px_map);
+        if (stride_pixels == w) {
+            jc_tft->draw16bitbergbbitmap(area->x1, area->y1, w, h, (uint16_t*)px_map);
+        } else {
+            uint16_t* src = (uint16_t*)px_map;
+            for (uint32_t y = 0; y < h; y++) {
+                jc_tft->draw16bitbergbbitmap(area->x1, area->y1 + y, w, 1, &src[y * stride_pixels]);
+            }
+        }
     }
 #else
-    // swap565_t tells LovyanGFX data is already byte-swapped (big-endian RGB565
-    // from LVGL RGB565_SWAPPED). Without this cast, writePixels interprets data
-    // as native little-endian and double-swaps, causing color corruption.
-    tft.pushImage(area->x1, area->y1, w, h, (lgfx::swap565_t*)px_map);
+    if (stride_pixels == w) {
+        // swap565_t tells LovyanGFX data is already byte-swapped (big-endian RGB565
+        // from LVGL RGB565_SWAPPED). Without this cast, writePixels interprets data
+        // as native little-endian and double-swaps, causing color corruption.
+        tft.pushImage(area->x1, area->y1, w, h, (lgfx::swap565_t*)px_map);
+    } else {
+        // Draw line by line to handle stride padding correctly
+        uint16_t* src = (uint16_t*)px_map;
+        for (uint32_t y = 0; y < h; y++) {
+            tft.pushImage(area->x1, area->y1 + y, w, 1, (lgfx::swap565_t*)&src[y * stride_pixels]);
+        }
+    }
 #endif
 
     lv_display_flush_ready(display);
@@ -726,6 +775,20 @@ void displayInit() {
     tft.init();
     Serial.println("[Display] tft.init() complete");
 
+#if defined(BOARD_TTGO)
+    // TTGO: Test panel rendering directly to check hardware/SPI alignment
+    Serial.println("[Display] ===== TTGO PANEL TEST START =====");
+    tft.setRotation(0); // Test portrait
+    tft.fillScreen(0xF800); // Red
+    delay(1000);
+    tft.fillScreen(0x07E0); // Green
+    delay(1000);
+    tft.fillScreen(0x001F); // Blue
+    delay(1000);
+    tft.fillScreen(0x0000); // Black
+    Serial.println("[Display] ===== TTGO PANEL TEST END =====");
+#endif
+
 #if defined(BOARD_RGB48) || defined(BOARD_BOX_86) || defined(BOARD_86_BOX)
     // 86box: Test panel rendering with colored screens to diagnose black screen issue
     Serial.println("[Display] ===== PANEL TEST START =====");
@@ -766,11 +829,11 @@ void displayInit() {
         bool landscape = prefs.getBool("landscape", false);  // TTGO defaults to portrait
         prefs.end();
         if (landscape) {
-            tft.setRotation(1);
+            tft.setRotation(1);  // TTGO landscape (LovyanGFX rotation 1)
             g_screenW = SCREEN_H;  // 240: landscape width
             g_screenH = SCREEN_W;  // 135: landscape height
         } else {
-            tft.setRotation(0);
+            tft.setRotation(0);  // TTGO portrait (LovyanGFX rotation 0)
             g_screenW = SCREEN_W;  // 135: portrait width
             g_screenH = SCREEN_H;  // 240: portrait height
         }
@@ -805,9 +868,11 @@ void displayInit() {
     // RGB565_SWAPPED = LVGL outputs big-endian RGB565 matching DMA byte order
     // Use internal SRAM (not PSRAM) for LVGL buffer to avoid PSRAM bus contention
     static constexpr size_t BUF_LINES = 40;
-    size_t bufPixels = SCREEN_W * BUF_LINES;
-    size_t bufSize = bufPixels * sizeof(uint16_t);
-    Serial.printf("[Display] Buffer alloc: %zu pixels, %zu bytes (%d lines)\n", bufPixels, bufSize, BUF_LINES);
+    size_t strideBytes = rgb565StrideBytes(g_screenW);
+    size_t bufPixels = g_screenW * BUF_LINES;
+    size_t bufSize = strideBytes * BUF_LINES;
+    Serial.printf("[Display] Buffer alloc: %zu logical pixels, %zu bytes (%d lines, stride=%zu)\n",
+                  bufPixels, bufSize, BUF_LINES, strideBytes);
 
     // Try internal SRAM first for speed, fall back to PSRAM
     uint16_t* buf1 = (uint16_t*)heap_caps_malloc(bufSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
@@ -839,11 +904,15 @@ void displayInit() {
     static constexpr size_t BUF_LINES = 40;
 #endif
 #if defined(BOARD_IPS10)
-    size_t bufPixels = BOARD_NATIVE_H * BUF_LINES;
+    size_t logicalWidth = BOARD_NATIVE_H;
 #else
-    size_t bufPixels = SCREEN_W * BUF_LINES;
+    size_t logicalWidth = g_screenW;
 #endif
-    size_t bufSize = bufPixels * sizeof(uint16_t);
+    size_t strideBytes = rgb565StrideBytes(logicalWidth);
+    size_t bufPixels = logicalWidth * BUF_LINES;
+    size_t bufSize = strideBytes * BUF_LINES;
+    Serial.printf("[Display] Buffer alloc: %zu logical pixels, %zu bytes (%d lines, stride=%zu)\n",
+                  bufPixels, bufSize, BUF_LINES, strideBytes);
     // DMA-capable aligned buffers (Arduino_GFX pattern)
     uint16_t* buf1 = (uint16_t*)heap_caps_aligned_alloc(16, bufSize, MALLOC_CAP_DMA);
     uint16_t* buf2 = (uint16_t*)heap_caps_aligned_alloc(16, bufSize, MALLOC_CAP_DMA);

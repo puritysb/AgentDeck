@@ -16,7 +16,6 @@ static lv_obj_t* connScrim = nullptr;
 static lv_obj_t* connCard = nullptr;
 static lv_obj_t* connLogoImg = nullptr;
 static lv_obj_t* connTitleLabel = nullptr;
-static lv_obj_t* connSpinner = nullptr;
 static lv_obj_t* connStatusLabel = nullptr;
 static bool lastHostDisplayOn = true;
 
@@ -73,6 +72,10 @@ static void screenTouchEvent(lv_event_t* e) {
     }
 }
 
+static void set_card_border_opa_cb(void* var, int32_t val) {
+    lv_obj_set_style_border_opa((lv_obj_t*)var, val, 0);
+}
+
 namespace Screens {
 
 lv_obj_t* aquariumCreate() {
@@ -94,8 +97,8 @@ lv_obj_t* aquariumCreate() {
     // Connection overlay — full-screen scrim + centered card (Android/Apple style)
     connScrim = lv_obj_create(screen);
     lv_obj_set_size(connScrim, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(connScrim, lv_color_hex(0x0F172A), 0);
-    lv_obj_set_style_bg_opa(connScrim, 204, 0);   // 80% — matches Android 0xCC
+    lv_obj_set_style_bg_color(connScrim, lv_color_hex(0x070B13), 0);
+    lv_obj_set_style_bg_opa(connScrim, 255, 0);   // Always 100% opaque to prevent blending with garbage background memory
     lv_obj_set_style_border_width(connScrim, 0, 0);
     lv_obj_set_style_radius(connScrim, 0, 0);
     lv_obj_set_style_pad_all(connScrim, 0, 0);
@@ -115,17 +118,31 @@ lv_obj_t* aquariumCreate() {
     lv_obj_set_width(connCard, 260);
 #endif
     lv_obj_set_height(connCard, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(connCard, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_bg_opa(connCard, 230, 0);   // 90% — matches Android 0xE6
+    lv_obj_set_style_bg_color(connCard, lv_color_hex(0x111827), 0);
+    lv_obj_set_style_bg_opa(connCard, 255, 0);
     lv_obj_set_style_radius(connCard, 12, 0);
-    lv_obj_set_style_border_width(connCard, 0, 0);
-    lv_obj_set_style_pad_ver(connCard, 24, 0);
+    lv_obj_set_style_border_color(connCard, lv_color_hex(0x38BDF8), 0); // cyan/sky glow border
+    lv_obj_set_style_border_width(connCard, 1, 0);
+    lv_obj_set_style_border_opa(connCard, 60, 0);
+    lv_obj_set_style_pad_ver(connCard, 22, 0);
     lv_obj_set_style_pad_hor(connCard, 16, 0);
-    lv_obj_set_style_pad_row(connCard, 8, 0);
+    lv_obj_set_style_pad_row(connCard, 10, 0);
     lv_obj_align(connCard, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_flex_flow(connCard, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(connCard, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(connCard, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Card border glow breathing animation
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, connCard);
+    lv_anim_set_exec_cb(&a, set_card_border_opa_cb);
+    lv_anim_set_values(&a, 40, 180);
+    lv_anim_set_duration(&a, 1500);
+    lv_anim_set_reverse_duration(&a, 1500);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_start(&a);
 
     // Brand logo — AD shield icon
     connLogoImg = lv_image_create(connCard);
@@ -137,20 +154,10 @@ lv_obj_t* aquariumCreate() {
     lv_obj_set_style_text_font(connTitleLabel, &lv_font_montserrat_20, 0);
     lv_label_set_text(connTitleLabel, "AgentDeck");
 
-    // Spinner (36×36) — smoother animation with shorter period
-    connSpinner = lv_spinner_create(connCard);
-    lv_obj_set_size(connSpinner, 36, 36);
-    lv_spinner_set_anim_params(connSpinner, 800, 360);
-    lv_obj_set_style_arc_color(connSpinner, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_arc_color(connSpinner, lv_color_hex(0x60A5FA), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(connSpinner, 3, 0);
-    lv_obj_set_style_arc_width(connSpinner, 3, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_rounded(connSpinner, true, 0);
-
     // Status text
     connStatusLabel = lv_label_create(connCard);
     lv_obj_set_style_text_color(connStatusLabel, lv_color_hex(Theme::HUDDim), 0);
-    lv_obj_set_style_text_font(connStatusLabel, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(connStatusLabel, &lv_font_montserrat_16, 0);
     lv_label_set_text(connStatusLabel, "");
 
     // Swipe + tap detection: manual tracking as fallback for LVGL gesture
@@ -202,8 +209,15 @@ void aquariumUpdate(float dt) {
         UI::setBrightness(displayOn ? userBright : 0);
     }
 
-    // Render terrarium frame
-    Terrarium::render(dt);
+    // Render terrarium frame only when connection overlay is hidden to save CPU/SPI bandwidth
+    bool scrimHidden = true;
+    if (connScrim) {
+        scrimHidden = lv_obj_has_flag(connScrim, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (scrimHidden) {
+        Terrarium::render(dt);
+    }
 
 #if defined(BOARD_TTGO)
     // TTGO: Update simplified overlay
@@ -215,7 +229,7 @@ void aquariumUpdate(float dt) {
 }
 
 void aquariumSetConnectionStatus(ConnOverlayStatus status) {
-    if (!connScrim || !connStatusLabel || !connSpinner) return;
+    if (!connScrim || !connStatusLabel) return;
 
     if (status == ConnOverlayStatus::HIDDEN) {
 #if defined(BOARD_TTGO)
@@ -235,15 +249,12 @@ void aquariumSetConnectionStatus(ConnOverlayStatus status) {
     switch (status) {
         case ConnOverlayStatus::NO_WIFI:
             lv_label_set_text(connStatusLabel, "No WiFi");
-            lv_obj_add_flag(connSpinner, LV_OBJ_FLAG_HIDDEN);
             break;
         case ConnOverlayStatus::SEARCHING:
-            lv_label_set_text(connStatusLabel, "Searching for bridges...");
-            lv_obj_clear_flag(connSpinner, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(connStatusLabel, "Connecting");
             break;
         case ConnOverlayStatus::RECONNECTING:
-            lv_label_set_text(connStatusLabel, "Reconnecting...");
-            lv_obj_clear_flag(connSpinner, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(connStatusLabel, "Connecting");
             break;
         default:
             break;

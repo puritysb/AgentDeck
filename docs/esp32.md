@@ -32,3 +32,16 @@ agentdeck wifi-setup --ssid "MyNetwork" --password "secret"
 시리얼 10초 timeout + WebSocket 지수 backoff (1→8s). `main.cpp`는 `bridgeFound` 플래그 없이 **mDNS를 항상 폴링** → daemon IP 변경(DHCP 갱신, 호스트 이동) 즉시 감지 후 `wsDisconnect()`+새 IP로 `wsConnect()` 재바인딩. WS backoff가 15초 이상 saturated이면 `mdnsRefresh()`로 캐시 강제 무효화 (좀비 dns-sd 광고 상황 방어). `ws_client.cpp`의 `setReconnectInterval()`은 backoff 증가할 때마다 라이브러리 내부 타이머에 재동기화 (기존에는 `wsConnect()` 시점 값에 고정). `DashboardState.lastMessageMs`가 serial/WS TEXT 수신 시 갱신되어 UI에서 disconnect age 계산.
 
 **TC001 matrix disconnect UI**: stale 스프라이트 대신 상태 메시지 (`CONNECT WIFI` / `FINDING BRIDGE` / `DAEMON DOWN Xm` / `NO WIFI Xm`) + 우상단 깜빡이는 빨간 점.
+
+## 기기별 펌웨어 사양 및 포트 매핑 정보 (2026-06-09 기준)
+
+현재 연결 및 플래싱이 완료된 5가지 디스플레이 기기의 사양 및 기본 OS 감지 포트는 아래와 같습니다.
+
+| 기기 설명 | PlatformIO Env | 가로/세로 해상도 | 사용 칩셋 | OS 감지 포트 예시 |
+|---|---|---|---|---|
+| LilyGO TTGO T-Display 1.14" | `ttgo` | 135×240 (가로 오프셋 보정) | ESP32 | `/dev/cu.wchusbserial58A90021441` |
+| IPS 3.5" Display | `ips35` | 480×320 / 320×480 | ESP32-S3 | `/dev/cu.usbmodem21133201` |
+| 86 Box | `box_86` | 480×480 | ESP32-S3 | `/dev/cu.wchusbserial211340` |
+| 10" IPS Display | `ips10` | 800×1280 | ESP32-P4 | `/dev/cu.usbmodem101` |
+| Round AMOLED | `amoled` | 360×360 | ESP32-S3 | `/dev/cu.usbmodem2111201` |
+

@@ -73,9 +73,21 @@ for pattern in patterns:
 PY
 }
 
+map_env_to_pio() {
+    case "$1" in
+        ips_35|ips35) echo "ips35" ;;
+        round_amoled|amoled) echo "amoled" ;;
+        box_86|86box) echo "box_86" ;;
+        ulanzi_tc001|led8x32) echo "led8x32" ;;
+        ttgo_t_display|ttgo) echo "ttgo" ;;
+        ips_10|ips10) echo "ips10" ;;
+        *) echo "$1" ;;
+    esac
+}
+
 validate_env() {
     case "$1" in
-        ips_35|round_amoled|box_86|ulanzi_tc001|ttgo_t_display) ;;
+        ips_35|ips35|round_amoled|amoled|box_86|86box|ulanzi_tc001|led8x32|ttgo_t_display|ttgo|ips_10|ips10) ;;
         *)
             echo "Unknown environment: $1" >&2
             usage >&2
@@ -129,10 +141,12 @@ else
     validate_env "$ENV"
 fi
 
+PIO_ENV="$(map_env_to_pio "$ENV")"
+
 if [ -n "$PORT" ]; then
     # Safety check: if the target answers device_info_request, it must match the env.
     MATCH="$(probe_running_boards | awk -v p="$PORT" '$2 == p { print $1 }')"
-    if [ -n "$MATCH" ] && [ "$MATCH" != "$ENV" ]; then
+    if [ -n "$MATCH" ] && [ "$(map_env_to_pio "$MATCH")" != "$PIO_ENV" ]; then
         echo "Refusing flash: port $PORT reports board=$MATCH but env=$ENV" >&2
         exit 1
     fi
@@ -150,17 +164,17 @@ if [ -n "$PORT" ] && [[ "$PORT" == *usbmodem* ]]; then
     fi
 fi
 
-echo "Building and flashing: env=$ENV port=${PORT:-<default>}"
+echo "Building and flashing: env=$ENV (PlatformIO env=$PIO_ENV) port=${PORT:-<default>}"
 cd "$PROJECT_DIR"
 
 # Build
-pio run -e "$ENV"
+pio run -e "$PIO_ENV"
 
 # Upload
 if [ -n "$PORT" ]; then
-    pio run -e "$ENV" -t upload --upload-port "$PORT"
+    pio run -e "$PIO_ENV" -t upload --upload-port "$PORT"
 else
-    pio run -e "$ENV" -t upload
+    pio run -e "$PIO_ENV" -t upload
 fi
 
 # Monitor
@@ -169,5 +183,5 @@ echo "Flash complete! Starting monitor (Ctrl+C to exit)..."
 if [ -n "$PORT" ]; then
     pio device monitor --port "$PORT" --baud "$DEFAULT_BAUD"
 else
-    pio device monitor -e "$ENV"
+    pio device monitor -e "$PIO_ENV"
 fi

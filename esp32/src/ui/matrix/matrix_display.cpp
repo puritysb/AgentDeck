@@ -7,6 +7,7 @@
 #include "../../../boards/board_config.h"
 #include <Arduino.h>
 #include <FastLED.h>
+#include "net/serial_client.h"
 
 extern DashboardState g_state;
 
@@ -27,7 +28,8 @@ static float pageCycleTimer = 0.0f;
 /// screen instead of displaying dashes.
 static bool hasUsageData() {
     lockState();
-    bool has = (g_state.fiveHourPercent >= 0.0f || g_state.sevenDayPercent >= 0.0f);
+    bool connected = g_state.wsConnected || Net::serialConnected();
+    bool has = connected && (g_state.fiveHourPercent >= 0.0f || g_state.sevenDayPercent >= 0.0f);
     unlockState();
     return has;
 }
