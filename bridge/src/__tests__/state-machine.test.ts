@@ -268,6 +268,27 @@ describe('StateMachine', () => {
       expect(sm.getState()).toBe(State.PROCESSING);
     });
 
+    it('AWAITING backstop re-arms on PTY activity (silence-based, not a hard cap from entry)', () => {
+      const sm = bootToIdle();
+      sm.handleHookEvent('UserPromptSubmit', {});
+      sm.handleParserEvent('permission_prompt', {
+        options: [{ index: 0, label: 'Yes' }],
+      });
+      expect(sm.getState()).toBe(State.AWAITING_PERMISSION);
+
+      // PTY activity at 9min (prompt still rendering / user reading) re-arms the timer.
+      vi.advanceTimersByTime(9 * 60 * 1000);
+      sm.onPtyActivity();
+
+      // 5 more min (14 total since entry) — a hard cap would have fired; the re-arm keeps it.
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(sm.getState()).toBe(State.AWAITING_PERMISSION);
+
+      // 10min of genuine silence since the last activity — now the backstop fires.
+      vi.advanceTimersByTime(5 * 60 * 1000 + 100);
+      expect(sm.getState()).toBe(State.IDLE);
+    });
+
     it('timer resets on state change before timeout', () => {
       const sm = bootToIdle();
       sm.handleHookEvent('UserPromptSubmit', {});

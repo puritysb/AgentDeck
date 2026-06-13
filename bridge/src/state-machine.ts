@@ -506,11 +506,22 @@ export class StateMachine extends EventEmitter {
     }
   }
 
-  /** Reset stuck timer on PTY activity while PROCESSING */
+  /** Reset the stuck timer on PTY activity. PROCESSING uses the short hang
+   *  timeout; AWAITING_* use the long backstop. Re-arming on activity makes the
+   *  backstop "N minutes of genuine silence" rather than a hard cap from entry,
+   *  so a still-rendering prompt the user is actively reading isn't reset. */
   onPtyActivity(): void {
-    if (this.stuckTimer && this.state === State.PROCESSING) {
-      debug('SM', 'PTY activity — resetting stuck timer');
+    if (!this.stuckTimer) return;
+    if (this.state === State.PROCESSING) {
+      debug('SM', 'PTY activity — resetting PROCESSING stuck timer');
       this.armStuckTimer(STUCK_TIMEOUT_MS);
+    } else if (
+      this.state === State.AWAITING_PERMISSION ||
+      this.state === State.AWAITING_OPTION ||
+      this.state === State.AWAITING_DIFF
+    ) {
+      debug('SM', 'PTY activity — resetting AWAITING stuck timer');
+      this.armStuckTimer(AWAITING_STUCK_TIMEOUT_MS);
     }
   }
 
