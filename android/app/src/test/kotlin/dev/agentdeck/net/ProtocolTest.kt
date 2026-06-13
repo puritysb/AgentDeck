@@ -139,6 +139,19 @@ class ProtocolTest {
         val wake = parseBridgeMessage(wakeJson) as BridgeEvent.DisplaySleep
         assertFalse(sleep.displayOn)
         assertTrue(wake.displayOn)
+        // No `dim` field ⇒ null (legacy full-off path).
+        assertNull(sleep.dim)
+    }
+
+    @Test
+    fun `parse display_state with dim instruction`() {
+        val json = """{"type":"display_state","displayOn":false,"dim":{"enabled":true,"mode":"min","level":25}}"""
+        val event = parseBridgeMessage(json) as BridgeEvent.DisplaySleep
+        assertFalse(event.displayOn)
+        val dim = event.dim!!
+        assertTrue(dim.enabled)
+        assertEquals("min", dim.mode)
+        assertEquals(25, dim.level)
     }
 
     // --- parseBridgeMessage: sessions_list ---

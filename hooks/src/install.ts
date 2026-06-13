@@ -44,7 +44,7 @@ export const HOOK_EVENTS = [
  * crashed daemon doesn't swallow the hook.
  */
 export function buildHookCommand(eventName: string): string {
-  return [
+  const preamble = [
     `PORT="\${AGENTDECK_PORT:-}"`,
     `if [ -z "$PORT" ]; then`,
     `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agentdeck.dashboard/daemon.json"; do`,
@@ -54,8 +54,21 @@ export function buildHookCommand(eventName: string): string {
     `  done`,
     `fi`,
     `PORT="\${PORT:-9120}"`,
+  ];
+  // PreToolUse is request-response: the daemon may hold the connection open and
+  // return a permission decision (device approval). Capture the body and echo it
+  // to stdout so Claude can gate the tool; empty output (timeout/error/disabled)
+  // = Claude's normal permission flow. `--max-time 60` exceeds the daemon's
+  // internal 45s "ask" fallback so that fallback reaches Claude before curl quits.
+  if (eventName === 'PreToolUse') {
+    return preamble.concat([
+      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' --max-time 60 -d @- 2>/dev/null)`,
+      `printf '%s' "\${RESP:-}"`,
+    ]).join('\n');
+  }
+  return preamble.concat([
     `curl -sf -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -d @- 2>/dev/null || true`,
-  ].join('\n');
+  ]).join('\n');
 }
 
 // Claude Code v2.1+ requires 3-level nesting: event → matcher group → hook handler.

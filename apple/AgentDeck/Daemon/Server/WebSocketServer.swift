@@ -353,6 +353,18 @@ final class WebSocketConnection: Hashable, Sendable {
     private let disconnectedLock = NSLock()
     nonisolated(unsafe) private var _disconnected = false
 
+    /// Backpressure: frames handed to NWConnection whose `contentProcessed`
+    /// completion hasn't fired yet. A slow-but-alive peer (suspended iOS
+    /// app, flaky WiFi) never surfaces a send error, so without a cap every
+    /// broadcast would pile into NWConnection's internal buffer unbounded.
+    /// Dropping data frames at the cap is safe for this protocol: every
+    /// broadcast (sessions_list / state_update / usage / timeline upsert
+    /// follow-ups) is a full snapshot, so the next delivered frame restores
+    /// consistency. Close/pong frames bypass `send` and are never dropped.
+    private let sendLock = NSLock()
+    nonisolated(unsafe) private var _inFlightSends = 0
+    private static let maxInFlightSends = 64
+
     var isDisconnected: Bool {
         disconnectedLock.lock()
         defer { disconnectedLock.unlock() }
@@ -435,16 +447,29 @@ final class WebSocketConnection: Hashable, Sendable {
     }
 
     func send(_ data: Data) {
+        sendLock.lock()
+        if _inFlightSends >= Self.maxInFlightSends {
+            sendLock.unlock()
+            DaemonLogger.shared.debug("WS", "Send queue saturated (\(Self.maxInFlightSends) in flight) — dropping frame for slow client \(id)")
+            return
+        }
+        _inFlightSends += 1
+        sendLock.unlock()
+
         let frame = Self.buildFrame(opcode: 0x1, payload: data)
         // isComplete: false — on NWConnection/TCP, isComplete: true signals
         // end-of-stream (FIN). Setting it per-frame half-closes the send side
         // after the first outbound WS message, which races with the client's
         // ping/receive timers and manifests as a ~15s reconnect loop.
         connection.send(content: frame, isComplete: false, completion: .contentProcessed({ [weak self] error in
+            guard let self else { return }
+            self.sendLock.lock()
+            self._inFlightSends -= 1
+            self.sendLock.unlock()
             if let error = error {
                 DaemonLogger.shared.debug("WS", "Send error: \(error)")
-                self?.markDisconnected()
-                self?.onClose?()
+                self.markDisconnected()
+                self.onClose?()
             }
         }))
     }

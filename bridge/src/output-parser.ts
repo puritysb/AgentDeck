@@ -466,7 +466,7 @@ export class OutputParser extends EventEmitter {
         { index: 1, label: 'No, deny', shortcut: 'n' },
         { index: 2, label: 'Always allow', shortcut: 'a' },
       ];
-      this.emit('permission_prompt', { options, promptType: 'yes_no_always' });
+      this.emit('permission_prompt', { options, promptType: 'yes_no_always', question: this.parsePromptQuestion() });
       this.startInteractiveCooldown();
       return;
     }
@@ -483,6 +483,7 @@ export class OutputParser extends EventEmitter {
           { index: 1, label: 'No', shortcut: 'n' },
         ],
         promptType: 'yes_no',
+        question: this.parsePromptQuestion(),
       });
       this.startInteractiveCooldown();
       return;
@@ -513,7 +514,7 @@ export class OutputParser extends EventEmitter {
             debug('Parser', `EMIT permission_prompt (${options.length} options, navigable=${parsed.navigable}, cursor=${parsed.cursorIndex}, reclassified from numbered, debounced)`);
             this.lastNavigableEmit = parsed.navigable;
             this.lastCursorIndex = parsed.cursorIndex;
-            this.emit('permission_prompt', { options, promptType: 'yes_no_always', navigable: parsed.navigable, cursorIndex: parsed.cursorIndex });
+            this.emit('permission_prompt', { options, promptType: 'yes_no_always', navigable: parsed.navigable, cursorIndex: parsed.cursorIndex, question: this.parsePromptQuestion() });
           } else {
             this.lastNavigableEmit = parsed.navigable;
             this.lastCursorIndex = parsed.cursorIndex;
@@ -522,6 +523,7 @@ export class OutputParser extends EventEmitter {
               options: parsed.options,
               navigable: parsed.navigable,
               cursorIndex: parsed.cursorIndex,
+              question: this.parsePromptQuestion(),
             });
           }
         }
@@ -847,6 +849,56 @@ export class OutputParser extends EventEmitter {
     }
 
     return options;
+  }
+
+  /**
+   * Extract the question/header line that Claude Code renders above a
+   * permission or option block (e.g. "Do you want to proceed?", "Allow Bash
+   * to run this command?"). Returns undefined when no plausible header is
+   * found so the consumer can fall back to its synthetic "Allow {tool}?" text.
+   *
+   * Strategy: find the first option line in the buffer tail. Handle the inline
+   * form ("Allow X? (Y)es/(N)o") by reading the text before the option marker
+   * on that same line; otherwise scan upward for the nearest non-chrome line
+   * that reads like a question. Box-drawing borders (│ … │) are stripped before
+   * evaluation since the buffer is ANSI-stripped but still carries the TUI frame.
+   */
+  private parsePromptQuestion(): string | undefined {
+    const lines = this.buffer.slice(-1500).split('\n');
+    const stripBox = (s: string) => s.replace(/[│|╭╮╰╯─━═┃┌┐└┘├┤┬┴┼❯]/g, ' ').replace(/\s+/g, ' ').trim();
+    const MARKER = /❯?\s*(?:\d{1,2}[.)]|Yes[,\s]|No[,\s]|Always\b|\(Y\)|\(N\))/i;
+    const isOptionLine = (s: string) => new RegExp('^\\s*[│|]?\\s*' + MARKER.source, 'i').test(s);
+    const looksLikeQuestion = (s: string) =>
+      /\?\s*$/.test(s) ||
+      /^(allow|do you|would you|edit|run|create|write|proceed|apply|save|overwrite|delete|approve|confirm)\b/i.test(s);
+
+    // Inline form: "Allow X? (Y)es/(N)o" or "Allow X? (y/n)" — the question and
+    // the yes/no marker share one line, so the option marker isn't at line start.
+    const INLINE_YN = /(?:\(Y\)es?\s*\/\s*\(N\)o|\(y\/n\)|\[y\/n\])/i;
+    for (const line of lines) {
+      const m = line.match(INLINE_YN);
+      if (m && m.index !== undefined && m.index > 0) {
+        const prefix = stripBox(line.slice(0, m.index));
+        if (prefix && !isUiChrome(prefix) && looksLikeQuestion(prefix)) return prefix.slice(0, 120);
+      }
+    }
+
+    let firstOption = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (isOptionLine(lines[i])) { firstOption = i; break; }
+    }
+    if (firstOption < 0) return undefined;
+
+    // Multi-line form: scan upward for the question header above the options.
+    for (let i = firstOption - 1; i >= 0 && i >= firstOption - 8; i--) {
+      const text = stripBox(lines[i]);
+      if (!text || isUiChrome(text) || isOptionLine(lines[i])) continue;
+      if (looksLikeQuestion(text)) return text.slice(0, 120);
+      // First substantive non-question line above the options is usually the
+      // tool/command preview, not a question — stop rather than reach further.
+      break;
+    }
+    return undefined;
   }
 
   /** Extract diff option labels from inline (X)word patterns */

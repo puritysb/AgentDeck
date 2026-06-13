@@ -132,6 +132,10 @@ export interface StateUpdateEvent {
   question?: string;
   navigable?: boolean;
   cursorIndex?: number;
+  /** Set when the focused session has a gated PreToolUse permission pending
+   *  device approval — clients reply with `permission_decision { requestId }`
+   *  instead of `select_option`. See bridge/src/permission-resolver.ts. */
+  requestId?: string;
   suggestedPrompt?: string;
   modelCatalog?: ModelCatalogEntry[];
   sessionStatus?: OcSessionStatus;
@@ -265,9 +269,27 @@ export interface WakeWordDetectedEvent {
   timestamp: number;
 }
 
+/**
+ * Per-broadcast instruction telling downstream devices HOW to dim when the
+ * host display sleeps. Resolved by the daemon from the `displaySleepDim`
+ * settings.json key and embedded in every `display_state` event so that
+ * Pixoo / D200H / ESP32 dumb-apply a single consistent snapshot.
+ * Absent ⇒ legacy behavior (full-off when displayOn=false).
+ */
+export interface DisplayDimInstruction {
+  /** Master toggle. false ⇒ leave devices at their normal brightness. */
+  enabled: boolean;
+  /** 'off' ⇒ brightness 0; 'min' ⇒ dim to `level`. */
+  mode: 'off' | 'min';
+  /** Minimum-brightness percent (1-100). Ignored when mode='off'. */
+  level: number;
+}
+
 export interface DisplayStateEvent {
   type: 'display_state';
   displayOn: boolean;
+  /** How to dim on sleep. Absent ⇒ legacy full-off. */
+  dim?: DisplayDimInstruction;
 }
 
 // ===== Multi-session Discovery =====
@@ -291,6 +313,8 @@ export interface SessionInfo {
   currentTask?: string;
   contextPercent?: number;
   totalTokens?: number;
+  question?: string;  // awaiting prompt question text (hook/observed sessions: from Notification message; managed PTY: parsed header)
+  requestId?: string;  // present when a gated PreToolUse permission is pending device approval; devices render Allow/Deny + send permission_decision
 }
 
 export interface SessionsListEvent {
@@ -566,6 +590,18 @@ export interface SessionCommand {
   };
 }
 
+/**
+ * Device approval decision for a gated PreToolUse permission request (observed
+ * sessions). The daemon holds the hook's HTTP response open keyed by
+ * `requestId`; this command resolves it into a Claude Code permission decision.
+ * See bridge/src/permission-resolver.ts.
+ */
+export interface PermissionDecisionCommand {
+  type: 'permission_decision';
+  requestId: string;
+  decision: 'allow' | 'deny';
+}
+
 export type PluginCommand =
   | ResponseCommand
   | SelectOptionCommand
@@ -584,7 +620,8 @@ export type PluginCommand =
   | SessionCommand
   | ClientRegisterCommand
   | ApmeVibeFeedbackCommand
-  | ApmeRecommendCommand;
+  | ApmeRecommendCommand
+  | PermissionDecisionCommand;
 
 // ===== Hook Event Types =====
 

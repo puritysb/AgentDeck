@@ -460,7 +460,7 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   }));
 
   // Pixoo live preview frame getter for GET /pixoo/frame
-  hookServer?.setPixooFrameGetter(() => getLastFrame() ?? renderPreviewFrame());
+  hookServer?.setPixooFrameGetter((size?: 32 | 64) => getLastFrame(size) ?? renderPreviewFrame(size));
 
   // ===== Diagnostics =====
   adapter.onDiag((tail) => createDiagDump(core.stateMachine, core.wsServer, journal, ptyRingBuffer, tail));

@@ -30,6 +30,10 @@ struct SettingsScreen: View {
     /// by default so the first read is only 4 rows (Integrations, Dashboard,
     /// About, Advanced ►).
     @State private var advancedExpanded: Bool = true
+    /// Live slider value for the display-sleep dim level. Committed to
+    /// `preferences.displaySleepDimLevel` only when the drag ends so we don't
+    /// rewrite settings.json + re-broadcast a brightness command on every tick.
+    @State private var dimLevelDraft: Double = 10
     #endif
     #if os(iOS)
     /// iOS QR pairing scanner modal presentation flag.
@@ -743,13 +747,49 @@ struct SettingsScreen: View {
             }
             .tint(Color(red: 0.231, green: 0.51, blue: 0.965))
             #else
-            HStack {
-                Text("Sync Display Sleep")
-                    .font(.system(size: 13))
-                Spacer()
-                Text("N/A on macOS")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+            Toggle(isOn: $preferences.displaySleepDimEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Dim devices when display sleeps")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white)
+                    Text("Pixoo, Stream Dock, and ESP32 boards dim when this Mac's screen turns off or locks")
+                        .font(.system(size: 11))
+                        .foregroundStyle(TerrariumHUD.subtext)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Color(red: 0.231, green: 0.51, blue: 0.965))
+
+            if preferences.displaySleepDimEnabled {
+                Picker("When asleep", selection: $preferences.displaySleepDimMode) {
+                    Text("Turn off").tag("off")
+                    Text("Minimum brightness").tag("min")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                if preferences.displaySleepDimMode == "min" {
+                    HStack(spacing: 8) {
+                        Text("Brightness")
+                            .font(.system(size: 11))
+                            .foregroundStyle(TerrariumHUD.subtext)
+                        Slider(
+                            value: $dimLevelDraft,
+                            in: 1...100,
+                            step: 1,
+                            onEditingChanged: { editing in
+                                if !editing {
+                                    preferences.displaySleepDimLevel = Int(dimLevelDraft.rounded())
+                                }
+                            }
+                        )
+                        Text("\(Int(dimLevelDraft.rounded()))%")
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(TerrariumHUD.subtext)
+                            .frame(width: 34, alignment: .trailing)
+                    }
+                    .onAppear { dimLevelDraft = Double(preferences.displaySleepDimLevel) }
+                }
             }
             #endif
 

@@ -17,6 +17,7 @@ private fun <T> Klaxon.convert(k: kotlin.reflect.KClass<*>, fromJson: (JsonValue
 private val klaxon = Klaxon()
     .convert(Action::class,    { Action.fromValue(it.string!!) },    { "\"${it.value}\"" })
     .convert(Agent::class,     { Agent.fromValue(it.string!!) },     { "\"${it.value}\"" })
+    .convert(Decision::class,  { Decision.fromValue(it.string!!) },  { "\"${it.value}\"" })
     .convert(Direction::class, { Direction.fromValue(it.string!!) }, { "\"${it.value}\"" })
     .convert(Mode::class,      { Mode.fromValue(it.string!!) },      { "\"${it.value}\"" })
     .convert(Type::class,      { Type.fromValue(it.string!!) },      { "\"${it.value}\"" })
@@ -37,6 +38,10 @@ private val klaxon = Klaxon()
  * APME vibe check — user approves or rejects a completed run's output quality.
  *
  * Ask bridge/daemon for model recommendation given a task context.
+ *
+ * Device approval decision for a gated PreToolUse permission request (observed sessions).
+ * The daemon holds the hook's HTTP response open keyed by `requestId`; this command
+ * resolves it into a Claude Code permission decision. See bridge/src/permission-resolver.ts.
  */
 data class PluginCommand (
     val type: Type,
@@ -80,7 +85,11 @@ data class PluginCommand (
     val latencyBudgetMS: Double? = null,
 
     val preferLocal: Boolean? = null,
-    val taskKind: String? = null
+    val taskKind: String? = null,
+    val decision: Decision? = null,
+
+    @Json(name = "requestId")
+    val requestID: String? = null
 ) {
     public fun toJson() = klaxon.toJsonString(this)
 
@@ -137,6 +146,19 @@ data class Command (
     val type: String
 )
 
+enum class Decision(val value: String) {
+    Allow("allow"),
+    Deny("deny");
+
+    companion object {
+        public fun fromValue(value: String): Decision = when (value) {
+            "allow" -> Allow
+            "deny"  -> Deny
+            else    -> throw IllegalArgumentException()
+        }
+    }
+}
+
 data class Device (
     val columns: Double? = null,
 
@@ -188,6 +210,7 @@ enum class Type(val value: String) {
     FocusSession("focus_session"),
     Interrupt("interrupt"),
     NavigateOption("navigate_option"),
+    PermissionDecision("permission_decision"),
     QueryUsage("query_usage"),
     Respond("respond"),
     SelectOption("select_option"),
@@ -209,6 +232,7 @@ enum class Type(val value: String) {
             "focus_session"       -> FocusSession
             "interrupt"           -> Interrupt
             "navigate_option"     -> NavigateOption
+            "permission_decision" -> PermissionDecision
             "query_usage"         -> QueryUsage
             "respond"             -> Respond
             "select_option"       -> SelectOption

@@ -6,7 +6,12 @@ import Combine
 
 final class TimelineStore: ObservableObject, @unchecked Sendable {
     @Published private(set) var entries: [TimelineEntry] = []
-    @Published private(set) var grouped: [GroupedEntry] = []
+    // NOTE: no stored `grouped` here. The store used to keep a @Published
+    // grouped array recomputed via groupConsecutive() on every addEntry, but
+    // no view ever read it — TimelineStripView runs its own
+    // groupConsecutive(filteredEntries) per render (it must, because the
+    // session filter changes the grouping input). The stored copy was pure
+    // duplicate work plus an extra objectWillChange fire per event.
 
     private let maxEntries = 200
 
@@ -25,13 +30,11 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
             if entry.type == .taskEnd, let taskId = entry.taskId,
                let idx = entries.lastIndex(where: { $0.type == .taskEnd && $0.taskId == taskId }) {
                 entries[idx] = entry
-                regroup()
                 return
             }
             // Update existing entry with same ts + type
             if let idx = entries.firstIndex(where: { $0.ts == entry.ts && $0.type == entry.type }) {
                 entries[idx] = entry
-                regroup()
                 return
             }
         }
@@ -42,8 +45,6 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
         if entries.count > maxEntries {
             entries.removeFirst(entries.count - maxEntries)
         }
-
-        regroup()
     }
 
     // MARK: - Merge History (bulk load, dedup)
@@ -58,20 +59,11 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
         if entries.count > maxEntries {
             entries.removeFirst(entries.count - maxEntries)
         }
-
-        regroup()
     }
 
     // MARK: - Clear
 
     func clear() {
         entries.removeAll()
-        grouped.removeAll()
-    }
-
-    // MARK: - Regroup
-
-    private func regroup() {
-        grouped = groupConsecutive(entries)
     }
 }

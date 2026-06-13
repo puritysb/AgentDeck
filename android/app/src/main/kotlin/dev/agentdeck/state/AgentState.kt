@@ -4,6 +4,7 @@ import dev.agentdeck.net.AgentCapabilities
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.net.BridgeConnection
 import dev.agentdeck.net.BridgeEvent
+import dev.agentdeck.net.DimConfig
 import dev.agentdeck.net.ModelCatalogEntry
 import dev.agentdeck.net.ModuleHealthState
 import dev.agentdeck.net.OcSessionStatus
@@ -53,6 +54,8 @@ data class DashboardState(
     val navigable: Boolean? = null,
     val cursorIndex: Int? = null,
     val hostDisplayOn: Boolean = true,
+    /** Host's dim instruction (off/min/level). null ⇒ legacy full-off. */
+    val hostDim: DimConfig? = null,
     /**
      * Session explicitly focused by the user, broadcast by the daemon's
      * focus relay. Use this — not [sessionId] — for visual selection
@@ -267,7 +270,7 @@ class AgentStateHolder private constructor() {
             }
 
             is BridgeEvent.DisplaySleep -> {
-                _state.update { it.copy(hostDisplayOn = event.displayOn) }
+                _state.update { it.copy(hostDisplayOn = event.displayOn, hostDim = event.dim) }
             }
 
             is BridgeEvent.SessionsList -> {

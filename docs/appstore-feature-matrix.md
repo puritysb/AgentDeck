@@ -47,6 +47,8 @@
 | Claude Code 세션 모니터링 (hook 경유) | ✅ | ✅ | hook HTTP POST 수신 |
 | Codex 세션 모니터링 (lifecycle hooks + fallback) | ✅ | ✅ | NSOpenPanel 명시 동의 후 `~/.codex/config.toml` 에 fenced TOML 블록만 편집. Codex lifecycle hooks → `/hooks/codex_*`, optional notify → `/hooks/codex_turn_complete`, optional OTel → `/otel/v1/traces` |
 | 외부에서 이미 실행 중인 Claude/Codex 세션 passive discovery | ❌ | ✅ | `ps`/`lsof`/`/proc` + `~/.claude`/`~/.codex` transcript/rollout JSONL read 가 필요하므로 Node CLI daemon 전용. App Store 단독 앱은 hook/lifecycle 로 opt-in 된 세션만 표시하며 결함 안내 없이 완결 UI 유지 |
+| Permission prompt 표시 (awaiting + question) | ✅ | ✅ | Notification hook 의 free-text `message` 를 `looksLikePermissionMessage` 필터 후 세션 `question` 으로 표출 — 디바이스가 attention tier 로 전환 |
+| Device approval gating (PreToolUse Allow/Deny) | ❌ | ✅ | observed 세션의 PreToolUse hook HTTP 응답을 열어둔 채 디바이스 `permission_decision` 을 기다리는 구조 (`permission-resolver.ts`). Swift daemon 은 `requestId` 를 emit 하지 않으므로 디바이스에 Allow/Deny UI 자체가 나타나지 않음 — 표시상 결함 없이 display-only awaiting 으로 완결 |
 | OpenCode 세션 모니터링 | ❌ | ✅ | OpenCode 의 random-port 서버에 lock-file 이 없어 다중 인스턴스 discovery 불가. CLI/Node bridge 경로만 |
 | Claude / Codex / OpenCode 세션 실행 | ❌ | ✅ | App Store 는 세션 실행 진입점 없음 — `Launch Session` UI 는 2026-05-10 일괄 제거. App Store 빌드는 사용자가 자기 워크스페이스에서 실행한 agent 세션을 hook/lifecycle 로 passive monitor 만 함 |
 | OpenClaw Gateway pairing (WS 모드) | ✅ | ✅ | `ws://127.0.0.1:18789` 클라이언트 — RPC error + ws close 1008 reason 기반 auto-fallback (device 서명 거부 시 token-only retry) 포함 |
@@ -66,6 +68,7 @@
 | In-process Swift daemon (macOS) | ✅ | — |
 | Node.js bridge process | — | ✅ |
 | Data directory | `~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/` | `~/.agentdeck/` |
+| Settings (`settings.json`) 읽기 범위 | 자기 컨테이너만 (sandbox) | `getCandidateDataDirs()` 후보 중 mtime 최신본 (`~/.agentdeck` + legacy group container). **App Store sandbox 컨테이너는 후보에서 의도적으로 제외** — 비샌드박스 프로세스가 컨테이너를 직접 읽으면 TCC 가 hang 시킬 수 있음. 따라서 공존 모드에서 daemon 동작 설정 (deviceApprovals, display dim 등) 은 primary daemon 쪽 데이터 디렉토리에서 설정해야 반영된다 |
 
 ## 요약
 

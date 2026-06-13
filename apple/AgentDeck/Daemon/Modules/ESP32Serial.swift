@@ -166,7 +166,7 @@ actor ESP32Serial {
                     "isPermanent": failure.isPermanent,
                     "failCount": failure.failCount,
                     "lastAttempt": Int(failure.lastAttempt.timeIntervalSince1970 * 1000),
-                ] as [String: Any]
+                ] as [String: Any]  
             },
             "connections": connections.map { conn in
                 [

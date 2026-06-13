@@ -81,6 +81,7 @@ struct DaemonSessionEntry: Codable, Sendable, Identifiable {
     var currentTool: String?
     var options: [[String: AnyCodable]]?
     var navigable: Bool?
+    var question: String?  // awaiting prompt question (from Notification hook message)
 }
 
 final class SessionRegistry: Sendable {
@@ -305,6 +306,35 @@ final class SessionRegistry: Sendable {
             return try JSONSerialization.jsonObject(with: data) as? [String: Any]
         } catch {
             return nil
+        }
+    }
+
+    /// Scan the daemon port window (9120-9139) for a live daemon's `/health`.
+    /// Mirrors the Node bridge's `findDaemonPortAsync` port-scan fallback
+    /// (bridge/src/session-registry.ts): covers the case where a sibling
+    /// daemon is alive on a fallback port but its daemon.json lives in a data
+    /// dir this sandboxed process can't read (`~/.agentdeck` vs the group
+    /// container). Session bridges share the same port window but report
+    /// `mode: <agentType>`, so only `mode == "daemon"` matches. Probes run in
+    /// parallel; closed local ports fail fast with connection-refused, so the
+    /// scan costs at most one probe timeout (~2 s) even when an unrelated
+    /// process squats a port.
+    func scanForDaemonPort(excluding: Set<Int> = []) async -> Int? {
+        await withTaskGroup(of: Int?.self) { group in
+            for port in Self.basePort...Self.maxPort where !excluding.contains(port) {
+                group.addTask { [self] in
+                    let health = await self.probeDaemonHealth(port: port)
+                    return (health?["mode"] as? String) == "daemon" ? port : nil
+                }
+            }
+            var found: Int?
+            for await result in group {
+                if let result {
+                    // Lowest port wins for determinism across racing probes.
+                    found = found.map { Swift.min($0, result) } ?? result
+                }
+            }
+            return found
         }
     }
 

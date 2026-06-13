@@ -216,6 +216,18 @@ sealed class AgentCommand {
         }
     }
 
+    data class PermissionDecision(val requestId: String, val decision: String) : AgentCommand() {
+        override val typeTag: String = "permission_decision"
+        override fun toJson(): String {
+            val buf = StringBuilder()
+            buf.append("{\"type\":\"permission_decision\"")
+            buf.append(",\"requestId\":").append(encode(requestId))
+            buf.append(",\"decision\":").append(encode(decision))
+            buf.append("}")
+            return buf.toString()
+        }
+    }
+
     companion object {
         private val jsonFmt = Json { encodeDefaults = false }
         internal fun encode(v: Any?): String = when (v) {

@@ -675,6 +675,204 @@ task
     await postTaskClose({ signal: 'manual', outcome: 'abandoned', sessionId: opts.session });
   });
 
+// ===== iDotMatrix commands =====
+
+const idotmatrix = program.command('idotmatrix').description('Manage iDotMatrix BLE pixel display devices');
+
+idotmatrix
+  .command('scan')
+  .description('Discover iDotMatrix devices via BLE')
+  .action(async () => {
+    const { dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const { spawn } = await import('child_process');
+    
+    const distPath = dirname(fileURLToPath(import.meta.url));
+    const projectRoot = join(distPath, '..', '..');
+    const venvPython = join(projectRoot, '.venv', 'bin', 'python');
+    const scanScript = join(projectRoot, 'bridge', 'src', 'idotmatrix', 'scan.py');
+    
+    log('Scanning for BLE devices (5 seconds)...');
+    const py = spawn(venvPython, [scanScript]);
+    
+    let stdoutData = '';
+    py.stdout.on('data', (data) => {
+      stdoutData += data.toString();
+    });
+    
+    py.on('close', (code) => {
+      if (code !== 0) {
+        log('Failed to run scan script.');
+        process.exit(1);
+      }
+      try {
+        const devices = JSON.parse(stdoutData.trim());
+        if (devices.error) {
+          log(`Scan error: ${devices.error}`);
+          process.exit(1);
+        }
+        if (!Array.isArray(devices) || devices.length === 0) {
+          log('No BLE devices found.');
+          return;
+        }
+        log('\nFound devices:');
+        for (const d of devices) {
+          const prefix = d.is_idotmatrix ? '★ [iDotMatrix] ' : '  ';
+          log(`${prefix}${d.name} (${d.address})`);
+        }
+      } catch (e) {
+        log(`Failed to parse scan output: ${stdoutData}`);
+      }
+    });
+  });
+
+idotmatrix
+  .command('add <address>')
+  .description('Add an iDotMatrix device address')
+  .option('-n, --name <name>', 'Device name', 'iDotMatrix')
+  .option('-b, --brightness <value>', 'Brightness 5-100', '100')
+  .action(async (address, opts) => {
+    const { addIDotMatrixDevice } = await import('./idotmatrix/idotmatrix-settings.js');
+    const brightness = parseInt(opts.brightness, 10);
+    if (addIDotMatrixDevice({ address, name: opts.name, brightness: isNaN(brightness) ? 100 : brightness })) {
+      log(`Added ${opts.name} (${address}) with brightness ${brightness}% to settings.`);
+    } else {
+      log(`Device ${address} already exists.`);
+    }
+  });
+
+idotmatrix
+  .command('list')
+  .description('List configured iDotMatrix devices')
+  .action(async () => {
+    const { loadIDotMatrixDevices } = await import('./idotmatrix/idotmatrix-settings.js');
+    const devices = loadIDotMatrixDevices();
+    if (devices.length === 0) {
+      log('No iDotMatrix devices configured. Run `agentdeck idotmatrix scan` or `add`.');
+      return;
+    }
+    log(`${devices.length} device(s) configured:`);
+    for (const d of devices) {
+      const brightnessInfo = d.brightness !== undefined ? ` (brightness=${d.brightness}%)` : '';
+      log(`  ${d.name || 'iDotMatrix'} (${d.address})${brightnessInfo}`);
+    }
+  });
+
+idotmatrix
+  .command('remove <address>')
+  .description('Remove an iDotMatrix device')
+  .action(async (address) => {
+    const { removeIDotMatrixDevice } = await import('./idotmatrix/idotmatrix-settings.js');
+    if (removeIDotMatrixDevice(address)) {
+      log(`Removed device ${address}.`);
+    } else {
+      log(`Device ${address} not found.`);
+    }
+  });
+
+idotmatrix
+  .command('brightness <value>')
+  .description('Set brightness of the iDotMatrix device (5-100)')
+  .option('-a, --address <address>', 'BLE Address (defaults to first configured device)')
+  .action(async (valueStr, opts) => {
+    const { loadIDotMatrixDevices } = await import('./idotmatrix/idotmatrix-settings.js');
+    const { dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const { spawn } = await import('child_process');
+    
+    const value = parseInt(valueStr, 10);
+    if (isNaN(value) || value < 5 || value > 100) {
+      log('Brightness value must be between 5 and 100.');
+      process.exit(1);
+    }
+    
+    let targetAddress = opts.address;
+    if (!targetAddress) {
+      const devices = loadIDotMatrixDevices();
+      if (devices.length === 0) {
+        log('No device specified and none configured. Use `agentdeck idotmatrix add <address>`.');
+        process.exit(1);
+      }
+      targetAddress = devices[0].address;
+    }
+    
+    const distPath = dirname(fileURLToPath(import.meta.url));
+    const projectRoot = join(distPath, '..', '..');
+    const venvPython = join(projectRoot, '.venv', 'bin', 'python');
+    const brightnessScript = join(projectRoot, 'bridge', 'src', 'idotmatrix', 'brightness.py');
+    
+    log(`Setting brightness of ${targetAddress} to ${value}%...`);
+    const py = spawn(venvPython, [brightnessScript, '-a', targetAddress, '-b', String(value)], {
+      stdio: 'inherit'
+    });
+    
+    py.on('close', (code) => {
+      if (code === 0) {
+        log('Brightness updated successfully.');
+      } else {
+        log(`Failed to update brightness, process exited with code ${code}`);
+      }
+    });
+  });
+
+idotmatrix
+  .command('sync [address]')
+  .description('Sync AgentDeck dashboard frames to iDotMatrix BLE device')
+  .option('-p, --port <port>', 'Bridge server port')
+  .option('-b, --brightness <value>', 'Override brightness (5-100)')
+  .option('--boost <value>', 'Software brightness boost factor (default: 1.6)')
+  .action(async (addressOpt, opts) => {
+    const { loadIDotMatrixDevices } = await import('./idotmatrix/idotmatrix-settings.js');
+    const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+    const { dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const { spawn } = await import('child_process');
+    
+    let targetAddress = addressOpt;
+    let defaultBrightness = 100;
+    const devices = loadIDotMatrixDevices();
+    
+    if (!targetAddress) {
+      if (devices.length === 0) {
+        log('No device specified and none configured. Use `agentdeck idotmatrix add <address>`.');
+        process.exit(1);
+      }
+      targetAddress = devices[0].address;
+      defaultBrightness = devices[0].brightness ?? 100;
+      log(`Using first configured device: ${targetAddress}`);
+    } else {
+      const matched = devices.find(d => d.address.toLowerCase() === targetAddress.toLowerCase());
+      if (matched) {
+        defaultBrightness = matched.brightness ?? 100;
+      }
+    }
+
+    const brightness = opts.brightness ? parseInt(opts.brightness, 10) : defaultBrightness;
+    const boost = opts.boost || '1.6';
+
+    const info = readDaemonInfo();
+    const port = opts.port != null
+      ? parseInt(opts.port, 10)
+      : (info?.httpPort ?? info?.port ?? findDaemonPort() ?? BRIDGE_WS_PORT);
+      
+    const url = `http://127.0.0.1:${port}`;
+    
+    const distPath = dirname(fileURLToPath(import.meta.url));
+    const projectRoot = join(distPath, '..', '..');
+    const venvPython = join(projectRoot, '.venv', 'bin', 'python');
+    const syncScript = join(projectRoot, 'bridge', 'src', 'idotmatrix', 'sync.py');
+    
+    log(`Starting BLE sync client linking to bridge at ${url} (brightness ${brightness}%, boost ${boost}x)...`);
+    
+    const py = spawn(venvPython, [syncScript, '-a', targetAddress, '-u', url, '-b', String(brightness), '--boost', String(boost)], {
+      stdio: 'inherit'
+    });
+    
+    py.on('close', (code) => {
+      log(`Sync process exited with code ${code}`);
+    });
+  });
+
 // ===== Pixoo commands =====
 
 const pixoo = program.command('pixoo').description('Manage Pixoo64 LED matrix devices');

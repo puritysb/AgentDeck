@@ -93,6 +93,21 @@ describe('Server Integration', () => {
     expect(evt.state).toBe(State.IDLE);
   });
 
+  it('PreToolUse responds 200 with an EMPTY body (managed sessions must not gate)', async () => {
+    // The hook script echoes this body to Claude's stdout; any JSON here would
+    // be parsed as a hookSpecificOutput permission decision. Managed sessions
+    // own a PTY for prompts, so the body must stay empty.
+    const res = await postHook(port, 'PreToolUse', { tool_name: 'Bash' });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('');
+  });
+
+  it('non-PreToolUse hooks still ack with { received: true }', async () => {
+    const res = await postHook(port, 'PostToolUse', { tool_name: 'Bash' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: true });
+  });
+
   it('full session lifecycle: SessionStart → UserPromptSubmit → Stop', async () => {
     await postHook(port, 'SessionStart');
     const idleEvt = await wsClient.waitForType('state_update') as StateUpdateEvent;

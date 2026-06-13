@@ -6,6 +6,11 @@
   "whisperModel": "large-v3-turbo",
   "stuckTimeoutMs": 300000,
   "reconnectIntervalMs": 3000,
+  "deviceApprovals": {
+    "enabled": false,
+    "gatedTools": ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"],
+    "timeoutMs": 45000
+  },
   "llm": {
     "mlx": {
       "endpoint": "http://127.0.0.1:8800",

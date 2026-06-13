@@ -212,6 +212,7 @@ export class StateMachine extends EventEmitter {
 
       case 'option_prompt': {
         this.options = (data?.options as PromptOption[]) || [];
+        this.question = (data?.question as string) || null;
         this.navigable = (data?.navigable as boolean) ?? false;
         this.cursorIndex = (data?.cursorIndex as number) ?? 0;
         if (this.state === State.AWAITING_OPTION) {

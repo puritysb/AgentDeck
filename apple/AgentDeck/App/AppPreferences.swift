@@ -121,6 +121,35 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Master toggle for dimming downstream dashboard devices (Pixoo, D200H,
+    /// ESP32) when the host Mac display sleeps/locks. Mirrored into
+    /// settings.json `displaySleepDim` so the in-process daemon resolves the
+    /// instruction it broadcasts. Defaults reproduce legacy behavior
+    /// (enabled + full-off). The three properties share one writer.
+    @Published var displaySleepDimEnabled: Bool {
+        didSet {
+            defaults.set(displaySleepDimEnabled, forKey: Keys.displaySleepDimEnabled)
+            writeDisplaySleepDimToSettingsJson()
+        }
+    }
+
+    /// `off` ⇒ devices go dark (brightness 0); `min` ⇒ devices dim to
+    /// `displaySleepDimLevel`. Only meaningful when `displaySleepDimEnabled`.
+    @Published var displaySleepDimMode: String {
+        didSet {
+            defaults.set(displaySleepDimMode, forKey: Keys.displaySleepDimMode)
+            writeDisplaySleepDimToSettingsJson()
+        }
+    }
+
+    /// Minimum-brightness percent (1-100) applied when mode is `min`.
+    @Published var displaySleepDimLevel: Int {
+        didSet {
+            defaults.set(displaySleepDimLevel, forKey: Keys.displaySleepDimLevel)
+            writeDisplaySleepDimToSettingsJson()
+        }
+    }
+
     @Published private(set) var antigravityAccessEnabled: Bool
     @Published private(set) var antigravitySelectedPath: String?
 
@@ -210,6 +239,9 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.antigravityAccessEnabled = defaults.data(forKey: Keys.antigravityBookmark) != nil
         self.apmeJudgeBackend = defaults.string(forKey: Keys.apmeJudgeBackend) ?? "foundationModels"
         self.timelineSummaryProvider = defaults.string(forKey: Keys.timelineSummaryProvider) ?? "auto"
+        self.displaySleepDimEnabled = defaults.object(forKey: Keys.displaySleepDimEnabled) as? Bool ?? true
+        self.displaySleepDimMode = defaults.string(forKey: Keys.displaySleepDimMode) ?? "off"
+        self.displaySleepDimLevel = defaults.object(forKey: Keys.displaySleepDimLevel) as? Int ?? 10
         self.hookInstallConsent = HookInstallConsent(rawValue: defaults.string(forKey: Keys.hookInstallConsent) ?? "") ?? .unknown
         self.hooksInstalled = defaults.object(forKey: Keys.hooksInstalled) as? Bool ?? false
         self.codexConfigConsent = HookInstallConsent(rawValue: defaults.string(forKey: Keys.codexConfigConsent) ?? "") ?? .unknown
@@ -271,6 +303,33 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
 
         guard let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) else { return }
         try? out.write(to: url, options: [.atomic])
+        #endif
+    }
+
+    /// Mirror the display-sleep dim setting into settings.json under
+    /// `displaySleepDim`. Writes all three sub-fields together (they share one
+    /// JSON object) using the same clobber-resistant atomic merge as the other
+    /// writers, then posts `.displaySettingsChanged` so the in-process daemon
+    /// refreshes its cache and re-broadcasts live if the display is asleep.
+    private func writeDisplaySleepDimToSettingsJson() {
+        #if os(macOS)
+        let url = AgentDeckPaths.settingsJson
+
+        var root: [String: Any] = [:]
+        if let data = try? Data(contentsOf: url),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            root = parsed
+        }
+
+        root["displaySleepDim"] = [
+            "enabled": displaySleepDimEnabled,
+            "mode": displaySleepDimMode == "min" ? "min" : "off",
+            "level": max(1, min(100, displaySleepDimLevel)),
+        ]
+
+        guard let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) else { return }
+        try? out.write(to: url, options: [.atomic])
+        NotificationCenter.default.post(name: .displaySettingsChanged, object: nil)
         #endif
     }
 
@@ -528,6 +587,9 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         static let antigravitySelectedPath = "prefs.antigravitySelectedPath"
         static let apmeJudgeBackend = "prefs.apmeJudgeBackend"
         static let timelineSummaryProvider = "prefs.timelineSummaryProvider"
+        static let displaySleepDimEnabled = "prefs.displaySleepDimEnabled"
+        static let displaySleepDimMode = "prefs.displaySleepDimMode"
+        static let displaySleepDimLevel = "prefs.displaySleepDimLevel"
         static let hookInstallConsent = "prefs.hookInstallConsent"
         static let hooksInstalled = "prefs.hooksInstalled"
         static let claudeSettingsBookmark = "prefs.claudeSettingsBookmark"

@@ -24,6 +24,10 @@ import Foundation
 /// APME vibe check — user approves or rejects a completed run's output quality.
 ///
 /// Ask bridge/daemon for model recommendation given a task context.
+///
+/// Device approval decision for a gated PreToolUse permission request (observed sessions).
+/// The daemon holds the hook's HTTP response open keyed by `requestId`; this command
+/// resolves it into a Claude Code permission decision. See bridge/src/permission-resolver.ts.
 // MARK: - ADPluginCommand
 struct ADPluginCommand: Codable, Equatable {
     var type: ADType
@@ -49,6 +53,8 @@ struct ADPluginCommand: Codable, Equatable {
     var latencyBudgetMs: Double?
     var preferLocal: Bool?
     var taskKind: String?
+    var decision: ADDecision?
+    var requestId: String?
 
     enum CodingKeys: String, CodingKey {
         case type = "type"
@@ -71,6 +77,8 @@ struct ADPluginCommand: Codable, Equatable {
         case latencyBudgetMs = "latencyBudgetMs"
         case preferLocal = "preferLocal"
         case taskKind = "taskKind"
+        case decision = "decision"
+        case requestId = "requestId"
     }
 }
 
@@ -112,7 +120,9 @@ extension ADPluginCommand {
         budgetUsd: Double?? = nil,
         latencyBudgetMs: Double?? = nil,
         preferLocal: Bool?? = nil,
-        taskKind: String?? = nil
+        taskKind: String?? = nil,
+        decision: ADDecision?? = nil,
+        requestId: String?? = nil
     ) -> ADPluginCommand {
         return ADPluginCommand(
             type: type ?? self.type,
@@ -134,7 +144,9 @@ extension ADPluginCommand {
             budgetUsd: budgetUsd ?? self.budgetUsd,
             latencyBudgetMs: latencyBudgetMs ?? self.latencyBudgetMs,
             preferLocal: preferLocal ?? self.preferLocal,
-            taskKind: taskKind ?? self.taskKind
+            taskKind: taskKind ?? self.taskKind,
+            decision: decision ?? self.decision,
+            requestId: requestId ?? self.requestId
         )
     }
 
@@ -214,6 +226,11 @@ extension ADCommand {
     func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
         return String(data: try self.jsonData(), encoding: encoding)
     }
+}
+
+enum ADDecision: String, Codable, Equatable {
+    case allow = "allow"
+    case deny = "deny"
 }
 
 //
@@ -304,6 +321,7 @@ enum ADType: String, Codable, Equatable {
     case focusSession = "focus_session"
     case interrupt = "interrupt"
     case navigateOption = "navigate_option"
+    case permissionDecision = "permission_decision"
     case queryUsage = "query_usage"
     case respond = "respond"
     case selectOption = "select_option"

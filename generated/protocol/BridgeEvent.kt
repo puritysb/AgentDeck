@@ -17,6 +17,7 @@ private fun <T> Klaxon.convert(k: kotlin.reflect.KClass<*>, fromJson: (JsonValue
 private val klaxon = Klaxon()
     .convert(AgentType::class,           { AgentType.fromValue(it.string!!) },           { "\"${it.value}\"" })
     .convert(BillingType::class,         { BillingType.fromValue(it.string!!) },         { "\"${it.value}\"" })
+    .convert(Mode::class,                { Mode.fromValue(it.string!!) },                { "\"${it.value}\"" })
     .convert(EncoderType::class,         { EncoderType.fromValue(it.string!!) },         { "\"${it.value}\"" })
     .convert(VoiceState::class,          { VoiceState.fromValue(it.string!!) },          { "\"${it.value}\"" })
     .convert(EntryStatus::class,         { EntryStatus.fromValue(it.string!!) },         { "\"${it.value}\"" })
@@ -129,6 +130,14 @@ data class BridgeEvent (
     val remoteURL: String? = null,
 
     /**
+     * Set when the focused session has a gated PreToolUse permission pending device approval —
+     * clients reply with `permission_decision { requestId }` instead of `select_option`. See
+     * bridge/src/permission-resolver.ts.
+     */
+    @Json(name = "requestId")
+    val requestID: String? = null,
+
+    /**
      * Session ID associated with this state payload; may move with hook activity.
      */
     @Json(name = "sessionId")
@@ -217,6 +226,12 @@ data class BridgeEvent (
     val responseText: String? = null,
 
     val timestamp: Double? = null,
+
+    /**
+     * How to dim on sleep. Absent ⇒ legacy full-off.
+     */
+    val dim: DisplayDimInstruction? = null,
+
     val displayOn: Boolean? = null,
     val sessions: List<SessionInfo>? = null,
     val encoders: List<EncoderSlotState>? = null,
@@ -286,6 +301,7 @@ data class AgentCapabilities (
 
 enum class AgentType(val value: String) {
     ClaudeCode("claude-code"),
+    CodexApp("codex-app"),
     CodexCLI("codex-cli"),
     Monitor("monitor"),
     Openclaw("openclaw"),
@@ -294,6 +310,7 @@ enum class AgentType(val value: String) {
     companion object {
         public fun fromValue(value: String): AgentType = when (value) {
             "claude-code" -> ClaudeCode
+            "codex-app"   -> CodexApp
             "codex-cli"   -> CodexCLI
             "monitor"     -> Monitor
             "openclaw"    -> Openclaw
@@ -353,6 +370,47 @@ data class ApmeRecommendation (
 
     val rationale: String
 )
+
+/**
+ * How to dim on sleep. Absent ⇒ legacy full-off.
+ *
+ * Per-broadcast instruction telling downstream devices HOW to dim when the host display
+ * sleeps. Resolved by the daemon from the `displaySleepDim` settings.json key and embedded
+ * in every `display_state` event so that Pixoo / D200H / ESP32 dumb-apply a single
+ * consistent snapshot. Absent ⇒ legacy behavior (full-off when displayOn=false).
+ */
+data class DisplayDimInstruction (
+    /**
+     * Master toggle. false ⇒ leave devices at their normal brightness.
+     */
+    val enabled: Boolean,
+
+    /**
+     * Minimum-brightness percent (1-100). Ignored when mode='off'.
+     */
+    val level: Double,
+
+    /**
+     * 'off' ⇒ brightness 0; 'min' ⇒ dim to `level`.
+     */
+    val mode: Mode
+)
+
+/**
+ * 'off' ⇒ brightness 0; 'min' ⇒ dim to `level`.
+ */
+enum class Mode(val value: String) {
+    Min("min"),
+    Off("off");
+
+    companion object {
+        public fun fromValue(value: String): Mode = when (value) {
+            "min" -> Min
+            "off" -> Off
+            else  -> throw IllegalArgumentException()
+        }
+    }
+}
 
 data class EncoderSlotState (
     val accentColor: String? = null,
@@ -788,6 +846,11 @@ data class SessionInfo (
     val pid: Double? = null,
     val port: Double,
     val projectName: String,
+    val question: String? = null,
+
+    @Json(name = "requestId")
+    val requestID: String? = null,
+
     val startedAt: String? = null,
     val state: String? = null,
     val totalTokens: Double? = null

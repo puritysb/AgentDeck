@@ -106,6 +106,16 @@ describe('StateMachine', () => {
       sm.handleUserAction('select_option');
       expect(sm.getState()).toBe(State.PROCESSING);
     });
+
+    it('option_prompt carries the question into the snapshot', () => {
+      const sm = bootToIdle();
+      sm.handleHookEvent('UserPromptSubmit', {});
+      sm.handleParserEvent('option_prompt', {
+        options: [{ index: 0, label: 'A' }, { index: 1, label: 'B' }],
+        question: 'Which approach do you prefer?',
+      });
+      expect(sm.getSnapshot().question).toBe('Which approach do you prefer?');
+    });
   });
 
   // === Diff Flow ===

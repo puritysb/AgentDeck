@@ -18,6 +18,8 @@ export interface EnrichedSession {
   currentTask?: string;
   contextPercent?: number;
   totalTokens?: number;
+  question?: string;
+  requestId?: string;
 }
 
 /** Cache last-known sibling state to avoid propagating undefined on transient fetch failures */

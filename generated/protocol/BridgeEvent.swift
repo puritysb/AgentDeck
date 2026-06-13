@@ -57,6 +57,10 @@ struct ADBridgeEvent: Codable, Equatable {
     var promptType: ADPromptType?
     var question: String?
     var remoteUrl: String?
+    /// Set when the focused session has a gated PreToolUse permission pending device approval —
+    /// clients reply with `permission_decision { requestId }` instead of `select_option`. See
+    /// bridge/src/permission-resolver.ts.
+    var requestId: String?
     /// Session ID associated with this state payload; may move with hook activity.
     var sessionId: String?
     var sessionStatus: ADOcSessionStatus?
@@ -110,6 +114,8 @@ struct ADBridgeEvent: Codable, Equatable {
     /// LLM response text
     var responseText: String?
     var timestamp: Double?
+    /// How to dim on sleep. Absent ⇒ legacy full-off.
+    var dim: ADDisplayDimInstruction?
     var displayOn: Bool?
     var sessions: [ADSessionInfo]?
     var encoders: [ADEncoderSlotState]?
@@ -151,6 +157,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case promptType = "promptType"
         case question = "question"
         case remoteUrl = "remoteUrl"
+        case requestId = "requestId"
         case sessionId = "sessionId"
         case sessionStatus = "sessionStatus"
         case state = "state"
@@ -196,6 +203,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case deviceId = "deviceId"
         case responseText = "responseText"
         case timestamp = "timestamp"
+        case dim = "dim"
         case displayOn = "displayOn"
         case sessions = "sessions"
         case encoders = "encoders"
@@ -257,6 +265,7 @@ extension ADBridgeEvent {
         promptType: ADPromptType?? = nil,
         question: String?? = nil,
         remoteUrl: String?? = nil,
+        requestId: String?? = nil,
         sessionId: String?? = nil,
         sessionStatus: ADOcSessionStatus?? = nil,
         state: ADState?? = nil,
@@ -302,6 +311,7 @@ extension ADBridgeEvent {
         deviceId: String?? = nil,
         responseText: String?? = nil,
         timestamp: Double?? = nil,
+        dim: ADDisplayDimInstruction?? = nil,
         displayOn: Bool?? = nil,
         sessions: [ADSessionInfo]?? = nil,
         encoders: [ADEncoderSlotState]?? = nil,
@@ -343,6 +353,7 @@ extension ADBridgeEvent {
             promptType: promptType ?? self.promptType,
             question: question ?? self.question,
             remoteUrl: remoteUrl ?? self.remoteUrl,
+            requestId: requestId ?? self.requestId,
             sessionId: sessionId ?? self.sessionId,
             sessionStatus: sessionStatus ?? self.sessionStatus,
             state: state ?? self.state,
@@ -388,6 +399,7 @@ extension ADBridgeEvent {
             deviceId: deviceId ?? self.deviceId,
             responseText: responseText ?? self.responseText,
             timestamp: timestamp ?? self.timestamp,
+            dim: dim ?? self.dim,
             displayOn: displayOn ?? self.displayOn,
             sessions: sessions ?? self.sessions,
             encoders: encoders ?? self.encoders,
@@ -508,6 +520,7 @@ extension ADAgentCapabilities {
 
 enum ADAgentType: String, Codable, Equatable {
     case claudeCode = "claude-code"
+    case codexApp = "codex-app"
     case codexCli = "codex-cli"
     case monitor = "monitor"
     case openclaw = "openclaw"
@@ -741,6 +754,79 @@ extension ADApmeRecommendation {
     func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
         return String(data: try self.jsonData(), encoding: encoding)
     }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// How to dim on sleep. Absent ⇒ legacy full-off.
+///
+/// Per-broadcast instruction telling downstream devices HOW to dim when the host display
+/// sleeps. Resolved by the daemon from the `displaySleepDim` settings.json key and embedded
+/// in every `display_state` event so that Pixoo / D200H / ESP32 dumb-apply a single
+/// consistent snapshot. Absent ⇒ legacy behavior (full-off when displayOn=false).
+// MARK: - ADDisplayDimInstruction
+struct ADDisplayDimInstruction: Codable, Equatable {
+    /// Master toggle. false ⇒ leave devices at their normal brightness.
+    var enabled: Bool
+    /// Minimum-brightness percent (1-100). Ignored when mode='off'.
+    var level: Double
+    /// 'off' ⇒ brightness 0; 'min' ⇒ dim to `level`.
+    var mode: ADMode
+
+    enum CodingKeys: String, CodingKey {
+        case enabled = "enabled"
+        case level = "level"
+        case mode = "mode"
+    }
+}
+
+// MARK: ADDisplayDimInstruction convenience initializers and mutators
+
+extension ADDisplayDimInstruction {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADDisplayDimInstruction.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        enabled: Bool? = nil,
+        level: Double? = nil,
+        mode: ADMode? = nil
+    ) -> ADDisplayDimInstruction {
+        return ADDisplayDimInstruction(
+            enabled: enabled ?? self.enabled,
+            level: level ?? self.level,
+            mode: mode ?? self.mode
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+/// 'off' ⇒ brightness 0; 'min' ⇒ dim to `level`.
+enum ADMode: String, Codable, Equatable {
+    case min = "min"
+    case off = "off"
 }
 
 //
@@ -1685,6 +1771,8 @@ struct ADSessionInfo: Codable, Equatable {
     var pid: Double?
     var port: Double
     var projectName: String
+    var question: String?
+    var requestId: String?
     var startedAt: String?
     var state: String?
     var totalTokens: Double?
@@ -1705,6 +1793,8 @@ struct ADSessionInfo: Codable, Equatable {
         case pid = "pid"
         case port = "port"
         case projectName = "projectName"
+        case question = "question"
+        case requestId = "requestId"
         case startedAt = "startedAt"
         case state = "state"
         case totalTokens = "totalTokens"
@@ -1745,6 +1835,8 @@ extension ADSessionInfo {
         pid: Double?? = nil,
         port: Double? = nil,
         projectName: String? = nil,
+        question: String?? = nil,
+        requestId: String?? = nil,
         startedAt: String?? = nil,
         state: String?? = nil,
         totalTokens: Double?? = nil
@@ -1765,6 +1857,8 @@ extension ADSessionInfo {
             pid: pid ?? self.pid,
             port: port ?? self.port,
             projectName: projectName ?? self.projectName,
+            question: question ?? self.question,
+            requestId: requestId ?? self.requestId,
             startedAt: startedAt ?? self.startedAt,
             state: state ?? self.state,
             totalTokens: totalTokens ?? self.totalTokens

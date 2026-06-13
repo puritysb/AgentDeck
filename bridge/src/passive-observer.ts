@@ -1,4 +1,7 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import {
   closeSync,
   existsSync,
@@ -54,25 +57,46 @@ const MAX_SAMPLE_BYTES = 1024 * 1024;
 export class PassiveSessionObserver {
   private lastScanAt = 0;
   private cached: ObservedSession[] = [];
+  private scanInFlight = false;
 
+  /** Fired after a background scan changed the cached list. Wire to a
+   *  debounced sessions broadcast so fresh observations reach clients
+   *  without the enricher ever blocking on the scan. */
+  onRefreshed: (() => void) | undefined;
+
+  /**
+   * Returns the cached observed sessions immediately and, when the cache is
+   * stale (≥ SCAN_INTERVAL_MS), kicks off a background rescan. The scan used
+   * to run synchronously inside this call — `execFileSync('ps')` over every
+   * process plus `lsof` per Codex pid — which stalled the daemon's event
+   * loop (and therefore hook HTTP handling) for tens to hundreds of ms on
+   * every cache refresh, since the enricher invokes this on each
+   * sessions_list broadcast.
+   */
   collect(managedSessions: EnrichedSession[]): ObservedSession[] {
     const now = Date.now();
-    if (now - this.lastScanAt < SCAN_INTERVAL_MS) {
-      return this.cached;
-    }
-    this.lastScanAt = now;
-
-    try {
-      const processes = collectProcessInfo();
-      const observed = [
-        ...collectClaudeSessions(processes),
-        ...collectCodexSessions(processes),
-      ];
-      this.cached = dedupeObservedSessions(observed, managedSessions, processes);
-    } catch {
-      this.cached = [];
+    if (now - this.lastScanAt >= SCAN_INTERVAL_MS && !this.scanInFlight) {
+      this.lastScanAt = now;
+      this.scanInFlight = true;
+      void this.scan(managedSessions)
+        .catch(() => { this.cached = []; })
+        .finally(() => { this.scanInFlight = false; });
     }
     return this.cached;
+  }
+
+  private async scan(managedSessions: EnrichedSession[]): Promise<void> {
+    const processes = await collectProcessInfo();
+    const observed = [
+      ...collectClaudeSessions(processes),
+      ...(await collectCodexSessions(processes)),
+    ];
+    const next = dedupeObservedSessions(observed, managedSessions, processes);
+    // Only notify on real change — an unconditional callback would emit a
+    // sessions broadcast every SCAN_INTERVAL even when nothing moved.
+    const changed = JSON.stringify(next) !== JSON.stringify(this.cached);
+    this.cached = next;
+    if (changed) this.onRefreshed?.();
   }
 }
 
@@ -261,9 +285,9 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
   };
 }
 
-function collectProcessInfo(): ProcInfo[] {
+async function collectProcessInfo(): Promise<ProcInfo[]> {
   try {
-    const stdout = execFileSync('ps', ['-ww', '-eo', 'pid=,ppid=,rss=,command='], {
+    const { stdout } = await execFileAsync('ps', ['-ww', '-eo', 'pid=,ppid=,rss=,command='], {
       encoding: 'utf8',
       timeout: 2_000,
       maxBuffer: 2 * 1024 * 1024,
@@ -303,13 +327,13 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
   return sessions;
 }
 
-function collectCodexSessions(processes: ProcInfo[]): ObservedSession[] {
+async function collectCodexSessions(processes: ProcInfo[]): Promise<ObservedSession[]> {
   const codex = processes.filter((p) =>
     cmdHasBinary(p.command, 'codex') &&
     !p.command.includes('app-server') &&
     !p.command.includes('grep')
   );
-  const rolloutByPid = mapCodexPidsToRollouts(codex.map((p) => p.pid));
+  const rolloutByPid = await mapCodexPidsToRollouts(codex.map((p) => p.pid));
   const sessions: ObservedSession[] = [];
   for (const proc of codex) {
     const rollout = rolloutByPid.get(proc.pid);
@@ -412,7 +436,7 @@ function findClaudeTranscript(configDirs: string[], cwd: string, sessionId: stri
   return null;
 }
 
-function mapCodexPidsToRollouts(pids: number[]): Map<number, string> {
+async function mapCodexPidsToRollouts(pids: number[]): Promise<Map<number, string>> {
   if (pids.length === 0) return new Map();
   if (process.platform === 'linux') {
     const map = new Map<number, string>();
@@ -434,7 +458,7 @@ function mapCodexPidsToRollouts(pids: number[]): Map<number, string> {
 
   try {
     const args = ['-F', 'pn', ...pids.map((pid) => `-p${pid}`)];
-    const stdout = execFileSync('lsof', args, {
+    const { stdout } = await execFileAsync('lsof', args, {
       encoding: 'utf8',
       timeout: 2_000,
       maxBuffer: 2 * 1024 * 1024,

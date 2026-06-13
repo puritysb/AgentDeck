@@ -24,6 +24,7 @@ import type {
   ClientRegisterCommand,
   ApmeVibeFeedbackCommand,
   ApmeRecommendCommand,
+  PermissionDecisionCommand,
 } from "./protocol.js";
 
 export const agentCommand = {
@@ -80,5 +81,8 @@ export const agentCommand = {
   },
   apmeRecommend(taskKind?: string, budgetUsd?: number, latencyBudgetMs?: number, preferLocal?: boolean): ApmeRecommendCommand {
     return { type: "apme_recommend", taskKind, budgetUsd, latencyBudgetMs, preferLocal };
+  },
+  permissionDecision(requestId: string, decision: 'allow' | 'deny'): PermissionDecisionCommand {
+    return { type: "permission_decision", requestId, decision };
   },
 } as const;

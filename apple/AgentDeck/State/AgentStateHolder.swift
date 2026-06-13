@@ -611,7 +611,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             state.voiceError = e.error
         case .displayState(let e):
             state.hostDisplayOn = e.displayOn
-            displaySync.handleDisplayState(displayOn: e.displayOn)
+            displaySync.handleDisplayState(displayOn: e.displayOn, dim: e.dim)
         case .sessionsList(let e):
             state.siblingSessions = e.sessions
         case .promptOptions(let e):

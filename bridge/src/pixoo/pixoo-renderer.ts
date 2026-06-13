@@ -33,18 +33,20 @@ import {
   type Camera, type ActiveCreature, CAMERA_WIDE, blitWithCamera,
   updateDirector, setZone, setOverride, resetDirector,
   worldToScreen, isVisible,
+  WORLD_SIZE, ACTIVE_SIZE,
 } from './pixoo-camera.js';
 
-const W = 64;
+const W = WORLD_SIZE;
+const ACTIVE_OFFSET = (WORLD_SIZE - ACTIVE_SIZE) / 2; // 16
 
 // Track last render time for accurate dt calculation
 let lastRenderTime = 0;
 
 // ===== Layout (world-buffer pixel coords) =====
-const SAND_TOP = 54;
-const SAND_BOT = 59;
-const SUBSTRATE_TOP = 60;
-const SURFACE_Y = 2;
+const SAND_TOP = ACTIVE_OFFSET + 54;      // 70
+const SAND_BOT = ACTIVE_OFFSET + 59;      // 75
+const SUBSTRATE_TOP = ACTIVE_OFFSET + 60;  // 76
+const SURFACE_Y = ACTIVE_OFFSET + 2;      // 18
 
 // ===== Creature World Positions (normalized 0~1) =====
 const CF_DEFAULT_X = 0.72;
@@ -135,18 +137,19 @@ function syncCreatures(
     const s = aliveCoding[i];
     const existing = creatureInstances.get(s.id);
     const sessionState = mapSessionState(s.state);
+    
+    // Uniformly distribute X positions to maximize spacing and prevent overlap
+    const x = aliveCoding.length === 1
+      ? 0.38  // single session: classic center-left
+      : 0.15 + (i / (aliveCoding.length - 1)) * 0.70;
 
     if (existing) {
       existing.state = sessionState;
       existing.agentType = s.agentType;
       existing.creatureType = creatureTypeFor(s.agentType);
-      // Update Y position based on state (X stays fixed)
+      existing.worldX = x; // Update X dynamically to maintain even spacing
       existing.worldY = stateY(sessionState);
     } else {
-      // Golden ratio X distribution, Y by state
-      const x = aliveCoding.length === 1
-        ? 0.38  // single session: classic center-left
-        : 0.15 + ((i * PHI) % 1) * 0.70;
       creatureInstances.set(s.id, {
         sessionId: s.id,
         agentType: s.agentType,
@@ -234,7 +237,7 @@ function getWaterPalette(pct: number): WaterPalette {
 function waterColorAt(palette: WaterPalette, surfaceY: number, y: number): RGB {
   const waterDepth = SAND_TOP - surfaceY;
   if (waterDepth <= 0) return palette.deep;
-  const t = (y - surfaceY) / waterDepth;
+  const t = Math.max(0, (y - surfaceY) / waterDepth);
   if (t < 0.25) return lerpColor(palette.surface, palette.light, t / 0.25);
   if (t < 0.6) return lerpColor(palette.light, palette.mid, (t - 0.25) / 0.35);
   return lerpColor(palette.mid, palette.deep, (t - 0.6) / 0.4);
@@ -254,8 +257,8 @@ function initTetras(): TetraState[] {
   const result: TetraState[] = [];
   for (let i = 0; i < NUM_TETRAS; i++) {
     result.push({
-      x: 12 + Math.random() * 40,
-      y: 20 + Math.random() * 25,
+      x: 12 + Math.random() * (WORLD_SIZE - 24),
+      y: SURFACE_Y + 4 + Math.random() * 22,
       heading: Math.random() > 0.5 ? 1 : -1,
       speed: 0.08 + Math.random() * 0.12,  // slower — prevents teleporting at ~1fps
       phase: Math.random() * Math.PI * 2,
@@ -268,11 +271,11 @@ function initTetras(): TetraState[] {
 function updateTetras(frame: number, surfaceY: number, maxY: number): void {
   if (!tetras) tetras = initTetras();
 
-  // Two school centers via Lissajous (meet and diverge every ~25s)
-  const sc0X = 24 + Math.sin(frame * 0.02) * 16;
-  const sc0Y = Math.max(surfaceY + 8, 22) + Math.cos(frame * 0.015) * 8;
-  const sc1X = 40 + Math.sin(frame * 0.0175 + 2) * 16;
-  const sc1Y = Math.max(surfaceY + 8, 24) + Math.cos(frame * 0.0225 + 1) * 8;
+  // Two school centers via Lissajous (meet and diverge every ~25s), scaled to WORLD_SIZE
+  const sc0X = (WORLD_SIZE / 2 - 12) + Math.sin(frame * 0.02) * 24;
+  const sc0Y = Math.max(surfaceY + 8, SURFACE_Y + 12) + Math.cos(frame * 0.015) * 8;
+  const sc1X = (WORLD_SIZE / 2 + 12) + Math.sin(frame * 0.0175 + 2) * 24;
+  const sc1Y = Math.max(surfaceY + 8, SURFACE_Y + 14) + Math.cos(frame * 0.0225 + 1) * 8;
   const centers = [{ x: sc0X, y: sc0Y }, { x: sc1X, y: sc1Y }];
 
   for (const t of tetras) {
@@ -286,9 +289,9 @@ function updateTetras(frame: number, surfaceY: number, maxY: number): void {
 
     // Boundary
     const minY = surfaceY + 3;
-    if (t.x < 3 || t.x > 61) {
+    if (t.x < 3 || t.x > WORLD_SIZE - 3) {
       t.heading *= -1;
-      t.x = Math.max(3, Math.min(61, t.x));
+      t.x = Math.max(3, Math.min(WORLD_SIZE - 3, t.x));
     }
     if (t.y < minY) t.y = minY;
     if (t.y > maxY) t.y = maxY;
@@ -300,7 +303,12 @@ function getSchoolCenter(): { x: number; y: number } {
   if (!tetras || tetras.length === 0) return { x: 0.5, y: 0.4 };
   let sx = 0, sy = 0;
   for (const t of tetras) { sx += t.x; sy += t.y; }
-  return { x: sx / tetras.length / W, y: sy / tetras.length / W };
+  const avgX = sx / tetras.length;
+  const avgY = sy / tetras.length;
+  return {
+    x: (avgX - ACTIVE_OFFSET) / ACTIVE_SIZE,
+    y: (avgY - ACTIVE_OFFSET) / ACTIVE_SIZE,
+  };
 }
 
 // ===== Bubble System =====
@@ -313,7 +321,7 @@ let bubbles: Bubble[] = [];
 
 function spawnBubble(): Bubble {
   return {
-    x: 4 + Math.random() * 56,
+    x: 4 + Math.random() * (WORLD_SIZE - 8),
     y: SAND_TOP - 1 - Math.random() * 4,
     speed: 0.3 + Math.random() * 0.4,
     wobblePhase: Math.random() * Math.PI * 2,
@@ -345,7 +353,7 @@ let dataParticles: DataParticle[] = [];
 function updateDataParticles(frame: number, surfaceY: number, active: boolean): void {
   if (active && frame % 6 === 0) { // spawn half as often
     dataParticles.push({
-      x: 10 + Math.random() * 44,
+      x: 10 + Math.random() * (WORLD_SIZE - 20),
       y: surfaceY + 2 + Math.random() * 3,
       vy: 0.2 + Math.random() * 0.15,
       life: 60 + Math.random() * 40,
@@ -368,12 +376,20 @@ function updateDataParticles(frame: number, surfaceY: number, active: boolean): 
 // ===== Seaweed =====
 
 const SEAWEED_POSITIONS = [
+  // Outer left edge (padding region)
   { x: 2, h: 13, phase: 0 },
   { x: 5, h: 9, phase: 1.2 },
   { x: 8, h: 6, phase: 2.5 },
-  { x: 55, h: 12, phase: 0.8 },
-  { x: 58, h: 8, phase: 1.9 },
-  { x: 61, h: 7, phase: 3.1 },
+  // Active region left edge
+  { x: ACTIVE_OFFSET + 2, h: 11, phase: 0.5 },
+  { x: ACTIVE_OFFSET + 5, h: 7, phase: 1.7 },
+  // Active region right edge
+  { x: ACTIVE_OFFSET + 58, h: 8, phase: 2.2 },
+  { x: ACTIVE_OFFSET + 61, h: 10, phase: 0.9 },
+  // Outer right edge (padding region)
+  { x: WORLD_SIZE - 9, h: 12, phase: 0.8 },
+  { x: WORLD_SIZE - 6, h: 8, phase: 1.9 },
+  { x: WORLD_SIZE - 3, h: 7, phase: 3.1 },
 ];
 
 function drawSeaweed(buf: Uint8Array, frame: number, surfaceY: number): void {
@@ -397,9 +413,11 @@ function drawSeaweed(buf: Uint8Array, frame: number, surfaceY: number): void {
 
 function drawLightRays(buf: Uint8Array, frame: number, surfaceY: number): void {
   const rays = [
-    { baseX: 15 + Math.sin(frame * 0.02) * 5, angle: 0.15 },
-    { baseX: 35 + Math.sin(frame * 0.015 + 1) * 6, angle: -0.1 },
-    { baseX: 50 + Math.sin(frame * 0.025 + 2) * 4, angle: 0.2 },
+    { baseX: 8 + Math.sin(frame * 0.018) * 3, angle: 0.1 }, // left padding ray
+    { baseX: ACTIVE_OFFSET + 15 + Math.sin(frame * 0.02) * 5, angle: 0.15 },
+    { baseX: ACTIVE_OFFSET + 35 + Math.sin(frame * 0.015 + 1) * 6, angle: -0.1 },
+    { baseX: ACTIVE_OFFSET + 50 + Math.sin(frame * 0.025 + 2) * 4, angle: 0.2 },
+    { baseX: WORLD_SIZE - 10 + Math.sin(frame * 0.022) * 3, angle: -0.15 }, // right padding ray
   ];
 
   for (const ray of rays) {
@@ -474,7 +492,8 @@ function drawTerrain(buf: Uint8Array): void {
     }
   }
 
-  const gravelPositions = [8, 15, 22, 29, 37, 44, 51, 57];
+  // Distribute gravel positions across the entire 96 width
+  const gravelPositions = [4, 12, 20, 24, 31, 38, 45, 53, 60, 67, 74, 80, 87, 92];
   for (const gx of gravelPositions) setPixel(buf, gx, SAND_TOP, COLORS.gravel);
 
   for (let y = SUBSTRATE_TOP; y < W; y++) {
@@ -485,9 +504,11 @@ function drawTerrain(buf: Uint8Array): void {
   }
 
   const rocks = [
-    { x: 12, y: SAND_BOT, w: 4, h: 2 },
-    { x: 30, y: SAND_BOT + 1, w: 3, h: 2 },
-    { x: 48, y: SAND_BOT, w: 5, h: 3 },
+    { x: 4, y: SAND_BOT + 1, w: 3, h: 2 }, // left padding rock
+    { x: ACTIVE_OFFSET + 12, y: SAND_BOT, w: 4, h: 2 },
+    { x: ACTIVE_OFFSET + 30, y: SAND_BOT + 1, w: 3, h: 2 },
+    { x: ACTIVE_OFFSET + 48, y: SAND_BOT, w: 5, h: 3 },
+    { x: WORLD_SIZE - 8, y: SAND_BOT, w: 4, h: 2 }, // right padding rock
   ];
   for (const r of rocks) {
     for (let dy = 0; dy < r.h; dy++) {
@@ -577,13 +598,14 @@ function drawUsageHUD(
   if (!usageEvent || usageEvent.fiveHourPercent == null) return;
   if (usageEvent.usageStale === true) return;
 
-  const textY = 58;
+  const w = Math.sqrt(buf.length / 3);
+  const textY = w === 32 ? 26 : 58;
   const bgTop = textY - 1;
   const bgBot = textY + 5;
 
   // Full-width dark base — hides sand/terrain at HUD rows regardless of camera zoom
   for (let y = bgTop; y <= bgBot; y++) {
-    for (let x = 0; x < 64; x++) {
+    for (let x = 0; x < w; x++) {
       blendPixel(buf, x, y, COLORS.black, 0.55);
     }
   }
@@ -615,6 +637,13 @@ function drawUsageHUD(
 
   const pct5 = usageEvent.fiveHourPercent;
 
+  if (w === 32) {
+    // Single compact zone for 32x32 screens
+    const r5 = formatResetDetailed(usageEvent.fiveHourResetsAt);
+    renderZone(`${Math.round(pct5)}%`, r5, pct5, 0, 31);
+    return;
+  }
+
   if (usageEvent.sevenDayPercent == null) {
     // Single full-width zone
     const r5 = formatResetDetailed(usageEvent.fiveHourResetsAt);
@@ -631,17 +660,18 @@ function drawUsageHUD(
 }
 
 /**
- * Render a complete 64×64 frame with camera system.
- * Returns 12,288-byte RGB buffer.
+ * Render a complete frame with camera system.
+ * Returns RGB buffer.
  */
 export function renderFrame(
   stateEvent: StateUpdateEvent | null,
   usageEvent: UsageEvent | null,
   sessions: SessionInfo[] | null,
   timeOverrideMs?: number,
+  size: 32 | 64 = 64,
 ): Uint8Array {
   const worldBuf = new Uint8Array(W * W * 3);
-  const outputBuf = new Uint8Array(W * W * 3);
+  const outputBuf = new Uint8Array(size * size * 3);
   const animFrame = getAnimFrame(timeOverrideMs);
 
   const state = stateEvent?.state ?? State.IDLE;
@@ -687,6 +717,14 @@ export function renderFrame(
     hasGateway ? { x: cfX, y: cfY } : null,
     schoolPos,
   );
+  
+  // Adaptive zoom out when multiple sessions are active to increase spacing & breathing room
+  const activeSessionCount = creatureInstances.size;
+  if (activeSessionCount > 1 && camera.zoom === 1.0) {
+    camera.zoom = Math.max(0.78, 1.0 - (activeSessionCount - 1) * 0.11);
+  }
+  
+  camera.width = size; // Set camera target resolution width
 
   // ========================================
   // Phase 1: Render environment → world buffer
@@ -813,8 +851,8 @@ export function renderFrame(
   // Danger flash (>90% usage)
   if (usagePct >= 90) {
     const flashIntensity = (Math.sin(animFrame * 0.2) + 1) * 0.08;
-    for (let y = 0; y < W; y++) {
-      for (let x = 0; x < W; x++) {
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
         glowPixel(outputBuf, x, y, COLORS.stateError, flashIntensity);
       }
     }
@@ -847,7 +885,7 @@ export function renderFrame(
 
 /** Render a static black frame with centered grey "OFFLINE" text. */
 export function renderDisconnectedFrame(): Uint8Array {
-  const buf = new Uint8Array(W * W * 3); // black
+  const buf = new Uint8Array(64 * 64 * 3); // black
   drawTextCentered(buf, 29, 'OFFLINE', '#555555');
   return buf;
 }

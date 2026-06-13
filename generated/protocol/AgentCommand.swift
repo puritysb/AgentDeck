@@ -26,6 +26,7 @@ public enum AgentCommand: Equatable {
     case clientRegister(clientType: String, clientLabel: String?, devices: [[String: Any]]?)
     case apmeVibe(runId: String, verdict: String, note: String?)
     case apmeRecommend(taskKind: String?, budgetUsd: Int?, latencyBudgetMs: Int?, preferLocal: Bool?)
+    case permissionDecision(requestId: String, decision: String)
 
     /// JSON-serializable dictionary representation matching protocol.ts.
     public var dictionary: [String: Any] {
@@ -103,6 +104,11 @@ public enum AgentCommand: Equatable {
             if let latencyBudgetMs = latencyBudgetMs { dict["latencyBudgetMs"] = latencyBudgetMs }
             if let preferLocal = preferLocal { dict["preferLocal"] = preferLocal }
             return dict
+        case .permissionDecision(let requestId, let decision):
+            var dict: [String: Any] = ["type": "permission_decision"]
+            dict["requestId"] = requestId
+            dict["decision"] = decision
+            return dict
         }
     }
 
@@ -127,6 +133,7 @@ public enum AgentCommand: Equatable {
         case .clientRegister: return "client_register"
         case .apmeVibe: return "apme_vibe"
         case .apmeRecommend: return "apme_recommend"
+        case .permissionDecision: return "permission_decision"
         }
     }
 

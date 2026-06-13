@@ -420,6 +420,12 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     var currentTool: String?
     var groupSize: Int?
     var foldedSessionIds: [String]?
+    /// Awaiting prompt question text (observed sessions: Notification message or
+    /// "Allow {tool}: …?"; managed PTY: parsed header).
+    var question: String?
+    /// Present when a gated PreToolUse permission is pending device approval —
+    /// the HUD renders Allow/Deny and replies with `permissionDecision(requestId:)`.
+    var requestId: String?
 }
 
 // MARK: - Bridge Events (Bridge → Client)
@@ -562,9 +568,17 @@ struct VoiceStateEvent: Codable, Sendable {
     var error: String?
 }
 
+struct DisplayDimInstruction: Codable, Sendable {
+    let enabled: Bool
+    let mode: String   // "off" | "min"
+    let level: Int     // 1-100 percent
+}
+
 struct DisplayStateEvent: Codable, Sendable {
     let type: String  // "display_state"
     let displayOn: Bool
+    /// How to dim on sleep. Absent ⇒ legacy full-off (see DisplayDimInstruction).
+    var dim: DisplayDimInstruction?
 }
 
 struct SessionsListEvent: Codable, Sendable {
@@ -648,6 +662,7 @@ enum PluginCommand: Encodable, Sendable {
     case utility(action: String, value: Int?)
     case focusSession(sessionId: String)
     case clearSessionFocus
+    case permissionDecision(requestId: String, decision: String)
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: DynamicCodingKey.self)
@@ -688,6 +703,10 @@ enum PluginCommand: Encodable, Sendable {
             try container.encode(sessionId, forKey: .init("sessionId"))
         case .clearSessionFocus:
             try container.encode("clear_session_focus", forKey: .init("type"))
+        case .permissionDecision(let requestId, let decision):
+            try container.encode("permission_decision", forKey: .init("type"))
+            try container.encode(requestId, forKey: .init("requestId"))
+            try container.encode(decision, forKey: .init("decision"))
         }
     }
 }

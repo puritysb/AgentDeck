@@ -17,17 +17,26 @@ final class DisplaySyncService: ObservableObject, @unchecked Sendable {
     private var savedBrightness: CGFloat?
     private var pendingDim = false
     private var dimTimer: Timer?
+    /// True while the screen is held dimmed by us — gates brightness capture so
+    /// a live dim-level change (re-apply while host stays asleep) doesn't save
+    /// the already-dimmed value as the "original".
+    private var isDimmed = false
+    /// Last dim instruction from the host (mode/level), retained so a
+    /// foreground-return re-dim uses the configured target, not a hardcoded 0.
+    private var lastDimMode = "off"
+    private var lastDimLevel = 10
     /// Maximum time to keep screen dimmed (safety net — prevents stuck dim)
     private static let maxDimDuration: TimeInterval = 300  // 5 minutes
     #endif
 
-    /// Call when hostDisplayOn changes
-    func handleDisplayState(displayOn: Bool) {
+    /// Call when hostDisplayOn changes. `dim` carries the host's instruction
+    /// (enabled / off vs min / level); absent ⇒ legacy full-off.
+    func handleDisplayState(displayOn: Bool, dim: DisplayDimInstruction?) {
         guard enabled else { return }
 
         #if os(iOS)
         Task { @MainActor [weak self] in
-            self?.applyDisplayState(displayOn: displayOn)
+            self?.applyDisplayState(displayOn: displayOn, dim: dim)
         }
         #endif
     }
@@ -50,18 +59,35 @@ final class DisplaySyncService: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Resolve the target screen brightness (0.0-1.0) from the host's dim
+    /// instruction. `min` ⇒ level percent; `off`/absent ⇒ fully dark.
     @MainActor
-    private func applyDisplayState(displayOn: Bool) {
-        if !displayOn {
-            let current = UIScreen.main.brightness
-            // Don't save if already dimmed (avoid saving 0.0 as the "original")
-            if current > 0.01 {
-                savedBrightness = current
+    private func dimTarget() -> CGFloat {
+        return lastDimMode == "min" ? CGFloat(lastDimLevel) / 100.0 : 0.0
+    }
+
+    @MainActor
+    private func applyDisplayState(displayOn: Bool, dim: DisplayDimInstruction?) {
+        // Resolve the instruction (absent ⇒ legacy enabled/full-off) and retain
+        // mode/level for foreground-return re-dim.
+        let dimEnabled = dim?.enabled ?? true
+        lastDimMode = (dim?.mode == "min") ? "min" : "off"
+        lastDimLevel = max(1, min(100, dim?.level ?? 10))
+
+        if !displayOn && dimEnabled {
+            if !isDimmed {
+                // First dim — capture the user's brightness to restore later.
+                // The isDimmed guard prevents a live level change (re-apply
+                // while asleep) from saving the already-dimmed value.
+                let current = UIScreen.main.brightness
+                if current > 0.01 { savedBrightness = current }
+                isDimmed = true
             }
-            UIScreen.main.brightness = 0.0
+            UIScreen.main.brightness = dimTarget()
             pendingDim = false
             startDimTimer()
         } else {
+            // Display awake OR host disabled device dimming → restore.
             cancelDimTimer()
             pendingDim = false
             restoreBrightness()
@@ -71,11 +97,12 @@ final class DisplaySyncService: ObservableObject, @unchecked Sendable {
     @MainActor
     private func applyForegroundReturn(hostDisplayOn: Bool) {
         if pendingDim && !hostDisplayOn {
-            let current = UIScreen.main.brightness
-            if current > 0.01 {
-                savedBrightness = current
+            if !isDimmed {
+                let current = UIScreen.main.brightness
+                if current > 0.01 { savedBrightness = current }
+                isDimmed = true
             }
-            UIScreen.main.brightness = 0.0
+            UIScreen.main.brightness = dimTarget()
             pendingDim = false
             startDimTimer()
         }
@@ -87,6 +114,7 @@ final class DisplaySyncService: ObservableObject, @unchecked Sendable {
             UIScreen.main.brightness = saved
             savedBrightness = nil
         }
+        isDimmed = false
     }
 
     /// Safety timer — auto-restore brightness after maxDimDuration

@@ -1080,7 +1080,18 @@ func timelineIsLowSignalEntry(_ entry: TimelineEntry) -> Bool {
     }
     let raw = entry.raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if (entry.agentType == "codex-cli" || entry.agentType == "codex-app"), entry.sessionId == "codex:otel-active" {
-        return ["tool", "tool completed", "unknown", "unknown completed", "exec", "exec completed"].contains(raw)
+        // Structural match, mirroring the OpenClaw branch below. The producer
+        // (DaemonServer.appendCodexToolExec) composes raw as "<tool>" or
+        // "<tool> completed", so prefix-match each placeholder name instead of
+        // enumerating every suffix — an enumerated list silently leaks new
+        // suffixes (the same class of gap the 2026-05-18 third-round Codex
+        // review flagged on the OpenClaw filter). "tool"/"unknown" are dropped
+        // at source since 2026-05-18 but persist in historical timeline.json;
+        // "exec" is the generic shell span name.
+        for placeholder in ["tool", "unknown", "exec"] {
+            if raw == placeholder || raw.hasPrefix(placeholder + " ") { return true }
+        }
+        return false
     }
     // OpenClaw placeholder rows. Producer drops new ones at source as of
     // 2026-05-18; this filter catches historical entries loaded from

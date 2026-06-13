@@ -45,6 +45,7 @@ import {
   initOptionDial,
   updateOptionDialState,
   setOptionSetupRequired,
+  setOptionDialRequestId,
 } from './actions/option-dial.js';
 import {
   VoiceDialAction,
@@ -112,6 +113,7 @@ let currentEffortLevel: string | undefined;
 let currentBillingType: BillingType = 'unknown';
 let currentOptions: import('@agentdeck/shared').PromptOption[] = [];
 let currentQuestion: string | undefined;
+let currentRequestId: string | undefined;
 let currentNavigable = false;
 let currentCursorIndex = 0;
 let currentSuggestedPrompt: string | undefined;
@@ -315,6 +317,11 @@ connMgr.on('state_update', (ev: StateUpdateEvent) => {
   if (ev.question !== undefined) {
     currentQuestion = ev.question;
   }
+
+  // Capture gated-permission requestId (observed sessions). The daemon only
+  // sets it on awaiting_permission; omitting it elsewhere clears the gate.
+  currentRequestId = ev.state === State.AWAITING_PERMISSION ? ev.requestId : undefined;
+  setOptionDialRequestId(currentRequestId);
 
   // Capture navigable/cursorIndex
   if (ev.navigable !== undefined) {

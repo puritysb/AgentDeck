@@ -244,6 +244,10 @@ data class SessionInfo(
     val modelName: String? = null,
     val effortLevel: String? = null,
     val startedAt: String? = null,
+    val question: String? = null,
+    // Present when a gated PreToolUse permission is pending device approval —
+    // the HUD renders Allow/Deny and replies with permissionDecision(requestId).
+    val requestId: String? = null,
 )
 
 @Serializable
@@ -385,13 +389,20 @@ fun BridgeTimelineEntry.toTimelineEntry() = dev.agentdeck.state.TimelineEntry(
     taskSummary = taskSummary,
 )
 
+/**
+ * Host's instruction for how to dim downstream devices when its display sleeps.
+ * Mirrors the `dim` object on the `display_state` event. Absent ⇒ legacy
+ * full-off. `level` is a 1-100 percent (mapped to screenBrightness 0.0-1.0).
+ */
+data class DimConfig(val enabled: Boolean, val mode: String, val level: Int)
+
 sealed class BridgeEvent {
     data class State(val data: StateUpdate) : BridgeEvent()
     data class Usage(val data: UsageUpdate) : BridgeEvent()
     data class Voice(val data: VoiceState) : BridgeEvent()
     data class Connected(val sessionId: String?) : BridgeEvent()
     data object Disconnected : BridgeEvent()
-    data class DisplaySleep(val displayOn: Boolean) : BridgeEvent()
+    data class DisplaySleep(val displayOn: Boolean, val dim: DimConfig? = null) : BridgeEvent()
     data class SessionsList(val sessions: List<SessionInfo>) : BridgeEvent()
     data class EncoderState(val encoders: List<EncoderSlotState>, val takeoverActive: Boolean) : BridgeEvent()
     data class ButtonState(val buttons: List<ButtonSlotState>) : BridgeEvent()
@@ -431,6 +442,10 @@ object PluginCommands {
 
     fun navigateOption(direction: String): String =
         """{"type":"navigate_option","direction":"$direction"}"""
+
+    /** Device approval for a gated PreToolUse permission request (observed session). */
+    fun permissionDecision(requestId: String, decision: String): String =
+        """{"type":"permission_decision","requestId":${Json.encodeToString(kotlinx.serialization.serializer<String>(), requestId)},"decision":"$decision"}"""
 }
 
 // --- JSON parsing ---
@@ -486,7 +501,16 @@ fun parseBridgeMessage(text: String): BridgeEvent? {
             }
             "display_state" -> {
                 val displayOn = obj["displayOn"]?.jsonPrimitive?.boolean ?: true
-                BridgeEvent.DisplaySleep(displayOn)
+                // Optional dim instruction (absent ⇒ legacy enabled/full-off).
+                val dim = obj["dim"]?.jsonObject?.let { d ->
+                    DimConfig(
+                        enabled = d["enabled"]?.jsonPrimitive?.boolean ?: true,
+                        mode = d["mode"]?.jsonPrimitive?.content ?: "off",
+                        level = (d["level"]?.jsonPrimitive?.longOrNull?.toInt() ?: 10)
+                            .coerceIn(1, 100),
+                    )
+                }
+                BridgeEvent.DisplaySleep(displayOn, dim)
             }
             "sessions_list" -> {
                 val sessionsArray = obj["sessions"]

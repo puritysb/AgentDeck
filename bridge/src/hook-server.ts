@@ -23,7 +23,7 @@ export class HookServer extends EventEmitter {
   private voiceManager: VoiceManager | null = null;
   private apiUsageGetter: (() => { usage: unknown; fetchedAt: number }) | null = null;
   private deviceInfoGetter: (() => unknown) | null = null;
-  private pixooFrameGetter: (() => Uint8Array) | null = null;
+  private pixooFrameGetter: ((size?: 32 | 64) => Uint8Array) | null = null;
   private pixooStreamListener: ((frame: Uint8Array) => void) | null = null;
 
   // SSE
@@ -71,8 +71,8 @@ export class HookServer extends EventEmitter {
     this.deviceInfoGetter = getter;
   }
 
-  /** Register a getter that returns the current Pixoo 64×64 RGB frame (12,288 bytes). */
-  setPixooFrameGetter(getter: () => Uint8Array): void {
+  /** Register a getter that returns the current Pixoo RGB frame. */
+  setPixooFrameGetter(getter: (size?: 32 | 64) => Uint8Array): void {
     this.pixooFrameGetter = getter;
   }
 
@@ -226,6 +226,15 @@ export class HookServer extends EventEmitter {
 
       this.emit('hook', { event: eventName, data });
 
+      // Managed (`agentdeck claude`) sessions own a PTY that handles permission
+      // prompts natively, so they never gate via the hook. The PreToolUse hook
+      // script echoes our response to Claude's stdout, so reply with an EMPTY
+      // body for PreToolUse (echo → nothing → Claude's normal/ PTY flow). All
+      // other events ack as before.
+      if (eventName === 'PreToolUse') {
+        res.type('application/json').send('');
+        return;
+      }
       // Respond quickly so the hook doesn't block Claude
       res.json({ received: true });
     });
@@ -305,13 +314,15 @@ export class HookServer extends EventEmitter {
     });
 
     // Pixoo live preview — serves BMP of current frame
-    this.app.get('/pixoo/frame', (_req, res) => {
+    this.app.get('/pixoo/frame', (req, res) => {
       if (!this.pixooFrameGetter) {
         res.status(503).json({ error: 'Pixoo renderer not available' });
         return;
       }
-      const rgb = this.pixooFrameGetter();
-      const bmp = rgbToBmp(rgb, 64, 64);
+      const sizeParam = req.query?.size;
+      const size: 32 | 64 = sizeParam === '32' ? 32 : 64;
+      const rgb = this.pixooFrameGetter(size);
+      const bmp = rgbToBmp(rgb, size, size);
       res.set({
         'Content-Type': 'image/bmp',
         'Cache-Control': 'no-store',

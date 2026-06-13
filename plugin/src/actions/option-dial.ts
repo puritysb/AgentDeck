@@ -66,6 +66,15 @@ let currentSuggestedPrompt: string | null = null;
 let currentAgentType: AgentType | null = null;
 let currentCapabilities: AgentCapabilities | null = null;
 let currentSessionStatus: OcSessionStatus | null = null;
+/** requestId of a gated PreToolUse permission on the focused session, when the
+ *  daemon synthesizes an awaiting-permission state_update for an observed
+ *  session. When set, the encoder replies with permission_decision. */
+let currentRequestId: string | undefined;
+
+/** Set the gated-permission requestId (called from plugin.ts on state_update). */
+export function setOptionDialRequestId(requestId?: string): void {
+  currentRequestId = requestId;
+}
 
 export function setOptionSetupRequired(value: boolean): void {
   setupRequired = value;
@@ -274,6 +283,12 @@ export function handleTakeoverPush(): void {
     (currentState === State.AWAITING_PERMISSION || currentState === State.AWAITING_DIFF) &&
     currentOptions.length > 0
   ) {
+    if (currentState === State.AWAITING_PERMISSION && currentRequestId) {
+      const decision = selectedIndex === 0 ? 'allow' : 'deny';
+      dlog('ResDial', `takeoverPush: permission_decision req=${currentRequestId} ${decision}`);
+      bridge.send({ type: 'permission_decision', requestId: currentRequestId, decision });
+      return;
+    }
     if (navigable) {
       // Navigable TUI (❯ cursor): use select_option (arrow keys + Enter)
       dlog('ResDial', `takeoverPush: select_option (nav) idx=${selectedIndex} "${currentOptions[selectedIndex]?.label}"`);
@@ -435,6 +450,15 @@ export class ResponseDialAction extends SingletonAction {
       (currentState === State.AWAITING_PERMISSION || currentState === State.AWAITING_DIFF) &&
       currentOptions.length > 0
     ) {
+      // Device approval for a gated PreToolUse (observed session): reply with
+      // permission_decision instead of select_option/respond — there's no PTY.
+      // index 0 = Allow, anything else = Deny (matches synthesized options).
+      if (currentState === State.AWAITING_PERMISSION && currentRequestId) {
+        const decision = selectedIndex === 0 ? 'allow' : 'deny';
+        dlog('ResDial', `push: permission_decision req=${currentRequestId} ${decision}`);
+        bridge.send({ type: 'permission_decision', requestId: currentRequestId, decision });
+        return;
+      }
       if (navigable) {
         // Navigable TUI (❯ cursor): use select_option (arrow keys + Enter)
         dlog('ResDial', `push: select_option (nav) idx=${selectedIndex} "${currentOptions[selectedIndex]?.label}"`);

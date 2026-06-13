@@ -209,6 +209,32 @@
       ],
       "type": "object"
     },
+    "PermissionDecisionCommand": {
+      "additionalProperties": false,
+      "description": "Device approval decision for a gated PreToolUse permission request (observed sessions). The daemon holds the hook's HTTP response open keyed by `requestId`; this command resolves it into a Claude Code permission decision. See bridge/src/permission-resolver.ts.",
+      "properties": {
+        "decision": {
+          "enum": [
+            "allow",
+            "deny"
+          ],
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "type": {
+          "const": "permission_decision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "requestId",
+        "decision"
+      ],
+      "type": "object"
+    },
     "PluginCommand": {
       "anyOf": [
         {
@@ -264,6 +290,9 @@
         },
         {
           "$ref": "#/definitions/ApmeRecommendCommand"
+        },
+        {
+          "$ref": "#/definitions/PermissionDecisionCommand"
         }
       ]
     },

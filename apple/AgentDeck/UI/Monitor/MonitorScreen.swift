@@ -176,7 +176,7 @@ struct MonitorScreen: View {
                     session: featured,
                     question: questionFor(featured),
                     queuedCount: queued,
-                    options: isFeaturedFocused ? stateHolder.state.options : [],
+                    options: attentionOptions(for: featured, isFocused: isFeaturedFocused),
                     promptType: isFeaturedFocused ? stateHolder.state.promptType : nil,
                     cursorIndex: isFeaturedFocused ? stateHolder.state.cursorIndex : 0,
                     navigable: isFeaturedFocused ? stateHolder.state.navigable : false,
@@ -261,10 +261,26 @@ struct MonitorScreen: View {
     /// awaiting sessions we return nil and the card just shows the
     /// "needs attention" label without a specific question.
     private func questionFor(_ session: SessionInfo) -> String? {
+        // Per-session question (observed gated PreToolUse / Notification message)
+        // wins — it's attached to the SessionInfo, not the aggregate state.
+        if let q = session.question, !q.isEmpty { return q }
         if session.id == effectiveFocusedSessionId {
             return stateHolder.state.question
         }
         return nil
+    }
+
+    /// Options to render in the attention HUD. Gated PreToolUse (observed)
+    /// sessions carry a requestId but no PTY options, so present a fixed
+    /// Allow/Deny pair; otherwise mirror the focused session's live options.
+    private func attentionOptions(for session: SessionInfo, isFocused: Bool) -> [PromptOption] {
+        if session.requestId != nil {
+            return [
+                PromptOption(index: 0, label: "Allow", shortcut: "y", recommended: true, selected: nil),
+                PromptOption(index: 1, label: "Deny", shortcut: "n", recommended: nil, selected: nil),
+            ]
+        }
+        return isFocused ? stateHolder.state.options : []
     }
 
     /// Dispatch a YES/NO/ALWAYS response to the featured session via the
@@ -272,6 +288,13 @@ struct MonitorScreen: View {
     /// focus relay routes the response correctly when there are multiple
     /// awaiting sessions.
     private func respondToAwaiting(_ index: Int, session: SessionInfo) {
+        // Gated PreToolUse (observed session): resolve the held hook response via
+        // permission_decision instead of select_option (there's no PTY to drive).
+        // index 0 = Allow, 1 = Deny — matches the synthetic options passed to the HUD.
+        if let requestId = session.requestId {
+            stateHolder.sendCommand(.permissionDecision(requestId: requestId, decision: index == 0 ? "allow" : "deny"))
+            return
+        }
         stateHolder.sendCommand(.focusSession(sessionId: session.id))
         stateHolder.sendCommand(.selectOption(index: index))
     }

@@ -329,6 +329,10 @@ actor PixooModule: DeviceModule {
     private var cachedGatewayHasError = false
 
     private var displayDimmed = false
+    /// Last applied dim instruction signature ("enabled|mode|level"). Lets us
+    /// re-apply a changed dim level while the display stays asleep (displayOn
+    /// unchanged) instead of being swallowed by the `displayDimmed` guard.
+    private var lastDimSignature = ""
 
     /// Handle broadcast events — update cached state for next render
     func handleEvent(_ event: [String: Any]) {
@@ -363,13 +367,33 @@ actor PixooModule: DeviceModule {
             cachedSessions = event["sessions"] as? [[String: Any]] ?? []
         case "display_state":
             let displayOn = event["displayOn"] as? Bool ?? true
-            if !displayOn && !displayDimmed {
-                displayDimmed = true
-                Task { await dimPixoo() }
-            } else if displayOn && displayDimmed {
+            // Resolve the dim instruction (absent ⇒ legacy enabled/full-off).
+            let dim = event["dim"] as? [String: Any]
+            let dimEnabled = dim?["enabled"] as? Bool ?? true
+            let dimMode = (dim?["mode"] as? String) == "min" ? "min" : "off"
+            let dimLevel = max(1, min(100, dim?["level"] as? Int ?? 10))
+            let signature = "\(dimEnabled)|\(dimMode)|\(dimLevel)"
+
+            if !displayOn {
+                if !dimEnabled {
+                    // Dimming disabled — leave the screen lit. If we were dimmed
+                    // (user just disabled while asleep), restore brightness.
+                    if displayDimmed {
+                        displayDimmed = false
+                        Task { await restorePixoo() }
+                    }
+                } else if !displayDimmed || signature != lastDimSignature {
+                    // Apply on first sleep OR when the dim instruction changed
+                    // live (e.g. user moved the slider while already asleep).
+                    displayDimmed = true
+                    let target = dimMode == "off" ? 0 : dimLevel
+                    Task { await dimPixoo(level: target) }
+                }
+            } else if displayDimmed {
                 displayDimmed = false
                 Task { await restorePixoo() }
             }
+            lastDimSignature = signature
             refreshShadow()
             return // Don't re-render on display_state
         default: break
@@ -650,9 +674,9 @@ actor PixooModule: DeviceModule {
 
     // MARK: - Display Sleep
 
-    private func dimPixoo() async {
-        await setBrightness(0)
-        DaemonLogger.shared.debug("Pixoo", "Display sleep → brightness 0")
+    private func dimPixoo(level: Int = 0) async {
+        await setBrightness(level)
+        DaemonLogger.shared.debug("Pixoo", "Display sleep → brightness \(level)")
     }
 
     private func restorePixoo() async {

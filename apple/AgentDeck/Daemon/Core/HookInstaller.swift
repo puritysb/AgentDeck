@@ -290,7 +290,7 @@ enum HookInstaller {
     /// falls back to `9120`. Prefers `httpPort` over `port` because the Swift
     /// daemon splits WS and HTTP across ports.
     private static func buildHookCommand(_ event: String) -> String {
-        let lines = [
+        let preamble = [
             #"PORT="${AGENTDECK_PORT:-}""#,
             #"if [ -z "$PORT" ]; then"#,
             #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agentdeck.dashboard/daemon.json"; do"#,
@@ -300,6 +300,18 @@ enum HookInstaller {
             #"  done"#,
             #"fi"#,
             #"PORT="${PORT:-9120}""#,
+        ]
+        // PreToolUse long-poll (device approval) — capture the daemon's permission
+        // decision and echo it to stdout. Empty output = Claude's normal flow.
+        // See canonical commentary in hooks/src/install.ts.
+        if event == "PreToolUse" {
+            let lines = preamble + [
+                #"RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' --max-time 60 -d @- 2>/dev/null)"#,
+                #"printf '%s' "${RESP:-}""#,
+            ]
+            return lines.joined(separator: "\n")
+        }
+        let lines = preamble + [
             "curl -sf -X POST \"http://127.0.0.1:$PORT/hooks/\(event)\" -H 'Content-Type: application/json' -d @- 2>/dev/null || true",
         ]
         return lines.joined(separator: "\n")

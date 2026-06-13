@@ -330,15 +330,15 @@ function doStateCheckAndPush(): void {
  * Render a fresh frame using current cached state.
  * Used by the live preview endpoint when no Pixoo device is connected.
  */
-export function renderPreviewFrame(): Uint8Array {
-  return renderFrame(lastStateEvent, lastUsageEvent, lastSessions);
+export function renderPreviewFrame(size?: 32 | 64): Uint8Array {
+  return renderFrame(lastStateEvent, lastUsageEvent, lastSessions, undefined, size);
 }
 
 /**
  * Get the last calculated frame.
  */
-export function getLastFrame(): Uint8Array | null {
-  return renderFrame(lastStateEvent, lastUsageEvent, lastSessions);
+export function getLastFrame(size?: 32 | 64): Uint8Array | null {
+  return renderFrame(lastStateEvent, lastUsageEvent, lastSessions, undefined, size);
 }
 
 /** Notify all SSE frame listeners. */

@@ -63,6 +63,7 @@
         "claude-code",
         "openclaw",
         "codex-cli",
+        "codex-app",
         "opencode",
         "monitor"
       ],
@@ -527,9 +528,41 @@
       ],
       "type": "object"
     },
+    "DisplayDimInstruction": {
+      "additionalProperties": false,
+      "description": "Per-broadcast instruction telling downstream devices HOW to dim when the host display sleeps. Resolved by the daemon from the `displaySleepDim` settings.json key and embedded in every `display_state` event so that Pixoo / D200H / ESP32 dumb-apply a single consistent snapshot. Absent ⇒ legacy behavior (full-off when displayOn=false).",
+      "properties": {
+        "enabled": {
+          "description": "Master toggle. false ⇒ leave devices at their normal brightness.",
+          "type": "boolean"
+        },
+        "level": {
+          "description": "Minimum-brightness percent (1-100). Ignored when mode='off'.",
+          "type": "number"
+        },
+        "mode": {
+          "description": "'off' ⇒ brightness 0; 'min' ⇒ dim to `level`.",
+          "enum": [
+            "off",
+            "min"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled",
+        "mode",
+        "level"
+      ],
+      "type": "object"
+    },
     "DisplayStateEvent": {
       "additionalProperties": false,
       "properties": {
+        "dim": {
+          "$ref": "#/definitions/DisplayDimInstruction",
+          "description": "How to dim on sleep. Absent ⇒ legacy full-off."
+        },
         "displayOn": {
           "type": "boolean"
         },
@@ -836,6 +869,12 @@
         "projectName": {
           "type": "string"
         },
+        "question": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
         "startedAt": {
           "type": "string"
         },
@@ -1007,6 +1046,10 @@
           "type": "string"
         },
         "remoteUrl": {
+          "type": "string"
+        },
+        "requestId": {
+          "description": "Set when the focused session has a gated PreToolUse permission pending device approval — clients reply with `permission_decision { requestId }` instead of `select_option`. See bridge/src/permission-resolver.ts.",
           "type": "string"
         },
         "sessionId": {

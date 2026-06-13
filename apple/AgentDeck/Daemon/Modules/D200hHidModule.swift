@@ -132,6 +132,15 @@ final class D200hHidModule: DeviceModule, @unchecked Sendable {
     private var managerOpened = false
     private var lastStateHash = ""
     private var displaySuppressed = false
+    /// Resolved dim instruction from the latest `display_state` event, retained
+    /// so `initializeDevice()` (reconnect while asleep) brings the device up at
+    /// the configured dim level instead of a hardcoded 0.
+    private var dimEnabled = true
+    private var dimMode = "off"
+    private var dimLevel = 10
+    /// Last applied "displayOn|enabled|mode|level" signature. Bypasses the
+    /// `displaySuppressed` dedup so a live slider change while asleep re-applies.
+    private var lastDimSignature = ""
     /// Set true at the very top of `stop()` so any in-flight or post-cancel
     /// reactive write path (heartbeat tick, broadcast updateDisplay, button
     /// press flash, label-style sync) skips before it can paint over the
@@ -337,30 +346,49 @@ final class D200hHidModule: DeviceModule, @unchecked Sendable {
             updateDisplay()
         case "display_state":
             let displayOn = event["displayOn"] as? Bool ?? true
-            applyDisplayState(displayOn: displayOn)
+            applyDisplayState(displayOn: displayOn, dim: event["dim"] as? [String: Any])
         default: break
         }
     }
 
-    private func applyDisplayState(displayOn: Bool) {
-        let shouldSuppress = !displayOn
-        guard shouldSuppress != displaySuppressed else { return }
+    private func applyDisplayState(displayOn: Bool, dim: [String: Any]?) {
+        // Resolve the dim instruction (absent ⇒ legacy enabled/full-off). Retain
+        // it so initializeDevice() can honor it on a reconnect-while-asleep.
+        dimEnabled = dim?["enabled"] as? Bool ?? true
+        dimMode = (dim?["mode"] as? String) == "min" ? "min" : "off"
+        dimLevel = max(1, min(100, dim?["level"] as? Int ?? 10))
+        let signature = "\(displayOn)|\(dimEnabled)|\(dimMode)|\(dimLevel)"
+
+        // Suppress (dim) only when the display is off AND dimming is enabled.
+        let shouldSuppress = !displayOn && dimEnabled
+
+        // Skip only when neither the suppress state nor the dim instruction
+        // changed. A live slider move while asleep keeps displaySuppressed true
+        // but changes the signature, so we must not early-return on it alone.
+        if shouldSuppress == displaySuppressed && signature == lastDimSignature { return }
+        let wasSuppressed = displaySuppressed
         displaySuppressed = shouldSuppress
+        lastDimSignature = signature
 
         guard connected, managerOpened else {
-            debugLog("display_state=\(displayOn) deferred (not connected)")
+            debugLog("display_state=\(displayOn) dim=\(signature) deferred (not connected)")
             return
         }
 
         if shouldSuppress {
-            writePacket(buildBrightnessPacket(0))
-            DaemonLogger.shared.debug("D200H", "Display sleep → brightness 0")
+            let target = dimMode == "off" ? 0 : dimLevel
+            writePacket(buildBrightnessPacket(target))
+            DaemonLogger.shared.debug("D200H", "Display sleep → brightness \(target)")
         } else {
             writePacket(buildBrightnessPacket(100))
-            lastStateHash = ""
-            lastFullSlots = []
-            updateDisplay()
-            DaemonLogger.shared.debug("D200H", "Display wake → brightness 100 + full refresh")
+            // Full refresh only on a real un-suppress transition (waking from a
+            // dimmed state), not when we were already lit.
+            if wasSuppressed {
+                lastStateHash = ""
+                lastFullSlots = []
+                updateDisplay()
+            }
+            DaemonLogger.shared.debug("D200H", "Display wake → brightness 100")
         }
     }
 
@@ -548,7 +576,12 @@ final class D200hHidModule: DeviceModule, @unchecked Sendable {
     private func initializeDevice() {
         // Respect host-display state at (re)connect — if the Mac monitor is off or
         // locked, bring the device up dim so we don't flash the dashboard.
-        let initialBrightness = displaySuppressed ? 0 : 100
+        let initialBrightness: Int
+        if displaySuppressed {
+            initialBrightness = dimMode == "off" ? 0 : dimLevel
+        } else {
+            initialBrightness = 100
+        }
         writePacket(buildBrightnessPacket(initialBrightness))
         syncLabelStyleIfNeeded(force: true)
 

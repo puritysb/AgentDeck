@@ -355,6 +355,50 @@ describe('OutputParser', () => {
       expect(events[0].promptType).toBe('yes_no');
     });
 
+    // === Question extraction (Gap 2) ===
+
+    it('extracts the multi-line question header above yes/no/always options', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'permission_prompt');
+
+      p.feed('Do you want to proceed?\n  ❯ Yes, allow once\n    No, deny\n    Always allow\n');
+      expect(events).toHaveLength(1);
+      expect(events[0].question).toBe('Do you want to proceed?');
+    });
+
+    it('extracts the question from a box-framed permission prompt', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'permission_prompt');
+
+      p.feed(
+        '╭─────╮\n' +
+        '│ Allow Bash to run this command? │\n' +
+        '│ ❯ Yes, allow once │\n' +
+        '│   No, deny │\n' +
+        '│   Always allow │\n',
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0].question).toBe('Allow Bash to run this command?');
+    });
+
+    it('extracts the inline question from the (Y)es/(N)o line', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'permission_prompt');
+
+      p.feed('Allow Bash to run this command? (Y)es/(N)o\n');
+      expect(events[0].question).toBe('Allow Bash to run this command?');
+    });
+
+    it('does not mistake box-drawing or footer chrome for a question', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'permission_prompt');
+
+      // No question header — only a separator line above the options.
+      p.feed('────────\n  ❯ Yes, allow once\n    No, deny\n    Always allow\n');
+      expect(events).toHaveLength(1);
+      expect(events[0].question).toBeUndefined();
+    });
+
     it('suppresses false idle from user prompt echo after permission (interactive cooldown)', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);

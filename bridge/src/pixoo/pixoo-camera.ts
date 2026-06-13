@@ -11,7 +11,9 @@
  *   3. Scaled creatures → output buffer (high-detail grid, camera-aware sizing)
  */
 
-const W = 64;
+export const WORLD_SIZE = 96;
+export const ACTIVE_SIZE = 64;
+const PAD = (WORLD_SIZE - ACTIVE_SIZE) / (2 * ACTIVE_SIZE); // 0.25
 
 // ===== Types =====
 
@@ -19,6 +21,7 @@ export interface Camera {
   cx: number;   // center X in normalized world (0~1)
   cy: number;   // center Y in normalized world (0~1)
   zoom: number; // 1.0 = full view, 2.0 = 2× magnification
+  width?: number; // target resolution width (e.g., 32 or 64)
 }
 
 export const CAMERA_WIDE: Camera = { cx: 0.5, cy: 0.5, zoom: 1.0 };
@@ -45,19 +48,21 @@ export const ZONES: Record<string, CameraZone> = {
 
 // ===== Coordinate Transforms =====
 
-/** World (0~1) → screen pixel (0~63). */
+/** World (0~1) → screen pixel (0~W-1). */
 export function worldToScreen(wx: number, wy: number, cam: Camera): [number, number] {
+  const w = cam.width ?? 64;
   return [
-    (wx - cam.cx) * W * cam.zoom + W / 2,
-    (wy - cam.cy) * W * cam.zoom + W / 2,
+    (wx - cam.cx) * w * cam.zoom + w / 2,
+    (wy - cam.cy) * w * cam.zoom + w / 2,
   ];
 }
 
 /** Screen pixel → world (0~1). */
 export function screenToWorld(sx: number, sy: number, cam: Camera): [number, number] {
+  const w = cam.width ?? 64;
   return [
-    (sx - W / 2) / (W * cam.zoom) + cam.cx,
-    (sy - W / 2) / (W * cam.zoom) + cam.cy,
+    (sx - w / 2) / (w * cam.zoom) + cam.cx,
+    (sy - w / 2) / (w * cam.zoom) + cam.cy,
   ];
 }
 
@@ -70,10 +75,19 @@ export function isVisible(wx: number, wy: number, cam: Camera, padding = 0.05): 
 /** Clamp camera so the viewport stays within world bounds. */
 export function clampCamera(cam: Camera): Camera {
   const halfView = 0.5 / cam.zoom;
+  const minVal = -PAD + halfView;
+  const maxVal = 1 + PAD - halfView;
+
+  const minX = Math.max(0, minVal);
+  const maxX = Math.min(1, maxVal);
+  const minY = Math.max(0, minVal);
+  const maxY = Math.min(1, maxVal);
+
   return {
-    cx: Math.max(halfView, Math.min(1 - halfView, cam.cx)),
-    cy: Math.max(halfView, Math.min(1 - halfView, cam.cy)),
+    cx: minX <= maxX ? Math.max(minX, Math.min(maxX, cam.cx)) : 0.5,
+    cy: minY <= maxY ? Math.max(minY, Math.min(maxY, cam.cy)) : 0.5,
     zoom: cam.zoom,
+    width: cam.width,
   };
 }
 
@@ -84,6 +98,7 @@ export function lerpCamera(a: Camera, b: Camera, t: number): Camera {
     cx: a.cx + (b.cx - a.cx) * s,
     cy: a.cy + (b.cy - a.cy) * s,
     zoom: a.zoom + (b.zoom - a.zoom) * s,
+    width: b.width ?? a.width,
   };
 }
 
@@ -96,28 +111,31 @@ export function easeInOut(t: number): number {
 // ===== Blit: world buffer → output with camera transform =====
 
 /**
- * Crop + nearest-neighbor scale from a 64×64 world buffer into a 64×64 output.
- * At zoom 1.0: 1:1 copy.  At zoom 2.0: center 32×32 upscaled to fill output.
+ * Crop + nearest-neighbor scale from a 96×96 world buffer into a w×w output.
  */
 export function blitWithCamera(world: Uint8Array, output: Uint8Array, cam: Camera): void {
-  const cxPx = cam.cx * W;
-  const cyPx = cam.cy * W;
-  const viewSize = W / cam.zoom;
-  const left = cxPx - viewSize / 2;
-  const top = cyPx - viewSize / 2;
+  const w = cam.width ?? 64;
 
-  for (let sy = 0; sy < W; sy++) {
-    for (let sx = 0; sx < W; sx++) {
-      const wx = Math.floor(left + sx / cam.zoom);
-      const wy = Math.floor(top + sy / cam.zoom);
-      const dstIdx = (sy * W + sx) * 3;
-      if (wx >= 0 && wx < W && wy >= 0 && wy < W) {
-        const srcIdx = (wy * W + wx) * 3;
-        output[dstIdx] = world[srcIdx];
-        output[dstIdx + 1] = world[srcIdx + 1];
-        output[dstIdx + 2] = world[srcIdx + 2];
-      }
-      // out-of-bounds stays black (Uint8Array zero-init)
+  for (let sy = 0; sy < w; sy++) {
+    for (let sx = 0; sx < w; sx++) {
+      // Convert screen coordinate to normalized active region coordinate
+      const nx = (sx - w / 2) / (w * cam.zoom) + cam.cx;
+      const ny = (sy - w / 2) / (w * cam.zoom) + cam.cy;
+
+      // Convert normalized active region coordinate to world buffer index (centered)
+      const wx = Math.floor((WORLD_SIZE - ACTIVE_SIZE) / 2 + nx * ACTIVE_SIZE);
+      const wy = Math.floor((WORLD_SIZE - ACTIVE_SIZE) / 2 + ny * ACTIVE_SIZE);
+
+      const dstIdx = (sy * w + sx) * 3;
+
+      // Clamp coordinates to world boundaries (0..95) to prevent out-of-bounds access
+      const clampWx = Math.max(0, Math.min(WORLD_SIZE - 1, wx));
+      const clampWy = Math.max(0, Math.min(WORLD_SIZE - 1, wy));
+
+      const srcIdx = (clampWy * WORLD_SIZE + clampWx) * 3;
+      output[dstIdx] = world[srcIdx];
+      output[dstIdx + 1] = world[srcIdx + 1];
+      output[dstIdx + 2] = world[srcIdx + 2];
     }
   }
 }

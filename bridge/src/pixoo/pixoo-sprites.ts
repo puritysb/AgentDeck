@@ -36,110 +36,203 @@ const LEFT_LEG = 5;
 const RIGHT_LEG = 6;
 const ANTENNA = 7;
 
-// ===== Octopus 13×13 — Pixoo64 LED pixel art (square pixels, no PIXEL_ASPECT) =====
-//
-// Designed for LED matrix: solid filled pixels, eyes as negative space (black).
-// No outline needed — LED pixel glow provides natural edge definition.
-// At zoom 3.2 with cellSize = zoom/3 ≈ 1.07, sprite ≈ 14×14 screen pixels.
-//
-export const OCTOPUS_GRID: number[][] = [
-  [0,0,1,1,1,1,1,1,1,1,1,0,0],  // flat top (9) — angular
-  [0,1,1,1,1,1,1,1,1,1,1,1,0],  // (11)
-  [0,1,1,1,1,1,1,1,1,1,1,1,0],  // (11)
-  [0,1,1,1,2,1,1,1,2,1,1,1,0],  // eyes top — col 4,8 (11)
-  [0,1,1,1,2,1,1,1,2,1,1,1,0],  // eyes bottom — 2px vertical (11)
-  [3,1,1,1,1,1,1,1,1,1,1,1,4],  // arms start + body (13)
-  [3,3,1,1,1,1,1,1,1,1,1,4,4],  // arms thick (13) — 2 rows, 2-3px wide
-  [3,3,1,1,1,1,1,1,1,1,1,4,4],  // arms continue (13)
-  [0,0,1,1,1,1,1,1,1,1,1,0,0],  // narrowing (9)
-  [0,0,1,1,1,1,1,1,1,1,1,0,0],  // (9)
-  [0,0,5,0,5,0,1,0,6,0,6,0,0],  // tentacles + center
-  [0,0,5,0,5,0,0,0,6,0,6,0,0],  // tentacles
-  [0,0,5,0,0,0,0,0,0,0,6,0,0],  // outer tentacles only
+// ===== Octopus HD 24×24 — Claude Code mascot aligned with SVG viewBox =====
+export const OCTOPUS_GRID_HD: number[][] = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,1,1,1,2,2,1,1,1,1,1,1,1,1,2,2,1,1,1,0,0,0],
+  [0,0,0,1,1,1,2,2,1,1,1,1,1,1,1,1,2,2,1,1,1,0,0,0],
+  [0,0,0,1,1,1,2,2,1,1,1,1,1,1,1,1,2,2,1,1,1,0,0,0],
+  [3,3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,4,4],
+  [3,3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,4,4],
+  [3,3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,4,4],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,0,5,5,0,0,5,5,0,0,0,0,6,6,0,0,6,6,0,0,0,0],
+  [0,0,0,0,5,5,0,0,5,5,0,0,0,0,6,6,0,0,6,6,0,0,0,0],
+  [0,0,0,0,5,5,0,0,5,5,0,0,0,0,6,6,0,0,6,6,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 ];
-const OCTO_COLS = 13;
-const OCTO_ROWS = 13;
+const OCTO_HD_COLS = 24;
+const OCTO_HD_ROWS = 24;
+
+// ===== Octopus MD 14×13 — Claude Code boxy mascot =====
+export const OCTOPUS_GRID_MD: number[][] = [
+  [0,1,1,1,1,1,1,1,1,1,1,1,1,0],  // Flat top (12)
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1],  // (14)
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1],  // (14)
+  [1,1,2,2,1,1,1,1,1,1,2,2,1,1],  // Wide eye holes (2px)
+  [1,1,2,2,1,1,1,1,1,1,2,2,1,1],  // Eye holes bottom
+  [3,3,1,1,1,1,1,1,1,1,1,1,4,4],  // Arms + body (14)
+  [3,3,1,1,1,1,1,1,1,1,1,1,4,4],  // Arms + body (14)
+  [3,3,1,1,1,1,1,1,1,1,1,1,4,4],  // Arms + body (14)
+  [0,1,1,1,1,1,1,1,1,1,1,1,1,0],  // Slightly tapered waist (12)
+  [0,1,1,1,1,1,1,1,1,1,1,1,1,0],  // (12)
+  [0,5,5,0,5,5,0,0,6,6,0,6,6,0],  // Thick 2px legs for distortion-free downscaling
+  [0,5,5,0,5,5,0,0,6,6,0,6,6,0],
+  [0,5,5,0,0,0,0,0,0,0,0,6,6,0]
+];
+const OCTO_GRID_MD_COLS = 14;
+const OCTO_GRID_MD_ROWS = 13;
+
+export const OCTOPUS_GRID = OCTOPUS_GRID_HD; // alias for compatibility
+const OCTO_COLS = OCTO_HD_COLS;
+const OCTO_ROWS = OCTO_HD_ROWS;
+
 /** World width of octopus in normalized coords. */
 export const OCTO_WORLD_W = 7 / 64;
 
 // ===== Octopus LOD 7×7 — chunky grid for zoom < 1.3 =====
-const OCTOPUS_LOD: number[][] = [
-  [0,1,1,1,1,1,0],  // flat top (5) — angular
-  [1,1,1,1,1,1,1],  // full width (7)
-  [1,1,2,1,2,1,1],  // eyes (7)
-  [1,1,1,1,1,1,1],  // body (7)
-  [0,1,1,1,1,1,0],  // waist (5)
-  [0,0,5,1,6,0,0],  // tentacles + center
-  [0,0,5,0,6,0,0],  // tentacle tips
+export const OCTOPUS_LOD: number[][] = [
+  [0,1,1,1,1,1,0],
+  [1,1,1,1,1,1,1],
+  [1,2,2,1,2,2,1],  // Bold eye holes
+  [3,1,1,1,1,1,4],  // Arms + body
+  [0,1,1,1,1,1,0],
+  [0,5,5,1,6,6,0],  // Thick limbs
+  [0,5,0,0,0,6,0],
 ];
 const OCTO_LOD_COLS = 7;
 const OCTO_LOD_ROWS = 7;
 
-// ===== Crayfish 12×8 — front-facing, matches OpenClaw SVG =====
-//
-// OpenClaw SVG: rounded body, compact side claws, antennae from top,
-// dark eyes with teal (#00e5cc) highlights, red gradient body.
-// Body shape: oval (narrow top → wide middle → narrow bottom).
-//
-export const CRAYFISH_GRID: number[][] = [
-  [0,0,7,0,0,0,0,0,0,7,0,0],  // antennae tips (wide spread)
-  [0,0,0,7,0,0,0,0,7,0,0,0],  // antennae shafts
-  [0,0,0,1,1,1,1,1,1,0,0,0],  // head dome top (6w — rounder)
-  [3,3,1,1,1,1,1,1,1,1,4,4],  // head + claw tips (8w body + 2+2 claws)
-  [0,3,1,1,2,1,1,2,1,1,4,0],  // eyes + claw arms (8w body)
-  [0,0,1,1,1,1,1,1,1,1,0,0],  // thorax widest (8w)
-  [0,0,0,1,1,1,1,1,1,0,0,0],  // abdomen (6w)
-  [0,0,5,0,0,1,1,0,0,6,0,0],  // tail + walking legs
+// ===== Crayfish HD 24×24 — OpenClaw mascot, round full body matching design/brand/openclaw.svg =====
+// Round body, antennae curving to the top corners, two separated side-claw blobs (3/4), two leg
+// stubs (5/6). Eyes are NOT in the grid — drawn as a teal+black overlay at eyeRow/eyeCols below.
+export const CRAYFISH_GRID_HD: number[][] = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,7,7,0,0,0,0,0,0,0,0,7,7,0,0,0,0,0,0],
+  [0,0,0,0,0,7,0,0,0,0,0,0,0,0,0,0,0,0,7,0,0,0,0,0],
+  [0,0,0,0,7,0,0,0,0,0,1,1,1,1,0,0,0,0,0,7,0,0,0,0],
+  [0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0],
+  [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0],
+  [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0], // eyes overlaid at cols 8,14
+  [0,3,3,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,4,4,0],
+  [3,3,3,3,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,4,4,4,4],
+  [3,3,3,3,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,4,4,4,4],
+  [0,3,3,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,4,4,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0],
+  [0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,1,5,5,1,1,1,1,6,6,1,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,5,5,1,1,1,1,6,6,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 ];
-const CF_COLS = 12;
-const CF_ROWS = 8;
-/** World width of crayfish in normalized coords (12 world-pixels / 64). */
+const CF_HD_COLS = 24;
+const CF_HD_ROWS = 24;
+
+// ===== Crayfish MD 12×8 — OpenClaw mascot, round body (eyes overlaid at row 3, cols 4/7) =====
+export const CRAYFISH_GRID_MD: number[][] = [
+  [0,7,0,0,0,0,0,0,0,0,7,0],  // Antennae tips at the corners
+  [0,0,7,0,0,1,1,0,0,7,0,0],  // Antennae + head crown
+  [0,0,0,1,1,1,1,1,1,0,0,0],  // Rounded head dome
+  [0,3,3,1,1,1,1,1,1,4,4,0],  // Claws + body (eyes overlay row 3)
+  [3,3,1,1,1,1,1,1,1,1,4,4],  // Wide claws + body
+  [0,0,1,1,1,1,1,1,1,1,0,0],  // Thorax
+  [0,0,0,1,1,1,1,1,1,0,0,0],  // Lower body
+  [0,0,0,5,5,0,0,6,6,0,0,0]   // Walking legs
+];
+const CF_GRID_MD_COLS = 12;
+const CF_GRID_MD_ROWS = 8;
+
+export const CRAYFISH_GRID = CRAYFISH_GRID_HD; // alias for compatibility
+const CF_COLS = CF_HD_COLS;
+const CF_ROWS = CF_HD_ROWS;
+
+/** World width of crayfish in normalized coords. */
 export const CF_WORLD_W = 12 / 64;
 
-// ===== Crayfish LOD 8×6 — compact for zoom < 1.3 =====
-const CRAYFISH_LOD: number[][] = [
-  [0,7,0,0,0,0,7,0],  // antennae (wider spread)
-  [0,0,1,1,1,1,0,0],  // head dome (4w — rounder)
-  [3,1,1,1,1,1,1,4],  // claws + body (6w — wider oval)
-  [0,1,2,1,1,2,1,0],  // eyes at col 2,5 (spaced for 3×3 rendering)
-  [0,0,1,1,1,1,0,0],  // lower body (4w)
-  [0,5,0,1,1,0,6,0],  // legs + tail
+// ===== Crayfish LOD 8×6 — compact round body (eyes overlaid at row 2, cols 2/5) =====
+export const CRAYFISH_LOD: number[][] = [
+  [0,7,0,0,0,0,7,0],  // Antennae at corners
+  [0,0,1,1,1,1,0,0],  // Head crown
+  [3,3,1,1,1,1,4,4],  // Claws + body (eyes overlay row 2)
+  [0,1,1,1,1,1,1,0],  // Body
+  [0,1,1,1,1,1,1,0],  // Body
+  [0,0,5,0,0,6,0,0],  // Legs
 ];
 const CF_LOD_COLS = 8;
 const CF_LOD_ROWS = 6;
 
-// ===== Jellyfish 13×11 — 6-lobe cloud (matches TUI/Android CloudCreature) =====
-//
-// Codex CLI creature: clover-shaped cloud with >_ terminal prompt marking.
-// Cell types: 0=empty, 1=body, 2=marking(>_), 3=edge(breathe/contract)
-//
-export const JELLYFISH_GRID: number[][] = [
-  [0,0,0,1,1,0,0,1,1,0,0,0,0],  // upper lobe caps
-  [0,0,1,1,1,1,0,1,1,1,1,0,0],  // three top lobes
-  [0,1,1,1,1,1,1,1,1,1,1,1,0],  // upper merge
-  [1,1,1,1,1,1,1,1,1,1,1,1,1],  // widest — side lobes
-  [3,1,1,2,1,1,1,1,1,1,1,1,3],  // > upper stroke + breathe edges
-  [3,1,1,1,2,1,1,1,2,2,2,1,3],  // > point + _ stroke
-  [3,1,1,2,1,1,1,1,1,1,1,1,3],  // > lower stroke
-  [1,1,1,1,1,1,1,1,1,1,1,1,1],  // lower body
-  [0,1,1,1,1,1,1,1,1,1,1,1,0],  // taper
-  [0,0,1,1,1,1,0,1,1,1,1,0,0],  // bottom lobes
-  [0,0,0,1,1,0,0,1,1,0,0,0,0],  // lower lobe caps
+// ===== Jellyfish HD 24×24 — Codex cloud mascot aligned with SVG viewBox =====
+export const JELLYFISH_GRID_HD: number[][] = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0,0,0],
+  [0,0,0,0,0,1,1,1,1,1,1,0,0,1,1,1,1,1,1,0,0,0,0,0],
+  [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0], // prompt `>`
+  [0,0,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,1,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,2,2,1,1,1,1,2,2,2,2,2,2,1,1,1,1,0,0], // prompt `_`
+  [0,0,0,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,1,1,1,0,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,0,0,0,3,3,3,3,3,1,1,1,1,3,3,3,3,3,0,0,0,0,0], // bottom lobes are BREATHE_EDGE
+  [0,0,0,0,0,0,3,3,3,0,0,0,0,0,0,3,3,3,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 ];
-const JF_COLS = 13;
-const JF_ROWS = 11;
+const JF_HD_COLS = 24;
+const JF_HD_ROWS = 24;
+
+// ===== Jellyfish MD 13×11 — Codex mascot =====
+export const JELLYFISH_GRID_MD: number[][] = [
+  [0,0,1,1,1,0,0,0,1,1,1,0,0],  // Distinct clover lobes
+  [0,1,1,1,1,1,0,1,1,1,1,1,0],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [3,1,2,2,1,1,1,1,1,1,1,1,3],  // `>` top stroke (2px thick)
+  [3,1,1,2,2,1,1,2,2,2,2,1,3],  // `>` point + long `_` prompt (4px)
+  [3,1,2,2,1,1,1,1,1,1,1,1,3],  // `>` bottom stroke
+  [1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [0,1,1,1,1,1,0,1,1,1,1,1,0],  // Bottom lobes
+  [0,0,1,1,1,0,0,0,1,1,1,0,0]
+];
+const JF_GRID_MD_COLS = 13;
+const JF_GRID_MD_ROWS = 11;
+
+export const JELLYFISH_GRID = JELLYFISH_GRID_HD; // alias for compatibility
+const JF_COLS = JF_HD_COLS;
+const JF_ROWS = JF_HD_ROWS;
+
 /** World width of jellyfish in normalized coords. */
 export const JF_WORLD_W = 13 / 64;
 
 // ===== Jellyfish LOD 9×7 — compact for zoom < 1.3 =====
-const JELLYFISH_LOD: number[][] = [
-  [0,1,1,0,1,1,0,1,0],  // lobe caps
+export const JELLYFISH_LOD: number[][] = [
+  [0,1,1,0,1,1,0,1,0],
   [1,1,1,1,1,1,1,1,1],
-  [1,1,2,1,1,1,1,1,1],  // > upper
-  [1,1,1,2,1,2,2,2,1],  // > point + _
-  [1,1,2,1,1,1,1,1,1],  // > lower
+  [1,2,2,1,1,1,1,1,1],  // `>` upper stroke (2px)
+  [1,1,2,2,1,2,2,2,1],  // `>` point + `_` prompt (3px)
+  [1,2,2,1,1,1,1,1,1],  // `>` lower stroke
   [1,1,1,1,1,1,1,1,1],
-  [0,1,1,0,1,1,0,1,0],  // lobe caps
+  [0,1,1,0,1,1,0,1,0],
 ];
 const JF_LOD_COLS = 9;
 const JF_LOD_ROWS = 7;
@@ -148,33 +241,117 @@ const JF_LOD_ROWS = 7;
 const MARKING = 2;
 const BREATHE_EDGE = 3;
 
-// ===== OpenCode 10×9 — nested-square logo sprite (simulator SSOT) =====
+// ===== OpenCode HD 24×24 — OpenCode mascot aligned with SVG viewBox =====
+export const OPENCODE_GRID_HD: number[][] = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,8,8,8,8,8,8,8,8,8,8,8,8,8,8,0,0,0,0,0,0],
+  [0,0,0,0,8,8,8,8,8,8,8,8,8,8,8,8,8,8,0,0,0,0,0,0],
+  [0,0,0,0,8,8,0,0,0,0,0,0,0,0,0,0,8,8,0,0,0,0,0,0],
+  [0,0,0,0,8,8,0,0,0,0,0,0,0,0,0,0,8,8,0,0,0,0,0,0],
+  [0,0,0,0,8,8,0,0,0,0,0,0,0,0,0,0,8,8,0,0,0,0,0,0],
+  [0,0,0,0,8,8,0,0,0,0,0,0,0,0,0,0,8,8,0,0,0,0,0,0],
+  [0,0,0,0,8,8,0,0,0,0,9,9,9,9,9,9,8,8,9,9,9,9,9,9],
+  [0,0,0,0,8,8,0,0,0,0,9,9,9,9,9,9,8,8,9,9,9,9,9,9],
+  [0,0,0,0,8,8,0,0,0,0,9,9,9,9,9,9,8,8,9,9,9,9,9,9],
+  [0,0,0,0,8,8,0,0,0,0,9,9,9,9,9,9,8,8,9,9,9,9,9,9],
+  [0,0,0,0,8,8,0,0,0,0,9,9,9,9,9,9,8,8,9,9,9,9,9,9],
+  [0,0,0,0,8,8,0,0,0,0,9,9,9,9,9,9,8,8,9,9,9,9,9,9],
+  [0,0,0,0,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9],
+  [0,0,0,0,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9],
+  [0,0,0,0,0,0,0,0,0,0,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+  [0,0,0,0,0,0,0,0,0,0,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+  [0,0,0,0,0,0,0,0,0,0,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+  [0,0,0,0,0,0,0,0,0,0,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+  [0,0,0,0,0,0,0,0,0,0,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+  [0,0,0,0,0,0,0,0,0,0,9,9,9,9,9,9,9,9,9,9,9,9,9,9],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+const OC_HD_COLS = 24;
+const OC_HD_ROWS = 24;
+
+// ===== OpenCode MD 10×10 — nested-square logo =====
 const OPENCODE_FRAME = 8;
 const OPENCODE_CORE = 9;
-const OPENCODE_GRID: number[][] = [
-  [8,8,8,8,8,8,8,8,8,8],
-  [8,0,0,0,0,0,0,0,0,8],
-  [8,0,9,9,9,9,9,9,0,8],
-  [8,0,9,0,0,0,0,9,0,8],
-  [8,0,9,0,0,0,0,9,0,8],
-  [8,0,9,0,0,0,0,9,0,8],
-  [8,0,9,9,9,9,9,9,0,8],
-  [8,0,0,0,0,0,0,0,0,8],
-  [8,8,8,8,8,8,8,8,8,8],
+export const OPENCODE_GRID_MD: number[][] = [
+  [8,8,8,8,8,8,0,0,0,0],
+  [8,0,0,0,0,8,0,0,0,0],
+  [8,0,0,0,0,8,0,0,0,0],
+  [8,0,0,0,0,8,0,0,0,0],
+  [8,0,0,0,9,8,9,9,9,9],
+  [8,8,8,8,8,8,9,9,9,9],
+  [0,0,0,0,9,9,9,9,9,9],
+  [0,0,0,0,9,9,9,9,9,9],
+  [0,0,0,0,9,9,9,9,9,9],
+  [0,0,0,0,0,0,0,0,0,0],
 ];
-const OC_COLS = 10;
-const OC_ROWS = 9;
+const OC_GRID_MD_COLS = 10;
+const OC_GRID_MD_ROWS = 10;
 
-const OPENCODE_LOD: number[][] = [
-  [8,8,8,8,8,8],
-  [8,0,0,0,0,8],
-  [8,0,9,9,0,8],
-  [8,0,9,9,0,8],
-  [8,0,0,0,0,8],
-  [8,8,8,8,8,8],
+export const OPENCODE_GRID = OPENCODE_GRID_HD; // alias for compatibility
+const OC_COLS = OC_HD_COLS;
+const OC_ROWS = OC_HD_ROWS;
+
+export const OPENCODE_LOD: number[][] = [
+  [8,8,8,8,0,0],
+  [8,0,0,8,0,0],
+  [8,0,9,8,9,9],
+  [8,8,8,8,9,9],
+  [0,0,9,9,9,9],
+  [0,0,9,9,9,9],
 ];
 const OC_LOD_COLS = 6;
 const OC_LOD_ROWS = 6;
+
+// ===== Grid Selection Utility =====
+interface GridSelection {
+  grid: number[][];
+  cols: number;
+  rows: number;
+}
+
+function selectGrid(
+  zoom: number,
+  canvasWidth: number,
+  hd: number[][], hdCols: number, hdRows: number,
+  md: number[][], mdCols: number, mdRows: number,
+  lod: number[][], lodCols: number, lodRows: number,
+): GridSelection {
+  if (canvasWidth <= 32) {
+    if (zoom < 1.3) {
+      return { grid: lod, cols: lodCols, rows: lodRows };
+    } else {
+      // Zoomed-in on a 32px display (iDotMatrix): use the full HD grid, not MD. Now that cell size
+      // is resolution-aware (creatureCellSize), HD fits the 32px frame (~60% width) and keeps the
+      // creature's true silhouette instead of the coarser MD approximation. MD/LOD stay for the
+      // wide (zoom<1.3) shots where the creature is small and detail would just alias.
+      return { grid: hd, cols: hdCols, rows: hdRows };
+    }
+  } else {
+    if (zoom < 1.3) {
+      return { grid: md, cols: mdCols, rows: mdRows };
+    } else {
+      return { grid: hd, cols: hdCols, rows: hdRows };
+    }
+  }
+}
+
+/**
+ * On-screen creature width as a fraction of (zoom × output width), independent of LOD grid.
+ *
+ * A sprite spans `SPRITE_W_FRAC × zoom × w` pixels regardless of which HD/MD/LOD grid is selected
+ * (cellSz = span / cols, so the `cols` term cancels). Multiplying by `w` (32 or 64) is what makes
+ * sizing resolution-aware — at 32px a creature is exactly half the pixels it is at 64px, so it stays
+ * inside the iDotMatrix frame instead of overflowing. 0.1875 reproduces the legacy 64px HD size
+ * (24 cols × zoom×0.5 = 12×zoom px = 0.1875 × zoom × 64). See drawOpenCode for the original pattern.
+ */
+const SPRITE_W_FRAC = 0.1875;
+
+/** Resolution-aware square cell size for a creature sprite. */
+function creatureCellSize(zoom: number, canvasW: number, cols: number): number {
+  return (SPRITE_W_FRAC * zoom * canvasW) / cols;
+}
 
 // ===== Colors — Android-matching darker palette =====
 type RGB = readonly [number, number, number];
@@ -361,13 +538,14 @@ export function getOpenCodePaletteForSession(sessionIndex = 0): OpenCodePalette 
 
 // ===== Pixel Operations =====
 
-/** Set a pixel in the 64×64 RGB buffer. */
+/** Set a pixel in the dynamic RGB buffer. */
 export function setPixel(buf: Uint8Array, x: number, y: number, color: RGB): void {
-  if (x < 0 || x >= 64 || y < 0 || y >= 64) return;
+  const w = Math.sqrt(buf.length / 3);
+  if (x < 0 || x >= w || y < 0 || y >= w) return;
   const ix = Math.round(x);
   const iy = Math.round(y);
-  if (ix < 0 || ix >= 64 || iy < 0 || iy >= 64) return;
-  const idx = (iy * 64 + ix) * 3;
+  if (ix < 0 || ix >= w || iy < 0 || iy >= w) return;
+  const idx = (iy * w + ix) * 3;
   buf[idx] = color[0];
   buf[idx + 1] = color[1];
   buf[idx + 2] = color[2];
@@ -375,10 +553,11 @@ export function setPixel(buf: Uint8Array, x: number, y: number, color: RGB): voi
 
 /** Alpha-blend a pixel onto existing buffer content. */
 export function blendPixel(buf: Uint8Array, x: number, y: number, color: RGB, alpha: number): void {
+  const w = Math.sqrt(buf.length / 3);
   const ix = Math.round(x);
   const iy = Math.round(y);
-  if (ix < 0 || ix >= 64 || iy < 0 || iy >= 64 || alpha <= 0) return;
-  const idx = (iy * 64 + ix) * 3;
+  if (ix < 0 || ix >= w || iy < 0 || iy >= w || alpha <= 0) return;
+  const idx = (iy * w + ix) * 3;
   const a = Math.min(1, alpha);
   const inv = 1 - a;
   buf[idx] = Math.min(255, Math.round(buf[idx] * inv + color[0] * a));
@@ -388,10 +567,11 @@ export function blendPixel(buf: Uint8Array, x: number, y: number, color: RGB, al
 
 /** Additive-blend (glow) a pixel. */
 export function glowPixel(buf: Uint8Array, x: number, y: number, color: RGB, intensity: number): void {
+  const w = Math.sqrt(buf.length / 3);
   const ix = Math.round(x);
   const iy = Math.round(y);
-  if (ix < 0 || ix >= 64 || iy < 0 || iy >= 64 || intensity <= 0) return;
-  const idx = (iy * 64 + ix) * 3;
+  if (ix < 0 || ix >= w || iy < 0 || iy >= w || intensity <= 0) return;
+  const idx = (iy * w + ix) * 3;
   buf[idx] = Math.min(255, buf[idx] + Math.round(color[0] * intensity));
   buf[idx + 1] = Math.min(255, buf[idx + 1] + Math.round(color[1] * intensity));
   buf[idx + 2] = Math.min(255, buf[idx + 2] + Math.round(color[2] * intensity));
@@ -410,13 +590,15 @@ export function fillRect(
 
 /** Fill a scaled cell (variable size rectangle) — edge rounding for correct PIXEL_ASPECT. */
 function fillCell(buf: Uint8Array, x: number, y: number, w: number, h: number, color: RGB): void {
-  const ix = Math.floor(x);
-  const iy = Math.floor(y);
-  const iw = Math.max(1, Math.round(ix + w) - ix);  // right edge - left edge
-  const ih = Math.max(1, Math.round(iy + h) - iy);
+  const ix1 = Math.round(x);
+  const iy1 = Math.round(y);
+  const ix2 = Math.round(x + w);
+  const iy2 = Math.round(y + h);
+  const iw = Math.max(1, ix2 - ix1);
+  const ih = Math.max(1, iy2 - iy1);
   for (let dy = 0; dy < ih; dy++) {
     for (let dx = 0; dx < iw; dx++) {
-      setPixel(buf, ix + dx, iy + dy, color);
+      setPixel(buf, ix1 + dx, iy1 + dy, color);
     }
   }
 }
@@ -426,20 +608,23 @@ function fillCellTracked(
   buf: Uint8Array, x: number, y: number, w: number, h: number,
   color: RGB, pixels: Set<number>,
 ): void {
-  const ix = Math.floor(x);
-  const iy = Math.floor(y);
-  const iw = Math.max(1, Math.round(ix + w) - ix);
-  const ih = Math.max(1, Math.round(iy + h) - iy);
+  const canvasW = Math.sqrt(buf.length / 3);
+  const ix1 = Math.round(x);
+  const iy1 = Math.round(y);
+  const ix2 = Math.round(x + w);
+  const iy2 = Math.round(y + h);
+  const iw = Math.max(1, ix2 - ix1);
+  const ih = Math.max(1, iy2 - iy1);
   for (let dy = 0; dy < ih; dy++) {
     for (let dx = 0; dx < iw; dx++) {
-      const px = ix + dx;
-      const py = iy + dy;
-      if (px >= 0 && px < 64 && py >= 0 && py < 64) {
-        const idx = (py * 64 + px) * 3;
+      const px = ix1 + dx;
+      const py = iy1 + dy;
+      if (px >= 0 && px < canvasW && py >= 0 && py < canvasW) {
+        const idx = (py * canvasW + px) * 3;
         buf[idx] = color[0];
         buf[idx + 1] = color[1];
         buf[idx + 2] = color[2];
-        pixels.add(py * 64 + px);
+        pixels.add(py * canvasW + px);
       }
     }
   }
@@ -447,13 +632,15 @@ function fillCellTracked(
 
 /** Glow-fill a scaled cell — edge rounding. */
 function glowCell(buf: Uint8Array, x: number, y: number, w: number, h: number, color: RGB, intensity: number): void {
-  const ix = Math.floor(x);
-  const iy = Math.floor(y);
-  const iw = Math.max(1, Math.round(ix + w) - ix);
-  const ih = Math.max(1, Math.round(iy + h) - iy);
+  const ix1 = Math.round(x);
+  const iy1 = Math.round(y);
+  const ix2 = Math.round(x + w);
+  const iy2 = Math.round(y + h);
+  const iw = Math.max(1, ix2 - ix1);
+  const ih = Math.max(1, iy2 - iy1);
   for (let dy = 0; dy < ih; dy++) {
     for (let dx = 0; dx < iw; dx++) {
-      glowPixel(buf, ix + dx, iy + dy, color, intensity);
+      glowPixel(buf, ix1 + dx, iy1 + dy, color, intensity);
     }
   }
 }
@@ -503,6 +690,7 @@ function drawCreatureOutline(
   bodyColor: RGB,
   alpha = 0.8,
 ): void {
+  const w = Math.sqrt(buf.length / 3);
   const outlineColor: RGB = [
     Math.round(bodyColor[0] * 0.5),
     Math.round(bodyColor[1] * 0.5),
@@ -511,15 +699,15 @@ function drawCreatureOutline(
 
   const neighbors = [-1, 0, 1];
   for (const key of creaturePixels) {
-    const cx = key % 64;
-    const cy = Math.floor(key / 64);
+    const cx = key % w;
+    const cy = Math.floor(key / w);
     for (const ndx of neighbors) {
       for (const ndy of neighbors) {
         if (ndx === 0 && ndy === 0) continue;
         const nx = cx + ndx;
         const ny = cy + ndy;
-        if (nx < 0 || nx >= 64 || ny < 0 || ny >= 64) continue;
-        if (!creaturePixels.has(ny * 64 + nx)) {
+        if (nx < 0 || nx >= w || ny < 0 || ny >= w) continue;
+        if (!creaturePixels.has(ny * w + nx)) {
           blendPixel(buf, nx, ny, outlineColor, alpha);
         }
       }
@@ -600,24 +788,31 @@ export function drawOctopus(
   if (!isVisible(worldX, worldY, cam, 0.15)) return;
 
   const [scx, scy] = worldToScreen(worldX, worldY, cam);
+  const w = Math.sqrt(buf.length / 3);
 
   // LOD selection
-  const useLOD = cam.zoom < 1.3;
-  const grid = useLOD ? OCTOPUS_LOD : OCTOPUS_GRID;
-  const cols = useLOD ? OCTO_LOD_COLS : OCTO_COLS;
-  const rows = useLOD ? OCTO_LOD_ROWS : OCTO_ROWS;
+  const select = selectGrid(
+    cam.zoom, w,
+    OCTOPUS_GRID_HD, OCTO_HD_COLS, OCTO_HD_ROWS,
+    OCTOPUS_GRID_MD, OCTO_GRID_MD_COLS, OCTO_GRID_MD_ROWS,
+    OCTOPUS_LOD, OCTO_LOD_COLS, OCTO_LOD_ROWS
+  );
+  const grid = select.grid;
+  const cols = select.cols;
+  const rows = select.rows;
 
-  // Fixed 1px per cell — LED pixel art, no fractional sizes, no tearing
-  const cellSz = 1;
-  const spriteW = cols;
-  const spriteH = rows;
+  // Resolution-aware cell size — sprite spans a fixed fraction of (zoom × output width),
+  // so it scales down on the 32px iDotMatrix instead of overflowing the frame.
+  const cellSz = creatureCellSize(cam.zoom, w, cols);
+  const spriteW = cols * cellSz;
+  const spriteH = rows * cellSz;
 
-  const baseX = Math.round(scx - spriteW / 2);
-  const baseY = Math.round(scy - spriteH / 2);
+  const baseX = scx - spriteW / 2;
+  const baseY = scy - spriteH / 2;
 
-  // Working: gentle vertical bob (integer pixels only)
+  // Working: gentle vertical bob (scaled by cellSz)
   const breathPx = state === 'working'
-    ? Math.round(Math.sin(animFrame * 0.3) * 1.5)
+    ? Math.round(Math.sin(animFrame * 0.3) * cellSz * 1.5)
     : 0;
 
   // Body color by state
@@ -625,7 +820,10 @@ export function drawOctopus(
     : state === 'sleeping' ? palette.sleeping
       : palette.body;
 
-  // Draw all cells — solid fill, no outline
+  // Track drawn pixels for outline generation
+  const trackedPixels = new Set<number>();
+
+  // Draw all cells
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const cellType = grid[row][col];
@@ -646,22 +844,25 @@ export function drawOctopus(
       // Tentacle animation only — arms stay fixed (attached to body)
       let dx = 0;
       if (state !== 'sleeping' && (cellType === LEFT_LEG || cellType === RIGHT_LEG)) {
-        dx = Math.round(Math.sin(animFrame * 0.2 + col * 1.8) * 1.5);
+        dx = Math.round(Math.sin(animFrame * 0.2 + col * 1.8) * cellSz * 1.5);
       }
 
-      fillCell(buf,
+      fillCellTracked(buf,
         baseX + col * cellSz + dx,
         baseY + row * cellSz + breathPx,
-        cellSz, cellSz, color,
+        cellSz, cellSz, color, trackedPixels
       );
     }
   }
+
+  // Draw outline to separate octopus from blue water (matches crayfish style)
+  drawCreatureOutline(buf, trackedPixels, bodyColor, 0.8);
 
   // "?" bubble when asking
   if (state === 'asking') {
     const bobY = Math.round(Math.sin(animFrame * 0.25));
     const bx = scx;
-    const by = baseY - 3 + bobY;
+    const by = baseY - Math.round(cellSz * 3) + bobY;
     const r = 3;
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -681,7 +882,7 @@ export function drawOctopus(
   // Starburst particles when working
   if (state === 'working') {
     const sparkPhase = animFrame * 0.35;
-    const dist = 5 + Math.sin(animFrame * 0.25) * 3;
+    const dist = (5 + Math.sin(animFrame * 0.25) * 3) * cellSz;
     for (let i = 0; i < 6; i++) {
       const angle = sparkPhase + (i * Math.PI * 2 / 6);
       const sx = scx + Math.cos(angle) * dist;
@@ -709,29 +910,35 @@ export function drawJellyfish(
   if (!isVisible(worldX, worldY, cam, 0.15)) return;
 
   const [scx, scy] = worldToScreen(worldX, worldY, cam);
+  const w = Math.sqrt(buf.length / 3);
 
   // LOD selection
-  const useLOD = cam.zoom < 1.3;
-  const grid = useLOD ? JELLYFISH_LOD : JELLYFISH_GRID;
-  const cols = useLOD ? JF_LOD_COLS : JF_COLS;
-  const rows = useLOD ? JF_LOD_ROWS : JF_ROWS;
+  const select = selectGrid(
+    cam.zoom, w,
+    JELLYFISH_GRID_HD, JF_HD_COLS, JF_HD_ROWS,
+    JELLYFISH_GRID_MD, JF_GRID_MD_COLS, JF_GRID_MD_ROWS,
+    JELLYFISH_LOD, JF_LOD_COLS, JF_LOD_ROWS
+  );
+  const grid = select.grid;
+  const cols = select.cols;
+  const rows = select.rows;
 
-  // Fixed 1px per cell — LED pixel art
-  const cellSz = 1;
-  const spriteW = cols;
-  const spriteH = rows;
+  // Resolution-aware cell size (see creatureCellSize) — scales with output width.
+  const cellSz = creatureCellSize(cam.zoom, w, cols);
+  const spriteW = cols * cellSz;
+  const spriteH = rows * cellSz;
 
-  const baseX = Math.round(scx - spriteW / 2);
-  const baseY = Math.round(scy - spriteH / 2);
+  const baseX = scx - spriteW / 2;
+  const baseY = scy - spriteH / 2;
 
   // Bell pulse: contraction/expansion
   const pulseSpeed = state === 'working' ? 0.25 : 0.06;
   const pulsePhase = Math.sin(animFrame * pulseSpeed);
   const contracting = pulsePhase < 0;
 
-  // Vertical bob when working
+  // Vertical bob when working (scaled by cellSz)
   const breathPx = state === 'working'
-    ? Math.round(Math.sin(animFrame * 0.3) * 1.5)
+    ? Math.round(Math.sin(animFrame * 0.3) * cellSz * 1.5)
     : 0;
 
   // Bioluminescent body color pulse when working
@@ -792,7 +999,7 @@ export function drawJellyfish(
   if (state === 'asking') {
     const bobY = Math.round(Math.sin(animFrame * 0.25));
     const bx = scx;
-    const by = baseY - 3 + bobY;
+    const by = baseY - Math.round(cellSz * 3) + bobY;
     const r = 3;
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -812,7 +1019,7 @@ export function drawJellyfish(
   // Orbiting glow particles when working (bioluminescent)
   if (state === 'working') {
     const orbitPhase = animFrame * 0.2;
-    const dist = 5 + Math.sin(animFrame * 0.15) * 2;
+    const dist = (5 + Math.sin(animFrame * 0.15) * 2) * cellSz;
     for (let i = 0; i < 4; i++) {
       const angle = orbitPhase + (i * Math.PI * 2 / 4);
       const sx = scx + Math.cos(angle) * dist;
@@ -830,23 +1037,28 @@ export function drawOpenCode(
   worldY: number,
   state: 'idle' | 'working' | 'sleeping' | 'asking',
   animFrame: number,
-  camera: { cx: number; cy: number; zoom: number },
+  camera: Camera,
   palette: OpenCodePalette,
 ): void {
-  const scx = Math.round(((worldX - camera.cx) * camera.zoom + 0.5) * 64);
-  const scy = Math.round(((worldY - camera.cy) * camera.zoom + 0.5) * 64);
+  const w = Math.sqrt(buf.length / 3);
+  const [scx, scy] = worldToScreen(worldX, worldY, camera);
   const worldW = 10 / 64;
-  const pixW = Math.max(1, Math.round(worldW * camera.zoom * 64 / OC_COLS));
+  const pixW = Math.max(1, Math.round(worldW * camera.zoom * w / OC_GRID_MD_COLS));
   const pixH = pixW;
 
   const breathPx = state === 'working'
     ? Math.round(Math.sin(animFrame * 0.3) * 1.5)
     : state === 'idle' ? Math.round(Math.sin(animFrame * 0.08) * 0.7) : 0;
 
-  const useLod = camera.zoom < 1.3;
-  const grid = useLod ? OPENCODE_LOD : OPENCODE_GRID;
-  const gc = useLod ? OC_LOD_COLS : OC_COLS;
-  const gr = useLod ? OC_LOD_ROWS : OC_ROWS;
+  const select = selectGrid(
+    camera.zoom, w,
+    OPENCODE_GRID_HD, OC_HD_COLS, OC_HD_ROWS,
+    OPENCODE_GRID_MD, OC_GRID_MD_COLS, OC_GRID_MD_ROWS,
+    OPENCODE_LOD, OC_LOD_COLS, OC_LOD_ROWS
+  );
+  const grid = select.grid;
+  const gc = select.cols;
+  const gr = select.rows;
 
   const baseX = scx - Math.round((gc * pixW) / 2);
   const baseY = scy + breathPx - Math.round((gr * pixH) / 2);
@@ -897,16 +1109,23 @@ export function drawCrayfish(
   if (!isVisible(worldX, worldY, cam, 0.15)) return;
 
   const [scx, scy] = worldToScreen(worldX, worldY, cam);
+  const w = Math.sqrt(buf.length / 3);
 
   // LOD selection — matches octopus threshold
-  const useLOD = cam.zoom < 1.3;
-  const grid = useLOD ? CRAYFISH_LOD : CRAYFISH_GRID;
-  const cols = useLOD ? CF_LOD_COLS : CF_COLS;
-  const rows = useLOD ? CF_LOD_ROWS : CF_ROWS;
+  const select = selectGrid(
+    cam.zoom, w,
+    CRAYFISH_GRID_HD, CF_HD_COLS, CF_HD_ROWS,
+    CRAYFISH_GRID_MD, CF_GRID_MD_COLS, CF_GRID_MD_ROWS,
+    CRAYFISH_LOD, CF_LOD_COLS, CF_LOD_ROWS
+  );
+  const grid = select.grid;
+  const cols = select.cols;
+  const rows = select.rows;
 
-  // Cell size: detail cellW = Z, LOD cellW = 12*Z/8 = 1.5*Z (bigger cells for fewer cols)
-  const cellW = useLOD ? cam.zoom * 1.5 : cam.zoom;
-  const cellH = cellW * 1.5;
+  // Resolution-aware square cells (see creatureCellSize). Square (cellH = cellW) — the old
+  // cellH = cellW*1.5 stretched the round OpenClaw body into a tall pointed shape.
+  const cellW = creatureCellSize(cam.zoom, w, cols);
+  const cellH = cellW;
   const spriteW = cols * cellW;
   const spriteH = rows * cellH;
   const baseX = scx - spriteW / 2;
@@ -927,7 +1146,7 @@ export function drawCrayfish(
   // 1. Glow halo (before creature — stronger for LOD)
   const glowRx = spriteW / 2 + 2;
   const glowRy = spriteH / 2 + 2;
-  drawCreatureGlow(buf, scx, scy + breathPx, glowRx, glowRy, COLORS.crayfishGlow, 0.12, useLOD);
+  drawCreatureGlow(buf, scx, scy + breathPx, glowRx, glowRy, COLORS.crayfishGlow, 0.12, cols === 8);
 
   // 2. Draw cells with pixel tracking
   const trackedPixels = new Set<number>();
@@ -947,7 +1166,7 @@ export function drawCrayfish(
           const spd = routing ? 0.35 : 0.15;
           const wiggle = Math.sin(animFrame * spd + col * 3) * cellW * 1.5;
           // Random-ish twitch: sharp spike every ~30 frames
-          const twitch = ((animFrame + col * 17) % 60) < 4 ? cellW * 2 * (col < 6 ? -1 : 1) : 0;
+          const twitch = ((animFrame + col * 17) % 60) < 4 ? cellW * 2 * (col < cols / 2 ? -1 : 1) : 0;
           dx = ensureMinAmplitude(wiggle + twitch, 1);
         }
 
@@ -990,12 +1209,12 @@ export function drawCrayfish(
 
   // 3. Colored outline — moderate alpha for LOD
   const bodyColor = routing ? COLORS.crayfishRouting : COLORS.crayfishBody;
-  const outlineAlpha = useLOD ? 0.6 : 0.8;
+  const outlineAlpha = cols === 8 ? 0.6 : 0.8;
   drawCreatureOutline(buf, trackedPixels, bodyColor, outlineAlpha);
 
   // Fixed 3×3 eyes (teal center + black ring) — drawn at grid eye positions
-  const eyeRow = useLOD ? 2 : 3;
-  const eyeCols = useLOD ? [2, 5] : [4, 7];
+  const eyeRow = cols === 24 ? 9 : (cols === 8 ? 2 : 3);
+  const eyeCols = cols === 24 ? [8, 14] : (cols === 8 ? [2, 5] : [4, 7]);
   const sickEyeCenter: RGB = [0x44, 0x66, 0x60] as unknown as RGB; // dim teal for sick
   const eyeCenter = sick ? sickEyeCenter : COLORS.crayfishEye;
   const eyeRing = sick ? ([0x44, 0x33, 0x33] as unknown as RGB) : COLORS.crayfishEyeRing;
@@ -1052,7 +1271,8 @@ export function drawTetra(
   if (!isVisible(worldX, worldY, cam, 0.08)) return;
 
   const [sx, sy] = worldToScreen(worldX, worldY, cam);
-  const px = cam.zoom; // pixel scale
+  const w = Math.sqrt(buf.length / 3);
+  const px = cam.zoom * (w / 64); // resolution-aware pixel scale (half-size on 32px iDotMatrix)
 
   // Body (2px-equivalent)
   const bw = Math.max(1, Math.round(px * 2));

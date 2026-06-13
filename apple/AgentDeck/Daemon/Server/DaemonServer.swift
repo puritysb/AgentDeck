@@ -32,6 +32,10 @@ private let kIOMessageSystemHasPoweredOn: UInt32 = 0xe0000300
 
 extension Notification.Name {
     static let pixooSettingsChanged = Notification.Name("dev.agentdeck.pixooSettingsChanged")
+    /// Posted by AppPreferences after the user changes the display-sleep dim
+    /// setting. DaemonServer refreshes `cachedDimConfig` and, if the display
+    /// is already asleep, re-broadcasts so devices re-dim to the new level live.
+    static let displaySettingsChanged = Notification.Name("dev.agentdeck.displaySettingsChanged")
 }
 
 enum CodexHookIdentity {
@@ -166,6 +170,7 @@ final class DaemonServer {
     private var serialModule: SerialModule?
     private var pixooModule: PixooModule?
     private var pixooSettingsObserver: NSObjectProtocol?
+    private var displaySettingsObserver: NSObjectProtocol?
     private var adbModule: AdbModule?
     private var d200hModule: D200hHidModule?
 
@@ -226,6 +231,12 @@ final class DaemonServer {
     /// which shows up as empty `sessions_list` broadcasts and blank
     /// terrariums on every surface.
     private var pushedSessionsById: [String: DaemonSessionEntry] = [:]
+
+    // Debounce state for tool-boundary sessions_list broadcasts. State /
+    // question transitions never ride this — see scheduleSessionsListBroadcast.
+    private var lastSessionsListBroadcastAt: Date = .distantPast
+    private var pendingSessionsListFlushTask: Task<Void, Never>?
+    private static let sessionsListDebounceSeconds: TimeInterval = 2
 
     /// Last hook-event wall-clock timestamp per pushed session, keyed on
     /// sessionId. Used to evict sessions whose Claude Code process died
@@ -391,6 +402,10 @@ final class DaemonServer {
     private static let probeMaxInterval: TimeInterval = 300
     private static let probeStaleThreshold = 3
     private var cachedDisplayOn = true
+    /// Resolved display-sleep dim instruction, read from settings.json
+    /// (`displaySleepDim`). Defaults reproduce legacy behavior: dim enabled,
+    /// full-off. Refreshed on startup and on `.displaySettingsChanged`.
+    private var cachedDimConfig: (enabled: Bool, mode: String, level: Int) = (true, "off", 10)
     private var cachedGatewayAvailable = false
     private var cachedPairingUrl: String?
     private var lastStateEvent: [String: Any]?
@@ -481,6 +496,16 @@ final class DaemonServer {
                 }
                 DaemonLogger.shared.debug("Daemon", "Stale daemon session entry found for \(existing.id) on port \(existing.port); deregistering")
                 registry.deregister(existing.id)
+            }
+            // Port-scan fallback: a sibling daemon (e.g. the Node CLI daemon)
+            // may be alive on a fallback port (9121-9139) while its
+            // daemon.json sits in a data dir this sandboxed process can't
+            // read (`~/.agentdeck` vs the group container). Without this scan
+            // the app would bind 9120 and two daemons would coexist.
+            // `requestedPort` is excluded — it gets its own probe below.
+            if let scannedPort = await registry.scanForDaemonPort(excluding: [requestedPort]) {
+                DaemonLogger.shared.info("Daemon discovered via port scan on \(scannedPort) — connecting as client")
+                throw DaemonError.alreadyRunning(port: scannedPort)
             }
             if let health = await registry.probeDaemonHealth(port: requestedPort) {
                 if health["mode"] as? String == "daemon" {
@@ -702,13 +727,18 @@ final class DaemonServer {
         await reapOrphanTaskStarts()
 
         // 6. Start display monitor
+        loadDisplaySleepDimFromSettings()
         await displayMonitor.start()
         await displayMonitor.setOnStateChanged { [weak self] displayOn in
             Task { @MainActor in
                 guard let self else { return }
                 self.cachedDisplayOn = displayOn
                 self.serialEventSnapshot.setDisplayOn(displayOn)
-                self.broadcastRaw(["type": "display_state", "displayOn": displayOn] as [String: Any])
+                self.broadcastRaw([
+                    "type": "display_state",
+                    "displayOn": displayOn,
+                    "dim": self.currentDimDict(),
+                ] as [String: Any])
                 if displayOn {
                     DaemonLogger.shared.info("Display wake — recovering modules and state")
                     // Atomic refresh-then-broadcast: refreshSessions() updates
@@ -1004,6 +1034,24 @@ final class DaemonServer {
             forName: .pixooSettingsChanged, object: nil, queue: .main
         ) { _ in
             Task { await pixoo.reloadFromSettingsExternal() }
+        }
+        // Display-sleep dim setting changed: refresh cache and, if the display
+        // is already asleep, re-broadcast the current state so devices re-dim
+        // to the new level/mode without waiting for a wake/sleep cycle.
+        displaySettingsObserver = NotificationCenter.default.addObserver(
+            forName: .displaySettingsChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.loadDisplaySleepDimFromSettings()
+                if !self.cachedDisplayOn {
+                    self.broadcastRaw([
+                        "type": "display_state",
+                        "displayOn": false,
+                        "dim": self.currentDimDict(),
+                    ] as [String: Any])
+                }
+            }
         }
 
         // Start all
@@ -2297,6 +2345,26 @@ final class DaemonServer {
             // Stay "processing" between tool boundaries — `stop` drops the
             // session back to idle when the turn finishes.
             updateSessionHookState(sessionId: sessionId, state: "processing", clearTool: true)
+        case "notification":
+            // Direct-`claude` permission prompts arrive as a Notification hook
+            // (the App Store daemon has no PTY parser and no `ps` observer, so
+            // this is the only awaiting signal). The hook carries free-text
+            // `message` and a `session_id` but no structured options, so we
+            // surface "awaiting + question" only; the device flips to the
+            // attention tier and shows the question. Cleared naturally by the
+            // next tool/stop/prompt hook via updateSessionHookState.
+            let message = json["message"] as? String ?? ""
+            if Self.looksLikePermissionMessage(message), let sessionId,
+               var entry = pushedSessionsById[sessionId] {
+                let q = String(message.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+                if entry.state != "awaiting_permission" || entry.question != q {
+                    entry.state = "awaiting_permission"
+                    entry.question = q
+                    pushedSessionsById[sessionId] = entry
+                    upsertIntoCachedSessions(entry)
+                    broadcastSessionsList()
+                }
+            }
         case "codex_user_prompt_submit":
             _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
             updateSessionHookState(sessionId: sessionId, state: "processing")
@@ -2769,6 +2837,16 @@ final class DaemonServer {
         event == "codex_tool_start" || event == "codex_tool_end"
     }
 
+    /// Does a Notification `message` look like a permission/input prompt rather
+    /// than an idle-timeout reminder? Claude's Notification hook fires for both,
+    /// so this conservative filter prevents idle pings from flipping a session
+    /// to awaiting. Mirrors the Node `looksLikePermissionMessage` regex.
+    nonisolated static func looksLikePermissionMessage(_ message: String) -> Bool {
+        guard !message.isEmpty else { return false }
+        let pattern = "needs? your permission|waiting for your|wants to|permission to use|approve|confirm|to proceed"
+        return message.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     @MainActor
     private func shouldIgnorePostTerminalCodexProgress(sessionId: String?, event: String) -> Bool {
         guard let sessionId,
@@ -2803,7 +2881,13 @@ final class DaemonServer {
         guard let sessionId, var entry = pushedSessionsById[sessionId] else { return }
         let oldState = entry.state
         let oldTool = entry.currentTool
+        let oldQuestion = entry.question
         entry.state = newState
+        // Any non-awaiting transition means a pending permission prompt was
+        // answered — drop the awaiting question so it doesn't linger.
+        if newState != "awaiting_permission" {
+            entry.question = nil
+        }
         if clearTool {
             entry.currentTool = nil
         } else if let currentTool {
@@ -2812,8 +2896,15 @@ final class DaemonServer {
         pushedSessionsById[sessionId] = entry
         upsertIntoCachedSessions(entry)
         trackCodexProcessingState(sessionId: sessionId, entry: entry)
-        if oldState != entry.state || oldTool != entry.currentTool {
+        // State / question transitions are rare and UX-critical
+        // (awaiting_permission must reach devices instantly) → immediate.
+        // currentTool flips happen 2× per tool call (set on tool_start,
+        // clear on tool_end) — a 20-tool turn would emit ~40 full
+        // sessions_list rebuilds — so tool-only changes ride the debounce.
+        if oldState != entry.state || oldQuestion != entry.question {
             broadcastSessionsList()
+        } else if oldTool != entry.currentTool {
+            scheduleSessionsListBroadcast()
         }
     }
 
@@ -3278,14 +3369,19 @@ final class DaemonServer {
             }
         }
 
-        // Judge backend probe — 30s periodic
+        // Judge backend probe — 30s periodic, slowed to 120s when no WS
+        // clients are connected. The probe result only feeds dashboard UI
+        // (Settings pill + state event fields); APME resolves its judge
+        // backend per-eval independently, so a slower idle cadence costs
+        // nothing but staleness nobody is looking at.
         judgeBackendPollTask = Task { [weak self] in
             // Initial probe on startup
             if let initial = await self?.probeJudgeBackend() {
                 await MainActor.run { self?.cachedJudgeBackendStatus = initial }
             }
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
+                let hasClients = await self?.wsServer.hasClients() ?? false
+                try? await Task.sleep(for: .seconds(hasClients ? 30 : 120))
                 guard let self else { break }
                 let fresh = await self.probeJudgeBackend()
                 await MainActor.run {
@@ -3373,11 +3469,15 @@ final class DaemonServer {
             }
         }
 
-        // Antigravity — 15s (local SQLite read for plan/credit status)
+        // Antigravity — 15s (local SQLite read for plan/credit status),
+        // slowed to 60s when no WS clients are connected: the status only
+        // feeds the dashboard Subscriptions footer, and the broadcast below
+        // is change-gated anyway.
         cachedAntigravityStatus = usageAPI.antigravityStatus
         antigravityPollTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(15))
+                let hasClients = await self?.wsServer.hasClients() ?? false
+                try? await Task.sleep(for: .seconds(hasClients ? 15 : 60))
                 guard let self else { break }
                 let next = self.usageAPI.antigravityStatus
                 let changed: Bool
@@ -3504,6 +3604,7 @@ final class DaemonServer {
                         s.effortLevel = health["effortLevel"] as? String
                         s.currentTool = health["currentTool"] as? String
                         s.navigable = health["navigable"] as? Bool
+                        s.question = health["question"] as? String
                         if let rawOptions = health["options"] as? [[String: Any]] {
                             s.options = rawOptions.map { option in
                                 option.mapValues(AnyCodable.init)
@@ -3531,7 +3632,34 @@ final class DaemonServer {
         // `ESP32Serial.write` now absorbs that pressure via EAGAIN-tolerant
         // retry (DEVELOPMENT_LOG 2026-05-10), so the dedupe was redundant
         // and locked recovered boards out.
+        lastSessionsListBroadcastAt = Date()
+        pendingSessionsListFlushTask?.cancel()
+        pendingSessionsListFlushTask = nil
         broadcastRaw(buildSessionsListEvent())
+    }
+
+    /// Debounced sessions_list broadcast for high-frequency cosmetic updates
+    /// (currentTool set/clear at every tool boundary). Mirrors the Node hub's
+    /// `maybeBroadcastSessionsList` 2 s window (bridge/src/bridge-core.ts:572)
+    /// and adds a trailing flush so the LAST update always lands — devices and
+    /// late joiners rely on the settled state being broadcast eventually.
+    /// State / question transitions must call `broadcastSessionsList()`
+    /// directly instead.
+    private func scheduleSessionsListBroadcast() {
+        let now = Date()
+        let elapsed = now.timeIntervalSince(lastSessionsListBroadcastAt)
+        if elapsed >= Self.sessionsListDebounceSeconds {
+            broadcastSessionsList()
+            return
+        }
+        guard pendingSessionsListFlushTask == nil else { return }
+        let delay = Self.sessionsListDebounceSeconds - elapsed
+        pendingSessionsListFlushTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.pendingSessionsListFlushTask = nil
+            self.broadcastSessionsList()
+        }
     }
 
     private func buildSessionsListEvent() -> [String: Any] {
@@ -3785,6 +3913,38 @@ final class DaemonServer {
         if let data = event.jsonData {
             Task { await wsServer.broadcastRaw(data) }
         }
+    }
+
+    /// Read the `displaySleepDim` object from settings.json into
+    /// `cachedDimConfig`. Missing object or fields fall back to legacy
+    /// behavior (enabled, off, 10) so an un-migrated settings.json keeps
+    /// dimming devices to full-off exactly as before. Same clobber-resistant
+    /// read as `AppPreferences.writeDisplaySleepDimToSettingsJson`.
+    @MainActor
+    private func loadDisplaySleepDimFromSettings() {
+        let url = AgentDeckPaths.settingsJson
+        guard let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dim = root["displaySleepDim"] as? [String: Any] else {
+            cachedDimConfig = (true, "off", 10)
+            return
+        }
+        let enabled = dim["enabled"] as? Bool ?? true
+        let mode = (dim["mode"] as? String) == "min" ? "min" : "off"
+        let rawLevel = dim["level"] as? Int ?? 10
+        let level = max(1, min(100, rawLevel))
+        cachedDimConfig = (enabled, mode, level)
+    }
+
+    /// Build the `dim` sub-dict embedded in every `display_state` broadcast so
+    /// Pixoo / D200H / ESP32 apply one consistent snapshot.
+    @MainActor
+    private func currentDimDict() -> [String: Any] {
+        return [
+            "enabled": cachedDimConfig.enabled,
+            "mode": cachedDimConfig.mode,
+            "level": cachedDimConfig.level,
+        ]
     }
 
     /// In-process accessor for D200H module status. Same-process callers
@@ -4485,6 +4645,10 @@ final class DaemonServer {
             NotificationCenter.default.removeObserver(observer)
             pixooSettingsObserver = nil
         }
+        if let observer = displaySettingsObserver {
+            NotificationCenter.default.removeObserver(observer)
+            displaySettingsObserver = nil
+        }
         await moduleManager.stopAll()
         if let gw = gatewayAdapter { await gw.stop() }
 
@@ -4646,6 +4810,7 @@ final class DaemonServer {
             }
         }
         if let navigable = s.navigable, navigable { d["navigable"] = true }
+        if let q = s.question { d["question"] = q }
         if let sa = s.startedAt { d["startedAt"] = sa }
         return d
     }

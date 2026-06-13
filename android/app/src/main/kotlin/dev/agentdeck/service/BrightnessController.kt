@@ -46,6 +46,9 @@ class BrightnessController(
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val frontlightPaths: List<String> = discoverFrontlightPaths()
     private var isDimmed = false
+    /** "mode|level" of the last applied dim, so a live level change (re-dim
+     *  while host stays asleep) bypasses the `isDimmed` early-return. */
+    private var lastDimSignature = ""
     private var savedBrightness: Int? = null
     private var savedBrightnessMode: Int? = null
     private var savedScreenOffTimeout: Int? = null
@@ -73,8 +76,14 @@ class BrightnessController(
 
     fun canWriteSettings(): Boolean = isEink || Settings.System.canWrite(context)
 
-    fun dim() {
-        if (isDimmed) return
+    /**
+     * Dim the screen per the host instruction. [mode] is "off" (full dark) or
+     * "min" (dim to [level] percent, screen stays on). Re-invocable while
+     * already dimmed to apply a changed level live.
+     */
+    fun dim(mode: String = "off", level: Int = 0) {
+        val sig = "$mode|$level"
+        if (isDimmed && sig == lastDimSignature) return
 
         if (!isEink && !Settings.System.canWrite(context)) {
             Log.w(TAG, "Cannot dim LCD — WRITE_SETTINGS not granted. " +
@@ -82,18 +91,21 @@ class BrightnessController(
             return
         }
 
+        val firstDim = !isDimmed
         isDimmed = true
+        lastDimSignature = sig
 
         if (isEink) {
-            dimEink()
+            dimEink(mode, level, firstDim)
         } else {
-            dimLcd()
+            dimLcd(mode, level, firstDim)
         }
     }
 
     fun restore() {
         if (!isDimmed) return
         isDimmed = false
+        lastDimSignature = ""
 
         if (isEink) {
             restoreEink()
@@ -106,27 +118,44 @@ class BrightnessController(
 
     // ── LCD ─────────────────────────────────────────────────────────────
 
-    private fun dimLcd() {
+    private fun dimLcd(mode: String, level: Int, firstDim: Boolean) {
         try {
-            savedBrightnessMode = Settings.System.getInt(
-                contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
-                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
-            )
+            // Capture the user's brightness/mode/timeout only on the first dim,
+            // so a live level change doesn't save the already-dimmed value.
+            if (firstDim) {
+                savedBrightnessMode = Settings.System.getInt(
+                    contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                )
+                savedBrightness = Settings.System.getInt(
+                    contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128
+                )
+                savedScreenOffTimeout = Settings.System.getInt(
+                    contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, 60_000
+                )
+            }
             Settings.System.putInt(
                 contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
                 Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
             )
-            savedBrightness = Settings.System.getInt(
-                contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128
-            )
-            Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 0)
-            savedScreenOffTimeout = Settings.System.getInt(
-                contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, 60_000
-            )
-            Settings.System.putInt(
-                contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, LCD_OFF_TIMEOUT_MS
-            )
-            Log.i(TAG, "LCD dim: brightness ${savedBrightness}→0, timeout ${savedScreenOffTimeout}→${LCD_OFF_TIMEOUT_MS}ms")
+            if (mode == "min") {
+                // Keep the screen on at minimum brightness (level% → 0-255),
+                // restore the user's screen-off timeout, and wake if it slept.
+                val target = (level * 255 / 100).coerceIn(1, 255)
+                Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, target)
+                savedScreenOffTimeout?.let {
+                    Settings.System.putInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, it)
+                }
+                wakeScreen()
+                Log.i(TAG, "LCD dim(min): brightness ${savedBrightness}→$target")
+            } else {
+                // Full-off: brightness 0 + short timeout so the screen sleeps.
+                Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 0)
+                Settings.System.putInt(
+                    contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, LCD_OFF_TIMEOUT_MS
+                )
+                Log.i(TAG, "LCD dim(off): brightness ${savedBrightness}→0, timeout ${savedScreenOffTimeout}→${LCD_OFF_TIMEOUT_MS}ms")
+            }
         } catch (e: SecurityException) {
             Log.w(TAG, "Cannot dim LCD (no WRITE_SETTINGS): ${e.message}")
             savedBrightness = null
@@ -157,31 +186,45 @@ class BrightnessController(
 
     // ── E-ink ───────────────────────────────────────────────────────────
 
-    private fun dimEink() {
-        val saved = mutableMapOf<String, Int>()
+    private fun dimEink(mode: String, level: Int, firstDim: Boolean) {
+        // Capture the current frontlight values once, so a live level change
+        // (re-dim while asleep) scales from the original, not the dimmed value.
+        if (firstDim) {
+            val saved = mutableMapOf<String, Int>()
+            for (path in frontlightPaths) {
+                try {
+                    val current = java.io.File(path).readText().trim().toIntOrNull() ?: continue
+                    if (current == 0) continue
+                    saved[path] = current
+                } catch (_: Exception) {}
+            }
+            savedFrontlight = saved.ifEmpty { null }
+            // Persist to disk for crash recovery
+            prefs.edit().apply {
+                putBoolean(PREF_DIMMED, true)
+                saved.forEach { (path, value) ->
+                    putInt(PREF_FRONTLIGHT_PREFIX + prefKeyForPath(path), value)
+                }
+            }.apply()
+        }
+
+        // Apply target: full-off ⇒ 0; min ⇒ level% of each path's saved value.
         var sysfsWorked = false
         for (path in frontlightPaths) {
             try {
-                val current = java.io.File(path).readText().trim().toIntOrNull() ?: continue
-                if (current == 0) continue
-                saved[path] = current
-                java.io.File(path).writeText("0")
+                val target = if (mode == "min") {
+                    val base = savedFrontlight?.get(path) ?: continue
+                    (base * level / 100).coerceAtLeast(1)
+                } else {
+                    0
+                }
+                java.io.File(path).writeText(target.toString())
                 sysfsWorked = true
             } catch (_: Exception) {}
         }
 
-        savedFrontlight = saved.ifEmpty { null }
-
-        // Persist to disk for crash recovery
-        prefs.edit().apply {
-            putBoolean(PREF_DIMMED, true)
-            saved.forEach { (path, value) ->
-                putInt(PREF_FRONTLIGHT_PREFIX + prefKeyForPath(path), value)
-            }
-        }.apply()
-
         if (sysfsWorked) {
-            Log.i(TAG, "E-ink dim: sysfs OK, saved=${saved.size} values")
+            Log.i(TAG, "E-ink dim($mode): sysfs OK, ${savedFrontlight?.size ?: 0} paths")
         } else {
             // Pantone 6: frontlight not app-controllable without root
             Log.w(TAG, "E-ink dim: sysfs not writable — skipping (no app-level frontlight control)")

@@ -18,6 +18,7 @@ import dev.agentdeck.R
 import dev.agentdeck.data.DisplayPreferences
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.net.BridgeConnection
+import dev.agentdeck.net.DimConfig
 import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.ui.component.stateLabel
 import dev.agentdeck.util.EinkDetector
@@ -80,15 +81,19 @@ class MonitorService : Service() {
                     // Only wake screen if host display is on
                     if (isEink && state.hostDisplayOn) wakeIfSleeping()
                 }
-                handleDisplaySync(state.hostDisplayOn, state.bridgeConnected, state.agentState)
+                handleDisplaySync(state.hostDisplayOn, state.bridgeConnected, state.agentState, state.hostDim)
             }
         }
     }
 
-    private fun handleDisplaySync(hostDisplayOn: Boolean, bridgeConnected: Boolean, agentState: AgentState) {
+    private fun handleDisplaySync(hostDisplayOn: Boolean, bridgeConnected: Boolean, agentState: AgentState, hostDim: DimConfig?) {
         serviceScope.launch {
             val syncEnabled = displayPrefs.displaySyncEnabledFlow.first()
-            Log.d(TAG, "handleDisplaySync: hostDisplayOn=$hostDisplayOn, bridgeConnected=$bridgeConnected, agentState=$agentState, syncEnabled=$syncEnabled, isDimmed=${brightnessController.isDimmed()}, canWrite=${brightnessController.canWriteSettings()}")
+            // Host dim instruction (absent ⇒ legacy enabled/full-off).
+            val dimEnabled = hostDim?.enabled ?: true
+            val dimMode = if (hostDim?.mode == "min") "min" else "off"
+            val dimLevel = (hostDim?.level ?: 10).coerceIn(1, 100)
+            Log.d(TAG, "handleDisplaySync: hostDisplayOn=$hostDisplayOn, bridgeConnected=$bridgeConnected, agentState=$agentState, syncEnabled=$syncEnabled, dim=$dimEnabled/$dimMode/$dimLevel, isDimmed=${brightnessController.isDimmed()}, canWrite=${brightnessController.canWriteSettings()}")
 
             if (!syncEnabled) {
                 // Sync disabled — restore if we dimmed, cancel any idle timeout
@@ -105,12 +110,13 @@ class MonitorService : Service() {
                 // Bridge connected — use host display state directly
                 idleTimeoutJob?.cancel()
                 idleTimeoutJob = null
-                if (!hostDisplayOn) {
-                    Log.i(TAG, "Host display off — dimming")
-                    brightnessController.dim()
+                if (!hostDisplayOn && dimEnabled) {
+                    Log.i(TAG, "Host display off — dimming ($dimMode)")
+                    brightnessController.dim(dimMode, dimLevel)
                 } else {
+                    // Display on, or host disabled device dimming → restore.
                     if (brightnessController.isDimmed()) {
-                        Log.i(TAG, "Host display on — restoring brightness")
+                        Log.i(TAG, "Host display on / dim disabled — restoring brightness")
                     }
                     brightnessController.restore()
                 }
