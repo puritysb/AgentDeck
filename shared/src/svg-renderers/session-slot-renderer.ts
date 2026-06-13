@@ -264,7 +264,7 @@ export function renderSessionSlot(
   isActive: boolean,
   animFrame: number,
   displayName?: string,
-  options?: { animated?: boolean; processingStartFrame?: number },
+  options?: { animated?: boolean; processingStartFrame?: number; isStale?: boolean },
 ): string {
   const isWorking = session.state === 'processing';
   const isAsking = session.state?.startsWith('awaiting') ?? false;
@@ -339,6 +339,14 @@ export function renderSessionSlot(
     `<text x="20" y="32" font-size="17" font-weight="800" text-anchor="start" fill="${colorText}" font-family="${fontFam}">${escXml(stateLbl)}</text>`,
     `<text x="20" y="52" font-size="13" font-weight="600" text-anchor="start" fill="#E2E8F0" font-family="${fontFam}">${escXml(truncate(nameForDisplay, 13))}</text>`,
     `<text x="20" y="120" font-size="${isWorking ? '13' : '14'}" font-weight="500" text-anchor="start" fill="${colorText}" opacity="0.8" font-family="${fontFam}">${escXml(toolStr)}</text>`,
+    // Stale overlay: the daemon stopped responding (no pings/state for the
+    // stale window) but hasn't yet hit the hard disconnect. Dim the last-known
+    // render and flag it so the state on screen isn't mistaken for live.
+    options?.isStale
+      ? `<rect width="${SIZE}" height="${SIZE}" rx="16" fill="#0C0C0E" opacity="0.5"/>`
+        + `<rect x="20" y="62" width="50" height="17" rx="8" fill="#71717A" opacity="0.92"/>`
+        + `<text x="45" y="74" font-size="10" font-weight="800" text-anchor="middle" fill="#0C0C0E" font-family="${fontFam}">STALE</text>`
+      : '',
   ].join('');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}">${elements}</svg>`;

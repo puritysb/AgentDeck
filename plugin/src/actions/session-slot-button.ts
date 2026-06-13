@@ -65,6 +65,11 @@ let onSlotAction: ((action: ReturnType<typeof manager.handleSlotPress>) => void)
 /** Whether daemon connection is alive */
 let daemonConnected = false;
 
+/** Soft-stale: daemon is still connected but has gone quiet past the stale
+ *  window. Dims the last-known session renders until data resumes or the
+ *  connection hard-disconnects (which flips to OFFLINE via daemonConnected). */
+let daemonStale = false;
+
 // ---- Public API ----
 
 export function initSessionSlots(
@@ -118,12 +123,19 @@ export function getFocusedSession(): SessionInfo | undefined {
 export function setDaemonConnected(connected: boolean): void {
   daemonConnected = connected;
   if (!connected) {
+    daemonStale = false;
     // Clear sessions on daemon disconnect
     manager.updateSessions([], false);
     if (manager.view === 'detail') {
       manager.exitDetailView();
     }
   }
+  refreshAll();
+}
+
+export function setDaemonStale(stale: boolean): void {
+  if (daemonStale === stale) return;
+  daemonStale = stale;
   refreshAll();
 }
 
@@ -255,6 +267,7 @@ function renderSlotSvg(config: SessionSlotConfig, _slot: number): string {
       }
       return renderSessionSlot(sess, config.isActive ?? false, animFrame, undefined, {
         processingStartFrame: processingStartFrame.get(sess.id),
+        isStale: daemonStale,
       });
     }
 

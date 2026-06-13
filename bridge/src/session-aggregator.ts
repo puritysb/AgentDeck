@@ -39,7 +39,12 @@ export function updatePushState(sessionId: string, state: string, modelName?: st
 export function getPushState(sessionId: string): { state: string; modelName?: string; effortLevel?: string } | undefined {
   const entry = pushStateCache.get(sessionId);
   if (!entry) return undefined;
-  if (Date.now() - entry.updatedAt > 30_000) return undefined; // stale
+  if (Date.now() - entry.updatedAt > 30_000) {
+    // Drop the stale entry instead of merely skipping it, so the map doesn't
+    // accumulate dead sessions over a long-running daemon's lifetime.
+    pushStateCache.delete(sessionId);
+    return undefined;
+  }
   return { state: entry.state, modelName: entry.modelName, effortLevel: entry.effortLevel };
 }
 
@@ -47,6 +52,24 @@ export function getPushState(sessionId: string): { state: string; modelName?: st
 export function clearSiblingStateCache(sessionId: string): void {
   siblingStateCache.delete(sessionId);
   pushStateCache.delete(sessionId);
+}
+
+/**
+ * Drop cache entries for sessions that are no longer active. `siblingStateCache`
+ * has no TTL (it's the last-known fallback for a still-live session whose
+ * /health probe transiently failed), so without this sweep a session that dies
+ * without a clean `deregister()` (SIGKILL, daemon crash) would leave its state
+ * cached forever. Called from the enricher with the current active id set.
+ * Observed sessions never populate these caches, so pruning to the managed set
+ * is safe.
+ */
+function sweepStaleCacheEntries(activeIds: Set<string>): void {
+  for (const id of siblingStateCache.keys()) {
+    if (!activeIds.has(id)) siblingStateCache.delete(id);
+  }
+  for (const id of pushStateCache.keys()) {
+    if (!activeIds.has(id)) pushStateCache.delete(id);
+  }
 }
 
 /**
@@ -62,6 +85,9 @@ export async function enrichSessionsWithState(
   ownModelName?: string,
   ownEffortLevel?: string,
 ): Promise<EnrichedSession[]> {
+  // Prune cache entries for sessions that have dropped out of the active set
+  // (the registry already pruned dead PIDs before handing us this list).
+  sweepStaleCacheEntries(new Set(sessions.map((s) => s.id)));
   return Promise.all(sessions.map(async (s) => {
     const base: EnrichedSession = {
       id: s.id,

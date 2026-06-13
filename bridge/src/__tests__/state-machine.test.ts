@@ -203,7 +203,7 @@ describe('StateMachine', () => {
       expect(sm.getState()).toBe(State.IDLE);
     });
 
-    it('AWAITING_PERMISSION does NOT timeout (waits for user)', () => {
+    it('AWAITING_PERMISSION survives the 5min PROCESSING window but recovers after the 10min backstop', () => {
       const sm = bootToIdle();
       sm.handleHookEvent('UserPromptSubmit', {});
       sm.handleParserEvent('permission_prompt', {
@@ -211,11 +211,16 @@ describe('StateMachine', () => {
       });
       expect(sm.getState()).toBe(State.AWAITING_PERMISSION);
 
+      // Does not fire at the shorter PROCESSING threshold — a long user pause is legitimate.
       vi.advanceTimersByTime(5 * 60 * 1000 + 100);
       expect(sm.getState()).toBe(State.AWAITING_PERMISSION);
+
+      // Backstop fires after the full 10min so a parser-missed recovery can't strand it.
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(sm.getState()).toBe(State.IDLE);
     });
 
-    it('AWAITING_OPTION does NOT timeout (waits for user)', () => {
+    it('AWAITING_OPTION recovers after the 10min backstop', () => {
       const sm = bootToIdle();
       sm.handleHookEvent('UserPromptSubmit', {});
       sm.handleParserEvent('option_prompt', {
@@ -225,9 +230,12 @@ describe('StateMachine', () => {
 
       vi.advanceTimersByTime(5 * 60 * 1000 + 100);
       expect(sm.getState()).toBe(State.AWAITING_OPTION);
+
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(sm.getState()).toBe(State.IDLE);
     });
 
-    it('AWAITING_DIFF does NOT timeout (waits for user)', () => {
+    it('AWAITING_DIFF recovers after the 10min backstop', () => {
       const sm = bootToIdle();
       sm.handleHookEvent('UserPromptSubmit', {});
       sm.handleParserEvent('diff_prompt', {
@@ -237,6 +245,27 @@ describe('StateMachine', () => {
 
       vi.advanceTimersByTime(5 * 60 * 1000 + 100);
       expect(sm.getState()).toBe(State.AWAITING_DIFF);
+
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(sm.getState()).toBe(State.IDLE);
+    });
+
+    it('AWAITING backstop resets when the user responds (no false recovery)', () => {
+      const sm = bootToIdle();
+      sm.handleHookEvent('UserPromptSubmit', {});
+      sm.handleParserEvent('permission_prompt', {
+        options: [{ index: 0, label: 'Yes' }],
+      });
+      expect(sm.getState()).toBe(State.AWAITING_PERMISSION);
+
+      // User responds via keyboard before the backstop — PTY spinner recovers to PROCESSING.
+      vi.advanceTimersByTime(9 * 60 * 1000);
+      sm.handleParserEvent('spinner_start', {});
+      expect(sm.getState()).toBe(State.PROCESSING);
+
+      // The original awaiting backstop must not fire now that we've moved on.
+      vi.advanceTimersByTime(2 * 60 * 1000);
+      expect(sm.getState()).toBe(State.PROCESSING);
     });
 
     it('timer resets on state change before timeout', () => {

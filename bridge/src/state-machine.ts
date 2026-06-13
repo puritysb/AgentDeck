@@ -3,6 +3,7 @@ import {
   State,
   PermissionMode,
   STUCK_TIMEOUT_MS,
+  AWAITING_STUCK_TIMEOUT_MS,
   type StateSnapshot,
   type PromptOption,
   type StateTransition,
@@ -484,21 +485,19 @@ export class StateMachine extends EventEmitter {
       this.cursorAuthority = 'pty';
     }
 
-    // Manage stuck-state timer: only for PROCESSING (Claude seems hung).
-    // AWAITING_* states wait indefinitely for user response — no timeout.
+    // Manage stuck-state timer. PROCESSING recovers after STUCK_TIMEOUT_MS
+    // (Claude seems hung). AWAITING_* get a much longer backstop so a
+    // legitimately-long user pause isn't reset, but a parser-missed recovery
+    // still can't strand the session in awaiting forever.
     this.resetStuckTimer();
     if (to === State.PROCESSING) {
-      this.stuckTimer = setTimeout(() => {
-        debug('SM', `Stuck timeout: ${to} for >${STUCK_TIMEOUT_MS / 1000}s, recovering to IDLE`);
-        this.currentTool = null;
-        this.toolInput = null;
-        this.toolProgress = null;
-        this.options = [];
-        this.question = null;
-        this.navigable = false;
-        this.cursorIndex = 0;
-        this.transition(State.IDLE, 'stuck_timeout', 'internal');
-      }, STUCK_TIMEOUT_MS);
+      this.armStuckTimer(STUCK_TIMEOUT_MS);
+    } else if (
+      to === State.AWAITING_PERMISSION ||
+      to === State.AWAITING_OPTION ||
+      to === State.AWAITING_DIFF
+    ) {
+      this.armStuckTimer(AWAITING_STUCK_TIMEOUT_MS);
     }
 
     if (prev !== to) {
@@ -511,19 +510,26 @@ export class StateMachine extends EventEmitter {
   onPtyActivity(): void {
     if (this.stuckTimer && this.state === State.PROCESSING) {
       debug('SM', 'PTY activity — resetting stuck timer');
-      this.resetStuckTimer();
-      this.stuckTimer = setTimeout(() => {
-        debug('SM', `Stuck timeout: PROCESSING for >${STUCK_TIMEOUT_MS / 1000}s, recovering to IDLE`);
-        this.currentTool = null;
-        this.toolInput = null;
-        this.toolProgress = null;
-        this.options = [];
-        this.question = null;
-        this.navigable = false;
-        this.cursorIndex = 0;
-        this.transition(State.IDLE, 'stuck_timeout', 'internal');
-      }, STUCK_TIMEOUT_MS);
+      this.armStuckTimer(STUCK_TIMEOUT_MS);
     }
+  }
+
+  /** (Re)arm the stuck-state backstop. On fire, clears tool/prompt metadata and
+   *  recovers to IDLE — the safe terminal state for any hung/abandoned state. */
+  private armStuckTimer(timeoutMs: number): void {
+    this.resetStuckTimer();
+    const fromState = this.state;
+    this.stuckTimer = setTimeout(() => {
+      debug('SM', `Stuck timeout: ${fromState} for >${timeoutMs / 1000}s, recovering to IDLE`);
+      this.currentTool = null;
+      this.toolInput = null;
+      this.toolProgress = null;
+      this.options = [];
+      this.question = null;
+      this.navigable = false;
+      this.cursorIndex = 0;
+      this.transition(State.IDLE, 'stuck_timeout', 'internal');
+    }, timeoutMs);
   }
 
   private resetStuckTimer(): void {

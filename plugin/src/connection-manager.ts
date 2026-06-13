@@ -227,5 +227,9 @@ export class ConnectionManager extends EventEmitter implements AgentLink {
       dinfo(TAG, 'Daemon disconnected');
       this.emit('disconnected');
     });
+
+    this.bridge.on('stale-changed', (stale: boolean) => {
+      this.emit('stale-changed', stale);
+    });
   }
 }

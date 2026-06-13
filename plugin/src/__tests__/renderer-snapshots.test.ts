@@ -511,6 +511,14 @@ describe('session-slot-renderer snapshots', () => {
   it('active idle session uses orbiting focus border', () => {
     expect(renderSessionSlot(makeSession(), true, 4)).toMatchSnapshot();
   });
+
+  it('stale session dims the render and shows a STALE badge', () => {
+    const fresh = renderSessionSlot(makeSession(), false, 4);
+    const stale = renderSessionSlot(makeSession(), false, 4, undefined, { isStale: true });
+    expect(fresh).not.toContain('STALE');
+    expect(stale).toContain('STALE');
+    expect(stale).toMatchSnapshot();
+  });
 });
 
 // ===================================================================

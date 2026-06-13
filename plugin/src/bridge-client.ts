@@ -7,6 +7,7 @@ import {
   BRIDGE_WS_PORT,
   RECONNECT_BACKOFF_MS,
   WS_ACTIVITY_TIMEOUT_MS,
+  WS_STALE_TIMEOUT_MS,
 } from '@agentdeck/shared';
 import type { AgentLink } from './agent-link.js';
 import { dlog, dwarn, derr } from './log.js';
@@ -18,6 +19,7 @@ export class BridgeClient extends EventEmitter implements AgentLink {
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private _watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private _lastActivityAt = 0;
+  private _stale = false;
   private _connected = false;
   private _port = BRIDGE_WS_PORT;
   private _connectGeneration = 0;
@@ -168,18 +170,18 @@ export class BridgeClient extends EventEmitter implements AgentLink {
         dlog('Bridge', 'WebSocket open');
         this._connected = true;
         this._backoffIdx = 0;
-        this._lastActivityAt = Date.now();
+        this.markActivity();
         this.startWatchdog(gen);
         this.emit('connected');
       });
 
       this.ws.on('ping', () => {
-        this._lastActivityAt = Date.now();
+        this.markActivity();
       });
 
       this.ws.on('message', (data: WebSocket.Data) => {
         if (gen !== this._connectGeneration) return;
-        this._lastActivityAt = Date.now();
+        this.markActivity();
         try {
           const event = JSON.parse(data.toString()) as BridgeEvent;
           dlog('Bridge', `recv(${event.type})`);
@@ -197,6 +199,7 @@ export class BridgeClient extends EventEmitter implements AgentLink {
         if (gen !== this._connectGeneration) return;
         const wasConnected = this._connected;
         this._connected = false;
+        this.setStale(false);
         if (wasConnected) {
           dlog('Bridge', 'WebSocket closed (was connected)');
           this.emit('disconnected');
@@ -252,8 +255,30 @@ export class BridgeClient extends EventEmitter implements AgentLink {
       if (elapsed > WS_ACTIVITY_TIMEOUT_MS) {
         dwarn('Bridge', `No activity for ${elapsed}ms — terminating connection`);
         this.ws?.terminate();
+      } else if (elapsed > WS_STALE_TIMEOUT_MS) {
+        // Soft-stale: the daemon went quiet (no pings/state) but hasn't hit the
+        // hard timeout yet. Flag it so the UI can dim the last-known render.
+        this.setStale(true);
       }
     }, 10_000);
+  }
+
+  /** Record inbound activity (open/ping/message) and clear any soft-stale flag. */
+  private markActivity(): void {
+    this._lastActivityAt = Date.now();
+    this.setStale(false);
+  }
+
+  private setStale(stale: boolean): void {
+    if (this._stale === stale) return;
+    this._stale = stale;
+    this.emit('stale-changed', stale);
+  }
+
+  /** True when connected but the daemon has gone quiet past the soft-stale
+   *  window (still short of the hard disconnect). */
+  isStale(): boolean {
+    return this._connected && this._stale;
   }
 
   private stopWatchdog(): void {

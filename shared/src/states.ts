@@ -48,8 +48,13 @@ export const transitions: StateTransition[] = [
   { from: State.AWAITING_PERMISSION, to: State.PROCESSING, trigger: 'spinner_start', source: 'pty' },
   { from: State.AWAITING_OPTION, to: State.PROCESSING, trigger: 'spinner_start', source: 'pty' },
   { from: State.AWAITING_DIFF, to: State.PROCESSING, trigger: 'spinner_start', source: 'pty' },
-  // stuck_timeout only for PROCESSING — AWAITING_* wait indefinitely for user response
+  // stuck_timeout: PROCESSING recovers after STUCK_TIMEOUT_MS; AWAITING_* have a
+  // much longer backstop (AWAITING_STUCK_TIMEOUT_MS) for the rare case where the
+  // PTY parser misses the recovery spinner/idle and no follow-up hook arrives.
   { from: State.PROCESSING, to: State.IDLE, trigger: 'stuck_timeout', source: 'internal' },
+  { from: State.AWAITING_PERMISSION, to: State.IDLE, trigger: 'stuck_timeout', source: 'internal' },
+  { from: State.AWAITING_OPTION, to: State.IDLE, trigger: 'stuck_timeout', source: 'internal' },
+  { from: State.AWAITING_DIFF, to: State.IDLE, trigger: 'stuck_timeout', source: 'internal' },
   { from: '*', to: State.DISCONNECTED, trigger: 'session_end', source: 'hook' },
   { from: '*', to: State.IDLE, trigger: 'interrupt', source: 'user' },
 ];

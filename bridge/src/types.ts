@@ -65,6 +65,7 @@ export {
   BRIDGE_HTTP_PORT,
   RECONNECT_INTERVAL_MS,
   STUCK_TIMEOUT_MS,
+  AWAITING_STUCK_TIMEOUT_MS,
 } from '@agentdeck/shared/protocol';
 
 export {

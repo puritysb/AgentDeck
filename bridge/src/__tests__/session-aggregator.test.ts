@@ -158,6 +158,41 @@ describe('session-aggregator', () => {
     expect(sessions[0].state).toBeUndefined();
   });
 
+  it('sweeps cached state for sessions that drop out of the active set', async () => {
+    clearSiblingStateCache('sibling-a');
+    clearSiblingStateCache('sibling-b');
+
+    // 1. Populate cache for sibling-a via a successful /health.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      json: async () => ({ state: 'processing', modelName: 'opus-4' }),
+    } as Response);
+    await enrichSessionsWithState(
+      [makeSession({ id: 'sibling-a', port: 9130 })],
+      'own-session',
+      'idle',
+    );
+
+    // 2. Enrich a list WITHOUT sibling-a — the sweep should evict its cache entry.
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      json: async () => ({ state: 'idle' }),
+    } as Response);
+    await enrichSessionsWithState(
+      [makeSession({ id: 'sibling-b', port: 9131 })],
+      'own-session',
+      'idle',
+    );
+
+    // 3. sibling-a returns with a failing /health — cache was swept, so no stale fallback.
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('timeout'));
+    const sessions = await enrichSessionsWithState(
+      [makeSession({ id: 'sibling-a', port: 9130 })],
+      'own-session',
+      'idle',
+    );
+
+    expect(sessions[0].state).toBeUndefined();
+  });
+
   it('buildEnrichedSessionsList includes own session and excludes daemon', async () => {
     mockListActive.mockReturnValue([
       makeSession({ id: 'own-session', port: 9121, projectName: 'Main' }),

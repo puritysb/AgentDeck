@@ -79,6 +79,7 @@ import {
   getSessionSlotManager,
   getFocusedSession,
   setDaemonConnected,
+  setDaemonStale,
 } from './actions/session-slot-button.js';
 import { timelineStore } from './timeline-store.js';
 
@@ -590,6 +591,11 @@ connMgr.on('connected', () => {
   // Request fresh usage data immediately on connect (covers sleep/wake recovery)
   connMgr.send({ type: 'query_usage' });
   broadcastStateUpdate();
+});
+
+connMgr.on('stale-changed', (stale: boolean) => {
+  dinfo('Plugin', `daemon stale-changed: ${stale}`);
+  setDaemonStale(stale);
 });
 
 connMgr.on('disconnected', () => {

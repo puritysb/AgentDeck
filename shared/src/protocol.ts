@@ -654,6 +654,16 @@ export const BRIDGE_HTTP_PORT = 9120; // Same port, different path
 export const RECONNECT_INTERVAL_MS = 3000;
 /** Plugin reconnect backoff ladder. Advances on each failed attempt, resets on `connected`. */
 export const RECONNECT_BACKOFF_MS: readonly number[] = [1000, 2000, 4000, 8000];
-export const STUCK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+export const STUCK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (PROCESSING hang)
+/** Backstop for AWAITING_* states. Longer than STUCK_TIMEOUT_MS because a user
+ *  can legitimately leave a permission/option/diff prompt unanswered for a
+ *  while; this only fires when a managed PTY session never sees the recovery
+ *  spinner/idle (parser miss) and no follow-up hook arrives. */
+export const AWAITING_STUCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 export const WS_PING_INTERVAL_MS = 15_000;
 export const WS_ACTIVITY_TIMEOUT_MS = 30_000;
+/** Soft-stale threshold: shorter than WS_ACTIVITY_TIMEOUT_MS so a client can dim
+ *  its last-known render (and flag it as stale) before the hard disconnect. The
+ *  daemon pings every WS_PING_INTERVAL_MS, so this only trips when the daemon
+ *  genuinely stops responding. Mirrors the 20s stale window in the TUI/Apple. */
+export const WS_STALE_TIMEOUT_MS = 20_000;

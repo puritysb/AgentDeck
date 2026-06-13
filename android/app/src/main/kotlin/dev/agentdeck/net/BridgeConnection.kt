@@ -36,9 +36,18 @@ class BridgeConnection private constructor() {
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Liveness detection is pong-based, not data-based: OkHttp sends a ping every
+    // pingInterval and fails the socket if no frame (pong or data) arrives within
+    // readTimeout. We can't drive a data-silence "stale" timer off onMessage —
+    // OkHttp never surfaces ping/pong to the listener, so an idle-but-alive
+    // connection would look silent and false-positive. Instead we keep detection
+    // tight (read 22s > ping 15s leaves a full ping cycle of margin) so a
+    // silently-dead daemon surfaces as DISCONNECTED within ~22s — matching the
+    // 20s stale window the TUI and macOS app use — rather than the old ~45s lag
+    // where a dead daemon's sessions lingered on screen as if live.
     private val client = OkHttpClient.Builder()
-        .readTimeout(45, TimeUnit.SECONDS) // Detect half-open connections (server pings every 15s)
-        .pingInterval(30, TimeUnit.SECONDS)
+        .readTimeout(22, TimeUnit.SECONDS)
+        .pingInterval(15, TimeUnit.SECONDS)
         .build()
 
     private var webSocket: WebSocket? = null
