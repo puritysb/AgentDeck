@@ -16,6 +16,8 @@ import type {
 import { State, PermissionMode } from '@agentdeck/shared';
 import {
   prepareForSerial,
+  roundRobinByAgentType,
+  SERIAL_SESSIONS_CAP,
   handleSerialLine,
   isRetryableSerialIoError,
   ESP32_PORT_PATTERNS,
@@ -295,6 +297,49 @@ describe('prepareForSerial (source)', () => {
     expect(prepared.sessions[0].projectName).toHaveLength(39);
     expect(prepared.sessions[0].modelName).toHaveLength(31);
     expect(prepared.sessions[0].extra).toBeUndefined();
+  });
+
+  it('round-robins sessions_list by agent type so non-Claude agents survive the cap', () => {
+    // 6 alive Claude sessions ahead of Codex + OpenClaw — the real-world layout
+    // that previously dropped Codex (index 6) via a plain slice(0, 6).
+    const sessions = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `cc-${i}`, agentType: 'claude-code', state: 'idle', alive: true, port: 9120 + i,
+      })),
+      { id: 'cc-busy', agentType: 'claude-code', state: 'processing', alive: true, port: 9130 },
+      { id: 'cx', agentType: 'codex-cli', state: 'idle', alive: true, port: 9140 },
+      { id: 'oc', agentType: 'openclaw', state: 'processing', alive: true, port: 18789 },
+    ];
+
+    const prepared = prepareForSerial({ type: 'sessions_list', sessions } as any) as any;
+    const ids = prepared.sessions.map((s: any) => s.id);
+
+    expect(prepared.sessions).toHaveLength(SERIAL_SESSIONS_CAP);
+    expect(ids).toContain('cx'); // Codex no longer starved out
+    expect(ids).toContain('oc'); // OpenClaw too
+    // Active Claude is preferred over its idle siblings within the type.
+    expect(ids).toContain('cc-busy');
+  });
+
+  it('roundRobinByAgentType keeps every present agent type and is a no-op under the cap', () => {
+    const under = [
+      { agentType: 'claude-code', alive: true, state: 'idle' },
+      { agentType: 'codex-cli', alive: true, state: 'idle' },
+    ];
+    expect(roundRobinByAgentType(under, SERIAL_SESSIONS_CAP)).toEqual(under);
+
+    const many = [
+      ...Array.from({ length: 8 }, () => ({ agentType: 'claude-code', alive: true, state: 'idle' })),
+      { agentType: 'codex-cli', alive: true, state: 'idle' },
+      { agentType: 'openclaw', alive: true, state: 'processing' },
+      { agentType: 'opencode', alive: true, state: 'idle' },
+    ];
+    const picked = roundRobinByAgentType(many, SERIAL_SESSIONS_CAP);
+    const types = new Set(picked.map((s) => s.agentType));
+    expect(picked).toHaveLength(SERIAL_SESSIONS_CAP);
+    expect(types).toContain('codex-cli');
+    expect(types).toContain('openclaw');
+    expect(types).toContain('opencode');
   });
 
   it('strips legacy usage fields from usage_update', () => {

@@ -146,6 +146,60 @@ function persistDeviceInfoCache(): void {
  * - Strip fields the ESP32 firmware doesn't parse (reduce size for small RX buffers)
  */
 /** @internal Exported for testing only */
+// Firmware (handleSessionsList) only stores the first 6 sessions; both sides
+// must agree on the same cap. Keep in sync with esp32/src/net/protocol.cpp.
+export const SERIAL_SESSIONS_CAP = 6;
+
+/**
+ * Pick which sessions survive the 6-slot serial cap.
+ *
+ * A naive `slice(0, 6)` lets a single agent type (e.g. several idle Claude Code
+ * sessions) fill every slot and starve other agents — a running Codex/OpenClaw
+ * session that lands at index 6+ never reaches the firmware's creature renderer.
+ *
+ * Instead we round-robin across agent types so each present type claims at least
+ * one slot before any type takes a second. Within a type, live + active
+ * (non-idle) sessions are preferred so a processing session is never dropped in
+ * favour of an idle sibling. Order within a type is otherwise preserved (stable).
+ */
+export function roundRobinByAgentType(sessions: any[], cap: number): any[] {
+  if (sessions.length <= cap) return sessions;
+
+  const groups = new Map<string, any[]>();
+  const order: string[] = [];
+  for (const s of sessions) {
+    const key = typeof s?.agentType === 'string' ? s.agentType : '';
+    let bucket = groups.get(key);
+    if (!bucket) { bucket = []; groups.set(key, bucket); order.push(key); }
+    bucket.push(s);
+  }
+
+  // Within each type: alive first, then active (non-idle) first. Stable for ties.
+  const rank = (s: any): number => {
+    const alive = s?.alive ? 1 : 0;
+    const state = typeof s?.state === 'string' ? s.state : '';
+    const active = state && state !== 'idle' ? 1 : 0;
+    return alive * 2 + active;
+  };
+  for (const key of order) {
+    groups.get(key)!.sort((a, b) => rank(b) - rank(a));
+  }
+
+  const result: any[] = [];
+  let progressed = true;
+  while (result.length < cap && progressed) {
+    progressed = false;
+    for (const key of order) {
+      const bucket = groups.get(key)!;
+      if (bucket.length === 0) continue;
+      result.push(bucket.shift());
+      progressed = true;
+      if (result.length >= cap) break;
+    }
+  }
+  return result;
+}
+
 export function prepareForSerial(event: BridgeEvent, conn?: Pick<SerialConnection, 'deviceInfo'>): BridgeEvent {
   const e = event as any;
 
@@ -182,9 +236,10 @@ export function prepareForSerial(event: BridgeEvent, conn?: Pick<SerialConnectio
   }
 
   if (event.type === 'sessions_list') {
+    const raw = Array.isArray(e.sessions) ? e.sessions : [];
     return {
       type: 'sessions_list',
-      sessions: (Array.isArray(e.sessions) ? e.sessions : []).slice(0, 6).map((s: any) => ({
+      sessions: roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP).map((s: any) => ({
         id: limitString(s.id, 31),
         projectName: limitString(s.projectName, 39),
         modelName: limitString(s.modelName, 31),
