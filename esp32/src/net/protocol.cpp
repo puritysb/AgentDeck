@@ -481,9 +481,11 @@ static void sendDeviceInfo() {
     resp["board"] = "ulanzi_tc001";
     #elif defined(BOARD_TTGO)
     resp["board"] = "ttgo_t_display";
+    #elif defined(BOARD_ESP32_C6_147)
+    resp["board"] = "esp32_c6_147";
     #elif IS_ROUND
     resp["board"] = "round_amoled";
-    #elif defined(BOARD_RGB48)
+    #elif defined(BOARD_RGB48) || defined(BOARD_BOX_86) || defined(BOARD_86_BOX)
     resp["board"] = "86box";
     #elif defined(BOARD_IPS10)
     resp["board"] = "ips_10";
@@ -533,8 +535,23 @@ void parseMessage(const char* json, size_t length) {
         sendDeviceInfo();
     } else if (strcmp(type, "display_state") == 0) {
         bool displayOn = obj["displayOn"] | true;
+        // Optional `dim` instruction. Absent (un-upgraded host) ⇒ the `| default`
+        // values keep legacy full-off: enabled=true, mode=off. We read displayOn
+        // first so even firmware that ignored `dim` would still dim to 0.
+        bool dimEnabled = obj["dim"]["enabled"] | true;
+        const char* dimMode = obj["dim"]["mode"] | "off";
+        int dimLevelPct = obj["dim"]["level"] | 0;
+        uint8_t dimMode8 = (strcmp(dimMode, "min") == 0) ? 1 : 0;
+        // Scale percent (1-100) → 0-255 backlight domain, rounded, floored at 1
+        // so "minimum brightness" never collapses to full-off.
+        int scaled = (dimLevelPct * 255 + 50) / 100;
+        if (scaled < 1) scaled = 1;
+        if (scaled > 255) scaled = 255;
         lockState();
         g_state.hostDisplayOn = displayOn;
+        g_state.hostDimEnabled = dimEnabled;
+        g_state.hostDimMode = dimMode8;
+        g_state.hostDimLevel = (uint8_t)scaled;
         unlockState();
     } else if (strcmp(type, "set_orientation") == 0) {
         bool landscape = obj["landscape"] | true;

@@ -138,6 +138,65 @@ public:
     }
 };
 
+#elif defined(BOARD_ESP32_C6_147)
+// ===== Waveshare ESP32-C6-LCD-1.47": ST7789 172x320 SPI =====
+class LGFX : public lgfx::LGFX_Device {
+public:
+    lgfx::Bus_SPI        _bus_instance;
+    lgfx::Panel_ST7789   _panel_instance;
+    lgfx::Light_PWM      _light_instance;
+
+    LGFX() {
+        // SPI bus configuration
+        {
+            auto cfg = _bus_instance.config();
+            cfg.spi_host = SPI2_HOST;  // ESP32-C6: general-purpose SPI2 (no VSPI/HSPI)
+            cfg.dma_channel = 0;       // Disable DMA for stability on C6 RISC-V
+            cfg.freq_write = 40000000; // 40MHz
+            cfg.freq_read  = 16000000;
+            cfg.pin_sclk = BOARD_PIN_SPI_SCLK;
+            cfg.pin_mosi = BOARD_PIN_SPI_MOSI;
+            cfg.pin_miso = -1;
+            cfg.pin_dc   = BOARD_PIN_SPI_DC;
+            _bus_instance.config(cfg);
+        }
+        _panel_instance.setBus(&_bus_instance);
+
+        // Panel configuration
+        {
+            auto cfg = _panel_instance.config();
+            cfg.pin_cs           = BOARD_PIN_SPI_CS;
+            cfg.pin_rst          = BOARD_PIN_SPI_RST;
+            cfg.pin_busy         = -1;
+            cfg.memory_width     = 240;
+            cfg.memory_height    = 320;
+            cfg.panel_width      = 172;
+            cfg.panel_height     = 320;
+            cfg.offset_x         = 34;  // 172-wide window centered in 240-wide GRAM: (240-172)/2
+            cfg.offset_y         = 0;
+            cfg.offset_rotation  = 0;
+            cfg.dummy_read_bits  = 8;
+            cfg.readable         = false;
+            cfg.invert           = BOARD_INVERT;
+            cfg.rgb_order        = false; // BGR order
+            _panel_instance.config(cfg);
+        }
+
+        // Backlight configuration
+        {
+            auto cfg = _light_instance.config();
+            cfg.pin_bl = BOARD_PIN_BL;
+            cfg.invert = false;
+            cfg.freq   = 12000;
+            cfg.pwm_channel = 0;
+            _light_instance.config(cfg);
+            _panel_instance.setLight(&_light_instance);
+        }
+
+        setPanel(&_panel_instance);
+    }
+};
+
 #elif defined(BOARD_TTGO)
 // ===== TTGO T-Display: ST7789 1.14" 135x240 SPI =====
 class LGFX : public lgfx::LGFX_Device {
@@ -152,7 +211,7 @@ public:
             auto cfg = _bus_instance.config();
             cfg.spi_host = VSPI_HOST;  // VSPI on ESP32 classic
             cfg.dma_channel = 0;       // Disable DMA to bypass Core 3.x DMA issues on ESP32 classic
-            cfg.freq_write = 20000000; // 20MHz (safer SPI write for noise reduction)
+            cfg.freq_write = 20000000; // 20MHz — stable for TTGO ST7789 (40MHz caused flicker/black screen)
             cfg.freq_read  = 16000000;
             cfg.pin_sclk = BOARD_PIN_SPI_SCLK;
             cfg.pin_mosi = BOARD_PIN_SPI_MOSI;
@@ -562,6 +621,7 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
         }
     }
 #else
+    tft.startWrite();
     if (stride_pixels == w) {
         // swap565_t tells LovyanGFX data is already byte-swapped (big-endian RGB565
         // from LVGL RGB565_SWAPPED). Without this cast, writePixels interprets data
@@ -574,6 +634,7 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
             tft.pushImage(area->x1, area->y1 + y, w, 1, (lgfx::swap565_t*)&src[y * stride_pixels]);
         }
     }
+    tft.endWrite();
 #endif
 
     lv_display_flush_ready(display);
@@ -775,8 +836,8 @@ void displayInit() {
     tft.init();
     Serial.println("[Display] tft.init() complete");
 
-#if defined(BOARD_TTGO)
-    // TTGO: Test panel rendering directly to check hardware/SPI alignment
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
+    // ST7789 SPI: Test panel rendering directly to check hardware/SPI alignment
     Serial.println("[Display] ===== TTGO PANEL TEST START =====");
     tft.setRotation(0); // Test portrait
     tft.fillScreen(0xF800); // Red
@@ -840,6 +901,25 @@ void displayInit() {
         Serial.printf("[Display] TTGO orientation: %s (%dx%d)\n",
                       landscape ? "landscape" : "portrait", g_screenW, g_screenH);
     }
+#elif defined(BOARD_ESP32_C6_147)
+    // C6 1.47": orientation from NVS, defaults to LANDSCAPE
+    {
+        Preferences prefs;
+        prefs.begin("agentdeck", true);
+        bool landscape = prefs.getBool("landscape", true);  // C6 defaults to landscape
+        prefs.end();
+        if (landscape) {
+            tft.setRotation(3);    // C6 panel mounted 180° from default — flipped landscape
+            g_screenW = SCREEN_H;  // 320: landscape width
+            g_screenH = SCREEN_W;  // 172: landscape height
+        } else {
+            tft.setRotation(2);    // flipped portrait
+            g_screenW = SCREEN_W;  // 172: portrait width
+            g_screenH = SCREEN_H;  // 320: portrait height
+        }
+        Serial.printf("[Display] C6 orientation: %s (%dx%d)\n",
+                      landscape ? "landscape" : "portrait", g_screenW, g_screenH);
+    }
 #else
     tft.setRotation(BOARD_ROTATION);
 #endif
@@ -898,11 +978,9 @@ void displayInit() {
     Serial.printf("[Display] LVGL initialized %dx%d (RGB565 swapped, partial)\n", g_screenW, g_screenH);
 #else
     // SPI/QSPI panels: partial render with DMA-capable buffers, big-endian RGB565
-#if defined(BOARD_TTGO)
-    static constexpr size_t BUF_LINES = 10;
-#else
+    // Larger BUF_LINES → fewer per-frame SPI band-pushes → less tearing/flicker.
+    // TTGO was 10 lines (24 pushes for a 240px screen); 40 lines = 6 pushes.
     static constexpr size_t BUF_LINES = 40;
-#endif
 #if defined(BOARD_IPS10)
     size_t logicalWidth = BOARD_NATIVE_H;
 #else
@@ -987,7 +1065,7 @@ void lvglLoop() {
 }
 
 bool isLandscape() {
-#if defined(BOARD_IPS35) || defined(BOARD_TTGO) || defined(BOARD_IPS10)
+#if defined(BOARD_IPS35) || defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147) || defined(BOARD_IPS10)
     return g_screenW > g_screenH;
 #else
     return true;
@@ -995,17 +1073,24 @@ bool isLandscape() {
 }
 
 void setOrientation(bool landscape) {
-#if defined(BOARD_IPS35) || defined(BOARD_TTGO)
+#if defined(BOARD_IPS35) || defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     bool currentLandscape = g_screenW > g_screenH;
     if (landscape == currentLandscape) return;
 
+#if defined(BOARD_IPS35)
+    // IPS35: SCREEN_W is the landscape (wide) dimension
     g_screenW = landscape ? SCREEN_W : SCREEN_H;
     g_screenH = landscape ? SCREEN_H : SCREEN_W;
-
-#if defined(BOARD_IPS35)
     gfx->setRotation(landscape ? 1 : 0);
 #else
+    // TTGO / C6: SCREEN_W is the portrait (narrow) dimension
+    g_screenW = landscape ? SCREEN_H : SCREEN_W;
+    g_screenH = landscape ? SCREEN_W : SCREEN_H;
+#if defined(BOARD_ESP32_C6_147)
+    tft.setRotation(landscape ? 3 : 2);  // C6 panel mounted 180° from default
+#else
     tft.setRotation(landscape ? 1 : 0);
+#endif
 #endif
     lv_display_set_resolution(disp, g_screenW, g_screenH);
 

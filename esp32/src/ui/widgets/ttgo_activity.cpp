@@ -103,14 +103,14 @@ lv_obj_t* create(lv_obj_t* parent) {
         lblTitle = lv_label_create(widget);
         lv_obj_set_style_text_font(lblTitle, &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_color(lblTitle, lv_color_hex(Theme::HUDDim), 0);
-        lv_obj_align(lblTitle, LV_ALIGN_TOP_LEFT, 4, 4);
+        lv_obj_align(lblTitle, LV_ALIGN_TOP_LEFT, 8, 12);
         lv_label_set_text(lblTitle, "▶");
 
         lblTool = lv_label_create(widget);
         lv_obj_set_style_text_font(lblTool, &font_kr_12, 0);
         lv_obj_set_style_text_color(lblTool, lv_color_hex(Theme::HUDText), 0);
-        lv_obj_set_width(lblTool, screenW - 40);
-        lv_obj_align(lblTool, LV_ALIGN_TOP_LEFT, 24, 4);
+        lv_obj_set_width(lblTool, screenW - 48);
+        lv_obj_align(lblTool, LV_ALIGN_TOP_LEFT, 28, 12);
         lv_label_set_long_mode(lblTool, LV_LABEL_LONG_DOT);
         lv_label_set_text(lblTool, "");
 
@@ -118,7 +118,7 @@ lv_obj_t* create(lv_obj_t* parent) {
         lv_obj_set_style_text_font(lblEvent, &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_color(lblEvent, lv_color_hex(Theme::HUDText), 0);
         lv_obj_set_width(lblEvent, screenW - 16);
-        lv_obj_align(lblEvent, LV_ALIGN_TOP_LEFT, 4, 24);
+        lv_obj_align(lblEvent, LV_ALIGN_TOP_LEFT, 8, 32);
         lv_label_set_long_mode(lblEvent, LV_LABEL_LONG_DOT);
         lv_label_set_text(lblEvent, "");
     }

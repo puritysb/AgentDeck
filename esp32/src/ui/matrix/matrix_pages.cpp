@@ -165,6 +165,34 @@ static void drawSprite(CRGB* leds, int x0, int y0, const uint8_t* sprite,
     }
 }
 
+static inline uint8_t clamp8(int v) { return v > 255 ? 255 : (uint8_t)v; }
+
+// Accent color whose brightness is TIED to the body's brightness. A lit accent
+// (eyes / marking / highlight) must never be brighter than what the dim body can
+// support, or it floats as a lone dot / disembodied eyes when the creature is in
+// an idle/dormant (near-black body) state. `hue` is the accent at full brightness;
+// the result is that hue scaled to ~`boost`× the body's luminance (capped).
+static CRGB accentScaled(CRGB hue, CRGB body, float boost) {
+    uint8_t bodyMax = body.r;
+    if (body.g > bodyMax) bodyMax = body.g;
+    if (body.b > bodyMax) bodyMax = body.b;
+    float s = (bodyMax / 255.0f) * boost;
+    if (s > 1.0f) s = 1.0f;
+    return CRGB(clamp8((int)(hue.r * s)), clamp8((int)(hue.g * s)), clamp8((int)(hue.b * s)));
+}
+
+// Draw a creature: flat body, then a LIT accent overlay (eyes / marking / core /
+// head highlight). On a WS2812 matrix "dark" pixels are simply off (black), so
+// detail must be conveyed with a brighter/contrasting LIT color, not dark pixels.
+// `accent` may be nullptr to skip the overlay. Accent bits are a subset of body
+// bits, so the accent never floats outside the silhouette.
+static void drawCreature(CRGB* leds, int x0, int y0,
+                         const uint8_t* body, const uint8_t* accent,
+                         int w, int h, CRGB bodyColor, CRGB accentColor) {
+    drawSprite(leds, x0, y0, body, w, h, bodyColor);
+    if (accent) drawSprite(leds, x0, y0, accent, w, h, accentColor);
+}
+
 // Tiny state dot in bottom-right corner of USAGE page (row 7, col 31)
 // Shows brightest active agent state so user can glance at activity without
 // waiting for the AGENTS page.
@@ -203,18 +231,33 @@ static void drawStateDot(CRGB* leds, float animTime) {
     setPixel(leds, 31, 7, c);
 }
 
-// ===== Sprites (5x6) =====
+// ===== Creature sprites (5x6) — body bitmap + lit accent overlay =====
+// Body is drawn in the agent's state color; the *_ACC overlay adds a lit detail
+// (octopus head highlight, Codex ">_" marking, OpenCode bright core, crayfish
+// teal eyes) in a brighter/contrasting color. See drawCreature().
 static const uint8_t SPR_OCTOPUS[6] = {
-    0b01110, 0b11111, 0b10101, 0b11111, 0b01010, 0b10101
+    0b01110, 0b11111, 0b10101, 0b11111, 0b01110, 0b10101
+};
+static const uint8_t SPR_OCTOPUS_ACC[6] = {   // brighter head highlight
+    0b01110, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000
 };
 static const uint8_t SPR_JELLYFISH[6] = {
-    0b01110, 0b11111, 0b11011, 0b01110, 0b01010, 0b10001
+    0b01110, 0b11111, 0b11111, 0b01110, 0b01010, 0b10001
+};
+static const uint8_t SPR_JELLYFISH_ACC[6] = { // ">_" prompt marking (light)
+    0b00000, 0b00000, 0b00100, 0b00000, 0b00000, 0b00000
 };
 static const uint8_t SPR_OPENCODE[6] = {
-    0b11111, 0b10001, 0b10101, 0b10001, 0b10001, 0b11111
+    0b11111, 0b10001, 0b10101, 0b10001, 0b11111, 0b00000
+};
+static const uint8_t SPR_OPENCODE_ACC[6] = {  // bright nested-square core
+    0b00000, 0b00000, 0b00100, 0b00000, 0b00000, 0b00000
 };
 static const uint8_t SPR_CRAYFISH[6] = {
     0b10001, 0b01110, 0b11111, 0b01110, 0b00100, 0b01010
+};
+static const uint8_t SPR_CRAYFISH_ACC[6] = {  // teal eyes (OpenClaw signature)
+    0b00000, 0b01010, 0b00000, 0b00000, 0b00000, 0b00000
 };
 
 // Format reset time compact: "3h 22m" → "3H22", "2d 4h" → "2D4", "20m" → "20M"
@@ -420,13 +463,19 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         } else {
             cfColor = CRGB(25, 5, 5);  // DORMANT: very dim red
         }
-        drawSprite(leds, 27, 1, SPR_CRAYFISH, 5, 6, cfColor);
+        // Teal eyes scaled to body brightness so dormant/sitting (near-black body)
+        // doesn't leave the eyes floating. Skip entirely when SICK (gray reads "off").
+        const uint8_t* cfAcc = gatewayError ? nullptr : SPR_CRAYFISH_ACC;
+        drawCreature(leds, 27, 1, SPR_CRAYFISH, cfAcc, 5, 6, cfColor,
+                     accentScaled(CRGB(0, 225, 200), cfColor, 1.5f));
         drewCrayfish = true;
     } else if (connected && openclawAlive) {
         // Gateway not authenticated yet (or reconnecting) but the OpenClaw
         // session is live — draw a very dim crayfish so the user sees
         // "OpenClaw is here, waiting" instead of a fully black matrix.
-        drawSprite(leds, 27, 1, SPR_CRAYFISH, 5, 6, CRGB(12, 3, 3));
+        CRGB pairBody = CRGB(12, 3, 3);
+        drawCreature(leds, 27, 1, SPR_CRAYFISH, SPR_CRAYFISH_ACC, 5, 6,
+                     pairBody, accentScaled(CRGB(0, 225, 200), pairBody, 1.5f));
         drewCrayfish = true;
     }
 
@@ -452,7 +501,8 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         int bobY = 1 + (int)(0.5f * sinf(animTime * 0.8f));
         CRGB idleColor = CRGB(
             (uint8_t)(80 * breathe), (uint8_t)(48 * breathe), (uint8_t)(36 * breathe));
-        drawSprite(leds, 8, bobY, SPR_OCTOPUS, 5, 6, idleColor);
+        drawCreature(leds, 8, bobY, SPR_OCTOPUS, SPR_OCTOPUS_ACC, 5, 6,
+                     idleColor, accentScaled(CRGB(235, 150, 110), idleColor, 1.5f));
         return;
     }
 
@@ -503,6 +553,21 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
             default:             return SPR_OCTOPUS;
         }
     };
+    auto agentAccent = [](AgentKind kind) -> const uint8_t* {
+        switch (kind) {
+            case AGENT_CODEX:    return SPR_JELLYFISH_ACC;
+            case AGENT_OPENCODE: return SPR_OPENCODE_ACC;
+            default:             return SPR_OCTOPUS_ACC;
+        }
+    };
+    // Lit accent color, brightness tied to the body so it never floats when dim.
+    auto agentAccentColor = [](AgentKind kind, CRGB body) -> CRGB {
+        switch (kind) {
+            case AGENT_CODEX:    return accentScaled(CRGB(220, 225, 255), body, 1.4f); // ">_" marking
+            case AGENT_OPENCODE: return accentScaled(CRGB(120, 230, 255), body, 1.5f); // bright core
+            default:             return accentScaled(CRGB(235, 150, 110), body, 1.5f); // octopus head
+        }
+    };
 
     int visibleSlots = 3;
     int spacing = 7;  // 5px sprite + 2px gap
@@ -511,8 +576,9 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         for (int i = 0; i < agentCount; i++) {
             int x = 1 + i * spacing;
             int bobY = 1 + (int)(0.3f * sinf(animTime * 2.0f + i * 1.5f));
-            drawSprite(leds, x, bobY, agentSprite(agents[i].kind), 5, 6,
-                       agentColor(agents[i].state, agents[i].kind, agents[i].instanceIdx));
+            CRGB bc = agentColor(agents[i].state, agents[i].kind, agents[i].instanceIdx);
+            drawCreature(leds, x, bobY, agentSprite(agents[i].kind), agentAccent(agents[i].kind),
+                         5, 6, bc, agentAccentColor(agents[i].kind, bc));
         }
     } else {
         // Ping-pong scroll: pause → slide right → pause → slide back left
@@ -542,8 +608,9 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
             int x = 1 + i * spacing - scrollOffset;
             if (x > agentMaxX || x < -5) continue;
             int bobY = 1 + (int)(0.3f * sinf(animTime * 2.0f + i * 1.2f));
-            drawSprite(leds, x, bobY, agentSprite(agents[i].kind), 5, 6,
-                       agentColor(agents[i].state, agents[i].kind, agents[i].instanceIdx));
+            CRGB bc = agentColor(agents[i].state, agents[i].kind, agents[i].instanceIdx);
+            drawCreature(leds, x, bobY, agentSprite(agents[i].kind), agentAccent(agents[i].kind),
+                         5, 6, bc, agentAccentColor(agents[i].kind, bc));
         }
     }
 }

@@ -7,7 +7,7 @@
 #include "../../state/agent_state.h"
 #include "config.h"
 
-#if defined(BOARD_TTGO)
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
 #include "ttgo_overlay.h"
 #endif
 
@@ -17,7 +17,10 @@ static lv_obj_t* connCard = nullptr;
 static lv_obj_t* connLogoImg = nullptr;
 static lv_obj_t* connTitleLabel = nullptr;
 static lv_obj_t* connStatusLabel = nullptr;
-static bool lastHostDisplayOn = true;
+// Last backlight value pushed to UI::setBrightness. Seeded to the boot-default
+// full brightness so the first awake frame is a no-op (matches prior behavior),
+// while any later change (sleep, dim-level edit, user brightness) re-applies.
+static uint8_t lastAppliedBrightness = 255;
 
 #if defined(BOARD_IPS35)
 static lv_obj_t* btnRotate = nullptr;
@@ -80,14 +83,19 @@ namespace Screens {
 
 lv_obj_t* aquariumCreate() {
     screen = lv_obj_create(NULL);
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
+    lv_obj_set_style_bg_color(screen, lv_color_hex(0x2A1F14), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+#else
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
+#endif
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
     // Create terrarium canvas (full screen)
     Terrarium::init(screen);
 
-#if defined(BOARD_TTGO)
-    // TTGO: Use simplified overlay (state + activity switching)
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
+    // Compact panels: simplified overlay (state + activity switching)
     TTGO::Overlay::init(screen);
 #else
     // Create HUD overlay
@@ -112,6 +120,8 @@ lv_obj_t* aquariumCreate() {
     connCard = lv_obj_create(connScrim);
 #if defined(BOARD_TTGO)
     lv_obj_set_width(connCard, 200);
+#elif defined(BOARD_ESP32_C6_147)
+    lv_obj_set_width(connCard, 160);  // fit within 172px panel width
 #elif IS_ROUND
     lv_obj_set_width(connCard, 220);
 #else
@@ -198,15 +208,32 @@ lv_obj_t* aquariumCreate() {
 }
 
 void aquariumUpdate(float dt) {
-    // Host display sleep → dim/restore ESP32 backlight
+    // Host display sleep → dim/restore ESP32 backlight, honoring the host's
+    // dim instruction (enabled / off vs min / level).
     lockState();
     bool displayOn = g_state.hostDisplayOn;
     uint8_t userBright = g_state.userBrightness;
+    bool dimEnabled = g_state.hostDimEnabled;
+    uint8_t dimMode = g_state.hostDimMode;
+    uint8_t dimLevel = g_state.hostDimLevel;
     unlockState();
 
-    if (displayOn != lastHostDisplayOn) {
-        lastHostDisplayOn = displayOn;
-        UI::setBrightness(displayOn ? userBright : 0);
+    // Resolve target backlight. Awake (or dimming disabled) → user brightness;
+    // asleep → min level or full-off.
+    uint8_t target;
+    if (displayOn || !dimEnabled) {
+        target = userBright;
+    } else if (dimMode == 1) {
+        target = dimLevel;  // minimum brightness
+    } else {
+        target = 0;         // full-off
+    }
+
+    // Compare against the last applied value (not just displayOn) so a live
+    // dim-level change while the host stays asleep re-applies immediately.
+    if (target != lastAppliedBrightness) {
+        lastAppliedBrightness = target;
+        UI::setBrightness(target);
     }
 
     // Render terrarium frame only when connection overlay is hidden to save CPU/SPI bandwidth
@@ -219,8 +246,8 @@ void aquariumUpdate(float dt) {
         Terrarium::render(dt);
     }
 
-#if defined(BOARD_TTGO)
-    // TTGO: Update simplified overlay
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
+    // Compact panels: update simplified overlay
     TTGO::Overlay::update();
 #else
     // Update HUD data
@@ -232,14 +259,14 @@ void aquariumSetConnectionStatus(ConnOverlayStatus status) {
     if (!connScrim || !connStatusLabel) return;
 
     if (status == ConnOverlayStatus::HIDDEN) {
-#if defined(BOARD_TTGO)
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
         TTGO::Overlay::setVisible(true);
 #endif
         lv_obj_add_flag(connScrim, LV_OBJ_FLAG_HIDDEN);
         return;
     }
 
-#if defined(BOARD_TTGO)
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     TTGO::Overlay::setVisible(false);
 #endif
 

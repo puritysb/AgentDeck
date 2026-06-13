@@ -10,7 +10,7 @@
 
 // Display: WS2812B 32x32 addressable LED matrix (1024 LEDs)
 #define BOARD_DISPLAY_TYPE   DISPLAY_WS2812B_MATRIX
-#define BOARD_PIN_LED_DATA   48    // GPIO48 - LED data pin (RMT-capable)
+#define BOARD_PIN_LED_DATA   16    // GPIO16 - another common LED data pin
 #define MATRIX_W             32
 #define MATRIX_H             32
 #define MATRIX_LEDS          1024

@@ -15,8 +15,10 @@
     #include "board_ulanzi_tc001.h"
 #elif defined(BOARD_TTGO) || defined(BOARD_TTGO_T_DISPLAY)
     #include "board_ttgo_t_display.h"
+#elif defined(BOARD_ESP32_C6_147)
+    #include "board_esp32_c6_147.h"
 #elif defined(BOARD_IPS10) || defined(BOARD_JC8012P4A1C)
     #include "board_jc8012p4a1c.h"
 #else
-    #error "No board defined! Use -DBOARD_IPS35, -DBOARD_RGB48, -DBOARD_AMOLED, -DBOARD_LED8X32, -DBOARD_TTGO, or -DBOARD_IPS10"
+    #error "No board defined! Use -DBOARD_IPS35, -DBOARD_RGB48, -DBOARD_AMOLED, -DBOARD_LED8X32, -DBOARD_TTGO, -DBOARD_ESP32_C6_147, or -DBOARD_IPS10"
 #endif

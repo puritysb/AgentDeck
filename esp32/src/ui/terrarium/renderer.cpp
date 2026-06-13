@@ -79,16 +79,32 @@ static inline void decodePixel(uint16_t px, uint8_t& r, uint8_t& g, uint8_t& b) 
     b = (px & 0x1F) << 3;
 }
 
+#if defined(BOARD_TTGO)
+static constexpr int canvasW = 135;
+static constexpr int canvasH = 160;
+static uint16_t ttgo_canvas_buf[canvasW * canvasH];
+#elif defined(BOARD_ESP32_C6_147)
+// Full-screen static canvas. Portrait (172×320) and landscape (320×172) have identical
+// pixel counts, so one fixed buffer serves both orientations; canvasW/H follow g_screen
+// so the terrarium fills the whole screen after an orientation toggle.
+static uint16_t c6_canvas_buf[SCREEN_W * SCREEN_H];
+#define canvasW g_screenW
+#define canvasH g_screenH
+#else
+#define canvasW g_screenW
+#define canvasH g_screenH
+#endif
+
 // Inline pixel setter for direct buffer manipulation
 static inline void setPixel(int x, int y, uint16_t color) {
-    if (x >= 0 && x < g_screenW && y >= 0 && y < g_screenH) {
-        canvas_buf[y * g_screenW + x] = color;
+    if (x >= 0 && x < canvasW && y >= 0 && y < canvasH) {
+        canvas_buf[y * canvasW + x] = color;
     }
 }
 
 static inline void setPixelAlpha(int x, int y, uint32_t color24, uint8_t alpha) {
-    if (x < 0 || x >= g_screenW || y < 0 || y >= g_screenH || alpha == 0) return;
-    uint16_t* px = &canvas_buf[y * g_screenW + x];
+    if (x < 0 || x >= canvasW || y < 0 || y >= canvasH || alpha == 0) return;
+    uint16_t* px = &canvas_buf[y * canvasW + x];
     if (alpha >= 250) {
         *px = rgb565((color24 >> 16) & 0xFF, (color24 >> 8) & 0xFF, color24 & 0xFF);
         return;
@@ -144,6 +160,11 @@ static void drawLine(int x0, int y0, int x1, int y1, uint32_t color24, uint8_t a
 namespace Terrarium {
 
 void init(lv_obj_t* parent) {
+#if defined(BOARD_TTGO)
+    canvas_buf = ttgo_canvas_buf;
+#elif defined(BOARD_ESP32_C6_147)
+    canvas_buf = c6_canvas_buf;
+#else
     // Allocate canvas buffer in PSRAM or fallback to standard SRAM
     if (!canvas_buf) {
         canvas_buf = (uint16_t*)ps_malloc(g_screenW * g_screenH * sizeof(uint16_t));
@@ -156,6 +177,7 @@ void init(lv_obj_t* parent) {
             return;
         }
     }
+#endif
 
 #if defined(BOARD_RGB48)
     // LovyanGFX: canvas must match display format (swapped) — no LVGL conversion
@@ -165,8 +187,10 @@ void init(lv_obj_t* parent) {
     lv_color_format_t canvasFmt = LV_COLOR_FORMAT_RGB565;
 #endif
     canvas = lv_canvas_create(parent);
-    lv_draw_buf_init(&draw_buf, g_screenW, g_screenH, canvasFmt,
-                     0, canvas_buf, g_screenW * g_screenH * sizeof(uint16_t));
+    // Explicit stride = width * 2 bytes (no alignment padding).
+    uint32_t canvasStride = canvasW * sizeof(uint16_t);
+    lv_draw_buf_init(&draw_buf, canvasW, canvasH, canvasFmt,
+                     canvasStride, canvas_buf, canvasW * canvasH * sizeof(uint16_t));
     lv_canvas_set_draw_buf(canvas, &draw_buf);
     lv_obj_align(canvas, LV_ALIGN_TOP_LEFT, 0, 0);
 
@@ -186,7 +210,7 @@ void init(lv_obj_t* parent) {
     Bubbles::init();
 
     Serial.printf("[Terrarium] Canvas %dx%d allocated (%d KB PSRAM)\n",
-                  g_screenW, g_screenH, g_screenW * g_screenH * 2 / 1024);
+                  canvasW, canvasH, canvasW * canvasH * 2 / 1024);
 }
 
 void render(float dt) {
@@ -303,72 +327,72 @@ void render(float dt) {
     // Render layers bottom-to-top (direct buffer writes)
 
     // 1. Water gradient background (fills entire buffer)
-    Water::renderBackground(canvas_buf, g_screenW, g_screenH);
+    Water::renderBackground(canvas_buf, canvasW, canvasH);
 
     // 2. Light rays from surface (subtle volumetric shafts)
-    Water::renderLightRays(canvas_buf, g_screenW, g_screenH, totalTime);
+    Water::renderLightRays(canvas_buf, canvasW, canvasH, totalTime);
 
     // 3. Sand + rocks (terrain)
-    Terrain::render(canvas_buf, g_screenW, g_screenH);
+    Terrain::render(canvas_buf, canvasW, canvasH);
 
     // 4. Caustic light patterns on sand
-    Water::renderCaustics(canvas_buf, g_screenW, g_screenH, totalTime);
+    Water::renderCaustics(canvas_buf, canvasW, canvasH, totalTime);
 
     // 5. Kelp (animated sway)
-    Kelp::render(canvas_buf, g_screenW, g_screenH, totalTime);
+    Kelp::render(canvas_buf, canvasW, canvasH, totalTime);
 
     // 6. Crayfish (if visible)
     if (showCrayfish) {
-        Crayfish::render(canvas_buf, g_screenW, g_screenH, totalTime, cfState);
+        Crayfish::render(canvas_buf, canvasW, canvasH, totalTime, cfState);
     }
 
     // 7. Octopus(es) — per-instance state (daemon reports sibling states)
     for (uint8_t i = 0; i < octCount && i < MAX_OCTOPUS; i++) {
-        Octopus::render(canvas_buf, g_screenW, g_screenH, totalTime, dt, octStates[i], i, octCount);
+        Octopus::render(canvas_buf, canvasW, canvasH, totalTime, dt, octStates[i], i, octCount);
     }
 
     // 7b. Cloud(s) — Codex CLI creatures (per-instance state)
     for (uint8_t i = 0; i < cloudCount && i < MAX_CLOUD; i++) {
-        Cloud::render(canvas_buf, g_screenW, g_screenH, totalTime, dt, cloudStates[i], i, cloudCount);
+        Cloud::render(canvas_buf, canvasW, canvasH, totalTime, dt, cloudStates[i], i, cloudCount);
     }
 
     // 7c. OpenCode creatures
     for (uint8_t i = 0; i < opencodeCount && i < MAX_OPENCODE; i++) {
-        OpenCode::render(canvas_buf, g_screenW, g_screenH, totalTime, dt, opencodeStates[i], i, opencodeCount);
+        OpenCode::render(canvas_buf, canvasW, canvasH, totalTime, dt, opencodeStates[i], i, opencodeCount);
     }
 
     // 8. Data particles (food crumbs from working agents)
     Particles::update(dt, totalTime, cState, octCount, cfState, showCrayfish, octStates);
-    Particles::render(canvas_buf, g_screenW, g_screenH, totalTime);
+    Particles::render(canvas_buf, canvasW, canvasH, totalTime);
 
     // 9. Neon tetra school (chases food particles)
     Tetra::update(dt, totalTime, tState, cState, octCount);
-    Tetra::render(canvas_buf, g_screenW, g_screenH);
+    Tetra::render(canvas_buf, canvasW, canvasH);
 
     // 10. Floating particles (plankton/dust)
-    Water::renderParticles(canvas_buf, g_screenW, g_screenH, totalTime);
+    Water::renderParticles(canvas_buf, canvasW, canvasH, totalTime);
 
     // 11. Bubbles — pass octCount so exhale comes from all octopuses
     Bubbles::update(dt, totalTime, cState, octCount);
-    Bubbles::render(canvas_buf, g_screenW, g_screenH);
+    Bubbles::render(canvas_buf, canvasW, canvasH);
 
     // 12. Water surface waves + sparkles
-    Water::renderSurface(canvas_buf, g_screenW, g_screenH, totalTime);
+    Water::renderSurface(canvas_buf, canvasW, canvasH, totalTime);
 
 #if IS_ROUND
     // 13. Circular mask — black out pixels outside the inscribed circle
     {
-        const int cx = g_screenW / 2;
-        const int cy = g_screenH / 2;
-        const int r = min(g_screenW, g_screenH) / 2;
+        const int cx = canvasW / 2;
+        const int cy = canvasH / 2;
+        const int r = min(canvasW, canvasH) / 2;
         const int r2 = r * r;
-        for (int y = 0; y < g_screenH; y++) {
+        for (int y = 0; y < canvasH; y++) {
             const int dy = y - cy;
             const int dy2 = dy * dy;
-            for (int x = 0; x < g_screenW; x++) {
+            for (int x = 0; x < canvasW; x++) {
                 const int dx = x - cx;
                 if (dx * dx + dy2 > r2) {
-                    canvas_buf[y * g_screenW + x] = 0;  // AMOLED: black = off
+                    canvas_buf[y * canvasW + x] = 0;  // AMOLED: black = off
                 }
             }
         }

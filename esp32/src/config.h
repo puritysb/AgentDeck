@@ -47,15 +47,15 @@ constexpr uint8_t  MAX_BUBBLES         = 0;
 constexpr uint8_t  MAX_FOOD_CRUMBS     = 0;
 constexpr uint8_t  KELP_COUNT          = 0;
 constexpr uint8_t  WAVE_SEGMENTS       = 0;
-#elif defined(BOARD_TTGO)
+#elif defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
 constexpr uint8_t  MAX_OCTOPUS         = 2;
 constexpr uint8_t  MAX_CLOUD           = 1;
 constexpr uint8_t  MAX_OPENCODE        = 1;
-constexpr uint8_t  MAX_TETRA           = 2;
-constexpr uint8_t  MAX_BUBBLES         = 6;
-constexpr uint8_t  MAX_FOOD_CRUMBS     = 4;
+constexpr uint8_t  MAX_TETRA           = 1;   // trimmed for calmer motion on small SPI panels
+constexpr uint8_t  MAX_BUBBLES         = 3;   // trimmed (was 6) — less constant motion
+constexpr uint8_t  MAX_FOOD_CRUMBS     = 3;
 constexpr uint8_t  KELP_COUNT          = 1;
-constexpr uint8_t  WAVE_SEGMENTS       = 10;
+constexpr uint8_t  WAVE_SEGMENTS       = 8;
 #elif defined(BOARD_IPS10)
 constexpr uint8_t  MAX_OCTOPUS         = 8;
 constexpr uint8_t  MAX_CLOUD           = 6;
@@ -86,8 +86,10 @@ constexpr uint8_t  WAVE_SEGMENTS       = 20;
 #endif
 
 // ===== Timeline =====
-#if defined(BOARD_LED8X32) || defined(BOARD_TTGO)
+#if defined(BOARD_LED8X32)
 constexpr uint8_t  TIMELINE_MAX_ENTRIES = 32;
+#elif defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
+constexpr uint8_t  TIMELINE_MAX_ENTRIES = 4;
 #else
 constexpr uint8_t  TIMELINE_MAX_ENTRIES = 64;
 #endif
@@ -97,11 +99,15 @@ constexpr uint16_t SIN_TABLE_SIZE      = 256;
 
 // ===== FreeRTOS =====
 constexpr uint8_t  CORE_NETWORK        = 0;
+#if defined(BOARD_ESP32_C6_147)
+constexpr uint8_t  CORE_UI             = 0;  // ESP32-C6 is single-core — core 1 is invalid
+#else
 constexpr uint8_t  CORE_UI             = 1;
+#endif
 constexpr uint32_t STACK_NETWORK       = 8192;
 #if defined(BOARD_LED8X32)
 constexpr uint32_t STACK_UI            = 4096;
-#elif defined(BOARD_TTGO)
+#elif defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
 constexpr uint32_t STACK_UI            = 8192;
 #elif defined(BOARD_IPS10)
 constexpr uint32_t STACK_UI            = 32768;

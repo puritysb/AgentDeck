@@ -54,6 +54,12 @@ float smoothBrightness = MATRIX_BRIGHTNESS_DEF;  // non-static: accessed by matr
 void init() {
     FastLED.addLeds<WS2812B, BOARD_PIN_LED_DATA, GRB>(leds, MATRIX_LEDS);
     FastLED.setBrightness(MATRIX_BRIGHTNESS_DEF);
+    // Disable FastLED temporal dithering. Dithering toggles low bits across frames
+    // to fake intermediate brightness, but that requires a very high, steady refresh
+    // rate. At ~30fps with a continuously LDR-adjusted brightness (<255), it shows up
+    // as visible shimmer/noise on dim pixels. Off = stable pixels (imperceptible color
+    // loss at brightness <=120 on an 8x32 matrix).
+    FastLED.setDither(DISABLE_DITHER);
     FastLED.setMaxRefreshRate(30);
     fill_solid(leds, MATRIX_LEDS, CRGB::Black);
     FastLED.show();
@@ -84,7 +90,25 @@ void actionPress() {
 }
 
 static void updateBrightness() {
-    int raw = analogRead(BOARD_PIN_LIGHT_SENSOR);
+    // Median-of-5 on the raw LDR before mapping — a single noisy ADC spike
+    // otherwise propagates through the EMA into a visible brightness flicker.
+    static int ldrBuf[5] = {0};
+    static uint8_t ldrIdx = 0;
+    static bool ldrFilled = false;
+    ldrBuf[ldrIdx] = analogRead(BOARD_PIN_LIGHT_SENSOR);
+    ldrIdx = (ldrIdx + 1) % 5;
+    if (ldrIdx == 0) ldrFilled = true;
+    int sorted[5];
+    int n = ldrFilled ? 5 : ldrIdx;  // before the ring fills, median over what we have
+    if (n == 0) n = 1;
+    for (int i = 0; i < n; i++) sorted[i] = ldrBuf[i];
+    for (int i = 1; i < n; i++) {    // insertion sort (n<=5)
+        int v = sorted[i], j = i - 1;
+        while (j >= 0 && sorted[j] > v) { sorted[j + 1] = sorted[j]; j--; }
+        sorted[j + 1] = v;
+    }
+    int raw = sorted[n / 2];
+
     static uint32_t lastDebugMs = 0;
     uint32_t now = millis();
     if (now - lastDebugMs >= 5000) {
@@ -94,7 +118,10 @@ static void updateBrightness() {
     float target = (float)map(constrain(raw, 300, 2800), 300, 2800,
                               MATRIX_BRIGHTNESS_MIN, MATRIX_BRIGHTNESS_MAX);
     smoothBrightness = smoothBrightness * 0.85f + target * 0.15f;
-    FastLED.setBrightness((uint8_t)smoothBrightness);
+    // Re-apply every cycle (cheap — setBrightness only sets a scale, show() pushes).
+    // Unconditional so it also restores after the display-off dim override in render().
+    // The median filter above keeps the value stable, so no flicker without dithering.
+    FastLED.setBrightness((uint8_t)(smoothBrightness + 0.5f));
 }
 
 void update(float dt) {
@@ -143,8 +170,19 @@ void render() {
 
     lockState();
     bool displayOn = g_state.hostDisplayOn;
+    bool dimEnabled = g_state.hostDimEnabled;
+    uint8_t dimMode = g_state.hostDimMode;
+    uint8_t dimLevel = g_state.hostDimLevel;
     unlockState();
-    if (!displayOn) fill_solid(leds, MATRIX_LEDS, CRGB::Black);
+    if (!displayOn && dimEnabled) {
+        if (dimMode == 1) {
+            // Minimum brightness — keep the frame, drop the driver brightness.
+            // The next render resets brightness, so this auto-restores on wake.
+            FastLED.setBrightness(dimLevel);
+        } else {
+            fill_solid(leds, MATRIX_LEDS, CRGB::Black);  // full-off
+        }
+    }
 
     FastLED.show();
 }

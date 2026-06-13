@@ -135,6 +135,12 @@ struct DashboardState {
     // Display
     bool hostDisplayOn;     // Mac display awake (from display_state event)
     uint8_t userBrightness; // user-set brightness (restored when host wakes)
+    // Host-pushed dim instruction (from the display_state event's `dim` object).
+    // Defaults reproduce legacy full-off so an un-upgraded host (no `dim` field)
+    // still dims to 0 on sleep.
+    bool hostDimEnabled;    // false ⇒ don't dim when the host display sleeps
+    uint8_t hostDimMode;    // 0 = off (brightness 0), 1 = min (dim to hostDimLevel)
+    uint8_t hostDimLevel;   // min-brightness, pre-scaled to 0-255
 
     // View state
     bool hudVisible;
@@ -152,6 +158,9 @@ struct DashboardState {
         tetraState = TetraState::HOVERING;
         hostDisplayOn = true;
         userBrightness = 255;
+        hostDimEnabled = true;
+        hostDimMode = 0;     // off
+        hostDimLevel = 25;   // ~10% fallback (only used in min mode)
         hudVisible = true;
         timelineView = false;
         orientationChanged = false;

@@ -36,9 +36,11 @@ static void sendDeviceInfoSerial() {
     resp["board"] = "ulanzi_tc001";
     #elif defined(BOARD_TTGO)
     resp["board"] = "ttgo_t_display";
+    #elif defined(BOARD_ESP32_C6_147)
+    resp["board"] = "esp32_c6_147";
     #elif IS_ROUND
     resp["board"] = "round_amoled";
-    #elif defined(BOARD_RGB48)
+    #elif defined(BOARD_RGB48) || defined(BOARD_BOX_86) || defined(BOARD_86_BOX)
     resp["board"] = "86box";
     #elif defined(BOARD_IPS10)
     resp["board"] = "ips_10";

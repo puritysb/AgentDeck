@@ -212,6 +212,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
                    cy, 0xFFFFFF, 160);
     }
 
+#if !defined(BOARD_TTGO) && !defined(BOARD_ESP32_C6_147)
     // Name tag with text (always shown)
     // Read session name from state — prefer sessionNames, fall back to projectName
     lockState();
@@ -283,6 +284,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
 
         lv_canvas_finish_layer(cvs, &layer);
     }
+#endif
 }
 
 float getX(uint8_t idx) {

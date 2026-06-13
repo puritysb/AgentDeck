@@ -114,25 +114,27 @@ lv_obj_t* create(lv_obj_t* parent) {
         // ===== Landscape layout (240×135) =====
         // Compact horizontal layout
 
-        // State + Project + Model on one line
+        // State + Project + Model on one line (with top breathing room)
         lblState = lv_label_create(widget);
         lv_obj_set_style_text_font(lblState, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_color(lblState, lv_color_hex(Theme::StatusGreen), 0);
-        lv_obj_align(lblState, LV_ALIGN_TOP_LEFT, 4, 4);
+        lv_obj_align(lblState, LV_ALIGN_TOP_LEFT, 8, 12);
         lv_label_set_text(lblState, "● IDLE");
 
         lblProject = lv_label_create(widget);
         lv_obj_set_style_text_font(lblProject, &font_kr_12, 0);
         lv_obj_set_style_text_color(lblProject, lv_color_hex(Theme::HUDText), 0);
-        lv_obj_align(lblProject, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_set_width(lblProject, 100);
+        lv_obj_set_width(lblProject, screenW / 2);
+        lv_obj_set_style_text_align(lblProject, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(lblProject, LV_ALIGN_TOP_MID, 0, 12);
         lv_label_set_long_mode(lblProject, LV_LABEL_LONG_DOT);
         lv_label_set_text(lblProject, "Connecting...");
 
         lblModel = lv_label_create(widget);
         lv_obj_set_style_text_font(lblModel, &lv_font_montserrat_10, 0);
         lv_obj_set_style_text_color(lblModel, lv_color_hex(Theme::HUDDim), 0);
-        lv_obj_align(lblModel, LV_ALIGN_TOP_RIGHT, -4, 5);
+        lv_obj_set_style_text_align(lblModel, LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_align(lblModel, LV_ALIGN_TOP_RIGHT, -8, 13);
         lv_obj_set_width(lblModel, 80);
         lv_label_set_long_mode(lblModel, LV_LABEL_LONG_DOT);
         lv_label_set_text(lblModel, "");

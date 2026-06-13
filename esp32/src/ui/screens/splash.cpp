@@ -30,7 +30,7 @@ lv_obj_t* splashCreate() {
     // Brand icon — AD shield logo
     imgLogo = lv_image_create(screen);
     lv_image_set_src(imgLogo, &img_logo_48);
-#if defined(BOARD_TTGO)
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     lv_obj_align(imgLogo, LV_ALIGN_CENTER, 0, -40);
 #else
     lv_obj_align(imgLogo, LV_ALIGN_CENTER, 0, -55);
@@ -53,7 +53,7 @@ lv_obj_t* splashCreate() {
     lv_obj_set_style_text_color(lblTitle, lv_color_hex(Theme::HUDText), 0);
     lv_obj_set_style_text_font(lblTitle, &lv_font_montserrat_20, 0);
     lv_label_set_text(lblTitle, "AgentDeck");
-#if defined(BOARD_TTGO)
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     lv_obj_align(lblTitle, LV_ALIGN_CENTER, 0, -18);
 #else
     lv_obj_align(lblTitle, LV_ALIGN_CENTER, 0, -25);
@@ -64,7 +64,7 @@ lv_obj_t* splashCreate() {
     lv_obj_set_style_text_color(lblStatus, lv_color_hex(Theme::HUDDim), 0);
     lv_obj_set_style_text_font(lblStatus, &lv_font_montserrat_16, 0);
     lv_label_set_text(lblStatus, "Connecting");
-#if defined(BOARD_TTGO)
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     lv_obj_align(lblStatus, LV_ALIGN_CENTER, 0, 18);
 #else
     lv_obj_align(lblStatus, LV_ALIGN_CENTER, 0, 32);

@@ -44,7 +44,7 @@ namespace Screens {
 lv_obj_t* settingsCreate() {
     screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen, lv_color_hex(Theme::DeepSea), 0);
-#if defined(BOARD_TTGO)
+#if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     lv_obj_add_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(screen, LV_DIR_VER);
 #else
@@ -127,8 +127,8 @@ lv_obj_t* settingsCreate() {
     lv_obj_center(lblReboot);
     lv_label_set_text(lblReboot, "Reboot");
 
-    // Orientation toggle (IPS 3.5" / TTGO T-Display)
-#if defined(BOARD_IPS35) || defined(BOARD_TTGO)
+    // Orientation toggle (IPS 3.5" / TTGO T-Display / ESP32-C6 1.47")
+#if defined(BOARD_IPS35) || defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     lv_obj_t* btnOrient = lv_btn_create(screen);
     lv_obj_set_size(btnOrient, g_screenW - 40, 38);
     lv_obj_set_style_bg_color(btnOrient, lv_color_hex(0x1E3A5F), 0);
