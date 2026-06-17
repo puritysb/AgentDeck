@@ -8,6 +8,11 @@ import { join } from 'path';
 const dataDir = mkdtempSync(join(tmpdir(), 'agentdeck-vitest-'));
 process.env.AGENTDECK_DATA_DIR = dataDir;
 
+// Pin TZ so timeline-renderer snapshots are stable regardless of host TZ.
+// CI sets this via env (Asia/Seoul); pinning here covers local dev across
+// macOS, Linux, and Windows without each contributor having to set TZ.
+process.env.TZ = 'Asia/Seoul';
+
 process.once('exit', () => {
   rmSync(dataDir, { recursive: true, force: true });
 });

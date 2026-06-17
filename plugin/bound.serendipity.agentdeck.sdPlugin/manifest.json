@@ -117,6 +117,10 @@
     {
       "Platform": "mac",
       "MinimumVersion": "15.0"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
     }
   ],
   "Nodejs": {

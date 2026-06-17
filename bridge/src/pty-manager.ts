@@ -30,7 +30,13 @@ export class PtyManager extends EventEmitter {
       );
     }
 
-    const shell = process.env.SHELL || '/bin/zsh';
+    const isWin = process.platform === 'win32';
+    const shell = isWin
+      ? (process.env.COMSPEC || 'cmd.exe')
+      : (process.env.SHELL || '/bin/zsh');
+    // Windows ConPTY uses cmd-style switches: /d (skip AutoRun), /s (literal),
+    // /c (run command then exit). POSIX shells use -l (login) -c (command).
+    const args = isWin ? ['/d', '/s', '/c', command] : ['-l', '-c', command];
     const cols = process.stdout.columns || 120;
     const rows = process.stdout.rows || 40;
 
@@ -40,7 +46,7 @@ export class PtyManager extends EventEmitter {
 
     let proc: IPty;
     try {
-      proc = pty.spawn(shell, ['-l', '-c', command], {
+      proc = pty.spawn(shell, args, {
         name: 'xterm-256color',
         cols,
         rows,

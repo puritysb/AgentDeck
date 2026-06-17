@@ -20,6 +20,7 @@ export interface EnrichedSession {
   totalTokens?: number;
   question?: string;
   requestId?: string;
+  elapsedSec?: number;
 }
 
 /** Cache last-known sibling state to avoid propagating undefined on transient fetch failures */

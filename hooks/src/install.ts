@@ -71,11 +71,40 @@ export function buildHookCommand(eventName: string): string {
   ]).join('\n');
 }
 
+/**
+ * Windows variant of `buildHookCommand`. Claude Code v2.1+ executes hook
+ * commands through `cmd.exe` on Windows, so we shell out to PowerShell for
+ * the JSON read + HTTP POST. Discovery is narrower than POSIX since the
+ * macOS App Store sandbox paths don't exist on Windows:
+ *
+ *   1. `$env:AGENTDECK_PORT`
+ *   2. `%USERPROFILE%\.agentdeck\daemon.json` (verified with `/health` probe)
+ *   3. `9120` fallback
+ *
+ * Single quotes are used inside the PowerShell script so the entire `-Command`
+ * argument can stay double-quoted under cmd.exe. Errors are swallowed so a
+ * dead daemon never blocks the host session.
+ */
+export function buildHookCommandWin(eventName: string): string {
+  const ps = [
+    `$ev='${eventName}'`,
+    `$port=$env:AGENTDECK_PORT`,
+    `if(-not $port){$f=Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'; if(Test-Path $f){try{$d=Get-Content -Raw $f|ConvertFrom-Json; $p=if($d.httpPort){$d.httpPort}else{$d.port}; if($p){try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$p+'/health') -TimeoutSec 1 -ErrorAction Stop|Out-Null; $port=$p}catch{}}}catch{}}}`,
+    `if(-not $port){$port=9120}`,
+    `$body=[Console]::In.ReadToEnd()`,
+    `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $body -ContentType 'application/json' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
+  ].join('; ');
+  return `powershell -NoProfile -ExecutionPolicy Bypass -Command "${ps}"`;
+}
+
 // Claude Code v2.1+ requires 3-level nesting: event → matcher group → hook handler.
 export function buildHookEntry(eventName: string) {
+  const command = process.platform === 'win32'
+    ? buildHookCommandWin(eventName)
+    : buildHookCommand(eventName);
   const handler: any = {
     type: 'command',
-    command: buildHookCommand(eventName),
+    command,
   };
   // Tool-specific hooks (PreToolUse, PostToolUse) need a glob matcher to fire.
   // Empty string "" means "match nothing" for tool events — use "" for non-tool
@@ -246,8 +275,13 @@ export function migrateHooksIfNeeded(): void {
 }
 
 // CLI execution
-const isMainModule = import.meta.url === `file://${process.argv[1]}` ||
-  import.meta.url === new URL(process.argv[1], 'file://').href;
+// Use pathToFileURL so the comparison is correct on Windows too — process.argv[1]
+// is a native path (E:\dev\...\install.js), but import.meta.url is a file:// URL
+// (file:///E:/dev/.../install.js). Manually building `file://${argv[1]}` only
+// matches on POSIX, which is why the installer used to be a silent no-op on
+// Windows.
+import { pathToFileURL } from 'url';
+const isMainModule = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
 
 if (isMainModule) {
   const action = process.argv[2] || 'install';

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   HOOK_EVENTS,
+  buildHookCommand,
+  buildHookCommandWin,
   buildHookEntry,
   applyHooks,
   removeHooks,
@@ -14,20 +16,25 @@ describe('Hook Installer', () => {
       expect(entry.matcher).toBe('');
       expect(entry.hooks).toHaveLength(1);
       expect(entry.hooks[0].type).toBe('command');
+      // Both POSIX and Windows commands reference AGENTDECK_PORT and the event name.
+      // POSIX inlines the full `/hooks/<event>` path; Windows builds it via `/hooks/`+$ev,
+      // so assert both substrings without assuming a single concatenated form.
       expect(entry.hooks[0].command).toContain('AGENTDECK_PORT');
-      expect(entry.hooks[0].command).toContain('/hooks/SessionStart');
+      expect(entry.hooks[0].command).toContain('SessionStart');
+      expect(entry.hooks[0].command).toContain('/hooks/');
     });
 
-    it('includes daemon.json port resolution with fallback to 9120', () => {
-      const entry = buildHookEntry('Stop');
-      expect(entry.hooks[0].command).toContain('daemon.json');
-      expect(entry.hooks[0].command).toContain('${PORT:-9120}');
-      expect(entry.hooks[0].command).toContain('$PORT');
+    it('uses `*` matcher for tool events and empty matcher for lifecycle events', () => {
+      expect(buildHookEntry('PreToolUse').matcher).toBe('*');
+      expect(buildHookEntry('PostToolUse').matcher).toBe('*');
+      expect(buildHookEntry('Stop').matcher).toBe('');
+      expect(buildHookEntry('SessionStart').matcher).toBe('');
     });
+  });
 
+  describe('buildHookCommand (POSIX)', () => {
     it('reads PORT from AGENTDECK_PORT env var first, then daemon.json, then 9120', () => {
-      const entry = buildHookEntry('SessionStart');
-      const cmd = entry.hooks[0].command;
+      const cmd = buildHookCommand('SessionStart');
       // Priority chain: AGENTDECK_PORT → ~/.agentdeck/daemon.json → App Store sandbox daemon.json → legacy group daemon.json → 9120
       expect(cmd).toContain('PORT="${AGENTDECK_PORT:-}"');
       expect(cmd).toContain('.agentdeck/daemon.json');
@@ -38,13 +45,37 @@ describe('Hook Installer', () => {
     });
 
     it('emits newline-separated shell so if/then/for/do keywords are not mis-terminated by `;`', () => {
-      const cmd = buildHookEntry('SessionStart').hooks[0].command;
+      const cmd = buildHookCommand('SessionStart');
       // Regression guard: `; then;` / `; do;` is a zsh-only oddity that fails under
       // sh/bash — Claude Code runs hooks via /bin/sh so the joined output must
       // use newlines between statements.
       expect(cmd).not.toMatch(/;\s*then\s*;/);
       expect(cmd).not.toMatch(/;\s*do\s*;/);
       expect(cmd).toContain('\n');
+    });
+  });
+
+  describe('buildHookCommandWin (Windows)', () => {
+    it('wraps a PowerShell one-liner that targets the event endpoint', () => {
+      const cmd = buildHookCommandWin('SessionStart');
+      expect(cmd.startsWith('powershell -NoProfile -ExecutionPolicy Bypass -Command "')).toBe(true);
+      expect(cmd).toContain("$ev='SessionStart'");
+      expect(cmd).toContain('$env:AGENTDECK_PORT');
+      expect(cmd).toContain(".agentdeck\\daemon.json");
+      expect(cmd).toContain("/hooks/'+$ev");
+      expect(cmd).toContain('Invoke-RestMethod');
+      expect(cmd).toContain('$port=9120');
+    });
+
+    it('uses single-line PowerShell so cmd.exe can pass it as one -Command argument', () => {
+      const cmd = buildHookCommandWin('Stop');
+      expect(cmd).not.toContain('\n');
+    });
+
+    it('omits the macOS App Store sandbox-container fallback paths', () => {
+      const cmd = buildHookCommandWin('SessionStart');
+      expect(cmd).not.toContain('Library/Containers/bound.serendipity');
+      expect(cmd).not.toContain('group.bound.serendipity');
     });
   });
 
@@ -259,26 +290,13 @@ describe('Hook Installer', () => {
 
   describe('migrateHooksIfNeeded (file-based)', () => {
     it('upgrades old :-9120 fallback hooks to daemon.json-reading format', () => {
-      // Simulate old-format hooks in settings file
-      const oldSettings = {
-        hooks: {
-          SessionStart: [
-            {
-              matcher: '',
-              hooks: [{
-                type: 'command',
-                command: "curl -sf -X POST http://localhost:${AGENTDECK_PORT:-9120}/hooks/SessionStart ...",
-              }],
-            },
-          ],
-        },
-      };
-
-      // The new format should contain daemon.json instead of the old :-9120 fallback
-      const newSettings = applyHooks({});
-      expect(newSettings.hooks.SessionStart[0].hooks[0].command).toContain('daemon.json');
-      expect(newSettings.hooks.SessionStart[0].hooks[0].command).not.toContain('${AGENTDECK_PORT:-9120}');
-      expect(newSettings.hooks.SessionStart[0].hooks[0].command).toContain('$PORT');
+      // The new format should contain daemon.json instead of the old :-9120 fallback.
+      // Test the POSIX builder directly so the assertion shape is stable regardless of
+      // host OS — `applyHooks` picks the platform variant.
+      const newCmd = buildHookCommand('SessionStart');
+      expect(newCmd).toContain('daemon.json');
+      expect(newCmd).not.toContain('${AGENTDECK_PORT:-9120}');
+      expect(newCmd).toContain('$PORT');
     });
   });
 });

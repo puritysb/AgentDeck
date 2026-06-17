@@ -67,6 +67,14 @@ export class UtilityProxy {
   private skipTicks = 0;
 
   constructor() {
+    // osascript is macOS-only; spawning it on Windows would either flash
+    // console windows (if Node's CreateProcess pops one) or just fail-then-
+    // retry every POLL_INTERVAL_MS. Skip the polling loop and let getState()
+    // serve its initial cached defaults.
+    if (process.platform !== 'darwin') {
+      debug('Utility', `polling skipped (platform=${process.platform})`);
+      return;
+    }
     void this.poll();
     this.pollTimer = setInterval(() => { void this.poll(); }, POLL_INTERVAL_MS);
   }
