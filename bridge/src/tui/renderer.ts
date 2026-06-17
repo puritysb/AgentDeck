@@ -597,7 +597,7 @@ function renderOauthCatalogLines(
   width: number,
 ): string[] {
   const lines: string[] = [];
-  const models = modelCatalog.filter((m) => m.available).map((m) => m.name);
+  const models = (modelCatalog ?? []).filter((m) => m.available).map((m) => m.name);
 
   if (models.length > 0) {
     return wrapCommaList(' OAuth: ', models, width, 4);

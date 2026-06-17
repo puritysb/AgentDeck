@@ -116,6 +116,38 @@ Then inspect `diagnostics/apple-xcode/latest/README.md`, `diag.json`, `status.js
 
 This diagnostic path is developer tooling only: it lives in `scripts/` and `.agents/workflows/`, writes local gitignored artifacts under `diagnostics/`, and must not add subprocesses, shell commands, terminal instructions, or external-tool prompts to the App Store app UI.
 
+## Windows dev setup
+
+The Node.js bridge, hook installer, and Stream Deck plugin run on Windows 11. Apple, Android, and ESP32 native builds are macOS/Linux-only and are out of scope for Windows.
+
+Prereqs (Windows 11):
+- **Node.js ≥ 22** + **pnpm**
+- **Stream Deck app** (Elgato) — `pnpm` setup also probes `%PROGRAMFILES%\Elgato\StreamDeck\` and `%LOCALAPPDATA%\Programs\Elgato\StreamDeck\`
+- **Claude Code CLI** on PATH
+- **Git Bash or WSL on PATH** for the bash scripts under `scripts/` (`install.sh`, `uninstall.sh`, `generate-protocol.sh`, `package-plugin.sh`) and `design/lint.sh`. The `postinstall` step is pure Node and runs without bash.
+
+Then:
+
+```powershell
+pnpm install            # postinstall runs scripts/postinstall.mjs (no-op on Windows)
+pnpm build
+pnpm test
+agentdeck daemon start  # daemon listens on 9120, writes %USERPROFILE%\.agentdeck\daemon.json
+# In another terminal:
+agentdeck claude        # spawns Claude Code via Windows ConPTY (cmd.exe /d /s /c)
+```
+
+Windows differences (intentional — see `bridge/src/pty-manager.ts`, `hooks/src/install.ts`, `bridge/src/cli.ts`):
+- **Data dir**: `%USERPROFILE%\.agentdeck\` (same layout as macOS `~/.agentdeck/`). The `AGENTDECK_DATA_DIR` env override still works.
+- **PTY**: ConPTY through `cmd.exe` with `/d /s /c` args (POSIX uses `/bin/zsh -l -c`). `node-pty`'s Windows prebuild is used as-is — no source build, so no Visual Studio Build Tools requirement.
+- **Hook command**: Claude Code hook entries on Windows use a `powershell -NoProfile -ExecutionPolicy Bypass -Command "..."` one-liner that reads `%USERPROFILE%\.agentdeck\daemon.json`, probes `/health`, and POSTs the stdin payload via `Invoke-RestMethod`. The macOS App Store sandbox-container fallback paths are intentionally omitted (those directories don't exist on Windows).
+- **`agentdeck daemon install/uninstall`**: no-op with a friendly message on Windows. Autostart is out of scope; add a Startup-folder shortcut yourself if you want it. `daemon start/stop/status` work normally.
+- **Device-module auto-detection**: `adb` is probed with `adb version` (cross-platform); the `/dev/tty.*` USB-serial scan is gated behind a `process.platform !== 'win32'` check (Windows COM-port enumeration not implemented). `bonjour-service`, `node-hid` (D200H), and `better-sqlite3` (APME) all use Windows-compatible prebuilds.
+- **APME hardware sampler** (`bridge/src/apme/hw-sampler.ts`) is darwin-only — it returns a minimal snapshot on Windows and the recommender treats that as "neutral".
+- **macOS-only plugin utility actions** (brightness / volume / dark-mode via `osascript`) gracefully no-op on Windows.
+
+When debugging Windows-specific issues, prefer running each command above directly in PowerShell so output appears in the conversation rather than relying on the Apple/Xcode diagnostic bundle, which is macOS-only.
+
 ## CLI
 
 The CLI command is `agentdeck` (`bridge/src/cli.ts`).

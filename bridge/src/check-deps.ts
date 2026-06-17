@@ -57,10 +57,16 @@ export function checkDependencies(agentType?: AgentType): { ok: boolean; warning
   let ok = true;
   let agentVersion: string | undefined;
 
-  // Use login shell so profile-added PATHs (pnpm, nvm, etc.) are available
+  // POSIX: invoke via login shell so profile-added PATHs (pnpm, nvm, etc.) are
+  // visible. Windows: PATH is system-managed (no shell profile), so a direct
+  // execSync is correct — the POSIX wrapper would try `/bin/zsh` which doesn't
+  // exist and every check would fail with "system cannot find the path".
+  const isWin = process.platform === 'win32';
   const loginShell = process.env.SHELL || '/bin/zsh';
   const shellExec = (cmd: string, opts?: Parameters<typeof execSync>[1]) =>
-    execSync(`${loginShell} -l -c '${cmd}'`, opts);
+    isWin
+      ? execSync(cmd, opts)
+      : execSync(`${loginShell} -l -c '${cmd}'`, opts);
 
   // Check agent-specific binary
   const agentDep = agentType ? AGENT_DEPS[agentType] : AGENT_DEPS['claude-code'];
@@ -74,12 +80,16 @@ export function checkDependencies(agentType?: AgentType): { ok: boolean; warning
     }
   }
 
-  // Check shared optional deps
-  for (const dep of SHARED_DEPS) {
-    try {
-      shellExec(dep.command, { stdio: 'ignore' });
-    } catch {
-      warnings.push(`${dep.name} not found — ${dep.installHint}`);
+  // Check shared optional deps. All current entries use `which` + brew install
+  // hints — they're macOS voice features. Skip on Windows so we don't emit
+  // bogus warnings.
+  if (!isWin) {
+    for (const dep of SHARED_DEPS) {
+      try {
+        shellExec(dep.command, { stdio: 'ignore' });
+      } catch {
+        warnings.push(`${dep.name} not found — ${dep.installHint}`);
+      }
     }
   }
 

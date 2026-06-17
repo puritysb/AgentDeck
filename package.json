@@ -4,7 +4,7 @@
   "private": true,
   "description": "Stream Deck+ controller for Claude Code CLI",
   "scripts": {
-    "build": "pnpm --filter @agentdeck/shared build && pnpm --filter '!@agentdeck/shared' -r build",
+    "build": "pnpm --filter @agentdeck/shared build && pnpm --filter=!@agentdeck/shared -r build",
     "dev": "pnpm -r --parallel dev",
     "demo": "node scripts/render-creature-simulator.mjs && npx --yes vite tools/creature-simulator",
     "demo:build": "node scripts/render-creature-simulator.mjs && vite build tools/creature-simulator --base=/AgentDeck/demo/ --outDir ../../dist/demo --emptyOutDir && cp tools/creature-simulator/sim-data.js dist/demo/sim-data.js",
@@ -24,7 +24,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "postinstall": "bash scripts/postinstall.sh"
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

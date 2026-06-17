@@ -18,9 +18,14 @@ function ok(msg: string) { console.log(`${GREEN}[OK]${NC} ${msg}`); }
 function warn(msg: string) { console.log(`${YELLOW}[WARN]${NC} ${msg}`); }
 function fail(msg: string) { console.log(`${RED}[FAIL]${NC} ${msg}`); }
 
+const IS_WIN = process.platform === 'win32';
+
 function which(cmd: string): string | null {
   try {
-    return execSync(`which ${cmd}`, { encoding: 'utf-8' }).trim();
+    // `where` on Windows can print multiple lines (one per match); take the first.
+    const probe = IS_WIN ? `where ${cmd}` : `which ${cmd}`;
+    const out = execSync(probe, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return out.split(/\r?\n/)[0] || null;
   } catch {
     return null;
   }
@@ -55,13 +60,17 @@ function checkPrerequisites(): boolean {
   // CLT the node-pty source build fails with a cryptic compiler-missing error
   // deep inside node-gyp. Catch it here with a clear message so the user
   // knows the one command to run.
-  if (which('xcode-select') && checkXcodeCliTools()) {
-    ok('Xcode Command Line Tools installed');
-  } else {
-    fail('Xcode Command Line Tools not installed — required to build node-pty from source.');
-    console.log(`       Install with: ${YELLOW}xcode-select --install${NC}`);
-    console.log('       After the installer finishes, re-run `npx @agentdeck/setup`.');
-    pass = false;
+  // Windows uses node-pty's prebuilt binary (no source build), so this check
+  // is darwin-only.
+  if (!IS_WIN) {
+    if (which('xcode-select') && checkXcodeCliTools()) {
+      ok('Xcode Command Line Tools installed');
+    } else {
+      fail('Xcode Command Line Tools not installed — required to build node-pty from source.');
+      console.log(`       Install with: ${YELLOW}xcode-select --install${NC}`);
+      console.log('       After the installer finishes, re-run `npx @agentdeck/setup`.');
+      pass = false;
+    }
   }
 
   const hasClaude = Boolean(which('claude'));
@@ -86,11 +95,15 @@ function checkPrerequisites(): boolean {
     pass = false;
   }
 
-  // Stream Deck app
-  if (
-    existsSync('/Applications/Elgato Stream Deck.app') ||
-    existsSync('/Applications/Stream Deck.app')
-  ) {
+  // Stream Deck app — paths differ per OS
+  const streamDeckPaths = IS_WIN
+    ? [
+        join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
+        join(process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
+        join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Programs', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
+      ]
+    : ['/Applications/Elgato Stream Deck.app', '/Applications/Stream Deck.app'];
+  if (streamDeckPaths.some((p) => existsSync(p))) {
     ok('Stream Deck app installed');
   } else {
     fail('Stream Deck app not found — download from https://www.elgato.com/downloads');
@@ -139,10 +152,16 @@ function installStreamDeckCli() {
 
 function installBridge() {
   info('Installing AgentDeck bridge (@agentdeck/bridge)...');
-  // Force source build of node-pty to avoid prebuilt binary ABI mismatch (see #3)
+  // Force source build of node-pty on macOS to avoid prebuilt binary ABI
+  // mismatch (see #3). On Windows we rely on node-pty's prebuilt binary —
+  // forcing a source build would require Visual Studio Build Tools, which
+  // is a much larger prereq than we want.
+  const env = IS_WIN
+    ? { ...process.env }
+    : { ...process.env, npm_config_build_from_source: 'true' };
   execSync('npm install -g @agentdeck/bridge', {
     stdio: 'inherit',
-    env: { ...process.env, npm_config_build_from_source: 'true' },
+    env,
   });
 
   if (which('agentdeck')) {
@@ -196,14 +215,28 @@ function buildHookCommand(eventName: string): string {
   ]).join('\n');
 }
 
+/** Windows variant — kept in sync with `@agentdeck/hooks` `buildHookCommandWin`. */
+function buildHookCommandWin(eventName: string): string {
+  const ps = [
+    `$ev='${eventName}'`,
+    `$port=$env:AGENTDECK_PORT`,
+    `if(-not $port){$f=Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'; if(Test-Path $f){try{$d=Get-Content -Raw $f|ConvertFrom-Json; $p=if($d.httpPort){$d.httpPort}else{$d.port}; if($p){try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$p+'/health') -TimeoutSec 1 -ErrorAction Stop|Out-Null; $port=$p}catch{}}}catch{}}}`,
+    `if(-not $port){$port=9120}`,
+    `$body=[Console]::In.ReadToEnd()`,
+    `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $body -ContentType 'application/json' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
+  ].join('; ');
+  return `powershell -NoProfile -ExecutionPolicy Bypass -Command "${ps}"`;
+}
+
 function buildHookEntry(eventName: string) {
   const needsToolMatcher = ['PreToolUse', 'PostToolUse'].includes(eventName);
+  const command = IS_WIN ? buildHookCommandWin(eventName) : buildHookCommand(eventName);
   return {
     matcher: needsToolMatcher ? '*' : '',
     hooks: [
       {
         type: 'command',
-        command: buildHookCommand(eventName),
+        command,
       },
     ],
   };
@@ -312,6 +345,13 @@ function seedCompatibility() {
 function checkOptionalDeps() {
   console.log('');
   console.log('----- Optional Dependencies -----');
+
+  if (IS_WIN) {
+    // Voice input (sox/whisper) on AgentDeck currently targets macOS only.
+    // Skip the prompts on Windows so the user isn't told to run `brew`.
+    warn('Voice input (sox + whisper.cpp) is macOS-only — skipped.');
+    return;
+  }
 
   if (which('sox') || which('rec')) {
     ok('sox installed (voice recording)');

@@ -70,10 +70,15 @@ interface OAuthCredentials {
 }
 
 function getOAuthCredentials(): OAuthCredentials | null {
+  // The `security` CLI is macOS-only. On other platforms there's no equivalent
+  // path implemented for this OAuth token — return null instead of spawning
+  // a doomed `security` child whose stderr (`'security' is not recognized…`)
+  // would otherwise corrupt the session-bridge TTY.
+  if (process.platform !== 'darwin') return null;
   try {
     const raw = execSync(
       `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-      { encoding: 'utf-8', timeout: 5000 },
+      { encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] },
     ).trim();
     const creds = JSON.parse(raw);
     const oauth = creds?.claudeAiOauth;

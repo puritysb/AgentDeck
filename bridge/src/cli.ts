@@ -371,6 +371,12 @@ daemon
   .command('install')
   .description('Install macOS LaunchAgent for auto-start')
   .action(async () => {
+    if (process.platform === 'win32') {
+      log('agentdeck daemon install/uninstall is not supported on Windows.');
+      log("Start the daemon manually with: agentdeck daemon start");
+      log('(Add to the Startup folder yourself if you want it to autostart.)');
+      process.exit(0);
+    }
     if (process.platform !== 'darwin') {
       log('LaunchAgent is macOS-only');
       process.exit(1);
@@ -398,6 +404,10 @@ daemon
   .command('uninstall')
   .description('Remove macOS LaunchAgent')
   .action(() => {
+    if (process.platform === 'win32') {
+      log('agentdeck daemon install/uninstall is not supported on Windows.');
+      process.exit(0);
+    }
     if (!existsSync(PLIST_PATH)) {
       log('LaunchAgent not installed');
       return;

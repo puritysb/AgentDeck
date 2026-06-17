@@ -14,9 +14,10 @@ export class AdbModule implements DeviceModule {
   async shouldActivate(config: 'auto' | boolean): Promise<boolean> {
     if (config === false) return false;
     if (config === true) return true;
-    // auto: check if adb is available
+    // auto: check if adb is available. Use `adb version` instead of `which`
+    // so detection works on Windows too (which lacks `which`).
     try {
-      execSync('which adb', { stdio: 'pipe' });
+      execSync('adb version', { stdio: 'pipe', timeout: 2000 });
       return true;
     } catch {
       return false;

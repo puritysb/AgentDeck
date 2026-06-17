@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { execSync } from 'child_process';
 import { ApmeStore } from '../apme/store.js';
 import { ApmeCollector } from '../apme/collector.js';
@@ -15,7 +15,7 @@ function tmpProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'apme-proj-'));
   for (const [rel, content] of Object.entries(files)) {
     const full = join(dir, rel);
-    mkdirSync(full.replace(/\/[^/]+$/, ''), { recursive: true });
+    mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, content);
   }
   return dir;
@@ -521,7 +521,7 @@ describe('runDeterministic (end-to-end spawn)', () => {
     store = null; project = null;
   });
 
-  it('runs sh-based commands against the project path and reports pass', async () => {
+  it.skipIf(process.platform === 'win32')('runs sh-based commands against the project path and reports pass', async () => {
     // Dirty the worktree so hasChanges() returns true.
     writeFileSync(join(project, 'README.md'), 'dirty');
 
@@ -545,7 +545,7 @@ describe('runDeterministic (end-to-end spawn)', () => {
     expect(results.map((r) => r.metric).sort()).toEqual(['build_ok', 'lint_clean', 'tests_pass']);
   });
 
-  it('captures exit code 1 as tests_pass=0', async () => {
+  it.skipIf(process.platform === 'win32')('captures exit code 1 as tests_pass=0', async () => {
     writeFileSync(join(project, 'README.md'), 'dirty');
     const run: ApmeRunRow = {
       id: 'r2', sessionId: 's', agentType: 'claude-code',

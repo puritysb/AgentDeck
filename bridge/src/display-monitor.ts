@@ -42,6 +42,15 @@ export class DisplayMonitor extends EventEmitter {
 
   start(): void {
     if (this.running) return;
+    // Both the CGDisplayIsAsleep + pmset paths are macOS-only. On other
+    // platforms keep `isDisplayOn()` at its default `true` (display assumed
+    // on) and skip the python3/pmset spawn loop — otherwise Windows users
+    // see a console window flash every 5s as the doomed python3 restart
+    // timer fires.
+    if (process.platform !== 'darwin') {
+      debug('display', `DisplayMonitor skipped (platform=${process.platform})`);
+      return;
+    }
     this.running = true;
     this.restartCount = 0;
     debug('display', `DisplayMonitor started (${POLL_INTERVAL_S}s persistent poll)`);
