@@ -44,7 +44,7 @@ AgentDeck is a physical control surface for AI coding agents. It started with an
 
 | | Requirement |
 |---|---|
-| **Platform** | macOS 15+ (Sequoia) — Windows/Linux not supported |
+| **Platform** | macOS 15+ (Sequoia) primary · Windows 11 runs the bridge + Stream Deck plugin ([see below](#windows-bridge--plugin)) · Linux not supported |
 | **Hardware** | Elgato Stream Deck+ (8 keys, 4 encoders, LCD touch strip) |
 | **Terminal** | iTerm2 (required for session management and voice paste) |
 | **Android** | *(Optional)* Android 10+ tablet or e-ink reader for remote dashboard |
@@ -59,6 +59,7 @@ AgentDeck is a physical control surface for AI coding agents. It started with an
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Manual Build & Install](#manual-build--install)
+- [Windows (Bridge + Plugin)](#windows-bridge--plugin)
 - [Usage](#usage)
   - [CLI Reference](#cli-reference)
 - [Stream Deck+ Layout (v4)](#stream-deck-layout-v4)
@@ -198,7 +199,7 @@ On macOS, the AgentDeck Dashboard SwiftUI app ships with a full **in-process Swi
 
 | Item | Required | Install |
 |------|----------|---------|
-| **macOS 15+** (Sequoia) | Yes | Windows/Linux not supported |
+| **macOS 15+** (Sequoia) | Yes (host) | Primary platform. Windows 11 runs the bridge + Stream Deck plugin — see [Windows](#windows-bridge--plugin). Linux not supported |
 | **Xcode Command Line Tools** | Yes | `xcode-select --install` (node-pty native build) |
 | **Node.js** >= 22 | Yes | `brew install node` |
 | **pnpm** >= 9 | Yes | `npm install -g pnpm` |
@@ -285,6 +286,56 @@ cd bridge && pnpm link --global
 Voice input uses Apple's on-device `SFSpeechRecognizer` (Speech framework). **No sox, no whisper.cpp, no model downloads** — the OS manages the dictation model via Settings → General → Keyboard → Dictation, which AgentDeck piggybacks on. The only user action is granting Microphone + Speech Recognition permission the first time the voice button is pressed (macOS shows the standard TCC prompts backed by `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`).
 
 All audio stays on-device (`requiresOnDeviceRecognition = true`), so the captured WAV — which may contain project/code names — never leaves the machine. See [Voice Setup Guide](docs/voice-setup.md) for permission troubleshooting and wake-word details.
+
+---
+
+## Windows (Bridge + Plugin)
+
+The Node.js **bridge**, the Claude Code **hook installer**, and the **Stream Deck plugin** run on Windows 11. The Apple, Android, and ESP32 native builds are macOS/Linux-only and are out of scope on Windows — but the core "steer Claude Code from a Stream Deck+" experience works.
+
+### Prerequisites (Windows 11)
+
+| Item | Required | Notes |
+|------|----------|-------|
+| **Node.js** ≥ 22 + **pnpm** | Yes | `winget install OpenJS.NodeJS`, then `npm install -g pnpm` |
+| **Stream Deck app** (Elgato) | For hardware | Setup also probes `%PROGRAMFILES%\Elgato\StreamDeck\` and `%LOCALAPPDATA%\Programs\Elgato\StreamDeck\` |
+| **Claude Code CLI** on `PATH` | Yes | `npm install -g @anthropic-ai/claude-code` |
+| **Git Bash or WSL** on `PATH` | For source scripts | Only the bash scripts under `scripts/` (`install.sh`, `uninstall.sh`, `package-plugin.sh`, …) need it. `pnpm install`/`build`/`test` are pure Node |
+
+### Install
+
+```powershell
+git clone https://github.com/puritysb/AgentDeck.git
+cd AgentDeck
+pnpm install            # postinstall (scripts/postinstall.mjs) is a no-op on Windows
+pnpm build              # shared → bridge, plugin, hooks
+pnpm test               # optional: run the Vitest suite
+
+# Register Claude Code hooks (writes a PowerShell one-liner hook command)
+node hooks/dist/install.js
+
+# Link the CLI + Stream Deck plugin
+cd bridge; pnpm link --global; cd ..
+cd plugin; streamdeck link .sdPlugin; cd ..   # then restart the Stream Deck app
+```
+
+### Run
+
+```powershell
+agentdeck daemon start  # daemon on 9120, writes %USERPROFILE%\.agentdeck\daemon.json
+# In another terminal:
+agentdeck claude        # spawns Claude Code via Windows ConPTY (cmd.exe /d /s /c)
+```
+
+### Windows differences (intentional)
+
+- **Data dir** — `%USERPROFILE%\.agentdeck\` (same layout as macOS `~/.agentdeck/`). `AGENTDECK_DATA_DIR` override still works.
+- **PTY** — ConPTY through `cmd.exe` with `/d /s /c` (POSIX uses `/bin/zsh -l -c`). `node-pty`'s Windows prebuild is used as-is, so no Visual Studio Build Tools are required.
+- **Hooks** — Claude Code hook entries run a `powershell -NoProfile -ExecutionPolicy Bypass -Command "…"` one-liner that reads `daemon.json`, probes `/health`, and POSTs the payload via `Invoke-RestMethod`.
+- **`agentdeck daemon install` / `uninstall`** — no-op with a friendly message. There is no autostart yet; run `agentdeck daemon start` yourself, or add a Startup-folder shortcut. (See the Windows daemon TODO in the [Roadmap](#roadmap).)
+- **Device modules** — `adb` is probed cross-platform; the `/dev/tty.*` USB-serial scan is skipped on Windows (COM-port enumeration not implemented). mDNS, `node-hid` (D200H), and `better-sqlite3` (APME) use Windows-compatible prebuilds.
+- **APME hardware sampler** is darwin-only — it returns a minimal snapshot on Windows and the recommender treats that as "neutral".
+- **macOS-only plugin utility actions** (brightness / volume / dark-mode via `osascript`) gracefully no-op on Windows.
 
 ---
 
@@ -996,6 +1047,7 @@ Eval results broadcast to every device simultaneously (Stream Deck/Apple/Android
 
 ### Planned
 
+- [ ] **Windows daemon autostart / background service** — today `agentdeck daemon install` is a no-op on Windows and the daemon must be started manually with `agentdeck daemon start` in a terminal (run locally). Add native autostart (Windows Service or a Startup/Task Scheduler registration) so the daemon runs in the background like the macOS LaunchAgent
 - [ ] Play Store distribution (Android app)
 - [ ] Stream Deck Marketplace registration (plugin distribution)
 
