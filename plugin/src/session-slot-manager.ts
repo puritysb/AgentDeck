@@ -508,9 +508,9 @@ export class SessionSlotManager {
     };
   }
 
-  private idleStatusCard(session: SessionInfo | undefined, idx: number): SessionSlotConfig {
+  private idleStatusCard(session: SessionInfo | undefined, idx: number, includeModel = true): SessionSlotConfig {
     const cards = [
-      this.modelStatusCard(session),
+      includeModel ? this.modelStatusCard(session) : null,
       this.modeStatusCard(),
       {
         type: 'status',
@@ -636,16 +636,19 @@ export class SessionSlotManager {
       return this.idleStatusCard(session, contentIdx - CC_PRESET_DEFS.length);
     }
 
+    // OpenClaw already surfaces MODEL as an actionable preset, and PROCESSING
+    // (both agents) already renders the model status tile at content slot 1, so
+    // exclude the model card here to avoid showing MODEL twice.
     if (isOpenClaw && this._detailState === State.IDLE) {
-      return this.idleStatusCard(session, contentIdx - OC_PRESET_DEFS.length);
+      return this.idleStatusCard(session, contentIdx - OC_PRESET_DEFS.length, false);
     }
 
     if (isProcessing && isOpenClaw) {
-      return this.idleStatusCard(session, contentIdx - 1 - OC_PRESET_DEFS.length);
+      return this.idleStatusCard(session, contentIdx - 1 - OC_PRESET_DEFS.length, false);
     }
 
     if (isProcessing && !isOpenClaw) {
-      return this.idleStatusCard(session, contentIdx - 2);
+      return this.idleStatusCard(session, contentIdx - 2, false);
     }
 
     return { type: 'empty' };

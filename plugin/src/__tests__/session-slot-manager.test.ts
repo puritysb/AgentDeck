@@ -191,6 +191,31 @@ describe('SessionSlotManager detail layout', () => {
     expect(ocModelPreset?.preset?.subtitle).toBe('opus 4.7');
   });
 
+  it('renders the MODEL tile exactly once in Claude PROCESSING detail (no duplicate)', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([makeSession({ state: State.PROCESSING, modelName: 'claude-opus-4-8' })], false);
+    manager.enterDetailView('session-1');
+    manager.updateDetailState(State.PROCESSING, [], 'Edit', 'cli.ts', undefined, 'claude-opus-4-8', 'acceptEdits');
+
+    const labels = [0, 1, 2, 3, 4, 5, 6, 7]
+      .map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT))
+      .filter(c => c.type === 'status' && c.label === 'MODEL');
+    expect(labels).toHaveLength(1);
+  });
+
+  it('does not duplicate MODEL on OpenClaw idle (preset + status card)', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([makeSession({ id: 'oc', agentType: 'openclaw', modelName: 'gpt-5' })], true);
+    manager.enterDetailView('oc');
+    manager.updateDetailState(State.IDLE, [], undefined, undefined, undefined, 'gpt-5');
+
+    const modelSurfaces = [0, 1, 2, 3, 4, 5, 6, 7]
+      .map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT))
+      .filter(c => (c.type === 'status' && c.label === 'MODEL') || (c.type === 'preset' && c.preset?.label === 'MODEL'));
+    expect(modelSurfaces).toHaveLength(1);
+    expect(modelSurfaces[0].type).toBe('preset');
+  });
+
   it('uses actual parser options and reserves MORE only when awaiting overflow exists', () => {
     const manager = new SessionSlotManager();
     manager.updateSessions([makeSession({ state: State.AWAITING_OPTION })], false);
