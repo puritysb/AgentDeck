@@ -309,6 +309,14 @@ The CLI command is `agentdeck`.
 **Flags:** `-p <port>`, `-c <command>`, `-d` (debug), `--no-update-check`
 **Module flags:** `--local` (all off), `--no-mdns`, `--no-adb`, `--no-serial`, `--no-pixoo`
 
+The `-c` flag sets the full command AgentDeck spawns inside the session PTY, so any arguments you add are forwarded straight to the underlying agent. For example, to resume an earlier Claude Code session (the interactive picker appears when no id is given):
+
+```bash
+agentdeck claude -c "claude --resume"
+```
+
+The same pattern passes through any other flag the agent accepts — for instance `-c "claude --remote-control"`.
+
 #### Daemon
 
 | Command | Description |
