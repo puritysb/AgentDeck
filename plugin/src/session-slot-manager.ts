@@ -508,17 +508,19 @@ export class SessionSlotManager {
     };
   }
 
-  private idleStatusCard(session: SessionInfo | undefined, idx: number, includeModel = true): SessionSlotConfig {
+  private idleStatusCard(session: SessionInfo | undefined, idx: number, includeModel = true, includeIdle = true): SessionSlotConfig {
     const cards = [
       includeModel ? this.modelStatusCard(session) : null,
       this.modeStatusCard(),
-      {
-        type: 'status',
-        label: session?.agentType === 'openclaw' ? 'STANDBY' : 'READY',
-        subtitle: 'idle',
-        icon: 'ready',
-        tone: 'ready',
-      } satisfies SessionSlotConfig,
+      includeIdle
+        ? {
+            type: 'status',
+            label: session?.agentType === 'openclaw' ? 'STANDBY' : 'READY',
+            subtitle: 'idle',
+            icon: 'ready',
+            tone: 'ready',
+          } satisfies SessionSlotConfig
+        : null,
     ].filter((card): card is SessionSlotConfig => card != null);
     return cards[idx] ?? { type: 'empty' };
   }
@@ -643,12 +645,15 @@ export class SessionSlotManager {
       return this.idleStatusCard(session, contentIdx - OC_PRESET_DEFS.length, false);
     }
 
+    // PROCESSING already shows the live tool/status tile at content slot 0, so
+    // the reused idleStatusCard helper must not emit its hardcoded READY/idle
+    // card here — otherwise a busy session shows a contradictory "idle" tile.
     if (isProcessing && isOpenClaw) {
-      return this.idleStatusCard(session, contentIdx - 1 - OC_PRESET_DEFS.length, false);
+      return this.idleStatusCard(session, contentIdx - 1 - OC_PRESET_DEFS.length, false, false);
     }
 
     if (isProcessing && !isOpenClaw) {
-      return this.idleStatusCard(session, contentIdx - 2, false);
+      return this.idleStatusCard(session, contentIdx - 2, false, false);
     }
 
     return { type: 'empty' };

@@ -216,6 +216,30 @@ describe('SessionSlotManager detail layout', () => {
     expect(modelSurfaces[0].type).toBe('preset');
   });
 
+  it('does not render a READY/idle tile while a Claude session is PROCESSING', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([makeSession({ state: State.PROCESSING, modelName: 'claude-opus-4-8' })], false);
+    manager.enterDetailView('session-1');
+    manager.updateDetailState(State.PROCESSING, [], 'Edit', 'cli.ts', undefined, 'claude-opus-4-8', 'acceptEdits');
+
+    const idleTiles = [0, 1, 2, 3, 4, 5, 6, 7]
+      .map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT))
+      .filter(c => c.type === 'status' && (c.label === 'READY' || c.subtitle === 'idle'));
+    expect(idleTiles).toHaveLength(0);
+  });
+
+  it('does not render a STANDBY/idle tile while an OpenClaw session is PROCESSING', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([makeSession({ id: 'oc', agentType: 'openclaw', state: State.PROCESSING, modelName: 'gpt-5' })], true);
+    manager.enterDetailView('oc');
+    manager.updateDetailState(State.PROCESSING, [], 'route', undefined, undefined, 'gpt-5');
+
+    const idleTiles = [0, 1, 2, 3, 4, 5, 6, 7]
+      .map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT))
+      .filter(c => c.type === 'status' && (c.label === 'STANDBY' || c.subtitle === 'idle'));
+    expect(idleTiles).toHaveLength(0);
+  });
+
   it('uses actual parser options and reserves MORE only when awaiting overflow exists', () => {
     const manager = new SessionSlotManager();
     manager.updateSessions([makeSession({ state: State.AWAITING_OPTION })], false);
