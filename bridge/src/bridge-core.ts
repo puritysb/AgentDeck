@@ -24,7 +24,7 @@ import {
 import type { ApmeModule } from './apme/index.js';
 import { getOrCreateToken, getWsUrl } from './auth.js';
 import { log, logError, debug } from './logger.js';
-import { invalidateMdnsInstance, triggerMdnsRecovery } from './mdns.js';
+import { invalidateMdnsInstance, triggerMdnsRecovery, isNonFatalMdnsError } from './mdns.js';
 import {
   State,
   type BridgeEvent,
@@ -735,13 +735,12 @@ export class BridgeCore {
       const msg = err?.message ?? '';
       const code = (err as NodeJS.ErrnoException)?.code ?? '';
       // mDNS errors are non-critical — network interface changes (sleep/wake,
-      // WiFi reconnect, VPN toggle) cause transient multicast failures.
-      // Null out the mDNS instance so the recovery timer can re-publish.
-      if (
-        msg.includes('already in use on the network') ||
-        (msg.includes('EADDRNOTAVAIL') && msg.includes('5353'))
-      ) {
-        debug('mDNS', `error (ignored): ${msg}`);
+      // WiFi reconnect, VPN toggle) and unroutable virtual interfaces (Windows
+      // WSL/Hyper-V — EHOSTUNREACH to 224.0.0.251:5353) cause transient
+      // multicast failures. Null out the mDNS instance so the recovery timer
+      // can re-publish.
+      if (isNonFatalMdnsError(msg, code)) {
+        debug('mDNS', `error (ignored): ${code || msg}`);
         invalidateMdnsInstance();
         return;
       }

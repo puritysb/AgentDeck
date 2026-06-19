@@ -8,6 +8,38 @@ let instance: Bonjour | null = null;
 const MDNS_RECOVERY_INTERVAL = 5_000; // 5s — tightens WiFi-change discovery gap (was 30s)
 
 /**
+ * True if an uncaught error is a non-fatal mDNS multicast failure that should be
+ * tolerated (instance invalidated + recovery timer re-publishes) rather than
+ * crashing the daemon.
+ *
+ * `bonjour-service` performs async `send()` to the mDNS multicast group
+ * (224.0.0.251:5353 / ff02::fb:5353). On network-interface changes — sleep/wake,
+ * WiFi reconnect, VPN toggle, or a WSL/Hyper-V virtual interface that has no route
+ * to the multicast group (Windows) — that send rejects asynchronously and surfaces
+ * as an uncaughtException. None of these are recoverable by crashing.
+ *
+ * Covers:
+ * - "already in use on the network" (duplicate service name)
+ * - bind/send failures targeting the mDNS endpoint: EADDRNOTAVAIL, EHOSTUNREACH,
+ *   ENETUNREACH, EHOSTDOWN, ENETDOWN, EADDRINUSE, EPERM, EACCES, ENODEV
+ */
+export function isNonFatalMdnsError(msg: string, code?: string): boolean {
+  if (msg.includes('already in use on the network')) return true;
+
+  // Scope socket errors to the mDNS multicast endpoint so unrelated network
+  // failures (e.g. EHOSTUNREACH to a peer) still crash as before.
+  const targetsMdns =
+    msg.includes('5353') || msg.includes('224.0.0.251') || msg.includes('ff02::fb');
+  if (!targetsMdns) return false;
+
+  const mdnsCodes = [
+    'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ENETUNREACH', 'EHOSTDOWN',
+    'ENETDOWN', 'EADDRINUSE', 'EPERM', 'EACCES', 'ENODEV',
+  ];
+  return mdnsCodes.some((c) => code === c || msg.includes(c));
+}
+
+/**
  * Called from uncaughtException handler when mDNS socket fails.
  * Nulls the instance so the recovery timer knows to re-publish.
  */

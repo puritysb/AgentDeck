@@ -12,7 +12,7 @@ import { HookServer } from '../hook-server.js';
 import { WsServer } from '../ws-server.js';
 import { DisplayMonitor } from '../display-monitor.js';
 import { WsTestClient } from './helpers/ws-test-client.js';
-import { invalidateMdnsInstance } from '../mdns.js';
+import { invalidateMdnsInstance, isNonFatalMdnsError } from '../mdns.js';
 import type { BridgeEvent, DisplayStateEvent } from '../types.js';
 
 // ─── mDNS crash recovery ────────────────────────────────────────────
@@ -24,33 +24,36 @@ describe('mDNS crash recovery', () => {
     expect(() => invalidateMdnsInstance()).not.toThrow();
   });
 
-  it('EADDRNOTAVAIL pattern matches expected error messages', () => {
-    // These are the error patterns that bridge-core.ts uncaughtException handler checks
-    const recoverableErrors = [
-      'bind EADDRNOTAVAIL 224.0.0.251:5353',
-      'address already in use on the network',
-      'EADDRNOTAVAIL: address not available 0.0.0.0:5353',
+  it('isNonFatalMdnsError matches recoverable mDNS multicast failures', () => {
+    // These are the errors bridge-core.ts uncaughtException handler must tolerate.
+    const recoverableErrors: Array<[string, string?]> = [
+      ['bind EADDRNOTAVAIL 224.0.0.251:5353', 'EADDRNOTAVAIL'],
+      ['address already in use on the network'],
+      ['EADDRNOTAVAIL: address not available 0.0.0.0:5353', 'EADDRNOTAVAIL'],
+      // Windows WSL/Hyper-V virtual interface has no route to the mDNS group —
+      // bonjour-service throws this async on every daemon start (regression repro).
+      ['send EHOSTUNREACH 224.0.0.251:5353', 'EHOSTUNREACH'],
+      ['send ENETUNREACH 224.0.0.251:5353', 'ENETUNREACH'],
+      ['send EHOSTUNREACH ff02::fb:5353', 'EHOSTUNREACH'],
     ];
 
-    for (const msg of recoverableErrors) {
-      const isEaddrNotAvail = msg.includes('EADDRNOTAVAIL') && msg.includes('5353');
-      const isAlreadyInUse = msg.includes('already in use on the network');
-      expect(isEaddrNotAvail || isAlreadyInUse).toBe(true);
+    for (const [msg, code] of recoverableErrors) {
+      expect(isNonFatalMdnsError(msg, code)).toBe(true);
     }
   });
 
-  it('non-mDNS errors are NOT matched by recovery pattern', () => {
-    const fatalErrors = [
-      'EACCES: permission denied',
-      'ECONNREFUSED 127.0.0.1:9120',
-      'TypeError: Cannot read property of null',
-      'EADDRNOTAVAIL 0.0.0.0:9120', // Not port 5353
+  it('isNonFatalMdnsError does NOT match unrelated fatal errors', () => {
+    const fatalErrors: Array<[string, string?]> = [
+      ['EACCES: permission denied', 'EACCES'],
+      ['ECONNREFUSED 127.0.0.1:9120', 'ECONNREFUSED'],
+      ['TypeError: Cannot read property of null'],
+      ['EADDRNOTAVAIL 0.0.0.0:9120', 'EADDRNOTAVAIL'], // Not the mDNS endpoint
+      // EHOSTUNREACH to a real peer (not the multicast group) must still crash.
+      ['connect EHOSTUNREACH 10.0.0.5:443', 'EHOSTUNREACH'],
     ];
 
-    for (const msg of fatalErrors) {
-      const isEaddrNotAvail = msg.includes('EADDRNOTAVAIL') && msg.includes('5353');
-      const isAlreadyInUse = msg.includes('already in use on the network');
-      expect(isEaddrNotAvail || isAlreadyInUse).toBe(false);
+    for (const [msg, code] of fatalErrors) {
+      expect(isNonFatalMdnsError(msg, code)).toBe(false);
     }
   });
 });
