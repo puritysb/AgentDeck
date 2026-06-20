@@ -10,15 +10,19 @@
 //
 // Run from the repo root:  node scripts/design-sync-previews.mjs
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { extractIconNames } from './lib/design-sync-icons.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, '.design-sync/previews');
 mkdirSync(OUT, { recursive: true });
 
-const names = JSON.parse(readFileSync(join(ROOT, '_ds_gen/icon-names.json'), 'utf8'));
+// Derive from the source (design/icons.jsx), not the gitignored
+// _ds_gen/icon-names.json — so this runs standalone on a fresh clone and in
+// any order relative to design-sync-gen.mjs.
+const names = extractIconNames(ROOT);
 
 const tpl = (name) => `// Authored preview for ${name}. Cells: size sweep + token palette.
 import React from 'react';
