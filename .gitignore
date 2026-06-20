@@ -101,3 +101,9 @@ zkswe/recon/*.so
 # Creature simulator generated data (rebuilt by scripts/render-creature-simulator.mjs)
 tools/creature-simulator/sim-data.js
 apple/DerivedData/
+.ds-sync/
+ds-bundle/
+_ds_gen/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
