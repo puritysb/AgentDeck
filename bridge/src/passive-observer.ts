@@ -30,8 +30,41 @@ export interface TranscriptSummary {
   modelName?: string;
   state: ObservedState;
   currentTask?: string;
+  /** One-line gist of the session's purpose — the first real user prompt. */
+  goal?: string;
   totalTokens?: number;
   contextPercent?: number;
+}
+
+/** Pull display text out of a Claude user message (string or text blocks). */
+function claudeUserText(message: Record<string, unknown> | null | undefined): string {
+  if (!message) return '';
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((b) => isRecord(b) && stringAt(b, 'type') === 'text')
+      .map((b) => stringAt(b as Record<string, unknown>, 'text') ?? '')
+      .join(' ');
+  }
+  return '';
+}
+
+/**
+ * Condense a first user prompt into a one-line session goal: strip injected
+ * tags/markup + slash-command noise, collapse whitespace, cap length. Returns ''
+ * for non-substantive openers (bare slash commands, empty after cleaning).
+ */
+export function cleanGoal(raw: string): string {
+  let s = raw
+    .replace(/<[^>]+>/g, ' ') // strip <system-reminder> / <command-*> wrappers, keep inner text
+    .replace(/\s+/g, ' ')
+    .trim();
+  // A leading bare slash-command ("/clear", "/compact") isn't a goal.
+  if (/^\/[a-z][\w-]*\s*$/i.test(s)) return '';
+  // Drop a leading "Caveat: …" preamble Claude Code injects ahead of the prompt.
+  s = s.replace(/^Caveat:.*?(?:\.\s|$)/i, '').trim();
+  return s.slice(0, 120);
 }
 
 interface ClaudeSessionFile {
@@ -46,6 +79,7 @@ export interface ObservedSession extends EnrichedSession {
   pid: number;
   cwd?: string;
   currentTask?: string;
+  goal?: string;
   contextPercent?: number;
   totalTokens?: number;
 }
@@ -119,6 +153,7 @@ export function parseProcessTable(output: string): ProcInfo[] {
 export function parseClaudeTranscript(raw: string): TranscriptSummary {
   let modelName: string | undefined;
   let currentTask: string | undefined;
+  let goal: string | undefined;
   let totalTokens = 0;
   let lastContextTokens = 0;
   let contextWindow = 0;
@@ -167,6 +202,11 @@ export function parseClaudeTranscript(raw: string): TranscriptSummary {
         realUserOpen = true;
         currentTask = undefined;
         latestAssistantHadTool = false;
+        // First substantive user prompt = the session goal.
+        if (!goal) {
+          const cleaned = cleanGoal(claudeUserText(message));
+          if (cleaned) goal = cleaned;
+        }
       }
     }
   }
@@ -176,6 +216,7 @@ export function parseClaudeTranscript(raw: string): TranscriptSummary {
     modelName,
     state: realUserOpen || latestAssistantHadTool ? 'processing' : 'idle',
     currentTask,
+    goal,
     totalTokens: totalTokens || undefined,
     contextPercent: contextWindow > 0 && lastContextTokens > 0
       ? (lastContextTokens / contextWindow) * 100
@@ -190,6 +231,7 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
   let modelName: string | undefined;
   let effort: string | undefined;
   let currentTask: string | undefined;
+  let goal: string | undefined;
   let totalTokens = 0;
   let lastContextTokens = 0;
   let contextWindow = 0;
@@ -215,6 +257,10 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
           break;
         case 'user_message':
           modelGenerating = true;
+          if (!goal) {
+            const cleaned = cleanGoal(stringAt(payload, 'message') ?? stringAt(payload, 'text') ?? '');
+            if (cleaned) goal = cleaned;
+          }
           break;
         case 'agent_message':
         case 'task_complete':
@@ -279,6 +325,7 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
     effort,
     state,
     currentTask,
+    goal,
     totalTokens: totalTokens || undefined,
     contextPercent: contextWindow > 0 && lastContextTokens > 0
       ? (lastContextTokens / contextWindow) * 100
@@ -307,7 +354,11 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
     const sessionFile = findClaudeSessionFile(configDirs, proc.pid);
     if (!sessionFile) continue;
     const transcript = findClaudeTranscript(configDirs, sessionFile.cwd, sessionFile.sessionId);
-    const summary = transcript ? parseClaudeTranscript(readFileTail(transcript, MAX_TAIL_BYTES)) : { state: 'idle' as const };
+    // Head+tail so the FIRST user prompt (the session goal, at the file start) is
+    // parsed alongside recent activity (at the tail).
+    const summary = transcript
+      ? parseClaudeTranscript(readFileHeadAndTail(transcript, 64 * 1024, MAX_TAIL_BYTES))
+      : { state: 'idle' as const };
     sessions.push({
       id: `observed:claude:${sessionFile.sessionId}`,
       port: 0,
@@ -321,6 +372,7 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
       controlMode: 'observed',
       cwd: sessionFile.cwd,
       currentTask: summary.currentTask,
+      goal: summary.goal,
       contextPercent: summary.contextPercent,
       totalTokens: summary.totalTokens,
     });
@@ -357,6 +409,7 @@ async function collectCodexSessions(processes: ProcInfo[]): Promise<ObservedSess
       controlMode: 'observed',
       cwd,
       currentTask: parsed.currentTask,
+      goal: parsed.goal,
       contextPercent: parsed.contextPercent,
       totalTokens: parsed.totalTokens,
     });
@@ -537,28 +590,6 @@ export function parseLsofRollouts(output: string): Map<number, string> {
     }
   }
   return map;
-}
-
-function readFileTail(path: string, maxBytes: number): string {
-  let fd: number | null = null;
-  try {
-    fd = openSync(path, 'r');
-    const size = statSync(path).size;
-    const length = Math.min(size, maxBytes);
-    const start = Math.max(0, size - length);
-    const buffer = Buffer.alloc(length);
-    readSync(fd, buffer, 0, length, start);
-    let text = buffer.toString('utf8');
-    if (start > 0) {
-      const firstNewline = text.indexOf('\n');
-      text = firstNewline >= 0 ? text.slice(firstNewline + 1) : '';
-    }
-    return text;
-  } catch {
-    return '';
-  } finally {
-    if (fd !== null) closeSync(fd);
-  }
 }
 
 function readFileHeadAndTail(path: string, headBytes: number, tailBytes: number): string {

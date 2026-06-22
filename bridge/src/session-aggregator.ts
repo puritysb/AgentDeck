@@ -16,6 +16,8 @@ export interface EnrichedSession {
   controlMode?: 'managed' | 'observed';
   cwd?: string;
   currentTask?: string;
+  /** One-line gist of the session's purpose (first user prompt). */
+  goal?: string;
   currentTool?: string;
   contextPercent?: number;
   totalTokens?: number;

@@ -311,6 +311,7 @@ export interface SessionInfo {
   controlMode?: 'managed' | 'observed';
   cwd?: string;
   currentTask?: string;
+  goal?: string;  // one-line gist of the session's purpose (first user prompt) — observed sessions
   contextPercent?: number;
   totalTokens?: number;
   question?: string;  // awaiting prompt question text (hook/observed sessions: from Notification message; managed PTY: parsed header)

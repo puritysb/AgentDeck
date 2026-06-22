@@ -130,11 +130,15 @@ function cleanAction(raw: string): string {
   return rest.length > 20 ? `${verb} ${rest.slice(0, 19)}…` : `${verb} ${rest}`;
 }
 
-/** One-line "what is this session doing": action · model · elapsed. */
+/**
+ * One-line "what is this session about": prefer the session goal (first user
+ * prompt) — the actual purpose — over the live tool action; then model · elapsed.
+ */
 function sessionDescription(sess: SessionInfo, now: Date): string {
   const parts: string[] = [];
-  const action = cleanAction((sess.currentTask || sess.currentTool || '').trim());
-  if (action) parts.push(action);
+  const goal = (sess.goal || '').trim();
+  const headline = goal || cleanAction((sess.currentTask || sess.currentTool || '').trim());
+  if (headline) parts.push(headline);
   if (sess.modelName) parts.push(shortModel(sess.modelName));
   let elapsed = sess.elapsedSec;
   if ((elapsed == null || elapsed <= 0) && sess.startedAt) {

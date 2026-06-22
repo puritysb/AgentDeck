@@ -90,6 +90,7 @@ actor TrmnlModule: DeviceModule {
                     state: s["state"] as? String ?? "idle",
                     currentTool: s["currentTool"] as? String ?? "",
                     currentTask: s["currentTask"] as? String ?? "",
+                    goal: s["goal"] as? String ?? "",
                     elapsedSec: elapsed)
             }
             refreshAll()
@@ -267,7 +268,7 @@ actor TrmnlModule: DeviceModule {
     /// timestamps roll over rarely and are included so a rollover re-renders.
     private func stateHash() -> String {
         let s = lastState.sessions
-            .map { "\($0.agentType):\($0.state):\($0.projectName):\($0.modelName)" }
+            .map { "\($0.agentType):\($0.state):\($0.projectName):\($0.modelName):\($0.goal)" }
             .joined(separator: "|")
         let usage = lastState.usageKnown
             ? "\(Int(lastState.fiveHourPercent.rounded()))~\(Int(lastState.sevenDayPercent.rounded()))"

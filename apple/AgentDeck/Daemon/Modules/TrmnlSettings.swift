@@ -39,6 +39,8 @@ struct TrmnlSession: Sendable {
     /// "What is it doing" inputs for the description line.
     var currentTool: String = ""
     var currentTask: String = ""
+    /// One-line gist of the session's purpose (first user prompt).
+    var goal: String = ""
     var elapsedSec: Int = 0
 }
 

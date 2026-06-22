@@ -308,12 +308,13 @@ enum TrmnlImageRenderer {
         return rest.count > 20 ? "\(verb) \(String(rest.prefix(19)))…" : "\(verb) \(rest)"
     }
 
-    /// One-line "what is this session doing": action · model · elapsed.
+    /// One-line "what is this session about": prefer the goal (first user prompt)
+    /// over the live tool action; then model · elapsed.
     private static func sessionDescription(_ s: TrmnlSession) -> String {
         var parts: [String] = []
-        let raw = s.currentTask.isEmpty ? s.currentTool : s.currentTask
-        let action = cleanAction(raw)
-        if !action.isEmpty { parts.append(action) }
+        let goal = s.goal.trimmingCharacters(in: .whitespaces)
+        let headline = goal.isEmpty ? cleanAction(s.currentTask.isEmpty ? s.currentTool : s.currentTask) : goal
+        if !headline.isEmpty { parts.append(headline) }
         if !s.modelName.isEmpty { parts.append(shortModel(s.modelName)) }
         if s.elapsedSec > 0 { parts.append(fmtElapsed(s.elapsedSec)) }
         return parts.joined(separator: " · ")

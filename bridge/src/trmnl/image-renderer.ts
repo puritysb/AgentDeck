@@ -22,9 +22,12 @@ const TAG = 'trmnl-render';
 
 // --- Font supply for resvg (same trap/fix as the D200H renderer) ---
 // resvg drops every <text> element unless given a font to shape glyphs with.
-// Load the bundled OFL faces via `fontFiles` (NOT `loadSystemFonts`, which
-// rescans the whole OS font tree on every `new Resvg()`). `defaultFontFamily`
-// catches unresolved families so text never silently disappears.
+// Load the bundled OFL faces via `fontFiles` for crisp Latin/mono, AND enable
+// `loadSystemFonts` so resvg can FALL BACK to the OS's CJK faces — session goals
+// are user prompts, often Korean/Chinese, which the Latin-only bundled fonts
+// render as boxes. Unlike the 14-tile-per-frame D200H renderer, TRMNL renders one
+// frame only on real state change, so the per-`new Resvg()` system-font scan is an
+// acceptable cost here.
 const FONT_OPTS: { fontFiles?: string[]; loadSystemFonts: boolean; defaultFontFamily: string } = (() => {
   try {
     // bridge/{src,dist}/trmnl/image-renderer.{ts,js} → bridge/assets/fonts
@@ -39,7 +42,7 @@ const FONT_OPTS: { fontFiles?: string[]; loadSystemFonts: boolean; defaultFontFa
       .map((n) => join(fontsDir, n))
       .filter((p) => existsSync(p));
     if (files.length > 0) {
-      return { fontFiles: files, loadSystemFonts: false, defaultFontFamily: 'IBM Plex Sans' };
+      return { fontFiles: files, loadSystemFonts: true, defaultFontFamily: 'IBM Plex Sans' };
     }
     debug(TAG, `bundled fonts not found under ${fontsDir} — falling back to system fonts`);
   } catch (err) {

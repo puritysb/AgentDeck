@@ -51,7 +51,7 @@ function parseKey(key: string): { width: number; height: number } {
 export function trmnlStateHash(evt: any): string {
   const sessions = Array.isArray(evt?.allSessions) ? evt.allSessions : [];
   const sessKey = sessions
-    .map((s: any) => `${s?.id}:${s?.agentType}:${s?.state}:${s?.projectName}:${s?.modelName}`)
+    .map((s: any) => `${s?.id}:${s?.agentType}:${s?.state}:${s?.projectName}:${s?.modelName}:${s?.goal ?? ''}`)
     .join('|');
   // No wall-clock / freshness component: a real TRMNL caches by `filename` and
   // skips the (battery + flaky-WiFi) re-download when it's unchanged. So the hash
