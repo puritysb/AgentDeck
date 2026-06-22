@@ -12,10 +12,32 @@
 | **ESP32** | USB Serial JSON | CDC/UART 115200 | None | Port scan 10s | Push only | 6 |
 | **Pixoo64** | HTTP REST (Divoom) | LAN:80 | None | Cloud API / manual | Push only | 4 |
 | **Timebox Mini** | BLE GATT (ISSC transparent-UART) | `49535343-…` | Bluetooth pairing | `TimeBox-mini-light` BLE scan | Push only | 4 |
+| **TRMNL e-ink (BYOS)** | HTTP BYOS (device pulls) | Daemon (9120) | MAC (soft) | Manual server URL | **Pull** (panel polls) | status+usage frame |
 | **SSE** | HTTP SSE | Daemon (9120) | Token | Manual URL | Push only | All 13 |
 | **Gateway** | WebSocket Custom | 18789 | Ed25519 | Hardcoded | Bidirectional | N/A (adapter) |
 
 > **Daemon hub**: All dashboard clients connect exclusively to the daemon. Session bridges handle PTY + hooks only and do not serve external devices. Daemon port defaults to 9120; if occupied by non-daemon process, daemon falls back to next available port and records actual port in `~/.agentdeck/daemon.json`. Local clients read `daemon.json`; remote clients discover via mDNS (daemon only advertises `_agentdeck._tcp`).
+
+## TRMNL e-ink (BYOS)
+
+TRMNL is **pull-only**: the panel stores one fixed server URL and polls `/api/setup` + `/api/display` on its own schedule, then downloads a server-rendered **1-bit PNG**. AgentDeck implements the BYOS contract twice — Node (`bridge/src/trmnl/`) and the App Store Swift daemon (`apple/.../Daemon/Modules/Trmnl*.swift`, CoreGraphics render, no subprocess).
+
+**Setup — run exactly one hub, point the panel at it.** Print the stable URL with:
+
+```bash
+agentdeck trmnl     # prints http://<LAN-IP>:9120 + enrolled panels + health
+```
+
+Set that one URL as the panel's custom/BYOS server. It auto-enrolls on first poll (no MAC entry). **Critical:** run a single daemon as the hub on a stable `LAN-IP:9120`. The **Node daemon is the usage-capable hub** (it reads Claude OAuth quota); the **macOS app should run as a client** (`isUsingExternalDaemon`). Two hubs racing for port 9120 — or a panel pinned to a fallback port that comes and goes — is what makes the firmware flip between the dashboard and its **"WiFi connected / TRMNL not responding"** error screen.
+
+**Behavior:**
+- **Adaptive cadence** — `refresh_rate` is computed per poll: fast (`trmnl.refreshActive`, default 30s) while any session is AWAITING/WORKING, slow (`trmnl.refreshRate`, default 180s) when idle. Floor 15s.
+- **Usage** — the gauges come from `usage_update` (not `state_update`); the module merges both. When the hub has no subscription quota (OAuth-blind / no relay) the footer renders a hatched bar + "—", never a misleading `0%`.
+- **AWAITING banner** — any awaiting agent gets a full-width inverted banner above the rows (the top glance signal).
+- **Freshness** — a coarse 10-min bucket folded into the frame hash advances the "as of HH:MM" stamp a few times/hour so a stuck panel is detectable, without churning the e-ink on every poll.
+- **Health** — `agentdeck trmnl` and the daemon `/status` `modules.trmnl` expose per-panel lastSeen/battery/RSSI and a `stale` flag (no poll in > 2× the current cadence).
+
+Settings (`~/.agentdeck/settings.json` `trmnl` block): `enabled`, `refreshRate`, `refreshActive`, `autoRegister`, `devices[]`.
 
 ## Broadcast Architecture
 

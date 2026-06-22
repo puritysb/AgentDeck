@@ -56,6 +56,12 @@ export interface DashState {
   requestId?: string;
   /** Live PTY option cursor is navigable (❯) — drives select_option vs respond. */
   navigable?: boolean;
+  /**
+   * True when the 5H/7D quota is actually known (subscription data present), so a
+   * read-only surface can distinguish "0% used" from "no data" instead of drawing
+   * a confident empty gauge. Absent/false on surfaces that don't supply it.
+   */
+  usageKnown?: boolean;
 }
 
 export function parseState(evt: any): DashState {
@@ -76,6 +82,11 @@ export function parseState(evt: any): DashState {
     allSessions: Array.isArray(evt?.allSessions) ? evt.allSessions : [],
     requestId: typeof evt?.requestId === 'string' ? evt.requestId : undefined,
     navigable: Boolean(evt?.navigable),
+    // Prefer an explicit flag; otherwise infer from the presence of a real percent.
+    usageKnown:
+      typeof evt?.usageKnown === 'boolean'
+        ? evt.usageKnown
+        : evt?.fiveHourPercent != null || evt?.sevenDayPercent != null,
   };
 }
 

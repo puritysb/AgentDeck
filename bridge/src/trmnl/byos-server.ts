@@ -23,8 +23,9 @@ import {
   findDeviceByMac,
   loadTrmnlConfig,
   normalizeMac,
+  effectiveRefreshRate,
 } from './trmnl-settings.js';
-import { getTrmnlFrame, getTrmnlFrameByKey, forceRenderTrmnlFrame } from './frame-cache.js';
+import { getTrmnlFrame, getTrmnlFrameByKey, forceRenderTrmnlFrame, getTrmnlActivity } from './frame-cache.js';
 import type { TrmnlFrame } from './image-renderer.js';
 import { recordTelemetry } from './trmnl-telemetry.js';
 import { debug } from '../logger.js';
@@ -166,11 +167,15 @@ export function handleTrmnlDisplay(req: IncomingMessage, res: ServerResponse): v
       }
     }
     if (!device) {
+      // autoRegister off and unenrolled: serve a real, correctly-sized frame (the
+      // idle hero / dashboard) rather than a bogus `setup.png` the image route
+      // can't match. status 202 still tells the firmware "not fully set up".
+      const setupFrame = getTrmnlFrame(size.width, size.height);
       debug(TAG, `display from unenrolled ${normalizeMac(mac)} (autoRegister off) — requesting setup`);
       sendJson(res, 200, {
         status: 202,
-        image_url: `${imageBase(req)}/trmnl/image/setup.png`,
-        filename: 'setup',
+        image_url: imageUrl(req, size, setupFrame.contentHash),
+        filename: setupFrame.contentHash,
         refresh_rate: String(cfg.refreshRate),
         special_function: 'sleep',
         reset_firmware: false,
@@ -185,11 +190,19 @@ export function handleTrmnlDisplay(req: IncomingMessage, res: ServerResponse): v
   // presents may have been issued by a previous/cloud server, so we don't
   // hard-reject on mismatch — this is same-LAN hardware.
   const frame = getTrmnlFrame(size.width, size.height);
+  // Adaptive cadence: poll fast while an agent is AWAITING/WORKING, slow when idle.
+  const activity = getTrmnlActivity();
+  const refreshRate = effectiveRefreshRate(cfg, activity);
+  debug(
+    TAG,
+    `display ${normalizeMac(mac)} ${size.width}x${size.height} hash=${frame.contentHash} ` +
+      `refresh=${refreshRate}s awaiting=${activity.awaiting} working=${activity.working}`,
+  );
   sendJson(res, 200, {
     status: 0,
     image_url: imageUrl(req, size, frame.contentHash),
     filename: frame.contentHash,
-    refresh_rate: String(cfg.refreshRate),
+    refresh_rate: String(refreshRate),
     special_function: 'sleep',
     reset_firmware: false,
     update_firmware: false,

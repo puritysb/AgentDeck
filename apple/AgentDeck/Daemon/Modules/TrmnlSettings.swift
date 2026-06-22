@@ -12,8 +12,21 @@ import Foundation
 /// Static config read from settings.json `trmnl` block.
 struct TrmnlConfig: Sendable {
     var enabled: Bool = false
+    /// Idle cadence (seconds) — slow + battery-friendly.
     var refreshRate: Int = 180
+    /// Cadence (seconds) while any session is AWAITING/WORKING.
+    var refreshActive: Int = 30
     var autoRegister: Bool = true
+
+    /// Too-frequent polls drain the panel battery — floor any cadence here.
+    static let minRefresh = 15
+
+    /// Cadence for a poll given current session activity (mirrors
+    /// trmnl-settings.ts effectiveRefreshRate).
+    func effectiveRefresh(awaiting: Int, working: Int) -> Int {
+        let active = awaiting > 0 || working > 0
+        return max(TrmnlConfig.minRefresh, active ? refreshActive : refreshRate)
+    }
 }
 
 /// One live session row, parsed from a `sessions_list` broadcast.
@@ -31,6 +44,9 @@ struct TrmnlDashState: Sendable {
     var sevenDayPercent: Double = 0
     var totalTokens: Int = 0
     var totalCost: Double = 0
+    /// True only when subscription quota is actually known, so the renderer shows
+    /// "—" instead of a confident 0% when the hub is OAuth-blind / has no relay.
+    var usageKnown: Bool = false
     /// "HH:MM" stamp baked at render time (the device pulls; this is render-time).
     var nowText: String = ""
 }
@@ -67,6 +83,8 @@ enum TrmnlSettings {
         if let e = t["enabled"] as? Bool { cfg.enabled = e }
         if let r = t["refreshRate"] as? Int, r >= 5 { cfg.refreshRate = r }
         else if let r = t["refreshRate"] as? Double, r >= 5 { cfg.refreshRate = Int(r) }
+        if let r = t["refreshActive"] as? Int, r >= 5 { cfg.refreshActive = r }
+        else if let r = t["refreshActive"] as? Double, r >= 5 { cfg.refreshActive = Int(r) }
         if let a = t["autoRegister"] as? Bool { cfg.autoRegister = a }
         return cfg
     }

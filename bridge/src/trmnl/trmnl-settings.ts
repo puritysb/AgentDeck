@@ -26,6 +26,10 @@ function settingsPath(): string {
 }
 
 export const TRMNL_DEFAULT_REFRESH = 180;
+/** Cadence used while an agent is AWAITING/WORKING so the panel updates fast. */
+export const TRMNL_DEFAULT_REFRESH_ACTIVE = 30;
+/** Floor on any cadence — too-frequent polls drain the panel battery. */
+export const TRMNL_MIN_REFRESH = 15;
 
 export interface TrmnlDevice {
   /** Normalized (uppercase, colon-separated) MAC address — the device identity. */
@@ -40,9 +44,21 @@ export interface TrmnlDevice {
 
 export interface TrmnlConfig {
   enabled: boolean;
+  /** Idle cadence (seconds) — the slow, battery-friendly default. */
   refreshRate: number;
+  /** Cadence (seconds) while any session is AWAITING/WORKING. */
+  refreshActive: number;
   autoRegister: boolean;
   devices: TrmnlDevice[];
+}
+
+/** Cadence for a poll given current session activity, clamped to the floor. */
+export function effectiveRefreshRate(
+  cfg: TrmnlConfig,
+  activity: { awaiting: number; working: number },
+): number {
+  const active = activity.awaiting > 0 || activity.working > 0;
+  return Math.max(TRMNL_MIN_REFRESH, active ? cfg.refreshActive : cfg.refreshRate);
 }
 
 function readSettings(): Record<string, unknown> {
@@ -63,9 +79,14 @@ export function loadTrmnlConfig(): TrmnlConfig {
   const raw = (readSettings().trmnl ?? {}) as Partial<TrmnlConfig>;
   const refreshRate =
     typeof raw.refreshRate === 'number' && raw.refreshRate >= 5 ? Math.floor(raw.refreshRate) : TRMNL_DEFAULT_REFRESH;
+  const refreshActive =
+    typeof raw.refreshActive === 'number' && raw.refreshActive >= 5
+      ? Math.floor(raw.refreshActive)
+      : TRMNL_DEFAULT_REFRESH_ACTIVE;
   return {
     enabled: raw.enabled === true,
     refreshRate,
+    refreshActive,
     autoRegister: raw.autoRegister !== false, // default on
     devices: Array.isArray(raw.devices) ? raw.devices.filter((d) => d && typeof d.mac === 'string') : [],
   };

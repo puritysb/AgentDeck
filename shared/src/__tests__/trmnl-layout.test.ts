@@ -95,6 +95,41 @@ describe('renderTrmnlDashboard', () => {
     expect(og).toMatch(/\+\d+ more session/);
   });
 
+  it('shows a real percentage when usage is known', () => {
+    const svg = renderTrmnlDashboard(
+      { state: 'IDLE', allSessions: [], usageKnown: true, fiveHourPercent: 42, sevenDayPercent: 18 },
+      { now: NOW },
+    );
+    expect(svg).toContain('42%');
+    expect(svg).toContain('18%');
+  });
+
+  it('shows an em dash (not 0%) when usage is structurally unknown', () => {
+    const svg = renderTrmnlDashboard(
+      { state: 'IDLE', allSessions: [], usageKnown: false },
+      { now: NOW },
+    );
+    // Must never claim a confident 0% when the hub has no quota data.
+    expect(svg).toContain('—');
+    expect(svg).not.toContain('0%');
+  });
+
+  it('renders a prominent AWAITING banner when an agent needs the user', () => {
+    const svg = renderTrmnlDashboard(
+      {
+        state: 'AWAITING_PERMISSION',
+        allSessions: [
+          session('a', 'claude-code', 'awaiting_permission'),
+          session('b', 'codex-cli', 'processing'),
+        ],
+      },
+      { now: NOW },
+    );
+    expect(svg).toContain('1 agent needs you');
+    // The banner names the waiting project.
+    expect(svg).toContain('proj-a');
+  });
+
   it('collapses to a compact wordmark on a tiny panel without throwing', () => {
     const svg = renderTrmnlDashboard(
       { state: 'IDLE', allSessions: [session('a', 'claude-code', 'processing')] },

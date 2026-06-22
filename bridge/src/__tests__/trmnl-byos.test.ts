@@ -7,9 +7,15 @@ import {
   handleTrmnlDisplay,
   handleTrmnlImage,
 } from '../trmnl/byos-server.js';
-import { findDeviceByMac, loadTrmnlConfig, normalizeMac } from '../trmnl/trmnl-settings.js';
-import { getTrmnlFrameKeys } from '../trmnl/frame-cache.js';
-import { getTelemetry, _resetTelemetry } from '../trmnl/trmnl-telemetry.js';
+import {
+  findDeviceByMac,
+  loadTrmnlConfig,
+  normalizeMac,
+  TRMNL_DEFAULT_REFRESH,
+  TRMNL_DEFAULT_REFRESH_ACTIVE,
+} from '../trmnl/trmnl-settings.js';
+import { getTrmnlFrameKeys, refreshTrmnlFrame } from '../trmnl/frame-cache.js';
+import { getTelemetry, getTelemetryHealth, _resetTelemetry } from '../trmnl/trmnl-telemetry.js';
 
 const ORIGINAL_DATA_DIR = process.env.AGENTDECK_DATA_DIR;
 
@@ -149,7 +155,11 @@ describe('TRMNL BYOS handlers', () => {
     handleTrmnlDisplay(fakeReq({ ID: 'AB:CD:EF:00:11:22' }), res);
     expect(captured.status).toBe(200);
     expect(captured.body.status).toBe(202);
-    expect(captured.body.filename).toBe('setup');
+    // Unenrolled devices still get a real, resolution-keyed frame (not a bogus
+    // `setup.png` the image route can't serve), so the panel shows something
+    // instead of the firmware's "not responding" error.
+    expect(captured.body.filename).toMatch(/^[0-9a-f]{16}$/);
+    expect(captured.body.image_url).toMatch(/\/trmnl\/image\/\d+x\d+-[0-9a-f]+\.png$/);
   });
 
   it('keeps the same filename across polls when the state is unchanged', () => {
@@ -250,5 +260,30 @@ describe('TRMNL BYOS handlers', () => {
     const keys = getTrmnlFrameKeys();
     expect(keys).toContain('800x480');
     expect(keys).toContain('480x800');
+  });
+
+  it('serves the slow idle cadence when no session is active', () => {
+    refreshTrmnlFrame({ allSessions: [{ id: 's1', state: 'idle' }] });
+    const { res, captured } = fakeRes();
+    handleTrmnlDisplay(fakeReq({ ID: MAC }), res);
+    expect(captured.body.refresh_rate).toBe(String(TRMNL_DEFAULT_REFRESH));
+  });
+
+  it('serves the fast active cadence when a session is AWAITING', () => {
+    refreshTrmnlFrame({ allSessions: [{ id: 's1', state: 'awaiting_permission' }] });
+    const { res, captured } = fakeRes();
+    handleTrmnlDisplay(fakeReq({ ID: MAC }), res);
+    expect(captured.body.refresh_rate).toBe(String(TRMNL_DEFAULT_REFRESH_ACTIVE));
+  });
+
+  it('flags a panel as stale once it stops polling past 2x its cadence', () => {
+    _resetTelemetry();
+    handleTrmnlDisplay(fakeReq({ ID: MAC, Width: '800', Height: '480' }), fakeRes().res);
+    const now = Date.now();
+    // Fresh right after a poll.
+    expect(getTelemetryHealth(TRMNL_DEFAULT_REFRESH, now).find((t) => t.mac === MAC)?.stale).toBe(false);
+    // Stale well past 2× the cadence.
+    const later = now + (TRMNL_DEFAULT_REFRESH * 2 + 10) * 1000;
+    expect(getTelemetryHealth(TRMNL_DEFAULT_REFRESH, later).find((t) => t.mac === MAC)?.stale).toBe(true);
   });
 });

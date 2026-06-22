@@ -15,6 +15,13 @@ import { TRMNL_WIDTH, TRMNL_HEIGHT } from '@agentdeck/shared';
 const DEFAULT_KEY = `${TRMNL_WIDTH}x${TRMNL_HEIGHT}`;
 /** Bound on distinct resolutions held at once (insertion-order LRU eviction). */
 const MAX_FRAMES = 8;
+/**
+ * Coarse time bucket folded into the visual hash so the footer "as of HH:MM"
+ * advances at most a few times per hour — proving the panel is live without
+ * burning an e-ink refresh on every poll. The device module stamps the current
+ * bucket onto the render state (`_freshnessBucket`).
+ */
+export const FRESHNESS_BUCKET_MS = 10 * 60_000;
 
 /** Resolution-keyed cache. Insertion order doubles as LRU recency. */
 const frames = new Map<string, TrmnlFrame>();
@@ -57,12 +64,26 @@ export function trmnlStateHash(evt: any): string {
     evt?.state,
     evt?.projectName,
     evt?.modelName,
-    Math.round(evt?.fiveHourPercent ?? 0),
-    Math.round(evt?.sevenDayPercent ?? 0),
+    evt?.usageKnown ? Math.round(evt?.fiveHourPercent ?? 0) : 'na',
+    evt?.usageKnown ? Math.round(evt?.sevenDayPercent ?? 0) : 'na',
     evt?.totalTokens ?? 0,
     Math.round((evt?.totalCost ?? 0) * 100),
+    evt?._freshnessBucket ?? 0,
     sessKey,
   ].join('~');
+}
+
+/** AWAITING/WORKING counts from the last known state — drives adaptive cadence. */
+export function getTrmnlActivity(): { awaiting: number; working: number } {
+  const sessions = Array.isArray(lastStateEvt?.allSessions) ? lastStateEvt.allSessions : [];
+  let awaiting = 0;
+  let working = 0;
+  for (const s of sessions) {
+    const st = String(s?.state ?? '').toLowerCase();
+    if (st.startsWith('awaiting')) awaiting++;
+    else if (st === 'processing') working++;
+  }
+  return { awaiting, working };
 }
 
 /** Store the latest broadcast state for lazy rendering, without rendering now. */

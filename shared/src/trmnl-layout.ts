@@ -91,6 +91,22 @@ function gauge(x: number, y: number, w: number, h: number, pct: number): string 
   ].join('');
 }
 
+/** "No data" gauge — outlined box with a diagonal hatch (usage truly unknown). */
+function gaugeUnknown(x: number, y: number, w: number, h: number): string {
+  const clipId = `nh${Math.round(x)}_${Math.round(y)}`;
+  const lines: string[] = [
+    `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath>`,
+    `<g clip-path="url(#${clipId})">`,
+  ];
+  // Sparse diagonal hatch so it reads as "unavailable", not "0% filled".
+  for (let hx = x - h; hx < x + w; hx += 8) {
+    lines.push(`<line x1="${hx}" y1="${y + h}" x2="${hx + h}" y2="${y}" stroke="${INK}" stroke-width="1"/>`);
+  }
+  lines.push(`</g>`);
+  lines.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${INK}" stroke-width="1.5"/>`);
+  return lines.join('');
+}
+
 /** Column geometry for one session row, derived from the panel width. */
 interface RowGeom {
   pad: number;
@@ -201,7 +217,12 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
 
   const headerH = 72;
   const footerTop = H - 68;
-  const bodyTop = headerH + 14;
+  // An AWAITING agent is the single most valuable glance signal on a slow panel,
+  // so it gets a full-width inverted banner above the rows instead of hiding in a
+  // per-row badge. The banner steals vertical space from the row area.
+  const awaitingSessions = sessions.filter((s) => statusLabel(s.state) === 'AWAITING');
+  const bannerH = awaitingSessions.length > 0 ? 48 : 0;
+  const bodyTop = headerH + 14 + bannerH;
   const rowH = 64;
   const maxRows = Math.floor((footerTop - bodyTop) / rowH);
 
@@ -222,6 +243,23 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
     `<text x="${W - pad}" y="48" text-anchor="end" font-family="${SANS}" font-size="18" font-weight="600" fill="${INK}">${escXml(summary)}</text>`,
     `<rect x="${pad}" y="${headerH}" width="${W - 2 * pad}" height="3" fill="${INK}"/>`,
   );
+
+  // --- AWAITING banner (highest-priority glance signal) ---
+  if (bannerH > 0) {
+    const by = headerH + 14;
+    const bh = bannerH - 8;
+    const n = awaitingSessions.length;
+    const projects = awaitingSessions
+      .map((s) => s.projectName || agentLabel(s.agentType))
+      .filter(Boolean)
+      .join(', ');
+    const label = `${n} agent${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} you`;
+    els.push(
+      `<rect x="${pad}" y="${by}" width="${W - 2 * pad}" height="${bh}" fill="${INK}"/>`,
+      `<text x="${pad + 16}" y="${by + bh / 2 + 7}" font-family="${SANS}" font-size="22" font-weight="700" fill="${PAPER}">${escXml(label)}</text>`,
+      `<text x="${W - pad - 16}" y="${by + bh / 2 + 6}" text-anchor="end" font-family="${SANS}" font-size="16" font-weight="600" fill="${PAPER}">${escXml(truncatePx(projects, W * 0.5, 16))}</text>`,
+    );
+  }
 
   // --- Session rows (or idle hero) ---
   // Width-derived column geometry, shared by every row.
@@ -266,15 +304,19 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
   const col2 = Math.round(W * 0.34);
   const g2Bar = col2 + 34;
   const g2Pct = g2Bar + gaugeW + 8;
+  // When the serving hub has no subscription quota (OAuth-blind / no relay), the
+  // gauges would otherwise read a confident 0%. Draw a hatched "no data" bar and
+  // an em dash instead so the panel never lies about usage.
+  const usageKnown = state.usageKnown !== false;
   els.push(
     // 5H gauge
     `<text x="${pad}" y="${fy + 4}" font-family="${SANS}" font-size="16" font-weight="700" fill="${INK}">5H</text>`,
-    gauge(g1Bar, fy - 12, gaugeW, 16, state.fiveHourPercent),
-    `<text x="${g1Pct}" y="${fy + 4}" font-family="${MONO}" font-size="16" fill="${INK}">${Math.round(state.fiveHourPercent)}%</text>`,
+    usageKnown ? gauge(g1Bar, fy - 12, gaugeW, 16, state.fiveHourPercent) : gaugeUnknown(g1Bar, fy - 12, gaugeW, 16),
+    `<text x="${g1Pct}" y="${fy + 4}" font-family="${MONO}" font-size="16" fill="${INK}">${usageKnown ? `${Math.round(state.fiveHourPercent)}%` : '—'}</text>`,
     // 7D gauge
     `<text x="${col2}" y="${fy + 4}" font-family="${SANS}" font-size="16" font-weight="700" fill="${INK}">7D</text>`,
-    gauge(g2Bar, fy - 12, gaugeW, 16, state.sevenDayPercent),
-    `<text x="${g2Pct}" y="${fy + 4}" font-family="${MONO}" font-size="16" fill="${INK}">${Math.round(state.sevenDayPercent)}%</text>`,
+    usageKnown ? gauge(g2Bar, fy - 12, gaugeW, 16, state.sevenDayPercent) : gaugeUnknown(g2Bar, fy - 12, gaugeW, 16),
+    `<text x="${g2Pct}" y="${fy + 4}" font-family="${MONO}" font-size="16" fill="${INK}">${usageKnown ? `${Math.round(state.sevenDayPercent)}%` : '—'}</text>`,
   );
   // tokens + cost + updated stamp (right aligned)
   const totals = `${fmtTokens(state.totalTokens)} tok · $${(state.totalCost || 0).toFixed(2)}`;

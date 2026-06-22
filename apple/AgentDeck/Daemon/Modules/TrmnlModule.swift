@@ -26,7 +26,11 @@ struct TrmnlStatus: Sendable {
     let enabled: Bool
     let autoRegister: Bool
     let refreshRate: Int
+    /// Cadence currently being served given live session activity.
+    let currentRefreshRate: Int
     let deviceCount: Int
+    /// Panels that haven't polled within 2× the current cadence (stuck/offline).
+    let staleDeviceCount: Int
     let activeResolutions: [String]
     let frameCount: Int
 }
@@ -91,11 +95,27 @@ actor TrmnlModule: DeviceModule {
     }
 
     private func applyUsage(_ e: [String: Any]) {
-        if let v = e["fiveHourPercent"] as? Double { lastState.fiveHourPercent = v }
-        if let v = e["sevenDayPercent"] as? Double { lastState.sevenDayPercent = v }
+        // A real percent means the hub actually has subscription quota — only then
+        // are the gauges meaningful (otherwise the renderer shows "—", not 0%).
+        if let v = e["fiveHourPercent"] as? Double { lastState.fiveHourPercent = v; lastState.usageKnown = true }
+        if let v = e["sevenDayPercent"] as? Double { lastState.sevenDayPercent = v; lastState.usageKnown = true }
         if let v = e["totalTokens"] as? Int { lastState.totalTokens = v }
         else if let v = e["totalTokens"] as? Double { lastState.totalTokens = Int(v) }
+        else if let i = e["inputTokens"] as? Int, let o = e["outputTokens"] as? Int { lastState.totalTokens = i + o }
         if let v = e["totalCost"] as? Double { lastState.totalCost = v }
+        else if let v = e["estimatedCostUsd"] as? Double { lastState.totalCost = v }
+    }
+
+    /// AWAITING/WORKING counts from the last known sessions — drives cadence.
+    private func activity() -> (awaiting: Int, working: Int) {
+        var awaiting = 0
+        var working = 0
+        for s in lastState.sessions {
+            let st = s.state.lowercased()
+            if st.hasPrefix("awaiting") { awaiting += 1 }
+            else if st == "processing" { working += 1 }
+        }
+        return (awaiting, working)
     }
 
     /// Re-render every cached resolution whose visual state changed. If nothing is
@@ -154,9 +174,13 @@ actor TrmnlModule: DeviceModule {
                 device = enroll(h.mac)
             }
             if device == nil {
+                // Unenrolled + autoRegister off: still serve a real, correctly-sized
+                // frame (not a bogus setup.png the image route can't match) so the
+                // panel shows the dashboard rather than a firmware error.
+                let setupFrame = frame(w: size.0, h: size.1)
                 return json(["status": 202,
-                             "image_url": "\(base)/trmnl/image/setup.png",
-                             "filename": "setup",
+                             "image_url": imageUrl(base, size, setupFrame.hash),
+                             "filename": setupFrame.hash,
                              "refresh_rate": String(cfg.refreshRate),
                              "special_function": "sleep",
                              "reset_firmware": false,
@@ -165,10 +189,13 @@ actor TrmnlModule: DeviceModule {
             }
         }
         let frame = frame(w: size.0, h: size.1)
+        // Adaptive cadence: poll fast while an agent is AWAITING/WORKING, slow when idle.
+        let act = activity()
+        let refresh = cfg.effectiveRefresh(awaiting: act.awaiting, working: act.working)
         return json(["status": 0,
                      "image_url": imageUrl(base, size, frame.hash),
                      "filename": frame.hash,
-                     "refresh_rate": String(cfg.refreshRate),
+                     "refresh_rate": String(refresh),
                      "special_function": "sleep",
                      "reset_firmware": false,
                      "update_firmware": false,
@@ -183,8 +210,14 @@ actor TrmnlModule: DeviceModule {
     }
 
     func snapshot() -> TrmnlStatus {
-        TrmnlStatus(enabled: cfg.enabled, autoRegister: cfg.autoRegister, refreshRate: cfg.refreshRate,
-                    deviceCount: devices.count, activeResolutions: frameOrder, frameCount: frameOrder.count)
+        let act = activity()
+        let current = cfg.effectiveRefresh(awaiting: act.awaiting, working: act.working)
+        let staleAfter = Double(max(30, current) * 2)
+        let now = Date()
+        let stale = telemetry.values.filter { now.timeIntervalSince($0.lastSeen) > staleAfter }.count
+        return TrmnlStatus(enabled: cfg.enabled, autoRegister: cfg.autoRegister, refreshRate: cfg.refreshRate,
+                           currentRefreshRate: current, deviceCount: devices.count, staleDeviceCount: stale,
+                           activeResolutions: frameOrder, frameCount: frameOrder.count)
     }
 
     // MARK: - Frame cache
@@ -214,13 +247,21 @@ actor TrmnlModule: DeviceModule {
         return render(key: key)
     }
 
-    /// Visual fingerprint (excludes the wall clock so identical content doesn't churn).
+    /// Coarse 10-minute bucket folded into the hash so the footer stamp advances a
+    /// few times/hour (proving liveness) without an e-ink refresh on every poll.
+    private func freshnessBucket() -> Int { Int(Date().timeIntervalSince1970 / 600) }
+
+    /// Visual fingerprint (excludes the wall clock so identical content doesn't
+    /// churn; a coarse freshness bucket + the usage-known flag are included).
     private func stateHash() -> String {
         let s = lastState.sessions
             .map { "\($0.agentType):\($0.state):\($0.projectName):\($0.modelName)" }
             .joined(separator: "|")
-        return "\(Int(lastState.fiveHourPercent.rounded()))~\(Int(lastState.sevenDayPercent.rounded()))~"
-            + "\(lastState.totalTokens)~\(Int((lastState.totalCost * 100).rounded()))~\(s)"
+        let usage = lastState.usageKnown
+            ? "\(Int(lastState.fiveHourPercent.rounded()))~\(Int(lastState.sevenDayPercent.rounded()))"
+            : "na~na"
+        return "\(usage)~\(lastState.totalTokens)~\(Int((lastState.totalCost * 100).rounded()))"
+            + "~\(freshnessBucket())~\(s)"
     }
 
     // MARK: - Enrollment + telemetry

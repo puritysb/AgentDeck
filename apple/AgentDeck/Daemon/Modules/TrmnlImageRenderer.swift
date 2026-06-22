@@ -90,14 +90,19 @@ enum TrmnlImageRenderer {
         let pad: CGFloat = 24
         let headerH: CGFloat = 72
         let footerTop = H - 68
-        let bodyTop = headerH + 14
         let rowH: CGFloat = 64
-        let maxRows = Int(((footerTop - bodyTop) / rowH).rounded(.down))
 
         let n = state.sessions.count
         let working = state.sessions.filter { statusLabel($0.state) == "WORKING" }.count
-        let awaiting = state.sessions.filter { statusLabel($0.state) == "AWAITING" }.count
+        let awaitingSessions = state.sessions.filter { statusLabel($0.state) == "AWAITING" }
+        let awaiting = awaitingSessions.count
         let summary = "\(n) session\(n == 1 ? "" : "s") · \(working) working · \(awaiting) awaiting"
+
+        // An AWAITING agent is the top glance signal — give it a full-width inverted
+        // banner above the rows (mirrors trmnl-layout.ts).
+        let bannerH: CGFloat = awaiting > 0 ? 48 : 0
+        let bodyTop = headerH + 14 + bannerH
+        let maxRows = Int(((footerTop - bodyTop) / rowH).rounded(.down))
 
         // Extreme-aspect / tiny-panel guard.
         if maxRows < 1 || W < 320 {
@@ -110,6 +115,20 @@ enum TrmnlImageRenderer {
         text("AgentDeck", x: pad, top: 14, size: 34, bold: true, align: .left)
         text(summary, x: W - pad, top: 26, size: 18, bold: true, align: .right)
         fill(pad, headerH, W - 2 * pad, 3, black)
+
+        // AWAITING banner (highest-priority glance signal).
+        if bannerH > 0 {
+            let by = headerH + 14
+            let bh = bannerH - 8
+            let label = "\(awaiting) agent\(awaiting == 1 ? "" : "s") need\(awaiting == 1 ? "s" : "") you"
+            let projects = awaitingSessions
+                .map { $0.projectName.isEmpty ? agentLabel($0.agentType) : $0.projectName }
+                .joined(separator: ", ")
+            fill(pad, by, W - 2 * pad, bh, black)
+            text(label, x: pad + 16, top: by + bh / 2 - 14, size: 22, bold: true, align: .left, color: white)
+            text(truncate(projects, W * 0.5, 16, false, false), x: W - pad - 16, top: by + bh / 2 - 10,
+                 size: 16, bold: true, align: .right, color: white)
+        }
 
         // Width-derived columns.
         let tagW = min(108, (W * 0.16).rounded())
@@ -195,13 +214,32 @@ enum TrmnlImageRenderer {
             let fw = (gaugeW * CGFloat(clampD(pct, 0, 100) / 100)).rounded()
             if fw > 0 { fill(x, fTop, fw, 16, black) }
         }
+        // "No data" gauge — outlined box with a sparse diagonal hatch so it reads as
+        // "unavailable", not "0% filled".
+        func gaugeUnknown(_ x: CGFloat) {
+            stroke(x, fTop, gaugeW, 16, 1.5)
+            ctx.saveGState()
+            ctx.clip(to: CGRect(x: x, y: H - fTop - 16, width: gaugeW, height: 16))
+            ctx.setStrokeColor(black)
+            ctx.setLineWidth(1)
+            var hx = x - 16
+            while hx < x + gaugeW {
+                ctx.beginPath()
+                ctx.move(to: CGPoint(x: hx, y: H - (fTop + 16)))
+                ctx.addLine(to: CGPoint(x: hx + 16, y: H - fTop))
+                ctx.strokePath()
+                hx += 8
+            }
+            ctx.restoreGState()
+        }
 
+        let usageKnown = state.usageKnown
         text("5H", x: pad, top: fTop, size: 16, bold: true)
-        gauge(g1Bar, state.fiveHourPercent)
-        text("\(Int(state.fiveHourPercent.rounded()))%", x: g1Pct, top: fTop, size: 16, mono: true)
+        if usageKnown { gauge(g1Bar, state.fiveHourPercent) } else { gaugeUnknown(g1Bar) }
+        text(usageKnown ? "\(Int(state.fiveHourPercent.rounded()))%" : "—", x: g1Pct, top: fTop, size: 16, mono: true)
         text("7D", x: col2, top: fTop, size: 16, bold: true)
-        gauge(g2Bar, state.sevenDayPercent)
-        text("\(Int(state.sevenDayPercent.rounded()))%", x: g2Pct, top: fTop, size: 16, mono: true)
+        if usageKnown { gauge(g2Bar, state.sevenDayPercent) } else { gaugeUnknown(g2Bar) }
+        text(usageKnown ? "\(Int(state.sevenDayPercent.rounded()))%" : "—", x: g2Pct, top: fTop, size: 16, mono: true)
 
         let cost = String(format: "%.2f", state.totalCost)
         var totals = "\(fmtTokens(state.totalTokens)) tok · $\(cost)"

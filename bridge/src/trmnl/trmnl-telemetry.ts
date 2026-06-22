@@ -61,6 +61,27 @@ export function getTelemetry(): DeviceTelemetry[] {
   return [...telemetry.values()].sort((a, b) => b.lastSeen - a.lastSeen);
 }
 
+/** Telemetry plus derived freshness — `secondsSinceSeen` and a `stale` flag. */
+export interface DeviceHealth extends DeviceTelemetry {
+  secondsSinceSeen: number;
+  /** True when the panel hasn't polled in over 2× its expected cadence. */
+  stale: boolean;
+}
+
+/**
+ * Telemetry annotated with health. A panel that hasn't polled within 2× its
+ * cadence is flagged `stale` so the dashboard can distinguish "panel stuck /
+ * offline" from "nothing changed". `now`/`refreshRate` are injected at the daemon
+ * boundary so this stays clock- and config-free.
+ */
+export function getTelemetryHealth(refreshRate: number, now: number = Date.now()): DeviceHealth[] {
+  const staleAfterMs = Math.max(30, refreshRate) * 2 * 1000;
+  return getTelemetry().map((t) => {
+    const ageMs = now - t.lastSeen;
+    return { ...t, secondsSinceSeen: Math.round(ageMs / 1000), stale: ageMs > staleAfterMs };
+  });
+}
+
 /** Test helper — clear the runtime map. */
 export function _resetTelemetry(): void {
   telemetry.clear();
