@@ -10,8 +10,14 @@
 import type { AgentType } from '../adapter.js';
 import { dimColor, agentBrandColor } from '../state-colors.js';
 
-const ROBOT_CREATURE_PATH =
+// Claude Code creature = the rusty robot (design/brand/claudecode.svg): blocky
+// head with two eye holes. Exported so 1-bit surfaces (TRMNL e-ink) render the
+// canonical mark rather than a drifted approximation.
+export const ROBOT_CREATURE_PATH =
   'M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0v-3.1h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z';
+
+/** OpenCode mark (design/brand/opencode.svg): hollow nested-square ring. */
+export const OPENCODE_RING_PATH = 'M16 6H8v12h8V6zm4 16H4V2h16v20z';
 
 /** Claude Code creature asset: assets/logos/claude.svg. viewBox 0 0 24 24. */
 export const CLAUDE_LOGO_PATH =
@@ -128,6 +134,47 @@ function openCodeCreatureIcon(size: number, opacity: number, cx: number, cy: num
     `<path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" fill-rule="evenodd" fill="#F1ECEC"/>`,
     `</g>`,
   ].join('');
+}
+
+// ===== 1-bit monochrome glyph (e-ink / TRMNL) =====
+
+/** Canonical brand-path glyph per agent, plus optional white "eye" cutouts that
+ * aren't part of the fill path (openClaw). Faithful to the assets/logos creatures
+ * (robot / cloud-prompt / lobster / ring) so 1-bit surfaces don't drift. */
+interface MonoGlyph {
+  paths: string[];
+  eyes?: Array<[number, number, number]>; // cx, cy, r in the 24-unit viewBox
+}
+const AGENT_MONO_GLYPH: Record<string, MonoGlyph> = {
+  'claude-code': { paths: [ROBOT_CREATURE_PATH] },
+  'codex-cli': { paths: [CODEX_LOGO_PATH] },
+  'codex-app': { paths: [CODEX_LOGO_PATH] },
+  codex: { paths: [CODEX_LOGO_PATH] },
+  opencode: { paths: [OPENCODE_RING_PATH] },
+  openclaw: { paths: OPENCLAW_BODY_PATHS, eyes: [[8.835, 7.843, 1.05], [15.165, 7.843, 1.05]] },
+};
+
+/**
+ * Render the agent's canonical brand mark as a 1-bit glyph: the path(s) filled
+ * with `ink` (evenodd so in-path holes — robot eyes, opencode ring, codex prompt —
+ * read as paper), plus any separate `paper` eye cutouts. 24-unit viewBox scaled to
+ * `size`, centered on (cx,cy). Used by the TRMNL e-ink layout; mirrored in Swift.
+ */
+export function agentGlyphMono(
+  agent: string,
+  cx: number,
+  cy: number,
+  size: number,
+  ink: string,
+  paper: string,
+): string {
+  const g = AGENT_MONO_GLYPH[(agent || '').toLowerCase()] ?? AGENT_MONO_GLYPH.openclaw;
+  const s = size / 24;
+  const out: string[] = [`<g transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${s.toFixed(4)}) translate(-12,-12)">`];
+  for (const p of g.paths) out.push(`<path d="${p}" fill="${ink}" fill-rule="evenodd"/>`);
+  if (g.eyes) for (const [ex, ey, er] of g.eyes) out.push(`<circle cx="${ex}" cy="${ey}" r="${er}" fill="${paper}"/>`);
+  out.push('</g>');
+  return out.join('');
 }
 
 // ===== Prominent agent icon (top of button, primary identification) =====

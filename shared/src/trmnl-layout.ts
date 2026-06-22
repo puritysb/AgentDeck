@@ -16,6 +16,7 @@
  */
 import { parseState, type DashState } from './d200h-layout.js';
 import { measureTextWidth, sliceByPx } from './svg-renderers/text-utils.js';
+import { agentGlyphMono } from './svg-renderers/agent-logos.js';
 import type { SessionInfo, SubscriptionInfo } from './protocol.js';
 
 export const TRMNL_WIDTH = 800;
@@ -91,51 +92,6 @@ function gaugeUnknown(x: number, y: number, w: number, h: number): string {
   lines.push(`</g>`);
   lines.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${INK}" stroke-width="1.5"/>`);
   return lines.join('');
-}
-
-/**
- * Compact monochrome agent glyph (the AgentDeck creature language at 1-bit) in a
- * 24-unit box scaled to `size`, centered on (cx,cy). Replaces the wide "CLAUDE"
- * text tag so the row has room for a description. Drawn with primitives so it
- * mirrors 1:1 in the Swift CoreGraphics renderer.
- */
-function agentGlyph(agent: string | undefined, cx: number, cy: number, size: number): string {
-  const s = size / 24;
-  const open = `<g transform="translate(${(cx - 12 * s).toFixed(2)} ${(cy - 12 * s).toFixed(2)}) scale(${s.toFixed(3)})">`;
-  const a = (agent ?? '').toLowerCase();
-  let body: string;
-  if (a === 'opencode') {
-    // Canonical hollow-ring mark (line-only path, evenodd).
-    body = `<path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" fill="${INK}" fill-rule="evenodd"/>`;
-  } else if (a.startsWith('codex')) {
-    // Cloud + white ">" prompt (Codex identity).
-    body =
-      `<circle cx="8" cy="12.5" r="5" fill="${INK}"/>` +
-      `<circle cx="16" cy="12.5" r="5" fill="${INK}"/>` +
-      `<circle cx="12" cy="8.5" r="6" fill="${INK}"/>` +
-      `<rect x="3" y="12" width="18" height="6" fill="${INK}"/>` +
-      `<path d="M9 8.5 L12.5 11.5 L9 14.5" fill="none" stroke="${PAPER}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>` +
-      `<line x1="13.5" y1="14.5" x2="16.5" y2="14.5" stroke="${PAPER}" stroke-width="1.8" stroke-linecap="round"/>`;
-  } else if (a === 'claude-code' || a === 'claude') {
-    // Octopus: round head, white eyes, dangling legs.
-    body =
-      `<ellipse cx="12" cy="9.5" rx="8" ry="7" fill="${INK}"/>` +
-      `<rect x="5.6" y="14" width="2" height="6.5" rx="1" fill="${INK}"/>` +
-      `<rect x="9.4" y="15" width="2" height="6" rx="1" fill="${INK}"/>` +
-      `<rect x="12.6" y="15" width="2" height="6" rx="1" fill="${INK}"/>` +
-      `<rect x="16.4" y="14" width="2" height="6.5" rx="1" fill="${INK}"/>` +
-      `<circle cx="9" cy="9" r="1.7" fill="${PAPER}"/>` +
-      `<circle cx="15" cy="9" r="1.7" fill="${PAPER}"/>`;
-  } else {
-    // Crayfish — OpenClaw + daemon + unknown fallback: body, two claws, white eyes.
-    body =
-      `<circle cx="5.5" cy="7.5" r="2.6" fill="${INK}"/>` +
-      `<circle cx="18.5" cy="7.5" r="2.6" fill="${INK}"/>` +
-      `<ellipse cx="12" cy="13" rx="6" ry="7" fill="${INK}"/>` +
-      `<circle cx="10" cy="11" r="1.3" fill="${PAPER}"/>` +
-      `<circle cx="14" cy="11" r="1.3" fill="${PAPER}"/>`;
-  }
-  return open + body + '</g>';
 }
 
 /** Shorten a model id for the description line: "claude-opus-4-8" → "opus-4-8". */
@@ -239,8 +195,9 @@ function sessionRow(sess: SessionInfo, y: number, rowH: number, geom: RowGeom, n
   const awaiting = status === 'AWAITING';
   const els: string[] = [];
 
-  // Agent icon (replaces the wide text tag — frees room for a description).
-  els.push(agentGlyph(sess.agentType, pad + iconSize / 2, y + rowH / 2, iconSize));
+  // Agent icon (canonical brand mark — robot/cloud/lobster/ring) in place of the
+  // wide text tag, freeing room for a description.
+  els.push(agentGlyphMono(sess.agentType ?? '', pad + iconSize / 2, y + rowH / 2, iconSize, INK, PAPER));
 
   // Project name (bold) + a "what is it doing" description line.
   const project = truncatePx(sess.projectName || '(no project)', textW, 24);
