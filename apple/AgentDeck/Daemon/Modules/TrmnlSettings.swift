@@ -12,20 +12,21 @@ import Foundation
 /// Static config read from settings.json `trmnl` block.
 struct TrmnlConfig: Sendable {
     var enabled: Bool = false
-    /// Idle cadence (seconds) — slow + battery-friendly.
+    /// Idle/working cadence (seconds) — slow + battery-friendly.
     var refreshRate: Int = 180
-    /// Cadence (seconds) while any session is AWAITING/WORKING.
-    var refreshActive: Int = 30
+    /// Cadence (seconds) while a session is AWAITING the user.
+    var refreshActive: Int = 60
+    /// Image-download timeout (seconds) handed to the firmware as image_url_timeout.
+    var imageUrlTimeout: Int = 30
     var autoRegister: Bool = true
 
-    /// Too-frequent polls drain the panel battery — floor any cadence here.
-    static let minRefresh = 15
+    /// Too-frequent polls drain the panel battery + full-flash the e-ink.
+    static let minRefresh = 30
 
-    /// Cadence for a poll given current session activity (mirrors
-    /// trmnl-settings.ts effectiveRefreshRate).
+    /// Cadence for a poll: only AWAITING speeds it up (a deep-sleep e-ink panel
+    /// can't be pushed and each wake flashes the screen). Mirrors trmnl-settings.ts.
     func effectiveRefresh(awaiting: Int, working: Int) -> Int {
-        let active = awaiting > 0 || working > 0
-        return max(TrmnlConfig.minRefresh, active ? refreshActive : refreshRate)
+        max(TrmnlConfig.minRefresh, awaiting > 0 ? refreshActive : refreshRate)
     }
 }
 
@@ -88,6 +89,8 @@ enum TrmnlSettings {
         else if let r = t["refreshRate"] as? Double, r >= 5 { cfg.refreshRate = Int(r) }
         if let r = t["refreshActive"] as? Int, r >= 5 { cfg.refreshActive = r }
         else if let r = t["refreshActive"] as? Double, r >= 5 { cfg.refreshActive = Int(r) }
+        if let v = t["imageUrlTimeout"] as? Int, v > 0 { cfg.imageUrlTimeout = min(65, v) }
+        else if let v = t["imageUrlTimeout"] as? Double, v > 0 { cfg.imageUrlTimeout = min(65, Int(v)) }
         if let a = t["autoRegister"] as? Bool { cfg.autoRegister = a }
         return cfg
     }

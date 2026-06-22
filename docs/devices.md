@@ -30,14 +30,18 @@ agentdeck trmnl     # prints http://<LAN-IP>:9120 + enrolled panels + health
 
 Set that one URL as the panel's custom/BYOS server. It auto-enrolls on first poll (no MAC entry). **Critical:** run a single daemon as the hub on a stable `LAN-IP:9120`. The **Node daemon is the usage-capable hub** (it reads Claude OAuth quota); the **macOS app should run as a client** (`isUsingExternalDaemon`). Two hubs racing for port 9120 — or a panel pinned to a fallback port that comes and goes — is what makes the firmware flip between the dashboard and its **"WiFi connected / TRMNL not responding"** error screen.
 
-**Behavior:**
-- **Adaptive cadence** — `refresh_rate` is computed per poll: fast (`trmnl.refreshActive`, default 30s) while any session is AWAITING/WORKING, slow (`trmnl.refreshRate`, default 180s) when idle. Floor 15s.
-- **Usage** — the gauges come from `usage_update` (not `state_update`); the module merges both. When the hub has no subscription quota (OAuth-blind / no relay) the footer renders a hatched bar + "—", never a misleading `0%`.
-- **AWAITING banner** — any awaiting agent gets a full-width inverted banner above the rows (the top glance signal).
-- **Freshness** — a coarse 10-min bucket folded into the frame hash advances the "as of HH:MM" stamp a few times/hour so a stuck panel is detectable, without churning the e-ink on every poll.
-- **Health** — `agentdeck trmnl` and the daemon `/status` `modules.trmnl` expose per-panel lastSeen/battery/RSSI and a `stale` flag (no poll in > 2× the current cadence).
+**Behavior** (aligned to the `usetrmnl/firmware` BYOS contract):
+- **Response shape** — `/api/display` returns `status:0, image_url, filename, refresh_rate (number), image_url_timeout, special_function:"sleep", reset_firmware:false, update_firmware:false, firmware_url:null`. `refresh_rate` is a **number** (the firmware parses it as a uint; a string can read as 0). `image_url` is 1-bit **PNG** (firmware sniffs `BM` → BMP, else PNG/JPEG — PNG is supported).
+- **Stable `filename`** — the firmware caches the image by `filename` and **skips the re-download when it's unchanged**. So the frame hash changes ONLY on real visual change — never for a ticking clock. This is what keeps a battery panel on a flaky link from re-downloading (and full-flashing the e-ink) every poll.
+- **Gentle adaptive cadence** — `refresh_rate` is `trmnl.refreshActive` (default **60s**) only while a session is **AWAITING** the user; otherwise `trmnl.refreshRate` (default 180s). "Working" does NOT speed it up — a deep-sleep panel can't be pushed and each wake flashes the screen + costs battery. Floor 30s.
+- **`image_url_timeout`** (`trmnl.imageUrlTimeout`, default 30s, firmware caps ~65s) — the download window the firmware honors, so a slow/flaky WiFi link doesn't trip the device's **"WiFi connected / not responding"** (`WIFI_FAILED`) screen. That screen is a *device-side request failure* (network/timeout), not a server error — verify LAN packet loss to the panel if it persists.
+- **Usage** — the gauges come from `usage_update` (not `state_update`); the module merges both. No quota → hatched "—", never a misleading `0%`. Footer shows 5H/7D gauge + % + **time-until-reset**; no token tally or wall clock.
+- **AWAITING banner** — any awaiting agent gets a full-width inverted banner above the rows.
+- **Health** — `agentdeck trmnl` and `/status` `modules.trmnl` expose per-panel lastSeen/battery/RSSI + a `stale` flag.
 
-Settings (`~/.agentdeck/settings.json` `trmnl` block): `enabled`, `refreshRate`, `refreshActive`, `autoRegister`, `devices[]`.
+Settings (`~/.agentdeck/settings.json` `trmnl` block): `enabled`, `refreshRate`, `refreshActive`, `imageUrlTimeout`, `autoRegister`, `devices[]`.
+
+Reference: [BYOS docs](https://docs.trmnl.com/go/diy/byos) · [byos_sinatra](https://github.com/usetrmnl/byos_sinatra) (canonical response shape) · [firmware](https://github.com/usetrmnl/firmware) (`src/bl.cpp` — image sniff, `image_url_timeout`, `WIFI_FAILED`).
 
 ## Broadcast Architecture
 

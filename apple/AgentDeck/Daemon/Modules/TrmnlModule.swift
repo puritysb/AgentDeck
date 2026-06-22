@@ -183,7 +183,8 @@ actor TrmnlModule: DeviceModule {
                 return json(["status": 202,
                              "image_url": imageUrl(base, size, setupFrame.hash),
                              "filename": setupFrame.hash,
-                             "refresh_rate": String(cfg.refreshRate),
+                             "refresh_rate": cfg.refreshRate,
+                             "image_url_timeout": cfg.imageUrlTimeout,
                              "special_function": "sleep",
                              "reset_firmware": false,
                              "update_firmware": false,
@@ -191,13 +192,14 @@ actor TrmnlModule: DeviceModule {
             }
         }
         let frame = frame(w: size.0, h: size.1)
-        // Adaptive cadence: poll fast while an agent is AWAITING/WORKING, slow when idle.
+        // Adaptive cadence: only AWAITING speeds the loop up (battery e-ink).
         let act = activity()
         let refresh = cfg.effectiveRefresh(awaiting: act.awaiting, working: act.working)
         return json(["status": 0,
                      "image_url": imageUrl(base, size, frame.hash),
                      "filename": frame.hash,
-                     "refresh_rate": String(refresh),
+                     "refresh_rate": refresh,
+                     "image_url_timeout": cfg.imageUrlTimeout,
                      "special_function": "sleep",
                      "reset_firmware": false,
                      "update_firmware": false,
@@ -249,12 +251,10 @@ actor TrmnlModule: DeviceModule {
         return render(key: key)
     }
 
-    /// Coarse 10-minute bucket folded into the hash so the footer stamp advances a
-    /// few times/hour (proving liveness) without an e-ink refresh on every poll.
-    private func freshnessBucket() -> Int { Int(Date().timeIntervalSince1970 / 600) }
-
-    /// Visual fingerprint (excludes the wall clock so identical content doesn't
-    /// churn; a coarse freshness bucket + the usage-known flag are included).
+    /// Visual fingerprint. NO wall-clock component: a real TRMNL caches by
+    /// `filename` and skips the (battery + flaky-WiFi) re-download when it's
+    /// unchanged, so the hash must change only on real visual change. Reset
+    /// timestamps roll over rarely and are included so a rollover re-renders.
     private func stateHash() -> String {
         let s = lastState.sessions
             .map { "\($0.agentType):\($0.state):\($0.projectName):\($0.modelName)" }
@@ -262,8 +262,7 @@ actor TrmnlModule: DeviceModule {
         let usage = lastState.usageKnown
             ? "\(Int(lastState.fiveHourPercent.rounded()))~\(Int(lastState.sevenDayPercent.rounded()))"
             : "na~na"
-        return "\(usage)~\(lastState.totalTokens)~\(Int((lastState.totalCost * 100).rounded()))"
-            + "~\(freshnessBucket())~\(s)"
+        return "\(usage)~\(lastState.fiveHourResetsAt ?? "")~\(lastState.sevenDayResetsAt ?? "")~\(s)"
     }
 
     // MARK: - Enrollment + telemetry

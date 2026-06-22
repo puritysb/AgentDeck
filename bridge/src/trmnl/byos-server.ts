@@ -176,7 +176,8 @@ export function handleTrmnlDisplay(req: IncomingMessage, res: ServerResponse): v
         status: 202,
         image_url: imageUrl(req, size, setupFrame.contentHash),
         filename: setupFrame.contentHash,
-        refresh_rate: String(cfg.refreshRate),
+        refresh_rate: cfg.refreshRate,
+        image_url_timeout: cfg.imageUrlTimeout,
         special_function: 'sleep',
         reset_firmware: false,
         update_firmware: false,
@@ -202,7 +203,10 @@ export function handleTrmnlDisplay(req: IncomingMessage, res: ServerResponse): v
     status: 0,
     image_url: imageUrl(req, size, frame.contentHash),
     filename: frame.contentHash,
-    refresh_rate: String(refreshRate),
+    // Number (matches the reference BYOS + firmware's uint parse), not a string.
+    refresh_rate: refreshRate,
+    // Generous image-download window so a flaky WiFi link doesn't trip "not responding".
+    image_url_timeout: cfg.imageUrlTimeout,
     special_function: 'sleep',
     reset_firmware: false,
     update_firmware: false,

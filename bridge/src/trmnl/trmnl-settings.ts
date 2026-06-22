@@ -26,10 +26,20 @@ function settingsPath(): string {
 }
 
 export const TRMNL_DEFAULT_REFRESH = 180;
-/** Cadence used while an agent is AWAITING/WORKING so the panel updates fast. */
-export const TRMNL_DEFAULT_REFRESH_ACTIVE = 30;
-/** Floor on any cadence — too-frequent polls drain the panel battery. */
-export const TRMNL_MIN_REFRESH = 15;
+/**
+ * Cadence used only while an agent is AWAITING the user. NOT used for "working":
+ * a battery e-ink panel deep-sleeps between polls and full-flashes the screen on
+ * every refresh, so we only tighten the loop when the user actually needs to act.
+ */
+export const TRMNL_DEFAULT_REFRESH_ACTIVE = 60;
+/** Floor on any cadence — too-frequent polls drain the panel battery + flash it. */
+export const TRMNL_MIN_REFRESH = 30;
+/**
+ * Seconds the firmware waits for the image download before giving up (its
+ * `image_url_timeout`). Generous so a slow/flaky WiFi link doesn't trip the
+ * device's "not responding" (WIFI_FAILED) screen. Firmware caps at ~65s.
+ */
+export const TRMNL_DEFAULT_IMAGE_TIMEOUT = 30;
 
 export interface TrmnlDevice {
   /** Normalized (uppercase, colon-separated) MAC address — the device identity. */
@@ -44,21 +54,26 @@ export interface TrmnlDevice {
 
 export interface TrmnlConfig {
   enabled: boolean;
-  /** Idle cadence (seconds) — the slow, battery-friendly default. */
+  /** Idle/working cadence (seconds) — the slow, battery-friendly default. */
   refreshRate: number;
-  /** Cadence (seconds) while any session is AWAITING/WORKING. */
+  /** Cadence (seconds) while a session is AWAITING the user. */
   refreshActive: number;
+  /** Image-download timeout (seconds) handed to the firmware as image_url_timeout. */
+  imageUrlTimeout: number;
   autoRegister: boolean;
   devices: TrmnlDevice[];
 }
 
-/** Cadence for a poll given current session activity, clamped to the floor. */
+/**
+ * Cadence for a poll. We only speed up for AWAITING (the user needs to act);
+ * "working" stays on the slow cadence because a deep-sleep e-ink panel can't be
+ * pushed and each wake full-flashes the screen + costs battery.
+ */
 export function effectiveRefreshRate(
   cfg: TrmnlConfig,
   activity: { awaiting: number; working: number },
 ): number {
-  const active = activity.awaiting > 0 || activity.working > 0;
-  return Math.max(TRMNL_MIN_REFRESH, active ? cfg.refreshActive : cfg.refreshRate);
+  return Math.max(TRMNL_MIN_REFRESH, activity.awaiting > 0 ? cfg.refreshActive : cfg.refreshRate);
 }
 
 function readSettings(): Record<string, unknown> {
@@ -83,10 +98,15 @@ export function loadTrmnlConfig(): TrmnlConfig {
     typeof raw.refreshActive === 'number' && raw.refreshActive >= 5
       ? Math.floor(raw.refreshActive)
       : TRMNL_DEFAULT_REFRESH_ACTIVE;
+  const imageUrlTimeout =
+    typeof raw.imageUrlTimeout === 'number' && raw.imageUrlTimeout > 0
+      ? Math.min(65, Math.floor(raw.imageUrlTimeout))
+      : TRMNL_DEFAULT_IMAGE_TIMEOUT;
   return {
     enabled: raw.enabled === true,
     refreshRate,
     refreshActive,
+    imageUrlTimeout,
     autoRegister: raw.autoRegister !== false, // default on
     devices: Array.isArray(raw.devices) ? raw.devices.filter((d) => d && typeof d.mac === 'string') : [],
   };

@@ -14,17 +14,13 @@
  */
 import type { DeviceModule, BridgeContext } from './types.js';
 import { initTrmnlRenderer, isTrmnlResvgLoaded } from '../trmnl/image-renderer.js';
-import { refreshTrmnlFrame, setTrmnlState, getTrmnlFrameKeys, getTrmnlActivity, FRESHNESS_BUCKET_MS } from '../trmnl/frame-cache.js';
+import { refreshTrmnlFrame, setTrmnlState, getTrmnlFrameKeys, getTrmnlActivity } from '../trmnl/frame-cache.js';
 import { loadTrmnlConfig, effectiveRefreshRate } from '../trmnl/trmnl-settings.js';
 import { getTelemetryHealth } from '../trmnl/trmnl-telemetry.js';
 import { debug } from '../logger.js';
 
 const TAG = 'trmnl';
 const GATE_REFRESH_MS = 30_000;
-// Periodic re-render so the footer "as of HH:MM" advances and a stuck panel is
-// detectable. A coarse freshness bucket (frame-cache.ts) keeps actual re-renders
-// to a few per hour, so this timer only matters at bucket boundaries.
-const FRESHNESS_TICK_MS = 60_000;
 
 function isControllableOrObserved(session: any): boolean {
   // TRMNL is a read-only dashboard — show every live session (controllable or
@@ -40,7 +36,6 @@ export class TrmnlModule implements DeviceModule {
   private lastSessions: any[] = [];
   private gateActive = false;
   private gateTimer: ReturnType<typeof setInterval> | null = null;
-  private freshnessTimer: ReturnType<typeof setInterval> | null = null;
 
   async shouldActivate(config: 'auto' | boolean): Promise<boolean> {
     if (config === false) return false;
@@ -71,12 +66,6 @@ export class TrmnlModule implements DeviceModule {
       }
     });
 
-    // Advance the "as of" stamp on a slow tick (real re-render is gated by the
-    // coarse freshness bucket in frame-cache, so this is cheap on e-ink).
-    this.freshnessTimer = setInterval(() => {
-      if (this.gateActive) this.render();
-    }, FRESHNESS_TICK_MS);
-
     debug(TAG, `started (resvg=${isTrmnlResvgLoaded()}, gate=${this.gateActive})`);
   }
 
@@ -84,10 +73,6 @@ export class TrmnlModule implements DeviceModule {
     if (this.gateTimer) {
       clearInterval(this.gateTimer);
       this.gateTimer = null;
-    }
-    if (this.freshnessTimer) {
-      clearInterval(this.freshnessTimer);
-      this.freshnessTimer = null;
     }
   }
 
@@ -130,27 +115,20 @@ export class TrmnlModule implements DeviceModule {
 
   /**
    * Combine the latest state_update + usage_update + sessions into one render
-   * event. usage_update is spread last so its 5H/7D/token fields win; tokens and
-   * cost fall back to the per-session usage figures when no aggregate is present.
-   * `_freshnessBucket` is a coarse time bucket folded into the frame hash so the
-   * footer stamp advances without churning the e-ink panel on every poll.
+   * event. usage_update is spread last so its 5H/7D + reset fields win. No time
+   * component is added: the frame hash must change only on real visual change so
+   * a real TRMNL can skip the (battery + flaky-WiFi) re-download otherwise.
    */
   private buildRenderState(): any {
     const u = this.lastUsage ?? {};
-    const totalTokens =
-      this.lastState?.totalTokens ?? u.totalTokens ?? ((u.inputTokens ?? 0) + (u.outputTokens ?? 0));
-    const totalCost = this.lastState?.totalCost ?? u.totalCost ?? u.estimatedCostUsd ?? 0;
     // Usage is "known" only when the hub actually has subscription quota (the
     // gauges are meaningful); otherwise the layout renders "—" instead of 0%.
     const usageKnown = u.fiveHourPercent != null || u.sevenDayPercent != null;
     return {
       ...(this.lastState ?? {}),
       ...u,
-      totalTokens,
-      totalCost,
       usageKnown,
       allSessions: this.lastSessions,
-      _freshnessBucket: Math.floor(Date.now() / FRESHNESS_BUCKET_MS),
     };
   }
 }

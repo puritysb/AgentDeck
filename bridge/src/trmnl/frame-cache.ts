@@ -15,13 +15,6 @@ import { TRMNL_WIDTH, TRMNL_HEIGHT } from '@agentdeck/shared';
 const DEFAULT_KEY = `${TRMNL_WIDTH}x${TRMNL_HEIGHT}`;
 /** Bound on distinct resolutions held at once (insertion-order LRU eviction). */
 const MAX_FRAMES = 8;
-/**
- * Coarse time bucket folded into the visual hash so the footer "as of HH:MM"
- * advances at most a few times per hour — proving the panel is live without
- * burning an e-ink refresh on every poll. The device module stamps the current
- * bucket onto the render state (`_freshnessBucket`).
- */
-export const FRESHNESS_BUCKET_MS = 10 * 60_000;
 
 /** Resolution-keyed cache. Insertion order doubles as LRU recency. */
 const frames = new Map<string, TrmnlFrame>();
@@ -60,15 +53,19 @@ export function trmnlStateHash(evt: any): string {
   const sessKey = sessions
     .map((s: any) => `${s?.id}:${s?.agentType}:${s?.state}:${s?.projectName}:${s?.modelName}`)
     .join('|');
+  // No wall-clock / freshness component: a real TRMNL caches by `filename` and
+  // skips the (battery + flaky-WiFi) re-download when it's unchanged. So the hash
+  // must change ONLY on real visual change — never churn it for a ticking clock.
   return [
     evt?.state,
     evt?.projectName,
     evt?.modelName,
     evt?.usageKnown ? Math.round(evt?.fiveHourPercent ?? 0) : 'na',
     evt?.usageKnown ? Math.round(evt?.sevenDayPercent ?? 0) : 'na',
-    evt?.totalTokens ?? 0,
-    Math.round((evt?.totalCost ?? 0) * 100),
-    evt?._freshnessBucket ?? 0,
+    // Reset windows roll over rarely — include them so a rollover re-renders the
+    // countdown, but they don't churn minute-to-minute.
+    evt?.fiveHourResetsAt ?? '',
+    evt?.sevenDayResetsAt ?? '',
     sessKey,
   ].join('~');
 }

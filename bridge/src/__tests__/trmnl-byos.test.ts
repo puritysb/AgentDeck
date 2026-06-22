@@ -119,7 +119,8 @@ describe('TRMNL BYOS handlers', () => {
 
     expect(captured.status).toBe(200);
     expect(captured.body.status).toBe(0);
-    expect(captured.body.refresh_rate).toBe('180');
+    // refresh_rate is a number (matches the reference BYOS + firmware uint parse).
+    expect(captured.body.refresh_rate).toBe(180);
     expect(captured.body.reset_firmware).toBe(false);
     expect(captured.body.update_firmware).toBe(false);
     expect(captured.body.image_url).toContain(`-${captured.body.filename}.png`);
@@ -262,18 +263,27 @@ describe('TRMNL BYOS handlers', () => {
     expect(keys).toContain('480x800');
   });
 
-  it('serves the slow idle cadence when no session is active', () => {
+  it('serves the slow cadence when idle (refresh_rate is a number + image timeout set)', () => {
     refreshTrmnlFrame({ allSessions: [{ id: 's1', state: 'idle' }] });
     const { res, captured } = fakeRes();
     handleTrmnlDisplay(fakeReq({ ID: MAC }), res);
-    expect(captured.body.refresh_rate).toBe(String(TRMNL_DEFAULT_REFRESH));
+    expect(captured.body.refresh_rate).toBe(TRMNL_DEFAULT_REFRESH);
+    expect(typeof captured.body.refresh_rate).toBe('number');
+    expect(captured.body.image_url_timeout).toBeGreaterThan(0);
+  });
+
+  it('keeps the slow cadence while WORKING (only AWAITING speeds it up)', () => {
+    refreshTrmnlFrame({ allSessions: [{ id: 's1', state: 'processing' }] });
+    const { res, captured } = fakeRes();
+    handleTrmnlDisplay(fakeReq({ ID: MAC }), res);
+    expect(captured.body.refresh_rate).toBe(TRMNL_DEFAULT_REFRESH);
   });
 
   it('serves the fast active cadence when a session is AWAITING', () => {
     refreshTrmnlFrame({ allSessions: [{ id: 's1', state: 'awaiting_permission' }] });
     const { res, captured } = fakeRes();
     handleTrmnlDisplay(fakeReq({ ID: MAC }), res);
-    expect(captured.body.refresh_rate).toBe(String(TRMNL_DEFAULT_REFRESH_ACTIVE));
+    expect(captured.body.refresh_rate).toBe(TRMNL_DEFAULT_REFRESH_ACTIVE);
   });
 
   it('flags a panel as stale once it stops polling past 2x its cadence', () => {
