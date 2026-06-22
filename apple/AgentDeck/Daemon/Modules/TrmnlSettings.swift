@@ -36,6 +36,16 @@ struct TrmnlSession: Sendable {
     let projectName: String
     let modelName: String
     let state: String
+    /// "What is it doing" inputs for the description line.
+    var currentTool: String = ""
+    var currentTask: String = ""
+    var elapsedSec: Int = 0
+}
+
+/// One subscription/plan with optional expiry (Claude / ChatGPT).
+struct TrmnlSubscription: Sendable {
+    let name: String
+    let until: String?
 }
 
 /// The renderable dashboard state (mirrors the fields trmnl-layout.ts consumes).
@@ -51,6 +61,8 @@ struct TrmnlDashState: Sendable {
     /// ISO timestamps when each quota window resets (for a countdown). nil ⇒ hidden.
     var fiveHourResetsAt: String?
     var sevenDayResetsAt: String?
+    /// Active subscriptions (Claude / ChatGPT plan) with optional expiry.
+    var subscriptions: [TrmnlSubscription] = []
     /// "HH:MM" stamp baked at render time (the device pulls; this is render-time).
     var nowText: String = ""
 }

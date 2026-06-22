@@ -87,22 +87,69 @@ enum TrmnlImageRenderer {
         // White paper background.
         fill(0, 0, W, H, white)
 
+        func fillEllipseTD(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ c: CGColor) {
+            ctx.setFillColor(c)
+            ctx.fillEllipse(in: CGRect(x: x, y: H - y - h, width: w, height: h))
+        }
+        // Compact monochrome agent glyph (the creature language at 1-bit), 24-unit
+        // box centered on (gcx,gcy). Mirrors agentGlyph() in trmnl-layout.ts.
+        func agentGlyph(_ agent: String, _ gcx: CGFloat, _ gcy: CGFloat, _ gsize: CGFloat) {
+            let s = gsize / 24
+            func ux(_ u: CGFloat) -> CGFloat { gcx + (u - 12) * s }
+            func uy(_ u: CGFloat) -> CGFloat { gcy + (u - 12) * s }
+            func circ(_ cu: CGFloat, _ cv: CGFloat, _ ru: CGFloat, _ col: CGColor) {
+                let r = ru * s; fillEllipseTD(ux(cu) - r, uy(cv) - r, 2 * r, 2 * r, col)
+            }
+            func ell(_ cu: CGFloat, _ cv: CGFloat, _ rxu: CGFloat, _ ryu: CGFloat, _ col: CGColor) {
+                let rx = rxu * s, ry = ryu * s; fillEllipseTD(ux(cu) - rx, uy(cv) - ry, 2 * rx, 2 * ry, col)
+            }
+            func rct(_ x0: CGFloat, _ y0: CGFloat, _ wu: CGFloat, _ hu: CGFloat, _ col: CGColor) {
+                fill(ux(x0), uy(y0), wu * s, hu * s, col)
+            }
+            let a = agent.lowercased()
+            if a == "opencode" {
+                let outer = CGRect(x: ux(4), y: H - uy(2) - 20 * s, width: 16 * s, height: 20 * s)
+                let inner = CGRect(x: ux(8), y: H - uy(6) - 12 * s, width: 8 * s, height: 12 * s)
+                let p = CGMutablePath(); p.addRect(outer); p.addRect(inner)
+                ctx.setFillColor(black); ctx.addPath(p); ctx.fillPath(using: .evenOdd)
+            } else if a.hasPrefix("codex") {
+                circ(8, 12.5, 5, black); circ(16, 12.5, 5, black); circ(12, 8.5, 6, black); rct(3, 12, 18, 6, black)
+                ctx.setStrokeColor(white); ctx.setLineWidth(1.8 * s); ctx.setLineCap(.round); ctx.setLineJoin(.round)
+                ctx.beginPath()
+                ctx.move(to: CGPoint(x: ux(9), y: H - uy(8.5)))
+                ctx.addLine(to: CGPoint(x: ux(12.5), y: H - uy(11.5)))
+                ctx.addLine(to: CGPoint(x: ux(9), y: H - uy(14.5)))
+                ctx.strokePath()
+                ctx.beginPath()
+                ctx.move(to: CGPoint(x: ux(13.5), y: H - uy(14.5)))
+                ctx.addLine(to: CGPoint(x: ux(16.5), y: H - uy(14.5)))
+                ctx.strokePath()
+                ctx.setLineCap(.butt); ctx.setLineJoin(.miter)
+            } else if a == "claude-code" || a == "claude" {
+                ell(12, 9.5, 8, 7, black)
+                rct(4.6, 14, 2, 6.5, black); rct(8.4, 15, 2, 6, black)
+                rct(11.6, 15, 2, 6, black); rct(15.4, 14, 2, 6.5, black)
+                circ(9, 9, 1.7, white); circ(15, 9, 1.7, white)
+            } else {
+                circ(5.5, 7.5, 2.6, black); circ(18.5, 7.5, 2.6, black); ell(12, 13, 6, 7, black)
+                circ(10, 11, 1.3, white); circ(14, 11, 1.3, white)
+            }
+        }
+
         let pad: CGFloat = 24
-        let headerH: CGFloat = 72
-        // Two-row footer (5H then 7D, each with a gauge + % + reset countdown).
-        let footerTop = H - 96
-        let rowH: CGFloat = 64
+        let headerH: CGFloat = 56
+        let footerTop = H - 52         // single-line footer
+        let rowH: CGFloat = 58
 
         let n = state.sessions.count
         let working = state.sessions.filter { statusLabel($0.state) == "WORKING" }.count
         let awaitingSessions = state.sessions.filter { statusLabel($0.state) == "AWAITING" }
         let awaiting = awaitingSessions.count
         let summary = "\(n) session\(n == 1 ? "" : "s") · \(working) working · \(awaiting) awaiting"
+        let subSummary = Self.subscriptionSummary(state.subscriptions)
 
-        // An AWAITING agent is the top glance signal — give it a full-width inverted
-        // banner above the rows (mirrors trmnl-layout.ts).
-        let bannerH: CGFloat = awaiting > 0 ? 48 : 0
-        let bodyTop = headerH + 14 + bannerH
+        let bannerH: CGFloat = awaiting > 0 ? 44 : 0
+        let bodyTop = headerH + 12 + bannerH
         let maxRows = Int(((footerTop - bodyTop) / rowH).rounded(.down))
 
         // Extreme-aspect / tiny-panel guard.
@@ -112,14 +159,15 @@ enum TrmnlImageRenderer {
             return
         }
 
-        // Header.
-        text("AgentDeck", x: pad, top: 14, size: 34, bold: true, align: .left)
-        text(summary, x: W - pad, top: 26, size: 18, bold: true, align: .right)
-        fill(pad, headerH, W - 2 * pad, 3, black)
+        // Header: wordmark + subscription/plan summary (with expiry) on the right.
+        text("AgentDeck", x: pad, top: 12, size: 28, bold: true, align: .left)
+        text(truncate(subSummary.isEmpty ? summary : subSummary, W * 0.62, 16, false, false),
+             x: W - pad, top: 16, size: 16, bold: true, align: .right)
+        fill(pad, headerH, W - 2 * pad, 2.5, black)
 
         // AWAITING banner (highest-priority glance signal).
         if bannerH > 0 {
-            let by = headerH + 14
+            let by = headerH + 12
             let bh = bannerH - 8
             let label = "\(awaiting) agent\(awaiting == 1 ? "" : "s") need\(awaiting == 1 ? "s" : "") you"
             let projects = awaitingSessions
@@ -131,44 +179,38 @@ enum TrmnlImageRenderer {
                  size: 16, bold: true, align: .right, color: white)
         }
 
-        // Width-derived columns.
-        let tagW = min(108, (W * 0.16).rounded())
-        let badgeW = clampF((W * 0.19).rounded(), 120, 180)
+        // Row geometry.
+        let iconSize: CGFloat = 36
+        let badgeW = clampF((W * 0.17).rounded(), 108, 168)
         let badgeX = W - pad - badgeW
-        let midX = pad + tagW + 18
-        let midW = badgeX - midX - 18
+        let textX = pad + iconSize + 14
+        let textW = badgeX - textX - 16
 
         if n == 0 {
-            // Idle hero (read-only — no action prompt).
             let cy = (bodyTop + footerTop) / 2
             text("No active sessions", x: W / 2, top: cy - 26, size: 28, bold: true, align: .center)
             text("Start Claude Code, Codex, or OpenCode to see them here",
                  x: W / 2, top: cy + 8, size: 18, align: .center)
         } else {
-            let visible = Array(state.sessions.prefix(maxRows))
+            let overflow = max(0, n - maxRows)
+            let showRows = overflow > 0 ? maxRows - 1 : maxRows
+            let visible = Array(state.sessions.prefix(showRows))
             for (i, s) in visible.enumerated() {
                 let y = bodyTop + CGFloat(i) * rowH
                 if i > 0 { fill(pad, y, W - 2 * pad, 1, black) }
-
                 let status = statusLabel(s.state)
                 let isAwaiting = status == "AWAITING"
 
-                // Agent tag box.
-                stroke(pad, y + 8, tagW, rowH - 16, 2)
-                text(agentLabel(s.agentType), x: pad + tagW / 2, top: y + rowH / 2 - 11,
-                     size: 18, bold: true, align: .center)
-
-                // Project + model.
-                let proj = truncate(s.projectName.isEmpty ? "(no project)" : s.projectName, midW, 24, true, false)
-                text(proj, x: midX, top: y + rowH / 2 - 26, size: 24, bold: true, align: .left)
-                if !s.modelName.isEmpty {
-                    let model = truncate(s.modelName, midW, 16, false, true)
-                    text(model, x: midX, top: y + rowH / 2 + 4, size: 16, align: .left, mono: true)
-                }
+                // Agent icon + project + description.
+                agentGlyph(s.agentType, pad + iconSize / 2, y + rowH / 2, iconSize)
+                let proj = truncate(s.projectName.isEmpty ? "(no project)" : s.projectName, textW, 24, true, false)
+                text(proj, x: textX, top: y + rowH / 2 - 25, size: 24, bold: true, align: .left)
+                let desc = truncate(Self.sessionDescription(s), textW, 15, false, true)
+                if !desc.isEmpty { text(desc, x: textX, top: y + rowH / 2 + 3, size: 15, align: .left, mono: true) }
 
                 // Status badge.
-                let badgeY = y + 12
-                let badgeH = rowH - 24
+                let badgeY = y + 11
+                let badgeH = rowH - 22
                 if isAwaiting {
                     fill(badgeX, badgeY, badgeW, badgeH, black)
                     text(status, x: badgeX + badgeW / 2, top: badgeY + badgeH / 2 - 12,
@@ -193,70 +235,131 @@ enum TrmnlImageRenderer {
                     }
                 }
             }
-            let overflow = n - visible.count
             if overflow > 0 {
-                text("+\(overflow) more session\(overflow == 1 ? "" : "s")",
-                     x: W / 2, top: bodyTop + CGFloat(maxRows) * rowH - 26, size: 16, bold: true, align: .center)
+                let hidden = Array(state.sessions.suffix(n - showRows))
+                let w = hidden.filter { statusLabel($0.state) == "WORKING" }.count
+                let a = hidden.filter { statusLabel($0.state) == "AWAITING" }.count
+                let idle = hidden.count - w - a
+                var bits: [String] = []
+                if w > 0 { bits.append("\(w) working") }
+                if a > 0 { bits.append("\(a) awaiting") }
+                if idle > 0 { bits.append("\(idle) idle") }
+                let y = bodyTop + CGFloat(showRows) * rowH
+                fill(pad, y, W - 2 * pad, 1, black)
+                text("+\(hidden.count)", x: pad + iconSize / 2, top: y + rowH / 2 - 11, size: 20, bold: true, align: .center)
+                let label = "\(hidden.count) more" + (bits.isEmpty ? "" : " · " + bits.joined(separator: " · "))
+                text(label, x: textX, top: y + rowH / 2 - 10, size: 18, bold: true, align: .left)
             }
         }
 
-        // Footer: 5H / 7D quota — gauge + % + time-until-reset (no token tally or
-        // wall clock; the actionable numbers are the percent + reset countdown).
+        // Footer: 5H + 7D quota on one line (gauge + % + short reset).
         fill(pad, footerTop, W - 2 * pad, 2, black)
-        let gaugeX = pad + 40
-        let gaugeW = clampF((W * 0.26).rounded(), 150, 320)
-        let pctX = gaugeX + gaugeW + 12
         let usageKnown = state.usageKnown
+        let fTop = footerTop + 18
+        let gh: CGFloat = 16
+        let gaugeW = clampF((W * 0.14).rounded(), 80, 150)
 
-        func gauge(_ y: CGFloat, _ pct: Double) {
-            stroke(gaugeX, y, gaugeW, 18, 1.5)
+        func gauge(_ gx: CGFloat, _ gy: CGFloat, _ pct: Double) {
+            stroke(gx, gy, gaugeW, gh, 1.5)
             let fw = (gaugeW * CGFloat(clampD(pct, 0, 100) / 100)).rounded()
-            if fw > 0 { fill(gaugeX, y, fw, 18, black) }
+            if fw > 0 { fill(gx, gy, fw, gh, black) }
         }
-        // "No data" gauge — outlined box with a sparse diagonal hatch so it reads as
-        // "unavailable", not "0% filled".
-        func gaugeUnknown(_ y: CGFloat) {
-            stroke(gaugeX, y, gaugeW, 18, 1.5)
+        func gaugeUnknown(_ gx: CGFloat, _ gy: CGFloat) {
+            stroke(gx, gy, gaugeW, gh, 1.5)
             ctx.saveGState()
-            ctx.clip(to: CGRect(x: gaugeX, y: H - y - 18, width: gaugeW, height: 18))
-            ctx.setStrokeColor(black)
-            ctx.setLineWidth(1)
-            var hx = gaugeX - 18
-            while hx < gaugeX + gaugeW {
+            ctx.clip(to: CGRect(x: gx, y: H - gy - gh, width: gaugeW, height: gh))
+            ctx.setStrokeColor(black); ctx.setLineWidth(1)
+            var hx = gx - gh
+            while hx < gx + gaugeW {
                 ctx.beginPath()
-                ctx.move(to: CGPoint(x: hx, y: H - (y + 18)))
-                ctx.addLine(to: CGPoint(x: hx + 18, y: H - y))
+                ctx.move(to: CGPoint(x: hx, y: H - (gy + gh)))
+                ctx.addLine(to: CGPoint(x: hx + gh, y: H - gy))
                 ctx.strokePath()
                 hx += 8
             }
             ctx.restoreGState()
         }
-
-        func quotaRow(_ rowTop: CGFloat, _ label: String, _ pct: Double, _ resetsAt: String?) {
-            text(label, x: pad, top: rowTop, size: 18, bold: true)
-            if usageKnown { gauge(rowTop, pct) } else { gaugeUnknown(rowTop) }
-            text(usageKnown ? "\(Int(pct.rounded()))%" : "—", x: pctX, top: rowTop, size: 18, mono: true)
-            if usageKnown, let remaining = Self.fmtRemaining(resetsAt), !remaining.isEmpty {
-                text(remaining, x: W - pad, top: rowTop, size: 16, bold: true, align: .right)
+        func quotaInline(_ x0: CGFloat, _ label: String, _ pct: Double, _ resetsAt: String?) {
+            let gx = x0 + 34
+            let px = gx + gaugeW + 8
+            text(label, x: x0, top: fTop, size: 16, bold: true)
+            if usageKnown { gauge(gx, fTop, pct) } else { gaugeUnknown(gx, fTop) }
+            text(usageKnown ? "\(Int(pct.rounded()))%" : "—", x: px, top: fTop, size: 16, mono: true)
+            if usageKnown, let r = Self.fmtRemainingShort(resetsAt), !r.isEmpty {
+                text(r, x: px + 52, top: fTop, size: 14, bold: true)
             }
         }
-
-        quotaRow(footerTop + 22, "5H", state.fiveHourPercent, state.fiveHourResetsAt)
-        quotaRow(footerTop + 56, "7D", state.sevenDayPercent, state.sevenDayResetsAt)
+        quotaInline(pad, "5H", state.fiveHourPercent, state.fiveHourResetsAt)
+        quotaInline((W * 0.52).rounded(), "7D", state.sevenDayPercent, state.sevenDayResetsAt)
     }
 
-    /// Compact "time until reset" for a quota window (mirrors trmnl-layout.ts
-    /// fmtRemaining). nil/unparseable → nil; past → "resets now".
-    private static func fmtRemaining(_ resetsAt: String?) -> String? {
+    /// Very compact reset countdown for the one-line footer: "3h", "2d", "45m".
+    /// Mirrors trmnl-layout.ts fmtRemainingShort.
+    private static func fmtRemainingShort(_ resetsAt: String?) -> String? {
         guard let s = resetsAt, let date = parseISO(s) else { return nil }
-        var secs = Int(date.timeIntervalSinceNow.rounded())
-        if secs <= 0 { return "resets now" }
-        let d = secs / 86400; secs -= d * 86400
-        let h = secs / 3600; secs -= h * 3600
-        let m = secs / 60
-        if d > 0 { return "\(d)d \(h)h left" }
-        if h > 0 { return "\(h)h \(m)m left" }
-        return "\(m)m left"
+        let secs = Int(date.timeIntervalSinceNow.rounded())
+        if secs <= 0 { return "now" }
+        if secs >= 86400 { return "\(secs / 86400)d" }
+        if secs >= 3600 { return "\(secs / 3600)h" }
+        return "\(max(1, secs / 60))m"
+    }
+
+    /// "Verb /long/path" → "Verb basename" so the description is signal, not a
+    /// full path. Mirrors cleanAction() in trmnl-layout.ts.
+    private static func cleanAction(_ raw: String) -> String {
+        let s = raw.trimmingCharacters(in: .whitespaces)
+        guard let sp = s.firstIndex(of: " ") else { return s }
+        let verb = String(s[s.startIndex..<sp])
+        let rest = String(s[s.index(after: sp)...]).trimmingCharacters(in: .whitespaces)
+        let firstTok = rest.split(separator: " ").first.map(String.init) ?? ""
+        if firstTok.contains("/") {
+            let base = firstTok.split(separator: "/").last.map(String.init) ?? firstTok
+            return "\(verb) \(base)"
+        }
+        return rest.count > 20 ? "\(verb) \(String(rest.prefix(19)))…" : "\(verb) \(rest)"
+    }
+
+    /// One-line "what is this session doing": action · model · elapsed.
+    private static func sessionDescription(_ s: TrmnlSession) -> String {
+        var parts: [String] = []
+        let raw = s.currentTask.isEmpty ? s.currentTool : s.currentTask
+        let action = cleanAction(raw)
+        if !action.isEmpty { parts.append(action) }
+        if !s.modelName.isEmpty { parts.append(shortModel(s.modelName)) }
+        if s.elapsedSec > 0 { parts.append(fmtElapsed(s.elapsedSec)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// "claude-opus-4-8" → "opus-4-8". Mirrors shortModel in trmnl-layout.ts.
+    private static func shortModel(_ m: String) -> String {
+        var r = m
+        if r.hasPrefix("claude-") { r = String(r.dropFirst(7)) }
+        if r.hasPrefix("anthropic/") { r = String(r.dropFirst(10)) }
+        if let range = r.range(of: "-[0-9]{8}$", options: .regularExpression) { r.removeSubrange(range) }
+        return r
+    }
+
+    private static func fmtElapsed(_ secs: Int) -> String {
+        if secs >= 3600 { return "\(secs / 3600)h" + String(format: "%02dm", (secs % 3600) / 60) }
+        if secs >= 60 { return "\(secs / 60)m" }
+        return "\(max(0, secs))s"
+    }
+
+    private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    private static func fmtShortDate(_ iso: String?) -> String {
+        guard let iso, let d = parseISO(iso) else { return "" }
+        let c = Calendar.current.dateComponents([.month, .day], from: d)
+        guard let m = c.month, let day = c.day, m >= 1, m <= 12 else { return "" }
+        return "\(months[m - 1]) \(day)"
+    }
+
+    /// Header-right subscription summary: "Claude · ChatGPT Plus → Jun 30".
+    private static func subscriptionSummary(_ subs: [TrmnlSubscription]) -> String {
+        subs.map { s in
+            let until = fmtShortDate(s.until)
+            return until.isEmpty ? s.name : "\(s.name) → \(until)"
+        }.joined(separator: "   ·   ")
     }
 
     // Reset timestamps vary: fractional seconds (sometimes microseconds, which

@@ -307,7 +307,7 @@ export function renderDashboardZip(stateEvt: any): Buffer {
 
   // Merged hardware slot (3_2) — 392×196 PNG with StreamDeck-style usage display
   // No Action = device firmware clock overlay suppressed (solves clock overlap)
-  const wideUsageSvg = renderUsageWideSlot(state.fiveHourPercent, state.sevenDayPercent);
+  const wideUsageSvg = renderUsageWideSlot(state.fiveHourPercent, state.sevenDayPercent, state.usageKnown !== false);
   const wideUsagePng = svgToPngWide(wideUsageSvg, 392, 196);
   files.set('icons/usage-wide.png', wideUsagePng);
   manifest['3_2'] = {

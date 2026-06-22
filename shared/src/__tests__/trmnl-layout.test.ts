@@ -25,24 +25,25 @@ describe('renderTrmnlDashboard', () => {
     expect(svg).toContain('AgentDeck');
   });
 
-  it('renders one row per session with agent label + status badge', () => {
+  it('renders one row per session with project, description + status badge', () => {
     const svg = renderTrmnlDashboard(
       {
         state: 'PROCESSING',
         allSessions: [
-          session('a', 'claude-code', 'processing'),
+          { ...session('a', 'claude-code', 'processing'), currentTool: 'Edit' },
           session('b', 'codex-cli', 'awaiting_input'),
           session('c', 'opencode', 'idle'),
         ],
       },
       { now: NOW },
     );
-    expect(svg).toContain('CLAUDE');
-    expect(svg).toContain('CODEX');
-    expect(svg).toContain('OPENCODE');
+    // Project names + a per-session description (tool · model) replace the old
+    // wide "CLAUDE" text tag (now a compact agent glyph).
+    expect(svg).toContain('proj-a');
+    expect(svg).toContain('Edit');
+    expect(svg).toContain('opus-4-8'); // model shortened from claude-opus-4-8
     expect(svg).toContain('WORKING');
     expect(svg).toContain('AWAITING');
-    expect(svg).toContain('3 sessions · 1 working · 1 awaiting');
   });
 
   it('is monochrome — uses no color tokens beyond black/white', () => {
@@ -69,10 +70,11 @@ describe('renderTrmnlDashboard', () => {
     expect(svg).not.toContain('solo');
   });
 
-  it('shows an overflow note when sessions exceed the visible rows', () => {
+  it('shows an overflow summary when sessions exceed the visible rows', () => {
     const many = Array.from({ length: 8 }, (_, i) => session(`s${i}`, 'claude-code', 'idle'));
     const svg = renderTrmnlDashboard({ state: 'IDLE', allSessions: many }, { now: NOW });
-    expect(svg).toMatch(/\+\d+ more session/);
+    expect(svg).toMatch(/\d+ more/);
+    expect(svg).toContain('idle'); // overflow breaks down hidden sessions by state
   });
 
   it('reflows to a device-reported resolution', () => {
@@ -89,9 +91,9 @@ describe('renderTrmnlDashboard', () => {
     const many = Array.from({ length: 8 }, (_, i) => session(`s${i}`, 'claude-code', 'idle'));
     const tall = renderTrmnlDashboard({ state: 'IDLE', allSessions: many }, { now: NOW, width: 480, height: 960 });
     const og = renderTrmnlDashboard({ state: 'IDLE', allSessions: many }, { now: NOW });
-    // 480×960 fits all 8 rows (no overflow note); 800×480 only fits ~5.
-    expect(tall).not.toMatch(/\+\d+ more session/);
-    expect(og).toMatch(/\+\d+ more session/);
+    // 480×960 fits all 8 rows (no overflow row); 800×480 only fits ~6.
+    expect(tall).not.toMatch(/\d+ more/);
+    expect(og).toMatch(/\d+ more/);
   });
 
   it('shows a real percentage when usage is known', () => {
@@ -103,7 +105,7 @@ describe('renderTrmnlDashboard', () => {
     expect(svg).toContain('18%');
   });
 
-  it('shows time-until-reset for each quota window (no token tally or clock)', () => {
+  it('shows a compact time-until-reset for each quota window (no token tally or clock)', () => {
     const svg = renderTrmnlDashboard(
       {
         state: 'IDLE',
@@ -116,11 +118,26 @@ describe('renderTrmnlDashboard', () => {
       },
       { now: NOW },
     );
-    expect(svg).toContain('2h 13m left');
-    expect(svg).toContain('4d 6h left');
+    // One-line footer uses a compact countdown (2h / 4d), not a full phrase.
+    expect(svg).toContain('2h');
+    expect(svg).toContain('4d');
     // The old footer noise is gone.
     expect(svg).not.toContain('tok');
     expect(svg).not.toContain('14:03');
+  });
+
+  it('shows subscription plans with expiry in the header', () => {
+    const svg = renderTrmnlDashboard(
+      {
+        state: 'IDLE',
+        allSessions: [],
+        subscriptions: [{ name: 'Claude' }, { name: 'ChatGPT Plus', until: '2026-06-30T00:00:00Z' }],
+      },
+      { now: NOW },
+    );
+    expect(svg).toContain('Claude');
+    expect(svg).toContain('ChatGPT Plus');
+    expect(svg).toContain('Jun 30');
   });
 
   it('shows an em dash (not 0%) when usage is structurally unknown', () => {

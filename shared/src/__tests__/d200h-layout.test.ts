@@ -1,8 +1,57 @@
 import { describe, it, expect } from 'vitest';
-import { buildSessionDeck } from '../d200h-layout.js';
+import {
+  buildSessionDeck,
+  parseState,
+  renderUsageButton,
+  renderUsageWideSlot,
+} from '../d200h-layout.js';
 
 const positions = (n: number): string[] =>
   Array.from({ length: n }, (_, i) => `${i % 5}_${Math.floor(i / 5)}`);
+
+describe('usage tiles — usageKnown tri-state', () => {
+  // Note: svgFrame emits a gradient with offset="0%" coordinates, so assert on the
+  // value text element (`…%</text>`) rather than the bare substring "0%".
+  it('renders a percent when the quota is known', () => {
+    const svg = renderUsageButton('5H', 42, '#28a0b4', true);
+    expect(svg).toContain('>42%</text>');
+    expect(svg).not.toContain('>—</text>');
+  });
+
+  it('renders a muted "—" instead of a confident 0% when unknown', () => {
+    const svg = renderUsageButton('5H', 0, '#28a0b4', false);
+    expect(svg).toContain('>—</text>');
+    expect(svg).not.toContain('%</text>');
+  });
+
+  it('defaults to known (percent) when the flag is omitted', () => {
+    expect(renderUsageButton('7D', 0, '#2850a0')).toContain('>0%</text>');
+  });
+
+  it('wide slot shows "—" for both columns when unknown', () => {
+    const svg = renderUsageWideSlot(0, 0, false);
+    expect(svg.match(/—/g)?.length).toBe(2);
+    expect(svg).not.toContain('%</text>');
+  });
+
+  it('wide slot shows percents when known', () => {
+    const svg = renderUsageWideSlot(12, 34, true);
+    expect(svg).toContain('12%');
+    expect(svg).toContain('34%');
+  });
+
+  it('parseState infers usageKnown=false when no percent fields are present', () => {
+    expect(parseState({ state: 'IDLE' }).usageKnown).toBe(false);
+  });
+
+  it('parseState infers usageKnown=true when a percent is present', () => {
+    expect(parseState({ state: 'IDLE', fiveHourPercent: 6 }).usageKnown).toBe(true);
+  });
+
+  it('parseState honors an explicit usageKnown=false even with a coerced 0 percent', () => {
+    expect(parseState({ state: 'IDLE', fiveHourPercent: 0, usageKnown: false }).usageKnown).toBe(false);
+  });
+});
 
 describe('buildSessionDeck — daemon offline', () => {
   it('renders the OFFLINE hero on the center key for a DISCONNECTED state', () => {

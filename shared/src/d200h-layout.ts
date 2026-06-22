@@ -22,7 +22,7 @@ import {
   svgFrame,
 } from './svg-renderers/index.js';
 import { State, type PromptOption } from './states.js';
-import type { SessionInfo } from './protocol.js';
+import type { SessionInfo, SubscriptionInfo } from './protocol.js';
 
 /** Command dispatched when a key is pressed. `null` = inert tile (info/empty). */
 export type ButtonCommand = { type: string; [k: string]: unknown };
@@ -66,6 +66,8 @@ export interface DashState {
   fiveHourResetsAt?: string;
   /** ISO timestamp when the 7-day quota window resets (for a countdown). */
   sevenDayResetsAt?: string;
+  /** Active subscriptions (Claude / ChatGPT plan) with optional expiry. */
+  subscriptions?: SubscriptionInfo[];
 }
 
 export function parseState(evt: any): DashState {
@@ -93,6 +95,7 @@ export function parseState(evt: any): DashState {
         : evt?.fiveHourPercent != null || evt?.sevenDayPercent != null,
     fiveHourResetsAt: typeof evt?.fiveHourResetsAt === 'string' ? evt.fiveHourResetsAt : undefined,
     sevenDayResetsAt: typeof evt?.sevenDayResetsAt === 'string' ? evt.sevenDayResetsAt : undefined,
+    subscriptions: Array.isArray(evt?.subscriptions) ? evt.subscriptions : undefined,
   };
 }
 
@@ -111,7 +114,19 @@ function gaugeColor(pct: number): string {
   return pct > 80 ? '#ef4444' : pct > 50 ? '#eab308' : '#22c55e';
 }
 
-export function renderUsageButton(label: string, percent: number, color: string): string {
+export function renderUsageButton(label: string, percent: number, color: string, known = true): string {
+  // When the subscription quota is unknown (no OAuth data / stale hub), draw a
+  // muted "—" instead of a confident 0% that would read as "fully available".
+  if (!known) {
+    const dim = '#475569';
+    const elements = [
+      `<text x="72" y="36" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" fill="#94a3b8">${escXml(label)}</text>`,
+      `<text x="72" y="60" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="14" fill="${dim}">${escXml('░'.repeat(8))}</text>`,
+      `<text x="72" y="90" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="${dim}">—</text>`,
+      `<rect x="16" y="110" width="112" height="2" rx="1" fill="#1e293b"/>`,
+    ].join('');
+    return svgFrame('#0f172a', elements);
+  }
   const gBar = gaugeBar(percent, 8);
   const elements = [
     `<text x="72" y="36" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" fill="#94a3b8">${escXml(label)}</text>`,
@@ -124,11 +139,15 @@ export function renderUsageButton(label: string, percent: number, color: string)
 }
 
 /** Wide merged slot (3_2) — 288×144 SVG. Two columns: 5H | 7D. Direct-HID only. */
-export function renderUsageWideSlot(fiveHourPct: number, sevenDayPct: number): string {
+export function renderUsageWideSlot(fiveHourPct: number, sevenDayPct: number, known = true): string {
   const c5 = gaugeColor(fiveHourPct);
   const c7 = gaugeColor(sevenDayPct);
-  const pct5 = Math.round(fiveHourPct);
-  const pct7 = Math.round(sevenDayPct);
+  // Unknown quota → "—" instead of a confident 0% (mirrors renderUsageButton).
+  const pct5 = known ? `${Math.round(fiveHourPct)}%` : '—';
+  const pct7 = known ? `${Math.round(sevenDayPct)}%` : '—';
+  const w5 = known ? Math.round(120 * Math.min(fiveHourPct, 100) / 100) : 0;
+  const w7 = known ? Math.round(120 * Math.min(sevenDayPct, 100) / 100) : 0;
+  const valColor = known ? '#ffffff' : '#475569';
   const elements = [
     `<rect x="0" y="0" width="144" height="144" fill="#0f172a"/>`,
     `<rect x="144" y="0" width="144" height="144" fill="#0f172a"/>`,
@@ -136,12 +155,12 @@ export function renderUsageWideSlot(fiveHourPct: number, sevenDayPct: number): s
     `<rect x="152" y="8" width="128" height="128" rx="8" fill="#1e293b" opacity="0.3"/>`,
     `<text x="72" y="26" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#94a3b8">5H</text>`,
     `<text x="216" y="26" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#94a3b8">7D</text>`,
-    `<text x="72" y="70" text-anchor="middle" font-family="Arial,sans-serif" font-size="32" font-weight="bold" fill="#ffffff">${pct5}%</text>`,
-    `<text x="216" y="70" text-anchor="middle" font-family="Arial,sans-serif" font-size="32" font-weight="bold" fill="#ffffff">${pct7}%</text>`,
+    `<text x="72" y="70" text-anchor="middle" font-family="Arial,sans-serif" font-size="32" font-weight="bold" fill="${valColor}">${pct5}</text>`,
+    `<text x="216" y="70" text-anchor="middle" font-family="Arial,sans-serif" font-size="32" font-weight="bold" fill="${valColor}">${pct7}</text>`,
     `<rect x="12" y="132" width="120" height="2" rx="1" fill="#1e293b"/>`,
     `<rect x="156" y="132" width="120" height="2" rx="1" fill="#1e293b"/>`,
-    `<rect x="12" y="132" width="${Math.round(120 * Math.min(fiveHourPct, 100) / 100)}" height="2" rx="1" fill="${c5}"/>`,
-    `<rect x="156" y="132" width="${Math.round(120 * Math.min(sevenDayPct, 100) / 100)}" height="2" rx="1" fill="${c7}"/>`,
+    `<rect x="12" y="132" width="${w5}" height="2" rx="1" fill="${c5}"/>`,
+    `<rect x="156" y="132" width="${w7}" height="2" rx="1" fill="${c7}"/>`,
   ].join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="288" height="144" viewBox="0 0 288 144">${elements}</svg>`;
 }
@@ -263,8 +282,8 @@ export function computeLayout(state: DashState, animFrame = 0, animated = false)
       slots.push(awaitingActionSlot(state, isAwaiting, i, col, row));
     }
     slots.push({ col: 2, row: 1, svg: renderInfoButton('MODEL', state.modelName.slice(0, 12) || 'N/A'), label: '', command: null });
-    slots.push({ col: 3, row: 1, svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4'), label: '', command: { type: 'usage_toggle' } });
-    slots.push({ col: 4, row: 1, svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0'), label: '', command: { type: 'usage_toggle' } });
+    slots.push({ col: 3, row: 1, svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4', state.usageKnown !== false), label: '', command: { type: 'usage_toggle' } });
+    slots.push({ col: 4, row: 1, svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0', state.usageKnown !== false), label: '', command: { type: 'usage_toggle' } });
   }
 
   // Row 2 shared actions: STOP/ESC, TOKENS, COST
@@ -310,10 +329,10 @@ export function buildLayoutMap(stateEvt: any, animFrame = 0, animated = false): 
   }
   // Per-key usage tiles for the right side of row 2 (direct-HID merges these).
   if (!map.has('3_2')) {
-    map.set('3_2', { svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4'), command: { type: 'usage_toggle' } });
+    map.set('3_2', { svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4', state.usageKnown !== false), command: { type: 'usage_toggle' } });
   }
   if (!map.has('4_2')) {
-    map.set('4_2', { svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0'), command: { type: 'usage_toggle' } });
+    map.set('4_2', { svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0', state.usageKnown !== false), command: { type: 'usage_toggle' } });
   }
   return map;
 }

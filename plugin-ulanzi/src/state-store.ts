@@ -50,6 +50,12 @@ export class StateStore {
       totalTokens = ((this.usage.inputTokens as number) ?? 0) + ((this.usage.outputTokens as number) ?? 0);
     }
     totalTokens ??= (this.lastState.totalTokens as number) ?? 0;
+    // Subscription quota rides usage_update. Distinguish "0% used" from "no data"
+    // so the deck draws a "—" instead of a confident 0% when the hub has no
+    // OAuth source or the cache went stale. The numeric is still coerced to 0
+    // (the gauge bar needs a number); display is gated by usageKnown.
+    const stale = this.usage.usageStale === true;
+    const usageKnown = !stale && (this.usage.fiveHourPercent != null || this.usage.sevenDayPercent != null);
     return {
       ...this.lastState,
       allSessions: this.sessions,
@@ -57,6 +63,9 @@ export class StateStore {
       totalCost: (this.usage.totalCost as number) ?? (this.lastState.totalCost as number) ?? 0,
       fiveHourPercent: (this.usage.fiveHourPercent as number) ?? (this.lastState.fiveHourPercent as number) ?? 0,
       sevenDayPercent: (this.usage.sevenDayPercent as number) ?? (this.lastState.sevenDayPercent as number) ?? 0,
+      fiveHourResetsAt: this.usage.fiveHourResetsAt as string | undefined,
+      sevenDayResetsAt: this.usage.sevenDayResetsAt as string | undefined,
+      usageKnown,
     };
   }
 }

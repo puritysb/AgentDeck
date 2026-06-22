@@ -16,7 +16,7 @@
  */
 import { parseState, type DashState } from './d200h-layout.js';
 import { measureTextWidth, sliceByPx } from './svg-renderers/text-utils.js';
-import type { SessionInfo } from './protocol.js';
+import type { SessionInfo, SubscriptionInfo } from './protocol.js';
 
 export const TRMNL_WIDTH = 800;
 export const TRMNL_HEIGHT = 480;
@@ -67,27 +67,6 @@ function statusLabel(state?: string): string {
   return s.toUpperCase().slice(0, 9);
 }
 
-/**
- * Compact "time until reset" for a quota window — the actionable number on a
- * glance panel (more useful than a raw token count or wall clock). Returns ''
- * when the timestamp is missing/unparseable; "resets now" once it's in the past.
- */
-function fmtRemaining(resetsAt: string | undefined, now: Date): string {
-  if (!resetsAt) return '';
-  const t = Date.parse(resetsAt);
-  if (!Number.isFinite(t)) return '';
-  let secs = Math.round((t - now.getTime()) / 1000);
-  if (secs <= 0) return 'resets now';
-  const d = Math.floor(secs / 86400);
-  secs -= d * 86400;
-  const h = Math.floor(secs / 3600);
-  secs -= h * 3600;
-  const m = Math.floor(secs / 60);
-  if (d > 0) return `${d}d ${h}h left`;
-  if (h > 0) return `${h}h ${m}m left`;
-  return `${m}m left`;
-}
-
 /** Outline + filled gauge bar (no color — fill is solid ink). */
 function gauge(x: number, y: number, w: number, h: number, pct: number): string {
   const clamped = Math.max(0, Math.min(100, pct));
@@ -114,39 +93,164 @@ function gaugeUnknown(x: number, y: number, w: number, h: number): string {
   return lines.join('');
 }
 
+/**
+ * Compact monochrome agent glyph (the AgentDeck creature language at 1-bit) in a
+ * 24-unit box scaled to `size`, centered on (cx,cy). Replaces the wide "CLAUDE"
+ * text tag so the row has room for a description. Drawn with primitives so it
+ * mirrors 1:1 in the Swift CoreGraphics renderer.
+ */
+function agentGlyph(agent: string | undefined, cx: number, cy: number, size: number): string {
+  const s = size / 24;
+  const open = `<g transform="translate(${(cx - 12 * s).toFixed(2)} ${(cy - 12 * s).toFixed(2)}) scale(${s.toFixed(3)})">`;
+  const a = (agent ?? '').toLowerCase();
+  let body: string;
+  if (a === 'opencode') {
+    // Canonical hollow-ring mark (line-only path, evenodd).
+    body = `<path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" fill="${INK}" fill-rule="evenodd"/>`;
+  } else if (a.startsWith('codex')) {
+    // Cloud + white ">" prompt (Codex identity).
+    body =
+      `<circle cx="8" cy="12.5" r="5" fill="${INK}"/>` +
+      `<circle cx="16" cy="12.5" r="5" fill="${INK}"/>` +
+      `<circle cx="12" cy="8.5" r="6" fill="${INK}"/>` +
+      `<rect x="3" y="12" width="18" height="6" fill="${INK}"/>` +
+      `<path d="M9 8.5 L12.5 11.5 L9 14.5" fill="none" stroke="${PAPER}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<line x1="13.5" y1="14.5" x2="16.5" y2="14.5" stroke="${PAPER}" stroke-width="1.8" stroke-linecap="round"/>`;
+  } else if (a === 'claude-code' || a === 'claude') {
+    // Octopus: round head, white eyes, dangling legs.
+    body =
+      `<ellipse cx="12" cy="9.5" rx="8" ry="7" fill="${INK}"/>` +
+      `<rect x="5.6" y="14" width="2" height="6.5" rx="1" fill="${INK}"/>` +
+      `<rect x="9.4" y="15" width="2" height="6" rx="1" fill="${INK}"/>` +
+      `<rect x="12.6" y="15" width="2" height="6" rx="1" fill="${INK}"/>` +
+      `<rect x="16.4" y="14" width="2" height="6.5" rx="1" fill="${INK}"/>` +
+      `<circle cx="9" cy="9" r="1.7" fill="${PAPER}"/>` +
+      `<circle cx="15" cy="9" r="1.7" fill="${PAPER}"/>`;
+  } else {
+    // Crayfish — OpenClaw + daemon + unknown fallback: body, two claws, white eyes.
+    body =
+      `<circle cx="5.5" cy="7.5" r="2.6" fill="${INK}"/>` +
+      `<circle cx="18.5" cy="7.5" r="2.6" fill="${INK}"/>` +
+      `<ellipse cx="12" cy="13" rx="6" ry="7" fill="${INK}"/>` +
+      `<circle cx="10" cy="11" r="1.3" fill="${PAPER}"/>` +
+      `<circle cx="14" cy="11" r="1.3" fill="${PAPER}"/>`;
+  }
+  return open + body + '</g>';
+}
+
+/** Shorten a model id for the description line: "claude-opus-4-8" → "opus-4-8". */
+function shortModel(model: string): string {
+  return model
+    .replace(/^claude-/, '')
+    .replace(/^anthropic\//, '')
+    .replace(/-(\d{8})$/, '')
+    .replace(/^gpt-/, 'gpt-');
+}
+
+/** Compact elapsed time: 12m, 1h04m, 45s. */
+function fmtElapsed(secs: number): string {
+  if (secs >= 3600) return `${Math.floor(secs / 3600)}h${String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}m`;
+  if (secs >= 60) return `${Math.floor(secs / 60)}m`;
+  return `${Math.max(0, secs)}s`;
+}
+
+/**
+ * Condense a "Verb /long/path/or command" activity into "Verb basename" so the
+ * description carries signal, not a full filesystem path that crowds out the
+ * model + elapsed. "Edit /a/b/c.ts" → "Edit c.ts"; "Bash cd /x; rm…" → "Bash cd…".
+ */
+function cleanAction(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  const sp = s.indexOf(' ');
+  if (sp < 0) return s;
+  const verb = s.slice(0, sp);
+  const rest = s.slice(sp + 1).trim();
+  const firstTok = rest.split(/\s+/)[0] || '';
+  if (firstTok.includes('/')) {
+    const base = firstTok.split('/').filter(Boolean).pop() || firstTok;
+    return `${verb} ${base}`;
+  }
+  return rest.length > 20 ? `${verb} ${rest.slice(0, 19)}…` : `${verb} ${rest}`;
+}
+
+/** One-line "what is this session doing": action · model · elapsed. */
+function sessionDescription(sess: SessionInfo, now: Date): string {
+  const parts: string[] = [];
+  const action = cleanAction((sess.currentTask || sess.currentTool || '').trim());
+  if (action) parts.push(action);
+  if (sess.modelName) parts.push(shortModel(sess.modelName));
+  let elapsed = sess.elapsedSec;
+  if ((elapsed == null || elapsed <= 0) && sess.startedAt) {
+    const e = Math.round((now.getTime() - Date.parse(sess.startedAt)) / 1000);
+    if (Number.isFinite(e) && e > 0) elapsed = e;
+  }
+  if (elapsed != null && elapsed > 0) parts.push(fmtElapsed(elapsed));
+  return parts.join(' · ');
+}
+
+/** Short month-day for an expiry: "2026-06-30T..." → "Jun 30". */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtShortDate(iso: string | undefined): string {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const d = new Date(t);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+/** Header-right subscription summary: "Claude · ChatGPT Plus → Jun 30". */
+function subscriptionSummary(subs: SubscriptionInfo[] | undefined): string {
+  if (!subs || subs.length === 0) return '';
+  return subs
+    .map((s) => {
+      const until = fmtShortDate(s.until);
+      return until ? `${s.name} → ${until}` : s.name;
+    })
+    .join('   ·   ');
+}
+
+/** Very compact reset countdown for the one-line footer: "3h", "2d", "45m". */
+function fmtRemainingShort(resetsAt: string | undefined, now: Date): string {
+  if (!resetsAt) return '';
+  const t = Date.parse(resetsAt);
+  if (!Number.isFinite(t)) return '';
+  const secs = Math.round((t - now.getTime()) / 1000);
+  if (secs <= 0) return 'now';
+  if (secs >= 86400) return `${Math.floor(secs / 86400)}d`;
+  if (secs >= 3600) return `${Math.floor(secs / 3600)}h`;
+  return `${Math.max(1, Math.floor(secs / 60))}m`;
+}
+
 /** Column geometry for one session row, derived from the panel width. */
 interface RowGeom {
   pad: number;
-  tagW: number;
-  midX: number;
-  midW: number;
+  iconSize: number;
+  textX: number;
+  textW: number;
   badgeX: number;
   badgeW: number;
 }
 
 /** One session row. `y` is the row's top edge; `geom` is width-derived columns. */
-function sessionRow(sess: SessionInfo, y: number, rowH: number, geom: RowGeom): string {
-  const { pad, tagW, midX, midW, badgeX, badgeW } = geom;
+function sessionRow(sess: SessionInfo, y: number, rowH: number, geom: RowGeom, now: Date): string {
+  const { pad, iconSize, textX, textW, badgeX, badgeW } = geom;
   const status = statusLabel(sess.state);
   const awaiting = status === 'AWAITING';
   const els: string[] = [];
 
-  // Row separator (hairline above each row except the first is drawn by caller).
-  // Agent tag box.
-  els.push(
-    `<rect x="${pad}" y="${y + 8}" width="${tagW}" height="${rowH - 16}" fill="none" stroke="${INK}" stroke-width="2"/>`,
-    `<text x="${pad + tagW / 2}" y="${y + rowH / 2 + 6}" text-anchor="middle" font-family="${SANS}" font-size="18" font-weight="700" fill="${INK}">${escXml(agentLabel(sess.agentType))}</text>`,
-  );
+  // Agent icon (replaces the wide text tag — frees room for a description).
+  els.push(agentGlyph(sess.agentType, pad + iconSize / 2, y + rowH / 2, iconSize));
 
-  // Project + model (middle column).
-  const project = truncatePx(sess.projectName || '(no project)', midW, 24);
-  const model = truncatePx(sess.modelName || '', midW, 16);
+  // Project name (bold) + a "what is it doing" description line.
+  const project = truncatePx(sess.projectName || '(no project)', textW, 24);
+  const desc = truncatePx(sessionDescription(sess, now), textW, 15);
   els.push(
-    `<text x="${midX}" y="${y + rowH / 2 - 4}" font-family="${SANS}" font-size="24" font-weight="700" fill="${INK}">${escXml(project)}</text>`,
+    `<text x="${textX}" y="${y + rowH / 2 - 3}" font-family="${SANS}" font-size="24" font-weight="700" fill="${INK}">${escXml(project)}</text>`,
   );
-  if (model) {
+  if (desc) {
     els.push(
-      `<text x="${midX}" y="${y + rowH / 2 + 22}" font-family="${MONO}" font-size="16" fill="${INK}">${escXml(model)}</text>`,
+      `<text x="${textX}" y="${y + rowH / 2 + 19}" font-family="${MONO}" font-size="15" fill="${INK}">${escXml(desc)}</text>`,
     );
   }
 
@@ -222,22 +326,19 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
   const workingCount = sessions.filter((s) => statusLabel(s.state) === 'WORKING').length;
   const summary = `${sessions.length} session${sessions.length === 1 ? '' : 's'} · ${workingCount} working · ${awaitingCount} awaiting`;
 
-  const headerH = 72;
-  // Two-row footer (5H then 7D, each with a gauge + % + reset countdown). Taller
-  // than the old single-line totals strip so the reset time has room.
-  const footerTop = H - 96;
+  const headerH = 56;
+  // Single-line footer (5H + 7D side by side) — frees a whole row of body space.
+  const footerTop = H - 52;
   // An AWAITING agent is the single most valuable glance signal on a slow panel,
-  // so it gets a full-width inverted banner above the rows instead of hiding in a
-  // per-row badge. The banner steals vertical space from the row area.
+  // so it gets a full-width inverted banner above the rows.
   const awaitingSessions = sessions.filter((s) => statusLabel(s.state) === 'AWAITING');
-  const bannerH = awaitingSessions.length > 0 ? 48 : 0;
-  const bodyTop = headerH + 14 + bannerH;
-  const rowH = 64;
+  const bannerH = awaitingSessions.length > 0 ? 44 : 0;
+  const bodyTop = headerH + 12 + bannerH;
+  const rowH = 58;
   const maxRows = Math.floor((footerTop - bodyTop) / rowH);
+  const subSummary = subscriptionSummary(state.subscriptions);
 
   // --- Extreme-aspect / tiny-panel guard ---
-  // Too short for even one row, or too narrow for the column layout: collapse to
-  // a centered wordmark + summary instead of overlapping boxes.
   if (maxRows < 1 || W < 320) {
     els.push(
       `<text x="${W / 2}" y="${H / 2 - 6}" text-anchor="middle" font-family="${SANS}" font-size="${Math.min(34, Math.round(W * 0.09))}" font-weight="700" fill="${INK}">AgentDeck</text>`,
@@ -246,16 +347,16 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${els.join('')}</svg>`;
   }
 
-  // --- Header ---
+  // --- Header: wordmark + subscription/plan summary (with expiry) on the right ---
   els.push(
-    `<text x="${pad}" y="48" font-family="${SANS}" font-size="34" font-weight="700" fill="${INK}">AgentDeck</text>`,
-    `<text x="${W - pad}" y="48" text-anchor="end" font-family="${SANS}" font-size="18" font-weight="600" fill="${INK}">${escXml(summary)}</text>`,
-    `<rect x="${pad}" y="${headerH}" width="${W - 2 * pad}" height="3" fill="${INK}"/>`,
+    `<text x="${pad}" y="38" font-family="${SANS}" font-size="28" font-weight="700" fill="${INK}">AgentDeck</text>`,
+    `<text x="${W - pad}" y="38" text-anchor="end" font-family="${SANS}" font-size="16" font-weight="600" fill="${INK}">${escXml(truncatePx(subSummary || summary, W * 0.62, 16))}</text>`,
+    `<rect x="${pad}" y="${headerH}" width="${W - 2 * pad}" height="2.5" fill="${INK}"/>`,
   );
 
   // --- AWAITING banner (highest-priority glance signal) ---
   if (bannerH > 0) {
-    const by = headerH + 14;
+    const by = headerH + 12;
     const bh = bannerH - 8;
     const n = awaitingSessions.length;
     const projects = awaitingSessions
@@ -271,74 +372,76 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
   }
 
   // --- Session rows (or idle hero) ---
-  // Width-derived column geometry, shared by every row.
-  const tagW = Math.min(108, Math.round(W * 0.16));
-  const badgeW = clamp(Math.round(W * 0.19), 120, 180);
+  const iconSize = 36;
+  const badgeW = clamp(Math.round(W * 0.17), 108, 168);
   const badgeX = W - pad - badgeW;
-  const midX = pad + tagW + 18;
-  const rowGeom: RowGeom = { pad, tagW, midX, midW: badgeX - midX - 18, badgeX, badgeW };
+  const textX = pad + iconSize + 14;
+  const rowGeom: RowGeom = { pad, iconSize, textX, textW: badgeX - textX - 16, badgeX, badgeW };
 
   if (sessions.length === 0) {
-    // Idle hero — keep header + footer (usage is still meaningful) and center a
-    // clean "no sessions" message in the body band (mirrors D200H's offline hero
-    // spirit, but read-only so no action prompt).
     const cy = (bodyTop + footerTop) / 2;
     els.push(
       `<text x="${W / 2}" y="${cy - 6}" text-anchor="middle" font-family="${SANS}" font-size="28" font-weight="700" fill="${INK}">No active sessions</text>`,
       `<text x="${W / 2}" y="${cy + 30}" text-anchor="middle" font-family="${SANS}" font-size="18" fill="${INK}">Start Claude Code, Codex, or OpenCode to see them here</text>`,
     );
   } else {
-    const visible = sessions.slice(0, maxRows);
-    const overflow = sessions.length - visible.length;
+    // Reserve the last visible row for an overflow summary when there are extras,
+    // so we never half-clip a row.
+    const overflow = Math.max(0, sessions.length - maxRows);
+    const showRows = overflow > 0 ? maxRows - 1 : maxRows;
+    const visible = sessions.slice(0, showRows);
     visible.forEach((sess, i) => {
       const y = bodyTop + i * rowH;
       if (i > 0) {
         els.push(`<rect x="${pad}" y="${y}" width="${W - 2 * pad}" height="1" fill="${INK}"/>`);
       }
-      els.push(sessionRow(sess, y, rowH, rowGeom));
+      els.push(sessionRow(sess, y, rowH, rowGeom, now));
     });
     if (overflow > 0) {
+      const hidden = sessions.slice(showRows);
+      const w = hidden.filter((s) => statusLabel(s.state) === 'WORKING').length;
+      const a = hidden.filter((s) => statusLabel(s.state) === 'AWAITING').length;
+      const idle = hidden.length - w - a;
+      const bits = [
+        w > 0 ? `${w} working` : '',
+        a > 0 ? `${a} awaiting` : '',
+        idle > 0 ? `${idle} idle` : '',
+      ].filter(Boolean);
+      const y = bodyTop + showRows * rowH;
+      els.push(`<rect x="${pad}" y="${y}" width="${W - 2 * pad}" height="1" fill="${INK}"/>`);
       els.push(
-        `<text x="${W / 2}" y="${bodyTop + maxRows * rowH - 10}" text-anchor="middle" font-family="${SANS}" font-size="16" font-weight="600" fill="${INK}">+${overflow} more session${overflow === 1 ? '' : 's'}</text>`,
+        `<text x="${pad + iconSize / 2}" y="${y + rowH / 2 + 6}" text-anchor="middle" font-family="${SANS}" font-size="20" font-weight="700" fill="${INK}">+${hidden.length}</text>`,
+        `<text x="${textX}" y="${y + rowH / 2 + 6}" font-family="${SANS}" font-size="18" font-weight="600" fill="${INK}">${escXml(`${hidden.length} more${bits.length ? ' · ' + bits.join(' · ') : ''}`)}</text>`,
       );
     }
   }
 
-  // --- Footer (5H / 7D quota: gauge + % + time-until-reset) ---
-  // The actionable quota numbers are the percent and the reset countdown — not a
-  // raw token tally or wall clock, which are dropped. When the serving hub has no
-  // subscription quota (OAuth-blind / no relay) the gauges read a hatched "—"
-  // rather than a confident, misleading 0%.
+  // --- Footer: 5H + 7D quota on one line (gauge + % + short reset) ---
+  // Actionable numbers only — no token tally or wall clock. Unknown quota draws a
+  // hatched "—" rather than a misleading 0%.
   els.push(`<rect x="${pad}" y="${footerTop}" width="${W - 2 * pad}" height="2" fill="${INK}"/>`);
   const usageKnown = state.usageKnown !== false;
-  const labelX = pad;
-  const gaugeX = pad + 40;
-  const gaugeW = clamp(Math.round(W * 0.26), 150, 320);
-  const pctX = gaugeX + gaugeW + 12;
-  const row1Y = footerTop + 30;
-  const row2Y = footerTop + 64;
+  const fy = footerTop + 33;
+  const gh = 16;
+  const gaugeW = clamp(Math.round(W * 0.14), 80, 150);
 
-  const quotaRow = (
-    y: number,
-    label: string,
-    pct: number,
-    resetsAt: string | undefined,
-  ): void => {
+  const quotaInline = (x: number, label: string, pct: number, resetsAt: string | undefined): void => {
+    const gx = x + 34;
+    const px = gx + gaugeW + 8;
     els.push(
-      `<text x="${labelX}" y="${y + 5}" font-family="${SANS}" font-size="18" font-weight="700" fill="${INK}">${label}</text>`,
-      usageKnown ? gauge(gaugeX, y - 12, gaugeW, 18, pct) : gaugeUnknown(gaugeX, y - 12, gaugeW, 18),
-      `<text x="${pctX}" y="${y + 5}" font-family="${MONO}" font-size="18" fill="${INK}">${usageKnown ? `${Math.round(pct)}%` : '—'}</text>`,
+      `<text x="${x}" y="${fy}" font-family="${SANS}" font-size="16" font-weight="700" fill="${INK}">${label}</text>`,
+      usageKnown ? gauge(gx, fy - 13, gaugeW, gh, pct) : gaugeUnknown(gx, fy - 13, gaugeW, gh),
+      `<text x="${px}" y="${fy}" font-family="${MONO}" font-size="16" fill="${INK}">${usageKnown ? `${Math.round(pct)}%` : '—'}</text>`,
     );
-    const remaining = usageKnown ? fmtRemaining(resetsAt, now) : '';
+    const remaining = usageKnown ? fmtRemainingShort(resetsAt, now) : '';
     if (remaining) {
       els.push(
-        `<text x="${W - pad}" y="${y + 5}" text-anchor="end" font-family="${SANS}" font-size="16" font-weight="600" fill="${INK}">${escXml(remaining)}</text>`,
+        `<text x="${px + 52}" y="${fy}" font-family="${SANS}" font-size="14" font-weight="600" fill="${INK}">${escXml(remaining)}</text>`,
       );
     }
   };
-
-  quotaRow(row1Y, '5H', state.fiveHourPercent, state.fiveHourResetsAt);
-  quotaRow(row2Y, '7D', state.sevenDayPercent, state.sevenDayResetsAt);
+  quotaInline(pad, '5H', state.fiveHourPercent, state.fiveHourResetsAt);
+  quotaInline(Math.round(W * 0.52), '7D', state.sevenDayPercent, state.sevenDayResetsAt);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${els.join('')}</svg>`;
 }

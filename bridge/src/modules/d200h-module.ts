@@ -139,6 +139,11 @@ export class D200hModule implements DeviceModule {
           sevenDayPercent: evt.sevenDayPercent,
           fiveHourResetsAt: evt.fiveHourResetsAt,
           sevenDayResetsAt: evt.sevenDayResetsAt,
+          // Tri-state: distinguish "0% used" from "no quota data" so the gauges
+          // draw a "—" instead of a confident 0% (matches TRMNL / Ulanzi deck).
+          usageKnown: evt.usageStale === true
+            ? false
+            : (evt.fiveHourPercent != null || evt.sevenDayPercent != null),
           totalTokens: evt.totalTokens ?? ((evt.inputTokens ?? 0) + (evt.outputTokens ?? 0)),
           totalCost: evt.totalCost ?? evt.estimatedCostUsd ?? this.lastState?.totalCost ?? 0,
         };

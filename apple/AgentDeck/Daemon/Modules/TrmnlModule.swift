@@ -82,11 +82,15 @@ actor TrmnlModule: DeviceModule {
             let sessions = event["sessions"] as? [[String: Any]] ?? []
             lastState.sessions = sessions.compactMap { s in
                 if let alive = s["alive"] as? Bool, alive == false { return nil }
+                let elapsed = (s["elapsedSec"] as? Int) ?? Int((s["elapsedSec"] as? Double) ?? 0)
                 return TrmnlSession(
                     agentType: s["agentType"] as? String ?? "",
                     projectName: s["projectName"] as? String ?? "",
                     modelName: s["modelName"] as? String ?? "",
-                    state: s["state"] as? String ?? "idle")
+                    state: s["state"] as? String ?? "idle",
+                    currentTool: s["currentTool"] as? String ?? "",
+                    currentTask: s["currentTask"] as? String ?? "",
+                    elapsedSec: elapsed)
             }
             refreshAll()
         default:
@@ -101,6 +105,12 @@ actor TrmnlModule: DeviceModule {
         if let v = e["sevenDayPercent"] as? Double { lastState.sevenDayPercent = v; lastState.usageKnown = true }
         if let v = e["fiveHourResetsAt"] as? String { lastState.fiveHourResetsAt = v }
         if let v = e["sevenDayResetsAt"] as? String { lastState.sevenDayResetsAt = v }
+        if let subs = e["subscriptions"] as? [[String: Any]] {
+            lastState.subscriptions = subs.compactMap { s in
+                guard let name = s["name"] as? String, !name.isEmpty else { return nil }
+                return TrmnlSubscription(name: name, until: s["until"] as? String)
+            }
+        }
         if let v = e["totalTokens"] as? Int { lastState.totalTokens = v }
         else if let v = e["totalTokens"] as? Double { lastState.totalTokens = Int(v) }
         else if let i = e["inputTokens"] as? Int, let o = e["outputTokens"] as? Int { lastState.totalTokens = i + o }
@@ -262,7 +272,8 @@ actor TrmnlModule: DeviceModule {
         let usage = lastState.usageKnown
             ? "\(Int(lastState.fiveHourPercent.rounded()))~\(Int(lastState.sevenDayPercent.rounded()))"
             : "na~na"
-        return "\(usage)~\(lastState.fiveHourResetsAt ?? "")~\(lastState.sevenDayResetsAt ?? "")~\(s)"
+        let subs = lastState.subscriptions.map { "\($0.name):\($0.until ?? "")" }.joined(separator: ",")
+        return "\(usage)~\(lastState.fiveHourResetsAt ?? "")~\(lastState.sevenDayResetsAt ?? "")~\(subs)~\(s)"
     }
 
     // MARK: - Enrollment + telemetry
