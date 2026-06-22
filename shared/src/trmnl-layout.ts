@@ -67,18 +67,25 @@ function statusLabel(state?: string): string {
   return s.toUpperCase().slice(0, 9);
 }
 
-function fmtTokens(n: number): string {
-  if (!n) return '0';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}K`;
-  return String(n);
-}
-
-/** Hour:Minute for the "updated" stamp. Caller may pass a fixed Date for tests. */
-function hhmm(now: Date): string {
-  const h = String(now.getHours()).padStart(2, '0');
-  const m = String(now.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
+/**
+ * Compact "time until reset" for a quota window — the actionable number on a
+ * glance panel (more useful than a raw token count or wall clock). Returns ''
+ * when the timestamp is missing/unparseable; "resets now" once it's in the past.
+ */
+function fmtRemaining(resetsAt: string | undefined, now: Date): string {
+  if (!resetsAt) return '';
+  const t = Date.parse(resetsAt);
+  if (!Number.isFinite(t)) return '';
+  let secs = Math.round((t - now.getTime()) / 1000);
+  if (secs <= 0) return 'resets now';
+  const d = Math.floor(secs / 86400);
+  secs -= d * 86400;
+  const h = Math.floor(secs / 3600);
+  secs -= h * 3600;
+  const m = Math.floor(secs / 60);
+  if (d > 0) return `${d}d ${h}h left`;
+  if (h > 0) return `${h}h ${m}m left`;
+  return `${m}m left`;
 }
 
 /** Outline + filled gauge bar (no color — fill is solid ink). */
@@ -216,7 +223,9 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
   const summary = `${sessions.length} session${sessions.length === 1 ? '' : 's'} · ${workingCount} working · ${awaitingCount} awaiting`;
 
   const headerH = 72;
-  const footerTop = H - 68;
+  // Two-row footer (5H then 7D, each with a gauge + % + reset countdown). Taller
+  // than the old single-line totals strip so the reset time has room.
+  const footerTop = H - 96;
   // An AWAITING agent is the single most valuable glance signal on a slow panel,
   // so it gets a full-width inverted banner above the rows instead of hiding in a
   // per-row badge. The banner steals vertical space from the row area.
@@ -295,34 +304,41 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
     }
   }
 
-  // --- Footer (usage + totals + timestamp), scaled to the panel width ---
+  // --- Footer (5H / 7D quota: gauge + % + time-until-reset) ---
+  // The actionable quota numbers are the percent and the reset countdown — not a
+  // raw token tally or wall clock, which are dropped. When the serving hub has no
+  // subscription quota (OAuth-blind / no relay) the gauges read a hatched "—"
+  // rather than a confident, misleading 0%.
   els.push(`<rect x="${pad}" y="${footerTop}" width="${W - 2 * pad}" height="2" fill="${INK}"/>`);
-  const fy = footerTop + 26;
-  const gaugeW = clamp(Math.round(W * 0.18), 110, 200);
-  const g1Bar = pad + 34;
-  const g1Pct = g1Bar + gaugeW + 8;
-  const col2 = Math.round(W * 0.34);
-  const g2Bar = col2 + 34;
-  const g2Pct = g2Bar + gaugeW + 8;
-  // When the serving hub has no subscription quota (OAuth-blind / no relay), the
-  // gauges would otherwise read a confident 0%. Draw a hatched "no data" bar and
-  // an em dash instead so the panel never lies about usage.
   const usageKnown = state.usageKnown !== false;
-  els.push(
-    // 5H gauge
-    `<text x="${pad}" y="${fy + 4}" font-family="${SANS}" font-size="16" font-weight="700" fill="${INK}">5H</text>`,
-    usageKnown ? gauge(g1Bar, fy - 12, gaugeW, 16, state.fiveHourPercent) : gaugeUnknown(g1Bar, fy - 12, gaugeW, 16),
-    `<text x="${g1Pct}" y="${fy + 4}" font-family="${MONO}" font-size="16" fill="${INK}">${usageKnown ? `${Math.round(state.fiveHourPercent)}%` : '—'}</text>`,
-    // 7D gauge
-    `<text x="${col2}" y="${fy + 4}" font-family="${SANS}" font-size="16" font-weight="700" fill="${INK}">7D</text>`,
-    usageKnown ? gauge(g2Bar, fy - 12, gaugeW, 16, state.sevenDayPercent) : gaugeUnknown(g2Bar, fy - 12, gaugeW, 16),
-    `<text x="${g2Pct}" y="${fy + 4}" font-family="${MONO}" font-size="16" fill="${INK}">${usageKnown ? `${Math.round(state.sevenDayPercent)}%` : '—'}</text>`,
-  );
-  // tokens + cost + updated stamp (right aligned)
-  const totals = `${fmtTokens(state.totalTokens)} tok · $${(state.totalCost || 0).toFixed(2)}`;
-  els.push(
-    `<text x="${W - pad}" y="${fy + 4}" text-anchor="end" font-family="${MONO}" font-size="16" fill="${INK}">${escXml(totals)}  ·  ${hhmm(now)}</text>`,
-  );
+  const labelX = pad;
+  const gaugeX = pad + 40;
+  const gaugeW = clamp(Math.round(W * 0.26), 150, 320);
+  const pctX = gaugeX + gaugeW + 12;
+  const row1Y = footerTop + 30;
+  const row2Y = footerTop + 64;
+
+  const quotaRow = (
+    y: number,
+    label: string,
+    pct: number,
+    resetsAt: string | undefined,
+  ): void => {
+    els.push(
+      `<text x="${labelX}" y="${y + 5}" font-family="${SANS}" font-size="18" font-weight="700" fill="${INK}">${label}</text>`,
+      usageKnown ? gauge(gaugeX, y - 12, gaugeW, 18, pct) : gaugeUnknown(gaugeX, y - 12, gaugeW, 18),
+      `<text x="${pctX}" y="${y + 5}" font-family="${MONO}" font-size="18" fill="${INK}">${usageKnown ? `${Math.round(pct)}%` : '—'}</text>`,
+    );
+    const remaining = usageKnown ? fmtRemaining(resetsAt, now) : '';
+    if (remaining) {
+      els.push(
+        `<text x="${W - pad}" y="${y + 5}" text-anchor="end" font-family="${SANS}" font-size="16" font-weight="600" fill="${INK}">${escXml(remaining)}</text>`,
+      );
+    }
+  };
+
+  quotaRow(row1Y, '5H', state.fiveHourPercent, state.fiveHourResetsAt);
+  quotaRow(row2Y, '7D', state.sevenDayPercent, state.sevenDayResetsAt);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${els.join('')}</svg>`;
 }

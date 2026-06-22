@@ -89,7 +89,8 @@ enum TrmnlImageRenderer {
 
         let pad: CGFloat = 24
         let headerH: CGFloat = 72
-        let footerTop = H - 68
+        // Two-row footer (5H then 7D, each with a gauge + % + reset countdown).
+        let footerTop = H - 96
         let rowH: CGFloat = 64
 
         let n = state.sessions.count
@@ -199,52 +200,83 @@ enum TrmnlImageRenderer {
             }
         }
 
-        // Footer: usage gauges + totals + timestamp, scaled to width.
+        // Footer: 5H / 7D quota — gauge + % + time-until-reset (no token tally or
+        // wall clock; the actionable numbers are the percent + reset countdown).
         fill(pad, footerTop, W - 2 * pad, 2, black)
-        let fTop = footerTop + 16
-        let gaugeW = clampF((W * 0.18).rounded(), 110, 200)
-        let g1Bar = pad + 34
-        let g1Pct = g1Bar + gaugeW + 8
-        let col2 = (W * 0.34).rounded()
-        let g2Bar = col2 + 34
-        let g2Pct = g2Bar + gaugeW + 8
+        let gaugeX = pad + 40
+        let gaugeW = clampF((W * 0.26).rounded(), 150, 320)
+        let pctX = gaugeX + gaugeW + 12
+        let usageKnown = state.usageKnown
 
-        func gauge(_ x: CGFloat, _ pct: Double) {
-            stroke(x, fTop, gaugeW, 16, 1.5)
+        func gauge(_ y: CGFloat, _ pct: Double) {
+            stroke(gaugeX, y, gaugeW, 18, 1.5)
             let fw = (gaugeW * CGFloat(clampD(pct, 0, 100) / 100)).rounded()
-            if fw > 0 { fill(x, fTop, fw, 16, black) }
+            if fw > 0 { fill(gaugeX, y, fw, 18, black) }
         }
         // "No data" gauge — outlined box with a sparse diagonal hatch so it reads as
         // "unavailable", not "0% filled".
-        func gaugeUnknown(_ x: CGFloat) {
-            stroke(x, fTop, gaugeW, 16, 1.5)
+        func gaugeUnknown(_ y: CGFloat) {
+            stroke(gaugeX, y, gaugeW, 18, 1.5)
             ctx.saveGState()
-            ctx.clip(to: CGRect(x: x, y: H - fTop - 16, width: gaugeW, height: 16))
+            ctx.clip(to: CGRect(x: gaugeX, y: H - y - 18, width: gaugeW, height: 18))
             ctx.setStrokeColor(black)
             ctx.setLineWidth(1)
-            var hx = x - 16
-            while hx < x + gaugeW {
+            var hx = gaugeX - 18
+            while hx < gaugeX + gaugeW {
                 ctx.beginPath()
-                ctx.move(to: CGPoint(x: hx, y: H - (fTop + 16)))
-                ctx.addLine(to: CGPoint(x: hx + 16, y: H - fTop))
+                ctx.move(to: CGPoint(x: hx, y: H - (y + 18)))
+                ctx.addLine(to: CGPoint(x: hx + 18, y: H - y))
                 ctx.strokePath()
                 hx += 8
             }
             ctx.restoreGState()
         }
 
-        let usageKnown = state.usageKnown
-        text("5H", x: pad, top: fTop, size: 16, bold: true)
-        if usageKnown { gauge(g1Bar, state.fiveHourPercent) } else { gaugeUnknown(g1Bar) }
-        text(usageKnown ? "\(Int(state.fiveHourPercent.rounded()))%" : "—", x: g1Pct, top: fTop, size: 16, mono: true)
-        text("7D", x: col2, top: fTop, size: 16, bold: true)
-        if usageKnown { gauge(g2Bar, state.sevenDayPercent) } else { gaugeUnknown(g2Bar) }
-        text(usageKnown ? "\(Int(state.sevenDayPercent.rounded()))%" : "—", x: g2Pct, top: fTop, size: 16, mono: true)
+        func quotaRow(_ rowTop: CGFloat, _ label: String, _ pct: Double, _ resetsAt: String?) {
+            text(label, x: pad, top: rowTop, size: 18, bold: true)
+            if usageKnown { gauge(rowTop, pct) } else { gaugeUnknown(rowTop) }
+            text(usageKnown ? "\(Int(pct.rounded()))%" : "—", x: pctX, top: rowTop, size: 18, mono: true)
+            if usageKnown, let remaining = Self.fmtRemaining(resetsAt), !remaining.isEmpty {
+                text(remaining, x: W - pad, top: rowTop, size: 16, bold: true, align: .right)
+            }
+        }
 
-        let cost = String(format: "%.2f", state.totalCost)
-        var totals = "\(fmtTokens(state.totalTokens)) tok · $\(cost)"
-        if !state.nowText.isEmpty { totals += "  ·  \(state.nowText)" }
-        text(totals, x: W - pad, top: fTop, size: 16, align: .right, mono: true)
+        quotaRow(footerTop + 22, "5H", state.fiveHourPercent, state.fiveHourResetsAt)
+        quotaRow(footerTop + 56, "7D", state.sevenDayPercent, state.sevenDayResetsAt)
+    }
+
+    /// Compact "time until reset" for a quota window (mirrors trmnl-layout.ts
+    /// fmtRemaining). nil/unparseable → nil; past → "resets now".
+    private static func fmtRemaining(_ resetsAt: String?) -> String? {
+        guard let s = resetsAt, let date = parseISO(s) else { return nil }
+        var secs = Int(date.timeIntervalSinceNow.rounded())
+        if secs <= 0 { return "resets now" }
+        let d = secs / 86400; secs -= d * 86400
+        let h = secs / 3600; secs -= h * 3600
+        let m = secs / 60
+        if d > 0 { return "\(d)d \(h)h left" }
+        if h > 0 { return "\(h)h \(m)m left" }
+        return "\(m)m left"
+    }
+
+    // Reset timestamps vary: fractional seconds (sometimes microseconds, which
+    // ISO8601DateFormatter rejects) and a `+00:00` offset. Try fractional, then
+    // plain, then a fractional-stripped retry. Renders are infrequent (state change
+    // / 10-min bucket) so local formatters avoid a non-Sendable static.
+    private static func parseISO(_ s: String) -> Date? {
+        let frac = ISO8601DateFormatter()
+        frac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = frac.date(from: s) { return d }
+        let plain = ISO8601DateFormatter()
+        if let d = plain.date(from: s) { return d }
+        // Strip a ".NNN…" fractional-seconds run and retry the plain parser.
+        if let dot = s.firstIndex(of: ".") {
+            var end = s.index(after: dot)
+            while end < s.endIndex, s[end].isNumber { end = s.index(after: end) }
+            let stripped = s.replacingCharacters(in: dot..<end, with: "")
+            return plain.date(from: stripped)
+        }
+        return nil
     }
 
     // MARK: - Layout helpers (ported from trmnl-layout.ts)
@@ -267,16 +299,6 @@ enum TrmnlImageRenderer {
         if s == "disconnected" { return "OFFLINE" }
         if s == "idle" || s.isEmpty { return "IDLE" }
         return String(s.uppercased().prefix(9))
-    }
-
-    private static func fmtTokens(_ n: Int) -> String {
-        if n == 0 { return "0" }
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1000 {
-            return n >= 10_000 ? "\(Int((Double(n) / 1000).rounded()))K"
-                               : String(format: "%.1fK", Double(n) / 1000)
-        }
-        return String(n)
     }
 
     private static func font(_ size: CGFloat, _ bold: Bool, _ mono: Bool) -> CTFont {

@@ -62,6 +62,10 @@ export interface DashState {
    * a confident empty gauge. Absent/false on surfaces that don't supply it.
    */
   usageKnown?: boolean;
+  /** ISO timestamp when the 5-hour quota window resets (for a countdown). */
+  fiveHourResetsAt?: string;
+  /** ISO timestamp when the 7-day quota window resets (for a countdown). */
+  sevenDayResetsAt?: string;
 }
 
 export function parseState(evt: any): DashState {
@@ -87,6 +91,8 @@ export function parseState(evt: any): DashState {
       typeof evt?.usageKnown === 'boolean'
         ? evt.usageKnown
         : evt?.fiveHourPercent != null || evt?.sevenDayPercent != null,
+    fiveHourResetsAt: typeof evt?.fiveHourResetsAt === 'string' ? evt.fiveHourResetsAt : undefined,
+    sevenDayResetsAt: typeof evt?.sevenDayResetsAt === 'string' ? evt.sevenDayResetsAt : undefined,
   };
 }
 

@@ -23,7 +23,6 @@ describe('renderTrmnlDashboard', () => {
     // A paper background rect must exist so the 1-bit threshold reads clean.
     expect(svg).toContain('fill="#ffffff"');
     expect(svg).toContain('AgentDeck');
-    expect(svg).toContain('14:03');
   });
 
   it('renders one row per session with agent label + status badge', () => {
@@ -102,6 +101,26 @@ describe('renderTrmnlDashboard', () => {
     );
     expect(svg).toContain('42%');
     expect(svg).toContain('18%');
+  });
+
+  it('shows time-until-reset for each quota window (no token tally or clock)', () => {
+    const svg = renderTrmnlDashboard(
+      {
+        state: 'IDLE',
+        allSessions: [],
+        usageKnown: true,
+        fiveHourPercent: 42,
+        sevenDayPercent: 18,
+        fiveHourResetsAt: new Date(NOW.getTime() + (2 * 3600 + 13 * 60) * 1000).toISOString(),
+        sevenDayResetsAt: new Date(NOW.getTime() + (4 * 86400 + 6 * 3600) * 1000).toISOString(),
+      },
+      { now: NOW },
+    );
+    expect(svg).toContain('2h 13m left');
+    expect(svg).toContain('4d 6h left');
+    // The old footer noise is gone.
+    expect(svg).not.toContain('tok');
+    expect(svg).not.toContain('14:03');
   });
 
   it('shows an em dash (not 0%) when usage is structurally unknown', () => {

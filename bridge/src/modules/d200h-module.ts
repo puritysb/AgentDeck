@@ -130,6 +130,19 @@ export class D200hModule implements DeviceModule {
       if (evt?.type === 'state_update') {
         this.lastState = evt;
         this.updateDisplay({ ...this.lastState, allSessions: this.lastSessions }).catch(() => {});
+      } else if (evt?.type === 'usage_update') {
+        // Usage (5H/7D/tokens/cost) rides usage_update, NOT state_update — merge it
+        // in so the gauges aren't stuck at 0 (same gap fixed in the TRMNL module).
+        this.lastState = {
+          ...this.lastState,
+          fiveHourPercent: evt.fiveHourPercent,
+          sevenDayPercent: evt.sevenDayPercent,
+          fiveHourResetsAt: evt.fiveHourResetsAt,
+          sevenDayResetsAt: evt.sevenDayResetsAt,
+          totalTokens: evt.totalTokens ?? ((evt.inputTokens ?? 0) + (evt.outputTokens ?? 0)),
+          totalCost: evt.totalCost ?? evt.estimatedCostUsd ?? this.lastState?.totalCost ?? 0,
+        };
+        this.updateDisplay({ ...this.lastState, allSessions: this.lastSessions }).catch(() => {});
       } else if (evt?.type === 'sessions_list') {
         this.lastSessions = (evt.sessions ?? []).filter(isControllableSession);
         if (this.lastState) {

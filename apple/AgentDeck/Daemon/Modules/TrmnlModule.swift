@@ -99,6 +99,8 @@ actor TrmnlModule: DeviceModule {
         // are the gauges meaningful (otherwise the renderer shows "—", not 0%).
         if let v = e["fiveHourPercent"] as? Double { lastState.fiveHourPercent = v; lastState.usageKnown = true }
         if let v = e["sevenDayPercent"] as? Double { lastState.sevenDayPercent = v; lastState.usageKnown = true }
+        if let v = e["fiveHourResetsAt"] as? String { lastState.fiveHourResetsAt = v }
+        if let v = e["sevenDayResetsAt"] as? String { lastState.sevenDayResetsAt = v }
         if let v = e["totalTokens"] as? Int { lastState.totalTokens = v }
         else if let v = e["totalTokens"] as? Double { lastState.totalTokens = Int(v) }
         else if let i = e["inputTokens"] as? Int, let o = e["outputTokens"] as? Int { lastState.totalTokens = i + o }

@@ -47,6 +47,9 @@ struct TrmnlDashState: Sendable {
     /// True only when subscription quota is actually known, so the renderer shows
     /// "—" instead of a confident 0% when the hub is OAuth-blind / has no relay.
     var usageKnown: Bool = false
+    /// ISO timestamps when each quota window resets (for a countdown). nil ⇒ hidden.
+    var fiveHourResetsAt: String?
+    var sevenDayResetsAt: String?
     /// "HH:MM" stamp baked at render time (the device pulls; this is render-time).
     var nowText: String = ""
 }
