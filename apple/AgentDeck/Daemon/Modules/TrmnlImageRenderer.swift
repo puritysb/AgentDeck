@@ -110,7 +110,6 @@ enum TrmnlImageRenderer {
         let pad: CGFloat = 24
         let headerH: CGFloat = 56
         let footerTop = H - 52         // single-line footer
-        let rowH: CGFloat = 58
 
         let n = state.sessions.count
         let working = state.sessions.filter { statusLabel($0.state) == "WORKING" }.count
@@ -121,7 +120,14 @@ enum TrmnlImageRenderer {
 
         let bannerH: CGFloat = awaiting > 0 ? 44 : 0
         let bodyTop = headerH + 12 + bannerH
-        let maxRows = Int(((footerTop - bodyTop) / rowH).rounded(.down))
+        // Adaptive row height: tall when few sessions, shrinking toward a floor as
+        // the count grows so 6–9 sessions pack in before an overflow summary.
+        let availH = footerTop - bodyTop
+        let maxRowH: CGFloat = 58, minRowH: CGFloat = 42
+        let capacityAtMin = max(1, Int((availH / minRowH).rounded(.down)))
+        let desiredRows = min(max(1, n), capacityAtMin)
+        let rowH = max(minRowH, min(maxRowH, (availH / CGFloat(desiredRows)).rounded(.down)))
+        let maxRows = max(1, Int((availH / rowH).rounded(.down)))
 
         // Extreme-aspect / tiny-panel guard.
         if maxRows < 1 || W < 320 {
@@ -150,12 +156,15 @@ enum TrmnlImageRenderer {
                  size: 16, bold: true, align: .right, color: white)
         }
 
-        // Row geometry.
-        let iconSize: CGFloat = 36
+        // Row geometry (icon/text scale per-row with the adaptive height).
         let badgeW = clampF((W * 0.17).rounded(), 108, 168)
         let badgeX = W - pad - badgeW
-        let textX = pad + iconSize + 14
-        let textW = badgeX - textX - 16
+        // Per-row metrics: icon, text x, text width, project/desc font sizes, desc baseline.
+        func metrics(_ rh: CGFloat) -> (icon: CGFloat, tx: CGFloat, tw: CGFloat, ps: CGFloat, ds: CGFloat, ddy: CGFloat) {
+            let icon = clampF(rh - 16, 24, 36)
+            let tx = pad + icon + 14
+            return (icon, tx, badgeX - tx - 14, rh >= 54 ? 24 : rh >= 48 ? 21 : 19, rh >= 48 ? 15 : 13, rh >= 50 ? 19 : 16)
+        }
 
         if n == 0 {
             let cy = (bodyTop + footerTop) / 2
@@ -165,6 +174,7 @@ enum TrmnlImageRenderer {
         } else {
             let overflow = max(0, n - maxRows)
             let showRows = overflow > 0 ? maxRows - 1 : maxRows
+            let m = metrics(rowH)
             let visible = Array(state.sessions.prefix(showRows))
             for (i, s) in visible.enumerated() {
                 let y = bodyTop + CGFloat(i) * rowH
@@ -173,15 +183,15 @@ enum TrmnlImageRenderer {
                 let isAwaiting = status == "AWAITING"
 
                 // Agent icon + project + description.
-                agentGlyph(s.agentType, pad + iconSize / 2, y + rowH / 2, iconSize)
-                let proj = truncate(s.projectName.isEmpty ? "(no project)" : s.projectName, textW, 24, true, false)
-                text(proj, x: textX, top: y + rowH / 2 - 25, size: 24, bold: true, align: .left)
-                let desc = truncate(Self.sessionDescription(s), textW, 15, false, true)
-                if !desc.isEmpty { text(desc, x: textX, top: y + rowH / 2 + 3, size: 15, align: .left, mono: true) }
+                agentGlyph(s.agentType, pad + m.icon / 2, y + rowH / 2, m.icon)
+                let proj = truncate(s.projectName.isEmpty ? "(no project)" : s.projectName, m.tw, m.ps, true, false)
+                text(proj, x: m.tx, top: y + rowH / 2 - m.ps - 1, size: m.ps, bold: true, align: .left)
+                let desc = truncate(Self.sessionDescription(s), m.tw, m.ds, false, true)
+                if !desc.isEmpty { text(desc, x: m.tx, top: y + rowH / 2 + m.ddy - 14, size: m.ds, align: .left, mono: true) }
 
                 // Status badge.
-                let badgeY = y + 11
-                let badgeH = rowH - 22
+                let badgeH = min(rowH - 16, 40)
+                let badgeY = y + (rowH - badgeH) / 2
                 if isAwaiting {
                     fill(badgeX, badgeY, badgeW, badgeH, black)
                     text(status, x: badgeX + badgeW / 2, top: badgeY + badgeH / 2 - 12,
@@ -217,18 +227,20 @@ enum TrmnlImageRenderer {
                 if idle > 0 { bits.append("\(idle) idle") }
                 let y = bodyTop + CGFloat(showRows) * rowH
                 fill(pad, y, W - 2 * pad, 1, black)
-                text("+\(hidden.count)", x: pad + iconSize / 2, top: y + rowH / 2 - 11, size: 20, bold: true, align: .center)
+                text("+\(hidden.count)", x: pad + m.icon / 2, top: y + rowH / 2 - 11, size: 20, bold: true, align: .center)
                 let label = "\(hidden.count) more" + (bits.isEmpty ? "" : " · " + bits.joined(separator: " · "))
-                text(label, x: textX, top: y + rowH / 2 - 10, size: 18, bold: true, align: .left)
+                text(label, x: m.tx, top: y + rowH / 2 - 10, size: 18, bold: true, align: .left)
             }
         }
 
-        // Footer: 5H + 7D quota on one line (gauge + % + short reset).
+        // Footer: 5H + 7D quota on one line, filling the width — label, a wide
+        // gauge, the %, and a detailed "resets Hh Mm" right-aligned per half.
         fill(pad, footerTop, W - 2 * pad, 2, black)
         let usageKnown = state.usageKnown
         let fTop = footerTop + 18
-        let gh: CGFloat = 16
-        let gaugeW = clampF((W * 0.14).rounded(), 80, 150)
+        let gh: CGFloat = 18
+        let colW = (W - 2 * pad) / 2
+        let gaugeW = clampF((colW * 0.42).rounded(), 120, 240)
 
         func gauge(_ gx: CGFloat, _ gy: CGFloat, _ pct: Double) {
             stroke(gx, gy, gaugeW, gh, 1.5)
@@ -252,26 +264,32 @@ enum TrmnlImageRenderer {
         }
         func quotaInline(_ x0: CGFloat, _ label: String, _ pct: Double, _ resetsAt: String?) {
             let gx = x0 + 34
-            let px = gx + gaugeW + 8
-            text(label, x: x0, top: fTop, size: 16, bold: true)
+            let px = gx + gaugeW + 10
+            text(label, x: x0, top: fTop, size: 18, bold: true)
             if usageKnown { gauge(gx, fTop, pct) } else { gaugeUnknown(gx, fTop) }
-            text(usageKnown ? "\(Int(pct.rounded()))%" : "—", x: px, top: fTop, size: 16, mono: true)
-            if usageKnown, let r = Self.fmtRemainingShort(resetsAt), !r.isEmpty {
-                text(r, x: px + 52, top: fTop, size: 14, bold: true)
+            text(usageKnown ? "\(Int(pct.rounded()))%" : "—", x: px, top: fTop, size: 18, mono: true)
+            if usageKnown, let r = Self.fmtRemaining(resetsAt), !r.isEmpty {
+                text("resets \(r)", x: x0 + colW - 12, top: fTop, size: 15, bold: true, align: .right)
             }
         }
         quotaInline(pad, "5H", state.fiveHourPercent, state.fiveHourResetsAt)
-        quotaInline((W * 0.52).rounded(), "7D", state.sevenDayPercent, state.sevenDayResetsAt)
+        quotaInline(pad + colW, "7D", state.sevenDayPercent, state.sevenDayResetsAt)
     }
 
-    /// Very compact reset countdown for the one-line footer: "3h", "2d", "45m".
-    /// Mirrors trmnl-layout.ts fmtRemainingShort.
-    private static func fmtRemainingShort(_ resetsAt: String?) -> String? {
+    /// Reset countdown with two-unit detail: "3h 34m", "2d 20h", "45m". Mirrors
+    /// trmnl-layout.ts fmtRemaining.
+    private static func fmtRemaining(_ resetsAt: String?) -> String? {
         guard let s = resetsAt, let date = parseISO(s) else { return nil }
         let secs = Int(date.timeIntervalSinceNow.rounded())
         if secs <= 0 { return "now" }
-        if secs >= 86400 { return "\(secs / 86400)d" }
-        if secs >= 3600 { return "\(secs / 3600)h" }
+        if secs >= 86400 {
+            let d = secs / 86400, h = (secs % 86400) / 3600
+            return h > 0 ? "\(d)d \(h)h" : "\(d)d"
+        }
+        if secs >= 3600 {
+            let h = secs / 3600, m = (secs % 3600) / 60
+            return m > 0 ? "\(h)h \(m)m" : "\(h)h"
+        }
         return "\(max(1, secs / 60))m"
     }
 

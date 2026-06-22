@@ -166,55 +166,77 @@ function subscriptionSummary(subs: SubscriptionInfo[] | undefined): string {
     .join('   ·   ');
 }
 
-/** Very compact reset countdown for the one-line footer: "3h", "2d", "45m". */
-function fmtRemainingShort(resetsAt: string | undefined, now: Date): string {
+/** Reset countdown with two-unit detail: "3h 34m", "2d 20h", "45m". */
+function fmtRemaining(resetsAt: string | undefined, now: Date): string {
   if (!resetsAt) return '';
   const t = Date.parse(resetsAt);
   if (!Number.isFinite(t)) return '';
   const secs = Math.round((t - now.getTime()) / 1000);
   if (secs <= 0) return 'now';
-  if (secs >= 86400) return `${Math.floor(secs / 86400)}d`;
-  if (secs >= 3600) return `${Math.floor(secs / 3600)}h`;
+  if (secs >= 86400) {
+    const d = Math.floor(secs / 86400);
+    const h = Math.floor((secs % 86400) / 3600);
+    return h > 0 ? `${d}d ${h}h` : `${d}d`;
+  }
+  if (secs >= 3600) {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
   return `${Math.max(1, Math.floor(secs / 60))}m`;
 }
 
-/** Column geometry for one session row, derived from the panel width. */
+/** Width-derived columns shared by every row (icon/text geometry is per-row,
+ * since it scales with the adaptive row height). */
 interface RowGeom {
   pad: number;
-  iconSize: number;
-  textX: number;
-  textW: number;
   badgeX: number;
   badgeW: number;
 }
 
-/** One session row. `y` is the row's top edge; `geom` is width-derived columns. */
+/** Per-row sizes derived from the (adaptive) row height — shrink text + icon as
+ * rows get tighter so 6+ sessions pack in instead of overflowing. */
+function rowMetrics(rowH: number, pad: number, badgeX: number) {
+  const iconSize = clamp(rowH - 16, 24, 36);
+  const textX = pad + iconSize + 14;
+  return {
+    iconSize,
+    textX,
+    textW: badgeX - textX - 14,
+    projectSize: rowH >= 54 ? 24 : rowH >= 48 ? 21 : 19,
+    descSize: rowH >= 48 ? 15 : 13,
+    descDy: rowH >= 50 ? 19 : 16,
+  };
+}
+
+/** One session row. `y` is the row's top edge; sizes adapt to `rowH`. */
 function sessionRow(sess: SessionInfo, y: number, rowH: number, geom: RowGeom, now: Date): string {
-  const { pad, iconSize, textX, textW, badgeX, badgeW } = geom;
+  const { pad, badgeX, badgeW } = geom;
+  const m = rowMetrics(rowH, pad, badgeX);
   const status = statusLabel(sess.state);
   const awaiting = status === 'AWAITING';
   const els: string[] = [];
 
   // Agent icon (canonical brand mark — robot/cloud/lobster/ring) in place of the
   // wide text tag, freeing room for a description.
-  els.push(agentGlyphMono(sess.agentType ?? '', pad + iconSize / 2, y + rowH / 2, iconSize, INK, PAPER));
+  els.push(agentGlyphMono(sess.agentType ?? '', pad + m.iconSize / 2, y + rowH / 2, m.iconSize, INK, PAPER));
 
   // Project name (bold) + a "what is it doing" description line.
-  const project = truncatePx(sess.projectName || '(no project)', textW, 24);
-  const desc = truncatePx(sessionDescription(sess, now), textW, 15);
+  const project = truncatePx(sess.projectName || '(no project)', m.textW, m.projectSize);
+  const desc = truncatePx(sessionDescription(sess, now), m.textW, m.descSize);
   els.push(
-    `<text x="${textX}" y="${y + rowH / 2 - 3}" font-family="${SANS}" font-size="24" font-weight="700" fill="${INK}">${escXml(project)}</text>`,
+    `<text x="${m.textX}" y="${y + rowH / 2 - 3}" font-family="${SANS}" font-size="${m.projectSize}" font-weight="700" fill="${INK}">${escXml(project)}</text>`,
   );
   if (desc) {
     els.push(
-      `<text x="${textX}" y="${y + rowH / 2 + 19}" font-family="${MONO}" font-size="15" fill="${INK}">${escXml(desc)}</text>`,
+      `<text x="${m.textX}" y="${y + rowH / 2 + m.descDy}" font-family="${MONO}" font-size="${m.descSize}" fill="${INK}">${escXml(desc)}</text>`,
     );
   }
 
   // Status badge (right column). Awaiting gets a bold double border to stand out
   // without color; working gets a filled triangle marker.
-  const badgeY = y + 12;
-  const badgeH = rowH - 24;
+  const badgeH = Math.min(rowH - 16, 40);
+  const badgeY = y + (rowH - badgeH) / 2;
   if (awaiting) {
     els.push(
       `<rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" fill="${INK}"/>`,
@@ -291,8 +313,16 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
   const awaitingSessions = sessions.filter((s) => statusLabel(s.state) === 'AWAITING');
   const bannerH = awaitingSessions.length > 0 ? 44 : 0;
   const bodyTop = headerH + 12 + bannerH;
-  const rowH = 58;
-  const maxRows = Math.floor((footerTop - bodyTop) / rowH);
+  const availH = footerTop - bodyTop;
+  // Adaptive row height: with few sessions rows are tall + roomy; as the count
+  // grows, rows (and their text/icon) shrink toward a floor so 6–9 sessions pack
+  // in before we fall back to an overflow summary.
+  const MAX_ROW = 58;
+  const MIN_ROW = 42;
+  const capacityAtMin = Math.max(1, Math.floor(availH / MIN_ROW));
+  const desiredRows = Math.min(Math.max(1, sessions.length), capacityAtMin);
+  const rowH = clamp(Math.floor(availH / desiredRows), MIN_ROW, MAX_ROW);
+  const maxRows = Math.max(1, Math.floor(availH / rowH));
   const subSummary = subscriptionSummary(state.subscriptions);
 
   // --- Extreme-aspect / tiny-panel guard ---
@@ -329,11 +359,10 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
   }
 
   // --- Session rows (or idle hero) ---
-  const iconSize = 36;
   const badgeW = clamp(Math.round(W * 0.17), 108, 168);
   const badgeX = W - pad - badgeW;
-  const textX = pad + iconSize + 14;
-  const rowGeom: RowGeom = { pad, iconSize, textX, textW: badgeX - textX - 16, badgeX, badgeW };
+  const rowGeom: RowGeom = { pad, badgeX, badgeW };
+  const om = rowMetrics(rowH, pad, badgeX); // metrics for the overflow row
 
   if (sessions.length === 0) {
     const cy = (bodyTop + footerTop) / 2;
@@ -367,38 +396,41 @@ export function renderTrmnlDashboard(input: DashState | any, opts: TrmnlRenderOp
       const y = bodyTop + showRows * rowH;
       els.push(`<rect x="${pad}" y="${y}" width="${W - 2 * pad}" height="1" fill="${INK}"/>`);
       els.push(
-        `<text x="${pad + iconSize / 2}" y="${y + rowH / 2 + 6}" text-anchor="middle" font-family="${SANS}" font-size="20" font-weight="700" fill="${INK}">+${hidden.length}</text>`,
-        `<text x="${textX}" y="${y + rowH / 2 + 6}" font-family="${SANS}" font-size="18" font-weight="600" fill="${INK}">${escXml(`${hidden.length} more${bits.length ? ' · ' + bits.join(' · ') : ''}`)}</text>`,
+        `<text x="${pad + om.iconSize / 2}" y="${y + rowH / 2 + 6}" text-anchor="middle" font-family="${SANS}" font-size="20" font-weight="700" fill="${INK}">+${hidden.length}</text>`,
+        `<text x="${om.textX}" y="${y + rowH / 2 + 6}" font-family="${SANS}" font-size="18" font-weight="600" fill="${INK}">${escXml(`${hidden.length} more${bits.length ? ' · ' + bits.join(' · ') : ''}`)}</text>`,
       );
     }
   }
 
-  // --- Footer: 5H + 7D quota on one line (gauge + % + short reset) ---
-  // Actionable numbers only — no token tally or wall clock. Unknown quota draws a
-  // hatched "—" rather than a misleading 0%.
+  // --- Footer: 5H + 7D quota on one line, filling the width ---
+  // Each half: label, a wide gauge, the %, and a detailed "resets in Hh Mm". No
+  // token tally / wall clock. Unknown quota draws a hatched "—" not a lying 0%.
   els.push(`<rect x="${pad}" y="${footerTop}" width="${W - 2 * pad}" height="2" fill="${INK}"/>`);
   const usageKnown = state.usageKnown !== false;
   const fy = footerTop + 33;
-  const gh = 16;
-  const gaugeW = clamp(Math.round(W * 0.14), 80, 150);
+  const gh = 18;
+  const colW = (W - 2 * pad) / 2;
+  // Generous gauge so the footer uses its space instead of leaving it empty.
+  const gaugeW = clamp(Math.round(colW * 0.42), 120, 240);
 
   const quotaInline = (x: number, label: string, pct: number, resetsAt: string | undefined): void => {
     const gx = x + 34;
-    const px = gx + gaugeW + 8;
+    const px = gx + gaugeW + 10;
     els.push(
-      `<text x="${x}" y="${fy}" font-family="${SANS}" font-size="16" font-weight="700" fill="${INK}">${label}</text>`,
-      usageKnown ? gauge(gx, fy - 13, gaugeW, gh, pct) : gaugeUnknown(gx, fy - 13, gaugeW, gh),
-      `<text x="${px}" y="${fy}" font-family="${MONO}" font-size="16" fill="${INK}">${usageKnown ? `${Math.round(pct)}%` : '—'}</text>`,
+      `<text x="${x}" y="${fy}" font-family="${SANS}" font-size="18" font-weight="700" fill="${INK}">${label}</text>`,
+      usageKnown ? gauge(gx, fy - 14, gaugeW, gh, pct) : gaugeUnknown(gx, fy - 14, gaugeW, gh),
+      `<text x="${px}" y="${fy}" font-family="${MONO}" font-size="18" fill="${INK}">${usageKnown ? `${Math.round(pct)}%` : '—'}</text>`,
     );
-    const remaining = usageKnown ? fmtRemainingShort(resetsAt, now) : '';
+    const remaining = usageKnown ? fmtRemaining(resetsAt, now) : '';
     if (remaining) {
+      // Right-aligned at the end of this half so the detail reads cleanly.
       els.push(
-        `<text x="${px + 52}" y="${fy}" font-family="${SANS}" font-size="14" font-weight="600" fill="${INK}">${escXml(remaining)}</text>`,
+        `<text x="${x + colW - 12}" y="${fy}" text-anchor="end" font-family="${SANS}" font-size="15" font-weight="600" fill="${INK}">resets ${escXml(remaining)}</text>`,
       );
     }
   };
   quotaInline(pad, '5H', state.fiveHourPercent, state.fiveHourResetsAt);
-  quotaInline(Math.round(W * 0.52), '7D', state.sevenDayPercent, state.sevenDayResetsAt);
+  quotaInline(pad + colW, '7D', state.sevenDayPercent, state.sevenDayResetsAt);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${els.join('')}</svg>`;
 }

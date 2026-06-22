@@ -70,11 +70,20 @@ describe('renderTrmnlDashboard', () => {
     expect(svg).not.toContain('solo');
   });
 
-  it('shows an overflow summary when sessions exceed the visible rows', () => {
-    const many = Array.from({ length: 8 }, (_, i) => session(`s${i}`, 'claude-code', 'idle'));
+  it('shows an overflow summary when sessions exceed the (adaptive) visible rows', () => {
+    // Adaptive rows pack ~8 onto 800×480; 14 still overflows.
+    const many = Array.from({ length: 14 }, (_, i) => session(`s${i}`, 'claude-code', 'idle'));
     const svg = renderTrmnlDashboard({ state: 'IDLE', allSessions: many }, { now: NOW });
     expect(svg).toMatch(/\d+ more/);
     expect(svg).toContain('idle'); // overflow breaks down hidden sessions by state
+  });
+
+  it('packs more sessions by shrinking rows before overflowing', () => {
+    // 8 sessions fit on 800×480 via adaptive shrink (no overflow row).
+    const eight = Array.from({ length: 8 }, (_, i) => session(`s${i}`, 'claude-code', 'idle'));
+    const svg = renderTrmnlDashboard({ state: 'IDLE', allSessions: eight }, { now: NOW });
+    expect(svg).not.toMatch(/\d+ more/);
+    expect(svg).toContain('proj-s7'); // the 8th session is actually rendered
   });
 
   it('reflows to a device-reported resolution', () => {
@@ -88,10 +97,10 @@ describe('renderTrmnlDashboard', () => {
   });
 
   it('fits more session rows on a taller panel', () => {
-    const many = Array.from({ length: 8 }, (_, i) => session(`s${i}`, 'claude-code', 'idle'));
+    const many = Array.from({ length: 14 }, (_, i) => session(`s${i}`, 'claude-code', 'idle'));
     const tall = renderTrmnlDashboard({ state: 'IDLE', allSessions: many }, { now: NOW, width: 480, height: 960 });
     const og = renderTrmnlDashboard({ state: 'IDLE', allSessions: many }, { now: NOW });
-    // 480×960 fits all 8 rows (no overflow row); 800×480 only fits ~6.
+    // 480×960 fits all 14 rows (no overflow row); 800×480 packs ~8 then overflows.
     expect(tall).not.toMatch(/\d+ more/);
     expect(og).toMatch(/\d+ more/);
   });
