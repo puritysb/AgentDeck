@@ -69,22 +69,23 @@ final class TimeboxProtocolTests: XCTestCase {
         return [buf[i], buf[i + 1], buf[i + 2]]
     }
 
-    /// The octopus glyph must match the bridge's micro-glyphs.ts colors/positions.
-    func testMicroGlyphOctopus() {
+    /// The Claude robot glyph must match the bridge's micro-glyphs.ts colors/positions.
+    func testMicroGlyphRobot() {
         var buf = [UInt8](repeating: 0, count: 11 * 11 * 3)
         MicroGlyphs.paint(&buf, creature: .octopus, state: .idle, animFrame: 0)
         XCTAssertEqual(pixel(buf, 5, 3), [235, 130, 90])   // terracotta body
-        XCTAssertEqual(pixel(buf, 3, 3), [16, 9, 9])       // eye (2×2 block, rows 3–4 cols 2–3)
-        XCTAssertEqual(pixel(buf, 0, 5), [200, 100, 72])   // left arm (rows 5–6)
+        XCTAssertEqual(pixel(buf, 3, 2), [255, 176, 64])   // amber eye (row 2 cols 3–4 / 6–7)
+        XCTAssertEqual(pixel(buf, 1, 5), [150, 84, 64])    // left arm joint (rows 5–6 col 1)
         XCTAssertEqual(pixel(buf, 0, 0), [0, 0, 0])        // transparent → untouched
     }
 
-    /// Codex glyph carries the white `>`/`_` terminal-prompt marking on indigo.
+    /// Codex glyph carries the white `>`/`_` terminal-prompt marking on the cloud.
     func testMicroGlyphCodexPrompt() {
         var buf = [UInt8](repeating: 0, count: 11 * 11 * 3)
         MicroGlyphs.paint(&buf, creature: .codex, state: .idle, animFrame: 0)
-        XCTAssertEqual(pixel(buf, 2, 4), [238, 240, 255])  // `>` chevron (marking)
-        XCTAssertEqual(pixel(buf, 0, 4), [120, 126, 236])  // indigo body (col 1 is now marking)
+        XCTAssertEqual(pixel(buf, 2, 4), [238, 240, 255])  // `>` chevron top (marking)
+        XCTAssertEqual(pixel(buf, 6, 7), [238, 240, 255])  // `_` underscore (marking)
+        XCTAssertEqual(pixel(buf, 0, 4), [120, 126, 236])  // indigo cloud body
     }
 
     /// Status-field colors match micro-glyphs.ts microStatusBg.

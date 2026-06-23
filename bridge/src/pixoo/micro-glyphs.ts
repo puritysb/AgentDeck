@@ -6,9 +6,18 @@
  * **hand-authored directly at 11×11** as bold, high-contrast bitmaps. Every pixel
  * is intentional, which is dramatically more legible than any downscale.
  *
+ * The glyphs are the canonical brand marks (matching assets/logos/*_creature_gen.png
+ * and design/brand/*.svg), not loose creature approximations:
+ *   Claude  → rusty robot (rectangular head, two amber eyes, body, arms, legs)
+ *   Codex   → lavender cloud carrying a white `>_` terminal prompt
+ *   OpenClaw→ red lobster (raised top claws, teal eyes, segmented tail)
+ *   OpenCode→ nested-square ring logo
+ * The MicroCreature keys (octopus/jellyfish/opencode/crayfish) are legacy internal
+ * codenames kept for the renderer mapping — only the art behind them is brand-true.
+ *
  * Each glyph is an 11-row × 11-col string grid. Characters map to colors:
  *   '.' transparent (shows the status-color background)
- *   'B' body   'A' arm/tentacle/leg   'C' claw/shell   'E' eye
+ *   'B' body   'A' arm/antenna/leg   'C' claw   'D' joint/shadow   'E' eye   'M' prompt mark   'F' logo frame
  * `work` is an optional second frame for a simple processing animation (leg wiggle).
  */
 
@@ -24,110 +33,111 @@ interface Glyph {
   work?: string[];
 }
 
-// Claude Code — terracotta octopus (#C07058): rounded full-width body, two 2×2
-// near-black negative-space eyes (canonical octopusEye), side arm nubs, four
-// dangling leg pairs. Mirrors OCTOPUS_GRID_HD/MD's silhouette at 11×11.
+// Claude Code — rusty robot (assets/logos/robot_creature_gen.png, design/brand/
+// claudecode.svg): rectangular head with two glowing amber eyes, neck, body with
+// arms (darker joints) jutting out the sides, two legs. Terracotta body (#C07058
+// family, kept bright for the LED panel), amber eyes for the lit-display look.
 const OCTOPUS: Glyph = {
-  colors: { B: [235, 130, 90], A: [200, 100, 72], E: [16, 9, 9] },
+  colors: { B: [235, 130, 90], D: [150, 84, 64], E: [255, 176, 64] },
   idle: [
+    '...........',
     '..BBBBBBB..',
-    '.BBBBBBBBB.',
-    'BBBBBBBBBBB',
-    'BBEEBBBEEBB',
-    'BBEEBBBEEBB',
-    'ABBBBBBBBBA',
-    'ABBBBBBBBBA',
-    '.BBBBBBBBB.',
-    '.BBBBBBBBB.',
-    'BB.BB.BB.BB',
-    'B..B...B..B',
+    '..BEEBEEB..',
+    '..BBBBBBB..',
+    '....BBB....',
+    '.DBBBBBBBD.',
+    '.DBBBBBBBD.',
+    '..BBBBBBB..',
+    '...BB.BB...',
+    '...BB.BB...',
+    '...........',
   ],
   work: [
+    '...........',
     '..BBBBBBB..',
-    '.BBBBBBBBB.',
-    'BBBBBBBBBBB',
-    'BBEEBBBEEBB',
-    'BBEEBBBEEBB',
-    'ABBBBBBBBBA',
-    'ABBBBBBBBBA',
-    '.BBBBBBBBB.',
-    '.BBBBBBBBB.',
-    'BB.BB.BB.BB',
-    '..B.B.B.B..',
+    '..BEEBEEB..',
+    '..BBBBBBB..',
+    '....BBB....',
+    '.DBBBBBBBD.',
+    '.DBBBBBBBD.',
+    '..BBBBBBB..',
+    '...BB.BB...',
+    '..BB...BB..',
+    '..D.....D..',
   ],
 };
 
-// Codex — indigo cloud (#6166E0): cloud/clover body with top bumps and bottom
-// tentacle lobes (mirrors JELLYFISH_GRID_HD/MD), carrying a white `>` chevron +
-// `_` terminal prompt — the Codex identity. Keyed 'jellyfish' to match the
-// renderer's creatureType for codex agents.
+// Codex — lavender cloud (#6166E0, assets/logos/cloud_creature_gen.png): a bumpy
+// round cloud body carrying a white `>` chevron + `_` terminal prompt — the Codex
+// identity. Keyed 'jellyfish' to match the renderer's creatureType for codex agents.
 const JELLYFISH: Glyph = {
   colors: { B: [120, 126, 236], M: [238, 240, 255] },
   idle: [
-    '..BB.BB....',
-    '.BBBBBBBB..',
-    'BBBBBBBBBBB',
-    'BBBBBBBBBBB',
-    'BMMBBBBBBBB',
-    'BBMMBBBBBBB',
-    'BMMBBBBBBBB',
-    'BBBBMMMMBBB',
-    'BBBBBBBBBBB',
     '.BB.BB.BB..',
-    '.B...B...B.',
+    'BBBBBBBBBB.',
+    'BBBBBBBBBBB',
+    'BBBBBBBBBBB',
+    'BBMBBBBBBBB',
+    'BBBMMBBBBBB',
+    'BBMBBBBBBBB',
+    'BBBBBMMMBBB',
+    'BBBBBBBBBBB',
+    '.BBBBBBBBB.',
+    '..B.BB.B...',
   ],
 };
 
 // OpenCode — two overlapping HOLLOW squares (the canonical opencode.svg ring
 // logo; no filled core — a solid center reads as a shadow). Light stroke so it
-// reads (#3a3a3a brand gray is too dark for LEDs). Mirrors OPENCODE_GRID_HD.
+// reads (#3a3a3a brand gray is too dark for LEDs). Centered in the 11×11 field.
 const OPENCODE: Glyph = {
   colors: { F: [232, 232, 232] },
   idle: [
-    'FFFFFF.....',
-    'F....F.....',
-    'F....F.....',
-    'F..FFFFFF..',
-    'F..F...F...',
-    'FFFF...F...',
-    '...F...F...',
-    '...F...F...',
-    '...FFFFFF..',
     '...........',
+    '.FFFFFF....',
+    '.F....F....',
+    '.F....F....',
+    '.F..FFFFFF.',
+    '.F..F...F..',
+    '.FFFF...F..',
+    '....F...F..',
+    '....F...F..',
+    '....FFFFFF.',
     '...........',
   ],
 };
 
-// OpenClaw — red crayfish (#FF4D4D): round body, antennae curving to the top
-// corners, two side-claw blobs, two teal eyes (canonical crayfishEye #00E5CC),
-// two leg stubs. Mirrors CRAYFISH_GRID_HD/MD.
+// OpenClaw — red mechanical lobster (#FF4D4D, assets/logos/lobster_creature_gen.png):
+// two big claws raised at the top corners, antennae rising from the center, a head
+// with two teal eyes (#00E5CC), and a vertical segmented tail fanning out at the
+// bottom. Legs splay from the thorax. Darker red claws give them depth.
 const CRAYFISH: Glyph = {
   colors: { B: [255, 92, 92], C: [210, 52, 52], A: [225, 180, 170], E: [0, 229, 204] },
   idle: [
-    'A.........A',
-    '.A.......A.',
-    '..A.....A..',
+    'CC.......CC',
+    'CC...A...CC',
+    '.C..AAA..C.',
+    '...BEBEB...',
     '...BBBBB...',
-    '..BBBBBBB..',
-    'CCBBEBEBBCC',
-    'CCBBBBBBBCC',
-    '..BBBBBBB..',
-    '..BBBBBBB..',
+    'A..BBBBB..A',
+    '.A.BBBBB.A.',
+    '...BBBBB...',
+    '...BBBBB...',
     '...BB.BB...',
-    '...B...B...',
+    '..BB...BB..',
   ],
   work: [
-    'A.........A',
-    '.A.......A.',
-    '..A.....A..',
+    'CC.......CC',
+    '.C...A...C.',
+    '..C.AAA.C..',
+    '...BEBEB...',
     '...BBBBB...',
-    '..BBBBBBB..',
-    '.CBBEBEBBC.',
-    '.CBBBBBBBC.',
-    '..BBBBBBB..',
-    '..BBBBBBB..',
+    '.A.BBBBB.A.',
+    'A..BBBBB..A',
+    '...BBBBB...',
+    '...BBBBB...',
     '...B.B.B...',
-    '..B..B..B..',
+    '..BB...BB..',
   ],
 };
 
