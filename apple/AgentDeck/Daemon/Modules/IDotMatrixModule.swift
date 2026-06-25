@@ -427,18 +427,32 @@ actor IDotMatrixModule: DeviceModule {
 
     // MARK: - Shadow / broadcast
 
+    /// Human-readable reason the device isn't streaming, so `/health` can tell
+    /// "device off", "paused while host display asleep", and "never attempted"
+    /// apart instead of an ambiguous `connected:false, lastError:null`.
+    private func currentStatusReason() -> String {
+        if devices.isEmpty { return "no device configured" }
+        if connected { return "connected" }
+        if displayDimmed { return "paused: host display asleep" }
+        if let lastError { return lastError }
+        if let until = backoffUntil, Date() < until { return "retrying (backed off)" }
+        return "connecting…"
+    }
+
     private func refreshShadow() {
+        let statusReason = currentStatusReason()
         let snapshot: [String: Any] = [
             "configuredDeviceCount": devices.count,
             "connected": connected,
             "deviceName": devices.first?.name ?? devices.first?.address ?? NSNull(),
             "lastError": lastError as Any,
+            "statusReason": statusReason,
             "displayDimmed": displayDimmed,
             "hasFrame": lastPushedRGB != nil,
             "lastPushAtMs": lastPushAtMs as Any,
         ]
         shadow.write(snapshot)
-        let digest = "count=\(devices.count)|conn=\(connected)|dim=\(displayDimmed)|err=\(lastError ?? "")"
+        let digest = "count=\(devices.count)|conn=\(connected)|dim=\(displayDimmed)|reason=\(statusReason)|err=\(lastError ?? "")"
         if digest != lastBroadcastDigest {
             lastBroadcastDigest = digest
             onStateChanged?()

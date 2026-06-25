@@ -463,7 +463,81 @@ actor PixooModule: DeviceModule {
                 }
             }
         }
+        await attemptRediscoverIfStuck()
         refreshShadow()
+    }
+
+    // MARK: - Re-discovery (configured device IP changed, e.g. DHCP)
+    //
+    // `autoDiscoverIfNeeded()` only sweeps when ZERO devices are configured, so
+    // once a device is saved a DHCP lease change leaves us probing a dead IP
+    // forever — the panel simply "vanishes" with no recovery short of a manual
+    // edit. When the single configured device has been unreachable past the
+    // deep-hang boundary, sweep the LAN once (throttled) and, if a single other
+    // Pixoo answers, treat it as the same panel that moved and rewrite its saved
+    // IP. Conservative: only the unambiguous single-device case is auto-healed
+    // (consistent with auto-discover already treating any LAN Pixoo as yours);
+    // multi-candidate setups just log and leave the configured IP untouched.
+    private var lastRediscoverAt: Date?
+    private let rediscoverThrottleSec: TimeInterval = 300
+
+    private func attemptRediscoverIfStuck() async {
+        guard Self.isAutoDiscoverEnabled() else { return }
+        // Only the single-device case can be safely re-mapped purely by IP.
+        guard devices.count == 1, let device = devices.first else { return }
+        guard let state = deviceLogStates[device.ip],
+              state.consecutiveFailures >= backoffThreshold + deepHangProbeFailures else { return }
+        if let last = lastRediscoverAt, Date().timeIntervalSince(last) < rediscoverThrottleSec { return }
+        lastRediscoverAt = Date()
+
+        let currentIPs = Set(devices.map(\.ip))
+        var found: [String] = []
+        for (base, selfIP) in Self.localIPv4Subnets() {
+            found += await Self.sweepSubnet(base: base, selfIP: selfIP, concurrency: 32, timeoutSec: 0.6)
+        }
+        let candidates = found.filter { !currentIPs.contains($0) }
+        guard !candidates.isEmpty else {
+            DaemonLogger.shared.debug("Pixoo", "Re-discovery sweep found no relocated device for \(device.ip)")
+            return
+        }
+        // Prefer a single match on the old device's /24 (DHCP normally keeps the
+        // same subnet); fall back to a single LAN-wide match.
+        let oldBase = device.ip.split(separator: ".").dropLast().joined(separator: ".")
+        let sameSubnet = candidates.filter { $0.split(separator: ".").dropLast().joined(separator: ".") == oldBase }
+        let newIP: String
+        if sameSubnet.count == 1 { newIP = sameSubnet[0] }
+        else if candidates.count == 1 { newIP = candidates[0] }
+        else {
+            DaemonLogger.shared.info("[Pixoo] Re-discovery ambiguous (\(candidates.count) candidates: \(candidates.joined(separator: ", "))) — leaving \(device.ip) as configured")
+            return
+        }
+        DaemonLogger.shared.info("[Pixoo] \(device.ip) unreachable — relocated to \(newIP) (likely DHCP change); updating settings.json")
+        Self.persistUpdatedIp(old: device.ip, new: newIP)
+        await reloadDevicesFromSettings(reason: "re-discovery", force: true)
+    }
+
+    /// Rewrite a configured device's `ip` in settings.json in place, preserving
+    /// its `name`/`brightness`. Mirrors `persistDiscovered`'s queue-confined R/W.
+    private static func persistUpdatedIp(old: String, new: String) {
+        let semaphore = DispatchSemaphore(value: 0)
+        settingsReadQueue.async {
+            var root: [String: Any] = [:]
+            if let data = try? Data(contentsOf: settingsFile),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                root = json
+            }
+            var arr = (root["pixooDevices"] as? [[String: Any]]) ?? []
+            for i in arr.indices {
+                let ip = (arr[i]["ip"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if ip == old { arr[i]["ip"] = new }
+            }
+            root["pixooDevices"] = arr
+            if let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted]) {
+                try? out.write(to: settingsFile)
+            }
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + .milliseconds(1500))
     }
 
     /// Re-issues `Channel/SetIndex` on each healthy device every 30s. Mirrors
