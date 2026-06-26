@@ -55,6 +55,15 @@ Daemon owns port **9120** (default, fallback to 9121+ if occupied by non-daemon)
 
 `httpServer.close()` + 5s `setTimeout(() => process.exit(0))` — CLOSE_WAIT connections from disconnected clients can block `close()` callback indefinitely, causing zombie daemons (session bridge has 3s failsafe in `index.ts`).
 
+## Autostart (login/logon)
+
+- **macOS** — per-user **LaunchAgent** `dev.agentdeck.daemon` (`~/Library/LaunchAgents/`), `RunAtLoad=true`, `KeepAlive.SuccessfulExit=false`. `agentdeck daemon install` writes the plist + `launchctl load`; `uninstall` unloads + deletes it.
+- **Windows** — per-user **Scheduled Task** `AgentDeckDaemon` with a **logon trigger**, registered via built-in `schtasks.exe` (no npm dependency, no admin elevation). `agentdeck daemon install` registers + immediately `/Run`s it and installs Codex hooks; `uninstall` gracefully `/shutdown`s the daemon then `/Delete`s the task. Builder + schtasks wrappers live in `bridge/src/windows-service.ts`; the pure XML builder is unit-tested in `bridge/src/__tests__/windows-service.test.ts` (the schtasks calls are integration-only).
+  - **Why a Scheduled Task, not a Windows Service**: a real service runs in **session 0** with no desktop and restricted device access, which breaks USB-HID (D200H), audio (wake-word), mDNS, and the Stream Deck app. A logon task runs in the **interactive user session** — the exact analog of the macOS *per-user* LaunchAgent.
+  - Task settings mirror the LaunchAgent: `LogonType=InteractiveToken` + `RunLevel=LeastPrivilege` (no elevation), `MultipleInstancesPolicy=IgnoreNew` (the singleton guard already dedupes), `RestartOnFailure` Interval=PT1M/Count=3 (≈KeepAlive), `ExecutionTimeLimit=PT0S`, no stop on idle/battery. Action runs `node.exe "<cli.js>" daemon start --foreground` so the task process **is** the daemon (lets RestartOnFailure track the real process).
+  - The task XML is written **UTF-16LE + BOM** with an `encoding="UTF-16"` declaration — `schtasks /XML` rejects UTF-8 (`unable to switch the encoding`).
+  - `daemon.json` discovery, port fallback, singleton guard, and graceful `/shutdown` are reused unchanged across both platforms.
+
 ## Whisper-server
 
 Uses fixed singleton port **9100** (`~/.agentdeck/whisper-server.json` info file for discovery, last session exit kills server).

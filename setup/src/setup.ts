@@ -382,6 +382,8 @@ function success() {
   console.log('  2. Add AgentDeck actions to your Stream Deck profile');
   console.log("  3. Run 'agentdeck claude' or 'agentdeck codex' in terminal to start the bridge");
   console.log("     Codex observation hooks are installed automatically by 'agentdeck codex'");
+  console.log("  4. Optional: run 'agentdeck daemon install' to auto-start the daemon on login");
+  console.log("     (macOS LaunchAgent / Windows Scheduled Task)");
   console.log('');
   console.log('  Usage:');
   console.log('    agentdeck claude   Start bridge + Claude');

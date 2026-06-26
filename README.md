@@ -334,7 +334,7 @@ agentdeck claude        # spawns Claude Code via Windows ConPTY (cmd.exe /d /s /
 - **Data dir** — `%USERPROFILE%\.agentdeck\` (same layout as macOS `~/.agentdeck/`). `AGENTDECK_DATA_DIR` override still works.
 - **PTY** — ConPTY through `cmd.exe` with `/d /s /c` (POSIX uses `/bin/zsh -l -c`). `node-pty`'s Windows prebuild is used as-is, so no Visual Studio Build Tools are required.
 - **Hooks** — Claude Code hook entries run a `powershell -NoProfile -ExecutionPolicy Bypass -Command "…"` one-liner that reads `daemon.json`, probes `/health`, and POSTs the payload via `Invoke-RestMethod`.
-- **`agentdeck daemon install` / `uninstall`** — no-op with a friendly message. There is no autostart yet; run `agentdeck daemon start` yourself, or add a Startup-folder shortcut. (See the Windows daemon TODO in the [Roadmap](#roadmap).)
+- **`agentdeck daemon install` / `uninstall`** — registers a per-user **Scheduled Task** `AgentDeckDaemon` with a logon trigger (built-in `schtasks.exe`, no admin elevation), the Windows analog of the macOS LaunchAgent. `install` registers + starts it now and installs Codex hooks; `uninstall` stops the daemon and removes the task. A real Windows Service is intentionally **not** used — it runs in session 0 with no desktop/device access, breaking USB-HID (D200H), audio (wake-word), and the Stream Deck app. See [docs/daemon.md → Autostart](docs/daemon.md#autostart-loginlogon).
 - **Device modules** — `adb` is probed cross-platform; the `/dev/tty.*` USB-serial scan is skipped on Windows (COM-port enumeration not implemented). mDNS, `node-hid` (D200H), and `better-sqlite3` (APME) use Windows-compatible prebuilds.
 - **APME hardware sampler** is darwin-only — it returns a minimal snapshot on Windows and the recommender treats that as "neutral".
 - **macOS-only plugin utility actions** (brightness / volume / dark-mode via `osascript`) gracefully no-op on Windows.
@@ -385,8 +385,8 @@ The same pattern passes through any other flag the agent accepts — for instanc
 | `agentdeck daemon stop` | Stop daemon |
 | `agentdeck daemon restart` | Restart daemon |
 | `agentdeck daemon status` | Show daemon status |
-| `agentdeck daemon install` | Register macOS LaunchAgent (auto-start) |
-| `agentdeck daemon uninstall` | Remove LaunchAgent |
+| `agentdeck daemon install` | Register auto-start (macOS LaunchAgent / Windows Scheduled Task) |
+| `agentdeck daemon uninstall` | Remove auto-start (LaunchAgent / Scheduled Task) |
 
 #### Session Management
 
@@ -1076,7 +1076,7 @@ Eval results broadcast to every device simultaneously (Stream Deck/Apple/Android
 
 ### Planned
 
-- [ ] **Windows daemon autostart / background service** — today `agentdeck daemon install` is a no-op on Windows and the daemon must be started manually with `agentdeck daemon start` in a terminal (run locally). Add native autostart (Windows Service or a Startup/Task Scheduler registration) so the daemon runs in the background like the macOS LaunchAgent
+- [x] **Windows daemon autostart** — `agentdeck daemon install` registers a per-user Scheduled Task (`AgentDeckDaemon`, logon trigger) so the daemon auto-starts in the interactive session, the Windows analog of the macOS LaunchAgent. See [docs/daemon.md → Autostart](docs/daemon.md#autostart-loginlogon).
 - [ ] Play Store distribution (Android app)
 - [ ] Stream Deck Marketplace registration (plugin distribution)
 

@@ -838,10 +838,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     });
     httpServer.listen(port, '0.0.0.0', () => resolve());
   }).catch(async (err: Error) => {
-    // Handle race condition: port became unavailable after probe
+    // Handle race condition: port became unavailable after our pre-bind probe.
+    // This is the concurrent-start case (e.g. two logon-trigger fires landing
+    // within ~1s): both processes pass the singleton guard because neither has
+    // bound yet, then exactly one wins the OS bind and the rest get EADDRINUSE.
     if (err.message.startsWith('EADDRINUSE:') && port === requestedPort) {
+      // Re-probe the occupant. If ANOTHER daemon grabbed the port, we lost the
+      // race — exit instead of falling back to a new port, or we'd leave two
+      // daemons running (and clobber daemon.json to point at the wrong one).
+      // Only fall back when a *non-daemon* (e.g. a session bridge) holds it.
+      const occupant = await probeDaemonHealth(requestedPort);
+      if (occupant?.mode === 'daemon') {
+        log(`[agentdeck] Lost startup race for port ${requestedPort} (PID ${occupant.pid} already serving). Exiting.`);
+        process.exit(0);
+      }
       port = await findAvailablePort();
-      log(`[agentdeck] Port ${requestedPort} grabbed, retrying on ${port}...`);
+      log(`[agentdeck] Port ${requestedPort} grabbed by ${occupant?.mode ?? 'a non-daemon'}, retrying on ${port}...`);
       await new Promise<void>((resolve, reject) => {
         httpServer.on('error', (e: NodeJS.ErrnoException) => reject(e));
         httpServer.listen(port, '0.0.0.0', () => resolve());

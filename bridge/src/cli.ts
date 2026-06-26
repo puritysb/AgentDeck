@@ -8,6 +8,14 @@ import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { BRIDGE_WS_PORT } from './types.js';
+import {
+  TASK_NAME,
+  installWindowsTask,
+  taskExists,
+  runWindowsTask,
+  endWindowsTask,
+  deleteWindowsTask,
+} from './windows-service.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../package.json') as { version: string };
@@ -369,12 +377,38 @@ daemon
 
 daemon
   .command('install')
-  .description('Install macOS LaunchAgent for auto-start')
+  .description('Install daemon auto-start (LaunchAgent on macOS, Scheduled Task on Windows)')
   .action(async () => {
     if (process.platform === 'win32') {
-      log('agentdeck daemon install/uninstall is not supported on Windows.');
-      log("Start the daemon manually with: agentdeck daemon start");
-      log('(Add to the Startup folder yourself if you want it to autostart.)');
+      try {
+        installWindowsTask();
+        log(`Scheduled task '${TASK_NAME}' registered. Daemon will auto-start on logon.`);
+      } catch (e) {
+        const detail = (e as { stderr?: Buffer }).stderr?.toString().trim() || (e as Error).message;
+        log('Failed to register the AgentDeck scheduled task.');
+        if (detail) log(detail);
+        log('You can still run the daemon manually with: agentdeck daemon start');
+        log('(or add a shortcut to shell:startup to autostart it yourself).');
+        process.exit(1);
+      }
+      // Start it now so the user does not have to log out/in (the singleton
+      // guard makes a double-start a safe no-op).
+      try {
+        runWindowsTask();
+        log('Daemon started.');
+      } catch {
+        log('Task registered; immediate start failed — it will start on next logon.');
+      }
+      // Install Codex lifecycle hooks for parity with the macOS install path.
+      try {
+        const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
+        const result = installCodexHooksIfNeeded();
+        if (result.installed) {
+          log('Codex lifecycle hooks installed in ~/.codex/config.toml');
+        } else if (result.reason) {
+          log(`Codex hooks skipped: ${result.reason}`);
+        }
+      } catch { /* hooks package not built yet — task install still succeeds */ }
       process.exit(0);
     }
     if (process.platform !== 'darwin') {
@@ -402,10 +436,25 @@ daemon
 
 daemon
   .command('uninstall')
-  .description('Remove macOS LaunchAgent')
-  .action(() => {
+  .description('Remove daemon auto-start (LaunchAgent on macOS, Scheduled Task on Windows)')
+  .action(async () => {
     if (process.platform === 'win32') {
-      log('agentdeck daemon install/uninstall is not supported on Windows.');
+      if (!taskExists()) {
+        log(`Scheduled task '${TASK_NAME}' is not installed.`);
+        process.exit(0);
+      }
+      // Graceful daemon shutdown first, then stop + delete the task.
+      await stopDaemon(BRIDGE_WS_PORT);
+      try { endWindowsTask(); } catch { /* not running */ }
+      try {
+        deleteWindowsTask();
+        log(`Scheduled task '${TASK_NAME}' removed.`);
+      } catch (e) {
+        const detail = (e as { stderr?: Buffer }).stderr?.toString().trim() || (e as Error).message;
+        log('Failed to remove the scheduled task.');
+        if (detail) log(detail);
+        process.exit(1);
+      }
       process.exit(0);
     }
     if (!existsSync(PLIST_PATH)) {

@@ -119,7 +119,7 @@ This diagnostic path is developer tooling only: it lives in `scripts/` and `.age
 
 ## Windows dev setup
 
-The Node.js bridge, hook installer, and Stream Deck plugin run on Windows 11 (Apple/Android/ESP32 native builds are out of scope). Full prereqs, install/run steps, and the intentional Windows differences (ConPTY, data dir, PowerShell hook one-liner, daemon-install no-op, device-module gating, darwin-only sampler) live in **[README → Windows (Bridge + Plugin)](README.md#windows-bridge--plugin)**. Code refs: `bridge/src/pty-manager.ts`, `hooks/src/install.ts`, `bridge/src/cli.ts`.
+The Node.js bridge, hook installer, and Stream Deck plugin run on Windows 11 (Apple/Android/ESP32 native builds are out of scope). Full prereqs, install/run steps, and the intentional Windows differences (ConPTY, data dir, PowerShell hook one-liner, daemon autostart via per-user Scheduled Task `AgentDeckDaemon` — `bridge/src/windows-service.ts`, NOT a session-0 Windows Service, device-module gating, darwin-only sampler) live in **[README → Windows (Bridge + Plugin)](README.md#windows-bridge--plugin)**. Code refs: `bridge/src/pty-manager.ts`, `hooks/src/install.ts`, `bridge/src/cli.ts`, `bridge/src/windows-service.ts`.
 
 Dev-only note: when debugging Windows issues, run commands directly in PowerShell so output appears in the conversation — the Apple/Xcode diagnostic bundle is macOS-only.
 
