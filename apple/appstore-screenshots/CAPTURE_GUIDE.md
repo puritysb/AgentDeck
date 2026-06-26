@@ -11,10 +11,10 @@
 
 ```bash
 # Launch iPhone app
-xcrun simctl launch "iPhone 16 Pro Max" bound.serendipity.agentdeck.dashboard
+xcrun simctl launch "iPhone 16 Pro Max" bound.serendipity.agent.deck
 
 # Terminate (for clean relaunch)
-xcrun simctl terminate "iPhone 16 Pro Max" bound.serendipity.agentdeck.dashboard
+xcrun simctl terminate "iPhone 16 Pro Max" bound.serendipity.agent.deck
 
 # Reset for onboarding
 xcrun simctl privacy "iPhone 16 Pro Max" reset all
@@ -29,10 +29,10 @@ xcrun simctl io "iPhone 16 Pro Max" screenshot ./apple/appstore-screenshots/iPho
 
 ```bash
 # Launch iPad app
-xcrun simctl launch "iPad Pro 13-inch (M4)" bound.serendipity.agentdeck.dashboard
+xcrun simctl launch "iPad Pro 13-inch (M4)" bound.serendipity.agent.deck
 
 # Terminate
-xcrun simctl terminate "iPad Pro 13-inch (M4)" bound.serendipity.agentdeck.dashboard
+xcrun simctl terminate "iPad Pro 13-inch (M4)" bound.serendipity.agent.deck
 
 # Reset for onboarding
 xcrun simctl privacy "iPad Pro 13-inch (M4)" reset all

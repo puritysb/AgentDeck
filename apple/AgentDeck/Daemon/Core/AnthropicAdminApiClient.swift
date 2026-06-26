@@ -20,7 +20,7 @@
 import Foundation
 
 enum AnthropicAdminApiKeyStore {
-    private static let service = "bound.serendipity.agentdeck.dashboard.anthropic.admin-api-key"
+    private static let service = "bound.serendipity.agent.deck.anthropic.admin-api-key"
     private static let account = "default"
 
     static func loadKey() -> String? {

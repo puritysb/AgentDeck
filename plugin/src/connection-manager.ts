@@ -186,10 +186,10 @@ export class ConnectionManager extends EventEmitter implements AgentLink {
       : [
           join(home, '.agentdeck', 'daemon.json'),
           join(home, 'Library', 'Containers',
-               'bound.serendipity.agentdeck.dashboard', 'Data',
+               'bound.serendipity.agent.deck', 'Data',
                'Library', 'Application Support', 'AgentDeck', 'daemon.json'),
           join(home, 'Library', 'Group Containers',
-               'group.bound.serendipity.agentdeck.dashboard', 'daemon.json'),
+               'group.bound.serendipity.agent.deck', 'daemon.json'),
         ];
     for (const daemonFile of candidates) {
       try {

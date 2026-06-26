@@ -80,7 +80,7 @@ IPHONE SCREENSHOTS (6.7" display = 1290x2796)
 
 2. ONBOARDING
    Reset simulator: xcrun simctl privacy "iPhone 16 Pro Max" reset all
-   Terminate: xcrun simctl terminate "iPhone 16 Pro Max" bound.serendipity.agentdeck.dashboard
+   Terminate: xcrun simctl terminate "iPhone 16 Pro Max" bound.serendipity.agent.deck
    Relaunch for onboarding → Run:
    xcrun simctl io "iPhone 16 Pro Max" screenshot ./apple/appstore-screenshots/iPhone/02-onboarding.png
 
@@ -130,11 +130,11 @@ echo ""
 echo "=== QUICK LAUNCH COMMANDS ==="
 echo ""
 echo "Launch iPhone app:"
-echo "  xcrun simctl launch \"iPhone 16 Pro Max\" bound.serendipity.agentdeck.dashboard"
+echo "  xcrun simctl launch \"iPhone 16 Pro Max\" bound.serendipity.agent.deck"
 echo ""
 echo "Launch iPad app:"
-echo "  xcrun simctl launch \"iPad Pro 13-inch (M4)\" bound.serendipity.agentdeck.dashboard"
+echo "  xcrun simctl launch \"iPad Pro 13-inch (M4)\" bound.serendipity.agent.deck"
 echo ""
 echo "Terminate iPhone app (for clean relaunch):"
-echo "  xcrun simctl terminate \"iPhone 16 Pro Max\" bound.serendipity.agentdeck.dashboard"
+echo "  xcrun simctl terminate \"iPhone 16 Pro Max\" bound.serendipity.agent.deck"
 echo ""

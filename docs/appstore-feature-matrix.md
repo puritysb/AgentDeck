@@ -2,7 +2,7 @@
 
 한 장 짜리 레퍼런스. 어떤 기능이 App Store build에서 바로 쓰이고, 어떤 기능이 App Store 밖의 터미널 companion 경로에만 남는지 구분한다.
 
-> **원칙**: App Store build (`bound.serendipity.agentdeck.dashboard`) 는 Apple Review Guideline 2.5.2 (인터프리터 번들링 금지) 에 맞춰 `Process()` / `/bin/sh` / 번들된 Node·Python·sqlite3 바이너리를 전혀 싣지 않는다. 하드웨어 모니터링/통신은 sandbox entitlement 로 해결되므로 가능. 서브프로세스가 필요한 것만 CLI 로 밀려난다.
+> **원칙**: App Store build (`bound.serendipity.agent.deck`) 는 Apple Review Guideline 2.5.2 (인터프리터 번들링 금지) 에 맞춰 `Process()` / `/bin/sh` / 번들된 Node·Python·sqlite3 바이너리를 전혀 싣지 않는다. 하드웨어 모니터링/통신은 sandbox entitlement 로 해결되므로 가능. 서브프로세스가 필요한 것만 CLI 로 밀려난다.
 
 ## Core dashboard
 
@@ -70,7 +70,7 @@
 | Minimum OS (iOS/iPadOS) | iOS 17 | — |
 | In-process Swift daemon (macOS) | ✅ | — |
 | Node.js bridge process | — | ✅ |
-| Data directory | `~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/` | `~/.agentdeck/` |
+| Data directory | `~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/` | `~/.agentdeck/` |
 | Settings (`settings.json`) 읽기 범위 | 자기 컨테이너만 (sandbox) | `getCandidateDataDirs()` 후보 중 mtime 최신본 (`~/.agentdeck` + legacy group container). **App Store sandbox 컨테이너는 후보에서 의도적으로 제외** — 비샌드박스 프로세스가 컨테이너를 직접 읽으면 TCC 가 hang 시킬 수 있음. 따라서 공존 모드에서 daemon 동작 설정 (deviceApprovals, display dim 등) 은 primary daemon 쪽 데이터 디렉토리에서 설정해야 반영된다 |
 
 ## 요약

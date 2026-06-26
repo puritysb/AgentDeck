@@ -118,7 +118,7 @@ AgentDeck's Stream Deck+ integration renders session state on Stream Deck+ keys 
 
 ## iOS companion
 
-The iOS app (same bundle family `bound.serendipity.agentdeck.dashboard`) is a read-only remote dashboard that auto-discovers a paired Mac via Bonjour. On first launch it runs a 3-pane onboarding walking the user through installing an agent on their Mac and finding their Mac on Wi-Fi. Fallback pairing via QR code (Mac shows → iPad scans) handles cases where Local Network permission is denied or the two devices are on different routable networks. No network-server entitlement is needed on iOS — it's a pure client.
+The iOS app (same bundle family `bound.serendipity.agent.deck`) is a read-only remote dashboard that auto-discovers a paired Mac via Bonjour. On first launch it runs a 3-pane onboarding walking the user through installing an agent on their Mac and finding their Mac on Wi-Fi. Fallback pairing via QR code (Mac shows → iPad scans) handles cases where Local Network permission is denied or the two devices are on different routable networks. No network-server entitlement is needed on iOS — it's a pure client.
 
 ## Review demo account
 

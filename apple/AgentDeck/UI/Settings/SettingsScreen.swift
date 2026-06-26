@@ -824,7 +824,7 @@ struct SettingsScreen: View {
             VStack(spacing: 4) {
                 infoRow("App", "AgentDeck")
                 infoRow("Version", "1.0.0")
-                infoRow("Bundle", "bound.serendipity.agentdeck.dashboard")
+                infoRow("Bundle", "bound.serendipity.agent.deck")
             }
 
             Divider()

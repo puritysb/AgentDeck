@@ -150,7 +150,7 @@ AgentDeck 에서 "Dashboard" 란 **daemon hub (port 9120) 에 붙어 에이전�
 
 ### Apple (iOS · iPadOS · macOS)
 
-SwiftUI Multiplatform 단일 코드베이스. App Store 배포(`bound.serendipity.agentdeck.dashboard`). 출처: [`apple/project.yml`](../apple/project.yml), [docs/appstore-feature-matrix.md](appstore-feature-matrix.md).
+SwiftUI Multiplatform 단일 코드베이스. App Store 배포(`bound.serendipity.agent.deck`). 출처: [`apple/project.yml`](../apple/project.yml), [docs/appstore-feature-matrix.md](appstore-feature-matrix.md).
 
 | 항목 | macOS | iOS / iPadOS |
 |---|---|---|

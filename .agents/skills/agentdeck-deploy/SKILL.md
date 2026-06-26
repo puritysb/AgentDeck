@@ -159,7 +159,7 @@ For EACH iOS device in the target set:
 ```bash
 DEVICE_ID="<devicectl_id>"
 xcrun devicectl device install app --device $DEVICE_ID $APP
-xcrun devicectl device process launch --device $DEVICE_ID bound.serendipity.agentdeck.dashboard
+xcrun devicectl device process launch --device $DEVICE_ID bound.serendipity.agent.deck
 ```
 
 **Important:**

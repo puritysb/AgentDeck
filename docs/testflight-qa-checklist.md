@@ -138,7 +138,7 @@ Skip if you don't have OpenClaw 2026.4.14+ installed.
 - [ ] **I2**. Confirm the menu bar contains no "Launch Session" affordance and no other UI text directs the user to install or launch a companion CLI in Terminal.
 - [ ] **I3**. Verify data is in the App Sandbox data container:
   ```bash
-  ls ~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application\ Support/AgentDeck/
+  ls ~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application\ Support/AgentDeck/
   # Should show: daemon.json, sessions.json, auth-token, settings.json, apme.sqlite, …
   ```
 - [ ] **I4**. Verify `~/.agentdeck/` is NOT created (App Store build never writes there):

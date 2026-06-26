@@ -42,7 +42,7 @@ export function getCandidateDataDirs(): string[] {
     // Instead, rely on port scan/health checks for cross-talk.
     const groupContainer = join(
       homedir(),
-      'Library/Group Containers/group.bound.serendipity.agentdeck.dashboard',
+      'Library/Group Containers/group.bound.serendipity.agent.deck',
     );
     if (!dirs.includes(groupContainer)) dirs.push(groupContainer);
   }

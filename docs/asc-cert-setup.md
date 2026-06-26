@@ -1,6 +1,6 @@
 # App Store Connect Certificate + Provisioning Setup
 
-Step-by-step guide to provision the certificates and provisioning profiles that CI needs for the `apple-release.yml` workflow. The workflow ships both `build-ios` and `build-macos` jobs that upload to the same `bound.serendipity.agentdeck.dashboard` record so the app sells as a **Universal Purchase** (one App Store entry, both platforms).
+Step-by-step guide to provision the certificates and provisioning profiles that CI needs for the `apple-release.yml` workflow. The workflow ships both `build-ios` and `build-macos` jobs that upload to the same `bound.serendipity.agent.deck` record so the app sells as a **Universal Purchase** (one App Store entry, both platforms).
 
 > The `APPLE_CERTIFICATE_BASE64` secret must contain a `.p12` with both the Apple Distribution identity (signs the iOS `.ipa` *and* the macOS `.app`) and the 3rd Party Mac Developer Installer identity (signs the macOS `.pkg`). The same certificate bundle is used by both iOS and macOS jobs; the macOS job does not use separate `APPLE_MAC_INSTALLER_*` secrets.
 
@@ -11,7 +11,7 @@ Step-by-step guide to provision the certificates and provisioning profiles that 
 - Apple Developer Program membership (paid — $99/year).
 - Admin or App Manager role on the AgentDeck team in [App Store Connect](https://appstoreconnect.apple.com/).
 - macOS machine with Xcode 16+ and the same Apple ID signed in.
-- Bundle ID `bound.serendipity.agentdeck.dashboard` already registered in the Apple Developer portal (it is — iOS TestFlight uses it).
+- Bundle ID `bound.serendipity.agent.deck` already registered in the Apple Developer portal (it is — iOS TestFlight uses it).
 
 ---
 
@@ -24,7 +24,7 @@ Skip if already created.
 3. Platforms: check **macOS** (if iOS record already exists, this adds a Mac version to it — "Add new platform" flow).
 4. Name: **AgentDeck Dashboard** (30-char limit).
 5. Primary Language: Korean or English (pick one; you can localize later).
-6. Bundle ID: `bound.serendipity.agentdeck.dashboard` (the same one the `.app` ships with).
+6. Bundle ID: `bound.serendipity.agent.deck` (the same one the `.app` ships with).
 7. SKU: `agentdeck-dashboard-macos` (internal id, any unique string).
 8. User Access: Full access.
 9. Click **Create**.
@@ -38,7 +38,7 @@ The record starts in **"Prepare for Submission"** state. Metadata/screenshots co
 AgentDeck uses the app's own sandbox container for App Store state. Do **not** add the optional App Groups capability unless a future helper, extension, or login item is added and the entitlement is restored in code first.
 
 1. Open [Apple Developer → Certificates, Identifiers & Profiles → Identifiers](https://developer.apple.com/account/resources/identifiers/list).
-2. App IDs tab → find `bound.serendipity.agentdeck.dashboard` → click it.
+2. App IDs tab → find `bound.serendipity.agent.deck` → click it.
 3. Confirm the App ID exists and is available for Mac App Store profiles.
 4. Leave **App Groups** unchecked for the current 1.0 submission.
 
@@ -81,7 +81,7 @@ If the line shows `unavailable`, the private key isn't in the same keychain as t
 
 1. [Apple Developer → Profiles](https://developer.apple.com/account/resources/profiles/list) → **+**.
 2. **Distribution** section: select **Mac App Store**. Continue.
-3. App ID: `bound.serendipity.agentdeck.dashboard`. Continue.
+3. App ID: `bound.serendipity.agent.deck`. Continue.
 4. Select the **Apple Distribution** certificate (the one for signing the `.app`, not the Mac Installer one). Continue.
 5. Profile Name: `AgentDeck Dashboard macOS AppStore` (must match `PROVISIONING_PROFILE_SPECIFIER` in `apple/project.yml` and `.github/workflows/apple-release.yml`).
 6. Generate. Download the `.provisionprofile` file.
@@ -101,7 +101,7 @@ Required for the `build-ios` job. Without this profile the iOS half of the Unive
 
 1. [Apple Developer → Profiles](https://developer.apple.com/account/resources/profiles/list) → **+**.
 2. **Distribution** section: select **App Store** (the iOS one, not Mac App Store). Continue.
-3. App ID: `bound.serendipity.agentdeck.dashboard` (same App ID as macOS — Universal Purchase requires identical Bundle ID across both platforms). Continue.
+3. App ID: `bound.serendipity.agent.deck` (same App ID as macOS — Universal Purchase requires identical Bundle ID across both platforms). Continue.
 4. Select the **Apple Distribution** certificate (same one used in Step 4). Continue.
 5. Profile Name: `AgentDeck Dashboard AppStore` (must match `PROVISIONING_PROFILE_SPECIFIER` on the `AgentDeck_iOS` target in `apple/project.yml`). Note: the iOS profile name does **not** include the word "macOS" — keep the two profile names distinct.
 6. Generate. Download the `.mobileprovision` file.
@@ -211,7 +211,7 @@ The file at `apple/ExportOptions-macOS.plist` is intentionally manual so GitHub 
 <string>3rd Party Mac Developer Installer: SEUNG BEOM CHOI (R22679GY5Z)</string>
 <key>provisioningProfiles</key>
 <dict>
-  <key>bound.serendipity.agentdeck.dashboard</key>
+  <key>bound.serendipity.agent.deck</key>
   <string>AgentDeck Dashboard macOS AppStore</string>
 </dict>
 ```

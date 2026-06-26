@@ -9,7 +9,7 @@
 //
 // Runtime behavior:
 //   - Sandboxed App Store runs write to:
-//     `~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/`.
+//     `~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/`.
 //   - Unsandboxed dev builds and xctest continue to use the legacy
 //     `~/.agentdeck/` path so local CLI/plugin workflows remain unchanged.
 //

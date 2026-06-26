@@ -1201,7 +1201,7 @@ final class D200hHidModule: DeviceModule, @unchecked Sendable {
 
     private func openAgentDeckAppOrGitHub() {
         DispatchQueue.main.async {
-            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "bound.serendipity.agentdeck.dashboard") {
+            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "bound.serendipity.agent.deck") {
                 let config = NSWorkspace.OpenConfiguration()
                 NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
             } else if let url = URL(string: "https://puritysb.github.io/AgentDeck/") {

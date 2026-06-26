@@ -191,7 +191,7 @@ Claude Code Hooks ─ HTTP ───►│  Output Parser → State Machine    �
                               └──────────────────────────────────┘
 ```
 
-The daemon is the sole hub for all dashboard clients. Session bridges handle PTY + hooks only. The daemon aggregates state from all sessions and broadcasts to all 16 surfaces. Local clients are auto-trusted; LAN clients authenticate with a token stored in the AgentDeck data directory (`~/.agentdeck/auth-token` for Node CLI / unsigned dev builds, `~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/auth-token` for the Mac App Store build — routed through `AgentDeckPaths.swift`). Interactive surfaces (Stream Deck, D200H, Android, Apple) can control the agent; monitoring surfaces (Pixoo, Timebox, TUI, ESP32, TRMNL e-ink) display state.
+The daemon is the sole hub for all dashboard clients. Session bridges handle PTY + hooks only. The daemon aggregates state from all sessions and broadcasts to all 16 surfaces. Local clients are auto-trusted; LAN clients authenticate with a token stored in the AgentDeck data directory (`~/.agentdeck/auth-token` for Node CLI / unsigned dev builds, `~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/auth-token` for the Mac App Store build — routed through `AgentDeckPaths.swift`). Interactive surfaces (Stream Deck, D200H, Android, Apple) can control the agent; monitoring surfaces (Pixoo, Timebox, TUI, ESP32, TRMNL e-ink) display state.
 
 On macOS, the AgentDeck Dashboard SwiftUI app ships with a full **in-process Swift daemon** (63 files, ~32,000 LOC) that re-implements the Node.js bridge — mDNS, device modules (ADB/Serial/Pixoo/Timebox/iDotMatrix/TRMNL e-ink), Gateway proxy, and WebSocket server. Installing the macOS app gives you the full bridge without Node.js. The `agentdeck` CLI remains the canonical path for Claude Code / Codex / OpenCode PTY sessions.
 
@@ -351,7 +351,7 @@ agentdeck claude   # or: agentdeck codex
 
 This spawns Claude Code or Codex CLI inside a PTY and starts a session bridge on a dynamic port (HTTP + hooks). Your terminal works exactly as before — the Stream Deck adds a parallel control channel. The **daemon** (port 9120, `0.0.0.0`) aggregates all sessions for external clients.
 
-> **Security:** The daemon binds to `0.0.0.0` for LAN access (multi-surface monitoring). Local connections bypass authentication. Remote connections require the auth token from the AgentDeck data directory (`~/.agentdeck/auth-token` on Node CLI builds, `~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/auth-token` on Mac App Store).
+> **Security:** The daemon binds to `0.0.0.0` for LAN access (multi-surface monitoring). Local connections bypass authentication. Remote connections require the auth token from the AgentDeck data directory (`~/.agentdeck/auth-token` on Node CLI builds, `~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/auth-token` on Mac App Store).
 
 ### CLI Reference
 
@@ -623,7 +623,7 @@ The app handles iOS background/foreground transitions gracefully — WebSocket r
 
 ### App Store Distribution
 
-The macOS and iOS builds are ready for App Store submission. The macOS build ships as a **self-contained Swift daemon** gated by the `AGENTDECK_APP_STORE` compile flag — no bundled Node.js, no bundled `adb`, no subprocess spawn, no AppleScript. User data lives in the app sandbox container (`~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/`, not `~/.agentdeck/`) per Apple Review Guideline 2.5.2. USB entitlements for D200H HID and Input Monitoring permission handling are wired; the first-launch onboarding asks for Claude Code hook access via explicit NSOpenPanel consent. OpenClaw integration uses the Gateway-native WebSocket path (see §OpenClaw Gateway below), not a file-based identity. TestFlight builds available now; App Store review is the active milestone.
+The macOS and iOS builds are ready for App Store submission. The macOS build ships as a **self-contained Swift daemon** gated by the `AGENTDECK_APP_STORE` compile flag — no bundled Node.js, no bundled `adb`, no subprocess spawn, no AppleScript. User data lives in the app sandbox container (`~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/`, not `~/.agentdeck/`) per Apple Review Guideline 2.5.2. USB entitlements for D200H HID and Input Monitoring permission handling are wired; the first-launch onboarding asks for Claude Code hook access via explicit NSOpenPanel consent. OpenClaw integration uses the Gateway-native WebSocket path (see §OpenClaw Gateway below), not a file-based identity. TestFlight builds available now; App Store review is the active milestone.
 
 ### OpenClaw Gateway (Gateway-native pairing)
 
@@ -692,7 +692,7 @@ Each agent emits events in a different shape. APME converges three paths onto a 
   Codex CLI     ──▶  PTY parser (spinner_stop + tail)
                 │
                 ▼
-           ApmeCollector  →  {data dir}/apme.sqlite   # ~/.agentdeck/ (CLI)  |  ~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/ (App Store)
+           ApmeCollector  →  {data dir}/apme.sqlite   # ~/.agentdeck/ (CLI)  |  ~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/ (App Store)
 ```
 
 Claude Code's `Stop` hook fires only ~18% of the time in v2.1.104, so the primary response-capture path is PTY ring buffer parsing at the `⏺` marker, with a 3-path fallback for the `spinner_stop` vs `UserPromptSubmit` race.
@@ -1028,7 +1028,7 @@ AgentDeck is actively working on two critical areas to prepare for production re
 
 ### 1. App Store Distribution (macOS + iOS)
 
-The SwiftUI dashboard is ready for App Store submission. The macOS app ships a full in-process Swift daemon (63 files, ~32,000 LOC) — mDNS discovery, device modules (ADB/Serial/Pixoo/Timebox/iDotMatrix/TRMNL e-ink), OpenClaw Gateway WebSocket client, HTTP + WebSocket server. App Store compliance is gated by the `AGENTDECK_APP_STORE` compile flag: no bundled Node.js / `adb` / D200H helper, no subprocess spawn, no AppleScript (per Apple Review Guideline 2.5.2). User data lives in `~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/` (routed through `AgentDeckPaths.swift`; never hand-write the path). USB device entitlements cover D200H HID; Input Monitoring is handled with the standard TCC prompt. OpenClaw integration uses Gateway-native pairing (self-generated Ed25519 identity in Keychain + Gateway-issued device token) — no file read of `~/.openclaw/identity/`. `apple/scripts/verify-appstore-archive.sh` is wired into CI and asserts these invariants on every archive.
+The SwiftUI dashboard is ready for App Store submission. The macOS app ships a full in-process Swift daemon (63 files, ~32,000 LOC) — mDNS discovery, device modules (ADB/Serial/Pixoo/Timebox/iDotMatrix/TRMNL e-ink), OpenClaw Gateway WebSocket client, HTTP + WebSocket server. App Store compliance is gated by the `AGENTDECK_APP_STORE` compile flag: no bundled Node.js / `adb` / D200H helper, no subprocess spawn, no AppleScript (per Apple Review Guideline 2.5.2). User data lives in `~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/` (routed through `AgentDeckPaths.swift`; never hand-write the path). USB device entitlements cover D200H HID; Input Monitoring is handled with the standard TCC prompt. OpenClaw integration uses Gateway-native pairing (self-generated Ed25519 identity in Keychain + Gateway-issued device token) — no file read of `~/.openclaw/identity/`. `apple/scripts/verify-appstore-archive.sh` is wired into CI and asserts these invariants on every archive.
 
 ### 2. Personalized Agent Evaluation System (APME)
 

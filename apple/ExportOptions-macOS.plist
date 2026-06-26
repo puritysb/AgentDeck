@@ -8,7 +8,7 @@
 	<string>3rd Party Mac Developer Installer: SEUNG BEOM CHOI (R22679GY5Z)</string>
 	<key>provisioningProfiles</key>
 	<dict>
-		<key>bound.serendipity.agentdeck.dashboard</key>
+		<key>bound.serendipity.agent.deck</key>
 		<string>AgentDeck Dashboard macOS AppStore</string>
 	</dict>
 	<key>teamID</key>

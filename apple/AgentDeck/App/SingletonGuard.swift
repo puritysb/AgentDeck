@@ -26,7 +26,7 @@ enum SingletonGuard {
         }
 
         let myPid = getpid()
-        let myBundleId = Bundle.main.bundleIdentifier ?? "bound.serendipity.agentdeck.dashboard"
+        let myBundleId = Bundle.main.bundleIdentifier ?? "bound.serendipity.agent.deck"
 
         // Find other instances with the same bundle id (excluding self)
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: myBundleId)

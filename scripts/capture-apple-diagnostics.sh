@@ -97,8 +97,8 @@ fi
 mkdir -p "$OUT_DIR"
 mkdir -p "$OUT_DIR/log-files" "$OUT_DIR/state-files" "$OUT_DIR/process"
 
-APPSTORE_DIR="$HOME/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck"
-GROUP_DIR="$HOME/Library/Group Containers/group.bound.serendipity.agentdeck.dashboard"
+APPSTORE_DIR="$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck"
+GROUP_DIR="$HOME/Library/Group Containers/group.bound.serendipity.agent.deck"
 LEGACY_DIR="$HOME/.agentdeck"
 PORT_DETECTION="not attempted"
 

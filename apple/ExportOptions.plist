@@ -12,7 +12,7 @@
 	<string>manual</string>
 	<key>provisioningProfiles</key>
 	<dict>
-		<key>bound.serendipity.agentdeck.dashboard</key>
+		<key>bound.serendipity.agent.deck</key>
 		<string>AgentDeck Dashboard AppStore</string>
 	</dict>
 </dict>

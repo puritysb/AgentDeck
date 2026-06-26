@@ -20,7 +20,7 @@ enum SquatterCleaner {
     @MainActor
     static func forceTerminateOwnBundleSiblings(timeout: TimeInterval = 2.0) -> Int {
         let myPid = getpid()
-        let bundleId = Bundle.main.bundleIdentifier ?? "bound.serendipity.agentdeck.dashboard"
+        let bundleId = Bundle.main.bundleIdentifier ?? "bound.serendipity.agent.deck"
         let allSiblings = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
             .filter { $0.processIdentifier != myPid && !$0.isTerminated }
 

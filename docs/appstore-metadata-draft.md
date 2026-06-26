@@ -3,7 +3,7 @@
 Copy-ready text for the App Store Connect submission form. Each field respects Apple's character limits. Korean first (primary localization), English second.
 
 **Platforms**: macOS 15+ · iOS/iPadOS 17+
-**Bundle ID**: `bound.serendipity.agentdeck.dashboard`
+**Bundle ID**: `bound.serendipity.agent.deck`
 **App Category**: Primary — Developer Tools · Secondary — Productivity
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free

@@ -1,6 +1,6 @@
 name: AgentDeck
 options:
-  bundleIdPrefix: bound.serendipity.agentdeck.dashboard
+  bundleIdPrefix: bound.serendipity.agent.deck
   deploymentTarget:
     iOS: "17.0"
     macOS: "15.0"
@@ -11,8 +11,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "1.0.6"
-    CURRENT_PROJECT_VERSION: 8
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: 1
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targets:
@@ -28,7 +28,7 @@ targets:
         group: AgentDeck/Generated
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agentdeck.dashboard
+        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck
         INFOPLIST_FILE: AgentDeck/Resources/Info.plist
         PRODUCT_NAME: AgentDeck
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -56,7 +56,7 @@ targets:
         group: AgentDeck/Generated
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agentdeck.dashboard
+        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck
         INFOPLIST_FILE: AgentDeck/Resources/Info-macOS.plist
         PRODUCT_NAME: AgentDeck
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -101,7 +101,7 @@ targets:
       - target: AgentDeck_iOS
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agentdeck.dashboard.tests
+        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck.tests
 
   AgentDeckTests_macOS:
     type: bundle.unit-test
@@ -112,7 +112,7 @@ targets:
       - target: AgentDeck_macOS
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agentdeck.dashboard.tests
+        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck.tests
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck"
         BUNDLE_LOADER: "$(TEST_HOST)"
         GENERATE_INFOPLIST_FILE: YES

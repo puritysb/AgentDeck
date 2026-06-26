@@ -7,7 +7,7 @@ import CryptoKit
 import Security
 
 enum OpenClawGatewayTokenStore {
-    private static let service = "bound.serendipity.agentdeck.dashboard.openclaw.gateway-token"
+    private static let service = "bound.serendipity.agent.deck.openclaw.gateway-token"
     private static let account = "default"
 
     static func loadToken() -> String? {
@@ -63,7 +63,7 @@ private extension String {
 /// `DEVICE_AUTH_SIGNATURE_INVALID` — wiping the identity forces the next
 /// connect to generate a fresh key pair and re-enter the pairing flow.
 enum OpenClawDeviceIdentityStore {
-    private static let service = "bound.serendipity.agentdeck.dashboard.openclaw.identity"
+    private static let service = "bound.serendipity.agent.deck.openclaw.identity"
     private static let account = "default"
 
     static func hasIdentity() -> Bool {
@@ -754,7 +754,7 @@ actor OpenClawAdapter {
         var scopes: [String]?
     }
 
-    private static let appStoreIdentityService = "bound.serendipity.agentdeck.dashboard.openclaw.identity"
+    private static let appStoreIdentityService = "bound.serendipity.agent.deck.openclaw.identity"
     private static let appStoreIdentityAccount = "default"
 
     private func loadAppStoreDeviceIdentity() {

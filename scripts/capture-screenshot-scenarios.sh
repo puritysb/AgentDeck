@@ -51,7 +51,7 @@ echo ""
 # Scenario 1: Dashboard (IDLE state)
 echo "📱 Scenario 1: Dashboard - IDLE State"
 echo "   Launch app, wait for dashboard to load"
-xcrun simctl launch "$IPHONE" bound.serendipity.agentdeck.dashboard
+xcrun simctl launch "$IPHONE" bound.serendipity.agent.deck
 echo "   Press Enter when dashboard is visible..."
 read
 xcrun simctl io "$IPHONE" screenshot "$OUTPUT_DIR/iPhone/01-dashboard-idle.png"
@@ -71,10 +71,10 @@ echo ""
 # Scenario 3: Onboarding
 echo "📱 Scenario 3: Onboarding"
 echo "   Resetting app state..."
-xcrun simctl terminate "$IPHONE" bound.serendipity.agentdeck.dashboard
+xcrun simctl terminate "$IPHONE" bound.serendipity.agent.deck
 xcrun simctl privacy "$IPHONE" reset all
 sleep 1
-xcrun simctl launch "$IPHONE" bound.serendipity.agentdeck.dashboard
+xcrun simctl launch "$IPHONE" bound.serendipity.agent.deck
 echo "   Navigate through onboarding screens"
 echo "   Press Enter when on welcome screen..."
 read

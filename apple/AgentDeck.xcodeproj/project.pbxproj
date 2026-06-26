@@ -1582,7 +1582,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agentdeck.dashboard.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = AGENTDECK_APP_STORE;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
@@ -1623,7 +1623,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1644,7 +1644,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1668,7 +1668,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agentdeck.dashboard;
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1709,7 +1709,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1724,7 +1724,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1749,7 +1749,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agentdeck.dashboard;
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard macOS AppStore";
 				SDKROOT = macosx;
@@ -1766,7 +1766,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agentdeck.dashboard.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck_iOS.app/AgentDeck_iOS";
@@ -1784,7 +1784,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agentdeck.dashboard.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = AGENTDECK_APP_STORE;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
@@ -1800,7 +1800,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agentdeck.dashboard.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck_iOS.app/AgentDeck_iOS";
@@ -1820,7 +1820,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agentdeck.dashboard;
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard AppStore";
 				SDKROOT = iphoneos;
@@ -1842,7 +1842,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agentdeck.dashboard;
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = AGENTDECK_APP_STORE;

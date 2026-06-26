@@ -38,8 +38,8 @@ describe('Hook Installer', () => {
       // Priority chain: AGENTDECK_PORT → ~/.agentdeck/daemon.json → App Store sandbox daemon.json → legacy group daemon.json → 9120
       expect(cmd).toContain('PORT="${AGENTDECK_PORT:-}"');
       expect(cmd).toContain('.agentdeck/daemon.json');
-      expect(cmd).toContain('Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json');
-      expect(cmd).toContain('group.bound.serendipity.agentdeck.dashboard/daemon.json');
+      expect(cmd).toContain('Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json');
+      expect(cmd).toContain('group.bound.serendipity.agent.deck/daemon.json');
       expect(cmd).toContain('${PORT:-9120}');
       expect(cmd).toContain('curl -sf -X POST "http://127.0.0.1:$PORT/hooks/SessionStart"');
     });

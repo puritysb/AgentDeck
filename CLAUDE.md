@@ -55,13 +55,14 @@ bash scripts/uninstall.sh   # remove hooks, unlink CLI and plugin
 bash scripts/build-apple-release.sh --ios     # local iOS build
 bash scripts/build-apple-release.sh --macos   # local macOS build
 bash scripts/build-apple-release.sh --all     # both + TestFlight upload
-git tag apple-v1.0.0 && git push origin apple-v1.0.0  # CI → TestFlight
+git tag apple-v0.1.0 && git push origin apple-v0.1.0  # CI → TestFlight
 ```
 
-- **Apple Bundle ID**: `bound.serendipity.agentdeck.dashboard` (App Store Connect 앱명: "AgentDeck Dashboard")
+- **Apple Bundle ID**: `bound.serendipity.agent.deck` (App Store Connect 앱명: "AgentDeck Dashboard")
 - **CI**: `.github/workflows/apple-release.yml` — `apple-v*` 태그 → macOS-15 runner → archive → TestFlight 업로드
 - **Secrets**: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `ASC_API_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_KEY_BASE64`
-- **Note**: `bound.serendipity.agentdeck` (without `.dashboard`) is reserved by Personal Team — cannot use for App Store
+- **Note**: the `bound.serendipity.agentdeck.*` tree is retired (the former `.dashboard` app record carries an immovable ASC build floor at 1.0.6/build 8). The fresh App Store app uses the `bound.serendipity.agent.*` tree → `bound.serendipity.agent.deck`. The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier and is unrelated to the app bundle ID.
+- **Versioning**: all tracks restarted at 0.1.x on 2026-06-26 (Apple 0.1.0/build 1 on the new bundle ID, Android 0.1.0/versionCode 1, npm 0.1.0, ESP32 0.1.1). Per-track tags: `apple-v*`, `android-v*`, `esp32-v*`, `npm-v*`. Policy + commands: [RELEASING.md](RELEASING.md)
 
 ## Development
 
@@ -168,7 +169,7 @@ ESP32 WiFi provisioning + disconnect recovery details: see [docs/esp32.md](docs/
 - **Hook format (CRITICAL)**: Claude Code v2.1+ requires 3-level nesting: `{ matcher: "", hooks: [{ type: "command", command: "..." }] }`. Old flat format silently fails. Bridge auto-migrates via `migrateHooksIfNeeded()` from `@agentdeck/hooks`. Codex uses lifecycle hooks in `~/.codex/config.toml` (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`) installed by `installCodexHooksIfNeeded()`. Scripts use bounded `curl` and `|| true` to avoid blocking when bridge is down
 - **Plugin UUID**: `bound.serendipity.agentdeck` (immutable post-distribution)
 - **Package scope**: `@agentdeck/*` (shared, bridge, plugin, hooks, setup)
-- **User data dir**: `daemon.json`, `sessions.json`, `auth-token`, `settings.json`, `timeline.json`, `wifi-config.json`, `compatibility.json`, `apme.sqlite`. Path depends on distribution: **Node.js CLI + unsigned dev builds** → `~/.agentdeck/`. **App Store macOS** → `~/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/` (Apple 2.5.2 — no home-relative-path entitlement, no optional App Groups capability). Swift code routes every access through `apple/AgentDeck/App/AgentDeckPaths.swift`; never hand-write either path
+- **User data dir**: `daemon.json`, `sessions.json`, `auth-token`, `settings.json`, `timeline.json`, `wifi-config.json`, `compatibility.json`, `apme.sqlite`. Path depends on distribution: **Node.js CLI + unsigned dev builds** → `~/.agentdeck/`. **App Store macOS** → `~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/` (Apple 2.5.2 — no home-relative-path entitlement, no optional App Groups capability). Swift code routes every access through `apple/AgentDeck/App/AgentDeckPaths.swift`; never hand-write either path
 - **Daemon hub**: Port 9120, sole entry point for all dashboard clients. Session bridges serve internal hook HTTP only (9121-9139). Session bridges push state to daemon via internal WS (`daemon-ws-client.ts`); daemon falls back to HTTP `/health` polling when push is stale. See [docs/daemon.md](docs/daemon.md)
 - **Action ID pattern**: SD actions store string IDs + `getActionById()` — never action object references
 - **Shift+Tab** (`\x1b[Z`) for Claude Code mode switching (100ms debounce)
@@ -213,6 +214,7 @@ The macOS app ships through the App Store and must stay **self-contained** under
 
 | Doc | Topic |
 |---|---|
+| [RELEASING.md](RELEASING.md) | Versioning & release policy — per-track tags (apple-v/android-v/npm-v/esp32-v), monotonic-version constraints, bundle-ID change steps |
 | [DESIGN.md](DESIGN.md) | Design system spec — aquarium-tide tokens, type, components, marketing↔product palette split, hardware surfaces |
 | [docs/why-apme.md](docs/why-apme.md) | **WHY** APME — 감 기반 라우팅 문제, 카테고리별 평가 전략, composite score, vibe labeling 우선 원칙 |
 | [docs/apme.md](docs/apme.md) | APME eval module — schema, collector, deterministic+LLM judge, scorecard/recommender, daemon API, settings |
