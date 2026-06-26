@@ -25,7 +25,7 @@ describe('renderOfflineTouchStrip — all-or-nothing 800px slice contract', () =
       const svg = renderOfflineTouchStrip(i);
       expect(svg).toContain('width="200" height="100"');
       expect(svg).toContain('AGENTDECK OFFLINE');
-      expect(svg).toContain('launch AgentDeck application');
+      expect(svg).toContain('npx @agentdeck/setup');
     }
   });
 

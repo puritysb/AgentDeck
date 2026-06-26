@@ -12,6 +12,8 @@ AgentDeck is a monorepo of independently-shipped artifacts. Each ships on its **
 | **Android** | `android/app/build.gradle.kts` → `versionName` + `versionCode` | `android-v*` | `.github/workflows/android-release.yml` → APK Release | 0.1.0 / code 1 |
 | **npm** (`@agentdeck/*`) | each `package.json` `version` (kept in lockstep) | `npm-v*` | manual `pnpm -r publish` | 0.1.0 source (registry latest 0.2.x — see note) |
 | **ESP32** firmware | `esp32/src/config.h` → `FIRMWARE_VERSION` | `esp32-v*` | `.github/workflows/esp32-release.yml` | 0.1.1 |
+| **Stream Deck** (Elgato Marketplace) | `plugin/bound.serendipity.agentdeck.sdPlugin/manifest.json` → `Version` (4-part `X.Y.Z.B`) | `streamdeck-v*` | manual: `pnpm package` → upload `.streamDeckPlugin` to Elgato Maker portal | 0.1.0.0 |
+| **Ulanzi** (Ulanzi Studio Marketplace) | `plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/manifest.json` → `Version` | `ulanzi-v*` | manual: `pnpm --filter @agentdeck/plugin-ulanzi package` → upload the `.ulanziPlugin` folder | 0.1.0 |
 
 ## Hard constraints (why we can't just renumber)
 
@@ -49,6 +51,30 @@ To publish a real release (forward version):
 ### ESP32 firmware
 1. Bump `FIRMWARE_VERSION` in `esp32/src/config.h`.
 2. `git tag esp32-v<VERSION> && git push origin esp32-v<VERSION>`.
+
+### Stream Deck plugin (Elgato Marketplace)
+1. Bump `Version` (4-part `X.Y.Z.B`, must **increase** for marketplace updates) in `plugin/.../manifest.json`. Optionally update the embedded `Version` in the bundled profile snapshots for consistency.
+2. `pnpm package` → `dist/bound.serendipity.agentdeck.streamDeckPlugin`.
+3. Upload via the Elgato Maker portal (Marketplace). The UUID `bound.serendipity.agentdeck` is **immutable post-distribution** — never change it.
+4. `git tag streamdeck-v<VERSION> && git push origin streamdeck-v<VERSION>` (annotation only — no CI consumes it).
+
+### Ulanzi plugin (Ulanzi Studio Marketplace)
+1. Bump `Version` in `plugin-ulanzi/.../manifest.json`.
+2. `pnpm --filter @agentdeck/plugin-ulanzi package` → `plugin-ulanzi/dist/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/` (zip the folder for upload).
+3. Upload via the Ulanzi Studio Marketplace portal.
+4. `git tag ulanzi-v<VERSION> && git push origin ulanzi-v<VERSION>`.
+
+## Marketplace plugins are thin clients — the daemon is a separate install
+
+The Stream Deck and Ulanzi plugins are **WebSocket clients of the AgentDeck daemon** (port 9120); they do **not** embed or spawn the daemon. The daemon is a singleton that installs Claude/Codex hooks and manages the user's coding sessions — it must be installed once per dev machine, via either:
+
+- **Node CLI** — `npx @agentdeck/setup` (or `agentdeck daemon start`), or
+- **macOS app** — the App Store build runs an in-process Swift daemon.
+
+Do not bundle the daemon into a marketplace plugin: it would collide with the existing daemon on port 9120 (singleton / split-brain) and silently edit the user's shell config from a plugin install. Instead:
+
+- **Marketplace listing** must state the prerequisite ("Requires AgentDeck — install with `npx @agentdeck/setup` or the macOS app"), the way the OBS plugin requires OBS.
+- **In-product onboarding**: when no daemon is reachable the plugin shows an OFFLINE state. The Stream Deck encoder OFFLINE strip points the user to `npx @agentdeck/setup` (`shared/src/svg-renderers/session-slot-renderer.ts → renderOfflineTouchStrip`). The Ulanzi/D200H OFFLINE hero copy (`shared/src/d200h-layout.ts`) should carry the same hint — **TODO**, deferred to avoid a concurrent edit.
 
 ## After a bundle-ID change (Apple) — manual ASC steps
 

@@ -600,7 +600,7 @@ export function renderOfflineTouchStrip(index: number): string {
 
     // Center: Offline text and helper instruction
     `<text x="400" y="44" text-anchor="middle" font-family="${fontFam}" font-size="22" font-weight="800" fill="${colors.text}">AGENTDECK OFFLINE</text>`,
-    `<text x="400" y="70" text-anchor="middle" font-family="${fontFam}" font-size="12" font-weight="650" fill="${colors.sub}" opacity="0.86">Press any button or dial to launch AgentDeck application</text>`,
+    `<text x="400" y="70" text-anchor="middle" font-family="${fontFam}" font-size="12" font-weight="650" fill="${colors.sub}" opacity="0.86">Open the AgentDeck app — or install:  npx @agentdeck/setup</text>`,
 
     // Right side: offline icon (x=680, y=50)
     renderGlyphIcon('offline', colors.icon, colors.accent, 680, 50, 1.2),
