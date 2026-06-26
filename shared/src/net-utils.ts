@@ -16,6 +16,7 @@ function defaultRouteIp(): string | null {
   // responsive) without spawning `route` on every connect.
   if (routeCache && now - routeCache.at < 3000) return routeCache.ip;
   let iface: string | null = null;
+  let directIp: string | null = null;
   try {
     if (process.platform === 'darwin') {
       const out = execFileSync('route', ['-n', 'get', 'default'], { timeout: 1000, encoding: 'utf8' });
@@ -23,12 +24,34 @@ function defaultRouteIp(): string | null {
     } else if (process.platform === 'linux') {
       const out = execFileSync('ip', ['route', 'get', '1.1.1.1'], { timeout: 1000, encoding: 'utf8' });
       iface = out.match(/\bdev\s+(\S+)/)?.[1] ?? null;
+    } else if (process.platform === 'win32') {
+      // Windows interface names are friendly strings ("Wi-Fi", "vEthernet (...)"),
+      // so the name-pattern heuristic below can't tell a host-only Hyper-V/WSL
+      // virtual switch (172.x, no gateway) from the real LAN adapter — and on a
+      // Hyper-V host the real LAN IP itself lives on a "vEthernet (External Switch)".
+      // `route print -4 0.0.0.0` resolves this by emitting the *source interface IP*
+      // of each default route directly in the Interface column; pick the lowest
+      // metric so VPN/host-only adapters lose to the physical route.
+      const out = execFileSync('route', ['print', '-4', '0.0.0.0'], { timeout: 1000, encoding: 'utf8' });
+      let bestMetric = Infinity;
+      for (const line of out.split('\n')) {
+        // Network  Netmask  Gateway  Interface  Metric
+        const m = line.trim().match(/^0\.0\.0\.0\s+0\.0\.0\.0\s+\S+\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+)/);
+        if (!m) continue;
+        const candidate = m[1];
+        const metric = parseInt(m[2], 10);
+        if (candidate === '0.0.0.0' || candidate.startsWith('169.254.')) continue;
+        if (metric < bestMetric) {
+          bestMetric = metric;
+          directIp = candidate;
+        }
+      }
     }
   } catch {
     /* route tool missing / non-POSIX → null, fall back to the heuristic */
   }
-  let ip: string | null = null;
-  if (iface) {
+  let ip: string | null = directIp;
+  if (!ip && iface) {
     for (const net of networkInterfaces()[iface] ?? []) {
       if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.')) {
         ip = net.address;

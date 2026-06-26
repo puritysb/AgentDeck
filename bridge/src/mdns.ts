@@ -95,9 +95,26 @@ export function advertiseBridge(
         instance = null;
       }
 
-      instance = new Bonjour();
-
       const lanIp = getLanIp();
+
+      // Windows multi-homed egress fix: a Hyper-V/WSL host has several IPv4
+      // interfaces (the real LAN adapter plus host-only virtual switches on
+      // 172.x and APIPA 169.254.x). Left to its own devices, `multicast-dns`
+      // joins the mDNS group on *all* of them and lets the OS pick the outbound
+      // multicast interface — which can be a virtual switch, so the announcement
+      // never egresses on the WiFi/LAN adapter and a remote iOS device never
+      // sees the service. Pinning `interface` to the default-route LAN IP makes
+      // multicast-dns bind the socket, addMembership, and setMulticastInterface
+      // all to that one adapter. Gated to win32 so macOS/Linux multi-interface
+      // discovery (where bonjour-service correctly fans out) is unaffected.
+      // `interface` isn't on bonjour-service's ServiceConfig type but is passed
+      // straight through to multicast-dns, so cast through the options object.
+      const bonjourOpts =
+        process.platform === 'win32' && lanIp && lanIp !== '127.0.0.1'
+          ? ({ interface: lanIp } as ConstructorParameters<typeof Bonjour>[0])
+          : undefined;
+      instance = new Bonjour(bonjourOpts);
+
       const txt: Record<string, string> = {
         project: projectName,
         agent: agentType,
