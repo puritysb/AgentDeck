@@ -415,12 +415,13 @@ export function buildSessionDeck(stateEvt: any, view: DeckView, positions: strin
   if (slots.length === 0) return out;
 
   // Daemon down → OFFLINE hero on the center key, rest dim. Every key launches
-  // the companion app on press (parity with the SD/SD+ keypad, which opens the
-  // app from any key while disconnected), so "press any key" always works.
+  // the companion app on press (parity with the SD/SD+ keypad). If AgentDeck
+  // isn't installed yet, the hero shows the install command so a marketplace-only
+  // user knows the daemon is the missing piece.
   if (state.state === 'DISCONNECTED' || state.state === 'disconnected') {
     const hero = Math.floor(slots.length / 2);
     slots.forEach((pos, i) => out.set(pos, {
-      svg: i === hero ? renderInfoSlot('OFFLINE', 'Open AgentDeck', 'activity', 'info', 'press any key') : renderEmptySlot(),
+      svg: i === hero ? renderInfoSlot('OFFLINE', 'Open AgentDeck', 'activity', 'info', 'npx @agentdeck/setup') : renderEmptySlot(),
       action: { kind: 'launch' },
     }));
     return out;

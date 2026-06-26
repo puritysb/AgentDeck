@@ -80,7 +80,7 @@ The Stream Deck and Ulanzi plugins are **WebSocket clients of the AgentDeck daem
 Do not bundle the daemon into a marketplace plugin: it would collide with the existing daemon on port 9120 (singleton / split-brain) and silently edit the user's shell config from a plugin install. Instead:
 
 - **Marketplace listing** must state the prerequisite ("Requires AgentDeck — install with `npx @agentdeck/setup` or the macOS app"), the way the OBS plugin requires OBS.
-- **In-product onboarding**: when no daemon is reachable the plugin shows an OFFLINE state. The Stream Deck encoder OFFLINE strip points the user to `npx @agentdeck/setup` (`shared/src/svg-renderers/session-slot-renderer.ts → renderOfflineTouchStrip`). The Ulanzi/D200H OFFLINE hero copy (`shared/src/d200h-layout.ts`) should carry the same hint — **TODO**, deferred to avoid a concurrent edit.
+- **In-product onboarding**: when no daemon is reachable the plugin shows an OFFLINE state pointing the user to `npx @agentdeck/setup`. Stream Deck encoder strip: `shared/src/svg-renderers/session-slot-renderer.ts → renderOfflineTouchStrip`. Ulanzi/D200H OFFLINE hero: `shared/src/d200h-layout.ts` (center-key `renderInfoSlot` detail).
 
 ## After a bundle-ID change (Apple) — manual ASC steps
 
