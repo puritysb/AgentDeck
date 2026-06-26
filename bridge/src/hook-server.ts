@@ -125,7 +125,6 @@ export class HookServer extends EventEmitter {
         effortLevel: this.meta.effortLevel,
         wsClients: this.meta.clientCount ?? 0,
         sseClients: this.sseClients.length,
-        pairingToken: this.pairingToken,
       });
     });
 
@@ -219,6 +218,7 @@ export class HookServer extends EventEmitter {
     // Hook endpoint - receives JSON POST from Claude Code hooks
     // The hook script pipes stdin JSON to curl POST body
     this.app.post('/hooks/:eventName', (req, res) => {
+      if (!this.checkAuth(req, res)) return;
       const eventName = req.params.eventName;
       const data = req.body || {};
 
