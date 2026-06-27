@@ -32,6 +32,7 @@ import {
   findExistingDaemon,
   DAEMON_DEFAULT_PORT,
   probeDaemonHealth,
+  shouldConcedePortToOccupant,
   writeDaemonInfo,
   removeDaemonInfo,
   readDaemonInfo,
@@ -466,7 +467,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       res.end(JSON.stringify({
         status: 'ok', mode: 'daemon', state: snap.state,
         gateway: gatewayAdapter?.isAlive() ? 'connected' : 'disconnected',
-        uptime: process.uptime(), port,
+        uptime: process.uptime(), port, pid: process.pid,
         pairingToken: core.authToken,
         modules: moduleHealthProvider(),
         apme: apme
@@ -849,9 +850,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // daemons running (and clobber daemon.json to point at the wrong one).
       // Only fall back when a *non-daemon* (e.g. a session bridge) holds it.
       const occupant = await probeDaemonHealth(requestedPort);
-      if (occupant?.mode === 'daemon') {
-        log(`[agentdeck] Lost startup race for port ${requestedPort} (PID ${occupant.pid} already serving). Exiting.`);
+      // Harden against a forged/stale `mode:'daemon'` response squatting the
+      // port: concede (exit) only to a verified live distinct daemon. A claim
+      // backed by a dead/own PID is treated as stale → fall through to a fresh
+      // port and keep running. See `shouldConcedePortToOccupant`.
+      if (shouldConcedePortToOccupant(occupant, process.pid)) {
+        const who = typeof occupant?.pid === 'number' ? `PID ${occupant.pid}` : 'a daemon';
+        log(`[agentdeck] Lost startup race for port ${requestedPort} (${who} already serving). Exiting.`);
         process.exit(0);
+      }
+      if (occupant?.mode === 'daemon') {
+        log(`[agentdeck] Port ${requestedPort} reports a daemon but PID ${occupant.pid} is not a live distinct process; treating as stale and falling back.`);
       }
       port = await findAvailablePort();
       log(`[agentdeck] Port ${requestedPort} grabbed by ${occupant?.mode ?? 'a non-daemon'}, retrying on ${port}...`);

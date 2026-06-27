@@ -123,13 +123,40 @@ function writeSessions(sessions: SessionEntry[]): void {
 }
 
 /** Check if a PID is alive */
-function isProcessAlive(pid: number): boolean {
+export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Decide whether a daemon that just lost the bind race for its requested port
+ * should concede (exit) to the process currently answering `/health` there.
+ *
+ * Concede ONLY when the occupant is a verified, distinct, live daemon:
+ *  - `mode !== 'daemon'` → a non-daemon (e.g. a session bridge) holds it; do
+ *    not concede (caller falls back to a fresh port, preserving prior behavior).
+ *  - `mode === 'daemon'` with a numeric `pid` → concede only if that PID is a
+ *    live process other than ourselves. A forged or stale `mode:'daemon'`
+ *    response with a dead/own/missing-but-claimed PID must NOT evict us.
+ *  - `mode === 'daemon'` with no `pid` → trust the mode (e.g. the Swift App
+ *    Store daemon omits `pid`), so cross-implementation coexistence still
+ *    hands the port over.
+ *
+ * `aliveCheck` is injectable for tests; defaults to the real PID liveness probe.
+ */
+export function shouldConcedePortToOccupant(
+  occupant: { mode?: string; pid?: number } | null,
+  selfPid: number,
+  aliveCheck: (pid: number) => boolean = isProcessAlive,
+): boolean {
+  if (occupant?.mode !== 'daemon') return false;
+  const pid = typeof occupant.pid === 'number' ? occupant.pid : null;
+  if (pid === null) return true;
+  return pid !== selfPid && aliveCheck(pid);
 }
 
 /** Remove dead sessions (PID no longer alive) */

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { shouldConcedePortToOccupant } from '../session-registry.js';
 import { readFileSync, mkdirSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -173,6 +174,36 @@ describe('Session Registry Logic', () => {
       expect(read[0].projectName).toBe('test');
       // Temp file should not exist after rename
       expect(existsSync(tmpFile)).toBe(false);
+    });
+  });
+
+  describe('shouldConcedePortToOccupant (startup-race hardening)', () => {
+    const SELF = 4242;
+    const alive = () => true;
+    const dead = () => false;
+
+    it('does not concede to a non-daemon occupant (session bridge)', () => {
+      expect(shouldConcedePortToOccupant({ mode: 'session', pid: 99 }, SELF, alive)).toBe(false);
+    });
+
+    it('does not concede when the probe failed (null occupant)', () => {
+      expect(shouldConcedePortToOccupant(null, SELF, alive)).toBe(false);
+    });
+
+    it('concedes to a daemon backed by a live, distinct PID', () => {
+      expect(shouldConcedePortToOccupant({ mode: 'daemon', pid: 1234 }, SELF, alive)).toBe(true);
+    });
+
+    it('does NOT concede to a forged/stale daemon whose PID is dead', () => {
+      expect(shouldConcedePortToOccupant({ mode: 'daemon', pid: 1234 }, SELF, dead)).toBe(false);
+    });
+
+    it('does NOT concede when the reported PID is our own', () => {
+      expect(shouldConcedePortToOccupant({ mode: 'daemon', pid: SELF }, SELF, alive)).toBe(false);
+    });
+
+    it('trusts the mode when no PID is reported (e.g. Swift App Store daemon)', () => {
+      expect(shouldConcedePortToOccupant({ mode: 'daemon' }, SELF, dead)).toBe(true);
     });
   });
 });
