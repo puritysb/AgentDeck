@@ -33,7 +33,6 @@ export class HookServer extends EventEmitter {
   private sseIdCounter = 0;
   private lastStateEvent: BridgeEvent | null = null;
   private lastUsageEvent: BridgeEvent | null = null;
-  pairingToken: string | null = null;
 
   // Metadata for status page / health
   private meta: { agentType?: string; projectName?: string; clientCount?: number; state?: string; modelName?: string; effortLevel?: string } = {};
@@ -125,7 +124,6 @@ export class HookServer extends EventEmitter {
         effortLevel: this.meta.effortLevel,
         wsClients: this.meta.clientCount ?? 0,
         sseClients: this.sseClients.length,
-        pairingToken: this.pairingToken,
       });
     });
 

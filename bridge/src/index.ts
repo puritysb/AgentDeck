@@ -332,17 +332,14 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     hookServer.setMeta({ agentType, projectName });
     hookServer.setVoiceManager(voiceManager);
     hookServer.onApiUsage(() => ({ usage: core.cachedApiUsage, fetchedAt: core.lastApiFetchTime }));
-    hookServer.pairingToken = core.authToken;
   } else if (adapter instanceof CodexCliAdapter) {
     hookServer = adapter.getCodexHookServer();
     hookServer.setMeta({ agentType, projectName });
     hookServer.setVoiceManager(voiceManager);
-    hookServer.pairingToken = core.authToken;
   } else if (adapter instanceof OpenCodeAdapter) {
     hookServer = adapter.getHookServer();
     hookServer.setMeta({ agentType, projectName });
     hookServer.setVoiceManager(voiceManager);
-    hookServer.pairingToken = core.authToken;
     // OpenCode has no CLI-level hooks; SSE is the only event channel. Bind
     // the adapter to the APME session so SSE-derived spans (tool_call /
     // tool_result / task_boundary / turn_*) can reach the collector. Without
@@ -355,7 +352,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     hookServer.setMeta({ agentType, projectName });
     hookServer.setVoiceManager(voiceManager);
     hookServer.onApiUsage(() => ({ usage: core.cachedApiUsage, fetchedAt: core.lastApiFetchTime }));
-    hookServer.pairingToken = core.authToken;
   }
   const broadcastSse = (event: BridgeEvent) => hookServer?.broadcastSse(event);
   core.setSseBroadcast(broadcastSse);
