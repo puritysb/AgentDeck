@@ -84,6 +84,16 @@ fun agentTypeRank(agentType: String?): Int = when (agentType) {
     else -> 5
 }
 
+// OpenClaw / Gateway visibility SSOT — hand-mirrored from
+// shared/src/session-utils.ts (isOpenClawSessionActive / hasOpenClawSession).
+// "Active" = authenticated / can-route (gatewayConnected). Consumers must gate
+// OpenClaw rendering on session PRESENCE, never re-derive from raw gateway
+// flags — the daemon source is the single authority.
+fun isOpenClawSessionActive(gatewayConnected: Boolean?): Boolean = gatewayConnected == true
+
+fun hasOpenClawSession(sessions: List<SessionInfo>): Boolean =
+    sessions.any { it.agentType == "openclaw" }
+
 private val naturalChunks = Regex("\\d+|\\D+")
 
 fun naturalLabelCompare(left: String?, right: String?): Int {

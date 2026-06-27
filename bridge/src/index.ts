@@ -30,6 +30,8 @@ import { summarizeResponse } from './timeline-summarizer.js';
 import {
   cleanDetailText, cleanRawText, prepareMarkdownDetail,
   extractTopicHintWithKind, promptSnippetFallback,
+  isAssistantProgressUpdate,
+  isOpenClawSessionActive, hasOpenClawSession,
 } from '@agentdeck/shared';
 import { VoiceAssistantManager } from './voice-assistant.js';
 import { TerminalStatus } from './terminal-status.js';
@@ -82,6 +84,8 @@ import {
   type DeckSlotMapEvent,
   type UtilityCommand,
 } from './types.js';
+
+const TIMELINE_CHAT_DETAIL_LIMIT = 6000;
 
 // ===== Prompt templates =====
 
@@ -958,10 +962,16 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   core.startGatewayHealthCheck();
   core.startSessionsListPolling();
 
-  // Inject virtual OpenClaw session when Gateway is detected (same as daemon-server.ts)
+  // Inject virtual OpenClaw session only after Gateway authentication succeeds
+  // (gatewayConnected). Reachability alone (cachedGatewayAvailable) is a
+  // topology signal, not proof commands can route — gating on it kept a phantom
+  // OpenClaw session alive whenever anything held port 18789 open. SSOT:
+  // isOpenClawSessionActive / hasOpenClawSession in @agentdeck/shared. Must
+  // stay identical to daemon-server.ts and Swift buildSessionsListEvent.
   core.setSessionsEnricher((sessions) => {
-    if (!core.cachedGatewayAvailable) return sessions;
-    if (sessions.some(s => s.agentType === 'openclaw')) return sessions;
+    const gwActive = isOpenClawSessionActive({ gatewayConnected: core.cachedGatewayConnected });
+    if (!gwActive && !hasOpenClawSession(sessions)) return sessions;
+    if (hasOpenClawSession(sessions)) return sessions;
     return [...sessions, {
       id: 'openclaw-gateway',
       port: 18789,
@@ -1164,6 +1174,15 @@ export async function startSession(opts: SessionOptions): Promise<void> {
         for (let i = 0; i < 4; i++) {
           if (i < options.length) {
             const opt = options[i];
+            if (opt.kind === 'freeform_input') {
+              buttons.push({
+                slot: 3 + i, title: 'TYPE IN TERM',
+                subtitle: uppercaseShort(opt.label),
+                bgColor: '#3d2607', textColor: '#ffb347',
+                enabled: false,
+              });
+              continue;
+            }
             const colors = (st === State.AWAITING_PERMISSION || st === State.AWAITING_DIFF)
               ? colorForOption(opt) : opt.recommended ? { bg: '#1e4d2b', text: '#86efac' } : { bg: '#1e3a5f', text: '#93c5fd' };
             const action = snapshot.navigable
@@ -1181,6 +1200,15 @@ export async function startSession(opts: SessionOptions): Promise<void> {
       } else {
         for (let i = 0; i < 3; i++) {
           const opt = options[i];
+          if (opt.kind === 'freeform_input') {
+            buttons.push({
+              slot: 3 + i, title: 'TYPE IN TERM',
+              subtitle: uppercaseShort(opt.label),
+              bgColor: '#3d2607', textColor: '#ffb347',
+              enabled: false,
+            });
+            continue;
+          }
           const colors = (st === State.AWAITING_PERMISSION || st === State.AWAITING_DIFF)
             ? colorForOption(opt) : opt.recommended ? { bg: '#1e4d2b', text: '#86efac' } : { bg: '#1e3a5f', text: '#93c5fd' };
           const action = snapshot.navigable
@@ -1344,7 +1372,9 @@ function wireClaudeCodeTimeline(
     }
     ccLastPromptText = text || null;
     const snippet = text.length > 500 ? text.slice(0, 497) + '...' : text;
-    const detail = text.length > 100 ? (text.length > 1000 ? text.slice(0, 1000) + '...' : text) : undefined;
+    const detail = text.length > 100
+      ? (text.length > TIMELINE_CHAT_DETAIL_LIMIT ? text.slice(0, TIMELINE_CHAT_DETAIL_LIMIT) + '...' : text)
+      : undefined;
     // Change 4: better fallback text — include project name
     const fallbackRaw = (() => {
       const proj = core.stateMachine.getSnapshot().projectName;
@@ -1383,6 +1413,7 @@ function wireClaudeCodeTimeline(
   const emitCompletion = (responseText: string, duration: number | null, toolSummary: string) => {
     const now = Date.now();
     const startedAt = ccChatStart ?? undefined;
+    const isProgress = isAssistantProgressUpdate(responseText);
 
     // Change 5: emit chat_response if meaningful response text exists
     if (responseText.length > 20) {
@@ -1397,6 +1428,7 @@ function wireClaudeCodeTimeline(
         agentType: 'claude-code',
         ...(startedAt ? { startedAt } : {}),
         endedAt: now,
+        ...(isProgress ? { summaryKind: 'progress' as const } : {}),
       });
     }
 
@@ -1409,8 +1441,11 @@ function wireClaudeCodeTimeline(
     const respHint = responseText ? extractTopicHintWithKind(responseText) : { hint: null, kind: null as 'topic' | 'fallback' | null };
     const promptHint = ccLastPromptText ? extractTopicHintWithKind(ccLastPromptText) : { hint: null, kind: null as 'topic' | 'fallback' | null };
     let completedLabel: string;
-    let summaryKind: 'heuristic' | 'none';
-    if (respHint.kind === 'topic' && respHint.hint) {
+    let summaryKind: 'heuristic' | 'none' | 'progress';
+    if (isProgress) {
+      completedLabel = 'In progress';
+      summaryKind = 'progress';
+    } else if (respHint.kind === 'topic' && respHint.hint) {
       completedLabel = respHint.hint;
       summaryKind = 'heuristic';
     } else if (promptHint.kind === 'topic' && promptHint.hint) {
@@ -1427,7 +1462,10 @@ function wireClaudeCodeTimeline(
     let summary = duration != null ? `${completedLabel} \u00B7 ${duration}s` : completedLabel;
     if (toolSummary) summary += ` \u00B7 ${toolSummary}`;
     const chatEndDetail = responseText
-      ? (() => { const c = prepareMarkdownDetail(responseText); return c ? (c.length > 1000 ? c.slice(0, 1000) + '...' : c) : undefined; })()
+      ? (() => {
+          const c = prepareMarkdownDetail(responseText);
+          return c ? (c.length > TIMELINE_CHAT_DETAIL_LIMIT ? c.slice(0, TIMELINE_CHAT_DETAIL_LIMIT) + '...' : c) : undefined;
+        })()
       : ccLastPromptText
         ? `Prompt: ${ccLastPromptText.length > 200 ? ccLastPromptText.slice(0, 200) + '...' : ccLastPromptText}`
         : undefined;
@@ -1444,7 +1482,7 @@ function wireClaudeCodeTimeline(
     });
 
     // Async LLM summarization — fire-and-forget, upsert chat_end when ready
-    if (responseText && responseText.length > 30) {
+    if (!isProgress && responseText && responseText.length > 30) {
       const savedDuration = duration;
       const savedToolSummary = toolSummary;
       const savedDetail = chatEndDetail;

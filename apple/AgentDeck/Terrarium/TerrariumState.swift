@@ -359,21 +359,22 @@ extension DashboardState {
         result.environment = mapToEnvironment(effectiveState)
         result.hasError = gatewayHasError
 
-        // Crayfish (OpenClaw gateway) — visible only when the gateway is
-        // authenticated. Reachability alone (`gatewayAvailable`) used to
-        // trigger a cheerful crayfish even when the shared token was
-        // missing, which misled users into thinking OpenClaw was wired up.
-        // Now: no token / no auth → dormant (hidden). Auth error → sick.
-        result.crayfishVisible = gatewayConnected || gatewayHasError
+        // Crayfish (OpenClaw gateway) — presence-driven SSOT. The crayfish
+        // tracks the OpenClaw SESSION the daemon emits, never raw gateway
+        // flags. The daemon injects an `openclaw` session iff the Gateway is
+        // authenticated (DashboardDataRules.isOpenClawSessionActive), so no
+        // emitted session ⇒ dormant (hidden) even if the port is reachable or
+        // doctor reports an error. This keeps every surface in lockstep and
+        // kills the "OpenClaw won't go away" trace.
+        let ocSibling = siblingSessions.first(where: { $0.agentType == "openclaw" })
+        result.crayfishVisible = ocSibling != nil
 
-        if gatewayHasError {
-            result.crayfishState = .sick
-        } else if let ocSibling = siblingSessions.first(where: { $0.agentType == "openclaw" }) {
-            result.crayfishState = ocSibling.state == "processing" ? .routing : .sitting
-        } else if gatewayConnected {
-            result.crayfishState = .sitting
-        } else {
+        if ocSibling == nil {
             result.crayfishState = .dormant
+        } else if gatewayHasError {
+            result.crayfishState = .sick
+        } else {
+            result.crayfishState = ocSibling!.state == "processing" ? .routing : .sitting
         }
 
         // Tetra state — use effectiveState so daemon mode isn't stuck on ABSENT

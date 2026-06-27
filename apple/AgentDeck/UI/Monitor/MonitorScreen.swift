@@ -422,13 +422,11 @@ struct MonitorScreen: View {
     }
 
     private var openClawGatewaySessionId: String? {
-        if let session = stateHolder.state.siblingSessions.first(where: { $0.agentType == "openclaw" }) {
-            return session.id
-        }
-        if stateHolder.state.gatewayConnected || stateHolder.state.gatewayHasError {
-            return "openclaw-gateway"
-        }
-        return nil
+        // Presence-driven SSOT: resolve to the emitted OpenClaw session only.
+        // No raw-flag fallback — a reachable-but-unauthenticated Gateway must
+        // not synthesize a phantom "openclaw-gateway" id (that was a "trace"
+        // source). The daemon emits the session iff the Gateway is authenticated.
+        stateHolder.state.siblingSessions.first(where: { $0.agentType == "openclaw" })?.id
     }
 
     private var emptyGuidePreviewAction: (() -> Void)? {

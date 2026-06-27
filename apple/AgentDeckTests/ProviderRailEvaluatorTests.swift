@@ -61,97 +61,53 @@ final class ProviderRailEvaluatorTests: XCTestCase {
         XCTAssertNil(row.subtitle)
     }
 
-    // MARK: - OpenClaw
+    // MARK: - OpenClaw (presence-driven rail — SSOT)
+    //
+    // The rail evaluator gates on the emitted OpenClaw SESSION (the daemon
+    // injects one iff the Gateway is authenticated), never on raw gateway
+    // flags. The pre-pairing ladder (approval_pending / pairing_required /
+    // token-missing, etc.) lives in the Settings → Integrations `openClawStatus`
+    // row, NOT here — so those states must NOT surface a rail row.
 
-    func testOpenClawHiddenWhenUnavailable() {
-        let s = DashboardState()
-        XCTAssertNil(ProviderRailEvaluator.openClaw(state: s),
-                     "rail must suppress the row entirely until gateway is discovered")
+    private func openClawSession(state: String = "idle") -> SessionInfo {
+        SessionInfo(id: "openclaw-gateway", port: 18789, projectName: "OpenClaw",
+                    agentType: "openclaw", state: state)
     }
 
-    func testOpenClawConnected() {
+    func testOpenClawHiddenWithoutSession() {
         var s = DashboardState()
+        // Reachable + erroring but NO emitted session → rail must stay empty.
         s.gatewayAvailable = true
+        s.gatewayHasError = true
+        s.gatewayAuthStatus = "pairing_required"
+        XCTAssertNil(ProviderRailEvaluator.openClaw(state: s),
+                     "rail must suppress the row until the daemon emits an openclaw session")
+    }
+
+    func testOpenClawReachableUnauthenticatedHidden() {
+        var s = DashboardState()
+        // Port reachable but never authenticated (no session) — the classic
+        // "OpenClaw won't go away" trace must NOT render on the rail.
+        s.gatewayAvailable = true
+        s.gatewayConnected = false
+        s.siblingSessions = []
+        XCTAssertNil(ProviderRailEvaluator.openClaw(state: s))
+    }
+
+    func testOpenClawShownWhenSessionPresent() {
+        var s = DashboardState()
         s.gatewayConnected = true
-        s.gatewayAuthStatus = "connected"
+        s.siblingSessions = [openClawSession()]
         let row = ProviderRailEvaluator.openClaw(state: s)
         XCTAssertEqual(row?.status, .ok)
         XCTAssertNil(row?.subtitle)
     }
 
-    func testOpenClawReconnecting() {
+    func testOpenClawErrorWithLiveSession() {
         var s = DashboardState()
-        s.gatewayAvailable = true
-        s.gatewayConnected = false
-        s.gatewayAuthStatus = "reconnecting"
-        let row = ProviderRailEvaluator.openClaw(state: s)
-        XCTAssertEqual(row?.status, .warn)
-        XCTAssertEqual(row?.subtitle, "Reconnecting…")
-    }
-
-    func testOpenClawPairingRequired() {
-        var s = DashboardState()
-        s.gatewayAvailable = true
-        s.gatewayAuthStatus = "pairing_required"
-        let row = ProviderRailEvaluator.openClaw(state: s)
-        XCTAssertEqual(row?.status, .warn)
-        XCTAssertEqual(row?.subtitle, "Pairing required")
-    }
-
-    func testOpenClawDeviceAuthInvalidMapsToPairing() {
-        // `device_auth_invalid` is expected on first launch + after identity
-        // reset — treat it as pairing-required so users don't read it as a
-        // hard failure.
-        var s = DashboardState()
-        s.gatewayAvailable = true
-        s.gatewayAuthStatus = "device_auth_invalid"
-        let row = ProviderRailEvaluator.openClaw(state: s)
-        XCTAssertEqual(row?.status, .warn)
-        XCTAssertEqual(row?.subtitle, "Pairing required")
-    }
-
-    func testOpenClawApprovalPending() {
-        var s = DashboardState()
-        s.gatewayAvailable = true
-        s.gatewayAuthStatus = "approval_pending"
-        let row = ProviderRailEvaluator.openClaw(state: s)
-        XCTAssertEqual(row?.status, .warn)
-        XCTAssertEqual(row?.subtitle, "Approve in OpenClaw")
-    }
-
-    func testOpenClawAuthFailed() {
-        var s = DashboardState()
-        s.gatewayAvailable = true
+        s.gatewayConnected = true
         s.gatewayHasError = true
-        s.gatewayAuthStatus = "auth_failed"
-        let row = ProviderRailEvaluator.openClaw(state: s)
-        XCTAssertEqual(row?.status, .error)
-        XCTAssertEqual(row?.subtitle, "Auth failed — re-approve")
-    }
-
-    func testOpenClawUnsupportedProtocol() {
-        var s = DashboardState()
-        s.gatewayAvailable = true
-        s.gatewayHasError = true
-        s.gatewayAuthStatus = "unsupported_protocol"
-        let row = ProviderRailEvaluator.openClaw(state: s)
-        XCTAssertEqual(row?.status, .error)
-        XCTAssertEqual(row?.subtitle, "Unsupported — update OpenClaw")
-    }
-
-    func testOpenClawGatewayTokenMissing() {
-        var s = DashboardState()
-        s.gatewayAvailable = true
-        s.gatewayAuthStatus = "gateway_token_missing"
-        let row = ProviderRailEvaluator.openClaw(state: s)
-        XCTAssertEqual(row?.status, .warn)
-        XCTAssertEqual(row?.subtitle, "Gateway token required")
-    }
-
-    func testOpenClawErrorWithoutAuthStatusFallsBackToGenericError() {
-        var s = DashboardState()
-        s.gatewayHasError = true
-        s.gatewayAuthStatus = nil
+        s.siblingSessions = [openClawSession()]
         let row = ProviderRailEvaluator.openClaw(state: s)
         XCTAssertEqual(row?.status, .error)
         XCTAssertEqual(row?.subtitle, "Gateway error")

@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.agentdeck.net.ModelCatalogEntry
 import dev.agentdeck.net.OllamaStatus
+import dev.agentdeck.ui.eink.hasOpenClawSession
 import dev.agentdeck.net.SubscriptionInfo
 import dev.agentdeck.net.AntigravityStatusInfo
 import dev.agentdeck.net.UsageUpdate
@@ -57,7 +58,9 @@ fun TankStatusPanel(
     val staleSuffix = if (usage.usageStale == true) " !" else ""
     val ollamaStatus = state.ollamaStatus
     val modelCatalog = state.modelCatalog ?: emptyList()
-    val openClawLines = if (state.gatewayConnected == true && state.agentType == "openclaw") {
+    // Presence-driven: show OpenClaw model lines iff the daemon emitted an
+    // OpenClaw session (single authority), not from raw gateway flags.
+    val openClawLines = if (hasOpenClawSession(state.siblingSessions)) {
         openClawDisplayLines(modelCatalog)
     } else {
         emptyList()

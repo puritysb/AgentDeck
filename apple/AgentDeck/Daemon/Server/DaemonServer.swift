@@ -163,6 +163,7 @@ struct JudgeBackendStatus: Sendable {
 
 @MainActor
 final class DaemonServer {
+    private static let timelineChatDetailLimit = 6000
     let port: UInt16
     let sessionId = UUID().uuidString
     private let wsServer = WebSocketServer()
@@ -585,11 +586,34 @@ final class DaemonServer {
                 }
                 if await registry.isPortBindable(requestedPort) {
                     DaemonLogger.shared.info("Port \(requestedPort) reclaimed after 400ms")
-                } else if let alt = await registry.findAvailablePort() {
-                    DaemonLogger.shared.info("Port \(requestedPort) still held, falling back to \(alt)")
-                    resolvedPort = UInt16(alt)
                 } else {
-                    throw DaemonError.noPortAvailable
+                    // Port still held but no daemon health answered. The common
+                    // cause is the health probe stalling under App Nap / sandbox
+                    // network suspension, NOT a non-daemon owner. Before starting
+                    // a SECOND daemon on a fallback port — which publishes a
+                    // duplicate agent=daemon Bonjour record and makes discovery
+                    // clients (e-ink panels, etc.) flap between the two — retry the
+                    // probe a few times to give the sibling daemon a chance to
+                    // answer. Only fall back to a fresh port if no daemon is really
+                    // there.
+                    var siblingDaemonPort: Int?
+                    for _ in 0 ..< 3 {
+                        try? await Task.sleep(for: .milliseconds(300))
+                        if let health = await registry.probeDaemonHealth(port: requestedPort),
+                           health["mode"] as? String == "daemon" {
+                            siblingDaemonPort = requestedPort
+                            break
+                        }
+                    }
+                    if let siblingPort = siblingDaemonPort {
+                        DaemonLogger.shared.info("Port \(requestedPort) owned by a sibling daemon (confirmed on retry) — joining as client")
+                        throw DaemonError.alreadyRunning(port: siblingPort)
+                    } else if let alt = await registry.findAvailablePort() {
+                        DaemonLogger.shared.info("Port \(requestedPort) still held and no daemon health after retries, falling back to \(alt)")
+                        resolvedPort = UInt16(alt)
+                    } else {
+                        throw DaemonError.noPortAvailable
+                    }
                 }
             }
         }
@@ -2018,6 +2042,16 @@ final class DaemonServer {
             // Sessions list
             let sessionsEvent = self.buildSessionsListEvent()
             if let data = sessionsEvent.jsonData { conn.send(data) }
+
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !conn.isDisconnected else { return }
+
+            // Timeline history
+            let timelineHistory = await self.timelineStore.getRecent(200)
+            if !timelineHistory.isEmpty {
+                let historyEvent = Self.buildTimelineHistoryEvent(from: timelineHistory)
+                if let data = historyEvent.jsonData { conn.send(data) }
+            }
 
             try? await Task.sleep(for: .milliseconds(100))
             guard !conn.isDisconnected else { return }
@@ -4178,9 +4212,12 @@ final class DaemonServer {
 
     private func buildSessionsListEvent() -> [String: Any] {
         var sessions = cachedSessions.map { sessionToDict($0) }
-        // Inject virtual OpenClaw session when Gateway is reachable
-        if cachedGatewayConnected {
-            if !sessions.contains(where: { ($0["id"] as? String) == "openclaw-gateway" || ($0["agentType"] as? String) == "openclaw" }) {
+        // Inject virtual OpenClaw session iff Gateway is authenticated. SSOT:
+        // DashboardDataRules.isOpenClawSessionActive (mirror of
+        // shared/src/session-utils.ts). Identical predicate to the Node bridge.
+        if DashboardDataRules.isOpenClawSessionActive(gatewayConnected: cachedGatewayConnected) {
+            if !DashboardDataRules.hasOpenClawSession(sessions)
+                && !sessions.contains(where: { ($0["id"] as? String) == "openclaw-gateway" }) {
                 // Only authenticated Gateway connections should materialize as
                 // a virtual OpenClaw session. Reachability/auth failures stay
                 // in the topology/status rows so the terrarium does not render
@@ -5602,6 +5639,7 @@ final class DaemonServer {
         // Returning the head here would attach this tool to a previous
         // turn whose Stop hook hasn't fired yet.
         entry.startedAt = peekLatestCodexChatStartTs(sid: sessionId)
+        guard !DaemonTimelineStore.shouldDropLowSignalEntry(entry) else { return }
         Task { await timelineStore.add(entry) }
         broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)] as [String: Any])
     }
@@ -5628,12 +5666,13 @@ final class DaemonServer {
             return
         }
         let projectName = pushedSessionsById[sessionId]?.projectName
+        let isProgress = TimelineSummarizer.isAssistantProgressUpdate(assistantText)
         if !assistantText.isEmpty {
             var respEntry = DaemonTimelineEntry(
                 ts: now - 1,
                 type: "chat_response",
                 raw: String(assistantText.prefix(200)),
-                detail: assistantText.count > 100 ? String(assistantText.prefix(1000)) : nil,
+                detail: assistantText.count > 100 ? String(assistantText.prefix(Self.timelineChatDetailLimit)) : nil,
                 approvalId: nil,
                 status: nil,
                 agentType: "codex-cli",
@@ -5644,6 +5683,7 @@ final class DaemonServer {
             respEntry.projectName = projectName
             respEntry.startedAt = startTs
             respEntry.endedAt = now
+            if isProgress { respEntry.summaryKind = "progress" }
             Task { await timelineStore.add(respEntry) }
             broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(respEntry)] as [String: Any])
         }
@@ -5655,10 +5695,10 @@ final class DaemonServer {
         // Mirror appendClaudeCodeChatEnd: chat_end build + broadcast hops
         // into a Task so the LLM call doesn't block the Stop-hook handler.
         Task {
-            let summary = assistantText.isEmpty
+            let summary = assistantText.isEmpty || isProgress
                 ? nil
                 : await TimelineSummarizer.summarize(assistantText, provider: provider)
-            let topic = summary?.text ?? topicFromPrompt
+            let topic = isProgress ? "In progress" : (summary?.text ?? topicFromPrompt)
             let durationSec = startTs.map { Int(((now - $0) / 1000).rounded()) }
             var parts = ["Completed"]
             if let durationSec { parts.append("\(durationSec)s") }
@@ -5667,7 +5707,7 @@ final class DaemonServer {
                 ts: now,
                 type: "chat_end",
                 raw: parts.joined(separator: " · "),
-                detail: assistantText.isEmpty ? nil : String(assistantText.prefix(1000)),
+                detail: assistantText.isEmpty ? nil : String(assistantText.prefix(Self.timelineChatDetailLimit)),
                 approvalId: nil,
                 status: nil,
                 agentType: "codex-cli",
@@ -5678,7 +5718,7 @@ final class DaemonServer {
             endEntry.projectName = projectName
             endEntry.startedAt = startTs
             endEntry.endedAt = now
-            endEntry.summaryKind = summary?.kind ?? (topic == nil ? nil : "heuristic")
+            endEntry.summaryKind = isProgress ? "progress" : (summary?.kind ?? (topic == nil ? nil : "heuristic"))
             await timelineStore.add(endEntry)
             broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(endEntry)] as [String: Any])
         }
@@ -5755,10 +5795,11 @@ final class DaemonServer {
         // queue is no longer mutated after this point in the current
         // turn's emit flow.
         let startTs: Double? = sessionId.flatMap { dequeueClaudeChatStartTs(sid: $0) }
+        let isProgress = TimelineSummarizer.isAssistantProgressUpdate(assistantText)
         if !assistantText.isEmpty {
             let snippet = String(assistantText.prefix(200))
             let detail: String? = assistantText.count > 100
-                ? String(assistantText.prefix(1000))
+                ? String(assistantText.prefix(Self.timelineChatDetailLimit))
                 : nil
             var respEntry = DaemonTimelineEntry(
                 ts: now - 1,
@@ -5775,6 +5816,7 @@ final class DaemonServer {
             respEntry.projectName = projectName
             respEntry.startedAt = startTs
             respEntry.endedAt = now
+            if isProgress { respEntry.summaryKind = "progress" }
             Task { await timelineStore.add(respEntry) }
             broadcastRaw([
                 "type": "timeline_event",
@@ -5798,10 +5840,10 @@ final class DaemonServer {
         // does not collapse two legitimate quick turns that happen to share
         // the same rounded duration (e.g. two `Completed · 2s` rows).
         Task {
-            let summary = assistantText.isEmpty
+            let summary = assistantText.isEmpty || isProgress
                 ? nil
                 : await TimelineSummarizer.summarize(assistantText, provider: provider)
-            let topic = summary?.text ?? topicFromPrompt
+            let topic = isProgress ? "In progress" : (summary?.text ?? topicFromPrompt)
             let durationSec: Int? = startTs.map { Int(((now - $0) / 1000).rounded()) }
             // Always prepend "Completed" so the dimmed chat_end row is visually
             // distinct from the bright chat_response row above it. Topic-only
@@ -5829,7 +5871,7 @@ final class DaemonServer {
             endEntry.projectName = projectName
             endEntry.startedAt = startTs
             endEntry.endedAt = now
-            endEntry.summaryKind = summary?.kind ?? (topic == nil ? nil : "heuristic")
+            endEntry.summaryKind = isProgress ? "progress" : (summary?.kind ?? (topic == nil ? nil : "heuristic"))
             await timelineStore.add(endEntry)
             broadcastRaw([
                 "type": "timeline_event",
@@ -5971,6 +6013,21 @@ final class DaemonServer {
     /// Encode a DaemonTimelineEntry into the dict shape broadcastRaw expects —
     /// matches the key set `appendGatewayTimelineEntry` uses for round-trip.
     private func claudeCodeEntryDict(_ e: DaemonTimelineEntry) -> [String: Any] {
+        Self.timelineEntryDict(e)
+    }
+
+    private nonisolated static func buildTimelineHistoryEvent(from entries: [DaemonTimelineEntry]) -> [String: Any] {
+        [
+            "type": "timeline_history",
+            "entries": entries.map { timelineEntryDict($0) },
+        ] as [String: Any]
+    }
+
+    nonisolated static func buildTimelineHistoryEventForTest(from entries: [DaemonTimelineEntry]) -> [String: Any] {
+        buildTimelineHistoryEvent(from: entries)
+    }
+
+    private nonisolated static func timelineEntryDict(_ e: DaemonTimelineEntry) -> [String: Any] {
         var dict: [String: Any] = [
             "ts": e.ts,
             "type": e.type,

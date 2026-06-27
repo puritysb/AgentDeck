@@ -1,8 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import {
   agentTypeRank, sortSessions, assignDisplayNames, naturalLabelCompare, foldCodexSessionsForDisplay,
+  isOpenClawSessionActive, hasOpenClawSession,
 } from '../session-utils.js';
 import type { FoldableSession } from '../session-utils.js';
+
+describe('OpenClaw visibility SSOT', () => {
+  it('isOpenClawSessionActive is true only when gatewayConnected', () => {
+    expect(isOpenClawSessionActive({ gatewayConnected: true })).toBe(true);
+    // reachability / health alone must NOT materialize a session
+    expect(isOpenClawSessionActive({ gatewayAvailable: true })).toBe(false);
+    expect(isOpenClawSessionActive({ gatewayHasError: true })).toBe(false);
+    expect(isOpenClawSessionActive({ gatewayAvailable: true, gatewayConnected: false })).toBe(false);
+    expect(isOpenClawSessionActive({})).toBe(false);
+  });
+
+  it('hasOpenClawSession detects an emitted openclaw session', () => {
+    expect(hasOpenClawSession([{ agentType: 'claude-code' }, { agentType: 'openclaw' }])).toBe(true);
+    expect(hasOpenClawSession([{ agentType: 'claude-code' }])).toBe(false);
+    expect(hasOpenClawSession([])).toBe(false);
+  });
+});
 
 describe('agentTypeRank', () => {
   it('ranks openclaw first, then claude-code, codex-cli, codex-app, opencode, others', () => {

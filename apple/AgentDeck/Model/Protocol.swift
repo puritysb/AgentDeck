@@ -47,6 +47,25 @@ struct ModelCatalogEntry: Codable, Sendable {
 }
 
 enum DashboardDataRules {
+    // OpenClaw / Gateway visibility SSOT — hand-mirrored from
+    // shared/src/session-utils.ts (isOpenClawSessionActive / hasOpenClawSession).
+    // Keep all three (TS / Swift / Kotlin) in lockstep.
+    //
+    // "Active" = authenticated / can-route (gatewayConnected). Reachability and
+    // health are topology hints only and MUST NOT materialize a session — that
+    // is what kept a phantom OpenClaw alive on devices after it was off.
+    static func isOpenClawSessionActive(gatewayConnected: Bool) -> Bool {
+        gatewayConnected
+    }
+
+    static func hasOpenClawSession(_ sessions: [[String: Any]]) -> Bool {
+        sessions.contains { ($0["agentType"] as? String) == "openclaw" }
+    }
+
+    static func hasOpenClawSession(_ sessions: [SessionInfo]) -> Bool {
+        sessions.contains { $0.agentType == "openclaw" }
+    }
+
     static func agentTypeRank(_ agentType: String?) -> Int {
         switch agentType {
         case "openclaw": 0

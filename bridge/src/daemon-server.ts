@@ -68,7 +68,7 @@ import { loadWifiConfig } from './wifi-config.js';
 import { getConnectedAdbDevices, hasAdb, getAdbDeviceCount } from './adb-reverse.js';
 import { getPixooDeviceDetails, pixooDeviceCount } from './pixoo/pixoo-bridge.js';
 import { loadTimeboxDevices } from './timebox/timebox-settings.js';
-import { getLanIp } from '@agentdeck/shared';
+import { getLanIp, isOpenClawSessionActive, hasOpenClawSession } from '@agentdeck/shared';
 import { readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -1131,18 +1131,21 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const sec = Math.round((now - Date.parse(s.startedAt)) / 1000);
       return Number.isFinite(sec) && sec >= 0 ? { ...s, elapsedSec: sec } : s;
     });
-    const adapterAlive = gatewayAdapter?.isAlive() ?? false;
-    if (!adapterAlive && !core.cachedGatewayConnected) return enrichedSessions;
-    if (enrichedSessions.some(s => s.agentType === 'openclaw')) return enrichedSessions;
+    // SSOT: inject iff Gateway is authenticated (gatewayConnected). Reachability
+    // / adapter-liveness alone must not materialize a session — that kept a
+    // phantom OpenClaw alive on devices after it was effectively off. Identical
+    // predicate to bridge/src/index.ts and Swift buildSessionsListEvent.
+    if (!isOpenClawSessionActive({ gatewayConnected: core.cachedGatewayConnected })) return enrichedSessions;
+    if (hasOpenClawSession(enrichedSessions)) return enrichedSessions;
     const snap = core.stateMachine.getSnapshot();
     return [...enrichedSessions, {
       id: 'openclaw-gateway',
       port: 18789,
-      projectName: adapterAlive ? (snap.projectName ?? 'OpenClaw') : 'OpenClaw',
+      projectName: snap.projectName ?? 'OpenClaw',
       agentType: 'openclaw' as const,
       alive: true,
-      state: adapterAlive ? snap.state : 'idle',
-      modelName: adapterAlive ? (snap.modelName ?? undefined) : undefined,
+      state: snap.state,
+      modelName: snap.modelName ?? undefined,
       controlMode: 'managed' as const,
     }];
   });
