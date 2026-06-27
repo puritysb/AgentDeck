@@ -6,6 +6,26 @@
 
 ---
 
+## 2026-06-27 — OpenClaw/Antigravity 설정파일 픽커가 샌드박스에서 안 열리던 문제
+
+### 문제
+App Store(샌드박스) macOS 앱에서 외부 로컬 도구 설정파일을 가져오는 두 NSOpenPanel 픽커가 **파일이 존재하는데도** 사용 불가였다. (1) OpenClaw "Import token": `~/.openclaw/openclaw.json`이 실제로 존재(`gateway.auth.token`, mode=token)하고 OpenClaw 2026.6.8 업데이트로도 포맷이 안 바뀌었는데, 패널이 *real home*에서 열려 숨김 폴더 `.openclaw`에 도달 못 함(`showsHiddenFiles`가 Powerbox에서 비신뢰). (2) Antigravity `state.vscdb`: 보이는데 선택 불가 — `allowedContentTypes` 필터가 `vscdb`엔 UTType이 없는데 `db/sqlite`만 잡혀 `.vscdb`를 회색처리. 추가로 OpenCode App Store 지원 가능성 검토 요청.
+
+### 해결
+- **OpenClaw 픽커를 검증된 Antigravity 패턴으로 수렴**: `directoryURL`을 `~/.openclaw/`로 직접 지정(존재 시)해 비숨김 `openclaw.json`이 바로 보이게. 선택 파일에 app-scoped 보안 스코프 북마크 저장 → `OpenClawGatewayTokenStore.refreshFromConfigBookmark()`가 재연결마다 회전된 토큰 자동 재읽기. Clear 시 북마크 해제.
+- **Antigravity 필터 제거**: `allowedContentTypes`를 걸지 않음(`CodexConfigInstaller`의 `.toml` 무필터 패턴과 동일). canonical UTType 없는 확장자엔 필터 금지.
+- **토큰 파서 SSOT 통합**: `OpenClawGatewayTokenStore.extractToken(from:)`로 일원화, `SettingsScreen.extractGatewayToken`는 위임(XCTest 심볼 유지). 9/9 통과.
+- **OpenCode = 현 상태 유지(영구 제외) + 문서 명확화**: random-port + lock-file 없음 + 훅 시스템 없음 → discovery 불가, PTY spawn 금지. `APP_REVIEW_NOTES.md`에서 Codex 섹션에 잘못 끼어있던 OpenCode 문구를 별도 "OpenCode (not in the App Store build)" 섹션으로 분리.
+
+### 핵심 설계 결정
+- **"파일이 안 보인다"는 OpenClaw 변경이 아니라 샌드박스 픽커 UX 문제였다.** 진단의 핵심은 디스크 실측(파일 존재·구조·mode 확인)으로 외부 도구 업데이트 가설을 먼저 기각한 것.
+- **외부 설정파일 읽기 정답 패턴 = directoryURL을 앱 폴더 깊숙이 + 보안 스코프 북마크 + 과도한 content-type 필터 회피.** 셋 다 기존 엔타이틀먼트(`files.user-selected.read-write` + `files.bookmarks.app-scope`) 범위 내라 App Review 안전. APP_REVIEW_NOTES의 directoryURL/북마크 문구도 새 동작에 맞춰 사실대로 갱신.
+
+### 검증
+BUILD SUCCEEDED (`xcodebuild -scheme AgentDeck_macOS`), OpenClawTokenExtractTests 9/9 통과. 커밋 `b740476a`.
+
+---
+
 ## 2026-06-25 — TRMNL App Store standalone hub parity + observability
 
 ### 문제
