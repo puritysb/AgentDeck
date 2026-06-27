@@ -52,6 +52,60 @@ enum OpenClawGatewayTokenStore {
             kSecAttrAccount as String: account,
         ]
     }
+
+    /// SSOT for pulling the gateway token out of an OpenClaw `openclaw.json`
+    /// object. The token can sit at any of three paths depending on how
+    /// OpenClaw was set up — walked in canonical-first order. Returns the
+    /// first non-empty trimmed string, or nil. Pure dictionary walk (no UI
+    /// state, no I/O) so it is callable from XCTest, the Settings UI
+    /// (`SettingsScreen.extractGatewayToken` delegates here), and the daemon
+    /// adapter's bookmark auto-refresh alike.
+    static func extractToken(from json: [String: Any]) -> String? {
+        let candidates: [[String]] = [
+            ["gateway", "auth", "token"],
+            ["auth", "token"],
+            ["gateway", "token"],
+        ]
+        for path in candidates {
+            var node: Any = json
+            for (i, key) in path.enumerated() {
+                guard let dict = node as? [String: Any], let next = dict[key] else { break }
+                if i == path.count - 1 {
+                    if let str = next as? String {
+                        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty { return trimmed }
+                    }
+                    break
+                }
+                node = next
+            }
+        }
+        return nil
+    }
+
+    /// Re-read the gateway token from the user-selected `openclaw.json`
+    /// (if a security-scoped bookmark was granted during "Import token") and
+    /// persist it to Keychain. Lets a rotated `gateway.auth.token` flow back
+    /// in automatically on the next gateway (re)connect without the user
+    /// re-running the import. No-op when no bookmark exists or the file can't
+    /// be read/parsed — the previously-saved Keychain value stays in effect.
+    /// App-Store-safe: access is via the existing security-scoped bookmark
+    /// (`files.user-selected.read-write` + `files.bookmarks.app-scope`); no
+    /// subprocess, no path outside the user's original selection.
+    static func refreshFromConfigBookmark() {
+        _ = AppPreferences.shared.withOpenClawConfigAccess { url -> Bool? in
+            guard
+                let data = try? Data(contentsOf: url),
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let token = extractToken(from: json)
+            else { return nil }
+            // Only write when changed — avoids needless Keychain churn on every reconnect.
+            if token != loadToken() {
+                try? saveToken(token)
+            }
+            return true
+        }
+    }
 }
 
 private extension String {
@@ -1047,6 +1101,10 @@ actor OpenClawAdapter {
             "caps": ["tool-events"],
         ]
 
+        // Pull in a rotated token from the bookmarked openclaw.json (if the
+        // user granted file access during "Import token") before reading the
+        // Keychain copy, so a changed gateway.auth.token reconnects cleanly.
+        OpenClawGatewayTokenStore.refreshFromConfigBookmark()
         let sharedToken = OpenClawGatewayTokenStore.loadToken()
 
         // Default: attach device auth so dmPolicy=pairing Gateways can route to
