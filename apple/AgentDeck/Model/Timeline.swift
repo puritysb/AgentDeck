@@ -330,6 +330,21 @@ func groupConsecutive(_ entries: [TimelineEntry], windowSeconds: Double = 60) ->
             }
         }
 
+        // If the prompt row is missing, synthetic, or filtered later, keep the
+        // response body as the visible turn row and attach the trailing
+        // chat_end metadata underneath it. Showing `Completed · ...` as its
+        // own row adds little signal and makes the timeline read like logs
+        // instead of turns. Anchor matching still prevents delayed completions
+        // from crossing into the next response.
+        if current.entry.type == .chatResponse &&
+           current.mergedCompletion == nil &&
+           entry.type == .chatEnd &&
+           sameSession(current.entry, entry) &&
+           sameResponseCompletionAnchor(response: current.entry, completion: entry) {
+            current.mergedCompletion = entry
+            continue
+        }
+
         if entry.type == current.entry.type &&
            entry.raw == current.entry.raw &&
            sameSession(current.entry, entry) &&
@@ -378,6 +393,15 @@ private func sameSession(_ a: TimelineEntry, _ b: TimelineEntry) -> Bool {
 private func sameTurnAnchor(start: TimelineEntry, child: TimelineEntry) -> Bool {
     guard let anchor = child.startedAt else { return true }
     return anchor == start.ts
+}
+
+private func sameResponseCompletionAnchor(response: TimelineEntry, completion: TimelineEntry) -> Bool {
+    switch (response.startedAt, completion.startedAt) {
+    case let (r?, c?): return r == c
+    case (nil, nil): return true
+    case (nil, _?): return true
+    case (_?, nil): return true
+    }
 }
 
 /// True when a `chat_start` row carries a genuine user prompt (and thus is

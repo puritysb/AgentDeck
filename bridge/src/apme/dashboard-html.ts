@@ -345,7 +345,7 @@ async function selectRun(id){
       h+='</div>';
     }
 
-    // Tasks — meaningful per-task units bounded by todo_complete/clear/session_end/manual/idle_gap
+    // Tasks — meaningful per-task units bounded by clear/session_end/manual/idle_gap
     if(tasks.length>0){
       h+='<div class="section"><div class="section-head">Tasks ('+tasks.length+')</div>';
       for(const tk of tasks){

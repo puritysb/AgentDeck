@@ -23,6 +23,41 @@ export const HOOK_EVENTS = [
   'UserPromptSubmit',
 ] as const;
 
+const CURRENT_APP_CONTAINER_DAEMON_JSON =
+  '$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json';
+const LEGACY_DASHBOARD_CONTAINER_DAEMON_JSON =
+  '$HOME/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json';
+const CURRENT_GROUP_CONTAINER_DAEMON_JSON =
+  '$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json';
+const LEGACY_DASHBOARD_GROUP_DAEMON_JSON =
+  '$HOME/Library/Group Containers/group.bound.serendipity.agentdeck.dashboard/daemon.json';
+const POSIX_DAEMON_JSON_CANDIDATES = [
+  '$HOME/.agentdeck/daemon.json',
+  CURRENT_APP_CONTAINER_DAEMON_JSON,
+  LEGACY_DASHBOARD_CONTAINER_DAEMON_JSON,
+  CURRENT_GROUP_CONTAINER_DAEMON_JSON,
+  LEGACY_DASHBOARD_GROUP_DAEMON_JSON,
+];
+const STALE_DAEMON_PATH_MARKERS = [
+  'bound.serendipity.agentdeck.dashboard',
+  'group.bound.serendipity.agentdeck.dashboard',
+];
+
+function isAgentDeckCommand(command: unknown): command is string {
+  return typeof command === 'string' &&
+    (command.includes('AGENTDECK_PORT') ||
+      command.includes('localhost:9120') ||
+      command.includes('127.0.0.1:9120') ||
+      STALE_DAEMON_PATH_MARKERS.some((marker) => command.includes(marker)));
+}
+
+function commandNeedsRefresh(command: unknown): command is string {
+  return typeof command === 'string' &&
+    !command.includes('bound.serendipity.agent.deck') &&
+    !command.includes('group.bound.serendipity.agent.deck') &&
+    STALE_DAEMON_PATH_MARKERS.some((marker) => command.includes(marker));
+}
+
 /**
  * Shell snippet that resolves the AgentDeck daemon's HTTP port at hook
  * runtime, then POSTs the hook payload to it. Kept in a single helper so
@@ -35,8 +70,9 @@ export const HOOK_EVENTS = [
  *      are running in parallel)
  *   2. `~/.agentdeck/daemon.json`                                  (CLI)
  *   3. App Store sandbox container `daemon.json`                   (Swift)
- *   4. Legacy App Store group container `daemon.json`              (Swift)
- *   5. `9120` fallback (legacy, never reached in practice)
+ *   4. Legacy dashboard App Store container `daemon.json`          (Swift)
+ *   5. Legacy/current App Group container `daemon.json`            (Swift)
+ *   6. `9120` fallback (legacy, never reached in practice)
  *
  * For (2)-(4) the snippet prefers the daemon's `httpPort` field when
  * present — Swift runs WS and HTTP on separate ports. Each candidate is
@@ -47,7 +83,7 @@ export function buildHookCommand(eventName: string): string {
   const preamble = [
     `PORT="\${AGENTDECK_PORT:-}"`,
     `if [ -z "$PORT" ]; then`,
-    `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
+    `  for F in ${POSIX_DAEMON_JSON_CANDIDATES.map((p) => `"${p}"`).join(' ')}; do`,
     `    [ -f "$F" ] || continue`,
     `    P=$(python3 -c "import json;d=json.load(open('$F'));print(d.get('httpPort') or d.get('port',''))" 2>/dev/null)`,
     `    [ -n "$P" ] && curl -sf --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
@@ -127,11 +163,11 @@ export function applyHooks(settings: any): any {
     }
     // Remove both old flat format and new matcher format
     settings.hooks[event] = settings.hooks[event].filter((h: any) => {
-      if (h.command?.includes('AGENTDECK_PORT') || h.command?.includes('localhost:9120')) {
+      if (isAgentDeckCommand(h.command)) {
         return false;
       }
       if (Array.isArray(h.hooks) && h.hooks.some((hh: any) =>
-        hh.command?.includes('AGENTDECK_PORT') || hh.command?.includes('localhost:9120')
+        isAgentDeckCommand(hh.command)
       )) {
         return false;
       }
@@ -148,11 +184,11 @@ export function removeHooks(settings: any): any {
   for (const event of HOOK_EVENTS) {
     if (settings.hooks[event]) {
       settings.hooks[event] = settings.hooks[event].filter((h: any) => {
-        if (h.command?.includes('AGENTDECK_PORT') || h.command?.includes('localhost:9120')) {
+        if (isAgentDeckCommand(h.command)) {
           return false;
         }
         if (Array.isArray(h.hooks) && h.hooks.some((hh: any) =>
-          hh.command?.includes('AGENTDECK_PORT') || hh.command?.includes('localhost:9120')
+          isAgentDeckCommand(hh.command)
         )) {
           return false;
         }
@@ -180,6 +216,12 @@ export function migrateHooks(settings: any): { settings: any; migrated: boolean 
     for (let i = 0; i < hooks.length; i++) {
       const hook = hooks[i];
 
+      if (commandNeedsRefresh(hook.command)) {
+        hooks[i] = buildHookEntry(event);
+        migrated = true;
+        continue;
+      }
+
       // Migration 1: hardcoded port → env var (flat format)
       if (hook.command?.includes('localhost:9120') && !hook.command?.includes('AGENTDECK_PORT')) {
         hook.command = hook.command.replace(
@@ -198,6 +240,11 @@ export function migrateHooks(settings: any): { settings: any; migrated: boolean 
 
       // Migration 3: hardcoded port inside matcher-group
       if (Array.isArray(hook.hooks)) {
+        if (hook.hooks.some((inner: any) => commandNeedsRefresh(inner.command))) {
+          hooks[i] = buildHookEntry(event);
+          migrated = true;
+          continue;
+        }
         for (const inner of hook.hooks) {
           if (inner.command?.includes('localhost:9120') && !inner.command?.includes('AGENTDECK_PORT')) {
             inner.command = inner.command.replace(
@@ -213,10 +260,39 @@ export function migrateHooks(settings: any): { settings: any; migrated: boolean 
   return { settings, migrated };
 }
 
+function claudeSettingsPath(filename: 'settings.local.json' | 'settings.json'): string {
+  return join(homedir(), '.claude', filename);
+}
+
+function claudeSettingsPaths(): string[] {
+  return [
+    claudeSettingsPath('settings.local.json'),
+    claudeSettingsPath('settings.json'),
+  ];
+}
+
+function hasAgentDeckHooks(raw: string): boolean {
+  return raw.includes('AGENTDECK_PORT') ||
+    raw.includes('localhost:9120') ||
+    raw.includes('127.0.0.1:9120') ||
+    STALE_DAEMON_PATH_MARKERS.some((marker) => raw.includes(marker));
+}
+
+function installTargetClaudeSettingsPath(): string {
+  for (const path of claudeSettingsPaths()) {
+    if (!existsSync(path)) continue;
+    try {
+      const raw = readFileSync(path, 'utf-8');
+      if (hasAgentDeckHooks(raw)) return path;
+    } catch { /* keep looking */ }
+  }
+  return claudeSettingsPath('settings.local.json');
+}
+
 /** File-system wrapper: install hooks into ~/.claude/settings.local.json */
 export function installHooks(): void {
   const claudeDir = join(homedir(), '.claude');
-  const settingsPath = join(claudeDir, 'settings.local.json');
+  const settingsPath = installTargetClaudeSettingsPath();
 
   if (!existsSync(claudeDir)) {
     mkdirSync(claudeDir, { recursive: true });
@@ -231,43 +307,53 @@ export function installHooks(): void {
   applyHooks(settings);
 
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  for (const otherPath of claudeSettingsPaths()) {
+    if (otherPath === settingsPath || !existsSync(otherPath)) continue;
+    const other = JSON.parse(readFileSync(otherPath, 'utf-8'));
+    removeHooks(other);
+    writeFileSync(otherPath, JSON.stringify(other, null, 2) + '\n');
+  }
   console.log(`Hooks installed to ${settingsPath}`);
 }
 
 /** File-system wrapper: uninstall hooks from ~/.claude/settings.local.json */
 export function uninstallHooks(): void {
-  const settingsPath = join(homedir(), '.claude', 'settings.local.json');
-  if (!existsSync(settingsPath)) return;
-
-  const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
-  removeHooks(settings);
-
-  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  for (const settingsPath of claudeSettingsPaths()) {
+    if (!existsSync(settingsPath)) continue;
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    removeHooks(settings);
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+  }
   console.log('Hooks uninstalled');
 }
 
-/** File-system wrapper: migrate old hook formats in ~/.claude/settings.local.json.
+/** File-system wrapper: migrate old hook formats in Claude settings files.
  *  Silently catches errors to avoid breaking session startup. */
 export function migrateHooksIfNeeded(): void {
   try {
-    const settingsPath = join(homedir(), '.claude', 'settings.local.json');
-    if (!existsSync(settingsPath)) return;
+    for (const settingsPath of claudeSettingsPaths()) {
+      if (!existsSync(settingsPath)) continue;
 
-    const raw = readFileSync(settingsPath, 'utf-8');
-    if (!raw.includes('AGENTDECK_PORT') && !raw.includes('localhost:9120')) return;
+      const raw = readFileSync(settingsPath, 'utf-8');
+      if (!hasAgentDeckHooks(raw)) continue;
 
-    const settings = JSON.parse(raw);
-    let { migrated } = migrateHooks(settings);
+      const settings = JSON.parse(raw);
+      let { migrated } = migrateHooks(settings);
 
-    // Migration 4: upgrade hooks using simple :-9120 fallback to daemon.json-reading format.
-    // This handles existing users from before daemon.json runtime lookup was added.
-    if (raw.includes('AGENTDECK_PORT') && !raw.includes('daemon.json')) {
-      applyHooks(settings);
-      migrated = true;
-    }
+      // Migration 4: upgrade hooks using simple :-9120 fallback, or stale
+      // bundle-id daemon.json paths, to the current daemon.json-reading format.
+      if (raw.includes('AGENTDECK_PORT') &&
+          (!raw.includes('daemon.json') ||
+            (!raw.includes('bound.serendipity.agent.deck') &&
+              !raw.includes('group.bound.serendipity.agent.deck') &&
+              STALE_DAEMON_PATH_MARKERS.some((marker) => raw.includes(marker))))) {
+        applyHooks(settings);
+        migrated = true;
+      }
 
-    if (migrated) {
-      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+      if (migrated) {
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+      }
     }
   } catch {
     // Silently ignore — migration is best-effort, never block session startup

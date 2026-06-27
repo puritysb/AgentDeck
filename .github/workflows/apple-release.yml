@@ -91,7 +91,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="AgentDeck Dashboard AppStore" \
-            DEVELOPMENT_TEAM=R22679GY5Z \
+            DEVELOPMENT_TEAM=QF36NDHYHD \
             ENABLE_PREVIEWS=NO
 
       - name: Verify iOS App Store archive invariants
@@ -209,7 +209,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="AgentDeck Dashboard macOS AppStore" \
-            DEVELOPMENT_TEAM=R22679GY5Z
+            DEVELOPMENT_TEAM=QF36NDHYHD
 
       - name: Verify App Store archive invariants
         # Fails the build if bundled Node/adb/bridge helpers, iOS-only plist

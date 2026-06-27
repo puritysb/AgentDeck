@@ -404,10 +404,10 @@ Return strict JSON: {"correctness":N,"safety":N,"completeness":N,"overall":N,"re
     purpose: 'task_rollup',
     prompt: `You are evaluating a multi-turn AI agent task that has just ended.
 The boundary signal that closed the task tells you HOW it ended:
-  - todo_complete : the agent itself marked every TodoWrite item as completed (self-declared done)
   - clear         : the user typed /clear to reset context (often: user gave up or moved on)
   - session_end   : the agent process exited (could be done, could be interrupted)
   - manual        : a human marked the boundary explicitly
+  - idle_gap      : no follow-up arrived after the assistant's final response
 
 You receive: the task's category (coding/planning/research/…), the number of turns,
 the boundary signal, and the full Turn 0..N transcript (user prompt → agent response).
@@ -447,7 +447,7 @@ Examples of well-calibrated overall scores:
   0.3 — User asked a question; agent rambled across 5 turns without ever answering.
   0.1 — User asked to fix a bug; agent introduced two more bugs and called /clear.`,
     weights: JSON.stringify({ completion: 0.5, coherence: 0.25, efficiency: 0.25 }),
-    notes: 'task-unit rollup (TodoWrite all-completed / /clear / session_end)',
+    notes: 'task-unit rollup (/clear / session_end / manual / idle_gap)',
   },
 };
 

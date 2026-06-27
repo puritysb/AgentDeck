@@ -78,8 +78,8 @@ export function codexHookToSpans(
   }
 
   // codex_session_start, codex_stop, codex_turn_complete, etc. are recorded
-  // verbatim so the collector still writes a `steps` row for timeline /
-  // tuner queries. State transitions (IDLE / PROCESSING) live in
+  // verbatim so the collector still writes a `steps` row for audit and
+  // classifier queries. State transitions (IDLE / PROCESSING) live in
   // state-machine.ts:handleHookEvent — APME doesn't need its own.
   return [
     make('raw_step', {

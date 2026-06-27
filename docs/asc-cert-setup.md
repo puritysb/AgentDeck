@@ -1,6 +1,6 @@
 # App Store Connect Certificate + Provisioning Setup
 
-Step-by-step guide to provision the certificates and provisioning profiles that CI needs for the `apple-release.yml` workflow. The workflow ships both `build-ios` and `build-macos` jobs that upload to the same `bound.serendipity.agent.deck` record so the app sells as a **Universal Purchase** (one App Store entry, both platforms).
+Step-by-step guide to provision the certificates and provisioning profiles that CI needs for the `apple-release.yml` workflow. The workflow ships both `build-ios` and `build-macos` jobs that upload to the same `bound.serendipity.agent.deck` record ("AgentDeck Dashboard") so the app sells as a **Universal Purchase** (one App Store entry, both platforms).
 
 > The `APPLE_CERTIFICATE_BASE64` secret must contain a `.p12` with both the Apple Distribution identity (signs the iOS `.ipa` *and* the macOS `.app`) and the 3rd Party Mac Developer Installer identity (signs the macOS `.pkg`). The same certificate bundle is used by both iOS and macOS jobs; the macOS job does not use separate `APPLE_MAC_INSTALLER_*` secrets.
 
@@ -22,7 +22,7 @@ Skip if already created.
 1. Open [App Store Connect → My Apps](https://appstoreconnect.apple.com/apps).
 2. Click **+** → **New App**.
 3. Platforms: check **macOS** (if iOS record already exists, this adds a Mac version to it — "Add new platform" flow).
-4. Name: **AgentDeck Dashboard** (30-char limit).
+4. Name: **AgentDeck Dashboard** (30-char limit). For localized storefronts where `AgentDeck` is available, use `AgentDeck` in that localization later.
 5. Primary Language: Korean or English (pick one; you can localize later).
 6. Bundle ID: `bound.serendipity.agent.deck` (the same one the `.app` ships with).
 7. SKU: `agentdeck-dashboard-macos` (internal id, any unique string).
@@ -127,8 +127,8 @@ The base64 string is now on your clipboard — paste it into the `IOS_PROVISIONI
 
 GitHub Actions needs the signing certs + private keys as a base64-encoded `.p12`. Export a bundle that includes:
 
-- `Apple Distribution: … (R22679GY5Z)` — signs the `.app`.
-- `3rd Party Mac Developer Installer: … (R22679GY5Z)` — signs the Mac App Store `.pkg`.
+- `Apple Distribution: … (QF36NDHYHD)` — signs the `.app`.
+- `3rd Party Mac Developer Installer: … (QF36NDHYHD)` — signs the Mac App Store `.pkg`.
 
 Recommended path:
 
@@ -202,13 +202,13 @@ The file at `apple/ExportOptions-macOS.plist` is intentionally manual so GitHub 
 <key>method</key>
 <string>app-store-connect</string>
 <key>teamID</key>
-<string>R22679GY5Z</string>
+<string>QF36NDHYHD</string>
 <key>signingStyle</key>
 <string>manual</string>
 <key>signingCertificate</key>
 <string>Apple Distribution</string>
 <key>installerSigningCertificate</key>
-<string>3rd Party Mac Developer Installer: SEUNG BEOM CHOI (R22679GY5Z)</string>
+<string>3rd Party Mac Developer Installer: HYEIN GU (QF36NDHYHD)</string>
 <key>provisioningProfiles</key>
 <dict>
   <key>bound.serendipity.agent.deck</key>
@@ -216,7 +216,7 @@ The file at `apple/ExportOptions-macOS.plist` is intentionally manual so GitHub 
 </dict>
 ```
 
-Use the exact installed installer identity common name here. Xcode documents `Mac Installer Distribution` as an automatic selector, but local export validation on Xcode 26 failed to resolve that selector for this project while the exact `3rd Party Mac Developer Installer: SEUNG BEOM CHOI (R22679GY5Z)` value exported successfully.
+Use the exact installed installer identity common name here. Xcode documents `Mac Installer Distribution` as an automatic selector, but local export validation on Xcode 26 failed to resolve that selector for this project while an exact `3rd Party Mac Developer Installer: ... (TEAMID)` value exported successfully.
 
 ---
 
@@ -238,8 +238,8 @@ After the upload, App Store Connect shows the build under **TestFlight → macOS
 | Error | Cause | Fix |
 |---|---|---|
 | `security: SecKeychainItemImport: The specified item already exists in the keychain` | Duplicate cert from a prior CI run that didn't clean up | The existing Cleanup step deletes the keychain on `if: always()` — usually safe. If stuck, regenerate the cert on Apple Developer and re-upload. |
-| `xcodebuild: error: No account for team "R22679GY5Z"` | Runner keychain missing the Apple Distribution cert | Check `APPLE_CERTIFICATE_BASE64` secret is set, base64 is clean (no newlines), and the `.p12` includes the Apple Distribution private key. |
-| `exportArchive No certificate ... matching 'Mac Installer Distribution' found` | Xcode failed to resolve the automatic installer certificate selector, or `APPLE_CERTIFICATE_BASE64` lacks the `3rd Party Mac Developer Installer` private-key identity | Keep `apple/ExportOptions-macOS.plist` on the exact installer identity common name and re-export the combined `.p12` from Keychain Access with both `Apple Distribution: ... (R22679GY5Z)` and `3rd Party Mac Developer Installer: ... (R22679GY5Z)`, then update the GitHub secret. |
+| `xcodebuild: error: No account for team "QF36NDHYHD"` | Runner keychain missing the Apple Distribution cert | Check `APPLE_CERTIFICATE_BASE64` secret is set, base64 is clean (no newlines), and the `.p12` includes the Apple Distribution private key. |
+| `exportArchive No certificate ... matching 'Mac Installer Distribution' found` | Xcode failed to resolve the automatic installer certificate selector, or `APPLE_CERTIFICATE_BASE64` lacks the `3rd Party Mac Developer Installer` private-key identity | Keep `apple/ExportOptions-macOS.plist` on the exact installer identity common name and re-export the combined `.p12` from Keychain Access with both `Apple Distribution: ... (QF36NDHYHD)` and `3rd Party Mac Developer Installer: ... (QF36NDHYHD)`, then update the GitHub secret. |
 | `altool: error: The packaged app bundle is missing a Mach-O executable` | Archive was skipped (xcodebuild archive failed silently) | Scroll earlier in the log. The Archive step must emit `ARCHIVE SUCCEEDED`. |
 | `altool: error: ITMS-90296: App sandbox not enabled` | Missing `com.apple.security.app-sandbox` | It IS in our entitlements file. Check `verify-appstore-archive.sh` output for the signed .app. |
 | `altool: error: ITMS-90237: Apple Installer Package not signed` | Mac Installer cert didn't make it into the signing keychain | Re-export `APPLE_CERTIFICATE_BASE64` as the combined `.p12`; it must include the 3rd Party Mac Developer Installer private key. |

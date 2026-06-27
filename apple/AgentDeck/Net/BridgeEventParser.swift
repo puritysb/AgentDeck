@@ -199,6 +199,43 @@ enum BridgeEventParser {
             )
         }
 
+        // BLE matrix panels — Divoom Timebox Mini + iDotMatrix. Both daemons
+        // (Node CLI + Swift) emit the same `statusSnapshot()` shape; the Swift
+        // daemon adds `statusReason`/`connected`, the Node daemon a leaner
+        // `{configuredDeviceCount, devices}`. Decode whatever is present so the
+        // rail can show the panel either way.
+        if let timebox = raw["timebox"] as? [String: Any] {
+            health.timebox = parseBLEMatrixHealth(timebox)
+        }
+        if let idm = raw["idotmatrix"] as? [String: Any] ?? raw["idot_matrix"] as? [String: Any] {
+            health.idotmatrix = parseBLEMatrixHealth(idm)
+        }
+
         return health
+    }
+
+    /// Shared decoder for the Timebox/iDotMatrix `statusSnapshot()` shape.
+    /// Node daemon omits the live-connection fields, so `configuredDeviceCount`
+    /// is the floor signal that a panel exists; the Swift daemon fills in
+    /// `connected`/`statusReason`. Falls back to the first `devices[]` entry for
+    /// a name when the daemon didn't send a top-level `deviceName`.
+    private static func parseBLEMatrixHealth(_ raw: [String: Any]) -> BLEMatrixHealth {
+        let devices = raw["devices"] as? [[String: Any]] ?? []
+        let count = raw["configuredDeviceCount"] as? Int
+            ?? raw["configured_device_count"] as? Int
+            ?? devices.count
+        let name = raw["deviceName"] as? String
+            ?? raw["device_name"] as? String
+            ?? devices.first?["name"] as? String
+            ?? devices.first?["address"] as? String
+        return BLEMatrixHealth(
+            configuredDeviceCount: count,
+            connected: raw["connected"] as? Bool ?? false,
+            deviceName: name,
+            statusReason: raw["statusReason"] as? String ?? raw["status_reason"] as? String,
+            displayDimmed: raw["displayDimmed"] as? Bool ?? raw["display_dimmed"] as? Bool ?? false,
+            hasFrame: raw["hasFrame"] as? Bool ?? raw["has_frame"] as? Bool ?? false,
+            lastError: raw["lastError"] as? String ?? raw["last_error"] as? String
+        )
     }
 }

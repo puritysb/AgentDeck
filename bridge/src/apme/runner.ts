@@ -194,8 +194,8 @@ export class ApmeRunner {
     });
   }
 
-  /** Judge a closed task (group of turns between boundary signals —
-   *  TodoWrite all-completed, /clear, session_end). Fires-and-forgets;
+  /** Judge a closed task (group of turns between hard boundary signals —
+   *  manual, /clear, session_end, idle_gap). Fires-and-forgets;
    *  task-level summary and axis scores are persisted in tasks + evals. */
   enqueueTask(job: { runId: string; taskId: string; category?: string; boundarySignal?: string }): void {
     if (!this.store.enabled) return;

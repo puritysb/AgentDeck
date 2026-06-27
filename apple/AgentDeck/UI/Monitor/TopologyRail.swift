@@ -445,6 +445,8 @@ struct TopologyRail: View {
         }
         if health.d200h != nil { return true }
         if let pixoo = health.pixoo, pixoo.configuredDeviceCount > 0 { return true }
+        if let timebox = health.timebox, timebox.configuredDeviceCount > 0 { return true }
+        if let idm = health.idotmatrix, idm.configuredDeviceCount > 0 { return true }
         if let serial = health.serial, !serial.connectedBoards.isEmpty { return true }
         if let sd = health.streamDeck, !sd.devices.isEmpty { return true }
         return false
@@ -470,6 +472,7 @@ struct TopologyRail: View {
                 streamDeckSection(health: health)
                 usbHidSection(health: health)
                 pixelDisplaySection(health: health)
+                bleMatrixSection(health: health)
                 usbSerialSection(health: health)
                 androidSection(health: health)
             }
@@ -578,6 +581,57 @@ struct TopologyRail: View {
                 }
             }
         }
+    }
+
+    /// BLE matrix panels — Divoom Timebox Mini (11×11) and iDotMatrix (32×32),
+    /// both driven over Bluetooth-LE. Kept in their own section (not folded into
+    /// "Pixel displays") because the transport differs and the daemon reports a
+    /// live `statusReason` we surface as the row detail — so a panel that's
+    /// configured but not yet streaming reads as "connecting…" / "retrying"
+    /// rather than vanishing. Only renders a panel that's actually configured.
+    @ViewBuilder
+    private func bleMatrixSection(health: ModuleHealthState) -> some View {
+        let timebox = health.timebox.flatMap { $0.configuredDeviceCount > 0 ? $0 : nil }
+        let idm = health.idotmatrix.flatMap { $0.configuredDeviceCount > 0 ? $0 : nil }
+        if timebox != nil || idm != nil {
+            VStack(alignment: .leading, spacing: 3) {
+                downstreamSubheader("BLE matrix")
+                if let timebox {
+                    DeviceRailRow(
+                        name: "Timebox Mini",
+                        status: bleMatrixStatus(timebox),
+                        detail: bleMatrixDetail(timebox, fallback: "11×11 · BLE")
+                    )
+                }
+                if let idm {
+                    DeviceRailRow(
+                        name: "iDotMatrix",
+                        status: bleMatrixStatus(idm),
+                        detail: bleMatrixDetail(idm, fallback: "32×32 · BLE")
+                    )
+                }
+            }
+        }
+    }
+
+    /// Map a BLE-matrix `statusReason` to a status dot. The Swift daemon fills
+    /// `connected`/`statusReason`; the Node daemon reports only that a panel is
+    /// configured, so a status-less configured panel reads as `.dim` ("managed,
+    /// state unknown") rather than a false error.
+    private func bleMatrixStatus(_ h: BLEMatrixHealth) -> LEDStatus {
+        if h.connected { return .ok }
+        let reason = (h.statusReason ?? "").lowercased()
+        if reason.contains("paused") { return .dim }
+        if reason.contains("connecting") || reason.contains("retry") || reason.contains("backed off") { return .warn }
+        if h.lastError != nil || reason.contains("error") || reason.contains("fail") { return .error }
+        return h.statusReason == nil ? .dim : .warn
+    }
+
+    private func bleMatrixDetail(_ h: BLEMatrixHealth, fallback: String) -> String {
+        if h.connected { return h.displayDimmed ? "\(fallback) · paused" : fallback }
+        if let reason = h.statusReason, !reason.isEmpty { return reason }
+        if let err = h.lastError, !err.isEmpty { return err }
+        return fallback
     }
 
     @ViewBuilder

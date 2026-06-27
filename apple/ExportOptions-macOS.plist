@@ -5,14 +5,14 @@
 	<key>method</key>
 	<string>app-store-connect</string>
 	<key>installerSigningCertificate</key>
-	<string>3rd Party Mac Developer Installer: SEUNG BEOM CHOI (R22679GY5Z)</string>
+	<string>3rd Party Mac Developer Installer: HYEIN GU (QF36NDHYHD)</string>
 	<key>provisioningProfiles</key>
 	<dict>
 		<key>bound.serendipity.agent.deck</key>
 		<string>AgentDeck Dashboard macOS AppStore</string>
 	</dict>
 	<key>teamID</key>
-	<string>R22679GY5Z</string>
+	<string>QF36NDHYHD</string>
 	<key>uploadSymbols</key>
 	<true/>
 	<key>signingStyle</key>

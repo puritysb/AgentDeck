@@ -41,8 +41,7 @@ import {
 import { fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData } from './usage-api.js';
 import { isLocalConnection, validateToken } from './auth.js';
 import { getLastFrame, renderPreviewFrame, onFrameRendered, offFrameRendered } from './pixoo/pixoo-bridge.js';
-import { startIDotMatrixSync, stopIDotMatrixSync } from './idotmatrix/idotmatrix-daemon-sync.js';
-import { autoDiscoverIDotMatrix } from './idotmatrix/idotmatrix-discover.js';
+import { loadIDotMatrixDevices } from './idotmatrix/idotmatrix-settings.js';
 import { handlePixooWake } from './pixoo/pixoo-client.js';
 import { triggerMdnsRecovery } from './mdns.js';
 import { rgbToBmp, pixooLiveHtml } from './hook-server.js';
@@ -68,7 +67,8 @@ import { loadWifiConfig } from './wifi-config.js';
 import { getConnectedAdbDevices, hasAdb, getAdbDeviceCount } from './adb-reverse.js';
 import { getPixooDeviceDetails, pixooDeviceCount } from './pixoo/pixoo-bridge.js';
 import { loadTimeboxDevices } from './timebox/timebox-settings.js';
-import { getLanIp, isOpenClawSessionActive, hasOpenClawSession } from '@agentdeck/shared';
+import { getLanIp } from '@agentdeck/shared';
+import { injectOpenClawSession } from './openclaw-session.js';
 import { readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -337,6 +337,23 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
     };
   }
 
+  const idotmatrix = startedModules.find((m) => m.name === 'idotmatrix') as DeviceModule & {
+    statusSnapshot?: () => Record<string, unknown>;
+  };
+  const configuredIDotMatrix = loadIDotMatrixDevices();
+  if (idotmatrix?.statusSnapshot) {
+    modules.idotmatrix = idotmatrix.statusSnapshot();
+  } else if (configuredIDotMatrix.length > 0) {
+    modules.idotmatrix = {
+      configuredDeviceCount: configuredIDotMatrix.length,
+      devices: configuredIDotMatrix.map((d) => ({
+        address: d.address,
+        name: d.name ?? 'iDotMatrix',
+        brightness: d.brightness ?? 100,
+      })),
+    };
+  }
+
   if (started.has('serial')) {
     const connectionStatus = getSerialConnectionStatus();
     const connections = connectionStatus.map((status) => ({
@@ -505,6 +522,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           { type: 'esp32', count: esp32ConnectionCount(), ports: getESP32Ports() },
           { type: 'pixoo', details: getPixooDeviceDetails() },
           { type: 'timebox', devices: loadTimeboxDevices() },
+          { type: 'idotmatrix', devices: loadIDotMatrixDevices() },
           { type: 'adb', count: getAdbDeviceCount() },
           {
             type: 'd200h',
@@ -1003,25 +1021,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // device being registered, so it's cheap when no panel is present.
     // d200h: false — direct-HID fallback retired. The D200H is driven exclusively
     // by the Ulanzi Studio plugin (`ulanzi-plugin`); the daemon never opens it over HID.
-    { mdns: true, adb: 'auto', serial: 'auto', pixoo: 'auto', timebox: 'auto', d200h: false, trmnl: true },
+    { mdns: true, adb: 'auto', serial: 'auto', pixoo: 'auto', timebox: 'auto', idotmatrix: 'auto', d200h: false, trmnl: true },
     { port, authToken: core.authToken, projectName: 'AgentDeck', wsServer: core.wsServer },
   );
 
   moduleHealthProvider = () => buildNodeModuleHealth(startedModules);
   core.setModuleHealthProvider(moduleHealthProvider);
 
-  // iDotMatrix BLE: the daemon can't speak BLE in-process, so auto-spawn the
-  // Python sync client when a device is configured. This is what makes the
-  // panel run with only the CLI daemon up (no Swift app, no manual `idotmatrix
-  // sync`). No-op when nothing is configured or the Python venv is absent.
-  startIDotMatrixSync(port);
-
-  // Zero-config: when nothing is configured, run a background BLE scan and, if
-  // a panel is found, add it + (re)start sync. Non-blocking so the ~5s scan
-  // doesn't delay daemon startup; skipped entirely once a device is configured.
-  void autoDiscoverIDotMatrix().then((added) => {
-    if (added > 0) startIDotMatrixSync(port);
-  });
+  // iDotMatrix BLE is now driven by IDotMatrixModule (registered in
+  // createDefaultModules): the module owns spawning the Python sync client,
+  // zero-config auto-discovery, and teardown — so the daemon doesn't start it
+  // directly here anymore (avoids double-spawn).
 
   // Serial module state provider (heartbeat needs cached state)
   const serialModule = startedModules.find(m => m.name === 'serial') as SerialModule | undefined;
@@ -1135,19 +1145,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // / adapter-liveness alone must not materialize a session — that kept a
     // phantom OpenClaw alive on devices after it was effectively off. Identical
     // predicate to bridge/src/index.ts and Swift buildSessionsListEvent.
-    if (!isOpenClawSessionActive({ gatewayConnected: core.cachedGatewayConnected })) return enrichedSessions;
-    if (hasOpenClawSession(enrichedSessions)) return enrichedSessions;
     const snap = core.stateMachine.getSnapshot();
-    return [...enrichedSessions, {
-      id: 'openclaw-gateway',
-      port: 18789,
-      projectName: snap.projectName ?? 'OpenClaw',
-      agentType: 'openclaw' as const,
-      alive: true,
+    return injectOpenClawSession(enrichedSessions, {
+      gatewayConnected: core.cachedGatewayConnected,
       state: snap.state,
+      projectName: snap.projectName ?? 'OpenClaw',
       modelName: snap.modelName ?? undefined,
-      controlMode: 'managed' as const,
-    }];
+      controlMode: 'managed',
+    });
   });
 
   // OpenClaw-specific APME session id. Distinct from `core.sessionId`
@@ -1757,7 +1762,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     voiceAssistant?.stop();
     voiceManager?.disconnectFromServer();
     bridgeLogStream.stop();
-    stopIDotMatrixSync();
+    // iDotMatrix BLE sync is stopped by IDotMatrixModule.stop() via stopModules below.
     await Promise.all([
       gatewayAdapter ? gatewayAdapter.shutdown().catch(() => {}) : Promise.resolve(),
       stopModules(startedModules)

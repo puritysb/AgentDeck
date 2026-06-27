@@ -76,9 +76,9 @@ export function claudeHookToSpans(
     ];
   }
 
-  // Everything else (Stop, SessionStart, SessionEnd, Notification, shutdown, …)
+  // Everything else (Stop, SessionStart, SessionEnd, Notification, shutdown, ...)
   // is recorded verbatim. The collector still inserts a `steps` row so timeline
-  // and tuner queries see them.
+  // and classifier/audit queries see them.
   return [
     make('raw_step', {
       'agentdeck.raw_event': event,

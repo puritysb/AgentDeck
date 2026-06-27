@@ -39,7 +39,9 @@ describe('Hook Installer', () => {
       expect(cmd).toContain('PORT="${AGENTDECK_PORT:-}"');
       expect(cmd).toContain('.agentdeck/daemon.json');
       expect(cmd).toContain('Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json');
+      expect(cmd).toContain('Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json');
       expect(cmd).toContain('group.bound.serendipity.agent.deck/daemon.json');
+      expect(cmd).toContain('group.bound.serendipity.agentdeck.dashboard/daemon.json');
       expect(cmd).toContain('${PORT:-9120}');
       expect(cmd).toContain('curl -sf -X POST "http://127.0.0.1:$PORT/hooks/SessionStart"');
     });
@@ -235,6 +237,36 @@ describe('Hook Installer', () => {
       const settings = applyHooks({});
       const { migrated: didMigrate } = migrateHooks(settings);
       expect(didMigrate).toBe(false);
+    });
+
+    it('refreshes hooks that still point at the retired dashboard bundle id', () => {
+      const staleCommand = [
+        'PORT="${AGENTDECK_PORT:-}"',
+        'if [ -z "$PORT" ]; then',
+        '  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json"; do',
+        '    true',
+        '  done',
+        'fi',
+        'curl -sf -X POST "http://127.0.0.1:$PORT/hooks/Stop"',
+      ].join('\n');
+      const settings = {
+        hooks: {
+          Stop: [
+            {
+              matcher: '',
+              hooks: [{ type: 'command', command: staleCommand }],
+            },
+          ],
+        },
+      };
+
+      const { migrated: didMigrate } = migrateHooks(settings);
+
+      expect(didMigrate).toBe(true);
+      const command = settings.hooks.Stop[0].hooks[0].command;
+      expect(command).toContain('bound.serendipity.agent.deck');
+      expect(command).toContain('bound.serendipity.agentdeck.dashboard');
+      expect(command).toContain('/hooks/Stop');
     });
 
     it('skips non-AgentDeck hooks', () => {

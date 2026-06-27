@@ -534,6 +534,12 @@ program
             lines.push(`  Timebox     ${tb.address} (${tb.name || 'Timebox Mini Light'})${brightnessInfo}`);
             total++;
           }
+        } else if (d.type === 'idotmatrix') {
+          for (const idm of (d.devices ?? []) as any[]) {
+            const brightnessInfo = idm.brightness !== undefined ? ` brightness=${idm.brightness}%` : '';
+            lines.push(`  iDotMatrix  ${idm.address} (${idm.name || 'iDotMatrix'})${brightnessInfo}`);
+            total++;
+          }
         } else if (d.type === 'adb') {
           const count = d.count ?? (d.devices as any[])?.length ?? 0;
           if (count > 0) {
@@ -557,9 +563,11 @@ program
     } catch {
       const { loadPixooDevices } = await import('./pixoo/pixoo-settings.js');
       const { loadTimeboxDevices } = await import('./timebox/timebox-settings.js');
+      const { loadIDotMatrixDevices } = await import('./idotmatrix/idotmatrix-settings.js');
       const pixoo = loadPixooDevices();
       const timebox = loadTimeboxDevices();
-      if (pixoo.length > 0 || timebox.length > 0) {
+      const idotmatrix = loadIDotMatrixDevices();
+      if (pixoo.length > 0 || timebox.length > 0 || idotmatrix.length > 0) {
         log('Bridge is not running.\nConfigured devices:');
         for (const d of pixoo) {
           log(`  Pixoo64     ${d.ip} (${d.name || 'Pixoo64'})`);
@@ -567,6 +575,10 @@ program
         for (const d of timebox) {
           const brightnessInfo = d.brightness !== undefined ? ` brightness=${d.brightness}%` : '';
           log(`  Timebox     ${d.address} (${d.name || 'Timebox Mini Light'})${brightnessInfo}`);
+        }
+        for (const d of idotmatrix) {
+          const brightnessInfo = d.brightness !== undefined ? ` brightness=${d.brightness}%` : '';
+          log(`  iDotMatrix  ${d.address} (${d.name || 'iDotMatrix'})${brightnessInfo}`);
         }
       } else {
         log('Bridge is not running.');

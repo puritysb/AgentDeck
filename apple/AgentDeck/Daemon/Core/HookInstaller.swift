@@ -285,15 +285,16 @@ enum HookInstaller {
     /// `buildHookCommand` and `@agentdeck/setup`'s inlined copy — any change
     /// must be mirrored in both. Resolves the daemon's HTTP port at hook
     /// runtime by probing `$AGENTDECK_PORT` → `~/.agentdeck/daemon.json` →
-    /// App Store sandbox container `daemon.json` → legacy App Group container
-    /// `daemon.json`, verifies each candidate with a `/health` probe, and
+    /// App Store sandbox container `daemon.json` → legacy dashboard container
+    /// `daemon.json` → legacy/current App Group container `daemon.json`,
+    /// verifies each candidate with a `/health` probe, and
     /// falls back to `9120`. Prefers `httpPort` over `port` because the Swift
     /// daemon splits WS and HTTP across ports.
     private static func buildHookCommand(_ event: String) -> String {
         let preamble = [
             #"PORT="${AGENTDECK_PORT:-}""#,
             #"if [ -z "$PORT" ]; then"#,
-            #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do"#,
+            #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agentdeck.dashboard/daemon.json"; do"#,
             #"    [ -f "$F" ] || continue"#,
             #"    P=$(python3 -c "import json;d=json.load(open('$F'));print(d.get('httpPort') or d.get('port',''))" 2>/dev/null)"#,
             #"    [ -n "$P" ] && curl -sf --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }"#,

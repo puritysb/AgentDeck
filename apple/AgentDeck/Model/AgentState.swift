@@ -54,8 +54,11 @@ struct PromptOption: Codable, Sendable, Identifiable {
     var shortcut: String?
     var recommended: Bool?
     var selected: Bool?
+    var kind: String? = nil
 
     var id: Int { index }
+
+    var isFreeformInput: Bool { kind == "freeform_input" }
 }
 
 // MARK: - Prompt Type
@@ -213,6 +216,26 @@ struct ModuleHealthState: Sendable {
     var trmnl: TrmnlHealth?
     var serial: SerialHealth?
     var streamDeck: StreamDeckHealth?
+    /// Divoom Timebox Mini (11×11 BLE) — daemon `statusSnapshot()`.
+    var timebox: BLEMatrixHealth?
+    /// iDotMatrix (32×32 BLE) — daemon `statusSnapshot()`.
+    var idotmatrix: BLEMatrixHealth?
+}
+
+/// Shared shape for the BLE matrix panels (Timebox Mini, iDotMatrix). Both
+/// daemon modules (`TimeboxModule`, `IDotMatrixModule`) emit an identical
+/// `statusSnapshot()` — connection state plus a human `statusReason` ("connected",
+/// "connecting…", "retrying (backed off)", "paused: host display asleep", or an
+/// error string) — so the topology rail can show *why* a panel isn't streaming
+/// instead of silently omitting it.
+struct BLEMatrixHealth: Sendable {
+    var configuredDeviceCount: Int = 0
+    var connected: Bool = false
+    var deviceName: String?
+    var statusReason: String?
+    var displayDimmed: Bool = false
+    var hasFrame: Bool = false
+    var lastError: String?
 }
 
 struct StreamDeckHealth: Sendable {

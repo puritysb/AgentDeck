@@ -12,24 +12,21 @@ fun timelineDisplayGroups(groups: List<GroupedEntry>): List<GroupedEntry> =
     groups.filter { group ->
         val entry = group.entry
         when {
-            // Task hierarchy markers are never elided — primary navigation handle.
-            // Exception: empty runs (taskCategory="_empty") are filtered out as noise.
-            entry.type == "task_start" || entry.type == "task_end" -> entry.taskCategory != "_empty"
+            entry.type == "task_start" || entry.type == "task_end" -> shouldShowTaskMarker(entry)
             // Suppress codex:otel-active no-op tool noise (matches Apple).
             isLowSignalEntry(entry) -> false
             isTaskNotificationChatStart(entry) -> false
+            isProgressChatResponse(entry) -> false
             entry.type == "chat_start" ->
                 if (!hasLaterCompletion(entry, groups)) true
                 else isMeaningfulChatStart(entry)
             entry.type == "model_call" ->
                 !hasLaterCompletion(entry, groups)
-            // chat_end carries useful info distinct from chat_response when it
-            // has a real summary tag (LLM/heuristic). "none" sentinel and
-            // null fall back to the legacy dedup-with-chat_response rule.
+            // chat_end is completion metadata for the response row. Keep it
+            // standalone only when no response row exists for the same turn.
             entry.type == "chat_end" -> {
-                val kind = entry.summaryKind
-                if (kind != null && kind != "none") true
-                else !hasPairedChatResponse(entry, groups)
+                if (entry.summaryKind == "progress") false
+                else !hasPairedChatResponse(entry, groups) && !hasPairedChatStart(entry, groups)
             }
             else -> true
         }
@@ -63,6 +60,30 @@ private val syntheticChatStarts = setOf(
     "connected",
     "resumed",
 )
+
+internal fun shouldShowTaskMarker(entry: TimelineEntry): Boolean {
+    if (entry.type != "task_start" && entry.type != "task_end") return true
+    if (entry.taskCategory == "_empty") return false
+    // session_end is an internal sample boundary, not a user activity. Some
+    // sessions use the handoff command and some do not, so showing it as a
+    // standalone TASK END row makes the visible timeline depend on workflow
+    // hygiene rather than actual work.
+    if (entry.type == "task_end" && entry.boundarySignal == "session_end") return false
+    if (entry.type == "task_end") return true
+    if (isMeaningfulTaskTitle(entry.summary)) return true
+    return entry.taskScore != null ||
+        !entry.taskOutcome.isNullOrBlank() ||
+        !entry.taskCategory.isNullOrBlank() ||
+        !entry.taskSummary.isNullOrBlank()
+}
+
+private fun isMeaningfulTaskTitle(raw: String): Boolean {
+    val title = raw.trim()
+    if (title.isEmpty()) return false
+    if (Regex("""^task\s+\d+$""", RegexOption.IGNORE_CASE).matches(title)) return false
+    if (Regex("""^작업\s*\d+$""").matches(title)) return false
+    return true
+}
 
 /**
  * Codex OTel low-signal entries — `codex:otel-active` session emits raw
@@ -174,6 +195,37 @@ private val lowSignalRawSet = setOf(
 fun isTimelineCompletionEntry(entry: TimelineEntry): Boolean =
     entry.type == "chat_response" || entry.type == "chat_end" || entry.type == "model_response"
 
+internal fun isProgressChatResponse(entry: TimelineEntry): Boolean {
+    if (entry.type != "chat_response") return false
+    if (entry.summaryKind == "progress") return true
+    return looksLikeAssistantProgressUpdate(entry.detail ?: entry.summary)
+}
+
+private fun looksLikeAssistantProgressUpdate(text: String?): Boolean {
+    val trimmed = text?.trim().orEmpty()
+    if (trimmed.isEmpty()) return false
+    val head = trimmed.take(800)
+    val lower = head.lowercase()
+
+    val englishProgress =
+        Regex("""\b(still|currently|continues? to|is|are)\s+(running|building|installing|executing|processing|waiting)\b""").containsMatchIn(lower) ||
+        Regex("""\b(still running|still building|build is running|is still running|are still running)\b""").containsMatchIn(lower) ||
+        Regex("""\b(waiting for|wait until|once (?:the )?.*(?:finishes|completes|arrives)|continue once|will continue once|i.ll continue once)\b""").containsMatchIn(lower) ||
+        Regex("""\b(no interim lines|buffers? output until completion|tail buffers output)\b""").containsMatchIn(lower)
+
+    val koreanProgress =
+        Regex("""(아직|계속)\s*(실행|진행|빌드|설치)\s*중""").containsMatchIn(head) ||
+        Regex("""(완료|끝나|도착)면\s*(계속|이어)""").containsMatchIn(head) ||
+        Regex("""(기다리는 중|대기 중)""").containsMatchIn(head)
+
+    if (!englishProgress && !koreanProgress) return false
+
+    val startsAsFinal =
+        Regex("""^(done|completed|complete|fixed|merged|verified|all done)\b""", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) ||
+        Regex("""^(완료|수정 완료|검증 완료|반영 완료|머지 완료)""").containsMatchIn(trimmed)
+    return !startsAsFinal
+}
+
 fun sameTimelineContext(a: TimelineEntry, b: TimelineEntry): Boolean {
     // 1) taskId — strongest grouping key; same task is same context.
     val aTask = a.taskId?.takeIf { it.isNotBlank() }
@@ -234,6 +286,20 @@ private fun hasPairedChatResponse(end: TimelineEntry, groups: List<GroupedEntry>
             kotlin.math.abs(endStartedAt - responseStartedAt) < 1000L
         } else {
             kotlin.math.abs(end.timestamp - other.entry.timestamp) <= 10_000L
+        }
+    }
+
+private fun hasPairedChatStart(end: TimelineEntry, groups: List<GroupedEntry>): Boolean =
+    groups.any { other ->
+        val start = other.entry
+        if (start.type != "chat_start") return@any false
+        if (!sameTimelineContext(start, end)) return@any false
+        val endStartedAt = end.startedAt
+        if (endStartedAt != null) {
+            kotlin.math.abs(endStartedAt - start.timestamp) < 1000L
+        } else {
+            start.timestamp <= end.timestamp &&
+                end.timestamp - start.timestamp <= 12 * 60 * 60 * 1000L
         }
     }
 

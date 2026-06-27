@@ -69,14 +69,15 @@ static lv_obj_t* cellNo[MOSAIC_MAX]  = {nullptr};
 // D1 card visual polish: a tinted creature glyph (agent mark) in each card's top-right
 // corner, plus a proper state "pill" chip. The glyph is the canonical creature silhouette
 // (A8 alpha mask) recolored to the agent accent — brings back the creature imagery the flat
-// label cards had lost. Codex has no glyph → its cell hides the image (dot fallback in name).
+// label cards had lost. Unmapped/unknown agents hide the image (dot fallback in name).
 static lv_obj_t* cellGlyph[MOSAIC_MAX] = {nullptr};   // creature mark overlay (IGNORE_LAYOUT)
 static lv_obj_t* cellPill[MOSAIC_MAX]  = {nullptr};   // state pill chip (content-sized label)
 
-// Runtime-built A8 image descriptors for the three creature glyphs we have masks for.
+// Runtime-built A8 image descriptors for the creature glyphs we have masks for.
 static lv_image_dsc_t glyphOctopus;    // Claude
 static lv_image_dsc_t glyphCrayfish;   // OpenClaw
 static lv_image_dsc_t glyphOpencode;   // OpenCode
+static lv_image_dsc_t glyphCodex;      // Codex
 static bool glyphsReady = false;
 static void ips10BuildGlyph(lv_image_dsc_t& g, const uint8_t* data, int w, int h) {
     g.header.magic  = LV_IMAGE_HEADER_MAGIC;
@@ -96,15 +97,17 @@ static void ips10InitGlyphs() {
     // the terrarium pairs with procedural claws — the body alone reads as a shapeless blob.
     ips10BuildGlyph(glyphCrayfish, OPENCLAW_MARK_A8, OPENCLAW_MARK_W, OPENCLAW_MARK_H);
     ips10BuildGlyph(glyphOpencode, OPENCODE_A8,      OPENCODE_W,      OPENCODE_H);
+    ips10BuildGlyph(glyphCodex,    CODEX_A8,         CODEX_W,         CODEX_H);
     glyphsReady = true;
 }
-// Map an agent type to its glyph descriptor (null → no glyph, e.g. Codex).
+// Map an agent type to its glyph descriptor (null → no glyph, e.g. unknown agent).
 static const lv_image_dsc_t* ips10AgentGlyph(const char* agentType) {
     if (!agentType) return nullptr;
     if (strstr(agentType, "openclaw"))  return &glyphCrayfish;
+    if (strstr(agentType, "codex"))     return &glyphCodex;
     if (strstr(agentType, "opencode"))  return &glyphOpencode;
     if (strstr(agentType, "claude"))    return &glyphOctopus;
-    return nullptr;   // codex / unknown → dot fallback in the name line
+    return nullptr;   // unknown → dot fallback in the name line
 }
 
 // Per-cell snapshot used by the tap handler + detail overlay (no g_state access on tap).
@@ -1549,7 +1552,7 @@ void update() {
             int innerW = pw - 24; if (innerW < 24) innerW = 24;
 
             // Creature mark — top-right overlay, tinted to the agent accent, sized to the
-            // cell (32–60px). Skipped on tiny cells and for agents with no mask (Codex).
+            // cell (32–60px). Skipped on tiny cells and for agents with no mask (unknown).
             const lv_image_dsc_t* gdsc = ips10AgentGlyph(mc[i].agent);
             int glyphSz = 0;
             if (gdsc && pw >= 92 && ph >= 52) {

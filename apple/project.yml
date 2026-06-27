@@ -33,7 +33,7 @@ targets:
         PRODUCT_NAME: AgentDeck
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: true
-        DEVELOPMENT_TEAM: R22679GY5Z
+        DEVELOPMENT_TEAM: QF36NDHYHD
       configs:
         debug:
           CODE_SIGN_STYLE: Automatic
@@ -61,7 +61,7 @@ targets:
         PRODUCT_NAME: AgentDeck
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: true
-        DEVELOPMENT_TEAM: R22679GY5Z
+        DEVELOPMENT_TEAM: QF36NDHYHD
         # App Store invariant token. macOS is shipped as an App Store app
         # only; full-spec developer integrations live in the external Node
         # CLI/daemon. Do not use this as a distribution switch or reintroduce

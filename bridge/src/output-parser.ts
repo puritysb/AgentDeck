@@ -1022,6 +1022,7 @@ export class OutputParser extends EventEmitter {
         const opt: PromptOption = { index: idx, label };
         if (recommended) opt.recommended = true;
         if (selected) opt.selected = true;
+        if (this.isFreeformInputOption(label)) opt.kind = 'freeform_input';
         byIndex.set(idx, opt);
         continue;
       }
@@ -1078,6 +1079,13 @@ export class OutputParser extends EventEmitter {
     const contiguous = bestRun.map((opt, i) => ({ ...opt, index: i }));
     const finalOptions = contiguous.length >= 2 ? contiguous : sorted;
     return { options: finalOptions, navigable, cursorIndex };
+  }
+
+  private isFreeformInputOption(label: string): boolean {
+    const lower = label.toLowerCase().trim();
+    return /직접\s*입력|자유\s*입력|직접\s*작성/.test(label) ||
+      /^(other|custom|type|enter|write)\b/.test(lower) ||
+      /\b(custom instructions?|type your|enter your|write your|freeform|free-form|manual input|text input|direct input)\b/.test(lower);
   }
 
   /**

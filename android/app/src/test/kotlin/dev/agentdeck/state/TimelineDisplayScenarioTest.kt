@@ -130,11 +130,10 @@ class TimelineDisplayScenarioTest {
     }
 
     @Test
-    fun `chat_end with summaryKind survives even when chat_response paired`() {
-        // When the bridge tags chat_end with a real summary backend ("llm" or
-        // "heuristic"), the row carries info distinct from chat_response and
-        // must stay visible — that's how the Settings → Timeline summary
-        // picker is observable on the timeline.
+    fun `chat_end is hidden when chat_response already represents the same turn`() {
+        // chat_end is completion metadata for the response row. It should not
+        // appear as a second standalone item for the same assistant answer,
+        // even when summaryKind names the summarizer backend.
         val withSummary = TimelineEntry(
             timestamp = 6_000,
             type = "chat_end",
@@ -161,8 +160,97 @@ class TimelineDisplayScenarioTest {
         val display = timelineDisplayGroups(groupConsecutive(listOf(response, responseB, withSummary, withoutSummary).sortedBy { it.timestamp }))
         val pairs = display.map { it.entry.sessionId to it.entry.type }
 
-        assertTrue("chat_end with summaryKind=llm must survive", pairs.contains("claude-a" to "chat_end"))
+        assertFalse("chat_end with summaryKind=llm must drop next to chat_response", pairs.contains("claude-a" to "chat_end"))
         assertFalse("chat_end with summaryKind=none must drop next to chat_response", pairs.contains("claude-b" to "chat_end"))
+    }
+
+    @Test
+    fun `chat_end is hidden when chat_start already represents a response-less turn`() {
+        val entries = listOf(
+            event(
+                1_000,
+                "chat_start",
+                "Review timeline exposure",
+                "claude-a",
+                "claude-code",
+                "AgentDeck",
+                startedAt = 1_000,
+            ),
+            event(
+                4_000,
+                "chat_end",
+                "Completed · Review timeline exposure",
+                "claude-a",
+                "claude-code",
+                "AgentDeck",
+                startedAt = 1_000,
+                endedAt = 4_000,
+            ).copy(summaryKind = "heuristic"),
+        )
+
+        val display = timelineDisplayGroups(groupConsecutive(entries))
+
+        assertEquals(listOf("chat_start"), display.map { it.entry.type })
+        assertEquals("Review timeline exposure", display[0].entry.summary)
+    }
+
+    @Test
+    fun `synthetic response-less turn is hidden completely`() {
+        val entries = listOf(
+            event(
+                1_000,
+                "chat_start",
+                "Prompt sent",
+                "claude-a",
+                "claude-code",
+                "AgentDeck",
+                startedAt = 1_000,
+            ),
+            event(
+                4_000,
+                "chat_end",
+                "Completed · 3s",
+                "claude-a",
+                "claude-code",
+                "AgentDeck",
+                startedAt = 1_000,
+                endedAt = 4_000,
+            ).copy(summaryKind = "none"),
+        )
+
+        val display = timelineDisplayGroups(groupConsecutive(entries))
+
+        assertTrue(display.isEmpty())
+    }
+
+    @Test
+    fun `progress chat_response and progress chat_end are hidden`() {
+        val entries = listOf(
+            event(
+                1_000,
+                "chat_response",
+                "The build is still running",
+                "codex-a",
+                "codex-cli",
+                "AgentDeck",
+                startedAt = 500,
+                endedAt = 1_000,
+            ).copy(summaryKind = "progress"),
+            event(
+                1_100,
+                "chat_end",
+                "Completed · 1s · In progress",
+                "codex-a",
+                "codex-cli",
+                "AgentDeck",
+                startedAt = 500,
+                endedAt = 1_100,
+            ).copy(summaryKind = "progress"),
+        )
+
+        val display = timelineDisplayGroups(groupConsecutive(entries))
+
+        assertTrue(display.isEmpty())
     }
 
     @Test

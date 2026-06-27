@@ -29,6 +29,17 @@ import {
 
 export const DEFAULT_CODEX_CONFIG_PATH = join(homedir(), '.codex', 'config.toml');
 const DEFAULT_DAEMON_PORT = 9120;
+const POSIX_DAEMON_JSON_CANDIDATES = [
+  '$HOME/.agentdeck/daemon.json',
+  '$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json',
+  '$HOME/Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json',
+  '$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json',
+  '$HOME/Library/Group Containers/group.bound.serendipity.agentdeck.dashboard/daemon.json',
+];
+
+function expandHome(path: string): string {
+  return path.replace(/^\$HOME/, homedir());
+}
 
 export interface InstallOptions {
   /** Override the codex config path (tests + non-default homes). */
@@ -51,19 +62,20 @@ function envOptOut(): boolean {
   return process.env.AGENTDECK_NO_CODEX_HOOKS === '1';
 }
 
-/** Read `~/.agentdeck/daemon.json` and return the daemon's HTTP port,
+/** Read candidate `daemon.json` files and return the daemon's HTTP port,
  *  preferring `httpPort` over `port`. The Apple build splits HTTP and
  *  WebSocket across different ports; the Node CLI uses a single port,
- *  so this still resolves correctly. Returns null if the file is
- *  missing or malformed. */
+ *  so this still resolves correctly. Returns null if files are missing
+ *  or malformed. */
 function currentDaemonHttpPort(): number | null {
-  const path = join(homedir(), '.agentdeck', 'daemon.json');
-  if (!existsSync(path)) return null;
-  try {
-    const obj = JSON.parse(readFileSync(path, 'utf-8'));
-    if (typeof obj.httpPort === 'number' && obj.httpPort > 0) return obj.httpPort;
-    if (typeof obj.port === 'number' && obj.port > 0) return obj.port;
-  } catch { /* malformed JSON — fall through */ }
+  for (const path of POSIX_DAEMON_JSON_CANDIDATES.map(expandHome)) {
+    if (!existsSync(path)) continue;
+    try {
+      const obj = JSON.parse(readFileSync(path, 'utf-8'));
+      if (typeof obj.httpPort === 'number' && obj.httpPort > 0) return obj.httpPort;
+      if (typeof obj.port === 'number' && obj.port > 0) return obj.port;
+    } catch { /* malformed JSON — keep looking */ }
+  }
   return null;
 }
 
@@ -139,7 +151,7 @@ function buildNotifySnippet(event: string): string {
   return [
     `PORT="\${AGENTDECK_PORT:-}"`,
     `if [ -z "$PORT" ]; then`,
-    `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
+    `  for F in ${POSIX_DAEMON_JSON_CANDIDATES.map((p) => `"${p}"`).join(' ')}; do`,
     `    [ -f "$F" ] || continue`,
     `    P=$(python3 -c "import json;d=json.load(open('$F'));print(d.get('httpPort') or d.get('port',''))" 2>/dev/null)`,
     `    [ -n "$P" ] && curl -sf --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
@@ -192,7 +204,7 @@ function buildStdinPostSnippet(event: string): string {
   return [
     `PORT="\${AGENTDECK_PORT:-}"`,
     `if [ -z "$PORT" ]; then`,
-    `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
+    `  for F in ${POSIX_DAEMON_JSON_CANDIDATES.map((p) => `"${p}"`).join(' ')}; do`,
     `    [ -f "$F" ] || continue`,
     `    P=$(python3 -c "import json;d=json.load(open('$F'));print(d.get('httpPort') or d.get('port',''))" 2>/dev/null)`,
     `    [ -n "$P" ] && curl -sf --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,

@@ -41,6 +41,7 @@ import dev.agentdeck.state.TimelineEntry
 import dev.agentdeck.state.groupConsecutive
 import dev.agentdeck.state.timelineDisplayGroups
 import dev.agentdeck.ui.timeline.stripMarkdownInline
+import dev.agentdeck.ui.timeline.timelineDetailIsRedundant
 import dev.agentdeck.ui.timeline.timelineIconKey
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -201,7 +202,7 @@ private fun EinkTimelineItem(group: GroupedEntry) {
                 fontWeight = FontWeight.Normal,
                 style = tight,
             )
-            entry.detail?.takeIf { it.isNotBlank() }?.let { detail ->
+            entry.detail?.takeIf { shouldShowEinkDetail(entry, it) }?.let { detail ->
                 // Bridge ships chat detail with markdown markers preserved
                 // (so the colour-screen TimelineMarkdownView can render
                 // headings / tables / inline styles). E-ink is plain-text
@@ -222,6 +223,12 @@ private fun EinkTimelineItem(group: GroupedEntry) {
             }
         }
     }
+}
+
+private fun shouldShowEinkDetail(entry: TimelineEntry, detail: String): Boolean {
+    if (detail.isBlank()) return false
+    if (entry.summaryKind == "none" || entry.summaryKind == "progress") return false
+    return !timelineDetailIsRedundant(detail, entry.summary)
 }
 
 /**

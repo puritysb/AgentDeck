@@ -186,6 +186,14 @@ describe('codex-mini-toml: quoted', () => {
 // ─── codex-install: managedBlockBody ────────────────────────────────────
 
 describe('codex-install: managedBlockBody', () => {
+  it('includes current and retired App Store daemon.json paths', () => {
+    const body = managedBlockBody({ daemonHttpPort: 9120 });
+    expect(body).toContain('Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json');
+    expect(body).toContain('Library/Containers/bound.serendipity.agentdeck.dashboard/Data/Library/Application Support/AgentDeck/daemon.json');
+    expect(body).toContain('group.bound.serendipity.agent.deck/daemon.json');
+    expect(body).toContain('group.bound.serendipity.agentdeck.dashboard/daemon.json');
+  });
+
   it('roundtrip preserves user TOML byte-for-byte (load-bearing)', () => {
     const original = [
       '# Codex config — handcrafted',

@@ -53,6 +53,35 @@ enum TimelineSummarizer {
     nonisolated(unsafe) private static var probedAt: Date = .distantPast
     private static let probeCacheTTL: TimeInterval = 60
 
+    static func isAssistantProgressUpdate(_ text: String?) -> Bool {
+        guard let text else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let head = String(trimmed.prefix(800))
+        let lower = head.lowercased()
+
+        let progressPatterns = [
+            #"\b(still|currently|continues? to|is|are)\s+(running|building|installing|executing|processing|waiting)\b"#,
+            #"\b(still running|still building|build is running|is still running|are still running)\b"#,
+            #"\b(waiting for|wait until|once (?:the )?.*(?:finishes|completes|arrives)|continue once|will continue once|i.ll continue once)\b"#,
+            #"\b(no interim lines|buffers? output until completion|tail buffers output)\b"#,
+        ]
+        let englishProgress = progressPatterns.contains {
+            lower.range(of: $0, options: .regularExpression) != nil
+        }
+        let koreanProgress =
+            head.range(of: #"(아직|계속)\s*(실행|진행|빌드|설치)\s*중"#, options: .regularExpression) != nil ||
+            head.range(of: #"(완료|끝나|도착)면\s*(계속|이어)"#, options: .regularExpression) != nil ||
+            head.range(of: #"(기다리는 중|대기 중)"#, options: .regularExpression) != nil
+
+        guard englishProgress || koreanProgress else { return false }
+
+        let startsAsFinal =
+            trimmed.range(of: #"^(done|completed|complete|fixed|merged|verified|all done)\b"#, options: [.regularExpression, .caseInsensitive]) != nil ||
+            trimmed.range(of: #"^(완료|수정 완료|검증 완료|반영 완료|머지 완료)"#, options: .regularExpression) != nil
+        return !startsAsFinal
+    }
+
     /// Resolve the MLX model id for an inference call. Returns `nil` when
     /// the MLX server is unreachable — callers must skip the HTTP request
     /// rather than POSTing to a nonexistent model (App Store users without

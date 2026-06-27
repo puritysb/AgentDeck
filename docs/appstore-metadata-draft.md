@@ -8,6 +8,8 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+**Naming note**: The base App Store Connect app name is `AgentDeck Dashboard`. For localized storefronts where `AgentDeck` is available, use `AgentDeck` as that localization's app name.
+
 ---
 
 ## 🇰🇷 Korean (Primary)
@@ -33,7 +35,7 @@ Claude Code와 opt-in Codex/OpenClaw 세션을 Mac + iPad에서 실시간으로 
 ### Description (4000자)
 
 ```
-AgentDeck Dashboard는 AI 코딩 에이전트(Claude Code, Codex, OpenClaw)를 위한 실시간 모니터링 & 평가 앱입니다.
+AgentDeck은 AI 코딩 에이전트(Claude Code, Codex, OpenClaw)를 위한 실시간 모니터링 & 평가 앱입니다.
 
 "Stop Chatting. Start Steering."
 
@@ -105,7 +107,7 @@ claude code,ai,agent,dashboard,stream deck,monitoring,apme,openclaw,codex,ipad,c
 ### What's New (for v1.0.0, 4000자)
 
 ```
-🎉 AgentDeck Dashboard 첫 App Store 출시
+🎉 AgentDeck 첫 App Store 출시
 
 핵심 기능:
 • Mac + iPad 동시 페어링 (Bonjour 자동 + QR 백업)
@@ -145,7 +147,7 @@ Monitor Claude Code plus opt-in Codex/OpenClaw sessions in real time on Mac + iP
 ### Description (4000 chars)
 
 ```
-AgentDeck Dashboard is a real-time monitoring and evaluation companion for AI coding agents — Claude Code, Codex, and OpenClaw.
+AgentDeck is a real-time monitoring and evaluation companion for AI coding agents — Claude Code, Codex, and OpenClaw.
 
 "Stop Chatting. Start Steering."
 
@@ -217,7 +219,7 @@ claude code,ai,agent,dashboard,monitoring,apme,openclaw,codex,ipad,stream deck,d
 ### What's New (v1.0.0, 4000 chars)
 
 ```
-🎉 AgentDeck Dashboard — first App Store release
+🎉 AgentDeck — first App Store release
 
 What's in v1.0:
 • Mac + iPad simultaneous pairing (Bonjour auto + QR fallback)
@@ -308,6 +310,6 @@ No demo account required — the app doesn't have user accounts. Reviewer can op
 | Privacy Policy URL | `https://puritysb.github.io/AgentDeck/#privacy` |
 
 If you don't have a privacy policy page yet, the minimum Apple-acceptable content:
-- State: "AgentDeck Dashboard does not collect, store, or transmit any personal data."
+- State: "AgentDeck does not collect, store, or transmit any personal data."
 - List every user-visible capability (microphone, speech recognition, local network, USB device, app groups) and what they're used for.
 - Contact email for questions.

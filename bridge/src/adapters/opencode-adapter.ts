@@ -23,6 +23,7 @@ import { getApme } from '../apme/index.js';
 import { opencodePartToSpans, opencodeMessageToSpans } from '../apme/adapters/opencode-hook.js';
 
 const log = (...args: unknown[]) => debug('adapter:opencode', ...args);
+const TIMELINE_CHAT_DETAIL_LIMIT = 6000;
 
 export class OpenCodeAdapter extends PtyAdapter {
   readonly capabilities: AgentCapabilities = OPENCODE_CAPABILITIES;
@@ -464,7 +465,7 @@ export class OpenCodeAdapter extends PtyAdapter {
         // Chat path — preserve markdown so the dashboard can render heading
         // / table / inline styles. Tool-output detail above stays on
         // cleanDetailText since that's typically JSON / log noise.
-        detail: prepareMarkdownDetail(this.accumulatedResponse.slice(0, 1000)),
+        detail: prepareMarkdownDetail(this.accumulatedResponse.slice(0, TIMELINE_CHAT_DETAIL_LIMIT)),
       });
     }
 

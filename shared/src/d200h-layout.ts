@@ -545,6 +545,10 @@ function buildDetail(
       // (❯ cursor) → select_option so the daemon drives arrows+Enter;
       // non-navigable inline prompts → respond with the option's shortcut.
       options.forEach((opt, i) => {
+        if (opt.kind === 'freeform_input') {
+          cells.push({ svg: renderInfoSlot('INPUT', 'type in terminal', 'activity', 'action'), action: null });
+          return;
+        }
         const command: ButtonCommand = navigable
           ? { type: 'select_option', index: i, sessionId: sid }
           : { type: 'respond', value: opt.shortcut || opt.label?.charAt(0)?.toLowerCase() || String(i + 1) };

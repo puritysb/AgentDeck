@@ -36,6 +36,8 @@ import { extractTopicHintWithKind, promptSnippetFallback } from '@agentdeck/shar
 import { timelineEntryToSpans } from './timeline.js';
 import { classifyAndEnqueueTurn } from '../classify-turn.js';
 
+const TIMELINE_CHAT_DETAIL_LIMIT = 6000;
+
 // PTY parser deferred-close window. The parser fires `idle{source: prompt}`
 // on any `›\s` match — including the status line shown mid-processing — so
 // we wait this long before committing chat_end. A new spinner_start within
@@ -436,7 +438,9 @@ export class CodexTurnManager {
       ts: endedAt,
       type: 'chat_end',
       raw: `${label} · ${duration}s`,
-      detail: response.length > 2 ? prepareMarkdownDetail(response.slice(0, 1000)) || undefined : undefined,
+      detail: response.length > 2
+        ? prepareMarkdownDetail(response.slice(0, TIMELINE_CHAT_DETAIL_LIMIT)) || undefined
+        : undefined,
       agentType: 'codex-cli',
       startedAt,
       endedAt,

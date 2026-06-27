@@ -58,7 +58,7 @@ bash scripts/build-apple-release.sh --all     # both + TestFlight upload
 git tag apple-v0.1.0 && git push origin apple-v0.1.0  # CI → TestFlight
 ```
 
-- **Apple Bundle ID**: `bound.serendipity.agent.deck` (App Store Connect 앱명: "AgentDeck Dashboard")
+- **Apple Bundle ID**: `bound.serendipity.agent.deck` (App Store Connect 앱명: "AgentDeck Dashboard"; 지역별로 `AgentDeck` 이름을 사용할 수 있으면 해당 로컬라이제이션에서 사용)
 - **CI**: `.github/workflows/apple-release.yml` — `apple-v*` 태그 → macOS-15 runner → archive → TestFlight 업로드
 - **Secrets**: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `ASC_API_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_KEY_BASE64`
 - **Note**: the `bound.serendipity.agentdeck.*` tree is retired (the former `.dashboard` app record carries an immovable ASC build floor at 1.0.6/build 8). The fresh App Store app uses the `bound.serendipity.agent.*` tree → `bound.serendipity.agent.deck`. The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier and is unrelated to the app bundle ID.

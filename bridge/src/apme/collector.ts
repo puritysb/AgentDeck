@@ -193,8 +193,8 @@ export class ApmeCollector {
       };
       this.sessionToTurn.set(sessionId, turn);
       // Ensure an active task exists so this turn can attach to it. Tasks group
-      // consecutive turns between boundary signals (TodoWrite all-completed,
-      // /clear, session_end). First turn in a run opens task 0.
+      // consecutive turns between hard boundaries (/task close, /clear,
+      // session_end, idle_gap). First turn in a run opens task 0.
       const task = this.openTaskIfNone(sessionId, runId);
       if (task) {
         if (task.firstTurnIndex === null) task.firstTurnIndex = turnIndex;
@@ -704,9 +704,8 @@ export class ApmeCollector {
       case 'tool_result': {
         const toolName = (a['gen_ai.tool.name'] ?? a['agentdeck.tool_name']) as string | undefined;
         const raw = (a['agentdeck.raw_payload'] as Record<string, unknown> | undefined) ?? {};
-        // PostToolUse + TodoWrite all-completed → existing ingestHook path
-        // detects todo_complete boundary automatically, so adapters don't
-        // need to emit a separate task_boundary span for that case.
+        // PostToolUse + TodoWrite all-completed routes through the existing
+        // ingestHook path as a soft state hint, not as a task close.
         this.ingestHook(sessionId, 'PostToolUse', { tool_name: toolName, ...raw });
         return;
       }

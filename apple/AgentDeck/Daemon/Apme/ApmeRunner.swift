@@ -96,7 +96,7 @@ actor ApmeRunner {
     private let store: ApmeStore
     private var config: ApmeConfig
     /// Listeners notified after each successful eval. DaemonServer registers
-    /// one to broadcast `apmeEval` WebSocket events and append `eval_result`
+    /// one to broadcast `apmeEval` WebSocket events and update task score
     /// timeline entries.
     private var listeners: [@Sendable (ApmeEvalJobResult) -> Void] = []
 
@@ -280,8 +280,8 @@ actor ApmeRunner {
 
     // MARK: - Task-level eval (rollup across multiple turns)
 
-    /// Judge a closed task (group of turns between boundary signals —
-    /// TodoWrite all-completed / /clear / session_end). Fires-and-forgets on
+    /// Judge a closed task (group of turns between hard boundary signals —
+    /// manual / /clear / session_end / idle_gap). Fires-and-forgets on
     /// a detached Task. Writes a one-line summary + axis scores into the
     /// `tasks` row and per-axis `evals` rows with `layer='task_judge'`.
     /// Mirrors bridge/src/apme/runner.ts enqueueTask.

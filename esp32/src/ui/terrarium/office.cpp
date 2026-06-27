@@ -76,8 +76,8 @@ static const uint8_t* agentGlyphA8(const char* t) {
     using namespace CreatureGlyphs;
     if (!t) return nullptr;
     if (strstr(t, "openclaw")) return OPENCLAW_MARK_A8;
-    if (strstr(t, "opencode")) return OPENCODE_A8;
     if (strstr(t, "codex"))    return CODEX_A8;
+    if (strstr(t, "opencode")) return OPENCODE_A8;
     if (strstr(t, "claude"))   return OCTOPUS_A8;
     return nullptr;
 }

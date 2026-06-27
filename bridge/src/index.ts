@@ -31,8 +31,8 @@ import {
   cleanDetailText, cleanRawText, prepareMarkdownDetail,
   extractTopicHintWithKind, promptSnippetFallback,
   isAssistantProgressUpdate,
-  isOpenClawSessionActive, hasOpenClawSession,
 } from '@agentdeck/shared';
+import { injectOpenClawSession } from './openclaw-session.js';
 import { VoiceAssistantManager } from './voice-assistant.js';
 import { TerminalStatus } from './terminal-status.js';
 import { readFileSync, existsSync } from 'fs';
@@ -968,18 +968,9 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   // OpenClaw session alive whenever anything held port 18789 open. SSOT:
   // isOpenClawSessionActive / hasOpenClawSession in @agentdeck/shared. Must
   // stay identical to daemon-server.ts and Swift buildSessionsListEvent.
-  core.setSessionsEnricher((sessions) => {
-    const gwActive = isOpenClawSessionActive({ gatewayConnected: core.cachedGatewayConnected });
-    // Inject iff authenticated AND not already present (dedupe).
-    if (!gwActive || hasOpenClawSession(sessions)) return sessions;
-    return [...sessions, {
-      id: 'openclaw-gateway',
-      port: 18789,
-      projectName: 'OpenClaw',
-      agentType: 'openclaw' as const,
-      alive: true,
-    }];
-  });
+  core.setSessionsEnricher((sessions) =>
+    injectOpenClawSession(sessions, { gatewayConnected: core.cachedGatewayConnected }),
+  );
 
   // ===== Encoder state computation =====
   function computeEncoderState(): EncoderStateEvent {

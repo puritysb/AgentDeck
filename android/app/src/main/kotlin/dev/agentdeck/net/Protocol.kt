@@ -78,6 +78,7 @@ data class PromptOption(
     val shortcut: String? = null,
     val recommended: Boolean? = null,
     val selected: Boolean? = null,
+    val kind: String? = null,
 )
 
 @Serializable

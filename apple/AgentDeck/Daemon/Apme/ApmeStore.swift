@@ -354,7 +354,7 @@ final class ApmeStore: @unchecked Sendable {
     // MARK: - Tasks
 
     /// Insert a new task row. `boundary_signal` starts as "open" and is
-    /// updated to the final boundary ("todo_complete" / "clear" / "session_end")
+    /// updated to the final boundary ("clear" / "session_end" / "manual" / "idle_gap")
     /// when the task closes. Mirrors bridge/src/apme/store.ts insertTask.
     func insertTask(_ task: ApmeTask) {
         guard let db else { return }
@@ -932,8 +932,8 @@ final class ApmeStore: @unchecked Sendable {
     // MARK: - Rubric
 
     /// Append a new rubric version and return the assigned version number.
-    /// Used by the tuner when it auto-proposes an improved rubric — the new
-    /// row's `parent_ver` points at the version it was derived from.
+    /// Kept for manual/admin rubric evolution; the former automatic tuner has
+    /// been removed. The new row's `parent_ver` points at the prior version.
     /// Mirrors bridge/src/apme/store.ts `appendRubric`.
     @discardableResult
     func appendRubric(purpose: String, prompt: String, weights: String, parentVer: Int?, notes: String?) -> Int {
@@ -1219,10 +1219,10 @@ final class ApmeStore: @unchecked Sendable {
             CategoryRubric(purpose: "task_rollup", prompt: """
                 You are evaluating a multi-turn AI agent task that has just ended.
                 The boundary signal that closed the task tells you HOW it ended:
-                  - todo_complete : the agent itself marked every TodoWrite item as completed (self-declared done)
                   - clear         : the user typed /clear to reset context (often: user gave up or moved on)
                   - session_end   : the agent process exited (could be done, could be interrupted)
                   - manual        : a human marked the boundary explicitly
+                  - idle_gap      : no follow-up arrived after the assistant's final response
 
                 You receive: the task's category (coding/planning/research/…), the number of turns,
                 the boundary signal, and the full Turn 0..N transcript (user prompt → agent response).
@@ -1263,7 +1263,7 @@ final class ApmeStore: @unchecked Sendable {
                   0.1 — User asked to fix a bug; agent introduced two more bugs and called /clear.
                 """,
                 weights: #"{"completion":0.5,"coherence":0.25,"efficiency":0.25}"#,
-                notes: "task-unit rollup (TodoWrite all-completed / /clear / session_end)"),
+                notes: "task-unit rollup (/clear / session_end / manual / idle_gap)"),
         ]
         for r in categoryRubrics where !existsRubric(r.purpose) {
             insertRubric(version: nil, purpose: r.purpose, prompt: r.prompt, weights: r.weights, notes: r.notes)
@@ -1502,8 +1502,8 @@ struct ApmeEval {
     let createdAt: Int
 }
 
-/// A `task` groups consecutive turns within a run, bounded by automatic
-/// signals (TodoWrite all-completed / /clear / session_end). Mirrors
+/// A `task` groups consecutive turns within a run, bounded by explicit or
+/// deterministic signals (/clear / session_end / manual / idle_gap). Mirrors
 /// bridge/src/apme/types.ts ApmeTaskRow. A task-level judge writes a
 /// one-line summary + composite_score here; axis scores land in `evals`
 /// with `layer='task_judge'` and `task_id` set.
@@ -1511,7 +1511,7 @@ struct ApmeTask {
     let id: String
     let runId: String
     let taskIndex: Int
-    var boundarySignal: String     // 'open' | 'todo_complete' | 'clear' | 'session_end' | 'manual'
+    var boundarySignal: String     // 'open' | 'clear' | 'session_end' | 'manual' | 'idle_gap'
     let startedAt: Int
     var endedAt: Int?
     var firstTurnIndex: Int?
