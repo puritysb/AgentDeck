@@ -4,6 +4,7 @@ import { AdbModule } from './adb-module.js';
 import { SerialModule } from './serial-module.js';
 import { PixooModule } from './pixoo-module.js';
 import { TimeboxModule } from './timebox-module.js';
+import { IDotMatrixModule } from './idotmatrix-module.js';
 import { D200hModule } from './d200h-module.js';
 import { TrmnlModule } from './trmnl-module.js';
 import type { AgentType } from '../types.js';
@@ -15,6 +16,7 @@ export { AdbModule } from './adb-module.js';
 export { SerialModule } from './serial-module.js';
 export { PixooModule } from './pixoo-module.js';
 export { TimeboxModule } from './timebox-module.js';
+export { IDotMatrixModule } from './idotmatrix-module.js';
 export { D200hModule } from './d200h-module.js';
 export { TrmnlModule } from './trmnl-module.js';
 
@@ -28,6 +30,7 @@ export function createDefaultModules(agentType: AgentType): DeviceModule[] {
     new SerialModule(),
     new PixooModule(),
     new TimeboxModule(),
+    new IDotMatrixModule(),
     new D200hModule(),
     new TrmnlModule(),
   ];
