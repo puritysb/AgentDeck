@@ -49,6 +49,8 @@ struct AttentionTheaterHUD: View {
     /// a yes/no/always trio that would silently go nowhere — `optionsContent`
     /// shows a "respond in the terminal" hint instead.
     private var effectiveOptions: [PromptOption] { options }
+    private var hasFreeformInputOption: Bool { effectiveOptions.contains { $0.isFreeformInput } }
+    private var attentionTitle: String { hasFreeformInputOption ? "INPUT NEEDED" : "ATTENTION" }
 
     /// Use the compact horizontal row layout when we have ≤3 options and
     /// every label is short. This preserves the familiar tool-approval
@@ -56,6 +58,7 @@ struct AttentionTheaterHUD: View {
     private var useHorizontalLayout: Bool {
         let opts = effectiveOptions
         guard opts.count <= 3 else { return false }
+        if opts.contains(where: { $0.isFreeformInput }) { return false }
         if promptType == .multiSelect { return false }
         let maxLen = opts.map(\.label.count).max() ?? 0
         return maxLen <= 14
@@ -67,7 +70,7 @@ struct AttentionTheaterHUD: View {
                 creatureBadge
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text("ATTENTION")
+                        Text(attentionTitle)
                             .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                             .kerning(1.4)
                             .foregroundStyle(TerrariumHUD.ledAmber)
@@ -149,7 +152,11 @@ struct AttentionTheaterHUD: View {
             ScrollView(.vertical, showsIndicators: opts.count > 5) {
                 VStack(spacing: 6) {
                     ForEach(opts) { option in
-                        theaterButton(option: option, vertical: true)
+                        if option.isFreeformInput {
+                            freeformInputRow(option)
+                        } else {
+                            theaterButton(option: option, vertical: true)
+                        }
                     }
                 }
             }
@@ -244,6 +251,34 @@ struct AttentionTheaterHUD: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private func freeformInputRow(_ option: PromptOption) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "keyboard")
+                .font(.system(size: 11, weight: .semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.label)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .lineLimit(1)
+                Text("Type this response in the terminal")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundStyle(TerrariumHUD.subtext)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(TerrariumHUD.text)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(TerrariumHUD.ledAmber.opacity(0.35), lineWidth: 1)
+        )
     }
 
     /// Pick a fill color. Horizontal layout uses the classic three-button

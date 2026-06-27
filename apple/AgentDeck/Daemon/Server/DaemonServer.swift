@@ -5974,6 +5974,17 @@ final class DaemonServer {
     /// Encode a DaemonTimelineEntry into the dict shape broadcastRaw expects —
     /// matches the key set `appendGatewayTimelineEntry` uses for round-trip.
     private func claudeCodeEntryDict(_ e: DaemonTimelineEntry) -> [String: Any] {
+        Self.daemonTimelineEntryDict(e)
+    }
+
+    static func buildTimelineHistoryEventForTest(from entries: [DaemonTimelineEntry]) -> [String: Any] {
+        [
+            "type": "timeline_history",
+            "entries": entries.map { daemonTimelineEntryDict($0) },
+        ]
+    }
+
+    private static func daemonTimelineEntryDict(_ e: DaemonTimelineEntry) -> [String: Any] {
         var dict: [String: Any] = [
             "ts": e.ts,
             "type": e.type,

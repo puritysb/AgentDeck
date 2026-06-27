@@ -63,8 +63,8 @@ final class ApmeCollector {
     private var lastClosedTurnByRun: [String: String] = [:]
     private var turnCounter = 0
 
-    /// Active task tracking. Tasks group consecutive turns between boundary
-    /// signals (TodoWrite all-completed / /clear / session_end). Mirrors
+    /// Active task tracking. Tasks group consecutive turns between hard
+    /// boundaries (/task close / /clear / session_end / idle_gap). Mirrors
     /// bridge/src/apme/collector.ts ActiveTask.
     private struct ActiveTask {
         let id: String

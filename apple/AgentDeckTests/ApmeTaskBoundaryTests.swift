@@ -107,7 +107,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertEqual(collector.activeTaskId, tasks[0].id)
     }
 
-    func testTodoWriteAllCompletedClosesActiveTask() throws {
+    func testTodoWriteAllCompletedRecordsSoftHintWithoutClosingTask() throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -128,9 +128,18 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         guard let run = store.listRuns().first else { return XCTFail("no run") }
         let tasks = store.listTasksForRun(run.id)
         XCTAssertEqual(tasks.count, 1)
-        XCTAssertEqual(tasks[0].boundarySignal, "todo_complete")
-        XCTAssertNotNil(tasks[0].endedAt, "boundary hit should stamp ended_at")
-        XCTAssertNil(collector.activeTaskId, "no active task after boundary")
+        XCTAssertEqual(tasks[0].boundarySignal, "open")
+        XCTAssertNil(tasks[0].endedAt, "TodoWrite completion is a non-segmenting hint")
+        XCTAssertEqual(collector.activeTaskId, tasks[0].id)
+
+        let events = store.listSampleEventRows(tasks[0].id)
+        XCTAssertTrue(
+            events.contains { row in
+                (row["kind"] as? String) == "state" &&
+                ((row["payload"] as? String)?.contains("todos_completed") ?? false)
+            },
+            "TodoWrite all-completed should remain visible in the sample trajectory"
+        )
     }
 
     func testTodoWritePartialDoesNotCloseTask() throws {
@@ -158,7 +167,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertEqual(tasks[0].boundarySignal, "open")
     }
 
-    func testSecondUserPromptAfterBoundaryOpensNewTask() throws {
+    func testSecondUserPromptAfterTodoCompleteStaysInSameTask() throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -174,11 +183,14 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
         guard let run = store.listRuns().first else { return XCTFail("no run") }
         let tasks = store.listTasksForRun(run.id)
-        XCTAssertEqual(tasks.count, 2, "second prompt opens a new task")
+        XCTAssertEqual(tasks.count, 1, "TodoWrite completion is not a boundary")
         XCTAssertEqual(tasks[0].taskIndex, 0)
-        XCTAssertEqual(tasks[1].taskIndex, 1)
-        XCTAssertNotNil(tasks[0].endedAt)
-        XCTAssertNil(tasks[1].endedAt)
+        XCTAssertNil(tasks[0].endedAt)
+
+        let turns = store.listTurns(runId: run.id)
+        XCTAssertEqual(turns.count, 2)
+        XCTAssertEqual(turns[0]["task_id"] as? String, tasks[0].id)
+        XCTAssertEqual(turns[1]["task_id"] as? String, tasks[0].id)
     }
 
     func testSessionEndClosesActiveTaskWithSessionEndBoundary() throws {
@@ -325,6 +337,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
             "tool_name": "TodoWrite",
             "tool_input": ["todos": [["content": "a", "status": "completed"]]],
         ])
+        collector.closeTaskExternal(boundarySignal: "manual")
 
         let kinds = emitted.map(\.type)
         XCTAssertEqual(kinds.filter { $0 == "task_start" }.count, 1)

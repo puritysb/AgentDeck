@@ -1153,6 +1153,9 @@ struct SettingsScreen: View {
         #if os(macOS) && AGENTDECK_APP_STORE
         do {
             try OpenClawGatewayTokenStore.deleteToken()
+            // Also revoke the imported-config bookmark so a stale rotated token
+            // isn't silently re-read back in on the next reconnect.
+            AppPreferences.shared.clearOpenClawConfigAccess()
             openClawGatewayTokenInput = ""
             openClawGatewayTokenSaved = false
             openClawGatewayTokenError = nil
@@ -1324,32 +1327,11 @@ struct SettingsScreen: View {
     /// flagging the call. The function is a pure dictionary walk — no UI
     /// state, no shared mutable state.
     nonisolated static func extractGatewayToken(from json: [String: Any]) -> String? {
-        let candidates: [[String]] = [
-            ["gateway", "auth", "token"],
-            ["auth", "token"],
-            ["gateway", "token"],
-        ]
-        for path in candidates {
-            var node: Any = json
-            var ok = true
-            for (i, key) in path.enumerated() {
-                guard let dict = node as? [String: Any], let next = dict[key] else {
-                    ok = false
-                    break
-                }
-                if i == path.count - 1 {
-                    if let str = next as? String {
-                        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty { return trimmed }
-                    }
-                    ok = false
-                    break
-                }
-                node = next
-            }
-            _ = ok
-        }
-        return nil
+        // Delegates to the SSOT parser so the Settings UI, the daemon adapter's
+        // bookmark auto-refresh, and the XCTest suite all share one
+        // implementation. This symbol is retained because
+        // OpenClawTokenExtractTests references it directly.
+        OpenClawGatewayTokenParser.extractToken(from: json)
     }
 
     /// Lets the user pick `openclaw.json` via NSOpenPanel and pulls the
@@ -1378,18 +1360,26 @@ struct SettingsScreen: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
+        panel.nameFieldStringValue = "openclaw.json"
         panel.showsHiddenFiles = true
-        // Open the panel at the user's REAL home directory. Inside App Sandbox
-        // `ProcessInfo.environment["HOME"]` and `NSHomeDirectory()` both
-        // return the app's container path (`~/Library/Containers/<id>/Data/`),
-        // which is *not* where the user keeps OpenClaw's config. `getpwuid`
-        // bypasses sandbox-translated env to return `/Users/<name>/`, which
-        // the panel (running in Powerbox, outside the sandbox) is allowed to
-        // present as a navigation starting point — no read permission is
-        // granted by the hint itself, only by what the user selects. With
-        // `showsHiddenFiles = true` the user reaches `.openclaw/` in one click.
+        // Open the panel directly inside `~/.openclaw/` so the (non-hidden)
+        // `openclaw.json` is visible immediately — relying on the user to
+        // toggle hidden files and drill into the dotfolder themselves was the
+        // root cause of "the file isn't there" reports (Powerbox doesn't
+        // reliably honour `showsHiddenFiles` for the in-process panel object).
+        //
+        // Inside App Sandbox `NSHomeDirectory()` returns the app's container
+        // path, which is *not* where OpenClaw lives. `getpwuid` returns the
+        // user's real `/Users/<name>/`; we append `.openclaw` when it exists
+        // and fall back to the real home otherwise. `directoryURL` is only a
+        // Powerbox navigation hint — it grants no read access; only the file
+        // the user explicitly selects becomes readable. This mirrors the
+        // already-shipping Antigravity picker, which points `directoryURL` at
+        // a deep app-support folder the same way.
         if let pw = getpwuid(getuid()), let realHome = pw.pointee.pw_dir.flatMap({ String(cString: $0) }) {
-            panel.directoryURL = URL(fileURLWithPath: realHome)
+            let home = URL(fileURLWithPath: realHome)
+            let openclawDir = home.appendingPathComponent(".openclaw", isDirectory: true)
+            panel.directoryURL = FileManager.default.fileExists(atPath: openclawDir.path) ? openclawDir : home
         }
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -1408,6 +1398,10 @@ struct SettingsScreen: View {
                 return
             }
             try OpenClawGatewayTokenStore.saveToken(token)
+            // Persist a security-scoped bookmark to the picked file so a later
+            // rotated `gateway.auth.token` is re-read automatically on the next
+            // gateway (re)connect — the user grants file access once.
+            AppPreferences.shared.storeOpenClawConfigBookmark(for: url)
             openClawGatewayTokenInput = ""
             openClawGatewayTokenSaved = true
             openClawGatewayTokenError = nil

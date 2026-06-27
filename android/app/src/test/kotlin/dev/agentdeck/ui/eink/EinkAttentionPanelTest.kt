@@ -52,7 +52,7 @@ class EinkAttentionPanelTest {
         assertEquals("session-1", featured.sessionId)
         assertNull(featured.question)
         assertEquals(emptyList<PromptOption>(), featured.options)
-        assertEquals(listOf("Yes", "No", "Always"), effectiveEinkAttentionOptions(featured.options).map { it.label })
+        assertEquals(emptyList<PromptOption>(), effectiveEinkAttentionOptions(featured.options))
     }
 
     @Test

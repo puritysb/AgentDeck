@@ -6,11 +6,12 @@
  * writer. This code is terminal-managed CLI daemon only.
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { deviceId, loadTimeboxDevices, type TimeboxDevice } from './timebox-settings.js';
+import { spawnPythonSync } from '../ble-sync-spawn.js';
 
 interface SyncEntry {
   device: TimeboxDevice;
@@ -84,20 +85,24 @@ function spawnSync(entry: SyncEntry, venvPython: string, syncScript: string, htt
   );
   entry.startedAt = Date.now();
 
-  const proc = spawn(venvPython, args, { stdio: 'ignore' });
+  // stdout muted (debug flood); stderr captured so a Python crash (missing bleak,
+  // stale venv, bad address) lands in the daemon log instead of vanishing.
+  const { proc, stderrTail } = spawnPythonSync(venvPython, args);
   entry.child = proc;
 
-  proc.on('error', (err) => {
+  proc.on('error', (err: Error) => {
     log(`sync failed to spawn for ${id}: ${err.message}`);
   });
 
-  proc.on('exit', (code, signal) => {
+  proc.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
     if (entry.child === proc) entry.child = null;
     if (entry.stopping) return;
     if (Date.now() - entry.startedAt > HEALTHY_UPTIME_MS) entry.consecutiveFailures = 0;
     entry.consecutiveFailures += 1;
     const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * entry.consecutiveFailures);
-    log(`sync for ${id} exited (code=${code} signal=${signal}); respawning in ${Math.round(delay / 1000)}s`);
+    const tail = stderrTail();
+    const why = code && tail ? `; stderr: ${tail}` : '';
+    log(`sync for ${id} exited (code=${code} signal=${signal})${why}; respawning in ${Math.round(delay / 1000)}s`);
     entry.respawnTimer = setTimeout(() => spawnSync(entry, venvPython, syncScript, httpPort), delay);
     if (entry.respawnTimer.unref) entry.respawnTimer.unref();
   });

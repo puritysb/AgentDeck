@@ -529,6 +529,24 @@ describe('OutputParser', () => {
       expect(events[0].options).toHaveLength(6);
     });
 
+    it('marks direct-input options as freeform instead of a normal choice', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'option_prompt');
+
+      p.feed('❯ 1. Proceed\n  2. Revise plan\n  3. Cancel\n  4. Type custom instructions\n');
+      vi.advanceTimersByTime(200);
+
+      expect(events).toHaveLength(1);
+      const opts: PromptOption[] = events[0].options;
+      expect(opts).toHaveLength(4);
+      expect(opts[3]).toMatchObject({
+        index: 3,
+        label: 'Type custom instructions',
+        kind: 'freeform_input',
+      });
+      expect(opts[0].kind).toBeUndefined();
+    });
+
     it('handles bullet-style options', () => {
       const p = armParser();
       const events = collectEvents(p, 'option_prompt');

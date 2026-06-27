@@ -65,6 +65,7 @@ export interface PromptOption {
   shortcut?: string;
   recommended?: boolean;
   selected?: boolean;
+  kind?: 'choice' | 'freeform_input';
 }
 
 export interface StateSnapshot {

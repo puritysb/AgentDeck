@@ -72,14 +72,15 @@ final class IDotMatrixProtocolTests: XCTestCase {
         XCTAssertEqual(out[(31 * 32 + 31) * 3], 255)
     }
 
-    func testDownscaleBoxAverage() {
-        // The top-left 2×2 block (which maps to out pixel 0) gets green values 0,100,200,40
-        // → average (0+100+200+40)/4 = 85.
+    func testDownscaleKeepsHighestLuminancePixel() {
+        // The top-left 2×2 block maps to out pixel 0. Max-luminance downscale
+        // keeps the brightest source pixel verbatim so pixel-art features stay
+        // crisp on the 32×32 panel.
         var src = [UInt8](repeating: 0, count: 64 * 64 * 3)
         func setG(_ x: Int, _ y: Int, _ v: UInt8) { src[(y * 64 + x) * 3 + 1] = v }
         setG(0, 0, 0); setG(1, 0, 100); setG(0, 1, 200); setG(1, 1, 40)
         let out = IDotMatrixModule.downscale64to32(src)
-        XCTAssertEqual(out[1], 85)   // out pixel (0,0) green channel
+        XCTAssertEqual(out[1], 200)   // out pixel (0,0) green channel
     }
 
     func testRgb32ToPNGRoundTrips() {

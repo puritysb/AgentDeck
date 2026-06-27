@@ -48,17 +48,33 @@ class TimelineTaskHierarchyTest {
     }
 
     @Test
-    fun `task hierarchy is never elided by display projection`() {
+    fun `manual task boundary is visible in display projection`() {
         val entries = listOf(
-            entry("task_start", timestamp = 1_000, taskId = "a"),
+            entry("task_start", timestamp = 1_000, summary = "Timeline cleanup", taskId = "a"),
             entry("chat_start", timestamp = 2_000, sessionId = "s", taskId = "a", startedAt = 2_000),
             entry("chat_end",   timestamp = 6_000, sessionId = "s", taskId = "a", startedAt = 2_000, endedAt = 6_000),
-            entry("task_end",   timestamp = 6_500, taskId = "a"),
+            entry("task_end",   timestamp = 6_500, taskId = "a", boundarySignal = "manual"),
         )
         val display = timelineDisplayGroups(groupConsecutive(entries))
         val types = display.map { it.entry.type }
         assertTrue(types.contains("task_start"))
         assertTrue(types.contains("task_end"))
+    }
+
+    @Test
+    fun `session_end task boundary is hidden from display projection`() {
+        val entries = listOf(
+            entry("task_start", timestamp = 1_000, summary = "Task 1", taskId = "a"),
+            entry("chat_response", timestamp = 6_000, sessionId = "s", taskId = "a", startedAt = 2_000, endedAt = 6_000),
+            entry("task_end", timestamp = 6_500, taskId = "a", boundarySignal = "session_end", summary = "Session end · 5s"),
+        )
+
+        val display = timelineDisplayGroups(groupConsecutive(entries))
+        val types = display.map { it.entry.type }
+
+        assertFalse(types.contains("task_start"))
+        assertFalse(types.contains("task_end"))
+        assertEquals(listOf("chat_response"), types)
     }
 
     @Test
@@ -138,6 +154,7 @@ class TimelineTaskHierarchyTest {
         agentType: String? = null,
         runId: String? = null,
         taskId: String? = null,
+        boundarySignal: String? = null,
         startedAt: Long? = null,
         endedAt: Long? = null,
     ) = TimelineEntry(
@@ -149,6 +166,7 @@ class TimelineTaskHierarchyTest {
         agentType = agentType,
         runId = runId,
         taskId = taskId,
+        boundarySignal = boundarySignal,
         startedAt = startedAt,
         endedAt = endedAt,
     )

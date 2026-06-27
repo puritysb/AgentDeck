@@ -56,6 +56,58 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(e.entries[2].type, .chatEnd)
     }
 
+    #if os(macOS)
+    @MainActor
+    func testDaemonBuildsTimelineHistoryPayloadForDashboardReconnect() throws {
+        let entries = [
+            DaemonTimelineEntry(
+                ts: 1710200000000,
+                type: "tool_exec",
+                raw: "Bash: pnpm test",
+                detail: "running tests",
+                status: "running",
+                agentType: "codex-cli",
+                projectName: "AgentDeck",
+                sessionId: "codex:abc"
+            ),
+            DaemonTimelineEntry(
+                ts: 1710200010000,
+                type: "task_end",
+                raw: "Manual · 10s",
+                agentType: "codex-cli",
+                projectName: "AgentDeck",
+                sessionId: "codex:abc",
+                taskId: "task-1",
+                boundarySignal: "manual",
+                taskScore: 0.9,
+                taskOutcome: "success",
+                taskCategory: "debugging",
+                taskSummary: "verified timeline reconnect"
+            ),
+        ]
+
+        let payload = DaemonServer.buildTimelineHistoryEventForTest(from: entries)
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        let json = String(data: data, encoding: .utf8)!
+
+        let event = BridgeEventParser.parse(json)
+        guard case .timelineHistory(let history) = event else {
+            XCTFail("Expected timelineHistory")
+            return
+        }
+
+        XCTAssertEqual(history.entries.count, 2)
+        XCTAssertEqual(history.entries[0].type, .toolExec)
+        XCTAssertEqual(history.entries[0].agentType, "codex-cli")
+        XCTAssertEqual(history.entries[0].sessionId, "codex:abc")
+        XCTAssertEqual(history.entries[1].type, .taskEnd)
+        XCTAssertEqual(history.entries[1].taskId, "task-1")
+        XCTAssertEqual(history.entries[1].boundarySignal, .manual)
+        XCTAssertEqual(history.entries[1].taskScore ?? .nan, 0.9, accuracy: 0.0001)
+        XCTAssertEqual(history.entries[1].taskSummary, "verified timeline reconnect")
+    }
+    #endif
+
     // MARK: - Task hierarchy + lenient unknown-type decode (Phase 1)
 
     func testDecodeTaskStartEntry() throws {
@@ -224,6 +276,33 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(grouped[0].mergedCompletion?.raw, "Completed · 1s")
     }
 
+    func testTurnMergeAttachesCompletionToResponseWhenPromptIsMissing() {
+        let entries = [
+            TimelineEntry(
+                ts: 2000,
+                type: .chatResponse,
+                raw: "Implemented timeline cleanup",
+                sessionId: "s1",
+                startedAt: 1000,
+                endedAt: 2000
+            ),
+            TimelineEntry(
+                ts: 2001,
+                type: .chatEnd,
+                raw: "Completed · 1s · timeline cleanup",
+                sessionId: "s1",
+                startedAt: 1000,
+                endedAt: 2001,
+                summaryKind: "heuristic"
+            ),
+        ]
+
+        let grouped = groupConsecutive(entries)
+        XCTAssertEqual(grouped.count, 1)
+        XCTAssertEqual(grouped[0].entry.type, .chatResponse)
+        XCTAssertEqual(grouped[0].mergedCompletion?.raw, "Completed · 1s · timeline cleanup")
+    }
+
     func testTurnMergeKeepsSyntheticChatStartSeparate() {
         // Synthetic placeholder chat_starts (e.g. "Prompt sent") are not
         // worth showing as a row in their own right; the dashboard filter
@@ -238,6 +317,21 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(grouped[0].entry.type, .chatStart)
         XCTAssertNil(grouped[0].mergedCompletion)
         XCTAssertEqual(grouped[1].entry.type, .chatEnd)
+    }
+
+    func testTurnMergeKeepsSyntheticPromptSeparateButResponseAbsorbsCompletion() {
+        let entries = [
+            TimelineEntry(ts: 1000, type: .chatStart, raw: "Prompt sent", sessionId: "s1", startedAt: 1000),
+            TimelineEntry(ts: 2000, type: .chatResponse, raw: "Done.", sessionId: "s1", startedAt: 1000, endedAt: 2000),
+            TimelineEntry(ts: 2001, type: .chatEnd, raw: "Completed · 1s", sessionId: "s1", startedAt: 1000, endedAt: 2001),
+        ]
+
+        let grouped = groupConsecutive(entries)
+        XCTAssertEqual(grouped.count, 2)
+        XCTAssertEqual(grouped[0].entry.type, .chatStart)
+        XCTAssertNil(grouped[0].mergedResponse)
+        XCTAssertEqual(grouped[1].entry.type, .chatResponse)
+        XCTAssertEqual(grouped[1].mergedCompletion?.raw, "Completed · 1s")
     }
 
     func testTurnMergeDoesNotCrossSessions() {
@@ -545,7 +639,194 @@ final class TimelineTests: XCTestCase {
         ]
 
         let displayed = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
-        XCTAssertEqual(displayed.map(\.entry.type), [.chatEnd])
+        XCTAssertTrue(displayed.isEmpty)
+    }
+
+    func testDashboardDisplayAttachesCompletedMetadataUnderResponse() {
+        let entries = [
+            TimelineEntry(
+                ts: 1000,
+                type: .chatStart,
+                raw: "Prompt sent",
+                agentType: "codex-cli",
+                sessionId: "s1",
+                startedAt: 1000
+            ),
+            TimelineEntry(
+                ts: 2000,
+                type: .chatResponse,
+                raw: "Fixed the timeline.",
+                agentType: "codex-cli",
+                sessionId: "s1",
+                startedAt: 1000,
+                endedAt: 2000
+            ),
+            TimelineEntry(
+                ts: 2001,
+                type: .chatEnd,
+                raw: "Completed · 1s · Timeline cleanup",
+                agentType: "codex-cli",
+                sessionId: "s1",
+                startedAt: 1000,
+                endedAt: 2001,
+                summaryKind: "heuristic"
+            ),
+        ]
+
+        let displayed = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(displayed[0].entry.type, .chatResponse)
+        XCTAssertEqual(displayed[0].mergedCompletion?.raw, "Completed · 1s · Timeline cleanup")
+    }
+
+    func testDashboardDisplayHidesStandaloneCompletedWhenPairedResponseExists() {
+        let response = TimelineEntry(
+            ts: 2000,
+            type: .chatResponse,
+            raw: "Fixed the timeline.",
+            agentType: "codex-cli",
+            sessionId: "s1",
+            startedAt: 1000,
+            endedAt: 2000
+        )
+        let completed = TimelineEntry(
+            ts: 2001,
+            type: .chatEnd,
+            raw: "Completed · 1s · Timeline cleanup",
+            agentType: "codex-cli",
+            sessionId: "s1",
+            startedAt: 1000,
+            endedAt: 2001,
+            summaryKind: "llm"
+        )
+
+        let displayed = timelineDisplayGroupsForDashboard([
+            GroupedEntry(entry: response, lastTs: response.ts),
+            GroupedEntry(entry: completed, lastTs: completed.ts),
+        ])
+        XCTAssertEqual(displayed.map(\.entry.type), [.chatResponse])
+    }
+
+    func testDashboardDisplayHidesStandaloneCompletedWhenPairedStartExists() {
+        let start = TimelineEntry(
+            ts: 1000,
+            type: .chatStart,
+            raw: "Review timeline exposure",
+            agentType: "claude-code",
+            sessionId: "s1",
+            startedAt: 1000
+        )
+        let completed = TimelineEntry(
+            ts: 4000,
+            type: .chatEnd,
+            raw: "Completed · Review timeline exposure",
+            agentType: "claude-code",
+            sessionId: "s1",
+            startedAt: 1000,
+            endedAt: 4000,
+            summaryKind: "heuristic"
+        )
+
+        let displayed = timelineDisplayGroupsForDashboard([
+            GroupedEntry(entry: start, lastTs: start.ts),
+            GroupedEntry(entry: completed, lastTs: completed.ts),
+        ])
+
+        XCTAssertEqual(displayed.map(\.entry.type), [.chatStart])
+        XCTAssertEqual(displayed[0].entry.raw, "Review timeline exposure")
+    }
+
+    func testDashboardDisplayHidesSyntheticResponselessTurn() {
+        let start = TimelineEntry(
+            ts: 1000,
+            type: .chatStart,
+            raw: "Prompt sent",
+            agentType: "claude-code",
+            sessionId: "s1",
+            startedAt: 1000
+        )
+        let completed = TimelineEntry(
+            ts: 4000,
+            type: .chatEnd,
+            raw: "Completed · 3s",
+            agentType: "claude-code",
+            sessionId: "s1",
+            startedAt: 1000,
+            endedAt: 4000,
+            summaryKind: "none"
+        )
+
+        let displayed = timelineDisplayGroupsForDashboard([
+            GroupedEntry(entry: start, lastTs: start.ts),
+            GroupedEntry(entry: completed, lastTs: completed.ts),
+        ])
+
+        XCTAssertTrue(displayed.isEmpty)
+    }
+
+    func testAssistantProgressUpdateClassifier() {
+        #if os(macOS)
+        XCTAssertTrue(TimelineSummarizer.isAssistantProgressUpdate("""
+        Android build is still running (its | tail buffers output until completion, so no interim lines). I'll continue once the completion event arrives.
+        """))
+        #endif
+        XCTAssertTrue(timelineLooksLikeAssistantProgressUpdate("""
+        Android build is still running (its | tail buffers output until completion, so no interim lines). I'll continue once the completion event arrives.
+        """))
+        #if os(macOS)
+        XCTAssertFalse(TimelineSummarizer.isAssistantProgressUpdate("""
+        Completed. Android build passed, node build is green, and macOS Swift build succeeded.
+        """))
+        #endif
+        XCTAssertFalse(timelineLooksLikeAssistantProgressUpdate("""
+        Completed. Android build passed, node build is green, and macOS Swift build succeeded.
+        """))
+    }
+
+    func testDashboardDisplaySuppressesProgressAssistantResponse() {
+        let entries = [
+            TimelineEntry(
+                ts: 1000,
+                type: .chatStart,
+                raw: "빌드하고 테스트하라",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                sessionId: "s1",
+                startedAt: 1000
+            ),
+            TimelineEntry(
+                ts: 2000,
+                type: .chatResponse,
+                raw: "Android build is still running (its | tail buffers output until completion, so no interim lines). I'll continue once the completion event arrives.",
+                detail: "Android build is still running (its | tail buffers output until completion, so no interim lines). I'll continue once the completion event arrives.",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                sessionId: "s1",
+                startedAt: 1000,
+                endedAt: 2000
+            ),
+            TimelineEntry(
+                ts: 2001,
+                type: .chatEnd,
+                raw: "Completed · 1s · In progress",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                sessionId: "s1",
+                startedAt: 1000,
+                endedAt: 2001,
+                summaryKind: "progress"
+            ),
+        ]
+
+        let displayed = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(displayed[0].entry.type, .chatStart)
+        XCTAssertEqual(displayed[0].entry.raw, "빌드하고 테스트하라")
+        XCTAssertEqual(timelineDetailEntryForDashboard(displayed[0]).type, .chatStart)
+        XCTAssertFalse(timelineShouldShowDetailForDashboard(
+            entry: entries[1],
+            detail: entries[1].detail!
+        ))
     }
 
     func testDashboardDisplayDropsAnonymousCodexToolNoise() {
@@ -569,6 +850,91 @@ final class TimelineTests: XCTestCase {
         let displayed = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
         XCTAssertEqual(displayed.count, 1)
         XCTAssertEqual(displayed[0].entry.raw, "Fix timeline grouping")
+    }
+
+    func testDashboardDisplayDropsCodexCommandToolNoise() {
+        let entries = [
+            TimelineEntry(
+                ts: 1000,
+                type: .toolExec,
+                raw: "Bash: rg -n \"Timeline\" apple/AgentDeck",
+                detail: "status: running\n{\"cmd\":\"rg -n Timeline\"}",
+                agentType: "codex-cli",
+                projectName: "AgentDeck",
+                sessionId: "codex:thread-1"
+            ),
+            TimelineEntry(
+                ts: 2000,
+                type: .chatStart,
+                raw: "Fix timeline noise",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                sessionId: "claude-1"
+            ),
+        ]
+
+        let displayed = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(displayed[0].entry.agentType, "claude-code")
+        XCTAssertEqual(displayed[0].entry.raw, "Fix timeline noise")
+    }
+
+    func testDashboardPromotesInformativeParagraphForGenericChatResponseLead() {
+        let response = TimelineEntry(
+            ts: 1000,
+            type: .chatResponse,
+            raw: """
+            반영했고 실제 Desktop 데몬에서 검증했습니다.
+
+            원인은 Codex hook의 codex_tool_start/end가 Bash/MCP 한 번마다 tool_exec로 Timeline에 저장/방송되던 구조였습니다.
+            """,
+            detail: """
+            반영했고 실제 Desktop 데몬에서 검증했습니다.
+
+            원인은 Codex hook의 `codex_tool_start/end`가 Bash/MCP 한 번마다 `tool_exec`로 Timeline에 저장/방송되던 구조였습니다.
+
+            검증:
+            - `pnpm vitest run shared/src/__tests__/timeline.test.ts`: 58 passed
+            - `xcodebuild ... TimelineTests`: 42 passed
+            """,
+            agentType: "codex-cli",
+            projectName: "AgentDeck",
+            sessionId: "codex:thread-1"
+        )
+
+        let group = GroupedEntry(entry: response, lastTs: response.ts)
+        XCTAssertTrue(timelineSummaryTextForDashboard(group).hasPrefix("원인은 Codex hook"))
+        XCTAssertTrue(timelineShouldShowDetailForDashboard(entry: response, detail: response.detail!))
+    }
+
+    func testDashboardDetailUsesMergedAssistantResponseForCompletedTurn() {
+        let entries = [
+            TimelineEntry(
+                ts: 1000,
+                type: .chatStart,
+                raw: "Timeline 메세지 출력이 정확한지 검증하라",
+                agentType: "codex-cli",
+                projectName: "AgentDeck",
+                sessionId: "codex:thread-1",
+                startedAt: 1000
+            ),
+            TimelineEntry(
+                ts: 2000,
+                type: .chatResponse,
+                raw: "반영했고 실제 Desktop 데몬에서 검증했습니다.",
+                detail: "반영했고 실제 Desktop 데몬에서 검증했습니다.\n\n검증:\n- pnpm vitest\n- xcodebuild",
+                agentType: "codex-cli",
+                projectName: "AgentDeck",
+                sessionId: "codex:thread-1",
+                startedAt: 1000,
+                endedAt: 2000
+            ),
+        ]
+
+        let displayed = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(timelineDetailEntryForDashboard(displayed[0]).type, .chatResponse)
+        XCTAssertEqual(timelineDetailEntryForDashboard(displayed[0]).detail, entries[1].detail)
     }
 
     func testDashboardDisplayDropsClaudeTaskNotificationChatStart() {
@@ -599,6 +965,103 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(displayed.count, 1)
         XCTAssertEqual(displayed[0].entry.type, .chatResponse)
         XCTAssertEqual(displayed[0].entry.raw, "Flash completed successfully")
+    }
+
+    func testDashboardDisplayDropsGenericTaskStartPlaceholder() {
+        let entries = [
+            TimelineEntry(
+                ts: 1000,
+                type: .taskStart,
+                raw: "Task 1",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                taskId: "task-1"
+            ),
+            TimelineEntry(
+                ts: 1500,
+                type: .chatStart,
+                raw: "머지하고 반영하라",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                sessionId: "s1",
+                startedAt: 1500,
+                taskId: "task-1"
+            ),
+        ]
+
+        let displayed = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(displayed.map { $0.entry.type }, [TimelineEntryType.chatStart])
+    }
+
+    func testDashboardDisplayKeepsMeaningfulTaskStartTitle() {
+        let entry = TimelineEntry(
+            ts: 1000,
+            type: .taskStart,
+            raw: "Timeline noise cleanup",
+            agentType: "claude-code",
+            projectName: "AgentDeck",
+            taskId: "task-1"
+        )
+
+        let displayed = timelineDisplayGroupsForDashboard(groupConsecutive([entry]))
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(displayed[0].entry.raw, "Timeline noise cleanup")
+    }
+
+    func testDashboardDisplayKeepsTaskEndEvaluationRow() {
+        let entry = TimelineEntry(
+            ts: 2000,
+            type: .taskEnd,
+            raw: "Timeline cleanup · 12s",
+            agentType: "claude-code",
+            projectName: "AgentDeck",
+            taskId: "task-1",
+            boundarySignal: .manual,
+            taskScore: 0.92,
+            taskOutcome: "success",
+            taskCategory: "debugging",
+            taskSummary: "reduced low-signal timeline rows"
+        )
+
+        let displayed = timelineDisplayGroupsForDashboard(groupConsecutive([entry]))
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(displayed[0].entry.type, .taskEnd)
+    }
+
+    func testDashboardDisplayHidesSessionEndTaskBoundary() {
+        let entries = [
+            TimelineEntry(
+                ts: 1000,
+                type: .taskStart,
+                raw: "Task 1",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                taskId: "task-1"
+            ),
+            TimelineEntry(
+                ts: 2000,
+                type: .chatResponse,
+                raw: "Session handoff summary",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                sessionId: "s1",
+                startedAt: 1500,
+                endedAt: 2000,
+                taskId: "task-1"
+            ),
+            TimelineEntry(
+                ts: 2500,
+                type: .taskEnd,
+                raw: "Session end · 1s",
+                agentType: "claude-code",
+                projectName: "AgentDeck",
+                taskId: "task-1",
+                boundarySignal: .sessionEnd
+            ),
+        ]
+
+        let displayed = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(displayed.map { $0.entry.type }, [TimelineEntryType.chatResponse])
     }
 
     func testDashboardDisplayHidesModelCallAfterModelResponse() {
@@ -637,6 +1100,38 @@ final class TimelineTests: XCTestCase {
     }
 
     #if os(macOS)
+    func testDaemonTimelineStorePersistsAfterStart() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agentdeck-timeline-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("timeline.json")
+        let store = DaemonTimelineStore(persistFile: file)
+        await store.start()
+        await store.add(DaemonTimelineEntry(
+            ts: 1000,
+            type: "chat_start",
+            raw: "Persist this turn",
+            detail: nil,
+            approvalId: nil,
+            status: nil,
+            agentType: "claude-code",
+            repeatCount: nil,
+            automated: nil,
+            projectName: "AgentDeck",
+            sessionId: "s1",
+            startedAt: 1000,
+            endedAt: nil,
+            runId: nil
+        ))
+
+        try await Task.sleep(for: .milliseconds(200))
+        let data = try Data(contentsOf: file)
+        let entries = try JSONDecoder().decode([DaemonTimelineEntry].self, from: data)
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].raw, "Persist this turn")
+    }
+
     func testDaemonTimelineStoreDropsAnonymousCodexToolNoise() async {
         let store = DaemonTimelineStore()
         await store.add(DaemonTimelineEntry(
@@ -675,6 +1170,47 @@ final class TimelineTests: XCTestCase {
         let entries = await store.getAll()
         XCTAssertEqual(entries.count, 1)
         XCTAssertEqual(entries[0].raw, "Fix timeline grouping")
+    }
+
+    func testDaemonTimelineStoreDropsCodexCommandToolNoise() async {
+        let store = DaemonTimelineStore()
+        await store.add(DaemonTimelineEntry(
+            ts: 1000,
+            type: "tool_exec",
+            raw: "Bash: git status --short",
+            detail: "status: running\n{\"cmd\":\"git status --short\"}",
+            approvalId: nil,
+            status: "running",
+            agentType: "codex-cli",
+            repeatCount: nil,
+            automated: nil,
+            projectName: "AgentDeck",
+            sessionId: "codex:thread-1",
+            startedAt: nil,
+            endedAt: nil,
+            runId: nil
+        ))
+        await store.add(DaemonTimelineEntry(
+            ts: 2000,
+            type: "chat_start",
+            raw: "Fix timeline noise",
+            detail: nil,
+            approvalId: nil,
+            status: nil,
+            agentType: "codex-cli",
+            repeatCount: nil,
+            automated: nil,
+            projectName: "AgentDeck",
+            sessionId: "codex:thread-1",
+            startedAt: 2000,
+            endedAt: nil,
+            runId: nil
+        ))
+
+        let entries = await store.getAll()
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].type, "chat_start")
+        XCTAssertEqual(entries[0].raw, "Fix timeline noise")
     }
     #endif
 

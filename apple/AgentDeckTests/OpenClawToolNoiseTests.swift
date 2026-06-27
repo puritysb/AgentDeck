@@ -161,12 +161,10 @@ final class OpenClawToolNoiseTests: XCTestCase {
             "unnamed-tool rows with input/output in detail must survive — they carry signal even with a placeholder raw")
     }
 
-    /// Same protection on the Codex OTel branch: a tool row whose raw
-    /// devolved to "tool" but whose detail still has content survives.
-    /// (Belt-and-suspenders — current OTel parser doesn't fill detail
-    /// when raw is placeholder, but the contract is symmetric across
-    /// agents now.)
-    func testStoreFilterKeepsCodexPlaceholderRawWithDetail() {
+    /// Codex tool_exec rows stay out of the user-facing daemon timeline even
+    /// when detail carries signal. APME ingests the tool trajectory separately;
+    /// the dashboard timeline keeps Codex chat/task lifecycle rows only.
+    func testStoreFilterDropsCodexPlaceholderRawEvenWithDetail() {
         let entry = DaemonTimelineEntry(
             ts: Date().timeIntervalSince1970 * 1000,
             type: "tool_exec",
@@ -175,8 +173,8 @@ final class OpenClawToolNoiseTests: XCTestCase {
             agentType: "codex-cli",
             sessionId: "codex:otel-active"
         )
-        XCTAssertFalse(DaemonTimelineStore.shouldDropLowSignalEntry(entry),
-            "even codex OTel rows must survive when detail carries signal")
+        XCTAssertTrue(DaemonTimelineStore.shouldDropLowSignalEntry(entry),
+            "Codex tool_exec rows are hidden from the daemon timeline even when detail carries signal")
     }
 
     /// Codex stop-time review 2026-05-18 (second round): detail="status: running"

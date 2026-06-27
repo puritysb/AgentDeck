@@ -90,6 +90,32 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(e.agentCapabilities?.displayName, "Claude Code")
     }
 
+    func testDecodeStateUpdateWithFreeformPromptOptionKind() throws {
+        let json = """
+        {
+            "type": "state_update",
+            "state": "awaiting_option",
+            "options": [
+                {"index": 0, "label": "Proceed"},
+                {"index": 3, "label": "Type custom instructions", "kind": "freeform_input"}
+            ],
+            "promptType": "multi_select",
+            "navigable": true,
+            "cursorIndex": 0
+        }
+        """
+
+        let event = BridgeEventParser.parse(json)
+        guard case .stateUpdate(let e) = event else {
+            XCTFail("Expected stateUpdate")
+            return
+        }
+
+        XCTAssertEqual(e.options?.count, 2)
+        XCTAssertEqual(e.options?[1].kind, "freeform_input")
+        XCTAssertEqual(e.options?[1].isFreeformInput, true)
+    }
+
     func testDecodeStateUpdateWithCodexAuthMetadata() throws {
         let json = """
         {
@@ -340,6 +366,7 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(json?["type"] as? String, "interrupt")
     }
 
+    #if os(macOS)
     func testStabilizeCodexAuthStatusPreservesChatGptPlanAcrossPartialRefresh() {
         let previous = CodexAuthStatus(
             authMode: "chatgpt",
@@ -394,6 +421,7 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(stabilized?.authMode, "api")
         XCTAssertNil(stabilized?.planType)
     }
+    #endif
 
     func testMergedModelCatalogUpdatesExistingEntryWithoutDroppingOthers() {
         let existing: [[String: Any]] = [

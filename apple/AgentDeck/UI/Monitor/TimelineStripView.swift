@@ -332,7 +332,7 @@ struct TimelineStripView: View {
                 // `## heading` don't leak into the row as literal characters.
                 // (The regular detail pane / compact inline-expand still renders
                 // the full markdown.)
-                Text(strippedRaw(group.entry.raw) + countSuffix)
+                Text(strippedRaw(timelineSummaryTextForDashboard(group)) + countSuffix)
                     .font(.system(size: fontScale.sub, design: .monospaced))
                     .foregroundStyle(isChatEnd ? TerrariumHUD.text.opacity(0.6) : TerrariumHUD.text)
                     .lineLimit(allowMultiline ? 2 : 1)
@@ -365,7 +365,7 @@ struct TimelineStripView: View {
 
             // Sub-line: assistant response body. Indented + dimmed so the
             // user prompt above stays the primary reading anchor.
-            if let resp = group.mergedResponse {
+            if let resp = group.mergedResponse, !timelineIsProgressChatResponse(resp) {
                 HStack(alignment: .top, spacing: 4) {
                     Spacer().frame(width: group.entry.taskId != nil ? 64 : 56)
                     Text("→")
@@ -383,7 +383,7 @@ struct TimelineStripView: View {
 
             // Sub-line: terminator metadata ("Completed · 2s · topic") +
             // the summary-backend pill.
-            if let end = group.mergedCompletion {
+            if let end = group.mergedCompletion, end.summaryKind != "progress" {
                 HStack(spacing: 4) {
                     Spacer().frame(width: group.entry.taskId != nil ? 64 : 56)
                     Text(strippedRaw(end.raw))
@@ -500,8 +500,9 @@ struct TimelineStripView: View {
                     }
                 }
             }
-            if let detail = entry.detail,
-               shouldShowDetail(entry: entry, detail: detail) {
+            let detailEntry = timelineDetailEntryForDashboard(group)
+            if let detail = detailEntry.detail,
+               shouldShowDetail(entry: detailEntry, detail: detail) {
                 TimelineMarkdownPreview(text: detail)
             } else {
                 Text("Tap collapse · summary only")
@@ -518,8 +519,7 @@ struct TimelineStripView: View {
     ///   - summaryKind == "none" (heuristic gave up; detail is just raw response → noisy)
     ///   - detailIsRedundant matches against raw
     private func shouldShowDetail(entry: TimelineEntry, detail: String) -> Bool {
-        if entry.summaryKind == "none" { return false }
-        return !detailIsRedundant(detail: detail, raw: entry.raw)
+        timelineShouldShowDetailForDashboard(entry: entry, detail: detail)
     }
 
     /// Task hierarchy header — visually distinct full-width row that groups
@@ -740,7 +740,7 @@ struct TimelineStripView: View {
                 }
 
                 // Summary
-                Text(group.entry.raw)
+                Text(timelineSummaryTextForDashboard(group))
                     .font(.system(size: fontScale.body, weight: .bold, design: .monospaced))
                     .foregroundStyle(TerrariumHUD.text)
                     .padding(.horizontal, 8)
@@ -751,8 +751,9 @@ struct TimelineStripView: View {
                 //       showing it duplicates the summary noisily)
                 //   (b) detailIsRedundant fuzzy match against raw (LLM /
                 //       heuristic summarizer paraphrased the response opening)
-                if let detail = group.entry.detail,
-                   shouldShowDetail(entry: group.entry, detail: detail) {
+                let detailEntry = timelineDetailEntryForDashboard(group)
+                if let detail = detailEntry.detail,
+                   shouldShowDetail(entry: detailEntry, detail: detail) {
                     Spacer().frame(height: 4)
                     ScrollView {
                         TimelineMarkdownPreview(text: detail)
@@ -982,12 +983,12 @@ struct TimelineStripView: View {
 func timelineDisplayGroupsForDashboard(_ groups: [GroupedEntry]) -> [GroupedEntry] {
     groups.filter { group in
         let entry = group.entry
-        // Task hierarchy markers are never elided — they're the user's
-        // primary navigation handle on the timeline (the evaluation unit).
-        // Exception: empty runs (taskCategory="_empty") are filtered out as noise.
-        if entry.type == .taskStart || entry.type == .taskEnd { return entry.taskCategory != "_empty" }
+        if entry.type == .taskStart || entry.type == .taskEnd {
+            return timelineShouldShowTaskMarker(group)
+        }
         if timelineIsLowSignalEntry(entry) { return false }
         if timelineIsTaskNotificationChatStart(entry) { return false }
+        if timelineIsProgressChatResponse(entry) { return false }
         if entry.type == .chatStart {
             if !timelineHasLaterCompletion(for: entry, in: groups) { return true }
             return timelineIsMeaningfulChatStart(entry)
@@ -996,19 +997,211 @@ func timelineDisplayGroupsForDashboard(_ groups: [GroupedEntry]) -> [GroupedEntr
             return !timelineHasLaterCompletion(for: entry, in: groups)
         }
         if entry.type == .chatEnd {
-            // chat_end with a real summary tag carries info distinct from
-            // chat_response's snippet ("Completed · 3s · {topic}" vs. the
-            // first 200 chars of the response), so it stays as a dimmed
-            // metadata sibling — otherwise the Settings → Timeline summary
-            // picker is invisible to the user (its entire output lands here).
-            // "none" sentinel (bridge-set when summarization gave up) and
-            // nil (legacy on-disk rows) revert to the original
-            // dedup-with-chat_response rule because their raw is redundant.
-            if let kind = entry.summaryKind, kind != "none" { return true }
-            return !timelineHasPairedChatResponse(for: entry, in: groups)
+            if entry.summaryKind == "progress" { return false }
+            // Completion metadata belongs under its response row. Keep a
+            // standalone row only for legacy response-less + prompt-less
+            // entries. If the prompt row exists, that is the user-facing unit;
+            // a separate Completed row is just turn-close metadata.
+            return !timelineHasPairedChatResponse(for: entry, in: groups) &&
+                !timelineHasPairedChatStart(for: entry, in: groups)
         }
         return true
     }
+}
+
+func timelineShouldShowTaskMarker(_ group: GroupedEntry) -> Bool {
+    let entry = group.entry
+    guard entry.type == .taskStart || entry.type == .taskEnd else { return true }
+    if entry.taskCategory == "_empty" { return false }
+    // session_end is an internal sample boundary, not a user activity. Some
+    // sessions use the handoff command and some do not, so showing it as a
+    // standalone TASK END row makes the visible timeline depend on workflow
+    // hygiene rather than actual work.
+    if entry.type == .taskEnd && entry.boundarySignal == .sessionEnd { return false }
+    if entry.type == .taskEnd { return true }
+    if timelineIsMeaningfulTaskTitle(entry.raw) { return true }
+    return entry.taskScore != nil ||
+        entry.taskOutcome?.isEmpty == false ||
+        entry.taskCategory?.isEmpty == false ||
+        entry.taskSummary?.isEmpty == false
+}
+
+func timelineIsMeaningfulTaskTitle(_ raw: String) -> Bool {
+    let title = timelineStripMarkdownInline(raw)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !title.isEmpty else { return false }
+    if title.range(of: #"^task\s+\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil {
+        return false
+    }
+    if title.range(of: #"^작업\s*\d+$"#, options: [.regularExpression]) != nil {
+        return false
+    }
+    return true
+}
+
+func timelineSummaryTextForDashboard(_ group: GroupedEntry) -> String {
+    timelinePromoteInformativeLead(group.entry.raw, type: group.entry.type)
+}
+
+func timelineDetailEntryForDashboard(_ group: GroupedEntry) -> TimelineEntry {
+    if group.entry.type == .chatStart,
+       let response = group.mergedResponse,
+       !timelineIsProgressChatResponse(response) {
+        return response
+    }
+    return group.entry
+}
+
+func timelineShouldShowDetailForDashboard(entry: TimelineEntry, detail: String) -> Bool {
+    if entry.summaryKind == "none" || entry.summaryKind == "progress" { return false }
+    if entry.type == .chatResponse && timelineLooksLikeAssistantProgressUpdate(entry.detail ?? entry.raw) {
+        return false
+    }
+    let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return false }
+    if entry.type == .chatResponse {
+        let raw = entry.raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.count > raw.count + 40 || trimmed.contains("\n")
+    }
+    return !timelineDetailIsRedundant(detail: detail, raw: entry.raw)
+}
+
+func timelineIsProgressChatResponse(_ entry: TimelineEntry) -> Bool {
+    guard entry.type == .chatResponse else { return false }
+    if entry.summaryKind == "progress" { return true }
+    return timelineLooksLikeAssistantProgressUpdate(entry.detail ?? entry.raw)
+}
+
+func timelineLooksLikeAssistantProgressUpdate(_ text: String?) -> Bool {
+    guard let text else { return false }
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return false }
+    let head = String(trimmed.prefix(800))
+    let lower = head.lowercased()
+
+    let progressPatterns = [
+        #"\b(still|currently|continues? to|is|are)\s+(running|building|installing|executing|processing|waiting)\b"#,
+        #"\b(still running|still building|build is running|is still running|are still running)\b"#,
+        #"\b(waiting for|wait until|once (?:the )?.*(?:finishes|completes|arrives)|continue once|will continue once|i.ll continue once)\b"#,
+        #"\b(no interim lines|buffers? output until completion|tail buffers output)\b"#,
+    ]
+    let englishProgress = progressPatterns.contains {
+        lower.range(of: $0, options: .regularExpression) != nil
+    }
+    let koreanProgress =
+        head.range(of: #"(아직|계속)\s*(실행|진행|빌드|설치)\s*중"#, options: .regularExpression) != nil ||
+        head.range(of: #"(완료|끝나|도착)면\s*(계속|이어)"#, options: .regularExpression) != nil ||
+        head.range(of: #"(기다리는 중|대기 중)"#, options: .regularExpression) != nil
+
+    guard englishProgress || koreanProgress else { return false }
+
+    let startsAsFinal =
+        trimmed.range(of: #"^(done|completed|complete|fixed|merged|verified|all done)\b"#, options: [.regularExpression, .caseInsensitive]) != nil ||
+        trimmed.range(of: #"^(완료|수정 완료|검증 완료|반영 완료|머지 완료)"#, options: .regularExpression) != nil
+    return !startsAsFinal
+}
+
+func timelinePromoteInformativeLead(_ raw: String, type: TimelineEntryType) -> String {
+    guard type == .chatResponse else { return raw }
+    let paragraphs = raw
+        .components(separatedBy: "\n\n")
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    guard paragraphs.count >= 2 else { return raw }
+
+    var index = 0
+    while index < min(2, paragraphs.count - 1),
+          timelineIsGenericOutcomeLead(paragraphs[index]) {
+        index += 1
+    }
+    return paragraphs[index]
+}
+
+private func timelineIsGenericOutcomeLead(_ text: String) -> Bool {
+    let stripped = timelineStripMarkdownInline(text)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !stripped.isEmpty, stripped.count <= 96 else { return false }
+    let lower = stripped.lowercased()
+    if lower.hasPrefix("all done") || lower == "done" || lower.hasPrefix("done.") {
+        return true
+    }
+    if stripped.hasPrefix("반영") || stripped.hasPrefix("완료") ||
+       stripped.hasPrefix("전부 완료") || stripped.hasPrefix("수정 완료") ||
+       stripped.hasPrefix("검증 완료") || stripped.hasPrefix("처리 완료") {
+        return true
+    }
+    return lower.contains("verified") && lower.contains("desktop") && lower.count < 80
+}
+
+func timelineDetailIsRedundant(detail: String, raw: String) -> Bool {
+    if detail == raw { return true }
+    let normalize: (String) -> String = { s in
+        s.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    let strippedDetailFull = timelineStripMarkdownInline(detail)
+    let nRawFull = normalize(raw)
+    let nDetailFull = normalize(strippedDetailFull)
+
+    if !nRawFull.isEmpty && !nDetailFull.isEmpty {
+        if nDetailFull == nRawFull { return true }
+        let rTokens = nRawFull.split(separator: " ")
+        let dTokens = nDetailFull.split(separator: " ")
+        let common = Array(rTokens.prefix(dTokens.count))
+        if dTokens.count >= 3 && common == Array(dTokens.prefix(common.count))
+            && Double(common.count) / Double(max(dTokens.count, 1)) >= 0.85 {
+            return true
+        }
+        let r8 = Array(rTokens.prefix(8))
+        let d8 = Array(dTokens.prefix(8))
+        if r8.count >= 3 && r8 == d8 { return true }
+    }
+
+    let firstPara = detail.components(separatedBy: "\n\n").first ?? detail
+    let nDetailPara = normalize(timelineStripMarkdownInline(firstPara))
+    if !nRawFull.isEmpty && !nDetailPara.isEmpty {
+        if nDetailPara.hasPrefix(nRawFull) { return true }
+        if let rawHead = raw.components(separatedBy: " · ").first,
+           !rawHead.trimmingCharacters(in: .whitespaces).isEmpty {
+            let nHead = normalize(rawHead)
+            if !nHead.isEmpty,
+               nHead.split(separator: " ").count >= 2,
+               nDetailPara.hasPrefix(nHead) {
+                return true
+            }
+        }
+        let rawTokens = nRawFull.split(separator: " ").prefix(6)
+        let detailTokens = nDetailPara.split(separator: " ").prefix(6)
+        if rawTokens.count >= 3 && Array(rawTokens) == Array(detailTokens) {
+            return true
+        }
+    }
+    return false
+}
+
+func timelineStripMarkdownInline(_ s: String) -> String {
+    var out = s
+    out = out.replacingOccurrences(of: "```[\\w]*\\n?([\\s\\S]*?)```",
+                                   with: "$1", options: .regularExpression)
+    out = out.replacingOccurrences(of: "\\*\\*([^*]+)\\*\\*",
+                                   with: "$1", options: .regularExpression)
+    out = out.replacingOccurrences(of: "(?<!\\*)\\*([^*\\n]+)\\*(?!\\*)",
+                                   with: "$1", options: .regularExpression)
+    out = out.replacingOccurrences(of: "^#{1,6}\\s+", with: "",
+                                   options: [.regularExpression])
+    out = out.replacingOccurrences(of: "(?m)^>\\s+", with: "", options: .regularExpression)
+    out = out.replacingOccurrences(of: "(?m)^[-*]\\s+", with: "", options: .regularExpression)
+    out = out.replacingOccurrences(of: "\\[([^\\]]+)\\]\\([^)]+\\)",
+                                   with: "$1", options: .regularExpression)
+    out = out.replacingOccurrences(of: "`([^`]+)`",
+                                   with: "$1", options: .regularExpression)
+    out = out.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+    out = out.replacingOccurrences(of: "\\|", with: " ", options: .regularExpression)
+    return out.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 func timelineHasLaterCompletion(for start: TimelineEntry, in groups: [GroupedEntry]) -> Bool {
@@ -1029,6 +1222,18 @@ func timelineHasPairedChatResponse(for end: TimelineEntry, in groups: [GroupedEn
             return true
         }
         return abs(end.ts - other.entry.ts) <= 10_000
+    }
+}
+
+func timelineHasPairedChatStart(for end: TimelineEntry, in groups: [GroupedEntry]) -> Bool {
+    groups.contains { other in
+        let start = other.entry
+        guard start.type == .chatStart else { return false }
+        guard timelineSameContext(start, end) else { return false }
+        if let endStartedAt = end.startedAt {
+            return abs(endStartedAt - start.ts) < 1000
+        }
+        return start.ts <= end.ts && end.ts - start.ts <= 12 * 60 * 60 * 1000
     }
 }
 
@@ -1071,6 +1276,12 @@ func timelineSameContext(_ a: TimelineEntry, _ b: TimelineEntry) -> Bool {
 func timelineIsLowSignalEntry(_ entry: TimelineEntry) -> Bool {
     guard entry.type == .toolExec || entry.type == .toolRequest || entry.type == .toolResolved else {
         return false
+    }
+    // Codex emits one tool_exec per Bash/MCP action. Those rows are useful for
+    // telemetry/eval ingestion, but they drown the user-facing timeline and can
+    // make Claude work look like Codex work when multiple agents run together.
+    if (entry.agentType == "codex-cli" || entry.agentType == "codex-app"), entry.type == .toolExec {
+        return true
     }
     // Real signal in detail → keep regardless of placeholder raw.
     // OpenClaw producer's detail format is

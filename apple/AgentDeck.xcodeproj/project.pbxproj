@@ -178,6 +178,7 @@
 		7F401B71F68C95DEBD74DAFE /* TUITerrariumRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D80206C489734918E56FB0B /* TUITerrariumRenderer.swift */; };
 		7FBCD51766F94FE9BD969378 /* SetupNeededCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC179B8F91EF42F5EBDE911 /* SetupNeededCard.swift */; };
 		7FE91079BB8AE03AB4F092CD /* WaterEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47A555A3917875178A5B7E5 /* WaterEffect.swift */; };
+		805AC8BBF1600EA9BFB044F5 /* TerrariumCrayfishPresenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E75D955A31F999F568B7BED /* TerrariumCrayfishPresenceTests.swift */; };
 		809CC98B24E5F976E5E84AF9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D2F35C5E4DF5DAE1C93F54B /* Assets.xcassets */; };
 		811D1351A028B31CC72F4784 /* TerrariumState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 593C80232028E1DBC0227E17 /* TerrariumState.swift */; };
 		812F3BFFE7AA293804D39234 /* SessionLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31609846ED73DC70F674FCF0 /* SessionLauncher.swift */; };
@@ -309,6 +310,7 @@
 		DEBCF013EEAB22462CF0044C /* MonitorHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19949AA33CE27D478B358976 /* MonitorHUD.swift */; };
 		DF804392C56333041A3C2784 /* StatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E6BEE1A730418C1EBDC048 /* StatusBadge.swift */; };
 		E082EDBFACADF5992BE8A9E0 /* AgentDeckApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D587189DB0E504028BE4BEF /* AgentDeckApp.swift */; };
+		E1027789C4EBBF134CA8D464 /* TerrariumCrayfishPresenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E75D955A31F999F568B7BED /* TerrariumCrayfishPresenceTests.swift */; };
 		E22E6C703C183F1E8C36E7D9 /* SquatterCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B120CABC9029C801CF0A77A2 /* SquatterCleaner.swift */; };
 		E352DD774E32BE1E365EBF90 /* MenuBarTopologyList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509C0F3555343E9DF1AE1964 /* MenuBarTopologyList.swift */; };
 		E35D8D73F3FFFCD795B1236A /* LocalSessionDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FD383032B3C47C9B547426 /* LocalSessionDiscovery.swift */; };
@@ -400,6 +402,7 @@
 		2DB04CEEDD6C769AD9056561 /* ApmeParseJudgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeParseJudgeTests.swift; sourceTree = "<group>"; };
 		2DC38F54A1C54AB134DB0535 /* PixooPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooPreview.swift; sourceTree = "<group>"; };
 		2E37B7FE721FDD18B11DAC32 /* AgentCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentCommand.swift; path = ../../generated/protocol/AgentCommand.swift; sourceTree = "<group>"; };
+		2E75D955A31F999F568B7BED /* TerrariumCrayfishPresenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerrariumCrayfishPresenceTests.swift; sourceTree = "<group>"; };
 		2F134F38758589B5D47652C8 /* WaterSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaterSurface.swift; sourceTree = "<group>"; };
 		302810B07A9DC093700A7C31 /* OnboardingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSheet.swift; sourceTree = "<group>"; };
 		31609846ED73DC70F674FCF0 /* SessionLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLauncher.swift; sourceTree = "<group>"; };
@@ -628,6 +631,7 @@
 				1BBA59C83638DB2F6B90C44A /* ProviderRailEvaluatorTests.swift */,
 				41CF82AE8E20EDCAE99DCEDD /* SessionLauncherTests.swift */,
 				BB282455F078889B6DB35F93 /* TerrariumCloudFoldTests.swift */,
+				2E75D955A31F999F568B7BED /* TerrariumCrayfishPresenceTests.swift */,
 				27A351E073AB448BEE1DA392 /* TimeboxProtocolTests.swift */,
 				7847FA7381FB8075331B0F12 /* TimelineTests.swift */,
 				7D05CE505E1EC5729C69752E /* TopologyRailHelpersTests.swift */,
@@ -1113,10 +1117,10 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					1B95C9515EBB97FD5022C08C = {
-						DevelopmentTeam = R22679GY5Z;
+						DevelopmentTeam = QF36NDHYHD;
 					};
 					E4D80DB9ABDABC379778AF7C = {
-						DevelopmentTeam = R22679GY5Z;
+						DevelopmentTeam = QF36NDHYHD;
 					};
 				};
 			};
@@ -1208,6 +1212,7 @@
 				D8EC7333D6CEB08ED84E4BC2 /* ProviderRailEvaluatorTests.swift in Sources */,
 				6D2EA7E15F98B8510CF048E9 /* SessionLauncherTests.swift in Sources */,
 				56228049434E99DBC2BFD016 /* TerrariumCloudFoldTests.swift in Sources */,
+				805AC8BBF1600EA9BFB044F5 /* TerrariumCrayfishPresenceTests.swift in Sources */,
 				008D05FDF30426FE1B0DC37F /* TimeboxProtocolTests.swift in Sources */,
 				DBE7242898F7F03CB3463B6D /* TimelineTests.swift in Sources */,
 				AFF81F64527A02F26615AB61 /* TopologyRailHelpersTests.swift in Sources */,
@@ -1236,6 +1241,7 @@
 				F9D579C6EF0D2683CD40F9FC /* ProviderRailEvaluatorTests.swift in Sources */,
 				9B1DF1D553619B6728566E86 /* SessionLauncherTests.swift in Sources */,
 				7409E65BFDFE78944B389B63 /* TerrariumCloudFoldTests.swift in Sources */,
+				E1027789C4EBBF134CA8D464 /* TerrariumCrayfishPresenceTests.swift in Sources */,
 				D2335AB9E3A5DEE25405617F /* TimeboxProtocolTests.swift in Sources */,
 				4F6DEDF8FD3A71AFD059278D /* TimelineTests.swift in Sources */,
 				0E60D3FBC7626624FF7B5A2E /* TopologyRailHelpersTests.swift in Sources */,
@@ -1661,7 +1667,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = R22679GY5Z;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = AgentDeck/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1742,7 +1748,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = R22679GY5Z;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = "AgentDeck/Resources/Info-macOS.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1761,6 +1767,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1769,7 +1776,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck_iOS.app/AgentDeck_iOS";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
 			};
 			name = Release;
 		};
@@ -1795,6 +1802,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1803,7 +1811,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck_iOS.app/AgentDeck_iOS";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
 			};
 			name = Debug;
 		};
@@ -1813,7 +1821,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = R22679GY5Z;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = AgentDeck/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1835,7 +1843,7 @@
 				CODE_SIGN_ENTITLEMENTS = AgentDeck/Resources/AgentDeck.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = R22679GY5Z;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = "AgentDeck/Resources/Info-macOS.plist";
 				LD_RUNPATH_SEARCH_PATHS = (

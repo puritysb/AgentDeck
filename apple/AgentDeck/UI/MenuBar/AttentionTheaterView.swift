@@ -56,10 +56,13 @@ struct AttentionTheaterView: View {
     /// requestId, or a Notification-only signal); `optionsContent` then shows a
     /// terminal hint rather than fabricating dead Yes/No/Always buttons.
     private var effectiveOptions: [PromptOption] { options }
+    private var hasFreeformInputOption: Bool { effectiveOptions.contains { $0.isFreeformInput } }
+    private var attentionTitle: String { hasFreeformInputOption ? "INPUT NEEDED" : "NEEDS ATTENTION" }
 
     private var useHorizontalLayout: Bool {
         let opts = effectiveOptions
         guard opts.count <= 3 else { return false }
+        if opts.contains(where: { $0.isFreeformInput }) { return false }
         if promptType == .multiSelect { return false }
         let maxLen = opts.map(\.label.count).max() ?? 0
         return maxLen <= 14
@@ -88,7 +91,7 @@ struct AttentionTheaterView: View {
                 HStack(alignment: .top, spacing: 12) {
                     creatureBadge
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("NEEDS ATTENTION")
+                        Text(attentionTitle)
                             .font(.system(size: 9.5, weight: .bold))
                             .kerning(1.2)
                             .foregroundColor(Color(red: 0.541, green: 0.416, blue: 0.125))
@@ -174,7 +177,11 @@ struct AttentionTheaterView: View {
             ) {
                 VStack(spacing: 6) {
                     ForEach(opts) { option in
-                        theaterButton(option: option, vertical: true)
+                        if option.isFreeformInput {
+                            freeformInputRow(option)
+                        } else {
+                            theaterButton(option: option, vertical: true)
+                        }
                     }
                 }
                 .background(
@@ -278,6 +285,31 @@ struct AttentionTheaterView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func freeformInputRow(_ option: PromptOption) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "keyboard")
+                .font(.system(size: 11, weight: .semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.label)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .lineLimit(1)
+                Text("Type this response in the terminal")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(Color(red: 0.416, green: 0.353, blue: 0.188))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundColor(Color(red: 0.102, green: 0.102, blue: 0.122))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.58)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.black.opacity(0.12), lineWidth: 1)
+        )
     }
 
     /// Horizontal palette mirrors the dashboard variant (index 0/1/2 =

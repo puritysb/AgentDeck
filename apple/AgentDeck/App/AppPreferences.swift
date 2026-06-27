@@ -344,15 +344,6 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
     }
 
     #if os(macOS)
-    private static func antigravityDatabaseContentTypes() -> [UTType] {
-        let types = ["vscdb", "db", "sqlite", "sqlite3"]
-            .flatMap { UTType.types(tag: $0, tagClass: .filenameExtension, conformingTo: nil) }
-        if types.isEmpty {
-            return [.data]
-        }
-        return Array(Set(types)).sorted { $0.identifier < $1.identifier }
-    }
-
     private static func defaultAntigravityDirectoryURL() -> URL? {
         guard let pw = getpwuid(getuid()), let ptr = pw.pointee.pw_dir else { return nil }
         let home = URL(fileURLWithPath: String(cString: ptr))
@@ -376,7 +367,11 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         let panel = NSOpenPanel()
         panel.title = "Select Antigravity state.vscdb"
         panel.message = "Choose Antigravity's local state database to enable optional plan display."
-        panel.allowedContentTypes = Self.antigravityDatabaseContentTypes()
+        // No `allowedContentTypes` filter: `.vscdb` has no registered UTType,
+        // so any non-empty filter (the `db`/`sqlite` UTTypes do resolve) would
+        // grey out `state.vscdb` and make it unselectable. Same reasoning as
+        // `CodexConfigInstaller`'s `.toml` picker — leave the panel unfiltered
+        // and rely on `directoryURL` + `nameFieldStringValue` as the hints.
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
@@ -561,6 +556,77 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         defaults.removeObject(forKey: Keys.codexConfigPath)
     }
 
+    // MARK: - OpenClaw openclaw.json security-scoped bookmark
+
+    /// Persist a security-scoped bookmark to the OpenClaw config file the user
+    /// picked during "Import token" (typically `~/.openclaw/openclaw.json`).
+    /// Mirrors the Antigravity / Claude / Codex bookmark stores — only the
+    /// storage keys differ. Keeping a bookmark lets the gateway adapter
+    /// re-read a rotated `gateway.auth.token` automatically on reconnect
+    /// (`OpenClawGatewayTokenStore.refreshFromConfigBookmark`) without the
+    /// user re-running the import.
+    @discardableResult
+    func storeOpenClawConfigBookmark(for url: URL) -> Bool {
+        do {
+            #if os(macOS)
+            let options: URL.BookmarkCreationOptions = [.withSecurityScope]
+            #else
+            let options: URL.BookmarkCreationOptions = []
+            #endif
+            let bookmark = try url.bookmarkData(
+                options: options,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            defaults.set(bookmark, forKey: Keys.openclawConfigBookmark)
+            defaults.set(url.path, forKey: Keys.openclawConfigSelectedPath)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Resolve the stored OpenClaw config bookmark, run `body` inside a
+    /// security-scoped access window, and release it (even on throw). Returns
+    /// `nil` when no bookmark is stored or it can't be resolved. Re-persists
+    /// the bookmark when the OS reports it stale. Mirrors
+    /// `withAntigravityDatabaseAccess`.
+    func withOpenClawConfigAccess<T>(_ body: (URL) throws -> T?) rethrows -> T? {
+        guard let bookmark = defaults.data(forKey: Keys.openclawConfigBookmark) else { return nil }
+        var stale = false
+        let url: URL
+        do {
+            #if os(macOS)
+            let resolveOptions: URL.BookmarkResolutionOptions = [.withSecurityScope]
+            #else
+            let resolveOptions: URL.BookmarkResolutionOptions = []
+            #endif
+            url = try URL(
+                resolvingBookmarkData: bookmark,
+                options: resolveOptions,
+                relativeTo: nil,
+                bookmarkDataIsStale: &stale
+            )
+        } catch {
+            return nil
+        }
+
+        if stale {
+            _ = storeOpenClawConfigBookmark(for: url)
+        }
+
+        guard url.startAccessingSecurityScopedResource() else { return nil }
+        defer { url.stopAccessingSecurityScopedResource() }
+        return try body(url)
+    }
+
+    /// Revoke the stored OpenClaw config bookmark + display path. The Keychain
+    /// token itself is cleared separately by `OpenClawGatewayTokenStore`.
+    func clearOpenClawConfigAccess() {
+        defaults.removeObject(forKey: Keys.openclawConfigBookmark)
+        defaults.removeObject(forKey: Keys.openclawConfigSelectedPath)
+    }
+
     /// Clamp user-supplied port to the safe range (avoid privileged <1024 and
      /// out-of-range values that would crash NWEndpoint.Port).
     static func clampPort(_ value: Int) -> Int {
@@ -598,6 +664,8 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         static let codexConfigInstalled = "prefs.codexConfigInstalled"
         static let codexConfigBookmark = "prefs.codexConfigBookmark"
         static let codexConfigPath = "prefs.codexConfigPath"
+        static let openclawConfigBookmark = "prefs.openclawConfigBookmark"
+        static let openclawConfigSelectedPath = "prefs.openclawConfigSelectedPath"
         static let hasSeenDevicePreview = "prefs.hasSeenDevicePreview"
         static let hasSeenMonitorEmptyGuide = "prefs.hasSeenMonitorEmptyGuide"
         static let hasRequestedNotifications = "prefs.hasRequestedNotifications"

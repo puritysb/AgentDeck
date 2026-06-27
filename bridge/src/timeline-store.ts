@@ -55,6 +55,11 @@ export class BridgeTimelineStore {
     const enriched = this.attributor ? this.attributor(entry) : entry;
     const normalized = normalizeTimelineEntryForStorage(enriched);
     if (!normalized) return;
+
+    if (this.tryMergeTaskEndByTaskId(normalized)) {
+      return;
+    }
+
     const result = deduplicateEntry(normalized, this.entries);
 
     if (result.action === 'skip') return;
@@ -71,15 +76,20 @@ export class BridgeTimelineStore {
       existing.ts = normalized.ts;
       existing.raw = normalized.raw;
       existing.detail = normalized.detail ?? existing.detail;
-      existing.agentType = normalized.agentType ?? existing.agentType;
-      existing.projectName = normalized.projectName ?? existing.projectName;
-      existing.sessionId = normalized.sessionId ?? existing.sessionId;
-      existing.runId = normalized.runId ?? existing.runId;
-      existing.taskId = normalized.taskId ?? existing.taskId;
+      existing.agentType = entry.agentType ?? existing.agentType;
+      existing.projectName = entry.projectName ?? existing.projectName;
+      existing.sessionId = entry.sessionId ?? existing.sessionId;
+      existing.runId = entry.runId ?? existing.runId;
+      existing.taskId = entry.taskId ?? existing.taskId;
       existing.startedAt = normalized.startedAt ?? existing.startedAt;
       existing.endedAt = normalized.endedAt ?? existing.endedAt;
       existing.automated = normalized.automated ?? existing.automated;
       existing.summaryKind = normalized.summaryKind ?? existing.summaryKind;
+      existing.boundarySignal = normalized.boundarySignal ?? existing.boundarySignal;
+      existing.taskScore = normalized.taskScore ?? existing.taskScore;
+      existing.taskOutcome = normalized.taskOutcome ?? existing.taskOutcome;
+      existing.taskCategory = normalized.taskCategory ?? existing.taskCategory;
+      existing.taskSummary = normalized.taskSummary ?? existing.taskSummary;
       if (result.removeChatStartIndex != null) {
         this.entries.splice(result.removeChatStartIndex, 1);
       }
@@ -129,6 +139,11 @@ export class BridgeTimelineStore {
     // suppression bypass on that insert path (relayed task_end upserts, etc.).
     const normalized = normalizeTimelineEntryForStorage(entry);
     if (!normalized) return;
+
+    if (this.tryMergeTaskEndByTaskId(normalized)) {
+      return;
+    }
+
     const tolerance = 1000;
     for (let i = this.entries.length - 1; i >= 0; i--) {
       const e = this.entries[i];
@@ -142,14 +157,19 @@ export class BridgeTimelineStore {
           ...(normalized.sessionId ? { sessionId: normalized.sessionId } : {}),
           ...(normalized.runId ? { runId: normalized.runId } : {}),
           ...(normalized.taskId ? { taskId: normalized.taskId } : {}),
-          ...(normalized.startedAt ? { startedAt: normalized.startedAt } : {}),
-          ...(normalized.endedAt ? { endedAt: normalized.endedAt } : {}),
+          ...(normalized.boundarySignal ? { boundarySignal: normalized.boundarySignal } : {}),
+          ...(normalized.startedAt != null ? { startedAt: normalized.startedAt } : {}),
+          ...(normalized.endedAt != null ? { endedAt: normalized.endedAt } : {}),
           ...(normalized.automated ? { automated: normalized.automated } : {}),
           // summaryKind progresses heuristic/none → llm when the async LLM
           // summary lands. Without this propagation, the dashboard never
           // sees the kind upgrade and (for `summaryKind: 'none'` rows) the
           // detail pane stays suppressed even after the LLM rescues it.
           ...(normalized.summaryKind ? { summaryKind: normalized.summaryKind } : {}),
+          ...(normalized.taskScore != null ? { taskScore: normalized.taskScore } : {}),
+          ...(normalized.taskOutcome ? { taskOutcome: normalized.taskOutcome } : {}),
+          ...(normalized.taskCategory ? { taskCategory: normalized.taskCategory } : {}),
+          ...(normalized.taskSummary ? { taskSummary: normalized.taskSummary } : {}),
         };
         for (const cb of this.listeners) cb(this.entries[i], true);
         return;
@@ -173,5 +193,39 @@ export class BridgeTimelineStore {
   removeListener(cb: EntryListener): void {
     const idx = this.listeners.indexOf(cb);
     if (idx !== -1) this.listeners.splice(idx, 1);
+  }
+
+  private tryMergeTaskEndByTaskId(entry: TimelineEntry): boolean {
+    if (entry.type !== 'task_end' || !entry.taskId) return false;
+    let idx = -1;
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const e = this.entries[i];
+      if (e.type === 'task_end' && e.taskId === entry.taskId) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx < 0) return false;
+
+    const existing = this.entries[idx];
+    this.entries[idx] = {
+      ...existing,
+      raw: entry.raw,
+      ...(entry.detail ? { detail: entry.detail } : {}),
+      ...(entry.agentType ? { agentType: entry.agentType } : {}),
+      ...(entry.projectName ? { projectName: entry.projectName } : {}),
+      ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
+      ...(entry.runId ? { runId: entry.runId } : {}),
+      ...(entry.startedAt != null ? { startedAt: entry.startedAt } : {}),
+      ...(entry.endedAt != null ? { endedAt: entry.endedAt } : {}),
+      ...(entry.boundarySignal ? { boundarySignal: entry.boundarySignal } : {}),
+      ...(entry.summaryKind ? { summaryKind: entry.summaryKind } : {}),
+      ...(entry.taskScore != null ? { taskScore: entry.taskScore } : {}),
+      ...(entry.taskOutcome ? { taskOutcome: entry.taskOutcome } : {}),
+      ...(entry.taskCategory ? { taskCategory: entry.taskCategory } : {}),
+      ...(entry.taskSummary ? { taskSummary: entry.taskSummary } : {}),
+    };
+    for (const cb of this.listeners) cb(this.entries[idx], true);
+    return true;
   }
 }

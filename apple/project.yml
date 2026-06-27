@@ -102,6 +102,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: YES
 
   AgentDeckTests_macOS:
     type: bundle.unit-test

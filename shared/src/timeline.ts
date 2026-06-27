@@ -62,8 +62,9 @@ export interface TimelineEntry {
    *   - `'llm'`     : LLM-summarized (clean, short, distinct from detail)
    *   - `'heuristic'`: topic-hint extracted from response or prompt
    *   - `'none'`    : last-resort fallback (literal "Completed", bare tool name, etc.)
+   *   - `'progress'`: non-terminal assistant status update (work still running)
    */
-  summaryKind?: 'llm' | 'heuristic' | 'none';
+  summaryKind?: 'llm' | 'heuristic' | 'none' | 'progress';
 }
 
 /**
@@ -236,6 +237,29 @@ export function cleanNopMarkers(text: string): string {
     .trim();
 }
 
+export function isAssistantProgressUpdate(text?: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const head = trimmed.slice(0, 800);
+  const lower = head.toLowerCase();
+
+  const explicitProgress =
+    /\b(still|currently|continues? to|is|are)\s+(running|building|installing|executing|processing|waiting)\b/.test(lower) ||
+    /\b(still running|still building|build is running|is still running|are still running)\b/.test(lower) ||
+    /\b(waiting for|wait until|once (?:the )?.*(?:finishes|completes|arrives)|continue once|will continue once|i.ll continue once)\b/.test(lower) ||
+    /\b(no interim lines|buffers? output until completion|tail buffers output)\b/.test(lower) ||
+    /(아직|계속)\s*(실행|진행|빌드|설치)\s*중/.test(head) ||
+    /(완료|끝나|도착)면\s*(계속|이어)/.test(head) ||
+    /(기다리는 중|대기 중)/.test(head);
+
+  if (!explicitProgress) return false;
+
+  const startsAsFinal = /^(done|completed|complete|fixed|merged|verified|all done)\b/i.test(trimmed) ||
+    /^(완료|수정 완료|검증 완료|반영 완료|머지 완료)/.test(trimmed);
+  return !startsAsFinal;
+}
+
 export function detailHasRealSignal(detail?: string): boolean {
   if (!detail) return false;
   for (const line of detail.split(/\r?\n/)) {
@@ -272,6 +296,12 @@ export function summarizeOpenClawCronPrompt(text?: string): string {
 export function shouldDropLowSignalTimelineEntry(entry: TimelineEntry): boolean {
   const lowSignalTypes = new Set<TimelineEntryType>(['tool_exec', 'tool_request', 'tool_resolved']);
   if (!lowSignalTypes.has(entry.type)) return false;
+  // Codex tool hooks are extremely high volume (Bash/MCP start+complete for
+  // every internal action). Keep them available to APME ingestion, but do not
+  // persist them into the bounded user-facing timeline buffer.
+  if ((entry.agentType === 'codex-cli' || entry.agentType === 'codex-app') && entry.type === 'tool_exec') {
+    return true;
+  }
   if (detailHasRealSignal(entry.detail)) return false;
 
   const raw = entry.raw.trim().toLowerCase();

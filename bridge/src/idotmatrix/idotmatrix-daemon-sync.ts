@@ -16,17 +16,25 @@
  * Apple 2.5.2 sandbox invariants.
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { loadIDotMatrixDevices } from './idotmatrix-settings.js';
+import { loadIDotMatrixDevices, type IDotMatrixDevice } from './idotmatrix-settings.js';
+import { spawnPythonSync } from '../ble-sync-spawn.js';
 
 let child: ChildProcess | null = null;
 let stopping = false;
 let respawnTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveFailures = 0;
 let startedAt = 0;
+/** Address+brightness of the device the running child is driving (for reload-on-change). */
+let runningKey: string | null = null;
+
+/** Identity of the driven config — a change means the running child is stale. */
+function deviceKey(d: IDotMatrixDevice): string {
+  return `${d.address.toLowerCase()}@${d.brightness ?? 100}`;
+}
 
 const MAX_BACKOFF_MS = 60_000;
 const BASE_BACKOFF_MS = 5_000;
@@ -55,10 +63,20 @@ function resolvePaths(): { venvPython: string; syncScript: string } {
  */
 export function startIDotMatrixSync(httpPort: number): void {
   stopping = false;
-  if (child) return; // already running
 
   const devices = loadIDotMatrixDevices();
   if (devices.length === 0) return; // nothing configured → nothing to drive
+
+  if (child) {
+    // Already running. If the configured device/brightness is unchanged this is
+    // a no-op; if it changed (re-pair, brightness edit), tear the stale child
+    // down so the respawn below picks up the new config instead of silently
+    // driving the old panel forever.
+    if (runningKey === deviceKey(devices[0])) return;
+    log('configured iDotMatrix changed; restarting BLE sync');
+    stopIDotMatrixSync();
+    stopping = false;
+  }
 
   const { venvPython, syncScript } = resolvePaths();
   if (!existsSync(venvPython) || !existsSync(syncScript)) {
@@ -83,27 +101,30 @@ function spawnSync(venvPython: string, syncScript: string, httpPort: number): vo
 
   log(`Starting BLE sync for ${device.name ?? addr} (bridge ${url}, brightness ${brightness}%)`);
   startedAt = Date.now();
-  const proc = spawn(
-    venvPython,
-    // iDotMatrix software brightness boost canonical = 1.6 — keep in sync:
-    // sync.py (run_sync boost default), IDotMatrixModule.swift (boostBrightnessContrast).
-    [syncScript, '-a', addr, '-u', url, '-b', String(brightness), '--boost', '1.6'],
-    { stdio: 'ignore' }, // long-lived daemon; don't let sync.py's debug flood daemon stdout
-  );
+  runningKey = deviceKey(device);
+  // iDotMatrix software brightness boost canonical = 1.6 — keep in sync:
+  // sync.py (run_sync boost default), IDotMatrixModule.swift (boostBrightnessContrast).
+  // stdout muted (debug flood); stderr captured so a Python crash (missing bleak,
+  // stale venv, bad address) is logged instead of vanishing.
+  const { proc, stderrTail } = spawnPythonSync(venvPython, [
+    syncScript, '-a', addr, '-u', url, '-b', String(brightness), '--boost', '1.6',
+  ]);
   child = proc;
 
-  proc.on('error', (err) => {
+  proc.on('error', (err: Error) => {
     log(`BLE sync failed to spawn: ${err.message}`);
   });
 
-  proc.on('exit', (code, signal) => {
+  proc.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
     if (child === proc) child = null;
     if (stopping) return;
     // A long healthy run resets the backoff so a one-off crash recovers fast.
     if (Date.now() - startedAt > HEALTHY_UPTIME_MS) consecutiveFailures = 0;
     consecutiveFailures += 1;
     const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * consecutiveFailures);
-    log(`BLE sync exited (code=${code} signal=${signal}); respawning in ${Math.round(delay / 1000)}s`);
+    const tail = stderrTail();
+    const why = code && tail ? `; stderr: ${tail}` : '';
+    log(`BLE sync exited (code=${code} signal=${signal})${why}; respawning in ${Math.round(delay / 1000)}s`);
     respawnTimer = setTimeout(() => spawnSync(venvPython, syncScript, httpPort), delay);
     if (respawnTimer.unref) respawnTimer.unref();
   });
@@ -124,4 +145,5 @@ export function stopIDotMatrixSync(): void {
     }
     child = null;
   }
+  runningKey = null;
 }

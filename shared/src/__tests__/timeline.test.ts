@@ -5,6 +5,7 @@ import {
   cleanNopMarkers,
   extractSemanticCore,
   isRepetitiveEntry,
+  isAssistantProgressUpdate,
   normalizeTimelineEntryForStorage,
   parseLogLine,
   shouldDropLowSignalTimelineEntry,
@@ -142,9 +143,35 @@ describe('normalizeTimelineEntryForStorage', () => {
     })).toBe(false);
   });
 
+  it('drops Codex command tool rows even when detail carries input', () => {
+    expect(shouldDropLowSignalTimelineEntry({
+      ts: 100,
+      type: 'tool_exec',
+      raw: 'Bash: rg -n "Timeline" apple/AgentDeck',
+      detail: 'status: running\n{"cmd":"rg -n Timeline"}',
+      agentType: 'codex-cli',
+      projectName: 'AgentDeck',
+      sessionId: 'codex:thread-1',
+    })).toBe(true);
+  });
+
   it('extracts readable labels from cron headers', () => {
     expect(summarizeOpenClawCronPrompt('[cron:id ai-eval-kindergarten-daily] body'))
       .toBe('자동 작업 · ai eval kindergarten daily');
+  });
+});
+
+describe('isAssistantProgressUpdate', () => {
+  it('detects non-terminal build/status updates', () => {
+    expect(isAssistantProgressUpdate(
+      "Android build is still running (its | tail buffers output until completion, so no interim lines). I'll continue once the completion event arrives.",
+    )).toBe(true);
+  });
+
+  it('does not classify final completion reports as progress', () => {
+    expect(isAssistantProgressUpdate(
+      'Completed. Android build passed, node build is green, and macOS Swift build succeeded.',
+    )).toBe(false);
   });
 });
 

@@ -133,6 +133,46 @@ describe('BridgeTimelineStore', () => {
     expect(store.getHistory()).toHaveLength(2);
   });
 
+  it('task_end updates in place by taskId and carries judge fields', () => {
+    const received: Array<{ entry: TimelineEntry; upsert?: boolean }> = [];
+    store.onEntry((entry, upsert) => received.push({ entry, upsert }));
+
+    store.addEntry(makeEntry({
+      ts: 1_000,
+      type: 'task_end',
+      raw: 'Session end · 10s',
+      taskId: 'task-1',
+      sessionId: 'session-1',
+      startedAt: 0,
+      endedAt: 1_000,
+    }));
+    store.addEntry(makeEntry({
+      ts: 1_000,
+      type: 'task_end',
+      raw: 'Session end · 10s',
+      taskId: 'task-1',
+      sessionId: 'session-1',
+      startedAt: 0,
+      endedAt: 1_000,
+      taskScore: 0.91,
+      taskOutcome: 'committed',
+      taskCategory: 'code',
+      taskSummary: 'Implemented and verified',
+    }));
+
+    const history = store.getHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      taskId: 'task-1',
+      taskScore: 0.91,
+      taskOutcome: 'committed',
+      taskCategory: 'code',
+      taskSummary: 'Implemented and verified',
+    });
+    expect(received).toHaveLength(2);
+    expect(received[1].upsert).toBe(true);
+  });
+
   it('updateEntryStatus updates approval status', () => {
     store.addEntry(makeEntry({ ts: 100, type: 'tool_request', approvalId: 'abc-123', status: 'pending' }));
 

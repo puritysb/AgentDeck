@@ -64,8 +64,9 @@ struct DaemonTimelineEntry: Codable, Sendable {
 actor DaemonTimelineStore {
     private var entries: [DaemonTimelineEntry] = []
     private let maxEntries = 200
-    private let persistFile = AuthManager.agentDeckDir.appendingPathComponent("timeline.json")
+    private let persistFile: URL
     private var dirty = false
+    private var persistenceStarted = false
     // .userInteractive: DaemonServer.startServices calls start() →
     // loadFromDisk() from the main actor and sync-waits via DispatchSemaphore.
     // .userInitiated still leaves a one-step inversion (User-interactive →
@@ -74,11 +75,13 @@ actor DaemonTimelineStore {
     // startup critical path.
     private static let ioQueue = DispatchQueue(label: "dev.agentdeck.timeline.io", qos: .userInteractive)
 
-    init() {
+    init(persistFile: URL? = nil) {
+        self.persistFile = persistFile ?? AuthManager.agentDeckDir.appendingPathComponent("timeline.json")
         // loadFromDisk is called after actor init via start()
     }
 
     func start() {
+        persistenceStarted = true
         loadFromDisk()
     }
 
@@ -115,6 +118,7 @@ actor DaemonTimelineStore {
             entries.removeFirst(entries.count - maxEntries)
         }
         dirty = true
+        flush()
     }
 
     func upsert(_ entry: DaemonTimelineEntry) {
@@ -126,14 +130,17 @@ actor DaemonTimelineStore {
            let idx = entries.lastIndex(where: { $0.type == "task_end" && $0.taskId == taskId }) {
             entries[idx] = entry
             dirty = true
+            flush()
             return
         }
         if let idx = entries.lastIndex(where: { $0.ts == entry.ts && $0.type == entry.type }) {
             entries[idx] = entry
+            dirty = true
         } else {
             add(entry)
+            return
         }
-        dirty = true
+        flush()
     }
 
     func getAll() -> [DaemonTimelineEntry] { entries }
@@ -148,7 +155,7 @@ actor DaemonTimelineStore {
     }
 
     func flush() {
-        guard dirty else { return }
+        guard dirty, persistenceStarted else { return }
         if let data = try? JSONEncoder().encode(entries) {
             let persistFile = persistFile
             Self.ioQueue.async {
@@ -189,6 +196,13 @@ actor DaemonTimelineStore {
     static func shouldDropLowSignalEntry(_ entry: DaemonTimelineEntry) -> Bool {
         guard entry.type == "tool_exec" || entry.type == "tool_request" || entry.type == "tool_resolved" else {
             return false
+        }
+        // Codex tool hooks fire for every internal Bash/MCP action and can
+        // easily evict the actual turn/task rows from the bounded timeline.
+        // APME still ingests the hook trajectory; the device timeline keeps
+        // Codex chat/task lifecycle rows only.
+        if (entry.agentType == "codex-cli" || entry.agentType == "codex-app"), entry.type == "tool_exec" {
+            return true
         }
         // Real signal in detail → keep regardless of placeholder raw.
         if Self.detailHasRealSignal(entry.detail) {

@@ -427,6 +427,23 @@ function renderModuleHealthLines(moduleHealth: ModuleMap | undefined, width: num
     push('Pixoo', `${online}/${configured}${dimmed}`, configured > 0 && online > 0, configured > 0);
   }
 
+  // BLE matrix panels — Divoom Timebox Mini + iDotMatrix. The Swift daemon
+  // reports a live `connected`/`statusReason`; the Node daemon only knows a
+  // panel is configured (the Python BLE sync subprocess owns the link), so a
+  // configured-but-state-unknown panel reads as amber "cfg" rather than a red
+  // offline, which would be a false negative for a working Node-driven panel.
+  for (const [key, label] of [['timebox', 'Timebox'], ['idotmatrix', 'iDotMatrix']] as const) {
+    const m = asRecord(moduleHealth[key]);
+    if (!m) continue;
+    const configured = asNumber(m.configuredDeviceCount) ?? asArray(m.devices).length;
+    if (configured <= 0) continue;
+    const connected = m.connected === true;
+    const dimmed = m.displayDimmed === true ? ' dim' : '';
+    const reason = typeof m.statusReason === 'string' ? m.statusReason : '';
+    const detail = connected ? `ready${dimmed}` : (reason || `${configured} cfg`);
+    push(label, detail, connected, !connected);
+  }
+
   const d200h = asRecord(moduleHealth.d200h);
   if (d200h) {
     const connected = d200h.connected === true || d200h.managerOpened === true;
