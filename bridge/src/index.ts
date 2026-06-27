@@ -970,8 +970,8 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   // stay identical to daemon-server.ts and Swift buildSessionsListEvent.
   core.setSessionsEnricher((sessions) => {
     const gwActive = isOpenClawSessionActive({ gatewayConnected: core.cachedGatewayConnected });
-    if (!gwActive && !hasOpenClawSession(sessions)) return sessions;
-    if (hasOpenClawSession(sessions)) return sessions;
+    // Inject iff authenticated AND not already present (dedupe).
+    if (!gwActive || hasOpenClawSession(sessions)) return sessions;
     return [...sessions, {
       id: 'openclaw-gateway',
       port: 18789,

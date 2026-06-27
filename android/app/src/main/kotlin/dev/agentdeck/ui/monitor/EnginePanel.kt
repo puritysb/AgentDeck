@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.agentdeck.net.ModelCatalogEntry
 import dev.agentdeck.net.OllamaStatus
-import dev.agentdeck.ui.eink.hasOpenClawSession
 import dev.agentdeck.net.SubscriptionInfo
 import dev.agentdeck.net.AntigravityStatusInfo
 import dev.agentdeck.net.UsageUpdate
@@ -58,9 +57,12 @@ fun TankStatusPanel(
     val staleSuffix = if (usage.usageStale == true) " !" else ""
     val ollamaStatus = state.ollamaStatus
     val modelCatalog = state.modelCatalog ?: emptyList()
-    // Presence-driven: show OpenClaw model lines iff the daemon emitted an
-    // OpenClaw session (single authority), not from raw gateway flags.
-    val openClawLines = if (hasOpenClawSession(state.siblingSessions)) {
+    // Catalog-ownership gate (mirrors Apple TopologyRail `catalogOwner == .openclaw`):
+    // state.modelCatalog belongs to the focused/primary agent, so only render it
+    // under the OpenClaw header when OpenClaw IS that agent — otherwise Claude's
+    // catalog would show under "OpenClaw" whenever an OpenClaw sibling exists.
+    // The raw `gatewayConnected` flag is intentionally dropped; ownership implies it.
+    val openClawLines = if (state.agentType == "openclaw") {
         openClawDisplayLines(modelCatalog)
     } else {
         emptyList()
