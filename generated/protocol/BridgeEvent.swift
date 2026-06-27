@@ -973,7 +973,8 @@ struct ADTimelineEntry: Codable, Equatable {
     /// couldn't summarize, and showing it duplicates content rather than adding value.   -
     /// `'llm'`     : LLM-summarized (clean, short, distinct from detail)   - `'heuristic'`:
     /// topic-hint extracted from response or prompt   - `'none'`    : last-resort fallback
-    /// (literal "Completed", bare tool name, etc.)
+    /// (literal "Completed", bare tool name, etc.)   - `'progress'`: non-terminal assistant
+    /// status update (work still running)
     var summaryKind: ADSummaryKind?
     var taskCategory: String?
     /// APME task id. Set on task_start/task_end and on every turn entry inside the task scope.
@@ -1106,11 +1107,13 @@ enum ADEntryStatus: String, Codable, Equatable {
 /// couldn't summarize, and showing it duplicates content rather than adding value.   -
 /// `'llm'`     : LLM-summarized (clean, short, distinct from detail)   - `'heuristic'`:
 /// topic-hint extracted from response or prompt   - `'none'`    : last-resort fallback
-/// (literal "Completed", bare tool name, etc.)
+/// (literal "Completed", bare tool name, etc.)   - `'progress'`: non-terminal assistant
+/// status update (work still running)
 enum ADSummaryKind: String, Codable, Equatable {
     case heuristic = "heuristic"
     case llm = "llm"
     case none = "none"
+    case progress = "progress"
 }
 
 /// Shared timeline types and log parser for OpenClaw mode. Used by both bridge
@@ -1331,6 +1334,7 @@ extension ADOllamaModel {
 // MARK: - ADPromptOption
 struct ADPromptOption: Codable, Equatable {
     var index: Double
+    var kind: ADKind?
     var label: String
     var recommended: Bool?
     var selected: Bool?
@@ -1338,6 +1342,7 @@ struct ADPromptOption: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case index = "index"
+        case kind = "kind"
         case label = "label"
         case recommended = "recommended"
         case selected = "selected"
@@ -1365,6 +1370,7 @@ extension ADPromptOption {
 
     func with(
         index: Double? = nil,
+        kind: ADKind?? = nil,
         label: String? = nil,
         recommended: Bool?? = nil,
         selected: Bool?? = nil,
@@ -1372,6 +1378,7 @@ extension ADPromptOption {
     ) -> ADPromptOption {
         return ADPromptOption(
             index: index ?? self.index,
+            kind: kind ?? self.kind,
             label: label ?? self.label,
             recommended: recommended ?? self.recommended,
             selected: selected ?? self.selected,
@@ -1386,6 +1393,11 @@ extension ADPromptOption {
     func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
         return String(data: try self.jsonData(), encoding: encoding)
     }
+}
+
+enum ADKind: String, Codable, Equatable {
+    case choice = "choice"
+    case freeformInput = "freeform_input"
 }
 
 enum ADPermissionMode: String, Codable, Equatable {

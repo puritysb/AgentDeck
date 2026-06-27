@@ -24,6 +24,7 @@ private val klaxon = Klaxon()
     .convert(SummaryKind::class,         { SummaryKind.fromValue(it.string!!) },         { "\"${it.value}\"" })
     .convert(TimelineEntryType::class,   { TimelineEntryType.fromValue(it.string!!) },   { "\"${it.value}\"" })
     .convert(GatewayAuthStatus::class,   { GatewayAuthStatus.fromValue(it.string!!) },   { "\"${it.value}\"" })
+    .convert(Kind::class,                { Kind.fromValue(it.string!!) },                { "\"${it.value}\"" })
     .convert(PermissionMode::class,      { PermissionMode.fromValue(it.string!!) },      { "\"${it.value}\"" })
     .convert(PromptType::class,          { PromptType.fromValue(it.string!!) },          { "\"${it.value}\"" })
     .convert(Layer::class,               { Layer.fromValue(it.string!!) },               { "\"${it.value}\"" })
@@ -502,7 +503,8 @@ data class TimelineEntry (
      * couldn't summarize, and showing it duplicates content rather than adding value.   -
      * `'llm'`     : LLM-summarized (clean, short, distinct from detail)   - `'heuristic'`:
      * topic-hint extracted from response or prompt   - `'none'`    : last-resort fallback
-     * (literal "Completed", bare tool name, etc.)
+     * (literal "Completed", bare tool name, etc.)   - `'progress'`: non-terminal assistant
+     * status update (work still running)
      */
     val summaryKind: SummaryKind? = null,
 
@@ -557,18 +559,21 @@ enum class EntryStatus(val value: String) {
  * couldn't summarize, and showing it duplicates content rather than adding value.   -
  * `'llm'`     : LLM-summarized (clean, short, distinct from detail)   - `'heuristic'`:
  * topic-hint extracted from response or prompt   - `'none'`    : last-resort fallback
- * (literal "Completed", bare tool name, etc.)
+ * (literal "Completed", bare tool name, etc.)   - `'progress'`: non-terminal assistant
+ * status update (work still running)
  */
 enum class SummaryKind(val value: String) {
     Heuristic("heuristic"),
     Llm("llm"),
-    None("none");
+    None("none"),
+    Progress("progress");
 
     companion object {
         public fun fromValue(value: String): SummaryKind = when (value) {
             "heuristic" -> Heuristic
             "llm"       -> Llm
             "none"      -> None
+            "progress"  -> Progress
             else        -> throw IllegalArgumentException()
         }
     }
@@ -674,11 +679,25 @@ data class OllamaModel (
 
 data class PromptOption (
     val index: Double,
+    val kind: Kind? = null,
     val label: String,
     val recommended: Boolean? = null,
     val selected: Boolean? = null,
     val shortcut: String? = null
 )
+
+enum class Kind(val value: String) {
+    Choice("choice"),
+    FreeformInput("freeform_input");
+
+    companion object {
+        public fun fromValue(value: String): Kind = when (value) {
+            "choice"         -> Choice
+            "freeform_input" -> FreeformInput
+            else             -> throw IllegalArgumentException()
+        }
+    }
+}
 
 enum class PermissionMode(val value: String) {
     AcceptEdits("acceptEdits"),

@@ -763,6 +763,13 @@
         "index": {
           "type": "number"
         },
+        "kind": {
+          "enum": [
+            "choice",
+            "freeform_input"
+          ],
+          "type": "string"
+        },
         "label": {
           "type": "string"
         },
@@ -1196,11 +1203,12 @@
           "type": "string"
         },
         "summaryKind": {
-          "description": "How the row's `raw` summary was produced. Lets clients decide whether the detail pane is worth showing — when `'none'`, detail is just the unfiltered response that the heuristic couldn't summarize, and showing it duplicates content rather than adding value.   - `'llm'`     : LLM-summarized (clean, short, distinct from detail)   - `'heuristic'`: topic-hint extracted from response or prompt   - `'none'`    : last-resort fallback (literal \"Completed\", bare tool name, etc.)",
+          "description": "How the row's `raw` summary was produced. Lets clients decide whether the detail pane is worth showing — when `'none'`, detail is just the unfiltered response that the heuristic couldn't summarize, and showing it duplicates content rather than adding value.   - `'llm'`     : LLM-summarized (clean, short, distinct from detail)   - `'heuristic'`: topic-hint extracted from response or prompt   - `'none'`    : last-resort fallback (literal \"Completed\", bare tool name, etc.)   - `'progress'`: non-terminal assistant status update (work still running)",
           "enum": [
             "llm",
             "heuristic",
-            "none"
+            "none",
+            "progress"
           ],
           "type": "string"
         },
