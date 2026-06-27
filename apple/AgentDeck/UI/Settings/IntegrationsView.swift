@@ -627,44 +627,27 @@ enum ProviderRailEvaluator {
         return RowState(status: status, subtitle: subtitle)
     }
 
-    /// Returns `nil` when the OpenClaw gateway hasn't been discovered yet —
-    /// rails use that to suppress the row entirely rather than render a
-    /// dim placeholder for a provider the user never opted into. Mirrors
-    /// the gating done by the pre-existing rail code.
+    /// Returns `nil` unless the daemon actually emitted an OpenClaw session.
+    ///
+    /// This evaluator drives the CREATURE / topology rails only (TopologyRail,
+    /// MenuBarTopologyList). Presence-driven SSOT: the daemon injects an
+    /// `openclaw` session iff the Gateway is authenticated
+    /// (DashboardDataRules.isOpenClawSessionActive), so gating on session
+    /// presence keeps the rail crayfish in lockstep with every other surface
+    /// and stops a reachable-but-unauthenticated Gateway from rendering a
+    /// creature. The richer "Pairing required / Approve this Mac" ladder lives
+    /// in the Settings → Integrations row (`openClawStatus`), which is the
+    /// configuration surface and is intentionally NOT gated this way.
     static func openClaw(state: DashboardState) -> RowState? {
-        guard state.gatewayAvailable || state.gatewayHasError else { return nil }
-        let status: LEDStatus = state.gatewayHasError
-            ? .error
-            : (state.gatewayConnected ? .ok : .warn)
-        let subtitle: String? = {
-            switch state.gatewayAuthStatus {
-            case "approval_pending":
-                return "Approve in OpenClaw"
-            // Normal first-pairing states — show a single "Pairing required"
-            // message so the menu-bar and dashboard subtitle can't confuse
-            // users with different wording for the same underlying ask.
-            // `gateway_reachable` is *not* a pairing state — it just means the
-            // adapter is mid-handshake. Leave its subtitle empty (default branch)
-            // so the row doesn't nag the user during the brief connecting window.
-            case "pairing_required",
-                 "device_auth_invalid":
-                return "Pairing required"
-            case "gateway_token_missing":
-                return "Gateway token required"
-            case "auth_failed", "token_mismatch":
-                return "Auth failed — re-approve"
-            case "connect_timeout":
-                return "Handshake timeout"
-            case "unsupported_protocol":
-                return "Unsupported — update OpenClaw"
-            case "reconnecting":
-                return "Reconnecting…"
-            case "connected":
-                return nil
-            default:
-                return state.gatewayHasError ? "Gateway error" : nil
-            }
-        }()
+        // Presence-driven: a session only exists when the Gateway is
+        // authenticated, so the rail row is .ok (or .error if the live session
+        // is also erroring). The pre-pairing ladder (approval_pending /
+        // pairing_required / token-missing, etc.) is intentionally NOT shown on
+        // the rail — that affordance lives in the Settings → Integrations
+        // `openClawStatus` row, the configuration surface for getting paired.
+        guard DashboardDataRules.hasOpenClawSession(state.siblingSessions) else { return nil }
+        let status: LEDStatus = state.gatewayHasError ? .error : .ok
+        let subtitle: String? = state.gatewayHasError ? "Gateway error" : nil
         return RowState(status: status, subtitle: subtitle)
     }
 }

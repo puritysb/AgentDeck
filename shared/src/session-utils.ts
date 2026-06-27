@@ -59,6 +59,43 @@ export function naturalLabelCompare(a: string | undefined, b: string | undefined
   return (a || '').localeCompare(b || '', undefined, { numeric: true, sensitivity: 'base' });
 }
 
+// ===== OpenClaw / Gateway Visibility (SSOT) =====
+
+export interface GatewayVisibilityFlags {
+  /** TCP port 18789 reachable — a topology hint only, NOT proof commands route. */
+  gatewayAvailable?: boolean;
+  /** Gateway WS handshake + auth succeeded — proof commands can route. */
+  gatewayConnected?: boolean;
+  /** `openclaw doctor`/health reports an error. */
+  gatewayHasError?: boolean;
+}
+
+/**
+ * SSOT: the daemon injects the virtual `openclaw` session iff this holds.
+ *
+ * "Active" = authenticated / can-route = the Gateway WS handshake+auth
+ * succeeded (`gatewayConnected`). Reachability (`gatewayAvailable`) and health
+ * (`gatewayHasError`) are topology/status hints only and MUST NOT materialize a
+ * session — surfacing them as a session is what made OpenClaw "stick" on
+ * devices after it was effectively off.
+ *
+ * Hand-mirrored in Swift `DashboardDataRules.isOpenClawSessionActive`
+ * (apple/AgentDeck/Model/Protocol.swift) and Kotlin `isOpenClawSessionActive`
+ * (android/.../ui/eink/EinkFormatUtils.kt) — keep all three in lockstep.
+ */
+export function isOpenClawSessionActive(flags: GatewayVisibilityFlags): boolean {
+  return flags.gatewayConnected === true;
+}
+
+/**
+ * Consumer SSOT: render OpenClaw iff the daemon actually emitted the session.
+ * Consumers must NOT re-derive OpenClaw visibility from raw gateway flags;
+ * the daemon source is the single authority. Hand-mirrored in Swift/Kotlin.
+ */
+export function hasOpenClawSession<T extends { agentType?: string }>(sessions: readonly T[]): boolean {
+  return sessions.some(s => s.agentType === 'openclaw');
+}
+
 // ===== Sorting =====
 
 /**

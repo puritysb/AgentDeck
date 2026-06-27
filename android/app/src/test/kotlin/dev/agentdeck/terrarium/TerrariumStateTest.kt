@@ -11,8 +11,13 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class TerrariumStateTest {
 
+    // Presence-driven SSOT: the crayfish tracks the emitted OpenClaw SESSION,
+    // never raw gateway flags. No session row ⇒ DORMANT, regardless of
+    // reachability/auth/error — this is the regression lock for the
+    // "OpenClaw won't go away" trace.
+
     @Test
-    fun `reachable gateway without auth hides OpenClaw and workers`() {
+    fun `reachable gateway without an emitted session hides OpenClaw and workers`() {
         val terrarium = DashboardState(
             agentState = AgentState.IDLE,
             agentType = "daemon",
@@ -27,7 +32,24 @@ class TerrariumStateTest {
     }
 
     @Test
-    fun `authenticated gateway shows OpenClaw at rest`() {
+    fun `stuck gatewayConnected without an emitted session still hides OpenClaw`() {
+        // The phantom "trace" scenario: a stale gatewayConnected=true but the
+        // daemon emitted NO openclaw session — the crayfish must stay hidden.
+        val terrarium = DashboardState(
+            agentState = AgentState.IDLE,
+            agentType = "daemon",
+            gatewayAvailable = true,
+            gatewayConnected = true,
+            workerSessionCount = 2,
+            siblingSessions = emptyList(),
+        ).toTerrariumState()
+
+        assertEquals(CrayfishVisualState.DORMANT, terrarium.crayfish)
+        assertEquals(0, terrarium.workerCrayfishCount)
+    }
+
+    @Test
+    fun `emitted OpenClaw session shows OpenClaw at rest`() {
         val terrarium = DashboardState(
             agentState = AgentState.IDLE,
             agentType = "daemon",
@@ -35,6 +57,9 @@ class TerrariumStateTest {
             gatewayConnected = true,
             gatewayHasError = false,
             workerSessionCount = 2,
+            siblingSessions = listOf(
+                SessionInfo(id = "oc-1", port = 18789, agentType = "openclaw", alive = true, state = "idle"),
+            ),
         ).toTerrariumState()
 
         assertEquals(CrayfishVisualState.SITTING, terrarium.crayfish)
@@ -42,24 +67,27 @@ class TerrariumStateTest {
     }
 
     @Test
-    fun `gateway error surfaces sick OpenClaw`() {
+    fun `gateway error with a live session surfaces sick OpenClaw`() {
         val terrarium = DashboardState(
             agentState = AgentState.IDLE,
             agentType = "daemon",
             gatewayAvailable = true,
-            gatewayConnected = false,
+            gatewayConnected = true,
             gatewayHasError = true,
+            siblingSessions = listOf(
+                SessionInfo(id = "oc-1", port = 18789, agentType = "openclaw", alive = true, state = "idle"),
+            ),
         ).toTerrariumState()
 
         assertEquals(CrayfishVisualState.SICK, terrarium.crayfish)
     }
 
     @Test
-    fun `stale gateway error is ignored when gateway is unavailable`() {
+    fun `gateway error without an emitted session does not spawn a creature`() {
         val terrarium = DashboardState(
             agentState = AgentState.IDLE,
             agentType = "daemon",
-            gatewayAvailable = false,
+            gatewayAvailable = true,
             gatewayConnected = false,
             gatewayHasError = true,
             workerSessionCount = 2,

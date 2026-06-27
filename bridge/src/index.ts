@@ -31,6 +31,7 @@ import {
   cleanDetailText, cleanRawText, prepareMarkdownDetail,
   extractTopicHintWithKind, promptSnippetFallback,
 } from '@agentdeck/shared';
+import { injectOpenClawSession } from './openclaw-session.js';
 import { VoiceAssistantManager } from './voice-assistant.js';
 import { TerminalStatus } from './terminal-status.js';
 import { readFileSync, existsSync } from 'fs';
@@ -958,18 +959,14 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   core.startGatewayHealthCheck();
   core.startSessionsListPolling();
 
-  // Inject virtual OpenClaw session when Gateway is detected (same as daemon-server.ts)
-  core.setSessionsEnricher((sessions) => {
-    if (!core.cachedGatewayAvailable) return sessions;
-    if (sessions.some(s => s.agentType === 'openclaw')) return sessions;
-    return [...sessions, {
-      id: 'openclaw-gateway',
-      port: 18789,
-      projectName: 'OpenClaw',
-      agentType: 'openclaw' as const,
-      alive: true,
-    }];
-  });
+  // Inject virtual OpenClaw session only after Gateway authentication succeeds
+  // (gatewayConnected). Reachability alone (cachedGatewayAvailable) is a
+  // topology signal, not proof commands can route — gating on it kept a phantom
+  // OpenClaw session alive whenever anything held port 18789 open. Shared
+  // injector with daemon-server.ts; mirror of Swift buildSessionsListEvent.
+  core.setSessionsEnricher((sessions) =>
+    injectOpenClawSession(sessions, { gatewayConnected: core.cachedGatewayConnected }),
+  );
 
   // ===== Encoder state computation =====
   function computeEncoderState(): EncoderStateEvent {

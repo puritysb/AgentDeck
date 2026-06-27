@@ -4178,9 +4178,12 @@ final class DaemonServer {
 
     private func buildSessionsListEvent() -> [String: Any] {
         var sessions = cachedSessions.map { sessionToDict($0) }
-        // Inject virtual OpenClaw session when Gateway is reachable
-        if cachedGatewayConnected {
-            if !sessions.contains(where: { ($0["id"] as? String) == "openclaw-gateway" || ($0["agentType"] as? String) == "openclaw" }) {
+        // Inject virtual OpenClaw session iff Gateway is authenticated. SSOT:
+        // DashboardDataRules.isOpenClawSessionActive (mirror of
+        // shared/src/session-utils.ts). Identical predicate to the Node bridge.
+        if DashboardDataRules.isOpenClawSessionActive(gatewayConnected: cachedGatewayConnected) {
+            if !DashboardDataRules.hasOpenClawSession(sessions)
+                && !sessions.contains(where: { ($0["id"] as? String) == "openclaw-gateway" }) {
                 // Only authenticated Gateway connections should materialize as
                 // a virtual OpenClaw session. Reachability/auth failures stay
                 // in the topology/status rows so the terrarium does not render

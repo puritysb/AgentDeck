@@ -141,36 +141,29 @@ fun DashboardState.toTerrariumState(): TerrariumState {
     // Reachability alone (`gatewayAvailable`) used to trigger a cheerful
     // SITTING crayfish even when the shared token was missing, which
     // misled users into thinking OpenClaw was wired up.
+    // Presence-driven SSOT: the crayfish tracks the OpenClaw SESSION that the
+    // daemon emits — never raw gateway flags. The daemon injects an `openclaw`
+    // session iff the Gateway is authenticated (isOpenClawSessionActive), so
+    // `ocSibling == null` means OpenClaw is not an active, routable agent and
+    // the crayfish must stay hidden — even if the port is reachable or doctor
+    // reports an error. This kills the "OpenClaw won't go away" trace.
     val ocSibling = siblingSessions.firstOrNull { it.agentType == "openclaw" }
-    val hasGatewayError = gatewayAvailable == true && gatewayHasError == true
+    val hasGatewayError = gatewayHasError == true
     val crayfish = when {
-        // Gateway not authenticated and no error to surface — hide.
-        gatewayConnected != true && !hasGatewayError -> CrayfishVisualState.DORMANT
-        // OpenClaw's own sibling state is authoritative — read it before
-        // falling back to the aggregate `effectiveAgentState`. Without
-        // this, an OpenClaw aggregate primary inherits Claude's PROCESSING
-        // through `effectiveAgentState` and the crayfish wrongly routes.
-        ocSibling != null -> when (ocSibling.state) {
+        // No emitted OpenClaw session — hide regardless of gateway flags.
+        ocSibling == null -> CrayfishVisualState.DORMANT
+        // OpenClaw's own sibling state is authoritative.
+        else -> when (ocSibling.state) {
             "processing" -> CrayfishVisualState.ROUTING
             "idle" -> CrayfishVisualState.SITTING
             "awaiting_permission", "awaiting_option", "awaiting_diff" -> CrayfishVisualState.WAITING
             else -> if (ocSibling.alive) CrayfishVisualState.SITTING else CrayfishVisualState.DORMANT
         }
-        // Primary is OpenClaw but no sibling row yet (sessions_list pending).
-        isOpenClaw -> when (effectiveAgentState) {
-            AgentState.PROCESSING -> CrayfishVisualState.ROUTING
-            AgentState.IDLE -> CrayfishVisualState.SITTING
-            AgentState.DISCONNECTED -> CrayfishVisualState.DORMANT
-            else -> CrayfishVisualState.WAITING
-        }
-        // Gateway authenticated but no OpenClaw session yet.
-        gatewayConnected == true -> CrayfishVisualState.SITTING
-        // Only error surfaces remain — fall through to SICK below.
-        else -> CrayfishVisualState.SITTING
     }
 
-    // Override to SICK if gateway has errors (but not when DORMANT — gateway unreachable)
-    val effectiveCrayfish = if (hasGatewayError && crayfish != CrayfishVisualState.DORMANT) {
+    // SICK override only when an active OpenClaw session is also erroring — an
+    // error with no live session must not spawn a creature.
+    val effectiveCrayfish = if (hasGatewayError && ocSibling != null && crayfish != CrayfishVisualState.DORMANT) {
         CrayfishVisualState.SICK
     } else {
         crayfish
@@ -341,7 +334,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
         agents = agents,
         cloudCreatures = cloudCreatures,
         openCodeCreatures = openCodeCreatures,
-        workerCrayfishCount = if (gatewayConnected == true) workerSessionCount ?: 0 else 0,
+        // Presence-driven: worker crayfish only when an OpenClaw session exists.
+        workerCrayfishCount = if (ocSibling != null) workerSessionCount ?: 0 else 0,
     )
 }
 

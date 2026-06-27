@@ -21,6 +21,7 @@
 import { State } from '../types.js';
 import type { StateUpdateEvent, UsageEvent } from '../types.js';
 import type { SessionInfo } from '@agentdeck/shared/protocol';
+import { hasOpenClawSession } from '@agentdeck/shared';
 import { drawTextCentered } from './pixoo-font.js';
 import {
   type RGB, COLORS, setPixel, blendPixel, glowPixel, fillRect, lerpColor,
@@ -678,9 +679,10 @@ function renderMicroFrame(
   sessions: SessionInfo[] | null,
   usagePct: number,
 ): void {
-  const hasGateway = (stateEvent?.gatewayConnected ?? false)
-    || (stateEvent?.gatewayHasError ?? false)
-    || (sessions?.some((s) => s.agentType === 'openclaw') ?? false);
+  // Presence-driven SSOT: the crayfish renders iff the daemon emitted an
+  // OpenClaw session — never from raw gateway flags. The daemon emits it iff
+  // the Gateway is authenticated, so reachability/error alone won't draw it.
+  const hasGateway = hasOpenClawSession(sessions ?? []);
   const gatewayHasError = stateEvent?.gatewayHasError ?? false;
 
   // Pick the dominant creature: awaiting (most urgent) → processing → idle.
@@ -763,10 +765,9 @@ export function renderFrame(
   const surfaceY = SURFACE_Y;
   const palette = ZONE_BLUE; // Water stays blue — usage shown only via HUD gauge
 
-  // Gateway creature is gated by authenticated connection, not reachability.
-  const hasGateway = (stateEvent?.gatewayConnected ?? false)
-    || (stateEvent?.gatewayHasError ?? false)
-    || (sessions?.some(s => s.agentType === 'openclaw') ?? false);
+  // Presence-driven SSOT: crayfish renders iff the daemon emitted an OpenClaw
+  // session (authenticated), not from raw gateway reachability/error flags.
+  const hasGateway = hasOpenClawSession(sessions ?? []);
 
   // === Sync creature instances ===
   syncCreatures(sessions, stateEvent);
