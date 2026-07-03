@@ -77,6 +77,19 @@ describe('Hook Installer', () => {
       expect(cmd).not.toContain('Library/Containers/bound.serendipity');
       expect(cmd).not.toContain('group.bound.serendipity');
     });
+
+    it('reads stdin and posts the body as UTF-8', () => {
+      const cmd = buildHookCommandWin('UserPromptSubmit');
+      // [Console]::In decodes with the console OEM codepage and string
+      // bodies get ISO-8859-1-encoded — both mangle non-ASCII payloads.
+      expect(cmd).toContain('StreamReader([Console]::OpenStandardInput(),[System.Text.Encoding]::UTF8)');
+      expect(cmd).toContain('[System.Text.Encoding]::UTF8.GetBytes($body)');
+      expect(cmd).not.toContain('[Console]::In.ReadToEnd()');
+      // The script rides inside the double-quoted -Command argument under
+      // cmd.exe — it must never contain a double quote of its own.
+      const inner = cmd.slice(cmd.indexOf('"') + 1, cmd.lastIndexOf('"'));
+      expect(inner).not.toContain('"');
+    });
   });
 
   describe('applyHooks', () => {

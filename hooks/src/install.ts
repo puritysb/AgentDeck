@@ -84,6 +84,11 @@ export function buildHookCommand(eventName: string): string {
  * Single quotes are used inside the PowerShell script so the entire `-Command`
  * argument can stay double-quoted under cmd.exe. Errors are swallowed so a
  * dead daemon never blocks the host session.
+ *
+ * UTF-8 handling mirrors the Codex snippets in codex-install.ts: stdin is
+ * read through a UTF-8 StreamReader ([Console]::In decodes with the console
+ * OEM codepage) and the body is posted as UTF-8 bytes (Invoke-RestMethod
+ * encodes string bodies as ISO-8859-1, replacing non-ASCII text with '?').
  */
 export function buildHookCommandWin(eventName: string): string {
   const ps = [
@@ -91,8 +96,8 @@ export function buildHookCommandWin(eventName: string): string {
     `$port=$env:AGENTDECK_PORT`,
     `if(-not $port){$f=Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'; if(Test-Path $f){try{$d=Get-Content -Raw $f|ConvertFrom-Json; $p=if($d.httpPort){$d.httpPort}else{$d.port}; if($p){try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$p+'/health') -TimeoutSec 1 -ErrorAction Stop|Out-Null; $port=$p}catch{}}}catch{}}}`,
     `if(-not $port){$port=9120}`,
-    `$body=[Console]::In.ReadToEnd()`,
-    `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $body -ContentType 'application/json' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
+    `$body=(New-Object System.IO.StreamReader([Console]::OpenStandardInput(),[System.Text.Encoding]::UTF8)).ReadToEnd()`,
+    `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
   ].join('; ');
   return `powershell -NoProfile -ExecutionPolicy Bypass -Command "${ps}"`;
 }
