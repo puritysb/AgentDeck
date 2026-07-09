@@ -94,8 +94,16 @@ enum DashboardDataRules {
         return lhs.localizedCaseInsensitiveCompare(rhs)
     }
 
+    /// Normalize a session weight to an integer. A missing weight collapses to 0,
+    /// so unweighted sessions share the same neutral band. Mirrors shared
+    /// `sessionWeight`.
+    static func sessionWeight(_ weight: Int?) -> Int { weight ?? 0 }
+
     static func sortSessions(_ sessions: [SessionInfo]) -> [SessionInfo] {
         sessions.sorted { lhs, rhs in
+            let weightDiff = sessionWeight(lhs.weight) - sessionWeight(rhs.weight)
+            if weightDiff != 0 { return weightDiff < 0 }
+
             let typeRank = agentTypeRank(lhs.agentType) - agentTypeRank(rhs.agentType)
             if typeRank != 0 { return typeRank < 0 }
 
@@ -112,6 +120,9 @@ enum DashboardDataRules {
     #if os(macOS)
     static func sortSessions(_ sessions: [DaemonSessionEntry]) -> [DaemonSessionEntry] {
         sessions.sorted { lhs, rhs in
+            let weightDiff = sessionWeight(lhs.weight) - sessionWeight(rhs.weight)
+            if weightDiff != 0 { return weightDiff < 0 }
+
             let typeRank = agentTypeRank(lhs.agentType) - agentTypeRank(rhs.agentType)
             if typeRank != 0 { return typeRank < 0 }
 
@@ -128,6 +139,10 @@ enum DashboardDataRules {
 
     static func sortSessionPayloads(_ sessions: [[String: Any]]) -> [[String: Any]] {
         sessions.sorted { lhs, rhs in
+            let lhsWeight = sessionWeight((lhs["weight"] as? NSNumber)?.intValue ?? lhs["weight"] as? Int)
+            let rhsWeight = sessionWeight((rhs["weight"] as? NSNumber)?.intValue ?? rhs["weight"] as? Int)
+            if lhsWeight != rhsWeight { return lhsWeight < rhsWeight }
+
             let lhsType = lhs["agentType"] as? String
             let rhsType = rhs["agentType"] as? String
             let typeRank = agentTypeRank(lhsType) - agentTypeRank(rhsType)
@@ -468,6 +483,9 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     var modelName: String?
     var effortLevel: String?
     var startedAt: String?
+    /// Explicit deck/tab sort override (default 0); lower sorts first. Set via
+    /// `agentdeck <agent> --weight <n>`. Mirrors shared SessionInfo.weight.
+    var weight: Int?
     var currentTool: String?
     var groupSize: Int?
     var foldedSessionIds: [String]?

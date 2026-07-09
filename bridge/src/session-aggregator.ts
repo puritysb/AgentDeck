@@ -13,6 +13,8 @@ export interface EnrichedSession {
   modelName?: string;
   effortLevel?: string;
   startedAt?: string;
+  /** Explicit deck/tab sort override (default 0); lower sorts first. */
+  weight?: number;
   controlMode?: 'managed' | 'observed';
   cwd?: string;
   currentTask?: string;
@@ -112,6 +114,7 @@ export async function enrichSessionsWithState(
       agentType: s.agentType as AgentType | undefined,
       alive: true,
       startedAt: s.startedAt,
+      weight: s.weight,
       controlMode: 'managed',
     };
     if (s.id === ownSessionId) return { ...base, state: ownState, modelName: ownModelName, effortLevel: ownEffortLevel };

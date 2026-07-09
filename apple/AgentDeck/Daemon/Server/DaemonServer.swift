@@ -5534,6 +5534,7 @@ final class DaemonServer {
         if let navigable = s.navigable, navigable { d["navigable"] = true }
         if let q = s.question { d["question"] = q }
         if let pt = s.promptType { d["promptType"] = pt }
+        if let weight = s.weight { d["weight"] = weight }
         if let sa = s.startedAt {
             d["startedAt"] = sa
             // Per-session elapsed (seconds) for NTP-less devices (ESP32 D1 mosaic).

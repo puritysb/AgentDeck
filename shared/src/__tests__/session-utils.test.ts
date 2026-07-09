@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   agentTypeRank, sortSessions, assignDisplayNames, naturalLabelCompare, foldCodexSessionsForDisplay,
-  isOpenClawSessionActive, hasOpenClawSession,
+  isOpenClawSessionActive, hasOpenClawSession, sessionWeight,
 } from '../session-utils.js';
 import type { FoldableSession } from '../session-utils.js';
 
@@ -100,6 +100,84 @@ describe('sortSessions', () => {
     const snapshot = sessions.map(s => s.id);
     sortSessions(sessions);
     expect(sessions.map(s => s.id)).toEqual(snapshot);
+  });
+});
+
+describe('sessionWeight', () => {
+  it('returns the weight when it is a finite number (incl. negatives and 0)', () => {
+    expect(sessionWeight(0)).toBe(0);
+    expect(sessionWeight(3)).toBe(3);
+    expect(sessionWeight(-5)).toBe(-5);
+  });
+
+  it('collapses missing / null / non-finite weights to 0', () => {
+    expect(sessionWeight(undefined)).toBe(0);
+    expect(sessionWeight(null)).toBe(0);
+    expect(sessionWeight(NaN)).toBe(0);
+    expect(sessionWeight(Infinity)).toBe(0);
+  });
+});
+
+describe('sortSessions weight override', () => {
+  it('orders by weight ascending: negatives, then unweighted/0, then positives', () => {
+    const sessions = [
+      { id: 'pos2', agentType: 'claude-code', projectName: 'A', weight: 2 },
+      { id: 'neg5', agentType: 'claude-code', projectName: 'A', weight: -5 },
+      { id: 'zero', agentType: 'claude-code', projectName: 'A', weight: 0 },
+      { id: 'neg3', agentType: 'claude-code', projectName: 'A', weight: -3 },
+      { id: 'pos1', agentType: 'claude-code', projectName: 'A', weight: 1 },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['neg5', 'neg3', 'zero', 'pos1', 'pos2']);
+  });
+
+  it('treats an unweighted session the same as weight 0', () => {
+    const sessions = [
+      { id: 'pos', agentType: 'claude-code', projectName: 'A', weight: 1 },
+      { id: 'none', agentType: 'claude-code', projectName: 'A' },
+      { id: 'neg', agentType: 'claude-code', projectName: 'A', weight: -1 },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['neg', 'none', 'pos']);
+  });
+
+  it('weight beats agentType — a weighted claude-code sorts before an unweighted openclaw', () => {
+    const sessions = [
+      { id: 'oc', agentType: 'openclaw', projectName: 'A' },
+      { id: 'cc', agentType: 'claude-code', projectName: 'A', weight: -1 },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['cc', 'oc']);
+  });
+
+  it('within the same weight, existing ordering (agentType → project → startedAt → id) still applies', () => {
+    const sessions = [
+      { id: 'b', agentType: 'claude-code', projectName: 'Beta', weight: 1 },
+      { id: 'a', agentType: 'claude-code', projectName: 'Alpha', weight: 1 },
+      { id: 'oc', agentType: 'openclaw', projectName: 'Zed', weight: 1 },
+    ];
+    // openclaw first (rank 0) within the weight band, then Alpha before Beta
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['oc', 'a', 'b']);
+  });
+
+  it('maps terminal tab order onto the deck: tab N (weight N) lands in slot N', () => {
+    // Five tabs on the same project, launched in arbitrary order, each pinned
+    // with --weight matching its terminal tab number.
+    const sessions = [
+      { id: 'tab3', agentType: 'claude-code', projectName: 'AgentDeck', weight: 3, startedAt: '2026-07-08T10:02:00Z' },
+      { id: 'tab1', agentType: 'claude-code', projectName: 'AgentDeck', weight: 1, startedAt: '2026-07-08T10:00:00Z' },
+      { id: 'tab5', agentType: 'claude-code', projectName: 'AgentDeck', weight: 5, startedAt: '2026-07-08T10:04:00Z' },
+      { id: 'tab2', agentType: 'claude-code', projectName: 'AgentDeck', weight: 2, startedAt: '2026-07-08T10:01:00Z' },
+      { id: 'tab4', agentType: 'claude-code', projectName: 'AgentDeck', weight: 4, startedAt: '2026-07-08T10:03:00Z' },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['tab1', 'tab2', 'tab3', 'tab4', 'tab5']);
+  });
+
+  it('does not change ordering when no session has a weight (backward compatible)', () => {
+    const raw = [
+      { id: 'session-10', agentType: 'claude-code', projectName: 'AgentDeck', startedAt: '2026-05-11T10:00:00Z' },
+      { id: 'session-2', agentType: 'claude-code', projectName: 'AgentDeck', startedAt: '2026-05-11T10:00:00Z' },
+      { id: 'oc', agentType: 'openclaw', projectName: 'AgentDeck', startedAt: '2026-05-11T09:00:00Z' },
+    ];
+    const withZero = raw.map(s => ({ ...s, weight: 0 }));
+    expect(sortSessions(raw).map(s => s.id)).toEqual(sortSessions(withZero).map(s => s.id));
   });
 });
 

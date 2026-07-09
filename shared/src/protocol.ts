@@ -356,6 +356,7 @@ export interface SessionInfo {
   modelName?: string;  // sibling's current model from /health query
   effortLevel?: string;  // sibling's current effort (max/xhigh/high/medium/low/default/fast)
   startedAt?: string;  // ISO 8601 session start time
+  weight?: number;  // explicit deck/tab sort override (default 0); lower sorts first — see sortSessions
   currentTool?: string;
   groupSize?: number;
   foldedSessionIds?: string[];

@@ -100,17 +100,36 @@ export function hasOpenClawSession<T extends { agentType?: string }>(sessions: r
 // ===== Sorting =====
 
 /**
+ * Normalize a session weight to a finite number. A missing / null / non-finite
+ * weight collapses to 0, so unweighted sessions all share the same "neutral"
+ * band and sort among themselves exactly as they did before weights existed.
+ */
+export function sessionWeight(weight: number | undefined | null): number {
+  return typeof weight === 'number' && Number.isFinite(weight) ? weight : 0;
+}
+
+/**
  * Sort sessions with stable ordering that does NOT jump on state changes.
  *
- * Order: agentType (openclaw first → claude-code → codex → opencode → antigravity)
+ * Order: weight ascending (negatives first, then unweighted/0, then positives)
+ *   → agentType (openclaw first → claude-code → codex → opencode → antigravity)
  *   → projectName alphabetically
  *   → startedAt ascending (oldest first) for stability
  *   → id as final tiebreaker
  *
+ * `weight` (default 0) is an explicit user override for deck/tab order — e.g.
+ * running `agentdeck claude --weight 1 … --weight 5` across terminal tabs pins
+ * each tab to a fixed slot. Sessions sharing a weight keep the existing stable
+ * ordering, so leaving every weight at 0 reproduces the pre-weight behavior.
+ *
  * Returns a new array (never mutates input).
  */
-export function sortSessions<T extends { state?: string; projectName?: string; agentType?: string; startedAt?: string; id?: string }>(sessions: T[]): T[] {
+export function sortSessions<T extends { state?: string; projectName?: string; agentType?: string; startedAt?: string; id?: string; weight?: number }>(sessions: T[]): T[] {
   return [...sessions].sort((a, b) => {
+    // 0. Explicit weight override (ascending). Unweighted === 0.
+    const weightDiff = sessionWeight(a.weight) - sessionWeight(b.weight);
+    if (weightDiff !== 0) return weightDiff;
+
     // 1. Agent type group (openclaw first, then by agent kind)
     const typeRank = agentTypeRank(a.agentType) - agentTypeRank(b.agentType);
     if (typeRank !== 0) return typeRank;

@@ -487,6 +487,33 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.id), ["session-2", "session-10"])
     }
 
+    func testSortSessionsOrdersByWeightAscendingBeforeEverythingElse() {
+        // Weight is the primary key: negatives, then unweighted/0, then positives.
+        // A weighted claude-code session must sort before an unweighted openclaw.
+        // Mirrors shared session-utils sortSessions weight override.
+        let sessions = [
+            SessionInfo(id: "pos", port: 9122, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: 2),
+            SessionInfo(id: "oc", port: 9124, projectName: "A", agentType: "openclaw", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: nil),
+            SessionInfo(id: "neg", port: 9121, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: -5),
+            SessionInfo(id: "zero", port: 9123, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: 0),
+        ]
+
+        let sorted = DashboardDataRules.sortSessions(sessions)
+
+        // neg(-5) → [zero(0), oc(nil==0) resolved by agentType: openclaw<claude] → pos(2)
+        XCTAssertEqual(sorted.map(\.id), ["neg", "oc", "zero", "pos"])
+    }
+
+    func testSortSessionsUnweightedMatchesLegacyOrdering() {
+        // No weights set → identical to pre-weight ordering (backward compatible).
+        let sessions = [
+            SessionInfo(id: "2", port: 9122, projectName: "Beta", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: "2026-04-11T10:02:00Z"),
+            SessionInfo(id: "1", port: 9121, projectName: "Alpha", agentType: "codex-cli", alive: true, state: "processing", modelName: nil, startedAt: "2026-04-11T10:00:00Z"),
+            SessionInfo(id: "4", port: 9124, projectName: "Gateway", agentType: "openclaw", alive: true, state: "idle", modelName: nil, startedAt: nil),
+        ]
+        XCTAssertEqual(DashboardDataRules.sortSessions(sessions).map(\.id), ["4", "1", "2"])
+    }
+
     func testFoldCodexSessionPayloadsForDisplayCollapsesSameProject() {
         let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
             [

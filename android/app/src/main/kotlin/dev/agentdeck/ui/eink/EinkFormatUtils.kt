@@ -131,7 +131,17 @@ private fun compareNumericChunks(left: String, right: String): Int {
     return left.length - right.length
 }
 
+/**
+ * Normalize a session weight to an integer. A missing weight collapses to 0,
+ * so unweighted sessions share the same neutral band. Mirrors shared
+ * `sessionWeight`.
+ */
+fun sessionWeight(weight: Int?): Int = weight ?: 0
+
 fun compareSessionsForDisplay(left: SessionInfo, right: SessionInfo): Int {
+    val weightDiff = sessionWeight(left.weight) - sessionWeight(right.weight)
+    if (weightDiff != 0) return weightDiff
+
     val typeDiff = agentTypeRank(left.agentType) - agentTypeRank(right.agentType)
     if (typeDiff != 0) return typeDiff
 

@@ -150,6 +150,9 @@ export interface SessionOptions {
   wakeWord?: boolean;
   postit?: boolean;
   modules?: ModuleConfigs;
+  /** Explicit deck/tab sort override (default 0); lower sorts first. Lets a user
+   *  pin terminal-tab order onto the Stream Deck via `--weight <n>`. */
+  weight?: number;
 }
 
 // ===== startSession =====
@@ -925,6 +928,7 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     tmuxSession,
     parentTty,
     tty: adapter.getTtyPath(),
+    ...(opts.weight != null ? { weight: opts.weight } : {}),
   });
 
 

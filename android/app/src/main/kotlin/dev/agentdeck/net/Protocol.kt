@@ -289,6 +289,9 @@ data class SessionInfo(
     val modelName: String? = null,
     val effortLevel: String? = null,
     val startedAt: String? = null,
+    // Explicit deck/tab sort override (default 0); lower sorts first. Set via
+    // `agentdeck <agent> --weight <n>`. Mirrors shared SessionInfo.weight.
+    val weight: Int? = null,
     val question: String? = null,
     // Present when a gated PreToolUse permission is pending device approval —
     // the HUD renders Allow/Deny and replies with permissionDecision(requestId).
