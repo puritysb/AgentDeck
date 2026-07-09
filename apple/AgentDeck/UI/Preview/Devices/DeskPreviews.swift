@@ -172,6 +172,7 @@ func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
             modelName: s.modelName,
             currentTool: s.currentTool,
             startedAt: s.startedAt,
+            weight: s.weight,  // --weight pin must reach the preview's sort/fold mirror
             options: opts,
             groupSize: s.groupSize,
             foldedSessionIds: s.foldedSessionIds

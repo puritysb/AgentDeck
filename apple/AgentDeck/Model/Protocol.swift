@@ -94,8 +94,22 @@ enum DashboardDataRules {
         return lhs.localizedCaseInsensitiveCompare(rhs)
     }
 
+    /// Normalize a session weight to an integer inside the documented range.
+    /// A missing weight collapses to 0, so unweighted sessions share the same
+    /// neutral band; out-of-range values clamp so every platform computes the
+    /// identical band. Mirrors shared `sessionWeight`.
+    static func sessionWeight(_ weight: Int?) -> Int {
+        SessionWeightRules.clamp(weight ?? 0)
+    }
+
     static func sortSessions(_ sessions: [SessionInfo]) -> [SessionInfo] {
         sessions.sorted { lhs, rhs in
+            // Three-way comparison, never subtraction — weights are
+            // user-controlled and Int subtraction can trap on overflow.
+            let lhsWeight = sessionWeight(lhs.weight)
+            let rhsWeight = sessionWeight(rhs.weight)
+            if lhsWeight != rhsWeight { return lhsWeight < rhsWeight }
+
             let typeRank = agentTypeRank(lhs.agentType) - agentTypeRank(rhs.agentType)
             if typeRank != 0 { return typeRank < 0 }
 
@@ -112,6 +126,10 @@ enum DashboardDataRules {
     #if os(macOS)
     static func sortSessions(_ sessions: [DaemonSessionEntry]) -> [DaemonSessionEntry] {
         sessions.sorted { lhs, rhs in
+            let lhsWeight = sessionWeight(lhs.weight)
+            let rhsWeight = sessionWeight(rhs.weight)
+            if lhsWeight != rhsWeight { return lhsWeight < rhsWeight }
+
             let typeRank = agentTypeRank(lhs.agentType) - agentTypeRank(rhs.agentType)
             if typeRank != 0 { return typeRank < 0 }
 
@@ -128,6 +146,10 @@ enum DashboardDataRules {
 
     static func sortSessionPayloads(_ sessions: [[String: Any]]) -> [[String: Any]] {
         sessions.sorted { lhs, rhs in
+            let lhsWeight = sessionWeight((lhs["weight"] as? NSNumber)?.intValue ?? lhs["weight"] as? Int)
+            let rhsWeight = sessionWeight((rhs["weight"] as? NSNumber)?.intValue ?? rhs["weight"] as? Int)
+            if lhsWeight != rhsWeight { return lhsWeight < rhsWeight }
+
             let lhsType = lhs["agentType"] as? String
             let rhsType = rhs["agentType"] as? String
             let typeRank = agentTypeRank(lhsType) - agentTypeRank(rhsType)
@@ -161,7 +183,13 @@ enum DashboardDataRules {
                 continue
             }
 
-            let key = "\(codexDisplayKind(session))|\(project.lowercased())"
+            // The fold key includes the normalized weight band: two same-project
+            // Codex tabs pinned to different `--weight` slots must never collapse
+            // into one representative — this fold runs before sortSessionPayloads,
+            // so a weight-blind key would discard a pinned tab on the wire.
+            // Mirrors shared foldCodexSessionsForDisplay.
+            let weight = sessionWeight((session["weight"] as? NSNumber)?.intValue ?? session["weight"] as? Int)
+            let key = "\(codexDisplayKind(session))|\(project.lowercased())|\(weight)"
             if codexByProject[key] == nil { codexProjectOrder.append(key) }
             codexByProject[key, default: []].append(session)
         }
@@ -468,6 +496,9 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     var modelName: String?
     var effortLevel: String?
     var startedAt: String?
+    /// Explicit deck/tab sort override (default 0); lower sorts first. Set via
+    /// `agentdeck <agent> --weight <n>`. Mirrors shared SessionInfo.weight.
+    var weight: Int?
     var currentTool: String?
     var groupSize: Int?
     var foldedSessionIds: [String]?

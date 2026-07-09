@@ -1087,7 +1087,8 @@ data class SessionInfo (
      */
     val stopRequested: Boolean? = null,
 
-    val totalTokens: Double? = null
+    val totalTokens: Double? = null,
+    val weight: Double? = null
 )
 
 enum class ControlMode(val value: String) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { writeFileSync, unlinkSync, existsSync, realpathSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { request } from 'http';
 import { BRIDGE_WS_PORT } from './types.js';
+import { SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX } from '@agentdeck/shared';
 import {
   TASK_NAME,
   installWindowsTask,
@@ -23,6 +24,25 @@ const packageJson = require('../package.json') as { version: string };
 
 function log(msg: string): void {
   process.stderr.write(msg + '\n');
+}
+
+/**
+ * Parse a `--weight <n>` value into an integer sort override. Rejects
+ * non-integers so a typo (`--weight foo`) fails loudly instead of silently
+ * collapsing to 0, and rejects values outside the documented cross-platform
+ * range (shared SESSION_WEIGHT_MIN/MAX) — the wire value must fit every
+ * consumer's integer type (Kotlin `Int` in particular), and comparators on
+ * fixed-width platforms must never see values that could overflow. Lower
+ * sorts first (see shared sortSessions).
+ */
+function parseWeight(value: string): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < SESSION_WEIGHT_MIN || n > SESSION_WEIGHT_MAX) {
+    throw new InvalidArgumentError(
+      `weight must be an integer between ${SESSION_WEIGHT_MIN} and ${SESSION_WEIGHT_MAX} (e.g. --weight 1, --weight -5)`,
+    );
+  }
+  return n;
 }
 
 function formatBytes(value: unknown): string {
@@ -243,6 +263,7 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
+  .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     const { startSession } = await import('./index.js');
     await startSession({
@@ -253,6 +274,7 @@ program
       noUpdateCheck: opts.updateCheck === false,
       postit: opts.postit !== false,
       wakeWord: !!opts.wakeWord,
+      weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,   // daemon-only — session bridges never advertise mDNS
         adb: opts.adb !== false ? 'auto' : false,
@@ -273,6 +295,7 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--no-codex-hooks', 'Skip ~/.codex/config.toml hook install')
+  .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     // Install Codex lifecycle hooks before starting the session so the
     // first prompt's UserPromptSubmit / Stop events reach the daemon.
@@ -301,6 +324,7 @@ program
       command: opts.command,
       debug: opts.debug,
       postit: opts.postit !== false,
+      weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,   // daemon-only
         adb: opts.adb !== false ? 'auto' : false,
@@ -321,6 +345,7 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--no-opencode-hooks', 'Skip OpenCode observer plugin install')
+  .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     // Install the OpenCode observer plugin so standalone `opencode` runs
     // (outside this managed session) also reach the daemon timeline. The
@@ -349,6 +374,7 @@ program
       command: opts.command,
       debug: opts.debug,
       postit: opts.postit !== false,
+      weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,
         adb: opts.adb !== false ? 'auto' : false,
@@ -365,6 +391,7 @@ program
   .option('-p, --port <port>', 'Bridge server port', String(BRIDGE_WS_PORT))
   .option('-d, --debug', 'Enable debug logging')
   .option('--local', 'Disable all device modules')
+  .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     const { startSession } = await import('./index.js');
     const port = parseInt(opts.port, 10);
@@ -374,6 +401,7 @@ program
       agentType: 'monitor',
       port,
       debug: opts.debug,
+      weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : undefined,
     });
   });

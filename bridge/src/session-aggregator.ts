@@ -1,6 +1,6 @@
 import { listActive as listActiveSessions, type SessionEntry } from './session-registry.js';
 import type { AgentType } from './types.js';
-import { sortSessions, type PromptOption } from '@agentdeck/shared';
+import { sortSessions, sanitizeWeightForWire, type PromptOption } from '@agentdeck/shared';
 
 export interface EnrichedSession {
   id: string;
@@ -15,6 +15,8 @@ export interface EnrichedSession {
   /** Claude Code permission mode (default/acceptEdits/plan/bypassPermissions) — managed sessions only. */
   permissionMode?: string;
   startedAt?: string;
+  /** Explicit deck/tab sort override (default 0); lower sorts first. */
+  weight?: number;
   controlMode?: 'managed' | 'observed';
   cwd?: string;
   currentTask?: string;
@@ -122,6 +124,11 @@ export async function enrichSessionsWithState(
       agentType: s.agentType as AgentType | undefined,
       alive: true,
       startedAt: s.startedAt,
+      // Sanitize at the ingestion boundary: sessions.json is hand-editable and
+      // older CLIs accepted any integer. An out-of-range weight on the wire
+      // aborts Android's whole sessions_list decode (kotlinx Int overflow), so
+      // only finite in-range integers may leave the daemon.
+      weight: sanitizeWeightForWire(s.weight),
       controlMode: 'managed',
     };
     if (s.id === ownSessionId) return { ...base, state: ownState, modelName: ownModelName, effortLevel: ownEffortLevel };

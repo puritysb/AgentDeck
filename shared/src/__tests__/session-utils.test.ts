@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   agentTypeRank, sortSessions, assignDisplayNames, naturalLabelCompare, foldCodexSessionsForDisplay,
-  isOpenClawSessionActive, hasOpenClawSession, rawSessionId, sameSession,
+  isOpenClawSessionActive, hasOpenClawSession, rawSessionId, sameSession, sessionWeight,
+  sanitizeWeightForWire, SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX,
 } from '../session-utils.js';
 import type { FoldableSession } from '../session-utils.js';
 
@@ -103,6 +104,131 @@ describe('sortSessions', () => {
   });
 });
 
+describe('sessionWeight', () => {
+  it('returns the weight when it is a finite number (incl. negatives and 0)', () => {
+    expect(sessionWeight(0)).toBe(0);
+    expect(sessionWeight(3)).toBe(3);
+    expect(sessionWeight(-5)).toBe(-5);
+  });
+
+  it('collapses missing / null / non-finite weights to 0', () => {
+    expect(sessionWeight(undefined)).toBe(0);
+    expect(sessionWeight(null)).toBe(0);
+    expect(sessionWeight(NaN)).toBe(0);
+    expect(sessionWeight(Infinity)).toBe(0);
+  });
+
+  it('accepts both documented bounds unchanged', () => {
+    expect(sessionWeight(SESSION_WEIGHT_MIN)).toBe(SESSION_WEIGHT_MIN);
+    expect(sessionWeight(SESSION_WEIGHT_MAX)).toBe(SESSION_WEIGHT_MAX);
+  });
+
+  it('clamps out-of-range values to the documented bounds', () => {
+    expect(sessionWeight(SESSION_WEIGHT_MAX + 1)).toBe(SESSION_WEIGHT_MAX);
+    expect(sessionWeight(SESSION_WEIGHT_MIN - 1)).toBe(SESSION_WEIGHT_MIN);
+    expect(sessionWeight(1e100)).toBe(SESSION_WEIGHT_MAX);
+    expect(sessionWeight(-1e100)).toBe(SESSION_WEIGHT_MIN);
+    expect(sessionWeight(9007199254740992)).toBe(SESSION_WEIGHT_MAX);
+  });
+
+  it('integer-truncates fractional values so all platform mirrors agree', () => {
+    expect(sessionWeight(2.5)).toBe(2);
+    expect(sessionWeight(-2.5)).toBe(-2);
+  });
+});
+
+describe('sanitizeWeightForWire', () => {
+  it('drops non-numbers and non-finite values to undefined (wire omits the key)', () => {
+    expect(sanitizeWeightForWire(undefined)).toBeUndefined();
+    expect(sanitizeWeightForWire(null)).toBeUndefined();
+    expect(sanitizeWeightForWire('7')).toBeUndefined();
+    expect(sanitizeWeightForWire(NaN)).toBeUndefined();
+    expect(sanitizeWeightForWire(Infinity)).toBeUndefined();
+  });
+
+  it('passes in-range integers and clamps/truncates the rest', () => {
+    expect(sanitizeWeightForWire(3)).toBe(3);
+    expect(sanitizeWeightForWire(-3)).toBe(-3);
+    expect(sanitizeWeightForWire(2 ** 40)).toBe(SESSION_WEIGHT_MAX);
+    expect(sanitizeWeightForWire(-(2 ** 40))).toBe(SESSION_WEIGHT_MIN);
+    expect(sanitizeWeightForWire(1.9)).toBe(1);
+  });
+});
+
+describe('sortSessions weight comparator safety', () => {
+  it('orders opposite-sign extreme in-range weights without overflow tricks', () => {
+    const sessions = [
+      { id: 'max', agentType: 'claude-code', projectName: 'A', weight: SESSION_WEIGHT_MAX },
+      { id: 'min', agentType: 'claude-code', projectName: 'A', weight: SESSION_WEIGHT_MIN },
+      { id: 'zero', agentType: 'claude-code', projectName: 'A' },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['min', 'zero', 'max']);
+  });
+});
+
+describe('sortSessions weight override', () => {
+  it('orders by weight ascending: negatives, then unweighted/0, then positives', () => {
+    const sessions = [
+      { id: 'pos2', agentType: 'claude-code', projectName: 'A', weight: 2 },
+      { id: 'neg5', agentType: 'claude-code', projectName: 'A', weight: -5 },
+      { id: 'zero', agentType: 'claude-code', projectName: 'A', weight: 0 },
+      { id: 'neg3', agentType: 'claude-code', projectName: 'A', weight: -3 },
+      { id: 'pos1', agentType: 'claude-code', projectName: 'A', weight: 1 },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['neg5', 'neg3', 'zero', 'pos1', 'pos2']);
+  });
+
+  it('treats an unweighted session the same as weight 0', () => {
+    const sessions = [
+      { id: 'pos', agentType: 'claude-code', projectName: 'A', weight: 1 },
+      { id: 'none', agentType: 'claude-code', projectName: 'A' },
+      { id: 'neg', agentType: 'claude-code', projectName: 'A', weight: -1 },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['neg', 'none', 'pos']);
+  });
+
+  it('weight beats agentType — a weighted claude-code sorts before an unweighted openclaw', () => {
+    const sessions = [
+      { id: 'oc', agentType: 'openclaw', projectName: 'A' },
+      { id: 'cc', agentType: 'claude-code', projectName: 'A', weight: -1 },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['cc', 'oc']);
+  });
+
+  it('within the same weight, existing ordering (agentType → project → startedAt → id) still applies', () => {
+    const sessions = [
+      { id: 'b', agentType: 'claude-code', projectName: 'Beta', weight: 1 },
+      { id: 'a', agentType: 'claude-code', projectName: 'Alpha', weight: 1 },
+      { id: 'oc', agentType: 'openclaw', projectName: 'Zed', weight: 1 },
+    ];
+    // openclaw first (rank 0) within the weight band, then Alpha before Beta
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['oc', 'a', 'b']);
+  });
+
+  it('maps terminal tab order onto the deck: tab N (weight N) lands in slot N', () => {
+    // Five tabs on the same project, launched in arbitrary order, each pinned
+    // with --weight matching its terminal tab number.
+    const sessions = [
+      { id: 'tab3', agentType: 'claude-code', projectName: 'AgentDeck', weight: 3, startedAt: '2026-07-08T10:02:00Z' },
+      { id: 'tab1', agentType: 'claude-code', projectName: 'AgentDeck', weight: 1, startedAt: '2026-07-08T10:00:00Z' },
+      { id: 'tab5', agentType: 'claude-code', projectName: 'AgentDeck', weight: 5, startedAt: '2026-07-08T10:04:00Z' },
+      { id: 'tab2', agentType: 'claude-code', projectName: 'AgentDeck', weight: 2, startedAt: '2026-07-08T10:01:00Z' },
+      { id: 'tab4', agentType: 'claude-code', projectName: 'AgentDeck', weight: 4, startedAt: '2026-07-08T10:03:00Z' },
+    ];
+    expect(sortSessions(sessions).map(s => s.id)).toEqual(['tab1', 'tab2', 'tab3', 'tab4', 'tab5']);
+  });
+
+  it('does not change ordering when no session has a weight (backward compatible)', () => {
+    const raw = [
+      { id: 'session-10', agentType: 'claude-code', projectName: 'AgentDeck', startedAt: '2026-05-11T10:00:00Z' },
+      { id: 'session-2', agentType: 'claude-code', projectName: 'AgentDeck', startedAt: '2026-05-11T10:00:00Z' },
+      { id: 'oc', agentType: 'openclaw', projectName: 'AgentDeck', startedAt: '2026-05-11T09:00:00Z' },
+    ];
+    const withZero = raw.map(s => ({ ...s, weight: 0 }));
+    expect(sortSessions(raw).map(s => s.id)).toEqual(sortSessions(withZero).map(s => s.id));
+  });
+});
+
 describe('foldCodexSessionsForDisplay', () => {
   it('folds Codex CLI and Codex App separately even with the same project', () => {
     const sessions: FoldableSession[] = [
@@ -115,6 +241,45 @@ describe('foldCodexSessionsForDisplay', () => {
     expect(folded).toHaveLength(2);
     expect(folded.map(s => s.id).sort()).toEqual(['codex:app-1', 'codex:cli']);
     expect(folded.find(s => s.agentType === 'codex-app')?.groupSize).toBe(2);
+  });
+
+  it('never folds same-project Codex sessions pinned to distinct weights', () => {
+    // Folding runs BEFORE sortSessions on every surface — a weight-blind fold
+    // key would silently discard one of two pinned tabs.
+    const sessions: FoldableSession[] = [
+      { id: 'codex-tab-2', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'processing', weight: 2 },
+      { id: 'codex-tab-1', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 1 },
+    ];
+    const display = sortSessions(foldCodexSessionsForDisplay(sessions));
+    expect(display.map(s => s.id)).toEqual(['codex-tab-1', 'codex-tab-2']);
+  });
+
+  it('keeps distinct-weight sessions unfolded across state changes', () => {
+    const base: FoldableSession[] = [
+      { id: 'codex-tab-1', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 1 },
+      { id: 'codex-tab-2', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 2 },
+    ];
+    for (const state of ['processing', 'awaiting_option', 'idle', 'disconnected']) {
+      const flipped = base.map(s => (s.id === 'codex-tab-2' ? { ...s, state } : s));
+      const display = sortSessions(foldCodexSessionsForDisplay(flipped));
+      expect(display.map(s => s.id)).toEqual(['codex-tab-1', 'codex-tab-2']);
+    }
+  });
+
+  it('still folds same-project Codex sessions when both are unweighted or share a weight', () => {
+    const unweighted: FoldableSession[] = [
+      { id: 'codex:a', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle' },
+      { id: 'codex:b', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 0 },
+    ];
+    expect(foldCodexSessionsForDisplay(unweighted)).toHaveLength(1);
+
+    const sameWeight: FoldableSession[] = [
+      { id: 'codex:c', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 3 },
+      { id: 'codex:d', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 3 },
+    ];
+    const folded = foldCodexSessionsForDisplay(sameWeight);
+    expect(folded).toHaveLength(1);
+    expect(folded[0].groupSize).toBe(2);
   });
 });
 

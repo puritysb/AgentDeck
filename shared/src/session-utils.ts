@@ -126,17 +126,72 @@ export function hasOpenClawSession<T extends { agentType?: string }>(sessions: r
 // ===== Sorting =====
 
 /**
+ * Documented cross-platform session-weight range. `--weight` is a deck/tab
+ * order pin, so the range is deliberately small — and it must fit every
+ * consumer's integer type (Kotlin `Int`, Swift `Int`, JSON double) with room
+ * to spare so no platform can overflow while comparing or decoding.
+ *
+ * SSOT: these constants are emitted to Swift/Kotlin by
+ * `scripts/generate-session-weight-rules.mjs` (drift-gated in vitest) — edit
+ * here, then run `pnpm generate-session-weight-rules`.
+ */
+export const SESSION_WEIGHT_MIN = -9999;
+export const SESSION_WEIGHT_MAX = 9999;
+
+/**
+ * Normalize a session weight to a finite integer inside the documented range.
+ * A missing / null / non-finite weight collapses to 0, so unweighted sessions
+ * all share the same "neutral" band and sort among themselves exactly as they
+ * did before weights existed. Finite values are integer-truncated and clamped
+ * so every platform (TS/Swift/Kotlin) computes the identical band even for a
+ * rogue out-of-range or fractional wire value.
+ */
+export function sessionWeight(weight: number | undefined | null): number {
+  if (typeof weight !== 'number' || !Number.isFinite(weight)) return 0;
+  const n = Math.trunc(weight);
+  if (n < SESSION_WEIGHT_MIN) return SESSION_WEIGHT_MIN;
+  if (n > SESSION_WEIGHT_MAX) return SESSION_WEIGHT_MAX;
+  return n;
+}
+
+/**
+ * Sanitize a weight for daemon ingestion/emission: `undefined` for anything
+ * that is not a finite in-range integer signal (so the wire simply omits it),
+ * otherwise the truncated+clamped integer. This keeps out-of-range values out
+ * of `sessions_list` entirely — Kotlin decodes `weight` as `Int?` and an
+ * unrepresentable JSON number would abort the whole event decode, freezing the
+ * Android dashboard, long before any client-side clamp could run.
+ */
+export function sanitizeWeightForWire(weight: unknown): number | undefined {
+  if (typeof weight !== 'number' || !Number.isFinite(weight)) return undefined;
+  return sessionWeight(weight);
+}
+
+/**
  * Sort sessions with stable ordering that does NOT jump on state changes.
  *
- * Order: agentType (openclaw first → claude-code → codex → opencode → antigravity)
+ * Order: weight ascending (negatives first, then unweighted/0, then positives)
+ *   → agentType (openclaw first → claude-code → codex → opencode → antigravity)
  *   → projectName alphabetically
  *   → startedAt ascending (oldest first) for stability
  *   → id as final tiebreaker
  *
+ * `weight` (default 0) is an explicit user override for deck/tab order — e.g.
+ * running `agentdeck claude --weight 1 … --weight 5` across terminal tabs pins
+ * each tab to a fixed slot. Sessions sharing a weight keep the existing stable
+ * ordering, so leaving every weight at 0 reproduces the pre-weight behavior.
+ *
  * Returns a new array (never mutates input).
  */
-export function sortSessions<T extends { state?: string; projectName?: string; agentType?: string; startedAt?: string; id?: string }>(sessions: T[]): T[] {
+export function sortSessions<T extends { state?: string; projectName?: string; agentType?: string; startedAt?: string; id?: string; weight?: number }>(sessions: T[]): T[] {
   return [...sessions].sort((a, b) => {
+    // 0. Explicit weight override (ascending). Unweighted === 0. Three-way
+    // comparison, never subtraction — the Swift/Kotlin mirrors compare
+    // user-controlled fixed-width ints where subtraction can trap or wrap.
+    const wa = sessionWeight(a.weight);
+    const wb = sessionWeight(b.weight);
+    if (wa !== wb) return wa < wb ? -1 : 1;
+
     // 1. Agent type group (openclaw first, then by agent kind)
     const typeRank = agentTypeRank(a.agentType) - agentTypeRank(b.agentType);
     if (typeRank !== 0) return typeRank;
@@ -170,6 +225,7 @@ export interface FoldableSession {
   currentTool?: string;
   groupSize?: number;
   foldedSessionIds?: string[];
+  weight?: number;
 }
 
 /**
@@ -177,6 +233,12 @@ export interface FoldableSession {
  * session. Raw rows remain authoritative inside the daemon; every user-facing
  * surface should count this folded shape so completed one-turn Codex threads do
  * not look like simultaneously running sessions.
+ *
+ * The fold key includes the normalized weight band: two same-project Codex
+ * tabs pinned to *different* slots (`--weight 1` / `--weight 2`) must never
+ * collapse into one representative — folding happens before sorting, so a
+ * weight-blind key would silently discard one of the pinned tabs. Unweighted
+ * sessions all share band 0 and fold exactly as before.
  */
 export function foldCodexSessionsForDisplay<T extends FoldableSession>(sessions: T[]): T[] {
   const passthrough: T[] = [];
@@ -188,7 +250,7 @@ export function foldCodexSessionsForDisplay<T extends FoldableSession>(sessions:
       passthrough.push(session);
       continue;
     }
-    const key = `${codexDisplayKind(session)}:${project.toLocaleLowerCase()}`;
+    const key = `${codexDisplayKind(session)}:${project.toLocaleLowerCase()}:${sessionWeight(session.weight)}`;
     const group = codexByProject.get(key);
     if (group) group.push(session);
     else codexByProject.set(key, [session]);

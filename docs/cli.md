@@ -28,7 +28,7 @@ The CLI command is `agentdeck`.
 | `agentdeck opencode` | Start OpenCode session (PTY + SSE bridge) |
 | `agentdeck monitor` | Hook-only bridge (no PTY — run `claude` separately) |
 
-**Flags:** `-p <port>`, `-c <command>`, `-d` (debug), `--no-update-check`
+**Flags:** `-p <port>`, `-c <command>`, `-d` (debug), `--no-update-check`, `--weight <n>`
 **Module flags:** `--local` (all device modules off), `--no-adb` (skip ADB reverse). Hardware modules (mDNS/serial/Pixoo/Timebox) are daemon-only — session bridges never activate them, so there are no per-session `--no-mdns`/`--no-serial`/`--no-pixoo` flags.
 
 The `-c` flag sets the full command AgentDeck spawns inside the session PTY, so any arguments you add are forwarded straight to the underlying agent. For example, to resume an earlier Claude Code session (the interactive picker appears when no id is given):
@@ -38,6 +38,29 @@ agentdeck claude -c "claude --resume"
 ```
 
 The same pattern passes through any other flag the agent accepts — for instance `-c "claude --remote-control"`.
+
+#### Pinning session order with --weight
+
+By default sessions sort by agent type → project name → start time, which keeps
+positions stable but not necessarily aligned with your terminal tabs. Pass
+`--weight <n>` (integer between `-9999` and `9999`, default `0`) to pin a
+session's slot: sessions sort by **weight ascending first** (negatives, then
+unweighted/`0`, then positives), and only fall back to the default ordering
+*within* the same weight. Nothing changes when no session sets a weight.
+
+So if you run five tabs on one project in Windows Terminal (or iTerm), give each
+tab a weight matching its tab number and the Stream Deck — plus every other
+surface (macOS/iOS/Android dashboards and the TUI) — mirrors that tab order:
+
+```bash
+agentdeck claude --weight 1   # tab 1 → deck slot 1
+agentdeck claude --weight 2   # tab 2 → deck slot 2
+agentdeck claude --weight 3   # …and so on
+```
+
+Negative weights sort ahead of unweighted sessions (e.g. `--weight -5` to always
+float a session to the top). The value is a pure sort key — it never changes how
+a session behaves.
 
 ### Daemon
 

@@ -78,10 +78,15 @@ fun EinkAgentPanel(
         val agentState: AgentState,
         val startedAt: String?,
         val sessionId: String?,
+        val weight: Int? = null,
         val activity: String? = null,
     )
 
     fun compareEntries(left: AgentEntry, right: AgentEntry): Int {
+        // Three-way comparison, never subtraction — mirrors shared sortSessions.
+        val weightDiff = sessionWeight(left.weight).compareTo(sessionWeight(right.weight))
+        if (weightDiff != 0) return weightDiff
+
         val typeDiff = agentTypeRank(left.agentType) - agentTypeRank(right.agentType)
         if (typeDiff != 0) return typeDiff
 
@@ -149,6 +154,7 @@ fun EinkAgentPanel(
                 agentState = mapSessionState(session),
                 startedAt = session.startedAt,
                 sessionId = session.id,
+                weight = session.weight,
                 activity = session.activity,
             )
         }

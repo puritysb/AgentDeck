@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.net.SessionInfo
+import dev.agentdeck.net.SessionWeightRules
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.terrarium.renderer.einkColorEnabled
 import dev.agentdeck.ui.component.BrandIcon
@@ -131,7 +132,20 @@ private fun compareNumericChunks(left: String, right: String): Int {
     return left.length - right.length
 }
 
+/**
+ * Normalize a session weight to an integer inside the documented range. A
+ * missing weight collapses to 0, so unweighted sessions share the same neutral
+ * band; out-of-range values clamp so every platform computes the identical
+ * band. Mirrors shared `sessionWeight`.
+ */
+fun sessionWeight(weight: Int?): Int = SessionWeightRules.clamp(weight ?: 0)
+
 fun compareSessionsForDisplay(left: SessionInfo, right: SessionInfo): Int {
+    // Three-way comparison, never subtraction — weights are user-controlled
+    // and Kotlin Int subtraction wraps on overflow, reversing the ordering.
+    val weightDiff = sessionWeight(left.weight).compareTo(sessionWeight(right.weight))
+    if (weightDiff != 0) return weightDiff
+
     val typeDiff = agentTypeRank(left.agentType) - agentTypeRank(right.agentType)
     if (typeDiff != 0) return typeDiff
 

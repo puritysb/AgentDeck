@@ -102,6 +102,8 @@ struct SessionListPanel: View {
         let effortLevel: String?
         let state: AgentConnectionState
         let startedAt: String?
+        /// Explicit deck/tab sort override (default 0); lower sorts first.
+        let weight: Int?
         let isPrimary: Bool
         let isFocused: Bool
         /// Underlying `SessionInfo.id` for siblings. Nil for the primary
@@ -151,6 +153,7 @@ struct SessionListPanel: View {
                 effortLevel: stateHolder.state.effortLevel,
                 state: stateHolder.state.state,
                 startedAt: primaryAnchorSibling?.startedAt,
+                weight: primaryAnchorSibling?.weight,
                 isPrimary: true,
                 isFocused: focusedSessionId != nil && stateHolder.state.sessionId == focusedSessionId,
                 sessionId: stateHolder.state.sessionId,
@@ -189,6 +192,7 @@ struct SessionListPanel: View {
                 // .disconnected on gateway connect.
                 state: AgentConnectionState(rawValue: sibling.state ?? "") ?? .idle,
                 startedAt: sibling.startedAt,
+                weight: sibling.weight,
                 isPrimary: false,
                 isFocused: sibling.id == focusedSessionId,
                 sessionId: sibling.id,
@@ -441,6 +445,12 @@ private extension SessionListPanel {
 
     private static func sortEntries(_ entries: [SessionEntry]) -> [SessionEntry] {
         entries.sorted { lhs, rhs in
+            // Three-way comparison, never subtraction — weights are
+            // user-controlled and Int subtraction can trap on overflow.
+            let lhsWeight = DashboardDataRules.sessionWeight(lhs.weight)
+            let rhsWeight = DashboardDataRules.sessionWeight(rhs.weight)
+            if lhsWeight != rhsWeight { return lhsWeight < rhsWeight }
+
             let typeDiff = agentTypeRank(lhs.agentType) - agentTypeRank(rhs.agentType)
             if typeDiff != 0 { return typeDiff < 0 }
 

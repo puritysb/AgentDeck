@@ -2647,31 +2647,17 @@ final class DaemonServer {
         }
         let agentType = cmd["agentType"] as? String
         let projectName = cmd["projectName"] as? String ?? ""
-        var entry = pushedSessionsById[sessionId] ?? DaemonSessionEntry(
-            id: sessionId,
+        // Dict-payload coercion: JSON-derived dicts hold NSNumber, tests may
+        // hold native Int.
+        let weight = (cmd["weight"] as? NSNumber)?.intValue ?? cmd["weight"] as? Int
+        let entry = Self.mergedPushRegisterEntry(
+            existing: pushedSessionsById[sessionId],
+            sessionId: sessionId,
             port: port,
-            pid: 0, // CLI does not send pid; liveness is inferred from /health probes
-            projectName: projectName,
             agentType: agentType,
-            tmuxSession: nil,
-            tty: nil,
-            parentTty: nil,
-            startedAt: nil
+            projectName: projectName,
+            weight: weight
         )
-        // Update mutable fields on re-register (port drift, agent type change).
-        if entry.port != port || entry.agentType != agentType || entry.projectName != projectName {
-            entry = DaemonSessionEntry(
-                id: sessionId,
-                port: port,
-                pid: 0,
-                projectName: projectName,
-                agentType: agentType,
-                tmuxSession: entry.tmuxSession,
-                tty: entry.tty,
-                parentTty: entry.parentTty,
-                startedAt: entry.startedAt
-            )
-        }
         evictCodexAnonymousIfNeeded(forIncomingSid: sessionId, agentType: entry.agentType)
         pushedSessionsById[sessionId] = entry
         DaemonLogger.shared.debug("Daemon", "session_push_register: \(sessionId) port=\(port) agent=\(agentType ?? "?")")
@@ -2707,7 +2693,8 @@ final class DaemonServer {
                 tmuxSession: entry.tmuxSession,
                 tty: entry.tty,
                 parentTty: entry.parentTty,
-                startedAt: entry.startedAt
+                startedAt: entry.startedAt,
+                weight: entry.weight  // carry the --weight pin through the recreate
             )
         }
         if let state = cmd["state"] as? String { entry.state = state }
@@ -2746,6 +2733,56 @@ final class DaemonServer {
         codexLastPromptTopicBySession.removeValue(forKey: sessionId)
         codexCurrentToolBySession.removeValue(forKey: sessionId)
         lastHookAtByPushedSession.removeValue(forKey: sessionId)
+    }
+
+    /// Merge one `session_push_register` frame into the (optional) existing
+    /// entry for that session. This is the sole discovery path for a Node CLI
+    /// session's identity — the sandbox blocks reading its sessions.json — so
+    /// every field the frame can carry must survive re-registration.
+    ///
+    /// Weight rule (mirrors the repo's wire-optional-field convention):
+    /// explicit value > absent > retain. A frame that carries `weight` updates
+    /// it — including an explicit 0, which is how a pin is reset; a frame
+    /// without the key (legacy sender) preserves the existing entry's weight.
+    /// Values clamp to the documented range at this ingestion boundary.
+    /// `nonisolated` so XCTest can exercise the Node-session → Swift-daemon
+    /// register shape directly.
+    nonisolated static func mergedPushRegisterEntry(
+        existing: DaemonSessionEntry?,
+        sessionId: String,
+        port: Int,
+        agentType: String?,
+        projectName: String,
+        weight: Int?
+    ) -> DaemonSessionEntry {
+        var entry = existing ?? DaemonSessionEntry(
+            id: sessionId,
+            port: port,
+            pid: 0, // CLI does not send pid; liveness is inferred from /health probes
+            projectName: projectName,
+            agentType: agentType,
+            tmuxSession: nil,
+            tty: nil,
+            parentTty: nil,
+            startedAt: nil
+        )
+        // Update mutable fields on re-register (port drift, agent type change).
+        if entry.port != port || entry.agentType != agentType || entry.projectName != projectName {
+            entry = DaemonSessionEntry(
+                id: sessionId,
+                port: port,
+                pid: 0,
+                projectName: projectName,
+                agentType: agentType,
+                tmuxSession: entry.tmuxSession,
+                tty: entry.tty,
+                parentTty: entry.parentTty,
+                startedAt: entry.startedAt,
+                weight: entry.weight
+            )
+        }
+        if let weight { entry.weight = SessionWeightRules.clamp(weight) }
+        return entry
     }
 
     /// Returns true when at least one real (non-anonymous) Codex session is
@@ -3382,7 +3419,11 @@ final class DaemonServer {
                     tmuxSession: nil,
                     tty: nil,
                     parentTty: nil,
-                    startedAt: ISO8601DateFormatter().string(from: Date())
+                    startedAt: ISO8601DateFormatter().string(from: Date()),
+                    // Same-id coexistence with session_push_register (a managed
+                    // bridge whose hook was misrouted here, or a resume): this
+                    // overwrite must not zero a --weight pin the register carried.
+                    weight: pushedSessionsById[sessionId]?.weight
                 )
                 entry.state = "idle"
                 entry.controlMode = "observed"
@@ -7470,6 +7511,11 @@ final class DaemonServer {
         if let navigable = s.navigable, navigable { d["navigable"] = true }
         if let q = s.question { d["question"] = q }
         if let pt = s.promptType { d["promptType"] = pt }
+        // Clamp at the emission choke point: a dev-build daemon also ingests
+        // ~/.agentdeck/sessions.json via Codable with no range check, and an
+        // out-of-range weight on the wire aborts Android's whole sessions_list
+        // decode (kotlinx Int overflow) before any client clamp can run.
+        if let weight = s.weight { d["weight"] = SessionWeightRules.clamp(weight) }
         if let sa = s.startedAt {
             d["startedAt"] = sa
             // Per-session elapsed (seconds) for NTP-less devices (ESP32 D1 mosaic).

@@ -25,7 +25,7 @@
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
 // SYNC-HASH shared/src/d200h-layout.ts 8de92b3940bd36365dddbe7b8b56f15ad93b7ae5
-// SYNC-HASH shared/src/session-utils.ts ae936f86bf90d4f9b104dbd1453e4e565499c349
+// SYNC-HASH shared/src/session-utils.ts b08adbcca7a9fe3386a44801248b2ec06b572a0e
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -87,6 +87,9 @@ public struct D200HSession: Equatable, Sendable {
     public var currentTool: String?
     /// ISO-8601 start instant — used only as a stable secondary sort key.
     public var startedAt: String?
+    /// Explicit deck/tab sort override (`--weight`, default 0); the PRIMARY
+    /// sort key and part of the Codex fold key. Mirrors shared SessionInfo.weight.
+    public var weight: Int?
     public var options: [D200HOption]
     /// Codex display-fold bookkeeping (mutated by folding; supply nil/1 normally).
     public var groupSize: Int?
@@ -100,6 +103,7 @@ public struct D200HSession: Equatable, Sendable {
         modelName: String? = nil,
         currentTool: String? = nil,
         startedAt: String? = nil,
+        weight: Int? = nil,
         options: [D200HOption] = [],
         groupSize: Int? = nil,
         foldedSessionIds: [String]? = nil
@@ -111,6 +115,7 @@ public struct D200HSession: Equatable, Sendable {
         self.modelName = modelName
         self.currentTool = currentTool
         self.startedAt = startedAt
+        self.weight = weight
         self.options = options
         self.groupSize = groupSize
         self.foldedSessionIds = foldedSessionIds
@@ -661,9 +666,27 @@ public enum D200HLayoutModel {
         return r == .orderedAscending ? -1 : (r == .orderedDescending ? 1 : 0)
     }
 
+    /// Documented `--weight` bounds — self-contained copy (this file deliberately
+    /// imports nothing from the app target). Mirrors shared SESSION_WEIGHT_MIN/
+    /// MAX; drift-gated by shared/src/__tests__/session-weight-rules.test.ts.
+    static let sessionWeightMin = -9999
+    static let sessionWeightMax = 9999
+
+    /// Mirrors shared `sessionWeight`: nil → 0, clamp into the documented range.
+    static func sessionWeight(_ weight: Int?) -> Int {
+        let w = weight ?? 0
+        if w < sessionWeightMin { return sessionWeightMin }
+        if w > sessionWeightMax { return sessionWeightMax }
+        return w
+    }
+
     static func sortSessions(_ sessions: [D200HSession]) -> [D200HSession] {
         sessions.enumerated().sorted { lhs, rhs in
             let a = lhs.element, b = rhs.element
+            // Weight first (three-way compare, never subtraction) — mirrors
+            // the shared sortSessions key order.
+            let wa = sessionWeight(a.weight), wb = sessionWeight(b.weight)
+            if wa != wb { return wa < wb }
             let tr = agentTypeRank(a.agentType) - agentTypeRank(b.agentType)
             if tr != 0 { return tr < 0 }
             let nc = naturalLabelCompare(a.projectName, b.projectName)
@@ -690,7 +713,9 @@ public enum D200HLayoutModel {
                 passthrough.append(session)
                 continue
             }
-            let key = "\(codexDisplayKind(session)):\(project.lowercased())"
+            // Weight participates in the fold key (mirrors the shared fold):
+            // distinct `--weight` pins on the same project must not collapse.
+            let key = "\(codexDisplayKind(session)):\(project.lowercased()):\(sessionWeight(session.weight))"
             if codexByProject[key] != nil {
                 codexByProject[key]!.append(session)
             } else {

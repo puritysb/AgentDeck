@@ -86,6 +86,9 @@ export interface SessionEntry {
   tty?: string;
   parentTty?: string;
   startedAt: string;
+  /** Explicit deck/tab sort override (default 0); lower sorts first. Set via
+   *  `agentdeck <agent> --weight <n>`. See shared sortSessions. */
+  weight?: number;
 }
 
 function ensureDir(): void {

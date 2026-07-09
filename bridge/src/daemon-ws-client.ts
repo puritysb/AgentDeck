@@ -12,6 +12,7 @@
  */
 
 import WebSocket from 'ws';
+import { sessionWeight } from '@agentdeck/shared';
 import { debug } from './logger.js';
 
 const TAG = 'DaemonWsClient';
@@ -35,6 +36,11 @@ export interface SessionPushRegister {
   port: number;
   agentType?: string;
   projectName?: string;
+  /** Explicit deck/tab sort override. Always sent as a concrete integer
+   *  (unweighted ⇒ 0, never omitted) — receivers merge retain-on-absent, so an
+   *  only-sent-when-set field could be set but never reset. See shared
+   *  sessionWeight / SESSION_WEIGHT_MIN..MAX. */
+  weight: number;
 }
 
 export class DaemonWsClient {
@@ -50,6 +56,8 @@ export class DaemonWsClient {
     private readonly sessionPort: number,
     private readonly agentType?: string,
     private readonly projectName?: string,
+    /** Deck/tab sort override; normalized via shared sessionWeight() at send time. */
+    private readonly weight?: number,
     /**
      * Resolves the current daemon port on each (re)connect attempt. Lets the
      * client follow port drift (daemon restart onto a fallback port) and cover
@@ -177,16 +185,26 @@ export class DaemonWsClient {
     });
   }
 
-  private sendRegister(): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    const msg: SessionPushRegister = {
+  /**
+   * Build the register frame (exposed for tests). `weight` is always a
+   * concrete integer — the Swift daemon preserves an existing weight when the
+   * key is absent (legacy senders), so a current sender must send the explicit
+   * 0 to be able to reset one.
+   */
+  buildRegisterFrame(): SessionPushRegister {
+    return {
       type: 'session_push_register',
       sessionId: this.sessionId,
       port: this.sessionPort,
       agentType: this.agentType,
       projectName: this.projectName,
+      weight: sessionWeight(this.weight),
     };
-    this.ws.send(JSON.stringify(msg));
+  }
+
+  private sendRegister(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify(this.buildRegisterFrame()));
   }
 
   private scheduleReconnect(): void {
