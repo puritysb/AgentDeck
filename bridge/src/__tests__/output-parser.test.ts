@@ -665,6 +665,29 @@ describe('OutputParser', () => {
       expect(seen).toContain('working');
       expect(seen).not.toContain('idle');
     });
+
+    it('still reaches AWAITING when a spinner floods the buffer AFTER the prompt', () => {
+      // Live regression: a diff/edit approval appears while a build spinner is
+      // running; the spinner status line ("✢ Flambéing…") then redraws every
+      // ~100ms, flooding the buffer so the ❯ options scroll far past the narrow
+      // navigable-prompt window. The prompt must still emit (deck AWAITING), not
+      // get cancelled into idle.
+      const p = armParser();
+      vi.advanceTimersByTime(500);
+      const events: any[] = [];
+      p.on('option_prompt', (d) => events.push(d));
+      p.on('permission_prompt', (d) => events.push(d));
+
+      p.feed('✳'); // spinner active (build running)
+      p.feed('Do you want to make this edit?\n❯ 1. Yes\n  2. Yes, allow all edits\n  3. No\n');
+      // Spinner status redraws flood the buffer after the prompt.
+      for (let i = 0; i < 80; i++) p.feed('✢ Flambéing…\n');
+      vi.advanceTimersByTime(300);
+
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      const opts: PromptOption[] = events[events.length - 1].options;
+      expect(opts.map((o) => o.label)).toEqual(['Yes', 'Yes, allow all edits', 'No']);
+    });
   });
 
   // === Idle Cancels Option Timer ===

@@ -84,6 +84,11 @@ const SPINNER_DEBOUNCE_MS = 2000;
 const IDLE_DEBOUNCE_MS = 300;
 const OPTION_DEBOUNCE_MS = 150;
 const SUGGESTION_DEBOUNCE_MS = 500;
+// After an interactive prompt (❯ options / permission / diff) is detected, Claude
+// Code keeps animating a status spinner alongside it. For this window we treat
+// spinner/idle signals as that concurrent animation — not real processing/idle —
+// so the prompt reliably reaches AWAITING instead of being cancelled into idle.
+const INTERACTIVE_PROMPT_SUPPRESS_MS = 1500;
 
 // Ghost text: ANSI segment extractor — captures one or more consecutive SGR sequences
 // followed by visible text. Handles stacked escapes like \x1b[38;2;r;g;bm\x1b[3mtext
@@ -169,6 +174,8 @@ export class OutputParser extends EventEmitter {
   // from user prompt echo (❯ text) in the same PTY batch
   private interactiveCooldown: ReturnType<typeof setTimeout> | null = null;
   private remoteUrl: string | null = null;
+  /** Wall-clock ms of the last interactive-prompt detection (spinner/idle suppression). */
+  private lastInteractivePromptAt = 0;
 
   feed(rawData: string): void {
     const data = this.pendingAnsi + rawData;
@@ -394,6 +401,16 @@ export class OutputParser extends EventEmitter {
       DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
       PERMISSION_YN.test(chunk) ||
       OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk);
+    // Arm the suppression window only for a REAL prompt — a ❯-marked navigable
+    // option, or a permission/diff prompt — so a concurrent status spinner that
+    // later floods the buffer can't cancel it into idle. A bare numbered list in
+    // response text (no ❯) must NOT arm it; a spinner should still cancel that.
+    if (
+      DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) || PERMISSION_YN.test(chunk) ||
+      /^\s*❯\s*\d{1,2}[.)]/m.test(chunk)
+    ) {
+      this.lastInteractivePromptAt = Date.now();
+    }
 
     // --- Spinner + prompt handling ---
     if (this.spinnerActive) {
@@ -407,6 +424,12 @@ export class OutputParser extends EventEmitter {
         this.emit('spinner_stop');
         // Fall through to prompt detection below
       } else if (hasIdlePrompt) {
+        // A ❯ during the suppression window is the option cursor of a live prompt,
+        // not the idle input line — don't emit idle (deck must stay AWAITING).
+        if (this.recentInteractivePrompt()) {
+          debug('Parser', 'idle prompt ignored — interactive prompt on screen');
+          return;
+        }
         // Idle prompt during spinner — but ignore if chunk is large (screen redraw).
         // Real idle prompts come in small chunks; screen redraws include ❯ in 200+ char chunks.
         const nonWs = chunk.replace(/\s/g, '').length;
@@ -441,7 +464,10 @@ export class OutputParser extends EventEmitter {
         // deck stuck at idle/processing instead of AWAITING. Ignore it and let the
         // prompt path emit. (A bare numbered list without ❯ still cancels — see the
         // "spinner cancels option timer" case.)
-        if (this.bufferHasNavigablePrompt()) {
+        if (this.bufferHasNavigablePrompt() || this.recentInteractivePrompt()) {
+          // Re-arm from the buffer too, so a long-lived prompt keeps suppressing
+          // even after its detection chunk aged out of the time window.
+          if (this.bufferHasNavigablePrompt()) this.lastInteractivePromptAt = Date.now();
           debug('Parser', 'spinner char ignored — navigable prompt on screen');
           return;
         }
@@ -1016,7 +1042,18 @@ export class OutputParser extends EventEmitter {
    * distinguishes an active prompt from a bare numbered list in response text.
    */
   private bufferHasNavigablePrompt(): boolean {
-    return /❯[ \t ]*\d{1,2}[.)]/.test(this.buffer.slice(-600));
+    return /❯[ \t ]*\d{1,2}[.)]/.test(this.buffer.slice(-2000)); // wide: a concurrent spinner redraws every ~100ms
+  }
+
+  /**
+   * True within INTERACTIVE_PROMPT_SUPPRESS_MS of the last interactive-prompt
+   * detection. A time-based backstop to `bufferHasNavigablePrompt`: it holds even
+   * when a flooding spinner has pushed the ❯ options out of the buffer window,
+   * so the prompt reliably reaches AWAITING instead of flickering to idle.
+   */
+  private recentInteractivePrompt(): boolean {
+    return this.lastInteractivePromptAt > 0 &&
+      Date.now() - this.lastInteractivePromptAt < INTERACTIVE_PROMPT_SUPPRESS_MS;
   }
 
   /** Check if numbered options look like a permission prompt (Yes/No/Always style) */
