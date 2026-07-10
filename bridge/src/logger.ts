@@ -1,4 +1,6 @@
 import { createWriteStream, type WriteStream } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 let debugStream: WriteStream | null = null;
 let debugEnabled = false;
@@ -6,9 +8,11 @@ let ptyMode = false;
 
 /**
  * Enable debug logging to a file. This avoids interfering with PTY terminal.
- * User can `tail -f /tmp/agentdeck-debug.log` in another terminal.
+ * Defaults to the OS temp dir (portable — `/tmp` on macOS/Linux, `%TEMP%` on
+ * Windows, where a hardcoded `/tmp/...` resolves to a bogus `<drive>:\tmp\...`
+ * and silently writes nothing). `tail -f "$(node -e 'console.log(require("os").tmpdir())')/agentdeck-debug.log"`.
  */
-export function enableDebugLog(path = '/tmp/agentdeck-debug.log'): void {
+export function enableDebugLog(path = join(tmpdir(), 'agentdeck-debug.log')): void {
   debugStream = createWriteStream(path, { flags: 'w' });
   debugEnabled = true;
   debugStream.write(`[agentdeck] Debug log started at ${new Date().toISOString()}\n`);

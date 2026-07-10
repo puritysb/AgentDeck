@@ -15,6 +15,21 @@ const DIFF_PROMPT = /\(V\)iew diff.*\(A\)pply.*\(D\)eny|\(a\)pply.*\(d\)eny.*\(v
 const OPTION_NUMBERED = /^\s*❯?\s*\d{1,2}[.)]\s*.+/m;
 const OPTION_BULLET = /^\s*[►▸●○]\s+.+/m;
 
+// Bounded window (chars) the option-block parser scans back over. Must fit a tall
+// AskUserQuestion prompt (question + per-option descriptions + trailing
+// affordances) once oversized rules are collapsed (see BOX_RULE_RUN). The
+// backward block-scan + longest-run filter in parseOptions keep stale numbered
+// lists from earlier in the buffer out, so extra headroom is safe.
+const OPTION_SCAN_WINDOW = 3000;
+
+// Oversized full-width rule. Claude Code's AskUserQuestion draws a horizontal rule
+// (─────) between options; ANSI cursor positioning strips its newline, so hundreds
+// of box-drawing chars (U+2500–U+257F, optionally interspersed with the spaces the
+// cursor-forward→space step inserts) get glued onto the adjacent option label AND
+// exhaust OPTION_SCAN_WINDOW — dropping the real leading options. Collapse any long
+// run to a short newline-delimited rule.
+const BOX_RULE_RUN = /(?:[─-╿][ \t]*){12,}/g;
+
 // Claude Code uses ❯ as its prompt char. May have \u00A0 (nbsp) or spaces around it.
 // v2.1.49+: autocomplete suggestions appear on the same line (e.g. "❯ Try "refactor..."")
 // so we can't require end-of-line. Just check for ❯ at start of line.
@@ -184,7 +199,12 @@ export class OutputParser extends EventEmitter {
       .replace(/\x1b\[\d*(?:;\d*)?[Hf]/g, '\n') // CUP/HVP → newline
       .replace(/\x1b\[\d*[ABEF]/g, '\n');        // CUU/CUD/CNL/CPL → newline
     const clean = stripAnsi(spaced);
-    this.buffer += clean;
+    // Collapse oversized box-drawing rules (AskUserQuestion full-width separators)
+    // before buffering. A newline-stripped rule otherwise glues hundreds of box
+    // chars onto the adjacent option label AND exhausts the bounded option-scan
+    // window, dropping the real leading options. Raw `clean` is still used for the
+    // chunk-level pattern triggers below.
+    this.buffer += clean.replace(BOX_RULE_RUN, '\n──\n');
 
     if (this.buffer.length > 8192) {
       this.buffer = this.buffer.slice(-4096);
@@ -468,7 +488,7 @@ export class OutputParser extends EventEmitter {
       // numbered/bulleted lines, box-drawing chrome, cursor overwrite, and
       // recommended/selected, and block-scopes so unrelated numbered response
       // text isn't pulled in.
-      const rich = this.parseOptions(this.buffer.slice(-2000));
+      const rich = this.parseOptions(this.buffer.slice(-OPTION_SCAN_WINDOW));
       if (rich.options.length >= 2) {
         const options = rich.options.map(opt => ({
           ...opt,
@@ -525,7 +545,7 @@ export class OutputParser extends EventEmitter {
       this.resetOptionTimer();
       this.optionTimer = setTimeout(() => {
         this.optionTimer = null;
-        const parsed = this.parseOptions(this.buffer.slice(-2000));
+        const parsed = this.parseOptions(this.buffer.slice(-OPTION_SCAN_WINDOW));
         if (parsed.options.length > 0) {
           // Check if this looks like a permission prompt (Yes/No style from tool approval)
           if (this.looksLikePermission(parsed.options) && !this.isCursorSelectionUI()) {
@@ -576,7 +596,7 @@ export class OutputParser extends EventEmitter {
         this.resetOptionTimer();
         this.optionTimer = setTimeout(() => {
           this.optionTimer = null;
-          const parsed = this.parseOptions(this.buffer.slice(-2000));
+          const parsed = this.parseOptions(this.buffer.slice(-OPTION_SCAN_WINDOW));
           if (parsed.navigable) {
             // Options still present — emit cursor_update if index changed
             if (parsed.cursorIndex !== this.lastCursorIndex) {
@@ -609,7 +629,7 @@ export class OutputParser extends EventEmitter {
       this.resetOptionTimer();
       this.optionTimer = setTimeout(() => {
         this.optionTimer = null;
-        const parsed = this.parseOptions(this.buffer.slice(-2000));
+        const parsed = this.parseOptions(this.buffer.slice(-OPTION_SCAN_WINDOW));
         if (parsed.navigable && parsed.cursorIndex !== this.lastCursorIndex) {
           this.lastCursorIndex = parsed.cursorIndex;
           debug('Parser', `EMIT cursor_update (ANSI reposition): cursorIndex=${parsed.cursorIndex}`);
@@ -1021,13 +1041,18 @@ export class OutputParser extends EventEmitter {
       } else if (line.trim() === '' || sepRe.test(line)) {
         // Blank or separator line — always tolerate (TUI redraws create variable blank runs)
         blockStart--;
-      } else if (foundOption && /^\s/.test(line)) {
-        // Indented text line — likely option description, tolerate within limit
+      } else if (foundOption && (/^\s/.test(line) || optLineRe.test(allLines[blockStart - 2] ?? ''))) {
+        // Option description between options. Two shapes: classic INDENTED text,
+        // OR an UNINDENTED (col 0) description sitting directly under its option —
+        // which is how Claude Code's AskUserQuestion renders them. For the
+        // unindented case we require an option on the line directly above, so the
+        // scan can't bridge into a stale numbered list separated from the real
+        // prompt by prose (e.g. "Would you like to proceed?"). Tolerate within limit.
         descGap++;
         if (descGap > MAX_DESC_GAP) break;
         blockStart--;
       } else {
-        // Unindented text or no options found yet — hard block boundary
+        // Unindented prose (not a description) or no option seen yet — hard boundary.
         break;
       }
     }
@@ -1113,8 +1138,15 @@ export class OutputParser extends EventEmitter {
       }
     }
     if (currentRun.length > bestRun.length) bestRun = currentRun;
-    // Re-index to 0-based for downstream consumers
-    const contiguous = bestRun.map((opt, i) => ({ ...opt, index: i }));
+    // Re-index to 0-based ONLY when the leading options were genuinely truncated
+    // off the top (run doesn't start at option 0 — e.g. a long list scrolled so
+    // "1." was cut off). When option 0 is present we keep the true parsed indices
+    // so `select_option` targets the right cursor row — never silently renumber a
+    // trailing subset as 1..N when the real leading options exist but were dropped.
+    const runStart = bestRun.length > 0 ? bestRun[0].index : 0;
+    const contiguous = runStart > 0
+      ? bestRun.map((opt, i) => ({ ...opt, index: i }))
+      : bestRun.map((opt) => ({ ...opt }));
     const finalOptions = contiguous.length >= 2 ? contiguous : sorted;
     return { options: finalOptions, navigable, cursorIndex };
   }

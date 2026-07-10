@@ -779,7 +779,7 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
 
 export async function startDaemon(opts: DaemonOptions): Promise<void> {
   if (opts.debug) {
-    enableDebugLog('/tmp/agentdeck-debug.log');
+    enableDebugLog();
     log('[agentdeck] Debug logging enabled');
   }
 

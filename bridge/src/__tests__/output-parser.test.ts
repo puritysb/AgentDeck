@@ -2741,6 +2741,51 @@ describe('OutputParser', () => {
     });
   });
 
+  // === AskUserQuestion tall prompt: full-width rule must not eat leading options ===
+  //
+  // Regression for the live bug captured in a `-d` session (agentdeck-debug.log,
+  // lines 2617-2620): AskUserQuestion draws a full-width horizontal rule between the
+  // trailing affordances. ANSI cursor-positioning strips its newline, so the rule
+  // (measured ~270 "───" triples) is glued onto the "Type something." label AND
+  // consumes the whole option-scan window, so the real leading options (a, b) fall
+  // outside `slice(-N)` and are never parsed — the trailing affordances then get
+  // re-indexed to slots 1-2 and `navigable=false` is emitted (stuck AWAITING).
+  describe('AskUserQuestion tall prompt with oversized separator', () => {
+    it('keeps leading options a/b when a giant box-drawing rule contaminates a later option', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'option_prompt');
+
+      // Faithful to the live capture (agentdeck-debug.log DIAG dump): the giant
+      // rule is glued to option 3's label with no newline, AND the per-option
+      // descriptions render UNINDENTED (col 0) — both conditions must be handled.
+      const rule = '─── '.repeat(1000); // ~4000 chars
+
+      p.feed([
+        'Which option do you choose?',
+        '❯ 1. a',
+        'Option a.',   // unindented description, exactly as the TUI emits it
+        '',
+        '  2. b',
+        'Option b.',   // unindented description
+        '',
+        `  3. Type something.${rule}`,
+        '4. Chat about this',
+        '',
+        'Enter to select · ↑/↓ to navigate · Esc to cancel',
+      ].join('\n'));
+      vi.advanceTimersByTime(200);
+
+      expect(events).toHaveLength(1);
+      const opts: PromptOption[] = events[0].options;
+      // All four real options survive, at their true indices, label de-contaminated.
+      expect(opts.map((o) => o.label)).toEqual(['a', 'b', 'Type something.', 'Chat about this']);
+      expect(opts.map((o) => o.index)).toEqual([0, 1, 2, 3]);
+      // The ❯ cursor row (option a) must be in view so the deck can drive the UI.
+      expect(events[0].navigable).toBe(true);
+      expect(events[0].cursorIndex).toBe(0);
+    });
+  });
+
   // === Hierarchical CC prompt shapes ===
   //
   // Claude Code 2.x surfaces richer prompts than simple yes/no/always: plan
