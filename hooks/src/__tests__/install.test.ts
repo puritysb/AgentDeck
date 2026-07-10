@@ -77,6 +77,23 @@ describe('Hook Installer', () => {
       expect(cmd).not.toContain('Library/Containers/bound.serendipity');
       expect(cmd).not.toContain('group.bound.serendipity');
     });
+
+    it('reads stdin as UTF-8 and posts UTF-8 bytes with charset (#46)', () => {
+      const cmd = buildHookCommandWin('SessionStart');
+      // Read stdin through a UTF-8 StreamReader — [Console]::In decodes piped
+      // stdin with the OEM codepage (e.g. CP949) and garbles non-ASCII payloads.
+      expect(cmd).toContain('StreamReader([Console]::OpenStandardInput()');
+      expect(cmd).toContain('[System.Text.Encoding]::UTF8');
+      expect(cmd).not.toContain('[Console]::In.ReadToEnd()');
+      // POST UTF-8 bytes with a charset — Invoke-RestMethod encodes a string body
+      // as ISO-8859-1 when the content type carries no charset, mangling non-ASCII.
+      expect(cmd).toContain('[System.Text.Encoding]::UTF8.GetBytes');
+      expect(cmd).toContain('application/json; charset=utf-8');
+      // Still a single -Command line (cmd.exe passes it as one arg) and ASCII-only
+      // (the non-ASCII payload arrives at runtime via stdin, never embedded here).
+      expect(cmd).not.toContain('\n');
+      expect(/^[\x00-\x7F]*$/.test(cmd)).toBe(true);
+    });
   });
 
   describe('applyHooks', () => {

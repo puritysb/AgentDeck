@@ -101,8 +101,13 @@ export function buildHookCommandWin(eventName: string): string {
     `$port=$env:AGENTDECK_PORT`,
     `if(-not $port){$f=Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'; if(Test-Path $f){try{$d=Get-Content -Raw $f|ConvertFrom-Json; $p=if($d.httpPort){$d.httpPort}else{$d.port}; if($p){try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$p+'/health') -TimeoutSec 1 -ErrorAction Stop|Out-Null; $port=$p}catch{}}}catch{}}}`,
     `if(-not $port){$port=9120}`,
-    `$body=[Console]::In.ReadToEnd()`,
-    `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $body -ContentType 'application/json' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
+    // Read stdin as UTF-8: [Console]::In decodes piped stdin with the console OEM
+    // codepage (e.g. CP949), garbling non-ASCII payload text.
+    `$body=(New-Object System.IO.StreamReader([Console]::OpenStandardInput(),[System.Text.Encoding]::UTF8)).ReadToEnd()`,
+    // Post UTF-8 bytes: Invoke-RestMethod encodes a string body as ISO-8859-1 when
+    // the content type carries no charset, replacing non-ASCII characters with '?'.
+    `$bytes=[System.Text.Encoding]::UTF8.GetBytes([string]$body)`,
+    `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
   ].join('; ');
   return `powershell -NoProfile -ExecutionPolicy Bypass -Command "${ps}"`;
 }
