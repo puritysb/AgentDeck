@@ -1063,14 +1063,21 @@ export class OutputParser extends EventEmitter {
 
     // Use a Map keyed by index so later (newer) lines overwrite earlier (stale) ones
     const byIndex = new Map<number, PromptOption>();
+    // Indices whose option carried the ❯ cursor — authoritative for the ACTIVE
+    // prompt. A ❯-marked option must never be clobbered by a later non-cursor
+    // line at the same index (e.g. a stale markdown "1. …" from chat scrollback
+    // that got scanned into this block).
+    const cursorLocked = new Set<number>();
     for (const line of lines) {
       const hasCursor = /^\s*❯/.test(line);
       const nm = line.match(/^\s*❯?\s*(\d{1,2})[.)]\s*(.+)/);
       if (nm) {
         const idx = parseInt(nm[1], 10) - 1;
+        if (!hasCursor && cursorLocked.has(idx)) continue;
         if (hasCursor) {
           navigable = true;
           cursorIndex = idx;
+          cursorLocked.add(idx);
         }
         let raw = nm[2].trim();
         // Strip TUI footer text concatenated after last option (no newline from cursor positioning)

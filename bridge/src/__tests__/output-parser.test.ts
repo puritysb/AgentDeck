@@ -2423,6 +2423,33 @@ describe('OutputParser', () => {
       expect(events[0].options).toHaveLength(4);
     });
 
+    it('a stale markdown "1." line from chat must not overwrite the ❯-marked option', () => {
+      const p = armParser();
+      const events: any[] = [];
+      p.on('option_prompt', (d) => events.push(d));
+      p.on('permission_prompt', (d) => events.push(d));
+
+      // Reproduces agentdeck-debug.log: a Bash approval prompt (❯ 1. Yes / 2. No)
+      // with a markdown numbered line from the ASSISTANT'S OWN chat message landing
+      // in the same scanned block. The stale "1." maps to index 0 with no cursor and
+      // must NOT clobber the real "❯ 1. Yes" — the ❯ cursor is authoritative.
+      // Long numbered prose line with the same shape as the captured case — keeps
+      // the `>` and `( )` characters (so label cleaning is still exercised) without
+      // embedding real conversation text.
+      p.feed([
+        'Do you want to proceed?',
+        '❯ 1. Yes',
+        '  2. No',
+        '',
+        '1. Lorem ipsum dolor sit amet > consectetur (adipiscing elit) sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ut enim ad minim veniam.',
+      ].join('\n'));
+      vi.advanceTimersByTime(200);
+
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      const opts: PromptOption[] = events[events.length - 1].options;
+      expect(opts.map((o) => o.label)).toEqual(['Yes', 'No']);
+    });
+
     it('still works with scrambled TUI order after backward scan', () => {
       const p = armParser();
       const events = collectEvents(p, 'option_prompt');
