@@ -131,6 +131,10 @@ This diagnostic path is developer tooling only: it lives in `scripts/` and `.age
 
 The Node.js bridge, hook installer, and Stream Deck plugin run on Windows 11 (Apple/Android/ESP32 native builds are out of scope). Full prereqs, install/run steps, and the intentional Windows differences (ConPTY, data dir, PowerShell hook one-liner, daemon autostart via per-user Scheduled Task `AgentDeckDaemon` — `bridge/src/windows-service.ts`, NOT a session-0 Windows Service, device-module gating, darwin-only sampler) live in **[docs/windows.md](docs/windows.md)** (moved out of README on 2026-07-21 when the README became an entry point). Code refs: `bridge/src/pty-manager.ts`, `hooks/src/install.ts`, `bridge/src/cli.ts`, `bridge/src/windows-service.ts`.
 
+## Linux dev setup
+
+The Node.js bridge + daemon run on Linux; the **Stream Deck desktop app is unavailable**, so the plugin host and its setup/CLI steps are skipped (device control is via the daemon + Apple/Android companions). `agentdeck claude/codex/opencode`, mDNS (pure-JS `bonjour-service`), and hook HTTP all work. Autostart is a per-user **systemd `--user` unit** `agentdeck-daemon.service` (`bridge/src/linux-service.ts`, analog of the LaunchAgent/Scheduled Task; degrades to a manual-start hint without systemd; `loginctl enable-linger` for headless boot). `npx @agentdeck/setup` checks for a C toolchain (`node-pty` builds from source) instead of Xcode CLT and skips Stream Deck checks. Full prereqs/differences: **[README → Linux (Bridge + Daemon)](README.md#linux-bridge--daemon)**. Code refs: `bridge/src/linux-service.ts`, `bridge/src/cli.ts`, `bridge/src/pty-manager.ts`, `setup/src/setup.ts`.
+
 Dev-only note: when debugging Windows issues, run commands directly in PowerShell so output appears in the conversation — the Apple/Xcode diagnostic bundle is macOS-only.
 
 ## CLI

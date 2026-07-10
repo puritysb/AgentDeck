@@ -59,10 +59,10 @@ export function checkDependencies(agentType?: AgentType): { ok: boolean; warning
 
   // POSIX: invoke via login shell so profile-added PATHs (pnpm, nvm, etc.) are
   // visible. Windows: PATH is system-managed (no shell profile), so a direct
-  // execSync is correct — the POSIX wrapper would try `/bin/zsh` which doesn't
-  // exist and every check would fail with "system cannot find the path".
+  // execSync is correct — the POSIX wrapper would try the login shell which
+  // doesn't exist and every check would fail with "system cannot find the path".
   const isWin = process.platform === 'win32';
-  const loginShell = process.env.SHELL || '/bin/zsh';
+  const loginShell = process.env.SHELL || '/bin/bash';
   const shellExec = (cmd: string, opts?: Parameters<typeof execSync>[1]) =>
     isWin
       ? execSync(cmd, opts)

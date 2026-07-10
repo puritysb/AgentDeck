@@ -19,6 +19,7 @@ function warn(msg: string) { console.log(`${YELLOW}[WARN]${NC} ${msg}`); }
 function fail(msg: string) { console.log(`${RED}[FAIL]${NC} ${msg}`); }
 
 const IS_WIN = process.platform === 'win32';
+const IS_LINUX = process.platform === 'linux';
 
 function which(cmd: string): string | null {
   try {
@@ -55,12 +56,24 @@ function checkPrerequisites(): boolean {
     pass = false;
   }
 
-  // Xcode Command Line Tools — NOT a hard requirement. installBridge tries
-  // node-pty's prebuilt binary first and only falls back to a source build,
-  // which is the sole thing that needs a compiler. Demanding CLT up front made
-  // every user install Xcode tooling for a fallback most of them never hit.
+  // Build tooling — NOT a hard requirement. installBridge tries node-pty's
+  // prebuilt binary first and only falls back to a source build, which is the
+  // sole thing that needs a compiler. Demanding CLT up front made every user
+  // install Xcode tooling for a fallback most of them never hit.
   // Windows always uses the prebuilt binary.
-  if (!IS_WIN) {
+  if (IS_LINUX) {
+    // On Linux the source-build fallback needs a C/C++ toolchain + make;
+    // python3 is required by node-gyp and by the hook shell.
+    const hasCompiler = which('cc') || which('gcc');
+    if (hasCompiler && which('make') && which('python3')) {
+      ok('Build toolchain (cc/make/python3) installed');
+    } else {
+      warn('Build toolchain missing — only needed if the prebuilt node-pty binary does not work.');
+      console.log(`     Debian/Ubuntu: ${YELLOW}sudo apt install build-essential python3${NC}`);
+      console.log(`     Fedora:        ${YELLOW}sudo dnf install gcc-c++ make python3${NC}`);
+      console.log(`     Arch:          ${YELLOW}sudo pacman -S base-devel python${NC}`);
+    }
+  } else if (!IS_WIN) {
     if (which('xcode-select') && checkXcodeCliTools()) {
       ok('Xcode Command Line Tools installed');
     } else {
@@ -91,25 +104,29 @@ function checkPrerequisites(): boolean {
     pass = false;
   }
 
-  // Stream Deck app — paths differ per OS
-  const streamDeckPaths = IS_WIN
-    ? [
-        join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
-        join(process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
-        join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Programs', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
-      ]
-    : ['/Applications/Elgato Stream Deck.app', '/Applications/Stream Deck.app'];
-  // Stream Deck is ONE of several surfaces, not a requirement. The daemon runs
-  // headless and drives the Ulanzi D200H, the macOS app, the TUI dashboard and
-  // ESP32 boards without it. Failing here made `npx @agentdeck/setup` refuse to
-  // run for D200H users — who are told to run exactly that by the plugin's own
-  // OFFLINE screen (shared/src/d200h-layout.ts).
-  if (streamDeckPaths.some((p) => existsSync(p))) {
-    ok('Stream Deck app installed');
-  } else {
-    warn('Stream Deck app not found — Stream Deck keys will be unavailable.');
-    console.log('     Other surfaces (Ulanzi D200H, macOS app, `agentdeck dashboard`) work without it.');
-    console.log('     Stream Deck app: https://www.elgato.com/downloads');
+  // Stream Deck app — paths differ per OS. The Elgato desktop app is macOS/
+  // Windows only, so skip the check on Linux (the bridge + daemon work without
+  // it; device control is via the daemon/companion apps).
+  if (!IS_LINUX) {
+    const streamDeckPaths = IS_WIN
+      ? [
+          join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
+          join(process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
+          join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Programs', 'Elgato', 'StreamDeck', 'StreamDeck.exe'),
+        ]
+      : ['/Applications/Elgato Stream Deck.app', '/Applications/Stream Deck.app'];
+    // Stream Deck is ONE of several surfaces, not a requirement. The daemon runs
+    // headless and drives the Ulanzi D200H, the macOS app, the TUI dashboard and
+    // ESP32 boards without it. Failing here made `npx @agentdeck/setup` refuse to
+    // run for D200H users — who are told to run exactly that by the plugin's own
+    // OFFLINE screen (shared/src/d200h-layout.ts).
+    if (streamDeckPaths.some((p) => existsSync(p))) {
+      ok('Stream Deck app installed');
+    } else {
+      warn('Stream Deck app not found — Stream Deck keys will be unavailable.');
+      console.log('     Other surfaces (Ulanzi D200H, macOS app, `agentdeck dashboard`) work without it.');
+      console.log('     Stream Deck app: https://www.elgato.com/downloads');
+    }
   }
 
   if (!pass) {
@@ -156,7 +173,15 @@ function installBridge() {
     if (IS_WIN) throw new Error('bridge install failed — see the npm output above');
 
     warn('Prebuilt install failed — retrying with a source build of node-pty.');
-    if (!(which('xcode-select') && checkXcodeCliTools())) {
+    if (IS_LINUX) {
+      const hasCompiler = which('cc') || which('gcc');
+      if (!(hasCompiler && which('make') && which('python3'))) {
+        fail('A source build needs a C/C++ toolchain (cc/make/python3).');
+        console.log(`       Debian/Ubuntu: ${YELLOW}sudo apt install build-essential python3${NC}`);
+        console.log('       Then re-run `npx @agentdeck/setup`.');
+        process.exit(1);
+      }
+    } else if (!(which('xcode-select') && checkXcodeCliTools())) {
       fail('A source build needs Xcode Command Line Tools.');
       console.log(`       Install with: ${YELLOW}xcode-select --install${NC}`);
       console.log('       Then re-run `npx @agentdeck/setup`.');
@@ -413,9 +438,9 @@ function checkOptionalDeps() {
   console.log('');
   console.log('----- Optional Dependencies -----');
 
-  if (IS_WIN) {
+  if (IS_WIN || IS_LINUX) {
     // Voice needs Apple's on-device speech recognizer, so it is macOS-only.
-    // Say so instead of printing `brew` instructions a Windows user can't use.
+    // Say so instead of printing `brew` instructions the user can't use.
     warn('Voice input is macOS-only (Apple on-device speech) — skipped.');
     return;
   }
@@ -442,12 +467,19 @@ function success() {
   console.log('=========================================');
   console.log('');
   console.log('  Next steps:');
-  console.log('  1. Restart Stream Deck app');
-  console.log('  2. Add AgentDeck actions to your Stream Deck profile');
-  console.log("  3. Run 'agentdeck claude' or 'agentdeck codex' in terminal to start the bridge");
-  console.log("     Codex observation hooks are installed automatically by 'agentdeck codex'");
-  console.log("  4. Optional: run 'agentdeck daemon install' to auto-start the daemon on login");
-  console.log("     (macOS LaunchAgent / Windows Scheduled Task)");
+  if (IS_LINUX) {
+    console.log("  1. Run 'agentdeck claude' or 'agentdeck codex' in terminal to start the bridge");
+    console.log("     Codex observation hooks are installed automatically by 'agentdeck codex'");
+    console.log("  2. Optional: run 'agentdeck daemon install' to auto-start the daemon on login");
+    console.log("     (systemd --user unit; run 'loginctl enable-linger $USER' for headless boot)");
+  } else {
+    console.log('  1. Restart Stream Deck app');
+    console.log('  2. Add AgentDeck actions to your Stream Deck profile');
+    console.log("  3. Run 'agentdeck claude' or 'agentdeck codex' in terminal to start the bridge");
+    console.log("     Codex observation hooks are installed automatically by 'agentdeck codex'");
+    console.log("  4. Optional: run 'agentdeck daemon install' to auto-start the daemon on login");
+    console.log("     (macOS LaunchAgent / Windows Scheduled Task)");
+  }
   console.log('');
   console.log('  Usage:');
   console.log('    agentdeck claude   Start bridge + Claude');

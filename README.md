@@ -62,8 +62,9 @@ hooks for whichever agent CLI you already have. Nothing else is required — the
 Stream Deck app, Stream Deck hardware, and Xcode tools are checked and reported,
 but never block the install.
 
-**You need:** macOS 15+ (or Windows 11 — see [docs/windows.md](docs/windows.md)),
-Node.js 22+, and at least one agent CLI (Claude Code, Codex, or OpenCode).
+**You need:** macOS 15+ (or Windows 11 — see [docs/windows.md](docs/windows.md), or
+Linux — see [docs/linux.md](docs/linux.md)), Node.js 22+, and at least one agent CLI
+(Claude Code, Codex, or OpenCode).
 
 ### 2. Look at it — no hardware required
 
@@ -206,7 +207,7 @@ build health.
 
 | | |
 |---|---|
-| **Using it** | [CLI reference](docs/cli.md) · [Configuration](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md) · [Windows](docs/windows.md) |
+| **Using it** | [CLI reference](docs/cli.md) · [Configuration](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md) · [Windows](docs/windows.md) · [Linux](docs/linux.md) |
 | **Surfaces** | [Hardware matrix](docs/hardware-compatibility.md) · [Stream Deck layout](docs/streamdeck-layout.md) · [Devices](docs/devices.md) · [ESP32](docs/esp32.md) · [Android](docs/android.md) · [Apple](docs/apple-app.md) · [TUI](docs/tui-dashboard.md) |
 | **Internals** | [Architecture](docs/architecture.md) · [Daemon](docs/daemon.md) · [Protocol](docs/protocol.md) · [Gateway protocol](docs/gateway-protocol.md) · [Testing](docs/testing.md) |
 | **Evaluation** | [Why APME](docs/why-apme.md) · [APME](docs/apme.md) · [Pipeline](docs/apme-pipeline.md) |

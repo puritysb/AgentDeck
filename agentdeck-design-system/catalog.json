@@ -53,6 +53,7 @@
       "docs/configuration.md": "User manual (see docs/install.md). The settings it describes are defined by config/default-settings.json and the APME schema, both already covered.",
       "docs/apple-app.md": "User manual (see docs/install.md). The canonical tier boundary is docs/appstore-feature-matrix.md, already cataloged as policy.product-tiers.",
       "docs/windows.md": "User manual (see docs/install.md). Platform setup steps rather than a platform contract.",
+      "docs/linux.md": "User manual (see docs/install.md). Platform setup steps rather than a platform contract.",
       "docs/troubleshooting.md": "User manual (see docs/install.md). Symptom-to-fix table, not a specification surface.",
       "docs/roadmap.md": "Forward-looking plan. Binding it would imply the catalog publishes commitments rather than the system as built."
     }

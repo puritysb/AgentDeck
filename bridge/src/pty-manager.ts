@@ -33,7 +33,7 @@ export class PtyManager extends EventEmitter {
     const isWin = process.platform === 'win32';
     const shell = isWin
       ? (process.env.COMSPEC || 'cmd.exe')
-      : (process.env.SHELL || '/bin/zsh');
+      : (process.env.SHELL || '/bin/bash');
     // Windows ConPTY uses cmd-style switches: /d (skip AutoRun), /s (literal),
     // /c (run command then exit). POSIX shells use -l (login) -c (command).
     const args = isWin ? ['/d', '/s', '/c', command] : ['-l', '-c', command];
