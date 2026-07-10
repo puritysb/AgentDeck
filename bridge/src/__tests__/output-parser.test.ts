@@ -626,6 +626,47 @@ describe('OutputParser', () => {
     });
   });
 
+  // === Spinner concurrent with a navigable prompt ===
+  //
+  // Claude Code animates a status spinner (✻/✽) at the same time a permission /
+  // option prompt is on screen. Those spinner chunks must NOT cancel the pending
+  // option debounce — otherwise the prompt never emits and the deck sits at
+  // idle/processing instead of AWAITING (observed live: a Yes/No prompt that never
+  // surfaced on the deck). The ❯ cursor distinguishes a real navigable prompt from
+  // a bare numbered list, so only ❯-marked prompts suppress the spinner.
+  describe('spinner concurrent with a navigable prompt', () => {
+    it('still emits the prompt (AWAITING) when spinner chars keep arriving alongside it', () => {
+      const p = armParser();
+      vi.advanceTimersByTime(500); // clear boot idle timer
+      const events: any[] = [];
+      p.on('option_prompt', (d) => events.push(d));
+      p.on('permission_prompt', (d) => events.push(d));
+
+      p.feed('✳');                                            // spinner active (Claude animating)
+      p.feed('Do you want to proceed?\n❯ 1. Yes\n  2. No\n'); // prompt arrives during spinner
+      p.feed('✻');                                            // concurrent spinner char — must NOT cancel the prompt
+      vi.advanceTimersByTime(200);
+
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      const opts: PromptOption[] = events[events.length - 1].options;
+      expect(opts.map((o) => o.label)).toEqual(['Yes', 'No']);
+    });
+
+    it('a spinner char marks the agent working (spinner_start), never idle, when no prompt is present', () => {
+      const p = armParser();
+      vi.advanceTimersByTime(500);
+      const seen: string[] = [];
+      p.on('spinner_start', () => seen.push('working'));
+      p.on('idle', () => seen.push('idle'));
+
+      p.feed('✻ Running a command\n');
+      vi.advanceTimersByTime(100);
+
+      expect(seen).toContain('working');
+      expect(seen).not.toContain('idle');
+    });
+  });
+
   // === Idle Cancels Option Timer ===
 
   describe('idle vs option debounce', () => {

@@ -435,6 +435,16 @@ export class OutputParser extends EventEmitter {
       // This prevents matching spinner chars in large text blocks (responses, banners)
       const nonWs = chunk.replace(/\s/g, '').length;
       if (nonWs < 80) {
+        // A spinner char while a ❯-marked navigable prompt is on screen is Claude
+        // Code's concurrent status animation, NOT processing. Treating it as a
+        // spinner here would cancel the pending option debounce below and leave the
+        // deck stuck at idle/processing instead of AWAITING. Ignore it and let the
+        // prompt path emit. (A bare numbered list without ❯ still cancels — see the
+        // "spinner cancels option timer" case.)
+        if (this.bufferHasNavigablePrompt()) {
+          debug('Parser', 'spinner char ignored — navigable prompt on screen');
+          return;
+        }
         if (!this.spinnerActive) {
           this.spinnerActive = true;
           this.clearSuggestion();
@@ -997,6 +1007,16 @@ export class OutputParser extends EventEmitter {
   private isCursorSelectionUI(): boolean {
     const tail = this.buffer.slice(-500);
     return /Enter\s*to\s*confirm/i.test(tail);
+  }
+
+  /**
+   * True when a ❯-marked numbered option (a navigable selection/permission prompt)
+   * is currently on screen. Used to suppress the concurrent status spinner so its
+   * chunks don't cancel the pending option prompt — the ❯ cursor is what
+   * distinguishes an active prompt from a bare numbered list in response text.
+   */
+  private bufferHasNavigablePrompt(): boolean {
+    return /❯[ \t ]*\d{1,2}[.)]/.test(this.buffer.slice(-600));
   }
 
   /** Check if numbered options look like a permission prompt (Yes/No/Always style) */
