@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Product version sync
+        run: pnpm verify-version
+
       - name: Build
         run: pnpm build
 

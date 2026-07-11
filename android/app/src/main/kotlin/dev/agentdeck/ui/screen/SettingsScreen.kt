@@ -293,7 +293,7 @@ internal fun DisplaySettingsCard(
 @Composable
 internal fun AboutFooter() {
     Text(
-        text = "AgentDeck Android \u00B7 v0.1.0 \u00B7 Monitoring dashboard for AI coding agents",
+        text = "AgentDeck Android \u00B7 v0.2.3 \u00B7 Monitoring dashboard for AI coding agents",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

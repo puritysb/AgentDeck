@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/plugin-ulanzi",
-  "version": "0.1.0",
+  "version": "0.2.3",
   "private": true,
   "type": "module",
   "description": "AgentDeck plugin for Ulanzi Studio (D200H Deck Dock) — official UlanziDeckPlugin-SDK",

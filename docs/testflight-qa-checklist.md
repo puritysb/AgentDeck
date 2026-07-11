@@ -183,7 +183,7 @@ Title: <brief symptom>
 Environment:
 - Device: <model>
 - OS: <macOS / iOS version>
-- Build: <TestFlight build number, e.g. 0.1.0 (1)>
+- Build: <TestFlight build number, e.g. 0.2.3 (2)>
 - Attached session: <claude-code / codex / opencode / openclaw — if relevant>
 
 Steps to reproduce:
@@ -220,4 +220,4 @@ Send to `puritysb@gmail.com` or file as a GitHub issue.
 - **Section J + K zero regressions**.
 - **Sections G, H optional** — nice to have; not blockers unless you're shipping a hardware-first marketing push.
 
-When the above looks clean across 2-3 testers, tag `apple-v0.1.0` and submit.
+When the above looks clean across 2-3 testers, tag `apple-v0.2.3` and submit.

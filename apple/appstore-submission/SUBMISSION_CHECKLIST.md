@@ -11,7 +11,7 @@
 - [ ] Secondary category: Productivity
 - [ ] Price: Free
 - [ ] Copyright: `© 2026 Serendipity Bound`
-- [ ] Version: `0.1.0`, build `1` (or increment both if build 1 has already been uploaded)
+- [ ] Version: `0.2.3`, build `2` (increment the build number if build 2 has already been uploaded)
 - [ ] macOS minimum: 26.0; iOS/iPadOS minimum: 17.0
 
 ## Product page
@@ -57,7 +57,7 @@
 - [ ] Confirm `PrivacyInfo.xcprivacy` is embedded and declares the same two collected data types as App Store Connect, with tracking disabled
 - [ ] Upload and wait for processing; select the correct build for both platform versions
 - [ ] Recheck export compliance, content rights, age rating, and App Privacy before “Add for Review”
-- [ ] Choose release method: manual release is recommended for v0.1.0
+- [ ] Choose release method: manual release is recommended for v0.2.3
 
 ## Known blocker audit
 

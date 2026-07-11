@@ -99,7 +99,7 @@ AgentDeck는 독립적인 프로젝트이며 Anthropic, OpenAI, Google, SST, Cor
 claude code,ai,agent,dashboard,stream deck,monitoring,apme,openclaw,codex,ipad,companion,developer
 ```
 
-### What's New (for v0.1.0, 4000자)
+### What's New (for v0.2.3, 4000자)
 
 ```
 🎉 AgentDeck Dashboard 첫 App Store 출시
@@ -208,7 +208,7 @@ AgentDeck is independent and is not affiliated with or endorsed by the third par
 claude code,ai,agent,dashboard,monitoring,apme,openclaw,codex,ipad,stream deck,developer
 ```
 
-### What's New (v0.1.0, 4000 chars)
+### What's New (v0.2.3, 4000 chars)
 
 ```
 🎉 AgentDeck Dashboard — first App Store release

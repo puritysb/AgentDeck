@@ -1,6 +1,6 @@
 {
   "name": "agentdeck",
-  "version": "0.1.0",
+  "version": "0.2.3",
   "private": true,
   "description": "Stream Deck+ controller for Claude Code CLI",
   "scripts": {
@@ -14,6 +14,7 @@
     "generate-creature-glyphs": "node scripts/generate-creature-glyphs.mjs",
     "generate-micro-glyphs": "node scripts/generate-micro-glyphs.mjs",
     "generate-protocol": "bash scripts/generate-protocol.sh",
+    "verify-version": "node scripts/verify-version-sync.mjs",
     "package": "bash scripts/package-plugin.sh",
     "setup": "bash scripts/install.sh",
     "test": "vitest run",

@@ -55,7 +55,7 @@ bash scripts/uninstall.sh   # remove hooks, unlink CLI and plugin
 bash scripts/build-apple-release.sh --ios     # local iOS build
 bash scripts/build-apple-release.sh --macos   # local macOS build
 bash scripts/build-apple-release.sh --all     # both + TestFlight upload
-git tag apple-v0.1.0 && git push origin apple-v0.1.0  # CI → TestFlight
+git tag apple-v0.2.3 && git push origin apple-v0.2.3  # CI → TestFlight
 ```
 
 - **Apple Bundle ID**: `bound.serendipity.agent.deck` (App Store Connect 앱명: "AgentDeck Dashboard")
@@ -63,7 +63,7 @@ git tag apple-v0.1.0 && git push origin apple-v0.1.0  # CI → TestFlight
 - **CI**: `.github/workflows/apple-release.yml` — `apple-v*` 태그 → macOS-15 runner → archive → TestFlight 업로드
 - **Secrets**: `ASC_API_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_KEY_BASE64` (조직 팀 App Manager+ 역할 키)
 - **Note**: the `bound.serendipity.agentdeck.*` tree is retired (the former `.dashboard` app record carries an immovable ASC build floor at 1.0.6/build 8). The fresh App Store app uses the `bound.serendipity.agent.*` tree → `bound.serendipity.agent.deck`. The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier and is unrelated to the app bundle ID.
-- **Versioning**: all tracks restarted at 0.1.x on 2026-06-26 (Apple 0.1.0/build 1 on the new bundle ID, Android 0.1.0/versionCode 1, npm 0.1.0, ESP32 0.1.1). Per-track tags: `apple-v*`, `android-v*`, `esp32-v*`, `npm-v*`. Policy + commands: [RELEASING.md](RELEASING.md)
+- **Versioning**: root `VERSION` is the unified product-version SSOT (`0.2.3`); all package/platform manifests mirror it and CI enforces `pnpm verify-version`. Apple build number and Android versionCode advance independently. Delivery tags remain channel-prefixed (`apple-v*`, `android-v*`, `esp32-v*`, `npm-v*`, `streamdeck-v*`, `ulanzi-v*`). Policy + commands: [RELEASING.md](RELEASING.md)
 
 ## Development
 

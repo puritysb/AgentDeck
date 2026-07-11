@@ -212,17 +212,17 @@ On macOS, the AgentDeck Dashboard SwiftUI app ships with a full **in-process Swi
 
 ## Distribution & Releases
 
-AgentDeck ships as **independent artifacts, one version track per channel** — there is no single repo-wide version. Each track has its own prefixed git tag; the full policy, per-track bump steps, and monotonic-version constraints live in **[RELEASING.md](RELEASING.md)**. Browse builds on the [GitHub Releases](https://github.com/puritysb/AgentDeck/releases) page.
+AgentDeck uses one **unified product version** across all maintained artifacts while delivering each channel independently. The root [`VERSION`](VERSION) file is canonical; prefixed tags record which channels were actually shipped. The full policy, channel steps, and monotonic build-number constraints live in **[RELEASING.md](RELEASING.md)**. Browse builds on the [GitHub Releases](https://github.com/puritysb/AgentDeck/releases) page.
 
 | Channel | Artifact | Tag | Current | Status / how to get |
 |---|---|---|---|---|
-| **npm** | `@agentdeck/setup` (CLI + Node daemon) | `npm-v*` | 0.2.x (latest) | Published — `npx @agentdeck/setup` |
-| **Apple App Store / TestFlight** | macOS + iOS app | `apple-v*` | 0.1.0 / build 1 | New bundle ID `bound.serendipity.agent.deck`; submission in progress |
+| **npm** | `@agentdeck/setup` (CLI + Node daemon) | `npm-v*` | 0.2.3 | Unified source ready; publish pending (registry latest setup: 0.2.0, bridge: 0.2.2) |
+| **Apple App Store / TestFlight** | macOS + iOS app | `apple-v*` | 0.2.3 / build 2 | Unified source ready; TestFlight delivery pending |
 | **Google Play** | Android app (AAB) | `android-v*` | — | CI upload **wired but gated** (`ANDROID_PLAY_ENABLED` + `PLAY_SERVICE_ACCOUNT_JSON`); needs Play Console app + first manual upload. Until then, Android ships via the GitHub APK below |
-| **GitHub Release — Android** | signed APK | `android-v*` | 0.1.0 | Live — [download APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v0.1.0) |
-| **GitHub Release — ESP32** | firmware `.bin` (per board) | `esp32-v*` | 0.1.1 | Live — [download](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v0.1.1) |
-| **Elgato Marketplace** | Stream Deck+ plugin | `streamdeck-v*` | 0.1.0.0 | Artifact ready (GitHub mirror live); Marketplace upload pending |
-| **Ulanzi Studio Marketplace** | D200H Deck Dock plugin | `ulanzi-v*` | 0.1.0 | Artifact ready (GitHub mirror live); Marketplace upload pending |
+| **GitHub Release — Android** | signed APK | `android-v*` | 0.2.3 / code 2 | Unified source ready; release pending (last public APK: 0.1.0) |
+| **GitHub Release — ESP32** | firmware `.bin` (per board) | `esp32-v*` | 0.2.3 | Unified source ready; release pending (last public firmware: 0.1.1) |
+| **Elgato Marketplace** | Stream Deck / Stream Deck+ plugin | `streamdeck-v*` | 0.2.3.0 | Regular 15-key and Plus profiles ready; Marketplace upload pending |
+| **Ulanzi Studio Marketplace** | D200H Deck Dock plugin | `ulanzi-v*` | 0.2.3 | Unified source ready; Marketplace upload pending |
 
 > **The Stream Deck and Ulanzi plugins are thin clients** — they require the AgentDeck daemon (install via `npx @agentdeck/setup` or the macOS app), the way the OBS plugin requires OBS. They never embed the daemon (it's a port-9120 singleton). Without a daemon they show an OFFLINE state pointing to the install. See [RELEASING.md](RELEASING.md) for the rationale.
 
@@ -664,7 +664,7 @@ The upgrade story lives here and in [docs/appstore-feature-matrix.md](docs/appst
 
 ### App Store Distribution
 
-The macOS and iOS builds are ready for App Store submission. The macOS build ships as a **self-contained Swift daemon** gated by the `AGENTDECK_APP_STORE` compile flag — no bundled Node.js, no bundled `adb`, no subprocess spawn, no AppleScript. User data lives in the app sandbox container (`~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/`, not `~/.agentdeck/`) per Apple Review Guideline 2.5.2. USB entitlements for D200H HID and Input Monitoring permission handling are wired; the first-launch onboarding asks for Claude Code hook access via explicit NSOpenPanel consent. OpenClaw integration uses the Gateway-native WebSocket path (see §OpenClaw Gateway below), not a file-based identity. The app moved to a **fresh bundle ID** (`bound.serendipity.agent.deck`) and restarted at **0.1.0 / build 1** — a new App Store Connect record and provisioning are being set up, then `apple-v0.1.0` triggers the first TestFlight build (see [RELEASING.md](RELEASING.md)).
+The macOS and iOS builds are ready for App Store submission. The macOS build ships as a **self-contained Swift daemon** gated by the `AGENTDECK_APP_STORE` compile flag — no bundled Node.js, no bundled `adb`, no subprocess spawn, no AppleScript. User data lives in the app sandbox container (`~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/`, not `~/.agentdeck/`) per Apple Review Guideline 2.5.2. USB entitlements for D200H HID and Input Monitoring permission handling are wired; the first-launch onboarding asks for Claude Code hook access via explicit NSOpenPanel consent. OpenClaw integration uses the Gateway-native WebSocket path (see §OpenClaw Gateway below), not a file-based identity. The app uses the fresh bundle ID `bound.serendipity.agent.deck`; its first unified product train is **0.2.3 / build 2**, delivered by the `apple-v0.2.3` channel tag (see [RELEASING.md](RELEASING.md)).
 
 ### OpenClaw Gateway (Gateway-native pairing)
 

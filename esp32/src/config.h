@@ -22,7 +22,7 @@ constexpr uint16_t BRIDGE_PORT_MAX     = 9139;
 constexpr const char* MDNS_SERVICE     = "_agentdeck";
 constexpr const char* MDNS_PROTO       = "_tcp";
 constexpr const char* AP_SSID          = "AgentDeck-Setup";
-constexpr const char* FIRMWARE_VERSION = "0.1.2";
+constexpr const char* FIRMWARE_VERSION = "0.2.3";
 constexpr uint8_t PROTOCOL_REVISION    = 2;
 
 // ===== Build identity (injected by scripts/git_rev.py at compile time) =====

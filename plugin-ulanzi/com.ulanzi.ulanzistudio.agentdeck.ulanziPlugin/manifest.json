@@ -1,5 +1,5 @@
 {
-  "Version": "0.1.0",
+  "Version": "0.2.3",
   "Author": "AgentDeck",
   "Name": "AgentDeck",
   "Description": "Monitor and steer AI coding agents (Claude Code, Codex, OpenCode, OpenClaw) from your D200H.",
