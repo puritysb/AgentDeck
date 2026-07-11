@@ -487,7 +487,13 @@ async function collectCodexSessions(processes: ProcInfo[]): Promise<ObservedSess
 }
 
 export function isCodexDesktopAppServerCommand(command: string): boolean {
-  return command.includes('/Codex.app/Contents/Resources/codex') && command.includes(' app-server');
+  if (!/\bapp-server\b/.test(command)) return false;
+
+  // Codex Desktop previously launched the bundled executable directly. Recent
+  // releases invoke `codex` from PATH instead, retaining this code-host flag.
+  // A normal CLI app-server lacks both Desktop markers and must stay excluded.
+  return command.includes('/Codex.app/Contents/Resources/codex')
+    || /(?:^|\s)-c\s+features\.code_mode_host=true(?:\s|$)/.test(command);
 }
 
 /**

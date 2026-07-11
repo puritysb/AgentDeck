@@ -243,11 +243,15 @@ describe('passive-observer parsers', () => {
     ])).state).toBe('idle');
   });
 
-  it('recognizes only the Codex Desktop app-server command', () => {
+  it('recognizes Codex Desktop app-server commands across launch styles', () => {
     expect(isCodexDesktopAppServerCommand(
       '/Applications/Codex.app/Contents/Resources/codex -c features.code_mode_host=true app-server --analytics-default-enabled',
     )).toBe(true);
+    expect(isCodexDesktopAppServerCommand(
+      'codex -c features.code_mode_host=true app-server',
+    )).toBe(true);
     expect(isCodexDesktopAppServerCommand('/opt/homebrew/bin/codex app-server --listen stdio://')).toBe(false);
+    expect(isCodexDesktopAppServerCommand('/opt/homebrew/bin/codex -c other.feature=true app-server')).toBe(false);
     expect(isCodexDesktopAppServerCommand('/opt/homebrew/bin/codex')).toBe(false);
   });
 
