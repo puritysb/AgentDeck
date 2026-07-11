@@ -451,6 +451,29 @@ final class DaemonServer {
     private var codexLastPromptTopicBySession: [String: String] = [:]
     private var codexCurrentToolBySession: [String: String] = [:]
 
+    /// Codex threads that re-engaged after a terminal event (second prompt on
+    /// the same thread id). Companion tasks are single-turn by construction,
+    /// so re-engagement is the one signal that cleanly separates a long-lived
+    /// interactive `codex` CLI session from an ephemeral rescue thread —
+    /// interactive threads skip the post-terminal fast evict and get
+    /// `codexInteractiveIdleTTL`. Survives eviction (the whole point);
+    /// cleared on `session_end`.
+    private var codexInteractiveSessionIds: Set<String> = []
+
+    /// Terminal timestamps preserved across eviction (eviction moves
+    /// `lastTerminalCodexEventBySession[sid]` here instead of dropping it).
+    /// Consulted by the mid-turn resurrection gate; pruned after
+    /// `codexTerminalTombstoneTTL`, cleared by explicit new-turn signals.
+    private var codexTerminalTombstoneBySession: [String: Date] = [:]
+
+    /// Last non-empty projectName resolved for a Codex thread. Timeline rows
+    /// emitted after the session entry was evicted (late Stop hooks, rollout
+    /// responses) fall back to this so chat_response/chat_end never lose
+    /// their `[project]` attribution to the `[Codex CLI]` agent-tag fallback.
+    /// Kept across eviction; cleared on `session_end`, size-capped as a
+    /// runaway backstop.
+    private var codexProjectNameBySession: [String: String] = [:]
+
     /// TTL for hook-driven pushed sessions. 3 minutes balances tolerating
     /// long "user is thinking" pauses against clearing ghost entries within
     /// the same coffee break. When a hook arrives after this window, the
@@ -495,6 +518,22 @@ final class DaemonServer {
     /// Tool-bearing rows get a longer stale window because long local commands
     /// are normal, but they still need a hard cap for missing end events.
     private static let codexToolObservationStaleTTL: TimeInterval = 240
+
+    /// Idle TTL for a Codex thread promoted to *interactive* (it re-engaged
+    /// after a terminal event, so it is a long-lived `codex` CLI conversation,
+    /// not a single-turn companion task). The sandbox blocks `ps`, so unlike
+    /// the Node daemon we cannot ground liveness in the process table — this
+    /// long window is the compromise between the 60/90 s companion TTLs
+    /// (which made interactive creatures flap on every turn boundary) and
+    /// never reaping a Ctrl-C'd ghost.
+    private static let codexInteractiveIdleTTL: TimeInterval = 30 * 60
+
+    /// How long an evicted Codex thread's terminal timestamp survives as a
+    /// tombstone. Mid-turn events (`codex_tool_start`/`codex_tool_end`) may
+    /// resurrect an unknown session ONLY when no tombstone exists — a live
+    /// turn whose row was reaped mid-thinking has none, a finished companion
+    /// task's leftover callbacks do.
+    private static let codexTerminalTombstoneTTL: TimeInterval = 60 * 60
 
     /// Singleton row used when Codex OTLP spans have a trace id but no durable
     /// thread id. Keep this in sync with CodexTelemetryModule's fallback id.
@@ -2115,6 +2154,24 @@ final class DaemonServer {
             try? await Task.sleep(for: .milliseconds(100))
             guard !conn.isDisconnected else { return }
 
+            // Timeline history snapshot — Node-daemon parity (bridge-core's
+            // connect burst always pushes `timeline_history`, empty included,
+            // because clients REPLACE their local store on it). Without this
+            // an Android dashboard attached to the Swift daemon (a) started
+            // with an empty timeline and (b) never flipped its
+            // "receivingBridgeTimeline" suppression flag, so its client-side
+            // StateTimelineGenerator kept fabricating "Connected"/"Prompt
+            // sent"/tool rows that no Apple surface shows.
+            let recentEntries = await self.timelineStore.getRecent(100)
+            let historyEvent: [String: Any] = [
+                "type": "timeline_history",
+                "entries": recentEntries.map { Self.daemonTimelineEntryDict($0) },
+            ]
+            if let data = historyEvent.jsonData { conn.send(data) }
+
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !conn.isDisconnected else { return }
+
             // Usage
             let usageEvent = self.buildUsageEvent()
             if let data = usageEvent?.jsonData { conn.send(data) }
@@ -2263,6 +2320,9 @@ final class DaemonServer {
         cachedSessions.removeAll { $0.id == sessionId }
         codexProcessingTouchedAtBySession.removeValue(forKey: sessionId)
         lastTerminalCodexEventBySession.removeValue(forKey: sessionId)
+        codexTerminalTombstoneBySession.removeValue(forKey: sessionId)
+        codexInteractiveSessionIds.remove(sessionId)
+        codexProjectNameBySession.removeValue(forKey: sessionId)
         clearCodexChatStartQueue(sid: sessionId)
         codexLastPromptTopicBySession.removeValue(forKey: sessionId)
         codexCurrentToolBySession.removeValue(forKey: sessionId)
@@ -2582,8 +2642,22 @@ final class DaemonServer {
         // and restarted every claude. Synthesize a minimal entry on any
         // non-end event when the sessionId is unknown; the subsequent
         // per-event `updateSessionHookState` then sets the right state.
+        // Codex mid-turn events may resurrect an unknown session ONLY when no
+        // terminal tombstone exists: a live turn whose row was reaped by the
+        // idle-observation TTL mid-thinking keeps streaming tool events with
+        // no terminal record, while a finished companion task's leftover
+        // callbacks always trail a codex_stop/turnEnd tombstone. Without this
+        // gate an actively-working `codex` CLI session stayed invisible from
+        // the moment of eviction until the user's NEXT prompt.
+        let codexMidTurnResurrection = isCodexEvent
+            && (event == "codex_tool_start" || event == "codex_tool_end")
+            && sessionId.map {
+                codexTerminalTombstoneBySession[$0] == nil
+                    && lastTerminalCodexEventBySession[$0] == nil
+            } == true
         if let sessionId,
-           Self.shouldSynthesizeUnknownHookSession(event: event, isCodexEvent: isCodexEvent),
+           Self.shouldSynthesizeUnknownHookSession(event: event, isCodexEvent: isCodexEvent)
+               || codexMidTurnResurrection,
            pushedSessionsById[sessionId] == nil {
             // Codex hooks use the `codex_*` event prefix and synthesize
             // sessionIds as `codex:<thread-id>`; tag those entries with
@@ -2591,11 +2665,14 @@ final class DaemonServer {
             // (Pixoo, D200H, Terrarium, SessionListPanel) pick the Codex
             // brand instead of mis-painting them as Claude Code.
             let resurrectedAgentType = isCodexEvent ? "codex-cli" : "claude-code"
+            let resurrectedProjectName = Self.nonEmptyString(ProjectNameResolver.projectName(fromHookPayload: json))
+                ?? (isCodexEvent ? codexProjectNameBySession[sessionId] : nil)
+                ?? ""
             var entry = DaemonSessionEntry(
                 id: sessionId,
                 port: Int(port),
                 pid: 0,
-                projectName: ProjectNameResolver.projectName(fromHookPayload: json),
+                projectName: resurrectedProjectName,
                 agentType: resurrectedAgentType,
                 tmuxSession: nil,
                 tty: nil,
@@ -2666,7 +2743,7 @@ final class DaemonServer {
                 entry.state = "idle"
                 pushedSessionsById[sessionId] = entry
                 upsertIntoCachedSessions(entry)
-                lastTerminalCodexEventBySession.removeValue(forKey: sessionId)
+                codexRegisterNewTurnSignal(sessionId: sessionId)
                 broadcastSessionsList()
             }
         case "session_start":
@@ -2738,6 +2815,9 @@ final class DaemonServer {
                 cachedSessions.removeAll { $0.id == sessionId }
                 codexProcessingTouchedAtBySession.removeValue(forKey: sessionId)
                 lastTerminalCodexEventBySession.removeValue(forKey: sessionId)
+                codexTerminalTombstoneBySession.removeValue(forKey: sessionId)
+                codexInteractiveSessionIds.remove(sessionId)
+                codexProjectNameBySession.removeValue(forKey: sessionId)
                 clearCodexChatStartQueue(sid: sessionId)
                 codexLastPromptTopicBySession.removeValue(forKey: sessionId)
                 codexCurrentToolBySession.removeValue(forKey: sessionId)
@@ -2788,8 +2868,9 @@ final class DaemonServer {
             updateSessionHookState(sessionId: sessionId, state: "processing")
             appendCodexChatStart(json: json, sessionId: sessionId)
             // Re-engage: a new prompt on a thread that previously hit
-            // codex_stop should not still be reaped by codexPostTerminalTTL.
-            if let sessionId { lastTerminalCodexEventBySession.removeValue(forKey: sessionId) }
+            // codex_stop should not still be reaped by codexPostTerminalTTL,
+            // and marks the thread interactive (multi-turn ≠ companion task).
+            if let sessionId { codexRegisterNewTurnSignal(sessionId: sessionId) }
         case "codex_tool_start":
             stateMachine.currentTool = json["tool_name"] as? String
             stateMachine.toolInput = json["tool_input"] as? String
@@ -2991,13 +3072,27 @@ final class DaemonServer {
         let now = Date()
         let codexTerminalCutoff = now.addingTimeInterval(-Self.codexPostTerminalTTL)
 
+        // Expire terminal tombstones so a thread id reused hours later isn't
+        // permanently barred from mid-turn resurrection.
+        let tombstoneCutoff = now.addingTimeInterval(-Self.codexTerminalTombstoneTTL)
+        codexTerminalTombstoneBySession = codexTerminalTombstoneBySession.filter { $0.value >= tombstoneCutoff }
+
         var expired = Set(lastHookAtByPushedSession.compactMap { (sid, ts) -> String? in
             guard let entry = pushedSessionsById[sid] else { return sid }
             let ttl: TimeInterval
             if Self.isCodexSession(sessionId: sid, entry: entry) {
-                ttl = (entry.currentTool?.isEmpty == false)
-                    ? Self.codexToolObservationStaleTTL
-                    : Self.codexIdleObservationStaleTTL
+                if codexInteractiveSessionIds.contains(sid) {
+                    // Multi-turn interactive `codex` CLI conversation — the
+                    // user is thinking between turns, not a dead companion
+                    // thread. Companion TTLs made this creature flap on
+                    // every turn boundary (evict 60-90 s after each stop,
+                    // resurrect on the next prompt).
+                    ttl = Self.codexInteractiveIdleTTL
+                } else {
+                    ttl = (entry.currentTool?.isEmpty == false)
+                        ? Self.codexToolObservationStaleTTL
+                        : Self.codexIdleObservationStaleTTL
+                }
             } else if (entry.state ?? "").hasPrefix("awaiting") {
                 // A genuinely-awaiting session is quiet by nature (one Notification
                 // then it waits on the user) — don't reap it in the 180 s ghost
@@ -3016,6 +3111,10 @@ final class DaemonServer {
         // already finished, stacking up as multiple "acting" creatures on
         // the dashboard.
         for (sid, ts) in lastTerminalCodexEventBySession where ts < codexTerminalCutoff {
+            // Interactive threads idle between turns after every stop — the
+            // fast post-terminal reaper only exists for single-turn companion
+            // bursts, so it must not touch them.
+            if codexInteractiveSessionIds.contains(sid) { continue }
             expired.insert(sid)
         }
         guard !expired.isEmpty else { return }
@@ -3041,6 +3140,13 @@ final class DaemonServer {
             pushedSessionsById.removeValue(forKey: sid)
             cachedSessions.removeAll { $0.id == sid }
             lastHookAtByPushedSession.removeValue(forKey: sid)
+            // Preserve the terminal timestamp as a tombstone: it is the only
+            // signal that distinguishes a finished companion thread's late
+            // tool callbacks (must stay dead) from a live turn whose row was
+            // reaped mid-thinking (may resurrect on codex_tool_start).
+            if let terminalTs = lastTerminalCodexEventBySession[sid] {
+                codexTerminalTombstoneBySession[sid] = terminalTs
+            }
             lastTerminalCodexEventBySession.removeValue(forKey: sid)
             codexProcessingTouchedAtBySession.removeValue(forKey: sid)
             clearCodexChatStartQueue(sid: sid)
@@ -3311,7 +3417,7 @@ final class DaemonServer {
                 if !projectName.isEmpty { stateMachine.projectName = projectName }
                 _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
                 lastHookAtByPushedSession[sid] = Date()
-                lastTerminalCodexEventBySession.removeValue(forKey: sid)
+                codexRegisterNewTurnSignal(sessionId: sid)
 
             case .toolCall(let threadId, _, let tool, let cwd):
                 guard let resolved = sessionIdForCodexOtelThread(threadId) else {
@@ -3421,13 +3527,16 @@ final class DaemonServer {
             // creature vanish during a "long thinking" pause and never come
             // back even though the codex process is alive.
             //
-            // `codex_tool_start` stays excluded because it is mid-turn: by
-            // the time we see one for an unknown sessionId without a
-            // preceding prompt event, it is almost always a leftover hook
-            // from a thread that already terminated. The single-Codex
-            // creature visibility is preserved by Layer 1 fold (`TerrariumState`
-            // groups by projectName), which collapses ephemeral companion
-            // tasks even if mid-event resurrection does fire.
+            // `codex_tool_start`/`codex_tool_end` stay excluded from THIS
+            // predicate because they are mid-turn — but the hook call site
+            // layers a tombstone-gated bypass on top: when the thread has no
+            // recorded terminal event, a tool event is a live turn whose row
+            // was reaped mid-thinking and MAY resurrect. Leftover callbacks
+            // from finished companion tasks always trail a terminal
+            // tombstone and stay dead. The single-Codex creature visibility
+            // is preserved by Layer 1 fold (`TerrariumState` groups by
+            // projectName), which collapses ephemeral companion tasks even
+            // if mid-event resurrection does fire.
             return event == "codex_session_start" || event == "codex_user_prompt_submit"
         }
         return event != "session_end" && event != "session_start"
@@ -5820,6 +5929,47 @@ final class DaemonServer {
         broadcastRaw(event)
     }
 
+    /// Resolve the projectName to stamp on a Codex timeline row. Falls back
+    /// through the payload's cwd and the eviction-surviving per-thread cache
+    /// so late rows (post-evict Stop hooks, rollout responses) keep their
+    /// `[project]` attribution instead of degrading to the `[Codex CLI]`
+    /// agent-tag fallback on every client.
+    @MainActor
+    private func codexTimelineProjectName(sessionId: String, json: [String: Any]) -> String? {
+        if let p = Self.nonEmptyString(pushedSessionsById[sessionId]?.projectName),
+           p != Self.codexAppFallbackProjectName {
+            codexProjectNameBySession[sessionId] = p
+            return p
+        }
+        if let p = Self.nonEmptyString(ProjectNameResolver.projectName(fromHookPayload: json)) {
+            if codexProjectNameBySession.count > 1024 { codexProjectNameBySession.removeAll() }
+            codexProjectNameBySession[sessionId] = p
+            return p
+        }
+        return codexProjectNameBySession[sessionId]
+            ?? Self.nonEmptyString(pushedSessionsById[sessionId]?.projectName)
+    }
+
+    /// Explicit new-turn signal for a Codex thread (`codex_session_start`,
+    /// `codex_user_prompt_submit`, OTel `turnStart`). Clears the terminal
+    /// record AND its tombstone (late progress from the *finished* turn can
+    /// no longer reanimate the row), and promotes the thread to interactive
+    /// when it re-engages after a terminal event — companion tasks are
+    /// single-turn by construction, so a second turn on the same thread id
+    /// is the interactive signature. Interactive threads skip the
+    /// post-terminal fast evict and get `codexInteractiveIdleTTL`.
+    @MainActor
+    private func codexRegisterNewTurnSignal(sessionId: String) {
+        if lastTerminalCodexEventBySession[sessionId] != nil
+            || codexTerminalTombstoneBySession[sessionId] != nil,
+           !codexInteractiveSessionIds.contains(sessionId) {
+            codexInteractiveSessionIds.insert(sessionId)
+            DaemonLogger.shared.debug("Hook", "Promoted codex session \(sessionId) to interactive (re-engaged after terminal event)")
+        }
+        lastTerminalCodexEventBySession.removeValue(forKey: sessionId)
+        codexTerminalTombstoneBySession.removeValue(forKey: sessionId)
+    }
+
     @MainActor
     private func appendCodexChatStart(json: [String: Any], sessionId: String?) {
         guard let sessionId else { return }
@@ -5855,7 +6005,7 @@ final class DaemonServer {
             automated: nil
         )
         entry.sessionId = sessionId
-        entry.projectName = pushedSessionsById[sessionId]?.projectName
+        entry.projectName = codexTimelineProjectName(sessionId: sessionId, json: json)
         entry.startedAt = ts
         enqueueCodexChatStartTs(sid: sessionId, ts: ts)
         if let topic = Self.extractTopicHint(from: prompt) {
@@ -5900,7 +6050,7 @@ final class DaemonServer {
             automated: nil
         )
         entry.sessionId = sessionId
-        entry.projectName = pushedSessionsById[sessionId]?.projectName
+        entry.projectName = codexTimelineProjectName(sessionId: sessionId, json: json)
         // tool_exec rows are intra-turn, so peek the **latest** pending
         // chat_start ts (tail). The Stop hook owns the dequeue (head).
         // Returning the head here would attach this tool to a previous
@@ -5932,7 +6082,7 @@ final class DaemonServer {
             codexCurrentToolBySession.removeValue(forKey: sessionId)
             return
         }
-        let projectName = pushedSessionsById[sessionId]?.projectName
+        let projectName = codexTimelineProjectName(sessionId: sessionId, json: json)
         if !assistantText.isEmpty {
             var respEntry = DaemonTimelineEntry(
                 ts: now - 1,

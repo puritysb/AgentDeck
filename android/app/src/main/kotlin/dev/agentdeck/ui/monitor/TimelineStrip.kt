@@ -916,18 +916,15 @@ private fun typeColor(type: String) = when (type) {
 private fun agentTag(agentType: String?): String = agentDisplayLabel(agentType)
 
 private fun rowPrefixLabel(entry: TimelineEntry): String {
-    // Show BOTH project and agent — the row's brand glyph (BrandIcon) conveys
-    // the agent visually, but the text label previously dropped the agent name
-    // whenever a project existed (which is almost always), so the timeline read
-    // as project-only with no explicit attribution.
+    // Apple TimelineStripView.rowPrefixLabel parity: prefer the projectName
+    // alone — the row's brand glyph (BrandIcon) already conveys the agent, and
+    // appending the agent tag made the same row read "[AgentDeck] · Codex CLI"
+    // on tablets vs "[AgentDeck]" on iOS/macOS. The agent tag remains only as
+    // the fallback for rows with no recorded project.
     val project = entry.projectName?.takeIf { it.isNotBlank() }
+    if (project != null) return "[$project]"
     val tag = agentTag(entry.agentType)
-    return when {
-        project != null && tag.isNotEmpty() -> "[$project] · $tag"
-        project != null -> "[$project]"
-        tag.isNotEmpty() -> "[$tag]"
-        else -> ""
-    }
+    return if (tag.isNotEmpty()) "[$tag]" else ""
 }
 
 private fun sourceLabel(entry: TimelineEntry): String {

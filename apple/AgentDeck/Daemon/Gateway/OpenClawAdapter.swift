@@ -198,6 +198,12 @@ actor OpenClawAdapter {
     private var currentRunId: String?
     private var promptCapturedForRunId: String? // guard: emit prompt entry once per runId
     private var automatedRunId: String? // runId whose prompt was a scheduled (cron) turn — flagged automated
+    /// Latest cumulative assistant text per run, harvested from `chat` delta
+    /// events (the gateway sends cumulative content, so replace — never
+    /// append). Fallback response source when the final event carries no
+    /// extractable message; entries are dropped on final/aborted/error so
+    /// the dictionary stays one-or-two runs deep.
+    private var accumulatedResponseByRunId: [String: String] = [:]
     /// Raw log lines already replayed via `requestInitialLogTail` this
     /// adapter lifetime. Reconnects re-fetch the same tail, and
     /// `BridgeLogStream.parseLogLine` stamps entries with the PARSE time
@@ -478,19 +484,41 @@ actor OpenClawAdapter {
                 emitTimelineEntry(entry)
             }
 
-            // Capture full assembled response on final so timeline shows real content.
-            if chatState == "final", let response = payload["response"] as? String, !response.isEmpty {
-                let isAutomated = automatedRunId == currentRunId
-                let entry = DaemonTimelineEntry(
-                    ts: Self.payloadTimestamp(payload),
-                    type: "model_response",
-                    raw: String(response.prefix(200)),
-                    detail: String(response.prefix(1000)),
-                    approvalId: nil, status: nil,
-                    agentType: "openclaw", repeatCount: nil, automated: isAutomated ? true : nil,
-                    runId: currentRunId
-                )
-                emitTimelineEntry(entry)
+            // Track the cumulative assistant text from deltas so the final
+            // handler has a response even when its own payload carries none.
+            if chatState == "delta", let runId = currentRunId,
+               let deltaText = Self.extractMessageText(payload) {
+                accumulatedResponseByRunId[runId] = deltaText
+            }
+
+            // Capture full assembled response on final so timeline shows real
+            // content. The gateway stopped shipping a flat `response` string —
+            // the text now lives in the message structure
+            // (`payload.message.content[].text`, mirrored from the Node
+            // adapter's extractMessageText), which is why model_response rows
+            // silently vanished and the dashboard showed prompts with no
+            // answers. Probe message text → legacy `response` → accumulated
+            // deltas.
+            if chatState == "final" {
+                let response = Self.extractMessageText(payload)
+                    ?? (payload["response"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                    ?? currentRunId.flatMap { accumulatedResponseByRunId[$0] }
+                if let runId = currentRunId { accumulatedResponseByRunId.removeValue(forKey: runId) }
+                if let response, !response.isEmpty {
+                    let isAutomated = automatedRunId == currentRunId
+                    let entry = DaemonTimelineEntry(
+                        ts: Self.payloadTimestamp(payload),
+                        type: "model_response",
+                        raw: String(response.prefix(200)),
+                        detail: String(response.prefix(1000)),
+                        approvalId: nil, status: nil,
+                        agentType: "openclaw", repeatCount: nil, automated: isAutomated ? true : nil,
+                        runId: currentRunId
+                    )
+                    emitTimelineEntry(entry)
+                }
+            } else if chatState == "aborted" || chatState == "error" {
+                if let runId = currentRunId { accumulatedResponseByRunId.removeValue(forKey: runId) }
             }
 
             // Chat events (delta, final, aborted, error).
@@ -1433,6 +1461,21 @@ actor OpenClawAdapter {
         emitTimelineEntry(entry)
     }
 
+    /// Extract assistant text from the Gateway chat message structure:
+    /// `payload.message = { role, content: [{ type: "text", text }] }`.
+    /// Mirror of the Node adapter's `extractMessageText` — keep the two in
+    /// sync when the Gateway message schema moves.
+    static func extractMessageText(_ payload: [String: Any]) -> String? {
+        guard let message = payload["message"] as? [String: Any],
+              let content = message["content"] as? [[String: Any]] else { return nil }
+        let texts = content.compactMap { part -> String? in
+            guard part["type"] as? String == "text",
+                  let text = part["text"] as? String, !text.isEmpty else { return nil }
+            return text
+        }
+        return texts.isEmpty ? nil : texts.joined()
+    }
+
     /// Resolve a session.tool payload's tool name, returning nil if every
     /// candidate (top-level + nested) is absent / NSNull. Exposed as a
     /// static helper so the placeholder-row drop predicate is testable
@@ -1587,7 +1630,11 @@ actor OpenClawAdapter {
         if let repeatCount = entry.repeatCount { entryDict["repeatCount"] = repeatCount }
         if let automated = entry.automated { entryDict["automated"] = automated }
         if let runId = entry.runId { entryDict["runId"] = runId }
-        if let projectName = entry.projectName { entryDict["projectName"] = projectName }
+        // Attribution parity with the Node daemon's enrichGatewayTimelineEntry:
+        // this adapter is OpenClaw-only wiring, so rows may default their
+        // projectName instead of shipping bare and degrading to the agent-tag
+        // fallback prefix on every client.
+        entryDict["projectName"] = entry.projectName ?? "OpenClaw"
         if let sessionId = entry.sessionId { entryDict["sessionId"] = sessionId }
         if let startedAt = entry.startedAt { entryDict["startedAt"] = startedAt }
         if let endedAt = entry.endedAt { entryDict["endedAt"] = endedAt }

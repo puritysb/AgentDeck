@@ -444,5 +444,38 @@ final class OpenClawToolNoiseTests: XCTestCase {
         )
         XCTAssertTrue(DaemonServer.computeOrphanTaskEnds(from: [start]).isEmpty)
     }
+
+    // MARK: - Gateway chat message text extraction
+
+    /// The Gateway ships the assistant text inside the message structure
+    /// (`payload.message.content[].text`), not a flat `response` string.
+    /// Mirror of the Node adapter's `extractMessageText` — this is the field
+    /// probe whose absence made every OpenClaw model_response row silently
+    /// vanish from the Swift daemon's timeline.
+    func testExtractMessageTextJoinsTextParts() {
+        let payload: [String: Any] = [
+            "state": "final",
+            "message": [
+                "role": "assistant",
+                "content": [
+                    ["type": "text", "text": "안녕"],
+                    ["type": "toolCall", "id": "t1"],
+                    ["type": "text", "text": "하세요"],
+                ],
+            ],
+        ]
+        XCTAssertEqual(OpenClawAdapter.extractMessageText(payload), "안녕하세요")
+    }
+
+    func testExtractMessageTextNilWhenNoTextParts() {
+        XCTAssertNil(OpenClawAdapter.extractMessageText([:]))
+        XCTAssertNil(OpenClawAdapter.extractMessageText(["message": ["content": []]]))
+        XCTAssertNil(OpenClawAdapter.extractMessageText([
+            "message": ["content": [["type": "toolCall", "id": "t1"]]],
+        ]))
+        XCTAssertNil(OpenClawAdapter.extractMessageText([
+            "message": ["content": [["type": "text", "text": ""]]],
+        ]))
+    }
 }
 #endif

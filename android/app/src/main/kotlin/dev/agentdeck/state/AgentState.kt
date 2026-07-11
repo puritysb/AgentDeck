@@ -219,6 +219,15 @@ class AgentStateHolder private constructor() {
                     }
                 }
                 lastKnownState = _state.value
+                // Apple AgentStateHolder parity: the OpenClaw Gateway provides
+                // its own rich timeline entries via timeline_event — suppress
+                // the StateTimelineGenerator fallback ("Connected"/"Prompt
+                // sent"/tool rows) as soon as the gateway is confirmed
+                // connected, so the generator can't race ahead of the first
+                // timeline push after (re)connect.
+                if (event.data.gatewayConnected == true) {
+                    StateTimelineGenerator.instance.setReceivingBridgeTimeline(true)
+                }
                 StateTimelineGenerator.instance.onStateUpdate(event.data)
                 SessionMetrics.instance.onMessageReceived()
             }
