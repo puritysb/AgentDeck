@@ -22,6 +22,8 @@ import { homedir } from 'os';
 import {
   applyManagedBlock,
   removeManagedBlock,
+  ensureManagedBooleanInTable,
+  removeManagedBooleanInTable,
   hasTopLevelKeyOutsideFence,
   hasTableOutsideFence,
   quoted,
@@ -89,6 +91,7 @@ function buildOtelEndpoint(daemonHttpPort?: number): string {
 // ─── Body assembly ──────────────────────────────────────────────────────
 
 interface ManagedBlockOptions {
+  includeFeatures?: boolean;
   includeNotify?: boolean;
   includeOtel?: boolean;
   otelEndpoint?: string;
@@ -101,16 +104,19 @@ interface ManagedBlockOptions {
  *  directly to assert schema regressions without driving the file
  *  installer. */
 export function managedBlockBody(opts: ManagedBlockOptions = {}): string {
+  const includeFeatures = opts.includeFeatures ?? true;
   const includeNotify = opts.includeNotify ?? true;
   const includeOtel = opts.includeOtel ?? true;
   const platform = opts.platform ?? process.platform;
 
-  const lines: string[] = [
+  const lines: string[] = [];
+  if (includeFeatures) {
+    lines.push('[features]', 'hooks = true', '');
+  }
+  lines.push(
     '# Codex lifecycle hooks. Command hooks receive JSON on stdin;',
     '# each snippet forwards that stdin body unchanged to AgentDeck.',
-    '[features]',
-    'hooks = true',
-  ];
+  );
 
   lines.push('');
   lines.push(...buildLifecycleHookTables(platform));
@@ -327,33 +333,40 @@ function writeTextAtomic(text: string, path: string): boolean {
 // ─── Public install / uninstall / migrate ──────────────────────────────
 
 /** Install AgentDeck's Codex observation entries into `~/.codex/config.toml`
- *  unless the user opted out, the user has authored a conflicting top-level
- *  `[features]` / `[hooks]` table outside the fence, or the file write
- *  failed. Idempotent: re-running with the same daemon port produces a
- *  byte-identical file, so safe to call from setup, `agentdeck codex`,
- *  and `agentdeck daemon install`. */
+ *  unless the user opted out, the user has authored conflicting lifecycle
+ *  hook tables / an explicit `features.hooks` value, or the file write failed.
+ *  A user-owned `[features]` table is merged losslessly. Idempotent: re-running
+ *  with the same daemon port produces a byte-identical file, so safe to call
+ *  from setup, `agentdeck codex`, and `agentdeck daemon install`. */
 export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallResult {
   if (envOptOut()) return { installed: false, reason: 'AGENTDECK_NO_CODEX_HOOKS=1' };
 
   const path = opts.configPath ?? DEFAULT_CODEX_CONFIG_PATH;
   const original = readText(path);
 
-  // Refuse to clobber user-authored lifecycle hook config. This line-mode
-  // editor cannot safely merge existing `[features]` or `[hooks]` tables
-  // without a real TOML parser, and duplicate tables would make Codex
-  // reject config.toml.
-  if (hasTableOutsideFence(original, 'features')) {
-    return { installed: false, reason: 'user-authored [features] present' };
-  }
+  // Existing lifecycle hook tables remain an ownership conflict. A plain
+  // user-authored `[features]` table is mergeable: add only `hooks = true`
+  // behind a dedicated three-line fence and keep every other feature byte-
+  // for-byte intact.
   if (hasTableOutsideFence(original, 'hooks')) {
     return { installed: false, reason: 'user-authored [hooks] present' };
   }
 
   const platform = opts.platform ?? process.platform;
-  let includeNotify = !hasTopLevelKeyOutsideFence(original, 'notify');
+  const hasUserFeatures = hasTableOutsideFence(original, 'features');
+  let prepared = original;
+  if (hasUserFeatures) {
+    const feature = ensureManagedBooleanInTable(prepared, 'features', 'hooks', true);
+    if (feature.status === 'conflict') {
+      return { installed: false, reason: feature.reason };
+    }
+    prepared = feature.text;
+  }
+
+  let includeNotify = !hasTopLevelKeyOutsideFence(prepared, 'notify');
   // OTel exporter stays POSIX-only for now — deliberately omitted on
   // win32 (unverified there); lifecycle hooks + notify carry the signal.
-  const includeOtel = platform !== 'win32' && !hasTableOutsideFence(original, 'otel');
+  const includeOtel = platform !== 'win32' && !hasTableOutsideFence(prepared, 'otel');
 
   let warning: string | undefined;
   const notifyScriptPath = opts.notifyScriptPath ?? DEFAULT_WINDOWS_NOTIFY_SCRIPT_PATH;
@@ -368,6 +381,7 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
 
   const otelEndpoint = includeOtel ? buildOtelEndpoint(opts.daemonHttpPort) : undefined;
   const body = managedBlockBody({
+    includeFeatures: !hasUserFeatures,
     includeNotify,
     includeOtel,
     otelEndpoint,
@@ -375,7 +389,7 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
     platform,
     notifyScriptPath,
   });
-  const updated = applyManagedBlock(original, body);
+  const updated = applyManagedBlock(prepared, body);
 
   if (updated === original) {
     return { installed: true, warning };
@@ -397,7 +411,7 @@ export function uninstallCodexHooks(opts: { configPath?: string; notifyScriptPat
   const path = opts.configPath ?? DEFAULT_CODEX_CONFIG_PATH;
   if (!existsSync(path)) return;
   const original = readText(path);
-  const stripped = removeManagedBlock(original);
+  const stripped = removeManagedBooleanInTable(removeManagedBlock(original));
   if (stripped !== original) writeTextAtomic(stripped, path);
 }
 

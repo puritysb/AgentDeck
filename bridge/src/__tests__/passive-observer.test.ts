@@ -3,8 +3,10 @@ import {
   isAntigravityProcessCommand,
   parseClaudeTranscript,
   parseCodexRollout,
+  parseLsofRolloutLists,
   parseLsofRollouts,
   parseProcessTable,
+  isCodexDesktopAppServerCommand,
 } from '../passive-observer.js';
 
 function jsonl(records: unknown[]): string {
@@ -186,16 +188,86 @@ describe('passive-observer parsers', () => {
     expect(parseCodexRollout(resumed).state).toBe('processing');
   });
 
+  it('identifies top-level Codex Desktop rollouts without promoting subagents', () => {
+    const desktop = parseCodexRollout(jsonl([{
+      type: 'session_meta',
+      payload: {
+        id: 'desktop-session-1',
+        cwd: '/Users/example/github/AgentDeck',
+        timestamp: '2026-07-11T01:00:00.000Z',
+        originator: 'Codex Desktop',
+        source: 'vscode',
+      },
+    }]));
+    const subagent = parseCodexRollout(jsonl([{
+      type: 'session_meta',
+      payload: {
+        id: 'desktop-subagent-1',
+        originator: 'Codex Desktop',
+        parent_thread_id: 'desktop-session-1',
+        source: { subagent: { other: 'guardian' } },
+      },
+    }]));
+
+    expect(desktop).toEqual(expect.objectContaining({
+      originator: 'Codex Desktop',
+      source: 'vscode',
+      isSubagent: false,
+    }));
+    expect(subagent.isSubagent).toBe(true);
+  });
+
+  it('keeps a Codex Desktop turn processing until task_complete', () => {
+    const activeRecords = [
+      { type: 'event_msg', payload: { type: 'task_started' } },
+      { type: 'event_msg', payload: { type: 'agent_message' } },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'desktop-call-1',
+          name: 'functions.exec',
+          input: JSON.stringify({ cmd: 'pnpm build' }),
+        },
+      },
+      {
+        type: 'response_item',
+        payload: { type: 'custom_tool_call_output', call_id: 'desktop-call-1' },
+      },
+    ];
+
+    expect(parseCodexRollout(jsonl(activeRecords)).state).toBe('processing');
+    expect(parseCodexRollout(jsonl([
+      ...activeRecords,
+      { type: 'event_msg', payload: { type: 'task_complete' } },
+    ])).state).toBe('idle');
+  });
+
+  it('recognizes only the Codex Desktop app-server command', () => {
+    expect(isCodexDesktopAppServerCommand(
+      '/Applications/Codex.app/Contents/Resources/codex -c features.code_mode_host=true app-server --analytics-default-enabled',
+    )).toBe(true);
+    expect(isCodexDesktopAppServerCommand('/opt/homebrew/bin/codex app-server --listen stdio://')).toBe(false);
+    expect(isCodexDesktopAppServerCommand('/opt/homebrew/bin/codex')).toBe(false);
+  });
+
   it('maps lsof field output to Codex rollout files by pid', () => {
-    const rollouts = parseLsofRollouts([
+    const output = [
       'p123',
       'n/Users/example/.codex/sessions/2026/04/26/rollout-abc.jsonl',
+      'n/Users/example/.codex/sessions/2026/04/26/rollout-abc-2.jsonl',
       'p456',
       'n/Users/example/.codex/config.toml',
       'n/Users/example/.codex/sessions/2026/04/26/rollout-def.jsonl',
-    ].join('\n'));
+    ].join('\n');
+    const rolloutLists = parseLsofRolloutLists(output);
+    const rollouts = parseLsofRollouts(output);
 
-    expect(rollouts.get(123)).toBe('/Users/example/.codex/sessions/2026/04/26/rollout-abc.jsonl');
+    expect(rolloutLists.get(123)).toEqual([
+      '/Users/example/.codex/sessions/2026/04/26/rollout-abc.jsonl',
+      '/Users/example/.codex/sessions/2026/04/26/rollout-abc-2.jsonl',
+    ]);
+    expect(rollouts.get(123)).toBe('/Users/example/.codex/sessions/2026/04/26/rollout-abc-2.jsonl');
     expect(rollouts.get(456)).toBe('/Users/example/.codex/sessions/2026/04/26/rollout-def.jsonl');
   });
 

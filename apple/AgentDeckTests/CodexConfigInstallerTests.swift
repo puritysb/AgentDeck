@@ -120,6 +120,44 @@ final class CodexConfigInstallerTests: XCTestCase {
         XCTAssertFalse(body.contains("[otel.trace_exporter.otlp-http]"))
     }
 
+    func testUserFeaturesMergeRoundtripPreservesExistingKeys() {
+        let original = """
+        [features]
+        js_repl = true
+        memories = true
+
+        [projects."/Users/me/project"]
+        trust_level = "trusted"
+        """
+        let feature = MiniToml.ensureManagedBoolean(
+            in: original,
+            table: "features",
+            key: "hooks",
+            value: true
+        )
+        XCTAssertEqual(feature.status, .inserted)
+
+        let body = CodexConfigInstaller.managedBlockBody(
+            includeFeatures: false,
+            includeNotify: true,
+            includeOtel: true,
+            otelEndpoint: "http://127.0.0.1:9120/otel/v1/traces"
+        )
+        XCTAssertFalse(body.contains("[features]"))
+        XCTAssertFalse(body.contains("hooks = true"))
+
+        let installed = MiniToml.applyManagedBlock(in: feature.text, body: body)
+        XCTAssertEqual(installed.components(separatedBy: "[features]").count - 1, 1)
+        XCTAssertTrue(installed.contains("js_repl = true"))
+        XCTAssertTrue(installed.contains("memories = true"))
+        XCTAssertTrue(installed.contains("[[hooks.Stop]]"))
+
+        let stripped = MiniToml.removeManagedBoolean(
+            in: MiniToml.removeManagedBlock(in: installed)
+        )
+        XCTAssertEqual(stripped, original)
+    }
+
     /// User-authored notify must be detected so installIfNeeded can omit
     /// the optional notify fallback instead of producing duplicate keys.
     func testUserNotifyConflictDetected() {

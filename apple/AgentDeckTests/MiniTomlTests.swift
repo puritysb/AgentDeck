@@ -77,6 +77,66 @@ final class MiniTomlTests: XCTestCase {
         XCTAssertEqual(MiniToml.removeManagedBlock(in: original), original)
     }
 
+    // MARK: - managed boolean in user table
+
+    func testManagedBooleanAddsAndRemovesOnlyOwnedKey() {
+        let original = """
+        [features]
+        js_repl = true
+        memories = true
+
+        [projects."/Users/me/project"]
+        trust_level = "trusted"
+        """
+        let result = MiniToml.ensureManagedBoolean(
+            in: original,
+            table: "features",
+            key: "hooks",
+            value: true
+        )
+
+        XCTAssertEqual(result.status, .inserted)
+        XCTAssertTrue(result.text.contains(MiniToml.featureOpenFence))
+        XCTAssertTrue(result.text.contains("hooks = true"))
+        XCTAssertTrue(result.text.contains(MiniToml.featureCloseFence))
+        XCTAssertEqual(MiniToml.removeManagedBoolean(in: result.text), original)
+    }
+
+    func testManagedBooleanPreservesMatchingUserOwnedKey() {
+        let original = """
+        [features]
+        js_repl = true
+        hooks = true
+        """
+        let result = MiniToml.ensureManagedBoolean(
+            in: original,
+            table: "features",
+            key: "hooks",
+            value: true
+        )
+
+        XCTAssertEqual(result.status, .present)
+        XCTAssertEqual(result.text, original)
+        XCTAssertFalse(result.text.contains(MiniToml.featureOpenFence))
+    }
+
+    func testManagedBooleanRejectsExplicitConflict() {
+        let original = """
+        [features]
+        js_repl = true
+        hooks = false
+        """
+        let result = MiniToml.ensureManagedBoolean(
+            in: original,
+            table: "features",
+            key: "hooks",
+            value: true
+        )
+
+        XCTAssertEqual(result.status, .conflict("[features].hooks is already false"))
+        XCTAssertEqual(result.text, original)
+    }
+
     // MARK: - hasTopLevelKeyOutsideFence
 
     func testDetectsUserNotifyKey() {

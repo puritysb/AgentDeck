@@ -19,10 +19,11 @@
 //      Codex emits per-turn span telemetry over OTLP/HTTP. Forced to JSON
 //      because the daemon intentionally rejects protobuf at this route.
 //
-// Edits live inside a fenced block (see MiniToml) so user keys / comments /
-// profile tables / MCP server tables are preserved verbatim. If the user
-// already wrote their own `[features]` or `[hooks]` table we abort cleanly
-// rather than producing duplicate-table TOML.
+// Edits live inside fenced blocks (see MiniToml) so user keys / comments /
+// profile tables / MCP server tables are preserved verbatim. Existing
+// `[features]` tables receive only a separately-fenced `hooks = true`; an
+// explicit conflicting value or user-owned lifecycle `[hooks]` table aborts
+// cleanly rather than overriding user intent.
 
 import AppKit
 import Foundation
@@ -93,23 +94,35 @@ enum CodexConfigInstaller {
 
         let original = readText(at: url)
 
-        // Refuse to clobber user-authored lifecycle hook config. This
-        // line-mode editor cannot safely merge existing `[features]` or
-        // `[hooks]` tables without a real TOML parser, and duplicate tables
-        // would make Codex reject config.toml.
-        if MiniToml.hasTableOutsideFence(in: original, table: "features") {
-            DaemonLogger.shared.info("Codex config: user-authored `[features]` present — observation not installed")
-            AppPreferences.shared.codexConfigInstalled = false
-            return
-        }
+        // Existing lifecycle hook tables remain an ownership conflict. A
+        // plain user-authored `[features]` table is mergeable: add only
+        // `hooks = true` behind a dedicated fence and preserve every other
+        // feature byte-for-byte.
         if MiniToml.hasTableOutsideFence(in: original, table: "hooks") {
             DaemonLogger.shared.info("Codex config: user-authored `[hooks]` present — observation not installed")
             AppPreferences.shared.codexConfigInstalled = false
             return
         }
 
-        let includeNotify = !MiniToml.hasTopLevelKeyOutsideFence(in: original, key: "notify")
-        let includeOtel = !MiniToml.hasTableOutsideFence(in: original, table: "otel")
+        let hasUserFeatures = MiniToml.hasTableOutsideFence(in: original, table: "features")
+        var prepared = original
+        if hasUserFeatures {
+            let feature = MiniToml.ensureManagedBoolean(
+                in: prepared,
+                table: "features",
+                key: "hooks",
+                value: true
+            )
+            if case .conflict(let reason) = feature.status {
+                DaemonLogger.shared.info("Codex config: \(reason) — observation not installed")
+                AppPreferences.shared.codexConfigInstalled = false
+                return
+            }
+            prepared = feature.text
+        }
+
+        let includeNotify = !MiniToml.hasTopLevelKeyOutsideFence(in: prepared, key: "notify")
+        let includeOtel = !MiniToml.hasTableOutsideFence(in: prepared, table: "otel")
         if !includeNotify {
             DaemonLogger.shared.info("Codex config: user-authored `notify` present — installing lifecycle hooks without notify fallback")
         }
@@ -119,11 +132,12 @@ enum CodexConfigInstaller {
 
         let otelEndpoint = includeOtel ? buildOtelEndpoint(daemonHttpPort: daemonHttpPort) : nil
         let body = managedBlockBody(
+            includeFeatures: !hasUserFeatures,
             includeNotify: includeNotify,
             includeOtel: includeOtel,
             otelEndpoint: otelEndpoint
         )
-        let updated = MiniToml.applyManagedBlock(in: original, body: body)
+        let updated = MiniToml.applyManagedBlock(in: prepared, body: body)
         if updated == original {
             AppPreferences.shared.codexConfigInstalled = true
             return
@@ -157,7 +171,9 @@ enum CodexConfigInstaller {
         defer { url.stopAccessingSecurityScopedResource() }
 
         let original = readText(at: url)
-        let stripped = MiniToml.removeManagedBlock(in: original)
+        let stripped = MiniToml.removeManagedBoolean(
+            in: MiniToml.removeManagedBlock(in: original)
+        )
         if stripped != original {
             _ = writeText(stripped, to: url)
         }
@@ -246,16 +262,23 @@ enum CodexConfigInstaller {
     /// through `@testable` so schema regressions are caught without driving
     /// NSAlert / NSOpenPanel.
     static func managedBlockBody(
+        includeFeatures: Bool = true,
         includeNotify: Bool = true,
         includeOtel: Bool = true,
         otelEndpoint: String? = nil
     ) -> String {
-        var lines: [String] = [
+        var lines: [String] = []
+        if includeFeatures {
+            lines.append(contentsOf: [
+                "[features]",
+                "hooks = true",
+                "",
+            ])
+        }
+        lines.append(contentsOf: [
             "# Codex lifecycle hooks. Command hooks receive JSON on stdin;",
             "# each snippet forwards that stdin body unchanged to AgentDeck.",
-            "[features]",
-            "hooks = true",
-        ]
+        ])
 
         lines.append("")
         lines.append(contentsOf: buildLifecycleHookTables())

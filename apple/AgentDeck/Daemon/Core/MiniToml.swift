@@ -22,13 +22,26 @@ import Foundation
 enum MiniToml {
     static let openFence = "# >>> AgentDeck managed (do not edit) <<<"
     static let closeFence = "# <<< AgentDeck managed (do not edit) >>>"
+    static let featureOpenFence = "# >>> AgentDeck managed feature (do not edit) <<<"
+    static let featureCloseFence = "# <<< AgentDeck managed feature (do not edit) >>>"
+
+    enum ManagedBooleanStatus: Equatable {
+        case inserted
+        case present
+        case conflict(String)
+    }
+
+    struct ManagedBooleanResult {
+        let text: String
+        let status: ManagedBooleanStatus
+    }
 
     /// Replace the AgentDeck-managed fenced block (or append one when none
     /// exists). The body is wrapped between `openFence` / `closeFence` so
     /// `removeManagedBlock` can strip it cleanly later. Returns the full
     /// updated TOML text.
     static func applyManagedBlock(in text: String, body: String) -> String {
-        var lines = splitLines(text)
+        var lines = text.isEmpty ? [] : splitLines(text)
         let fenceRange = locateFence(in: lines)
 
         let bodyLines = body.isEmpty ? [] : splitLines(body)
@@ -45,10 +58,10 @@ enum MiniToml {
             }
             lines.replaceSubrange(range, with: replacement)
         } else {
-            // Pad with a blank line for readability when appending to a
-            // non-empty file. Avoids glueing our fence onto the user's
-            // last key.
-            if !lines.isEmpty, !(lines.last?.isEmpty ?? true) {
+            // Always add one separator line. If the user's file already ends
+            // in a newline, splitLines has its own trailing empty element;
+            // retaining both lets removeManagedBlock restore that byte.
+            if !text.isEmpty {
                 lines.append("")
             }
             lines.append(contentsOf: replacement)
@@ -61,15 +74,112 @@ enum MiniToml {
     static func removeManagedBlock(in text: String) -> String {
         var lines = splitLines(text)
         guard let range = locateFence(in: lines) else { return text }
+        let fenceWasAtEnd = range.upperBound == lines.count
         lines.removeSubrange(range)
-        // Collapse a trailing blank line that we may have inserted in
-        // applyManagedBlock so removeManagedBlock truly returns the file
-        // to its pre-apply shape.
-        while let last = lines.last, last.isEmpty {
+        // Remove exactly the separator inserted by applyManagedBlock. Any
+        // second trailing empty belongs to the user's original final newline.
+        if fenceWasAtEnd, let last = lines.last, last.isEmpty {
             lines.removeLast()
         }
-        // Restore a single trailing newline if the original ended with one.
-        if text.hasSuffix("\n") { lines.append("") }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Add a boolean key to an existing user-owned table without reopening
+    /// the table or taking ownership of its other keys. The dedicated feature
+    /// fence lets uninstall remove only the value AgentDeck inserted.
+    static func ensureManagedBoolean(
+        in text: String,
+        table: String,
+        key: String,
+        value: Bool
+    ) -> ManagedBooleanResult {
+        var lines = splitLines(text)
+        let escapedTable = NSRegularExpression.escapedPattern(for: table)
+        let escapedKey = NSRegularExpression.escapedPattern(for: key)
+        guard let tableRegex = try? NSRegularExpression(
+            pattern: "^\\s*\\[\\s*\(escapedTable)\\s*\\]\\s*$"
+        ), let keyRegex = try? NSRegularExpression(
+            pattern: "^\\s*\(escapedKey)\\s*=\\s*([^#]+?)(?:\\s+#.*)?$"
+        ) else {
+            return ManagedBooleanResult(text: text, status: .conflict("invalid table or key"))
+        }
+
+        var insideMainFence = false
+        var tableStart: Int?
+        for index in lines.indices {
+            if lines[index] == openFence { insideMainFence = true; continue }
+            if lines[index] == closeFence { insideMainFence = false; continue }
+            let ns = lines[index] as NSString
+            if !insideMainFence,
+               tableRegex.firstMatch(
+                in: lines[index],
+                range: NSRange(location: 0, length: ns.length)
+               ) != nil {
+                tableStart = index
+                break
+            }
+        }
+
+        guard let tableStart else {
+            return ManagedBooleanResult(
+                text: text,
+                status: .conflict("user-authored [\(table)] cannot be merged safely")
+            )
+        }
+
+        var tableEnd = lines.count
+        if tableStart + 1 < lines.count {
+            for index in (tableStart + 1)..<lines.count {
+                if lines[index] == openFence || isTableHeader(lines[index]) {
+                    tableEnd = index
+                    break
+                }
+            }
+        }
+
+        if tableStart + 1 < tableEnd {
+            for index in (tableStart + 1)..<tableEnd {
+                let ns = lines[index] as NSString
+                guard let match = keyRegex.firstMatch(
+                    in: lines[index],
+                    range: NSRange(location: 0, length: ns.length)
+                ), match.numberOfRanges > 1 else { continue }
+                let actual = ns.substring(with: match.range(at: 1))
+                    .trimmingCharacters(in: .whitespaces)
+                let expected = value ? "true" : "false"
+                if actual == expected {
+                    return ManagedBooleanResult(text: text, status: .present)
+                }
+                return ManagedBooleanResult(
+                    text: text,
+                    status: .conflict("[\(table)].\(key) is already \(actual)")
+                )
+            }
+        }
+
+        var insertionIndex = tableEnd
+        while insertionIndex > tableStart + 1,
+              lines[insertionIndex - 1].trimmingCharacters(in: .whitespaces).isEmpty {
+            insertionIndex -= 1
+        }
+        lines.insert(contentsOf: [
+            featureOpenFence,
+            "\(key) = \(value ? "true" : "false")",
+            featureCloseFence,
+        ], at: insertionIndex)
+        return ManagedBooleanResult(text: lines.joined(separator: "\n"), status: .inserted)
+    }
+
+    /// Remove only the boolean key block inserted by
+    /// `ensureManagedBoolean`. User-owned values are never touched.
+    static func removeManagedBoolean(in text: String) -> String {
+        var lines = splitLines(text)
+        guard let start = lines.firstIndex(of: featureOpenFence),
+              start + 1 < lines.count,
+              let end = lines[(start + 1)..<lines.count].firstIndex(of: featureCloseFence) else {
+            return text
+        }
+        lines.removeSubrange(start..<(end + 1))
         return lines.joined(separator: "\n")
     }
 

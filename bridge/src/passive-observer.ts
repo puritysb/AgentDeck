@@ -98,6 +98,18 @@ const MAX_TAIL_BYTES = 512 * 1024;
 const MAX_SAMPLE_BYTES = 1024 * 1024;
 /** Rollout silence (no writes) after which an end-event-less turn is presumed dead. */
 const STALE_TURN_MS = 10 * 60 * 1000;
+const MAX_CODEX_DESKTOP_ROLLOUTS = 32;
+
+export interface CodexTranscriptSummary extends TranscriptSummary {
+  sessionId?: string;
+  cwd?: string;
+  startedAt?: number;
+  effort?: string;
+  originator?: string;
+  source?: string;
+  isSubagent: boolean;
+  hasPendingCalls?: boolean;
+}
 
 export class PassiveSessionObserver {
   private lastScanAt = 0;
@@ -236,12 +248,15 @@ export function parseClaudeTranscript(raw: string): TranscriptSummary {
   };
 }
 
-export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?: string; cwd?: string; startedAt?: number; effort?: string; hasPendingCalls?: boolean } {
+export function parseCodexRollout(raw: string): CodexTranscriptSummary {
   let sessionId: string | undefined;
   let cwd: string | undefined;
   let startedAt: number | undefined;
   let modelName: string | undefined;
   let effort: string | undefined;
+  let originator: string | undefined;
+  let source: string | undefined;
+  let isSubagent = false;
   let currentTask: string | undefined;
   let goal: string | undefined;
   let totalTokens = 0;
@@ -265,6 +280,10 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
       sessionId = stringAt(payload, 'id') ?? sessionId;
       cwd = stringAt(payload, 'cwd') ?? cwd;
       startedAt = timestampMs(stringAt(payload, 'timestamp')) ?? startedAt;
+      originator = stringAt(payload, 'originator') ?? originator;
+      source = stringAt(payload, 'source') ?? source;
+      const sourceObject = objectAt(payload, 'source');
+      isSubagent = isSubagent || !!objectAt(sourceObject ?? {}, 'subagent') || !!stringAt(payload, 'parent_thread_id');
     } else if (type === 'event_msg') {
       const payload = objectAt(value, 'payload');
       if (!payload) continue;
@@ -324,14 +343,17 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
     } else if (type === 'response_item') {
       const payload = objectAt(value, 'payload');
       if (!payload) continue;
-      if (stringAt(payload, 'type') === 'function_call') {
+      const responseType = stringAt(payload, 'type');
+      if (responseType === 'function_call' || responseType === 'custom_tool_call') {
         const name = stringAt(payload, 'name') ?? 'tool';
-        const arg = extractCodexToolArg(stringAt(payload, 'arguments') ?? '');
+        const arg = extractCodexToolArg(
+          stringAt(payload, 'arguments') ?? stringAt(payload, 'input') ?? '',
+        );
         const task = arg ? `${name} ${arg}` : name;
         const callId = stringAt(payload, 'call_id');
         if (callId) pendingCalls.set(callId, task);
         currentTask = task;
-      } else if (stringAt(payload, 'type') === 'function_call_output') {
+      } else if (responseType === 'function_call_output' || responseType === 'custom_tool_call_output') {
         const callId = stringAt(payload, 'call_id');
         if (callId) pendingCalls.delete(callId);
         currentTask = lastMapValue(pendingCalls);
@@ -353,6 +375,9 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
     startedAt,
     modelName: effort && modelName ? `${modelName} ${effort}` : modelName,
     effort,
+    originator,
+    source,
+    isSubagent,
     state,
     currentTask,
     goal,
@@ -413,47 +438,56 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
 async function collectCodexSessions(processes: ProcInfo[]): Promise<ObservedSession[]> {
   const codex = processes.filter((p) =>
     cmdHasBinary(p.command, 'codex') &&
-    !p.command.includes('app-server') &&
     !p.command.includes('grep')
   );
-  const rolloutByPid = await mapCodexPidsToRollouts(codex.map((p) => p.pid));
+  const rolloutsByPid = await mapCodexPidsToRolloutLists(codex.map((p) => p.pid));
   const sessions: ObservedSession[] = [];
   for (const proc of codex) {
-    const rollout = rolloutByPid.get(proc.pid);
-    if (!rollout) continue;
-    const sample = readFileHeadAndTail(rollout, 256 * 1024, MAX_SAMPLE_BYTES);
-    if (!sample) continue;
-    const parsed = parseCodexRollout(sample);
-    // Ghost backstop: a turn whose end event never made it into the rollout
-    // (killed mid-turn, writer race) would read as processing forever. A live
-    // turn between tool calls writes the rollout every few seconds, so a long
-    // silence with no in-flight tool means the turn is dead. In-flight tools
-    // (pending call) are exempt — a quiet 10-minute build is legitimate.
-    let state = parsed.state;
-    if (state === 'processing' && !parsed.hasPendingCalls && rolloutAgeMs(rollout) > STALE_TURN_MS) {
-      state = 'idle';
+    const isDesktop = isCodexDesktopAppServerCommand(proc.command);
+    if (proc.command.includes('app-server') && !isDesktop) continue;
+    const rollouts = isDesktop
+      ? newestRegularFiles(rolloutsByPid.get(proc.pid) ?? [], MAX_CODEX_DESKTOP_ROLLOUTS)
+      : (rolloutsByPid.get(proc.pid) ?? []).slice(-1);
+    for (const rollout of rollouts) {
+      const sample = readFileHeadAndTail(rollout, 256 * 1024, MAX_SAMPLE_BYTES);
+      if (!sample) continue;
+      const parsed = parseCodexRollout(sample);
+      if (isDesktop && (parsed.originator !== 'Codex Desktop' || parsed.isSubagent)) continue;
+      // Ghost backstop: a turn whose end event never made it into the rollout
+      // (killed mid-turn, writer race) would read as processing forever. A live
+      // turn between tool calls writes the rollout every few seconds, so a long
+      // silence with no in-flight tool means the turn is dead. In-flight tools
+      // (pending call) are exempt — a quiet 10-minute build is legitimate.
+      let state = parsed.state;
+      if (state === 'processing' && !parsed.hasPendingCalls && rolloutAgeMs(rollout) > STALE_TURN_MS) {
+        state = 'idle';
+      }
+      const sessionId = parsed.sessionId ?? String(proc.pid);
+      const cwd = parsed.cwd;
+      sessions.push({
+        id: isDesktop ? `observed:codex-app:${sessionId}` : `observed:codex:${sessionId}`,
+        port: 0,
+        pid: proc.pid,
+        projectName: cwd ? projectNameFromCwd(cwd) : isDesktop ? 'Codex App' : 'Codex',
+        agentType: isDesktop ? 'codex-app' : 'codex-cli',
+        alive: true,
+        state,
+        modelName: parsed.modelName,
+        startedAt: parsed.startedAt ? new Date(parsed.startedAt).toISOString() : new Date().toISOString(),
+        controlMode: 'observed',
+        cwd,
+        currentTask: parsed.currentTask,
+        goal: parsed.goal,
+        contextPercent: parsed.contextPercent,
+        totalTokens: parsed.totalTokens,
+      });
     }
-    const sessionId = parsed.sessionId ?? String(proc.pid);
-    const cwd = parsed.cwd;
-    sessions.push({
-      id: `observed:codex:${sessionId}`,
-      port: 0,
-      pid: proc.pid,
-      projectName: cwd ? projectNameFromCwd(cwd) : 'Codex',
-      agentType: 'codex-cli',
-      alive: true,
-      state,
-      modelName: parsed.modelName,
-      startedAt: parsed.startedAt ? new Date(parsed.startedAt).toISOString() : new Date().toISOString(),
-      controlMode: 'observed',
-      cwd,
-      currentTask: parsed.currentTask,
-      goal: parsed.goal,
-      contextPercent: parsed.contextPercent,
-      totalTokens: parsed.totalTokens,
-    });
   }
   return sessions;
+}
+
+export function isCodexDesktopAppServerCommand(command: string): boolean {
+  return command.includes('/Codex.app/Contents/Resources/codex') && command.includes(' app-server');
 }
 
 /**
@@ -580,7 +614,7 @@ function dedupeObservedSessions(
 
   return observed.filter((session) => {
     if (managedIds.has(session.id)) return false;
-    const rawId = session.id.replace(/^observed:(?:claude|codex|opencode|antigravity):/, '');
+    const rawId = session.id.replace(/^observed:(?:claude|codex-app|codex|opencode|antigravity):/, '');
     if (managedIds.has(rawId)) return false;
     return !managedPids.some((pid) => pid === session.pid || isDescendantOf(session.pid, pid, byPid));
   });
@@ -640,17 +674,18 @@ function findClaudeTranscript(configDirs: string[], cwd: string, sessionId: stri
   return null;
 }
 
-async function mapCodexPidsToRollouts(pids: number[]): Promise<Map<number, string>> {
+async function mapCodexPidsToRolloutLists(pids: number[]): Promise<Map<number, string[]>> {
   if (pids.length === 0) return new Map();
   if (process.platform === 'linux') {
-    const map = new Map<number, string>();
+    const map = new Map<number, string[]>();
     for (const pid of pids) {
       try {
         for (const fd of readdirSync(`/proc/${pid}/fd`)) {
           const path = readlinkSync(`/proc/${pid}/fd/${fd}`);
           if (isCodexRolloutPath(path)) {
-            map.set(pid, path);
-            break;
+            const paths = map.get(pid);
+            if (paths) paths.push(path);
+            else map.set(pid, [path]);
           }
         }
       } catch {
@@ -667,24 +702,54 @@ async function mapCodexPidsToRollouts(pids: number[]): Promise<Map<number, strin
       timeout: 2_000,
       maxBuffer: 2 * 1024 * 1024,
     });
-    return parseLsofRollouts(stdout);
+    return parseLsofRolloutLists(stdout);
   } catch {
     return new Map();
   }
 }
 
 export function parseLsofRollouts(output: string): Map<number, string> {
-  const map = new Map<number, string>();
+  return new Map(
+    [...parseLsofRolloutLists(output)].flatMap(([pid, paths]) => {
+      const path = paths.at(-1);
+      return path ? [[pid, path] as const] : [];
+    }),
+  );
+}
+
+export function parseLsofRolloutLists(output: string): Map<number, string[]> {
+  const map = new Map<number, string[]>();
   let currentPid: number | null = null;
   for (const line of output.split('\n')) {
     if (line.startsWith('p')) {
       currentPid = Number(line.slice(1));
     } else if (line.startsWith('n') && currentPid != null) {
       const path = line.slice(1);
-      if (isCodexRolloutPath(path)) map.set(currentPid, path);
+      if (!isCodexRolloutPath(path)) continue;
+      const paths = map.get(currentPid);
+      if (paths) paths.push(path);
+      else map.set(currentPid, [path]);
     }
   }
   return map;
+}
+
+function newestRegularFiles(paths: string[], limit: number): string[] {
+  return [...new Set(paths)]
+    .map((path) => ({ path, mtimeMs: regularFileMtime(path) }))
+    .filter((entry): entry is { path: string; mtimeMs: number } => entry.mtimeMs !== null)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, limit)
+    .map(({ path }) => path);
+}
+
+function regularFileMtime(path: string): number | null {
+  if (!safeRegularFile(path)) return null;
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return null;
+  }
 }
 
 function rolloutAgeMs(path: string): number {

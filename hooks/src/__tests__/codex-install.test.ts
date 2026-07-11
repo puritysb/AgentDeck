@@ -5,11 +5,15 @@ import { join } from 'path';
 import {
   applyManagedBlock,
   removeManagedBlock,
+  ensureManagedBooleanInTable,
+  removeManagedBooleanInTable,
   hasTopLevelKeyOutsideFence,
   hasTableOutsideFence,
   quoted,
   OPEN_FENCE,
   CLOSE_FENCE,
+  FEATURE_OPEN_FENCE,
+  FEATURE_CLOSE_FENCE,
 } from '../codex-mini-toml.js';
 import {
   managedBlockBody,
@@ -113,6 +117,42 @@ describe('codex-mini-toml: removeManagedBlock', () => {
   it('is idempotent without fence', () => {
     const original = 'model = "gpt-5"\n';
     expect(removeManagedBlock(original)).toBe(original);
+  });
+});
+
+describe('codex-mini-toml: managed boolean in user table', () => {
+  const userFeatures = [
+    '[features]',
+    'js_repl = true',
+    'memories = true',
+    '',
+    '[projects."/Users/me/project"]',
+    'trust_level = "trusted"',
+  ].join('\n');
+
+  it('adds and removes only the managed key', () => {
+    const added = ensureManagedBooleanInTable(userFeatures, 'features', 'hooks', true);
+    expect(added.status).toBe('inserted');
+    expect(added.text).toContain(FEATURE_OPEN_FENCE);
+    expect(added.text).toContain('hooks = true');
+    expect(added.text).toContain(FEATURE_CLOSE_FENCE);
+    expect(removeManagedBooleanInTable(added.text)).toBe(userFeatures);
+  });
+
+  it('preserves a matching user-owned key without adding a fence', () => {
+    const original = userFeatures.replace('memories = true', 'memories = true\nhooks = true');
+    const result = ensureManagedBooleanInTable(original, 'features', 'hooks', true);
+    expect(result.status).toBe('present');
+    expect(result.text).toBe(original);
+    expect(result.text).not.toContain(FEATURE_OPEN_FENCE);
+  });
+
+  it('reports an explicit conflicting value without changing text', () => {
+    const original = userFeatures.replace('memories = true', 'memories = true\nhooks = false');
+    const result = ensureManagedBooleanInTable(original, 'features', 'hooks', true);
+    expect(result.status).toBe('conflict');
+    expect(result.reason).toContain('already false');
+    expect(result.text).toBe(original);
   });
 });
 
@@ -309,6 +349,13 @@ describe('codex-install: managedBlockBody', () => {
     expect(body).not.toContain('notify =');
     expect(body).not.toContain('[otel.trace_exporter.otlp-http]');
   });
+
+  it('omits the features table when merged into a user-owned table', () => {
+    const body = managedBlockBody({ includeFeatures: false });
+    expect(body).not.toContain('[features]');
+    expect(body).not.toContain('hooks = true');
+    expect(body).toContain('[[hooks.Stop]]');
+  });
 });
 
 // ─── codex-install: end-to-end file I/O ─────────────────────────────────
@@ -353,11 +400,51 @@ describe('codex-install: install / uninstall (file I/O)', () => {
     expect(text).toContain(OPEN_FENCE);
   });
 
-  it('skips when user already has [features] table outside fence', () => {
-    writeFileSync(configPath, `[features]\nhooks = true\n`, 'utf-8');
-    const result = installCodexHooksIfNeeded({ configPath, notifyScriptPath });
+  it('merges into a user [features] table and uninstall restores it byte-for-byte', () => {
+    const userText = [
+      '[features]',
+      'js_repl = true',
+      'memories = true',
+      '',
+      '[projects."/Users/me/project"]',
+      'trust_level = "trusted"',
+      '',
+    ].join('\n');
+    writeFileSync(configPath, userText, 'utf-8');
+
+    const result = installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120 });
+    expect(result.installed).toBe(true);
+    const installed = readFileSync(configPath, 'utf-8');
+    expect(installed.match(/^\[features\]$/gm)).toHaveLength(1);
+    expect(installed).toContain('js_repl = true');
+    expect(installed).toContain('memories = true');
+    expect(installed).toContain(FEATURE_OPEN_FENCE);
+    expect(installed).toContain('hooks = true');
+    const managed = installed.split(OPEN_FENCE)[1].split(CLOSE_FENCE)[0];
+    expect(managed).not.toContain('[features]');
+    expect(managed).toContain('[[hooks.Stop]]');
+
+    uninstallCodexHooks({ configPath });
+    expect(readFileSync(configPath, 'utf-8')).toBe(userText);
+  });
+
+  it('preserves a user-owned hooks = true across install and uninstall', () => {
+    const userText = `[features]\njs_repl = true\nhooks = true\n`;
+    writeFileSync(configPath, userText, 'utf-8');
+    const result = installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120 });
+    expect(result.installed).toBe(true);
+    expect(readFileSync(configPath, 'utf-8')).not.toContain(FEATURE_OPEN_FENCE);
+    uninstallCodexHooks({ configPath });
+    expect(readFileSync(configPath, 'utf-8')).toBe(userText);
+  });
+
+  it('skips an explicit user-owned hooks = false without changing the file', () => {
+    const userText = `[features]\njs_repl = true\nhooks = false\n`;
+    writeFileSync(configPath, userText, 'utf-8');
+    const result = installCodexHooksIfNeeded({ configPath });
     expect(result.installed).toBe(false);
-    expect(result.reason).toContain('[features]');
+    expect(result.reason).toContain('already false');
+    expect(readFileSync(configPath, 'utf-8')).toBe(userText);
   });
 
   it('skips when user already has [hooks] table outside fence', () => {
@@ -473,6 +560,14 @@ describe('codex-install: install / uninstall (file I/O)', () => {
     installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120, notifyScriptPath });
     const secondStat = readFileSync(configPath, 'utf-8');
     expect(secondStat).toBe(firstStat);
+  });
+
+  it('install into user features is idempotent', () => {
+    writeFileSync(configPath, `[features]\njs_repl = true\nmemories = true\n`, 'utf-8');
+    installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120 });
+    const first = readFileSync(configPath, 'utf-8');
+    installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120 });
+    expect(readFileSync(configPath, 'utf-8')).toBe(first);
   });
 
   it('preserves Codex hook trust state across reinstall', () => {

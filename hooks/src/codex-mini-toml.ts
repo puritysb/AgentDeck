@@ -19,13 +19,21 @@
 
 export const OPEN_FENCE = '# >>> AgentDeck managed (do not edit) <<<';
 export const CLOSE_FENCE = '# <<< AgentDeck managed (do not edit) >>>';
+export const FEATURE_OPEN_FENCE = '# >>> AgentDeck managed feature (do not edit) <<<';
+export const FEATURE_CLOSE_FENCE = '# <<< AgentDeck managed feature (do not edit) >>>';
+
+export interface ManagedBooleanResult {
+  text: string;
+  status: 'inserted' | 'present' | 'conflict';
+  reason?: string;
+}
 
 /** Replace the AgentDeck-managed fenced block (or append one when none
  *  exists). The body is wrapped between OPEN_FENCE / CLOSE_FENCE so
  *  removeManagedBlock can strip it cleanly later. Returns the full
  *  updated TOML text. */
 export function applyManagedBlock(text: string, body: string): string {
-  const lines = splitLines(text);
+  const lines = text.length === 0 ? [] : splitLines(text);
   const fenceRange = locateFence(lines);
 
   const bodyLines = body.length === 0 ? [] : splitLines(body);
@@ -40,9 +48,10 @@ export function applyManagedBlock(text: string, body: string): string {
     }
     lines.splice(fenceRange.start, fenceRange.end - fenceRange.start, ...replacement);
   } else {
-    // Pad with a blank line for readability when appending to a non-empty
-    // file. Avoids glueing our fence onto the user's last key.
-    if (lines.length > 0 && lines[lines.length - 1] !== '') {
+    // Always add one separator line. If the user's file already ends in a
+    // newline, splitLines has its own trailing empty element; retaining both
+    // lets removeManagedBlock restore that final newline byte-for-byte.
+    if (text.length > 0) {
       lines.push('');
     }
     lines.push(...replacement);
@@ -56,15 +65,90 @@ export function removeManagedBlock(text: string): string {
   const lines = splitLines(text);
   const fenceRange = locateFence(lines);
   if (!fenceRange) return text;
+  const fenceWasAtEnd = fenceRange.end === lines.length;
   lines.splice(fenceRange.start, fenceRange.end - fenceRange.start);
-  // Collapse a trailing blank line that we may have inserted in
-  // applyManagedBlock so removeManagedBlock truly returns the file to
-  // its pre-apply shape.
-  while (lines.length > 0 && lines[lines.length - 1] === '') {
+  // Remove exactly the separator inserted by applyManagedBlock. Any second
+  // trailing empty element belongs to the user's original final newline.
+  if (fenceWasAtEnd && lines.length > 0 && lines[lines.length - 1] === '') {
     lines.pop();
   }
-  // Restore a single trailing newline if the original ended with one.
-  if (text.endsWith('\n')) lines.push('');
+  return lines.join('\n');
+}
+
+/** Add a boolean key to an existing user-owned TOML table without reopening
+ * that table or taking ownership of its other keys. The three-line feature
+ * fence lets uninstall remove only the value AgentDeck inserted. A matching
+ * user-owned value is preserved as-is; an explicit conflicting value aborts
+ * instead of overriding user intent. */
+export function ensureManagedBooleanInTable(
+  text: string,
+  table: string,
+  key: string,
+  value: boolean,
+): ManagedBooleanResult {
+  const lines = splitLines(text);
+  const tablePattern = new RegExp(`^\\s*\\[\\s*${escapeRegex(table)}\\s*\\]\\s*$`);
+  const keyPattern = new RegExp(`^\\s*${escapeRegex(key)}\\s*=\\s*([^#]+?)(?:\\s+#.*)?$`);
+  let insideMainFence = false;
+  let tableStart = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i] === OPEN_FENCE) { insideMainFence = true; continue; }
+    if (lines[i] === CLOSE_FENCE) { insideMainFence = false; continue; }
+    if (!insideMainFence && tablePattern.test(lines[i])) {
+      tableStart = i;
+      break;
+    }
+  }
+
+  if (tableStart === -1) {
+    return { text, status: 'conflict', reason: `user-authored [${table}] cannot be merged safely` };
+  }
+
+  let tableEnd = lines.length;
+  for (let i = tableStart + 1; i < lines.length; i++) {
+    if (lines[i] === OPEN_FENCE || isTableHeader(lines[i])) {
+      tableEnd = i;
+      break;
+    }
+  }
+
+  for (let i = tableStart + 1; i < tableEnd; i++) {
+    const match = lines[i].match(keyPattern);
+    if (!match) continue;
+    const actual = match[1].trim();
+    const expected = value ? 'true' : 'false';
+    if (actual === expected) return { text, status: 'present' };
+    return {
+      text,
+      status: 'conflict',
+      reason: `[${table}].${key} is already ${actual}`,
+    };
+  }
+
+  let insertionIndex = tableEnd;
+  while (insertionIndex > tableStart + 1 && lines[insertionIndex - 1].trim().length === 0) {
+    insertionIndex--;
+  }
+  lines.splice(
+    insertionIndex,
+    0,
+    FEATURE_OPEN_FENCE,
+    `${key} = ${value ? 'true' : 'false'}`,
+    FEATURE_CLOSE_FENCE,
+  );
+  return { text: lines.join('\n'), status: 'inserted' };
+}
+
+/** Remove only the boolean key block inserted by
+ * `ensureManagedBooleanInTable`. User-owned values are never touched. */
+export function removeManagedBooleanInTable(text: string): string {
+  const lines = splitLines(text);
+  const start = lines.indexOf(FEATURE_OPEN_FENCE);
+  if (start === -1) return text;
+  const end = lines.indexOf(FEATURE_CLOSE_FENCE, start + 1);
+  if (end === -1) return text;
+  lines.splice(start, end - start + 1);
   return lines.join('\n');
 }
 
