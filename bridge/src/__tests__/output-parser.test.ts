@@ -688,6 +688,26 @@ describe('OutputParser', () => {
       const opts: PromptOption[] = events[events.length - 1].options;
       expect(opts.map((o) => o.label)).toEqual(['Yes', 'Yes, allow all edits', 'No']);
     });
+
+    it('emits AWAITING when a spinner char and the ❯ prompt arrive in the SAME initial chunk', () => {
+      // First-chunk hole: the spinner-suppression branch must FALL THROUGH to option
+      // detection, not `return`. If a single PTY batch glues a status spinner char
+      // onto the navigable AskUserQuestion prompt, an early return would skip arming
+      // the option timer and AWAITING would never emit. The prompt must still surface.
+      const p = armParser();
+      vi.advanceTimersByTime(500); // clear boot idle timer
+      const events: any[] = [];
+      p.on('option_prompt', (d) => events.push(d));
+      p.on('permission_prompt', (d) => events.push(d));
+
+      // Spinner + question + ❯ options all in one feed() — no prior spinner chunk.
+      p.feed('✳ Cooking…\nWhich approach?\n❯ 1. Refactor now\n  2. Ship first\n  3. Ask me later\n');
+      vi.advanceTimersByTime(300);
+
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      const opts: PromptOption[] = events[events.length - 1].options;
+      expect(opts.map((o) => o.label)).toEqual(['Refactor now', 'Ship first', 'Ask me later']);
+    });
   });
 
   // === Idle Cancels Option Timer ===

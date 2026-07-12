@@ -461,34 +461,39 @@ export class OutputParser extends EventEmitter {
         // A spinner char while a ❯-marked navigable prompt is on screen is Claude
         // Code's concurrent status animation, NOT processing. Treating it as a
         // spinner here would cancel the pending option debounce below and leave the
-        // deck stuck at idle/processing instead of AWAITING. Ignore it and let the
-        // prompt path emit. (A bare numbered list without ❯ still cancels — see the
-        // "spinner cancels option timer" case.)
+        // deck stuck at idle/processing instead of AWAITING. Skip the spinner
+        // activation but DELIBERATELY fall through to the prompt/option detection
+        // below — never `return` — so AWAITING still arms even when the spinner and
+        // the ❯ prompt land in the SAME initial chunk (a first-chunk hole: returning
+        // here would skip option-timer arming and the prompt would never emit). (A
+        // bare numbered list without ❯ still cancels — see the "spinner cancels
+        // option timer" case.)
         if (this.bufferHasNavigablePrompt() || this.recentInteractivePrompt()) {
           // Re-arm from the buffer too, so a long-lived prompt keeps suppressing
           // even after its detection chunk aged out of the time window.
           if (this.bufferHasNavigablePrompt()) this.lastInteractivePromptAt = Date.now();
-          debug('Parser', 'spinner char ignored — navigable prompt on screen');
+          debug('Parser', 'spinner char ignored — navigable prompt on screen; falling through to prompt parsing');
+          // No return: control continues to the option/permission detection below.
+        } else {
+          if (!this.spinnerActive) {
+            this.spinnerActive = true;
+            this.clearSuggestion();
+            debug('Parser', 'EMIT spinner_start');
+            this.emit('spinner_start');
+          }
+          this.resetSpinnerTimer();
+          this.spinnerTimer = setTimeout(() => {
+            if (this.spinnerActive) {
+              this.spinnerActive = false;
+              debug('Parser', 'EMIT spinner_stop (debounced)');
+              this.emit('spinner_stop');
+            }
+          }, SPINNER_DEBOUNCE_MS);
+          // Cancel idle & option timers — we're processing now
+          this.resetIdleTimer();
+          this.resetOptionTimer();
           return;
         }
-        if (!this.spinnerActive) {
-          this.spinnerActive = true;
-          this.clearSuggestion();
-          debug('Parser', 'EMIT spinner_start');
-          this.emit('spinner_start');
-        }
-        this.resetSpinnerTimer();
-        this.spinnerTimer = setTimeout(() => {
-          if (this.spinnerActive) {
-            this.spinnerActive = false;
-            debug('Parser', 'EMIT spinner_stop (debounced)');
-            this.emit('spinner_stop');
-          }
-        }, SPINNER_DEBOUNCE_MS);
-        // Cancel idle & option timers — we're processing now
-        this.resetIdleTimer();
-        this.resetOptionTimer();
-        return;
       }
     }
 
