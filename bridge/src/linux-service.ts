@@ -33,6 +33,16 @@ export function getDaemonNodeTarget(): { node: string; cliJs: string } {
   return { node: process.execPath, cliJs: join(distDir, 'cli.js') };
 }
 
+/**
+ * The daemon's data directory — the same resolver the daemon itself uses
+ * (`AGENTDECK_DATA_DIR` override, else `~/.agentdeck`). Kept byte-identical to
+ * the inline resolution in session-registry.ts / apme/store.ts so the unit's
+ * WorkingDirectory always matches where the daemon actually reads/writes.
+ */
+export function getDataDir(): string {
+  return process.env.AGENTDECK_DATA_DIR || join(homedir(), '.agentdeck');
+}
+
 /** ~/.config/systemd/user (honors $XDG_CONFIG_HOME). */
 export function getUnitDir(): string {
   const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
@@ -44,9 +54,12 @@ export function getUnitPath(): string {
   return join(getUnitDir(), UNIT_FILE);
 }
 
-export function buildUnitFile(opts?: { node?: string; cliJs?: string }): string {
-  const { node, cliJs } = { ...getDaemonNodeTarget(), ...opts };
-  const workingDir = join(homedir(), '.agentdeck');
+export function buildUnitFile(opts?: { node?: string; cliJs?: string; workingDir?: string }): string {
+  const { node, cliJs, workingDir } = {
+    ...getDaemonNodeTarget(),
+    workingDir: getDataDir(),
+    ...opts,
+  };
   // cli.js quoted so paths with spaces survive; --foreground so the unit process
   // IS the daemon (lets Restart=on-failure track the real process).
   return `[Unit]
@@ -94,6 +107,10 @@ export function unitExists(): boolean {
  * D-Bus session).
  */
 export function installUnit(): void {
+  // Ensure the unit's WorkingDirectory exists — on a fresh install ~/.agentdeck
+  // (or the AGENTDECK_DATA_DIR override) may not exist yet, and systemd fails at
+  // the CHDIR step before Node starts if it's missing.
+  mkdirSync(getDataDir(), { recursive: true });
   mkdirSync(getUnitDir(), { recursive: true });
   writeFileSync(getUnitPath(), buildUnitFile(), 'utf-8');
   execSync('systemctl --user daemon-reload', { stdio: 'pipe' });
