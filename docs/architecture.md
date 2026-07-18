@@ -37,6 +37,18 @@ Core bridge architecture, adapter hierarchy, and module system. See [daemon.md](
 
 `bridge/src/modules/` — Pluggable `DeviceModule` interface with auto-detect. Modules include mDNS, serial, Pixoo, Timebox, and ADB. Timebox Mini Light is BLE (ISSC transparent-UART): the CLI daemon spawns `sync_ble.py`, while the App Store Swift daemon drives it natively through CoreBluetooth. D200H direct-HID was removed from both daemons; the **sole supported driver is `plugin-ulanzi/` running inside Ulanzi Studio**, with daemon connectivity derived from its WS presence. Session bridges never activate hardware modules — dashboard devices connect through the daemon. Session CLI flags are `--local` (all device modules off) and `--no-adb` only.
 
+## Swift daemon isolation (`@DaemonActor`)
+
+The macOS in-process daemon runs on its own global actor, **`DaemonActor`** (`apple/AgentDeck/Daemon/Core/DaemonActor.swift`) — **not** `@MainActor`. It is hosted inside the GUI app, so sharing the main executor meant SwiftUI rendering starved daemon service: a saturated main runloop left `/health` unanswered for 5s and stalled the daemon log for 24 minutes while the process stayed alive (2026-07-18).
+
+**Rule for new code**: a type that holds daemon state is `@DaemonActor`. UI-facing types stay `@MainActor` and are reached with `await`. Today `DaemonServer`, `StateMachine`, `ModuleManager`, `ApmeCollector`, `OpenCodeObserver` and `ESP32WifiOtaManager` are `@DaemonActor`; `DaemonVoiceAssistant` (AVAudioEngine / SFSpeechRecognizer / AVSpeechSynthesizer), `ReviewPanelPresenter` and `DaemonService` (`@Published`) stay `@MainActor`.
+
+A *global* actor rather than making `DaemonServer` an `actor`: the daemon is not one object, and its collaborators expose synchronous value-returning methods (`transition() -> Bool`, `activeTaskId`) taking non-Sendable `[String: Any]`. Independent actors would force `await` across ~105 call sites; plain classes have no isolation for `Task {}` to inherit. One shared global actor keeps calls between them synchronous and preserves isolation inheritance exactly as it behaved under `@MainActor`.
+
+**Trap — C callbacks.** A `@convention(c)` callback written *inline* inside an isolated method statically inherits that method's isolation. A function pointer cannot carry isolation, so Swift compiles an executor assertion into its entry; when the callback fires on some other queue the process aborts with `Incorrect actor executor assumption`. The IOKit power notification hit exactly this. Declare such callbacks at **file scope** (see `daemonWakeCallback` in `DaemonServer.swift`) and hop with `Task { @DaemonActor in … }`. Swift 6 mode verifies data-race safety but cannot see this — it is a runtime-only failure.
+
+Regression tests: `HTTPServerMainThreadStallTests` (transport must accept while main is blocked) and `DaemonActorIndependenceTests` (daemon work must progress while main is blocked).
+
 ## Terrarium rules SSOT (cross-platform behavior invariants)
 
 `shared/src/terrarium-rules.ts` is the single source of truth for terrarium **rules** — numeric invariants every rendering surface must agree on regardless of its own world model: the OpenClaw crayfish's unified dashboard home (0.78, 0.64), the idle floor-rester clear anchor (`clearMaxX` 0.62), the dashboard floor-rest strip, and the Antigravity idle-hover strip. Surface-specific *tuning* (per-board Y offsets, swim lanes, sprite sizes, TUI/Pixoo local homes) stays local to each platform.
