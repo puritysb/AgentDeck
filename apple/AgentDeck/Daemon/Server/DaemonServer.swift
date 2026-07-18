@@ -1782,22 +1782,13 @@ final class DaemonServer {
                 }
                 if let sid = json["sessionId"] as? String, !sid.isEmpty { sessionId = sid }
             }
-            // Both APME collectors track per-session active tasks (Claude
-            // Code hooks vs OpenClaw Gateway). Try gateway first because the
-            // macOS app's most common use is OpenClaw chats; fall back to
-            // the Claude collector when no gateway task is active. Returns
-            // 404 only when neither collector has anything to close.
-            let result: (closed: Bool, where: String) = await MainActor.run {
-                if let gw = self.apmeCollectorGateway,
-                   gw.closeTaskExternal(sessionId: sessionId, boundarySignal: signal, outcome: outcome) {
-                    return (true, "gateway")
-                }
-                if let cc = self.apmeCollector,
-                   cc.closeTaskExternal(sessionId: sessionId, boundarySignal: signal, outcome: outcome) {
-                    return (true, "claude")
-                }
-                return (false, "none")
-            }
+            // Single isolated call — see closeApmeTaskExternal for why the two
+            // collector reads must not be split across a suspension.
+            let result = await self.closeApmeTaskExternal(
+                sessionId: sessionId,
+                boundarySignal: signal,
+                outcome: outcome
+            )
             var responseBody: [String: Any] = ["closed": result.closed, "signal": signal, "source": result.where]
             if let outcome = outcome { responseBody["outcome"] = outcome }
             return .json(responseBody, status: result.closed ? 200 : 404)
@@ -2393,6 +2384,14 @@ final class DaemonServer {
     @MainActor
     private func handleClientConnect(_ conn: WebSocketConnection) {
         activeWSConnectionIds.insert(conn.id)
+        // ISOLATION INVARIANT: this burst suspends repeatedly (the 100 ms
+        // pacing sleeps plus timelineStore/usage fetches), and the connection
+        // can die — and `handleClientDisconnect` can run to completion — during
+        // ANY of them. Every suspension is therefore followed by a
+        // `guard !conn.isDisconnected`. If you add an `await` here, add the
+        // guard too before touching per-connection state; sends to a dead
+        // conn are harmless, but registration writes after one are exactly the
+        // leak `handleClientRegister` documents.
         Task { @MainActor [weak self] in
             guard let self = self else { return }
 
@@ -2702,6 +2701,16 @@ final class DaemonServer {
 
     // MARK: - Commands
 
+    /// ISOLATION INVARIANT: this function must stay SYNCHRONOUS.
+    ///
+    /// The "must run BEFORE …" comments below describe straight-line control
+    /// flow with early returns, not async ordering — their atomicity is free
+    /// only as long as no suspension point exists between the interception
+    /// branches and the gateway-consume block at the bottom. Adding an `await`
+    /// anywhere in this function reopens the race where the OpenClaw adapter
+    /// swallows a command that was meant for a session bridge or an observed
+    /// Claude session. If a branch needs async work, hand it to a `Task` rather
+    /// than making this function `async`.
     @MainActor
     private func handleCommand(_ cmd: [String: Any]) {
         guard let type = cmd["type"] as? String else { return }
@@ -5101,6 +5110,11 @@ final class DaemonServer {
     // MARK: - Gateway Lifecycle
 
     private func connectGatewayAdapter() {
+        // ISOLATION INVARIANT: the guard and the flag write below must stay in
+        // one synchronous isolated region. Do NOT introduce an `await` between
+        // them — a suspension there lets a second caller pass the guard before
+        // the flag is set and connect a duplicate adapter. This is a plain
+        // check-then-set, safe only because this function is synchronous.
         guard gatewayAdapter == nil, !gatewayConnecting else { return }
         gatewayConnecting = true
         DaemonLogger.shared.info("OpenClaw Gateway detected, connecting...")
@@ -7275,6 +7289,11 @@ final class DaemonServer {
     /// natural-language summary replaces the heuristic on the next paint.
     @MainActor
     private func refreshSessionActivity(_ s: DaemonSessionEntry, sig: String) {
+        // ISOLATION INVARIANT: the contains-check and the insert below must stay
+        // in one synchronous isolated region. Do NOT introduce an `await`
+        // between them — a suspension there lets a second call slip past the
+        // guard and spawn a duplicate FM labeling job for the same session.
+        // The matching `remove` lives in the Task's `defer` further down.
         guard !sessionActivityInflight.contains(s.id) else { return }
         // Nothing meaningful to label yet → keep the heuristic, don't spin up FM.
         guard (s.currentTool?.isEmpty == false) || (s.state?.hasPrefix("awaiting") == true) else { return }
@@ -7293,6 +7312,58 @@ final class DaemonServer {
             self.sessionActivityCache[s.id] = (sig, summary)
             self.broadcastSessionsList()
         }
+    }
+
+    // MARK: - APME external task close
+
+    /// Close whichever APME collector currently owns an active task for this
+    /// session — gateway first (the macOS app's most common use is OpenClaw
+    /// chats), then the Claude hook collector. Returns `false` only when
+    /// neither had anything to close.
+    ///
+    /// Both collector reads and their close attempts MUST stay inside this one
+    /// isolated method. The `/task/close` route used to inline them in a
+    /// `MainActor.run` block, which made the "same tick" atomicity an artifact
+    /// of where the daemon happened to be isolated. If the two reads were ever
+    /// split across a suspension, a task rotating in between would let us close
+    /// the wrong collector. Keeping it one synchronous isolated call makes that
+    /// impossible regardless of which executor the daemon runs on.
+    @MainActor
+    private func closeApmeTaskExternal(
+        sessionId: String?,
+        boundarySignal: String,
+        outcome: String?
+    ) -> (closed: Bool, where: String) {
+        Self.closeApmeTaskExternal(
+            gateway: apmeCollectorGateway,
+            claude: apmeCollector,
+            sessionId: sessionId,
+            boundarySignal: boundarySignal,
+            outcome: outcome
+        )
+    }
+
+    /// Pure selection logic behind `/task/close`, lifted to a static so it is
+    /// reachable from tests (a live `DaemonServer` needs bound sockets).
+    /// Gateway is tried first and the Claude collector is only consulted when
+    /// the gateway had nothing to close — never both.
+    @MainActor
+    static func closeApmeTaskExternal(
+        gateway: ApmeCollector?,
+        claude: ApmeCollector?,
+        sessionId: String?,
+        boundarySignal: String,
+        outcome: String?
+    ) -> (closed: Bool, where: String) {
+        if let gateway,
+           gateway.closeTaskExternal(sessionId: sessionId, boundarySignal: boundarySignal, outcome: outcome) {
+            return (true, "gateway")
+        }
+        if let claude,
+           claude.closeTaskExternal(sessionId: sessionId, boundarySignal: boundarySignal, outcome: outcome) {
+            return (true, "claude")
+        }
+        return (false, "none")
     }
 
     // MARK: - APME eval result handling
