@@ -6,6 +6,14 @@ import Foundation
 import Network
 
 actor HTTPServer {
+    /// Accept and per-connection I/O run here, never on `.main`. The daemon is
+    /// hosted in the GUI app, so the main queue also drives SwiftUI rendering —
+    /// pinning `NWListener` to it makes `/health` (and every hook POST) stall
+    /// behind a busy render loop, and a saturated main runloop stops the server
+    /// accepting at all while the process still looks alive. `WebSocketServer`
+    /// already keeps its own `ioQueue` for the same reason.
+    private static let ioQueue = DispatchQueue(label: "dev.agentdeck.http.io", qos: .userInitiated)
+
     private var listener: NWListener?
     private(set) var boundPort: UInt16?
     private var routes: [(method: String, path: String, handler: @Sendable (HTTPRequest) async -> HTTPResponse)] = []
@@ -98,7 +106,7 @@ actor HTTPServer {
             }
         }
 
-        listener.start(queue: .main)
+        listener.start(queue: Self.ioQueue)
     }
 
     func stop() {
@@ -108,7 +116,7 @@ actor HTTPServer {
     // MARK: - Connection Handling
 
     private func handleConnection(_ conn: NWConnection) {
-        conn.start(queue: .main)
+        conn.start(queue: Self.ioQueue)
         Self.receiveFullRequest(on: conn) { [weak self] data in
             guard let data, let self else {
                 conn.cancel()
