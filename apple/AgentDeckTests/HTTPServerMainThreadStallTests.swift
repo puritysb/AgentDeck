@@ -1,22 +1,16 @@
-// HTTPServerMainThreadStallTests.swift — regression for the daemon going
-// unreachable while the app's main thread is busy.
+// HTTPServerMainThreadStallTests.swift — HTTPServer's listener must not sit on
+// the main queue.
 //
-// Bug context: the Swift daemon is hosted inside the GUI app, so the main
-// queue also drives SwiftUI rendering. `HTTPServer` started its NWListener
-// and every per-connection NWConnection with `queue: .main` (present since
-// the daemon's first commit, never revisited). A saturated main runloop —
-// observed in a Debug build whose Terrarium animation ran under Metal API
-// Validation + Xcode queue debugging — therefore stopped the server from
-// *accepting* at all: `/health` returned nothing for 5s straight while the
-// process was still alive and WebSocket traffic (on its own `ioQueue`) kept
-// flowing. Fix was to give HTTPServer its own `dev.agentdeck.http.io` queue,
-// mirroring WebSocketServer.
+// Scope note, because the original version of this file claimed more than it
+// could: `HTTPServer.start(port:)` is NOT used by the shipping daemon. The
+// daemon's only listener is `WebSocketServer`'s, which delegates plain HTTP to
+// `HTTPServer.handle(request:on:)`. So this is a unit test of a currently
+// test-only code path, kept so the two listeners cannot drift apart, NOT a
+// regression test for the 2026-07-18 outage.
 //
-// This test blocks the main thread outright and asserts a request issued
-// during the block is answered before the block ends. Against the old
-// `queue: .main` code the connection cannot be accepted until the main
-// thread frees up, so the elapsed time collapses onto the block duration
-// and the assertion fails.
+// That outage — `/health` unanswered for 5s while WebSocket traffic flowed —
+// was caused by HTTP *handlers* dispatching into a `@MainActor` DaemonServer.
+// `DaemonActorIndependenceTests` is the regression test for it.
 
 #if os(macOS)
 import XCTest
@@ -83,8 +77,7 @@ final class HTTPServerMainThreadStallTests: XCTestCase {
         XCTAssertEqual(done.wait(timeout: .now() + 15), .success, "request never completed")
         XCTAssertEqual(status.value, 200, "expected HTTP 200 from /health")
 
-        // The decisive assertion: served *during* the block, not after it.
-        // Old behaviour parks at ~mainThreadBlockSeconds - requestDelaySeconds.
+        // Served *during* the block, not after it.
         let budget = mainThreadBlockSeconds - requestDelaySeconds
         XCTAssertLessThan(
             elapsed.value, budget,

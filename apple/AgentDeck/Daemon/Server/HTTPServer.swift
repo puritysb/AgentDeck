@@ -1,17 +1,34 @@
 #if os(macOS)
-// HTTPServer.swift — Lightweight HTTP server for /health, /status, /shutdown, hooks
-// Uses Network.framework (no external dependencies)
+// HTTPServer.swift — route table + request handling for /health, /status,
+// /shutdown, hooks. Network.framework, no external dependencies.
+//
+// IMPORTANT — the daemon does NOT run this type's listener.
+//
+// `DaemonServer` creates an `HTTPServer`, registers routes on it, and hands it
+// to `wsServer.setHTTPHandler(_:)`. `WebSocketServer` owns the one and only
+// listener on the daemon port; when a connection turns out to be plain HTTP it
+// calls `httpHandler.handle(request:on:)` here. Nothing calls `start(port:)`
+// except tests, so `start`/`stop`/`handleConnection` and the `NWListener` they
+// manage are unused in the shipping daemon.
+//
+// Say it plainly because it has already misled once: during the 2026-07-18
+// investigation the `queue: .main` on that listener looked like the reason
+// `/health` went unanswered while WebSocket traffic kept flowing. It was not —
+// that code never ran. The real cause was that HTTP *handlers* dispatch into
+// `DaemonServer`, which was `@MainActor`, so requests were accepted on
+// WebSocketServer's `ioQueue` and then starved waiting for the main actor.
+// The fix was moving the daemon to `@DaemonActor`. If you are debugging
+// listener behaviour on the daemon port, read `WebSocketServer`, not this file.
 
 import Foundation
 import Network
 
 actor HTTPServer {
-    /// Accept and per-connection I/O run here, never on `.main`. The daemon is
-    /// hosted in the GUI app, so the main queue also drives SwiftUI rendering —
-    /// pinning `NWListener` to it makes `/health` (and every hook POST) stall
-    /// behind a busy render loop, and a saturated main runloop stops the server
-    /// accepting at all while the process still looks alive. `WebSocketServer`
-    /// already keeps its own `ioQueue` for the same reason.
+    /// Accept and per-connection I/O for the (currently test-only) listener.
+    /// Not `.main`: this daemon is hosted in a GUI app, so anything pinned to
+    /// the main queue competes with SwiftUI rendering. `WebSocketServer` — the
+    /// listener the daemon actually runs — keeps its own `ioQueue` for that
+    /// reason, and this matches it so the two cannot drift again.
     private static let ioQueue = DispatchQueue(label: "dev.agentdeck.http.io", qos: .userInitiated)
 
     private var listener: NWListener?
@@ -89,6 +106,11 @@ actor HTTPServer {
 
     func start(port: UInt16) throws {
         let params = NWParameters.tcp
+        // SO_REUSEADDR — rebind after TIME_WAIT/crash. Matches
+        // `WebSocketServer`, which has set it since 06a932c1, and matches what
+        // `SessionRegistry.isPortBindable`'s probe socket assumes. Consistency
+        // only: this listener does not run in the daemon.
+        params.allowLocalEndpointReuse = true
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw NSError(domain: "HTTPServer", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid port \(port)"])
         }
