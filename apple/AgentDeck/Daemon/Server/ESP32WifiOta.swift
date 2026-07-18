@@ -11,7 +11,8 @@ import CryptoKit
 /// Drives one WiFi OTA transfer at a time. Owned by DaemonServer, which
 /// injects target resolution and live-socket lookup so this type stays free
 /// of roster bookkeeping and testable without Network.framework.
-@MainActor
+// Holds daemon state → runs on the daemon's executor. See DaemonActor.
+@DaemonActor
 final class ESP32WifiOtaManager {
     struct ResolvedTarget {
         let key: String

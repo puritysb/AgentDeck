@@ -156,7 +156,7 @@ final class DaemonService: ObservableObject {
                 let usingDefault = (port == AppPreferences.defaultDaemonPort && sessionOverridePort == nil)
                 let portArg: Int? = usingDefault ? nil : port
                 let daemon = try await DaemonServer(port: portArg, debug: false)
-                daemon.onShutdown = { [weak self] in
+                await daemon.setShutdownHandler { [weak self] in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
                         DaemonLogger.shared.info("In-process daemon shutdown completed, transitioning to external daemon...")
@@ -167,7 +167,7 @@ final class DaemonService: ObservableObject {
                         await self.connectToExternalDaemon()
                     }
                 }
-                daemon.onStandDownRequested = { [weak self] in
+                await daemon.setStandDownRequestedHandler { [weak self] in
                     Task { @MainActor in self?.standDownForTakeover() }
                 }
                 self.server = daemon
@@ -231,7 +231,7 @@ final class DaemonService: ObservableObject {
     /// Code / Codex sessions don't briefly disconnect from the daemon.
     func reconnectGatewayAdapter() async {
         guard let server else { return }
-        await MainActor.run { server.reconnectGatewayAdapter() }
+        await server.reconnectGatewayAdapter()
     }
 
     /// Tear down the current daemon (local or external) and start fresh. Used
@@ -629,7 +629,7 @@ final class DaemonService: ObservableObject {
     /// callback — that path auto-transitions to external-daemon mode, and the
     /// caller here chooses the next state itself.
     private func standDownServer(_ current: DaemonServer) async {
-        current.onShutdown = nil
+        await current.setShutdownHandler(nil)
         server = nil
         isRunning = false
         port = 0
@@ -748,22 +748,26 @@ final class DaemonService: ObservableObject {
         var summary = DeviceSummary()
 
         // D200H (Ulanzi Studio plugin presence)
-        if let d200h = server.d200hStatusSnapshot() {
+        // One hop to the daemon's executor for all four — see
+        // DaemonServer.deviceStatusSnapshots().
+        let snapshots = await server.deviceStatusSnapshots()
+
+        if let d200h = snapshots.d200h {
             summary.d200h = DeviceSummary.makeD200hEntry(from: d200h)
         }
 
         // Pixoo (LED panels over HTTP)
-        if let pixoo = server.pixooStatusSnapshot() {
+        if let pixoo = snapshots.pixoo {
             summary.pixoo = DeviceSummary.makePixooEntries(from: pixoo)
         }
 
         // ESP32 serial boards
-        if let serial = await server.serialStatusSnapshot() {
+        if let serial = snapshots.serial {
             summary.serial = DeviceSummary.makeSerialEntries(from: serial)
         }
 
         // ADB (Android devices)
-        if let adb = server.adbStatusSnapshot() {
+        if let adb = snapshots.adb {
             summary.adb = DeviceSummary.makeAdbEntries(from: adb)
         }
 

@@ -346,9 +346,24 @@ struct JudgeBackendStatus: Sendable {
     let reason: String?
 }
 
-@MainActor
+/// The daemon runs on its own executor, NOT the main actor.
+///
+/// It used to be `@MainActor` — inherited from the file's first commit, when
+/// this was 894 lines — which meant SwiftUI rendering and daemon service
+/// shared one executor. A saturated main runloop (a Debug build's Terrarium
+/// animation under Metal API Validation was enough) starved the daemon:
+/// `/health` went unanswered for 5s and the log stalled for 24 minutes while
+/// the process stayed alive.
+///
+/// Nothing here needs the main thread: no ObservableObject, no @Published, no
+/// AppKit/SwiftUI imports. The one UI touchpoint is `handleReviewRun`, which
+/// hops to `ReviewPanelPresenter` explicitly.
+///
+/// See `DaemonActor` for why the daemon's isolation is a global actor rather
+/// than making this type an `actor`.
+@DaemonActor
 final class DaemonServer {
-    let port: UInt16
+    nonisolated let port: UInt16
     let sessionId = UUID().uuidString
     var onShutdown: (() -> Void)?
     /// Invoked when a CLI (Node) daemon POSTs `/stand-down` to take over the
@@ -364,7 +379,12 @@ final class DaemonServer {
     private let moduleManager = ModuleManager()
     private let displayMonitor = DisplayMonitor()
     private let gatewayProbe = GatewayProbe()
-    private let voiceAssistant = DaemonVoiceAssistant()
+    /// Stays `@MainActor`: this is the one collaborator with a real reason to
+    /// be there (AVAudioEngine / SFSpeechRecognizer / AVSpeechSynthesizer).
+    /// Reached with `await`; its callbacks hop back to the daemon.
+    /// Created on the main actor during `startServices` — a `@MainActor`
+    /// stored property cannot be initialized from the daemon's init.
+    @MainActor private var voiceAssistant: DaemonVoiceAssistant?
     private let openCodeObserver = OpenCodeObserver()
     private let timelineRelay: TimelineRelay
     private let focusRelay: SessionFocusRelay
@@ -595,7 +615,7 @@ final class DaemonServer {
     /// long "user is thinking" pauses against clearing ghost entries within
     /// the same coffee break. When a hook arrives after this window, the
     /// `session_start` synthesis path will recreate the entry.
-    private static let pushedSessionStaleTTL: TimeInterval = 180
+    private nonisolated static let pushedSessionStaleTTL: TimeInterval = 180
 
     /// TTL for a pushed session that is currently `awaiting_permission`. A real
     /// permission prompt fires exactly ONE Notification hook and then goes
@@ -607,7 +627,7 @@ final class DaemonServer {
     /// long window only ever covers a true away-wait (kept) or a rare
     /// crash-at-prompt ghost (eventually reaped). Mirrors the Node
     /// `awaiting-overlay` TTL.
-    private static let awaitingHookStaleTTL: TimeInterval = 6 * 60 * 60  // 6 hours
+    private nonisolated static let awaitingHookStaleTTL: TimeInterval = 6 * 60 * 60  // 6 hours
 
     /// A Codex session that is still marked processing but has no active tool
     /// after this window is probably missing its Stop/turnEnd signal. Keep this
@@ -630,11 +650,11 @@ final class DaemonServer {
     /// Codex hook/OTel sources are turn-scoped and can die without a session-end
     /// event. Once a non-terminal Codex row has been quiet this long, it is a
     /// display observation rather than a live session.
-    private static let codexIdleObservationStaleTTL: TimeInterval = 90
+    private nonisolated static let codexIdleObservationStaleTTL: TimeInterval = 90
 
     /// Tool-bearing rows get a longer stale window because long local commands
     /// are normal, but they still need a hard cap for missing end events.
-    private static let codexToolObservationStaleTTL: TimeInterval = 240
+    private nonisolated static let codexToolObservationStaleTTL: TimeInterval = 240
 
     /// Idle TTL for a Codex thread promoted to *interactive* (it re-engaged
     /// after a terminal event, so it is a long-lived `codex` CLI conversation,
@@ -653,7 +673,7 @@ final class DaemonServer {
     /// are indistinguishable by argv (all argv0 == "claude"). Grounding this
     /// ladder in real liveness needs the hook snippet to report its `$PPID`
     /// first; until it does, every TTL here is a guess.
-    private static let codexInteractiveIdleTTL: TimeInterval = 30 * 60
+    private nonisolated static let codexInteractiveIdleTTL: TimeInterval = 30 * 60
 
     /// Idle TTL for a standalone `opencode` session. The observer plugin only
     /// attaches to standalone opencode runs (managed opencode uses the PTY
@@ -665,7 +685,7 @@ final class DaemonServer {
     /// the next event. Same failure the codex interactive TTL fixes; give
     /// opencode the same long backstop. `session.idle` still closes normal
     /// turns promptly via `opencode_stop`.
-    private static let openCodeIdleTTL: TimeInterval = 30 * 60
+    private nonisolated static let openCodeIdleTTL: TimeInterval = 30 * 60
 
     /// Idle TTL for a hook-observed `claude-code` session. Only standalone
     /// `claude` runs reach the daemon's /hooks endpoint — `agentdeck claude`
@@ -686,7 +706,7 @@ final class DaemonServer {
     ///
     /// `SessionEnd` drops the row immediately on a clean exit, so this long
     /// window only ever covers a crash/Ctrl-C ghost.
-    private static let claudeInteractiveIdleTTL: TimeInterval = 30 * 60
+    private nonisolated static let claudeInteractiveIdleTTL: TimeInterval = 30 * 60
 
     /// How long an evicted Codex thread's terminal timestamp survives as a
     /// tombstone. Mid-turn events (`codex_tool_start`/`codex_tool_end`) may
@@ -960,6 +980,18 @@ final class DaemonServer {
         await wsServer.setListenerFailedHandler(handler)
     }
 
+    /// Setters for the lifecycle callbacks. These mirror
+    /// `setListenerFailedHandler` — the daemon runs on `DaemonActor`, so
+    /// `DaemonService` (which is `@MainActor`) cannot assign the stored
+    /// properties directly.
+    func setShutdownHandler(_ handler: (@Sendable () -> Void)?) {
+        onShutdown = handler
+    }
+
+    func setStandDownRequestedHandler(_ handler: (@Sendable () -> Void)?) {
+        onStandDownRequested = handler
+    }
+
     func startServices() async throws {
         // 0. Initialize APME store + collector + runner
         let store = ApmeStore()
@@ -1024,7 +1056,7 @@ final class DaemonServer {
             Task {
                 await runner.onResult { [weak self] result in
                     guard let self else { return }
-                    Task { @MainActor in
+                    Task { @DaemonActor in
                         self.handleApmeResult(result)
                     }
                 }
@@ -1043,7 +1075,7 @@ final class DaemonServer {
                     // both `broadcastRaw` and `claudeCodeEntryDict` live on
                     // the main actor — hop via `Task { @MainActor in ... }`
                     // for parity with the `onResult` wiring above.
-                    Task { @MainActor in
+                    Task { @DaemonActor in
                         let signalLabel: String
                         switch event.boundarySignal {
                         case "todo_complete": signalLabel = "TODO done"
@@ -1167,7 +1199,7 @@ final class DaemonServer {
         serialEventSnapshot.setDisplayDim(currentDimDict())
         await displayMonitor.start()
         await displayMonitor.setOnStateChanged { [weak self] displayOn in
-            Task { @MainActor in
+            Task { @DaemonActor in
                 guard let self else { return }
                 self.cachedDisplayOn = displayOn
                 self.serialEventSnapshot.setDisplayOn(displayOn)
@@ -1201,7 +1233,7 @@ final class DaemonServer {
         // 8. Start timeline relay (subscribes to sibling WS)
         await timelineRelay.setEventHandler { [weak self] event in
             let box = SendableDict(event)
-            Task { @MainActor in
+            Task { @DaemonActor in
                 self?.handleRelayedEvent(box.value)
             }
         }
@@ -1210,7 +1242,7 @@ final class DaemonServer {
 
         // 8b. Set up focus relay event callback — merge daemon metadata before broadcasting
         await focusRelay.setBroadcast { [weak self] (box: SendableDict) in
-            Task { @MainActor in
+            Task { @DaemonActor in
                 guard let self else { return }
                 var event = box.value
                 if (event["type"] as? String) == "state_update" {
@@ -1250,7 +1282,7 @@ final class DaemonServer {
 
         // 8c. Sync daemon usage cache when relay receives usage_update (prevents oscillation)
         await focusRelay.setOnUsageRelayed { [weak self] (box: SendableDict) in
-            Task { @MainActor in
+            Task { @DaemonActor in
                 guard let self else { return }
                 let usage = box.value
                 self.updateRelayedCodexAuthStatus(from: usage)
@@ -1301,7 +1333,7 @@ final class DaemonServer {
         // `DaemonServer` falls back within 9120-9139). Without this,
         // a Codex turn started after a fallback-startup would push
         // OTel spans to a stale port and the dashboard would go dark.
-        CodexConfigInstaller.installIfNeeded(daemonHttpPort: Int(port))
+        await MainActor.run { CodexConfigInstaller.installIfNeeded(daemonHttpPort: Int(port)) }
         if AppPreferences.shared.codexConfigConsent != .accepted {
             DaemonLogger.shared.info("startServices: step11b CodexConfigInstaller skipped (no consent)")
         } else {
@@ -1309,41 +1341,52 @@ final class DaemonServer {
         }
 
         // 12. Voice assistant
-        voiceAssistant.sendPrompt = { [weak self] text in
+        await MainActor.run { [weak self] in
             guard let self else { return }
-            // Route to gateway or session bridge
-            if let gw = self.gatewayAdapter {
-                Task { await gw.sendRPC(method: "chat.send", params: ["message": text]) }
-                _ = self.stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
-                self.broadcastStateUpdate()
-            } else {
-                self.forwardCommandToSession(AgentCommand.sendPrompt(text: text).dictionary)
+            let voiceAssistant = DaemonVoiceAssistant()
+            self.voiceAssistant = voiceAssistant
+            voiceAssistant.sendPrompt = { [weak self] text in
+                Task { @DaemonActor in
+                    guard let self else { return }
+                    // Route to gateway or session bridge
+                    if let gw = self.gatewayAdapter {
+                        await gw.sendRPC(method: "chat.send", params: ["message": text])
+                        _ = self.stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
+                        self.broadcastStateUpdate()
+                    } else {
+                        self.forwardCommandToSession(AgentCommand.sendPrompt(text: text).dictionary)
+                    }
+                }
             }
+            voiceAssistant.onStateChanged = { [weak self] state, text, responseText in
+                Task { @DaemonActor in
+                    guard let self else { return }
+                    // Cache voice state for piggybacking on state_update
+                    self.cachedVoiceAssistantState = state.rawValue
+                    self.cachedVoiceAssistantText = text
+                    self.cachedVoiceAssistantResponseText = responseText
+                    self.broadcastRaw([
+                        "type": "voice_assistant_state",
+                        "state": state.rawValue,
+                        "deviceId": "mac-builtin",
+                        "text": text as Any,
+                        "responseText": responseText as Any,
+                    ])
+                    // Also trigger state_update so all clients get voice state
+                    self.broadcastStateUpdate()
+                }
+            }
+            voiceAssistant.onWakeWordDetected = { [weak self] deviceId, timestamp in
+                Task { @DaemonActor in
+                    self?.broadcastRaw([
+                        "type": "wake_word_detected",
+                        "deviceId": deviceId,
+                        "timestamp": timestamp,
+                    ])
+                }
+            }
+            _ = voiceAssistant.start()
         }
-        voiceAssistant.onStateChanged = { [weak self] state, text, responseText in
-            guard let self else { return }
-            // Cache voice state for piggybacking on state_update
-            self.cachedVoiceAssistantState = state.rawValue
-            self.cachedVoiceAssistantText = text
-            self.cachedVoiceAssistantResponseText = responseText
-            self.broadcastRaw([
-                "type": "voice_assistant_state",
-                "state": state.rawValue,
-                "deviceId": "mac-builtin",
-                "text": text as Any,
-                "responseText": responseText as Any,
-            ])
-            // Also trigger state_update so all clients get voice state
-            self.broadcastStateUpdate()
-        }
-        voiceAssistant.onWakeWordDetected = { [weak self] deviceId, timestamp in
-            self?.broadcastRaw([
-                "type": "wake_word_detected",
-                "deviceId": deviceId,
-                "timestamp": timestamp,
-            ])
-        }
-        _ = voiceAssistant.start()
         DaemonLogger.shared.info("startServices: step12 voiceAssistant done")
 
         // 12.5. OpenCode observer — opt-in (Settings → Integrations, default
@@ -1369,32 +1412,9 @@ final class DaemonServer {
             IONotificationPortSetDispatchQueue(wakePort, DispatchQueue.main)
             var notifier: io_object_t = 0
             let rootDomain = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
-            IOServiceAddInterestNotification(wakePort, rootDomain, kIOGeneralInterest, { (refcon, _, messageType, _) in
-                guard messageType == UInt32(kIOMessageSystemHasPoweredOn) else { return }
-                guard let refcon else { return }
-                let server = Unmanaged<DaemonServer>.fromOpaque(refcon).takeUnretainedValue()
-                DaemonLogger.shared.info("System wake — recovering sessions and devices")
-                // Atomic refresh-then-broadcast: pulls live registry +
-                // pushed sessions, enriches state, then broadcasts the
-                // freshly-rebuilt cachedSessions. Calling
-                // broadcastSessionsList() directly after a discard-only
-                // registry.listActive() would publish the pre-sleep snapshot.
-                Task { await server.refreshSessions() }
-                // Re-sync timeline relay (drops dead subscriptions)
-                Task { await server.timelineRelay.sync() }
-                // Re-advertise Bonjour (mDNSResponder may have stale state)
-                Task { await server.wsServer.republishBonjour() }
-                // Wake all device modules (D200H re-scan, ESP32 reconnect, Pixoo re-sync)
-                Task { await server.moduleManager.wakeAll() }
-                // Broadcast full state so reconnected devices get fresh data
-                Task { @MainActor in server.broadcastStateUpdate() }
-                // Refresh usage after network stabilizes (clears stale "!" indicator)
-                Task {
-                    try? await Task.sleep(for: .seconds(4))
-                    await server.fetchUsageRelayed()
-                    await MainActor.run { server.broadcastUsage() }
-                }
-            }, Unmanaged.passUnretained(self).toOpaque(), &notifier)
+            IOServiceAddInterestNotification(
+                wakePort, rootDomain, kIOGeneralInterest,
+                daemonWakeCallback, Unmanaged.passUnretained(self).toOpaque(), &notifier)
         }
 
         // 14. Network change detection — WiFi/VPN/IP changes trigger Bonjour re-publish + module recovery
@@ -1402,7 +1422,7 @@ final class DaemonServer {
         let monitor = NWPathMonitor()
         self.networkMonitor = monitor
         monitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor [weak self] in
+            Task { @DaemonActor [weak self] in
                 guard let self else { return }
                 self.networkDebounceTask?.cancel()
                 self.networkDebounceTask = Task {
@@ -1455,7 +1475,7 @@ final class DaemonServer {
         // ADB (reverse tunnel only; D200H is handled by the Ulanzi Studio plugin)
         let adb = AdbModule(daemonPort: portInt)
         adb.commandHandler = { [weak self] cmd in
-            Task { @MainActor in self?.handleCommand(cmd) }
+            Task { @DaemonActor in self?.handleCommand(cmd) }
         }
         self.adbModule = adb
         moduleManager.register(adb)
@@ -1481,7 +1501,7 @@ final class DaemonServer {
         self.pixooModule = pixoo
         moduleManager.register(pixoo)
         await pixoo.setOnStateChanged { [weak self] in
-            Task { @MainActor [weak self] in
+            Task { @DaemonActor [weak self] in
                 self?.broadcastStateUpdate()
             }
         }
@@ -1496,7 +1516,7 @@ final class DaemonServer {
         self.idotMatrixModule = idotmatrix
         moduleManager.register(idotmatrix)
         await idotmatrix.setOnStateChanged { [weak self] in
-            Task { @MainActor [weak self] in
+            Task { @DaemonActor [weak self] in
                 self?.broadcastStateUpdate()
             }
         }
@@ -1511,7 +1531,7 @@ final class DaemonServer {
         self.timeboxModule = timebox
         moduleManager.register(timebox)
         await timebox.setOnStateChanged { [weak self] in
-            Task { @MainActor [weak self] in
+            Task { @DaemonActor [weak self] in
                 self?.broadcastStateUpdate()
             }
         }
@@ -1527,7 +1547,7 @@ final class DaemonServer {
         displaySettingsObserver = NotificationCenter.default.addObserver(
             forName: .displaySettingsChanged, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
+            Task { @DaemonActor in
                 guard let self else { return }
                 self.loadDisplaySleepDimFromSettings()
                 self.serialEventSnapshot.setDisplayDim(self.currentDimDict())
@@ -1562,7 +1582,7 @@ final class DaemonServer {
             // Mirror creature agent state in local state machine for metadata persistence
             if let type = json["type"] as? String, type == "state_update" {
                 let jsonBox = SendableDict(json)
-                Task { @MainActor in
+                Task { @DaemonActor in
                     guard let self else { return }
                     let json = jsonBox.value
                     if let model = json["model"] as? String ?? json["modelName"] as? String {
@@ -1633,11 +1653,11 @@ final class DaemonServer {
             // Surface focused session's model + effort on /health so sibling
             // bridges and external dashboards can mirror them without a
             // separate state_update subscription.
-            let focus: (model: String?, effort: String?) = await MainActor.run { [weak self] in
+            let focus: (model: String?, effort: String?) = await DaemonActor.run { [weak self] in
                 (self?.stateMachine.modelName, self?.stateMachine.effortLevel)
             }
             // Get judge backend status as Sendable value
-            let judgeBackend = await MainActor.run { [weak self] in self?.cachedJudgeBackendStatus }
+            let judgeBackend = await DaemonActor.run { [weak self] in self?.cachedJudgeBackendStatus }
             var payload: [String: Any] = [
                 "status": "ok", "mode": "daemon", "port": daemonPort,
                 "pid": ProcessInfo.processInfo.processIdentifier,
@@ -1694,7 +1714,7 @@ final class DaemonServer {
         }
 
         await httpServer.post("/shutdown") { [weak self] _ in
-            Task { @MainActor in await self?.shutdown() }
+            Task { @DaemonActor in await self?.shutdown() }
             return .json(["status": "shutting_down"])
         }
 
@@ -1703,7 +1723,7 @@ final class DaemonServer {
         // become a client of the incoming daemon. Ack immediately; the actual
         // stand-down runs async so the caller can proceed to bind.
         await httpServer.post("/stand-down") { [weak self] _ in
-            Task { @MainActor in self?.onStandDownRequested?() }
+            Task { @DaemonActor in self?.onStandDownRequested?() }
             return .json(["status": "standing_down"])
         }
 
@@ -1799,7 +1819,7 @@ final class DaemonServer {
                   let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
                 return .json(["status": "error"], status: 400)
             }
-            Task { @MainActor in await self?.handleHookEvent(json) }
+            Task { @DaemonActor in await self?.handleHookEvent(json) }
             return .json(["status": "ok"])
         }
 
@@ -1835,7 +1855,7 @@ final class DaemonServer {
                 await self.handleHookPost(rawName: rawName, body: bodyData)
                 return await self.steerStop(body: bodyData)
             }
-            Task { @MainActor [weak self] in await self?.handleHookPost(rawName: rawName, body: bodyData) }
+            Task { [weak self] in await self?.handleHookPost(rawName: rawName, body: bodyData) }
             return .json(["received": true])
         }
 
@@ -1900,7 +1920,7 @@ final class DaemonServer {
         // MainActor hop so `[String: Any]` never crosses an isolation
         // boundary as a closure parameter.
         await CodexOtelRoutes.register(on: httpServer) { [weak self] body in
-            Task { @MainActor in await self?.handleCodexTrace(body) }
+            Task { @DaemonActor in await self?.handleCodexTrace(body) }
         }
     }
 
@@ -1958,7 +1978,7 @@ final class DaemonServer {
 
         var lastFrameHash: Int?
         while true {
-            let frame = await MainActor.run { pixooModule?.currentFrame() }
+            let frame = await DaemonActor.run { pixooModule?.currentFrame() }
             if let frame, let bmp = Self.rgbToBmp(frame, width: 64, height: 64) {
                 let frameHash = bmp.hashValue
                 if frameHash != lastFrameHash {
@@ -2180,7 +2200,6 @@ final class DaemonServer {
         """
     }
 
-    @MainActor
     private func buildUsageEndpointPayload() -> SendableDict {
         SendableDict([
             "usage": buildUsageEvent().map { event in
@@ -2192,7 +2211,6 @@ final class DaemonServer {
         ])
     }
 
-    @MainActor
     private func buildStatusPayload() async -> SendableDict {
         let sessionPayloads = buildSessionsListEvent()["sessions"] as? [[String: Any]] ?? []
         let registrySessions = SessionRegistry.shared.listActive().map {
@@ -2213,7 +2231,6 @@ final class DaemonServer {
         ])
     }
 
-    @MainActor
     private func buildDevicesPayload() async -> SendableDict {
         var devices: [[String: Any]] = []
 
@@ -2305,7 +2322,6 @@ final class DaemonServer {
         return SendableDict(["devices": devices])
     }
 
-    @MainActor
     private func buildDiagPayload(tail: Int) async -> SendableDict {
         let modules = await buildModuleHealth().value["modules"] as? [String: Any] ?? [:]
         let recentLog = await DaemonLogger.shared.recentLines(limit: tail)
@@ -2326,15 +2342,15 @@ final class DaemonServer {
     private func setupWSHandlers() async {
         await wsServer.setCommandHandler { [weak self] cmd, conn in
             let box = SendableDict(cmd)
-            Task { @MainActor in self?.handleWSCommand(box.value, from: conn) }
+            Task { @DaemonActor in self?.handleWSCommand(box.value, from: conn) }
         }
 
         await wsServer.setConnectHandler { [weak self] conn in
-            Task { @MainActor in self?.handleClientConnect(conn) }
+            Task { @DaemonActor in self?.handleClientConnect(conn) }
         }
 
         await wsServer.setDisconnectHandler { [weak self] conn in
-            Task { @MainActor in self?.handleClientDisconnect(conn) }
+            Task { @DaemonActor in self?.handleClientDisconnect(conn) }
         }
     }
 
@@ -2343,7 +2359,6 @@ final class DaemonServer {
     /// registration when that exact connection closes); everything else
     /// falls through to the connection-agnostic `handleCommand`. Module
     /// callers (ADB, D200H) keep using `handleCommand` directly.
-    @MainActor
     private func handleWSCommand(_ cmd: [String: Any], from conn: WebSocketConnection) {
         if cmd["type"] as? String == "client_register" {
             handleClientRegister(cmd, from: conn)
@@ -2367,7 +2382,7 @@ final class DaemonServer {
         if cmd["type"] as? String == "query_session_timeline" {
             guard let sid = cmd["sessionId"] as? String, !sid.isEmpty else { return }
             let since = cmd["since"] as? Double
-            Task { @MainActor [weak self] in
+            Task { @DaemonActor [weak self] in
                 guard let self else { return }
                 let entries = await self.timelineStore.historyForSession(sid, since: since)
                 let dicts = entries.map { self.claudeCodeEntryDict($0) }
@@ -2381,7 +2396,6 @@ final class DaemonServer {
 
     // MARK: - Client Connect
 
-    @MainActor
     private func handleClientConnect(_ conn: WebSocketConnection) {
         activeWSConnectionIds.insert(conn.id)
         // ISOLATION INVARIANT: this burst suspends repeatedly (the 100 ms
@@ -2392,7 +2406,7 @@ final class DaemonServer {
         // guard too before touching per-connection state; sends to a dead
         // conn are harmless, but registration writes after one are exactly the
         // leak `handleClientRegister` documents.
-        Task { @MainActor [weak self] in
+        Task { @DaemonActor [weak self] in
             guard let self = self else { return }
 
             // WiFi-WS ESP32 boards get the lean, serial-style snapshot: each heavy
@@ -2401,7 +2415,7 @@ final class DaemonServer {
             // self-announce lands during these 100 ms gaps; once cached, this
             // shrinks the payload instead of blasting the full dashboard state that
             // used to overrun the board's buffer and flap the socket.
-            @MainActor func esp32Shaped(_ event: [String: Any]) -> Data? {
+            @DaemonActor func esp32Shaped(_ event: [String: Any]) -> Data? {
                 guard let reg = self.cachedWifiEsp32[conn.id] else {
                     // Not registered yet — but a board tagged in its upgrade
                     // URL is still an ESP32: shape (or drop) from frame zero.
@@ -2504,7 +2518,6 @@ final class DaemonServer {
     /// `evictStaleClientRegistrations` (120 s TTL) catches up. The TTL
     /// stays as the safety net for kill -9 / OS crash cases where the
     /// close frame never arrives.
-    @MainActor
     private func handleClientDisconnect(_ conn: WebSocketConnection) {
         activeWSConnectionIds.remove(conn.id)
         if let sd = cachedStreamDeck, sd.connectionId == conn.id {
@@ -2561,7 +2574,6 @@ final class DaemonServer {
     /// this WS-pushed registration is the sole discovery path. Duplicate
     /// registrations for the same `sessionId` just update the existing entry
     /// (idempotent — session bridges re-register on WS reconnect).
-    @MainActor
     private func handleSessionPushRegister(_ cmd: [String: Any]) {
         guard let sessionId = cmd["sessionId"] as? String,
               let port = cmd["port"] as? Int else {
@@ -2609,7 +2621,6 @@ final class DaemonServer {
     /// Silently ignored when the sessionId isn't known — session bridges
     /// race the initial register vs first state event and push_state may
     /// arrive before the first register.
-    @MainActor
     private func handleSessionPushState(_ cmd: [String: Any]) {
         guard let sessionId = cmd["sessionId"] as? String else { return }
         guard var entry = pushedSessionsById[sessionId] else {
@@ -2641,7 +2652,6 @@ final class DaemonServer {
 
     /// Insert-or-update a session entry in `cachedSessions`, preserving sort
     /// order. Used by both `handleSessionPushRegister` and `handleSessionPushState`.
-    @MainActor
     private func upsertIntoCachedSessions(_ entry: DaemonSessionEntry) {
         cachedSessions.removeAll { $0.id == entry.id }
         cachedSessions.append(entry)
@@ -2652,7 +2662,6 @@ final class DaemonServer {
     /// `session_end` cleanup so the anonymous-OTel evict path leaves no
     /// stale `processing`-touched / chat-topic / current-tool residue
     /// behind. Caller decides whether to broadcast.
-    @MainActor
     private func purgeCodexSessionState(_ sessionId: String) {
         pushedSessionsById.removeValue(forKey: sessionId)
         cachedSessions.removeAll { $0.id == sessionId }
@@ -2691,7 +2700,6 @@ final class DaemonServer {
     /// real-thread-id Codex App entry is about to be inserted. CLI hook
     /// sessions are a different source and must coexist with the Codex App
     /// observation row.
-    @MainActor
     private func evictCodexAnonymousIfNeeded(forIncomingSid sid: String, agentType: String?) {
         guard agentType == Self.codexAppAgentType else { return }
         guard sid != Self.codexAnonymousOtelSessionId else { return }
@@ -2711,7 +2719,6 @@ final class DaemonServer {
     /// swallows a command that was meant for a session bridge or an observed
     /// Claude session. If a branch needs async work, hand it to a `Task` rather
     /// than making this function `async`.
-    @MainActor
     private func handleCommand(_ cmd: [String: Any]) {
         guard let type = cmd["type"] as? String else { return }
         DaemonLogger.shared.debug("Daemon", "cmd: \(type)")
@@ -2949,7 +2956,7 @@ final class DaemonServer {
             Task {
                 let routed = await self.focusRelay.routeCommand(cmdBox.value)
                 if !routed {
-                    await MainActor.run { self.forwardCommandToSession(cmdBox.value) }
+                    await DaemonActor.run { self.forwardCommandToSession(cmdBox.value) }
                 }
             }
             // Update local state machine
@@ -2970,7 +2977,7 @@ final class DaemonServer {
         case "query_usage":
             Task {
                 await fetchUsageRelayed()
-                await MainActor.run { self.broadcastUsage() }
+                await DaemonActor.run { self.broadcastUsage() }
             }
         case "switch_agent":
             userFocusedSessionId = nil
@@ -2982,7 +2989,7 @@ final class DaemonServer {
             Task {
                 let routed = await self.focusRelay.routeCommand(modeCmd.value)
                 if !routed {
-                    await MainActor.run { self.forwardCommandToSession(modeCmd.value) }
+                    await DaemonActor.run { self.forwardCommandToSession(modeCmd.value) }
                 }
             }
         case "session_switch":
@@ -2995,7 +3002,7 @@ final class DaemonServer {
                 let currentIdx = sessions.firstIndex(where: { $0.id == currentId }) ?? -1
                 let nextIdx = (currentIdx + 1) % sessions.count
                 let nextSession = sessions[nextIdx]
-                await MainActor.run {
+                await DaemonActor.run {
                     self.userFocusedSessionId = nextSession.id
                     self.broadcastStateUpdate()
                 }
@@ -3009,14 +3016,14 @@ final class DaemonServer {
             // D200H button 2: trigger usage fetch
             Task { await fetchUsageRelayed() }
         case "utility":
-            let util = UtilityProxy()
-            util.handleCommand(cmd["action"] as? String ?? "", value: cmd["value"] as? Int)
+            let action = cmd["action"] as? String ?? ""
+            let value = cmd["value"] as? Int
+            Task { @MainActor in UtilityProxy().handleCommand(action, value: value) }
         default:
             DaemonLogger.shared.debug("Daemon", "Unknown command: \(type)")
         }
     }
 
-    @MainActor
     private func focusSession(_ sessionId: String) {
         if sessionId == "openclaw-gateway", cachedGatewayConnected || cachedGatewayHasError {
             userFocusedSessionId = sessionId
@@ -3040,7 +3047,6 @@ final class DaemonServer {
         }
     }
 
-    @MainActor
     private func clearSessionFocus() {
         userFocusedSessionId = nil
         Task { await focusRelay.unfocus() }
@@ -3065,7 +3071,6 @@ final class DaemonServer {
 
     // MARK: - Hook Events
 
-    @MainActor
     private func handleHookEvent(_ json: [String: Any]) async {
         guard let event = json["event"] as? String else { return }
         DaemonLogger.shared.debug("Hook", "Received: \(event)")
@@ -3274,7 +3279,7 @@ final class DaemonServer {
             // Steering: the user re-engaged in the terminal — a pending soft
             // STOP is moot and queued deck directives are superseded.
             if let sessionId {
-                Task { @MainActor [weak self] in
+                Task { @DaemonActor [weak self] in
                     if await ObservedSteering.shared.clearOnUserPrompt(sessionId: sessionId) {
                         self?.updateObservedBadges(sessionId: sessionId, stopRequested: false, queued: 0)
                     }
@@ -3583,7 +3588,6 @@ final class DaemonServer {
     /// so `handleClientDisconnect` can evict the entry the moment that
     /// exact WS closes; only `streamdeck-plugin` is recognized for now,
     /// future client types slot in here.
-    @MainActor
     private func handleClientRegister(_ cmd: [String: Any], from conn: WebSocketConnection) {
         // Refuse registrations from a connection that has already
         // closed. Network.framework can deliver a final data packet
@@ -3667,7 +3671,6 @@ final class DaemonServer {
     /// evicted the moment the board's socket closes, TTL as the safety net.
     /// Only the identity fields the topology needs are kept; diagnostic fields
     /// (uptime, reset reason, OTA capability) stay a Node-daemon concern.
-    @MainActor
     private func handleWifiEsp32DeviceInfo(_ cmd: [String: Any], from conn: WebSocketConnection) {
         if conn.isDisconnected { return }
         guard let board = cmd["board"] as? String, !board.isEmpty else { return }
@@ -3812,7 +3815,6 @@ final class DaemonServer {
     /// loop keeps sending `client_register` every connect, so a live
     /// plugin naturally keeps the timestamp fresh; a killed/uninstalled
     /// plugin stops refreshing and the row disappears on its own.
-    @MainActor
     private func evictStaleClientRegistrations() async {
         let cutoff = Date().addingTimeInterval(-Self.streamDeckStaleTTL)
         if let sd = cachedStreamDeck, !activeWSConnectionIds.contains(sd.connectionId), sd.updatedAt < cutoff {
@@ -3860,7 +3862,6 @@ final class DaemonServer {
     /// Ctrl-C'd leaves a ghost entry whose creature keeps swimming or
     /// floating forever. A fresh start-like hook for the same sessionId
     /// re-creates the entry through the synthesis path.
-    @MainActor
     /// Idle TTL for one hook-observed session — how long it may stay quiet
     /// before `evictStaleHookSessions` reaps its row.
     ///
@@ -3871,7 +3872,7 @@ final class DaemonServer {
     /// it mid-decision), and every agent-specific branch must outrank the
     /// 180 s `pushedSessionStaleTTL` default — which now only catches an agent
     /// we do not model yet.
-    static func hookIdleTTL(
+    nonisolated static func hookIdleTTL(
         sessionId sid: String,
         entry: DaemonSessionEntry,
         isCodexInteractive: Bool
@@ -4060,7 +4061,7 @@ final class DaemonServer {
 
     // MARK: - OpenCode observer integration
 
-    private static let openCodeSessionPrefix = "opencode:"
+    private nonisolated static let openCodeSessionPrefix = "opencode:"
     private static let openCodeFallbackProjectName = "OpenCode"
 
     /// Merge one classified OpenCode SSE update into `pushedSessionsById`.
@@ -4068,7 +4069,6 @@ final class DaemonServer {
     /// sessions + eviction timestamp + broadcast-on-change. Display-only —
     /// `options`/`requestId` are never set, so awaiting renders the
     /// respond-in-terminal path on every surface.
-    @MainActor
     private func handleOpenCodeObserverUpdate(_ update: OpenCodeSessionUpdate) {
         let sid = Self.openCodeSessionPrefix + update.sessionID
         let existing = pushedSessionsById[sid]
@@ -4129,7 +4129,6 @@ final class DaemonServer {
     /// SSE stream dropped (server quit / network) — flip tracked OpenCode
     /// sessions idle immediately; TTL eviction removes them once keepalive
     /// stamps stop.
-    @MainActor
     private func handleOpenCodeObserverDisconnect() {
         var changed = false
         for (sid, var entry) in pushedSessionsById where sid.hasPrefix(Self.openCodeSessionPrefix) {
@@ -4148,7 +4147,6 @@ final class DaemonServer {
     /// Connection-healthy tick: refresh eviction timestamps so idle-but-alive
     /// OpenCode sessions aren't reaped between SSE events (the 180s
     /// `evictStaleHookSessions` sweep only sees hook/SSE activity).
-    @MainActor
     private func touchOpenCodeSessions() {
         let now = Date()
         for sid in pushedSessionsById.keys where sid.hasPrefix(Self.openCodeSessionPrefix) {
@@ -4161,7 +4159,6 @@ final class DaemonServer {
     /// with the /hooks/* path so notify and OTel converge on a single
     /// session entry per Codex thread; either signal alone is sufficient
     /// to drive the dashboard, both together is idempotent.
-    @MainActor
     private func handleCodexTrace(_ body: Data) async {
         let parsed: Any
         do {
@@ -4560,7 +4557,6 @@ final class DaemonServer {
         }
     }
 
-    @MainActor
     private func shouldIgnorePostTerminalCodexProgress(sessionId: String?, event: String) -> Bool {
         guard let sessionId,
               Self.shouldIgnorePostTerminalCodexProgressEvent(event),
@@ -4570,7 +4566,7 @@ final class DaemonServer {
         return true
     }
 
-    private static func isCodexSession(sessionId: String, entry: DaemonSessionEntry) -> Bool {
+    private nonisolated static func isCodexSession(sessionId: String, entry: DaemonSessionEntry) -> Bool {
         sessionId.hasPrefix("codex:") || entry.agentType == codexCliAgentType || entry.agentType == codexAppAgentType
     }
 
@@ -4584,7 +4580,6 @@ final class DaemonServer {
     /// Apply a per-session state/tool update coming from a hook event and
     /// broadcast the refreshed sessions list. No-op when the sessionId is
     /// nil or refers to a session we never registered via `session_start`.
-    @MainActor
     private func updateSessionHookState(
         sessionId: String?,
         state newState: String,
@@ -4769,9 +4764,11 @@ final class DaemonServer {
         if liveState == "processing" || liveState.hasPrefix("awaiting") {
             broadcastRaw(["type": "review_status", "sessionId": sessionId, "status": "error",
                           "message": "session is still working — run REVIEW after the turn completes"])
-            ReviewPanelPresenter.shared.presentNotice(
-                projectName: projectName,
-                message: "The session is still working. REVIEW judges completed work — run it again after the turn finishes.")
+            Task { @MainActor in
+                ReviewPanelPresenter.shared.presentNotice(
+                    projectName: projectName,
+                    message: "The session is still working. REVIEW judges completed work — run it again after the turn finishes.")
+            }
             DaemonLogger.shared.info("Review: refused for \(sessionId) — session state \(liveState)")
             return
         }
@@ -4781,12 +4778,14 @@ final class DaemonServer {
         broadcastSessionsList()
         // Immediate press feedback on the app tier: progress panel with a live
         // elapsed timer; the verdict/error/guidance panel replaces it in place.
-        ReviewPanelPresenter.shared.presentRunning(
-            projectName: projectName,
-            backend: ReviewRunner.backendDisplayName(judgeBackend))
+        Task { @MainActor in
+            ReviewPanelPresenter.shared.presentRunning(
+                projectName: projectName,
+                backend: ReviewRunner.backendDisplayName(judgeBackend))
+        }
         DaemonLogger.shared.info("Review: started for \(sessionId) (\(projectName))")
 
-        Task { @MainActor [weak self] in
+        Task { @DaemonActor [weak self] in
             guard let self else { return }
             // Closure (not a nested func) so it inherits the Task's MainActor
             // isolation under Swift 6.
@@ -4806,7 +4805,7 @@ final class DaemonServer {
                 maxChars: ReviewRunner.trajectoryCharCap(for: tier),
                 maxEntries: ReviewRunner.trajectoryEntryCap(for: tier))
             guard !trajectory.isEmpty else {
-                ReviewPanelPresenter.shared.presentNotice(
+                await ReviewPanelPresenter.shared.presentNotice(
                     projectName: projectName,
                     message: "No recorded activity to review yet — this session's timeline is empty.")
                 fail("no recorded activity to review yet")
@@ -4827,7 +4826,7 @@ final class DaemonServer {
                 case .foundationModels:
                     guard ApmeJudgeFoundationModels.isAvailable else {
                         let detected = await ApmeJudgeDetect.detect()
-                        ReviewPanelPresenter.shared.presentGuidance(
+                        await ReviewPanelPresenter.shared.presentGuidance(
                             reason: ApmeJudgeFoundationModels.unavailableReason, detected: detected)
                         fail("no judge — Apple Intelligence not ready (setup guidance shown)")
                         return
@@ -4867,14 +4866,14 @@ final class DaemonServer {
                 // Judge is CONFIGURED but the call failed — runtime error, not a
                 // missing judge. Offer the detected local servers as an easy
                 // switch, but don't push the full setup guide.
-                ReviewPanelPresenter.shared.presentError(
+                await ReviewPanelPresenter.shared.presentError(
                     projectName: projectName,
                     message: "The configured judge (\(judgeCfg.backend.rawValue)) couldn't complete this review: \(error)")
                 fail("judge call failed: \(error)")
                 return
             }
             guard let parsed = ReviewRunner.parse(text) else {
-                ReviewPanelPresenter.shared.presentError(
+                await ReviewPanelPresenter.shared.presentError(
                     projectName: projectName,
                     message: "The judge replied, but its output wasn't valid review JSON. For large changes, a stronger judge (Anthropic API, OpenRouter, or a 30B-class local model) is more reliable.")
                 fail("judge returned unparseable output")
@@ -4923,7 +4922,7 @@ final class DaemonServer {
             self.broadcastSessionsList()
             // The app IS the UI on this tier — native floating panel (never a
             // modal alert: that would block the MainActor-hosted daemon).
-            ReviewPanelPresenter.shared.present(outcome)
+            await ReviewPanelPresenter.shared.present(outcome)
             DaemonLogger.shared.info("Review: done for \(sessionId) — risk=\(parsed.risk) findings=\(parsed.findings.count)")
         }
     }
@@ -4955,13 +4954,13 @@ final class DaemonServer {
         let type = command["type"] as? String ?? ""
         switch type {
         case "interrupt", "escape":
-            Task { @MainActor [weak self] in
+            Task { @DaemonActor [weak self] in
                 await ObservedSteering.shared.requestStop(sessionId: sessionId)
                 self?.updateObservedBadges(sessionId: sessionId, stopRequested: true)
             }
         case "send_prompt":
             guard let text = command["text"] as? String, !text.isEmpty else { return }
-            Task { @MainActor [weak self] in
+            Task { @DaemonActor [weak self] in
                 let count = await ObservedSteering.shared.queueDirective(sessionId: sessionId, text: text)
                 if count > 0 { self?.updateObservedBadges(sessionId: sessionId, queued: count) }
             }
@@ -4983,7 +4982,6 @@ final class DaemonServer {
     /// Generic hook entry: deserialize the body and dispatch. All events
     /// (including PreToolUse) route here; the daemon no longer holds PreToolUse
     /// for a device gate.
-    @MainActor
     private func handleHookPost(rawName: String, body: Data) async {
         var json = (try? JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:]
         json["event"] = Self.mapHookEventName(rawName)
@@ -5003,7 +5001,6 @@ final class DaemonServer {
         }
     }
 
-    @MainActor
     private func trackCodexProcessingState(sessionId: String, entry: DaemonSessionEntry, now: Date = Date()) {
         guard Self.isCodexSession(sessionId: sessionId, entry: entry) else { return }
         if entry.state == "processing" {
@@ -5014,7 +5011,6 @@ final class DaemonServer {
     }
 
     @discardableResult
-    @MainActor
     private func settleStaleCodexProcessingSessions(now: Date = Date(), broadcast: Bool = true) -> Bool {
         let noToolCutoff = now.addingTimeInterval(-Self.codexNoToolProcessingIdleTTL)
         let toolCutoff = now.addingTimeInterval(-Self.codexToolProcessingIdleTTL)
@@ -5057,7 +5053,6 @@ final class DaemonServer {
 
     // MARK: - State Changed (cascade)
 
-    @MainActor
     private func handleStateChanged() {
         let currentState = stateMachine.state
         let gwAlive = cachedGatewayConnected
@@ -5067,9 +5062,13 @@ final class DaemonServer {
         broadcastSessionsList()
         broadcastUsage()
 
-        // Voice assistant: reset timeout on any activity during processing
-        if currentState == .processing && voiceAssistant.state == .processing {
-            voiceAssistant.resetResponseTimeout()
+        // Voice assistant: reset timeout on any activity during processing.
+        // Hops to the main actor — the assistant owns AVFoundation state.
+        if currentState == .processing {
+            Task { @MainActor in
+                guard self.voiceAssistant?.state == .processing else { return }
+                self.voiceAssistant?.resetResponseTimeout()
+            }
         }
 
         // PROCESSING→IDLE edge: agent finished a turn.
@@ -5080,12 +5079,12 @@ final class DaemonServer {
         let wasProcessing = previousDaemonState == .processing
         previousDaemonState = currentState
         if wasProcessing && currentState == .idle {
-            Task { [weak self] in
+            Task { @DaemonActor [weak self] in
                 guard let self else { return }
                 let lastEntry = await self.timelineStore.getLastEntry(type: "chat_end")
                 let responseText = (lastEntry?.detail ?? lastEntry?.raw) ?? ""
                 let chatEndTs = lastEntry?.ts
-                await MainActor.run {
+                await DaemonActor.run {
                     // APME: record the response even when voice assistant is inactive.
                     // `chatEndTs` lets the collector reject the late-callback
                     // race where a follow-up user_prompt_submit has already
@@ -5099,9 +5098,11 @@ final class DaemonServer {
                     if !responseText.isEmpty {
                         self.apmeCollector?.setTurnResponse(responseText, sessionId: lastEntry?.sessionId, chatEndTs: chatEndTs)
                     }
-                    if self.voiceAssistant.state == .processing {
-                        self.voiceAssistant.handleResponse(responseText.isEmpty ? "완료했습니다." : responseText)
-                    }
+                }
+                // TTS is main-actor work; the APME write above is not.
+                await MainActor.run {
+                    guard self.voiceAssistant?.state == .processing else { return }
+                    self.voiceAssistant?.handleResponse(responseText.isEmpty ? "완료했습니다." : responseText)
                 }
             }
         }
@@ -5123,10 +5124,10 @@ final class DaemonServer {
         Task {
             await adapter.setOnEvent { [weak self] event in
                 let box = SendableDict(event)
-                Task { @MainActor in self?.handleGatewayEvent(box.value) }
+                Task { @DaemonActor in self?.handleGatewayEvent(box.value) }
             }
             await adapter.setOnConnectionChanged { [weak self] connected in
-                Task { @MainActor in
+                Task { @DaemonActor in
                     if connected {
                         self?.cachedGatewayConnected = true
                         self?.gatewayConnectedAt = Date()
@@ -5173,7 +5174,7 @@ final class DaemonServer {
             // pairing UI most needs to show the id). `currentDeviceId()` is
             // populated by `loadDeviceIdentity()` inside `start()`.
             let deviceId = await adapter.currentDeviceId()
-            await MainActor.run {
+            await DaemonActor.run {
                 self.cachedGatewayDeviceId = deviceId
             }
             self.gatewayAdapter = adapter
@@ -5188,7 +5189,6 @@ final class DaemonServer {
     /// so we only need to ensure a fresh adapter instance picks up the new
     /// keychain values. Crucially does NOT touch Claude/Codex session bridges,
     /// device modules, or the WS server.
-    @MainActor
     func reconnectGatewayAdapter() {
         if gatewayAdapter != nil {
             disconnectGatewayAdapter()
@@ -5223,7 +5223,6 @@ final class DaemonServer {
         broadcastUsage()
     }
 
-    @MainActor
     private func handleGatewayEvent(_ event: [String: Any]) {
         guard let type = event["type"] as? String else { return }
         switch type {
@@ -5338,7 +5337,6 @@ final class DaemonServer {
 
     // MARK: - Relayed Events (from sibling timelines)
 
-    @MainActor
     private func handleRelayedEvent(_ event: [String: Any]) {
         guard let type = event["type"] as? String else { return }
         switch type {
@@ -5407,7 +5405,7 @@ final class DaemonServer {
                 try? await Task.sleep(for: .seconds(5))
                 guard let self else { break }
                 if let snap = await self.serialStatusSnapshot() {
-                    await MainActor.run { self.cachedSerialStatus = snap }
+                    await DaemonActor.run { self.cachedSerialStatus = snap }
                 }
             }
         }
@@ -5465,7 +5463,7 @@ final class DaemonServer {
         // state machine.
         ollamaPollTask = Task { [weak self] in
             while !Task.isCancelled {
-                let interval = await MainActor.run { self?.ollamaNextInterval ?? 5 }
+                let interval = await DaemonActor.run { self?.ollamaNextInterval ?? 5 }
                 try? await Task.sleep(for: .seconds(interval))
                 guard let self, await self.wsServer.hasClients() else { continue }
                 await self.probeOllama()
@@ -5475,7 +5473,7 @@ final class DaemonServer {
         // MLX — dynamic interval, same backoff pattern as ollama.
         mlxPollTask = Task { [weak self] in
             while !Task.isCancelled {
-                let interval = await MainActor.run { self?.mlxNextInterval ?? 5 }
+                let interval = await DaemonActor.run { self?.mlxNextInterval ?? 5 }
                 try? await Task.sleep(for: .seconds(interval))
                 guard let self, await self.wsServer.hasClients() else { continue }
                 await self.probeMLX()
@@ -5490,14 +5488,14 @@ final class DaemonServer {
         judgeBackendPollTask = Task { [weak self] in
             // Initial probe on startup
             if let initial = await self?.probeJudgeBackend() {
-                await MainActor.run { self?.cachedJudgeBackendStatus = initial }
+                await DaemonActor.run { self?.cachedJudgeBackendStatus = initial }
             }
             while !Task.isCancelled {
                 let hasClients = await self?.wsServer.hasClients() ?? false
                 try? await Task.sleep(for: .seconds(hasClients ? 30 : 120))
                 guard let self else { break }
                 let fresh = await self.probeJudgeBackend()
-                await MainActor.run {
+                await DaemonActor.run {
                     let previous = self.cachedJudgeBackendStatus
                     self.cachedJudgeBackendStatus = fresh
                     // Compare key fields for change detection
@@ -5629,7 +5627,6 @@ final class DaemonServer {
 
     // MARK: - Sessions
 
-    @MainActor
     private func refreshSessions() async {
         settleStaleCodexProcessingSessions(broadcast: false)
 
@@ -5736,7 +5733,6 @@ final class DaemonServer {
         }
     }
 
-    @MainActor
     private func broadcastSessionsList() {
         // Broadcast unconditionally — late joiners (recovered ESP32, newly
         // connecting Android / SD plugin / iOS clients that don't ride the
@@ -5876,7 +5872,6 @@ final class DaemonServer {
 
     // MARK: - Usage (3-tier relay)
 
-    @MainActor
     private func fetchUsageRelayed() async {
         let sessions = await registry.listActiveAndReachable().filter { $0.agentType != "daemon" && $0.id != sessionId }
         DaemonLogger.shared.sampledDebug("Daemon", key: "usage-relay:start", every: 10, "fetchUsageRelayed: \(sessions.count) siblings")
@@ -6009,7 +6004,6 @@ final class DaemonServer {
         )
     }
 
-    @MainActor
     private func updateRelayedCodexAuthStatus(from event: [String: Any]) {
         let hasCodexAuthField = [
             "codexAuthMode",
@@ -6038,7 +6032,6 @@ final class DaemonServer {
         )
     }
 
-    @MainActor
     private func codexAuthStatusSnapshot() -> CodexAuthStatus? {
         Self.mergeCodexAuthStatus(
             primary: usageAPI.codexAuthStatus,
@@ -6071,7 +6064,6 @@ final class DaemonServer {
 
     // MARK: - Broadcasting
 
-    @MainActor
     private func broadcastStateUpdate() {
         // Settle the coalescer: a direct broadcast satisfies any pending
         // trailing flush (mirror of broadcastSessionsList).
@@ -6085,7 +6077,6 @@ final class DaemonServer {
         broadcastRaw(event)
     }
 
-    @MainActor
     private func broadcastUsage() {
         if let event = buildUsageEvent() {
             serialEventSnapshot.setUsageEvent(event)
@@ -6109,7 +6100,6 @@ final class DaemonServer {
         "chat_start", "chat_response", "chat_end", "task_start", "task_end",
     ]
 
-    @MainActor
     private func noteTimelineEntryForBoards(_ entry: [String: Any]) {
         recentTimelineForBoards.append(entry)
         if recentTimelineForBoards.count > 64 {
@@ -6148,7 +6138,6 @@ final class DaemonServer {
         }
     }
 
-    @MainActor
     private func broadcastRaw(_ event: [String: Any]) {
         if (event["type"] as? String) == "timeline_event",
            let entry = event["entry"] as? [String: Any] {
@@ -6179,7 +6168,6 @@ final class DaemonServer {
     /// behavior (enabled, off, 10) so an un-migrated settings.json keeps
     /// dimming devices to full-off exactly as before. Same clobber-resistant
     /// read as `AppPreferences.writeDisplaySleepDimToSettingsJson`.
-    @MainActor
     private func loadDisplaySleepDimFromSettings() {
         let url = AgentDeckPaths.settingsJson
         guard let data = try? Data(contentsOf: url),
@@ -6197,7 +6185,6 @@ final class DaemonServer {
 
     /// Build the `dim` sub-dict embedded in every `display_state` broadcast so
     /// Pixoo / D200H / ESP32 apply one consistent snapshot.
-    @MainActor
     private func currentDimDict() -> [String: Any] {
         return [
             "enabled": cachedDimConfig.enabled,
@@ -6213,7 +6200,6 @@ final class DaemonServer {
     /// pool contention (see memory: `bug_daemon_self_http_probe.md`).
     /// Returns the same dict that `/health` → `modules.d200h` would return,
     /// or `nil` while the Ulanzi Studio plugin is disconnected.
-    @MainActor
     func d200hStatusSnapshot() -> [String: Any]? {
         return d200hHealthSnapshot()
     }
@@ -6221,7 +6207,6 @@ final class DaemonServer {
     /// Node parity (bridge `moduleHealthProvider`): D200H connectivity is the
     /// Ulanzi Studio plugin's WS presence. Returns nil while absent so users
     /// without a D200H never see a ghost row.
-    @MainActor
     private func d200hHealthSnapshot() -> [String: Any]? {
         guard !ulanziPluginConnectionIds.isEmpty else { return nil }
         return [
@@ -6234,23 +6219,39 @@ final class DaemonServer {
     /// `d200hStatusSnapshot()` — callers inside the app (menu bar devices
     /// section) must not HTTP-probe `/health`. All return `nil` when the
     /// underlying module isn't initialized for this session.
-    @MainActor
     func adbStatusSnapshot() -> [String: Any]? {
         return adbModule?.statusSnapshot()
     }
 
-    @MainActor
     func pixooStatusSnapshot() -> [String: Any]? {
         return pixooModule?.statusSnapshot()
     }
 
-    @MainActor
     func serialStatusSnapshot() async -> [String: Any]? {
         guard let serialModule else { return nil }
         return await serialModule.statusSnapshot()
     }
 
-    @MainActor
+    /// All four device snapshots in one hop, boxed so they can cross from the
+    /// daemon's executor to `@MainActor` UI code (`[String: Any]` is not
+    /// Sendable). Taking them together also means the menu bar renders one
+    /// coherent picture instead of four independently-timed reads.
+    struct DeviceStatusSnapshots: @unchecked Sendable {
+        let d200h: [String: Any]?
+        let pixoo: [String: Any]?
+        let serial: [String: Any]?
+        let adb: [String: Any]?
+    }
+
+    func deviceStatusSnapshots() async -> DeviceStatusSnapshots {
+        DeviceStatusSnapshots(
+            d200h: d200hStatusSnapshot(),
+            pixoo: pixooStatusSnapshot(),
+            serial: await serialStatusSnapshot(),
+            adb: adbStatusSnapshot()
+        )
+    }
+
     private func buildModuleHealth() async -> SendableDict {
         var gateway: [String: Any] = [
             "available": cachedGatewayAvailable,
@@ -6320,7 +6321,6 @@ final class DaemonServer {
 
     // MARK: - Event Builders
 
-    @MainActor
     private func buildFullStateEvent(agentType: String) -> [String: Any] {
         var e: [String: Any] = [
             "type": "state_update",
@@ -6391,7 +6391,6 @@ final class DaemonServer {
     /// Refresh cached Anthropic Console Admin API usage. No-op when
     /// no key is configured. On failure the previous cached value is
     /// flagged stale so the UI can show "last known" values.
-    @MainActor
     private func refreshAdminApiUsage() async {
         guard AnthropicAdminApiClient.shared.hasKey() else { return }
         if let fresh = await AnthropicAdminApiClient.shared.fetchUsage() {
@@ -6412,7 +6411,6 @@ final class DaemonServer {
     /// construction, holding a valid OAuth token; lift the broadcast
     /// flag so the Android tablet / Stream Deck topology row reflects
     /// reality instead of "Not connected".
-    @MainActor
     private func effectiveOauthConnected() -> Bool {
         if oauthConnected { return true }
         return cachedSessions.contains { $0.agentType == "claude-code" }
@@ -6547,7 +6545,6 @@ final class DaemonServer {
         return e
     }
 
-    @MainActor
     private func mergeEngineSnapshot(into event: inout [String: Any]) {
         if !cachedModelCatalog.isEmpty { event["modelCatalog"] = cachedModelCatalog }
         if let ollama = cachedOllamaStatus { event["ollamaStatus"] = ollama }
@@ -6559,7 +6556,6 @@ final class DaemonServer {
         }
     }
 
-    @MainActor
     private func buildSubscriptions() -> [[String: Any]] {
         var subscriptions: [[String: Any]] = []
         // ChatGPT/Codex plan metadata comes from local Codex auth files and
@@ -6728,7 +6724,6 @@ final class DaemonServer {
 
     // MARK: - Ollama
 
-    @MainActor
     private func probeOllama() async {
         let previous = cachedOllamaStatus as NSDictionary?
         var success = false
@@ -6842,7 +6837,6 @@ final class DaemonServer {
         return "chat"
     }
 
-    @MainActor
     private func probeMLX() async {
         let previous = cachedMlxModels
         let previousCatalog = cachedMlxModelCatalog
@@ -6929,7 +6923,6 @@ final class DaemonServer {
 
     /// Probe the APME judge backend status. Returns a Sendable snapshot
     /// compatible with the CLI daemon's `JudgeBackendStatus` interface.
-    @MainActor
     private func probeJudgeBackend() async -> JudgeBackendStatus {
         let config = ApmeSettings.load()
         let backend = config.judge.backend
@@ -7050,7 +7043,7 @@ final class DaemonServer {
         antigravityPollTask?.cancel()
         initialUsageTask?.cancel()
 
-        voiceAssistant.stop()
+        Task { @MainActor in self.voiceAssistant?.stop() }
         openCodeObserver.stop()
         await focusRelay.stop()
         await timelineRelay.stop()
@@ -7275,7 +7268,6 @@ final class DaemonServer {
     /// Resolve the per-session activity one-liner: a cached Foundation Models
     /// summary when current, else the heuristic — kicking off an async FM
     /// labeling whose result surfaces on a later sessions_list broadcast.
-    @MainActor
     private func sessionActivitySummary(_ s: DaemonSessionEntry) -> String? {
         let sig = "\(s.state ?? "")|\(s.currentTool ?? "")|\(s.question ?? "")"
         if let cached = sessionActivityCache[s.id], cached.sig == sig {
@@ -7287,7 +7279,6 @@ final class DaemonServer {
 
     /// Fire-and-forget FM labeling. Caches the result and re-broadcasts so the
     /// natural-language summary replaces the heuristic on the next paint.
-    @MainActor
     private func refreshSessionActivity(_ s: DaemonSessionEntry, sig: String) {
         // ISOLATION INVARIANT: the contains-check and the insert below must stay
         // in one synchronous isolated region. Do NOT introduce an `await`
@@ -7304,13 +7295,40 @@ final class DaemonServer {
             s.currentTool.map { "Current tool: \($0)" },
             (s.state?.hasPrefix("awaiting") == true) ? s.question.map { "Awaiting answer to: \($0)" } : nil,
         ].compactMap { $0 }.joined(separator: "\n")
-        Task { @MainActor [weak self] in
+        Task { @DaemonActor [weak self] in
             guard let self else { return }
             defer { self.sessionActivityInflight.remove(s.id) }
             let summary = await TimelineSummarizer.labelActivity(context)
             guard let summary, !summary.isEmpty else { return }
             self.sessionActivityCache[s.id] = (sig, summary)
             self.broadcastSessionsList()
+        }
+    }
+
+    // MARK: - System wake
+
+    /// Recovery after the machine wakes. Called from the IOKit power callback,
+    /// which runs off the daemon's executor — hence this hop.
+    fileprivate func handleSystemWake() {
+        DaemonLogger.shared.info("System wake — recovering sessions and devices")
+        // Atomic refresh-then-broadcast: pulls live registry + pushed sessions,
+        // enriches state, then broadcasts the freshly-rebuilt cachedSessions.
+        // Calling broadcastSessionsList() directly after a discard-only
+        // registry.listActive() would publish the pre-sleep snapshot.
+        Task { await self.refreshSessions() }
+        // Re-sync timeline relay (drops dead subscriptions)
+        Task { await self.timelineRelay.sync() }
+        // Re-advertise Bonjour (mDNSResponder may have stale state)
+        Task { await self.wsServer.republishBonjour() }
+        // Wake all device modules (D200H re-scan, ESP32 reconnect, Pixoo re-sync)
+        Task { await self.moduleManager.wakeAll() }
+        // Broadcast full state so reconnected devices get fresh data
+        Task { self.broadcastStateUpdate() }
+        // Refresh usage after network stabilizes (clears stale "!" indicator)
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            await self.fetchUsageRelayed()
+            self.broadcastUsage()
         }
     }
 
@@ -7328,7 +7346,6 @@ final class DaemonServer {
     /// split across a suspension, a task rotating in between would let us close
     /// the wrong collector. Keeping it one synchronous isolated call makes that
     /// impossible regardless of which executor the daemon runs on.
-    @MainActor
     private func closeApmeTaskExternal(
         sessionId: String?,
         boundarySignal: String,
@@ -7347,7 +7364,6 @@ final class DaemonServer {
     /// reachable from tests (a live `DaemonServer` needs bound sockets).
     /// Gateway is tried first and the Claude collector is only consulted when
     /// the gateway had nothing to close — never both.
-    @MainActor
     static func closeApmeTaskExternal(
         gateway: ApmeCollector?,
         claude: ApmeCollector?,
@@ -7372,7 +7388,6 @@ final class DaemonServer {
     /// Persists turn-level outcome/composite and broadcasts an `apme_eval` WS
     /// event so the scorecard surfaces update. The timeline is an activity log
     /// only — eval results are no longer projected onto it (de-noise).
-    @MainActor
     private func handleApmeResult(_ result: ApmeEvalJobResult) {
         guard let store = apmeStore else { return }
 
@@ -7443,7 +7458,6 @@ final class DaemonServer {
     /// shape of `ADApmeRunSummary` (codegen'd from shared protocol.ts) so
     /// every viewer target — Android, Stream Deck+, ESP32, iOS, TUI — decodes
     /// it with the same struct.
-    @MainActor
     private func broadcastApmeEval(
         run: ApmeRun,
         evals: [ApmeEval],
@@ -7494,7 +7508,6 @@ final class DaemonServer {
     /// so late rows (post-evict Stop hooks, rollout responses) keep their
     /// `[project]` attribution instead of degrading to the `[Codex CLI]`
     /// agent-tag fallback on every client.
-    @MainActor
     private func codexTimelineProjectName(sessionId: String, json: [String: Any]) -> String? {
         if let p = Self.nonEmptyString(pushedSessionsById[sessionId]?.projectName),
            p != Self.codexAppFallbackProjectName {
@@ -7519,7 +7532,6 @@ final class DaemonServer {
     /// session entry (the session_start switch case already resolved it
     /// from the payload's cwd), then resolve the payload directly for the
     /// lazy-openRun path where no entry exists yet.
-    @MainActor
     private func apmeEnrichedHookPayload(json: [String: Any], sessionId: String?) -> [String: Any] {
         if Self.nonEmptyString(json["project_name"] as? String) != nil { return json }
         var enriched = json
@@ -7539,7 +7551,6 @@ final class DaemonServer {
     /// single-turn by construction, so a second turn on the same thread id
     /// is the interactive signature. Interactive threads skip the
     /// post-terminal fast evict and get `codexInteractiveIdleTTL`.
-    @MainActor
     private func codexRegisterNewTurnSignal(sessionId: String) {
         if lastTerminalCodexEventBySession[sessionId] != nil
             || codexTerminalTombstoneBySession[sessionId] != nil,
@@ -7551,7 +7562,6 @@ final class DaemonServer {
         codexTerminalTombstoneBySession.removeValue(forKey: sessionId)
     }
 
-    @MainActor
     private func appendCodexChatStart(json: [String: Any], sessionId: String?) {
         guard let sessionId else { return }
         let prompt = claudeCodePromptText(from: json)
@@ -7598,7 +7608,6 @@ final class DaemonServer {
         broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)] as [String: Any])
     }
 
-    @MainActor
     private func appendCodexToolEvent(json: [String: Any], sessionId: String?, completed: Bool) {
         guard let sessionId else { return }
         guard let tool = Self.usefulCodexToolName(json["tool_name"] as? String)
@@ -7641,7 +7650,6 @@ final class DaemonServer {
         broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)] as [String: Any])
     }
 
-    @MainActor
     private func appendCodexChatEnd(json: [String: Any], sessionId: String?, interrupted: Bool = false) {
         guard let sessionId else { return }
         let now = Date().timeIntervalSince1970 * 1000
@@ -7745,7 +7753,6 @@ final class DaemonServer {
     /// session entry's resolved name (skipping the "OpenCode" display
     /// fallback — an agent-name label on a timeline row is noise the
     /// clients' agent-tag fallback already covers), then the payload's cwd.
-    @MainActor
     private func openCodeTimelineProjectName(sessionId: String, json: [String: Any]) -> String? {
         if let p = Self.nonEmptyString(pushedSessionsById[sessionId]?.projectName),
            p != Self.openCodeFallbackProjectName {
@@ -7759,7 +7766,6 @@ final class DaemonServer {
     /// `user_prompt_submit` boundary (classifyObservedHookEvent), so a
     /// standalone `opencode` run gets the same prompt → response turn shape
     /// on the timeline as a direct `claude`/`codex` run.
-    @MainActor
     private func appendOpenCodeChatStart(json: [String: Any], sessionId: String?) {
         guard let sessionId else { return }
         openCodeLastPromptTopicBySession.removeValue(forKey: sessionId)
@@ -7791,7 +7797,6 @@ final class DaemonServer {
         broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)] as [String: Any])
     }
 
-    @MainActor
     private func appendOpenCodeToolEvent(json: [String: Any], sessionId: String?, completed: Bool) {
         guard let sessionId else { return }
         // The observer plugin sends the literal placeholder "tool" when
@@ -7824,7 +7829,6 @@ final class DaemonServer {
     /// stamped: OpenCode sessions are not ingested by the APME collector, so
     /// they never own a task (same rationale as the Codex appenders —
     /// borrowing a Claude session's active task cross-contaminates subtrees).
-    @MainActor
     private func appendOpenCodeChatEnd(json: [String: Any], sessionId: String?, interrupted: Bool = false) {
         guard let sessionId else { return }
         let now = Date().timeIntervalSince1970 * 1000
@@ -7890,7 +7894,6 @@ final class DaemonServer {
     /// Append a `chat_start` timeline entry for a Claude Code UserPromptSubmit
     /// hook. Without this, Claude Code conversations appeared empty on the
     /// dashboard timeline while OpenClaw/OpenCode sessions showed full turns.
-    @MainActor
     private func appendClaudeCodeChatStart(json: [String: Any], sessionId: String?, taskId: String? = nil) {
         // Reset the per-session topic cache so a stale label from an
         // abnormally-closed prior turn doesn't leak into this row. The
@@ -7949,7 +7952,6 @@ final class DaemonServer {
     /// `interrupted: true` marks a force-close (session_end with an open turn,
     /// stale-session eviction): the close row reads "Interrupted" instead of
     /// dishonestly claiming "Completed" for a turn whose Stop never fired.
-    @MainActor
     private func appendClaudeCodeChatEnd(json: [String: Any], sessionId: String?, interrupted: Bool = false) {
         var assistantText = (json["last_assistant_message"] as? String) ?? ""
         let now = Date().timeIntervalSince1970 * 1000
@@ -8124,7 +8126,7 @@ final class DaemonServer {
     /// Mirror of shared/src/timeline.ts `normalizeCommandPrompt`: collapse a
     /// Claude Code command XML envelope to "/name args"; pass anything else
     /// through unchanged.
-    static func normalizeCommandPrompt(_ text: String) -> String {
+    nonisolated static func normalizeCommandPrompt(_ text: String) -> String {
         guard text.contains("<command-name>") else { return text }
         guard let nameRange = text.range(
             of: #"<command-name>\s*/?[A-Za-z][\w:-]*\s*</command-name>"#,
@@ -8242,14 +8244,14 @@ final class DaemonServer {
         Self.daemonTimelineEntryDict(e)
     }
 
-    static func buildTimelineHistoryEventForTest(from entries: [DaemonTimelineEntry]) -> [String: Any] {
+    nonisolated static func buildTimelineHistoryEventForTest(from entries: [DaemonTimelineEntry]) -> [String: Any] {
         [
             "type": "timeline_history",
             "entries": entries.map { daemonTimelineEntryDict($0) },
         ]
     }
 
-    private static func daemonTimelineEntryDict(_ e: DaemonTimelineEntry) -> [String: Any] {
+    private nonisolated static func daemonTimelineEntryDict(_ e: DaemonTimelineEntry) -> [String: Any] {
         var dict: [String: Any] = [
             "ts": e.ts,
             "type": e.type,
@@ -8298,7 +8300,7 @@ final class DaemonServer {
     /// Format an epoch-millisecond timestamp as host-local "HH:MM". Uses
     /// `Calendar.current` (host timezone) — no shared DateFormatter so there's
     /// no cross-actor mutable state. Mirrors Node `stampLocalHm`.
-    private static func localHmString(_ tsMs: Double) -> String {
+    private nonisolated static func localHmString(_ tsMs: Double) -> String {
         let date = Date(timeIntervalSince1970: tsMs / 1000.0)
         let c = Calendar.current.dateComponents([.hour, .minute], from: date)
         return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
@@ -8311,7 +8313,7 @@ final class DaemonServer {
     /// the disk path; the live wrapper `reapOrphanTaskStarts()` calls
     /// this, then applies each result via `timelineStore.upsert` +
     /// `broadcastRaw`.
-    static func computeOrphanTaskEnds(from snapshot: [DaemonTimelineEntry]) -> [DaemonTimelineEntry] {
+    nonisolated static func computeOrphanTaskEnds(from snapshot: [DaemonTimelineEntry]) -> [DaemonTimelineEntry] {
         var closedTaskIds = Set<String>()
         for e in snapshot where e.type == "task_end" {
             if let id = e.taskId, !id.isEmpty { closedTaskIds.insert(id) }
@@ -8371,7 +8373,7 @@ final class DaemonServer {
     /// chat_start — a completion sorted after a newer prompt would stop that
     /// (possibly live) turn's spinner too. Mirrors
     /// BridgeTimelineStore.reapOrphanChatStarts.
-    static func computeOrphanChatEnds(
+    nonisolated static func computeOrphanChatEnds(
         from snapshot: [DaemonTimelineEntry],
         staleMs: Double = claudeInteractiveIdleTTL * 1000,
         now: Double = Date().timeIntervalSince1970 * 1000
@@ -8433,7 +8435,6 @@ final class DaemonServer {
     /// Idempotent: the upsert path matches by (type="task_end", taskId),
     /// so re-running the reaper on the next startup finds the synthetic
     /// task_end already there and is a no-op.
-    @MainActor
     private func reapOrphanTaskStarts() async {
         let snapshot = await timelineStore.getAll()
         let synthetics = Self.computeOrphanTaskEnds(from: snapshot)
@@ -8466,7 +8467,6 @@ final class DaemonServer {
     /// key; the store's exact 8s dedup absorbs a double-run in one process,
     /// and the synthetic itself is a completion so the next startup's scan
     /// finds the turn closed (idempotent across restarts).
-    @MainActor
     private func reapOrphanChatStartsDelayed() async {
         let aliveSessions = Set(lastHookAtByPushedSession.keys)
         let snapshot = await timelineStore.getAll()
@@ -8485,7 +8485,6 @@ final class DaemonServer {
         }
     }
 
-    @MainActor
     private func appendGatewayTimelineEntry(_ rawEntry: [String: Any]) {
         var entry = DaemonTimelineEntry(
             ts: (rawEntry["ts"] as? NSNumber)?.doubleValue ?? rawEntry["ts"] as? Double ?? Date().timeIntervalSince1970 * 1000,
@@ -8533,7 +8532,6 @@ final class DaemonServer {
     // MARK: - APME eval tick (30s loop)
 
     /// Runs once every 30s. Mirrors bridge/src/daemon-server.ts:951-990.
-    @MainActor
     private func apmeEvalTick() async {
         guard let store = apmeStore, let runner = apmeRunner else { return }
 
@@ -8599,7 +8597,6 @@ final class DaemonServer {
 
     /// Propagates APME outcome evaluation results directly to the task_end timeline row.
     /// Ensures real-time UI badge ("...") update synchronization right after SQLite commits.
-    @MainActor
     private func propagateOutcomeToTimeline(
         run: ApmeRun,
         eval: (
@@ -8727,6 +8724,23 @@ struct ChatTurnAnchorTracker: Equatable, Sendable {
 enum DaemonError: Error {
     case alreadyRunning(port: Int)
     case noPortAvailable
+}
+
+/// IOKit power-notification callback.
+///
+/// Declared at file scope on purpose. Written inline inside `startServices()`
+/// it would statically inherit that method's `@DaemonActor` isolation, and
+/// because a `@convention(c)` function pointer cannot carry isolation, Swift
+/// compiles an executor assertion into the closure's entry. IOKit calls it on
+/// the notification port's dispatch queue, so that assertion trips —
+/// "Incorrect actor executor assumption; expected 'AgentDeck.DaemonActor'" —
+/// and aborts the process. At file scope there is no isolation to inherit, and
+/// the hop onto the daemon is explicit.
+private let daemonWakeCallback: IOServiceInterestCallback = { refcon, _, messageType, _ in
+    guard messageType == UInt32(kIOMessageSystemHasPoweredOn) else { return }
+    guard let refcon else { return }
+    let server = Unmanaged<DaemonServer>.fromOpaque(refcon).takeUnretainedValue()
+    Task { @DaemonActor in server.handleSystemWake() }
 }
 
 struct SendableDict: @unchecked Sendable {

@@ -24,7 +24,12 @@
 
 import Foundation
 
-@MainActor
+// Holds daemon state → runs on the daemon's executor. See DaemonActor.
+// Global-actor isolation also makes this type Sendable, which it must be: it
+// hands a closure to `OpenCodeSSEClient.streamEvents`, whose parameter is
+// `@Sendable`. That closure does NOT inherit the daemon's isolation, so it
+// re-enters through `deliver` with an explicit `await`.
+@DaemonActor
 final class OpenCodeObserver {
     nonisolated static let defaultServerURL = "http://127.0.0.1:4096"
     private static let tickSeconds: UInt64 = 5
@@ -151,21 +156,17 @@ final class OpenCodeObserver {
             let busy = await client.sessionStatus().filter { $0.value == "busy" }.map(\.key)
             for sid in busy {
                 let summary = await client.session(id: sid)
-                await MainActor.run {
-                    self?.callbacks?.onUpdate(OpenCodeSessionUpdate(
-                        sessionID: sid,
-                        kind: .processing,
-                        title: summary?.title,
-                        directory: summary?.directory
-                    ))
-                }
+                await self?.deliver(OpenCodeSessionUpdate(
+                    sessionID: sid,
+                    kind: .processing,
+                    title: summary?.title,
+                    directory: summary?.directory
+                ))
             }
 
             do {
-                try await client.streamEvents { update in
-                    await MainActor.run {
-                        self?.callbacks?.onUpdate(update)
-                    }
+                try await client.streamEvents { [weak self] update in
+                    await self?.deliver(update)
                 }
                 DaemonLogger.shared.info("OpenCode SSE stream ended (\(url.absoluteString))")
             } catch is CancellationError {
@@ -174,10 +175,14 @@ final class OpenCodeObserver {
                 DaemonLogger.shared.debug("OpenCode", "SSE stream error: \(error.localizedDescription)")
             }
 
-            await MainActor.run {
-                self?.handleStreamDropped()
-            }
+            await self?.handleStreamDropped()
         }
+    }
+
+    /// Single delivery seam for SSE updates — keeps the `@Sendable` stream
+    /// closure from having to touch actor state directly.
+    private func deliver(_ update: OpenCodeSessionUpdate) {
+        callbacks?.onUpdate(update)
     }
 
     private func handleStreamDropped() {

@@ -15,7 +15,8 @@
 
 import Foundation
 
-@MainActor
+// Holds daemon state → runs on the daemon's executor. See DaemonActor.
+@DaemonActor
 final class ApmeCollector {
     private let store: ApmeStore
 

@@ -11,7 +11,8 @@
 import XCTest
 @testable import AgentDeck
 
-@MainActor
+// Exercises daemon-actor types (ApmeCollector, DaemonServer statics).
+@DaemonActor
 final class ApmeTaskBoundaryTests: XCTestCase {
 
     // MARK: - Helpers
@@ -47,7 +48,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     // MARK: - allTodosCompleted (helper unit)
 
-    func testAllTodosCompleted_trueWhenEveryStatusIsCompleted() {
+    func testAllTodosCompleted_trueWhenEveryStatusIsCompleted() async {
         let data: [String: Any] = [
             "tool_name": "TodoWrite",
             "tool_input": [
@@ -60,7 +61,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertTrue(ApmeCollector.allTodosCompleted(data: data))
     }
 
-    func testAllTodosCompleted_falseWhenAnyTodoIsInProgress() {
+    func testAllTodosCompleted_falseWhenAnyTodoIsInProgress() async {
         let data: [String: Any] = [
             "tool_name": "TodoWrite",
             "tool_input": [
@@ -73,7 +74,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertFalse(ApmeCollector.allTodosCompleted(data: data))
     }
 
-    func testAllTodosCompleted_falseWhenTodosMissingOrEmpty() {
+    func testAllTodosCompleted_falseWhenTodosMissingOrEmpty() async {
         XCTAssertFalse(ApmeCollector.allTodosCompleted(data: [:]))
         XCTAssertFalse(ApmeCollector.allTodosCompleted(data: [
             "tool_input": ["todos": []],
@@ -82,7 +83,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     // MARK: - Task lifecycle through handleHook
 
-    func testFirstUserPromptOpensTaskAndAttachesTurn() throws {
+    func testFirstUserPromptOpensTaskAndAttachesTurn() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -114,7 +115,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// prompt path backfills the run from the first payload carrying the
     /// field (the daemon enriches payloads from the session entry / cwd),
     /// and never overwrites a projectName that is already set.
-    func testRunProjectNameBackfilledFromLaterPromptButNeverOverwritten() throws {
+    func testRunProjectNameBackfilledFromLaterPromptButNeverOverwritten() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -138,7 +139,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
                        "backfill fills only empty projectName — never overwrites")
     }
 
-    func testTodoWriteAllCompletedRecordsSoftHintWithoutClosingTask() throws {
+    func testTodoWriteAllCompletedRecordsSoftHintWithoutClosingTask() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -173,7 +174,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         )
     }
 
-    func testTodoWritePartialDoesNotCloseTask() throws {
+    func testTodoWritePartialDoesNotCloseTask() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -198,7 +199,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertEqual(tasks[0].boundarySignal, "open")
     }
 
-    func testSecondUserPromptAfterTodoCompleteStaysInSameTask() throws {
+    func testSecondUserPromptAfterTodoCompleteStaysInSameTask() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -224,7 +225,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertEqual(turns[1]["task_id"] as? String, tasks[0].id)
     }
 
-    func testSessionEndClosesActiveTaskWithSessionEndBoundary() throws {
+    func testSessionEndClosesActiveTaskWithSessionEndBoundary() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -245,7 +246,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     // MARK: - parseJudgeJson summary extraction
 
-    func testParseJudgeJsonExtractsSummaryAndScores() {
+    func testParseJudgeJsonExtractsSummaryAndScores() async {
         let raw = #"""
         {
           "summary": "Added task boundary detection.",
@@ -269,7 +270,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertEqual(parsed.done ?? [], ["boundary detection"])
     }
 
-    func testParseJudgeJsonSummaryIsOptional() {
+    func testParseJudgeJsonSummaryIsOptional() async {
         // No summary field — the existing turn/run eval path must still parse.
         let raw = #"{"overall": 0.5, "reasoning": ""}"#
         guard let parsed = ApmeRunner.parseJudgeJson(raw) else {
@@ -279,7 +280,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertEqual(parsed.scores["overall"] ?? -1, 0.5, accuracy: 0.001)
     }
 
-    func testParseJudgeJsonSummaryClippedTo280() {
+    func testParseJudgeJsonSummaryClippedTo280() async {
         let longStr = String(repeating: "x", count: 400)
         let raw = "{\"summary\":\"\(longStr)\",\"overall\":0.5}"
         guard let parsed = ApmeRunner.parseJudgeJson(raw) else {
@@ -295,7 +296,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// would render as a TASK header with a spinner that never resolves
     /// (because there's no closing signal until session_end). The DB record
     /// is still written so APME evaluations stay accurate.
-    func testSingleTurnDoesNotEmitTaskStartToTimeline() throws {
+    func testSingleTurnDoesNotEmitTaskStartToTimeline() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -317,7 +318,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// As soon as a second user prompt arrives on the same task, the
     /// collector promotes the deferred `task_start` so the dashboard shows
     /// the conversation hierarchy.
-    func testLazyOpenRunCreatesTaskWhenSessionStartMissed() throws {
+    func testLazyOpenRunCreatesTaskWhenSessionStartMissed() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -338,7 +339,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertEqual(starts.count, 1, "grouped follow-up promotes exactly one header")
     }
 
-    func testSecondTurnEmitsDeferredTaskStart() throws {
+    func testSecondTurnEmitsDeferredTaskStart() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -357,7 +358,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     /// TodoWrite is the explicit "this is a planned task" signal — emit the
     /// TASK header on first invocation regardless of turn count.
-    func testTodoWriteTriggersImmediateTaskStartEmit() throws {
+    func testTodoWriteTriggersImmediateTaskStartEmit() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -375,7 +376,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// When a task that was promoted to the timeline closes, a matching
     /// `task_end` row must reach the dashboard so the spinner can stop.
     /// (The opposite — a never-emitted task — is covered above.)
-    func testPromotedTaskEmitsTaskEndOnClose() throws {
+    func testPromotedTaskEmitsTaskEndOnClose() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -570,7 +571,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// Sanity check the disambiguator's non-race path: a `chatEndTs`
     /// that's *not* before `activeTurn.startedAt` (normal flow) attributes
     /// to activeTurn as before.
-    func testSetTurnResponseAttributesToActiveTurnWhenChatEndIsCurrent() {
+    func testSetTurnResponseAttributesToActiveTurnWhenChatEndIsCurrent() async {
         let tmp: (store: ApmeStore, dir: URL)
         do { tmp = try makeTempStore() } catch { return XCTFail("store") }
         defer { cleanup(tmp) }
@@ -664,7 +665,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// discriminator now lives in `DaemonServer.gatewayToolHookFromEntry`:
     /// only `status in {complete,error,failed}` or a non-nil
     /// `toolOutput` qualifies as end. Running-with-input → start.
-    func testGatewayToolRunningWithInputRoutesAsStart() {
+    func testGatewayToolRunningWithInputRoutesAsStart() async {
         let entry: [String: Any] = [
             "raw": "shell · running",
             "type": "tool_exec",
@@ -681,7 +682,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     }
 
     /// Complete with output → tool_end.
-    func testGatewayToolCompleteWithOutputRoutesAsEnd() {
+    func testGatewayToolCompleteWithOutputRoutesAsEnd() async {
         let entry: [String: Any] = [
             "raw": "shell · complete",
             "type": "tool_exec",
@@ -698,7 +699,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     /// Error status → tool_end (output may be absent — the agent failed
     /// before producing one).
-    func testGatewayToolErrorStatusRoutesAsEnd() {
+    func testGatewayToolErrorStatusRoutesAsEnd() async {
         let entry: [String: Any] = [
             "raw": "shell · error",
             "type": "tool_exec",
@@ -711,7 +712,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     /// Output present without explicit status → tool_end (agent produced
     /// a result even if it didn't tag it).
-    func testGatewayToolOutputWithoutStatusRoutesAsEnd() {
+    func testGatewayToolOutputWithoutStatusRoutesAsEnd() async {
         let entry: [String: Any] = [
             "raw": "shell",
             "type": "tool_exec",
@@ -725,7 +726,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// Legacy entry (no structured `toolName`/`toolOutput`, only `raw` of
     /// the form "{name} · {status}") must still split on " · " to recover
     /// the tool name and route by status.
-    func testGatewayToolLegacyRawSplitsAndRoutesAsStart() {
+    func testGatewayToolLegacyRawSplitsAndRoutesAsStart() async {
         let entry: [String: Any] = [
             "raw": "shell · running",
             "type": "tool_exec",
@@ -736,7 +737,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     }
 
     /// No status, no toolOutput → start (default — tool is still in flight).
-    func testGatewayToolNoStatusRoutesAsStart() {
+    func testGatewayToolNoStatusRoutesAsStart() async {
         let entry: [String: Any] = [
             "raw": "shell",
             "type": "tool_exec",
@@ -754,7 +755,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// to `tool_end`. The fix unwraps NSNull as absent in the router
     /// (`unwrapJSONValue`) AND filters it on the producer side
     /// (`OpenClawAdapter.firstJSONValue`).
-    func testGatewayToolExplicitNullToolOutputRoutesAsStart() {
+    func testGatewayToolExplicitNullToolOutputRoutesAsStart() async {
         let entry: [String: Any] = [
             "raw": "shell · running",
             "type": "tool_exec",
@@ -773,7 +774,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// Defensive: explicit-null `toolInput` should also be dropped (not
     /// stored as NSNull in the payload). Cleaner downstream payload
     /// inspection + matches the firstJSONValue contract end-to-end.
-    func testGatewayToolExplicitNullToolInputDroppedFromPayload() {
+    func testGatewayToolExplicitNullToolInputDroppedFromPayload() async {
         let entry: [String: Any] = [
             "raw": "shell · running",
             "type": "tool_exec",
@@ -803,7 +804,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// This test drives the collector directly with the new payload
     /// shape — covering the contract the DaemonServer hand-off has to
     /// produce, without needing the full Gateway/WS infrastructure.
-    func testGatewayToolHookStoresRealNameAndStructuredInput() throws {
+    func testGatewayToolHookStoresRealNameAndStructuredInput() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -871,7 +872,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// branch splits on " · " — this test exercises ApmeCollector with the
     /// pre-split name so the contract on its side is documented even
     /// though the splitting itself lives in DaemonServer.
-    func testToolNameNotTreatedAsTodoWriteUnlessExact() throws {
+    func testToolNameNotTreatedAsTodoWriteUnlessExact() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -904,7 +905,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// Normal turn: chat_start opens the turn, the Stop hook claims its
     /// anchor exactly once, and a duplicate/late Stop claims nothing —
     /// so it can't re-emit the previous turn's completion pair.
-    func testTurnAnchorClaimOnceAndDuplicateStopSuppressed() {
+    func testTurnAnchorClaimOnceAndDuplicateStopSuppressed() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "s1", ts: 1000)
         XCTAssertEqual(t.claimOpenTurn(sid: "s1"), 1000)
@@ -918,7 +919,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// the wrong turn). The tracker re-syncs on every chat_start: the
     /// newest prompt supersedes the orphaned anchor, so turn 2's Stop
     /// claims turn 2's own ts.
-    func testTurnAnchorLostStopResyncsOnNextChatStart() {
+    func testTurnAnchorLostStopResyncsOnNextChatStart() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "s1", ts: 1000) // turn 1 — its Stop never arrives
         t.noteChatStart(sid: "s1", ts: 5000) // turn 2 supersedes the orphan
@@ -933,7 +934,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// last completion IS the open turn) and the second Stop finds the
     /// turn closed. Accepted because hook-observed turns are serial per
     /// session and lost Stops vastly outnumber true interleaves.
-    func testTurnAnchorFollowupSupersedesPendingAnchor() {
+    func testTurnAnchorFollowupSupersedesPendingAnchor() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "s1", ts: 1000) // turn 1
         t.noteChatStart(sid: "s1", ts: 5000) // turn 2 before turn 1's Stop
@@ -943,7 +944,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     /// Anchors are independent per sessionId — a multi-agent dashboard
     /// (Claude + Codex running in parallel) must not cross-stamp.
-    func testTurnAnchorIsolatedAcrossSessions() {
+    func testTurnAnchorIsolatedAcrossSessions() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "claude", ts: 10)
         t.noteChatStart(sid: "codex", ts: 99)
@@ -961,7 +962,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     /// `lastChatStart` retains the anchor across a claim, so a second (late/
     /// duplicate) Stop can still anchor its response to the turn's chat_start.
-    func testTurnAnchorLastChatStartSurvivesClaim() {
+    func testTurnAnchorLastChatStartSurvivesClaim() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "s1", ts: 1000)
         XCTAssertEqual(t.claimOpenTurn(sid: "s1"), 1000)
@@ -972,7 +973,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     /// The fallback tracks the MOST RECENT chat_start — a fresh prompt updates
     /// it, so a claimed-nil response anchors to the current turn, not a stale one.
-    func testTurnAnchorLastChatStartTracksNewestPrompt() {
+    func testTurnAnchorLastChatStartTracksNewestPrompt() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "s1", ts: 1000)
         _ = t.claimOpenTurn(sid: "s1")
@@ -982,14 +983,14 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     /// No chat_start seen yet → nil (a genuinely anchorless observed response
     /// stays null; there is no turn to pair with).
-    func testTurnAnchorLastChatStartNilBeforeAnyPrompt() {
+    func testTurnAnchorLastChatStartNilBeforeAnyPrompt() async {
         let t = ChatTurnAnchorTracker()
         XCTAssertNil(t.lastChatStart(sid: "s1"))
     }
 
     /// `clear` (session_end / eviction) drops the fallback too — a post-close
     /// response must not anchor to a pre-session_end prompt.
-    func testTurnAnchorLastChatStartClearedOnSessionEnd() {
+    func testTurnAnchorLastChatStartClearedOnSessionEnd() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "s1", ts: 1000)
         t.clear(sid: "s1")
@@ -1001,7 +1002,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// turn currently generating without consuming the anchor the Stop
     /// hook owns — and it goes nil once the Stop claims the turn, so a
     /// straggler tool event can't anchor to a closed turn.
-    func testTurnAnchorPeekNonConsumingAndClosedAfterClaim() {
+    func testTurnAnchorPeekNonConsumingAndClosedAfterClaim() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "s1", ts: 1000)
         XCTAssertEqual(t.peekOpenTurn(sid: "s1"), 1000)
@@ -1017,7 +1018,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// its anchor and the response rendered standalone. The tracker is
     /// clock-free — an anchor stays claimable until its Stop arrives or
     /// a newer prompt supersedes it.
-    func testTurnAnchorHasNoTTL() {
+    func testTurnAnchorHasNoTTL() async {
         var t = ChatTurnAnchorTracker()
         t.noteChatStart(sid: "s1", ts: 1) // arbitrarily old wall-ms value
         XCTAssertEqual(t.claimOpenTurn(sid: "s1"), 1)
@@ -1025,7 +1026,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     /// Empty/unknown-session access must not crash, and `clear` drops
     /// the open turn (session_end / stale-eviction path).
-    func testTurnAnchorEmptyAccessSafeAndClear() {
+    func testTurnAnchorEmptyAccessSafeAndClear() async {
         var t = ChatTurnAnchorTracker()
         XCTAssertNil(t.claimOpenTurn(sid: "unknown"))
         XCTAssertNil(t.peekOpenTurn(sid: "unknown"))
@@ -1057,7 +1058,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// future column is added to `runs` and someone forgets to extend
     /// the colMap, this assertion fails immediately instead of silently
     /// shipping a re-eval cycle into production.
-    func testUpdateRunPersistsOutcomeFields() throws {
+    func testUpdateRunPersistsOutcomeFields() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store
@@ -1096,7 +1097,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// most recently opened a task — nesting unrelated Codex/Claude turns
     /// under one TASK header. Per-session maps must keep runs, tasks, and
     /// turn counts fully isolated.
-    func testConcurrentSessionsKeepIsolatedTasks() throws {
+    func testConcurrentSessionsKeepIsolatedTasks() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -1145,7 +1146,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// `setTurnResponse(sessionId:)` must land the response on THAT
     /// session's open turn even when another session prompted afterwards
     /// (i.e. the response target is not the most recently active session).
-    func testSetTurnResponseRoutesBySessionId() throws {
+    func testSetTurnResponseRoutesBySessionId() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -1177,7 +1178,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
     /// session_end for one session must not tear down the other session's
     /// task (the single-activeHookSession design attributed a session_end
     /// to whichever session started most recently).
-    func testSessionEndClosesOnlyItsOwnTask() throws {
+    func testSessionEndClosesOnlyItsOwnTask() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let collector = ApmeCollector(store: tmp.store)
@@ -1199,7 +1200,7 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     // MARK: - task_rollup rubric seeded
 
-    func testTaskRollupRubricSeededOnOpen() throws {
+    func testTaskRollupRubricSeededOnOpen() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let store = tmp.store

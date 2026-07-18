@@ -107,6 +107,7 @@
 		4492EC65271E1C630601393F /* UsageAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBBD731AC01994F5C7C1A78A /* UsageAPIClient.swift */; };
 		4578F976C71274F3C7C2620C /* InkDeckPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8404D4037BF665BA54E03F0 /* InkDeckPreview.swift */; };
 		45C2A8320BF4C10E8106CF6B /* OpenClawToolNoiseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4C62CBEEE99555CED707 /* OpenClawToolNoiseTests.swift */; };
+		45F924FE8D817EB16CA71345 /* DaemonActor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69470A0782BDF6A29012E9F0 /* DaemonActor.swift */; };
 		46086D1358BD25389E304052 /* OpenCodeCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C2005980598D651492006A3 /* OpenCodeCreature.swift */; };
 		46184E81DD69399DC187E6B6 /* Creature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A9A073192C93C1277AE490 /* Creature.swift */; };
 		469316CAE1172CC311AD34F0 /* CloudCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A135216D37932FE68501F4 /* CloudCreature.swift */; };
@@ -216,6 +217,7 @@
 		896B4B7AD5A5DA6FB6B4B7D4 /* CodexTelemetryModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81ECEA1581963132423FB0C8 /* CodexTelemetryModule.swift */; };
 		89B569F2096B99D8C6ED3044 /* ApmeScorers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 758AAD78310D811B993ADA21 /* ApmeScorers.swift */; };
 		89C78B3EB58A06C87CC5CDE0 /* IDotMatrixProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */; };
+		8A28584D14249A2DB2E94361 /* DaemonActor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69470A0782BDF6A29012E9F0 /* DaemonActor.swift */; };
 		8B7311262C05E2B32F563760 /* IntegrationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B7BAB1080F7958F74A1B74 /* IntegrationsView.swift */; };
 		8BD045F864776BC79B8BDA5F /* WebSocketServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC67585E8BFBBB8B0250FF2 /* WebSocketServer.swift */; };
 		8DE4D71A8BA18D7373FA3147 /* ApmeParseJudgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB04CEEDD6C769AD9056561 /* ApmeParseJudgeTests.swift */; };
@@ -495,6 +497,7 @@
 		640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixProtocolTests.swift; sourceTree = "<group>"; };
 		64EB18086FC44B69D1CBE171 /* ApmeJudgeMlx.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeMlx.swift; sourceTree = "<group>"; };
 		68F068BCFDB979A23AEDA5C3 /* IDotMatrixBLE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixBLE.swift; sourceTree = "<group>"; };
+		69470A0782BDF6A29012E9F0 /* DaemonActor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonActor.swift; sourceTree = "<group>"; };
 		69BCA057209786EF62993762 /* TerrariumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerrariumView.swift; sourceTree = "<group>"; };
 		6C930EA1785B14EE276FC29A /* BridgeEventParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeEventParser.swift; sourceTree = "<group>"; };
 		6D587189DB0E504028BE4BEF /* AgentDeckApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDeckApp.swift; sourceTree = "<group>"; };
@@ -626,6 +629,7 @@
 			children = (
 				FB4C24732A9A2DB27CC5F7C0 /* AnthropicAdminApiClient.swift */,
 				3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */,
+				69470A0782BDF6A29012E9F0 /* DaemonActor.swift */,
 				B6E0B3C7EBBFFD8C2EB08F11 /* HookInstaller.swift */,
 				908DB05568DE4E828CD7FCE6 /* Logger.swift */,
 				70F61897614FBE52B61AB8B4 /* MiniToml.swift */,
@@ -1380,6 +1384,7 @@
 				6F22B8BA6B49FDD3F538DDE8 /* CreatureGeometry.swift in Sources */,
 				C8DE7EFB8EAFBD9E0BAD7852 /* CreatureLayout.swift in Sources */,
 				5B7A5FC7C0209AF3CF13C563 /* D200HLayoutModel.swift in Sources */,
+				45F924FE8D817EB16CA71345 /* DaemonActor.swift in Sources */,
 				13C1C940711C51743C8B5C97 /* DaemonOfflineAffordance.swift in Sources */,
 				263F5BDD1FD0077BCCCA5DE8 /* DaemonServer.swift in Sources */,
 				D80DDBEF3EDB811EFF6B834A /* DaemonService.swift in Sources */,
@@ -1546,6 +1551,7 @@
 				C32B1F7FE07A02EE3EB41E04 /* CreatureGeometry.swift in Sources */,
 				70DE32174B7BEFF31C75CE87 /* CreatureLayout.swift in Sources */,
 				BB291B71C944FF384AFD634C /* D200HLayoutModel.swift in Sources */,
+				8A28584D14249A2DB2E94361 /* DaemonActor.swift in Sources */,
 				1833E28AEE39E209E4AA45B6 /* DaemonOfflineAffordance.swift in Sources */,
 				6BFB8392D79D133C46111364 /* DaemonServer.swift in Sources */,
 				50C1853357255E13C2F9EB93 /* DaemonService.swift in Sources */,

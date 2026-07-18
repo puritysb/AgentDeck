@@ -15,7 +15,8 @@ extension DeviceModule {
     func handleWake() async {}  // Default no-op for modules that don't need wake recovery
 }
 
-@MainActor
+// Holds daemon state → runs on the daemon's executor. See DaemonActor.
+@DaemonActor
 final class ModuleManager {
     private var modules: [DeviceModule] = []
 

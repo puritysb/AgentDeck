@@ -19,7 +19,8 @@
 import XCTest
 @testable import AgentDeck
 
-@MainActor
+// Exercises daemon-actor types (ApmeCollector, DaemonServer statics).
+@DaemonActor
 final class ApmeExternalCloseSelectionTests: XCTestCase {
 
     private func makeTempStore() throws -> (store: ApmeStore, dir: URL) {
@@ -50,7 +51,7 @@ final class ApmeExternalCloseSelectionTests: XCTestCase {
         return collector
     }
 
-    func testGatewayWinsAndClaudeIsLeftUntouched() throws {
+    func testGatewayWinsAndClaudeIsLeftUntouched() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let gateway = makeCollectorWithOpenTask(tmp.store, project: "gw")
@@ -67,7 +68,7 @@ final class ApmeExternalCloseSelectionTests: XCTestCase {
         XCTAssertNotNil(claude.activeTaskId, "claude task must NOT be closed when the gateway won")
     }
 
-    func testFallsThroughToClaudeWhenGatewayHasNothing() throws {
+    func testFallsThroughToClaudeWhenGatewayHasNothing() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let gateway = ApmeCollector(store: tmp.store) // no open task
@@ -83,7 +84,7 @@ final class ApmeExternalCloseSelectionTests: XCTestCase {
         XCTAssertNil(claude.activeTaskId, "claude task should be closed")
     }
 
-    func testFallsThroughWhenGatewayIsAbsentEntirely() throws {
+    func testFallsThroughWhenGatewayIsAbsentEntirely() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let claude = makeCollectorWithOpenTask(tmp.store, project: "cc")
@@ -97,7 +98,7 @@ final class ApmeExternalCloseSelectionTests: XCTestCase {
         XCTAssertEqual(result.where, "claude")
     }
 
-    func testReportsNoneWhenNeitherHasAnOpenTask() throws {
+    func testReportsNoneWhenNeitherHasAnOpenTask() async throws {
         let tmp = try makeTempStore()
         defer { cleanup(tmp) }
         let gateway = ApmeCollector(store: tmp.store)

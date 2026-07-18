@@ -52,7 +52,8 @@ let stateTransitions: [StateTransition] = [
     .init(from: nil, to: .idle, trigger: "interrupt", source: .user),
 ]
 
-@MainActor
+// Holds daemon state → runs on the daemon's executor. See DaemonActor.
+@DaemonActor
 final class StateMachine {
     private(set) var state: AgentState = .disconnected
     private(set) var permissionMode: String = "default"
