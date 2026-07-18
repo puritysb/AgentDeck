@@ -26,6 +26,12 @@
 - Updated the Pages assembly workflow and `CLAUDE.md` site-surface SSOT to preserve the new roles.
 - Verification: `pnpm run demo:build` generated all 160 ESP32 simulator frames and completed the Vite production build; `python3 scripts/generate-html-report.py`, Python bytecode compile, and `git diff --check` passed. The repository-wide design lint still reports its pre-existing generated/vendor findings, while the touched token-defining Pages files add no reported violations.
 
+## 2026-07-18 — Stream Deck Mini 번들 프로파일 추가
+
+- Stream Deck Mini(DeviceType 1, 3×2)를 `agentdeck-sdmini` 번들 프로파일로 추가했다. 구형 `.sdProfile`과 현행 `.streamDeckProfile` 포맷을 함께 제공하며 여섯 키 모두 session-slot 액션으로 초기화한다.
+- 플러그인 연결 시 Mini를 감지하면 전용 프로파일로 자동 전환하고, 통합 버전 검증에 두 Mini 프로파일 manifest를 포함했다. XL(DeviceType 2)은 동적 그리드 계산만 있고 번들 프로파일은 아직 없다.
+- `pnpm verify-version`, Mini 중심 슬롯·세션 배치 테스트 41/41, `pnpm build`, `pnpm package`, `streamdeck validate`를 통과했다. 생성된 196KB 아카이브에 Mini의 두 프로파일 포맷과 page manifest가 모두 포함됐다.
+
 ## 2026-07-18 — Xcode 26.6 recommended settings + Swift 경고 정리
 
 - `apple/project.yml`의 Xcode 정본 버전을 26.4에서 26.6으로 올리고 `xcodegen generate`를 실행했다. 프로젝트와 macOS/iOS scheme의 `LastUpgradeCheck`/`LastUpgradeVersion`이 2660으로 동기화됐으며, App Store 빌드 조건과 의도적인 `ENABLE_USER_SCRIPT_SANDBOXING=NO`는 유지됐다.

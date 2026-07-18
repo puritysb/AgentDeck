@@ -105,7 +105,7 @@
   "Category": "AgentDeck",
   "CategoryIcon": "static/imgs/category",
   "CodePath": "bin/plugin.js",
-  "Description": "Control Claude Code CLI with Stream Deck+",
+  "Description": "Control AI coding agents with Stream Deck",
   "Icon": "static/imgs/plugin",
   "UUID": "bound.serendipity.agentdeck",
   "Name": "AgentDeck",
@@ -138,6 +138,13 @@
     {
       "Name": "agentdeck-sd",
       "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false,
+      "Readonly": false
+    },
+    {
+      "Name": "agentdeck-sdmini",
+      "DeviceType": 1,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": false,
       "Readonly": false

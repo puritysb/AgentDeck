@@ -57,7 +57,7 @@ AgentDeck is a physical control surface for AI coding agents. It started with an
 | | Requirement |
 |---|---|
 | **Platform** | macOS 26+ for the App Store Swift dashboard · macOS 15+ for the Node bridge · Windows 11 runs the bridge + Stream Deck plugin ([see below](#windows-bridge--plugin)) · Linux not supported |
-| **Hardware** | Elgato Stream Deck+ (8 keys, 4 encoders, LCD touch strip) |
+| **Hardware** | Elgato Stream Deck (15-key), Mini (6-key), or Stream Deck+ (8 keys, 4 encoders, LCD touch strip) |
 | **Terminal** | iTerm2 (required for session management and voice paste) |
 | **Android** | *(Optional)* Android 10+ tablet or e-ink reader for remote dashboard |
 | **Apple** | *(Optional)* iOS 17+ / iPadOS 17+ companion · macOS 26+ for SwiftUI dashboard |
@@ -216,12 +216,12 @@ AgentDeck uses one **unified product version** across all maintained artifacts w
 
 | Channel | Artifact | Tag | Current | Status / how to get |
 |---|---|---|---|---|
-| **npm** | `@agentdeck/setup` (CLI + Node daemon) | `npm-v*` | 0.2.3 | Unified source ready; publish pending (registry latest setup: 0.2.0, bridge: 0.2.2) |
+| **npm** | `@agentdeck/setup` (CLI + Node daemon) | `npm-v*` | 0.2.3 | Published on npm |
 | **Apple App Store / TestFlight** | macOS + iOS app | `apple-v*` | 0.2.3 / build 2 | Unified source ready; TestFlight delivery pending |
 | **Google Play** | Android app (AAB) | `android-v*` | — | CI upload **wired but gated** (`ANDROID_PLAY_ENABLED` + `PLAY_SERVICE_ACCOUNT_JSON`); needs Play Console app + first manual upload. Until then, Android ships via the GitHub APK below |
 | **GitHub Release — Android** | signed APK | `android-v*` | 0.2.3 / code 2 | Unified source ready; release pending (last public APK: 0.1.0) |
 | **GitHub Release — ESP32** | firmware `.bin` (per board) | `esp32-v*` | 0.2.3 | Unified source ready; release pending (last public firmware: 0.1.1) |
-| **Elgato Marketplace** | Stream Deck / Stream Deck+ plugin | `streamdeck-v*` | 0.2.3.0 | Regular 15-key and Plus profiles ready; Marketplace upload pending |
+| **Elgato Marketplace** | Stream Deck / Mini / Stream Deck+ plugin | `streamdeck-v*` | 0.2.3.0 | Regular 15-key, Mini, and Plus profiles ready; Marketplace upload pending |
 | **Ulanzi Studio Marketplace** | D200H Deck Dock plugin | `ulanzi-v*` | 0.2.3 | Unified source ready; Marketplace upload pending |
 
 > **The Stream Deck and Ulanzi plugins are thin clients** — they require the AgentDeck daemon (install via `npx @agentdeck/setup` or the macOS app), the way the OBS plugin requires OBS. They never embed the daemon (it's a port-9120 singleton). Without a daemon they show an OFFLINE state pointing to the install. See [RELEASING.md](RELEASING.md) for the rationale.
@@ -239,7 +239,7 @@ AgentDeck uses one **unified product version** across all maintained artifacts w
 | **pnpm** >= 9 | Yes | `npm install -g pnpm` |
 | **Python 3** | Yes | `brew install python` (display sleep detection) |
 | **Elgato Stream Deck app** >= 6.7 | Yes | [Elgato Downloads](https://www.elgato.com/downloads) |
-| **Stream Deck+ hardware** | Yes | 8 keys + 4 encoders + LCD touch strip |
+| **Elgato Stream Deck hardware** | Yes | 15-key, Mini, or Stream Deck+ |
 | **iTerm2** | Yes | Terminal management, voice paste, session switching |
 | **Claude Code CLI** | Yes | `npm install -g @anthropic-ai/claude-code` |
 | **JDK 17+** | For Android | `brew install openjdk@17` |

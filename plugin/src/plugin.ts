@@ -742,8 +742,8 @@ streamDeck.connect().then(() => {
   connMgr.start();
 
   // Auto-switch to the bundled profile that matches the physical key grid.
-  // SD+ has 8 keys + encoders; classic Stream Deck has 15 keys and no
-  // encoders, so their ESC/Back/session layouts must not share a profile.
+  // Each physical key grid needs its own bundled profile. SD+ has encoders,
+  // classic has 15 keys, and Mini has a compact 3x2 keypad.
   //
   // SD+ profile was renamed from
   // `agentdeck-v4` → `agentdeck-sdplus` on 2026-04-20 because Elgato cached
@@ -756,7 +756,9 @@ streamDeck.connect().then(() => {
       ? 'agentdeck-sdplus'
       : type === 0
         ? 'agentdeck-sd'
-        : null;
+        : type === 1
+          ? 'agentdeck-sdmini'
+          : null;
     if (!profile) continue;
     dinfo('Plugin', `Stream Deck device found: ${device.id} type=${type}, switching to ${profile}`);
     void streamDeck.profiles.switchToProfile(device.id, profile).catch((e: Error) => {

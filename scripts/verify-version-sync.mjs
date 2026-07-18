@@ -53,11 +53,17 @@ expectValue(
   jsonVersion('plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/manifest.json', 'Version'),
   productVersion,
 );
-expectValue(
-  'plugin/bound.serendipity.agentdeck.sdPlugin/manifest.json',
-  jsonVersion('plugin/bound.serendipity.agentdeck.sdPlugin/manifest.json', 'Version'),
-  `${productVersion}.0`,
-);
+const streamDeckManifestPath = 'plugin/bound.serendipity.agentdeck.sdPlugin/manifest.json';
+const streamDeckManifest = JSON.parse(read(streamDeckManifestPath));
+expectValue(streamDeckManifestPath, streamDeckManifest.Version, `${productVersion}.0`);
+for (const [name, deviceType] of [
+  ['agentdeck-sd', 0],
+  ['agentdeck-sdmini', 1],
+  ['agentdeck-sdplus', 7],
+]) {
+  const profile = streamDeckManifest.Profiles?.find((candidate) => candidate.Name === name);
+  expectValue(`${streamDeckManifestPath} profile ${name}`, profile?.DeviceType, deviceType);
+}
 
 const textChecks = [
   ['apple/project.yml', /MARKETING_VERSION:\s*"([^"]+)"/, productVersion],
@@ -78,6 +84,8 @@ if (xcodeVersions.length === 0 || xcodeVersions.some((version) => version !== pr
 const profilePaths = [
   'plugin/bound.serendipity.agentdeck.sdPlugin/agentdeck-sd.sdProfile/Profiles/7F6C6400-1A9F-4F57-8D58-0F5C6C102A15/manifest.json',
   'plugin/bound.serendipity.agentdeck.sdPlugin/agentdeck-sd.streamDeckProfile/Profiles/7F6C6400-1A9F-4F57-8D58-0F5C6C102A15/manifest.json',
+  'plugin/bound.serendipity.agentdeck.sdPlugin/agentdeck-sdmini.sdProfile/Profiles/A63D9B52-2C41-4A8B-9E63-1D5F7C20B601/manifest.json',
+  'plugin/bound.serendipity.agentdeck.sdPlugin/agentdeck-sdmini.streamDeckProfile/Profiles/A63D9B52-2C41-4A8B-9E63-1D5F7C20B601/manifest.json',
   'plugin/bound.serendipity.agentdeck.sdPlugin/agentdeck-sdplus.sdProfile/Profiles/D3714493-5D2A-40D9-9DFF-B2423F73685F/manifest.json',
   'plugin/bound.serendipity.agentdeck.sdPlugin/agentdeck-sdplus.streamDeckProfile/Profiles/D3714493-5D2A-40D9-9DFF-B2423F73685F/manifest.json',
 ];

@@ -1,0 +1,17 @@
+{
+  "Controllers": [
+    {
+      "Actions": {
+        "0,0": { "ActionID": "6d3c0000-0000-4000-8000-000000000000", "LinkedTitle": true, "Name": "Session Slot", "Plugin": { "Name": "AgentDeck", "UUID": "bound.serendipity.agentdeck", "Version": "0.2.3.0" }, "Resources": null, "Settings": {}, "State": 0, "States": [{ "FontFamily": "", "FontSize": 12, "FontStyle": "", "FontUnderline": false, "OutlineThickness": 2, "ShowTitle": false, "TitleAlignment": "middle", "TitleColor": "#ffffff" }], "UUID": "bound.serendipity.agentdeck.session-slot" },
+        "1,0": { "ActionID": "6d3c0000-0001-4000-8000-000000000001", "LinkedTitle": true, "Name": "Session Slot", "Plugin": { "Name": "AgentDeck", "UUID": "bound.serendipity.agentdeck", "Version": "0.2.3.0" }, "Resources": null, "Settings": {}, "State": 0, "States": [{ "FontFamily": "", "FontSize": 12, "FontStyle": "", "FontUnderline": false, "OutlineThickness": 2, "ShowTitle": false, "TitleAlignment": "middle", "TitleColor": "#ffffff" }], "UUID": "bound.serendipity.agentdeck.session-slot" },
+        "2,0": { "ActionID": "6d3c0000-0002-4000-8000-000000000002", "LinkedTitle": true, "Name": "Session Slot", "Plugin": { "Name": "AgentDeck", "UUID": "bound.serendipity.agentdeck", "Version": "0.2.3.0" }, "Resources": null, "Settings": {}, "State": 0, "States": [{ "FontFamily": "", "FontSize": 12, "FontStyle": "", "FontUnderline": false, "OutlineThickness": 2, "ShowTitle": false, "TitleAlignment": "middle", "TitleColor": "#ffffff" }], "UUID": "bound.serendipity.agentdeck.session-slot" },
+        "0,1": { "ActionID": "6d3c0000-0010-4000-8000-000000000010", "LinkedTitle": true, "Name": "Session Slot", "Plugin": { "Name": "AgentDeck", "UUID": "bound.serendipity.agentdeck", "Version": "0.2.3.0" }, "Resources": null, "Settings": {}, "State": 0, "States": [{ "FontFamily": "", "FontSize": 12, "FontStyle": "", "FontUnderline": false, "OutlineThickness": 2, "ShowTitle": false, "TitleAlignment": "middle", "TitleColor": "#ffffff" }], "UUID": "bound.serendipity.agentdeck.session-slot" },
+        "1,1": { "ActionID": "6d3c0000-0011-4000-8000-000000000011", "LinkedTitle": true, "Name": "Session Slot", "Plugin": { "Name": "AgentDeck", "UUID": "bound.serendipity.agentdeck", "Version": "0.2.3.0" }, "Resources": null, "Settings": {}, "State": 0, "States": [{ "FontFamily": "", "FontSize": 12, "FontStyle": "", "FontUnderline": false, "OutlineThickness": 2, "ShowTitle": false, "TitleAlignment": "middle", "TitleColor": "#ffffff" }], "UUID": "bound.serendipity.agentdeck.session-slot" },
+        "2,1": { "ActionID": "6d3c0000-0012-4000-8000-000000000012", "LinkedTitle": true, "Name": "Session Slot", "Plugin": { "Name": "AgentDeck", "UUID": "bound.serendipity.agentdeck", "Version": "0.2.3.0" }, "Resources": null, "Settings": {}, "State": 0, "States": [{ "FontFamily": "", "FontSize": 12, "FontStyle": "", "FontUnderline": false, "OutlineThickness": 2, "ShowTitle": false, "TitleAlignment": "middle", "TitleColor": "#ffffff" }], "UUID": "bound.serendipity.agentdeck.session-slot" }
+      },
+      "Type": "Keypad"
+    }
+  ],
+  "Name": "AgentDeck SD Mini",
+  "Icon": ""
+}
