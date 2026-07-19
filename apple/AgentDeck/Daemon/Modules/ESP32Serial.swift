@@ -818,6 +818,22 @@ actor ESP32Serial {
         let hadLineReset = conn.needsLineReset
         let prefix = conn.needsLineReset ? "\n" : ""
         let payload = Array((prefix + json + "\n").utf8)
+
+        // Invariant: a frame must fit the board's line buffer. Violating it
+        // desyncs the board's parser rather than dropping one frame — see
+        // `lineBufferBytes(for:)`. Log loudly with the event type so the
+        // offending payload is identifiable without a serial capture.
+        let limit = Self.lineBufferBytes(for: conn.deviceInfo?.board)
+        if payload.count > limit {
+            let type = Self.frameType(json) ?? "?"
+            DaemonLogger.shared.throttledDebug(
+                "ESP32",
+                key: "oversized-frame:\(conn.port):\(type)",
+                "OVERSIZED \(conn.port): \(type) frame is \(payload.count)B > \(limit)B line buffer "
+                    + "(board=\(conn.deviceInfo?.board ?? "?")) — board parser will desync",
+                minInterval: 30
+            )
+        }
         switch writePayload(payload, to: conn.fd) {
         case .success:
             conn.needsLineReset = false
@@ -992,6 +1008,26 @@ actor ESP32Serial {
     /// — anything larger is discarded whole on-device, so shipping it is pure
     /// waste at best and a WS-client killer at worst.
     static let timelineHistoryByteBudget = 3500
+
+    /// The firmware's line buffer, mirrored from
+    /// `esp32/src/net/serial_client.cpp` (`SERIAL_BUF_SIZE`). A frame longer
+    /// than this does not merely get truncated — the board's overflow path
+    /// resets `serialBufPos` mid-line, so the tail of the oversized frame is
+    /// parsed as a fresh line, fails the leading `{` test, and never refreshes
+    /// `lastSerialJsonMs`. Thirty seconds of that and `serialConnected()` goes
+    /// false while the daemon still believes the link is healthy — the board
+    /// would show "Searching for AgentDeck..." with a live cable attached.
+    static func lineBufferBytes(for board: String?) -> Int {
+        (board == "inkdeck") ? 8192 : 4096
+    }
+
+    /// Cheap `"type"` extraction for diagnostics — avoids re-parsing the frame.
+    static func frameType(_ json: String) -> String? {
+        guard let r = json.range(of: "\"type\":\"") else { return nil }
+        let rest = json[r.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        return String(rest[..<end])
+    }
 
     /// Keep the NEWEST entries whose summed JSON size fits the byte budget,
     /// preserving chronological order for the ones that survive.
