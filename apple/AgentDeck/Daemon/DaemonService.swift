@@ -133,6 +133,35 @@ final class DaemonService: ObservableObject {
         actualPort == configuredPort ? nil : actualPort
     }
 
+    /// Whether we should consider ourselves "already moved off the configured
+    /// port". Must stay paired with `sessionOverridePort` — see
+    /// `syncResolvedPortState`.
+    nonisolated static func resolvedFallbackAttempted(configuredPort: Int, actualPort: Int) -> Bool {
+        resolvedSessionOverridePort(configuredPort: configuredPort, actualPort: actualPort) != nil
+    }
+
+    /// Next port to attempt after a bind failure, or nil to retry the same one.
+    ///
+    /// Advancing requires knowing we are off the configured port. That used to
+    /// be read from `fallbackAttempted` alone, which is only set when *this*
+    /// retry path chose a fallback — so a session override recorded by
+    /// `syncResolvedPortState` (a previous successful bind or external-daemon
+    /// connect on a non-configured port) left the flag false and gated the
+    /// branch off. Combined with `onDefault` also being false in that state,
+    /// both escape hatches closed and the daemon retried a dead port to
+    /// exhaustion while a free one was already known. Deriving it from the
+    /// override too closes that hole.
+    nonisolated static func advancedFallbackPort(
+        attemptedPort: Int,
+        sessionOverridePort: Int?,
+        fallbackAttempted: Bool,
+        availablePort: Int?
+    ) -> Int? {
+        let offConfiguredPort = fallbackAttempted || (sessionOverridePort != nil)
+        guard offConfiguredPort, let next = availablePort, next != attemptedPort else { return nil }
+        return next
+    }
+
     init() {
         start()
         setupSignalHandler()
@@ -328,6 +357,13 @@ final class DaemonService: ObservableObject {
             configuredPort: configuredPort,
             actualPort: actualPort
         )
+        // Pair the flag with the override. Leaving it false here is what let
+        // the retry path stall on a dead fallback port (see
+        // `advancedFallbackPort`).
+        fallbackAttempted = Self.resolvedFallbackAttempted(
+            configuredPort: configuredPort,
+            actualPort: actualPort
+        )
         isOnFallbackPort = (sessionOverridePort != nil)
         if isOnFallbackPort {
             bindFailureReason = "Daemon moved to fallback port \(actualPort) because \(configuredPort) was held by another process. Clients will rediscover via mDNS."
@@ -434,8 +470,14 @@ final class DaemonService: ObservableObject {
         // before burning a retry. Without this, retries repeatedly hit the
         // same blocked port (e.g., 9122 held by zombie node) instead of
         // advancing to 9123, 9124, etc.
-        if fallbackAttempted, let nextPort = alt, nextPort != attemptedPort {
+        if let nextPort = Self.advancedFallbackPort(
+            attemptedPort: attemptedPort,
+            sessionOverridePort: sessionOverridePort,
+            fallbackAttempted: fallbackAttempted,
+            availablePort: alt
+        ) {
             sessionOverridePort = nextPort
+            fallbackAttempted = true
             DaemonLogger.shared.info("Advancing fallback port \(attemptedPort) → \(nextPort)")
         }
 
