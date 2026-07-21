@@ -141,6 +141,16 @@ actor ESP32Serial {
         }
     }
     private static let transientMaxBackoff: TimeInterval = 60
+    // A USB-serial bridge that keeps FAILING TO OPEN (timeout or errno, not a
+    // one-off) is almost certainly hardware-wedged (e.g. a CH340 termios wedge)
+    // that no software open can recover — only a physical power-cycle can. Yet
+    // every open() attempt toggles DTR/RTS and RESETS the attached board, so
+    // retrying such a port on the 60s transient cap reboots an otherwise-healthy
+    // board once a minute. After this many consecutive open failures, escalate
+    // the backoff to the permanent-block cadence (5 min) so the reset-poking
+    // becomes rare while the port still self-heals once the bridge is
+    // power-cycled and finally opens. See memory ips10-wedged-ch340-daemon-reset-poke.
+    private static let openFailureEscalationThreshold = 4
 
     nonisolated(unsafe) private var stateProvider: (() -> [String: Any]?)?
     nonisolated(unsafe) private var usageProvider: (() -> [String: Any]?)?
@@ -363,6 +373,15 @@ actor ESP32Serial {
 
         let ports = detectPorts()
         lastDetectedPorts = ports
+        // A wedged bridge stays enumerated, so a port VANISHING from the
+        // detected set means it was physically unplugged. Drop its failure
+        // record so a re-plug starts with a fresh backoff instead of inheriting
+        // the escalated (5-min) delay above — even when macOS re-enumerates it
+        // under the same device name.
+        if !failedPorts.isEmpty {
+            let detected = Set(ports)
+            failedPorts = failedPorts.filter { detected.contains($0.key) }
+        }
         let now = Date()
         publishStatusShadow()
 
@@ -377,8 +396,15 @@ actor ESP32Serial {
                     // Only retry permanent failures after 5 minutes
                     if now.timeIntervalSince(failure.lastAttempt) < Self.permanentBlockDuration { continue }
                 } else {
-                    // Exponential backoff for transient errors: 10s * 2^(n-1), cap 60s
-                    let backoff = min(10.0 * pow(2.0, Double(failure.failCount - 1)), Self.transientMaxBackoff)
+                    // Exponential backoff for transient errors: 10s * 2^(n-1).
+                    // Once a port has failed to open this many times in a row it
+                    // is treated as wedged: raise the cap from 60s to the 5-min
+                    // permanent-block cadence so we stop DTR-resetting the board
+                    // every minute (see openFailureEscalationThreshold).
+                    let cap = failure.failCount >= Self.openFailureEscalationThreshold
+                        ? Self.permanentBlockDuration
+                        : Self.transientMaxBackoff
+                    let backoff = min(10.0 * pow(2.0, Double(failure.failCount - 1)), cap)
                     if now.timeIntervalSince(failure.lastAttempt) < backoff { continue }
                 }
             }
