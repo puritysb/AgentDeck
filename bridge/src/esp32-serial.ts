@@ -77,6 +77,32 @@ const CDC_SILENT_READ_TIMEOUT_MS = 120_000;
 // resets the board, which is the self-heal.
 const UART_SILENT_READ_TIMEOUT_MS = 180_000;
 const SERIAL_OPEN_PROBE_TIMEOUT_MS = 1500;
+// Serial open-failure backoff. Every open() (including the probe subprocess)
+// toggles DTR/RTS and RESETS the attached board, so a port that keeps failing
+// to open — a wedged CH340, a stuck bridge — must escalate its retry cadence
+// instead of rebooting an otherwise-healthy board every 10s poll. Mirror of
+// Swift ESP32Serial.openFailureBackoff. See GitHub #78 / memory
+// ips10-wedged-ch340-daemon-reset-poke.
+const SERIAL_OPEN_FAIL_ESCALATION_THRESHOLD = 4;
+const SERIAL_TRANSIENT_MAX_BACKOFF_MS = 60_000;
+const SERIAL_OPEN_PERMANENT_BLOCK_MS = 300_000; // 5 min: EACCES, or an escalated wedge
+
+/**
+ * Backoff (ms) before re-attempting to open a port that failed to open.
+ * Transient cadence by consecutive failCount: 1→10s, 2→20s, 3→40s, 4→80s,
+ * 5→160s, 6+→300s — the exponential cap rises from SERIAL_TRANSIENT_MAX_BACKOFF_MS
+ * (60s) to SERIAL_OPEN_PERMANENT_BLOCK_MS (5 min) once failCount reaches
+ * SERIAL_OPEN_FAIL_ESCALATION_THRESHOLD, so 300s is reached at the 6th failure
+ * (a gradual ramp, not a cliff at the 4th). EACCES (permanent) uses the flat
+ * 5-min block. Kept pure + exported so the cadence is unit-tested.
+ */
+export function serialOpenFailureBackoffMs(failCount: number, isPermanent: boolean): number {
+  if (isPermanent) return SERIAL_OPEN_PERMANENT_BLOCK_MS;
+  const cap = failCount >= SERIAL_OPEN_FAIL_ESCALATION_THRESHOLD
+    ? SERIAL_OPEN_PERMANENT_BLOCK_MS
+    : SERIAL_TRANSIENT_MAX_BACKOFF_MS;
+  return Math.min(10_000 * Math.pow(2, failCount - 1), cap);
+}
 const SERIAL_WRITE_INTERVAL_MS = 120;
 const SERIAL_MAX_QUEUE = 24;
 // Firmware acks ONLY lines containing the quoted substring `"keepalive"`
@@ -168,6 +194,19 @@ const lastKnownDeviceInfoByPort = new Map<string, NonNullable<SerialConnection['
 const lastErrorByPort = new Map<string, string>();
 // Foreign (non-AgentDeck) serial ports: failure count + denylist-until timestamp.
 const foreignProbeFailures = new Map<string, number>();
+// Ports that fail to OPEN (wedged bridge): consecutive failure count + whether
+// EACCES + last attempt. Drives serialOpenFailureBackoffMs so we don't DTR-reset
+// a healthy board every poll. Cleared on a successful open or when the port is
+// gone (a re-plug re-tries fresh) — same discipline as foreignProbeFailures.
+const openFailures = new Map<string, { count: number; isPermanent: boolean; lastAttempt: number }>();
+function recordSerialOpenFailure(port: string, err: any): void {
+  const prev = openFailures.get(port);
+  openFailures.set(port, {
+    count: (prev?.count ?? 0) + 1,
+    isPermanent: err?.code === 'EACCES',
+    lastAttempt: Date.now(),
+  });
+}
 const foreignDenylistUntil = new Map<string, number>();
 let deviceInfoCacheLoaded = false;
 let stateProvider: (() => BridgeEvent | null) | null = null;
@@ -830,11 +869,13 @@ async function openPort(port: string): Promise<SerialConnection | null> {
       if (event) sendToConnection(conn, JSON.stringify(prepareForSerial(event, conn)));
     }
 
+    openFailures.delete(port); // opened cleanly — reset the backoff
     return conn;
   } catch (err: any) {
     if (fd != null) {
       closeFd(fd);
     }
+    recordSerialOpenFailure(port, err);
     serialError(port, `Failed to open ${port}: ${err.message}`);
     return null;
   }
@@ -1285,6 +1326,12 @@ async function pollForDevices(): Promise<void> {
     for (const p of [...foreignProbeFailures.keys()]) {
       if (!portSet.has(p)) foreignProbeFailures.delete(p);
     }
+    // A wedged bridge stays enumerated, so a vanished port was unplugged /
+    // power-cycled / re-enumerated — the wedge may be gone. Forget its
+    // open-failure backoff so a re-plug retries immediately.
+    for (const p of [...openFailures.keys()]) {
+      if (!portSet.has(p)) openFailures.delete(p);
+    }
     const allowedPorts = ports.filter((p) => {
       const until = foreignDenylistUntil.get(p);
       if (until && until > nowTs) {
@@ -1312,6 +1359,14 @@ async function pollForDevices(): Promise<void> {
     // Add new ports (denylisted foreign ports are excluded via allowedPorts)
     for (const port of allowedPorts) {
       if (connections.some(c => c.port === port) || openingPorts.has(port)) continue;
+
+      // Open-failure backoff: don't re-open (and DTR-reset) a wedged port every
+      // poll. openPort() itself records/clears the failure; here we just skip
+      // while the escalating backoff window has not elapsed.
+      const of = openFailures.get(port);
+      if (of && (nowTs - of.lastAttempt) < serialOpenFailureBackoffMs(of.count, of.isPermanent)) {
+        continue;
+      }
 
       openingPorts.add(port);
       try {

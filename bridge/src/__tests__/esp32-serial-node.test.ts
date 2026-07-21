@@ -27,6 +27,7 @@ import {
   isSilentIdentifiedUart,
   SERIAL_KEEPALIVE_JSON,
   budgetTimelineEntries,
+  serialOpenFailureBackoffMs,
   TIMELINE_HISTORY_BYTE_BUDGET,
   shouldSendWifiProvision,
   shouldRetryDeviceInfoIdentify,
@@ -846,5 +847,35 @@ describe('device-info re-identify gating', () => {
 
   it('does not retry a disconnected connection', () => {
     expect(shouldRetryDeviceInfoIdentify(identifyConn({ connected: false }))).toBe(false);
+  });
+});
+
+// ─── Open-failure backoff (GitHub #78) ──────────────────────────────
+// Every open() toggles DTR/RTS and resets the attached board, so a port that
+// keeps failing to open (a wedged CH340) must escalate its retry cadence rather
+// than reboot a healthy board every poll. Must stay in lockstep with the Swift
+// ESP32Serial.openFailureBackoff cadence (AgentDeckTests/ESP32WifiForwardTests).
+describe('serialOpenFailureBackoffMs', () => {
+  it('ramps 10→20→40→80→160→300s and reaches the 5-min block at the 6th failure', () => {
+    const expected: Array<[number, number]> = [
+      [1, 10_000], [2, 20_000], [3, 40_000], // below threshold: capped at 60s
+      [4, 80_000], [5, 160_000],             // cap raised to 300s, still ramping
+      [6, 300_000], [7, 300_000], [20, 300_000], // settled at the 5-min block
+    ];
+    for (const [failCount, ms] of expected) {
+      expect(serialOpenFailureBackoffMs(failCount, false)).toBe(ms);
+    }
+  });
+
+  it('never exceeds the 5-min block for any transient failCount', () => {
+    for (let n = 1; n <= 200; n++) {
+      expect(serialOpenFailureBackoffMs(n, false)).toBeLessThanOrEqual(300_000);
+    }
+  });
+
+  it('uses the flat 5-min block for EACCES (permanent) failures', () => {
+    for (let n = 1; n <= 5; n++) {
+      expect(serialOpenFailureBackoffMs(n, true)).toBe(300_000);
+    }
   });
 });
