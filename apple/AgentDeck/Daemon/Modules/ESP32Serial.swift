@@ -152,6 +152,24 @@ actor ESP32Serial {
     // power-cycled and finally opens. See memory ips10-wedged-ch340-daemon-reset-poke.
     private static let openFailureEscalationThreshold = 4
 
+    /// Backoff before re-attempting to open a port that failed to open.
+    ///
+    /// Every `open()` toggles DTR/RTS and RESETS the attached board, so a port
+    /// that keeps failing to open (a wedged CH340, a stuck bridge) must not be
+    /// retried on a tight cadence or it reboots an otherwise-healthy board. The
+    /// transient cadence ramps by consecutive `failCount`: 1→10s, 2→20s, 3→40s,
+    /// 4→80s, 5→160s, 6+→300s — the exponential cap rises from
+    /// `transientMaxBackoff` (60s) to `permanentBlockDuration` (5 min) once
+    /// `failCount` reaches `openFailureEscalationThreshold`, so 300s is only
+    /// reached at the 6th failure (not immediately at the 4th). Permanent
+    /// failures (EACCES) use the flat 5-min block. Pure + `nonisolated` so the
+    /// cadence is unit-tested independently of the poll loop.
+    nonisolated static func openFailureBackoff(failCount: Int, isPermanent: Bool) -> TimeInterval {
+        if isPermanent { return permanentBlockDuration }
+        let cap = failCount >= openFailureEscalationThreshold ? permanentBlockDuration : transientMaxBackoff
+        return min(10.0 * pow(2.0, Double(failCount - 1)), cap)
+    }
+
     nonisolated(unsafe) private var stateProvider: (() -> [String: Any]?)?
     nonisolated(unsafe) private var usageProvider: (() -> [String: Any]?)?
     nonisolated(unsafe) private var sessionsListProvider: (() -> [String: Any]?)?
@@ -374,10 +392,15 @@ actor ESP32Serial {
         let ports = detectPorts()
         lastDetectedPorts = ports
         // A wedged bridge stays enumerated, so a port VANISHING from the
-        // detected set means it was physically unplugged. Drop its failure
-        // record so a re-plug starts with a fresh backoff instead of inheriting
-        // the escalated (5-min) delay above — even when macOS re-enumerates it
-        // under the same device name.
+        // detected set means it was physically unplugged / power-cycled / driver
+        // re-enumerated — cases where the wedge may well be gone. Drop its
+        // failure record so a re-plug retries immediately instead of inheriting
+        // the escalated (5-min) delay above, even when macOS re-enumerates it
+        // under the same device name. Trade-off: a device that flaps in and out
+        // of enumeration (bad contact) resets its failCount each time and never
+        // escalates; that's accepted because making a genuine re-plug wait up to
+        // 5 min is the worse user-recovery outcome. Revisit with a grace period
+        // only if enumeration false-negatives are observed in the field.
         if !failedPorts.isEmpty {
             let detected = Set(ports)
             failedPorts = failedPorts.filter { detected.contains($0.key) }
@@ -390,23 +413,13 @@ actor ESP32Serial {
             if connections.contains(where: { $0.port == port }) { continue }
             if openingPorts[port] != nil { continue }
 
-            // Check failure blocklist
+            // Check failure blocklist. openFailureBackoff() is the single,
+            // unit-tested source of the retry cadence (see its doc): it escalates
+            // a wedged port toward a 5-min block so we stop DTR-resetting the
+            // board every minute.
             if let failure = failedPorts[port] {
-                if failure.isPermanent {
-                    // Only retry permanent failures after 5 minutes
-                    if now.timeIntervalSince(failure.lastAttempt) < Self.permanentBlockDuration { continue }
-                } else {
-                    // Exponential backoff for transient errors: 10s * 2^(n-1).
-                    // Once a port has failed to open this many times in a row it
-                    // is treated as wedged: raise the cap from 60s to the 5-min
-                    // permanent-block cadence so we stop DTR-resetting the board
-                    // every minute (see openFailureEscalationThreshold).
-                    let cap = failure.failCount >= Self.openFailureEscalationThreshold
-                        ? Self.permanentBlockDuration
-                        : Self.transientMaxBackoff
-                    let backoff = min(10.0 * pow(2.0, Double(failure.failCount - 1)), cap)
-                    if now.timeIntervalSince(failure.lastAttempt) < backoff { continue }
-                }
+                let backoff = Self.openFailureBackoff(failCount: failure.failCount, isPermanent: failure.isPermanent)
+                if now.timeIntervalSince(failure.lastAttempt) < backoff { continue }
             }
 
             beginOpenPort(port)

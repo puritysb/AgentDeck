@@ -211,4 +211,51 @@ final class ESP32WifiForwardTests: XCTestCase {
         }
     }
 }
+
+/// Regression guard for the serial open-failure backoff (PR #77).
+///
+/// Every `open()` toggles DTR/RTS and resets the attached board, so a port that
+/// keeps failing to open (a wedged CH340) must escalate its retry cadence
+/// instead of rebooting a healthy board every minute. This locks the ramp so a
+/// future tweak to the constants can't silently tighten it back to the old
+/// once-a-minute reset-poking. See memory `ips10-wedged-ch340-daemon-reset-poke`.
+final class ESP32SerialOpenBackoffTests: XCTestCase {
+
+    /// Transient (open-timeout / non-EACCES) failures ramp 10→20→40→80→160→300s.
+    /// The cap rises from 60s to the 5-min block at the escalation threshold, so
+    /// 300s is only reached at the 6th failure — a gradual ramp, not a cliff.
+    func testTransientBackoffRampsAndEscalates() {
+        let expected: [(failCount: Int, seconds: TimeInterval)] = [
+            (1, 10), (2, 20), (3, 40),    // below threshold: exponential, capped at 60s
+            (4, 80), (5, 160),            // cap raised to 300s, still ramping
+            (6, 300), (7, 300), (20, 300) // settled at the 5-min block
+        ]
+        for c in expected {
+            XCTAssertEqual(
+                ESP32Serial.openFailureBackoff(failCount: c.failCount, isPermanent: false),
+                c.seconds, accuracy: 0.001,
+                "transient open-failure backoff for failCount \(c.failCount)")
+        }
+    }
+
+    /// No failCount may ever push the transient cadence past the 5-min block.
+    func testTransientBackoffNeverExceedsFiveMinutes() {
+        for failCount in 1...200 {
+            XCTAssertLessThanOrEqual(
+                ESP32Serial.openFailureBackoff(failCount: failCount, isPermanent: false),
+                300,
+                "transient backoff must never exceed the 5-min permanent block")
+        }
+    }
+
+    /// EACCES (permanent) failures use the flat 5-min block regardless of count.
+    func testPermanentFailureUsesFlatFiveMinuteBlock() {
+        for failCount in 1...5 {
+            XCTAssertEqual(
+                ESP32Serial.openFailureBackoff(failCount: failCount, isPermanent: true),
+                300, accuracy: 0.001,
+                "EACCES (permanent) always uses the flat 5-min block")
+        }
+    }
+}
 #endif
