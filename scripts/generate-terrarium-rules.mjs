@@ -1,6 +1,12 @@
-#!/usr/bin/env node
 // Generate Swift/Kotlin/C++ mirrors of the terrarium rules SSOT
 // (shared/src/terrarium-rules.ts).
+//
+// No shebang: the drift gate imports this module for its emitters, and Vitest's
+// transform does not strip one the way node does — it reports the `#` as
+// "SyntaxError: Invalid or unexpected token" and the whole suite fails to load.
+// Always invoked as `node scripts/generate-terrarium-rules.mjs`, so nothing
+// needed the shebang. Same reason release-version.mjs and version-policy.mjs
+// (also imported by tests) have none.
 //
 //   pnpm generate-terrarium-rules            regenerate the three mirrors
 //   pnpm generate-terrarium-rules --check    exit 1 if any mirror drifted

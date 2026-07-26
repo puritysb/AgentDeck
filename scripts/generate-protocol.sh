@@ -48,9 +48,27 @@ echo "   → bridge-event-schema.json"
 echo "   → plugin-command-schema.json"
 echo "   → gateway-frame-schema.json"
 
+# quicktype 23.x derives the top-level type name from the --src path, and its
+# path handling breaks on a Windows absolute path: every invocation dies with
+# "Cannot infer name for schema ." before it emits anything. POSIX absolute
+# paths are unaffected, which is why this only ever failed on Windows. Run
+# quicktype from inside OUT_DIR and pass bare filenames — identical output on
+# every platform, and the inferred names are unchanged.
+#
+# The binary is addressed by absolute path rather than through `npx`: the
+# subshell's cwd is OUT_DIR, which the drift gate points at a temp dir outside
+# the repo, and there `npx quicktype` resolves nothing locally and silently
+# downloads the newest quicktype instead of the pinned 23.2.6. That version
+# emits Kotlin for jackson rather than Klaxon, so the gate compared artifacts
+# built by two different generators and reported false drift.
+QUICKTYPE="$PROJECT_DIR/node_modules/.bin/quicktype"
+qt() {
+  ( cd "$OUT_DIR" && "$QUICKTYPE" "$@" )
+}
+
 echo "=== Step 2: Generate Swift types ==="
-npx quicktype \
-  --src "$OUT_DIR/bridge-event-schema.json" \
+qt \
+  --src "bridge-event-schema.json" \
   --src-lang schema \
   --lang swift \
   --density normal \
@@ -59,11 +77,11 @@ npx quicktype \
   --struct-or-class struct \
   --mutable-properties \
   --acronym-style camel \
-  --out "$OUT_DIR/BridgeEvent.swift" \
+  --out "BridgeEvent.swift" \
   2>/dev/null || echo "   (Swift BridgeEvent generation had warnings)"
 
-npx quicktype \
-  --src "$OUT_DIR/plugin-command-schema.json" \
+qt \
+  --src "plugin-command-schema.json" \
   --src-lang schema \
   --lang swift \
   --density normal \
@@ -72,7 +90,7 @@ npx quicktype \
   --struct-or-class struct \
   --mutable-properties \
   --acronym-style camel \
-  --out "$OUT_DIR/PluginCommand.swift" \
+  --out "PluginCommand.swift" \
   2>/dev/null || echo "   (Swift PluginCommand generation had warnings)"
 
 #
@@ -82,8 +100,8 @@ npx quicktype \
 # templates still mark surrounding types as Equatable — Swift 6 strict mode
 # rejects the whole compilation. Dropping the protocol sidesteps the issue
 # while keeping Codable, which is all the adapter needs.
-npx quicktype \
-  --src "$OUT_DIR/gateway-frame-schema.json" \
+qt \
+  --src "gateway-frame-schema.json" \
   --src-lang schema \
   --lang swift \
   --density normal \
@@ -91,7 +109,7 @@ npx quicktype \
   --struct-or-class struct \
   --mutable-properties \
   --acronym-style camel \
-  --out "$OUT_DIR/GatewayFrame.swift" \
+  --out "GatewayFrame.swift" \
   2>/dev/null || echo "   (Swift GatewayFrame generation had warnings)"
 
 # Quicktype's Swift support types still use legacy declarations that warn or
@@ -107,28 +125,28 @@ echo "   → PluginCommand.swift"
 echo "   → GatewayFrame.swift"
 
 echo "=== Step 3: Generate Kotlin types ==="
-npx quicktype \
-  --src "$OUT_DIR/bridge-event-schema.json" \
+qt \
+  --src "bridge-event-schema.json" \
   --src-lang schema \
   --lang kotlin \
   --package dev.agentdeck.generated \
-  --out "$OUT_DIR/BridgeEvent.kt" \
+  --out "BridgeEvent.kt" \
   2>&1 | grep -v "^Issue in line" || true
 
-npx quicktype \
-  --src "$OUT_DIR/plugin-command-schema.json" \
+qt \
+  --src "plugin-command-schema.json" \
   --src-lang schema \
   --lang kotlin \
   --package dev.agentdeck.generated \
-  --out "$OUT_DIR/PluginCommand.kt" \
+  --out "PluginCommand.kt" \
   2>&1 | grep -v "^Issue in line" || true
 
-npx quicktype \
-  --src "$OUT_DIR/gateway-frame-schema.json" \
+qt \
+  --src "gateway-frame-schema.json" \
   --src-lang schema \
   --lang kotlin \
   --package dev.agentdeck.generated \
-  --out "$OUT_DIR/GatewayFrame.kt" \
+  --out "GatewayFrame.kt" \
   2>&1 | grep -v "^Issue in line" || true
 
 echo "   → BridgeEvent.kt"

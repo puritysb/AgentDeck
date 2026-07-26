@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
 
 import { readTargetVersion, releaseTargets, validateReleaseVersion } from '../release-version.mjs';
 import { areVersionsCompatible, compatibilityLine, parseNumericVersion } from '../version-policy.mjs';
 
-const root = new URL('../..', import.meta.url).pathname;
+// fileURLToPath, not `.pathname`: on Windows the latter yields
+// `/C:/…/Claude%20Code/…`, whose leading slash and percent-encoding turn into
+// `C:\C:\…%20…` once resolve() sees it.
+const root = fileURLToPath(new URL('../..', import.meta.url));
 
 describe('cross-target version compatibility', () => {
   it('ignores patch values and ordering within the same major.minor line', () => {
