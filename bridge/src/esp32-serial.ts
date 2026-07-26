@@ -11,7 +11,7 @@
  * ESP32 side reads lines starting with '{' and passes to Protocol::parseMessage().
  */
 
-import { exec, execFile } from 'child_process';
+import { exec, execFile } from './proc.js';
 import {
   openSync,
   close,

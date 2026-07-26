@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync } from './proc.js';
 import { debug } from './logger.js';
 
 const TAG = 'adb';

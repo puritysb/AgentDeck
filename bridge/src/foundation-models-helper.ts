@@ -1,4 +1,4 @@
-import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'child_process';
+import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from './proc.js';
 import { chmodSync, existsSync, mkdirSync, statSync } from 'fs';
 import { dirname, join } from 'path';
 import { homedir, release } from 'os';

@@ -12,7 +12,7 @@
  * the App Store Swift build, which does BLE discovery natively via CoreBluetooth.
  */
 
-import { spawn } from 'child_process';
+import { spawn } from '../proc.js';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';

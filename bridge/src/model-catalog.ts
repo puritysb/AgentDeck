@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile } from './proc.js';
 import { debug } from './logger.js';
 import type { ModelCatalogEntry } from './types.js';
 import { augmentedPath } from '@agentdeck/shared';

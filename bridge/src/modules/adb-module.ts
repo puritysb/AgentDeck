@@ -1,6 +1,6 @@
 import type { DeviceModule, BridgeContext } from './types.js';
 import { setupAdbReverse, cleanupAdbReverse, startAdbReversePolling } from '../adb-reverse.js';
-import { execSync } from 'child_process';
+import { execSync } from '../proc.js';
 
 /**
  * ADB reverse tunnel module for Android dashboard clients.

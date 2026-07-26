@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync } from './proc.js';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';

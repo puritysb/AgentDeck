@@ -11,7 +11,7 @@
  * neutral behavior.
  */
 
-import { execFileSync } from 'child_process';
+import { execFileSync } from '../proc.js';
 import { debug } from '../logger.js';
 
 export interface HwSnapshot {

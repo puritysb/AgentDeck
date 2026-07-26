@@ -11,7 +11,7 @@
  * *why* the sync died without flooding the daemon log while it is running.
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, type ChildProcess } from './proc.js';
 
 export interface ManagedSyncChild {
   proc: ChildProcess;

@@ -15,7 +15,7 @@
  *     opened in the default browser — the "no macOS app" tier's popup.
  */
 
-import { execFile } from 'child_process';
+import { execFile } from './proc.js';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';

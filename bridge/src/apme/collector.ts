@@ -13,7 +13,7 @@
  */
 
 import { randomUUID, createHash } from 'crypto';
-import { execSync } from 'child_process';
+import { execSync } from '../proc.js';
 import { join } from 'path';
 import { mkdirSync, writeFileSync } from 'fs';
 import { homedir } from 'os';

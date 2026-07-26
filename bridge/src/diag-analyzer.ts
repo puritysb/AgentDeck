@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { spawn } from 'child_process';
+import { spawn } from './proc.js';
 import type { EventJournal } from './event-journal.js';
 import type { PtyRingBuffer } from './pty-ringbuffer.js';
 import type { StateMachine } from './state-machine.js';

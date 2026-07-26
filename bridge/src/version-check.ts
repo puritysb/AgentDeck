@@ -4,7 +4,7 @@
  * Never blocks startup — all failures result in warnings + proceed.
  */
 
-import { execSync } from 'child_process';
+import { execSync } from './proc.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';

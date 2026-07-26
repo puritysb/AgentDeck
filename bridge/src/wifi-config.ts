@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { execSync } from 'child_process';
+import { execSync } from './proc.js';
 import { debug } from './logger.js';
 
 const AGENTDECK_DIR = join(homedir(), '.agentdeck');

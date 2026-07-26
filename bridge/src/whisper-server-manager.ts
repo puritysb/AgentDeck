@@ -6,7 +6,7 @@
  * Last session to exit kills the server.
  */
 
-import { spawn } from 'child_process';
+import { spawn } from './proc.js';
 import {
   readFileSync, writeFileSync, renameSync, unlinkSync,
   mkdirSync, existsSync,

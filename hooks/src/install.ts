@@ -106,9 +106,16 @@ export function buildHookCommand(eventName: string): string {
  * Single quotes are used inside the PowerShell script so the entire `-Command`
  * argument can stay double-quoted under cmd.exe. Errors are swallowed so a
  * dead daemon never blocks the host session.
+ *
+ * `-WindowStyle Hidden -NonInteractive` keep the console off screen. Without
+ * them every hook flashes a PowerShell window, and since PreToolUse/PostToolUse
+ * fire on *every* tool call that reads as constant flickering during a session.
  */
+/** Marker identifying the request-response (steering-capable) Windows form. */
+export const WIN_RESPONSE_MARKER = '[Console]::Out.Write';
+
 export function buildHookCommandWin(eventName: string): string {
-  const ps = [
+  const preamble = [
     `$ev='${eventName}'`,
     `$port=$env:AGENTDECK_PORT`,
     `if(-not $port){$f=Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'; if(Test-Path $f){try{$d=Get-Content -Raw $f|ConvertFrom-Json; $p=if($d.httpPort){$d.httpPort}else{$d.port}; if($p){try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$p+'/health') -TimeoutSec 1 -ErrorAction Stop|Out-Null; $port=$p}catch{}}}catch{}}}`,
@@ -119,9 +126,28 @@ export function buildHookCommandWin(eventName: string): string {
     // Post UTF-8 bytes: Invoke-RestMethod encodes a string body as ISO-8859-1 when
     // the content type carries no charset, replacing non-ASCII characters with '?'.
     `$bytes=[System.Text.Encoding]::UTF8.GetBytes([string]$body)`,
-    `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
-  ].join('; ');
-  return `powershell -NoProfile -ExecutionPolicy Bypass -Command "${ps}"`;
+  ];
+
+  // PreToolUse and Stop are request-response on POSIX — the daemon answers with a
+  // permission decision (device approval / soft-STOP) or a deck-queued turn-end
+  // directive, and the hook echoes that body so Claude acts on it. Windows had no
+  // such branch and piped every response to Out-Null, so device approval and the
+  // directive queue silently did nothing here. Timeouts mirror the POSIX ones.
+  //
+  // Invoke-WebRequest, not Invoke-RestMethod: the latter deserializes a JSON body
+  // into an object, and re-serializing it would not round-trip byte for byte.
+  // -UseBasicParsing keeps PowerShell 5.1 off the Internet Explorer engine.
+  // [Console]::Out.Write emits no trailing newline, matching `printf '%s'`.
+  const responseTimeout = eventName === 'PreToolUse' ? 60 : 10;
+  const ps = (eventName === 'PreToolUse' || eventName === 'Stop')
+    ? preamble.concat([
+      `try{$r=Invoke-WebRequest -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec ${responseTimeout} -UseBasicParsing -ErrorAction Stop; ${WIN_RESPONSE_MARKER}([string]$r.Content)}catch{}`,
+    ]).join('; ')
+    : preamble.concat([
+      `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
+    ]).join('; ');
+
+  return `powershell -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command "${ps}"`;
 }
 
 // Claude Code v2.1+ requires 3-level nesting: event → matcher group → hook handler.
@@ -295,7 +321,14 @@ export function migrateHooksIfNeeded(): void {
 
     // Migration 5: upgrade fire-and-forget Stop hooks to the request-response
     // form (turn-end directive queue needs the response echoed to Claude).
-    if (raw.includes('/hooks/Stop') && !/RESP=\$\(curl[^\n]*\/hooks\/Stop/.test(raw)) {
+    // The marker differs per platform: POSIX captures into $RESP, Windows writes
+    // the body with [Console]::Out.Write. Testing only for the POSIX one made
+    // this fire on every Windows startup (harmless but a pointless rewrite) while
+    // never actually detecting a stale Windows hook.
+    const hasResponseForm = process.platform === 'win32'
+      ? raw.includes(WIN_RESPONSE_MARKER)
+      : /RESP=\$\(curl[^\n]*\/hooks\/Stop/.test(raw);
+    if (raw.includes('/hooks/Stop') && !hasResponseForm) {
       applyHooks(settings);
       migrated = true;
     }

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { spawn, execSync, type ChildProcess } from 'child_process';
+import { spawn, execSync, type ChildProcess } from './proc.js';
 import { tmpdir, homedir } from 'os';
 import { join } from 'path';
 import { unlinkSync, existsSync, statSync, readFileSync } from 'fs';

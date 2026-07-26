@@ -14,7 +14,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, type ChildProcess } from './proc.js';
 import { existsSync, statSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

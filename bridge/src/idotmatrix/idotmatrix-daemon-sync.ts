@@ -16,7 +16,7 @@
  * Apple 2.5.2 sandbox invariants.
  */
 
-import { type ChildProcess } from 'child_process';
+import { type ChildProcess } from '../proc.js';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';

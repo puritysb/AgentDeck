@@ -1,5 +1,5 @@
 import net from 'net';
-import { execFile } from 'child_process';
+import { execFile } from './proc.js';
 import { debug } from './logger.js';
 
 const GATEWAY_PORT = 18789;

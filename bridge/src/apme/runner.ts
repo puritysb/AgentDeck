@@ -11,7 +11,7 @@
  * by `shouldJudge()` so the common "clear pass" case skips layer 2 entirely.
  */
 
-import { spawn } from 'child_process';
+import { spawn } from '../proc.js';
 import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { debug } from '../logger.js';
@@ -23,7 +23,7 @@ import { callFoundationModelsHelper, probeFoundationModelsHelper } from '../foun
 import type { SessionSample, TrajectoryEvent } from '@agentdeck/shared';
 import { runSampleScorers } from './scorers/index.js';
 import type { ApmeRunRow, ParsedJudge } from './types.js';
-import { execSync } from 'child_process';
+import { execSync } from '../proc.js';
 
 export interface EvalJob {
   runId: string;

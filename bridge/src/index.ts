@@ -39,7 +39,7 @@ import { TerminalStatus } from './terminal-status.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { execSync } from './proc.js';
 import {
   listActive as listActiveSessions,
   findAvailablePort,

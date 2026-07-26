@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync } from './proc.js';
 import type { AgentType } from './types.js';
 
 interface DepCheck {

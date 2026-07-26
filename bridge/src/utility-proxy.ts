@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn } from './proc.js';
 import { debug } from './logger.js';
 import type { UtilityCommand } from './types.js';
 

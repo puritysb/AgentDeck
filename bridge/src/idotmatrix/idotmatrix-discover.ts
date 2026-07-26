@@ -11,7 +11,7 @@
  * Swift build, which discovers over CoreBluetooth natively.
  */
 
-import { spawn } from 'child_process';
+import { spawn } from '../proc.js';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';

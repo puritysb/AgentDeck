@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import { writeFileSync, unlinkSync, existsSync, realpathSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
-import { execFileSync, execSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from './proc.js';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { request } from 'http';

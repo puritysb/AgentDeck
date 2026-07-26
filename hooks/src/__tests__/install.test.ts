@@ -59,7 +59,9 @@ describe('Hook Installer', () => {
   describe('buildHookCommandWin (Windows)', () => {
     it('wraps a PowerShell one-liner that targets the event endpoint', () => {
       const cmd = buildHookCommandWin('SessionStart');
-      expect(cmd.startsWith('powershell -NoProfile -ExecutionPolicy Bypass -Command "')).toBe(true);
+      expect(cmd.startsWith('powershell -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command "')).toBe(true);
+      // Hooks fire on every tool call; an unhidden console flickers all session.
+      expect(cmd).toContain('-WindowStyle Hidden');
       expect(cmd).toContain("$ev='SessionStart'");
       expect(cmd).toContain('$env:AGENTDECK_PORT');
       expect(cmd).toContain(".agentdeck\\daemon.json");
@@ -354,7 +356,37 @@ describe('steering hook channels (request-response)', () => {
     applyHooks(settings);
     const stopCmd = (settings.hooks.Stop as Array<{ hooks: Array<{ command: string }> }>)
       .flatMap((h) => h.hooks).map((h) => h.command).join('\n');
-    expect(stopCmd).toContain('RESP=$(curl');
-    expect(stopCmd).toContain('/hooks/Stop');
+    // applyHooks emits the host platform's form, so assert the matching marker:
+    // both echo the daemon's turn-end directive back to Claude, POSIX via $RESP
+    // and Windows via [Console]::Out.Write.
+    // The Windows form builds the URL as '/hooks/'+$ev, so the event name is
+    // carried by $ev rather than appearing literally in the path.
+    if (process.platform === 'win32') {
+      expect(stopCmd).toContain('[Console]::Out.Write');
+      expect(stopCmd).toContain("$ev='Stop'");
+      expect(stopCmd).toContain("/hooks/'+$ev");
+    } else {
+      expect(stopCmd).toContain('RESP=$(curl');
+      expect(stopCmd).toContain('/hooks/Stop');
+    }
+  });
+
+  it('gives Windows PreToolUse and Stop a request-response channel', () => {
+    // Without this the daemon's permission decision and turn-end directive are
+    // piped to Out-Null and device approval silently does nothing on Windows.
+    for (const [event, timeout] of [['PreToolUse', 60], ['Stop', 10]] as const) {
+      const cmd = buildHookCommandWin(event);
+      expect(cmd).toContain('Invoke-WebRequest');
+      expect(cmd).toContain('[Console]::Out.Write');
+      expect(cmd).toContain(`-TimeoutSec ${timeout}`);
+      expect(cmd).not.toContain('|Out-Null}catch{}');
+    }
+  });
+
+  it('leaves the other Windows events fire-and-forget', () => {
+    const cmd = buildHookCommandWin('PostToolUse');
+    expect(cmd).toContain('Invoke-RestMethod');
+    expect(cmd).toContain('|Out-Null');
+    expect(cmd).not.toContain('[Console]::Out.Write');
   });
 });

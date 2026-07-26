@@ -6,7 +6,7 @@
  * writer. This code is terminal-managed CLI daemon only.
  */
 
-import { type ChildProcess } from 'child_process';
+import { type ChildProcess } from '../proc.js';
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';

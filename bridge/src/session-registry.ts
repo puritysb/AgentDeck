@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'fs';
-import { execSync } from 'child_process';
+import { execSync } from './proc.js';
 import { createServer } from 'net';
 import { join } from 'path';
 import { homedir } from 'os';

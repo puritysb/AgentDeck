@@ -8,7 +8,7 @@
  * speaks each sequentially for lower perceived latency.
  */
 
-import { spawn, execSync, type ChildProcess } from 'child_process';
+import { spawn, execSync, type ChildProcess } from './proc.js';
 import { platform } from 'os';
 import { debug } from './logger.js';
 

@@ -253,10 +253,10 @@ describe('codex-install: managedBlockBody', () => {
       notifyScriptPath: 'C:\\Users\\me\\.agentdeck\\codex-notify.ps1',
     });
     const withFence = applyManagedBlock('', body);
-    expect(withFence).toContain('command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ');
+    expect(withFence).toContain('command = "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand ');
     // notify must exec the sidecar via -File: Codex appends the JSON
     // payload as trailing argv, which -Command cannot bind into $args.
-    expect(withFence).toContain('notify = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "C:\\\\Users\\\\me\\\\.agentdeck\\\\codex-notify.ps1"]');
+    expect(withFence).toContain('notify = ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", "C:\\\\Users\\\\me\\\\.agentdeck\\\\codex-notify.ps1"]');
     expect(withFence).not.toContain('"-Command"');
     expect(withFence).not.toContain('"agentdeck-notify"');
 

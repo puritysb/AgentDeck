@@ -152,7 +152,8 @@ export function managedBlockBody(opts: ManagedBlockOptions = {}): string {
 function buildNotifyAssignment(event: string, platform: NodeJS.Platform, notifyScriptPath?: string): string {
   if (platform === 'win32') {
     const scriptPath = notifyScriptPath ?? DEFAULT_WINDOWS_NOTIFY_SCRIPT_PATH;
-    return `notify = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ${quoted(scriptPath)}]`;
+    // -WindowStyle Hidden: without it every notify flashes a console window.
+    return `notify = ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", ${quoted(scriptPath)}]`;
   }
   return `notify = ["sh", "-c", ${quoted(buildNotifySnippet(event))}, "agentdeck-notify"]`;
 }
@@ -238,7 +239,9 @@ function shellSingleQuoted(s: string): string {
 }
 
 function buildWindowsLifecycleHookCommand(event: string): string {
-  return `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${windowsEncodedCommand(buildWindowsStdinPostSnippet(event))}`;
+  // -WindowStyle Hidden: lifecycle hooks fire many times per session, so an
+  // unhidden console reads as constant flickering.
+  return `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand ${windowsEncodedCommand(buildWindowsStdinPostSnippet(event))}`;
 }
 
 function buildWindowsStdinPostSnippet(event: string): string {

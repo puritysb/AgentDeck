@@ -7,7 +7,7 @@
  * composite score from outcome + judge + efficiency + vibe.
  */
 
-import { execSync } from 'child_process';
+import { execSync } from '../proc.js';
 import { debug } from '../logger.js';
 import type { ApmeStore } from './store.js';
 import type { ApmeRunRow } from './types.js';

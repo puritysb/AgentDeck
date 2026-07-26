@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { spawn, execFileSync, type ChildProcess } from 'child_process';
+import { spawn, execFileSync, type ChildProcess } from './proc.js';
 import { createInterface } from 'readline';
 import { debug } from './logger.js';
 

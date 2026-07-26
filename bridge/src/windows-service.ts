@@ -15,7 +15,7 @@
 import { writeFileSync, unlinkSync } from 'fs';
 import { homedir, tmpdir, userInfo } from 'os';
 import { dirname, join } from 'path';
-import { execSync } from 'child_process';
+import { execSync } from './proc.js';
 import { fileURLToPath } from 'url';
 
 export const TASK_NAME = 'AgentDeckDaemon';
