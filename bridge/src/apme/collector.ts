@@ -1083,9 +1083,12 @@ export class ApmeCollector {
     try {
       const run = this.store.getRun(runId);
       if (!run) return;
+      // --no-ext-diff / --no-textconv: same rule as runner.ts collectDiff —
+      // user diff drivers (e.g. a Java xlsx comparator with multi-second JVM
+      // startup) must never run inside this synchronous daemon-side spawn.
       const args = run.gitBefore && run.gitAfter && run.gitBefore !== run.gitAfter
-        ? `diff ${run.gitBefore}..${run.gitAfter}`
-        : 'diff HEAD';
+        ? `diff --no-ext-diff --no-textconv ${run.gitBefore}..${run.gitAfter}`
+        : 'diff --no-ext-diff --no-textconv HEAD';
       const diff = execSync(`git ${args}`, {
         cwd: projectPath, encoding: 'utf-8', timeout: 5000,
         maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],

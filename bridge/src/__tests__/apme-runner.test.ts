@@ -776,4 +776,35 @@ describe('buildJudgePrompt', () => {
     expect(out).toContain('deterministic_checks: passed');
     expect(out).toContain('Respond with strict JSON only.');
   });
+
+  it('collects the diff with user diff drivers disabled (--no-ext-diff)', () => {
+    // External diff drivers run once per matching file and can be arbitrarily
+    // slow (real case: a Java xlsx comparator whose JVM startup alone exceeds
+    // collectDiff's 4s budget) — and collectDiff is a synchronous spawn on the
+    // daemon event loop. The judge diff must therefore never invoke them.
+    const dir = tmpProject({ 'a.txt': 'old line\n' });
+    try {
+      initGit(dir);
+      execSync('git config diff.marker.command "echo EXTERNAL_DIFF_DRIVER_RAN #"', { cwd: dir });
+      writeFileSync(join(dir, '.gitattributes'), '*.txt diff=marker\n');
+      writeFileSync(join(dir, 'a.txt'), 'new line\n');
+
+      // Control: with drivers active, a plain `git diff` emits driver output —
+      // proves the fixture driver is actually wired before asserting we skip it.
+      const plain = execSync('git diff HEAD', { cwd: dir, encoding: 'utf-8' });
+      expect(plain).toContain('EXTERNAL_DIFF_DRIVER_RAN');
+
+      const run: ApmeRunRow = {
+        id: 'r', sessionId: 's', agentType: 'claude-code',
+        modelId: 'm', projectName: 'proj', projectPath: dir,
+        taskPrompt: 'edit a.txt', startedAt: Date.now(), exitCode: 0,
+        taskCategory: 'coding',
+      };
+      const out = buildJudgePrompt(run, 'You are a judge.', true);
+      expect(out).not.toContain('EXTERNAL_DIFF_DRIVER_RAN');
+      expect(out).toContain('+new line');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

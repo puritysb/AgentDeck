@@ -839,9 +839,16 @@ export function readResponseKind(turn: Record<string, unknown>): ResponseKind {
 function collectDiff(run: ApmeRunRow): string {
   if (!run.projectPath) return '';
   try {
+    // --no-ext-diff / --no-textconv: this diff is machine input for the judge,
+    // so user-configured diff drivers must not run. External drivers execute
+    // per matching file and can be arbitrarily slow (real case: a Java xlsx
+    // comparator whose JVM startup alone exceeds this 4s budget) — and this
+    // is a synchronous spawn on the daemon event loop, so a slow driver both
+    // stalls every surface and still returns '' on timeout. Without drivers,
+    // driver-mapped files degrade to a fast "Binary files differ" line.
     const args = run.gitBefore && run.gitAfter && run.gitBefore !== run.gitAfter
-      ? ['diff', '--unified=2', `${run.gitBefore}..${run.gitAfter}`]
-      : ['diff', '--unified=2', 'HEAD'];
+      ? ['diff', '--no-ext-diff', '--no-textconv', '--unified=2', `${run.gitBefore}..${run.gitAfter}`]
+      : ['diff', '--no-ext-diff', '--no-textconv', '--unified=2', 'HEAD'];
     const out = execSync(`git ${args.join(' ')}`, {
       cwd: run.projectPath, encoding: 'utf-8', timeout: 4000,
       maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
