@@ -157,6 +157,23 @@ export function loadApmeConfig(): ApmeConfig {
  * Decide whether layer-2 (LLM judge) should run for this run, based on the
  * sampleRate + disagreement gates. `deterministicPassed` reflects layer-1 outcome.
  */
+/** Whether the configured judge backend can ever succeed on this platform.
+ *  `foundationModels` (Apple Intelligence via the Swift daemon / bundled
+ *  Swift helper) and `mlx` (Apple-Silicon local server) are darwin-only —
+ *  on any other platform every call fails, and because a failed judge
+ *  leaves the run without eval rows, the daemon's 30s eval timer would
+ *  retry it forever (collecting the git diff each cycle). Skip cleanly
+ *  instead; per the cost-sensitive defaults contract no reachable backend
+ *  is auto-selected — the user opts into `openai` (Ollama / LM Studio /
+ *  vLLM / OpenRouter) or `api` via settings.json. */
+export function judgeBackendSupported(
+  judge: ApmeJudgeConfig,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform === 'darwin') return true;
+  return judge.backend !== 'foundationModels' && judge.backend !== 'mlx';
+}
+
 export function shouldJudge(cfg: ApmeJudgeConfig, deterministicPassed: boolean | null): boolean {
   if (cfg.sampleRate <= 0) return false;
   if (cfg.onlyWhenDisagreement) {

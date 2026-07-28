@@ -17,7 +17,7 @@ import { join } from 'path';
 import { debug } from '../logger.js';
 import type { ApmeStore } from './store.js';
 import type { ApmeConfig, ApmeJudgeConfig, ApmeJudgeBackend } from './settings.js';
-import { loadApmeConfig, shouldJudge, DEFAULT_APME_CONFIG } from './settings.js';
+import { loadApmeConfig, shouldJudge, judgeBackendSupported, DEFAULT_APME_CONFIG } from './settings.js';
 import { loadMlxSettings, mlxChatUrl } from '@agentdeck/shared';
 import { callFoundationModelsHelper, probeFoundationModelsHelper } from '../foundation-models-helper.js';
 import type { SessionSample, TrajectoryEvent } from '@agentdeck/shared';
@@ -134,6 +134,30 @@ export class ApmeRunner {
   private judgeOverride: ((prompt: string, judgeCfg: ApmeJudgeConfig) => Promise<string>) | null = null;
   private detOverride: ((runRow: ApmeRunRow, cfg: ApmeConfig) => Promise<DetStepResult[]>) | null = null;
 
+  /** Judge-failure backoff: runId → attempts + earliest retry time.
+   *  Deliberately in-memory: a daemon restart (which is also how a fixed
+   *  backend comes back) resets it, and the cost of forgetting is one extra
+   *  retry — not a schema migration. After MAX_ATTEMPTS the run is parked
+   *  until restart. */
+  private readonly judgeFailures = new Map<string, { attempts: number; nextEligibleAt: number }>();
+  static readonly JUDGE_RETRY_BASE_MS = 60_000;
+  static readonly JUDGE_RETRY_MAX_ATTEMPTS = 5;
+
+  private recordJudgeFailure(runId: string): void {
+    const attempts = (this.judgeFailures.get(runId)?.attempts ?? 0) + 1;
+    const nextEligibleAt = attempts >= ApmeRunner.JUDGE_RETRY_MAX_ATTEMPTS
+      ? Number.POSITIVE_INFINITY
+      : Date.now() + ApmeRunner.JUDGE_RETRY_BASE_MS * 2 ** (attempts - 1);
+    this.judgeFailures.set(runId, { attempts, nextEligibleAt });
+    debug('APME', `judge failure #${attempts} runId=${runId}${Number.isFinite(nextEligibleAt) ? ` — retry eligible in ${Math.round((nextEligibleAt - Date.now()) / 1000)}s` : ' — parked until restart'}`);
+  }
+
+  /** Test hook: make a backed-off run immediately eligible again. */
+  _expireJudgeBackoffForTests(runId: string): void {
+    const entry = this.judgeFailures.get(runId);
+    if (entry) this.judgeFailures.set(runId, { ...entry, nextEligibleAt: 0 });
+  }
+
   /** Cached startup judge readiness probe. Populated by `refreshBackendProbe`,
    *  surfaced on /health. Null until the first probe completes. */
   public lastBackendProbe: JudgeBackendStatus | null = null;
@@ -176,6 +200,15 @@ export class ApmeRunner {
       debug('APME', `skip duplicate eval enqueue runId=${job.runId}`);
       return;
     }
+    // Judge-failure backoff: a failed judge writes no eval rows, so the run
+    // still matches listUnevaluatedRuns and the daemon's 30s timer re-enqueues
+    // it — without this gate that is an unbounded hot loop (git diff + failed
+    // backend call every 30s per run) whenever the judge backend is down.
+    const backoff = this.judgeFailures.get(job.runId);
+    if (backoff && Date.now() < backoff.nextEligibleAt) {
+      debug('APME', `skip eval enqueue runId=${job.runId} — judge failed ${backoff.attempts}x, backing off`);
+      return;
+    }
     this.queuedRunIds.add(job.runId);
     this.queue.push(job);
     debug('APME', `enqueue eval runId=${job.runId} (queue=${this.queue.length})`);
@@ -215,6 +248,10 @@ export class ApmeRunner {
   private async runTaskEval({ runId, taskId, category, boundarySignal }: { runId: string; taskId: string; category?: string; boundarySignal?: string }): Promise<void> {
     const cfg = this.configOverride ?? loadApmeConfig();
     if (!cfg.enabled) return;
+    if (this.judgeOverride == null && !judgeBackendSupported(cfg.judge)) {
+      debug('APME', `runTaskEval skip task=${taskId.slice(0, 8)} — backend ${cfg.judge.backend} unsupported on ${process.platform}`);
+      return;
+    }
 
     const task = this.store.getTask(taskId);
     if (!task) return;
@@ -395,6 +432,10 @@ export class ApmeRunner {
   private async runTurnEval({ runId, turnId, category }: { runId: string; turnId: string; category?: string }): Promise<void> {
     const cfg = this.configOverride ?? loadApmeConfig();
     if (!cfg.enabled) return;
+    if (this.judgeOverride == null && !judgeBackendSupported(cfg.judge)) {
+      debug('APME', `runTurnEval skip turn=${turnId.slice(0, 8)} — backend ${cfg.judge.backend} unsupported on ${process.platform}`);
+      return;
+    }
 
     const turn = this.store.getTurn(turnId);
     if (!turn) return;
@@ -545,7 +586,14 @@ export class ApmeRunner {
     // ── Layer 2 — llm_judge (gated) ───────────────────────────────────────────
     let layer2Ran = false;
     let overall: number | undefined;
-    if (cfg.enabled && shouldJudge(cfg.judge, layer1Passed)) {
+    // A test-injected judge override counts as a usable backend; otherwise
+    // darwin-only backends (foundationModels/MLX) are skipped off-macOS
+    // before any diff collection or network attempt.
+    const backendUsable = this.judgeOverride != null || judgeBackendSupported(cfg.judge);
+    if (!backendUsable) {
+      debug('APME', `runOne skip judge runId=${run.id} — backend ${cfg.judge.backend} unsupported on ${process.platform}`);
+    }
+    if (cfg.enabled && backendUsable && shouldJudge(cfg.judge, layer1Passed)) {
       // Select category-specific rubric, fall back to 'general'
       const rubric = (run.taskCategory ? this.store.getCurrentRubric(run.taskCategory) : null)
         ?? this.store.getCurrentRubric('general');
@@ -574,6 +622,7 @@ export class ApmeRunner {
             }
             overall = parsed.scores.overall;
             layer2Ran = true;
+            this.judgeFailures.delete(run.id);
             // Re-compute composite score with judge contribution
             try {
               const { recomputeComposite } = await import('./outcome.js');
@@ -581,10 +630,12 @@ export class ApmeRunner {
             } catch { /* ignore — outcome may not have run yet */ }
           } else {
             debug('APME', `judge response unparseable runId=${run.id}`);
+            this.recordJudgeFailure(run.id);
           }
         } catch (err) {
           // Per cost-sensitive-defaults memory: never silently fall back from MLX to API.
           debug('APME', `layer2 error runId=${run.id} (skipping, no fallback): ${String(err)}`);
+          this.recordJudgeFailure(run.id);
         }
       }
     }

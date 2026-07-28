@@ -14,7 +14,7 @@ import {
   effectiveJudgeModelTag,
   clearFoundationModelsAutoCacheForTests,
 } from '../apme/runner.js';
-import { DEFAULT_APME_CONFIG, shouldJudge } from '../apme/settings.js';
+import { DEFAULT_APME_CONFIG, shouldJudge, judgeBackendSupported } from '../apme/settings.js';
 import { clearFoundationModelsHelperForTests } from '../foundation-models-helper.js';
 import { clearMlxSettingsCache } from '@agentdeck/shared';
 import type { ApmeConfig } from '../apme/settings.js';
@@ -775,5 +775,125 @@ describe('buildJudgePrompt', () => {
     expect(out).toContain('model: claude-sonnet-4-6');
     expect(out).toContain('deterministic_checks: passed');
     expect(out).toContain('Respond with strict JSON only.');
+  });
+});
+
+// ─── Judge platform gate ─────────────────────────────────────────────────────
+
+describe('judgeBackendSupported', () => {
+  const j = (backend: ApmeConfig['judge']['backend']) => ({ ...DEFAULT_APME_CONFIG.judge, backend });
+
+  it('darwin supports every backend', () => {
+    for (const b of ['foundationModels', 'mlx', 'openai', 'api', 'openclaw'] as const) {
+      expect(judgeBackendSupported(j(b), 'darwin')).toBe(true);
+    }
+  });
+
+  it('darwin-only backends (foundationModels, mlx) are unsupported elsewhere', () => {
+    expect(judgeBackendSupported(j('foundationModels'), 'win32')).toBe(false);
+    expect(judgeBackendSupported(j('foundationModels'), 'linux')).toBe(false);
+    expect(judgeBackendSupported(j('mlx'), 'win32')).toBe(false);
+    expect(judgeBackendSupported(j('mlx'), 'linux')).toBe(false);
+  });
+
+  it('portable backends stay supported off-darwin', () => {
+    expect(judgeBackendSupported(j('openai'), 'win32')).toBe(true);
+    expect(judgeBackendSupported(j('api'), 'linux')).toBe(true);
+    expect(judgeBackendSupported(j('openclaw'), 'win32')).toBe(true);
+  });
+});
+
+// ─── Judge failure backoff ───────────────────────────────────────────────────
+
+describe('judge failure backoff', () => {
+  let store: ApmeStore = null;
+  beforeEach(async () => { store = await makeStore(); });
+  afterEach(() => { closeStore(store); store = null; });
+
+  function cfg(): ApmeConfig {
+    return {
+      ...DEFAULT_APME_CONFIG,
+      deterministic: { enabled: false, timeoutSec: 30, commands: {} },
+      judge: { ...DEFAULT_APME_CONFIG.judge, sampleRate: 1, onlyWhenDisagreement: false },
+    };
+  }
+
+  function closeNewRun(sessionId: string): string {
+    const collector = new ApmeCollector(store);
+    const runId = collector.openRun({
+      sessionId, agentType: 'claude-code', projectName: 'proj', taskPrompt: 'do a thing',
+    });
+    collector.closeRun(sessionId);
+    return runId;
+  }
+
+  it('a failed judge blocks immediate re-enqueue and retries after the backoff expires', async () => {
+    const runId = closeNewRun('s-backoff');
+    const runner = new ApmeRunner(store);
+    runner._setConfig(cfg());
+    let judgeCalls = 0;
+    runner._setJudgeFn(async () => { judgeCalls++; throw new Error('backend down'); });
+
+    runner.enqueue({ runId });
+    await runner.drain();
+    expect(judgeCalls).toBe(1);
+    expect(store.listEvalsForRun(runId)).toHaveLength(0);
+
+    // The daemon's 30s eval timer would re-enqueue right away (the run still
+    // has no eval rows) — the backoff must swallow it instead of re-judging.
+    runner.enqueue({ runId });
+    await runner.drain();
+    expect(judgeCalls).toBe(1);
+
+    // After the backoff window passes, the retry goes through again.
+    runner._expireJudgeBackoffForTests(runId);
+    runner.enqueue({ runId });
+    await runner.drain();
+    expect(judgeCalls).toBe(2);
+  });
+
+  it('a successful judge clears the failure state and persists evals', async () => {
+    const runId = closeNewRun('s-recover');
+    const runner = new ApmeRunner(store);
+    runner._setConfig(cfg());
+    let fail = true;
+    let judgeCalls = 0;
+    runner._setJudgeFn(async () => {
+      judgeCalls++;
+      if (fail) throw new Error('backend down');
+      return '{"intent":0.8,"correctness":0.8,"style":0.8,"convention":0.8,"overall":0.8,"reasoning":"ok"}';
+    });
+
+    runner.enqueue({ runId });
+    await runner.drain();
+    expect(judgeCalls).toBe(1);
+
+    fail = false;
+    runner._expireJudgeBackoffForTests(runId);
+    runner.enqueue({ runId });
+    await runner.drain();
+    expect(judgeCalls).toBe(2);
+    expect(store.listEvalsForRun(runId).filter((e) => e.layer === 'llm_judge').length).toBeGreaterThan(0);
+  });
+
+  it('parks the run after JUDGE_RETRY_MAX_ATTEMPTS failures until restart', async () => {
+    const runId = closeNewRun('s-parked');
+    const runner = new ApmeRunner(store);
+    runner._setConfig(cfg());
+    let judgeCalls = 0;
+    runner._setJudgeFn(async () => { judgeCalls++; throw new Error('backend down'); });
+
+    for (let i = 0; i < ApmeRunner.JUDGE_RETRY_MAX_ATTEMPTS; i++) {
+      runner._expireJudgeBackoffForTests(runId); // no-op before the first failure
+      runner.enqueue({ runId });
+      await runner.drain();
+    }
+    expect(judgeCalls).toBe(ApmeRunner.JUDGE_RETRY_MAX_ATTEMPTS);
+
+    // Final failure parks the run at +Infinity — no expiry helper here, and
+    // no wall-clock wait can unpark it; only a daemon restart does.
+    runner.enqueue({ runId });
+    await runner.drain();
+    expect(judgeCalls).toBe(ApmeRunner.JUDGE_RETRY_MAX_ATTEMPTS);
   });
 });
