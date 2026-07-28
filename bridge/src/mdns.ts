@@ -1,4 +1,5 @@
 import Bonjour from 'bonjour-service';
+import { randomUUID } from 'node:crypto';
 import type { AgentType } from './types.js';
 import { debug, log } from './logger.js';
 import { getLanIp } from '@agentdeck/shared';
@@ -6,6 +7,18 @@ import { getLanIp } from '@agentdeck/shared';
 let instance: Bonjour | null = null;
 
 const MDNS_RECOVERY_INTERVAL = 5_000; // 5s — tightens WiFi-change discovery gap (was 30s)
+
+/**
+ * `bonjour-service` defaults SRV/A/AAAA records to `os.hostname()`. On macOS
+ * that makes its user-space responder claim the same `.local` hostname as the
+ * system mDNSResponder; affected Macs interpret the duplicate claim as a remote
+ * collision and permanently rename their LocalHostName on every daemon start.
+ *
+ * Keep the service host process-scoped instead. It only needs to remain stable
+ * across this process's wake/network recovery re-publishes; clients discover
+ * the service instance and resolve this SRV target immediately before connect.
+ */
+export const MDNS_SERVICE_HOST = `agentdeck-${randomUUID().replaceAll('-', '')}.local`;
 
 /**
  * True if an uncaught error is a non-fatal mDNS multicast failure that should be
@@ -129,6 +142,7 @@ export function advertiseBridge(
 
       const service = instance.publish({
         name: `${projectName}-${port}`,
+        host: MDNS_SERVICE_HOST,
         type: 'agentdeck',
         port,
         txt,

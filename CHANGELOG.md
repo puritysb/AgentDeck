@@ -7,6 +7,16 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.3
+
+### CLI and daemon
+
+- Stop the Node Bonjour publisher from claiming the Mac's own `.local` hostname
+  and triggering macOS collision handling that renamed the computer on every
+  daemon start
+- Use a process-scoped service host that remains stable across sleep/wake and
+  network recovery re-publication without mutating the system LocalHostName
+
 ## 1.0.2
 
 ### Daemon and timeline
