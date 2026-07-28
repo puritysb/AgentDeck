@@ -1037,6 +1037,17 @@ data class SessionInfo (
     val goal: String? = null,
     val groupSize: Double? = null,
     val id: String,
+
+    /**
+     * Observed sessions: this daemon can answer the session's LIVE on-screen prompt by typing
+     * into its terminal/app host (`observed-inject.ts`), so a deck may render its `options` as
+     * pressable instead of inert. Absent/false means no reachable host was found, or the daemon
+     * cannot inject at all (App Store Swift daemon — no subprocess). Emitted explicitly in BOTH
+     * polarities: a flag only ever sent when true latches one-way under retain-on-absent
+     * merging.
+     */
+    val liveAnswerable: Boolean? = null,
+
     val modelName: String? = null,
     val options: List<PromptOption>? = null,
     val pid: Double? = null,

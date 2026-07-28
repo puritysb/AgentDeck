@@ -35,6 +35,16 @@ bool wifiConfigured();
  */
 bool wifiConnectWith(const char* ssid, const char* password);
 
+#if defined(BOARD_T_DISPLAY_PRO)
+/**
+ * Bring WiFi up after the boot deferral: daemon-provisioned "adwifi"
+ * credentials first, then legacy WiFiManager storage. Returns false (and
+ * turns the radio back off) when there is nothing to join. Blocking up to the
+ * connect timeout — call only from networkTask once serial is known dead.
+ */
+bool wifiTryDeferredJoin();
+#endif
+
 /**
  * Persist daemon-provisioned WiFi credentials without changing radio state.
  * Used by IPS10 when USB serial is primary and the hosted WiFi radio is parked.

@@ -15,6 +15,7 @@
 #include "../input/touch_strip.h"
 #include "../input/light_sensor.h"
 #include "../input/power_monitor.h"
+#include "../camera/photo_capture.h"
 #endif
 #if !defined(BOARD_LED8X32) && !defined(BOARD_INKDECK)
 #include "../ui/screens/splash.h"
@@ -49,18 +50,29 @@ namespace Net {
 static void sendHeartbeatAck();
 
 void serialWriteJsonLine(const char* buf) {
-#if defined(BOARD_INKDECK)
+#if defined(BOARD_INKDECK) || defined(BOARD_T_DISPLAY_PRO)
     // HWCDC (USB-Serial/JTAG) on this core loses entire 64-byte FIFO blocks
     // when a write spans multiple blocks (measured: deterministic 64-byte
     // holes mid-line, 7/10 corrupt device_info replies). Pace one FIFO block
     // per drain so the newline-framed JSON the daemon parses arrives intact.
+    // The T-Display-S3-Pro hits the same silicon path, harder: its 2.8 KB
+    // base64 photo_chunk lines still lost ~2 lines per upload at the InkDeck
+    // recipe (60 B / 300 µs) while daemon broadcasts streamed inbound — the
+    // ack-only-keepalive note below already records that full-duplex raises
+    // the drop odds. Sub-FIFO blocks with a longer settle survive it.
+#if defined(BOARD_T_DISPLAY_PRO)
+    constexpr size_t CHUNK = 48;
+    constexpr uint32_t SETTLE_US = 500;
+#else
     constexpr size_t CHUNK = 60;
+    constexpr uint32_t SETTLE_US = 300;
+#endif
     size_t len = strlen(buf);
     for (size_t off = 0; off < len; off += CHUNK) {
         size_t n = (len - off) < CHUNK ? (len - off) : CHUNK;
         Serial.write((const uint8_t*)buf + off, n);
         Serial.flush();
-        delayMicroseconds(300);
+        delayMicroseconds(SETTLE_US);
     }
     Serial.write((const uint8_t*)"\n", 1);
     Serial.flush();
@@ -150,11 +162,22 @@ static void sendDeviceInfoSerial() {
         // Remote peripheral diag — lets /devices answer "did touch/ALS init?"
         // without stealing the serial port.
         resp["touchReady"] = Input::touchReady();
+        resp["touchDownSamples"] = Input::touchDownSamples();
+        resp["touchGestures"] = Input::touchGestures();
+        resp["touchLastX"] = Input::touchLastX();
+        resp["touchLastY"] = Input::touchLastY();
+        resp["touchMaxX"] = Input::touchMaxX();
+        resp["touchMaxY"] = Input::touchMaxY();
         resp["alsReady"] = Input::lightReady();
         Input::PowerStatus ps = Input::powerStatus();
-        if (ps.valid) {
+        // Mirrors protocol.cpp sendDeviceInfo — keep the two ladders in
+        // lockstep. Camera advertises only when the shield probed at boot.
+        if (ps.valid || Camera::present()) {
             JsonArray caps = resp["capabilities"].to<JsonArray>();
-            caps.add("battery");
+            if (ps.valid) caps.add("battery");
+            if (Camera::present()) caps.add("camera");
+        }
+        if (ps.valid) {
             resp["batteryVoltageMv"] = ps.voltageMv;
             resp["batteryCharging"] = ps.charging;
             resp["usbPowered"] = ps.usbPowered;
@@ -170,7 +193,9 @@ static void sendDeviceInfoSerial() {
     resp["otaFreeSketchSpace"] = ota.freeSketchSpace;
     if (!ota.supported) resp["otaReason"] = ota.reason;
 
-    char buf[768];
+    // Mirrors protocol.cpp: sized for the fattest board's field set —
+    // serializeJson truncates silently on overflow.
+    char buf[896];
     serializeJson(resp, buf, sizeof(buf));
     serialWriteJsonLine(buf);
 }

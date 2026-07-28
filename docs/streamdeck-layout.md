@@ -86,6 +86,10 @@ opens the AgentDeck app.
 
 ## Marketplace submission constraints
 
+**Published 2026-07-28:** version 1.0.2 is live at
+[marketplace.elgato.com/product/agentdeck-…](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464).
+The constraints below stay binding for every subsequent revision.
+
 Decided for the 2026-07-19 submission and still binding. The capabilities that were
 dropped to get here — the voice dial, the multi-mode utility dial, the project picker —
 are in [Retired and Experimental Surfaces](retired-surfaces.md).

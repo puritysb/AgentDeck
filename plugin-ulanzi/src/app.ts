@@ -107,9 +107,13 @@ function deckSignature(ev: Record<string, unknown>): string {
   // reviewStatus/reviewRisk ride ONLY the per-session rows — omitting them here
   // made a review-only sessions_list compare equal, so the REVIEWING flip and
   // the verdict badge never drew on the device (press felt dead).
+  // liveAnswerable is in for the same reason: the observer discovers a session's
+  // tty on a later scan, so the flag flips on a list that is otherwise identical
+  // — omitted, the option cells would stay inert until some unrelated change.
   const sessions = ((ev.allSessions as Array<Record<string, unknown>>) ?? [])
     .map((s) => `${s.id}:${s.state ?? ''}:${s.currentTool ?? ''}:${s.modelName ?? ''}`
-      + `:${s.reviewStatus ?? ''}:${s.reviewRisk ?? ''}:${s.reviewFindings ?? ''}`).join(',');
+      + `:${s.reviewStatus ?? ''}:${s.reviewRisk ?? ''}:${s.reviewFindings ?? ''}`
+      + `:${s.liveAnswerable ?? ''}`).join(',');
   const opts = ((ev.options as Array<{ label?: string }>) ?? []).map((o) => o.label ?? '').join('/');
   // 5H/7D quota rides usage_update, not state_update — without it here a
   // usage-only change would compare equal and the pinned gauges would never

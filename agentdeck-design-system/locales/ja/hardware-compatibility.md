@@ -10,7 +10,7 @@ owner: Hardware maintainers
 reviewed: 2026-07-25
 revision: 2026-07-25-ja
 translation_of: hardware.compatibility
-source_revision: 2026-07-26
+source_revision: 2026-07-28
 source_of_truth: docs/hardware-compatibility.md
 validators: [node scripts/build-design-system-viewer.mjs --check]
 ---

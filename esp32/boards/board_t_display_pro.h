@@ -28,11 +28,34 @@
 #define BOARD_PIN_BTN3       16
 
 // I2C bus (CST226SE touch 0x5A, LTR-553ALS light 0x23, SY6970 PMU 0x6A;
-// the camera SCCB shares it — camera unused by this firmware)
+// the camera SCCB shares it — esp_camera reuses Wire's port, see photo_capture)
 #define BOARD_PIN_I2C_SDA    5
 #define BOARD_PIN_I2C_SCL    6
 #define BOARD_PIN_TOUCH_RST  13
 #define BOARD_PIN_TOUCH_INT  21
+
+// Rear camera POGO shield (GC0308 on the on-hand unit; OV5640 drops into the
+// same header). DVP parallel bus — pixel data never touches the I2C pins; only
+// SCCB config does, and that runs through Wire's port at init. Pin map source:
+// vendor examples/CameraShield/utilities.h. Probed at boot: the no-camera unit
+// runs this same binary and simply never grows the CAM page.
+#define BOARD_HAS_DVP_CAMERA 1
+#define BOARD_CAM_PIN_PWDN   46
+#define BOARD_CAM_PIN_RESET  (-1)
+#define BOARD_CAM_PIN_XCLK   11
+#define BOARD_CAM_PIN_PCLK   2
+#define BOARD_CAM_PIN_VSYNC  7
+#define BOARD_CAM_PIN_HREF   15
+#define BOARD_CAM_PIN_Y2     45
+#define BOARD_CAM_PIN_Y3     41
+#define BOARD_CAM_PIN_Y4     40
+#define BOARD_CAM_PIN_Y5     42
+#define BOARD_CAM_PIN_Y6     1
+#define BOARD_CAM_PIN_Y7     3
+#define BOARD_CAM_PIN_Y8     10
+#define BOARD_CAM_PIN_Y9     4
+// White illumination LED on the shield (PWM-dimmed; full-on runs hot).
+#define BOARD_CAM_PIN_LED    38
 
 // Display settings — panel native 222x480 portrait; the ticker is
 // landscape-only (rotation → 480x222).

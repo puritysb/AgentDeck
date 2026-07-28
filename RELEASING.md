@@ -99,6 +99,8 @@ CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_nu
 
 ### Stream Deck plugin
 
+`1.0.2` was approved and published on 2026-07-28: [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464). Now that a build is published, the Marketplace's **monotonic-version rule applies** — every subsequent submission needs a higher version, and same-version resubmission (which pre-publication review revisions allowed) is no longer available.
+
 1. Confirm the main manifest and embedded profile snapshots match the Stream Deck package version as `X.Y.Z.0`.
 2. Follow `.agents/workflows/build-plugin.md`, then run `pnpm package` — this validates with Elgato's official CLI (pinned as the `@elgato/cli` devDependency) before packing, so a local failure is a submission the Marketplace would have rejected.
 3. Upload to the Elgato Maker portal and tag `streamdeck-v<STREAMDECK_VERSION>` when actually submitted/released.

@@ -53,7 +53,9 @@
 #define BOARD_PIN_MIC_DATA   42
 #define BOARD_PIN_MIC_CLK    39
 
-// Speaker I2S (vendor "voice" pins; mic is a separate PDM pair 42/39)
+// Speaker I2S (vendor "voice" pins; mic is a separate PDM pair 42/39).
+// A bare I2S amplifier — no codec, so no I2C init and no MCLK.
+#define BOARD_HAS_SPEAKER    1
 #define BOARD_PIN_SPK_BCLK   46
 #define BOARD_PIN_SPK_LRCLK  40
 #define BOARD_PIN_SPK_DIN    7

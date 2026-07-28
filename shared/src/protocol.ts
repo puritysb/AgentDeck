@@ -401,6 +401,14 @@ export interface SessionInfo {
   /** Last review verdict (with reviewFindings) — devices render "risk: low · 2" on the REVIEW tile. */
   reviewRisk?: 'low' | 'medium' | 'high';
   reviewFindings?: number;
+  /** Observed sessions: this daemon can answer the session's LIVE on-screen
+   *  prompt by typing into its terminal/app host (`observed-inject.ts`), so a
+   *  deck may render its `options` as pressable instead of inert. Absent/false
+   *  means no reachable host was found, or the daemon cannot inject at all
+   *  (App Store Swift daemon — no subprocess). Emitted explicitly in BOTH
+   *  polarities: a flag only ever sent when true latches one-way under
+   *  retain-on-absent merging. */
+  liveAnswerable?: boolean;
   promptType?: 'yes_no' | 'yes_no_always' | 'multi_select' | 'diff_review';  // shape of the awaiting prompt (per-session, for inline approve/deny + option buttons on rich panels)
   options?: PromptOption[];  // per-session awaiting options (multi_select) — lets a 10-up panel render inline choices for any session, not just the focused one
   elapsedSec?: number;  // derived seconds since startedAt — devices without reliable NTP render elapsed without recomputing from a wall clock
@@ -601,6 +609,44 @@ export interface VoiceEndMessage {
 /** Base64 PCM16LE fragment; serial transport only. */
 export interface AudioChunkMessage {
   type: 'audio_chunk';
+  d: string;
+}
+
+/**
+ * Device-sourced photo capture (T-Display-S3-Pro rear camera "show-and-tell").
+ * Same transport split as voice: over WebSocket the JPEG travels as binary
+ * frames between `photo_begin` and `photo_end`; over serial the same bytes
+ * ride base64 inside `photo_chunk` lines. A board must not mix the two on one
+ * connection, and must not interleave a photo with an open voice utterance.
+ * The daemon assembles the JPEG, saves it, and routes a prompt referencing the
+ * file path to the target session; it answers with a `photo_result` frame
+ * (`{delivered, sessionId, bytes?, error?, via?, deliverReason?}`) on the same
+ * transport, mirroring `voice_result`.
+ */
+export interface PhotoBeginMessage {
+  type: 'photo_begin';
+  board?: string;
+  /** Only 'jpeg' ships today. */
+  format?: string;
+  width?: number;
+  height?: number;
+  /** Session the photo is aimed at — the strip's focus pick. May be
+   *  device-truncated; the daemon restores it by unique prefix, and falls back
+   *  to its own focused session when empty. */
+  sessionId?: string;
+}
+
+export interface PhotoEndMessage {
+  type: 'photo_end';
+  board?: string;
+  cancel?: boolean;
+  /** Total JPEG bytes the board believes it sent (integrity cross-check). */
+  bytes?: number;
+}
+
+/** Base64 JPEG fragment; serial transport only. */
+export interface PhotoChunkMessage {
+  type: 'photo_chunk';
   d: string;
 }
 
@@ -852,7 +898,10 @@ export type ESP32ToHostMessage =
   | PeripheralEventMessage
   | VoiceBeginMessage
   | VoiceEndMessage
-  | AudioChunkMessage;
+  | AudioChunkMessage
+  | PhotoBeginMessage
+  | PhotoEndMessage
+  | PhotoChunkMessage;
 
 /**
  * On-demand independent review lifecycle. Triggered by the REVIEW deck button

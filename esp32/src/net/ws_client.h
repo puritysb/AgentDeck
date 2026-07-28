@@ -71,6 +71,31 @@ bool queueAudioChunk(const uint8_t* data, size_t len);
 bool audioBacklogged();
 
 /**
+ * Upload a captured JPEG as a single HTTP POST to the daemon
+ * (`POST /esp32/photo`). Preferred whenever WiFi is up: TCP handles ordering
+ * and retransmit, so neither the CDC's 64-byte FIFO holes nor the WS client's
+ * TX jam can corrupt the image. Takes ownership of `jpeg`. Returns false
+ * (without taking ownership) when there is no WiFi/bridge endpoint.
+ */
+bool queuePhotoHttpUpload(uint8_t* jpeg, size_t len, const char* sessionId,
+                          int width, int height);
+
+/**
+ * Hand a captured JPEG to the network task for upload, bracketed by
+ * photo_begin/photo_end. Takes ownership of `jpeg` (malloc'd by frame2jpg) —
+ * freed after the last chunk or on abort. The transport is latched at
+ * photo_begin: WS binary frames when connected, else base64 `photo_chunk`
+ * lines over serial (line-delimited JSON, same reasoning as audio_chunk).
+ * Returns false (without taking ownership) when an upload is already active
+ * or no transport is up.
+ */
+bool queuePhotoUpload(uint8_t* jpeg, size_t len, const char* sessionId,
+                      int width, int height);
+
+/** True while a photo upload is in flight. */
+bool photoUploadBusy();
+
+/**
  * Send a typed command with no extra fields.
  */
 void wsSendCommand(const char* type);

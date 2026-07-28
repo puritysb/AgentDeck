@@ -2,6 +2,355 @@
 
 ---
 
+## 2026-07-28 — ips10이 말을 하게 됐다: ES8311 재생, 그리고 "한 번만 되는" 버그 두 개
+
+전날 프로브로 코덱 실재를 확인한 뒤(0x18, chip ID 0x83/0x11) 재생 경로를
+붙였다. 결과부터: **패널에서 소리가 난다.** 16 kHz mono PCM16을 코덱 DAC로
+흘리고, 연속 5회 재생이 드롭 없이 성공한다. 기본 음량은 −18 dB.
+
+### 핀맵 — 추측 1회, 정본 1회
+
+첫 시도는 Waveshare ESP32-P4-NANO 레퍼런스 레이아웃을 빌려왔다. I2S 4핀
+(MCLK 13 / BCLK 12 / LRCK 10 / DOUT 9)은 우연히 맞았고 **PA-enable만
+53으로 틀렸다(정답 20)**. 이 실패 모드가 고약한 이유: 코덱이 초기화 시퀀스
+40여 개를 전부 ACK하고 I2S가 샘플을 전부 소비하므로 **로그가 성공과
+구분되지 않는다.** 앰프만 켜진 적이 없었다.
+
+정본은 이 보드 전용 ESP-IDF BSP(`joined/ESPTransit`의 `bsp_jc8012p4a1c`,
+`esp32_p4_function_ev_board.h`)의 `BSP_I2S_*` / `BSP_POWER_AMP_IO`였고,
+I2S 4핀은 독립된 ESPHome 커뮤니티 설정 2개가 교차 확인해줬다. 마이크
+입력은 GPIO 11.
+
+### 증상 하나, 원인 둘
+
+"부팅 후 한 번만 소리가 나고 그 뒤로 무음."
+
+1. **I2S 채널 누수.** 재생 태스크의 스택 객체로 발화마다 begin/end 했는데,
+   Arduino 래퍼 `end()`가 앞선 `i2s_channel_disable()` 실패 시
+   `i2s_del_channel()` 전에 early-return한다. 두 번째 발화가
+   `no available channel found`로 죽는다. → 채널을 한 번 열고 유지,
+   샘플레이트가 바뀔 때만 재생성. **t_embed도 같은 코드라 같은 잠재 버그를
+   갖고 있었다.**
+2. **늦게 잡으면 메모리 경쟁에서 진다.** I2S DMA 디스크립터는 내부
+   DMA-capable RAM이 필요한데 이 보드는 LVGL 드로 버퍼를 내부에 강제하고
+   ESP-Hosted WiFi도 같은 힙을 쓴다. 첫 발화 시점 할당은 WiFi가 올라온 뒤라
+   `ESP_ERR_NO_MEM`이 나고, **SDIO 드라이버까지 할당에 실패해
+   `assert sdio_rx_get_buffer`로 리부팅**했다. 음성 응답이 WiFi로 도착한다는
+   점에서 치명적. → `displayInit`에서 LVGL 60 KB 할당보다 **먼저** 채널을
+   확보(그 시점 내부 힙 213 KB 여유, 약 5 KB 사용).
+
+볼륨에도 같은 모양의 경합이 있었다. 코덱 초기화가 재생 태스크에서 돌며
+볼륨을 되돌리는데 호출부는 120 ms 기다렸다 값을 썼다 — I2C 40여 회라 딱
+경계선이었다. 타이밍 대신 값을 저장해 초기화가 적용하게 했다.
+
+### 볼륨 레지스터는 dB 스케일이다
+
+REG32는 `0x00 = −95.5 dB`, `0xFF = +32 dB`, 0.5 dB 스텝. percent를 0~255에
+선형으로 얹으면 30%가 −57 dB(무음), 80%가 +6.5 dB(과도)로 **쓸 구간이 거의
+없다.** −60~0 dB로 재매핑했다.
+
+### 전송로 제약 (설계 결정)
+
+`audio_out`은 **WiFi `device_info`에만** 광고한다. 이 보드 호스트 링크는
+CH340 115200(~11.5 KB/s)인데 16 kHz PCM16을 base64로 감싸면 ~44 KB/s가
+필요하다. 시리얼은 물리적으로 못 나르므로, 광고하지 않아 데몬의 기존
+capability 게이트가 음성을 WS로 몰게 두는 편이 끊기는 음성보다 낫다.
+
+### 교훈
+
+- **초록불 빌드는 증거가 아니다.** `BOARD_HAS_SPEAKER`가 보드 헤더에서
+  오는데 파일 1번 줄 `#if`가 `board_config.h` include보다 앞서 있어
+  `speaker_playback.cpp`가 전 보드에서 빈 파일로 컴파일됐다. ips10은
+  참조하는 쪽도 같이 사라져 **"빌드 성공"이 떴다.** t_embed 링크 실패가
+  아니었으면 못 잡았다. 이후로는 `nm`으로 심볼을 확인했다.
+- **결과가 흔들리면 코드보다 계측 도구를 먼저 의심하라.** CH340은 포트를
+  열 때마다 보드를 리셋한다. 그것 때문에 "가끔 된다"처럼 보였고, 원인을
+  두 번이나 음량으로 오판했다. `[Speaker] played` 줄의 부재가 계속
+  증거였는데 로그 필터가 가리고 있었다.
+- **병렬 세션이 데몬을 되살리면 4분짜리 플래시가 잘린다.** 앱 파티션이
+  truncate돼 `No bootable app partitions`로 두 번 죽었다. 플래시 동안 포트를
+  지키는 가드로 해결. 검증 블록 수(4 vs 3)가 조기 신호였다.
+
+---
+
+## 2026-07-28 — 데크만 07-25에 멈춰 있었다: 관측 세션 옵션을 `liveAnswerable`로 되살리기
+
+"기기에서 스티어링 버튼을 눌러도 안 된다"는 문제는 새 ESP32 보드들(노브·Focus
+Strip·ips10)에서는 해결됐는데 Stream Deck에서는 그대로였다. 원인을 찾아보니
+**데크 두 종만 옛 전제 위에 남아 있었다.**
+
+### 원인 — 고쳐진 건 데몬 반쪽뿐이었다
+
+`plugin/src/session-slot-manager.ts`의 관측 AskUserQuestion 분기는 옵션을
+`type: 'status'` **inert 타일**로 그리고 있었고, 주석이 이유를 명시했다:
+*"a hook-observed session has no response channel ... without pretending taps
+will work"*. 액션이 안 붙으니 눌러도 아무 일이 없는 게 정상이었다.
+
+그 전제는 2026-07-26 터미널 주입 사다리(`observed-inject.ts`)가 들어오면서
+**무효가 됐다**. 데몬은 그때부터 받을 준비가 돼 있었다 —
+`handleObservedClaudeCommand`가 held gate가 없으면 `injectObservedSelection`으로
+tmux/iTerm2/Terminal.app에 키를 넣는다. ESP32 보드들이 되는 이유는 그 펌웨어가
+같은 시기에 만들어져 `select_option`을 직접 쏘기 때문이고, 데크는 그 작업의
+미러 목록에서 빠졌다. D200H도 같은 상태였다(`d200h-layout.ts`의
+`action: isObserved ? null`).
+
+**덧붙여 마켓플레이스에 올라간 1.0.2 빌드는 그보다도 오래됐다** —
+`dist/*.streamDeckPlugin` mtime이 2026-07-25 00:23로, 같은 날 11:24의
+`dd2d7aa5`(옵션 라벨 렌더)조차 들어가지 않았다. 이 수정은 다음 제출분부터
+사용자에게 도달한다.
+
+### 설계 — 왜 무조건 pressable로 바꾸지 않았나
+
+주입은 `ps` tty 탐색 + tmux/osascript 서브프로세스를 요구하므로 **CLI 데몬
+전용(Tier 2)**이다. 무조건 누를 수 있게 만들면 App Store Swift 데몬에 붙은
+사용자에게 "안 되는 버튼"을 새로 만드는 셈이라, 원래의 *"pretending taps will
+work 금지"* 원칙을 반대 방향으로 어기게 된다.
+
+그래서 SSOT(`shared/src/protocol.ts`)에 **`liveAnswerable`** 을 추가했다 —
+"이 데몬이 이 세션의 살아있는 프롬프트에 타이핑할 수 있는가". Node 데몬은
+관측 Claude 행에 `Boolean(tty || appName)`로 싣고, Swift 데몬은 관측 행에
+**명시적 `false`** 를 싣는다. 데크는 이 플래그가 참일 때만 옵션을 버튼으로
+그리고, 아니면 기존 inert 미러를 유지한다.
+
+★**명시적 false가 핵심이다.** `usageStale` 래치와 같은 함정 — 클라이언트가
+retain-on-absent로 병합하는 필드에서 "참일 때만 보내는 플래그"는 한 번 켜지면
+되돌릴 수 없다. CLI 데몬 로스터를 본 적 있는 기기가 Swift 데몬으로 옮겨가면
+버튼이 살아있는 채로 죽은 명령을 쏘게 된다.
+
+### ★재발한 함정 — `deckSignature`
+
+D200H는 `plugin-ulanzi/src/app.ts`의 서명에 없는 세션 필드가 바뀌면 렌더를
+스킵한다(=버튼이 죽은 것처럼 보인다). `liveAnswerable`은 관측자가 **나중 스캔에서
+tty를 발견할 때** 뒤집히므로, 그 외에는 동일한 sessions_list에서 혼자 바뀌는
+전형적인 케이스다. 서명에 추가했다. reviewStatus 때와 같은 실수를 두 번째로
+막은 것 — 렌더에 쓰는 row 필드는 예외 없이 서명에 넣어야 한다.
+
+### 검증
+
+vitest 2030/2030(119 files) — SD/D200H 양쪽에 "플래그 없으면 inert, 명시적
+false도 inert, 참이면 select_option press" 테스트 추가. `xcodebuild
+AgentDeck_macOS` BUILD SUCCEEDED. `pnpm generate-protocol` 후 드리프트 게이트
+통과. **실기 확인은 아직** — Stream Deck 실물에서 관측 세션 프롬프트를 눌러
+터미널에 실제로 들어가는 것까지는 확인하지 못했다.
+
+부수: `check-preview-mirror-sync`의 `session-utils.ts` 핀이 **이 작업 전부터
+깨져 있었다**(8fd0c7d2가 헬퍼를 추가하고 재핀하지 않음). 순수 추가라 미러가
+포팅한 정렬 헬퍼에는 영향이 없어 재핀으로 해소했다.
+
+---
+
+## 2026-07-28 — 카메라 유닛은 세로 기기였다: Pocket UI, 180° 고정, HTTP 업로드
+
+T-Display-S3-Pro 두 대가 같은 바이너리로 서로 다른 기기가 됐다. 부팅 시
+카메라 쉴드가 잡히면 **Pocket**(세로 222×480 폰형 UI), 없으면 기존 가로
+Focus Strip이다. 이 분기의 근거는 취향이 아니라 하드웨어다: 패널 GRAM,
+CST226SE 터치 리포트, 그리고 회전 추적으로 드러난 센서 실장까지 전부
+세로 기준이고, 카메라가 달린 쪽이 실제로 손에 드는 유닛이다.
+
+Pocket은 수제 제스처 레이어 대신 LVGL 포인터 indev로 진짜 위젯을
+굴린다. "스와이프하면 스크롤돼야 하지 않나"는 지적이 정확했고, 세션
+목록의 관성 스크롤은 그 전환의 부산물로 따라왔다. 카드 탭=focus, CAM
+탭의 대상 바 탭=수신 세션 순환, 하단 내비/로커=탭 이동, BOOT=카메라·셔터.
+
+두 가지를 값비싸게 배웠다. **회전은 방향 플래그가 아니라 양이다** —
+CW/CCW를 뒤집으면 이미지가 180° 움직이므로 90° 오차는 절대 고쳐지지
+않는다. 상수를 바꿔 플래시하기를 세 번 반복한 뒤에야 기기에서 돌려보는
+버튼을 넣었고, 사용자가 한 번 눌러 맞춘 값(180°)을 상수로 굳혔다.
+측정할 수 있는 것을 추측하면 사이클만 태운다.
+
+**청크 전송은 이 보드에서 두 방향으로 실패했다.** HWCDC는 64바이트 FIFO
+블록을 통째로 흘려서 페이싱을 어떻게 바꿔도(60B/300µs, 48B/500µs,
+펌프당 1줄, 데몬 측 half-duplex 정지) 업로드마다 base64 줄 2개쯤이
+사라졌고, WS는 첫 바이너리 프레임 뒤 TX가 잼돼 소켓이 몇 초 뒤 닫혔다.
+구멍 난 JPEG은 쓸모가 없으니 byte-count 가드가 전부 거절한 게 옳았다.
+정렬과 재전송은 TCP가 이미 푸는 문제라, 이미지를 `POST /esp32/photo`
+본문에 통째로 실어 보내는 것으로 바꿨다. 청크 경로는 WiFi 없는 폴백으로
+남되 20초 데드라인과 abort diag를 달았다. 23,369바이트 무손실 도착으로
+검증됐고, 같은 스냅이 Claude·Codex 세션 양쪽에 배달됐다.
+
+## 2026-07-28 — Elgato Marketplace 승인: "심사 중"으로 남아 있던 표면 정리
+
+Stream Deck 플러그인 1.0.2가 승인되어
+`https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464`
+로 공개됐다(HTTP 200 확인, 페이지 내 버전 1.0.2). 2026-07-25 1차 리젝 3건
+(in-app 아이콘 흰색·제품 미디어·데모 영상)에 대응한 재제출본이 통과한 것이다.
+
+레포에는 승인 이전 상태가 여러 곳에 굳어 있었다. README 서피스 표는 제네릭
+`marketplace.elgato.com` + *(in review)*, 릴리스 표는 "Maker upload pending",
+`docs/roadmap.md`는 "submission pending" 미체크 박스, `marketplace/elgato/LISTING.md`
+는 "still in Elgato's initial review (not yet published)", `docs/install.md`는
+Stream Deck 설치 경로로 **체크아웃 심볼릭 링크만** 안내하고 있었다. 승인
+사실 자체보다 이 "설치 경로가 개발자용밖에 없다"가 실사용자에게 더 큰 문제였다.
+
+### 반영한 표면
+
+- **README** — 배지 행에 Elgato Marketplace 배지 추가(Mac App Store 옆), 서피스
+  표 행을 실제 제품 URL + "One click"으로, 릴리스 표를 "1.0.2 live (approved
+  2026-07-28)"로 교체
+- **Pages 홈**(`scripts/pages-index.html`) — hero CTA에 "Get the Stream Deck
+  plugin" 버튼 추가 + `cta.streamdeck` ko/ja 사전 항목. 사이트 3개 언어가 같은
+  키를 공유하므로 en 문자열만 넣으면 ko/ja에서 영어가 새어나온다
+- **★og/twitter 메타 태그 신규 추가**(같은 파일) — 랜딩에 소셜 카드 태그가
+  **하나도 없었다**. 마켓플레이스 공지를 어디에 뿌리든 링크 프리뷰가 맨링크로
+  나가는 상태였으므로 공개 시점에 같이 막았다. `og:image`는 **절대 URL 필수** —
+  크롤러는 페이지 컨텍스트 없이 이미지를 가져가므로 상대경로면 조용히 빈
+  프리뷰가 된다. 이미지는 Pages 조립 단계가 `docs/media/*.jpg`를 `_site/media/`로
+  복사하는 `setup-full.jpg`를 가리킨다
+- **Devices 페이지** — Stream Deck 카드 sub 카피(en/ko/ja)에 마켓플레이스 공개
+  사실을, specs에 `Install / Elgato Marketplace` 행을 추가. 카드는 링크를 품지
+  않는 기존 패턴(macOS 카드도 App Store를 카피로만 언급)을 그대로 따랐다
+- **docs/install.md** — §2를 "Link"에서 "Install"로 바꾸고 **마켓플레이스 설치를
+  1순위**, 체크아웃 링크를 개발용으로 강등. 같은 UUID 두 벌 충돌 경고 추가
+- **docs/streamdeck-layout.md · docs/roadmap.md · CHANGELOG.md · RELEASING.md ·
+  marketplace/elgato/LISTING.md** — 심사 중 문구 제거, 공개 사실과 URL 기록
+
+### ★규칙: 게시 시점부터 monotonic-version 규칙이 켜진다
+
+리젝 리비전을 **같은 버전(1.0.2.0)으로 재제출**할 수 있었던 건 그 빌드가
+pre-publication 상태였기 때문이다. 이제 published 빌드가 존재하므로 다음
+리비전은 반드시 더 높은 버전이어야 한다. `scripts/verify-version-sync.mjs`가
+streamdeck 버전을 `<VERSION>.0`으로 하드핀하고 있어서, 4번째 컴포넌트만 올리는
+리빌드는 게이트와 충돌한다 — 다음 제출은 `VERSION` 패치 범프를 동반해야 한다.
+RELEASING.md와 LISTING.md 양쪽에 적었다.
+
+게이트: `pnpm docs:check`(87 files), `sync-pages-nav --check`,
+`sync-hardware-spec-cards --check`, `pnpm design-system:check`(27 docs) 모두 통과.
+
+---
+
+## 2026-07-27 — ips10 ES8311 실재 확인: 벤더 문구를 실측으로 교체
+
+`board_jc8012p4a1c.h`는 "Audio: ES8311 Codec (present but not used)" 주석 한
+줄과 `BOARD_HAS_AUDIO 0`만 갖고 있었고, `hardware-compatibility.md`는
+"2× mic + speaker (vendor spec)"라고 적어놨다. 그런데 **ES8311은 레포 전체를
+통틀어 그 주석 한 줄이 전부**였다 — I2C 주소도, 드라이버도, 핀도, 측정
+기록도 없는 순수 벤더 주장. 플릿에서 오디오가 되는 보드는 T-Embed 하나뿐인데
+ips10은 상시 전원 벽걸이 패널이라 알림음/음성 응답에는 오히려 더 맞는
+후보였으므로, 추측으로 드라이버를 쓰기 전에 실물부터 확인했다.
+
+### 설계 — 왜 throwaway env가 아니라 펌웨어 내 진단인가
+
+2026-03-21에 같은 종류의 질문(마이크 실재)을 `i2c_scan`/`audio_out`/`mic_scan`
+throwaway PlatformIO env로 풀었고, 끝나고 정상 펌웨어 복구 + env 3개 삭제 +
+소스 3개 삭제로 정리해야 했다. 이번엔 프로덕션 펌웨어에
+`#if defined(BOARD_IPS10)` 가드 진단(`UI::hwI2cProbe`)을 넣어 **롤백할 것이
+없게** 했다. 같은 질문이 나오는 다음 보드가 재사용한다.
+
+호스트 왕복은 만들지 않았다. `daemon-server.ts`의 `esp32WifiEvents`
+allowlist가 미등록 타입을 esp32 클라이언트로 보낼 때 조용히 드롭하므로
+`touch_diag`가 그랬듯 데몬은 이 명령을 보낼 수 없고, ips10은 USB 시리얼이
+붙으면 WiFi STA를 파킹해서 응답 프레임을 실을 소켓도 없다. 프로토콜화했다면
+`shared/src/protocol.ts` → codegen → Swift/Kotlin 미러 → drift gate →
+**XTeink 포크 재포팅**까지 6파일 2제너레이터였다. 다섯 번 쓸 진단에는 맞지
+않는 비용.
+
+`touch_diag` 확장도 불가능했다. 그건 Arduino `Wire` 기반이고 `Wire.h`는
+IPS35/AMOLED에서만 include되는데, ips10의 터치 버스는 `display.cpp`가
+`i2c_new_master_bus()`로 `I2C_NUM_1`에 연 IDF new-driver 버스다. 같은 패드에
+두 I2C 스택을 올리는 게 이 슬라이스에서 가장 위험한 행동이었을 것이다.
+
+### 실측 결과 (2026-07-27, `/dev/cu.wchusbserial31150`)
+
+```
+[I2CDiag] ===== ips10 audio-codec probe =====
+[I2CDiag] --- sweep I2C_NUM_1 (touch bus, SDA 7 / SCL 8) ---
+[I2CDiag]   0x18 ACK — ES8311 candidate (also LIS3DH accel / EEPROM)
+[I2CDiag]   0x32 ACK — unknown
+[I2CDiag]   0x36 ACK — camera SCCB / MAX17048 fuel gauge common
+[I2CDiag]   0x40 SKIPPED — GSL3680 touch (this board)
+[I2CDiag] --- I2C_NUM_1: 3 device(s) beyond touch ---
+[I2CDiag]   0x18 stability: 5/5 (stable — real device)
+[I2CDiag]   0x19 stability: 0/5 (absent)
+[I2CDiag]   0x18 ID regs: FD=0x83 FE=0x11 FF=0x01 (expect FD=83 FE=11)
+[I2CDiag]   => ES8311 CONFIRMED at 0x18 (version 0x01)
+[I2CDiag] --- register dump 0x18 (read-only) ---
+[I2CDiag]   00: 1F 00 00 10 10 00 03 00
+[I2CDiag]   08: FF 00 00 00 20 FC 6A 00
+[I2CDiag]   10: 13 7C 02 40 10 00 04 00
+[I2CDiag]   18: 00 00 00 0C 4C 00 00 00
+[I2CDiag]   20: 00 00 00 00 00 00 00 00
+[I2CDiag]   28: 00 00 00 00 00 00 00 00
+[I2CDiag]   30: 00 00 00 00 00 00 00 08
+[I2CDiag]   38: 00 00 00 00 00 00 00 00
+[I2CDiag]   40: 00 00 00 00 00 00 00 00
+[I2CDiag]   48: 00 00 00
+[I2CDiag]   FD=83 FE=11 FF=01
+[I2CDiag] --- candidate pin levels (HYPOTHESIS map from Waveshare
+          ESP32-P4-NANO, NOT confirmed for Guition) ---
+[I2CDiag]   GPIO 13 MCLK?   level=0
+[I2CDiag]   GPIO 12 BCLK?   level=0
+[I2CDiag]   GPIO 10 LRCK?   level=0
+[I2CDiag]   GPIO 9  DOUT?   level=0
+[I2CDiag]   GPIO 11 DIN?    level=0
+[I2CDiag]   GPIO 53 PA_EN?  level=0
+[I2CDiag] ===== probe complete =====
+```
+
+- **ES8311 확정.** 0x18, chip ID `0xFD/0xFE = 0x83/0x11`(Linux `es8311.c`
+  드라이버가 실제로 비교하는 값), version 0x01, ACK 5/5. reg 0x00 = 0x1F는
+  데이터시트 리셋 기본값 — 아무도 설정한 적 없는 코덱이다.
+- **덤이 두 개.** 0x32와 0x36에 미식별 장치. 0x36은 카메라 SCCB / 연료계에
+  흔한 주소라 전면 MIPI-CSI 카메라 관련일 수 있으나 확인 안 됨.
+- **아날로그 쪽은 여전히 미측정.** 코덱이 버스에 있다는 것이 스피커나 마이크
+  2개가 거기 물려 있다는 뜻은 아니다. I2S/MCLK/PA-enable 핀맵도 모른다.
+  후보 핀은 전부 low라 가설과 모순도 일치도 아니다. → `BOARD_HAS_AUDIO`는
+  **0으로 유지**했고 재생 경로는 만들지 않았다.
+
+### 함정 3개
+
+- **WiFi OTA를 계획했으나 쓸 수 없었다.** ips10은 시리얼로만 붙어 있고 WiFi
+  등록이 아예 없었다(다른 보드들의 `[serial-active · wifi standby]` 표시조차
+  없음). OTA는 WiFi WS가 필수라 USB 풀 플래시로 갔다. 결과적으로 이게 왕복이
+  더 적다 — 프로브 출력이 Serial 전용이라 어차피 USB를 꽂아야 한다.
+- **부팅 프로브와 명령 프로브가 동시에 돌아 Serial 출력이 섞였다.** 플래시
+  직후 하드 리셋 → uiTask가 부팅 프로브를 도는 동안 networkTask가 내
+  `i2c_diag`를 받아 두 스트림이 인터리브됐다(레지스터 덤프 한가운데
+  `0x32 ACK` 줄이 끼어듦). IDF 버스 뮤텍스 덕에 측정값 자체는 정확했지만
+  전사 기록이 깨진다 — 그게 이 프로브의 산출물이므로 재진입 가드를 넣었다.
+- **`i2c_master_probe`는 miss마다 NACK 경고를 찍는다.** `CORE_DEBUG_LEVEL=3`에서
+  결과가 110줄에 묻히므로 스윕 동안 `esp_log_level_set("i2c.master",
+  ESP_LOG_NONE)`으로 억제했다 복구한다.
+
+### 교훈
+
+- **예/아니오만 답하는 프로브는 하드웨어 왕복을 한 번 더 강요한다.** 전체 히트
+  리스트·레지스터 덤프·핀 레벨을 같은 왕복에 담은 건 2026-03의 마이크 조사가
+  남긴 교훈이다. 실제로 이번에 0x32/0x36이라는 예상 못한 소득이 나왔다.
+- **ACK는 정체가 아니다.** 0x18은 LIS3DH·EEPROM 주소이기도 하다. ID 레지스터로
+  확인하고, 기대값은 추측하지 말고 드라이버 소스에서 확인한다.
+- **미확정을 SSOT에 새기지 않는다.** Waveshare 핀맵은 다른 벤더 보드에서
+  빌려온 가설이라 코드·문서 양쪽에 "HYPOTHESIS"로 명시했다.
+
+---
+
+## 2026-07-27 — 카메라는 방향이 역할을 정한다: Focus Strip show-and-tell 사진 파이프라인
+
+T-Display-S3-Pro의 후면 GC0308 쉴드로 플릿의 첫 **이미지 입력 채널**을
+열었다. CAM 페이지(카메라 probe 성공 시에만 생김)에서 2:1 전체-프레임
+뷰파인더로 프레이밍하고 SNAP/BOOT로 찍으면, JPEG가
+`photo_begin`/binary WS/`photo_end`(voice 캡처 브래킷의 1:1 복제)로
+데몬에 올라가 `~/.agentdeck/photos/`에 저장되고, 대상 세션에 파일
+경로가 dictation과 같은 배달 사다리(observed=터미널 주입,
+managed=`send_prompt`)로 꽂힌다. iTerm2 주입 → 에이전트가 사진을 읽고
+응답하는 것까지 실기 검증 완료. 전면 카메라를 가진 ips10(JC8012P4A1C,
+벤더 스펙 "MIPI CSI 1080P", 센서 미확정)은 향후 presence 단계로 기록.
+
+하드웨어가 낸 숙제 네 개가 이 커밋들의 실제 내용이다. (1) 보드-헤더
+매크로(`BOARD_HAS_DVP_CAMERA`)는 `-D` 플래그와 달리 include 없이는 안
+보여서 업로드 경로가 no-op 스텁으로 조용히 컴파일됐다 — 모든 셔터가
+"no link". (2) 카메라 상시 전원 + 부팅 중 WiFi join이 3.3V 레일을
+주저앉혀 자기지속 재부팅 루프(E BOD, 이후 poweron급)를 만들었다 —
+카메라는 CAM 페이지 acquire/release로만 켜지고, WiFi는 부팅 join 금지
++ serial-primary 중 provision은 저장만(IPS10 패턴, `wifiConfigured`
+플립으로 데몬 재프로비저닝도 차단) + 25초 후 deferred join + brownout
+리셋 부팅은 auto-join 차단이라는 사다리가 됐다. (3) 업로드 중 카메라
+구동이 겹치면 전원이 또 무너져서, 캡처 직후 센서를 끄고 전송한다.
+(4) 이 보드도 InkDeck과 같은 HWCDC라 64B FIFO 홀이 2.8KB base64 청크
+라인을 절반쯤 찢었다 — 페이싱 가드를 확장했지만 잔존해서, 사진 blob은
+WS를 우선하고 serial은 byte-count 무결성 가드가 지키는 폴백으로 남겼다.
+"보드가 보냈다고 말하는 것"과 "데몬이 받은 것" 사이의 모든 간극은
+`photo_result`(전달/실패/타임아웃)로 명시화했다.
+
 ## 2026-07-27 — T-Display-S3-Pro physical-key edge affordances
 
 The T-Display-S3-Pro's two long side controls each conceal two switches, so a

@@ -27,6 +27,10 @@ target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
 ### Stream Deck plugin
 
+- **Published on the Elgato Marketplace** (approved 2026-07-28) — the plugin now
+  installs in one click from
+  [its Marketplace listing](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464)
+  instead of requiring a checkout and `streamdeck link`
 - Remove MODEL key tiles entirely from passively observed Claude, Codex, and
   OpenCode sessions; model information without a deliverable selection action
   no longer occupies a button-shaped surface in idle, processing, or awaiting

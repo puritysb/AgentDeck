@@ -1,5 +1,9 @@
 # AgentDeck — Elgato Marketplace listing
 
+> **Published 2026-07-28.** Version `1.0.2` was approved and is live at
+> <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>.
+> This file stays the source of the listing copy and asset inventory for future revisions.
+
 Submission target: **https://maker.elgato.com** (Maker Console → Publish).
 
 > Maker Console Draft description synced to this file on 2026-07-21 (the "Getting
@@ -26,10 +30,11 @@ Plugin package: `dist/bound.serendipity.agentdeck.streamDeckPlugin` — rebuild 
 ## Version
 
 `1.0.2.0` (product version `1.0.2`) — Stream Deck requires the 4-part form;
-`scripts/verify-version-sync.mjs` pins it to `<VERSION>.0`. The plugin is still
-in Elgato's initial review (not yet published), so this revision resubmits under
-the same version — the Marketplace's monotonic-version rule applies to published
-builds, not pre-publication review revisions.
+`scripts/verify-version-sync.mjs` pins it to `<VERSION>.0`. `1.0.2.0` is the
+**published** build (approved 2026-07-28). Same-version resubmission was only
+available while the plugin sat in pre-publication review; from here the
+Marketplace's monotonic-version rule applies, so the next revision must carry a
+higher version.
 
 ## Platform
 

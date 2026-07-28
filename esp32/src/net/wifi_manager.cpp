@@ -10,7 +10,12 @@ static bool portalActive = false;
 static bool wifiWasConnected = false;
 static bool radioParked = false;
 
-#if defined(BOARD_IPS10)
+#if defined(BOARD_IPS10) || defined(BOARD_T_DISPLAY_PRO)
+// Daemon-provisioned credential store ("adwifi"), shared by the two boards
+// whose WiFi bring-up is power-sensitive: IPS10 (hosted C6 radio) and the
+// T-Display-S3-Pro strip (WiFi join concurrent with display bring-up tripped
+// the brownout detector on the camera unit, 2026-07-27). Constant names keep
+// their IPS10_ prefix from the original IPS10-only implementation.
 namespace {
 constexpr const char* IPS10_WIFI_PREFS_NS = "adwifi";
 constexpr const char* IPS10_WIFI_PREFS_SSID = "ssid";
@@ -101,6 +106,22 @@ void wifiInit() {
     return;
 #endif
 
+#if defined(BOARD_T_DISPLAY_PRO)
+    // Never join during boot bring-up: WiFi association concurrent with the
+    // display/backlight init browned out the 3.3 V rail on the camera unit
+    // (E BOD reboot loop, 2026-07-27 — a self-sustaining crash cycle, since
+    // every reboot retried the join). The radio stays OFF here; the deferred
+    // join in networkTask brings WiFi up only once USB serial has had its
+    // chance and stayed silent (wall/battery deployments), and never on a
+    // brownout-reset boot. No SoftAP portal on this board either — it is
+    // daemon-provisioned like the IPS10.
+    wm.setEnableConfigPortal(false);
+    portalActive = false;
+    WiFi.mode(WIFI_OFF);
+    Serial.println("[WiFi] Boot join deferred — radio off until the serial verdict");
+    return;
+#endif
+
     // Try auto-connect with saved credentials
     if (wm.autoConnect(AP_SSID)) {
         IPAddress ip = WiFi.localIP();
@@ -141,7 +162,9 @@ bool wifiConnected() {
 
 bool wifiConfigured() {
     if (WiFi.SSID().length() > 0) return true;
-#if defined(BOARD_IPS10)
+#if defined(BOARD_IPS10) || defined(BOARD_T_DISPLAY_PRO)
+    // Deferred-save provisions count as configured — this is what stops the
+    // daemon's auto-provision from re-sending credentials every identify.
     char savedSsid[IPS10_SSID_MAX] = {0};
     char savedPassword[IPS10_PASSWORD_MAX] = {0};
     return loadIps10ProvisionedWifi(savedSsid, sizeof(savedSsid), savedPassword, sizeof(savedPassword));
@@ -249,7 +272,7 @@ bool wifiConnectWith(const char* ssid, const char* password) {
 }
 
 void wifiSaveProvisionedCredentials(const char* ssid, const char* password) {
-#if defined(BOARD_IPS10)
+#if defined(BOARD_IPS10) || defined(BOARD_T_DISPLAY_PRO)
     saveIps10ProvisionedWifi(ssid, password);
 #else
     (void)ssid;
@@ -257,8 +280,38 @@ void wifiSaveProvisionedCredentials(const char* ssid, const char* password) {
 #endif
 }
 
+#if defined(BOARD_T_DISPLAY_PRO)
+bool wifiTryDeferredJoin() {
+    // Called from networkTask once serial has had its chance and stayed
+    // silent. Blocking for up to the connect timeout — acceptable, since a
+    // dead serial link means nothing else is being serviced.
+    if (WiFi.getMode() == WIFI_OFF) {
+        WiFi.mode(WIFI_STA);
+        WiFi.setSleep(false);
+    }
+    char savedSsid[IPS10_SSID_MAX] = {0};
+    char savedPassword[IPS10_PASSWORD_MAX] = {0};
+    if (loadIps10ProvisionedWifi(savedSsid, sizeof(savedSsid), savedPassword, sizeof(savedPassword))) {
+        Serial.printf("[WiFi] Deferred join: daemon credentials for %s\n", savedSsid);
+        if (wifiConnectWith(savedSsid, savedPassword)) return true;
+    }
+    if (wm.autoConnect()) {  // legacy WiFiManager storage (pre-adwifi provisions)
+        IPAddress ip = WiFi.localIP();
+        snprintf(ipBuf, sizeof(ipBuf), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        Serial.printf("[WiFi] Deferred join connected: %s\n", ipBuf);
+        configTzTime("UTC", "pool.ntp.org", "time.google.com");
+        wifiWasConnected = true;
+        portalActive = false;
+        return true;
+    }
+    // Nothing to join (or AP unreachable) — back to radio-off quiet.
+    WiFi.mode(WIFI_OFF);
+    return false;
+}
+#endif
+
 void wifiSaveProvisionedBridge(const char* ip, uint16_t port, const char* token) {
-#if defined(BOARD_IPS10)
+#if defined(BOARD_IPS10) || defined(BOARD_T_DISPLAY_PRO)
     if (!ip || ip[0] == '\0' || port == 0) return;
 
     Preferences prefs;
@@ -283,7 +336,7 @@ bool wifiLoadProvisionedBridge(char* ip, size_t ipLen, uint16_t* port, char* tok
     token[0] = '\0';
     *port = 0;
 
-#if defined(BOARD_IPS10)
+#if defined(BOARD_IPS10) || defined(BOARD_T_DISPLAY_PRO)
     Preferences prefs;
     if (!prefs.begin(IPS10_WIFI_PREFS_NS, true)) return false;
     size_t ipBytes = prefs.getString(IPS10_WIFI_PREFS_BRIDGE_IP, ip, ipLen);

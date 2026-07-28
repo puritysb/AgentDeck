@@ -7482,7 +7482,16 @@ final class DaemonServer {
             d["elapsedSec"] = elapsed
         }
         if let activity = sessionActivitySummary(s) { d["activity"] = activity }
-        if let cm = s.controlMode { d["controlMode"] = cm }
+        if let cm = s.controlMode {
+            d["controlMode"] = cm
+            // Live-prompt answering types into the session's terminal via
+            // subprocesses (tmux / osascript), which this daemon cannot spawn —
+            // so an observed row is never live-answerable here. Sent as an
+            // explicit false, not omitted: decks merge retain-on-absent, and a
+            // flag that only ever arrives as `true` latches one-way once a
+            // CLI-daemon roster has been seen on the same device.
+            if cm == "observed" { d["liveAnswerable"] = false }
+        }
         if let rid = s.requestId { d["requestId"] = rid }
         if s.stopRequested == true { d["stopRequested"] = true }
         if let qd = s.queuedDirectives, qd > 0 { d["queuedDirectives"] = qd }

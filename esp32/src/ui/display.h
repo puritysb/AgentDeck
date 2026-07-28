@@ -27,6 +27,40 @@ namespace UI {
  */
 void displayInit();
 
+#if defined(BOARD_T_DISPLAY_PRO)
+/** Choose the portrait (Pocket) orientation — call before displayInit(). */
+void requestPortrait();
+#endif
+
+#if defined(BOARD_IPS10)
+/**
+ * Audio-codec hardware probe — hunts the ES8311 the vendor sheet claims.
+ *
+ * Read-only by construction: I2C address probes and register reads only, and
+ * pin levels are sampled with gpio_get_level() so no pad is ever reconfigured.
+ * Results go to Serial (this board parks its Wi-Fi STA whenever USB serial is
+ * active, so a response frame would have no socket to leave by).
+ *
+ * With no arguments it sweeps the already-open touch bus (I2C_NUM_1, SDA 7 /
+ * SCL 8). Pass a pin pair to additionally open a throwaway bus on I2C_NUM_0
+ * and look for the codec there; that path is opt-in precisely because blind
+ * pin sweeping is the one genuinely risky thing this probe could do.
+ */
+void hwI2cProbe(int sdaOverride = -1, int sclOverride = -1);
+
+/** Dump registers 0x00–0x4A plus the ID/version trio of a confirmed device. */
+void hwI2cDumpDevice(uint8_t addr);
+
+/**
+ * Single-register access on the panel's I2C bus, for peripherals that share it
+ * with touch (the ES8311 codec at 0x18). Routed through here rather than
+ * handing out the bus handle so `driver/i2c_master.h` stays out of every
+ * consumer of this header — and so there is exactly one bus on those pads.
+ */
+bool hwI2cReadReg8(uint8_t addr, uint8_t reg, uint8_t* out);
+bool hwI2cWriteReg8(uint8_t addr, uint8_t reg, uint8_t val);
+#endif
+
 /**
  * Get the main LVGL display pointer.
  */

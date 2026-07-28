@@ -253,6 +253,43 @@ describe('SessionSlotManager detail layout', () => {
     expect(configs.filter((config) => config.type === 'stop')).toHaveLength(1);
   });
 
+  it('observed AskUserQuestion: options are inert without liveAnswerable, pressable with it', () => {
+    const options = [
+      { index: 0, label: '7 days' },
+      { index: 1, label: '14 days' },
+    ];
+    const build = (liveAnswerable?: boolean) => {
+      const manager = new SessionSlotManager();
+      manager.updateSessions([makeSession({
+        id: 'observed:claude:ask',
+        controlMode: 'observed',
+        port: 0,
+        state: State.AWAITING_OPTION,
+        question: 'Which cleanup window?',
+        options,
+        ...(liveAnswerable == null ? {} : { liveAnswerable }),
+      })]);
+      manager.enterDetailView('observed:claude:ask');
+      return Array.from({ length: SD_PLUS_LAYOUT.keyCount }, (_, i) =>
+        manager.getSlotConfig(i, SD_PLUS_LAYOUT));
+    };
+
+    // No reachable terminal host: mirror the prompt, never a dead button.
+    const inert = build(undefined);
+    expect(inert.filter((c) => c.type === 'option')).toHaveLength(0);
+    expect(inert.filter((c) => c.type === 'status' && c.label === '7 days')).toHaveLength(1);
+    // Explicit false must behave exactly like absent — the App Store daemon
+    // sends it in that polarity on purpose.
+    expect(build(false).filter((c) => c.type === 'option')).toHaveLength(0);
+
+    // The CLI daemon found a host: the same labels become real presses.
+    const live = build(true);
+    const pressable = live.filter((c) => c.type === 'option');
+    expect(pressable).toHaveLength(2);
+    expect(pressable.map((c) => c.optionIndex)).toEqual([0, 1]);
+    expect(pressable[0].option?.label).toBe('7 days');
+  });
+
   it('renders no MODEL tile for observed Codex PROCESSING on every Stream Deck layout', () => {
     for (const layout of [SD_PLUS_LAYOUT, SD_CLASSIC_LAYOUT]) {
       const manager = new SessionSlotManager();

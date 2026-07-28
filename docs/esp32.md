@@ -62,6 +62,22 @@ ghosting). See [esp32/sim/README.md](../esp32/sim/README.md).
 - **IPS 3.5" full flash 시 `--flash_size 16MB` (또는 `--flash-size 16MB`)를 명시한다.** esptool이 부트루프 중 flash size를 8MB로 오감지하여 파티션 테이블 검증 실패 유발.
 - **TTGO는 전체 135×240 테라리움 캔버스를 쓰지 않는다.** 이 보드는 PSRAM 없는 ESP32 classic이라 정적 DRAM 여유가 10KB대다. 테라리움은 135×160(세로) 또는 160×135(가로) 정적 버퍼로 제한하고, 남는 80px 영역에만 상태/활동 메트릭을 둔다. 전체 화면 반투명 검정 오버레이를 올리면 테라리움 배경이 검은 화면처럼 보이므로 금지한다.
 
+## Diagnostic commands (firmware-local)
+
+몇몇 진단은 **호스트를 거치지 않고 보드 펌웨어에만** 존재한다. 데몬은 이 타입들을 보내지 않으며 — `daemon-server.ts`의 `esp32WifiEvents` allowlist가 등록되지 않은 타입을 esp32 클라이언트로 보낼 때 조용히 드롭한다 — 그래서 `shared/src/protocol.ts`·codegen·Swift/Kotlin 미러·XTeink 포크 재포팅 의무가 전혀 발생하지 않는다. 대신 **시리얼 포트에 JSON 한 줄을 직접 써서** 트리거한다. `serial_client.cpp`가 `{`로 시작하는 모든 줄을 파싱하므로, `esp32/scripts/flash.sh`가 `device_info_request`를 보내는 것과 같은 메커니즘이다.
+
+먼저 포트를 비운다(`agentdeck daemon stop` + `lsof /dev/cu.*`). 그 다음 `pio device monitor`에 직접 타이핑하거나 pyserial로 한 줄 쓴다.
+
+| 명령 | 보드 | 하는 일 |
+|---|---|---|
+| `{"type":"device_info_request"}` | 전체 | 보드 식별 — 플래시 전 필수 |
+| `{"type":"touch_diag"}` | `ips35`, `amoled` | Arduino `Wire` I2C 스윕 + 터치 컨트롤러 프로브 |
+| `{"type":"i2c_diag"}` | `ips10` | 오디오 코덱 프로브 — 터치 버스 스윕 + ES8311 정체 확인 + 레지스터 덤프 + 후보 핀 레벨 |
+| `{"type":"i2c_diag","sda":N,"scl":N}` | `ips10` | 2차 I2C 버스 후보 프로브(opt-in). P4↔C6 ESP-Hosted SDIO 핀(14·15·16·17·18·19·54)은 거부된다 |
+| `{"type":"i2c_diag","dump":24}` | `ips10` | 해당 주소 레지스터 덤프(읽기 전용) |
+
+`i2c_diag`는 ips10 부팅 시 자동으로 1회 돈다(`displayInit()`의 GSL3680 init 직후, uiTask에서 터치 폴링 시작 전 — 같은 버스 경합 회피). 이 보드는 USB 시리얼이 붙으면 WiFi STA를 파킹하므로 결과를 실어 보낼 소켓이 없어 **출력은 Serial 전용**이다. `[I2CDiag]` 접두어로 grep하면 된다.
+
 ## WiFi 독립 운용
 
 ESP32 디스플레이는 **USB 시리얼** (기본) + **WiFi WebSocket** (독립 운용) 이중 경로 지원.

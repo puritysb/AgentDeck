@@ -5,6 +5,9 @@
 #if defined(BOARD_IPS10) || defined(BOARD_T_DISPLAY_PRO) || defined(BOARD_T_EMBED)
 #include "fonts/font_noto_kr_16.h"
 #endif
+#if defined(BOARD_T_DISPLAY_PRO)
+#include "../input/touch_strip.h"
+#endif
 
 #include <lvgl.h>
 #include <Arduino.h>
@@ -618,6 +621,9 @@ static bool touch_read_cst816s(uint16_t* x, uint16_t* y) {
 #include "touch/esp_lcd_touch.h"
 #include "touch/esp_lcd_gsl3680.h"
 #include <driver/i2c_master.h>
+#include <driver/gpio.h>           // gpio_get_level() — read pad state without reconfiguring it
+#include <esp_log.h>               // silence the i2c.master NACK warnings during a sweep
+#include "../audio/speaker_playback.h"   // claim I2S DMA before the LVGL buffer
 #include "driver/ppa.h"            // ESP32-P4 2D Pixel-Processing Accelerator (HW rotate)
 #include "esp_heap_caps.h"
 #include "esp_memory_utils.h"      // esp_ptr_internal() — verify LVGL buffer is internal SRAM
@@ -639,6 +645,150 @@ static bool touch_read_gsl3680(uint16_t* x, uint16_t* y) {
     uint8_t cnt = 0;
     bool touched = esp_lcd_touch_get_coordinates(tp_handle, x, y, NULL, &cnt, 1);
     return touched && cnt > 0;
+}
+
+// ===== Audio-codec hardware probe (ES8311 hunt) =====
+// The vendor sheet claims 2 mics + a speaker behind an ES8311 on this panel,
+// but nothing in this repo has ever measured it — board_jc8012p4a1c.h carries
+// a bare comment and BOARD_HAS_AUDIO 0. This probe answers "is it there, on
+// which bus, at which address" and captures enough context in the same round
+// trip (full hit list, register dump, pin levels) that the follow-up playback
+// work does not need a second hardware session. That is the 2026-03-21 lesson
+// from the mic investigation: a probe that answers only yes/no costs you
+// another trip.
+//
+// Read-only by construction. Address probes and register reads only — never a
+// codec register write, and pin levels come from gpio_get_level() so no pad is
+// reconfigured. pinMode() on a pin already routed to a peripheral output can
+// silently break the panel or the C6 link.
+//
+// Note this does NOT use Arduino Wire, unlike protocol.cpp's touch_diag. On
+// this board the touch bus is an ESP-IDF i2c_master bus (see displayInit
+// below); putting the legacy Arduino I2C driver on the same two pads is the
+// single most damaging thing this file could do.
+
+// ESP-Hosted SDIO pins for the P4↔C6 Wi-Fi link, read out of the Arduino core's
+// esp32p4/sdkconfig (CONFIG_ESP_HOSTED_SDIO_PIN_*). Disturbing this transport
+// trips the sdio_rx_get_buffer asserts documented in net/wifi_manager.cpp, so a
+// second-bus probe must never be pointed at these.
+static const int kHostedSdioPins[] = { 14, 15, 16, 17, 18, 19, 54 };
+
+// I2S/codec pins on the Waveshare ESP32-P4-NANO reference design. HYPOTHESIS
+// ONLY — borrowed from a different vendor's board. Guition may differ entirely;
+// these are sampled and printed so the operator can eyeball a match, never
+// driven.
+static const struct { int pin; const char* role; } kCodecPinHypothesis[] = {
+    { 13, "MCLK?" }, { 12, "BCLK?" }, { 10, "LRCK?" },
+    {  9, "DOUT?" }, { 11, "DIN?"  }, { 53, "PA_EN?" },
+};
+
+static const char* i2cAddrNote(uint8_t addr) {
+    switch (addr) {
+        case BOARD_TOUCH_ADDR: return "GSL3680 touch (this board)";
+        case 0x18: case 0x19:  return "ES8311 candidate (also LIS3DH accel / EEPROM)";
+        case 0x30: case 0x3C:  return "camera SCCB / OLED common";
+        case 0x36:             return "camera SCCB / MAX17048 fuel gauge common";
+        case 0x41: case 0x43:  return "ES7210 mic ADC on other designs";
+        default:               return "unknown";
+    }
+}
+
+static bool i2cIsHostedSdioPin(int pin) {
+    for (size_t i = 0; i < sizeof(kHostedSdioPins) / sizeof(kHostedSdioPins[0]); i++) {
+        if (kHostedSdioPins[i] == pin) return true;
+    }
+    return false;
+}
+
+// One-shot register read. Adds and removes a device handle each call — slow,
+// but this is a diagnostic and it keeps the bus free for the touch driver.
+static bool i2cReadReg(i2c_master_bus_handle_t bus, uint8_t addr, uint8_t reg, uint8_t* out) {
+    i2c_device_config_t dc;
+    memset(&dc, 0, sizeof(dc));
+    dc.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dc.device_address  = addr;
+    dc.scl_speed_hz    = 100000;   // match the touch bus — 400 kHz risked noise here
+    i2c_master_dev_handle_t dev = nullptr;
+    if (i2c_master_bus_add_device(bus, &dc, &dev) != ESP_OK) return false;
+    esp_err_t err = i2c_master_transmit_receive(dev, &reg, 1, out, 1, 50);
+    i2c_master_bus_rm_device(dev);
+    return err == ESP_OK;
+}
+
+// ES8311 identity: registers 0xFD/0xFE must read 0x83/0x11 (the check the Linux
+// es8311 codec driver performs). An ACK alone proves nothing — 0x18/0x19 are
+// also LIS3DH and common EEPROM addresses.
+static bool es8311Identify(i2c_master_bus_handle_t bus, uint8_t addr) {
+    uint8_t id1 = 0, id2 = 0, ver = 0;
+    bool r1 = i2cReadReg(bus, addr, 0xFD, &id1);
+    bool r2 = i2cReadReg(bus, addr, 0xFE, &id2);
+    bool r3 = i2cReadReg(bus, addr, 0xFF, &ver);
+    Serial.printf("[I2CDiag]   0x%02X ID regs: FD=%s%02X FE=%s%02X FF=%s%02X (expect FD=83 FE=11)\n",
+                  addr,
+                  r1 ? "0x" : "ERR:", id1,
+                  r2 ? "0x" : "ERR:", id2,
+                  r3 ? "0x" : "ERR:", ver);
+    if (r1 && r2 && id1 == 0x83 && id2 == 0x11) {
+        Serial.printf("[I2CDiag]   => ES8311 CONFIRMED at 0x%02X (version 0x%02X)\n", addr, ver);
+        return true;
+    }
+    if (r1 && r2 && ((id1 == 0x00 && id2 == 0x00) || (id1 == 0xFF && id2 == 0xFF))) {
+        Serial.println("[I2CDiag]   => address ACKs but ID reads are dead (00/FF): device present "
+                       "with clock or reset line not asserted, OR a different part entirely");
+        return false;
+    }
+    Serial.println("[I2CDiag]   => NOT an ES8311 (ID mismatch)");
+    return false;
+}
+
+// Sweep 0x08-0x77. The touch controller is skipped rather than probed: an
+// address probe mid-run can confuse the GSL3680.
+static void i2cSweepBus(i2c_master_bus_handle_t bus, const char* label, bool skipTouch) {
+    Serial.printf("[I2CDiag] --- sweep %s ---\n", label);
+    // i2c_master_probe logs a warning on every NACK; with CORE_DEBUG_LEVEL=3
+    // that buries the result under ~110 lines.
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
+    int hits = 0;
+    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+        if (skipTouch && addr == BOARD_TOUCH_ADDR) {
+            Serial.printf("[I2CDiag]   0x%02X SKIPPED — %s\n", addr, i2cAddrNote(addr));
+            continue;
+        }
+        if (i2c_master_probe(bus, addr, 50) == ESP_OK) {
+            hits++;
+            Serial.printf("[I2CDiag]   0x%02X ACK — %s\n", addr, i2cAddrNote(addr));
+        }
+        vTaskDelay(1);   // do not starve the touch reads sharing this bus
+    }
+    esp_log_level_set("i2c.master", (esp_log_level_t)CORE_DEBUG_LEVEL);
+    Serial.printf("[I2CDiag] --- %s: %d device(s) beyond touch ---\n", label, hits);
+}
+
+// Repeat the codec-address probe to separate a real device from bus noise.
+// 5/5 is a device; anything in between belongs in the "inconclusive" bucket.
+static void i2cCodecAddrStability(i2c_master_bus_handle_t bus) {
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
+    for (uint8_t addr = 0x18; addr <= 0x19; addr++) {
+        int ok = 0;
+        for (int i = 0; i < 5; i++) {
+            if (i2c_master_probe(bus, addr, 50) == ESP_OK) ok++;
+            vTaskDelay(2);
+        }
+        Serial.printf("[I2CDiag]   0x%02X stability: %d/5 %s\n", addr, ok,
+                      ok == 5 ? "(stable — real device)"
+                              : ok == 0 ? "(absent)" : "(UNSTABLE — noise or missing pullups)");
+    }
+    esp_log_level_set("i2c.master", (esp_log_level_t)CORE_DEBUG_LEVEL);
+}
+
+static void i2cPinCensus() {
+    Serial.println("[I2CDiag] --- candidate pin levels (read-only; HYPOTHESIS map from "
+                   "Waveshare ESP32-P4-NANO, NOT confirmed for Guition) ---");
+    for (size_t i = 0; i < sizeof(kCodecPinHypothesis) / sizeof(kCodecPinHypothesis[0]); i++) {
+        int pin = kCodecPinHypothesis[i].pin;
+        Serial.printf("[I2CDiag]   GPIO %-2d %-7s level=%d\n",
+                      pin, kCodecPinHypothesis[i].role, gpio_get_level((gpio_num_t)pin));
+    }
 }
 
 #else
@@ -806,7 +956,17 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
 // LVGL touch read callback
 static void touch_read(lv_indev_t* indev, lv_indev_data_t* data) {
     uint16_t x, y;
-#if defined(BOARD_AMOLED)
+#if defined(BOARD_T_DISPLAY_PRO)
+    // Pocket (portrait) mode drives LVGL widgets directly — raw CST226SE
+    // points are rotation-0 display coords. Landscape keeps the ticker's own
+    // gesture layer as the sole consumer (two pollers fight over press state),
+    // so this indev stays silent there.
+    int16_t px = 0, py = 0;
+    bool pocketDown = Input::touchPortrait() && Input::touchRawPoint(&px, &py);
+    x = (uint16_t)px;
+    y = (uint16_t)py;
+    if (pocketDown) {
+#elif defined(BOARD_AMOLED)
     if (touch_read_cst816s(&x, &y)) {
 #elif defined(BOARD_IPS35)
     if (touch_read_axs15231b(&x, &y)) {
@@ -829,7 +989,122 @@ static void touch_read(lv_indev_t* indev, lv_indev_data_t* data) {
     }
 }
 
+#if defined(BOARD_T_DISPLAY_PRO)
+// Portrait request latch — must be set before displayInit() (the camera
+// probe that decides the unit's role runs first in the UI task).
+static bool s_stripPortrait = false;
+#endif
+
 namespace UI {
+
+#if defined(BOARD_T_DISPLAY_PRO)
+void requestPortrait() { s_stripPortrait = true; }
+#endif
+
+#if defined(BOARD_IPS10)
+bool hwI2cReadReg8(uint8_t addr, uint8_t reg, uint8_t* out) {
+    if (!i2c_handle || !out) return false;
+    return i2cReadReg(i2c_handle, addr, reg, out);
+}
+
+bool hwI2cWriteReg8(uint8_t addr, uint8_t reg, uint8_t val) {
+    if (!i2c_handle) return false;
+    i2c_device_config_t dc;
+    memset(&dc, 0, sizeof(dc));
+    dc.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dc.device_address  = addr;
+    dc.scl_speed_hz    = 100000;
+    i2c_master_dev_handle_t dev = nullptr;
+    if (i2c_master_bus_add_device(i2c_handle, &dc, &dev) != ESP_OK) return false;
+    const uint8_t payload[2] = { reg, val };
+    esp_err_t err = i2c_master_transmit(dev, payload, sizeof(payload), 50);
+    i2c_master_bus_rm_device(dev);
+    return err == ESP_OK;
+}
+
+void hwI2cDumpDevice(uint8_t addr) {
+    if (!i2c_handle) { Serial.println("[I2CDiag] touch I2C bus not initialised"); return; }
+    Serial.printf("[I2CDiag] --- register dump 0x%02X (read-only) ---\n", addr);
+    for (uint8_t reg = 0x00; reg <= 0x4A; reg++) {
+        uint8_t v = 0;
+        if (reg % 8 == 0) Serial.printf("[I2CDiag]   %02X:", reg);
+        if (i2cReadReg(i2c_handle, addr, reg, &v)) Serial.printf(" %02X", v);
+        else                                       Serial.print(" --");
+        if (reg % 8 == 7) Serial.println();
+    }
+    Serial.println();
+    uint8_t id1 = 0, id2 = 0, ver = 0;
+    i2cReadReg(i2c_handle, addr, 0xFD, &id1);
+    i2cReadReg(i2c_handle, addr, 0xFE, &id2);
+    i2cReadReg(i2c_handle, addr, 0xFF, &ver);
+    Serial.printf("[I2CDiag]   FD=%02X FE=%02X FF=%02X\n", id1, id2, ver);
+}
+
+void hwI2cProbe(int sdaOverride, int sclOverride) {
+    // The boot probe runs on the uiTask while an i2c_diag command arrives on the
+    // networkTask. The IDF bus mutex keeps the transfers correct, but the two
+    // Serial streams interleave and shred the transcript — which is the whole
+    // artifact this probe exists to produce. One at a time.
+    static volatile bool busy = false;
+    if (busy) {
+        Serial.println("[I2CDiag] probe already running — ignoring this request");
+        return;
+    }
+    busy = true;
+
+    Serial.println("[I2CDiag] ===== ips10 audio-codec probe =====");
+
+    if (!i2c_handle) {
+        Serial.println("[I2CDiag] touch I2C bus not initialised — nothing to sweep");
+    } else {
+        i2cSweepBus(i2c_handle, "I2C_NUM_1 (touch bus, SDA 7 / SCL 8)", true);
+        i2cCodecAddrStability(i2c_handle);
+        for (uint8_t addr = 0x18; addr <= 0x19; addr++) {
+            if (i2c_master_probe(i2c_handle, addr, 50) != ESP_OK) continue;
+            if (es8311Identify(i2c_handle, addr)) hwI2cDumpDevice(addr);
+        }
+    }
+
+    i2cPinCensus();
+
+    // Stage 2 — a second bus, only when the operator names the pins. Never an
+    // automatic pin sweep.
+    if (sdaOverride >= 0 && sclOverride >= 0) {
+        if (i2cIsHostedSdioPin(sdaOverride) || i2cIsHostedSdioPin(sclOverride)) {
+            Serial.printf("[I2CDiag] REFUSED: GPIO %d/%d overlaps the P4<->C6 ESP-Hosted SDIO link "
+                          "(14,15,16,17,18,19,54) — probing it would drop Wi-Fi\n",
+                          sdaOverride, sclOverride);
+        } else {
+            Serial.printf("[I2CDiag] --- stage 2: throwaway bus on I2C_NUM_0, SDA %d / SCL %d ---\n",
+                          sdaOverride, sclOverride);
+            i2c_master_bus_config_t bc;
+            memset(&bc, 0, sizeof(bc));
+            bc.clk_source = I2C_CLK_SRC_DEFAULT;
+            bc.i2c_port   = I2C_NUM_0;
+            bc.sda_io_num = (gpio_num_t)sdaOverride;
+            bc.scl_io_num = (gpio_num_t)sclOverride;
+            bc.flags.enable_internal_pullup = 1;
+            i2c_master_bus_handle_t alt = nullptr;
+            if (i2c_new_master_bus(&bc, &alt) != ESP_OK) {
+                Serial.println("[I2CDiag]   bus init FAILED on those pins");
+            } else {
+                i2cSweepBus(alt, "I2C_NUM_0 (candidate)", false);
+                for (uint8_t addr = 0x18; addr <= 0x19; addr++) {
+                    if (i2c_master_probe(alt, addr, 50) == ESP_OK) es8311Identify(alt, addr);
+                }
+                i2c_del_master_bus(alt);
+                Serial.println("[I2CDiag]   candidate bus released");
+            }
+        }
+    } else {
+        Serial.println("[I2CDiag] stage 2 not run — send {\"type\":\"i2c_diag\",\"sda\":N,\"scl\":N} "
+                       "to probe a second bus");
+    }
+
+    Serial.println("[I2CDiag] ===== probe complete =====");
+    busy = false;
+}
+#endif  // BOARD_IPS10
 
 void displayInit() {
 #if defined(BOARD_AMOLED)
@@ -1023,6 +1298,19 @@ void displayInit() {
         Serial.println("[Display] I2C bus init FAILED!");
     }
 
+    // Audio-codec probe. Runs here, on the uiTask before touch polling starts,
+    // so it never contends with touch_read_gsl3680() on the same bus. Costs a
+    // few hundred ms of boot (112 addresses, each yielding a tick to keep the
+    // bus free). Serial is the only channel that can carry the result:
+    // attaching USB parks the Wi-Fi STA (net/wifi_manager.cpp), so there is no
+    // socket open at this point in boot.
+    hwI2cProbe();
+
+    // Claim the speaker's I2S DMA here, before the LVGL draw buffer takes 60 KB
+    // of internal RAM just below. Late allocation loses that race once WiFi is
+    // also up — see speaker_playback.cpp.
+    Audio::playbackInit();
+
     g_screenW = BOARD_NATIVE_H;
     g_screenH = BOARD_NATIVE_W;
 
@@ -1105,6 +1393,19 @@ void displayInit() {
         g_screenH = landscape ? SCREEN_W : SCREEN_H;
         tft.setRotation(hwRotation(rot));
         Serial.printf("[Display] Rotation index %d (%dx%d)\n", rot, g_screenW, g_screenH);
+    }
+#elif defined(BOARD_T_DISPLAY_PRO)
+    // Pocket mode (camera unit): the whole hardware stack is portrait-native
+    // — panel GRAM, touch report, camera mounting — so the phone-style UI
+    // runs rotation 0 at 222x480. The no-camera unit keeps the landscape
+    // Focus Strip. Chosen before displayInit via UI::requestPortrait().
+    if (s_stripPortrait) {
+        tft.setRotation(0);
+        g_screenW = BOARD_NATIVE_W;   // 222
+        g_screenH = BOARD_NATIVE_H;   // 480
+        Serial.println("[Display] Strip portrait (Pocket) orientation");
+    } else {
+        tft.setRotation(BOARD_ROTATION);
     }
 #else
     tft.setRotation(BOARD_ROTATION);
