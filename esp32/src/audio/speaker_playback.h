@@ -35,4 +35,17 @@ bool playbackActive();
 /** Abort immediately (link lost, user turned the knob away). */
 void playbackStop();
 
+#if defined(BOARD_PIN_MIC_DIN)
+/**
+ * Capture side of a full-duplex codec, reading from the same I2S instance the
+ * playback path owns. It has to be the same instance: a second I2SClass on
+ * these pins goes through perimanClearPinBus and tears playback down.
+ *
+ * captureRead() blocks until `len` bytes arrive (~32 ms per 1024) and returns 0
+ * on error, so it belongs on a dedicated task — never on the LVGL thread.
+ */
+bool captureReady();
+size_t captureRead(uint8_t* out, size_t len);
+#endif
+
 }  // namespace Audio

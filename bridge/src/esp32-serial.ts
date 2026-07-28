@@ -171,6 +171,12 @@ export interface SerialConnection {
     usbPowered?: boolean;
     batteryDiag?: number;
     touchReady?: boolean;
+    touchDownSamples?: number;
+    touchGestures?: number;
+    touchLastX?: number;
+    touchLastY?: number;
+    touchMaxX?: number;
+    touchMaxY?: number;
     alsReady?: boolean;
   } | null;
   /** True once a device_info arrived on THIS connection (vs. cache-seeded).
@@ -716,6 +722,13 @@ export function capturePanicLine(conn: SerialConnection, line: string): boolean 
 // Daemon-installed sink for device-originated commands arriving over serial.
 let serialCommandSink: ((cmd: Record<string, unknown>) => void) | null = null;
 let serialVoiceSink: ((port: string, msg: Record<string, unknown>) => void) | null = null;
+let serialQuiesceCheck: ((port: string) => boolean) | null = null;
+
+/** While true for a port, the daemon holds its outbound serial writes —
+ *  used to keep the line half-duplex during a board→daemon photo upload. */
+export function setSerialQuiesceCheck(check: (port: string) => boolean): void {
+  serialQuiesceCheck = check;
+}
 export function setSerialCommandSink(sink: (cmd: Record<string, unknown>) => void): void {
   serialCommandSink = sink;
 }
@@ -820,6 +833,12 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
           usbPowered: (msg as any).usbPowered,
           batteryDiag: (msg as any).batteryDiag,
           touchReady: (msg as any).touchReady,
+          touchDownSamples: (msg as any).touchDownSamples,
+          touchGestures: (msg as any).touchGestures,
+          touchLastX: (msg as any).touchLastX,
+          touchLastY: (msg as any).touchLastY,
+          touchMaxX: (msg as any).touchMaxX,
+          touchMaxY: (msg as any).touchMaxY,
           alsReady: (msg as any).alsReady,
         };
         conn.deviceInfoFresh = true;
@@ -828,12 +847,15 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
           persistDeviceInfoCache();
         }
       } else if (msg.type === 'voice_begin' || msg.type === 'voice_end' ||
-                 msg.type === 'audio_chunk') {
-        // Voice over USB. The serial transport is line-delimited JSON, so PCM
-        // travels base64-encoded inside `audio_chunk` rather than as raw bytes:
-        // raw PCM contains newlines and would tear the framing for every other
-        // reader of this port. Costs 33% — irrelevant on native-USB CDC, where
-        // the 115200 in the port settings is nominal.
+                 msg.type === 'audio_chunk' ||
+                 msg.type === 'photo_begin' || msg.type === 'photo_end' ||
+                 msg.type === 'photo_chunk') {
+        // Voice/photo over USB. The serial transport is line-delimited JSON, so
+        // PCM and JPEG bytes travel base64-encoded inside `audio_chunk` /
+        // `photo_chunk` rather than raw: raw bytes contain newlines and would
+        // tear the framing for every other reader of this port. Costs 33% —
+        // irrelevant on native-USB CDC, where the 115200 in the port settings
+        // is nominal.
         serialVoiceSink?.(conn.port, msg as unknown as Record<string, unknown>);
       } else if (['select_option', 'session_command', 'permission_decision',
                   'peripheral_event', 'query_session_timeline', 'focus_session',
@@ -1006,6 +1028,15 @@ function scheduleWriteFlush(conn: SerialConnection, delayMs: number): void {
 function flushNextWrite(conn: SerialConnection): void {
   conn.writeTimer = null;
   if (!conn.connected) return;
+  // Half-duplex quiesce: while a board is streaming a photo up this port,
+  // hold our own writes. HWCDC drops blocks under full-duplex traffic (the
+  // ack-only-keepalive lesson, in the other direction) — daemon broadcasts
+  // landing mid-upload cost ~2 chunk lines per photo regardless of the
+  // board's TX pacing. Captures run seconds; the queue just waits.
+  if (serialQuiesceCheck?.(conn.port)) {
+    scheduleWriteFlush(conn, 100);
+    return;
+  }
   const json = conn.writeQueue.shift();
   if (!json) return;
   if (conn.fd == null) {

@@ -1,7 +1,13 @@
-#if defined(BOARD_T_EMBED)
+// board_config.h first: BOARD_HAS_SPEAKER comes from a board header, not from
+// a -D build flag, so the guard below cannot see it until this is included.
+#include "../../boards/board_config.h"
+
+#if defined(BOARD_HAS_SPEAKER)
 
 #include "speaker_playback.h"
-#include "../../boards/board_config.h"
+#if defined(BOARD_SPK_CODEC_ES8311)
+#include "es8311_codec.h"
+#endif
 
 #include <Arduino.h>
 #include <ESP_I2S.h>
@@ -58,18 +64,84 @@ static size_t ringRead(uint8_t* out, size_t want) {
     return want;
 }
 
+// The I2S channel is opened once and kept. It used to be a stack object in the
+// playback task, begun and ended per utterance — which leaks the channel: the
+// Arduino wrapper's end() bails out before i2s_del_channel() if the preceding
+// i2s_channel_disable() errors, so the second utterance dies on
+// "i2s_new_channel(): no available channel found" and the board goes silent
+// until reboot. Measured on ips10 (2026-07-28); t_embed runs the same code and
+// carried the same latent bug.
+static I2SClass s_i2s;
+static bool s_i2sOpen = false;
+static uint32_t s_i2sRate = 0;
+
+// Returns false if the channel could not be opened. Re-opens only when the
+// sample rate actually changes.
+static bool ensureI2sOpen(uint32_t rate) {
+    if (s_i2sOpen && s_i2sRate == rate) return true;
+    if (s_i2sOpen) {
+        s_i2s.end();
+        s_i2sOpen = false;
+    }
+#if defined(BOARD_PIN_SPK_MCLK)
+    // Codec boards need a master clock; a bare I2S amplifier does not.
+    // When the codec also feeds a microphone back, name its data-in pin here:
+    // one i2s_new_channel() then yields tx+rx on the same controller, sharing
+    // BCLK/WS. That matters more than it looks — it means the capture DMA is
+    // claimed at this same early, pre-LVGL, pre-WiFi moment rather than in a
+    // late allocation that would repeat the ESP_ERR_NO_MEM failure.
+#if defined(BOARD_PIN_MIC_DIN)
+    s_i2s.setPins(BOARD_PIN_SPK_BCLK, BOARD_PIN_SPK_LRCLK, BOARD_PIN_SPK_DIN,
+                  BOARD_PIN_MIC_DIN, BOARD_PIN_SPK_MCLK);
+#else
+    s_i2s.setPins(BOARD_PIN_SPK_BCLK, BOARD_PIN_SPK_LRCLK, BOARD_PIN_SPK_DIN, -1,
+                  BOARD_PIN_SPK_MCLK);
+#endif
+#else
+    s_i2s.setPins(BOARD_PIN_SPK_BCLK, BOARD_PIN_SPK_LRCLK, BOARD_PIN_SPK_DIN, -1, -1);
+#endif
+    if (!s_i2s.begin(I2S_MODE_STD, rate,
+                     I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO)) {
+        // "no available channel found" means a channel is allocated that this
+        // module does not believe it owns. end() is the only way back, and it
+        // is exactly the call whose failure created the leak — so try it, then
+        // retry once, and report both attempts rather than guessing.
+        Serial.printf("[Speaker] I2S begin failed (open=%d rate=%lu->%lu) — releasing and retrying\n",
+                      (int)s_i2sOpen, (unsigned long)s_i2sRate, (unsigned long)rate);
+        s_i2s.end();
+        delay(20);
+        if (!s_i2s.begin(I2S_MODE_STD, rate,
+                         I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO)) {
+            Serial.println("[Speaker] I2S begin failed again — no playback");
+            return false;
+        }
+        Serial.println("[Speaker] I2S recovered on retry");
+    }
+    s_i2sOpen = true;
+    s_i2sRate = rate;
+    return true;
+}
+
 static void playbackTask(void* param) {
     (void)param;
-    I2SClass i2s;
-    i2s.setPins(BOARD_PIN_SPK_BCLK, BOARD_PIN_SPK_LRCLK, BOARD_PIN_SPK_DIN, -1, -1);
-    if (!i2s.begin(I2S_MODE_STD, (uint32_t)s_sampleRate,
-                   I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO)) {
-        Serial.println("[Speaker] I2S begin failed");
+    if (!ensureI2sOpen((uint32_t)s_sampleRate)) {
         s_playing = false;
         s_streaming = false;
         vTaskDelete(nullptr);
         return;
     }
+
+#if defined(BOARD_SPK_CODEC_ES8311)
+    // Codec init must follow the I2S clock coming up: the ES8311 locks to MCLK,
+    // so the clock has to already be running when its clock-manager registers
+    // are programmed. Re-run per utterance — it is ~40 I2C writes and it
+    // re-asserts the power amplifier, which is cheap next to a silent board.
+    // Failure is not fatal here: I2S keeps streaming into a silent codec, and
+    // the log line is what tells the two apart.
+    if (!Es8311::begin((uint32_t)s_sampleRate)) {
+        Serial.println("[Speaker] ES8311 init failed — samples will go nowhere");
+    }
+#endif
 
     // Wait for the prebuffer (or for the utterance to prove itself short).
     uint32_t waitStart = millis();
@@ -87,7 +159,7 @@ static void playbackTask(void* param) {
         xSemaphoreGive(s_mutex);
 
         if (got > 0) {
-            i2s.write(chunk, got);
+            s_i2s.write(chunk, got);
             s_playedBytes += got;
             lastDataMs = millis();
             continue;
@@ -101,7 +173,8 @@ static void playbackTask(void* param) {
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 
-    i2s.end();
+    // Deliberately NOT i2s.end() — see ensureI2sOpen(). The channel stays open
+    // for the next utterance; with nothing written it clocks out silence.
     Serial.printf("[Speaker] played %lu/%lu bytes (%.1fs), %lu frames dropped%s\n",
                   (unsigned long)s_playedBytes, (unsigned long)s_fedBytes,
                   (double)s_playedBytes / 2.0 / (double)s_sampleRate,
@@ -127,8 +200,21 @@ bool playbackInit() {
         Serial.println("[Speaker] ring allocation failed — playback disabled");
         return false;
     }
-    Serial.printf("[Speaker] playback ready (%u KB ring)\n",
-                  (unsigned)(RING_BYTES / 1024));
+    // Claim the I2S channel now rather than at first utterance. Its DMA
+    // descriptors must live in internal DMA-capable RAM, and on ips10 that pool
+    // is contended: the LVGL draw buffer is forced internal and ESP-Hosted WiFi
+    // feeds from the same heap. Allocating late failed with ESP_ERR_NO_MEM once
+    // WiFi was up — and took the SDIO driver down with it
+    // (assert sdio_rx_get_buffer). A few KB held from boot costs far less than
+    // a board that can only speak while its radio is parked.
+    Serial.printf("[Speaker] internal heap before I2S: %u KB free\n",
+                  (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+    if (!ensureI2sOpen(16000)) {
+        Serial.println("[Speaker] I2S channel unavailable at init — playback will retry per utterance");
+    }
+    Serial.printf("[Speaker] playback ready (%u KB ring, internal heap %u KB)\n",
+                  (unsigned)(RING_BYTES / 1024),
+                  (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
     return true;
 }
 
@@ -186,6 +272,17 @@ void playbackEnd() {
 
 bool playbackActive() { return s_playing || s_streaming; }
 
+#if defined(BOARD_PIN_MIC_DIN)
+bool captureReady() { return s_i2sOpen; }
+
+size_t captureRead(uint8_t* out, size_t len) {
+    if (!s_i2sOpen || !out || len == 0) return 0;
+    // Blocks until `len` bytes arrive (~32 ms per 1024) and returns 0 on error,
+    // so never call this from the LVGL task — its input device polls at 24 ms.
+    return s_i2s.readBytes((char*)out, len);
+}
+#endif
+
 void playbackStop() {
     s_abort = true;
     s_streaming = false;
@@ -193,4 +290,4 @@ void playbackStop() {
 
 }  // namespace Audio
 
-#endif  // BOARD_T_EMBED
+#endif  // BOARD_HAS_SPEAKER

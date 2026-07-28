@@ -5,6 +5,7 @@
 #include "../../net/wifi_manager.h"
 #include "../../net/ws_client.h"
 #include "../../input/power_monitor.h"
+#include "../../camera/photo_capture.h"
 #include "../display.h"
 #include "../theme.h"
 #include "../agent_label.h"
@@ -12,10 +13,15 @@
 
 #include <Arduino.h>
 #include <lvgl.h>
+#include <esp_heap_caps.h>
 #include <stdio.h>
 #include <string.h>
 
-static constexpr uint8_t PAGE_COUNT = 3;  // 0 FOCUS, 1 USAGE, 2 SESSIONS
+// Pages: 0 FOCUS, 1 USAGE, 2 SESSIONS, and — only when the rear camera shield
+// probed at boot — 3 CAM (show-and-tell capture; the no-camera unit runs this
+// same binary and never grows the page).
+static constexpr uint8_t PAGE_CAM = 3;
+static uint8_t pageCount() { return Camera::present() ? 4 : 3; }
 // In landscape the two short physical button pairs sit against the long
 // top/bottom edges near the right end. From left to right the upper pair is
 // previous/next (GPIO12/16); the lower pair is power-reset/Focus (RST/GPIO0).
@@ -33,7 +39,7 @@ static constexpr int BODY_H = 222 - BODY_Y - KEY_RAIL_H;
 static uint8_t s_page = 0;
 
 static lv_obj_t* s_scr = nullptr;
-static lv_obj_t* s_tabs[3] = {nullptr, nullptr, nullptr};
+static lv_obj_t* s_tabs[4] = {nullptr, nullptr, nullptr, nullptr};
 static lv_obj_t* s_hdrWifi = nullptr;
 static lv_obj_t* s_hdrBattery = nullptr;
 static lv_obj_t* s_body = nullptr;
@@ -50,6 +56,16 @@ static char s_lastSig[320] = {0};
 // Transient touch feedback shown on the Focus page hint line.
 static char s_flashText[32] = {0};
 static uint32_t s_flashUntilMs = 0;
+
+// CAM page viewfinder: 2:1 downscale of the HVGA sensor frame, so the whole
+// capture is visible. Buffer lives in PSRAM (76.8 KB — never DRAM, see the
+// audio-ring board-guard note in ws_client.cpp).
+static constexpr int CAM_VIEW_W = 240;
+static constexpr int CAM_VIEW_H = 160;
+static constexpr uint32_t CAM_PREVIEW_INTERVAL_MS = 100;
+static lv_obj_t* s_camCanvas = nullptr;
+static uint16_t* s_camBuf = nullptr;
+static uint32_t s_camLastFrameMs = 0;
 
 // ── outbound steering (thread-safe queue; drained on the network core) ──────
 
@@ -174,17 +190,17 @@ static lv_obj_t* makeKeyHint(lv_obj_t* rail, const char* text, int x,
 static void updateKeyHints(uint32_t now) {
     // Text is flash-backed and the label widgets live for the screen lifetime:
     // changing page/button feedback does not allocate inside the render loop.
-    static const char* const prevLabels[PAGE_COUNT] = {
-        "SESS", "FOCUS", "USAGE"
-    };
-    static const char* const nextLabels[PAGE_COUNT] = {
-        "USAGE", "SESS", "FOCUS"
-    };
+    // Short names for the rocker capsules; computed from the cyclic page order
+    // so the CAM page slots in only when the camera is present.
+    static const char* const shortNames[4] = {"FOCUS", "USAGE", "SESS", "CAM"};
     static uint8_t lastPage = 0xFF;
     if (lastPage != s_page) {
         lastPage = s_page;
-        lv_label_set_text_static(s_hintPrev, prevLabels[s_page]);
-        lv_label_set_text_static(s_hintNext, nextLabels[s_page]);
+        uint8_t n = pageCount();
+        lv_label_set_text_static(s_hintPrev, shortNames[(s_page + n - 1) % n]);
+        lv_label_set_text_static(s_hintNext, shortNames[(s_page + 1) % n]);
+        // The lower-right capsule doubles as the shutter on the CAM page.
+        lv_label_set_text_static(s_hintPrimary, s_page == PAGE_CAM ? "SNAP" : "FOCUS");
     }
 
     static bool lastActive[3] = {false, false, false};
@@ -498,6 +514,76 @@ static void renderSessionsPage() {
     }
 }
 
+// CAM page: live viewfinder on the left, explicit action chips on the right.
+// The canvas object is rebuilt with the body on every signature change, but
+// the PSRAM pixel buffer persists — update() streams frames into it directly.
+static void renderCameraPage() {
+    s_camCanvas = nullptr;
+    if (!Camera::present()) return;
+    if (!s_camBuf) {
+        s_camBuf = (uint16_t*)heap_caps_malloc(
+            (size_t)CAM_VIEW_W * CAM_VIEW_H * 2, MALLOC_CAP_SPIRAM);
+        if (s_camBuf) memset(s_camBuf, 0, (size_t)CAM_VIEW_W * CAM_VIEW_H * 2);
+    }
+    if (!s_camBuf) {
+        lv_obj_t* l = makeLabel(s_body, &lv_font_montserrat_14, Theme::HUDDim,
+                                "viewfinder buffer failed");
+        lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
+        return;
+    }
+
+    s_camCanvas = lv_canvas_create(s_body);
+    // Little-endian RGB565 — the universally supported source format;
+    // grabPreview swaps the camera's big-endian pixels on copy and LVGL's
+    // draw path converts to this display's RGB565_SWAPPED output.
+    lv_canvas_set_buffer(s_camCanvas, s_camBuf, CAM_VIEW_W, CAM_VIEW_H,
+                         LV_COLOR_FORMAT_RGB565);
+    lv_obj_set_pos(s_camCanvas, 8, 0);
+
+    // Where the shot goes: the strip's focus pick, same as every action.
+    char target[64] = "-> (no session)";
+    {
+        lockState();
+        int idx = pickFocusSession();
+        if (idx >= 0) {
+            snprintf(target, sizeof(target), "-> %s",
+                     g_state.sessions[idx].projectName[0]
+                         ? g_state.sessions[idx].projectName
+                         : g_state.sessions[idx].agentType);
+        }
+        unlockState();
+        Utf8::sanitizeLvglText(target);
+    }
+    lv_obj_t* tgt = makeLabel(s_body, &font_kr_16, Theme::HUDText, target);
+    lv_obj_set_width(tgt, 210);
+    lv_label_set_long_mode(tgt, LV_LABEL_LONG_DOT);
+    lv_obj_align(tgt, LV_ALIGN_TOP_LEFT, 262, 6);
+
+    auto actionChip = [&](int x, int y, int w, const char* label, uint32_t color) {
+        lv_obj_t* chip = lv_obj_create(s_body);
+        lv_obj_remove_style_all(chip);
+        lv_obj_set_size(chip, w, 34);
+        lv_obj_set_pos(chip, x, y);
+        lv_obj_set_style_bg_color(chip, lv_color_hex(color), 0);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(chip, 5, 0);
+        lv_obj_t* text = makeLabel(chip, &lv_font_montserrat_16, 0xFFFFFF, label);
+        lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
+    };
+    // Same geometry family as the Focus approve/deny chips.
+    actionChip(262, BODY_H - 38, 96, "SNAP", Theme::StatusCyan);
+    actionChip(368, BODY_H - 38, 100,
+               Camera::lampDuty() > 0 ? "LED ON" : "LED",
+               Camera::lampDuty() > 0 ? Theme::StatusAmber : Theme::MidWater);
+
+    bool flashOn = s_flashText[0] != '\0';
+    lv_obj_t* hint = makeLabel(s_body, &lv_font_montserrat_12,
+                               flashOn ? Theme::StatusGreen : Theme::HUDFaint,
+                               flashOn ? s_flashText
+                                       : "BOOT or SNAP sends to the agent");
+    lv_obj_align(hint, LV_ALIGN_TOP_LEFT, 262, 96);
+}
+
 namespace Ticker {
 
 void create() {
@@ -523,9 +609,10 @@ void create() {
     lv_obj_set_style_bg_opa(header, LV_OPA_COVER, 0);
     lv_obj_align(header, LV_ALIGN_TOP_LEFT, 0, HEADER_Y);
 
-    static const char* tabNames[3] = {"FOCUS", "USAGE", "SESSIONS"};
-    static const int tabX[3] = {10, 84, 158};
-    for (int i = 0; i < 3; i++) {
+    static const char* tabNames[4] = {"FOCUS", "USAGE", "SESSIONS", "CAM"};
+    static const int tabX[4] = {10, 84, 158, 246};
+    int tabCount = Camera::present() ? 4 : 3;
+    for (int i = 0; i < tabCount; i++) {
         s_tabs[i] = makeLabel(header, &lv_font_montserrat_14, Theme::HUDDim, tabNames[i]);
         lv_obj_set_pos(s_tabs[i], tabX[i], 7);
     }
@@ -556,14 +643,59 @@ void create() {
 }
 
 void nextPage() {
-    s_page = (uint8_t)((s_page + 1) % PAGE_COUNT);
+    s_page = (uint8_t)((s_page + 1) % pageCount());
 }
 
 void prevPage() {
-    s_page = (uint8_t)((s_page + PAGE_COUNT - 1) % PAGE_COUNT);
+    uint8_t n = pageCount();
+    s_page = (uint8_t)((s_page + n - 1) % n);
+}
+
+// Capture one frame and hand it to the network task, aimed at the strip's
+// current focus pick (same target logic as every other strip action).
+static void snapPhoto() {
+    if (!Camera::active()) {
+        flash("camera not ready");
+        return;
+    }
+    if (Net::photoUploadBusy()) {
+        flash("still sending...");
+        return;
+    }
+    lockState();
+    int idx = pickFocusSession();
+    char sid[32] = {0};
+    if (idx >= 0) strncpy(sid, g_state.sessions[idx].id, sizeof(sid) - 1);
+    unlockState();
+    uint8_t* jpeg = nullptr;
+    size_t len = 0;
+    int w = 0, h = 0;
+    // Blocking encode (~hundreds of ms) — acceptable for an explicit shutter.
+    if (!Camera::captureJpeg(&jpeg, &len, &w, &h)) {
+        flash("capture failed");
+        return;
+    }
+    // Power the sensor down BEFORE the upload: camera + serial TX burst
+    // together collapsed the rail into a full power-on reset mid-upload
+    // (2026-07-27, 5 chunks then silence). The page watcher in update()
+    // re-acquires the preview once the upload has drained.
+    Camera::release();
+    if (!Net::queuePhotoHttpUpload(jpeg, len, sid, w, h) &&
+        !Net::queuePhotoUpload(jpeg, len, sid, w, h)) {
+        free(jpeg);
+        flash("no link - not sent");
+        return;
+    }
+    char note[32];
+    snprintf(note, sizeof(note), "sending %u KB...", (unsigned)(len / 1024));
+    flash(note);
 }
 
 void primaryAction() {
+    if (s_page == PAGE_CAM) {
+        snapPhoto();
+        return;
+    }
     if (s_page != 0) {
         s_page = 0;
         flash("focus");
@@ -601,7 +733,37 @@ void onTouch(const Input::TouchEvent& event) {
     if (event.y < BODY_Y) {
         if (event.x < 74) s_page = 0;
         else if (event.x < 148) s_page = 1;
-        else if (event.x < 254) s_page = 2;
+        else if (event.x < 240) s_page = 2;
+        else if (event.x < 300 && Camera::present()) s_page = PAGE_CAM;
+        return;
+    }
+
+    if (s_page == PAGE_CAM) {
+        // Explicit chips only, mirroring the Focus-page approval rule: a stray
+        // tap on the viewfinder never fires the shutter.
+        if (event.y >= BODY_Y + BODY_H - 44 && event.x >= 262 && event.x < 362) {
+            snapPhoto();
+        } else if (event.y >= BODY_Y + BODY_H - 44 && event.x >= 368) {
+            // Modest duty: the shield LED at full blast runs hot (vendor note).
+            Camera::setLamp(Camera::lampDuty() > 0 ? 0 : 24);
+            s_lastSig[0] = '\0';  // re-render the chip state
+        } else if (event.y < BODY_Y + 50 && event.x >= 250) {
+            // Tap the target line to cycle which session receives the shot —
+            // no Sessions-page round trip. Awaiting still outranks the pick
+            // (a response-wait owns the strip's attention).
+            lockState();
+            int cur = pickFocusSession();
+            char sid[32] = {0};
+            if (g_state.sessionCount > 0) {
+                int next = cur < 0 ? 0 : (cur + 1) % g_state.sessionCount;
+                strncpy(sid, g_state.sessions[next].id, sizeof(sid) - 1);
+            }
+            unlockState();
+            if (sid[0]) {
+                sendFocusSession(sid);
+                flash("target changed");
+            }
+        }
         return;
     }
 
@@ -650,6 +812,27 @@ void update(float dt) {
     uint32_t now = millis();
     updateKeyHints(now);
 
+    // Camera power follows the page: acquire on entry, release on leave.
+    // Keeping the sensor powered around the clock tripped the brownout
+    // detector when WiFi TX started (see Camera::init).
+    {
+        static bool wasCamPage = false;
+        static uint32_t lastReacquireMs = 0;
+        bool isCamPage = (s_page == PAGE_CAM);
+        if (isCamPage && !wasCamPage) {
+            if (!Camera::acquire()) flash("camera power failed");
+        } else if (!isCamPage && wasCamPage) {
+            Camera::release();
+        } else if (isCamPage && !Camera::active() && !Net::photoUploadBusy() &&
+                   (uint32_t)(now - lastReacquireMs) > 2000) {
+            // Preview comes back once the upload drains (snapPhoto released
+            // the sensor so the TX burst never overlaps camera draw).
+            lastReacquireMs = now;
+            Camera::acquire();
+        }
+        wasCamPage = isCamPage;
+    }
+
     bool flashOn = s_flashText[0] && (int32_t)(s_flashUntilMs - now) > 0;
     if (!flashOn) s_flashText[0] = '\0';
 
@@ -660,7 +843,9 @@ void update(float dt) {
         if (strstr(g_state.sessions[i].state, "awaiting") != nullptr) { anyAwaitingNow = true; break; }
     }
     unlockState();
-    if (anyAwaitingNow && s_page != 0) {
+    // The CAM page is exempt: yanking the strip away mid-framing loses the
+    // shot, and the user composing a photo is at the desk anyway.
+    if (anyAwaitingNow && s_page != 0 && s_page != PAGE_CAM) {
         s_page = 0;
     }
 
@@ -734,6 +919,16 @@ void update(float dt) {
                  focus.state, focus.projectName, focus.caption,
                  focused, sess);
     }
+    // Viewfinder frames stream outside the signature: the canvas buffer is
+    // updated in place and invalidated, no widget churn.
+    if (s_page == PAGE_CAM && s_camCanvas && s_camBuf &&
+        (uint32_t)(now - s_camLastFrameMs) >= CAM_PREVIEW_INTERVAL_MS) {
+        s_camLastFrameMs = now;
+        if (Camera::grabPreview(s_camBuf, CAM_VIEW_W, CAM_VIEW_H)) {
+            lv_obj_invalidate(s_camCanvas);
+        }
+    }
+
     if (strcmp(sig, s_lastSig) == 0) return;
     strncpy(s_lastSig, sig, sizeof(s_lastSig) - 1);
     s_lastSig[sizeof(s_lastSig) - 1] = '\0';
@@ -741,7 +936,8 @@ void update(float dt) {
     lv_obj_set_style_text_color(
         s_hdrWifi,
         lv_color_hex(wsUp ? Theme::StatusGreen : (wifiUp ? Theme::StatusAmber : Theme::StatusRed)), 0);
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < pageCount(); i++) {
+        if (!s_tabs[i]) continue;
         lv_obj_set_style_text_color(s_tabs[i],
             lv_color_hex(i == s_page ? Theme::StatusCyan : Theme::HUDDim), 0);
     }
@@ -761,14 +957,27 @@ void update(float dt) {
     }
 
     lv_obj_clean(s_body);
+    s_camCanvas = nullptr;  // owned by s_body — gone with the clean
     {
         lockState();
         bool connectedNow = g_state.wsConnected;
         unlockState();
         if (s_page == 0) renderFocusPage(focus, connectedNow);
         else if (s_page == 1) renderUsagePage();
+        else if (s_page == PAGE_CAM) renderCameraPage();
         else renderSessionsPage();
     }
+}
+
+void onPhotoResult(bool delivered, const char* detail) {
+    // Always surface the outcome — a shutter press that shows nothing is
+    // indistinguishable from a dead camera (same rule as voice_result).
+    char note[32];
+    if (delivered) snprintf(note, sizeof(note), "photo sent");
+    else snprintf(note, sizeof(note), "photo failed%s%.14s",
+                  detail && detail[0] ? ": " : "", detail ? detail : "");
+    Utf8::utf8TrimEnd(note);
+    flash(note);
 }
 
 }  // namespace Ticker

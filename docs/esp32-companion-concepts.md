@@ -150,7 +150,69 @@ and marks it in Sessions. A genuine response-wait still outranks focus. External
 focus broadcasts also move the Knob carousel once without fighting subsequent
 local rotation.
 
-**Exploratory**: the optional GC0308 camera could provide on-device presence detection for display wake (never streamed, never stored — on-device only as a hard privacy line). Deferred regardless: the camera's SCCB lines share the I2C bus with touch, the PMU, and the light sensor, so capture would degrade touch responsiveness.
+### CAM page — show-and-tell capture (implemented 2026-07-27)
+
+The camera shield faces **backward**, which killed the original presence idea
+(you can't watch a user with a rear camera) and revealed the right role: the
+fleet's first **image input channel**. Point the strip at a whiteboard, an app
+screen, an error dialog; press the shutter; the target session gets a prompt
+with the saved file path — the visual counterpart of the knob's dictation.
+
+- **Wire**: one `POST /esp32/photo` carrying the whole JPEG. Chunking was
+  tried first (a `photo_begin` / frames / `photo_end` clone of the voice
+  bracket) and lost photos two ways on this board — the HWCDC drops whole
+  64-byte FIFO blocks, costing ~2 of 10 base64 lines per upload regardless of
+  pacing, and the WS client's TX jammed after the first binary frame. A JPEG
+  with a hole is worthless, so the byte-count guard refused them all. TCP
+  already solves ordering and retransmit, so the image rides a plain HTTP
+  body; the chunked paths remain the no-WiFi fallback behind a 20 s deadline
+  and an abort diag.
+- **Daemon**: assembles the JPEG under `~/.agentdeck/photos/` (retention-swept),
+  routes `Look at the photo … {path}` through the same delivery ladder as
+  dictated text (observed → terminal injection, managed → `send_prompt`),
+  falls back to the daemon-focused session when the strip sent no target, and
+  answers `photo_result` — surfaced as strip feedback like `voice_result` is
+  on the knob. Template override: `photo.promptTemplate` in settings.json.
+  Node daemon only (the injection rung is CLI-tier; matches voice).
+- **UI — the shield's presence picks the unit's role.** Camera found at boot
+  means this is the handheld unit and it comes up as **Pocket**, a portrait
+  222×480 phone UI: LVGL pointer indev (so the session list scrolls with
+  momentum instead of the landscape gesture layer's page flips), tap a card to
+  focus, tap the CAM target bar to cycle which session receives the shot,
+  bottom nav plus rocker for tabs, BOOT for camera/shutter. No camera keeps the
+  landscape Focus Strip and its CAM-less three pages. One binary decides at
+  runtime. SCCB rides Wire's I2C port (no second driver on the shared bus);
+  pixel data uses the dedicated DVP pins, so the earlier "capture degrades
+  touch" concern shrank to camera bring-up only.
+- **Orientation is a measured board fact, not a guess.** The sensor sits 180°
+  to the panel in the portrait pose — established by cycling the rotation live
+  on the viewfinder, then frozen as a constant. Flipping a CW/CCW flag moves
+  the image 180°, so it can never correct a 90° error; three reflashes learned
+  that before the rotation became something the eye could land in one pass.
+  Because 180° preserves the frame's axes, a capture stays 480×320 while the
+  portrait viewfinder centre-crops it — the photo is wider than what was
+  framed.
+- **Sensor honesty**: the on-hand GC0308 is VGA-class fixed-focus — good for
+  whiteboards, layouts, and big error text; not for reading code off a
+  monitor. The OV5640 (5 MP, autofocus) drops into the same POGO header and
+  the firmware path is sensor-agnostic; swap the shield when that matters.
+- **Power discipline**: the camera draws power only between CAM-page entry and
+  exit (boot probes then deinits). The first build kept the sensor + 20 MHz
+  XCLK running around the clock, and the moment WiFi TX started the 3.3 V
+  rail browned out into a reboot loop. The board-level WiFi join fence that
+  fell out of that incident is recorded in
+  [hardware-compatibility](hardware-compatibility.md) operational exceptions.
+
+**Exploratory — presence moved to the ips10**: on-device presence detection
+(never streamed, never stored — on-device only as a hard privacy line) needs a
+camera that faces the user. The JC8012P4A1C has one — a front MIPI-CSI 1080p
+module — and its ESP32-P4 is the only SoC in the fleet with a hardware ISP.
+Sketch: a boolean `peripheral_event {kind:"presence"}` feeding the attention
+escalation ladder (user at desk → the strip shows waits quietly; user away →
+the knob's pager chime takes over). Blocked on sensor identification (vendor
+manual says only "MIPI CSI 1080P"; community reports split between SC2336 and
+OV02C10) and on P4 camera driver support in the Arduino toolchain — record in
+the gap table before implementation.
 
 ## Implementation record and remaining gaps
 
@@ -168,6 +230,8 @@ work rather than hidden requirements of the current UI.
 | ~~No device→daemon peripheral frame~~ — closed for `peripheral_event` + NFC/IR receive/mapping. Daemon→device `peripheral_command`, IR replay, and sub-GHz capture remain open | `shared/src/protocol.ts` + daemon mapping config | RX floor done; actuation/sub-GHz later |
 | No BLE link on either end — firmware exposes no GATT service, and the mobile apps have no BLE central/relay role (plus the app-side relay needs a product-tier decision) | `esp32/` + `apple/` / `android/` | Phone-paired portable transport |
 | ~~No audio streaming/STT/TTS path~~ — closed: binary WS + base64 serial PCM, host STT→prompt, host TTS→board speaker, and explicit result/error feedback ship | `esp32/src/net/` + daemon voice pipeline | Done |
+| ~~No image input channel~~ — closed 2026-07-27: `photo_begin`/`photo_end` + binary WS (base64 `photo_chunk` over serial), daemon save + prompt routing + `photo_result`, strip CAM page. Node daemon only, like voice | `esp32/src/camera/` + `bridge/src/device-photo.ts` | Done (strip) |
+| ips10 presence: front-camera sensor part unidentified (SCCB probe needed) and no P4 camera driver in the Arduino toolchain yet — presence `peripheral_event` blocked on both | `esp32/` ips10 env + `shared/src/protocol.ts` kind | Presence phase |
 | `apme_*` events remain outside the ESP32 forward filter. The shipping Focus Strip intentionally uses Focus/Usage/Sessions; forwarding is needed only if an exploratory APME page is revived | `SERIAL_FORWARDED_EVENTS` in `shared/src/protocol.ts` | Future only |
 | ~~Session-bridge-only `voice` command blocked daemon devices~~ — replaced by daemon-owned `voice_begin`/`voice_end` capture and reply routing | `bridge/src/daemon-server.ts` | Done |
 | New-board bring-up is a ~10-step compile-time checklist (board header, env, partitions, `display.cpp`, `main.cpp`, two duplicated board-string ladders, OTA list, docs) | `esp32/` | Both boards |

@@ -46,12 +46,13 @@ import {
 import { resolveSessionIdPrefix } from './session-id-resolve.js';
 import { injectObservedSelection, injectObservedText } from './observed-inject.js';
 import {
-  setSerialCommandSink, setSerialVoiceSink, sendSerialJson,
+  setSerialCommandSink, setSerialVoiceSink, setSerialQuiesceCheck, sendSerialJson,
   serialPortConnected, serialPortCapabilities, serialPortBoard,
   liveSerialPortForBoard, serialBoardsAttached,
 } from './esp32-serial.js';
 import { parsePeripheralMappings, resolvePeripheralAction, commandForAction } from './peripheral-mapping.js';
 import { DeviceVoiceCollector } from './device-voice.js';
+import { DevicePhotoCollector } from './device-photo.js';
 import { transcribeWithHelper, synthesizeWavWithHelper } from './foundation-models-helper.js';
 import { enqueueOpenCodeCommand, pollOpenCodeCommands } from './opencode-steering.js';
 import { runSessionReview, reviewSnapshot } from './review-runner.js';
@@ -179,6 +180,8 @@ interface WifiEsp32Device {
   usbPowered?: boolean;
   batteryDiag?: number;
   touchReady?: boolean;
+  touchDownSamples?: number;
+  touchGestures?: number;
   alsReady?: boolean;
   lastSeenMs: number;
 }
@@ -314,6 +317,8 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
     usbPowered: typeof d.usbPowered === 'boolean' ? d.usbPowered : undefined,
     batteryDiag: typeof d.batteryDiag === 'number' ? d.batteryDiag : undefined,
     touchReady: typeof d.touchReady === 'boolean' ? d.touchReady : undefined,
+    touchDownSamples: typeof d.touchDownSamples === 'number' ? d.touchDownSamples : undefined,
+    touchGestures: typeof d.touchGestures === 'number' ? d.touchGestures : undefined,
     alsReady: typeof d.alsReady === 'boolean' ? d.alsReady : undefined,
     lastSeenMs: Date.now(),
   });
@@ -1148,6 +1153,53 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         ],
         modules: moduleHealthProvider(),
       }));
+      return;
+    }
+    // Device photo upload — a whole JPEG as one request body. The chunked
+    // WS/serial path is loss-prone on this hardware (HWCDC drops 64-byte
+    // blocks; the board's WS TX jammed after the first binary frame), and a
+    // partial JPEG is worthless, so a board with WiFi posts the image over
+    // plain TCP and lets the kernel handle ordering and retransmit.
+    if (req.method === 'POST' && pathname === '/esp32/photo') {
+      const ip = req.socket.remoteAddress ?? '';
+      if (!isLocalConnection(ip)) {
+        const token = parsedUrl.searchParams.get('token') ?? '';
+        if (!validateToken(token)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+      }
+      (async () => {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        for await (const chunk of req) {
+          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          total += buf.length;
+          if (total > 8 * 1024 * 1024) throw new Error('photo_too_large');
+          chunks.push(buf);
+        }
+        if (total === 0) throw new Error('empty_body');
+        const jpeg = Buffer.concat(chunks);
+        const board = parsedUrl.searchParams.get('board') ?? 'esp32';
+        const saved = devicePhoto.saveDirect(jpeg, {
+          board,
+          sessionId: parsedUrl.searchParams.get('sessionId') ?? '',
+          width: Number(parsedUrl.searchParams.get('w') ?? 0) || 0,
+          height: Number(parsedUrl.searchParams.get('h') ?? 0) || 0,
+        });
+        // Reply on the board's own transport (serial when it is cabled), the
+        // same way the chunked path did — the HTTP response only confirms
+        // receipt of the bytes.
+        await finishPhotoCapture(saved, photoResultSinkFor(board));
+        return { ok: true, bytes: saved.bytes, path: saved.path };
+      })().then((result) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      }).catch((err) => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      });
       return;
     }
     if (req.method === 'POST' && pathname === '/esp32/ota') {
@@ -2411,11 +2463,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       .map((s) => {
         // Steering feedback for observed Claude sessions: devices render
         // "stopping at next tool" / queued-directive badges from these.
-        if (!s.id.startsWith('observed:claude:')) return s;
+        if (!s.id.startsWith('observed:claude:')) return { ...s, liveAnswerable: false };
+        // Can this daemon type into the session's live prompt? Only observed
+        // Claude routes select_option to the injector, and only with a host to
+        // aim at. Sent in both polarities — decks read it to decide whether an
+        // AskUserQuestion option is a button or an inert mirror of the terminal.
+        const liveAnswerable = Boolean(s.tty || s.appName);
         const snap = steeringSnapshot(s.id.slice('observed:claude:'.length));
-        if (!snap.stopRequested && snap.queuedDirectives === 0) return s;
         return {
           ...s,
+          liveAnswerable,
           ...(snap.stopRequested ? { stopRequested: true } : {}),
           ...(snap.queuedDirectives > 0 ? { queuedDirectives: snap.queuedDirectives } : {}),
         };
@@ -2823,6 +2880,23 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       if (captured) void finishVoiceCapture(captured, stableSink(sender));
       return true; // consumed
     }
+    if (msg.type === 'photo_begin') {
+      devicePhoto.begin(sender, msg);
+      return true; // consumed
+    }
+    if (msg.type === 'photo_end') {
+      const captured = devicePhoto.end(sender, msg);
+      if (captured) {
+        void finishPhotoCapture(captured, stableSink(sender));
+      } else if ((msg as { cancel?: unknown }).cancel !== true) {
+        // Unlike PCM, a JPEG that lost frames is undecodable — tell the board
+        // instead of silently eating the shutter press.
+        try {
+          sender.send(JSON.stringify({ type: 'photo_result', delivered: false, error: 'empty_or_corrupt_capture' }));
+        } catch { /* client disconnecting */ }
+      }
+      return true; // consumed
+    }
     if (msg.type === 'query_session_timeline') {
       // Reply to THIS requester only with the session's recent timeline so a
       // device that connected mid-session can fill its Detail view on demand
@@ -3186,6 +3260,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // transcribes with Apple's on-device recognizer (bundled Swift helper) and
   // turns the text into a prompt for the session the board was pointing at.
   const deviceVoice = new DeviceVoiceCollector();
+  // A board sends a one-shot JPEG after its shutter press; the daemon saves it
+  // and routes a prompt referencing the file path to the target session.
+  const devicePhoto = new DevicePhotoCollector();
   /**
    * Reply router. The resolver lets a queued reply reach a board over whatever
    * transport is live *now*: a board plugged in over USB parks its radio and
@@ -3443,6 +3520,34 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Voice from a USB-attached board. Without this the mic worked only while the
   // board was on WiFi — and attaching USB parks WiFi, so plugging in to charge
   // silently removed the feature.
+  // Half-duplex guard: hold daemon→board serial writes while that port has an
+  // open photo capture (see flushNextWrite — full-duplex CDC drops blocks).
+  setSerialQuiesceCheck((port) => devicePhoto.isOpen(port));
+
+  /**
+   * Where a photo_result goes for an HTTP-uploaded photo: the request carries
+   * no socket to answer on, so resolve the board's live transport the same
+   * way a queued voice reply does (serial first, then its WiFi socket).
+   */
+  const photoResultSinkFor = (board: string): ReplySink => {
+    const port = liveSerialPortForBoard(board);
+    if (port) return serialSinkFor(port);
+    for (const [key, sock] of wifiEsp32Sockets) {
+      if (sock.readyState !== WebSocket.OPEN) continue;
+      if (wifiEsp32Devices.get(key)?.board === board || key === board) {
+        return stableSink(sock);
+      }
+    }
+    return {
+      send: () => {},
+      sendBinary: () => {},
+      isOpen: () => false,
+      capabilities: () => [],
+      describe: () => `http:${board}(no live transport)`,
+      deviceKey: () => board,
+    };
+  };
+
   setSerialVoiceSink((port, msg) => {
     if (msg.type === 'voice_begin') {
       deviceVoice.begin(port, msg);
@@ -3452,6 +3557,28 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     } else if (msg.type === 'voice_end') {
       const captured = deviceVoice.end(port, msg);
       if (captured) void finishVoiceCapture(captured, serialSinkFor(port));
+    } else if (msg.type === 'photo_begin') {
+      // Photo over USB: the strip is a desk fixture and usually powered from
+      // the host, which parks its radio — the camera must not go dead just
+      // because the board is on the cable it lives on.
+      devicePhoto.begin(port, msg);
+    } else if (msg.type === 'photo_chunk') {
+      const b64 = typeof msg.d === 'string' ? msg.d : '';
+      if (b64 && !devicePhoto.append(port, Buffer.from(b64, 'base64'))) {
+        // A chunk with no open capture means photo_begin was lost (torn
+        // serial line, board reset) — say so, or the drop is undiagnosable.
+        debug('photo', `orphan serial photo_chunk from ${port} (no open capture)`);
+      }
+    } else if (msg.type === 'photo_end') {
+      const captured = devicePhoto.end(port, msg);
+      if (captured) {
+        void finishPhotoCapture(captured, serialSinkFor(port));
+      } else if ((msg as { cancel?: unknown }).cancel !== true) {
+        try {
+          serialSinkFor(port).send(JSON.stringify(
+            { type: 'photo_result', delivered: false, error: 'empty_or_corrupt_capture' }));
+        } catch { /* port closing */ }
+      }
     }
   });
   /**
@@ -3536,13 +3663,93 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }
   };
 
-  core.wsServer.onBinary((data, sender) => {
-    if (!deviceVoice.append(sender, data)) {
-      debug('voice', `binary frame with no open utterance (${data.length} bytes) — ignored`);
+  /**
+   * Finish one captured photo: build the prompt that points the target session
+   * at the saved file, deliver it through the same ladder as dictated text
+   * (observed → terminal injection, managed → send_prompt), and tell the board
+   * what happened. Shared by the WS and serial paths for the same reason as
+   * finishVoiceCapture: one implementation or the transports drift.
+   */
+  const finishPhotoCapture = async (
+    captured: { path: string; sessionId: string; board: string; bytes: number },
+    sink: ReplySink,
+  ): Promise<void> => {
+    try {
+      // The strip aims at its own focus pick; when it sends none, fall back to
+      // the daemon's explicitly focused session rather than dropping the shot.
+      let sessionId = resolveDeviceSessionId(captured.sessionId);
+      if (!sessionId && userFocusedSessionId) sessionId = userFocusedSessionId;
+      const photoCfg = loadDaemonSettings().photo as { promptTemplate?: unknown } | undefined;
+      const template = typeof photoCfg?.promptTemplate === 'string'
+          && photoCfg.promptTemplate.includes('{path}')
+        ? photoCfg.promptTemplate
+        : 'Look at the photo I just captured for you on the AgentDeck device and respond: {path}';
+      const text = template.replace('{path}', captured.path);
+      let delivered = false;
+      let via: string | undefined;
+      let deliverReason: string | undefined;
+      if (sessionId) {
+        if (sessionId.startsWith('observed:')) {
+          // Any observed agent: type the prompt into the terminal that owns the
+          // session — the same ladder dictated text uses.
+          const obs = passiveSessionObserver.collect([])
+            .find((s) => s.id === sessionId) as
+              { tty?: string; appName?: string } | undefined;
+          const r = await injectObservedText(
+            { tty: obs?.tty, appName: obs?.appName }, text);
+          delivered = r.ok;
+          via = r.via;
+          deliverReason = r.reason;
+        } else {
+          handleDeviceCommand({
+            type: 'session_command',
+            sessionId,
+            command: { type: 'send_prompt', text },
+          } as unknown as PluginCommand);
+          delivered = true;
+          via = 'session-bridge';
+        }
+      } else {
+        deliverReason = 'no_target_session';
+      }
+      // Info level, like voice: rare user-initiated events whose silence made
+      // "the board said sent but nothing happened" undiagnosable.
+      log(`[agentdeck] photo: ${captured.bytes}B -> ${sessionId.slice(0, 32) || '(no session)'}`
+        + ` delivered=${delivered}${via ? ` via ${via}` : ''}`
+        + `${deliverReason ? ` (${deliverReason})` : ''} [${captured.path}]`);
+      try {
+        sink.send(JSON.stringify({
+          type: 'photo_result', delivered, sessionId, bytes: captured.bytes,
+          ...(via ? { via } : {}),
+          ...(deliverReason ? { deliverReason } : {}),
+        }));
+      } catch { /* client disconnecting */ }
+    } catch (err) {
+      const reason = String(err).slice(0, 160);
+      debug('photo', `delivery failed: ${reason}`);
+      try {
+        sink.send(JSON.stringify({ type: 'photo_result', delivered: false, error: reason }));
+      } catch { /* client disconnecting */ }
     }
+  };
+
+  core.wsServer.onBinary((data, sender) => {
+    // A connection holds an open voice utterance OR an open photo, never both
+    // (protocol contract) — offer the unenveloped frame to each in turn.
+    if (deviceVoice.append(sender, data)) return;
+    if (devicePhoto.append(sender, data)) return;
+    debug('voice', `binary frame with no open utterance/capture (${data.length} bytes) — ignored`);
   });
   setInterval(() => {
     deviceVoice.sweep();
+    for (const conn of devicePhoto.sweep()) {
+      // Tell the board its capture died (lost photo_end): the strip otherwise
+      // has no way to distinguish "delivered" from "evaporated in transit".
+      try {
+        const sink = typeof conn === 'string' ? serialSinkFor(conn) : stableSink(conn as WebSocket);
+        sink.send(JSON.stringify({ type: 'photo_result', delivered: false, error: 'capture_timeout' }));
+      } catch { /* transport gone too */ }
+    }
     // Keep armings alive while their session is still working: a dictated
     // question that starts a long task must still get its answer read out when
     // the task finally finishes, and the TTL alone would have expired first.

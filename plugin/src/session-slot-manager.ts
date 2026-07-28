@@ -844,11 +844,21 @@ export class SessionSlotManager {
         if (idx === 1) return { type: 'option', option: { label: 'Deny', shortcut: 'n', index: 1 }, optionIndex: 1 };
         return this.awaitingStatusCard(session, idx - 2, false);
       }
-      // AskUserQuestion carries real labels even though a hook-observed
-      // session has no response channel. Render each as an inert status tile
-      // so the deck mirrors the terminal without pretending taps will work.
+      // AskUserQuestion. A hook-observed session has no response channel of its
+      // own, but the CLI daemon can type the selection into the session's own
+      // terminal (observed-inject.ts) — `liveAnswerable` says it found a host to
+      // aim at. Pressable only then: without it the deck must mirror the
+      // terminal rather than pretend taps will work (the App Store Swift daemon
+      // cannot inject at all, so it never sets the flag).
       const displayOption = session?.options?.[idx];
       if (displayOption) {
+        if (session?.liveAnswerable) {
+          return {
+            type: 'option',
+            option: { label: displayOption.label, shortcut: displayOption.shortcut, index: idx },
+            optionIndex: idx,
+          };
+        }
         return {
           type: 'status',
           label: truncateStr(displayOption.label, 16),

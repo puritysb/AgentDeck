@@ -103,7 +103,7 @@ describe('D200H observed session detail', () => {
     expect(svgs).not.toContain('ALLOW');
   });
 
-  it('AskUserQuestion options are visible but inert for an observed session', () => {
+  it('AskUserQuestion options are visible but inert without a live-answer host', () => {
     const cells = detailCells(observedStateEvt({
       state: 'awaiting_option',
       question: 'Which cleanup window?',
@@ -116,6 +116,26 @@ describe('D200H observed session detail', () => {
     const svgs = [...cells.values()].map((c) => c.svg).join('');
     expect(svgs).toContain('7 days');
     expect(svgs).toContain('14 days');
+  });
+
+  it('liveAnswerable turns the same options into select_option presses', () => {
+    const cells = detailCells(observedStateEvt({
+      state: 'awaiting_option',
+      question: 'Which cleanup window?',
+      liveAnswerable: true,
+      options: [
+        { index: 0, label: '7 days' },
+        { index: 1, label: '14 days' },
+      ],
+    }));
+    const selects = commandsOf(cells).filter((c) => c.type === 'select_option');
+    expect(selects).toHaveLength(2);
+    // Observed answering injects on select_option only — a shortcut-`respond`
+    // has no meaning there, so it must not be emitted even though the prompt
+    // is not a navigable PTY.
+    expect(commandsOf(cells).some((c) => c.type === 'respond')).toBe(false);
+    expect(selects.map((c) => c.index)).toEqual([0, 1]);
+    expect(selects.every((c) => c.sessionId === 'observed:claude:uuid-1')).toBe(true);
   });
 
   it('codex observed idle: REVIEW only — steering stays inert (notify-only hooks)', () => {

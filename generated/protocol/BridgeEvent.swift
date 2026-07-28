@@ -2097,6 +2097,13 @@ struct ADSessionInfo: Codable, Equatable {
     var goal: String?
     var groupSize: Double?
     var id: String
+    /// Observed sessions: this daemon can answer the session's LIVE on-screen prompt by typing
+    /// into its terminal/app host (`observed-inject.ts`), so a deck may render its `options` as
+    /// pressable instead of inert. Absent/false means no reachable host was found, or the daemon
+    /// cannot inject at all (App Store Swift daemon — no subprocess). Emitted explicitly in BOTH
+    /// polarities: a flag only ever sent when true latches one-way under retain-on-absent
+    /// merging.
+    var liveAnswerable: Bool?
     var modelName: String?
     var options: [ADPromptOption]?
     var pid: Double?
@@ -2136,6 +2143,7 @@ struct ADSessionInfo: Codable, Equatable {
         case goal = "goal"
         case groupSize = "groupSize"
         case id = "id"
+        case liveAnswerable = "liveAnswerable"
         case modelName = "modelName"
         case options = "options"
         case pid = "pid"
@@ -2188,6 +2196,7 @@ extension ADSessionInfo {
         goal: String?? = nil,
         groupSize: Double?? = nil,
         id: String? = nil,
+        liveAnswerable: Bool?? = nil,
         modelName: String?? = nil,
         options: [ADPromptOption]?? = nil,
         pid: Double?? = nil,
@@ -2220,6 +2229,7 @@ extension ADSessionInfo {
             goal: goal ?? self.goal,
             groupSize: groupSize ?? self.groupSize,
             id: id ?? self.id,
+            liveAnswerable: liveAnswerable ?? self.liveAnswerable,
             modelName: modelName ?? self.modelName,
             options: options ?? self.options,
             pid: pid ?? self.pid,

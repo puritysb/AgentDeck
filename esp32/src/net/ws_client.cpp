@@ -1,14 +1,23 @@
 #include "ws_client.h"
 #include "serial_client.h"
+#include "wifi_manager.h"
 #include "protocol.h"
 #include "config.h"
+// Board header, not just -D flags: BOARD_HAS_DVP_CAMERA lives in
+// boards/board_t_display_pro.h. Without this include the photo upload
+// compiled to its no-op stub on the very board that has the camera —
+// every shutter press reported "no link".
+#include "../../boards/board_config.h"
 #include "../state/agent_state.h"
-#if defined(BOARD_T_EMBED)
+#if defined(BOARD_HAS_SPEAKER)
 #include "../audio/speaker_playback.h"
 #endif
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#if defined(BOARD_HAS_DVP_CAMERA)
+#include <HTTPClient.h>
+#endif
 #include <WebSocketsClient.h>
 #include <Arduino.h>
 #include <mbedtls/base64.h>
@@ -53,6 +62,39 @@ static int audioCount = 0;
 static SemaphoreHandle_t audioMutex = nullptr;
 #endif
 
+// ── photo upload (UI shutter → network core) ──
+// One JPEG at a time, heap-owned (frame2jpg allocates; on a PSRAM-enabled S3
+// the blob lands in PSRAM, so no DRAM board-guard concern beyond the small
+// state below). Board-guarded: only a camera board can ever start an upload.
+#if defined(BOARD_HAS_DVP_CAMERA)
+enum class PhotoPhase : uint8_t { IDLE, BEGIN, DATA, END };
+static uint8_t* photoBuf = nullptr;
+static size_t photoLen = 0;
+static size_t photoOff = 0;
+static char photoSession[36] = {0};
+static int photoW = 0, photoH = 0;
+// HTTP upload path (preferred when WiFi is up — see queuePhotoHttpUpload).
+static bool photoHttpPending = false;
+static char photoHttpIp[16] = {0};
+static uint16_t photoHttpPort = 0;
+static char photoHttpToken[40] = {0};
+static PhotoPhase photoPhase = PhotoPhase::IDLE;
+static bool photoViaWs = false;
+static uint32_t photoStartMs = 0;
+// Hard deadline: a wedged transport (the WS TX jam) must not hold the shutter
+// hostage — after this the upload aborts and the next snap starts clean.
+static constexpr uint32_t PHOTO_UPLOAD_DEADLINE_MS = 20000;
+static SemaphoreHandle_t photoMutex = nullptr;
+// Raw bytes per frame: 2048 on both transports — the size the voice path
+// proved on this library (a first 4096 WS frame went out and the socket then
+// went quiet, 2026-07-27). Serial additionally needs the base64 line to stay
+// inside the 3 KB buffer.
+static constexpr size_t PHOTO_WS_CHUNK = 2048;
+static constexpr size_t PHOTO_SERIAL_CHUNK = 2048;
+// Consecutive send failures tolerated before aborting the upload.
+static constexpr int PHOTO_MAX_SEND_FAILURES = 25;
+#endif
+
 static void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
     switch (type) {
         case WStype_DISCONNECTED:
@@ -94,7 +136,7 @@ static void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
             break;
 
         case WStype_BIN:
-#if defined(BOARD_T_EMBED)
+#if defined(BOARD_HAS_SPEAKER)
             // Inbound binary is spoken-reply PCM, bracketed by
             // audio_play_begin/end. Dropped when the ring is full: a late frame
             // is worse than a gap, and blocking here would stall WS reads.
@@ -128,7 +170,280 @@ void wsInit() {
 #if defined(BOARD_T_EMBED)
     if (!audioMutex) audioMutex = xSemaphoreCreateMutex();
 #endif
+#if defined(BOARD_HAS_DVP_CAMERA)
+    if (!photoMutex) photoMutex = xSemaphoreCreateMutex();
+#endif
 }
+
+#if !defined(BOARD_HAS_DVP_CAMERA)
+bool queuePhotoUpload(uint8_t*, size_t, const char*, int, int) { return false; }
+bool queuePhotoHttpUpload(uint8_t*, size_t, const char*, int, int) { return false; }
+bool photoUploadBusy() { return false; }
+#else
+bool queuePhotoUpload(uint8_t* jpeg, size_t len, const char* sessionId,
+                      int width, int height) {
+    if (!jpeg || len == 0 || !photoMutex) return false;
+    bool queued = false;
+    xSemaphoreTake(photoMutex, portMAX_DELAY);
+    if (photoPhase == PhotoPhase::IDLE && (connected || Net::serialConnected())) {
+        photoBuf = jpeg;
+        photoLen = len;
+        photoOff = 0;
+        photoW = width;
+        photoH = height;
+        strncpy(photoSession, sessionId ? sessionId : "", sizeof(photoSession) - 1);
+        photoSession[sizeof(photoSession) - 1] = '\0';
+        // Latch the transport now: a link that flips mid-upload yields a
+        // corrupt JPEG, so a dropped latch aborts instead of migrating.
+        // Serial first, mirroring the fleet's single-path preference — and
+        // empirically: this board's WS TX jammed after the first binary chunk
+        // on consecutive uploads (socket closed ~13 s later), while the paced
+        // serial line carries keepalives without a miss. The base64 cost is
+        // irrelevant on native-USB CDC.
+        photoViaWs = connected && !Net::serialConnected();
+        photoStartMs = millis();
+        photoPhase = PhotoPhase::BEGIN;
+        queued = true;
+    }
+    xSemaphoreGive(photoMutex);
+    return queued;
+}
+
+bool photoUploadBusy() {
+    if (!photoMutex) return false;
+    xSemaphoreTake(photoMutex, portMAX_DELAY);
+    bool busy = photoPhase != PhotoPhase::IDLE || photoHttpPending;
+    xSemaphoreGive(photoMutex);
+    return busy;
+}
+
+bool queuePhotoHttpUpload(uint8_t* jpeg, size_t len, const char* sessionId,
+                          int width, int height) {
+    if (!jpeg || len == 0 || !photoMutex) return false;
+    if (!Net::wifiConnected()) return false;
+    // Endpoint: prefer the address this client actually connected to — a
+    // board that just rebooted has a live WS long before g_state carries a
+    // bridge endpoint, and the first snap must not silently fall back to the
+    // lossy serial path.
+    char ip[16] = {0};
+    uint16_t port = 0;
+    char token[40] = {0};
+    if (savedIp[0] && savedPort != 0) {
+        strncpy(ip, savedIp, sizeof(ip) - 1);
+        port = savedPort;
+        strncpy(token, savedToken, sizeof(token) - 1);
+    } else {
+        lockState();
+        strncpy(ip, g_state.bridgeIp, sizeof(ip) - 1); ip[sizeof(ip) - 1] = '\0';
+        port = g_state.bridgePort;
+        strncpy(token, g_state.authToken, sizeof(token) - 1); token[sizeof(token) - 1] = '\0';
+        unlockState();
+    }
+    if (!ip[0] || port == 0) {
+        Serial.println("[Photo] no bridge endpoint for HTTP upload");
+        return false;
+    }
+
+    bool taken = false;
+    xSemaphoreTake(photoMutex, portMAX_DELAY);
+    if (photoPhase == PhotoPhase::IDLE && !photoHttpPending) {
+        photoBuf = jpeg;
+        photoLen = len;
+        photoW = width;
+        photoH = height;
+        strncpy(photoSession, sessionId ? sessionId : "", sizeof(photoSession) - 1);
+        photoSession[sizeof(photoSession) - 1] = '\0';
+        strncpy(photoHttpIp, ip, sizeof(photoHttpIp) - 1);
+        photoHttpPort = port;
+        strncpy(photoHttpToken, token, sizeof(photoHttpToken) - 1);
+        photoHttpPending = true;
+        photoStartMs = millis();
+        taken = true;
+    }
+    xSemaphoreGive(photoMutex);
+    return taken;
+}
+
+// Perform the pending HTTP upload on the network core. Blocking for the
+// duration of the POST — acceptable there (the UI core keeps rendering) and
+// far simpler than a chunk/ack state machine.
+static void pumpPhotoHttp() {
+    if (!photoMutex || !photoHttpPending) return;
+    xSemaphoreTake(photoMutex, portMAX_DELAY);
+    uint8_t* buf = photoBuf;
+    size_t len = photoLen;
+    char url[160];
+    snprintf(url, sizeof(url),
+             "http://%s:%u/esp32/photo?board=t_display_pro&sessionId=%s&w=%d&h=%d&token=%s",
+             photoHttpIp, (unsigned)photoHttpPort, photoSession,
+             photoW, photoH, photoHttpToken);
+    xSemaphoreGive(photoMutex);
+    if (!buf || len == 0) { photoHttpPending = false; return; }
+
+    HTTPClient http;
+    WiFiClient client;
+    int code = -1;
+    if (http.begin(client, url)) {
+        http.setTimeout(15000);
+        http.addHeader("Content-Type", "image/jpeg");
+        code = http.POST(buf, len);
+        http.end();
+    }
+    Serial.printf("[Photo] HTTP upload %u bytes -> %d\n", (unsigned)len, code);
+    if (code != 200) {
+        // The daemon never saw a complete image; say so on the transport it
+        // does read, so the board is not left claiming success.
+        char diag[120];
+        snprintf(diag, sizeof(diag),
+                 "{\"type\":\"photo_abort\",\"reason\":\"http_%d\",\"total\":%u}",
+                 code, (unsigned)len);
+        queueOutbound(diag);
+    }
+    xSemaphoreTake(photoMutex, portMAX_DELAY);
+    free(photoBuf);
+    photoBuf = nullptr;
+    photoLen = 0;
+    photoHttpPending = false;
+    xSemaphoreGive(photoMutex);
+}
+
+// Drain one slice of the active photo upload on CORE_NETWORK. A few chunks per
+// call keeps the WS client serviced (ping/pong) instead of blocking on a full
+// blob write.
+static void pumpPhoto() {
+    if (!photoMutex) return;
+    xSemaphoreTake(photoMutex, portMAX_DELAY);
+    PhotoPhase phase = photoPhase;
+    xSemaphoreGive(photoMutex);
+    if (phase == PhotoPhase::IDLE) return;
+
+    // Latched transport died mid-upload → abort and free (the daemon's
+    // capture TTL sweeps the half-assembled remainder). The abort reason is
+    // reported as a JSON diag frame so it lands in the daemon's log — a board
+    // print never leaves the desk, which made the first WS stall (one frame
+    // then silence) undiagnosable from the host side.
+    bool transportUp = photoViaWs ? connected : Net::serialConnected();
+    if ((uint32_t)(millis() - photoStartMs) > PHOTO_UPLOAD_DEADLINE_MS) {
+        Serial.println("[Photo] upload deadline exceeded — aborted");
+        char diag[120];
+        snprintf(diag, sizeof(diag),
+                 "{\"type\":\"photo_abort\",\"reason\":\"deadline\","
+                 "\"viaWs\":%s,\"sent\":%u,\"total\":%u}",
+                 photoViaWs ? "true" : "false",
+                 (unsigned)photoOff, (unsigned)photoLen);
+        queueOutbound(diag);
+        xSemaphoreTake(photoMutex, portMAX_DELAY);
+        free(photoBuf);
+        photoBuf = nullptr;
+        photoPhase = PhotoPhase::IDLE;
+        xSemaphoreGive(photoMutex);
+        return;
+    }
+    if (!transportUp) {
+        Serial.println("[Photo] transport lost mid-upload — aborted");
+        char diag[120];
+        snprintf(diag, sizeof(diag),
+                 "{\"type\":\"photo_abort\",\"reason\":\"transport_lost\","
+                 "\"viaWs\":%s,\"sent\":%u,\"total\":%u}",
+                 photoViaWs ? "true" : "false",
+                 (unsigned)photoOff, (unsigned)photoLen);
+        queueOutbound(diag);
+        xSemaphoreTake(photoMutex, portMAX_DELAY);
+        free(photoBuf);
+        photoBuf = nullptr;
+        photoPhase = PhotoPhase::IDLE;
+        xSemaphoreGive(photoMutex);
+        return;
+    }
+
+    if (phase == PhotoPhase::BEGIN) {
+        char frame[200];
+        // Only the strip defines BOARD_HAS_DVP_CAMERA today; if a second camera
+        // board ever lands, lift the board string from the device_info ladder.
+        snprintf(frame, sizeof(frame),
+                 "{\"type\":\"photo_begin\",\"board\":\"t_display_pro\",\"format\":\"jpeg\","
+                 "\"width\":%d,\"height\":%d,\"sessionId\":\"%s\"}",
+                 photoW, photoH, photoSession);
+        if (photoViaWs) ws.sendTXT(frame);
+        else Net::serialWriteJsonLine(frame);
+        photoPhase = PhotoPhase::DATA;
+        return;
+    }
+
+    if (phase == PhotoPhase::DATA) {
+        // One chunk per pump on both transports: serial pacing is a power
+        // lesson (2.8 KB bursts helped collapse the rail), WS pacing keeps
+        // the client library serviced between frames. Send failures do NOT
+        // advance the cursor — a lost chunk is a corrupt JPEG.
+        static int sendFailures = 0;
+        int slices = 1;
+        while (slices-- > 0 && photoOff < photoLen) {
+            size_t chunk = photoViaWs ? PHOTO_WS_CHUNK : PHOTO_SERIAL_CHUNK;
+            size_t n = photoLen - photoOff < chunk ? photoLen - photoOff : chunk;
+            if (photoViaWs) {
+                if (!ws.sendBIN(photoBuf + photoOff, n)) {
+                    if (++sendFailures >= PHOTO_MAX_SEND_FAILURES) {
+                        sendFailures = 0;
+                        char diag[120];
+                        snprintf(diag, sizeof(diag),
+                                 "{\"type\":\"photo_abort\",\"reason\":\"ws_send_failed\","
+                                 "\"sent\":%u,\"total\":%u}",
+                                 (unsigned)photoOff, (unsigned)photoLen);
+                        queueOutbound(diag);
+                        xSemaphoreTake(photoMutex, portMAX_DELAY);
+                        free(photoBuf);
+                        photoBuf = nullptr;
+                        photoPhase = PhotoPhase::IDLE;
+                        xSemaphoreGive(photoMutex);
+                    }
+                    return;  // retry the same chunk next pump
+                }
+                sendFailures = 0;
+            } else {
+                // Serial is line-delimited JSON: base64 the slice, same as
+                // audio_chunk. 2048 raw → 2732 b64 + envelope < 3 KB.
+                static char line[3072];
+                const char* prefix = "{\"type\":\"photo_chunk\",\"d\":\"";
+                size_t pfx = strlen(prefix);
+                memcpy(line, prefix, pfx);
+                size_t wrote = 0;
+                if (mbedtls_base64_encode((unsigned char*)line + pfx,
+                                          sizeof(line) - pfx - 4, &wrote,
+                                          photoBuf + photoOff, n) != 0) {
+                    break;  // encode failure — retry next pump
+                }
+                line[pfx + wrote] = '"';
+                line[pfx + wrote + 1] = '}';
+                line[pfx + wrote + 2] = '\0';
+                Net::serialWriteJsonLine(line);
+                // Inter-line breather: the CDC FIFO is shared with inbound
+                // daemon broadcasts, and back-to-back photo lines were the
+                // remaining hole window after per-block pacing.
+                vTaskDelay(pdMS_TO_TICKS(2));
+            }
+            photoOff += n;
+        }
+        if (photoOff >= photoLen) photoPhase = PhotoPhase::END;
+        return;
+    }
+
+    // END: close the capture with the byte count so the daemon can reject a
+    // frame-lossy assembly instead of prompting with a corrupt image.
+    char frame[96];
+    snprintf(frame, sizeof(frame),
+             "{\"type\":\"photo_end\",\"bytes\":%u}", (unsigned)photoLen);
+    if (photoViaWs) ws.sendTXT(frame);
+    else Net::serialWriteJsonLine(frame);
+    Serial.printf("[Photo] uploaded %u bytes (%s)\n",
+                  (unsigned)photoLen, photoViaWs ? "ws" : "serial");
+    xSemaphoreTake(photoMutex, portMAX_DELAY);
+    free(photoBuf);
+    photoBuf = nullptr;
+    photoLen = photoOff = 0;
+    photoPhase = PhotoPhase::IDLE;
+    xSemaphoreGive(photoMutex);
+}
+#endif  // BOARD_HAS_DVP_CAMERA
 
 #if !defined(BOARD_T_EMBED)
 // Boards without a microphone keep the API but never carry the buffer.
@@ -234,6 +549,11 @@ void pumpOutbound() {
         }
     }
 #endif  // BOARD_T_EMBED
+
+#if defined(BOARD_HAS_DVP_CAMERA)
+    pumpPhotoHttp();
+    pumpPhoto();
+#endif
 }
 
 void wsConnect(const char* ip, uint16_t port, const char* token) {

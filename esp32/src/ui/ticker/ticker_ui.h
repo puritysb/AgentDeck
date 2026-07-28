@@ -19,4 +19,7 @@ void buttonFeedback(uint8_t button);
 
 void onTouch(const Input::TouchEvent& event);
 
+/** Daemon's photo_result for a snap sent from the CAM page. */
+void onPhotoResult(bool delivered, const char* detail);
+
 }  // namespace Ticker

@@ -48,13 +48,17 @@ Installs made before 2026-07-26 targeted `~/.claude/settings.local.json`, which 
 
 **Mac App Store install:** [download AgentDeck Dashboard](https://apps.apple.com/app/id6784822497) for the standalone macOS app. Hooks are **opt-in** — the app shows a Settings → Claude Code Hooks pane with an "Enable Claude Code Hooks…" button that presents an NSAlert explaining what will be written, then an NSOpenPanel so the user explicitly selects `~/.claude/settings.json` (the same user-global file the CLI installer above writes). Only after that consent does AgentDeck write the hook entries (via a security-scoped bookmark). "Remove" in the same pane cleanly unregisters and revokes the bookmark. No command line required.
 
-## 2. Link Stream Deck Plugin
+## 2. Install the Stream Deck Plugin
+
+**Marketplace install (recommended):** open [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) and install it into the Stream Deck app. This is the released, DRM-processed build — nothing else on this page is required for it, though the plugin only shows sessions once the daemon is running (step 1 above, or the Mac App Store app).
+
+**From a checkout (development):**
 
 ```bash
 cd plugin && streamdeck link bound.serendipity.agentdeck.sdPlugin
 ```
 
-Creates a symlink in `~/Library/Application Support/com.elgato.StreamDeck/Plugins/`. **Restart the Stream Deck app** to load.
+Creates a symlink in `~/Library/Application Support/com.elgato.StreamDeck/Plugins/`. **Restart the Stream Deck app** to load. Unlink before installing the Marketplace build — two copies of the same UUID conflict.
 
 ## 3. Link `agentdeck` CLI
 

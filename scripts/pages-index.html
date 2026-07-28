@@ -12,6 +12,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentDeck — Stop Chatting. Start Steering.</title>
 <meta name="description" content="AgentDeck is a physical control surface for AI coding agents — one bridge, 24 display surfaces: Stream Deck+, e-ink readers, tablets, ESP32 displays, LED matrices, HID decks, and terminals.">
+<!--
+  Social cards. Absolute URLs are required: og:image is fetched by crawlers that
+  have no page context, so a relative path silently yields a bare link preview.
+-->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="AgentDeck">
+<meta property="og:url" content="https://puritysb.github.io/AgentDeck/">
+<meta property="og:title" content="AgentDeck — Stop Chatting. Start Steering.">
+<meta property="og:description" content="Put your AI coding agents on a physical control surface. One local daemon renders every Claude Code, Codex, and OpenCode session live across 24 surfaces — and lets you steer them.">
+<meta property="og:image" content="https://puritysb.github.io/AgentDeck/media/setup-full.jpg">
+<meta property="og:image:alt" content="A desk running AgentDeck across many surfaces at once — Stream Deck+, Ulanzi D200H, tablets, e-ink panels, ESP32 displays, and LED matrices">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AgentDeck — Stop Chatting. Start Steering.">
+<meta name="twitter:description" content="Put your AI coding agents on a physical control surface. One local daemon, 24 live display surfaces.">
+<meta name="twitter:image" content="https://puritysb.github.io/AgentDeck/media/setup-full.jpg">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -255,6 +270,7 @@
     </p>
     <div class="cta">
       <a class="btn btn-primary" href="https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497" data-i18n="cta.appstore">Get the Mac app</a>
+      <a class="btn btn-ghost" href="https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464" data-i18n="cta.streamdeck">Get the Stream Deck plugin</a>
       <a class="btn btn-ghost" href="hardware/" data-i18n="cta.devices">Explore the devices</a>
       <a class="btn btn-ghost" href="demo/" data-i18n="cta.demo">Try the live preview</a>
     </div>
@@ -381,6 +397,7 @@
         'hero.kicker': 'AI 코딩 에이전트를 위한 피지컬 컨트롤 서피스',
         'hero.lede': 'AgentDeck은 코딩 에이전트를 책상 위로 꺼내 놓습니다. 하나의 데몬 허브가 모든 세션을 24개 서피스에 라이브로 렌더링하고 — 키보드를 떠나지 않고 조종하게 해줍니다.',
         'cta.appstore': 'Mac 앱 받기',
+        'cta.streamdeck': 'Stream Deck 플러그인 받기',
         'cta.devices': '디바이스 살펴보기',
         'cta.demo': '라이브 프리뷰 열기',
         'stat.surfaces': '디스플레이 서피스',
@@ -407,6 +424,7 @@
         'hero.kicker': 'AIコーディングエージェントのためのフィジカルコントロールサーフェス',
         'hero.lede': 'AgentDeckはコーディングエージェントを机の上に連れ出します。ひとつのdaemonハブがすべてのセッションを24のサーフェスにライブ描画し — キーボードを離れずに操縦させてくれます。',
         'cta.appstore': 'Macアプリを入手',
+        'cta.streamdeck': 'Stream Deckプラグインを入手',
         'cta.devices': 'デバイスを見る',
         'cta.demo': 'ライブプレビューを試す',
         'stat.surfaces': 'ディスプレイサーフェス',

@@ -867,15 +867,19 @@ function buildDetail(
       // "Yes" / "Yes, and don't ask again" / "No, tell Claude"). Navigable TUI
       // (❯ cursor) → select_option so the daemon drives arrows+Enter;
       // non-navigable inline prompts → respond with the option's shortcut.
-      // Hook-observed AskUserQuestion options are display-only: there is no
-      // PTY/requestId response path, so never attach a command to those cells.
+      // Hook-observed AskUserQuestion has no PTY/requestId response path, but
+      // the CLI daemon can type the selection into the session's own terminal
+      // — `liveAnswerable` says it found a host. Always select_option there
+      // (the observed route injects on that command only); a shortcut-`respond`
+      // has no observed meaning. Without the flag the cells stay display-only.
+      const observedAnswerable = isObserved && Boolean(sess?.liveAnswerable);
       options.forEach((opt, i) => {
-        const command: ButtonCommand = navigable
+        const command: ButtonCommand = (navigable || observedAnswerable)
           ? { type: 'select_option', index: i, sessionId: sid }
           : { type: 'respond', value: opt.shortcut || opt.label?.charAt(0)?.toLowerCase() || String(i + 1) };
         cells.push({
           svg: renderOptionButton(opt, i),
-          action: isObserved ? null : { kind: 'command', command },
+          action: (isObserved && !observedAnswerable) ? null : { kind: 'command', command },
         });
       });
     } else if (isObserved && gateRequestId) {

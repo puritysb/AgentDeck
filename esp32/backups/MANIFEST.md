@@ -29,10 +29,25 @@ spot-verified against fresh re-reads at 0x300000 and 0xC80000.
 
 SHA-256 `9f6765e5e619627228a5e4dad0f1910b74f850d61960586add91a5e11ded66e1`
 
-Restore with:
+The second on-hand unit (GC0308 camera fitted) was captured the same way on
+2026-07-27, before its first AgentDeck flash. Its factory image differs from
+the no-camera unit's (camera demo firmware). Two capture gotchas from this
+unit: 460800 baud reads die mid-stream on this CDC (230400 is the reliable
+rate, same as uploads), and the **daemon must be stopped during capture** —
+its periodic probe of unidentified serial ports opens the port mid-read
+(pySerial "multiple access on port"). Spot-verified at 0x0, 0x300000,
+0xA00000, 0xC80000.
+
+| File | Layout | Size |
+|---|---|---:|
+| `t-display-s3-pro-camera-factory-16MB.bin` | Merged full-flash → `0x0` | 16,777,216 B |
+
+SHA-256 `57c9bd88043af637cb8a7e35d571a4b8704b83bcfd19a42d5a291a7ea790ebab`
+
+Restore either unit with:
 
 ```bash
-esptool --port <port> write-flash 0x0 esp32/backups/t-display-s3-pro-factory-16MB.bin
+esptool --port <port> write-flash 0x0 esp32/backups/<file>
 ```
 
 ## LilyGO T-Embed CC1101
