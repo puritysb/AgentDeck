@@ -7,6 +7,20 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.4
+
+### CLI and daemon
+
+- Ship the iDotMatrix and Timebox Mini Python BLE clients in
+  `@agentdeck/bridge` instead of resolving files that only exist in a source
+  checkout
+- Prepare optional BLE dependencies lazily under
+  `~/.agentdeck/python-ble`, preserving npm installs as PyPI-free and keeping
+  the environment across global package upgrades
+- Report missing or unprepared BLE support with `agentdeck ble status` /
+  `agentdeck ble setup` guidance instead of crashing on a missing Python
+  executable or silently disabling daemon sync
+
 ## 1.0.3
 
 ### CLI and daemon

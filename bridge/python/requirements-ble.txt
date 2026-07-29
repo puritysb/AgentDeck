@@ -1,0 +1,5 @@
+# Optional runtime for terminal-managed iDotMatrix and Timebox Mini BLE clients.
+# Installed lazily by `agentdeck ble setup`; npm install itself stays PyPI-free.
+bleak>=2.1,<3
+Pillow>=12.0,<13
+idotmatrix==0.0.9

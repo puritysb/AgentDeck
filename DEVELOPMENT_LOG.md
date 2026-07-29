@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-07-30 — npm 설치판 BLE 런타임을 패키징하고 사용자 데이터 경로로 분리
+
+이슈 #85에서 `npm install -g @agentdeck/setup` 설치판의
+`agentdeck idotmatrix scan`이 `@agentdeck/.venv/bin/python`을 spawn하다
+`ENOENT`로 종료되는 것이 확인됐다. npm `files` allowlist가 Python
+스크립트를 싣지 않으면서 소스 checkout 전용 `bridge/src/.../*.py` 경로와
+레포 루트 `.venv`를 CLI·데몬이 하드코딩한 것이 원인이었다. 같은 경로
+계약을 공유하던 Timebox Mini도 동일하게 고장난 상태였다.
+
+`@agentdeck/bridge`는 이제 iDotMatrix·Timebox·공용 Python 스크립트와
+`python/requirements-ble.txt`를 함께 배포한다. 명시적인 BLE 명령
+(`scan`, `brightness`, `test`, `sync`)이나 `agentdeck ble setup`을 실행할
+때만 Python 3.10+를 확인하고 `~/.agentdeck/python-ble/venv`에 선택적
+의존성을 설치한다. 따라서 일반 npm 설치와 데몬 부팅은 PyPI 네트워크
+상태에 의존하지 않고, 전역 npm 업데이트도 가상환경을 지우지 않는다.
+기존 소스 checkout/수동 `.venv`는 호환 경로로 계속 인식한다.
+
+CLI의 모든 BLE subprocess는 spawn 실패를 정상 오류로 처리한다. 데몬의
+자동 발견·sync는 설치를 임의로 시작하지 않고 `agentdeck ble setup`
+안내를 남긴다. 경로·누락 자산·신규/legacy 환경 선택을 회귀 테스트로
+고정하고 npm public package 네 개를 `1.0.4`로 동기화해 배포한다.
+
+---
+
 ## 2026-07-29 — Node Bonjour가 Mac의 로컬 호스트명을 자기 충돌시키던 문제 수정
 
 이슈 #67 제보에서 `agentdeck daemon start` 직후 macOS가

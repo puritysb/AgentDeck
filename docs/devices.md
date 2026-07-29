@@ -169,6 +169,7 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 ### iDotMatrix 32×32
 
 - **Transport**: BLE GATT transparent-UART. The App Store daemon uses native CoreBluetooth; the CLI daemon uses `bridge/src/idotmatrix/sync.py`.
+- **CLI runtime**: `@agentdeck/bridge` ships the Python clients. The first explicit BLE command prepares `bleak`, Pillow, and `idotmatrix` in `~/.agentdeck/python-ble`; use `agentdeck ble status` or `agentdeck ble setup` to inspect or prepare it directly. npm installation itself does not contact PyPI.
 - **Rendering**: Node and Swift compose the same native 32×32 identity stage. Up to three generated official marks are placed directly at 18/13/10 physical pixels on a blue-black field using a high-saturation device palette. Four one-pixel rails reserve fixed positions for Claude 5h/7d and Codex primary/secondary limits. It does not shrink the finished Pixoo64 scene, so hollow centers, eyes, and negative space survive the diffuser.
 - **Output tuning**: conservative 1.22 brightness / 1.08 contrast compensation in both native and CLI paths; the former 1.6 / 1.2 boost washed out defining holes.
 - **Constraint**: one BLE connection per daemon; brightness command range 5–100%.

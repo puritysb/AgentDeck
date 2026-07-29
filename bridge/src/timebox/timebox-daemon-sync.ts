@@ -7,11 +7,9 @@
  */
 
 import { type ChildProcess } from 'child_process';
-import { existsSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
 import { deviceId, loadTimeboxDevices, type TimeboxDevice } from './timebox-settings.js';
 import { createSyncCycleSquelch, spawnPythonSync, terminateSyncChild, type SyncCycleSquelch } from '../ble-sync-spawn.js';
+import { getBleRuntimeStatus } from '../python-ble-runtime.js';
 
 interface SyncEntry {
   device: TimeboxDevice;
@@ -34,33 +32,19 @@ function log(msg: string): void {
   console.error(`[agentdeck] [timebox] ${msg}`);
 }
 
-function resolvePaths(): { venvPython: string; bleScript: string } {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const projectRoot = join(here, '..', '..', '..');
-  const timeboxDir = join(projectRoot, 'bridge', 'src', 'timebox');
-  return {
-    venvPython: join(projectRoot, '.venv', 'bin', 'python'),
-    bleScript: join(timeboxDir, 'sync_ble.py'),
-  };
-}
-
 export function startTimeboxSync(httpPort: number): void {
   const devices = loadTimeboxDevices();
   if (devices.length === 0) return;
 
-  const { venvPython, bleScript } = resolvePaths();
-  if (!existsSync(venvPython)) {
-    log('sync unavailable (missing Python venv (.venv)); Timebox Mini will not be driven by the daemon');
+  const runtime = getBleRuntimeStatus();
+  if (!runtime.ready || !runtime.python) {
+    log(`sync unavailable (${runtime.reason}); run \`agentdeck ble setup\``);
     return;
   }
 
   for (const device of devices) {
     const id = deviceId(device);
     if (!id || entries.has(id)) continue;
-    if (!existsSync(bleScript)) {
-      log(`sync unavailable (missing sync_ble.py) for ${id}`);
-      continue;
-    }
     const entry: SyncEntry = {
       device,
       child: null,
@@ -71,7 +55,7 @@ export function startTimeboxSync(httpPort: number): void {
       squelch: createSyncCycleSquelch(log),
     };
     entries.set(id, entry);
-    spawnSync(entry, venvPython, bleScript, httpPort);
+    spawnSync(entry, runtime.python, runtime.paths.scripts.timeboxSync, httpPort);
   }
 }
 
