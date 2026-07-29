@@ -1598,7 +1598,21 @@ const PIXEL_FONT: Record<string, number[]> = {
   'm': [0b101, 0b111, 0b101, 0b101, 0b101],  // two pillars joined — distinct from 'n'
   'd': [0b001, 0b001, 0b011, 0b101, 0b011],  // lowercase d — for day units (e.g. "6d22h")
   ' ': [0b000, 0b000, 0b000, 0b000, 0b000],
+  // Uppercase initials for scoped per-model quota rows. The OAuth usage payload
+  // carves weekly sub-limits by model display name (Fable, Opus, Sonnet,
+  // Cowork); the HUD dock shows the first letter where a provider row would
+  // show its official mark. Unlisted letters fall back to a solid chip.
+  'C': [0b111, 0b100, 0b100, 0b100, 0b111],
+  'F': [0b111, 0b100, 0b110, 0b100, 0b100],
+  'O': [0b111, 0b101, 0b101, 0b101, 0b111],
+  'S': [0b111, 0b100, 0b111, 0b001, 0b111],
 };
+
+/** True when the 3×5 font can render every character of `text`. */
+export function fontCanRender(text: string): boolean {
+  for (const ch of text) if (!PIXEL_FONT[ch]) return false;
+  return true;
+}
 
 /** Draw right-aligned text using 3×5 pixel font. */
 export function drawText(

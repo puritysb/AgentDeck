@@ -670,6 +670,12 @@ async function fetchUsageViaWs(siblings: { port: number }[]): Promise<ApiUsageDa
                 extraUsageMonthlyLimit: evt.extraUsageMonthlyLimit ?? null,
                 extraUsageUsedCredits: evt.extraUsageUsedCredits ?? null,
                 extraUsageUtilization: evt.extraUsageUtilization ?? null,
+                scopedLimits: (evt.scopedLimits ?? []).map((s: any) => ({
+                  modelName: s.modelName,
+                  percent: s.percent,
+                  resetsAt: s.resetsAt ?? null,
+                  severity: s.severity ?? null,
+                })),
                 inferredBillingType: null,
               });
             }

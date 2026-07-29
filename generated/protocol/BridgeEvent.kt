@@ -216,6 +216,11 @@ data class BridgeEvent (
     val resetDate: String? = null,
     val resetTime: String? = null,
 
+    /**
+     * Per-model weekly sub-limits (Fable etc). Omitted when the plan has none.
+     */
+    val scopedLimits: List<ScopedModelLimit>? = null,
+
     @Json(name = "sessionDurationSec")
     val sessionDurationSEC: Double? = null,
 
@@ -987,6 +992,32 @@ enum class Outcome(val value: String) {
         }
     }
 }
+
+/**
+ * A per-model weekly quota carved out of the account-wide weekly limit.
+ *
+ * The OAuth usage payload reports these in its `limits[]` array as `kind: 'weekly_scoped'`
+ * rows carrying `scope.model.display_name` (e.g. "Fable"). They are separate from
+ * `seven_day`, which is the all-model total.
+ */
+data class ScopedModelLimit (
+    /**
+     * Display name from the API, e.g. "Fable".
+     */
+    val modelName: String,
+
+    /**
+     * Utilization 0-100.
+     */
+    val percent: Double,
+
+    val resetsAt: String? = null,
+
+    /**
+     * API's own severity hint: normal | warning | critical.
+     */
+    val severity: String? = null
+)
 
 data class ApmeModelScorecard (
     val agentType: AgentType,

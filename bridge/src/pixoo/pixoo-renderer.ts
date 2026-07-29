@@ -31,9 +31,7 @@ import { drawTextCentered } from './pixoo-font.js';
 import {
   type RGB, COLORS, setPixel, blendPixel, glowPixel, fillRect, lerpColor,
   drawOfficialDotGlyph, drawTetra,
-  drawText,
-  getOctopusPaletteForSession, getJellyfishPaletteForSession, getOpenCodePaletteForSession,
-  getAntigravityPaletteForSession,
+  drawText, fontCanRender,
 } from './pixoo-sprites.js';
 import {
   type Camera, type ActiveCreature, CAMERA_WIDE, blitWithCamera, quantizeCameraPixels,
@@ -644,6 +642,62 @@ function simplifiedState(state: State): 'idle' | 'processing' | 'awaiting' {
 
 // ===== Usage HUD Helpers =====
 
+/** Brand color for per-model scoped weekly limits (Fable etc). Deliberately
+ *  distinct from Claude's orange and Codex's violet so the sub-limit band is
+ *  not mistaken for a third provider. */
+const SCOPED_LIMIT_BRAND: RGB = [255, 198, 64];
+
+/** Screen-space colors for the session-state tally strip. */
+const TALLY_PROCESSING: RGB = [54, 184, 255];
+const TALLY_AWAITING: RGB = [255, 176, 32];
+const TALLY_IDLE: RGB = [96, 208, 140];
+
+/**
+ * Draw the session-state tally along the top edge: one colored dot per state
+ * followed by its count (processing / awaiting / idle).
+ *
+ * The terrarium already encodes state per creature, but at a glance a tank of
+ * six creatures does not answer "how many are waiting on me". States with a
+ * zero count are omitted so the strip stays short, and the whole strip is
+ * skipped when there are no live sessions at all.
+ */
+function drawStateTally(buf: Uint8Array, sessions: SessionInfo[] | null): void {
+  if (!sessions) return;
+  let processing = 0, awaiting = 0, idle = 0;
+  for (const s of sessions) {
+    if (!s.alive) continue;
+    if (s.state === 'processing') processing++;
+    else if (s.state === 'awaiting') awaiting++;
+    else idle++;
+  }
+  const entries: Array<[number, RGB]> = [];
+  if (processing > 0) entries.push([processing, TALLY_PROCESSING]);
+  if (awaiting > 0) entries.push([awaiting, TALLY_AWAITING]);
+  if (idle > 0) entries.push([idle, TALLY_IDLE]);
+  if (entries.length === 0) return;
+
+  // Each entry is a 2x2 dot, 1px gap, then the count text (4px per digit).
+  const widthOf = ([count]: [number, RGB]) => 2 + 1 + String(count).length * 4;
+  const total = entries.reduce((sum, e) => sum + widthOf(e), 0) + (entries.length - 1) * 2;
+  let x = Math.max(1, Math.floor((64 - total) / 2));
+
+  // Dim plate so the strip stays legible. Fish and particles swim through this
+  // band, so the plate has to be dark enough to sink them behind the digits —
+  // 0.55 left them cutting across the numbers.
+  for (let y = 0; y < 7; y++) {
+    for (let px = 0; px < 64; px++) blendPixel(buf, px, y, COLORS.black, 0.78);
+  }
+
+  for (const entry of entries) {
+    const [count, color] = entry;
+    fillRect(buf, x, 2, 2, 2, color);
+    const text = String(count);
+    // drawText lays out right-to-left from the given right edge.
+    drawText(buf, text, x + 3 + text.length * 4 - 1, 1, color);
+    x += widthOf(entry) + 2;
+  }
+}
+
 /** Gauge bar color based on usage percentage. */
 function gaugeColor(pct: number, animFrame: number, brand: RGB): RGB {
   if (pct >= 90) {
@@ -686,7 +740,10 @@ function drawUsageHUD(
   if (!usageEvent) return;
   type Window = { percent: number; resetsAt?: string };
   type Provider = {
-    glyph: OfficialDotGlyphName; brand: RGB;
+    glyph?: OfficialDotGlyphName; brand: RGB;
+    /** Drawn in the identity dock instead of a glyph — for rows that are a
+     *  sub-limit of another provider rather than a provider of their own. */
+    dockLabel?: string;
     primary?: Window; secondary?: Window;
     subscriptionUntil?: string;
   };
@@ -700,6 +757,16 @@ function drawUsageHUD(
         percent: usageEvent.sevenDayPercent, resetsAt: usageEvent.sevenDayResetsAt,
       },
     });
+    // Per-model weekly carve-outs (Fable on Max) get their own band directly
+    // under Claude's. They are a slice of the same seven-day pool, so they ride
+    // the same freshness gate and are dropped entirely when quota is stale.
+    for (const scoped of usageEvent.scopedLimits ?? []) {
+      providers.push({
+        dockLabel: scoped.modelName.slice(0, 1).toUpperCase(),
+        brand: SCOPED_LIMIT_BRAND,
+        secondary: { percent: scoped.percent, resetsAt: scoped.resetsAt },
+      });
+    }
   }
   // A window counts as renderable only when it is both fresh AND carries a
   // number. "Not stale but no percent" is a malformed frame, not a zero — the
@@ -722,9 +789,23 @@ function drawUsageHUD(
   if (providers.length === 0) return;
 
   const timeColor: RGB = [0x60, 0x70, 0x80];
-  const firstY = providers.length > 1 ? 50 : 57;
+  // Bands stack upward from the bottom edge, so adding a third row (a scoped
+  // model limit) shifts the whole HUD up instead of overflowing off-screen.
+  const firstY = 64 - providers.length * 7;
 
   function drawCreatureMarker(provider: Provider, rowY: number): void {
+    if (provider.dockLabel) {
+      // Right-aligned inside the 9px dock, vertically centered in the band.
+      // A model whose initial the 3×5 font lacks still needs an identity mark,
+      // so fall back to a solid chip rather than leaving the dock blank.
+      if (fontCanRender(provider.dockLabel)) {
+        drawText(buf, provider.dockLabel, 7, rowY + 1, provider.brand);
+      } else {
+        fillRect(buf, 3, rowY + 2, 3, 3, provider.brand);
+      }
+      return;
+    }
+    if (!provider.glyph) return;
     const mask = OFFICIAL_DOT_GLYPHS[provider.glyph];
     const sourceSize = OFFICIAL_DOT_GLYPH_SIZE;
     // Sample the canonical square canvas instead of cropping its occupied
@@ -1223,27 +1304,10 @@ export function renderFrame(
     }
   }
 
-  // Session count indicator (top-left, screen-space) — colored dots when 2+ sessions
-  const sessionCount = creatureInstances.size;
-  if (sessionCount >= 2) {
-    const orderedCreatures = [...creatureInstances.values()];
-    for (let i = 0; i < Math.min(sessionCount, 6); i++) {
-      const dotX = 1 + i * 3;  // 2px dot + 1px gap
-      const c = orderedCreatures[i];
-      // Color the dot by agent type so OpenCode is distinguishable, not painted as an octopus.
-      const dotColor = c.creatureType === 'jellyfish'
-        ? getJellyfishPaletteForSession(i).body
-        : c.creatureType === 'opencode'
-          ? getOpenCodePaletteForSession(i).outer
-          : c.creatureType === 'antigravity'
-            ? getAntigravityPaletteForSession(i).yellow
-          : getOctopusPaletteForSession(i).body;
-      setPixel(outputBuf, dotX, 1, dotColor);
-      setPixel(outputBuf, dotX + 1, 1, dotColor);
-      setPixel(outputBuf, dotX, 2, dotColor);
-      setPixel(outputBuf, dotX + 1, 2, dotColor);
-    }
-  }
+  // Session-state tally (top edge, screen-space). Replaces the former
+  // per-agent-type dot row: creature shape already carries agent type, while
+  // "how many are waiting on me" had no readout at all.
+  drawStateTally(outputBuf, sessions);
 
   // Usage HUD (bottom-right, screen-space)
   drawUsageHUD(outputBuf, usageEvent, animFrame);

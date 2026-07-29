@@ -184,6 +184,16 @@ export function buildUsageEvent(
     fiveHourResetsAt,
     sevenDayPercent,
     sevenDayResetsAt,
+    // Per-model weekly sub-limits ride the same subscription gate as the
+    // account-wide quota — on API billing there is no such carve-out.
+    scopedLimits: subscriptionQuotaApplies && apiUsage?.scopedLimits?.length
+      ? apiUsage.scopedLimits.map(s => ({
+          modelName: s.modelName,
+          percent: s.percent,
+          resetsAt: s.resetsAt ?? undefined,
+          severity: s.severity ?? undefined,
+        }))
+      : undefined,
     extraUsageEnabled: subscriptionQuotaApplies ? (apiUsage?.extraUsageEnabled ?? undefined) : undefined,
     extraUsageMonthlyLimit: subscriptionQuotaApplies ? (apiUsage?.extraUsageMonthlyLimit ?? undefined) : undefined,
     extraUsageUsedCredits: subscriptionQuotaApplies ? (apiUsage?.extraUsageUsedCredits ?? undefined) : undefined,

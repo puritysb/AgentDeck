@@ -113,6 +113,8 @@ struct ADBridgeEvent: Codable, Equatable {
     var outputTokens: Double?
     var resetDate: String?
     var resetTime: String?
+    /// Per-model weekly sub-limits (Fable etc). Omitted when the plan has none.
+    var scopedLimits: [ADScopedModelLimit]?
     var sessionDurationSec: Double?
     var sessionPercent: Double?
     var sevenDayPercent: Double?
@@ -217,6 +219,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case outputTokens = "outputTokens"
         case resetDate = "resetDate"
         case resetTime = "resetTime"
+        case scopedLimits = "scopedLimits"
         case sessionDurationSec = "sessionDurationSec"
         case sessionPercent = "sessionPercent"
         case sevenDayPercent = "sevenDayPercent"
@@ -337,6 +340,7 @@ extension ADBridgeEvent {
         outputTokens: Double?? = nil,
         resetDate: String?? = nil,
         resetTime: String?? = nil,
+        scopedLimits: [ADScopedModelLimit]?? = nil,
         sessionDurationSec: Double?? = nil,
         sessionPercent: Double?? = nil,
         sevenDayPercent: Double?? = nil,
@@ -437,6 +441,7 @@ extension ADBridgeEvent {
             outputTokens: outputTokens ?? self.outputTokens,
             resetDate: resetDate ?? self.resetDate,
             resetTime: resetTime ?? self.resetTime,
+            scopedLimits: scopedLimits ?? self.scopedLimits,
             sessionDurationSec: sessionDurationSec ?? self.sessionDurationSec,
             sessionPercent: sessionPercent ?? self.sessionPercent,
             sevenDayPercent: sevenDayPercent ?? self.sevenDayPercent,
@@ -1931,6 +1936,76 @@ enum ADOutcome: String, Codable, Equatable {
     case interrupted = "interrupted"
     case iterated = "iterated"
     case pending = "pending"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// A per-model weekly quota carved out of the account-wide weekly limit.
+///
+/// The OAuth usage payload reports these in its `limits[]` array as `kind: 'weekly_scoped'`
+/// rows carrying `scope.model.display_name` (e.g. "Fable"). They are separate from
+/// `seven_day`, which is the all-model total.
+// MARK: - ADScopedModelLimit
+struct ADScopedModelLimit: Codable, Equatable {
+    /// Display name from the API, e.g. "Fable".
+    var modelName: String
+    /// Utilization 0-100.
+    var percent: Double
+    var resetsAt: String?
+    /// API's own severity hint: normal | warning | critical.
+    var severity: String?
+
+    enum CodingKeys: String, CodingKey {
+        case modelName = "modelName"
+        case percent = "percent"
+        case resetsAt = "resetsAt"
+        case severity = "severity"
+    }
+}
+
+// MARK: ADScopedModelLimit convenience initializers and mutators
+
+extension ADScopedModelLimit {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADScopedModelLimit.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        modelName: String? = nil,
+        percent: Double? = nil,
+        resetsAt: String?? = nil,
+        severity: String?? = nil
+    ) -> ADScopedModelLimit {
+        return ADScopedModelLimit(
+            modelName: modelName ?? self.modelName,
+            percent: percent ?? self.percent,
+            resetsAt: resetsAt ?? self.resetsAt,
+            severity: severity ?? self.severity
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
 }
 
 //

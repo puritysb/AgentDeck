@@ -44,10 +44,18 @@ function usage(overrides: Partial<ApiUsageData> = {}): ApiUsageData {
     extraUsageMonthlyLimit: 100,
     extraUsageUsedCredits: 12,
     extraUsageUtilization: 12,
+    scopedLimits: [],
     inferredBillingType: 'subscription',
     ...overrides,
   };
 }
+
+const FABLE_LIMIT = {
+  modelName: 'Fable',
+  percent: 11,
+  resetsAt: '2026-06-12T18:00:00Z',
+  severity: 'normal',
+};
 
 describe('buildUsageEvent subscription quota scoping', () => {
   it('omits Anthropic quota when the model is not yet known', () => {
@@ -321,5 +329,44 @@ describe('buildUsageEvent Codex window normalization', () => {
 
     expect(evt.codexRateLimits!.primary).toBeUndefined();
     expect(evt.codexRateLimits!.secondary).toBeUndefined();
+  });
+});
+
+describe('buildUsageEvent scoped model limits', () => {
+  it('forwards per-model weekly sub-limits on a subscription', () => {
+    const evt = buildUsageEvent(
+      snapshot({ modelName: 'claude-fable-5', billingType: 'subscription' }),
+      usage({ scopedLimits: [FABLE_LIMIT] }),
+      true,
+    ) as UsageEvent;
+
+    expect(evt.scopedLimits).toEqual([{
+      modelName: 'Fable',
+      percent: 11,
+      resetsAt: '2026-06-12T18:00:00Z',
+      severity: 'normal',
+    }]);
+  });
+
+  it('omits the key entirely when the API reports no scoped limits', () => {
+    const evt = buildUsageEvent(
+      snapshot({ modelName: 'claude-fable-5', billingType: 'subscription' }),
+      usage(),
+      true,
+    ) as UsageEvent;
+
+    expect(evt.scopedLimits).toBeUndefined();
+  });
+
+  it('drops scoped limits when the account-wide quota does not apply', () => {
+    // Same gate as fiveHourPercent: a per-model carve-out is a slice of the
+    // subscription pool, so it must not ride along on API billing.
+    const evt = buildUsageEvent(
+      snapshot({ modelName: 'gpt-5', billingType: 'api', costLimit: 10, costSpent: 1 }),
+      usage({ inferredBillingType: 'api', scopedLimits: [FABLE_LIMIT] }),
+      true,
+    ) as UsageEvent;
+
+    expect(evt.scopedLimits).toBeUndefined();
   });
 });

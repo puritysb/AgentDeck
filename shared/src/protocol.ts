@@ -234,6 +234,23 @@ export interface PromptOptionsEvent {
   options: PromptOption[];
 }
 
+/**
+ * A per-model weekly quota carved out of the account-wide weekly limit.
+ *
+ * The OAuth usage payload reports these in its `limits[]` array as
+ * `kind: 'weekly_scoped'` rows carrying `scope.model.display_name` (e.g.
+ * "Fable"). They are separate from `seven_day`, which is the all-model total.
+ */
+export interface ScopedModelLimit {
+  /** Display name from the API, e.g. "Fable". */
+  modelName: string;
+  /** Utilization 0-100. */
+  percent: number;
+  resetsAt?: string;
+  /** API's own severity hint: normal | warning | critical. */
+  severity?: string;
+}
+
 export interface UsageEvent {
   type: 'usage_update';
   sessionDurationSec: number;
@@ -252,6 +269,8 @@ export interface UsageEvent {
   fiveHourResetsAt?: string;
   sevenDayPercent?: number;
   sevenDayResetsAt?: string;
+  /** Per-model weekly sub-limits (Fable etc). Omitted when the plan has none. */
+  scopedLimits?: ScopedModelLimit[];
   // Extra usage (pay-per-use beyond plan limits)
   extraUsageEnabled?: boolean;
   extraUsageMonthlyLimit?: number;

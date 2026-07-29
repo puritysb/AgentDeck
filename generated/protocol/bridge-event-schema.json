@@ -1086,6 +1086,32 @@
       ],
       "type": "object"
     },
+    "ScopedModelLimit": {
+      "additionalProperties": false,
+      "description": "A per-model weekly quota carved out of the account-wide weekly limit.\n\nThe OAuth usage payload reports these in its `limits[]` array as `kind: 'weekly_scoped'` rows carrying `scope.model.display_name` (e.g. \"Fable\"). They are separate from `seven_day`, which is the all-model total.",
+      "properties": {
+        "modelName": {
+          "description": "Display name from the API, e.g. \"Fable\".",
+          "type": "string"
+        },
+        "percent": {
+          "description": "Utilization 0-100.",
+          "type": "number"
+        },
+        "resetsAt": {
+          "type": "string"
+        },
+        "severity": {
+          "description": "API's own severity hint: normal | warning | critical.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "modelName",
+        "percent"
+      ],
+      "type": "object"
+    },
     "SessionInfo": {
       "additionalProperties": false,
       "properties": {
@@ -1693,6 +1719,13 @@
         },
         "resetTime": {
           "type": "string"
+        },
+        "scopedLimits": {
+          "description": "Per-model weekly sub-limits (Fable etc). Omitted when the plan has none.",
+          "items": {
+            "$ref": "#/definitions/ScopedModelLimit"
+          },
+          "type": "array"
         },
         "sessionDurationSec": {
           "type": "number"

@@ -15,6 +15,13 @@ const FILE_CACHE_TTL_MS = 120_000; // 120s — reduced from 60s to avoid 429 fro
 /** Token expiry safety margin — skip fetch if token expires within this window */
 const TOKEN_EXPIRY_MARGIN_MS = 10 * 60 * 1000; // 10 minutes
 
+export interface ApiScopedLimit {
+  modelName: string;
+  percent: number;
+  resetsAt: string | null;
+  severity: string | null;
+}
+
 export interface ApiUsageData {
   fiveHourPercent: number | null;
   fiveHourResetsAt: string | null;
@@ -24,6 +31,8 @@ export interface ApiUsageData {
   extraUsageMonthlyLimit: number | null;
   extraUsageUsedCredits: number | null;
   extraUsageUtilization: number | null;
+  /** Per-model weekly sub-limits parsed from the payload's `limits[]` array. */
+  scopedLimits: ApiScopedLimit[];
   /** Inferred from API response: subscription if rate-limit fields present, api if 401/no fields */
   inferredBillingType: 'subscription' | 'api' | null;
 }
@@ -107,7 +116,12 @@ function readFileCache(): UsageCacheFile | null {
   try {
     const raw = readFileSync(USAGE_CACHE_FILE, 'utf-8');
     const cache = JSON.parse(raw) as UsageCacheFile;
-    if (cache?.data && typeof cache.fetchedAt === 'number') return cache;
+    if (cache?.data && typeof cache.fetchedAt === 'number') {
+      // Caches written before scoped limits existed have no such key; the type
+      // says array, so normalize on read rather than guarding every consumer.
+      if (!Array.isArray(cache.data.scopedLimits)) cache.data.scopedLimits = [];
+      return cache;
+    }
     return null;
   } catch {
     return null;
@@ -142,6 +156,39 @@ function parseUtilization(limitObj: unknown): number | null {
     if (typeof obj.usage === 'number') return obj.usage;
   }
   return null;
+}
+
+/**
+ * Extract per-model weekly sub-limits from the payload's `limits[]` array.
+ *
+ * Rows look like:
+ *   { kind: 'weekly_scoped', group: 'weekly', percent: 11, severity: 'normal',
+ *     resets_at: '...', scope: { model: { id: null, display_name: 'Fable' } } }
+ *
+ * Only `weekly_scoped` rows carrying a model display name are returned — the
+ * `session` and `weekly_all` rows duplicate five_hour / seven_day, which the
+ * caller already reads from the top-level fields. `scope.model.id` is commonly
+ * null, so the display name is the only stable identifier.
+ */
+function parseScopedLimits(limits: unknown): ApiScopedLimit[] {
+  if (!Array.isArray(limits)) return [];
+  const out: ApiScopedLimit[] = [];
+  for (const row of limits) {
+    if (row == null || typeof row !== 'object') continue;
+    const r = row as Record<string, any>;
+    if (r.kind !== 'weekly_scoped') continue;
+    const modelName = r.scope?.model?.display_name;
+    if (typeof modelName !== 'string' || modelName.length === 0) continue;
+    const percent = parseUtilization(r);
+    if (percent == null) continue;
+    out.push({
+      modelName,
+      percent,
+      resetsAt: parseResetsAt(r),
+      severity: typeof r.severity === 'string' ? r.severity : null,
+    });
+  }
+  return out;
 }
 
 /** Extract resets_at from a rate-limit object, handling multiple possible shapes */
@@ -292,10 +339,12 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
       extraUsageMonthlyLimit: extraUsage?.monthly_limit ?? null,
       extraUsageUsedCredits: extraUsage?.used_credits ?? null,
       extraUsageUtilization: parseUtilization(extraUsage),
+      scopedLimits: parseScopedLimits(data.limits),
       inferredBillingType: hasRateLimitData ? 'subscription' : 'api',
     };
 
-    debug('UsageAPI', `5h: ${result.fiveHourPercent}%, 7d: ${result.sevenDayPercent}%, extra: ${result.extraUsageEnabled ? 'enabled' : 'disabled'}`);
+    const scopedSummary = result.scopedLimits.map(s => `${s.modelName}: ${s.percent}%`).join(', ');
+    debug('UsageAPI', `5h: ${result.fiveHourPercent}%, 7d: ${result.sevenDayPercent}%, extra: ${result.extraUsageEnabled ? 'enabled' : 'disabled'}${scopedSummary ? `, scoped: ${scopedSummary}` : ''}`);
 
     // Success — reset counters, write cache
     lastFetchFailed = false;
