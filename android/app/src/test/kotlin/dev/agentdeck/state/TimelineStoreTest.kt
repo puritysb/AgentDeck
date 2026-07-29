@@ -551,6 +551,20 @@ class TimelineStoreTest {
     }
 
     @Test
+    fun `addEntry keeps coalesced codex subagent lifecycle`() {
+        store.addEntry(
+            TimelineEntry(
+                timestamp = 1_000,
+                type = "tool_exec",
+                summary = "Subagent reviewer · Started",
+                agentType = "codex-cli",
+                sessionId = "codex:thread-1",
+            ),
+        )
+        assertEquals(1, store.entries.value.size)
+    }
+
+    @Test
     fun `addEntry drops opencode tool_exec so a tool-heavy turn does not flood`() {
         // OpenCode emits one tool_exec per Bash/read/todowrite action via the
         // observer plugin. Mirror the Codex suppression so its turn reads clean
@@ -799,6 +813,62 @@ class TimelineStoreTest {
         store.upsertEntry(TimelineEntry(timestamp = 1500L, type = "chat_end", summary = "Updated"))
         assertEquals(1, store.entries.value.size)
         assertEquals("Updated", store.entries.value[0].summary)
+    }
+
+    @Test
+    fun `deriveSubagentActivity pairs starts and completions per parent`() {
+        val activity = deriveSubagentActivity(
+            entries = listOf(
+                TimelineEntry(
+                    timestamp = 100,
+                    type = "tool_exec",
+                    summary = "Subagent reviewer · Started",
+                    sessionId = "parent-1",
+                    startedAt = 100,
+                ),
+                TimelineEntry(
+                    timestamp = 110,
+                    type = "tool_exec",
+                    summary = "Subagent tester · Started",
+                    sessionId = "parent-1",
+                    startedAt = 110,
+                ),
+                TimelineEntry(
+                    timestamp = 120,
+                    type = "tool_resolved",
+                    summary = "Subagent reviewer · Review complete",
+                    sessionId = "parent-1",
+                    startedAt = 100,
+                ),
+            ),
+            now = 150,
+        )
+
+        assertEquals(SubagentVisualActivity(activeCount = 1, lastCompletedAt = 120), activity["parent-1"])
+    }
+
+    @Test
+    fun `deriveSubagentActivity ignores ordinary tools and expires orphaned starts`() {
+        val activity = deriveSubagentActivity(
+            entries = listOf(
+                TimelineEntry(
+                    timestamp = 10,
+                    type = "tool_exec",
+                    summary = "Bash · pnpm test",
+                    sessionId = "parent-1",
+                ),
+                TimelineEntry(
+                    timestamp = 20,
+                    type = "tool_exec",
+                    summary = "Subagent stale · Started",
+                    sessionId = "parent-1",
+                ),
+            ),
+            now = 1_000,
+            activeTtlMs = 100,
+        )
+
+        assertTrue(activity.isEmpty())
     }
 
     // --- helpers ---

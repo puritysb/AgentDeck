@@ -2127,6 +2127,7 @@ struct ADSessionInfo: Codable, Equatable {
     /// "stopping…" instead of an active STOP.
     var stopRequested: Bool?
     var totalTokens: Double?
+    var weight: Double?
 
     enum CodingKeys: String, CodingKey {
         case activity = "activity"
@@ -2160,6 +2161,7 @@ struct ADSessionInfo: Codable, Equatable {
         case state = "state"
         case stopRequested = "stopRequested"
         case totalTokens = "totalTokens"
+        case weight = "weight"
     }
 }
 
@@ -2212,7 +2214,8 @@ extension ADSessionInfo {
         startedAt: String?? = nil,
         state: String?? = nil,
         stopRequested: Bool?? = nil,
-        totalTokens: Double?? = nil
+        totalTokens: Double?? = nil,
+        weight: Double?? = nil
     ) -> ADSessionInfo {
         return ADSessionInfo(
             activity: activity ?? self.activity,
@@ -2245,7 +2248,8 @@ extension ADSessionInfo {
             startedAt: startedAt ?? self.startedAt,
             state: state ?? self.state,
             stopRequested: stopRequested ?? self.stopRequested,
-            totalTokens: totalTokens ?? self.totalTokens
+            totalTokens: totalTokens ?? self.totalTokens,
+            weight: weight ?? self.weight
         )
     }
 

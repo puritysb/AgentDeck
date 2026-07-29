@@ -17,11 +17,9 @@
  */
 
 import { type ChildProcess } from 'child_process';
-import { existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { loadIDotMatrixDevices, type IDotMatrixDevice } from './idotmatrix-settings.js';
 import { createSyncCycleSquelch, spawnPythonSync, terminateSyncChild } from '../ble-sync-spawn.js';
+import { getBleRuntimeStatus } from '../python-ble-runtime.js';
 
 let child: ChildProcess | null = null;
 let stopping = false;
@@ -50,17 +48,6 @@ function log(msg: string): void {
 // hourly summary instead of flooding the daemon log all night.
 const squelch = createSyncCycleSquelch(log);
 
-function resolvePaths(): { venvPython: string; syncScript: string } {
-  // This file compiles to bridge/dist/idotmatrix/idotmatrix-daemon-sync.js, so
-  // the repo root is three levels up.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const projectRoot = join(here, '..', '..', '..');
-  return {
-    venvPython: join(projectRoot, '.venv', 'bin', 'python'),
-    syncScript: join(projectRoot, 'bridge', 'src', 'idotmatrix', 'sync.py'),
-  };
-}
-
 /**
  * Start (or no-op if already running) the managed BLE sync for the first
  * configured iDotMatrix device, fed by the daemon at `httpPort`.
@@ -85,16 +72,13 @@ export function startIDotMatrixSync(httpPort: number): void {
     stopping = false;
   }
 
-  const { venvPython, syncScript } = resolvePaths();
-  if (!existsSync(venvPython) || !existsSync(syncScript)) {
-    log(
-      `BLE sync unavailable (missing ${!existsSync(venvPython) ? 'Python venv (.venv)' : 'sync.py'}); ` +
-        `iDotMatrix will not be driven by the daemon`,
-    );
+  const runtime = getBleRuntimeStatus();
+  if (!runtime.ready || !runtime.python) {
+    log(`BLE sync unavailable (${runtime.reason}); run \`agentdeck ble setup\``);
     return;
   }
 
-  spawnSync(venvPython, syncScript, httpPort);
+  spawnSync(runtime.python, runtime.paths.scripts.idotmatrixSync, httpPort);
 }
 
 function spawnSync(venvPython: string, syncScript: string, httpPort: number): void {

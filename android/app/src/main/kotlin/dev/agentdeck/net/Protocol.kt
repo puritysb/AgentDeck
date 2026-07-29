@@ -289,6 +289,9 @@ data class SessionInfo(
     val modelName: String? = null,
     val effortLevel: String? = null,
     val startedAt: String? = null,
+    // Explicit deck/tab sort override (default 0); lower sorts first. Set via
+    // `agentdeck <agent> --weight <n>`. Mirrors shared SessionInfo.weight.
+    val weight: Int? = null,
     val question: String? = null,
     // Observed AskUserQuestion choices are display-only when
     // controlMode == "observed"; clients must not dispatch selection commands.

@@ -31,6 +31,7 @@ import dev.agentdeck.ui.component.stateColor
 import dev.agentdeck.ui.component.agentDisplayLabel
 import dev.agentdeck.ui.eink.agentTypeRank
 import dev.agentdeck.ui.eink.compareSessionsForDisplay
+import dev.agentdeck.ui.eink.sessionWeight
 import dev.agentdeck.ui.eink.compactStateMarker
 import dev.agentdeck.ui.eink.mapSessionState
 import dev.agentdeck.ui.eink.naturalLabelCompare
@@ -64,12 +65,17 @@ fun SessionListPanel(
         val effortLevel: String?,
         val agentState: AgentState,
         val startedAt: String?,
+        val weight: Int? = null,
         val isPrimary: Boolean,
         val sessionId: String?,
         val activity: String? = null,
     )
 
     fun compareEntries(left: SessionEntry, right: SessionEntry): Int {
+        // Three-way comparison, never subtraction — mirrors shared sortSessions.
+        val weightDiff = sessionWeight(left.weight).compareTo(sessionWeight(right.weight))
+        if (weightDiff != 0) return weightDiff
+
         val typeDiff = agentTypeRank(left.agentType) - agentTypeRank(right.agentType)
         if (typeDiff != 0) return typeDiff
 
@@ -117,6 +123,7 @@ fun SessionListPanel(
             // at a deterministic spot inside its (project, agentType) group.
             // Without this the #N suffix flips depending on event arrival order.
             startedAt = primaryAnchorSibling?.startedAt,
+            weight = primaryAnchorSibling?.weight,
             isPrimary = true,
             sessionId = sessionId,
             activity = primaryAnchorSibling?.activity,
@@ -143,6 +150,7 @@ fun SessionListPanel(
                 effortLevel = null,
                 agentState = mapSessionState(session),
                 startedAt = session.startedAt,
+                weight = session.weight,
                 isPrimary = false,
                 sessionId = session.id,
                 activity = session.activity,

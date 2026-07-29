@@ -43,6 +43,70 @@ data class TimelineEntry(
     val taskSummary: String? = null,
 )
 
+data class SubagentVisualActivity(
+    val activeCount: Int = 0,
+    val lastCompletedAt: Long? = null,
+)
+
+/**
+ * Derive decorative parent/child activity from existing timeline rows.
+ * This deliberately avoids a protocol/session-schema change: older clients
+ * can ignore the same rows while newer terrariums draw their orbit accents.
+ */
+fun deriveSubagentActivity(
+    entries: List<TimelineEntry>,
+    now: Long = System.currentTimeMillis(),
+    activeTtlMs: Long = 6 * 60 * 60 * 1000L,
+): Map<String, SubagentVisualActivity> {
+    data class ActiveStart(val timestamp: Long, val startedAt: Long?)
+
+    val active = mutableMapOf<String, MutableList<ActiveStart>>()
+    val completed = mutableMapOf<String, Long>()
+    val ordered = entries.withIndex().sortedWith(
+        compareBy<IndexedValue<TimelineEntry>> { it.value.timestamp }
+            .thenBy { it.index }
+    )
+
+    for ((_, entry) in ordered) {
+        val sessionId = entry.sessionId?.trim().orEmpty()
+        if (sessionId.isEmpty()) continue
+        val isSubagent = entry.summary.startsWith("Subagent ")
+        val isTeamCompletion = entry.summary.startsWith("Team ")
+
+        if (entry.type == "tool_exec" && isSubagent) {
+            active.getOrPut(sessionId) { mutableListOf() }
+                .add(ActiveStart(entry.timestamp, entry.startedAt))
+            continue
+        }
+        if (entry.type != "tool_resolved" || (!isSubagent && !isTeamCompletion)) continue
+
+        completed[sessionId] = maxOf(
+            completed[sessionId] ?: 0,
+            entry.endedAt ?: entry.timestamp,
+        )
+        if (!isSubagent) continue
+        val starts = active[sessionId] ?: continue
+        if (starts.isEmpty()) continue
+        val matchingIndex = entry.startedAt
+            ?.let { target -> starts.indexOfFirst { it.startedAt == target } }
+            ?.takeIf { it >= 0 }
+            ?: 0
+        starts.removeAt(matchingIndex)
+    }
+
+    val result = mutableMapOf<String, SubagentVisualActivity>()
+    for (sessionId in active.keys + completed.keys) {
+        val activeCount = active[sessionId]
+            .orEmpty()
+            .count { now - it.timestamp <= activeTtlMs }
+        val lastCompletedAt = completed[sessionId]
+        if (activeCount > 0 || lastCompletedAt != null) {
+            result[sessionId] = SubagentVisualActivity(activeCount, lastCompletedAt)
+        }
+    }
+    return result
+}
+
 data class GroupedEntry(
     val entry: TimelineEntry,
     val count: Int = 1,

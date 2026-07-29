@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Apple product maintainers
-reviewed: 2026-07-22
-revision: 2026-07-22
+reviewed: 2026-07-27
+revision: 2026-07-27
 source_of_truth: docs/appstore-feature-matrix.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
@@ -87,6 +87,7 @@ All surfaces follow the same rule:
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
 | Existing terminal-session discovery | Limited | Yes | General `ps` / `lsof` / transcript discovery is CLI-only |
 | Display-only permission attention | Yes | Yes | Real permission notification; no fabricated options |
+| Session order pinning (`--weight` sort override) | Limited | Yes | Weight is CLI-set at session launch and reaches the Swift daemon via `session_push_register`; the App Store app displays the resulting order (no in-app weight editor, and observed-hook sessions never carry weight) |
 | PTY option steering | No | Yes | Real parsed options and key injection |
 | Observed-session answer injection (device tap → host UI) | No | Yes | tmux / iTerm2 / Terminal.app by tty, GUI apps by AX button or key events. Needs `ps` tty discovery + tmux/osascript subprocesses — both CLI-only; sandbox has neither |
 | OpenCode monitoring | Opt-in read-only | Yes | Tier 1 connects only to a configured/fixed local server; no port scan |

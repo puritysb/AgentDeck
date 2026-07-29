@@ -167,7 +167,7 @@ final class DevicePreviewSnapshotTests: XCTestCase {
                 SessionInfo(id: "s1", port: 9121, projectName: "AgentDeck", agentType: "claude-code",
                             alive: true, state: "processing", modelName: "claude-opus-4-8", startedAt: nil),
                 SessionInfo(id: "s2", port: 9122, projectName: "BabelForge", agentType: "codex-cli",
-                            alive: true, state: "idle", modelName: "gpt-5", startedAt: nil),
+                            alive: true, state: "idle", modelName: "gpt-5", startedAt: nil, weight: -1),
                 SessionInfo(id: "s3", port: 9123, projectName: "OpenClaw", agentType: "antigravity",
                             alive: true, state: "awaiting_permission", modelName: "gemini-3", startedAt: nil),
             ],
@@ -234,6 +234,14 @@ final class DevicePreviewSnapshotTests: XCTestCase {
         XCTAssertEqual(input.sessions.map(\.projectName).sorted(), ["AgentDeck", "BabelForge", "OpenClaw"])
         XCTAssertEqual(input.sessions.first { $0.id == "s1" }?.modelName, "claude-opus-4-8")
         XCTAssertEqual(input.sessions.first { $0.id == "s3" }?.agentType, "antigravity")
+        // --weight must survive the SessionInfo → D200HSession mapping, or the
+        // preview's sort/fold mirror silently diverges from the physical deck.
+        XCTAssertEqual(input.sessions.first { $0.id == "s2" }?.weight, -1)
+        XCTAssertNil(input.sessions.first { $0.id == "s1" }?.weight)
+        // The weighted Codex session sorts ahead of every unweighted session.
+        let ordered = D200HLayoutModel.sortSessions(
+            D200HLayoutModel.foldCodexSessionsForDisplay(input.sessions))
+        XCTAssertEqual(ordered.first?.id, "s2")
         // Real usage windows forwarded verbatim.
         XCTAssertEqual(input.usage?.fiveHourPercent, 42)
         XCTAssertEqual(input.usage?.sevenDayPercent, 68)

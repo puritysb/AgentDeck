@@ -2,6 +2,7 @@ package dev.agentdeck.terrarium
 
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.state.DashboardState
+import dev.agentdeck.state.SubagentVisualActivity
 
 /** Visual states for each creature and the environment. */
 
@@ -50,6 +51,7 @@ data class AgentCreatureState(
     val isPrimary: Boolean,
     val layoutSlot: Int,
     val displayName: String? = null,
+    val subagentActivity: SubagentVisualActivity = SubagentVisualActivity(),
 )
 
 /** Combined visual state for the entire terrarium scene. */
@@ -100,7 +102,9 @@ private fun mostActiveSessionState(siblings: List<dev.agentdeck.net.SessionInfo>
 }
 
 /** Map DashboardState to visual TerrariumState. */
-fun DashboardState.toTerrariumState(): TerrariumState {
+fun DashboardState.toTerrariumState(
+    subagentActivityBySession: Map<String, SubagentVisualActivity> = emptyMap(),
+): TerrariumState {
     val isOpenClaw = agentType == "openclaw"
     val hasTool = currentTool != null
 
@@ -203,6 +207,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
                 isPrimary = true,
                 layoutSlot = 0,
                 displayName = projectName,
+                subagentActivity = subagentActivityBySession[sessionId ?: "primary"]
+                    ?: SubagentVisualActivity(),
             )
         )
     }
@@ -225,6 +231,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
                 isPrimary = false,
                 layoutSlot = slot++,
                 displayName = sibling.projectName,
+                subagentActivity = subagentActivityBySession[sibling.id]
+                    ?: SubagentVisualActivity(),
             )
         )
     }
@@ -241,6 +249,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
                 isPrimary = true,
                 layoutSlot = 0,
                 displayName = projectName,
+                subagentActivity = subagentActivityBySession[sessionId ?: "primary-cloud"]
+                    ?: SubagentVisualActivity(),
             )
         )
     }
@@ -257,6 +267,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
                 isPrimary = false,
                 layoutSlot = cloudSlot++,
                 displayName = sibling.projectName,
+                subagentActivity = subagentActivityBySession[sibling.id]
+                    ?: SubagentVisualActivity(),
             )
         )
     }
@@ -272,6 +284,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
                 isPrimary = true,
                 layoutSlot = 0,
                 displayName = projectName,
+                subagentActivity = subagentActivityBySession[sessionId ?: "primary-opencode"]
+                    ?: SubagentVisualActivity(),
             )
         )
     }
@@ -287,6 +301,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
                 isPrimary = false,
                 layoutSlot = openCodeSlot++,
                 displayName = sibling.projectName,
+                subagentActivity = subagentActivityBySession[sibling.id]
+                    ?: SubagentVisualActivity(),
             )
         )
     }
@@ -302,6 +318,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
                 isPrimary = true,
                 layoutSlot = 0,
                 displayName = projectName,
+                subagentActivity = subagentActivityBySession[sessionId ?: "primary-antigravity"]
+                    ?: SubagentVisualActivity(),
             )
         )
     }
@@ -317,6 +335,8 @@ fun DashboardState.toTerrariumState(): TerrariumState {
                 isPrimary = false,
                 layoutSlot = antigravitySlot++,
                 displayName = sibling.projectName,
+                subagentActivity = subagentActivityBySession[sibling.id]
+                    ?: SubagentVisualActivity(),
             )
         )
     }

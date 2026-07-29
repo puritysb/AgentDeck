@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { writeFileSync, unlinkSync, existsSync, realpathSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
@@ -9,6 +9,8 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { request } from 'http';
 import { BRIDGE_WS_PORT } from './types.js';
+import { SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX } from '@agentdeck/shared';
+import { ensureBleRuntime, getBleRuntimeStatus } from './python-ble-runtime.js';
 import {
   TASK_NAME,
   installWindowsTask,
@@ -33,6 +35,25 @@ const packageJson = require('../package.json') as { version: string };
 
 function log(msg: string): void {
   process.stderr.write(msg + '\n');
+}
+
+/**
+ * Parse a `--weight <n>` value into an integer sort override. Rejects
+ * non-integers so a typo (`--weight foo`) fails loudly instead of silently
+ * collapsing to 0, and rejects values outside the documented cross-platform
+ * range (shared SESSION_WEIGHT_MIN/MAX) — the wire value must fit every
+ * consumer's integer type (Kotlin `Int` in particular), and comparators on
+ * fixed-width platforms must never see values that could overflow. Lower
+ * sorts first (see shared sortSessions).
+ */
+function parseWeight(value: string): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < SESSION_WEIGHT_MIN || n > SESSION_WEIGHT_MAX) {
+    throw new InvalidArgumentError(
+      `weight must be an integer between ${SESSION_WEIGHT_MIN} and ${SESSION_WEIGHT_MAX} (e.g. --weight 1, --weight -5)`,
+    );
+  }
+  return n;
 }
 
 function formatBytes(value: unknown): string {
@@ -158,19 +179,38 @@ async function isDaemonPort(port: number): Promise<boolean> {
   }
 }
 
-function resolveTimeboxSyncPaths(): { python: string; bleScript: string; scanScript: string } {
-  const distPath = dirname(fileURLToPath(import.meta.url));
-  const projectRoot = join(distPath, '..', '..');
-  const timeboxDir = join(projectRoot, 'bridge', 'src', 'timebox');
-  return {
-    python: join(projectRoot, '.venv', 'bin', 'python'),
-    bleScript: join(timeboxDir, 'sync_ble.py'),
-    scanScript: join(timeboxDir, 'scan_ble.py'),
-  };
-}
-
 function projectRootPath(): string {
   return join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+}
+
+async function runBlePython(
+  python: string,
+  args: string[],
+  captureStdout = false,
+): Promise<{ code: number | null; stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      python,
+      args,
+      captureStdout ? { stdio: ['ignore', 'pipe', 'inherit'] } : { stdio: 'inherit' },
+    );
+    let stdout = '';
+    child.stdout?.on('data', (data: Buffer | string) => {
+      stdout += data.toString();
+    });
+    child.once('error', reject);
+    child.once('close', (code) => resolve({ code, stdout }));
+  });
+}
+
+function prepareBleRuntime() {
+  try {
+    return ensureBleRuntime({ log });
+  } catch (err) {
+    log(`BLE support unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+    return null;
+  }
 }
 
 // The esp32-ota `target` is dual-purpose: it picks the local PlatformIO `env`
@@ -253,6 +293,7 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
+  .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     const { startSession } = await import('./index.js');
     await startSession({
@@ -263,6 +304,7 @@ program
       noUpdateCheck: opts.updateCheck === false,
       postit: opts.postit !== false,
       wakeWord: !!opts.wakeWord,
+      weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,   // daemon-only — session bridges never advertise mDNS
         adb: opts.adb !== false ? 'auto' : false,
@@ -283,6 +325,7 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--no-codex-hooks', 'Skip ~/.codex/config.toml hook install')
+  .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     // Install Codex lifecycle hooks before starting the session so the
     // first prompt's UserPromptSubmit / Stop events reach the daemon.
@@ -311,6 +354,7 @@ program
       command: opts.command,
       debug: opts.debug,
       postit: opts.postit !== false,
+      weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,   // daemon-only
         adb: opts.adb !== false ? 'auto' : false,
@@ -331,6 +375,7 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--no-opencode-hooks', 'Skip OpenCode observer plugin install')
+  .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     // Install the OpenCode observer plugin so standalone `opencode` runs
     // (outside this managed session) also reach the daemon timeline. The
@@ -359,6 +404,7 @@ program
       command: opts.command,
       debug: opts.debug,
       postit: opts.postit !== false,
+      weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,
         adb: opts.adb !== false ? 'auto' : false,
@@ -375,6 +421,7 @@ program
   .option('-p, --port <port>', 'Bridge server port', String(BRIDGE_WS_PORT))
   .option('-d, --debug', 'Enable debug logging')
   .option('--local', 'Disable all device modules')
+  .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     const { startSession } = await import('./index.js');
     const port = parseInt(opts.port, 10);
@@ -384,6 +431,7 @@ program
       agentType: 'monitor',
       port,
       debug: opts.debug,
+      weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : undefined,
     });
   });
@@ -1233,6 +1281,31 @@ task
     await postTaskClose({ signal: 'manual', outcome: 'abandoned', sessionId: opts.session });
   });
 
+// ===== Optional Python BLE runtime =====
+
+const ble = program.command('ble').description('Prepare optional Python support for BLE display devices');
+
+ble
+  .command('setup')
+  .description('Create the private BLE environment and install its Python dependencies')
+  .action(() => {
+    const runtime = prepareBleRuntime();
+    if (runtime) log(`BLE support ready (${runtime.python}).`);
+  });
+
+ble
+  .command('status')
+  .description('Show whether optional BLE support is ready')
+  .action(() => {
+    const status = getBleRuntimeStatus();
+    if (status.ready) {
+      log(`BLE support ready (${status.python}).`);
+      return;
+    }
+    log(`BLE support is not ready: ${status.reason}. Run \`agentdeck ble setup\`.`);
+    process.exitCode = 1;
+  });
+
 // ===== iDotMatrix commands =====
 
 const idotmatrix = program.command('idotmatrix').description('Manage iDotMatrix BLE pixel display devices');
@@ -1241,33 +1314,26 @@ idotmatrix
   .command('scan')
   .description('Discover iDotMatrix devices via BLE')
   .action(async () => {
-    const { dirname } = await import('path');
-    const { fileURLToPath } = await import('url');
-    const { spawn } = await import('child_process');
-    
-    const distPath = dirname(fileURLToPath(import.meta.url));
-    const projectRoot = join(distPath, '..', '..');
-    const venvPython = join(projectRoot, '.venv', 'bin', 'python');
-    const scanScript = join(projectRoot, 'bridge', 'src', 'idotmatrix', 'scan.py');
-    
+    const runtime = prepareBleRuntime();
+    if (!runtime) return;
     log('Scanning for BLE devices (5 seconds)...');
-    const py = spawn(venvPython, [scanScript]);
-    
-    let stdoutData = '';
-    py.stdout.on('data', (data) => {
-      stdoutData += data.toString();
-    });
-    
-    py.on('close', (code) => {
+    try {
+      const { code, stdout } = await runBlePython(
+        runtime.python,
+        [runtime.paths.scripts.idotmatrixScan],
+        true,
+      );
       if (code !== 0) {
         log('Failed to run scan script.');
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
       try {
-        const devices = JSON.parse(stdoutData.trim());
+        const devices = JSON.parse(stdout.trim());
         if (devices.error) {
           log(`Scan error: ${devices.error}`);
-          process.exit(1);
+          process.exitCode = 1;
+          return;
         }
         if (!Array.isArray(devices) || devices.length === 0) {
           log('No BLE devices found.');
@@ -1278,10 +1344,14 @@ idotmatrix
           const prefix = d.is_idotmatrix ? '★ [iDotMatrix] ' : '  ';
           log(`${prefix}${d.name} (${d.address})`);
         }
-      } catch (e) {
-        log(`Failed to parse scan output: ${stdoutData}`);
+      } catch {
+        log(`Failed to parse scan output: ${stdout}`);
+        process.exitCode = 1;
       }
-    });
+    } catch (err) {
+      log(`Failed to start BLE scan: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
   });
 
 idotmatrix
@@ -1334,10 +1404,7 @@ idotmatrix
   .option('-a, --address <address>', 'BLE Address (defaults to first configured device)')
   .action(async (valueStr, opts) => {
     const { loadIDotMatrixDevices } = await import('./idotmatrix/idotmatrix-settings.js');
-    const { dirname } = await import('path');
-    const { fileURLToPath } = await import('url');
-    const { spawn } = await import('child_process');
-    
+
     const value = parseInt(valueStr, 10);
     if (isNaN(value) || value < 5 || value > 100) {
       log('Brightness value must be between 5 and 100.');
@@ -1353,24 +1420,28 @@ idotmatrix
       }
       targetAddress = devices[0].address;
     }
-    
-    const distPath = dirname(fileURLToPath(import.meta.url));
-    const projectRoot = join(distPath, '..', '..');
-    const venvPython = join(projectRoot, '.venv', 'bin', 'python');
-    const brightnessScript = join(projectRoot, 'bridge', 'src', 'idotmatrix', 'brightness.py');
-    
+
+    const runtime = prepareBleRuntime();
+    if (!runtime) return;
     log(`Setting brightness of ${targetAddress} to ${value}%...`);
-    const py = spawn(venvPython, [brightnessScript, '-a', targetAddress, '-b', String(value)], {
-      stdio: 'inherit'
-    });
-    
-    py.on('close', (code) => {
+    try {
+      const { code } = await runBlePython(runtime.python, [
+        runtime.paths.scripts.idotmatrixBrightness,
+        '-a',
+        targetAddress,
+        '-b',
+        String(value),
+      ]);
       if (code === 0) {
         log('Brightness updated successfully.');
       } else {
         log(`Failed to update brightness, process exited with code ${code}`);
+        process.exitCode = code ?? 1;
       }
-    });
+    } catch (err) {
+      log(`Failed to start brightness command: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
   });
 
 idotmatrix
@@ -1382,10 +1453,7 @@ idotmatrix
   .action(async (addressOpt, opts) => {
     const { loadIDotMatrixDevices } = await import('./idotmatrix/idotmatrix-settings.js');
     const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
-    const { dirname } = await import('path');
-    const { fileURLToPath } = await import('url');
-    const { spawn } = await import('child_process');
-    
+
     let targetAddress = addressOpt;
     let defaultBrightness = 100;
     const devices = loadIDotMatrixDevices();
@@ -1414,21 +1482,29 @@ idotmatrix
       : (info?.httpPort ?? info?.port ?? findDaemonPort() ?? BRIDGE_WS_PORT);
       
     const url = `http://127.0.0.1:${port}`;
-    
-    const distPath = dirname(fileURLToPath(import.meta.url));
-    const projectRoot = join(distPath, '..', '..');
-    const venvPython = join(projectRoot, '.venv', 'bin', 'python');
-    const syncScript = join(projectRoot, 'bridge', 'src', 'idotmatrix', 'sync.py');
-    
+
+    const runtime = prepareBleRuntime();
+    if (!runtime) return;
     log(`Starting BLE sync client linking to bridge at ${url} (brightness ${brightness}%, boost ${boost}x)...`);
-    
-    const py = spawn(venvPython, [syncScript, '-a', targetAddress, '-u', url, '-b', String(brightness), '--boost', String(boost)], {
-      stdio: 'inherit'
-    });
-    
-    py.on('close', (code) => {
+
+    try {
+      const { code } = await runBlePython(runtime.python, [
+        runtime.paths.scripts.idotmatrixSync,
+        '-a',
+        targetAddress,
+        '-u',
+        url,
+        '-b',
+        String(brightness),
+        '--boost',
+        String(boost),
+      ]);
       log(`Sync process exited with code ${code}`);
-    });
+      if (code !== 0) process.exitCode = code ?? 1;
+    } catch (err) {
+      log(`Failed to start BLE sync: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
   });
 
 // ===== Divoom Timebox Mini Light commands =====
@@ -1439,22 +1515,25 @@ timebox
   .command('scan')
   .description('Discover BLE TimeBox-mini-light peripherals')
   .action(async () => {
-    const paths = resolveTimeboxSyncPaths();
+    const runtime = prepareBleRuntime();
+    if (!runtime) return;
     log('Scanning for BLE devices (5 seconds)...');
-    const py = spawn(paths.python, [paths.scanScript]);
-    let stdoutData = '';
-    py.stdout.on('data', (data) => {
-      stdoutData += data.toString();
-    });
-    py.on('close', (code) => {
+    try {
+      const { code, stdout } = await runBlePython(
+        runtime.python,
+        [runtime.paths.scripts.timeboxScan],
+        true,
+      );
       if (code !== 0) {
-        log('BLE scan failed (is bleak installed in .venv?).');
+        log('BLE scan failed.');
+        process.exitCode = 1;
         return;
       }
       try {
-        const devices = JSON.parse(stdoutData.trim());
+        const devices = JSON.parse(stdout.trim());
         if (devices.error) {
           log(`BLE scan error: ${devices.error}`);
+          process.exitCode = 1;
           return;
         }
         if (!Array.isArray(devices) || devices.length === 0) {
@@ -1469,9 +1548,13 @@ timebox
         }
         log('\nAdd the starred BLE device with: agentdeck timebox add <address>');
       } catch {
-        log(`Failed to parse BLE scan output: ${stdoutData}`);
+        log(`Failed to parse BLE scan output: ${stdout}`);
+        process.exitCode = 1;
       }
-    });
+    } catch (err) {
+      log(`Failed to start BLE scan: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
   });
 
 timebox
@@ -1554,13 +1637,23 @@ async function runTimeboxSync(targetOpt: string | undefined, opts: { bridgePort?
     ? parseInt(opts.bridgePort, 10)
     : (info?.httpPort ?? info?.port ?? findDaemonPort() ?? BRIDGE_WS_PORT);
   const url = `http://127.0.0.1:${bridgePort}`;
-  const paths = resolveTimeboxSyncPaths();
+  const runtime = prepareBleRuntime();
+  if (!runtime) return;
 
-  const args = [paths.bleScript, '--address', id, '--url', url, '--brightness', String(brightness), ...(once ? ['--once'] : [])];
+  const args = [
+    runtime.paths.scripts.timeboxSync,
+    '--address',
+    id,
+    '--url',
+    url,
+    '--brightness',
+    String(brightness),
+    ...(once ? ['--once'] : []),
+  ];
 
   log(`${once ? 'Sending one Timebox frame' : 'Starting Timebox sync'} via BLE ${id} from ${url} (brightness ${brightness}%)...`);
-  const py = spawn(paths.python, args, { stdio: 'inherit' });
-  py.on('close', (code) => {
+  try {
+    const { code } = await runBlePython(runtime.python, args);
     if (once) {
       if (code === 0) {
         log('Timebox test frame sent.');
@@ -1570,8 +1663,12 @@ async function runTimeboxSync(targetOpt: string | undefined, opts: { bridgePort?
       }
     } else {
       log(`Timebox sync process exited with code ${code}`);
+      if (code !== 0) process.exitCode = code ?? 1;
     }
-  });
+  } catch (err) {
+    log(`Failed to start Timebox BLE command: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  }
 }
 
 timebox

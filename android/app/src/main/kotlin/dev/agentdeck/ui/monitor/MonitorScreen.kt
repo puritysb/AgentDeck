@@ -121,8 +121,13 @@ fun MonitorScreen(
     displayPrefs: DisplayPreferences,
 ) {
     val dashState by stateHolder.state.collectAsState()
-    val terrariumState = remember(dashState) { dashState.toTerrariumState() }
     val timelineEntries by TimelineStore.instance.entries.collectAsState()
+    val subagentActivity = remember(timelineEntries) {
+        dev.agentdeck.state.deriveSubagentActivity(timelineEntries)
+    }
+    val terrariumState = remember(dashState, subagentActivity) {
+        dashState.toTerrariumState(subagentActivity)
+    }
     // Per-session timeline filter, driven by focusedSessionId — mirrors Swift
     // TimelineStripView.timelineFilter. Primary session first, then siblings,
     // then the virtual OpenClaw Gateway session, then a bare sessionId fallback.

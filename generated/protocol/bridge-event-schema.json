@@ -1213,6 +1213,9 @@
         },
         "totalTokens": {
           "type": "number"
+        },
+        "weight": {
+          "type": "number"
         }
       },
       "required": [

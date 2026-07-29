@@ -706,6 +706,33 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.id), ["session-2", "session-10"])
     }
 
+    func testSortSessionsOrdersByWeightAscendingBeforeEverythingElse() {
+        // Weight is the primary key: negatives, then unweighted/0, then positives.
+        // A weighted claude-code session must sort before an unweighted openclaw.
+        // Mirrors shared session-utils sortSessions weight override.
+        let sessions = [
+            SessionInfo(id: "pos", port: 9122, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: 2),
+            SessionInfo(id: "oc", port: 9124, projectName: "A", agentType: "openclaw", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: nil),
+            SessionInfo(id: "neg", port: 9121, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: -5),
+            SessionInfo(id: "zero", port: 9123, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: 0),
+        ]
+
+        let sorted = DashboardDataRules.sortSessions(sessions)
+
+        // neg(-5) → [zero(0), oc(nil==0) resolved by agentType: openclaw<claude] → pos(2)
+        XCTAssertEqual(sorted.map(\.id), ["neg", "oc", "zero", "pos"])
+    }
+
+    func testSortSessionsUnweightedMatchesLegacyOrdering() {
+        // No weights set → identical to pre-weight ordering (backward compatible).
+        let sessions = [
+            SessionInfo(id: "2", port: 9122, projectName: "Beta", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: "2026-04-11T10:02:00Z"),
+            SessionInfo(id: "1", port: 9121, projectName: "Alpha", agentType: "codex-cli", alive: true, state: "processing", modelName: nil, startedAt: "2026-04-11T10:00:00Z"),
+            SessionInfo(id: "4", port: 9124, projectName: "Gateway", agentType: "openclaw", alive: true, state: "idle", modelName: nil, startedAt: nil),
+        ]
+        XCTAssertEqual(DashboardDataRules.sortSessions(sessions).map(\.id), ["4", "1", "2"])
+    }
+
     func testFoldCodexSessionPayloadsForDisplayCollapsesSameProject() {
         let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
             [
@@ -779,6 +806,52 @@ final class ProtocolTests: XCTestCase {
         let app = folded.first { ($0["agentType"] as? String) == "codex-app" }
         XCTAssertEqual(app?["groupSize"] as? Int, 2)
         XCTAssertEqual(app?["foldedSessionIds"] as? [String], ["codex:app-1", "codex:app-2"])
+    }
+
+    func testSortSessionsClampsAndComparesExtremeWeightsSafely() {
+        // Out-of-range wire values clamp to the documented bounds and
+        // opposite-sign extremes order without overflow (three-way compare).
+        let sessions = [
+            SessionInfo(id: "huge", port: 9121, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: Int.max),
+            SessionInfo(id: "tiny", port: 9122, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil, weight: Int.min),
+            SessionInfo(id: "zero", port: 9123, projectName: "A", agentType: "claude-code", alive: true, state: "idle", modelName: nil, startedAt: nil),
+        ]
+        XCTAssertEqual(DashboardDataRules.sortSessions(sessions).map(\.id), ["tiny", "zero", "huge"])
+        XCTAssertEqual(DashboardDataRules.sessionWeight(Int.max), SessionWeightRules.max)
+        XCTAssertEqual(DashboardDataRules.sessionWeight(Int.min), SessionWeightRules.min)
+        XCTAssertEqual(DashboardDataRules.sessionWeight(SessionWeightRules.max), SessionWeightRules.max)
+        XCTAssertEqual(DashboardDataRules.sessionWeight(SessionWeightRules.min), SessionWeightRules.min)
+        XCTAssertEqual(DashboardDataRules.sessionWeight(nil), 0)
+    }
+
+    func testFoldCodexSessionPayloadsNeverFoldsDistinctWeights() {
+        // Server-side fold runs BEFORE sortSessionPayloads in the Swift
+        // daemon's sessions_list build — a weight-blind key would collapse two
+        // pinned tabs on the wire where no client could recover them. Mirrors
+        // the shared fold's weight-band key.
+        let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
+            ["id": "codex:tab-2", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "processing", "weight": 2],
+            ["id": "codex:tab-1", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle", "weight": 1],
+        ])
+        XCTAssertEqual(folded.count, 2)
+        let ordered = DashboardDataRules.sortSessionPayloads(folded)
+        XCTAssertEqual(ordered.compactMap { $0["id"] as? String }, ["codex:tab-1", "codex:tab-2"])
+    }
+
+    func testFoldCodexSessionPayloadsStillFoldsSharedWeightBand() {
+        // Both unweighted (band 0) and both explicitly weight 3 keep folding.
+        let unweighted = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
+            ["id": "codex:a", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle"],
+            ["id": "codex:b", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle", "weight": 0],
+        ])
+        XCTAssertEqual(unweighted.count, 1)
+
+        let sameWeight = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
+            ["id": "codex:c", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle", "weight": 3],
+            ["id": "codex:d", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle", "weight": 3],
+        ])
+        XCTAssertEqual(sameWeight.count, 1)
+        XCTAssertEqual(sameWeight.first?["groupSize"] as? Int, 2)
     }
 
     func testOpenClawDisplayLinesKeepsOnlyDefaultModel() {

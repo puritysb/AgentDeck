@@ -13,14 +13,12 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
 import {
   addTimeboxDevice,
   isTimeboxAutoDiscoverEnabled,
   loadTimeboxDevices,
 } from './timebox-settings.js';
+import { getBleRuntimeStatus } from '../python-ble-runtime.js';
 
 interface ScanResult {
   name: string;
@@ -31,16 +29,6 @@ interface ScanResult {
 
 function log(msg: string): void {
   console.error(`[agentdeck] [timebox] ${msg}`);
-}
-
-function resolvePaths(): { venvPython: string; scanScript: string } {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const projectRoot = join(here, '..', '..', '..');
-  const timeboxDir = join(projectRoot, 'bridge', 'src', 'timebox');
-  return {
-    venvPython: join(projectRoot, '.venv', 'bin', 'python'),
-    scanScript: join(timeboxDir, 'scan_ble.py'),
-  };
 }
 
 /** Run scan_ble.py and parse its JSON, with a hard outer timeout. */
@@ -84,10 +72,13 @@ export async function autoDiscoverTimebox(): Promise<number> {
   if (!isTimeboxAutoDiscoverEnabled()) return 0;
   if (loadTimeboxDevices().length > 0) return 0; // only when nothing configured
 
-  const { venvPython, scanScript } = resolvePaths();
-  if (!existsSync(venvPython) || !existsSync(scanScript)) return 0;
+  const runtime = getBleRuntimeStatus();
+  if (!runtime.ready || !runtime.python) {
+    log(`auto-discovery unavailable (${runtime.reason}); run \`agentdeck ble setup\``);
+    return 0;
+  }
 
-  const results = await runScan(venvPython, scanScript, 8_000);
+  const results = await runScan(runtime.python, runtime.paths.scripts.timeboxScan, 8_000);
   const match = results.find((r) => r.is_timebox && r.address);
   if (!match) return 0;
 

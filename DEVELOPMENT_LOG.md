@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-07-30 — npm 설치판 BLE 런타임을 패키징하고 사용자 데이터 경로로 분리
+
+이슈 #85에서 `npm install -g @agentdeck/setup` 설치판의
+`agentdeck idotmatrix scan`이 `@agentdeck/.venv/bin/python`을 spawn하다
+`ENOENT`로 종료되는 것이 확인됐다. npm `files` allowlist가 Python
+스크립트를 싣지 않으면서 소스 checkout 전용 `bridge/src/.../*.py` 경로와
+레포 루트 `.venv`를 CLI·데몬이 하드코딩한 것이 원인이었다. 같은 경로
+계약을 공유하던 Timebox Mini도 동일하게 고장난 상태였다.
+
+`@agentdeck/bridge`는 이제 iDotMatrix·Timebox·공용 Python 스크립트와
+`python/requirements-ble.txt`를 함께 배포한다. 명시적인 BLE 명령
+(`scan`, `brightness`, `test`, `sync`)이나 `agentdeck ble setup`을 실행할
+때만 Python 3.10+를 확인하고 `~/.agentdeck/python-ble/venv`에 선택적
+의존성을 설치한다. 따라서 일반 npm 설치와 데몬 부팅은 PyPI 네트워크
+상태에 의존하지 않고, 전역 npm 업데이트도 가상환경을 지우지 않는다.
+기존 소스 checkout/수동 `.venv`는 호환 경로로 계속 인식한다.
+
+CLI의 모든 BLE subprocess는 spawn 실패를 정상 오류로 처리한다. 데몬의
+자동 발견·sync는 설치를 임의로 시작하지 않고 `agentdeck ble setup`
+안내를 남긴다. 경로·누락 자산·신규/legacy 환경 선택을 회귀 테스트로
+고정하고 npm public package 네 개를 `1.0.4`로 동기화해 배포한다.
+
+---
+
 ## 2026-07-29 — Node Bonjour가 Mac의 로컬 호스트명을 자기 충돌시키던 문제 수정
 
 이슈 #67 제보에서 `agentdeck daemon start` 직후 macOS가
@@ -376,6 +400,42 @@ managed=`send_prompt`)로 꽂힌다. iTerm2 주입 → 에이전트가 사진을
 WS를 우선하고 serial은 byte-count 무결성 가드가 지키는 폴백으로 남겼다.
 "보드가 보냈다고 말하는 것"과 "데몬이 받은 것" 사이의 모든 간극은
 `photo_result`(전달/실패/타임아웃)로 명시화했다.
+
+---
+
+## 2026-07-27 — `--weight` session sort override: CLI → registry → wire → every surface (PR #62)
+
+Session commands (`claude`/`codex`/`opencode`/`monitor`) accept `--weight <n>`,
+an explicit deck/tab sort pin. Structurally this threads one integer through
+the whole stack: `parseWeight` (CLI, rejects non-integers and out-of-range) →
+`SessionOptions.weight` → `SessionEntry.weight` (sessions.json) →
+`EnrichedSession`/`SessionInfo.weight` (wire) → shared `sortSessions`, whose
+primary key is now weight ascending (negatives → unweighted/0 → positives),
+with the old agentType→project→startedAt→id order intact within a band. The
+Swift daemon learns the weight through `session_push_register` — the sandboxed
+daemon cannot read the Node world's sessions.json, so the register frame always
+carries an explicit integer (0 included, never omitted; retain-on-absent
+receivers would otherwise latch a pin one-way) and `mergedPushRegisterEntry`
+preserves it across every entry-reconstruction site, including the push_state
+projectName recreate and the session_start hook overwrite.
+
+Two rules this feature forced into words. First, **the Codex display fold runs
+before sorting on every surface**, so the fold key now includes the normalized
+weight band in all three implementations (shared TS, Swift daemon payload fold,
+D200H preview hand-port) — a weight-blind key silently discarded one of two
+pinned same-project tabs, on the wire in the Swift daemon's case. Second, the
+documented range **-9999..9999** lives in `shared/src/session-utils.ts` as
+`SESSION_WEIGHT_MIN/MAX`, is emitted to Swift/Kotlin by
+`scripts/generate-session-weight-rules.mjs` (vitest drift gate, terrarium-rules
+pattern), and is enforced at every boundary: CLI parse, Node aggregator
+ingestion, Swift emission choke point (`sessionToDict`), and display-side
+normalize (trunc + clamp). Out-of-range weights are not a cosmetic concern —
+kotlinx decodes `weight` as `Int?`, so one 2^40 on the wire aborted the entire
+`sessions_list` decode and froze the Android dashboard. All comparators are
+three-way (`compareTo` / `<`), never subtraction: Swift traps on overflow,
+Kotlin wraps and reverses the ordering.
+
+---
 
 ## 2026-07-27 — T-Display-S3-Pro physical-key edge affordances
 
