@@ -12,14 +12,12 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
 import {
   addIDotMatrixDevice,
   isIDotMatrixAutoDiscoverEnabled,
   loadIDotMatrixDevices,
 } from './idotmatrix-settings.js';
+import { getBleRuntimeStatus } from '../python-ble-runtime.js';
 
 interface ScanResult {
   name: string;
@@ -29,15 +27,6 @@ interface ScanResult {
 
 function log(msg: string): void {
   console.error(`[agentdeck] [idotmatrix] ${msg}`);
-}
-
-function resolvePaths(): { venvPython: string; scanScript: string } {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const projectRoot = join(here, '..', '..', '..');
-  return {
-    venvPython: join(projectRoot, '.venv', 'bin', 'python'),
-    scanScript: join(projectRoot, 'bridge', 'src', 'idotmatrix', 'scan.py'),
-  };
 }
 
 /** Run scan.py and parse its JSON, with a hard outer timeout. */
@@ -81,10 +70,13 @@ export async function autoDiscoverIDotMatrix(): Promise<number> {
   if (!isIDotMatrixAutoDiscoverEnabled()) return 0;
   if (loadIDotMatrixDevices().length > 0) return 0; // only when nothing configured
 
-  const { venvPython, scanScript } = resolvePaths();
-  if (!existsSync(venvPython) || !existsSync(scanScript)) return 0;
+  const runtime = getBleRuntimeStatus();
+  if (!runtime.ready || !runtime.python) {
+    log(`auto-discovery unavailable (${runtime.reason}); run \`agentdeck ble setup\``);
+    return 0;
+  }
 
-  const results = await runScan(venvPython, scanScript, 8_000);
+  const results = await runScan(runtime.python, runtime.paths.scripts.idotmatrixScan, 8_000);
   const match = results.find((r) => r.is_idotmatrix && r.address);
   if (!match) return 0;
 

@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/bridge",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -14,7 +14,11 @@
     "assets/fonts",
     "assets/fm-helper",
     "fm-helper",
-    "scripts/build-fm-helper.mjs"
+    "scripts/build-fm-helper.mjs",
+    "python",
+    "src/idotmatrix/*.py",
+    "src/timebox/*.py",
+    "src/pysync/*.py"
   ],
   "main": "./dist/index.js",
   "bin": {
