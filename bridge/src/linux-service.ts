@@ -43,6 +43,78 @@ export function getDataDir(): string {
   return process.env.AGENTDECK_DATA_DIR || join(homedir(), '.agentdeck');
 }
 
+// ── Unit-file escaping ────────────────────────────────────────────────
+//
+// The data-dir override is user-controlled and travels through a file format
+// with its own quoting rules, so every generated value is escaped for the
+// exact directive it lands in. The rules differ per directive:
+//   - Environment=  word-splits with double-quote grouping; `\` and `"` need
+//     C-style escaping inside quotes; `%` specifiers expand (→ `%%`); `$` is
+//     NOT expanded and stays literal.
+//   - ExecStart=    word-splits like Environment=, but ADDITIONALLY expands
+//     `$VAR`/`${VAR}` even inside double quotes → a literal `$` must be `$$`.
+//   - WorkingDirectory=  takes the rest of the line verbatim (no word split,
+//     no unquoting — quotes would become literal path bytes); `%` specifiers
+//     still expand (`%h` is the documented home-dir idiom) → only `%%`.
+// Expected bytes are pinned in linux-service.test.ts and were verified against
+// real systemd (Debian 13) via this PR's user-unit install test.
+
+/** Throw if a value cannot be represented on a single unit-file line. */
+function assertUnitLineSafe(value: string, what: string): void {
+  const ctrl = /[\x00-\x1f\x7f]/.exec(value);
+  if (ctrl) {
+    throw new Error(
+      `${what} contains a control character (code ${ctrl[0].charCodeAt(0)}) — ` +
+      'it cannot be written safely into a systemd unit file',
+    );
+  }
+}
+
+/**
+ * Validate the AGENTDECK_DATA_DIR override for use in a systemd unit. Because
+ * `WorkingDirectory=` is verbatim, values that are relative, `~`, leading-`-`
+ * (systemd's ignore-missing prefix), or edge-whitespace-padded (trimmed by the
+ * unit parser, hence unrepresentable) would silently mean something else —
+ * reject them with an actionable error instead.
+ */
+export function validateDataDirOverride(value: string): void {
+  assertUnitLineSafe(value, 'AGENTDECK_DATA_DIR');
+  if (value !== value.trim()) {
+    throw new Error(
+      'AGENTDECK_DATA_DIR has leading/trailing whitespace — the systemd unit parser trims it, ' +
+      'so the path cannot be represented in the unit. Use a path without edge whitespace.',
+    );
+  }
+  if (!value.startsWith('/')) {
+    throw new Error(
+      `AGENTDECK_DATA_DIR must be an absolute path to be usable in a systemd unit (got '${value}') — ` +
+      "'~', relative paths, and '-'-prefixed values mean something else to systemd.",
+    );
+  }
+}
+
+/** Escape for the inside of a double-quoted unit-file string. */
+function escapeQuoted(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/** `%` → `%%` — systemd expands % specifiers in Environment/Exec/path settings. */
+function escapeSpecifiers(value: string): string {
+  return value.replace(/%/g, '%%');
+}
+
+/** Render one quoted `Environment=` assignment ($ stays literal there). */
+export function escapeUnitEnvAssignment(name: string, value: string): string {
+  assertUnitLineSafe(value, name);
+  return `"${name}=${escapeSpecifiers(escapeQuoted(value))}"`;
+}
+
+/** Quote one ExecStart word ($ must be doubled — expanded even inside quotes). */
+export function escapeExecWord(word: string): string {
+  assertUnitLineSafe(word, 'ExecStart path');
+  return `"${escapeSpecifiers(escapeQuoted(word)).replace(/\$/g, '$$$$')}"`;
+}
+
 /** ~/.config/systemd/user (honors $XDG_CONFIG_HOME). */
 export function getUnitDir(): string {
   const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
@@ -54,14 +126,23 @@ export function getUnitPath(): string {
   return join(getUnitDir(), UNIT_FILE);
 }
 
-export function buildUnitFile(opts?: { node?: string; cliJs?: string; workingDir?: string }): string {
-  const { node, cliJs, workingDir } = {
-    ...getDaemonNodeTarget(),
-    workingDir: getDataDir(),
-    ...opts,
-  };
-  // cli.js quoted so paths with spaces survive; --foreground so the unit process
-  // IS the daemon (lets Restart=on-failure track the real process).
+export function buildUnitFile(opts?: { node?: string; cliJs?: string; dataDirOverride?: string }): string {
+  const { node, cliJs } = { ...getDaemonNodeTarget(), ...opts };
+  // Single override source: BOTH WorkingDirectory= and the Environment= line
+  // derive from the same value, so the unit can never chdir into one directory
+  // while the daemon process resolves another (the split-state failure mode).
+  const override = opts?.dataDirOverride ?? process.env.AGENTDECK_DATA_DIR ?? '';
+  if (override) validateDataDirOverride(override);
+  const workingDir = override || join(homedir(), '.agentdeck');
+  // A systemd user manager does not inherit the install shell's environment
+  // after login/boot, so an explicitly selected AGENTDECK_DATA_DIR must be
+  // persisted into the unit — otherwise the daemon falls back to ~/.agentdeck
+  // while systemd merely chdirs into the override. Emitted only when set.
+  const envLine = override
+    ? `Environment=${escapeUnitEnvAssignment('AGENTDECK_DATA_DIR', override)}\n`
+    : '';
+  // Both ExecStart words quoted so paths with spaces survive; --foreground so
+  // the unit process IS the daemon (lets Restart=on-failure track it).
   return `[Unit]
 Description=AgentDeck monitoring daemon
 After=network-online.target
@@ -69,9 +150,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${node} "${cliJs}" daemon start --foreground
-WorkingDirectory=${workingDir}
-Restart=on-failure
+ExecStart=${escapeExecWord(node)} ${escapeExecWord(cliJs)} daemon start --foreground
+WorkingDirectory=${escapeSpecifiers(workingDir)}
+${envLine}Restart=on-failure
 RestartSec=5
 
 [Install]
@@ -107,12 +188,15 @@ export function unitExists(): boolean {
  * D-Bus session).
  */
 export function installUnit(): void {
+  // Build (and thereby validate any AGENTDECK_DATA_DIR override) BEFORE any
+  // side effect, so a rejected install leaves no stray directory behind.
+  const unit = buildUnitFile();
   // Ensure the unit's WorkingDirectory exists — on a fresh install ~/.agentdeck
   // (or the AGENTDECK_DATA_DIR override) may not exist yet, and systemd fails at
   // the CHDIR step before Node starts if it's missing.
   mkdirSync(getDataDir(), { recursive: true });
   mkdirSync(getUnitDir(), { recursive: true });
-  writeFileSync(getUnitPath(), buildUnitFile(), 'utf-8');
+  writeFileSync(getUnitPath(), unit, 'utf-8');
   execSync('systemctl --user daemon-reload', { stdio: 'pipe' });
   execSync(`systemctl --user enable ${UNIT_FILE}`, { stdio: 'pipe' });
 }

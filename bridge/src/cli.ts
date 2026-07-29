@@ -25,6 +25,7 @@ import {
   startUnit,
   disableUnit,
   getUnitPath,
+  getDataDir,
 } from './linux-service.js';
 
 const require = createRequire(import.meta.url);
@@ -620,6 +621,11 @@ daemon
           startUnit();
           log(`systemd user unit '${SERVICE_NAME}' installed and started.`);
           log(`Unit file: ${getUnitPath()}`);
+          if (process.env.AGENTDECK_DATA_DIR) {
+            log(`Data dir: ${getDataDir()} (AGENTDECK_DATA_DIR persisted into the unit — re-run 'agentdeck daemon install' to change it)`);
+          } else {
+            log(`Data dir: ${getDataDir()}`);
+          }
           log('For boot-without-login on a headless host, run once: loginctl enable-linger $USER');
         } catch (e) {
           const detail = (e as { stderr?: Buffer }).stderr?.toString().trim() || (e as Error).message;
