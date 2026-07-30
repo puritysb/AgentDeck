@@ -29,19 +29,18 @@ Plugin package: `dist/bound.serendipity.agentdeck.streamDeckPlugin` — rebuild 
 
 ## Version
 
-`1.0.2.0` (product version `1.0.2`) — Stream Deck requires the 4-part form;
-`scripts/verify-version-sync.mjs` pins it to `<VERSION>.0`. `1.0.2.0` is the
-**published** build (approved 2026-07-28). Same-version resubmission was only
-available while the plugin sat in pre-publication review; from here the
-Marketplace's monotonic-version rule applies, so the next revision must carry a
-higher version.
+`1.0.3.0` (product version `1.0.3`) — Windows compatibility correction prepared
+after the published 1.0.2 manifest incorrectly restricted installation to
+macOS. Stream Deck requires the 4-part form; `scripts/verify-version-sync.mjs`
+pins it to `<plugin package version>.0`.
 
 ## Platform
 
-**macOS 26.0+ only.** The Windows entry was dropped for 1.0.0 (`f20af561`):
-the Volume and Launcher dials are `osascript` / `open -a`, so a Windows build
-would have shipped two dead dials. The Node.js bridge itself does run on
-Windows — this is a plugin-surface decision, not a bridge limitation.
+**macOS 26.0+ and Windows 10+.** Session keys and usage dials are
+platform-neutral. Volume and Launcher now use host-specific implementations:
+`osascript` / `open` on macOS, and built-in Windows PowerShell media keys plus
+Start Apps/browser launch on Windows. AgentDeck's tested CLI/bridge baseline is
+Windows 11.
 
 ## Description
 
@@ -53,7 +52,7 @@ Session keys show Claude Code, Codex, OpenCode, and OpenClaw sessions at a glanc
 Profiles for Stream Deck, Stream Deck Mini, and Stream Deck + are bundled and install automatically.
 
 Getting set up
-AgentDeck is a thin client — it needs the free AgentDeck daemon running on the same Mac. Get it either from the free AgentDeck app on the Mac App Store (no terminal needed), or from a terminal:
+AgentDeck is a thin client — it needs the free AgentDeck daemon running on the same machine. On Mac, get it from the free AgentDeck app on the Mac App Store (no terminal needed). On macOS or Windows, install the CLI from a terminal:
 
     npx @agentdeck/setup
 
@@ -67,13 +66,14 @@ AgentDeck is an independent project and is not affiliated with or endorsed by El
 ## Release notes
 
 ```
-First public release.
+Windows compatibility update.
 
 • Session keys for Claude Code, Codex, OpenCode, and OpenClaw with distinct running / waiting states
 • Prompt steering, mode toggle, and stop from the key
 • Stream Deck + dials: Claude usage, Codex usage, volume, launcher
 • Bundled profiles for Stream Deck, Stream Deck Mini, and Stream Deck +
 • Automatic reconnect with an explicit OFFLINE state when no daemon is running
+• Restores Marketplace installation on Windows; Volume and Launcher now use native Windows host controls
 ```
 
 ## Links
@@ -82,9 +82,9 @@ First public release.
 - Support: https://github.com/puritysb/AgentDeck/issues
 - Privacy: https://puritysb.github.io/AgentDeck/#privacy
 
-## Submission files (revision — 2026-07-25)
+## Submission files (Windows compatibility revision — 2026-07-30)
 
-- Plugin: `dist/bound.serendipity.agentdeck.streamDeckPlugin` (v1.0.2.0, white category icon)
+- Plugin: `dist/bound.serendipity.agentdeck.streamDeckPlugin` (v1.0.3.0, macOS + Windows)
 - App icon: `marketplace/elgato/1.0.2/app-icon-288.png`
 - Thumbnail: `marketplace/elgato/1.0.2/thumbnail-1920x960.png`
 - Gallery: the three `marketplace/elgato/1.0.2/gallery-*.png` files

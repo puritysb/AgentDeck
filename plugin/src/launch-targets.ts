@@ -7,7 +7,7 @@
  * lives here where it can be covered directly.
  */
 import { OPENCLAW_GATEWAY_PORT } from '@agentdeck/shared';
-import { openApp, openOrFocusBrowserTab } from './utility-modes/macos.js';
+import { openApp, openOrFocusBrowserTab } from './utility-modes/system-control.js';
 import { dlog } from './log.js';
 
 const TAG = 'Launcher';

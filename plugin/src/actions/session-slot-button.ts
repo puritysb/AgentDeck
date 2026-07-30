@@ -32,7 +32,7 @@ import { renderUsageGauge } from '../renderers/usage-gauge.js';
 import { renderStatusReadout, renderSessionReadout } from '../renderers/display-tile.js';
 import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
-import { openAgentDeckAppOrGitHub } from '../utility-modes/macos.js';
+import { openAgentDeckAppOrGitHub } from '../utility-modes/system-control.js';
 
 // ---- Module state ----
 

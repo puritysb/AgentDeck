@@ -166,7 +166,7 @@ initSessionSlots((result) => {
       break;
 
     case 'open-gateway':
-      import('./utility-modes/macos.js').then(({ openOrFocusBrowserTab }) => {
+      import('./utility-modes/system-control.js').then(({ openOrFocusBrowserTab }) => {
         void openOrFocusBrowserTab(`http://127.0.0.1:${OPENCLAW_GATEWAY_PORT}`).catch(() => {});
       });
       break;

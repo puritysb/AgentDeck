@@ -111,7 +111,7 @@
   "Category": "AgentDeck",
   "CategoryIcon": "static/imgs/category",
   "CodePath": "bin/plugin.js",
-  "Description": "Monitor and steer AI coding agents from Stream Deck. Requires the free AgentDeck app for Mac, or the AgentDeck CLI, running on the same Mac.",
+  "Description": "Monitor and steer AI coding agents from Stream Deck. Requires the free AgentDeck app for Mac, or the AgentDeck CLI, running on the same machine.",
   "Icon": "static/imgs/plugin",
   "UUID": "bound.serendipity.agentdeck",
   "Name": "AgentDeck",
@@ -125,6 +125,10 @@
     {
       "Platform": "mac",
       "MinimumVersion": "26.0"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
     }
   ],
   "Nodejs": {
@@ -153,5 +157,5 @@
       "Readonly": false
     }
   ],
-  "Version": "1.0.2.0"
+  "Version": "1.0.3.0"
 }

@@ -1,8 +1,10 @@
 /**
  * E1 — Volume dial (Stream Deck+).
  *
- * Rotate adjusts macOS output volume; press toggles mute. The LCD shows the
- * current level and mirrors changes made elsewhere on the system via a 2s poll.
+ * Rotate adjusts host output volume; press toggles mute. On macOS the LCD shows
+ * the current level and mirrors external changes via a 2s poll. Windows uses
+ * media keys and shows action state because Core Audio exposes no built-in
+ * readback API to the plugin runtime.
  *
  * The multi-mode utility dial (mic / media / timer / diag / apme / tower, cycled
  * by tapping the LCD) was removed ahead of the Marketplace submission: touch-tap
@@ -28,9 +30,10 @@ import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
 import {
   openAgentDeckAppOrGitHub,
   getVolumeSettings,
-  setOutputVolume,
+  changeOutputVolume,
   setOutputMuted,
-} from '../utility-modes/macos.js';
+  supportsVolumeReadback,
+} from '../utility-modes/system-control.js';
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
 
 const PIXMAP_LAYOUT = 'layouts/encoder-layout.json';
@@ -52,6 +55,7 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 async function syncFromSystem(): Promise<void> {
+  if (!supportsVolumeReadback) return;
   if (polling) return;
   if (Date.now() - lastActionAt < SKIP_AFTER_ACTION) return;
   polling = true;
@@ -71,6 +75,7 @@ async function syncFromSystem(): Promise<void> {
 
 function startPolling(): void {
   stopPolling();
+  if (!supportsVolumeReadback) return;
   pollTimer = setInterval(() => { void syncFromSystem(); }, POLL_INTERVAL);
 }
 
@@ -125,9 +130,9 @@ export function refreshUtilityDials(): void {
   const data: UtilityRenderData = {
     title: 'VOL',
     icon: muted ? '🔇' : '🔊',
-    value: muted ? 'Muted' : `${volume}%`,
+    value: muted ? 'Muted' : supportsVolumeReadback ? `${volume}%` : 'Turn dial',
     indicator: {
-      value: muted ? 0 : volume,
+      value: muted || !supportsVolumeReadback ? 0 : volume,
       bar_fill_c: muted ? '#64748b' : '#22c55e',
     },
   };
@@ -163,7 +168,7 @@ export class UtilityDialAction extends SingletonAction {
     lastActionAt = Date.now();
     volume = clamp(volume + ev.payload.ticks * VOLUME_STEP, 0, 100);
     muted = false;
-    setOutputVolume(volume);
+    changeOutputVolume(ev.payload.ticks, volume);
     dlog('VolumeDial', `rotate: ${volume}%`);
     refreshUtilityDials();
   }

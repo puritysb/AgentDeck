@@ -94,8 +94,15 @@ Decided for the 2026-07-19 submission and still binding. The capabilities that w
 dropped to get here — the voice dial, the multi-mode utility dial, the project picker —
 are in [Retired and Experimental Surfaces](retired-surfaces.md).
 
-- **macOS only.** Volume and Launcher are `osascript` / `open -a`; the Windows manifest entry would have shipped two dead dials.
+- **macOS and Windows.** Session keys and usage dials are platform-neutral.
+  Volume and Launcher dispatch through `utility-modes/system-control.ts`:
+  macOS uses `osascript` / `open -a`; Windows uses built-in PowerShell media
+  keys and Start Apps/browser launch. Keep both manifest OS entries covered by
+  `manifest-platform.test.ts`.
 - **`SDKVersion: 3` — required, not a choice.** We shipped 2 first on the reading that 3 is merely the opt-in flag for DRM (plugin encryption) rather than an API level. Maker Console refuted that on upload (2026-07-20): it flags 2 with *"Minimum Manifest SDK version must be 3 or later"* and disables Continue, so a `SDKVersion: 2` bundle cannot be submitted at all. DRM is not separately selectable either — the console's second flag reads *"DRM protection is not enabled due to SDK compatibility"*, i.e. DRM follows from the SDK version.
 
   The original concern is **still open**: DRM is applied server-side after upload, so a local `streamdeck pack` cannot prove the encrypted build still works, and Elgato does not document how encryption treats the custom encoder layout JSON the four encoders load by path. Since 3 is mandatory, the mitigation is the review loop, not the version choice — upload with "publish after review" unselected, download the processed build, and verify the encoders before going live.
-- **`OS.mac MinimumVersion: 26.0`, deliberately.** Matches the Swift daemon's deployment target (`apple/project.yml`). Note the plugin also works against the Node CLI daemon, which runs on far older macOS, so this floor is a product decision rather than a technical requirement.
+- **OS floors:** `mac MinimumVersion: 26.0` matches the Swift daemon deployment
+  target (`apple/project.yml`); `windows MinimumVersion: 10` follows Elgato's
+  supported manifest form. The tested AgentDeck bridge baseline remains Windows
+  11 as documented in [windows.md](windows.md).

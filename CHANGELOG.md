@@ -23,6 +23,14 @@ target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
 ## 1.0.3
 
+### Stream Deck plugin
+
+- Restore Windows Marketplace installation instead of disabling an existing
+  locally linked plugin when the macOS-only store manifest is applied
+- Make Volume functional on Windows through built-in media keys and make
+  Launcher/offline help open Start-menu apps or browser fallbacks, while
+  preserving richer macOS volume readback and existing-tab focus
+
 ### CLI and daemon
 
 - Stop the Node Bonjour publisher from claiming the Mac's own `.local` hostname

@@ -47,6 +47,9 @@ agentdeck claude        # spawns Claude Code via Windows ConPTY (cmd.exe /d /s /
 - **`agentdeck daemon install` / `uninstall`** — registers a per-user **Scheduled Task** `AgentDeckDaemon` with a logon trigger (built-in `schtasks.exe`, no admin elevation), the Windows analog of the macOS LaunchAgent. `install` registers + starts it now and installs Codex hooks; `uninstall` stops the daemon and removes the task. A real Windows Service is intentionally **not** used — it runs in session 0 with no desktop/device access, breaking USB-HID (D200H), audio (wake-word), and the Stream Deck app. See [daemon.md → Autostart](daemon.md#autostart-loginlogon).
 - **Device modules** — `adb` is probed cross-platform; the `/dev/tty.*` USB-serial scan is skipped on Windows (COM-port enumeration not implemented). mDNS and `better-sqlite3` (APME) support Windows; D200H is driven by the Ulanzi Studio plugin over daemon WebSocket.
 - **APME hardware sampler** is darwin-only — it returns a minimal snapshot on Windows and the recommender treats that as "neutral".
-- **macOS-only plugin utility actions** (brightness / volume / dark-mode via `osascript`) gracefully no-op on Windows.
+- **Stream Deck host controls** — Volume uses Windows media keys through built-in
+  Windows PowerShell. The Launcher resolves Start-menu apps and falls back to
+  the configured browser URL. macOS keeps its richer volume readback and
+  existing-tab focus behavior.
 
 ---
