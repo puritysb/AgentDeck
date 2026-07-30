@@ -1,10 +1,12 @@
 /**
  * E1 — Volume dial (Stream Deck+).
  *
- * Rotate adjusts host output volume; press toggles mute. On macOS the LCD shows
- * the current level and mirrors external changes via a 2s poll. Windows uses
- * media keys and shows action state because Core Audio exposes no built-in
- * readback API to the plugin runtime.
+ * Rotate adjusts system output volume (osascript on macOS, a PowerShell
+ * CoreAudio coprocess on Windows — see `../system/`); press toggles mute. The
+ * LCD shows the current level and mirrors changes made elsewhere on the system
+ * via a 2s poll. When the platform backend reports volume unsupported (e.g.
+ * Windows with Add-Type blocked), the dial renders an N/A face and stops
+ * polling instead of failing silently every 2s.
  *
  * The multi-mode utility dial (mic / media / timer / diag / apme / tower, cycled
  * by tapping the LCD) was removed ahead of the Marketplace submission: touch-tap
@@ -30,10 +32,10 @@ import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
 import {
   openAgentDeckAppOrGitHub,
   getVolumeSettings,
-  changeOutputVolume,
+  setOutputVolume,
   setOutputMuted,
-  supportsVolumeReadback,
-} from '../utility-modes/system-control.js';
+  isVolumeSupported,
+} from '../system/index.js';
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
 
 const PIXMAP_LAYOUT = 'layouts/encoder-layout.json';
@@ -49,14 +51,15 @@ let muted = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let lastActionAt = 0;
 let polling = false;
+/** null = not yet probed (optimistic). Flips false only via the platform backend. */
+let volumeSupported: boolean | null = null;
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
 async function syncFromSystem(): Promise<void> {
-  if (!supportsVolumeReadback) return;
-  if (polling) return;
+  if (polling || volumeSupported === false) return;
   if (Date.now() - lastActionAt < SKIP_AFTER_ACTION) return;
   polling = true;
   try {
@@ -68,6 +71,12 @@ async function syncFromSystem(): Promise<void> {
     }
   } catch (err) {
     dwarn('VolumeDial', `syncFromSystem failed: ${err}`);
+    // Late failure path: the Windows coprocess breaker can trip after startup.
+    if (!(await isVolumeSupported())) {
+      volumeSupported = false;
+      stopPolling();
+      refreshUtilityDials();
+    }
   } finally {
     polling = false;
   }
@@ -75,7 +84,6 @@ async function syncFromSystem(): Promise<void> {
 
 function startPolling(): void {
   stopPolling();
-  if (!supportsVolumeReadback) return;
   pollTimer = setInterval(() => { void syncFromSystem(); }, POLL_INTERVAL);
 }
 
@@ -89,8 +97,15 @@ function stopPolling(): void {
 
 export function initUtilityDial(): void {
   dinfo('VolumeDial', 'initUtilityDial');
-  void syncFromSystem().then(() => refreshUtilityDials());
-  startPolling();
+  void isVolumeSupported().then((supported) => {
+    volumeSupported = supported;
+    if (!supported) {
+      refreshUtilityDials();
+      return;
+    }
+    void syncFromSystem().then(() => refreshUtilityDials());
+    startPolling();
+  });
 }
 
 export function updateUtilityDialState(_state: State): void {
@@ -127,15 +142,23 @@ export function refreshUtilityDials(): void {
 
   ensurePixmapLayout();
 
-  const data: UtilityRenderData = {
-    title: 'VOL',
-    icon: muted ? '🔇' : '🔊',
-    value: muted ? 'Muted' : supportsVolumeReadback ? `${volume}%` : 'Turn dial',
-    indicator: {
-      value: muted || !supportsVolumeReadback ? 0 : volume,
-      bar_fill_c: muted ? '#64748b' : '#22c55e',
-    },
-  };
+  const data: UtilityRenderData = volumeSupported === false
+    ? {
+      // Volume control unavailable (e.g. Windows PowerShell Add-Type blocked):
+      // an honest N/A face beats a fake percentage that nothing updates.
+      title: 'VOL',
+      value: 'N/A',
+      indicator: { value: 0, bar_fill_c: '#64748b' },
+    }
+    : {
+      title: 'VOL',
+      icon: muted ? '🔇' : '🔊',
+      value: muted ? 'Muted' : `${volume}%`,
+      indicator: {
+        value: muted ? 0 : volume,
+        bar_fill_c: muted ? '#64748b' : '#22c55e',
+      },
+    };
 
   const canvasFeedback = { canvas: svgToDataUrl(renderUtilityGeneric(data)) };
   for (const id of encoderRegistry.utilityIds) {
@@ -153,14 +176,18 @@ export class UtilityDialAction extends SingletonAction {
     if (!encoderRegistry.utilityIds.includes(ev.action.id)) {
       encoderRegistry.utilityIds.push(ev.action.id);
     }
-    await syncFromSystem();
-    startPolling();
+    if (volumeSupported === null) volumeSupported = await isVolumeSupported();
+    if (volumeSupported) {
+      await syncFromSystem();
+      startPolling();
+    }
     if (dimActionIfNeeded(ev.action, 'Encoder')) return;
     refreshUtilityDials();
   }
 
   override async onDialRotate(ev: DialRotateEvent): Promise<void> {
     if (!isDaemonConnected()) return;
+    if (volumeSupported === false) return;
 
     // Rotation is high-frequency: the underlying setter is debounced and
     // fire-and-forget, so a failed tick surfaces as the poll snapping the
@@ -168,7 +195,7 @@ export class UtilityDialAction extends SingletonAction {
     lastActionAt = Date.now();
     volume = clamp(volume + ev.payload.ticks * VOLUME_STEP, 0, 100);
     muted = false;
-    changeOutputVolume(ev.payload.ticks, volume);
+    setOutputVolume(volume);
     dlog('VolumeDial', `rotate: ${volume}%`);
     refreshUtilityDials();
   }
@@ -176,6 +203,11 @@ export class UtilityDialAction extends SingletonAction {
   override async onDialDown(ev: DialDownEvent): Promise<void> {
     if (!isDaemonConnected()) {
       void openAgentDeckAppOrGitHub().catch(() => {});
+      return;
+    }
+    if (volumeSupported === false) {
+      // Discrete, user-initiated action on a dead control — surface it.
+      void (ev.action as any).showAlert?.().catch(() => {});
       return;
     }
 

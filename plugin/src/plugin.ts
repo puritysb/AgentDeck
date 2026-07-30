@@ -166,7 +166,7 @@ initSessionSlots((result) => {
       break;
 
     case 'open-gateway':
-      import('./utility-modes/system-control.js').then(({ openOrFocusBrowserTab }) => {
+      import('./system/index.js').then(({ openOrFocusBrowserTab }) => {
         void openOrFocusBrowserTab(`http://127.0.0.1:${OPENCLAW_GATEWAY_PORT}`).catch(() => {});
       });
       break;
@@ -206,18 +206,6 @@ initSessionSlots((result) => {
 
     case 'refresh-usage':
       connMgr.send({ type: 'query_usage' });
-      break;
-
-    // Host push-to-talk (VOICE key). The daemon owns mic, STT and delivery;
-    // capture/transcribe progress comes back as voice_state events.
-    case 'voice-ptt-begin':
-      connMgr.send({ type: 'voice', action: 'start', sessionId: result.sessionId } as any);
-      break;
-    case 'voice-ptt-end':
-      connMgr.send({ type: 'voice', action: 'stop', sessionId: result.sessionId } as any);
-      break;
-    case 'voice-ptt-cancel':
-      connMgr.send({ type: 'voice', action: 'cancel', sessionId: result.sessionId } as any);
       break;
   }
 });
@@ -347,23 +335,6 @@ connMgr.on('user_prompt', (ev: UserPromptEvent) => {
 connMgr.on('review_status', (ev: { type: 'review_status'; sessionId: string; status: string; message?: string }) => {
   dlog('Plugin', `review_status: ${ev.sessionId} ${ev.status}${ev.message ? ` (${ev.message})` : ''}`);
   if (ev.status === 'error' && ev.sessionId) clearSessionReviewPending(ev.sessionId);
-});
-
-// Host push-to-talk progress → VOICE key facelift. Error is transient by
-// design: the daemon parks on 'error' after a failed capture, and without the
-// reset the key would read "no speech" forever.
-let voiceErrorResetTimer: ReturnType<typeof setTimeout> | null = null;
-connMgr.on('voice_state', (ev: { type: 'voice_state'; state: 'idle' | 'recording' | 'transcribing' | 'error'; text?: string; error?: string }) => {
-  dlog('Plugin', `voice_state: ${ev.state}${ev.text ? ` "${ev.text.slice(0, 40)}"` : ''}${ev.error ? ` (${ev.error})` : ''}`);
-  if (voiceErrorResetTimer) { clearTimeout(voiceErrorResetTimer); voiceErrorResetTimer = null; }
-  const changed = getSessionSlotManager().updateVoiceState(ev.state);
-  if (ev.state === 'error') {
-    voiceErrorResetTimer = setTimeout(() => {
-      voiceErrorResetTimer = null;
-      if (getSessionSlotManager().updateVoiceState('idle') && isInDetailView()) refreshSessionSlots();
-    }, 3000);
-  }
-  if (changed && isInDetailView()) refreshSessionSlots();
 });
 
 // ---- Display sleep/wake dimming ----

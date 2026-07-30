@@ -9,7 +9,6 @@ import streamDeck, {
   action,
   SingletonAction,
   KeyDownEvent,
-  KeyUpEvent,
   WillAppearEvent,
   WillDisappearEvent,
 } from '@elgato/streamdeck';
@@ -33,7 +32,7 @@ import { renderUsageGauge } from '../renderers/usage-gauge.js';
 import { renderStatusReadout, renderSessionReadout } from '../renderers/display-tile.js';
 import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
-import { openAgentDeckAppOrGitHub } from '../utility-modes/system-control.js';
+import { openAgentDeckAppOrGitHub } from '../system/index.js';
 
 // ---- Module state ----
 
@@ -65,13 +64,6 @@ let onSlotAction: ((action: ReturnType<typeof manager.handleSlotPress>) => void)
 
 /** Whether daemon connection is alive */
 let daemonConnected = false;
-
-/** The VOICE key currently held down (hold-to-talk pairs keyDown/keyUp). */
-let pttHold: { actionId: string; sessionId?: string; downAt: number } | null = null;
-
-/** A tap too short to carry speech: treat as a misfire and cancel instead of
- *  transcribing 80 ms of key-clack into a "no speech" error. */
-const PTT_MIN_HOLD_MS = 250;
 
 /** Soft-stale: daemon is still connected but has gone quiet past the stale
  *  window. Dims the last-known session renders until data resumes or the
@@ -438,12 +430,6 @@ export class SessionSlotButtonAction extends SingletonAction {
     const result = manager.handleSlotPress(slot, layout);
     dlog('SesSlot', `keyDown: slot=${slot} action=${result.action}`);
 
-    // Hold-to-talk: remember which key went down so onKeyUp can close the
-    // capture. The begin still flows through the normal callback below.
-    if (result.action === 'voice-ptt-begin') {
-      pttHold = { actionId: ev.action.id, sessionId: result.sessionId, downAt: Date.now() };
-    }
-
     if (result.action === 'next-page') {
       manager.nextPage(layout);
       refreshAll();
@@ -470,28 +456,7 @@ export class SessionSlotButtonAction extends SingletonAction {
     }
   }
 
-  override async onKeyUp(ev: KeyUpEvent): Promise<void> {
-    if (!pttHold || pttHold.actionId !== ev.action.id) return;
-    const hold = pttHold;
-    pttHold = null;
-    const heldMs = Date.now() - hold.downAt;
-    const action = heldMs < PTT_MIN_HOLD_MS ? 'voice-ptt-cancel' : 'voice-ptt-end';
-    dlog('SesSlot', `keyUp: voice ${action} after ${heldMs}ms`);
-    if (onSlotAction) {
-      onSlotAction({ action, sessionId: hold.sessionId } as ReturnType<typeof manager.handleSlotPress>);
-    }
-  }
-
   override onWillDisappear(ev: WillDisappearEvent): void {
-    // A VOICE key vanishing mid-hold (page/profile switch) would leave the
-    // host mic open until the max-duration stop; close it now.
-    if (pttHold?.actionId === ev.action.id) {
-      const hold = pttHold;
-      pttHold = null;
-      if (onSlotAction) {
-        onSlotAction({ action: 'voice-ptt-cancel', sessionId: hold.sessionId } as ReturnType<typeof manager.handleSlotPress>);
-      }
-    }
     const idx = actionIds.indexOf(ev.action.id);
     if (idx !== -1) actionIds.splice(idx, 1);
     slotMap.delete(ev.action.id);
