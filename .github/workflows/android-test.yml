@@ -1,0 +1,59 @@
+name: Android Tests
+
+# Compiles the Android app and runs its JUnit + Robolectric suite on PRs.
+#
+# `test-report.yml` already runs `testDebugUnitTest`, but only on push to
+# master, and `android-release.yml` only on an `android-v*` tag — so before
+# this workflow a PR touching only `android/**` had no job that so much as
+# compiled its Kotlin. Neither `ci.yml` (vitest over bridge/plugin/shared/hooks)
+# nor `design-system.yml` (token sync + lint + docs) reads the Android sources,
+# which made an all-green PR say nothing about whether the app builds.
+#
+# Scoped by path so PRs that never touch Android skip it entirely. The Android
+# SDK is preinstalled on the GitHub-hosted ubuntu runners, so no SDK setup step
+# is needed; `testDebugUnitTest` builds the debug variant only and therefore
+# needs none of the release signing secrets.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-test.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-test.yml'
+
+jobs:
+  unit-test:
+    name: Compile + JUnit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest
+
+      # The HTML/XML reports are what make a failure diagnosable — the console
+      # output names the failing test but not the assertion diff.
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-unit-test-report
+          path: |
+            android/app/build/reports/tests/testDebugUnitTest/
+            android/app/build/test-results/testDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 14
