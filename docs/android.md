@@ -37,15 +37,19 @@ e-ink 리더(Crema S, Onyx Boox, MOAAN Pantone 6, Bigme, Kobo), 컬러 태블릿
 | 순위 | `EinkEvidence` | 신호 |
 |---|---|---|
 | 1 | `VendorApi` | `android.os.EinkManager` / `getSystemService("eink")` / Onyx SDK 클래스 존재 |
-| 2 | `SystemProperty` | `ro.eink.version`, `ro.hardware.eink`, `ro.epd.type`, `persist.sys.eink.mode` 등 |
+| 2 | `SystemProperty` | `ro.eink.version`, `ro.hardware.eink`, `ro.epd.type`, `persist.sys.eink.mode` 등 — **존재가 아니라 참값**으로 판단(`isTruthySystemProperty`) |
 | 3 | `BuildCharacteristics` | `ro.build.characteristics` 에 `eink`/`epd` |
 | 4 | `BuildString` | `PRODUCT`/`DEVICE`/`HARDWARE` 에 `eink`/`epd` — **약한 신호**라 `UnverifiedEinkPanel` caveat 을 붙여 override 를 안내 |
 | 5 | `KnownVendor` | e-ink 전용 벤더(Onyx, Crema, Kobo, PocketBook, reMarkable, Supernote, Bigme, MOAAN …) |
 | 6 | `KnownModel` | 두 패널을 모두 파는 벤더(Hisense, Xiaomi, Huawei, B&N, Fujitsu, Sony)는 **모델 토큰까지 일치해야** e-ink |
 
+프로퍼티는 정의돼 있으면서 음수값인 경우가 흔하다 — LCD 빌드에 `ro.eink_display=false` 나 `persist.sys.eink.mode=0` 이 실려 있으면 단순 존재 검사(`isNotEmpty()`)는 이를 e-ink 로 읽는다. 그래서 false-like 어휘(`0`/`false`/`off`/`no`/`none`/`null`/`unset`/`unknown`/`disabled`)를 배제하고 나머지는 통과시킨다 — enum 모드 `2`, 버전 `1.2`, 패널 품번 `UC8179` 가 모두 유효한 값이기 때문이다. `0` 을 false-like 로 두는 이유는 여기서 다루는 enum 키에서 0 이 언제나 "none/off" 이고 사용 가능한 EPD 모드가 아니기 때문이다(`EinkRenderer` 가 구동하는 Rockchip 모드는 `2`/`12`/`14`).
+
 벤더 규칙은 `MANUFACTURER`/`BRAND`(+모델에 담긴 식별력 있는 브랜드 단어)만 본다. `PRODUCT`/`DEVICE`/`HARDWARE` 는 코드네임 필드라 브랜드명과 충돌한다 — LCD 폰인 **OnePlus X 의 코드네임이 `onyx`** 다. 이 필드들은 `eink`/`epd` 토큰 검사에만 쓴다.
 
 > 과거 detector 는 `"note"`, `"nova"`, `"leaf"`, `"poke"` 를 벤더 조건 없이 `Build.MODEL` 에 substring 매칭했다. Redmi Note·Huawei nova 같은 일반 기기가 흑백 e-ink UI + 강제 landscape + 시스템 rotation 쓰기를 받았고, 사용자가 되돌릴 방법도 없었다. `DeviceProfileTest` 가 이 케이스들을 회귀 가드로 고정한다.
+
+**반사형 LCD(RLCD)는 e-ink 가 아니다.** Hisense Q5(`HITV105C`)처럼 흑백 반사형 LCD 로 "e-ink 같은" 사용감을 내는 기기는 EPD 컨트롤러가 없으므로 두 e-ink 표에서 제외한다 — e-ink UI·벤더 refresh 모드·강제 landscape 가 모두 잘못 켜진다. Hisense 의 e-ink 계열은 A5/A7/A9/Hi Reader 다.
 
 ### Size class
 
@@ -74,7 +78,7 @@ Limited 를 인터스티셜로 막지 않는 이유: 벽에 걸린 TV 는 정당
 
 자동 판정이 틀린 기기를 앱 업데이트 없이 교정하는 3-state(`Auto`/`E-ink`/`LCD`) 설정. 태블릿은 Settings 의 **Device** 카드, e-ink 는 Settings 오버레이의 **Display panel** 섹션에서 바꾼다. `display_prefs` DataStore 의 `panel_override` 키에 저장되고, 변경 시 `MainActivity` 가 `recreate()` 한다 — 패널은 UI 트리 전체와 첫 프레임 이전 window flag 를 결정하므로 실행 중 교체할 수 없다.
 
-패널 종류는 첫 프레임 전에 확정돼야 하므로(RK3566 리더는 늦은 `requestedOrientation` 을 무시한다) `readStartupOverridesBlocking()` 이 500ms 상한으로 동기 읽기를 한다. 타임아웃 시에는 안전한 기본값으로 시작하고, 뒤이어 도착한 실제 값이 collector 를 통해 `recreate()` 를 유발하므로 최악의 결과가 "잘못된 대시보드"가 아니라 "깜빡임"이 된다.
+패널 종류는 첫 프레임 전에 확정돼야 하므로(RK3566 리더는 늦은 `requestedOrientation` 을 무시한다) `readStartupOverridesBlocking()` 이 500ms 상한으로 **단일 DataStore 스냅샷**에서 두 키를 함께 읽는다. 타임아웃은 `StartupOverrides.timedOut` 으로 보고된다 — 기본값이 중립적이지 않기 때문이다: `allowUnsupportedDevice = false` 는 과거에 "show anyway" 를 선택한 사용자를 다시 차단한다. 그래서 `MainActivity` 는 `panelOverrideFlow` 와 `allowUnsupportedDeviceFlow` 를 **둘 다** 관찰하고 적용된 쌍과 어긋나면 `recreate()` 한다(`shouldRecreateForDeviceOverrides`). 저장된 panel override 가 `Auto` 면 기본값과 같아서 override 만 비교하는 방식은 이 복구를 놓친다. recreate 이후의 읽기는 이미 한 번 collect 한 DataStore 를 warm 으로 받으므로 1회 교정에서 수렴한다. "Show anyway" 버튼도 저장만 하고 recreate 는 같은 collector 가 담당해 경로가 하나로 유지된다.
 
 `kind` 와이어 값은 의도적으로 `"eink"`/`"tablet"` 2값 어휘를 유지한다 — 유일한 소비자인 `TopologyRail.swift` 가 2항 삼항식(`kind == "eink" ? "E-ink" : "Tablet"`)으로 매핑하므로, 어휘 확장은 Swift/Node 라벨 매핑과 함께 별도 커밋에서 해야 한다.
 

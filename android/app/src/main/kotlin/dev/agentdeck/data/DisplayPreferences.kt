@@ -174,30 +174,50 @@ class DisplayPreferences(
     }
 
     /**
+     * Both device-class preferences from a **single** DataStore snapshot.
+     *
+     * One snapshot rather than two `first()` calls: the two keys are read
+     * together to decide one thing (which screen to compose), so reading them
+     * from separate emissions both doubles the read cost inside the startup
+     * budget and admits a torn pair.
+     */
+    suspend fun readOverrides(): StartupOverrides {
+        val prefs = context.dataStore.data.first()
+        return StartupOverrides(
+            panelOverride = PanelOverride.fromStored(prefs[PANEL_OVERRIDE_KEY]),
+            allowUnsupportedDevice = prefs[ALLOW_UNSUPPORTED_KEY] ?: false,
+            timedOut = false,
+        )
+    }
+
+    /**
      * Device-class decisions that must be known *before* the first frame:
      * e-ink readers on RK3566 ignore a late `requestedOrientation`, so the
      * panel kind has to be settled while `onCreate` is still running.
      *
-     * DataStore is asynchronous, so this blocks — bounded, and with a safe
-     * default on timeout. If the timeout is ever hit the collector in
-     * `MainActivity` still sees the real value moments later and recreates the
-     * activity, so a slow first read degrades to a flicker rather than to the
-     * wrong dashboard.
+     * DataStore is asynchronous, so this blocks — bounded, and with safe
+     * defaults on timeout. A timeout is reported in [StartupOverrides.timedOut]
+     * rather than being indistinguishable from genuinely-default preferences:
+     * the defaults are not neutral (`allowUnsupportedDevice = false` re-blocks a
+     * user who previously chose to show the dashboard anyway), so the caller has
+     * to know the values are provisional. `MainActivity` recovers by observing
+     * both keys and recreating once the real pair arrives.
      */
     fun readStartupOverridesBlocking(
         timeoutMs: Long = STARTUP_READ_TIMEOUT_MS,
     ): StartupOverrides = runBlocking {
-        withTimeoutOrNull(timeoutMs) {
-            StartupOverrides(
-                panelOverride = panelOverrideFlow.first(),
-                allowUnsupportedDevice = allowUnsupportedDeviceFlow.first(),
-            )
-        } ?: StartupOverrides()
+        withTimeoutOrNull(timeoutMs) { readOverrides() }
+            ?: StartupOverrides(timedOut = true)
     }
 
     /** Snapshot of the pre-first-frame preferences. */
     data class StartupOverrides(
         val panelOverride: PanelOverride = PanelOverride.Auto,
         val allowUnsupportedDevice: Boolean = false,
+        /**
+         * True when the bounded read expired, so the other fields are defaults
+         * that have not been confirmed against storage.
+         */
+        val timedOut: Boolean = false,
     )
 }

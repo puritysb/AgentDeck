@@ -50,12 +50,13 @@ class MainActivity : ComponentActivity() {
     private lateinit var deviceProfile: DeviceProfile
 
     /**
-     * The panel override this instance was built for. The collector below
-     * compares against it so a user flipping the override recreates the
-     * activity exactly once — the panel decides the whole UI tree plus
-     * pre-first-frame window flags, none of which can be swapped in place.
+     * The device-class preferences this instance was built for. The collector
+     * below compares against them so a change recreates the activity exactly
+     * once — they decide the whole UI tree plus pre-first-frame window flags,
+     * none of which can be swapped in place.
      */
     private var appliedPanelOverride: PanelOverride = PanelOverride.Auto
+    private var appliedAllowUnsupported: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,6 +78,7 @@ class MainActivity : ComponentActivity() {
         // `readStartupOverridesBlocking`.
         val startup = DisplayPreferences(this).readStartupOverridesBlocking()
         appliedPanelOverride = startup.panelOverride
+        appliedAllowUnsupported = startup.allowUnsupportedDevice
         deviceProfile = DeviceProfile.detect(this, startup.panelOverride)
         DeviceProfileHolder.install(deviceProfile)
 
@@ -147,15 +149,32 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // A panel override is a whole-tree change; recreate rather than trying
-        // to swap the dashboard under a live composition.
+        // Both device-class preferences are whole-tree changes; recreate rather
+        // than trying to swap the dashboard under a live composition.
+        //
+        // Watching `allowUnsupportedDevice` here is also the recovery path for a
+        // startup read that expired: `onCreate` then built this instance from
+        // defaults, and `false` is not neutral — it re-blocks a user who had
+        // already chosen to show the dashboard anyway. Nothing else would notice,
+        // because a stored panel override of `Auto` matches the default too.
         lifecycleScope.launch {
-            displayPrefs.panelOverrideFlow.collect { override ->
-                if (override != appliedPanelOverride) {
-                    appliedPanelOverride = override
-                    recreate()
+            combine(
+                displayPrefs.panelOverrideFlow,
+                displayPrefs.allowUnsupportedDeviceFlow,
+            ) { override, allowUnsupported -> override to allowUnsupported }
+                .collect { (override, allowUnsupported) ->
+                    if (shouldRecreateForDeviceOverrides(
+                            appliedPanelOverride = appliedPanelOverride,
+                            appliedAllowUnsupported = appliedAllowUnsupported,
+                            storedPanelOverride = override,
+                            storedAllowUnsupported = allowUnsupported,
+                        )
+                    ) {
+                        appliedPanelOverride = override
+                        appliedAllowUnsupported = allowUnsupported
+                        recreate()
+                    }
                 }
-            }
         }
 
         setContent {
@@ -163,10 +182,12 @@ class MainActivity : ComponentActivity() {
                 when {
                     !showDashboard -> UnsupportedDeviceScreen(
                         profile = deviceProfile,
+                        // Persist only — the collector above observes the change
+                        // and recreates, so this and the timeout-recovery path
+                        // share one mechanism instead of racing two.
                         onShowAnyway = {
                             lifecycleScope.launch {
                                 displayPrefs.setAllowUnsupportedDevice(true)
-                                recreate()
                             }
                         },
                     )
@@ -249,6 +270,28 @@ class MainActivity : ComponentActivity() {
 
 private const val TAG = "MainActivity"
 private const val VERBOSE_MAIN_LOGS = false
+
+/**
+ * Whether the stored device-class preferences differ from the ones this activity
+ * instance was built from, and therefore need a recreate.
+ *
+ * Extracted so the recovery case has a test: when the bounded startup read
+ * expires, the instance is built from defaults, and `allowUnsupportedDevice`
+ * defaulting to `false` silently re-blocks a user who had already chosen to show
+ * the dashboard anyway. Comparing only the panel override misses that entirely,
+ * because a stored `Auto` equals the default it was built with.
+ *
+ * Convergence: the recreate re-reads a DataStore that this process has already
+ * collected once, so the second read is served warm and the applied pair then
+ * matches storage. It is a one-shot correction, not a loop.
+ */
+internal fun shouldRecreateForDeviceOverrides(
+    appliedPanelOverride: PanelOverride,
+    appliedAllowUnsupported: Boolean,
+    storedPanelOverride: PanelOverride,
+    storedAllowUnsupported: Boolean,
+): Boolean = storedPanelOverride != appliedPanelOverride ||
+    storedAllowUnsupported != appliedAllowUnsupported
 
 internal fun shouldKeepDashboardScreenOn(
     isEink: Boolean,

@@ -480,7 +480,10 @@ private val EINK_ONLY_VENDORS = setOf(
  * a Huawei.
  */
 private val MIXED_VENDOR_EINK_MODELS: Map<String, Set<String>> = mapOf(
-    "hisense" to setOf("a5", "a7", "a9", "q5", "hireader"),
+    // Q5 is deliberately absent: the Hisense Q5 (HITV105C) is a monochrome
+    // reflective LCD, not an electrophoretic panel. It has no EPD controller,
+    // so the e-ink UI, refresh modes and forced landscape would all be wrong.
+    "hisense" to setOf("a5", "a7", "a9", "hireader"),
     "xiaomi" to setOf("inkpalm", "moaan"),
     "redmi" to setOf("inkpalm"),
     "huawei" to setOf("paper"),
@@ -510,7 +513,7 @@ private val COLOR_EINK_MODELS: Map<String, Set<String>> = mapOf(
     "rockchip" to setOf("pantone"),
     "pocketbook" to setOf("inkpad color", "verse color", "era color", "color"),
     "kobo" to setOf("colour"),
-    "hisense" to setOf("q5", "a7cc", "a5c"),
+    "hisense" to setOf("a7cc", "a5c"),
     "remarkable" to setOf("paper pro"),
     "viwoods" to setOf("color"),
 )
@@ -555,6 +558,43 @@ private fun displayNameFor(fp: DeviceFingerprint): String {
         else -> "$manufacturer $model"
     }
 }
+
+/**
+ * Whether a system property value counts as a positive signal.
+ *
+ * Presence is not truth. Vendors ship these keys *defined and negative* — an
+ * LCD build may carry `ro.eink_display=false` or `persist.sys.eink.mode=0`, and
+ * an `isNotEmpty()` check reads both as "this is an e-ink panel". The keys
+ * probed here are a mix of booleans (`ro.eink.color`), enums
+ * (`persist.sys.eink.mode`) and free-form values (`ro.epd.type=UC8179`,
+ * `ro.eink.version=1.2`), so rather than model each key this rejects the
+ * false-like vocabulary and accepts anything else — including `2`, `1.2` and
+ * panel part numbers.
+ *
+ * `0` is treated as false-like on purpose: in every enum-valued key here the
+ * zero mode means "none/off", never a usable EPD mode (the Rockchip modes
+ * `EinkRenderer` drives are `2`, `12` and `14`).
+ */
+internal fun isTruthySystemProperty(value: String): Boolean {
+    val normalized = value.trim().lowercase()
+    if (normalized.isEmpty()) return false
+    return normalized !in FALSE_LIKE_PROPERTY_VALUES
+}
+
+internal fun anyTruthySystemProperty(values: Collection<String>): Boolean =
+    values.any { isTruthySystemProperty(it) }
+
+private val FALSE_LIKE_PROPERTY_VALUES = setOf(
+    "0",
+    "false",
+    "off",
+    "no",
+    "none",
+    "null",
+    "unset",
+    "unknown",
+    "disabled",
+)
 
 /**
  * Reflective `android.os.SystemProperties` reader. The class is hidden but
@@ -619,10 +659,12 @@ private object EinkCapabilityProbe {
     }
 
     fun hasEinkSystemProperty(): Boolean =
-        einkSystemProperties.any { SystemPropertyProbe.get(it).isNotEmpty() }
+        anyTruthySystemProperty(einkSystemProperties.map { SystemPropertyProbe.get(it) })
 
     fun hasColorEinkSignal(): Boolean {
-        if (colorEinkSystemProperties.any { SystemPropertyProbe.get(it).isNotEmpty() }) return true
+        if (anyTruthySystemProperty(colorEinkSystemProperties.map { SystemPropertyProbe.get(it) })) {
+            return true
+        }
         val characteristics = SystemPropertyProbe.get("ro.build.characteristics").lowercase()
         return characteristics.contains("einkcolor") || characteristics.contains("eink_color")
     }

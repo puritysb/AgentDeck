@@ -70,6 +70,18 @@ class DeviceProfileTest {
     }
 
     @Test
+    fun `hisense q5 is a reflective lcd not an eink panel`() {
+        // The Q5 (HITV105C) is a monochrome reflective LCD with no EPD
+        // controller. Classifying it as e-ink would switch on the e-ink UI,
+        // vendor refresh modes and forced landscape — none of which apply.
+        listOf("HITV105C", "Hisense Q5", "Q5").forEach { model ->
+            val profile = classifyDevice(fingerprint(manufacturer = "Hisense", model = model))
+            assertEquals("$model must classify as LCD", PanelKind.Lcd, profile.panel)
+            assertEquals(EinkEvidence.None, profile.einkEvidence)
+        }
+    }
+
+    @Test
     fun `hisense eink reader is detected by model`() {
         val profile = classifyDevice(fingerprint(manufacturer = "Hisense", model = "Hi Reader A5"))
         assertEquals(PanelKind.EinkMono, profile.panel)
@@ -167,6 +179,37 @@ class DeviceProfileTest {
             )
         )
         assertEquals(PanelKind.EinkColor, profile.panel)
+    }
+
+    // MARK: - System property truthiness
+
+    @Test
+    fun `false-like property values are not eink signals`() {
+        // Vendors ship these keys defined and negative. An `isNotEmpty()` check
+        // reads `ro.eink_display=false` and `persist.sys.eink.mode=0` as "this
+        // is an e-ink panel", which misclassifies ordinary LCD builds.
+        listOf("", "  ", "0", "false", "FALSE", " False ", "off", "no", "none", "null", "unset", "unknown", "disabled")
+            .forEach { value ->
+                assertFalse("\"$value\" must not count as a signal", isTruthySystemProperty(value))
+            }
+    }
+
+    @Test
+    fun `real property values are eink signals`() {
+        // Booleans, enum modes and free-form values all have to pass: the probed
+        // keys are a mix of `ro.eink.color=1`, `persist.sys.eink.mode=2`,
+        // `ro.eink.version=1.2` and `ro.epd.type=UC8179`.
+        listOf("1", "true", "TRUE", "2", "12", "14", "1.2", "UC8179", "yes", "on")
+            .forEach { value ->
+                assertTrue("\"$value\" must count as a signal", isTruthySystemProperty(value))
+            }
+    }
+
+    @Test
+    fun `aggregate property check ignores false-like values`() {
+        assertFalse(anyTruthySystemProperty(listOf("", "0", "false")))
+        assertFalse(anyTruthySystemProperty(emptyList()))
+        assertTrue(anyTruthySystemProperty(listOf("", "0", "2")))
     }
 
     // MARK: - Size classes
