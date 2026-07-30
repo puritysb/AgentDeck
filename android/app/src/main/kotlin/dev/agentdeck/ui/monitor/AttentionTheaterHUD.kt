@@ -53,10 +53,11 @@ import dev.agentdeck.ui.component.BrandIcon
  * so plan approvals and OpenClaw scope selectors can show the full label
  * text instead of being truncated to three generic buttons.
  *
- * E-ink devices are suppressed upstream in `MonitorScreen.MonitorHUD` via
- * `EinkDetector.isEinkDevice()` — interactive popups don't work well on
- * slow-refresh screens, so those users get the "?" creature indicator
- * instead.
+ * E-ink devices never reach this card: `MainActivity` composes
+ * `EinkMonitorScreen` instead of the tablet tree whenever
+ * `DeviceProfile.isEink`, so the suppression is structural rather than a
+ * per-call-site check. Interactive popups don't work well on slow-refresh
+ * screens — those users get the "?" creature indicator instead.
  *
  * `onRespond(index)` dispatches `select_option(index)` via
  * `BridgeConnection` — same path used by D200H hardware buttons.
