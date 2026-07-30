@@ -2,7 +2,7 @@ package dev.agentdeck.net
 
 import android.os.Build
 import android.util.Log
-import dev.agentdeck.util.EinkDetector
+import dev.agentdeck.util.DeviceProfileHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -176,17 +176,13 @@ class BridgeConnection private constructor() {
                 // show an Android row. Without it a WiFi-connected tablet is an
                 // anonymous consumer with no visibility anywhere in the UI.
                 // Some models already embed the brand ("Lenovo TB-J606F") —
-                // don't prepend the manufacturer twice.
-                val name = if (Build.MODEL.contains(Build.MANUFACTURER, ignoreCase = true)) {
-                    Build.MODEL
-                } else {
-                    "${Build.MANUFACTURER} ${Build.MODEL}".trim()
-                }
+                // `DeviceProfile.displayName` is where that de-duplication lives.
+                val name = DeviceProfileHolder.current.displayName
                 webSocket.send(
                     PluginCommands.clientRegisterAndroidDashboard(
                         id = Build.MODEL,
                         name = name,
-                        kind = if (EinkDetector.isEinkDevice()) "eink" else "tablet",
+                        kind = DeviceProfileHolder.current.wireKind,
                     )
                 )
             }

@@ -68,6 +68,7 @@ import dev.agentdeck.ui.eink.EinkAttentionPanel
 import dev.agentdeck.ui.eink.EinkAquariumFrame
 import dev.agentdeck.ui.eink.EinkSettingsOverlay
 import dev.agentdeck.ui.eink.EinkTimelinePanel
+import dev.agentdeck.ui.eink.rememberEinkLayoutScale
 import dev.agentdeck.ui.eink.buildEinkAttentionFeatured
 import dev.agentdeck.terrarium.renderer.einkColorEnabled
 import dev.agentdeck.terrarium.toTerrariumState
@@ -109,6 +110,7 @@ fun EinkMonitorScreen(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val einkScale = rememberEinkLayoutScale()
     val currentUrl by connection.url.collectAsState()
 
     // mDNS discovery — active while disconnected (url cleared)
@@ -297,7 +299,7 @@ fun EinkMonitorScreen(
                     debounceMs = Zone.CHROME.debounceMs,
                     triggerKey = Triple(state.agentState, sessionsKey, state.workerSessionCount),
                     sleepSnapshotMode = sleepSnapshotMode,
-                    modifier = Modifier.height(44.dp).fillMaxWidth(),
+                    modifier = Modifier.height(einkScale.chromeHeight).fillMaxWidth(),
                 ) {
                     EinkDashboardChromeBar(
                         state = state,
@@ -321,7 +323,7 @@ fun EinkMonitorScreen(
                         debounceMs = Zone.ATTENTION.debounceMs,
                         triggerKey = attentionIdentity,
                         softTriggerKey = featuredAttention.cursorIndex,
-                        modifier = Modifier.height(112.dp).fillMaxWidth(),
+                        modifier = Modifier.height(einkScale.attentionHeightLandscape).fillMaxWidth(),
                     ) {
                         EinkAttentionPanel(
                             featured = featuredAttention,
@@ -1084,6 +1086,7 @@ private fun EinkPortraitLayout(
     showSettingsButton: Boolean,
     onSettingsClick: () -> Unit,
 ) {
+    val einkScale = rememberEinkLayoutScale()
     val terrariumState = remember(state) { state.toTerrariumState() }
     val terrariumRefreshKey = remember(state, terrariumState) {
         buildEinkTerrariumRefreshKey(state, terrariumState)
@@ -1099,7 +1102,7 @@ private fun EinkPortraitLayout(
             debounceMs = Zone.CHROME.debounceMs,
             triggerKey = Triple(state.agentState, sessionsKey, state.workerSessionCount),
             sleepSnapshotMode = sleepSnapshotMode,
-            modifier = Modifier.height(44.dp).fillMaxWidth(),
+            modifier = Modifier.height(einkScale.chromeHeight).fillMaxWidth(),
         ) {
             EinkDashboardChromeBar(
                 state = state,
@@ -1123,7 +1126,7 @@ private fun EinkPortraitLayout(
                 debounceMs = Zone.ATTENTION.debounceMs,
                 triggerKey = attentionIdentity,
                 softTriggerKey = featuredAttention.cursorIndex,
-                modifier = Modifier.height(136.dp).fillMaxWidth(),
+                modifier = Modifier.height(einkScale.attentionHeightPortrait).fillMaxWidth(),
             ) {
                 EinkAttentionPanel(
                     featured = featuredAttention,

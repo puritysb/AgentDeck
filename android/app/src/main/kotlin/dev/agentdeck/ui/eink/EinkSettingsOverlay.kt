@@ -34,6 +34,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.agentdeck.data.DashboardOrientation
+import dev.agentdeck.ui.screen.PANEL_OVERRIDE_HELP
+import dev.agentdeck.ui.screen.deviceCaveatCopy
+import dev.agentdeck.ui.screen.panelOverrideLabel
+import dev.agentdeck.ui.theme.LocalDeviceProfile
+import dev.agentdeck.util.PanelOverride
 import dev.agentdeck.data.DisplayPreferences
 import dev.agentdeck.net.BridgeConnection
 import dev.agentdeck.net.BridgeConstants
@@ -56,6 +61,8 @@ fun EinkSettingsOverlay(
     val currentOrientation by displayPrefs.orientationFlow.collectAsState(
         initial = DashboardOrientation.defaultFor(isEink = true)
     )
+    val panelOverride by displayPrefs.panelOverrideFlow.collectAsState(initial = PanelOverride.Auto)
+    val deviceProfile = LocalDeviceProfile.current
     val keepAwake by displayPrefs.keepAwakeFlow.collectAsState(initial = true)
     val displaySyncEnabled by displayPrefs.displaySyncEnabledFlow.collectAsState(initial = true)
     val idleTimeoutMinutes by displayPrefs.idleTimeoutMinutesFlow.collectAsState(initial = 5)
@@ -244,6 +251,38 @@ fun EinkSettingsOverlay(
                             scope.launch { displayPrefs.setOrientation(DashboardOrientation.Auto) }
                         },
                         modifier = Modifier.weight(1f),
+                    )
+                }
+
+                HorizontalDivider(thickness = 1.dp, color = Color.Black)
+
+                SectionTitle(
+                    title = "Display panel",
+                    subtitle = deviceProfile.describe(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    PanelOverride.entries.forEach { option ->
+                        SegmentOption(
+                            label = panelOverrideLabel(option),
+                            selected = panelOverride == option,
+                            onClick = { scope.launch { displayPrefs.setPanelOverride(option) } },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                Text(
+                    text = PANEL_OVERRIDE_HELP,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                deviceProfile.caveats.forEach { caveat ->
+                    Text(
+                        text = "- ${deviceCaveatCopy(caveat)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 

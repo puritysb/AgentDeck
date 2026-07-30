@@ -42,7 +42,7 @@ import dev.agentdeck.net.BridgeDiscovery
 import dev.agentdeck.net.ConnectionStatus
 import dev.agentdeck.net.DiscoveredBridge
 import dev.agentdeck.ui.common.ConnectionPanel
-import dev.agentdeck.util.EinkDetector
+import dev.agentdeck.util.DeviceProfileHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -237,7 +237,7 @@ internal fun DisplaySettingsCard(
             )
 
             // WRITE_SETTINGS permission warning (LCD tablets only)
-            if (displaySyncEnabled && !EinkDetector.isEinkDevice()) {
+            if (displaySyncEnabled && !DeviceProfileHolder.current.isEink) {
                 val context = LocalContext.current
                 val canWrite = remember { mutableStateOf(Settings.System.canWrite(context)) }
                 if (!canWrite.value) {

@@ -23,7 +23,10 @@ import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.ui.monitor.MonitorScreen
 import dev.agentdeck.ui.screen.EinkMonitorScreen
 import dev.agentdeck.ui.theme.AgentDeckTheme
-import dev.agentdeck.util.EinkDetector
+import dev.agentdeck.ui.screen.UnsupportedDeviceScreen
+import dev.agentdeck.util.DeviceProfile
+import dev.agentdeck.util.DeviceProfileHolder
+import dev.agentdeck.util.PanelOverride
 import android.content.Intent
 import android.provider.Settings
 import android.util.Log
@@ -44,7 +47,15 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private var isEinkDevice = false
+    private lateinit var deviceProfile: DeviceProfile
+
+    /**
+     * The panel override this instance was built for. The collector below
+     * compares against it so a user flipping the override recreates the
+     * activity exactly once — the panel decides the whole UI tree plus
+     * pre-first-frame window flags, none of which can be swapped in place.
+     */
+    private var appliedPanelOverride: PanelOverride = PanelOverride.Auto
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,12 +71,23 @@ class MainActivity : ComponentActivity() {
         setShowWhenLocked(true)
         setTurnScreenOn(true)
 
-        isEinkDevice = EinkDetector.isEinkDevice()
+        // Device class first: it decides the UI tree, the theme, and window
+        // flags that RK3566 readers only honour before the first frame. The
+        // override has to be read synchronously for the same reason — see
+        // `readStartupOverridesBlocking`.
+        val startup = DisplayPreferences(this).readStartupOverridesBlocking()
+        appliedPanelOverride = startup.panelOverride
+        deviceProfile = DeviceProfile.detect(this, startup.panelOverride)
+        DeviceProfileHolder.install(deviceProfile)
+
+        // Unsupported devices get guidance instead of a broken layout, unless
+        // the user has explicitly overruled that.
+        val showDashboard = deviceProfile.isRenderable || startup.allowUnsupportedDevice
 
         // E-ink: set landscape IMMEDIATELY — before any async/layout.
         // Pantone 6 (RK3566) ignores late requestedOrientation changes,
         // so this must happen before the first frame renders.
-        if (isEinkDevice) {
+        if (deviceProfile.isEink && showDashboard) {
             applyOrientationPreference(DashboardOrientation.defaultFor(isEink = true))
 
             @Suppress("DEPRECATION")
@@ -75,7 +97,7 @@ class MainActivity : ComponentActivity() {
 
         val stateHolder = AgentStateHolder.instance
         val connection = BridgeConnection.instance
-        val displayPrefs = DisplayPreferences(this, isEink = isEinkDevice)
+        val displayPrefs = DisplayPreferences(this, isEink = deviceProfile.isEink)
 
         // Apply saved orientation preference (async — for user changes via Settings)
         lifecycleScope.launch {
@@ -94,7 +116,7 @@ class MainActivity : ComponentActivity() {
                 stateHolder.state,
             ) { keepAwake, displaySyncEnabled, state ->
                 shouldKeepDashboardScreenOn(
-                    isEink = isEinkDevice,
+                    isEink = deviceProfile.isEink,
                     keepAwake = keepAwake,
                     displaySyncEnabled = displaySyncEnabled,
                     hostDisplayOn = state.hostDisplayOn,
@@ -125,12 +147,31 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // A panel override is a whole-tree change; recreate rather than trying
+        // to swap the dashboard under a live composition.
+        lifecycleScope.launch {
+            displayPrefs.panelOverrideFlow.collect { override ->
+                if (override != appliedPanelOverride) {
+                    appliedPanelOverride = override
+                    recreate()
+                }
+            }
+        }
+
         setContent {
-            AgentDeckTheme(isEink = isEinkDevice) {
-                if (isEinkDevice) {
-                    EinkMonitorScreen(stateHolder, connection, displayPrefs)
-                } else {
-                    TabletDashboard(stateHolder, connection, displayPrefs)
+            AgentDeckTheme(profile = deviceProfile) {
+                when {
+                    !showDashboard -> UnsupportedDeviceScreen(
+                        profile = deviceProfile,
+                        onShowAnyway = {
+                            lifecycleScope.launch {
+                                displayPrefs.setAllowUnsupportedDevice(true)
+                                recreate()
+                            }
+                        },
+                    )
+                    deviceProfile.isEink -> EinkMonitorScreen(stateHolder, connection, displayPrefs)
+                    else -> TabletDashboard(stateHolder, connection, displayPrefs)
                 }
             }
         }
@@ -140,7 +181,7 @@ class MainActivity : ComponentActivity() {
         super.onWindowFocusChanged(hasFocus)
         // Re-hide system bars after Dialog dismissal (Dialog creates a new window
         // which resets immersive mode flags on the main window)
-        if (hasFocus && isEinkDevice) {
+        if (hasFocus && deviceProfile.isEink) {
             hideSystemBars()
         }
     }
@@ -152,7 +193,7 @@ class MainActivity : ComponentActivity() {
     private fun applyOrientationPreference(orientation: Int) {
         requestedOrientation = DashboardOrientation.requestedActivityOrientation(orientation)
 
-        if (!isEinkDevice) return
+        if (!deviceProfile.isEink) return
 
         when {
             orientation == DashboardOrientation.Landscape -> applySystemFixedRotation(Surface.ROTATION_90)

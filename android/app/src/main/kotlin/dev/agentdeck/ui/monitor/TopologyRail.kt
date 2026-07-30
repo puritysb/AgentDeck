@@ -45,7 +45,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.os.Build
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.net.CodexRateLimits
 import dev.agentdeck.net.ModelCatalogEntry
@@ -55,6 +54,7 @@ import dev.agentdeck.state.DashboardState
 import dev.agentdeck.terrarium.TerrariumColors
 import dev.agentdeck.ui.component.AgentDeckMark
 import dev.agentdeck.ui.component.brandColorForAgent
+import dev.agentdeck.util.DeviceProfileHolder
 import dev.agentdeck.util.codexLimitRows
 import dev.agentdeck.util.formatResetTime
 import java.time.Instant
@@ -537,22 +537,10 @@ private fun DownstreamRows(scale: MonitorLayoutScale) {
     }
 }
 
-/// Best-effort short label for the Android device showing the dashboard.
-/// Mirrors the e-ink classification used in `EinkDetector` and the
-/// per-device-class names used by the previous Android section so a Crema
-/// shows "This Crema", a Pantone shows "This Pantone", etc.
-private fun selfDeviceLabel(): String {
-    val manufacturer = Build.MANUFACTURER.lowercase()
-    val model = Build.MODEL.lowercase()
-    return when {
-        manufacturer.contains("crema") || model.contains("crema") -> "Crema"
-        manufacturer.contains("moaan") || manufacturer.contains("moan") || model.contains("pantone") -> "Pantone"
-        manufacturer.contains("kobo") -> "Kobo"
-        manufacturer.contains("onyx") || manufacturer.contains("boyue") -> "Reader"
-        dev.agentdeck.util.EinkDetector.isEinkDevice() -> "Reader"
-        else -> "Tablet"
-    }
-}
+/// Short label for the Android device showing the dashboard. Resolved by
+/// `DeviceProfile` so the vendor names ("Crema", "Pantone", "Kobo") and the
+/// form-factor fallback ("Phone", "TV", "Car") live in one place.
+private fun selfDeviceLabel(): String = DeviceProfileHolder.current.shortLabel
 
 // MARK: - Provider row + rate chip
 

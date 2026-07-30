@@ -21,7 +21,8 @@ import dev.agentdeck.net.BridgeConnection
 import dev.agentdeck.net.DimConfig
 import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.ui.component.stateLabel
-import dev.agentdeck.util.EinkDetector
+import dev.agentdeck.util.DeviceProfile
+import dev.agentdeck.util.DeviceProfileHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,7 +47,12 @@ class MonitorService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var lastState: AgentState = AgentState.DISCONNECTED
     private var cpuWakeLock: PowerManager.WakeLock? = null
-    private val isEink = EinkDetector.isEinkDevice()
+    /**
+     * Resolved in [onCreate], not at construction: the service can start from
+     * `BootReceiver` before any activity exists, and it must apply the user's
+     * panel override too — it is what publishes the profile in that case.
+     */
+    private var isEink = false
     private val handler = Handler(Looper.getMainLooper())
     private var savedStayOn: Int? = null
     private var savedScreenOffTimeout: Int? = null
@@ -71,6 +77,18 @@ class MonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // MainActivity normally publishes the profile first; only pay for the
+        // blocking preference read when this service is the first one up
+        // (BootReceiver start, or the activity was killed).
+        isEink = if (DeviceProfileHolder.hasAuthoritativeProfile) {
+            DeviceProfileHolder.current.isEink
+        } else {
+            val startup = DisplayPreferences(this).readStartupOverridesBlocking()
+            DeviceProfile.detect(this, startup.panelOverride)
+                .also { DeviceProfileHolder.install(it) }
+                .isEink
+        }
+
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         brightnessController = BrightnessController(this, contentResolver, pm, isEink)
         displayPrefs = DisplayPreferences(this, isEink)

@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Android maintainers
-reviewed: 2026-07-22
-revision: 2026-07-22
+reviewed: 2026-07-30
+revision: 2026-07-30
 source_of_truth: docs/android.md
 validators: [pnpm test:android]
 ---
@@ -20,7 +20,63 @@ Detailed reference for the AgentDeck Android app — build, device support, and 
 
 ## Supported Devices
 
-e-ink 리더(Crema S, Onyx Boox, MOAAN Pantone 6, Bigme, Kobo)와 컬러 태블릿(Lenovo 등)을 지원한다. **벤더별 EPD API · 칩셋 · 디스플레이 타입 · 리프레시 모드 · App Store tier 의 전체 디바이스 매트릭스는 [hardware-compatibility.md § Software platforms](hardware-compatibility.md#software-platforms) 가 SSOT** 다. 이 문서는 빌드/서명/크리처 렌더링 등 Android 앱 고유 내용을 다룬다.
+e-ink 리더(Crema S, Onyx Boox, MOAAN Pantone 6, Bigme, Kobo), 컬러 태블릿(Lenovo 등), 그리고 폰까지 **하나의 APK**가 커버한다. product flavor·build variant·리소스 qualifier 디렉터리는 없고, 분기는 전부 런타임 분류다. **벤더별 EPD API · 칩셋 · 디스플레이 타입 · 리프레시 모드 · App Store tier 의 전체 디바이스 매트릭스는 [hardware-compatibility.md § Software platforms](hardware-compatibility.md#software-platforms) 가 SSOT** 다. 이 문서는 빌드/서명/크리처 렌더링 등 Android 앱 고유 내용을 다룬다.
+
+---
+
+## Device Classification (SSOT)
+
+`util/DeviceProfile.kt` 가 "이 기기는 무엇이고 어떤 대시보드를 그려야 하는가"의 단일 소스다. UI 트리 선택(`MainActivity`), 컬러 스킴/타이포(`AgentDeckTheme`), HUD 밀도(`MonitorLayoutScale`), e-ink 밴드 높이(`EinkLayoutScale`), 리프레시 전략(`EinkRenderer`), 토폴로지에 보고하는 `kind`/라벨(`BridgeConnection`, `TopologyRail`)이 모두 여기서 파생된다. **`Build.*` 문자열로 기기 종류를 다시 유도하는 코드를 추가하지 말고 `DeviceProfile` 에 필드를 추가한다.**
+
+분류기 `classifyDevice(DeviceFingerprint, PanelOverride)` 는 프레임워크에 손대지 않는 순수 함수이므로 Robolectric 없이 전수 테스트된다(`app/src/test/.../DeviceProfileTest.kt`). 프레임워크 접근은 `DeviceProfile.detect(context)` 한 곳뿐이다.
+
+### Panel 판정 순서
+
+이름 매칭보다 **capability probe 가 먼저**다. probe 는 allowlist 에 없는 리더까지 잡아내므로 커버리지를 넓히고, 동시에 이름 매칭 범위를 좁혀 오탐을 없앤다.
+
+| 순위 | `EinkEvidence` | 신호 |
+|---|---|---|
+| 1 | `VendorApi` | `android.os.EinkManager` / `getSystemService("eink")` / Onyx SDK 클래스 존재 |
+| 2 | `SystemProperty` | `ro.eink.version`, `ro.hardware.eink`, `ro.epd.type`, `persist.sys.eink.mode` 등 |
+| 3 | `BuildCharacteristics` | `ro.build.characteristics` 에 `eink`/`epd` |
+| 4 | `BuildString` | `PRODUCT`/`DEVICE`/`HARDWARE` 에 `eink`/`epd` — **약한 신호**라 `UnverifiedEinkPanel` caveat 을 붙여 override 를 안내 |
+| 5 | `KnownVendor` | e-ink 전용 벤더(Onyx, Crema, Kobo, PocketBook, reMarkable, Supernote, Bigme, MOAAN …) |
+| 6 | `KnownModel` | 두 패널을 모두 파는 벤더(Hisense, Xiaomi, Huawei, B&N, Fujitsu, Sony)는 **모델 토큰까지 일치해야** e-ink |
+
+벤더 규칙은 `MANUFACTURER`/`BRAND`(+모델에 담긴 식별력 있는 브랜드 단어)만 본다. `PRODUCT`/`DEVICE`/`HARDWARE` 는 코드네임 필드라 브랜드명과 충돌한다 — LCD 폰인 **OnePlus X 의 코드네임이 `onyx`** 다. 이 필드들은 `eink`/`epd` 토큰 검사에만 쓴다.
+
+> 과거 detector 는 `"note"`, `"nova"`, `"leaf"`, `"poke"` 를 벤더 조건 없이 `Build.MODEL` 에 substring 매칭했다. Redmi Note·Huawei nova 같은 일반 기기가 흑백 e-ink UI + 강제 landscape + 시스템 rotation 쓰기를 받았고, 사용자가 되돌릴 방법도 없었다. `DeviceProfileTest` 가 이 케이스들을 회귀 가드로 고정한다.
+
+### Size class
+
+`smallestScreenWidthDp`(= `sw` qualifier) 기준. Material window size class 경계(600/840)에 대시보드가 성립하지 않는 하한 320dp 를 더했다.
+
+| Size class | 범위 | Monitor 밀도 | e-ink 밴드 |
+|---|---|---|---|
+| `Tiny` | < 320dp | (미지원) | (미지원) |
+| `Compact` | 320–599dp | `phone` | `compact` (chrome 36dp) |
+| `Medium` | 600–839dp | `tablet` | `regular` (chrome 44dp) |
+| `Expanded` | ≥ 840dp | `expanded` | `expanded` (chrome 52dp) |
+
+폴더블은 접힘 상태에서 `Compact` 로 떨어져야 하므로 두 scale 모두 시작 시점 프로필이 아니라 **live `Configuration`** 을 읽는다. `MonitorLayoutScale.isTablet` 은 "고정폭 사이드 레일을 놓을 공간이 있는가"로 남아 있고 `Medium`/`Expanded` 에서 참이다.
+
+### Support level 과 미지원 안내
+
+| Level | 조건 | 동작 |
+|---|---|---|
+| `Full` | 그 외 전부 | 정상 렌더 |
+| `Limited` | 터치스크린 없음(TV/셋톱), Automotive | 정상 렌더 + Settings **Device** 카드에 caveat 명시 |
+| `Unsupported` | `UI_MODE_TYPE_WATCH`, 또는 최단변 < 320dp | `UnsupportedDeviceScreen` — 기기명·미달 요건·다른 서페이스는 계속 동작함을 안내 + "Show the dashboard anyway" 탈출구 |
+
+Limited 를 인터스티셜로 막지 않는 이유: 벽에 걸린 TV 는 정당한 사용 형태이고, 리모컨으로 dismiss 를 강요하는 편이 더 나쁘다. Unsupported 의 탈출구를 두는 이유: 320dp 하한은 휴리스틱이므로 사용자가 이를 덮을 수 있어야 하며, 선택은 `allow_unsupported_device` 로 영속된다.
+
+### Panel override
+
+자동 판정이 틀린 기기를 앱 업데이트 없이 교정하는 3-state(`Auto`/`E-ink`/`LCD`) 설정. 태블릿은 Settings 의 **Device** 카드, e-ink 는 Settings 오버레이의 **Display panel** 섹션에서 바꾼다. `display_prefs` DataStore 의 `panel_override` 키에 저장되고, 변경 시 `MainActivity` 가 `recreate()` 한다 — 패널은 UI 트리 전체와 첫 프레임 이전 window flag 를 결정하므로 실행 중 교체할 수 없다.
+
+패널 종류는 첫 프레임 전에 확정돼야 하므로(RK3566 리더는 늦은 `requestedOrientation` 을 무시한다) `readStartupOverridesBlocking()` 이 500ms 상한으로 동기 읽기를 한다. 타임아웃 시에는 안전한 기본값으로 시작하고, 뒤이어 도착한 실제 값이 collector 를 통해 `recreate()` 를 유발하므로 최악의 결과가 "잘못된 대시보드"가 아니라 "깜빡임"이 된다.
+
+`kind` 와이어 값은 의도적으로 `"eink"`/`"tablet"` 2값 어휘를 유지한다 — 유일한 소비자인 `TopologyRail.swift` 가 2항 삼항식(`kind == "eink" ? "E-ink" : "Tablet"`)으로 매핑하므로, 어휘 확장은 Swift/Node 라벨 매핑과 함께 별도 커밋에서 해야 한다.
 
 ---
 

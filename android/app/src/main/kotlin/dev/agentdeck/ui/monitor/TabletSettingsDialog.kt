@@ -47,7 +47,10 @@ import dev.agentdeck.state.DashboardState
 import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.ui.common.ConnectionPanel
 import dev.agentdeck.ui.screen.AboutFooter
+import dev.agentdeck.ui.screen.DeviceProfileCard
 import dev.agentdeck.ui.screen.DisplaySettingsCard
+import dev.agentdeck.ui.theme.LocalDeviceProfile
+import dev.agentdeck.util.PanelOverride
 import kotlinx.coroutines.launch
 
 @Composable
@@ -70,6 +73,7 @@ fun TabletSettingsDialog(
     val currentOrientation by displayPrefs.orientationFlow.collectAsState(
         initial = DashboardOrientation.defaultFor(isEink = false)
     )
+    val panelOverride by displayPrefs.panelOverrideFlow.collectAsState(initial = PanelOverride.Auto)
     val dashState by AgentStateHolder.instance.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -165,6 +169,16 @@ fun TabletSettingsDialog(
                     currentOrientation = currentOrientation,
                     displayPrefs = displayPrefs,
                     coroutineScope = coroutineScope,
+                )
+
+                // Resolved device class + the panel override. Also where a
+                // Limited-support caveat (no touchscreen, head unit) is stated.
+                DeviceProfileCard(
+                    profile = LocalDeviceProfile.current,
+                    override = panelOverride,
+                    onOverrideChange = { option ->
+                        coroutineScope.launch { displayPrefs.setPanelOverride(option) }
+                    },
                 )
 
                 // About

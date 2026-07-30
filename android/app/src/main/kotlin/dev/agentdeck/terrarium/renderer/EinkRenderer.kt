@@ -1759,7 +1759,7 @@ private const val GRAY_SURFACE_LINE = 0xFFAAAAAA.toInt() // level 10 — water s
 
 /** Lazy-init flag: true when running on a color e-ink device (Kaleido 3, Gallery 3/4). */
 internal val einkColorEnabled: Boolean by lazy {
-    dev.agentdeck.util.EinkDetector.isColorEink()
+    dev.agentdeck.util.DeviceProfileHolder.current.isColorEink
 }
 
 /** Pick gray or color constant based on display capability. */

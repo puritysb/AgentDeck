@@ -6,8 +6,12 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.agentdeck.util.PanelOverride
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 private val Context.dataStore by preferencesDataStore("display_prefs")
 
@@ -27,6 +31,10 @@ class DisplayPreferences(
         private val SHOW_DEVICE_DIAGNOSTIC_KEY = booleanPreferencesKey("show_device_diagnostic")
         private val SHOW_TIMELINE_KEY = booleanPreferencesKey("show_timeline")
         private val SHOW_SETTINGS_BUTTON_KEY = booleanPreferencesKey("show_settings_button")
+        private val PANEL_OVERRIDE_KEY = stringPreferencesKey("panel_override")
+        private val ALLOW_UNSUPPORTED_KEY = booleanPreferencesKey("allow_unsupported_device")
+
+        private const val STARTUP_READ_TIMEOUT_MS = 500L
     }
 
     val orientationFlow: Flow<Int> = context.dataStore.data.map { prefs ->
@@ -132,4 +140,64 @@ class DisplayPreferences(
             prefs[SHOW_SETTINGS_BUTTON_KEY] = enabled
         }
     }
+
+    /**
+     * Manual panel classification. Auto-detection covers the readers we know
+     * about plus anything exposing a vendor EPD surface, but an unlisted reader
+     * with no vendor layer — or, in the other direction, an emissive device
+     * whose build strings happen to mention e-ink — needs a way out that does
+     * not require an app update.
+     */
+    val panelOverrideFlow: Flow<PanelOverride> = context.dataStore.data.map { prefs ->
+        PanelOverride.fromStored(prefs[PANEL_OVERRIDE_KEY])
+    }
+
+    suspend fun setPanelOverride(override: PanelOverride) {
+        context.dataStore.edit { prefs ->
+            prefs[PANEL_OVERRIDE_KEY] = override.toStored()
+        }
+    }
+
+    /**
+     * Set once the user chooses "show it anyway" on the unsupported-device
+     * screen. Persisted rather than session-local because the dashboard is a
+     * launcher: an activity recreate must not silently revoke the choice.
+     */
+    val allowUnsupportedDeviceFlow: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[ALLOW_UNSUPPORTED_KEY] ?: false
+    }
+
+    suspend fun setAllowUnsupportedDevice(allow: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[ALLOW_UNSUPPORTED_KEY] = allow
+        }
+    }
+
+    /**
+     * Device-class decisions that must be known *before* the first frame:
+     * e-ink readers on RK3566 ignore a late `requestedOrientation`, so the
+     * panel kind has to be settled while `onCreate` is still running.
+     *
+     * DataStore is asynchronous, so this blocks — bounded, and with a safe
+     * default on timeout. If the timeout is ever hit the collector in
+     * `MainActivity` still sees the real value moments later and recreates the
+     * activity, so a slow first read degrades to a flicker rather than to the
+     * wrong dashboard.
+     */
+    fun readStartupOverridesBlocking(
+        timeoutMs: Long = STARTUP_READ_TIMEOUT_MS,
+    ): StartupOverrides = runBlocking {
+        withTimeoutOrNull(timeoutMs) {
+            StartupOverrides(
+                panelOverride = panelOverrideFlow.first(),
+                allowUnsupportedDevice = allowUnsupportedDeviceFlow.first(),
+            )
+        } ?: StartupOverrides()
+    }
+
+    /** Snapshot of the pre-first-frame preferences. */
+    data class StartupOverrides(
+        val panelOverride: PanelOverride = PanelOverride.Auto,
+        val allowUnsupportedDevice: Boolean = false,
+    )
 }

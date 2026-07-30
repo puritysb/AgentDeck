@@ -11,6 +11,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import dev.agentdeck.util.DeviceProfile
+import dev.agentdeck.util.DeviceProfileHolder
+import dev.agentdeck.util.PanelKind
 
 // Brand colors
 object AgentDeckColors {
@@ -97,17 +100,31 @@ private val AppTypography = Typography(
 
 val LocalIsEink = staticCompositionLocalOf { false }
 
+/** The resolved device class, so any composable can branch without re-deriving one. */
+val LocalDeviceProfile = staticCompositionLocalOf { DeviceProfileHolder.current }
+
+/**
+ * Installs the colour scheme and typography for [profile]'s panel.
+ *
+ * The panel comes in as data rather than being probed here, so the user's panel
+ * override reaches the theme and `@Preview`s can render either variant.
+ */
 @Composable
 fun AgentDeckTheme(
-    isEink: Boolean = false,
+    profile: DeviceProfile = DeviceProfileHolder.current,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = if (isEink) {
-        if (dev.agentdeck.util.EinkDetector.isColorEink()) EinkColorColorScheme else EinkColorScheme
-    } else DarkColorScheme
-    val typography = if (isEink) EinkTypography else AppTypography
+    val colorScheme = when (profile.panel) {
+        PanelKind.EinkColor -> EinkColorColorScheme
+        PanelKind.EinkMono -> EinkColorScheme
+        PanelKind.Lcd -> DarkColorScheme
+    }
+    val typography = if (profile.isEink) EinkTypography else AppTypography
 
-    CompositionLocalProvider(LocalIsEink provides isEink) {
+    CompositionLocalProvider(
+        LocalIsEink provides profile.isEink,
+        LocalDeviceProfile provides profile,
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = typography,
