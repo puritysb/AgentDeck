@@ -19,6 +19,7 @@ import {
   endWindowsTask,
   deleteWindowsTask,
 } from './windows-service.js';
+import { deriveRemoteAttachOpts } from './session-registry.js';
 import {
   SERVICE_NAME,
   hasSystemctl,
@@ -32,6 +33,17 @@ import {
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../package.json') as { version: string };
+
+/**
+ * Pre-PTY warning for a host hint given without the opt-in switch. Must run in
+ * the CLI action handler BEFORE the bridge starts: once the PTY takes the
+ * terminal, `log()` output is swallowed and the user would never see it.
+ */
+function warnIfDaemonHostIgnored(opts: { remoteDaemon?: boolean; daemonHost?: string }): void {
+  if (deriveRemoteAttachOpts(opts).ignoredHostHint) {
+    console.error('[agentdeck] --daemon-host / AGENTDECK_DAEMON_HOST is set but ignored: remote attach requires --remote-daemon (or AGENTDECK_REMOTE_DAEMON=1). Session stays local-only.');
+  }
+}
 
 function log(msg: string): void {
   process.stderr.write(msg + '\n');
@@ -293,8 +305,11 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
+  .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
+  .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
   .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
+    warnIfDaemonHostIgnored(opts);
     const { startSession } = await import('./index.js');
     await startSession({
       agentType: 'claude-code',
@@ -304,6 +319,8 @@ program
       noUpdateCheck: opts.updateCheck === false,
       postit: opts.postit !== false,
       wakeWord: !!opts.wakeWord,
+      remoteDaemon: !!opts.remoteDaemon,
+      daemonHost: opts.daemonHost,
       weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,   // daemon-only — session bridges never advertise mDNS
@@ -325,8 +342,11 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--no-codex-hooks', 'Skip ~/.codex/config.toml hook install')
+  .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
+  .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
   .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
+    warnIfDaemonHostIgnored(opts);
     // Install Codex lifecycle hooks before starting the session so the
     // first prompt's UserPromptSubmit / Stop events reach the daemon.
     // Idempotent: re-running with the same daemon port is a no-op.
@@ -354,6 +374,8 @@ program
       command: opts.command,
       debug: opts.debug,
       postit: opts.postit !== false,
+      remoteDaemon: !!opts.remoteDaemon,
+      daemonHost: opts.daemonHost,
       weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,   // daemon-only
@@ -375,8 +397,11 @@ program
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--no-opencode-hooks', 'Skip OpenCode observer plugin install')
+  .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
+  .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
   .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
+    warnIfDaemonHostIgnored(opts);
     // Install the OpenCode observer plugin so standalone `opencode` runs
     // (outside this managed session) also reach the daemon timeline. The
     // plugin self-disables inside managed PTYs via AGENTDECK_PORT, so this
@@ -404,6 +429,8 @@ program
       command: opts.command,
       debug: opts.debug,
       postit: opts.postit !== false,
+      remoteDaemon: !!opts.remoteDaemon,
+      daemonHost: opts.daemonHost,
       weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,
@@ -421,8 +448,11 @@ program
   .option('-p, --port <port>', 'Bridge server port', String(BRIDGE_WS_PORT))
   .option('-d, --debug', 'Enable debug logging')
   .option('--local', 'Disable all device modules')
+  .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
+  .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
   .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
+    warnIfDaemonHostIgnored(opts);
     const { startSession } = await import('./index.js');
     const port = parseInt(opts.port, 10);
     log(`\nMonitor mode: hook server on port ${port}`);
@@ -431,6 +461,8 @@ program
       agentType: 'monitor',
       port,
       debug: opts.debug,
+      remoteDaemon: !!opts.remoteDaemon,
+      daemonHost: opts.daemonHost,
       weight: opts.weight,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : undefined,
     });

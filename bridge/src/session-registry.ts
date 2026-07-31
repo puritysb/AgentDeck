@@ -5,7 +5,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import http from 'http';
-import { debug } from './logger.js';
+import { debug, logError } from './logger.js';
 
 /** Allow tests to override the data directory via env var */
 function getDataDir(): string {
@@ -365,7 +365,7 @@ export function readDaemonInfo(): DaemonInfo | null {
  * `httpPort` from `DaemonInfo` when available; otherwise the same `port` is
  * used (Node daemon unifies HTTP + WS on one port).
  */
-export function probeDaemonHealth(port: number): Promise<{ mode?: string; pid?: number; isSwift?: boolean } | null> {
+export function probeDaemonHealth(port: number): Promise<{ mode?: string; pid?: number; isSwift?: boolean; sameSocketControl?: boolean } | null> {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 2000 }, (res) => {
       let body = '';
@@ -503,14 +503,14 @@ export function findDaemonPort(): number | null {
  * Returns `{ port, httpPort? }` for callers that need both (WS connects
  * on `port`, hook HTTP posts target `httpPort ?? port`).
  */
-export async function findDaemonPortAsync(): Promise<{ port: number; httpPort?: number } | null> {
+export async function findDaemonPortAsync(): Promise<{ port: number; httpPort?: number; sameSocketControl?: boolean } | null> {
   // 1. Registry first — matches the sync path.
   const info = readDaemonInfo();
   if (info) {
     const probePort = info.httpPort ?? info.port;
     const health = await probeDaemonHealth(probePort);
     if (health?.mode === 'daemon') {
-      return { port: info.port, httpPort: info.httpPort };
+      return { port: info.port, httpPort: info.httpPort, sameSocketControl: health.sameSocketControl === true };
     }
     // Registry entry was stale (PID alive but server unresponsive).
     // Fall through to port scan.
@@ -522,8 +522,231 @@ export async function findDaemonPortAsync(): Promise<{ port: number; httpPort?: 
   for (let p = DAEMON_PORT_WINDOW[0]; p <= DAEMON_PORT_WINDOW[1]; p++) {
     const health = await probeDaemonHealth(p);
     if (health?.mode === 'daemon') {
-      return { port: p };
+      return { port: p, sameSocketControl: health.sameSocketControl === true };
     }
+  }
+
+  return null;
+}
+
+// ===== Remote daemon attach (mDNS / explicit host) =====
+
+/** True if a host string refers to this machine's loopback. */
+export function isLoopbackHost(host: string): boolean {
+  return host === '127.0.0.1' || host === '::1' || host === 'localhost';
+}
+
+/** Bracket bare IPv6 literals so they're valid in an http(s)/ws URL authority. */
+export function formatHostForUrl(host: string): string {
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
+/**
+ * Probe `/health` at an arbitrary host:port (not just 127.0.0.1). Returns the
+ * full health JSON (so callers can read `mode` and `pairingToken`) or null.
+ */
+export function probeHealthAt(host: string, port: number, timeoutMs = 2000): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    const req = http.get(`http://${formatHostForUrl(host)}:${port}/health`, { timeout: timeoutMs }, (res) => {
+      let body = '';
+      res.on('data', (chunk: Buffer) => { body += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+/** A resolved daemon endpoint, possibly on another machine. */
+export interface DaemonTarget {
+  host: string;
+  port: number;
+  /** Pairing token — required when `host` is not this machine. */
+  token?: string;
+  httpPort?: number;
+  /**
+   * Whether the daemon's `/health` advertises same-socket reverse control
+   * (`sameSocketControl: true`). The worker only sends `remoteAttach` in its
+   * push registration when the daemon can actually drive the session back down
+   * the socket — a daemon without the capability (e.g. the Swift App Store
+   * daemon) gets a plain local-style registration instead.
+   */
+  sameSocketControl?: boolean;
+}
+
+/** Parse a `host` or `host:port` (or `[v6]:port`) hint into host + port. */
+export function parseHostHint(hint: string): { host: string; port: number } {
+  const trimmed = hint.trim();
+  // [v6]:port
+  const bracket = /^\[(.+)\]:(\d+)$/.exec(trimmed);
+  if (bracket) return { host: bracket[1], port: parseInt(bracket[2], 10) };
+  // [v6]  (no port)
+  const bracketOnly = /^\[(.+)\]$/.exec(trimmed);
+  if (bracketOnly) return { host: bracketOnly[1], port: DAEMON_DEFAULT_PORT };
+  // host:port — only treat trailing :digits as a port (leaves bare IPv6 alone)
+  const hp = /^(.+):(\d+)$/.exec(trimmed);
+  if (hp && !hp[1].includes(':')) return { host: hp[1], port: parseInt(hp[2], 10) };
+  return { host: trimmed, port: DAEMON_DEFAULT_PORT };
+}
+
+/**
+ * Injectable dependencies for {@link resolveDaemonTarget}. Production uses the
+ * real module functions; tests substitute fakes to assert the precedence and —
+ * critically — the opt-in gate, without touching the network. `warn` defaults
+ * to a once-per-key `logError` ({@link warnRemoteOnce}; keys are `host:port`,
+ * prefixed `local:` for the loopback branch — the only PTY-visible log
+ * primitive; this resolver re-runs on every `DaemonWsClient` reconnect
+ * backoff, so an unguarded warning would scribble over the agent TUI every
+ * ≤30s forever).
+ */
+export interface ResolveDaemonDeps {
+  findLocal: () => Promise<{ port: number; httpPort?: number; sameSocketControl?: boolean } | null>;
+  probeHealth: (host: string, port: number) => Promise<Record<string, unknown> | null>;
+  discover: () => Promise<Array<{ host: string; port: number; token?: string; sameSocketControl?: boolean }>>;
+  warn: (key: string, message: string) => void;
+}
+
+/**
+ * Derive the remote-attach inputs from CLI flags + env — the single source that
+ * both `cli.ts` (pre-PTY "ignored" warning) and `index.ts` (target resolution)
+ * consume, so the two derivations cannot drift. `--remote-daemon` /
+ * `AGENTDECK_REMOTE_DAEMON=1` is THE opt-in; a host given without it
+ * (`ignoredHostHint`) is inert and the CLI warns before the PTY starts
+ * (post-PTY, stdout logging is swallowed).
+ */
+export function deriveRemoteAttachOpts(
+  cliOpts: { remoteDaemon?: boolean; daemonHost?: string },
+  env: NodeJS.ProcessEnv = process.env,
+): { remote: boolean; hostHint?: string; ignoredHostHint: boolean } {
+  const remote = !!cliOpts.remoteDaemon || env.AGENTDECK_REMOTE_DAEMON === '1';
+  const hostHint = cliOpts.daemonHost
+    || env.AGENTDECK_DAEMON_HOST
+    || env.AGENTDECK_REMOTE_DAEMON_HOST
+    || undefined;
+  return { remote, hostHint, ignoredHostHint: !remote && hostHint !== undefined };
+}
+
+const remoteWarnedHosts = new Set<string>();
+
+/**
+ * Default `warn` dep: log a remote-attach warning at most once per key. The
+ * resolver re-runs on every reconnect backoff, and an unguarded warning would
+ * scribble over the agent TUI every few seconds forever.
+ * @internal Exported for tests only — the module-level Set has no reset, so
+ * tests must use keys unique to themselves.
+ */
+export function warnRemoteOnce(key: string, message: string): void {
+  if (remoteWarnedHosts.has(key)) return;
+  remoteWarnedHosts.add(key);
+  logError(message);
+}
+
+/**
+ * Resolve which daemon a session bridge should attach to, optionally on another
+ * machine. Precedence:
+ *   1. Local daemon (unchanged behavior — always preferred, never opt-in gated).
+ *   2. Explicit `hostHint` (cross-subnet / SSH where mDNS doesn't propagate).
+ *   3. mDNS browse on the LAN.
+ *
+ * OPT-IN INVARIANT (security boundary): `--remote-daemon` /
+ * `AGENTDECK_REMOTE_DAEMON=1` (`remote === true`) is THE opt-in switch, and it
+ * gates BOTH remote paths. `--daemon-host` / `AGENTDECK_DAEMON_HOST` only names
+ * the endpoint — without the switch it is ignored (the CLI warns pre-PTY).
+ * Nothing below the local check ever leaves the machine unless `remote === true`:
+ * with the switch absent the function returns local-or-null and the session
+ * stays local-only — byte-for-byte the pre-remote behavior.
+ *
+ * Within `remote === true`, EVERY accepted target must advertise the
+ * `sameSocketControl` capability — including a loopback one. An ssh -L
+ * forward of a remote daemon is indistinguishable from a genuine local
+ * daemon by IP, so the local-first step enforces the capability too rather
+ * than silently accepting a tunnel to a daemon that can never drive the
+ * session (plain registration: acked but unlistable/unfocusable):
+ *   - Capable local daemon ⇒ returned (a hostHint is NOT consulted — the
+ *     ordinary local-preferred behavior).
+ *   - Incapable local daemon + hostHint ⇒ fall through to the explicit-host
+ *     step: the user named a node, so probe THAT instead of dead-ending.
+ *   - Incapable local daemon, no hostHint ⇒ one-shot warning + null. No mDNS
+ *     fallthrough: a deliberately-built tunnel must not silently roam to
+ *     some other LAN daemon.
+ *   - An explicit host that is unreachable, not a daemon, or lacks the
+ *     capability returns null WITHOUT falling through to mDNS — the user
+ *     named a specific node and expects to hear about failure.
+ *   - mDNS selection is limited to daemons advertising `sameSocketControl`
+ *     (the discover step filters), so an unsupported daemon (e.g. Swift App
+ *     Store) is never selected as a remote target.
+ *
+ * Remote targets carry the daemon's advertised pairing `token`; local targets
+ * need none (the daemon treats same-machine connections as authenticated).
+ */
+export async function resolveDaemonTarget(
+  opts?: { remote?: boolean; hostHint?: string },
+  deps?: Partial<ResolveDaemonDeps>,
+): Promise<DaemonTarget | null> {
+  const findLocal = deps?.findLocal ?? findDaemonPortAsync;
+  const probeHealth = deps?.probeHealth ?? probeHealthAt;
+  const discover = deps?.discover
+    ?? (async () => {
+      const { discoverDaemons } = await import('./mdns-discover.js');
+      return discoverDaemons();
+    });
+  const warn = deps?.warn ?? warnRemoteOnce;
+
+  // 1. Local first. Without the opt-in switch this is identical to the
+  //    pre-remote behavior (returned unconditionally). Under remote intent the
+  //    local daemon must ALSO advertise sameSocketControl: an ssh -L forward
+  //    of a remote daemon arrives on loopback, and accepting an incapable one
+  //    would silently produce a plain registration (acked but never listable
+  //    or focusable) instead of the refusal the user can act on.
+  const local = await findLocal();
+  if (local) {
+    if (opts?.remote !== true || local.sameSocketControl === true) {
+      return {
+        host: '127.0.0.1', port: local.port, httpPort: local.httpPort,
+        sameSocketControl: local.sameSocketControl,
+      };
+    }
+    // Remote intent + incapable loopback daemon. If the user named a host,
+    // probe that instead of dead-ending here (step 2 applies its own
+    // capability refusal — for a tunnel the hint is typically 127.0.0.1 and
+    // probes this same daemon). With no hint: warn once and refuse; no mDNS
+    // fallthrough — a deliberately-built tunnel must not silently roam.
+    if (!opts?.hostHint) {
+      warn(`local:127.0.0.1:${local.port}`,
+        `Daemon at 127.0.0.1:${local.port} does not support remote attach (no sameSocketControl capability — Node CLI daemon required). Not attaching. Rerun without --remote-daemon for a local-only session, or pass --daemon-host <host> to name a capable hub.`);
+      return null;
+    }
+  }
+
+  // Everything below leaves the machine — hard-gated on the opt-in switch.
+  if (opts?.remote !== true) return null;
+
+  // 2. Explicit host. If given but unreachable or incapable, do NOT silently
+  //    fall through to mDNS — the user named a specific node and expects to
+  //    hear about failure.
+  if (opts?.hostHint) {
+    const { host, port } = parseHostHint(opts.hostHint);
+    const health = await probeHealth(host, port);
+    if (health?.mode === 'daemon') {
+      if (health.sameSocketControl !== true) {
+        warn(`${host}:${port}`,
+          `Daemon at ${host}:${port} does not support remote attach (no sameSocketControl capability — Node CLI daemon required); session stays local-only.`);
+        return null;
+      }
+      const token = typeof health.pairingToken === 'string' ? health.pairingToken : undefined;
+      return { host, port, token, sameSocketControl: true };
+    }
+    return null;
+  }
+
+  // 3. mDNS browse. The discover step's /health confirm already filtered out
+  //    daemons lacking sameSocketControl, so anything returned is capable.
+  const found = await discover();
+  if (found.length > 0) {
+    const d = found[0];
+    return { host: d.host, port: d.port, token: d.token, sameSocketControl: d.sameSocketControl === true };
   }
 
   return null;

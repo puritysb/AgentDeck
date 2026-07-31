@@ -55,6 +55,22 @@ Internal reference for the AgentDeck state machine, WebSocket protocol, and proj
 - Daemon computes encoder state and relays the Stream Deck slot map. If the plugin is absent, Android falls back to the v3 default layout while staying fully controllable.
 - Voice from Android uploads WAV to `POST /voice/transcribe`; utility actions (volume/brightness/media/timer) go through the Node CLI daemon's macOS `osascript` proxy. The App Store Swift daemon uses native CoreAudio/IOKit code for local utility control and never spawns `osascript`.
 
+**Internal session↔daemon push channel** (`bridge/src/daemon-ws-client.ts` ↔ `daemon-server.ts`)
+
+The socket a session bridge opens to the daemon is **bidirectional**. Upward frames report state; downward frames drive the session for remote (cross-machine) attach — see [daemon.md § Remote attach](daemon.md#remote-attach-cross-machine-sessions).
+
+| Frame | Dir | Payload | Purpose |
+|---|---|---|---|
+| `session_push_register` | session → daemon | `sessionId, port, agentType?, projectName?, host?, remoteAttach?` | Announce the session. `remoteAttach: true` = explicit cross-machine intent (user opted in via `--remote-daemon` AND the daemon advertises `sameSocketControl`); the daemon trusts it over the socket's source IP so `ssh -L`-forwarded (loopback) workers classify correctly. `host` is display metadata. |
+| `session_push_ack` | daemon → session | `sessionId` | Registration ack (sent for local registrations too). |
+| `session_push_state` | session → daemon | `sessionId, state, modelName?, effortLevel?` | State update (replaces `/health` polling). When a remote registration exists, the whole update — remote registry AND the shared push-state cache — is accepted only from the session's registered sender socket; sessions with no remote registration keep the plain unguarded local path. |
+| `session_focus_down` | daemon → session | `sessionId` | Same-socket reverse path: daemon focused this session; worker starts forwarding events up and emits an initial snapshot. Ignored if `sessionId` isn't the worker's own. |
+| `session_unfocus_down` | daemon → session | `sessionId` | Stop forwarding events up. Ignored for foreign `sessionId`. |
+| `session_command_down` | daemon → session | `sessionId, command` | A `PluginCommand` to apply — routed through the same handler as the local WS server. Ignored for foreign `sessionId`. |
+| `session_event_up` | session → daemon | `sessionId, event` | A relayed `BridgeEvent` (RELAYED_EVENTS only) riding back up while focused. Dropped unless it arrives on the session's registered sender socket. |
+
+Same-socket is the **only** reverse path (no inbound reachability required — works for NAT'd / SSH-only workers; the daemon never dials back). A remote session whose push socket dropped is unreachable until its worker reconnects. Remote attach requires a daemon advertising `sameSocketControl: true` in `/health` (Node CLI daemon; the Swift daemon does not implement these frames).
+
 ---
 
 ## State Machine

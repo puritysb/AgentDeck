@@ -90,6 +90,23 @@ Your agent runs exactly as before — the bridge is transparent, and if it is of
 nothing changes. Already have an agent running in another terminal? The daemon
 observes it through hooks; you do not have to launch it through AgentDeck.
 
+Running agents on **several machines** with one deck on a main node? Sessions can
+attach to the main node's daemon. `--remote-daemon` is the opt-in switch — without
+it nothing leaves the machine and the default stays local-only:
+
+```bash
+agentdeck claude --remote-daemon --daemon-host mainnode.lan   # explicit host (recommended)
+agentdeck claude --remote-daemon                              # or auto-discover via mDNS on the LAN
+```
+
+Reverse control rides the worker's own outbound socket (the daemon never dials
+back), so a worker only needs to reach the main node's port `9120` — for
+SSH-only workers, `ssh -L 9120:localhost:9120 mainnode` then
+`agentdeck claude --remote-daemon`. The main node must run the **Node CLI
+daemon** (the macOS-app Swift daemon does not support remote attach and is
+never auto-selected). See
+[docs/daemon.md § Remote attach](docs/daemon.md#remote-attach-cross-machine-sessions).
+
 ### Then add surfaces
 
 Any of these attach to the same daemon, and you can add them in any order:

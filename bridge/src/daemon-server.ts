@@ -24,7 +24,12 @@ import { PassiveSessionObserver } from './passive-observer.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
 import { SubagentTimelineTracker } from './subagent-timeline.js';
-import { updatePushState } from './session-aggregator.js';
+import {
+  getRemoteSession,
+  getRemoteSender,
+  listRemoteEnriched,
+} from './remote-sessions.js';
+import { createPushChannelHandler } from './session-push-channel.js';
 import {
   setAwaitingOverlay,
   setPermissionNotificationOverlay,
@@ -1121,6 +1126,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         gateway: gatewayAdapter?.isAlive() ? 'connected' : 'disconnected',
         uptime: process.uptime(), port, pid: process.pid,
         pairingToken: core.authToken,
+        // Capability: this daemon drives remote sessions down their own push
+        // socket (session_focus_down / session_command_down / session_event_up).
+        // Workers require this flag before remote-attaching; the Swift daemon
+        // does not advertise it and is therefore never selected as a remote hub.
+        sameSocketControl: true,
         modules: moduleHealthProvider(),
         apme: apme
           ? {
@@ -2420,6 +2430,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // Session focus relay — allows SD plugin to interact with a specific session via daemon
   const focusRelay = new SessionFocusRelay();
+  // Remote (cross-machine) sessions aren't in sessions.json. Their only
+  // reverse path is same-socket: drive the session down the live push socket
+  // it opened — no inbound dial, so NAT'd / SSH-only workers just work.
+  focusRelay.setSameSocketResolver((sessionId) => getRemoteSender(sessionId) ?? null);
+  // Push-channel frames from session bridges (register / state / reverse events).
+  const handlePushChannelMessage = createPushChannelHandler({ core, focusRelay });
   focusRelay.setEventHandler((evt) => {
     if (evt.type === 'state_update') {
       const focusedId = focusRelay.getFocusedSessionId();
@@ -2698,10 +2714,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           ...(snap.queuedDirectives > 0 ? { queuedDirectives: snap.queuedDirectives } : {}),
         };
       });
+    // Sessions that attached from another machine over the push channel. They
+    // aren't in this daemon's sessions.json, so inject them here (dedup against
+    // any id already present from the local registry).
+    const localIds = new Set(sessions.map((s) => s.id));
+    const remote = listRemoteEnriched().filter((s) => !localIds.has(s.id));
     // Derive per-session elapsed seconds from startedAt so NTP-less devices
     // (ESP32 IPS10 mosaic) render an elapsed value per cell without a wall clock.
     const now = Date.now();
-    const enrichedSessions = [...sessions, ...observed].map((s) => {
+    const enrichedSessions = [...sessions, ...observed, ...remote].map((s) => {
       // On-demand review badge (REVIEW tile verdict / REVIEWING state) —
       // applies to every session type, managed included.
       const review = reviewSnapshot(s.id);
@@ -3067,21 +3088,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     if (handleEsp32OtaReply(msg)) {
       return true;
     }
-    if (msg.type === 'session_push_register') {
-      const { sessionId, port: sessionPort, agentType: at, projectName: pn } = msg as any;
-      debug('daemon', `session_push_register: ${sessionId} port=${sessionPort} agent=${at}`);
-      // Acknowledge registration
-      try { sender.send(JSON.stringify({ type: 'session_push_ack', sessionId })); } catch { /* client disconnecting */ }
-      return true; // consumed
-    }
-    if (msg.type === 'session_push_state') {
-      const { sessionId, state, modelName, effortLevel, permissionMode } = msg as any;
-      if (sessionId && state) {
-        updatePushState(sessionId, state, modelName, effortLevel, permissionMode);
-        // Trigger sessions list broadcast so clients get fresh state
-        core.maybeBroadcastSessionsList();
-      }
-      return true; // consumed
+    // Push-channel frames (session_push_register / session_push_state /
+    // session_event_up) — extracted handler, integration-tested directly.
+    if (handlePushChannelMessage(msg, sender)) {
+      return true;
     }
     if (msg.type === 'deck_slot_map') {
       // Plugin pushed its keypad layout. Forward to other viewers (extra
@@ -3407,7 +3417,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         return;
       }
       const sessions = listActiveSessions();
-      const target = sessions.find(s => s.id === sessionId);
+      const target = sessions.find(s => s.id === sessionId) ?? getRemoteSession(sessionId);
       if (!target) {
         debug('daemon', `session_command: session ${sessionId} not found`);
         return;
@@ -3433,7 +3443,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         handleObservedClaudeCommand(sessionId.slice('observed:claude:'.length), cmd as any);
         return;
       }
-      const target = listActiveSessions().find(s => s.id === sessionId);
+      const target = listActiveSessions().find(s => s.id === sessionId) ?? getRemoteSession(sessionId);
       if (target) {
         userFocusedSessionId = sessionId;
         broadcastFocusedState();

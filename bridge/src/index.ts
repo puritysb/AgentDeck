@@ -45,7 +45,10 @@ import {
   listActive as listActiveSessions,
   findAvailablePort,
   detectTmuxSession,
-  findDaemonPortAsync,
+  resolveDaemonTarget,
+  deriveRemoteAttachOpts,
+  isLoopbackHost,
+  type DaemonTarget,
 } from './session-registry.js';
 import { resolveProjectName } from './utils/project-name.js';
 import { DaemonWsClient } from './daemon-ws-client.js';
@@ -151,6 +154,10 @@ export interface SessionOptions {
   wakeWord?: boolean;
   postit?: boolean;
   modules?: ModuleConfigs;
+  /** Opt-in: discover a daemon on the LAN via mDNS when none is local. */
+  remoteDaemon?: boolean;
+  /** Explicit daemon endpoint (`host` or `host:port`) for cross-subnet / SSH. */
+  daemonHost?: string;
   /** Explicit deck/tab sort override (default 0); lower sorts first. Lets a user
    *  pin terminal-tab order onto the Stream Deck via `--weight <n>`. */
   weight?: number;
@@ -741,10 +748,21 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   // `~/.agentdeck` split). `findDaemonPortAsync` probes 9120-9139 /health
   // as a last resort so the session still attaches instead of staying
   // orphaned.
-  const daemonPortProvider = async (): Promise<number | null> => {
-    const resolved = await findDaemonPortAsync();
+  // Remote attach is opt-in: `--remote-daemon` / `AGENTDECK_REMOTE_DAEMON=1`
+  // gates BOTH remote paths (explicit host and mDNS). Derivation is shared with
+  // the CLI's pre-PTY warning so the two can't drift.
+  const { remote: remoteEnabled, hostHint: daemonHost } = deriveRemoteAttachOpts({
+    remoteDaemon: opts.remoteDaemon,
+    daemonHost: opts.daemonHost,
+  });
+
+  const daemonTargetProvider = async (): Promise<DaemonTarget | null> => {
+    const resolved = await resolveDaemonTarget({ remote: remoteEnabled, hostHint: daemonHost });
     if (!resolved) return null;
-    return resolved.port !== core.port ? resolved.port : null;
+    // Never attach to our own port — but only when the resolved target is
+    // actually this machine. A remote daemon legitimately shares the port
+    // number (9120 on both boxes); rejecting on port alone dropped it.
+    return isLoopbackHost(resolved.host) && resolved.port === core.port ? null : resolved;
   };
   const daemonWsClient = new DaemonWsClient(
     core.sessionId,
@@ -752,7 +770,9 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     agentType,
     core.projectName,
     opts.weight,
-    daemonPortProvider,
+    daemonTargetProvider,
+    getLanIp() ?? undefined,
+    remoteEnabled,
   );
   daemonWsClient.connect(null);
   core.onShutdown(() => { daemonWsClient.close(); });
@@ -840,7 +860,10 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   });
 
   // ===== Commands from WS clients =====
-  core.wsServer.onCommand((cmd: PluginCommand) => {
+  // Named so the same handler serves both the local WS server AND same-socket
+  // reverse control (a remote daemon sends commands down the push socket) —
+  // one command-application path, no divergence between local and remote.
+  const applyPluginCommand = (cmd: PluginCommand) => {
     debug('agentdeck', `pluginCmd: ${cmd.type}`);
 
     // Adapter-owned commands
@@ -915,7 +938,16 @@ export async function startSession(opts: SessionOptions): Promise<void> {
         core.fetchAndUpdateUsage().catch(() => {});
         break;
     }
-  });
+  };
+  core.wsServer.onCommand(applyPluginCommand);
+
+  // Same-socket reverse control: let a remote daemon drive this session down the
+  // push socket it already opened — no inbound dial to our port required, so
+  // NAT'd / SSH-only workers work with a single outbound connection. Commands go
+  // through the same `applyPluginCommand`; focused events ride back up via the
+  // broadcast hook (parity with what a dial-back WS client would receive).
+  daemonWsClient.setReverseControl(applyPluginCommand, buildFocusSnapshot);
+  core.wsServer.onBroadcast((evt) => daemonWsClient.forwardEvent(evt));
 
   // Deck slot map relay
   core.wsServer.onRawMessage((msg, sender) => {
@@ -1039,6 +1071,38 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   core.setSessionsEnricher((sessions) =>
     injectOpenClawSession(sessions, { gatewayConnected: core.cachedGatewayConnected }),
   );
+
+  // Initial events emitted up the push socket when a remote daemon focuses this
+  // session (same-socket reverse control), so the controlling deck shows current
+  // state immediately — parity with the initial state a WS client gets on connect
+  // (`onClientConnect`). Only RELAYED_EVENTS-eligible types are worth sending; the
+  // daemon's focus relay forwards nothing else.
+  function buildFocusSnapshot(): BridgeEvent[] {
+    const snapshot = core.stateMachine.getSnapshot();
+    const events: BridgeEvent[] = [
+      core.buildStateEvent({
+        agentType: adapter.capabilities.type,
+        agentCapabilities: adapter.capabilities,
+        snapshot,
+      }),
+    ];
+    if (snapshot.options.length > 0) {
+      let promptType: 'yes_no' | 'yes_no_always' | 'multi_select' | 'diff_review' = 'multi_select';
+      if (snapshot.state === State.AWAITING_PERMISSION) {
+        promptType = snapshot.options.length > 2 ? 'yes_no_always' : 'yes_no';
+      } else if (snapshot.state === State.AWAITING_DIFF) {
+        promptType = 'diff_review';
+      }
+      events.push({
+        type: 'prompt_options',
+        promptType,
+        question: snapshot.question ?? undefined,
+        options: snapshot.options,
+      } as BridgeEvent);
+    }
+    events.push(core.buildUsage());
+    return events;
+  }
 
   // ===== Encoder state computation =====
   function computeEncoderState(): EncoderStateEvent {
