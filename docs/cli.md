@@ -39,6 +39,35 @@ agentdeck claude -c "claude --resume"
 
 The same pattern passes through any other flag the agent accepts — for instance `-c "claude --remote-control"`.
 
+**Environment-variable defaults.** To avoid retyping the same flags, set them once in your shell profile:
+
+- `AGENTDECK_COMMANDER_ARGS` — extra arguments for the `agentdeck` command itself (the arg-parser layer). Applied only when the command (`argv[2]`) is `claude`/`codex`/`opencode`/`monitor`; every other command ignores it, even when a positional value happens to equal a session word (`agentdeck speak board1 claude`).
+- `AGENTDECK_CLAUDE_ARGS` / `AGENTDECK_CODEX_ARGS` / `AGENTDECK_OPENCODE_ARGS` — extra arguments appended to the spawned agent command for that agent. These **weave into** an existing `-c` rather than replacing it.
+
+```bash
+export AGENTDECK_COMMANDER_ARGS="--no-postit"
+export AGENTDECK_CLAUDE_ARGS="--remote-control"
+
+agentdeck claude
+# ≡ agentdeck claude --no-postit -c "claude --remote-control"
+
+agentdeck claude -c "claude --resume 0000-0000-0000-0000"
+# spawns: claude --resume 0000-0000-0000-0000 --remote-control
+```
+
+**Overriding a default for one invocation.** Env tokens are inserted before the flags you type, which gives *scalar* options last-write override semantics — retype `--weight 2` or `--daemon-host other.lan` and the typed value wins. Boolean flags (`--local`, `--no-postit`, `--no-adb`, `--remote-daemon`, hook-skip flags) have no inverse spelling, so retyping cannot undo them; pass **`--no-env-args`** to ignore both env layers for that invocation:
+
+```bash
+export AGENTDECK_COMMANDER_ARGS="--local"
+
+agentdeck claude               # device modules off (env default applies)
+agentdeck claude --no-env-args # device modules on (both env layers ignored)
+```
+
+`--no-env-args` covers only the two `*_ARGS` layers. Remote attach is a separate opt-in that lives outside it: **`AGENTDECK_REMOTE_DAEMON=1`** is the only switch that turns it on (there is no `--no-remote-daemon` inverse) — unset it to disable remote attach. `AGENTDECK_DAEMON_HOST` is not an opt-in; it only names the endpoint and is inert unless `AGENTDECK_REMOTE_DAEMON=1` (or `--remote-daemon`) is also set. Unsetting a `*_ARGS` variable remains the permanent opt-out.
+
+Works identically on Linux, macOS, and Windows: the commander-layer var is parsed in-process (no shell), and the per-agent append rides the same shell path AgentDeck already uses for `-c`. One Windows caveat: the spawned command is re-parsed by `cmd.exe`, which does not treat single quotes as quoting — use double quotes for grouped values in `AGENTDECK_<AGENT>_ARGS` (see [windows.md](windows.md)).
+
 #### Pinning session order with --weight
 
 By default sessions sort by agent type → project name → start time, which keeps

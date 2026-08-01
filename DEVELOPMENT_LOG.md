@@ -2,6 +2,67 @@
 
 ---
 
+## 2026-08-01 — Env-var default args: remote-attach opt-in wording + rebase onto #95 (PR #93 review round 2)
+
+Second PR #93 review round. One contract-wording nit and a rebase:
+
+1. **`docs/cli.md` no longer calls `AGENTDECK_REMOTE_DAEMON=1` and
+   `AGENTDECK_DAEMON_HOST` "separate remote-attach opt-ins" (plural).** Under
+   the #24/#53 contract only `AGENTDECK_REMOTE_DAEMON=1` is the opt-in switch;
+   `AGENTDECK_DAEMON_HOST` is merely an endpoint hint and is inert without the
+   switch (`deriveRemoteAttachOpts` sets `remote` from the switch alone, and
+   `ignoredHostHint` when a host is given without it). The `--no-env-args`
+   paragraph now states that distinction explicitly and ties the disable
+   action to `AGENTDECK_REMOTE_DAEMON`, not to the host var. The PR body's
+   matching plural framing was corrected the same way. The CLAUDE.md env-args
+   block never mentioned remote attach, so it needed no change.
+2. **Rebased onto master `64d196ea` (which merged #95).** #95 greened the
+   Windows suite (LF working tree + platform-aware tests), so the rebased
+   branch no longer carries the earlier Windows-host-only exception. Both
+   PRs' `docs/windows.md` additions are preserved (#95's line-endings note,
+   #93's `cmd.exe` single-quote caveat). The #53 remote-attach option blocks
+   and `warnIfDaemonHostIgnored`/`deriveRemoteAttachOpts` derivation are
+   intact.
+
+---
+
+## 2026-08-01 — Env-var default args: argv[2] command keying + `--no-env-args` escape hatch (PR #93 review)
+
+The PR #93 review found two behavior gaps in the env-var default args
+feature, both fixed on the branch after rebasing onto master (`8c65f438`,
+which merged #53; the remote-attach option blocks and
+`warnIfDaemonHostIgnored` derivation are preserved).
+
+1. **Session-command detection now keys on `argv[2]`** instead of scanning
+   every argv token for a session word. The scan spliced
+   `AGENTDECK_COMMANDER_ARGS` into non-session commands whose positional
+   value equals a session word — `agentdeck speak board1 claude` received
+   the env args into `speak`. The CLI's top-level command position is fixed,
+   so the decision reads exactly that token; regression added for the
+   `speak … claude` shape.
+2. **`--no-env-args` per-invocation escape hatch.** Env tokens land before
+   typed flags, which lets a retyped *scalar* option win (last-write), but
+   boolean flags (`--local`, `--no-postit`, `--no-adb`, hook-skip flags,
+   `--remote-daemon`) have no inverse spelling — an env-provided flag was
+   sticky and the docs over-promised "explicit CLI always wins". The new
+   flag (registered on all four session commands) disables BOTH env layers
+   for that invocation: the commander-layer splice is skipped pre-parse
+   (raw-argv check — post-parse would be too late), and the per-agent weave
+   is bypassed via `resolveAgentCommand` on `opts.envArgs`. A `--no-env-args`
+   smuggled inside the env var itself is stripped so it cannot half-disable
+   only one layer. Docs corrected to the scalar/boolean split
+   (docs/cli.md, CLAUDE.md).
+
+Tests now go through actual commander option parsing, not just argv-array
+assertions: `parseOptions` on the real registered `claude` subcommand proves
+env boolean sticks / hatch overrides / scalar last-write (incl. the
+`parseWeight` processor), and a `parseAsync` end-to-end with a mocked
+`startSession` proves the action wiring (woven vs unwoven command, env flag
+present vs absent). Tokenizer examples corrected to real syntax
+(`--remote-daemon --daemon-host u2.lan` — `--remote-daemon` takes no value).
+
+---
+
 ## 2026-08-01 — XTeink 글랜스 production-pixel QA + 긴 WORK 행 말줄임
 
 X3/X4 실데이터 `/glance-frame?format=png`를 패널과 동일한 1bpp 픽셀로
@@ -568,6 +629,37 @@ CLI의 모든 BLE subprocess는 spawn 실패를 정상 오류로 처리한다. �
 자동 발견·sync는 설치를 임의로 시작하지 않고 `agentdeck ble setup`
 안내를 남긴다. 경로·누락 자산·신규/legacy 환경 선택을 회귀 테스트로
 고정하고 npm public package 네 개를 `1.0.4`로 동기화해 배포한다.
+
+---
+
+## 2026-07-29 — Env-var default CLI args: AGENTDECK_COMMANDER_ARGS / AGENTDECK_<AGENT>_ARGS
+
+Added two layers of environment-variable defaults (`bridge/src/cli.ts`) so
+flags retyped at every session can be set once in a shell profile.
+
+- `AGENTDECK_COMMANDER_ARGS` — for the `agentdeck` (commander) layer.
+  `applyGlobalEnvArgs` inserts the tokens right after the session subcommand
+  (`claude`/`codex`/`opencode`/`monitor`), before user-typed flags — explicit
+  CLI always wins (env = default). No-op for non-session commands
+  (`daemon start` etc.).
+- `AGENTDECK_CLAUDE_ARGS` / `AGENTDECK_CODEX_ARGS` / `AGENTDECK_OPENCODE_ARGS` —
+  for the spawned agent command. `weaveAgentCommand` weaves onto an explicit
+  `-c` instead of replacing it (`-c "claude --resume X"` +
+  `AGENTDECK_CLAUDE_ARGS="--remote-control"` →
+  `claude --resume X --remote-control`).
+
+Tokenization (`tokenizeArgString`) is pure JS quote-grouping only and never
+invokes a shell. The per-agent append rides the same platform shell path as
+the existing `-c` (`pty-manager.ts`, POSIX `zsh -l -c` / Windows
+`cmd.exe /d /s /c`). Windows caveat: `cmd.exe` does not treat single quotes
+as quoting, so spaced values in the per-agent vars need double quotes
+(recorded in docs/windows.md).
+
+`monitor` spawns no PTY, so it has no per-agent var; only the commander-layer
+var applies. Three unit-test groups (cli.test.ts): tokenization quoting rules,
+argv splice position + no-op conditions, per-agent weave. User docs in
+docs/cli.md (§ Sessions) and docs/windows.md; contract summary in
+CLAUDE.md § CLI.
 
 ---
 

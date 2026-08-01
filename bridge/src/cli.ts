@@ -282,6 +282,131 @@ function platformioBin(): string {
   return 'pio';
 }
 
+// ===== Env-var default CLI args =====
+//
+// Two layers of environment-variable defaults, so a shell profile can set
+// repeated flags once:
+//   AGENTDECK_COMMANDER_ARGS   → args for the `agentdeck` (commander) layer,
+//                                spliced into argv after the session subcommand.
+//   AGENTDECK_<AGENT>_ARGS     → args appended to the spawned agent command,
+//                                weaving into an explicit `-c` when present.
+// See docs and cli.test.ts for behavior.
+
+/** Session subcommands the global env-args var applies to. */
+const SESSION_COMMANDS = ['claude', 'codex', 'opencode', 'monitor'] as const;
+
+/** Env var holding extra args for the spawned agent command, per agent type. */
+const AGENT_ARGS_ENV: Record<'claude-code' | 'codex-cli' | 'opencode', string> = {
+  'claude-code': 'AGENTDECK_CLAUDE_ARGS',
+  'codex-cli': 'AGENTDECK_CODEX_ARGS',
+  opencode: 'AGENTDECK_OPENCODE_ARGS',
+};
+
+/**
+ * Split an env-provided arg string into tokens, honoring single/double quotes
+ * so values like `--flag "a b"` survive. No shell expansion (no $VAR,
+ * globbing, or escapes beyond quote grouping) — this only groups whitespace.
+ * Cross-platform: pure JS, never invokes a shell.
+ */
+export function tokenizeArgString(s: string | undefined): string[] {
+  if (!s) return [];
+  const tokens: string[] = [];
+  // Match: double-quoted run | single-quoted run | bare non-space run.
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let cur = '';
+  let curActive = false;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    // A gap of whitespace between matches ends the current token.
+    if (curActive && m.index > lastIndex) {
+      tokens.push(cur);
+      cur = '';
+      curActive = false;
+    }
+    cur += m[1] ?? m[2] ?? m[3] ?? '';
+    curActive = true;
+    lastIndex = re.lastIndex;
+  }
+  if (curActive) tokens.push(cur);
+  return tokens;
+}
+
+/** Per-invocation escape hatch: disables BOTH env-default layers when typed. */
+const NO_ENV_ARGS_FLAG = '--no-env-args';
+
+/**
+ * If argv's subcommand is a session command and AGENTDECK_COMMANDER_ARGS is set,
+ * splice its tokens in immediately after the subcommand name. Env tokens land
+ * before any user-typed tokens, giving last-write override for SCALAR options
+ * (retype `--weight`/`--daemon-host` to win); boolean flags have no inverse
+ * spelling, so the per-invocation override is the typed `--no-env-args` hatch,
+ * which skips the splice entirely (and, parsed by commander, turns the
+ * per-agent append off in the session actions too).
+ * Returns a new argv; no-op (returns input) when unset or not a session command.
+ */
+export function applyGlobalEnvArgs(
+  argv: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  // The hatch itself is stripped from the env tokens: an env-smuggled
+  // --no-env-args would otherwise splice normally and then parse to
+  // envArgs=false, silently disabling only the per-agent layer — an
+  // undocumented half-state. The env var cannot turn the hatch on or off;
+  // only a typed flag can.
+  const extra = tokenizeArgString(env.AGENTDECK_COMMANDER_ARGS)
+    .filter((tok) => tok !== NO_ENV_ARGS_FLAG);
+  if (extra.length === 0) return argv;
+  // The CLI has a fixed top-level command position: argv[0]=node,
+  // argv[1]=script, argv[2]=subcommand. Keying the decision to argv[2] (not a
+  // token scan) keeps non-session commands a true no-op even when a
+  // positional VALUE equals a session command name (`agentdeck speak b claude`).
+  const sub = argv[2];
+  if (sub === undefined || !(SESSION_COMMANDS as readonly string[]).includes(sub)) return argv;
+  // Typed escape hatch — checked on the RAW argv before splicing, because
+  // post-parse is too late (env tokens would already have parsed into opts).
+  // Exact-token match: a flag VALUE lexically equal to --no-env-args would
+  // false-positive, but producing that requires a deliberately pathological
+  // invocation (`-c --no-env-args`), and the argv[2] gate above bounds the
+  // scan to session commands.
+  if (argv.slice(3).includes(NO_ENV_ARGS_FLAG)) return argv;
+  const next = argv.slice();
+  next.splice(3, 0, ...extra);
+  return next;
+}
+
+/**
+ * Append the per-agent env var to the resolved `-c` command string. Raw append
+ * (single space + trim) — the PTY shell re-parses the whole string at spawn, so
+ * this rides the same platform shell path (cmd.exe / POSIX) that already handles
+ * a user's `-c`. No-op (returns `command`) when the var is unset/empty.
+ */
+export function weaveAgentCommand(
+  agentType: keyof typeof AGENT_ARGS_ENV,
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const extra = (env[AGENT_ARGS_ENV[agentType]] ?? '').trim();
+  if (!extra) return command;
+  return `${command} ${extra}`.trim();
+}
+
+/**
+ * The session actions' one-call selection for the spawned agent command:
+ * weave the per-agent env args unless the user typed `--no-env-args`
+ * (commander parses it as `opts.envArgs === false`; the hatch covers BOTH
+ * env layers, and the commander-layer half is handled pre-parse in
+ * `applyGlobalEnvArgs`).
+ */
+export function resolveAgentCommand(
+  agentType: keyof typeof AGENT_ARGS_ENV,
+  command: string,
+  envArgsEnabled: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return envArgsEnabled ? weaveAgentCommand(agentType, command, env) : command;
+}
+
 // ===== Program =====
 
 const program = new Command();
@@ -307,6 +432,7 @@ program
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
   .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
   .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
+  .option('--no-env-args', 'Ignore AGENTDECK_COMMANDER_ARGS and AGENTDECK_<AGENT>_ARGS for this invocation')
   .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     warnIfDaemonHostIgnored(opts);
@@ -314,7 +440,7 @@ program
     await startSession({
       agentType: 'claude-code',
       port: parseInt(opts.port, 10),
-      command: opts.command,
+      command: resolveAgentCommand('claude-code', opts.command, opts.envArgs !== false),
       debug: opts.debug,
       noUpdateCheck: opts.updateCheck === false,
       postit: opts.postit !== false,
@@ -344,6 +470,7 @@ program
   .option('--no-codex-hooks', 'Skip ~/.codex/config.toml hook install')
   .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
   .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
+  .option('--no-env-args', 'Ignore AGENTDECK_COMMANDER_ARGS and AGENTDECK_<AGENT>_ARGS for this invocation')
   .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     warnIfDaemonHostIgnored(opts);
@@ -371,7 +498,7 @@ program
     await startSession({
       agentType: 'codex-cli',
       port: parseInt(opts.port, 10),
-      command: opts.command,
+      command: resolveAgentCommand('codex-cli', opts.command, opts.envArgs !== false),
       debug: opts.debug,
       postit: opts.postit !== false,
       remoteDaemon: !!opts.remoteDaemon,
@@ -399,6 +526,7 @@ program
   .option('--no-opencode-hooks', 'Skip OpenCode observer plugin install')
   .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
   .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
+  .option('--no-env-args', 'Ignore AGENTDECK_COMMANDER_ARGS and AGENTDECK_<AGENT>_ARGS for this invocation')
   .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     warnIfDaemonHostIgnored(opts);
@@ -426,7 +554,7 @@ program
     await startSession({
       agentType: 'opencode',
       port: parseInt(opts.port, 10),
-      command: opts.command,
+      command: resolveAgentCommand('opencode', opts.command, opts.envArgs !== false),
       debug: opts.debug,
       postit: opts.postit !== false,
       remoteDaemon: !!opts.remoteDaemon,
@@ -450,6 +578,8 @@ program
   .option('--local', 'Disable all device modules')
   .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
   .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
+  // Commander-layer half only: monitor spawns no agent command to weave into.
+  .option('--no-env-args', 'Ignore AGENTDECK_COMMANDER_ARGS for this invocation')
   .option('--weight <n>', 'Deck/tab sort order override (integer, lower first; default 0)', parseWeight)
   .action(async (opts) => {
     warnIfDaemonHostIgnored(opts);
@@ -2468,7 +2598,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     await showDefaultStatusOrHelp();
     return;
   }
-  program.parse(argv);
+  program.parse(applyGlobalEnvArgs(argv));
 }
 
 export { program };
