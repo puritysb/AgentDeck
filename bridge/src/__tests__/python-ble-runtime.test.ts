@@ -39,12 +39,17 @@ describe('optional Python BLE runtime', () => {
   it('resolves packaged scripts from the bridge package and keeps the venv in the data directory', () => {
     const root = join(tempDir(), 'bridge');
     const dataDir = join(tempDir(), 'data');
-    const paths = resolveBleRuntimePaths({ packageRoot: root, dataDir, env: {} });
+    // Pin the platform: the venv interpreter location is platform-shaped
+    // (bin/python vs Scripts\python.exe), the rest is host-join()ed either way.
+    const paths = resolveBleRuntimePaths({ packageRoot: root, dataDir, env: {}, platform: 'linux' });
 
     expect(paths.scripts.idotmatrixScan).toBe(join(root, 'src', 'idotmatrix', 'scan.py'));
     expect(paths.scripts.timeboxSync).toBe(join(root, 'src', 'timebox', 'sync_ble.py'));
     expect(paths.venvPython).toBe(join(dataDir, 'python-ble', 'venv', 'bin', 'python'));
     expect(paths.legacyPython).toBe(join(root, '..', '.venv', 'bin', 'python'));
+
+    const win = resolveBleRuntimePaths({ packageRoot: root, dataDir, env: {}, platform: 'win32' });
+    expect(win.venvPython).toBe(join(dataDir, 'python-ble', 'venv', 'Scripts', 'python.exe'));
   });
 
   it('reports missing npm assets instead of silently disabling BLE', () => {
@@ -57,7 +62,8 @@ describe('optional Python BLE runtime', () => {
 
     expect(status.ready).toBe(false);
     expect(status.reason).toContain('npm package is missing');
-    expect(status.reason).toContain('python/requirements-ble.txt');
+    // The reason embeds host-join()ed relative paths — backslashes on Windows.
+    expect(status.reason?.replace(/\\/g, '/')).toContain('python/requirements-ble.txt');
   });
 
   it('creates and marks a persistent environment on first explicit setup', () => {

@@ -1,9 +1,12 @@
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { readTargetVersion, releaseTargets, validateReleaseVersion } from '../release-version.mjs';
 import { areVersionsCompatible, compatibilityLine, parseNumericVersion } from '../version-policy.mjs';
 
-const root = new URL('../..', import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: the latter yields '/E:/…' on Windows, which
+// path.resolve() mangles into 'E:\E:\…'.
+const root = fileURLToPath(new URL('../..', import.meta.url));
 
 describe('cross-target version compatibility', () => {
   it('ignores patch values and ordering within the same major.minor line', () => {

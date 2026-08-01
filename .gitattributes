@@ -1,0 +1,5 @@
+# The repo is LF-everywhere, including Windows working trees: bash scripts,
+# vitest-imported .mjs generators, and byte-compared generated mirrors all
+# break under CRLF smudging (core.autocrlf). Only cmd.exe scripts stay CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf

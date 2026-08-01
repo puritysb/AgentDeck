@@ -358,7 +358,7 @@ describe('steering hook channels (request-response)', () => {
     expect(notif).toContain('|| true');
   });
 
-  it('migration 5 upgrades fire-and-forget Stop hooks to request-response', () => {
+  it('migration 5 rewrites legacy Stop hooks to the current platform hook set (request-response on POSIX)', () => {
     const legacyStopCommand = [
       'PORT="${AGENTDECK_PORT:-}"',
       '# daemon.json lookup elided',
@@ -376,8 +376,17 @@ describe('steering hook channels (request-response)', () => {
     applyHooks(settings);
     const stopCmd = (settings.hooks.Stop as Array<{ hooks: Array<{ command: string }> }>)
       .flatMap((h) => h.hooks).map((h) => h.command).join('\n');
-    expect(stopCmd).toContain('RESP=$(curl');
-    expect(stopCmd).toContain('/hooks/Stop');
+    // The essential property: the legacy fire-and-forget hook was rewritten to
+    // the current platform hook set. Only POSIX has a request-response Stop
+    // variant; win32 emits its fire-and-forget PowerShell form (which builds the
+    // URI as '/hooks/'+$ev, so the literal '/hooks/Stop' never appears in it).
+    if (process.platform === 'win32') {
+      expect(stopCmd).toContain('Invoke-RestMethod');
+      expect(stopCmd).toContain("$ev='Stop'");
+    } else {
+      expect(stopCmd).toContain('RESP=$(curl');
+      expect(stopCmd).toContain('/hooks/Stop');
+    }
   });
 });
 
