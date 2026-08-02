@@ -7,10 +7,10 @@ locale: ja
 canonical: false
 status: reader-translation
 owner: Hardware maintainers
-reviewed: 2026-07-30
-revision: 2026-07-30-ja
+reviewed: 2026-08-02
+revision: 2026-08-02-ja
 translation_of: hardware.compatibility
-source_revision: 2026-07-30
+source_revision: 2026-08-02
 source_of_truth: docs/hardware-compatibility.md
 validators: [node scripts/build-design-system-viewer.mjs --check]
 ---
@@ -49,6 +49,8 @@ AgentDeck の dashboard surface を一覧する読者向け翻訳です。英語
 | Stream Deck         | HID deck       | Elgato                | 15 LCD keys · 5×3              | Elgato plugin → WS      |   対応    |
 | Stream Deck Mini    | HID deck       | Elgato                | 6 LCD keys · 3×2               | Elgato plugin → WS      |   対応    |
 | Stream Deck+        | HID deck       | Elgato                | 8 keys · 4 dials · touch strip | Elgato plugin → WS      |   対応    |
+| Stream Deck XL      | HID deck       | Elgato                | 32 LCD keys · 8×4              | Elgato plugin → WS      |   対応    |
+| Stream Deck + XL    | HID deck       | Elgato                | 36 keys · 9×4 · 6 dials        | Elgato plugin → WS      |   対応    |
 | macOS               | App            | Apple Silicon · Intel | Host display                   | In-process Swift daemon |   対応    |
 | iOS / iPadOS        | App            | A-series · M-series   | Device display                 | Wi-Fi WS                |   対応    |
 | Android e-ink       | App            | Vendor-specific       | B&W / color e-ink              | ADB localhost · mDNS    |   一部    |
@@ -58,7 +60,7 @@ AgentDeck の dashboard surface を一覧する読者向け翻訳です。英語
 
 ## 主な制約
 
-- **集計サーフェス数: 24。** 公開サーフェス数(README、ランディング)はこの算定をミラーします — プロトコル行(SSE stream)を除く全行を数えます。XTeink X3/X4は正常稼働中(両daemonにWi-Fi登録)ですが、コミュニティのCrossPointフォークで駆動され、一部表記はその配布上の制約を示します。
+- **集計サーフェス数: 26。** 公開サーフェス数(README、ランディング)はこの算定をミラーします — プロトコル行(SSE stream)を除く全行を数えます。XTeink X3/X4は正常稼働中(両daemonにWi-Fi登録)ですが、コミュニティのCrossPointフォークで駆動され、一部表記はその配布上の制約を示します。
 - App Store 列は第三者アプリの同梱ではなく、提出する Apple アプリと Swift daemon との互換性を示します。
 - D200H は Ulanzi Studio plugin のみ対応し、direct-HID は廃止済みです。
 - Stream Deck family には Elgato アプリが必要です。

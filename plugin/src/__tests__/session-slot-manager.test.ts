@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { State, type SessionInfo } from '@agentdeck/shared';
-import { SessionSlotManager, type DeckLayout } from '../session-slot-manager.js';
+import { SessionSlotManager, isPlusFamily, type DeckLayout } from '../session-slot-manager.js';
 
 const SD_PLUS_LAYOUT: DeckLayout = {
   columns: 4,
@@ -15,6 +15,23 @@ const SD_CLASSIC_LAYOUT: DeckLayout = {
   rows: 3,
   keyCount: 15,
   family: 'streamdeck',
+};
+
+// Stream Deck + XL (36 keys, 6 dials) — Plus family: usage rides the dials, so no
+// keypad key is reserved and all 36 keys are session-fillable.
+const SD_PLUS_XL_LAYOUT: DeckLayout = {
+  columns: 9,
+  rows: 4,
+  keyCount: 36,
+  family: 'streamdeckplusxl',
+};
+
+// Stream Deck XL (32 keys, no encoder) — carries usage on its last keypad keys.
+const SD_XL_LAYOUT: DeckLayout = {
+  columns: 8,
+  rows: 4,
+  keyCount: 32,
+  family: 'streamdeckxl',
 };
 
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
@@ -521,6 +538,37 @@ describe('SessionSlotManager list-view usage tiles', () => {
     for (let slot = 0; slot < 8; slot++) {
       expect(manager.getSlotConfig(slot, SD_PLUS_LAYOUT).type).not.toBe('usage');
     }
+  });
+
+  it('does NOT reserve usage on the Stream Deck + XL (6 dials carry usage)', () => {
+    const manager = new SessionSlotManager();
+    manager.updateUsage({ fiveHourPercent: 42, sevenDayPercent: 17, codexRateLimits: CODEX_LIMITS });
+    manager.updateSessions(fewSessions(3));
+
+    // All 36 keys stay session/status — none pinned to usage (it lives on the dials).
+    for (let slot = 0; slot < SD_PLUS_XL_LAYOUT.keyCount; slot++) {
+      expect(manager.getSlotConfig(slot, SD_PLUS_XL_LAYOUT).type).not.toBe('usage');
+    }
+  });
+
+  it('pins usage to the last keys of the Stream Deck XL (no encoder, 32 keys)', () => {
+    const manager = new SessionSlotManager();
+    manager.updateUsage({ fiveHourPercent: 42, sevenDayPercent: 17, codexRateLimits: CODEX_LIMITS });
+    manager.updateSessions(fewSessions(3));
+
+    // Same keypad-usage path as the classic deck, scaled to 32 keys: the reserved
+    // block is the last 4 keys (Claude 5h/7d + Codex 5h/7d).
+    expect(manager.getSlotConfig(28, SD_XL_LAYOUT)).toMatchObject({ type: 'usage', usageAgent: 'claude', usageWindow: '5h' });
+    expect(manager.getSlotConfig(31, SD_XL_LAYOUT)).toMatchObject({ type: 'usage', usageAgent: 'codex', usageWindow: '7d' });
+    expect(manager.getSlotConfig(0, SD_XL_LAYOUT).type).toBe('session');
+  });
+
+  it('isPlusFamily covers both dial-bearing families but not the plain XL', () => {
+    expect(isPlusFamily('streamdeckplus')).toBe(true);
+    expect(isPlusFamily('streamdeckplusxl')).toBe(true);
+    expect(isPlusFamily('streamdeckxl')).toBe(false);
+    expect(isPlusFamily('streamdeck')).toBe(false);
+    expect(isPlusFamily(undefined)).toBe(false);
   });
 
   it('reserves NO usage keys when no quota was fed (hide-if-absent)', () => {

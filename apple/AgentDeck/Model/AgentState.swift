@@ -332,9 +332,9 @@ struct WifiEsp32DeviceInfo: Sendable, Hashable {
 struct StreamDeckDeviceInfo: Sendable, Hashable {
     var id: String
     var name: String
-    /// "streamdeck" | "streamdeckplus" | "streamdeckmini" | "streamdeckxl"
-    /// | "streamdeckpedal" | "streamdeck-unknown". Kept as a String so
-    /// future Elgato families decode without a model update.
+    /// "streamdeck" | "streamdeckplus" | "streamdeckplusxl" | "streamdeckmini"
+    /// | "streamdeckxl" | "streamdeckpedal" | "streamdeck-unknown". Kept as a
+    /// String so future Elgato families decode without a model update.
     var family: String?
     var columns: Int?
     var rows: Int?

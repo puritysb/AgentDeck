@@ -16,6 +16,7 @@
     "generate-protocol": "bash scripts/generate-protocol.sh",
     "generate-terrarium-rules": "node scripts/generate-terrarium-rules.mjs",
     "generate-session-weight-rules": "node scripts/generate-session-weight-rules.mjs",
+    "generate-streamdeck-profiles": "node scripts/generate-streamdeck-profiles.mjs",
     "verify-version": "node scripts/verify-version-sync.mjs",
     "check-preview-sync": "node scripts/check-preview-mirror-sync.mjs",
     "design-system:build": "node scripts/build-design-system-viewer.mjs",

@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Hardware maintainers
-reviewed: 2026-07-30
-revision: 2026-07-30
+reviewed: 2026-08-02
+revision: 2026-08-02
 source_of_truth: docs/hardware-compatibility.md
 validators: [node scripts/build-design-system-viewer.mjs --check, bash esp32/robot/run.sh all]
 translations: [ko, ja]
@@ -64,6 +64,8 @@ Do not copy numeric specifications into domain guides. Link back to this matrix 
 | Stream Deck | HID deck | Elgato | 15 LCD keys · 5×3 | Elgato plugin → WS | Yes |
 | Stream Deck Mini | HID deck | Elgato | 6 LCD keys · 3×2 | Elgato plugin → WS | Yes |
 | Stream Deck+ | HID deck | Elgato | 8 keys · 4 dials · touch strip | Elgato plugin → WS | Yes |
+| Stream Deck XL | HID deck | Elgato | 32 LCD keys · 8×4 | Elgato plugin → WS | Yes |
+| Stream Deck + XL | HID deck | Elgato | 36 keys · 9×4 · 6 dials | Elgato plugin → WS | Yes |
 | macOS | App | Apple Silicon · Intel | Host display | In-process Swift daemon | Yes |
 | iOS / iPadOS | App | A-series · M-series | Device display | Wi-Fi WS | Yes |
 | Android e-ink | App | Vendor-specific | B&W or color e-ink | ADB localhost · mDNS | Partial |
@@ -73,7 +75,7 @@ Do not copy numeric specifications into domain guides. Link back to this matrix 
 
 `App Store` describes compatibility with the submitted Apple app and its Swift daemon, not whether third-party host software is bundled. Stream Deck and D200H still require their vendor applications.
 
-**Counted surfaces: 24.** Public surface-count claims (README, landing page) mirror this derivation: every row above except the protocol rows (SSE stream) counts. XTeink X3/X4 operate normally (both register with the daemon over Wi-Fi) but run the community CrossPoint fork — their Partial mark states that distribution limitation, see operational exceptions. Update this line and the mirrors together when rows change.
+**Counted surfaces: 26.** Public surface-count claims (README, landing page) mirror this derivation: every row above except the protocol rows (SSE stream) counts. XTeink X3/X4 operate normally (both register with the daemon over Wi-Fi) but run the community CrossPoint fork — their Partial mark states that distribution limitation, see operational exceptions. Update this line and the mirrors together when rows change.
 
 ## ESP32 board specification sheet
 
@@ -133,7 +135,7 @@ Operational exceptions:
 | Timebox Mini | Dedicated 11×11 Agent Beacon over ISSC BLE GATT. It shares the single BLE connection budget with iDotMatrix. |
 | TC001 | Self-rendering serial/Wi-Fi board. App Store status is Partial only because the Swift `led8x32` path awaits hardware verification; this is not a sandbox restriction. |
 | D200H | Ulanzi Studio plugin is the only driver. Direct-HID implementations are retired. |
-| Stream Deck family | One plugin provides bundled profiles for standard, Mini, and Plus. XL grid calculation exists, but no XL profile ships. |
+| Stream Deck family | One plugin provides bundled profiles for standard (DeviceType 0), Mini (1), XL (2), Plus (7), and + XL (13). The XL and + XL profiles AutoInstall and auto-switch on connect like the others; the + XL uses its 6 dials (4 assigned, E5–E6 unassigned). |
 
 ## Software platforms
 

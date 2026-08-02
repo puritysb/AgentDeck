@@ -387,6 +387,7 @@ struct MenuBarTopologyList: View {
         if !dev.name.isEmpty { return dev.name }
         switch dev.family {
         case "streamdeckplus":   return "Stream Deck+"
+        case "streamdeckplusxl": return "Stream Deck + XL"
         case "streamdeck":       return "Stream Deck"
         case "streamdeckmini":   return "Stream Deck Mini"
         case "streamdeckxl":     return "Stream Deck XL"

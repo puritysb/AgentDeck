@@ -77,6 +77,8 @@ for (const [name, deviceType] of [
   ['agentdeck-sd', 0],
   ['agentdeck-sdmini', 1],
   ['agentdeck-sdplus', 7],
+  ['agentdeck-sdxl', 2],
+  ['agentdeck-sdplusxl', 13],
 ]) {
   const profile = streamDeckManifest.Profiles?.find((candidate) => candidate.Name === name);
   expectValue(`${streamDeckManifestPath} profile ${name}`, profile?.DeviceType, deviceType);
@@ -98,44 +100,14 @@ if (xcodeVersions.length === 0 || xcodeVersions.some((version) => version !== ap
   failures.push(`apple/AgentDeck.xcodeproj/project.pbxproj: MARKETING_VERSION mirrors must all be ${appleVersion}`);
 }
 
-/**
- * Bundled profiles are DISCOVERED, not listed.
- *
- * This used to be six hardcoded paths, three of which pointed at `.sdProfile`
- * copies. Deleting those copies (the manifest schema references
- * `.streamDeckProfile`) made this script crash with ENOENT instead of
- * reporting a version mismatch — a check that fails on its own file list is
- * worse than no check. Walking the plugin directory keeps it correct when
- * profiles are added, removed or renamed.
- */
-function findProfileManifests() {
-  const pluginDir = 'plugin/bound.serendipity.agentdeck.sdPlugin';
-  const abs = resolve(root, pluginDir);
-  if (!existsSync(abs)) return [];
-  const out = [];
-  for (const entry of readdirSync(abs, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.endsWith('.streamDeckProfile')) continue;
-    const pagesDir = resolve(abs, entry.name, 'Profiles');
-    if (!existsSync(pagesDir)) continue;
-    for (const page of readdirSync(pagesDir, { withFileTypes: true })) {
-      if (!page.isDirectory()) continue;
-      const manifest = `${pluginDir}/${entry.name}/Profiles/${page.name}/manifest.json`;
-      if (existsSync(resolve(root, manifest))) out.push(manifest);
-    }
-  }
-  return out;
-}
-
-const profilePaths = findProfileManifests();
-if (profilePaths.length === 0) {
-  failures.push('plugin/bound.serendipity.agentdeck.sdPlugin: no bundled .streamDeckProfile page manifests found');
-}
-for (const path of profilePaths) {
-  const versions = [...read(path).matchAll(/"Version"\s*:\s*"([^"]+)"/g)].map((match) => match[1]);
-  if (versions.length === 0 || versions.some((version) => version !== `${streamDeckVersion}.0`)) {
-    failures.push(`${path}: embedded plugin versions must all be ${streamDeckVersion}.0`);
-  }
-}
+// Bundled `.streamDeckProfile` files are now generated deterministic ZIP
+// archives (scripts/generate-streamdeck-profiles.mjs), so their embedded plugin
+// version cannot be regex-scanned from loose directory manifests anymore. That
+// generator reads plugin/package.json for the embedded version and its drift
+// gate (plugin/src/__tests__/streamdeck-profiles-sync.test.ts) byte-compares
+// the committed zips against it — so profile version correctness is enforced
+// there. Here we only assert the plugin manifest's Profiles[] DeviceType map
+// (above); running the generator's --check keeps the zips honest.
 
 if (failures.length > 0) {
   console.error(`Compatibility/version drift (VERSION=${productVersion}):`);

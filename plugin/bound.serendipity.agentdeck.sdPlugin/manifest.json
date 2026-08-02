@@ -136,6 +136,20 @@
   },
   "Profiles": [
     {
+      "Name": "agentdeck-sdplusxl",
+      "DeviceType": 13,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false,
+      "Readonly": false
+    },
+    {
+      "Name": "agentdeck-sdxl",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false,
+      "Readonly": false
+    },
+    {
       "Name": "agentdeck-sdplus",
       "DeviceType": 7,
       "AutoInstall": true,

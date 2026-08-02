@@ -217,6 +217,7 @@ function familyForDeviceType(type: number | undefined): string {
     case 1: return 'streamdeckmini';
     case 2: return 'streamdeckxl';
     case 7: return 'streamdeckplus';
+    case 13: return 'streamdeckplusxl';
     default: return 'streamdeck';
   }
 }

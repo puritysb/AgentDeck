@@ -20,7 +20,7 @@ session: it shows which agent is running, in which project, and whether it is
 working, waiting on you, or idle — and it repaints itself as that changes. Press a
 key to jump in.
 
-It started on an Elgato Stream Deck+ and now drives **24 surfaces** at once —
+It started on an Elgato Stream Deck+ and now drives **26 surfaces** at once —
 decks, tablets, e-ink readers, ESP32 panels, LED matrices, and your terminal.
 
 <p align="center">
@@ -113,7 +113,7 @@ Any of these attach to the same daemon, and you can add them in any order:
 
 | Surface | How to attach |
 |---|---|
-| **Stream Deck / Mini / Plus** | One click from the [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) — or `cd plugin && streamdeck link bound.serendipity.agentdeck.sdPlugin` from a checkout |
+| **Stream Deck / Mini / XL / Plus / + XL** | One click from the [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) — or `cd plugin && streamdeck link bound.serendipity.agentdeck.sdPlugin` from a checkout |
 | **Ulanzi D200H** | Install the plugin in Ulanzi Studio — see [plugin-ulanzi/VERIFY.md](plugin-ulanzi/VERIFY.md) |
 | **macOS app** | [Download on the Mac App Store](https://apps.apple.com/app/id6784822497) — the SwiftUI dashboard carries its own daemon, so it needs no Node.js. iPhone/iPad companion in review |
 | **Android tablet / e-ink** | Signed APK from [Releases](https://github.com/puritysb/AgentDeck/releases) — see [docs/android.md](docs/android.md) |
@@ -158,7 +158,7 @@ Full build-from-source and manual steps: **[docs/install.md](docs/install.md)**.
 </table>
 
 <p align="center">
-  <strong><a href="https://puritysb.github.io/AgentDeck/hardware/">→ Browse all 24 surfaces, with live renderer previews</a></strong>
+  <strong><a href="https://puritysb.github.io/AgentDeck/hardware/">→ Browse all 26 surfaces, with live renderer previews</a></strong>
 </p>
 
 ---

@@ -35,8 +35,12 @@ All keypad buttons are `session-slot`; the plugin reads the physical device grid
 | Device | List View | Detail View |
 |--------|-----------|-------------|
 | Stream Deck+ (4×2) | 8 sessions, or 7 + NEXT | 0 BACK, 1 INFO, 2/3/4/5 content, 6 MORE, 7 ESC/STOP |
+| Stream Deck + XL (9×4) | 36 sessions, or 35 + NEXT | 0 BACK, 1 INFO, last ESC/STOP, penultimate MORE, remaining content |
 | Stream Deck (5×3) | 15 sessions, or 14 + NEXT | 0 BACK, 1 INFO, 2-12 content, 13 MORE, 14 ESC/STOP |
+| Stream Deck XL (8×4) | 32 sessions, or 31 + NEXT | 0 BACK, 1 INFO, last ESC/STOP, penultimate MORE, remaining content |
 | Other key grids | `keyCount` sessions, or `keyCount - 1` + NEXT | 0 BACK, 1 INFO, last ESC/STOP, penultimate MORE, remaining content |
+
+Encoder/dial families: the **Stream Deck+** (4 dials) and **Stream Deck + XL** (6 dials) carry usage on their dials, so the keypad reserves no usage keys. E1–E4 map to Volume / Claude Usage / Codex Usage / Launcher; on the + XL, E5–E6 are intentionally unassigned. The **Stream Deck XL** has no dials and pins usage to its last keypad keys, like the classic deck. Device→family is resolved from the Elgato `DeviceType` (2 = XL, 7 = Plus, 13 = + XL); bundled profiles `agentdeck-sdxl` (DeviceType 2) and `agentdeck-sdplusxl` (DeviceType 13) AutoInstall and auto-switch on connect.
 
 No daemon: single recovery hero. The geometric center key (`floor(rows/2) * columns + floor(columns/2)` — SD+ 4×2 → slot 6, SD MK2 5×3 → slot 7, SD XL 8×4 → slot 20, SD Mini 3×2 → slot 4) shows **OFFLINE / Open AgentDeck** and launches the AgentDeck Dashboard app on press; every other key is intentionally dark and inert. Auto-reconnect handles re-discovery so no manual RETRY affordance is exposed.
 

@@ -7,10 +7,10 @@ locale: ko
 canonical: false
 status: reader-translation
 owner: Hardware maintainers
-reviewed: 2026-07-30
-revision: 2026-07-30-ko
+reviewed: 2026-08-02
+revision: 2026-08-02-ko
 translation_of: hardware.compatibility
-source_revision: 2026-07-30
+source_revision: 2026-08-02
 source_of_truth: docs/hardware-compatibility.md
 validators: [node scripts/build-design-system-viewer.mjs --check]
 ---
@@ -49,6 +49,8 @@ AgentDeck 대시보드 표면의 호환성을 한눈에 보기 위한 독자용 
 | Stream Deck         | HID deck             | Elgato                | 15 LCD keys · 5×3              | Elgato plugin → WS    |   지원    |
 | Stream Deck Mini    | HID deck             | Elgato                | 6 LCD keys · 3×2               | Elgato plugin → WS    |   지원    |
 | Stream Deck+        | HID deck             | Elgato                | 8 keys · 4 dials · touch strip | Elgato plugin → WS    |   지원    |
+| Stream Deck XL      | HID deck             | Elgato                | 32 LCD keys · 8×4              | Elgato plugin → WS    |   지원    |
+| Stream Deck + XL    | HID deck             | Elgato                | 36 keys · 9×4 · 6 dials        | Elgato plugin → WS    |   지원    |
 | macOS               | 앱                   | Apple Silicon · Intel | 호스트 디스플레이              | 내장 Swift daemon     |   지원    |
 | iOS / iPadOS        | 앱                   | A-series · M-series   | 기기 디스플레이                | Wi-Fi WS              |   지원    |
 | Android e-ink       | 앱                   | 벤더별                | B&W 또는 컬러 e-ink            | ADB localhost · mDNS  |   일부    |
@@ -58,7 +60,7 @@ AgentDeck 대시보드 표면의 호환성을 한눈에 보기 위한 독자용 
 
 ## 핵심 제약
 
-- **집계 표면 수: 24.** 공개 표면 수(README, 랜딩)는 이 산정을 미러링한다 — 프로토콜 행(SSE stream)을 제외한 모든 행이 집계된다. XTeink X3/X4는 정상 운영되나(양쪽 데몬에 Wi-Fi 등록) 커뮤니티 CrossPoint 포크로 구동되며, 일부 표기는 그 배포 제약을 뜻한다.
+- **집계 표면 수: 26.** 공개 표면 수(README, 랜딩)는 이 산정을 미러링한다 — 프로토콜 행(SSE stream)을 제외한 모든 행이 집계된다. XTeink X3/X4는 정상 운영되나(양쪽 데몬에 Wi-Fi 등록) 커뮤니티 CrossPoint 포크로 구동되며, 일부 표기는 그 배포 제약을 뜻한다.
 - App Store 열은 제3자 호스트 앱의 번들 포함 여부가 아니라 제출된 Apple 앱과 Swift daemon의 호환성을 뜻한다.
 - D200H는 Ulanzi Studio plugin만 지원하고 direct-HID 경로는 폐기됐다.
 - Stream Deck 계열은 Elgato 앱이 필요하다.

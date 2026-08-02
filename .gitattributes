@@ -3,3 +3,6 @@
 # break under CRLF smudging (core.autocrlf). Only cmd.exe scripts stay CRLF.
 * text=auto eol=lf
 *.bat text eol=crlf
+# Generated deterministic ZIP archives (scripts/generate-streamdeck-profiles.mjs).
+# Must never be eol-smudged or the byte-compared drift gate breaks on Windows.
+*.streamDeckProfile binary

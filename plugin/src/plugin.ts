@@ -401,16 +401,18 @@ connMgr.on('display_state', (ev: {
 // a "Stream Deck" row with the physical devices this plugin sees. Called
 // from `connected` (initial registration) and from device hot-plug events
 // (so the row updates without waiting for the daemon's 120 s TTL eviction).
-// DeviceType 7 = Stream Deck+, 0 = Stream Deck, 1 = Stream Deck Mini,
-// 2 = Stream Deck XL, 6 = Stream Deck Pedal.
+// DeviceType (Elgato @elgato/schemas DeviceType enum): 0 = Stream Deck,
+// 1 = Stream Deck Mini, 2 = Stream Deck XL, 5 = Stream Deck Pedal,
+// 7 = Stream Deck+, 13 = Stream Deck + XL.
 function sendClientRegister(reason: string): void {
   const familyFor = (type: number | undefined): string => {
     switch (type) {
       case 0: return 'streamdeck';
       case 1: return 'streamdeckmini';
       case 2: return 'streamdeckxl';
-      case 6: return 'streamdeckpedal';
+      case 5: return 'streamdeckpedal';
       case 7: return 'streamdeckplus';
+      case 13: return 'streamdeckplusxl';
       default: return 'streamdeck-unknown';
     }
   };
@@ -578,7 +580,7 @@ function sendSlotMap(): void {
 
 // ---- Connect ----
 
-streamDeck.connect().then(() => {
+streamDeck.connect().then(async () => {
   dinfo('Plugin', 'Stream Deck connected, starting daemon-only connection');
   connMgr.start();
 
@@ -591,19 +593,44 @@ streamDeck.connect().then(() => {
   // the former as "dropped embedded profile" after an earlier bad package
   // install and refused to auto-install it thereafter. New name is treated
   // as fresh so AutoInstall fires cleanly.
+  //
+  // Switches are SERIALIZED with a gap: the first time a bundled profile is
+  // used the app imports it from the plugin, and `ESDProfileManager` runs one
+  // profile operation at a time — firing switchToProfile for several connected
+  // decks at once makes all but one import fail with "Another operation is
+  // already in progress". Awaiting each call and spacing them lets each
+  // import/AutoInstall complete before the next begins. (This only bites a user
+  // with 2+ auto-switchable decks, e.g. a Stream Deck XL next to a + XL.)
+  const PROFILE_SWITCH_GAP_MS = 5000;
+  const targets: Array<{ id: string; type: number; profile: string }> = [];
   for (const device of streamDeck.devices) {
-    const type = (device as any).type;
+    const type = (device as any).type as number;
     const profile = type === 7
       ? 'agentdeck-sdplus'
-      : type === 0
-        ? 'agentdeck-sd'
-        : type === 1
-          ? 'agentdeck-sdmini'
-          : null;
+      : type === 13
+        ? 'agentdeck-sdplusxl'
+        : type === 2
+          ? 'agentdeck-sdxl'
+          : type === 0
+            ? 'agentdeck-sd'
+            : type === 1
+              ? 'agentdeck-sdmini'
+              : null;
     if (!profile) continue;
-    dinfo('Plugin', `Stream Deck device found: ${device.id} type=${type}, switching to ${profile}`);
-    void streamDeck.profiles.switchToProfile(device.id, profile).catch((e: Error) => {
-      dlog('Plugin', `profile switch failed (may already be active): ${e.message}`);
-    });
+    targets.push({ id: String(device.id), type, profile });
+  }
+  for (let i = 0; i < targets.length; i++) {
+    const { id, type, profile } = targets[i];
+    dinfo('Plugin', `Stream Deck device found: ${id} type=${type}, switching to ${profile}`);
+    try {
+      await streamDeck.profiles.switchToProfile(id, profile);
+    } catch (e) {
+      dlog('Plugin', `profile switch failed (may already be active): ${(e as Error).message}`);
+    }
+    // Give the app time to finish importing this profile before the next switch
+    // triggers another import (skip the wait after the final device).
+    if (i < targets.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, PROFILE_SWITCH_GAP_MS));
+    }
   }
 });

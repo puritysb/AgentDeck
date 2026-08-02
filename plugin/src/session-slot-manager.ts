@@ -209,7 +209,20 @@ const OC_OBSERVED_INJECT_PRESETS: Array<Omit<PresetAction, 'iconSvg'> & { iconSv
 ];
 
 const DEFAULT_LAYOUT: DeckLayout = { columns: 4, rows: 2, keyCount: 8, family: 'streamdeckplus' };
-const MAX_SESSIONS = 32;
+// 36 covers the Stream Deck + XL's full 9×4 keypad (usage rides its dials, so no
+// key is reserved). Smaller decks paginate below this cap unchanged.
+const MAX_SESSIONS = 36;
+
+/**
+ * Encoder-LCD ("Plus") family test. Both the Stream Deck+ (4 dials) and the
+ * Stream Deck + XL (6 dials) carry usage on their dials and host the
+ * suggested-prompt quick-send, so the keypad-usage / suggest gates key off this
+ * rather than a bare `=== 'streamdeckplus'`. The plain XL has no encoders and is
+ * deliberately excluded (usage stays on its last keypad keys).
+ */
+export function isPlusFamily(family: string | undefined): boolean {
+  return family === 'streamdeckplus' || family === 'streamdeckplusxl';
+}
 
 function normalizeLayout(layout?: Partial<DeckLayout>): DeckLayout {
   const columns = Math.max(1, Math.floor(layout?.columns ?? DEFAULT_LAYOUT.columns));
@@ -411,12 +424,13 @@ export class SessionSlotManager {
 
   /**
    * How many bottom keys the list view pins to usage gauges. Classic Stream
-   * Deck (15 keys) and XL (32) carry usage here (no encoder LCD); Stream Deck+
-   * (family streamdeckplus) shows usage on its dial instead, and the Mini
-   * (<6 keys) is too small to spare any. Capped at MAX_USAGE_RESERVE.
+   * Deck (15 keys) and XL (32) carry usage here (no encoder LCD); the Plus
+   * family (Stream Deck+ 4-dial and Stream Deck + XL 6-dial, see isPlusFamily)
+   * shows usage on its dials instead, and the Mini (<6 keys) is too small to
+   * spare any. Capped at MAX_USAGE_RESERVE.
    */
   private usageReserve(layout: DeckLayout): number {
-    if (layout.family === 'streamdeckplus' || layout.keyCount < 6) return 0;
+    if (isPlusFamily(layout.family) || layout.keyCount < 6) return 0;
     return Math.min(this.usageGauges().length, MAX_USAGE_RESERVE);
   }
 
@@ -1044,10 +1058,10 @@ export class SessionSlotManager {
       return this.observedContentSlot(session, contentIdx, isAwaiting, isProcessing);
     }
 
-    // SD+ only: the suggested-prompt quick-send leads the IDLE content slots
-    // (relocated from the retired E2 encoder rotate/press). Gated on the
-    // streamdeckplus family so classic-deck detail layouts are unchanged.
-    const suggestEnabled = layout.family === 'streamdeckplus'
+    // Plus family only: the suggested-prompt quick-send leads the IDLE content
+    // slots (relocated from the retired E2 encoder rotate/press). Gated on the
+    // Plus family (SD+ / + XL) so classic-deck detail layouts are unchanged.
+    const suggestEnabled = isPlusFamily(layout.family)
       && this._detailState === State.IDLE
       && !!this._detailSuggestedPrompt;
     if (suggestEnabled) {

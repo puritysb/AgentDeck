@@ -11,7 +11,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentDeck — Stop Chatting. Start Steering.</title>
-<meta name="description" content="AgentDeck is a physical control surface for AI coding agents — one bridge, 24 display surfaces: Stream Deck+, e-ink readers, tablets, ESP32 displays, LED matrices, HID decks, and terminals.">
+<meta name="description" content="AgentDeck is a physical control surface for AI coding agents — one bridge, 26 display surfaces: Stream Deck+, e-ink readers, tablets, ESP32 displays, LED matrices, HID decks, and terminals.">
 <!--
   Social cards. Absolute URLs are required: og:image is fetched by crawlers that
   have no page context, so a relative path silently yields a bare link preview.
@@ -20,12 +20,12 @@
 <meta property="og:site_name" content="AgentDeck">
 <meta property="og:url" content="https://puritysb.github.io/AgentDeck/">
 <meta property="og:title" content="AgentDeck — Stop Chatting. Start Steering.">
-<meta property="og:description" content="Put your AI coding agents on a physical control surface. One local daemon renders every Claude Code, Codex, and OpenCode session live across 24 surfaces — and lets you steer them.">
+<meta property="og:description" content="Put your AI coding agents on a physical control surface. One local daemon renders every Claude Code, Codex, and OpenCode session live across 26 surfaces — and lets you steer them.">
 <meta property="og:image" content="https://puritysb.github.io/AgentDeck/media/setup-full.jpg">
 <meta property="og:image:alt" content="A desk running AgentDeck across many surfaces at once — Stream Deck+, Ulanzi D200H, tablets, e-ink panels, ESP32 displays, and LED matrices">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="AgentDeck — Stop Chatting. Start Steering.">
-<meta name="twitter:description" content="Put your AI coding agents on a physical control surface. One local daemon, 24 live display surfaces.">
+<meta name="twitter:description" content="Put your AI coding agents on a physical control surface. One local daemon, 26 live display surfaces.">
 <meta name="twitter:image" content="https://puritysb.github.io/AgentDeck/media/setup-full.jpg">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -266,7 +266,7 @@
     <h1>Stop Chatting.<br><span class="tagline">Start Steering.</span></h1>
     <p class="lede" data-i18n="hero.lede">
       AgentDeck puts your coding agents on the desk. One daemon hub renders every session live
-      across 24 surfaces — and lets you steer them without leaving the keyboard.
+      across 26 surfaces — and lets you steer them without leaving the keyboard.
     </p>
     <div class="cta">
       <a class="btn btn-primary" href="https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497" data-i18n="cta.appstore">Get the Mac app</a>
@@ -275,7 +275,7 @@
       <a class="btn btn-ghost" href="demo/" data-i18n="cta.demo">Try the live preview</a>
     </div>
     <div class="stats">
-      <div class="stat"><div class="n">24</div><div class="l" data-i18n="stat.surfaces">display surfaces</div></div>
+      <div class="stat"><div class="n">26</div><div class="l" data-i18n="stat.surfaces">display surfaces</div></div>
       <div class="stat"><div class="n">4</div><div class="l" data-i18n="stat.agents">coding agents</div></div>
       <div class="stat"><div class="n">100%</div><div class="l" data-i18n="stat.local">local — no cloud</div></div>
     </div>
@@ -315,7 +315,7 @@
     </a>
   </div>
 
-  <h2 data-i18n="surf.h">24 surfaces, one bridge</h2>
+  <h2 data-i18n="surf.h">26 surfaces, one bridge</h2>
   <p class="section-lede" data-i18n="surf.p">The same session state renders natively on each, and they run simultaneously — counted from the canonical compatibility matrix. Each app chip is a separately designed UI; the XTeink readers run the community CrossPoint fork.</p>
   <div class="surfaces">
     <div class="chip"><b>Stream Deck+</b><span>8 keys · 4 dials</span></div>
@@ -395,7 +395,7 @@
     var I18N = {
       ko: {
         'hero.kicker': 'AI 코딩 에이전트를 위한 피지컬 컨트롤 서피스',
-        'hero.lede': 'AgentDeck은 코딩 에이전트를 책상 위로 꺼내 놓습니다. 하나의 데몬 허브가 모든 세션을 24개 서피스에 라이브로 렌더링하고 — 키보드를 떠나지 않고 조종하게 해줍니다.',
+        'hero.lede': 'AgentDeck은 코딩 에이전트를 책상 위로 꺼내 놓습니다. 하나의 데몬 허브가 모든 세션을 26개 서피스에 라이브로 렌더링하고 — 키보드를 떠나지 않고 조종하게 해줍니다.',
         'cta.appstore': 'Mac 앱 받기',
         'cta.streamdeck': 'Stream Deck 플러그인 받기',
         'cta.devices': '디바이스 살펴보기',
@@ -416,13 +416,13 @@
         'card.health.p': '최신 CI 실행 — 통과한 테스트, 시나리오 커버리지, 추세, 알려진 갭.',
         'card.src.ci': '오픈소스',
         'card.src.p': 'GitHub의 MIT 라이선스 모노레포 — 브리지, 플러그인, 펌웨어, 앱.',
-        'surf.h': '24개 서피스, 하나의 브리지',
+        'surf.h': '26개 서피스, 하나의 브리지',
         'surf.p': '동일한 세션 상태가 각 서피스에 네이티브로 렌더링되며 동시에 구동됩니다 — 개수는 정본 호환성 매트릭스 기준입니다. 앱 칩은 각각 따로 설계된 UI이고, XTeink 리더는 커뮤니티 CrossPoint 포크로 구동됩니다.',
         'policy.canonical': '개인정보 처리방침은 영어 원문이 정본입니다.'
       },
       ja: {
         'hero.kicker': 'AIコーディングエージェントのためのフィジカルコントロールサーフェス',
-        'hero.lede': 'AgentDeckはコーディングエージェントを机の上に連れ出します。ひとつのdaemonハブがすべてのセッションを24のサーフェスにライブ描画し — キーボードを離れずに操縦させてくれます。',
+        'hero.lede': 'AgentDeckはコーディングエージェントを机の上に連れ出します。ひとつのdaemonハブがすべてのセッションを26のサーフェスにライブ描画し — キーボードを離れずに操縦させてくれます。',
         'cta.appstore': 'Macアプリを入手',
         'cta.streamdeck': 'Stream Deckプラグインを入手',
         'cta.devices': 'デバイスを見る',
@@ -443,7 +443,7 @@
         'card.health.p': '最新の CI 実行 — 通過したテスト、シナリオカバレッジ、推移、既知のギャップ。',
         'card.src.ci': 'オープンソース',
         'card.src.p': 'GitHubのMITライセンスmonorepo — ブリッジ、プラグイン、ファームウェア、アプリ。',
-        'surf.h': '24のサーフェス、ひとつのブリッジ',
+        'surf.h': '26のサーフェス、ひとつのブリッジ',
         'surf.p': '同じセッション状態が各サーフェスにネイティブ描画され、同時に動作します — 数は正本の互換性マトリクスに基づきます。アプリのチップはそれぞれ別設計のUIで、XTeinkリーダーはコミュニティのCrossPointフォークで動きます。',
         'policy.canonical': 'プライバシーポリシーは英語原文が正本です。'
       }
