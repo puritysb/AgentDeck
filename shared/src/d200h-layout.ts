@@ -28,6 +28,7 @@ import type { SessionInfo, SubscriptionInfo, CodexRateLimits, ScopedUsageLimit }
 import { Brand, UI } from './design-tokens.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from './connection-status.js';
 import { CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from './svg-renderers/agent-logos.js';
+import { formatScopedLabel } from './format-utils.js';
 
 /** Command dispatched when a key is pressed. `null` = inert tile (info/empty). */
 export type ButtonCommand = { type: string; [k: string]: unknown };
@@ -57,7 +58,8 @@ export const GRID_COLS = 5;
  * hole in the middle of the row.
  *
  * Its length also caps usage at three keys: a fourth tile (Codex 5H *and* 7D)
- * drops, Claude prioritised by `buildUsageTiles` order.
+ * drops, Claude prioritised by `buildUsageTiles` order. That cap is why the
+ * scoped per-model caps contribute at most ONE tile — see `buildUsageTiles`.
  */
 const USAGE_PREFERRED_POS = ['0_2', '1_2', '2_2'];
 
@@ -400,13 +402,21 @@ function buildUsageTiles(state: DashState): SessionDeckCell[] {
   if (known && state.sevenDayPercent != null) {
     tiles.push({ svg: renderUsageGauge({ agent: 'claude', window: '7d', label: '7D', usedPercent: state.sevenDayPercent, resetsAt: state.sevenDayResetsAt, known: true }), action });
   }
-  // Per-model scoped weekly caps (e.g. "Fable") — one tile each beneath 7D. An
-  // inactive cap renders muted (informational cyan), never the critical ramp.
-  if (known && state.scopedLimits) {
-    for (const s of state.scopedLimits) {
-      const label = (s.label || 'MODEL').replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 6);
-      tiles.push({ svg: renderUsageGauge({ agent: 'claude', window: '7d', label, usedPercent: s.percent, resetsAt: s.resetsAt, known: true, inactive: s.active !== true }), action });
-    }
+  // At most ONE scoped tile — the worst-sorted cap (active desc, then percent
+  // desc), rendered muted when it isn't the binding one.
+  //
+  // The usage strip is three keys wide (USAGE_PREFERRED_POS) and `buildSessionDeck`
+  // drops every tile past it, so scoped tiles never stack: only [0] could ever
+  // reach a key, and building the rest is dead work. Paging through them lives on
+  // the SD+ encoder, which has room for it.
+  //
+  // NOTE: a scoped tile does not stack onto the strip, it EVICTS Codex 5H from it
+  // (5H + 7D + scoped fills all three keys). That trade is deliberate — the point
+  // of issue #99 is that the per-model cap can be the limit that actually binds —
+  // but it means a D200H with a scoped cap present shows no Codex usage at all.
+  const worstScoped = known ? state.scopedLimits?.[0] : undefined;
+  if (worstScoped) {
+    tiles.push({ svg: renderUsageGauge({ agent: 'claude', window: '7d', label: formatScopedLabel(worstScoped.label, 6), usedPercent: worstScoped.percent, resetsAt: worstScoped.resetsAt, known: true, inactive: worstScoped.active !== true }), action });
   }
   const cx = state.codexRateLimits;
   // Codex windows carry the same short "5H"/"7D" labels — the brand dot conveys

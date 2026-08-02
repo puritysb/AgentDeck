@@ -62,6 +62,15 @@ const svgs = {
     ${brandGlyph('codex', { scale: 1.22 })}
   </svg>`,
 
+  // Claude Limit (keypad) — a tank filled near the top: the product's own
+  // level-fill gauge language, reduced to a glyph. Deliberately NOT the Claude
+  // mark, which E2 already owns; two actions sharing one icon are unpickable in
+  // the Stream Deck action list. Reads at 20px because it's two solid shapes.
+  limit: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+    <rect x="11.5" y="7.5" width="17" height="25" rx="4.5" stroke="white" stroke-width="${STROKE}" fill="none"/>
+    <rect x="14.6" y="16.4" width="10.8" height="13" rx="2.4" fill="white"/>
+  </svg>`,
+
   // Volume (E1) — speaker + two arcs. Replaces a brightness sun that survived
   // the utility-dial reduction and no longer described the action.
   utility: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
@@ -117,6 +126,7 @@ const svgs = {
 // remains the plugin/Marketplace icon only.
 const sizeMap = {
   option:   [20, 40],
+  limit:    [20, 40],
   session:  [20, 40],
   usage:    [20, 40],
   utility:  [20, 40],
@@ -131,7 +141,7 @@ const KEY_SIZE_2X = 144;
 const KEY_GLYPH_1X = 50; // 2x variant is exactly double, keeping the pair aligned
 const KEY_GLYPH_2X = KEY_GLYPH_1X * 2;
 
-const keyIcons = ['session', 'option', 'utility', 'usage', 'launcher'];
+const keyIcons = ['session', 'option', 'limit', 'utility', 'usage', 'launcher'];
 
 async function renderKeyVariant(svgBuffer, name, keySize, glyphSize, suffix) {
   const pad = (keySize - glyphSize) / 2;

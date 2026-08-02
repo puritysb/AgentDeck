@@ -91,6 +91,36 @@ export function truncateUtf8Bytes(value: string, maxBytes: number): string {
   return value.slice(0, end);
 }
 
+/**
+ * Defensive clean for an API-provided scoped-model display name before it lands
+ * in compact gauge text: drop control chars / newlines, collapse runs of
+ * whitespace, trim. The usage API's `limits[]` payload is undocumented, so a
+ * stray newline or control byte would otherwise break a single-line SVG layout.
+ * XML-escaping (in each renderer) still handles `< & >`; this is the
+ * layout-safety pass that runs before uppercase + truncate.
+ *
+ * Canonical here rather than in one plugin so every scoped-limit surface (SD
+ * encoder, SD keypad, D200H tiles) cleans labels identically.
+ */
+export function sanitizeScopedLabel(label: string | undefined | null): string {
+  return (label ?? '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Sanitize + uppercase + code-point-safe truncate a scoped-model label for a
+ * compact gauge. Iterating code points (not UTF-16 units) keeps the cut on a
+ * character boundary, same rule as truncateUtf8Bytes above. Falls back to
+ * "MODEL" when the API label is empty or was entirely control characters.
+ */
+export function formatScopedLabel(label: string | undefined | null, max: number): string {
+  const clean = sanitizeScopedLabel(label).toUpperCase();
+  return Array.from(clean).slice(0, max).join('') || 'MODEL';
+}
+
 /** Format uptime from seconds: 3725 → "1h 2m" */
 export function formatUptime(sec: number): string {
   if (sec < 60) return `${sec}s`;

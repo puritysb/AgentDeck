@@ -17,7 +17,7 @@
  * `renderUsageEncoderSingle`).
  */
 import { Brand, UI, CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from '@agentdeck/shared';
-import { formatResetTime, splitResetTwoLine, sanitizeScopedLabel } from '../utility-modes/usage.js';
+import { formatResetTime, splitResetTwoLine, formatScopedLabel } from '../utility-modes/usage.js';
 
 const W = 144;
 const H = 144;
@@ -429,14 +429,6 @@ export interface UsageEncoderScoped {
    *  Inactive caps stay visible but render MUTED (informational cyan) — never the
    *  critical ramp (puritysb #99). */
   active: boolean;
-}
-
-/** Sanitize + uppercase + code-point-safe truncate an API model label for a
- *  compact gauge. One helper so the triple / zoom / keypad surfaces can't drift
- *  in how they clean and cap the (undocumented) display name. */
-function formatScopedLabel(label: string, max: number): string {
-  const clean = sanitizeScopedLabel(label).toUpperCase();
-  return Array.from(clean).slice(0, max).join('') || 'MODEL';
 }
 
 /** Map a scoped limit onto the panel renderer: clean+cap the model label and

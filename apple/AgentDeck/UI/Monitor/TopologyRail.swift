@@ -997,7 +997,7 @@ struct TopologyRail: View {
         // inactive cap stays visible but neutral (never the critical ramp).
         for s in stateHolder.state.scopedLimits ?? [] {
             chips.append(.init(
-                label: String(s.label.prefix(5)),
+                label: s.compactLabel(5),
                 percent: s.percent,
                 reset: formatResetTime(s.resetsAt),
                 stale: isStale,

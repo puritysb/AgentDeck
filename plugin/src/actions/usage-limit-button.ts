@@ -1,9 +1,12 @@
 /**
  * "Claude Limit" keypad button.
  *
- * A dedicated key that surfaces the worst ACTIVE per-model scoped Claude cap
- * (e.g. the weekly "Fable" limit at 98%) — the number that actually binds when
- * the account-wide 5H/7D windows still read low. Press requests a usage refresh
+ * A dedicated key that surfaces the worst per-model scoped Claude cap (e.g. the
+ * weekly "Fable" limit at 98%) — the number that actually binds when the
+ * account-wide 5H/7D windows still read low. "Worst" is active-first then
+ * percent-desc, so an ACTIVE cap always headlines over an inactive one; when only
+ * inactive caps exist the highest is still shown, muted rather than
+ * alarming. Press requests a usage refresh
  * (offline → open the AgentDeck app). Shares the usage store with the E2 encoder
  * and renders the 144×144 level-fill limit gauge. Placeable on any keypad key.
  */

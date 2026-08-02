@@ -120,20 +120,12 @@ export function splitResetTwoLine(s: string): [string] | [string, string] {
 }
 
 /**
- * Defensive clean for the API-provided scoped-model display name before it lands
- * in compact SVG text: drop control chars / newlines, collapse runs of
- * whitespace, trim. The `limits[]` payload is undocumented, so a stray newline or
- * control byte would otherwise break the single-line gauge layout. XML-escaping
- * (in the renderer) still handles `< & >`; this is the layout-safety pass before
- * uppercase + truncate.
+ * Scoped-model label cleaning lives in `@agentdeck/shared` so the SD encoder, the
+ * SD keypad tile and the D200H tiles cannot drift in how they clean and cap an
+ * undocumented API display name. Re-exported here because the plugin's usage
+ * surfaces all reach for it through this module.
  */
-export function sanitizeScopedLabel(label: string | undefined | null): string {
-  return (label ?? '')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+export { sanitizeScopedLabel, formatScopedLabel } from '@agentdeck/shared';
 
 /**
  * The worst (binding) per-model scoped limit to headline. The store keeps

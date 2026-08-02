@@ -489,7 +489,7 @@ struct ControlTowerPanel: View {
                 if !isApi {
                     ForEach(stateHolder.state.scopedLimits ?? [], id: \.label) { s in
                         compactGauge(
-                            label: String(s.label.prefix(6)),
+                            label: s.compactLabel(6),
                             percent: s.percent,
                             resetTime: s.resetsAt,
                             muted: s.active != true

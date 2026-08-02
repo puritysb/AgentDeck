@@ -605,6 +605,20 @@ struct ScopedUsageLimit: Codable, Sendable {
     var severity: String?
     var resetsAt: String?
     var active: Bool?
+
+    /// Sanitized + truncated label for a compact surface (topology rail chip,
+    /// menubar gauge row). The `limits[]` payload is undocumented, so drop control
+    /// characters and collapse whitespace before truncating — a raw `.prefix(n)`
+    /// would let a stray newline break the row layout. Swift counterpart of the
+    /// shared `formatScopedLabel`, minus the uppercasing (these surfaces render
+    /// the model name in its natural case).
+    func compactLabel(_ max: Int) -> String {
+        let collapsed = label
+            .components(separatedBy: CharacterSet.controlCharacters.union(.whitespacesAndNewlines))
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return collapsed.isEmpty ? "MODEL" : String(collapsed.prefix(max))
+    }
 }
 
 struct UsageEvent: Codable, Sendable {

@@ -152,9 +152,9 @@ data class UsageUpdate(
     val extraUsageMonthlyLimit: Double? = null,
     val extraUsageUsedCredits: Double? = null,
     val extraUsageUtilization: Double? = null,
-    // Per-model scoped weekly caps (e.g. "Fable"). Android does not yet render
-    // these; the field keeps the hand mirror in parity with the generated
-    // protocol (kotlinx ignores unknown keys either way).
+    // Per-model scoped weekly caps (e.g. "Fable"). Rendered on the tablet usage
+    // card and both e-ink surfaces; the field keeps this hand mirror in parity
+    // with the generated protocol.
     val scopedLimits: List<ScopedUsageLimit>? = null,
     val sessionPercent: Double? = null,
     val costSpent: Double? = null,

@@ -120,6 +120,37 @@ function isClaudeSubscriptionModel(modelName?: string | null): boolean {
 }
 
 /**
+ * The SESSION half of a `usage_update` — the per-session counters only the
+ * focused session bridge can know. `usage_update` is their sole carrier on the
+ * wire (state_update has none of these fields).
+ */
+export const RELAYED_SESSION_USAGE_FIELDS = [
+  'sessionDurationSec', 'inputTokens', 'outputTokens', 'toolCalls',
+  'estimatedCostUsd', 'sessionPercent', 'costSpent', 'costLimit',
+  'resetTime', 'resetDate',
+] as const;
+
+/**
+ * Splice a relayed session's counters onto the daemon's own aggregate usage
+ * event, keeping the daemon's ACCOUNT half (quota, scoped caps, extra usage,
+ * subscriptions, Codex/Ollama, usageStale) authoritative.
+ *
+ * Used when a relayed event carries no Claude quota of its own. Forwarding such
+ * an event verbatim blanks the dashboard's Claude gauge on every state tick;
+ * dropping it instead blanks the session's tokens/cost/duration for every focus
+ * that legitimately has no Claude quota (Codex, OpenCode, API billing), because
+ * the daemon's own UsageTracker is never fed by a PTY and reports zeros. Merging
+ * by half is the only option that keeps both halves live.
+ */
+export function mergeRelayedSessionUsage(own: UsageEvent, relayed: Record<string, unknown>): UsageEvent {
+  const merged: Record<string, unknown> = { ...own };
+  for (const k of RELAYED_SESSION_USAGE_FIELDS) {
+    if (relayed[k] !== undefined) merged[k] = relayed[k];
+  }
+  return merged as unknown as UsageEvent;
+}
+
+/**
  * Build a usage_update BridgeEvent from current state.
  * Single source of truth — used by both index.ts and daemon-server.ts.
  *
