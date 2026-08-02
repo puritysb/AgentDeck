@@ -234,6 +234,27 @@ export interface PromptOptionsEvent {
   options: PromptOption[];
 }
 
+/**
+ * A per-model scoped usage limit (e.g. the Claude weekly cap for a specific
+ * model like "Fable"). These come from the usage API's `limits[]` array and are
+ * distinct from the account-wide 5h/7d windows: a scoped model can be the ACTIVE
+ * binding constraint (`active: true`) while the 5h/7d numbers still read low.
+ */
+export interface ScopedUsageLimit {
+  /** Raw API kind, e.g. "weekly_scoped". Forwarded for display grouping. */
+  kind?: string;
+  /** Human label — the scoped model display name (e.g. "Fable"), else the kind. */
+  label: string;
+  /** Percent of this limit already CONSUMED (0–100). */
+  percent: number;
+  /** API severity: "normal" | "warning" | "critical" (forwarded as-is). */
+  severity?: string;
+  /** ISO-8601 reset instant for this limit's window. */
+  resetsAt?: string;
+  /** True when this limit is the currently active/binding constraint. */
+  active?: boolean;
+}
+
 export interface UsageEvent {
   type: 'usage_update';
   sessionDurationSec: number;
@@ -252,6 +273,10 @@ export interface UsageEvent {
   fiveHourResetsAt?: string;
   sevenDayPercent?: number;
   sevenDayResetsAt?: string;
+  // Per-model scoped limits (e.g. weekly cap for a specific model). Distinct from
+  // the 5h/7d windows above — a scoped model can be the ACTIVE binding constraint
+  // while 5h/7d still read low. Sorted worst-first (active desc, then percent desc).
+  scopedLimits?: ScopedUsageLimit[];
   // Extra usage (pay-per-use beyond plan limits)
   extraUsageEnabled?: boolean;
   extraUsageMonthlyLimit?: number;

@@ -993,6 +993,17 @@ struct TopologyRail: View {
                 stale: isStale
             ))
         }
+        // Per-model scoped weekly caps (e.g. "Fable") — distinct from 5h/7d. An
+        // inactive cap stays visible but neutral (never the critical ramp).
+        for s in stateHolder.state.scopedLimits ?? [] {
+            chips.append(.init(
+                label: String(s.label.prefix(5)),
+                percent: s.percent,
+                reset: formatResetTime(s.resetsAt),
+                stale: isStale,
+                inactive: s.active != true
+            ))
+        }
         return chips
     }
 
@@ -1185,6 +1196,9 @@ struct RateChip: Identifiable {
     /// Renders a loud "stale" tag in place of the reset time and dims the
     /// bar so the user doesn't mistake cached numbers for current ones.
     var stale: Bool = false
+    /// Non-binding per-model scoped cap: render neutral, never the critical ramp,
+    /// regardless of percent (issue #99 — inactive ≠ same critical treatment).
+    var inactive: Bool = false
 }
 
 struct ConsumerBadge: Identifiable {
@@ -1253,6 +1267,8 @@ private struct RateChipView: View {
     let chip: RateChip
 
     private var fillColor: Color {
+        // Inactive scoped cap: neutral, never the critical ramp regardless of %.
+        if chip.inactive { return TerrariumHUD.subtext }
         if chip.percent >= 90 { return TerrariumHUD.ledRed }
         if chip.percent >= 70 { return TerrariumHUD.ledAmber }
         return TerrariumHUD.ledGreen

@@ -69,6 +69,11 @@ fun EinkEngineColumn(
         if (usage.sevenDayPercent != null) {
             EinkTextGauge(label = "7d", percent = usage.sevenDayPercent, barLength = 10, agentType = "claude-code")
         }
+        // Per-model scoped weekly caps (e.g. "Fable"). E-ink is monochrome (no
+        // severity ramp), so just surface each one beneath 7d.
+        usage.scopedLimits?.forEach { s ->
+            EinkTextGauge(label = s.label.trim().take(8), percent = s.percent, barLength = 10, agentType = "claude-code")
+        }
         // Codex (ChatGPT) rolling-window usage — own per-window stale flag. Keep
         // stale windows (marked "*") so an idle Codex 7d row doesn't vanish; the
         // brand mark identifies the provider (labels stay 5h/7d).

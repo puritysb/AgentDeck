@@ -122,6 +122,21 @@ data class StateUpdate(
     val voiceAssistantResponseText: String? = null,
 )
 
+/**
+ * A per-model scoped usage limit (e.g. the Claude weekly cap for "Fable").
+ * Distinct from the account-wide 5h/7d windows: a scoped model can be the ACTIVE
+ * binding constraint while 5h/7d read low. Mirrors the TS `ScopedUsageLimit`.
+ */
+@Serializable
+data class ScopedUsageLimit(
+    val kind: String? = null,
+    val label: String,
+    val percent: Double,
+    val severity: String? = null,
+    val resetsAt: String? = null,
+    val active: Boolean? = null,
+)
+
 @Serializable
 data class UsageUpdate(
     val sessionDurationSec: Int = 0,
@@ -137,6 +152,10 @@ data class UsageUpdate(
     val extraUsageMonthlyLimit: Double? = null,
     val extraUsageUsedCredits: Double? = null,
     val extraUsageUtilization: Double? = null,
+    // Per-model scoped weekly caps (e.g. "Fable"). Android does not yet render
+    // these; the field keeps the hand mirror in parity with the generated
+    // protocol (kotlinx ignores unknown keys either way).
+    val scopedLimits: List<ScopedUsageLimit>? = null,
     val sessionPercent: Double? = null,
     val costSpent: Double? = null,
     val costLimit: Double? = null,

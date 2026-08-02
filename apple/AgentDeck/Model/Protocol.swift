@@ -594,6 +594,19 @@ struct StateUpdateEvent: Codable, Sendable {
     var moduleHealth: ModuleHealthState?
 }
 
+/// A per-model scoped usage limit (e.g. the Claude weekly cap for a specific
+/// model). Distinct from the account-wide 5h/7d windows: a scoped model can be
+/// the ACTIVE binding constraint while 5h/7d still read low. Mirrors the TS
+/// `ScopedUsageLimit` in shared/src/protocol.ts.
+struct ScopedUsageLimit: Codable, Sendable {
+    var kind: String?
+    var label: String
+    var percent: Double
+    var severity: String?
+    var resetsAt: String?
+    var active: Bool?
+}
+
 struct UsageEvent: Codable, Sendable {
     let type: String  // "usage_update"
     var sessionDurationSec: Int?
@@ -610,6 +623,7 @@ struct UsageEvent: Codable, Sendable {
     var fiveHourResetsAt: String?
     var sevenDayPercent: Double?
     var sevenDayResetsAt: String?
+    var scopedLimits: [ScopedUsageLimit]?
     var extraUsageEnabled: Bool?
     var extraUsageMonthlyLimit: Double?
     var extraUsageUsedCredits: Double?

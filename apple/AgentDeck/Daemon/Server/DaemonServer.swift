@@ -1319,6 +1319,11 @@ final class DaemonServer {
                     }
                     self.cachedApiUsage?.fiveHourResetsAt = usage["fiveHourResetsAt"] as? String
                     self.cachedApiUsage?.sevenDayResetsAt = usage["sevenDayResetsAt"] as? String
+                    // Sync scoped caps too — the HTTP relay tier captured them, but
+                    // this live-update path used to drop them, so a relayed scoped
+                    // limit vanished from the next buildUsageEvent. An omitted key
+                    // clears them (the full snapshot always carries the live set).
+                    self.cachedApiUsage?.scopedLimits = self.decodeScopedLimits(usage)
                     self.apiUsagePreAdjusted = true
                 }
             }
@@ -6595,6 +6600,27 @@ final class DaemonServer {
         } catch { return nil }
     }
 
+    /// Decode relayed per-model scoped-limit dicts, preserving the Node daemon's
+    /// worst-first order. A missing `active` is treated as INACTIVE (false): the
+    /// wire producers only ever emit the positive signal, and an omitted flag must
+    /// never latch "binding"/critical treatment (CLAUDE.md wire-flag rule). This is
+    /// pure relay consumption — the Swift daemon never parses raw OAuth `limits[]`.
+    private func decodeScopedLimits(_ dict: [String: Any]) -> [ScopedUsageLimit] {
+        guard let raw = dict["scopedLimits"] as? [[String: Any]] else { return [] }
+        return raw.compactMap { d -> ScopedUsageLimit? in
+            guard let label = d["label"] as? String,
+                  let percent = (d["percent"] as? NSNumber)?.doubleValue else { return nil }
+            return ScopedUsageLimit(
+                kind: d["kind"] as? String,
+                label: label,
+                percent: percent,
+                severity: d["severity"] as? String,
+                resetsAt: d["resetsAt"] as? String,
+                active: (d["active"] as? Bool) ?? false
+            )
+        }
+    }
+
     /// Parse a relayed usage dict back into ApiUsageData for local caching
     private func parseRelayedUsage(_ dict: [String: Any]) -> ApiUsageData {
         ApiUsageData(
@@ -6602,6 +6628,7 @@ final class DaemonServer {
             fiveHourResetsAt: dict["fiveHourResetsAt"] as? String,
             sevenDayPercent: dict["sevenDayPercent"] as? Double,
             sevenDayResetsAt: dict["sevenDayResetsAt"] as? String,
+            scopedLimits: decodeScopedLimits(dict),
             extraUsageEnabled: dict["extraUsageEnabled"] as? Bool ?? false,
             extraUsageMonthlyLimit: dict["extraUsageMonthlyLimit"] as? Double,
             extraUsageUsedCredits: dict["extraUsageUsedCredits"] as? Double,
@@ -7109,6 +7136,20 @@ final class DaemonServer {
                 }
                 if let v = u.fiveHourResetsAt { e["fiveHourResetsAt"] = v }
                 if let v = u.sevenDayResetsAt { e["sevenDayResetsAt"] = v }
+                // Per-model scoped caps (e.g. weekly "Fable"). Worst-first, so
+                // the encoder can headline [0] as the binding limit.
+                if !u.scopedLimits.isEmpty {
+                    e["scopedLimits"] = u.scopedLimits.map { s -> [String: Any] in
+                        var d: [String: Any] = ["label": s.label, "percent": s.percent]
+                        if let k = s.kind { d["kind"] = k }
+                        if let sev = s.severity { d["severity"] = sev }
+                        if let r = s.resetsAt { d["resetsAt"] = r }
+                        // Emit the explicit boolean (never omit the falsy case) so a
+                        // downstream merge can't retain a stale "active" (CLAUDE.md).
+                        d["active"] = s.active ?? false
+                        return d
+                    }
+                }
             }
             e["extraUsageEnabled"] = u.extraUsageEnabled
             if let v = u.extraUsageMonthlyLimit { e["extraUsageMonthlyLimit"] = v }

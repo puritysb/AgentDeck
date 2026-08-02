@@ -51,6 +51,7 @@ async function createMockSibling(usage: ApiUsageData | null = null): Promise<Moc
         sevenDayPercent: cachedUsage.sevenDayPercent,
         sevenDayResetsAt: cachedUsage.sevenDayResetsAt,
         extraUsageEnabled: cachedUsage.extraUsageEnabled,
+        scopedLimits: cachedUsage.scopedLimits,
       }));
     }
   });
@@ -88,6 +89,7 @@ function sampleUsage(overrides: Partial<ApiUsageData> = {}): ApiUsageData {
     extraUsageMonthlyLimit: null,
     extraUsageUsedCredits: null,
     extraUsageUtilization: null,
+    scopedLimits: [],
     inferredBillingType: 'subscription',
     ...overrides,
   };
@@ -190,6 +192,53 @@ describe('Usage relay — WebSocket (Tier 2)', () => {
 
     ws.close();
     await new Promise((r) => setTimeout(r, 50));
+  });
+});
+
+// ─── Scoped per-model limits survive the relay round-trip ───────────
+
+/** A worst-first pair: one ACTIVE binding cap + one inactive cap, with the
+ *  severity/active signals the plugin needs to gate its critical treatment. */
+const SCOPED_FIXTURE = [
+  { kind: 'weekly_scoped', label: 'Fable', percent: 98, severity: 'critical', resetsAt: '2026-03-29T00:00:00Z', active: true },
+  { kind: 'weekly_scoped', label: 'Opus', percent: 40, severity: 'normal', resetsAt: '2026-03-29T00:00:00Z', active: false },
+];
+
+describe('Usage relay — scoped limits round-trip', () => {
+  it('preserves scopedLimits (active + severity) over the sibling WS relay', async () => {
+    const sibling = await createMockSibling(sampleUsage({ scopedLimits: SCOPED_FIXTURE }));
+    try {
+      const received: BridgeEvent[] = [];
+      const ws = new WebSocket(`ws://127.0.0.1:${sibling.port}`);
+      ws.on('message', (data) => received.push(JSON.parse(data.toString())));
+      await new Promise<void>((r, j) => { ws.on('open', r); ws.on('error', j); });
+      await new Promise((r) => setTimeout(r, 200));
+
+      const evt = received.find((e) => e.type === 'usage_update') as UsageEvent | undefined;
+      expect(evt).toBeDefined();
+      // The whole array survives serialization, worst-first order intact.
+      expect(evt!.scopedLimits).toEqual(SCOPED_FIXTURE);
+      // The binding signals specifically must not be dropped/flattened.
+      expect(evt!.scopedLimits![0].active).toBe(true);
+      expect(evt!.scopedLimits![0].severity).toBe('critical');
+      expect(evt!.scopedLimits![1].active).toBe(false);
+
+      ws.close();
+      await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      await sibling.close();
+    }
+  });
+
+  it('carries scopedLimits through the HTTP /usage relay tier', async () => {
+    const sibling = await createMockSibling(sampleUsage({ scopedLimits: SCOPED_FIXTURE }));
+    try {
+      const res = await fetch(`http://127.0.0.1:${sibling.port}/usage`);
+      const data = await res.json() as any;
+      expect(data.usage.scopedLimits).toEqual(SCOPED_FIXTURE);
+    } finally {
+      await sibling.close();
+    }
   });
 });
 

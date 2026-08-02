@@ -16,8 +16,8 @@
  * 200×100 Stream Deck+ encoder LCD views (`renderUsageEncoderBoth`,
  * `renderUsageEncoderSingle`).
  */
-import { Brand, CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from '@agentdeck/shared';
-import { formatResetTime } from '../utility-modes/usage.js';
+import { Brand, UI, CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from '@agentdeck/shared';
+import { formatResetTime, splitResetTwoLine, sanitizeScopedLabel } from '../utility-modes/usage.js';
 
 const W = 144;
 const H = 144;
@@ -62,11 +62,27 @@ function brandLogo(agent: 'claude' | 'codex', cx: number, cy: number, size: numb
 /** Desaturated fill for an expired (stale) window — last-known %, dimmed. */
 const STALE_FILL = '#64748b';
 
+/** Informational fill for an INACTIVE per-model scoped cap: a high but non-binding
+ *  cap must stay visible yet never wear the critical (red) ramp. The product-UI
+ *  cyan reads as "info, not alarm" and is deliberately distinct from the stale
+ *  slate above — an inactive limit is not a stale snapshot. Token (not raw hex)
+ *  so it stays out of the design-lint R2 count. Exported for the scoped-gauge test. */
+export const INACTIVE_FILL = UI.cyan;
+
+/** The >80% critical (alarm) fill. Named + exported so the scoped-gauge test can
+ *  assert "active cap wears critical, inactive does not" without re-hardcoding the
+ *  hex (which would add to the R2 baseline). */
+export const CRITICAL_FILL = '#ef4444';
+
 /** Severity ramp by USED percent: <=50 green, 50–80 amber, >80 red. A stale
- *  window drops to a muted grey so it reads as "not current" at a glance. */
-function rampColor(used: number, stale = false): { fill: string; hi: string } {
+ *  window drops to a muted grey so it reads as "not current"; an inactive scoped
+ *  cap drops to the informational cyan so a high-but-non-binding cap never reads
+ *  as a critical alarm (puritysb #99: inactive ≠ same critical treatment). Stale
+ *  wins over inactive — "not current" is the stronger caveat. */
+function rampColor(used: number, stale = false, inactive = false): { fill: string; hi: string } {
   if (stale) return { fill: STALE_FILL, hi: STALE_FILL };
-  if (used > 80) return { fill: '#ef4444', hi: '#fca5a5' };
+  if (inactive) return { fill: INACTIVE_FILL, hi: INACTIVE_FILL };
+  if (used > 80) return { fill: CRITICAL_FILL, hi: '#fca5a5' };
   if (used > 50) return { fill: '#eab308', hi: '#fde047' };
   return { fill: '#22c55e', hi: '#86efac' };
 }
@@ -86,6 +102,10 @@ export interface UsageGaugeData {
   /** Codex snapshot expired: keep last-known % but desaturate the fill and show
    *  a "stale" marker instead of a (misleading) "now" countdown. */
   stale?: boolean;
+  /** Scoped cap that is not the currently binding constraint: fill drops to the
+   *  informational cyan instead of the severity ramp. Defaults false so the real
+   *  5H/7D tiles are byte-unchanged. */
+  inactive?: boolean;
 }
 
 function esc(s: string): string {
@@ -97,7 +117,9 @@ function svgWrap(inner: string): string {
 }
 
 function clampPct(p: number): number {
-  return Math.max(0, Math.min(100, p));
+  // Guard NaN/Infinity (an undocumented scoped percent could be non-finite) so a
+  // gauge never renders "NaN%"; finite values are unchanged.
+  return Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 0;
 }
 
 export function renderUsageGauge(data: UsageGaugeData): string {
@@ -120,7 +142,7 @@ export function renderUsageGauge(data: UsageGaugeData): string {
 
   const stale = data.stale === true;
   const used = clampPct(data.usedPercent);
-  const ramp = rampColor(used, stale);
+  const ramp = rampColor(used, stale, data.inactive === true);
   const fillH = Math.round((H * used) / 100);
   const fillY = H - fillH;
   // Subtle level tint (low opacity) so text reads on top WITHOUT a dark overlay;
@@ -174,6 +196,10 @@ export interface UsageEncoderTank {
   /** Codex snapshot expired: keep last-known % but desaturate the fill and show
    *  a "stale" marker instead of a (misleading) "now" countdown. */
   stale?: boolean;
+  /** Scoped cap that is not the currently binding constraint: fill drops to the
+   *  informational cyan instead of the severity ramp. Defaults false so the real
+   *  5H/7D panels are byte-unchanged. */
+  inactive?: boolean;
 }
 
 /**
@@ -233,6 +259,7 @@ function encPanel(
   x: number, y: number, w: number, h: number,
   tank: UsageEncoderTank, clipId: string, big: boolean,
   showReset = true,
+  narrow = false,
 ): string {
   const panelRx = 7;
   const clip = `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${panelRx}"/></clipPath>`;
@@ -251,7 +278,7 @@ function encPanel(
 
   const stale = tank.stale === true;
   const used = clampPct(tank.usedPercent);
-  const ramp = rampColor(used, stale);
+  const ramp = rampColor(used, stale, tank.inactive === true);
   const fillH = Math.round((h * used) / 100);
   const fillY = y + h - fillH;
   // Subtle level tint + crisp 3px level line — no dark overlay behind text.
@@ -270,11 +297,25 @@ function encPanel(
   const pctColor = stale ? LABEL_DIM : HEADLINE;
   const resetColor = stale ? LABEL_DIM : COUNTDOWN;
 
+  // Narrow panels (the 3-up "triple" view) stack a two-part countdown onto two
+  // lines ("1h" / "45m") instead of shrinking the font to fit "1h45m".
+  let resetEl = '';
+  if (reset) {
+    const parts = narrow ? splitResetTwoLine(reset) : [reset];
+    if (parts.length === 2) {
+      resetEl =
+        `<text x="${cx}" y="${y + h - 18}" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="${resetColor}">${esc(parts[0])}</text>` +
+        `<text x="${cx}" y="${y + h - 5}" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="${resetColor}">${esc(parts[1])}</text>`;
+    } else {
+      resetEl = `<text x="${cx}" y="${y + h - 7}" text-anchor="middle" font-family="Arial,sans-serif" font-size="${big ? 15 : 13}" font-weight="bold" fill="${resetColor}">${esc(parts[0])}</text>`;
+    }
+  }
+
   return (
     `<defs>${clip}</defs>` + bg + fill +
     labelEl +
     `<text x="${cx}" y="${y + h / 2 + (big ? 16 : 12)}" text-anchor="middle" font-family="Arial,sans-serif" font-size="${big ? 42 : 26}" font-weight="bold" fill="${pctColor}">${Math.round(used)}<tspan font-size="${big ? 20 : 13}">%</tspan></text>` +
-    (reset ? `<text x="${cx}" y="${y + h - 7}" text-anchor="middle" font-family="Arial,sans-serif" font-size="${big ? 15 : 13}" font-weight="bold" fill="${resetColor}">${esc(reset)}</text>` : '')
+    resetEl
   );
 }
 
@@ -368,4 +409,83 @@ export function renderUsageEncoderSingle(data: UsageEncoderData, window: '5h' | 
     encHeader(data) +
     encPanel(4, 18, 192, 80, tank, `enc-${data.agent}-single-${window}`, true),
   );
+}
+
+// ─── Scoped per-model limit (e.g. weekly "Fable" cap) ───────────────────────
+// The account-wide 5H/7D windows can read low while a per-model weekly cap is
+// the ACTIVE binding constraint. These variants surface that limit: inline as a
+// third panel in the 'triple' default view, and full-width in the zoom view.
+
+export interface UsageEncoderScoped {
+  /** Model display name (untruncated), e.g. "Fable". */
+  label: string;
+  /** Percent of this scoped limit already CONSUMED (0–100). */
+  usedPercent: number;
+  /** ISO-8601 reset instant. */
+  resetsAt?: string;
+  /** False when no scoped limit exists — dim panel + "—". */
+  known: boolean;
+  /** True when this cap is the currently binding constraint (API `is_active`).
+   *  Inactive caps stay visible but render MUTED (informational cyan) — never the
+   *  critical ramp (puritysb #99). */
+  active: boolean;
+}
+
+/** Sanitize + uppercase + code-point-safe truncate an API model label for a
+ *  compact gauge. One helper so the triple / zoom / keypad surfaces can't drift
+ *  in how they clean and cap the (undocumented) display name. */
+function formatScopedLabel(label: string, max: number): string {
+  const clean = sanitizeScopedLabel(label).toUpperCase();
+  return Array.from(clean).slice(0, max).join('') || 'MODEL';
+}
+
+/** Map a scoped limit onto the panel renderer: clean+cap the model label and
+ *  mute the fill when the cap is not the binding constraint. */
+function scopedToTank(s: UsageEncoderScoped, maxLabel: number): UsageEncoderTank {
+  return {
+    label: formatScopedLabel(s.label, maxLabel),
+    usedPercent: s.usedPercent,
+    resetsAt: s.resetsAt,
+    known: s.known,
+    inactive: !s.active,
+  };
+}
+
+/** 'triple' default view: 5H, 7D and the worst per-model scoped cap as three
+ *  side-by-side full-bleed mini level-fills on one 200×100 LCD. */
+export function renderUsageEncoderTriple(data: UsageEncoderData, scoped: UsageEncoderScoped): string {
+  if (data.note != null) return encNote(data);
+  const y = 18, h = 80, pw = 62;
+  return encSvgWrap(
+    `<rect width="${ENC_W}" height="${ENC_H}" fill="${BG}"/>` +
+    encHeader(data) +
+    encPanel(4, y, pw, h, data.fiveHour, `enc-${data.agent}-tri-5h`, false, true, true) +
+    encPanel(69, y, pw, h, data.sevenDay, `enc-${data.agent}-tri-7d`, false, true, true) +
+    encPanel(134, y, pw, h, scopedToTank(scoped, 6), `enc-${data.agent}-tri-sc`, false, true, true),
+  );
+}
+
+/** Scoped zoom view: one big full-bleed level-fill for a single per-model cap. */
+export function renderUsageEncoderScopedSingle(data: UsageEncoderData, scoped: UsageEncoderScoped): string {
+  if (data.note != null) return encNote(data);
+  return encSvgWrap(
+    `<rect width="${ENC_W}" height="${ENC_H}" fill="${BG}"/>` +
+    encHeader(data) +
+    encPanel(4, 18, 192, 80, scopedToTank(scoped, 12), `enc-${data.agent}-scoped`, true),
+  );
+}
+
+/** 144×144 keypad tile for the worst per-model scoped cap (the "Claude Limit"
+ *  button). Reuses the level-fill gauge; `undefined` renders the unknown tile. */
+export function renderUsageLimitGauge(scoped?: UsageEncoderScoped): string {
+  return renderUsageGauge({
+    agent: 'claude',
+    window: '7d',
+    label: scoped ? formatScopedLabel(scoped.label, 8) : 'LIMIT',
+    usedPercent: scoped?.usedPercent ?? 0,
+    resetsAt: scoped?.resetsAt,
+    known: scoped?.known === true,
+    // Inactive cap → informational cyan, never the critical ramp (puritysb #99).
+    inactive: scoped ? !scoped.active : false,
+  });
 }

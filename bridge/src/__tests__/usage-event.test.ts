@@ -44,6 +44,7 @@ function usage(overrides: Partial<ApiUsageData> = {}): ApiUsageData {
     extraUsageMonthlyLimit: 100,
     extraUsageUsedCredits: 12,
     extraUsageUtilization: 12,
+    scopedLimits: [],
     inferredBillingType: 'subscription',
     ...overrides,
   };
@@ -121,6 +122,50 @@ describe('buildUsageEvent subscription quota scoping', () => {
     expect(evt.fiveHourPercent).toBe(55);
     expect(evt.sevenDayPercent).toBe(44);
     expect(evt.extraUsageEnabled).toBe(true);
+  });
+});
+
+describe('buildUsageEvent scoped limits', () => {
+  const SCOPED = [
+    { kind: 'weekly_scoped', label: 'Fable', percent: 98, severity: 'critical', resetsAt: '2026-06-12T18:00:00Z', active: true },
+    { kind: 'weekly_scoped', label: 'Opus', percent: 40, severity: 'normal', resetsAt: '2026-06-12T18:00:00Z', active: false },
+  ];
+
+  it('forwards scopedLimits for a subscription Claude model', () => {
+    // opus-4.6 + preAdjusted (11th arg) = the subscription-quota-applies path.
+    const evt = buildUsageEvent(
+      snapshot({ modelName: 'opus-4.6', billingType: 'subscription' }),
+      usage({ scopedLimits: SCOPED }),
+      true,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      true,
+    ) as UsageEvent;
+
+    expect(evt.scopedLimits).toEqual(SCOPED);
+  });
+
+  it('omits scopedLimits for an API/GLM-backed model even when present', () => {
+    // Same gate as the 5h/7d quota: a non-Claude subscription model must not leak
+    // Anthropic scoped caps.
+    const evt = buildUsageEvent(
+      snapshot({ modelName: 'glm-5.1', billingType: 'subscription' }),
+      usage({ scopedLimits: SCOPED }),
+      true,
+    ) as UsageEvent;
+
+    expect(evt.scopedLimits).toBeUndefined();
+  });
+
+  it('omits scopedLimits when the scoped array is empty (no phantom key)', () => {
+    const evt = buildUsageEvent(
+      snapshot({ modelName: 'opus-4.6', billingType: 'subscription' }),
+      usage({ scopedLimits: [] }),
+      true,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      true,
+    ) as UsageEvent;
+
+    expect(evt.scopedLimits).toBeUndefined();
   });
 });
 

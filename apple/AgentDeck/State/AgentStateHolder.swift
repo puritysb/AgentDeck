@@ -848,11 +848,16 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             s.sevenDayPercent = nil
             s.fiveHourResetsAt = nil
             s.sevenDayResetsAt = nil
+            s.scopedLimits = nil
         } else {
             s.fiveHourPercent = e.fiveHourPercent ?? s.fiveHourPercent
             s.sevenDayPercent = e.sevenDayPercent ?? s.sevenDayPercent
             s.fiveHourResetsAt = e.fiveHourResetsAt ?? s.fiveHourResetsAt
             s.sevenDayResetsAt = e.sevenDayResetsAt ?? s.sevenDayResetsAt
+            // Overwrite (not retain-on-absent): the daemon emits the full scoped
+            // set each frame, so an omitted key means "none now" — retaining would
+            // latch a phantom cap (CLAUDE.md wire-flag rule).
+            s.scopedLimits = e.scopedLimits
         }
         s.extraUsageEnabled = e.extraUsageEnabled ?? s.extraUsageEnabled
         s.extraUsageMonthlyLimit = e.extraUsageMonthlyLimit ?? s.extraUsageMonthlyLimit

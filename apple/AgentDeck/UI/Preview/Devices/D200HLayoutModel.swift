@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts a2c68d8877938f9a6238a353f9aac3059fc75af2
+// SYNC-HASH shared/src/d200h-layout.ts e69d1247d2f2833d8daeecf6a759d1f4a24e536c
 // SYNC-HASH shared/src/session-utils.ts b08adbcca7a9fe3386a44801248b2ec06b572a0e
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -127,6 +127,19 @@ public struct D200HSession: Equatable, Sendable {
 /// `buildUsageTiles` reads. All four windows are hide-if-absent (nil → no tile),
 /// matching the TS engine since 208b1afc — an unlinked/partial usage state frees
 /// the reserved keys for session tiles instead of leaving "—" ghost gauges.
+/// One per-model scoped weekly cap (e.g. "Fable"). Mirrors the subset of the TS
+/// `ScopedUsageLimit` that `buildUsageTiles` reads — an inactive cap renders muted.
+public struct D200HScopedLimit: Equatable, Sendable {
+    public var label: String
+    public var percent: Double
+    public var active: Bool
+    public init(label: String, percent: Double, active: Bool) {
+        self.label = label
+        self.percent = percent
+        self.active = active
+    }
+}
+
 public struct D200HUsage: Equatable, Sendable {
     /// Claude 5h window used%. nil → tile omitted.
     public var fiveHourPercent: Double?
@@ -134,6 +147,8 @@ public struct D200HUsage: Equatable, Sendable {
     public var sevenDayPercent: Double?
     /// False → suppress the Claude tiles entirely (usage state not trusted).
     public var known: Bool
+    /// Per-model scoped weekly caps, rendered as their own tiles beneath 7D.
+    public var scopedLimits: [D200HScopedLimit]
     /// Optional Codex primary window used%. Labelled by `codexPrimaryWindowMinutes`,
     /// NOT by slot — Codex now sometimes reports the weekly (10080-min) window as
     /// `primary` with `secondary` null.
@@ -149,6 +164,7 @@ public struct D200HUsage: Equatable, Sendable {
         fiveHourPercent: Double? = nil,
         sevenDayPercent: Double? = nil,
         known: Bool = true,
+        scopedLimits: [D200HScopedLimit] = [],
         codexPrimaryPercent: Double? = nil,
         codexPrimaryWindowMinutes: Int? = nil,
         codexPrimaryStale: Bool = false,
@@ -159,6 +175,7 @@ public struct D200HUsage: Equatable, Sendable {
         self.fiveHourPercent = fiveHourPercent
         self.sevenDayPercent = sevenDayPercent
         self.known = known
+        self.scopedLimits = scopedLimits
         self.codexPrimaryPercent = codexPrimaryPercent
         self.codexPrimaryWindowMinutes = codexPrimaryWindowMinutes
         self.codexPrimaryStale = codexPrimaryStale
@@ -265,7 +282,7 @@ public enum D200HSlotKind: Equatable, Sendable {
     /// Pagination MORE tile (renderNextPageButton).
     case nextPage
     /// A usage gauge tile (renderUsageGauge). `agent` = "claude"|"codex".
-    case usageGauge(agent: String, window: String, percent: Double, known: Bool, stale: Bool)
+    case usageGauge(agent: String, window: String, percent: Double, known: Bool, stale: Bool, inactive: Bool)
 }
 
 /// One key of the deck, addressed by `col`/`row` (index == row*GRID_COLS+col).
@@ -566,19 +583,33 @@ public enum D200HLayoutModel {
     private static func buildUsageTiles(_ usage: D200HUsage) -> [(D200HSlotKind, String, String)] {
         var tiles: [(D200HSlotKind, String, String)] = []
         if usage.known, let p = usage.fiveHourPercent {
-            tiles.append((.usageGauge(agent: "claude", window: "5h", percent: p, known: true, stale: false), "5H", "claude"))
+            tiles.append((.usageGauge(agent: "claude", window: "5h", percent: p, known: true, stale: false, inactive: false), "5H", "claude"))
         }
         if usage.known, let p = usage.sevenDayPercent {
-            tiles.append((.usageGauge(agent: "claude", window: "7d", percent: p, known: true, stale: false), "7D", "claude"))
+            tiles.append((.usageGauge(agent: "claude", window: "7d", percent: p, known: true, stale: false, inactive: false), "7D", "claude"))
+        }
+        // Per-model scoped weekly caps (e.g. "Fable") beneath 7D. An inactive cap
+        // renders muted (informational cyan), never the critical ramp — mirrors the
+        // TS buildUsageTiles scoped loop. The 3-slot usage region caps this at the
+        // worst cap[0] in practice; extra models overflow to session tiles.
+        if usage.known {
+            for s in usage.scopedLimits {
+                let label = s.label
+                    .replacingOccurrences(of: "\n", with: " ")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .uppercased()
+                let capped = String(label.prefix(6))
+                tiles.append((.usageGauge(agent: "claude", window: "7d", percent: s.percent, known: true, stale: false, inactive: !s.active), capped.isEmpty ? "MODEL" : capped, "claude"))
+            }
         }
         // Label each present Codex window by its own length, never by slot: Codex
         // now sometimes reports the weekly (10080-min) window as `primary` with
         // `secondary` null, so a slot-based "7D = secondary" would drop the gauge.
         if let p = usage.codexPrimaryPercent {
-            tiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexPrimaryWindowMinutes), percent: p, known: true, stale: usage.codexPrimaryStale), usageWindowLabel(usage.codexPrimaryWindowMinutes), "codex"))
+            tiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexPrimaryWindowMinutes), percent: p, known: true, stale: usage.codexPrimaryStale, inactive: false), usageWindowLabel(usage.codexPrimaryWindowMinutes), "codex"))
         }
         if let s = usage.codexSecondaryPercent {
-            tiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexSecondaryWindowMinutes), percent: s, known: true, stale: usage.codexSecondaryStale), usageWindowLabel(usage.codexSecondaryWindowMinutes), "codex"))
+            tiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexSecondaryWindowMinutes), percent: s, known: true, stale: usage.codexSecondaryStale, inactive: false), usageWindowLabel(usage.codexSecondaryWindowMinutes), "codex"))
         }
         return tiles
     }

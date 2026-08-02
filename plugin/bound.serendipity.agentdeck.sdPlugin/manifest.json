@@ -19,6 +19,22 @@
     },
     {
       "Icon": "static/imgs/option",
+      "Name": "Claude Limit",
+      "States": [
+        {
+          "Image": "static/imgs/keys/option",
+          "Name": "Claude Limit",
+          "ShowTitle": false
+        }
+      ],
+      "Controllers": [
+        "Keypad"
+      ],
+      "SupportedInMultiActions": true,
+      "UUID": "bound.serendipity.agentdeck.limit-key"
+    },
+    {
+      "Icon": "static/imgs/option",
       "Name": "Claude Usage",
       "States": [
         {

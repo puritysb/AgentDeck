@@ -80,6 +80,22 @@ fun UsageSummaryCard(
                 }
             }
 
+            // Per-model scoped weekly caps (e.g. "Fable") — distinct from the
+            // account-wide 5h/7d. An inactive cap stays visible but muted (never
+            // the critical ramp); only an active cap wears the percent color.
+            if (usageLive) {
+                usage.scopedLimits?.forEach { s ->
+                    CompactGauge(
+                        label = s.label.trim().take(10),
+                        percent = s.percent,
+                        resetAt = s.resetsAt,
+                        agentType = "claude-code",
+                        muted = s.active != true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
             // Codex (ChatGPT) rolling-window usage — independent of Claude's
             // usageStale (each window carries its own stale flag). Brand mark
             // identifies the provider so labels stay 5h/7d.
@@ -152,9 +168,13 @@ private fun CompactGauge(
     // When set, a small per-provider brand mark leads the gauge so Codex rows
     // read as distinct from Claude's (labels stay 5h/7d — the mark = the agent).
     agentType: String? = null,
+    // A non-binding per-model scoped cap: render neutral, never the critical ramp,
+    // regardless of percent (issue #99 — inactive ≠ same critical treatment).
+    muted: Boolean = false,
 ) {
     val fraction = (percent / 100.0).coerceIn(0.0, 1.0).toFloat()
     val color = when {
+        muted -> MaterialTheme.colorScheme.onSurfaceVariant
         percent >= 90 -> AgentDeckColors.Red
         percent >= 70 -> AgentDeckColors.Amber
         else -> AgentDeckColors.Green

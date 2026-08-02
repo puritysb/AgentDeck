@@ -29,6 +29,9 @@ struct ApiUsageData: Sendable {
     var fiveHourResetsAt: String?
     var sevenDayPercent: Double?
     var sevenDayResetsAt: String?
+    /// Per-model scoped caps from the API `limits[]` array, worst-first. Mirrors
+    /// the TS `ApiUsageData.scopedLimits`.
+    var scopedLimits: [ScopedUsageLimit] = []
     var extraUsageEnabled: Bool = false
     var extraUsageMonthlyLimit: Double?
     var extraUsageUsedCredits: Double?
@@ -925,6 +928,7 @@ final class UsageAPIClient: Sendable {
             var fiveHourResetsAt: String?
             var sevenDayPercent: Double?
             var sevenDayResetsAt: String?
+            var scopedLimits: [ScopedUsageLimit]? = nil
             var extraUsageEnabled: Bool?
             var extraUsageMonthlyLimit: Double?
             var extraUsageUsedCredits: Double?
@@ -942,6 +946,7 @@ final class UsageAPIClient: Sendable {
             fiveHourResetsAt: cache.data.fiveHourResetsAt,
             sevenDayPercent: cache.data.sevenDayPercent,
             sevenDayResetsAt: cache.data.sevenDayResetsAt,
+            scopedLimits: cache.data.scopedLimits ?? [],
             extraUsageEnabled: cache.data.extraUsageEnabled ?? false,
             extraUsageMonthlyLimit: cache.data.extraUsageMonthlyLimit,
             extraUsageUsedCredits: cache.data.extraUsageUsedCredits,
@@ -973,6 +978,7 @@ final class UsageAPIClient: Sendable {
                 fiveHourResetsAt: usage.fiveHourResetsAt,
                 sevenDayPercent: usage.sevenDayPercent,
                 sevenDayResetsAt: usage.sevenDayResetsAt,
+                scopedLimits: usage.scopedLimits,
                 extraUsageEnabled: usage.extraUsageEnabled,
                 extraUsageMonthlyLimit: usage.extraUsageMonthlyLimit,
                 extraUsageUsedCredits: usage.extraUsageUsedCredits,
@@ -1027,6 +1033,13 @@ final class UsageAPIClient: Sendable {
             usage.extraUsageUsedCredits = getDouble(extraDict["used_credits"]) ?? getDouble(extraDict["usedCredits"])
             usage.extraUsageUtilization = getUtilization(extra)
         }
+
+        // Per-model scoped limits are NOT parsed here: this Swift daemon never
+        // acquires OAuth usage directly (`directOAuthUsageSupported == false`), and
+        // puritysb's #99 guardrail keeps direct `limits[]` acquisition in the Node
+        // daemon. Scoped caps reach this daemon only via the relay ingest
+        // (DaemonServer.parseRelayedUsage) and the shared usage cache the Node
+        // daemon writes — never by parsing a live OAuth response here.
 
         usage.inferredBillingType = usage.fiveHourPercent != nil ? "subscription" : "api"
         return usage

@@ -1086,6 +1086,41 @@
       ],
       "type": "object"
     },
+    "ScopedUsageLimit": {
+      "additionalProperties": false,
+      "description": "A per-model scoped usage limit (e.g. the Claude weekly cap for a specific model like \"Fable\"). These come from the usage API's `limits[]` array and are distinct from the account-wide 5h/7d windows: a scoped model can be the ACTIVE binding constraint (`active: true`) while the 5h/7d numbers still read low.",
+      "properties": {
+        "active": {
+          "description": "True when this limit is the currently active/binding constraint.",
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "Raw API kind, e.g. \"weekly_scoped\". Forwarded for display grouping.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Human label — the scoped model display name (e.g. \"Fable\"), else the kind.",
+          "type": "string"
+        },
+        "percent": {
+          "description": "Percent of this limit already CONSUMED (0–100).",
+          "type": "number"
+        },
+        "resetsAt": {
+          "description": "ISO-8601 reset instant for this limit's window.",
+          "type": "string"
+        },
+        "severity": {
+          "description": "API severity: \"normal\" | \"warning\" | \"critical\" (forwarded as-is).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "percent"
+      ],
+      "type": "object"
+    },
     "SessionInfo": {
       "additionalProperties": false,
       "properties": {
@@ -1696,6 +1731,12 @@
         },
         "resetTime": {
           "type": "string"
+        },
+        "scopedLimits": {
+          "items": {
+            "$ref": "#/definitions/ScopedUsageLimit"
+          },
+          "type": "array"
         },
         "sessionDurationSec": {
           "type": "number"

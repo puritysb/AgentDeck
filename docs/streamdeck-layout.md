@@ -14,7 +14,7 @@ validators: [pnpm test]
 ---
 # Stream Deck+ Layout
 
-**Manifest actions** (5 total): `session-slot` (Keypad; device-grid aware) + 4 encoders on Stream Deck+.
+**Manifest actions** (6 total): `session-slot` + `limit-key` (Keypad; the latter a placeable Claude-limit gauge) + 4 encoders on Stream Deck+.
 The earlier mode-dial keypad and the capabilities dropped on the way here are recorded in
 [Retired and Experimental Surfaces](retired-surfaces.md).
 
@@ -23,8 +23,9 @@ UUIDs are immutable post-distribution, so several no longer describe their role.
 | UUID | Display name | Role |
 |---|---|---|
 | `session-slot` | Session Slot | Keypad, device-grid aware |
+| `limit-key` | Claude Limit | Keypad (optional, opt-in) — worst per-model scoped cap (e.g. weekly "Fable"); critical ramp only when the cap is the active/binding limit, muted otherwise. Placeable but not in any bundled profile — never displaces a `session-slot` |
 | `utility-dial` | Volume | E1 — macOS output volume |
-| `option-dial` | Claude Usage | E2 — Claude quota gauge |
+| `option-dial` | Claude Usage | E2 — Claude quota gauge (rotate: triple 5H/7D/scoped → zooms → session) |
 | `iterm-dial` | Codex Usage | E3 — Codex quota gauge |
 | `launcher` | Launcher | E4 — open an agent |
 

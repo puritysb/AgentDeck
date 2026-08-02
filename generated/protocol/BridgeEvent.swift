@@ -116,6 +116,7 @@ struct ADBridgeEvent: Codable, Equatable {
     var outputTokens: Double?
     var resetDate: String?
     var resetTime: String?
+    var scopedLimits: [ADScopedUsageLimit]?
     var sessionDurationSec: Double?
     var sessionPercent: Double?
     var sevenDayPercent: Double?
@@ -220,6 +221,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case outputTokens = "outputTokens"
         case resetDate = "resetDate"
         case resetTime = "resetTime"
+        case scopedLimits = "scopedLimits"
         case sessionDurationSec = "sessionDurationSec"
         case sessionPercent = "sessionPercent"
         case sevenDayPercent = "sevenDayPercent"
@@ -340,6 +342,7 @@ extension ADBridgeEvent {
         outputTokens: Double?? = nil,
         resetDate: String?? = nil,
         resetTime: String?? = nil,
+        scopedLimits: [ADScopedUsageLimit]?? = nil,
         sessionDurationSec: Double?? = nil,
         sessionPercent: Double?? = nil,
         sevenDayPercent: Double?? = nil,
@@ -440,6 +443,7 @@ extension ADBridgeEvent {
             outputTokens: outputTokens ?? self.outputTokens,
             resetDate: resetDate ?? self.resetDate,
             resetTime: resetTime ?? self.resetTime,
+            scopedLimits: scopedLimits ?? self.scopedLimits,
             sessionDurationSec: sessionDurationSec ?? self.sessionDurationSec,
             sessionPercent: sessionPercent ?? self.sessionPercent,
             sevenDayPercent: sevenDayPercent ?? self.sevenDayPercent,
@@ -1934,6 +1938,86 @@ enum ADOutcome: String, Codable, Equatable {
     case interrupted = "interrupted"
     case iterated = "iterated"
     case pending = "pending"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// A per-model scoped usage limit (e.g. the Claude weekly cap for a specific model like
+/// "Fable"). These come from the usage API's `limits[]` array and are distinct from the
+/// account-wide 5h/7d windows: a scoped model can be the ACTIVE binding constraint (`active:
+/// true`) while the 5h/7d numbers still read low.
+// MARK: - ADScopedUsageLimit
+struct ADScopedUsageLimit: Codable, Equatable {
+    /// True when this limit is the currently active/binding constraint.
+    var active: Bool?
+    /// Raw API kind, e.g. "weekly_scoped". Forwarded for display grouping.
+    var kind: String?
+    /// Human label — the scoped model display name (e.g. "Fable"), else the kind.
+    var label: String
+    /// Percent of this limit already CONSUMED (0–100).
+    var percent: Double
+    /// ISO-8601 reset instant for this limit's window.
+    var resetsAt: String?
+    /// API severity: "normal" | "warning" | "critical" (forwarded as-is).
+    var severity: String?
+
+    enum CodingKeys: String, CodingKey {
+        case active = "active"
+        case kind = "kind"
+        case label = "label"
+        case percent = "percent"
+        case resetsAt = "resetsAt"
+        case severity = "severity"
+    }
+}
+
+// MARK: ADScopedUsageLimit convenience initializers and mutators
+
+extension ADScopedUsageLimit {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADScopedUsageLimit.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        active: Bool?? = nil,
+        kind: String?? = nil,
+        label: String? = nil,
+        percent: Double? = nil,
+        resetsAt: String?? = nil,
+        severity: String?? = nil
+    ) -> ADScopedUsageLimit {
+        return ADScopedUsageLimit(
+            active: active ?? self.active,
+            kind: kind ?? self.kind,
+            label: label ?? self.label,
+            percent: percent ?? self.percent,
+            resetsAt: resetsAt ?? self.resetsAt,
+            severity: severity ?? self.severity
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
 }
 
 //

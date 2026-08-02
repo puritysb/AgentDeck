@@ -484,6 +484,18 @@ struct ControlTowerPanel: View {
                         resetTime: stateHolder.state.sevenDayResetsAt
                     )
                 }
+                // Per-model scoped weekly caps (e.g. "Fable") — distinct from 5h/7d.
+                // Inactive caps render muted (neutral), never the critical ramp.
+                if !isApi {
+                    ForEach(stateHolder.state.scopedLimits ?? [], id: \.label) { s in
+                        compactGauge(
+                            label: String(s.label.prefix(6)),
+                            percent: s.percent,
+                            resetTime: s.resetsAt,
+                            muted: s.active != true
+                        )
+                    }
+                }
                 // Codex (ChatGPT) usage limits, when the daemon surfaced them
                 // from the local rollout files. Own sub-header so the 5h/7d
                 // labels don't read as Claude's. Hidden when absent. Credit-based
@@ -687,10 +699,12 @@ struct ControlTowerPanel: View {
         return s
     }
 
-    private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false) -> some View {
+    private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false, muted: Bool = false) -> some View {
         // Expired Codex window: desaturate the fill and show a "stale" marker
         // instead of a (misleading) reset countdown. The % stays last-known.
-        let color = stale ? TerrariumHUD.subtext : gaugeColor(percent)
+        // `muted` = a non-binding per-model scoped cap: neutral, never the critical
+        // ramp regardless of percent (issue #99).
+        let color = (stale || muted) ? TerrariumHUD.subtext : gaugeColor(percent)
         return HStack(spacing: 8) {
             Text(label)
                 .font(.system(size: 10, design: .monospaced))

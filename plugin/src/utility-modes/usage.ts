@@ -2,13 +2,16 @@
  * Usage data types and shared formatting helpers.
  * Used by the dedicated Usage Dial (E3) renderer.
  */
-import type { CodexRateLimits } from '@agentdeck/shared';
+import type { CodexRateLimits, ScopedUsageLimit } from '@agentdeck/shared';
 
 export interface UsageModeData {
   fiveHourPercent?: number;
   fiveHourResetsAt?: string;
   sevenDayPercent?: number;
   sevenDayResetsAt?: string;
+  /** Per-model scoped Claude caps (e.g. weekly "Fable"). Worst-first from the
+   *  daemon; the encoder headlines [0] and can page through the rest. */
+  scopedLimits?: ScopedUsageLimit[];
   inputTokens?: number;
   outputTokens?: number;
   estimatedCostUsd?: number;
@@ -104,6 +107,46 @@ export function formatRenewalDate(iso?: string): string {
     const far = d.getTime() - Date.now() > 300 * 24 * 3600e3;
     return far ? `${mon} ${d.getDate()} ${d.getFullYear()}` : `${mon} ${d.getDate()}`;
   } catch { return ''; }
+}
+
+/**
+ * Split a compact reset string ("1h45m", "2d3h") into two lines at the first
+ * unit boundary so a narrow gauge can stack "1h" over "45m" instead of shrinking
+ * the font. Single-unit strings ("45m", "now", "stale") stay one line.
+ */
+export function splitResetTwoLine(s: string): [string] | [string, string] {
+  const m = s.match(/^(\d+[a-z])(\d+[a-z].*)$/i);
+  return m ? [m[1], m[2]] : [s];
+}
+
+/**
+ * Defensive clean for the API-provided scoped-model display name before it lands
+ * in compact SVG text: drop control chars / newlines, collapse runs of
+ * whitespace, trim. The `limits[]` payload is undocumented, so a stray newline or
+ * control byte would otherwise break the single-line gauge layout. XML-escaping
+ * (in the renderer) still handles `< & >`; this is the layout-safety pass before
+ * uppercase + truncate.
+ */
+export function sanitizeScopedLabel(label: string | undefined | null): string {
+  return (label ?? '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The worst (binding) per-model scoped limit to headline. The store keeps
+ * `scopedLimits` sorted worst-first (active desc, then percent desc), so this is
+ * just `[0]` — but it honours staleness the same way the 5h/7d gauges do: a
+ * stale snapshot returns nothing so the encoder shows "—" rather than a number
+ * that reads as live. The caller mutes the panel when the returned limit is
+ * inactive; selection stays worst-sorted so an inactive-but-high cap is still
+ * visible (calm), only the active one gets the critical ramp.
+ */
+export function pickWorstScopedLimit(data: UsageModeData): ScopedUsageLimit | undefined {
+  if (data.usageStale === true) return undefined;
+  return data.scopedLimits && data.scopedLimits.length > 0 ? data.scopedLimits[0] : undefined;
 }
 
 export function formatTokens(n?: number): string {

@@ -142,6 +142,9 @@ struct DashboardState: Sendable {
     var fiveHourResetsAt: String?
     var sevenDayPercent: Double?
     var sevenDayResetsAt: String?
+    /// Per-model scoped weekly caps (e.g. the "Fable" cap) — distinct from the
+    /// account-wide 5h/7d. Consumed via the daemon relay only (relay-only boundary).
+    var scopedLimits: [ScopedUsageLimit]?
     var previousFiveHourPercent: Double?
     var previousSevenDayPercent: Double?
     var extraUsageEnabled: Bool?

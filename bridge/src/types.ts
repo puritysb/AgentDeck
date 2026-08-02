@@ -45,6 +45,7 @@ export {
   type StateUpdateEvent,
   type PromptOptionsEvent,
   type UsageEvent,
+  type ScopedUsageLimit,
   type ConnectionEvent,
   type UserPromptEvent,
   type VoiceStateEvent,

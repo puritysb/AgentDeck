@@ -24,6 +24,7 @@ function sampleApiUsage(overrides: Partial<ApiUsageData> = {}): ApiUsageData {
     extraUsageMonthlyLimit: null,
     extraUsageUsedCredits: null,
     extraUsageUtilization: null,
+    scopedLimits: [],
     inferredBillingType: 'subscription',
     ...overrides,
   };

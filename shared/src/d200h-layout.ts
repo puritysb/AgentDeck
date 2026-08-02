@@ -24,7 +24,7 @@ import {
 } from './svg-renderers/index.js';
 import { State, type PromptOption } from './states.js';
 import { sortSessions, foldCodexSessionsForDisplay } from './session-utils.js';
-import type { SessionInfo, SubscriptionInfo, CodexRateLimits } from './protocol.js';
+import type { SessionInfo, SubscriptionInfo, CodexRateLimits, ScopedUsageLimit } from './protocol.js';
 import { Brand, UI } from './design-tokens.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from './connection-status.js';
 import { CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from './svg-renderers/agent-logos.js';
@@ -86,6 +86,12 @@ export interface DashState {
   fiveHourResetsAt?: string;
   /** ISO timestamp when the 7-day quota window resets (for a countdown). */
   sevenDayResetsAt?: string;
+  /**
+   * Per-model scoped weekly caps (e.g. the "Fable" cap) — distinct from the
+   * account-wide 5H/7D. Each renders as its own tile beneath 7D; an inactive cap
+   * is shown muted (never the critical ramp).
+   */
+  scopedLimits?: ScopedUsageLimit[];
   /** Active subscriptions (Claude / ChatGPT plan) with optional expiry. */
   subscriptions?: SubscriptionInfo[];
   /**
@@ -120,6 +126,7 @@ export function parseState(evt: any): DashState {
         : evt?.fiveHourPercent != null || evt?.sevenDayPercent != null,
     fiveHourResetsAt: typeof evt?.fiveHourResetsAt === 'string' ? evt.fiveHourResetsAt : undefined,
     sevenDayResetsAt: typeof evt?.sevenDayResetsAt === 'string' ? evt.sevenDayResetsAt : undefined,
+    scopedLimits: Array.isArray(evt?.scopedLimits) ? (evt.scopedLimits as ScopedUsageLimit[]) : undefined,
     subscriptions: Array.isArray(evt?.subscriptions) ? evt.subscriptions : undefined,
     codexRateLimits:
       evt?.codexRateLimits && typeof evt.codexRateLimits === 'object'
@@ -247,8 +254,11 @@ function usageBrandLogo(agent: 'claude' | 'codex', cx: number, cy: number, size:
 }
 
 /** Severity ramp by USED percent: <=50 green, 50–80 amber, >80 red. */
-function usageRampColor(used: number, stale = false): { fill: string; hi: string } {
+function usageRampColor(used: number, stale = false, inactive = false): { fill: string; hi: string } {
   if (stale) return { fill: '#64748b', hi: '#64748b' };
+  // Inactive per-model scoped cap: informational cyan (distinct from stale slate),
+  // never the critical ramp regardless of percent (issue #99).
+  if (inactive) return { fill: UI.cyan, hi: UI.cyan };
   if (used > 80) return { fill: '#ef4444', hi: '#fca5a5' };
   if (used > 50) return { fill: '#eab308', hi: '#fde047' };
   return { fill: '#22c55e', hi: '#86efac' };
@@ -293,6 +303,9 @@ export interface UsageTankData {
   /** Codex snapshot expired: keep last-known % but desaturate the fill and show
    *  a "stale" marker instead of a (misleading) "now" countdown. */
   stale?: boolean;
+  /** Non-binding per-model scoped cap: fill drops to the informational cyan,
+   *  never the critical ramp, regardless of percent (issue #99). */
+  inactive?: boolean;
 }
 
 export function renderUsageGauge(data: UsageTankData): string {
@@ -317,7 +330,7 @@ export function renderUsageGauge(data: UsageTankData): string {
 
   const stale = data.stale === true;
   const used = Math.max(0, Math.min(100, data.usedPercent));
-  const ramp = usageRampColor(used, stale);
+  const ramp = usageRampColor(used, stale, data.inactive === true);
   const fillH = Math.round((H * used) / 100);
   const fillY = H - fillH;
   // Subtle level tint (low opacity) + crisp 3px level line — no dark overlay.
@@ -386,6 +399,14 @@ function buildUsageTiles(state: DashState): SessionDeckCell[] {
   }
   if (known && state.sevenDayPercent != null) {
     tiles.push({ svg: renderUsageGauge({ agent: 'claude', window: '7d', label: '7D', usedPercent: state.sevenDayPercent, resetsAt: state.sevenDayResetsAt, known: true }), action });
+  }
+  // Per-model scoped weekly caps (e.g. "Fable") — one tile each beneath 7D. An
+  // inactive cap renders muted (informational cyan), never the critical ramp.
+  if (known && state.scopedLimits) {
+    for (const s of state.scopedLimits) {
+      const label = (s.label || 'MODEL').replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 6);
+      tiles.push({ svg: renderUsageGauge({ agent: 'claude', window: '7d', label, usedPercent: s.percent, resetsAt: s.resetsAt, known: true, inactive: s.active !== true }), action });
+    }
   }
   const cx = state.codexRateLimits;
   // Codex windows carry the same short "5H"/"7D" labels — the brand dot conveys

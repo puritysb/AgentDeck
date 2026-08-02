@@ -688,6 +688,7 @@ async function fetchUsageViaWs(siblings: { port: number }[]): Promise<ApiUsageDa
                 extraUsageMonthlyLimit: evt.extraUsageMonthlyLimit ?? null,
                 extraUsageUsedCredits: evt.extraUsageUsedCredits ?? null,
                 extraUsageUtilization: evt.extraUsageUtilization ?? null,
+                scopedLimits: Array.isArray(evt.scopedLimits) ? evt.scopedLimits : [],
                 inferredBillingType: null,
               });
             }

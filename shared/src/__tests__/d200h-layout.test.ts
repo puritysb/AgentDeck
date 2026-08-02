@@ -136,3 +136,44 @@ describe('buildSessionDeck — selected session isolation', () => {
     expect(svg).toContain('enhance-t');
   });
 });
+
+describe('buildSessionDeck — per-model scoped caps', () => {
+  // The usage region has 3 slots (USAGE_PREFERRED_POS), so 5h + 7d + the worst
+  // scoped cap[0] fit; the daemon sends scopedLimits worst-first, so the binding
+  // cap is the one that lands in the third slot (extra models overflow).
+  it('surfaces the worst ACTIVE scoped cap with the critical ramp', () => {
+    const deck = buildSessionDeck(
+      {
+        state: 'IDLE', allSessions: [], fiveHourPercent: 20, sevenDayPercent: 0,
+        scopedLimits: [{ kind: 'weekly_scoped', label: 'Fable', percent: 98, severity: 'critical', active: true }],
+      },
+      { mode: 'list', showUsage: true },
+      positions(15),
+    );
+    const svg = [...deck.values()].map((cell) => cell.svg).join('\n');
+    expect(svg).toContain('FABLE');       // label uppercased + capped
+    expect(svg).toContain('#ef4444');     // 98% active → red ramp (5h/7d are green)
+    expect(svg).not.toContain('#3ED6E8'); // not the inactive/informational cyan
+  });
+
+  it('renders an INACTIVE scoped cap muted (informational cyan), never the ramp', () => {
+    const deck = buildSessionDeck(
+      {
+        state: 'IDLE', allSessions: [], fiveHourPercent: 20, sevenDayPercent: 0,
+        scopedLimits: [{ kind: 'weekly_scoped', label: 'Opus', percent: 90, severity: 'normal', active: false }],
+      },
+      { mode: 'list', showUsage: true },
+      positions(15),
+    );
+    const svg = [...deck.values()].map((cell) => cell.svg).join('\n');
+    expect(svg).toContain('OPUS');
+    expect(svg).toContain('#3ED6E8');     // inactive 90% → cyan, not critical
+    expect(svg).not.toContain('#ef4444'); // never the red ramp
+  });
+
+  it('parseState carries scopedLimits through', () => {
+    const s = parseState({ state: 'IDLE', scopedLimits: [{ label: 'Fable', percent: 5, active: true }] });
+    expect(s.scopedLimits).toHaveLength(1);
+    expect(s.scopedLimits?.[0].label).toBe('Fable');
+  });
+});

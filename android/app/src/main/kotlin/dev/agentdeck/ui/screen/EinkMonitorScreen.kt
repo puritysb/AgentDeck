@@ -537,6 +537,10 @@ private fun buildEinkLimitRows(state: DashboardState, now: Instant = Instant.now
     if (state.usage.usageStale != true) {
         state.usage.fiveHourPercent?.let { rows.add(EinkLimitLine(label = "5h", percent = it, agentType = "claude-code")) }
         state.usage.sevenDayPercent?.let { rows.add(EinkLimitLine(label = "7d", percent = it, agentType = "claude-code")) }
+        // Per-model scoped weekly caps (e.g. "Fable") beneath the account-wide windows.
+        state.usage.scopedLimits?.forEach { s ->
+            rows.add(EinkLimitLine(label = s.label.trim().take(8), percent = s.percent, agentType = "claude-code"))
+        }
     }
     // Codex (ChatGPT) rolling windows — independent of Claude's usageStale, each
     // carries its own stale flag. We keep BOTH primary (5h) and secondary (7d)

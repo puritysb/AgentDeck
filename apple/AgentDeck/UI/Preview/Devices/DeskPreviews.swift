@@ -334,7 +334,7 @@ private struct D200HSlotTile: View {
                         .lineLimit(1)
                 }
             }
-        case .usageGauge(let agent, _, let percent, let known, let stale):
+        case .usageGauge(let agent, _, let percent, let known, let stale, let inactive):
             // Mirrors renderUsageGauge (d200h-layout.ts): a vertical water-tank
             // fill rising from the bottom (severity ramp, 0.38 tint + crisp
             // level line), window label top-left, brand mark top-right, big %
@@ -343,7 +343,7 @@ private struct D200HSlotTile: View {
             ZStack {
                 if known {
                     GeometryReader { geo in
-                        let ramp = gaugeColor(percent: percent, known: true, stale: stale)
+                        let ramp = gaugeColor(percent: percent, known: true, stale: stale, inactive: inactive)
                         let fillH = geo.size.height * min(1, max(0, percent / 100))
                         VStack(spacing: 0) {
                             Spacer(minLength: 0)
@@ -406,9 +406,12 @@ private struct D200HSlotTile: View {
 
     /// Severity ramp — port of `usageRampColor` (d200h-layout.ts): >80 red,
     /// >50 amber, else green; stale desaturates to slate.
-    private func gaugeColor(percent: Double, known: Bool, stale: Bool = false) -> Color {
+    private func gaugeColor(percent: Double, known: Bool, stale: Bool = false, inactive: Bool = false) -> Color {
         guard known else { return .white.opacity(0.4) }
         if stale { return Color(red: 0x64 / 255.0, green: 0x74 / 255.0, blue: 0x8B / 255.0) }
+        // Inactive per-model scoped cap: informational cyan (UI.cyan #3ED6E8),
+        // never the critical ramp regardless of percent (issue #99).
+        if inactive { return Color(red: 0x3E / 255.0, green: 0xD6 / 255.0, blue: 0xE8 / 255.0) }
         if percent > 80 { return Color(red: 0xEF / 255.0, green: 0x44 / 255.0, blue: 0x44 / 255.0) }
         if percent > 50 { return Color(red: 0xEA / 255.0, green: 0xB3 / 255.0, blue: 0x08 / 255.0) }
         return Color(red: 0x22 / 255.0, green: 0xC5 / 255.0, blue: 0x5E / 255.0)

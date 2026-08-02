@@ -609,6 +609,31 @@ function renderAgentLines(state: DashboardState, maxWidth: number, useLogo: bool
 
 // ===== Status Panel: LIMITS | MODELS =====
 
+/**
+ * Per-model scoped weekly caps (e.g. the "Fable" cap) shown beneath the 5h/7d
+ * gauges wherever both windows render. The account-wide 5h/7d can read low while
+ * a scoped cap is the ACTIVE binding constraint — so surface each one. An inactive
+ * cap stays visible but muted (dim gauge), only an active cap gets the percent
+ * ramp, mirroring the deck's treatment. `inlineReset` matches the host block's
+ * layout (reset on the same line vs a dim line beneath).
+ */
+function renderScopedLimitLines(u: NonNullable<DashboardState['usage']>, gaugeW: number, inlineReset: boolean): string[] {
+  const lines: string[] = [];
+  for (const s of u.scopedLimits ?? []) {
+    const pct = Math.round(s.percent);
+    const label = truncText((s.label || 'model').replace(/\s+/g, ' ').trim(), 7);
+    const gauge = blockGauge(pct, gaugeW, !s.active);
+    const reset = resetTimeStr(s.resetsAt);
+    if (inlineReset) {
+      lines.push(` ${label} [${gauge}] ${pct}% ${colors.dim}${reset}${RESET}`);
+    } else {
+      lines.push(` ${label} [${gauge}] ${pct}%`);
+      if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
+    }
+  }
+  return lines;
+}
+
 function renderStatusLimitsLines(state: DashboardState, width: number): string[] {
   const lines: string[] = [];
   const u = state.usage;
@@ -626,6 +651,7 @@ function renderStatusLimitsLines(state: DashboardState, width: number): string[]
     const reset = resetTimeStr(u.sevenDayResetsAt);
     if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
   }
+  lines.push(...renderScopedLimitLines(u, gaugeW, false));
   if (state.currentTool) {
     lines.push(` ${colors.tool}${truncText(state.currentTool, width - 2)}${RESET}`);
   }
@@ -657,6 +683,7 @@ function renderStatusLines(state: DashboardState, width: number): string[] {
       const pct = Math.round(u.sevenDayPercent);
       lines.push(` 7d [${blockGauge(pct, gaugeW)}] ${pct}% ${colors.dim}${resetTimeStr(u.sevenDayResetsAt)}${RESET}`);
     }
+    lines.push(...renderScopedLimitLines(u, gaugeW, true));
   }
   if (state.currentTool) lines.push(` ${colors.tool}Tool: ${truncText(state.currentTool, width - 8)}${RESET}`);
   if (state.modelName) lines.push(`${colors.dim} Model: ${state.modelName}${RESET}`);

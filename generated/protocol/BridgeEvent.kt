@@ -218,6 +218,7 @@ data class BridgeEvent (
     val outputTokens: Double? = null,
     val resetDate: String? = null,
     val resetTime: String? = null,
+    val scopedLimits: List<ScopedUsageLimit>? = null,
 
     @Json(name = "sessionDurationSec")
     val sessionDurationSEC: Double? = null,
@@ -990,6 +991,44 @@ enum class Outcome(val value: String) {
         }
     }
 }
+
+/**
+ * A per-model scoped usage limit (e.g. the Claude weekly cap for a specific model like
+ * "Fable"). These come from the usage API's `limits[]` array and are distinct from the
+ * account-wide 5h/7d windows: a scoped model can be the ACTIVE binding constraint (`active:
+ * true`) while the 5h/7d numbers still read low.
+ */
+data class ScopedUsageLimit (
+    /**
+     * True when this limit is the currently active/binding constraint.
+     */
+    val active: Boolean? = null,
+
+    /**
+     * Raw API kind, e.g. "weekly_scoped". Forwarded for display grouping.
+     */
+    val kind: String? = null,
+
+    /**
+     * Human label — the scoped model display name (e.g. "Fable"), else the kind.
+     */
+    val label: String,
+
+    /**
+     * Percent of this limit already CONSUMED (0–100).
+     */
+    val percent: Double,
+
+    /**
+     * ISO-8601 reset instant for this limit's window.
+     */
+    val resetsAt: String? = null,
+
+    /**
+     * API severity: "normal" | "warning" | "critical" (forwarded as-is).
+     */
+    val severity: String? = null
+)
 
 data class ApmeModelScorecard (
     val agentType: AgentType,

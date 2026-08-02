@@ -27,6 +27,11 @@ import {
   refreshClaudeUsageDial,
 } from './actions/option-dial.js';
 import {
+  UsageLimitButtonAction,
+  updateUsageLimitButtons,
+  refreshUsageLimitButtons,
+} from './actions/usage-limit-button.js';
+import {
   LauncherDialAction,
   initLauncherDial,
   updateLauncherDialState,
@@ -280,6 +285,7 @@ connMgr.on('usage_update', (ev: UsageEvent) => {
     fiveHourResetsAt: ev.fiveHourResetsAt,
     sevenDayPercent: ev.sevenDayPercent,
     sevenDayResetsAt: ev.sevenDayResetsAt,
+    scopedLimits: ev.scopedLimits,
     inputTokens: ev.inputTokens,
     outputTokens: ev.outputTokens,
     estimatedCostUsd: ev.estimatedCostUsd,
@@ -298,6 +304,8 @@ connMgr.on('usage_update', (ev: UsageEvent) => {
   // SD+ encoders: E2 = Claude usage water-tank, E3 = Codex usage water-tank.
   updateClaudeUsageDial(merged);
   updateUsageDialData(merged);
+  // Dedicated "Claude Limit" keypad key: worst active per-model scoped cap.
+  updateUsageLimitButtons(merged);
   // v4: feed the pinned list-view water-tank usage tiles (classic SD / XL — no
   // encoder, so usage lives on the bottom keypad row).
   updateSlotUsage(merged);
@@ -486,6 +494,7 @@ function broadcastStateUpdate(): void {
   updateUtilityDialState(currentState);
   refreshClaudeUsageDial();
   updateUsageDialState();
+  refreshUsageLimitButtons();
   // Keypad slots too — on display wake nothing else will repaint them, since
   // sessions_list only fires when the session set actually changes.
   refreshSessionSlots();
@@ -497,6 +506,7 @@ streamDeck.actions.registerAction(new LauncherDialAction());
 streamDeck.actions.registerAction(new UtilityDialAction());
 streamDeck.actions.registerAction(new UsageDialAction());
 streamDeck.actions.registerAction(new SessionSlotButtonAction());
+streamDeck.actions.registerAction(new UsageLimitButtonAction());
 
 // ---- Slot Map Reporting (Phase A7) ----
 
@@ -507,6 +517,7 @@ const UUID_TO_ACTION_TYPE: Record<string, string> = {
   'launcher': 'launcher',
   'utility-dial': 'utility-dial',
   'iterm-dial': 'iterm-dial',
+  'limit-key': 'limit-key',
 };
 
 interface SlotEntry {

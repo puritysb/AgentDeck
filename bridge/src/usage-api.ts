@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { debug } from './logger.js';
+import type { ScopedUsageLimit } from './types.js';
 
 const USAGE_API_URL = 'https://api.anthropic.com/api/oauth/usage';
 const KEYCHAIN_SERVICE = 'Claude Code-credentials';
@@ -24,6 +25,10 @@ export interface ApiUsageData {
   extraUsageMonthlyLimit: number | null;
   extraUsageUsedCredits: number | null;
   extraUsageUtilization: number | null;
+  /** Per-model scoped limits parsed from the API `limits[]` array (e.g. a weekly
+   *  cap for "Fable"). Sorted worst-first (active desc, then percent desc). Empty
+   *  when the response carries no scoped model limits. */
+  scopedLimits: ScopedUsageLimit[];
   /** Inferred from API response: subscription if rate-limit fields present, api if 401/no fields */
   inferredBillingType: 'subscription' | 'api' | null;
 }
@@ -180,7 +185,13 @@ function readFileCache(): UsageCacheFile | null {
   try {
     const raw = readFileSync(USAGE_CACHE_FILE, 'utf-8');
     const cache = JSON.parse(raw) as UsageCacheFile;
-    if (cache?.data && typeof cache.fetchedAt === 'number') return cache;
+    if (cache?.data && typeof cache.fetchedAt === 'number') {
+      // Harden the unsound JSON cast: a cache written by a pre-scopedLimits
+      // bridge has no `scopedLimits`, but the type (and downstream) expect an
+      // array. Normalize so `data.scopedLimits` is never undefined.
+      if (!Array.isArray(cache.data.scopedLimits)) cache.data.scopedLimits = [];
+      return cache;
+    }
     return null;
   } catch {
     return null;
@@ -228,6 +239,44 @@ function parseResetsAt(limitObj: unknown): string | null {
     if (typeof obj.expires_at === 'string') return obj.expires_at;
   }
   return null;
+}
+
+/** Parse the API `limits[]` array into per-model scoped limits. Keeps only the
+ *  entries carrying a model scope (the per-model weekly caps) — the account-wide
+ *  `session`/`weekly_all` kinds are already surfaced via five_hour/seven_day, so
+ *  re-emitting them here would double-count. Sorted worst-first so the encoder's
+ *  default "triple" view can headline `scopedLimits[0]` as the binding limit. */
+export function parseScopedLimits(limits: unknown): ScopedUsageLimit[] {
+  if (!Array.isArray(limits)) return [];
+  const out: ScopedUsageLimit[] = [];
+  for (const raw of limits) {
+    if (raw == null || typeof raw !== 'object') continue;
+    const l = raw as Record<string, unknown>;
+    const scope = l.scope as Record<string, unknown> | null | undefined;
+    const model = scope?.model as Record<string, unknown> | null | undefined;
+    // Only per-model scoped caps — the ones not already carried by 5h/7d.
+    if (!model) continue;
+    const percent = typeof l.percent === 'number' ? l.percent : null;
+    if (percent == null) continue;
+    const displayName = typeof model.display_name === 'string' ? model.display_name : null;
+    out.push({
+      kind: typeof l.kind === 'string' ? l.kind : undefined,
+      label: displayName ?? (typeof l.kind === 'string' ? l.kind : 'limit'),
+      percent,
+      severity: typeof l.severity === 'string' ? l.severity : undefined,
+      resetsAt: typeof l.resets_at === 'string' ? l.resets_at : undefined,
+      active: l.is_active === true,
+    });
+  }
+  // Worst-first: active limits ahead of inactive, then by descending percent —
+  // a three-way comparator (never subtraction) so NaN/equal ties stay stable.
+  out.sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    if (a.percent > b.percent) return -1;
+    if (a.percent < b.percent) return 1;
+    return 0;
+  });
+  return out;
 }
 
 // ===== Main fetch =====
@@ -365,6 +414,7 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
       extraUsageMonthlyLimit: extraUsage?.monthly_limit ?? null,
       extraUsageUsedCredits: extraUsage?.used_credits ?? null,
       extraUsageUtilization: parseUtilization(extraUsage),
+      scopedLimits: parseScopedLimits(data.limits),
       inferredBillingType: hasRateLimitData ? 'subscription' : 'api',
     };
 

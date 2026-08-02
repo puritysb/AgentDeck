@@ -5,15 +5,18 @@
 
 import { sgr, RESET } from './ansi.js';
 
-/** Render a block gauge: [████░░░░░░] 62% */
-export function blockGauge(percent: number, width: number): string {
+/** Render a block gauge: [████░░░░░░] 62%. `muted` forces the dim (grey) fill
+ *  regardless of percent — used for an INACTIVE per-model scoped cap, which must
+ *  stay visible but never wear the critical (red) ramp of a binding limit. */
+export function blockGauge(percent: number, width: number, muted = false): string {
   const clamped = Math.max(0, Math.min(100, percent));
   const filled = Math.round((clamped / 100) * width);
   const empty = width - filled;
 
-  // Color by threshold
+  // Color by threshold (an inactive scoped cap is muted, not ramped).
   let color: string;
-  if (clamped >= 90) color = sgr(31);       // red
+  if (muted) color = sgr(90);               // dim grey — non-binding cap
+  else if (clamped >= 90) color = sgr(31);  // red
   else if (clamped >= 70) color = sgr(33);  // yellow
   else color = sgr(32);                      // green
 

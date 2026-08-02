@@ -184,6 +184,11 @@ export function buildUsageEvent(
     fiveHourResetsAt,
     sevenDayPercent,
     sevenDayResetsAt,
+    // Per-model scoped caps (e.g. the weekly "Fable" limit). Only meaningful for
+    // subscription quota — an API-billing session has no scoped model windows.
+    scopedLimits: subscriptionQuotaApplies && apiUsage?.scopedLimits && apiUsage.scopedLimits.length > 0
+      ? apiUsage.scopedLimits
+      : undefined,
     extraUsageEnabled: subscriptionQuotaApplies ? (apiUsage?.extraUsageEnabled ?? undefined) : undefined,
     extraUsageMonthlyLimit: subscriptionQuotaApplies ? (apiUsage?.extraUsageMonthlyLimit ?? undefined) : undefined,
     extraUsageUsedCredits: subscriptionQuotaApplies ? (apiUsage?.extraUsageUsedCredits ?? undefined) : undefined,

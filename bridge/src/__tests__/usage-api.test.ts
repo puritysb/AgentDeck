@@ -1,7 +1,7 @@
 import { homedir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildCredSources, resolveOAuthCredentials, type CredSources } from '../usage-api.js';
+import { buildCredSources, resolveOAuthCredentials, parseScopedLimits, type CredSources } from '../usage-api.js';
 
 /** Build a CredSources with sane defaults; override per case. Spies let us assert which
  *  I/O path was taken (critically, that `runSecurityCli` never fires off-darwin). */
@@ -145,5 +145,50 @@ describe('buildCredSources (production wiring)', () => {
     const s = buildCredSources();
     expect(typeof s.runSecurityCli).toBe('function');
     expect(typeof s.readCredsFile).toBe('function');
+  });
+});
+
+describe('parseScopedLimits', () => {
+  // Shape from a real GET /api/oauth/usage response.
+  const raw = [
+    { kind: 'session', group: 'session', percent: 32, severity: 'normal', resets_at: '2026-08-02T22:00:00Z', scope: null, is_active: false },
+    { kind: 'weekly_all', group: 'weekly', percent: 64, severity: 'normal', resets_at: '2026-08-03T18:00:00Z', scope: null, is_active: false },
+    { kind: 'weekly_scoped', group: 'weekly', percent: 98, severity: 'critical', resets_at: '2026-08-03T17:59:59Z', scope: { model: { display_name: 'Fable' } }, is_active: true },
+    { kind: 'weekly_scoped', group: 'weekly', percent: 40, severity: 'normal', resets_at: '2026-08-03T17:59:59Z', scope: { model: { display_name: 'Opus' } }, is_active: false },
+  ];
+
+  it('keeps only model-scoped entries (drops session / weekly_all)', () => {
+    const out = parseScopedLimits(raw);
+    expect(out.map((l) => l.label)).toEqual(['Fable', 'Opus']);
+  });
+
+  it('sorts worst-first: active ahead of inactive, then by descending percent', () => {
+    const out = parseScopedLimits(raw);
+    expect(out[0]).toMatchObject({ label: 'Fable', percent: 98, severity: 'critical', active: true, resetsAt: '2026-08-03T17:59:59Z', kind: 'weekly_scoped' });
+    expect(out[1]).toMatchObject({ label: 'Opus', percent: 40, active: false });
+  });
+
+  it('inactive limits sort by descending percent', () => {
+    const out = parseScopedLimits([
+      { kind: 'weekly_scoped', percent: 10, scope: { model: { display_name: 'Low' } }, is_active: false },
+      { kind: 'weekly_scoped', percent: 90, scope: { model: { display_name: 'High' } }, is_active: false },
+    ]);
+    expect(out.map((l) => l.label)).toEqual(['High', 'Low']);
+  });
+
+  it('falls back to kind when the model has no display_name', () => {
+    const out = parseScopedLimits([{ kind: 'weekly_scoped', percent: 50, scope: { model: {} }, is_active: false }]);
+    expect(out[0].label).toBe('weekly_scoped');
+  });
+
+  it('skips entries without a numeric percent', () => {
+    const out = parseScopedLimits([{ kind: 'weekly_scoped', scope: { model: { display_name: 'X' } }, is_active: true }]);
+    expect(out).toEqual([]);
+  });
+
+  it('returns [] for non-array / missing input', () => {
+    expect(parseScopedLimits(undefined)).toEqual([]);
+    expect(parseScopedLimits(null)).toEqual([]);
+    expect(parseScopedLimits({})).toEqual([]);
   });
 });
