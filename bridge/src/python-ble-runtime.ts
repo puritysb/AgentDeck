@@ -161,7 +161,7 @@ export function getBleRuntimeStatus(options: BleRuntimeOptions = {}): BleRuntime
 }
 
 function defaultRun(command: string, args: string[], options?: SpawnSyncOptions): CommandResult {
-  const result = spawnSync(command, args, options);
+  const result = spawnSync(command, args, { ...options, windowsHide: true });
   return {
     status: result.status,
     error: result.error,

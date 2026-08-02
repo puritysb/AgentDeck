@@ -73,6 +73,7 @@ export class VoiceManager extends EventEmitter {
       this.audioFile,
     ], {
       stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
     });
 
     this.audioProcess.stderr?.on('data', (data: Buffer) => {

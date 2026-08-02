@@ -188,7 +188,7 @@ function countDiffLines(run: ApmeRunRow): number | null {
       : 'diff --shortstat HEAD';
     const out = execSync(`git ${args}`, {
       cwd: run.projectPath, encoding: 'utf-8', timeout: 3000,
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
     });
     // "3 files changed, 45 insertions(+), 12 deletions(-)"
     const ins = out.match(/(\d+) insertion/);
@@ -310,7 +310,7 @@ export function recomputeComposite(store: ApmeStore, runId: string): void {
 function readGitHead(cwd: string): string | null {
   try {
     return execSync('git rev-parse HEAD', {
-      cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000,
+      cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000, windowsHide: true,
     }).trim() || null;
   } catch {
     return null;

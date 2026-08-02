@@ -48,6 +48,7 @@ export function gitToplevelBasename(cwd: string): string | null {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 2000,
+      windowsHide: true,
     }).trim();
     if (!out) return null;
     const name = basename(out);

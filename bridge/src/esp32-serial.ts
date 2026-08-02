@@ -531,7 +531,7 @@ function sanitizeOptions(options: unknown): Array<Record<string, unknown>> | und
 function execWithKill(cmd: string, timeoutMs = 3000): Promise<string> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const child = exec(cmd, { encoding: 'utf-8', timeout: timeoutMs }, (err, stdout) => {
+    const child = exec(cmd, { encoding: 'utf-8', timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
       if (settled) return;
       settled = true;
       if (err) {
@@ -556,7 +556,7 @@ function execFileWithKill(file: string, args: string[], timeoutMs: number): Prom
   return new Promise((resolve, reject) => {
     let settled = false;
     let killTimer: ReturnType<typeof setTimeout> | null = null;
-    const child = execFile(file, args, { encoding: 'utf-8', maxBuffer: 64 * 1024 }, (err, stdout, stderr) => {
+    const child = execFile(file, args, { encoding: 'utf-8', maxBuffer: 64 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       if (settled) return;
       settled = true;
       if (killTimer) clearTimeout(killTimer);

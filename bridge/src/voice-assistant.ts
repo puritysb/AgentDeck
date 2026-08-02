@@ -268,6 +268,7 @@ export class VoiceAssistantManager extends EventEmitter {
       this.audioFile,
     ], {
       stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
     });
 
     this.audioProcess.stderr?.on('data', (data: Buffer) => {
@@ -427,7 +428,7 @@ export class VoiceAssistantManager extends EventEmitter {
         '-r', '16000', '-c', '1', '-b', '16',
         this.audioFile,
         'trim', '0', String(retryDuration),
-      ], { stdio: ['ignore', 'ignore', 'ignore'] });
+      ], { stdio: ['ignore', 'ignore', 'ignore'], windowsHide: true });
 
       proc.on('exit', () => resolve());
       proc.on('error', () => resolve());

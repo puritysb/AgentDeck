@@ -395,6 +395,7 @@ async function collectProcessInfo(): Promise<ProcInfo[]> {
       encoding: 'utf8',
       timeout: 2_000,
       maxBuffer: 2 * 1024 * 1024,
+      windowsHide: true, // git-bash ps.exe pops a console window every 5s scan on Windows without this
     });
     return parseProcessTable(stdout);
   } catch {

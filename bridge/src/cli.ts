@@ -204,7 +204,7 @@ async function runBlePython(
     const child = spawn(
       python,
       args,
-      captureStdout ? { stdio: ['ignore', 'pipe', 'inherit'] } : { stdio: 'inherit' },
+      captureStdout ? { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true } : { stdio: 'inherit', windowsHide: true },
     );
     let stdout = '';
     child.stdout?.on('data', (data: Buffer | string) => {
@@ -703,6 +703,7 @@ daemon
       const child = spawn(process.execPath, args, {
         detached: true,
         stdio: ['ignore', out, err],
+        windowsHide: true,
       });
       child.unref();
       log(`Daemon started (PID ${child.pid})`);
@@ -743,6 +744,7 @@ daemon
     const child = spawn(process.execPath, args, {
       detached: true,
       stdio: 'ignore',
+      windowsHide: true,
     });
     child.unref();
     log(`Daemon restarted (PID ${child.pid})`);
@@ -1238,6 +1240,7 @@ program
       execFileSync(pio, ['run', '-e', env], {
         cwd: join(projectRootPath(), 'esp32'),
         stdio: 'inherit',
+        windowsHide: true,
       });
     }
 

@@ -40,7 +40,7 @@ const FETCH_TIMEOUT_MS = 3000;
 
 export function getClaudeCodeVersion(cachedOutput?: string): string | null {
   try {
-    const raw = cachedOutput ?? execSync('claude --version', { encoding: 'utf-8', timeout: 5000 }).trim();
+    const raw = cachedOutput ?? execSync('claude --version', { encoding: 'utf-8', timeout: 5000, windowsHide: true }).trim();
     const m = raw.match(/^(\d+\.\d+\.\d+)/);
     return m ? m[1] : null;
   } catch {
@@ -115,7 +115,7 @@ async function fetchFromNpm(): Promise<RegistryInfo | null> {
   try {
     const raw = execSync(
       'npm view @agentdeck/bridge version compatibleClaudeCode --json 2>/dev/null',
-      { encoding: 'utf-8', timeout: FETCH_TIMEOUT_MS },
+      { encoding: 'utf-8', timeout: FETCH_TIMEOUT_MS, windowsHide: true },
     );
     const data = JSON.parse(raw);
     if (typeof data === 'string') {
@@ -142,6 +142,7 @@ function performSelfUpdate(): { success: boolean; error?: string } {
     execSync('npm install -g @agentdeck/bridge@latest', {
       stdio: 'pipe',
       timeout: 60_000,
+      windowsHide: true,
     });
     return { success: true };
   } catch (e: any) {

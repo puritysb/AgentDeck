@@ -99,7 +99,7 @@ function git(cwd: string, args: string[]): Promise<string> {
   // (a wedged git must never wedge a review).
   return new Promise((resolve, reject) => {
     execFile('git', ['-C', cwd, ...args], {
-      timeout: GIT_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024,
+      timeout: GIT_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
     }, (err, stdout) => {
       if (err) reject(err);
       else resolve(stdout);
@@ -384,7 +384,7 @@ function openInBrowser(path: string): void {
     : process.platform === 'win32' ? 'cmd'
       : 'xdg-open';
   const args = process.platform === 'win32' ? ['/c', 'start', '', path] : [path];
-  execFile(opener, args, { timeout: 5_000 }, () => { /* best effort */ });
+  execFile(opener, args, { timeout: 5_000, windowsHide: true }, () => { /* best effort */ });
 }
 
 /**

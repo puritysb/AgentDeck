@@ -19,10 +19,10 @@ function defaultRouteIp(): string | null {
   let directIp: string | null = null;
   try {
     if (process.platform === 'darwin') {
-      const out = execFileSync('route', ['-n', 'get', 'default'], { timeout: 1000, encoding: 'utf8' });
+      const out = execFileSync('route', ['-n', 'get', 'default'], { timeout: 1000, encoding: 'utf8', windowsHide: true });
       iface = out.match(/interface:\s*(\S+)/)?.[1] ?? null;
     } else if (process.platform === 'linux') {
-      const out = execFileSync('ip', ['route', 'get', '1.1.1.1'], { timeout: 1000, encoding: 'utf8' });
+      const out = execFileSync('ip', ['route', 'get', '1.1.1.1'], { timeout: 1000, encoding: 'utf8', windowsHide: true });
       iface = out.match(/\bdev\s+(\S+)/)?.[1] ?? null;
     } else if (process.platform === 'win32') {
       // Windows interface names are friendly strings ("Wi-Fi", "vEthernet (...)"),
@@ -32,7 +32,7 @@ function defaultRouteIp(): string | null {
       // `route print -4 0.0.0.0` resolves this by emitting the *source interface IP*
       // of each default route directly in the Interface column; pick the lowest
       // metric so VPN/host-only adapters lose to the physical route.
-      const out = execFileSync('route', ['print', '-4', '0.0.0.0'], { timeout: 1000, encoding: 'utf8' });
+      const out = execFileSync('route', ['print', '-4', '0.0.0.0'], { timeout: 1000, encoding: 'utf8', windowsHide: true });
       let bestMetric = Infinity;
       for (const line of out.split('\n')) {
         // Network  Netmask  Gateway  Interface  Metric

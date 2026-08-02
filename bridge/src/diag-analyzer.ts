@@ -136,6 +136,7 @@ If everything looks normal, say so.`;
       timeout: AI_TIMEOUT_MS,
       env: { ...process.env, NO_COLOR: '1', CLAUDECODE: '' },
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
 
     let stdout = '';

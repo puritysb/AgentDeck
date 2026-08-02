@@ -688,6 +688,16 @@ export function detectLanguage(projectPath: string | null | undefined): Lang | n
 export async function runDeterministic(run: ApmeRunRow, cfg: ApmeConfig): Promise<DetStepResult[]> {
   const cwd = run.projectPath;
   if (!cwd) return [];
+  // Windows: deterministic eval runs the repo's lint/build/test via
+  // `spawn('sh', ['-c', ...])`. `windowsHide` only hides the direct `sh` child —
+  // its console-subsystem grandchildren (pnpm → cmd → node → tsc/ts-json) each
+  // allocate their own conhost window that flashes on-screen and cannot be
+  // suppressed from Node. So skip Layer-1 deterministic scoring on win32; the
+  // LLM judge (Layer 2, no subprocess) still runs, so runs are still evaluated.
+  if (process.platform === 'win32') {
+    debug('APME', `runDeterministic skipped runId=${run.id} — win32 (spawned build windows can't be hidden)`);
+    return [];
+  }
   const lang = detectLanguage(cwd);
   if (!lang) return [];
 
@@ -732,7 +742,7 @@ function hasChanges(run: ApmeRunRow): boolean {
   try {
     const status = execSync('git status --porcelain', {
       cwd: run.projectPath, encoding: 'utf-8', timeout: 3000,
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
     });
     return status.trim().length > 0;
   } catch {
@@ -749,7 +759,7 @@ function runCommand(command: string, cwd: string, timeoutMs: number): Promise<Cm
     const child = spawn('sh', ['-c', command], {
       cwd,
       env: { ...process.env, CI: '1', APME_EVAL: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
     const chunks: Buffer[] = [];
     let done = false;
@@ -902,7 +912,7 @@ function collectDiff(run: ApmeRunRow): string {
       : ['diff', '--no-ext-diff', '--no-textconv', '--unified=2', 'HEAD'];
     const out = execSync(`git ${args.join(' ')}`, {
       cwd: run.projectPath, encoding: 'utf-8', timeout: 4000,
-      maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
     });
     return out.length > 12_000 ? out.slice(0, 12_000) + '\n...[truncated]' : out;
   } catch {

@@ -11,7 +11,7 @@ const ANDROID_PORT = 9120;
 
 export function hasAdb(): boolean {
   try {
-    execSync('which adb', { stdio: 'pipe' });
+    execSync('which adb', { stdio: 'pipe', windowsHide: true });
     return true;
   } catch {
     return false;
@@ -20,7 +20,7 @@ export function hasAdb(): boolean {
 
 export function getConnectedAdbDevices(): string[] {
   try {
-    const output = execSync('adb devices', { stdio: 'pipe', timeout: 5000 }).toString();
+    const output = execSync('adb devices', { stdio: 'pipe', timeout: 5000, windowsHide: true }).toString();
     const lines = output.split('\n').slice(1).filter((l) => l.trim().length > 0);
     const connected: string[] = [];
     for (const line of lines) {
@@ -60,6 +60,7 @@ export function setupAdbReverse(port: number): void {
       execSync(`adb -s ${serial} reverse tcp:${ANDROID_PORT} tcp:${port}`, {
         stdio: 'pipe',
         timeout: 5000,
+        windowsHide: true,
       });
       debug(TAG, `adb reverse ${serial}: android:${ANDROID_PORT} → daemon:${port}`);
     } catch (err) {
@@ -122,6 +123,7 @@ export function cleanupAdbReverse(port: number): void {
       execSync(`adb -s ${serial} reverse --remove tcp:${ANDROID_PORT}`, {
         stdio: 'pipe',
         timeout: 3000,
+        windowsHide: true,
       });
       debug(TAG, `removed reverse for ${serial}`);
     } catch {

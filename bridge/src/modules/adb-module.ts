@@ -17,7 +17,7 @@ export class AdbModule implements DeviceModule {
     // auto: check if adb is available. Use `adb version` instead of `which`
     // so detection works on Windows too (which lacks `which`).
     try {
-      execSync('adb version', { stdio: 'pipe', timeout: 2000 });
+      execSync('adb version', { stdio: 'pipe', timeout: 2000, windowsHide: true });
       return true;
     } catch {
       return false;

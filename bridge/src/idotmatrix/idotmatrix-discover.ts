@@ -32,7 +32,7 @@ function log(msg: string): void {
 /** Run scan.py and parse its JSON, with a hard outer timeout. */
 function runScan(venvPython: string, scanScript: string, timeoutMs: number): Promise<ScanResult[]> {
   return new Promise((resolve) => {
-    const proc = spawn(venvPython, [scanScript], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const proc = spawn(venvPython, [scanScript], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
     let out = '';
     const timer = setTimeout(() => {
       try {

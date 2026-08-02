@@ -1091,7 +1091,7 @@ export class ApmeCollector {
         : 'diff --no-ext-diff --no-textconv HEAD';
       const diff = execSync(`git ${args}`, {
         cwd: projectPath, encoding: 'utf-8', timeout: 5000,
-        maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+        maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
       });
       if (!diff || diff.length < 10) return;
       const hash = createHash('sha256').update(diff).digest('hex').slice(0, 16);
@@ -1198,7 +1198,7 @@ function readGitHead(cwd?: string): string | null {
   if (!cwd) return null;
   try {
     return execSync('git rev-parse HEAD', {
-      cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000,
+      cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000, windowsHide: true,
     }).trim() || null;
   } catch {
     return null;

@@ -28,7 +28,7 @@ export async function probeGateway(): Promise<GatewayStatus> {
  */
 export async function checkGatewayHealth(): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile('openclaw', ['doctor'], { timeout: DOCTOR_TIMEOUT }, (err) => {
+    execFile('openclaw', ['doctor'], { timeout: DOCTOR_TIMEOUT, windowsHide: true }, (err) => {
       if (err) {
         // Command not found — not an error, just no openclaw installed
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {

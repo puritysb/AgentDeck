@@ -121,6 +121,7 @@ export class DisplayMonitor extends EventEmitter {
     try {
       this.proc = spawn('python3', ['-c', PYTHON_SCRIPT], {
         stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
       });
     } catch (err) {
       debug('display', `Failed to spawn python3: ${err}`);

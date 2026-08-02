@@ -65,7 +65,7 @@ export function checkDependencies(agentType?: AgentType): { ok: boolean; warning
   const loginShell = process.env.SHELL || '/bin/bash';
   const shellExec = (cmd: string, opts?: Parameters<typeof execSync>[1]) =>
     isWin
-      ? execSync(cmd, opts)
+      ? execSync(cmd, { ...opts, windowsHide: true })
       : execSync(`${loginShell} -l -c '${cmd}'`, opts);
 
   // Check agent-specific binary

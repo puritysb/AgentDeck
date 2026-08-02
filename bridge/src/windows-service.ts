@@ -117,7 +117,7 @@ export function installWindowsTask(): void {
   writeFileSync(tmpFile, '﻿' + xml, 'utf16le');
   try {
     // /F overwrites an existing task (idempotent; mirrors macOS unload-before-load).
-    execSync(`schtasks /Create /TN "${TASK_NAME}" /XML "${tmpFile}" /F`, { stdio: 'pipe' });
+    execSync(`schtasks /Create /TN "${TASK_NAME}" /XML "${tmpFile}" /F`, { stdio: 'pipe', windowsHide: true });
   } finally {
     try { unlinkSync(tmpFile); } catch { /* temp cleanup best-effort */ }
   }
@@ -126,7 +126,7 @@ export function installWindowsTask(): void {
 /** True if the AgentDeckDaemon scheduled task is registered. */
 export function taskExists(): boolean {
   try {
-    execSync(`schtasks /Query /TN "${TASK_NAME}"`, { stdio: 'pipe' });
+    execSync(`schtasks /Query /TN "${TASK_NAME}"`, { stdio: 'pipe', windowsHide: true });
     return true;
   } catch {
     return false;
@@ -135,15 +135,15 @@ export function taskExists(): boolean {
 
 /** Start the registered task immediately (so no logout is required). */
 export function runWindowsTask(): void {
-  execSync(`schtasks /Run /TN "${TASK_NAME}"`, { stdio: 'pipe' });
+  execSync(`schtasks /Run /TN "${TASK_NAME}"`, { stdio: 'pipe', windowsHide: true });
 }
 
 /** Stop a running task instance (best-effort; ignores "not running"). */
 export function endWindowsTask(): void {
-  execSync(`schtasks /End /TN "${TASK_NAME}"`, { stdio: 'pipe' });
+  execSync(`schtasks /End /TN "${TASK_NAME}"`, { stdio: 'pipe', windowsHide: true });
 }
 
 /** Delete the registered task (/F suppresses the confirm prompt). */
 export function deleteWindowsTask(): void {
-  execSync(`schtasks /Delete /TN "${TASK_NAME}" /F`, { stdio: 'pipe' });
+  execSync(`schtasks /Delete /TN "${TASK_NAME}" /F`, { stdio: 'pipe', windowsHide: true });
 }

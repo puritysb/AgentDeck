@@ -74,6 +74,7 @@ export async function fetchModelCatalog(): Promise<{ entries: ModelCatalogEntry[
       timeout: 5000,
       encoding: 'utf-8',
       env: { ...process.env, PATH: augmentedPath() },
+      windowsHide: true,
     }, (err, stdout) => {
       fetchPromise = null;
       if (err) {

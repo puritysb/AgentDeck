@@ -31,7 +31,7 @@ export function spawnPythonSync(
   maxTailLines = 8,
 ): ManagedSyncChild {
   // [stdin ignored, stdout/stderr piped into small rings for diagnostics]
-  const proc = spawn(venvPython, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(venvPython, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 
   const stderrTail: string[] = [];
   const outputTail: string[] = [];
