@@ -14,6 +14,8 @@ The Node.js **bridge**, the Claude Code **hook installer**, and the **Stream Dec
 | **Claude Code CLI** on `PATH` | Yes | `npm install -g @anthropic-ai/claude-code` |
 | **Git Bash or WSL** on `PATH` | For source scripts | Only the bash scripts under `scripts/` (`install.sh`, `uninstall.sh`, `package-plugin.sh`, …) need it. `pnpm install`/`build`/`test` are pure Node |
 
+**Line endings**: the repo's `.gitattributes` checks everything out LF (bash scripts, vitest-imported generators, and byte-compared generated mirrors all break under CRLF), overriding any local `core.autocrlf`. A clone from before it existed keeps its CRLF working tree until files are rewritten — convert in place by deleting the tracked files and running `git restore .`, or just re-clone.
+
 ## Install
 
 ```powershell

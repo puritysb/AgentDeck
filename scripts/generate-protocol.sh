@@ -20,6 +20,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 OUT_DIR="${AGENTDECK_PROTOCOL_OUT_DIR:-$PROJECT_DIR/generated/protocol}"
 
+# Windows interop: a caller may hand us a Windows-native override ('C:\Users\…').
+# Under WSL the caller's WSLENV(/p) flag translates it to /mnt/c/… before bash
+# sees it; under Git Bash it arrives raw, where forward slashes suffice. Only
+# the override is normalized — the default is a POSIX path, where a backslash
+# is a legal character. Children (generate-command-builders.mjs) read the same
+# variable from the environment, so re-export the normalized form — but only
+# when an override was actually set: exporting the default would redirect
+# command-builders.ts away from shared/src/.
+if [ -n "${AGENTDECK_PROTOCOL_OUT_DIR:-}" ]; then
+  OUT_DIR="${OUT_DIR//\\//}"
+  export AGENTDECK_PROTOCOL_OUT_DIR="$OUT_DIR"
+fi
+
 mkdir -p "$OUT_DIR"
 
 echo "=== Step 1: Generate JSON Schema from TypeScript ==="

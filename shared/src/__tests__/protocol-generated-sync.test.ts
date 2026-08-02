@@ -45,7 +45,15 @@ describe('generated protocol artifacts in sync', () => {
     freshDir = mkdtempSync(join(tmpdir(), 'agentdeck-protocol-'));
     execFileSync('bash', ['scripts/generate-protocol.sh'], {
       cwd: repoRoot,
-      env: { ...process.env, AGENTDECK_PROTOCOL_OUT_DIR: freshDir },
+      env: {
+        ...process.env,
+        AGENTDECK_PROTOCOL_OUT_DIR: freshDir,
+        // On Windows, `bash` may be WSL, which drops custom env vars unless
+        // WSLENV names them — and /p translates the path (C:\… → /mnt/c/…).
+        // Git Bash ignores WSLENV and receives the variable natively.
+        WSLENV: [process.env.WSLENV, 'AGENTDECK_PROTOCOL_OUT_DIR/p']
+          .filter(Boolean).join(':'),
+      },
       stdio: 'pipe',
     });
     return () => rmSync(freshDir, { recursive: true, force: true });

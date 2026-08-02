@@ -21,12 +21,18 @@ import {
   installUnit,
 } from '../linux-service.js';
 
+// The vitest harness pins AGENTDECK_DATA_DIR to a host tmpdir (vitest.setup.ts),
+// which on Windows is a `C:\…` path the systemd validator rightly rejects. Tests
+// that don't care about the data dir pass this POSIX fixture instead of
+// inheriting the env, so the unit builder stays pure and cross-platform.
+const posixDataDir = '/tmp/agentdeck-test-data';
+
 describe('buildUnitFile', () => {
   const node = '/usr/bin/node';
   const cliJs = '/home/alice/.local/share/agentdeck/cli.js';
 
   it('produces a well-formed unit with the three standard sections', () => {
-    const unit = buildUnitFile({ node, cliJs });
+    const unit = buildUnitFile({ node, cliJs, dataDirOverride: posixDataDir });
     expect(unit).toContain('[Unit]');
     expect(unit).toContain('[Service]');
     expect(unit).toContain('[Install]');
@@ -35,19 +41,19 @@ describe('buildUnitFile', () => {
   });
 
   it('runs the daemon in the foreground so systemd supervises the real process', () => {
-    const unit = buildUnitFile({ node, cliJs });
+    const unit = buildUnitFile({ node, cliJs, dataDirOverride: posixDataDir });
     expect(unit).toContain(`ExecStart="${node}" "${cliJs}" daemon start --foreground`);
     expect(unit).toContain('Type=simple');
   });
 
   it('mirrors LaunchAgent KeepAlive via Restart=on-failure', () => {
-    const unit = buildUnitFile({ node, cliJs });
+    const unit = buildUnitFile({ node, cliJs, dataDirOverride: posixDataDir });
     expect(unit).toContain('Restart=on-failure');
     expect(unit).toContain('RestartSec=5');
   });
 
   it('waits for the network to be online', () => {
-    const unit = buildUnitFile({ node, cliJs });
+    const unit = buildUnitFile({ node, cliJs, dataDirOverride: posixDataDir });
     expect(unit).toContain('After=network-online.target');
     expect(unit).toContain('Wants=network-online.target');
   });
@@ -142,7 +148,11 @@ describe('unit-file escaping (golden bytes)', () => {
   });
 
   it('doubles $ and % in ExecStart words (expanded there even inside quotes)', () => {
-    const unit = buildUnitFile({ node: '/opt/n v$1/node', cliJs: '/opt/deck %i/cli.js' });
+    const unit = buildUnitFile({
+      node: '/opt/n v$1/node',
+      cliJs: '/opt/deck %i/cli.js',
+      dataDirOverride: posixDataDir,
+    });
     expect(unit).toContain('ExecStart="/opt/n v$$1/node" "/opt/deck %%i/cli.js" daemon start --foreground');
   });
 
@@ -244,7 +254,9 @@ describe('installUnit (fresh data dir)', () => {
     if (scratch) rmSync(scratch, { recursive: true, force: true });
   });
 
-  it('creates a not-yet-existing data directory before touching systemd', () => {
+  // win32: needs a data dir that is both fs-creatable and '/'-absolute for the
+  // systemd validator — no such path exists on Windows; ubuntu CI covers it.
+  it.skipIf(process.platform === 'win32')('creates a not-yet-existing data directory before touching systemd', () => {
     scratch = mkdtempSync(join(tmpdir(), 'agentdeck-linux-svc-'));
     const dataDir = join(scratch, 'data', 'agentdeck'); // nested + absent
     process.env.AGENTDECK_DATA_DIR = dataDir;
