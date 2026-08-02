@@ -702,7 +702,8 @@ async function fetchUsageViaWs(siblings: { port: number }[]): Promise<ApiUsageDa
   return null;
 }
 
-async function fetchUsageRelayed(selfPort: number): Promise<ApiUsageData | null> {
+/** @internal Exported for the relay-fallback regression test. */
+export async function fetchUsageRelayed(selfPort: number): Promise<ApiUsageData | null> {
   const sessions = listActiveSessions();
   const siblings = sessions.filter(s => s.port !== selfPort && s.agentType !== 'daemon');
 
