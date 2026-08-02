@@ -711,8 +711,15 @@ async function fetchUsageRelayed(selfPort: number): Promise<ApiUsageData | null>
     if (httpResult) return httpResult.usage;
     const wsResult = await fetchUsageViaWs(siblings);
     if (wsResult) return wsResult;
-    debug('daemon', 'Siblings exist but relay failed — skipping direct API');
-    return null;
+    // Relay is only an optimization to avoid multiple API pollers. A PTY session
+    // bridge only refreshes usage when it has *direct* inbound WS clients, but
+    // dashboards/Stream Deck connect to the daemon (sole entry point) — so a
+    // sibling with no direct clients never populates its /usage and the relay
+    // yields null forever, freezing the daemon's usage at its startup value.
+    // Fall back to the direct API; the shared usage-cache.json (120s TTL) dedupes
+    // so this can't cause a 429 storm even if a sibling is also actively fetching.
+    debug('daemon', 'Siblings exist but relay yielded nothing fresh — falling back to direct API (shared file cache dedupes)');
+    return fetchUsageFromApi();
   }
 
   debug('daemon', 'No siblings, using direct API');
