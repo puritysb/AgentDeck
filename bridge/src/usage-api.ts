@@ -62,35 +62,108 @@ export function getBackoffMs(): number {
   return intervals[Math.min(consecutiveFailures - 1, intervals.length - 1)];
 }
 
-// ===== Keychain =====
+// ===== Credentials =====
 
 interface OAuthCredentials {
   accessToken: string;
   expiresAt?: number; // epoch ms
 }
 
-function getOAuthCredentials(): OAuthCredentials | null {
-  // The `security` CLI is macOS-only. On other platforms there's no equivalent
-  // path implemented for this OAuth token — return null instead of spawning
-  // a doomed `security` child whose stderr (`'security' is not recognized…`)
-  // would otherwise corrupt the session-bridge TTY.
-  if (process.platform !== 'darwin') return null;
+/** Injected sources for credential resolution — keeps the platform branch pure/testable
+ *  (no `process.platform` mutation) and defers all I/O so the macOS `security` subprocess
+ *  is NEVER spawned on non-darwin. Mirrors the `judgeBackendSupported(judge, platform)`
+ *  idiom in apme/settings.ts. */
+export interface CredSources {
+  platform: NodeJS.Platform;
+  /** CLAUDE_CONFIG_DIR ?? ~/.claude — resolved per call so a post-start relocation is honored. */
+  configDir: string;
+  env: NodeJS.ProcessEnv;
+  /** Returns the creds-file text, or null on ENOENT / read error (never throws). */
+  readCredsFile: (path: string) => string | null;
+  /** LAZY macOS keychain read — invoked ONLY inside the darwin branch, so Windows/Linux
+   *  never spawn `security` (no error, no flashed console window). */
+  runSecurityCli: () => string | null;
+}
+
+/** Parse the shared `{ claudeAiOauth: { accessToken, expiresAt } }` JSON that BOTH the
+ *  macOS Keychain blob and the on-disk `.credentials.json` file carry. Never throws. */
+function parseOauthPayload(raw: string | null): OAuthCredentials | null {
+  if (!raw) return null;
   try {
-    const raw = execSync(
-      `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-      { encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] },
-    ).trim();
     const creds = JSON.parse(raw);
     const oauth = creds?.claudeAiOauth;
-    if (!oauth?.accessToken) return null;
+    if (!oauth?.accessToken || typeof oauth.accessToken !== 'string') return null;
     return {
       accessToken: oauth.accessToken,
       expiresAt: typeof oauth.expiresAt === 'number' ? oauth.expiresAt : undefined,
     };
   } catch {
+    // A non-null blob that fails to parse is worth a breadcrumb (matches the old macOS
+    // single-try behavior that logged on parse-throw). Never logs the raw content.
+    debug('UsageAPI', 'Failed to parse OAuth credentials payload');
+    return null;
+  }
+}
+
+/** Pure, platform-aware credential resolver.
+ *  - macOS: read the Keychain via the injected `security` thunk (unchanged behavior).
+ *  - Windows/Linux: use `CLAUDE_CODE_OAUTH_TOKEN` if set, else read the plaintext
+ *    `<configDir>/.credentials.json` that Claude Code writes on those platforms.
+ *  No subprocess is spawned off-darwin. */
+export function resolveOAuthCredentials(sources: CredSources): OAuthCredentials | null {
+  if (sources.platform === 'darwin') {
+    return parseOauthPayload(sources.runSecurityCli());
+  }
+  // Non-macOS: env token takes precedence (mirrors Claude Code's own auth precedence —
+  // CLAUDE_CODE_OAUTH_TOKEN outranks the /login file). No expiry info for env tokens; the
+  // existing fetch path treats undefined expiry as "attempt fetch" and 401-self-throttles.
+  const envToken = sources.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  if (envToken) {
+    return { accessToken: envToken, expiresAt: undefined };
+  }
+  return parseOauthPayload(sources.readCredsFile(join(sources.configDir, '.credentials.json')));
+}
+
+/** Read the macOS Keychain OAuth blob via the `security` CLI. macOS-only caller. */
+function runSecurityCli(): string | null {
+  try {
+    return execSync(
+      `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
+      { encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim();
+  } catch {
     debug('UsageAPI', 'Failed to read OAuth token from Keychain');
     return null;
   }
+}
+
+/** Read a credentials file's text, or null on any error (missing/permission/torn write). */
+function readCredsFile(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/** Assemble the real credential sources from `process`/`fs`/`execSync`, per call.
+ *  `configDir` resolves CLAUDE_CONFIG_DIR at read time (NOT a module-level constant like
+ *  AGENTDECK_DIR), and `runSecurityCli`/`readCredsFile` are passed as thunks — never
+ *  invoked here — so the `security` subprocess only ever runs inside the darwin branch of
+ *  `resolveOAuthCredentials` (Windows/Linux spawn no child process, open no console window).
+ *  Exported so a test can lock this wiring without mutating `process.platform`. */
+export function buildCredSources(): CredSources {
+  return {
+    platform: process.platform,
+    configDir: process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'),
+    env: process.env,
+    readCredsFile,
+    runSecurityCli,
+  };
+}
+
+function getOAuthCredentials(): OAuthCredentials | null {
+  return resolveOAuthCredentials(buildCredSources());
 }
 
 function getOAuthToken(): string | null {
