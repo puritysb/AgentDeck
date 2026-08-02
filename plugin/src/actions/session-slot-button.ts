@@ -9,6 +9,7 @@ import streamDeck, {
   action,
   SingletonAction,
   KeyDownEvent,
+  KeyUpEvent,
   WillAppearEvent,
   WillDisappearEvent,
 } from '@elgato/streamdeck';
@@ -33,6 +34,7 @@ import { renderStatusReadout, renderSessionReadout } from '../renderers/display-
 import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
 import { openAgentDeckAppOrGitHub } from '../system/index.js';
+import { VoicePttHold } from '../voice-ptt.js';
 
 // ---- Module state ----
 
@@ -64,6 +66,9 @@ let onSlotAction: ((action: ReturnType<typeof manager.handleSlotPress>) => void)
 
 /** Whether daemon connection is alive */
 let daemonConnected = false;
+
+/** Tracks the VOICE key currently held across key-down/key-up/profile events. */
+const voicePttHold = new VoicePttHold();
 
 /** Soft-stale: daemon is still connected but has gone quiet past the stale
  *  window. Dims the last-known session renders until data resumes or the
@@ -430,6 +435,10 @@ export class SessionSlotButtonAction extends SingletonAction {
     const result = manager.handleSlotPress(slot, layout);
     dlog('SesSlot', `keyDown: slot=${slot} action=${result.action}`);
 
+    if (result.action === 'voice-ptt-begin') {
+      voicePttHold.begin(ev.action.id, result.sessionId);
+    }
+
     if (result.action === 'next-page') {
       manager.nextPage(layout);
       refreshAll();
@@ -456,7 +465,18 @@ export class SessionSlotButtonAction extends SingletonAction {
     }
   }
 
+  override async onKeyUp(ev: KeyUpEvent): Promise<void> {
+    const result = voicePttHold.release(ev.action.id);
+    if (!result) return;
+    dlog('SesSlot', `keyUp: voice ${result.action}`);
+    onSlotAction?.(result as ReturnType<typeof manager.handleSlotPress>);
+  }
+
   override onWillDisappear(ev: WillDisappearEvent): void {
+    const result = voicePttHold.disappear(ev.action.id);
+    if (result) {
+      onSlotAction?.(result as ReturnType<typeof manager.handleSlotPress>);
+    }
     const idx = actionIds.indexOf(ev.action.id);
     if (idx !== -1) actionIds.splice(idx, 1);
     slotMap.delete(ev.action.id);

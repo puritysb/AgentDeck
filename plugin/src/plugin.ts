@@ -60,6 +60,7 @@ import {
 } from './actions/session-slot-button.js';
 import { isDisplayDimmed, setDisplayDimmed, dimActionIfNeeded } from './display-dim.js';
 import { FocusedDetailState, type FocusedDetailSnapshot } from './focused-detail-state.js';
+import { voiceCommandForAction } from './voice-ptt.js';
 
 // ---- Shared state ----
 let currentState = State.DISCONNECTED;
@@ -125,6 +126,12 @@ setUsageRefreshCallback(() => {
 // ---- Initialize v4 session slot buttons ----
 initSessionSlots((result) => {
   dlog('Plugin', `sessionSlot action: ${result.action} session=${result.sessionId ?? '-'} port=${result.sessionPort ?? '-'}`);
+
+  const voiceCommand = voiceCommandForAction(result.action, result.sessionId);
+  if (voiceCommand) {
+    connMgr.send(voiceCommand as any);
+    return;
+  }
 
   switch (result.action) {
     case 'enter-detail': {
@@ -335,6 +342,23 @@ connMgr.on('user_prompt', (ev: UserPromptEvent) => {
 connMgr.on('review_status', (ev: { type: 'review_status'; sessionId: string; status: string; message?: string }) => {
   dlog('Plugin', `review_status: ${ev.sessionId} ${ev.status}${ev.message ? ` (${ev.message})` : ''}`);
   if (ev.status === 'error' && ev.sessionId) clearSessionReviewPending(ev.sessionId);
+});
+
+// Host push-to-talk progress -> VOICE key facelift. Error is transient by
+// design: the daemon parks on 'error' after a failed capture, and without the
+// reset the key would read "no speech" forever.
+let voiceErrorResetTimer: ReturnType<typeof setTimeout> | null = null;
+connMgr.on('voice_state', (ev: { type: 'voice_state'; state: 'idle' | 'recording' | 'transcribing' | 'error'; text?: string; error?: string }) => {
+  dlog('Plugin', `voice_state: ${ev.state}${ev.text ? ` "${ev.text.slice(0, 40)}"` : ''}${ev.error ? ` (${ev.error})` : ''}`);
+  if (voiceErrorResetTimer) { clearTimeout(voiceErrorResetTimer); voiceErrorResetTimer = null; }
+  const changed = getSessionSlotManager().updateVoiceState(ev.state);
+  if (ev.state === 'error') {
+    voiceErrorResetTimer = setTimeout(() => {
+      voiceErrorResetTimer = null;
+      if (getSessionSlotManager().updateVoiceState('idle') && isInDetailView()) refreshSessionSlots();
+    }, 3000);
+  }
+  if (changed && isInDetailView()) refreshSessionSlots();
 });
 
 // ---- Display sleep/wake dimming ----

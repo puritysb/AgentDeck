@@ -4,11 +4,9 @@
  * URL opening uses `rundll32 url.dll,FileProtocolHandler`, NOT `cmd /c start`:
  * launcher `url:` targets are user-overridable, and cmd's parser turns `&`,
  * `^` and `%` into an injection vector, while rundll32 receives the URL as a
- * single argv with zero shell interpretation. App launch has no such escape
- * hatch — `start` (which resolves App Paths registry names, the closest analog
- * of macOS `open -a`) only exists inside cmd — so app names are gated by a
- * strict allowlist instead; anything exotic rejects into the `|url:` fallback
- * chain, which is the Launcher's designed safety net.
+ * single argv with zero shell interpretation. App launch resolves an exact
+ * Start-menu display name through Get-StartApps. The user-controlled name is
+ * passed in an environment variable, never interpolated into PowerShell code.
  */
 import { execFile } from 'child_process';
 import * as path from 'path';
@@ -30,19 +28,29 @@ function openUrl(urlPrefix: string): Promise<void> {
   });
 }
 
-/** `start` runs inside cmd, so app names must never reach the cmd parser raw. */
-const APP_NAME_RE = /^[\w .+-]+$/;
+const POWERSHELL_ARGS = [
+  '-NoProfile',
+  '-NonInteractive',
+  '-ExecutionPolicy',
+  'Bypass',
+  '-Command',
+] as const;
+
+const OPEN_START_APP_SCRIPT =
+  '$app = Get-StartApps | Where-Object { $_.Name -eq $env:AGENTDECK_LAUNCH_TARGET } | Select-Object -First 1; ' +
+  'if (-not $app) { exit 2 }; ' +
+  'Start-Process -FilePath ("shell:AppsFolder\\" + $app.AppID)';
 
 function openApp(appName: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (!APP_NAME_RE.test(appName)) {
-      reject(new Error(`Cannot open "${appName}": name not allowed on Windows`));
-      return;
-    }
     execFile(
-      system32('cmd.exe'),
-      ['/d', '/s', '/c', 'start', '', appName],
-      { timeout: 5000, windowsHide: true },
+      path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      [...POWERSHELL_ARGS, OPEN_START_APP_SCRIPT],
+      {
+        timeout: 5000,
+        windowsHide: true,
+        env: { ...process.env, AGENTDECK_LAUNCH_TARGET: appName },
+      },
       (err) => (err ? reject(new Error(`Cannot open "${appName}": ${err.message}`)) : resolve()),
     );
   });

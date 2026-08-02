@@ -48,26 +48,22 @@ describe('win32: openUrl via rundll32', () => {
   });
 });
 
-describe('win32: openApp via cmd start', () => {
+describe('win32: openApp via Start Apps lookup', () => {
   beforeEach(() => {
     execFile.mockReset();
     execFile.mockImplementation((_exe, _args, _opts, cb) => cb(null));
   });
 
-  it('launches an allowlisted app name through start', async () => {
+  it('passes an exact Start-menu name through the environment, not PowerShell source', async () => {
     await win32Backend.openApp('Claude');
-    const [exe, args] = execFile.mock.calls[0];
-    expect(exe.toLowerCase()).toContain('cmd.exe');
-    expect(args).toEqual(['/d', '/s', '/c', 'start', '', 'Claude']);
+    const [exe, args, opts] = execFile.mock.calls[0];
+    expect(exe.toLowerCase()).toContain('powershell.exe');
+    expect(args.join(' ')).toContain('Get-StartApps');
+    expect(args.join(' ')).not.toContain('Claude');
+    expect((opts.env as NodeJS.ProcessEnv).AGENTDECK_LAUNCH_TARGET).toBe('Claude');
   });
 
-  it('rejects cmd-metacharacter names before spawning anything', async () => {
-    await expect(win32Backend.openApp('evil & calc')).rejects.toThrow(/not allowed/);
-    await expect(win32Backend.openApp('x^y%z')).rejects.toThrow(/not allowed/);
-    expect(execFile).not.toHaveBeenCalled();
-  });
-
-  it('rejects when start fails, so the |url: fallback chain can take over', async () => {
+  it('rejects a missing Start-menu app so the |url: fallback chain can take over', async () => {
     execFile.mockImplementation((_exe, _args, _opts, cb) => cb(new Error('not found')));
     await expect(win32Backend.openApp('Codex')).rejects.toThrow(/Cannot open "Codex"/);
   });
