@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const openApp = vi.fn<(name: string) => Promise<void>>();
 const openOrFocusBrowserTab = vi.fn<(url: string) => Promise<void>>();
 
-vi.mock('../utility-modes/system-control.js', () => ({
+vi.mock('../system/index.js', () => ({
   openApp: (name: string) => openApp(name),
   openOrFocusBrowserTab: (url: string) => openOrFocusBrowserTab(url),
   openAgentDeckAppOrGitHub: vi.fn(async () => {}),

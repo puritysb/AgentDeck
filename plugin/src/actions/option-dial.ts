@@ -27,7 +27,7 @@ import { type UsageModeData, updateUsageModeData, getUsageModeData, fireUsageRef
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
 import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
-import { openAgentDeckAppOrGitHub } from '../utility-modes/system-control.js';
+import { openAgentDeckAppOrGitHub } from '../system/index.js';
 
 const PIXMAP_LAYOUT = 'layouts/encoder-layout.json';
 

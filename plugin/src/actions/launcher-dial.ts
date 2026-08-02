@@ -31,7 +31,7 @@ import { renderLauncher, renderLauncherEmpty, type LauncherRenderData } from '..
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
 import { dlog, dinfo, dwarn } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
-import { openAgentDeckAppOrGitHub } from '../utility-modes/system-control.js';
+import { openAgentDeckAppOrGitHub } from '../system/index.js';
 import { buildEntries, rollIndex, runTarget } from '../launch-targets.js';
 
 import type { JsonValue } from '@elgato/utils';

@@ -60,6 +60,7 @@ import {
 } from './actions/session-slot-button.js';
 import { isDisplayDimmed, setDisplayDimmed, dimActionIfNeeded } from './display-dim.js';
 import { FocusedDetailState, type FocusedDetailSnapshot } from './focused-detail-state.js';
+import { voiceCommandForAction } from './voice-ptt.js';
 
 // ---- Shared state ----
 let currentState = State.DISCONNECTED;
@@ -126,6 +127,12 @@ setUsageRefreshCallback(() => {
 initSessionSlots((result) => {
   dlog('Plugin', `sessionSlot action: ${result.action} session=${result.sessionId ?? '-'} port=${result.sessionPort ?? '-'}`);
 
+  const voiceCommand = voiceCommandForAction(result.action, result.sessionId);
+  if (voiceCommand) {
+    connMgr.send(voiceCommand as any);
+    return;
+  }
+
   switch (result.action) {
     case 'enter-detail': {
       if (!result.sessionId) break;
@@ -166,7 +173,7 @@ initSessionSlots((result) => {
       break;
 
     case 'open-gateway':
-      import('./utility-modes/system-control.js').then(({ openOrFocusBrowserTab }) => {
+      import('./system/index.js').then(({ openOrFocusBrowserTab }) => {
         void openOrFocusBrowserTab(`http://127.0.0.1:${OPENCLAW_GATEWAY_PORT}`).catch(() => {});
       });
       break;
@@ -206,18 +213,6 @@ initSessionSlots((result) => {
 
     case 'refresh-usage':
       connMgr.send({ type: 'query_usage' });
-      break;
-
-    // Host push-to-talk (VOICE key). The daemon owns mic, STT and delivery;
-    // capture/transcribe progress comes back as voice_state events.
-    case 'voice-ptt-begin':
-      connMgr.send({ type: 'voice', action: 'start', sessionId: result.sessionId } as any);
-      break;
-    case 'voice-ptt-end':
-      connMgr.send({ type: 'voice', action: 'stop', sessionId: result.sessionId } as any);
-      break;
-    case 'voice-ptt-cancel':
-      connMgr.send({ type: 'voice', action: 'cancel', sessionId: result.sessionId } as any);
       break;
   }
 });
@@ -349,7 +344,7 @@ connMgr.on('review_status', (ev: { type: 'review_status'; sessionId: string; sta
   if (ev.status === 'error' && ev.sessionId) clearSessionReviewPending(ev.sessionId);
 });
 
-// Host push-to-talk progress → VOICE key facelift. Error is transient by
+// Host push-to-talk progress -> VOICE key facelift. Error is transient by
 // design: the daemon parks on 'error' after a failed capture, and without the
 // reset the key would read "no speech" forever.
 let voiceErrorResetTimer: ReturnType<typeof setTimeout> | null = null;
