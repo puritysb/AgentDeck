@@ -176,6 +176,27 @@ export interface UsageEncoderTank {
   stale?: boolean;
 }
 
+/**
+ * Companion readout shown beside a lone gauge in the 'both' view. A provider can
+ * permanently report a single window (Codex dropped its 5h rolling window
+ * upstream on 2026-07-12 and has reported the weekly cap alone ever since), which
+ * left the other half of the LCD as a dim "—" ghost. This card fills that half
+ * with the facts the gauge itself cannot carry: how far out the reset is in
+ * absolute terms, or the plan tier.
+ */
+export interface UsageEncoderSideCard {
+  /** Small dim heading, e.g. "RESETS" / "PLAN". */
+  label: string;
+  /** Headline value, e.g. "6d2h" / "PLUS". */
+  value: string;
+  /** Optional second line, e.g. the absolute reset instant "Thu 15:02". */
+  sub?: string;
+  /** Dim the headline. Set for the stale marker so it matches the desaturated
+   *  gauge beside it — a "not current" notice must not be the loudest thing on
+   *  the LCD. */
+  muted?: boolean;
+}
+
 export interface UsageEncoderData {
   agent: 'claude' | 'codex';
   /** Top-left title, e.g. "CLAUDE" / "CODEX". */
@@ -188,6 +209,8 @@ export interface UsageEncoderData {
    * reports no rate limits). Keeps the agent title + brand framing.
    */
   note?: string;
+  /** Companion readout for the single-window 'both' view (see the interface). */
+  sideCard?: UsageEncoderSideCard;
 }
 
 function encSvgWrap(inner: string): string {
@@ -209,6 +232,7 @@ function encHeader(data: UsageEncoderData, muted = false): string {
 function encPanel(
   x: number, y: number, w: number, h: number,
   tank: UsageEncoderTank, clipId: string, big: boolean,
+  showReset = true,
 ): string {
   const panelRx = 7;
   const clip = `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${panelRx}"/></clipPath>`;
@@ -240,7 +264,9 @@ function encPanel(
       `</g>`
     : '';
   // Expired window: muted "stale" marker instead of the (absent) countdown.
-  const reset = stale ? 'stale' : formatResetTime(tank.resetsAt);
+  // `showReset` is false when a side card already carries the reset horizon —
+  // printing it twice on one 200px LCD reads as a rendering bug.
+  const reset = showReset ? (stale ? 'stale' : formatResetTime(tank.resetsAt)) : '';
   const pctColor = stale ? LABEL_DIM : HEADLINE;
   const resetColor = stale ? LABEL_DIM : COUNTDOWN;
 
@@ -270,10 +296,61 @@ function encNote(data: UsageEncoderData): string {
   );
 }
 
-/** 'both' view: 5H and 7D as two side-by-side full-bleed mini level-fills. */
+/**
+ * Companion readout beside a lone gauge: a dim heading, a bold value, and an
+ * optional second line. Same chip background and corner radius as `encPanel` so
+ * the two halves read as one instrument rather than a gauge plus a caption.
+ */
+function encSideCard(x: number, y: number, w: number, h: number, card: UsageEncoderSideCard): string {
+  const cx = x + w / 2;
+  // Deliberately smaller than the gauge's 26px percentage: this half is context
+  // for the reading, not a second reading. Matching the gauge's weight made the
+  // encoder look like two competing instruments.
+  return (
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="7" fill="${CHIP}"/>` +
+    `<text x="${cx}" y="${y + 18}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" font-weight="bold" fill="${LABEL_DIM}">${esc(card.label)}</text>` +
+    `<text x="${cx}" y="${y + 47}" text-anchor="middle" font-family="Arial,sans-serif" font-size="${card.muted ? 16 : 18}" font-weight="bold" fill="${card.muted ? LABEL_DIM : COUNTDOWN}">${esc(card.value)}</text>` +
+    (card.sub
+      ? `<text x="${cx}" y="${y + 67}" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" fill="${LABEL_DIM}">${esc(card.sub)}</text>`
+      : '')
+  );
+}
+
+/**
+ * 'both' view: 5H and 7D as two side-by-side full-bleed mini level-fills.
+ *
+ * When the provider reports only ONE live window the second panel would be a
+ * permanent dim "—" ghost (Codex dropped its 5h rolling window upstream on
+ * 2026-07-12 and has reported the weekly cap alone since). The lone gauge KEEPS
+ * its half-width geometry — stretching one level-fill across the full 200px LCD
+ * reads as a banner, not a gauge — and the freed half carries the side card
+ * instead. Providers still reporting both windows are unaffected.
+ *
+ * The gauge also keeps its CANONICAL COLUMN — 5H left, 7D right — so E2 (Claude,
+ * both windows) and E3 (Codex, weekly only) put the same window in the same
+ * place. Centring the lone gauge or always drawing it left made the two
+ * encoders disagree about where "7D" lives, which read as a layout glitch.
+ *
+ * The gauge keeps printing its own reset countdown too, exactly as it does
+ * beside a sibling gauge on E2 — moving that number out to the side card made
+ * the same fact live in a different place depending on the provider. The card
+ * therefore carries only what no gauge can: the subscription behind the quota.
+ */
 export function renderUsageEncoderBoth(data: UsageEncoderData): string {
   if (data.note != null) return encNote(data);
   const y = 18, h = 80;
+  const live = [data.fiveHour, data.sevenDay].filter((t) => t.known);
+  if (live.length === 1 && data.sideCard) {
+    const soloIsWeekly = data.sevenDay.known;
+    const gaugeX = soloIsWeekly ? 102 : 4;
+    const cardX = soloIsWeekly ? 4 : 102;
+    return encSvgWrap(
+      `<rect width="${ENC_W}" height="${ENC_H}" fill="${BG}"/>` +
+      encHeader(data) +
+      encSideCard(cardX, y, 94, h, data.sideCard) +
+      encPanel(gaugeX, y, 94, h, live[0], `enc-${data.agent}-both-solo`, false),
+    );
+  }
   return encSvgWrap(
     `<rect width="${ENC_W}" height="${ENC_H}" fill="${BG}"/>` +
     encHeader(data) +

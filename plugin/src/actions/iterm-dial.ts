@@ -23,7 +23,7 @@ import { encoderRegistry, isDaemonConnected } from '../encoder-registry.js';
 import { svgToDataUrl } from '../renderers/button-renderer.js';
 import { renderUsageEncoderBoth, renderUsageEncoderSingle } from '../renderers/usage-gauge.js';
 import { renderUsageSession } from '../renderers/usage-dial-renderer.js';
-import { type UsageModeData, updateUsageModeData, getUsageModeData, fireUsageRefresh, buildCodexUsageEncoder } from '../utility-modes/usage.js';
+import { type UsageModeData, type UsageView, updateUsageModeData, getUsageModeData, fireUsageRefresh, buildCodexUsageEncoder, availableUsageViews } from '../utility-modes/usage.js';
 import type { ConnectionManager } from '../connection-manager.js';
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
 import { dlog, dinfo } from '../log.js';
@@ -32,14 +32,12 @@ import { openAgentDeckAppOrGitHub } from '../system/index.js';
 
 const PIXMAP_LAYOUT = 'layouts/encoder-layout.json';
 
-/** Views the dial rotates through. */
-const USAGE_VIEWS = ['both', '5h', '7d', 'session'] as const;
-type UsageView = typeof USAGE_VIEWS[number];
-
 let currentLayout = '';
 let hasReceivedData = false;
-/** Dial-cycled view index for the Codex usage encoder (E3). */
-let viewIndex = 0;
+/** Dial-cycled view for the Codex usage encoder (E3). Held as the view ITSELF,
+ *  not an index — the reachable list resizes as windows appear/disappear, and a
+ *  retained index would silently land on a different view. */
+let currentView: UsageView = 'both';
 
 export function initUsageDial(_bridge: ConnectionManager): void {
   dinfo('CodexUsageDial', 'initUsageDial called');
@@ -94,7 +92,10 @@ function refreshUsageDials(): void {
 function renderCodexUsageView(): string {
   const data = getUsageModeData();
   const enc = buildCodexUsageEncoder(data, hasReceivedData);
-  const view: UsageView = USAGE_VIEWS[viewIndex];
+  // A window can vanish between rotations (or never arrive), so re-anchor to a
+  // reachable view instead of rendering a stop that no longer exists.
+  const views = availableUsageViews(enc);
+  const view: UsageView = views.includes(currentView) ? currentView : 'both';
   if (view === 'session') {
     // Session tokens/cost are shared (not Codex-specific). When none exist, fall
     // back to the windows rather than an empty text card.
@@ -132,10 +133,13 @@ export class UsageDialAction extends SingletonAction {
 
   override async onDialRotate(ev: DialRotateEvent): Promise<void> {
     if (!isDaemonConnected()) return;
-    // Rotation cycles the usage view (both → 5h → 7d → session).
+    // Rotation cycles the views the current payload actually has — with only a
+    // weekly window that is both → 7d → session, no dead 5h stop.
     const dir = ev.payload.ticks >= 0 ? 1 : -1;
-    viewIndex = (viewIndex + dir + USAGE_VIEWS.length) % USAGE_VIEWS.length;
-    dlog('CodexUsageDial', `rotate → view=${USAGE_VIEWS[viewIndex]}`);
+    const views = availableUsageViews(buildCodexUsageEncoder(getUsageModeData(), hasReceivedData));
+    const at = views.indexOf(currentView);
+    currentView = views[((at < 0 ? 0 : at) + dir + views.length) % views.length];
+    dlog('CodexUsageDial', `rotate → view=${currentView}`);
     refreshUsageDials();
   }
 

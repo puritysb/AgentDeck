@@ -85,6 +85,26 @@ No session while daemon is connected: healthy idle dashboard, not recovery UI. S
 
 No encoder handles LCD touch.
 
+**Usage encoders rotate only through the windows the provider actually reports.**
+A window's zoom stop exists while that window does, so E3 is `both → 7d → session`
+whenever Codex reports the weekly cap alone — which it has since 2026-07-12, when
+the 5h rolling window disappeared upstream (permanently, not the transient
+post-reset slot flip `normalizeCodexRateLimits` already absorbs). In the `both`
+view a lone gauge keeps its half-width geometry rather than stretching across the
+full 200px LCD, **stays in its canonical column — 5H left, 7D right — and keeps
+printing its own reset countdown**, so a Codex `7D` panel is structurally
+identical to the `7D` panel E2 draws beside a live `5H`.
+
+The freed column carries a side card set one type step below the gauge (18px vs
+26px), so it reads as context rather than a second instrument. It never restates
+the gauge: best-available is the **subscription** behind the quota
+(`CHATGPT / PLUS / Renews Aug 5`, the renewal rolled forward from Codex's
+one-shot `auth.json` snapshot by `resolveChatGptRenewalDate`), then the bare plan
+tier, then the window's **absolute** reset instant (`Sat 18:02` — the one fact the
+gauge's relative countdown does not carry). Nothing knowable means no card, which
+drops the encoder back to the two-panel layout. Providers still reporting both
+windows render unchanged.
+
 When the daemon is down, all four LCDs render one 800px OFFLINE banner and a press
 opens the AgentDeck app.
 
