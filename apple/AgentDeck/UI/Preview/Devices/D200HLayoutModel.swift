@@ -621,13 +621,12 @@ public enum D200HLayoutModel {
         return tiles
     }
 
-    /// Codex freshness footnote for a usage tile, mirroring `codexUsageFootnote`
-    /// (shared/format-utils.ts): "stale" for an ended window, "3h ago" for a
-    /// still-live window whose passive snapshot has gone cold, nil when live.
+    /// Codex freshness footnote for a usage tile. Unlike the weight-range
+    /// literals this preview deliberately re-states, freshness is delegated to
+    /// the GENERATED `CodexUsageFreshness` — a threshold that differs between
+    /// the preview and the device it previews would be a lie, not a port.
     static func codexFootnote(stale: Bool, capturedAt: String?, now: Date = Date()) -> String? {
-        if stale { return "stale" }
-        guard CodexUsageFreshness.isSnapshotAged(capturedAt, now: now) else { return nil }
-        return CodexUsageFreshness.formatSnapshotAge(capturedAt, now: now) ?? "stale"
+        CodexUsageFreshness.footnote(stale: stale, capturedAt: capturedAt, now: now)
     }
 
     /// Compact window label from a length in minutes, mirroring the TS

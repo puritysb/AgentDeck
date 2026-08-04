@@ -84,7 +84,7 @@ data class ProviderLimitRow(
     val percent: Double,
     val resetIso: String?,
     val stale: Boolean,
-    /** Codex freshness note ("stale" / "3h ago") from [codexUsageFootnote]. When
+    /** Codex freshness note ("stale" / "3h ago") from [CodexFreshnessRules.footnote]. When
      *  present it takes the reset slot and the row renders dimmed: a passively-read
      *  snapshot of a still-live window keeps its last true percent, but a weekly
      *  window's countdown says nothing about when that percent was measured. */
@@ -121,7 +121,7 @@ fun codexLimitRows(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMil
                 add(
                     ProviderLimitRow(
                         "codex", windowLabel(p.windowMinutes), pct, p.resetsAt, p.stale == true,
-                        codexUsageFootnote(p.stale == true, limits.capturedAt, nowMs),
+                        CodexFreshnessRules.footnote(p.stale == true, limits.capturedAt, nowMs),
                     ),
                 )
             }
@@ -132,7 +132,7 @@ fun codexLimitRows(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMil
                 add(
                     ProviderLimitRow(
                         "codex", windowLabel(s.windowMinutes), pct, s.resetsAt, s.stale == true,
-                        codexUsageFootnote(s.stale == true, limits.capturedAt, nowMs),
+                        CodexFreshnessRules.footnote(s.stale == true, limits.capturedAt, nowMs),
                     ),
                 )
             }
@@ -140,58 +140,6 @@ fun codexLimitRows(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMil
     }
 }
 
-/**
- * How old a Codex snapshot may get before its numbers stop reading as live.
- * ABSOLUTE on purpose: a fraction of the window length would scale to 8h+ on the
- * weekly window and never fire. Mirror of `CODEX_SNAPSHOT_STALE_MS`
- * (shared/src/format-utils.ts) — keep the two in lockstep.
- */
-const val CODEX_SNAPSHOT_STALE_MS: Long = 30 * 60_000L
-
-/** Age of a Codex snapshot in ms, or null when unknown/unparseable. */
-fun codexSnapshotAgeMs(capturedAt: String?, nowMs: Long = System.currentTimeMillis()): Long? {
-    if (capturedAt.isNullOrEmpty()) return null
-    val t = try {
-        // OffsetDateTime handles both "Z" and "+09:00", with or without fraction.
-        OffsetDateTime.parse(capturedAt).toInstant().toEpochMilli()
-    } catch (_: Exception) {
-        return null
-    }
-    return (nowMs - t).coerceAtLeast(0L)
-}
-
-/** Compact "when was this measured" label: "34m ago", "3h ago", "2d ago".
- *  Rounds DOWN so it never overstates freshness. */
-fun formatSnapshotAge(capturedAt: String?, nowMs: Long = System.currentTimeMillis()): String? {
-    val age = codexSnapshotAgeMs(capturedAt, nowMs) ?: return null
-    val minutes = age / 60_000L
-    if (minutes < 1) return "now"
-    if (minutes < 60) return "${minutes}m ago"
-    val hours = minutes / 60
-    if (hours < 24) return "${hours}h ago"
-    return "${hours / 24}d ago"
-}
-
-/**
- * The one footnote a Codex gauge prints under its percentage. Mirror of
- * `codexUsageFootnote` (shared/src/format-utils.ts):
- *
- *  - window ended (`stale`)   → "stale"   — the number no longer applies
- *  - snapshot aged (> 30m)    → "3h ago"  — last true reading, not live
- *  - live                     → null      — caller prints its countdown
- *
- * `stale` wins over age: an ended window is a stronger statement than an old read.
- */
-fun codexUsageFootnote(
-    stale: Boolean,
-    capturedAt: String?,
-    nowMs: Long = System.currentTimeMillis(),
-): String? {
-    if (stale) return "stale"
-    val age = codexSnapshotAgeMs(capturedAt, nowMs) ?: return null
-    if (age <= CODEX_SNAPSHOT_STALE_MS) return null
-    return formatSnapshotAge(capturedAt, nowMs) ?: "stale"
-}
 
 /** Format duration from epoch millis to "H:MM" or "D:HH:MM" */
 fun formatUptime(connectedSinceMs: Long): String {

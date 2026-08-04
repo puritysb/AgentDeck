@@ -184,33 +184,33 @@ class TimeFormatUtilsTest {
 
     @Test
     fun `codex snapshot threshold matches the TypeScript SSOT`() {
-        assertEquals(30 * 60_000L, CODEX_SNAPSHOT_STALE_MS)
+        assertEquals(30 * 60_000L, CodexFreshnessRules.SNAPSHOT_STALE_MS)
     }
 
     @Test
     fun `codex snapshot age ignores missing and malformed stamps`() {
-        assertEquals(null, codexSnapshotAgeMs(null, freshnessNow))
-        assertEquals(null, codexSnapshotAgeMs("not-a-date", freshnessNow))
-        assertEquals(null, codexUsageFootnote(false, "not-a-date", freshnessNow))
+        assertEquals(null, CodexFreshnessRules.snapshotAgeMs(null, freshnessNow))
+        assertEquals(null, CodexFreshnessRules.snapshotAgeMs("not-a-date", freshnessNow))
+        assertEquals(null, CodexFreshnessRules.footnote(false, "not-a-date", freshnessNow))
     }
 
     @Test
     fun `codex snapshot age label rounds down`() {
-        assertEquals("now", formatSnapshotAge(capturedAgo(59_000), freshnessNow))
-        assertEquals("34m ago", formatSnapshotAge(capturedAgo(34 * 60_000 + 59_000), freshnessNow))
-        assertEquals("3h ago", formatSnapshotAge(capturedAgo(3 * 3_600_000 + 59 * 60_000), freshnessNow))
-        assertEquals("1d ago", formatSnapshotAge(capturedAgo(47 * 3_600_000), freshnessNow))
+        assertEquals("now", CodexFreshnessRules.formatSnapshotAge(capturedAgo(59_000), freshnessNow))
+        assertEquals("34m ago", CodexFreshnessRules.formatSnapshotAge(capturedAgo(34 * 60_000 + 59_000), freshnessNow))
+        assertEquals("3h ago", CodexFreshnessRules.formatSnapshotAge(capturedAgo(3 * 3_600_000 + 59 * 60_000), freshnessNow))
+        assertEquals("1d ago", CodexFreshnessRules.formatSnapshotAge(capturedAgo(47 * 3_600_000), freshnessNow))
     }
 
     @Test
     fun `codex footnote fires only past the threshold`() {
-        assertEquals(null, codexUsageFootnote(false, capturedAgo(CODEX_SNAPSHOT_STALE_MS), freshnessNow))
-        assertEquals("30m ago", codexUsageFootnote(false, capturedAgo(CODEX_SNAPSHOT_STALE_MS + 1000), freshnessNow))
+        assertEquals(null, CodexFreshnessRules.footnote(false, capturedAgo(CodexFreshnessRules.SNAPSHOT_STALE_MS), freshnessNow))
+        assertEquals("30m ago", CodexFreshnessRules.footnote(false, capturedAgo(CodexFreshnessRules.SNAPSHOT_STALE_MS + 1000), freshnessNow))
     }
 
     @Test
     fun `codex footnote ended window outranks age`() {
-        assertEquals("stale", codexUsageFootnote(true, capturedAgo(5 * 3_600_000), freshnessNow))
+        assertEquals("stale", CodexFreshnessRules.footnote(true, capturedAgo(5 * 3_600_000), freshnessNow))
     }
 
     @Test
