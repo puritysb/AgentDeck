@@ -171,6 +171,75 @@ class TimeFormatUtilsTest {
         assertTrue(rows[1].stale)
     }
 
+    // --- Codex snapshot freshness (mirror of shared/src/format-utils.ts) ---
+    //
+    // Codex usage is a passive read of local rollout files, so the numbers freeze
+    // the moment Codex stops being used. `stale` cannot expose that — it fires only
+    // once the WINDOW has ended, and the weekly window stays in the future for up
+    // to 7 days. Lockstep with `shared/src/__tests__/format-utils.test.ts`.
+
+    private val freshnessNow = 1786001220000L // 2026-08-05T07:27:00Z
+    private fun capturedAgo(ms: Long): String =
+        java.time.Instant.ofEpochMilli(freshnessNow - ms).toString()
+
+    @Test
+    fun `codex snapshot threshold matches the TypeScript SSOT`() {
+        assertEquals(30 * 60_000L, CODEX_SNAPSHOT_STALE_MS)
+    }
+
+    @Test
+    fun `codex snapshot age ignores missing and malformed stamps`() {
+        assertEquals(null, codexSnapshotAgeMs(null, freshnessNow))
+        assertEquals(null, codexSnapshotAgeMs("not-a-date", freshnessNow))
+        assertEquals(null, codexUsageFootnote(false, "not-a-date", freshnessNow))
+    }
+
+    @Test
+    fun `codex snapshot age label rounds down`() {
+        assertEquals("now", formatSnapshotAge(capturedAgo(59_000), freshnessNow))
+        assertEquals("34m ago", formatSnapshotAge(capturedAgo(34 * 60_000 + 59_000), freshnessNow))
+        assertEquals("3h ago", formatSnapshotAge(capturedAgo(3 * 3_600_000 + 59 * 60_000), freshnessNow))
+        assertEquals("1d ago", formatSnapshotAge(capturedAgo(47 * 3_600_000), freshnessNow))
+    }
+
+    @Test
+    fun `codex footnote fires only past the threshold`() {
+        assertEquals(null, codexUsageFootnote(false, capturedAgo(CODEX_SNAPSHOT_STALE_MS), freshnessNow))
+        assertEquals("30m ago", codexUsageFootnote(false, capturedAgo(CODEX_SNAPSHOT_STALE_MS + 1000), freshnessNow))
+    }
+
+    @Test
+    fun `codex footnote ended window outranks age`() {
+        assertEquals("stale", codexUsageFootnote(true, capturedAgo(5 * 3_600_000), freshnessNow))
+    }
+
+    @Test
+    fun `codexLimitRows dates an aged reading of a still-live weekly window`() {
+        // THE REGRESSION: reset six days out (not stale), snapshot four hours old.
+        val rows = codexLimitRows(
+            CodexRateLimits(
+                primary = CodexRateLimitWindow(usedPercent = 94.0, windowMinutes = 10080, resetsAt = "2026-08-11T14:46:25Z"),
+                capturedAt = capturedAgo(4 * 3_600_000),
+            ),
+            freshnessNow,
+        )
+        assertEquals(1, rows.size)
+        assertEquals(94.0, rows[0].percent, 0.0) // never blanked — last true reading
+        assertFalse(rows[0].stale)               // the window itself is still live
+        assertEquals("4h ago", rows[0].footnote) // ...but the number is not current
+    }
+
+    @Test
+    fun `codexLimitRows leaves a legacy producer without capturedAt unchanged`() {
+        val rows = codexLimitRows(
+            CodexRateLimits(
+                primary = CodexRateLimitWindow(usedPercent = 94.0, windowMinutes = 10080, resetsAt = "2026-08-11T14:46:25Z"),
+            ),
+            freshnessNow,
+        )
+        assertEquals(null, rows[0].footnote)
+    }
+
     @Test
     fun `codexLimitRows skips windows with null usedPercent`() {
         val rows = codexLimitRows(

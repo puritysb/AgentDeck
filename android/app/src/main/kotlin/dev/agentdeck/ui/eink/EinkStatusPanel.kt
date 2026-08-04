@@ -72,7 +72,7 @@ fun EinkStatusPanel(
         // the 5h/7d labels stay shared with the Claude rows above.
         codexLimitRows(state.codexRateLimits).forEach { row ->
             val bar = gaugeBar(row.percent)
-            val reset = if (row.stale) "stale" else row.resetIso?.let { formatResetTime(it) } ?: ""
+            val reset = row.footnote ?: if (row.stale) "stale" else row.resetIso?.let { formatResetTime(it) } ?: ""
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,

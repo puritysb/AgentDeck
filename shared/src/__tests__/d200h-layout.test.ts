@@ -178,6 +178,62 @@ describe('buildSessionDeck — per-model scoped caps', () => {
   });
 });
 
+// ─── Codex snapshot freshness on the tile ──────────────────────────────
+
+/**
+ * A Codex gauge is a passive rollout read: its number freezes the moment Codex
+ * stops being used, while a weekly window's `resetsAt` keeps counting down for
+ * days. The tile must therefore say how OLD the reading is — the shipped bug was
+ * a 4h-old 94% rendering byte-identical to a live one.
+ */
+describe('usage tiles — Codex snapshot freshness', () => {
+  const future = new Date(Date.now() + 6 * 24 * 3600_000).toISOString();
+
+  function codexTile(capturedAt: string | undefined, stale = false): string {
+    const deck = buildSessionDeck(
+      {
+        state: 'IDLE',
+        allSessions: [],
+        codexRateLimits: {
+          secondary: { usedPercent: 94, windowMinutes: 10080, resetsAt: stale ? undefined : future, stale: stale || undefined },
+          capturedAt,
+        },
+      } as any,
+      { mode: 'list', showUsage: true } as any,
+      positions(15),
+    );
+    return [...deck.values()].map((c) => c?.svg ?? '').join('|');
+  }
+
+  it('prints the countdown, undimmed, for a fresh snapshot', () => {
+    const svg = codexTile(new Date(Date.now() - 60_000).toISOString());
+    expect(svg).toContain('94');
+    expect(svg).not.toContain('ago');
+    expect(svg).not.toContain('stale');
+    expect(svg).toContain('opacity="0.38"'); // full-strength fill
+  });
+
+  it('THE REGRESSION: an aged snapshot keeps its % but is dimmed and dated', () => {
+    const svg = codexTile(new Date(Date.now() - 4 * 3600_000).toISOString());
+    expect(svg).toContain('94');          // never blanked — it is the last true reading
+    expect(svg).toContain('4h ago');      // ...and it says so
+    expect(svg).toContain('opacity="0.22"'); // dimmed fill
+  });
+
+  it('an ended window still reads "stale", not an age', () => {
+    const svg = codexTile(new Date(Date.now() - 4 * 3600_000).toISOString(), true);
+    expect(svg).toContain('stale');
+    expect(svg).not.toContain('ago');
+  });
+
+  it('a legacy producer (no capturedAt) renders exactly as before', () => {
+    const svg = codexTile(undefined);
+    expect(svg).toContain('94');
+    expect(svg).not.toContain('ago');
+    expect(svg).toContain('opacity="0.38"');
+  });
+});
+
 // ─── Scoped caps vs the three-key usage strip ──────────────────────────
 
 describe('usage tiles — scoped caps and the three-key strip budget', () => {

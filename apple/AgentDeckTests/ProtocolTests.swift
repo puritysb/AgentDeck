@@ -566,6 +566,173 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNil(stabilized?.planType)
     }
 
+    // MARK: - Codex rollout selection (Node parity)
+
+    /// The Swift daemon used to descend to the single newest day-directory and
+    /// pick the newest file inside it, with no fall-through. That silently
+    /// disagreed with the Node daemon on the same tree: a session started
+    /// yesterday and still appending is the live one, while a fresh session that
+    /// merely created today's directory carries no `rate_limits` at all. Port of
+    /// `candidateRolloutFiles` + `parseFirstUsable` (bridge/src/codex-rate-limits.ts).
+    func testCodexRolloutSelectionPrefersTheActivePriorDaySession() throws {
+        let root = try makeCodexSessionsTree([
+            // Newer day-dir, no rate_limits, older mtime.
+            ("2026/08/05/rollout-2026-08-05T00-30-39-fresh.jsonl",
+             "{\"type\":\"session_meta\"}\n",
+             "2026-08-05T00:30:39Z"),
+            // Prior day-dir, live snapshot, NEWEST mtime (still appending).
+            ("2026/08/04/rollout-2026-08-04T20-30-56-active.jsonl",
+             codexRolloutLine(usedPercent: 94, timestamp: "2026-08-04T18:38:42.076Z") + "\n",
+             "2026-08-04T18:38:42Z"),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let candidates = UsageAPIClient.codexRolloutCandidates(sessionsDir: root)
+        let parsed = UsageAPIClient.parseFirstUsableCodexRollout(candidates)
+        XCTAssertEqual(parsed?.primary?.usedPercent, 94)
+        XCTAssertEqual(parsed?.capturedAt, "2026-08-04T18:38:42.076Z")
+    }
+
+    func testCodexRolloutSelectionFallsBackToFileMtime() throws {
+        let root = try makeCodexSessionsTree([
+            ("2026/08/04/rollout-2026-08-04T20-30-56-active.jsonl",
+             codexRolloutLine(usedPercent: 41, timestamp: nil) + "\n",
+             "2026-08-04T18:38:42Z"),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let parsed = UsageAPIClient.parseFirstUsableCodexRollout(
+            UsageAPIClient.codexRolloutCandidates(sessionsDir: root)
+        )
+        XCTAssertEqual(parsed?.primary?.usedPercent, 41)
+        XCTAssertEqual(parsed?.capturedAt, "2026-08-04T18:38:42.000Z")
+    }
+
+    private func codexRolloutLine(usedPercent: Double, timestamp: String?) -> String {
+        let ts = timestamp.map { "\"timestamp\":\"\($0)\"," } ?? ""
+        return "{\(ts)\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"rate_limits\":"
+            + "{\"limit_id\":\"codex\",\"primary\":{\"used_percent\":\(usedPercent),"
+            + "\"window_minutes\":10080,\"resets_at\":1786459585},\"plan_type\":\"plus\"}}}"
+    }
+
+    /// Build a temp `<root>/YYYY/MM/DD/rollout-*.jsonl` tree with explicit mtimes.
+    private func makeCodexSessionsTree(_ files: [(String, String, String)]) throws -> URL {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("codex-sessions-\(UUID().uuidString)")
+        for (rel, content, mtime) in files {
+            let full = root.appendingPathComponent(rel)
+            try fm.createDirectory(at: full.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try content.write(to: full, atomically: true, encoding: .utf8)
+            let date = ISO8601DateFormatter().date(from: mtime)!
+            try fm.setAttributes([.modificationDate: date], ofItemAtPath: full.path)
+        }
+        return root
+    }
+
+    // MARK: - Codex snapshot freshness (mirror of shared/src/format-utils.ts)
+
+    // Codex usage is a passive read of local rollout files: the numbers freeze the
+    // moment Codex stops being used. `stale` cannot expose that — it fires only
+    // once the WINDOW has ended, and the weekly window stays in the future for up
+    // to 7 days. These pin the age half of the model, in lockstep with the TS SSOT
+    // (`shared/src/__tests__/format-utils.test.ts` → "codex snapshot freshness").
+
+    private var freshnessNow: Date {
+        ISO8601DateFormatter().date(from: "2026-08-05T07:27:00Z")!
+    }
+
+    private func capturedAgo(_ seconds: TimeInterval) -> String {
+        UsageAPIClient.codexCaptureISOString(freshnessNow.addingTimeInterval(-seconds))
+    }
+
+    func testCodexSnapshotThresholdMatchesTypeScript() {
+        // 30 minutes, absolute — a fraction of the window length would scale to
+        // 8h+ on the weekly window and never fire.
+        XCTAssertEqual(CodexUsageFreshness.snapshotStaleInterval, 30 * 60)
+    }
+
+    func testCodexSnapshotAgeIgnoresMissingAndMalformedStamps() {
+        XCTAssertNil(CodexUsageFreshness.snapshotAge(nil, now: freshnessNow))
+        XCTAssertNil(CodexUsageFreshness.snapshotAge("not-a-date", now: freshnessNow))
+        XCTAssertFalse(CodexUsageFreshness.isSnapshotAged(nil, now: freshnessNow))
+        XCTAssertFalse(CodexUsageFreshness.isSnapshotAged("not-a-date", now: freshnessNow))
+    }
+
+    func testCodexSnapshotAgedOnlyPastTheThreshold() {
+        XCTAssertFalse(CodexUsageFreshness.isSnapshotAged(capturedAgo(30 * 60), now: freshnessNow))
+        XCTAssertTrue(CodexUsageFreshness.isSnapshotAged(capturedAgo(30 * 60 + 1), now: freshnessNow))
+    }
+
+    func testCodexSnapshotAgeLabelRoundsDown() {
+        XCTAssertEqual(CodexUsageFreshness.formatSnapshotAge(capturedAgo(59), now: freshnessNow), "now")
+        XCTAssertEqual(CodexUsageFreshness.formatSnapshotAge(capturedAgo(34 * 60 + 59), now: freshnessNow), "34m ago")
+        XCTAssertEqual(CodexUsageFreshness.formatSnapshotAge(capturedAgo(3 * 3600 + 59 * 60), now: freshnessNow), "3h ago")
+        XCTAssertEqual(CodexUsageFreshness.formatSnapshotAge(capturedAgo(47 * 3600), now: freshnessNow), "1d ago")
+    }
+
+    func testCodexFootnoteDatesAnAgedReadingOfALiveWindow() {
+        // THE REGRESSION: weekly window six days out (not stale), snapshot 4h old.
+        let live = CodexRateLimitWindow(usedPercent: 94, windowMinutes: 10080, resetsAt: "2026-08-11T14:46:25Z")
+        XCTAssertNil(CodexUsageFreshness.footnote(window: live, capturedAt: capturedAgo(120), now: freshnessNow))
+        XCTAssertEqual(
+            CodexUsageFreshness.footnote(window: live, capturedAt: capturedAgo(4 * 3600), now: freshnessNow),
+            "4h ago"
+        )
+    }
+
+    func testCodexFootnoteEndedWindowOutranksAge() {
+        let ended = CodexRateLimitWindow(usedPercent: 67, windowMinutes: 300, resetsAt: nil, stale: true)
+        XCTAssertEqual(
+            CodexUsageFreshness.footnote(window: ended, capturedAt: capturedAgo(5 * 3600), now: freshnessNow),
+            "stale"
+        )
+    }
+
+    func testCodexFootnoteSilentWithoutACaptureStamp() {
+        // Absence of evidence is not evidence of staleness: a producer that sends
+        // no `capturedAt` must not leave every Codex gauge permanently dimmed.
+        let live = CodexRateLimitWindow(usedPercent: 94, windowMinutes: 10080, resetsAt: "2026-08-11T14:46:25Z")
+        XCTAssertNil(CodexUsageFreshness.footnote(window: live, capturedAt: nil, now: freshnessNow))
+    }
+
+    func testD200HPreviewMirrorDatesAnAgedCodexTile() {
+        // The Device Preview is a fidelity mirror of d200h-layout.ts; it must dim
+        // and date the same tile the real device does.
+        XCTAssertNil(D200HLayoutModel.codexFootnote(stale: false, capturedAt: capturedAgo(120), now: freshnessNow))
+        XCTAssertEqual(
+            D200HLayoutModel.codexFootnote(stale: false, capturedAt: capturedAgo(4 * 3600), now: freshnessNow),
+            "4h ago"
+        )
+        XCTAssertEqual(
+            D200HLayoutModel.codexFootnote(stale: true, capturedAt: capturedAgo(4 * 3600), now: freshnessNow),
+            "stale"
+        )
+    }
+
+    // MARK: - Codex rollout parsing (capturedAt anchor)
+
+    func testCodexRateLimitsCapturedAtComesFromTheSnapshotLine() {
+        // The rollout keeps growing with lines that carry no `rate_limits`, so the
+        // file mtime drifts forward while the newest reading stays put. Anchoring
+        // on the line's own timestamp is what keeps the age honest.
+        let line = """
+        {"timestamp":"2026-08-04T18:38:42.076Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":94.0,"window_minutes":10080,"resets_at":1786459585},"secondary":null,"plan_type":"plus"}}}
+        """
+        let parsed = UsageAPIClient.parseCodexRateLimits(line)
+        XCTAssertEqual(parsed?.primary?.usedPercent, 94.0)
+        XCTAssertEqual(parsed?.capturedAt, "2026-08-04T18:38:42.076Z")
+    }
+
+    func testCodexRateLimitsCapturedAtNilWhenLineHasNoTimestamp() {
+        // Caller falls back to the file mtime; the parser must not invent one.
+        let line = """
+        {"type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":41.0,"window_minutes":10080,"resets_at":1786459585},"plan_type":"plus"}}}
+        """
+        XCTAssertNil(UsageAPIClient.parseCodexRateLimits(line)?.capturedAt)
+        XCTAssertNil(UsageAPIClient.normalizeCodexCaptureTimestamp("not-a-date"))
+        XCTAssertNil(UsageAPIClient.normalizeCodexCaptureTimestamp(nil))
+    }
+
     // Codex stamps the login-time billing window `[active_start, active_until]`
     // into auth.json's id_token and never recomputes it on silent refresh, so
     // for an auto-renewing plan `active_until` drifts into the past mid-cycle.

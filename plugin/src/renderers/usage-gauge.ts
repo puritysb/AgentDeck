@@ -102,6 +102,10 @@ export interface UsageGaugeData {
   /** Codex snapshot expired: keep last-known % but desaturate the fill and show
    *  a "stale" marker instead of a (misleading) "now" countdown. */
   stale?: boolean;
+  /** Replaces the countdown and dims the tile. Carries the Codex freshness note
+   *  ("stale" for an ended window, "3h ago" for an aged-but-live snapshot) from
+   *  `codexUsageFootnote`, so a frozen reading can't pass for a live one. */
+  footnote?: string;
   /** Scoped cap that is not the currently binding constraint: fill drops to the
    *  informational cyan instead of the severity ramp. Defaults false so the real
    *  5H/7D tiles are byte-unchanged. */
@@ -141,13 +145,17 @@ export function renderUsageGauge(data: UsageGaugeData): string {
   }
 
   const stale = data.stale === true;
+  // An aged snapshot dims exactly like an expired window — neither number is
+  // current — but keeps its own footnote ("3h ago") instead of claiming the
+  // window ended, and is never dropped by the caller.
+  const dim = stale || (data.footnote != null && data.footnote !== '');
   const used = clampPct(data.usedPercent);
-  const ramp = rampColor(used, stale, data.inactive === true);
+  const ramp = rampColor(used, dim, data.inactive === true);
   const fillH = Math.round((H * used) / 100);
   const fillY = H - fillH;
   // Subtle level tint (low opacity) so text reads on top WITHOUT a dark overlay;
   // a crisp 3px solid line marks the exact level. Stale = extra-faint tint.
-  const fillOpacity = stale ? 0.22 : 0.38;
+  const fillOpacity = dim ? 0.22 : 0.38;
   const fill = fillH > 0
     ? `<g clip-path="url(#${clipId})">` +
         `<rect x="0" y="${fillY}" width="${W}" height="${fillH}" fill="${ramp.fill}" opacity="${fillOpacity}"/>` +
@@ -157,15 +165,15 @@ export function renderUsageGauge(data: UsageGaugeData): string {
 
   // Expired window: drop the (misleading) countdown for a muted "stale" marker;
   // the % stays as last-known but dims so it doesn't read as live.
-  const reset = stale ? 'stale' : formatResetTime(data.resetsAt);
-  const pctColor = stale ? LABEL_DIM : HEADLINE;
-  const resetColor = stale ? LABEL_DIM : COUNTDOWN;
+  const reset = data.footnote || (stale ? 'stale' : formatResetTime(data.resetsAt));
+  const pctColor = dim ? LABEL_DIM : HEADLINE;
+  const resetColor = dim ? LABEL_DIM : COUNTDOWN;
 
   return svgWrap(
     // Small text (label/reset) = plain white, NO outline — a stroke muddies
     // small glyphs. Only the big % keeps a thin outline (it can sit over fill).
     clip + bg + fill +
-    `<text x="14" y="36" font-family="JetBrains Mono, monospace" font-size="26" font-weight="bold" fill="${stale ? LABEL_DIM : HEADLINE}">${esc(label)}</text>` +
+    `<text x="14" y="36" font-family="JetBrains Mono, monospace" font-size="26" font-weight="bold" fill="${dim ? LABEL_DIM : HEADLINE}">${esc(label)}</text>` +
     logo +
     `<text x="72" y="92" text-anchor="middle" font-family="Arial,sans-serif" font-size="46" font-weight="bold" fill="${pctColor}">${Math.round(used)}<tspan font-size="24">%</tspan></text>` +
     (reset ? `<text x="72" y="122" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" font-weight="bold" fill="${resetColor}">${esc(reset)}</text>` : ''),
@@ -196,6 +204,9 @@ export interface UsageEncoderTank {
   /** Codex snapshot expired: keep last-known % but desaturate the fill and show
    *  a "stale" marker instead of a (misleading) "now" countdown. */
   stale?: boolean;
+  /** Replaces the countdown and dims the panel. Carries the Codex freshness note
+   *  ("stale" for an ended window, "3h ago" for an aged-but-live snapshot). */
+  footnote?: string;
   /** Scoped cap that is not the currently binding constraint: fill drops to the
    *  informational cyan instead of the severity ramp. Defaults false so the real
    *  5H/7D panels are byte-unchanged. */
@@ -277,13 +288,16 @@ function encPanel(
   }
 
   const stale = tank.stale === true;
+  // Aged snapshot: same dim treatment as an expired window (the number is not
+  // current), but it keeps its own "3h ago" footnote and is never dropped.
+  const dim = stale || (tank.footnote != null && tank.footnote !== '');
   const used = clampPct(tank.usedPercent);
-  const ramp = rampColor(used, stale, tank.inactive === true);
+  const ramp = rampColor(used, dim, tank.inactive === true);
   const fillH = Math.round((h * used) / 100);
   const fillY = y + h - fillH;
   // Subtle level tint + crisp 3px level line — no dark overlay behind text.
   // Stale = extra-faint tint so it reads as "not current".
-  const fillOpacity = stale ? 0.22 : 0.38;
+  const fillOpacity = dim ? 0.22 : 0.38;
   const fill = fillH > 0
     ? `<g clip-path="url(#${clipId})">` +
         `<rect x="${x}" y="${fillY}" width="${w}" height="${fillH}" fill="${ramp.fill}" opacity="${fillOpacity}"/>` +
@@ -293,9 +307,12 @@ function encPanel(
   // Expired window: muted "stale" marker instead of the (absent) countdown.
   // `showReset` is false when a side card already carries the reset horizon —
   // printing it twice on one 200px LCD reads as a rendering bug.
-  const reset = showReset ? (stale ? 'stale' : formatResetTime(tank.resetsAt)) : '';
-  const pctColor = stale ? LABEL_DIM : HEADLINE;
-  const resetColor = stale ? LABEL_DIM : COUNTDOWN;
+  // The freshness footnote outranks `showReset`: when a side card carries the
+  // reset horizon the countdown is redundant, but "how old is this number" is
+  // not — suppressing it is what let a 4h-old 94% read as live.
+  const reset = tank.footnote || (showReset ? (stale ? 'stale' : formatResetTime(tank.resetsAt)) : '');
+  const pctColor = dim ? LABEL_DIM : HEADLINE;
+  const resetColor = dim ? LABEL_DIM : COUNTDOWN;
 
   // Narrow panels (the 3-up "triple" view) stack a two-part countdown onto two
   // lines ("1h" / "45m") instead of shrinking the font to fit "1h45m".

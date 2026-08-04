@@ -513,7 +513,8 @@ struct ControlTowerPanel: View {
                             label: TopologyRail.windowLabel(p.windowMinutes),
                             percent: pct,
                             resetTime: p.resetsAt,
-                            stale: p.stale == true
+                            stale: p.stale == true,
+                            footnote: CodexUsageFreshness.footnote(window: p, capturedAt: codex.capturedAt)
                         )
                     }
                     if let s = codex.secondary, let pct = s.usedPercent {
@@ -521,7 +522,8 @@ struct ControlTowerPanel: View {
                             label: TopologyRail.windowLabel(s.windowMinutes),
                             percent: pct,
                             resetTime: s.resetsAt,
-                            stale: s.stale == true
+                            stale: s.stale == true,
+                            footnote: CodexUsageFreshness.footnote(window: s, capturedAt: codex.capturedAt)
                         )
                     }
                     if codex.primary == nil, codex.secondary == nil,
@@ -699,12 +701,16 @@ struct ControlTowerPanel: View {
         return s
     }
 
-    private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false, muted: Bool = false) -> some View {
+    private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false, muted: Bool = false, footnote: String? = nil) -> some View {
         // Expired Codex window: desaturate the fill and show a "stale" marker
         // instead of a (misleading) reset countdown. The % stays last-known.
         // `muted` = a non-binding per-model scoped cap: neutral, never the critical
         // ramp regardless of percent (issue #99).
-        let color = (stale || muted) ? TerrariumHUD.subtext : gaugeColor(percent)
+        // `footnote` = Codex freshness note ("stale" / "3h ago"), which also dims:
+        // an aged snapshot of a still-live window is not current either, and its
+        // reset countdown says nothing about when the number was measured.
+        let dim = stale || (footnote?.isEmpty == false)
+        let color = (dim || muted) ? TerrariumHUD.subtext : gaugeColor(percent)
         return HStack(spacing: 8) {
             Text(label)
                 .font(.system(size: 10, design: .monospaced))
@@ -716,7 +722,7 @@ struct ControlTowerPanel: View {
                         .fill(Color.white.opacity(0.10))
                     RoundedRectangle(cornerRadius: 3)
                         .fill(color)
-                        .opacity(stale ? 0.5 : 1)
+                        .opacity(dim ? 0.5 : 1)
                         .frame(width: max(0, min(1, percent / 100.0)) * geo.size.width)
                 }
             }
@@ -726,7 +732,12 @@ struct ControlTowerPanel: View {
                 .foregroundColor(color)
                 .frame(width: customSuffix != nil ? 75 : 36, alignment: .trailing)
             if customSuffix == nil {
-                if stale {
+                if let note = footnote, !note.isEmpty {
+                    Text(note)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.orange)
+                        .frame(width: 48, alignment: .trailing)
+                } else if stale {
                     Text("stale")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.orange)

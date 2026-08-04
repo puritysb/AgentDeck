@@ -96,6 +96,12 @@ struct CodexRateLimitsLocal: Sendable {
     var planType: String?
     var limitId: String?
     var credits: CodexCreditsLocal?
+    /// ISO-8601 instant this snapshot was WRITTEN by Codex — the rate-limit
+    /// line's own `timestamp`, falling back to the rollout file's mtime. Mirrors
+    /// `capturedAt` in the TS `CodexRateLimits` (bridge/src/codex-rate-limits.ts):
+    /// the only field that can distinguish "94% now" from "94% four hours ago",
+    /// since a weekly window's `resetsAt` stays in the future for up to 7 days.
+    var capturedAt: String?
 }
 
 enum TokenStatus: String, Sendable {
@@ -574,44 +580,86 @@ final class UsageAPIClient: Sendable {
     /// security scope (App Store sandbox) stays active during the file read.
     private func readCodexRateLimitsLocked() -> CodexRateLimitsLocal? {
         withCodexBase { base in
-            guard let file = self.newestCodexRolloutFile(sessionsDir: base.appendingPathComponent("sessions")) else { return nil }
-            let attrs = try? FileManager.default.attributesOfItem(atPath: file.path)
-            let mtime = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-            let key = "\(file.path):\(mtime)"
+            let candidates = Self.codexRolloutCandidates(sessionsDir: base.appendingPathComponent("sessions"))
+            guard let newest = candidates.first else { return nil }
+            let key = "\(newest.url.path):\(newest.mtime)"
             if let cached = self.codexRateLimitsCache, cached.key == key { return cached.value }
 
-            let parsed = self.readCodexRolloutTail(file).flatMap(Self.parseCodexRateLimits)
+            let parsed = Self.parseFirstUsableCodexRollout(candidates)
             self.codexRateLimitsCache = (key, parsed)
             return parsed
         }
     }
 
-    /// Descend <sessionsDir> year → month → day (newest dir at each level),
-    /// then return the most-recently-modified rollout file.
-    private func newestCodexRolloutFile(sessionsDir: URL) -> URL? {
+    /// Scan candidates newest-first and return the first that yields a usable
+    /// snapshot, falling through past a newer file that carries no `rate_limits`
+    /// line (a just-started session). Stamps `capturedAt` from the snapshot line's
+    /// own timestamp, falling back to the file mtime. Mirrors `parseFirstUsable`
+    /// in bridge/src/codex-rate-limits.ts.
+    static func parseFirstUsableCodexRollout(_ candidates: [(url: URL, mtime: TimeInterval)]) -> CodexRateLimitsLocal? {
+        for candidate in candidates {
+            guard let tail = readCodexRolloutTail(candidate.url),
+                  var parsed = parseCodexRateLimits(tail) else { continue }
+            if parsed.capturedAt == nil {
+                parsed.capturedAt = codexCaptureISOString(Date(timeIntervalSince1970: candidate.mtime))
+            }
+            return parsed
+        }
+        return nil
+    }
+
+    /// Gather rollout files across the newest few day-directories of the
+    /// year/month/day tree, sorted by mtime DESCENDING (capped).
+    ///
+    /// Selecting by mtime *across* day-dirs — not just within the single newest
+    /// one — is what lets a session started yesterday and still appending win over
+    /// a fresh-but-empty session that merely created a newer day-directory. Port
+    /// of `candidateRolloutFiles` in bridge/src/codex-rate-limits.ts; the previous
+    /// single-dir descent here silently reported an older (or no) snapshot than
+    /// the Node daemon for the same tree.
+    static func codexRolloutCandidates(
+        sessionsDir: URL,
+        maxDays: Int = 3,
+        maxFiles: Int = 6
+    ) -> [(url: URL, mtime: TimeInterval)] {
         let fm = FileManager.default
-        var dir = sessionsDir
-        guard fm.fileExists(atPath: dir.path) else { return nil }
-        for _ in 0..<3 {
-            guard let entries = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey]) else { return nil }
-            let subdirs = entries
+        guard fm.fileExists(atPath: sessionsDir.path) else { return [] }
+
+        func sortedSubdirs(_ dir: URL) -> [URL] {
+            guard let entries = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
+            return entries
                 .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
                 .sorted { $0.lastPathComponent.compare($1.lastPathComponent, options: .numeric) == .orderedDescending }
-            guard let newest = subdirs.first else { return nil }
-            dir = newest
         }
-        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return nil }
-        let rollouts = files.filter { $0.lastPathComponent.hasPrefix("rollout-") && $0.pathExtension == "jsonl" }
-        return rollouts.max { a, b in
-            let am = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let bm = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return am < bm
+
+        // Newest `maxDays` day-directories, walking back across month and year
+        // boundaries when a level runs short (a session spanning midnight, or the
+        // 1st of a month, keeps its rollout in the older dir).
+        var dayDirs: [URL] = []
+        outer: for year in sortedSubdirs(sessionsDir) {
+            for month in sortedSubdirs(year) {
+                for day in sortedSubdirs(month) {
+                    dayDirs.append(day)
+                    if dayDirs.count >= maxDays { break outer }
+                }
+            }
         }
+
+        var files: [(url: URL, mtime: TimeInterval)] = []
+        for dayDir in dayDirs {
+            guard let entries = try? fm.contentsOfDirectory(at: dayDir, includingPropertiesForKeys: [.contentModificationDateKey]) else { continue }
+            for file in entries where file.lastPathComponent.hasPrefix("rollout-") && file.pathExtension == "jsonl" {
+                let mtime = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970 ?? 0
+                files.append((file, mtime))
+            }
+        }
+        files.sort { $0.mtime > $1.mtime }
+        return Array(files.prefix(maxFiles))
     }
 
     /// Read the trailing bytes of a rollout (these grow to many MB; the newest
     /// rate_limits line is near the end).
-    private func readCodexRolloutTail(_ file: URL, maxBytes: Int = 262144) -> String? {
+    static func readCodexRolloutTail(_ file: URL, maxBytes: Int = 262144) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
@@ -648,9 +696,37 @@ final class UsageAPIClient: Sendable {
                 secondary: secondary,
                 planType: rl["plan_type"] as? String,
                 limitId: limitId,
-                credits: credits
+                credits: credits,
+                // Prefer the LINE's own timestamp over the file mtime: a rollout
+                // keeps growing with lines carrying no `rate_limits` (reasoning,
+                // tool output), so mtime drifts forward while the newest usage
+                // reading stays put — under-reporting the age of exactly the
+                // frozen snapshot this anchor exists to expose.
+                capturedAt: normalizeCodexCaptureTimestamp(obj["timestamp"] as? String)
             )
         }
+        return nil
+    }
+
+    /// ISO-8601 (fractional, UTC) string for a `capturedAt` stamp.
+    static func codexCaptureISOString(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
+    }
+
+    /// Normalize a rollout line's `timestamp` to ISO-8601, or nil when the line
+    /// carries none / an unparseable one (older rollout formats). Mirrors
+    /// `parseRolloutTimestamp` in bridge/src/codex-rate-limits.ts.
+    static func normalizeCodexCaptureTimestamp(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) { return codexCaptureISOString(date) }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let date = plain.date(from: raw) { return codexCaptureISOString(date) }
         return nil
     }
 

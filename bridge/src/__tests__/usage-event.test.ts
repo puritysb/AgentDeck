@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PermissionMode, State, type StateSnapshot, type UsageEvent } from '../types.js';
 import { buildUsageEvent, mergeRelayedSessionUsage } from '../usage-event.js';
 import type { ApiUsageData } from '../usage-api.js';
+import { codexUsageFootnote } from '@agentdeck/shared';
 
 function snapshot(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
   return {
@@ -297,6 +298,56 @@ describe('buildUsageEvent Codex window normalization', () => {
     expect(s.usedPercent).toBe(12);
     expect(s.stale).toBeUndefined();
     expect(s.resetsAt).toBe(future);
+  });
+
+  it('forwards capturedAt so consumers can age the reading themselves', () => {
+    const future = new Date(Date.now() + 6 * 24 * 3600_000).toISOString();
+    const capturedAt = new Date(Date.now() - 4 * 3600_000).toISOString();
+    const evt = buildUsageEvent(
+      ...codexArgs({
+        primary: { usedPercent: 94, windowMinutes: 10080, resetsAt: future },
+        capturedAt,
+      }),
+    ) as UsageEvent;
+
+    expect(evt.codexRateLimits!.capturedAt).toBe(capturedAt);
+  });
+
+  it('does NOT set `stale` on a merely-old snapshot of a live window', () => {
+    // `stale` is the HARD signal — Pixoo/ESP32 consumers drop the gauge on it.
+    // A 4h-old reading of a window that is still six days from resetting is not
+    // gone, it is old: it keeps rendering, and `capturedAt` is what dims it.
+    const future = new Date(Date.now() + 6 * 24 * 3600_000).toISOString();
+    const evt = buildUsageEvent(
+      ...codexArgs({
+        primary: { usedPercent: 94, windowMinutes: 10080, resetsAt: future },
+        capturedAt: new Date(Date.now() - 4 * 3600_000).toISOString(),
+      }),
+    ) as UsageEvent;
+
+    // Length-based slotting: the weekly window Codex reports in its own
+    // `primary` slot lands on the wire's `secondary`.
+    const w = evt.codexRateLimits!.secondary!;
+    expect(evt.codexRateLimits!.primary).toBeUndefined();
+    expect(w.stale).toBeUndefined();
+    expect(w.usedPercent).toBe(94);
+    expect(w.resetsAt).toBe(future); // countdown still valid — the window is live
+    expect(codexUsageFootnote(w, evt.codexRateLimits!.capturedAt))
+      .toEqual({ text: '4h ago', dim: true });
+  });
+
+  it('keeps capturedAt through the credits-only synthetic window', () => {
+    const capturedAt = new Date(Date.now() - 90 * 60_000).toISOString();
+    const evt = buildUsageEvent(
+      ...codexArgs({
+        limitId: 'premium',
+        credits: { hasCredits: false, unlimited: false, balance: '0' },
+        capturedAt,
+      }),
+    ) as UsageEvent;
+
+    expect(evt.codexRateLimits!.primary!.usedPercent).toBe(100);
+    expect(evt.codexRateLimits!.capturedAt).toBe(capturedAt);
   });
 
   it('treats each window independently (5h expired, 7d live)', () => {

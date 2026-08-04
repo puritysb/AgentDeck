@@ -6,11 +6,20 @@
  * - Detail View: button 1=BACK, button 2=session info, buttons 3-7=options, button 8=ESC/STOP
  */
 import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits } from '@agentdeck/shared';
-import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, usageWindowKind, usageWindowLabel, UI } from '@agentdeck/shared';
+import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, usageWindowKind, usageWindowLabel, codexUsageFootnote, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
 
 export type SlotView = 'list' | 'detail';
+
+/** One Codex rolling window as the slot manager keeps it. `stale` (window ended)
+ *  is stored; freshness-by-age is derived at paint time from `_codexCapturedAt`. */
+interface CodexWindowSnapshot {
+  percent: number;
+  resetsAt?: string;
+  windowMinutes: number;
+  stale?: boolean;
+}
 
 /** Per-agent water-tank usage gauge spec for the pinned bottom-row tiles. */
 export interface UsageGauge {
@@ -21,6 +30,9 @@ export interface UsageGauge {
   resetsAt?: string;
   known: boolean;
   color: string;
+  /** Codex freshness note ("stale" / "3h ago"): replaces the countdown and dims
+   *  the tile so a frozen passive read can't pass for a live one. */
+  footnote?: string;
 }
 
 /** Max bottom-row keys usage may claim: Claude 5h/7d + Codex 5h/7d. */
@@ -60,6 +72,7 @@ export interface SessionSlotConfig {
   usageAgent?: 'claude' | 'codex';
   usageWindow?: '5h' | '7d';
   usageResetsAt?: string;
+  usageFootnote?: string;
 }
 
 export interface DeckLayout {
@@ -251,8 +264,13 @@ export class SessionSlotManager {
   private _sevenDayResetsAt: string | undefined;
   private _fiveHourKnown = false;
   private _sevenDayKnown = false;
-  private _codexPrimary: { percent: number; resetsAt?: string; windowMinutes: number } | null = null;
-  private _codexSecondary: { percent: number; resetsAt?: string; windowMinutes: number } | null = null;
+  private _codexPrimary: CodexWindowSnapshot | null = null;
+  private _codexSecondary: CodexWindowSnapshot | null = null;
+  /** When the Codex snapshot behind both windows was written (see
+   *  `CodexRateLimits.capturedAt`). Freshness is derived per repaint from this,
+   *  never stored as a boolean — a stored flag would freeze exactly like the
+   *  percent it is meant to qualify. */
+  private _codexCapturedAt: string | undefined;
   // Page cursor for the (Phase-1-dormant) gauge paging when present gauges
   // exceed MAX_USAGE_RESERVE. Never advances with ≤4 gauges.
   private _usagePage = 0;
@@ -380,11 +398,12 @@ export class SessionSlotManager {
 
     const cx = usage.codexRateLimits;
     this._codexPrimary = cx?.primary
-      ? { percent: cx.primary.usedPercent, resetsAt: cx.primary.resetsAt, windowMinutes: cx.primary.windowMinutes }
+      ? { percent: cx.primary.usedPercent, resetsAt: cx.primary.resetsAt, windowMinutes: cx.primary.windowMinutes, stale: cx.primary.stale === true }
       : null;
     this._codexSecondary = cx?.secondary
-      ? { percent: cx.secondary.usedPercent, resetsAt: cx.secondary.resetsAt, windowMinutes: cx.secondary.windowMinutes }
+      ? { percent: cx.secondary.usedPercent, resetsAt: cx.secondary.resetsAt, windowMinutes: cx.secondary.windowMinutes, stale: cx.secondary.stale === true }
       : null;
+    this._codexCapturedAt = cx?.capturedAt;
   }
 
   /**
@@ -417,6 +436,7 @@ export class SessionSlotManager {
         agent: 'codex', window: usageWindowKind(w.windowMinutes), label: usageWindowLabel(w.windowMinutes) || '5H',
         percent: w.percent, resetsAt: w.resetsAt,
         known: true, color: CODEX_USAGE_COLOR,
+        footnote: codexUsageFootnote(w, this._codexCapturedAt)?.text,
       });
     }
     return gauges;
@@ -684,6 +704,7 @@ export class SessionSlotManager {
             usageAgent: g.agent,
             usageWindow: g.window,
             usageResetsAt: g.resetsAt,
+            usageFootnote: g.footnote,
           };
         }
         return { type: 'empty' };

@@ -1018,7 +1018,8 @@ struct TopologyRail: View {
                 label: Self.windowLabel(p.windowMinutes),
                 percent: pct,
                 reset: formatResetTime(p.resetsAt),
-                stale: p.stale == true
+                stale: p.stale == true,
+                footnote: CodexUsageFreshness.footnote(window: p, capturedAt: limits.capturedAt)
             ))
         }
         if let s = limits.secondary, let pct = s.usedPercent {
@@ -1026,7 +1027,8 @@ struct TopologyRail: View {
                 label: Self.windowLabel(s.windowMinutes),
                 percent: pct,
                 reset: formatResetTime(s.resetsAt),
-                stale: s.stale == true
+                stale: s.stale == true,
+                footnote: CodexUsageFreshness.footnote(window: s, capturedAt: limits.capturedAt)
             ))
         }
         return chips
@@ -1199,6 +1201,10 @@ struct RateChip: Identifiable {
     /// Non-binding per-model scoped cap: render neutral, never the critical ramp,
     /// regardless of percent (issue #99 — inactive ≠ same critical treatment).
     var inactive: Bool = false
+    /// Codex freshness note ("stale" / "3h ago") from `CodexUsageFreshness`.
+    /// Takes the right-hand slot and dims the bar: a passively-read snapshot of a
+    /// still-live window keeps its last true percent, but must not read as live.
+    var footnote: String? = nil
 }
 
 struct ConsumerBadge: Identifiable {
@@ -1278,7 +1284,7 @@ private struct RateChipView: View {
     /// so the row reads as "don't trust this yet" without user having to
     /// decode the text tag.
     private var barOpacity: Double {
-        chip.stale ? 0.35 : 0.65
+        (chip.stale || chip.footnote?.isEmpty == false) ? 0.35 : 0.65
     }
 
     /// The rightmost slot shows either the live reset countdown or a
@@ -1287,7 +1293,14 @@ private struct RateChipView: View {
     /// stale too, so showing both would be double-noise.
     @ViewBuilder
     private var rightSlot: some View {
-        if chip.stale {
+        if let note = chip.footnote, !note.isEmpty {
+            // "How old is this reading" outranks the countdown: a weekly window's
+            // reset stays days out while its snapshot silently goes cold.
+            Text(note)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundStyle(TerrariumHUD.ledAmber)
+                .frame(width: 42, alignment: .trailing)
+        } else if chip.stale {
             Text("stale")
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(TerrariumHUD.ledAmber)

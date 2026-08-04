@@ -3,6 +3,9 @@
  * Used by the dedicated Usage Dial (E3) renderer.
  */
 import type { CodexRateLimits, ScopedUsageLimit } from '@agentdeck/shared';
+// Codex freshness footnote (SSOT `shared/format-utils`): "stale" for an ended
+// window, "3h ago" for a still-live window whose snapshot has gone cold.
+import { codexUsageFootnote } from '@agentdeck/shared';
 
 export interface UsageModeData {
   fiveHourPercent?: number;
@@ -229,8 +232,8 @@ export function buildCodexUsageEncoder(data: UsageModeData, hasReceivedData: boo
   return {
     agent: 'codex',
     title: 'CODEX',
-    fiveHour: { label: '5H', usedPercent: primary?.usedPercent ?? 0, resetsAt: primary?.resetsAt, known: primary != null, stale: primary?.stale === true },
-    sevenDay: { label: '7D', usedPercent: secondary?.usedPercent ?? 0, resetsAt: secondary?.resetsAt, known: secondary != null, stale: secondary?.stale === true },
+    fiveHour: { label: '5H', usedPercent: primary?.usedPercent ?? 0, resetsAt: primary?.resetsAt, known: primary != null, stale: primary?.stale === true, footnote: codexUsageFootnote(primary, cx?.capturedAt)?.text },
+    sevenDay: { label: '7D', usedPercent: secondary?.usedPercent ?? 0, resetsAt: secondary?.resetsAt, known: secondary != null, stale: secondary?.stale === true, footnote: codexUsageFootnote(secondary, cx?.capturedAt)?.text },
     note,
     sideCard: solo ? buildCodexSideCard(data, cx, solo) : undefined,
   };

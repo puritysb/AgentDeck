@@ -512,7 +512,7 @@
           "type": "string"
         },
         "stale": {
-          "description": "True when this window's snapshot has expired (its `resets_at` slid into the past with no fresher Codex activity). The passive rollout read is frozen, so the percent is last-known-only — renderers should dim the gauge and show a \"stale\" marker instead of a misleading \"now\" countdown. Set centrally in `buildUsageEvent`; `resetsAt` is cleared at the same time so no formatter prints \"now\".",
+          "description": "True when this window's snapshot has expired (its `resets_at` slid into the past with no fresher Codex activity). The passive rollout read is frozen, so the percent is last-known-only — renderers should dim the gauge and show a \"stale\" marker instead of a misleading \"now\" countdown. Set centrally in `buildUsageEvent`; `resetsAt` is cleared at the same time so no formatter prints \"now\".\n\nThis is the HARD signal — slot-based consumers (Pixoo renderers, ESP32 firmware) drop the gauge entirely on it. A merely OLD snapshot of a still- live window must therefore never set it; that rides `capturedAt` instead.",
           "type": "boolean"
         },
         "usedPercent": {
@@ -534,7 +534,7 @@
       "description": "Codex usage limits parsed from local rollout files. `primary` is the short (5h-style) window, `secondary` the long (weekly) window — same idea as the Claude 5h/7d gauges. Credit-based plans report `primary`/`secondary` as null and convey usage via `credits` + `limitId` instead.",
       "properties": {
         "capturedAt": {
-          "description": "ISO-8601 mtime of the rollout file this snapshot was read from. A secondary freshness anchor — the per-window `stale` flag is the authoritative signal.",
+          "description": "ISO-8601 instant this snapshot was WRITTEN by Codex (the rate-limit line's own timestamp, falling back to the rollout file's mtime).\n\nRequired to tell \"94% now\" from \"94% four hours ago\": Codex usage is read passively from rollout files, so the numbers freeze the moment Codex stops being used, and the window's `resetsAt` cannot expose that — a weekly window stays in the future for up to 7 days. Consumers derive freshness from this against their own clock (`isCodexSnapshotAged` / `codexUsageFootnote` in shared/format-utils) and dim the gauge; they must NOT be given a producer- computed boolean, which would itself freeze between pushes. Distinct from the per-window `stale` flag, which means the window has ENDED.",
           "type": "string"
         },
         "credits": {

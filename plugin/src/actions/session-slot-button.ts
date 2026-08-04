@@ -382,6 +382,7 @@ function renderSlotSvg(config: SessionSlotConfig, _slot: number): string {
         usedPercent: config.usagePercent ?? 0,
         resetsAt: config.usageResetsAt,
         known: config.usageKnown !== false,
+        footnote: config.usageFootnote,
       });
 
     case 'usage-page':

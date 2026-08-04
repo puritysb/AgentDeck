@@ -153,7 +153,7 @@ private fun LimitsColumn(state: DashboardState) {
 
 @Composable
 private fun CodexGaugeRow(row: ProviderLimitRow) {
-    val staleMark = if (row.stale) "!" else ""
+    val staleMark = if (row.stale || row.footnote != null) "!" else ""
     Row(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -168,7 +168,7 @@ private fun CodexGaugeRow(row: ProviderLimitRow) {
             maxLines = 1,
         )
     }
-    val reset = if (row.stale) "stale" else row.resetIso?.let { formatResetTime(it) } ?: ""
+    val reset = row.footnote ?: if (row.stale) "stale" else row.resetIso?.let { formatResetTime(it) } ?: ""
     if (reset.isNotEmpty()) {
         Text(
             text = "   ⟲ $reset",

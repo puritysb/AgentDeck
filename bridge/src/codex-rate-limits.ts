@@ -122,9 +122,12 @@ function parseFirstUsable(candidates: RolloutCandidate[]): CodexRateLimits | nul
     const tail = readTail(full);
     const parsed = tail ? parseCodexRateLimitsFromText(tail) : null;
     if (parsed) {
-      // Stamp the rollout mtime as a secondary freshness anchor (the per-window
-      // `stale` flag set in buildUsageEvent is authoritative).
-      parsed.capturedAt = new Date(mtime).toISOString();
+      // Freshness anchor. Prefer the snapshot LINE's own timestamp over the file
+      // mtime: a rollout keeps growing with lines that carry no `rate_limits`
+      // (reasoning, tool output), so mtime drifts forward while the newest usage
+      // reading stays put — that would under-report the age of exactly the frozen
+      // snapshot this anchor exists to expose. mtime is the fallback.
+      parsed.capturedAt = parsed.capturedAt ?? new Date(mtime).toISOString();
       return parsed;
     }
   }
@@ -170,6 +173,14 @@ function toCredits(raw?: RawCredits): CodexCredits | undefined {
   };
 }
 
+/** Normalize a rollout line's `timestamp` to ISO-8601, or undefined when the
+ *  line carries none / an unparseable one (older rollout formats). */
+function parseRolloutTimestamp(ts?: string): string | undefined {
+  if (typeof ts !== 'string' || !ts) return undefined;
+  const ms = new Date(ts).getTime();
+  return isNaN(ms) ? undefined : new Date(ms).toISOString();
+}
+
 function toWindow(raw?: RawWindow): CodexRateLimitWindow | undefined {
   if (!raw || typeof raw.used_percent !== 'number' || typeof raw.window_minutes !== 'number') {
     return undefined;
@@ -197,7 +208,10 @@ export function parseCodexRateLimitsFromText(text: string): CodexRateLimits | nu
     const line = lines[i].trim();
     if (!line || !line.includes('rate_limits')) continue;
     try {
-      const obj = JSON.parse(line) as { payload?: { type?: string; rate_limits?: RawRateLimits } };
+      const obj = JSON.parse(line) as {
+        timestamp?: string;
+        payload?: { type?: string; rate_limits?: RawRateLimits };
+      };
       const rl = obj?.payload?.rate_limits;
       if (!rl) continue;
       const primary = toWindow(rl.primary);
@@ -213,6 +227,7 @@ export function parseCodexRateLimitsFromText(text: string): CodexRateLimits | nu
         planType: typeof rl.plan_type === 'string' ? rl.plan_type : undefined,
         limitId,
         credits,
+        capturedAt: parseRolloutTimestamp(obj.timestamp),
       };
     } catch {
       // Possibly a truncated first line from the tail window; keep scanning.

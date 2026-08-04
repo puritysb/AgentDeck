@@ -426,6 +426,10 @@ struct CodexRateLimitWindow: Codable, Sendable {
     var resetsAt: String?
     /// True when this window's snapshot has expired (set centrally by the daemon).
     /// Renderers dim the gauge and show a "stale" marker instead of "now".
+    ///
+    /// The HARD signal — some consumers drop the gauge entirely on it. A merely
+    /// OLD snapshot of a still-live window must never set it; that rides
+    /// `CodexRateLimits.capturedAt`.
     var stale: Bool?
 }
 
@@ -446,6 +450,79 @@ struct CodexRateLimits: Codable, Sendable {
     var planType: String?
     var limitId: String?
     var credits: CodexCredits?
+    /// ISO-8601 instant this snapshot was WRITTEN by Codex (the rate-limit line's
+    /// own timestamp, else the rollout file's mtime).
+    ///
+    /// The only field that separates "94% right now" from "94% four hours ago":
+    /// Codex usage is read passively from rollout files, so the numbers freeze
+    /// when Codex stops being used, and `stale` cannot expose that — it fires only
+    /// once the window has ENDED, which for the weekly window is up to 7 days out.
+    var capturedAt: String?
+}
+
+/// Freshness of a passively-read Codex snapshot. Swift mirror of
+/// `shared/src/format-utils.ts` (`CODEX_SNAPSHOT_STALE_MS`, `isCodexSnapshotAged`,
+/// `formatSnapshotAge`, `codexUsageFootnote`) — keep the two in lockstep; parity is
+/// pinned by `CodexSnapshotFreshnessTests`.
+enum CodexUsageFreshness {
+    /// How old a snapshot may get before its numbers stop reading as live.
+    /// ABSOLUTE on purpose: a fraction of the window length would scale to 8h+ on
+    /// the weekly window and be useless, which is exactly the hole this closes.
+    static let snapshotStaleInterval: TimeInterval = 30 * 60
+
+    /// Age of a snapshot in seconds, or nil when unknown/unparseable.
+    static func snapshotAge(_ capturedAt: String?, now: Date = Date()) -> TimeInterval? {
+        guard let capturedAt, !capturedAt.isEmpty else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        guard let date = fractional.date(from: capturedAt) ?? plain.date(from: capturedAt) else { return nil }
+        return max(0, now.timeIntervalSince(date))
+    }
+
+    /// True when the snapshot is too old to present as live. Derived here against
+    /// the local clock, never read from a producer-set boolean — such a flag would
+    /// itself freeze between pushes, exactly like the percent it qualifies.
+    static func isSnapshotAged(
+        _ capturedAt: String?,
+        now: Date = Date(),
+        maxAge: TimeInterval = snapshotStaleInterval
+    ) -> Bool {
+        guard let age = snapshotAge(capturedAt, now: now) else { return false }
+        return age > maxAge
+    }
+
+    /// Compact "when was this measured" label: "34m ago", "3h ago", "2d ago".
+    /// Rounds DOWN so it never overstates freshness.
+    static func formatSnapshotAge(_ capturedAt: String?, now: Date = Date()) -> String? {
+        guard let age = snapshotAge(capturedAt, now: now) else { return nil }
+        let minutes = Int(age / 60)
+        if minutes < 1 { return "now" }
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        return "\(hours / 24)d ago"
+    }
+
+    /// The one footnote a Codex gauge prints under its percentage, and whether the
+    /// gauge should be dimmed. Three states, resolved identically on every surface:
+    ///
+    ///   - window ended (`stale`)    → "stale",  dim — the number no longer applies
+    ///   - snapshot aged (> 30m)     → "3h ago", dim — last true reading, not live
+    ///   - live                      → nil            — caller prints its countdown
+    ///
+    /// `stale` wins over age: an ended window is a stronger statement than an old read.
+    static func footnote(
+        window: CodexRateLimitWindow?,
+        capturedAt: String?,
+        now: Date = Date()
+    ) -> String? {
+        guard let window else { return nil }
+        if window.stale == true { return "stale" }
+        guard isSnapshotAged(capturedAt, now: now) else { return nil }
+        return formatSnapshotAge(capturedAt, now: now) ?? "stale"
+    }
 }
 
 // MARK: - Button / Encoder State (Bridge → Client)

@@ -7301,6 +7301,13 @@ final class DaemonServer {
             if let balance = credits.balance { c["balance"] = balance }
             payload["credits"] = c
         }
+        // When this snapshot was written. REQUIRED on the wire: Codex usage is a
+        // passive rollout read, so the numbers freeze the moment Codex stops being
+        // used, and `stale` cannot expose that — it only fires once the window
+        // itself has ENDED, which for the weekly window is up to 7 days out. Every
+        // consumer derives freshness from this against its own clock
+        // (`isCodexSnapshotAged` / `codexUsageFootnote`, shared/format-utils).
+        if let capturedAt = limits.capturedAt { payload["capturedAt"] = capturedAt }
         return payload
     }
 

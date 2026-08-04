@@ -797,7 +797,14 @@ private fun buildCodexRateChips(limits: CodexRateLimits?): List<RateChip> =
     // Shared mapping lives in util.codexLimitRows so the HUD rail and the e-ink
     // surfaces can't drift; only the reset-time formatting is rail-local.
     codexLimitRows(limits).map { row ->
-        RateChip(label = row.label, percent = row.percent, reset = row.resetIso?.let { formatResetTime(it) }, stale = row.stale)
+        // The freshness footnote ("3h ago") outranks the countdown: a weekly
+        // window's reset stays days out while its snapshot silently goes cold.
+        RateChip(
+            label = row.label,
+            percent = row.percent,
+            reset = row.footnote ?: row.resetIso?.let { formatResetTime(it) },
+            stale = row.stale || row.footnote != null,
+        )
     }
 
 /**

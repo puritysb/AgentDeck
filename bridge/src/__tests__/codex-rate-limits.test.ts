@@ -220,3 +220,73 @@ describe('pickCodexRateLimits (file selection across day-dirs)', () => {
     expect(pickCodexRateLimits(root)!.primary!.usedPercent).toBe(55);
   });
 });
+
+/**
+ * `capturedAt` is what lets every consumer tell "94% right now" from "94% four
+ * hours ago" — the window's own `resetsAt` cannot, since a weekly window stays
+ * in the future for up to 7 days. It must come from the snapshot LINE's
+ * timestamp, not the file mtime: a rollout keeps growing with lines that carry
+ * no `rate_limits`, so mtime drifts forward while the newest usage reading stays
+ * put, under-reporting the age of exactly the frozen snapshot it must expose.
+ */
+describe('capturedAt (snapshot freshness anchor)', () => {
+  const tmpRoots: string[] = [];
+
+  afterEach(() => {
+    for (const r of tmpRoots.splice(0)) {
+      try { fs.rmSync(r, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  });
+
+  function makeTree(files: Record<string, { content: string; mtimeMs: number }>): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-captured-'));
+    tmpRoots.push(root);
+    for (const [rel, { content, mtimeMs }] of Object.entries(files)) {
+      const full = path.join(root, rel);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content);
+      const t = new Date(mtimeMs);
+      fs.utimesSync(full, t, t);
+    }
+    return root;
+  }
+
+  it('stamps the snapshot line timestamp, not the file mtime', () => {
+    // The rate_limits line is 4h old; the file kept growing since (mtime now).
+    const root = makeTree({
+      '2026/08/04/rollout-2026-08-04T20-30-56-active.jsonl': {
+        content: rolloutLine(94) + '\n' + JSON.stringify({
+          timestamp: '2026-08-04T22:38:42.000Z',
+          type: 'response_item',
+          payload: { type: 'reasoning' },
+        }) + '\n',
+        mtimeMs: Date.parse('2026-08-04T22:38:42Z'),
+      },
+    });
+    expect(pickCodexRateLimits(root)!.capturedAt).toBe('2026-07-05T00:00:00.000Z');
+  });
+
+  it('falls back to the file mtime when the line carries no timestamp', () => {
+    const noTs = JSON.parse(rolloutLine(41));
+    delete noTs.timestamp;
+    const root = makeTree({
+      '2026/08/04/rollout-2026-08-04T20-30-56-active.jsonl': {
+        content: JSON.stringify(noTs) + '\n',
+        mtimeMs: Date.parse('2026-08-04T18:38:42Z'),
+      },
+    });
+    expect(pickCodexRateLimits(root)!.capturedAt).toBe('2026-08-04T18:38:42.000Z');
+  });
+
+  it('falls back to the file mtime when the line timestamp is unparseable', () => {
+    const badTs = JSON.parse(rolloutLine(41));
+    badTs.timestamp = 'not-a-date';
+    const root = makeTree({
+      '2026/08/04/rollout-2026-08-04T20-30-56-active.jsonl': {
+        content: JSON.stringify(badTs) + '\n',
+        mtimeMs: Date.parse('2026-08-04T18:38:42Z'),
+      },
+    });
+    expect(pickCodexRateLimits(root)!.capturedAt).toBe('2026-08-04T18:38:42.000Z');
+  });
+});

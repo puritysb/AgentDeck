@@ -190,7 +190,8 @@ func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
             codexPrimaryStale: live.codexPrimaryStale,
             codexSecondaryPercent: live.codexSecondaryPercent,
             codexSecondaryWindowMinutes: live.codexSecondaryWindowMinutes,
-            codexSecondaryStale: live.codexSecondaryStale
+            codexSecondaryStale: live.codexSecondaryStale,
+            codexCapturedAt: live.codexCapturedAt
         ),
         focusedSessionId: live.focusedSessionId,
         navigable: live.navigable
@@ -334,7 +335,7 @@ private struct D200HSlotTile: View {
                         .lineLimit(1)
                 }
             }
-        case .usageGauge(let agent, _, let percent, let known, let stale, let inactive):
+        case .usageGauge(let agent, _, let percent, let known, let stale, let inactive, let footnote):
             // Mirrors renderUsageGauge (d200h-layout.ts): a vertical water-tank
             // fill rising from the bottom (severity ramp, 0.38 tint + crisp
             // level line), window label top-left, brand mark top-right, big %
@@ -343,12 +344,15 @@ private struct D200HSlotTile: View {
             ZStack {
                 if known {
                     GeometryReader { geo in
-                        let ramp = gaugeColor(percent: percent, known: true, stale: stale, inactive: inactive)
+                        // An aged snapshot dims exactly like an expired window —
+                        // neither number is current — but keeps its own footnote.
+                        let dim = stale || (footnote?.isEmpty == false)
+                        let ramp = gaugeColor(percent: percent, known: true, stale: dim, inactive: inactive)
                         let fillH = geo.size.height * min(1, max(0, percent / 100))
                         VStack(spacing: 0) {
                             Spacer(minLength: 0)
                             Rectangle().fill(ramp).frame(height: 1.5)
-                            Rectangle().fill(ramp.opacity(stale ? 0.22 : 0.38))
+                            Rectangle().fill(ramp.opacity(dim ? 0.22 : 0.38))
                                 .frame(height: max(0, fillH - 1.5))
                         }
                     }
@@ -358,7 +362,7 @@ private struct D200HSlotTile: View {
                     HStack(alignment: .top) {
                         Text(slot.label)
                             .font(.system(size: size * 0.15, weight: .bold, design: .monospaced))
-                            .foregroundStyle(known && !stale ? .white : .white.opacity(0.45))
+                            .foregroundStyle(known && !stale && footnote == nil ? .white : .white.opacity(0.45))
                         Spacer(minLength: 0)
                         CanonicalCreatureView(
                             agentType: agent == "codex" ? "codex-cli" : "claude-code",
@@ -370,9 +374,9 @@ private struct D200HSlotTile: View {
                     Spacer(minLength: 0)
                     Text(known ? "\(Int(percent))%" : "—")
                         .font(.system(size: size * 0.22, weight: .heavy))
-                        .foregroundStyle(known && !stale ? .white : .white.opacity(0.45))
-                    if stale {
-                        Text("stale")
+                        .foregroundStyle(known && !stale && footnote == nil ? .white : .white.opacity(0.45))
+                    if let note = footnote ?? (stale ? "stale" : nil) {
+                        Text(note)
                             .font(.system(size: size * 0.09, weight: .bold))
                             .foregroundStyle(.white.opacity(0.45))
                     }

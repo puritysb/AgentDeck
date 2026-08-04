@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts e69d1247d2f2833d8daeecf6a759d1f4a24e536c
+// SYNC-HASH shared/src/d200h-layout.ts a56c9ce35c785ec6142f611412f2d5e55664f2f2
 // SYNC-HASH shared/src/session-utils.ts b08adbcca7a9fe3386a44801248b2ec06b572a0e
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -159,6 +159,11 @@ public struct D200HUsage: Equatable, Sendable {
     public var codexSecondaryPercent: Double?
     public var codexSecondaryWindowMinutes: Int?
     public var codexSecondaryStale: Bool
+    /// ISO-8601 instant the Codex snapshot behind both windows was written
+    /// (`CodexRateLimits.capturedAt`). Freshness is derived per build against the
+    /// current clock — a still-live window whose snapshot went cold renders dimmed
+    /// with a "3h ago" footnote instead of passing for a live reading.
+    public var codexCapturedAt: String?
 
     public init(
         fiveHourPercent: Double? = nil,
@@ -170,7 +175,8 @@ public struct D200HUsage: Equatable, Sendable {
         codexPrimaryStale: Bool = false,
         codexSecondaryPercent: Double? = nil,
         codexSecondaryWindowMinutes: Int? = nil,
-        codexSecondaryStale: Bool = false
+        codexSecondaryStale: Bool = false,
+        codexCapturedAt: String? = nil
     ) {
         self.fiveHourPercent = fiveHourPercent
         self.sevenDayPercent = sevenDayPercent
@@ -182,6 +188,7 @@ public struct D200HUsage: Equatable, Sendable {
         self.codexSecondaryPercent = codexSecondaryPercent
         self.codexSecondaryWindowMinutes = codexSecondaryWindowMinutes
         self.codexSecondaryStale = codexSecondaryStale
+        self.codexCapturedAt = codexCapturedAt
     }
 }
 
@@ -282,7 +289,7 @@ public enum D200HSlotKind: Equatable, Sendable {
     /// Pagination MORE tile (renderNextPageButton).
     case nextPage
     /// A usage gauge tile (renderUsageGauge). `agent` = "claude"|"codex".
-    case usageGauge(agent: String, window: String, percent: Double, known: Bool, stale: Bool, inactive: Bool)
+    case usageGauge(agent: String, window: String, percent: Double, known: Bool, stale: Bool, inactive: Bool, footnote: String?)
 }
 
 /// One key of the deck, addressed by `col`/`row` (index == row*GRID_COLS+col).
@@ -583,10 +590,10 @@ public enum D200HLayoutModel {
     private static func buildUsageTiles(_ usage: D200HUsage) -> [(D200HSlotKind, String, String)] {
         var tiles: [(D200HSlotKind, String, String)] = []
         if usage.known, let p = usage.fiveHourPercent {
-            tiles.append((.usageGauge(agent: "claude", window: "5h", percent: p, known: true, stale: false, inactive: false), "5H", "claude"))
+            tiles.append((.usageGauge(agent: "claude", window: "5h", percent: p, known: true, stale: false, inactive: false, footnote: nil), "5H", "claude"))
         }
         if usage.known, let p = usage.sevenDayPercent {
-            tiles.append((.usageGauge(agent: "claude", window: "7d", percent: p, known: true, stale: false, inactive: false), "7D", "claude"))
+            tiles.append((.usageGauge(agent: "claude", window: "7d", percent: p, known: true, stale: false, inactive: false, footnote: nil), "7D", "claude"))
         }
         // Per-model scoped weekly caps (e.g. "Fable") beneath 7D. An inactive cap
         // renders muted (informational cyan), never the critical ramp — mirrors the
@@ -599,19 +606,28 @@ public enum D200HLayoutModel {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .uppercased()
                 let capped = String(label.prefix(6))
-                tiles.append((.usageGauge(agent: "claude", window: "7d", percent: s.percent, known: true, stale: false, inactive: !s.active), capped.isEmpty ? "MODEL" : capped, "claude"))
+                tiles.append((.usageGauge(agent: "claude", window: "7d", percent: s.percent, known: true, stale: false, inactive: !s.active, footnote: nil), capped.isEmpty ? "MODEL" : capped, "claude"))
             }
         }
         // Label each present Codex window by its own length, never by slot: Codex
         // now sometimes reports the weekly (10080-min) window as `primary` with
         // `secondary` null, so a slot-based "7D = secondary" would drop the gauge.
         if let p = usage.codexPrimaryPercent {
-            tiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexPrimaryWindowMinutes), percent: p, known: true, stale: usage.codexPrimaryStale, inactive: false), usageWindowLabel(usage.codexPrimaryWindowMinutes), "codex"))
+            tiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexPrimaryWindowMinutes), percent: p, known: true, stale: usage.codexPrimaryStale, inactive: false, footnote: codexFootnote(stale: usage.codexPrimaryStale, capturedAt: usage.codexCapturedAt)), usageWindowLabel(usage.codexPrimaryWindowMinutes), "codex"))
         }
         if let s = usage.codexSecondaryPercent {
-            tiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexSecondaryWindowMinutes), percent: s, known: true, stale: usage.codexSecondaryStale, inactive: false), usageWindowLabel(usage.codexSecondaryWindowMinutes), "codex"))
+            tiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexSecondaryWindowMinutes), percent: s, known: true, stale: usage.codexSecondaryStale, inactive: false, footnote: codexFootnote(stale: usage.codexSecondaryStale, capturedAt: usage.codexCapturedAt)), usageWindowLabel(usage.codexSecondaryWindowMinutes), "codex"))
         }
         return tiles
+    }
+
+    /// Codex freshness footnote for a usage tile, mirroring `codexUsageFootnote`
+    /// (shared/format-utils.ts): "stale" for an ended window, "3h ago" for a
+    /// still-live window whose passive snapshot has gone cold, nil when live.
+    static func codexFootnote(stale: Bool, capturedAt: String?, now: Date = Date()) -> String? {
+        if stale { return "stale" }
+        guard CodexUsageFreshness.isSnapshotAged(capturedAt, now: now) else { return nil }
+        return CodexUsageFreshness.formatSnapshotAge(capturedAt, now: now) ?? "stale"
     }
 
     /// Compact window label from a length in minutes, mirroring the TS

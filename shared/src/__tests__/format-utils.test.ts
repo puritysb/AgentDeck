@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { adjustUsagePercent, formatAntigravityPlanShort, formatDurationSec, formatResetTime, isCodexWindowStale } from '../format-utils.js';
+import {
+  adjustUsagePercent,
+  formatAntigravityPlanShort,
+  formatDurationSec,
+  formatResetTime,
+  isCodexWindowStale,
+  CODEX_SNAPSHOT_STALE_MS,
+  codexSnapshotAgeMs,
+  codexUsageFootnote,
+  formatSnapshotAge,
+  isCodexSnapshotAged,
+} from '../format-utils.js';
 
 describe('formatDurationSec', () => {
   it('formats sub-minute spans as seconds', () => {
@@ -135,6 +146,97 @@ describe('isCodexWindowStale', () => {
     const past = new Date(Date.now() - 2 * 60_000).toISOString();
     expect(isCodexWindowStale(past, 60_000)).toBe(true);
     expect(isCodexWindowStale(past, 5 * 60_000)).toBe(false);
+  });
+});
+
+/**
+ * The freshness half of the Codex model. `isCodexWindowStale` answers "has this
+ * WINDOW ended"; these answer "how old is this READING" — the question that went
+ * unasked while a 4h-old 94% rendered as live behind a weekly window whose reset
+ * was still six days out.
+ */
+describe('codex snapshot freshness', () => {
+  const NOW = Date.parse('2026-08-05T07:27:00.000Z');
+  const ago = (ms: number) => new Date(NOW - ms).toISOString();
+
+  describe('codexSnapshotAgeMs', () => {
+    it('returns undefined for missing / unparseable stamps', () => {
+      expect(codexSnapshotAgeMs(undefined, NOW)).toBeUndefined();
+      expect(codexSnapshotAgeMs('not-a-date', NOW)).toBeUndefined();
+    });
+
+    it('measures age against the supplied clock', () => {
+      expect(codexSnapshotAgeMs(ago(90 * 60_000), NOW)).toBe(90 * 60_000);
+    });
+
+    it('clamps a future stamp to zero rather than going negative', () => {
+      expect(codexSnapshotAgeMs(new Date(NOW + 60_000).toISOString(), NOW)).toBe(0);
+    });
+  });
+
+  describe('isCodexSnapshotAged', () => {
+    it('is false when there is nothing to judge', () => {
+      expect(isCodexSnapshotAged(undefined, NOW)).toBe(false);
+      expect(isCodexSnapshotAged('not-a-date', NOW)).toBe(false);
+    });
+
+    it('is false for a snapshot inside the threshold', () => {
+      expect(isCodexSnapshotAged(ago(CODEX_SNAPSHOT_STALE_MS - 1), NOW)).toBe(false);
+    });
+
+    it('is false exactly at the threshold, true past it', () => {
+      expect(isCodexSnapshotAged(ago(CODEX_SNAPSHOT_STALE_MS), NOW)).toBe(false);
+      expect(isCodexSnapshotAged(ago(CODEX_SNAPSHOT_STALE_MS + 1), NOW)).toBe(true);
+    });
+
+    it('honors a custom max age', () => {
+      expect(isCodexSnapshotAged(ago(10 * 60_000), NOW, 5 * 60_000)).toBe(true);
+      expect(isCodexSnapshotAged(ago(10 * 60_000), NOW, 20 * 60_000)).toBe(false);
+    });
+  });
+
+  describe('formatSnapshotAge', () => {
+    it('rounds DOWN so the label never overstates freshness', () => {
+      expect(formatSnapshotAge(ago(59_000), NOW)).toBe('now');
+      expect(formatSnapshotAge(ago(34 * 60_000 + 59_000), NOW)).toBe('34m ago');
+      expect(formatSnapshotAge(ago(3 * 3600_000 + 59 * 60_000), NOW)).toBe('3h ago');
+      expect(formatSnapshotAge(ago(47 * 3600_000), NOW)).toBe('1d ago');
+    });
+
+    it('returns undefined when there is nothing to say', () => {
+      expect(formatSnapshotAge(undefined, NOW)).toBeUndefined();
+    });
+  });
+
+  describe('codexUsageFootnote', () => {
+    const live = { resetsAt: '2026-08-11T14:46:25.000Z' };
+
+    it('says nothing for a live window with a fresh snapshot', () => {
+      expect(codexUsageFootnote(live, ago(2 * 60_000), NOW)).toBeUndefined();
+    });
+
+    it('THE REGRESSION: a 4h-old snapshot behind a 6-day-out weekly reset is aged', () => {
+      // Exactly the shipped bug: `stale` is false (the window has not ended), so
+      // nothing dimmed the gauge and a frozen 94% read as current.
+      expect(isCodexWindowStale(live.resetsAt)).toBe(false);
+      expect(codexUsageFootnote(live, ago(3 * 3600_000 + 48 * 60_000), NOW))
+        .toEqual({ text: '3h ago', dim: true });
+    });
+
+    it('an ended window outranks age — "stale", not an age', () => {
+      expect(codexUsageFootnote({ stale: true }, ago(5 * 3600_000), NOW))
+        .toEqual({ text: 'stale', dim: true });
+    });
+
+    it('says nothing when there is no window at all', () => {
+      expect(codexUsageFootnote(undefined, ago(5 * 3600_000), NOW)).toBeUndefined();
+    });
+
+    it('says nothing for a live window with no capture stamp (legacy producer)', () => {
+      // Absence of evidence is not evidence of staleness: an older daemon that
+      // sends no `capturedAt` must not have every Codex gauge permanently dimmed.
+      expect(codexUsageFootnote(live, undefined, NOW)).toBeUndefined();
+    });
   });
 });
 

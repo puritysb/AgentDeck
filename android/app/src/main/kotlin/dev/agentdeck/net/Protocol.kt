@@ -205,7 +205,11 @@ data class CodexRateLimitWindow(
     /** ISO-8601 reset instant. */
     val resetsAt: String? = null,
     /** True when this window's snapshot has expired (set centrally by the daemon).
-     *  Renderers dim the gauge and show a "stale" marker instead of "now". */
+     *  Renderers dim the gauge and show a "stale" marker instead of "now".
+     *
+     *  The HARD signal — some consumers drop the gauge entirely on it. A merely
+     *  OLD snapshot of a still-live window must never set it; that rides
+     *  [CodexRateLimits.capturedAt]. */
     val stale: Boolean? = null,
 )
 
@@ -232,6 +236,15 @@ data class CodexRateLimits(
     val limitId: String? = null,
     /** Credit balance for credit-based plans (present when windows are null). */
     val credits: CodexCredits? = null,
+    /** ISO-8601 instant this snapshot was WRITTEN by Codex (the rate-limit line's
+     *  own timestamp, else the rollout file's mtime).
+     *
+     *  The only field that separates "94% right now" from "94% four hours ago":
+     *  Codex usage is read passively from rollout files, so the numbers freeze
+     *  when Codex stops being used, and [CodexRateLimitWindow.stale] cannot expose
+     *  that — it fires only once the window has ENDED, which for the weekly window
+     *  is up to 7 days out. */
+    val capturedAt: String? = null,
 )
 
 @Serializable

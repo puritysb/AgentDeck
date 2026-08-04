@@ -175,6 +175,94 @@ export function isCodexWindowStale(resetsAt: string | undefined, graceMs = 5 * 6
 }
 
 /**
+ * How old a Codex snapshot may get before its numbers stop reading as live.
+ *
+ * Codex writes a `rate_limits` line on every turn, so during real use snapshots
+ * are seconds apart; anything older than this means "nobody asked Codex in a
+ * while", not "usage is holding steady". An ABSOLUTE threshold on purpose — a
+ * fraction of the window length would scale to 8h+ on the weekly window and be
+ * useless, which is exactly the hole this closes.
+ */
+export const CODEX_SNAPSHOT_STALE_MS = 30 * 60_000;
+
+/**
+ * Age of a Codex snapshot in ms, or undefined when unknown/unparseable.
+ * `capturedAt` is when the snapshot was WRITTEN (see `CodexRateLimits.capturedAt`),
+ * which is the only thing that can distinguish "94% right now" from "94% four
+ * hours ago" — the window's `resetsAt` cannot, since a weekly window stays in the
+ * future for up to 7 days.
+ */
+export function codexSnapshotAgeMs(capturedAt: string | undefined, nowMs = Date.now()): number | undefined {
+  if (!capturedAt) return undefined;
+  const t = new Date(capturedAt).getTime();
+  if (isNaN(t)) return undefined;
+  return Math.max(0, nowMs - t);
+}
+
+/**
+ * True when the snapshot is too old to present as live.
+ *
+ * This is deliberately NOT the same signal as `isCodexWindowStale` and must NOT
+ * be folded into the wire `stale` flag: `stale` means "this window has ENDED, the
+ * number no longer applies" and slot-based consumers (Pixoo renderers, ESP32
+ * firmware) HIDE the gauge on it. An aged snapshot still carries the last true
+ * reading of a live window, so it keeps rendering — dimmed, with its age shown.
+ *
+ * Derived at the consumer from `capturedAt`, never precomputed by the producer:
+ * a producer-side boolean would freeze at push time and read "fresh" an hour later,
+ * the same way the frozen percent did.
+ */
+export function isCodexSnapshotAged(
+  capturedAt: string | undefined,
+  nowMs = Date.now(),
+  maxAgeMs = CODEX_SNAPSHOT_STALE_MS,
+): boolean {
+  const age = codexSnapshotAgeMs(capturedAt, nowMs);
+  return age != null && age > maxAgeMs;
+}
+
+/**
+ * Compact "when was this measured" label for a gauge footnote: `"34m ago"`,
+ * `"3h ago"`, `"2d ago"`. Returns undefined when there is nothing to say.
+ * Rounds DOWN so the label never overstates freshness.
+ */
+export function formatSnapshotAge(capturedAt: string | undefined, nowMs = Date.now()): string | undefined {
+  const age = codexSnapshotAgeMs(capturedAt, nowMs);
+  if (age == null) return undefined;
+  const min = Math.floor(age / 60_000);
+  if (min < 1) return 'now';
+  if (min < 60) return `${min}m ago`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
+ * The one footnote a Codex gauge should print under its percentage, and whether
+ * the gauge should be dimmed. Single decision point so every surface (D200H tile,
+ * SD encoder, menubar, Android rail, Swift preview) resolves the three states the
+ * same way:
+ *
+ *   - window ended (`stale`)          → "stale",  dim — the number no longer applies
+ *   - snapshot aged (> 30m old)       → "3h ago", dim — last true reading, not live
+ *   - live                            → undefined      — caller prints its countdown
+ *
+ * `stale` wins over age: an ended window is a stronger statement than an old read.
+ */
+export function codexUsageFootnote(
+  win: { resetsAt?: string; stale?: boolean } | undefined,
+  capturedAt?: string,
+  nowMs = Date.now(),
+): { text: string; dim: true } | undefined {
+  if (!win) return undefined;
+  if (win.stale === true) return { text: 'stale', dim: true };
+  if (isCodexSnapshotAged(capturedAt, nowMs)) {
+    return { text: formatSnapshotAge(capturedAt, nowMs) ?? 'stale', dim: true };
+  }
+  return undefined;
+}
+
+/**
  * Antigravity plan name → compact "AGY <tier>" chip.
  *
  *   "Google AI Pro"   → "AGY Pro"

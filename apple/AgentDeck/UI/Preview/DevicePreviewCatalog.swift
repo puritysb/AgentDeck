@@ -190,6 +190,9 @@ struct LivePreviewData {
     var codexSecondaryPercent: Double?
     var codexSecondaryWindowMinutes: Int?
     var codexSecondaryStale: Bool
+    /// When the Codex snapshot was written (`CodexRateLimits.capturedAt`) — the
+    /// device mirrors dim an aged reading instead of rendering it as live.
+    var codexCapturedAt: String?
 
     /// Extract the live snapshot from the daemon state. Usage windows are
     /// hide-if-absent, mirroring the real device renderers.
@@ -209,7 +212,8 @@ struct LivePreviewData {
             codexPrimaryStale: state.codexRateLimits?.primary?.stale ?? false,
             codexSecondaryPercent: state.codexRateLimits?.secondary?.usedPercent,
             codexSecondaryWindowMinutes: state.codexRateLimits?.secondary?.windowMinutes,
-            codexSecondaryStale: state.codexRateLimits?.secondary?.stale ?? false
+            codexSecondaryStale: state.codexRateLimits?.secondary?.stale ?? false,
+            codexCapturedAt: state.codexRateLimits?.capturedAt
         )
     }
 }

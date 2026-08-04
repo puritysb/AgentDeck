@@ -78,7 +78,7 @@ fun EinkEngineColumn(
         // stale windows (marked "*") so an idle Codex 7d row doesn't vanish; the
         // brand mark identifies the provider (labels stay 5h/7d).
         codexLimitRows(usage.codexRateLimits).forEach { row ->
-            EinkTextGauge(label = row.label, percent = row.percent, barLength = 10, agentType = row.agentType, stale = row.stale)
+            EinkTextGauge(label = row.label, percent = row.percent, barLength = 10, agentType = row.agentType, stale = row.stale || row.footnote != null)
         }
 
         // Message count

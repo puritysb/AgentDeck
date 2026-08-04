@@ -422,8 +422,16 @@ data class ApmeRecommendation (
  */
 data class CodexRateLimits (
     /**
-     * ISO-8601 mtime of the rollout file this snapshot was read from. A secondary freshness
-     * anchor — the per-window `stale` flag is the authoritative signal.
+     * ISO-8601 instant this snapshot was WRITTEN by Codex (the rate-limit line's own timestamp,
+     * falling back to the rollout file's mtime).
+     *
+     * Required to tell "94% now" from "94% four hours ago": Codex usage is read passively from
+     * rollout files, so the numbers freeze the moment Codex stops being used, and the window's
+     * `resetsAt` cannot expose that — a weekly window stays in the future for up to 7 days.
+     * Consumers derive freshness from this against their own clock (`isCodexSnapshotAged` /
+     * `codexUsageFootnote` in shared/format-utils) and dim the gauge; they must NOT be given a
+     * producer- computed boolean, which would itself freeze between pushes. Distinct from the
+     * per-window `stale` flag, which means the window has ENDED.
      */
     val capturedAt: String? = null,
 
@@ -488,6 +496,10 @@ data class CodexRateLimitWindow (
      * last-known-only — renderers should dim the gauge and show a "stale" marker instead of a
      * misleading "now" countdown. Set centrally in `buildUsageEvent`; `resetsAt` is cleared at
      * the same time so no formatter prints "now".
+     *
+     * This is the HARD signal — slot-based consumers (Pixoo renderers, ESP32 firmware) drop the
+     * gauge entirely on it. A merely OLD snapshot of a still- live window must therefore never
+     * set it; that rides `capturedAt` instead.
      */
     val stale: Boolean? = null,
 

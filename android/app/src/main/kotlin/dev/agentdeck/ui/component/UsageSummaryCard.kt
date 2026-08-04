@@ -109,8 +109,8 @@ fun UsageSummaryCard(
                         CompactGauge(
                             label = row.label,
                             percent = row.percent,
-                            resetAt = if (row.stale) null else row.resetIso,
-                            suffix = if (row.stale) "stale" else null,
+                            resetAt = if (row.stale || row.footnote != null) null else row.resetIso,
+                            suffix = row.footnote ?: if (row.stale) "stale" else null,
                             agentType = row.agentType,
                             modifier = Modifier.weight(1f),
                         )

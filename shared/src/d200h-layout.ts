@@ -28,7 +28,7 @@ import type { SessionInfo, SubscriptionInfo, CodexRateLimits, ScopedUsageLimit }
 import { Brand, UI } from './design-tokens.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from './connection-status.js';
 import { CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from './svg-renderers/agent-logos.js';
-import { formatScopedLabel } from './format-utils.js';
+import { formatScopedLabel, codexUsageFootnote } from './format-utils.js';
 
 /** Command dispatched when a key is pressed. `null` = inert tile (info/empty). */
 export type ButtonCommand = { type: string; [k: string]: unknown };
@@ -305,6 +305,10 @@ export interface UsageTankData {
   /** Codex snapshot expired: keep last-known % but desaturate the fill and show
    *  a "stale" marker instead of a (misleading) "now" countdown. */
   stale?: boolean;
+  /** Replaces the countdown and dims the tile. Carries the Codex freshness note
+   *  ("stale" for an ended window, "3h ago" for an aged-but-live snapshot) from
+   *  `codexUsageFootnote`, so an old reading can't pass for a live one. */
+  footnote?: string;
   /** Non-binding per-model scoped cap: fill drops to the informational cyan,
    *  never the critical ramp, regardless of percent (issue #99). */
   inactive?: boolean;
@@ -331,13 +335,17 @@ export function renderUsageGauge(data: UsageTankData): string {
   }
 
   const stale = data.stale === true;
+  // An aged snapshot is dimmed exactly like an expired one — the number is not
+  // current either way — but it keeps its own footnote ("3h ago") rather than
+  // claiming the window ended, and it is never dropped by the caller.
+  const dim = stale || (data.footnote != null && data.footnote !== '');
   const used = Math.max(0, Math.min(100, data.usedPercent));
-  const ramp = usageRampColor(used, stale, data.inactive === true);
+  const ramp = usageRampColor(used, dim, data.inactive === true);
   const fillH = Math.round((H * used) / 100);
   const fillY = H - fillH;
   // Subtle level tint (low opacity) + crisp 3px level line — no dark overlay.
   // Stale = extra-faint tint so it reads as "not current".
-  const fillOpacity = stale ? 0.22 : 0.38;
+  const fillOpacity = dim ? 0.22 : 0.38;
   const fill = fillH > 0
     ? `<g clip-path="url(#${clipId})">`
         + `<rect x="0" y="${fillY}" width="${W}" height="${fillH}" fill="${ramp.fill}" opacity="${fillOpacity}"/>`
@@ -346,13 +354,13 @@ export function renderUsageGauge(data: UsageTankData): string {
     : '';
   // Expired window: muted "stale" marker instead of the (absent) countdown; the
   // % stays last-known but dims so it doesn't read as live.
-  const reset = stale ? 'stale' : formatResetCountdown(data.resetsAt);
-  const pctColor = stale ? LABEL_DIM : HEADLINE;
-  const resetColor = stale ? LABEL_DIM : COUNTDOWN;
+  const reset = data.footnote || (stale ? 'stale' : formatResetCountdown(data.resetsAt));
+  const pctColor = dim ? LABEL_DIM : HEADLINE;
+  const resetColor = dim ? LABEL_DIM : COUNTDOWN;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
     + clip + bg + fill
-    + `<text x="14" y="36" font-family="JetBrains Mono, monospace" font-size="26" font-weight="bold" fill="${stale ? LABEL_DIM : HEADLINE}">${escXml(label)}</text>`
+    + `<text x="14" y="36" font-family="JetBrains Mono, monospace" font-size="26" font-weight="bold" fill="${dim ? LABEL_DIM : HEADLINE}">${escXml(label)}</text>`
     + logo
     + `<text x="72" y="92" text-anchor="middle" font-family="Arial,sans-serif" font-size="46" font-weight="bold" fill="${pctColor}">${Math.round(used)}<tspan font-size="24">%</tspan></text>`
     + (reset ? `<text x="72" y="122" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" font-weight="bold" fill="${resetColor}">${escXml(reset)}</text>` : '')
@@ -426,7 +434,7 @@ function buildUsageTiles(state: DashState): SessionDeckCell[] {
   // = secondary" would drop the gauge entirely.
   for (const w of [cx?.primary, cx?.secondary]) {
     if (!w) continue;
-    tiles.push({ svg: renderUsageGauge({ agent: 'codex', window: usageWindowKind(w.windowMinutes), label: usageWindowLabel(w.windowMinutes) || '5H', usedPercent: w.usedPercent, resetsAt: w.resetsAt, known: true, stale: w.stale === true }), action });
+    tiles.push({ svg: renderUsageGauge({ agent: 'codex', window: usageWindowKind(w.windowMinutes), label: usageWindowLabel(w.windowMinutes) || '5H', usedPercent: w.usedPercent, resetsAt: w.resetsAt, known: true, stale: w.stale === true, footnote: codexUsageFootnote(w, cx?.capturedAt)?.text }), action });
   }
   // Credit-based Codex plan: no windows, show the credits balance instead so the
   // Codex usage doesn't silently vanish.

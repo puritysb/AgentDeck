@@ -2,6 +2,162 @@
 
 ---
 
+## 2026-08-05 — 얼어붙은 Codex 사용량이 라이브로 읽힌 이유: 창 종료와 스냅샷 나이는 다른 축이다
+
+### 문제
+
+"Codex 잔여가 실제로는 0%인데 대시보드는 94% 사용으로 뜬다."
+
+표시값 자체는 소스에 충실했다. 마지막 `rate_limits` 스냅샷이 **08-05 03:38:42에 94%로 얼어붙어**
+있었고(그 뒤 이 머신에서 Codex 턴이 없었다 — 롤아웃·`state_5.sqlite` threads·`logs_2.sqlite`
+전부 확인), 07:27까지 3시간 50분 동안 그 값이 **라이브와 픽셀 단위로 똑같이** 렌더됐다.
+94%→100%는 이 머신 밖(웹/클라우드/모바일/타 머신)에서 일어났고 롤아웃 파일에는 원리적으로
+남지 않는다.
+
+진짜 결함은 **그게 4시간 전 값이라고 말할 수단이 있었는데 아무도 안 썼다**는 것:
+
+- `isCodexWindowStale`은 `resetsAt`만 본다 — 스냅샷을 *언제 떴는지*는 안 본다. 지금 창은
+  주간(10080분) 하나뿐이고 `resetsAt`은 6일 뒤라, **나이와 무관하게 영원히 "live"**.
+- 5h 창이 07-12에 영구 소멸하면서([[codex-rate-limit-window-slot-flip]]) **사실상의 age gate가
+  같이 죽었다.** 예전엔 5시간만 안 쓰면 5h 창의 `resetsAt`이 과거로 넘어가 stale이 찍혔다.
+  주간 창만 남은 지금 이 판정은 최대 7일치 과거 값을 라이브로 그린다.
+- `CodexRateLimits.capturedAt`은 프로토콜에도, Swift/Kotlin 생성 타입에도 있었지만
+  **소비자가 0개**였다. 만들어만 놓고 아무도 안 읽었다.
+
+### 해결
+
+**freshness를 2축으로 분리했다. 하나로 합치면 안 된다.**
+
+| 축 | 의미 | 판정 주체 |
+|---|---|---|
+| `window.stale` | 창이 **끝났다** | 생산자(데몬)가 `resetsAt`로 판정, `resetsAt` 제거 |
+| `capturedAt` | 이 값을 **언제 쟀나** | 소비자가 자기 시계로 파생 (30분 절대 임계) |
+
+합치면 안 되는 이유가 결정적이다: `stale`은 **하드 신호**다. `pixoo-renderer.ts`의
+`freshCodexWindow`, Swift `PixooRenderer`, 그리고 **재플래시 불가능한 ESP32 펌웨어
+`protocol.cpp`가 `stale`이면 게이지를 통째로 숨긴다**. 여기에 "그냥 오래됨"을 얹었으면
+Codex 30분 유휴마다 Pixoo/ESP32에서 게이지가 사라졌을 것이다 — 옛 값을 dim해서 보여주는
+것보다 명백히 나쁘다.
+
+SSOT `shared/src/format-utils.ts`: `CODEX_SNAPSHOT_STALE_MS`(30분) ·
+`codexSnapshotAgeMs` · `isCodexSnapshotAged` · `formatSnapshotAge` · `codexUsageFootnote`.
+세 상태를 한 곳에서 결정한다 — **창 종료 → "stale" / 나이듦 → "4h ago" / 라이브 → 카운트다운**.
+어느 경우에도 percent는 지우지 않는다.
+
+미러: Swift `CodexUsageFreshness`(Model/Protocol.swift) · Kotlin `TimeFormatUtils` ·
+`D200HLayoutModel.codexFootnote`(Device Preview). 렌더 표면은 D200H 타일 · SD 키패드 ·
+SD+ E3 인코더 · macOS 메뉴바/Dashboard rail · Android 5개 표면.
+
+**생산자 쪽 두 가지도 같이 고쳤다:**
+
+- `capturedAt`을 파일 mtime이 아니라 **스냅샷 라인 자체의 `timestamp`**에서 딴다. 롤아웃은
+  `rate_limits` 없는 라인(reasoning, tool output)으로 계속 자라기 때문에 mtime은 앞으로
+  밀리는데 최신 사용량 리딩은 그대로다 — 정확히 이 앵커가 드러내야 할 나이를 과소보고한다.
+- **Swift 데몬은 `capturedAt`을 아예 안 실었다.** `UsageAPIClient`에서 스탬프 +
+  `DaemonServer.codexRateLimitsPayload`에서 emit.
+
+### 핵심 설계 결정
+
+- **나이는 생산자가 boolean으로 계산해 실으면 안 된다.** push 시점에 굳은 플래그는 한 시간 뒤에도
+  "fresh"라고 말한다 — 정확히 percent가 걸린 병에 똑같이 걸린다. 카운트다운을 `resetsAt`에서
+  파생하듯, 나이도 `capturedAt`에서 소비자가 파생한다.
+- **임계는 절대값(30분)이다.** 창 길이 비례로 두면 주간 창에서 8시간+로 늘어나 영원히 발화하지
+  않는다 — 이번에 막으려는 구멍 그 자체다.
+- **`capturedAt` 부재는 "오래됨"이 아니라 "모름"이다.** 구버전 데몬이 이 필드를 안 보내는데
+  dim해버리면 모든 Codex 게이지가 영구히 흐려진다. 각 언어에서 테스트로 고정했다.
+- **E3에서 footnote는 `showReset`을 무시한다.** 단일 창 레이아웃은 사이드 카드가 절대 리셋 시각을
+  들고 있어서 게이지의 카운트다운을 끄는데, "언제 잰 값인가"는 카운트다운의 재진술이 아니다.
+  같이 꺼버린 게 식은 숫자를 라이브로 보이게 한 원인 중 하나다.
+
+### 덤으로 드러난 것
+
+**Swift 데몬의 rollout 선택이 Node와 달랐다.** `newestCodexRolloutFile`이 최신 day-dir 하나만
+내려가고 fall-through가 없어서, 같은 트리에서 **Swift는 89%, Node는 94%**를 읽고 있었다
+(08-05 실측). `candidateRolloutFiles`(3일/6파일, mtime 전역 정렬) + `parseFirstUsable`을
+포팅해 정합시켰다 — [[codex-rate-limits-crossday-rollout-and-hoist-split]]가 "언젠가 같은 증상이
+보이면 포팅하라"고 남겨둔 그 부채다.
+
+**구독 갱신일은 이미 정상이었다.** 마침 08-05가 실제 갱신일이라 경계를 실측했다:
+`auth.json` 스냅샷은 `06-06 → 07-06`(과거)인데 `resolveChatGptRenewalDate`가 굴려 08-05를
+내놓고, `until`/`until+1s`에서 09-05로 넘어간다. Node는 캐시 없음, Swift는 5s TTL이라 경계에서
+재계산된다. 손댈 것 없음.
+
+**D200H에는 Codex 타일이 아예 없었다.** usage 스트립이 3키인데 scoped cap(FABLE)이 살아 있어
+Codex를 밀어낸 상태 — `buildUsageTiles` 주석에 명시된 기존 트레이드다. 이번 변경과 무관하지만,
+"Codex가 안 보인다"는 상태 자체는 따로 다룰 값어치가 있다.
+
+### 검증
+
+- vitest 2522 / Apple 518 / Android green. 각 층에 THE REGRESSION 케이스(주간 reset 6일 뒤 +
+  4시간 된 94%)를 넣었고, **`CODEX_SNAPSHOT_STALE_MS`를 1000배로 망가뜨려 D200H 테스트가 실제로
+  빨간불이 되는지 확인**한 뒤 복구했다(진리표만 미러하는 테스트는 게이트가 아니다).
+- 게이트: `check-preview-mirror-sync`(d200h-layout.ts 핀 재갱신) · `docs:check` ·
+  `verify-version` · `verify-tokens-sync` · protocol drift 통과.
+- 실기: Node 데몬 재기동 후 SD+ E3와 D200H에서 사용자 육안 확인. macOS 앱은 Node 데몬을 내리고
+  **fresh launch**해 in-process Swift 데몬이 스스로 읽은 값으로 검증 — 와이어
+  `capturedAt=2026-08-04T18:38:42.076Z`, rail에 `7d ▓▓ 94% 4h ago`(dim). Swift가 89%가 아니라
+  94%를 읽은 것이 cross-day 선택 포팅이 런타임에서 도는 증거다.
+
+### 남은 한계
+
+표시값은 **하한(floor)**이다. 다른 표면·다른 머신의 소비는 로컬 롤아웃에 없으므로 못 본다.
+이번 작업이 한 건 "이 숫자는 4시간 전 것"이라고 말하게 만든 것까지다.
+
+---
+
+## 2026-08-05 — 입력 가능한 두 보드의 카탈로그 누락과, 태그로 판정한 릴리스 상태의 오차 (#116)
+
+### 문제
+
+두 가지가 같은 감사에서 드러났다.
+
+**① Shipping 표면인데 사진 카드가 없었다.** T-Embed CC1101(Companion Knob)과
+T-Display-S3-Pro(Focus Strip)는 2026-07-25/26부터 Shipping이고 surface matrix에
+집계되는데, Devices 카탈로그에서 **사진 카드가 없는 유일한 counted surface 둘**이었다.
+나머지 21개 표면은 전부 있었다. `sync-hardware-spec-cards.mjs`는 사양 표에서
+**텍스트 스펙 카드**를 생성·검증하므로 게이트는 계속 green이었고, "집계되는 표면에
+사진 카드가 있는가"는 **아무 게이트도 보지 않는다**. ko/ja 번역본은 한술 더 떠
+"집계 표면 수 26"이라 써놓고 표에는 24행만 나열하고 있었다 — 두 보드 행 자체가 없었다.
+
+**② 릴리스 상태가 문서마다 한 단계씩 뒤처져 있었다.** 태그·소스 선언값만 보면
+정합해 보이지만 외부 실체와 대조하니 세 트랙이 어긋났다: ESP32는 08-01에 1.0.2가
+나갔는데 README는 1.0.1, Stream Deck 1.0.3은 07-31에 Marketplace에 published인데
+"준비됨", iPhone/iPad는 08-04에 2.1(a)로 리젝됐는데 7곳이 "심사 대기"였다.
+
+### 해결
+
+- 사진 3장을 `assets/hardware-photos/`에 아카이브(EXIF 회전 baked-in, q78)하고
+  `t-embed.jpg` / `t-display-pro.jpg` 크롭 + 카드 2개를 en/ko/ja로 추가.
+- ko/ja 표면 표에 두 보드 행을 채워 세 파일 모두 27행(집계 26 + SSE 프로토콜 행)으로
+  정합. `revision`/`source_revision` 동시 범프.
+- `devices.md`에 두 보드의 matrix 행과 서술 섹션 추가, `esp32.md`에 카메라 유닛 행과
+  2대 운용 OTA 함정, `CLAUDE.md`의 "22 surfaces"·"Evaluation boards" 정정.
+- README/RELEASING/roadmap/appstore-feature-matrix/LISTING의 릴리스 상태를 스토어
+  실측값으로 교체.
+
+### 핵심 설계 결정
+
+- **코드에만 있던 사실을 사양서로 끌어올렸다.** `t_display_pro`는 display bring-up
+  전에 `Camera::init()`을 돌려 카메라가 응답하면 **세로 Pocket UI**, 아니면
+  **가로 Ticker UI**로 뜬다(`esp32/src/main.cpp`). 두 유닛 모두 `t_display_pro`를
+  보고하고 같은 OTA 이미지를 쓰므로 **board 문자열은 화면 배치를 말해주지 않는다**.
+  기존의 "USB 포트 이름으로 보드를 추정하지 말 것"과 같은 계열의 함정이라 그 옆에
+  붙였고 ko/ja에도 미러링했다.
+- **리젝은 Apple 태그를 이동시킨다.** 리젝된 버전은 `MARKETING_VERSION`을 유지하므로
+  대체 빌드도 같은 Apple 버전으로 나가고, 규칙 7(태그=타깃 버전 정확 일치) 때문에
+  `apple-v<VERSION>`를 수정 커밋으로 옮기는 것이 정상 경로다. 대가는 **태그가 더 이상
+  출시분 커밋을 가리키지 않는다**는 것 — 실제로 라이브 macOS 1.0.2(3901)를 만든
+  07-22 커밋은 이제 이전 워크플로 run에서만 복원된다. RELEASING.md에 명문화했다.
+- **사진 카드는 프레임이 맞는 캡처만 쓴다.** S3-Pro 카메라 유닛은 세로 Pocket UI로
+  뜨고 핸드헬드로 찍혀서, 1.75:1 카드 프레임에 넣으면 탭 바가 잘리거나 절반이 손이
+  된다. 카드는 무카메라 유닛(가로)으로 가고 카메라 캡처는 아카이브에만 남겼다 —
+  그 판단 근거를 아카이브 README에 적어 다음 세션이 재발견하지 않게 했다.
+
+### 남은 갭
+
+"counted surface에 사진 카드가 있는가"를 보는 게이트는 여전히 없다. 표면 행을
+추가하면서 카드를 빠뜨려도 CI는 green이다. spec-card 싱크와 같은 자리에 붙일 만한
+검사다.
 ## 2026-08-05 — 브랜드 독립 iDotMatrix 발견, 그리고 green CI가 감춘 배포 결손 (#117, #118)
 
 ### 문제

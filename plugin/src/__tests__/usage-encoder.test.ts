@@ -152,6 +152,44 @@ describe('buildCodexUsageEncoder — single live window', () => {
   });
 });
 
+/**
+ * E3 is the surface where the frozen-snapshot bug was visible: a weekly window
+ * six days from resetting, its 94% four hours cold, rendered exactly like a live
+ * reading. The encoder must date the number without dropping it.
+ */
+describe('buildCodexUsageEncoder — snapshot freshness', () => {
+  const WEEKLY = { usedPercent: 94, windowMinutes: 10080, resetsAt: '2099-01-08T00:00:00Z' };
+  const encoder = (capturedAt?: string) =>
+    buildCodexUsageEncoder(
+      { codexRateLimits: { secondary: WEEKLY, planType: 'plus', capturedAt } },
+      true,
+    );
+
+  it('says nothing extra for a fresh snapshot', () => {
+    expect(encoder(new Date(Date.now() - 60_000).toISOString()).sevenDay.footnote).toBeUndefined();
+  });
+
+  it('THE REGRESSION: an aged snapshot is dated, and the percent survives', () => {
+    const enc = encoder(new Date(Date.now() - 4 * 3600_000).toISOString());
+    expect(enc.sevenDay.known).toBe(true);
+    expect(enc.sevenDay.usedPercent).toBe(94);
+    expect(enc.sevenDay.footnote).toBe('4h ago');
+  });
+
+  it('renders the age into the LCD even though the side card owns the reset slot', () => {
+    // `showReset` is false in the single-window layout (the card carries the
+    // absolute reset). Suppressing the footnote with it is what let a cold
+    // number look live — the age is not the countdown restated.
+    const svg = renderUsageEncoderBoth(encoder(new Date(Date.now() - 4 * 3600_000).toISOString()));
+    expect(svg).toContain('4h ago');
+    expect(svg).toContain('94');
+  });
+
+  it('a legacy producer (no capturedAt) is unchanged', () => {
+    expect(encoder(undefined).sevenDay.footnote).toBeUndefined();
+  });
+});
+
 describe('renderUsageEncoderBoth — single live window', () => {
   it('keeps the lone weekly gauge in its canonical right column, side card on the left', () => {
     const enc = buildCodexUsageEncoder(
