@@ -2,6 +2,7 @@ package dev.agentdeck.net
 
 import android.os.Build
 import android.util.Log
+import dev.agentdeck.util.DeviceProfile
 import dev.agentdeck.util.DeviceProfileHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +70,18 @@ class BridgeConnection private constructor() {
     /** Whether we've already switched to [fallbackUrl] this connect cycle. */
     private var triedFallback = false
 
+    private val registrationCoordinator = AndroidDashboardRegistrationCoordinator { payload ->
+        val socket = webSocket
+        _status.value == ConnectionStatus.CONNECTED && socket != null && socket.send(payload)
+    }
+    private val profileListener: (DeviceProfile) -> Unit = { profile ->
+        registrationCoordinator.profileChanged(androidDashboardIdentity(Build.MODEL, profile))
+    }
+
+    init {
+        DeviceProfileHolder.addListener(profileListener)
+    }
+
     private val _status = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val status: StateFlow<ConnectionStatus> = _status.asStateFlow()
 
@@ -101,6 +114,7 @@ class BridgeConnection private constructor() {
         shouldReconnect = false
         webSocket?.close(1000, "New connection")
         webSocket = null
+        registrationCoordinator.socketClosed()
 
         // Only keep a fallback that's actually distinct from the primary.
         this.fallbackUrl = fallbackUrl?.takeIf { it != wsUrl }
@@ -124,6 +138,7 @@ class BridgeConnection private constructor() {
         _lastError.value = null
         webSocket?.close(1000, "User disconnect")
         webSocket = null
+        registrationCoordinator.socketClosed()
         _status.value = ConnectionStatus.DISCONNECTED
         onEvent?.invoke(BridgeEvent.Disconnected)
     }
@@ -177,13 +192,8 @@ class BridgeConnection private constructor() {
                 // anonymous consumer with no visibility anywhere in the UI.
                 // Some models already embed the brand ("Lenovo TB-J606F") —
                 // `DeviceProfile.displayName` is where that de-duplication lives.
-                val name = DeviceProfileHolder.current.displayName
-                webSocket.send(
-                    PluginCommands.clientRegisterAndroidDashboard(
-                        id = Build.MODEL,
-                        name = name,
-                        kind = DeviceProfileHolder.current.wireKind,
-                    )
+                registrationCoordinator.socketOpened(
+                    androidDashboardIdentity(Build.MODEL, DeviceProfileHolder.current)
                 )
             }
 
@@ -208,6 +218,7 @@ class BridgeConnection private constructor() {
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 bridgeDebug { "onClosed — code=$code reason=$reason" }
+                registrationCoordinator.socketClosed()
                 _status.value = ConnectionStatus.DISCONNECTED
                 onEvent?.invoke(BridgeEvent.Disconnected)
                 // Don't reconnect on auth rejection — token required
@@ -235,6 +246,7 @@ class BridgeConnection private constructor() {
                 } else {
                     Log.w(TAG, "onFailure — $msg")
                 }
+                registrationCoordinator.socketClosed()
                 _status.value = ConnectionStatus.DISCONNECTED
                 _lastError.value = msg
                 onEvent?.invoke(BridgeEvent.Disconnected)

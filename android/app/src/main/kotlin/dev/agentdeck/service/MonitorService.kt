@@ -58,9 +58,16 @@ class MonitorService : Service() {
     private var savedScreenOffTimeout: Int? = null
     private lateinit var brightnessController: BrightnessController
     private lateinit var displayPrefs: DisplayPreferences
+    private lateinit var panelPolicy: PanelPolicyTransitionManager
     private var idleTimeoutJob: Job? = null
     private var displaySyncJob: Job? = null
     private var lastBridgeDisplayOn = true
+
+    private val profileListener: (DeviceProfile) -> Unit = { profile ->
+        serviceScope.launch {
+            panelPolicy.install(profile.isEink)
+        }
+    }
 
     private inline fun serviceDebug(message: () -> String) {
         if (VERBOSE_SERVICE_LOGS || Log.isLoggable(TAG, Log.DEBUG)) {
@@ -80,25 +87,22 @@ class MonitorService : Service() {
         // MainActivity normally publishes the profile first; only pay for the
         // blocking preference read when this service is the first one up
         // (BootReceiver start, or the activity was killed).
-        isEink = if (DeviceProfileHolder.hasAuthoritativeProfile) {
-            DeviceProfileHolder.current.isEink
-        } else {
+        if (!DeviceProfileHolder.hasAuthoritativeProfile) {
             val startup = DisplayPreferences(this).readStartupOverridesBlocking()
             DeviceProfile.detect(this, startup.panelOverride)
                 .also { DeviceProfileHolder.install(it) }
-                .isEink
         }
-
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        brightnessController = BrightnessController(this, contentResolver, pm, isEink)
-        displayPrefs = DisplayPreferences(this, isEink)
 
         acquireCpuWakeLock()
-
-        if (isEink) {
-            enableStayOn()
-            handler.postDelayed(keepaliveRunnable, KEEPALIVE_INTERVAL_MS)
-        }
+        panelPolicy = PanelPolicyTransitionManager(
+            restoreCurrent = ::restorePanelPolicy,
+            applyNext = ::applyPanelPolicy,
+            reapplyLatestState = ::reapplyLatestDisplayState,
+        )
+        DeviceProfileHolder.addListener(profileListener)
+        // Subscribe before reading current so a concurrent install is either
+        // observed by the listener or included in this initial read.
+        panelPolicy.install(DeviceProfileHolder.current.isEink)
 
         serviceScope.launch {
             AgentStateHolder.instance.state.collect { state ->
@@ -204,15 +208,45 @@ class MonitorService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        displaySyncJob?.cancel()
-        displaySyncJob = null
-        idleTimeoutJob?.cancel()
-        if (brightnessController.isDimmed()) brightnessController.restore()
-        handler.removeCallbacks(keepaliveRunnable)
-        restoreStayOn()
+        DeviceProfileHolder.removeListener(profileListener)
+        restorePanelPolicy()
         releaseCpuWakeLock()
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    private fun restorePanelPolicy() {
+        displaySyncJob?.cancel()
+        displaySyncJob = null
+        idleTimeoutJob?.cancel()
+        idleTimeoutJob = null
+        if (::brightnessController.isInitialized && brightnessController.isDimmed()) {
+            brightnessController.restore()
+        }
+        handler.removeCallbacks(keepaliveRunnable)
+        restoreStayOn()
+    }
+
+    private fun applyPanelPolicy(nextIsEink: Boolean) {
+        isEink = nextIsEink
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        brightnessController = BrightnessController(this, contentResolver, pm, isEink)
+        displayPrefs = DisplayPreferences(this, isEink)
+        if (isEink) {
+            enableStayOn()
+            handler.postDelayed(keepaliveRunnable, KEEPALIVE_INTERVAL_MS)
+        }
+        Log.i(TAG, "Panel policy applied: ${if (isEink) "e-ink" else "LCD"}")
+    }
+
+    private fun reapplyLatestDisplayState() {
+        val state = AgentStateHolder.instance.state.value
+        handleDisplaySync(
+            state.hostDisplayOn,
+            state.bridgeConnected,
+            state.agentState,
+            state.hostDim,
+        )
     }
 
     // --- CPU wake lock (PARTIAL — keeps CPU from sleeping) ---

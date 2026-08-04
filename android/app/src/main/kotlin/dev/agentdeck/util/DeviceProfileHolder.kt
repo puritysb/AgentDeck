@@ -3,6 +3,7 @@ package dev.agentdeck.util
 import android.content.Context
 import android.util.Log
 import dev.agentdeck.AgentDeckApp
+import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * Process-wide access to the resolved [DeviceProfile].
@@ -27,6 +28,8 @@ object DeviceProfileHolder {
     @Volatile
     private var authoritative = false
 
+    private val listeners = CopyOnWriteArraySet<(DeviceProfile) -> Unit>()
+
     /**
      * Publish the authoritative profile — one resolved *with* the user's panel
      * override applied. Called from `MainActivity.onCreate` and
@@ -34,16 +37,34 @@ object DeviceProfileHolder {
      * value only logs once; a genuine change (the user flipping the override)
      * is logged because it implies an activity recreate.
      */
-    fun install(profile: DeviceProfile) {
+    @Synchronized
+    fun install(profile: DeviceProfile): Boolean {
         val previous = installed
         authoritative = true
-        if (previous == profile) return
+        if (previous == profile) return false
         installed = profile
         if (previous == null) {
             Log.i(TAG, "Device profile: ${profile.describe()}")
         } else {
             Log.i(TAG, "Device profile changed: ${previous.describe()} → ${profile.describe()}")
         }
+        listeners.forEach { listener ->
+            try {
+                listener(profile)
+            } catch (error: Throwable) {
+                Log.w(TAG, "Device profile listener failed: ${error.message}")
+            }
+        }
+        return true
+    }
+
+    /** Subscribe to genuine profile changes. Installing the same value is a no-op. */
+    fun addListener(listener: (DeviceProfile) -> Unit) {
+        listeners.add(listener)
+    }
+
+    fun removeListener(listener: (DeviceProfile) -> Unit) {
+        listeners.remove(listener)
     }
 
     /**
