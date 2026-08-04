@@ -140,6 +140,7 @@ import {
   normalizeClientIp, parsePullTelemetry,
 } from './card-feed.js';
 import { WeatherProvider, parseWeatherSettings } from './weather.js';
+import { CalendarProvider, parseCalendarSettings } from './calendar.js';
 import { renderGlanceFrame, GLANCE_FRAME_BOARDS } from './glance-frame.js';
 import type { UsageEvent } from './types.js';
 import { mergeRelayedSessionUsage } from './usage-event.js';
@@ -246,6 +247,10 @@ const feedPulls = new FeedPullTracker();
  *  settings.json per pull (cheap; honors edits without a restart); the
  *  provider caches the upstream fetch itself. */
 const glanceWeather = new WeatherProvider();
+
+/** Glance schedule (today's ICS events) — same config/caching contract as
+ *  weather: settings.json `calendar: {ics}`, 30 min cache, never throws. */
+const glanceCalendar = new CalendarProvider();
 
 /** Name a pulling client from the WiFi WS roster. A board that has been
  *  deep-sleeping may have aged out of that roster, which is why the tracker
@@ -1406,6 +1411,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           sessions: sessions as unknown as SessionInfo[],
           usage: core.buildUsage() as UsageEvent,
           weather: await glanceWeather.get(parseWeatherSettings(loadDaemonSettings())),
+          events: await glanceCalendar.get(parseCalendarSettings(loadDaemonSettings())),
         });
         const d = new Date();
         const serverHm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -1457,6 +1463,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             sessions: sessions as unknown as SessionInfo[],
             usage: core.buildUsage() as UsageEvent,
             weather: await glanceWeather.get(parseWeatherSettings(loadDaemonSettings())),
+            events: await glanceCalendar.get(parseCalendarSettings(loadDaemonSettings())),
           });
           const feed = buildCardFeed(sessions as unknown as SessionInfo[], Date.now(), undefined, {
             glance,

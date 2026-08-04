@@ -14,6 +14,7 @@ import type {
   FeedCard,
   CardFeedResponse,
   CardFeedGlance,
+  GlanceEvent,
   GlanceUsageRow,
   GlanceWeather,
   OutboxDecision,
@@ -151,6 +152,7 @@ export function buildGlance(input: {
   sessions: SessionInfo[];
   usage?: UsageEvent;
   weather?: GlanceWeather;
+  events?: GlanceEvent[];
 }): CardFeedGlance | undefined {
   const glance: CardFeedGlance = {};
   if (input.weather) glance.weather = input.weather;
@@ -158,6 +160,7 @@ export function buildGlance(input: {
   if (usage.length > 0) glance.usage = usage;
   const wrapup = buildGlanceWrapup(input.sessions);
   if (wrapup.length > 0) glance.wrapup = wrapup;
+  if (input.events && input.events.length > 0) glance.events = input.events;
   return Object.keys(glance).length > 0 ? glance : undefined;
 }
 

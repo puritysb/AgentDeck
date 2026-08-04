@@ -263,6 +263,19 @@ export function renderGlanceFrameSvg(input: GlanceFrameInput): string {
     yL += weatherBlock(c, colX, yL, colW, g.weather) + 18;
   }
 
+  // ── Today's schedule (left column, under weather) ──
+  const events = g.events ?? [];
+  if (events.length > 0) {
+    sectionLabel(c, colX, yL, 'TODAY');
+    yL += 34;
+    for (const e of events) {
+      const time = e.startHm ? (e.endHm ? `${e.startHm}–${e.endHm}` : e.startHm) : 'All day';
+      text(c, colX, yL, 20, fitText(`${time}  ·  ${e.title}`, colW, 20));
+      yL += 32;
+    }
+    yL += 10;
+  }
+
   // ── Quota ──
   let qx = colX, qy = yL, qw = colW;
   if (landscape) { qx = rightX; qy = yR; qw = W - M - rightX; }

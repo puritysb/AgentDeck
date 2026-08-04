@@ -939,6 +939,16 @@ export interface GlanceUsageRow {
   stale: boolean;
 }
 
+/** One of today's remaining calendar events (M9 stage 2). Times are the
+ *  daemon's local "HH:MM" — absolute only, same honesty rule as the rest of
+ *  the glance. `startHm` absent = all-day event. */
+export interface GlanceEvent {
+  startHm?: string;
+  endHm?: string;
+  /** Pre-trimmed to `GLANCE_EVENT_TITLE_MAX_BYTES` UTF-8 bytes. */
+  title: string;
+}
+
 export interface CardFeedGlance {
   weather?: GlanceWeather;
   /** Provider quota rows, at most `GLANCE_MAX_USAGE_ROWS`. */
@@ -947,12 +957,19 @@ export interface CardFeedGlance {
    *  first, at most `GLANCE_MAX_WRAPUP_LINES`, each ≤ `GLANCE_LINE_MAX_BYTES`
    *  UTF-8 bytes. Pre-rendered by the daemon; devices draw them verbatim. */
   wrapup?: string[];
+  /** Today's remaining schedule, all-day first then by start time, at most
+   *  `GLANCE_MAX_EVENTS`. Config: settings.json `calendar: {ics}`
+   *  (bridge/src/calendar.ts); no config → absent. */
+  events?: GlanceEvent[];
 }
 
 export const GLANCE_MAX_WRAPUP_LINES = 4;
 export const GLANCE_MAX_USAGE_ROWS = 3;
+export const GLANCE_MAX_EVENTS = 3;
 /** Per-line UTF-8 byte budget (fits a 528px 1-bit panel row in KR16). */
 export const GLANCE_LINE_MAX_BYTES = 64;
+/** Event-title UTF-8 byte budget (leaves room for "HH:MM–HH:MM " on a row). */
+export const GLANCE_EVENT_TITLE_MAX_BYTES = 48;
 /** Hourly rain probability at or above this counts as a rain window. */
 export const GLANCE_RAIN_PROBABILITY_MIN = 40;
 
