@@ -2,6 +2,76 @@
 
 ---
 
+## 2026-08-05 — 브랜드 독립 iDotMatrix 발견, 그리고 green CI가 감춘 배포 결손 (#117, #118)
+
+### 문제
+
+**① 동작하는 패널이 스캔에 안 잡혔다 (#115).** 제보자의 iPixel 패널은
+`settings.json`에 BLE 주소를 손으로 넣으면 연결·렌더까지 정상인데 Scan UI에는
+끝내 안 떴다. 양쪽 스캐너가 `IDM-` **벤더 이름 접두어**로 거르고 있었고, 같은
+32×32 하드웨어가 여러 브랜드명으로 팔린다는 사실이 필터에 반영돼 있지 않았다.
+
+**② 워크플로는 green인데 배포물이 불완전했다.** Live Preview의 IPS 10.1"
+패널이 해치 플레이스홀더로 떠 있었다. 원인은 CI에서 `pio run -e ips10`이
+**음성 UI가 들어간 시점부터 계속 실패**하고 있었던 것 — `hud_bar.cpp`의 IPS10
+경로가 ESP-IDF 스핀락(`portMUX_TYPE`/`portENTER_CRITICAL`/`xPortGetCoreID`)과
+ES8311 볼륨·`Audio::playTone`을 쓰는데 호스트 sim에는 둘 다 없었다.
+`render-esp32-sim-frames.mjs`의 **보드별 격리**가 의도대로 나머지를 살렸고,
+실패한 보드는 manifest에서 빠져 해치로 강등됐다. 결과적으로 워크플로는 성공,
+배포된 manifest는 **140프레임 · ips10 0개**.
+
+**③ 새 기기가 어디에도 안 보였다.** T-Embed CC1101과 T-Display-S3-Pro는
+07-25/26부터 Shipping인데 sim env 자체가 없었다(둘 다 터라리엄이 아니라
+`ui/knob/`·`ui/ticker/` 자체 렌더 트리를 쓴다). 랜딩 페이지는 같은 방식으로
+어긋나 **"26 surfaces"를 22칩 위에** 걸어두고 있었다 — 빠진 넷이 정확히
+T-Embed, T-Display-S3-Pro, Stream Deck XL, + XL이었다.
+
+### 해결
+
+- 패널 식별을 **광고 서비스 UUID 우선 + 알려진 이름 계열 폴백**으로 교체.
+  `shared/src/idotmatrix-identity.ts`를 SSOT로 두고
+  `pnpm generate-idotmatrix-identity`가 Swift/Python 미러를 생성, vitest가
+  드리프트 게이트. `scan.py`는 `discover(return_adv=True)`로 광고 페이로드를
+  읽는다. `idotmatrixNamePrefixes`(settings.json)로 이름 폴백을 런타임 확장.
+- FreeRTOS 심에 스핀락 타입/매크로를, `sim_globals.cpp`에 오디오·코덱 스텁을
+  추가해 ips10 복구. sim env `t_embed`/`t_display_pro` 추가, `sim_main`의 LCD
+  경로를 `create()/update(dt)` 트리 3종(aquarium/knob/ticker)으로 일반화.
+- 랜딩 칩 4개 추가 + X4 표기(480×800)를 매트릭스와 정합. `check-surface-mirrors.mjs`로
+  매트릭스 행 수 = 선언 수 = 헤드라인 = 스탯 = 칩 수를 게이트(`design-system.yml`).
+
+### 핵심 설계 결정
+
+- **폴백이 있으니 서비스-only 필터는 불가.** 일부 패널은 광고 패킷에 서비스를
+  안 싣는다. 그래서 규칙은 "서비스 OR 이름 계열"이고, 이는 기존 `IDM-` 필터의
+  **순수 상위집합**이라 회귀가 구조적으로 불가능하다. 실기(iPixel)가 없어
+  긍정 경로를 하드웨어로 못 본 상태에서, 이 상위집합 성질이 안전을 보장하는
+  유일한 근거였다.
+- **심(shim)이 흡수하고 펌웨어는 건드리지 않는다.** ips10 수정은 펌웨어에
+  `#if SIM_HOST`를 넣는 쪽이 더 짧았지만, 그러면 sim이 컴파일하는 소스가
+  보드에 굽는 소스와 갈라진다. 픽셀 정확성이 sim의 존재 이유이므로 부족한
+  쪽(심)을 채웠다.
+- **격리는 실패를 숨기는 대가로 산다.** 보드별 격리는 옳은 설계지만, 그 결과
+  "워크플로 성공 = 모든 보드 렌더됨"이 아니게 된다. 검증 지점은 워크플로
+  상태가 아니라 **배포된 `manifest.json`의 프레임 수**다(140 → 200, 9보드).
+- **집계 수치 미러는 게이트 없으면 반드시 어긋난다.** 매트릭스 행 추가는 한 줄,
+  칩은 다른 파일 — 이 비대칭이 드리프트를 만든다. 게이트는 **이름 매칭이 아니라
+  개수 항등식**으로 짰다. 칩 라벨(`ESP32 86 Box 4"`)과 행 이름(`86 Box 4.0`)은
+  원래 다른 문구라, 이름을 맞추려 들면 게이트가 거짓 실패를 낸다.
+- **XTeink X3/X4는 프레임을 지어내지 않는다.** 포크 렌더러가 외부에 있으므로
+  "CrossPoint 포크가 렌더" 문구를 단 패널로 노출했다(해치의 "sim frame not
+  generated"와 문구를 분리 — 그건 빌드 파손으로 읽힌다). 공유 지오메트리 SSOT를
+  저 패널 크기로 그려보는 진단 env(`xteink_x3/x4`)는 추가하되 기본 세트·데모에서
+  제외했다.
+
+### 남은 갭
+
+진단 env를 돌려보니 480×800/528×792 portrait에서 **헤더 타이틀과 세션 카운트가
+겹치고 푸터 usage 클러스터가 서로 밟는다**. 레이아웃 헤더는 포크와 바이트
+동일하게 공유하므로 실기에서도 같은지 확인할 가치가 있지만, 글리프는 포크의
+GfxRenderer가 그리므로 이 렌더만으로는 단정할 수 없다. 이번 범위에서 제외했다.
+
+---
+
 ## 2026-08-05 — XTeink X3/X4를 오프라인 우선 Pocket Reader 제품으로 전환
 
 ### 방향
