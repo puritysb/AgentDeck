@@ -19,6 +19,7 @@
     "generate-streamdeck-profiles": "node scripts/generate-streamdeck-profiles.mjs",
     "verify-version": "node scripts/verify-version-sync.mjs",
     "check-preview-sync": "node scripts/check-preview-mirror-sync.mjs",
+    "check-surface-mirrors": "node scripts/check-surface-mirrors.mjs",
     "design-system:build": "node scripts/build-design-system-viewer.mjs",
     "design-system:check": "node scripts/build-design-system-viewer.mjs --check",
     "docs:check": "node scripts/check-docs.mjs",

@@ -13,3 +13,21 @@ typedef int      BaseType_t;
 #define pdFALSE         0
 #define portMAX_DELAY   0xFFFFFFFFu
 #define pdMS_TO_TICKS(ms) ((TickType_t)(ms))
+
+// ── Spinlock / core identity ────────────────────────────────────────────────
+// Render surfaces that are written from the network core and drawn on the UI
+// core guard their hand-off with an ESP-IDF spinlock (IPS10's voice banner is
+// the first). The sim runs those sources single-threaded on one host thread, so
+// the critical section is a no-op — but the types and macros still have to
+// exist or the board's render surface will not compile here. Keeping them in
+// the shim (rather than #if SIM_HOST in the firmware) leaves the firmware
+// source the sim compiles identical to what the board flashes.
+typedef struct { volatile uint32_t owner; } portMUX_TYPE;
+
+#define portMUX_INITIALIZER_UNLOCKED { 0 }
+#define portENTER_CRITICAL(mux)      ((void)(mux))
+#define portEXIT_CRITICAL(mux)       ((void)(mux))
+#define portENTER_CRITICAL_ISR(mux)  ((void)(mux))
+#define portEXIT_CRITICAL_ISR(mux)   ((void)(mux))
+
+static inline BaseType_t xPortGetCoreID() { return 0; }

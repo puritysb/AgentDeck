@@ -15,7 +15,11 @@ cd "$(dirname "$0")"
 PIO="${PIO:-pio}"
 command -v "$PIO" >/dev/null 2>&1 || PIO="$HOME/.platformio/penv/bin/pio"
 
-BOARDS_DEFAULT="box_86 ips35 amoled ttgo ips10 led8x32 inkdeck"
+# xteink_x3 / xteink_x4 are deliberately NOT in the default set: they render the
+# AgentDeck e-ink tree at the community fork's panel sizes (a layout diagnostic
+# for the shared geometry SSOT), and their output is not that fork's firmware
+# output. Ask for them by name.
+BOARDS_DEFAULT="box_86 ips35 amoled ttgo ips10 t_embed t_display_pro led8x32 inkdeck"
 BOARD="${1:-}"
 SCENE="${2:-}"
 OUTDIR="${OUTDIR:-sim-out}"

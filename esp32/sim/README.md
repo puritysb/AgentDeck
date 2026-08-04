@@ -45,13 +45,28 @@ pio run -e box_86                                       # build the host binary
 | `amoled`  | `BOARD_AMOLED`  | 360×360    | Round AMOLED — terrarium + HUD (circular mask)     |
 | `ttgo`    | `BOARD_TTGO`    | 135×240    | TTGO T-Display — compact terrarium + overlay strip |
 | `ips10`   | `BOARD_IPS10`   | 1280×800   | Guition 10.1" — "pixel office" + HUD sidebar mosaic |
+| `t_embed` | `BOARD_T_EMBED` | 320×170    | T-Embed CC1101 — encoder "Companion Knob" (`ui/knob/`) |
+| `t_display_pro` | `BOARD_T_DISPLAY_PRO` | 480×222 | T-Display-S3-Pro — "Focus Strip" (`ui/ticker/`), camera-less unit |
 | `led8x32` | `BOARD_LED8X32` | 8×32 (×16) | Ulanzi TC001 WS2812B matrix — usage/agents pages   |
 | `inkdeck` | `BOARD_INKDECK` | 800×480    | Seeed InkDeck 1-bit e-ink dashboard (UC8179)       |
 
-The LCD boards render the **real composed screen** via the firmware's
-`Screens::aquariumCreate()` builder (Terrarium+HUD / Office / TTGO overlay per
-board), not a hand-assembled approximation. The matrix (`--page usage|agents`,
-upscaled ×16) and e-ink are LVGL-free and use their own render paths.
+The LCD boards render the **real composed screen** via each board's own render
+tree — `Screens::aquariumCreate()` (Terrarium+HUD / Office / TTGO overlay),
+`Knob::create()` or `Ticker::create()` — not a hand-assembled approximation. The
+matrix (`--page usage|agents`, upscaled ×16) and e-ink are LVGL-free and use
+their own render paths.
+
+### Layout-diagnostic envs (not published)
+
+`xteink_x3` (528×792) and `xteink_x4` (480×800) render the **AgentDeck** e-ink
+tree at the XTeink readers' panel sizes. Those readers run the community
+CrossPoint fork, whose own `GfxRenderer` draws their glyphs — only the
+responsive geometry SSOT (`src/ui/eink/eink_dashboard_layout.h`) is shared
+byte-identically. So these envs show how the shared geometry composes at those
+dimensions (X3's 528px short edge is the only `Regular` density band any render
+exercises) and are the cheap way to inspect it without the fork's hardware — but
+their output is **not** that fork's screen. They are excluded from `render.sh`'s
+default set and from the Pages demo for that reason; ask for them by name.
 
 **Adding a board:** copy an env block in `platformio.ini` and set the target's
 `BOARD_*` / `SCREEN_W` / `SCREEN_H` defines to match the real env in

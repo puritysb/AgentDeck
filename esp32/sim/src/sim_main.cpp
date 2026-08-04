@@ -94,11 +94,32 @@ int main(int argc, char** argv) {
 
 #else
 // ── LCD boards (headless LVGL, real per-board screen composition) ─────────────
+// Three render trees share this path because all three are LVGL screens driven
+// by create()/update(dt): the terrarium+HUD aquarium, the T-Embed knob, and the
+// T-Display-S3-Pro ticker. Only the create/update pair differs per board.
+#if defined(BOARD_T_EMBED)
+#include "ui/knob/knob_ui.h"
+#elif defined(BOARD_T_DISPLAY_PRO)
+#include "ui/ticker/ticker_ui.h"
+#else
 #include "ui/screens/aquarium.h"
+#endif
 
 namespace {
 constexpr uint32_t FRAME_MS = 33;                 // ~30fps
 constexpr float    FRAME_DT = FRAME_MS / 1000.0f;
+
+// Board render tree: build the screen once, then advance it per frame.
+#if defined(BOARD_T_EMBED)
+void treeCreate() { Knob::create(); }             // loads its own screen
+void treeUpdate(float dt) { Knob::update(dt); }
+#elif defined(BOARD_T_DISPLAY_PRO)
+void treeCreate() { Ticker::create(); }
+void treeUpdate(float dt) { Ticker::update(dt); }
+#else
+void treeCreate() { SimDisplay::loadScreen(Screens::aquariumCreate()); }
+void treeUpdate(float dt) { Screens::aquariumUpdate(dt); }
+#endif
 
 bool renderScene(const char* scene, const char* path, int frames) {
   if (!SimScenes::apply(scene)) {
@@ -109,7 +130,7 @@ bool renderScene(const char* scene, const char* path, int frames) {
   g_sim_millis = 0;
   for (int i = 0; i < frames; i++) {
     SimDisplay::tick(FRAME_MS);
-    Screens::aquariumUpdate(FRAME_DT);   // drives Terrarium/Office + HUD/overlay
+    treeUpdate(FRAME_DT);
     SimDisplay::refresh();
   }
   bool ok = SimPng::writeRgb565(path, SimDisplay::framebuffer(),
@@ -127,10 +148,11 @@ int main(int argc, char** argv) {
   if (frames < 1) frames = 1;
 
   // Display resolution is fixed at compile time by the board's SCREEN_W/H build
-  // flags — the sim IS that board minus hardware I/O. aquariumCreate() builds the
-  // real per-board composed screen (Terrarium+HUD / Office / TTGO overlay).
+  // flags — the sim IS that board minus hardware I/O. The tree builds the real
+  // per-board composed screen (Terrarium+HUD / Office / TTGO overlay / knob /
+  // ticker).
   SimDisplay::init(SCREEN_W, SCREEN_H);
-  SimDisplay::loadScreen(Screens::aquariumCreate());
+  treeCreate();
 
   if (flag(argc, argv, "--all")) {
     const char* outdir = arg(argc, argv, "--outdir", "sim-out");

@@ -27,16 +27,22 @@ counterpart to the Node preview tools (`bridge/scripts/pixoo-preview.ts`) and
 removes the drift risk of the hand-mirrored Swift Device Preview ESP32 tiles.
 
 ```bash
-pnpm esp32:sim                 # all 7 boards, all scenes → esp32/sim/sim-out/
+pnpm esp32:sim                 # all 9 boards, all scenes → esp32/sim/sim-out/
 pnpm esp32:sim box_86 working  # one board, one scene
 ```
 
 Covers all board classes: LCD terrarium + HUD (`box_86` 480×480, `ips35` 480×320,
 `amoled` 360×360 round, `ttgo` 135×240 compact overlay), the IPS10 tablet "pixel
-office" + sidebar mosaic (`ips10` 1280×800), the TC001 8×32 LED matrix (`led8x32`,
-usage/agents pages), and the InkDeck 1-bit e-ink dashboard (`inkdeck` 800×480).
-LCD boards render the **real** composed screen via `Screens::aquariumCreate()`
-(the firmware's per-board builder). A thin hardware shim layer (`sim/shims/`)
+office" + sidebar mosaic (`ips10` 1280×800), the two companion render trees
+(`t_embed` 320×170 encoder knob, `t_display_pro` 480×222 focus strip), the TC001
+8×32 LED matrix (`led8x32`, usage/agents pages), and the InkDeck 1-bit e-ink
+dashboard (`inkdeck` 800×480). LCD boards render the **real** composed screen via
+the board's own builder — `Screens::aquariumCreate()`, `Knob::create()` or
+`Ticker::create()`. Two further envs (`xteink_x3`, `xteink_x4`) are layout
+diagnostics rather than board previews: they render the AgentDeck e-ink tree at
+the community fork's panel sizes to inspect the shared geometry SSOT, and are
+excluded from the default set and the Pages demo because that fork's own
+renderer draws its glyphs. A thin hardware shim layer (`sim/shims/`)
 stubs the surface the render code touches (millis/Serial/heap/mutex/FastLED/
 GxEPD2/Print/net-status); the e-ink text uses the vendored real Adafruit GFX
 fonts for pixel-exact glyphs. Named scenes populate the same `g_state` the

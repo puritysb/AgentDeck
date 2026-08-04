@@ -3,8 +3,11 @@
 // display object, which is an Adafruit_GFX subclass: all the geometry + text
 // primitives come from the *real* vendored Adafruit_GFX (pixel-exact), and this
 // shim only supplies drawPixel (into a 1-bit host framebuffer) plus the e-ink
-// lifecycle no-ops (init/refresh/power). Panel geometry matches the real 800×480
-// UC8179 (GxEPD2_750_GDEY075T7).
+// lifecycle no-ops (init/refresh/power). Panel geometry is the env's SCREEN_W/H:
+// InkDeck's real 800×480 UC8179 (GxEPD2_750_GDEY075T7) for the inkdeck env, and
+// the XTeink panel sizes for the layout-preview envs — the responsive geometry
+// SSOT (ui/eink/eink_dashboard_layout.h) is shared with that fork, so rendering
+// it at their dimensions is what exercises its non-InkDeck density bands.
 #include "Adafruit_GFX.h"
 #include <cstdlib>
 #include <cstring>
@@ -15,8 +18,8 @@
 // Panel descriptor subset — only the geometry + a pin-taking constructor are used.
 class GxEPD2_750_GDEY075T7 {
 public:
-  static const uint16_t WIDTH = 800;
-  static const uint16_t HEIGHT = 480;
+  static const uint16_t WIDTH = SCREEN_W;
+  static const uint16_t HEIGHT = SCREEN_H;
   bool hasFastPartialUpdate = true;   // capability flag the firmware reads
   GxEPD2_750_GDEY075T7(int8_t /*cs*/, int8_t /*dc*/, int8_t /*rst*/, int8_t /*busy*/) {}
 };

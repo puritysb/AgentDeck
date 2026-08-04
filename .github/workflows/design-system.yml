@@ -49,6 +49,12 @@ jobs:
       - name: Verify ESP32 spec-card parity
         run: node scripts/sync-hardware-spec-cards.mjs --check
 
+      # The landing page repeats the matrix's surface count in three places
+      # (headline, stat tile, chip grid). Adding a matrix row without its chip
+      # is how the page came to claim 26 surfaces over 22 chips.
+      - name: Verify public surface-count mirrors
+        run: node scripts/check-surface-mirrors.mjs
+
       # lint.sh is baseline-aware. The current count must be ≤ the snapshot
       # recorded in docs/design-lint-baseline.md. Lower is welcome (no action);
       # higher fails the PR with a delta report.

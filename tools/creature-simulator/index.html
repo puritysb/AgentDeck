@@ -573,6 +573,18 @@
         </section>
         <section>
           <div class="device-frame">
+            <svg class="device-screen" id="sim-esp32-tembed" viewBox="0 0 320 170" style="aspect-ratio:32/17"></svg>
+          </div>
+          <div class="device-meta">T-Embed CC1101 &quot;Companion Knob&quot; 320×170 — actual firmware frame (encoder-driven session carousel, no terrarium; esp32/sim).</div>
+        </section>
+        <section>
+          <div class="device-frame">
+            <svg class="device-screen" id="sim-esp32-tdisplaypro" viewBox="0 0 480 222" style="aspect-ratio:240/111"></svg>
+          </div>
+          <div class="device-meta">T-Display-S3-Pro &quot;Focus Strip&quot; 480×222 — actual firmware frame (focus/usage/sessions pages on the bare, camera-less unit; esp32/sim).</div>
+        </section>
+        <section>
+          <div class="device-frame">
             <svg class="device-screen" id="sim-inkdeck" viewBox="0 0 800 480" style="aspect-ratio:5/3"></svg>
           </div>
           <div class="device-meta">InkDeck 7.5&quot; e-ink 800×480 — actual firmware frame (1-bit UC8179 dashboard, esp32/sim).</div>
@@ -624,6 +636,18 @@
             <svg class="device-screen" id="sim-tui" viewBox="0 0 720 420" style="aspect-ratio:12/7"></svg>
           </div>
           <div class="device-meta">Terminal TUI preview (actual renderDashboard output, 160×40 chars).</div>
+        </section>
+        <section>
+          <div class="device-frame">
+            <svg class="device-screen" id="sim-xteink-x3" viewBox="0 0 528 792" style="aspect-ratio:528/792;max-height:320px;margin:0 auto;display:block"></svg>
+          </div>
+          <div class="device-meta" data-i18n="dev.x3">XTeink X3 3.7&quot; e-ink 528×792 — community fork. Registers with the daemon over Wi-Fi and shares InkDeck's e-ink layout SSOT, but the CrossPoint fork's own renderer draws its pixels, so there is no canonical frame to show.</div>
+        </section>
+        <section>
+          <div class="device-frame">
+            <svg class="device-screen" id="sim-xteink-x4" viewBox="0 0 480 800" style="aspect-ratio:480/800;max-height:320px;margin:0 auto;display:block"></svg>
+          </div>
+          <div class="device-meta" data-i18n="dev.x4">XTeink X4 4.26&quot; e-ink 480×800 — community fork, same story as the X3: shared layout SSOT, external renderer.</div>
         </section>
         <section>
           <div class="device-meta" data-i18n="dev.xteink"><strong>XTeink X3 / X4 (community fork):</strong> these e-ink readers are rendered by the CrossPoint Reader fork's own firmware and register with the daemon over Wi-Fi — it shares InkDeck's e-ink layout SSOT, but its renderer lives outside this repository, so no canonical frame can be shown here. Specs are in the <a href="../hardware/">Devices catalog</a>.</div>
@@ -765,6 +789,10 @@
         "sim-esp32-round": [360, 360],
         "sim-esp32-ttgo": [135, 240],
         "sim-esp32-ips10": [1280, 800],
+        "sim-esp32-tembed": [320, 170],
+        "sim-esp32-tdisplaypro": [480, 222],
+        "sim-xteink-x3": [528, 792],
+        "sim-xteink-x4": [480, 800],
         "sim-inkdeck": [800, 480],
         "sim-pixoo": [64, 64],
         "sim-idot": [32, 32],
@@ -1108,7 +1136,19 @@
       }
     }
 
-    function drawHatchPlaceholder(svg, w, h) {
+    // A surface AgentDeck does not render: the panel exists in the lineup, but its
+    // pixels come from someone else's firmware (XTeink X3/X4 → CrossPoint fork).
+    // Distinct wording from the hatch above — "not generated" would read as a
+    // broken build, and inventing a frame here would misrepresent that firmware.
+    function renderExternalSurface(svg, note) {
+      if (svg.dataset.frame === `external:${note}`) return;
+      svg.dataset.frame = `external:${note}`;
+      clear(svg);
+      const [w, h] = svgSize(svg);
+      drawHatchPlaceholder(svg, w, h, note);
+    }
+
+    function drawHatchPlaceholder(svg, w, h, message) {
       const patId = `hatch-${svg.id}`;
       const defs = el("defs");
       const pat = el("pattern", { id: patId, width: 12, height: 12, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
@@ -1117,9 +1157,14 @@
       defs.appendChild(pat);
       svg.appendChild(defs);
       svg.appendChild(el("rect", { x: 0, y: 0, width: w, height: h, fill: `url(#${patId})` }));
-      svg.appendChild(textNode("sim frame not generated", {
+      // Size to the panel AND to the message: the short-edge rule alone runs a
+      // longer note off the edge of a narrow portrait panel (0.6em ≈ one
+      // monospace advance).
+      const label = message || "sim frame not generated";
+      const fits = (w * 0.88) / (0.6 * label.length);
+      svg.appendChild(textNode(label, {
         x: w / 2, y: h / 2, "text-anchor": "middle", "dominant-baseline": "middle",
-        "font-size": Math.max(10, Math.round(Math.min(w, h) / 16)),
+        "font-size": Math.max(8, Math.round(Math.min(Math.min(w, h) / 16, fits))),
         "font-family": '"JetBrains Mono", ui-monospace, monospace',
         fill: "#4E6A82",
       }));
@@ -2465,7 +2510,11 @@
       renderFirmwareFrame(document.getElementById("sim-esp32-round"), `round-${agent}-${state}.png`);
       renderFirmwareFrame(document.getElementById("sim-esp32-ttgo"), `ttgo-${agent}-${state}.png`);
       renderFirmwareFrame(document.getElementById("sim-esp32-ips10"), `ips10-${agent}-${state}.png`);
+      renderFirmwareFrame(document.getElementById("sim-esp32-tembed"), `tembed-${agent}-${state}.png`);
+      renderFirmwareFrame(document.getElementById("sim-esp32-tdisplaypro"), `tdisplaypro-${agent}-${state}.png`);
       renderFirmwareFrame(document.getElementById("sim-inkdeck"), `inkdeck-${agent}-${state}.png`);
+      renderExternalSurface(document.getElementById("sim-xteink-x3"), "rendered by the CrossPoint fork");
+      renderExternalSurface(document.getElementById("sim-xteink-x4"), "rendered by the CrossPoint fork");
       renderPixooDevice(document.getElementById("sim-pixoo"), agent, state, t);
       renderMatrixDotDevice(document.getElementById("sim-idot"), getIdotActual(agent, state));
       renderMatrixDotDevice(document.getElementById("sim-timebox"), getTimeboxActual(agent, state));
@@ -2526,6 +2575,8 @@
           'intro.p': '에이전트와 상태를 고르고, 같은 신호가 태블릿·e-ink·ESP32·LED 매트릭스·컨트롤 데크·터미널 제약에 어떻게 적응하는지 비교해 보세요.',
           'dev.h': '디바이스 프리뷰',
           'dev.p': '각 프레임은 대상 서피스의 실제 종횡비와 제약을 유지합니다. <strong>LED 매트릭스, Stream Deck, D200H, TUI, 모든 ESP32 서피스는 정본 렌더러 출력을 사용합니다</strong>. iPadOS·Android 태블릿·Android e-ink 뷰는 SwiftUI와 Compose가 브라우저에서 돌지 않아 명시적으로 표기된 브라우저 근사치입니다. 각 앱은 따로 설계된 UI이며, macOS 대시보드는 앱 자체이므로 프레임으로 프리뷰하지 않습니다.',
+          'dev.x3': 'XTeink X3 3.7" e-ink 528×792 — 커뮤니티 포크. Wi-Fi로 데몬에 등록되고 InkDeck과 e-ink 레이아웃 SSOT를 공유하지만, 픽셀은 CrossPoint 포크의 자체 렌더러가 그리므로 여기서 보여줄 정본 프레임이 없습니다.',
+          'dev.x4': 'XTeink X4 4.26" e-ink 480×800 — 커뮤니티 포크, X3과 같은 이유입니다: 레이아웃 SSOT는 공유, 렌더러는 외부.',
           'dev.xteink': '<strong>XTeink X3 / X4 (커뮤니티 포크):</strong> 이 e-ink 리더들은 CrossPoint Reader 포크의 자체 펌웨어가 렌더링하며 Wi-Fi로 데몬에 등록됩니다 — InkDeck과 e-ink 레이아웃 SSOT를 공유하지만 렌더러가 이 저장소 밖에 있어 정본 프레임을 여기서 보여줄 수 없습니다. 사양은 <a href="../hardware/">디바이스 카탈로그</a>에 있습니다.',
           'notes.proves': '<strong>이 페이지가 증명하는 것:</strong> 하나의 세션 모델이 극단적으로 다른 픽셀 그리드를 존중하면서도 알아볼 수 있게 유지된다는 점입니다. 하드웨어 사양과 연결 경로는 <a href="../hardware/">디바이스 카탈로그</a>를 참고하세요.'
         },
@@ -2535,6 +2586,8 @@
           'intro.p': 'エージェントと状態を選び、同じシグナルがタブレット・e-ink・ESP32・LEDマトリクス・コントロールデッキ・ターミナルの制約にどう適応するか比較できます。',
           'dev.h': 'デバイスプレビュー',
           'dev.p': '各フレームは対象サーフェスの実アスペクト比と制約を保ちます。<strong>LEDマトリクス、Stream Deck、D200H、TUI、すべてのESP32サーフェスは正本レンダラー出力を使用します</strong>。iPadOS・Androidタブレット・Android e-inkビューはSwiftUIとComposeがブラウザで動かないため、明示されたブラウザ近似です。各アプリは別設計のUIで、macOSダッシュボードはアプリそのものなのでフレームとしてはプレビューしません。',
+          'dev.x3': 'XTeink X3 3.7" e-ink 528×792 — コミュニティフォーク。Wi-Fiでdaemonに登録され、InkDeckとe-inkレイアウトSSOTを共有しますが、ピクセルはCrossPointフォーク自身のレンダラーが描くため、ここに出せる正本フレームがありません。',
+          'dev.x4': 'XTeink X4 4.26" e-ink 480×800 — コミュニティフォーク。X3と同じで、レイアウトSSOTは共有、レンダラーは外部です。',
           'dev.xteink': '<strong>XTeink X3 / X4 (コミュニティフォーク):</strong> これらのe-inkリーダーはCrossPoint Readerフォーク自身のファームウェアが描画し、Wi-Fiでdaemonに登録されます — InkDeckとe-inkレイアウトSSOTを共有しますが、レンダラーがこのリポジトリの外にあるため、正本フレームをここでは表示できません。仕様は<a href="../hardware/">デバイスカタログ</a>にあります。',
           'notes.proves': '<strong>このページが証明すること:</strong> ひとつのセッションモデルが、大きく異なるピクセルグリッドを尊重しながらも認識可能であり続けることです。ハードウェア仕様と接続経路は<a href="../hardware/">デバイスカタログ</a>をご覧ください。'
         }
