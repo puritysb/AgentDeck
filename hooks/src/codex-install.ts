@@ -38,6 +38,10 @@ export const DEFAULT_CODEX_CONFIG_PATH = join(homedir(), '.codex', 'config.toml'
 export const DEFAULT_WINDOWS_NOTIFY_SCRIPT_PATH = join(homedir(), '.agentdeck', 'codex-notify.ps1');
 const DEFAULT_DAEMON_PORT = 9120;
 
+function isValidPort(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65535;
+}
+
 export interface InstallOptions {
   /** Override the codex config path (tests + non-default homes). */
   configPath?: string;
@@ -76,14 +80,16 @@ function currentDaemonHttpPort(): number | null {
   if (!existsSync(path)) return null;
   try {
     const obj = JSON.parse(readFileSync(path, 'utf-8'));
-    if (typeof obj.httpPort === 'number' && obj.httpPort > 0) return obj.httpPort;
-    if (typeof obj.port === 'number' && obj.port > 0) return obj.port;
+    if (isValidPort(obj.httpPort)) return obj.httpPort;
+    if (isValidPort(obj.port)) return obj.port;
   } catch { /* malformed JSON — fall through */ }
   return null;
 }
 
 function buildOtelEndpoint(daemonHttpPort?: number): string {
-  const port = daemonHttpPort ?? currentDaemonHttpPort() ?? DEFAULT_DAEMON_PORT;
+  const port = isValidPort(daemonHttpPort)
+    ? daemonHttpPort
+    : currentDaemonHttpPort() ?? DEFAULT_DAEMON_PORT;
   return `http://127.0.0.1:${port}/otel/v1/traces`;
 }
 
@@ -164,18 +170,25 @@ function buildNotifyAssignment(event: string, platform: NodeJS.Platform, notifyS
  *  differs: Claude hooks pipe stdin (`-d @-`); Codex notify hands the
  *  JSON payload as `$1` (`--data-raw "$1"`). */
 function buildNotifySnippet(event: string): string {
+  return posixPortPreamble().concat([
+    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${event}" -H 'Content-Type: application/json' --data-raw "$1" 2>/dev/null || true`,
+  ]).join('\n');
+}
+
+/** Canonical POSIX port resolver shared by notify and lifecycle hooks. */
+function posixPortPreamble(): string[] {
   return [
     `PORT="\${AGENTDECK_PORT:-}"`,
+    `case "$PORT" in ''|*[!0-9]*) PORT="" ;; *) [ "$PORT" -ge 1 ] 2>/dev/null && [ "$PORT" -le 65535 ] 2>/dev/null || PORT="" ;; esac`,
     `if [ -z "$PORT" ]; then`,
     `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
     `    [ -f "$F" ] || continue`,
-    `    P=$(python3 -c "import json;d=json.load(open('$F'));print(d.get('httpPort') or d.get('port',''))" 2>/dev/null)`,
-    `    [ -n "$P" ] && curl -sf --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
+    `    P=$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
+    `    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
     `  done`,
     `fi`,
     `PORT="\${PORT:-9120}"`,
-    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${event}" -H 'Content-Type: application/json' --data-raw "$1" 2>/dev/null || true`,
-  ].join('\n');
+  ];
 }
 
 interface LifecycleHook {
@@ -222,18 +235,9 @@ function buildLifecycleHookCommand(event: string, platform: NodeJS.Platform): st
 }
 
 function buildStdinPostSnippet(event: string): string {
-  return [
-    `PORT="\${AGENTDECK_PORT:-}"`,
-    `if [ -z "$PORT" ]; then`,
-    `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
-    `    [ -f "$F" ] || continue`,
-    `    P=$(python3 -c "import json;d=json.load(open('$F'));print(d.get('httpPort') or d.get('port',''))" 2>/dev/null)`,
-    `    [ -n "$P" ] && curl -sf --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
-    `  done`,
-    `fi`,
-    `PORT="\${PORT:-9120}"`,
+  return posixPortPreamble().concat([
     `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${event}" -H 'Content-Type: application/json' -d @- >/dev/null 2>&1 || true`,
-  ].join('\n');
+  ]).join('\n');
 }
 
 function shellSingleQuoted(s: string): string {
@@ -265,20 +269,24 @@ function buildWindowsPostSnippet(event: string, bodyExpression: string): string 
   return [
     `$ErrorActionPreference = 'SilentlyContinue'`,
     `$ProgressPreference = 'SilentlyContinue'`,
-    `$port = $env:AGENTDECK_PORT`,
-    `if ([string]::IsNullOrWhiteSpace($port)) {`,
+    `[int]$port = 0`,
+    `[int]$candidate = 0`,
+    `if (!([int]::TryParse([string]$env:AGENTDECK_PORT, [ref]$candidate)) -or $candidate -lt 1 -or $candidate -gt 65535) { $candidate = 0 }`,
+    `$port = $candidate`,
+    `if ($port -eq 0) {`,
     `  $daemonFile = Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'`,
     `  if (Test-Path -LiteralPath $daemonFile) {`,
     `    try {`,
     `      $daemon = Get-Content -LiteralPath $daemonFile -Raw | ConvertFrom-Json`,
-    `      $candidate = if ($daemon.httpPort) { $daemon.httpPort } else { $daemon.port }`,
-    `      if ($candidate) {`,
-    `        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Uri ('http://127.0.0.1:' + $candidate + '/health') | Out-Null; $port = [string]$candidate } catch {}`,
+    `      $rawCandidate = if ($daemon.httpPort) { $daemon.httpPort } else { $daemon.port }`,
+    `      $candidate = 0`,
+    `      if ([int]::TryParse([string]$rawCandidate, [ref]$candidate) -and $candidate -ge 1 -and $candidate -le 65535) {`,
+    `        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Uri ('http://127.0.0.1:' + $candidate + '/health') | Out-Null; $port = $candidate } catch {}`,
     `      }`,
     `    } catch {}`,
     `  }`,
     `}`,
-    `if ([string]::IsNullOrWhiteSpace($port)) { $port = '9120' }`,
+    `if ($port -eq 0) { $port = 9120 }`,
     `$body = ${bodyExpression}`,
     // Post UTF-8 bytes: Invoke-RestMethod encodes string bodies as
     // ISO-8859-1 when the content type carries no charset, replacing

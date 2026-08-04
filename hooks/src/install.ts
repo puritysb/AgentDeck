@@ -61,10 +61,11 @@ export const HOOK_EVENTS = [
 export function buildHookCommand(eventName: string): string {
   const preamble = [
     `PORT="\${AGENTDECK_PORT:-}"`,
+    `case "$PORT" in ''|*[!0-9]*) PORT="" ;; *) [ "$PORT" -ge 1 ] 2>/dev/null && [ "$PORT" -le 65535 ] 2>/dev/null || PORT="" ;; esac`,
     `if [ -z "$PORT" ]; then`,
     `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
     `    [ -f "$F" ] || continue`,
-    `    P=$(python3 -c "import json;d=json.load(open('$F'));print(d.get('httpPort') or d.get('port',''))" 2>/dev/null)`,
+    `    P=$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
     `    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
     `  done`,
     `fi`,
@@ -122,8 +123,11 @@ export function buildHookCommand(eventName: string): string {
 export function buildHookCommandWin(eventName: string): string {
   const ps = [
     `$ev='${eventName}'`,
-    `$port=$env:AGENTDECK_PORT`,
-    `if(-not $port){$f=Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'; if(Test-Path $f){try{$d=Get-Content -Raw $f|ConvertFrom-Json; $p=if($d.httpPort){$d.httpPort}else{$d.port}; if($p){try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$p+'/health') -TimeoutSec 1 -ErrorAction Stop|Out-Null; $port=$p}catch{}}}catch{}}}`,
+    `[int]$port=0`,
+    `[int]$candidate=0`,
+    `if(!([int]::TryParse([string]$env:AGENTDECK_PORT,[ref]$candidate)) -or $candidate -lt 1 -or $candidate -gt 65535){$candidate=0}`,
+    `$port=$candidate`,
+    `if(-not $port){$f=Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'; if(Test-Path $f){try{$d=Get-Content -Raw $f|ConvertFrom-Json; $raw=if($d.httpPort){$d.httpPort}else{$d.port}; $candidate=0; if([int]::TryParse([string]$raw,[ref]$candidate) -and $candidate -ge 1 -and $candidate -le 65535){try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$candidate+'/health') -TimeoutSec 1 -ErrorAction Stop|Out-Null; $port=$candidate}catch{}}}catch{}}}`,
     `if(-not $port){$port=9120}`,
     // Read stdin as UTF-8: [Console]::In decodes piped stdin with the console OEM
     // codepage (e.g. CP949), garbling non-ASCII payload text.
@@ -446,6 +450,18 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
       !settings.hooks?.SubagentStart || !settings.hooks?.SubagentStop
       || !settings.hooks?.TaskCompleted || !settings.hooks?.TeammateIdle
     ) {
+      applyHooks(settings);
+      migrated = true;
+    }
+
+    // Migration 9: pre-validation hook snippets interpolated untrusted env /
+    // daemon.json values directly into a loopback URL. Values containing `@`
+    // can make URL parsers treat `127.0.0.1:<value>` as userinfo and send hook
+    // payloads to a different host. Rebuild once with strict 1..65535 parsing.
+    const hasValidatedPort = process.platform === 'win32'
+      ? raw.includes('[int]::TryParse')
+      : raw.includes('*[!0-9]*');
+    if (!hasValidatedPort) {
       applyHooks(settings);
       migrated = true;
     }

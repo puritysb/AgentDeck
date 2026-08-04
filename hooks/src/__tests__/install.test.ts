@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { chmodSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { execFileSync } from 'child_process';
 import {
   HOOK_EVENTS,
   buildHookCommand,
@@ -54,6 +55,89 @@ describe('Hook Installer', () => {
       expect(cmd).toContain('-X POST "http://127.0.0.1:$PORT/hooks/SessionStart"');
     });
 
+    it('keeps strict port-validation markers in every co-owned hook writer', () => {
+      const root = process.cwd();
+      const posixWriters = [
+        'hooks/src/install.ts',
+        'hooks/src/codex-install.ts',
+        'setup/src/setup.ts',
+        'apple/AgentDeck/Daemon/Core/HookInstaller.swift',
+        'apple/AgentDeck/Daemon/Core/CodexConfigInstaller.swift',
+      ];
+      for (const path of posixWriters) {
+        const source = readFileSync(join(root, path), 'utf-8');
+        expect(source, path).toContain('*[!0-9]*');
+        expect(source, path).toContain('1 <= p <= 65535');
+      }
+
+      for (const path of ['hooks/src/install.ts', 'hooks/src/codex-install.ts', 'setup/src/setup.ts']) {
+        const source = readFileSync(join(root, path), 'utf-8');
+        expect(source, path).toContain('[int]::TryParse');
+        expect(source, path).toContain('65535');
+      }
+    });
+
+    it.skipIf(process.platform === 'win32')('rejects non-numeric and out-of-range ports before URL construction', () => {
+      for (const malicious of ['9120@evil.example', '-1', '0', '65536', '12.5', ' 9120']) {
+        const home = mkdtempSync(join(tmpdir(), "agentdeck-port-o'"));
+        const bin = join(home, 'bin');
+        const capture = join(home, 'curl.log');
+        mkdirSync(join(home, '.agentdeck'), { recursive: true });
+        mkdirSync(bin);
+        // A malicious string from daemon.json must be rejected too. The home
+        // path deliberately contains an apostrophe: passing the filename as a
+        // Python argv (instead of interpolating it into source) keeps it safe.
+        writeFileSync(join(home, '.agentdeck', 'daemon.json'), JSON.stringify({ httpPort: malicious }));
+        const fakeCurl = join(bin, 'curl');
+        writeFileSync(fakeCurl, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$CAPTURE_FILE"\nexit 0\n');
+        chmodSync(fakeCurl, 0o755);
+
+        execFileSync('/bin/sh', ['-c', buildHookCommand('SessionStart')], {
+          env: {
+            ...process.env,
+            HOME: home,
+            AGENTDECK_PORT: malicious,
+            CAPTURE_FILE: capture,
+            PATH: `${bin}:${process.env.PATH ?? '/usr/bin:/bin'}`,
+          },
+          input: '{}',
+        });
+
+        const urls = readFileSync(capture, 'utf-8');
+        expect(urls).toContain('http://127.0.0.1:9120/hooks/SessionStart');
+        expect(urls).not.toContain('evil.example');
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+
+    it.skipIf(process.platform === 'win32')('accepts a validated daemon.json port', () => {
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck-valid-port-'));
+      const bin = join(home, 'bin');
+      const capture = join(home, 'curl.log');
+      mkdirSync(join(home, '.agentdeck'), { recursive: true });
+      mkdirSync(bin);
+      writeFileSync(join(home, '.agentdeck', 'daemon.json'), JSON.stringify({ httpPort: 9133 }));
+      const fakeCurl = join(bin, 'curl');
+      writeFileSync(fakeCurl, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$CAPTURE_FILE"\nexit 0\n');
+      chmodSync(fakeCurl, 0o755);
+
+      execFileSync('/bin/sh', ['-c', buildHookCommand('SessionStart')], {
+        env: {
+          ...process.env,
+          HOME: home,
+          AGENTDECK_PORT: '',
+          CAPTURE_FILE: capture,
+          PATH: `${bin}:${process.env.PATH ?? '/usr/bin:/bin'}`,
+        },
+        input: '{}',
+      });
+
+      const urls = readFileSync(capture, 'utf-8');
+      expect(urls).toContain('http://127.0.0.1:9133/health');
+      expect(urls).toContain('http://127.0.0.1:9133/hooks/SessionStart');
+      rmSync(home, { recursive: true, force: true });
+    });
+
     it('bounds the fire-and-forget POST so a wedged daemon cannot stall session exit', () => {
       // SessionEnd hooks share one ~1.5s abort budget in Claude Code, and a
       // restarting daemon holds the socket open without replying. Without both
@@ -88,6 +172,8 @@ describe('Hook Installer', () => {
       expect(cmd).toContain("/hooks/'+$ev");
       expect(cmd).toContain('Invoke-RestMethod');
       expect(cmd).toContain('$port=9120');
+      expect(cmd).toContain('[int]::TryParse');
+      expect(cmd).toContain('$candidate -gt 65535');
     });
 
     it('uses single-line PowerShell so cmd.exe can pass it as one -Command argument', () => {
@@ -337,6 +423,32 @@ describe('Hook Installer', () => {
       expect(newCmd).toContain('daemon.json');
       expect(newCmd).not.toContain('${AGENTDECK_PORT:-9120}');
       expect(newCmd).toContain('$PORT');
+    });
+
+    it('self-heals installed hooks that predate strict port validation', () => {
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck-hooks-port-migration-'));
+      mkdirSync(join(home, '.claude'), { recursive: true });
+      const settings = applyHooks({});
+      for (const groups of Object.values(settings.hooks as Record<string, Array<{ hooks: Array<{ command: string }> }>>)) {
+        for (const group of groups) {
+          for (const hook of group.hooks) {
+            hook.command = hook.command
+              .split('\n').filter((line) => !line.includes('*[!0-9]*')).join('\n')
+              .replaceAll('[int]::TryParse', '[int]::Parse');
+          }
+        }
+      }
+      const settingsPath = join(home, '.claude', 'settings.json');
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+
+      migrateHooksIfNeeded(home);
+      const repaired = readFileSync(settingsPath, 'utf-8');
+      const marker = process.platform === 'win32' ? '[int]::TryParse' : '*[!0-9]*';
+      expect(repaired).toContain(marker);
+
+      migrateHooksIfNeeded(home);
+      expect(readFileSync(settingsPath, 'utf-8')).toBe(repaired);
+      rmSync(home, { recursive: true, force: true });
     });
   });
 });

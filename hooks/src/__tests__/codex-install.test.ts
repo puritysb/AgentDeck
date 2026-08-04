@@ -264,6 +264,8 @@ describe('codex-install: managedBlockBody', () => {
     expect(withFence).toContain('/hooks/codex_tool_end');
     expect(withFence).toContain('/hooks/codex_stop');
     expect(withFence).toContain('--connect-timeout 0.2 --max-time 0.8');
+    expect(withFence).toContain('*[!0-9]*');
+    expect(withFence).toContain('type(p) is int and 1 <= p <= 65535');
     expect(withFence).toContain('notify =');
     expect(withFence).toContain('[otel.trace_exporter.otlp-http]');
     expect(withFence).toContain('/otel/v1/traces');
@@ -304,6 +306,8 @@ describe('codex-install: managedBlockBody', () => {
     // codepage) and posted as UTF-8 bytes (string bodies get ISO-8859-1).
     expect(decoded).toContain('StreamReader([Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8)');
     expect(decoded).toContain('[System.Text.Encoding]::UTF8.GetBytes');
+    expect(decoded).toContain('[int]::TryParse');
+    expect(decoded).toContain('$candidate -gt 65535');
 
     for (const line of withFence.split('\n').filter((value) => value.startsWith('command = '))) {
       expect(line).not.toContain('$ErrorActionPreference');
@@ -318,7 +322,9 @@ describe('codex-install: managedBlockBody', () => {
     expect(script).toContain('$args[$args.Count - 1]');
     expect(script).toContain('/hooks/codex_turn_complete');
     expect(script).toContain('$env:AGENTDECK_PORT');
-    expect(script).toContain("$port = '9120'");
+    expect(script).toContain('$port = 9120');
+    expect(script).toContain('[int]::TryParse');
+    expect(script).toContain('$candidate -gt 65535');
     expect(script).toContain('exit 0');
     // String bodies get ISO-8859-1-encoded by Invoke-RestMethod, mangling
     // non-ASCII payload text — the script must post UTF-8 bytes.
@@ -326,6 +332,17 @@ describe('codex-install: managedBlockBody', () => {
     // PowerShell 5.1 reads BOM-less scripts as ANSI — keep content ASCII
     // so both interpretations are byte-identical.
     expect(/^[\x00-\x7F]*$/.test(script)).toBe(true);
+  });
+
+  it('falls back instead of emitting an out-of-range OTel endpoint', () => {
+    const body = managedBlockBody({
+      includeNotify: false,
+      includeOtel: true,
+      daemonHttpPort: 70000,
+      platform: 'linux',
+    });
+    expect(body).toContain('endpoint = "http://127.0.0.1:9120/otel/v1/traces"');
+    expect(body).not.toContain(':70000/');
   });
 
   it('omits conflicting optional channels when asked', () => {
