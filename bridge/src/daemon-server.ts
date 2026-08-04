@@ -144,8 +144,8 @@ import { CalendarProvider, parseCalendarSettings } from './calendar.js';
 import { renderGlanceFrame, GLANCE_FRAME_BOARDS } from './glance-frame.js';
 import type { UsageEvent } from './types.js';
 import { mergeRelayedSessionUsage } from './usage-event.js';
-import { CARD_FEED_PATH, CARD_OUTBOX_PATH, GLANCE_FRAME_PATH, type SessionInfo, type OutboxPushRequest } from '@agentdeck/shared';
-import { readFileSync, statSync, appendFileSync } from 'fs';
+import { CARD_FEED_PATH, CARD_OUTBOX_PATH, GLANCE_FRAME_PATH, type CardFeedResponse, type SessionInfo, type OutboxPushRequest } from '@agentdeck/shared';
+import { readFileSync, statSync, writeFileSync, appendFileSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -252,6 +252,71 @@ const glanceWeather = new WeatherProvider();
  *  weather: settings.json `calendar: {ics}`, 30 min cache, never throws. */
 const glanceCalendar = new CalendarProvider();
 
+// ===== Pull OTA (feed-carried) — staged firmware per board =====
+//
+// WS OTA can only reach a board holding a live socket, which a wake-sync-sleep
+// battery client (XTeink X3/X4) never does. Staging flips the direction: the
+// daemon remembers one firmware per board (`esp32-ota <board> --firmware …
+// --stage`), every `GET /feed` response adverts it as `fw: {size, md5}`, and
+// the device downloads `GET /esp32/fw` + flashes itself on its next pull.
+// Persisted across daemon restarts; a device that already took an md5 skips it
+// (its applied-marker), so a stale staging is harmless.
+interface StagedFw { firmwarePath: string; md5: string; size: number; stagedAt: number; }
+const stagedFwByBoard = new Map<string, StagedFw>();
+const stagedFwStatePath = (): string => join(homedir(), '.agentdeck', 'staged-fw.json');
+
+function loadStagedFw(): void {
+  try {
+    const raw = JSON.parse(readFileSync(stagedFwStatePath(), 'utf8')) as Record<string, StagedFw>;
+    for (const [board, s] of Object.entries(raw)) {
+      if (s && typeof s.firmwarePath === 'string' && typeof s.md5 === 'string' && typeof s.size === 'number') {
+        stagedFwByBoard.set(board, s);
+      }
+    }
+  } catch { /* no staging file — nothing staged */ }
+}
+loadStagedFw();
+
+function saveStagedFw(): void {
+  try {
+    writeFileSync(stagedFwStatePath(), JSON.stringify(Object.fromEntries(stagedFwByBoard), null, 2));
+  } catch (err) {
+    log(`[agentdeck] staged-fw persist failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Stage a build for a board. Reads the file once to fingerprint it; the file
+ *  itself is re-read at device download time (a rebuild at the same path is
+ *  re-fingerprinted by re-staging). */
+function stageEsp32Fw(board: string, firmwarePath: string): { board: string; bytes: number; md5: string } {
+  const firmware = readFileSync(firmwarePath);
+  const md5 = createHash('md5').update(firmware).digest('hex');
+  stagedFwByBoard.set(board, { firmwarePath, md5, size: firmware.length, stagedAt: Date.now() });
+  saveStagedFw();
+  log(`[agentdeck] staged firmware for ${board}: ${firmware.length} bytes md5=${md5} — installs on its next feed pull`);
+  return { board, bytes: firmware.length, md5 };
+}
+
+/** The staged advert for a feed response, re-validated against the file on
+ *  disk so a rebuilt-in-place binary never adverts a stale md5. */
+function stagedFwAdvert(board: string | undefined): { size: number; md5: string } | undefined {
+  if (!board) return undefined;
+  const staged = stagedFwByBoard.get(board);
+  if (!staged) return undefined;
+  try {
+    const firmware = readFileSync(staged.firmwarePath);
+    const md5 = createHash('md5').update(firmware).digest('hex');
+    if (md5 !== staged.md5 || firmware.length !== staged.size) {
+      stagedFwByBoard.set(board, { ...staged, md5, size: firmware.length });
+      saveStagedFw();
+      return { size: firmware.length, md5 };
+    }
+    return { size: staged.size, md5: staged.md5 };
+  } catch {
+    return undefined;  // file gone — advert nothing rather than a dead download
+  }
+}
+
 /** Name a pulling client from the WiFi WS roster. A board that has been
  *  deep-sleeping may have aged out of that roster, which is why the tracker
  *  keeps its own IP→board memory once it has learned one. */
@@ -351,6 +416,12 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
   wifiEsp32Sockets.set(key, ws);
   if (previous?.uptimeSec != null && uptimeSec != null && uptimeSec + 10 < previous.uptimeSec) {
     log(`[agentdeck] ESP32 reboot observed: ${key} uptime ${previous.uptimeSec}s -> ${uptimeSec}s reset=${resetReason ?? 'unknown'} code=${resetReasonCode ?? 'unknown'}`);
+  }
+  // Plain-log a board APPEARING on WS (absent or stale before) — a sleeping
+  // battery board's brief interactive window is exactly when a WS OTA can
+  // land, and this line is the only wake signal an operator/script can tail.
+  if (!previous || Date.now() - previous.lastSeenMs > 90_000) {
+    log(`[agentdeck] ESP32 WiFi registered: ${key}`);
   }
   debug('daemon', `WiFi ESP32 registered: ${key} v${String(d.version ?? '')} build=${String(d.buildHash ?? '')} uptime=${String(uptimeSec ?? '')} reset=${String(resetReason ?? '')}`);
 }
@@ -1370,6 +1441,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (!target || !firmwarePath) {
           throw new Error('target and firmwarePath are required');
         }
+        // Pull-OTA staging: remember the build; the board installs it on its
+        // next feed pull (no live WS needed). See stagedFwByBoard.
+        if (body.stage === true) {
+          return { ok: true, staged: true, ...stageEsp32Fw(target, firmwarePath) };
+        }
         return performWifiEsp32Ota(core, target, firmwarePath);
       })().then((result) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1378,6 +1454,55 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
       });
+      return;
+    }
+    // ===== Pull OTA (feed-carried) — staged firmware download =====
+    // The board saw `fw: {size, md5}` on its feed pull and fetches the image
+    // here. Auth mirrors the feed routes (LAN needs the pairing token).
+    if (req.method === 'GET' && pathname === '/esp32/fw') {
+      const ip = req.socket.remoteAddress ?? '';
+      if (!isLocalConnection(ip)) {
+        const token = parsedUrl.searchParams.get('token') ?? '';
+        if (!validateToken(token)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized — token required for firmware download' }));
+          return;
+        }
+      }
+      const board = parsedUrl.searchParams.get('board') ?? '';
+      const staged = stagedFwByBoard.get(board);
+      if (!staged) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `nothing staged for board "${board}"` }));
+        return;
+      }
+      try {
+        const firmware = readFileSync(staged.firmwarePath);
+        // Resumable download: `?from=<offset>` serves the remainder. A 5 MB
+        // image over a marginal link never survives one connection (this
+        // bridge host's two-NICs-on-one-subnet setup black-holes full-MTU
+        // segments in one direction, and a restart-from-zero download can
+        // never converge there). The device appends whatever arrives and
+        // re-asks from where it stopped, so partial transfers accumulate.
+        const fromRaw = Number(parsedUrl.searchParams.get('from') ?? 0);
+        const from = Number.isFinite(fromRaw) && fromRaw > 0 ? Math.min(Math.floor(fromRaw), firmware.length) : 0;
+        const body = from > 0 ? firmware.subarray(from) : firmware;
+        log(`[agentdeck] pull-OTA download: ${board} (${ip}) ← ${body.length} bytes`
+          + (from > 0 ? ` (resume from ${from}/${firmware.length})` : ''));
+        res.writeHead(from > 0 ? 206 : 200, {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(body.length),
+          ...(from > 0
+            ? { 'Content-Range': `bytes ${from}-${Math.max(from, firmware.length - 1)}/${firmware.length}` }
+            : {}),
+          'X-FW-MD5': staged.md5,
+          'Cache-Control': 'no-store',
+        });
+        res.end(body);
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      }
       return;
     }
     // ===== Card Feed pull sync (M6) — wake-sync-sleep battery clients =====
@@ -1468,7 +1593,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const feed = buildCardFeed(sessions as unknown as SessionInfo[], Date.now(), undefined, {
             glance,
             echoSig: parsedUrl.searchParams.get('sig') ?? undefined,
-          });
+          }) as CardFeedResponse & { fw?: { size: number; md5: string } };
+          // Pull-OTA advert: rides full AND `unchanged` responses, so a
+          // sleeping board learns about a staged build on any pull. Board
+          // identity from the query (newer firmware) or the IP memory.
+          const pullBoard = parsedUrl.searchParams.get('board') ?? boardForClientIp(ip);
+          const fwAdvert = stagedFwAdvert(pullBoard ?? undefined);
+          if (fwAdvert) feed.fw = fwAdvert;
           // A sleeping client's whole visit is this one request: no body, no
           // board id, nothing pushed. Record it, because the gap between two
           // pulls is the only evidence that the timer wake fired at all.

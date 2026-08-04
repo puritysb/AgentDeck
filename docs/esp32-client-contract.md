@@ -193,11 +193,40 @@ and pull while on battery.
   `shared/src/protocol.ts` § Glance; producers: `buildGlance` in
   `bridge/src/card-feed.ts` + `bridge/src/weather.ts` (Open-Meteo, 30 min
   cache, bounded fetch, stale-serve up to 3 h).
+- **Glance events (today's schedule, M9 stage 2, 2026-08-04)**: `glance` may
+  additionally carry `events` — today's *remaining* schedule, ≤3 entries,
+  all-day first then by start time: `{startHm?, endHm?, title}` where a
+  missing `startHm` means all-day and `title` arrives pre-trimmed to ≤48
+  UTF-8 bytes. Same absolute-`HH:MM` honesty rule as the rest of the glance.
+  Produced only when the host's settings.json configures
+  `calendar: {ics: <url | url[]>}` (secret-address ICS feeds — Google
+  Calendar / iCloud both export one); absent otherwise, and older daemons
+  simply never send it — devices must treat the field as optional. Producer:
+  `bridge/src/calendar.ts` (dependency-free ICS subset parser: all-day /
+  UTC / local times, RRULE DAILY/WEEKLY/MONTHLY/YEARLY with
+  INTERVAL/UNTIL/COUNT, EXDATE, RECURRENCE-ID overrides; 30 min cache,
+  bounded fetch, stale-serve up to 6 h).
 - **Pull telemetry (2026-07-31)**: a `GET /feed` may append `batt` (percent
   0–100), `mv` (battery millivolts), and `rssi` (WiFi dBm, negative) to the
   query string — the only battery/link observability a wake-sync-sleep device
   has. Out-of-range values are dropped server-side. Reported per-client in the
-  pull log line and `agentdeck devices` › `Card feed`.
+  pull log line and `agentdeck devices` › `Card feed`. Newer firmware also
+  appends `board=<id>` so the daemon can target board-specific adverts (Pull
+  OTA below) without relying on its IP→board memory.
+- **Pull OTA (feed-carried firmware, 2026-08-04)**: WS OTA needs a live
+  socket, which a battery client on the pull cadence never holds. Instead the
+  host stages a build — `agentdeck esp32-ota <board> --firmware <bin>
+  --stage` — and every `GET /feed` response (full AND `unchanged`) carries
+  `fw: {size, md5}` for that board. On its next pull the device: checks the
+  md5 against its applied-marker (`/.crosspoint/agentdeck-fw-applied.txt` —
+  written *before* flashing so a bad image can't re-download every pull),
+  guards battery ≥30% and the OTA slot size, downloads `GET
+  /esp32/fw?board=<id>&token=<t>` to the shared SD OTA cache, validates
+  (whole-file MD5 + bootloader-mirror structural check), and flashes +
+  restarts on that same wake. Staging persists across daemon restarts
+  (`~/.agentdeck/staged-fw.json`); re-staging a rebuilt binary refreshes the
+  md5. Device: `src/agentdeck/ota_pull.*` (crosspoint-agentdeck fork); daemon:
+  `stagedFwByBoard` in `bridge/src/daemon-server.ts`.
 - **Glance Frame (M8, 2026-07-31)**: `GET /glance-frame?board=<id>` returns
   the daemon-**rendered** glance as packed 1bpp framebuffer rows (MSB-first,
   bit 1 = white) with `X-Frame-Width`/`X-Frame-Height`/`X-Frame-Sig` headers —

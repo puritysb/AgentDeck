@@ -1226,6 +1226,7 @@ program
   .option('-e, --env <env>', 'PlatformIO environment for default firmware path')
   .option('-f, --firmware <path>', 'Firmware .bin path')
   .option('--build', 'Build the PlatformIO environment before upload')
+  .option('--stage', 'Stage for pull OTA: the board installs it on its next feed pull (no live WS needed)')
   .action(async (target, opts) => {
     const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
     const info = readDaemonInfo();
@@ -1248,6 +1249,22 @@ program
     // `target` against device_info.board, so `ttgo` must become `ttgo_t_display`.
     const daemonTarget = resolveEsp32OtaDaemonTarget(target);
     const firmwarePath = resolveEsp32FirmwarePath(target, opts.env, opts.firmware);
+    if (opts.stage) {
+      // Pull-OTA staging: for wake-sync-sleep boards (XTeink X3/X4) that never
+      // hold a live WS. The daemon adverts the build on the board's feed pulls;
+      // the board downloads + flashes itself on its next wake.
+      const { statusCode, body } = await postJsonWithTimeout<Record<string, any>>(
+        `http://127.0.0.1:${port}/esp32/ota`,
+        { target: daemonTarget, firmwarePath, stage: true },
+        30_000,
+      );
+      if (statusCode < 200 || statusCode >= 300 || body.ok === false) {
+        throw new Error(String(body.error ?? `HTTP ${statusCode}`));
+      }
+      log(`Staged for ${body.board}: ${formatBytes(body.bytes)} md5=${body.md5}`);
+      log('The board installs it on its next feed pull (battery cadence: typically within 15-60 min).');
+      return;
+    }
     log(`Uploading ${firmwarePath} to ${daemonTarget} via daemon :${port}...`);
     let { statusCode, body } = await postJsonWithTimeout<Record<string, any>>(
       `http://127.0.0.1:${port}/esp32/ota`,
