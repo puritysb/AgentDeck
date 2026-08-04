@@ -88,6 +88,34 @@ class DeviceProfileTest {
         assertEquals(EinkEvidence.KnownModel, profile.einkEvidence)
     }
 
+    @Test
+    fun `hisense lcd television model numbers do not match short eink families`() {
+        listOf("75A7N", "43A7N").forEach { model ->
+            val profile = classifyDevice(
+                fingerprint(
+                    manufacturer = "Hisense",
+                    model = model,
+                    hasTouchScreen = false,
+                    uiModeType = Configuration.UI_MODE_TYPE_TELEVISION,
+                    shortestWidthDp = 960,
+                )
+            )
+            assertEquals("$model must remain LCD", PanelKind.Lcd, profile.panel)
+            assertEquals(FormFactor.Television, profile.formFactor)
+            assertEquals(EinkEvidence.None, profile.einkEvidence)
+        }
+    }
+
+    @Test
+    fun `verified hisense eink families retain model detection`() {
+        listOf("A5", "A5 Pro", "A5C", "A7", "A7 CC", "A7CC", "A9", "A9 Pro", "HiReader")
+            .forEach { model ->
+                val profile = classifyDevice(fingerprint(manufacturer = "Hisense", model = model))
+                assertTrue("$model must remain e-ink", profile.panel.isEink)
+                assertEquals(EinkEvidence.KnownModel, profile.einkEvidence)
+            }
+    }
+
     // MARK: - Devices the previous detector recognised must keep working
 
     @Test
@@ -181,6 +209,19 @@ class DeviceProfileTest {
         assertEquals(PanelKind.EinkColor, profile.panel)
     }
 
+    @Test
+    fun `color signal alone establishes eink evidence`() {
+        val profile = classifyDevice(
+            fingerprint(
+                manufacturer = "Unknown",
+                model = "Color Reader",
+                hasColorEinkSignal = true,
+            )
+        )
+        assertEquals(PanelKind.EinkColor, profile.panel)
+        assertEquals(EinkEvidence.SystemProperty, profile.einkEvidence)
+    }
+
     // MARK: - System property truthiness
 
     @Test
@@ -191,6 +232,14 @@ class DeviceProfileTest {
         listOf("", "  ", "0", "false", "FALSE", " False ", "off", "no", "none", "null", "unset", "unknown", "disabled")
             .forEach { value ->
                 assertFalse("\"$value\" must not count as a signal", isTruthySystemProperty(value))
+            }
+    }
+
+    @Test
+    fun `false-like color property values remain rejected`() {
+        listOf("", "0", "false", "off", "no", "none", "null", "disabled")
+            .forEach { value ->
+                assertFalse("color property \"$value\" must not count as a signal", isTruthySystemProperty(value))
             }
     }
 

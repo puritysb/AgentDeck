@@ -356,6 +356,10 @@ private fun resolvePanel(fp: DeviceFingerprint, override: PanelOverride): PanelR
 private fun einkEvidence(fp: DeviceFingerprint): EinkEvidence {
     if (fp.hasVendorEinkApi) return EinkEvidence.VendorApi
     if (fp.hasEinkSystemProperty) return EinkEvidence.SystemProperty
+    // `ro.eink.color` / `ro.epd.color` is not merely a colour hint: a positive
+    // value proves that the underlying panel is e-ink even when the vendor
+    // exposes no generic e-ink property or SDK.
+    if (fp.hasColorEinkSignal) return EinkEvidence.SystemProperty
 
     val characteristics = fp.characteristics.lowercase()
     if (EINK_TOKENS.any { characteristics.contains(it) }) return EinkEvidence.BuildCharacteristics
@@ -371,10 +375,20 @@ private fun einkEvidence(fp: DeviceFingerprint): EinkEvidence {
     val model = fp.model.lowercase()
     for ((vendor, models) in MIXED_VENDOR_EINK_MODELS) {
         if (identity.none { it.contains(vendor) }) continue
-        if (models.any { model.contains(it) }) return EinkEvidence.KnownModel
+        if (matchesMixedVendorEinkModel(vendor, model, models)) return EinkEvidence.KnownModel
     }
 
     return EinkEvidence.None
+}
+
+private fun matchesMixedVendorEinkModel(
+    vendor: String,
+    model: String,
+    models: Set<String>,
+): Boolean = if (vendor == "hisense") {
+    HISENSE_EINK_MODEL_PATTERN.containsMatchIn(model)
+} else {
+    models.any { model.contains(it) }
 }
 
 private fun isColorEink(fp: DeviceFingerprint): Boolean {
@@ -475,9 +489,9 @@ private val EINK_ONLY_VENDORS = setOf(
 
 /**
  * Vendors that ship both panel types: an e-ink verdict requires a model token.
- * Tokens may be short here precisely because the vendor gate already ran — a
- * bare `"note"` cannot reach a Redmi, and `"paper"` cannot reach anything but
- * a Huawei.
+ * Most tokens are distinctive within their vendor. Hisense's A5/A7/A9 names
+ * are handled by [HISENSE_EINK_MODEL_PATTERN] instead of substring matching,
+ * because ordinary TVs also contain strings such as `75A7N` and `43A7N`.
  */
 private val MIXED_VENDOR_EINK_MODELS: Map<String, Set<String>> = mapOf(
     // Q5 is deliberately absent: the Hisense Q5 (HITV105C) is a monochrome
@@ -492,6 +506,15 @@ private val MIXED_VENDOR_EINK_MODELS: Map<String, Set<String>> = mapOf(
     "fujitsu" to setOf("quaderno"),
     "sony" to setOf("dpt"),
     "rockchip" to setOf("boox", "crema", "pantone", "inkpalm"),
+)
+
+/**
+ * Verified Hisense E-ink phone/reader families. The surrounding non-alphanumeric
+ * boundaries are the critical part: A7 and its A7CC colour variant match, while
+ * television size/model strings such as 75A7N cannot match in the middle.
+ */
+private val HISENSE_EINK_MODEL_PATTERN = Regex(
+    "(?:^|[^a-z0-9])(?:a5c?|a7(?:cc)?|a9|hi[\\s_-]*reader)(?:$|[^a-z0-9])",
 )
 
 /**
