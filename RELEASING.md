@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Release maintainers
-reviewed: 2026-07-30
-revision: 2026-07-30
+reviewed: 2026-08-05
+revision: 2026-08-05
 source_of_truth: RELEASING.md
 validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-version]
 ---
@@ -17,7 +17,7 @@ validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-ve
 
 AgentDeck uses one `major.minor` compatibility line across every maintained surface. Two numeric `X.Y.Z` product versions are mutually compatible if and only if their first two components match. Patch values are ignored in both directions: for example, `1.0.1` and `1.0.9` are compatible regardless of which side is newer.
 
-Root [`VERSION`](VERSION) is the repository baseline and compatibility-line anchor, not a patch ceiling and not a runtime negotiation value. It currently reads **1.0.2**, so every maintained target must remain on compatibility line **1.0**. npm/CLI is at `1.0.4`; Stream Deck and Android are at `1.0.3`; Apple is at `1.0.2`; ESP32 and Ulanzi remain at their independently delivered `1.0.1` patches. A target may also advance beyond root's patch without forcing unrelated targets or root to ship. The public Mac App Store release is `1.0.2` (live since 2026-07-24); the iPhone/iPad companion's own first release, also `1.0.2`, is still in the review queue.
+Root [`VERSION`](VERSION) is the repository baseline and compatibility-line anchor, not a patch ceiling and not a runtime negotiation value. It currently reads **1.0.2**, so every maintained target must remain on compatibility line **1.0**. npm/CLI is at `1.0.4`; Stream Deck and Android are at `1.0.3`; Apple and ESP32 are at `1.0.2`; Ulanzi remains at its independently delivered `1.0.1` patch. A target may also advance beyond root's patch without forcing unrelated targets or root to ship. The public Mac App Store release is `1.0.2` (live since 2026-07-24); the iPhone/iPad companion's own first release, also `1.0.2`, was rejected on 2026-08-04 and has not shipped.
 
 Run `pnpm verify-version` before every build or release. CI rejects a `major.minor` compatibility split or a target-internal mismatch. Release CI additionally requires a channel tag's full `X.Y.Z` to equal that target's own declared version; it does not compare the tag's patch with root `VERSION`.
 
@@ -78,9 +78,11 @@ Tag prefixes remain because channels ship independently and may point to differe
 
 ### Apple (TestFlight / App Store)
 
-macOS has been publicly available since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and — since the 2026-07-24 approval of build 3901 — as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`, build 3901) is still queued for review. A successful CI upload reaches App Store Connect/TestFlight; public App Store release remains a separate App Store Connect action.
+macOS has been publicly available since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and — since the 2026-07-24 approval of build 3901 — as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`, build 3901) was **rejected on 2026-08-04 under Guideline 2.1(a)**; the replacement build `4002` is on TestFlight and awaits resubmission. A successful CI upload reaches App Store Connect/TestFlight; public App Store release remains a separate App Store Connect action.
 
 While a version sits in **Waiting for Review**, do not upload a replacement build for it: attaching one requires a developer reject, which loses the queue position without helping. Land further work on the next patch instead.
+
+**A rejection is the opposite case, and it moves the tag.** A rejected version keeps its `MARKETING_VERSION`, so the replacement ships under the same Apple version — and rule 6 below requires the tag to match that version exactly. Re-pointing `apple-v<VERSION>` at the fix commit and force-pushing is therefore the intended path (CI derives the build number from `run_number * 100 + run_attempt`, so it stays monotonic across re-tags). The cost is that the tag no longer identifies the commit that produced the build already in the store: after a re-tag, that commit is recoverable only from the earlier workflow run for the same tag (`gh run list --workflow=apple-release.yml`). Record it in the changelog entry rather than relying on the tag.
 
 1. Confirm Apple `MARKETING_VERSION` matches between `apple/project.yml` and the Xcode project mirror (`pnpm verify-version` checks this).
 2. Run the Release build and App Store archive verifier described in `CLAUDE.md`.
@@ -104,7 +106,7 @@ Assets are named by the board's **canonical id** (`agentdeck-<board>.bin`) — t
 
 ### Stream Deck plugin
 
-`1.0.2` was approved and published on 2026-07-28: [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464). Now that a build is published, the Marketplace's **monotonic-version rule applies** — every subsequent submission needs a higher version, and same-version resubmission (which pre-publication review revisions allowed) is no longer available.
+`1.0.2` was approved and published on 2026-07-28, and `1.0.3` — the Windows compatibility correction — has been published since 2026-07-31: [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464). Now that builds are published, the Marketplace's **monotonic-version rule applies** — every subsequent submission needs a version above `1.0.3`, and same-version resubmission (which pre-publication review revisions allowed) is no longer available.
 
 1. Confirm the main manifest and embedded profile snapshots match the Stream Deck package version as `X.Y.Z.0`.
 2. Follow `.agents/workflows/build-plugin.md`, then run `pnpm package` — this validates with Elgato's official CLI (pinned as the `@elgato/cli` devDependency) before packing, so a local failure is a submission the Marketplace would have rejected.

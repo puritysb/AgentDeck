@@ -115,7 +115,7 @@ Any of these attach to the same daemon, and you can add them in any order:
 |---|---|
 | **Stream Deck / Mini / XL / Plus / + XL** | One click from the [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) — or `cd plugin && streamdeck link bound.serendipity.agentdeck.sdPlugin` from a checkout |
 | **Ulanzi D200H** | Install the plugin in Ulanzi Studio — see [plugin-ulanzi/VERIFY.md](plugin-ulanzi/VERIFY.md) |
-| **macOS app** | [Download on the Mac App Store](https://apps.apple.com/app/id6784822497) — the SwiftUI dashboard carries its own daemon, so it needs no Node.js. iPhone/iPad companion in review |
+| **macOS app** | [Download on the Mac App Store](https://apps.apple.com/app/id6784822497) — the SwiftUI dashboard carries its own daemon, so it needs no Node.js. iPhone/iPad companion not released yet |
 | **Android tablet / e-ink** | Signed APK from [Releases](https://github.com/puritysb/AgentDeck/releases) — see [docs/android.md](docs/android.md) |
 | **ESP32 panels · InkDeck e-ink** | Flash firmware, then Wi-Fi OTA — see [docs/esp32.md](docs/esp32.md) |
 | **Pixoo64 · TC001 · Timebox · iDotMatrix** | `agentdeck pixoo scan` / `agentdeck timebox scan` — see [docs/devices.md](docs/devices.md) |
@@ -242,11 +242,11 @@ builds on [Releases](https://github.com/puritysb/AgentDeck/releases).
 | Channel | Tag | Status |
 |---|---|---|
 | **npm** — `@agentdeck/setup` | `npm-v*` | [1.0.4](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.0.4) |
-| **Apple App Store** — macOS | `apple-v*` | [1.0.2 live](https://apps.apple.com/app/id6784822497) (released 2026-07-24); iPhone/iPad companion 1.0.2 waiting for review |
-| **Elgato Marketplace** — Stream Deck plugin | `streamdeck-v*` | [1.0.2 live](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) (approved 2026-07-28); 1.0.3 macOS + Windows correction prepared |
+| **Apple App Store** — macOS | `apple-v*` | [1.0.2 live](https://apps.apple.com/app/id6784822497) (released 2026-07-24); iPhone/iPad companion 1.0.2 was rejected on 2026-08-04 under Guideline 2.1(a) — the fix is built and awaiting resubmission |
+| **Elgato Marketplace** — Stream Deck plugin | `streamdeck-v*` | [1.0.3 live](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) (published 2026-07-31; 1.0.2 was the first public release on 2026-07-28) |
 | **Ulanzi Marketplace** — D200H plugin | `ulanzi-v*` | [1.0.1 release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v1.0.1); support handoff pending ([details](marketplace/ulanzi/LISTING.md)) |
 | **GitHub Release** — Android APK | `android-v*` | [1.0.3](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.0.3) |
-| **GitHub Release** — ESP32 firmware | `esp32-v*` | [1.0.1](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v1.0.1) |
+| **GitHub Release** — ESP32 firmware | `esp32-v*` | [1.0.2](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v1.0.2) — one binary per Shipping board |
 | **Google Play** — Android AAB | `android-v*` | CI wired, gated on Play Console setup |
 
 ---

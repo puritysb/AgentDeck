@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Device maintainers
-reviewed: 2026-07-30
-revision: 2026-07-30
+reviewed: 2026-08-05
+revision: 2026-08-05
 source_of_truth: docs/devices.md
 validators: [pnpm design-system:check]
 ---
@@ -24,6 +24,8 @@ validators: [pnpm design-system:check]
 | **Android** | WebSocket + HTTP | Daemon (9120) | Token (local bypass) | mDNS / ADB / QR | Bidirectional | All 13 |
 | **Apple** | WebSocket + HTTP | Daemon (9120) | Token | mDNS / QR | Bidirectional | All 13 |
 | **ESP32** | USB Serial JSON + WiFi WebSocket | CDC/UART 115200 / Daemon (9120) | None | Port scan 10s / mDNS | Push + OTA control | 6 + OTA ack/error |
+| **T-Embed Companion Knob** | USB Serial JSON + WiFi WebSocket | CDC 115200 / Daemon (9120) | None | Port scan 10s / mDNS | Bidirectional (encoder steering + voice) | 6 + OTA ack/error + steering/voice uplink |
+| **T-Display-S3-Pro Focus Strip** | USB Serial JSON + WiFi WebSocket | CDC 230400 / Daemon (9120) | None | Port scan 10s / mDNS | Bidirectional (touch steering) | 6 + OTA ack/error + steering uplink |
 | **Pixoo64** | HTTP REST (Divoom) | LAN:80 | None | Cloud API / manual | Push only | 4 |
 | **Timebox Mini** | BLE GATT (ISSC transparent-UART) | `49535343-…` | Bluetooth pairing | `TimeBox-mini-light` BLE scan | Push only | 4 |
 | **InkDeck e-ink** | WebSocket JSON (WiFi) | Daemon (9120) | None | mDNS / port scan | Push + OTA control | dashboard frame + OTA ack/error |
@@ -32,6 +34,25 @@ validators: [pnpm design-system:check]
 | **Gateway** | WebSocket Custom | 18789 | Ed25519 | Hardcoded | Bidirectional | N/A (adapter) |
 
 > **Daemon hub**: All dashboard clients connect exclusively to the daemon. Session bridges handle PTY + hooks only and do not serve external devices. Daemon port defaults to 9120; if occupied by non-daemon process, daemon falls back to next available port and records actual port in `~/.agentdeck/daemon.json`. Local clients read `daemon.json`; remote clients discover via mDNS (daemon only advertises `_agentdeck._tcp`).
+
+## T-Embed CC1101 (Companion Knob)
+
+**Shipping since 2026-07-25.** The LilyGO T-Embed CC1101 is the fleet's only board with a **rotary encoder**, and the only one you steer with rather than only read from — every other Shipping board is output-only apart from touch. Its UI (`esp32/src/ui/knob/`) is the Stream Deck's session-centric two-level grammar translated to an encoder: at list level rotate cycles sessions and press enters; at detail level rotate moves the option/command cursor, press commits (`select_option` / state command), and long-press backs out (`session_command{escape}`). Holding the encoder is push-to-talk — the board captures voice, the host transcribes, and the reply is spoken back through the board speaker.
+
+It is a **dual-mode companion**: USB-powered on the desk it is a steering knob; on its 1300 mAh cell it becomes a carry-around pager that chimes when a session starts waiting. The 8× WS2812 ring is a session-status ring (one LED per session, up to eight). The BQ27220 fuel gauge gives it a real state-of-charge readout rather than an inferred one.
+
+Peripheral breadth is the widest in the fleet — CC1101 sub-GHz, PN532 NFC, IR TX/RX, mic + speaker, microSD. NFC and IR receive are implemented; **BLE phone relay and CC1101 sub-GHz capture remain future work**. Design record and interaction grammar: [esp32-companion-concepts.md](esp32-companion-concepts.md).
+
+## T-Display-S3-Pro (Focus Strip / Pocket)
+
+**Shipping since 2026-07-26.** The LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. **One firmware serves two physically different units**, and it picks its own personality at boot: `Camera::init()` probes the rear POGO camera shield, and a unit that has one comes up **portrait** in the Pocket UI while a unit that does not comes up **landscape** in the Ticker UI (`esp32/src/main.cpp`). The camera is a purchase option on a shield header — not a board revision — so both units report the same `device_info.board` of `t_display_pro` and take the same OTA image.
+
+- **Landscape (Ticker, no camera)** — three pages: **Focus** (one prioritized session and one readable thought; an awaiting session owns the page and renders separate labelled Deny/Approve targets, so a generic tap can never answer a gate), **Usage** (Claude and Codex quota windows as full-height gauges with reset countdowns — the permanent large-format version of the Stream Deck E2/E3 dials), and **Sessions** (the three highest-value rows). The split rocker moves between pages, `BOOT` returns to Focus, and touch mirrors both with header tabs and swipes.
+- **Portrait (Pocket, camera unit)** — a phone-shaped stack of **SESSIONS** (momentum-scrolled cards, tap to focus), **CAM** (upright viewfinder with SNAP and LED; tapping the target line cycles which session receives the photo), and **USAGE**. The whole hardware stack is portrait-native — panel GRAM, CST226SE touch reporting, and camera mounting — so this orientation needs no rotation fights and LVGL's pointer indev drives real widgets instead of hand-rolled gestures.
+
+The **LTR-553 ambient light sensor** makes this the first board where the display-sleep contract takes a sensor input: brightness follows room light and the strip dims itself at night, decided locally. The SY6970 charger has no coulomb-counting register, so the header reports sampled **cell voltage** and charge state rather than an invented percentage.
+
+Two operational constraints are load-bearing and documented in [hardware-compatibility.md](hardware-compatibility.md#esp32-board-specification-sheet): its USB CDC corrupts esptool streams above 230400 baud, and a WiFi join concurrent with display bring-up browns out the camera unit's 3.3 V rail — so the firmware never joins at boot and defers the join by ~25 s.
 
 ## InkDeck e-ink (custom firmware)
 
@@ -133,9 +154,9 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
   - iPhone (compact): Vertical stack HUD, pull-up Engine sheet
   - iPad (regular): Same as Android tablet — terrarium background + 4-corner HUD overlay
   - macOS: Separate WindowGroup, external monitor fullscreen, LSUIElement menu bar mode
-- **Distribution**: [Mac App Store](https://apps.apple.com/app/id6784822497) (`bound.serendipity.agent.deck`, macOS 1.0.2 live); iPhone/iPad companion in review / TestFlight
+- **Distribution**: [Mac App Store](https://apps.apple.com/app/id6784822497) (`bound.serendipity.agent.deck`, macOS 1.0.2 live); iPhone/iPad companion on TestFlight, not yet released on the App Store
 - **Source**: `apple/` (pnpm workspace 외부, `android/`와 동일 레벨)
-- **Status**: macOS production release; iPhone/iPad companion in review
+- **Status**: macOS production release; iPhone/iPad companion 1.0.2 rejected 2026-08-04 (Guideline 2.1(a)), fix built and awaiting resubmission
 
 ### ESP32 Touch Display
 

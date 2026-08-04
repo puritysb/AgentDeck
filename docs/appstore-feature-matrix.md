@@ -15,7 +15,7 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # App Store and CLI Product Tiers
 
-**Distribution status:** macOS has been live since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and since 2026-07-24 as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`) remains queued for review. The repository's source version may advance independently between channel releases.
+**Distribution status:** macOS has been live since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and since 2026-07-24 as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`) has not shipped: it was rejected on 2026-08-04 under Guideline 2.1(a), and the replacement build is awaiting resubmission. The repository's source version may advance independently between channel releases.
 
 This matrix defines which capabilities belong to the standalone App Store product and which require the external `agentdeck` CLI. Add or move a row here **before** implementing a capability.
 

@@ -7,10 +7,10 @@ locale: ja
 canonical: false
 status: reader-translation
 owner: Hardware maintainers
-reviewed: 2026-08-02
-revision: 2026-08-02-ja
+reviewed: 2026-08-05
+revision: 2026-08-05-ja
 translation_of: hardware.compatibility
-source_revision: 2026-08-02
+source_revision: 2026-08-05
 source_of_truth: docs/hardware-compatibility.md
 validators: [node scripts/build-design-system-viewer.mjs --check]
 ---
@@ -38,6 +38,8 @@ AgentDeck の dashboard surface を一覧する読者向け翻訳です。英語
 | TTGO T-Display 1.14 | ESP32 display  | ESP32 classic         | ST7789 · 135×240               | USB serial · Wi-Fi WS   |   対応    |
 | Waveshare LCD 1.47  | ESP32 display  | ESP32-C6              | ST7789 · 172×320               | USB serial · Wi-Fi WS   |   対応    |
 | IPS 10.1            | ESP32 display  | ESP32-P4 + C6         | JD9365 MIPI-DSI · 800×1280     | USB serial · Wi-Fi WS   |   対応    |
+| T-Embed Companion Knob | ESP32 knob  | ESP32-S3              | ST7789 · 320×170 + 8-LED ring  | Wi-Fi WS · USB serial   |   対応    |
+| T-Display-S3-Pro Focus Strip | ESP32 strip | ESP32-S3        | ST7796U · 480×222 + touch      | Wi-Fi WS · USB serial   |   対応    |
 | Ulanzi TC001        | ESP32 LED      | ESP32 classic         | WS2812B · 32×8                 | USB serial · Wi-Fi WS   |   一部    |
 | InkDeck             | ESP32 e-ink    | XIAO ESP32-S3 Plus    | UC8179 · 800×480               | USB serial · Wi-Fi WS   |   対応    |
 | XTeink X3           | e-ink reader   | ESP32-C3              | 3.7-inch · 528×792             | Wi-Fi WS                |   一部    |
@@ -68,5 +70,6 @@ AgentDeck の dashboard surface を一覧する読者向け翻訳です。英語
 - Android の same-LAN mDNS は利用できますが、`adb reverse` は CLI が必要です。
 - SSE の full streaming と heartbeat は Node bridge のみで、Swift daemon は最初の `connected` event のみ送信します。
 - ESP32 は USB port 名で推測せず、`device_info_request` で識別します。
+- 同じ理由で、board 文字列だけで画面レイアウトを断定しません — T-Display-S3-Pro は起動時のカメラ有無で縦(Pocket)/横(Ticker) UI が分かれますが、両ユニットとも `t_display_pro` を報告し同じ OTA イメージを使います。
 
 flash・OTA・pin の運用は `docs/esp32.md`、通信契約は `docs/devices.md`、App Store tier は `docs/appstore-feature-matrix.md` が所有します。

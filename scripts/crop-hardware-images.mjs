@@ -73,6 +73,16 @@ const tasks = [
   { name: 'ips10.jpg', src: 'IMG_9696.jpeg', crop: { left: 0, top: 306, width: 4032, height: 2304 }, out: STANDARD },
   { name: 'inkdeck.jpg', src: 'IMG_9708.jpeg', crop: { left: 216, top: 396, width: 3780, height: 2160 }, out: STANDARD },
   { name: 'xteink.jpg', src: 'IMG_9682.jpeg', crop: { left: 0, top: 234, width: 4032, height: 2304 }, out: STANDARD },
+  // The Companion Knob is the only board framed around an input, not a panel, so
+  // the crop keeps the rotary encoder and the LED ring in frame beside the LCD.
+  { name: 't-embed.jpg', src: 'IMG_0095.jpeg', crop: { left: 97, top: 1042, width: 2880, height: 1646 }, out: STANDARD },
+  // Focus Strip: the no-camera unit, which boots the landscape Ticker UI. The
+  // GC0308 unit boots portrait (Pocket UI) and was shot handheld, so it cannot
+  // be framed to 1.75:1 without either clipping its tab bar or filling half the
+  // card with hand — that capture stays archived as IMG_0096 (see the archive
+  // README) and the camera option is carried by the spec sheet's second S3-Pro
+  // row instead.
+  { name: 't-display-pro.jpg', src: 'IMG_0097.jpeg', crop: { left: 137, top: 1085, width: 2800, height: 1600 }, out: STANDARD },
   // Waveshare has no shot in the photo set; this is the only capture of it, already
   // cropped by hand, so it is passed through with just the frame fit applied.
   { name: 'waveshare-147.jpg', srcPath: WAVESHARE_SRC, crop: { left: 109, top: 0, width: 949, height: 542 }, out: STANDARD },

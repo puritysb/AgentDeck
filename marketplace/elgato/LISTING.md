@@ -29,10 +29,12 @@ Plugin package: `dist/bound.serendipity.agentdeck.streamDeckPlugin` — rebuild 
 
 ## Version
 
-`1.0.3.0` (product version `1.0.3`) — Windows compatibility correction prepared
-after the published 1.0.2 manifest incorrectly restricted installation to
-macOS. Stream Deck requires the 4-part form; `scripts/verify-version-sync.mjs`
-pins it to `<plugin package version>.0`.
+`1.0.3.0` (product version `1.0.3`) — **published 2026-07-31**. It corrects
+Windows compatibility after the 1.0.2 manifest (public since 2026-07-28)
+incorrectly restricted installation to macOS. Stream Deck requires the 4-part
+form; `scripts/verify-version-sync.mjs` pins it to `<plugin package version>.0`.
+Marketplace versions are monotonic once published, so the next submission must
+carry a version above 1.0.3.
 
 ## Platform
 
