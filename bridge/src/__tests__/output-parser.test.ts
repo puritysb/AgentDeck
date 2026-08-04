@@ -666,6 +666,67 @@ describe('OutputParser', () => {
   // === Interactive Prompt During Spinner ===
 
   describe('interactive prompt during spinner', () => {
+    it('parses a navigable prompt when spinner and prompt share the first chunk', () => {
+      const p = armParser();
+      vi.advanceTimersByTime(500);
+
+      const starts = collectEvents(p, 'spinner_start');
+      const options = collectEvents(p, 'option_prompt');
+
+      p.feed('✳ Cooking…\nWhich approach?\n❯ 1. Safe\n  2. Fast\n');
+      vi.advanceTimersByTime(200);
+
+      expect(starts).toHaveLength(0);
+      expect(options).toHaveLength(1);
+      expect(options[0].options.map((option: PromptOption) => option.label)).toEqual(['Safe', 'Fast']);
+    });
+
+    it('keeps a visible prompt active through spinner redraw floods', () => {
+      const p = armParser();
+      vi.advanceTimersByTime(500);
+
+      const starts = collectEvents(p, 'spinner_start');
+      const options = collectEvents(p, 'option_prompt');
+
+      p.feed('Which approach?\n❯ 1. Safe\n  2. Fast\n');
+      for (let i = 0; i < 80; i++) {
+        p.feed(`${i % 2 === 0 ? '✻' : '✽'} Running build…\n`);
+        vi.advanceTimersByTime(100);
+      }
+
+      expect(options).toHaveLength(1);
+      expect(starts).toHaveLength(0);
+    });
+
+    it('allows real processing immediately after the prompt is selected', () => {
+      const p = armParser();
+      vi.advanceTimersByTime(500);
+
+      const starts = collectEvents(p, 'spinner_start');
+      const options = collectEvents(p, 'option_prompt');
+
+      p.feed('Choose one:\n❯ 1. Alpha\n  2. Beta\n');
+      vi.advanceTimersByTime(200);
+      expect(options).toHaveLength(1);
+
+      p.notifyUserInput('\r');
+      p.feed('✻ Running the selected action\n');
+
+      expect(starts).toHaveLength(1);
+    });
+
+    it('does not arm prompt lifecycle from stale numbered prose', () => {
+      const p = armParser();
+      vi.advanceTimersByTime(500);
+
+      const starts = collectEvents(p, 'spinner_start');
+
+      p.feed('1. Historical note\n2. Another note\n');
+      p.feed('✻ Running the selected action\n');
+
+      expect(starts).toHaveLength(1);
+    });
+
     it('stops spinner when permission prompt arrives', () => {
       const p = armParser();
       vi.advanceTimersByTime(500); // clear idle timer from boot

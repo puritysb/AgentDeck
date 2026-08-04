@@ -168,6 +168,13 @@ export class OutputParser extends EventEmitter {
   // Cooldown after emitting permission/diff prompt — suppresses false idle
   // from user prompt echo (❯ text) in the same PTY batch
   private interactiveCooldown: ReturnType<typeof setTimeout> | null = null;
+  // Explicit lifecycle for a prompt that is currently visible in the managed
+  // terminal. This is armed only from the current PTY chunk (never historical
+  // buffer contents) and cleared by authoritative user input / idle / reset.
+  // While armed, Claude's concurrent status-line spinner redraws must not turn
+  // AWAITING back into PROCESSING.
+  private interactivePromptActive = false;
+  private interactivePromptNavigable = false;
   private remoteUrl: string | null = null;
 
   feed(rawData: string): void {
@@ -394,6 +401,17 @@ export class OutputParser extends EventEmitter {
       DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
       PERMISSION_YN.test(chunk) ||
       OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk);
+    const hasNavigablePrompt = /^\s*❯\s*\d{1,2}[.)]/m.test(chunk);
+    const hasAuthoritativePrompt =
+      DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
+      PERMISSION_YN.test(chunk) || hasNavigablePrompt;
+
+    // Arm from fresh evidence only. Re-reading the append-only buffer here can
+    // resurrect an answered prompt and suppress real processing indefinitely.
+    if (hasAuthoritativePrompt) {
+      this.interactivePromptActive = true;
+      this.interactivePromptNavigable = hasNavigablePrompt;
+    }
 
     // --- Spinner + prompt handling ---
     if (this.spinnerActive) {
@@ -435,24 +453,32 @@ export class OutputParser extends EventEmitter {
       // This prevents matching spinner chars in large text blocks (responses, banners)
       const nonWs = chunk.replace(/\s/g, '').length;
       if (nonWs < 80) {
-        if (!this.spinnerActive) {
-          this.spinnerActive = true;
-          this.clearSuggestion();
-          debug('Parser', 'EMIT spinner_start');
-          this.emit('spinner_start');
-        }
-        this.resetSpinnerTimer();
-        this.spinnerTimer = setTimeout(() => {
-          if (this.spinnerActive) {
-            this.spinnerActive = false;
-            debug('Parser', 'EMIT spinner_stop (debounced)');
-            this.emit('spinner_stop');
+        if (this.interactivePromptActive) {
+          debug('Parser', 'spinner ignored — interactive prompt is active');
+          // A first prompt chunk may contain both the spinner and `❯ 1.`. It
+          // still needs to reach the prompt parser below. Later spinner-only
+          // redraws stop here so they cannot cancel the option debounce.
+          if (!hasAuthoritativePrompt) return;
+        } else {
+          if (!this.spinnerActive) {
+            this.spinnerActive = true;
+            this.clearSuggestion();
+            debug('Parser', 'EMIT spinner_start');
+            this.emit('spinner_start');
           }
-        }, SPINNER_DEBOUNCE_MS);
-        // Cancel idle & option timers — we're processing now
-        this.resetIdleTimer();
-        this.resetOptionTimer();
-        return;
+          this.resetSpinnerTimer();
+          this.spinnerTimer = setTimeout(() => {
+            if (this.spinnerActive) {
+              this.spinnerActive = false;
+              debug('Parser', 'EMIT spinner_stop (debounced)');
+              this.emit('spinner_stop');
+            }
+          }, SPINNER_DEBOUNCE_MS);
+          // Cancel idle & option timers — we're processing now
+          this.resetIdleTimer();
+          this.resetOptionTimer();
+          return;
+        }
       }
     }
 
@@ -617,6 +643,7 @@ export class OutputParser extends EventEmitter {
       // Genuine idle prompt or bare idle line — clear navigable state, fall through
       this.lastNavigableEmit = false;
       this.lastCursorIndex = 0;
+      this.clearInteractivePrompt();
       this.resetOptionTimer(); // cancel stale timer from ANSI reposition handler
     }
 
@@ -653,6 +680,7 @@ export class OutputParser extends EventEmitter {
         debug('Parser', 'idle prompt ignored — interactive cooldown active');
         return;
       }
+      this.clearInteractivePrompt();
       if (!this.seenFirstIdle) {
         this.seenFirstIdle = true;
         debug('Parser', 'first idle prompt seen — spinner detection now armed');
@@ -1245,6 +1273,31 @@ export class OutputParser extends EventEmitter {
     }, 200);
   }
 
+  /**
+   * Observe input forwarded to the managed PTY. Navigable prompts remain active
+   * through arrow-key movement and resolve on Enter/Esc/Ctrl+C. Shortcut-style
+   * prompts resolve on any non-navigation input.
+   */
+  notifyUserInput(data: string): void {
+    if (!this.interactivePromptActive || !data) return;
+
+    const withoutNavigation = data.replace(/\x1b\[[ABCD]/g, '');
+    const hasEnter = /[\r\n]/.test(withoutNavigation);
+    const hasInterrupt = withoutNavigation.includes('\x03');
+    const hasEscape = withoutNavigation.includes('\x1b');
+    const hasShortcut = /[^\x00-\x20\x7f]/.test(withoutNavigation);
+
+    if (hasEnter || hasInterrupt || hasEscape || (!this.interactivePromptNavigable && hasShortcut)) {
+      debug('Parser', 'interactive prompt resolved by PTY input');
+      this.clearInteractivePrompt();
+    }
+  }
+
+  private clearInteractivePrompt(): void {
+    this.interactivePromptActive = false;
+    this.interactivePromptNavigable = false;
+  }
+
   private resetInteractiveCooldown(): void {
     if (this.interactiveCooldown) { clearTimeout(this.interactiveCooldown); this.interactiveCooldown = null; }
   }
@@ -1280,6 +1333,7 @@ export class OutputParser extends EventEmitter {
     this.lastSuggestedPrompt = null;
     this.lastNavigableEmit = false;
     this.lastCursorIndex = 0;
+    this.clearInteractivePrompt();
     this.resetSpinnerTimer();
     this.resetIdleTimer();
     this.resetOptionTimer();

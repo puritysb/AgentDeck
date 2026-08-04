@@ -18,6 +18,9 @@ export class ClaudeCodeAdapter extends PtyAdapter {
   constructor() {
     super();
     this.outputParser = new OutputParser();
+    this.ptyManager.on('input', (data: string) => {
+      this.outputParser.notifyUserInput(data);
+    });
   }
 
   protected getDefaultCommand(): string {

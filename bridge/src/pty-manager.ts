@@ -90,6 +90,7 @@ export class PtyManager extends EventEmitter {
       const preview = data.replace(/\n/g, '\\n').replace(/[\x00-\x1f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
       debug('PTY', `write(${data.length}): "${preview.slice(0, 80)}"`);
     }
+    this.emit('input', data);
     this.ptyProcess.write(data);
   }
 
@@ -111,7 +112,7 @@ export class PtyManager extends EventEmitter {
     // Proxy user's stdin to PTY
     stdin.on('data', (data: Buffer) => {
       if (this.ptyProcess) {
-        this.ptyProcess.write(data.toString());
+        this.write(data.toString());
       }
     });
 
