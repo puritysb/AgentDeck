@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CodexRolloutCache,
+  collectCodexSessionsFromRollouts,
+  dedupeObservedSessions,
   isAntigravityProcessCommand,
+  isCodexSessionProcessCommand,
   parseClaudeTranscript,
   parseCodexRollout,
   parseLsofRollouts,
@@ -228,8 +232,117 @@ describe('passive-observer parsers', () => {
       'n/Users/example/.codex/sessions/2026/04/26/rollout-def.jsonl',
     ].join('\n'));
 
-    expect(rollouts.get(123)).toBe('/Users/example/.codex/sessions/2026/04/26/rollout-abc.jsonl');
-    expect(rollouts.get(456)).toBe('/Users/example/.codex/sessions/2026/04/26/rollout-def.jsonl');
+    expect(rollouts.get(123)).toEqual(['/Users/example/.codex/sessions/2026/04/26/rollout-abc.jsonl']);
+    expect(rollouts.get(456)).toEqual(['/Users/example/.codex/sessions/2026/04/26/rollout-def.jsonl']);
+  });
+
+  it('keeps every rollout a desktop app-server pid holds open, deduped', () => {
+    const rollouts = parseLsofRollouts([
+      'p999',
+      'n/Users/example/.codex/sessions/2026/08/03/rollout-one.jsonl',
+      'n/Users/example/.codex/sessions/2026/08/03/rollout-two.jsonl',
+      'n/Users/example/.codex/sessions/2026/08/03/rollout-one.jsonl',
+    ].join('\n'));
+
+    expect(rollouts.get(999)).toEqual([
+      '/Users/example/.codex/sessions/2026/08/03/rollout-one.jsonl',
+      '/Users/example/.codex/sessions/2026/08/03/rollout-two.jsonl',
+    ]);
+  });
+
+  it('admits Codex Desktop app-server but rejects helper lookalikes', () => {
+    expect(isCodexSessionProcessCommand(
+      '/Applications/ChatGPT.app/Contents/Resources/codex -c features.code_mode_host=true app-server',
+    )).toBe(true);
+    expect(isCodexSessionProcessCommand('/opt/homebrew/bin/codex --model gpt-5.4')).toBe(true);
+    expect(isCodexSessionProcessCommand('/Applications/ChatGPT.app/Contents/Resources/codex-code-mode-host')).toBe(false);
+    expect(isCodexSessionProcessCommand('grep codex')).toBe(false);
+  });
+
+  it('marks internal subagent rollouts from session_meta source', () => {
+    const parent = parseCodexRollout(jsonl([
+      { type: 'session_meta', payload: { id: 'parent', source: 'vscode', originator: 'Codex Desktop' } },
+    ]));
+    const child = parseCodexRollout(jsonl([
+      { type: 'session_meta', payload: { id: 'child', source: { subagent: 'review' }, originator: 'codex_exec' } },
+    ]));
+
+    expect(parent.isSubagent).toBe(false);
+    expect(child.isSubagent).toBe(true);
+  });
+
+  it('reuses unchanged rollout summaries and invalidates changes/removals', async () => {
+    let info = { mtimeMs: 1, size: 10 };
+    let reads = 0;
+    let raw = jsonl([{ type: 'session_meta', payload: { id: 'one', source: 'vscode' } }]);
+    const cache = new CodexRolloutCache({
+      stat: async () => info,
+      read: async () => { reads += 1; return raw; },
+    });
+
+    expect((await cache.get('/rollout.jsonl'))?.summary.sessionId).toBe('one');
+    expect((await cache.get('/rollout.jsonl'))?.summary.sessionId).toBe('one');
+    expect(reads).toBe(1);
+
+    info = { mtimeMs: 2, size: 20 };
+    raw = jsonl([{ type: 'session_meta', payload: { id: 'two', source: 'vscode' } }]);
+    expect((await cache.get('/rollout.jsonl'))?.summary.sessionId).toBe('two');
+    expect(reads).toBe(2);
+
+    cache.retain(new Set());
+    expect(cache.size).toBe(0);
+  });
+
+  it('surfaces top-level Desktop rollouts and excludes internal subagents', async () => {
+    const process = {
+      pid: 999,
+      ppid: 1,
+      rssKb: 100,
+      command: '/Applications/ChatGPT.app/Contents/Resources/codex app-server',
+    };
+    const cache = new CodexRolloutCache({
+      stat: async () => ({ mtimeMs: 10, size: 10 }),
+      read: async (path) => jsonl([{
+        type: 'session_meta',
+        payload: path.includes('child')
+          ? { id: 'child', cwd: '/repo/child', source: { subagent: 'review' } }
+          : { id: 'parent', cwd: '/repo/parent', source: 'vscode', originator: 'Codex Desktop' },
+      }]),
+    });
+
+    const sessions = await collectCodexSessionsFromRollouts(
+      [process],
+      new Map([[999, ['/rollout-parent.jsonl', '/rollout-child.jsonl']]]),
+      cache,
+    );
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: 'observed:codex-app:parent',
+      agentType: 'codex-app',
+      pid: 999,
+      cwd: '/repo/parent',
+    });
+  });
+
+  it('dedupes a hook-observed Desktop conversation without hiding sibling rollouts', () => {
+    const observed = ['parent', 'sibling'].map((id) => ({
+      id: `observed:codex-app:${id}`,
+      agentType: 'codex-app',
+      pid: 999,
+      port: 0,
+      projectName: id,
+      alive: true,
+      state: 'idle',
+      startedAt: '2026-08-04T00:00:00.000Z',
+      controlMode: 'observed',
+    }));
+    const managed = [{ id: 'parent', pid: 999 }];
+    const processes = [{ pid: 999, ppid: 1, rssKb: 10, command: '/Applications/ChatGPT.app/codex app-server' }];
+
+    const result = dedupeObservedSessions(observed as never, managed as never, processes);
+
+    expect(result.map((session) => session.id)).toEqual(['observed:codex-app:sibling']);
   });
 
   it('recognizes standalone Antigravity processes for CLI daemon passive discovery', () => {

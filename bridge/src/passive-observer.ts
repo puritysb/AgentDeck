@@ -1,5 +1,11 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import {
+  open as openAsync,
+  readdir as readdirAsync,
+  readlink as readlinkAsync,
+  stat as statAsync,
+} from 'node:fs/promises';
 
 const execFileAsync = promisify(execFile);
 import {
@@ -8,7 +14,6 @@ import {
   lstatSync,
   openSync,
   readFileSync,
-  readlinkSync,
   readSync,
   readdirSync,
   statSync,
@@ -45,6 +50,16 @@ export interface TranscriptSummary {
   goal?: string;
   totalTokens?: number;
   contextPercent?: number;
+}
+
+export interface CodexRolloutSummary extends TranscriptSummary {
+  sessionId?: string;
+  cwd?: string;
+  startedAt?: number;
+  effort?: string;
+  hasPendingCalls?: boolean;
+  /** Internal companion rollouts never become top-level dashboard sessions. */
+  isSubagent: boolean;
 }
 
 /** Pull display text out of a Claude user message (string or text blocks). */
@@ -112,10 +127,74 @@ const MAX_SAMPLE_BYTES = 1024 * 1024;
 /** Rollout silence (no writes) after which an end-event-less turn is presumed dead. */
 const STALE_TURN_MS = 10 * 60 * 1000;
 
+interface CodexRolloutFileInfo {
+  mtimeMs: number;
+  size: number;
+}
+
+interface CodexRolloutCacheEntry extends CodexRolloutFileInfo {
+  summary: CodexRolloutSummary;
+}
+
+export interface CodexRolloutCacheDependencies {
+  stat(path: string): Promise<CodexRolloutFileInfo>;
+  read(path: string, headBytes: number, tailBytes: number): Promise<string>;
+}
+
+const defaultCodexRolloutCacheDependencies: CodexRolloutCacheDependencies = {
+  stat: async (path) => {
+    const info = await statAsync(path);
+    return { mtimeMs: info.mtimeMs, size: info.size };
+  },
+  read: readFileHeadAndTailAsync,
+};
+
+/**
+ * Bounded per-rollout summary cache. A scan only stats open rollout paths;
+ * unchanged `(path, mtime, size)` entries reuse their parsed summary. Changed
+ * files are read asynchronously, and paths no longer held open are invalidated.
+ */
+export class CodexRolloutCache {
+  private entries = new Map<string, CodexRolloutCacheEntry>();
+
+  constructor(private deps: CodexRolloutCacheDependencies = defaultCodexRolloutCacheDependencies) {}
+
+  async get(path: string): Promise<CodexRolloutCacheEntry | undefined> {
+    let info: CodexRolloutFileInfo;
+    try {
+      info = await this.deps.stat(path);
+    } catch {
+      this.entries.delete(path);
+      return undefined;
+    }
+
+    const cached = this.entries.get(path);
+    if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size) return cached;
+
+    const raw = await this.deps.read(path, 256 * 1024, MAX_SAMPLE_BYTES).catch(() => '');
+    if (!raw) {
+      this.entries.delete(path);
+      return undefined;
+    }
+    const entry = { ...info, summary: parseCodexRollout(raw) };
+    this.entries.set(path, entry);
+    return entry;
+  }
+
+  retain(paths: ReadonlySet<string>): void {
+    for (const path of this.entries.keys()) {
+      if (!paths.has(path)) this.entries.delete(path);
+    }
+  }
+
+  get size(): number { return this.entries.size; }
+}
+
 export class PassiveSessionObserver {
   private lastScanAt = 0;
   private cached: ObservedSession[] = [];
   private scanInFlight = false;
+  private codexRolloutCache = new CodexRolloutCache();
 
   /** Fired after a background scan changed the cached list. Wire to a
    *  debounced sessions broadcast so fresh observations reach clients
@@ -147,7 +226,7 @@ export class PassiveSessionObserver {
     const processes = await collectProcessInfo();
     const observed = [
       ...collectClaudeSessions(processes),
-      ...(await collectCodexSessions(processes)),
+      ...(await collectCodexSessions(processes, this.codexRolloutCache)),
       ...(await collectOpenCodeSessions(processes)),
       ...(await collectAntigravitySessions(processes)),
     ];
@@ -262,7 +341,7 @@ export function parseClaudeTranscript(raw: string): TranscriptSummary {
   };
 }
 
-export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?: string; cwd?: string; startedAt?: number; effort?: string; hasPendingCalls?: boolean } {
+export function parseCodexRollout(raw: string): CodexRolloutSummary {
   let sessionId: string | undefined;
   let cwd: string | undefined;
   let startedAt: number | undefined;
@@ -273,6 +352,7 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
   let totalTokens = 0;
   let lastContextTokens = 0;
   let contextWindow = 0;
+  let isSubagent = false;
   // A turn is in flight from task_started/user_message until task_complete/
   // turn_aborted. Mid-turn events (agent_message, function_call) must NOT end
   // it: most of a working turn is the thinking gap between a tool result and
@@ -291,6 +371,8 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
       sessionId = stringAt(payload, 'id') ?? sessionId;
       cwd = stringAt(payload, 'cwd') ?? cwd;
       startedAt = timestampMs(stringAt(payload, 'timestamp')) ?? startedAt;
+      const source = payload.source;
+      isSubagent = isSubagent || (isRecord(source) && 'subagent' in source);
     } else if (type === 'event_msg') {
       const payload = objectAt(value, 'payload');
       if (!payload) continue;
@@ -374,6 +456,7 @@ export function parseCodexRollout(raw: string): TranscriptSummary & { sessionId?
   const state = turnActive || pendingCalls.size > 0 ? 'processing' : 'idle';
   return {
     hasPendingCalls: pendingCalls.size > 0,
+    isSubagent,
     sessionId,
     cwd,
     startedAt,
@@ -466,55 +549,78 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
   return sessions;
 }
 
-async function collectCodexSessions(processes: ProcInfo[]): Promise<ObservedSession[]> {
+async function collectCodexSessions(
+  processes: ProcInfo[],
+  rolloutCache: CodexRolloutCache,
+): Promise<ObservedSession[]> {
+  const codex = processes.filter((p) => isCodexSessionProcessCommand(p.command));
+  const rolloutsByPid = await mapCodexPidsToRollouts(codex.map((p) => p.pid));
+  return collectCodexSessionsFromRollouts(processes, rolloutsByPid, rolloutCache);
+}
+
+/** Testable async projection from open rollout paths to top-level sessions. */
+export async function collectCodexSessionsFromRollouts(
+  processes: ProcInfo[],
+  rolloutsByPid: Map<number, string[]>,
+  rolloutCache: CodexRolloutCache,
+): Promise<ObservedSession[]> {
   const byPid = new Map(processes.map((p) => [p.pid, p]));
-  const codex = processes.filter((p) =>
-    cmdHasBinary(p.command, 'codex') &&
-    !p.command.includes('app-server') &&
-    !p.command.includes('grep')
-  );
-  const rolloutByPid = await mapCodexPidsToRollouts(codex.map((p) => p.pid));
+  const codex = processes.filter((p) => isCodexSessionProcessCommand(p.command));
+  const activeRollouts = new Set<string>();
+  for (const paths of rolloutsByPid.values()) {
+    for (const path of paths) activeRollouts.add(path);
+  }
+  rolloutCache.retain(activeRollouts);
   const sessions: ObservedSession[] = [];
+  const seen = new Set<string>();
   for (const proc of codex) {
-    const rollout = rolloutByPid.get(proc.pid);
-    if (!rollout) continue;
-    const sample = readFileHeadAndTail(rollout, 256 * 1024, MAX_SAMPLE_BYTES);
-    if (!sample) continue;
-    const parsed = parseCodexRollout(sample);
-    // Ghost backstop: a turn whose end event never made it into the rollout
-    // (killed mid-turn, writer race) would read as processing forever. A live
-    // turn between tool calls writes the rollout every few seconds, so a long
-    // silence with no in-flight tool means the turn is dead. In-flight tools
-    // (pending call) are exempt — a quiet 10-minute build is legitimate.
-    let state = parsed.state;
-    if (state === 'processing' && !parsed.hasPendingCalls && rolloutAgeMs(rollout) > STALE_TURN_MS) {
-      state = 'idle';
+    for (const rollout of rolloutsByPid.get(proc.pid) ?? []) {
+      // Sequential awaits deliberately bound memory/read pressure to one rollout
+      // sample at a time while still yielding the daemon event loop.
+      const snapshot = await rolloutCache.get(rollout);
+      if (!snapshot || snapshot.summary.isSubagent) continue;
+      const parsed = snapshot.summary;
+      let state = parsed.state;
+      if (state === 'processing' && !parsed.hasPendingCalls && Date.now() - snapshot.mtimeMs > STALE_TURN_MS) {
+        state = 'idle';
+      }
+      const sessionId = parsed.sessionId ?? codexRolloutId(rollout);
+      if (seen.has(sessionId)) continue;
+      seen.add(sessionId);
+      const cwd = parsed.cwd;
+      const desktop = proc.command.includes('app-server');
+      sessions.push({
+        id: desktop ? `observed:codex-app:${sessionId}` : `observed:codex:${sessionId}`,
+        port: 0,
+        pid: proc.pid,
+        projectName: cwd ? projectNameFromCwd(cwd) : 'Codex',
+        agentType: desktop ? 'codex-app' : 'codex-cli',
+        tty: proc.tty,
+        appName: proc.tty ? undefined : resolveHostApp(proc.pid, byPid),
+        alive: true,
+        state,
+        modelName: parsed.modelName,
+        startedAt: parsed.startedAt ? new Date(parsed.startedAt).toISOString() : new Date().toISOString(),
+        controlMode: 'observed',
+        cwd,
+        currentTask: parsed.currentTask,
+        goal: parsed.goal,
+        contextPercent: parsed.contextPercent,
+        totalTokens: parsed.totalTokens,
+        lastActivityAt: snapshot.mtimeMs,
+      });
     }
-    const sessionId = parsed.sessionId ?? String(proc.pid);
-    const cwd = parsed.cwd;
-    sessions.push({
-      id: `observed:codex:${sessionId}`,
-      port: 0,
-      pid: proc.pid,
-      projectName: cwd ? projectNameFromCwd(cwd) : 'Codex',
-      agentType: 'codex-cli',
-      // Same injection targets as observed Claude: answering or dictating into
-      // a Codex session means typing into the terminal that owns it.
-      tty: proc.tty,
-      appName: proc.tty ? undefined : resolveHostApp(proc.pid, byPid),
-      alive: true,
-      state,
-      modelName: parsed.modelName,
-      startedAt: parsed.startedAt ? new Date(parsed.startedAt).toISOString() : new Date().toISOString(),
-      controlMode: 'observed',
-      cwd,
-      currentTask: parsed.currentTask,
-      goal: parsed.goal,
-      contextPercent: parsed.contextPercent,
-      totalTokens: parsed.totalTokens,
-    });
   }
   return sessions;
+}
+
+/** A standalone CLI or app-server process that owns user-facing rollouts. */
+export function isCodexSessionProcessCommand(command: string): boolean {
+  return cmdHasBinary(command, 'codex') && !command.includes('grep');
+}
+
+function codexRolloutId(rolloutPath: string): string {
+  return basename(rolloutPath).replace(/^rollout-/, '').replace(/\.jsonl$/, '');
 }
 
 /**
@@ -628,13 +734,14 @@ async function cwdForPids(pids: number[]): Promise<Map<number, string>> {
   return map;
 }
 
-function dedupeObservedSessions(
+export function dedupeObservedSessions(
   observed: ObservedSession[],
   managedSessions: EnrichedSession[],
   processes: ProcInfo[],
 ): ObservedSession[] {
   const byPid = new Map(processes.map((p) => [p.pid, p]));
   const managedIds = new Set(managedSessions.map((s) => s.id));
+  const managedRawIds = new Set(managedSessions.map((s) => rawSessionId(s.id)));
   const managedPids = managedSessions
     .map((s) => (s as EnrichedSession & { pid?: number }).pid)
     .filter((pid): pid is number => typeof pid === 'number' && pid > 0);
@@ -642,7 +749,11 @@ function dedupeObservedSessions(
   return observed.filter((session) => {
     if (managedIds.has(session.id)) return false;
     const rawId = rawSessionId(session.id);
-    if (managedIds.has(rawId)) return false;
+    if (managedIds.has(rawId) || managedRawIds.has(rawId)) return false;
+    // One Desktop app-server owns many independent rollouts. A hook-observed
+    // conversation sharing that process must suppress only its matching id,
+    // not every sibling conversation under the same pid.
+    if (session.agentType === 'codex-app') return true;
     return !managedPids.some((pid) => pid === session.pid || isDescendantOf(session.pid, pid, byPid));
   });
 }
@@ -701,19 +812,18 @@ function findClaudeTranscript(configDirs: string[], cwd: string, sessionId: stri
   return null;
 }
 
-async function mapCodexPidsToRollouts(pids: number[]): Promise<Map<number, string>> {
+async function mapCodexPidsToRollouts(pids: number[]): Promise<Map<number, string[]>> {
   if (pids.length === 0) return new Map();
   if (process.platform === 'linux') {
-    const map = new Map<number, string>();
+    const map = new Map<number, string[]>();
     for (const pid of pids) {
       try {
-        for (const fd of readdirSync(`/proc/${pid}/fd`)) {
-          const path = readlinkSync(`/proc/${pid}/fd/${fd}`);
-          if (isCodexRolloutPath(path)) {
-            map.set(pid, path);
-            break;
-          }
+        const paths = new Set<string>();
+        for (const fd of await readdirAsync(`/proc/${pid}/fd`)) {
+          const path = await readlinkAsync(`/proc/${pid}/fd/${fd}`);
+          if (isCodexRolloutPath(path)) paths.add(path);
         }
+        if (paths.size > 0) map.set(pid, [...paths]);
       } catch {
         // /proc permission/race failures are normal.
       }
@@ -734,26 +844,21 @@ async function mapCodexPidsToRollouts(pids: number[]): Promise<Map<number, strin
   }
 }
 
-export function parseLsofRollouts(output: string): Map<number, string> {
-  const map = new Map<number, string>();
+export function parseLsofRollouts(output: string): Map<number, string[]> {
+  const map = new Map<number, string[]>();
   let currentPid: number | null = null;
   for (const line of output.split('\n')) {
     if (line.startsWith('p')) {
       currentPid = Number(line.slice(1));
     } else if (line.startsWith('n') && currentPid != null) {
       const path = line.slice(1);
-      if (isCodexRolloutPath(path)) map.set(currentPid, path);
+      if (!isCodexRolloutPath(path)) continue;
+      const paths = map.get(currentPid) ?? [];
+      if (!paths.includes(path)) paths.push(path);
+      map.set(currentPid, paths);
     }
   }
   return map;
-}
-
-function rolloutAgeMs(path: string): number {
-  try {
-    return Date.now() - statSync(path).mtimeMs;
-  } catch {
-    return 0;
-  }
 }
 
 /** Epoch-ms of a file's last write, or undefined if it can't be stat'd. */
@@ -787,6 +892,28 @@ function readFileHeadAndTail(path: string, headBytes: number, tailBytes: number)
     return '';
   } finally {
     if (fd !== null) closeSync(fd);
+  }
+}
+
+async function readFileHeadAndTailAsync(path: string, headBytes: number, tailBytes: number): Promise<string> {
+  const file = await openAsync(path, 'r');
+  try {
+    const { size } = await file.stat();
+    if (size <= headBytes + tailBytes) {
+      const buffer = Buffer.alloc(size);
+      await file.read(buffer, 0, size, 0);
+      return buffer.toString('utf8');
+    }
+
+    const head = Buffer.alloc(headBytes);
+    await file.read(head, 0, headBytes, 0);
+    const tail = Buffer.alloc(tailBytes);
+    await file.read(tail, 0, tailBytes, size - tailBytes);
+    const tailText = tail.toString('utf8');
+    const firstNewline = tailText.indexOf('\n');
+    return `${head.toString('utf8')}\n${firstNewline >= 0 ? tailText.slice(firstNewline + 1) : ''}`;
+  } finally {
+    await file.close();
   }
 }
 
