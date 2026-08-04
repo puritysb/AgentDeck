@@ -787,8 +787,8 @@ export interface Esp32OtaErrorCommand {
  *   silently applied.
  * - `day` — valid all day (M7 card modules: NUDGE / QUEST / INTERVAL / FORK).
  *   Decisions queue in the device outbox and apply on next sync. No daemon
- *   producer emits this class yet — it is in the schema so the device-side
- *   outbox grammar doesn't change when M7 lands.
+ *   round trip is required at press time; the Node daemon's Autonomous Pocket
+ *   engine currently emits NUDGE / QUEST cards in this class.
  * - `info` — read-only status (session rows, digests). Always valid to
  *   display; shows sync age; never gains buttons offline.
  */

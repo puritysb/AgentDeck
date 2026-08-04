@@ -139,6 +139,12 @@ import {
   buildCardFeed, buildGlance, applyOutboxDecisions, FeedPullTracker, formatFeedPull,
   normalizeClientIp, parsePullTelemetry,
 } from './card-feed.js';
+import { threadModule } from './card-modules.js';
+import {
+  AutonomousPocketEngine,
+  createAutonomousPocketModules,
+  parsePocketAutonomyConfig,
+} from './pocket-autonomy.js';
 import { WeatherProvider, parseWeatherSettings } from './weather.js';
 import { CalendarProvider, parseCalendarSettings } from './calendar.js';
 import { renderGlanceFrame, GLANCE_FRAME_BOARDS } from './glance-frame.js';
@@ -242,6 +248,11 @@ function listWifiEsp32Devices(): Array<WifiEsp32Device & { stale: boolean; seria
  *  other observable — a battery client with an empty outbox never identifies
  *  itself and never opens a socket. */
 const feedPulls = new FeedPullTracker();
+
+/** Daemon-owned personal feed. It persists aggregate bandit state only — no
+ *  card copy, session names, calendar titles or weather locations. */
+const pocketAutonomy = new AutonomousPocketEngine({ onError: (message) => log(`[agentdeck] ${message}`) });
+const pocketCardModules = [threadModule, ...createAutonomousPocketModules(pocketAutonomy)];
 
 /** Glance weather for the card-feed sleep dashboard. Config is read from
  *  settings.json per pull (cheap; honors edits without a restart); the
@@ -1581,16 +1592,19 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       (async () => {
         if (req.method === 'GET') {
           const sessions = await core.buildSessionsSnapshot();
+          const settings = loadDaemonSettings();
+          pocketAutonomy.configure(parsePocketAutonomyConfig(settings));
           // Sleep-dashboard glance: provider quota + work wrap-up + weather.
           // Weather resolves from cache almost always (30 min window) and is
           // bounded by its own fetch timeout, so the pull stays fast.
           const glance = buildGlance({
             sessions: sessions as unknown as SessionInfo[],
             usage: core.buildUsage() as UsageEvent,
-            weather: await glanceWeather.get(parseWeatherSettings(loadDaemonSettings())),
-            events: await glanceCalendar.get(parseCalendarSettings(loadDaemonSettings())),
+            weather: await glanceWeather.get(parseWeatherSettings(settings)),
+            events: await glanceCalendar.get(parseCalendarSettings(settings)),
           });
-          const feed = buildCardFeed(sessions as unknown as SessionInfo[], Date.now(), undefined, {
+          const now = Date.now();
+          const feed = buildCardFeed(sessions as unknown as SessionInfo[], now, pocketCardModules, {
             glance,
             echoSig: parsedUrl.searchParams.get('sig') ?? undefined,
           }) as CardFeedResponse & { fw?: { size: number; md5: string } };
@@ -1598,6 +1612,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // sleeping board learns about a staged build on any pull. Board
           // identity from the query (newer firmware) or the IP memory.
           const pullBoard = parsedUrl.searchParams.get('board') ?? boardForClientIp(ip);
+          if (!feed.unchanged) pocketAutonomy.observeDelivery(feed.cards, now, pullBoard ?? undefined);
           const fwAdvert = stagedFwAdvert(pullBoard ?? undefined);
           if (fwAdvert) feed.fw = fwAdvert;
           // A sleeping client's whole visit is this one request: no body, no
@@ -1622,6 +1637,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           sessions: sessions as unknown as SessionInfo[],
           isPendingRequest,
           dispatch: (cmd) => handleDeviceCommand(cmd as unknown as PluginCommand),
+          modules: pocketCardModules,
         });
         const applied = result.results.filter((r) => r.status === 'applied').length;
         if (result.results.length > 0) {
@@ -1666,6 +1682,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // observer found it too and won, which is the expected steady state.
         hookCodexSessions: hookCodexSessions.snapshot(),
         codexOtelThreads: codexOtel.snapshot(),
+        pocketAutonomy: pocketAutonomy.diagnostics(),
         recentJournal: [],
         ptyTail: '',
         journalDir: join(homedir(), '.agentdeck'),

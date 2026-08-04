@@ -4,9 +4,9 @@
  * HTTP routes live in daemon-server.ts. Contract: shared/src/protocol.ts
  * § Card Feed Pull Sync + docs/esp32-client-contract.md § Pull sync.
  *
- * M6 derives every card from a live session (the same rows `sessions_list`
- * broadcasts). M7 generalizes to daemon card modules (NUDGE / QUEST / …) that
- * will produce `day`-class cards; until then no producer emits `day`.
+ * M6 derives cards from live sessions (the same rows `sessions_list`
+ * broadcasts). M7 generalizes to daemon card modules; the Node daemon injects
+ * Autonomous Pocket's PULSE / NUDGE / QUEST producers into this pure builder.
  */
 
 import type {
@@ -228,7 +228,7 @@ export function buildCardFeed(
   // Module cards (M7) come after the session projections: what is happening
   // outranks what the daemon wants to say about it. A client that predates
   // modules skips bodies it doesn't recognise.
-  cards.push(...buildModuleCards({ sessions, now }, modules));
+  cards.push(...buildModuleCards({ sessions, now, glance: opts.glance }, modules));
   const active = sessions.some((s) => s.state === 'processing' || isAwaitingState(s));
   const d = new Date(now);
   const serverHm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;

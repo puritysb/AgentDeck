@@ -43,6 +43,7 @@ import {
 export const CARD_TITLE_MAX_BYTES = 24;
 export const CARD_QUESTION_MAX_BYTES = 160;
 export const CARD_CONTEXT_LINE_MAX_BYTES = 96;
+export const CARD_CHOICE_ID_MAX_BYTES = 31;
 export const CARD_CHOICE_LABEL_MAX_BYTES = 40;
 
 export const CARD_ID_PREFIX = 'module:';
@@ -83,7 +84,7 @@ export function sealModuleCard(module: CardModuleId, draft: ModuleCardDraft): Fe
     .filter((c) => c && typeof c.id === 'string' && c.id && typeof c.label === 'string' && c.label)
     .slice(0, CARD_MAX_CHOICES)
     .map((c) => ({
-      id: c.id,
+      id: truncateUtf8Bytes(c.id, CARD_CHOICE_ID_MAX_BYTES),
       label: truncateUtf8Bytes(c.label, CARD_CHOICE_LABEL_MAX_BYTES),
       ...(c.intent ? { intent: c.intent } : {}),
     }));
@@ -112,6 +113,9 @@ export interface CardModuleContext {
   /** The same enriched roster `sessions_list` broadcasts. */
   sessions: SessionInfo[];
   now: number;
+  /** Optional personal context already resolved for the sleep glance. Adaptive
+   *  Pocket producers consume this snapshot; they never fetch on their own. */
+  glance?: import('@agentdeck/shared').CardFeedGlance;
 }
 
 export interface CardChoiceOutcome {
@@ -139,8 +143,9 @@ export interface CardModule {
 // The checkpoint card: where the open threads stopped. It is `info` (no
 // choices) and derives entirely from the live roster, so it introduces no new
 // state, no persistence and no product policy — its job is to prove the module
-// path end to end. NUDGE / QUEST (the first `day`-class, answerable modules)
-// need a store and an authoring path, and are deliberately not guessed at here.
+// path end to end. `AutonomousPocketEngine` injects the stateful PULSE / NUDGE /
+// QUEST producers at the Node daemon boundary; keeping this default list pure
+// makes library callers deterministic and opt-in.
 
 /** A thread is worth checkpointing only if it is a real, alive session. */
 const THREAD_MAX_LINES = CARD_MAX_CONTEXT_LINES;

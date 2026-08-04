@@ -151,7 +151,8 @@ and pull while on battery.
 - **Per-card `actionClass`** decides offline behaviour: `live` (permission
   gates, awaiting prompts — grey out offline, `expiresAt` TTL, never answerable
   from a stale cache), `day` (M7 card modules — answers queue in the device
-  outbox; no producer yet), `info` (read-only rows; show sync age).
+  outbox; Autonomous Pocket emits `nudge`/`quest` here), `info` (read-only rows;
+  show sync age).
 - **`POST /outbox`** → `OutboxPushRequest` (`{board, decisions[]}`), answered
   with per-decision results **in request order**. The device deletes every
   acknowledged decision regardless of status — `expired`/`rejected`/
@@ -254,11 +255,13 @@ A card no longer has to be a projection of a session. A **module card** is
 authored by the daemon — a checkpoint, a digest, a nudge, a commitment — and
 carries its own body in `FeedCard.module` (`ModuleCard`) instead of
 `FeedCard.session`. Types: `shared/src/protocol.ts` § Card modules; producers:
-`bridge/src/card-modules.ts`.
+`bridge/src/card-modules.ts` and `bridge/src/pocket-autonomy.ts`.
 
 - **Exactly one body per card.** A client that predates modules must skip cards
-  whose `session` is absent rather than render a blank one (the XTeink fork
-  already does: `applyCardFeed` continues on a null session).
+  whose `session` is absent rather than render a blank one. The current XTeink
+  X3/X4 hand-port parses module bodies into a fixed three-card Pocket pool
+  (`THREAD` plus at most two autonomous cards), persists them with its deck
+  snapshot, and can open and answer them without WiFi.
 - **`cardId` is `module:<moduleId>:<key>`** — that prefix is how a choice
   recorded hours ago finds the module that authored the card.
 - **At most three choices.** Slot 1 of the four front buttons is the device's
@@ -268,15 +271,52 @@ carries its own body in `FeedCard.module` (`ModuleCard`) instead of
   a fifth button.
 - **Text is trimmed to UTF-8 byte budgets** on code-point boundaries before it
   leaves the daemon, matched to the device's card buffers. Firmware should still
-  defend its own `strncpy`.
+  defend its own `strncpy`. Choice IDs are capped at 31 bytes because they are
+  durable protocol keys, not display copy.
 - **Answering**: `POST /outbox` with `action: "card_choice"` and the
   `CardChoice.id` (not a position — a card answered from a stale cache must
   select what it displayed). The result is terminal like every other outbox
   status. Choices carry an optional `intent` (`affirm`/`deny`/`neutral`) that is
   a rendering hint only.
-- **Read-only modules take no choices.** `thread` (the shipped reference
-  producer) and `pulse` are `info`; `nudge` and `quest` are the first `day`
-  class producers — answerable offline, queued in the device outbox.
+- **Read-only modules take no choices.** `thread` and `pulse` are `info`;
+  `nudge` and `quest` are `day` — answerable offline and queued in the device
+  outbox. XTeink owns slot 1 as *Later*; slots 2–4 map to stable choice IDs.
+
+### Autonomous Pocket (Node daemon)
+
+`AutonomousPocketEngine` is the initial authoring and learning loop. It runs in
+the Node daemon only (the Swift in-process daemon still does not serve Card Feed
+routes), and is injected into the feed builder rather than added to the pure
+default module list.
+
+- **Inputs are already-resolved context.** It considers the live session roster
+  plus the same `CardFeedGlance` snapshot used by the sleep screen: agenda,
+  weather, usage, wrap-up, waiting work and resumable idle work. A producer never
+  performs its own network fetch, so `/feed` has one bounded context snapshot.
+- **Cold start asks instead of pretending to know.** With no history it can emit
+  a `quest` asking which broad area to learn first. Thereafter candidates compete
+  with a deterministic exploration/exploitation score using per-kind aggregate
+  feedback, time-of-day affinity, recency cooldown and an unseen-kind bonus.
+- **Feedback stays one press.** Autonomous `nudge` cards use stable
+  `useful`/`more`/`less` choice IDs. `POST /outbox` is idempotent per card ID:
+  the first answer updates aggregates, and a retry is acknowledged without
+  counting twice. An unanswered delivered card becomes weak negative evidence
+  after 24 hours; it is not treated as an explicit dislike.
+- **Privacy boundary.** Persistent state contains aggregate counters, coarse
+  hour buckets, opaque candidate fingerprints/card IDs and delivery timestamps.
+  It never copies card prose, project/session names, calendar titles, weather
+  text or usage-provider text into the learning file. State is bounded and
+  pruned.
+- **Configuration.** `settings.json` accepts
+  `pocketAutonomy: { enabled, maxCards, exploration }`; defaults are enabled,
+  two autonomous cards, and exploration `0.65`. `maxCards` is clamped to 1–3
+  by the daemon; the XTeink hand-port deliberately consumes at most two in
+  addition to `THREAD` for its fixed-memory budget.
+- **Storage and observability.** Node stores the bounded learning state at
+  `$AGENTDECK_DATA_DIR/pocket-autonomy.json` or
+  `~/.agentdeck/pocket-autonomy.json`. `/diag` reports aggregate engine status,
+  not authored card copy. A feed exposure is recorded only after a full card
+  response; conditional `unchanged` pulls do not inflate it.
 
 ## Peripheral primitives (optional, 2026-07-25)
 

@@ -6,6 +6,7 @@ import {
   buildModuleCards,
   applyModuleChoice,
   threadModule,
+  CARD_CHOICE_ID_MAX_BYTES,
   CARD_CHOICE_LABEL_MAX_BYTES,
   CARD_QUESTION_MAX_BYTES,
   type CardModule,
@@ -98,6 +99,14 @@ describe('sealModuleCard — the ≤4-choice rule as a clamp', () => {
     expect(utf8Len(card.module!.question)).toBeLessThanOrEqual(CARD_QUESTION_MAX_BYTES);
     // Boundary-clean: re-encoding is lossless (no replacement characters).
     expect(card.module!.question).not.toContain('�');
+  });
+
+  it('bounds stable choice ids for fixed firmware outbox buffers', () => {
+    const card = sealModuleCard('nudge', {
+      key: 'k', actionClass: 'day', title: 'NUDGE', question: 'q',
+      choices: [{ id: 'x'.repeat(100), label: 'Long id' }],
+    });
+    expect(new TextEncoder().encode(card.module!.choices![0]!.id).length).toBeLessThanOrEqual(CARD_CHOICE_ID_MAX_BYTES);
   });
 
   it('stamps the card id and keeps the class/expiry the module asked for', () => {
