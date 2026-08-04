@@ -7,15 +7,15 @@ locale: en
 canonical: true
 status: required
 owner: Apple release maintainers
-reviewed: 2026-07-28
-revision: 2026-07-28
+reviewed: 2026-08-05
+revision: 2026-08-05
 source_of_truth: apple/APP_REVIEW_NOTES.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status:** macOS 1.0.0 was approved and released on 2026-07-21: [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497). The iPhone/iPad companion remains in review.
+**Release status:** macOS 1.0.0 was approved and released on 2026-07-21: [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497). The first iPhone/iPad submission, 1.0.2 (3901), was rejected on 2026-08-04 under Guideline 2.1(a) because the disconnected screen kept showing an activity indicator after discovery had completed. The replacement build fixes that terminal state and adds an offline Device Preview entry point.
 
 _Paste the relevant sections into App Store Connect's "Notes" field when submitting `apple-v<version>`._
 
@@ -190,9 +190,11 @@ AgentDeck's Stream Deck+ integration renders session state on Stream Deck+ keys 
 
 ## iOS companion
 
-The iOS app (same bundle family `bound.serendipity.agent.deck`) is a read-only remote dashboard that auto-discovers a paired Mac via Bonjour. On first launch it runs a 3-pane onboarding walking the user through installing an agent on their Mac and finding their Mac on Wi-Fi. Fallback pairing via QR code (Mac shows → iPad scans) handles cases where Local Network permission is denied or the two devices are on different routable networks. No network-server entitlement is needed on iOS — it's a pure client.
+The iOS app (same bundle family `bound.serendipity.agent.deck`) is a read-only remote dashboard that auto-discovers a paired Mac via Bonjour. On first launch it runs a 4-pane onboarding walking the user through the product, Mac-side agents and integrations, and finding their Mac on Wi-Fi. Fallback pairing via QR code (Mac shows → iPad scans) handles cases where Bonjour is unavailable. No network-server entitlement is needed on iOS — it is a pure client.
 
-## Review demo account
+When no Mac is present, foreground discovery ends after approximately 10 seconds, and a hard deadline stops the activity indicator regardless of which discovery step is in flight. The screen then shows the stable terminal state **“No AgentDeck found on this network”** with no activity indicator and offers **Search Again**, **Enter URL Manually**, and **Explore without a Mac**. Stopping a connection attempt always lands on that same recoverable state. Bonjour remains active in the background, so a Mac that comes online later is discovered and connected automatically. “Explore without a Mac” opens the built-in synthetic Device Preview; it uses only local Swift rendering and requires no account, network server, agent session, or hardware.
+
+## Review instructions — macOS
 
 No account required. To see the app's features:
 
@@ -202,9 +204,61 @@ No account required. To see the app's features:
 4. Click "Pair iPad" to show a QR code the iOS companion app can scan.
 5. Open Settings → Hardware Setup to see the in-app flows for ESP32 and Pixoo provisioning (no subprocess calls; writes serial config directly).
 
-## Standalone review scope
+## Review instructions — iPhone/iPad
+
+No account or paired Mac is required to verify the submitted app's fixed launch path:
+
+1. Install the new build as a clean install and complete the four onboarding panes.
+2. Allow Local Network access when requested.
+3. If no AgentDeck Mac is present on the review Wi-Fi, wait approximately 10 seconds. The activity indicator stops and the screen shows “No AgentDeck found on this network.”
+4. Tap **Explore without a Mac**. The local Device Preview opens immediately. Use the Device, Agent, State, and Sessions controls to inspect the synthetic dashboard surfaces, then tap Done.
+5. Tap **Search Again** to run another bounded search; it also stops on its own and returns to the same screen.
+6. Manual WebSocket URL entry remains available. If a Mac running AgentDeck is on the same Wi-Fi — including one powered on after the search finished — Bonjour connects automatically; QR pairing remains available from the Mac and iOS Settings.
+
+## Standalone macOS review scope
 
 Review on a clean Mac with only AgentDeck installed. The app starts its own Swift dashboard server and exposes the complete App Store experience described above. No external AgentDeck process, developer bridge, or terminal setup is part of the review instructions. The CI script `apple/scripts/verify-appstore-archive.sh` fails the build if the shipped app contains a subprocess spawn path, bundled helper executable, or home-relative-path entitlement.
+
+## Resolution Center — Guideline 2.1(a) launch indicator reply
+
+Use this response for the 2026-08-04 rejection after replacing `[BUILD]` with the selected build number:
+
+```text
+Thank you for identifying this issue. We reproduced the behavior shown in your
+screenshot and found the cause.
+
+Bonjour discovery is intentionally kept active in the background so the app can
+notice a Mac that comes online later. Build 3901 incorrectly used that long-lived
+browser state to drive the foreground activity indicator. The bounded connection
+attempt had already finished after 10 seconds, but the screen continued to say
+“Searching for AgentDeck…” and continued animating. This was a UI state bug, not
+a stalled network request.
+
+We corrected the issue in build [BUILD]:
+• The activity indicator is now tied only to the bounded foreground search or an
+  active connection attempt.
+• After approximately 10 seconds with no Mac found, the indicator stops and the
+  app shows the stable “No AgentDeck found on this network” state. A deadline
+  enforces this regardless of which discovery step is in flight, and cancelling a
+  connection attempt lands on the same recoverable screen.
+• Search Again, manual URL pairing, and QR pairing remain available, and a Mac
+  that comes online after the search has finished is still connected
+  automatically.
+• “Explore without a Mac” now opens the built-in local Device Preview, so the app
+  can be inspected on the review iPad without a paired Mac, account, or hardware.
+• We added regression coverage for the searching, connecting, permission-denied,
+  reconnecting, and completed-empty-search states, plus tests that drive the real
+  connection state machine and assert the indicator always stops and always
+  leaves the user an action. Verified on an iPad Air 11-inch (M3) simulator.
+
+To verify on a clean iPad: complete onboarding, allow Local Network access, and
+wait approximately 10 seconds without an AgentDeck Mac on the same Wi-Fi. The
+indicator stops. Tap “Explore without a Mac” to open the local preview and use
+the Device, Agent, State, and Sessions controls.
+
+We apologize for the incomplete empty-network behavior in the previous build and
+appreciate the clear screenshot.
+```
 
 ## Resolution Center — Guideline 2.4.5(i) entitlement reply
 
@@ -291,8 +345,48 @@ hooks, and the deck plugins all lose their only data path.
 ## App Store Connect — App Review Information → Notes
 
 The Notes field is capped at 4,000 characters and persists across every submission, so it carries a
-condensed version rather than this document in full. Paste the block below verbatim; the long-form
-sections above are for the Resolution Center reply, where length is not constrained.
+condensed version rather than this document in full. Paste the platform-specific block below; the
+long-form sections above are for the Resolution Center reply, where length is not constrained.
+
+### iOS / iPadOS Notes field
+
+<!-- ios-notes-field:begin -->
+
+```text
+NO ACCOUNT REQUIRED. A paired Mac is optional for review of this build.
+
+BUILD 3901 ISSUE AND FIX
+The previous build kept its Bonjour browser active so it could discover a Mac
+that appeared later, but incorrectly used that long-lived browser state to drive
+the foreground activity indicator. The 10-second connection attempt had ended,
+yet the spinner and “Searching” text remained. The replacement build separates
+passive Bonjour browsing from foreground progress.
+
+VERIFY ON A CLEAN IPAD
+1. Complete the four onboarding panes and allow Local Network access.
+2. With no AgentDeck Mac on the review Wi-Fi, wait approximately 10 seconds.
+3. The spinner stops and the stable text reads “No AgentDeck found on this
+   network.” Search Again and Enter URL Manually remain available.
+4. Tap “Explore without a Mac.” A local synthetic Device Preview opens without
+   an account, server, agent session, or hardware. The Device, Agent, State, and
+   Sessions controls all update the rendered preview. Tap Done to return.
+5. Tap “Search Again.” The bounded search runs once more and returns to the same
+   screen on its own.
+
+LIVE COMPANION PATH (OPTIONAL)
+When AgentDeck is running on a Mac on the same Wi-Fi, the iOS app discovers it
+through Bonjour (_agentdeck._tcp) and opens a read-only WebSocket dashboard —
+including a Mac powered on after the initial search has finished. The Mac can
+also show a QR pairing URL. The iOS app is a client only and requests Local
+Network access for this pairing path.
+
+The app contains no analytics or advertising SDK and requires no sign-in.
+Contact: admin@foundby.kr
+```
+
+<!-- ios-notes-field:end -->
+
+### macOS Notes field
 
 <!-- notes-field:begin (3,552 chars — recount with `wc -m` after any edit) -->
 

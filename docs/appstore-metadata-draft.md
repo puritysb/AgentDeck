@@ -4,7 +4,7 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 
 **App Name is locale-specific**: the U.S. App Store already has an unrelated app using the name "AgentDeck", so the primary (English/U.S.) listing uses "AgentDeck Dashboard" instead. Korean and Japanese stores have no such conflict, so those localizations use the true brand name "AgentDeck" — matching every other surface (GitHub, README, marketing site).
 
-**Promotional Text / Description / What's New are platform-specific**: this app record covers both a macOS App and an iOS App version in ASC, each with its own version-level metadata fields. The two platforms are *not* feature-equivalent — only the macOS app runs the in-process Swift daemon, Device Preview gallery, APME scoring, voice input, and Claude Code hook installer; the iOS/iPadOS app is a read-only companion that mirrors state from a paired Mac and does not work standalone (verified against the Swift source's `#if os(macOS)` gates — see `apple/APP_REVIEW_NOTES.md:22,34`). Each locale section below therefore gives separate **macOS App** and **iOS App** variants for these three fields. App Name, Subtitle, and Keywords stay shared across platforms.
+**Promotional Text / Description / What's New are platform-specific**: this app record covers both a macOS App and an iOS App version in ASC, each with its own version-level metadata fields. The two platforms are *not* feature-equivalent — only the macOS app runs the in-process Swift daemon, APME scoring, voice input, and Claude Code hook installer. The iOS/iPadOS app mirrors live state from a paired Mac, while its built-in synthetic Device Preview remains available without a Mac. Each locale section below therefore gives separate **macOS App** and **iOS App** variants for these three fields. App Name, Subtitle, and Keywords stay shared across platforms.
 
 **Platforms**: macOS 26+ · iOS/iPadOS 17+
 **Bundle ID**: `bound.serendipity.agent.deck`
@@ -110,7 +110,7 @@ AgentDeck은 독립적인 프로젝트이며 Anthropic, OpenAI, Google, SST, Cor
 **iOS App**
 
 ```
-AgentDeck(iOS)는 Mac에서 실행 중인 AgentDeck과 페어링해, 돌아가는 세션을 실시간으로 그대로 보여주는 컴패니언 앱입니다. 독립 실행형 앱이 아니며, 같은 Wi-Fi에 연결된 Mac에서 AgentDeck이 실행 중이어야 합니다.
+AgentDeck(iOS)는 Mac에서 실행 중인 AgentDeck과 페어링해, 돌아가는 세션을 실시간으로 그대로 보여주는 컴패니언 앱입니다. 라이브 세션에는 같은 Wi-Fi의 Mac이 필요하지만, 내장 Device Preview는 Mac 없이도 바로 둘러볼 수 있습니다.
 
 "Stop Chatting. Start Steering."
 
@@ -131,7 +131,7 @@ Mac에서 계산된 에이전트 턴 평가 점수를 카테고리별 루브릭�
 Mac에 페어링된 OpenClaw Gateway의 세션 목록·모델 카탈로그·도구 승인 요청 상태를 읽기 전용으로 확인.
 
 • 하드웨어 상태 미러링
-Ulanzi D200H, 지원 ESP32 보드, Divoom Pixoo/Timebox Mini, iDotMatrix 등 Mac에 연결된 하드웨어의 상태를 읽기 전용으로 확인. Device Preview 갤러리, 음성 입력, Claude Code 훅 설치, 하드웨어 직접 제어는 Mac 앱 전용 기능입니다.
+Ulanzi D200H, 지원 ESP32 보드, Divoom Pixoo/Timebox Mini, iDotMatrix 등 Mac에 연결된 하드웨어의 상태를 읽기 전용으로 확인. Mac이 없을 때도 내장 Device Preview에서 기기·에이전트·상태·세션 수를 바꿔 합성 화면을 확인할 수 있습니다. 음성 입력, Claude Code 훅 설치, 하드웨어 직접 제어는 Mac 앱 전용 기능입니다.
 
 — 프라이버시 & 보안 —
 
@@ -166,6 +166,18 @@ claude code,ai,agent,dashboard,stream deck,monitoring,apme,openclaw,codex,ipad,c
 • 라이브 세션 화면의 드문 크래시 수정
 • 텍스트 디코딩 버그로 비어 보이던 Codex 사용량 게이지 복구
 • 관찰 중인 Codex·OpenCode·Antigravity 세션이 타임라인에서 사라지던 문제 수정
+
+피드백은 언제든 환영합니다: admin@foundby.kr
+```
+
+### What's New (v1.0.2, iOS — 심사 대응 빌드)
+
+```
+연결 화면 안정성 개선.
+
+• Mac 검색이 끝난 뒤 로딩 표시가 계속 돌던 문제 수정
+• Mac을 찾지 못하면 명확한 종료 상태와 다시 검색 버튼 표시
+• Mac 없이도 둘러볼 수 있는 내장 Device Preview 추가
 
 피드백은 언제든 환영합니다: admin@foundby.kr
 ```
@@ -329,7 +341,7 @@ AgentDeckは独立したプロジェクトであり、Anthropic、OpenAI、Googl
 **iOS App**
 
 ```
-AgentDeck（iOS）は、Macで動作するAgentDeckとペアリングし、動いているセッションをそのままリアルタイムに映し出すコンパニオンアプリです。単独動作するアプリではなく、同一Wi-Fi上のMacでAgentDeckが実行中である必要があります。
+AgentDeck（iOS）は、Macで動作するAgentDeckとペアリングし、動いているセッションをそのままリアルタイムに映し出すコンパニオンアプリです。ライブセッションには同一Wi-Fi上のMacが必要ですが、内蔵Device PreviewはMacなしでもすぐに確認できます。
 
 "Stop Chatting. Start Steering."
 
@@ -350,7 +362,7 @@ Macで計算されたエージェントターンの評価スコアを、カテ�
 MacにペアリングされたOpenClaw Gatewayのセッション一覧・モデルカタログ・ツール承認リクエストの状態を読み取り専用で確認できます。
 
 • ハードウェアステータスのミラーリング
-Ulanzi D200H、対応ESP32ボード、Divoom Pixoo/Timebox Mini、iDotMatrixなど、Macに接続されたハードウェアの状態を読み取り専用で確認できます。デバイスプレビューギャラリー、音声入力、Claude Codeフックのインストール、ハードウェアの直接制御はMacアプリ専用の機能です。
+Ulanzi D200H、対応ESP32ボード、Divoom Pixoo/Timebox Mini、iDotMatrixなど、Macに接続されたハードウェアの状態を読み取り専用で確認できます。Macがない場合も、内蔵Device Previewでデバイス・エージェント・状態・セッション数を切り替えて合成画面を確認できます。音声入力、Claude Codeフックのインストール、ハードウェアの直接制御はMacアプリ専用です。
 
 — プライバシー＆セキュリティ —
 
@@ -383,6 +395,18 @@ claude code,ai,エージェント,ダッシュボード,stream deck,monitoring,a
 • ライブセッション画面のまれなクラッシュを修正
 • テキストデコードの不具合で空白になることがあったCodex使用量ゲージを復元
 • 監視中のCodex・OpenCode・Antigravityセッションがタイムラインから消える問題を修正
+
+フィードバックはいつでも歓迎します: admin@foundby.kr
+```
+
+### What's New (v1.0.2, iOS — 審査対応ビルド)
+
+```
+接続画面の安定性を改善しました。
+
+• Macの検索完了後も読み込み表示が続く問題を修正
+• Macが見つからない場合に、明確な完了状態と再検索ボタンを表示
+• Macなしでも確認できる内蔵Device Previewを追加
 
 フィードバックはいつでも歓迎します: admin@foundby.kr
 ```
@@ -546,7 +570,7 @@ AgentDeck is independent and is not affiliated with or endorsed by Anthropic, Op
 **iOS App**
 
 ```
-AgentDeck for iOS is a companion that pairs with AgentDeck running on your Mac and mirrors your running sessions, live. It is not a standalone app — AgentDeck must be running on a Mac on the same Wi-Fi network.
+AgentDeck for iOS is a companion that pairs with AgentDeck running on your Mac and mirrors your running sessions live. Live sessions require a Mac on the same Wi-Fi, while the built-in Device Preview remains available without a Mac.
 
 "Stop Chatting. Start Steering."
 
@@ -567,7 +591,7 @@ See agent-turn evaluation scores, scored against category-specific rubrics on yo
 View the session list, model catalog, and tool approval requests of an OpenClaw Gateway paired to your Mac, read-only.
 
 • Hardware status mirror
-View the status of hardware connected to your Mac — Ulanzi D200H, supported ESP32 boards, Divoom Pixoo/Timebox Mini, iDotMatrix — read-only. The Device Preview gallery, voice input, Claude Code hook installation, and direct hardware control are Mac-app-only features.
+View the status of hardware connected to your Mac — Ulanzi D200H, supported ESP32 boards, Divoom Pixoo/Timebox Mini, iDotMatrix — read-only. Without a Mac, the built-in Device Preview still lets you change the device, agent, state, and session count locally. Voice input, Claude Code hook installation, and direct hardware control are Mac-app-only features.
 
 — Privacy and security —
 
@@ -606,6 +630,18 @@ Reliability update.
 • Fixed a rare crash in the live session view
 • Restored the Codex usage gauge that a text-decoding bug could leave blank
 • Observed Codex, OpenCode, and Antigravity sessions no longer drop off the timeline
+
+Thanks for the feedback — keep it coming: admin@foundby.kr
+```
+
+### What's New (v1.0.2, iOS — review response build)
+
+```
+Connection-screen reliability update.
+
+• Fixed the loading indicator continuing after Mac discovery completed
+• Added a clear no-Mac state with a Search Again action
+• Added a built-in Device Preview that works without a paired Mac
 
 Thanks for the feedback — keep it coming: admin@foundby.kr
 ```

@@ -51,11 +51,15 @@ Before starting, note your macOS version, device model, and any non-default acce
 
 ## Section B — First-run experience (iOS)
 
-- [ ] **B1**. Install via TestFlight. First launch shows full-screen 3-pane onboarding ("Stop Chatting" → agent info → "Find your Mac").
-- [ ] **B2**. Local Network permission prompt appears the first time onboarding reaches pane 3 (or when you tap Get Started). Allow it.
-- [ ] **B3**. Pane 3 has a **Scan QR from Mac** button that opens a camera view. Camera permission prompt appears on first tap.
-- [ ] **B4**. After Get Started, if a Mac is running AgentDeck on the same Wi-Fi, Bonjour auto-discovers it within 10 seconds and the dashboard mirrors state.
-- [ ] **B5**. Terrarium renders at a smooth framerate; creatures match the sessions on the Mac.
+- [ ] **B1**. Install via TestFlight. First launch shows full-screen 4-pane onboarding ("Stop Chatting" → agent info → integrations → "Find your Mac").
+- [ ] **B2**. Local Network permission prompt appears after Get Started when discovery begins. Allow it.
+- [ ] **B3**. The final pane has a **Scan QR from Mac** button that opens a camera view. Camera permission prompt appears on first tap.
+- [ ] **B4**. With no AgentDeck Mac on the same Wi-Fi, foreground discovery ends within ~10 seconds. The spinner disappears, the stable text reads “No AgentDeck found on this network,” and Search Again + manual URL remain enabled.
+- [ ] **B5**. Tap **Explore without a Mac**. Device Preview opens locally; Device, Agent, State, and Sessions controls all update the rendered preview. Done returns to the no-Mac screen.
+- [ ] **B6**. Tap **Search Again** from the no-Mac screen. A new search starts (indicator returns), and it stops again on its own within ~10 seconds — the button is never inert.
+- [ ] **B7**. Force a failing connection (enter an unreachable `ws://` URL manually), then tap **Stop Reconnecting** while the retry ladder is running. The screen settles on the no-Mac state with no residual indicator, and Search Again still works.
+- [ ] **B8**. Start AgentDeck on a Mac on the same Wi-Fi after B4. The still-running Bonjour browser discovers it and the dashboard connects without relaunching the iPad app.
+- [ ] **B9**. Terrarium renders at a smooth framerate; creatures match the sessions on the Mac.
 
 ---
 
@@ -95,6 +99,7 @@ Skip if you don't have OpenClaw 2026.4.14+ installed.
 - [ ] **E4**. Reconnect to Wi-Fi. Data resumes within 2 seconds.
 - [ ] **E5**. Menu bar on Mac → **Pair iPad**. QR window appears with the ws:// URL. On iPad → Settings → Scan QR → point camera at Mac screen.
 - [ ] **E6**. iPad connects via the scanned URL (even if you temporarily disable Local Network permission on iPad to force the QR path).
+- [ ] **E7**. Stop the Mac app and delete any saved URL, then relaunch the iPad app. The terminal no-Mac state appears without an indefinite activity indicator and the offline Device Preview remains usable.
 
 ---
 
@@ -228,6 +233,7 @@ Send to `admin@foundby.kr` or file as a GitHub issue.
 
 - **All Section A–C checkboxes green** — first-run experience is not embarrassing.
 - **Section D green if OpenClaw installed, skipped otherwise** — the advanced integration doesn't regress when present.
+- **All Section B boxes green on a clean iPad with no Mac initially present** — App Review's launch path completes without an indefinite indicator.
 - **All Section E boxes green on at least one iOS device + one Mac** — the companion story works.
 - **All Section F boxes green** — voice is the most reviewer-visible "is this thing pretending to work" feature.
 - **All Section I boxes green** — sandbox compliance is auditable.

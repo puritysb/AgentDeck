@@ -13,18 +13,84 @@ enum ConnectionLexicon {
     static let nothingDiscovered = "No AgentDeck found on this network"
 }
 
+/// User-visible phase of the connection overlay.
+///
+/// `BridgeDiscovery.isSearching` means the long-lived Bonjour browser is ready,
+/// not that a bounded foreground search is still in progress. Keeping those two
+/// meanings separate prevents a healthy passive browser from rendering as an
+/// activity indicator that spins forever when no Mac is present.
+enum ConnectionOverlayPhase: Equatable {
+    case localNetworkDenied
+    case reconnecting
+    case connecting
+    case searching
+    case notFound
+
+    /// - Parameters:
+    ///   - hasStartedForegroundSearch: false only in the window between the
+    ///     overlay's first render and `ContentView.onAppear` starting the
+    ///     waterfall. Without it that frame resolves to `.notFound` and flashes a
+    ///     failure state before any search has run. This is safe to render as
+    ///     `.searching` because the overlay only exists inside `ContentView`,
+    ///     whose `onAppear` starts the waterfall in the same appearance cycle —
+    ///     and the state holder defaults it to `true` on platforms that do not
+    ///     drive the waterfall from a view appearance.
+    ///   - isAutoConnecting: a **bounded** foreground attempt, deadline-backed in
+    ///     `AgentStateHolder`. Never pass `BridgeDiscovery.isSearching` here: it
+    ///     reports the long-lived Bonjour browser, which by design never stops.
+    static func resolve(
+        localNetworkDenied: Bool,
+        isReconnecting: Bool,
+        isConnecting: Bool,
+        isAutoConnecting: Bool,
+        hasStartedForegroundSearch: Bool = true
+    ) -> Self {
+        if localNetworkDenied { return .localNetworkDenied }
+        if isReconnecting { return .reconnecting }
+        if isConnecting { return .connecting }
+        if isAutoConnecting { return .searching }
+        if !hasStartedForegroundSearch { return .searching }
+        return .notFound
+    }
+
+    var statusText: String {
+        switch self {
+        case .localNetworkDenied: return "Local Network access required"
+        case .reconnecting:       return ConnectionLexicon.reconnecting
+        case .connecting:         return ConnectionLexicon.connecting
+        case .searching:          return ConnectionLexicon.searching
+        case .notFound:           return ConnectionLexicon.nothingDiscovered
+        }
+    }
+
+    var showsActivityIndicator: Bool {
+        self == .searching || self == .connecting
+    }
+}
+
 struct ConnectionOverlay: View {
     @EnvironmentObject private var stateHolder: AgentStateHolder
+    @EnvironmentObject private var preferences: AppPreferences
     @State private var manualUrl = ""
     @State private var showManualEntry = false
-    @State private var searchingElapsed: TimeInterval = 0
-    @State private var elapsedTimer: Timer?
+    #if os(iOS)
+    @State private var showDevicePreview = false
+    #endif
 
     // Explicit slate color matching Android SlateText #94A3B8
     // (.secondary is too dim on dark card backgrounds, especially iPad)
     private let slateText = Color(red: 0.58, green: 0.64, blue: 0.72)
 
     private var isReconnecting: Bool { stateHolder.connection.isReconnecting }
+    private var phase: ConnectionOverlayPhase {
+        .resolve(
+            localNetworkDenied: stateHolder.discovery.localNetworkDenied,
+            isReconnecting: isReconnecting,
+            isConnecting: stateHolder.connection.status == .connecting,
+            isAutoConnecting: stateHolder.isAutoConnecting,
+            hasStartedForegroundSearch: stateHolder.hasStartedForegroundSearch
+        )
+    }
 
     var body: some View {
         // Scrim + centered card
@@ -46,7 +112,7 @@ struct ConnectionOverlay: View {
                         .foregroundStyle(.white)
 
                     // Status subtitle — matches Android logic
-                    Text(statusText)
+                    Text(phase.statusText)
                         .font(.subheadline)
                         .foregroundStyle(slateText)
 
@@ -60,7 +126,10 @@ struct ConnectionOverlay: View {
                     // Reconnecting details (stop button only)
                     if isReconnecting {
                         Button {
-                            stateHolder.connection.disconnect()
+                            // Not `connection.disconnect()` — that stops the socket
+                            // but leaves the waterfall mid-stage, which renders as a
+                            // search with no work behind it and no way back.
+                            stateHolder.stopConnectionAttempts()
                         } label: {
                             Text("Stop Reconnecting")
                                 .font(.subheadline)
@@ -75,7 +144,7 @@ struct ConnectionOverlay: View {
                         .buttonStyle(.plain)
                     }
 
-                    // Error message + recovery guidance
+                    // Connection error from the last attempted URL.
                     if let error = stateHolder.connection.lastError,
                        stateHolder.connection.status == .disconnected {
                         Text(error)
@@ -84,30 +153,6 @@ struct ConnectionOverlay: View {
                             .foregroundStyle(.red)
                             .multilineTextAlignment(.center)
 
-                        // Recovery guidance after reconnect failure
-                        if !isReconnecting {
-                            VStack(spacing: 8) {
-                                Text("Check that AgentDeck daemon is running")
-                                    .font(.caption)
-                                    .foregroundStyle(slateText.opacity(0.7))
-
-                                Button {
-                                    stateHolder.startConnectionWaterfall()
-                                } label: {
-                                    Text(ConnectionLexicon.searchAgain)
-                                        .font(.subheadline.bold())
-                                        .foregroundStyle(.white)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 8)
-                                        .background(.cyan.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(.cyan.opacity(0.5), lineWidth: 1)
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
                     }
 
                     // Connection options (disconnected or reconnecting with WiFi alternatives)
@@ -126,23 +171,16 @@ struct ConnectionOverlay: View {
                                 }
                             }
                         } else if !isReconnecting {
-                            // Spinner while searching (not during reconnect)
-                            if stateHolder.discovery.isSearching {
+                            // The Bonjour browser intentionally remains alive so a Mac
+                            // appearing later can reconnect. Only the bounded foreground
+                            // attempt gets a progress indicator.
+                            if phase.showsActivityIndicator {
                                 ProgressView()
                                     .tint(.cyan)
                             }
 
-                            // Hint after 10 seconds of no results
-                            if searchingElapsed >= 10 {
-                                VStack(spacing: 4) {
-                                    Text(ConnectionLexicon.nothingDiscovered)
-                                        .font(.caption)
-                                        .foregroundStyle(slateText)
-                                    Text("Enter URL manually or check local network permission.")
-                                        .font(.caption)
-                                        .foregroundStyle(slateText.opacity(0.7))
-                                        .multilineTextAlignment(.center)
-                                }
+                            if phase == .notFound {
+                                noMacRecovery
                             }
                         }
                     }
@@ -185,18 +223,22 @@ struct ConnectionOverlay: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .onAppear {
-            searchingElapsed = 0
-            elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-                Task { @MainActor in
-                    searchingElapsed += 1
-                }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showDevicePreview) {
+            NavigationStack {
+                DevicePreviewScreen()
+                    .navigationTitle("Explore AgentDeck")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showDevicePreview = false }
+                        }
+                    }
             }
+            .environmentObject(stateHolder)
+            .environmentObject(preferences)
         }
-        .onDisappear {
-            elapsedTimer?.invalidate()
-            elapsedTimer = nil
-        }
+        #endif
     }
 
     // MARK: - Helpers
@@ -249,13 +291,43 @@ struct ConnectionOverlay: View {
         )
     }
 
-    private var statusText: String {
-        if isReconnecting {
-            return ConnectionLexicon.reconnecting
-        } else if stateHolder.isAutoConnecting || stateHolder.connection.status == .connecting {
-            return ConnectionLexicon.connecting
-        } else {
-            return ConnectionLexicon.searching
+    private var noMacRecovery: some View {
+        VStack(spacing: 10) {
+            Text("Check that your Mac is online and on the same Wi-Fi.")
+                .font(.caption)
+                .foregroundStyle(slateText.opacity(0.8))
+                .multilineTextAlignment(.center)
+
+            Button {
+                // `retry` rather than `start`: the plain entry point no-ops when a
+                // stage is left over, which turns this into a dead button.
+                stateHolder.retryConnectionWaterfall()
+            } label: {
+                Text(ConnectionLexicon.searchAgain)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(.cyan.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.cyan.opacity(0.5), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+
+            #if os(iOS)
+            Button {
+                showDevicePreview = true
+            } label: {
+                Label("Explore without a Mac", systemImage: "rectangle.3.group")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.bordered)
+            .tint(.cyan)
+            #endif
         }
     }
 

@@ -1,6 +1,6 @@
 # App Store Connect submission checklist
 
-> **Release status (2026-07-24):** macOS 1.0.0 was approved and released on 2026-07-21: [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497). The **macOS 1.0.2 update (build 3901) was submitted for review on 2026-07-24** with automatic release on approval; review may take up to 48 hours. The iPhone/iPad companion remains in review. Keep this checklist as the reusable gate for subsequent submissions.
+> **Release status (2026-08-05):** macOS 1.0.2 (3901) is live. The first iPhone/iPad 1.0.2 submission (3901) was rejected on 2026-08-04 under Guideline 2.1(a) because the no-Mac screen kept animating after discovery completed. The replacement build must carry the terminal no-Mac state, offline Device Preview, iPad-specific Review Notes, and a higher CI-owned build number.
 
 ## App record
 
@@ -46,14 +46,16 @@
 ## Review information
 
 - [ ] Contact name, phone, and email entered in App Review Information
-- [ ] Paste `apple/APP_REVIEW_NOTES.md` into Review Notes
+- [ ] Paste the **iOS / iPadOS Notes field** block from `apple/APP_REVIEW_NOTES.md` into the iOS Review Notes
+- [ ] Replace `[BUILD]` in the Guideline 2.1(a) Resolution Center reply with the selected replacement build number, then send it with the new submission
 - [ ] State “No account required” in Sign-in information
 - [ ] Attach no secrets, config files, or private logs
-- [ ] Reviewer can open Device Preview without hardware or an agent session
+- [ ] On a clean iPad with no Mac present, the spinner stops after ~10 seconds and the reviewer can open **Explore without a Mac** without hardware or an agent session
 
 ## Build and release gate
 
 - [ ] Complete `docs/testflight-qa-checklist.md` on one Mac, one iPhone, and one iPad
+- [ ] Complete Section B first on a clean iPad while no AgentDeck Mac is present; capture the stable no-Mac screen and offline Device Preview as review evidence
 - [ ] Run `bash apple/scripts/validate-appstore-submission.sh --network`
 - [ ] Build the Release archive
 - [ ] Run `bash apple/scripts/verify-appstore-archive.sh <path-to-AgentDeck.app>` on the Release app

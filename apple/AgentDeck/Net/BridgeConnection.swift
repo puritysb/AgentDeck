@@ -53,8 +53,12 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     /// Called when WebSocket disconnects (before reconnect attempts)
     var onDisconnect: (() -> Void)?
 
-    /// Called when reconnect gives up — state holder can restart discovery
-    var onReconnectExhausted: (() -> Void)?
+    /// Called when reconnect gives up — state holder can restart discovery.
+    /// Carries the URL that failed, because this callback fires from the same
+    /// main-queue block that clears `url`; reading `connection.url` from inside
+    /// the handler always saw nil, so the caller's ghost-bridge blacklist never
+    /// matched and a dead mDNS entry could be retried forever.
+    var onReconnectExhausted: ((String?) -> Void)?
 
     /// Called before each reconnect attempt — return true to abort reconnect
     /// and let the caller take over (e.g. switch to a local session).
@@ -472,6 +476,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             let maxAttempts = Self.maxReconnectAttempts
             if self.reconnectAttempt >= maxAttempts {
                 self.isHandlingDisconnect = false  // No reconnect will follow
+                let failedUrl = self.url
                 DispatchQueue.main.async {
                     self.status = .disconnected
                     self.url = nil
@@ -480,7 +485,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
                     self.lastError = wasConnected
                         ? "Bridge disconnected"
                         : "Connection failed"
-                    self.onReconnectExhausted?()
+                    self.onReconnectExhausted?(failedUrl)
                 }
                 return
             }

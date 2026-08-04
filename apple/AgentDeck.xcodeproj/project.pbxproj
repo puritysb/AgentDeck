@@ -27,6 +27,7 @@
 		0AC3F569F362D121D985EA52 /* KelpField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0815111538C63CAF8766B367 /* KelpField.swift */; };
 		0B04CA71C040BE9955B8C032 /* AdbModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83589BA4C41B89C8EF1A46FD /* AdbModule.swift */; };
 		0B12EC87653840EF7BA4555C /* SessionAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E3177DE60C73B3A102F9FB /* SessionAggregator.swift */; };
+		0D27F8A8833CCEC21A91E867 /* ConnectionOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66917928C455891D401F29E6 /* ConnectionOverlayTests.swift */; };
 		0E60D3FBC7626624FF7B5A2E /* TopologyRailHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D05CE505E1EC5729C69752E /* TopologyRailHelpersTests.swift */; };
 		0ED91B65645B05541D82E446 /* NotificationPermission.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC62763B9E0E57235CFDACED /* NotificationPermission.swift */; };
 		1055170019B2376B38A0B8FE /* SessionAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E3177DE60C73B3A102F9FB /* SessionAggregator.swift */; };
@@ -55,6 +56,7 @@
 		2113C540FF031F83DBA1139F /* Creature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A9A073192C93C1277AE490 /* Creature.swift */; };
 		21AF157660FF2065535E3EE2 /* GaugeBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCEE70EEDDCA2199E894D275 /* GaugeBar.swift */; };
 		22242F96E921D3043AD847E5 /* TimelineSummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 478F84014DFA2BC1E6E82110 /* TimelineSummarizer.swift */; };
+		23A9123293932E0B49628B1F /* ConnectionOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66917928C455891D401F29E6 /* ConnectionOverlayTests.swift */; };
 		23C366450AF88EC0E69DDD11 /* CodexConfigInstallerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0392D39F45022F762AFE6BE0 /* CodexConfigInstallerTests.swift */; };
 		23EA982402128EB1158AB6A9 /* MiniTomlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B1754EEF69FF454C638CF1C /* MiniTomlTests.swift */; };
 		263F5BDD1FD0077BCCCA5DE8 /* DaemonServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B857A690693DD802AA05429D /* DaemonServer.swift */; };
@@ -515,6 +517,7 @@
 		61F4A4AE7D86132501CA1096 /* AgentStatusIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusIcon.swift; sourceTree = "<group>"; };
 		640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixProtocolTests.swift; sourceTree = "<group>"; };
 		64EB18086FC44B69D1CBE171 /* ApmeJudgeMlx.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeMlx.swift; sourceTree = "<group>"; };
+		66917928C455891D401F29E6 /* ConnectionOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionOverlayTests.swift; sourceTree = "<group>"; };
 		68F068BCFDB979A23AEDA5C3 /* IDotMatrixBLE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixBLE.swift; sourceTree = "<group>"; };
 		69470A0782BDF6A29012E9F0 /* DaemonActor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonActor.swift; sourceTree = "<group>"; };
 		69BCA057209786EF62993762 /* TerrariumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerrariumView.swift; sourceTree = "<group>"; };
@@ -691,6 +694,7 @@
 				D54B6A5B14E7FEFC4CD93EF2 /* ApmeTaskBoundaryTests.swift */,
 				0392D39F45022F762AFE6BE0 /* CodexConfigInstallerTests.swift */,
 				8BE1D983995443760EDE3A4A /* CodexOtelParserTests.swift */,
+				66917928C455891D401F29E6 /* ConnectionOverlayTests.swift */,
 				E84D819AA86894944600240C /* DaemonActorIndependenceTests.swift */,
 				DA9A38D1BD38841DF83F3017 /* DaemonPortFallbackTests.swift */,
 				95997D1E19933CBB5A3F400D /* DeviceApprovalGateTests.swift */,
@@ -1303,6 +1307,7 @@
 				B3A9C1B59F3239A9C482540F /* ApmeTaskBoundaryTests.swift in Sources */,
 				00E9789B6EFDA8174842999D /* CodexConfigInstallerTests.swift in Sources */,
 				CFCABF9422E74B8CF2A23C7E /* CodexOtelParserTests.swift in Sources */,
+				23A9123293932E0B49628B1F /* ConnectionOverlayTests.swift in Sources */,
 				5110D91D663BA602A485005E /* DaemonActorIndependenceTests.swift in Sources */,
 				F30F046B8C2F044E12263AE8 /* DaemonPortFallbackTests.swift in Sources */,
 				1DA82A36B17B48756691D2CD /* DeviceApprovalGateTests.swift in Sources */,
@@ -1341,6 +1346,7 @@
 				F608EB171F09E38587FE9BA7 /* ApmeTaskBoundaryTests.swift in Sources */,
 				23C366450AF88EC0E69DDD11 /* CodexConfigInstallerTests.swift in Sources */,
 				E55963FC1E5C23442A500CE4 /* CodexOtelParserTests.swift in Sources */,
+				0D27F8A8833CCEC21A91E867 /* ConnectionOverlayTests.swift in Sources */,
 				A7560FE516D5460EB526FA3A /* DaemonActorIndependenceTests.swift in Sources */,
 				D0FB0E0FFBBCE44786BA9B51 /* DaemonPortFallbackTests.swift in Sources */,
 				53D37B6B6CCF9EFD0013F153 /* DeviceApprovalGateTests.swift in Sources */,

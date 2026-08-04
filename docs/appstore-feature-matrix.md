@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Apple product maintainers
-reviewed: 2026-08-01
-revision: 2026-08-01
+reviewed: 2026-08-05
+revision: 2026-08-05
 source_of_truth: docs/appstore-feature-matrix.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
@@ -50,7 +50,7 @@ All surfaces follow the same rule:
 | Codex lifecycle observation | Yes | Yes | Explicit `NSOpenPanel`; managed TOML block only |
 | Voice input | Yes | Yes | Apple on-device speech in both tiers — Tier 1 calls the framework, Tier 2 the bundled Swift helper. macOS-only; no whisper/model install |
 | Deck voice key (Stream Deck hold-to-talk / D200H tap-toggle) | Yes | Yes | Deck key = trigger only; host mic/STT/TTS do the work. Tier 1: native AVFoundation+Speech (`DaemonPttVoice`), observed-Claude delivery is the queued-directive ladder (live typing needs the CLI daemon). Tier 2: bundled helper `record`, observed delivery via terminal injection |
-| Device Preview catalog | Yes | Yes | CLI-only targets appear only with external daemon |
+| Device Preview catalog | Yes | Yes | macOS exposes the full catalog window; iOS/iPadOS exposes the same synthetic previews from the no-Mac connection state so the app remains inspectable without a paired host. CLI-only targets appear only with external daemon |
 | APME Layer 2 LLM evaluation | Yes | Yes | Apple Intelligence default; opt-in HTTP alternatives |
 | APME Layer 1 deterministic evaluation | No | Yes | Requires `git` / package-manager subprocesses |
 | Timeline completion summary | Yes | Yes | Foundation Models → optional MLX HTTP → heuristic |

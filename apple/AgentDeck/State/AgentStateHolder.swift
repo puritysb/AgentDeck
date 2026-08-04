@@ -68,9 +68,50 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     // MARK: - Connection Waterfall State
 
+    /// A **bounded foreground attempt** is in flight. This is the only signal the
+    /// connection overlay may render as a progress indicator — never
+    /// `BridgeDiscovery.isSearching`, which stays true for the long-lived Bonjour
+    /// browser and caused the App Review 2.1(a) rejection of build 3901.
+    ///
+    /// Every path that ends an attempt must clear it, so the setter is funnelled
+    /// through `beginForegroundSearch()` / `endForegroundSearch()` and backed by
+    /// `foregroundSearchDeadline` — see those for the invariant.
     @Published private(set) var isAutoConnecting = false
+
+    /// False until the first foreground attempt has been *started*. Without it the
+    /// overlay renders one frame of the "nothing found" terminal state before
+    /// `ContentView.onAppear` kicks the waterfall off. iOS is the only platform
+    /// that starts the waterfall from a view appearance; macOS drives its own
+    /// in-process daemon through `setPreferredLocalBridge`, so it must start out
+    /// `true` or the overlay would report a search that never begins.
+    #if os(iOS)
+    @Published private(set) var hasStartedForegroundSearch = false
+    #else
+    @Published private(set) var hasStartedForegroundSearch = true
+    #endif
+
     private var waterfallStage: WaterfallStage = .idle
     private var preferredLocalBridgeUrl: String?
+
+    /// Hard ceiling on the user-visible foreground attempt, independent of which
+    /// waterfall stage is in flight.
+    ///
+    /// The waterfall has several exits (mDNS hit, 4s saved-URL fallback, the
+    /// reconnect ladder, an explicit user stop) and each used to own its own
+    /// termination. Any path that forgot left the indicator spinning forever —
+    /// the rejected symptom. Rather than auditing every future exit, this deadline
+    /// makes boundedness structural: it fires once per run and clears the
+    /// indicator no matter what. It deliberately does **not** tear down the
+    /// socket; a connect still in flight keeps its own `.connecting` phase and can
+    /// still succeed. Sits just above the 10s auto-connect poll so the poll stays
+    /// the normal reporter and this is only ever the backstop.
+    private let foregroundSearchDeadlineSec: TimeInterval
+    private var foregroundSearchDeadline: DispatchWorkItem?
+
+    /// Set when the user explicitly stops connecting (Stop Reconnecting, Settings
+    /// → Disconnect). Suppresses late-discovery auto-connect so the app does not
+    /// immediately undo a deliberate disconnect. Cleared by any new connect intent.
+    private var userStoppedConnecting = false
 
     #if DEBUG
     /// True when `-AgentDeckScreenshotURL` pinned the bridge at launch. The pin
@@ -101,7 +142,11 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     // MARK: - Init
 
-    init() {
+    /// - Parameter foregroundSearchDeadlineSec: ceiling on the visible search
+    ///   indicator. Injectable so tests can assert the bound in milliseconds
+    ///   instead of waiting out the production value.
+    init(foregroundSearchDeadlineSec: TimeInterval = 12) {
+        self.foregroundSearchDeadlineSec = foregroundSearchDeadlineSec
         #if DEBUG
         // App Store/launch capture only: pin a Debug app directly to the
         // deterministic local mock before mDNS can discover a developer daemon.
@@ -143,6 +188,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 guard !self.state.bridgeConnected,
                       self.connection.status == .disconnected else { return }
                 guard self.autoConnectTimer == nil else { return }
+                // An explicit stop must stick. Without this the next mDNS tick
+                // silently undoes "Stop Reconnecting" / Settings → Disconnect.
+                guard !self.userStoppedConnecting else { return }
 
                 let candidates = bridges.filter { !self.failedBridgeIds.contains($0.id) }
                 let bridge = candidates.first(where: { $0.agentType == "daemon" })
@@ -174,11 +222,13 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 self.discovery.startSearching()
             }
         }
-        connection.onReconnectExhausted = { [weak self] in
+        connection.onReconnectExhausted = { [weak self] failedUrl in
             guard let self else { return }
             guard !self.isTerminating else { return }
-            // Blacklist the failed bridge so we skip it in auto-connect
-            if let url = self.connection.url,
+            // Blacklist the failed bridge so we skip it in auto-connect. The URL
+            // arrives as a parameter because `connection.url` is cleared in the
+            // same block that invokes this callback.
+            if let url = failedUrl,
                let bridge = self.discovery.bridges.first(where: { $0.wsUrl == url }) {
                 self.failedBridgeIds.insert(bridge.id)
                 print("[Waterfall] blacklisted bridge \(bridge.id) after reconnect exhausted")
@@ -351,7 +401,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
         backgroundEnteredAt = nil
         preferredLocalBridgeUrl = nil
-        isAutoConnecting = false
+        endForegroundSearch()
         waterfallStage = .idle
         autoConnectTimer?.invalidate()
         autoConnectTimer = nil
@@ -472,8 +522,10 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     func startConnectionWaterfall() {
         guard !isTerminating else { return }
+        hasStartedForegroundSearch = true
+        userStoppedConnecting = false
         if let preferredLocalBridgeUrl {
-            isAutoConnecting = false
+            endForegroundSearch()
             waterfallStage = .idle
             if connection.url != preferredLocalBridgeUrl || connection.status == .disconnected {
                 connectTo(url: preferredLocalBridgeUrl)
@@ -484,12 +536,68 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             print("[Waterfall] already in stage \(waterfallStage), skipping")
             return
         }
-        isAutoConnecting = true
+        beginForegroundSearch()
         print("[Waterfall] starting waterfall")
 
         // Always mDNS first — savedUrl can be stale after DHCP/network changes.
         // savedUrl is tried as fallback after 4s if no mDNS results.
         startMdnsDiscovery()
+    }
+
+    /// User-initiated retry from the "No AgentDeck found" state.
+    ///
+    /// Unlike `startConnectionWaterfall()` this never no-ops on the stage guard:
+    /// a button the user can see must always do something. A stage left behind by
+    /// an abandoned attempt is reset rather than respected — respecting it is how
+    /// "Search Again" became a dead button that could only be cleared by
+    /// relaunching the app.
+    func retryConnectionWaterfall() {
+        guard !isTerminating else { return }
+        autoConnectTimer?.invalidate()
+        autoConnectTimer = nil
+        endForegroundSearch()
+        waterfallStage = .idle
+        failedBridgeIds.removeAll()
+        connection.resetReconnectCount()
+        startConnectionWaterfall()
+    }
+
+    /// Abandon the current attempt and settle on a stable, recoverable state.
+    ///
+    /// `BridgeConnection.disconnect()` only tears down the socket — it knows
+    /// nothing about the waterfall, so calling it alone left `isAutoConnecting`
+    /// true and the stage non-idle: a spinning indicator with no work behind it
+    /// and no way back. Every user-facing stop goes through here instead.
+    func stopConnectionAttempts() {
+        guard !isTerminating else { return }
+        autoConnectTimer?.invalidate()
+        autoConnectTimer = nil
+        endForegroundSearch()
+        waterfallStage = .idle
+        userStoppedConnecting = true
+        connection.disconnect()
+    }
+
+    // MARK: - Foreground search indicator
+
+    /// Start the bounded attempt and arm its deadline.
+    private func beginForegroundSearch() {
+        isAutoConnecting = true
+        foregroundSearchDeadline?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.isTerminating, self.isAutoConnecting else { return }
+            print("[Waterfall] foreground search deadline reached — clearing indicator")
+            self.endForegroundSearch()
+        }
+        foregroundSearchDeadline = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + foregroundSearchDeadlineSec, execute: work)
+    }
+
+    /// End the bounded attempt. Idempotent; safe to call from any exit path.
+    private func endForegroundSearch() {
+        foregroundSearchDeadline?.cancel()
+        foregroundSearchDeadline = nil
+        isAutoConnecting = false
     }
 
     private func trySavedUrl() {
@@ -613,7 +721,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 print("[AutoConnect] giving up after 10s with no bridges found")
                 timer.invalidate()
                 self.autoConnectTimer = nil
-                self.isAutoConnecting = false
+                self.endForegroundSearch()
                 self.waterfallStage = .idle
             }
         }
@@ -962,8 +1070,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             state.bridgeConnected = true
             state.sessionId = e.sessionId
             state.focusedSessionId = nil
-            isAutoConnecting = false
+            endForegroundSearch()
             waterfallStage = .idle
+            userStoppedConnecting = false
 
             // Save successful URL for next launch
             if let url = connection.url {
@@ -1038,13 +1147,18 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     // MARK: - Connection Management
 
+    /// Any connect is fresh intent, so it lifts the suppression an explicit stop
+    /// installed — otherwise tapping a discovered bridge after "Stop Reconnecting"
+    /// would connect once and then never auto-recover.
     func connectTo(_ bridge: DiscoveredBridge) {
         guard !isTerminating else { return }
+        userStoppedConnecting = false
         connection.connect(to: bridge.wsUrl)
     }
 
     func connectTo(url: String) {
         guard !isTerminating else { return }
+        userStoppedConnecting = false
         connection.connect(to: url)
     }
 
@@ -1058,7 +1172,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         if let url {
             autoConnectTimer?.invalidate()
             autoConnectTimer = nil
-            isAutoConnecting = false
+            endForegroundSearch()
             waterfallStage = .idle
             discovery.stopSearching()
             failedBridgeIds.removeAll()
@@ -1075,10 +1189,12 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     func disconnectBridge() {
         guard !isTerminating else { return }
-        connection.disconnect()
+        // Route through stopConnectionAttempts so the visible indicator, the
+        // auto-connect timer, and the late-discovery sink all honour the stop —
+        // tearing down only the socket left the overlay claiming a search.
+        stopConnectionAttempts()
         resetToDisconnected()
         savedUrl = nil  // Clear saved URL on explicit disconnect
         preferredLocalBridgeUrl = nil  // Prevent auto-reconnect from onDisconnect handler
-        waterfallStage = .idle
     }
 }

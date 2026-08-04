@@ -12,9 +12,11 @@
 //   - macOS menu bar: "Preview Devices" button in ControlTowerPanel.
 //   - First launch: the device-empty banner nudges the user here.
 //   - `openWindow(id: "device-preview")` from anywhere else.
+//   - iOS/iPadOS no-Mac recovery: "Explore without a Mac".
 //
-// The window is macOS-only in the App scene, but the screen View is
-// platform-agnostic so iOS compiles it too — useful for future iPad previews.
+// The macOS catalog is a dedicated window. iOS/iPadOS presents the same
+// synthetic previews as a sheet from the disconnected state, giving users and
+// App Review a useful local path even before a Mac is paired.
 
 import SwiftUI
 
@@ -82,17 +84,245 @@ struct DevicePreviewScreen: View {
             }
         }
         #else
-        // iOS has no NavigationSplitView detail column with this API shape
-        // before iOS 17.0, and the preview screen is macOS-facing; on iOS we
-        // just show the detail.
-        VStack(spacing: 0) {
-            toolbar
-            Divider()
-            detail
-        }
+        // iPad gets a compact two-card studio rather than the macOS toolbar
+        // squeezed into one horizontal row. ViewThatFits stacks the same
+        // cards on iPhone without maintaining a second interaction model.
+        iosDetail
         .aquariumSurface()
+        .onAppear {
+            if !preferences.hasSeenDevicePreview {
+                preferences.hasSeenDevicePreview = true
+            }
+            let pool = visibleDevices
+            if !pool.contains(selection.device), let first = pool.first {
+                selection.device = first
+            }
+        }
         #endif
     }
+
+#if os(iOS)
+    // MARK: - iPhone / iPad detail
+
+    private var iosDetail: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.s5) {
+                    Label("Interactive preview · no hardware required", systemImage: "sparkles")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(TerrariumHUD.subtext)
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: DesignTokens.Spacing.s5) {
+                            iosSetupCard
+                                .frame(width: 250)
+                            iosPreviewCard
+                                .frame(minWidth: 340)
+                        }
+
+                        VStack(spacing: DesignTokens.Spacing.s5) {
+                            iosSetupCard
+                            iosPreviewCard
+                        }
+                    }
+                }
+                .frame(maxWidth: 980, alignment: .leading)
+                .padding(.horizontal, geometry.size.width >= 600 ? 20 : 16)
+                .padding(.top, DesignTokens.Spacing.s4)
+                .padding(.bottom, DesignTokens.Spacing.s8)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var iosSetupCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.s5) {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.s1) {
+                Text("PREVIEW SETUP")
+                    .font(HUDFont.sectionHeader)
+                    .kerning(1.2)
+                    .foregroundStyle(DesignTokens.UI.cyan)
+                Text("Choose a device and sample activity.")
+                    .font(.subheadline)
+                    .foregroundStyle(TerrariumHUD.subtext)
+            }
+
+            Divider()
+                .overlay(DesignTokens.Ink.s500.opacity(0.5))
+
+            iosMenuField(
+                title: "Device",
+                systemImage: "rectangle.3.group",
+                selection: $selection.device
+            ) {
+                ForEach(visibleDevices) { device in
+                    Text(device.displayName).tag(device)
+                }
+            }
+
+            iosMenuField(
+                title: "Agent",
+                systemImage: "cpu",
+                selection: $selection.agent
+            ) {
+                ForEach(PixooPreviewAgent.allCases) { agent in
+                    Text(agent.displayName).tag(agent)
+                }
+            }
+            .disabled(followLive)
+
+            iosMenuField(
+                title: "State",
+                systemImage: "waveform.path.ecg",
+                selection: $selection.state
+            ) {
+                ForEach(PixooPreviewState.allCases) { state in
+                    Text(state.displayName).tag(state)
+                }
+            }
+            .disabled(followLive)
+
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.s2) {
+                Label("Sessions", systemImage: "square.stack.3d.up")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TerrariumHUD.subtext)
+
+                Picker("Sessions", selection: $selection.sessionCount) {
+                    ForEach(sessionCountOptions, id: \.self) { count in
+                        Text("\(count)").tag(count)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(followLive)
+            }
+
+            if stateHolder.state.bridgeConnected {
+                Toggle(isOn: $followLive) {
+                    Label("Follow live activity", systemImage: "dot.radiowaves.left.and.right")
+                        .font(.subheadline.weight(.medium))
+                }
+                .tint(DesignTokens.Kelp.s500)
+            } else {
+                Label("Offline sample", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(DesignTokens.Kelp.s300)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, DesignTokens.Spacing.s3)
+                    .frame(minHeight: 42)
+                    .background(
+                        DesignTokens.Kelp.s700.opacity(0.24),
+                        in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xl, style: .continuous)
+                    )
+            }
+        }
+        .padding(DesignTokens.Spacing.s5)
+        .background(
+            DesignTokens.Ink.s800.opacity(0.88),
+            in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xxxxl, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.xxxxl, style: .continuous)
+                .stroke(DesignTokens.Ink.s500.opacity(0.55), lineWidth: 1)
+        }
+    }
+
+    private var iosPreviewCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: DesignTokens.Spacing.s3) {
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.s1) {
+                    Text(selection.device.displayName)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(TerrariumHUD.text)
+                    Text(selection.device.byline)
+                        .font(.caption)
+                        .foregroundStyle(TerrariumHUD.subtext)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: DesignTokens.Spacing.s2)
+
+                Text(selection.state.displayName.uppercased())
+                    .font(.caption2.weight(.bold))
+                    .kerning(0.8)
+                    .foregroundStyle(previewStateColor)
+                    .padding(.horizontal, DesignTokens.Spacing.s3)
+                    .padding(.vertical, 7)
+                    .background(
+                        previewStateColor.opacity(0.13),
+                        in: Capsule()
+                    )
+            }
+            .padding(DesignTokens.Spacing.s5)
+
+            Divider()
+                .overlay(DesignTokens.Ink.s500.opacity(0.5))
+
+            TimelineView(.animation(minimumInterval: 0.1, paused: false)) { context in
+                deviceBody(animationFrame: frameFromTimeline(context.date))
+                    .scaleEffect(iosPreviewScale)
+            }
+            .frame(maxWidth: .infinity, minHeight: 430)
+            .padding(DesignTokens.Spacing.s5)
+
+            Text("Change any option to see the device update instantly.")
+                .font(.caption)
+                .foregroundStyle(TerrariumHUD.subtext)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, DesignTokens.Spacing.s5)
+                .padding(.bottom, DesignTokens.Spacing.s5)
+        }
+        .background(
+            DesignTokens.Ink.s900.opacity(0.72),
+            in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xxxxl, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.xxxxl, style: .continuous)
+                .stroke(DesignTokens.UI.cyan.opacity(0.18), lineWidth: 1)
+        }
+    }
+
+    private func iosMenuField<Value: Hashable, Options: View>(
+        title: String,
+        systemImage: String,
+        selection: Binding<Value>,
+        @ViewBuilder options: () -> Options
+    ) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.s2) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(TerrariumHUD.subtext)
+
+            Picker(title, selection: selection, content: options)
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .tint(DesignTokens.UI.cyan)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, DesignTokens.Spacing.s3)
+                .frame(minHeight: 44)
+                .background(
+                    DesignTokens.Ink.s900.opacity(0.58),
+                    in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xl, style: .continuous)
+                )
+        }
+    }
+
+    private var iosPreviewScale: CGFloat {
+        switch selection.device {
+        case .streamDeckKey:  return 1.65
+        case .streamDeckPlus: return 1.28
+        case .d200hKey:       return 1.25
+        default:              return 1
+        }
+    }
+
+    private var previewStateColor: Color {
+        switch selection.state {
+        case .processing:     return DesignTokens.Status.processing
+        case .awaitingPrompt: return DesignTokens.Status.awaiting
+        case .idle, .disconnected: return DesignTokens.Status.idle
+        }
+    }
+#endif
 
     // MARK: - Sidebar
 
@@ -168,8 +398,30 @@ struct DevicePreviewScreen: View {
 
     // MARK: - Toolbar
 
+    @ViewBuilder
     private var toolbar: some View {
+        #if os(iOS)
+        ScrollView(.horizontal, showsIndicators: false) {
+            toolbarControls
+                .frame(minWidth: 720)
+        }
+        #else
+        toolbarControls
+        #endif
+    }
+
+    private var toolbarControls: some View {
         HStack(spacing: 16) {
+            #if os(iOS)
+            Picker("Device", selection: $selection.device) {
+                ForEach(visibleDevices) { device in
+                    Text(device.displayName).tag(device)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: 190)
+            #endif
+
             Picker("Agent", selection: $selection.agent) {
                 ForEach(PixooPreviewAgent.allCases) { agent in
                     Text(agent.displayName).tag(agent)
@@ -188,6 +440,11 @@ struct DevicePreviewScreen: View {
             .frame(maxWidth: 180)
             .disabled(followLive)
 
+            #if os(iOS)
+            Text("Sessions")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            #endif
             Picker("Sessions", selection: $selection.sessionCount) {
                 ForEach(sessionCountOptions, id: \.self) { n in
                     Text("\(n)").tag(n)

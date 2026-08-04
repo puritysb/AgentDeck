@@ -730,7 +730,13 @@ final class ProtocolTests: XCTestCase {
             SessionInfo(id: "1", port: 9121, projectName: "Alpha", agentType: "codex-cli", alive: true, state: "processing", modelName: nil, startedAt: "2026-04-11T10:00:00Z"),
             SessionInfo(id: "4", port: 9124, projectName: "Gateway", agentType: "openclaw", alive: true, state: "idle", modelName: nil, startedAt: nil),
         ]
-        XCTAssertEqual(DashboardDataRules.sortSessions(sessions).map(\.id), ["4", "1", "2"])
+        // Legacy primary order is agentType rank. The SSOT is
+        // `agentTypeRank` in shared/src/session-utils.ts — openclaw=0,
+        // claude-code=1, codex-cli=2 — mirrored by
+        // `DashboardDataRules.agentTypeRank`. The original expectation swapped
+        // the latter two, asserting an order neither the SSOT nor the Swift
+        // mirror produces.
+        XCTAssertEqual(DashboardDataRules.sortSessions(sessions).map(\.id), ["4", "2", "1"])
     }
 
     func testFoldCodexSessionPayloadsForDisplayCollapsesSameProject() {

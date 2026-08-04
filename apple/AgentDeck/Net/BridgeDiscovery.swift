@@ -50,11 +50,28 @@ final class BridgeDiscovery: ObservableObject, @unchecked Sendable {
     /// ready→waiting(PolicyDenied) every restart, so we only treat the browser as
     /// permitted once it stays `.ready` for a beat without re-entering PolicyDenied.
     private var clearDeniedWork: DispatchWorkItem?
+    #if DEBUG
+    /// Deterministic no-Mac path for Simulator/App Review regression captures
+    /// **and** for unit tests of the connection waterfall. The developer machine
+    /// normally advertises its own daemon, so a simulator or test host would
+    /// immediately connect and could never exercise the empty discovery terminal
+    /// state. Settable (not `let`) so a test can suppress the browser without a
+    /// launch argument — an XCTest run cannot set its own process arguments, and
+    /// starting a real `NWBrowser` under test would also put a Local Network
+    /// permission prompt in CI's path. Compiled out of Release builds.
+    var isBrowserEnabled = !ProcessInfo.processInfo.arguments.contains("-AgentDeckDisableDiscovery")
+    #endif
 
     // MARK: - Start/Stop
 
     func startSearching() {
         guard !isTerminating else { return }
+        #if DEBUG
+        guard isBrowserEnabled else {
+            print("[Discovery] browser suppressed (capture argument or test)")
+            return
+        }
+        #endif
         guard browser == nil else { return }
 
         let params = NWParameters()
