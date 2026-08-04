@@ -9,8 +9,18 @@ target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
 ## 1.0.4
 
+### macOS app — App Store
+
+- Discover iDotMatrix-protocol pixel panels by their advertised service UUID and
+  known name families instead of the `IDM-` vendor prefix, so rebranded but
+  protocol-identical displays (iPixel) appear in Scan rather than requiring a
+  hand-written `settings.json` entry ([#115](https://github.com/puritysb/AgentDeck/issues/115))
+
 ### CLI and daemon
 
+- Apply the same brand-independent iDotMatrix discovery rule to the Python BLE
+  scan, and accept `idotmatrixNamePrefixes` in `settings.json` for a panel that
+  advertises neither the service nor a known name
 - Ship the iDotMatrix and Timebox Mini Python BLE clients in
   `@agentdeck/bridge` instead of resolving files that only exist in a source
   checkout

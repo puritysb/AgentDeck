@@ -1,8 +1,9 @@
 #if os(macOS)
 // IDotMatrixSheet.swift — User-facing iDotMatrix BLE device manager.
 //
-// iDotMatrix 32×32 pixel displays are Bluetooth-LE devices (advertised name prefix
-// "IDM-"). Unlike Pixoo (HTTP/IP), discovery is a CoreBluetooth scan. The user taps
+// iDotMatrix 32×32 pixel displays are Bluetooth-LE devices, identified by their
+// advertised service UUID and known name families ("IDM-", "iPixel-") rather than a
+// single vendor prefix. Unlike Pixoo (HTTP/IP), discovery is a CoreBluetooth scan. The user taps
 // Scan, picks their device, and AgentDeck stores its CBPeripheral.identifier UUID under
 // `idotmatrixDevices` in settings.json. IDotMatrixModule hot-reloads that array and
 // drives the display over BLE — no Terminal, no Python.
@@ -149,7 +150,7 @@ struct IDotMatrixSheet: View {
             }
 
             if scanResults.isEmpty && !scanning {
-                Text("Tap Scan to find nearby iDotMatrix displays (named IDM-…).")
+                Text("Tap Scan to find nearby iDotMatrix panels, including rebrands like iPixel.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             } else {
                 ForEach(scanResults, id: \.id) { found in
@@ -196,6 +197,7 @@ struct IDotMatrixSheet: View {
         scanResults = []
         let ble = IDotMatrixBLE()
         scanner = ble
+        let extraPrefixes = loadExtraNamePrefixes()
         Task {
             do {
                 try await ble.waitUntilReady(timeout: 6)
@@ -207,17 +209,29 @@ struct IDotMatrixSheet: View {
                 }
                 return
             }
-            let found = await ble.scan(duration: 5)
+            let found = await ble.scan(duration: 5, extraNamePrefixes: extraPrefixes)
             await MainActor.run {
                 scanResults = found
                 scanning = false
                 scanner = nil
-                if found.isEmpty { scanError = "No IDM- devices found. Make sure the display is powered on and nearby." }
+                if found.isEmpty {
+                    scanError = "No iDotMatrix panels found. Make sure the display is powered on and nearby."
+                }
             }
         }
     }
 
     // MARK: - I/O
+
+    /// `idotmatrixNamePrefixes` from settings.json — the escape hatch for a panel
+    /// that neither advertises the service nor uses a known brand name. The Node
+    /// daemon reads the same key (`loadIDotMatrixNamePrefixes`).
+    private func loadExtraNamePrefixes() -> [String] {
+        guard let data = try? Data(contentsOf: AgentDeckPaths.settingsJson),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let arr = json["idotmatrixNamePrefixes"] as? [String] else { return [] }
+        return arr.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
 
     private func loadDevices() {
         guard let data = try? Data(contentsOf: AgentDeckPaths.settingsJson),

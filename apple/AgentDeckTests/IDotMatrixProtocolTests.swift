@@ -12,6 +12,47 @@ final class IDotMatrixProtocolTests: XCTestCase {
     func testGattUUIDsMatchIDotMatrixLibrary() {
         XCTAssertEqual(IDotMatrixBLE.serviceUUID, CBUUID(string: "000000fa-0000-1000-8000-00805f9b34fb"))
         XCTAssertEqual(IDotMatrixBLE.writeCharUUID, CBUUID(string: "0000fa02-0000-1000-8000-00805f9b34fb"))
+        // The transport reads both from the generated identity mirror; if that
+        // mirror ever drifts from the library's UUIDs, writes go nowhere.
+        XCTAssertEqual(IDotMatrixIdentity.serviceUUIDString, "000000fa-0000-1000-8000-00805f9b34fb")
+        XCTAssertEqual(IDotMatrixIdentity.writeCharacteristicUUIDString, "0000fa02-0000-1000-8000-00805f9b34fb")
+    }
+
+    // MARK: - Discovery predicate
+    //
+    // A panel that connects and renders fine must also be *findable*: issue #115
+    // had a working iPixel invisible to Scan because the filter was the `IDM-`
+    // vendor prefix. Parity with the Python scanner is guarded on the TS side
+    // (shared/src/__tests__/idotmatrix-identity.test.ts); these cases pin the
+    // Swift mirror's behaviour at the boundary the CoreBluetooth scan uses.
+
+    func testDiscoveryMatchesKnownNameFamilies() {
+        XCTAssertTrue(IDotMatrixIdentity.matchesAdvertisement(name: "IDM-L", serviceUUIDs: []))
+        XCTAssertTrue(IDotMatrixIdentity.matchesAdvertisement(name: "idm-32", serviceUUIDs: []))
+        XCTAssertTrue(IDotMatrixIdentity.matchesAdvertisement(name: "iPixel-1234", serviceUUIDs: []))
+    }
+
+    func testDiscoveryMatchesUnnamedPanelByAdvertisedService() {
+        // CoreBluetooth hands back whichever form the peripheral advertised.
+        XCTAssertTrue(IDotMatrixIdentity.matchesAdvertisement(
+            name: "", serviceUUIDs: ["000000FA-0000-1000-8000-00805F9B34FB"]))
+        XCTAssertTrue(IDotMatrixIdentity.matchesAdvertisement(name: "", serviceUUIDs: ["00FA"]))
+        XCTAssertTrue(IDotMatrixIdentity.matchesAdvertisement(name: "Anything", serviceUUIDs: ["FA"]))
+    }
+
+    func testDiscoveryRejectsUnrelatedPeripherals() {
+        XCTAssertFalse(IDotMatrixIdentity.matchesAdvertisement(
+            name: "Divoom Timebox", serviceUUIDs: ["0000180f-0000-1000-8000-00805f9b34fb"]))
+        XCTAssertFalse(IDotMatrixIdentity.matchesAdvertisement(name: "", serviceUUIDs: []))
+    }
+
+    func testDiscoveryAcceptsUserConfiguredPrefix() {
+        XCTAssertFalse(IDotMatrixIdentity.matchesAdvertisement(name: "MyPanel-7", serviceUUIDs: []))
+        XCTAssertTrue(IDotMatrixIdentity.matchesAdvertisement(
+            name: "MyPanel-7", serviceUUIDs: [], extraPrefixes: ["mypanel-"]))
+        // A blank settings.json entry must not turn the scan into a match-all.
+        XCTAssertFalse(IDotMatrixIdentity.matchesAdvertisement(
+            name: "Divoom Timebox", serviceUUIDs: [], extraPrefixes: ["", "  "]))
     }
 
     // MARK: - Command packets

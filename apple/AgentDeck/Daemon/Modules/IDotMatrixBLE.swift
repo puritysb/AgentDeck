@@ -7,7 +7,9 @@
 // framework, gated by `com.apple.security.device.bluetooth` + NSBluetoothAlwaysUsageDescription.
 //
 // Protocol (extracted from idotmatrix lib):
-//   • Scan filter: advertised local name prefix "IDM-"
+//   • Scan filter: advertised service UUID first, known name families second —
+//     `IDotMatrixIdentity` (generated from shared/src/idotmatrix-identity.ts). The
+//     same panel ships as "IDM-…" and "iPixel-…", so a vendor prefix is not the filter.
 //   • Service 000000fa-…, Write characteristic 0000fa02-… (write WITHOUT response)
 //   • setMode(1)  → [0x05,0x00,0x04,0x01,0x01]  (enter DIY drawing mode)
 //   • setBrightness(n 5–100) → [0x05,0x00,0x04,0x80,n]
@@ -51,9 +53,9 @@ struct IDotMatrixDiscovered: Sendable, Equatable {
 /// actor calls the async API and the continuations resume from delegate callbacks.
 final class IDotMatrixBLE: NSObject, @unchecked Sendable {
     // iDotMatrix advertises service 000000fa-..., not 0000fa00-....
-    static let serviceUUID = CBUUID(string: "000000fa-0000-1000-8000-00805f9b34fb")
-    static let writeCharUUID = CBUUID(string: "0000fa02-0000-1000-8000-00805f9b34fb")
-    static let namePrefix = "IDM-"
+    // UUIDs and the name families come from the generated identity mirror.
+    static let serviceUUID = CBUUID(string: IDotMatrixIdentity.serviceUUIDString)
+    static let writeCharUUID = CBUUID(string: IDotMatrixIdentity.writeCharacteristicUUIDString)
 
     private let queue = DispatchQueue(label: "dev.agentdeck.idotmatrix.ble")
     private var central: CBCentralManager!
@@ -80,6 +82,9 @@ final class IDotMatrixBLE: NSObject, @unchecked Sendable {
     // Scan accumulation.
     private var scanResults: [UUID: String] = [:]
     private var scanContinuation: CheckedContinuation<[IDotMatrixDiscovered], Never>?
+    /// User-configured name prefixes for this scan (settings.json
+    /// `idotmatrixNamePrefixes`), on top of the generated families.
+    private var extraNamePrefixes: [String] = []
 
     private let connectTimeoutSec: TimeInterval = 10
     private let writeTimeoutSec: TimeInterval = 6
@@ -132,12 +137,15 @@ final class IDotMatrixBLE: NSObject, @unchecked Sendable {
         }
     }
 
-    /// Scan for `IDM-` devices for `duration` seconds and return what was seen.
-    func scan(duration: TimeInterval = 4) async -> [IDotMatrixDiscovered] {
+    /// Scan for iDotMatrix-protocol panels for `duration` seconds and return what
+    /// was seen. `extraNamePrefixes` widens the name fallback with the user's
+    /// `idotmatrixNamePrefixes`; the service-UUID match needs no configuration.
+    func scan(duration: TimeInterval = 4, extraNamePrefixes: [String] = []) async -> [IDotMatrixDiscovered] {
         try? await waitUntilReady()
         return await withCheckedContinuation { (cont: CheckedContinuation<[IDotMatrixDiscovered], Never>) in
             queue.async {
                 self.scanResults.removeAll()
+                self.extraNamePrefixes = extraNamePrefixes
                 self.scanContinuation = cont
                 guard self.central.state == .poweredOn else {
                     self.scanContinuation = nil
@@ -408,8 +416,14 @@ extension IDotMatrixBLE: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let advName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? ""
-        guard advName.hasPrefix(Self.namePrefix) else { return }
-        scanResults[peripheral.identifier] = advName
+        // Protocol truth first: a panel advertising the iDotMatrix service is one,
+        // whatever the vendor called it. The name families are the fallback for
+        // panels that keep the service out of the advertisement packet.
+        let advertisedServices = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
+        guard IDotMatrixIdentity.matchesAdvertisement(name: advName,
+                                                      serviceUUIDs: advertisedServices.map(\.uuidString),
+                                                      extraPrefixes: extraNamePrefixes) else { return }
+        scanResults[peripheral.identifier] = advName.isEmpty ? "Unnamed display" : advName
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {

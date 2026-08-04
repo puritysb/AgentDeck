@@ -1500,9 +1500,13 @@ idotmatrix
     if (!runtime) return;
     log('Scanning for BLE devices (5 seconds)...');
     try {
+      // Panels are identified by advertised service UUID first and known name
+      // families second; settings.json `idotmatrixNamePrefixes` widens the
+      // latter for a rebranded panel that hides its service.
+      const { loadIDotMatrixNamePrefixes } = await import('./idotmatrix/idotmatrix-settings.js');
       const { code, stdout } = await runBlePython(
         runtime.python,
-        [runtime.paths.scripts.idotmatrixScan],
+        [runtime.paths.scripts.idotmatrixScan, ...loadIDotMatrixNamePrefixes()],
         true,
       );
       if (code !== 0) {

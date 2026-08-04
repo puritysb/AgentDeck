@@ -65,3 +65,25 @@ export function removeIDotMatrixDevice(address: string): boolean {
 export function isIDotMatrixAutoDiscoverEnabled(): boolean {
   return readSettings().idotmatrixAutoDiscover !== false;
 }
+
+/**
+ * Extra advertised-name prefixes to treat as iDotMatrix panels, on top of the
+ * families in the identity SSOT (`@agentdeck/shared` IDOTMATRIX_NAME_PREFIXES).
+ * The scan already matches the advertised service UUID brand-independently;
+ * this is the escape hatch for a rebranded panel that omits the service from
+ * its advertisement, so the next `iPixel` does not need a release.
+ */
+export function loadIDotMatrixNamePrefixes(): string[] {
+  return sanitizeNamePrefixes(readSettings().idotmatrixNamePrefixes);
+}
+
+/**
+ * Keep only non-blank strings. The values become argv for the scanner, so a
+ * hand-edited settings.json must not be able to feed it numbers, objects, or a
+ * blank prefix (the shared predicate ignores blanks, but they would still ride
+ * across the process boundary as empty arguments).
+ */
+export function sanitizeNamePrefixes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
+}

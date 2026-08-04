@@ -25,6 +25,8 @@ export interface BleRuntimePaths {
   readyMarker: string;
   scripts: {
     idotmatrixScan: string;
+    /** Generated identity mirror imported by scan.py — packaged, never hand-edited. */
+    idotmatrixIdentity: string;
     idotmatrixBrightness: string;
     idotmatrixSync: string;
     timeboxScan: string;
@@ -93,6 +95,7 @@ export function resolveBleRuntimePaths(options: BleRuntimeOptions = {}): BleRunt
     readyMarker: join(runtimeDir, 'ready.json'),
     scripts: {
       idotmatrixScan: join(scriptsRoot, 'idotmatrix', 'scan.py'),
+      idotmatrixIdentity: join(scriptsRoot, 'idotmatrix', 'identity_generated.py'),
       idotmatrixBrightness: join(scriptsRoot, 'idotmatrix', 'brightness.py'),
       idotmatrixSync: join(scriptsRoot, 'idotmatrix', 'sync.py'),
       timeboxScan: join(scriptsRoot, 'timebox', 'scan_ble.py'),

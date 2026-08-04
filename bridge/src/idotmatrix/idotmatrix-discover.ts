@@ -16,6 +16,7 @@ import {
   addIDotMatrixDevice,
   isIDotMatrixAutoDiscoverEnabled,
   loadIDotMatrixDevices,
+  loadIDotMatrixNamePrefixes,
 } from './idotmatrix-settings.js';
 import { getBleRuntimeStatus } from '../python-ble-runtime.js';
 
@@ -30,9 +31,17 @@ function log(msg: string): void {
 }
 
 /** Run scan.py and parse its JSON, with a hard outer timeout. */
-function runScan(venvPython: string, scanScript: string, timeoutMs: number): Promise<ScanResult[]> {
+function runScan(
+  venvPython: string,
+  scanScript: string,
+  timeoutMs: number,
+  extraNamePrefixes: string[] = [],
+): Promise<ScanResult[]> {
   return new Promise((resolve) => {
-    const proc = spawn(venvPython, [scanScript], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    const proc = spawn(venvPython, [scanScript, ...extraNamePrefixes], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    });
     let out = '';
     const timer = setTimeout(() => {
       try {
@@ -76,7 +85,12 @@ export async function autoDiscoverIDotMatrix(): Promise<number> {
     return 0;
   }
 
-  const results = await runScan(runtime.python, runtime.paths.scripts.idotmatrixScan, 8_000);
+  const results = await runScan(
+    runtime.python,
+    runtime.paths.scripts.idotmatrixScan,
+    8_000,
+    loadIDotMatrixNamePrefixes(),
+  );
   const match = results.find((r) => r.is_idotmatrix && r.address);
   if (!match) return 0;
 

@@ -97,7 +97,7 @@ Used to drive the optional iDotMatrix and Divoom Timebox Mini LED pixel displays
 
 **Where in the app.** Both devices are paired from Settings → ESP32 & Pixoo, each with its own sheet:
 
-- **iDotMatrix LED display → "Pair…"** (`UI/Settings/IDotMatrixSheet.swift`). Tapping **Scan** runs a CoreBluetooth scan for peripherals advertising the `IDM-` name prefix; the user picks one and taps **Pair**. The selected `CBPeripheral.identifier` is stored and `IDotMatrixModule` drives the panel over BLE.
+- **iDotMatrix LED display → "Pair…"** (`UI/Settings/IDotMatrixSheet.swift`). Tapping **Scan** runs a CoreBluetooth scan for peripherals advertising the iDotMatrix service UUID `000000fa-…` or a known panel name family (`IDM-`, `iPixel-`); the user picks one and taps **Pair**. The selected `CBPeripheral.identifier` is stored and `IDotMatrixModule` drives the panel over BLE.
 - **Divoom Timebox Mini → "Pair…"** (`UI/Settings/TimeboxSheet.swift`). Same flow against the `TimeBox-mini-light` advertised name, driven by `TimeboxModule`.
 
 Each sheet also exposes a brightness slider that writes to the connected panel live, and a trash button that unpairs — on unpair AgentDeck sends a farewell frame (black for Timebox, OFFLINE for iDotMatrix) so the hardware does not keep displaying stale state, then drops the GATT link.
@@ -285,7 +285,8 @@ Where in the app — Settings → ESP32 & Pixoo, two separate pairing sheets:
 
 1. "iDotMatrix LED display" → Pair…
    Tapping Scan runs a CoreBluetooth scan for peripherals advertising the
-   "IDM-" name prefix. The user selects one and taps Pair. AgentDeck stores the
+   iDotMatrix service UUID 000000fa-... or a known panel name family ("IDM-",
+   "iPixel-"). The user selects one and taps Pair. AgentDeck stores the
    CBPeripheral.identifier and then writes 32x32 display frames over a GATT
    characteristic.
 
