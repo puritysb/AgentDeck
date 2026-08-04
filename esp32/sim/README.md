@@ -68,6 +68,18 @@ exercises) and are the cheap way to inspect it without the fork's hardware — b
 their output is **not** that fork's screen. They are excluded from `render.sh`'s
 default set and from the Pages demo for that reason; ask for them by name.
 
+**Read their output at the band level only.** Measured 2026-08-05: the bands
+(`header` / `cards` / `usage` / `activity` / `controls`) are correct and
+non-overlapping at 800×480, 528×792 and 480×800 — the geometry SSOT is sound at
+all three. What looks broken in those two renders (a squashed header on the X4,
+a missing second gauge on both) is `eink_display.cpp` composing band *contents*
+with absolute x constants tuned for InkDeck's 800px width: the wordmark starts
+at x=78 in 18pt, and the second gauge slot sits at x=490 with a ~288px block, so
+it does not fit a 480px or 528px panel at all. That renderer never runs on those
+readers — the fork draws with its own `GfxRenderer` — so it is neither a fork
+bug nor an SSOT bug. Verify a geometry claim by dumping `makeLayout()` for the
+target dimensions rather than by eyeballing these PNGs.
+
 **Adding a board:** copy an env block in `platformio.ini` and set the target's
 `BOARD_*` / `SCREEN_W` / `SCREEN_H` defines to match the real env in
 `esp32/platformio.ini`. The LVGL display buffers are stride-aware, so widths that

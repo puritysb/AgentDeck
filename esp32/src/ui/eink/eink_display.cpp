@@ -695,8 +695,23 @@ AgentDeckEink::Layout dashboardLayout(const Snap& s) {
     });
 }
 
-// Usage + recent-work components are anchored by the shared responsive layout,
-// rather than magic 800x480 coordinates. X3/X4 use the same band contract.
+// Usage + recent-work components are ANCHORED by the shared responsive layout
+// (band y/height come from `layout.usage` / `layout.activity`, never from magic
+// 800x480 offsets), and X3/X4 consume that same band contract through the
+// mirrored geometry header.
+//
+// What is NOT responsive is the horizontal composition *inside* a band: the
+// wordmark, glyph, label and the two gauge slots below use absolute x constants
+// tuned for this panel's 800px width (drawBrandHeader, drawProviderUsage). That
+// is fine — this renderer only ever runs on InkDeck's 800x480 — but it means
+// rendering this file at another width is not a preview of that panel. The
+// esp32/sim `xteink_x3`/`xteink_x4` diagnostic envs do exactly that to inspect
+// the shared *geometry*; their squashed header and off-panel second gauge are
+// this renderer's constants, not a fault in the layout SSOT and not what the
+// XTeink fork draws (it has its own GfxRenderer). Measured 2026-08-05: bands
+// are clean at 800x480 / 528x792 / 480x800; the 2nd gauge slot (x=490, ~288px
+// wide) simply does not exist on a 480px panel. Make these width-derived only
+// when a second e-ink size actually ships — it moves InkDeck's shipped pixels.
 void drawUsageFooter(const Snap& s, bool showIdentity, const AgentDeckEink::Layout& layout) {
     if (!layout.usage.empty()) {
         display.fillRect(0, layout.usage.y, W, 2, GxEPD_BLACK);
