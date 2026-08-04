@@ -104,7 +104,9 @@ import { loadIDotMatrixDevices } from './idotmatrix/idotmatrix-settings.js';
 import { handlePixooWake } from './pixoo/pixoo-client.js';
 import { triggerMdnsRecovery } from './mdns.js';
 import { rgbToBmp, pixooLiveHtml } from './hook-server.js';
-import { enableDebugLog, debug } from './logger.js';
+import { enableDebugLog, debug, debugThrottled } from './logger.js';
+import { CodexOtelTracker, CODEX_OTEL_TRACES_PATH, spanNameSummary } from './codex-otel.js';
+import { HookCodexSessions } from './hook-codex-sessions.js';
 import { initApme, isTimelineProjectionEnabled, loadApmeConfig, type ApmeModule } from './apme/index.js';
 import { FallbackTaskTimeline } from './fallback-task-timeline.js';
 import { handleApmeRequest } from './apme/http.js';
@@ -142,7 +144,7 @@ import { renderGlanceFrame, GLANCE_FRAME_BOARDS } from './glance-frame.js';
 import type { UsageEvent } from './types.js';
 import { mergeRelayedSessionUsage } from './usage-event.js';
 import { CARD_FEED_PATH, CARD_OUTBOX_PATH, GLANCE_FRAME_PATH, type SessionInfo, type OutboxPushRequest } from '@agentdeck/shared';
-import { readFileSync, statSync } from 'fs';
+import { readFileSync, statSync, appendFileSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -1025,6 +1027,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // threshold). Declared before the HTTP handlers that populate it.
   const hookSessionsSeen = new Set<string>();
 
+  // Codex OTel span state. Declared before the HTTP server because the
+  // `/otel/v1/traces` handler closes over it — Codex's exporter can POST before
+  // the rest of daemon startup finishes.
+  const codexOtel = new CodexOtelTracker();
+  // Codex sessions known only from `codex_*` hooks — the backstop for when the
+  // process scan can't see one (lsof timeout, no rollout held open).
+  const hookCodexSessions = new HookCodexSessions();
+
   // Declare early — HTTP /health handler references this in its closure.
   // Must be declared before the HTTP server so it's initialized (not in TDZ)
   // when the first /health request arrives.
@@ -1513,6 +1523,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           billingType: snap.billingType,
         },
         wsClients: core.wsServer.getClientCount(),
+        // Codex observation backstops — which sessions each source believes in.
+        // A session present here but absent from sessions_list means the ps
+        // observer found it too and won, which is the expected steady state.
+        hookCodexSessions: hookCodexSessions.snapshot(),
+        codexOtelThreads: codexOtel.snapshot(),
         recentJournal: [],
         ptyTail: '',
         journalDir: join(homedir(), '.agentdeck'),
@@ -1626,6 +1641,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             ? ''
             : JSON.stringify({ received: true }));
           return;
+        }
+        // Hook-derived Codex session rows. Placed after the child-hook return so
+        // subagent lifecycle never drives the parent row, and kept independent
+        // of the state machine: this only decides whether a Codex the process
+        // scan can't see still has a session. See bridge/src/hook-codex-sessions.ts.
+        if (eventName.startsWith('codex_')) {
+          hookCodexSessions.note(eventName, {
+            sessionId: typeof json.session_id === 'string' ? json.session_id : undefined,
+            cwd: earlyHookCwd || undefined,
+            projectName: earlyHookProject,
+            toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
+          });
         }
         // State machine
         if (mapped === 'session_start') core.stateMachine.handleHookEvent('SessionStart', json);
@@ -2065,6 +2092,39 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         } else {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ received: true }));
+        }
+      });
+      return;
+    }
+
+    // Codex OTel exporter target. Codex (CLI and the ChatGPT.app desktop app)
+    // POSTs OTLP/HTTP JSON spans here when `[otel.trace_exporter.otlp-http]`
+    // points at the daemon. Only the Swift daemon used to implement this, so a
+    // Node-daemon host answered 404 and dropped every span. Always 200: an OTel
+    // exporter that sees errors backs off, and nothing here is worth telling
+    // Codex about. See bridge/src/codex-otel.ts.
+    if (req.method === 'POST' && (pathname === CODEX_OTEL_TRACES_PATH || pathname === '/v1/traces')) {
+      let body = '';
+      req.on('data', (c: Buffer) => { body += c; if (body.length > 8_000_000) req.destroy(); });
+      req.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{}');
+        try {
+          const json: unknown = body ? JSON.parse(body) : {};
+          // Dev capture. Codex's span vocabulary is not a stable API, so when it
+          // shifts the only way to re-derive the dispatch table is to look at
+          // real batches: `AGENTDECK_CODEX_OTEL_DUMP=/tmp/otel.jsonl agentdeck
+          // daemon start`. Bodies are pretty-printed and large — point it at a
+          // scratch path and delete it afterwards.
+          if (process.env.AGENTDECK_CODEX_OTEL_DUMP) {
+            try { appendFileSync(process.env.AGENTDECK_CODEX_OTEL_DUMP, `${body}\n`); } catch { /* dev only */ }
+          }
+          if (codexOtel.ingest(json) === 0) {
+            debugThrottled('codex-otel', 'no-recognized-spans', 60_000,
+              `no recognized spans; len=${body.length} names=${spanNameSummary(json)}`);
+          }
+        } catch {
+          debugThrottled('codex-otel', 'unparsable-body', 60_000, `unparsable body len=${body.length}`);
         }
       });
       return;
@@ -2721,6 +2781,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // immediately). When a scan lands fresh observations, push them out via
   // the debounced broadcast so clients don't wait for the next 10 s poll.
   passiveSessionObserver.onRefreshed = () => core.maybeBroadcastSessionsList();
+  // OTel turn boundaries arrive in milliseconds where the observer only re-reads
+  // the rollout tail every scan interval, so a span that changed thread state is
+  // worth a broadcast of its own.
+  codexOtel.onChanged = () => core.maybeBroadcastSessionsList();
+  hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
 
   // ===== Gateway adapter lifecycle =====
   // (gatewayAdapter + gatewayConnecting declared earlier, before HTTP server)
@@ -2734,7 +2799,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // the 5s-throttled observer, so a Notification arriving mid-window still
     // surfaces within one frame. Key = the Claude session UUID embedded in
     // `observed:claude:<uuid>`.
-    const observed = applyAwaitingOverlayToObserved(passiveSessionObserver.collect(sessions))
+    // Codex OTel spans overlay state/tool onto the matching ps-observed row and
+    // synthesize a `codex-app` row for any thread the process scan missed —
+    // Swift's only Codex-app source, here a second opinion on top of the
+    // observer. See bridge/src/codex-otel.ts.
+    const observed = applyAwaitingOverlayToObserved(
+      hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions))),
+    )
       .map((s) => {
         // Steering feedback for observed Claude sessions: devices render
         // "stopping at next tool" / queued-directive badges from these.

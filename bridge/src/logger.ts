@@ -75,3 +75,23 @@ export function debug(tag: string, ...args: unknown[]): void {
   const ts = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
   debugStream.write(`${ts} [${tag}] ${args.map(String).join(' ')}\n`);
 }
+
+const throttledDebugAt = new Map<string, number>();
+
+/**
+ * Debug logging for events that repeat on a timer — an unrecognized OTel span
+ * batch, a periodic probe failure. Emits at most once per `minIntervalMs` per
+ * `key`, so `--debug` stays readable instead of thousands of lines a minute.
+ */
+export function debugThrottled(
+  tag: string,
+  key: string,
+  minIntervalMs: number,
+  ...args: unknown[]
+): void {
+  if (!debugEnabled || !debugStream) return;
+  const now = Date.now();
+  if (now - (throttledDebugAt.get(key) ?? 0) < minIntervalMs) return;
+  throttledDebugAt.set(key, now);
+  debug(tag, ...args);
+}

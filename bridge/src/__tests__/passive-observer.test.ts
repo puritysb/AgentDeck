@@ -255,6 +255,11 @@ describe('passive-observer parsers', () => {
       '/Applications/ChatGPT.app/Contents/Resources/codex -c features.code_mode_host=true app-server',
     )).toBe(true);
     expect(isCodexSessionProcessCommand('/opt/homebrew/bin/codex --model gpt-5.4')).toBe(true);
+    // ChatGPT's Electron helpers carry a capital-`Codex` basename, and the
+    // code-mode host is a different binary — neither owns a rollout.
+    expect(isCodexSessionProcessCommand(
+      '/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer) --type=renderer',
+    )).toBe(false);
     expect(isCodexSessionProcessCommand('/Applications/ChatGPT.app/Contents/Resources/codex-code-mode-host')).toBe(false);
     expect(isCodexSessionProcessCommand('grep codex')).toBe(false);
   });
@@ -343,6 +348,40 @@ describe('passive-observer parsers', () => {
     const result = dedupeObservedSessions(observed as never, managed as never, processes);
 
     expect(result.map((session) => session.id)).toEqual(['observed:codex-app:sibling']);
+  });
+
+  it('counts Codex cached input once when the producer folds it into input_tokens', () => {
+    // Live rollouts satisfy total_tokens === input + output, i.e. cached is
+    // already inside input_tokens. Re-adding it read one session at 105%
+    // context and roughly doubled its token total.
+    const summary = parseCodexRollout(jsonl([
+      { type: 'turn_context', payload: { model: 'gpt-5.6-sol', effort: 'high', model_context_window: 258_400 } },
+      {
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            model_context_window: 258_400,
+            total_token_usage: {
+              input_tokens: 26_805_300,
+              cached_input_tokens: 26_281_216,
+              output_tokens: 97_519,
+              total_tokens: 26_902_819,
+            },
+            last_token_usage: {
+              input_tokens: 159_649,
+              cached_input_tokens: 158_464,
+              output_tokens: 191,
+              total_tokens: 159_840,
+            },
+          },
+        },
+      },
+    ]));
+
+    expect(summary.totalTokens).toBe(26_902_819);
+    expect(summary.contextPercent).toBeCloseTo((159_649 / 258_400) * 100, 5);
+    expect(summary.contextPercent ?? 0).toBeLessThan(100);
   });
 
   it('recognizes standalone Antigravity processes for CLI daemon passive discovery', () => {

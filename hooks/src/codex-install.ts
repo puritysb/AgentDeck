@@ -86,6 +86,10 @@ function currentDaemonHttpPort(): number | null {
   return null;
 }
 
+// The path must match what the daemons actually serve — Node
+// `CODEX_OTEL_TRACES_PATH` (bridge/src/codex-otel.ts) and Swift
+// `CodexOtelRoutes`. Spelled out here rather than imported because this package
+// has no workspace dependencies (it bootstraps setups that lack them).
 function buildOtelEndpoint(daemonHttpPort?: number): string {
   const port = isValidPort(daemonHttpPort)
     ? daemonHttpPort

@@ -341,6 +341,36 @@ export function parseClaudeTranscript(raw: string): TranscriptSummary {
   };
 }
 
+/**
+ * Codex reports `input_tokens` INCLUSIVE of `cached_input_tokens` — the live
+ * rollouts satisfy `total_tokens === input_tokens + output_tokens`. Adding the
+ * cached count on top double-counts it, which pushed one observed session to
+ * 105% context and roughly doubled its token total. Older producers that report
+ * cached separately have no `total_tokens`, so the additive form stays the
+ * fallback and their accounting is unchanged.
+ */
+function codexCachedIsIncluded(usage: Record<string, unknown>): boolean {
+  const reported = numberAt(usage, 'total_tokens');
+  if (reported <= 0) return false;
+  return numberAt(usage, 'input_tokens') + numberAt(usage, 'output_tokens') === reported;
+}
+
+function codexCachedInput(usage: Record<string, unknown>): number {
+  return numberAt(usage, 'cached_input_tokens') || numberAt(usage, 'cache_read_input_tokens');
+}
+
+/** Whole-session token spend (prompt + completion, cached counted once). */
+function codexUsageTotal(usage: Record<string, unknown>): number {
+  const base = numberAt(usage, 'input_tokens') + numberAt(usage, 'output_tokens');
+  return codexCachedIsIncluded(usage) ? base : base + codexCachedInput(usage);
+}
+
+/** Context-window occupancy: the prompt side of the most recent request only. */
+function codexUsageContext(usage: Record<string, unknown>): number {
+  const input = numberAt(usage, 'input_tokens');
+  return codexCachedIsIncluded(usage) ? input : input + codexCachedInput(usage);
+}
+
 export function parseCodexRollout(raw: string): CodexRolloutSummary {
   let sessionId: string | undefined;
   let cwd: string | undefined;
@@ -408,18 +438,9 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
           const info = objectAt(payload, 'info');
           if (!info) break;
           const total = objectAt(info, 'total_token_usage');
-          if (total) {
-            totalTokens =
-              numberAt(total, 'input_tokens') +
-              numberAt(total, 'output_tokens') +
-              (numberAt(total, 'cached_input_tokens') || numberAt(total, 'cache_read_input_tokens'));
-          }
+          if (total) totalTokens = codexUsageTotal(total);
           const last = objectAt(info, 'last_token_usage');
-          if (last) {
-            lastContextTokens =
-              numberAt(last, 'input_tokens') +
-              (numberAt(last, 'cached_input_tokens') || numberAt(last, 'cache_read_input_tokens'));
-          }
+          if (last) lastContextTokens = codexUsageContext(last);
           contextWindow = numberAt(info, 'model_context_window') || contextWindow;
           break;
         }
@@ -614,11 +635,27 @@ export async function collectCodexSessionsFromRollouts(
   return sessions;
 }
 
-/** A standalone CLI or app-server process that owns user-facing rollouts. */
+/**
+ * A Codex process that can own a user session.
+ *
+ * `codex app-server` was excluded here originally because it was only ever an
+ * IDE extension's headless backend. The ChatGPT.app Codex desktop app now runs
+ * exactly that command for a real, user-facing session
+ * (`/Applications/ChatGPT.app/Contents/Resources/codex … app-server`), so the
+ * process shape no longer separates the two and the exclusion made every
+ * desktop-app session invisible — no session row, no creature — even though its
+ * lifecycle hooks were landing in the timeline the whole time.
+ *
+ * Admission is settled downstream instead, by whether the pid holds an open
+ * rollout file: an app-server with no conversation holds none and is dropped in
+ * `collectCodexSessions`. The Electron helpers ship a capital-`Codex` basename
+ * (`Codex (Renderer)`), so `cmdHasBinary` already excludes them.
+ */
 export function isCodexSessionProcessCommand(command: string): boolean {
   return cmdHasBinary(command, 'codex') && !command.includes('grep');
 }
 
+/** Fallback session id for a rollout with no parsable `session_meta`. */
 function codexRolloutId(rolloutPath: string): string {
   return basename(rolloutPath).replace(/^rollout-/, '').replace(/\.jsonl$/, '');
 }
@@ -812,6 +849,11 @@ function findClaudeTranscript(configDirs: string[], cwd: string, sessionId: stri
   return null;
 }
 
+/**
+ * Open rollout files per pid. A terminal `codex` owns exactly one, but a desktop
+ * app-server pid owns one per open conversation — so this is 1:N and every entry
+ * becomes its own session.
+ */
 async function mapCodexPidsToRollouts(pids: number[]): Promise<Map<number, string[]>> {
   if (pids.length === 0) return new Map();
   if (process.platform === 'linux') {
@@ -854,6 +896,7 @@ export function parseLsofRollouts(output: string): Map<number, string[]> {
       const path = line.slice(1);
       if (!isCodexRolloutPath(path)) continue;
       const paths = map.get(currentPid) ?? [];
+      // The same rollout can appear twice (dup'd fd); one session per file.
       if (!paths.includes(path)) paths.push(path);
       map.set(currentPid, paths);
     }
