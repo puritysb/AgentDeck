@@ -94,6 +94,62 @@ e-ink 치수가 실제로 생길 때 하는 것이 맞고, 그 판단 근거를 
 
 ---
 
+## 2026-08-05 — 입력 가능한 두 보드의 카탈로그 누락과, 태그로 판정한 릴리스 상태의 오차 (#116)
+
+### 문제
+
+두 가지가 같은 감사에서 드러났다.
+
+**① Shipping 표면인데 사진 카드가 없었다.** T-Embed CC1101(Companion Knob)과
+T-Display-S3-Pro(Focus Strip)는 2026-07-25/26부터 Shipping이고 surface matrix에
+집계되는데, Devices 카탈로그에서 **사진 카드가 없는 유일한 counted surface 둘**이었다.
+나머지 21개 표면은 전부 있었다. `sync-hardware-spec-cards.mjs`는 사양 표에서
+**텍스트 스펙 카드**를 생성·검증하므로 게이트는 계속 green이었고, "집계되는 표면에
+사진 카드가 있는가"는 **아무 게이트도 보지 않는다**. ko/ja 번역본은 한술 더 떠
+"집계 표면 수 26"이라 써놓고 표에는 24행만 나열하고 있었다 — 두 보드 행 자체가 없었다.
+
+**② 릴리스 상태가 문서마다 한 단계씩 뒤처져 있었다.** 태그·소스 선언값만 보면
+정합해 보이지만 외부 실체와 대조하니 세 트랙이 어긋났다: ESP32는 08-01에 1.0.2가
+나갔는데 README는 1.0.1, Stream Deck 1.0.3은 07-31에 Marketplace에 published인데
+"준비됨", iPhone/iPad는 08-04에 2.1(a)로 리젝됐는데 7곳이 "심사 대기"였다.
+
+### 해결
+
+- 사진 3장을 `assets/hardware-photos/`에 아카이브(EXIF 회전 baked-in, q78)하고
+  `t-embed.jpg` / `t-display-pro.jpg` 크롭 + 카드 2개를 en/ko/ja로 추가.
+- ko/ja 표면 표에 두 보드 행을 채워 세 파일 모두 27행(집계 26 + SSE 프로토콜 행)으로
+  정합. `revision`/`source_revision` 동시 범프.
+- `devices.md`에 두 보드의 matrix 행과 서술 섹션 추가, `esp32.md`에 카메라 유닛 행과
+  2대 운용 OTA 함정, `CLAUDE.md`의 "22 surfaces"·"Evaluation boards" 정정.
+- README/RELEASING/roadmap/appstore-feature-matrix/LISTING의 릴리스 상태를 스토어
+  실측값으로 교체.
+
+### 핵심 설계 결정
+
+- **코드에만 있던 사실을 사양서로 끌어올렸다.** `t_display_pro`는 display bring-up
+  전에 `Camera::init()`을 돌려 카메라가 응답하면 **세로 Pocket UI**, 아니면
+  **가로 Ticker UI**로 뜬다(`esp32/src/main.cpp`). 두 유닛 모두 `t_display_pro`를
+  보고하고 같은 OTA 이미지를 쓰므로 **board 문자열은 화면 배치를 말해주지 않는다**.
+  기존의 "USB 포트 이름으로 보드를 추정하지 말 것"과 같은 계열의 함정이라 그 옆에
+  붙였고 ko/ja에도 미러링했다.
+- **리젝은 Apple 태그를 이동시킨다.** 리젝된 버전은 `MARKETING_VERSION`을 유지하므로
+  대체 빌드도 같은 Apple 버전으로 나가고, 규칙 7(태그=타깃 버전 정확 일치) 때문에
+  `apple-v<VERSION>`를 수정 커밋으로 옮기는 것이 정상 경로다. 대가는 **태그가 더 이상
+  출시분 커밋을 가리키지 않는다**는 것 — 실제로 라이브 macOS 1.0.2(3901)를 만든
+  07-22 커밋은 이제 이전 워크플로 run에서만 복원된다. RELEASING.md에 명문화했다.
+- **사진 카드는 프레임이 맞는 캡처만 쓴다.** S3-Pro 카메라 유닛은 세로 Pocket UI로
+  뜨고 핸드헬드로 찍혀서, 1.75:1 카드 프레임에 넣으면 탭 바가 잘리거나 절반이 손이
+  된다. 카드는 무카메라 유닛(가로)으로 가고 카메라 캡처는 아카이브에만 남겼다 —
+  그 판단 근거를 아카이브 README에 적어 다음 세션이 재발견하지 않게 했다.
+
+### 남은 갭
+
+"counted surface에 사진 카드가 있는가"를 보는 게이트는 여전히 없다. 표면 행을
+추가하면서 카드를 빠뜨려도 CI는 green이다. spec-card 싱크와 같은 자리에 붙일 만한
+검사다.
+
+---
+
 ## 2026-08-05 — XTeink X3/X4를 오프라인 우선 Pocket Reader 제품으로 전환
 
 ### 방향
