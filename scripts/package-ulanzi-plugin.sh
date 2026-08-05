@@ -83,6 +83,22 @@ mkdir -p "$OUT/node_modules"
 cp -R "$TMP/node_modules/." "$OUT/node_modules/"
 rm -rf "$TMP"
 
+# npm also installs the *host* platform's optional binary on top of the five
+# requested above, so a Linux CI runner silently adds resvg-js-linux-x64-gnu —
+# 4.4 MB for a platform manifest.json does not declare. That made the released
+# archive 11.5 MB while a local build was 9.1 MB: same version, different bytes,
+# and the bigger one is the one users would have downloaded. Prune to the
+# declared set so the artifact does not depend on where it was built.
+KEEP="darwin-arm64 darwin-x64 win32-x64-msvc win32-arm64-msvc win32-ia32-msvc"
+for dir in "$OUT"/node_modules/@resvg/resvg-js-*; do
+  [ -d "$dir" ] || continue
+  target="$(basename "$dir" | sed 's/^resvg-js-//')"
+  case " $KEEP " in
+    *" $target "*) ;;
+    *) echo "    prune @resvg/resvg-js-$target (not a declared platform)"; rm -rf "$dir" ;;
+  esac
+done
+
 echo "==> verify"
 node -e "const fs=require('fs');const p='$OUT';
   for (const f of ['manifest.json','plugin/app.js','plugin/package.json']) if(!fs.existsSync(p+'/'+f)) throw new Error('missing '+f);
@@ -95,6 +111,11 @@ node -e "const fs=require('fs');const p='$OUT';
     if(!fs.existsSync(dir)) throw new Error('missing resvg target '+target);
     if(!require('child_process').execSync('find '+dir+' -name *.node').toString().trim()) throw new Error('missing native binary '+target);
   }
+  // The prune above must leave EXACTLY the declared set: an extra host-platform
+  // binary is what made a CI archive differ from a local one by 4.4 MB.
+  const present=fs.readdirSync(nm+'/@resvg').filter(d=>d.startsWith('resvg-js-')).map(d=>d.slice('resvg-js-'.length)).sort();
+  const extra=present.filter(t=>!targets.includes(t));
+  if(extra.length) throw new Error('undeclared platform binary in package: '+extra.join(', '));
   console.log('OK — bundle '+(fs.statSync(p+'/plugin/app.js').size/1024|0)+'KB, resvg targets: '+targets.join(', '));
 "
 echo "==> packaged at: $OUT"
