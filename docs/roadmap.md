@@ -60,7 +60,7 @@ Eval results broadcast to every device simultaneously (Stream Deck/Apple/Android
 
 - [x] **Windows daemon autostart** — `agentdeck daemon install` registers a per-user Scheduled Task (`AgentDeckDaemon`, logon trigger) so the daemon auto-starts in the interactive session, the Windows analog of the macOS LaunchAgent. See [daemon.md → Autostart](daemon.md#autostart-loginlogon).
 - [ ] Play Store distribution (Android app)
-- [x] **Stream Deck Marketplace registration** — first approved 2026-07-28 (1.0.2); **1.0.3 published 2026-07-31** at [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464). Listing assets and packages remain under `marketplace/elgato/`.
+- [x] **Stream Deck Marketplace registration** — first approved 2026-07-28 (1.0.2), Windows correction 1.0.3 on 2026-07-31, and **1.0.4 published 2026-08-05** at [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464). Listing assets and packages remain under `marketplace/elgato/`.
 
 ---
 

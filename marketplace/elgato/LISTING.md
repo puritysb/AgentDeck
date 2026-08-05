@@ -1,7 +1,9 @@
 # AgentDeck — Elgato Marketplace listing
 
-> **Published 2026-07-28.** Version `1.0.2` was approved and is live at
-> <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>.
+> **Live since 2026-07-28.** The product page is at
+> <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>,
+> and the current published version is `1.0.4` (2026-08-05), after `1.0.2` (2026-07-28)
+> and `1.0.3` (2026-07-31).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
 Submission target: **https://maker.elgato.com** (Maker Console → Publish).
@@ -29,12 +31,15 @@ Plugin package: `dist/bound.serendipity.agentdeck.streamDeckPlugin` — rebuild 
 
 ## Version
 
-`1.0.3.0` (product version `1.0.3`) — **published 2026-07-31**. It corrects
-Windows compatibility after the 1.0.2 manifest (public since 2026-07-28)
-incorrectly restricted installation to macOS. Stream Deck requires the 4-part
-form; `scripts/verify-version-sync.mjs` pins it to `<plugin package version>.0`.
-Marketplace versions are monotonic once published, so the next submission must
-carry a version above 1.0.3.
+`1.0.4.0` (product version `1.0.4`) — **published 2026-08-05**. It adds
+Stream Deck XL and Stream Deck + XL as their own device models, brings the
+Windows host controls to parity with macOS, and adapts the Codex usage encoder
+to a single live rate-limit window. It follows `1.0.3` (published 2026-07-31),
+which corrected Windows compatibility after the 1.0.2 manifest (public since
+2026-07-28) incorrectly restricted installation to macOS. Stream Deck requires
+the 4-part form; `scripts/verify-version-sync.mjs` pins it to
+`<plugin package version>.0`. Marketplace versions are monotonic once
+published, so the next submission must carry a version above 1.0.4.
 
 ## Platform
 
@@ -67,15 +72,22 @@ AgentDeck is an independent project and is not affiliated with or endorsed by El
 
 ## Release notes
 
-```
-Windows compatibility update.
+As submitted and published for `1.0.4`:
 
-• Session keys for Claude Code, Codex, OpenCode, and OpenClaw with distinct running / waiting states
-• Prompt steering, mode toggle, and stop from the key
-• Stream Deck + dials: Claude usage, Codex usage, volume, launcher
-• Bundled profiles for Stream Deck, Stream Deck Mini, and Stream Deck +
-• Automatic reconnect with an explicit OFFLINE state when no daemon is running
-• Restores Marketplace installation on Windows; Volume and Launcher now use native Windows host controls
+```
+Stream Deck XL and Stream Deck + XL are now first-class: both are recognized as their own device models, and the bundled profiles install for them the way they already did for Stream Deck, Mini, and Stream Deck +.
+
+Windows now reaches parity with macOS for the host controls: the volume encoder uses the system media keys, and the launcher opens Start-menu apps with a browser fallback.
+
+The Codex usage encoder adapts when only one rate-limit window is live: the remaining window keeps a proper slot with its own countdown instead of a dead placeholder.
+
+Fixed: a session's detail view could show the model name belonging to the previously focused session, and the hold-to-talk VOICE key now completes the round trip to the host microphone.
+```
+
+The `1.0.3` notes, for reference:
+
+```
+Restores Windows Marketplace support, including Windows volume/mute controls and Launcher app/URL handling. macOS behavior is unchanged.
 ```
 
 ## Links
@@ -84,9 +96,9 @@ Windows compatibility update.
 - Support: https://github.com/puritysb/AgentDeck/issues
 - Privacy: https://puritysb.github.io/AgentDeck/#privacy
 
-## Submission files (Windows compatibility revision — 2026-07-30)
+## Submission files (XL + Windows parity revision — 2026-08-05)
 
-- Plugin: `dist/bound.serendipity.agentdeck.streamDeckPlugin` (v1.0.3.0, macOS + Windows)
+- Plugin: `dist/bound.serendipity.agentdeck.streamDeckPlugin` (v1.0.4.0, macOS + Windows)
 - App icon: `marketplace/elgato/1.0.2/app-icon-288.png`
 - Thumbnail: `marketplace/elgato/1.0.2/thumbnail-1920x960.png`
 - Gallery: the three `marketplace/elgato/1.0.2/gallery-*.png` files

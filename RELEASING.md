@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Release maintainers
-reviewed: 2026-08-05
-revision: 2026-08-05
+reviewed: 2026-08-06
+revision: 2026-08-06
 source_of_truth: RELEASING.md
 validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-version]
 ---
@@ -106,7 +106,9 @@ Assets are named by the board's **canonical id** (`agentdeck-<board>.bin`) — t
 
 ### Stream Deck plugin
 
-`1.0.2` was approved and published on 2026-07-28, and `1.0.3` — the Windows compatibility correction — has been published since 2026-07-31: [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464). Now that builds are published, the Marketplace's **monotonic-version rule applies** — every subsequent submission needs a version above `1.0.3`, and same-version resubmission (which pre-publication review revisions allowed) is no longer available.
+`1.0.2` was approved and published on 2026-07-28, `1.0.3` — the Windows compatibility correction — on 2026-07-31, and **`1.0.4` has been published since 2026-08-05**: [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464). Now that builds are published, the Marketplace's **monotonic-version rule applies** — every subsequent submission needs a version above `1.0.4`, and same-version resubmission (which pre-publication review revisions allowed) is no longer available.
+
+The live version is verifiable without signing in to the Maker Console: the product page is a client-rendered SPA, but its Next.js payload carries the version array verbatim, so `curl -s <product-url> | grep -oE '\\"versions\\":\[.{0,1200}'` reports `version_number`, `status`, and `publish_date` for every submission. Check it there before writing a release-status claim into this file — a portal upload that succeeds leaves no trace in the repository, which is exactly how these paragraphs fell a version behind between 2026-07-31 and 2026-08-06.
 
 1. Confirm the main manifest and embedded profile snapshots match the Stream Deck package version as `X.Y.Z.0`.
 2. Follow `.agents/workflows/build-plugin.md`, then run `pnpm package` — this validates with Elgato's official CLI (pinned as the `@elgato/cli` devDependency) before packing, so a local failure is a submission the Marketplace would have rejected.
