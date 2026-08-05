@@ -10,6 +10,21 @@ content-record mismatch was reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category; wait for Ulanzi to confirm the
 review entry is linked correctly before treating the submission as healthy.
 
+## Getting-started guide (requested by Ulanzi review, 2026-08-05)
+
+Ulanzi's internal testers reported that dragging the action onto a key left them
+with nothing to follow, and asked for a guide. The plugin is a thin client, so an
+empty deck is the correct rendering until a daemon runs — but nothing on the key
+can say so in full: the OFFLINE hero's hint line truncates at 22 characters
+(`shared/src/svg-renderers/session-slot-renderer.ts`), which fits
+`npx @agentdeck/setup` and nothing more. The answer is therefore a document, not
+key copy: **[GETTING-STARTED.md](GETTING-STARTED.md)**.
+
+It covers both daemons now that the Mac App Store app has shipped — the app for
+a no-terminal macOS install, `npx @agentdeck/setup` for macOS/Windows — and
+states the one capability that differs (Claude 5h/7d quota is relay-only in the
+sandboxed app). Send that page when answering the review thread.
+
 ## Upload-form requirements
 
 Read off the portal's own form, not from documentation — Ulanzi publishes no
