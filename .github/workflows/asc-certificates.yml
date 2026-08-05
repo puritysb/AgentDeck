@@ -1,0 +1,50 @@
+# App Store Connect certificate maintenance (manual dispatch only).
+#
+# Cloud signing creates certificates on demand and Apple caps how many an
+# account may hold; when the cap is reached, `xcodebuild -allowProvisioningUpdates`
+# fails the archive with "Choose a certificate to revoke". Freeing it is an
+# account action that needs the ASC API key — which lives here as a release
+# secret, not on anyone's laptop. Hence this workflow: it runs the maintenance
+# where the credential already is, so the key never leaves the runner.
+#
+# Always run `list` first and read the output. `revoke` takes explicit ids only
+# — there is deliberately no "revoke everything expired" mode, because a
+# distribution certificate revoked by accident invalidates shipped signing
+# assets.
+name: ASC Certificates
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "list or revoke"
+        required: true
+        default: list
+        type: choice
+        options: [list, revoke]
+      certificate_ids:
+        description: "Comma-separated certificate ids (revoke only)"
+        required: false
+        type: string
+
+jobs:
+  certificates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run certificate maintenance
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          if [ "${{ inputs.action }}" = "revoke" ]; then
+            node scripts/asc-certificates.mjs revoke "${{ inputs.certificate_ids }}"
+          else
+            node scripts/asc-certificates.mjs list
+          fi
