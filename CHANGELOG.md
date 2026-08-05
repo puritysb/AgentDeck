@@ -7,20 +7,53 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.5
+
+### CLI and daemon — npm
+
+- Validate the daemon port before a hook constructs a loopback URL, so a
+  malformed or hostile port value cannot steer the request
+  ([#105](https://github.com/puritysb/AgentDeck/pull/105))
+- Discover iDotMatrix-protocol panels by advertised service UUID and known name
+  families rather than the `IDM-` vendor prefix, so a rebranded but
+  protocol-identical display (iPixel) is found by a scan instead of needing a
+  hand-written address; `idotmatrixNamePrefixes` in `settings.json` widens the
+  name fallback without a release
+  ([#115](https://github.com/puritysb/AgentDeck/issues/115))
+- Surface Claude per-model scoped usage limits, and date the Codex snapshot so a
+  frozen percentage can no longer read as live
+  ([#99](https://github.com/puritysb/AgentDeck/pull/99),
+  [#121](https://github.com/puritysb/AgentDeck/pull/121))
+- Resolve Claude usage OAuth credentials on Windows and Linux instead of only
+  macOS ([#98](https://github.com/puritysb/AgentDeck/pull/98))
+- Observe Codex Desktop sessions through OpenTelemetry and lifecycle hooks, and
+  discover top-level Desktop rollouts without blocking scans
+  ([#109](https://github.com/puritysb/AgentDeck/pull/109),
+  [#111](https://github.com/puritysb/AgentDeck/pull/111))
+- Track the interactive-prompt lifecycle through concurrent spinner redraws, so
+  a queued prompt no longer leaves a session stuck awaiting
+  ([#108](https://github.com/puritysb/AgentDeck/pull/108))
+- Add an adaptive offline card feed with calendar events and an offline-reader
+  projection, plus daemon-rendered glance frames for pull clients
+  ([#110](https://github.com/puritysb/AgentDeck/pull/110),
+  [#112](https://github.com/puritysb/AgentDeck/pull/112))
+- Carry host push-to-talk from the deck through the daemon's voice ingest and
+  egress path, including device audio replies
+- Add `--weight` as an explicit deck/tab sort override, and
+  `AGENTDECK_COMMANDER_ARGS` / `AGENTDECK_<AGENT>_ARGS` as env-var default
+  session arguments ([#62](https://github.com/puritysb/AgentDeck/pull/62),
+  [#93](https://github.com/puritysb/AgentDeck/pull/93))
+- Add opt-in cross-machine session attach over the existing daemon socket
+  ([#53](https://github.com/puritysb/AgentDeck/pull/53)) and a Linux systemd
+  `--user` daemon unit ([#54](https://github.com/puritysb/AgentDeck/pull/54))
+- Stage ESP32 firmware for pull OTA
+  ([#113](https://github.com/puritysb/AgentDeck/pull/113))
+- Show subagent work as activity rather than as separate sessions
+
 ## 1.0.4
-
-### macOS app — App Store
-
-- Discover iDotMatrix-protocol pixel panels by their advertised service UUID and
-  known name families instead of the `IDM-` vendor prefix, so rebranded but
-  protocol-identical displays (iPixel) appear in Scan rather than requiring a
-  hand-written `settings.json` entry ([#115](https://github.com/puritysb/AgentDeck/issues/115))
 
 ### CLI and daemon
 
-- Apply the same brand-independent iDotMatrix discovery rule to the Python BLE
-  scan, and accept `idotmatrixNamePrefixes` in `settings.json` for a panel that
-  advertises neither the service nor a known name
 - Ship the iDotMatrix and Timebox Mini Python BLE clients in
   `@agentdeck/bridge` instead of resolving files that only exist in a source
   checkout

@@ -241,7 +241,7 @@ builds on [Releases](https://github.com/puritysb/AgentDeck/releases).
 
 | Channel | Tag | Status |
 |---|---|---|
-| **npm** — `@agentdeck/setup` | `npm-v*` | [1.0.4](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.0.4) |
+| **npm** — `@agentdeck/setup` | `npm-v*` | [1.0.5](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.0.5) |
 | **Apple App Store** — macOS | `apple-v*` | [1.0.2 live](https://apps.apple.com/app/id6784822497) (released 2026-07-24); iPhone/iPad companion 1.0.2 was rejected on 2026-08-04 under Guideline 2.1(a) — the fix is built and awaiting resubmission |
 | **Elgato Marketplace** — Stream Deck plugin | `streamdeck-v*` | [1.0.3 live](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) (published 2026-07-31; 1.0.2 was the first public release on 2026-07-28) |
 | **Ulanzi Marketplace** — D200H plugin | `ulanzi-v*` | [1.0.1 release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v1.0.1); support handoff pending ([details](marketplace/ulanzi/LISTING.md)) |
