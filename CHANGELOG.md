@@ -7,6 +7,44 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.7
+
+### CLI and daemon — npm
+
+- Archive the reply half of every conversation. `turns.response` was NULL for
+  every recent hook-observed turn — the timeline showed the text while APME
+  stored none of it, so the dashboard could not replay a conversation and the
+  judge scored turns against silence. Both daemons now record the response on
+  the branch that already has it
+  ([#135](https://github.com/puritysb/AgentDeck/pull/135))
+- Close runs abandoned by a daemon restart. Their tasks never closed, so they
+  were never judged — 65 open tasks against 9 closed — and the existing orphan
+  reaper only matched empty shells. The sweep also stopped stalling the daemon:
+  covering indexes take it from 22s to 7ms on the real store
+  ([#135](https://github.com/puritysb/AgentDeck/pull/135))
+- Query Codex for the quota it can no longer write down. The rollout
+  `rate_limits` block is a byproduct of a *successful* turn, so a passive read
+  freezes one turn short of the wall and never sees usage spent on Codex Cloud
+  or another machine; a throttled `codex app-server` query now backs it, and the
+  fresher `capturedAt` wins ([#131](https://github.com/puritysb/AgentDeck/pull/131))
+- Report whether the BLE panels are actually connected. Timebox Mini and
+  iDotMatrix are driven by spawned Python clients that reconnect inside their
+  own loop, so process liveness said nothing about the link and a powered-off
+  panel still read as streaming; the clients now emit one status line per state
+  change ([#132](https://github.com/puritysb/AgentDeck/pull/132))
+- Start the Node summarizer on-device, matching the Swift daemon: the chain is
+  now Foundation Models → MLX → Ollama → heuristic, so the same response no
+  longer summarizes differently depending on which daemon happens to be up
+- Stop offering embedding-only models as judge candidates — an embedder passed
+  the setup screen and failed on the first real judge call
+- Price local models correctly: `foundationModels:apple-intelligence` and
+  `mlx-community/...` fell through to UNKNOWN_PRICE, which reads as *unpriced*
+  rather than free, and grouped under provider `unknown` instead of `local`
+- Trim `config/default-settings.json` to the keys a loader actually reads, with
+  a drift gate — six of its seven top-level keys had no reader at all, and with
+  no consumer nothing caught it claiming `judge.backend: mlx` while the code
+  defaults to Foundation Models
+
 ## 1.0.6
 
 ### CLI and daemon — npm
