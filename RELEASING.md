@@ -90,6 +90,21 @@ While a version sits in **Waiting for Review**, do not upload a replacement buil
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
 
+**Local builds**
+
+```bash
+bash scripts/build-apple-release.sh --ios     # local iOS build
+bash scripts/build-apple-release.sh --macos   # local macOS build
+bash scripts/build-apple-release.sh --all     # both + TestFlight upload
+```
+
+**Identity and signing**
+
+- **Bundle ID**: `bound.serendipity.agent.deck` (App Store Connect 앱명: "AgentDeck Dashboard"). The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier and is unrelated to the app bundle ID.
+- **Team**: 조직 `QF36NDHYHD` (Serendipity Bound) — 2026-07-10 개인 팀(R22679GY5Z)에서 이관. 서명은 **cloud signing** (`CODE_SIGN_STYLE=Automatic` + ASC API key `-allowProvisioningUpdates`); 수동 p12/프로파일 시크릿 불필요.
+- **CI**: `.github/workflows/apple-release.yml` — `apple-v*` 태그 → macOS-15 runner → archive → TestFlight 업로드.
+- **Secrets**: `ASC_API_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_KEY_BASE64` (조직 팀 App Manager+ 역할 키). Step-by-step setup: [docs/asc-cert-setup.md](docs/asc-cert-setup.md).
+
 ### Android (APK / optional Play)
 
 1. Confirm the Android `versionName` remains on the shared compatibility line and increment `versionCode`.

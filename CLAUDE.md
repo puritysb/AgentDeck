@@ -52,20 +52,10 @@ bash scripts/uninstall.sh   # remove hooks, unlink CLI and plugin
 
 ### Apple Release (App Store / TestFlight)
 
-```bash
-bash scripts/build-apple-release.sh --ios     # local iOS build
-bash scripts/build-apple-release.sh --macos   # local macOS build
-bash scripts/build-apple-release.sh --all     # both + TestFlight upload
-git tag apple-v1.0.1 && git push origin apple-v1.0.1  # CI → TestFlight
-```
+Release steps, local build commands, identity/signing, CI secrets, and current App Store state live in **[RELEASING.md § Apple](RELEASING.md)**. Two invariants that apply outside a release:
 
-- **Apple Bundle ID**: `bound.serendipity.agent.deck` (App Store Connect 앱명: "AgentDeck Dashboard")
-- **App Store**: macOS는 2026-07-21 `1.0.0`으로 첫 출시, 2026-07-24 `1.0.2`(빌드 3901) 승인·라이브 — https://apps.apple.com/app/id6784822497. iPhone/iPad companion `1.0.2`(3901)는 **2026-08-04 Guideline 2.1(a)로 리젝** — 수정 빌드 `4002`가 TestFlight에 업로드돼 있고 재제출 대기 중 ([apple/APP_REVIEW_NOTES.md](apple/APP_REVIEW_NOTES.md)의 Resolution Center 회신 + `ios-notes-field` 블록 사용)
-- **Team**: 조직 `QF36NDHYHD` (Serendipity Bound) — 2026-07-10 개인 팀(R22679GY5Z)에서 이관. 서명은 **cloud signing** (`CODE_SIGN_STYLE=Automatic` + ASC API key `-allowProvisioningUpdates`); 수동 p12/프로파일 시크릿 불필요
-- **CI**: `.github/workflows/apple-release.yml` — `apple-v*` 태그 → macOS-15 runner → archive → TestFlight 업로드
-- **Secrets**: `ASC_API_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_KEY_BASE64` (조직 팀 App Manager+ 역할 키)
-- **Note**: the `bound.serendipity.agentdeck.*` tree is retired (the former `.dashboard` app record carries an immovable ASC build floor at 1.0.6/build 8). The fresh App Store app uses the `bound.serendipity.agent.*` tree → `bound.serendipity.agent.deck`. The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier and is unrelated to the app bundle ID.
-- **Versioning**: root `VERSION` is the repository baseline and compatibility-line anchor (`1.0.2`), not a patch ceiling. Numeric `X.Y.Z` versions are mutually compatible exactly when `X.Y` matches; patch ordering is irrelevant, so targets may advance independently. Each target's internal mirrors and its own release tag must match exactly, and `pnpm verify-version` enforces repository compatibility. Apple build number and Android versionCode advance only when those targets ship. Delivery tags remain channel-prefixed (`apple-v*`, `android-v*`, `esp32-v*`, `npm-v*`, `streamdeck-v*`, `ulanzi-v*`). Policy + commands: [RELEASING.md](RELEASING.md)
+- **Bundle ID** `bound.serendipity.agent.deck`. The retired `bound.serendipity.agentdeck.*` tree carries an immovable ASC build floor (1.0.6/build 8) — never target it. The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier, unrelated to the app bundle ID.
+- **Versioning**: root `VERSION` is the repository baseline and compatibility-line anchor (`1.0.2`), not a patch ceiling. Numeric `X.Y.Z` versions are mutually compatible exactly when `X.Y` matches; patch ordering is irrelevant, so targets may advance independently. Each target's internal mirrors and its own release tag must match exactly, and `pnpm verify-version` enforces repository compatibility. Apple build number and Android versionCode advance only when those targets ship. Delivery tags remain channel-prefixed (`apple-v*`, `android-v*`, `esp32-v*`, `npm-v*`, `streamdeck-v*`, `ulanzi-v*`).
 
 ## Development
 
@@ -102,28 +92,14 @@ Coverage thresholds (regression guard): lines ≥17%, functions ≥15%, branches
 
 ### GitHub Pages and Build Health
 
-- **URL**: `https://puritysb.github.io/AgentDeck/` (overview) / `/hardware/` (**Devices**) / `/demo/` (**Live Preview**) / `/design-system/` (**Design System** viewer) / `/reports/` (**Build Health**). `/docs/` redirects to the viewer; `/gallery/` redirects to `/hardware/`. Do not restore either route as a duplicate catalog.
-- **Workflow**: `.github/workflows/test-report.yml` — push to master → Vitest + Android JUnit + demo build + design-system build → HTML report → GitHub Pages deploy. Robot Framework is intentionally excluded from GitHub-hosted runs: its meaningful `hw`/`protocol`/`perf` suites require connected boards, while the former `no-hw` subset only duplicated PlatformIO compilation. The assembly step publishes overview, devices, live preview, design-system viewer, build health, and compatibility redirects.
-- **Live Preview fidelity**: `/demo` panels use canonical renderer output only — Node renderers via `scripts/render-creature-simulator.mjs` (sim-data.js) and **pixel-exact ESP32 firmware frames via `scripts/render-esp32-sim-frames.mjs`** (esp32/sim `demo:<agent>:<state>` scenes → `sim-frames/`, needs `pio`; missing frames show the hatch placeholder, never hand-drawn ESP32/e-ink/TC001). Hand-maintained Swift Device Preview mirrors carry `SYNC-HASH` origin pins enforced by `node scripts/check-preview-mirror-sync.mjs` (CI)
-- **Build Health generator**: `scripts/generate-html-report.py` — tab-based SPA quality dashboard. Robot tab: suite→scenario→BDD steps→board matrix→per-test elapsed time→performance table. `[PERF]` log messages auto-extracted from output.xml
-- **Scenario matrix**: `scripts/scenario-matrix.json` — 10 user scenarios mapped to test files + gap analysis
-- **Site surfaces (all aquarium-tide)**: `scripts/pages-index.html` (overview) · `docs/hardware/index.html` (Devices; detailed SSOT remains `docs/hardware-compatibility.md`) · `tools/creature-simulator/index.html` (Live Preview) · `agentdeck-design-system/viewer/` + generated manifest (Design System) · generated `/reports/` (Build Health) · `docs/site/index.html` and `docs/gallery/index.html` (redirects only). The viewer consumes `design/tokens.css` directly; generated content under `dist/` is never hand-edited.
-- **Site-wide language selection (en/ko/ja)**: overview, Devices, and Live Preview each embed an inline `data-i18n` dictionary + nav `<select id="lang">`; the design-system viewer and Build Health carry the same control. All share the `agentdeck-design-locale` localStorage key so one choice follows the visitor across routes. English stays canonical in the DOM (ko/ja override per key); Build Health's generated body stays English (CI evidence, not authored copy) — its selector only persists the site-wide choice. Public surface counts (landing headline, stat tile, and chip grid) mirror the `docs/hardware-compatibility.md` surface matrix ("Counted surfaces" line) — update the matrix row first, then the mirrors. `node scripts/check-surface-mirrors.mjs` (`pnpm check-surface-mirrors`, gated in `design-system.yml`) fails when the counts disagree: a matrix row is one line while its chip lives in another file, which is how the landing page came to advertise 26 surfaces over 22 chips (T-Embed, T-Display-S3-Pro, Stream Deck XL, + XL all counted but unlisted).
-- **Devices page spec cards are generated** — the `## ESP32 board specification sheet` table in `docs/hardware-compatibility.md` is the SSOT; `node scripts/sync-hardware-spec-cards.mjs` renders it into `docs/hardware/index.html` between `SPEC-CARDS:BEGIN/END` markers as responsive cards (3/2/1 columns), and `design-system.yml` runs `--check`. The gate fails on edits to either side. **Edit the Markdown table, run the sync — never hand-edit the card block.** Rows carry a status (`Shipping` / `Community fork` / `Evaluation`); only Shipping and Community fork are counted surfaces, so adding an Evaluation row must not change the "Counted surfaces" line.
-- **★GNB is single-sourced** — `scripts/pages-nav.html` is the canonical partial. `node scripts/sync-pages-nav.mjs` renders it into the four committed surfaces between `GNB:BEGIN/END` markers (pages-index, hardware, creature-simulator, design-system viewer), and `scripts/generate-html-report.py` renders the same partial at generation time, so Build Health cannot drift. CI gate: `design-system.yml` runs `sync-pages-nav.mjs --check`. **Edit the partial, run the sync — never hand-edit a nav block.** All five surfaces expose the same six links + GitHub chip + `select#lang`; wrapper classes are normalized to `.nav/.nav-in/.brand/.nav-links`. Build Health's `:root` now declares canonical token names (local aliases `--bg`/`--surface`/`--text` resolve via `var()`) and is gated by `verify-tokens-sync.py` as the **seventh mirror**; its chart/badge hex in the body remains legacy (tracked by the design-lint baseline, excluded from the sync gate).
-- **Device photography pipeline**: `scripts/crop-hardware-images.mjs` crops the hardware photos into the catalog card frames (STANDARD 1.75:1 = the 349x200 card, WIDE 3.73:1, HERO 3:2). **Sources are committed** in `assets/hardware-photos/` — the captures actually used, with the EXIF rotation baked in (so the crop table's coordinates are plain display-space pixels) and re-encoded at quality 78, halving 36 MB to 15 MB. The script defaults to that directory, so the repo regenerates its own published crops with no external files; pass a path to crop from raw camera originals instead. **`.rotate()` must be called with no argument** — that applies the EXIF orientation tag; passing an explicit angle skips it and crops from an unrotated buffer (many iPhone captures are orientation 6: stored 4032x3024, actually 3024x4032). Frame the device body with margin, not just its screen, and verify each crop in a browser before shipping.
+Site surfaces, the CI report generator, the sync gates (`sync-pages-nav`, `sync-hardware-spec-cards`, `check-surface-mirrors`, `check-preview-mirror-sync`), and the device photography pipeline are documented in **[docs/pages-site.md](docs/pages-site.md)**. Read it before touching anything under `scripts/`, `docs/hardware/`, or `tools/creature-simulator/`.
+
 
 See [docs/testing.md](docs/testing.md) for full testing reference.
 
 ### Apple/Xcode Debug Diagnostics
 
-When debugging a macOS/iOS issue that was reproduced from Xcode, do **not** ask the user to paste Xcode console output first. Capture the repository-side diagnostic bundle:
-
-```bash
-bash scripts/capture-apple-diagnostics.sh --tail 1000 --last 15m
-```
-
-Then inspect `diagnostics/apple-xcode/latest/README.md`, `diag.json`, `status.json`, `oslog-AgentDeck.log`, and `log-files/*swift-daemon.log` before editing code. Use `.agents/workflows/apple-xcode-debug.md` as the canonical workflow for Xcode-run app debugging, startup hangs, Swift daemon issues, OpenClaw pairing, WebSocket state, and hardware module state.
+When debugging a macOS/iOS issue reproduced from Xcode, do **not** ask the user to paste Xcode console output first — capture the repository-side diagnostic bundle. `.agents/workflows/apple-xcode-debug.md` is the canonical workflow (bundle capture, startup hangs, Swift daemon issues, OpenClaw pairing, WebSocket state, hardware module state).
 
 This diagnostic path is developer tooling only: it lives in `scripts/` and `.agents/workflows/`, writes local gitignored artifacts under `diagnostics/`, and must not add subprocesses, shell commands, terminal instructions, or external-tool prompts to the App Store app UI.
 
@@ -141,38 +117,7 @@ Dev-only note: when debugging Windows issues, run commands directly in PowerShel
 
 The CLI command is `agentdeck` (`bridge/src/cli.ts`).
 
-```bash
-# Session commands (agent name = top-level command)
-agentdeck claude             # Claude Code session (PTY + bridge)
-agentdeck claude --local     # No device modules (WS only)
-agentdeck codex              # Codex CLI session (PTY + bridge)
-agentdeck opencode           # OpenCode session (PTY + SSE bridge)
-agentdeck monitor            # Hook-only bridge (no PTY — run `claude` separately)
-
-# Daemon (singleton infrastructure)
-agentdeck daemon start       # Start monitoring daemon (foreground)
-agentdeck daemon stop        # Stop daemon
-agentdeck daemon status      # Daemon status
-agentdeck daemon install     # Register LaunchAgent
-agentdeck daemon uninstall   # Remove LaunchAgent
-
-# Session management
-agentdeck status             # All sessions + daemon status
-agentdeck stop               # Stop a session (-a for all, -p for specific port)
-
-# Monitoring
-agentdeck dashboard          # TUI monitoring dashboard with terrarium (alias: dash)
-
-# Utilities
-agentdeck devices            # Connected devices
-agentdeck qr                 # Pairing QR code
-agentdeck diag               # Diagnostic dump
-agentdeck inject-test        # Test observed-answer injection (--tty ttysNNN | --app Name --label text)
-agentdeck pixoo {scan|add|list|remove|test}
-agentdeck timebox {scan|add|list|remove|test|sync}   # Divoom Timebox Mini (BLE)
-agentdeck wifi-setup         # ESP32 WiFi provisioning (--ssid, --password)
-agentdeck esp32-ota <target> [--build|--firmware <path>]   # WiFi OTA push to a provisioned ESP32 board
-```
+Full command list: `agentdeck --help`, or [docs/cli.md](docs/cli.md) for the annotated reference.
 
 **Module flags**: `--local` (all device modules off), `--no-adb` (skip ADB reverse). There are no per-session `--no-mdns`/`--no-serial`/`--no-pixoo` flags — hardware modules are daemon-only and session bridges never activate them
 
@@ -180,11 +125,7 @@ agentdeck esp32-ota <target> [--build|--firmware <path>]   # WiFi OTA push to a 
 
 **Env-var default args** (`bridge/src/cli.ts` — `applyGlobalEnvArgs`/`weaveAgentCommand`/`resolveAgentCommand`): `AGENTDECK_COMMANDER_ARGS` injects flags into the `agentdeck` (commander) layer — spliced into argv right after the session subcommand, **keyed on `argv[2]`** (`claude`/`codex`/`opencode`/`monitor`; any other command ignores it, even with a session word as a positional value). Env tokens land before typed flags: scalar options are overridden by retyping (last-write); boolean flags have no inverse spelling, so the per-invocation override is **`--no-env-args`**, which disables BOTH layers (the splice pre-parse, the per-agent weave in the action). `AGENTDECK_CLAUDE_ARGS` / `AGENTDECK_CODEX_ARGS` / `AGENTDECK_OPENCODE_ARGS` append to the spawned agent command, weaving onto an existing `-c` (e.g. `AGENTDECK_CLAUDE_ARGS="--remote-control"` + `-c "claude --resume X"` → `claude --resume X --remote-control`). The per-agent append rides the same platform shell path as `-c` (`pty-manager.ts`); the global var is tokenized in pure JS and never touches a shell.
 
-ESP32 WiFi provisioning + disconnect recovery details: see [docs/esp32.md](docs/esp32.md). WiFi OTA v1 (device_info capability flags, `esp32_ota_begin/chunk/end/abort` over the board's WiFi WS socket, `POST /esp32/ota`) targets directly flashed AgentDeck ESP32 boards with WiFi connectivity and dual-OTA partition tables: `inkdeck`, `ulanzi_tc001`, `ttgo`, `ips35`, `round_amoled`, `86box`, `ips10`, `t_embed`, `t_display_pro`. `86box` and `ips10` require a one-time USB full flash to migrate existing factory/NO_OTA layouts to their 16MB dual-OTA partition tables before subsequent WiFi OTA works; the current lab units were migrated and daemon-verified on 2026-07-05 (`86box` OTA 7.8MB, `ips_10` OTA 6.0MB). Non-AgentDeck or non-direct-flashed devices are out of OTA scope. **Both daemons implement OTA** — the Swift one since 2026-07-17 (`apple/AgentDeck/Daemon/Server/ESP32WifiOta.swift`, Node-parity), so OTA no longer requires swapping daemons. The sandboxed (App Store) daemon cannot read a `firmwarePath` outside its container, so `/esp32/ota` also accepts a base64-inlined `firmwareB64` and the CLI resends that way automatically on `firmware_unreadable`. Building firmware (`--build`, PlatformIO) stays CLI-only.
-
-**ESP32 client contract (external/forked clients)**: the AgentDeck wire contract a display-only client must honour (inbound events, `device_info`/command frames) is documented in [docs/esp32-client-contract.md](docs/esp32-client-contract.md). It has no C/C++ codegen (quicktype emits Swift/Kotlin only; unusable on no-PSRAM ArduinoJson targets), so drift is managed by discipline: when `DISPLAY_FORWARDED_EVENTS`/`SERIAL_FORWARDED_EVENTS` in `shared/src/protocol.ts` or the `device_info` field list change, re-port the **XTeink X3/X4** fork's hand-ported client (`crosspoint-agentdeck` `src/agentdeck/protocol.*`). E-ink layout drift is checked separately with `scripts/sync-xteink-eink-dashboard.sh --check`. See [docs/esp32.md § Downstream client port sync](docs/esp32.md).
-
-**Autonomous Pocket (Node daemon + XTeink pull client)**: `bridge/src/pocket-autonomy.ts` authors a small changing set of offline-carryable `pulse`/`nudge`/`quest` cards from the same resolved session + `CardFeedGlance` snapshot already used by `/feed`; producers never fetch independently. The engine learns from `card_choice` Outbox answers and weak no-response evidence, but persists only bounded aggregate counters, coarse time buckets and opaque IDs/fingerprints in `pocket-autonomy.json` — never card copy, session/project names, calendar titles or provider text. It is Node-daemon-only until Swift serves Card Feed routes. The no-PSRAM XTeink hand-port keeps a fixed three-card Pocket pool (`THREAD` + at most two autonomous cards), persists it in the deck snapshot, and queues stable choice IDs offline; contract and settings are canonical in [docs/esp32-client-contract.md § Autonomous Pocket](docs/esp32-client-contract.md#autonomous-pocket-node-daemon).
+ESP32 provisioning, WiFi OTA scope, the external-client wire contract, and Autonomous Pocket are documented in [esp32/CLAUDE.md](esp32/CLAUDE.md) (loads when working under `esp32/`) and [docs/esp32.md](docs/esp32.md).
 
 ## Key Conventions
 
@@ -250,38 +191,7 @@ The macOS app ships through the App Store and must stay **self-contained** under
 
 ## Documentation Index
 
-| Doc | Topic |
-|---|---|
-| [RELEASING.md](RELEASING.md) | Versioning & release policy — per-track tags (apple-v/android-v/npm-v/esp32-v/streamdeck-v/ulanzi-v), monotonic-version constraints, bundle-ID change steps. Every track has a tag-triggered workflow; marketplace/npm upload steps stay manual |
-| [CHANGELOG.md](CHANGELOG.md) | Per-version, per-channel release notes |
-| [DESIGN.md](DESIGN.md) | Design system spec — aquarium-tide tokens, type, components, marketing↔product palette split, hardware surfaces |
-| [docs/why-apme.md](docs/why-apme.md) | **WHY** APME — 감 기반 라우팅 문제, 카테고리별 평가 전략, composite score, vibe labeling 우선 원칙 |
-| [docs/apme.md](docs/apme.md) | APME eval module — schema, collector, deterministic+LLM judge, scorecard/recommender, daemon API, settings |
-| [docs/apme-pipeline.md](docs/apme-pipeline.md) | APME 8-layer pipeline — ingestion (hook/timeline/PTY), collector→store, classifier, runner, tuner, HTTP/WS, device rendering |
-| [docs/cli.md](docs/cli.md) | CLI reference — every `agentdeck` command, session flags, `-c` pass-through, env-var default args (`AGENTDECK_COMMANDER_ARGS` / `AGENTDECK_<AGENT>_ARGS`) |
-| [docs/agent-harness.md](docs/agent-harness.md) | Cross-agent developer harness — how Claude Code / Codex / OpenCode / Antigravity each enter the repo, read instructions, and discover skills/workflows; skill SSOT rules |
-| [docs/architecture.md](docs/architecture.md) | Monorepo layout, BridgeCore, PtyAdapter, AgentAdapter, Gateway protocol, plugin connection |
-| [docs/daemon.md](docs/daemon.md) | Daemon hub, singleton guard, mDNS recovery, usage relay, Gateway isolation, multi-surface monitoring |
-| [docs/plugin-conventions.md](docs/plugin-conventions.md) | Encoder LCD, timeline pipeline (daemon-owned persistence), D200H (Ulanzi Studio plugin), display sleep/wake. Retired v3 sections are marked as such |
-| [docs/streamdeck-layout.md](docs/streamdeck-layout.md) | Session-per-button keypad + encoder mapping (E1 Volume / E2 Claude usage / E3 Codex usage / E4 Launcher), Marketplace submission constraints. The v3/v4 layout numbering is retired — see [docs/retired-surfaces.md](docs/retired-surfaces.md) |
-| [docs/tui-dashboard.md](docs/tui-dashboard.md) | `agentdeck dashboard` — terrarium, sprites, adaptive layouts |
-| [docs/esp32.md](docs/esp32.md) | Firmware boards, flash safety, WiFi provisioning, disconnect recovery |
-| [docs/esp32-companion-concepts.md](docs/esp32-companion-concepts.md) | Design record for the two input-capable boards, **both Shipping since 2026-07-25/26** (the doc began as their Evaluation→Shipping study) — T-Embed CC1101 "Companion Knob" (encoder steering + portable pager + NFC/IR; BLE phone relay and sub-GHz capture still future) and T-Display-S3-Pro "Focus Strip" (its camera unit boots the portrait "Pocket" UI instead) |
-| [docs/android.md](docs/android.md) | Android device support matrix, creature rendering |
-| [docs/android-ui.md](docs/android-ui.md) | Android UI/UX Vision — e-ink + tablet layouts, creatures, refresh zones |
-| [docs/voice-setup.md](docs/voice-setup.md) | Apple SFSpeech permissions + dictation model download troubleshooting |
-| [docs/asc-cert-setup.md](docs/asc-cert-setup.md) | Mac Installer Distribution cert + macOS provisioning profile + GitHub Secrets step-by-step |
-| [docs/appstore-feature-matrix.md](docs/appstore-feature-matrix.md) | App Store 앱 vs CLI 설치 기능 매트릭스 — downstream 디바이스 분류(ESP32/Pixoo/D200H/ADB/TC001/Android) + session 실행/usage 범위 |
-| [docs/appstore-metadata-draft.md](docs/appstore-metadata-draft.md) | App Store Connect metadata draft (ko/ja/en) — title/subtitle/description/keywords/what's-new |
-| [docs/testflight-qa-checklist.md](docs/testflight-qa-checklist.md) | Internal tester pre-submission checklist covering onboarding, pairing, voice, sandbox invariants |
-| [docs/devices.md](docs/devices.md) | Device-specific details |
-| [docs/hardware-compatibility.md](docs/hardware-compatibility.md) | Canonical dashboard hardware and OS matrix: panels, transports, host requirements, support state, and App Store compatibility. Rendered in the Design System viewer; public summary at [docs/hardware/index.html](docs/hardware/index.html). |
-| [docs/protocol.md](docs/protocol.md) | Bridge ↔ plugin WebSocket protocol |
-| [docs/gateway-protocol.md](docs/gateway-protocol.md) | OpenClaw Gateway WebSocket — frame format, Ed25519 handshake, RPC/event catalog, versioning |
-| [docs/testing.md](docs/testing.md) | Test infrastructure reference |
-| [docs/design-lint-baseline.md](docs/design-lint-baseline.md) | Design-lint R1–R8 violation baseline — the count the CI design-system gate compares against |
-| [docs/wake-word.md](docs/wake-word.md) | Porcupine / microWakeWord |
-| [docs/streamdeck-layout.md](docs/streamdeck-layout.md) | Stream Deck layout reference |
+Topic docs live in [docs/](docs/) — the filenames are the index, and the canonical ones are linked inline from the sections above. The design-system viewer's `catalog.json` binds the subset that is reader-facing.
 
 ## References
 

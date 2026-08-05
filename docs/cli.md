@@ -117,6 +117,16 @@ a session behaves.
 | `agentdeck devices` | Connected devices (WS, ESP32, Pixoo, Timebox, ADB) |
 | `agentdeck qr` | Pairing QR code + URL |
 | `agentdeck diag` | Diagnostic dump (`-a` for AI analysis) |
+| `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
+
+`inject-test` reproduces what the daemon does when a device answers an
+observed session's prompt: it drives the host's own UI rather than the bridge.
+Terminal hosts are addressed by controlling tty (find one with
+`ps -eo pid=,tty=,command= | grep -E ' claude| codex'`), GUI hosts by app name,
+where `--label` presses the button carrying that text before falling back to
+key events. `--text` types and submits a line instead of picking an option,
+which is the path dictation uses. Node daemon only — the App Store app spawns
+no subprocesses.
 
 ### Evaluation (APME)
 
