@@ -2,6 +2,70 @@
 
 ---
 
+## 2026-08-05 — 자식이 살아 있다는 건 링크가 붙어 있다는 뜻이 아니다: BLE 패널 연결 상태 보고
+
+### 문제
+
+사용자 질문: "timebox mini, idotmatrix 는 활성화 되어 있는데 왜 비활성화처럼 보이지?"
+
+Node 데몬 `/health` 의 두 모듈은 이랬다:
+
+```
+timebox {"configuredDeviceCount":1, "devices":[…]}      ← connected/statusReason 없음
+```
+
+`BLEMatrixHealth.connected` 를 읽는 **모든** 소비자 — 메뉴바 `MenuBarTopologyList`,
+Dashboard `TopologyRail`, TUI `renderer.ts` — 가 이걸 `false` 로 읽어 정상 스트리밍 중인
+패널에 속 빈 점을 그렸다. Swift 데몬은 CoreBluetooth 링크를 직접 쥐고 있어 처음부터 전체
+필드를 냈으므로 증상은 **Node 데몬에 붙었을 때만** 났고, `BridgeEventParser` 주석은 이
+격차를 이미 "Node daemon a leaner {configuredDeviceCount, devices}" 라고 적어두고 있었다.
+
+근본 원인은 관측 불가였다. Node 에는 BLE 가 없어 Python 클라이언트를 spawn 하는데,
+**두 클라이언트 모두 자기 루프 안에서 재연결한다.** 패널 전원을 꺼도 자식은 계속 살아
+있으므로 supervisor 가 볼 수 있는 유일한 신호(프로세스 생존)는 링크 상태와 무관하다.
+`consecutiveFailures` 도 자식이 exit 할 때만 움직여서 마찬가지로 쓸모없다.
+
+### 해결
+
+클라이언트가 자기 링크 상태를 보고하게 했다.
+
+- `pysync/matrix_sync_common.py` 의 `StatusReporter` — 상태 **변화 시에만**
+  `AGENTDECK_STATUS {json}` 한 줄을 stdout 에 출력. 두 클라이언트 공용 SSOT.
+- `ble-sync-spawn.ts` — 그 줄을 파싱해 `onStatus` 로 넘기고 **진단용 tail 링에는 넣지
+  않는다.** 넣으면 재연결마다 `createSyncCycleSquelch` 가 새 crash cycle 로 오인해
+  로그 억제가 풀린다.
+- `ble-sync-status.ts` 의 `createBleLinkTracker()` — Swift 데몬과 같은
+  `{connected, statusReason, displayDimmed, hasFrame, lastError}` 로 접는다.
+
+실기 검증: 데몬 재시작 후 두 모듈 모두 `connected:true, statusReason:"connected",
+hasFrame:true`, Dashboard rail 두 행이 채워진 초록 점으로 전환.
+
+같은 세션에서 메뉴바 팝업 하단 잘림도 고쳤다. ScrollView 상한을
+`NSScreen.main?.visibleFrame.height` 로 잡고 있었는데, `NSScreen.main` 은 "주 디스플레이"가
+아니라 **key window 를 가진 화면**이고 `visibleFrame` 은 **Dock 이 있는 화면에서만** Dock
+높이를 뺀다. 듀얼 모니터에서 Dock 없는 쪽을 기준으로 잡고 Dock 있는 쪽에 팝업이 열리면
+총 높이가 초과해 footer("Start at Login" / "Quit") 아래가 잘린다.
+`PanelAvailableHeightReader` 가 팝업 **자기 호스팅 윈도우** 기준
+`window.frame.maxY - window.screen.visibleFrame.minY` 를 재도록 바꿨다.
+
+### 핵심 설계 결정
+
+- **worker 를 spawn 하는 supervisor 는 worker 의 peer 링크 상태를 프로세스 생존으로
+  추론할 수 없다.** worker 가 명시적으로 보고해야 하고, 그 보고 채널은 진단 로그와
+  분리돼야 한다 (여기서는 tail 링에서 제외).
+- **미시작 fallback 경로에도 `connected: false` 를 명시로 실었다.** optional-field
+  프로토콜에서 키 생략은 retain-on-absent 소비자에게 "정보 없음"이므로, 아무도 구동하지
+  않는 패널이 stale `connected:true` 를 물려받으면 안 된다 (`usageStale` 과 같은 계열).
+- **`statusReason` 문구는 Swift `TimeboxModule.currentStatusReason()` 의 손미러.**
+  `bleMatrixStatus()` 가 "paused"/"connecting"/"retry" **단어**로 LED 색을 가르므로 한쪽만
+  바꾸면 조용히 어긋난다.
+- **화면에 붙는 UI 의 가용 높이는 화면 상수가 아니라 자기 윈도우의 실제 위치에서 파생.**
+  순수 산술 테스트로는 이 버그를 못 잡는다 — 틀린 건 계산이 아니라 입력이었다.
+- 미확인 1건: 메뉴바 수정은 빌드/테스트만 통과. macOS 메뉴바 스트립은 Control Center
+  소유라 자동화로 팝업을 열 수 없어 육안 확인을 못 했다.
+
+---
+
 ## 2026-08-05 — 100%는 수동 읽기로 관측할 수 없다: Codex 사용량 능동 조회 경로
 
 ### 문제
