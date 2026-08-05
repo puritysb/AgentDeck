@@ -67,6 +67,36 @@ this is the patch that makes it work, so prefer it over `1.0.5`.
 
 ## 1.0.4
 
+### Stream Deck plugin
+
+- First-class Stream Deck XL (32 keys) and Stream Deck + XL (36 keys, 6 dials)
+  support, with importable bundled profiles per device model
+  ([#94](https://github.com/puritysb/AgentDeck/issues/94),
+  [#97](https://github.com/puritysb/AgentDeck/pull/97))
+- Windows joins macOS through a cross-platform system layer: media-key volume,
+  Start-menu app launch, and browser fallbacks
+  ([#96](https://github.com/puritysb/AgentDeck/pull/96))
+- Adapt the Codex usage encoder to a single live window, and keep a session's
+  detail from wearing the previous session's model
+  ([#100](https://github.com/puritysb/AgentDeck/pull/100),
+  [#124](https://github.com/puritysb/AgentDeck/pull/124))
+- Wire the hold-to-talk VOICE key to the host's microphone
+
+### Android dashboard
+
+- Propagate live panel profile changes to the monitor service and daemon
+  registration, and harden the e-ink DeviceProfile evidence so a reader is not
+  misclassified ([#106](https://github.com/puritysb/AgentDeck/pull/106),
+  [#107](https://github.com/puritysb/AgentDeck/pull/107))
+- Surface Claude per-model scoped usage limits, and date the Codex snapshot so
+  a frozen percentage cannot read as live
+  ([#99](https://github.com/puritysb/AgentDeck/pull/99),
+  [#121](https://github.com/puritysb/AgentDeck/pull/121))
+- Unify device classification into a DeviceProfile SSOT
+  ([#89](https://github.com/puritysb/AgentDeck/pull/89))
+- Honour the `--weight` session sort override
+  ([#62](https://github.com/puritysb/AgentDeck/pull/62))
+
 ### CLI and daemon
 
 - Ship the iDotMatrix and Timebox Mini Python BLE clients in
@@ -80,6 +110,26 @@ this is the patch that makes it work, so prefer it over `1.0.5`.
   executable or silently disabling daemon sync
 
 ## 1.0.3
+
+### macOS and iPhone/iPad — App Store
+
+- Bound the iOS connection indicator and add an explicit no-Mac path, so a
+  persistent Bonjour browse can no longer render as an endless "Searching for
+  AgentDeck…" ([#114](https://github.com/puritysb/AgentDeck/pull/114)) — the
+  correction for the 2026-08-04 Guideline 2.1(a) rejection of iPhone/iPad 1.0.2
+- Discover iDotMatrix-protocol pixel panels by their advertised service UUID
+  and known name families instead of the `IDM-` vendor prefix, so a rebranded
+  but protocol-identical display (iPixel) appears in Scan
+  ([#115](https://github.com/puritysb/AgentDeck/issues/115))
+- Repair host push-to-talk in the in-process daemon: capture, transcription and
+  the spoken reply form one working chain, stale capture files are swept, and
+  the Gateway model name no longer claims rows belonging to other sessions
+  ([#124](https://github.com/puritysb/AgentDeck/pull/124)). Delivery to an
+  *observed* session remains the queued-directive ladder — a prompt dictated to
+  an idle session waits for that session's next turn end
+  ([feature matrix](docs/appstore-feature-matrix.md))
+- Date the Codex usage snapshot so a frozen percentage cannot read as live
+  ([#121](https://github.com/puritysb/AgentDeck/pull/121))
 
 ### Stream Deck plugin
 
