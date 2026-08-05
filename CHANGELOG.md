@@ -7,6 +7,21 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.6
+
+### CLI and daemon — npm
+
+- Repair host push-to-talk end to end: the deck's hold-to-talk path now reaches
+  the daemon's capture, transcription and reply legs as one working chain
+  rather than a set of individually plausible halves, and a spoken reply is
+  digested through one shared formatter
+  ([#124](https://github.com/puritysb/AgentDeck/pull/124))
+- Stop the Gateway model name from claiming rows that belong to other sessions
+  ([#124](https://github.com/puritysb/AgentDeck/pull/124))
+
+`1.0.5` shipped push-to-talk as a feature while that chain was still broken;
+this is the patch that makes it work, so prefer it over `1.0.5`.
+
 ## 1.0.5
 
 ### CLI and daemon — npm
