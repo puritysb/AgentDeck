@@ -700,3 +700,61 @@ describe('VOICE hold-to-talk key', () => {
     expect(configs.some(c => c.type === 'status' && c.label === 'OBSERVED')).toBe(true);
   });
 });
+
+describe('SessionSlotManager detail cache ownership', () => {
+  // The 2026-07-17 guards stop a *foreign* event from being applied to the
+  // focused session. They cannot help when the field was cached while another
+  // session was focused and no event ever arrives for the new one — an idle or
+  // mid-turn session emits nothing. That combination is what put OpenClaw's
+  // GLM model on a Claude session's detail.
+  const OPENCLAW = makeSession({
+    id: 'openclaw-gateway', agentType: 'openclaw',
+    projectName: 'OpenClaw', modelName: 'GLM-5.2 (1M)', effortLevel: undefined,
+  });
+  const CLAUDE = makeSession({
+    id: 'claude-1', agentType: 'claude-code',
+    projectName: 'AgentDeck', modelName: 'claude-opus-5', state: State.PROCESSING,
+  });
+
+  function managerWithBothSessions(): SessionSlotManager {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([CLAUDE, OPENCLAW]);
+    return manager;
+  }
+
+  it('does not carry the previous session model into the next detail view', () => {
+    const manager = managerWithBothSessions();
+    manager.enterDetailView('openclaw-gateway');
+    manager.updateDetailState(State.IDLE, [], undefined, undefined, undefined, 'GLM-5.2 (1M)');
+    expect(manager.detailModelName).toBe('GLM-5.2 (1M)');
+
+    // Straight to another session's detail, with no state_update in between.
+    manager.exitDetailView();
+    manager.enterDetailView('claude-1');
+
+    expect(manager.detailModelName).toBe('claude-opus-5');
+  });
+
+  it('seeds the detail readout from the session row rather than blanking it', () => {
+    const manager = managerWithBothSessions();
+    manager.enterDetailView('claude-1');
+
+    // INFO renders manager.detailState directly, so a cleared cache would show
+    // DISCONNECTED for a live session.
+    expect(manager.detailState).toBe(State.PROCESSING);
+    expect(manager.detailEffortLevel).toBe('high');
+  });
+
+  it('drops the cached model when re-entering a session that has none', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([
+      OPENCLAW,
+      makeSession({ id: 'unknown-1', modelName: undefined, effortLevel: undefined }),
+    ]);
+    manager.enterDetailView('openclaw-gateway');
+    manager.updateDetailState(State.IDLE, [], undefined, undefined, undefined, 'GLM-5.2 (1M)');
+    manager.enterDetailView('unknown-1');
+
+    expect(manager.detailModelName).toBeUndefined();
+  });
+});

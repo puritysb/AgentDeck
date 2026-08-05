@@ -20,7 +20,8 @@ export interface FocusedDetailSnapshot {
   suggestedPrompt?: string;
 }
 
-function stateFromSession(session: SessionInfo): State {
+/** Exported so the slot manager seeds its own detail cache identically. */
+export function stateFromSession(session: SessionInfo): State {
   const state = session.state;
   if (
     state === State.IDLE
@@ -35,7 +36,14 @@ function stateFromSession(session: SessionInfo): State {
   return session.alive ? State.IDLE : State.DISCONNECTED;
 }
 
-/** Prefer an explicit user focus, then the event's source session. */
+/**
+ * Prefer an explicit user focus, then the event's source session.
+ *
+ * `focusedSessionId` is load-bearing, not a hint: `buildStateEvent` sets no
+ * `sessionId` at all, so a hook-observed session's AWAITING_PERMISSION options
+ * reach the deck attributed only by this field. Narrowing it to `sessionId`
+ * silently drops Allow/Deny routing (bridge/src/__tests__/session-deck-awaiting).
+ */
 function eventSessionId(ev: { sessionId?: string; focusedSessionId?: string }): string | undefined {
   return ev.focusedSessionId || ev.sessionId || undefined;
 }

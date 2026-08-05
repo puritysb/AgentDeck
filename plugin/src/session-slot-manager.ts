@@ -9,6 +9,7 @@ import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits } fro
 import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, usageWindowKind, usageWindowLabel, codexUsageFootnote, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
+import { stateFromSession } from './focused-detail-state.js';
 
 export type SlotView = 'list' | 'detail';
 
@@ -499,6 +500,13 @@ export class SessionSlotManager {
     this._focusedSessionId = sessionId;
     this._view = 'detail';
     this._detailPage = 0;
+    // The `_detail*` fields describe ONE session, so they must not survive a
+    // focus change: some readouts (INFO) render them with no session fallback,
+    // and a state_update for the newly focused session may never arrive — an
+    // idle or mid-turn session emits nothing. That is how the previously
+    // focused row's model kept showing on the next one. Seed from the
+    // sessions_list row, which is per-session by construction.
+    this.seedDetailState(this._sessions.find((s) => s.id === sessionId));
     dlog('SlotMgr', `enterDetailView: ${sessionId}`);
   }
 
@@ -506,10 +514,31 @@ export class SessionSlotManager {
     this._focusedSessionId = null;
     this._view = 'list';
     this._detailPage = 0;
+    this.seedDetailState(undefined);
+    dlog('SlotMgr', `exitDetailView → list`);
+  }
+
+  /**
+   * Reset the session-owned detail cache to what `sessions_list` says about
+   * `session` (or to nothing on the way back to the list). Never carries a field
+   * over from the session that was focused before.
+   */
+  private seedDetailState(session: SessionInfo | undefined): void {
+    this._detailState = session ? stateFromSession(session) : State.DISCONNECTED;
+    this._detailOptions = session?.options ?? [];
+    this._detailTool = session?.currentTool ?? session?.currentTask;
+    this._detailToolInput = undefined;
+    this._detailQuestion = session?.question;
+    this._detailModelName = session?.modelName;
+    this._detailEffortLevel = session?.effortLevel;
+    // sessions_list carries no permission mode, and the previous session's is
+    // worse than none — the MODE card renders its own fallback.
+    this._detailMode = undefined;
+    // A suggestion belongs to a turn, not to a session row — never seed one.
+    this._detailSuggestedPrompt = undefined;
     this._modelSwitching = false;
     this._prevModelName = undefined;
     this._modelSwitchStartedAt = 0;
-    dlog('SlotMgr', `exitDetailView → list`);
   }
 
   nextPage(layout?: DeckLayout): void {

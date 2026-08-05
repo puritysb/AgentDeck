@@ -7,6 +7,13 @@
 import { isOpenClawSessionActive, hasOpenClawSession } from '@agentdeck/shared';
 import type { EnrichedSession } from './session-aggregator.js';
 
+/**
+ * Id of the virtual Gateway session row. Defined here because this injector is
+ * what creates it; import it instead of retyping the literal, which is how a
+ * comparison against it silently stops matching.
+ */
+export const OPENCLAW_SESSION_ID = 'openclaw-gateway';
+
 export interface InjectOpenClawOptions {
   /** SSOT gate — inject only when the Gateway is authenticated. */
   gatewayConnected: boolean;
@@ -30,7 +37,7 @@ export function injectOpenClawSession(
   if (!isOpenClawSessionActive({ gatewayConnected: opts.gatewayConnected })) return sessions;
   if (hasOpenClawSession(sessions)) return sessions;
   const injected: EnrichedSession = {
-    id: 'openclaw-gateway',
+    id: OPENCLAW_SESSION_ID,
     port: 18789,
     projectName: opts.projectName ?? 'OpenClaw',
     agentType: 'openclaw',
