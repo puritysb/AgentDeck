@@ -221,7 +221,7 @@ Review on a clean Mac with only AgentDeck installed. The app starts its own Swif
 
 ## Resolution Center — Guideline 2.1(a) launch indicator reply
 
-Use this response for the 2026-08-04 rejection after replacing `[BUILD]` with the selected build number:
+Use this response for the 2026-08-04 rejection. The correction ships as version 1.0.3, build 4101 rather than as a 1.0.2 resubmission: 1.0.2's replacement build 4002 reached TestFlight, but the same release run left macOS unbuilt and later fixes landed on top of it, so both platforms go out together under the next version:
 
 ```text
 Thank you for identifying this issue. We reproduced the behavior shown in your
@@ -234,7 +234,7 @@ attempt had already finished after 10 seconds, but the screen continued to say
 “Searching for AgentDeck…” and continued animating. This was a UI state bug, not
 a stalled network request.
 
-We corrected the issue in build [BUILD]:
+We corrected the issue in build 4101 (version 1.0.3):
 • The activity indicator is now tied only to the bounded foreground search or an
   active connection attempt.
 • After approximately 10 seconds with no Mac found, the indicator stops and the
@@ -249,7 +249,11 @@ We corrected the issue in build [BUILD]:
 • We added regression coverage for the searching, connecting, permission-denied,
   reconnecting, and completed-empty-search states, plus tests that drive the real
   connection state machine and assert the indicator always stops and always
-  leaves the user an action. Verified on an iPad Air 11-inch (M3) simulator.
+  leaves the user an action. The corrected no-Mac paths were verified on an iPad
+  Air 11-inch simulator running iPadOS 26.5, and the same connection-state change
+  was installed on a physical iPad Air 11-inch (M2) running iPadOS 26.5.2 as build
+  4002, where it connected successfully. Build 4101 carries that identical change
+  along with later fixes to voice capture and Bluetooth display discovery.
 
 To verify on a clean iPad: complete onboarding, allow Local Network access, and
 wait approximately 10 seconds without an AgentDeck Mac on the same Wi-Fi. The
