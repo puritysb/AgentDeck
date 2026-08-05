@@ -2,7 +2,7 @@
 
 AgentDeck's voice assistant uses Apple's **on-device `SFSpeechRecognizer`** (the Speech framework). **Nothing to install** — no whisper.cpp, no model download. macOS and iOS manage the dictation model themselves; AgentDeck piggybacks on whatever the user already granted for system dictation.
 
-**Both daemons use the same engine.** The Swift daemon calls the framework directly; the Node (CLI) daemon reaches it through the bundled Swift helper (`bridge/fm-helper/AgentDeckFMHelper.swift`) that already serves Foundation Models for the APME judge — `{"type":"transcribe","wav":…}` in, `{"text":…}` out, plus `{"type":"speak"}` for replies. The helper ships prebuilt in the npm package and self-compiles with `xcrun swiftc` if it is missing, so there is still nothing for a user to install. Host-microphone capture (not transcription) is the one thing that still wants `sox`; device-sourced audio from an ESP32 board does not.
+**Both daemons use the same engine.** The Swift daemon calls the framework directly; the Node (CLI) daemon reaches it through the bundled Swift helper (`bridge/fm-helper/AgentDeckFMHelper.swift`) that already serves Foundation Models for the APME judge — `{"type":"transcribe","wav":…}` in, `{"text":…}` out, plus `{"type":"record"}` for host push-to-talk capture and `{"type":"speak"}` for replies. The helper ships prebuilt in the npm package and self-compiles with `xcrun swiftc` if it is missing, so there is still nothing for a user to install. Host-microphone capture goes through the same helper (the old `sox` + borrowed-terminal-grant path is gone); device-sourced audio from an ESP32 board needs no capture at all.
 
 The flow:
 
@@ -26,6 +26,10 @@ Two TCC prompts fire the first time you use voice. Both are backed by Info.plist
 | **Speech Recognition access** | "AgentDeck transcribes your voice commands locally using Apple's on-device speech recognition so your audio never leaves this device." | `SFSpeechRecognizer` transcription |
 
 Grant both on first use. You can change the decision later under **System Settings → Privacy & Security → Microphone** and **→ Speech Recognition** (macOS 13+).
+
+**The CLI daemon prompts as its own helper, not as a terminal.** The Node daemon's capture and transcription happen inside `agentdeck-fm-helper`, a single-file binary with no app bundle — so its usage strings are linked into an `__info_plist` section (`bridge/fm-helper/Info.plist`) and the binary is ad-hoc signed with a fixed identifier by `bridge/scripts/build-fm-helper.mjs`. Both are load-bearing: **TCC aborts the process (SIGABRT) instead of returning an error when it needs to prompt for a service the requesting code has no usage description for**, so a plist-less helper does not degrade — it dies, mid-turn, and the deck's VOICE key reports a timeout. The prompts read **AgentDeck Voice Helper**; grant them there.
+
+Because an ad-hoc signature pins the grant to that identifier plus the binary's cdhash, **rebuilding the helper re-prompts** (the same TCC pinning that makes a rebuilt app re-ask for Bluetooth). If a rebuilt helper starts failing instead of asking, clear the stale entries: `tccutil reset Microphone` and `tccutil reset SpeechRecognition`, then press VOICE again.
 
 ---
 
@@ -76,6 +80,7 @@ The wake word system is **independent of the SFSpeech transcription path** — w
 | Wrong language detected | Current locale not supported / model missing | Set current Mac locale to a supported Speech language, or rely on en_US fallback (auto) |
 | Voice cut off at 15 seconds | Hit `maxRecordingDuration` | Press the voice button again for a new turn. Voice commands are designed to be short |
 | Transcript correct but agent doesn't receive | Daemon/bridge not connected | Check the menu bar dashboard — Connection status must be "Connected" before voice sends work |
+| Deck VOICE key does nothing; daemon logs `voice: host PTT failed: … request timed out` or `helper exited (SIGABRT)` | The CLI daemon's `agentdeck-fm-helper` was built without the embedded usage descriptions, so TCC killed it instead of prompting | Rebuild it: `cd bridge && node scripts/build-fm-helper.mjs` (verify with `codesign -dv assets/fm-helper/agentdeck-fm-helper` → `Info.plist entries=4`), restart the daemon, then grant the two **AgentDeck Voice Helper** prompts |
 
 **Logs**: `DaemonVoiceAssistant` writes to the standard AgentDeck log. Search for `[Voice]` entries:
 

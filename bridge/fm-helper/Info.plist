@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Embedded (via `-sectcreate __TEXT __info_plist`) into the single-file
+  agentdeck-fm-helper binary, because TCC refuses to *prompt* for a
+  privacy-sensitive service unless the requesting code carries a usage
+  description — and "refuses" means SIGABRT, not an error return. Without this
+  the helper dies the first time it touches speech recognition or the mic on any
+  machine whose grant is not already on record, which is exactly what happened
+  once a rebuild changed the binary's cdhash and invalidated the old grant.
+
+  The identifier must match the `codesign --identifier` in
+  scripts/build-fm-helper.mjs: TCC keys an ad-hoc signed binary's grant on that
+  identifier, and a mismatch reads as a different app.
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>bound.serendipity.agentdeck.fm-helper</string>
+  <key>CFBundleName</key>
+  <string>AgentDeck Voice Helper</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>AgentDeck records a short push-to-talk clip so your spoken instruction can be transcribed on this Mac and sent to your coding agent.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>AgentDeck transcribes your push-to-talk clip with Apple's on-device recognizer so your spoken instruction can be sent to your coding agent. The audio never leaves this Mac.</string>
+</dict>
+</plist>

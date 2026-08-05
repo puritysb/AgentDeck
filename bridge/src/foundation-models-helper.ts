@@ -1,5 +1,5 @@
 import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'child_process';
-import { chmodSync, existsSync, mkdirSync, statSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync } from 'fs';
 import { dirname, join } from 'path';
 import { homedir, release } from 'os';
 import { fileURLToPath } from 'url';
@@ -74,30 +74,49 @@ function sourceIsNewer(source: string, output: string): boolean {
   }
 }
 
-function compileHelper(source: string, output: string): FoundationModelsHelperStatus {
+function buildScriptPath(): string {
+  return join(packageRoot(), 'scripts', 'build-fm-helper.mjs');
+}
+
+/**
+ * Compile the helper through the packaged build script rather than invoking
+ * swiftc here: the script owns the `__info_plist` embedding and the ad-hoc
+ * signature, and a second copy of those flags would drift into a binary that
+ * TCC kills on the first mic or speech request.
+ */
+function compileHelper(output: string): FoundationModelsHelperStatus {
   try {
     mkdirSync(dirname(output), { recursive: true });
-    const swiftc = execFileSync('/usr/bin/xcrun', ['--find', 'swiftc'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 5_000,
-    }).trim();
-    const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
-    execFileSync(swiftc, [
-      '-parse-as-library',
-      '-target',
-      `${arch}-apple-macos26.0`,
-      source,
-      '-o',
-      output,
-    ], {
+    const script = buildScriptPath();
+    if (!existsSync(script)) {
+      return { available: false, reason: `Foundation Models helper build script missing: ${script}` };
+    }
+    execFileSync(process.execPath, [script, '--out', output], {
       stdio: ['ignore', 'ignore', 'pipe'],
-      timeout: 30_000,
+      timeout: 60_000,
     });
+    if (!isExecutable(output)) {
+      return { available: false, reason: 'Foundation Models helper build produced no binary' };
+    }
     chmodSync(output, 0o755);
     return { available: true, path: output };
   } catch (err) {
     return { available: false, reason: `failed to build Foundation Models helper: ${String(err).slice(0, 160)}` };
+  }
+}
+
+/**
+ * True when the binary carries the usage descriptions TCC demands before it will
+ * prompt for the microphone or speech recognition. A binary built by an older
+ * build script has none, and the failure mode is not a denied request but a
+ * SIGABRT the moment voice is used — so a plist-less bundled binary is worth
+ * rebuilding from source even though it serves the judge path perfectly well.
+ */
+function hasVoiceUsageDescriptions(path: string): boolean {
+  try {
+    return readFileSync(path).includes('NSSpeechRecognitionUsageDescription');
+  } catch {
+    return false;
   }
 }
 
@@ -122,24 +141,33 @@ export function resolveFoundationModelsHelper(): FoundationModelsHelperStatus {
   }
 
   const bundled = bundledHelperPath();
-  if (isExecutable(bundled)) {
+  const bundledUsable = isExecutable(bundled);
+  if (bundledUsable && hasVoiceUsageDescriptions(bundled)) {
     helperPathCache = { available: true, path: bundled };
     return helperPathCache;
   }
 
   const source = sourcePath();
   if (!existsSync(source)) {
-    helperPathCache = { available: false, reason: 'Foundation Models helper source not packaged' };
+    helperPathCache = bundledUsable
+      ? { available: true, path: bundled }
+      : { available: false, reason: 'Foundation Models helper source not packaged' };
     return helperPathCache;
   }
 
   const cached = cachedHelperPath();
-  if (isExecutable(cached) && !sourceIsNewer(source, cached)) {
+  if (isExecutable(cached) && hasVoiceUsageDescriptions(cached) && !sourceIsNewer(source, cached)) {
     helperPathCache = { available: true, path: cached };
     return helperPathCache;
   }
 
-  helperPathCache = compileHelper(source, cached);
+  const compiled = compileHelper(cached);
+  // A bundled binary that predates the plist still runs the judge; keep it as
+  // the degraded fallback rather than losing the helper entirely when this
+  // machine has no Swift toolchain to rebuild with.
+  helperPathCache = compiled.available || !bundledUsable
+    ? compiled
+    : { available: true, path: bundled };
   return helperPathCache;
 }
 
@@ -302,10 +330,16 @@ export async function recordWithHelper(
   opts: { maxMs?: number } = {},
 ): Promise<{ wav: string; durationMs: number; stopReason: string }> {
   const maxMs = Math.min(opts.maxMs ?? RECORD_MAX_MS, 120_000);
-  const response = await requestHelper(
-    { type: 'record', wav: outPath, maxMs },
-    maxMs + 15_000,
-  );
+  let response: Record<string, unknown>;
+  try {
+    response = await requestHelper({ type: 'record', wav: outPath, maxMs }, maxMs + 15_000);
+  } catch (err) {
+    // Peer silence is the signal, not the end of it: the helper allows one
+    // capture at a time, so a timed-out record leaves its slot armed and every
+    // later press answers `busy`. Release it before surfacing the failure.
+    await stopHelperRecording({ cancel: true }).catch(() => false);
+    throw err;
+  }
   if (response.cancelled === true) {
     throw new Error('record_cancelled');
   }
