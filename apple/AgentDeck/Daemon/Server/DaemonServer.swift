@@ -5438,7 +5438,7 @@ final class DaemonServer {
                     Task { @DaemonActor in self.finishHostPtt(text: nil, sessionId: sid) }
                     return
                 }
-                let text = await ptt.end(preferredLocales: [Locale.current, Locale(identifier: "en_US")])
+                let text = await ptt.end(preferredLocales: VoiceSpeechTranscriber.dictationLocales())
                 Task { @DaemonActor in
                     self.finishHostPtt(text: text, sessionId: sid)
                 }
@@ -5495,7 +5495,9 @@ final class DaemonServer {
         guard !sid.isEmpty, sid == armed else { return }
         pttArmedSessionId = nil
         let raw = (entry["detail"] as? String) ?? (entry["raw"] as? String) ?? ""
-        let spoken = Self.speakableReply(raw)
+        // Read the lead, not the transcript — see spokenDigest in
+        // shared/src/voice-reply-digest.ts for why speech and screen differ.
+        let spoken = Self.spokenDigest(raw)
         guard !spoken.isEmpty else {
             DaemonLogger.shared.debug("Voice", "PTT reply held nothing speakable — skipped")
             return
@@ -5513,7 +5515,7 @@ final class DaemonServer {
             options: .regularExpression)
     }
 
-    /// Mirror of `speakableReply` in bridge/src/device-voice-reply.ts: strip
+    /// Mirror of `speakableReply` in shared/src/voice-reply-digest.ts: strip
     /// what makes no sense read aloud (code fences, markdown scaffolding,
     /// bare URLs) and cap at a sentence boundary.
     nonisolated static func speakableReply(_ raw: String, maxChars: Int = 700) -> String {
@@ -5544,6 +5546,122 @@ final class DaemonServer {
             }
         }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Ceiling for the digest — reached only by a single very long sentence.
+    /// Mirror of `SPOKEN_DIGEST_MAX_CHARS`.
+    nonisolated static let spokenDigestMaxChars = 240
+
+    // `nonisolated` because the class is @DaemonActor: a static property would
+    // otherwise inherit that isolation and be unreachable from the nonisolated
+    // text helpers below (which must stay callable off the daemon executor).
+    private nonisolated static let spokenSummaryLabels = [
+        "요약", "한 줄 요약", "한줄 요약", "결론", "정리",
+        "TL;DR", "TLDR", "Summary", "In short", "In summary", "Bottom line",
+    ]
+    private nonisolated static let spokenTerminators: Set<Character> =
+        [".", "!", "?", "。", "！", "？", "…"]
+
+    /// Mirror of `spokenDigest` in shared/src/voice-reply-digest.ts — the one
+    /// thing worth reading aloud out of a full reply: an explicit summary line
+    /// when the answer has one, otherwise its first sentence. A written answer
+    /// and a spoken one are different artifacts; the listener cannot skim.
+    ///
+    /// Parity is asserted against that file's `SPOKEN_DIGEST_CASES` in
+    /// `SpokenDigestParityTests` — add a case in both places or they drift.
+    nonisolated static func spokenDigest(
+        _ raw: String,
+        maxChars: Int = spokenDigestMaxChars,
+        full: Bool = false
+    ) -> String {
+        let readable = speakableReply(raw, maxChars: full ? 700 : Int.max)
+        if readable.isEmpty { return "" }
+        if full { return readable }
+
+        let lines = readable.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        var unit = ""
+        for (index, line) in lines.enumerated() {
+            guard let summary = spokenSummaryOnLine(line) else { continue }
+            unit = summary.isEmpty ? (index + 1 < lines.count ? lines[index + 1] : "") : summary
+            if !unit.isEmpty { break }
+        }
+
+        if unit.isEmpty {
+            // Skip a leading section label ("원인", "Result") when prose follows
+            // it: reading a heading alone tells the listener nothing.
+            var start = 0
+            while start < lines.count - 1
+                    && !spokenHasTerminator(lines[start])
+                    && lines[start].count <= 24 {
+                start += 1
+            }
+            unit = spokenFirstSentence(start < lines.count ? lines[start] : "")
+        }
+
+        unit = unit.trimmingCharacters(in: .whitespacesAndNewlines)
+        if unit.isEmpty { return "" }
+        if unit.count <= maxChars { return unit }
+        // A single sentence over the cap: cut on a word boundary, not mid-word.
+        let head = String(unit.prefix(maxChars))
+        if let space = head.lastIndex(of: " "),
+           head.distance(from: head.startIndex, to: space) > Int(Double(maxChars) * 0.6) {
+            return String(head[..<space]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return head.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The summary a line declares, or nil. A bare label line yields "" so the
+    /// caller takes the line after it.
+    private nonisolated static func spokenSummaryOnLine(_ line: String) -> String? {
+        let lower = line.lowercased()
+        for label in spokenSummaryLabels {
+            guard lower.hasPrefix(label.lowercased()) else { continue }
+            let afterLabel = String(line.dropFirst(label.count))
+            let separatorStripped = afterLabel.replacingOccurrences(
+                of: "^\\s*[:：\\-—–.]\\s*", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+            let plain = afterLabel.trimmingCharacters(in: .whitespaces)
+            // "Summarywise …" and "요약 대신 …" are prose, not labels; require a
+            // separator (or end of line) before taking the remainder.
+            if separatorStripped == plain, !separatorStripped.isEmpty,
+               let first = separatorStripped.first,
+               first.isLetter || first.isNumber || first == "_" {
+                continue
+            }
+            return separatorStripped
+        }
+        return nil
+    }
+
+    /// True when a line ends a sentence — the cheap test for "prose, not a heading".
+    private nonisolated static func spokenHasTerminator(_ line: String) -> Bool {
+        return line.contains { spokenTerminators.contains($0) }
+    }
+
+    /// The first sentence of `text`, or all of it when it has no terminator.
+    private nonisolated static func spokenFirstSentence(_ text: String) -> String {
+        let chars = Array(text)
+        for index in chars.indices {
+            guard spokenTerminators.contains(chars[index]) else { continue }
+            let next: Character? = index + 1 < chars.count ? chars[index + 1] : nil
+            let previous: Character? = index > 0 ? chars[index - 1] : nil
+            // "1.0" and "v1.2.3" are not sentence ends.
+            if chars[index] == ".", let previous, previous.isNumber,
+               let next, next.isNumber {
+                continue
+            }
+            guard let next else { return String(chars[0..<(index + 1)]) }
+            if next.isWhitespace || "\"'”’)]".contains(next) {
+                // Run out repeated terminators ("!?", "...") so they stay together.
+                var end = index + 1
+                while end < chars.count && spokenTerminators.contains(chars[end]) { end += 1 }
+                return String(chars[0..<end])
+            }
+        }
+        return text
     }
 
     private func handleObservedClaudeCommand(sessionId: String, command: [String: Any]) {

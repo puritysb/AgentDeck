@@ -229,7 +229,7 @@ final class DaemonVoiceAssistant {
         }
         return await VoiceSpeechTranscriber.transcribe(
             url: url,
-            preferredLocales: [Locale.current, Locale(identifier: "en_US")]
+            preferredLocales: VoiceSpeechTranscriber.dictationLocales()
         )
     }
 
@@ -293,6 +293,16 @@ enum VoiceSpeechTranscriber {
             DaemonLogger.shared.debug("Voice", "Speech recognizer unavailable — on-device model may still be downloading")
             return nil
         }
+        // Which recognizer actually got the audio. Worth a line permanently: a
+        // wrong-locale recognizer and audio the service could not read both fail
+        // as kAFAssistantErrorDomain 1110 "No speech detected", so without this
+        // the two are indistinguishable from the log.
+        DaemonLogger.shared.debug(
+            "Voice",
+            "SFSpeech recognizer locale=\(recognizer.locale.identifier)"
+                + " onDevice=\(recognizer.supportsOnDeviceRecognition)"
+                + " asked=\(preferredLocales.map(\.identifier).joined(separator: ","))"
+                + " file=\(url.path)")
 
         let request = SFSpeechURLRecognitionRequest(url: url)
         request.shouldReportPartialResults = false
@@ -327,11 +337,82 @@ enum VoiceSpeechTranscriber {
 
     private static func makeSpeechRecognizer(preferredLocales: [Locale]) -> SFSpeechRecognizer? {
         for locale in preferredLocales {
-            if let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable {
+            guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
+                continue
+            }
+            // `SFSpeechRecognizer(locale:)` accepts an unsupported tag and quietly
+            // resolves to something else, so taking whatever comes back makes the
+            // fallback order meaningless — and mis-transcribes in silence rather
+            // than failing. Only accept a recognizer that speaks the language we
+            // asked for; a region swap (ko-KR → ko) is fine.
+            if languageMatches(requested: locale.identifier, resolved: recognizer.locale.identifier) {
                 return recognizer
             }
         }
         return SFSpeechRecognizer()
+    }
+
+    /// Locales to try for dictation, best first.
+    ///
+    /// Deliberately NOT `Locale.current`: for an *app* that is the intersection of
+    /// the user's preferred languages with the **bundle's** localizations, so a
+    /// Korean user of an English-only app resolves to `en_KR` — and an `en_KR`
+    /// recognizer reports Korean speech as kAFAssistantErrorDomain 1110
+    /// "No speech detected", which is indistinguishable from a dead microphone.
+    /// Dictation has to follow what the user speaks, not what this bundle happens
+    /// to be translated into. Mirrors the Node daemon, which passes
+    /// `voice.locale` from settings.json to the bundled helper.
+    static func dictationLocales() -> [Locale] {
+        speechLocaleCandidates(
+            settingsLocale: settingsVoiceLocale(),
+            preferredLanguages: Locale.preferredLanguages,
+            currentIdentifier: Locale.current.identifier
+        ).map { Locale(identifier: $0) }
+    }
+
+    /// Pure ordering rule behind `dictationLocales()`, split out so it can be
+    /// tested without a bundle or a settings file.
+    static func speechLocaleCandidates(
+        settingsLocale: String?,
+        preferredLanguages: [String],
+        currentIdentifier: String
+    ) -> [String] {
+        var out: [String] = []
+        func add(_ raw: String?) {
+            guard let raw, !raw.isEmpty else { return }
+            // BCP-47 is what SFSpeechRecognizer speaks; Foundation hands out
+            // POSIX-style identifiers ("ko_KR").
+            let tag = raw.replacingOccurrences(of: "_", with: "-")
+            guard !out.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else { return }
+            out.append(tag)
+        }
+        add(settingsLocale)
+        for language in preferredLanguages { add(language) }
+        add(currentIdentifier)
+        add("en-US")
+        return out
+    }
+
+    /// True when a resolved recognizer speaks the language that was requested.
+    static func languageMatches(requested: String, resolved: String) -> Bool {
+        func language(_ tag: String) -> String {
+            tag.replacingOccurrences(of: "_", with: "-")
+                .split(separator: "-").first?.lowercased() ?? ""
+        }
+        return language(requested) == language(resolved)
+    }
+
+    /// `voice.locale` from settings.json (BCP-47), the explicit override shared
+    /// with the Node daemon.
+    private static func settingsVoiceLocale() -> String? {
+        guard let data = try? Data(contentsOf: AgentDeckPaths.settingsJson),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let voice = root["voice"] as? [String: Any],
+              let tag = voice["locale"] as? String,
+              !tag.isEmpty else {
+            return nil
+        }
+        return tag
     }
 }
 

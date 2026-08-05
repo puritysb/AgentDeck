@@ -20,6 +20,13 @@
 
 import { rawSessionId } from '@agentdeck/shared';
 
+// What to read aloud is a two-daemon rule, so it lives in shared/ with the
+// Swift mirror pinned to the same parity cases. Re-exported here because every
+// existing caller reaches for it through this module.
+export {
+  MAX_SPOKEN_CHARS, SPOKEN_DIGEST_MAX_CHARS, speakableReply, spokenDigest,
+} from '@agentdeck/shared';
+
 export interface ReplySink {
   /** Send a JSON control frame. */
   send(data: string): void;
@@ -50,9 +57,6 @@ export interface ArmedReply {
  *  frame is inaudible, large enough that framing overhead stays negligible. */
 export const PCM_FRAME_BYTES = 1024;
 
-/** A spoken reply past this is a monologue, not an answer. Truncated at a
- *  sentence boundary when one is near the cap. */
-export const MAX_SPOKEN_CHARS = 700;
 
 /**
  * How long an arming survives *without the session making progress*. Measured
@@ -61,38 +65,6 @@ export const MAX_SPOKEN_CHARS = 700;
  * that went quiet has moved on and speaking then is worse than silence.
  */
 export const REPLY_ARM_TTL_MS = 10 * 60 * 1000;
-
-/**
- * Strip the parts of an assistant reply that make no sense read aloud (code
- * fences, markdown scaffolding, bare URLs) and cap the length. Returns an empty
- * string when nothing speakable is left — a reply that was only a diff should
- * play nothing rather than spell out punctuation.
- */
-export function speakableReply(raw: string, maxChars = MAX_SPOKEN_CHARS): string {
-  if (!raw) return '';
-  let text = raw
-    // Fenced blocks read as noise; say so once instead of reciting them.
-    .replace(/```[\s\S]*?```/g, ' (code) ')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/https?:\/\/\S+/g, ' link ')
-    .replace(/^\s*(?:#{1,6}|>|[*\-+])\s+/gm, '')
-    .replace(/\*\*|__|~~/g, '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{2,}/g, '\n')
-    .trim();
-  if (!text) return '';
-  if (text.length > maxChars) {
-    const head = text.slice(0, maxChars);
-    // Prefer ending on a sentence so the cut doesn't sound like a dropout.
-    const lastStop = Math.max(
-      head.lastIndexOf('. '), head.lastIndexOf('。'),
-      head.lastIndexOf('! '), head.lastIndexOf('? '), head.lastIndexOf('다.'),
-    );
-    text = lastStop > maxChars * 0.5 ? head.slice(0, lastStop + 1) : head;
-  }
-  return text.trim();
-}
 
 /**
  * Extract PCM samples from a canonical RIFF/WAVE file by walking the chunk

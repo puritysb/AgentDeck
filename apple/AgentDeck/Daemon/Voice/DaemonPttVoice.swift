@@ -18,10 +18,118 @@ import Foundation
 import AVFoundation
 import Speech
 
+/**
+ Receives tap buffers from AVFAudio's realtime thread and writes them to disk.
+
+ Declared at file scope and deliberately NOT actor-isolated. A closure written
+ inside an isolated method inherits that isolation *statically*, and when Swift
+ has to hand it to a non-isolated API it compiles an executor assertion into the
+ closure's entry. AVFAudio invokes an installTap block on its own realtime queue
+ (`RealtimeMessenger.mServiceQueue`), so that assertion fired the instant
+ recording started and took the whole app down with SIGTRAP in
+ `dispatch_assert_queue`. Hopping to the actor *inside* the block does not help —
+ the check runs before the first statement. Same family as the
+ `@convention(c)` rule in CLAUDE.md: a callback that a foreign thread invokes
+ must be built where no isolation can attach to it.
+ */
+private final class PttFileSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var file: AVAudioFile?
+    private var failure: String?
+
+    init(file: AVAudioFile) { self.file = file }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        lock.lock(); defer { lock.unlock() }
+        guard let file else { return }
+        do {
+            try file.write(from: buffer)
+        } catch {
+            // Keep the first failure only: a broken file fails every buffer, and
+            // 4096-frame buffers would flood the log at ~12 Hz.
+            if failure == nil { failure = error.localizedDescription }
+        }
+    }
+
+    /// Stop accepting buffers and release the file so it finalizes on disk.
+    func close() -> String? {
+        lock.lock(); defer { lock.unlock() }
+        file = nil
+        return failure
+    }
+}
+
+/**
+ Loudest sample in a captured buffer, 0…1.
+
+ A silent capture and a failed recognizer are indistinguishable in the log
+ otherwise — both end as "No speech detected" — so the level is worth one line
+ before the file is deleted. Handles the two layouts an input node hands over:
+ float32 (the usual) and int16.
+ */
+private func pttPeakAmplitude(_ buffer: AVAudioPCMBuffer) -> Float {
+    let frames = Int(buffer.frameLength)
+    guard frames > 0 else { return 0 }
+    let channels = Int(buffer.format.channelCount)
+    var peak: Float = 0
+    if let float = buffer.floatChannelData {
+        for ch in 0..<channels {
+            let data = float[ch]
+            for i in 0..<frames { peak = max(peak, abs(data[i])) }
+        }
+    } else if let int16 = buffer.int16ChannelData {
+        for ch in 0..<channels {
+            let data = int16[ch]
+            for i in 0..<frames { peak = max(peak, abs(Float(data[i]) / 32768)) }
+        }
+    }
+    return peak
+}
+
+/// Average level of a captured buffer, 0…1. Peak alone cannot tell a single
+/// click apart from someone talking; RMS moving with the peak is what says the
+/// buffer really holds speech.
+private func pttRMSAmplitude(_ buffer: AVAudioPCMBuffer) -> Float {
+    let frames = Int(buffer.frameLength)
+    guard frames > 0 else { return 0 }
+    let channels = Int(buffer.format.channelCount)
+    var sum: Double = 0
+    var counted = 0
+    if let float = buffer.floatChannelData {
+        for ch in 0..<channels {
+            let data = float[ch]
+            for i in 0..<frames { sum += Double(data[i] * data[i]) }
+            counted += frames
+        }
+    } else if let int16 = buffer.int16ChannelData {
+        for ch in 0..<channels {
+            let data = int16[ch]
+            for i in 0..<frames {
+                let v = Double(data[i]) / 32768
+                sum += v * v
+            }
+            counted += frames
+        }
+    }
+    return counted > 0 ? Float((sum / Double(counted)).squareRoot()) : 0
+}
+
+/// Installs the capture tap from a non-isolated context — see `PttFileSink` for
+/// why this cannot be written inline inside `begin()`.
+private func installPttTap(
+    on input: AVAudioInputNode,
+    format: AVAudioFormat,
+    sink: PttFileSink
+) {
+    input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+        sink.append(buffer)
+    }
+}
+
 @MainActor
 final class DaemonPttVoice {
     private var engine: AVAudioEngine?
-    private var file: AVAudioFile?
+    private var sink: PttFileSink?
     private var url: URL?
     private var maxTimer: Task<Void, Never>?
     private let synthesizer = AVSpeechSynthesizer()
@@ -64,24 +172,17 @@ final class DaemonPttVoice {
         // every write throw).
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("agentdeck-ptt-\(UUID().uuidString).caf")
+        let sink: PttFileSink
         do {
-            file = try AVAudioFile(forWriting: url, settings: format.settings)
+            sink = PttFileSink(file: try AVAudioFile(forWriting: url, settings: format.settings))
         } catch {
             DaemonLogger.shared.error("PTT: audio file create failed: \(error)")
             return "record_failed"
         }
         self.url = url
+        self.sink = sink
 
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            // The tap runs on a realtime audio queue; hop to the actor that
-            // owns `file` instead of writing from the callback thread.
-            Task { @MainActor in
-                guard let self, self.engine != nil else { return }
-                do { try self.file?.write(from: buffer) } catch {
-                    DaemonLogger.shared.debug("Voice", "PTT buffer write failed: \(error.localizedDescription)")
-                }
-            }
-        }
+        installPttTap(on: input, format: format, sink: sink)
 
         do {
             try engine.start()
@@ -115,6 +216,7 @@ final class DaemonPttVoice {
             DaemonLogger.shared.debug("Voice", "PTT capture too small (\(size)B)")
             return nil
         }
+        logCaptureLevel(url)
         guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
             DaemonLogger.shared.debug("Voice", "PTT: speech recognition not authorized")
             return nil
@@ -139,6 +241,44 @@ final class DaemonPttVoice {
         synthesizer.speak(utterance)
     }
 
+    /// One line saying how much audio, at what level, actually reached the file.
+    /// Cheap, and it is the difference between "your mic is muted" and "the
+    /// recognizer could not make it out" — which the SFSpeech error alone hides.
+    private func logCaptureLevel(_ url: URL) {
+        guard let probe = try? AVAudioFile(forReading: url) else {
+            DaemonLogger.shared.debug("Voice", "PTT capture unreadable for level probe")
+            return
+        }
+        let rate = probe.processingFormat.sampleRate
+        let seconds = rate > 0 ? Double(probe.length) / rate : 0
+        let frames = AVAudioFrameCount(min(probe.length, Int64(rate * 30)))
+        guard frames > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: probe.processingFormat, frameCapacity: frames),
+              (try? probe.read(into: buffer)) != nil else {
+            DaemonLogger.shared.debug("Voice", "PTT capture \(String(format: "%.1f", seconds))s — level unavailable")
+            return
+        }
+        let peak = pttPeakAmplitude(buffer)
+        let fmt = probe.processingFormat
+        DaemonLogger.shared.debug(
+            "Voice",
+            "PTT capture \(String(format: "%.1f", seconds))s peak=\(String(format: "%.4f", peak))"
+                + " rms=\(String(format: "%.4f", pttRMSAmplitude(buffer)))"
+                + " fmt=\(Int(fmt.sampleRate))Hz/\(fmt.channelCount)ch/"
+                + (fmt.commonFormat == .pcmFormatFloat32 ? "f32" : "\(fmt.commonFormat.rawValue)")
+                + (peak < 0.01 ? " — effectively silent" : ""))
+
+        // Debug-only: keep the capture so its waveform can be inspected when the
+        // recognizer keeps reporting no speech. Off unless explicitly asked for —
+        // retaining dictation audio is not a default anyone opted into.
+        if ProcessInfo.processInfo.environment["AGENTDECK_KEEP_PTT_CAPTURE"] == "1" {
+            let kept = url.deletingLastPathComponent().appendingPathComponent("agentdeck-ptt-last.caf")
+            try? FileManager.default.removeItem(at: kept)
+            try? FileManager.default.copyItem(at: url, to: kept)
+            DaemonLogger.shared.debug("Voice", "PTT capture kept at \(kept.path)")
+        }
+    }
+
     private func stopEngine() {
         maxTimer?.cancel()
         maxTimer = nil
@@ -146,13 +286,19 @@ final class DaemonPttVoice {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         self.engine = nil
-        self.file = nil
+        // Closing after the tap is removed guarantees no buffer is in flight,
+        // and surfaces a write failure that was invisible on the audio thread.
+        if let failure = sink?.close() {
+            DaemonLogger.shared.debug("Voice", "PTT buffer write failed: \(failure)")
+        }
+        sink = nil
     }
 
     private func cleanupFile() {
         if let url { try? FileManager.default.removeItem(at: url) }
         url = nil
-        file = nil
+        _ = sink?.close()
+        sink = nil
     }
 }
 #endif

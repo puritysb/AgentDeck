@@ -116,9 +116,9 @@ import {
   lastAssistantTextForSession,
 } from './session-transcript-timeline.js';
 import {
-  DeviceVoiceReplyRouter, speakableReply, pcmFromWav, type ReplySink,
+  DeviceVoiceReplyRouter, speakableReply, spokenDigest, pcmFromWav, type ReplySink,
 } from './device-voice-reply.js';
-import { rawSessionId } from '@agentdeck/shared';
+import { rawSessionId, type StateSnapshot } from '@agentdeck/shared';
 import { lastAgentMessageFromCodexRollout } from './codex-rollout-response.js';
 import { callFoundationModelsHelper } from './foundation-models-helper.js';
 import {
@@ -134,7 +134,7 @@ import { getConnectedAdbDevices, hasAdb, getAdbDeviceCount } from './adb-reverse
 import { getPixooDeviceDetails, pixooDeviceCount } from './pixoo/pixoo-bridge.js';
 import { loadTimeboxDevices } from './timebox/timebox-settings.js';
 import { getLanIp, stripUnsafeText, cleanRawText, prepareMarkdownDetail, normalizeCommandPrompt, formatDurationSec, type TimelineEntry, PluginCommand } from '@agentdeck/shared';
-import { injectOpenClawSession } from './openclaw-session.js';
+import { injectOpenClawSession, OPENCLAW_SESSION_ID } from './openclaw-session.js';
 import {
   buildCardFeed, buildGlance, applyOutboxDecisions, FeedPullTracker, formatFeedPull,
   normalizeClientIp, parsePullTelemetry,
@@ -1142,6 +1142,23 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // `gatewaySessionState` / `gatewayModelName` dedicated fields.
   let gatewaySessionState = 'idle';
   let gatewayModelName: string | undefined;
+
+  /**
+   * Snapshot for an `openclaw` state event: the global machine with the
+   * Gateway-local model pinned back on.
+   *
+   * The Gateway's `model_info` no longer writes `core.stateMachine` (see the
+   * parser branch): that machine is fed by every observed Claude/Codex/OpenCode
+   * hook, and the hub stamps its broadcasts with the user's focused session —
+   * so a model written there by a *different* agent is read as the focused
+   * session's own. That is how `GLM-5.2 (1M)` appeared as the model of a Claude
+   * session on both decks. Keeping the model out of the shared slot means the
+   * Gateway's own events have to carry it explicitly, which is what this does.
+   */
+  const gatewaySnapshot = (base?: StateSnapshot): StateSnapshot => ({
+    ...(base ?? core.stateMachine.getSnapshot()),
+    modelName: gatewayModelName ?? null,
+  });
 
   // Wi-Fi WebSocket e-ink panels (XTeink X3/X4 CrossPoint fork) self-register
   // their device roster via `client_register{clientType:"eink-device"}` — the
@@ -2593,11 +2610,51 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   core.wireDisplayMonitor();
   let lastStateEvent: BridgeEvent | null = null;
   let userFocusedSessionId: string | null = null;
+  /**
+   * Stamp the focused session onto a hub `state_update`.
+   *
+   * This field carries two jobs, and both are load-bearing, which is why it
+   * cannot simply be narrowed:
+   *  - attribution: `buildStateEvent` sets no `sessionId` at all, so a
+   *    hook-observed session's AWAITING_PERMISSION options reach the decks
+   *    attributed only by this field (see session-deck-awaiting tests).
+   *  - focus ack: the Apple app toggles creature focus against it and needs it
+   *    even for a session that emits nothing of its own.
+   *
+   * The consequence is a standing invariant on the payload: whatever rides along
+   * here is read as the focused session's own. So nothing may write a *different*
+   * agent's per-session field into `core.stateMachine` — the Gateway's model went
+   * in and came out as a Claude session's model. Gateway-specific state lives in
+   * `gatewaySessionState` / `gatewayModelName` and is re-attached by
+   * `gatewaySnapshot()`.
+   */
   const attachFocusedSessionId = <T extends BridgeEvent>(event: T): T => {
     if ((event as any).type !== 'state_update') return event;
     return {
       ...(event as any),
       focusedSessionId: userFocusedSessionId ?? '',
+    } as T;
+  };
+
+  /**
+   * Stamp a *Gateway-specific* state event — one whose payload really is the
+   * Gateway's (its parser events, its connection transitions), as opposed to the
+   * hub broadcasts above that merely get labelled `openclaw` while the Gateway is
+   * alive.
+   *
+   * These name their own row (`sessionId`), which is the honest attribution and
+   * the reason a client never has to guess: an event carrying the Gateway's model
+   * now says so. The focus ack rides only when the Gateway IS the focused row —
+   * otherwise this event would claim to describe a Claude session, which is
+   * precisely how `GLM-5.2 (1M)` became that session's model on both decks. The
+   * ack still reaches the Apple app through every hub broadcast.
+   */
+  const attachGatewayEvent = <T extends BridgeEvent>(event: T): T => {
+    if ((event as any).type !== 'state_update') return event;
+    return {
+      ...(event as any),
+      sessionId: OPENCLAW_SESSION_ID,
+      focusedSessionId: userFocusedSessionId === OPENCLAW_SESSION_ID ? OPENCLAW_SESSION_ID : '',
     } as T;
   };
   const broadcastFocusedState = () => {
@@ -3062,7 +3119,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           else if (evt.event === 'SessionEnd') core.stateMachine.handleHookEvent('SessionEnd', {});
           break;
         case 'parser':
-          core.stateMachine.handleParserEvent(evt.event, evt.data);
+          // `model_info` is deliberately NOT forwarded: the global machine holds
+          // one modelName for the whole hub, fed by every observed hook session,
+          // and its broadcasts are stamped with the user's focused session — so a
+          // model written here by the Gateway is read as that session's own
+          // (GLM on a Claude row). It lives in `gatewayModelName` instead, and
+          // `gatewaySnapshot()` puts it back on the Gateway's own events.
+          if (evt.event !== 'model_info') core.stateMachine.handleParserEvent(evt.event, evt.data);
           // Gateway-local activity state for the virtual session row (mirror of
           // Swift `gatewaySessionState`). Kept separate from the global
           // `core.stateMachine` above so the OpenClaw row reflects only the
@@ -3087,10 +3150,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             if (models) {
               core.cachedModelCatalog = models;
               const snap = core.stateMachine.getSnapshot();
-              const stateEvent = attachFocusedSessionId(core.buildStateEvent({
+              const stateEvent = attachGatewayEvent(core.buildStateEvent({
                 agentType: 'openclaw',
                 agentCapabilities: OPENCLAW_CAPABILITIES,
-                snapshot: snap,
+                snapshot: gatewaySnapshot(snap),
               }));
               lastStateEvent = stateEvent;
               core.broadcast(stateEvent);
@@ -3139,10 +3202,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             }
             // Force full state broadcast
             const snap = core.stateMachine.getSnapshot();
-            const gwStateEvent = attachFocusedSessionId(core.buildStateEvent({
+            const gwStateEvent = attachGatewayEvent(core.buildStateEvent({
               agentType: 'openclaw',
               agentCapabilities: OPENCLAW_CAPABILITIES,
-              snapshot: snap,
+              snapshot: gatewaySnapshot(snap),
             }));
             lastStateEvent = gwStateEvent;
             core.wsServer.broadcast(gwStateEvent);
@@ -3546,10 +3609,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       if (target === 'openclaw' && gatewayAdapter?.isAlive()) {
         // Force broadcast OpenClaw state to all clients
         const snap = core.stateMachine.getSnapshot();
-        const gwStateEvent = attachFocusedSessionId(core.buildStateEvent({
+        const gwStateEvent = attachGatewayEvent(core.buildStateEvent({
           agentType: 'openclaw',
           agentCapabilities: OPENCLAW_CAPABILITIES,
-          snapshot: snap,
+          snapshot: gatewaySnapshot(snap),
         }));
         lastStateEvent = gwStateEvent;
         core.wsServer.broadcast(gwStateEvent);
@@ -3895,9 +3958,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     log(`[agentdeck] voice: reply ready for ${sessionId.slice(0, 32)}`
       + ` -> ${targets.length} board(s)`);
     const voiceCfg = loadDaemonSettings().voice as
-      { locale?: unknown; speakReplies?: unknown } | undefined;
+      { locale?: unknown; speakReplies?: unknown; speakFullReply?: unknown } | undefined;
     if (voiceCfg?.speakReplies === false) return;  // opt-out, default on
-    const spoken = speakableReply(text);
+    // Speech gets the lead, not the transcript: an explicit summary line if the
+    // answer has one, else its first sentence. The full answer is already on the
+    // screen the user is sitting at, where it can be skimmed — read aloud it is
+    // a minute of monologue nobody can skip. `voice.speakFullReply` opts back in.
+    const full = voiceCfg?.speakFullReply === true;
+    const spoken = spokenDigest(text, { full });
+    if (!full) {
+      const readable = speakableReply(text, Number.MAX_SAFE_INTEGER);
+      if (spoken && readable.length > spoken.length) {
+        log(`[agentdeck] voice: reply digested ${readable.length} -> ${spoken.length} chars`);
+      }
+    }
     if (!spoken) {
       // A code-only answer has nothing worth reading aloud; say that instead of
       // spelling out punctuation, so the user still knows the turn finished.

@@ -4,6 +4,7 @@ export * from './gateway-protocol.js';
 export * from './command-builders.js';
 export * from './adapter.js';
 export * from './voice-paths.js';
+export * from './voice-reply-digest.js';
 export * from './net-utils.js';
 export * from './timeline.js';
 export * from './subagent-activity.js';
