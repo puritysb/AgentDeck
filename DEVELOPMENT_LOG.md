@@ -44,6 +44,13 @@ rateLimitReachedType "rate_limit_reached", spendControlReached false
   프로토콜 변경 전부 "null 반환"으로 수렴하고 절대 reject하지 않는다.
 - **프로토콜은 안 건드렸다.** `rateLimitReachedType`은 매력적이지만 포화는 이미 `usedPercent: 100`이
   전달한다. 새 wire 필드는 Swift/Kotlin 미러 + drift gate 비용을 부르므로 값이 확실할 때만.
+- **후속(같은 날): Windows에서는 애초에 스폰이 안 됐다.** Windows의 Codex CLI는 `codex.cmd`인데
+  CVE-2024-27980 수정 이후(Node 18.20.2/20.12.2+, 이 repo의 Node ≥22는 전부 해당) `spawn`은
+  `shell: true` 없는 `.cmd`/`.bat`를 EINVAL로 거부한다. 미스가 "Codex 미설치"와 구분되지 않는
+  설계라 **조용히 30분 백오프로 수렴**했다 — 우아한 실패가 진단을 삼킨 사례. `codexSpawnPlan()`
+  으로 분기를 순수 함수로 빼서 CI 플랫폼에서도 테스트한다. shell 경유 시 자식은 cmd.exe이고 실제
+  서버는 손자라, 종료할 때 `taskkill /T`로 트리를 함께 죽이지 않으면 5분마다 Codex 프로세스가
+  하나씩 고아로 남는다. Windows 실기 검증은 아직 없다.
 
 ---
 
