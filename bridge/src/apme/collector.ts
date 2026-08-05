@@ -77,6 +77,17 @@ interface ActiveTask {
   timelineEmitted: boolean;
 }
 
+/** Where a trajectory event attaches. `turnIndex` is the run-scoped ordering key
+ *  the dedup hash is built from; `turnId` is the event→turn edge a graph
+ *  projection follows directly, and is optional only because a few late events
+ *  arrive with no turn in scope at all. */
+interface SampleCtx {
+  taskId: string;
+  runId: string;
+  turnIndex: number;
+  turnId?: string | undefined;
+}
+
 export type TaskBoundarySignal = 'todo_complete' | 'clear' | 'session_end' | 'manual' | 'idle_gap';
 
 /** Callback fired after a task is closed in DB. Used to enqueue task-level eval
@@ -292,7 +303,7 @@ export class ApmeCollector {
       // Sample trajectory: the user message opens the turn's typed event log.
       if (task) {
         this.appendSampleEvent(
-          { taskId: task.id, runId, turnIndex },
+          { taskId: task.id, runId, turnIndex, turnId },
           { kind: 'user_message', ts: turn.startedAt, dedupCore: hashCore(prompt ?? `turn${turnIndex}`), payloadObj: { text: prompt ?? '' } },
         );
       }
@@ -315,7 +326,7 @@ export class ApmeCollector {
       const task = this.sessionToTask.get(sessionId);
       if (task && toolName) {
         this.appendSampleEvent(
-          { taskId: task.id, runId, turnIndex: activeTurn.index },
+          { taskId: task.id, runId, turnIndex: activeTurn.index, turnId: activeTurn.id },
           {
             kind: 'tool', toolName, toolStatus: 'pending',
             dedupCore: `${toolName}:${activeTurn.toolCalls}`,
@@ -349,7 +360,7 @@ export class ApmeCollector {
           // No pending row (PostToolUse without a matching PreToolUse) — record
           // a resolved tool event directly.
           this.appendSampleEvent(
-            { taskId: task.id, runId, turnIndex },
+            { taskId: task.id, runId, turnIndex, turnId: this.turnIdFor(sessionId) },
             {
               kind: 'tool', toolName,
               toolStatus: isError ? 'error' : 'success',
@@ -377,7 +388,7 @@ export class ApmeCollector {
         const turnIndex = this.sessionToTurn.get(sessionId)?.index;
         if (task && turnIndex !== undefined) {
           this.appendSampleEvent(
-            { taskId: task.id, runId, turnIndex },
+            { taskId: task.id, runId, turnIndex, turnId: this.turnIdFor(sessionId) },
             { kind: 'state', dedupCore: `todos_complete:${turnIndex}:${todos.length}`, payloadObj: { state: 'todos_completed', count: todos.length } },
           );
           this.fireTaskMilestone(sessionId, task.id, runId, turnIndex, todos.length);
@@ -651,6 +662,16 @@ export class ApmeCollector {
     return this.sessionToRun.get(sessionId) ?? null;
   }
 
+  /** True while this collector still owns `runId` — some session maps to it and
+   *  will close it normally. The abandoned-run reaper consults this before
+   *  finalizing anything: an inactivity window alone would reap a live session
+   *  whose user simply stepped away mid-turn, and the row would then be closed
+   *  underneath the collector that is still writing to it. */
+  isLiveRun(runId: string): boolean {
+    for (const id of this.sessionToRun.values()) if (id === runId) return true;
+    return false;
+  }
+
   /** Agent type established for a session at `openRun` (survives closeRun so a
    *  late-attributed timeline row still resolves its brand). This is the single
    *  authoritative agentType source the timeline attributor backfills from, so
@@ -668,7 +689,7 @@ export class ApmeCollector {
   private sampleCtxForTurn(
     sessionId: string,
     turnId?: string,
-  ): { taskId: string; runId: string; turnIndex: number } | null {
+  ): SampleCtx | null {
     const active = this.sessionToTask.get(sessionId);
     if (turnId) {
       const row = this.store.getTurn(turnId);
@@ -676,13 +697,20 @@ export class ApmeCollector {
       const runId = (row?.run_id as string | undefined) ?? active?.runId;
       const turnIndex = (row?.turn_index as number | undefined)
         ?? this.sessionToTurn.get(sessionId)?.index ?? active?.lastTurnIndex ?? 0;
-      if (taskId && runId) return { taskId, runId, turnIndex };
+      if (taskId && runId) return { taskId, runId, turnIndex, turnId };
     }
     if (active) {
       const turnIndex = this.sessionToTurn.get(sessionId)?.index ?? active.lastTurnIndex ?? 0;
-      return { taskId: active.id, runId: active.runId, turnIndex };
+      return { taskId: active.id, runId: active.runId, turnIndex, turnId: this.sessionToTurn.get(sessionId)?.id };
     }
     return null;
+  }
+
+  /** The active turn's id, for stamping the event→turn edge on sample rows.
+   *  Falls back to the last closed turn so a trailing event (a PostToolUse that
+   *  lands after the turn rotated) still carries an edge instead of a null. */
+  private turnIdFor(sessionId: string): string | undefined {
+    return this.sessionToTurn.get(sessionId)?.id ?? this.sessionToLastTurnId.get(sessionId);
   }
 
   /** Append one typed trajectory event to the active sample. Storage-time dedup
@@ -690,7 +718,7 @@ export class ApmeCollector {
    *  only when a row was actually inserted (not a dup), so the timeline
    *  projection never double-emits. */
   private appendSampleEvent(
-    ctx: { taskId: string; runId: string; turnIndex: number },
+    ctx: SampleCtx,
     ev: {
       kind: TrajectoryEventKind;
       dedupCore: string;
@@ -712,6 +740,7 @@ export class ApmeCollector {
       taskId: ctx.taskId,
       runId: ctx.runId,
       turnIndex: ctx.turnIndex,
+      turnId: ctx.turnId ?? null,
       seq: this.store.nextSampleSeq(ctx.taskId),
       ts: ev.ts ?? Date.now(),
       kind: ev.kind,
@@ -882,7 +911,7 @@ export class ApmeCollector {
           const turnIndex = this.sessionToTurn.get(sessionId)?.index;
           if (task && turnIndex !== undefined) {
             this.appendSampleEvent(
-              { taskId: task.id, runId: task.runId, turnIndex },
+              { taskId: task.id, runId: task.runId, turnIndex, turnId: this.turnIdFor(sessionId) },
               { kind: 'state', dedupCore: `todos_complete:${turnIndex}`, payloadObj: { state: 'todos_completed' } },
             );
             this.fireTaskMilestone(sessionId, task.id, task.runId, turnIndex, null);
@@ -964,7 +993,7 @@ export class ApmeCollector {
     // Prefer the agent-reported marginal cost when available, else price the delta.
     const cost = priceUsd(model, dIn, dOut);
     this.appendSampleEvent(
-      { taskId: task.id, runId, turnIndex },
+      { taskId: task.id, runId, turnIndex, turnId: this.turnIdFor(sessionId) },
       {
         kind: 'model', model: model ?? undefined, inputTokens: dIn, outputTokens: dOut,
         costUsd: cost, latencyMs: 0, dedupCore: `${curIn}:${curOut}`,
@@ -993,14 +1022,22 @@ export class ApmeCollector {
     this.closeTask(sessionId, 'clear');
     // Close current run (no exitCode — session is still alive)
     this.closeRun(sessionId, undefined, projectPath);
-    // Open a new run with the same session parameters
-    return this.openRun({
+    // Open a new run with the same session parameters, pointing back at the run
+    // it continues. `/clear` resets the agent's context, not the user's work —
+    // without this edge one conversation becomes N disconnected runs (a live
+    // session here had 127), and nothing downstream can tell a genuine new
+    // session from the same session after a context reset.
+    const nextRunId = this.openRun({
       sessionId,
       agentType: run.agentType,
       modelId: run.modelId ?? undefined,
       projectName: run.projectName ?? undefined,
       projectPath: run.projectPath ?? undefined,
     });
+    if (nextRunId) {
+      try { this.store.updateRun(nextRunId, { parentRunId: runId }); } catch { /* ignore */ }
+    }
+    return nextRunId;
   }
 
   /** Update model id when the bridge resolves which model is in use. */

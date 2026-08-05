@@ -171,6 +171,11 @@ export interface ApmeSampleEventRow {
   taskId: string;
   runId: string;
   turnIndex?: number | null;
+  /** The turn this event belongs to, as an id rather than the run-scoped
+   *  `turnIndex`. Both are kept: `turnIndex` is the ordering key the collector
+   *  and dedup path work in, `turnId` is the edge a graph projection (or any
+   *  join that starts from a turn) can follow directly. */
+  turnId?: string | null;
   /** Monotonic order within the task. */
   seq: number;
   ts: number;

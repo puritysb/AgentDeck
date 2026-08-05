@@ -5812,7 +5812,17 @@ final class DaemonServer {
         if wasProcessing && currentState == .idle {
             Task { @DaemonActor [weak self] in
                 guard let self else { return }
-                let lastEntry = await self.timelineStore.getLastEntry(type: "chat_end")
+                // Read `chat_response`, NOT `chat_end`. A turn's reply is only
+                // ever written to a chat_response row; chat_end is emitted
+                // exactly when there is no reply, and its `raw` is the literal
+                // string "Completed · 2m 19s" — so the old lookup could only
+                // ever hand the collector a duration label or nothing at all.
+                // This is now a backstop: `appendClaudeCodeChatEnd` records the
+                // response at the hook itself, where the text is already
+                // session-scoped and the turn anchor is known. Re-recording the
+                // same text is harmless (the trajectory event dedups on its
+                // content hash and the turn column is idempotent).
+                let lastEntry = await self.timelineStore.getLastEntry(type: "chat_response")
                 let responseText = (lastEntry?.detail ?? lastEntry?.raw) ?? ""
                 let chatEndTs = lastEntry?.ts
                 await DaemonActor.run {
@@ -8810,6 +8820,19 @@ final class DaemonServer {
                 assistantText = tail.text
             }
         }
+        // APME: hand the resolved text to the collector HERE, on the same
+        // branch that decides the timeline row. The only other caller sits on
+        // the global PROCESSING→IDLE edge and reads the last `chat_end` — but
+        // this handler emits `chat_end` only when there is NO response text, so
+        // that lookup structurally cannot see a reply, and every hook-observed
+        // turn archived a prompt with `response` NULL and no `assistant_message`
+        // trajectory event (90 turns / 0 responses over three days). Passing
+        // `chatEndTs: startTs` reuses the collector's late-Stop race guard: a
+        // duplicate Stop carrying the previous turn's anchor is recognised as
+        // stale and lands on the closed turn instead of clobbering a fresh one.
+        if !assistantText.isEmpty {
+            apmeCollector?.setTurnResponse(assistantText, sessionId: sessionId, chatEndTs: startTs)
+        }
         if !assistantText.isEmpty {
             let snippet = String(assistantText.prefix(200))
             let detail: String? = assistantText.count > 100
@@ -9413,7 +9436,43 @@ final class DaemonServer {
                 "taskCategory": "_empty",
             ])
         }
+
+        // 6. Reap ABANDONED runs — the ones step 5 cannot see. A daemon restart
+        //    drops the in-memory session→run map, leaving every mid-session run
+        //    with ended_at NULL forever. Those carry real prompts and turns, so
+        //    they fail step 5's empty-shell predicate, and because their TASK
+        //    also never closes they are never evaluated. Closing the run lets
+        //    the eval queue pick it up; the task eval must be enqueued here
+        //    because its normal trigger fires from the collector's in-memory
+        //    close path, which is exactly what went missing.
+        //    Mirrors bridge/src/daemon-server.ts step 5.
+        let abandoned = store.listAbandonedRuns(staleSec: Self.apmeAbandonedRunStaleSec, limit: 5)
+        for run in abandoned {
+            if apmeCollector?.isLiveRun(run.id) == true { continue } // still owned by us
+            let closedTasks = store.reapAbandonedRun(runId: run.id, endedAt: run.lastActivity)
+            for task in closedTasks {
+                // Judge only what there is something to judge. The backlog this
+                // reaper drains predates the response-capture fix, so most of
+                // those tasks hold prompts and tool calls but no reply —
+                // scoring them would push "judged against silence" rows into
+                // the scorecard, the noise `response_kind` exists to keep out.
+                let hasReply = store.listTurnsForTask(task.id).contains {
+                    guard let r = $0["response"] as? String else { return false }
+                    return !r.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+                guard hasReply else { continue }
+                runner.enqueueTask(runId: run.id, taskId: task.id,
+                                   category: task.category, boundarySignal: "orphaned")
+            }
+            DaemonLogger.shared.debug("APME", "reaped abandoned run \(run.id.prefix(8)) — \(closedTasks.count) task(s) closed")
+        }
     }
+
+    /// Inactivity after which an unclosed APME run is treated as abandoned and
+    /// finalized. Deliberately generous: an orphan stays reapable forever, so
+    /// closing it late costs nothing, while reaping a live run corrupts the unit
+    /// being measured. Mirrors APME_ABANDONED_RUN_STALE_SEC in the Node daemon.
+    private static let apmeAbandonedRunStaleSec = 7200
 
     /// Propagates APME outcome evaluation results directly to the task_end timeline row.
     /// Ensures real-time UI badge ("...") update synchronization right after SQLite commits.

@@ -77,6 +77,16 @@ const OBSERVED_APPROVAL_HOLD_MS = Math.min(
   50_000,
   Math.max(5_000, Number(process.env.AGENTDECK_APPROVAL_HOLD_MS) || 25_000),
 );
+/** Inactivity after which an unclosed APME run is treated as abandoned and
+ *  finalized. Deliberately generous: an orphan stays reapable forever, so
+ *  closing it late costs nothing, while reaping a live run corrupts the unit
+ *  being measured. Session bridges own their own collector state and are
+ *  invisible to this daemon, so only elapsed silence protects them (runs this
+ *  daemon still holds are skipped via `collector.isLiveRun`). */
+const APME_ABANDONED_RUN_STALE_SEC = Math.max(
+  600,
+  Number(process.env.AGENTDECK_APME_ABANDON_SEC) || 7200,
+);
 import { VoiceManager } from './voice.js';
 import { VoiceAssistantManager } from './voice-assistant.js';
 import {
@@ -2144,6 +2154,26 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const respRaw = responseText.length > 0
             ? cleanRawText(responseText.length > 200 ? responseText.slice(0, 197) + '...' : responseText)
             : '';
+          // APME: the text below is the assistant half of the turn — hand it to
+          // the collector on the SAME branch that decides the timeline row.
+          // `setTurnResponse` was reachable only from the PTY session bridge
+          // (bridge/src/index.ts), which hook-observed sessions (direct
+          // `claude` / `codex` / standalone `opencode`) never go through, so
+          // every such turn archived a prompt and its tool calls but no reply:
+          // `turns.response` stayed NULL and no `assistant_message` trajectory
+          // event was ever written. The dashboard therefore could not replay a
+          // conversation the timeline shows in full, and the judge scored those
+          // turns against silence. Empty text is still worth recording — it
+          // tags `response_kind` tool_only/empty so the runner skips judging.
+          if (apme) {
+            if (turnOpen) apme.collector.setTurnResponse(hookSid, responseText);
+            else if (responseText.length > 0) {
+              // No open turn: a missed prompt hook or a late/duplicate stop.
+              // The last-closed fallback refuses to overwrite an existing
+              // response, so a duplicate stop is a no-op instead of a clobber.
+              apme.collector.setLastClosedTurnResponse(hookSid, responseText);
+            }
+          }
           if (turnOpen && lastStart) {
             const now = Date.now();
             const taskId = (apme
@@ -4816,6 +4846,41 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const orphans = apme!.store.listOrphanedRuns(1800); // 30 min stale threshold
       for (const id of orphans) {
         apme!.store.updateRun(id, { endedAt: Date.now(), taskCategory: '_empty' });
+      }
+      // 5. Reap ABANDONED runs — the ones step 4 cannot see. A daemon restart
+      //    (or crash) drops the in-memory session→run map, so every run that
+      //    was mid-session is left with ended_at NULL forever. Those carry real
+      //    prompts and turns, so they fail step 4's empty-shell predicate, and
+      //    because their TASK also never closes they are never evaluated: the
+      //    store had accumulated 65 open tasks against 9 closed ones.
+      //    Closing the run makes step 1 pick it up next tick; the task eval has
+      //    to be enqueued here, since its normal trigger (`onTaskClosed`) fires
+      //    from the collector's in-memory close path, which is exactly what
+      //    went missing.
+      //    Batched small: `enqueueTask` dispatches immediately with no
+      //    concurrency cap, so a backlog is drained a few per tick rather than
+      //    fired at the judge all at once.
+      const abandoned = apme!.store.listAbandonedRuns(APME_ABANDONED_RUN_STALE_SEC, 5);
+      for (const run of abandoned) {
+        if (apme!.collector.isLiveRun(run.id)) continue; // still owned by us
+        const closedTasks = apme!.store.reapAbandonedRun(run.id, run.lastActivity);
+        for (const task of closedTasks) {
+          // Judge only what there is something to judge. The backlog this
+          // reaper drains predates the response-capture fix, so most of those
+          // tasks hold prompts and tool calls but no reply — scoring them would
+          // push hundreds of "judged against silence" rows into the scorecard,
+          // the same noise `response_kind` exists to keep out. Closing the row
+          // is the data-hygiene win; the eval is a bonus when it can be earned.
+          const hasReply = apme!.store.listTurnsForTask(task.id)
+            .some((t) => typeof t.response === 'string' && t.response.trim().length > 0);
+          if (!hasReply) continue;
+          apme!.runner.enqueueTask({
+            runId: run.id, taskId: task.id,
+            ...(task.category ? { category: task.category } : {}),
+            boundarySignal: 'orphaned',
+          });
+        }
+        debug('APME', `reaped abandoned run ${run.id.slice(0, 8)} — ${closedTasks.length} task(s) closed`);
       }
     }, 30_000); // every 30s
     core.addInterval(apmeEvalTimer);

@@ -99,6 +99,8 @@ tr.selected td{background:rgba(99,102,241,0.15);border-left:2px solid var(--acce
 .vibe-current{font-size:11px;color:var(--dim);display:flex;align-items:center;margin-left:8px}
 
 .panel{display:none}.panel.visible{display:block;height:100%}
+/* Graph needs a column flex box so the canvas can claim the leftover height. */
+.panel#panel-graph.visible{display:flex;flex-direction:column}
 .empty{color:var(--dim);font-style:italic;padding:20px;text-align:center}
 </style>
 </head>
@@ -113,6 +115,8 @@ tr.selected td{background:rgba(99,102,241,0.15);border-left:2px solid var(--acce
   <div class="left">
     <div class="tabs">
       <button class="tab active" onclick="showTab('runs')">Runs</button>
+      <button class="tab" onclick="showTab('tasks')">Tasks</button>
+      <button class="tab" onclick="showTab('graph')">Graph</button>
       <button class="tab" onclick="showTab('recommend')">Recommend</button>
       <button class="tab" onclick="showTab('scorecard')">Scorecard</button>
       <button class="tab" onclick="showTab('categories')">Categories</button>
@@ -130,6 +134,37 @@ tr.selected td{background:rgba(99,102,241,0.15);border-left:2px solid var(--acce
           <th>Agent</th><th>Model</th><th>Project</th><th>Category</th><th>Score</th><th>Outcome</th><th>Vibe</th><th>Task</th><th>Time</th>
         </tr></thead><tbody id="runs-body"></tbody></table>
       </div>
+      <!-- Tasks: every processed work unit, paged server-side. The Runs tab
+           lists sessions; this lists the units the judge actually scores. -->
+      <div class="panel" id="panel-tasks">
+        <div style="display:flex;gap:6px;padding:8px 10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;align-items:center">
+          <input id="t-q" placeholder="Search prompt / summary" oninput="taskSearchDebounced()" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px;flex:1;min-width:140px">
+          <select id="t-agent" onchange="loadTasks(0)" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px"><option value="">All Agents</option></select>
+          <select id="t-project" onchange="loadTasks(0)" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px"><option value="">All Projects</option></select>
+          <select id="t-cat" onchange="loadTasks(0)" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px"><option value="">All Categories</option></select>
+          <select id="t-state" onchange="loadTasks(0)" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px"><option value="">All</option><option value="closed">Closed</option><option value="open">Open</option></select>
+        </div>
+        <table><thead><tr>
+          <th>Task</th><th>Agent</th><th>Project</th><th>Category</th><th>Turns</th><th>Tools</th><th>Score</th><th>Outcome</th><th>Time</th>
+        </tr></thead><tbody id="tasks-body"></tbody></table>
+        <div id="tasks-pager" style="display:flex;gap:8px;align-items:center;justify-content:center;padding:10px;font-size:11px;color:var(--dim)"></div>
+      </div>
+      <!-- Graph: the row store as a property graph. Self-contained force
+           layout — the dashboard ships as one inlined HTML document. -->
+      <div class="panel" id="panel-graph">
+        <div style="display:flex;gap:6px;padding:8px 10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;align-items:center">
+          <label style="font-size:11px;color:var(--dim)">Tasks <input id="g-limit" type="number" min="1" max="400" value="40" onchange="loadGraph()" style="width:56px;background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px"></label>
+          <label style="font-size:11px;color:var(--dim)">Min hub <input id="g-hub" type="number" min="1" max="20" value="2" onchange="loadGraph()" style="width:48px;background:var(--bg);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:11px"></label>
+          <label style="font-size:11px;color:var(--dim)"><input id="g-turns" type="checkbox" onchange="loadGraph()"> turns</label>
+          <label style="font-size:11px;color:var(--dim)"><input id="g-files" type="checkbox" checked onchange="loadGraph()"> files</label>
+          <span id="g-stats" style="font-size:11px;color:var(--dim);margin-left:auto"></span>
+        </div>
+        <div style="position:relative;flex:1;min-height:420px">
+          <canvas id="g-canvas" style="width:100%;height:100%;display:block;cursor:grab"></canvas>
+          <div id="g-legend" style="position:absolute;left:10px;bottom:10px;font-size:10px;color:var(--dim);background:rgba(0,0,0,0.35);padding:6px 8px;border-radius:4px;line-height:1.7"></div>
+          <div id="g-tip" style="position:absolute;display:none;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:11px;color:var(--muted);max-width:280px"></div>
+        </div>
+      </div>
       <div class="panel" id="panel-recommend"><div id="recommend-content" class="empty">Loading...</div></div>
       <div class="panel" id="panel-scorecard"><div id="scorecard-content" class="empty">Loading...</div></div>
       <div class="panel" id="panel-categories"><div id="categories-content" class="empty">Loading...</div></div>
@@ -144,6 +179,8 @@ tr.selected td{background:rgba(99,102,241,0.15);border-left:2px solid var(--acce
 
 <script>
 const B=location.origin;let selId=null;let allRuns=[];
+let selTaskId=null,taskOffset=0,taskTotal=0,tasksLoaded=false,taskSearchTimer=null;const TASK_PAGE=50;
+let graphSim=null;
 const AUTH=new URLSearchParams(location.search).get('token')||'';
 function api(path){const sep=path.includes('?')?'&':'?';return B+path+(AUTH?sep+'token='+encodeURIComponent(AUTH):'')}
 
@@ -152,6 +189,11 @@ function showTab(n){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('panel-'+n).classList.add('visible');
   event.target.classList.add('active');
+  // Tasks and Graph load on first reveal, not at boot: both are server-paged
+  // queries over the whole store, and the graph canvas cannot size itself
+  // while its panel is display:none.
+  if(n==='tasks'&&!tasksLoaded){tasksLoaded=true;loadTasks(0)}
+  if(n==='graph'){requestAnimationFrame(()=>loadGraph())}
 }
 function fs(s){if(s==null)return'<span class="score score-na">—</span>';const p=Math.round(s*100),c=p>=70?'high':p>=40?'mid':'low';return'<span class="score score-'+c+'">'+p+'%</span>'}
 function fo(o){if(!o)return'';return'<span class="badge badge-'+o+'">'+o+'</span>'}
@@ -461,6 +503,108 @@ async function submitVibe(rid,v){
   catch(e){alert('Error: '+e.message)}
 }
 
+/* ── Tasks tab ──────────────────────────────────────────────────────────────
+   The task unit is what the judge scores, but it used to be reachable only by
+   drilling into a run — so there was no way to see everything processed. This
+   pages server-side (the store holds thousands of units) and keeps its filters
+   in the query rather than filtering a fetched page client-side, which would
+   silently hide matches beyond the page. */
+async function loadTasks(offset){
+  taskOffset=offset||0;
+  const body=document.getElementById('tasks-body');
+  const p=new URLSearchParams();
+  p.set('limit',String(TASK_PAGE));p.set('offset',String(taskOffset));
+  const q=document.getElementById('t-q').value.trim();if(q)p.set('q',q);
+  const ag=document.getElementById('t-agent').value;if(ag)p.set('agent',ag);
+  const pr=document.getElementById('t-project').value;if(pr)p.set('project',pr);
+  const ct=document.getElementById('t-cat').value;if(ct)p.set('category',ct);
+  const st=document.getElementById('t-state').value;if(st)p.set('state',st);
+  try{
+    const r=await fetch(api('/apme/tasks?'+p.toString()));const d=await r.json();
+    const tasks=d.tasks||[];taskTotal=d.total||0;
+    fillTaskFacets(d.facets||{});
+    if(!tasks.length){body.innerHTML='<tr><td colspan="9" class="empty">No tasks match</td></tr>';document.getElementById('tasks-pager').textContent='';return}
+    let h='';
+    for(const t of tasks){
+      const label=t.summary||t.firstPrompt||('Task '+t.taskIndex);
+      // A unit whose replies were never archived can only be partly judged —
+      // say so on the row instead of letting a blank score read as "not run".
+      const gap=t.turnCount>t.answeredTurns
+        ?' <span title="'+(t.turnCount-t.answeredTurns)+' turn(s) archived without a reply" style="color:var(--yellow)">◍</span>':'';
+      h+='<tr'+(selTaskId===t.id?' class="selected"':'')+' onclick="selectTask(\\''+t.id+'\\')">'+
+        '<td title="'+esc(label)+'">'+esc(label.slice(0,52))+gap+'</td>'+
+        '<td>'+esc(t.agentType||'')+'</td>'+
+        '<td>'+esc(t.projectName||'—')+'</td>'+
+        '<td>'+(t.taskCategory?'<span class="badge-cat">'+esc(t.taskCategory)+'</span>':'—')+'</td>'+
+        '<td>'+t.turnCount+'</td><td>'+t.toolCount+'</td>'+
+        '<td>'+fs(t.overallScore)+'</td>'+
+        '<td>'+(t.outcome?fo(t.outcome):(t.endedAt?'':'<span class="badge">open</span>'))+'</td>'+
+        '<td>'+(t.startedAt?new Date(t.startedAt).toLocaleString():'—')+'</td></tr>';
+    }
+    body.innerHTML=h;
+    const from=taskTotal?taskOffset+1:0,to=Math.min(taskOffset+tasks.length,taskTotal);
+    document.getElementById('tasks-pager').innerHTML=
+      '<button onclick="loadTasks('+Math.max(0,taskOffset-TASK_PAGE)+')" '+(taskOffset<=0?'disabled':'')+' style="background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:3px 10px;cursor:pointer">Prev</button>'+
+      '<span>'+from+'–'+to+' of '+taskTotal+'</span>'+
+      '<button onclick="loadTasks('+(taskOffset+TASK_PAGE)+')" '+(to>=taskTotal?'disabled':'')+' style="background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:3px 10px;cursor:pointer">Next</button>';
+  }catch(e){body.innerHTML='<tr><td colspan="9" class="empty">Error: '+esc(e.message)+'</td></tr>'}
+}
+function fillTaskFacets(f){
+  // Facets come from the whole store, not the current page, so a filter never
+  // offers only what happens to be visible.
+  const fill=(id,vals)=>{const s=document.getElementById(id);const cur=s.value;
+    while(s.options.length>1)s.remove(1);
+    (vals||[]).forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;s.add(o)});
+    s.value=cur;};
+  fill('t-agent',f.agents);fill('t-project',f.projects);fill('t-cat',f.categories);
+}
+function taskSearchDebounced(){clearTimeout(taskSearchTimer);taskSearchTimer=setTimeout(()=>loadTasks(0),250)}
+
+async function selectTask(id){
+  selTaskId=id;
+  const el=document.getElementById('detail-panel');
+  el.innerHTML='<div class="detail-empty">Loading...</div>';
+  try{
+    const r=await fetch(api('/apme/tasks/'+id));const d=await r.json();
+    const t=d.task||{},run=d.run||{},turns=d.turns||[],evals=d.evals||[],sample=d.sample;
+    let h='';
+    h+='<div class="detail-header"><h2>'+esc(t.summary||('Task '+t.taskIndex))+'</h2>';
+    h+='<div class="meta-row"><span>'+esc(run.agentType||'')+'</span><span>'+esc(run.modelId||'—')+'</span>'+
+       '<span>'+esc(run.projectName||'—')+'</span>'+
+       '<span>'+(t.startedAt?new Date(t.startedAt).toLocaleString():'—')+'</span>'+
+       '<span>'+(t.endedAt?fd(t.endedAt-t.startedAt):'<span style="color:var(--yellow)">open</span>')+'</span>'+
+       '<span>boundary '+esc(t.boundarySignal||'—')+'</span></div></div>';
+    h+='<div class="section"><div class="metric-grid">'
+       '<div class="metric-card"><div class="lbl">Score</div><div class="val">'+fs(d.overallScore??t.compositeScore)+'</div></div>'+
+       '<div class="metric-card"><div class="lbl">Turns</div><div class="val">'+turns.length+'</div></div>'+
+       '<div class="metric-card"><div class="lbl">Events</div><div class="val">'+((sample&&sample.events?sample.events.length:0))+'</div></div>'+
+       '<div class="metric-card"><div class="lbl">Cost</div><div class="val">'+(t.costUsd!=null?'$'+t.costUsd.toFixed(4):'—')+'</div></div>'+
+       '</div></div>';
+    if(evals.length){
+      h+='<div class="section"><div class="section-head"><span>Evals</span></div><table><tbody>';
+      for(const e of evals)h+='<tr><td>'+esc(e.layer)+'</td><td>'+esc(e.metric)+'</td><td>'+fs(e.score)+'</td></tr>';
+      h+='</tbody></table></div>';
+    }
+    // The conversation. This is what the response-capture gap used to make
+    // impossible to show: prompts with no replies beside them.
+    h+='<div class="section"><div class="section-head"><span>Conversation</span></div>';
+    if(!turns.length)h+='<div class="empty">No turns recorded</div>';
+    for(const tu of turns){
+      const prompt=tu.prompt||'',resp=tu.response;
+      h+='<div style="margin-bottom:12px">'+
+        '<div style="font-size:11px;color:var(--dim);margin-bottom:3px">turn '+tu.turn_index+'</div>'+
+        '<div style="white-space:pre-wrap;font-size:12px;color:var(--muted);border-left:2px solid var(--accent);padding-left:8px">'+esc(prompt.slice(0,1200))+'</div>';
+      h+= resp
+        ? '<div style="white-space:pre-wrap;font-size:12px;color:var(--dim);border-left:2px solid var(--border);padding-left:8px;margin-top:6px">'+esc(resp.slice(0,2000))+'</div>'
+        : '<div style="font-size:11px;color:var(--yellow);padding-left:10px;margin-top:6px">reply not archived</div>';
+      h+='</div>';
+    }
+    h+='</div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<div class="detail-empty">Error: '+esc(e.message)+'</div>'}
+  loadTasks(taskOffset);
+}
+
 async function loadScorecard(){
   try{const r=await fetch(api('/apme/scorecard'));const d=await r.json();const c=d.scorecards||[];
   if(!c.length){document.getElementById('scorecard-content').innerHTML='<div class="empty">No scorecard data yet</div>';return}
@@ -514,8 +658,153 @@ async function loadRecommend(){
   }catch(e){document.getElementById('recommend-content').innerHTML='<div class="empty">Error: '+e.message+'</div>'}
 }
 
+/* ── Graph tab ──────────────────────────────────────────────────────────────
+   A force-directed view of /apme/graph. Hand-rolled rather than imported: the
+   dashboard is served as one self-contained HTML document with no external
+   fetches, so a CDN layout library is not an option.
+
+   Colour is by node kind; radius by degree, so the derived hubs (a file many
+   tasks touched, a tool used everywhere) are the ones that read as structural. */
+const G_COLORS={run:'#6166E0',task:'#22c55e',turn:'#64748b',session:'#eab308',project:'#06b6d4',model:'#a855f7',agent:'#C07058',tool:'#f97316',file:'#94a3b8'};
+const G_EDGE={contains:'rgba(148,163,184,0.35)',continues:'rgba(97,102,224,0.75)',produced:'rgba(234,179,8,0.30)',used:'rgba(249,115,22,0.30)',touched:'rgba(148,163,184,0.25)'};
+
+async function loadGraph(){
+  const stats=document.getElementById('g-stats');
+  const p=new URLSearchParams();
+  p.set('limit',document.getElementById('g-limit').value||'40');
+  p.set('minHubDegree',document.getElementById('g-hub').value||'2');
+  p.set('turns',document.getElementById('g-turns').checked?'1':'0');
+  p.set('files',document.getElementById('g-files').checked?'1':'0');
+  stats.textContent='Loading...';
+  try{
+    const r=await fetch(api('/apme/graph?'+p.toString()));const d=await r.json();
+    const s=d.stats||{};
+    // Say what was left out. A truncated graph that looks complete is worse
+    // than no graph — the shape would read as the whole history.
+    stats.textContent=s.nodeCount+' nodes · '+s.edgeCount+' edges · '+s.taskCount+' tasks'+
+      (s.truncatedTasks?' (+'+s.truncatedTasks+' not shown)':'')+
+      (s.fileCoverage?' · file paths on '+s.fileCoverage.withPath+'/'+s.fileCoverage.toolEvents+' tool events':'');
+    renderLegend(d.nodes||[]);
+    startGraphSim(d.nodes||[],d.edges||[]);
+  }catch(e){stats.textContent='Error: '+e.message}
+}
+
+function renderLegend(nodes){
+  const counts={};for(const n of nodes)counts[n.kind]=(counts[n.kind]||0)+1;
+  document.getElementById('g-legend').innerHTML=Object.keys(counts).sort().map(k=>
+    '<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+G_COLORS[k]+';margin-right:6px"></span>'+k+' ('+counts[k]+')</div>').join('');
+}
+
+function startGraphSim(nodes,edges){
+  const canvas=document.getElementById('g-canvas');
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.clientWidth||800,h=canvas.clientHeight||500;
+  canvas.width=w*dpr;canvas.height=h*dpr;
+  const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(graphSim)cancelAnimationFrame(graphSim.raf);
+
+  const byId=new Map();
+  nodes.forEach((n,i)=>{
+    // Deterministic seeding — a golden-angle spiral, not Math.random(), so a
+    // reload of the same slice settles into the same picture and the layout is
+    // comparable between refreshes.
+    const a=i*2.399963,rad=6*Math.sqrt(i);
+    n.x=w/2+rad*Math.cos(a);n.y=h/2+rad*Math.sin(a);n.vx=0;n.vy=0;
+    n.r=Math.min(14,3+Math.sqrt(n.degree||1)*1.6);
+    byId.set(n.id,n);
+  });
+  const links=edges.map(e=>({s:byId.get(e.from),t:byId.get(e.to),kind:e.kind,w:e.weight||1}))
+                   .filter(l=>l.s&&l.t);
+
+  const view={x:0,y:0,k:1};let drag=null,hover=null;
+  canvas.onmousedown=(ev)=>{drag={x:ev.clientX,y:ev.clientY,vx:view.x,vy:view.y};canvas.style.cursor='grabbing'};
+  window.addEventListener('mouseup',()=>{drag=null;canvas.style.cursor='grab'});
+  canvas.onmousemove=(ev)=>{
+    const rect=canvas.getBoundingClientRect();
+    if(drag){view.x=drag.vx+(ev.clientX-drag.x);view.y=drag.vy+(ev.clientY-drag.y);return}
+    const mx=(ev.clientX-rect.left-view.x)/view.k,my=(ev.clientY-rect.top-view.y)/view.k;
+    hover=null;let best=1e9;
+    for(const n of nodes){const dx=n.x-mx,dy=n.y-my,d2=dx*dx+dy*dy;if(d2<Math.max(64,n.r*n.r*4)&&d2<best){best=d2;hover=n}}
+    const tip=document.getElementById('g-tip');
+    if(hover){
+      const meta=Object.entries(hover.meta||{}).filter(([,v])=>v!=null&&v!=='').map(([k,v])=>k+': '+v).join(' · ');
+      tip.style.display='block';tip.style.left=(ev.clientX-rect.left+12)+'px';tip.style.top=(ev.clientY-rect.top+12)+'px';
+      tip.innerHTML='<b style="color:'+G_COLORS[hover.kind]+'">'+esc(hover.kind)+'</b> '+esc(hover.label)+
+        '<div style="color:var(--dim);margin-top:3px">degree '+(hover.degree||0)+(meta?' · '+esc(meta):'')+'</div>';
+    } else tip.style.display='none';
+  };
+  canvas.onwheel=(ev)=>{ev.preventDefault();const f=ev.deltaY<0?1.1:0.9;view.k=Math.max(0.2,Math.min(4,view.k*f))};
+  canvas.onclick=()=>{if(hover&&hover.kind==='task'){showTabById('tasks');selectTask(hover.id.slice(5))}};
+
+  // Barnes-Hut would be overkill: the slice is capped at a few hundred nodes,
+  // so an O(n²) repulsion pass stays well inside a frame budget.
+  // Repulsion and rest length scale with node count: constants tuned on a
+  // 30-node slice collapse into an unreadable ball at 300, and the whole point
+  // of the view is that the hub structure is visible.
+  const repel=900+nodes.length*14;
+  const linkLen=50+Math.min(60,nodes.length*0.25);
+  let alpha=1;
+  function step(){
+    if(alpha>0.005){
+      for(let i=0;i<nodes.length;i++){
+        const a=nodes[i];
+        for(let j=i+1;j<nodes.length;j++){
+          const b=nodes[j];let dx=b.x-a.x,dy=b.y-a.y;let d2=dx*dx+dy*dy;
+          if(d2<0.01){dx=(i-j)*0.1;dy=0.1;d2=0.02}
+          if(d2>250000)continue;
+          const f=repel/d2,d=Math.sqrt(d2);
+          const fx=f*dx/d,fy=f*dy/d;
+          a.vx-=fx;a.vy-=fy;b.vx+=fx;b.vy+=fy;
+        }
+      }
+      for(const l of links){
+        const dx=l.t.x-l.s.x,dy=l.t.y-l.s.y,d=Math.sqrt(dx*dx+dy*dy)||0.01;
+        const f=(d-linkLen)*0.02;
+        const fx=f*dx/d,fy=f*dy/d;
+        l.s.vx+=fx;l.s.vy+=fy;l.t.vx-=fx;l.t.vy-=fy;
+      }
+      for(const n of nodes){
+        n.vx+=(w/2-n.x)*0.002;n.vy+=(h/2-n.y)*0.002;   // gravity keeps it on screen
+        n.x+=(n.vx*=0.82)*alpha;n.y+=(n.vy*=0.82)*alpha;
+      }
+      alpha*=0.985;
+    }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+    ctx.save();ctx.translate(view.x,view.y);ctx.scale(view.k,view.k);
+    for(const l of links){
+      ctx.strokeStyle=G_EDGE[l.kind]||'rgba(148,163,184,0.25)';
+      ctx.lineWidth=l.kind==='continues'?2:Math.min(3,0.6+Math.log2(l.w));
+      ctx.beginPath();ctx.moveTo(l.s.x,l.s.y);ctx.lineTo(l.t.x,l.t.y);ctx.stroke();
+    }
+    for(const n of nodes){
+      ctx.fillStyle=G_COLORS[n.kind]||'#94a3b8';
+      ctx.globalAlpha=hover&&hover!==n?0.55:1;
+      ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,6.2832);ctx.fill();
+      // Label only what carries the structure, else the canvas is unreadable.
+      if(n.r>7||n===hover){
+        ctx.globalAlpha=1;ctx.fillStyle='#cbd5e1';ctx.font='10px ui-monospace,monospace';
+        ctx.fillText(String(n.label||'').slice(0,26),n.x+n.r+3,n.y+3);
+      }
+      ctx.globalAlpha=1;
+    }
+    ctx.restore();
+    graphSim.raf=requestAnimationFrame(step);
+  }
+  graphSim={raf:0};step();
+}
+/* showTab() reads the clicked element off the global event; switching tabs
+   from code needs the button, so find it rather than fake an event. */
+function showTabById(n){
+  const btn=[...document.querySelectorAll('.tab')].find(b=>b.getAttribute('onclick')==="showTab('"+n+"')");
+  if(btn)btn.click();
+}
+
 loadRuns();loadRecommend();loadScorecard();loadCategories();
 setInterval(loadRuns,15000);setInterval(loadRecommend,30000);setInterval(loadScorecard,30000);setInterval(loadCategories,30000);
+// Tasks refresh only while its tab is up — the query is server-paged and there
+// is no reason to run it against the store every 15s in the background.
+setInterval(()=>{if(document.getElementById('panel-tasks').classList.contains('visible'))loadTasks(taskOffset)},15000);
 </script>
 </body>
 </html>`;

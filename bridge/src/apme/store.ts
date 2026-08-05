@@ -26,6 +26,7 @@ import type {
   ApmeVibeRow,
   ApmeScorecardRow,
   ApmeTaskRow,
+  ApmeTaskListRow,
 } from './types.js';
 import type {
   ApmeSampleEventRow,
@@ -462,6 +463,8 @@ type BetterSqliteDb = {
   exec: (sql: string) => void;
   close: () => void;
   pragma: (s: string) => unknown;
+  /** better-sqlite3 wraps `fn` in BEGIN/COMMIT and rolls back if it throws. */
+  transaction: <T>(fn: () => T) => () => T;
 };
 
 export class ApmeStore {
@@ -565,8 +568,55 @@ export class ApmeStore {
         try { this.db.exec(sql); } catch { /* ignore */ }
       }
     }
-    // sample_events table + indexes are created via CREATE TABLE IF NOT EXISTS
-    // in DDL; nothing to ALTER. The v_sample_scorecard view likewise.
+    // ── Graph-integrity columns ──
+    // The row model is a clean hierarchy (run → task → turn → event) EXCEPT for
+    // two severed edges, both of which a graph projection would have to guess at:
+    //
+    //  1. sample_events pointed at a turn by `turn_index`, an integer that is
+    //     only unique within a run — so the trajectory could not be walked back
+    //     to its turn without a compound join, and a task spanning turns had no
+    //     first-class event→turn edge at all.
+    //  2. `/clear` splits a session into a fresh run (`splitRun`) with no
+    //     pointer to the run it continues, so one conversation shows up as N
+    //     disconnected components. One live session here had 127 such runs.
+    const sevCols = (this.db.prepare("PRAGMA table_info(sample_events)").all() as Array<{ name: string }>).map(c => c.name);
+    if (!sevCols.includes('turn_id')) {
+      try { this.db.exec('ALTER TABLE sample_events ADD COLUMN turn_id TEXT'); } catch { /* ignore */ }
+      try { this.db.exec('CREATE INDEX IF NOT EXISTS idx_sevents_turn ON sample_events(turn_id)'); } catch { /* ignore */ }
+      // Backfill from the compound key the column replaces. One-shot: the
+      // column only appears once, so this never re-scans on later boots.
+      try {
+        this.db.exec(
+          `UPDATE sample_events SET turn_id = (
+             SELECT t.id FROM turns t
+             WHERE t.run_id = sample_events.run_id AND t.turn_index = sample_events.turn_index
+           ) WHERE turn_id IS NULL AND turn_index IS NOT NULL`,
+        );
+      } catch { /* best-effort backfill */ }
+    }
+    if (!cols.includes('parent_run_id')) {
+      try { this.db.exec('ALTER TABLE runs ADD COLUMN parent_run_id TEXT'); } catch { /* ignore */ }
+      try { this.db.exec('CREATE INDEX IF NOT EXISTS idx_runs_parent ON runs(parent_run_id)'); } catch { /* ignore */ }
+    }
+
+    // ── Covering indexes for the per-run/per-task rollups ──
+    // better-sqlite3 is synchronous on a single connection, so ANY slow query
+    // here stalls the daemon's whole HTTP path — this is a latency budget, not
+    // a nice-to-have. `MAX(ts)` over a run's steps was reading full rows to
+    // reach one integer, and `steps.payload` holds entire hook bodies, so the
+    // abandoned-run sweep was touching hundreds of megabytes and taking 22s.
+    // (run_id, ts) answers it from the index alone.
+    for (const sql of [
+      'CREATE INDEX IF NOT EXISTS idx_steps_run_ts ON steps(run_id, ts)',
+      'CREATE INDEX IF NOT EXISTS idx_sevents_run_ts ON sample_events(run_id, ts)',
+      'CREATE INDEX IF NOT EXISTS idx_turns_run_started ON turns(run_id, started_at)',
+      // evals had an index on run_id only, while the task rollup and the task
+      // list both look up by task_id.
+      'CREATE INDEX IF NOT EXISTS idx_evals_task ON evals(task_id)',
+      'CREATE INDEX IF NOT EXISTS idx_tasks_started ON tasks(started_at)',
+    ]) {
+      try { this.db.exec(sql); } catch { /* ignore */ }
+    }
   }
 
   private seedDefaultRubric(): void {
@@ -650,6 +700,7 @@ export class ApmeStore {
       exitCode: 'exit_code',
       gitBefore: 'git_before',
       gitAfter: 'git_after',
+      parentRunId: 'parent_run_id',
       hwProfile: 'hw_profile',
       taskSignals: 'task_signals',
       taskCategory: 'task_category',
@@ -808,6 +859,83 @@ export class ApmeStore {
       : `SELECT * FROM tasks ORDER BY started_at DESC LIMIT ?`;
     const rows = this.db.prepare(sql).all(limit) as Array<Record<string, unknown>>;
     return rows.map(rowToTask);
+  }
+
+  /** One page of task units with the run context needed to read them without a
+   *  second query — the browse surface for "every work unit we have processed".
+   *
+   *  `listAllTasks` returns bare task rows, which is why the dashboard could
+   *  only reach a task by drilling into its run: the row alone carries no agent,
+   *  model, project or prompt. Tasks are the canonical evaluation unit, so they
+   *  need a first-class list of their own.
+   *
+   *  `total` is the unpaged count for the same filters, so a caller can page
+   *  without guessing when it has reached the end. */
+  listTaskPage(opts: {
+    limit?: number;
+    offset?: number;
+    agentType?: string;
+    projectName?: string;
+    category?: string;
+    outcome?: string;
+    /** 'closed' — boundary hit; 'open' — still accumulating; default both. */
+    state?: 'closed' | 'open';
+    /** Substring match over the task summary and its run's first prompt. */
+    q?: string;
+  } = {}): { total: number; tasks: ApmeTaskListRow[] } {
+    if (!this.db) return { total: 0, tasks: [] };
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const offset = Math.max(opts.offset ?? 0, 0);
+    const where: string[] = [];
+    const args: unknown[] = [];
+    // `_empty` runs are bookkeeping shells, never work the user did.
+    where.push("COALESCE(r.task_category, '') != '_empty'");
+    if (opts.agentType) { where.push('r.agent_type = ?'); args.push(opts.agentType); }
+    if (opts.projectName) { where.push('r.project_name = ?'); args.push(opts.projectName); }
+    if (opts.category) { where.push('COALESCE(t.task_category, r.task_category) = ?'); args.push(opts.category); }
+    if (opts.outcome) { where.push('t.outcome = ?'); args.push(opts.outcome); }
+    if (opts.state === 'closed') where.push('t.ended_at IS NOT NULL');
+    if (opts.state === 'open') where.push('t.ended_at IS NULL');
+    if (opts.q) {
+      where.push('(t.summary LIKE ? OR r.task_prompt LIKE ?)');
+      const like = `%${opts.q}%`; args.push(like, like);
+    }
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+    const total = (this.db.prepare(
+      `SELECT COUNT(*) AS n FROM tasks t JOIN runs r ON r.id = t.run_id ${whereSql}`,
+    ).get(...args) as { n: number }).n;
+    const rows = this.db.prepare(
+      `SELECT t.*,
+              r.session_id, r.agent_type, r.model_id AS run_model_id, r.project_name,
+              r.project_path, r.task_prompt AS run_prompt, r.parent_run_id,
+              (SELECT COUNT(*) FROM turns tu WHERE tu.task_id = t.id) AS turn_count,
+              (SELECT COUNT(*) FROM turns tu WHERE tu.task_id = t.id AND tu.response IS NOT NULL) AS answered_turns,
+              (SELECT COUNT(*) FROM sample_events se WHERE se.task_id = t.id) AS event_count,
+              (SELECT COUNT(*) FROM sample_events se WHERE se.task_id = t.id AND se.kind = 'tool') AS tool_count,
+              (SELECT tu.prompt FROM turns tu WHERE tu.task_id = t.id ORDER BY tu.turn_index ASC LIMIT 1) AS first_prompt,
+              (SELECT e.score FROM evals e WHERE e.task_id = t.id AND e.metric = 'overall' ORDER BY e.created_at DESC LIMIT 1) AS overall_score,
+              (SELECT COUNT(*) FROM evals e WHERE e.task_id = t.id) AS eval_count
+       FROM tasks t JOIN runs r ON r.id = t.run_id
+       ${whereSql}
+       ORDER BY t.started_at DESC
+       LIMIT ? OFFSET ?`,
+    ).all(...args, limit, offset) as Array<Record<string, unknown>>;
+    return { total, tasks: rows.map(rowToTaskListRow) };
+  }
+
+  /** Distinct values behind the task list's filters, so the UI offers what the
+   *  data actually contains rather than a hardcoded menu. */
+  taskFacets(): { agents: string[]; projects: string[]; categories: string[]; outcomes: string[] } {
+    if (!this.db) return { agents: [], projects: [], categories: [], outcomes: [] };
+    const col = (sql: string): string[] =>
+      (this.db!.prepare(sql).all() as Array<{ v: string | null }>)
+        .map((r) => r.v).filter((v): v is string => typeof v === 'string' && v.length > 0);
+    return {
+      agents: col('SELECT DISTINCT agent_type AS v FROM runs ORDER BY v'),
+      projects: col('SELECT DISTINCT project_name AS v FROM runs ORDER BY v'),
+      categories: col("SELECT DISTINCT COALESCE(task_category,'') AS v FROM tasks WHERE v != '' ORDER BY v"),
+      outcomes: col("SELECT DISTINCT COALESCE(outcome,'') AS v FROM tasks WHERE v != '' ORDER BY v"),
+    };
   }
 
   listTurnsForTask(taskId: string): Array<Record<string, unknown>> {
@@ -1032,6 +1160,85 @@ export class ApmeStore {
     return rows.map((r) => ({ id: r.id, runId: r.run_id }));
   }
 
+  /** Abandoned runs: real work that was never closed. The daemon restarted (or
+   *  crashed) mid-session, so the in-memory session→run map `closeRun` depends
+   *  on is gone and nothing will ever finalize these rows.
+   *
+   *  Distinct from `listOrphanedRuns`, which by design only matches empty
+   *  shells (`task_prompt IS NULL` + no turns) and so steps right over the case
+   *  that actually costs data: a run carrying prompts, turns and a whole tool
+   *  trajectory stays open forever, its task never closes, and a task that
+   *  never closes is never evaluated.
+   *
+   *  Staleness is measured from the LAST recorded activity, never
+   *  `started_at` — a live multi-hour session must not be reaped out from
+   *  under the process that owns it (session bridges share this sqlite file
+   *  and the daemon cannot see their in-memory state). Callers additionally
+   *  skip runs their own collector still holds open.
+   *  `lastActivity` is returned so the caller can close the rows AT the last
+   *  activity instead of `now`, keeping durations honest. */
+  listAbandonedRuns(staleSec: number = 7200, limit: number = 20): Array<{ id: string; projectPath: string | null; lastActivity: number }> {
+    if (!this.db) return [];
+    const cutoff = Date.now() - staleSec * 1000;
+    const rows = this.db.prepare(
+      `SELECT id, project_path, last_activity FROM (
+         SELECT r.id AS id, r.project_path AS project_path,
+           MAX(
+             r.started_at,
+             COALESCE((SELECT MAX(MAX(t.started_at, COALESCE(t.ended_at, 0))) FROM turns t WHERE t.run_id = r.id), 0),
+             COALESCE((SELECT MAX(s.ts) FROM steps s WHERE s.run_id = r.id), 0),
+             COALESCE((SELECT MAX(se.ts) FROM sample_events se WHERE se.run_id = r.id), 0)
+           ) AS last_activity
+         FROM runs r
+         WHERE r.ended_at IS NULL
+           -- Sound pre-filter, not an approximation: last_activity is a MAX that
+           -- includes started_at, so last_activity < cutoff implies
+           -- started_at < cutoff. Checking it first lets idx_runs_started skip
+           -- every recent run before the correlated MAXes are evaluated.
+           AND r.started_at < ?
+           AND EXISTS (SELECT 1 FROM turns t WHERE t.run_id = r.id)
+       )
+       WHERE last_activity < ?
+       ORDER BY last_activity ASC
+       LIMIT ?`,
+    ).all(cutoff, cutoff, limit) as Array<{ id: string; project_path: string | null; last_activity: number }>;
+    return rows.map((r) => ({ id: r.id, projectPath: r.project_path, lastActivity: r.last_activity }));
+  }
+
+  /** Finalize an abandoned run: close its dangling turns, close its tasks with
+   *  `boundary_signal='orphaned'`, then close the run itself — all stamped at
+   *  `endedAt` (the run's last activity), not `now`, so a run abandoned last
+   *  night doesn't report a 12-hour turn.
+   *
+   *  Tasks are backfilled with their real first/last turn index when the
+   *  in-memory close never ran, since the task rollup reads those columns.
+   *  Returns the closed task ids so the caller can enqueue task-level evals —
+   *  the whole point of closing them. */
+  reapAbandonedRun(runId: string, endedAt: number): Array<{ id: string; category: string | null }> {
+    if (!this.db) return [];
+    const bounds = this.db.prepare(
+      'SELECT MIN(turn_index) AS lo, MAX(turn_index) AS hi FROM turns WHERE run_id = ?',
+    ).get(runId) as { lo: number | null; hi: number | null } | undefined;
+    const tasks = this.db.prepare(
+      'SELECT id, task_category FROM tasks WHERE run_id = ? AND ended_at IS NULL',
+    ).all(runId) as Array<{ id: string; task_category: string | null }>;
+    const tx = this.db.transaction(() => {
+      this.db!.prepare('UPDATE turns SET ended_at = ? WHERE run_id = ? AND ended_at IS NULL').run(endedAt, runId);
+      this.db!.prepare(
+        `UPDATE tasks SET ended_at = ?, boundary_signal = 'orphaned',
+           first_turn_index = COALESCE(first_turn_index, ?),
+           last_turn_index  = COALESCE(last_turn_index, ?)
+         WHERE run_id = ? AND ended_at IS NULL`,
+      ).run(endedAt, bounds?.lo ?? null, bounds?.hi ?? null, runId);
+      this.db!.prepare('UPDATE runs SET ended_at = ? WHERE id = ? AND ended_at IS NULL').run(endedAt, runId);
+    });
+    try { tx(); } catch (err) {
+      debug('APME', `reapAbandonedRun ${runId.slice(0, 8)} failed: ${String(err)}`);
+      return [];
+    }
+    return tasks.map((t) => ({ id: t.id, category: t.task_category }));
+  }
+
   /** Orphaned runs: started long ago, never closed, no turns.
    *  Typically from session bridges that crashed without cleanup. */
   listOrphanedRuns(staleSec: number = 1800): string[] {
@@ -1057,11 +1264,11 @@ export class ApmeStore {
     if (!this.db) return false;
     const res = this.db.prepare(
       `INSERT OR IGNORE INTO sample_events
-        (task_id, run_id, turn_index, seq, ts, kind, model, input_tokens, output_tokens,
+        (task_id, run_id, turn_index, turn_id, seq, ts, kind, model, input_tokens, output_tokens,
          cost_usd, latency_ms, tool_name, tool_status, tool_error, payload, dedup_key)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     ).run(
-      row.taskId, row.runId, row.turnIndex ?? null, row.seq, row.ts, row.kind,
+      row.taskId, row.runId, row.turnIndex ?? null, row.turnId ?? null, row.seq, row.ts, row.kind,
       row.model ?? null, row.inputTokens ?? null, row.outputTokens ?? null,
       row.costUsd ?? null, row.latencyMs ?? null,
       row.toolName ?? null, row.toolStatus ?? null, row.toolError ?? null,
@@ -1232,6 +1439,7 @@ function rowToRun(r: Record<string, unknown>): ApmeRunRow {
     exitCode: (r.exit_code as number | null) ?? null,
     gitBefore: (r.git_before as string | null) ?? null,
     gitAfter: (r.git_after as string | null) ?? null,
+    parentRunId: (r.parent_run_id as string | null) ?? null,
     hwProfile: (r.hw_profile as string | null) ?? null,
     taskSignals: (r.task_signals as string | null) ?? null,
     taskCategory: (r.task_category as string | null) ?? null,
@@ -1267,12 +1475,35 @@ function rowToTask(r: Record<string, unknown>): ApmeTaskRow {
   };
 }
 
+/** Task row + the run context that makes it readable on its own. `modelId`
+ *  prefers the task's own sample header and falls back to the run's, since only
+ *  newer tasks carry one. */
+function rowToTaskListRow(r: Record<string, unknown>): ApmeTaskListRow {
+  return {
+    ...rowToTask(r),
+    sessionId: r.session_id as string,
+    agentType: r.agent_type as ApmeTaskListRow['agentType'],
+    modelId: (r.model_id as string | null) ?? (r.run_model_id as string | null) ?? null,
+    projectName: (r.project_name as string | null) ?? null,
+    projectPath: (r.project_path as string | null) ?? null,
+    parentRunId: (r.parent_run_id as string | null) ?? null,
+    firstPrompt: (r.first_prompt as string | null) ?? (r.run_prompt as string | null) ?? null,
+    turnCount: (r.turn_count as number | null) ?? 0,
+    answeredTurns: (r.answered_turns as number | null) ?? 0,
+    eventCount: (r.event_count as number | null) ?? 0,
+    toolCount: (r.tool_count as number | null) ?? 0,
+    evalCount: (r.eval_count as number | null) ?? 0,
+    overallScore: (r.overall_score as number | null) ?? (r.composite_score as number | null) ?? null,
+  };
+}
+
 function rowToSampleEvent(r: Record<string, unknown>): ApmeSampleEventRow {
   return {
     id: r.id as number,
     taskId: r.task_id as string,
     runId: r.run_id as string,
     turnIndex: (r.turn_index as number | null) ?? null,
+    turnId: (r.turn_id as string | null) ?? null,
     seq: r.seq as number,
     ts: r.ts as number,
     kind: r.kind as ApmeSampleEventRow['kind'],

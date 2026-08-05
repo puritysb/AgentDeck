@@ -37,6 +37,11 @@ export interface ApmeRunRow {
   exitCode?: number | null;
   gitBefore?: string | null;
   gitAfter?: string | null;
+  /** The run this one continues after a `/clear` context reset. `/clear` splits
+   *  a session into a fresh run so each gets its own evaluation unit; this edge
+   *  keeps the conversation reconstructible across the split instead of leaving
+   *  N disconnected runs behind one session id. Null for a genuine session start. */
+  parentRunId?: string | null;
   /** JSON string. Per-run hardware sample (cpu/memory/load). */
   hwProfile?: string | null;
   /** JSON string. Output of the rule-based classifier — tool counts, file scopes, etc. */
@@ -251,6 +256,41 @@ export interface ApmeRunWithEvalsSummary extends ApmeRunRow {
 
 export interface ApmeRunsResponse extends ApmeApiEnvelope {
   runs: ApmeRunWithEvalsSummary[];
+}
+
+/** A task unit carrying enough run context to be read on its own.
+ *
+ *  Tasks are the canonical evaluation unit, but a bare `ApmeTaskRow` names no
+ *  agent, model, project or prompt — which is why the only way to reach one used
+ *  to be drilling into its run. This is the shape the task browse surface lists. */
+export interface ApmeTaskListRow extends ApmeTaskRow {
+  sessionId: string;
+  agentType: AgentType;
+  /** Task-level model when the sample recorded one, else the run's. */
+  modelId: string | null;
+  projectName: string | null;
+  /** Run's working directory — the root a file path is made relative to. */
+  projectPath: string | null;
+  parentRunId: string | null;
+  /** The task's own first prompt; falls back to the run prompt when the task
+   *  predates per-turn prompt capture. */
+  firstPrompt: string | null;
+  turnCount: number;
+  /** Turns whose assistant reply was archived. `turnCount - answeredTurns > 0`
+   *  marks a unit the judge can only partly see. */
+  answeredTurns: number;
+  eventCount: number;
+  toolCount: number;
+  evalCount: number;
+  overallScore: number | null;
+}
+
+export interface ApmeTaskListResponse extends ApmeApiEnvelope {
+  total: number;
+  limit: number;
+  offset: number;
+  tasks: ApmeTaskListRow[];
+  facets: { agents: string[]; projects: string[]; categories: string[]; outcomes: string[] };
 }
 
 export interface ApmeRunDetailResponse extends ApmeApiEnvelope {

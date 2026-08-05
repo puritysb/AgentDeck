@@ -103,7 +103,7 @@ daemon 없이 session bridge 단독 사용 시 데이터만 축적되고 coding 
 id, session_id, agent_type, model_id, project_name, project_path,
 task_prompt, started_at, ended_at,
 input_tokens, output_tokens, cost_usd, exit_code,
-git_before, git_after, hw_profile,
+git_before, git_after, parent_run_id, hw_profile,
 task_signals, task_category, task_category_source,
 outcome, outcome_confidence,
 efficiency_json, composite_score
@@ -115,6 +115,18 @@ efficiency_json, composite_score
 - `task_category` — 10개 카테고리 중 하나, `task_category_source` 는 `'rule' | 'llm' | 'auto'`
 - `outcome` — `committed | iterated | exploratory | abandoned | interrupted | ab_winner | ab_loser | pending`
 - `composite_score` — 4차원 가중합 (outcome + judge + efficiency + vibe)
+- `parent_run_id` — `/clear` 로 갈라진 직전 run. `/clear` 는 컨텍스트를 리셋할 뿐 사용자의 작업을 끝내지 않으므로, 이 엣지가 없으면 한 대화가 서로 끊긴 N개의 run 으로 흩어진다 (실제로 한 세션에 127 run 관측). 진짜 세션 시작이면 NULL
+
+### 그래프 투영 — 행 저장소를 property graph 로 보기
+
+`runs → tasks → turns → sample_events` 는 실제 FK 를 가진 containment tree 라 그대로 그래프가 된다. 하지만 **작업 단위끼리 이어주는 간선**(공통 조상이 없는 두 task 의 연결)은 컬럼에 문자열로 눌려 있었다. 그래서:
+
+- **스키마로 고친 것** — `sample_events.turn_id`(기존엔 run 안에서만 유일한 `turn_index` 뿐이라 event→turn 엣지가 아예 없었음), `runs.parent_run_id`(위 참고). 둘 다 마이그레이션에서 backfill.
+- **투영으로 유도하는 것** — session / project / model / agent / tool / file 은 행이 아니라 컬럼·payload 이므로 `bridge/src/apme/graph.ts` 가 노드로 materialize 한다. 특히 **file 노드**는 tool payload 의 `file_path` 에서 뽑아 run 의 `project_path` 기준 상대경로로 키잉하므로, 같은 파일을 worktree 와 본 체크아웃에서 만졌어도 한 노드로 합쳐진다. 커버리지는 부분적이다(경로를 받지 않는 Bash/WebFetch 등) — `stats.fileCoverage` 가 그 비율을 그대로 보고한다.
+
+모델 정의는 `shared/src/apme-graph.ts`(SSOT), 빌더는 `bridge/src/apme/graph.ts`, 노출은 `GET /apme/graph`, 뷰어는 대시보드 **Graph** 탭(외부 라이브러리 없이 canvas force layout — 대시보드는 self-contained HTML 이라 CDN 을 못 쓴다).
+
+투영은 파생물이며 저장하지 않는다 — 마이그레이션 없이 형태를 바꿀 수 있다.
 
 ### turns — 멀티턴 세션의 개별 턴
 
@@ -186,6 +198,8 @@ v_category_scorecard    -- (task_category, model_id) 그룹: runs, avg_overall,
 2. **Claude Code**: `adapter.on('event', 'hook')` → `apme.collector.ingestHook(sessionId, event, data)`
 3. **Non-Claude 에이전트** (OpenClaw/OpenCode/Codex): `wireAgentApme(adapter, agentType, apme, core, ptyRingBuffer)` — timeline 이벤트 + PTY parser 이벤트를 collector로 변환
 4. **Claude Code PTY 응답 캡처**: `spinner_stop` 이벤트 + 500ms 지연 → 링버퍼 tail에서 `⏺` 마커 기반 파싱 → `setTurnResponse()`. `pendingPtyResponse` 3-path race 해결
+
+> **관측(observed) 세션의 응답 캡처는 데몬 쪽에 따로 있다.** 위 PTY 경로는 `agentdeck claude` 로 띄운 managed 세션 전용이라, 직접 실행한 `claude`/`codex`/`opencode` 는 이 경로를 타지 않는다. 그 결과 hook 으로만 관측되는 세션은 프롬프트와 툴 궤적만 아카이빙되고 **응답은 통째로 유실**됐다 (claude-code turn 1589개 중 response 219개, 마지막이 2026-07-11; `assistant_message` 궤적 이벤트는 전 기간 15개뿐이고 그중 12개가 OpenClaw). 대시보드가 TIMELINE 이 온전히 보여주는 대화를 재현할 수 없었고, judge 는 침묵을 채점하고 있었다. 지금은 `daemon-server.ts` 의 stop 훅 핸들러가 타임라인 행을 결정하는 **같은 분기에서** `setTurnResponse()` 를 호출한다. Swift 데몬도 같은 증상이었지만 원인이 달랐다 — `getLastEntry(type:"chat_end")` 를 읽었는데 `chat_end` 는 응답이 **없을 때만** 나오는 행이라 구조적으로 응답을 볼 수 없었다(`DaemonServer.appendClaudeCodeChatEnd` 로 이동).
 5. `usage_info` 메타데이터 → `apme.collector.updateUsage(sessionId, snapshot)`
 6. `state_changed` → `apme.collector.updateModel(sessionId, modelName)`
 
@@ -202,7 +216,8 @@ v_category_scorecard    -- (task_category, model_id) 그룹: runs, avg_overall,
   1. 미평가 run 큐에 enqueue
   2. 10초 이상 닫힌 run의 outcome 계산
   3. `task_category IS NULL` 재분류 (세션 프로세스 조기 종료 복구)
-  4. orphan run 태깅
+  4. orphan run 태깅 — `task_prompt` 도 turn 도 없는 **빈 껍데기**만 대상
+  5. **abandoned run 수확** — 4번이 볼 수 없는 것들. 데몬이 재시작하면 in-memory `sessionToRun` 맵이 사라져 진행 중이던 run 이 영원히 `ended_at IS NULL` 로 남는다. 이들은 실제 프롬프트·턴·툴 궤적을 갖고 있어 4번의 빈-껍데기 술어를 통과하지 못하고, **task 도 닫히지 않으므로 평가가 아예 돌지 않는다** (실측: open task 65 vs closed 9). 마지막 활동 시각 기준 2시간 무활동(`AGENTDECK_APME_ABANDON_SEC`)이면 turn/task/run 을 **그 마지막 활동 시각으로** 닫고(`boundary_signal='orphaned'`), 응답 텍스트가 있는 task 만 judge 에 enqueue 한다. `collector.isLiveRun()` 으로 자기 프로세스가 아직 쥐고 있는 run 은 건너뛴다
 - `apme.runner.onResult()` 리스너: 평가 완료마다 `apme_eval` WS 브로드캐스트 + `BridgeTimeline.addEntry({ type: 'eval_result' })`
 
 ## Task classification
@@ -379,7 +394,9 @@ composite = 0.40 × outcomeScore
 | GET | `/apme` | 대시보드 HTML (inline SPA) |
 | GET | `/apme/runs?limit=&agent=&model=` | 최근 runs + evals + overallScore |
 | GET | `/apme/run/:id` | 단일 run 상세 (steps, turns, per-turn evals, vibe) |
-| GET | `/apme/tasks/:id` | run 의 task 목록 + task별 rollup |
+| GET | `/apme/tasks?limit=&offset=&agent=&project=&category=&outcome=&state=&q=` | **처리된 task 단위 전체 목록** (paged + faceted) |
+| GET | `/apme/tasks/:id` | 단일 task 상세 — task row + run context + turns + evals + SessionSample |
+| GET | `/apme/graph?limit=&minHubDegree=&turns=&files=&agent=&project=&category=` | 행 저장소의 property-graph 투영 (nodes/edges/stats) |
 | GET | `/apme/scorecard` | `v_model_scorecard` |
 | GET | `/apme/categories` | `v_category_scorecard` |
 | GET | `/apme/samples` | sample-granularity 스코어카드 (Pareto 입력) |

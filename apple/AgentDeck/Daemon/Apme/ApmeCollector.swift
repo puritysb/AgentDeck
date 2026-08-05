@@ -944,6 +944,16 @@ final class ApmeCollector {
         return sessionToTask[sid]?.id
     }
 
+    /// True while this collector still owns `runId` — some session maps to it
+    /// and will close it normally. The abandoned-run reaper consults this before
+    /// finalizing anything: an inactivity window alone would reap a live session
+    /// whose user simply stepped away mid-turn, and the row would then be closed
+    /// underneath the collector still writing to it.
+    /// Mirrors bridge/src/apme/collector.ts isLiveRun.
+    func isLiveRun(_ runId: String) -> Bool {
+        sessionToRun.values.contains(runId)
+    }
+
     /// (runId, taskId) for a session's currently-open task — used to record a
     /// manual_review eval (REVIEW deck button) into the same store as the
     /// automatic pipeline. Returns nil when no run/task is open for the id.

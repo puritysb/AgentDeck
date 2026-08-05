@@ -230,6 +230,114 @@ final class ApmeStore: @unchecked Sendable {
         return result
     }
 
+    /// Abandoned runs: real work that was never closed. The daemon restarted
+    /// (or crashed) mid-session, so the in-memory session→run map `closeRun`
+    /// depends on is gone and nothing will ever finalize these rows.
+    ///
+    /// Distinct from `listOrphanedRuns`, which by design matches only empty
+    /// shells (`task_prompt IS NULL` + no turns) and therefore steps over the
+    /// case that actually costs data: a run carrying prompts, turns and a whole
+    /// tool trajectory stays open forever, its task never closes, and a task
+    /// that never closes is never evaluated.
+    ///
+    /// Staleness is measured from the LAST recorded activity, never
+    /// `started_at` — a live multi-hour session must not be reaped out from
+    /// under the process that owns it. `lastActivity` is returned so the caller
+    /// closes the rows AT that instant rather than `now`, keeping durations
+    /// honest. Mirrors bridge/src/apme/store.ts listAbandonedRuns.
+    func listAbandonedRuns(staleSec: Int = 7200, limit: Int = 20) -> [(id: String, lastActivity: Int)] {
+        guard let db else { return [] }
+        let cutoff = Int(Date().timeIntervalSince1970 * 1000) - staleSec * 1000
+        let sql = """
+        SELECT id, last_activity FROM (
+          SELECT r.id AS id,
+            MAX(
+              r.started_at,
+              COALESCE((SELECT MAX(MAX(t.started_at, COALESCE(t.ended_at, 0))) FROM turns t WHERE t.run_id = r.id), 0),
+              COALESCE((SELECT MAX(s.ts) FROM steps s WHERE s.run_id = r.id), 0),
+              COALESCE((SELECT MAX(se.ts) FROM sample_events se WHERE se.run_id = r.id), 0)
+            ) AS last_activity
+          FROM runs r
+          WHERE r.ended_at IS NULL
+            AND EXISTS (SELECT 1 FROM turns t WHERE t.run_id = r.id)
+        )
+        WHERE last_activity < ?
+        ORDER BY last_activity ASC
+        LIMIT ?
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(cutoff))
+        sqlite3_bind_int64(stmt, 2, Int64(limit))
+        var result: [(id: String, lastActivity: Int)] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            result.append((String(cString: sqlite3_column_text(stmt, 0)),
+                           Int(sqlite3_column_int64(stmt, 1))))
+        }
+        return result
+    }
+
+    /// Finalize an abandoned run: close its dangling turns, close its tasks with
+    /// `boundary_signal='orphaned'`, then close the run — all stamped at
+    /// `endedAt` (the run's last activity), so a run abandoned last night does
+    /// not report a twelve-hour turn. The run is closed LAST: any partial
+    /// failure leaves `ended_at` NULL so the next sweep retries, instead of
+    /// stranding an open task behind a closed run where nothing would find it.
+    ///
+    /// Returns the closed task ids so the caller can enqueue task-level evals —
+    /// the reason for closing them. Mirrors bridge/src/apme/store.ts.
+    @discardableResult
+    func reapAbandonedRun(runId: String, endedAt: Int) -> [(id: String, category: String?)] {
+        guard let db else { return [] }
+        var bounds: (lo: Int, hi: Int)?
+        var bstmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, "SELECT MIN(turn_index), MAX(turn_index) FROM turns WHERE run_id = ?", -1, &bstmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(bstmt, 1, (runId as NSString).utf8String, -1, nil)
+            if sqlite3_step(bstmt) == SQLITE_ROW, sqlite3_column_type(bstmt, 0) != SQLITE_NULL {
+                bounds = (Int(sqlite3_column_int64(bstmt, 0)), Int(sqlite3_column_int64(bstmt, 1)))
+            }
+        }
+        sqlite3_finalize(bstmt)
+
+        var tasks: [(id: String, category: String?)] = []
+        var tstmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, "SELECT id, task_category FROM tasks WHERE run_id = ? AND ended_at IS NULL", -1, &tstmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(tstmt, 1, (runId as NSString).utf8String, -1, nil)
+            while sqlite3_step(tstmt) == SQLITE_ROW {
+                let id = String(cString: sqlite3_column_text(tstmt, 0))
+                let cat = sqlite3_column_type(tstmt, 1) == SQLITE_NULL
+                    ? nil : String(cString: sqlite3_column_text(tstmt, 1))
+                tasks.append((id, cat))
+            }
+        }
+        sqlite3_finalize(tstmt)
+
+        func exec(_ sql: String, _ binds: [Any?]) {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+            defer { sqlite3_finalize(stmt) }
+            for (i, b) in binds.enumerated() {
+                let idx = Int32(i + 1)
+                switch b {
+                case let v as Int: sqlite3_bind_int64(stmt, idx, Int64(v))
+                case let v as String: sqlite3_bind_text(stmt, idx, (v as NSString).utf8String, -1, nil)
+                default: sqlite3_bind_null(stmt, idx)
+                }
+            }
+            _ = sqlite3_step(stmt)
+        }
+        exec("UPDATE turns SET ended_at = ? WHERE run_id = ? AND ended_at IS NULL", [endedAt, runId])
+        exec("""
+        UPDATE tasks SET ended_at = ?, boundary_signal = 'orphaned',
+          first_turn_index = COALESCE(first_turn_index, ?),
+          last_turn_index  = COALESCE(last_turn_index, ?)
+        WHERE run_id = ? AND ended_at IS NULL
+        """, [endedAt, bounds?.lo, bounds?.hi, runId])
+        exec("UPDATE runs SET ended_at = ? WHERE id = ? AND ended_at IS NULL", [endedAt, runId])
+        return tasks
+    }
+
     /// Orphaned runs: started long ago, never closed, no turns.
     /// Typically from session bridges that crashed without cleanup.
     func listOrphanedRuns(staleSec: Int = 1800) -> [String] {
@@ -1035,6 +1143,43 @@ final class ApmeStore: @unchecked Sendable {
             ("latency_ms",    "ALTER TABLE tasks ADD COLUMN latency_ms INTEGER"),
         ]
         for (col, sql) in tasksMigrations where !tasksCols.contains(col) { exec(sql) }
+
+        // ── Graph-integrity columns (mirrors bridge/src/apme/store.ts) ──
+        // Both daemons write the same sqlite layout, so a DB created by either
+        // must carry these or the other's graph projection silently loses edges.
+        //  1. sample_events addressed its turn by `turn_index`, unique only
+        //     within a run — there was no event→turn edge at all.
+        //  2. `/clear` opens a fresh run with no pointer to the one it
+        //     continues, so one conversation appeared as N disconnected runs.
+        let sevCols = query("PRAGMA table_info(sample_events)").compactMap { $0["name"] as? String }
+        if !sevCols.contains("turn_id") {
+            exec("ALTER TABLE sample_events ADD COLUMN turn_id TEXT")
+            exec("CREATE INDEX IF NOT EXISTS idx_sevents_turn ON sample_events(turn_id)")
+            // One-shot backfill from the compound key the column replaces.
+            exec("""
+            UPDATE sample_events SET turn_id = (
+              SELECT t.id FROM turns t
+              WHERE t.run_id = sample_events.run_id AND t.turn_index = sample_events.turn_index
+            ) WHERE turn_id IS NULL AND turn_index IS NOT NULL
+            """)
+        }
+        if !runsCols.contains("parent_run_id") {
+            exec("ALTER TABLE runs ADD COLUMN parent_run_id TEXT")
+            exec("CREATE INDEX IF NOT EXISTS idx_runs_parent ON runs(parent_run_id)")
+        }
+
+        // ── Covering indexes for the per-run/per-task rollups ──
+        // `MAX(ts)` over a run's steps was reading full rows to reach one
+        // integer, and `steps.payload` holds entire hook bodies — the
+        // abandoned-run sweep touched hundreds of megabytes and took 22s on a
+        // real store. (run_id, ts) answers it from the index alone.
+        for sql in [
+            "CREATE INDEX IF NOT EXISTS idx_steps_run_ts ON steps(run_id, ts)",
+            "CREATE INDEX IF NOT EXISTS idx_sevents_run_ts ON sample_events(run_id, ts)",
+            "CREATE INDEX IF NOT EXISTS idx_turns_run_started ON turns(run_id, started_at)",
+            "CREATE INDEX IF NOT EXISTS idx_evals_task ON evals(task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_started ON tasks(started_at)",
+        ] { exec(sql) }
     }
 
     private func seedDefaultRubric() {

@@ -18,6 +18,7 @@ export type {
   ApmeScorecardRow,
   ApmeCategoryScorecardRow,
   ApmeTaskRow,
+  ApmeTaskListRow,
   TaskBoundarySignal,
   ParsedJudge,
   ResponseKind,

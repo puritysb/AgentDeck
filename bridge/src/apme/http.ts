@@ -108,6 +108,52 @@ export async function handleApmeRequest(
       return true;
     }
 
+    // ── Tasks: the accumulating browse surface ──────────────────────────────
+    // Tasks are the canonical evaluation unit, but until this route the only
+    // way to reach one was to drill into its run — so there was no way to see
+    // "every work unit processed" at all. Paged + filtered + faceted so the
+    // list stays usable as the store grows past thousands of units.
+    if (method === 'GET' && path === '/apme/tasks') {
+      const limit = clampInt(url.searchParams.get('limit'), 1, 500, 50);
+      const offset = clampInt(url.searchParams.get('offset'), 0, 1_000_000, 0);
+      const stateParam = url.searchParams.get('state');
+      const { total, tasks } = apme.store.listTaskPage({
+        limit, offset,
+        ...(url.searchParams.get('agent') ? { agentType: url.searchParams.get('agent')! } : {}),
+        ...(url.searchParams.get('project') ? { projectName: url.searchParams.get('project')! } : {}),
+        ...(url.searchParams.get('category') ? { category: url.searchParams.get('category')! } : {}),
+        ...(url.searchParams.get('outcome') ? { outcome: url.searchParams.get('outcome')! } : {}),
+        ...(stateParam === 'closed' || stateParam === 'open' ? { state: stateParam } : {}),
+        ...(url.searchParams.get('q') ? { q: url.searchParams.get('q')! } : {}),
+      });
+      sendJson(res, 200, {
+        schema: EVAL_SCHEMA_VERSION,
+        total, limit, offset, tasks,
+        facets: apme.store.taskFacets(),
+      });
+      return true;
+    }
+
+    // ── Graph projection ────────────────────────────────────────────────────
+    // The row store viewed as a property graph: the run→task→turn containment
+    // spine plus the derived session/project/model/agent/tool/file hubs that
+    // connect work units sharing no ancestor. See shared/src/apme-graph.ts for
+    // what the schema does and does not already express.
+    if (method === 'GET' && path === '/apme/graph') {
+      const { buildApmeGraph } = await import('./graph.js');
+      const slice = buildApmeGraph(apme.store, {
+        limit: clampInt(url.searchParams.get('limit'), 1, 400, 60),
+        minHubDegree: clampInt(url.searchParams.get('minHubDegree'), 1, 50, 2),
+        includeTurns: url.searchParams.get('turns') !== '0',
+        includeFiles: url.searchParams.get('files') !== '0',
+        ...(url.searchParams.get('agent') ? { agentType: url.searchParams.get('agent')! } : {}),
+        ...(url.searchParams.get('project') ? { projectName: url.searchParams.get('project')! } : {}),
+        ...(url.searchParams.get('category') ? { category: url.searchParams.get('category')! } : {}),
+      });
+      sendJson(res, 200, { schema: EVAL_SCHEMA_VERSION, ...slice });
+      return true;
+    }
+
     if (method === 'GET' && path.startsWith('/apme/tasks/')) {
       const taskId = path.slice('/apme/tasks/'.length);
       const task = apme.store.getTask(taskId);
@@ -117,11 +163,19 @@ export async function handleApmeRequest(
       }
       const taskEvals = apme.store.listEvalsForTask(taskId);
       const turns = apme.store.listTurnsForTask(taskId);
+      const run = apme.store.getRun(task.runId);
       sendJson(res, 200, {
         schema: EVAL_SCHEMA_VERSION,
         task,
+        // Run context: the task row alone names no agent, model or project, so
+        // a task reached directly (not by drilling into a run) had no way to
+        // say whose work it was.
+        run,
         evals: taskEvals,
         turns,
+        // The canonical SessionSample — the typed trajectory the detail pane
+        // replays. Without it a task page can show scores but not the work.
+        sample: apme.store.getSample(taskId),
         overallScore: aggregateOverall(taskEvals),
       });
       return true;
