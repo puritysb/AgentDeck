@@ -47,6 +47,11 @@ struct ControlTowerPanel: View {
     /// maxHeight, which surfaces a scrollbar even when content fits.
     @State private var measuredContentHeight: CGFloat = 0
 
+    /// Room the popup window actually has, measured from its own top edge down
+    /// to the bottom of *its* screen's usable area. 0 until the hosting window
+    /// exists, which falls `availablePanelHeight` back to the screen estimate.
+    @State private var measuredAvailableHeight: CGFloat = 0
+
     var body: some View {
         VStack(spacing: 0) {
             // Header: Attention Theater when any session awaits input,
@@ -107,6 +112,11 @@ struct ControlTowerPanel: View {
                 .measureChromeHeight()
         }
         .frame(minWidth: 380, idealWidth: 420, maxWidth: 460)
+        .background(PanelAvailableHeightReader { height in
+            // Ignore sub-point jitter: this feeds the ScrollView cap, which
+            // resizes the window, and a 0.5pt oscillation would relayout forever.
+            if abs(height - measuredAvailableHeight) > 1 { measuredAvailableHeight = height }
+        })
         // Dark ocean theme matching Dashboard / Monitor HUD.
         // `deepSea` → `midWater` gives the popup a subtle gradient so the
         // top edge reads as shallower water and the bottom reads as the
@@ -233,20 +243,36 @@ struct ControlTowerPanel: View {
     /// the cap, the ScrollView reports its content's natural height (via
     /// `fixedSize(vertical: true)`) so the panel shrinks to fit when
     /// devices are sparse.
+    /// Vertical room the popup has to lay itself out in.
+    ///
+    /// Measured from the hosting window's own top edge, NOT from a screen
+    /// height. `NSScreen.main` is the screen holding the *key window*, which on
+    /// a multi-display desk is routinely not the screen the menubar popup opened
+    /// on — sizing the body against a taller neighbouring display is what pushed
+    /// the footer's "Start at Login / Quit" row off the bottom edge. Measuring
+    /// the window also folds in the menu-bar gap and the popup's own top inset,
+    /// neither of which a screen height accounts for.
+    ///
+    /// Falls back to the screen estimate only for the first frame, before the
+    /// hosting window exists.
+    private var availablePanelHeight: CGFloat {
+        if measuredAvailableHeight > 0 { return measuredAvailableHeight }
+        return NSScreen.main?.visibleFrame.height ?? 900
+    }
+
     private var scrollContentMaxHeight: CGFloat {
-        let screenHeight = NSScreen.main?.visibleFrame.height ?? 900
         // First frame may render before PreferenceKey lands — fall back to
         // the legacy 140pt reserve so the popup never starts overflowing.
         let chrome = max(140, measuredChromeHeight)
-        // Visual cushion against the visibleFrame edge (Dock auto-hide,
-        // multi-display chrome).
+        // Visual cushion against the bottom edge (popup corner radius/shadow
+        // inset, Dock auto-hide reveal strip).
         let safety: CGFloat = 24
         // Low floor (80pt ≈ one session row visible). When chrome is huge
         // — AttentionTheater with many options + DaemonOfflineBanner —
         // the body shrinks and scrolls internally instead of pushing the
         // popup past the screen edge. The previous 360pt floor stacked
         // with the AttentionTheater options cap to exceed visibleFrame.
-        return max(80, screenHeight - chrome - safety)
+        return max(80, availablePanelHeight - chrome - safety)
     }
 
     // MARK: - Session Classification
@@ -1146,6 +1172,35 @@ private struct ContentHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+/// Reports how much vertical room the hosting popup window actually has:
+/// from its own top edge down to the bottom of its screen's usable area.
+///
+/// The menubar popup is anchored under the menu bar, so `frame.maxY` is stable
+/// as the content resizes — no feedback loop with the height it feeds. Reading
+/// `window.screen` (rather than `NSScreen.main`) is the point: it is the screen
+/// the popup actually opened on.
+private struct PanelAvailableHeightReader: NSViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        // The window is not attached yet during makeNSView.
+        DispatchQueue.main.async { report(from: view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { report(from: nsView) }
+    }
+
+    private func report(from view: NSView) {
+        guard let window = view.window, let screen = window.screen else { return }
+        let available = window.frame.maxY - screen.visibleFrame.minY
+        guard available > 0 else { return }
+        onChange(available)
     }
 }
 

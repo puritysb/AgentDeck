@@ -9,6 +9,12 @@
 import { type ChildProcess } from 'child_process';
 import { deviceId, loadTimeboxDevices, type TimeboxDevice } from './timebox-settings.js';
 import { createSyncCycleSquelch, spawnPythonSync, terminateSyncChild, type SyncCycleSquelch } from '../ble-sync-spawn.js';
+import {
+  createBleLinkTracker,
+  mergeBleLinkSnapshots,
+  type BleLinkSnapshot,
+  type BleLinkTracker,
+} from '../ble-sync-status.js';
 import { getBleRuntimeStatus } from '../python-ble-runtime.js';
 
 interface SyncEntry {
@@ -20,9 +26,14 @@ interface SyncEntry {
   startedAt: number;
   /** Collapses repeated identical respawn cycles into an hourly summary. */
   squelch: SyncCycleSquelch;
+  /** Live BLE link state, fed by the child's `AGENTDECK_STATUS` lines. */
+  link: BleLinkTracker;
 }
 
 const entries = new Map<string, SyncEntry>();
+
+/** Set when no child could be spawned at all (missing BLE runtime). */
+let unavailableReason: string | null = null;
 
 const BASE_BACKOFF_MS = 5_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -39,8 +50,12 @@ export function startTimeboxSync(httpPort: number): void {
   const runtime = getBleRuntimeStatus();
   if (!runtime.ready || !runtime.python) {
     log(`sync unavailable (${runtime.reason}); run \`agentdeck ble setup\``);
+    // Register the reason so /health can say *why* the panel is dark instead of
+    // reporting a bare `connected:false` with no explanation.
+    unavailableReason = `BLE sync unavailable: ${runtime.reason}`;
     return;
   }
+  unavailableReason = null;
 
   for (const device of devices) {
     const id = deviceId(device);
@@ -53,6 +68,7 @@ export function startTimeboxSync(httpPort: number): void {
       consecutiveFailures: 0,
       startedAt: 0,
       squelch: createSyncCycleSquelch(log),
+      link: createBleLinkTracker(),
     };
     entries.set(id, entry);
     spawnSync(entry, runtime.python, runtime.paths.scripts.timeboxSync, httpPort);
@@ -71,10 +87,13 @@ function spawnSync(entry: SyncEntry, venvPython: string, syncScript: string, htt
     `Starting BLE sync for ${device.name ?? 'Timebox Mini'} (${id}, bridge ${url}, brightness ${brightness}%)`,
   );
   entry.startedAt = Date.now();
+  entry.link.noteSpawn();
 
   // stdout/stderr are captured into small rings so clean exits and crashes both
   // leave enough context without flooding the daemon log while running.
-  const { proc, stderrTail, outputTail } = spawnPythonSync(venvPython, args);
+  const { proc, stderrTail, outputTail } = spawnPythonSync(venvPython, args, {
+    onStatus: (payload) => entry.link.applyStatusLine(payload),
+  });
   entry.child = proc;
 
   proc.on('error', (err: Error) => {
@@ -94,6 +113,7 @@ function spawnSync(entry: SyncEntry, venvPython: string, syncScript: string, htt
     const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * entry.consecutiveFailures);
     const tail = stderrTail() || outputTail();
     const why = tail ? `; output: ${tail}` : '';
+    entry.link.noteExit(tail || `sync exited (code=${code} signal=${signal})`, Date.now() + delay);
     entry.squelch.logExit(
       code,
       signal,
@@ -138,5 +158,25 @@ export async function stopTimeboxSync(awaitFarewell = false): Promise<void> {
     }
   }
   entries.clear();
+  unavailableReason = null;
   if (procs.length) await Promise.all(procs.map((p) => terminateSyncChild(p)));
+}
+
+/**
+ * Live link state for the configured Timebox panels, in the `BLEMatrixHealth`
+ * wire shape. Called by `TimeboxModule.statusSnapshot()` so `/health` reports
+ * whether the panel is actually being driven — the configured-device list alone
+ * left every dashboard drawing a streaming panel as disconnected.
+ */
+export function timeboxLinkSnapshot(configuredDeviceCount: number): BleLinkSnapshot {
+  const merged = mergeBleLinkSnapshots(
+    [...entries.values()].map((e) => e.link.snapshot(configuredDeviceCount)),
+    configuredDeviceCount,
+  );
+  // A configured device with no entry at all means the supervisor never got to
+  // spawn anything — surface that instead of an unexplained `connected:false`.
+  if (unavailableReason && configuredDeviceCount > 0 && !merged.connected) {
+    return { ...merged, statusReason: unavailableReason };
+  }
+  return merged;
 }

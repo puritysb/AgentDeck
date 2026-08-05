@@ -12,6 +12,7 @@
  */
 
 import { spawn, type ChildProcess } from 'child_process';
+import type { BleStatusLine } from './ble-sync-status.js';
 
 export interface ManagedSyncChild {
   proc: ChildProcess;
@@ -22,14 +23,40 @@ export interface ManagedSyncChild {
 }
 
 /**
+ * Machine-readable status lines the sync clients print on every BLE link state
+ * change. Emitted by `StatusReporter` in `pysync/matrix_sync_common.py` — the
+ * two must agree on this prefix.
+ */
+export const BLE_STATUS_LINE_PREFIX = 'AGENTDECK_STATUS ';
+
+export interface SpawnPythonSyncOptions {
+  /** Ring size for the diagnostic stdout/stderr tails. */
+  maxTailLines?: number;
+  /**
+   * Called for each `AGENTDECK_STATUS` line the child prints. These lines are
+   * the *only* window Node has into the BLE link (the clients reconnect inside
+   * their own loop, so the child staying alive proves nothing).
+   */
+  onStatus?: (payload: BleStatusLine) => void;
+}
+
+/**
  * Spawn a Python sync child with stdout/stderr captured into bounded tail
- * buffers. Output is not streamed live; callers read it only if the child exits.
+ * buffers. Output is not streamed live; callers read it only if the child exits
+ * — except `AGENTDECK_STATUS` lines, which are parsed and dispatched live to
+ * `onStatus` and kept *out* of the tails (they are state, not diagnostics, and
+ * letting them into the tail would make every reconnect look like a new exit
+ * cycle to `createSyncCycleSquelch`).
  */
 export function spawnPythonSync(
   venvPython: string,
   args: string[],
-  maxTailLines = 8,
+  options: SpawnPythonSyncOptions | number = {},
 ): ManagedSyncChild {
+  const opts: SpawnPythonSyncOptions =
+    typeof options === 'number' ? { maxTailLines: options } : options;
+  const maxTailLines = opts.maxTailLines ?? 8;
+  const onStatus = opts.onStatus;
   // [stdin ignored, stdout/stderr piped into small rings for diagnostics]
   const proc = spawn(venvPython, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
 
@@ -46,6 +73,15 @@ export function spawnPythonSync(
     for (const line of lines) {
       const trimmed = line.trimEnd();
       if (!trimmed) continue;
+      if (onStatus && trimmed.startsWith(BLE_STATUS_LINE_PREFIX)) {
+        const parsed = parseStatusLine(trimmed);
+        // A malformed line is a client bug, not link state — drop it into the
+        // diagnostic tail rather than silently swallowing it.
+        if (parsed) {
+          onStatus(parsed);
+          continue;
+        }
+      }
       const tagged = `${label}: ${trimmed}`;
       outputTail.push(tagged);
       if (outputTail.length > maxTailLines) outputTail.shift();
@@ -74,6 +110,18 @@ export function spawnPythonSync(
       return lines.slice(-maxTailLines).join(' | ');
     },
   };
+}
+
+/** Parse one `AGENTDECK_STATUS {...}` line; null when it isn't valid JSON. */
+export function parseStatusLine(line: string): BleStatusLine | null {
+  if (!line.startsWith(BLE_STATUS_LINE_PREFIX)) return null;
+  try {
+    const value: unknown = JSON.parse(line.slice(BLE_STATUS_LINE_PREFIX.length));
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as BleStatusLine;
+  } catch {
+    return null;
+  }
 }
 
 /** Emit a repeated-cycle summary at most this often while suppressing. */

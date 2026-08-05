@@ -31,6 +31,7 @@ from matrix_sync_common import (  # noqa: E402
     DEFAULT_URL,
     POLL_INTERVAL,
     BRIDGE_GONE_EXIT_SEC,
+    StatusReporter,
     fetch_display_state,
     bridge_reachable,
     resolve_display_brightness as _resolve_display_brightness_common,
@@ -182,6 +183,11 @@ async def push_micro_frame(client, url, brightness, gamma, sat, contrast, last_k
 
 async def run(address: str, url: str, brightness: int, gamma: float, sat: float, contrast: float, once: bool = False) -> None:
     print(f"Starting Timebox Mini BLE sync: {address} <- {url} brightness={brightness}% gamma={gamma}")
+    # Machine-readable link state for the daemon supervisor — it spawns us but
+    # cannot see the BLE link, and we reconnect inside this loop rather than
+    # exiting, so process liveness tells it nothing about whether the panel is
+    # actually being driven.
+    status = StatusReporter()
     stop = asyncio.Event()
     # Why we're stopping — decides the farewell. 'signal' = clean daemon shutdown
     # (no successor → blank the panel). 'orphan' = parent died (a successor daemon
@@ -238,12 +244,15 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
             # the inner loop would spin forever on a dead link and the outer reconnect
             # path (below) would never run.
             print("BLE peripheral disconnected — will reconnect.", file=sys.stderr)
+            status.disconnected("BLE peripheral disconnected")
             loop.call_soon_threadsafe(link_lost.set)
 
         try:
             print(f"Connecting BLE {address}...")
+            status.connecting()
             async with BleakClient(address, timeout=15.0, disconnected_callback=on_disconnect) as client:
                 print(f"BLE connected (MTU={client.mtu_size})")
+                status.connected()
 
                 last_key = ""
                 last_sent_at = time.monotonic()
@@ -270,6 +279,7 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
                     #    on a dead link — only this flag / is_connected reveals it.
                     if link_lost.is_set() or not client.is_connected:
                         print("BLE link lost — reconnecting.", file=sys.stderr)
+                        status.disconnected("BLE link lost")
                         break
                     # 1. Apply host display sleep/wake. The daemon exposes the same
                     #    display_state Pixoo/iDotMatrix/ESP32 receive; older session-
@@ -289,6 +299,7 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
                     #    brightness on the transition (0 => blank sleep frame), then
                     #    pause polling to save BLE bandwidth (mirrors iDotMatrix).
                     if display_dimmed:
+                        status.streaming(dimmed=True)
                         if transitioned or once:
                             try:
                                 last_key, sent = await push_micro_frame(
@@ -297,9 +308,11 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
                                 if sent:
                                     last_sent_at = time.monotonic()
                                 last_bridge_ok = time.monotonic()
+                                status.frame_sent(dimmed=True)
                             except Exception as e:
                                 print(f"Dim-frame send error: {e}", file=sys.stderr)
                                 if link_lost.is_set() or not client.is_connected:
+                                    status.disconnected(f"dim-frame send error: {e}")
                                     break
                         if once:
                             return
@@ -321,6 +334,7 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
                         if sent:
                             last_sent_at = time.monotonic()
                         last_bridge_ok = time.monotonic()
+                        status.frame_sent()
                     except Exception as e:
                         print(f"Frame fetch/send error: {e}", file=sys.stderr)
                         # A write error after the link dropped must escalate to a
@@ -328,6 +342,7 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
                         # not — keep streaming and let should_exit() handle a truly
                         # gone bridge.
                         if link_lost.is_set() or not client.is_connected:
+                            status.disconnected(f"frame send error: {e}")
                             break
                     if once:
                         return
@@ -364,6 +379,7 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
                         print(f"Farewell blank failed: {e}", file=sys.stderr)
         except Exception as e:
             print(f"BLE connection error: {e}", file=sys.stderr)
+            status.failed(f"BLE connection error: {e}")
             if once:
                 raise
             try:

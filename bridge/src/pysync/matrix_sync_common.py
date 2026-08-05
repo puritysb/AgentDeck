@@ -10,6 +10,7 @@ so this module must stay dependency-free beyond the stdlib.
 """
 
 import json
+import sys
 import urllib.request
 
 DEFAULT_URL = "http://127.0.0.1:9120"
@@ -87,3 +88,85 @@ def resolve_display_brightness(display_state, normal_brightness, *, off_floor, l
     if display_on or not dim_enabled:
         return normal_brightness, False, signature, dim_mode
     return (dim_level if dim_mode == "min" else off_floor), True, signature, dim_mode
+
+
+# ---------------------------------------------------------------------------
+# Link status reporting
+# ---------------------------------------------------------------------------
+
+# Prefix of the machine-readable status lines the daemon supervisor parses.
+# Mirrored in bridge/src/ble-sync-spawn.ts (`BLE_STATUS_LINE_PREFIX`).
+STATUS_LINE_PREFIX = "AGENTDECK_STATUS "
+
+
+class StatusReporter:
+    """Report BLE link state to the daemon that spawned us, one line per change.
+
+    The Node daemon has no BLE of its own: it spawns this client and can only
+    watch the process. But both clients reconnect *inside* their own loop, so a
+    powered-off panel leaves the child running indefinitely and "process alive"
+    says nothing about whether the panel is being driven. Without this signal
+    the daemon's /health could only report the configured device list, and every
+    consumer that renders `connected` — macOS menubar, Dashboard rail, TUI —
+    drew both BLE panels as disconnected while they were streaming.
+
+    Emitting only on *change* keeps the frame loop from flooding the daemon log,
+    and the supervisor keeps these lines out of its diagnostic output ring so a
+    reconnect never looks like a new crash cycle.
+    """
+
+    def __init__(self, emit=None):
+        self._emit = emit if emit is not None else _write_status_line
+        self._last = None
+        # Sticky: once we have painted the panel, our frame is on it even while
+        # the link is down. Matches `hasFrame` in the daemon's health shape.
+        self._has_frame = False
+
+    def _update(self, connected, phase, dimmed=False, error=None):
+        payload = {
+            "connected": bool(connected),
+            "phase": phase,
+            "hasFrame": self._has_frame,
+            "dimmed": bool(dimmed),
+            "error": error,
+        }
+        if payload == self._last:
+            return
+        self._last = payload
+        self._emit(payload)
+
+    def connecting(self):
+        self._update(False, "connecting")
+
+    def connected(self):
+        self._update(True, "connected")
+
+    def streaming(self, dimmed=False):
+        """Link up and the frame loop is running — does not claim a painted frame.
+
+        Used on the dim/pause path, where a reconnect while the host display is
+        already asleep runs the loop without pushing anything.
+        """
+        self._update(True, "streaming", dimmed=dimmed)
+
+    def frame_sent(self, dimmed=False):
+        self._has_frame = True
+        self.streaming(dimmed=dimmed)
+
+    def disconnected(self, error=None):
+        self._update(False, "disconnected", error=error)
+
+    def failed(self, error):
+        self._update(False, "error", error=str(error) if error is not None else None)
+
+
+def _write_status_line(payload):
+    """Write one status line to stdout. Never raises — a closed pipe during
+    shutdown must not take the farewell frame down with it."""
+    try:
+        sys.stdout.write(
+            STATUS_LINE_PREFIX + json.dumps(payload, separators=(",", ":")) + "\n"
+        )
+        sys.stdout.flush()
+    except Exception:
+        pass

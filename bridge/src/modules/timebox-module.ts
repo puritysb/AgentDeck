@@ -4,7 +4,7 @@ import {
   deviceId,
   isTimeboxAutoDiscoverEnabled,
 } from '../timebox/timebox-settings.js';
-import { startTimeboxSync, stopTimeboxSync } from '../timebox/timebox-daemon-sync.js';
+import { startTimeboxSync, stopTimeboxSync, timeboxLinkSnapshot } from '../timebox/timebox-daemon-sync.js';
 import { autoDiscoverTimebox } from '../timebox/timebox-discover.js';
 
 export class TimeboxModule implements DeviceModule {
@@ -38,8 +38,19 @@ export class TimeboxModule implements DeviceModule {
 
   statusSnapshot(): Record<string, unknown> {
     const devices = loadTimeboxDevices();
+    // The live link fields come from the spawned sync clients' status lines;
+    // without them every consumer of `BLEMatrixHealth.connected` drew a
+    // streaming panel as disconnected. Same shape the Swift daemon emits.
+    const link = timeboxLinkSnapshot(devices.length);
     return {
       configuredDeviceCount: devices.length,
+      connected: link.connected,
+      deviceName: devices[0]?.name ?? devices[0]?.address ?? null,
+      statusReason: link.statusReason,
+      displayDimmed: link.displayDimmed,
+      hasFrame: link.hasFrame,
+      lastError: link.lastError,
+      lastPushAtMs: link.lastPushAtMs,
       devices: devices.map((d) => ({
         id: deviceId(d),
         transport: 'ble',

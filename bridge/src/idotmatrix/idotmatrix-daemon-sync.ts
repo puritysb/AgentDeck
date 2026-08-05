@@ -19,6 +19,7 @@
 import { type ChildProcess } from 'child_process';
 import { loadIDotMatrixDevices, type IDotMatrixDevice } from './idotmatrix-settings.js';
 import { createSyncCycleSquelch, spawnPythonSync, terminateSyncChild } from '../ble-sync-spawn.js';
+import { createBleLinkTracker, type BleLinkSnapshot } from '../ble-sync-status.js';
 import { getBleRuntimeStatus } from '../python-ble-runtime.js';
 
 let child: ChildProcess | null = null;
@@ -26,6 +27,8 @@ let stopping = false;
 let respawnTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveFailures = 0;
 let startedAt = 0;
+/** Live BLE link state, fed by the child's `AGENTDECK_STATUS` lines. */
+const link = createBleLinkTracker();
 /** Address+brightness of the device the running child is driving (for reload-on-change). */
 let runningKey: string | null = null;
 
@@ -75,6 +78,9 @@ export function startIDotMatrixSync(httpPort: number): void {
   const runtime = getBleRuntimeStatus();
   if (!runtime.ready || !runtime.python) {
     log(`BLE sync unavailable (${runtime.reason}); run \`agentdeck ble setup\``);
+    // Record *why* nothing is driving the panel so /health can say so instead
+    // of reporting an unexplained `connected:false`.
+    link.noteUnavailable(`BLE sync unavailable: ${runtime.reason}`);
     return;
   }
 
@@ -93,13 +99,16 @@ function spawnSync(venvPython: string, syncScript: string, httpPort: number): vo
   squelch.logStart(`Starting BLE sync for ${device.name ?? addr} (bridge ${url}, brightness ${brightness}%)`);
   startedAt = Date.now();
   runningKey = deviceKey(device);
+  link.noteSpawn();
   // iDotMatrix software brightness boost canonical = 1.22 — keep in sync:
   // sync.py (run_sync boost default), IDotMatrixModule.swift (boostBrightnessContrast).
   // stdout/stderr are captured into small rings so clean exits and crashes both
   // leave enough context without flooding the daemon log while running.
-  const { proc, stderrTail, outputTail } = spawnPythonSync(venvPython, [
-    syncScript, '-a', addr, '-u', url, '-b', String(brightness), '--boost', '1.22',
-  ]);
+  const { proc, stderrTail, outputTail } = spawnPythonSync(
+    venvPython,
+    [syncScript, '-a', addr, '-u', url, '-b', String(brightness), '--boost', '1.22'],
+    { onStatus: (payload) => link.applyStatusLine(payload) },
+  );
   child = proc;
 
   proc.on('error', (err: Error) => {
@@ -119,6 +128,7 @@ function spawnSync(venvPython: string, syncScript: string, httpPort: number): vo
     const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * consecutiveFailures);
     const tail = stderrTail() || outputTail();
     const why = tail ? `; output: ${tail}` : '';
+    link.noteExit(tail || `BLE sync exited (code=${code} signal=${signal})`, Date.now() + delay);
     squelch.logExit(
       code,
       signal,
@@ -149,6 +159,7 @@ export async function stopIDotMatrixSync(awaitFarewell = false): Promise<void> {
   const proc = child;
   child = null;
   runningKey = null;
+  link.noteUnavailable('BLE sync stopped');
   if (!proc) return;
   if (awaitFarewell) {
     await terminateSyncChild(proc);
@@ -159,4 +170,14 @@ export async function stopIDotMatrixSync(awaitFarewell = false): Promise<void> {
       /* already gone */
     }
   }
+}
+
+/**
+ * Live link state for the configured iDotMatrix panel, in the `BLEMatrixHealth`
+ * wire shape. Called by `IDotMatrixModule.statusSnapshot()` so `/health` reports
+ * whether the panel is actually being driven — the configured-device list alone
+ * left every dashboard drawing a streaming panel as disconnected.
+ */
+export function idotMatrixLinkSnapshot(configuredDeviceCount: number): BleLinkSnapshot {
+  return link.snapshot(configuredDeviceCount);
 }

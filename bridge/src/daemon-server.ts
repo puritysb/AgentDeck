@@ -938,8 +938,16 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
   if (timebox?.statusSnapshot) {
     modules.timebox = timebox.statusSnapshot();
   } else if (configuredTimebox.length > 0) {
+    // Configured but the module never started — say so explicitly. An omitted
+    // `connected` reads as "no information" to retain-on-absent clients, and a
+    // panel nobody is driving must not inherit a stale connected:true.
     modules.timebox = {
       configuredDeviceCount: configuredTimebox.length,
+      connected: false,
+      statusReason: 'sync module not started',
+      displayDimmed: false,
+      hasFrame: false,
+      lastError: null,
       devices: configuredTimebox.map((d) => ({
         address: d.address,
         name: d.name ?? 'Timebox Mini',
@@ -955,8 +963,14 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
   if (idotmatrix?.statusSnapshot) {
     modules.idotmatrix = idotmatrix.statusSnapshot();
   } else if (configuredIDotMatrix.length > 0) {
+    // Configured but the module never started — see the Timebox note above.
     modules.idotmatrix = {
       configuredDeviceCount: configuredIDotMatrix.length,
+      connected: false,
+      statusReason: 'sync module not started',
+      displayDimmed: false,
+      hasFrame: false,
+      lastError: null,
       devices: configuredIDotMatrix.map((d) => ({
         address: d.address,
         name: d.name ?? 'iDotMatrix',

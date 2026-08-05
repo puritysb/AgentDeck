@@ -3,7 +3,11 @@ import {
   loadIDotMatrixDevices,
   isIDotMatrixAutoDiscoverEnabled,
 } from '../idotmatrix/idotmatrix-settings.js';
-import { startIDotMatrixSync, stopIDotMatrixSync } from '../idotmatrix/idotmatrix-daemon-sync.js';
+import {
+  idotMatrixLinkSnapshot,
+  startIDotMatrixSync,
+  stopIDotMatrixSync,
+} from '../idotmatrix/idotmatrix-daemon-sync.js';
 import { autoDiscoverIDotMatrix } from '../idotmatrix/idotmatrix-discover.js';
 
 export class IDotMatrixModule implements DeviceModule {
@@ -37,8 +41,19 @@ export class IDotMatrixModule implements DeviceModule {
 
   statusSnapshot(): Record<string, unknown> {
     const devices = loadIDotMatrixDevices();
+    // The live link fields come from the spawned sync client's status lines;
+    // without them every consumer of `BLEMatrixHealth.connected` drew a
+    // streaming panel as disconnected. Same shape the Swift daemon emits.
+    const link = idotMatrixLinkSnapshot(devices.length);
     return {
       configuredDeviceCount: devices.length,
+      connected: link.connected,
+      deviceName: devices[0]?.name ?? devices[0]?.address ?? null,
+      statusReason: link.statusReason,
+      displayDimmed: link.displayDimmed,
+      hasFrame: link.hasFrame,
+      lastError: link.lastError,
+      lastPushAtMs: link.lastPushAtMs,
       devices: devices.map((d) => ({
         id: d.address,
         transport: 'ble',

@@ -21,6 +21,7 @@ from matrix_sync_common import (  # noqa: E402
     DEFAULT_URL,
     POLL_INTERVAL,
     BRIDGE_GONE_EXIT_SEC,
+    StatusReporter,
     fetch_display_state as _fetch_display_state_sync,
     bridge_reachable as _bridge_reachable_sync,
     resolve_display_brightness as _resolve_display_brightness_common,
@@ -124,7 +125,13 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
     print(f"AgentDeck Bridge API URL: {url}")
     print(f"Initial Hardware Brightness: {brightness}%")
     print(f"Software Brightness Boost: {boost}x")
-    
+
+    # Machine-readable link state for the daemon supervisor — it spawns us but
+    # cannot see the BLE link, and we reconnect inside this loop rather than
+    # exiting, so process liveness tells it nothing about whether the panel is
+    # actually being driven.
+    status = StatusReporter()
+
     manager = ConnectionManager()
     
     idm_image = IdmImage()
@@ -187,8 +194,10 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
             # 1. Ensure bluetooth connection
             if not connected:
                 print(f"Connecting to iDotMatrix ({address})...")
+                status.connecting()
                 await manager.connectByAddress(address)
                 print("Connected to Bluetooth device!")
+                status.connected()
 
                 # Settle: the panel drops commands sent too soon after the GATT
                 # link comes up. Without this the first setBrightness is lost on a
@@ -227,6 +236,7 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
             # bleak's is_connected reflects the real OS-level link state.
             if manager.client is None or not manager.client.is_connected:
                 print("BLE link lost — reconnecting...")
+                status.disconnected("BLE link lost")
                 connected = False
                 last_hash = ""
                 await _interruptible_sleep(stop_event, 1.0)
@@ -274,6 +284,7 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
                 last_brightness_assert = time.monotonic()
 
             if display_dimmed:
+                status.streaming(dimmed=True)
                 await _interruptible_sleep(stop_event, POLL_INTERVAL)
                 continue
 
@@ -302,6 +313,7 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
             current_hash = hashlib.sha256(frame_data).hexdigest()
             if current_hash == last_hash:
                 # Frame didn't change, skip BLE transmission to save battery and bandwidth
+                status.streaming()
                 await _interruptible_sleep(stop_event, POLL_INTERVAL)
                 continue
                 
@@ -332,8 +344,10 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
             if res:
                 last_hash = current_hash
                 print("Frame uploaded successfully.")
+                status.frame_sent()
             else:
                 print("Failed to upload frame (uploadUnprocessed returned False).")
+                status.disconnected("frame upload failed")
 
             await _interruptible_sleep(stop_event, POLL_INTERVAL)
 
@@ -343,6 +357,7 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
         except Exception as e:
             print(f"Error during loop: {e}")
             print("Resetting bluetooth connection...")
+            status.failed(e)
             connected = False
             try:
                 await manager.disconnect()
