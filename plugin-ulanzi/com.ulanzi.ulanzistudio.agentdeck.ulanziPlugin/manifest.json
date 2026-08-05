@@ -1,5 +1,5 @@
 {
-  "Version": "1.0.1",
+  "Version": "1.0.2",
   "Author": "AgentDeck",
   "Name": "AgentDeck",
   "Description": "Monitor and steer AI coding agents (Claude Code, Codex, OpenCode, OpenClaw) from your D200H.",
@@ -7,21 +7,38 @@
   "CodePath": "plugin/app.js",
   "Type": "JavaScript",
   "UUID": "com.ulanzi.ulanzistudio.agentdeck",
-  "Devices": ["D200H"],
+  "Devices": [
+    "D200H"
+  ],
   "OS": [
-    { "Platform": "mac", "MinimumVersion": "10.11" },
-    { "Platform": "windows", "MinimumVersion": "10" }
+    {
+      "Platform": "mac",
+      "MinimumVersion": "10.11"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
   ],
   "Actions": [
     {
       "Name": "AgentDeck",
       "Icon": "resources/icons/session.png",
+      "PropertyInspectorPath": "property-inspector/inspector.html",
       "Tooltip": "AgentDeck — fill your keys with this; each key reflows by agent state (sessions, options, mode, stop, usage). Press to act.",
       "UUID": "com.ulanzi.ulanzistudio.agentdeck.key",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "state": 0,
-      "States": [{ "Image": "resources/icons/session.png" }]
+      "States": [
+        {
+          "Image": "resources/icons/session.png"
+        }
+      ]
     }
   ],
-  "Software": { "MinVersion": "2.1.4" }
+  "Software": {
+    "MinVersion": "2.1.4"
+  }
 }

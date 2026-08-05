@@ -44,6 +44,23 @@ cp "$SRC_PLUGIN/manifest.json" "$OUT/manifest.json"
 cp "$SRC_PLUGIN/en.json" "$OUT/en.json" 2>/dev/null || true
 cp -R "$SRC_PLUGIN/resources/." "$OUT/resources/"
 
+# Property Inspector + the host stylesheet it borrows. The manifest names this
+# path, so a package without it points Ulanzi Studio at a file that is not
+# there — worse than shipping no inspector at all. The guard below refuses to
+# build that package.
+for extra in property-inspector libs; do
+  if [ -d "$SRC_PLUGIN/$extra" ]; then
+    mkdir -p "$OUT/$extra"
+    cp -R "$SRC_PLUGIN/$extra/." "$OUT/$extra/"
+  fi
+done
+
+PI_PATH="$(node -e "const m=require('$SRC_PLUGIN/manifest.json');const a=(m.Actions||[])[0]||{};process.stdout.write(a.PropertyInspectorPath||'')")"
+if [ -n "$PI_PATH" ] && [ ! -f "$OUT/$PI_PATH" ]; then
+  echo "ERROR: manifest declares PropertyInspectorPath '$PI_PATH' but it is not in the package" >&2
+  exit 1
+fi
+
 echo "==> build runtime node_modules (resvg native + ws) via npm"
 TMP="$(mktemp -d)"
 cat > "$TMP/package.json" <<JSON

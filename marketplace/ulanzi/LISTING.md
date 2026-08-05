@@ -10,6 +10,31 @@ content-record mismatch was reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category; wait for Ulanzi to confirm the
 review entry is linked correctly before treating the submission as healthy.
 
+## 1.0.2 — Property Inspector (the actual fix for the review feedback)
+
+The tester screenshot attached to Ulanzi's 2026-08-05 message showed the real
+shape of the problem, and it was not an empty deck: the bottom row already
+rendered live session tiles (`IDLE / AgentDeck / opus-4.8`), so that machine had
+a daemon and a Claude session. The six keys above showed Ulanzi Studio's own
+placeholder — **"Setup … Click for guide"**, which is not our string — and
+clicking it opened nothing.
+
+Cause: the action declared no `PropertyInspectorPath`. Every plugin in the SDK
+examples declares one; without it Studio has no panel to open. That is literally
+"there are no instructions provided".
+
+So 1.0.2 adds `property-inspector/inspector.html`: getting-started steps for both
+daemons plus a live check against `/health` (the daemon sends
+`Access-Control-Allow-Origin: *`, so the panel can read it; the check degrades to
+a neutral message when a webview blocks it). It borrows the host's `uspi.css` so
+it reads as part of Studio rather than painting our palette — that vendored file
+is lint-excluded the same way the Stream Deck plugin's `sdpi-components.js` is.
+
+`scripts/package-ulanzi-plugin.sh` now copies `property-inspector/` and `libs/`
+**and fails the build** when the manifest names an inspector the archive does not
+contain — shipping a manifest that points at a missing file would be worse than
+shipping none.
+
 ## Getting-started guide (requested by Ulanzi review, 2026-08-05)
 
 Ulanzi's internal testers reported that dragging the action onto a key left them

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<!--
+  AgentDeck Property Inspector.
+
+  Ulanzi's review (2026-08-05) reported that dragging the action onto a key left
+  testers with no instructions. The action had no PropertyInspectorPath, so
+  Ulanzi Studio showed its own "Setup / Click for guide" placeholder with
+  nothing behind it. This panel is what that click now opens.
+
+  It carries no settings — the action configures itself — so it is deliberately
+  an explainer plus a live connection check. Styling comes from the host's own
+  uspi.css and `currentColor`; the panel must read as part of Ulanzi Studio, and
+  painting AgentDeck's palette here would both look foreign and put raw hex in a
+  file the design lint scans.
+-->
+<link rel="stylesheet" href="../libs/css/uspi.css">
+<style>
+  /* Colour comes from the host's own variables and currentColor — the panel
+     follows Studio's theme instead of pinning its own palette (and keeps raw
+     hex out of a file the design lint scans). uspi.css declares --uspi-bodybg
+     but never applies it, so a bare webview renders light-on-light; apply it
+     here rather than assuming the host paints the background for us. */
+  html, body { background: var(--uspi-bodybg); margin: 0; }
+  body { padding: 12px 14px; }
+  .ad-step { display: flex; gap: 10px; margin: 0 0 12px; line-height: 1.45; }
+  .ad-step-n { flex: 0 0 20px; height: 20px; border-radius: 999px; border: 1px solid currentColor;
+               opacity: 0.55; font-size: 11px; line-height: 19px; text-align: center; }
+  .ad-step-b { flex: 1 1 auto; }
+  .ad-or { margin: 6px 0 0; opacity: 0.62; font-size: 12px; }
+  .ad-status { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; }
+  .ad-dot { width: 8px; height: 8px; border-radius: 999px; background: currentColor; opacity: 0.35; }
+  .ad-dot.on { opacity: 1; }
+  .ad-status-text { font-size: 13px; }
+  .ad-detail { opacity: 0.62; font-size: 12px; margin: 0 0 12px; }
+  code { font-size: 12px; padding: 1px 4px; border-radius: 4px; border: 1px solid currentColor;
+         opacity: 0.85; white-space: nowrap; }
+  /* uspi-item stacks its children, which overlapped the button and the link at
+     the inspector's real 320px width. Lay this row out explicitly. */
+  .ad-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+  .ad-actions button { white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="uspi-wrapper">
+
+  <div class="uspi-heading" data-localize>AgentDeck</div>
+
+  <div class="ad-status">
+    <span class="ad-dot" id="dot"></span>
+    <span class="ad-status-text" id="status">Checking for the AgentDeck daemon…</span>
+  </div>
+  <p class="ad-detail" id="detail"></p>
+
+  <div class="uspi-heading" data-localize>Getting started</div>
+
+  <div class="ad-step">
+    <div class="ad-step-n">1</div>
+    <div class="ad-step-b">
+      Run the AgentDeck daemon on this computer. Either way works:
+      <div class="ad-or">macOS — install the free <b>AgentDeck Dashboard</b> from the Mac App Store and open it. No terminal.</div>
+      <div class="ad-or">macOS or Windows — run <code>npx @agentdeck/setup</code> (needs Node.js 22+).</div>
+    </div>
+  </div>
+
+  <div class="ad-step">
+    <div class="ad-step-n">2</div>
+    <div class="ad-step-b">
+      Start any AI coding agent the way you normally do — <code>claude</code>, <code>codex</code> or <code>opencode</code>.
+      No AgentDeck-specific command is needed.
+    </div>
+  </div>
+
+  <div class="ad-step">
+    <div class="ad-step-n">3</div>
+    <div class="ad-step-b">
+      The keys fill themselves in: one key per live session, showing the agent, the project and
+      whether it is working, idle, or <b>waiting on you</b>. Press a key to focus that session, or to
+      answer it when it is waiting.
+    </div>
+  </div>
+
+  <p class="ad-detail">
+    This plugin is a thin client — it draws what the local daemon reports and bundles no daemon of
+    its own. Until step 1 and step 2 are both done, the keys stay on OFFLINE. That is expected, not a
+    failure.
+  </p>
+
+  <div class="ad-actions">
+    <button class="uspi-refresh-btn" id="recheck" type="button">Check again</button>
+    <a href="https://github.com/puritysb/AgentDeck/blob/master/marketplace/ulanzi/GETTING-STARTED.md"
+       target="_blank" rel="noreferrer">Full guide</a>
+  </div>
+
+</div>
+
+<script>
+  // The daemon serves /health with `Access-Control-Allow-Origin: *`, so this
+  // panel can read it directly and the user gets a yes/no instead of a manual.
+  // 9120 is the daemon's port; it moves to the next free one only when 9120 is
+  // taken, so probe a short range rather than assuming.
+  var PORTS = [9120, 9121, 9122, 9123];
+
+  function paint(on, text, detail) {
+    document.getElementById('dot').className = 'ad-dot' + (on ? ' on' : '');
+    document.getElementById('status').textContent = text;
+    document.getElementById('detail').textContent = detail || '';
+  }
+
+  function probe(port) {
+    // A short timeout keeps a filtered port from hanging the whole check.
+    var ctrl = new AbortController();
+    var t = setTimeout(function () { ctrl.abort(); }, 1200);
+    return fetch('http://127.0.0.1:' + port + '/health', { signal: ctrl.signal })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(String(r.status))); })
+      .then(function (j) { clearTimeout(t); return { port: port, health: j }; })
+      .catch(function (e) { clearTimeout(t); return Promise.reject(e); });
+  }
+
+  function check() {
+    paint(false, 'Checking for the AgentDeck daemon…', '');
+    var attempts = PORTS.map(function (p) { return probe(p); });
+    // Any responding port wins; all failing means "not reachable from here",
+    // which is NOT the same as "not running" — a webview may block the request.
+    Promise.any(attempts).then(function (hit) {
+      var h = hit.health || {};
+      var sessions = Array.isArray(h.sessions) ? h.sessions.length : null;
+      var kind = h.isSwift ? 'AgentDeck app' : 'AgentDeck CLI daemon';
+      paint(true, kind + ' is running on port ' + hit.port + '.',
+        sessions === 0
+          ? 'No agent session yet — do step 2 and the keys will fill in.'
+          : 'Start or focus a session and the keys follow it.');
+    }).catch(function () {
+      paint(false, 'No AgentDeck daemon answered on this computer.',
+        'Do step 1 below. If the daemon is running and this still says nothing answered, the check may be blocked here — the keys themselves are the real indicator.');
+    });
+  }
+
+  document.getElementById('recheck').addEventListener('click', check);
+  check();
+</script>
+</body>
+</html>

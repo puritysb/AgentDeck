@@ -158,6 +158,16 @@ this is the patch that makes it work, so prefer it over `1.0.5`.
 
 ## 1.0.2
 
+### Ulanzi plugin — D200H
+
+- Add a Property Inspector to the action. Ulanzi's review reported that dragging
+  the action onto a key left testers with no instructions: the action declared no
+  `PropertyInspectorPath`, so Ulanzi Studio showed its own "Setup / Click for
+  guide" placeholder with nothing behind it. Clicking now opens getting-started
+  steps for both daemons and a live check that says whether one is reachable
+- Packaging refuses to build an archive whose manifest names a Property
+  Inspector the package does not contain
+
 ### ESP32 firmware
 
 - Ship firmware for **every board marked Shipping** — T-Embed CC1101,

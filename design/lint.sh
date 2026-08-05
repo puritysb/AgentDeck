@@ -25,6 +25,7 @@ SCOPE_FILES=$(find . \
      -o -path './docs/design/AgentDeck Tide Bento (D1).html' \
      -o -path './plugin/bound.serendipity.agentdeck.sdPlugin/bin' \
      -o -path './plugin/bound.serendipity.agentdeck.sdPlugin/ui/sdpi-components.js' \
+     -o -path './plugin-ulanzi/*/libs/css/uspi.css' \
      -o -path './esp32/.pio' \
      -o -path './esp32/robot/results' \
      -o -path './tools/creature-simulator' \
@@ -79,7 +80,7 @@ scan() {
             --exclude-dir=build --exclude-dir=design-mockups --exclude-dir=agentdeck-runtime \
             --exclude-dir=bin --exclude-dir=.pio --exclude-dir=results \
             --exclude-dir=creature-simulator --exclude-dir=tenin \
-            --exclude=sdpi-components.js --exclude='AgentDeck Tide Bento (D1).html' \
+            --exclude=sdpi-components.js --exclude=uspi.css --exclude='AgentDeck Tide Bento (D1).html' \
             -- "$pattern" . 2>/dev/null)
 }
 
