@@ -114,6 +114,31 @@ private func pttRMSAmplitude(_ buffer: AVAudioPCMBuffer) -> Float {
     return counted > 0 ? Float((sum / Double(counted)).squareRoot()) : 0
 }
 
+/**
+ Delete leftover captures matching `prefix` in the temp directory.
+
+ `end()`/`cancel()` remove the file they created, but neither runs when the
+ process dies mid-capture — a crash, a force-quit, a signal shutdown that times
+ out — and dictation audio then sits in the container until the OS decides to
+ clear its tmp, which is not a promise. Two such files were found after this
+ path crashed. Call this where nothing of that prefix can be in flight: one
+ capture at a time per owner, so at the start of a capture the only files left
+ are dead ones.
+ */
+func sweepStaleVoiceCaptures(prefix: String) {
+    let dir = FileManager.default.temporaryDirectory
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
+    var removed = 0
+    for name in names where name.hasPrefix(prefix) {
+        if (try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))) != nil {
+            removed += 1
+        }
+    }
+    if removed > 0 {
+        DaemonLogger.shared.debug("Voice", "Swept \(removed) stale capture(s) matching \(prefix)*")
+    }
+}
+
 /// Installs the capture tap from a non-isolated context — see `PttFileSink` for
 /// why this cannot be written inline inside `begin()`.
 private func installPttTap(
@@ -148,6 +173,9 @@ final class DaemonPttVoice {
     /// on a voice_state error event.
     func begin() -> String? {
         guard engine == nil else { return "busy" }
+        // Nothing of ours can be in flight here, so anything left is a corpse
+        // from a crash or a force-quit — see sweepStaleVoiceCaptures.
+        sweepStaleVoiceCaptures(prefix: "agentdeck-ptt-")
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             break
@@ -267,16 +295,6 @@ final class DaemonPttVoice {
                 + " fmt=\(Int(fmt.sampleRate))Hz/\(fmt.channelCount)ch/"
                 + (fmt.commonFormat == .pcmFormatFloat32 ? "f32" : "\(fmt.commonFormat.rawValue)")
                 + (peak < 0.01 ? " — effectively silent" : ""))
-
-        // Debug-only: keep the capture so its waveform can be inspected when the
-        // recognizer keeps reporting no speech. Off unless explicitly asked for —
-        // retaining dictation audio is not a default anyone opted into.
-        if ProcessInfo.processInfo.environment["AGENTDECK_KEEP_PTT_CAPTURE"] == "1" {
-            let kept = url.deletingLastPathComponent().appendingPathComponent("agentdeck-ptt-last.caf")
-            try? FileManager.default.removeItem(at: kept)
-            try? FileManager.default.copyItem(at: url, to: kept)
-            DaemonLogger.shared.debug("Voice", "PTT capture kept at \(kept.path)")
-        }
     }
 
     private func stopEngine() {

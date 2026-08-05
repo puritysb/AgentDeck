@@ -78,6 +78,8 @@ final class DaemonVoiceAssistant {
 
     func startRecording() {
         guard state == .idle else { return }
+        // Same corpse sweep as the PTT path, for this path's own prefix.
+        sweepStaleVoiceCaptures(prefix: "agentdeck-voice-")
         state = .listening
         onStateChanged?(.listening, nil, nil)
 
