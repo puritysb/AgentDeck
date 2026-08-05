@@ -2,6 +2,81 @@
 
 ---
 
+## 2026-08-06 — 타임라인이 다 보여주는 대화를 APME 는 절반만 저장하고 있었다
+
+### 문제
+
+"TIMELINE 에서 보는 대화 세션이 APME 에 어떻게 아카이빙됐는지 최근 이벤트 기준으로 비교
+검증하라" 에서 출발했다. 같은 세션을 두 저장소에서 나란히 놓으니 답이 바로 나왔다 —
+프롬프트·타임스탬프·툴 호출은 1:1 로 맞는데 **응답만 통째로 없었다**.
+
+```
+TIMELINE                                   APME
+chat_start 23:30 → chat_response (811B)    turn0 23:30→23:32 tools=8  response=NULL
+chat_start 23:32 → chat_response (610B)    turn1 23:32→23:52 tools=5  response=NULL
+chat_start 23:57 → chat_response (1917B)   turn3 23:57→00:03 tools=9  response=NULL
+```
+
+범위는 국지적이지 않았다. claude-code turn 1589개 중 response 219개, 그마저 마지막이
+2026-07-11. 정본 trajectory 는 6종(user/assistant/model/tool/state/info)인데 최근 24시간에
+적재된 건 2종뿐이고, `assistant_message` 는 전 기간 15개 — 그중 12개가 OpenClaw 였다.
+`model` 이벤트가 0건이라 최근 108 run 의 cost/token 도 전부 비어 있었다.
+
+### 해결
+
+**응답 유실 — 데몬마다 원인이 달랐다.**
+
+- Node: `setTurnResponse()` 의 유일한 호출부가 PTY 세션 브리지(`index.ts`)였다. 직접 실행한
+  `claude`/`codex`/`opencode` 는 hook 으로만 데몬에 닿으므로 그 경로를 타지 않는다.
+  `daemon-server.ts` 의 stop 핸들러는 transcript tail 로 텍스트를 **이미 만들어놓고**
+  타임라인에만 썼다. 타임라인 행을 결정하는 같은 분기에서 collector 로 넘기도록 배선.
+- Swift: `setTurnResponse` 는 부르는데 소스가 `getLastEntry(type:"chat_end")` 였다.
+  `chat_end` 는 응답이 **없을 때만** 나오는 행이고 raw 가 `"Completed · 2m 19s"` —
+  구조적으로 응답을 볼 수 없었다. hook 핸들러로 옮겼다.
+
+**평가 굶주림.** 데몬이 재시작하면 in-memory `sessionToRun` 맵이 사라져 진행 중이던 run 이
+영영 `ended_at IS NULL` 로 남는다. eval 은 task close 에서만 발화하므로 최근 3일 기준
+open task 65 vs closed 9. 기존 `listOrphanedRuns` 는 `task_prompt IS NULL AND NOT
+EXISTS(turns)` — 빈 껍데기 전용 술어라 실제 작업을 담은 run 을 전부 건너뛰었다.
+
+**그래프 적합성.** `runs→tasks→turns→sample_events` 는 FK 가 실재해 그대로 투영되지만,
+작업 단위끼리 잇는 간선이 없었다. 스키마로 두 개를 복구하고(`sample_events.turn_id`,
+`runs.parent_run_id`), 나머지 허브는 투영 시점에 유도한다.
+
+### 핵심 설계 결정
+
+- **아카이빙 호출은 타임라인 행을 결정하는 바로 그 분기에 둔다.** 별도 경로에서 "마지막 행을
+  찾아 읽는" 방식은 어떤 행 타입이 응답을 담는지에 대한 가정이 화석화돼 조용히 고장난다.
+  Swift 가 정확히 그렇게 죽어 있었다.
+- **reaper 는 `started_at` 이 아니라 마지막 *활동* 시각으로 판정하고, 그 시각으로 닫는다.**
+  장수 세션을 주인 밑에서 닫으면 안 되고, 어젯밤 버려진 run 이 12시간짜리 턴으로 보고돼도
+  안 된다. run 은 **마지막에** 닫는다 — 부분 실패 시 `ended_at` 이 NULL 로 남아 다음 sweep
+  이 재시도한다. 반대 순서였다면 닫힌 run 뒤에 열린 task 가 갇혀 아무도 못 찾는다.
+- **better-sqlite3 는 단일 커넥션 동기 실행 — 느린 쿼리 하나가 데몬 HTTP 전체를 멈춘다.**
+  이 sweep 의 `MAX(steps.ts)` 가 `idx_steps_run`(run_id only)만으로 돌면서 `payload`(훅
+  본문 전체)가 든 행을 전부 읽어 **22초**가 걸렸다. `(run_id, ts)` 커버링 인덱스로
+  22359ms → 6.9ms. APME 에 per-run/per-task 롤업을 추가할 땐 커버링 인덱스를 같이 넣는다.
+- **백로그는 채점하지 않는다.** reaper 가 마감한 과거 task 대부분은 응답이 없다. 그대로
+  judge 에 넣으면 "침묵 채점" 점수가 scorecard 에 쌓인다 — `response_kind` 가 애초에 막으려던
+  노이즈다. 응답이 있는 task 만 enqueue.
+- **file 노드는 run 의 `project_path` 기준 상대경로로 키잉한다.** 처음엔 "경로 뒤 3세그먼트"
+  로 잡았는데, 두 체크아웃이 repo-relative 깊이가 **정확히 3일 때만** 우연히 합쳐지고 아니면
+  조용히 갈라진다. worktree 를 상시 쓰는 레포라 그 실패가 일상이 된다. 테스트가 잡아냈다.
+- **잘린 그래프는 잘렸다고 말한다.** `stats.truncatedTasks` / `stats.fileCoverage`(경로를
+  받지 않는 Bash·WebFetch 때문에 커버리지는 본질적으로 부분적)를 항상 실어 보낸다. 부분
+  슬라이스가 전체 히스토리처럼 읽히면 없는 것만 못하다.
+- **투영은 저장하지 않는다.** session/project/model/agent/tool/file 은 테이블로 승격하지 않고
+  `graph.ts` 가 요청 시 materialize 한다 — 마이그레이션 없이 형태를 바꿀 수 있다.
+
+### 검증
+
+유닛 테스트만으로 끝내지 않고 실기 데몬에 합성 hook 턴을 흘려 `turns.response` +
+`assistant_message` 적재를 확인한 뒤, 실제 세션에서 2404/1380/1052자 응답이 아카이빙되는 걸
+확인했다(검증용 합성 row 는 사후 삭제). reaper 는 백로그 783 task 를 마감하고 열린 task 를
+5개까지 배수했고, `turn_id` 는 20735/20736 backfill 됐다.
+
+---
+
 ## 2026-08-06 — 로컬 추론 지도를 그리다 나온 다섯 건: 문서가 코드보다 오래 살아남는 방식
 
 ### 문제
