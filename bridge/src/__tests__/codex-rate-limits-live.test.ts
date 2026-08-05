@@ -7,6 +7,7 @@ import {
   pickFresherCodexRateLimits,
   shouldQueryCodexRateLimitsLive,
   queryCodexRateLimitsLive,
+  codexSpawnPlan,
   __resetCodexRateLimitsLiveForTest,
 } from '../codex-rate-limits-live.js';
 
@@ -146,6 +147,42 @@ describe('shouldQueryCodexRateLimitsLive', () => {
     };
     expect(shouldQueryCodexRateLimitsLive(input)).toBe(false);
     expect(shouldQueryCodexRateLimitsLive({ ...input, lastAttemptMs: now - 31 * 60 * 1000 })).toBe(true);
+  });
+});
+
+describe('codexSpawnPlan', () => {
+  it('runs a plain binary directly on posix', () => {
+    expect(codexSpawnPlan('codex', 'darwin')).toEqual({ command: 'codex', shell: false });
+    expect(codexSpawnPlan('/usr/local/bin/codex', 'linux')).toEqual({
+      command: '/usr/local/bin/codex',
+      shell: false,
+    });
+  });
+
+  it('asks for a shell on Windows .cmd/.bat shims, which spawn refuses to run bare', () => {
+    expect(codexSpawnPlan('codex.cmd', 'win32')).toEqual({ command: 'codex.cmd', shell: true });
+    expect(codexSpawnPlan('CODEX.BAT', 'win32')).toEqual({ command: 'CODEX.BAT', shell: true });
+  });
+
+  it('quotes a shim path with spaces, since the shell re-parses the command line', () => {
+    expect(codexSpawnPlan('C:\\Program Files\\nodejs\\codex.cmd', 'win32')).toEqual({
+      command: '"C:\\Program Files\\nodejs\\codex.cmd"',
+      shell: true,
+    });
+  });
+
+  it('leaves a real Windows executable alone — the shell is only for the shims', () => {
+    expect(codexSpawnPlan('C:\\tools\\codex.exe', 'win32')).toEqual({
+      command: 'C:\\tools\\codex.exe',
+      shell: false,
+    });
+  });
+
+  it('never asks for a shell on posix, even for a file that happens to end in .cmd', () => {
+    expect(codexSpawnPlan('/opt/codex.cmd', 'darwin')).toEqual({
+      command: '/opt/codex.cmd',
+      shell: false,
+    });
   });
 });
 

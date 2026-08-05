@@ -129,6 +129,27 @@ function codexBinary(): string {
 }
 
 /**
+ * How to hand the Codex binary to `spawn`.
+ *
+ * Windows ships the CLI as `codex.cmd`, and since the CVE-2024-27980 fix
+ * (Node 18.20.2 / 20.12.2 / 21.7.3+, so every Node this repo supports) `spawn`
+ * REFUSES a `.cmd`/`.bat` target unless `shell: true` — it throws EINVAL. Without
+ * this the live query would fail on every Windows host, and because a miss is
+ * indistinguishable from "no Codex installed" it would settle into the 30-minute
+ * failure backoff and never say why. Under a shell the command line is re-parsed,
+ * so a path containing spaces has to carry its own quotes.
+ *
+ * Exported for unit testing: the branch is unreachable on the CI platform.
+ */
+export function codexSpawnPlan(
+  binary: string,
+  platform: NodeJS.Platform = process.platform,
+): { command: string; shell: boolean } {
+  if (platform !== 'win32' || !/\.(cmd|bat)$/i.test(binary)) return { command: binary, shell: false };
+  return { command: /\s/.test(binary) ? `"${binary}"` : binary, shell: true };
+}
+
+/**
  * Spawn `codex app-server`, ask for the account rate limits, kill it, and return
  * the parsed snapshot. Resolves null on any miss (binary absent, protocol
  * mismatch, timeout) — never rejects, so callers can treat it as best-effort.
@@ -140,10 +161,12 @@ export async function queryCodexRateLimitsLive(
   const args = opts.args ?? ['app-server'];
   const timeoutMs = opts.timeoutMs ?? QUERY_TIMEOUT_MS;
 
+  const plan = codexSpawnPlan(binary);
+
   return new Promise<CodexRateLimits | null>((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'ignore'] });
+      child = spawn(plan.command, args, { stdio: ['pipe', 'pipe', 'ignore'], shell: plan.shell });
     } catch {
       resolve(null);
       return;
@@ -154,7 +177,14 @@ export async function queryCodexRateLimitsLive(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      try { child.kill('SIGKILL'); } catch { /* already gone */ }
+      try {
+        child.kill('SIGKILL');
+        // Under a shell the child is cmd.exe and the real server is its grandchild;
+        // terminating the shell alone would orphan a Codex process every 5 minutes.
+        if (plan.shell && child.pid) {
+          spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).on('error', () => {});
+        }
+      } catch { /* already gone */ }
       resolve(value);
     };
     const timer = setTimeout(() => finish(null), timeoutMs);
