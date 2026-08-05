@@ -12,6 +12,7 @@ import { readAntigravityLocalStatus } from './antigravity-local.js';
 import { buildSubscriptions, buildUsageEvent } from './usage-event.js';
 import { readCodexAuthStatus } from './codex-auth.js';
 import { readCodexRateLimits } from './codex-rate-limits.js';
+import { codexRateLimitsWithLiveRefresh } from './codex-rate-limits-live.js';
 import { fetchMlxModels } from './mlx-probe.js';
 import { buildDisplayStateEvent } from './display-dim.js';
 import { loadMlxSettings } from '@agentdeck/shared';
@@ -412,7 +413,11 @@ export class BridgeCore {
       this.cachedAntigravityStatus,
       this.apiUsagePreAdjusted,
       this.isDaemon,
-      readCodexRateLimits(),
+      // The passive rollout read freezes the moment Codex stops completing turns
+      // — including the moment it hits the wall — so the daemon backs it with a
+      // throttled live query against the user's own `codex app-server`. Session
+      // bridges keep the passive read only (no host-side processes there).
+      this.isDaemon ? codexRateLimitsWithLiveRefresh(readCodexRateLimits()) : readCodexRateLimits(),
     );
   }
 

@@ -2,6 +2,51 @@
 
 ---
 
+## 2026-08-05 — 100%는 수동 읽기로 관측할 수 없다: Codex 사용량 능동 조회 경로
+
+### 문제
+
+앞 항목(나이 표시)의 후속. "94%가 4시간 전 값"이라고 말해주게 됐는데도 사용자 질문이 남았다 —
+**"시간이 아무리 지나도 왜 100%가 안 뜨나?"**
+
+측정 결과 표시 경로엔 결함이 없었다. 데몬 `/usage`의 `codexRateLimits`는 디스크에 실제로 존재하는
+가장 최신 스냅샷 그대로였다(94%, `capturedAt` 08-04T18:38:42Z). 결함은 **채널 자체의 성질**이었다:
+
+`rate_limits`는 `token_count` 이벤트에만 실린다. 즉 이 수치는 **성공한 턴의 부산물**이고,
+사용자가 가장 보고 싶어하는 "다 썼다" 상태가 정확히 **턴이 완료될 수 없는 상태**다. 벽에 부딪히는
+순간 값은 벽 한 칸 앞에서 얼어붙고, 창이 리셋될 때까지(이번 경우 6일) 영원히 그대로다. 실측으로
+8월 롤아웃의 `rate_limits` 3019줄 전부 `rate_limit_reached_type: null` — 포화 신호가 로컬에
+기록된 적이 한 번도 없다. Codex Cloud/타 머신 소비가 안 보이는 것도 같은 뿌리다.
+
+### 해결
+
+사용자 본인 CLI가 답을 갖고 있다. `codex app-server`에 stdio JSON-RPC로
+`initialize` → `initialized` → `account/rateLimits/read` (약 1초):
+
+```
+usedPercent 100, windowDurationMins 10080, resetsAt 1786459585,
+rateLimitReachedType "rate_limit_reached", spendControlReached false
+```
+
+`bridge/src/codex-rate-limits-live.ts` — 수동 읽기를 대체하지 않고 **뒤에서 받친다**. 두 스냅샷 중
+`capturedAt`이 최신인 쪽이 이긴다. 라이브 값의 `capturedAt`은 **질의 시각**이라 앞 항목의 나이
+표시가 자동으로 걷힌다. 실기 검증: passive 94%(17시간 전) → live 100%(980ms) → merged 100%.
+
+### 핵심 설계 결정
+
+- **수동 읽기는 유지한다.** Codex가 작업 중이면 롤아웃이 이미 정확한 값을 쓰고 있고 공짜다.
+  라이브 질의는 스냅샷이 조용해졌을 때(2분)만 발동한다.
+- **스폰이므로 Node 데몬 전용.** 세션 브리지는 호스트 모듈 off 원칙, App Store Swift 데몬은
+  서브프로세스 금지 — Tier 1은 수동 읽기 + 나이 표시가 정확한 최선이다. Tier 격차는
+  `docs/appstore-feature-matrix.md`에 행으로 남겼다.
+- **외부 peer await는 전부 유한하게.** 8초 타임아웃 + 자식 SIGKILL, 스폰 최소 간격 5분,
+  연속 3회 실패 시 30분 백오프, `AGENTDECK_CODEX_LIVE_USAGE=0` 킬 스위치. 미설치/미로그인/
+  프로토콜 변경 전부 "null 반환"으로 수렴하고 절대 reject하지 않는다.
+- **프로토콜은 안 건드렸다.** `rateLimitReachedType`은 매력적이지만 포화는 이미 `usedPercent: 100`이
+  전달한다. 새 wire 필드는 Swift/Kotlin 미러 + drift gate 비용을 부르므로 값이 확실할 때만.
+
+---
+
 ## 2026-08-05 — 얼어붙은 Codex 사용량이 라이브로 읽힌 이유: 창 종료와 스냅샷 나이는 다른 축이다
 
 ### 문제
