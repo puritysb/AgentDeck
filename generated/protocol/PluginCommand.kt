@@ -59,6 +59,16 @@ data class PluginCommand (
     val index: Double? = null,
 
     /**
+     * Echo of the question text the device was DISPLAYING when pressed. A multi-group
+     * AskUserQuestion advances to the next question as soon as one is answered, so an index
+     * pressed against the previous question would otherwise select the wrong option in the new
+     * one. The daemon drops a press whose echo no longer matches the active question and
+     * re-broadcasts so the device re-syncs. Optional: omitted ⇒ no guard (older clients, ESP32
+     * firmware) — never make this required.
+     */
+    val question: String? = null,
+
+    /**
      * Target session for daemon-side host push-to-talk (deck surfaces have no session of their
      * own). Absent ⇒ the focused session, then the legacy session-bridge behavior when a bridge
      * handles it directly.

@@ -325,15 +325,30 @@ data class SessionInfo(
     // `agentdeck <agent> --weight <n>`. Mirrors shared SessionInfo.weight.
     val weight: Int? = null,
     val question: String? = null,
-    // Observed AskUserQuestion choices are display-only when
-    // controlMode == "observed"; clients must not dispatch selection commands.
+    // For an observed session these are pressable only when liveAnswerable is
+    // true; otherwise render them but send nothing (answer in the terminal).
     val options: List<PromptOption>? = null,
     val promptType: String? = null,
     val navigable: Boolean? = null,
     val controlMode: String? = null,
     // Present when a gated PreToolUse permission is pending device approval —
     // the HUD renders Allow/Deny and replies with permissionDecision(requestId).
+    // Never set for an AskUserQuestion: a binary control would collapse a
+    // multiple-choice question (those ride liveAnswerable + select_option).
     val requestId: String? = null,
+    // Will a press on [options] reach the agent? True when the daemon can type
+    // into the session's terminal (CLI daemon only) OR is holding the session's
+    // AskUserQuestion open to answer it with our choice. Sent in both
+    // polarities, so decode absence as "unknown", never as true.
+    val liveAnswerable: Boolean? = null,
+    // Observed sessions: a soft STOP is pending / prompts queued for turn end.
+    val stopRequested: Boolean? = null,
+    val queuedDirectives: Int? = null,
+    // One AskUserQuestion call may hold several question groups, presented one
+    // at a time (question/options are the active one). Present only for a
+    // multi-group prompt, so a surface can render "Q 2/3".
+    val askGroupIndex: Int? = null,
+    val askGroupCount: Int? = null,
     // Shared per-session "what is this agent doing" one-liner, computed by the
     // bridge (session-activity.ts heuristic → Foundation Models upgrade).
     // SSOT for the session summary line — render this instead of hand-rolling
@@ -502,8 +517,21 @@ object PluginCommands {
     fun respond(value: String): String =
         """{"type":"respond","value":${Json.encodeToString(kotlinx.serialization.serializer<String>(), value)}}"""
 
-    fun selectOption(index: Int): String =
-        """{"type":"select_option","index":$index}"""
+    /**
+     * Answer an awaiting prompt. [sessionId] addresses the session directly
+     * instead of relying on a preceding `focus_session` relay landing first;
+     * [question] echoes what was on screen so the daemon can drop a press that
+     * answers a question the prompt has already moved past (one
+     * AskUserQuestion call can hold several questions and advances between
+     * them). Both optional — older daemons ignore them.
+     */
+    fun selectOption(index: Int, sessionId: String? = null, question: String? = null): String {
+        val str = kotlinx.serialization.serializer<String>()
+        val session = sessionId?.let { ""","sessionId":${Json.encodeToString(str, it)}""" } ?: ""
+        val echo = question?.takeIf { it.isNotEmpty() }
+            ?.let { ""","question":${Json.encodeToString(str, it)}""" } ?: ""
+        return """{"type":"select_option","index":$index$session$echo}"""
+    }
 
     fun focusSession(sessionId: String): String =
         """{"type":"focus_session","sessionId":${Json.encodeToString(kotlinx.serialization.serializer<String>(), sessionId)}}"""

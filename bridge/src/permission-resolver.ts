@@ -38,7 +38,7 @@ interface PendingEntry {
 
 const pending = new Map<string, PendingEntry>();
 
-function buildDecisionBody(decision: PermissionDecision): string {
+function buildDecisionBody(decision: PermissionDecision, reason?: string): string {
   // `pass` = empty body: the hook's `printf '%s' "$RESP"` emits nothing and
   // Claude's normal permission flow runs as if the gate never existed.
   if (decision === 'pass') return '';
@@ -46,18 +46,24 @@ function buildDecisionBody(decision: PermissionDecision): string {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: decision,
+      ...(reason ? { permissionDecisionReason: reason } : {}),
     },
   });
 }
 
 /** End a held response with a decision and drop the entry. Safe if the socket
  *  is already gone. */
-function endWith(key: string, entry: PendingEntry, decision: PermissionDecision): void {
+function endWith(
+  key: string,
+  entry: PendingEntry,
+  decision: PermissionDecision,
+  reason?: string,
+): void {
   clearTimeout(entry.timer);
   pending.delete(key);
   try {
     entry.res.writeHead(200, { 'Content-Type': 'application/json' });
-    entry.res.end(buildDecisionBody(decision));
+    entry.res.end(buildDecisionBody(decision, reason));
   } catch {
     /* client disconnected */
   }
@@ -109,6 +115,29 @@ export function resolvePending(requestId: string, decision: 'allow' | 'deny'): s
   const sessionId = entry.sessionId ?? null;
   endWith(requestId, entry, decision);
   debug('permission', `resolved pending ${requestId} → ${decision}`);
+  return sessionId;
+}
+
+/**
+ * Resolve a pending request with an explanation Claude receives as the tool
+ * call's feedback (`permissionDecisionReason`).
+ *
+ * This is the delivery channel for a device-answered AskUserQuestion: the hook
+ * contract has no field for supplying a chosen option, but a denied tool call's
+ * reason text IS handed to the model — so the daemon denies the question and
+ * reports the answer the user already gave on their device. Same mechanism the
+ * soft-STOP deny and the Stop-hook directive queue already use.
+ */
+export function resolvePendingWithReason(
+  requestId: string,
+  decision: 'allow' | 'deny',
+  reason: string,
+): string | null {
+  const entry = pending.get(requestId);
+  if (!entry) return null;
+  const sessionId = entry.sessionId ?? null;
+  endWith(requestId, entry, decision, reason);
+  debug('permission', `resolved pending ${requestId} → ${decision} (with reason)`);
   return sessionId;
 }
 

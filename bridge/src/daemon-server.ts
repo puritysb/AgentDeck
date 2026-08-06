@@ -34,15 +34,20 @@ import {
   setAwaitingOverlay,
   setPermissionNotificationOverlay,
   setAskUserQuestionOverlay,
+  advanceAskUserQuestionOverlay,
+  getAskUserQuestionAnswers,
   clearAwaitingOverlay,
   clearAskUserQuestionOverlay,
   getAwaitingOverlay,
   isPermissionNotification,
   applyAwaitingOverlayToObserved,
 } from './awaiting-overlay.js';
-import { registerPending, resolvePending, sweepStalePending, drainAllPending, isPendingRequest } from './permission-resolver.js';
 import {
-  shouldHoldPreToolUse, gateReleased, buildGateQuestion,
+  registerPending, resolvePending, resolvePendingWithReason,
+  sweepStalePending, drainAllPending, isPendingRequest,
+} from './permission-resolver.js';
+import {
+  shouldHoldPreToolUse, beginAskGate, gateReleased, buildGateQuestion, buildAskAnswerReason,
   consumeStop, requestStop, clearStop, STOP_DENY_REASON,
   queueDirective, takeDirective, clearOnUserPrompt, clearSession as clearSteeringSession,
 } from './observed-steering.js';
@@ -76,6 +81,18 @@ const OBSERVED_APPROVAL_ENABLED = process.env.AGENTDECK_OBSERVED_APPROVAL !== '0
 const OBSERVED_APPROVAL_HOLD_MS = Math.min(
   50_000,
   Math.max(5_000, Number(process.env.AGENTDECK_APPROVAL_HOLD_MS) || 25_000),
+);
+/** AskUserQuestion ask-gate (PreToolUse hold so a device can answer the
+ *  question). Only ever engaged when this daemon has no way to type the answer
+ *  into the session's terminal, so it costs the terminal user nothing whenever
+ *  injection is available. Kill switch for field issues. */
+const ASK_GATE_ENABLED = process.env.AGENTDECK_ASK_GATE !== '0';
+/** Hold budget for an ask-gate. Longer than the permission gate because the
+ *  user may answer several question groups in one call, and still under the
+ *  hook curl's --max-time 60 so the release reaches Claude. */
+const ASK_GATE_HOLD_MS = Math.min(
+  50_000,
+  Math.max(5_000, Number(process.env.AGENTDECK_ASK_GATE_HOLD_MS) || 45_000),
 );
 /** Inactivity after which an unclosed APME run is treated as abandoned and
  *  finalized. Deliberately generous: an orphan stays reapable forever, so
@@ -1149,6 +1166,28 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Codex sessions known only from `codex_*` hooks — the backstop for when the
   // process scan can't see one (lsof timeout, no rollout held open).
   const hookCodexSessions = new HookCodexSessions();
+  // Declared before the HTTP server: the PreToolUse route reads it to decide
+  // whether this daemon can type into a session's terminal, and hooks start
+  // arriving the moment the port binds — several hundred milliseconds before
+  // the rest of startup finishes. A later `const` would leave that window
+  // throwing on the temporal dead zone.
+  const passiveSessionObserver = new PassiveSessionObserver();
+
+  /** Observed Claude sessions whose AskUserQuestion PreToolUse is held open for
+   *  a device answer, keyed by the bare Claude session UUID. Its presence is
+   *  what makes the session's options pressable (`liveAnswerable`) and what
+   *  routes a `select_option` press to the gate instead of terminal injection. */
+  const pendingAskGateBySession = new Map<string, { requestId: string; toolUseId?: string }>();
+  /** Per session UUID: the timestamp until which `select_option` presses are
+   *  swallowed because a terminal injection is typing (or has just finished).
+   *  A second press landing mid-injection would aim its arrow keys at a picker
+   *  that is about to advance to the next question, selecting the wrong option
+   *  there — so the guard spans the keystrokes plus a short settle window. */
+  const injectionGuardUntil = new Map<string, number>();
+  /** Upper bound for one injection attempt (host ladder + paced keystrokes). */
+  const INJECTION_GUARD_MAX_MS = 15_000;
+  /** Settle window after the keys land, covering the TUI's own redraw. */
+  const INJECTION_SETTLE_MS = 1_200;
 
   // Declare early — HTTP /health handler references this in its closure.
   // Must be declared before the HTTP server so it's initialized (not in TDZ)
@@ -1921,6 +1960,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               if (clearOnUserPrompt(claudeSid)) core.broadcastSessionsList().catch(() => {});
             } else if (mapped === 'session_end') {
               clearSteeringSession(claudeSid);
+              pendingAskGateBySession.delete(claudeSid);
+              injectionGuardUntil.delete(claudeSid);
             }
 
             const currentOverlay = getAwaitingOverlay(claudeSid);
@@ -2251,7 +2292,62 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             core.broadcastSessionsList().catch(() => {});
             return;
           }
-          // 2. Device-approval gate: hold the response for a device decision,
+          // 2. AskUserQuestion ask-gate: the structured overlay was set from
+          //    this same hook above, so devices are already showing the real
+          //    choices. Hold the call so a device press can answer it — the
+          //    only delivery channel a sandboxed daemon has, since it cannot
+          //    type into the user's terminal. Skipped whenever injection IS
+          //    available: answering the live picker costs the person sitting at
+          //    that terminal nothing, whereas a hold makes them wait for it to
+          //    appear. Timeout releases with an empty body, so an unanswered
+          //    question just shows up in the terminal as usual.
+          if (claudeSid && toolName === 'AskUserQuestion') {
+            const askOverlay = getAwaitingOverlay(claudeSid);
+            if (askOverlay?.kind === 'option') {
+              const obs = passiveSessionObserver.collect([])
+                .find((s) => s.id === `observed:claude:${claudeSid}`) as
+                  { tty?: string; appName?: string } | undefined;
+              const injectable = Boolean(obs?.tty || obs?.appName);
+              const gate = injectable
+                ? { hold: false, requestId: undefined, reason: 'terminal reachable — inject instead' }
+                : beginAskGate({
+                  sessionId: claudeSid,
+                  clientCount: core.wsServer.getClientCount(),
+                  enabled: ASK_GATE_ENABLED,
+                });
+              if (gate.hold && gate.requestId) {
+                const requestId = gate.requestId;
+                const askToolUseId = typeof json.tool_use_id === 'string' ? json.tool_use_id : undefined;
+                debug('daemon', `AskUserQuestion gate held: req=${requestId} sid=${claudeSid.slice(0, 8)}`);
+                pendingAskGateBySession.set(claudeSid, { requestId, toolUseId: askToolUseId });
+                core.broadcastSessionsList().catch(() => {}); // liveAnswerable → true
+                registerPending(requestId, res, {
+                  sessionId: claudeSid,
+                  tool: toolName,
+                  timeoutMs: ASK_GATE_HOLD_MS,
+                  onResolved: (decision) => {
+                    pendingAskGateBySession.delete(claudeSid);
+                    // `undecided: false` always: an unanswered question says
+                    // nothing about what Claude auto-approves, so it must not
+                    // feed the auto-approval learner.
+                    gateReleased(claudeSid, requestId, {
+                      undecided: false, tool: toolName, toolInput,
+                    });
+                    // Answered → the tool call is denied and never runs, so no
+                    // PostToolUse will ever arrive to clear the overlay; clear
+                    // it here. Timed out → the picker is now on the user's own
+                    // screen, so the overlay stays as a display-only prompt and
+                    // liveAnswerable falls back to false.
+                    if (decision === 'deny') clearAskUserQuestionOverlay(claudeSid, askToolUseId);
+                    core.broadcastSessionsList().catch(() => {});
+                  },
+                });
+                return; // response held open — resolved by device / timeout
+              }
+              debug('daemon', `AskUserQuestion not held: ${gate.reason} (${claudeSid.slice(0, 8)})`);
+            }
+          }
+          // 3. Device-approval gate: hold the response for a device decision,
           //    but ONLY for calls the precision guards say Claude would
           //    genuinely prompt for (see shouldHoldPreToolUse — mode gate,
           //    never-prompt/prompt-prone sets, allowlist prediction, learned
@@ -3039,7 +3135,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // Register session
   core.registerSession('daemon' as any);
-  const passiveSessionObserver = new PassiveSessionObserver();
   // The observer scans in the background now (collect() returns the cache
   // immediately). When a scan lands fresh observations, push them out via
   // the debounced broadcast so clients don't wait for the next 10 s poll.
@@ -3073,12 +3168,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // Steering feedback for observed Claude sessions: devices render
         // "stopping at next tool" / queued-directive badges from these.
         if (!s.id.startsWith('observed:claude:')) return { ...s, liveAnswerable: false };
-        // Can this daemon type into the session's live prompt? Only observed
-        // Claude routes select_option to the injector, and only with a host to
-        // aim at. Sent in both polarities — decks read it to decide whether an
-        // AskUserQuestion option is a button or an inert mirror of the terminal.
-        const liveAnswerable = Boolean(s.tty || s.appName);
-        const snap = steeringSnapshot(s.id.slice('observed:claude:'.length));
+        // Will a device press on this session's options reach the agent? Two
+        // rungs qualify: this daemon can type into the session's live prompt
+        // (a reachable terminal/app host), or it is holding the session's
+        // AskUserQuestion open and will answer it with the device's choice.
+        // Sent in both polarities — decks read it to decide whether an option
+        // is a button or an inert mirror of the terminal.
+        const uuid = s.id.slice('observed:claude:'.length);
+        const liveAnswerable = Boolean(s.tty || s.appName) || pendingAskGateBySession.has(uuid);
+        const snap = steeringSnapshot(uuid);
         return {
           ...s,
           liveAnswerable,
@@ -3588,6 +3686,49 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     }
     if (type === 'respond' || type === 'select_option') {
       const ov = getAwaitingOverlay(uuid);
+
+      // Stale-press guard. A multi-group AskUserQuestion moves to the next
+      // question the instant one is answered, so an index pressed against the
+      // question the device was still displaying would select the wrong option
+      // in the new list. Devices that echo what they showed get validated;
+      // re-broadcasting re-syncs them to the live question.
+      const echo = typeof command.question === 'string' ? command.question : undefined;
+      if (echo && ov?.question && echo !== ov.question) {
+        debug('daemon', `observed ${type} dropped: answers a stale question (${uuid.slice(0, 8)})`);
+        core.broadcastSessionsList().catch(() => {});
+        return;
+      }
+
+      // Held AskUserQuestion gate — this daemon owns the prompt (the picker
+      // never reached the user's terminal). Record the answer, show the next
+      // group, and resolve the hook once every group has one.
+      const askGate = pendingAskGateBySession.get(uuid);
+      if (askGate) {
+        if (type !== 'select_option' || typeof command.index !== 'number') {
+          // A yes/no `respond` must never collapse a multiple-choice question
+          // into a permission decision.
+          debug('daemon', `observed ${type} ignored: ask-gate expects select_option (${uuid.slice(0, 8)})`);
+          return;
+        }
+        const label = ov?.options?.[command.index]?.label;
+        if (!label) {
+          debug('daemon', `observed select_option ${command.index} out of range (${uuid.slice(0, 8)})`);
+          core.broadcastSessionsList().catch(() => {});
+          return;
+        }
+        const step = advanceAskUserQuestionOverlay(uuid, label);
+        if (step === 'complete') {
+          resolvePendingWithReason(
+            askGate.requestId, 'deny', buildAskAnswerReason(getAskUserQuestionAnswers(uuid)),
+          );
+          debug('daemon', `ask-gate answered (${uuid.slice(0, 8)}): "${label.slice(0, 40)}"`);
+        } else {
+          // Next question group — devices swap to it on this broadcast.
+          core.broadcastSessionsList().catch(() => {});
+        }
+        return;
+      }
+
       if (ov?.requestId) {
         const allow = type === 'select_option'
           ? command.index === 0
@@ -3601,6 +3742,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // terminal isn't reachable the prompt simply stays for the user.
       if (type === 'select_option' && typeof command.index === 'number') {
         const idx = command.index as number;
+        const now = Date.now();
+        if (now < (injectionGuardUntil.get(uuid) ?? 0)) {
+          debug('daemon', `observed select_option dropped: injection in flight (${uuid.slice(0, 8)})`);
+          return;
+        }
+        injectionGuardUntil.set(uuid, now + INJECTION_GUARD_MAX_MS);
         const obs = passiveSessionObserver.collect([])
           .find((s) => s.id === `observed:claude:${uuid}`) as
             { tty?: string; appName?: string } | undefined;
@@ -3610,10 +3757,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         injectObservedSelection(
           { tty: obs?.tty, appName: obs?.appName, label }, idx,
         ).then((r) => {
+          injectionGuardUntil.set(uuid, Date.now() + INJECTION_SETTLE_MS);
           debug('daemon', r.ok
             ? `observed selection injected via ${r.via} (idx ${idx}, ${uuid.slice(0, 8)})`
             : `observed selection NOT injected: ${r.reason} (${uuid.slice(0, 8)})`);
-        }).catch(() => {});
+          // The keys landed, so the TUI has moved to the next question group —
+          // move the overlay with it or devices keep offering the answered one.
+          if (r.ok && advanceAskUserQuestionOverlay(uuid, label) !== 'ignored') {
+            core.broadcastSessionsList().catch(() => {});
+          }
+        }).catch(() => {
+          injectionGuardUntil.set(uuid, Date.now() + INJECTION_SETTLE_MS);
+        });
       }
       return;
     }

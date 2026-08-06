@@ -1075,6 +1075,17 @@ data class SessionInfo (
 
     val agentType: AgentType? = null,
     val alive: Boolean,
+    val askGroupCount: Double? = null,
+
+    /**
+     * A single AskUserQuestion call may carry up to four question groups. The daemon presents
+     * them ONE AT A TIME (`question`/`options` above are the active group's projection) and
+     * advances as each is answered, so a device never has to flatten unrelated groups into one
+     * unsafe index space. These are present only while a multi-group prompt is pending, and let
+     * a surface render "Q 2/3". Absent ⇒ a single-question prompt.
+     */
+    val askGroupIndex: Double? = null,
+
     val contextPercent: Double? = null,
     val controlMode: ControlMode? = null,
     val currentTask: String? = null,
@@ -1093,12 +1104,18 @@ data class SessionInfo (
     val id: String,
 
     /**
-     * Observed sessions: this daemon can answer the session's LIVE on-screen prompt by typing
-     * into its terminal/app host (`observed-inject.ts`), so a deck may render its `options` as
-     * pressable instead of inert. Absent/false means no reachable host was found, or the daemon
-     * cannot inject at all (App Store Swift daemon — no subprocess). Emitted explicitly in BOTH
-     * polarities: a flag only ever sent when true latches one-way under retain-on-absent
-     * merging.
+     * Observed sessions: a device press on this session's `options` will reach the agent, so a
+     * deck may render them pressable instead of inert. True for either delivery rung — the
+     * daemon can type into the session's terminal/app host (`observed-inject.ts`, CLI daemon
+     * only), OR it is holding this session's AskUserQuestion PreToolUse open and will answer it
+     * with the device's choice (the ask-gate, available to both daemons including the sandboxed
+     * App Store one). Absent/false means neither: the prompt is display-only and the user must
+     * answer in their terminal. Emitted explicitly in BOTH polarities: a flag only ever sent
+     * when true latches one-way under retain-on-absent merging.
+     *
+     * Note the ask-gate deliberately does NOT surface a `requestId` — that field makes devices
+     * render a binary Allow/Deny, which would collapse a 4-option question into a permission
+     * decision. Answers ride `select_option`.
      */
     val liveAnswerable: Boolean? = null,
 

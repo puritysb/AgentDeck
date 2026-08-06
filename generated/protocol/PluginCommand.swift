@@ -43,6 +43,13 @@ struct ADPluginCommand: Codable, Equatable {
     var type: ADType
     var value: ADValue?
     var index: Double?
+    /// Echo of the question text the device was DISPLAYING when pressed. A multi-group
+    /// AskUserQuestion advances to the next question as soon as one is answered, so an index
+    /// pressed against the previous question would otherwise select the wrong option in the new
+    /// one. The daemon drops a press whose echo no longer matches the active question and
+    /// re-broadcasts so the device re-syncs. Optional: omitted ⇒ no guard (older clients, ESP32
+    /// firmware) — never make this required.
+    var question: String?
     /// Target session for daemon-side host push-to-talk (deck surfaces have no session of their
     /// own). Absent ⇒ the focused session, then the legacy session-bridge behavior when a bridge
     /// handles it directly.
@@ -81,6 +88,7 @@ struct ADPluginCommand: Codable, Equatable {
         case type = "type"
         case value = "value"
         case index = "index"
+        case question = "question"
         case sessionId = "sessionId"
         case direction = "direction"
         case text = "text"
@@ -132,6 +140,7 @@ extension ADPluginCommand {
         type: ADType? = nil,
         value: ADValue?? = nil,
         index: Double?? = nil,
+        question: String?? = nil,
         sessionId: String?? = nil,
         direction: ADDirection?? = nil,
         text: String?? = nil,
@@ -163,6 +172,7 @@ extension ADPluginCommand {
             type: type ?? self.type,
             value: value ?? self.value,
             index: index ?? self.index,
+            question: question ?? self.question,
             sessionId: sessionId ?? self.sessionId,
             direction: direction ?? self.direction,
             text: text ?? self.text,

@@ -123,6 +123,33 @@ export const STOP_DENY_REASON =
   + 'Halt the current work now, briefly summarize where you left off, and wait '
   + 'for the user\'s next instruction. Do not start new tool calls.';
 
+/**
+ * Deliver a device-answered AskUserQuestion back to Claude.
+ *
+ * The hook contract has no field for supplying a chosen option — a PreToolUse
+ * hook may only allow, deny or defer. But a denial's reason text IS handed to
+ * the model as the tool call's feedback, which is the same reason-as-message
+ * channel `STOP_DENY_REASON` and the Stop-hook directive queue already ride.
+ * So the daemon denies the question and states the answer the user gave on
+ * their device. The wording has to be unambiguous that these ARE the user's
+ * answers and that re-asking is wrong: read as a bare refusal, a model treats
+ * the denial as an obstacle and calls AskUserQuestion again.
+ */
+export function buildAskAnswerReason(
+  answers: Array<{ question: string; label: string }>,
+): string {
+  const pairs = answers
+    .filter((a) => a.label)
+    .map((a) => `Q: ${a.question}\nA: ${a.label}`)
+    .join('\n');
+  return 'AgentDeck: the user already answered this question on their connected '
+    + 'AgentDeck device, so the question picker was not shown in their terminal.\n'
+    + `${pairs}\n`
+    + 'These are the user\'s own answers. Treat them exactly as if the tool had '
+    + 'returned them and continue — do not call AskUserQuestion again for these '
+    + 'questions, and do not ask the user to repeat themselves.';
+}
+
 // ─── Turn-end directive queue ───
 
 export function queueDirective(sid: string, text: string): boolean {
@@ -219,6 +246,37 @@ export function shouldHoldPreToolUse(ctx: HoldContext): HoldDecision {
   const requestId = randomUUID();
   s.heldRequestId = requestId;
   return { hold: true, requestId, reason: verdict === 'ask' ? 'ask rule matches' : 'prompt-prone, no rule match' };
+}
+
+/**
+ * Register a hold for an AskUserQuestion PreToolUse so a device can answer it.
+ *
+ * Shares only the one-gate-per-session invariant with `shouldHoldPreToolUse`
+ * and NONE of its precision guards — deliberately. Those guards exist because
+ * PreToolUse fires for tool calls Claude will auto-approve without ever asking
+ * the user, so holding one invents a decision nobody was asked for.
+ * AskUserQuestion is the opposite: its entire purpose is to prompt, it always
+ * does, and no allowlist entry suppresses it. There is no false-hold to guard
+ * against, so the permission-rule predictor is skipped — which is also what
+ * lets this rung work in the sandboxed App Store daemon, where the predictor
+ * can't read `~/.claude` and therefore disables the permission gate entirely.
+ *
+ * Release it through `gateReleased` with `undecided: false`: an unanswered ask
+ * says nothing about whether Claude auto-approves anything, so it must never
+ * feed the auto-approval learner.
+ */
+export function beginAskGate(ctx: {
+  sessionId: string;
+  clientCount: number;
+  enabled: boolean;
+}): HoldDecision {
+  if (!ctx.enabled) return { hold: false, reason: 'disabled' };
+  if (ctx.clientCount < 1) return { hold: false, reason: 'no clients' };
+  const s = ses(ctx.sessionId);
+  if (s.heldRequestId) return { hold: false, reason: 'another gate already held' };
+  const requestId = randomUUID();
+  s.heldRequestId = requestId;
+  return { hold: true, requestId, reason: 'AskUserQuestion always prompts' };
 }
 
 /** The held gate resolved (device decision, timeout, sweep). `undecided` marks

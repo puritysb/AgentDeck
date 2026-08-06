@@ -9,7 +9,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
-  shouldHoldPreToolUse, gateReleased, buildGateQuestion, gateSignature,
+  shouldHoldPreToolUse, beginAskGate, gateReleased, buildGateQuestion,
+  buildAskAnswerReason, gateSignature,
   requestStop, clearStop, isStopRequested, consumeStop,
   queueDirective, takeDirective, queuedDirectiveCount, clearOnUserPrompt,
   notePermissionPromptShown, noteToolEnd, steeringSnapshot,
@@ -262,6 +263,77 @@ describe('evaluatePermissionRules verdicts', () => {
   it('ask rules never match loosely on unparseable specs (no over-holding)', () => {
     writeSettings(homeDir, 'settings.json', { ask: ['WebFetch(domain:evil.com)'] });
     expect(evaluatePermissionRules('WebFetch', { url: 'https://x.com' }, cwd)).toBe('none');
+  });
+});
+
+// The permission gate's precision guards exist because PreToolUse fires for
+// calls Claude auto-approves without ever prompting. AskUserQuestion is the
+// opposite — it always prompts — so the ask-gate deliberately skips them, which
+// is also what makes it work in the sandboxed daemon that cannot read ~/.claude.
+describe('beginAskGate (AskUserQuestion always prompts — no precision guards)', () => {
+  const askCtx = (o: Partial<Parameters<typeof beginAskGate>[0]> = {}) =>
+    ({ sessionId: 'sid-ask', clientCount: 1, enabled: true, ...o });
+
+  it('holds without consulting permission rules or the prompt-prone set', () => {
+    // An allow rule covering everything would suppress a permission hold…
+    writeSettings(homeDir, 'settings.json', { allow: ['Bash', 'AskUserQuestion'] });
+    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
+    // …but cannot stop the picker appearing, so the ask-gate still holds.
+    expect(beginAskGate(askCtx()).hold).toBe(true);
+  });
+
+  it('holds even where the rule surface is unreadable (the sandbox case)', () => {
+    _setHomeOverrideForTests(join(fixtureRoot, 'does-not-exist'));
+    _clearRulesCache();
+    expect(beginAskGate(askCtx()).hold).toBe(true);
+  });
+
+  it('never holds when disabled or with nobody to answer', () => {
+    expect(beginAskGate(askCtx({ enabled: false })).hold).toBe(false);
+    expect(beginAskGate(askCtx({ clientCount: 0 })).hold).toBe(false);
+  });
+
+  it('keeps the one-gate-per-session invariant in both directions', () => {
+    expect(beginAskGate(askCtx()).hold).toBe(true);
+    expect(beginAskGate(askCtx()).hold).toBe(false);
+    // A permission gate cannot slip in underneath a held ask-gate either.
+    expect(shouldHoldPreToolUse(baseCtx({ sessionId: 'sid-ask' })).hold).toBe(false);
+  });
+
+  it('releases the session so the next question can hold again', () => {
+    const first = beginAskGate(askCtx());
+    gateReleased('sid-ask', first.requestId!, { undecided: false, tool: 'AskUserQuestion' });
+    expect(beginAskGate(askCtx()).hold).toBe(true);
+  });
+
+  it('an unanswered ask teaches the auto-approval learner nothing', () => {
+    const gate = beginAskGate(askCtx());
+    // undecided:false is the contract — an ask timeout says nothing about what
+    // Claude auto-approves, so it must not suppress any signature.
+    gateReleased('sid-ask', gate.requestId!, { undecided: false, tool: 'AskUserQuestion' });
+    noteToolEnd('sid-ask', 'AskUserQuestion');
+    expect(shouldHoldPreToolUse(baseCtx({ sessionId: 'sid-ask' })).hold).toBe(true);
+  });
+});
+
+describe('buildAskAnswerReason (the device answer reaching the agent)', () => {
+  it('states every Q→A pair and forbids re-asking', () => {
+    const reason = buildAskAnswerReason([
+      { question: 'Pick a language', label: 'Swift' },
+      { question: 'Ship it?', label: 'Yes' },
+    ]);
+    expect(reason).toContain('Q: Pick a language\nA: Swift');
+    expect(reason).toContain('Q: Ship it?\nA: Yes');
+    expect(reason).toContain('do not call AskUserQuestion again');
+    // Must read as the user's own answer, not as a policy refusal.
+    expect(reason).toContain("user's own answers");
+  });
+
+  it('drops groups that were never answered', () => {
+    expect(buildAskAnswerReason([
+      { question: 'Answered', label: 'A' },
+      { question: 'Skipped', label: '' },
+    ])).not.toContain('Skipped');
   });
 });
 

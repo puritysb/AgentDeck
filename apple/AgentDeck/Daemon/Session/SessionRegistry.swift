@@ -108,6 +108,11 @@ struct DaemonSessionEntry: Codable, Sendable, Identifiable {
     var requestId: String?        // held PreToolUse gate pending device approval (Allow/Deny + permission_decision)
     var stopRequested: Bool?      // soft STOP requested — deny at next tool call
     var queuedDirectives: Int?    // deck prompts queued for delivery at turn end
+    // A single AskUserQuestion call may carry several question groups; they are
+    // presented one at a time (question/options above are the active group), so
+    // these let a surface render "Q 2/3". Nil ⇒ a single-question prompt.
+    var askGroupIndex: Int?
+    var askGroupCount: Int?
 }
 
 final class SessionRegistry: Sendable {

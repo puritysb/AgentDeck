@@ -2185,6 +2185,13 @@ struct ADSessionInfo: Codable, Equatable {
     var activity: String?
     var agentType: ADAgentType?
     var alive: Bool
+    var askGroupCount: Double?
+    /// A single AskUserQuestion call may carry up to four question groups. The daemon presents
+    /// them ONE AT A TIME (`question`/`options` above are the active group's projection) and
+    /// advances as each is answered, so a device never has to flatten unrelated groups into one
+    /// unsafe index space. These are present only while a multi-group prompt is pending, and let
+    /// a surface render "Q 2/3". Absent ⇒ a single-question prompt.
+    var askGroupIndex: Double?
     var contextPercent: Double?
     var controlMode: ADControlMode?
     var currentTask: String?
@@ -2196,12 +2203,18 @@ struct ADSessionInfo: Codable, Equatable {
     var goal: String?
     var groupSize: Double?
     var id: String
-    /// Observed sessions: this daemon can answer the session's LIVE on-screen prompt by typing
-    /// into its terminal/app host (`observed-inject.ts`), so a deck may render its `options` as
-    /// pressable instead of inert. Absent/false means no reachable host was found, or the daemon
-    /// cannot inject at all (App Store Swift daemon — no subprocess). Emitted explicitly in BOTH
-    /// polarities: a flag only ever sent when true latches one-way under retain-on-absent
-    /// merging.
+    /// Observed sessions: a device press on this session's `options` will reach the agent, so a
+    /// deck may render them pressable instead of inert. True for either delivery rung — the
+    /// daemon can type into the session's terminal/app host (`observed-inject.ts`, CLI daemon
+    /// only), OR it is holding this session's AskUserQuestion PreToolUse open and will answer it
+    /// with the device's choice (the ask-gate, available to both daemons including the sandboxed
+    /// App Store one). Absent/false means neither: the prompt is display-only and the user must
+    /// answer in their terminal. Emitted explicitly in BOTH polarities: a flag only ever sent
+    /// when true latches one-way under retain-on-absent merging.
+    ///
+    /// Note the ask-gate deliberately does NOT surface a `requestId` — that field makes devices
+    /// render a binary Allow/Deny, which would collapse a 4-option question into a permission
+    /// decision. Answers ride `select_option`.
     var liveAnswerable: Bool?
     var modelName: String?
     var options: [ADPromptOption]?
@@ -2232,6 +2245,8 @@ struct ADSessionInfo: Codable, Equatable {
         case activity = "activity"
         case agentType = "agentType"
         case alive = "alive"
+        case askGroupCount = "askGroupCount"
+        case askGroupIndex = "askGroupIndex"
         case contextPercent = "contextPercent"
         case controlMode = "controlMode"
         case currentTask = "currentTask"
@@ -2286,6 +2301,8 @@ extension ADSessionInfo {
         activity: String?? = nil,
         agentType: ADAgentType?? = nil,
         alive: Bool? = nil,
+        askGroupCount: Double?? = nil,
+        askGroupIndex: Double?? = nil,
         contextPercent: Double?? = nil,
         controlMode: ADControlMode?? = nil,
         currentTask: String?? = nil,
@@ -2320,6 +2337,8 @@ extension ADSessionInfo {
             activity: activity ?? self.activity,
             agentType: agentType ?? self.agentType,
             alive: alive ?? self.alive,
+            askGroupCount: askGroupCount ?? self.askGroupCount,
+            askGroupIndex: askGroupIndex ?? self.askGroupIndex,
             contextPercent: contextPercent ?? self.contextPercent,
             controlMode: controlMode ?? self.controlMode,
             currentTask: currentTask ?? self.currentTask,

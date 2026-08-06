@@ -443,6 +443,10 @@
         "index": {
           "type": "number"
         },
+        "question": {
+          "description": "Echo of the question text the device was DISPLAYING when pressed. A multi-group AskUserQuestion advances to the next question as soon as one is answered, so an index pressed against the previous question would otherwise select the wrong option in the new one. The daemon drops a press whose echo no longer matches the active question and re-broadcasts so the device re-syncs. Optional: omitted ⇒ no guard (older clients, ESP32 firmware) — never make this required.",
+          "type": "string"
+        },
         "sessionId": {
           "type": "string"
         },

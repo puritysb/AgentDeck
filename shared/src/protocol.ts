@@ -444,14 +444,29 @@ export interface SessionInfo {
   /** Last review verdict (with reviewFindings) — devices render "risk: low · 2" on the REVIEW tile. */
   reviewRisk?: 'low' | 'medium' | 'high';
   reviewFindings?: number;
-  /** Observed sessions: this daemon can answer the session's LIVE on-screen
-   *  prompt by typing into its terminal/app host (`observed-inject.ts`), so a
-   *  deck may render its `options` as pressable instead of inert. Absent/false
-   *  means no reachable host was found, or the daemon cannot inject at all
-   *  (App Store Swift daemon — no subprocess). Emitted explicitly in BOTH
-   *  polarities: a flag only ever sent when true latches one-way under
-   *  retain-on-absent merging. */
+  /** Observed sessions: a device press on this session's `options` will reach
+   *  the agent, so a deck may render them pressable instead of inert. True for
+   *  either delivery rung — the daemon can type into the session's terminal/app
+   *  host (`observed-inject.ts`, CLI daemon only), OR it is holding this
+   *  session's AskUserQuestion PreToolUse open and will answer it with the
+   *  device's choice (the ask-gate, available to both daemons including the
+   *  sandboxed App Store one). Absent/false means neither: the prompt is
+   *  display-only and the user must answer in their terminal. Emitted
+   *  explicitly in BOTH polarities: a flag only ever sent when true latches
+   *  one-way under retain-on-absent merging.
+   *
+   *  Note the ask-gate deliberately does NOT surface a `requestId` — that field
+   *  makes devices render a binary Allow/Deny, which would collapse a 4-option
+   *  question into a permission decision. Answers ride `select_option`. */
   liveAnswerable?: boolean;
+  /** A single AskUserQuestion call may carry up to four question groups. The
+   *  daemon presents them ONE AT A TIME (`question`/`options` above are the
+   *  active group's projection) and advances as each is answered, so a device
+   *  never has to flatten unrelated groups into one unsafe index space. These
+   *  are present only while a multi-group prompt is pending, and let a surface
+   *  render "Q 2/3". Absent ⇒ a single-question prompt. */
+  askGroupIndex?: number;  // 0-based index of the group currently presented
+  askGroupCount?: number;  // total groups in the pending AskUserQuestion call
   promptType?: 'yes_no' | 'yes_no_always' | 'multi_select' | 'diff_review';  // shape of the awaiting prompt (per-session, for inline approve/deny + option buttons on rich panels)
   options?: PromptOption[];  // per-session awaiting options (multi_select) — lets a 10-up panel render inline choices for any session, not just the focused one
   elapsedSec?: number;  // derived seconds since startedAt — devices without reliable NTP render elapsed without recomputing from a wall clock
@@ -1178,6 +1193,14 @@ export interface SelectOptionCommand {
   type: 'select_option';
   index: number; // 0-based option index
   sessionId?: string; // route to a specific session's awaiting prompt; omitted ⇒ focused session (legacy)
+  /** Echo of the question text the device was DISPLAYING when pressed. A
+   *  multi-group AskUserQuestion advances to the next question as soon as one
+   *  is answered, so an index pressed against the previous question would
+   *  otherwise select the wrong option in the new one. The daemon drops a press
+   *  whose echo no longer matches the active question and re-broadcasts so the
+   *  device re-syncs. Optional: omitted ⇒ no guard (older clients, ESP32
+   *  firmware) — never make this required. */
+  question?: string;
 }
 
 export interface NavigateOptionCommand {

@@ -530,15 +530,32 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     var foldedSessionIds: [String]?
     /// Awaiting prompt question text (managed PTY or observed hook overlay).
     var question: String?
-    /// Per-session prompt choices. Observed AskUserQuestion entries carry
-    /// these for display only; `controlMode == "observed"` must stay inert.
+    /// Per-session prompt choices. For an observed session these are pressable
+    /// only when `liveAnswerable` is true — otherwise the daemon has no way to
+    /// deliver the answer and the UI must point the user at their terminal.
     var options: [PromptOption]?
     var promptType: PromptType?
     var navigable: Bool?
     var controlMode: String?
-    /// Deprecated wire-compat field. The observed device-approval gate was removed
-    /// (2026-06-27); nothing sets this anymore. Kept so older clients still decode.
+    /// Set while a daemon holds a PreToolUse permission gate for this session:
+    /// devices render Allow/Deny and reply with `permission_decision`. Never set
+    /// for an AskUserQuestion — a binary control would collapse a
+    /// multiple-choice question (those ride `liveAnswerable` + `select_option`).
     var requestId: String?
+    /// Will a press on `options` reach the agent? True when the daemon can type
+    /// into the session's terminal (CLI daemon only) OR is holding the
+    /// session's AskUserQuestion open to answer it with the choice. Sent in
+    /// both polarities, so decode absence as "unknown", never as true.
+    var liveAnswerable: Bool?
+    /// Observed sessions: a soft STOP is pending (deny at the next tool call).
+    var stopRequested: Bool?
+    /// Observed sessions: prompts queued for delivery at the turn's end.
+    var queuedDirectives: Int?
+    /// One AskUserQuestion call may hold several question groups, presented one
+    /// at a time (`question`/`options` are the active one). Present only for a
+    /// multi-group prompt, so a surface can render "Q 2/3".
+    var askGroupIndex: Int?
+    var askGroupCount: Int?
     /// Shared per-session "what is this agent doing" one-liner, computed by the
     /// bridge (session-activity.ts heuristic → Foundation Models upgrade).
     /// SSOT for the session summary line — render this instead of hand-rolling
@@ -799,7 +816,12 @@ enum BridgeEvent: Sendable {
 
 enum PluginCommand: Encodable, Sendable {
     case respond(value: String)
-    case selectOption(index: Int)
+    /// Answer an awaiting prompt. `sessionId` addresses the session directly
+    /// instead of relying on a preceding `focus_session` relay; `question`
+    /// echoes what was on screen so the daemon can drop a press that answers a
+    /// question the prompt has already moved past (multi-group
+    /// AskUserQuestion). Both optional — older daemons ignore them.
+    case selectOption(index: Int, sessionId: String? = nil, question: String? = nil)
     case navigateOption(direction: String)
     case sendPrompt(text: String)
     case switchMode(mode: String?)
@@ -819,9 +841,11 @@ enum PluginCommand: Encodable, Sendable {
         case .respond(let value):
             try container.encode("respond", forKey: .init("type"))
             try container.encode(value, forKey: .init("value"))
-        case .selectOption(let index):
+        case .selectOption(let index, let sessionId, let question):
             try container.encode("select_option", forKey: .init("type"))
             try container.encode(index, forKey: .init("index"))
+            if let sessionId { try container.encode(sessionId, forKey: .init("sessionId")) }
+            if let question { try container.encode(question, forKey: .init("question")) }
         case .navigateOption(let direction):
             try container.encode("navigate_option", forKey: .init("type"))
             try container.encode(direction, forKey: .init("direction"))

@@ -482,11 +482,33 @@ final class DaemonServer {
     /// overwrite their awaiting_permission overlay from parallel tool hooks
     /// while the device decision is pending (≤ hold timeout).
     private var heldGateSessionIds: Set<String> = []
-    /// Structured direct-Claude AskUserQuestion waits, keyed by the stable
-    /// tool_use_id. This id stays daemon-local: exposing it as requestId would
-    /// make devices fabricate actionable permission controls for an observed
-    /// terminal that AgentDeck cannot safely type into.
-    private var pendingAskToolUseIdBySession: [String: String] = [:]
+    /// A structured direct-Claude AskUserQuestion wait.
+    ///
+    /// One call may carry up to four question groups while SessionInfo has room
+    /// for one, so every group is kept here and presented in sequence —
+    /// flattening them into a single index space would let a press aimed at
+    /// group 1 select an option of group 2. `toolUseId` stays daemon-local: it
+    /// is Claude's completion key, not an answer channel, and exposing it as
+    /// `requestId` would make devices render a binary Allow/Deny over a
+    /// multiple-choice question.
+    struct PendingAsk {
+        struct Group {
+            let question: String
+            let options: [[String: AnyCodable]]
+            let promptType: String?
+        }
+        let toolUseId: String
+        let groups: [Group]
+        var activeIndex: Int = 0
+        var answers: [(question: String, label: String)] = []
+        /// Set while this daemon holds the question's PreToolUse open for a
+        /// device answer (the ask-gate). Nil means display-only: the picker is
+        /// on the user's own screen and only they can answer it.
+        var gateRequestId: String?
+
+        var activeGroup: Group? { groups.indices.contains(activeIndex) ? groups[activeIndex] : nil }
+    }
+    private var pendingAskBySession: [String: PendingAsk] = [:]
     /// Read-only child lifecycle state. Child agents never become
     /// DaemonSessionEntry rows and never participate in steering/approval;
     /// this map exists only to pair concise Timeline start/completion rows.
@@ -3560,7 +3582,7 @@ final class DaemonServer {
                 broadcastSessionsList()
             }
         case "session_start":
-            if let sessionId { pendingAskToolUseIdBySession.removeValue(forKey: sessionId) }
+            if let sessionId { pendingAskBySession.removeValue(forKey: sessionId) }
             _ = stateMachine.transition(trigger: "session_start", source: .hook)
             let projectName = ProjectNameResolver.projectName(fromHookPayload: json)
             if !projectName.isEmpty { stateMachine.projectName = projectName }
@@ -3597,7 +3619,7 @@ final class DaemonServer {
                 broadcastSessionsList()
             }
         case "user_prompt_submit":
-            if let sessionId { pendingAskToolUseIdBySession.removeValue(forKey: sessionId) }
+            if let sessionId { pendingAskBySession.removeValue(forKey: sessionId) }
             _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
             // Steering: the user re-engaged in the terminal — a pending soft
             // STOP is moot and queued deck directives are superseded.
@@ -3622,7 +3644,7 @@ final class DaemonServer {
             // (cross-session subtree contamination).
             appendClaudeCodeChatStart(json: json, sessionId: sessionId, taskId: apmeCollector?.activeTaskId(sessionId: sessionId))
         case "stop":
-            if let sessionId { pendingAskToolUseIdBySession.removeValue(forKey: sessionId) }
+            if let sessionId { pendingAskBySession.removeValue(forKey: sessionId) }
             _ = stateMachine.transition(trigger: "stop", source: .hook)
             updateSessionHookState(sessionId: sessionId, state: "idle", clearTool: true)
             // Timeline: close the turn. `last_assistant_message` is the hook
@@ -3661,7 +3683,7 @@ final class DaemonServer {
                 clearClaudeTurnAnchor(sid: sessionId)
                 claudeLastPromptTopicBySession.removeValue(forKey: sessionId)
                 claudeTranscriptPathBySession.removeValue(forKey: sessionId)
-                pendingAskToolUseIdBySession.removeValue(forKey: sessionId)
+                pendingAskBySession.removeValue(forKey: sessionId)
                 Task { await ObservedSteering.shared.clearSession(sessionId: sessionId) }
                 broadcastSessionsList()
             }
@@ -3669,23 +3691,17 @@ final class DaemonServer {
             stateMachine.currentTool = json["tool_name"] as? String
             stateMachine.toolInput = json["tool_input"] as? String
             if let sessionId,
-               let ask = Self.askUserQuestionPresentation(from: json),
-               var entry = pushedSessionsById[sessionId] {
-                pendingAskToolUseIdBySession[sessionId] = ask.toolUseId
-                entry.state = "awaiting_option"
-                entry.currentTool = nil
-                entry.question = ask.question
-                entry.options = ask.options
-                entry.promptType = ask.promptType
-                entry.requestId = nil
-                pushedSessionsById[sessionId] = entry
-                upsertIntoCachedSessions(entry)
+               let ask = Self.askUserQuestionGroups(from: json),
+               pushedSessionsById[sessionId] != nil {
+                pendingAskBySession[sessionId] = PendingAsk(
+                    toolUseId: ask.toolUseId, groups: ask.groups)
+                projectPendingAsk(sessionId: sessionId)
                 DaemonLogger.shared.debug(
                     "Hook",
-                    "AskUserQuestion awaiting_option set for \(sessionId) tool=\(ask.toolUseId)"
+                    "AskUserQuestion awaiting_option set for \(sessionId) tool=\(ask.toolUseId) groups=\(ask.groups.count)"
                 )
                 broadcastSessionsList()
-            } else if sessionId.map({ pendingAskToolUseIdBySession[$0] != nil }) != true {
+            } else if sessionId.map({ pendingAskBySession[$0] != nil }) != true {
                 updateSessionHookState(
                     sessionId: sessionId,
                     state: "processing",
@@ -3704,15 +3720,15 @@ final class DaemonServer {
             }
             if let sessionId,
                json["tool_name"] as? String == "AskUserQuestion",
-               let pendingId = pendingAskToolUseIdBySession[sessionId],
+               let pendingId = pendingAskBySession[sessionId]?.toolUseId,
                json["tool_use_id"] as? String == pendingId {
-                pendingAskToolUseIdBySession.removeValue(forKey: sessionId)
+                pendingAskBySession.removeValue(forKey: sessionId)
                 DaemonLogger.shared.debug(
                     "Hook",
                     "AskUserQuestion awaiting_option cleared by \(event) for \(sessionId) tool=\(pendingId)"
                 )
                 updateSessionHookState(sessionId: sessionId, state: "processing", clearTool: true)
-            } else if sessionId.map({ pendingAskToolUseIdBySession[$0] != nil }) != true {
+            } else if sessionId.map({ pendingAskBySession[$0] != nil }) != true {
                 // Stay "processing" between tool boundaries — `stop` drops the
                 // session back to idle when the turn finishes.
                 updateSessionHookState(sessionId: sessionId, state: "processing", clearTool: true)
@@ -3737,7 +3753,7 @@ final class DaemonServer {
                 Task { await ObservedSteering.shared.notePermissionPromptShown(sessionId: sessionId) }
                 // AskUserQuestion emits this generic permission notification
                 // after its structured PreToolUse. Preserve the real prompt.
-                guard pendingAskToolUseIdBySession[sessionId] == nil else { break }
+                guard pendingAskBySession[sessionId] == nil else { break }
                 let q = String(message.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
                 if entry.state != "awaiting_permission" || entry.question != q {
                     entry.state = "awaiting_permission"
@@ -4944,25 +4960,23 @@ final class DaemonServer {
         return trimmed
     }
 
-    /// Parse the first valid AskUserQuestion group from a Claude PreToolUse
-    /// payload. SessionInfo carries one question/options set, so grouped
-    /// questions are not flattened into unsafe cross-question wire indices.
-    /// The tool_use_id is mandatory: without it the display-only overlay could
-    /// not distinguish its own completion from unrelated parallel tool hooks.
-    nonisolated static func askUserQuestionPresentation(
+    /// Parse EVERY valid AskUserQuestion group from a Claude PreToolUse
+    /// payload. Claude allows up to four grouped questions while SessionInfo
+    /// carries one question/options set, so the groups are kept intact here and
+    /// presented one at a time rather than flattened into cross-question wire
+    /// indices (which would let a press aimed at group 1 select an option of
+    /// group 2). The tool_use_id is mandatory: without it the overlay could not
+    /// distinguish its own completion from unrelated parallel tool hooks.
+    nonisolated static func askUserQuestionGroups(
         from json: [String: Any]
-    ) -> (
-        toolUseId: String,
-        question: String,
-        options: [[String: AnyCodable]],
-        promptType: String?
-    )? {
+    ) -> (toolUseId: String, groups: [PendingAsk.Group])? {
         guard json["tool_name"] as? String == "AskUserQuestion",
               let toolUseId = json["tool_use_id"] as? String, !toolUseId.isEmpty,
               let toolInput = json["tool_input"] as? [String: Any],
               let questions = toolInput["questions"] as? [[String: Any]] else {
             return nil
         }
+        var groups: [PendingAsk.Group] = []
         for rawQuestion in questions {
             guard let rawText = rawQuestion["question"] as? String else { continue }
             let question = rawText
@@ -4988,14 +5002,62 @@ final class DaemonServer {
                     "label": AnyCodable(label),
                 ]
             }
-            return (
-                toolUseId,
-                String(question.prefix(120)),
-                options,
-                rawQuestion["multiSelect"] as? Bool == true ? "multi_select" : nil
-            )
+            groups.append(PendingAsk.Group(
+                question: String(question.prefix(120)),
+                options: options,
+                promptType: rawQuestion["multiSelect"] as? Bool == true ? "multi_select" : nil
+            ))
         }
-        return nil
+        return groups.isEmpty ? nil : (toolUseId, groups)
+    }
+
+    /// Copy the ACTIVE question group into the session's wire projection so
+    /// every surface renders the one question the user should answer right now.
+    private func projectPendingAsk(sessionId: String) {
+        guard let ask = pendingAskBySession[sessionId],
+              let group = ask.activeGroup,
+              var entry = pushedSessionsById[sessionId] else { return }
+        entry.state = "awaiting_option"
+        entry.currentTool = nil
+        entry.question = group.question
+        entry.options = group.options
+        entry.promptType = group.promptType
+        // Never surfaced as requestId: that field makes devices render a binary
+        // Allow/Deny, which would collapse a multiple-choice question.
+        entry.requestId = nil
+        let multiGroup = ask.groups.count > 1
+        entry.askGroupIndex = multiGroup ? ask.activeIndex : nil
+        entry.askGroupCount = multiGroup ? ask.groups.count : nil
+        pushedSessionsById[sessionId] = entry
+        upsertIntoCachedSessions(entry)
+    }
+
+    /// Record the answer to the active group and present the next one. Returns
+    /// true when a further question is now showing (caller re-broadcasts),
+    /// false when that was the last one (caller resolves the ask-gate).
+    private func advancePendingAsk(sessionId: String, label: String) -> Bool {
+        guard var ask = pendingAskBySession[sessionId], let group = ask.activeGroup else { return false }
+        ask.answers.append((question: group.question, label: label))
+        ask.activeIndex += 1
+        pendingAskBySession[sessionId] = ask
+        guard ask.activeGroup != nil else { return false }
+        projectPendingAsk(sessionId: sessionId)
+        return true
+    }
+
+    /// The first question group, as the wire projection devices render.
+    nonisolated static func askUserQuestionPresentation(
+        from json: [String: Any]
+    ) -> (
+        toolUseId: String,
+        question: String,
+        options: [[String: AnyCodable]],
+        promptType: String?
+    )? {
+        guard let parsed = askUserQuestionGroups(from: json), let first = parsed.groups.first else {
+            return nil
+        }
+        return (parsed.toolUseId, first.question, first.options, first.promptType)
     }
 
     /// Apply a per-session state/tool update coming from a hook event and
@@ -5022,6 +5084,8 @@ final class DaemonServer {
             entry.question = nil
             entry.options = nil
             entry.promptType = nil
+            entry.askGroupIndex = nil
+            entry.askGroupCount = nil
         }
         if clearTool {
             entry.currentTool = nil
@@ -5067,7 +5131,18 @@ final class DaemonServer {
                 ],
             ])
         }
-        // 2. Device-approval gate (precision-guarded).
+        // 2. AskUserQuestion ask-gate. The structured prompt was written by the
+        //    inline hook pass that runs just before this steering pass, so
+        //    devices are already showing the real choices. Hold the call so a
+        //    device press can answer it — the only remote-answer channel this
+        //    daemon has, since it cannot type into the user's terminal
+        //    (no subprocess in the sandbox). A timeout releases with an empty
+        //    body, so an unanswered question simply appears in the terminal as
+        //    usual: nothing ever auto-proceeds on the user's behalf.
+        if json["tool_name"] as? String == "AskUserQuestion", pendingAskBySession[sid] != nil {
+            return await holdAskGate(sessionId: sid)
+        }
+        // 3. Device-approval gate (precision-guarded).
         let tool = json["tool_name"] as? String ?? ""
         let toolInput = json["tool_input"] as? [String: Any]
         let commandText = toolInput?["command"] as? String
@@ -5128,6 +5203,55 @@ final class DaemonServer {
             // untouched (its prompt then surfaces via the Notification overlay).
             return .text("")
         }
+    }
+
+    /// Hold an AskUserQuestion open until a device answers every question group
+    /// or the hold expires.
+    ///
+    /// Claude's hook contract has no field for supplying a chosen option, so an
+    /// answered question resolves as `deny` whose reason states what the user
+    /// picked — the same reason-as-message channel soft STOP and the Stop-hook
+    /// directive queue ride. An expired hold returns an empty body: Claude's
+    /// own picker then appears in the terminal exactly as if this daemon had
+    /// never been involved.
+    private func holdAskGate(sessionId sid: String) async -> HTTPServer.HTTPResponse {
+        guard let requestId = await ObservedSteering.shared.beginAskGate(
+            sessionId: sid, clientCount: activeWSConnectionIds.count
+        ) else {
+            return .text("")
+        }
+        pendingAskBySession[sid]?.gateRequestId = requestId
+        // The gate owns this session's prompt until it resolves — parallel tool
+        // hooks must not strip the question out from under an open device wait.
+        heldGateSessionIds.insert(sid)
+        broadcastSessionsList() // liveAnswerable → true: options become buttons
+        DaemonLogger.shared.info("Steering: ask-gate held for \(sid) req=\(requestId)")
+
+        let decision = await ObservedSteering.shared.awaitGate(requestId: requestId)
+
+        heldGateSessionIds.remove(sid)
+        let answers = pendingAskBySession[sid]?.answers ?? []
+        pendingAskBySession[sid]?.gateRequestId = nil
+
+        guard decision == "answered", !answers.isEmpty else {
+            // Released undecided: the picker is now on the user's own screen, so
+            // the prompt stays visible but display-only (liveAnswerable falls
+            // back to false) until its PostToolUse clears it.
+            DaemonLogger.shared.debug("Steering", "ask-gate released undecided for \(sid)")
+            broadcastSessionsList()
+            return .text("")
+        }
+        // Denied → the tool never runs, so no PostToolUse will ever arrive to
+        // clear this prompt. Clear it here or the session stays stuck awaiting.
+        pendingAskBySession.removeValue(forKey: sid)
+        updateSessionHookState(sessionId: sid, state: "processing", clearTool: true)
+        broadcastSessionsList()
+        DaemonLogger.shared.info("Steering: ask-gate answered for \(sid) (\(answers.count) question(s))")
+        return .json(["hookSpecificOutput": [
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": ObservedSteering.askAnswerReason(answers: answers),
+        ]])
     }
 
     /// Stop-hook steering: deliver at most one queued deck directive by
@@ -5679,6 +5803,45 @@ final class DaemonServer {
                 if count > 0 { self?.updateObservedBadges(sessionId: sessionId, queued: count) }
             }
         case "respond", "select_option":
+            // Stale-press guard. A multi-group AskUserQuestion moves to the next
+            // question the instant one is answered, so an index pressed against
+            // the question a device was still displaying would select the wrong
+            // option in the new list. Devices that echo what they showed get
+            // validated; re-broadcasting re-syncs them to the live question.
+            if let echo = command["question"] as? String, !echo.isEmpty,
+               let shown = pushedSessionsById[sessionId]?.question, echo != shown {
+                DaemonLogger.shared.debug(
+                    "Daemon", "observed \(type) dropped: answers a stale question (\(sessionId.prefix(8)))")
+                broadcastSessionsList()
+                return
+            }
+            // Held ask-gate: an option index is an ANSWER, never a permission
+            // decision. Routing it through the allow/deny path below would
+            // answer "deny" for every option past the first.
+            if let ask = pendingAskBySession[sessionId], let rid = ask.gateRequestId {
+                guard type == "select_option", let index = command["index"] as? Int else {
+                    DaemonLogger.shared.debug(
+                        "Daemon", "observed \(type) ignored: ask-gate expects select_option (\(sessionId.prefix(8)))")
+                    return
+                }
+                guard let label = ask.activeGroup?.options
+                    .first(where: { ($0["index"]?.value as? Int) == index })?["label"]?.value as? String else {
+                    DaemonLogger.shared.debug(
+                        "Daemon", "observed select_option \(index) out of range (\(sessionId.prefix(8)))")
+                    broadcastSessionsList()
+                    return
+                }
+                if advancePendingAsk(sessionId: sessionId, label: label) {
+                    // Next question group — devices swap to it on this broadcast.
+                    broadcastSessionsList()
+                } else {
+                    // Every group answered: release the held hook with them.
+                    Task {
+                        _ = await ObservedSteering.shared.resolveGate(requestId: rid, decision: "answered")
+                    }
+                }
+                return
+            }
             guard let rid = pushedSessionsById[sessionId]?.requestId else {
                 // No held gate — the prompt is live in the user's own terminal.
                 // Answering it means typing into that terminal, which needs
@@ -8044,15 +8207,22 @@ final class DaemonServer {
         if let activity = sessionActivitySummary(s) { d["activity"] = activity }
         if let cm = s.controlMode {
             d["controlMode"] = cm
-            // Live-prompt answering types into the session's terminal via
-            // subprocesses (tmux / osascript), which this daemon cannot spawn —
-            // so an observed row is never live-answerable here. Sent as an
-            // explicit false, not omitted: decks merge retain-on-absent, and a
-            // flag that only ever arrives as `true` latches one-way once a
+            // Will a device press on this row's options reach the agent? Typing
+            // into the session's terminal needs subprocesses (tmux / osascript)
+            // this daemon cannot spawn, so that rung is always out. The one
+            // that is available is the ask-gate: while this daemon holds the
+            // session's AskUserQuestion open, a press resolves that hook with
+            // the user's choice. Sent as an explicit false when neither
+            // applies, not omitted: decks merge retain-on-absent, and a flag
+            // that only ever arrives as `true` latches one-way once a
             // CLI-daemon roster has been seen on the same device.
-            if cm == "observed" { d["liveAnswerable"] = false }
+            if cm == "observed" {
+                d["liveAnswerable"] = pendingAskBySession[s.id]?.gateRequestId != nil
+            }
         }
         if let rid = s.requestId { d["requestId"] = rid }
+        if let gi = s.askGroupIndex { d["askGroupIndex"] = gi }
+        if let gc = s.askGroupCount { d["askGroupCount"] = gc }
         if s.stopRequested == true { d["stopRequested"] = true }
         if let qd = s.queuedDirectives, qd > 0 { d["queuedDirectives"] = qd }
         if let badge = reviewBadge(for: s.id) {

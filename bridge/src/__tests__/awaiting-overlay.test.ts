@@ -3,6 +3,8 @@ import {
   setAwaitingOverlay,
   setPermissionNotificationOverlay,
   setAskUserQuestionOverlay,
+  advanceAskUserQuestionOverlay,
+  getAskUserQuestionAnswers,
   getAwaitingOverlay,
   clearAwaitingOverlay,
   clearAskUserQuestionOverlay,
@@ -346,6 +348,107 @@ describe('awaiting-overlay', () => {
     it('clears only the matching PostToolUse/PostToolUseFailure id', () => {
       expect(clearAskUserQuestionOverlay('sid-tool', 'toolu-current')).toBe(true);
       expect(getAwaitingOverlay('sid-tool')).toBeUndefined();
+    });
+  });
+
+  // A single AskUserQuestion call may carry up to four question groups, but
+  // SessionInfo has room for one. Groups are therefore presented in sequence:
+  // flattening them into one index space is what let a press aimed at group 1
+  // select an option of group 2.
+  describe('multi-group AskUserQuestion progression', () => {
+    const threeGroups = {
+      questions: [
+        { question: 'Pick a language', options: [{ label: 'TypeScript' }, { label: 'Swift' }] },
+        { question: 'Pick a target', options: [{ label: 'macOS' }, { label: 'Android' }], multiSelect: true },
+        { question: 'Ship it?', options: [{ label: 'Yes' }, { label: 'Not yet' }] },
+      ],
+    };
+
+    beforeEach(() => {
+      setAskUserQuestionOverlay('sid-multi', 'toolu-multi', threeGroups);
+    });
+
+    it('presents the first group and keeps the rest for later', () => {
+      const ov = getAwaitingOverlay('sid-multi')!;
+      expect(ov.question).toBe('Pick a language');
+      expect(ov.options?.map((o) => o.label)).toEqual(['TypeScript', 'Swift']);
+      expect(ov.groups).toHaveLength(3);
+      expect(ov.activeGroup).toBe(0);
+      expect(ov.promptType).toBeUndefined();
+    });
+
+    it('advances one group per answer and projects its question/options', () => {
+      expect(advanceAskUserQuestionOverlay('sid-multi', 'Swift')).toBe('advanced');
+      const second = getAwaitingOverlay('sid-multi')!;
+      expect(second.question).toBe('Pick a target');
+      expect(second.options?.map((o) => o.label)).toEqual(['macOS', 'Android']);
+      expect(second.activeGroup).toBe(1);
+      // promptType tracks the ACTIVE group, so it must appear here…
+      expect(second.promptType).toBe('multi_select');
+
+      expect(advanceAskUserQuestionOverlay('sid-multi', 'macOS')).toBe('advanced');
+      const third = getAwaitingOverlay('sid-multi')!;
+      expect(third.question).toBe('Ship it?');
+      // …and disappear again, or a plain question renders as multi-select.
+      expect(third.promptType).toBeUndefined();
+    });
+
+    it('reports completion on the last group and keeps every Q→A pair', () => {
+      advanceAskUserQuestionOverlay('sid-multi', 'Swift');
+      advanceAskUserQuestionOverlay('sid-multi', 'macOS');
+      expect(advanceAskUserQuestionOverlay('sid-multi', 'Yes')).toBe('complete');
+      expect(getAskUserQuestionAnswers('sid-multi')).toEqual([
+        { question: 'Pick a language', label: 'Swift' },
+        { question: 'Pick a target', label: 'macOS' },
+        { question: 'Ship it?', label: 'Yes' },
+      ]);
+      // The prompt stays until PostToolUse (injection path) or the ask-gate's
+      // own resolution clears it — completion is not a clear.
+      expect(getAwaitingOverlay('sid-multi')).toBeDefined();
+    });
+
+    it('surfaces group position to devices only when there is more than one', () => {
+      const row = (uuid: string): { id: string; askGroupIndex?: number; askGroupCount?: number } =>
+        ({ id: `observed:claude:${uuid}` });
+
+      const [multi] = applyAwaitingOverlayToObserved([row('sid-multi')]);
+      expect(multi.askGroupIndex).toBe(0);
+      expect(multi.askGroupCount).toBe(3);
+      advanceAskUserQuestionOverlay('sid-multi', 'Swift');
+      expect(applyAwaitingOverlayToObserved([row('sid-multi')])[0].askGroupIndex).toBe(1);
+
+      setAskUserQuestionOverlay('sid-single', 'toolu-single', {
+        questions: [{ question: 'Only one', options: [{ label: 'OK' }] }],
+      });
+      const [single] = applyAwaitingOverlayToObserved([row('sid-single')]);
+      expect(single.askGroupIndex).toBeUndefined();
+      expect(single.askGroupCount).toBeUndefined();
+    });
+
+    it('skips malformed groups instead of presenting a dead prompt', () => {
+      setAskUserQuestionOverlay('sid-mixed', 'toolu-mixed', {
+        questions: [
+          { question: '   ', options: [{ label: 'A' }] },     // no question text
+          { question: 'Real one', options: [{ label: 'A' }] },
+          { question: 'No options', options: [{ label: '  ' }] },
+        ],
+      });
+      const ov = getAwaitingOverlay('sid-mixed')!;
+      expect(ov.groups).toHaveLength(1);
+      expect(ov.question).toBe('Real one');
+      expect(advanceAskUserQuestionOverlay('sid-mixed', 'A')).toBe('complete');
+    });
+
+    it('ignores advancement when no option prompt is pending', () => {
+      expect(advanceAskUserQuestionOverlay('sid-unknown', 'A')).toBe('ignored');
+      setAwaitingOverlay('sid-perm', 'Allow Bash?');
+      expect(advanceAskUserQuestionOverlay('sid-perm', 'A')).toBe('ignored');
+    });
+
+    it('clears every group on the matching PostToolUse', () => {
+      advanceAskUserQuestionOverlay('sid-multi', 'Swift');
+      expect(clearAskUserQuestionOverlay('sid-multi', 'toolu-multi')).toBe(true);
+      expect(getAwaitingOverlay('sid-multi')).toBeUndefined();
     });
   });
 

@@ -46,10 +46,52 @@ actor ObservedSteering {
         return 25
     }()
 
+    /// AskUserQuestion ask-gate: hold an interactive question so a device can
+    /// answer it. This daemon cannot type into the user's terminal, so it is
+    /// the only remote-answer channel it has.
+    static let askGateEnabled: Bool =
+        ProcessInfo.processInfo.environment["AGENTDECK_ASK_GATE"] != "0"
+
+    /// Longer than the permission gate: the user may work through several
+    /// question groups in one call. Still under the hook curl's --max-time 60
+    /// so the release reaches Claude before curl gives up.
+    static let askHoldTimeoutSeconds: TimeInterval = {
+        if let raw = ProcessInfo.processInfo.environment["AGENTDECK_ASK_GATE_HOLD_MS"],
+           let ms = Double(raw), ms > 0 {
+            return min(50, max(5, ms / 1000))
+        }
+        return 45
+    }()
+
     static let stopDenyReason =
         "AgentDeck: the user pressed STOP on their AgentDeck controller. "
         + "Halt the current work now, briefly summarize where you left off, and wait "
         + "for the user's next instruction. Do not start new tool calls."
+
+    /// Deliver a device-answered AskUserQuestion back to Claude. Mirror of
+    /// `buildAskAnswerReason` in bridge/src/observed-steering.ts.
+    ///
+    /// The hook contract has no field for supplying a chosen option — a
+    /// PreToolUse hook may only allow, deny or defer. But a denial's reason
+    /// text IS handed to the model as the tool call's feedback, the same
+    /// reason-as-message channel `stopDenyReason` and the Stop-hook directive
+    /// queue already ride. So the daemon denies the question and states the
+    /// answer the user gave on their device. The wording must be unambiguous
+    /// that these ARE the user's answers and that re-asking is wrong: read as a
+    /// bare refusal, a model treats the denial as an obstacle and calls
+    /// AskUserQuestion again.
+    nonisolated static func askAnswerReason(answers: [(question: String, label: String)]) -> String {
+        let pairs = answers
+            .filter { !$0.label.isEmpty }
+            .map { "Q: \($0.question)\nA: \($0.label)" }
+            .joined(separator: "\n")
+        return "AgentDeck: the user already answered this question on their connected "
+            + "AgentDeck device, so the question picker was not shown in their terminal.\n"
+            + "\(pairs)\n"
+            + "These are the user's own answers. Treat them exactly as if the tool had "
+            + "returned them and continue — do not call AskUserQuestion again for these "
+            + "questions, and do not ask the user to repeat themselves."
+    }
 
     private let stopTTL: TimeInterval = 600
     private let directiveTTL: TimeInterval = 3600
@@ -67,8 +109,18 @@ actor ObservedSteering {
     private var suppressed: [String: Set<String>] = [:]
     private var recentAskReleases: [String: [(tool: String, signature: String, ts: Date)]] = [:]
 
+    /// Which kind of hook hold this is. They resolve differently: a permission
+    /// gate carries a device's allow/deny, while an ask-gate carries the user's
+    /// chosen options (delivered as the deny reason by the caller) and must
+    /// never feed the auto-approval learner.
+    enum GateKind {
+        case permission
+        case ask
+    }
+
     private struct HeldGate {
         let sessionId: String
+        let kind: GateKind
         let tool: String
         let signature: String
         var continuation: CheckedContinuation<String, Never>?
@@ -234,20 +286,60 @@ actor ObservedSteering {
         case .ask, .none: break
         }
         let requestId = UUID().uuidString.lowercased()
-        heldGates[requestId] = HeldGate(sessionId: sessionId, tool: tool, signature: signature, continuation: nil)
+        heldGates[requestId] = HeldGate(
+            sessionId: sessionId, kind: .permission, tool: tool, signature: signature, continuation: nil)
         heldBySession.insert(sessionId)
         return requestId
     }
 
+    /// Register a hold for an AskUserQuestion so a device can answer it.
+    ///
+    /// Shares only the one-gate-per-session invariant with `beginGate` and NONE
+    /// of its precision guards — deliberately. Those guards exist because
+    /// PreToolUse fires for tool calls Claude auto-approves without ever asking
+    /// the user, so holding one invents a decision nobody was asked for.
+    /// AskUserQuestion is the opposite: its whole purpose is to prompt, it
+    /// always does, and no allowlist entry suppresses it. There is no
+    /// false-hold to guard against, so the permission-rule predictor is never
+    /// consulted — which is precisely what lets this rung work in the App Store
+    /// sandbox, where that predictor cannot read `~/.claude` and therefore
+    /// disables the permission gate entirely.
+    func beginAskGate(sessionId: String, clientCount: Int) -> String? {
+        guard Self.askGateEnabled else { return nil }
+        guard clientCount > 0 else { return nil }
+        guard !heldBySession.contains(sessionId) else { return nil }
+        let requestId = UUID().uuidString.lowercased()
+        heldGates[requestId] = HeldGate(
+            sessionId: sessionId, kind: .ask, tool: "AskUserQuestion",
+            signature: "AskUserQuestion", continuation: nil)
+        heldBySession.insert(sessionId)
+        return requestId
+    }
+
+    /// Is this a held ask-gate (as opposed to a permission gate)? Answer
+    /// routing needs the distinction: an option index must never collapse into
+    /// a binary allow/deny.
+    func gateKind(requestId: String) -> GateKind? {
+        heldGates[requestId]?.kind
+    }
+
+    /// The open ask-gate for a session, if any.
+    func heldAskGate(sessionId: String) -> String? {
+        heldGates.first { $0.value.sessionId == sessionId && $0.value.kind == .ask }?.key
+    }
+
     /// Suspend until a device decision or timeout. Resolves to "allow" /
-    /// "deny" / "pass" (pass = empty hook body → Claude's normal flow).
+    /// "deny" / "answered" / "pass" (pass = empty hook body → Claude's normal
+    /// flow, which for an ask-gate means its question picker appears in the
+    /// user's own terminal exactly as if the daemon had never held it).
     func awaitGate(requestId: String) async -> String {
-        guard heldGates[requestId] != nil else { return "pass" }
+        guard let gate = heldGates[requestId] else { return "pass" }
+        let timeout = gate.kind == .ask ? Self.askHoldTimeoutSeconds : Self.holdTimeoutSeconds
         return await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
             guard heldGates[requestId] != nil else { cont.resume(returning: "pass"); return }
             heldGates[requestId]?.continuation = cont
             Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(Self.holdTimeoutSeconds * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 await self?.timeoutGate(requestId: requestId)
             }
         }
@@ -256,19 +348,24 @@ actor ObservedSteering {
     private func timeoutGate(requestId: String) {
         guard let gate = heldGates.removeValue(forKey: requestId) else { return }
         heldBySession.remove(gate.sessionId)
-        // Undecided release arms the auto-approval learner.
-        recentAskReleases[gate.sessionId, default: []].append(
-            (tool: gate.tool, signature: gate.signature, ts: Date()))
-        if recentAskReleases[gate.sessionId]!.count > 8 {
-            recentAskReleases[gate.sessionId]!.removeFirst()
+        // Undecided release arms the auto-approval learner — but only for a
+        // permission gate. An unanswered question says nothing about what
+        // Claude auto-approves, so learning from it would suppress real gates.
+        if gate.kind == .permission {
+            recentAskReleases[gate.sessionId, default: []].append(
+                (tool: gate.tool, signature: gate.signature, ts: Date()))
+            if recentAskReleases[gate.sessionId]!.count > 8 {
+                recentAskReleases[gate.sessionId]!.removeFirst()
+            }
         }
         gate.continuation?.resume(returning: "pass")
     }
 
     /// Device decision. Returns the affected sessionId, or nil when the
-    /// requestId is unknown / already resolved.
+    /// requestId is unknown / already resolved. `answered` is the ask-gate's
+    /// resolution: the caller supplies the chosen options as the deny reason.
     func resolveGate(requestId: String, decision: String) -> String? {
-        guard decision == "allow" || decision == "deny" else { return nil }
+        guard decision == "allow" || decision == "deny" || decision == "answered" else { return nil }
         guard let gate = heldGates.removeValue(forKey: requestId) else { return nil }
         heldBySession.remove(gate.sessionId)
         gate.continuation?.resume(returning: decision)
