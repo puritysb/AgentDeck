@@ -15,7 +15,7 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status** (verified in App Store Connect, 2026-08-06): macOS has been on the [Mac App Store](https://apps.apple.com/app/id6784822497) since 2026-07-21, publicly at 1.0.2, with **1.0.3 (4101) approved on 2026-08-05** and set to release automatically. The first iPhone/iPad submission, 1.0.2 (3901), was rejected on 2026-08-04 under Guideline 2.1(a) because the disconnected screen kept showing an activity indicator after discovery had completed; **1.0.2 (4002)** carries the fix plus an offline Device Preview entry point and is **Waiting for Review**.
+**Release status** (verified in App Store Connect, 2026-08-06): both platforms are approved and live at [AgentDeck Dashboard](https://apps.apple.com/app/id6784822497). macOS has been on the Mac App Store since 2026-07-21 and is at **1.0.3 (4101)**, approved 2026-08-05. The first iPhone/iPad submission, 1.0.2 (3901), was rejected on 2026-08-04 under Guideline 2.1(a) because the disconnected screen kept showing an activity indicator after discovery had completed; **1.0.2 (4002)** carried the fix plus an offline Device Preview entry point, was approved, and **released on 2026-08-06** as the companion's first public version.
 
 _Paste the relevant sections into App Store Connect's "Notes" field when submitting `apple-v<version>`._
 

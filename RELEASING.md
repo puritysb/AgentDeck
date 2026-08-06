@@ -84,10 +84,12 @@ macOS has been publicly available since 2026-07-21 at [AgentDeck Dashboard on th
 
 | Platform | Version record | Build | State |
 |---|---|---|---|
-| macOS | `1.0.3` | 4101 | Submitted 2026-08-05, **approved**; release option is *automatic* and locked |
-| iPhone/iPad | `1.0.2` | 4002 | Resubmitted 2026-08-05 with the Resolution Center reply, **Waiting for Review** |
+| macOS | `1.0.3` | 4101 | Submitted 2026-08-05, **approved**, automatic release |
+| iPhone/iPad | `1.0.2` | 4002 | Resubmitted 2026-08-05, **approved** — released 2026-08-06T08:46Z, the companion's first public release |
 
 iOS was answered as a `1.0.2` resubmission rather than moved up to `1.0.3`: a rejected version keeps its `MARKETING_VERSION`, and attaching the already-uploaded 4002 kept the reply and the binary consistent. macOS had no such constraint, so it went out at `1.0.3` with the newer 4101. **Do not describe an Apple release state from the tag or from the repository's own version numbers** — a single `apple-v*` tag can produce two builds whose store-side version records differ, as it did here. Read App Store Connect → 앱 심사 / App Review, whose submission table gives version, build and state per platform in one place.
+
+**The iTunes lookup shortcut stopped answering for macOS the day the companion shipped.** While the app was Mac-only, `curl -s "https://itunes.apple.com/lookup?id=6784822497&entity=macSoftware"` returned a `mac-software` record whose `version` was the live Mac version — the fastest login-free release check there is. Once the iPhone/iPad companion went live, that id resolves to a single unified `software` record instead, and its `version`, `minimumOsVersion` (`17.0`) and `fileSizeBytes` all describe the **iOS** app; `entity=macSoftware`, `entity=iPadSoftware` and a store search all return that same record. So the endpoint still confirms the iOS side and its release timestamp, but the Mac version is no longer readable from it — take that one from App Store Connect.
 
 A successful CI upload reaches App Store Connect/TestFlight; public App Store release remains a separate App Store Connect action.
 
