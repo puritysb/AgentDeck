@@ -99,5 +99,55 @@ final class DaemonPortFallbackTests: XCTestCase {
         XCTAssertEqual(DaemonService.resolvedSessionOverridePort(configuredPort: 9120, actualPort: 9121), 9121)
         XCTAssertTrue(DaemonService.resolvedFallbackAttempted(configuredPort: 9120, actualPort: 9121))
     }
+
+    // MARK: - Bind-failure memory (the reclaim thrash, 2026-08-06)
+
+    // The app spent 40s in this loop, ~7s per cycle:
+    //
+    //   Daemon ready ... ws://127.0.0.1:9122
+    //   Canonical port 9120 is free — reclaiming it from fallback port 9122
+    //   Daemon stopped
+    //   ERROR Daemon listener bind failed: POSIXErrorCode(48): Address already in use
+    //   → falls back to 9122 → repeat
+    //
+    // `isPortBindable` (raw BSD socket) said 9120 was free; NWListener applied
+    // NECP on top and disagreed. `failedBindPorts` is what remembers that, and
+    // `standDownServer` was clearing it on every cycle — so reclaim re-attempted
+    // the same unbindable port forever, tearing down a working hub each time and
+    // stranding a serial-reader generation per cycle.
+    //
+    // The memory must therefore survive a stand-down, but not the whole launch:
+    // never forgetting would pin us to a fallback port after one transient
+    // failure. Hence a TTL, driven here with an injected clock.
+
+    private let memory: TimeInterval = 120
+
+    /// A port we just watched fail must be believed over the raw-socket probe.
+    func testAFreshBindFailureSuppressesReclaim() {
+        let now = Date()
+        let active = DaemonService.activeFailedBindPorts([9120: now], now: now, memory: memory)
+        XCTAssertTrue(active.contains(9120), "reclaim must not re-attempt a port NWListener just rejected")
+    }
+
+    /// ...but the block has to expire, or one transient EADDRINUSE strands the
+    /// app on a fallback port for the rest of the launch.
+    func testTheBindFailureIsForgottenAfterTheMemoryWindow() {
+        let now = Date()
+        let stale = now.addingTimeInterval(-(memory + 1))
+        let active = DaemonService.activeFailedBindPorts([9120: stale], now: now, memory: memory)
+        XCTAssertFalse(active.contains(9120), "an expired failure must allow the canonical port to be retried")
+    }
+
+    /// Each port is remembered independently — a wedged 9120 must not suppress
+    /// a retry of some other port.
+    func testExpiryIsPerPort() {
+        let now = Date()
+        let active = DaemonService.activeFailedBindPorts(
+            [9120: now, 9122: now.addingTimeInterval(-(memory + 1))],
+            now: now,
+            memory: memory
+        )
+        XCTAssertEqual(active, [9120])
+    }
 }
 #endif

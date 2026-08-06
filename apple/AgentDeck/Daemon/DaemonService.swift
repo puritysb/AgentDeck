@@ -100,10 +100,38 @@ final class DaemonService: ObservableObject {
     private var squatterCleanupAttempted = false
     private var fallbackAttempted = false
     private var sessionOverridePort: Int?
-    /// Ports that NWListener has observed to fail `.failed(EADDRINUSE)` this
-    /// launch. These may still look bindable via raw BSD sockets (NECP is a
-    /// higher-level check), so we exclude them explicitly from findAvailablePort.
-    private var failedBindPorts: Set<Int> = []
+    /// Ports that NWListener has observed to fail `.failed(EADDRINUSE)`, stamped
+    /// with when it happened. These may still look bindable via raw BSD sockets
+    /// (NECP is a higher-level check), so we exclude them explicitly from
+    /// findAvailablePort AND refuse to reclaim onto them (see
+    /// `reclaimCanonicalPortIfNeeded`).
+    ///
+    /// Time-stamped rather than a plain set because both extremes are broken:
+    /// forgetting immediately (what `standDownServer` used to do via
+    /// `removeAll()`) made reclaim tear down a working fallback hub and re-attempt
+    /// the same unbindable canonical port every health tick — a teardown/restart
+    /// thrash that leaked a serial reader generation per cycle; never forgetting
+    /// would strand us on a fallback port for the whole launch after one
+    /// transient failure. Entries expire after `failedBindMemorySeconds`, so a
+    /// blocked port is retried periodically instead of constantly or never.
+    private var failedBindPortsAt: [Int: Date] = [:]
+    private static let failedBindMemorySeconds: TimeInterval = 120
+
+    /// Ports whose observed NWListener bind failure is still recent enough to act on.
+    private var failedBindPorts: Set<Int> {
+        Self.activeFailedBindPorts(failedBindPortsAt, now: Date(), memory: Self.failedBindMemorySeconds)
+    }
+
+    /// Pure form of the expiry rule, so the retry cadence can be driven with an
+    /// injected clock instead of by waiting on wall time.
+    nonisolated static func activeFailedBindPorts(
+        _ stamps: [Int: Date],
+        now: Date,
+        memory: TimeInterval
+    ) -> Set<Int> {
+        let cutoff = now.addingTimeInterval(-memory)
+        return Set(stamps.filter { $0.value > cutoff }.keys)
+    }
     private static let maxListenerFailureRetries = 3
 
     /// Human-readable explanation for the last bind failure, shown in Settings.
@@ -272,7 +300,9 @@ final class DaemonService: ObservableObject {
         squatterCleanupAttempted = false
         fallbackAttempted = false
         sessionOverridePort = nil
-        failedBindPorts.removeAll()
+        // Explicit user action (Settings port change) — forget past bind failures
+        // so the new choice is attempted cleanly.
+        failedBindPortsAt.removeAll()
         isOnFallbackPort = false
         bindFailureReason = nil; blockingProcesses = []
         errorMessage = nil
@@ -330,9 +360,18 @@ final class DaemonService: ObservableObject {
             self.port = 0
             self.readyUrl = nil
             self.errorMessage = nil
-            // Wait briefly for TIME_WAIT clearance then try starting local daemon
-            try? await Task.sleep(for: .seconds(1))
-            start()
+            // Wait briefly for TIME_WAIT clearance then try starting local daemon.
+            // Schedule via Task rather than calling start() inline: this method is
+            // reached from inside start()'s own Task (the `alreadyRunning` catch),
+            // so `isStarting` is still true here and an inline call would be
+            // swallowed by start()'s re-entrancy guard — silently, with no log and
+            // no retry, leaving the app permanently daemonless (`port` is 0 below,
+            // which also neuters the health monitor's `currentPort > 0` guard).
+            // Same idiom as the squatter-cleanup retry path.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                self?.start()
+            }
             return
         }
 
@@ -412,7 +451,7 @@ final class DaemonService: ObservableObject {
     private func retryOrFallback(error: Error, attemptedPort: Int) async {
         let registry = SessionRegistry.shared
         let probePort = attemptedPort > 0 ? attemptedPort : AppPreferences.shared.daemonPort
-        if attemptedPort > 0 { failedBindPorts.insert(attemptedPort) }
+        if attemptedPort > 0 { failedBindPortsAt[attemptedPort] = Date() }
         if let health = await registry.probeDaemonHealth(port: probePort),
            health["mode"] as? String == "daemon" {
             DaemonLogger.shared.info("Port \(probePort) held by healthy external daemon — switching to client mode")
@@ -635,6 +674,18 @@ final class DaemonService: ObservableObject {
             return
         }
         guard await registry.isPortBindable(canonical) else { return }
+        // `isPortBindable` is a raw BSD-socket probe; NWListener applies NECP on
+        // top and can still fail EADDRINUSE on a port that probes as free. When
+        // we've actually watched that happen recently, believe the listener over
+        // the probe — reclaiming costs a full teardown of a WORKING fallback hub
+        // (and a device-module restart) to land right back here.
+        guard !failedBindPorts.contains(canonical) else {
+            DaemonLogger.shared.throttledDebug(
+                "Daemon", key: "reclaim-blocked:\(canonical)",
+                "Canonical port \(canonical) probes bindable but NWListener failed on it recently — staying on fallback port \(port)",
+                minInterval: 60)
+            return
+        }
         DaemonLogger.shared.info("Canonical port \(canonical) is free — reclaiming it from fallback port \(port)")
         await standDownServer(current)
         start()
@@ -678,7 +729,10 @@ final class DaemonService: ObservableObject {
         readyUrl = nil
         sessionOverridePort = nil
         fallbackAttempted = false
-        failedBindPorts.removeAll()
+        // NOTE: failedBindPortsAt is deliberately NOT cleared here. It is
+        // NWListener bind-failure learning, not fallback-port bookkeeping, and
+        // clearing it is what let reclaim thrash against an unbindable canonical
+        // port every health tick.
         isOnFallbackPort = false
         bindFailureReason = nil
         blockingProcesses = []
