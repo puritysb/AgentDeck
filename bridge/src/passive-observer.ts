@@ -518,7 +518,11 @@ async function collectProcessInfoWin32(): Promise<ProcInfo[]> {
   try {
     const { stdout } = await execFileAsync('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-Command',
-      'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize,CommandLine | ConvertTo-Json -Compress',
+      // Windows PowerShell pipes default to the OEM codepage, which mangles
+      // non-ASCII command lines (C:\Users\罗宾\… is a normal path here) —
+      // pin the pipe to UTF-8 before emitting anything.
+      '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ' +
+        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize,CommandLine | ConvertTo-Json -Compress',
     ], {
       encoding: 'utf8',
       timeout: 10_000,
