@@ -70,7 +70,11 @@ fun buildEinkAttentionFeatured(state: DashboardState): EinkAttentionFeatured? {
         navigable = featured.controlMode != "observed"
             && isFocused
             && (state.navigable ?: false),
-        actionable = featured.controlMode != "observed",
+        // Observed sessions are answerable only when the daemon says it can
+        // deliver the answer — by typing into that session's terminal, or by
+        // holding its AskUserQuestion open to resolve with our choice. Absent
+        // flag ⇒ not actionable, never a button that silently goes nowhere.
+        actionable = featured.controlMode != "observed" || featured.liveAnswerable == true,
         queuedCount = (sessions.size - 1).coerceAtLeast(0),
     )
 }

@@ -987,8 +987,14 @@ private fun MonitorHUD(
                 featured = featured,
                 queuedCount = (awaiting.size - 1).coerceAtLeast(0),
                 onRespond = { index ->
+                    // Focus keeps the UI in step, but the answer addresses the
+                    // session by id rather than depending on that relay landing
+                    // first; the question echo lets the daemon drop a press
+                    // aimed at a question the prompt has already moved past.
                     featured.sessionId?.let { BridgeConnection.instance.sendFocusSession(it) }
-                    BridgeConnection.instance.sendSelectOption(index)
+                    BridgeConnection.instance.sendSelectOption(
+                        index, featured.sessionId, featured.question,
+                    )
                 },
                 onFocus = {
                     featured.sessionId?.let { BridgeConnection.instance.sendFocusSession(it) }

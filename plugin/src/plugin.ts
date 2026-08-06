@@ -71,6 +71,8 @@ import { voiceCommandForAction } from './voice-ptt.js';
 let currentState = State.DISCONNECTED;
 let currentMode = PermissionMode.DEFAULT;
 let currentOptions: import('@agentdeck/shared').PromptOption[] = [];
+/** Question `currentOptions` belongs to — a change invalidates them. */
+let currentQuestion: string | undefined;
 let proxiedAgentType: AgentType | null = null;
 
 const focusedDetailState = new FocusedDetailState();
@@ -167,7 +169,16 @@ initSessionSlots((result) => {
 
     case 'select-option':
       if (result.optionIndex != null) {
-        sendFocusedSessionCommand({ type: 'select_option', index: result.optionIndex });
+        // Echo the question these options belong to: one AskUserQuestion call
+        // can hold several, and the daemon advances to the next as each is
+        // answered — the echo lets it reject a press aimed at the previous one
+        // instead of applying its index to the new list.
+        const answering = getSessionSlotManager().detailQuestion;
+        sendFocusedSessionCommand({
+          type: 'select_option',
+          index: result.optionIndex,
+          ...(answering ? { question: answering } : {}),
+        });
       }
       break;
 
@@ -244,7 +255,15 @@ connMgr.on('state_update', (ev: StateUpdateEvent) => {
     ev.state !== State.AWAITING_DIFF
   ) {
     currentOptions = [];
+  } else if (ev.question && ev.question !== currentQuestion) {
+    // Still awaiting, but this is a DIFFERENT question with no options of its
+    // own — the previous list belongs to the question just answered, and its
+    // indices mean something else now. A multi-question AskUserQuestion moves
+    // between questions without ever passing through a non-awaiting state, so
+    // the branch above never runs to clear them.
+    currentOptions = [];
   }
+  currentQuestion = ev.question ?? currentQuestion;
 
   // Keypad detail state is session-owned. Never render it from the plugin's
   // global caches: those intentionally follow the latest daemon/agent event.

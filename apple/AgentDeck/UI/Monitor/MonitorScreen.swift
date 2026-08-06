@@ -341,13 +341,15 @@ struct MonitorScreen: View {
         return stateHolder.state.options
     }
 
-    /// Dispatch a YES/NO/ALWAYS response to the featured session via the
-    /// canonical `select_option` path. `focusSession` first so the daemon
-    /// focus relay routes the response correctly when there are multiple
-    /// awaiting sessions.
+    /// Dispatch a response to the featured session via the canonical
+    /// `select_option` path. `focusSession` keeps the UI's notion of focus in
+    /// step, but the answer addresses the session by id rather than relying on
+    /// that relay landing first. The question echo lets the daemon drop a press
+    /// that answers a question the prompt has already moved past.
     private func respondToAwaiting(_ index: Int, session: SessionInfo) {
         stateHolder.sendCommand(.focusSession(sessionId: session.id))
-        stateHolder.sendCommand(.selectOption(index: index))
+        stateHolder.sendCommand(.selectOption(
+            index: index, sessionId: session.id, question: questionFor(session)))
     }
 
     @ViewBuilder

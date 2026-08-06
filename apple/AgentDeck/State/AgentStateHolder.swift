@@ -817,8 +817,24 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         s.modelName = e.modelName ?? s.modelName
         s.effortLevel = e.effortLevel ?? s.effortLevel
         if let bt = e.billingType { s.billingType = BillingType(rawValue: bt) ?? s.billingType }
-        if let opts = e.options { s.options = opts }
-        if let pt = e.promptType { s.promptType = PromptType(rawValue: pt) }
+        // A prompt's question and its options are one unit. Retaining options
+        // while letting the question change is how a press could aim an index
+        // at the previous question's list — the exact failure a multi-question
+        // AskUserQuestion produces, since it advances between questions without
+        // ever passing through a non-awaiting state. So a changed question
+        // replaces the options outright (with an empty list if none came),
+        // while a repeat of the same question may still retain them.
+        let questionChanged = e.question != nil && e.question != s.question
+        if let opts = e.options {
+            s.options = opts
+        } else if questionChanged {
+            s.options = []
+        }
+        if let pt = e.promptType {
+            s.promptType = PromptType(rawValue: pt)
+        } else if questionChanged {
+            s.promptType = nil
+        }
         s.question = e.question ?? s.question
         s.navigable = e.navigable ?? s.navigable
         s.cursorIndex = e.cursorIndex ?? s.cursorIndex

@@ -84,6 +84,17 @@ export class FocusedDetailState {
       && ev.agentType === 'openclaw';
     if (sourceId !== focused.id && !legacyOpenClawMatch) return null;
 
+    // An observed session has no live state channel: its state, question and
+    // options only ever arrive on its sessions_list row. Opening one sends
+    // `focus_session`, and the daemon answers with its GLOBAL state snapshot
+    // stamped with that session's focusedSessionId — which passes the check
+    // above and, applied as a replacement, blanks the live question and its
+    // options off the deck. Re-seed from the row instead, which is per-session
+    // by construction.
+    if (focused.controlMode === 'observed') {
+      return this.prime(focused);
+    }
+
     this.current = {
       sessionId: focused.id,
       state: ev.state,

@@ -328,7 +328,11 @@ fun EinkMonitorScreen(
                         EinkAttentionPanel(
                             featured = featuredAttention,
                             onFocusSession = { connection.sendFocusSession(it) },
-                            onSelectOption = { connection.sendSelectOption(it) },
+                            onSelectOption = { index ->
+                                connection.sendSelectOption(
+                                    index, featuredAttention.sessionId, featuredAttention.question,
+                                )
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -1135,7 +1139,11 @@ private fun EinkPortraitLayout(
                 EinkAttentionPanel(
                     featured = featuredAttention,
                     onFocusSession = { connection.sendFocusSession(it) },
-                    onSelectOption = { connection.sendSelectOption(it) },
+                    onSelectOption = { index ->
+                        connection.sendSelectOption(
+                            index, featuredAttention.sessionId, featuredAttention.question,
+                        )
+                    },
                 )
             }
         }

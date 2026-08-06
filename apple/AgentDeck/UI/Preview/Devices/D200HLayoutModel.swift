@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts a56c9ce35c785ec6142f611412f2d5e55664f2f2
+// SYNC-HASH shared/src/d200h-layout.ts 6c970c54439c91fce947eef2d6cc7fa1e2d7354e
 // SYNC-HASH shared/src/session-utils.ts b08adbcca7a9fe3386a44801248b2ec06b572a0e
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -91,6 +91,17 @@ public struct D200HSession: Equatable, Sendable {
     /// sort key and part of the Codex fold key. Mirrors shared SessionInfo.weight.
     public var weight: Int?
     public var options: [D200HOption]
+    /// "observed" for hook-only sessions — they have no PTY, so whether their
+    /// options are pressable depends on `liveAnswerable`.
+    public var controlMode: String?
+    /// Will a press on `options` reach the agent? True when the daemon can type
+    /// into the session's terminal, or is holding its AskUserQuestion open to
+    /// answer with the device's choice. Absent ⇒ display-only.
+    public var liveAnswerable: Bool?
+    /// Held PreToolUse permission gate — renders device-native Allow/Deny.
+    public var requestId: String?
+    /// Awaiting prompt question, echoed back on a press.
+    public var question: String?
     /// Codex display-fold bookkeeping (mutated by folding; supply nil/1 normally).
     public var groupSize: Int?
     public var foldedSessionIds: [String]?
@@ -105,6 +116,10 @@ public struct D200HSession: Equatable, Sendable {
         startedAt: String? = nil,
         weight: Int? = nil,
         options: [D200HOption] = [],
+        controlMode: String? = nil,
+        liveAnswerable: Bool? = nil,
+        requestId: String? = nil,
+        question: String? = nil,
         groupSize: Int? = nil,
         foldedSessionIds: [String]? = nil
     ) {
@@ -117,6 +132,10 @@ public struct D200HSession: Equatable, Sendable {
         self.startedAt = startedAt
         self.weight = weight
         self.options = options
+        self.controlMode = controlMode
+        self.liveAnswerable = liveAnswerable
+        self.requestId = requestId
+        self.question = question
         self.groupSize = groupSize
         self.foldedSessionIds = foldedSessionIds
     }
@@ -500,13 +519,35 @@ public enum D200HLayoutModel {
 
         if isAwaiting(sState) {
             let navigable = focused ? input.navigable : false
+            let isObserved = sess?.controlMode == "observed"
+            // A hook-observed session's options are pressable only when the
+            // daemon can deliver the answer — by typing into that session's
+            // terminal, or by holding its AskUserQuestion open to resolve with
+            // the choice. Without the flag the cells mirror the terminal rather
+            // than pretend a press will work.
+            let observedAnswerable = isObserved && (sess?.liveAnswerable == true)
             if !options.isEmpty {
                 for (i, opt) in options.enumerated() {
-                    let action: D200HDeckAction = navigable
-                        ? .command(type: "select_option", payload: ["index": "\(i)", "sessionId": sid])
+                    var payload = ["index": "\(i)", "sessionId": sid]
+                    if let q = sess?.question, !q.isEmpty { payload["question"] = q }
+                    let action: D200HDeckAction = (navigable || observedAnswerable)
+                        ? .command(type: "select_option", payload: payload)
                         : .command(type: "respond", payload: ["value": respondValue(opt, index: i)])
-                    cells.append(Cell(kind: .option(index: i), label: optionLabel(opt, index: i), subtitle: nil, action: action))
+                    cells.append(Cell(
+                        kind: .option(index: i),
+                        label: optionLabel(opt, index: i),
+                        subtitle: nil,
+                        action: (isObserved && !observedAnswerable) ? .none : action))
                 }
+            } else if isObserved, let gate = sess?.requestId, !gate.isEmpty {
+                // Held PreToolUse gate: device-native semantics (permit/deny
+                // THIS tool call), never a mirror of the TUI's option labels.
+                cells.append(Cell(
+                    kind: .option(index: 0), label: "ALLOW", subtitle: "this tool call",
+                    action: .command(type: "permission_decision", payload: ["requestId": gate, "decision": "allow"])))
+                cells.append(Cell(
+                    kind: .option(index: 1), label: "DENY", subtitle: "this tool call",
+                    action: .command(type: "permission_decision", payload: ["requestId": gate, "decision": "deny"])))
             } else {
                 // Awaiting but no real options — don't fabricate Allow/Deny.
                 cells.append(Cell(kind: .info(icon: "status", tone: "warning"), label: "PERMIT?", subtitle: "answer in terminal", action: .none))

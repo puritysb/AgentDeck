@@ -419,7 +419,14 @@ fun buildAttentionFeatured(
         promptType = promptType,
         cursorIndex = cursorIndex,
         navigable = navigable,
-        actionable = session.controlMode != "observed",
+        // Managed sessions always answer through their PTY. An observed one is
+        // answerable only when the daemon says so — it may be able to type into
+        // that session's terminal, or be holding its AskUserQuestion open to
+        // answer with our choice. Reading controlMode alone got this wrong in
+        // both directions: it refused answerable sessions on a CLI daemon, and
+        // it would now refuse the ask-gate too. Absent flag ⇒ not actionable,
+        // never a live-looking button that goes nowhere.
+        actionable = session.controlMode != "observed" || session.liveAnswerable == true,
     )
 }
 

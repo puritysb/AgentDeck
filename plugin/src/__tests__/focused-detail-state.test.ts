@@ -87,4 +87,51 @@ describe('FocusedDetailState', () => {
       options: [{ index: 0, label: 'Yes' }, { index: 1, label: 'No' }],
     });
   });
+
+  // An observed session has no live state channel — its prompt only ever
+  // arrives on its sessions_list row. Opening one sends `focus_session`, and
+  // the daemon replies with its GLOBAL snapshot stamped with that session's
+  // focusedSessionId: it passes the attribution check, so applied as a
+  // replacement it blanked the live question and its options off the deck.
+  it('keeps an observed session\'s live prompt when the focus reply lands', () => {
+    const observed: SessionInfo = {
+      id: 'observed:claude:abc-123',
+      port: 0,
+      projectName: 'AgentDeck',
+      agentType: 'claude-code',
+      alive: true,
+      controlMode: 'observed',
+      state: State.AWAITING_OPTION,
+      question: 'Pick a language',
+      options: [{ index: 0, label: 'TypeScript' }, { index: 1, label: 'Swift' }],
+      liveAnswerable: true,
+    };
+    const store = new FocusedDetailState();
+    store.prime(observed);
+
+    const focusReply = state({ state: State.IDLE, focusedSessionId: observed.id });
+    expect(store.applyState(focusReply, observed)).toMatchObject({
+      state: State.AWAITING_OPTION,
+      question: 'Pick a language',
+      options: [{ index: 0, label: 'TypeScript' }, { index: 1, label: 'Swift' }],
+    });
+  });
+
+  it('still lets a managed session\'s live state replace its detail snapshot', () => {
+    const store = new FocusedDetailState();
+    store.prime(claude);
+    expect(store.applyState(
+      state({
+        state: State.AWAITING_OPTION,
+        sessionId: claude.id,
+        question: 'Allow Edit?',
+        options: [{ index: 0, label: 'Yes' }],
+      }),
+      claude,
+    )).toMatchObject({
+      state: State.AWAITING_OPTION,
+      question: 'Allow Edit?',
+      options: [{ index: 0, label: 'Yes' }],
+    });
+  });
 });

@@ -286,6 +286,9 @@ export class SessionSlotManager {
   private _detailEffortLevel: string | undefined;
   private _detailMode: string | undefined;
   private _detailSuggestedPrompt: string | undefined;
+  /** Question the currently rendered options answer, echoed back on a press so
+   *  the daemon can drop one aimed at a question the prompt has moved past. */
+  get detailQuestion(): string | undefined { return this._detailQuestion; }
   /** Host push-to-talk capture state, mirrored from daemon voice_state events. */
   private _voiceState: SlotVoiceState = 'idle';
   private _modelSwitching = false;
@@ -475,6 +478,12 @@ export class SessionSlotManager {
   }
 
   updateDetailState(state: State, options: PromptOption[], tool?: string, toolInput?: string, question?: string, modelName?: string, mode?: string, effortLevel?: string, suggestedPrompt?: string): void {
+    // A different question means a different option list, so page 2 of the old
+    // one is not page 2 of the new one. One AskUserQuestion call can hold
+    // several questions and swaps between them without ever leaving the
+    // awaiting state, so the clamp below (which only shrinks the page to fit)
+    // would happily carry a stale page across that swap.
+    const questionChanged = (question ?? undefined) !== this._detailQuestion;
     this._detailState = state;
     this._detailOptions = options;
     this._detailTool = tool;
@@ -486,7 +495,7 @@ export class SessionSlotManager {
     // Suggested prompt only applies in IDLE; clear it otherwise so a stale
     // suggestion can't leak a quick-send button into a busy/awaiting view.
     this._detailSuggestedPrompt = state === State.IDLE ? (suggestedPrompt || undefined) : undefined;
-    if (!this.isAwaitingDetailState()) {
+    if (!this.isAwaitingDetailState() || questionChanged) {
       this._detailPage = 0;
     } else {
       this._detailPage = Math.min(this._detailPage, Math.max(0, this.detailOptionPages() - 1));
@@ -968,18 +977,25 @@ export class SessionSlotManager {
         return this.awaitingStatusCard(session, idx - 2, false);
       }
       // AskUserQuestion. A hook-observed session has no response channel of its
-      // own, but the CLI daemon can type the selection into the session's own
-      // terminal (observed-inject.ts) — `liveAnswerable` says it found a host to
-      // aim at. Pressable only then: without it the deck must mirror the
-      // terminal rather than pretend taps will work (the App Store Swift daemon
-      // cannot inject at all, so it never sets the flag).
+      // own, but the daemon may still be able to deliver the answer: by typing
+      // it into the session's terminal (observed-inject.ts, CLI daemon only),
+      // or by holding the question's hook open and resolving it with our choice
+      // (the ask-gate, which the sandboxed App Store daemon can do too).
+      // `liveAnswerable` covers both. Pressable only then: without it the deck
+      // must mirror the terminal rather than pretend taps will work.
       const displayOption = session?.options?.[idx];
       if (displayOption) {
         if (session?.liveAnswerable) {
           return {
             type: 'option',
-            option: { label: displayOption.label, shortcut: displayOption.shortcut, index: idx },
-            optionIndex: idx,
+            option: {
+              label: displayOption.label,
+              shortcut: displayOption.shortcut,
+              // The server-assigned index is what the daemon expects back; the
+              // slot position only happens to match when nothing was dropped.
+              index: displayOption.index ?? idx,
+            },
+            optionIndex: displayOption.index ?? idx,
           };
         }
         return {

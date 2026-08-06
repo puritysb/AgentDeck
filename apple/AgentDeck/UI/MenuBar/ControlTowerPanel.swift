@@ -181,10 +181,12 @@ struct ControlTowerPanel: View {
         return attentionSessions.first
     }
 
-    /// Prompt question text tied to a session. We only have the live
-    /// prompt for the focused session (the bridge only streams one at a
-    /// time), so non-focused sessions show a generic "needs input" tag.
+    /// Prompt question text tied to a session. Observed sessions carry their own
+    /// question on the roster row; managed ones only have the live aggregate
+    /// prompt, which belongs to the focused session, so anything else shows a
+    /// generic "needs input" tag.
     private func questionFor(_ session: SessionInfo) -> String? {
+        if let own = session.question, !own.isEmpty { return own }
         if session.id == effectiveFocusedSessionId {
             return stateHolder.state.question
         }
@@ -195,11 +197,16 @@ struct ControlTowerPanel: View {
         stateHolder.state.focusedSessionId ?? stateHolder.state.sessionId
     }
 
-    /// Options to render in the menubar theater. Only PTY-managed sessions expose
-    /// Claude's real choices; mirror the focused session's live options ONLY when
-    /// they genuinely belong to it. Observed (hook-only) sessions render [] →
-    /// "respond in terminal". Mirrors `MonitorScreen`.
+    /// Options to render in the menubar theater. Observed (hook-only) sessions
+    /// carry their own per-session copy; managed PTY sessions mirror the
+    /// focused live options ONLY when they genuinely belong to that session.
+    /// Mirrors `MonitorScreen.attentionOptions`. Whether the rendered options
+    /// are pressable is a separate question the HUD answers from
+    /// `liveAnswerable` — showing them is never the same as claiming they work.
     private func attentionOptions(for session: SessionInfo, isFocused: Bool) -> [PromptOption] {
+        if session.controlMode == "observed" {
+            return session.options ?? []
+        }
         // Borrow the aggregate live options only when the latest awaiting
         // state_update is attributed to THIS session (a managed PTY session).
         // Showing leftover options from another session would render dead,
@@ -214,10 +221,13 @@ struct ControlTowerPanel: View {
     }
 
     private func respondToAwaiting(_ optionIndex: Int, session: SessionInfo) {
-        // Route via the daemon focus relay, then send the selection — `selectOption`
-        // is the canonical path (same as D200H + Cmd+Y/N/A).
+        // `selectOption` is the canonical path (same as D200H + Cmd+Y/N/A).
+        // Focus keeps the UI in step, but the answer addresses the session by
+        // id rather than depending on the relay landing first; the question
+        // echo lets the daemon drop a press aimed at a superseded question.
         stateHolder.sendCommand(.focusSession(sessionId: session.id))
-        stateHolder.sendCommand(.selectOption(index: optionIndex))
+        stateHolder.sendCommand(.selectOption(
+            index: optionIndex, sessionId: session.id, question: questionFor(session)))
     }
 
     /// Recompute Stream Deck app/hardware detection if the cached verdict is

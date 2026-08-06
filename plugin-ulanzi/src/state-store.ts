@@ -47,6 +47,12 @@ export class StateStore {
     return typeof e.sessionId === 'string' && e.sessionId ? e.sessionId : undefined;
   }
 
+  /** Is this session hook-observed? Its roster row is then the only source of
+   *  its state/prompt — no state_update ever describes it. */
+  private isObserved(sessionId: string): boolean {
+    return this.sessions.find((s) => s.id === sessionId)?.controlMode === 'observed';
+  }
+
   private sessionBase(sessionId: string): Record<string, unknown> | undefined {
     const session = this.sessions.find((s) => s.id === sessionId);
     if (!session) return undefined;
@@ -77,7 +83,14 @@ export class StateStore {
       case 'state_update': {
         this.lastState = e;
         const sessionId = this.eventSessionId(e);
-        if (sessionId) {
+        // An observed session has no live state channel of its own: its state,
+        // question and options only ever arrive on its sessions_list row. But
+        // opening one sends `focus_session`, and the daemon answers with its
+        // GLOBAL state snapshot stamped with that session's focusedSessionId.
+        // Stored as this session's snapshot it would shadow the roster row —
+        // blanking the real options and freezing the render signature, so the
+        // deck showed "answer in terminal" over a live question.
+        if (sessionId && !this.isObserved(sessionId)) {
           // Replacement, not merge: absent fields must not survive from a
           // previous agent or an earlier state of this session.
           this.sessionStates.set(sessionId, { ...e, sessionId });
@@ -154,11 +167,16 @@ export class StateStore {
     const usageKnown = !stale && (this.usage.fiveHourPercent != null || this.usage.sevenDayPercent != null);
     // In detail mode, use only the selected session's row/snapshot. Never fall
     // back to lastState, which may belong to OpenClaw or another PTY.
+    // For an observed session the roster row wins outright — a snapshot stored
+    // before its row arrived (so `isObserved` could not yet reject it) must not
+    // shadow the live prompt. Managed sessions keep snapshot-over-row, which is
+    // where their live PTY options come from.
+    const base = selectedSessionId ? (this.sessionBase(selectedSessionId) ?? {}) : {};
+    const snapshot = selectedSessionId ? (this.sessionStates.get(selectedSessionId) ?? {}) : {};
     const selected = selectedSessionId
-      ? {
-          ...(this.sessionBase(selectedSessionId) ?? {}),
-          ...(this.sessionStates.get(selectedSessionId) ?? {}),
-        }
+      ? (this.isObserved(selectedSessionId)
+          ? { ...snapshot, ...base }
+          : { ...base, ...snapshot })
       : this.lastState;
     return {
       ...selected,

@@ -50,7 +50,16 @@ struct AttentionTheaterHUD: View {
     /// a yes/no/always trio that would silently go nowhere — `optionsContent`
     /// shows a "respond in the terminal" hint instead.
     private var effectiveOptions: [PromptOption] { options }
-    private var optionsAreActionable: Bool { session.controlMode != "observed" }
+    /// Managed sessions always answer through their PTY. An observed one is
+    /// answerable only when the daemon says so — it may be able to type into
+    /// that session's terminal, or be holding its AskUserQuestion open to
+    /// answer with our choice. Reading `controlMode` alone got this wrong in
+    /// both directions: it refused answerable sessions on a CLI daemon, and it
+    /// would now refuse the ask-gate too. Absent flag ⇒ not answerable, never
+    /// a live-looking button that goes nowhere.
+    private var optionsAreActionable: Bool {
+        session.controlMode != "observed" || session.liveAnswerable == true
+    }
     private var hasFreeformInputOption: Bool { effectiveOptions.contains { $0.isFreeformInput } }
     private var attentionTitle: String { hasFreeformInputOption ? "INPUT NEEDED" : "ATTENTION" }
 

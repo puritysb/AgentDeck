@@ -76,6 +76,10 @@ export interface DashState {
   options: PromptOption[];
   currentTool: string;
   allSessions: SessionInfo[];
+  /** Question the live `options` belong to. Echoed back on a press so the
+   *  daemon can reject an answer aimed at a question the prompt has moved past
+   *  (a multi-question AskUserQuestion advances between its groups). */
+  question?: string;
   /** Live PTY option cursor is navigable (❯) — drives select_option vs respond. */
   navigable?: boolean;
   /**
@@ -115,10 +119,15 @@ export function parseState(evt: any): DashState {
     sevenDayPercent: evt?.sevenDayPercent ?? 0,
     totalTokens: evt?.totalTokens ?? 0,
     totalCost: evt?.totalCost ?? 0,
-    options: (evt?.options ?? []).map((o: any) =>
-      typeof o === 'string' ? { label: o } : { label: o?.label ?? '', shortcut: o?.shortcut ?? '' },
+    // Keep the server-assigned `index`: it is what a press must send back, and
+    // it is not always the array position (the PTY parser can drop entries).
+    options: (evt?.options ?? []).map((o: any, i: number) =>
+      typeof o === 'string'
+        ? { index: i, label: o }
+        : { index: typeof o?.index === 'number' ? o.index : i, label: o?.label ?? '', shortcut: o?.shortcut ?? '' },
     ),
     currentTool: evt?.currentTool ?? '',
+    question: typeof evt?.question === 'string' && evt.question ? evt.question : undefined,
     allSessions: Array.isArray(evt?.allSessions) ? evt.allSessions : [],
     navigable: Boolean(evt?.navigable),
     // Prefer an explicit flag; otherwise infer from the presence of a real percent.
@@ -865,6 +874,9 @@ function buildDetail(
   const focused = stateEvt?.focusedSessionId === sid || stateEvt?.sessionId === sid;
   const sState = (focused ? state.state : (sess?.state ?? 'idle')).toLowerCase();
   const options = (focused ? state.options : (sess?.options ?? [])) ?? [];
+  // Whatever question these options belong to, echoed back on a press so the
+  // daemon can tell an answer apart from one aimed at a superseded question.
+  const question = (focused ? (state.question ?? sess?.question) : sess?.question) || undefined;
   const tool = focused ? state.currentTool : sess?.currentTool;
   // A selected session with no model is UNKNOWN, not an invitation to borrow
   // the daemon-global model from another agent. Only a matching focused event
@@ -943,14 +955,24 @@ function buildDetail(
       // (❯ cursor) → select_option so the daemon drives arrows+Enter;
       // non-navigable inline prompts → respond with the option's shortcut.
       // Hook-observed AskUserQuestion has no PTY/requestId response path, but
-      // the CLI daemon can type the selection into the session's own terminal
-      // — `liveAnswerable` says it found a host. Always select_option there
-      // (the observed route injects on that command only); a shortcut-`respond`
-      // has no observed meaning. Without the flag the cells stay display-only.
+      // the daemon may still be able to deliver the answer — by typing it into
+      // the session's own terminal, or by holding the question's hook open and
+      // resolving it with our choice. `liveAnswerable` covers both; without it
+      // the cells stay display-only. Always select_option when answerable (the
+      // observed route acts on that command only); a shortcut-`respond` has no
+      // observed meaning.
       const observedAnswerable = isObserved && Boolean(sess?.liveAnswerable);
       options.forEach((opt, i) => {
         const command: ButtonCommand = (navigable || observedAnswerable)
-          ? { type: 'select_option', index: i, sessionId: sid }
+          // The question echo lets the daemon drop a press aimed at a question
+          // a multi-group AskUserQuestion has already moved past, instead of
+          // applying its index to the new option list.
+          ? {
+            type: 'select_option',
+            index: typeof opt.index === 'number' ? opt.index : i,
+            sessionId: sid,
+            ...(question ? { question } : {}),
+          }
           : { type: 'respond', value: opt.shortcut || opt.label?.charAt(0)?.toLowerCase() || String(i + 1) };
         cells.push({
           svg: renderOptionButton(opt, i),

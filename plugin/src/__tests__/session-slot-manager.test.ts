@@ -395,6 +395,61 @@ describe('SessionSlotManager detail layout', () => {
     expect(manager.getSlotConfig(6, SD_PLUS_LAYOUT)).toMatchObject({ type: 'next-page', label: '1/2' });
     expect(manager.getSlotConfig(7, SD_PLUS_LAYOUT)).toMatchObject({ type: 'esc', label: 'active' });
   });
+
+  // A single AskUserQuestion call can hold several questions and swaps between
+  // them without ever leaving the awaiting state — so the page clamp (which only
+  // ever shrinks the page to fit) would carry a stale page into a new question.
+  it('resets option paging when the question changes, not just when awaiting ends', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([makeSession({ state: State.AWAITING_OPTION })]);
+    manager.enterDetailView('session-1');
+    const fiveOptions = [
+      { index: 0, label: 'Yes' }, { index: 1, label: 'No' }, { index: 2, label: 'Always allow' },
+      { index: 3, label: 'Deny' }, { index: 4, label: 'Explain' },
+    ];
+    manager.updateDetailState(State.AWAITING_OPTION, fiveOptions, undefined, undefined, 'Pick a language');
+    expect(manager.handleSlotPress(6, SD_PLUS_LAYOUT)).toMatchObject({ action: 'next-page' });
+    manager.nextPage(SD_PLUS_LAYOUT); // the plugin applies it
+    expect(manager.getSlotConfig(6, SD_PLUS_LAYOUT)).toMatchObject({ label: '2/2' });
+
+    // Next question, same awaiting state and same option count.
+    manager.updateDetailState(State.AWAITING_OPTION, fiveOptions, undefined, undefined, 'Pick a target');
+    expect(manager.getSlotConfig(6, SD_PLUS_LAYOUT)).toMatchObject({ label: '1/2' });
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'option', optionIndex: 0 });
+    // And the echo a press carries names the question actually on screen.
+    expect(manager.detailQuestion).toBe('Pick a target');
+  });
+
+  // Whether an observed session's options are pressable is the daemon's call:
+  // it may be able to type into that session's terminal, or be holding its
+  // AskUserQuestion hook open. Reading controlMode alone made both cases inert.
+  it('makes observed options pressable exactly when the daemon says they are answerable', () => {
+    const options = [{ index: 0, label: 'TypeScript' }, { index: 1, label: 'Swift' }];
+    const observed = (liveAnswerable?: boolean) => makeSession({
+      id: 'observed:claude:abc',
+      state: State.AWAITING_OPTION,
+      controlMode: 'observed',
+      question: 'Pick a language',
+      options,
+      ...(liveAnswerable === undefined ? {} : { liveAnswerable }),
+    });
+
+    const answerable = new SessionSlotManager();
+    answerable.updateSessions([observed(true)]);
+    answerable.enterDetailView('observed:claude:abc');
+    expect(answerable.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'option', optionIndex: 0 });
+    expect(answerable.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({ type: 'option', optionIndex: 1 });
+
+    // Absent flag ⇒ inert mirror of the terminal, never a button going nowhere.
+    for (const session of [observed(false), observed(undefined)]) {
+      const inert = new SessionSlotManager();
+      inert.updateSessions([session]);
+      inert.enterDetailView('observed:claude:abc');
+      expect(inert.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({
+        type: 'status', subtitle: 'answer in terminal',
+      });
+    }
+  });
 });
 
 // Phase 2: SD+ relocates AWAITING option/permission selection AND the suggested-
