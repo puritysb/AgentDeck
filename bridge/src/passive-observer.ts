@@ -494,17 +494,74 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
 }
 
 async function collectProcessInfo(): Promise<ProcInfo[]> {
+  if (process.platform === 'win32') return collectProcessInfoWin32();
   try {
     const { stdout } = await execFileAsync('ps', ['-ww', '-eo', 'pid=,ppid=,rss=,tty=,command='], {
       encoding: 'utf8',
       timeout: 2_000,
       maxBuffer: 2 * 1024 * 1024,
-      windowsHide: true, // git-bash ps.exe pops a console window every 5s scan on Windows without this
     });
     return parseProcessTable(stdout);
   } catch {
     return [];
   }
+}
+
+/**
+ * Windows scan backend. `ps` there only exists under git-bash and reports MSYS
+ * processes, not native Win32 command lines — so the previous "run ps anyway"
+ * path saw nothing worth observing. Win32_Process has the real command lines.
+ * A PowerShell spawn per poll is real overhead; if it matters on hardware the
+ * fix is a persistent coprocess like the plugin's volume path (#143).
+ */
+async function collectProcessInfoWin32(): Promise<ProcInfo[]> {
+  try {
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize,CommandLine | ConvertTo-Json -Compress',
+    ], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      maxBuffer: 8 * 1024 * 1024,
+      windowsHide: true,
+    });
+    return parseCimProcessTable(stdout);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parse `Win32_Process | ConvertTo-Json` output into the shared ProcInfo shape.
+ * ConvertTo-Json emits a bare object when a single row matches and an array
+ * otherwise; CommandLine is null for protected/system processes (those rows
+ * carry nothing observable and are dropped); WorkingSetSize is bytes where ps
+ * reports KB. Windows has no controlling tty, so every row is tty-less — which
+ * host app owns a tty-less Codex there is still unmeasured (#143).
+ */
+export function parseCimProcessTable(json: string): ProcInfo[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  const result: ProcInfo[] = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const pid = numberAt(row, 'ProcessId');
+    const command = stringAt(row, 'CommandLine')?.trim();
+    if (pid <= 0 || !command) continue;
+    result.push({
+      pid,
+      ppid: numberAt(row, 'ParentProcessId'),
+      rssKb: Math.round(numberAt(row, 'WorkingSetSize') / 1024),
+      tty: undefined,
+      command,
+    });
+  }
+  return result;
 }
 
 /** Extract the enclosing macOS app name from an executable path, e.g.
@@ -856,6 +913,11 @@ function findClaudeTranscript(configDirs: string[], cwd: string, sessionId: stri
  */
 async function mapCodexPidsToRollouts(pids: number[]): Promise<Map<number, string[]>> {
   if (pids.length === 0) return new Map();
+  // Windows ships no lsof/procfs equivalent, so this is an explicit platform
+  // gap (#143) rather than a silent lsof spawn failure: Codex processes found
+  // by the scan are dropped here until an identity source is measured — the
+  // codex_* hooks are the likely one, as on macOS.
+  if (process.platform === 'win32') return new Map();
   if (process.platform === 'linux') {
     const map = new Map<number, string[]>();
     for (const pid of pids) {
@@ -1080,11 +1142,26 @@ function isCodexRolloutPath(path: string): boolean {
   return name.startsWith('rollout-') && name.endsWith('.jsonl');
 }
 
+/** First two argv-ish tokens of a command line. Win32 CommandLine quotes an
+ *  argv[0] whose path contains spaces — that whole quoted span is one token,
+ *  where a plain whitespace split would shear it mid-path. */
+function leadingCommandTokens(command: string): string[] {
+  const quoted = command.match(/^"([^"]*)"\s*(.*)$/);
+  if (!quoted) return command.split(/\s+/).slice(0, 2);
+  return [quoted[1], quoted[2].split(/\s+/)[0] ?? ''];
+}
+
 function cmdHasBinary(command: string, name: string): boolean {
-  return command
-    .split(/\s+/)
-    .slice(0, 2)
-    .some((token) => basename(token) === name);
+  // Split paths on both separators by hand: path.basename() is
+  // platform-flavored at runtime, and a Win32 CommandLine must parse the same
+  // way in macOS-run tests as on a Windows daemon. The exact-case compare
+  // stays — it is what excludes the Electron helper basenames (capital
+  // "Codex (Renderer)"); only the .exe form is case-insensitive, since the
+  // filesystem that names it is.
+  return leadingCommandTokens(command).some((token) => {
+    const bare = token.replace(/^"+|"+$/g, '').split(/[\\/]/).pop() ?? '';
+    return bare === name || bare.toLowerCase() === `${name}.exe`;
+  });
 }
 
 function isDescendantOf(pid: number, ancestorPid: number, byPid: Map<number, ProcInfo>): boolean {

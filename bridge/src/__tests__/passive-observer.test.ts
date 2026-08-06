@@ -5,6 +5,7 @@ import {
   dedupeObservedSessions,
   isAntigravityProcessCommand,
   isCodexSessionProcessCommand,
+  parseCimProcessTable,
   parseClaudeTranscript,
   parseCodexRollout,
   parseLsofRollouts,
@@ -40,6 +41,47 @@ describe('passive-observer parsers', () => {
         command: '/bin/zsh -lc claude',
       },
     ]);
+  });
+
+  it('parses Win32_Process JSON, converting bytes to KB and dropping null command lines', () => {
+    const rows = parseCimProcessTable(JSON.stringify([
+      {
+        ProcessId: 4321,
+        ParentProcessId: 812,
+        WorkingSetSize: 209_715_200,
+        CommandLine: '"C:\\Users\\robin\\AppData\\Local\\Programs\\ChatGPT\\ChatGPT.exe"',
+      },
+      // Protected/system processes report no command line — nothing observable.
+      { ProcessId: 4, ParentProcessId: 0, WorkingSetSize: 151_552, CommandLine: null },
+      { ProcessId: 0, ParentProcessId: 0, WorkingSetSize: 8_192, CommandLine: 'System Idle Process' },
+    ]));
+
+    expect(rows).toEqual([
+      {
+        pid: 4321,
+        ppid: 812,
+        rssKb: 204_800,
+        tty: undefined,
+        command: '"C:\\Users\\robin\\AppData\\Local\\Programs\\ChatGPT\\ChatGPT.exe"',
+      },
+    ]);
+  });
+
+  it('parses the bare object ConvertTo-Json emits for a single row', () => {
+    const rows = parseCimProcessTable(JSON.stringify({
+      ProcessId: 5100,
+      ParentProcessId: 4321,
+      WorkingSetSize: 1_048_576,
+      CommandLine: 'codex.exe app-server',
+    }));
+
+    expect(rows).toEqual([
+      { pid: 5100, ppid: 4321, rssKb: 1024, tty: undefined, command: 'codex.exe app-server' },
+    ]);
+  });
+
+  it('returns no rows for non-JSON scan output', () => {
+    expect(parseCimProcessTable('Get-CimInstance : Access is denied.')).toEqual([]);
   });
 
   it('summarizes Claude transcripts and redacts tool secrets', () => {
@@ -262,6 +304,15 @@ describe('passive-observer parsers', () => {
     )).toBe(false);
     expect(isCodexSessionProcessCommand('/Applications/ChatGPT.app/Contents/Resources/codex-code-mode-host')).toBe(false);
     expect(isCodexSessionProcessCommand('grep codex')).toBe(false);
+  });
+
+  it('matches Win32 command lines — quoted paths, backslashes, .exe suffix', () => {
+    // Quoted because the path has spaces; the whitespace split leaves the
+    // closing quote on the second token.
+    expect(isCodexSessionProcessCommand('"C:\\Program Files\\Codex CLI\\codex.exe" app-server')).toBe(true);
+    expect(isCodexSessionProcessCommand('C:\\Users\\robin\\.local\\bin\\codex.exe --model gpt-5.4')).toBe(true);
+    // The renderer-helper exclusion must survive the .exe tolerance.
+    expect(isCodexSessionProcessCommand('C:\\apps\\Codex --type=renderer')).toBe(false);
   });
 
   it('marks internal subagent rollouts from session_meta source', () => {
