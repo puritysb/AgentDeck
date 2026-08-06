@@ -2,6 +2,84 @@
 
 ---
 
+## 2026-08-06 — 답을 실어 보낼 필드가 없으면 거절 사유에 실어 보낸다: AskUserQuestion 원격 응답
+
+### 문제
+
+"기기에서 고른 선택이 hook 으로 에이전트까지 잘 전달되는지" 와 "여러 단계 선택일 때 다음
+단계가 제대로 보여지고 입력되는지" 두 가지를 점검했다. 둘 다 깨져 있었다.
+
+**Swift 앱 단독 모드에는 전달 경로 자체가 없었다.** 기기 탭은 `handleObservedClaudeCommand`
+에서 "held gate 없음" 로그만 남기고 버려졌다. AskUserQuestion 은 양 데몬 모두 held-hook 게이트
+대상에서 빠져 있고(`promptProneTools` 밖), Node 가 쓰던 터미널 키 주입은 샌드박스에서
+불가능하기 때문이다. 의도된 설계였지만 결과는 **Stream Deck·D200H·macOS·Android 가 아무도
+답할 수 없는 질문을 렌더**하는 상태였다.
+
+**한 호출에 여러 question 이 담기면 두 번째 탭이 엉뚱한 항목을 골랐다.** Claude 는 한 번의
+AskUserQuestion 에 최대 4개 question 을 담는데 양 데몬이 첫 group 만 wire 에 실었다. Node
+주입 경로에서 Q1 에 답하면 TUI 는 Q2 로 넘어가는데 overlay 는 Q1 그대로 — 다음 탭이 **새
+질문에 옛 인덱스를 주입해 무음으로 오선택**했다. 표시 쪽으로는 Ulanzi 가 두 질문을 같다고
+판정해 재렌더를 건너뛰었고(`deckSignature` 에 세션별 question/options 없음), 세션을 열면
+데몬의 전역 state_update 가 실제 질문을 덮었으며, 페이지 번호가 다음 질문으로 이월됐다.
+
+### 해결
+
+**hook 계약에 답을 공급하는 필드가 없다는 것부터 확인했다.** 공식 문서상 PreToolUse 출력은
+`permissionDecision` allow/deny/ask + `updatedInput` 뿐이다. 그러나 **deny 의
+`permissionDecisionReason` 텍스트는 모델에 전달**되고, 이 레포는 이미 soft STOP 과 턴엔드
+지시큐에서 그 채널을 쓰고 있었다. 그래서 **ask-gate**: 데몬이 질문의 PreToolUse 를 붙잡았다가
+사용자가 고른 항목을 사유로 실어 해소한다. 순수 HTTP hold 라 서브프로세스가 없다.
+
+사다리는 네 단이 됐다 — managed PTY 키주입 → observed + 터미널 도달가능 시 주입 → **ask-gate
+hold** → 표시 전용. **주입이 가능하면 hold 하지 않는다**: hold 는 그 터미널 앞에 앉은 사람을
+기다리게 하므로, 다른 길이 없을 때만 쓴다.
+
+다중 question 은 wire 를 flat 로 둔 채(`question`/`options` = 현재 group 투영) 데몬이 한
+번에 하나씩 제시하고 답할 때마다 전진한다. `select_option` 에 선택적 `question` echo 를
+추가해 지나간 질문에 대한 탭은 적용 대신 폐기하고 재브로드캐스트한다.
+
+### 핵심 설계 결정
+
+- **ask-gate 는 권한게이트의 정밀가드를 전부 건너뛴다.** 그 가드들은 "Claude 가 자동승인해서
+  묻지도 않을 호출을 hold 하면 안 된다" 때문에 존재한다. AskUserQuestion 은 **항상 묻는다** —
+  false-hold 가 원리적으로 불가능하므로 rule predictor 를 호출하지 않는다. 그 결과 `~/.claude`
+  를 읽을 수 없어 권한게이트가 스스로 꺼지는 **App Store 샌드박스에서도 동작**한다. 조건은
+  `enabled && clientCount>0 && 세션당 게이트 1개` 뿐.
+- **타임아웃은 빈 응답(pass)** — Claude 의 픽커가 평소대로 뜬다. 과거 hold 설계를 "자동 진행
+  원치 않음" 으로 거부했던 지점이 여기서 해소된다. 사용자를 대신해 진행하는 경로는 없다.
+- **deny 하면 도구가 실행되지 않으므로 PostToolUse 가 오지 않는다** — overlay 를 데몬이 직접
+  클리어해야 한다. 안 하면 세션이 awaiting 에 고착된다.
+- **`liveAnswerable` 의 의미를 넓혔다**: "이 데몬이 이 세션의 답을 전달할 수 있다"(주입 또는
+  ask-gate). 모든 표면이 이 하나로 누름 가능 여부를 판정한다. ask-gate 는 `requestId` 를 wire
+  에 싣지 않는다 — 실으면 데크가 Allow/Deny 로 렌더해 4지선다가 이진 결정으로 붕괴한다.
+- **group 을 평탄화하지 않는다.** 인덱스가 group 사이에서 의미를 바꾸므로, 하나의 인덱스
+  공간으로 합치면 Q1 을 겨냥한 press 가 Q2 의 옵션을 고른다.
+- **observed 세션은 state_update 채널이 없다 — roster row 가 SSOT.** `focus_session` 회신인
+  데몬 전역 스냅샷이 그 세션의 `focusedSessionId` 로 스탬프되어 귀속 검사를 통과하고 실제
+  질문/옵션을 덮었다. **Ulanzi `state-store.ts` 와 Stream Deck `focused-detail-state.ts` 양쪽에
+  같은 버그**가 있었다.
+- **`deckSignature` 누락 4번째.** 다중 question 전환은 `state`/`currentTool` 을 건드리지 않아
+  서명이 같아진다. 세션별 question/options/askGroupIndex 를 넣고, app.ts 가 import 시 Studio
+  소켓을 열어 테스트가 불가능했던 문제를 `plugin-ulanzi/src/deck-signature.ts` 순수 모듈 분리로
+  풀어 회귀 게이트를 걸었다.
+- PreToolUse curl 이 이미 `--max-time 60` 이라 hold 45s 는 **hook 스크립트 3중 미러를 건드리지
+  않는다**.
+
+### 검증
+
+vitest 2646, macOS/iOS BUILD SUCCEEDED, Android `testDebugUnitTest`, docs/preview-mirror/
+surface-mirror/design-system/version 게이트 전부 통과. `bridge/src/__tests__/ask-gate.test.ts`
+는 데몬이 호출하는 실제 모듈을 실제 순서로 엮어 hold → 응답 → hook 본문까지 확인한다. 구현
+중 `daemon-server.ts` 가 `httpServer.listen` 을 await 한 뒤에야 `passiveSessionObserver` 를
+`const` 선언한다는 걸 발견해(기동 직후 도착한 hook 이 TDZ ReferenceError) 선언을 HTTP 서버
+앞으로 올렸다.
+
+**미검증**: 실제 `claude` 세션이 deny-reason 을 답으로 받아들여 재질문 없이 진행하는지는
+실기 확인하지 않았다(채널 자체는 soft STOP 으로 검증된 것이나 문구의 효력은 별개). 실물 기기
+탭도 마찬가지. 9120 을 점유한 데몬은 구빌드라 재시작 전까지 적용되지 않는다.
+
+---
+
 ## 2026-08-06 — 타임라인이 다 보여주는 대화를 APME 는 절반만 저장하고 있었다
 
 ### 문제

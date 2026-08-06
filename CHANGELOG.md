@@ -9,6 +9,34 @@ target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
 ## 1.0.7
 
+### Answering an agent's question from a device
+
+- Answer AskUserQuestion from a device even when AgentDeck cannot reach the
+  terminal. Until now the only working channel was typing into the session's
+  own terminal, which needs subprocesses the sandboxed macOS daemon does not
+  have — so on the App Store app every tap on a question was logged and
+  dropped. Both daemons now hold the question's PreToolUse hook open and
+  resolve it with the option the user picked, stated as the decision reason
+  (the same channel STOP and the turn-end queue already use). It only engages
+  when typing is unavailable, so nobody sitting at a reachable terminal waits
+  for anything; an unanswered hold releases empty and Claude's own picker
+  appears exactly as before — nothing ever proceeds on the user's behalf
+- Ask each question of a multi-question prompt in turn. One AskUserQuestion
+  call can carry up to four questions; only the first ever reached a device,
+  and answering it left the old options on screen while the agent had moved on
+  — so the next tap sent an index into a different list and silently picked the
+  wrong answer. Questions are now presented one at a time and advance as each
+  is answered, and a press carries the question it was answering so a late tap
+  is dropped instead of misapplied
+- Stop the deck from missing the follow-up question. The D200H compared two
+  questions as identical (its repaint signature ignored per-session questions
+  and options), opening a session blanked its live prompt with the daemon's
+  global state, and both decks carried the previous question's page number into
+  the new one
+- Show the answer buttons as answerable in the Mac, iPhone/iPad and Android
+  apps. They decided that from `controlMode` alone, so they refused sessions
+  the daemon could answer and would have refused every held question too
+
 ### CLI and daemon — npm
 
 - Archive the reply half of every conversation. `turns.response` was NULL for
