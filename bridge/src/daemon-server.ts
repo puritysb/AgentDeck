@@ -3754,8 +3754,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // The option's visible label lets app-hosted prompts press the matching
         // native button instead of guessing cursor movement.
         const label = ov?.options?.[idx]?.label;
+        // A grouped AskUserQuestion does not close on its last answer — it
+        // shows a "Review your answers → Submit answers" confirmation. Nobody
+        // is at that screen to press it, so the last answer carries the extra
+        // Enter. Single-question prompts have no such step.
+        const groupCount = ov?.groups?.length ?? 1;
+        const confirmSubmit = groupCount > 1 && (ov?.activeGroup ?? 0) === groupCount - 1;
         injectObservedSelection(
-          { tty: obs?.tty, appName: obs?.appName, label }, idx,
+          { tty: obs?.tty, appName: obs?.appName, label }, idx, { confirmSubmit },
         ).then((r) => {
           injectionGuardUntil.set(uuid, Date.now() + INJECTION_SETTLE_MS);
           debug('daemon', r.ok

@@ -89,32 +89,64 @@ export function parseTmuxPanes(output: string): Map<string, string> {
   return map;
 }
 
-async function injectViaTmux(tty: string, downs: number): Promise<boolean> {
+/** Gap between an arrow key and the Enter that acts on it. Measured, not
+ *  guessed: sending `Down Enter` in one `tmux send-keys` makes the picker
+ *  answer with the option the cursor was on BEFORE the arrow — every device
+ *  answer silently became option 0. Splitting the calls with this pause
+ *  selects the intended option. Same lesson `injectText` already carries for
+ *  text-then-CR; the selection path never got it. */
+const KEY_PACE_MS = 120;
+/** Longer settle before the Enter, which is the irreversible key. */
+const SUBMIT_PACE_MS = 300;
+
+const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+async function tmuxPaneFor(tty: string): Promise<string | undefined> {
+  const { stdout } = await execFileAsync(
+    'tmux', ['list-panes', '-a', '-F', '#{pane_tty}\t#{pane_id}'],
+    { encoding: 'utf8', timeout: 2_000 },
+  );
+  return parseTmuxPanes(stdout).get(tty);
+}
+
+async function injectViaTmux(tty: string, downs: number, submits = 1): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync(
-      'tmux', ['list-panes', '-a', '-F', '#{pane_tty}\t#{pane_id}'],
-      { encoding: 'utf8', timeout: 2_000 },
-    );
-    const paneId = parseTmuxPanes(stdout).get(tty);
+    const paneId = await tmuxPaneFor(tty);
     if (!paneId) return false;
-    const keys = [...Array(downs).fill('Down'), 'Enter'];
-    await execFileAsync('tmux', ['send-keys', '-t', paneId, ...keys],
-      { timeout: 2_000 });
+    // One key per call, paced: the TUI reads a burst as a single input frame
+    // and resolves Enter against the pre-arrow cursor.
+    for (let i = 0; i < downs; i++) {
+      await execFileAsync('tmux', ['send-keys', '-t', paneId, 'Down'], { timeout: 2_000 });
+      await pause(KEY_PACE_MS);
+    }
+    for (let i = 0; i < submits; i++) {
+      await pause(SUBMIT_PACE_MS);
+      await execFileAsync('tmux', ['send-keys', '-t', paneId, 'Enter'], { timeout: 2_000 });
+    }
     return true;
   } catch {
     return false; // no tmux server / pane gone — fall through the ladder
   }
 }
 
-/** AppleScript that types the selection into the iTerm2 session owning `tty`. */
-export function buildItermSelectScript(tty: string, downs: number): string {
+/**
+ * AppleScript that types part of a selection into the iTerm2 session owning
+ * `tty`. Arrows and the Enter that acts on them are emitted by SEPARATE calls
+ * with a pause between (see `KEY_PACE_MS`): delivered as one burst the picker
+ * resolves Enter against the pre-arrow cursor and answers option 0.
+ */
+export function buildItermSelectScript(
+  tty: string,
+  downs: number,
+  opts: { enter?: boolean } = { enter: true },
+): string {
   // ESC [ B per Down, then a bare `write text ""` for Enter (write text
   // appends CR by default; the arrow writes suppress it with `newline NO`).
   const writes: string[] = [];
   for (let i = 0; i < downs; i++) {
     writes.push('write s text ((character id 27) & "[B") newline NO');
   }
-  writes.push('write s text ""');
+  if (opts.enter !== false) writes.push('write s text ""');
   return [
     'tell application "iTerm2"',
     '  repeat with w in windows',
@@ -178,6 +210,7 @@ export function buildTerminalAppSelectTabScript(tty: string): string {
 export function buildPostKeysScript(
   match: { bundleIds?: string[]; names?: string[] },
   downs: number,
+  submits = 1,
 ): string {
   const bundles = JSON.stringify(match.bundleIds ?? []);
   const names = JSON.stringify(match.names ?? []);
@@ -211,7 +244,9 @@ export function buildPostKeysScript(
     // only the Return landed (which would silently pick the WRONG option).
     '  delay(0.30);',
     `  for (let i = 0; i < ${downs}; i++) key(125);`,
-    '  key(36);',
+    // A grouped AskUserQuestion answers its last question into a "Submit
+    // answers" confirmation rather than closing, so it needs a second Return.
+    `  delay(0.30); for (let i = 0; i < ${submits}; i++) { key(36); delay(0.30); }`,
     '  "ok"',
     '}',
   ].join('\n');
@@ -260,11 +295,13 @@ export function buildAppButtonPressScript(appName: string, label: string): strin
  * `CGEventPostToPid` route reports the app is not running or the app ignores
  * posted events.
  */
-export function buildAppKeysScript(appName: string, downs: number): string {
+export function buildAppKeysScript(appName: string, downs: number, submits = 1): string {
   const app = escapeAppleScript(appName);
   const keyLines: string[] = [];
-  for (let i = 0; i < downs; i++) keyLines.push('key code 125');
-  keyLines.push('key code 36');
+  for (let i = 0; i < downs; i++) { keyLines.push('key code 125'); keyLines.push('delay 0.12'); }
+  keyLines.push('delay 0.30');
+  // Grouped questions end on a "Submit answers" confirmation, not on close.
+  for (let i = 0; i < submits; i++) { keyLines.push('key code 36'); keyLines.push('delay 0.30'); }
   return [
     'set prevApp to ""',
     'try',
@@ -311,25 +348,38 @@ async function runOsa(script: string, timeoutMs = 8_000): Promise<string | null>
  * Answer the session's on-screen prompt by driving its host UI.
  * `index` is the zero-based option position (Claude's pickers start with the
  * cursor on the first option, so index == the number of Down presses).
+ *
+ * `confirmSubmit` covers the extra step a GROUPED AskUserQuestion adds: after
+ * the last question is answered its picker does not close but shows a "Review
+ * your answers → Submit answers / Cancel" confirmation, already sitting on
+ * Submit. Without a second Enter the agent waits forever on a form the user
+ * cannot see. Single-question calls have no such step, so this stays off for
+ * them — an extra Enter there would land in the prompt box.
  */
 export async function injectObservedSelection(
   target: InjectTarget,
   index: number,
+  opts: { confirmSubmit?: boolean } = {},
 ): Promise<InjectResult> {
   if (index < 0 || index > 16) return { ok: false, reason: 'index out of range' };
   const { tty, appName, label } = target;
   if (!tty && !appName) return { ok: false, reason: 'no tty or app host for session' };
+  const submits = opts.confirmSubmit ? 2 : 1;
 
   if (tty) {
-    if (await injectViaTmux(tty, index)) return { ok: true, via: 'tmux' };
-    if (await runOsa(buildItermSelectScript(tty, index), 5_000) === 'ok') {
+    if (await injectViaTmux(tty, index, submits)) return { ok: true, via: 'tmux' };
+    if (await runOsa(buildItermSelectScript(tty, index, { enter: false }), 5_000) === 'ok') {
+      for (let i = 0; i < submits; i++) {
+        await pause(SUBMIT_PACE_MS);
+        await runOsa(buildItermSelectScript(tty, 0), 5_000);
+      }
       return { ok: true, via: 'iterm2' };
     }
     // Terminal.app: select the owning tab (no activation), then post keys to
     // its pid — focus-free.
     if (await runOsa(buildTerminalAppSelectTabScript(tty), 5_000) === 'ok') {
       const posted = await runJxa(
-        buildPostKeysScript({ bundleIds: ['com.apple.Terminal'], names: ['Terminal', '터미널'] }, index),
+        buildPostKeysScript({ bundleIds: ['com.apple.Terminal'], names: ['Terminal', '터미널'] }, index, submits),
       );
       if (posted === 'ok') return { ok: true, via: 'terminal-app' };
       debug('inject', `Terminal.app tab selected but key post failed: ${posted ?? 'error'}`);
@@ -345,10 +395,10 @@ export async function injectObservedSelection(
     debug('inject', `app-button press on ${appName}: ${r ?? 'error'}`);
   }
   const posted = await runJxa(
-    buildPostKeysScript({ bundleIds: APP_BUNDLE_IDS[appName!] ?? [], names: [appName!] }, index),
+    buildPostKeysScript({ bundleIds: APP_BUNDLE_IDS[appName!] ?? [], names: [appName!] }, index, submits),
   );
   if (posted === 'ok') return { ok: true, via: 'app-keys' };
-  if (await runOsa(buildAppKeysScript(appName!, index)) === 'ok') {
+  if (await runOsa(buildAppKeysScript(appName!, index, submits)) === 'ok') {
     return { ok: true, via: 'app-keys-raised' };
   }
   return { ok: false, reason: `no reachable UI in ${appName}` };

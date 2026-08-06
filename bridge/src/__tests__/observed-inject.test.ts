@@ -32,6 +32,17 @@ describe('buildItermSelectScript', () => {
     expect(s).not.toContain('character id 27');
     expect(s).toContain('write s text ""');
   });
+
+  // Measured 2026-08-06 on a live picker: arrows and the Enter that acts on
+  // them, delivered as one burst, make the TUI answer with the option the
+  // cursor was on BEFORE the arrows — every device answer silently became
+  // option 0. The caller sends them as separate, paced calls, so the arrow
+  // script must be able to omit its Enter.
+  it('can emit the arrows without the Enter that would act on them', () => {
+    const s = buildItermSelectScript('ttys008', 2, { enter: false });
+    expect(s.match(/character id 27/g)?.length).toBe(2);
+    expect(s).not.toContain('write s text ""');
+  });
 });
 
 describe('parseProcessTable with tty column', () => {
@@ -74,6 +85,18 @@ describe('buildPostKeysScript', () => {
     expect(s).toContain('for (let i = 0; i < 3; i++) key(125)');
     expect(s).toContain('key(36)');
     expect(s).not.toContain('activate');
+  });
+
+  // A grouped AskUserQuestion does not close on its last answer: it shows a
+  // "Review your answers → Submit answers" confirmation. Nobody is at that
+  // screen when a device answered, so the last selection carries a second
+  // Return. Single-question prompts must NOT get one — it would land in the
+  // prompt box as an empty submit.
+  it('carries a second Return only when a grouped prompt needs submitting', () => {
+    expect(buildPostKeysScript({ bundleIds: ['com.apple.Terminal'] }, 1, 2))
+      .toContain('i < 2; i++) { key(36)');
+    expect(buildPostKeysScript({ bundleIds: ['com.apple.Terminal'] }, 1))
+      .toContain('i < 1; i++) { key(36)');
   });
 });
 

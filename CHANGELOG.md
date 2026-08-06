@@ -36,6 +36,16 @@ target-internal version consistency. See [RELEASING.md](RELEASING.md).
 - Show the answer buttons as answerable in the Mac, iPhone/iPad and Android
   apps. They decided that from `controlMode` alone, so they refused sessions
   the daemon could answer and would have refused every held question too
+- Select the option the user actually pressed. Typing an answer into a
+  session's terminal sent the arrow keys and the Return that acts on them in
+  one burst, and the picker resolved the Return against the cursor position
+  from *before* the arrows — so every device answer silently chose the first
+  option. Pressing "Blue" selected "Red". The keys are now paced apart, the
+  way the dictated-prompt path already did it
+- Submit a grouped question instead of stranding it. A multi-question
+  AskUserQuestion does not close when its last question is answered; it shows a
+  "Review your answers → Submit answers" confirmation, which nobody was at the
+  terminal to press, so the agent waited on a form the user could not see
 
 ### CLI and daemon — npm
 
