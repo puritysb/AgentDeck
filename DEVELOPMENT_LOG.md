@@ -2,6 +2,93 @@
 
 ---
 
+## 2026-08-07 — 무음으로 삼켜진 재시작: macOS 앱이 22시간 데몬 없이 살아 있었다
+
+### 문제
+
+macOS Dashboard 가 미연결이었다. 데몬 쪽은 멀쩡했다 — Node 데몬(9120)은 uptime 21시간에
+WS 핸드셰이크를 걸면 즉시 `state_update` 를 회신했고, ESP32 WiFi 8보드·serial 6포트·Pixoo·
+Timebox·iDotMatrix·D200H·Stream Deck 이 전부 정상이었다. **미연결인 건 앱 하나뿐**이었다.
+
+앱 프로세스는 살아 있는데 소켓이 하나, 그것도 죽어 있었다:
+
+```
+AgentDeck 66203  4u  TCP 127.0.0.1:59498->127.0.0.1:9120 (CLOSED)
+```
+
+리스너도 없고 재연결 시도도 없었다. 결정적 단서는 앱의 `swift-daemon.log` 가 **특정 시각에서
+완전히 멈춰 있었다**는 것 — 2026-08-06 01:17:34(KST) 이후 22시간 동안 단 한 줄도 없었다.
+마지막 줄이 곧 범인의 위치였다:
+
+```
+16:17:04Z INFO Daemon stopped
+16:17:34Z INFO External daemon on port 9120 is stale — starting local daemon instead
+   ← 이후 영원히 침묵
+```
+
+그 앞 40초는 ~7초 주기의 reclaim 스래싱이었다:
+
+```
+Daemon ready ... ws://127.0.0.1:9122
+Canonical port 9120 is free — reclaiming it from fallback port 9122
+Daemon stopped
+ERROR Daemon listener bind failed: POSIXErrorCode(48): Address already in use
+   → 9122/9123 폴백 → 반복 (최소 5사이클)
+```
+
+부수 피해도 진행 중이었다. 앱에 **34개의 `esp32.read.*` 루프**가 살아 있었고(포트당 최대 11개),
+각자 fd 를 쥔 채 50ms 폴링 중이었다. `lsof` 로 확인하니 **Node 데몬과 앱이 6개 시리얼 포트를
+전부 동시 점유**하고 있었다 — 두 리더가 같은 TTY 에서 바이트를 서로 훔치는 상태.
+
+### 해결
+
+**1. 재진입 가드가 자기 자신이 낸 재시작을 삼켰다.** `connectToExternalDaemon` 의 stale 분기가
+`start()` 를 **같은 Task 안에서 인라인 호출**한다. 이 경로는 `start()` 의 Task 내부
+(`catch DaemonError.alreadyRunning`)에서 도달하므로 `defer { isStarting = false }` 가 아직
+안 돈 상태고, `guard !isStarting else { return }` 에 로그 한 줄 없이 삼켜진다.
+`Task { @MainActor [weak self] in self?.start() }` 로 미뤘다. 레포에 이미 같은 관용구가
+3곳(`:439/:465/:496`)에 주석까지 달려 있었고 **이 한 곳만 인라인**이었다.
+
+**2. NWListener 바인드 실패 학습을 stand-down 이 매번 지웠다.** raw BSD 소켓 프로브
+(`isPortBindable`)는 9120 이 비었다는데 NWListener 는 NECP 를 얹어 EADDRINUSE 를 냈다 —
+코드 주석이 이미 지목한 케이스다. 그걸 기억하는 게 `failedBindPorts` 인데
+`standDownServer` 가 `removeAll()` 로 지워서 reclaim 이 무한 재시도로 들어갔다.
+`[Int: Date]` + 120초 TTL 로 바꾸고 `standDownServer` 의 삭제를 제거했다.
+
+**3. detached open 이 stop 이후 착지해 죽은 모듈에 리더를 심었다.** `beginOpenPort` 는
+`Task.detached` 로 포트를 여는데 `stop()` 은 그걸 await 할 수 없다. `closeAllConnections()`
+가 `openingPorts` 를 안 지워서 늦게 착지한 open 이 identity 가드를 통과했다. 로그가 그대로
+증거다 — `Serial bridge stopped` 직후 `ESP32 opened:` 4줄. stop 시 `OpenAttemptToken` 을
+invalidate + `openingPorts` 클리어하고 `isStopped` 게이트를 추가했다.
+
+### 핵심 설계 결정
+
+**무음 가드는 워치독까지 죽인다.** 복구가 영원히 불가능했던 진짜 이유는 stale 분기가 `port = 0`
+을 세팅하는데 `checkDaemonHealth` 가 `guard currentPort > 0` 로 시작한다는 것이다. 헬스 모니터
+Task 는 살아 있었지만 매 틱 즉시 반환했다. **한 경로가 상태 초기화와 재시도 예약을 동시에 맡으면,
+예약이 실패했을 때 그 초기화가 마지막 안전망을 무력화한다.** 재시도를 예약하는 코드와 상태를
+비우는 코드는 실패 모드가 독립이어야 한다.
+
+**bind 가능 판정은 두 계층이고, 낮은 계층을 믿으면 안 된다.** raw 소켓이 bindable 이라 해도
+NWListener 는 거절할 수 있다. 관측된 실패는 프로브보다 강한 증거이므로 reclaim 이 그걸 우선한다.
+다만 영구 차단은 반대 극단(한 번의 일시적 실패로 fallback 포트에 영구 고착)이라 TTL 을 썼다 —
+막힌 포트는 상시도 영원히도 아닌 주기적으로 재시도된다.
+
+**리크는 prune 이 아니라 detached 생명주기에 있었다.** 처음엔 `pollForDevices` 의
+`connections.removeAll { !$0.connected }` 를 의심했지만, 세 disconnect 지점이 모두 토큰을
+invalidate 하고 있었다. 실제 원인은 `stop()` 이 소유권을 주장할 수 없는 detached task 였다.
+**teardown 이 await 할 수 없는 비동기 작업은 반드시 토큰으로 무효화해야 하며, 그 토큰 맵을
+teardown 이 비우지 않으면 늦게 착지한 작업이 죽은 모듈에 자원을 심는다.**
+
+**게이트는 고장내서 검증했다.** 신규 테스트 3개를 만료 로직을 "never forget" 으로 사보타주해
+돌렸더니 2개가 실패했다 — 진짜 게이트임을 확인. 이 과정에서 헬퍼가 `@MainActor` 격리라 테스트가
+컴파일조차 안 되는 실제 결함이 드러나 `nonisolated` 로 고쳤다(형제 헬퍼들과 동일). 반대로
+ESP32Serial 쪽은 **테스트를 넣지 않았다** — `statusSnapshot()` 의 `openingPorts` 로 짤 수는
+있지만 ESP32 가 안 꽂힌 머신에선 무조건 통과하는 가짜 게이트가 되고, `detectPorts()` 에 주입
+seam 이 없어 정직하게 만들 수 없었다.
+
+---
+
 ## 2026-08-06 — 답을 실어 보낼 필드가 없으면 거절 사유에 실어 보낸다: AskUserQuestion 원격 응답
 
 ### 문제
