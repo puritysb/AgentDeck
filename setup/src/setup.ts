@@ -85,7 +85,11 @@ function checkPrerequisites(): boolean {
   const hasClaude = Boolean(which('claude'));
   const hasCodex = Boolean(which('codex'));
 
-  // At least one supported coding-agent CLI is needed for a useful local setup.
+  // Agent CLIs are optional, like the Stream Deck app below: the daemon and
+  // device surfaces install and run without one, and sessions appear as soon
+  // as an agent shows up later. Hard-failing here blocked `npx @agentdeck/setup`
+  // on machines that only had the Claude/ChatGPT desktop apps (Ulanzi review,
+  // 2026-08).
   if (hasClaude) {
     ok('Claude Code CLI found');
   } else {
@@ -100,8 +104,8 @@ function checkPrerequisites(): boolean {
   }
 
   if (!hasClaude && !hasCodex) {
-    fail('No supported coding-agent CLI found — install Claude Code or Codex before running AgentDeck.');
-    pass = false;
+    warn('No coding-agent CLI found — setup continues; sessions appear once an agent is installed.');
+    console.log('     Claude Code: npm install -g @anthropic-ai/claude-code   Codex: npm install -g @openai/codex');
   }
 
   // Stream Deck app — paths differ per OS. The Elgato desktop app is macOS/

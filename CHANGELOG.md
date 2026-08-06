@@ -7,6 +7,18 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.8
+
+### Setup — npm
+
+- Let `npx @agentdeck/setup` finish on a machine with no coding-agent CLI.
+  The installer refused to complete unless `claude` or `codex` was already on
+  PATH — exactly the state of a computer that only has the Claude or ChatGPT
+  desktop app installed, which is how the Ulanzi review team first met it.
+  The CLIs were never a real prerequisite: the daemon and every device surface
+  install and run without one, and sessions appear as soon as an agent does.
+  The check now warns and points at the install commands instead of failing
+
 ## 1.0.7
 
 ### CLI and daemon — npm
