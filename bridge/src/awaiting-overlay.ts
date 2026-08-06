@@ -47,6 +47,11 @@ export interface AwaitingEntry {
    *  `question`/`options`/`promptType` above always mirror `groups[activeGroup]`. */
   groups?: AskGroup[];
   activeGroup?: number;
+  /** How many question groups the tool call actually contained, INCLUDING any
+   *  `groups` dropped as malformed. The terminal's own picker renders a form
+   *  for all of them, so this — not `groups.length` — decides whether that form
+   *  ends on a "Submit answers" confirmation someone has to press. */
+  rawGroupCount?: number;
   /** Answers collected so far, one per resolved group. The held ask-gate turns
    *  these into the hook's decision reason when the last group is answered. */
   answers?: Array<{ question: string; label: string }>;
@@ -170,6 +175,7 @@ export function setAskUserQuestionOverlay(
     question: '',
     groups,
     activeGroup: 0,
+    rawGroupCount: rawQuestions.length,
     answers: [],
     toolUseId,
     updatedAt: Date.now(),
@@ -197,12 +203,18 @@ export function advanceAskUserQuestionOverlay(
   const entry = overlay.get(sessionId);
   if (!entry || entry.kind !== 'option' || !entry.groups?.length) return 'ignored';
   const active = entry.activeGroup ?? 0;
+  // Already past the last group: report completion again but record nothing.
+  // A repeat press (a device that did not see the prompt close, a duplicate
+  // frame) would otherwise append another answer every time, growing the list
+  // without bound and reporting phantom answers back to the agent.
+  if (active >= entry.groups.length) return 'complete';
   entry.answers = [
     ...(entry.answers ?? []),
     { question: entry.groups[active]?.question ?? entry.question, label: label ?? '' },
   ];
   const next = active + 1;
   if (next >= entry.groups.length) {
+    entry.activeGroup = next;
     entry.updatedAt = Date.now();
     return 'complete';
   }
@@ -319,7 +331,12 @@ export function applyAwaitingOverlayToObserved<
       ...(ov.options ? { options: ov.options } : {}),
       ...(ov.promptType ? { promptType: ov.promptType } : {}),
       ...(multiGroup
-        ? { askGroupIndex: ov.activeGroup ?? 0, askGroupCount: ov.groups!.length }
+        ? {
+          // Clamped: once the last group is answered the cursor sits one past
+          // the end, and "Q 4/3" is not a thing.
+          askGroupIndex: Math.min(ov.activeGroup ?? 0, ov.groups!.length - 1),
+          askGroupCount: ov.groups!.length,
+        }
         : {}),
     };
   });

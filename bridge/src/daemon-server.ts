@@ -42,6 +42,7 @@ import {
   isPermissionNotification,
   applyAwaitingOverlayToObserved,
 } from './awaiting-overlay.js';
+import { askGateDecision, askPressVerdict } from './ask-gate.js';
 import {
   registerPending, resolvePending, resolvePendingWithReason,
   sweepStalePending, drainAllPending, isPendingRequest,
@@ -1184,8 +1185,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    *  that is about to advance to the next question, selecting the wrong option
    *  there — so the guard spans the keystrokes plus a short settle window. */
   const injectionGuardUntil = new Map<string, number>();
+  /** Per session UUID: when the next ask-gate press will be accepted. An
+   *  answer is irreversible (it resolves the agent's hook), and a grouped
+   *  prompt advances on each one, so two frames from a bouncing key would
+   *  answer two different questions with the same index. */
+  const askPressGuardUntil = new Map<string, number>();
+  const ASK_PRESS_DEBOUNCE_MS = 400;
   /** Upper bound for one injection attempt (host ladder + paced keystrokes). */
-  const INJECTION_GUARD_MAX_MS = 15_000;
+  const INJECTION_GUARD_MAX_MS = 60_000;
   /** Settle window after the keys land, covering the TUI's own redraw. */
   const INJECTION_SETTLE_MS = 1_200;
 
@@ -1962,6 +1969,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               clearSteeringSession(claudeSid);
               pendingAskGateBySession.delete(claudeSid);
               injectionGuardUntil.delete(claudeSid);
+              askPressGuardUntil.delete(claudeSid);
             }
 
             const currentOverlay = getAwaitingOverlay(claudeSid);
@@ -2307,14 +2315,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               const obs = passiveSessionObserver.collect([])
                 .find((s) => s.id === `observed:claude:${claudeSid}`) as
                   { tty?: string; appName?: string } | undefined;
-              const injectable = Boolean(obs?.tty || obs?.appName);
-              const gate = injectable
-                ? { hold: false, requestId: undefined, reason: 'terminal reachable — inject instead' }
-                : beginAskGate({
+              const worthHolding = askGateDecision({
+                enabled: ASK_GATE_ENABLED,
+                clientCount: core.wsServer.getClientCount(),
+                observed: obs,
+              });
+              const gate = worthHolding.hold
+                ? beginAskGate({
                   sessionId: claudeSid,
                   clientCount: core.wsServer.getClientCount(),
                   enabled: ASK_GATE_ENABLED,
-                });
+                })
+                : { hold: false, requestId: undefined, reason: worthHolding.reason };
               if (gate.hold && gate.requestId) {
                 const requestId = gate.requestId;
                 const askToolUseId = typeof json.tool_use_id === 'string' ? json.tool_use_id : undefined;
@@ -3693,7 +3705,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // in the new list. Devices that echo what they showed get validated;
       // re-broadcasting re-syncs them to the live question.
       const echo = typeof command.question === 'string' ? command.question : undefined;
-      if (echo && ov?.question && echo !== ov.question) {
+      if (ov?.kind === 'option' && echo && ov.question && echo !== ov.question) {
         debug('daemon', `observed ${type} dropped: answers a stale question (${uuid.slice(0, 8)})`);
         core.broadcastSessionsList().catch(() => {});
         return;
@@ -3701,21 +3713,26 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
       // Held AskUserQuestion gate — this daemon owns the prompt (the picker
       // never reached the user's terminal). Record the answer, show the next
-      // group, and resolve the hook once every group has one.
+      // group, and resolve the hook once every group has one. Every rejection
+      // below is a press that would otherwise commit an answer the user did
+      // not give, so `askPressVerdict` is deliberately strict.
       const askGate = pendingAskGateBySession.get(uuid);
       if (askGate) {
-        if (type !== 'select_option' || typeof command.index !== 'number') {
-          // A yes/no `respond` must never collapse a multiple-choice question
-          // into a permission decision.
-          debug('daemon', `observed ${type} ignored: ask-gate expects select_option (${uuid.slice(0, 8)})`);
+        const now = Date.now();
+        if (now < (askPressGuardUntil.get(uuid) ?? 0)) {
+          debug('daemon', `ask-gate press dropped: too soon after the last one (${uuid.slice(0, 8)})`);
           return;
         }
-        const label = ov?.options?.[command.index]?.label;
-        if (!label) {
-          debug('daemon', `observed select_option ${command.index} out of range (${uuid.slice(0, 8)})`);
-          core.broadcastSessionsList().catch(() => {});
+        const verdict = askPressVerdict({
+          overlay: ov, gateToolUseId: askGate.toolUseId, command,
+        });
+        if (!verdict.ok) {
+          debug('daemon', `ask-gate press dropped: ${verdict.reason} (${uuid.slice(0, 8)})`);
+          if (verdict.resync) core.broadcastSessionsList().catch(() => {});
           return;
         }
+        askPressGuardUntil.set(uuid, now + ASK_PRESS_DEBOUNCE_MS);
+        const { label } = verdict;
         const step = advanceAskUserQuestionOverlay(uuid, label);
         if (step === 'complete') {
           resolvePendingWithReason(
@@ -3758,8 +3775,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // shows a "Review your answers → Submit answers" confirmation. Nobody
         // is at that screen to press it, so the last answer carries the extra
         // Enter. Single-question prompts have no such step.
-        const groupCount = ov?.groups?.length ?? 1;
-        const confirmSubmit = groupCount > 1 && (ov?.activeGroup ?? 0) === groupCount - 1;
+        //
+        // The count that decides this is what CLAUDE rendered, not what we
+        // parsed: a group we dropped as malformed is still a tab in the user's
+        // form, so trusting `groups.length` would skip the confirmation on a
+        // form that has one — and the agent would wait on it forever.
+        const groupCount = ov?.rawGroupCount ?? ov?.groups?.length ?? 1;
+        const parsedCount = ov?.groups?.length ?? 1;
+        const confirmSubmit = groupCount > 1 && (ov?.activeGroup ?? 0) === parsedCount - 1;
         injectObservedSelection(
           { tty: obs?.tty, appName: obs?.appName, label }, idx, { confirmSubmit },
         ).then((r) => {

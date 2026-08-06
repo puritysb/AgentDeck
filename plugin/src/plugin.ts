@@ -71,8 +71,11 @@ import { voiceCommandForAction } from './voice-ptt.js';
 let currentState = State.DISCONNECTED;
 let currentMode = PermissionMode.DEFAULT;
 let currentOptions: import('@agentdeck/shared').PromptOption[] = [];
-/** Question `currentOptions` belongs to — a change invalidates them. */
+/** Question `currentOptions` belongs to — a change invalidates them. Paired
+ *  with the session it came from: two sessions can be awaiting at once, and
+ *  the same question text from a different one is still a different prompt. */
 let currentQuestion: string | undefined;
+let currentOptionsSessionId: string | undefined;
 let proxiedAgentType: AgentType | null = null;
 
 const focusedDetailState = new FocusedDetailState();
@@ -255,7 +258,10 @@ connMgr.on('state_update', (ev: StateUpdateEvent) => {
     ev.state !== State.AWAITING_DIFF
   ) {
     currentOptions = [];
-  } else if (ev.question && ev.question !== currentQuestion) {
+  } else if (
+    ev.question
+    && (ev.question !== currentQuestion || (ev.focusedSessionId || ev.sessionId) !== currentOptionsSessionId)
+  ) {
     // Still awaiting, but this is a DIFFERENT question with no options of its
     // own — the previous list belongs to the question just answered, and its
     // indices mean something else now. A multi-question AskUserQuestion moves
@@ -264,6 +270,7 @@ connMgr.on('state_update', (ev: StateUpdateEvent) => {
     currentOptions = [];
   }
   currentQuestion = ev.question ?? currentQuestion;
+  currentOptionsSessionId = ev.focusedSessionId || ev.sessionId || currentOptionsSessionId;
 
   // Keypad detail state is session-owned. Never render it from the plugin's
   // global caches: those intentionally follow the latest daemon/agent event.

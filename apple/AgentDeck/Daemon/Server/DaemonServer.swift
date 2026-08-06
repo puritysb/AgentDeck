@@ -509,6 +509,10 @@ final class DaemonServer {
         var activeGroup: Group? { groups.indices.contains(activeIndex) ? groups[activeIndex] : nil }
     }
     private var pendingAskBySession: [String: PendingAsk] = [:]
+    /// Per session: when the next ask-gate press will be accepted. Answering is
+    /// irreversible (it resolves the agent's hook) and a grouped prompt
+    /// advances on each one, so a bouncing key must not answer two questions.
+    private var askPressGuardUntil: [String: Date] = [:]
     /// Read-only child lifecycle state. Child agents never become
     /// DaemonSessionEntry rows and never participate in steering/approval;
     /// this map exists only to pair concise Timeline start/completion rows.
@@ -3582,7 +3586,10 @@ final class DaemonServer {
                 broadcastSessionsList()
             }
         case "session_start":
-            if let sessionId { pendingAskBySession.removeValue(forKey: sessionId) }
+            if let sessionId {
+                pendingAskBySession.removeValue(forKey: sessionId)
+                askPressGuardUntil.removeValue(forKey: sessionId)
+            }
             _ = stateMachine.transition(trigger: "session_start", source: .hook)
             let projectName = ProjectNameResolver.projectName(fromHookPayload: json)
             if !projectName.isEmpty { stateMachine.projectName = projectName }
@@ -3619,7 +3626,10 @@ final class DaemonServer {
                 broadcastSessionsList()
             }
         case "user_prompt_submit":
-            if let sessionId { pendingAskBySession.removeValue(forKey: sessionId) }
+            if let sessionId {
+                pendingAskBySession.removeValue(forKey: sessionId)
+                askPressGuardUntil.removeValue(forKey: sessionId)
+            }
             _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
             // Steering: the user re-engaged in the terminal — a pending soft
             // STOP is moot and queued deck directives are superseded.
@@ -3644,7 +3654,10 @@ final class DaemonServer {
             // (cross-session subtree contamination).
             appendClaudeCodeChatStart(json: json, sessionId: sessionId, taskId: apmeCollector?.activeTaskId(sessionId: sessionId))
         case "stop":
-            if let sessionId { pendingAskBySession.removeValue(forKey: sessionId) }
+            if let sessionId {
+                pendingAskBySession.removeValue(forKey: sessionId)
+                askPressGuardUntil.removeValue(forKey: sessionId)
+            }
             _ = stateMachine.transition(trigger: "stop", source: .hook)
             updateSessionHookState(sessionId: sessionId, state: "idle", clearTool: true)
             // Timeline: close the turn. `last_assistant_message` is the hook
@@ -5036,6 +5049,9 @@ final class DaemonServer {
     /// true when a further question is now showing (caller re-broadcasts),
     /// false when that was the last one (caller resolves the ask-gate).
     private func advancePendingAsk(sessionId: String, label: String) -> Bool {
+        // Already past the last group: record nothing. A repeat press would
+        // otherwise append another answer every time, growing the list without
+        // bound and reporting phantom answers back to the agent.
         guard var ask = pendingAskBySession[sessionId], let group = ask.activeGroup else { return false }
         ask.answers.append((question: group.question, label: label))
         ask.activeIndex += 1
@@ -5824,6 +5840,34 @@ final class DaemonServer {
                         "Daemon", "observed \(type) ignored: ask-gate expects select_option (\(sessionId.prefix(8)))")
                     return
                 }
+                // The press must NAME the question it answers. Not decoration:
+                // several surfaces map a hardware "approve" key to
+                // select_option(0) as a stand-in for a yes/no gate (ESP32
+                // hudSendApprove, NFC approve tags). Against a permission gate
+                // that is meaningful; against a four-way question it is a guess,
+                // and this rung would submit it as the user's stated answer,
+                // irreversibly. A surface rendering the real options can name
+                // the one it answers; a binary approve key cannot.
+                guard let echo = command["question"] as? String, !echo.isEmpty else {
+                    DaemonLogger.shared.debug(
+                        "Daemon", "ask-gate press dropped: answer did not name its question (\(sessionId.prefix(8)))")
+                    return
+                }
+                guard echo == ask.activeGroup?.question else {
+                    DaemonLogger.shared.debug(
+                        "Daemon", "ask-gate press dropped: answers a superseded question (\(sessionId.prefix(8)))")
+                    broadcastSessionsList()
+                    return
+                }
+                // An answer is irreversible and a grouped prompt advances on
+                // each one, so two frames from a bouncing key would answer two
+                // different questions with the same index.
+                let now = Date()
+                if let until = askPressGuardUntil[sessionId], now < until {
+                    DaemonLogger.shared.debug(
+                        "Daemon", "ask-gate press dropped: too soon after the last one (\(sessionId.prefix(8)))")
+                    return
+                }
                 guard let label = ask.activeGroup?.options
                     .first(where: { ($0["index"]?.value as? Int) == index })?["label"]?.value as? String else {
                     DaemonLogger.shared.debug(
@@ -5831,6 +5875,7 @@ final class DaemonServer {
                     broadcastSessionsList()
                     return
                 }
+                askPressGuardUntil[sessionId] = now.addingTimeInterval(0.4)
                 if advancePendingAsk(sessionId: sessionId, label: label) {
                     // Next question group — devices swap to it on this broadcast.
                     broadcastSessionsList()

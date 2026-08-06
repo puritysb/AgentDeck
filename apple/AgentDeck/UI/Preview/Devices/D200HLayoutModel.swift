@@ -35,15 +35,14 @@
 //     model aliasing) ARE ported so text matches.
 //   • Runtime command dispatch. `DeckAction` mirrors the TS `DeckAction` union
 //     so the preview can show what a key *would* do, but nothing is executed.
-//   • Observed-session inertness. In TS, `controlMode === 'observed'` (hook-only,
-//     no PTY) nulls the action on STOP, ESC, idle-STOP, and the awaiting option
-//     cells, because those keystrokes have no delivery path. `D200HSession`
-//     carries no `controlMode`, so this mirror always models the PTY-session
-//     semantics. It changes which action a key would carry, never the key's
-//     kind, label, subtitle, or position — the layout this preview reproduces
-//     is identical either way. `liveAnswerable` (the CLI daemon found a terminal
-//     host, so observed option cells become pressable `select_option`) rides the
-//     same axis: action-only, so it is omitted here for the same reason.
+//   • Observed-session inertness on STOP, ESC and idle-STOP. In TS,
+//     `controlMode === 'observed'` (hook-only, no PTY) nulls those actions
+//     because the keystrokes have no delivery path; this mirror models the
+//     PTY-session semantics for them. Action-only, so the layout is identical
+//     either way. The awaiting OPTION cells are NOT in this exemption: they now
+//     carry `controlMode` / `liveAnswerable` / `requestId` / `question` and
+//     reproduce the three-way branch (pressable answer, Allow/Deny gate,
+//     display-only) the hardware shows.
 //   • Animation frames (`animFrame`/`animated`) — the preview is a static frame.
 //   • resvg text sanitization (ANSI/control-char stripping) — irrelevant to a
 //     native SwiftUI text surface.
@@ -67,10 +66,14 @@ import Foundation
 public struct D200HOption: Equatable, Sendable {
     public var label: String
     public var shortcut: String?
+    /// Server-assigned option index — what a press sends back. Not always the
+    /// array position: the PTY parser can drop entries. Mirrors PromptOption.
+    public var index: Int?
 
-    public init(label: String, shortcut: String? = nil) {
+    public init(label: String, shortcut: String? = nil, index: Int? = nil) {
         self.label = label
         self.shortcut = shortcut
+        self.index = index
     }
 }
 
@@ -221,6 +224,8 @@ public struct D200HDeckInput: Sendable {
     /// treated as navigable (TUI ❯ cursor) → `select_option`; otherwise a
     /// non-navigable inline prompt → `respond`.
     public var focusedSessionId: String?
+    /// Question the focused session's live options belong to, echoed on a press.
+    public var question: String?
     public var navigable: Bool
 
     public init(
@@ -228,12 +233,14 @@ public struct D200HDeckInput: Sendable {
         sessions: [D200HSession],
         usage: D200HUsage? = nil,
         focusedSessionId: String? = nil,
+        question: String? = nil,
         navigable: Bool = false
     ) {
         self.state = state
         self.sessions = sessions
         self.usage = usage
         self.focusedSessionId = focusedSessionId
+        self.question = question
         self.navigable = navigable
     }
 }
@@ -528,8 +535,14 @@ public enum D200HLayoutModel {
             let observedAnswerable = isObserved && (sess?.liveAnswerable == true)
             if !options.isEmpty {
                 for (i, opt) in options.enumerated() {
-                    var payload = ["index": "\(i)", "sessionId": sid]
-                    if let q = sess?.question, !q.isEmpty { payload["question"] = q }
+                    // The server-assigned index is what a press must send back;
+                    // the array position only happens to match when nothing was
+                    // dropped. Mirrors `opt.index ?? i` in the TS engine.
+                    var payload = ["index": "\(opt.index ?? i)", "sessionId": sid]
+                    // Echo whichever question these options belong to — the
+                    // focused live state first, then the roster row.
+                    let q = (focused ? (input.question ?? sess?.question) : sess?.question) ?? ""
+                    if !q.isEmpty { payload["question"] = q }
                     let action: D200HDeckAction = (navigable || observedAnswerable)
                         ? .command(type: "select_option", payload: payload)
                         : .command(type: "respond", payload: ["value": respondValue(opt, index: i)])

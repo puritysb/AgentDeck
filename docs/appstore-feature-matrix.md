@@ -34,7 +34,7 @@ The upgrade story exists in README, web, and developer documentation only. App S
 
 All surfaces follow the same rule:
 
-1. Render steering controls only from real `options[]` supplied by a PTY-managed session.
+1. Render steering controls only from real `options[]` the agent itself supplied — never invented ones. A PTY-managed session's options are always pressable; an observed session's are pressable only when the daemon reports `liveAnswerable`, meaning it has a way to deliver the answer (typing into that terminal, or holding the question's hook open to resolve it).
 2. An observed session never emits `requestId`.
 3. Display-only attention shows the question and “Respond in the terminal”; it does not invent Allow/Deny choices.
 4. Permission attention is keyed by `notification_type: permission_prompt`; free-text matching is legacy fallback only.

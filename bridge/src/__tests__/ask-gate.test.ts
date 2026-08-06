@@ -19,8 +19,11 @@ import {
  * daemon that cannot type into the user's terminal has for delivering a device
  * answer to the agent.
  *
- * These compose the real modules in the order `daemon-server.ts` drives them,
- * so a break in any single piece — or in how they fit together — fails here.
+ * These compose the real overlay/steering/resolver modules in the order
+ * `daemon-server.ts` drives them. The wiring itself is re-stated here rather
+ * than executed, so this suite proves the pieces fit — not that the daemon
+ * calls them correctly; the decisions that guard the daemon's own wiring live
+ * in `ask-gate.ts` and are covered by `ask-gate-decisions.test.ts`.
  * Claude's hook contract has no field for supplying a chosen option, so an
  * answered question resolves as `deny` whose reason states the answer; an
  * unanswered one releases with an EMPTY body so Claude's own picker appears in

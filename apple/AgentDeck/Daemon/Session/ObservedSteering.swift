@@ -52,15 +52,17 @@ actor ObservedSteering {
     static let askGateEnabled: Bool =
         ProcessInfo.processInfo.environment["AGENTDECK_ASK_GATE"] != "0"
 
-    /// Longer than the permission gate: the user may work through several
-    /// question groups in one call. Still under the hook curl's --max-time 60
-    /// so the release reaches Claude before curl gives up.
+    /// The whole cost of this rung lands on whoever is at that terminal: their
+    /// question picker does not appear until the hold releases. So it is kept
+    /// short enough to be tolerable when nobody is holding a device — long
+    /// enough to answer a question or two, well under the hook curl's
+    /// --max-time 60, and overridable for users who live on their deck.
     static let askHoldTimeoutSeconds: TimeInterval = {
         if let raw = ProcessInfo.processInfo.environment["AGENTDECK_ASK_GATE_HOLD_MS"],
            let ms = Double(raw), ms > 0 {
             return min(50, max(5, ms / 1000))
         }
-        return 45
+        return 20
     }()
 
     static let stopDenyReason =
@@ -321,11 +323,6 @@ actor ObservedSteering {
     /// a binary allow/deny.
     func gateKind(requestId: String) -> GateKind? {
         heldGates[requestId]?.kind
-    }
-
-    /// The open ask-gate for a session, if any.
-    func heldAskGate(sessionId: String) -> String? {
-        heldGates.first { $0.value.sessionId == sessionId && $0.value.kind == .ask }?.key
     }
 
     /// Suspend until a device decision or timeout. Resolves to "allow" /

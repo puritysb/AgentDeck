@@ -42,10 +42,24 @@ target-internal version consistency. See [RELEASING.md](RELEASING.md).
   from *before* the arrows — so every device answer silently chose the first
   option. Pressing "Blue" selected "Red". The keys are now paced apart, the
   way the dictated-prompt path already did it
+- Require an answer to name the question it answers. Several surfaces map a
+  hardware "approve" key to option 0 as a stand-in for a yes/no gate (ESP32
+  mosaic, NFC approve tags). Against a permission gate that means something;
+  against a four-way question it is a guess, and this path would have submitted
+  it as the user's stated answer. A surface that renders the real choices can
+  say which one it is answering; a binary approve key cannot, and is now
+  refused rather than guessed at
+- Hold a question only when some device can actually see it. The hold was keyed
+  off "cannot type into this terminal", which is also true of a session the
+  observer has not scanned yet — so the one case that stalled a terminal for
+  the full hold was the case where nobody could answer
 - Submit a grouped question instead of stranding it. A multi-question
   AskUserQuestion does not close when its last question is answered; it shows a
   "Review your answers → Submit answers" confirmation, which nobody was at the
-  terminal to press, so the agent waited on a form the user could not see
+  terminal to press, so the agent waited on a form the user could not see. The
+  count that decides this is what Claude rendered, not what AgentDeck managed to
+  parse — a question group dropped as malformed is still a tab in the user's
+  form
 
 ### CLI and daemon — npm
 

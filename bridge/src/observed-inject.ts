@@ -109,23 +109,37 @@ async function tmuxPaneFor(tty: string): Promise<string | undefined> {
   return parseTmuxPanes(stdout).get(tty);
 }
 
-async function injectViaTmux(tty: string, downs: number, submits = 1): Promise<boolean> {
+/** `false` = this rung is not the host, try the next one. `'partial'` = it IS
+ *  the host but the sequence broke midway, so the ladder must STOP: the keys
+ *  that did land already moved the cursor, and re-sending arrows through
+ *  another rung would select an option further down the list. */
+type TmuxOutcome = true | false | 'partial';
+
+async function injectViaTmux(tty: string, downs: number, submits = 1): Promise<TmuxOutcome> {
+  let paneId: string | undefined;
   try {
-    const paneId = await tmuxPaneFor(tty);
-    if (!paneId) return false;
+    paneId = await tmuxPaneFor(tty);
+  } catch {
+    return false; // no tmux server — this rung isn't the host
+  }
+  if (!paneId) return false;
+  let sent = 0;
+  try {
     // One key per call, paced: the TUI reads a burst as a single input frame
     // and resolves Enter against the pre-arrow cursor.
     for (let i = 0; i < downs; i++) {
       await execFileAsync('tmux', ['send-keys', '-t', paneId, 'Down'], { timeout: 2_000 });
+      sent++;
       await pause(KEY_PACE_MS);
     }
     for (let i = 0; i < submits; i++) {
       await pause(SUBMIT_PACE_MS);
       await execFileAsync('tmux', ['send-keys', '-t', paneId, 'Enter'], { timeout: 2_000 });
+      sent++;
     }
     return true;
   } catch {
-    return false; // no tmux server / pane gone — fall through the ladder
+    return sent > 0 ? 'partial' : false;
   }
 }
 
@@ -367,7 +381,13 @@ export async function injectObservedSelection(
   const submits = opts.confirmSubmit ? 2 : 1;
 
   if (tty) {
-    if (await injectViaTmux(tty, index, submits)) return { ok: true, via: 'tmux' };
+    const viaTmux = await injectViaTmux(tty, index, submits);
+    if (viaTmux === true) return { ok: true, via: 'tmux' };
+    // Some keys landed before it broke: the cursor has already moved, so
+    // falling through would send a second set of arrows on top of them.
+    if (viaTmux === 'partial') {
+      return { ok: false, reason: `tmux injection broke partway for ${tty}` };
+    }
     if (await runOsa(buildItermSelectScript(tty, index, { enter: false }), 5_000) === 'ok') {
       for (let i = 0; i < submits; i++) {
         await pause(SUBMIT_PACE_MS);

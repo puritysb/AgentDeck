@@ -187,6 +187,32 @@ surface-mirror/design-system/version 게이트 전부 통과. `bridge/src/__test
 수정 후 재검증: 기기에서 3문항을 답하니 `colour → Blue, animal → Dog, season → Winter` 로
 **누른 값 그대로** 들어가고 Submit 까지 자동으로 눌렸다.
 
+**리뷰가 잡은 것 (머지 전 수정)**: 적대적 리뷰 2건을 돌려 실기 검증도 테스트도 못 잡은 결함을
+찾았다. 공통 성질은 **조용히 틀린다**는 것 — 터미널이 비어 있거나, 아무도 고르지 않은 답이
+확정된다.
+
+- ★**"answer 는 자기가 답하는 질문을 지목해야 한다"**. ESP32 mosaic / NFC 태그는 하드웨어
+  APPROVE 키를 `select_option(0)` 으로 매핑한다. 권한 게이트에선 의미가 있지만 4지선다에선
+  추측이고, ask-gate 는 그것을 **사용자의 확정 답변으로 제출**해 버렸다. 이전엔 무해한 no-op
+  이던 코드가 새 전달경로가 생기면서 위험해진 것 — `[[deck-mirrors-lag-device-firmware]]` 의
+  반대 방향 사례다. 이제 `question` echo 없는 press 는 거부한다(진짜 선택지를 그리는 표면은
+  지목할 수 있고, 이진 승인 키는 못 한다 — 정확히 원하는 경계).
+- ★**hold 조건이 역전돼 있었다**. `injectable=false` 는 "이 터미널에 못 친다" 인 동시에
+  "관측자 로스터에 없다"(스캔 전 5초, ps 실패) 이기도 한데, 후자는 **어떤 기기에도 안 보이는
+  세션**이다. 즉 hold 가 걸리는 유일한 자연 발생 케이스가 아무도 답할 수 없는 케이스였다.
+  로스터에 없으면 hold 안 함.
+- **Submit 판정을 파싱 결과로 하고 있었다** — 버려진 malformed group 도 사용자 폼에선 탭이라
+  `groups.length` 를 믿으면 확인 화면을 못 누르고 영구 대기. `rawGroupCount` 로 판정.
+- macOS **메뉴바**만 `liveAnswerable` 게이팅에서 누락돼 죽은 버튼이 생겼다(대시보드 HUD·안드
+  로이드 2표면은 고쳐놓고). 그리고 `advance` 가 끝을 지나서도 답을 계속 append 했다.
+- ★**데몬 배선에 회귀 게이트가 없었다** — 리뷰어가 `daemon-server.ts` 를 통째로 master 로
+  되돌려도 2648 테스트가 전부 통과했다. 판단 로직을 `bridge/src/ask-gate.ts` 순수 모듈로
+  빼고 `ask-gate-decisions.test.ts` 로 덮었다(뮤테이션으로 실패 확인). 테스트 주석이 "실제
+  배선을 구동한다" 고 주장하던 것도 사실대로 고쳤다.
+- Swift ask-gate hold 기본값 45s→**20s**: 그 시간의 비용은 전부 터미널 앞 사람이 낸다(픽커가
+  안 뜬다). 부수: tmux 부분 주입 실패 시 사다리 낙하 금지(이미 들어간 화살표 위에 또 보냄),
+  주입 가드 15s→60s, `APP_REVIEW_NOTES` / 스티어링 불변식 문구 정정.
+
 **여전히 미검증**: Swift 데몬의 hold 는 실기 미확인 — 실행 중인 macOS 앱 바이너리가 7월 21일
 빌드라 이 코드가 없다(앱 재빌드/재기동 필요). Node 데몬은 tty 가 보이면 항상 주입을 택하므로
 ask-gate 가 자연 발생하지 않는다. 실물 데크(Stream Deck/D200H) 누름도 미확인.

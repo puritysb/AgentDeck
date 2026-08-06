@@ -56,6 +56,15 @@ struct AttentionTheaterView: View {
     /// requestId, or a Notification-only signal); `optionsContent` then shows a
     /// terminal hint rather than fabricating dead Yes/No/Always buttons.
     private var effectiveOptions: [PromptOption] { options }
+    /// Managed sessions always answer through their PTY. An observed one is
+    /// answerable only when the daemon says it can deliver the answer — it may
+    /// be able to type into that session's terminal, or be holding its
+    /// AskUserQuestion open to answer with our choice. Absent flag ⇒ show the
+    /// choices but send nothing, the same rule the dashboard HUD and both
+    /// Android surfaces follow. Mirrors `AttentionTheaterHUD.optionsAreActionable`.
+    private var optionsAreActionable: Bool {
+        session.controlMode != "observed" || session.liveAnswerable == true
+    }
     private var hasFreeformInputOption: Bool { effectiveOptions.contains { $0.isFreeformInput } }
     private var attentionTitle: String { hasFreeformInputOption ? "INPUT NEEDED" : "NEEDS ATTENTION" }
 
@@ -135,9 +144,11 @@ struct AttentionTheaterView: View {
     @ViewBuilder
     private var optionsContent: some View {
         let opts = effectiveOptions
-        if opts.isEmpty {
-            // Not remotely answerable — point the user to the terminal instead
-            // of showing buttons that can't drive the agent.
+        if opts.isEmpty || !optionsAreActionable {
+            // Nothing to press, or nothing a press could reach — point the user
+            // to the terminal instead of showing buttons that can't drive the
+            // agent. An observed session's choices are still worth SEEING here;
+            // they are simply a mirror of what is on the user's own screen.
             HStack(spacing: 6) {
                 Image(systemName: "terminal")
                     .font(.system(size: 11))
