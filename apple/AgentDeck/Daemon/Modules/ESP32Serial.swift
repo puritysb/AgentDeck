@@ -94,6 +94,12 @@ actor ESP32Serial {
     private var lastWriteError: String?
     private var failedPorts: [String: PortFailure] = [:]
     private var openingPorts: [String: OpenAttemptToken] = [:]
+    /// Set by `stop()`, cleared by `start()`. Port opens run on a DETACHED task
+    /// that `stop()` cannot await, so one can land after the bridge is torn down;
+    /// without this gate it would register a connection and start a read loop on
+    /// a dead module that nobody will ever stop again (each daemon restart cycle
+    /// stranded another generation of readers holding the port's FD).
+    private var isStopped = false
     private var provisionFingerprintsByPort: [String: String] = [:]
     private let statusShadow = SerialStatusShadow()
     private static let permanentBlockDuration: TimeInterval = 300  // 5 minutes
@@ -244,6 +250,7 @@ actor ESP32Serial {
     private var drainTask: Task<Void, Never>?
 
     func start() {
+        isStopped = false
         pollTask = Task { [weak self] in
             await self?.pollForDevices()
             while !Task.isCancelled {
@@ -272,6 +279,7 @@ actor ESP32Serial {
     }
 
     func stop() async {
+        isStopped = true
         pollTask?.cancel()
         heartbeatTask?.cancel()
         drainTask?.cancel()
@@ -297,6 +305,15 @@ actor ESP32Serial {
 
     /// Close all connections, invalidate read tokens, release FDs
     private func closeAllConnections() {
+        // Cancel in-flight opens FIRST. `beginOpenPort` runs the blocking open on
+        // a detached task, so one can still be mid-flight here; invalidating the
+        // token makes `openSerialDescriptor` bail out to `.cancelled`, and
+        // clearing the map makes `finishOpenPort`'s identity guard close any
+        // descriptor that still slipped through. Leaving these in place is what
+        // let an open complete after "Serial bridge stopped" and strand a reader.
+        for token in openingPorts.values { token.invalidate() }
+        openingPorts.removeAll()
+
         for conn in connections {
             conn.readToken.invalidate()
             try? conn.writeHandle?.close()
@@ -386,7 +403,16 @@ actor ESP32Serial {
     }
 
     private func pollForDevices() {
-        // Prune disconnected
+        // Prune disconnected. Retire each one explicitly rather than just
+        // dropping the struct: the read loop holds the FileHandle strongly for
+        // its whole lifetime, so `closeOnDealloc` cannot fire while the loop
+        // runs, and the loop only exits on an invalidated token. Every current
+        // disconnect site already invalidates, but a future one that forgets
+        // would leak a spinning reader plus its FD with no other symptom.
+        for conn in connections where !conn.connected {
+            conn.readToken.invalidate()
+            try? conn.writeHandle?.close()
+        }
         connections.removeAll { !$0.connected }
 
         let ports = detectPorts()
@@ -458,10 +484,14 @@ actor ESP32Serial {
     }
 
     private func finishOpenPort(port: String, token: OpenAttemptToken, result: SerialOpenResult) {
-        guard openingPorts[port] === token else {
+        guard openingPorts[port] === token, !isStopped else {
             if case .opened(let fd) = result {
                 Darwin.close(fd)
             }
+            // Clear only OUR entry: the guard may have failed because a newer
+            // attempt now owns the slot, and dropping that would let a duplicate
+            // open through.
+            if openingPorts[port] === token { openingPorts.removeValue(forKey: port) }
             publishStatusShadow()
             return
         }
