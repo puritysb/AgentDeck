@@ -74,9 +74,35 @@ surface-mirror/design-system/version 게이트 전부 통과. `bridge/src/__test
 `const` 선언한다는 걸 발견해(기동 직후 도착한 hook 이 TDZ ReferenceError) 선언을 HTTP 서버
 앞으로 올렸다.
 
-**미검증**: 실제 `claude` 세션이 deny-reason 을 답으로 받아들여 재질문 없이 진행하는지는
-실기 확인하지 않았다(채널 자체는 soft STOP 으로 검증된 것이나 문구의 효력은 별개). 실물 기기
-탭도 마찬가지. 9120 을 점유한 데몬은 구빌드라 재시작 전까지 적용되지 않는다.
+**실기 검증 (같은 날 후속)**: tmux 안의 대화형 `claude` 를 프로그램으로 몰아 전부 확인했다.
+
+- **deny-reason 은 답으로 통한다.** 격리 훅으로 ask-gate 본문을 그대로 돌려주니 픽커는 뜨지
+  않고 Claude 가 `Error:` 로 reason 을 받아 **훅이 고른 값**(각 group 의 마지막 옵션)으로
+  진행했다 — 단일/3-question 모두 재질문 없음. `FINAL = Blue/Dog/Winter`.
+- **데몬의 다중 group 파싱과 전진이 실기에서 동작한다.** `sessions_list` 가 `grp=0/3` →
+  `1/3` → `2/3` 로 TUI 와 동행했고, 지나간 질문 echo 로 보낸 press 는 폐기됐다.
+- ★**계측 함정 2건**: `claude -p` 에는 AskUserQuestion 이 아예 없어(도구 목록에 부재) 헤드리스
+  검증이 불가능하다. 그리고 첫 프로브는 `python3 -` 에 heredoc 과 stdin 을 동시에 물려 payload
+  를 못 읽었다 — 훅은 정상 발화했는데 프로브가 조용히 죽어 "메커니즘 실패" 로 오독할 뻔했다.
+
+**실기에서만 나온 버그 2건** (유닛 테스트가 볼 수 없는, 터미널이 키를 어떻게 처리하는가의
+문제라 별도 커밋으로 수정):
+
+1. ★**arrow 와 Enter 를 한 버스트로 보내면 픽커가 arrow 이전 커서로 Enter 를 해석한다.**
+   `tmux send-keys Down Enter` 한 번 호출 = 항상 0번 옵션. "Blue" 를 눌러도 "Red" 가 선택됐다.
+   실측: 배치 → Red, `Down` → 0.35s → `Enter` 분리 → Dog(정상). 텍스트 주입 경로에는 이미
+   있던 페이싱이 선택 경로에만 빠져 있었다.
+2. ★**grouped AskUserQuestion 은 마지막 답변으로 닫히지 않는다** — "Review your answers →
+   Submit answers" 확인 화면이 뜬다. 사용자가 터미널에 없으니 아무도 못 누르고 에이전트가
+   영원히 대기했다. 마지막 group 응답에만 Enter 를 하나 더 싣는다(단일 질문엔 그 단계가 없어
+   추가 Enter 가 프롬프트 창에 떨어지므로 금지).
+
+수정 후 재검증: 기기에서 3문항을 답하니 `colour → Blue, animal → Dog, season → Winter` 로
+**누른 값 그대로** 들어가고 Submit 까지 자동으로 눌렸다.
+
+**여전히 미검증**: Swift 데몬의 hold 는 실기 미확인 — 실행 중인 macOS 앱 바이너리가 7월 21일
+빌드라 이 코드가 없다(앱 재빌드/재기동 필요). Node 데몬은 tty 가 보이면 항상 주입을 택하므로
+ask-gate 가 자연 발생하지 않는다. 실물 데크(Stream Deck/D200H) 누름도 미확인.
 
 ---
 
