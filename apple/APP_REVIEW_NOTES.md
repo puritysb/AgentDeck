@@ -7,15 +7,15 @@ locale: en
 canonical: true
 status: required
 owner: Apple release maintainers
-reviewed: 2026-08-05
-revision: 2026-08-05
+reviewed: 2026-08-06
+revision: 2026-08-06
 source_of_truth: apple/APP_REVIEW_NOTES.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status:** macOS 1.0.0 was approved and released on 2026-07-21: [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497). The first iPhone/iPad submission, 1.0.2 (3901), was rejected on 2026-08-04 under Guideline 2.1(a) because the disconnected screen kept showing an activity indicator after discovery had completed. The replacement build fixes that terminal state and adds an offline Device Preview entry point.
+**Release status** (verified in App Store Connect, 2026-08-06): macOS has been on the [Mac App Store](https://apps.apple.com/app/id6784822497) since 2026-07-21, publicly at 1.0.2, with **1.0.3 (4101) approved on 2026-08-05** and set to release automatically. The first iPhone/iPad submission, 1.0.2 (3901), was rejected on 2026-08-04 under Guideline 2.1(a) because the disconnected screen kept showing an activity indicator after discovery had completed; **1.0.2 (4002)** carries the fix plus an offline Device Preview entry point and is **Waiting for Review**.
 
 _Paste the relevant sections into App Store Connect's "Notes" field when submitting `apple-v<version>`._
 
@@ -221,7 +221,7 @@ Review on a clean Mac with only AgentDeck installed. The app starts its own Swif
 
 ## Resolution Center — Guideline 2.1(a) launch indicator reply
 
-Use this response for the 2026-08-04 rejection. The correction ships as version 1.0.3, build 4101 rather than as a 1.0.2 resubmission: 1.0.2's replacement build 4002 reached TestFlight, but the same release run left macOS unbuilt and later fixes landed on top of it, so both platforms go out together under the next version:
+**Sent 2026-08-05 03:18 KST against iOS 1.0.2, build 4002** — the text below is that message as it actually went out, not a draft. This section previously staged the reply around build 4101 / version 1.0.3 on the assumption that both platforms would ship together under the next version; that is not what happened. iOS was answered as a `1.0.2` resubmission (a rejected version keeps its `MARKETING_VERSION`, and 4002 was already on TestFlight carrying the fix), while macOS went out separately as `1.0.3` / 4101. A stored reply naming a build the reviewer will not see is the exact failure this file exists to prevent, so it is kept in sync with the send:
 
 ```text
 Thank you for identifying this issue. We reproduced the behavior shown in your
@@ -234,7 +234,7 @@ attempt had already finished after 10 seconds, but the screen continued to say
 “Searching for AgentDeck…” and continued animating. This was a UI state bug, not
 a stalled network request.
 
-We corrected the issue in build 4101 (version 1.0.3):
+We corrected the issue in build 4002:
 • The activity indicator is now tied only to the bounded foreground search or an
   active connection attempt.
 • After approximately 10 seconds with no Mac found, the indicator stops and the
@@ -249,11 +249,9 @@ We corrected the issue in build 4101 (version 1.0.3):
 • We added regression coverage for the searching, connecting, permission-denied,
   reconnecting, and completed-empty-search states, plus tests that drive the real
   connection state machine and assert the indicator always stops and always
-  leaves the user an action. The corrected no-Mac paths were verified on an iPad
-  Air 11-inch simulator running iPadOS 26.5, and the same connection-state change
-  was installed on a physical iPad Air 11-inch (M2) running iPadOS 26.5.2 as build
-  4002, where it connected successfully. Build 4101 carries that identical change
-  along with later fixes to voice capture and Bluetooth display discovery.
+  leaves the user an action. We verified the corrected no-Mac paths on an iPad Air
+  11-inch (M4) simulator running iPadOS 26.5. Build 4002 was also installed and
+  connected successfully on a physical iPad Air 11-inch (M2) running iPadOS 26.5.2.
 
 To verify on a clean iPad: complete onboarding, allow Local Network access, and
 wait approximately 10 seconds without an AgentDeck Mac on the same Wi-Fi. The

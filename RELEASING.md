@@ -78,7 +78,18 @@ Tag prefixes remain because channels ship independently and may point to differe
 
 ### Apple (TestFlight / App Store)
 
-macOS has been publicly available since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and — since the 2026-07-24 approval of build 3901 — as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`, build 3901) was **rejected on 2026-08-04 under Guideline 2.1(a)**. Build `4002` carrying the correction reached TestFlight, but the same run's macOS archive died on the certificate cap, and #124 then landed a push-to-talk repair that build predates — so `1.0.2` is superseded rather than resubmitted, and both platforms ship together as `1.0.3`. A successful CI upload reaches App Store Connect/TestFlight; public App Store release remains a separate App Store Connect action.
+macOS has been publicly available since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and — since the 2026-07-24 approval of build 3901 — as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`, build 3901) was **rejected on 2026-08-04 under Guideline 2.1(a)**.
+
+**The two platforms then diverged, and their version records do not match.** Verified in App Store Connect on 2026-08-06:
+
+| Platform | Version record | Build | State |
+|---|---|---|---|
+| macOS | `1.0.3` | 4101 | Submitted 2026-08-05, **approved**; release option is *automatic* and locked |
+| iPhone/iPad | `1.0.2` | 4002 | Resubmitted 2026-08-05 with the Resolution Center reply, **Waiting for Review** |
+
+iOS was answered as a `1.0.2` resubmission rather than moved up to `1.0.3`: a rejected version keeps its `MARKETING_VERSION`, and attaching the already-uploaded 4002 kept the reply and the binary consistent. macOS had no such constraint, so it went out at `1.0.3` with the newer 4101. **Do not describe an Apple release state from the tag or from the repository's own version numbers** — a single `apple-v*` tag can produce two builds whose store-side version records differ, as it did here. Read App Store Connect → 앱 심사 / App Review, whose submission table gives version, build and state per platform in one place.
+
+A successful CI upload reaches App Store Connect/TestFlight; public App Store release remains a separate App Store Connect action.
 
 While a version sits in **Waiting for Review**, do not upload a replacement build for it: attaching one requires a developer reject, which loses the queue position without helping. Land further work on the next patch instead.
 
