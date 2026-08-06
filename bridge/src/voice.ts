@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import { spawn, execSync, type ChildProcess } from 'child_process';
-import { tmpdir, homedir } from 'os';
+import { spawn, type ChildProcess } from 'child_process';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { unlinkSync, existsSync, statSync, readFileSync } from 'fs';
 import { debug } from './logger.js';
@@ -14,7 +14,6 @@ function findBinary(candidates: string[], fallback: string): string {
   return fallback;
 }
 
-/** Check if a whisper-cli binary has Metal GPU support (native arm64 + libggml-metal). */
 /** Compute RMS energy of a 16-bit PCM WAV file (skip 44-byte header). */
 function computeRms(wavFile: string): number {
   const buf = readFileSync(wavFile);
@@ -43,18 +42,15 @@ export class VoiceManager extends EventEmitter {
     debug('Voice', `Binaries: rec=${this.recBin}, sox=${this.soxBin} (transcription: Apple Speech via bundled helper)`);
   }
 
-  /** No-op kept so callers written for the whisper-server era keep compiling.
-   *  Transcription now goes through the bundled Swift helper, which the
-   *  Foundation Models client already manages as a long-lived process. */
-  async connectToServer(): Promise<void> {
+  /** Probe the bundled Swift helper so an unavailable recognizer shows up in
+   *  the log at startup rather than on the user's first utterance. There is
+   *  nothing to connect to or tear down — the helper is a long-lived process
+   *  owned by foundation-models-helper.ts. */
+  async probeSpeechHelper(): Promise<void> {
     const status = await probeFoundationModelsHelper();
     if (!status.available) {
       debug('Voice', `Speech helper unavailable: ${status.reason ?? 'unknown'}`);
     }
-  }
-
-  disconnectFromServer(): void {
-    // Helper lifetime is owned by foundation-models-helper.ts.
   }
 
   startRecording(): void {
@@ -133,7 +129,8 @@ export class VoiceManager extends EventEmitter {
       throw new Error('Recording too short or empty');
     }
 
-    // Check audio RMS to detect silence (whisper hallucinates on silent audio)
+    // Check audio RMS to detect silence — a recognizer handed silence returns
+    // invented text rather than an error, so catch it before transcribing.
     const rms = computeRms(this.audioFile);
     debug('Voice', `Audio RMS: ${rms.toFixed(4)}`);
     if (rms < 0.001) {
@@ -141,7 +138,7 @@ export class VoiceManager extends EventEmitter {
       throw new Error('No audio detected — check microphone permission');
     }
 
-    // --- Transcription: prefer whisper-server, fallback to whisper-cli ---
+    // --- Transcription: Apple on-device Speech via the bundled helper ---
     try {
       const text = await this.transcribeViaHelper(this.audioFile);
       debug('Voice', `Transcription result: "${text.slice(0, 80)}"`);

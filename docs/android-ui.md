@@ -116,7 +116,7 @@ TIMELINE
 
 **Deck button grid**: Bridge `button_state` 프로토콜 우선, 로컬 fallback. CompactStatusBar(36dp) 상단 + 직사각형 버튼(80dp) + 넓은 ContextArea. 터치 피드백(scale 0.95+alpha 0.85), AWAITING시 전체 옵션 리스트 항상 표시, PROCESSING시 LinearProgressIndicator, IDLE시 suggestedPrompt AssistChip.
 
-**Voice**: Android AudioRecord → WAV → HTTP POST `/voice/transcribe` → whisper.
+**Voice**: Android AudioRecord → WAV → HTTP POST `/voice/transcribe` → 데몬이 번들 헬퍼(Apple 온디바이스 Speech)로 전사.
 
 **Utility proxy**: `bridge/src/utility-proxy.ts` — osascript macOS volume/brightness/media control via Android remote.
 

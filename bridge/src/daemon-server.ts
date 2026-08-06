@@ -3318,8 +3318,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   if (wakeWordEnabled) {
     voiceManager = new VoiceManager();
-    voiceManager.connectToServer().catch((err) => {
-      debug('daemon', `whisper-server connection failed: ${err}`);
+    voiceManager.probeSpeechHelper().catch((err) => {
+      debug('daemon', `speech helper probe failed: ${err}`);
     });
 
     voiceAssistant = new VoiceAssistantManager({
@@ -4912,7 +4912,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     focusRelay.stop();
     timelineRelay.stop();
     voiceAssistant?.stop();
-    voiceManager?.disconnectFromServer();
     bridgeLogStream.stop();
     // Flush synchronously — the process exits a few lines below and a pending
     // debounce timer would take the last turn's entries with it.

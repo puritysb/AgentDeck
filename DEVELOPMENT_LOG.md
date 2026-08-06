@@ -149,6 +149,37 @@ EXISTS(turns)` — 빈 껍데기 전용 술어라 실제 작업을 담은 run �
 검증: vitest 2,581 통과(신규 20건) · macOS `BUILD SUCCEEDED` · ESP32 `ips10`/`amoled`/
 `t_embed` 컴파일 · `docs:check` · `design-system:check`.
 
+### 후속 — 같은 지도를 재검증하다 나온 whisper 잔재
+
+지도를 실제 프로세스/설정으로 다시 대조하면서 걸린 나머지. **엔진은 2026-07-26 에 갈아탔는데
+그 엔진을 부르던 배선의 이름·로그·문서가 그대로 남아 있었다.**
+
+- `check-deps.ts` 가 `whisper-cli` / `whisper-server` 를 선택 의존성으로 프로브하며
+  `brew install whisper-cpp && whisper-cli --download-model large-v3-turbo` 를 안내했다.
+  **부르는 코드가 없는 바이너리를 사용자에게 설치시키는 안내**가 남아 있던 셈. 삭제.
+- `VoiceManager.connectToServer()` / `disconnectFromServer()` — 전자는 실제로는 헬퍼 프로브,
+  후자는 완전한 no-op 이었다. `probeSpeechHelper()` 로 개명하고 no-op 은 호출부(index.ts ·
+  daemon-server.ts teardown 2곳)와 함께 삭제. 실패 로그도
+  `whisper-server connection failed` → `speech helper probe failed` 로 정정 —
+  **원인이 엉뚱하게 찍히는 로그는 없느니만 못하다.**
+- `docs/daemon.md` 의 `## Whisper-server` 절이 포트 **9100** 과
+  `~/.agentdeck/whisper-server.json` 을 살아 있는 계약처럼 서술하고 있었다(둘 다 없음). 삭제.
+  `docs/protocol.md` 파일 트리의 `whisper-server-manager.ts` 줄, 아키텍처 ASCII 도식의
+  `whisper.cpp` 상자, `architecture/devices/android-ui/testing` 의 "whisper transcription"
+  서술도 함께 정정.
+
+남긴 것: "왜 뺐나" 를 적은 코드 주석, `docs/voice-setup.md § Why we removed whisper.cpp`,
+`retired-surfaces.md`, App Store 문서의 **금지 문자열 목록**(`whisper-cli` 가 *없어야 한다*는
+검증용이라 정확). 판별 기준은 하나 — **그 문장이 지금의 동작을 주장하는가, 과거를 기록하는가.**
+
+같은 재검증에서 지도 자체의 오류도 나왔다: 판정 lane 은 이 기기에서 FM→MLX 가 아니라
+`backend:"mlx"` 고정으로 **MLX 직행**(FM 미진입), `session-activity` 는 폴백이 아니라
+**휴리스틱 먼저 → FM 이 나중에 덮어쓰기**, `POST /generate` 는 "콜드 7초 회피" 가 아니라
+**왕복 4–22 s 실측**, TTS 는 한 갈래가 아니라 **둘**(기기 응답 = fm-helper `speak`,
+웨이크워드 대화 = macOS `say`). 도식은 코드보다 빨리 낡는다.
+
+검증: vitest 2,609 통과 · `pnpm build` 전체 · `docs:check` 91파일.
+
 ---
 
 ## 2026-08-05 — 자식이 살아 있다는 건 링크가 붙어 있다는 뜻이 아니다: BLE 패널 연결 상태 보고

@@ -133,7 +133,7 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 - **Discovery**: NSD mDNS (`_agentdeck._tcp`, daemon only advertises) → ADB reverse tunnel → QR pairing
 - **Auth**: Token from mDNS TXT record or QR code
 - **Special endpoints** (on daemon):
-  - `POST /voice/transcribe` — WAV upload → whisper transcription
+  - `POST /voice/transcribe` — WAV upload → on-device transcription (bundled helper, Apple Speech)
   - `GET /health` — Daemon health check (includes `mode: 'daemon'`)
   - `GET /usage` — Usage data relay
 - **ADB reverse**: Daemon polls USB devices every 30s, auto-sets `adb reverse tcp:{daemonPort}`
@@ -145,7 +145,7 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 - **Discovery**: NWBrowser (Network.framework) mDNS (`_agentdeck._tcp`, daemon only advertises) → QR pairing (VisionKit)
 - **Auth**: Token from mDNS TXT record or QR code
 - **Special endpoints**:
-  - `POST /voice/transcribe` — WAV upload → whisper transcription (AVAudioEngine 16kHz mono)
+  - `POST /voice/transcribe` — WAV upload → on-device transcription (AVAudioEngine 16kHz mono)
 - **Platform**: SwiftUI Multiplatform — single Xcode project, iOS + macOS native targets (no Mac Catalyst)
 - **Deployment target**: iOS 17.0 / iPadOS 17.0 / macOS 26.0 (macOS app now targets Apple Intelligence / Foundation Models availability; iOS remains a read-only companion)
 - **State**: `@Observable` (Observation framework) — equivalent to Android's MutableStateFlow

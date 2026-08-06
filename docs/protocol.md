@@ -43,7 +43,7 @@ Internal reference for the AgentDeck state machine, WebSocket protocol, and proj
                                         │         │                               │
 ┌──────────────────────┐  HTTP POST     │  ┌──────▼───────┐  ┌──────────────┐    │
 │  Claude Code Hooks   │───────────────►│  │ Output       │  │ Voice        │    │
-│  (settings.json)     │                │  │ Parser → SM  │  │ whisper.cpp  │    │
+│  (settings.json)     │                │  │ Parser → SM  │  │ fm-helper    │    │
 └──────────────────────┘                │  └──────────────┘  └──────────────┘    │
                                         └─────────────────────────────────────────┘
 ```
@@ -196,7 +196,7 @@ AgentDeck/
 │       ├── index.ts              # Re-exports
 │       ├── states.ts             # State enum, transitions, StateSnapshot
 │       ├── protocol.ts           # WebSocket event/command types, constants
-│       └── voice-paths.ts        # Shared binary/model path constants (rec, whisper)
+│       └── voice-paths.ts        # Shared binary/model path constants (rec, sox, wake word)
 │
 ├── bridge/                       # Bridge server (PTY + Hook + WS + Voice)
 │   └── src/
@@ -211,8 +211,7 @@ AgentDeck/
 │       ├── session-registry.ts   # Session registry + daemon.json port discovery
 │       ├── usage-tracker.ts      # Session usage tracking (tokens, cost)
 │       ├── usage-api.ts          # Anthropic API usage fetch (OAuth + Keychain)
-│       ├── voice.ts              # sox capture + whisper.cpp transcription
-│       ├── whisper-server-manager.ts  # Singleton whisper-server lifecycle (port 9100)
+│       ├── voice.ts              # sox capture + on-device transcription (bundled helper)
 │       ├── mdns.ts               # mDNS advertising (_agentdeck._tcp)
 │       ├── auth.ts               # Auth token management (~/.agentdeck/auth-token)
 │       ├── utility-proxy.ts      # Node CLI macOS osascript proxy (volume/brightness/media)

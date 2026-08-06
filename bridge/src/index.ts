@@ -311,9 +311,9 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   // Timeline log stream (OpenClaw/Claude Code)
   const bridgeLogStream = agentType === 'openclaw' ? new BridgeLogStream() : null;
 
-  // Voice server (non-blocking)
-  voiceManager.connectToServer().catch((err) => {
-    debug('agentdeck', `whisper-server connection failed: ${err}`);
+  // Speech helper probe (non-blocking)
+  voiceManager.probeSpeechHelper().catch((err) => {
+    debug('agentdeck', `speech helper probe failed: ${err}`);
   });
 
   // Voice assistant (wake word → STT → LLM → TTS)
@@ -1363,7 +1363,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     postit?.cleanup();
     utilityProxy.cleanup();
     voiceAssistant?.stop();
-    voiceManager.disconnectFromServer();
     bridgeLogStream?.stop();
     journal.close();
 

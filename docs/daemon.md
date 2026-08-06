@@ -88,10 +88,6 @@ Daemon owns port **9120** (default, fallback to 9121+ if occupied by non-daemon)
   - A user unit only auto-starts on login; for boot-without-login on a headless host the user runs `loginctl enable-linger $USER` once (surfaced as an install-time hint, not run automatically).
   - `daemon.json` discovery, port fallback, singleton guard, and graceful `/shutdown` are reused unchanged across all three platforms.
 
-## Whisper-server
-
-Uses fixed singleton port **9100** (`~/.agentdeck/whisper-server.json` info file for discovery, last session exit kills server).
-
 ## Session timeline relay
 
 `SessionTimelineRelay` (`session-timeline-relay.ts`) — daemon subscribes to sibling session bridges' WS to relay `timeline_event`/`timeline_history` events + `state_update.modelCatalog` (Claude Code OAuth catalog → daemon `cachedModelCatalog`, merged with Gateway catalog by name dedup). 10s sync interval detects new/removed sessions. Eliminates client-side `StateTimelineGenerator` duplication (Android/Apple) — daemon provides unified timeline stream for all agent types.

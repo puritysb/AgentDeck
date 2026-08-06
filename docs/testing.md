@@ -168,7 +168,7 @@ pnpm vitest run --coverage       # Terminal summary + lcov + json-summary
 | **SVG renderers** | 10 renderer files | Visual output — snapshot testing TBD |
 | **TUI dashboard** | 6 files | Terminal rendering — visual inspection |
 | **Device modules** | adb, serial, mdns, pixoo | Hardware-dependent |
-| **Voice system** | voice, whisper, TTS | Audio hardware + external process |
+| **Voice system** | voice, speech helper, TTS | Audio hardware + external process |
 | **Daemon server** | daemon-server.ts | Requires full process lifecycle |
 | **Android UI** | 31 Compose files | Compose UI testing framework TBD |
 | **Android terrarium** | 20 creature/env files | Canvas rendering — screenshot testing TBD |

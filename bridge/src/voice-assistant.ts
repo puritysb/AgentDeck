@@ -5,7 +5,7 @@
  * 1. WakeWordListener detects "오픈클로"
  * 2. Record user speech via sox/rec (reusing VoiceManager's approach)
  * 3. VAD: stop recording on silence
- * 4. Transcribe via whisper-server
+ * 4. Transcribe via the bundled helper (Apple on-device Speech)
  * 5. Route to OpenClaw Gateway (or Claude Code) via adapter
  * 6. Receive response text
  * 7. Synthesize + play via macOS say
@@ -85,7 +85,7 @@ function computeTrailingRms(wavFile: string, seconds: number): number {
 export interface VoiceAssistantOptions {
   /** Callback to send a prompt to the active agent */
   sendPrompt: (text: string) => void;
-  /** Callback to transcribe a WAV file via whisper-server */
+  /** Callback to transcribe a WAV file (Apple on-device Speech via the helper) */
   transcribeFile: (filePath: string) => Promise<string>;
   /** Function that returns true if push-to-talk is recording (mutex) */
   isPttRecording?: () => boolean;

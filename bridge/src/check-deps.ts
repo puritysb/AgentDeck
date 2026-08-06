@@ -38,18 +38,10 @@ const SHARED_DEPS: DepCheck[] = [
     required: false,
     installHint: 'brew install sox',
   },
-  {
-    name: 'whisper-cli',
-    command: 'which whisper-cli',
-    required: false,
-    installHint: 'brew install whisper-cpp && whisper-cli --download-model large-v3-turbo',
-  },
-  {
-    name: 'whisper-server',
-    command: 'which whisper-server',
-    required: false,
-    installHint: 'brew install whisper-cpp (includes whisper-server)',
-  },
+  // Transcription needs no dependency check: it runs through the bundled
+  // agentdeck-fm-helper (Apple on-device Speech). The whisper-cli /
+  // whisper-server probes that used to live here outlived the code path and
+  // told users to `brew install whisper-cpp` for a binary nothing calls.
 ];
 
 export function checkDependencies(agentType?: AgentType): { ok: boolean; warnings: string[]; agentVersion?: string } {

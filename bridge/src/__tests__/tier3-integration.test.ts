@@ -283,7 +283,7 @@ describe('Voice transcription endpoint', () => {
 
   it('returns 500 when voice manager throws', async () => {
     hookServer.setVoiceManager({
-      transcribeFile: async () => { throw new Error('whisper not found'); },
+      transcribeFile: async () => { throw new Error('speech helper not found'); },
     } as any);
 
     const wavData = Buffer.alloc(200);
@@ -297,7 +297,7 @@ describe('Voice transcription endpoint', () => {
 
     expect(res.status).toBe(500);
     const json = await res.json() as any;
-    expect(json.error).toContain('whisper not found');
+    expect(json.error).toContain('speech helper not found');
   });
 });
 
