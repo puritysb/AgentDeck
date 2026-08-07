@@ -520,9 +520,19 @@ async function collectProcessInfoWin32(): Promise<ProcInfo[]> {
       '-NoProfile', '-NonInteractive', '-Command',
       // Windows PowerShell pipes default to the OEM codepage, which mangles
       // non-ASCII command lines (C:\Users\罗宾\… is a normal path here) —
-      // pin the pipe to UTF-8 before emitting anything.
-      '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ' +
-        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize,CommandLine | ConvertTo-Json -Compress',
+      // pin the pipe to UTF-8 before emitting anything. It must be a BOM-LESS
+      // UTF8Encoding: `[System.Text.Encoding]::UTF8` carries a preamble, and
+      // Console.OutputEncoding writes that preamble into the redirected pipe,
+      // so the JSON arrives as "\uFEFF[{…" and JSON.parse throws — the scan
+      // then reports zero processes and Windows observation is blind with no
+      // error anywhere. (`parseCimProcessTable` also strips a leading BOM, so
+      // neither side alone can reintroduce the blackout.)
+      '[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding $false; ' +
+        // Project in the WQL query, not just in Select-Object: Win32_Process
+        // has ~45 properties and every one of them is marshaled per process
+        // per poll otherwise.
+        "Get-CimInstance -Query 'SELECT ProcessId,ParentProcessId,WorkingSetSize,CommandLine FROM Win32_Process'" +
+        ' | Select-Object ProcessId,ParentProcessId,WorkingSetSize,CommandLine | ConvertTo-Json -Compress',
     ], {
       encoding: 'utf8',
       timeout: 10_000,
@@ -546,7 +556,11 @@ async function collectProcessInfoWin32(): Promise<ProcInfo[]> {
 export function parseCimProcessTable(json: string): ProcInfo[] {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json);
+    // A UTF-8 BOM ahead of the payload is a JSON.parse SyntaxError, and the
+    // failure mode is total: every process is dropped and the daemon reports
+    // "nothing to observe" rather than "the scan broke". PowerShell puts one
+    // there whenever the console encoding carries a preamble.
+    parsed = JSON.parse(json.replace(/^\uFEFF/, ''));
   } catch {
     return [];
   }
@@ -598,7 +612,7 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
   const byPid = new Map(processes.map((p) => [p.pid, p]));
   const sessions: ObservedSession[] = [];
   for (const proc of processes) {
-    if (!cmdHasBinary(proc.command, 'claude') || proc.command.includes('--print')) continue;
+    if (!isClaudeSessionProcessCommand(proc.command)) continue;
     const sessionFile = findClaudeSessionFile(configDirs, proc.pid);
     if (!sessionFile) continue;
     const transcript = findClaudeTranscript(configDirs, sessionFile.cwd, sessionFile.sessionId);
@@ -710,10 +724,13 @@ export async function collectCodexSessionsFromRollouts(
  * Admission is settled downstream instead, by whether the pid holds an open
  * rollout file: an app-server with no conversation holds none and is dropped in
  * `collectCodexSessions`. The Electron helpers ship a capital-`Codex` basename
- * (`Codex (Renderer)`), so `cmdHasBinary` already excludes them.
+ * (`Codex (Renderer)` on macOS, `Codex.exe` on Windows), which the exact-case
+ * stem compare in `cmdHasBinary` excludes; the `--type=` guard is the belt to
+ * that suspenders, since only the Windows helpers carry the app's own name.
  */
 export function isCodexSessionProcessCommand(command: string): boolean {
-  return cmdHasBinary(command, 'codex') && !command.includes('grep');
+  return cmdHasBinary(command, 'codex') && !command.includes('grep') &&
+    !isElectronChildProcess(command);
 }
 
 /** Fallback session id for a rollout with no parsable `session_meta`. */
@@ -801,11 +818,20 @@ export function isAntigravityProcessCommand(command: string): boolean {
     // user actually runs for coding; the GUI app patterns below were the only
     // matches in the original "creature foundation", which left the CLI blind.
     cmdHasBinary(command, 'agy') ||
-    cmdHasBinary(command, 'antigravity') ||
+    // The Windows IDE binary is `Antigravity.exe` — capitalised, with no
+    // lowercase CLI twin to confuse it with, so this is the one matcher that
+    // may fold case. The macOS patterns below are shaped for `.app` bundles
+    // and match nothing on a Win32 command line.
+    cmdHasBinary(command, 'antigravity', { ignoreCase: true }) ||
     /\/Antigravity\.app\/Contents\/MacOS\/Antigravity(?:\s|$)/.test(command) ||
     /\bAntigravity(?:\s|$)/.test(command)
   ) &&
     !/\bAntigravity Helper\b/.test(command) &&
+    // Windows names its Electron children after the app itself, so without this
+    // one running IDE became a renderer/GPU/utility row each — a fleet of
+    // phantom sessions with no session file to admit them, since Antigravity is
+    // the one observed agent with no downstream identity gate.
+    !isElectronChildProcess(command) &&
     !command.includes('grep') &&
     !command.includes('agentdeck');
 }
@@ -814,6 +840,11 @@ export function isAntigravityProcessCommand(command: string): boolean {
 async function cwdForPids(pids: number[]): Promise<Map<number, string>> {
   const map = new Map<number, string>();
   if (pids.length === 0) return map;
+  // Windows ships no lsof, and Win32_Process carries no working directory —
+  // an explicit gap (#143) rather than a failed spawn on every 5s scan.
+  // Consequence: observed OpenCode/Antigravity sessions there fall back to
+  // their agent-name project label instead of the real directory.
+  if (process.platform === 'win32') return map;
   try {
     const args = ['-a', '-d', 'cwd', '-Fn', ...pids.map((p) => `-p${p}`)];
     const { stdout } = await execFileAsync('lsof', args, {
@@ -1119,8 +1150,13 @@ function contextWindowForModel(modelName?: string): number {
   return 0;
 }
 
+/** Claude Code's project-directory name for a cwd. Backslash and drive-colon
+ *  join the POSIX separators so a Windows cwd produces a candidate at all —
+ *  `C:\Users\r\proj` → `C--Users-r-proj`. A wrong guess costs nothing: the
+ *  caller falls through to scanning the projects directory for the session's
+ *  transcript, which is what a Windows daemon does today for every session. */
 function encodeClaudeCwd(cwd: string): string {
-  return cwd.replace(/[\/_.]/g, '-');
+  return cwd.replace(/[\/\\:_.]/g, '-');
 }
 
 // Shared resolver (git root → package.json name → basename) so a session
@@ -1155,17 +1191,55 @@ function leadingCommandTokens(command: string): string[] {
   return [quoted[1], quoted[2].split(/\s+/)[0] ?? ''];
 }
 
-function cmdHasBinary(command: string, name: string): boolean {
+/**
+ * Chromium/Electron child processes reuse their parent's argv[0], so on Windows
+ * every renderer / GPU / utility process of an Electron app carries the app's
+ * own executable path — one running IDE shows up as a dozen identical command
+ * lines. macOS names its children (`… Helper (Renderer)`) and is excluded by
+ * name; Windows has only this flag to go on. Matching the known child types
+ * rather than a bare `--type=` keeps a real CLI that happens to take a `--type`
+ * option out of the exclusion.
+ */
+function isElectronChildProcess(command: string): boolean {
+  return /--type=(renderer|gpu-process|utility|zygote|broker|crashpad-handler|ppapi|nacl-loader|plugin)\b/.test(command);
+}
+
+function cmdHasBinary(command: string, name: string, opts?: { ignoreCase?: boolean }): boolean {
   // Split paths on both separators by hand: path.basename() is
   // platform-flavored at runtime, and a Win32 CommandLine must parse the same
-  // way in macOS-run tests as on a Windows daemon. The exact-case compare
-  // stays — it is what excludes the Electron helper basenames (capital
-  // "Codex (Renderer)"); only the .exe form is case-insensitive, since the
-  // filesystem that names it is.
+  // way in macOS-run tests as on a Windows daemon.
+  //
+  // The stem compare is exact-case — it is what excludes the Electron helper
+  // basenames (capital "Codex (Renderer)", and on Windows the capital
+  // `Codex.exe` / `Claude.exe` those same helpers are named). Only the `.exe`
+  // SUFFIX folds case, since the filesystem that names it does. Folding the
+  // stem too (the earlier form) silently re-admitted every helper the macOS
+  // rule was written to keep out. `ignoreCase` is for GUI binaries that ship a
+  // capitalised name on every platform and have no lowercase CLI twin.
+  const ignoreCase = opts?.ignoreCase === true;
   return leadingCommandTokens(command).some((token) => {
     const bare = token.replace(/^"+|"+$/g, '').split(/[\\/]/).pop() ?? '';
-    return bare === name || bare.toLowerCase() === `${name}.exe`;
+    const stem = bare.replace(/\.exe$/i, '');
+    return ignoreCase
+      ? stem.toLowerCase() === name.toLowerCase()
+      : stem === name;
   });
+}
+
+/**
+ * A process that can own a standalone Claude Code session.
+ *
+ * The native installer's `claude` / `claude.exe` is the direct case. The npm
+ * install is not: on Windows `claude` is a `.cmd` shim, so the process the scan
+ * sees is `node.exe "…\@anthropic-ai\claude-code\cli.js"` and the binary name
+ * never appears in argv[0]. Matching the package path is exact enough that it
+ * cannot collide with anything else, and it costs nothing on POSIX, where the
+ * same shape appears for npm installs behind a shebang.
+ */
+export function isClaudeSessionProcessCommand(command: string): boolean {
+  if (command.includes('--print') || isElectronChildProcess(command)) return false;
+  if (cmdHasBinary(command, 'claude')) return true;
+  return /[\\/]@anthropic-ai[\\/]claude-code[\\/]cli\.js/.test(command);
 }
 
 function isDescendantOf(pid: number, ancestorPid: number, byPid: Map<number, ProcInfo>): boolean {

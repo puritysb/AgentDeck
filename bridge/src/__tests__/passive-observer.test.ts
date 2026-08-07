@@ -4,6 +4,7 @@ import {
   collectCodexSessionsFromRollouts,
   dedupeObservedSessions,
   isAntigravityProcessCommand,
+  isClaudeSessionProcessCommand,
   isCodexSessionProcessCommand,
   parseCimProcessTable,
   parseClaudeTranscript,
@@ -82,6 +83,22 @@ describe('passive-observer parsers', () => {
 
   it('returns no rows for non-JSON scan output', () => {
     expect(parseCimProcessTable('Get-CimInstance : Access is denied.')).toEqual([]);
+  });
+
+  it('parses scan output that arrives with a UTF-8 BOM', () => {
+    // Pinning the PowerShell pipe to UTF-8 writes the encoding's preamble into
+    // the redirected stream, so the payload leads with U+FEFF. JSON.parse
+    // throws on it, and the failure is total and silent: zero processes, no
+    // error, Windows observation simply blind.
+    const rows = parseCimProcessTable(`\uFEFF${JSON.stringify({
+      ProcessId: 5100,
+      ParentProcessId: 4321,
+      WorkingSetSize: 1_048_576,
+      CommandLine: 'codex.exe app-server',
+    })}`);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.pid).toBe(5100);
   });
 
   it('summarizes Claude transcripts and redacts tool secrets', () => {
@@ -313,6 +330,58 @@ describe('passive-observer parsers', () => {
     expect(isCodexSessionProcessCommand('C:\\Users\\robin\\.local\\bin\\codex.exe --model gpt-5.4')).toBe(true);
     // The renderer-helper exclusion must survive the .exe tolerance.
     expect(isCodexSessionProcessCommand('C:\\apps\\Codex --type=renderer')).toBe(false);
+    // Windows names the Electron helper after the app: `Codex.exe`, capital C.
+    // Folding the whole basename to lowercase for the .exe compare re-admitted
+    // exactly the helpers the exact-case rule exists to keep out — only the
+    // suffix may fold.
+    expect(isCodexSessionProcessCommand(
+      '"C:\\Users\\robin\\AppData\\Local\\Programs\\ChatGPT\\Codex.exe" --type=renderer',
+    )).toBe(false);
+    expect(isCodexSessionProcessCommand(
+      '"C:\\Users\\robin\\AppData\\Local\\Programs\\ChatGPT\\Codex.exe"',
+    )).toBe(false);
+    // A case-insensitive SUFFIX is still tolerated — the filesystem names it.
+    expect(isCodexSessionProcessCommand('C:\\Users\\robin\\.local\\bin\\codex.EXE')).toBe(true);
+  });
+
+  it('finds an npm-installed Claude Code, which never puts "claude" in argv[0]', () => {
+    // On Windows `claude` is a .cmd shim, so the process the scan sees is
+    // node.exe running the package's cli.js — the binary name is nowhere in
+    // the command line and the old matcher dropped the session entirely.
+    expect(isClaudeSessionProcessCommand(
+      '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\robin\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js"',
+    )).toBe(true);
+    expect(isClaudeSessionProcessCommand(
+      '/usr/local/bin/node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js',
+    )).toBe(true);
+    // The native installer's binary, both spellings.
+    expect(isClaudeSessionProcessCommand('/Users/robin/.local/bin/claude')).toBe(true);
+    expect(isClaudeSessionProcessCommand('"C:\\Users\\robin\\.local\\bin\\claude.exe"')).toBe(true);
+    // The desktop app and its Electron children are not a CLI session.
+    expect(isClaudeSessionProcessCommand(
+      '"C:\\Users\\robin\\AppData\\Local\\AnthropicClaude\\app-1.2.3\\Claude.exe" --type=renderer',
+    )).toBe(false);
+    // Non-interactive one-shots stay excluded.
+    expect(isClaudeSessionProcessCommand('/Users/robin/.local/bin/claude --print "hi"')).toBe(false);
+    // An unrelated node process must not be swept in.
+    expect(isClaudeSessionProcessCommand('node /Users/robin/src/server.js')).toBe(false);
+  });
+
+  it('drops Electron child processes that reuse the app binary name', () => {
+    // One running Antigravity IDE on Windows is a dozen processes that all
+    // report `Antigravity.exe`. Antigravity is the one observed agent with no
+    // downstream identity gate, so each child became its own phantom session.
+    const parent = '"C:\\Users\\robin\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe"';
+    expect(isAntigravityProcessCommand(parent)).toBe(true);
+    for (const type of ['renderer', 'gpu-process', 'utility', 'crashpad-handler']) {
+      expect(isAntigravityProcessCommand(`${parent} --type=${type}`)).toBe(false);
+    }
+    // macOS shapes are unchanged: the CLI, the app binary, the named helper.
+    expect(isAntigravityProcessCommand('/opt/homebrew/bin/agy')).toBe(true);
+    expect(isAntigravityProcessCommand('/Applications/Antigravity.app/Contents/MacOS/Antigravity')).toBe(true);
+    expect(isAntigravityProcessCommand(
+      '/Applications/Antigravity.app/Contents/Frameworks/Antigravity Helper (Renderer).app/Contents/MacOS/Antigravity Helper (Renderer)',
+    )).toBe(false);
   });
 
   it('marks internal subagent rollouts from session_meta source', () => {
