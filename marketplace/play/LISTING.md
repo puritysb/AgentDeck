@@ -8,29 +8,55 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
-## Blocked: developer account verification (2026-08-07)
+## Blocked: phone verification, and it needs the owner account (2026-08-07)
 
 **Nothing can be uploaded yet, and the reason is not the artifact.** The Play
-Console home shows *"앱을 게시하려면 개발자 계정 설정을 완료하세요"* and the
-**Create app button is locked** — there is no app record to upload to. Two
-verification steps are outstanding, and the console states that **both are
-restricted to the account owner**:
+Console home still shows *"앱을 게시하려면 개발자 계정 설정을 완료하세요"* and the
+**Create app button is locked** — there is no app record to upload into.
 
-| Step | Console note | What it takes |
-|---|---|---|
-| **Organization website verification** | "계정 소유자만 조직의 웹사이트를 제공하고 인증할 수 있습니다" | Register the org's primary site in **Google Search Console**, enter that URL in account details, then send the verification request — it goes to the owner registered in Search Console |
-| **Phone number verification** | "계정 소유자만 전화번호를 인증할 수 있습니다" | Owner verifies by phone |
+| Step | State |
+|---|---|
+| Organization website verification | **Done.** `https://foundby.kr/` carries the green check on the developer account page, and the item has dropped off the console home |
+| Phone number verification | **Outstanding** — see below |
 
-Note for the website step: the site this project publishes is
-`https://puritysb.github.io/AgentDeck/`, a `github.io` subdomain. Search Console
-takes it as a **URL-prefix property** verified by an HTML file or meta tag,
-which GitHub Pages can serve — a domain-level property is not available for a
-subdomain you do not control the DNS for.
+### Why the phone step does not work
 
-Everything downstream of this — creating the app, the store listing, the
-internal-track upload, data safety, content rating — stays unreachable until
-both are green. The AAB itself is ready and was built and signed against
-`targetSdk 36`.
+Two numbers have to be verified, not one, and both currently read
+`+821052298209` with no check mark beside them:
+
+- **연락처 전화번호 / contact phone** — how Google reaches the developer; never shown on Play
+- **개발자 전화번호 / developer phone** — published as part of the public developer profile, and separate from any per-app support number
+
+The controls to verify them **do not render for the signed-in account**. The
+account details page states plainly: *"계정 소유자만 수정할 수 있는 페이지입니다"*
+— this page is only editable by the account owner. There is no *인증 / Verify*
+button next to either number, while the two email addresses beside them
+(`puritysb@gmail.com`, `admin@foundby.kr`) already show green checks, so the
+contrast is not ambiguity about where to click.
+
+**The owner is a different Google account.** The developer account page lists
+계정 소유자 as **`nine6484@gmail.com` (최승범)**, while the browser session is
+`puritysb@gmail.com`. Phone verification has to be done from the owner's login;
+no permission grant to the other account substitutes for it.
+
+### The order the console requires
+
+From the phone-verification page itself:
+
+1. Finish every other verification task on the console home first, identity
+   verification included. (Now satisfied — website is the one that was pending.)
+2. Open 계정 세부정보 / Account details.
+3. Check that both numbers are correct.
+4. Press **인증** on *each* number; the code arrives by SMS **or** voice call.
+5. Enter each code and confirm.
+
+Both numbers must complete step 4-5. If SMS does not arrive, the console
+suggests the voice-call option, and points at support when a carrier or IVR
+system blocks the call.
+
+Everything downstream — creating the app, the store listing, the internal-track
+upload, data safety, content rating — stays unreachable until this is green.
+The AAB is ready and signed against `targetSdk 36`.
 
 ## Release gate
 
