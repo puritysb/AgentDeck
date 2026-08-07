@@ -2,6 +2,47 @@
 
 ---
 
+## 2026-08-07 — LAN 보안 리포트 2차(#149): 첫 외부 보안 PR 머지와 후속 보강
+
+### 문제
+
+#145 리포터(jcarberator)의 후속 보고: 1.0.9 에서도 **UDP 9121 디스커버리 비컨이
+페어링 토큰을 평문 브로드캐스트** — #145 스윕이 `/health`·mDNS TXT 만 막고, 설계상
+같은 페이로드를 나르는 세 번째 채널(UDP fallback)을 놓쳤다. 리포터가 이번에는 수정
+PR(#150)까지 직접 제출했고, 검증 과정에서 인접 누출 두 건이 추가 확인됐다: 시작
+로그의 "Pairing URL:" 이 `core.wsUrl`(`?token=` 포함)을 장기 로그 파일에 남기고,
+세션 브리지 moduleConfigs 에 `broadcast` 키가 없어 `--local` 에서도 비컨이 돌았다
+(`'auto'` 기본 활성화 — mDNS 만 daemon-only 로 막혀 있었다).
+
+### 해결
+
+**PR #150 을 그대로 머지**(squash, author=jcarberator — 첫 외부 보안 기여): 비컨
+토큰 제거, 시작 로그를 `agentdeck qr` 안내로 교체, `startSession` 초크포인트에서
+`mdns`/`broadcast` 전 호출자 강제 off (LAN 광고는 데몬 허브만), 회귀 테스트
+`discovery-security.test.ts` (구 4번째 인자를 일부러 넘기는 sentinel 트릭 포함).
+
+후속 PR 로 보강: 비컨에 `authRequired: true` 광고 (public `/health` 와 동일 의미론
+— 리포터의 이슈 제안이었으나 PR 에는 빠져 있던 것), 테스트의 정확-일치 기대값을
+**비밀 아님을 심사한 필드 화이트리스트**로 명시 + 주기 재송신 무토큰 단언 추가.
+Swift 데몬은 UDP 모듈이 없고 페어링 URL 로그도 없음을 확인 (무영향). 수정판 설치 후
+`agentdeck token rotate` 권고 (방송된 토큰은 유출로 간주) — 릴리스 노트에 포함.
+
+### 교훈
+
+**시크릿 유출 스윕은 채널별 수정이 아니라 크리덴셜 값 기준 역추적으로 끝내야 한다.**
+#145 는 리포트에 명시된 채널을 고쳤지만, mDNS 의 폴백으로 존재하는 — 즉 설계상 같은
+필드를 나르는 — UDP 비컨과 로그 출력이 남았다. `grep authToken\|wsUrl` 한 번이면
+나왔을 경로들. 토큰 값이 닿는 모든 send/publish/log/serialize 지점을 열거하고, 그
+열거를 채널별 시크릿-부재 게이트로 고정해야 다음 채널 추가 때도 걸린다. 그리고
+**외부 보안 리포터가 재방문했다는 것은 첫 수정의 스윕 폭을 신뢰하지 않았다는 뜻**이다
+— 두 번째는 PR 로 왔고, 옳았다.
+
+검증: vitest 169 파일 전부 green (`discovery-security.test.ts` 확장), `pnpm build`,
+docs/design-system 게이트 green. 문서: docs/daemon.md § LAN security model,
+docs/devices.md 인증 컬럼 현행화, esp32-client-contract.md, CLAUDE.md 불변식.
+
+---
+
 ## 2026-08-07 — LAN 보안 리포트(#145): 페어링 토큰을 스스로 나눠주던 데몬
 
 ### 문제

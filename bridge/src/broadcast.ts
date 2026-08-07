@@ -17,7 +17,9 @@ import { getLanIp } from '@agentdeck/shared';
  * Subnet broadcast is unicast-friendly IGMP-wise and is forwarded by every
  * WiFi AP we have seen, so the device's UDP listener picks it up even when
  * mDNS is blocked. The beacon contains discovery metadata only (ip / port /
- * project / agent). It must never contain the pairing token: UDP broadcast is
+ * project / agent) plus `authRequired`, matching the unauthenticated /health
+ * semantics: discovery says "a daemon is here and pairing is required" and
+ * nothing more. It must never contain the pairing token: UDP broadcast is
  * visible to every peer on the segment, just like multicast mDNS. A client
  * must already hold a token obtained through explicit pairing/provisioning.
  */
@@ -81,6 +83,9 @@ export function advertiseUdpBroadcast(
       port,
       project: projectName,
       agent: agentType,
+      // Same signal the unauthenticated /health carries: tells a client to
+      // open its pairing flow instead of expecting a self-serve credential.
+      authRequired: true,
     };
     const buf = Buffer.from(JSON.stringify(payload));
 

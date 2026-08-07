@@ -55,15 +55,33 @@ describe('LAN discovery credential boundary (issue #145)', () => {
       const text = (message as Buffer).toString('utf8');
       expect(port).toBe(9121);
       expect(['255.255.255.255', '192.0.2.255']).toContain(address);
+      // Exact non-secret field whitelist — a new beacon field must be added
+      // here deliberately, with the "is this a secret?" question answered.
+      // `authRequired` mirrors the unauthenticated /health: discovery says
+      // "a daemon is here and pairing is required" and nothing more.
       expect(JSON.parse(text)).toEqual({
         v: 1,
         ip: '192.0.2.42',
         port: 9120,
         project: 'AgentDeck',
         agent: 'daemon',
+        authRequired: true,
       });
       expect(text).not.toContain('sentinel-pairing-secret');
       expect(text).not.toMatch(/token|secret|credential/i);
+    }
+
+    cleanup();
+  });
+
+  it('keeps the beacon secret-free across periodic re-sends', async () => {
+    const cleanup = advertiseUdpBroadcast(9120, 'AgentDeck', 'daemon');
+
+    await vi.advanceTimersByTimeAsync(500 + 3 * 2_000); // initial + three interval ticks
+    // Two destinations (limited + subnet broadcast) per tick, four ticks.
+    expect(socketMocks.send).toHaveBeenCalledTimes(8);
+    for (const [message] of socketMocks.send.mock.calls) {
+      expect((message as Buffer).toString('utf8')).not.toMatch(/token|secret|credential/i);
     }
 
     cleanup();

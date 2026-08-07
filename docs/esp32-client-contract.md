@@ -40,7 +40,7 @@ port-sync discipline is.
 - **WiFi WebSocket** to the daemon on **port 9120** (`BRIDGE_WS_PORT`), discovered via mDNS
   `_agentdeck._tcp`. Reconnect with backoff (`RECONNECT_BACKOFF_MS` ladder 1→2→4→8s). Also
   the fallback UDP-broadcast discovery on 9121 that the X3 port carries. The UDP beacon is
-  discovery-only (`v`, `ip`, `port`, `project`, `agent`) and never contains a pairing token;
+  discovery-only (`v`, `ip`, `port`, `project`, `agent`, `authRequired`) and never contains a pairing token;
   the client must already hold one from an explicit provisioning flow.
 - **USB Serial JSON** (115200, newline-framed) is the other first-party transport. A
   WiFi-only client (X3/X4, InkDeck) can skip serial, but then it is only registrable once it
