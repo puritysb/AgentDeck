@@ -26,16 +26,32 @@ describe('ulanzi manifest ↔ localization alignment', () => {
     expect(manifestActions[0].Name).toBe('AgentDeck');
   });
 
-  for (const locale of ['en'] as const) {
+  // `en` is the manifest's own language, so its entries must match the manifest
+  // text exactly; a translated file must be aligned and non-empty, not equal —
+  // asserting equality there would forbid translating at all.
+  it('en.json repeats the manifest text verbatim', () => {
+    const actions = readJson('en.json').Actions as Array<{ Name: string; Tooltip?: string }>;
+    expect(actions).toHaveLength(manifestActions.length);
+    actions.forEach((action, index) => {
+      expect(action.Name).toBe(manifestActions[index].Name);
+      expect(action.Tooltip).toBe(manifestActions[index].Tooltip);
+    });
+  });
+
+  for (const locale of ['zh_CN', 'zh_HK', 'ja_JP', 'ko_KR'] as const) {
     it(`${locale}.json Actions is index-aligned with the manifest`, () => {
       const localization = readJson(`${locale}.json`);
       const actions = localization.Actions as Array<{ Name: string; Tooltip?: string }>;
 
       expect(actions).toHaveLength(manifestActions.length);
-      actions.forEach((action, index) => {
-        expect(action.Name).toBe(manifestActions[index].Name);
-        expect(action.Tooltip).toBe(manifestActions[index].Tooltip);
+      actions.forEach((action) => {
+        expect(action.Name?.trim()).toBeTruthy();
+        expect(action.Tooltip?.trim()).toBeTruthy();
       });
+      // A translated file that still carries the English tooltip is an
+      // untranslated file wearing a translated filename.
+      expect(actions[0].Tooltip).not.toBe(manifestActions[0].Tooltip);
+      expect(String(localization.Description ?? '').trim()).toBeTruthy();
     });
   }
 });

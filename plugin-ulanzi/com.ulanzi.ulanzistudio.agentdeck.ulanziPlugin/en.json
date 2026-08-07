@@ -7,5 +7,36 @@
       "Tooltip": "AgentDeck — fill your keys with this; each key reflows by agent state (sessions, options, mode, stop, usage). Press to act."
     }
   ],
-  "Localization": {}
+  "Localization": {
+    "lede": "One key per AI coding session — live state on the key, and your answer sent back.",
+    "setupHeading": "Setup in 3 steps",
+    "openTutorial": "Setup tutorial",
+    "s1Title": "Run the AgentDeck daemon",
+    "s1MacApp": "Install AgentDeck Dashboard — free on the Mac App Store, macOS 26 or later — and open it. No terminal needed.",
+    "s1MacOr": "On an earlier macOS, or where the App Store app is not offered, use Terminal:",
+    "s1Win": "Open Terminal or PowerShell and run:",
+    "s1Note": "Node.js 22+ is the only prerequisite. The Claude and Codex CLIs are optional — install neither and setup still completes.",
+    "s2Title": "Start an AI coding agent",
+    "s2Body": "In any project folder, start your agent the way you normally do — claude, codex or opencode. There is no AgentDeck-specific command.",
+    "s2Note": "Desktop apps count too: macOS picks up Codex sessions from the ChatGPT app once Codex integration is registered — the terminal setup does it for you, and the App Store app asks in Settings.",
+    "s3Title": "Fill your keys",
+    "s3Body": "Drop the AgentDeck action on every key you want to use — it is the only action there is, and each key decides for itself what to show. The layout spreads over exactly the keys you placed: one per session first, then the answer keys, mode, stop and usage as room allows.",
+    "s3Note": "Before steps 1 and 2 are done, the middle key reads OFFLINE and the rest sit dim. That is the plugin working — it is telling you the daemon is the missing piece.",
+    "thin": "AgentDeck is a thin client, like an OBS plugin: it draws what the local daemon reports and bundles no daemon of its own.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "recheck": "Check again",
+    "guide": "Full guide",
+    "done": "Done",
+    "checking": "Looking for the AgentDeck daemon…",
+    "foundApp": "AgentDeck app is running (port {port}).",
+    "foundCli": "AgentDeck daemon is running (port {port}).",
+    "foundOpaque": "Something is answering on port {port} — that is the daemon.",
+    "notFound": "No AgentDeck daemon answered on this computer.",
+    "detailNoSession": "No agent session yet. Do step 2 and the keys fill in.",
+    "detailSession": "A session is live. Your keys should be showing it now.",
+    "detailOpaque": "This panel cannot read the details from here, so step 2 is unchecked. The keys themselves are the real indicator.",
+    "detailNotFound": "Start with step 1. If it is running and this still finds nothing, the check may be blocked here — trust the keys.",
+    "tutorialOpened": "Opens in a separate window, which may appear behind the Ulanzi Studio window."
+  }
 }

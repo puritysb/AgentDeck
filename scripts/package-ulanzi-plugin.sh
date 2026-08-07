@@ -41,7 +41,16 @@ printf '{ "type": "module" }\n' > "$OUT/plugin/package.json"
 
 echo "==> copy manifest + localization + resources"
 cp "$SRC_PLUGIN/manifest.json" "$OUT/manifest.json"
-cp "$SRC_PLUGIN/en.json" "$OUT/en.json" 2>/dev/null || true
+# Every <language>.json, not just en: the SDK resolves the language file at the
+# plugin root for BOTH the palette name/tooltip and the Property Inspector's
+# `Localization` map, so shipping one language silently un-translates the setup
+# tutorial for everyone else.
+for lang in "$SRC_PLUGIN"/*.json; do
+  case "$(basename "$lang")" in
+    manifest.json) continue ;;
+  esac
+  cp "$lang" "$OUT/$(basename "$lang")"
+done
 cp -R "$SRC_PLUGIN/resources/." "$OUT/resources/"
 
 # Property Inspector + the host stylesheet it borrows. The manifest names this
@@ -60,6 +69,22 @@ if [ -n "$PI_PATH" ] && [ ! -f "$OUT/$PI_PATH" ]; then
   echo "ERROR: manifest declares PropertyInspectorPath '$PI_PATH' but it is not in the package" >&2
   exit 1
 fi
+
+# The inspector loads the SDK's Property-Inspector libraries, its shared skin,
+# and the H5 tutorial page it opens through $UD.openView. Any one of them
+# missing is a panel that renders but cannot localize, or a tutorial button
+# that opens an empty window — both worse than the plain page 1.0.2 shipped.
+for required in \
+  libs/js/constants.js libs/js/eventEmitter.js libs/js/timers.js \
+  libs/js/utils.js libs/js/ulanziApi.js libs/css/uspi.css \
+  property-inspector/setup-common.js property-inspector/inspector.js \
+  property-inspector/tutorial.html property-inspector/tutorial.js \
+  property-inspector/tutorial.css en.json; do
+  if [ ! -f "$OUT/$required" ]; then
+    echo "ERROR: required Property Inspector file missing from the package: $required" >&2
+    exit 1
+  fi
+done
 
 echo "==> build runtime node_modules (resvg native + ws) via npm"
 TMP="$(mktemp -d)"

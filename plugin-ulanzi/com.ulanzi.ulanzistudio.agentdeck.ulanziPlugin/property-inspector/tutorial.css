@@ -1,0 +1,59 @@
+/*
+  Shared skin for the two setup surfaces: the Property Inspector column
+  (inspector.html, 320px inside Studio) and the H5 tutorial page
+  (tutorial.html, opened by $UD.openView). One file so the two cannot drift —
+  a tutorial that looks like a different product in its own window is worse
+  than no second surface.
+
+  Colour comes from the host's uspi.css variables and `currentColor` only. No
+  hex literals: the panel must read as part of Ulanzi Studio, and this file is
+  scanned by design/lint.sh.
+*/
+
+html, body { background: var(--uspi-bodybg); margin: 0; }
+
+/* ── stepper ────────────────────────────────────────────────────────── */
+.ad-step { display: flex; gap: 10px; margin: 0 0 14px; line-height: 1.45; }
+.ad-step-n { position: relative; flex: 0 0 20px; height: 20px; margin-top: 1px;
+             border-radius: 999px; border: 1px solid currentColor; opacity: 0.4;
+             font-size: 11px; line-height: 18px; text-align: center; }
+.ad-step-n svg { display: none; width: 12px; height: 12px; vertical-align: -2px; }
+.ad-step-b { flex: 1 1 auto; min-width: 0; }
+.ad-step-t { font-size: 13px; margin: 0 0 6px; }
+.ad-step-x { font-size: 12px; margin: 0 0 6px; opacity: 0.75; }
+.ad-step-note { font-size: 11px; margin: 6px 0 0; opacity: 0.55; }
+
+/* Done: the badge becomes a check in the host's accent. Current: full
+   contrast. Not yet: dimmed, so the eye lands on the one step that matters. */
+.ad-step.is-done { opacity: 0.55; }
+.ad-step.is-done .ad-step-n { border-color: var(--uspi-theme); color: var(--uspi-theme); opacity: 1; }
+.ad-step.is-done .ad-step-n span { display: none; }
+.ad-step.is-done .ad-step-n svg { display: inline-block; }
+.ad-step.is-now .ad-step-n { border-color: var(--uspi-theme); color: var(--uspi-theme); opacity: 1; }
+.ad-step.is-todo { opacity: 0.72; }
+
+/* ── illustrations ──────────────────────────────────────────────────── */
+/* The panel is 320px in Studio today, but an SVG at width:100% grows without
+   bound if it is ever given more room — cap it at the width it was drawn for. */
+.ad-art { display: block; width: 100%; max-width: 264px; height: auto; margin: 0 0 8px;
+          color: inherit; opacity: 0.85; }
+.ad-art .lit { color: var(--uspi-theme); }
+
+/* ── platform tabs ──────────────────────────────────────────────────── */
+.ad-tabs { display: flex; gap: 6px; margin: 0 0 8px; }
+.ad-tab { flex: 0 0 auto; width: auto; height: 24px; padding: 0 10px; font-size: 12px;
+          line-height: 22px; border-radius: 999px; border: 1px solid currentColor;
+          background: none; color: inherit; opacity: 0.5; }
+.ad-tab[aria-selected="true"] { border-color: var(--uspi-theme); color: var(--uspi-theme); opacity: 1; }
+
+/* ── command row ────────────────────────────────────────────────────── */
+.ad-cmd { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; }
+.ad-cmd code { flex: 1 1 auto; min-width: 0; overflow-x: auto; white-space: nowrap;
+               padding: 6px 8px; font-size: 12px; line-height: 16px;
+               border-radius: var(--uspi-borderradius);
+               background: var(--uspi-inputbg); border: 1px solid var(--uspi-bordercolor); }
+.ad-copy { flex: 0 0 auto; width: auto; height: 28px; padding: 0 10px; font-size: 12px;
+           line-height: 26px; border-radius: 8px; }
+
+.ad-foot { margin: 14px 0 0; font-size: 11px; line-height: 1.5; opacity: 0.55; }
+.hide { display: none; }

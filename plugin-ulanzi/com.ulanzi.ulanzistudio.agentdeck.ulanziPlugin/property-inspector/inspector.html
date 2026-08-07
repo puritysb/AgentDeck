@@ -1,145 +1,253 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,minimal-ui,viewport-fit=cover">
+<title>AgentDeck</title>
 <!--
-  AgentDeck Property Inspector.
+  AgentDeck Property Inspector — the setup tutorial inside Studio's
+  configuration section.
 
-  Ulanzi's review (2026-08-05) reported that dragging the action onto a key left
-  testers with no instructions. The action had no PropertyInspectorPath, so
-  Ulanzi Studio showed its own "Setup / Click for guide" placeholder with
-  nothing behind it. This panel is what that click now opens.
+  History. Ulanzi's review (2026-08-05) reported that dragging the action onto a
+  key left testers with no instructions: the action declared no
+  PropertyInspectorPath, so Studio showed its own "Setup / Click for guide"
+  placeholder with nothing behind it. 1.0.2 put a written explainer here. The
+  review then asked (2026-08-07) for an H5 setup tutorial in this section so a
+  new user "can follow the instructions to set up their environment and avoid
+  getting stuck on the first step", and invited a better suggestion.
 
-  It carries no settings — the action configures itself — so it is deliberately
-  an explainer plus a live connection check. Styling comes from the host's own
-  uspi.css and `currentColor`; the panel must read as part of Ulanzi Studio, and
-  painting AgentDeck's palette here would both look foreign and put raw hex in a
-  file the design lint scans.
+  What this is. A LIVE stepper, not a picture of three steps: it probes the
+  local daemon and marks each step done or current, so "why are my keys
+  OFFLINE?" is answered here instead of inferred. The full-page H5 tutorial the
+  review asked for is `tutorial.html`, opened from the button below through the
+  SDK's own `$UD.openView`.
+
+  Written on the SDK's rails (UlanziDeckPlugin-SDK, analogclock reference
+  plugin), not around them:
+  - `libs/js/*` + `$UD.connect()`, so Studio owns the language and the panel
+    behaves like every other plugin's.
+  - Localization is `data-localize` keys resolved against the `Localization` map
+    in `<language>.json` — the same files that localize the action name, and the
+    files Ulanzi's own translators can edit. `$UD` reads the language Studio
+    passes, so this panel follows Studio's UI language, not the OS locale.
+  - **English lives in this markup**, never only in JSON. `localizeUI()` runs
+    when the socket opens; if Studio is unreachable the panel must still read as
+    a finished tutorial rather than a blank column. For the same reason
+    `.uspi-wrapper` is NOT hidden-until-connected the way the SDK sample hides
+    it — a panel that renders nothing is the exact failure that opened this
+    review.
+  - Colour comes from the host's uspi.css variables and `currentColor`; the
+    package ships no image assets (Studio's own `libs/assets/*.svg` are not part
+    of a plugin bundle, so classes that depend on them — .tip,
+    .uspi-refresh-btn — render blank here and are avoided).
 -->
 <link rel="stylesheet" href="../libs/css/uspi.css">
+<link rel="stylesheet" href="./tutorial.css">
 <style>
-  /* Colour comes from the host's own variables and currentColor — the panel
-     follows Studio's theme instead of pinning its own palette (and keeps raw
-     hex out of a file the design lint scans). uspi.css declares --uspi-bodybg
-     but never applies it, so a bare webview renders light-on-light; apply it
-     here rather than assuming the host paints the background for us. */
-  html, body { background: var(--uspi-bodybg); margin: 0; }
-  body { padding: 12px 14px; }
-  .ad-step { display: flex; gap: 10px; margin: 0 0 12px; line-height: 1.45; }
-  .ad-step-n { flex: 0 0 20px; height: 20px; border-radius: 999px; border: 1px solid currentColor;
-               opacity: 0.55; font-size: 11px; line-height: 19px; text-align: center; }
-  .ad-step-b { flex: 1 1 auto; }
-  .ad-or { margin: 6px 0 0; opacity: 0.62; font-size: 12px; }
-  .ad-status { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; }
-  .ad-dot { width: 8px; height: 8px; border-radius: 999px; background: currentColor; opacity: 0.35; }
-  .ad-dot.on { opacity: 1; }
-  .ad-status-text { font-size: 13px; }
-  .ad-detail { opacity: 0.62; font-size: 12px; margin: 0 0 12px; }
-  code { font-size: 12px; padding: 1px 4px; border-radius: 4px; border: 1px solid currentColor;
-         opacity: 0.85; white-space: nowrap; }
+  /* Panel-only layout. Everything shared with the H5 page (steps, artwork,
+     command row) lives in tutorial.css so the two surfaces cannot drift. */
+  body { padding: 12px 14px 16px; }
+  .ad-lede { margin: 0 0 10px; font-size: 12px; line-height: 1.5; opacity: 0.7; }
+  .ad-status { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 4px; }
+  .ad-dot { flex: 0 0 8px; width: 8px; height: 8px; margin-top: 6px; border-radius: 999px;
+            background: currentColor; opacity: 0.3; }
+  .ad-dot.on { background: var(--uspi-theme); opacity: 1; }
+  .ad-status-text { font-size: 13px; line-height: 1.5; }
+  .ad-detail { margin: 0 0 4px 16px; font-size: 12px; line-height: 1.45; opacity: 0.62; }
   /* uspi-item stacks its children, which overlapped the button and the link at
      the inspector's real 320px width. Lay this row out explicitly. */
-  .ad-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
-  .ad-actions button { white-space: nowrap; }
+  .ad-actions { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; flex-wrap: wrap; }
+  .ad-actions button { width: auto; height: 28px; padding: 0 14px; font-size: 12px;
+                       line-height: 26px; border-radius: 8px; white-space: nowrap; }
+  .ad-actions a { font-size: 12px; }
 </style>
 </head>
 <body>
 <div class="uspi-wrapper">
 
-  <div class="uspi-heading" data-localize>AgentDeck</div>
+  <div class="uspi-heading">AgentDeck</div>
+  <p class="ad-lede" data-localize="lede">One key per AI coding session — live state on the key, and your answer sent back.</p>
 
   <div class="ad-status">
     <span class="ad-dot" id="dot"></span>
-    <span class="ad-status-text" id="status">Checking for the AgentDeck daemon…</span>
+    <span class="ad-status-text" id="status">Looking for the AgentDeck daemon…</span>
   </div>
   <p class="ad-detail" id="detail"></p>
 
-  <div class="uspi-heading" data-localize>Getting started</div>
+  <div class="ad-actions">
+    <button id="tutorial" class="primary" type="button" data-localize="openTutorial">Setup tutorial</button>
+  </div>
+  <!-- Where the window goes. Verified on Ulanzi Studio + D200H (2026-08-08):
+       openView sometimes opens BEHIND the Studio window and Studio does not
+       raise it, so the click can look like it did nothing — precisely the
+       complaint that opened this review. This is a STATIC line, not a
+       post-click one: opening the view moves focus, and the inspector is
+       rebuilt when focus returns, which resets any state the click had set. -->
+  <p class="ad-step-note" id="tutorialHint" data-localize="tutorialOpened">Opens in a separate window, which may appear behind the Ulanzi Studio window.</p>
 
-  <div class="ad-step">
-    <div class="ad-step-n">1</div>
+  <div class="uspi-heading" data-localize="setupHeading">Setup in 3 steps</div>
+
+  <!-- Step 1 — run the daemon ------------------------------------------->
+  <div class="ad-step is-now" id="step1">
+    <div class="ad-step-n">
+      <span>1</span>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2 L4.6 8.8 L10 3.2"
+        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
     <div class="ad-step-b">
-      Run the AgentDeck daemon on this computer. Either way works:
-      <div class="ad-or">macOS — install the free <b>AgentDeck Dashboard</b> from the Mac App Store and open it. No terminal.</div>
-      <div class="ad-or">macOS or Windows — run <code>npx @agentdeck/setup</code> (needs Node.js 22+).</div>
+      <p class="ad-step-t" data-localize="s1Title">Run the AgentDeck daemon</p>
+
+      <div class="ad-tabs" role="tablist">
+        <button class="ad-tab" id="tabMac" role="tab" type="button">macOS</button>
+        <button class="ad-tab" id="tabWin" role="tab" type="button">Windows</button>
+      </div>
+
+      <!-- macOS: the app is the no-terminal path, so the art is an app window
+           with the menu-bar item the user is looking for. -->
+      <div id="paneMac">
+        <svg class="ad-art" viewBox="0 0 262 84" aria-hidden="true">
+          <rect x="0.5" y="10.5" width="261" height="73" rx="8" fill="none" stroke="currentColor" opacity="0.3"/>
+          <path d="M0 26 H262" stroke="currentColor" opacity="0.22"/>
+          <circle cx="12" cy="18" r="3" fill="currentColor" opacity="0.3"/>
+          <circle cx="22" cy="18" r="3" fill="currentColor" opacity="0.3"/>
+          <circle cx="32" cy="18" r="3" fill="currentColor" opacity="0.3"/>
+          <!-- The menu bar, with AgentDeck's status item lit: on macOS the app
+               IS the daemon, so "it is open" is what the user checks for. -->
+          <rect x="0" y="0" width="262" height="8" rx="4" fill="currentColor" opacity="0.12"/>
+          <rect x="243" y="1" width="6" height="6" rx="999" fill="currentColor" class="lit" opacity="0.9"/>
+          <rect x="14" y="38" width="86" height="30" rx="6" fill="currentColor" opacity="0.12"/>
+          <rect x="22" y="46" width="42" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+          <rect x="22" y="56" width="62" height="5" rx="999" fill="currentColor" opacity="0.25"/>
+          <rect x="110" y="38" width="138" height="30" rx="6" fill="currentColor" opacity="0.08"/>
+          <rect x="118" y="46" width="54" height="5" rx="999" fill="currentColor" opacity="0.3"/>
+          <rect x="118" y="56" width="104" height="5" rx="999" fill="currentColor" opacity="0.2"/>
+        </svg>
+        <p class="ad-step-x" data-localize="s1MacApp">Install AgentDeck Dashboard — free on the Mac App Store, macOS 26 or later — and open it. No terminal needed.</p>
+        <p class="ad-step-x" data-localize="s1MacOr">On an earlier macOS, or where the App Store app is not offered, use Terminal:</p>
+      </div>
+
+      <!-- Windows: terminal only. -->
+      <div id="paneWin" class="hide">
+        <svg class="ad-art" viewBox="0 0 262 84" aria-hidden="true">
+          <rect x="0.5" y="0.5" width="261" height="83" rx="8" fill="none" stroke="currentColor" opacity="0.3"/>
+          <path d="M0 20 H262" stroke="currentColor" opacity="0.22"/>
+          <circle cx="12" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+          <circle cx="22" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+          <circle cx="32" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+          <path d="M14 32 l6 5 -6 5" fill="none" stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+          <rect x="28" y="34" width="128" height="6" rx="999" fill="currentColor" class="lit" opacity="0.85"/>
+          <rect x="14" y="52" width="96" height="5" rx="999" fill="currentColor" opacity="0.25"/>
+          <rect x="14" y="64" width="150" height="5" rx="999" fill="currentColor" opacity="0.18"/>
+        </svg>
+        <p class="ad-step-x" data-localize="s1Win">Open Terminal or PowerShell and run:</p>
+      </div>
+
+      <div class="ad-cmd">
+        <code id="cmd">npx @agentdeck/setup</code>
+        <button class="ad-copy" id="copy" type="button" data-localize="copy">Copy</button>
+      </div>
+      <p class="ad-step-note" data-localize="s1Note">Node.js 22+ is the only prerequisite. The Claude and Codex CLIs are optional — install neither and setup still completes.</p>
     </div>
   </div>
 
-  <div class="ad-step">
-    <div class="ad-step-n">2</div>
+  <!-- Step 2 — start an agent ------------------------------------------->
+  <div class="ad-step is-todo" id="step2">
+    <div class="ad-step-n">
+      <span>2</span>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2 L4.6 8.8 L10 3.2"
+        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
     <div class="ad-step-b">
-      Start any AI coding agent the way you normally do — <code>claude</code>, <code>codex</code> or <code>opencode</code>.
-      No AgentDeck-specific command is needed.
+      <p class="ad-step-t" data-localize="s2Title">Start an AI coding agent</p>
+      <svg class="ad-art" viewBox="0 0 262 72" aria-hidden="true">
+        <rect x="0.5" y="0.5" width="261" height="71" rx="8" fill="none" stroke="currentColor" opacity="0.3"/>
+        <path d="M0 20 H262" stroke="currentColor" opacity="0.22"/>
+        <circle cx="12" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+        <circle cx="22" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+        <circle cx="32" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+        <path d="M14 30 l6 5 -6 5" fill="none" stroke="currentColor" stroke-width="1.6"
+              stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+        <rect x="28" y="32" width="44" height="6" rx="999" fill="currentColor" class="lit" opacity="0.85"/>
+        <rect x="82" y="32" width="40" height="6" rx="999" fill="currentColor" opacity="0.22"/>
+        <rect x="132" y="32" width="58" height="6" rx="999" fill="currentColor" opacity="0.22"/>
+        <circle cx="17" cy="55" r="4" fill="none" stroke="currentColor" stroke-width="1.6"
+                stroke-dasharray="14 6" opacity="0.5"/>
+        <rect x="28" y="52" width="120" height="5" rx="999" fill="currentColor" opacity="0.25"/>
+      </svg>
+      <p class="ad-step-x" data-localize="s2Body">In any project folder, start your agent the way you normally do — claude, codex or opencode. There is no AgentDeck-specific command.</p>
+      <p class="ad-step-note" data-localize="s2Note">Desktop apps count too: macOS picks up Codex sessions from the ChatGPT app once Codex integration is registered — the terminal setup does it for you, and the App Store app asks in Settings.</p>
     </div>
   </div>
 
-  <div class="ad-step">
-    <div class="ad-step-n">3</div>
+  <!-- Step 3 — the keys fill in ------------------------------------------>
+  <div class="ad-step is-todo" id="step3">
+    <div class="ad-step-n">
+      <span>3</span>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2 L4.6 8.8 L10 3.2"
+        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
     <div class="ad-step-b">
-      The keys fill themselves in: one key per live session, showing the agent, the project and
-      whether it is working, idle, or <b>waiting on you</b>. Press a key to focus that session, or to
-      answer it when it is waiting.
+      <p class="ad-step-t" data-localize="s3Title">Fill your keys</p>
+      <!-- The real D200H page: 5 columns x 3 rows (shared/src/d200h-layout.ts).
+           Row 0 = sessions, row 1 = answers + model + usage, row 2 = stop and
+           counters — the shape the user is about to see on the device. -->
+      <svg class="ad-art" viewBox="0 0 262 96" aria-hidden="true">
+        <g>
+          <rect x="1" y="1" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="9" y="10" width="20" height="4" rx="999" fill="currentColor" opacity="0.45"/>
+          <rect x="9" y="18" width="30" height="4" rx="999" fill="currentColor" opacity="0.28"/>
+
+          <rect x="54" y="1" width="48" height="28" rx="6" fill="currentColor" class="lit" opacity="0.22"/>
+          <rect x="62" y="10" width="24" height="4" rx="999" fill="currentColor" class="lit" opacity="0.95"/>
+          <rect x="62" y="18" width="32" height="4" rx="999" fill="currentColor" class="lit" opacity="0.6"/>
+
+          <rect x="107" y="1" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="115" y="10" width="18" height="4" rx="999" fill="currentColor" opacity="0.45"/>
+          <rect x="115" y="18" width="28" height="4" rx="999" fill="currentColor" opacity="0.28"/>
+
+          <rect x="160.5" y="1.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="213.5" y="1.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+
+          <rect x="1" y="34" width="48" height="28" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="54" y="34" width="48" height="28" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="107" y="34" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="115" y="45" width="30" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+          <rect x="160" y="34" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="168" y="45" width="22" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+          <rect x="213" y="34" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="221" y="45" width="22" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+
+          <rect x="1" y="67" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="17" y="77" width="16" height="8" rx="4" fill="currentColor" opacity="0.45"/>
+          <rect x="54" y="67" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="62" y="78" width="26" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+          <rect x="107" y="67.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="160.5" y="67.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="213.5" y="67.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+        </g>
+      </svg>
+      <p class="ad-step-x" data-localize="s3Body">Drop the AgentDeck action on every key you want to use — it is the only action there is, and each key decides for itself what to show. The layout spreads over exactly the keys you placed: one per session first, then the answer keys, mode, stop and usage as room allows.</p>
+      <p class="ad-step-note" data-localize="s3Note">Before steps 1 and 2 are done, the middle key reads OFFLINE and the rest sit dim. That is the plugin working — it is telling you the daemon is the missing piece.</p>
     </div>
   </div>
 
-  <p class="ad-detail">
-    This plugin is a thin client — it draws what the local daemon reports and bundles no daemon of
-    its own. Until step 1 and step 2 are both done, the keys stay on OFFLINE. That is expected, not a
-    failure.
-  </p>
+  <p class="ad-foot" data-localize="thin">AgentDeck is a thin client, like an OBS plugin: it draws what the local daemon reports and bundles no daemon of its own.</p>
 
   <div class="ad-actions">
-    <button class="uspi-refresh-btn" id="recheck" type="button">Check again</button>
-    <a href="https://github.com/puritysb/AgentDeck/blob/master/marketplace/ulanzi/GETTING-STARTED.md"
-       target="_blank" rel="noreferrer">Full guide</a>
+    <button id="recheck" type="button" data-localize="recheck">Check again</button>
+    <a id="guide" href="https://github.com/puritysb/AgentDeck/blob/master/marketplace/ulanzi/GETTING-STARTED.md"
+       target="_blank" rel="noreferrer" data-localize="guide">Full guide</a>
   </div>
 
 </div>
 
-<script>
-  // The daemon serves /health with `Access-Control-Allow-Origin: *`, so this
-  // panel can read it directly and the user gets a yes/no instead of a manual.
-  // 9120 is the daemon's port; it moves to the next free one only when 9120 is
-  // taken, so probe a short range rather than assuming.
-  var PORTS = [9120, 9121, 9122, 9123];
-
-  function paint(on, text, detail) {
-    document.getElementById('dot').className = 'ad-dot' + (on ? ' on' : '');
-    document.getElementById('status').textContent = text;
-    document.getElementById('detail').textContent = detail || '';
-  }
-
-  function probe(port) {
-    // A short timeout keeps a filtered port from hanging the whole check.
-    var ctrl = new AbortController();
-    var t = setTimeout(function () { ctrl.abort(); }, 1200);
-    return fetch('http://127.0.0.1:' + port + '/health', { signal: ctrl.signal })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error(String(r.status))); })
-      .then(function (j) { clearTimeout(t); return { port: port, health: j }; })
-      .catch(function (e) { clearTimeout(t); return Promise.reject(e); });
-  }
-
-  function check() {
-    paint(false, 'Checking for the AgentDeck daemon…', '');
-    var attempts = PORTS.map(function (p) { return probe(p); });
-    // Any responding port wins; all failing means "not reachable from here",
-    // which is NOT the same as "not running" — a webview may block the request.
-    Promise.any(attempts).then(function (hit) {
-      var h = hit.health || {};
-      var sessions = Array.isArray(h.sessions) ? h.sessions.length : null;
-      var kind = h.isSwift ? 'AgentDeck app' : 'AgentDeck CLI daemon';
-      paint(true, kind + ' is running on port ' + hit.port + '.',
-        sessions === 0
-          ? 'No agent session yet — do step 2 and the keys will fill in.'
-          : 'Start or focus a session and the keys follow it.');
-    }).catch(function () {
-      paint(false, 'No AgentDeck daemon answered on this computer.',
-        'Do step 1 below. If the daemon is running and this still says nothing answered, the check may be blocked here — the keys themselves are the real indicator.');
-    });
-  }
-
-  document.getElementById('recheck').addEventListener('click', check);
-  check();
-</script>
+<script src="../libs/js/constants.js"></script>
+<script src="../libs/js/eventEmitter.js"></script>
+<script src="../libs/js/timers.js"></script>
+<script src="../libs/js/utils.js"></script>
+<script src="../libs/js/ulanziApi.js"></script>
+<script src="./setup-common.js"></script>
+<script src="./inspector.js"></script>
 </body>
 </html>

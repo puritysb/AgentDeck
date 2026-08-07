@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AgentDeck — Setup</title>
+<!--
+  The H5 setup tutorial Ulanzi's review asked for (2026-08-07): a full page,
+  opened from the plugin's configuration section through the SDK's
+  `$UD.openView('./property-inspector/tutorial.html', 900, 780)`.
+
+  It is the same three steps as the Property Inspector column, given room:
+  both platforms side by side instead of behind tabs, and the whole path
+  visible at once so a new user can see where they are going before they start.
+  The live daemon probe runs here too — the page marks the step you are
+  actually on, which is the one thing a static tutorial image cannot do.
+
+  Same rails as the panel: SDK libs + `$UD.connect()` (Studio passes the
+  language, `localizeUI()` translates every [data-localize] element from
+  <language>.json), English in the markup so the page is complete even when the
+  socket never opens, host colours only, and no remote asset of any kind.
+
+  Per the SDK, a view opened this way closes itself — hence the Done button's
+  `window.close()`.
+-->
+<link rel="stylesheet" href="../libs/css/uspi.css">
+<link rel="stylesheet" href="./tutorial.css">
+<style>
+  body { padding: 0; }
+  .ad-page { max-width: 820px; margin: 0 auto; padding: 26px 28px 34px; }
+
+  .ad-head { margin: 0 0 18px; }
+  .ad-title { font-size: 20px; line-height: 1.3; margin: 0 0 6px; }
+  .ad-sub { font-size: 13px; line-height: 1.55; margin: 0; opacity: 0.7; max-width: 60ch; }
+
+  /* Live status — the same strip as the panel, sized for a page. */
+  .ad-status { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0 0;
+               padding: 12px 14px; border-radius: 10px;
+               background: var(--uspi-inputbg); border: 1px solid var(--uspi-bordercolor); }
+  .ad-dot { flex: 0 0 8px; width: 8px; height: 8px; margin-top: 7px; border-radius: 999px;
+            background: currentColor; opacity: 0.3; }
+  .ad-dot.on { background: var(--uspi-theme); opacity: 1; }
+  .ad-status-b { flex: 1 1 auto; min-width: 0; }
+  .ad-status-text { font-size: 14px; line-height: 1.5; }
+  .ad-detail { margin: 2px 0 0; font-size: 12px; line-height: 1.5; opacity: 0.62; }
+
+  /* On a page, a step is a card: artwork left, instructions right. */
+  .ad-step { margin: 22px 0 0; gap: 14px; }
+  .ad-step-n { flex: 0 0 24px; height: 24px; font-size: 12px; line-height: 22px; margin-top: 2px; }
+  .ad-step-n svg { width: 14px; height: 14px; vertical-align: -3px; }
+  .ad-step-t { font-size: 16px; margin: 0 0 10px; }
+  .ad-step-x { font-size: 13px; line-height: 1.6; margin: 0 0 8px; max-width: 62ch; }
+  .ad-step-note { font-size: 12px; line-height: 1.55; max-width: 62ch; }
+
+  /* Step 1 shows both platforms at once — the page has the room the 320px
+     panel does not, and a reader comparing the two paths is the point. */
+  .ad-two { display: flex; gap: 20px; flex-wrap: wrap; }
+  .ad-half { flex: 1 1 300px; min-width: 260px; }
+  .ad-half h4 { font-size: 12px; margin: 0 0 8px; opacity: 0.62; font-weight: normal;
+                letter-spacing: 0.04em; text-transform: uppercase; }
+  .ad-cmd { max-width: 420px; }
+  .ad-cmd code { font-size: 13px; padding: 8px 10px; }
+
+  .ad-deck { max-width: 420px; }
+
+  .ad-end { display: flex; align-items: center; gap: 14px; margin: 26px 0 0;
+            padding-top: 18px; border-top: 1px solid var(--uspi-bordercolor); flex-wrap: wrap; }
+  .ad-end button { width: auto; height: 30px; padding: 0 18px; font-size: 13px; line-height: 28px;
+                   border-radius: 8px; }
+  .ad-end a { font-size: 13px; }
+  .ad-foot { margin: 0; flex: 1 1 240px; }
+</style>
+</head>
+<body>
+<div class="uspi-wrapper ad-page">
+
+  <div class="ad-head">
+    <h1 class="ad-title">AgentDeck</h1>
+    <p class="ad-sub" data-localize="lede">One key per AI coding session — live state on the key, and your answer sent back.</p>
+  </div>
+
+  <div class="ad-status">
+    <span class="ad-dot" id="dot"></span>
+    <span class="ad-status-b">
+      <span class="ad-status-text" id="status">Looking for the AgentDeck daemon…</span>
+      <p class="ad-detail" id="detail"></p>
+    </span>
+  </div>
+
+  <!-- Step 1 — run the daemon ------------------------------------------->
+  <div class="ad-step is-now" id="step1">
+    <div class="ad-step-n">
+      <span>1</span>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2 L4.6 8.8 L10 3.2"
+        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="ad-step-b">
+      <p class="ad-step-t" data-localize="s1Title">Run the AgentDeck daemon</p>
+      <div class="ad-two">
+        <div class="ad-half">
+          <h4>macOS</h4>
+          <svg class="ad-art" viewBox="0 0 262 84" aria-hidden="true">
+            <rect x="0.5" y="10.5" width="261" height="73" rx="8" fill="none" stroke="currentColor" opacity="0.3"/>
+            <path d="M0 26 H262" stroke="currentColor" opacity="0.22"/>
+            <circle cx="12" cy="18" r="3" fill="currentColor" opacity="0.3"/>
+            <circle cx="22" cy="18" r="3" fill="currentColor" opacity="0.3"/>
+            <circle cx="32" cy="18" r="3" fill="currentColor" opacity="0.3"/>
+            <rect x="0" y="0" width="262" height="8" rx="4" fill="currentColor" opacity="0.12"/>
+            <rect x="243" y="1" width="6" height="6" rx="999" fill="currentColor" class="lit" opacity="0.9"/>
+            <rect x="14" y="38" width="86" height="30" rx="6" fill="currentColor" opacity="0.12"/>
+            <rect x="22" y="46" width="42" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+            <rect x="22" y="56" width="62" height="5" rx="999" fill="currentColor" opacity="0.25"/>
+            <rect x="110" y="38" width="138" height="30" rx="6" fill="currentColor" opacity="0.08"/>
+            <rect x="118" y="46" width="54" height="5" rx="999" fill="currentColor" opacity="0.3"/>
+            <rect x="118" y="56" width="104" height="5" rx="999" fill="currentColor" opacity="0.2"/>
+          </svg>
+          <p class="ad-step-x" data-localize="s1MacApp">Install AgentDeck Dashboard — free on the Mac App Store, macOS 26 or later — and open it. No terminal needed.</p>
+          <p class="ad-step-x" data-localize="s1MacOr">On an earlier macOS, or where the App Store app is not offered, use Terminal:</p>
+        </div>
+        <div class="ad-half">
+          <h4>Windows</h4>
+          <svg class="ad-art" viewBox="0 0 262 84" aria-hidden="true">
+            <rect x="0.5" y="0.5" width="261" height="83" rx="8" fill="none" stroke="currentColor" opacity="0.3"/>
+            <path d="M0 20 H262" stroke="currentColor" opacity="0.22"/>
+            <circle cx="12" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+            <circle cx="22" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+            <circle cx="32" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+            <path d="M14 32 l6 5 -6 5" fill="none" stroke="currentColor" stroke-width="1.6"
+                  stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+            <rect x="28" y="34" width="128" height="6" rx="999" fill="currentColor" class="lit" opacity="0.85"/>
+            <rect x="14" y="52" width="96" height="5" rx="999" fill="currentColor" opacity="0.25"/>
+            <rect x="14" y="64" width="150" height="5" rx="999" fill="currentColor" opacity="0.18"/>
+          </svg>
+          <p class="ad-step-x" data-localize="s1Win">Open Terminal or PowerShell and run:</p>
+        </div>
+      </div>
+
+      <div class="ad-cmd">
+        <code id="cmd">npx @agentdeck/setup</code>
+        <button class="ad-copy" id="copy" type="button" data-localize="copy">Copy</button>
+      </div>
+      <p class="ad-step-note" data-localize="s1Note">Node.js 22+ is the only prerequisite. The Claude and Codex CLIs are optional — install neither and setup still completes.</p>
+    </div>
+  </div>
+
+  <!-- Step 2 — start an agent ------------------------------------------->
+  <div class="ad-step is-todo" id="step2">
+    <div class="ad-step-n">
+      <span>2</span>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2 L4.6 8.8 L10 3.2"
+        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="ad-step-b">
+      <p class="ad-step-t" data-localize="s2Title">Start an AI coding agent</p>
+      <svg class="ad-art" viewBox="0 0 262 72" aria-hidden="true">
+        <rect x="0.5" y="0.5" width="261" height="71" rx="8" fill="none" stroke="currentColor" opacity="0.3"/>
+        <path d="M0 20 H262" stroke="currentColor" opacity="0.22"/>
+        <circle cx="12" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+        <circle cx="22" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+        <circle cx="32" cy="10" r="3" fill="currentColor" opacity="0.3"/>
+        <path d="M14 30 l6 5 -6 5" fill="none" stroke="currentColor" stroke-width="1.6"
+              stroke-linecap="round" stroke-linejoin="round" opacity="0.55"/>
+        <rect x="28" y="32" width="44" height="6" rx="999" fill="currentColor" class="lit" opacity="0.85"/>
+        <rect x="82" y="32" width="40" height="6" rx="999" fill="currentColor" opacity="0.22"/>
+        <rect x="132" y="32" width="58" height="6" rx="999" fill="currentColor" opacity="0.22"/>
+        <circle cx="17" cy="55" r="4" fill="none" stroke="currentColor" stroke-width="1.6"
+                stroke-dasharray="14 6" opacity="0.5"/>
+        <rect x="28" y="52" width="120" height="5" rx="999" fill="currentColor" opacity="0.25"/>
+      </svg>
+      <p class="ad-step-x" data-localize="s2Body">In any project folder, start your agent the way you normally do — claude, codex or opencode. There is no AgentDeck-specific command.</p>
+      <p class="ad-step-note" data-localize="s2Note">Desktop apps count too: macOS picks up Codex sessions from the ChatGPT app once Codex integration is registered — the terminal setup does it for you, and the App Store app asks in Settings.</p>
+    </div>
+  </div>
+
+  <!-- Step 3 — the keys fill in ------------------------------------------>
+  <div class="ad-step is-todo" id="step3">
+    <div class="ad-step-n">
+      <span>3</span>
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2 L4.6 8.8 L10 3.2"
+        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="ad-step-b">
+      <p class="ad-step-t" data-localize="s3Title">Fill your keys</p>
+      <!-- The real D200H page: 5 columns x 3 rows (shared/src/d200h-layout.ts). -->
+      <svg class="ad-art ad-deck" viewBox="0 0 262 96" aria-hidden="true">
+        <g>
+          <rect x="1" y="1" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="9" y="10" width="20" height="4" rx="999" fill="currentColor" opacity="0.45"/>
+          <rect x="9" y="18" width="30" height="4" rx="999" fill="currentColor" opacity="0.28"/>
+
+          <rect x="54" y="1" width="48" height="28" rx="6" fill="currentColor" class="lit" opacity="0.22"/>
+          <rect x="62" y="10" width="24" height="4" rx="999" fill="currentColor" class="lit" opacity="0.95"/>
+          <rect x="62" y="18" width="32" height="4" rx="999" fill="currentColor" class="lit" opacity="0.6"/>
+
+          <rect x="107" y="1" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="115" y="10" width="18" height="4" rx="999" fill="currentColor" opacity="0.45"/>
+          <rect x="115" y="18" width="28" height="4" rx="999" fill="currentColor" opacity="0.28"/>
+
+          <rect x="160.5" y="1.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="213.5" y="1.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+
+          <rect x="1" y="34" width="48" height="28" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="54" y="34" width="48" height="28" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="107" y="34" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="115" y="45" width="30" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+          <rect x="160" y="34" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="168" y="45" width="22" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+          <rect x="213" y="34" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="221" y="45" width="22" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+
+          <rect x="1" y="67" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="17" y="77" width="16" height="8" rx="4" fill="currentColor" opacity="0.45"/>
+          <rect x="54" y="67" width="48" height="28" rx="6" fill="currentColor" opacity="0.14"/>
+          <rect x="62" y="78" width="26" height="5" rx="999" fill="currentColor" opacity="0.4"/>
+          <rect x="107" y="67.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="160.5" y="67.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+          <rect x="213.5" y="67.5" width="47" height="27" rx="6" fill="none" stroke="currentColor" opacity="0.25"/>
+        </g>
+      </svg>
+      <p class="ad-step-x" data-localize="s3Body">Drop the AgentDeck action on every key you want to use — it is the only action there is, and each key decides for itself what to show. The layout spreads over exactly the keys you placed: one per session first, then the answer keys, mode, stop and usage as room allows.</p>
+      <p class="ad-step-note" data-localize="s3Note">Before steps 1 and 2 are done, the middle key reads OFFLINE and the rest sit dim. That is the plugin working — it is telling you the daemon is the missing piece.</p>
+    </div>
+  </div>
+
+  <div class="ad-end">
+    <p class="ad-foot" data-localize="thin">AgentDeck is a thin client, like an OBS plugin: it draws what the local daemon reports and bundles no daemon of its own.</p>
+    <button id="recheck" type="button" data-localize="recheck">Check again</button>
+    <a id="guide" href="https://github.com/puritysb/AgentDeck/blob/master/marketplace/ulanzi/GETTING-STARTED.md"
+       target="_blank" rel="noreferrer" data-localize="guide">Full guide</a>
+    <button id="done" class="primary" type="button" data-localize="done">Done</button>
+  </div>
+
+</div>
+
+<script src="../libs/js/constants.js"></script>
+<script src="../libs/js/eventEmitter.js"></script>
+<script src="../libs/js/timers.js"></script>
+<script src="../libs/js/utils.js"></script>
+<script src="../libs/js/ulanziApi.js"></script>
+<script src="./setup-common.js"></script>
+<script src="./tutorial.js"></script>
+</body>
+</html>

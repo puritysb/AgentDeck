@@ -1,0 +1,42 @@
+{
+  "Name": "AgentDeck",
+  "Description": "在 D200H 上监看并操控 AI 编程助手。",
+  "Actions": [
+    {
+      "Name": "AgentDeck",
+      "Tooltip": "AgentDeck —— 用它填满按键；每个键按助手状态自行变化（会话、选项、模式、停止、用量）。按下即可操作。"
+    }
+  ],
+  "Localization": {
+    "lede": "每个 AI 编程会话占一个按键 —— 按键上显示实时状态，按下即可回复。",
+    "setupHeading": "三步完成设置",
+    "openTutorial": "安装教程",
+    "s1Title": "运行 AgentDeck 守护进程",
+    "s1MacApp": "在 Mac App Store 免费安装 AgentDeck Dashboard（需 macOS 26 或更高）并打开，无需使用终端。",
+    "s1MacOr": "若 macOS 版本较低，或当地商店未提供该应用，请在终端中运行：",
+    "s1Win": "打开终端或 PowerShell 并运行：",
+    "s1Note": "唯一前置条件是 Node.js 22+。Claude 与 Codex CLI 均为可选，两者都不装也能完成安装。",
+    "s2Title": "启动 AI 编程助手",
+    "s2Body": "在任意项目目录中，按你平时的方式启动助手 —— claude、codex 或 opencode。无需任何 AgentDeck 专用命令。",
+    "s2Note": "桌面客户端同样有效：在 macOS 上注册 Codex 集成后，即可识别从 ChatGPT 应用启动的 Codex 会话 —— 终端安装会自动完成注册，App Store 版应用会在设置中询问。",
+    "s3Title": "填充按键",
+    "s3Body": "把 AgentDeck 动作拖到你想使用的每一个按键上 —— 插件只有这一个动作，每个键会自行决定显示什么。布局只在你放置过的按键上展开：先是每个会话一个键，再按剩余空间安排回复键、模式、停止和用量。",
+    "s3Note": "第 1、2 步完成之前，中间那个键显示 OFFLINE，其余按键保持暗色。这说明插件工作正常 —— 它在告诉你还缺少守护进程。",
+    "thin": "AgentDeck 是瘦客户端，类似 OBS 插件：它只呈现本机守护进程上报的内容，自身不含守护进程。",
+    "copy": "复制",
+    "copied": "已复制",
+    "recheck": "重新检测",
+    "guide": "完整指南",
+    "done": "完成",
+    "checking": "正在查找 AgentDeck 守护进程…",
+    "foundApp": "AgentDeck 应用正在运行（端口 {port}）。",
+    "foundCli": "AgentDeck 守护进程正在运行（端口 {port}）。",
+    "foundOpaque": "端口 {port} 有响应 —— 守护进程已在运行。",
+    "notFound": "本机没有 AgentDeck 守护进程响应。",
+    "detailNoSession": "尚未检测到会话。完成第 2 步，按键就会自动填充。",
+    "detailSession": "已检测到运行中的会话，按键此刻应已显示它。",
+    "detailOpaque": "此面板无法读取详细信息，因此第 2 步未勾选。请以按键的实际显示为准。",
+    "detailNotFound": "请从第 1 步开始。若已在运行却仍检测不到，可能是本面板的检测被拦截 —— 请以按键为准。",
+    "tutorialOpened": "将在新窗口中打开，该窗口可能出现在 Ulanzi Studio 窗口的后面。"
+  }
+}

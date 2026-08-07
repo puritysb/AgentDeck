@@ -10,6 +10,65 @@ content-record mismatch was reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category; wait for Ulanzi to confirm the
 review entry is linked correctly before treating the submission as healthy.
 
+## 1.0.3 — the setup tutorial lives in the panel, and it is live
+
+Ulanzi's 2026-08-07 message asked for "an H5 setup tutorial added to the
+plugin's configuration section so that new users can follow the instructions to
+set up their environment and avoid getting stuck on the first step", and invited
+a better suggestion. The better suggestion is that a picture of three steps
+cannot tell a user *which* step they are stuck on. So the panel is a **live
+stepper**: it probes the local daemon and marks each step done or current, which
+turns "why are my keys OFFLINE?" into something the panel answers rather than
+something the user has to infer.
+
+- **Built on the SDK's own rails**, after reading the reference plugin: the
+  inspector loads `libs/js/*` and calls `$UD.connect()`, and every string is a
+  `data-localize` key resolved from the `Localization` map in `<language>.json`
+  — the same files that localize the action in the palette, and the files your
+  translators already know how to edit. Studio therefore owns the language.
+  English stays in the markup so the panel is complete even if the socket never
+  opens; `.uspi-wrapper` is deliberately not hidden-until-connected, because a
+  configuration section that renders nothing is what opened this review.
+- **The H5 page itself**: `property-inspector/tutorial.html`, opened from the
+  panel with `$UD.openView('./property-inspector/tutorial.html', 900, 780)` —
+  the same three steps with room to show macOS and Windows side by side, and the
+  same live check. It closes itself with `window.close()`, per the SDK.
+- Three illustrated steps — run the daemon, start an agent, fill the keys — with
+  the real 5×3 D200H page drawn in step 3 so the payoff is visible before it
+  happens. All artwork is inline SVG in the host's own colours; the package
+  ships no image assets and the panel needs no network to render.
+- **macOS / Windows tabs**, auto-selected from the webview's platform, and one
+  click to copy `npx @agentdeck/setup`.
+- **English, 简体中文, 繁體中文, 日本語, 한국어** — shipped as `en.json`, `zh_CN.json`,
+  `zh_HK.json`, `ja_JP.json`, `ko_KR.json` in the SDK's own layout, covering the
+  palette entry and both setup surfaces from one file per language.
+- The check now works against **both** daemons. 1.0.2 claimed `/health` was
+  readable cross-origin; that is true only of the macOS app's daemon — the Node
+  CLI daemon sends no `Access-Control-Allow-Origin`, so the panel's fetch was
+  blocked and it reported "no daemon" on exactly the setup Ulanzi tests on
+  Windows. Fixed on both sides: the daemon gained a secret-free
+  `GET /setup-status` that answers cross-origin (`/health` cannot — it carries
+  the pairing token), and the panel falls back to a `no-cors` reachability probe
+  for older daemons, which proves step 1 and says plainly that it cannot confirm
+  step 2 rather than guessing.
+
+The copy was then audited against the code rather than against intent, which
+corrected three claims: the layout spreads over **the keys the user actually
+placed** (`positions()` → `buildSessionDeck`), not over the whole page from one
+drag; the Mac App Store app needs **macOS 26+** and is not offered on every
+storefront, so the terminal path is presented as an equal path rather than a
+fallback; and ChatGPT-desktop Codex sessions are picked up **once the Codex hooks
+are registered** — automatic on the terminal path, a consent step in the
+sandboxed App Store app.
+
+Guarded by `plugin-ulanzi/src/__tests__/property-inspector.test.ts`: the manifest
+must name a file that exists, the SDK libraries and the H5 page must be present
+and referenced, every `data-localize` key and runtime lookup must resolve in
+every shipped language, each language must stay key-aligned with English, every
+localizable element must carry English text (so an unreachable Studio costs the
+translation and nothing else), the `{port}` placeholder must survive
+translation, and neither surface may read `pairingToken`.
+
 ## 1.0.2 — Property Inspector (the actual fix for the review feedback)
 
 The tester screenshot attached to Ulanzi's 2026-08-05 message showed the real
@@ -24,9 +83,8 @@ examples declares one; without it Studio has no panel to open. That is literally
 "there are no instructions provided".
 
 So 1.0.2 adds `property-inspector/inspector.html`: getting-started steps for both
-daemons plus a live check against `/health` (the daemon sends
-`Access-Control-Allow-Origin: *`, so the panel can read it; the check degrades to
-a neutral message when a webview blocks it). It borrows the host's `uspi.css` so
+daemons plus a live check against `/health` (which the panel could only read on
+the macOS app's daemon — see 1.0.3 above for the CORS correction). It borrows the host's `uspi.css` so
 it reads as part of Studio rather than painting our palette — that vendored file
 is lint-excluded the same way the Stream Deck plugin's `sdpi-components.js` is.
 

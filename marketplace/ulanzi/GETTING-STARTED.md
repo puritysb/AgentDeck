@@ -19,10 +19,12 @@ daemon is the missing piece. Two steps fix it.
 
 Either path is complete on its own. Pick one.
 
-**macOS, no terminal** — install the free
+**macOS 26+, no terminal** — install the free
 [AgentDeck Dashboard from the Mac App Store](https://apps.apple.com/app/id6784822497)
 and open it. The app carries its own daemon; there is nothing else to install,
-no account, and no Node.js.
+no account, and no Node.js. It requires macOS 26 or later, and it is not offered
+on every storefront — on an earlier macOS, or where the listing is unavailable,
+take the terminal path below. It is complete on its own, not a fallback.
 
 **macOS or Windows, from a terminal** — with Node.js 22+ installed:
 

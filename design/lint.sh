@@ -26,6 +26,7 @@ SCOPE_FILES=$(find . \
      -o -path './plugin/bound.serendipity.agentdeck.sdPlugin/bin' \
      -o -path './plugin/bound.serendipity.agentdeck.sdPlugin/ui/sdpi-components.js' \
      -o -path './plugin-ulanzi/*/libs/css/uspi.css' \
+     -o -path './plugin-ulanzi/*/libs/js' \
      -o -path './esp32/.pio' \
      -o -path './esp32/robot/results' \
      -o -path './tools/creature-simulator' \
@@ -50,6 +51,13 @@ SCOPE_FILES=$(find . \
 # gallery redirect). Each is self-contained with the same :root warm-token mirror, so
 # they get the same token-defining treatment as the hardware sheet.
 TOKEN_FILES='design/tokens\.css|design/tokens\.js|design/icons\.jsx|design/components\.css|design/patterns\.css|docs/design/creatures\.jsx|apple/AgentDeck/Resources/apme-dashboard\.html|docs/hardware/index\.html|scripts/pages-index\.html|docs/site/index\.html|docs/gallery/index\.html|plugin/bound\.serendipity\.agentdeck\.sdPlugin/ui/design-tokens\.css'
+
+# Vendored upstream code we ship verbatim and must not restyle: the Ulanzi SDK's
+# Property Inspector libraries (libs/js/*.js), companions to the already-excluded
+# libs/css/uspi.css. Their hex belongs to Ulanzi's own host chrome — editing it
+# would fork the SDK. Matched on the full path, never on the bare filenames
+# (utils.js, constants.js), which are far too common to exclude repo-wide.
+VENDORED='plugin-ulanzi/[^/]*/libs/js/'
 
 JSON=0
 [[ "${1:-}" == "--json" ]] && JSON=1
@@ -87,12 +95,12 @@ scan() {
 # ── Rule R1: pure white / black ────────────────────────────────────────
 scan "R1_pure_white_black" \
   '#(fff|FFF|ffffff|FFFFFF|000|000000)([^0-9a-fA-F]|$)' \
-  "$TOKEN_FILES"
+  "$TOKEN_FILES|$VENDORED"
 
 # ── Rule R2: hardcoded hex outside token files ─────────────────────────
 scan "R2_hardcoded_hex" \
   '#[0-9a-fA-F]{3,8}\b' \
-  "$TOKEN_FILES|design/icons\.jsx"
+  "$TOKEN_FILES|design/icons\.jsx|$VENDORED"
 
 # ── Rule R3: forbidden typefaces ───────────────────────────────────────
 scan "R3_forbidden_font" \

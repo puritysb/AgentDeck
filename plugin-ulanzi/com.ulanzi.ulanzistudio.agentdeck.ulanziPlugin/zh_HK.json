@@ -1,0 +1,42 @@
+{
+  "Name": "AgentDeck",
+  "Description": "在 D200H 上監看並操控 AI 編程助手。",
+  "Actions": [
+    {
+      "Name": "AgentDeck",
+      "Tooltip": "AgentDeck —— 用它填滿按鍵；每個鍵按助手狀態自行變化（工作階段、選項、模式、停止、用量）。按下即可操作。"
+    }
+  ],
+  "Localization": {
+    "lede": "每個 AI 編程工作階段佔一個按鍵 —— 按鍵上顯示即時狀態，按下即可回覆。",
+    "setupHeading": "三步完成設定",
+    "openTutorial": "安裝教學",
+    "s1Title": "執行 AgentDeck 守護程序",
+    "s1MacApp": "在 Mac App Store 免費安裝 AgentDeck Dashboard（需 macOS 26 或以上）並開啟，毋須使用終端機。",
+    "s1MacOr": "若 macOS 版本較舊，或當地商店未提供該應用程式，請在終端機執行：",
+    "s1Win": "開啟終端機或 PowerShell 並執行：",
+    "s1Note": "唯一前置條件是 Node.js 22+。Claude 與 Codex CLI 均為選用，兩者都不安裝亦可完成安裝。",
+    "s2Title": "啟動 AI 編程助手",
+    "s2Body": "在任何專案目錄中，按你平時的方式啟動助手 —— claude、codex 或 opencode。毋須任何 AgentDeck 專用指令。",
+    "s2Note": "桌面用戶端同樣有效：在 macOS 上註冊 Codex 整合後，即可識別由 ChatGPT 應用程式啟動的 Codex 工作階段 —— 終端機安裝會自動完成註冊，App Store 版應用程式會在設定中詢問。",
+    "s3Title": "填滿按鍵",
+    "s3Body": "把 AgentDeck 動作拖到你想使用的每一個按鍵上 —— 外掛只有這一個動作，每個鍵會自行決定顯示甚麼。版面只在你放置過的按鍵上展開：先是每個工作階段一個鍵，再按餘下空間安排回覆鍵、模式、停止和用量。",
+    "s3Note": "第 1、2 步完成之前，中間那個鍵顯示 OFFLINE，其餘按鍵保持暗色。這代表外掛運作正常 —— 它在告訴你尚欠守護程序。",
+    "thin": "AgentDeck 是瘦用戶端，類似 OBS 外掛：它只呈現本機守護程序回報的內容，本身不含守護程序。",
+    "copy": "複製",
+    "copied": "已複製",
+    "recheck": "重新檢測",
+    "guide": "完整指南",
+    "done": "完成",
+    "checking": "正在尋找 AgentDeck 守護程序…",
+    "foundApp": "AgentDeck 應用程式正在執行（連接埠 {port}）。",
+    "foundCli": "AgentDeck 守護程序正在執行（連接埠 {port}）。",
+    "foundOpaque": "連接埠 {port} 有回應 —— 守護程序已在執行。",
+    "notFound": "本機沒有 AgentDeck 守護程序回應。",
+    "detailNoSession": "尚未偵測到工作階段。完成第 2 步，按鍵就會自動填滿。",
+    "detailSession": "已偵測到執行中的工作階段，按鍵此刻應已顯示它。",
+    "detailOpaque": "此面板無法讀取詳細資料，因此第 2 步未勾選。請以按鍵的實際顯示為準。",
+    "detailNotFound": "請從第 1 步開始。若已在執行卻仍偵測不到，可能是本面板的偵測被攔截 —— 請以按鍵為準。",
+    "tutorialOpened": "將在新視窗中開啟，該視窗可能出現在 Ulanzi Studio 視窗的後面。"
+  }
+}

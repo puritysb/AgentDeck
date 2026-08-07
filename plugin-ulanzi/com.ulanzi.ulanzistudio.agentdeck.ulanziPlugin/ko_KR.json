@@ -1,0 +1,42 @@
+{
+  "Name": "AgentDeck",
+  "Description": "D200H에서 AI 코딩 에이전트를 보고 조종합니다.",
+  "Actions": [
+    {
+      "Name": "AgentDeck",
+      "Tooltip": "AgentDeck — 이걸로 키를 채우세요. 각 키가 에이전트 상태(세션·선택지·모드·정지·사용량)에 따라 스스로 바뀝니다. 누르면 동작합니다."
+    }
+  ],
+  "Localization": {
+    "lede": "AI 코딩 세션 하나당 키 하나 — 키에 실시간 상태가 뜨고, 눌러서 답할 수 있습니다.",
+    "setupHeading": "3단계 설정",
+    "openTutorial": "설치 튜토리얼",
+    "s1Title": "AgentDeck 데몬 실행",
+    "s1MacApp": "Mac App Store에서 무료 AgentDeck Dashboard(macOS 26 이상)를 설치하고 열기만 하면 됩니다. 터미널이 필요 없습니다.",
+    "s1MacOr": "그 이전 macOS이거나 해당 지역에 앱이 없다면 터미널에서:",
+    "s1Win": "터미널이나 PowerShell을 열고 실행:",
+    "s1Note": "전제 조건은 Node.js 22+ 하나뿐입니다. Claude·Codex CLI는 선택이며, 둘 다 없어도 설치가 끝납니다.",
+    "s2Title": "AI 코딩 에이전트 실행",
+    "s2Body": "아무 프로젝트 폴더에서 평소대로 claude, codex, opencode를 실행하세요. AgentDeck 전용 명령은 없습니다.",
+    "s2Note": "데스크톱 앱도 포함됩니다. macOS에서는 Codex 연동을 등록하면 ChatGPT 앱에서 시작한 Codex 세션도 잡힙니다 — 터미널 설치는 자동으로 등록하고, App Store 앱은 설정에서 물어봅니다.",
+    "s3Title": "키 채우기",
+    "s3Body": "AgentDeck 액션을 사용할 키마다 하나씩 올려두세요. 액션은 이것 하나뿐이고, 각 키가 무엇을 보여줄지 스스로 정합니다. 배치한 키 범위에만 레이아웃이 펼쳐집니다 — 세션당 한 키가 먼저이고, 자리가 남으면 응답 키·모드·정지·사용량이 놓입니다.",
+    "s3Note": "1·2단계가 끝나기 전에는 가운데 키가 OFFLINE이고 나머지는 어둡게 남습니다. 고장이 아니라 데몬이 없다고 알려주는 정상 동작입니다.",
+    "thin": "AgentDeck은 OBS 플러그인 같은 얇은 클라이언트입니다. 로컬 데몬이 보고하는 내용을 그릴 뿐, 데몬을 자체 포함하지 않습니다.",
+    "copy": "복사",
+    "copied": "복사됨",
+    "recheck": "다시 확인",
+    "guide": "전체 가이드",
+    "done": "완료",
+    "checking": "AgentDeck 데몬을 찾는 중…",
+    "foundApp": "AgentDeck 앱이 실행 중입니다 (포트 {port}).",
+    "foundCli": "AgentDeck 데몬이 실행 중입니다 (포트 {port}).",
+    "foundOpaque": "포트 {port}에서 응답이 옵니다 — 데몬이 실행 중입니다.",
+    "notFound": "이 컴퓨터에서 응답한 AgentDeck 데몬이 없습니다.",
+    "detailNoSession": "아직 세션이 없습니다. 2단계를 진행하면 키가 채워집니다.",
+    "detailSession": "세션이 실행 중입니다. 지금 키에 표시되고 있을 것입니다.",
+    "detailOpaque": "이 패널에서는 세부 정보를 읽을 수 없어 2단계는 체크되지 않습니다. 실제 키 표시를 기준으로 보세요.",
+    "detailNotFound": "1단계부터 시작하세요. 실행 중인데도 찾지 못한다면 이 패널의 요청이 차단된 것일 수 있습니다 — 키 표시를 믿으세요.",
+    "tutorialOpened": "별도 창으로 열립니다. Ulanzi Studio 창 뒤에 열릴 수 있습니다."
+  }
+}
