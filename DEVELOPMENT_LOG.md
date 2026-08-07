@@ -2,6 +2,87 @@
 
 ---
 
+## 2026-08-08 — Windows 스캔이 0개를 반환하고 있었다: #143 인수와 npm 1.0.12
+
+### 문제
+
+#144(Windows 네이티브 프로세스 스캔) 를 실제 Win32 커맨드라인 형태로 되짚어 읽자
+결함 4건이 나왔다. **전부 macOS 에서는 보이지 않고, 첫 번째는 전면 실패다.**
+
+1. **스캔이 0개 프로세스를 반환하고 아무 말도 안 한다.** PowerShell 파이프를
+   UTF-8 로 고정하며 쓴 `[System.Text.Encoding]::UTF8` 은 **preamble 을 가진**
+   인코딩이고, `Console.OutputEncoding` 은 그 preamble 을 리다이렉트된 파이프에
+   그대로 쓴다 → `JSON.parse('\uFEFF[{…')` throw → catch 가 빈 배열 반환 →
+   데몬은 "스캔이 깨졌다"가 아니라 **"관측할 게 없다"**고 보고. #143 이 신고한
+   증상 그대로가 그 수정 자체로 재발했다. 컴파일된 빌드로 확인: BOM 있으면 0행.
+2. **Electron 앱 하나가 세션 12개.** Chromium 자식은 부모 argv[0] 를 재사용하므로
+   Windows 에서 renderer/gpu/utility 가 전부 같은 `App.exe`. macOS 는 자식 이름이
+   달라(`… Helper (Renderer)`) 이름으로 걸러졌다. Antigravity 는 **하위 admission
+   gate 가 없는 유일한 관측 에이전트**(Claude=session 파일, Codex=rollout 이 게이트)
+   라 자식마다 phantom 행이 됐다.
+3. **`.exe` 대소문자 접기가 exact-case 규칙을 무효화.** basename 전체를 lowercase
+   비교하면 `Codex.exe`/`Claude.exe` — 그 규칙이 배제하려던 헬퍼들의 Windows 철자 —
+   가 다시 통과한다. #144 설명은 "exact-case 유지"라고 했으나 접미사 없는 형태에만
+   유지됐다. win32 rollout 매핑이 비어 있어 오늘은 latent 지만 다음 슬라이스 바로 밑.
+4. **npm 설치 Claude Code 가 안 보인다.** `claude` 는 `.cmd` 셰임이라 프로세스는
+   `node.exe "…\@anthropic-ai\claude-code\cli.js"` — argv 어디에도 바이너리 이름이
+   없다. #143 의 미해결 질문 4번인데 **Windows 하드웨어가 필요 없는 항목**이었다.
+
+### 해결
+
+PR #155. BOM 은 양쪽 모두 수정(전선에는 BOM 없는 `UTF8Encoding $false`, 파서에서는
+선행 BOM strip — 한쪽만으로는 재발 가능). Electron 자식은 `--type=<known child type>`
+로 배제(맨 `--type=` 이 아니라 알려진 종류 매칭 — `--type` 옵션을 받는 실제 CLI 를
+잘못 배제하지 않도록). `cmdHasBinary` 는 **stem exact-case + 접미사만 case-fold**,
+그리고 `isAntigravityProcessCommand` 만 `{ ignoreCase: true }` 로 명시 opt-in
+(`Antigravity.exe` 는 소문자 CLI 쌍둥이가 없는 GUI 바이너리). npm 셰임은 패키지
+경로로 매칭 — 다른 것과 충돌 불가능하고 POSIX 에서도 비용 0.
+
+부수: `cwdForPids` 가 5초마다 없는 `lsof` 를 spawn 하지 않도록 win32 early-return
+(갭을 코드에 명시), WQL 쿼리에서 4개 컬럼만 projection(`Win32_Process` 는 속성이
+~45개이고 폴링마다 프로세스당 전부 마샬링됐다), `encodeClaudeCwd` 가 역슬래시·드라이브
+콜론을 접어 Windows cwd 도 transcript 후보를 만들게 — 틀려도 비용 0(호출자가 이미
+projects 디렉터리 스캔으로 폴백).
+
+**npm 1.0.12 로 즉시 출하**(PR #156). 1.0.11 이 몇 시간 전 나갔고, 그걸로 올린
+Windows 사용자는 동작 불가능한 관측을 받은 상태였다.
+
+### 핵심 설계 결정
+
+**doc 이 사실이 아니었고, 그게 이슈의 모양을 바꿨다.** docs/windows.md 는
+"Codex/ChatGPT-app 세션은 Windows 에서 아직 관측되지 않음"이라고 적고 있었다.
+**틀렸다** — `codex_*` 훅 → `HookCodexSessions` 는 ps 도 lsof 도 쓰지 않는 플랫폼
+중립 경로이고, 훅이 설치된 터미널 `codex` 는 Windows 에서 오늘도 행을 만든다.
+빠진 건 rollout 유래 enrichment(모델, 컨텍스트 %, 현재 도구, CLI/데스크톱 구분)뿐.
+
+그리고 **그 갭도 Windows 측정이 필요 없다.** `locateCodexRollout(sessionId)` 가
+훅이 실어오는 id 로 파일명 매칭한다 — 핸들 열거가 아니다. 로컬 rollout 실측:
+
+| `originator` | `source` | |
+|---|---|---|
+| `codex-tui` | `cli` | 터미널 CLI |
+| `Codex Desktop` | `vscode` | ChatGPT 데스크톱 앱 |
+
+프로세스 트리로 추측하려던 CLI/데스크톱 구분이 **파일 안에 이미 있다**. 다음
+슬라이스는 이걸 세션-id 키로 붙이는 것이고, macOS 에서 rollout 이 열려 있지 않은
+경우(lsof 타임아웃)까지 같이 덮는다. **이번 PR 에는 넣지 않았다** — `applyTo` 는
+브로드캐스트 경로라 거기서 파일 I/O 를 하면 안 되고, enrichment 를 훅 도착 시점으로
+옮기는 별도 작업이 필요하다.
+
+**외부 기여자의 부재를 측정 요구로 바꾸지 않는다.** #143 은 doug-w 에게 Windows
+진단 캡처를 요청해 둔 상태였는데, 08-07 에 "25일까지 Windows 박스 없음 + Claude
+MAX5 로 가며 OpenAI 구독 해지"라고 회신이 왔다. 요청 4건 중 3건이 ChatGPT/Codex
+측정이라 **그가 영구히 답할 수 없는 요청**이었다. 인수하고 요청을 철회했다 — 그리고
+실제로 4건 중 마지막(claude 커맨드라인)도 측정이 아니라 npm 의 정해진 동작이었다.
+막혀 있다고 적어둔 것이 정말 막혀 있는지 다시 보는 편이, 사람을 기다리는 것보다 빨랐다.
+
+검증: `pnpm build`, vitest 169 파일 / 2722 tests green, `pnpm docs:check`,
+`pnpm design-system:check`, `verify-version`(호환선 1.0 동기) 전부 green. 두 PR 모두
+CI green 후 머지. 회귀 테스트 추가: BOM 페이로드, 양 플랫폼 Electron 자식 형태,
+대문자 `.exe` 헬퍼, Claude 두 설치 레이아웃.
+
+---
+
 ## 2026-08-07 — 에뮬레이터가 컴파일이 못 잡는 것을 잡았다: Android 16 타깃과 폰 레이아웃 두 건
 
 ### 문제
