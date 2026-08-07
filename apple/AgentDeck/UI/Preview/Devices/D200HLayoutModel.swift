@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts 6c970c54439c91fce947eef2d6cc7fa1e2d7354e
+// SYNC-HASH shared/src/d200h-layout.ts ac3803d2c1ec2da0360014c74b5ab6e85dba3907
 // SYNC-HASH shared/src/session-utils.ts b08adbcca7a9fe3386a44801248b2ec06b572a0e
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -254,8 +254,9 @@ public struct D200HDeckView: Sendable {
     /// Pin trailing/preferred keys to the global 5H/7D usage gauges.
     public var showUsage: Bool
     /// Host push-to-talk capture state (daemon `voice_state`). Drives the
-    /// detail-view VOICE tile. A D200H press is single-fire, so the tile
-    /// toggles start/stop rather than expressing hold-to-talk.
+    /// detail-view VOICE tile. HOLD to talk: the Ulanzi plugin runs the capture
+    /// off the key's own keydown/keyUp, so the tile is cosmetic here and a tile
+    /// that has not caught up cannot strand a recording.
     public var voiceState: VoiceState
 
     public enum VoiceState: String, Sendable { case idle, recording, transcribing, error }
@@ -625,7 +626,7 @@ public enum D200HLayoutModel {
     private static func voiceCell(view: D200HDeckView, sid: String) -> Cell {
         switch view.voiceState {
         case .recording:
-            return Cell(kind: .actionPreset, label: "VOICE", subtitle: "● tap to send",
+            return Cell(kind: .actionPreset, label: "VOICE", subtitle: "● listening",
                         action: .command(type: "voice", payload: ["action": "stop", "sessionId": sid]))
         case .transcribing:
             return Cell(kind: .actionPreset, label: "VOICE", subtitle: "transcribing…", action: .none)
@@ -633,7 +634,7 @@ public enum D200HLayoutModel {
             return Cell(kind: .actionPreset, label: "VOICE", subtitle: "no speech",
                         action: .command(type: "voice", payload: ["action": "start", "sessionId": sid]))
         case .idle:
-            return Cell(kind: .actionPreset, label: "VOICE", subtitle: "tap to talk",
+            return Cell(kind: .actionPreset, label: "VOICE", subtitle: "hold to talk",
                         action: .command(type: "voice", payload: ["action": "start", "sessionId": sid]))
         }
     }
