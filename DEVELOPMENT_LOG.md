@@ -8,8 +8,9 @@
 
 외부 리포터(jcarberator)가 1.0.2 에서 확인: 데몬이 `0.0.0.0:9120` 으로 열려 있고,
 무인증 `GET /health` 가 **pairingToken 전체를 반환**, `/status` 가 세션/프로젝트/기기
-메타데이터를 노출. 조사해 보니 리포트보다 한 겹 더 깊었다 — **mDNS TXT 레코드에도
-토큰이 실려** 멀티캐스트로 세그먼트 전체에 뿌려지고 있었고, **Swift 데몬의 WS
+메타데이터를 노출. 조사해 보니 리포트보다 한 겹 더 깊었다 — **mDNS TXT 레코드와
+UDP 9121 fallback beacon에도 토큰이 실려** 세그먼트 전체에 뿌려지고 있었고,
+**Node 시작 로그는 토큰 포함 Pairing URL을 장기 로그 파일에 남겼으며**, **Swift 데몬의 WS
 업그레이드는 토큰 검증 자체가 없었다**. 원인은 "zero-config 페어링": iOS/Android/
 미프로비저닝 ESP32 가 TXT·`/health` 에서 토큰을 **자급**하는 설계였는데, 인증에 쓰는
 크리덴셜을 인증 없이 나눠주면 인증이 아니다.
@@ -24,7 +25,9 @@
   기존 라우트별 게이트는 심층방어로 유지.
 - **Swift**: `DaemonServer.httpAccessResponse`(순수 static, XCTest) +
   `HTTPServer.setAccessPolicy`(stream 라우트 포함) + **WS 업그레이드 401**.
-- **mDNS TXT 토큰 제거** (Node `mdns.ts` + Swift, `advertiseBridge` 시그니처에서 삭제).
+- **discovery 토큰 제거** (Node `mdns.ts` + `broadcast.ts`, Swift mDNS; 각 광고 함수
+  시그니처에서 credential 삭제), session bridge의 UDP 광고도 차단해 프로젝트 메타데이터를
+  daemon-only discovery에 맞춤 + Node 시작 로그는 `agentdeck qr` 안내만 출력.
 - 토큰 자급 경로 대체: 컴패니언=QR/수동입력(기존 구현), ESP32=시리얼 프로비저닝
   (`wifi_provision.authToken`→NVS, 기존 구현), 원격 워커=`--daemon-token`/
   `AGENTDECK_DAEMON_TOKEN` (신규; 레거시 데몬의 `/health` 토큰은 폴백).
@@ -34,11 +37,11 @@
 ### 교훈
 
 **인증 크리덴셜의 배포 채널은 인증보다 좁아야 한다.** 편의(zero-config)가 크리덴셜
-배포를 discovery 채널(멀티캐스트 TXT, 무인증 HTTP)에 태우는 순간 토큰은 장식이 된다.
+배포를 discovery 채널(멀티캐스트 TXT, UDP broadcast, 무인증 HTTP)에 태우는 순간 토큰은 장식이 된다.
 페어링은 명시적 행위(QR 스캔, 시리얼 케이블, 플래그)여야 하고, discovery 는
 "여기 데몬이 있고 페어링이 필요하다"(`authRequired`)까지만 말해야 한다.
 
-검증: vitest 2706 (신규 `http-auth-gate.test.ts`, TXT 토큰 부재 회귀), Swift
+검증: vitest 2713 (신규 `http-auth-gate.test.ts`, TXT/UDP/로그 토큰 부재 회귀), Swift
 `HttpAccessPolicyTests` 3/3, macOS 빌드 green. 문서: docs/daemon.md § LAN security
 model, docs/cli.md, CLAUDE.md 불변식, APP_REVIEW_NOTES(주장이 이제 코드로 참).
 

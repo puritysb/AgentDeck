@@ -424,12 +424,17 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   });
 
   // ===== Device modules =====
-  const moduleConfigs: ModuleConfigs = opts.modules ?? {
-    mdns: false,   // daemon-only — session bridges never advertise mDNS
-    adb: 'auto',
-    serial: false, // daemon-only — session bridges never talk to ESP32
-    pixoo: false,  // daemon-only — session bridges never talk to Pixoo
-    timebox: false, // daemon-only — session bridges never talk to Timebox
+  const moduleConfigs: ModuleConfigs = {
+    ...(opts.modules ?? {
+      adb: 'auto',
+      serial: false, // daemon-only — session bridges never talk to ESP32
+      pixoo: false,  // daemon-only — session bridges never talk to Pixoo
+      timebox: false, // daemon-only — session bridges never talk to Timebox
+    }),
+    // Session bridges are internal hook/PTY processes. Only the daemon hub is
+    // discoverable on the LAN; never advertise per-session project metadata.
+    mdns: false,
+    broadcast: false,
   };
   const deviceModules = createDefaultModules(agentType);
 
@@ -485,7 +490,7 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   }
 
   log(`WebSocket server ready on port ${port}`);
-  log(`Auth token ready. Pairing URL: ${core.wsUrl}`);
+  log('Pairing credential ready; run "agentdeck qr" to pair a device.');
 
   // Device info getter for GET /devices
   hookServer?.setDeviceInfoGetter(() => ({

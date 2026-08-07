@@ -23,13 +23,13 @@ validators: [pnpm design-system:check]
 | **Stream Deck+** | WebSocket JSON | Daemon (9120) | Token (local bypass) | `daemon.json` / mDNS | Bidirectional | All 13 |
 | **Android** | WebSocket + HTTP | Daemon (9120) | Token (local bypass) | mDNS / ADB / QR | Bidirectional | All 13 |
 | **Apple** | WebSocket + HTTP | Daemon (9120) | Token | mDNS / QR | Bidirectional | All 13 |
-| **ESP32** | USB Serial JSON + WiFi WebSocket | CDC/UART 115200 / Daemon (9120) | None | Port scan 10s / mDNS | Push + OTA control | 6 + OTA ack/error |
-| **T-Embed Companion Knob** | USB Serial JSON + WiFi WebSocket | CDC 115200 / Daemon (9120) | None | Port scan 10s / mDNS | Bidirectional (encoder steering + voice) | 6 + OTA ack/error + steering/voice uplink |
-| **T-Display-S3-Pro Focus Strip** | USB Serial JSON + WiFi WebSocket | CDC 230400 / Daemon (9120) | None | Port scan 10s / mDNS | Bidirectional (touch steering) | 6 + OTA ack/error + steering uplink |
+| **ESP32** | USB Serial JSON + WiFi WebSocket | CDC/UART 115200 / Daemon (9120) | Token (serial-provisioned for WiFi) | Port scan 10s / mDNS | Push + OTA control | 6 + OTA ack/error |
+| **T-Embed Companion Knob** | USB Serial JSON + WiFi WebSocket | CDC 115200 / Daemon (9120) | Token (serial-provisioned for WiFi) | Port scan 10s / mDNS | Bidirectional (encoder steering + voice) | 6 + OTA ack/error + steering/voice uplink |
+| **T-Display-S3-Pro Focus Strip** | USB Serial JSON + WiFi WebSocket | CDC 230400 / Daemon (9120) | Token (serial-provisioned for WiFi) | Port scan 10s / mDNS | Bidirectional (touch steering) | 6 + OTA ack/error + steering uplink |
 | **Pixoo64** | HTTP REST (Divoom) | LAN:80 | None | Cloud API / manual | Push only | 4 |
 | **Timebox Mini** | BLE GATT (ISSC transparent-UART) | `49535343-…` | Bluetooth pairing | `TimeBox-mini-light` BLE scan | Push only | 4 |
-| **InkDeck e-ink** | WebSocket JSON (WiFi) | Daemon (9120) | None | mDNS / port scan | Push + OTA control | dashboard frame + OTA ack/error |
-| **XTeink X3 / X4** (community fork) | WiFi WebSocket (+ UDP 9121 fallback) | Daemon (9120) | None | mDNS / UDP broadcast | Push + steering (M2) | state/sessions/usage subset; registers via `client_register`(eink-device, macOS) + `device_info`(esp32-wifi, Node) |
+| **InkDeck e-ink** | WebSocket JSON (WiFi) | Daemon (9120) | Token (serial-provisioned) | mDNS / port scan | Push + OTA control | dashboard frame + OTA ack/error |
+| **XTeink X3 / X4** (community fork) | WiFi WebSocket (+ UDP 9121 fallback) | Daemon (9120) | Token (explicitly provisioned) | mDNS / UDP broadcast | Push + steering (M2) | state/sessions/usage subset; registers via `client_register`(eink-device, macOS) + `device_info`(esp32-wifi, Node) |
 | **SSE** | HTTP SSE | Daemon (9120) | Token | Manual URL | Push only | All 13 |
 | **Gateway** | WebSocket Custom | 18789 | Ed25519 | Hardcoded | Bidirectional | N/A (adapter) |
 
@@ -131,7 +131,7 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 
 - **Transport**: OkHttp WebSocket + HTTP endpoints (to daemon)
 - **Discovery**: NSD mDNS (`_agentdeck._tcp`, daemon only advertises) → ADB reverse tunnel → QR pairing
-- **Auth**: Token from mDNS TXT record or QR code
+- **Auth**: Token from explicit QR/manual pairing (never from discovery)
 - **Special endpoints** (on daemon):
   - `POST /voice/transcribe` — WAV upload → on-device transcription (bundled helper, Apple Speech)
   - `GET /health` — Daemon health check (includes `mode: 'daemon'`)
@@ -143,7 +143,7 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 
 - **Transport**: URLSessionWebSocketTask + HTTP endpoints
 - **Discovery**: NWBrowser (Network.framework) mDNS (`_agentdeck._tcp`, daemon only advertises) → QR pairing (VisionKit)
-- **Auth**: Token from mDNS TXT record or QR code
+- **Auth**: Token from explicit QR/manual pairing (never from discovery)
 - **Special endpoints**:
   - `POST /voice/transcribe` — WAV upload → on-device transcription (AVAudioEngine 16kHz mono)
 - **Platform**: SwiftUI Multiplatform — single Xcode project, iOS + macOS native targets (no Mac Catalyst)

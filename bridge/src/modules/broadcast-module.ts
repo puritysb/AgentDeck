@@ -22,7 +22,9 @@ export class BroadcastModule implements DeviceModule {
   }
 
   async start(ctx: BridgeContext): Promise<void> {
-    this.cleanup = advertiseUdpBroadcast(ctx.port, ctx.projectName, this.agentType, ctx.authToken);
+    // Discovery is unauthenticated LAN broadcast. Never pass ctx.authToken:
+    // clients must already hold it from explicit pairing/provisioning.
+    this.cleanup = advertiseUdpBroadcast(ctx.port, ctx.projectName, this.agentType);
   }
 
   async stop(): Promise<void> {

@@ -661,9 +661,9 @@ export function deriveRemoteAttachOpts(
     || env.AGENTDECK_REMOTE_DAEMON_HOST
     || undefined;
   // Pairing token for the remote hub. Since issue #145 the daemon no longer
-  // hands its token to unauthenticated LAN peers (/health) or broadcasts it
-  // (mDNS TXT), so the worker must be provisioned with it explicitly — the
-  // value lives at ~/.agentdeck/auth-token on the hub machine.
+  // hands its token to unauthenticated LAN peers (/health) or discovery
+  // broadcasts (mDNS TXT / UDP), so the worker must be provisioned with it
+  // explicitly — the value lives at ~/.agentdeck/auth-token on the hub machine.
   const tokenHint = cliOpts.daemonToken || env.AGENTDECK_DAEMON_TOKEN || undefined;
   return { remote, hostHint, tokenHint, ignoredHostHint: !remote && hostHint !== undefined };
 }

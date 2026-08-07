@@ -16,10 +16,10 @@ import { getLanIp } from '@agentdeck/shared';
  * (and 255.255.255.255 as a fallback) on UDP port 9121 every 2 seconds.
  * Subnet broadcast is unicast-friendly IGMP-wise and is forwarded by every
  * WiFi AP we have seen, so the device's UDP listener picks it up even when
- * mDNS is blocked. The beacon reuses the same fields the device needs from
- * the mDNS TXT records (ip / port / project / agent / token) so the existing
- * selection logic in mdns_discovery.cpp and udp_discovery.cpp share the same
- * BridgeInfo contract.
+ * mDNS is blocked. The beacon contains discovery metadata only (ip / port /
+ * project / agent). It must never contain the pairing token: UDP broadcast is
+ * visible to every peer on the segment, just like multicast mDNS. A client
+ * must already hold a token obtained through explicit pairing/provisioning.
  */
 
 const UDP_DISCOVERY_PORT = 9121;
@@ -41,7 +41,6 @@ export function advertiseUdpBroadcast(
   port: number,
   projectName: string,
   agentType: AgentType,
-  token?: string,
 ): () => void {
   let stopped = false;
   let socket: dgram.Socket | null = null;
@@ -76,14 +75,13 @@ export function advertiseUdpBroadcast(
       return;
     }
 
-    const payload: Record<string, string | number> = {
+    const payload = {
       v: 1,
       ip: lanIp,
       port,
       project: projectName,
       agent: agentType,
     };
-    if (token) payload.token = token;
     const buf = Buffer.from(JSON.stringify(payload));
 
     // Limited broadcast — accepted by every AP, never routed across subnets.

@@ -3142,7 +3142,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   }
 
   log(`[agentdeck] WebSocket server ready on port ${port}`);
-  log(`[agentdeck] Pairing URL: ${core.wsUrl}`);
+  log('[agentdeck] Pairing credential ready; run "agentdeck qr" to pair a device.');
 
   // Initialize APME store + collector so the daemon can serve /apme/* HTTP
   // routes. `setApme` on core is gated against the `daemon` meta-session so

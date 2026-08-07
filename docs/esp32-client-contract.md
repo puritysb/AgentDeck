@@ -39,7 +39,9 @@ port-sync discipline is.
 
 - **WiFi WebSocket** to the daemon on **port 9120** (`BRIDGE_WS_PORT`), discovered via mDNS
   `_agentdeck._tcp`. Reconnect with backoff (`RECONNECT_BACKOFF_MS` ladder 1→2→4→8s). Also
-  the fallback UDP-broadcast discovery on 9121 that the X3 port carries.
+  the fallback UDP-broadcast discovery on 9121 that the X3 port carries. The UDP beacon is
+  discovery-only (`v`, `ip`, `port`, `project`, `agent`) and never contains a pairing token;
+  the client must already hold one from an explicit provisioning flow.
 - **USB Serial JSON** (115200, newline-framed) is the other first-party transport. A
   WiFi-only client (X3/X4, InkDeck) can skip serial, but then it is only registrable once it
   emits `device_info` over WS (see below).
@@ -243,7 +245,8 @@ and pull while on battery.
   device-side glance renderer stays as the offline fallback. Renderer:
   `bridge/src/glance-frame.ts` (Node daemon only).
 - **Auth**: same as `/apme` — local connections free, LAN needs the pairing
-  token as `?token=` (devices hold it from provisioning; `/health` exposes it).
+  token as `?token=`. Devices must already hold it from explicit provisioning;
+  unauthenticated `/health`, mDNS, and UDP discovery never expose it.
 - **The daemon logs every pull**, because a sleeping client with an empty outbox
   sends nothing else: one line per `GET /feed` with the gap since that client's
   previous pull, measured against the `nextPullSec` it was handed last time.

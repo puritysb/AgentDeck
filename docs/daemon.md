@@ -128,10 +128,11 @@ The daemon deliberately binds `0.0.0.0` — companion apps, ESP32 boards, and pu
 
 - **HTTP default-deny** (`bridge/src/http-auth-gate.ts`, mirrored in Swift `DaemonServer.httpAccessResponse` + `HTTPServer.setAccessPolicy`): a request that is neither same-machine (`isLocalConnection`) nor token-bearing (`?token=` / `Authorization: Bearer`) reaches exactly one route — a minimal `GET /health` (`{status, mode, port, sameSocketControl, authRequired}`) with **no `pairingToken`, no module/device inventory, no session state**. Everything else 401s before route dispatch. The full `/health` (with `pairingToken`, for same-machine consumers) is only served to authorized requests.
 - **WS auth on both daemons**: non-local WebSocket upgrades require the token (Node `ws-server.ts` closes 4001; Swift `WebSocketServer` rejects the handshake with 401 — added 2026-08-07, previously unauthenticated).
-- **mDNS TXT never carries the token** — it is multicast. Clients that used to self-serve it pair explicitly instead: companions via QR (`agentdeck qr`) / manual URL, ESP32 boards via serial provisioning (`wifi_provision.authToken` → NVS), remote workers via `--daemon-token` / `AGENTDECK_DAEMON_TOKEN`.
+- **Discovery never carries the token** — both mDNS TXT and the UDP 9121 fallback beacon are visible to every peer on the segment. Only the daemon hub advertises; session bridges do not expose per-project metadata. Clients that used to self-serve the credential pair explicitly instead: companions via QR (`agentdeck qr`) / manual URL, ESP32 boards via serial provisioning (`wifi_provision.authToken` → NVS), remote workers via `--daemon-token` / `AGENTDECK_DAEMON_TOKEN`.
+- **Startup logs never carry the token-bearing pairing URL**. They direct the user to the explicit `agentdeck qr` command instead; this keeps the credential out of long-lived daemon log files.
 - **Rotation**: `agentdeck token rotate` retires a leaked token (all paired clients re-pair). `agentdeck token show` prints it for provisioning.
 - **Loopback-only opt-out**: `AGENTDECK_LOOPBACK_ONLY=1` binds `127.0.0.1` for users with no LAN devices. Startup logs state the bind mode either way.
-- Tests: `bridge/src/__tests__/http-auth-gate.test.ts`, `mdns-hostname.test.ts` (TXT token absence), `ws-server-auth.test.ts`, Swift `HttpAccessPolicyTests`.
+- Tests: `bridge/src/__tests__/http-auth-gate.test.ts`, `mdns-hostname.test.ts` (TXT token absence), `discovery-security.test.ts` (UDP and startup-log absence), `ws-server-auth.test.ts`, Swift `HttpAccessPolicyTests`.
 
 ## Multi-surface monitoring
 
