@@ -241,7 +241,7 @@ builds on [Releases](https://github.com/puritysb/AgentDeck/releases).
 
 | Channel | Tag | Status |
 |---|---|---|
-| **npm** — `@agentdeck/setup` | `npm-v*` | [1.0.9](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.0.9) |
+| **npm** — `@agentdeck/setup` | `npm-v*` | [1.0.10](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.0.10) |
 | **Apple App Store** — macOS + iPhone/iPad | `apple-v*` | [Live](https://apps.apple.com/app/id6784822497) on both platforms: macOS 1.0.3 (4101) and iPhone/iPad 1.0.2 (4002); **1.0.4 (4301) submitted for review on both platforms 2026-08-07** with the issue #145 local-network security fix |
 | **Elgato Marketplace** — Stream Deck plugin | `streamdeck-v*` | [1.0.4 live](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) (published 2026-08-05) |
 | **Ulanzi Marketplace** — D200H plugin | `ulanzi-v*` | [1.0.2 release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v1.0.2); submitted, review in progress ([details](marketplace/ulanzi/LISTING.md)) |
