@@ -48,17 +48,17 @@ struct AgentDeckFMHelper {
         }
 
         if request.type == "transcribe" {
-            await handleTranscribe(request)
+            dispatchLongWork { await handleTranscribe(request) }
             return
         }
 
         if request.type == "speak" {
-            await handleSpeak(request)
+            dispatchLongWork { await handleSpeak(request) }
             return
         }
 
         if request.type == "synthesize" {
-            await handleSynthesize(request)
+            dispatchLongWork { await handleSynthesize(request) }
             return
         }
 
@@ -76,6 +76,26 @@ struct AgentDeckFMHelper {
             return
         }
 
+        dispatchLongWork { await handleGenerate(request) }
+    }
+
+    /// Long work must never run on the stdin read loop.
+    ///
+    /// Measured 2026-08-08 on a D200H: one in-flight `generate` kept the loop
+    /// busy for 25 s, so the `record_stop` queued behind it was not even READ
+    /// until it finished. The push-to-talk capture ran to its 30 s cap and
+    /// transcribed 30 s of mostly silence, which reached the user as "voice
+    /// does nothing". `record` was already detached for exactly this reason;
+    /// every other slow request needed the same treatment.
+    ///
+    /// The work stays serialized on `workQueue`, as it was when the loop ran
+    /// it — only the READING of the next line is freed, which is all a control
+    /// line like `record_stop` needs.
+    private static func dispatchLongWork(_ body: @escaping @Sendable () async -> Void) {
+        Task.detached { await workQueue.run(body) }
+    }
+
+    private static func handleGenerate(_ request: HelperRequest) async {
         guard let prompt = request.prompt, !prompt.isEmpty else {
             write(["id": request.id, "error": "bad_request", "reason": "missing prompt"])
             return
@@ -437,6 +457,9 @@ struct AgentDeckFMHelper {
     /// task; the lock keeps two replies from interleaving inside one line.
     private static let writeLock = NSLock()
 
+    /// See `dispatchLongWork`.
+    private static let workQueue = WorkQueue()
+
     private static func write(_ object: [String: Any]) {
         guard JSONSerialization.isValidJSONObject(object),
               let data = try? JSONSerialization.data(withJSONObject: object),
@@ -447,6 +470,14 @@ struct AgentDeckFMHelper {
         FileHandle.standardOutput.write(Data((text + "\n").utf8))
         writeLock.unlock()
     }
+}
+
+/// Serializes the helper's slow requests (LLM generation, speech recognition,
+/// TTS) off the stdin read loop. An actor, so the ordering the read loop used
+/// to provide is preserved exactly — one slow request at a time — while the
+/// loop stays free to read control lines such as `record_stop`.
+private actor WorkQueue {
+    func run(_ body: @Sendable () async -> Void) async { await body() }
 }
 
 /// State for the single in-flight microphone capture. One at a time by design:

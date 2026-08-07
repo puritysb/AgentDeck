@@ -4670,6 +4670,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           let delivered = false;
           let via: string | undefined;
           let deliverReason: string | undefined;
+          if (!text) {
+            // The delivery block below (and its log) only runs for a non-empty
+            // transcript, so without this the whole turn vanished silently —
+            // the state the D200H reported as "voice does nothing".
+            log(`[agentdeck] voice: empty transcript from ${sink.describe()}`
+              + ` (session ${sessionId.slice(0, 32) || 'none'}) — nothing delivered`);
+          }
           if (text && sessionId) {
             if (sessionId === 'openclaw-gateway') {
               // The gateway session has no bridge port: the generic
@@ -4807,7 +4814,19 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       if (!hostPttBusy) return;
       // Resolves the in-flight recordWithHelper below; a release that races
       // the max-duration stop is a harmless no-op.
-      void stopHelperRecording({ cancel: cmd.action === 'cancel' }).catch(() => {});
+      //
+      // Never swallow the rejection. When this leg silently failed, the capture
+      // ran to its 30s cap and transcribed mostly silence — the deck looked
+      // like it had ignored the key, and nothing anywhere said otherwise
+      // (2026-08-08: the helper's stdin read loop was blocked by an in-flight
+      // `generate`, so the stop line was not read for 25 s).
+      void stopHelperRecording({ cancel: cmd.action === 'cancel' })
+        .then((stopped) => {
+          if (!stopped) debug('voice', `host PTT ${cmd.action}: nothing was recording`);
+        })
+        .catch((err) => {
+          log(`[agentdeck] voice: host PTT ${cmd.action} failed: ${String(err).slice(0, 160)}`);
+        });
       return;
     }
     if (hostPttBusy) return;
