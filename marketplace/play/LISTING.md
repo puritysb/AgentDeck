@@ -8,55 +8,27 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
-## Blocked: phone verification, and it needs the owner account (2026-08-07)
+## Account state — verified, app record not yet created (2026-08-07)
 
-**Nothing can be uploaded yet, and the reason is not the artifact.** The Play
-Console home still shows *"앱을 게시하려면 개발자 계정 설정을 완료하세요"* and the
-**Create app button is locked** — there is no app record to upload into.
+Both account verification steps are **done**, confirmed on the console home:
+the setup banner and the "개발자 계정 설정 완료" card are gone, and **"앱 만들기"
+/ Create app is enabled**. There is still no app record — creating it is the
+first step of the submission below.
 
-| Step | State |
+What it took, recorded because the console explains none of it up front:
+
+| Step | Outcome |
 |---|---|
-| Organization website verification | **Done.** `https://foundby.kr/` carries the green check on the developer account page, and the item has dropped off the console home |
-| Phone number verification | **Outstanding** — see below |
+| Organization website | `https://foundby.kr/` verified — the org's own domain, not the project's `github.io` site |
+| Contact phone + developer phone | Both verified. **Two numbers, not one**: the contact number Google uses privately, and the developer number published on the public profile |
 
-### Why the phone step does not work
-
-Two numbers have to be verified, not one, and both currently read
-`+821052298209` with no check mark beside them:
-
-- **연락처 전화번호 / contact phone** — how Google reaches the developer; never shown on Play
-- **개발자 전화번호 / developer phone** — published as part of the public developer profile, and separate from any per-app support number
-
-The controls to verify them **do not render for the signed-in account**. The
-account details page states plainly: *"계정 소유자만 수정할 수 있는 페이지입니다"*
-— this page is only editable by the account owner. There is no *인증 / Verify*
-button next to either number, while the two email addresses beside them
-(`puritysb@gmail.com`, `admin@foundby.kr`) already show green checks, so the
-contrast is not ambiguity about where to click.
-
-**The owner is a different Google account.** The developer account page lists
-계정 소유자 as **`nine6484@gmail.com` (최승범)**, while the browser session is
-`puritysb@gmail.com`. Phone verification has to be done from the owner's login;
-no permission grant to the other account substitutes for it.
-
-### The order the console requires
-
-From the phone-verification page itself:
-
-1. Finish every other verification task on the console home first, identity
-   verification included. (Now satisfied — website is the one that was pending.)
-2. Open 계정 세부정보 / Account details.
-3. Check that both numbers are correct.
-4. Press **인증** on *each* number; the code arrives by SMS **or** voice call.
-5. Enter each code and confirm.
-
-Both numbers must complete step 4-5. If SMS does not arrive, the console
-suggests the voice-call option, and points at support when a carrier or IVR
-system blocks the call.
-
-Everything downstream — creating the app, the store listing, the internal-track
-upload, data safety, content rating — stays unreachable until this is green.
-The AAB is ready and signed against `targetSdk 36`.
+★ **The verification controls only render for the account owner.** Account
+details says *"계정 소유자만 수정할 수 있는 페이지입니다"*, and the owner here is
+**`nine6484@gmail.com` (최승범)** — a different Google account from
+`puritysb@gmail.com`. Signed in as anyone else, the *인증 / Verify* button is
+absent rather than disabled, which reads like a missing field or a carrier
+problem and is neither. If a phone step ever looks broken again, check which
+account the browser is in before anything else.
 
 ## Release gate
 
@@ -160,11 +132,86 @@ Privacy policy: <https://puritysb.github.io/AgentDeck/#privacy>
 
 ## Submission steps
 
-1. Confirm `pnpm verify-version` and the Android version bump (`versionName`,
-   `versionCode`) — Play requires a strictly higher `versionCode` per upload.
-2. `./gradlew bundleRelease` (or let `android-v*` CI do it with
-   `ANDROID_PLAY_ENABLED=true`).
-3. Upload to **internal testing** first and install from Play on one device.
-4. Complete *App content*: privacy policy, data safety, ads (none), content
-   rating, target audience, government-app declaration (no).
-5. Promote to production once the internal install is verified.
+Everything below is console work. The artifact and every listing input already
+exist; nothing here needs a new build unless the version moves.
+
+**1. Build the bundle.** Play takes an AAB, not the APK on GitHub Releases:
+
+```bash
+cd android && ./gradlew bundleRelease     # → app/build/outputs/bundle/release/app-release.aab
+```
+
+Signing comes from `android/signing.properties` + `agentdeck-release.jks`
+(both gitignored, both local). The last verified build was **1.0.5 /
+versionCode 7**, 5.2 MB, `targetSdkVersion 36`. Play requires a strictly higher
+`versionCode` on every subsequent upload, so bump it before rebuilding if 7 has
+already been consumed.
+
+**2. Create the app.** Console home → *앱 만들기 / Create app*. App name
+`AgentDeck`, default language, **App** (not game), **Free**. Accept the
+declarations.
+
+**3. Store listing** — *Grow → Store presence → Main store listing*. Short and
+full description are in this file, already inside Play's limits (74/80 and
+2,076/4,000). Assets from `marketplace/play/1.0.5/`:
+
+| Field | File |
+|---|---|
+| App icon | `icon-512.png` |
+| Feature graphic | `feature-graphic-1024x500.png` |
+| Phone screenshots | `phone-01-dashboard.png`, `phone-02-attention.png` |
+| Tablet (10") screenshots | `tablet-01-dashboard.png` |
+
+**4. App content** — privacy policy `https://puritysb.github.io/AgentDeck/#privacy`,
+data safety per the table above (no data collected; microphone is push-to-talk
+to the user's own daemon), ads **none**, content rating questionnaire, target
+audience, government-app declaration **no**, financial features **none**.
+
+**5. Internal testing first.** Upload the AAB to the internal track, add
+yourself as a tester, and install from Play on a real device before promoting.
+This is the only step that proves the *uploaded* artifact runs, as opposed to
+the one built locally.
+
+**6. Promote to production.** The account is an organization account, so the
+12-tester / 14-day closed-test requirement does not apply and production is
+reachable directly from internal.
+
+### Optional: hand step 1 and 5 to CI
+
+`android-release.yml` already builds `bundleRelease` and uploads to the
+internal track on an `android-v*` tag. It is inert until both exist:
+
+- repo **variable** `ANDROID_PLAY_ENABLED` = `true`
+- repo **secret** `PLAY_SERVICE_ACCOUNT_JSON` = a Google Cloud service-account
+  key granted *Release manager* on this app in Play Console → *Users and
+  permissions*. The app has to exist first, so this can only be set up after
+  step 2.
+
+## Regenerating the screenshots
+
+Do not hand-edit or re-crop these. They come from the app itself, and the
+method matters more than the files:
+
+1. **Emulators.** `system-images;android-36;google_apis;arm64-v8a`, two AVDs at
+   Play's form factors — `medium_phone` (1080×2400 @420dpi) and `medium_tablet`
+   (2560×1600 @320dpi). Launch headless: `emulator -avd <name> -no-window
+   -no-audio -no-boot-anim -gpu swiftshader_indirect -port <p>`, then capture
+   with `adb -s emulator-<p> exec-out screencap -p > shot.png`. That captures
+   the app's own framebuffer, which is exactly what Play wants.
+2. **★ Never shoot against the real daemon.** Point at it and the app renders
+   live sessions — prompts, file paths, project names, other people's work in
+   progress. The first capture attempt did exactly that, including another
+   app's App Store Connect details. Run a synthetic daemon instead and route
+   the emulator to it with `adb -s emulator-<p> reverse tcp:9120 tcp:<fake>`;
+   the Android client tries ADB localhost before mDNS, so the reverse wins.
+   The synthetic feed only has to speak `sessions_list`, `state_update`,
+   `usage_update` and `timeline_history` — see `docs/protocol.md`.
+3. **Always target the emulator explicitly** (`adb -s emulator-<port>`). Real
+   e-ink readers and tablets are usually attached to this machine, and an
+   unqualified `adb install` will pick one of them.
+
+## Where the rest lives
+
+- Release policy and the Android row of the version table: [RELEASING.md](../../RELEASING.md)
+- Device classification, e-ink vendor paths, build and signing: [docs/android.md](../../docs/android.md)
+- What ships in the App Store build vs. the CLI tier: [docs/appstore-feature-matrix.md](../../docs/appstore-feature-matrix.md)
