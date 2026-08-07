@@ -126,6 +126,25 @@ this is the patch that makes it work, so prefer it over `1.0.5`.
 
 ## 1.0.5
 
+### Android dashboard
+
+- Target Android 16 (API 36). Google Play stops accepting uploads below API 36
+  on 2026-08-31, and the app was still on 34 — under even the API 35 floor in
+  force since 2025-08-31, so a bundle would have been rejected at upload rather
+  than at review. The toolchain moved with it: AGP 8.13.2, Kotlin 2.3.21,
+  Gradle 8.14.5, Compose BOM 2026.03.01
+  ([#146](https://github.com/puritysb/AgentDeck/pull/146))
+- Stop the two HUD rails from drawing through each other on phones. Tablets
+  sized them against the screen; phones took a bare maximum width, so a 220dp
+  session list and a 300dp topology rail overlapped by ~109dp on a 411dp
+  display and the dashboard read as two interleaved columns of text
+  ([#146](https://github.com/puritysb/AgentDeck/pull/146))
+- Make the attention card opaque where it lands on those rails. At a 65% fill
+  it was depth on a tablet and unreadable on a phone, with session names and
+  quota figures showing through the agent's own question
+  ([#146](https://github.com/puritysb/AgentDeck/pull/146))
+
+
 ### CLI and daemon — npm
 
 - Validate the daemon port before a hook constructs a loopback URL, so a

@@ -245,7 +245,7 @@ builds on [Releases](https://github.com/puritysb/AgentDeck/releases).
 | **Apple App Store** — macOS + iPhone/iPad | `apple-v*` | [Live](https://apps.apple.com/app/id6784822497) on both platforms: macOS 1.0.3 (build 4101, approved 2026-08-05) and the **iPhone/iPad companion 1.0.2** (build 4002, released 2026-08-06 — its first release, after the 2026-08-04 Guideline 2.1(a) rejection) |
 | **Elgato Marketplace** — Stream Deck plugin | `streamdeck-v*` | [1.0.4 live](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) (published 2026-08-05) |
 | **Ulanzi Marketplace** — D200H plugin | `ulanzi-v*` | [1.0.2 release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v1.0.2); submitted, review in progress ([details](marketplace/ulanzi/LISTING.md)) |
-| **GitHub Release** — Android APK | `android-v*` | [1.0.4](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.0.4) |
+| **GitHub Release** — Android APK | `android-v*` | [1.0.5](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.0.5) |
 | **GitHub Release** — ESP32 firmware | `esp32-v*` | [1.0.2](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v1.0.2) — one binary per Shipping board |
 | **Google Play** — Android AAB | `android-v*` | Organization account registered; listing copy and assets in [marketplace/play/](marketplace/play/LISTING.md), upload gated on `ANDROID_PLAY_ENABLED` + a service-account key |
 

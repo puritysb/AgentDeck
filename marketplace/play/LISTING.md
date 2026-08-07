@@ -8,6 +8,30 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## Blocked: developer account verification (2026-08-07)
+
+**Nothing can be uploaded yet, and the reason is not the artifact.** The Play
+Console home shows *"앱을 게시하려면 개발자 계정 설정을 완료하세요"* and the
+**Create app button is locked** — there is no app record to upload to. Two
+verification steps are outstanding, and the console states that **both are
+restricted to the account owner**:
+
+| Step | Console note | What it takes |
+|---|---|---|
+| **Organization website verification** | "계정 소유자만 조직의 웹사이트를 제공하고 인증할 수 있습니다" | Register the org's primary site in **Google Search Console**, enter that URL in account details, then send the verification request — it goes to the owner registered in Search Console |
+| **Phone number verification** | "계정 소유자만 전화번호를 인증할 수 있습니다" | Owner verifies by phone |
+
+Note for the website step: the site this project publishes is
+`https://puritysb.github.io/AgentDeck/`, a `github.io` subdomain. Search Console
+takes it as a **URL-prefix property** verified by an HTML file or meta tag,
+which GitHub Pages can serve — a domain-level property is not available for a
+subdomain you do not control the DNS for.
+
+Everything downstream of this — creating the app, the store listing, the
+internal-track upload, data safety, content rating — stays unreachable until
+both are green. The AAB itself is ready and was built and signed against
+`targetSdk 36`.
+
 ## Release gate
 
 Play refuses an upload below its target API floor before a human ever sees it.

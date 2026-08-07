@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Release maintainers
-reviewed: 2026-08-06
-revision: 2026-08-06
+reviewed: 2026-08-07
+revision: 2026-08-07
 source_of_truth: RELEASING.md
 validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-version]
 ---
@@ -17,7 +17,7 @@ validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-ve
 
 AgentDeck uses one `major.minor` compatibility line across every maintained surface. Two numeric `X.Y.Z` product versions are mutually compatible if and only if their first two components match. Patch values are ignored in both directions: for example, `1.0.1` and `1.0.9` are compatible regardless of which side is newer.
 
-Root [`VERSION`](VERSION) is the repository baseline and compatibility-line anchor, not a patch ceiling and not a runtime negotiation value. It currently reads **1.0.2**, so every maintained target must remain on compatibility line **1.0**. npm/CLI is at `1.0.8`; Stream Deck and Android are at `1.0.4`; Apple is at `1.0.3`; ESP32 is at `1.0.2`; Ulanzi is at `1.0.2`. A target may also advance beyond root's patch without forcing unrelated targets or root to ship. The public Mac App Store release is `1.0.2` (live since 2026-07-24); the iPhone/iPad companion's own first release, also `1.0.2`, was rejected on 2026-08-04 and has not shipped.
+Root [`VERSION`](VERSION) is the repository baseline and compatibility-line anchor, not a patch ceiling and not a runtime negotiation value. It currently reads **1.0.2**, so every maintained target must remain on compatibility line **1.0**. npm/CLI is at `1.0.9`; Stream Deck is at `1.0.4`; Android is at `1.0.5`; Apple is at `1.0.3`; ESP32 is at `1.0.2`; Ulanzi is at `1.0.2`. A target may also advance beyond root's patch without forcing unrelated targets or root to ship. Both Apple platforms are live: macOS `1.0.3` (approved 2026-08-05) and the iPhone/iPad companion `1.0.2`, whose first public release landed 2026-08-06 after the 2026-08-04 rejection.
 
 Run `pnpm verify-version` before every build or release. CI rejects a `major.minor` compatibility split or a target-internal mismatch. Release CI additionally requires a channel tag's full `X.Y.Z` to equal that target's own declared version; it does not compare the tag's patch with root `VERSION`.
 
@@ -26,7 +26,7 @@ Run `pnpm verify-version` before every build or release. CI rejects a `major.min
 | Surface | Target version | Independent monotonic value | Tag / delivery |
 |---|---|---|---|
 | **Apple** (iOS+macOS) | `apple/project.yml` `MARKETING_VERSION` | `CURRENT_PROJECT_VERSION` (CI-owned) | `apple-v*` → TestFlight / App Store |
-| **Android** | `android/app/build.gradle.kts` `versionName` | `versionCode` (currently 5) | `android-v*` → APK Release / optional Play |
+| **Android** | `android/app/build.gradle.kts` `versionName` | `versionCode` (currently 7) | `android-v*` → APK Release / optional Play |
 | **npm** (`@agentdeck/hooks`, `shared`, `bridge`, `setup`) | public `package.json` files | npm registry version floor | `npm-v*` → manual publish |
 | **ESP32** | `esp32/src/config.h` `FIRMWARE_VERSION` | build hash / epoch in firmware metadata | `esp32-v*` → firmware Release |
 | **Stream Deck** | plugin manifest `Version` as `X.Y.Z.0` | fourth component if a same-product-version plugin rebuild is ever required | `streamdeck-v*` → Elgato Maker portal |
