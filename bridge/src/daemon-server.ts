@@ -4670,12 +4670,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           let delivered = false;
           let via: string | undefined;
           let deliverReason: string | undefined;
-          if (!text) {
-            // The delivery block below (and its log) only runs for a non-empty
-            // transcript, so without this the whole turn vanished silently —
-            // the state the D200H reported as "voice does nothing".
-            log(`[agentdeck] voice: empty transcript from ${sink.describe()}`
-              + ` (session ${sessionId.slice(0, 32) || 'none'}) — nothing delivered`);
+          if (!text || !sessionId) {
+            // The delivery block below (and its log) only runs when BOTH are
+            // present, so without this the whole turn vanished silently — the
+            // state the D200H reported as "voice does nothing". Both halves
+            // matter: an empty transcript, and a transcript with nowhere to go
+            // (no device session, no focused session).
+            const why = !text ? 'empty transcript' : 'no target session';
+            log(`[agentdeck] voice: ${why} from ${sink.describe()}`
+              + ` (session ${sessionId.slice(0, 32) || 'none'},`
+              + ` text ${text ? `"${text.slice(0, 40)}"` : 'none'}) — nothing delivered`);
           }
           if (text && sessionId) {
             if (sessionId === 'openclaw-gateway') {

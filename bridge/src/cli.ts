@@ -629,7 +629,11 @@ const daemon = program.command('daemon').description('Manage monitoring daemon')
  * (2026-08-08: a push-to-talk fault was invisible for exactly this reason).
  */
 async function openDaemonLogs(logDir: string): Promise<[number, number]> {
-  const { openSync, statSync, renameSync } = await import('fs');
+  const { openSync, statSync, renameSync, mkdirSync } = await import('fs');
+  // `restart` calls this AFTER stopping the daemon, so an ENOENT here would
+  // leave the machine with no daemon at all. Nothing else on the CLI path
+  // creates this directory.
+  mkdirSync(logDir, { recursive: true });
   const open = (name: string): number => {
     const path = join(logDir, name);
     try {

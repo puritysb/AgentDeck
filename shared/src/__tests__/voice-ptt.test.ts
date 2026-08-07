@@ -46,3 +46,27 @@ describe('Stream Deck VOICE hold lifecycle', () => {
     expect(voiceCommandForAction('refresh-usage', 's')).toBeNull();
   });
 });
+
+describe('cancelActive — releases that can never arrive', () => {
+  // The capture's lifetime is the keydown/keyUp pair, so the events that make a
+  // release undeliverable (host socket closed, daemon link dropped) must end
+  // the hold themselves. They carry no key id, which is why `disappear` cannot
+  // serve here.
+  it('cancels the open hold without knowing which key owns it', () => {
+    const hold = new VoicePttHold();
+    hold.begin('ctx-a', 'session-1');
+    expect(hold.cancelActive()).toEqual({ action: 'voice-ptt-cancel', sessionId: 'session-1' });
+  });
+
+  it('is a no-op when nothing is held, so a stray socket close sends nothing', () => {
+    expect(new VoicePttHold().cancelActive()).toBeNull();
+  });
+
+  it('does not fire twice for one hold', () => {
+    const hold = new VoicePttHold();
+    hold.begin('ctx-a', 'session-1');
+    hold.cancelActive();
+    expect(hold.cancelActive()).toBeNull();
+    expect(hold.release('ctx-a')).toBeNull();
+  });
+});

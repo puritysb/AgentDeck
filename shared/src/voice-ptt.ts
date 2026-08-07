@@ -52,6 +52,21 @@ export class VoicePttHold {
     this.active = null;
     return { action: 'voice-ptt-cancel', sessionId: hold.sessionId };
   }
+
+  /**
+   * Cancel whatever hold is open, whichever key owns it.
+   *
+   * `disappear` needs the key's id; the events that make a release
+   * undeliverable — the host socket closing, the daemon link dropping — do not
+   * carry one. Without this the capture would run to the daemon's 30s cap and
+   * deliver the room as a prompt.
+   */
+  cancelActive(): VoicePttDispatch | null {
+    if (!this.active) return null;
+    const hold = this.active;
+    this.active = null;
+    return { action: 'voice-ptt-cancel', sessionId: hold.sessionId };
+  }
 }
 
 export interface VoiceWireCommand {

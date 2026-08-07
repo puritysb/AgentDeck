@@ -88,11 +88,11 @@ struct AgentDeckFMHelper {
     /// does nothing". `record` was already detached for exactly this reason;
     /// every other slow request needed the same treatment.
     ///
-    /// The work stays serialized on `workQueue`, as it was when the loop ran
-    /// it — only the READING of the next line is freed, which is all a control
-    /// line like `record_stop` needs.
+    /// The work stays serialized, in read order, exactly as it was when the
+    /// loop ran it — only the READING of the next line is freed, which is all a
+    /// control line like `record_stop` needs.
     private static func dispatchLongWork(_ body: @escaping @Sendable () async -> Void) {
-        Task.detached { await workQueue.run(body) }
+        workChain.enqueue(body)
     }
 
     private static func handleGenerate(_ request: HelperRequest) async {
@@ -218,8 +218,15 @@ struct AgentDeckFMHelper {
             write(["id": request.id, "error": "bad_request", "reason": "missing wav output path"])
             return
         }
+        // Reserve before the slow setup below, so a stop arriving mid-setup has
+        // somewhere to land (see RecordingBox.pendingStop).
+        guard activeRecording.reserve(requestId: request.id) else {
+            write(["id": request.id, "error": "busy", "reason": "a recording is already in progress"])
+            return
+        }
         let granted = await ensureMicAuthorization()
         guard granted else {
+            activeRecording.release()
             write([
                 "id": request.id,
                 "error": "unauthorized",
@@ -232,6 +239,7 @@ struct AgentDeckFMHelper {
                                             sampleRate: sampleRate,
                                             channels: 1,
                                             interleaved: true) else {
+            activeRecording.release()
             write(["id": request.id, "error": "record_failed", "reason": "output format unavailable"])
             return
         }
@@ -240,12 +248,19 @@ struct AgentDeckFMHelper {
         let input = engine.inputNode
         let inFormat = input.outputFormat(forBus: 0)
         guard inFormat.sampleRate > 0, inFormat.channelCount > 0 else {
+            activeRecording.release()
             write(["id": request.id, "error": "record_failed", "reason": "no audio input device"])
             return
         }
         let sink = PCMSink()
-        guard activeRecording.begin(requestId: request.id, engine: engine, sink: sink) else {
-            write(["id": request.id, "error": "busy", "reason": "a recording is already in progress"])
+        if let stopped = activeRecording.begin(engine: engine, sink: sink) {
+            // The stop beat the setup. Answer it as the capture it was meant
+            // for instead of starting an engine nobody is waiting on.
+            if stopped.cancelled {
+                write(["id": request.id, "cancelled": true])
+            } else {
+                write(["id": request.id, "error": "record_failed", "reason": "stopped before capture started"])
+            }
             return
         }
         input.installTap(onBus: 0, bufferSize: 4096, format: inFormat) { buffer, _ in
@@ -458,7 +473,7 @@ struct AgentDeckFMHelper {
     private static let writeLock = NSLock()
 
     /// See `dispatchLongWork`.
-    private static let workQueue = WorkQueue()
+    private static let workChain = WorkChain()
 
     private static func write(_ object: [String: Any]) {
         guard JSONSerialization.isValidJSONObject(object),
@@ -473,11 +488,24 @@ struct AgentDeckFMHelper {
 }
 
 /// Serializes the helper's slow requests (LLM generation, speech recognition,
-/// TTS) off the stdin read loop. An actor, so the ordering the read loop used
-/// to provide is preserved exactly — one slow request at a time — while the
-/// loop stays free to read control lines such as `record_stop`.
-private actor WorkQueue {
-    func run(_ body: @Sendable () async -> Void) async { await body() }
+/// TTS) off the stdin read loop, while the loop stays free to read control
+/// lines such as `record_stop`.
+///
+/// A chain rather than an actor: actor executors guarantee mutual exclusion but
+/// NOT FIFO, and `Task.detached` does not even preserve the order in which the
+/// tasks were created — so two queued `speak` requests could have been voiced
+/// out of order. Linking each unit of work to its predecessor's completion
+/// keeps the read order the loop used to provide. The enqueue itself is O(1)
+/// and happens on the read loop, which is the only mutator.
+private final class WorkChain: @unchecked Sendable {
+    private let lock = NSLock()
+    private var tail: Task<Void, Never> = Task {}
+
+    func enqueue(_ body: @escaping @Sendable () async -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        let previous = tail
+        tail = Task { await previous.value; await body() }
+    }
 }
 
 /// State for the single in-flight microphone capture. One at a time by design:
@@ -494,15 +522,41 @@ private final class RecordingBox: @unchecked Sendable {
     /// Bumped per recording so a stale max-duration timer from a finished
     /// capture cannot terminate the one that started after it.
     private var generation = 0
+    /// A stop that arrived while the capture was still being set up.
+    ///
+    /// `handleRecord` reserves the slot, then spends real time on mic
+    /// authorization, format negotiation and engine construction before the
+    /// tap is live. Hold-to-talk routinely beats that: a short hold puts
+    /// `record_stop` on stdin while `requestId` was set but no continuation
+    /// exists yet. Without this latch the stop was dropped, the capture ran to
+    /// its 30s cap, and 30s of room noise was transcribed and injected into
+    /// the user's session — worst of all for the sub-250ms tap, whose whole
+    /// meaning is "never mind".
+    private var pendingStop: Outcome?
 
-    func begin(requestId: Int, engine: AVAudioEngine, sink: PCMSink) -> Bool {
+    /// Claim the slot before the slow setup. Returns false when a capture is
+    /// already in flight.
+    func reserve(requestId: Int) -> Bool {
         lock.lock(); defer { lock.unlock() }
         guard self.requestId == nil else { return false }
         self.requestId = requestId
-        self.engine = engine
-        self.sink = sink
+        self.pendingStop = nil
         generation += 1
         return true
+    }
+
+    /// Arm the reserved slot with the live engine. Returns the stop that
+    /// arrived during setup, if any — the caller must then not start at all.
+    func begin(engine: AVAudioEngine, sink: PCMSink) -> Outcome? {
+        lock.lock(); defer { lock.unlock() }
+        if let stop = pendingStop {
+            pendingStop = nil
+            requestId = nil
+            return stop
+        }
+        self.engine = engine
+        self.sink = sink
+        return nil
     }
 
     func wait(maxMs: Int) async -> Outcome {
@@ -538,14 +592,30 @@ private final class RecordingBox: @unchecked Sendable {
         lock.lock()
         let cont = continuation
         let active = requestId != nil
+        let outcome = Outcome(cancelled: cancelled, reason: cancelled ? "cancelled" : reason)
+        if active && cont == nil {
+            // Reserved but not yet armed: latch the stop for `begin` rather
+            // than dropping it on the floor. Keep the reservation so the
+            // in-flight setup still owns the slot.
+            pendingStop = outcome
+            lock.unlock()
+            return true
+        }
         continuation = nil
         requestId = nil
         engine = nil
         sink = nil
         lock.unlock()
         guard active, let cont else { return false }
-        cont.resume(Outcome(cancelled: cancelled, reason: cancelled ? "cancelled" : reason))
+        cont.resume(outcome)
         return true
+    }
+
+    /// Drop a reservation whose setup failed before the engine existed.
+    func release() {
+        lock.lock(); defer { lock.unlock() }
+        requestId = nil
+        pendingStop = nil
     }
 
     func clear() {

@@ -322,7 +322,7 @@ const studioSupervisor = new ReconnectSupervisor({
 });
 // Register handlers BEFORE the first connect so the initial open isn't missed.
 $UD.onConnected(() => { dinfo(TAG, 'Ulanzi Studio bridge connected'); studioSupervisor.noteOpen(); });
-$UD.onClose(() => { dlog(TAG, 'Ulanzi Studio bridge closed'); studioSupervisor.noteClosed(); });
+$UD.onClose(() => { dlog(TAG, 'Ulanzi Studio bridge closed'); cancelActiveHold('studio socket closed'); studioSupervisor.noteClosed(); });
 $UD.onError((e) => { derr(TAG, `Ulanzi bridge error: ${e}`); studioSupervisor.noteClosed(); });
 studioSupervisor.start();
 
@@ -349,6 +349,22 @@ $UD.onClear((m: UlanziMessage) => {
 
 /** One hold at a time, shared with the Stream Deck key's semantics. */
 const voiceHold = new VoicePttHold();
+
+/**
+ * End a hold whose key release can no longer reach us.
+ *
+ * The capture's whole lifetime is the keydown/keyUp pair, so anything that can
+ * eat the release — Studio's socket dropping, the daemon link flapping — would
+ * otherwise leave the daemon recording to its 30s cap and then delivering 30s
+ * of room noise into the user's session as a prompt.
+ */
+function cancelActiveHold(why: string): void {
+  const dispatch = voiceHold.cancelActive();
+  if (!dispatch) return;
+  const cmd = voiceCommandForAction(dispatch.action, dispatch.sessionId);
+  dlog(TAG, `voice hold cancelled (${why})`);
+  if (cmd) daemon.send({ ...cmd });
+}
 
 /** The voice command a key currently carries, if it is the VOICE tile. */
 function voiceTargetFor(key: string): string | undefined {
@@ -418,6 +434,11 @@ $UD.onRun(onPress);
 
 
 $UD.onKeyDown((m: UlanziMessage) => {
+  // Recover an unknown context the same way `run` does. keydown precedes `run`
+  // by ~2ms, so without this the first press after a re-add would be lost
+  // entirely: keydown ignored, `run` registers the key and then skips it as a
+  // VOICE tile, keyUp finds no hold.
+  if (!instances.has(m.context)) $UD.emit('add', m);
   const inst = instances.get(m.context);
   const sessionId = inst ? voiceTargetFor(inst.key) : undefined;
   if (sessionId === undefined) { flog('RAW', 'keydown(ignored)', m.key); return; }
@@ -472,7 +493,7 @@ daemon.on('connected', () => {
   daemon.send({ type: 'query_usage' });
   scheduleRender();
 });
-daemon.on('disconnected', () => { dlog(TAG, 'daemon disconnected'); store.setConnected(false); view = { mode: 'list', page: 0 }; scheduleRender(); });
+daemon.on('disconnected', () => { dlog(TAG, 'daemon disconnected'); cancelActiveHold('daemon disconnected'); store.setConnected(false); view = { mode: 'list', page: 0 }; scheduleRender(); });
 daemon.start();
 
 dinfo(TAG, 'AgentDeck Ulanzi plugin started');
