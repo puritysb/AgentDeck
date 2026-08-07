@@ -247,7 +247,7 @@ builds on [Releases](https://github.com/puritysb/AgentDeck/releases).
 | **Ulanzi Marketplace** — D200H plugin | `ulanzi-v*` | [1.0.2 release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v1.0.2); submitted, review in progress ([details](marketplace/ulanzi/LISTING.md)) |
 | **GitHub Release** — Android APK | `android-v*` | [1.0.4](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.0.4) |
 | **GitHub Release** — ESP32 firmware | `esp32-v*` | [1.0.2](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v1.0.2) — one binary per Shipping board |
-| **Google Play** — Android AAB | `android-v*` | CI wired, gated on Play Console setup |
+| **Google Play** — Android AAB | `android-v*` | Organization account registered; listing copy and assets in [marketplace/play/](marketplace/play/LISTING.md), upload gated on `ANDROID_PLAY_ENABLED` + a service-account key |
 
 ---
 
