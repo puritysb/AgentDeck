@@ -69,6 +69,7 @@ fun AttentionTheaterHUD(
     onRespond: (Int) -> Unit,
     onFocus: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    scale: MonitorLayoutScale = MonitorLayoutScale.tablet,
 ) {
     val infinite = rememberInfiniteTransition(label = "attention")
     val breathe by infinite.animateFloat(
@@ -93,11 +94,19 @@ fun AttentionTheaterHUD(
     val effectiveOptions = effectiveOptions(featured.options)
     val useHorizontal = useHorizontalLayout(effectiveOptions, featured.promptType)
 
+    // A card is only allowed to be translucent when there is something worth
+    // seeing behind it. On a tablet it floats over open terrarium and 0.65
+    // reads as depth. A phone has no such space: the card lands squarely on
+    // the two HUD rails, and at 0.65 their text shows straight through the
+    // question — the one thing on screen that has to be readable. Phones get
+    // a near-opaque fill instead.
+    val cardScrim = if (scale.isTablet) 0.65f else 0.94f
+
     Column(
         modifier = modifier
             .widthIn(max = 460.dp)
             .background(
-                color = Color.Black.copy(alpha = 0.65f),
+                color = Color.Black.copy(alpha = cardScrim),
                 shape = RoundedCornerShape(12.dp),
             )
             .border(

@@ -1003,6 +1003,7 @@ private fun MonitorHUD(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 14.dp),
+                scale = scale,
             )
         }
     }
