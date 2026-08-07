@@ -285,3 +285,50 @@ describe('usage tiles — scoped caps and the three-key strip budget', () => {
     expect(stripText({})).not.toContain('MODEL');
   });
 });
+
+describe('VOICE tile — hold-to-talk contract', () => {
+  // The capture is started and stopped by the key's own keydown/keyUp in the
+  // Ulanzi plugin, NOT by pressing the tile twice. It was a tap toggle until
+  // 2026-08-08: the stop lived on a tile that only flips once the daemon's
+  // `voice_state` has come back, so a user holding the key — as they would on a
+  // Stream Deck — never stopped the capture and it ran to the 30s cap.
+  const state = {
+    state: 'idle',
+    sessions: [
+      { id: 'observed:claude:abc', agentType: 'claude-code', state: 'idle', projectName: 'demo' },
+    ],
+  };
+  const view = { mode: 'detail' as const, openSessionId: 'observed:claude:abc' };
+  const voiceCell = (voiceState?: 'idle' | 'recording' | 'transcribing' | 'error') => {
+    const deck = buildSessionDeck(state, { ...view, voiceState }, positions(15));
+    return [...deck.values()].find((c) => /VOICE/.test(c.svg));
+  };
+
+  it('tells the user to hold, not to tap', () => {
+    const cell = voiceCell('idle');
+    expect(cell?.svg).toContain('hold to talk');
+    expect(cell?.svg).not.toContain('tap to');
+  });
+
+  it('reads as listening while the daemon captures', () => {
+    expect(voiceCell('recording')?.svg).toContain('● listening');
+  });
+
+  it('still declares the wire commands the layout is responsible for', () => {
+    // The plugin drives the capture from the key event, but the cell remains
+    // the layout's statement of what this key does — and the daemon accepts
+    // exactly these shapes.
+    expect(voiceCell('idle')?.action).toMatchObject({
+      kind: 'command',
+      command: { type: 'voice', action: 'start', sessionId: 'observed:claude:abc' },
+    });
+    expect(voiceCell('recording')?.action).toMatchObject({
+      kind: 'command',
+      command: { type: 'voice', action: 'stop', sessionId: 'observed:claude:abc' },
+    });
+  });
+
+  it('goes inert only while transcribing', () => {
+    expect(voiceCell('transcribing')?.action).toBeNull();
+  });
+});

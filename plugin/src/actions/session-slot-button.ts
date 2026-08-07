@@ -34,7 +34,7 @@ import { renderStatusReadout, renderSessionReadout } from '../renderers/display-
 import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
 import { openAgentDeckAppOrGitHub } from '../system/index.js';
-import { VoicePttHold } from '../voice-ptt.js';
+import { VoicePttHold } from '@agentdeck/shared';
 
 // ---- Module state ----
 

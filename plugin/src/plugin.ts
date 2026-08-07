@@ -65,7 +65,7 @@ import {
 } from './actions/session-slot-button.js';
 import { isDisplayDimmed, setDisplayDimmed, dimActionIfNeeded } from './display-dim.js';
 import { FocusedDetailState, type FocusedDetailSnapshot } from './focused-detail-state.js';
-import { voiceCommandForAction } from './voice-ptt.js';
+import { voiceCommandForAction } from '@agentdeck/shared';
 
 // ---- Shared state ----
 let currentState = State.DISCONNECTED;

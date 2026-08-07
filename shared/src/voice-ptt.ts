@@ -1,9 +1,17 @@
 /**
- * Testable hold-to-talk state and wire mapping for the Stream Deck VOICE key.
+ * Hold-to-talk state and wire mapping for every deck's VOICE key.
  *
- * The decorated Stream Deck action class is not loaded by Vitest, so the
- * key-down/key-up/disappear transition logic lives here and the action only
- * forwards SDK events into it.
+ * Shared because the two decks must not disagree about what a press means. The
+ * D200H originally used a tap-toggle instead — a press started the capture and
+ * a SECOND press was supposed to stop it — which put the stop behind a tile
+ * that only flips once the daemon's `voice_state` has come back. A user with
+ * Stream Deck muscle memory holds the key instead, so nothing ever stopped the
+ * capture and it ran to its 30 s cap (measured on hardware 2026-08-08: keydown
+ * 17:35:10.399, key release 17:35:13.298, no second press). Both decks now hold
+ * to talk, and neither depends on the tile having flipped.
+ *
+ * Kept free of SDK types so Vitest can drive it directly: the decorated Stream
+ * Deck action class and the Ulanzi main service both only forward events here.
  */
 
 export const PTT_MIN_HOLD_MS = 250;

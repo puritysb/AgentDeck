@@ -616,6 +616,32 @@ program
 // ===== Daemon commands =====
 
 const daemon = program.command('daemon').description('Manage monitoring daemon');
+/**
+ * stdout/stderr for a detached daemon: real files, never 'ignore'.
+ *
+ * Append (never truncate) so multi-day history survives restarts — overnight
+ * device incidents can only be correlated against logs that are still there in
+ * the morning. Rotate once past 5MB instead.
+ *
+ * Shared by `daemon start` and `daemon restart`. `restart` used to spawn with
+ * stdio:'ignore', so a daemon brought up that way wrote every log line to
+ * /dev/null — including the ones that exist to diagnose a failure in the field
+ * (2026-08-08: a push-to-talk fault was invisible for exactly this reason).
+ */
+async function openDaemonLogs(logDir: string): Promise<[number, number]> {
+  const { openSync, statSync, renameSync } = await import('fs');
+  const open = (name: string): number => {
+    const path = join(logDir, name);
+    try {
+      if (statSync(path).size > 5 * 1024 * 1024) renameSync(path, `${path}.1`);
+    } catch {
+      /* first run — no log yet */
+    }
+    return openSync(path, 'a');
+  };
+  return [open('daemon-stdout.log'), open('daemon-stderr.log')];
+}
+
 
 daemon
   .command('start')
@@ -723,7 +749,6 @@ daemon
 
     // Background fork unless --foreground
     if (!opts.foreground) {
-      const { openSync, statSync, renameSync } = await import('fs');
       const logDir = join(homedir(), '.agentdeck');
       const scriptPath = fileURLToPath(import.meta.url);
       const args = [scriptPath, 'daemon', 'start', '--foreground'];
@@ -731,21 +756,7 @@ daemon
       if (opts.debug) args.push('-d');
       if (opts.wakeWord) args.push('--wake-word');
 
-      // Use log files instead of 'ignore' — preserves device access (mic, etc.)
-      // Append (never truncate) so multi-day history survives restarts —
-      // overnight device incidents can only be correlated against logs that
-      // are still there in the morning. Rotate once past 5MB instead.
-      const openDaemonLog = (name: string): number => {
-        const path = join(logDir, name);
-        try {
-          if (statSync(path).size > 5 * 1024 * 1024) renameSync(path, `${path}.1`);
-        } catch {
-          /* first run — no log yet */
-        }
-        return openSync(path, 'a');
-      };
-      const out = openDaemonLog('daemon-stdout.log');
-      const err = openDaemonLog('daemon-stderr.log');
+      const [out, err] = await openDaemonLogs(logDir);
 
       const child = spawn(process.execPath, args, {
         detached: true,
@@ -788,9 +799,10 @@ daemon
     if (opts.port !== String(BRIDGE_WS_PORT)) args.push('-p', opts.port);
     if (opts.debug) args.push('-d');
 
+    const [rOut, rErr] = await openDaemonLogs(join(homedir(), '.agentdeck'));
     const child = spawn(process.execPath, args, {
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', rOut, rErr],
       windowsHide: true,
     });
     child.unref();

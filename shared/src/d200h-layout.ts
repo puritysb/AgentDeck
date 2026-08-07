@@ -653,10 +653,10 @@ export interface DeckView {
   animated?: boolean;
   /**
    * Host push-to-talk capture state (daemon `voice_state` events). Drives the
-   * detail-view VOICE tile: idle → "tap to talk" (sends voice start),
-   * recording → "● listening" (sends voice stop), transcribing → inert.
-   * D200H presses are single-fire (`run`), so the tile toggles rather than
-   * holding.
+   * detail-view VOICE tile: idle → "hold to talk", recording → "● listening",
+   * transcribing → inert. Purely cosmetic on the D200H: the capture is started
+   * and stopped by the key's own keydown/keyUp, so a tile that has not caught
+   * up cannot strand a recording.
    */
   voiceState?: 'idle' | 'recording' | 'transcribing' | 'error';
   /**
@@ -684,14 +684,21 @@ const processingState = (s?: string) => s?.toLowerCase() === 'processing';
 /**
  * Host push-to-talk tile. The deck contributes the button; the daemon owns
  * mic, on-device STT and spoken reply (host speakers), and delivery reuses
- * the device-voice ladder. Toggle semantics — D200H fires a single `run`
- * per press, so hold-to-talk is not expressible here.
+ * the device-voice ladder.
+ *
+ * HOLD to talk, like the Stream Deck key: the plugin drives this from the
+ * device's keydown/keyUp pair, not from `run`. It was a tap toggle until
+ * 2026-08-08, which meant the stop lived on a tile that had to be repainted
+ * first — a user who held the key never stopped the capture and it ran to the
+ * daemon's 30 s cap. The commands below stay on the cells so the layout still
+ * declares what the key does; the press path no longer needs the tile to have
+ * flipped.
  */
 function voiceTile(view: DeckView, sid: string): SessionDeckCell {
   switch (view.voiceState ?? 'idle') {
     case 'recording':
       return {
-        svg: actionTile('VOICE', UI.error, '● tap to send'),
+        svg: actionTile('VOICE', UI.error, '● listening'),
         action: { kind: 'command', command: { type: 'voice', action: 'stop', sessionId: sid } },
       };
     case 'transcribing':
@@ -703,7 +710,7 @@ function voiceTile(view: DeckView, sid: string): SessionDeckCell {
       };
     default:
       return {
-        svg: actionTile('VOICE', UI.cyan, 'tap to talk'),
+        svg: actionTile('VOICE', UI.cyan, 'hold to talk'),
         action: { kind: 'command', command: { type: 'voice', action: 'start', sessionId: sid } },
       };
   }
