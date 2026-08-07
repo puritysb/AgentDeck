@@ -1382,6 +1382,28 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       }));
       return;
     }
+    // Setup status — the ONE route a browser page may read cross-origin, and
+    // therefore the one route that must carry no secret. The Ulanzi Studio
+    // Property Inspector is a webview whose origin is not this daemon, so a
+    // plain fetch of /health is blocked by CORS and its setup stepper cannot
+    // tell "daemon down" from "daemon unreadable". `Access-Control-Allow-Origin`
+    // could NOT be added to /health to fix that: /health carries pairingToken,
+    // and ACAO there would hand the pairing token to any web page the user
+    // happens to visit (the request comes from their own machine, so it passes
+    // the local check). This payload is deliberately the public-health fields
+    // plus the session state word — no token, no modules, no session inventory.
+    if (req.method === 'GET' && pathname === '/setup-status') {
+      const snap = core.stateMachine.getSnapshot();
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify({
+        status: 'ok', mode: 'daemon', port, state: snap.state, isSwift: false,
+      }));
+      return;
+    }
     if (req.method === 'GET' && pathname === '/status') {
       const snap = core.stateMachine.getSnapshot();
       res.writeHead(200, { 'Content-Type': 'application/json' });

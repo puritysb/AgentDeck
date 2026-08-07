@@ -34,6 +34,11 @@ describe('gateHttpRequest (issue #145 LAN default-deny)', () => {
 
   it('denies every other route to unauthorized peers', () => {
     const sensitive = [
+      // /setup-status answers with `Access-Control-Allow-Origin: *` so the
+      // Ulanzi Property Inspector (a webview on a foreign origin) can read it.
+      // CORS governs which ORIGIN may read a response, not which HOST may ask —
+      // an unauthenticated LAN peer must still get 401, not the payload.
+      ['GET', '/setup-status'],
       ['GET', '/status'], ['GET', '/devices'], ['GET', '/sse'], ['GET', '/diag'],
       ['GET', '/usage'], ['GET', '/pixoo/frame'], ['GET', '/agentdeck/cards'],
       ['GET', '/apme/tasks'], ['GET', '/esp32/fw'], ['POST', '/hooks/stop'],

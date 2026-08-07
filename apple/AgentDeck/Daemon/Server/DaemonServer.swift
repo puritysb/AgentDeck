@@ -1828,6 +1828,21 @@ final class DaemonServer {
             return .json(payload)
         }
 
+        // Setup status (Node daemon-server.ts parity). The Ulanzi Studio
+        // Property Inspector is a webview on a foreign origin, so its setup
+        // stepper reads this instead of /health: same discovery fields plus the
+        // session state word, and deliberately NO pairingToken — a payload a
+        // browser page may read cross-origin must carry no secret. Still behind
+        // the LAN access policy: unauthenticated remote peers get 401.
+        await httpServer.get("/setup-status") { [weak self] _ in
+            let health = await self?.buildModuleHealth().value ?? ["state": "disconnected"]
+            return .json([
+                "status": "ok", "mode": "daemon", "port": daemonPort,
+                "state": health["state"] as? String ?? "disconnected",
+                "isSwift": true,
+            ] as [String: Any])
+        }
+
         await httpServer.get("/status") { [weak self] _ in
             let payload = await self?.buildStatusPayload().value
                 ?? ["status": "error", "error": "daemon unavailable"]
