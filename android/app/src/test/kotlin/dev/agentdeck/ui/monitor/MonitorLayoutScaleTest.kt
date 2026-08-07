@@ -33,6 +33,46 @@ class MonitorLayoutScaleTest {
         assertEquals(MonitorLayoutScale.expanded, scaleFor(ScreenSizeClass.Expanded))
     }
 
+    /**
+     * The two HUD rails are anchored TopStart and TopEnd inside one Box, so
+     * nothing but these fractions keeps them apart. Phones shipped with a bare
+     * `widthIn(max = …)` — a 220dp session list and a 300dp topology rail on a
+     * 411dp screen, which drew through each other for ~109dp and made the HUD
+     * two columns of overlapping text.
+     *
+     * Asserting the fractions alone would restate the constants. Assert the
+     * property that actually has to hold: at the narrowest width each class can
+     * see, the two resolved rail widths still fit side by side.
+     */
+    @Test
+    fun `side rails cannot overlap at the narrowest width of their size class`() {
+        // (scale, narrowest dp the class is used at). Compact starts at 320dp;
+        // Tiny renders the unsupported screen but shares the phone scale.
+        val cases = listOf(
+            MonitorLayoutScale.phone to 320f,
+            MonitorLayoutScale.tablet to 600f,
+            MonitorLayoutScale.expanded to 840f,
+        )
+        for ((scale, widthDp) in cases) {
+            val session = minOf(widthDp * scale.sessionPanelWidthFraction, scale.sessionPanelMaxWidth.value)
+            val topology = minOf(widthDp * scale.topologyPanelWidthFraction, scale.topologyPanelMaxWidth.value)
+            val insets = scale.panelEdgeInset.value * 2
+            assertTrue(
+                "rails overlap at ${widthDp}dp for ${scale.sizeClass}: " +
+                    "$session + $topology + $insets > $widthDp",
+                session + topology + insets <= widthDp,
+            )
+        }
+    }
+
+    @Test
+    fun `rail fractions leave room for the terrarium between them`() {
+        for (scale in listOf(MonitorLayoutScale.phone, MonitorLayoutScale.tablet, MonitorLayoutScale.expanded)) {
+            val used = scale.sessionPanelWidthFraction + scale.topologyPanelWidthFraction
+            assertTrue("${scale.sizeClass} rails claim $used of the width", used < 1f)
+        }
+    }
+
     @Test
     fun `isTablet is true exactly for the classes with room for side rails`() {
         assertFalse(scaleFor(ScreenSizeClass.Tiny).isTablet)

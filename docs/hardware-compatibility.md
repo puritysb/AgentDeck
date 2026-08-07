@@ -144,7 +144,7 @@ Operational exceptions:
 |---|---|---|---|
 | macOS | macOS 26 · Xcode 26.6 · Swift 6 | In-process Swift daemon on port 9120 | App Store sandbox; no subprocesses or bundled interpreter |
 | iOS / iPadOS | iOS 17 · Swift 6 | Bonjour + same-LAN WS | Client only; no direct hardware modules |
-| Android | minSdk 29 · target/compileSdk 34 · JDK 17 | ADB localhost first, then mDNS | ADB reverse is CLI-only; same-LAN discovery is sandbox-safe |
+| Android | minSdk 29 · target/compileSdk 36 · JDK 17 | ADB localhost first, then mDNS | ADB reverse is CLI-only; same-LAN discovery is sandbox-safe |
 | Node bridge | Node.js 22+ | Daemon on port 9120 | Supported on macOS and Windows 11; Linux is not an official host |
 
 Android e-ink uses vendor-native refresh controls: Crema and MOAAN use `EinkManager`, Onyx uses its update-mode API, Bigme uses a color palette path, and Kobo falls back to invalidation. Android and Apple share the wire protocol; their render and discovery layers remain platform-native.

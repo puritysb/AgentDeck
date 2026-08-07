@@ -895,12 +895,19 @@ private fun MonitorHUD(
     val systemBarsPadding = WindowInsets.systemBars.asPaddingValues()
     val scale = rememberMonitorLayoutScale()
     BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(top = systemBarsPadding.calculateTopPadding())) {
-        // Tablet-only: mirror the SwiftUI MonitorHUD proportions
-        // (`min(width * 0.22, 220)` / `min(width * 0.32, 300)`) so Android
-        // tablets do not inflate the dashboard rails into oversized cards.
+        // Both rails are proportional, on every size class. Tablets keep the
+        // SwiftUI MonitorHUD proportions (0.22 / 0.32) so the dashboard rails
+        // are not inflated into oversized cards; phones get their own pair
+        // (0.42 / 0.46) that still sums below 1.
+        //
+        // Phones used to take `widthIn(max = …)` instead — a ceiling with no
+        // relation to the screen. The rails are anchored TopStart and TopEnd in
+        // the same Box, so on a 411dp phone a 220dp session list and a 300dp
+        // topology rail simply drew through each other for ~109dp, and the HUD
+        // was two unreadable columns of overlapping text.
         val parentWidth = maxWidth
-        val sessionPanelWidth = minOf(parentWidth * 0.22f, scale.sessionPanelMaxWidth)
-        val topologyPanelWidth = minOf(parentWidth * 0.32f, scale.topologyPanelMaxWidth)
+        val sessionPanelWidth = minOf(parentWidth * scale.sessionPanelWidthFraction, scale.sessionPanelMaxWidth)
+        val topologyPanelWidth = minOf(parentWidth * scale.topologyPanelWidthFraction, scale.topologyPanelMaxWidth)
         // Top-left: Agent list (logo + sessions + mode). AnimatedVisibility
         // both fades AND removes from composition when hidden so the
         // collapsed panels stop intercepting any future tap dispatch.
@@ -928,10 +935,7 @@ private fun MonitorHUD(
                     // the panel instead of painting over the timeline strip that
                     // occupies the bottom third of the screen.
                     .heightIn(max = maxHeight * 0.60f)
-                    .then(
-                        if (scale.isTablet) Modifier.width(sessionPanelWidth)
-                        else Modifier.widthIn(max = scale.sessionPanelMaxWidth)
-                    ),
+                    .width(sessionPanelWidth),
             )
         }
 
@@ -950,10 +954,7 @@ private fun MonitorHUD(
                 scale = scale,
                 modifier = Modifier
                     .padding(end = scale.panelEdgeInset, top = scale.panelEdgeInset)
-                    .then(
-                        if (scale.isTablet) Modifier.width(topologyPanelWidth)
-                        else Modifier.widthIn(max = scale.topologyPanelMaxWidth)
-                    ),
+                    .width(topologyPanelWidth),
             )
         }
 

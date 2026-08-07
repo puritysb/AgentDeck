@@ -48,6 +48,12 @@ data class MonitorLayoutScale(
     val sizeClass: ScreenSizeClass,
     val sessionPanelMaxWidth: Dp,
     val topologyPanelMaxWidth: Dp,
+    /** Share of the parent width each side rail may take. The two rails are
+     *  independently anchored (TopStart / TopEnd) inside one Box, so nothing
+     *  stops them from meeting in the middle — only these fractions do. They
+     *  must therefore sum to less than 1, with room left for the gap. */
+    val sessionPanelWidthFraction: Float,
+    val topologyPanelWidthFraction: Float,
     val panelPadding: Dp,
     val panelEdgeInset: Dp,
     val sessionRowSpacing: Dp,
@@ -75,6 +81,8 @@ data class MonitorLayoutScale(
             sizeClass = ScreenSizeClass.Compact,
             sessionPanelMaxWidth = 220.dp,
             topologyPanelMaxWidth = 300.dp,
+            sessionPanelWidthFraction = 0.42f,
+            topologyPanelWidthFraction = 0.46f,
             panelPadding = 8.dp,
             panelEdgeInset = 12.dp,
             sessionRowSpacing = 4.dp,
@@ -94,6 +102,8 @@ data class MonitorLayoutScale(
             sizeClass = ScreenSizeClass.Medium,
             sessionPanelMaxWidth = 300.dp,
             topologyPanelMaxWidth = 300.dp,
+            sessionPanelWidthFraction = 0.22f,
+            topologyPanelWidthFraction = 0.32f,
             panelPadding = 8.dp,
             panelEdgeInset = 12.dp,
             sessionRowSpacing = 4.dp,
@@ -114,6 +124,8 @@ data class MonitorLayoutScale(
             sizeClass = ScreenSizeClass.Expanded,
             sessionPanelMaxWidth = 340.dp,
             topologyPanelMaxWidth = 340.dp,
+            sessionPanelWidthFraction = 0.22f,
+            topologyPanelWidthFraction = 0.32f,
             panelPadding = 10.dp,
             panelEdgeInset = 16.dp,
             sessionRowSpacing = 5.dp,
