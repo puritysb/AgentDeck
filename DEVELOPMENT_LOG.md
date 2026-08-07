@@ -2,6 +2,67 @@
 
 ---
 
+## 2026-08-07 — 에뮬레이터가 컴파일이 못 잡는 것을 잡았다: Android 16 타깃과 폰 레이아웃 두 건
+
+### 문제
+
+Google Play 는 2026-08-31 부터 targetSdk 36 미만 업로드를 받지 않는다. 앱은
+34 였다 — 2025-08-31 부터 적용된 35 하한조차 밑돌아서, **심사가 아니라 업로드
+단계에서 거부**되는 상태였다. 그런데 targetSdk 는 혼자 올라가지 않는다.
+
+### 해결
+
+툴체인이 함께 움직였다: AGP 8.2.2 → 8.13.2, Kotlin 1.9.22 → 2.3.21,
+Gradle 8.5 → 8.14.5, Compose BOM 2026.03.01. Kotlin 2.x 에서 두 가지가
+하드 에러였다 — Compose 컴파일러가 별도 Gradle 플러그인
+(`org.jetbrains.kotlin.plugin.compose`)이 됐고, `android.kotlinOptions.jvmTarget`
+은 `kotlin { compilerOptions { jvmTarget.set(...) } }` 로 옮겨야 한다.
+
+**AndroidX 는 일부러 올리지 않았다.** 최신 lifecycle/activity 는 compileSdk 37
+과 AGP 9.1 을 요구한다 — 두 번째 마이그레이션이고, 여기서 필요한 새 API 는
+없으며, Play 가 요구하는 것은 targetSdk 36 뿐이다.
+
+### 핵심 설계 결정
+
+**★컴파일 성공은 검증이 아니다.** API 36 파괴적 변경 3종(edge-to-edge 강제,
+16KB 페이지, 대화면 방향/크기 고정 금지)은 코드 검토만으로 "해당 없음"이
+확인됐다. 그래서 그대로 태그를 끊었어도 CI 는 초록이었을 것이다. 실제로
+Android 16 에뮬레이터 2종(폰 1080×2400 @420dpi, 태블릿 2560×1600 @320dpi)에
+올려보고서야 **폰 전용 결함 2건**이 나왔다:
+
+1. **HUD 레일 겹침.** 두 레일은 한 `Box` 안에서 TopStart/TopEnd 에 앵커돼
+   있는데, 태블릿만 비율 기반(`min(w*0.22, 220)` / `min(w*0.32, 300)`)이고
+   폰은 화면과 무관한 `widthIn(max = …)` 뿐이었다. 411dp 화면에서 220 + 300
+   = 520dp → **109dp 가 서로를 뚫고 그려져** 대시보드가 읽을 수 없는 두 겹
+   텍스트가 됐다. 모든 size class 를 비율 기반으로 통일하고, 분수를 폭
+   상수 옆(`MonitorLayoutScale`)에 뒀다.
+2. **ATTENTION 카드 투명도.** 65% 흑색 채움은 태블릿에서 빈 terrarium 위에
+   떠서 깊이감이 되지만, 폰에서는 카드가 레일 위에 바로 얹혀 세션명·모델
+   id·쿼터 수치가 질문 위로 그대로 비쳤다. 폰만 0.94.
+
+**★테스트는 상수가 아니라 성질을 검증한다.** 회귀 게이트는 "0.42/0.46 이다"가
+아니라 "각 size class 가 쓰이는 최협 폭에서 두 레일 + 인셋이 화면에 들어간다"
+를 단언한다. 옛 기하로 되돌려 실패하는 것까지 확인했다(그러지 않으면 게이트인지
+알 수 없다).
+
+**★Robolectric 은 targetSdk 를 따라간다.** SDK 36 샌드박스는 Java 21 을
+요구하는데 레포/빌드스크립트/CI 기준선은 JDK 17 이다. `robolectric.properties`
+에 `sdk=35` 로 고정했다 — 해당 3개 클래스는 프로토콜 파싱·terrarium 상태·기기
+분류라 API 36 런타임 동작이 없다. JDK 21 상향은 별개 결정으로 남겼다.
+
+### 덤으로 드러난 것
+
+**★스토어 스크린샷을 실제 데몬에 붙여 찍으면 안 된다.** 첫 캡처가 호스트
+데몬(:9120)에 자동 연결돼 **라이브 세션**을 렌더했다 — 다른 세션의 프롬프트,
+파일 경로, 다른 앱의 App Store Connect 정보까지. 앱이 동작한다는 증거로는
+최고였지만 발행할 수는 없다. 합성 데몬(`sessions_list`/`state_update`/
+`usage_update`/`timeline_history` 4종만 말하면 된다)을 띄우고
+`adb reverse tcp:9120` 으로 물렸다 — Android 클라이언트가 mDNS 보다 ADB
+localhost 를 먼저 시도하므로 reverse 가 이긴다. 실기가 늘 붙어 있는
+머신이라 모든 adb 명령은 `-s emulator-<port>` 로 한정해야 한다.
+
+절차와 재현법은 `marketplace/play/LISTING.md` 에 있다.
+
 ## 2026-08-07 — LAN 보안 리포트 2차(#149): 첫 외부 보안 PR 머지와 후속 보강
 
 ### 문제
