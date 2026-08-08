@@ -335,9 +335,8 @@ struct WifiEsp32DeviceInfo: Sendable, Hashable {
 struct StreamDeckDeviceInfo: Sendable, Hashable {
     var id: String
     var name: String
-    /// "streamdeck" | "streamdeckplus" | "streamdeckplusxl" | "streamdeckmini"
-    /// | "streamdeckxl" | "streamdeckpedal" | "streamdeck-unknown". Kept as a
-    /// String so future Elgato families decode without a model update.
+    /// Canonical family identifier derived from Elgato's DeviceType enum. Kept
+    /// as a String so future Elgato families decode without a model update.
     var family: String?
     var columns: Int?
     var rows: Int?

@@ -18,6 +18,7 @@ import { ConnectionManager } from './connection-manager.js';
 import { updateUsageModeData, setUsageRefreshCallback } from './utility-modes/usage.js';
 import { setEncoderDaemonConnected } from './encoder-registry.js';
 import { dlog, dinfo } from './log.js';
+import { familyForDeviceType } from './device-profile.js';
 
 // Encoder actions
 import {
@@ -435,25 +436,11 @@ connMgr.on('display_state', (ev: {
 // a "Stream Deck" row with the physical devices this plugin sees. Called
 // from `connected` (initial registration) and from device hot-plug events
 // (so the row updates without waiting for the daemon's 120 s TTL eviction).
-// DeviceType (Elgato @elgato/schemas DeviceType enum): 0 = Stream Deck,
-// 1 = Stream Deck Mini, 2 = Stream Deck XL, 5 = Stream Deck Pedal,
-// 7 = Stream Deck+, 13 = Stream Deck + XL.
 function sendClientRegister(reason: string): void {
-  const familyFor = (type: number | undefined): string => {
-    switch (type) {
-      case 0: return 'streamdeck';
-      case 1: return 'streamdeckmini';
-      case 2: return 'streamdeckxl';
-      case 5: return 'streamdeckpedal';
-      case 7: return 'streamdeckplus';
-      case 13: return 'streamdeckplusxl';
-      default: return 'streamdeck-unknown';
-    }
-  };
   const devices = Array.from(streamDeck.devices).map((d: any) => ({
     id: String(d.id ?? ''),
     name: String(d.name ?? ''),
-    family: familyFor(d.type as number | undefined),
+    family: familyForDeviceType(Number(d.type)),
     columns: d.size?.columns as number | undefined,
     rows: d.size?.rows as number | undefined,
   }));

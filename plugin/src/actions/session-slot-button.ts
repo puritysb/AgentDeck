@@ -35,6 +35,7 @@ import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
 import { openAgentDeckAppOrGitHub } from '../system/index.js';
 import { VoicePttHold } from '@agentdeck/shared';
+import { familyForDeviceType, usesLowResolutionKeyProfile } from '../device-profile.js';
 
 // ---- Module state ----
 
@@ -214,17 +215,6 @@ function needsAnimation(): boolean {
 
 // ---- Rendering ----
 
-function familyForDeviceType(type: number | undefined): string {
-  switch (type) {
-    case 0: return 'streamdeck';
-    case 1: return 'streamdeckmini';
-    case 2: return 'streamdeckxl';
-    case 7: return 'streamdeckplus';
-    case 13: return 'streamdeckplusxl';
-    default: return 'streamdeck';
-  }
-}
-
 function layoutForEvent(ev: WillAppearEvent | KeyDownEvent): DeckLayout {
   const device = (ev.action as any)?.device;
   const columns = Number(device?.size?.columns ?? 4);
@@ -286,7 +276,7 @@ function refreshAll(): void {
 
     const config = manager.getSlotConfig(entry.slot, entry.layout);
     if (config.type === 'session' && config.session) liveSessionIds.add(config.session.id);
-    const svg = renderSlotSvg(config, entry.slot);
+    const svg = renderSlotSvg(config, entry.slot, entry.layout);
     void act.setImage(svgToDataUrl(svg)).catch(() => {});
   }
   // Drop phase entries for sessions that are no longer visible.
@@ -304,7 +294,7 @@ function stableSessionPhaseFrames(session: SessionInfo): number {
   return Math.abs(hash) % 36;
 }
 
-function renderSlotSvg(config: SessionSlotConfig, _slot: number): string {
+function renderSlotSvg(config: SessionSlotConfig, _slot: number, layout?: DeckLayout): string {
   switch (config.type) {
     case 'session': {
       const sess = config.session!;
@@ -324,6 +314,8 @@ function renderSlotSvg(config: SessionSlotConfig, _slot: number): string {
       return renderSessionSlot(sess, false, animFrame, undefined, {
         processingStartFrame: processingStartFrame.get(sess.id)?.frame,
         isStale: daemonStale,
+        lowResolutionKey: layout != null
+          && usesLowResolutionKeyProfile(layout.family, layout.columns, layout.rows),
       });
     }
 
@@ -423,7 +415,7 @@ export class SessionSlotButtonAction extends SingletonAction {
       await ev.action.setImage(svgToDataUrl(renderDisconnectedSlot(getDisconnectedSlotConfig(slot, layout))));
     } else {
       const config = manager.getSlotConfig(slot, layout);
-      await ev.action.setImage(svgToDataUrl(renderSlotSvg(config, slot)));
+      await ev.action.setImage(svgToDataUrl(renderSlotSvg(config, slot, layout)));
     }
   }
 

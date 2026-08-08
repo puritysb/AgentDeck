@@ -392,6 +392,14 @@ struct MenuBarTopologyList: View {
         case "streamdeckmini":   return "Stream Deck Mini"
         case "streamdeckxl":     return "Stream Deck XL"
         case "streamdeckpedal":  return "Stream Deck Pedal"
+        case "streamdeckmobile": return "Stream Deck Mobile"
+        case "corsairgkeys": return "Corsair GKeys"
+        case "corsairvoyager": return "Corsair Voyager"
+        case "scufcontroller": return "SCUF Controller"
+        case "streamdeckneo": return "Stream Deck Neo"
+        case "streamdeckstudio": return "Stream Deck Studio"
+        case "streamdeckvirtual": return "Virtual Stream Deck"
+        case "galleon100sd": return "Galleon 100 SD"
         default:                 return "Stream Deck"
         }
     }

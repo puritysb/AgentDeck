@@ -406,6 +406,22 @@ describe('session-slot-renderer snapshots', () => {
     expect(stale).toContain('STALE');
     expect(stale).toMatchSnapshot();
   });
+
+  it('wraps names with larger typography on original Stream Deck keys', () => {
+    const classic = renderSessionSlot(makeSession({
+      projectName: 'Continuous Integration Validation',
+    }), false, 4, undefined, { lowResolutionKey: true });
+    const standard = renderSessionSlot(makeSession({
+      projectName: 'Continuous Integration Validation',
+    }), false, 4);
+
+    expect(classic).toContain('font-size="20" font-weight="700"');
+    expect(classic).toContain('>Continuous<');
+    expect(classic).toContain('>Integration<');
+    expect(classic).toContain('x="20" y="128"');
+    expect(standard).toContain('font-size="16" font-weight="600"');
+    expect(standard).toContain('x="20" y="120"');
+  });
 });
 
 // ===================================================================

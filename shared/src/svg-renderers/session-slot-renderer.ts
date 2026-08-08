@@ -126,6 +126,27 @@ function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + '\u2026';
 }
 
+function wrapSessionName(name: string, maxChars: number, maxLines = 4): string[] {
+  if (name.length <= maxChars) return [name];
+  const lines: string[] = [];
+  let remaining = name.trim();
+  while (remaining.length > maxChars && lines.length < maxLines - 1) {
+    const breakpoints: number[] = [];
+    for (let i = 1; i < remaining.length; i += 1) {
+      if (remaining[i] === ' ' || (/[A-Z]/.test(remaining[i]) && /[a-z0-9]/.test(remaining[i - 1]))) {
+        breakpoints.push(i);
+      }
+    }
+    const split = breakpoints.filter(index => index <= maxChars).pop() ?? maxChars;
+    lines.push(remaining.slice(0, split).trimEnd());
+    remaining = remaining.slice(split).trimStart();
+  }
+  lines.push(remaining.length <= maxChars
+    ? remaining
+    : `${remaining.slice(0, maxChars - 1).trimEnd()}…`);
+  return lines;
+}
+
 /**
  * Compact, readable model strings for narrow surfaces (StreamDeck 144\u00d7144 keys).
  * - claude-sonnet-4-6              \u2192 "sonnet 4.6"
@@ -358,7 +379,13 @@ export function renderSessionSlot(
   isActive: boolean,
   animFrame: number,
   displayName?: string,
-  options?: { animated?: boolean; processingStartFrame?: number; isStale?: boolean },
+  options?: {
+    animated?: boolean;
+    processingStartFrame?: number;
+    isStale?: boolean;
+    /** Use typography tuned for the original 72px Stream Deck keys. */
+    lowResolutionKey?: boolean;
+  },
 ): string {
   const isWorking = session.state === 'processing';
   const isAsking = session.state?.startsWith('awaiting') ?? false;
@@ -375,8 +402,20 @@ export function renderSessionSlot(
   const WORKING_COLOR = '#2DD4BF';   // teal — cool, clearly not amber
   const signalColor = isWorking ? WORKING_COLOR : sColor;
   const fontFam = 'Inter, -apple-system, system-ui, Helvetica Neue, sans-serif';
+  const lowResolutionKey = options?.lowResolutionKey === true;
   const stateLbl = isWorking ? 'RUNNING' : isAsking ? 'PERMIT?' : 'IDLE';
   const colorText = isWorking ? '#CCFBF1' : isAsking ? '#FCD34D' : p1;
+  const nameLines = wrapSessionName(nameForDisplay, lowResolutionKey ? 11 : 15);
+  const nameStartY = nameLines.length === 1 ? (lowResolutionKey ? 60 : 54)
+    : nameLines.length === 2 ? (lowResolutionKey ? 56 : 53)
+      : nameLines.length === 3 ? (lowResolutionKey ? 53 : 52)
+        : (lowResolutionKey ? 52 : 50);
+  const nameLineHeight = nameLines.length === 4
+    ? (lowResolutionKey ? 18 : 15)
+    : (lowResolutionKey ? 20 : 18);
+  const nameText = nameLines.map((line, index) =>
+    `<text x="20" y="${nameStartY + index * nameLineHeight}" font-size="${lowResolutionKey ? '20' : '16'}" font-weight="${lowResolutionKey ? '700' : '600'}" text-anchor="start" fill="#E2E8F0" font-family="${fontFam}">${escXml(line)}</text>`,
+  ).join('');
   const gradId = `sd-bg-${agent}-${session.state || 'idle'}`;
   const filterId = `pg-${animFrame}`;
   let defs = `<linearGradient id="${gradId}" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#1C1C1E"/><stop offset="100%" stop-color="#0C0C0E"/></linearGradient>`;
@@ -446,9 +485,9 @@ export function renderSessionSlot(
     `<rect width="${SIZE}" height="${SIZE}" rx="16" fill="url(#${gradId})"/>`,
     `<rect x="8" y="8" width="128" height="128" rx="12" fill="#2C2C2E" opacity="0.8"/>`,
     stateBorder, activeRing, watermark, askDot, runBadge, badgeObj,
-    `<text x="20" y="32" font-size="17" font-weight="800" text-anchor="start" fill="${colorText}" font-family="${fontFam}">${escXml(stateLbl)}</text>`,
-    `<text x="20" y="52" font-size="13" font-weight="600" text-anchor="start" fill="#E2E8F0" font-family="${fontFam}">${escXml(truncate(nameForDisplay, 13))}</text>`,
-    `<text x="20" y="120" font-size="${isWorking ? '13' : '14'}" font-weight="500" text-anchor="start" fill="${colorText}" opacity="0.8" font-family="${fontFam}">${escXml(toolStr)}</text>`,
+    `<text x="20" y="32" font-size="${lowResolutionKey ? '18' : '17'}" font-weight="800" text-anchor="start" fill="${colorText}" font-family="${fontFam}">${escXml(stateLbl)}</text>`,
+    nameText,
+    `<text x="20" y="${lowResolutionKey ? '128' : '120'}" font-size="${lowResolutionKey ? '15' : (isWorking ? '13' : '14')}" font-weight="500" text-anchor="start" fill="${colorText}" opacity="0.8" font-family="${fontFam}">${escXml(toolStr)}</text>`,
     // Stale overlay: the daemon stopped responding (no pings/state for the
     // stale window) but hasn't yet hit the hard disconnect. Dim the last-known
     // render and flag it so the state on screen isn't mistaken for live.
