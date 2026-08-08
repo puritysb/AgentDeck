@@ -42,6 +42,21 @@ describe('buildClaudeUsageEncoder', () => {
     expect(enc.note).toBe('No usage data');
     expect(enc.fiveHour.known).toBe(false);
   });
+
+  it('rejects percentages from expired windows even when marked live', () => {
+    const expired = new Date(Date.now() - 30 * 60_000).toISOString();
+    const enc = buildClaudeUsageEncoder({
+      fiveHourPercent: 2,
+      fiveHourResetsAt: expired,
+      sevenDayPercent: 3,
+      sevenDayResetsAt: expired,
+      usageStale: false,
+    }, true);
+
+    expect(enc.note).toBe('No usage data');
+    expect(enc.fiveHour.known).toBe(false);
+    expect(enc.sevenDay.known).toBe(false);
+  });
 });
 
 describe('buildCodexUsageEncoder', () => {

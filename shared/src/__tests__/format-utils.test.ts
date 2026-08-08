@@ -5,6 +5,7 @@ import {
   formatDurationSec,
   formatResetTime,
   isCodexWindowStale,
+  isUsageWindowStale,
   CODEX_SNAPSHOT_STALE_MS,
   codexSnapshotAgeMs,
   codexUsageFootnote,
@@ -146,6 +147,14 @@ describe('isCodexWindowStale', () => {
     const past = new Date(Date.now() - 2 * 60_000).toISOString();
     expect(isCodexWindowStale(past, 60_000)).toBe(true);
     expect(isCodexWindowStale(past, 5 * 60_000)).toBe(false);
+  });
+});
+
+describe('isUsageWindowStale', () => {
+  it('supports deterministic provider-neutral freshness checks', () => {
+    const now = Date.parse('2026-08-07T04:00:00.000Z');
+    expect(isUsageWindowStale('2026-08-07T03:54:59.000Z', 5 * 60_000, now)).toBe(true);
+    expect(isUsageWindowStale('2026-08-07T03:56:00.000Z', 5 * 60_000, now)).toBe(false);
   });
 });
 

@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-08-07 — Stream Deck usage identity and expired-window guard
+
+Stream Deck usage surfaces now reject Claude percentages whose reset timestamp
+expired more than five minutes ago, even when an older producer incorrectly
+marks the payload live. The SD+ encoder and keypad tiles share the same generic
+freshness rule, and encoder headers explicitly identify `CLAUDE` or `CODEX` so
+their otherwise identical 5H/7D layouts cannot be confused. No local relay,
+credential, account-specific endpoint, or machine-specific fallback is part of
+this change.
+
 ## 2026-08-08 — npm 1.0.14: tarball을 발행 머신에서 독립시키다
 
 ### 문제

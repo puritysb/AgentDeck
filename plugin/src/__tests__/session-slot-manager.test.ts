@@ -644,6 +644,22 @@ describe('SessionSlotManager list-view usage tiles', () => {
     expect(types.filter((t) => t === 'usage')).toHaveLength(0);
   });
 
+  it('drops expired Claude windows even when an older daemon marks them live', () => {
+    const manager = new SessionSlotManager();
+    const expired = new Date(Date.now() - 30 * 60_000).toISOString();
+    manager.updateUsage({
+      fiveHourPercent: 2,
+      fiveHourResetsAt: expired,
+      sevenDayPercent: 3,
+      sevenDayResetsAt: expired,
+      usageStale: false,
+    });
+    manager.updateSessions(fewSessions(3));
+
+    const types = Array.from({ length: 15 }, (_, i) => manager.getSlotConfig(i, SD_CLASSIC_LAYOUT).type);
+    expect(types.filter((t) => t === 'usage')).toHaveLength(0);
+  });
+
   it('fits 13 sessions on a classic deck without paging (15 keys − 2 usage)', () => {
     const manager = new SessionSlotManager();
     manager.updateUsage({ fiveHourPercent: 1, sevenDayPercent: 2 });

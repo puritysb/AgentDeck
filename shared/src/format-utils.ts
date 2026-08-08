@@ -158,21 +158,26 @@ export function adjustUsagePercent(
 }
 
 /**
- * A Codex rolling-window snapshot is stale once its window has ended: `resetsAt`
- * is in the past beyond a short grace. Codex usage is read passively from the
- * newest local rollout file, so once Codex stops being used the snapshot freezes
- * — `usedPercent` stays at its last value and `resetsAt` slides into the past. At
- * that point a "now" countdown would mislead (the bar still shows the old percent),
- * so consumers should dim the gauge and show a "stale" marker instead.
+ * A rolling usage-window snapshot is stale once its reset instant is in the
+ * past beyond a short grace. The rule applies to both passively-read Codex
+ * limits and cached or relayed Claude limits: after the reset, the old percent
+ * no longer describes the current window and a "now" countdown is misleading.
  *
  * Grace (default 5m) keeps a genuinely-just-reset window briefly showing "now".
  */
-export function isCodexWindowStale(resetsAt: string | undefined, graceMs = 5 * 60_000): boolean {
+export function isUsageWindowStale(
+  resetsAt: string | undefined,
+  graceMs = 5 * 60_000,
+  nowMs = Date.now(),
+): boolean {
   if (!resetsAt) return false;
   const t = new Date(resetsAt).getTime();
   if (isNaN(t)) return false;
-  return Date.now() - t > graceMs;
+  return nowMs - t > graceMs;
 }
+
+/** Backward-compatible Codex-specific name retained for existing consumers. */
+export const isCodexWindowStale = isUsageWindowStale;
 
 /**
  * How old a Codex snapshot may get before its numbers stop reading as live.

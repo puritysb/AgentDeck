@@ -5,7 +5,7 @@
 import type { CodexRateLimits, ScopedUsageLimit } from '@agentdeck/shared';
 // Codex freshness footnote (SSOT `shared/format-utils`): "stale" for an ended
 // window, "3h ago" for a still-live window whose snapshot has gone cold.
-import { codexUsageFootnote } from '@agentdeck/shared';
+import { codexUsageFootnote, isUsageWindowStale } from '@agentdeck/shared';
 
 export interface UsageModeData {
   fiveHourPercent?: number;
@@ -162,8 +162,14 @@ import type { UsageEncoderData, UsageEncoderSideCard } from '../renderers/usage-
  */
 export function buildClaudeUsageEncoder(data: UsageModeData, hasReceivedData: boolean): UsageEncoderData {
   const stale = data.usageStale === true;
-  const fiveKnown = !stale && data.fiveHourPercent != null;
-  const sevenKnown = !stale && data.sevenDayPercent != null;
+  // Older daemons can incorrectly mark a frozen payload live. An expired reset
+  // timestamp is authoritative: the percentage belongs to the previous window.
+  const fiveKnown = !stale
+    && data.fiveHourPercent != null
+    && !isUsageWindowStale(data.fiveHourResetsAt);
+  const sevenKnown = !stale
+    && data.sevenDayPercent != null
+    && !isUsageWindowStale(data.sevenDayResetsAt);
   let note: string | undefined;
   if (!hasReceivedData) note = 'Waiting…';
   else if (!fiveKnown && !sevenKnown) note = 'No usage data';

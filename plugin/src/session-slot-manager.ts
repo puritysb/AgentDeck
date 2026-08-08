@@ -6,7 +6,7 @@
  * - Detail View: button 1=BACK, button 2=session info, buttons 3-7=options, button 8=ESC/STOP
  */
 import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits } from '@agentdeck/shared';
-import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, usageWindowKind, usageWindowLabel, codexUsageFootnote, UI } from '@agentdeck/shared';
+import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, usageWindowKind, usageWindowLabel, codexUsageFootnote, isUsageWindowStale, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
 import { stateFromSession } from './focused-detail-state.js';
@@ -397,8 +397,12 @@ export class SessionSlotManager {
     // Distinguish "0% used" from "no data" so we hide-if-absent (reserve no key)
     // instead of pinning a confident empty gauge when the hub has no OAuth
     // source or went stale.
-    this._fiveHourKnown = !stale && usage.fiveHourPercent != null;
-    this._sevenDayKnown = !stale && usage.sevenDayPercent != null;
+    this._fiveHourKnown = !stale
+      && usage.fiveHourPercent != null
+      && !isUsageWindowStale(usage.fiveHourResetsAt);
+    this._sevenDayKnown = !stale
+      && usage.sevenDayPercent != null
+      && !isUsageWindowStale(usage.sevenDayResetsAt);
 
     const cx = usage.codexRateLimits;
     this._codexPrimary = cx?.primary
