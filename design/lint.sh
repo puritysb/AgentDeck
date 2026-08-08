@@ -81,7 +81,12 @@ scan() {
     [[ "$file" =~ $exclude ]] && continue
     text="${text#"${text%%[![:space:]]*}"}"   # ltrim
     emit "$rule" "$file" "$line" "${text:0:160}"
-  done < <(grep -rnHE --include='*.html' --include='*.css' --include='*.jsx' --include='*.js' \
+    # LC_ALL=C makes the scan byte-oriented and therefore identical on every
+    # runner. R6's pattern is written in raw UTF-8 bytes, which a UTF-8 locale
+    # rejects outright ("grep: illegal byte sequence" — on stderr, which both
+    # this function and the CI step discard, so the rule failed in silence).
+    # Every other pattern here is ASCII, where the two locales agree.
+  done < <(LC_ALL=C grep -rnHE --include='*.html' --include='*.css' --include='*.jsx' --include='*.js' \
             --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.github \
             --exclude-dir=dist --exclude-dir=coverage --exclude-dir=generated \
             --exclude-dir=.zig-cache --exclude-dir=.zig-global-cache \
@@ -117,10 +122,23 @@ scan "R5_non_warm_shadow" \
   'box-shadow:[^;]*rgba\(\s*0\s*,\s*0\s*,\s*0\s*,' \
   "$TOKEN_FILES"
 
-# ── Rule R6: emoji in product UI (covers most ranges used in slop) ─────
-# Hits BMP emoji & symbols ranges; opt-out via data-allow-emoji=""
+# ── Rule R6: emoji in product UI ───────────────────────────────────────
+# One alternative per UTF-8 lead byte, NOT one bracket set spanning all of
+# them. The previous form — [\xE2\x98-\xE2\x9F\xE2\xAD\xF0\x9F] — is a single
+# byte set holding one range, \x98-\xE2, so it stood for "almost every high
+# byte": in a C locale it flagged every em dash, ellipsis and curly quote as an
+# emoji, and in a UTF-8 locale grep rejected the pattern as an illegal byte
+# sequence and matched nothing at all. Either way it never did its job.
+#
+# Ranges, as bytes (see the boundary cases in design/__tests__/lint-r6.sh):
+#   U+2600–U+27BF  misc symbols + dingbats   \xE2[\x98-\x9E][\x80-\xBF]
+#   U+2B00–U+2B7F  stars and arrows          \xE2[\xAC-\xAD][\x80-\xBF]
+#   U+1F300–U+1FAFF  pictographs + supplement  \xF0\x9F[\x8C-\xAB][\x80-\xBF]
+#
+# Deliberately excludes General Punctuation (U+2000–U+206F): an em dash is
+# typography, not slop. Opt out per-element via data-allow-emoji="".
 scan "R6_emoji_in_ui" \
-  $'[\xE2\x98-\xE2\x9F\xE2\xAD\xF0\x9F][\x80-\xBF][\x80-\xBF]' \
+  $'(\xE2[\x98-\x9E][\x80-\xBF]|\xE2[\xAC-\xAD][\x80-\xBF]|\xF0\x9F[\x8C-\xAB][\x80-\xBF])' \
   "$TOKEN_FILES"
 
 # ── Rule R7: non-token border-radius ───────────────────────────────────
