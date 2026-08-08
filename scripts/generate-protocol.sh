@@ -35,27 +35,40 @@ fi
 
 mkdir -p "$OUT_DIR"
 
+# Staging area for step 1. A shell redirection truncates its target BEFORE the
+# command runs, so `generator > committed-file.json` destroys that file the
+# moment the generator fails — and OUT_DIR defaults to the repository, where
+# these schemas are committed artifacts guarded by the drift gate. `set -e`
+# then aborts, leaving a 0-byte file staged for the next unwary `git commit`.
+#
+# The failure is routine on Windows: when `bash` resolves to WSL's bash, the
+# drift gate's AGENTDECK_PROTOCOL_OUT_DIR override does not cross the WSL
+# boundary (WSL forwards only variables named in WSLENV), so the "regenerate
+# into a temp dir and byte-compare" path writes to the real directory instead —
+# and truncates three tracked files on its way to failing.
+#
+# Generating into a scratch dir and moving on success keeps a failed run
+# read-only with respect to OUT_DIR.
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+# Emit one JSON Schema. `set -e` aborts before the `mv` when the generator
+# exits non-zero, so OUT_DIR keeps whatever it already had.
+gen_schema() {
+  local src="$1" type="$2" out="$3"
+  npx ts-json-schema-generator \
+    --path "$PROJECT_DIR/$src" \
+    --type "$type" \
+    --tsconfig "$PROJECT_DIR/shared/tsconfig.json" \
+    --no-type-check \
+    > "$TMP_DIR/$out"
+  mv "$TMP_DIR/$out" "$OUT_DIR/$out"
+}
+
 echo "=== Step 1: Generate JSON Schema from TypeScript ==="
-npx ts-json-schema-generator \
-  --path "$PROJECT_DIR/shared/src/protocol.ts" \
-  --type "BridgeEvent" \
-  --tsconfig "$PROJECT_DIR/shared/tsconfig.json" \
-  --no-type-check \
-  > "$OUT_DIR/bridge-event-schema.json"
-
-npx ts-json-schema-generator \
-  --path "$PROJECT_DIR/shared/src/protocol.ts" \
-  --type "PluginCommand" \
-  --tsconfig "$PROJECT_DIR/shared/tsconfig.json" \
-  --no-type-check \
-  > "$OUT_DIR/plugin-command-schema.json"
-
-npx ts-json-schema-generator \
-  --path "$PROJECT_DIR/shared/src/gateway-protocol.ts" \
-  --type "GatewayFrame" \
-  --tsconfig "$PROJECT_DIR/shared/tsconfig.json" \
-  --no-type-check \
-  > "$OUT_DIR/gateway-frame-schema.json"
+gen_schema shared/src/protocol.ts         BridgeEvent   bridge-event-schema.json
+gen_schema shared/src/protocol.ts         PluginCommand plugin-command-schema.json
+gen_schema shared/src/gateway-protocol.ts GatewayFrame  gateway-frame-schema.json
 
 echo "   → bridge-event-schema.json"
 echo "   → plugin-command-schema.json"
