@@ -226,6 +226,11 @@ export interface FoldableSession {
   groupSize?: number;
   foldedSessionIds?: string[];
   weight?: number;
+  sessionKind?: 'goal';
+  goalStatus?: string;
+  parentProjectName?: string;
+  activeWorkers?: number;
+  goalUpdatedAtMs?: number;
 }
 
 /**
@@ -264,7 +269,36 @@ export function foldCodexSessionsForDisplay<T extends FoldableSession>(sessions:
 }
 
 function isCodexSession(session: FoldableSession): boolean {
+  if (session.sessionKind === 'goal') return false;
   return session.agentType === 'codex-cli' || session.agentType === 'codex-app' || session.id.startsWith('codex:');
+}
+
+/** Keep persistent Codex goals visually attached to their parent project. */
+export function placeGoalSessionsAfterParents<T extends FoldableSession>(sessions: T[]): T[] {
+  const goals = sessions.filter(session => session.sessionKind === 'goal');
+  if (goals.length === 0) return sessions;
+
+  const ordinary = sessions.filter(session => session.sessionKind !== 'goal');
+  const used = new Set<T>();
+  const matching = (project: string | undefined): T[] => goals
+    .filter(goal => goal.parentProjectName?.localeCompare(project ?? '', undefined, { sensitivity: 'base' }) === 0)
+    .sort((lhs, rhs) => (rhs.goalUpdatedAtMs ?? 0) - (lhs.goalUpdatedAtMs ?? 0)
+      || naturalLabelCompare(lhs.projectName ?? '', rhs.projectName ?? ''));
+
+  const result: T[] = [];
+  for (const session of ordinary) {
+    result.push(session);
+    for (const goal of matching(session.projectName)) {
+      if (!used.has(goal)) {
+        result.push(goal);
+        used.add(goal);
+      }
+    }
+  }
+  for (const goal of goals) {
+    if (!used.has(goal)) result.push(goal);
+  }
+  return result;
 }
 
 function codexDisplayKind(session: FoldableSession): 'codex-cli' | 'codex-app' {

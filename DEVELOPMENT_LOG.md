@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-08-07 — Persistent Codex goals as read-only session tiles
+
+The sandboxed macOS daemon now discovers non-complete Codex goals from the
+user-approved `~/.codex` directory and emits them as synthetic, read-only
+sessions. Goal rows remain separate from ordinary Codex folding, follow their
+matching parent project, and sort by their ledger update time. Stream Deck tiles
+show goal lifecycle state and recent worker activity without starting, pausing,
+or modifying Codex. Missing files, incompatible tables, and unknown future goal
+statuses fail closed by producing no goal rows.
+
+The canonical session protocol and its generated Swift/Kotlin/schema mirrors
+carry optional goal metadata. The App Store feature matrix records the native,
+subprocess-free boundary; the external Node daemon does not synthesize goals.
+
 ## 2026-08-08 — npm 1.0.14: tarball을 발행 머신에서 독립시키다
 
 ### 문제

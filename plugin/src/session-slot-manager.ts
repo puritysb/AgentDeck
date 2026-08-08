@@ -6,7 +6,7 @@
  * - Detail View: button 1=BACK, button 2=session info, buttons 3-7=options, button 8=ESC/STOP
  */
 import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits } from '@agentdeck/shared';
-import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, usageWindowKind, usageWindowLabel, codexUsageFootnote, UI } from '@agentdeck/shared';
+import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, placeGoalSessionsAfterParents, aliasModelName, Brand, usageWindowKind, usageWindowLabel, codexUsageFootnote, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
 import { stateFromSession } from './focused-detail-state.js';
@@ -353,7 +353,7 @@ export class SessionSlotManager {
     // unapproved or token-mismatched Gateway.
 
     // Canonical stable sort: agentType rank → projectName → startedAt → id
-    this._sessions = sortSessions(alive).slice(0, MAX_SESSIONS);
+    this._sessions = placeGoalSessionsAfterParents(sortSessions(alive)).slice(0, MAX_SESSIONS);
 
     // Reconcile focus / active ids against the folded session set. When Codex
     // folds an old thread into a newer representative, the previously focused

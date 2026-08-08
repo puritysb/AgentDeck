@@ -171,6 +171,42 @@ enum DashboardDataRules {
         }
     }
 
+    static func placeGoalSessionPayloadsAfterParents(_ sessions: [[String: Any]]) -> [[String: Any]] {
+        let goals = sessions.filter { ($0["sessionKind"] as? String) == "goal" }
+        guard !goals.isEmpty else { return sessions }
+        let ordinary = sessions.filter { ($0["sessionKind"] as? String) != "goal" }
+        var used = Set<String>()
+        var result: [[String: Any]] = []
+
+        for session in ordinary {
+            result.append(session)
+            let project = (session["projectName"] as? String) ?? ""
+            let matches = goals.filter {
+                (($0["parentProjectName"] as? String) ?? "")
+                    .localizedCaseInsensitiveCompare(project) == .orderedSame
+            }.sorted { lhs, rhs in
+                let lhsUpdated = lhs["goalUpdatedAtMs"] as? Int64
+                    ?? Int64(lhs["goalUpdatedAtMs"] as? Int ?? 0)
+                let rhsUpdated = rhs["goalUpdatedAtMs"] as? Int64
+                    ?? Int64(rhs["goalUpdatedAtMs"] as? Int ?? 0)
+                if lhsUpdated != rhsUpdated { return lhsUpdated > rhsUpdated }
+                return naturalLabelCompare(
+                    (lhs["projectName"] as? String) ?? "",
+                    (rhs["projectName"] as? String) ?? ""
+                ) == .orderedAscending
+            }
+            for goal in matches {
+                let id = (goal["id"] as? String) ?? ""
+                if used.insert(id).inserted { result.append(goal) }
+            }
+        }
+        for goal in goals {
+            let id = (goal["id"] as? String) ?? ""
+            if used.insert(id).inserted { result.append(goal) }
+        }
+        return result
+    }
+
     static func foldCodexSessionPayloadsForDisplay(_ sessions: [[String: Any]]) -> [[String: Any]] {
         var passthrough: [[String: Any]] = []
         var codexByProject: [String: [[String: Any]]] = [:]
@@ -297,6 +333,7 @@ enum DashboardDataRules {
     }
 
     private static func isCodexPayload(_ session: [String: Any]) -> Bool {
+        if (session["sessionKind"] as? String) == "goal" { return false }
         let id = session["id"] as? String
         let agentType = session["agentType"] as? String
         return agentType == "codex-cli" || agentType == "codex-app" || id?.hasPrefix("codex:") == true

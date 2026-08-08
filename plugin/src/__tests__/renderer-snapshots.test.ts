@@ -406,6 +406,38 @@ describe('session-slot-renderer snapshots', () => {
     expect(stale).toContain('STALE');
     expect(stale).toMatchSnapshot();
   });
+
+  it('renders a persistent goal with a goal badge and live worker count', () => {
+    const svg = renderSessionSlot(makeSession({
+      id: 'codex-goal:release-validation',
+      projectName: 'Release Validation',
+      agentType: 'codex-app',
+      state: 'processing',
+      sessionKind: 'goal',
+      goalStatus: 'active',
+      activeWorkers: 2,
+    }), false, 4);
+    expect(svg).toContain('>WORKING<');
+    expect(svg).toContain('>GOAL<');
+    expect(svg).toContain('>2 WORKERS<');
+    expect(svg).toContain('>Release<');
+    expect(svg).toContain('>Validation<');
+    expect(svg).toMatchSnapshot();
+  });
+
+  it('renders a blocked goal as read-only attention', () => {
+    const svg = renderSessionSlot(makeSession({
+      id: 'codex-goal:dependency-upgrade',
+      projectName: 'Dependency Upgrade',
+      agentType: 'codex-app',
+      state: 'idle',
+      sessionKind: 'goal',
+      goalStatus: 'blocked',
+    }), false, 4);
+    expect(svg).toContain('>BLOCKED<');
+    expect(svg).toContain('>Needs attention<');
+    expect(svg).toContain('>GOAL<');
+  });
 });
 
 // ===================================================================

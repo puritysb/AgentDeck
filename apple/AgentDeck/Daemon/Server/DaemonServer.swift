@@ -462,6 +462,7 @@ final class DaemonServer {
 
     // State caches
     private var cachedSessions: [DaemonSessionEntry] = []
+    private var cachedCodexGoals: [CodexGoalSnapshot] = []
     private let serialEventSnapshot = SerialEventSnapshot()
 
     /// Sessions advertised over WS via `session_push_register` from CLI
@@ -6633,6 +6634,7 @@ final class DaemonServer {
 
     private func refreshSessions() async {
         settleStaleCodexProcessingSessions(broadcast: false)
+        cachedCodexGoals = LocalCodexGoalObserver.collect()
 
         // Pull filesystem-registered sessions (our own group container) first.
         let registryEntries = await registry.listActiveAndReachable().filter { $0.id != sessionId }
@@ -6823,6 +6825,7 @@ final class DaemonServer {
 
     private func buildSessionsListEvent() -> [String: Any] {
         var sessions = cachedSessions.map { sessionToDict($0) }
+        sessions.append(contentsOf: cachedCodexGoals.map(codexGoalToDict))
         // Inject virtual OpenClaw session iff Gateway is authenticated. SSOT:
         // DashboardDataRules.isOpenClawSessionActive (mirror of
         // shared/src/session-utils.ts). Identical predicate to the Node bridge.
@@ -6859,6 +6862,7 @@ final class DaemonServer {
         }
         sessions = DashboardDataRules.foldCodexSessionPayloadsForDisplay(sessions)
         sessions = DashboardDataRules.sortSessionPayloads(sessions)
+        sessions = DashboardDataRules.placeGoalSessionPayloadsAfterParents(sessions)
         // Attach the daemon-computed latest milestone (TIMELINE parity) so
         // glance surfaces (IPS10 cards) can render "HH:MM task • text" without
         // depending on their tiny reboot-empty on-device timeline ring.
@@ -6872,6 +6876,33 @@ final class DaemonServer {
             return s
         }
         return ["type": "sessions_list", "sessions": sessions]
+    }
+
+    private func codexGoalToDict(_ goal: CodexGoalSnapshot) -> [String: Any] {
+        let isActive = goal.status == "active"
+        var payload: [String: Any] = [
+            "id": "codex-goal:\(goal.threadId)",
+            "port": Int(port),
+            "alive": true,
+            "projectName": goal.title,
+            "agentType": "codex-app",
+            "state": isActive ? "processing" : "idle",
+            "controlMode": "observed",
+            "sessionKind": "goal",
+            "goalStatus": goal.status,
+            "parentProjectName": goal.projectName,
+            "goalThreadId": goal.threadId,
+            "activeWorkers": goal.activeWorkers,
+            "goalObjective": goal.objective,
+            "goalUpdatedAtMs": goal.updatedAtMs,
+            "cwd": goal.cwd,
+        ]
+        if goal.createdAtMs > 0 {
+            payload["startedAt"] = ISO8601DateFormatter().string(
+                from: Date(timeIntervalSince1970: Double(goal.createdAtMs) / 1000)
+            )
+        }
+        return payload
     }
 
     // MARK: - Usage (3-tier relay)

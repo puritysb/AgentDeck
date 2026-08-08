@@ -2180,6 +2180,7 @@ extension ADOcSessionStatus {
 
 // MARK: - ADSessionInfo
 struct ADSessionInfo: Codable, Equatable {
+    var activeWorkers: Double?
     /// Daemon-synthesized "what is this agent doing right now" one-liner — a shared source so
     /// glance surfaces (XTeink X3 rows, TRMNL list) render the same text.
     var activity: String?
@@ -2201,6 +2202,11 @@ struct ADSessionInfo: Codable, Equatable {
     var elapsedSec: Double?
     var foldedSessionIds: [String]?
     var goal: String?
+    var goalObjective: String?
+    var goalStatus: ADGoalStatus?
+    var goalThreadId: String?
+    /// Codex goal-ledger update time, used to order most-recently-updated goals.
+    var goalUpdatedAtMs: Double?
     var groupSize: Double?
     var id: String
     /// Observed sessions: a device press on this session's `options` will reach the agent, so a
@@ -2218,6 +2224,7 @@ struct ADSessionInfo: Codable, Equatable {
     var liveAnswerable: Bool?
     var modelName: String?
     var options: [ADPromptOption]?
+    var parentProjectName: String?
     var pid: Double?
     var port: Double
     var projectName: String
@@ -2233,6 +2240,8 @@ struct ADSessionInfo: Codable, Equatable {
     var reviewRisk: ADRisk?
     /// On-demand review lifecycle for the REVIEW badge tile ('running' while the judge works).
     var reviewStatus: ADReviewStatus?
+    /// Synthetic, read-only tile backed by Codex's persisted goal ledger.
+    var sessionKind: ADSessionKind?
     var startedAt: String?
     var state: String?
     /// Observed sessions: a device requested a soft STOP (deny at the next tool call) — render
@@ -2242,6 +2251,7 @@ struct ADSessionInfo: Codable, Equatable {
     var weight: Double?
 
     enum CodingKeys: String, CodingKey {
+        case activeWorkers = "activeWorkers"
         case activity = "activity"
         case agentType = "agentType"
         case alive = "alive"
@@ -2256,11 +2266,16 @@ struct ADSessionInfo: Codable, Equatable {
         case elapsedSec = "elapsedSec"
         case foldedSessionIds = "foldedSessionIds"
         case goal = "goal"
+        case goalObjective = "goalObjective"
+        case goalStatus = "goalStatus"
+        case goalThreadId = "goalThreadId"
+        case goalUpdatedAtMs = "goalUpdatedAtMs"
         case groupSize = "groupSize"
         case id = "id"
         case liveAnswerable = "liveAnswerable"
         case modelName = "modelName"
         case options = "options"
+        case parentProjectName = "parentProjectName"
         case pid = "pid"
         case port = "port"
         case projectName = "projectName"
@@ -2271,6 +2286,7 @@ struct ADSessionInfo: Codable, Equatable {
         case reviewFindings = "reviewFindings"
         case reviewRisk = "reviewRisk"
         case reviewStatus = "reviewStatus"
+        case sessionKind = "sessionKind"
         case startedAt = "startedAt"
         case state = "state"
         case stopRequested = "stopRequested"
@@ -2298,6 +2314,7 @@ extension ADSessionInfo {
     }
 
     func with(
+        activeWorkers: Double?? = nil,
         activity: String?? = nil,
         agentType: ADAgentType?? = nil,
         alive: Bool? = nil,
@@ -2312,11 +2329,16 @@ extension ADSessionInfo {
         elapsedSec: Double?? = nil,
         foldedSessionIds: [String]?? = nil,
         goal: String?? = nil,
+        goalObjective: String?? = nil,
+        goalStatus: ADGoalStatus?? = nil,
+        goalThreadId: String?? = nil,
+        goalUpdatedAtMs: Double?? = nil,
         groupSize: Double?? = nil,
         id: String? = nil,
         liveAnswerable: Bool?? = nil,
         modelName: String?? = nil,
         options: [ADPromptOption]?? = nil,
+        parentProjectName: String?? = nil,
         pid: Double?? = nil,
         port: Double? = nil,
         projectName: String? = nil,
@@ -2327,6 +2349,7 @@ extension ADSessionInfo {
         reviewFindings: Double?? = nil,
         reviewRisk: ADRisk?? = nil,
         reviewStatus: ADReviewStatus?? = nil,
+        sessionKind: ADSessionKind?? = nil,
         startedAt: String?? = nil,
         state: String?? = nil,
         stopRequested: Bool?? = nil,
@@ -2334,6 +2357,7 @@ extension ADSessionInfo {
         weight: Double?? = nil
     ) -> ADSessionInfo {
         return ADSessionInfo(
+            activeWorkers: activeWorkers ?? self.activeWorkers,
             activity: activity ?? self.activity,
             agentType: agentType ?? self.agentType,
             alive: alive ?? self.alive,
@@ -2348,11 +2372,16 @@ extension ADSessionInfo {
             elapsedSec: elapsedSec ?? self.elapsedSec,
             foldedSessionIds: foldedSessionIds ?? self.foldedSessionIds,
             goal: goal ?? self.goal,
+            goalObjective: goalObjective ?? self.goalObjective,
+            goalStatus: goalStatus ?? self.goalStatus,
+            goalThreadId: goalThreadId ?? self.goalThreadId,
+            goalUpdatedAtMs: goalUpdatedAtMs ?? self.goalUpdatedAtMs,
             groupSize: groupSize ?? self.groupSize,
             id: id ?? self.id,
             liveAnswerable: liveAnswerable ?? self.liveAnswerable,
             modelName: modelName ?? self.modelName,
             options: options ?? self.options,
+            parentProjectName: parentProjectName ?? self.parentProjectName,
             pid: pid ?? self.pid,
             port: port ?? self.port,
             projectName: projectName ?? self.projectName,
@@ -2363,6 +2392,7 @@ extension ADSessionInfo {
             reviewFindings: reviewFindings ?? self.reviewFindings,
             reviewRisk: reviewRisk ?? self.reviewRisk,
             reviewStatus: reviewStatus ?? self.reviewStatus,
+            sessionKind: sessionKind ?? self.sessionKind,
             startedAt: startedAt ?? self.startedAt,
             state: state ?? self.state,
             stopRequested: stopRequested ?? self.stopRequested,
@@ -2385,11 +2415,23 @@ enum ADControlMode: String, Codable, Equatable {
     case observed = "observed"
 }
 
+enum ADGoalStatus: String, Codable, Equatable {
+    case active = "active"
+    case blocked = "blocked"
+    case budgetLimited = "budget_limited"
+    case paused = "paused"
+    case usageLimited = "usage_limited"
+}
+
 /// On-demand review lifecycle for the REVIEW badge tile ('running' while the judge works).
 enum ADReviewStatus: String, Codable, Equatable {
     case done = "done"
     case error = "error"
     case running = "running"
+}
+
+enum ADSessionKind: String, Codable, Equatable {
+    case goal = "goal"
 }
 
 /// Voice assistant pipeline state (wake word → STT → LLM → TTS)

@@ -31,7 +31,9 @@ private val klaxon = Klaxon()
     .convert(Layer::class,               { Layer.fromValue(it.string!!) },               { "\"${it.value}\"" })
     .convert(Outcome::class,             { Outcome.fromValue(it.string!!) },             { "\"${it.value}\"" })
     .convert(ControlMode::class,         { ControlMode.fromValue(it.string!!) },         { "\"${it.value}\"" })
+    .convert(GoalStatus::class,          { GoalStatus.fromValue(it.string!!) },          { "\"${it.value}\"" })
     .convert(ReviewStatus::class,        { ReviewStatus.fromValue(it.string!!) },        { "\"${it.value}\"" })
+    .convert(SessionKind::class,         { SessionKind.fromValue(it.string!!) },         { "\"${it.value}\"" })
     .convert(State::class,               { State.fromValue(it.string!!) },               { "\"${it.value}\"" })
     .convert(BridgeEventStatus::class,   { BridgeEventStatus.fromValue(it.string!!) },   { "\"${it.value}\"" })
     .convert(TokenStatus::class,         { TokenStatus.fromValue(it.string!!) },         { "\"${it.value}\"" })
@@ -1067,6 +1069,8 @@ data class OcSessionStatus (
 )
 
 data class SessionInfo (
+    val activeWorkers: Double? = null,
+
     /**
      * Daemon-synthesized "what is this agent doing right now" one-liner — a shared source so
      * glance surfaces (XTeink X3 rows, TRMNL list) render the same text.
@@ -1100,6 +1104,18 @@ data class SessionInfo (
     val foldedSessionIDS: List<String>? = null,
 
     val goal: String? = null,
+    val goalObjective: String? = null,
+    val goalStatus: GoalStatus? = null,
+
+    @Json(name = "goalThreadId")
+    val goalThreadID: String? = null,
+
+    /**
+     * Codex goal-ledger update time, used to order most-recently-updated goals.
+     */
+    @Json(name = "goalUpdatedAtMs")
+    val goalUpdatedAtMS: Double? = null,
+
     val groupSize: Double? = null,
     val id: String,
 
@@ -1121,6 +1137,7 @@ data class SessionInfo (
 
     val modelName: String? = null,
     val options: List<PromptOption>? = null,
+    val parentProjectName: String? = null,
     val pid: Double? = null,
     val port: Double,
     val projectName: String,
@@ -1149,6 +1166,11 @@ data class SessionInfo (
      */
     val reviewStatus: ReviewStatus? = null,
 
+    /**
+     * Synthetic, read-only tile backed by Codex's persisted goal ledger.
+     */
+    val sessionKind: SessionKind? = null,
+
     val startedAt: String? = null,
     val state: String? = null,
 
@@ -1175,6 +1197,25 @@ enum class ControlMode(val value: String) {
     }
 }
 
+enum class GoalStatus(val value: String) {
+    Active("active"),
+    Blocked("blocked"),
+    BudgetLimited("budget_limited"),
+    Paused("paused"),
+    UsageLimited("usage_limited");
+
+    companion object {
+        public fun fromValue(value: String): GoalStatus = when (value) {
+            "active"         -> Active
+            "blocked"        -> Blocked
+            "budget_limited" -> BudgetLimited
+            "paused"         -> Paused
+            "usage_limited"  -> UsageLimited
+            else             -> throw IllegalArgumentException()
+        }
+    }
+}
+
 /**
  * On-demand review lifecycle for the REVIEW badge tile ('running' while the judge works).
  */
@@ -1189,6 +1230,17 @@ enum class ReviewStatus(val value: String) {
             "error"   -> Error
             "running" -> Running
             else      -> throw IllegalArgumentException()
+        }
+    }
+}
+
+enum class SessionKind(val value: String) {
+    Goal("goal");
+
+    companion object {
+        public fun fromValue(value: String): SessionKind = when (value) {
+            "goal" -> Goal
+            else   -> throw IllegalArgumentException()
         }
     }
 }

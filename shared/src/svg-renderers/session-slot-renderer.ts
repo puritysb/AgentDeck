@@ -126,6 +126,27 @@ function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + '\u2026';
 }
 
+function wrapSessionName(name: string, maxChars = 15, maxLines = 4): string[] {
+  if (name.length <= maxChars) return [name];
+  const lines: string[] = [];
+  let remaining = name.trim();
+  while (remaining.length > maxChars && lines.length < maxLines - 1) {
+    const breakpoints: number[] = [];
+    for (let i = 1; i < remaining.length; i += 1) {
+      if (remaining[i] === ' ' || (/[A-Z]/.test(remaining[i]) && /[a-z0-9]/.test(remaining[i - 1]))) {
+        breakpoints.push(i);
+      }
+    }
+    const split = breakpoints.filter(index => index <= maxChars).pop() ?? maxChars;
+    lines.push(remaining.slice(0, split).trimEnd());
+    remaining = remaining.slice(split).trimStart();
+  }
+  lines.push(remaining.length <= maxChars
+    ? remaining
+    : `${remaining.slice(0, maxChars - 1).trimEnd()}…`);
+  return lines;
+}
+
 /**
  * Compact, readable model strings for narrow surfaces (StreamDeck 144\u00d7144 keys).
  * - claude-sonnet-4-6              \u2192 "sonnet 4.6"
@@ -360,6 +381,9 @@ export function renderSessionSlot(
   displayName?: string,
   options?: { animated?: boolean; processingStartFrame?: number; isStale?: boolean },
 ): string {
+  const isGoal = session.sessionKind === 'goal';
+  const goalWorkers = session.activeWorkers ?? 0;
+  const goalStatus = session.goalStatus;
   const isWorking = session.state === 'processing';
   const isAsking = session.state?.startsWith('awaiting') ?? false;
   const isIdle = !isWorking && !isAsking;
@@ -375,8 +399,22 @@ export function renderSessionSlot(
   const WORKING_COLOR = '#2DD4BF';   // teal — cool, clearly not amber
   const signalColor = isWorking ? WORKING_COLOR : sColor;
   const fontFam = 'Inter, -apple-system, system-ui, Helvetica Neue, sans-serif';
-  const stateLbl = isWorking ? 'RUNNING' : isAsking ? 'PERMIT?' : 'IDLE';
+  const goalStateLabel = goalStatus === 'active'
+    ? (goalWorkers > 0 ? 'WORKING' : 'RUNNING')
+    : goalStatus === 'paused' ? 'PAUSED'
+      : goalStatus === 'blocked' ? 'BLOCKED'
+        : goalStatus === 'usage_limited' ? 'LIMITED'
+          : goalStatus === 'budget_limited' ? 'BUDGET' : 'GOAL';
+  const stateLbl = isGoal ? goalStateLabel : isWorking ? 'RUNNING' : isAsking ? 'PERMIT?' : 'IDLE';
   const colorText = isWorking ? '#CCFBF1' : isAsking ? '#FCD34D' : p1;
+  const nameLines = isGoal ? wrapSessionName(nameForDisplay) : [truncate(nameForDisplay, 13)];
+  const nameStartY = isGoal
+    ? (nameLines.length === 1 ? 54 : nameLines.length === 2 ? 53 : nameLines.length === 3 ? 52 : 50)
+    : 52;
+  const nameLineHeight = isGoal ? 15 : 18;
+  const nameText = nameLines.map((line, index) =>
+    `<text x="20" y="${nameStartY + index * nameLineHeight}" font-size="${isGoal ? '16' : '13'}" font-weight="600" text-anchor="start" fill="#E2E8F0" font-family="${fontFam}">${escXml(line)}</text>`,
+  ).join('');
   const gradId = `sd-bg-${agent}-${session.state || 'idle'}`;
   const filterId = `pg-${animFrame}`;
   let defs = `<linearGradient id="${gradId}" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#1C1C1E"/><stop offset="100%" stop-color="#0C0C0E"/></linearGradient>`;
@@ -408,7 +446,9 @@ export function renderSessionSlot(
           glowOpacity: pulseOpacity * 0.72, coreOpacity: Math.min(1, pulseOpacity + 0.06), filterId,
         })
       : `<rect x="8" y="8" width="128" height="128" rx="12" fill="none" stroke="${borderColor}" stroke-width="4.5" opacity="${pulseOpacity.toFixed(2)}" filter="url(#${filterId})"/><rect x="8" y="8" width="128" height="128" rx="12" fill="none" stroke="${borderColor}" stroke-width="1.5" opacity="${(pulseOpacity * 0.9).toFixed(2)}"/>`;
-    runBadge = `<rect x="99" y="14" width="30" height="16" rx="8" fill="${signalColor}" opacity="0.9" /><text x="114" y="25" font-size="9" font-weight="800" text-anchor="middle" fill="#0C0C0E" font-family="${fontFam}">RUN</text>`;
+    runBadge = isGoal
+      ? `<rect x="94" y="14" width="35" height="16" rx="8" fill="${p1}" opacity="0.9" /><text x="111.5" y="25" font-size="8" font-weight="800" text-anchor="middle" fill="#0C0C0E" font-family="${fontFam}">GOAL</text>`
+      : `<rect x="99" y="14" width="30" height="16" rx="8" fill="${signalColor}" opacity="0.9" /><text x="114" y="25" font-size="9" font-weight="800" text-anchor="middle" fill="#0C0C0E" font-family="${fontFam}">RUN</text>`;
   } else if (isAsking) {
     // PERM / AWAITING: a SOLID amber border that BREATHES (full perimeter, no
     // marching dashes) — a deliberately different motion + hue from RUNNING so
@@ -438,16 +478,26 @@ export function renderSessionSlot(
   }
 
   const watermark = `<g transform="translate(92, 80)" opacity="${isIdle ? '0.62' : '0.55'}">${agentLogoIcon(agent, 72, 1, 0, 0)}</g>`;
-  const badgeObj = isIdle ? `<rect x="100" y="14" width="28" height="16" rx="8" fill="#ffffff" opacity="0.1" /><text x="114" y="25" font-size="10" font-weight="700" text-anchor="middle" fill="#A1A1AA" font-family="${fontFam}">ACT</text>` : '';
-  const toolStr = isWorking ? 'Running task' : modelText;
+  const badgeObj = isIdle
+    ? (isGoal
+      ? `<rect x="94" y="14" width="35" height="16" rx="8" fill="${p1}" opacity="0.25" /><text x="111.5" y="25" font-size="8" font-weight="800" text-anchor="middle" fill="${p1}" font-family="${fontFam}">GOAL</text>`
+      : `<rect x="100" y="14" width="28" height="16" rx="8" fill="#ffffff" opacity="0.1" /><text x="114" y="25" font-size="10" font-weight="700" text-anchor="middle" fill="#A1A1AA" font-family="${fontFam}">ACT</text>`)
+    : '';
+  const goalDetail = goalStatus === 'active'
+    ? (goalWorkers > 0 ? `${goalWorkers} ${goalWorkers === 1 ? 'WORKER' : 'WORKERS'}` : 'Between cycles')
+    : goalStatus === 'paused' ? 'Paused'
+      : goalStatus === 'blocked' ? 'Needs attention'
+        : goalStatus === 'usage_limited' ? 'Usage limit'
+          : goalStatus === 'budget_limited' ? 'Budget limit' : 'Persistent goal';
+  const toolStr = isGoal ? goalDetail : isWorking ? 'Running task' : modelText;
 
   const elements = [
     `<defs>${defs}</defs>`,
     `<rect width="${SIZE}" height="${SIZE}" rx="16" fill="url(#${gradId})"/>`,
     `<rect x="8" y="8" width="128" height="128" rx="12" fill="#2C2C2E" opacity="0.8"/>`,
     stateBorder, activeRing, watermark, askDot, runBadge, badgeObj,
-    `<text x="20" y="32" font-size="17" font-weight="800" text-anchor="start" fill="${colorText}" font-family="${fontFam}">${escXml(stateLbl)}</text>`,
-    `<text x="20" y="52" font-size="13" font-weight="600" text-anchor="start" fill="#E2E8F0" font-family="${fontFam}">${escXml(truncate(nameForDisplay, 13))}</text>`,
+    `<text x="20" y="32" font-size="${isGoal ? '15' : '17'}" font-weight="800" text-anchor="start" fill="${colorText}" font-family="${fontFam}">${escXml(stateLbl)}</text>`,
+    nameText,
     `<text x="20" y="120" font-size="${isWorking ? '13' : '14'}" font-weight="500" text-anchor="start" fill="${colorText}" opacity="0.8" font-family="${fontFam}">${escXml(toolStr)}</text>`,
     // Stale overlay: the daemon stopped responding (no pings/state for the
     // stale window) but hasn't yet hit the hard disconnect. Dim the last-known

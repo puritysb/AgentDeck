@@ -88,6 +88,7 @@ All surfaces follow the same rule:
 |---|:---:|:---:|---|
 | Claude Code hook monitoring | Yes | Yes | Local HTTP hook ingestion |
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
+| Codex persistent-goal tiles | Yes | No | Read-only Swift observation of non-complete goals in a user-approved `~/.codex` directory; missing or incompatible storage yields no goal rows and never modifies Codex data |
 | Existing terminal-session discovery | Limited | Yes | General `ps` / `lsof` / transcript discovery is CLI-only |
 | Display-only permission attention | Yes | Yes | Real permission notification; no fabricated options |
 | Session order pinning (`--weight` sort override) | Limited | Yes | Weight is CLI-set at session launch and reaches the Swift daemon via `session_push_register`; the App Store app displays the resulting order (no in-app weight editor, and observed-hook sessions never carry weight) |

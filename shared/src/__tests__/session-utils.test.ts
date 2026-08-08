@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   agentTypeRank, sortSessions, assignDisplayNames, naturalLabelCompare, foldCodexSessionsForDisplay,
+  placeGoalSessionsAfterParents,
   isOpenClawSessionActive, hasOpenClawSession, rawSessionId, sameSession, sessionWeight,
   sanitizeWeightForWire, SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX,
 } from '../session-utils.js';
@@ -20,6 +21,30 @@ describe('OpenClaw visibility SSOT', () => {
     expect(hasOpenClawSession([{ agentType: 'claude-code' }, { agentType: 'openclaw' }])).toBe(true);
     expect(hasOpenClawSession([{ agentType: 'claude-code' }])).toBe(false);
     expect(hasOpenClawSession([])).toBe(false);
+  });
+});
+
+describe('persistent Codex goal placement', () => {
+  it('keeps goals out of Codex folding and places recent goals after their parent', () => {
+    const sessions = [
+      { id: 'codex:atlas', agentType: 'codex-app', projectName: 'Project Atlas' },
+      { id: 'goal:older', agentType: 'codex-app', projectName: 'Dependency Upgrade', sessionKind: 'goal' as const, parentProjectName: 'Project Atlas', goalUpdatedAtMs: 100 },
+      { id: 'goal:newer', agentType: 'codex-app', projectName: 'Release Validation', sessionKind: 'goal' as const, parentProjectName: 'Project Atlas', goalUpdatedAtMs: 200 },
+    ];
+
+    const folded = foldCodexSessionsForDisplay(sessions);
+    expect(folded).toHaveLength(3);
+    expect(placeGoalSessionsAfterParents(sortSessions(folded)).map(session => session.id))
+      .toEqual(['codex:atlas', 'goal:newer', 'goal:older']);
+  });
+
+  it('keeps unmatched goals visible at the end', () => {
+    const sessions = [
+      { id: 'claude:one', agentType: 'claude-code', projectName: 'Project One' },
+      { id: 'goal:orphan', agentType: 'codex-app', projectName: 'Detached Goal', sessionKind: 'goal' as const, parentProjectName: 'Missing Project' },
+    ];
+    expect(placeGoalSessionsAfterParents(sessions).map(session => session.id))
+      .toEqual(['claude:one', 'goal:orphan']);
   });
 });
 

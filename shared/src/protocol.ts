@@ -433,6 +433,15 @@ export interface SessionInfo {
   goal?: string;  // one-line gist of the session's purpose (first user prompt) — observed sessions
   contextPercent?: number;
   totalTokens?: number;
+  /** Synthetic, read-only tile backed by Codex's persisted goal ledger. */
+  sessionKind?: 'goal';
+  goalStatus?: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited';
+  parentProjectName?: string;
+  goalThreadId?: string;
+  activeWorkers?: number;
+  goalObjective?: string;
+  /** Codex goal-ledger update time, used to order most-recently-updated goals. */
+  goalUpdatedAtMs?: number;
   question?: string;  // awaiting prompt question text (hook/observed sessions: from Notification message; managed PTY: parsed header)
   requestId?: string;  // present when a gated PreToolUse permission is pending device approval; devices render Allow/Deny + send permission_decision
   /** Observed sessions: a device requested a soft STOP (deny at the next tool call) — render "stopping…" instead of an active STOP. */

@@ -981,6 +981,22 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(app?["foldedSessionIds"] as? [String], ["codex:app-1", "codex:app-2"])
     }
 
+    func testGoalSessionPayloadsStaySeparateAndFollowTheirParent() {
+        let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
+            ["id": "codex:atlas", "port": 9120, "projectName": "Project Atlas", "agentType": "codex-app", "alive": true],
+            ["id": "goal:older", "port": 9120, "projectName": "Dependency Upgrade", "agentType": "codex-app", "alive": true, "sessionKind": "goal", "parentProjectName": "Project Atlas", "goalUpdatedAtMs": 100],
+            ["id": "goal:newer", "port": 9120, "projectName": "Release Validation", "agentType": "codex-app", "alive": true, "sessionKind": "goal", "parentProjectName": "Project Atlas", "goalUpdatedAtMs": 200],
+        ])
+
+        XCTAssertEqual(folded.count, 3)
+        let sorted = DashboardDataRules.sortSessionPayloads(folded)
+        let placed = DashboardDataRules.placeGoalSessionPayloadsAfterParents(sorted)
+        XCTAssertEqual(
+            placed.compactMap { $0["id"] as? String },
+            ["codex:atlas", "goal:newer", "goal:older"]
+        )
+    }
+
     func testSortSessionsClampsAndComparesExtremeWeightsSafely() {
         // Out-of-range wire values clamp to the documented bounds and
         // opposite-sign extremes order without overflow (three-way compare).

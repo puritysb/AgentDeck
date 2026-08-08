@@ -1124,6 +1124,9 @@
     "SessionInfo": {
       "additionalProperties": false,
       "properties": {
+        "activeWorkers": {
+          "type": "number"
+        },
         "activity": {
           "description": "Daemon-synthesized \"what is this agent doing right now\" one-liner — a shared source so glance surfaces (XTeink X3 rows, TRMNL list) render the same text.",
           "type": "string"
@@ -1175,6 +1178,26 @@
         "goal": {
           "type": "string"
         },
+        "goalObjective": {
+          "type": "string"
+        },
+        "goalStatus": {
+          "enum": [
+            "active",
+            "paused",
+            "blocked",
+            "usage_limited",
+            "budget_limited"
+          ],
+          "type": "string"
+        },
+        "goalThreadId": {
+          "type": "string"
+        },
+        "goalUpdatedAtMs": {
+          "description": "Codex goal-ledger update time, used to order most-recently-updated goals.",
+          "type": "number"
+        },
         "groupSize": {
           "type": "number"
         },
@@ -1193,6 +1216,9 @@
             "$ref": "#/definitions/PromptOption"
           },
           "type": "array"
+        },
+        "parentProjectName": {
+          "type": "string"
         },
         "pid": {
           "type": "number"
@@ -1241,6 +1267,11 @@
             "done",
             "error"
           ],
+          "type": "string"
+        },
+        "sessionKind": {
+          "const": "goal",
+          "description": "Synthetic, read-only tile backed by Codex's persisted goal ledger.",
           "type": "string"
         },
         "startedAt": {

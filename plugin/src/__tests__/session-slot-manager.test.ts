@@ -49,6 +49,39 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
 }
 
 describe('SessionSlotManager detail layout', () => {
+  it('keeps persistent goals immediately after their parent project', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([
+      makeSession({ id: 'claude:one', projectName: 'Alpha', agentType: 'claude-code' }),
+      makeSession({ id: 'codex:atlas', projectName: 'Project Atlas', agentType: 'codex-app' }),
+      makeSession({
+        id: 'codex-goal:release',
+        projectName: 'Release Validation',
+        agentType: 'codex-app',
+        sessionKind: 'goal',
+        goalStatus: 'active',
+        parentProjectName: 'Project Atlas',
+        goalUpdatedAtMs: 200,
+      }),
+      makeSession({
+        id: 'codex-goal:upgrade',
+        projectName: 'Dependency Upgrade',
+        agentType: 'codex-app',
+        sessionKind: 'goal',
+        goalStatus: 'blocked',
+        parentProjectName: 'Project Atlas',
+        goalUpdatedAtMs: 100,
+      }),
+    ]);
+
+    expect(manager.sessions.map(session => session.id)).toEqual([
+      'claude:one',
+      'codex:atlas',
+      'codex-goal:release',
+      'codex-goal:upgrade',
+    ]);
+  });
+
   it('re-points detail focus onto the codex fold representative when the focused thread is absorbed', () => {
     const manager = new SessionSlotManager();
     manager.updateSessions([

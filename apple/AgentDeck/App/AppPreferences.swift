@@ -525,7 +525,7 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
     func chooseCodexDirectory() -> Bool {
         let panel = NSOpenPanel()
         panel.title = "Select your .codex folder"
-        panel.message = "Choose Codex's local ~/.codex folder so the sandboxed app can read your Codex plan and usage limits."
+        panel.message = "Choose Codex's local ~/.codex folder so the sandboxed app can read your Codex plan, usage limits, and persistent goals."
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
