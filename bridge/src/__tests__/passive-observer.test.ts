@@ -6,6 +6,7 @@ import {
   isAntigravityProcessCommand,
   isClaudeSessionProcessCommand,
   isCodexSessionProcessCommand,
+  observedStateAfterSilence,
   parseCimProcessTable,
   parseClaudeTranscript,
   parseCodexRollout,
@@ -18,6 +19,14 @@ function jsonl(records: unknown[]): string {
 }
 
 describe('passive-observer parsers', () => {
+  it('expires a silent observed processing state without hiding fresh work', () => {
+    const now = Date.parse('2026-08-07T04:00:00.000Z');
+    expect(observedStateAfterSilence('processing', now - 11 * 60_000, now)).toBe('idle');
+    expect(observedStateAfterSilence('processing', now - 9 * 60_000, now)).toBe('processing');
+    expect(observedStateAfterSilence('idle', now - 11 * 60_000, now)).toBe('idle');
+    expect(observedStateAfterSilence('processing', undefined, now)).toBe('processing');
+  });
+
   it('parses ps output without depending on fixed command columns', () => {
     // ps columns: pid ppid rss tty command (tty added for observed-answer injection)
     const rows = parseProcessTable([

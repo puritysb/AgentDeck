@@ -124,8 +124,20 @@ export interface ObservedSession extends EnrichedSession {
 const SCAN_INTERVAL_MS = 5_000;
 const MAX_TAIL_BYTES = 512 * 1024;
 const MAX_SAMPLE_BYTES = 1024 * 1024;
-/** Rollout silence (no writes) after which an end-event-less turn is presumed dead. */
+/** Transcript/rollout silence after which an end-event-less turn is presumed dead. */
 const STALE_TURN_MS = 10 * 60 * 1000;
+
+export function observedStateAfterSilence(
+  state: ObservedState,
+  lastActivityAt: number | undefined,
+  now = Date.now(),
+): ObservedState {
+  return state === 'processing'
+    && lastActivityAt !== undefined
+    && now - lastActivityAt > STALE_TURN_MS
+    ? 'idle'
+    : state;
+}
 
 interface CodexRolloutFileInfo {
   mtimeMs: number;
@@ -621,6 +633,8 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
     const summary = transcript
       ? parseClaudeTranscript(readFileHeadAndTail(transcript, 64 * 1024, MAX_TAIL_BYTES))
       : { state: 'idle' as const };
+    const lastActivityAt = transcript ? fileMtimeMs(transcript) : undefined;
+    const state = observedStateAfterSilence(summary.state, lastActivityAt);
     sessions.push({
       id: `observed:claude:${sessionFile.sessionId}`,
       port: 0,
@@ -628,18 +642,18 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
       projectName: projectNameFromCwd(sessionFile.cwd),
       agentType: 'claude-code',
       alive: true,
-      state: summary.state,
+      state,
       modelName: summary.modelName,
       startedAt: new Date(sessionFile.startedAt).toISOString(),
       controlMode: 'observed',
       cwd: sessionFile.cwd,
       tty: proc.tty,
       appName: proc.tty ? undefined : resolveHostApp(proc.pid, byPid),
-      currentTask: summary.currentTask,
+      currentTask: state === 'processing' ? summary.currentTask : undefined,
       goal: summary.goal,
       contextPercent: summary.contextPercent,
       totalTokens: summary.totalTokens,
-      lastActivityAt: transcript ? fileMtimeMs(transcript) : undefined,
+      lastActivityAt,
     });
   }
   return sessions;
