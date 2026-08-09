@@ -254,11 +254,14 @@ function encSvgWrap(inner: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${ENC_W}" height="${ENC_H}" viewBox="0 0 ${ENC_W} ${ENC_H}">${inner}</svg>`;
 }
 
-/** Logo-only agent identity (top-right), matching the SD key tiles — no
- * separate agent-name text, which read as awkward floating next to the logo. */
+/** Readable provider identity plus the canonical brand mark. Claude and Codex
+ * otherwise share the same 5H/7D layout and are easy to confuse at a glance. */
 function encHeader(data: UsageEncoderData, muted = false): string {
   const agent = data.agent === 'codex' ? 'codex' : 'claude';
-  return brandLogo(agent, 186, 12, 16, muted);
+  return (
+    `<text x="5" y="13" font-family="JetBrains Mono, monospace" font-size="10" font-weight="bold" fill="${muted ? LABEL_DIM : HEADLINE}">${esc(data.title)}</text>`
+    + brandLogo(agent, 188, 11, 14, muted)
+  );
 }
 
 /**
