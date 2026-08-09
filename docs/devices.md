@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Device maintainers
-reviewed: 2026-08-05
-revision: 2026-08-05
+reviewed: 2026-08-09
+revision: 2026-08-09
 source_of_truth: docs/devices.md
 validators: [pnpm design-system:check]
 ---
@@ -116,6 +116,48 @@ Shared constants in `shared/src/protocol.ts`:
 
 WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 
+## Codex usage is a passive read of your own rollout files
+
+Every device that draws a Codex gauge — the Pixoo64 provider row, the iDotMatrix
+rails, the InkDeck `CODEX` row, the TC001/knob/pocket readouts, both deck strips —
+consumes the same `codexRateLimits` block, and none of them can improve on it.
+Codex writes a `rate_limits` snapshot into `~/.codex/sessions/**/rollout-*.jsonl`
+on every completed turn; AgentDeck reads that file. No OpenAI API is contacted.
+Three independent questions decide what a device shows, and folding any two of
+them together breaks a surface:
+
+| Question | Signal | What a device does |
+|---|---|---|
+| Has the window ENDED? | `window.stale` (producer, from `resetsAt`) | **Hide the gauge.** Slot-based consumers drop it entirely — this is the hard signal |
+| How OLD is the reading? | `capturedAt` + the consumer's own clock | Keep drawing it, dimmed, with its age (`"4d ago"`) in place of the countdown |
+| Is it still THIS account's? | snapshot `plan_type` vs the live tier in `auth.json` | **Void it.** A snapshot minted under a plan the account no longer holds is not old, it is wrong |
+
+The third question exists because the first two cannot answer it. A lapsed
+ChatGPT Plus leaves a weekly window whose `resetsAt` stays up to seven days in
+the future, so `stale` never fires and `capturedAt` only dims it — the retired
+plan's percentage keeps rendering. Reconciliation happens once, at the producer
+(`normalizeCodexRateLimits` in the Node daemon, `codexRateLimitsPayload` in the
+Swift one, sharing `codexSnapshotMatchesAccountPlan`), so no device implements
+it. Unknown on either side means keep: absence is no information, not a licence
+to delete real data.
+
+Two consequences for device code:
+
+- **A voided snapshot still rides the wire**, as a windowless block carrying only
+  the account tier. Clients merge usage fields retain-on-absent, so omitting the
+  key would pin the retired gauge forever. Test for a **window**, never for the
+  block's presence — `codexRateLimits != null` is true for an account with
+  nothing to show.
+- **A free tier is not automatically empty.** It reports real windows (a 30-day
+  one, for instance) and those are honest data. What a free tier lacks is the
+  *subscription* windows, which is why surfaces that name the plan render
+  "ChatGPT Free" rather than hiding the provider outright.
+
+Only the Node daemon can go beyond the passive read: it backs it with a
+throttled `codex app-server` JSON-RPC query, and the fresher snapshot wins by
+`capturedAt`. The App Store Swift daemon spawns no subprocess, so it is
+passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
+
 ## Device Details
 
 ### Stream Deck+ (Plugin)
@@ -181,7 +223,7 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 - **Transport**: HTTP REST to Divoom device LAN IP (port 80)
 - **Discovery**: local `/24` probe first; Divoom Cloud API fallback in the Node daemon; manual IP in `~/.agentdeck/pixoo.json`
 - **Events**: 4 types (`DISPLAY_FORWARDED_EVENTS`)
-- **Rendering**: state → native 64×64 RGB scene with official agent masks and matched Claude/Codex provider rows; 9×7 official-mask creature silhouettes identify the rows, which show primary/5h and secondary/7d percentage fills with reset countdowns → Divoom HTTP API
+- **Rendering**: state → native 64×64 RGB scene with official agent masks and matched Claude/Codex provider rows; 9×7 official-mask creature silhouettes identify the rows, which show primary/5h and secondary/7d percentage fills with reset countdowns → Divoom HTTP API. Each row is a seven-pixel band and a provider with no live window claims none: two providers occupy rows 50-63, one sits on 57-63, and with neither the tank keeps the full height. (An account whose Codex snapshot was voided by a plan change loses its band — see [§ Codex usage](#codex-usage-is-a-passive-read-of-your-own-rollout-files).)
 - **Adaptive push**: active states advance through moving single frames every 2.5s, idle refreshes every 10s, and user-visible state changes use a 1s load floor. Multi-frame GIF upload is deliberately disabled: on the tested Pixoo64 firmware it caused REST timeout and 60–87.5% ping loss. Failed attempts are rate-limited and a fresh one-shot probe immediately replaces a wedged long-lived URLSession.
 - **Why HTTP**: Pixoo64's supported control surface is Divoom's LAN REST API; no supported raw-frame BLE path is published. The safe practical improvement is a faster bounded single-frame cadence, not an undocumented BLE transport or a GIF request that destabilizes the device.
 - **Config**: `~/.agentdeck/pixoo.json` — `{ devices: [{ ip, name? }] }`
@@ -192,7 +234,7 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 - **Transport**: BLE GATT transparent-UART. The App Store daemon uses native CoreBluetooth; the CLI daemon uses `bridge/src/idotmatrix/sync.py`.
 - **Discovery**: brand-independent. A peripheral counts as a panel when it advertises service `000000fa-…`, or when its advertised name matches a known family (`IDM-` iDotMatrix, `iPixel-`). The same 32×32 hardware ships under several brand names, so a vendor prefix alone is not the filter. Both scanners — Swift CoreBluetooth and `scan.py` (bleak) — apply the identical predicate from `shared/src/idotmatrix-identity.ts` via generated mirrors (`pnpm generate-idotmatrix-identity`). For a panel that neither advertises the service nor uses a known name, add `idotmatrixNamePrefixes: ["myprefix-"]` to `settings.json`; adding the BLE address to `idotmatrixDevices` by hand still bypasses discovery entirely.
 - **CLI runtime**: `@agentdeck/bridge` ships the Python clients. The first explicit BLE command prepares `bleak`, Pillow, and `idotmatrix` in `~/.agentdeck/python-ble`; use `agentdeck ble status` or `agentdeck ble setup` to inspect or prepare it directly. npm installation itself does not contact PyPI.
-- **Rendering**: Node and Swift compose the same native 32×32 identity stage. Up to three generated official marks are placed directly at 18/13/10 physical pixels on a blue-black field using a high-saturation device palette. Four one-pixel rails reserve fixed positions for Claude 5h/7d and Codex primary/secondary limits. It does not shrink the finished Pixoo64 scene, so hollow centers, eyes, and negative space survive the diffuser.
+- **Rendering**: Node and Swift compose the same native 32×32 identity stage. Up to three generated official marks are placed directly at 18/13/10 physical pixels on a blue-black field using a high-saturation device palette. One-pixel telemetry rails carry Claude 5h/7d and Codex primary/secondary limits, **present ones only, anchored to the bottom edge** — each rail is 3% of the whole display, so a reserved-but-empty row was a dead black stripe rather than a placeholder. A Claude-only account draws two rails; an account with no quota path at all (App Store daemon, free ChatGPT tier) draws none and gives the rows back to the tank. Note that a free tier is not automatically empty — it reports real windows; what disappears is a snapshot voided by a plan change (see [§ Codex usage](#codex-usage-is-a-passive-read-of-your-own-rollout-files)). It does not shrink the finished Pixoo64 scene, so hollow centers, eyes, and negative space survive the diffuser.
 - **Output tuning**: conservative 1.22 brightness / 1.08 contrast compensation in both native and CLI paths; the former 1.6 / 1.2 boost washed out defining holes.
 - **Constraint**: one BLE connection per daemon; brightness command range 5–100%.
 

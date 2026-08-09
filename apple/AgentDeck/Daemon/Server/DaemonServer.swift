@@ -1804,8 +1804,14 @@ final class DaemonServer {
     /// with no pairingToken, no module inventory, no session state.
     /// Static + input-only so XCTest can cover the deny matrix without a
     /// listener (HttpAccessPolicyTests).
+    /// - Parameter pairingWindowOpen: whether the operator is holding a pairing
+    ///   window open right now. `false` must be indistinguishable from "no such
+    ///   route" — a closed daemon answering `/pair` differently from `/nonsense`
+    ///   would tell a LAN peer that somebody is pairing, which is precisely the
+    ///   moment worth attacking.
     nonisolated static func httpAccessResponse(
-        method: String, path: String, isLocal: Bool, tokenValid: Bool, daemonPort: UInt16
+        method: String, path: String, isLocal: Bool, tokenValid: Bool, daemonPort: UInt16,
+        pairingWindowOpen: Bool = false
     ) -> HTTPServer.HTTPResponse? {
         if isLocal || tokenValid { return nil }
         if method == "GET", path == "/health" {
@@ -1814,7 +1820,23 @@ final class DaemonServer {
                 "authRequired": true, "isSwift": true,
             ])
         }
+        // The one path by which an unauthenticated LAN peer can obtain the
+        // pairing token, and only while a window is open. `nil` hands it to the
+        // registered POST /pair route below.
+        if method == "POST", path == "/pair", pairingWindowOpen { return nil }
         return .json(["error": "Unauthorized — pairing token required for LAN access"], status: 401)
+    }
+
+    /// A request body as a JSON object, or empty when there is nothing usable.
+    ///
+    /// Empty rather than nil on purpose for the pairing routes: an unparseable
+    /// body is a malformed submission, not a guess, and must not spend one of the
+    /// operator's five attempts. `jsonObject` throws (it does not raise), so
+    /// `try?` is the correct tool here — unlike `data(withJSONObject:)`, which
+    /// raises an ObjC exception `try?` cannot catch.
+    nonisolated static func jsonBody(_ body: Data?) -> [String: Any] {
+        guard let body, !body.isEmpty else { return [:] }
+        return ((try? JSONSerialization.jsonObject(with: body)) as? [String: Any]) ?? [:]
     }
 
     private func setupHTTPRoutes() async {
@@ -1831,9 +1853,59 @@ final class DaemonServer {
             if let t = request.queryParams["token"], AuthManager.shared.validateToken(t) { tokenValid = true }
             if !tokenValid, let auth = request.headers["authorization"], auth.hasPrefix("Bearer "),
                AuthManager.shared.validateToken(String(auth.dropFirst("Bearer ".count))) { tokenValid = true }
+            let pairingOpen = await PairingWindowStore.shared.isOpen()
             return Self.httpAccessResponse(
                 method: request.method, path: request.path,
-                isLocal: isLocal, tokenValid: tokenValid, daemonPort: daemonPort)
+                isLocal: isLocal, tokenValid: tokenValid, daemonPort: daemonPort,
+                pairingWindowOpen: pairingOpen)
+        }
+
+        // ── Pairing code ──────────────────────────────────────────────────
+        // POST /pair is reachable unauthenticated ONLY while the operator holds
+        // a window open (see the access policy above); the three operator routes
+        // sit behind the normal gate, so they are same-machine or token-bearing.
+        // A remote peer able to open its own window would be granting itself a
+        // credential.
+        await httpServer.post("/pair") { request in
+            let body = Self.jsonBody(request.body)
+            let result = await PairingWindowStore.shared.redeem(
+                submitted: body["code"] as? String,
+                ip: request.remoteIP,
+                name: body["name"] as? String,
+                kind: body["kind"] as? String,
+                // Live read so a token handover reaches a device pairing now.
+                mintToken: { AuthManager.shared.token }
+            )
+            if result.outcome == .accepted, let token = result.token {
+                return .json(["token": token, "port": Int(daemonPort)], status: 200)
+            }
+            return .json([
+                "error": result.outcome.rawValue,
+                "attemptsRemaining": result.attemptsRemaining,
+            ], status: result.status)
+        }
+
+        await httpServer.post("/pair/open") { request in
+            let body = Self.jsonBody(request.body)
+            let ttlMs = body["ttlMs"] as? Double
+            let opened = await PairingWindowStore.shared.open(
+                ttl: ttlMs.map { $0 / 1000 },
+                redemptions: (body["redemptions"] as? NSNumber)?.intValue
+            )
+            return .json([
+                "code": opened.code,
+                "expiresAt": Int(opened.expiresAt.timeIntervalSince1970 * 1000),
+                "redemptions": opened.redemptions,
+            ])
+        }
+
+        await httpServer.get("/pair/status") { _ in
+            .json(await PairingWindowStore.shared.status().value)
+        }
+
+        await httpServer.post("/pair/close") { _ in
+            await PairingWindowStore.shared.close()
+            return .json(["open": false])
         }
 
         await httpServer.get("/health") { [weak self] _ in

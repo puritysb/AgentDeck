@@ -2,7 +2,7 @@
 id: arch.gateway-protocol
 title: Gateway Protocol
 description: OpenClaw Gateway WebSocket — frame format, Ed25519 handshake, RPC and event catalog, versioning rules.
-category: Engineering
+category: Specs
 locale: en
 canonical: true
 status: stable

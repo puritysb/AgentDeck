@@ -117,9 +117,30 @@ a session behaves.
 | `agentdeck dashboard` | TUI monitoring dashboard (alias: `dash`) |
 | `agentdeck devices` | Connected devices (WS, ESP32, Pixoo, Timebox, ADB) |
 | `agentdeck qr` | Pairing QR code + URL |
+| `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |
 | `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
 | `agentdeck diag` | Diagnostic dump (`-a` for AI analysis) |
 | `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
+
+### Pairing a device with no camera and no cable
+
+`agentdeck qr` assumes a camera and `wifi_provision` assumes USB serial. An
+e-ink reader has neither, which left `adb reverse` as its only path — a
+developer tunnel that dies on reboot. `agentdeck pair` opens a short window and
+prints a six-digit code to type on the device (Settings → Connection → *Pair
+with code*):
+
+```bash
+agentdeck pair              # 120s, one device
+agentdeck pair -n 3         # pair three readers from one window
+agentdeck pair -t 300       # a longer walk to the shelf
+```
+
+The command then watches the window and reports each device as it pairs — and
+each wrong code as it arrives, which is the point of a short window somebody is
+standing in front of. The window closes on success, on expiry, or after five
+wrong codes. See [daemon.md § Pairing codes](daemon.md) for why this does not
+widen the LAN boundary.
 
 `inject-test` reproduces what the daemon does when a device answers an
 observed session's prompt: it drives the host's own UI rather than the bridge.

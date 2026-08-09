@@ -43,6 +43,7 @@ import dev.agentdeck.net.BridgeConstants
 import dev.agentdeck.net.BridgeDiscovery
 import dev.agentdeck.net.ConnectionStatus
 import dev.agentdeck.net.DiscoveredBridge
+import dev.agentdeck.net.adoptPairedUrl
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.ui.common.ConnectionPanel
@@ -140,6 +141,9 @@ fun TabletSettingsDialog(
                             onConnectLocalhost = { connection.connect(BridgeConstants.LOCALHOST_WS_URL) },
                             onConnectManualUrl = { url -> connection.connect(url) },
                             onDisconnect = { connection.disconnect() },
+                            onPaired = { url ->
+                                coroutineScope.launch { adoptPairedUrl(connection, displayPrefs, url) }
+                            },
                         )
                     }
                 }

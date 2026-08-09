@@ -7,6 +7,7 @@ export * from './voice-paths.js';
 export * from './voice-reply-digest.js';
 export * from './voice-ptt.js';
 export * from './net-utils.js';
+export * from './pairing-code.js';
 export * from './timeline.js';
 export * from './subagent-activity.js';
 export * from './timeline-icons.js';

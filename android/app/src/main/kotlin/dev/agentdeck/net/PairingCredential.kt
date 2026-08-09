@@ -90,4 +90,92 @@ object PairingCredential {
         if (tokenIn(candidate) != null) return true
         return !(sameEndpoint(candidate, stored) && tokenIn(stored) != null)
     }
+
+    /**
+     * What a disconnected screen should say, given the last attempt's error and
+     * the endpoints that have refused us.
+     *
+     * A refusal outranks the error text because they are different kinds of
+     * fact. `lastError` is whatever the most recent attempt happened to report,
+     * and the recovery ladder keeps probing the loopback path in the
+     * background — so on a device that has no reverse tunnel and no pairing
+     * token, "USB bridge not found — try WiFi" kept overwriting the one message
+     * that says what is actually wrong and what to do about it. Being refused
+     * does not stop being true because a later probe failed differently.
+     *
+     * Android-only: an e-ink reader has no camera, so the answer here is never
+     * "scan the pairing QR". It used to be "enter ws://…?token=… in Settings",
+     * which is a 32-hex-character string typed on an e-ink keyboard — advice
+     * technically possible and practically not taken. A pairing code is six
+     * digits, so that is what this points at now; see [PairingCodeClient].
+     */
+    fun disconnectedDetail(lastError: String?, unauthorizedEndpoints: Set<String>): String? {
+        val endpoint = unauthorizedEndpoints.firstOrNull() ?: return lastError
+        return "Not paired with $endpoint — run \"agentdeck pair\" on your Mac, " +
+            "then enter the code in Settings"
+    }
+
+    /** True for the `adb reverse` loopback endpoint, which needs no credential. */
+    fun isLoopback(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        return url.contains("127.0.0.1") || url.contains("localhost")
+    }
+
+    /**
+     * Whether a discovered LAN endpoint may be dialled right now.
+     *
+     * Two rules, one per way the old unconditional preempt failed.
+     *
+     * **The USB path answers first.** `adb reverse` puts the daemon on
+     * 127.0.0.1, where it is same-machine and needs no token at all — so a
+     * USB-attached device should never be asked to pair. Preempting that
+     * attempt the moment mDNS resolves (mDNS visibility says nothing about
+     * whether the reverse tunnel works) is what pushed camera-less e-ink
+     * readers into a QR flow they cannot complete. A loopback probe fails in
+     * milliseconds when the tunnel is absent, so letting it answer costs
+     * almost nothing and the LAN endpoint is still reached.
+     *
+     * That turn is held by [currentUrl], not by a flag: an attempt in flight —
+     * loopback or otherwise — owns the connection, and `BridgeConnection`
+     * clears the URL when it gives up. A boolean latch would have to be
+     * re-armed for every later probe, and any path that forgot (a cancelled
+     * effect, an early return) would either strand the LAN endpoint forever or
+     * silently restore the preempt. [loopbackTried] covers only the startup
+     * window before the first loopback dial has been issued, when there is no
+     * URL yet to hold the turn.
+     *
+     * **A 4001 endpoint is not dialable again without a credential.** The
+     * socket layer stops its own reconnect on 4001 — and also clears the URL,
+     * which made "rejected" indistinguishable from "never tried" to the layer
+     * above, so every discovery emission redialled it (measured at ~25/s
+     * against a live daemon). Rejection has to be remembered as its own fact,
+     * keyed by ENDPOINT like every other credential decision here — and as a
+     * SET, because one daemon can be offered under two spellings (the TXT ip
+     * and the NSD-resolved host), and remembering only the last refusal lets
+     * the two take turns being "new".
+     *
+     * Android-only, unlike the rest of this object: `adb reverse` has no Apple
+     * analogue and Apple's reconnect ladder lives in `AgentStateHolder`. The
+     * cases shared with `PairingCredentialTests` cover the functions above.
+     */
+    fun mayDialDiscovered(
+        discoveredUrl: String,
+        currentUrl: String?,
+        loopbackTried: Boolean,
+        unauthorizedEndpoints: Set<String>,
+        savedUrl: String?,
+    ): Boolean {
+        // Something is already being tried — the loopback probe included.
+        if (currentUrl != null) return false
+        // The first loopback dial has not been issued yet; it answers first.
+        if (!loopbackTried) return false
+        // Rejected here before, and we still have nothing new to offer it.
+        val endpoint = endpointOf(discoveredUrl) ?: return true
+        if (endpoint in unauthorizedEndpoints &&
+            tokenIn(resolve(discoveredUrl, savedUrl)) == null
+        ) {
+            return false
+        }
+        return true
+    }
 }

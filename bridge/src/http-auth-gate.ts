@@ -10,19 +10,26 @@
  *   are fully trusted, matching the WS server's long-standing policy.
  * - A remote request is authorized only by pairing token (`?token=` query or
  *   `Authorization: Bearer`).
- * - Unauthorized remote requests reach exactly one route: a minimal
+ * - Unauthorized remote requests reach exactly one always-on route: a minimal
  *   `GET /health` that carries **no pairing token, no module/device
  *   inventory, and no session state** — just enough for a companion app to
  *   recognize a daemon and know that pairing is required. Everything else
  *   is 401.
+ * - `POST /pair` exists only while the **operator has a pairing window open**
+ *   on the host (`agentdeck pair`). It is the credential path for a device that
+ *   can neither scan a QR nor be reached over USB serial — an e-ink reader. With
+ *   no window it is refused by the same default-deny branch as any unknown path,
+ *   so it is not a standing pre-auth route and cannot be probed to learn whether
+ *   someone is pairing. See `pairing-window.ts` and shared `pairing-code.ts`.
  *
  * Kept as pure functions (no server state) so the deny matrix and the
- * secret-free public payload are unit-testable without booting a daemon.
+ * secret-free public payload are unit-testable without booting a daemon. The
+ * one piece of state the gate needs — is a window open — is passed in.
  */
 import type { IncomingMessage } from 'http';
 import { isLocalConnection, validateToken } from './auth.js';
 
-export type HttpGateDecision = 'allow' | 'public-health' | 'deny';
+export type HttpGateDecision = 'allow' | 'public-health' | 'pair-redeem' | 'deny';
 
 /** True when the request is same-machine or carries a valid pairing token. */
 export function isAuthorizedHttpRequest(
@@ -46,10 +53,27 @@ export function isAuthorizedHttpRequest(
   return false;
 }
 
-/** Route an (un)authorized request: full dispatch, public health, or 401. */
-export function gateHttpRequest(method: string, pathname: string, authorized: boolean): HttpGateDecision {
+/** The redemption route. Only a route while an operator window is open. */
+export const PAIR_REDEEM_PATH = '/pair';
+
+/**
+ * Route an (un)authorized request: full dispatch, public health, code
+ * redemption, or 401.
+ *
+ * @param pairingWindowOpen whether the operator has a pairing window open right
+ *   now. False must be indistinguishable from "no such route" — the caller
+ *   answers 'deny' identically for `/pair` and for `/nonsense`, so a peer cannot
+ *   use the endpoint to detect that someone is pairing.
+ */
+export function gateHttpRequest(
+  method: string,
+  pathname: string,
+  authorized: boolean,
+  pairingWindowOpen = false,
+): HttpGateDecision {
   if (authorized) return 'allow';
   if (method === 'GET' && pathname === '/health') return 'public-health';
+  if (method === 'POST' && pathname === PAIR_REDEEM_PATH && pairingWindowOpen) return 'pair-redeem';
   return 'deny';
 }
 

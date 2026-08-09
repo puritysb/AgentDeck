@@ -80,7 +80,13 @@ export class WsServer {
         const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
         const token = url.searchParams.get('token') || '';
         if (!validateToken(token)) {
-          this.logUnauthorized(remoteIp, token.length > 0);
+          // Whatever the peer called itself, bounded and sanitized: it is a
+          // string from an unauthenticated peer heading for a terminal.
+          const claimed = url.searchParams.get('clientType')
+            ?? (url.searchParams.get('esp32') === '1' ? 'esp32' : null);
+          const peerKind = claimed?.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 24)
+            || (this.knownBoardIps.has(remoteIp) ? 'esp32' : undefined);
+          this.logUnauthorized(remoteIp, token.length > 0, peerKind);
           ws.close(4001, 'Unauthorized');
           return;
         }
@@ -314,8 +320,16 @@ export class WsServer {
    * nothing is usually an unpaired client, while a peer that presented a token
    * we do not accept is a provisioned device whose credential went stale —
    * which USB serial can re-arm and nothing else can.
+   *
+   * `peerKind` exists because an IP alone is not an identity on a LAN with a
+   * DHCP pool and a dozen boards on it. A board hammering the daemon every ~10s
+   * for a day was diagnosed by hand — cross-referencing ARP against the WiFi
+   * registry, then reading `wifi_provision_ack` IPs out of the log to work out
+   * which serial port they came from — and the answer ("it is an ESP32, not a
+   * companion app") was in the rejected request's own query string the whole
+   * time. The firmware tags itself `?clientType=esp32`; log what it said.
    */
-  private logUnauthorized(ip: string, presentedToken: boolean): void {
+  private logUnauthorized(ip: string, presentedToken: boolean, peerKind?: string): void {
     const now = Date.now();
     const prev = this.unauthorizedByIp.get(ip);
     if (prev && now - prev.loggedAt < WsServer.UNAUTHORIZED_LOG_INTERVAL_MS) {
@@ -327,10 +341,18 @@ export class WsServer {
     if (this.unauthorizedByIp.size > 64) this.unauthorizedByIp.clear();
     const repeated = prev?.suppressed ? ` — plus ${prev.suppressed} more since the last line` : '';
     this.unauthorizedByIp.set(ip, { loggedAt: now, suppressed: 0 });
+    const who = peerKind ? `${ip} (${peerKind})` : ip;
+    // The advice differs by peer: an ESP32 has a USB serial channel that works
+    // precisely when authentication is what is broken, and a companion app or
+    // reader does not — for those, an operator-opened pairing code is the path
+    // that needs no camera and no cable.
+    const howToFix = peerKind === 'esp32'
+      ? 'Attach it over USB serial and the daemon re-arms its token automatically.'
+      : 'Pair it with "agentdeck pair" (code) or "agentdeck qr".';
     log(presentedToken
-      ? `[agentdeck] Rejected ${ip}: pairing token not accepted${repeated}. `
+      ? `[agentdeck] Rejected ${who}: pairing token not accepted${repeated}. `
         + `A provisioned device looping here needs its token re-armed over USB serial.`
-      : `[agentdeck] Rejected ${ip}: no pairing token${repeated}. Pair it with "agentdeck qr".`);
+      : `[agentdeck] Rejected ${who}: no pairing token${repeated}. ${howToFix}`);
   }
 
   close(): void {

@@ -2,7 +2,7 @@
 id: arch.daemon
 title: Daemon Hub
 description: The singleton daemon on port 9120 — session-bridge push, mDNS recovery, usage relay, multi-surface monitoring.
-category: Engineering
+category: Specs
 locale: en
 canonical: true
 status: stable
@@ -134,8 +134,65 @@ The daemon deliberately binds `0.0.0.0` — companion apps, ESP32 boards, and pu
 - **One machine, one pairing token.** Either daemon can own the port, and they store their credential in different files — the sandboxed app cannot read `~/.agentdeck/auth-token`, and Node must not reach into the app's container (TCC). So the daemon that starts second **adopts the incumbent's token** off the incumbent's loopback `/health` (`adoptPeerToken` in `bridge/src/auth.ts`, `AuthManager.adoptPeerToken` in Swift; the app also re-adopts on each health poll while it is a client). No new trust: the probe dials `127.0.0.1`, and same-machine peers are already fully trusted. Without this, whichever daemon happened to win the port decided whether the paired fleet authenticated, and a handover in either direction closed every board 4001. The superseded token moves to a bounded **accepted ring** (`auth-token-accepted`, max 4, never handed out) so convergence itself cannot lock out a device provisioned a moment earlier.
 - **Rotation**: `agentdeck token rotate` retires a leaked token (all paired clients re-pair) and clears the accepted ring — otherwise the retired token would survive in it. `agentdeck token show` prints it for provisioning.
 - **Re-arming a device**: the daemon pushes `auth_provision` (credential only, no WiFi side effects) to every serial-attached board whose token differs from the one it serves — independent of WiFi auto-provisioning, and *including* boards whose radio is already up, which `wifi_provision` deliberately skips. A board holding a credential the daemon no longer accepts is online and unreachable at the same time, and USB serial is the only channel that still works when authentication is what is broken. Boards persist the token in NVS (`wifiSaveAuthToken`) and restore it at boot, on every board — not just the two that also persist an endpoint.
+- **Pairing a device that has no camera and no cable — `agentdeck pair`** (see below). This is the *only* path by which the token reaches an unauthenticated LAN peer, and it exists because the alternatives cover every device except the ones that need it most: QR needs a camera, `wifi_provision` needs USB serial, and an e-ink reader has neither.
 - **Loopback-only opt-out**: `AGENTDECK_LOOPBACK_ONLY=1` binds `127.0.0.1` for users with no LAN devices. Startup logs state the bind mode either way.
-- Tests: `bridge/src/__tests__/http-auth-gate.test.ts`, `mdns-hostname.test.ts` (TXT token absence), `discovery-security.test.ts` (UDP and startup-log absence), `ws-server-auth.test.ts`, Swift `HttpAccessPolicyTests`.
+- Tests: `bridge/src/__tests__/http-auth-gate.test.ts`, `pairing-window.test.ts`, `shared/src/__tests__/pairing-code.test.ts`, `mdns-hostname.test.ts` (TXT token absence), `discovery-security.test.ts` (UDP and startup-log absence), `ws-server-auth.test.ts`, Swift `HttpAccessPolicyTests`, `PairingWindowStoreTests`.
+
+### Pairing codes (operator-held window)
+
+```
+$ agentdeck pair
+  Pairing code:  482 913
+  On the device: Settings → Connection → "Pair with code", enter it there.
+  The device finds this Mac itself (192.168.68.60:9120) — no cable, no QR scan.
+  Valid for 120s, 1 device(s), 5 wrong tries.
+  ✓ Paired  CREMA_0680S (android-eink) at 192.168.68.50
+```
+
+The device already knows *where* the daemon is (mDNS); what it lacks is the credential. A pairing code is a six-digit secret the operator reads off the host and types on the device, which is the thing a reader's keyboard can actually do — unlike a 32-hex-character `ws://…?token=…` URL, which was the previous advice and is why these readers stayed on `adb reverse`.
+
+| Route | Reachable by | Purpose |
+|---|---|---|
+| `POST /pair` | unauthenticated LAN peer, **only while a window is open** | redeem `{code, name?, kind?}` → `{token, port}` |
+| `POST /pair/open` | same-machine / token-bearing | `{ttlMs?, redemptions?}` → `{code, expiresAt, redemptions}` |
+| `GET /pair/status` | same-machine / token-bearing | who paired, who guessed wrong; **never the code** |
+| `POST /pair/close` | same-machine / token-bearing | cancel early |
+
+Why it does not widen the boundary:
+
+- **No standing pre-auth route.** With no window open, `POST /pair` is refused by the same default-deny branch as `POST /nonsense`, byte for byte. That equality is deliberate: a distinguishable answer would tell any LAN peer *when somebody is pairing*, which is exactly the moment worth attacking.
+- **The operator side is behind the gate.** A remote peer that could `POST /pair/open` would be granting itself a credential.
+- **Expiry is enforced on read, never by the timer.** The timer only *reports* the close; `getPairingWindow` re-checks the clock. A timer that fires late — a sleeping laptop, a saturated executor — would otherwise extend the window past its promise.
+- **The guess budget is global, not per-IP** (`PAIRING_MAX_FAILED_ATTEMPTS` = 5). An attacker picks their source address, so a per-peer budget is a budget per attempt. Five tries at one-in-a-million, inside two minutes, once, while the operator is watching every attempt scroll past in the CLI.
+- **A malformed submission spends nothing** (400, not 401): a typo of the wrong length is not a guess, and burning the operator's window on one would be its own denial of service.
+- **`--devices N`** pairs a fleet from one window (the three readers here), capped at 16.
+
+Rules SSOT is `shared/src/pairing-code.ts`; `pnpm generate-pairing-code-rules` emits the Swift evaluator and the Kotlin client mirror behind a vitest drift gate. The HTTP status per outcome is part of the contract — 401 means "ask the human for the code again", 410/429 mean "the window is gone, stop retrying" — which is why the evaluator is generated rather than hand-ported into the Swift daemon.
+
+### Verifying the boundary by hand
+
+**You cannot test this from the daemon's own machine.** `isLocalConnection()` trusts loopback *and every address on this host's own interfaces*, so `curl http://<my-own-LAN-IP>:9120/health` from the Mac returns the full payload — pairing token included — and that is correct behaviour, not a leak. Reading it as one is a measurement error that has already been made once (2026-08-09, while closing #145).
+
+A real check needs a second host. The cheapest one in this repo is an attached ADB device on the same Wi-Fi:
+
+```bash
+adb -s <serial> shell "curl -s http://<daemon-LAN-IP>:9120/health"
+# {"status":"ok","mode":"daemon","port":9120,"sameSocketControl":true,"authRequired":true}
+```
+
+Expected results from a genuinely remote peer: `GET /health` → 200 with that minimal body; `/status`, `/sessions`, `/timeline`, `/devices` and a wrong `?token=` → 401.
+
+Two traps when reading the results:
+
+- **A WebSocket upgrade answering `101` is not a failure.** Both daemons complete the handshake and then close `4001 Unauthorized` before registering the socket or sending any state. Check for the close code, not the status line.
+- **Not every device image has `curl`** — several e-ink Android builds do not. Pick the device before concluding the daemon is unreachable.
+
+The other two discovery transports are checkable locally, since neither is request-scoped:
+
+```bash
+dns-sd -Z _agentdeck._tcp local     # TXT must carry project/agent/v/port/ip only
+# UDP beacon: bind 0.0.0.0:9121 with SO_REUSEADDR+SO_REUSEPORT alongside the daemon
+```
 
 ## Multi-surface monitoring
 

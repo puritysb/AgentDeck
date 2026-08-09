@@ -72,6 +72,7 @@ import dev.agentdeck.net.BridgeConstants
 import dev.agentdeck.net.BridgeDiscovery
 import dev.agentdeck.net.ConnectionStatus
 import dev.agentdeck.net.DiscoveredBridge
+import dev.agentdeck.net.PairingCredential
 import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.state.TimelineSessionFilter
@@ -154,7 +155,11 @@ fun MonitorScreen(
     }
     val connectionStatus by connection.status.collectAsState()
     val currentUrl by connection.url.collectAsState()
-    val lastError by connection.lastError.collectAsState()
+    val rawLastError by connection.lastError.collectAsState()
+    val unauthorizedEndpoints by connection.unauthorizedEndpoints.collectAsState()
+    // A refusal outranks the last attempt's error — see the same line in
+    // EinkMonitorScreen, and PairingCredential.disconnectedDetail for why.
+    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints)
     val isReconnecting by connection.isReconnecting.collectAsState()
     val showSessionList by displayPrefs.showSessionListFlow.collectAsState(initial = true)
     val showTankStatus by displayPrefs.showTankStatusFlow.collectAsState(initial = true)

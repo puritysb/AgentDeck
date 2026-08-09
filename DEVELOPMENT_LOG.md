@@ -2,6 +2,135 @@
 
 ---
 
+## 2026-08-09 — 카메라도 케이블도 없는 기기에 자격증명을 건네는 길
+
+### 문제
+
+`agentdeck pair` 이전에 페어링 경로는 셋이었고, **정작 필요한 기기만 셋 다
+비켜갔다**. QR(`agentdeck qr`)은 카메라를 전제하고, `wifi_provision` 은 USB 시리얼을
+전제한다. e-ink 리더는 둘 다 없다. 남은 건 `adb reverse` — 재부팅에 죽는 개발용
+터널이다. 그래서 전원을 한 번 뽑았다 꽂은 리더는 자격증명 없이 돌아와, 자기를
+4001 로 닫는 엔드포인트를 계속 두드리고, 사용자 화면에는 조치할 수 있는 게 아무것도
+없었다. `disconnectedDetail` 이 주던 조언 — "Settings 에 `ws://…?token=…` 를
+입력하라" — 은 e-ink 키보드에 32자 hex 를 치라는 말이고, 가능하지만 아무도 하지
+않는다.
+
+진단 자체도 같은 공백에 걸렸다. `192.168.68.76` 이 ~10초마다 토큰 없이 붙었다
+거절당하는 것을 하루치 로그에서 발견했지만, **거절 로그에 IP 밖에 없어서** 그게
+어느 기기인지 알 수 없었다. ARP 표를 WiFi 레지스트리와 대조하고, 로그에서
+`wifi_provision_ack` 의 IP 를 긁어 어느 시리얼 포트에서 온 ack 인지 역추적해야
+했다. 답은 거절당한 요청의 쿼리스트링에 처음부터 있었다 — 펌웨어는 스스로
+`?clientType=esp32` 를 붙여 보내는데, 로그가 그걸 버리고 있었다.
+
+### 해결
+
+**operator 가 직접 여는 페어링 창.** `agentdeck pair` 가 6자리 코드를 호스트
+화면에 띄우고, 기기에서 그 코드를 입력해 토큰을 받아간다. 자격증명이 인증되지
+않은 LAN peer 에게 건네지는 유일한 경로이므로, 규칙이 곧 안전성이다:
+
+- **창이 없으면 라우트도 없다.** 창이 닫혀 있으면 `POST /pair` 는 `POST /nonsense`
+  와 **바이트 단위로 같은** 401 을 받는다. 구분 가능한 응답은 "지금 누가 페어링
+  중인가"를 알려주는 oracle 이 되고, 그 순간이 정확히 공격할 만한 순간이다.
+- **operator 측 라우트는 게이트 안쪽.** `/pair/open`·`/pair/status`·`/pair/close`
+  는 same-machine/토큰 전용이다. 원격 peer 가 자기 창을 열 수 있다면 그건 스스로에게
+  자격증명을 발급하는 것이다. `/pair/status` 는 코드를 절대 담지 않는다.
+- **만료는 타이머가 아니라 읽을 때 판정한다.** 타이머는 닫힘을 *보고*할 뿐이고,
+  늦게 깨는 타이머(잠든 노트북, 포화된 executor)는 약속한 창을 연장해버린다.
+- **추측 예산은 IP 별이 아니라 전역이다** (5회). 공격자는 출처 주소를 고르므로
+  peer 별 예산은 시도당 예산이다. 2분 안에 백만분의 5, 그것도 operator 가 CLI 로
+  모든 시도를 지켜보는 동안 한 번.
+- **형식이 틀린 제출은 예산을 쓰지 않는다** (400). 길이가 다른 오타는 추측이 아니고,
+  그걸로 창을 태우는 건 그 자체로 DoS 다.
+- **닫힌 창은 영수증을 남긴다.** 1기기 창은 성공하는 순간 닫히고 operator 는
+  polling 으로 결과를 안다 — 영수증이 없으면 실제로 성공한 페어링이 "아무것도
+  페어링되지 않음"으로 보고된다. 이건 테스트가 먼저 잡았다.
+
+**진단이 스스로를 밝히게.** 펌웨어가 WS URL 에 `&board=` 를 실어 보내고
+(`agentdeckBoardName()`), 거절 로그가 peer 종류를 함께 적는다. 이제 조언도
+갈린다 — ESP32 는 "USB 로 붙이면 자동 재무장", 그 외는 "`agentdeck pair`". 보드
+이름 #ifdef 사다리는 `boards/board_config.h` 한 곳으로 합쳤다: `device_info` 와
+WS URL 두 생산자가 생겼는데 사다리가 둘이면 반드시 어긋나고, 여기서 어긋나면
+OTA 가 조용히 엉뚱한 보드를 겨냥한다.
+
+### SSOT
+
+`shared/src/pairing-code.ts` → `pnpm generate-pairing-code-rules` → Swift/Kotlin
+(vitest drift gate). Swift 는 **평가기 전체**를 받는다 — outcome 별 HTTP status 가
+클라이언트 retry 정책이 분기하는 계약이라(401=다시 물어봐, 410/429=창이 없어졌다)
+손으로 두 번 구현하면 어긋나는 곳이 바로 그 순서 규칙(만료→코드, malformed→mismatch)
+이다. Kotlin 은 client 미러라 normalize/format 만 — Android 는 코드를 제출하고
+판정하지 않으므로, 닿지도 않는 평가기는 드리프트할 표면일 뿐이다.
+
+### 표면
+
+- 데몬: `bridge/src/pairing-window.ts`, `http-auth-gate.ts`(`pair-redeem`),
+  `apple/.../PairingWindowStore.swift` + `DaemonServer.httpAccessResponse`
+- CLI: `agentdeck pair [-t secs] [-n devices]` — 창을 지켜보며 페어링/오답을 보고
+- Android: `net/PairingCodeClient.kt`, `PairingCodeInput` composable,
+  `adoptPairedUrl`(seed+persist 단일 지점), `disconnectedDetail` 문구 교체
+- 펌웨어: `ws_client.cpp` `&board=`, `boards/board_config.h` `agentdeckBoardName()`
+  (9개 env 전부 빌드 확인)
+- 게이트: vitest 2890, Android JUnit 전체, Swift 579, `pio run` ×9
+
+---
+## 2026-08-09 — 사다리가 두 벌이었다: e-ink 리더가 못 받은 USB 우선권
+
+### 문제
+
+Crema S 가 "연결하자마자 USB 연결을 시도하다 바로 끊어지는" 화면을 반복했다.
+데몬 로그에서는 `192.168.68.50` 이 **분당 1000~1200회** 4001 로 거절당하고 있었다
+(수 시간 누적). 08-09 오전 `a5ef2779` 가 정확히 이 증상을 고쳤는데도 그랬다.
+
+원인은 그 커밋이 고친 파일에 있지 않았다. **자동연결 사다리가 두 벌이었다** —
+`MainActivity.TabletDashboard` 와 `EinkMonitorScreen`. a5ef2779 는 태블릿 사본에만
+들어갔고, 그 수정이 겨냥한 기기(카메라 없는 e-ink 리더)는 **다른 사본**을 탄다.
+e-ink 사본에는 고쳐지기 전 코드가 그대로 남아 있었다: mDNS 가 데몬을 보는 순간
+localhost(USB) 시도를 선점하고, 4001 로 닫힌 엔드포인트를 emission 마다 다시 건다.
+
+고친 사본에도 누수가 하나 남아 있었다. "recovery" 이펙트(`url == null` 일 때
+재발견)는 `mayDialDiscovered` 게이트를 거치지 않아서, 발견 → 4001 → URL 클리어 →
+재발견 루프가 **초당 ~2회**로 돌았다. 레노버(1.0.7, 수정 포함)가 분당 105회를
+계속 던지고 있었던 게 그 증거다. 그 루프가 10초 뒤 localhost 재시도 분기까지
+가지 못하게 막고 있어서, **reverse 터널이 살아 있는데도** 태블릿이 USB 로 붙지
+못했다.
+
+화면에 보이던 "USB 시도 → 즉시 끊김"은 세 번째 조각이었다: 루프백 실패는
+`MAX_LOCALHOST_ATTEMPTS = 5` 로 ~15초 동안 "USB 연결 중"을 주장했고, 실패 문구
+("USB bridge not found")가 유일하게 조치 가능한 문구인 "Unauthorized" 를 계속
+덮어썼다.
+
+### 해결
+
+- **사다리를 한 벌로** — `net/BridgeAutoConnect.kt`. 두 화면이 같은 컴포저블을
+  쓴다. 모든 다이얼 지점이 `PairingCredential.mayDialDiscovered` 를 통과한다.
+- **차례는 플래그가 아니라 URL 이 쥔다.** `currentUrl != null` 이면 선점 금지 —
+  소켓 계층이 포기할 때 URL 을 지우므로 스스로 풀린다. 재무장이 필요한 래치는
+  잊는 경로가 생기고, 잊으면 LAN 을 영구 봉인하거나 선점 버그가 조용히 돌아온다.
+  `loopbackTried` 는 첫 다이얼 이전의 시작 창만 덮는다.
+- **거절은 집합으로 기억한다.** 하나의 데몬이 TXT ip / NSD 호스트 두 철자로
+  광고되고 재연결 사다리가 둘 사이를 오가므로, 슬롯 하나면 둘이 번갈아 "새것"이
+  된다. 상한 8개. 루프백 다이얼은 더 이상 이 기억을 지우지 않는다(같은 머신이라는
+  사실은 LAN 자격증명에 대해 아무 말도 하지 않는다) — 토큰을 든 다이얼만,
+  그 엔드포인트만 회수한다.
+- **루프백은 빨리 실패하고 천천히 재시도한다.** 재시도 2회(커널이 즉답한다),
+  복구 프로브는 10s→20s→40s→80s→120s 상한. mDNS 로 데몬이 **새로 보이는 전이**에서만
+  백오프를 리셋한다(emission 마다 리셋하면 페이싱이 사라진다).
+- **거절은 마지막 에러보다 우선한다** — `PairingCredential.disconnectedDetail`.
+  배경 USB 프로브의 실패 문구가 "Not paired with <endpoint> — attach USB, or enter
+  ws://…?token=… in Settings" 를 덮지 못한다.
+
+### 게이트 / 실기 검증
+
+`PairingCredentialTest` + 신설 `AutoConnectRulesTest` 포함 Android 355 tests green.
+
+레노버에서 **reverse 터널을 제거해 Crema S 상황을 그대로 재현**: 루프백 1.2초
+실패 → LAN 4001 **1회** → 침묵 → 10초 뒤 프로브 → 20초 뒤 프로브에서 (데몬 ADB
+모듈이 터널을 복구하자) 연결. 배포 전 분당 105회였던 `.53` 거절이 0이 되고,
+레노버·Pantone6 둘 다 reverse 터널로 dashboard 등록. Crema S(`.50`)는 WiFi 전용에
+`adb tcpip` 이 꺼져 있어 APK 를 밀어넣을 경로가 없다 — USB 1회 연결 필요.
+
+---
+
 ## 2026-08-07 — Stream Deck device profiles and readable classic-key labels
 
 The plugin now maps every DeviceType currently documented by Elgato instead of

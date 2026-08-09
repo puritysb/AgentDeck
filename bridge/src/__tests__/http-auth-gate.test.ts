@@ -44,10 +44,45 @@ describe('gateHttpRequest (issue #145 LAN default-deny)', () => {
       ['GET', '/apme/tasks'], ['GET', '/esp32/fw'], ['POST', '/hooks/stop'],
       ['POST', '/shutdown'], ['POST', '/voice/speak'], ['POST', '/generate'],
       ['POST', '/health'],
+      // The operator side of pairing is same-machine only: a remote peer that
+      // could open its own window would be granting itself a credential.
+      ['POST', '/pair/open'], ['GET', '/pair/status'], ['POST', '/pair/close'],
     ] as const;
     for (const [method, path] of sensitive) {
       expect(gateHttpRequest(method, path, false), `${method} ${path}`).toBe('deny');
     }
+  });
+});
+
+describe('POST /pair — only a route while the operator holds a window open', () => {
+  it('is denied exactly like an unknown path when no window is open', () => {
+    // Indistinguishable by design: if a closed daemon answered /pair
+    // differently from /nonsense, the endpoint would tell a LAN peer when
+    // somebody is pairing, which is precisely the moment worth attacking.
+    expect(gateHttpRequest('POST', '/pair', false, false)).toBe('deny');
+    expect(gateHttpRequest('POST', '/nonsense', false, false)).toBe('deny');
+  });
+
+  it('opens for redemption only while a window is open', () => {
+    expect(gateHttpRequest('POST', '/pair', false, true)).toBe('pair-redeem');
+  });
+
+  it('defaults to closed when the caller forgets to pass the window state', () => {
+    // The parameter is optional so existing call sites keep compiling; the
+    // default must be the safe one.
+    expect(gateHttpRequest('POST', '/pair', false)).toBe('deny');
+  });
+
+  it('an open window does not unlock anything else, or any other method', () => {
+    expect(gateHttpRequest('GET', '/pair', false, true)).toBe('deny');
+    expect(gateHttpRequest('POST', '/pair/open', false, true)).toBe('deny');
+    expect(gateHttpRequest('POST', '/pair/', false, true)).toBe('deny');
+    expect(gateHttpRequest('GET', '/status', false, true)).toBe('deny');
+    expect(gateHttpRequest('POST', '/hooks/stop', false, true)).toBe('deny');
+  });
+
+  it('still serves public health while a window is open', () => {
+    expect(gateHttpRequest('GET', '/health', false, true)).toBe('public-health');
   });
 });
 

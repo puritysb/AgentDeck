@@ -41,6 +41,7 @@ import dev.agentdeck.net.BridgeConstants
 import dev.agentdeck.net.BridgeDiscovery
 import dev.agentdeck.net.ConnectionStatus
 import dev.agentdeck.net.DiscoveredBridge
+import dev.agentdeck.net.adoptPairedUrl
 import dev.agentdeck.ui.common.ConnectionPanel
 import dev.agentdeck.util.DeviceProfileHolder
 import kotlinx.coroutines.CoroutineScope
@@ -106,6 +107,9 @@ fun SettingsScreen(
                         onConnectLocalhost = { connection.connect(BridgeConstants.LOCALHOST_WS_URL) },
                         onConnectManualUrl = { url -> connection.connect(url) },
                         onDisconnect = { connection.disconnect() },
+                        onPaired = { url ->
+                            coroutineScope.launch { adoptPairedUrl(connection, displayPrefs, url) }
+                        },
                     )
                 }
             }
@@ -159,6 +163,9 @@ fun SettingsScreen(
                         onConnectLocalhost = { connection.connect(BridgeConstants.LOCALHOST_WS_URL) },
                         onConnectManualUrl = { url -> connection.connect(url) },
                         onDisconnect = { connection.disconnect() },
+                        onPaired = { url ->
+                            coroutineScope.launch { adoptPairedUrl(connection, displayPrefs, url) }
+                        },
                     )
                 }
             }

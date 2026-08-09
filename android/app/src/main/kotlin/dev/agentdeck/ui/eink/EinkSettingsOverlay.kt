@@ -43,6 +43,7 @@ import dev.agentdeck.data.DisplayPreferences
 import dev.agentdeck.net.BridgeConnection
 import dev.agentdeck.net.BridgeConstants
 import dev.agentdeck.net.DiscoveredBridge
+import dev.agentdeck.net.adoptPairedUrl
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.ui.common.ConnectionPanel
 import kotlinx.coroutines.launch
@@ -117,6 +118,7 @@ fun EinkSettingsOverlay(
                         connection.disconnect()
                         scope.launch { displayPrefs.setLastBridgeUrl(null) }
                     },
+                    onPaired = { url -> scope.launch { adoptPairedUrl(connection, displayPrefs, url) } },
                 )
 
                 HorizontalDivider(thickness = 1.dp, color = Color.Black)

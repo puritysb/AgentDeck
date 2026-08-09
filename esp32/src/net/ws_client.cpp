@@ -1006,12 +1006,20 @@ void wsConnect(const char* ip, uint16_t port, const char* token) {
     savedPort = port;
     strncpy(savedToken, token, sizeof(savedToken) - 1);
 
-    // Build URL path with token
-    char path[104];
+    // Build URL path with token.
+    //
+    // `board` rides along so a board the daemon REFUSES can still say what it
+    // is. device_info only arrives after a socket is accepted, so a board with a
+    // stale credential is anonymous in the one situation where knowing which
+    // board it is, is the whole diagnosis — an untagged 4001 loop cost a day of
+    // cross-referencing ARP against the WiFi registry. Sized for the longest
+    // board name plus a 32-char token with room to spare; snprintf in both
+    // branches so it stays that way.
+    char path[128];
     if (token[0] != '\0') {
-        snprintf(path, sizeof(path), "/?token=%s&clientType=esp32", token);
+        snprintf(path, sizeof(path), "/?token=%s&clientType=esp32&board=%s", token, agentdeckBoardName());
     } else {
-        strcpy(path, "/?clientType=esp32");
+        snprintf(path, sizeof(path), "/?clientType=esp32&board=%s", agentdeckBoardName());
     }
 
     ws.begin(ip, port, path);

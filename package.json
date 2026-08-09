@@ -18,6 +18,7 @@
     "generate-session-weight-rules": "node scripts/generate-session-weight-rules.mjs",
     "generate-codex-freshness-rules": "node scripts/generate-codex-freshness-rules.mjs",
     "generate-idotmatrix-identity": "node scripts/generate-idotmatrix-identity.mjs",
+    "generate-pairing-code-rules": "node scripts/generate-pairing-code-rules.mjs",
     "generate-streamdeck-profiles": "node scripts/generate-streamdeck-profiles.mjs",
     "verify-version": "node scripts/verify-version-sync.mjs",
     "check-preview-sync": "node scripts/check-preview-mirror-sync.mjs",

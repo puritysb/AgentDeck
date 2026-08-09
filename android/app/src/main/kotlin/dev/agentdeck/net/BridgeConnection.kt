@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,10 +42,24 @@ class BridgeConnection private constructor() {
         val instance: BridgeConnection by lazy { BridgeConnection() }
         private const val INITIAL_BACKOFF_MS = 1000L
         private const val MAX_BACKOFF_MS = 8_000L
-        /** Max localhost retries before giving up and clearing URL for mDNS fallback. */
-        private const val MAX_LOCALHOST_ATTEMPTS = 5
+        /** Max retries on a network URL before giving up and clearing it for mDNS fallback. */
+        private const val MAX_ATTEMPTS = 5
+        /**
+         * Max retries on the loopback (adb reverse) URL.
+         *
+         * A loopback dial is answered by the kernel: with no reverse tunnel it
+         * is refused in milliseconds, and with one it connects just as fast.
+         * Retrying it five times with backoff spends ~15s claiming to be
+         * "connecting over USB" on a device where nothing is listening, which
+         * is what an unpaired e-ink reader shows on screen while it waits.
+         * One retry covers a tunnel that is mid-setup; beyond that the answer
+         * will not change, and the recovery ladder re-probes on its own clock.
+         */
+        private const val MAX_LOOPBACK_ATTEMPTS = 2
         /** Failed attempts on the primary (TXT-ip) URL before switching to the resolved-host fallback. */
         private const val PRIMARY_ATTEMPTS_BEFORE_FALLBACK = 2
+        /** How many refused endpoints to remember; see [unauthorizedEndpoints]. */
+        private const val MAX_REMEMBERED_REFUSALS = 8
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -92,6 +107,23 @@ class BridgeConnection private constructor() {
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
+    /**
+     * Endpoints (host:port) that closed us 4001, remembered as their own fact.
+     *
+     * Stopping the socket-level reconnect is not enough: the same handler
+     * clears `_url`, and the auto-connect layer reads a null URL as "nothing
+     * has been tried", so it redialled on every mDNS emission. A rejection has
+     * to survive that clearing — see `PairingCredential.mayDialDiscovered`.
+     *
+     * A set, not a single value: a dual-homed daemon is offered under two
+     * spellings (TXT ip and NSD-resolved host) and the reconnect ladder fails
+     * over between them, so one slot would let the two take turns looking new.
+     * Bounded at [MAX_REMEMBERED_REFUSALS] — this is a hint that stops a
+     * hammer, not an audit log.
+     */
+    private val _unauthorizedEndpoints = MutableStateFlow<Set<String>>(emptySet())
+    val unauthorizedEndpoints: StateFlow<Set<String>> = _unauthorizedEndpoints.asStateFlow()
+
     /** True when actively trying to reconnect to a known URL. */
     private val _isReconnecting = MutableStateFlow(false)
     val isReconnecting: StateFlow<Boolean> = _isReconnecting.asStateFlow()
@@ -130,6 +162,15 @@ class BridgeConnection private constructor() {
         // Only keep a fallback that's actually distinct from the primary.
         this.fallbackUrl = fallbackUrl?.takeIf { it != wsUrl }
         triedFallback = false
+
+        // A dial that carries a credential is new information about THIS
+        // endpoint, so it retires that endpoint's earlier refusal — and only
+        // that one. Dialling the loopback path says nothing about whether we
+        // may now authenticate to a LAN daemon; clearing the whole memory there
+        // is how the recovery ladder used to re-arm the hammer once a minute.
+        PairingCredential.endpointOf(wsUrl)
+            ?.takeIf { PairingCredential.tokenIn(wsUrl) != null }
+            ?.let { endpoint -> _unauthorizedEndpoints.update { it - endpoint } }
 
         _url.value = wsUrl
         _status.value = ConnectionStatus.DISCONNECTED
@@ -237,6 +278,17 @@ class BridgeConnection private constructor() {
                 if (code == 4001) {
                     Log.w(TAG, "Auth rejected (4001) — stopping reconnect")
                     shouldReconnect = false
+                    // Remember WHICH endpoint refused us before clearing the URL:
+                    // the layer above treats a null URL as "never tried" and would
+                    // otherwise redial this same endpoint on every discovery tick.
+                    PairingCredential.endpointOf(_url.value)?.let { endpoint ->
+                        _unauthorizedEndpoints.update { current ->
+                            (current + endpoint).let {
+                                if (it.size <= MAX_REMEMBERED_REFUSALS) it
+                                else it.drop(it.size - MAX_REMEMBERED_REFUSALS).toSet()
+                            }
+                        }
+                    }
                     _url.value = null
                     _lastError.value = "Unauthorized — check pairing token"
                 } else {
@@ -302,10 +354,11 @@ class BridgeConnection private constructor() {
 
         val isLocalhost = isLocalhostUrl(currentUrl)
 
-        // Fast-fail: after a short burst of retries (5), give up and clear the URL
+        // Fast-fail: after a short burst of retries, give up and clear the URL
         // so the caller's LaunchedEffect can trigger mDNS discovery.
         // Continuing to hammer a stale/dead URL would block the discovery path indefinitely.
-        if (_reconnectAttempt.value > MAX_LOCALHOST_ATTEMPTS) {
+        val maxAttempts = if (isLocalhost) MAX_LOOPBACK_ATTEMPTS else MAX_ATTEMPTS
+        if (_reconnectAttempt.value > maxAttempts) {
             Log.w(
                 TAG,
                 "Connection to $currentUrl still failing after ${_reconnectAttempt.value} attempts — giving up, clearing URL for mDNS fallback"

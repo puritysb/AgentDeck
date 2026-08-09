@@ -1013,27 +1013,10 @@ static void sendDeviceInfo() {
     JsonDocument resp;
     resp["type"] = "device_info";
 
-    #if defined(BOARD_LED8X32)
-    resp["board"] = "ulanzi_tc001";
-    #elif defined(BOARD_INKDECK)
-    resp["board"] = "inkdeck";
-    #elif defined(BOARD_TTGO)
-    resp["board"] = "ttgo_t_display";
-    #elif defined(BOARD_T_EMBED)
-    resp["board"] = "t_embed";
-    #elif defined(BOARD_T_DISPLAY_PRO)
-    resp["board"] = "t_display_pro";
-    #elif defined(BOARD_ESP32_C6_147)
-    resp["board"] = "esp32_c6_147";
-    #elif IS_ROUND
-    resp["board"] = "round_amoled";
-    #elif defined(BOARD_BOX_86) || defined(BOARD_86_BOX)
-    resp["board"] = "86box";
-    #elif defined(BOARD_IPS10)
-    resp["board"] = "ips_10";
-    #else
-    resp["board"] = "ips_35";
-    #endif
+    // One definition, in board_config.h — the WebSocket URL now carries the same
+    // string (so a REFUSED board can still identify itself), and two #ifdef
+    // ladders for one wire name is how they would come to disagree.
+    resp["board"] = agentdeckBoardName();
 
     resp["version"] = FIRMWARE_VERSION;
     resp["buildHash"] = GIT_SHA;

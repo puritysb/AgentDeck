@@ -17,7 +17,7 @@ validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-ve
 
 AgentDeck uses one `major.minor` compatibility line across every maintained surface. Two numeric `X.Y.Z` product versions are mutually compatible if and only if their first two components match. Patch values are ignored in both directions: for example, `1.0.1` and `1.0.9` are compatible regardless of which side is newer.
 
-Root [`VERSION`](VERSION) is the repository baseline and compatibility-line anchor, not a patch ceiling and not a runtime negotiation value. It currently reads **1.0.2**, so every maintained target must remain on compatibility line **1.0**. npm/CLI is at `1.0.12`; Stream Deck is at `1.0.4`; Android is at `1.0.6`; Apple is at `1.0.4`; ESP32 is at `1.0.3`; Ulanzi is at `1.0.2`. A target may also advance beyond root's patch without forcing unrelated targets or root to ship. Both Apple platforms are live, at different versions: iPhone/iPad `1.0.4` (released 2026-08-07) and macOS `1.0.3` (approved 2026-08-05), with macOS `1.0.4` still in review.
+Root [`VERSION`](VERSION) is the repository baseline and compatibility-line anchor, not a patch ceiling and not a runtime negotiation value. It currently reads **1.0.2**, so every maintained target must remain on compatibility line **1.0**. npm/CLI is at `1.0.15`; Stream Deck is at `1.0.4`; Android is at `1.0.6`; Apple is at `1.0.4`; ESP32 is at `1.0.3`; Ulanzi is at `1.0.3`. A target may also advance beyond root's patch without forcing unrelated targets or root to ship. **This sentence is a mirror, not a source** — it drifted two npm patches and one Ulanzi patch behind by 2026-08-09; take the live values from `pnpm verify-version`, which reads each target's own manifest, and note that a *declared* version is not a *delivered* one (Ulanzi `1.0.3` has no `ulanzi-v1.0.3` tag and has not been uploaded). Both Apple platforms are live at `1.0.4` (build 4501): iPhone/iPad released 2026-08-07, macOS distributing by 2026-08-09.
 
 Run `pnpm verify-version` before every build or release. CI rejects a `major.minor` compatibility split or a target-internal mismatch. Release CI additionally requires a channel tag's full `X.Y.Z` to equal that target's own declared version; it does not compare the tag's patch with root `VERSION`.
 
@@ -82,18 +82,28 @@ Tag prefixes remain because channels ship independently and may point to differe
 
 macOS has been publicly available since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and — since the 2026-07-24 approval of build 3901 — as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`, build 3901) was **rejected on 2026-08-04 under Guideline 2.1(a)**.
 
-**The two platforms then diverged, and their version records do not match.** Verified in App Store Connect on 2026-08-08:
+**The two platforms diverged for four days, then reconverged.** Both now sit at `1.0.4` / build 4501:
 
 | Platform | Version record | Build | State |
 |---|---|---|---|
-| macOS | `1.0.4` | 4501 | Submitted 2026-08-07, **still In Review**. Builds 4301 and 4401 were withdrawn rather than shipped — each predated a fix that landed the same day; `1.0.3` (4101) remains the live Mac version |
+| macOS | `1.0.4` | 4501 | Submitted 2026-08-07 (In Review as of 2026-08-08), **live by 2026-08-09**. Builds 4301 and 4401 were withdrawn rather than shipped — each predated a fix that landed the same day, so `1.0.3` (4101) was the live Mac version for the two days in between |
 | iPhone/iPad | `1.0.4` | 4501 | Submitted 2026-08-07 alongside macOS, same build; **approved and live since 2026-08-07T22:57Z** (auto-release, one minute after the approval mail) |
 
 Approval mail alone cannot tell the platforms apart: three "eligible for distribution" messages arrived between 2026-08-05 and 2026-08-07 (iOS, macOS, iOS again) with a 2.1(a) rejection in between, and only the `(iOS)` / `(macOS)` in the subject distinguishes them. Read the state from App Store Connect.
 
 iOS was answered as a `1.0.2` resubmission rather than moved up to `1.0.3`: a rejected version keeps its `MARKETING_VERSION`, and attaching the already-uploaded 4002 kept the reply and the binary consistent. macOS had no such constraint, so it went out at `1.0.3` with the newer 4101. **Do not describe an Apple release state from the tag or from the repository's own version numbers** — a single `apple-v*` tag can produce two builds whose store-side version records differ, as it did here. Read App Store Connect → 앱 심사 / App Review, whose submission table gives version, build and state per platform in one place.
 
-**The iTunes lookup shortcut stopped answering for macOS the day the companion shipped.** While the app was Mac-only, `curl -s "https://itunes.apple.com/lookup?id=6784822497&entity=macSoftware"` returned a `mac-software` record whose `version` was the live Mac version — the fastest login-free release check there is. Once the iPhone/iPad companion went live, that id resolves to a single unified `software` record instead, and its `version`, `minimumOsVersion` (`17.0`) and `fileSizeBytes` all describe the **iOS** app; `entity=macSoftware`, `entity=iPadSoftware` and a store search all return that same record. So the endpoint still confirms the iOS side and its release timestamp, but the Mac version is no longer readable from it — take that one from App Store Connect.
+**The iTunes lookup shortcut stopped answering for macOS the day the companion shipped.** While the app was Mac-only, `curl -s "https://itunes.apple.com/lookup?id=6784822497&entity=macSoftware"` returned a `mac-software` record whose `version` was the live Mac version — the fastest login-free release check there is. Once the iPhone/iPad companion went live, that id resolves to a single unified `software` record instead, and its `version`, `minimumOsVersion` (`17.0`) and `fileSizeBytes` all describe the **iOS** app; `entity=macSoftware`, `entity=iPadSoftware` and a store search all return that same record. So the endpoint still confirms the iOS side and its release timestamp, but the Mac version is no longer readable from it.
+
+**The replacement Mac check is the receipt on the installed app, and it is better evidence than the lookup ever was.** A Mac App Store delivery leaves `Contents/_MASReceipt/` inside the bundle; a locally-built or notarized-outside-the-store copy does not. So on any Mac running the store build:
+
+```bash
+/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" /Applications/AgentDeck.app/Contents/Info.plist
+/usr/libexec/PlistBuddy -c "Print :CFBundleVersion"            /Applications/AgentDeck.app/Contents/Info.plist
+ls -d /Applications/AgentDeck.app/Contents/_MASReceipt && stat -f "installed: %Sm" /Applications/AgentDeck.app
+```
+
+The receipt proves the App Store *distributed* that exact version-and-build, which is a stronger statement than "approved" — it is what confirmed macOS `1.0.4` (4501) was public on 2026-08-09, delivered to this machine at 11:49 local. Two limits: it reports what this Mac has, so a machine with auto-update off can lag the store, and it says nothing about a version still in review. For anything the receipt cannot answer — queue position, review state, a version you have not received — read App Store Connect.
 
 A successful CI upload reaches App Store Connect/TestFlight; public App Store release remains a separate App Store Connect action.
 

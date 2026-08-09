@@ -11,10 +11,12 @@ import XCTest
 final class HttpAccessPolicyTests: XCTestCase {
 
     private func decision(
-        method: String = "GET", path: String, isLocal: Bool = false, tokenValid: Bool = false
+        method: String = "GET", path: String, isLocal: Bool = false, tokenValid: Bool = false,
+        pairingWindowOpen: Bool = false
     ) -> HTTPServer.HTTPResponse? {
         DaemonServer.httpAccessResponse(
-            method: method, path: path, isLocal: isLocal, tokenValid: tokenValid, daemonPort: 9120)
+            method: method, path: path, isLocal: isLocal, tokenValid: tokenValid, daemonPort: 9120,
+            pairingWindowOpen: pairingWindowOpen)
     }
 
     private func json(_ response: HTTPServer.HTTPResponse) -> [String: Any] {
@@ -50,11 +52,53 @@ final class HttpAccessPolicyTests: XCTestCase {
             ("GET", "/status"), ("GET", "/usage"), ("GET", "/devices"), ("GET", "/sse"),
             ("GET", "/timeline"), ("POST", "/hooks/Stop"), ("POST", "/shutdown"),
             ("POST", "/esp32/ota"), ("POST", "/health"),
+            // The operator side of pairing is same-machine only: a remote peer
+            // able to open its own window would be granting itself a credential.
+            ("POST", "/pair/open"), ("GET", "/pair/status"), ("POST", "/pair/close"),
         ]
         for (method, path) in sensitive {
             let response = try XCTUnwrap(decision(method: method, path: path), "\(method) \(path)")
             XCTAssertEqual(response.status, 401, "\(method) \(path)")
         }
+    }
+
+    // MARK: - POST /pair (mirrors the Node gate's pairing cases)
+
+    func testPairIsIndistinguishableFromAnUnknownPathWhenNoWindowIsOpen() throws {
+        // If a closed daemon answered /pair differently from /nonsense, the
+        // endpoint would tell a LAN peer that somebody is pairing right now.
+        let pair = try XCTUnwrap(decision(method: "POST", path: "/pair"))
+        let nonsense = try XCTUnwrap(decision(method: "POST", path: "/nonsense"))
+        XCTAssertEqual(pair.status, 401)
+        XCTAssertEqual(nonsense.status, 401)
+        XCTAssertEqual(pair.body, nonsense.body)
+    }
+
+    func testPairDefaultsToClosedWhenTheCallerOmitsTheWindowState() throws {
+        // The parameter is defaulted so existing call sites keep compiling; the
+        // default must be the safe one.
+        let response = try XCTUnwrap(DaemonServer.httpAccessResponse(
+            method: "POST", path: "/pair", isLocal: false, tokenValid: false, daemonPort: 9120))
+        XCTAssertEqual(response.status, 401)
+    }
+
+    func testPairReachesItsRouteOnlyWhileAWindowIsOpen() {
+        XCTAssertNil(decision(method: "POST", path: "/pair", pairingWindowOpen: true))
+    }
+
+    func testAnOpenWindowUnlocksNothingElse() throws {
+        let stillDenied: [(String, String)] = [
+            ("GET", "/pair"), ("POST", "/pair/"), ("POST", "/pair/open"),
+            ("GET", "/status"), ("POST", "/hooks/Stop"), ("POST", "/shutdown"),
+        ]
+        for (method, path) in stillDenied {
+            let response = try XCTUnwrap(
+                decision(method: method, path: path, pairingWindowOpen: true), "\(method) \(path)")
+            XCTAssertEqual(response.status, 401, "\(method) \(path)")
+        }
+        // And public health keeps working while a window is open.
+        let health = try XCTUnwrap(decision(path: "/health", pairingWindowOpen: true))
+        XCTAssertEqual(health.status, 200)
     }
 }
 #endif

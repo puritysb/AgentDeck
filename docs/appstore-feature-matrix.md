@@ -7,15 +7,15 @@ locale: en
 canonical: true
 status: required
 owner: Apple product maintainers
-reviewed: 2026-08-05
-revision: 2026-08-05
+reviewed: 2026-08-09
+revision: 2026-08-09
 source_of_truth: docs/appstore-feature-matrix.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
 
 # App Store and CLI Product Tiers
 
-**Distribution status:** macOS has been live since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and since 2026-07-24 as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`) has not shipped: it was rejected on 2026-08-04 under Guideline 2.1(a), and the replacement build is awaiting resubmission. The repository's source version may advance independently between channel releases.
+**Distribution status:** both platforms are live at [AgentDeck Dashboard](https://apps.apple.com/app/id6784822497) — macOS since 2026-07-21, the iPhone/iPad companion since 2026-08-07 (its first attempt was rejected on 2026-08-04 under Guideline 2.1(a) — an unbounded discovery spinner; the rule that came out of it is "a progress indicator binds to bounded work" in [CLAUDE.md](../CLAUDE.md) § Key Conventions). **Live version numbers are deliberately not repeated here** — this document owns the tier boundary, not release tracking, and the two drifted apart before. [RELEASING.md § Apple](../RELEASING.md) carries the per-platform version/build/state table and the login-free checks for each. The repository's source version advances independently of any channel release.
 
 This matrix defines which capabilities belong to the standalone App Store product and which require the external `agentdeck` CLI. Add or move a row here **before** implementing a capability.
 
@@ -61,8 +61,8 @@ All surfaces follow the same rule:
 |---|:---:|:---:|---|
 | Claude subscription 5h / 7d usage | Relay only | Yes | Tier 1 relays only what an external daemon supplies — no standalone Tier-1 path exists. Anthropic ToS prohibits third-party Claude.ai login / routing through subscription credentials (enforced 2026-04-04 vs OpenClaw/OpenCode/NanoClaw); the only documented Usage API is org-admin-only and returns token/USD, not consumer %; the true 5h/7d % lives only in Claude Code's undocumented `/api/oauth/usage`. Shipped competitors (LimitWatch, Usage for Claude) use the same broker→iCloud→display architecture — LimitWatch ships its Mac broker as a non-App-Store direct download because the sandbox blocks reading AI-tool config files. |
 | Claude per-model scoped caps (weekly) | Relay only | Yes | The `/api/oauth/usage` `limits[]` array's per-model `weekly_scoped` caps (e.g. a "Fable" cap that binds while 5h/7d read low). **Direct OAuth acquisition stays in the Node daemon**; the Swift/App Store path consumes `scopedLimits` only through the generated protocol + daemon relay (`DaemonServer.parseRelayedUsage` / the shared usage cache the Node daemon writes) — it never parses `limits[]` itself. Renders when `isUsingExternalDaemon` is true, exactly like the 5h/7d row. |
-| Codex rate limits (passive rollout read) | Yes | Yes | User grants a security-scoped bookmark to `~/.codex` |
-| Codex rate limits (live `app-server` query) | No | Yes | The rollout `rate_limits` block is a byproduct of a **successful turn**, so the reading freezes exactly when the quota is exhausted (no turn can complete) and never sees usage spent on Codex Cloud or another machine. Tier 2 backs it with a throttled `codex app-server` → `account/rateLimits/read` JSON-RPC query against the user's own CLI (`bridge/src/codex-rate-limits-live.ts`); the fresher of the two snapshots wins by `capturedAt`. Tier 1 cannot follow — the App Store daemon spawns no subprocess — so it keeps the passive read and its age footnote. |
+| Codex rate limits (passive rollout read) | Yes | Yes | User grants a security-scoped bookmark to `~/.codex`. Both tiers reconcile the snapshot against the live account tier in `auth.json` and **void** one minted under a plan the account no longer holds — neither freshness axis can retire it, since a lapsed plan's weekly window stays future-dated (`codexSnapshotMatchesAccountPlan`, mirrored to Swift as the generated `CodexPlanRules`). Voiding rides the wire as a windowless block, so Tier 1's own daemon retracts the gauge rather than leaving a client to guess |
+| Codex rate limits (live `app-server` query) | No | Yes | The rollout `rate_limits` block is a byproduct of a **successful turn**, so the reading freezes exactly when the quota is exhausted (no turn can complete) and never sees usage spent on Codex Cloud or another machine. Tier 2 backs it with a throttled `codex app-server` → `account/rateLimits/read` JSON-RPC query against the user's own CLI (`bridge/src/codex-rate-limits-live.ts`); the fresher of the two snapshots wins by `capturedAt`. Tier 1 cannot follow — the App Store daemon spawns no subprocess — so it keeps the passive read and its age footnote. This is also why plan reconciliation matters most on Tier 1: with no live query to overwrite it, a retired plan's snapshot is the *only* thing Tier 1 would ever read, and Codex is its only quota gauge (Claude's needs the relay). |
 | Anthropic Admin API usage | Yes | Yes | User supplies the API key |
 | PTY token and cost stream | Hook-only | Yes | PTY parsing belongs to Tier 2 |
 

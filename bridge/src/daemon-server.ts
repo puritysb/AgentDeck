@@ -137,6 +137,13 @@ import {
 import { fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData } from './usage-api.js';
 import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
+import {
+  closePairingWindow,
+  getPairingWindowStatus,
+  openPairingWindow,
+  pairingWindowOpen,
+  redeemPairingCode,
+} from './pairing-window.js';
 import { getLastFrame, renderPreviewFrame, onFrameRendered, offFrameRendered } from './pixoo/pixoo-bridge.js';
 import { loadIDotMatrixDevices } from './idotmatrix/idotmatrix-settings.js';
 import { handlePixooWake } from './pixoo/pixoo-client.js';
@@ -1327,10 +1334,53 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const gatePathname = (() => {
         try { return new URL(req.url ?? '/', 'http://localhost').pathname; } catch { return '/'; }
       })();
-      const decision = gateHttpRequest(req.method ?? 'GET', gatePathname, isAuthorizedHttpRequest(req));
+      const decision = gateHttpRequest(
+        req.method ?? 'GET',
+        gatePathname,
+        isAuthorizedHttpRequest(req),
+        pairingWindowOpen(),
+      );
       if (decision === 'public-health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(buildPublicHealth(port)));
+        return;
+      }
+      if (decision === 'pair-redeem') {
+        // The one path by which an unauthenticated LAN peer can obtain the
+        // pairing token, and only while the operator is holding a window open.
+        // Body: { code: "482913", name?: string, kind?: string }
+        void (async () => {
+          const peerIp = req.socket.remoteAddress ?? '';
+          let body: Record<string, unknown> = {};
+          try {
+            body = await readJsonBody(req, 4096);
+          } catch {
+            // A body we cannot parse is a malformed submission, not a guess —
+            // fall through with an empty object so it burns no attempt.
+          }
+          const result = redeemPairingCode(
+            body.code,
+            { ip: peerIp, name: body.name, kind: body.kind },
+            // Live read, not core.authToken: a token handover (adoptPeerToken)
+            // must reach a device pairing right now, exactly as it reaches the
+            // serial fleet.
+            getOrCreateToken,
+          );
+          res.writeHead(result.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          if (result.outcome === 'accepted' && result.token) {
+            res.end(JSON.stringify({ token: result.token, port }));
+          } else {
+            res.end(JSON.stringify({
+              error: result.outcome,
+              attemptsRemaining: result.attemptsRemaining,
+            }));
+          }
+        })().catch(() => {
+          try {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'pairing failed' }));
+          } catch { /* client gone */ }
+        });
         return;
       }
       if (decision === 'deny') {
@@ -1410,6 +1460,43 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       res.end(JSON.stringify({
         status: 'ok', mode: 'daemon', port, state: snap.state, isSwift: false,
       }));
+      return;
+    }
+    // ── Pairing window, operator side ─────────────────────────────────────
+    // Past the LAN gate, so these three are same-machine or token-bearing only:
+    // the CLI runs beside the daemon, and the macOS app is either this process's
+    // host or a local peer. A remote peer opening its own window would be a peer
+    // granting itself a credential.
+    //
+    // POST /pair/open  { ttlMs?, redemptions? } → { code, expiresAt, redemptions }
+    // GET  /pair/status                        → who redeemed, who guessed wrong
+    // POST /pair/close                         → cancel early
+    if (req.method === 'POST' && pathname === '/pair/open') {
+      void (async () => {
+        let body: Record<string, unknown> = {};
+        try { body = await readJsonBody(req, 4096); } catch { /* defaults */ }
+        const ttlMs = typeof body.ttlMs === 'number' ? body.ttlMs : undefined;
+        const redemptions = typeof body.redemptions === 'number' ? body.redemptions : undefined;
+        const opened = openPairingWindow({ ttlMs, redemptions });
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(opened));
+      })().catch(() => {
+        try {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'could not open pairing window' }));
+        } catch { /* client gone */ }
+      });
+      return;
+    }
+    if (req.method === 'GET' && pathname === '/pair/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(getPairingWindowStatus()));
+      return;
+    }
+    if (req.method === 'POST' && pathname === '/pair/close') {
+      closePairingWindow();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ open: false }));
       return;
     }
     if (req.method === 'GET' && pathname === '/status') {

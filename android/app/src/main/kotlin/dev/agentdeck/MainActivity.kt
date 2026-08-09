@@ -7,19 +7,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.lifecycleScope
 import dev.agentdeck.data.DisplayPreferences
 import dev.agentdeck.data.DashboardOrientation
+import dev.agentdeck.net.BridgeAutoConnect
 import dev.agentdeck.net.BridgeConnection
-import dev.agentdeck.net.BridgeConstants
-import dev.agentdeck.net.ConnectionStatus
 import dev.agentdeck.net.DimConfig
-import dev.agentdeck.net.PairingCredential
 import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.ui.monitor.MonitorScreen
 import dev.agentdeck.ui.screen.EinkMonitorScreen
@@ -37,13 +31,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import dev.agentdeck.net.BridgeDiscovery
-import dev.agentdeck.net.DiscoveredBridge
 import dev.agentdeck.service.MonitorService
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -270,8 +259,6 @@ class MainActivity : ComponentActivity() {
 }
 
 private const val TAG = "MainActivity"
-private const val VERBOSE_MAIN_LOGS = false
-
 /**
  * Whether the stored device-class preferences differ from the ones this activity
  * instance was built from, and therefore need a recreate.
@@ -312,138 +299,18 @@ internal fun shouldKeepDashboardScreenOn(
     return hostDim?.mode == "min"
 }
 
-private inline fun mainDebug(message: () -> String) {
-    if (VERBOSE_MAIN_LOGS || Log.isLoggable(TAG, Log.DEBUG)) {
-        Log.d(TAG, message())
-    }
-}
-
-private fun shouldPersistBridgeUrl(url: String?): Boolean {
-    return url != null && !url.contains("127.0.0.1") && !url.contains("localhost")
-}
-
 @Composable
 fun TabletDashboard(
     stateHolder: AgentStateHolder,
     connection: BridgeConnection,
     displayPrefs: DisplayPreferences,
 ) {
-    val connectionStatus by connection.status.collectAsState()
-    val currentUrl by connection.url.collectAsState()
-    val context = LocalContext.current
-
-    // Auto-connect: localhost (USB) → saved URL → mDNS (WiFi)
-    LaunchedEffect(Unit) {
-        val rawSavedUrl = displayPrefs.lastBridgeUrlFlow.first()
-        val savedUrl = rawSavedUrl?.takeUnless { !shouldPersistBridgeUrl(it) }
-        if (rawSavedUrl != null && savedUrl == null) {
-            displayPrefs.setLastBridgeUrl(null)
-        }
-        // Seed the credential the connection layer re-attaches to tokenless
-        // discovered endpoints (PairingCredential) — discovery stopped carrying
-        // tokens in #145, so this is the only copy the device has.
-        connection.pairedUrl = savedUrl
-        mainDebug { "Auto-connect: savedUrl=$savedUrl" }
-        // Try localhost (adb reverse USB connection) before mDNS
-        if (connection.status.value != ConnectionStatus.CONNECTED) {
-            mainDebug { "Trying localhost:${BridgeConstants.WS_PORT} (USB)..." }
-            connection.connect(BridgeConstants.LOCALHOST_WS_URL)
-            delay(3000)
-        }
-        if (savedUrl != null && connection.status.value != ConnectionStatus.CONNECTED) {
-            connection.autoConnect(savedUrl)
-            delay(5000)
-        }
-        // If still disconnected, try mDNS discovery
-        if (connection.status.value != ConnectionStatus.CONNECTED) {
-            mainDebug { "Saved URL failed, trying mDNS discovery..." }
-            val discovery = BridgeDiscovery(context)
-            // Phase 1: collect bridges, connect immediately if daemon found
-            withTimeoutOrNull(6000) {
-                discovery.discover().collect { bridges ->
-                    val daemon = bridges.firstOrNull {
-                        it.agentType == "daemon" && it.port == BridgeConstants.WS_PORT
-                    }
-                    if (daemon != null) {
-                        mainDebug { "mDNS auto-connect (daemon): ${daemon.name} at ${daemon.wsUrl()}" }
-                        connection.connect(daemon.wsUrl(), daemon.fallbackWsUrl())
-                        return@collect
-                    }
-                }
-            }
-            // No non-daemon fallback — daemon only
-        }
-    }
-
-    // Persist URL on successful connection
-    LaunchedEffect(connectionStatus) {
-        if (connectionStatus == ConnectionStatus.CONNECTED) {
-            val url = currentUrl
-            // mayPersist, not shouldPersist: a tokenless URL must never
-            // overwrite a stored credential for the same daemon. CONNECTED
-            // fires at the WebSocket handshake, which the daemon completes
-            // before closing an unauthorized peer 4001 — so a doomed attempt
-            // could otherwise race in and erase a working pairing.
-            if (PairingCredential.mayPersist(url, displayPrefs.lastBridgeUrlFlow.first())) {
-                displayPrefs.setLastBridgeUrl(url)
-                connection.pairedUrl = url
-            }
-        }
-    }
-
-    // Preempt the localhost (USB) phase whenever mDNS can see a daemon: adb reverse
-    // only exists under the Node CLI daemon, so against the Swift in-process daemon
-    // the ws://127.0.0.1 attempt can never succeed and the bounded discovery windows
-    // in the effects above/below can keep missing a slow NSD resolve. Runs whenever
-    // not connected; re-resolving per connection also heals a saved URL whose port
-    // went stale after a daemon restart (e.g. 9121→9120).
-    LaunchedEffect(connectionStatus, currentUrl) {
-        if (connectionStatus == ConnectionStatus.CONNECTED) return@LaunchedEffect
-        val discovery = BridgeDiscovery(context)
-        discovery.discover().collect { bridges ->
-            val daemon = bridges.firstOrNull {
-                it.agentType == "daemon" && it.port == BridgeConstants.WS_PORT
-            }
-            val cur = connection.url.value
-            val curIsLocalOrNone = cur == null ||
-                cur.contains("127.0.0.1") || cur.contains("localhost")
-            if (daemon != null && curIsLocalOrNone &&
-                connection.status.value != ConnectionStatus.CONNECTED) {
-                mainDebug { "mDNS preempts USB attempt: ${daemon.name} at ${daemon.wsUrl()}" }
-                connection.connect(daemon.wsUrl(), daemon.fallbackWsUrl())
-            }
-        }
-    }
-
-    // Recovery after BridgeConnection gives up on localhost and clears URL.
-    // Keep cycling so devices reconnect when the daemon starts after the app.
-    LaunchedEffect(connectionStatus, currentUrl) {
-        if (connectionStatus == ConnectionStatus.DISCONNECTED && currentUrl == null) {
-            delay(500) // brief pause before re-discovery
-            mainDebug { "Disconnected with no URL — re-discovering via mDNS" }
-            val discovery = BridgeDiscovery(context)
-            withTimeoutOrNull(6000) {
-                discovery.discover().collect { bridges ->
-                    val daemon = bridges.firstOrNull {
-                        it.agentType == "daemon" && it.port == BridgeConstants.WS_PORT
-                    }
-                    if (daemon != null) {
-                        mainDebug { "Re-discover (daemon): ${daemon.name} at ${daemon.wsUrl()}" }
-                        connection.connect(daemon.wsUrl(), daemon.fallbackWsUrl())
-                        return@collect
-                    }
-                }
-            }
-            if (connection.status.value != ConnectionStatus.CONNECTED && connection.url.value == null) {
-                delay(10_000)
-                if (connection.status.value != ConnectionStatus.CONNECTED && connection.url.value == null) {
-                    mainDebug { "mDNS recovery timed out — retrying localhost:${BridgeConstants.WS_PORT} (USB)" }
-                    connection.connect(BridgeConstants.LOCALHOST_WS_URL)
-                }
-            }
-            // No non-daemon fallback — daemon only.
-        }
-    }
+    // The connection ladder — loopback (USB) → saved URL → mDNS — lives in
+    // BridgeAutoConnect, shared with EinkMonitorScreen. It used to be inlined
+    // here and again there, and the two drifted: the fix that stopped a
+    // rejected endpoint being redialled ~25 times a second reached this copy
+    // only, while the readers it was written for run the other one.
+    BridgeAutoConnect(connection, displayPrefs)
 
     Box(modifier = Modifier.fillMaxSize()) {
         MonitorScreen(

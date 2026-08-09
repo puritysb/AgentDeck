@@ -284,7 +284,7 @@ describe('usage-encoder level-fill (SD+ 200x100) snapshots', () => {
     expect(svg).toContain('width="200" height="100"');
     expect(svg).toContain('#C07058');     // Claude brand colour (logo tint)
     expect(svg).toContain('M20.998 10.949'); // canonical Claude Code robot path
-    expect(svg).not.toContain('>CLAUDE<'); // logo-only identity, no agent-name text (matches SD)
+    expect(svg).toContain('>CLAUDE<');    // explicit identity prevents provider confusion
     expect(svg).toContain('>5H<');
     expect(svg).toContain('>7D<');
     expect(svg).toContain('>30<');        // 5h used
@@ -298,7 +298,7 @@ describe('usage-encoder level-fill (SD+ 200x100) snapshots', () => {
     const svg = renderUsageEncoderBoth(codexData);
     expect(svg).toContain('#6166E0');     // Codex brand colour (logo tint)
     expect(svg).toContain('M8.086.457');  // Codex provider logo path
-    expect(svg).not.toContain('>CODEX<'); // logo-only identity, no agent-name text (matches SD)
+    expect(svg).toContain('>CODEX<');     // explicit identity prevents provider confusion
     expect(svg).toContain('>55<');        // 5h used (amber)
     expect(svg).toContain('>88<');        // 7d used (red)
     expect(svg).toContain('#eab308');

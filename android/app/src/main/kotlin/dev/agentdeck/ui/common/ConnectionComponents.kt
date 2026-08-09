@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,12 +33,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.agentdeck.net.BridgeConstants
 import dev.agentdeck.net.ConnectionStatus
 import dev.agentdeck.net.DiscoveredBridge
+import dev.agentdeck.net.PairingCodeClient
+import dev.agentdeck.net.PairingCodeRules
 import dev.agentdeck.ui.theme.AgentDeckColors
 import dev.agentdeck.ui.theme.LocalIsEink
+import kotlinx.coroutines.launch
 
 // ── Connection-state lexicon ──────────────────────────────────────────
 // Kotlin mirror of shared/src/connection-status.ts. Self-connecting clients
@@ -338,12 +343,148 @@ fun DisconnectButton(
     }
 }
 
+// ── Pairing code ──────────────────────────────────────────────────────
+
+/**
+ * Redeem an operator-issued pairing code for this daemon's token.
+ *
+ * The pairing path for a reader with no camera and no cable. Everything above
+ * this input either needs a camera (the QR flow this app has never had), a USB
+ * tunnel (`adb reverse`, which dies on reboot), or a 32-hex-character URL typed
+ * on an e-ink keyboard. Six digits is the thing a person can actually do.
+ *
+ * Deliberately only offered when mDNS has found a daemon: the code is worthless
+ * without an endpoint to spend it at, and asking for both a code and a host is
+ * the two-field form this exists to replace.
+ */
+@Composable
+fun PairingCodeInput(
+    bridges: List<DiscoveredBridge>,
+    onPaired: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isEink = LocalIsEink.current
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    // The daemon hub is the only thing that serves external clients, and the
+    // canonical port is preferred but not required — it legitimately falls back
+    // to 9121+ when something else won the port.
+    val daemon = remember(bridges) {
+        val daemons = bridges.filter { it.agentType == "daemon" }
+        daemons.firstOrNull { it.port == BridgeConstants.WS_PORT } ?: daemons.firstOrNull()
+    }
+    if (daemon == null) return
+
+    val ready = PairingCodeRules.normalize(code) != null && !busy
+    val submit = submit@{
+        if (!ready) return@submit
+        busy = true
+        message = null
+        scope.launch {
+            val result = PairingCodeClient.redeem(daemon, code)
+            busy = false
+            when (result) {
+                is PairingCodeClient.Result.Paired -> {
+                    code = ""
+                    message = "Paired with ${daemon.name}."
+                    onPaired(result.wsUrl)
+                }
+                is PairingCodeClient.Result.WrongCode -> {
+                    message = if (result.attemptsRemaining >= 0) {
+                        "Wrong code — ${result.attemptsRemaining} tries left."
+                    } else {
+                        "Wrong code."
+                    }
+                }
+                // The daemon answers these two identically on the wire so a
+                // closed daemon cannot be probed for "is someone pairing"; the
+                // copy here is what turns that into something actionable.
+                PairingCodeClient.Result.NoWindow ->
+                    message = "No pairing window. Run \"agentdeck pair\" on your Mac."
+                PairingCodeClient.Result.WindowClosed ->
+                    message = "That window closed. Run \"agentdeck pair\" again."
+                is PairingCodeClient.Result.Unreachable ->
+                    message = "Could not reach ${daemon.name}: ${result.detail}"
+            }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = "Pair with a code — run \"agentdeck pair\" on your Mac",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isEink) Color.DarkGray else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = code,
+                onValueChange = { typed ->
+                    // Digits only, capped at the code length: on a reader the
+                    // keyboard is slow and the undo is worse, so the field
+                    // refuses what cannot be a code rather than spending one of
+                    // the operator's five attempts finding out.
+                    code = typed.filter { it.isDigit() }.take(PairingCodeRules.DIGITS)
+                },
+                placeholder = { Text("000000", style = MaterialTheme.typography.bodySmall) },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                enabled = !busy,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.NumberPassword,
+                    imeAction = ImeAction.Go,
+                ),
+                keyboardActions = KeyboardActions(onGo = { submit() }),
+                colors = if (isEink) {
+                    OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Black,
+                        unfocusedBorderColor = Color.DarkGray,
+                        cursorColor = Color.Black,
+                    )
+                } else {
+                    OutlinedTextFieldDefaults.colors()
+                },
+            )
+            Button(
+                onClick = { submit() },
+                enabled = ready,
+                colors = if (isEink) {
+                    ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White)
+                } else {
+                    ButtonDefaults.buttonColors()
+                },
+                shape = RoundedCornerShape(4.dp),
+            ) {
+                Text(if (busy) "Pairing..." else "Pair")
+            }
+        }
+        message?.let { text ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isEink) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 // ── Connection Panel (composite) ──────────────────────────────────────
 
 /**
  * Complete connection management panel — status, error, USB connect,
- * mDNS bridges, manual URL input, and disconnect.
+ * mDNS bridges, pairing code, manual URL input, and disconnect.
  * Automatically adapts to e-ink/tablet theme via LocalIsEink.
+ *
+ * @param onPaired called with a `ws://host:port?token=…` URL once a pairing code
+ *   has been redeemed. Null hides the pairing-code section — a caller that
+ *   cannot persist the credential must not offer a flow whose result it drops.
  */
 @Composable
 fun ConnectionPanel(
@@ -356,6 +497,7 @@ fun ConnectionPanel(
     onConnectManualUrl: (String) -> Unit,
     onDisconnect: () -> Unit,
     modifier: Modifier = Modifier,
+    onPaired: ((String) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier,
@@ -382,6 +524,13 @@ fun ConnectionPanel(
                 bridges = discoveredBridges,
                 onConnectToBridge = onConnectToBridge,
             )
+
+            if (onPaired != null) {
+                PairingCodeInput(
+                    bridges = discoveredBridges,
+                    onPaired = onPaired,
+                )
+            }
 
             ManualUrlInput(onConnect = onConnectManualUrl)
         }

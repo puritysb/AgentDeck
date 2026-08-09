@@ -16,6 +16,7 @@
     "arch.daemon": { "en": "Daemon", "ko": "데몬", "ja": "デーモン" },
     "arch.protocol": { "en": "Bridge protocol", "ko": "브리지 규약", "ja": "ブリッジ規約" },
     "arch.gateway-protocol": { "en": "Gateway protocol", "ko": "Gateway 규약", "ja": "Gateway 規約" },
+    "spec.wire-compatibility": { "en": "Wire compatibility", "ko": "와이어 호환성", "ja": "ワイヤ互換性" },
     "arch.apme": { "en": "APME", "ko": "APME", "ja": "APME" },
     "hardware.compatibility": { "en": "Compatibility", "ko": "호환성", "ja": "互換性" },
     "spec.devices": { "en": "Devices", "ko": "디바이스", "ja": "デバイス" },
@@ -114,6 +115,12 @@
       "id": "arch.gateway-protocol",
       "sources": {
         "en": "docs/gateway-protocol.md"
+      }
+    },
+    {
+      "id": "spec.wire-compatibility",
+      "sources": {
+        "en": "docs/wire-compatibility.md"
       }
     },
     {

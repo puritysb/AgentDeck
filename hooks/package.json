@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/hooks",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "engines": {
     "node": ">=22"
   },
