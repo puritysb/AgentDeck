@@ -42,7 +42,11 @@ struct StreamDeckKeyPreview: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            SessionSlotView(session: session, animFrame: selection.animationFrame)
+            SessionSlotView(
+                session: session,
+                animFrame: selection.animationFrame,
+                lowResolutionKey: true
+            )
                 .scaleEffect(0.5)
                 .frame(width: 72, height: 72)
                 .shadow(color: .black.opacity(0.4), radius: 6, y: 3)

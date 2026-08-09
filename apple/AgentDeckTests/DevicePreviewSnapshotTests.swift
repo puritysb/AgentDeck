@@ -224,6 +224,20 @@ final class DevicePreviewSnapshotTests: XCTestCase {
         XCTAssertEqual(DevicePreviewScreen.liveSelectionInputs(from: state).sessionCount, 4)
     }
 
+    func testSessionSlotNameWrappingMatchesLowResolutionProfile() {
+        XCTAssertEqual(
+            SessionSlotText.wrapSessionName(
+                "Continuous Integration Validation",
+                maxChars: 11
+            ),
+            ["Continuous", "Integration", "Validation"]
+        )
+        XCTAssertEqual(
+            SessionSlotText.wrapSessionName("SampleProjectName", maxChars: 8),
+            ["Sample", "Project", "Name"]
+        )
+    }
+
     // MARK: - Live D200H emulator input
 
     func testLiveD200HInputMapsRealSessionsAndUsage() throws {

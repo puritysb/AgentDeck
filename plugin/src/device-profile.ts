@@ -1,4 +1,9 @@
-/** Canonical Stream Deck device families from Elgato's DeviceType enum. */
+/**
+ * Canonical Stream Deck device families from Elgato's DeviceType table (0–13).
+ * Source: https://docs.elgato.com/streamdeck/sdk/guides/devices/#device-types
+ * Verified 2026-08-08 against @elgato/streamdeck 2.1.0 and the current
+ * `https://schemas.elgato.com/streamdeck/plugins/manifest.json` schema.
+ */
 export function familyForDeviceType(type: number | undefined): string {
   switch (type) {
     case 0: return 'streamdeck';
@@ -17,6 +22,12 @@ export function familyForDeviceType(type: number | undefined): string {
     case 13: return 'streamdeckplusxl';
     default: return 'streamdeck-unknown';
   }
+}
+
+/** SDK payloads declare DeviceType as a number. Reject absent or malformed
+ * values instead of coercing `null` / `""` to device type 0. */
+export function deviceTypeFromUnknown(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) ? value : undefined;
 }
 
 /** The original 5x3 deck downsamples key art to 72px square. */

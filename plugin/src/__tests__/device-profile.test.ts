@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { familyForDeviceType, usesLowResolutionKeyProfile } from '../device-profile.js';
+import {
+  deviceTypeFromUnknown,
+  familyForDeviceType,
+  usesLowResolutionKeyProfile,
+} from '../device-profile.js';
 
 describe('Stream Deck device profiles', () => {
   it('maps every documented Elgato DeviceType without conflating families', () => {
@@ -17,5 +21,15 @@ describe('Stream Deck device profiles', () => {
     expect(usesLowResolutionKeyProfile('streamdeck-unknown', 5, 3)).toBe(true);
     expect(usesLowResolutionKeyProfile('streamdeckxl', 8, 4)).toBe(false);
     expect(usesLowResolutionKeyProfile('streamdeckplus', 4, 2)).toBe(false);
+  });
+
+  it('does not coerce missing or malformed device types to Stream Deck', () => {
+    expect(deviceTypeFromUnknown(0)).toBe(0);
+    expect(deviceTypeFromUnknown(13)).toBe(13);
+    expect(deviceTypeFromUnknown(undefined)).toBeUndefined();
+    expect(deviceTypeFromUnknown(null)).toBeUndefined();
+    expect(deviceTypeFromUnknown('')).toBeUndefined();
+    expect(deviceTypeFromUnknown('0')).toBeUndefined();
+    expect(deviceTypeFromUnknown(Number.NaN)).toBeUndefined();
   });
 });

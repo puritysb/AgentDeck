@@ -27,7 +27,9 @@
 //   • `processingStartFrame` defaulting to 0 instead of `animFrame` — this mirror
 //     never applied that per-session phase anchor, so it never had the bug where
 //     the anchor cancelled the rotation and froze the dashes.
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 15a765038d23df870db58302442056340cb66c8a
+// Ported 2026-08-08: the original 72×72 Stream Deck key's low-resolution
+// typography profile (`wrapSessionName`, 20pt names, and lower tool baseline).
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts a943e7e09cc29dbaa75b654a5d6f25c6322e40d7
 //
 // Scope for this first pass:
 //   - renderSessionSlot (primary session button)
@@ -97,12 +99,34 @@ struct SessionSlotView: View {
     var isActive: Bool = false
     var animFrame: Int = 0
     var displayName: String? = nil
+    /// Mirrors `renderSessionSlot(..., { lowResolutionKey: true })` for the
+    /// original 72×72 Stream Deck key preview.
+    var lowResolutionKey: Bool = false
 
     private var mode: SlotMode { SlotMode(state: session.state) }
     private var agent: String { session.agentType ?? "claude-code" }
     private var palette: AgentSlotPalette { .for(session.agentType) }
     private var nameForDisplay: String {
         displayName ?? session.projectName ?? "—"
+    }
+    private var nameLines: [String] {
+        SessionSlotText.wrapSessionName(
+            nameForDisplay,
+            maxChars: lowResolutionKey ? 11 : 15
+        )
+    }
+    private var nameStartBaseline: CGFloat {
+        switch nameLines.count {
+        case 1: return lowResolutionKey ? 60 : 54
+        case 2: return lowResolutionKey ? 56 : 53
+        case 3: return lowResolutionKey ? 53 : 52
+        default: return lowResolutionKey ? 52 : 50
+        }
+    }
+    private var nameLineHeight: CGFloat {
+        nameLines.count == 4
+            ? (lowResolutionKey ? 18 : 15)
+            : (lowResolutionKey ? 20 : 18)
     }
     private var modelText: String {
         guard let m = session.modelName else { return "" }
@@ -203,23 +227,43 @@ struct SessionSlotView: View {
                     .offset(x: 42, y: -50)
             }
 
-            // Text block (left-aligned, three rows)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(stateLabelText)
-                    .font(.system(size: 17, weight: .heavy))
-                    .foregroundStyle(accentColorText)
-                Text(SessionSlotText.truncate(nameForDisplay, max: 13))
-                    .font(.system(size: 13, weight: .semibold))
+            // Text baselines mirror the TS renderer. The 72px hardware profile
+            // is rendered at 144px then downsampled, so it deliberately uses
+            // larger source typography and an 8px-lower tool baseline.
+            let stateFontSize: CGFloat = lowResolutionKey ? 18 : 17
+            Text(stateLabelText)
+                .font(.system(size: stateFontSize, weight: .heavy))
+                .foregroundStyle(accentColorText)
+                .frame(width: 104, alignment: .leading)
+                .position(x: 72, y: SessionSlotText.centerY(svgBaseline: 32, fontSize: stateFontSize))
+
+            let nameFontSize: CGFloat = lowResolutionKey ? 20 : 16
+            ForEach(Array(nameLines.enumerated()), id: \.offset) { index, line in
+                Text(line)
+                    .font(.system(size: nameFontSize, weight: lowResolutionKey ? .bold : .semibold))
                     .foregroundStyle(Color(hex: "#E2E8F0"))
-                Spacer()
-                Text(toolText)
-                    .font(.system(size: mode == .working ? 13 : 14, weight: .medium))
-                    .foregroundStyle(accentColorText.opacity(0.8))
+                    .frame(width: 104, alignment: .leading)
+                    .position(
+                        x: 72,
+                        y: SessionSlotText.centerY(
+                            svgBaseline: nameStartBaseline + CGFloat(index) * nameLineHeight,
+                            fontSize: nameFontSize
+                        )
+                    )
             }
-            .padding(.leading, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 16)
-            .frame(width: SessionSlot.size, height: SessionSlot.size, alignment: .topLeading)
+
+            let toolFontSize: CGFloat = lowResolutionKey ? 15 : (mode == .working ? 13 : 14)
+            Text(toolText)
+                .font(.system(size: toolFontSize, weight: .medium))
+                .foregroundStyle(accentColorText.opacity(0.8))
+                .frame(width: 104, alignment: .leading)
+                .position(
+                    x: 72,
+                    y: SessionSlotText.centerY(
+                        svgBaseline: lowResolutionKey ? 128 : 120,
+                        fontSize: toolFontSize
+                    )
+                )
         }
         .frame(width: SessionSlot.size, height: SessionSlot.size)
     }
@@ -276,6 +320,40 @@ struct SessionSlotView: View {
 enum SessionSlotText {
     static func truncate(_ s: String, max: Int) -> String {
         s.count <= max ? s : String(s.prefix(max - 1)) + "\u{2026}"
+    }
+
+    /// Swift mirror of the TS renderer's space/camelCase wrapper.
+    static func wrapSessionName(_ name: String, maxChars: Int, maxLines: Int = 4) -> [String] {
+        if name.count <= maxChars { return [name] }
+        var lines: [String] = []
+        var remaining = name.trimmingCharacters(in: .whitespaces)
+
+        while remaining.count > maxChars && lines.count < maxLines - 1 {
+            let chars = Array(remaining)
+            var breakpoints: [Int] = []
+            for index in 1..<chars.count {
+                let current = chars[index]
+                let previous = chars[index - 1]
+                if current == " " || (current.isUppercase && (previous.isLowercase || previous.isNumber)) {
+                    breakpoints.append(index)
+                }
+            }
+            let split = breakpoints.last(where: { $0 <= maxChars }) ?? maxChars
+            lines.append(String(chars[..<split]).trimmingCharacters(in: .whitespaces))
+            remaining = String(chars[split...]).trimmingCharacters(in: .whitespaces)
+        }
+
+        lines.append(
+            remaining.count <= maxChars
+                ? remaining
+                : String(remaining.prefix(maxChars - 1)).trimmingCharacters(in: .whitespaces) + "\u{2026}"
+        )
+        return lines
+    }
+
+    /// SwiftUI positions text by its center; the TS SVG values are baselines.
+    static func centerY(svgBaseline: CGFloat, fontSize: CGFloat) -> CGFloat {
+        svgBaseline - fontSize * 0.35
     }
 }
 

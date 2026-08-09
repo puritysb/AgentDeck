@@ -18,7 +18,7 @@ import { ConnectionManager } from './connection-manager.js';
 import { updateUsageModeData, setUsageRefreshCallback } from './utility-modes/usage.js';
 import { setEncoderDaemonConnected } from './encoder-registry.js';
 import { dlog, dinfo } from './log.js';
-import { familyForDeviceType } from './device-profile.js';
+import { deviceTypeFromUnknown, familyForDeviceType } from './device-profile.js';
 
 // Encoder actions
 import {
@@ -440,7 +440,7 @@ function sendClientRegister(reason: string): void {
   const devices = Array.from(streamDeck.devices).map((d: any) => ({
     id: String(d.id ?? ''),
     name: String(d.name ?? ''),
-    family: familyForDeviceType(Number(d.type)),
+    family: familyForDeviceType(deviceTypeFromUnknown(d.type)),
     columns: d.size?.columns as number | undefined,
     rows: d.size?.rows as number | undefined,
   }));

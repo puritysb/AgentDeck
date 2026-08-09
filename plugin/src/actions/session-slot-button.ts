@@ -35,7 +35,7 @@ import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
 import { openAgentDeckAppOrGitHub } from '../system/index.js';
 import { VoicePttHold } from '@agentdeck/shared';
-import { familyForDeviceType, usesLowResolutionKeyProfile } from '../device-profile.js';
+import { deviceTypeFromUnknown, familyForDeviceType, usesLowResolutionKeyProfile } from '../device-profile.js';
 
 // ---- Module state ----
 
@@ -223,7 +223,7 @@ function layoutForEvent(ev: WillAppearEvent | KeyDownEvent): DeckLayout {
     columns: Number.isFinite(columns) && columns > 0 ? columns : 4,
     rows: Number.isFinite(rows) && rows > 0 ? rows : 2,
     keyCount: Math.max(1, (Number.isFinite(columns) && columns > 0 ? columns : 4) * (Number.isFinite(rows) && rows > 0 ? rows : 2)),
-    family: familyForDeviceType(Number(device?.type)),
+    family: familyForDeviceType(deviceTypeFromUnknown(device?.type)),
   };
 }
 
