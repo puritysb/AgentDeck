@@ -191,11 +191,13 @@ Full build-from-source and manual steps: **[docs/install.md](docs/install.md)**.
 | **Claude Code** | Supported (primary) |
 | **Codex CLI** | Supported |
 | **OpenCode** | Supported |
+| **Hermes** | Read-only lifecycle monitoring (CLI daemon) |
 | **OpenClaw** | Experimental |
 
 State comes from agent-native lifecycle and event channels — hooks for Claude Code
-and Codex, OpenCode SSE, and the OpenClaw Gateway — rather than terminal-screen
-scraping. PTY parsing remains a best-effort assist for CLI-managed sessions.
+and Codex, an opt-in Hermes observer plugin, OpenCode SSE, and the OpenClaw
+Gateway — rather than terminal-screen scraping. PTY parsing remains a best-effort
+assist for CLI-managed sessions.
 
 ### How it fits together
 

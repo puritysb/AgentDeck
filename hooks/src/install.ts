@@ -23,6 +23,18 @@ export {
 } from './opencode-install.js';
 export type { OpenCodeInstallOptions, OpenCodeInstallResult } from './opencode-install.js';
 
+// Re-export the Hermes observer plugin installer. It writes only AgentDeck's
+// own plugin directory and reports lifecycle events without steering sessions.
+export {
+  installHermesHooksIfNeeded,
+  uninstallHermesHooks,
+  hermesPluginPath,
+  hermesPluginManifest,
+  hermesPluginSource,
+  HERMES_PLUGIN_NAME,
+} from './hermes-install.js';
+export type { HermesInstallOptions, HermesInstallResult } from './hermes-install.js';
+
 export const HOOK_EVENTS = [
   'SessionStart',
   'SessionEnd',
@@ -492,6 +504,7 @@ if (isMainModule) {
     // the fenced block is AgentDeck's and removal has its own dedicated
     // flow to avoid touching user TOML).
     import('./opencode-install.js').then((m) => m.uninstallOpenCodeHooks()).catch(() => {});
+    import('./hermes-install.js').then((m) => m.uninstallHermesHooks()).catch(() => {});
   } else {
     installHooks();
   }

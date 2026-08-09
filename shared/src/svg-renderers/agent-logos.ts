@@ -182,6 +182,7 @@ export function agentGlyphMono(
   ink: string,
   paper: string,
 ): string {
+  if ((agent || '').toLowerCase() === 'hermes') return '';
   const g = AGENT_MONO_GLYPH[(agent || '').toLowerCase()] ?? AGENT_MONO_GLYPH.openclaw;
   const s = size / 24;
   const agentClass = (agent || '').toLowerCase();
@@ -222,6 +223,9 @@ export function agentLogoIcon(
   if (agent === 'antigravity') {
     return antigravityCreatureIcon(size, opacity, cx, cy);
   }
+  // No Hermes mark is bundled. An empty mark is preferable to incorrectly
+  // presenting the OpenClaw creature as another product's identity.
+  if (agent === 'hermes') return '';
   return openClawCreatureIcon(size, opacity, cx, cy);
 }
 
@@ -252,5 +256,6 @@ export function agentLogoWatermark(
   if (agent === 'antigravity') {
     return antigravityCreatureIcon(72, markOpacity, 72, 72);
   }
+  if (agent === 'hermes') return '';
   return openClawCreatureIcon(72, markOpacity, 72, 72);
 }

@@ -55,6 +55,17 @@ describe('classifyObservedHookEvent', () => {
       .toEqual({ boundary: 'stop', agentType: 'opencode' });
   });
 
+  it('maps hermes_* plugin events to their boundary with hermes attribution', () => {
+    expect(classifyObservedHookEvent('hermes_session_start', 'hermes_session_start'))
+      .toEqual({ boundary: 'session_start', agentType: 'hermes' });
+    expect(classifyObservedHookEvent('hermes_user_prompt_submit', 'hermes_user_prompt_submit'))
+      .toEqual({ boundary: 'user_prompt_submit', agentType: 'hermes' });
+    expect(classifyObservedHookEvent('hermes_tool_start', 'hermes_tool_start'))
+      .toEqual({ boundary: 'tool_start', agentType: 'hermes' });
+    expect(classifyObservedHookEvent('hermes_stop', 'hermes_stop'))
+      .toEqual({ boundary: 'stop', agentType: 'hermes' });
+  });
+
   it('accepts antigravity_* for forward-compatibility (no installer yet)', () => {
     expect(classifyObservedHookEvent('antigravity_user_prompt_submit', 'antigravity_user_prompt_submit'))
       .toEqual({ boundary: 'user_prompt_submit', agentType: 'antigravity' });

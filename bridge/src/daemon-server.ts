@@ -21,6 +21,7 @@ import { prepareForSerial } from './esp32-serial.js';
 import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { PassiveSessionObserver } from './passive-observer.js';
+import { HermesSessionObserver } from './hermes-session-observer.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
 import { SubagentTimelineTracker } from './subagent-timeline.js';
@@ -913,17 +914,18 @@ export function enrichGatewayTimelineEntry<T extends { agentType?: string; proje
 export function classifyObservedHookEvent(
   eventName: string,
   mapped: string,
-): { boundary: string; agentType: 'claude-code' | 'codex-cli' | 'opencode' | 'antigravity' } {
+): { boundary: string; agentType: 'claude-code' | 'codex-cli' | 'opencode' | 'hermes' | 'antigravity' } {
   if (eventName === 'codex_subagent_start' || eventName === 'codex_subagent_stop') {
     return { boundary: eventName, agentType: 'codex-cli' };
   }
-  const prefixed = /^(codex|opencode|antigravity)_(session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|notification|permission_asked|permission_replied)$/
+  const prefixed = /^(codex|opencode|hermes|antigravity)_(session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|notification|permission_asked|permission_replied)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
   return {
     boundary: prefixed[2] === 'turn_complete' ? 'stop' : prefixed[2],
     agentType: prefixed[1] === 'codex' ? 'codex-cli'
       : prefixed[1] === 'opencode' ? 'opencode'
+      : prefixed[1] === 'hermes' ? 'hermes'
       : 'antigravity',
   };
 }
@@ -1199,6 +1201,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // the rest of startup finishes. A later `const` would leave that window
   // throwing on the temporal dead zone.
   const passiveSessionObserver = new PassiveSessionObserver();
+  // Initialized after BridgeCore registration; declared here because hook
+  // events can arrive as soon as the HTTP listener binds.
+  let hermesSessionObserver: HermesSessionObserver | null = null;
 
   /** Observed Claude sessions whose AskUserQuestion PreToolUse is held open for
    *  a device answer, keyed by the bare Claude session UUID. Its presence is
@@ -1961,6 +1966,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           res.end(eventName === 'PreToolUse' || eventName === 'Stop'
             ? ''
             : JSON.stringify({ received: true }));
+          return;
+        }
+        // Hermes is a display-only integration. Its AgentDeck plugin feeds a
+        // dedicated event-backed roster; it does not enter Claude steering,
+        // state-machine, permission, or APME paths.
+        if (hookAgentType === 'hermes') {
+          hermesSessionObserver?.ingest(boundary, json);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ received: true }));
           return;
         }
         // Hook-derived Codex session rows. Placed after the child-hook return so
@@ -3329,6 +3343,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // Register session
   core.registerSession('daemon' as any);
+  hermesSessionObserver = new HermesSessionObserver(() => core.maybeBroadcastSessionsList());
   // The observer scans in the background now (collect() returns the cache
   // immediately). When a scan lands fresh observations, push them out via
   // the debounced broadcast so clients don't wait for the next 10 s poll.
@@ -3386,7 +3401,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Derive per-session elapsed seconds from startedAt so NTP-less devices
     // (ESP32 IPS10 mosaic) render an elapsed value per cell without a wall clock.
     const now = Date.now();
-    const enrichedSessions = [...sessions, ...observed, ...remote].map((s) => {
+    const hermes = hermesSessionObserver?.collect() ?? [];
+    const enrichedSessions = [...sessions, ...observed, ...remote, ...hermes].map((s) => {
       // On-demand review badge (REVIEW tile verdict / REVIEWING state) —
       // applies to every session type, managed included.
       const review = reviewSnapshot(s.id);

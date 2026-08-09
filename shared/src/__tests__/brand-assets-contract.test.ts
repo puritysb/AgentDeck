@@ -8,6 +8,9 @@ import {
   OPENCODE_RING_PATH,
   OPENCLAW_LOGO_PATHS,
   ROBOT_CREATURE_PATH,
+  agentGlyphMono,
+  agentLogoIcon,
+  agentLogoWatermark,
 } from '../svg-renderers/agent-logos.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -73,5 +76,11 @@ describe('canonical agent brand assets', () => {
     ]) {
       expect(existsSync(`${root}/apple/AgentDeck/Resources/Assets.xcassets/${imageset}.imageset`)).toBe(false);
     }
+  });
+
+  it('does not reuse another agent mark for Hermes', () => {
+    expect(agentGlyphMono('hermes', 12, 12, 24, '#fff', '#000')).toBe('');
+    expect(agentLogoIcon('hermes')).toBe('');
+    expect(agentLogoWatermark('hermes')).toBe('');
   });
 });

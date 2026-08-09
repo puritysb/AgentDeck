@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-08-08 — Read-only Hermes lifecycle observation
+
+The external Node daemon can now install an AgentDeck-owned Hermes plugin that
+reports session, prompt, tool, and completion lifecycle events over bounded
+loopback HTTP. An event-backed observer turns those events into display-only
+session rows and expires interrupted processing rows after three minutes.
+
+The integration deliberately adds no session steering, Hermes database reads,
+remote relay, or native App Store subprocess path. No Hermes logo is bundled;
+renderers leave its identity mark empty instead of reusing another agent's mark.
+The installer is idempotent, supports an explicit environment opt-out, and
+never lets monitoring failures affect Hermes execution.
+
+---
+
 ## 2026-08-08 — Codex 무료 티어: 죽은 게이지를 회수해 공간으로 되돌리다
 
 ### 문제

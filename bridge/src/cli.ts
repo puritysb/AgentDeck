@@ -892,6 +892,13 @@ daemon
           log(`OpenCode observer plugin skipped: ${result.reason}`);
         }
       } catch { /* hooks package not built yet — task install still succeeds */ }
+      try {
+        const { installHermesHooksIfNeeded } = await import('@agentdeck/hooks');
+        const result = installHermesHooksIfNeeded();
+        if (result.installed) log('Hermes observer plugin installed.');
+        else if (result.reason) log(`Hermes observer plugin skipped: ${result.reason}`);
+        if (result.warning) log(`Hermes observer plugin: ${result.warning}`);
+      } catch { /* hooks package not built yet — task install still succeeds */ }
       process.exit(0);
     }
     if (process.platform === 'linux') {
@@ -939,6 +946,13 @@ daemon
           log(`OpenCode observer plugin skipped: ${result.reason}`);
         }
       } catch { /* hooks package not built yet — install still succeeds */ }
+      try {
+        const { installHermesHooksIfNeeded } = await import('@agentdeck/hooks');
+        const result = installHermesHooksIfNeeded();
+        if (result.installed) log('Hermes observer plugin installed.');
+        else if (result.reason) log(`Hermes observer plugin skipped: ${result.reason}`);
+        if (result.warning) log(`Hermes observer plugin: ${result.warning}`);
+      } catch { /* hooks package not built yet — install still succeeds */ }
       process.exit(0);
     }
     if (process.platform !== 'darwin') {
@@ -972,6 +986,13 @@ daemon
       } else if (result.reason) {
         log(`OpenCode observer plugin skipped: ${result.reason}`);
       }
+    } catch { /* hooks package not built yet — daemon install still succeeds */ }
+    try {
+      const { installHermesHooksIfNeeded } = await import('@agentdeck/hooks');
+      const result = installHermesHooksIfNeeded();
+      if (result.installed) log('Hermes observer plugin installed.');
+      else if (result.reason) log(`Hermes observer plugin skipped: ${result.reason}`);
+      if (result.warning) log(`Hermes observer plugin: ${result.warning}`);
     } catch { /* hooks package not built yet — daemon install still succeeds */ }
   });
 

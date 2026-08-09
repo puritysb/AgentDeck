@@ -344,6 +344,7 @@ enum class AgentType(val value: String) {
     ClaudeCode("claude-code"),
     CodexApp("codex-app"),
     CodexCLI("codex-cli"),
+    Hermes("hermes"),
     Monitor("monitor"),
     Openclaw("openclaw"),
     Opencode("opencode");
@@ -354,6 +355,7 @@ enum class AgentType(val value: String) {
             "claude-code" -> ClaudeCode
             "codex-app"   -> CodexApp
             "codex-cli"   -> CodexCLI
+            "hermes"      -> Hermes
             "monitor"     -> Monitor
             "openclaw"    -> Openclaw
             "opencode"    -> Opencode

@@ -5,7 +5,7 @@ import type { TimelineEntry } from './timeline.js';
 
 // ===== Agent Types =====
 
-export type AgentType = 'claude-code' | 'openclaw' | 'codex-cli' | 'codex-app' | 'opencode' | 'antigravity' | 'monitor';
+export type AgentType = 'claude-code' | 'openclaw' | 'codex-cli' | 'codex-app' | 'opencode' | 'hermes' | 'antigravity' | 'monitor';
 
 export interface AgentCapabilities {
   type: AgentType;
@@ -243,6 +243,19 @@ export const OPENCODE_CAPABILITIES: AgentCapabilities = {
   hasModeSwitching: false,
   hasDiffReview: false,
   hasOptionLists: true,
+  hasNavigablePrompts: false,
+  hasSuggestedPrompts: false,
+  hasApiUsage: false,
+  hasModelCatalog: false,
+};
+
+export const HERMES_CAPABILITIES: AgentCapabilities = {
+  type: 'hermes',
+  displayName: 'Hermes',
+  hasTerminal: false,
+  hasModeSwitching: false,
+  hasDiffReview: false,
+  hasOptionLists: false,
   hasNavigablePrompts: false,
   hasSuggestedPrompts: false,
   hasApiUsage: false,

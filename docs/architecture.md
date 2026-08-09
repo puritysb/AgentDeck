@@ -21,7 +21,7 @@ Core bridge architecture, adapter hierarchy, and module system. See [daemon.md](
 - **bridge/** — Node.js server: Daemon (sole hub for all clients, mDNS, device modules) + Session Bridge (PTY, hook HTTP, state machine). BridgeCore (shared infra), PtyAdapter hierarchy, output parser, WebSocket server, voice (Apple on-device Speech via the bundled helper), usage API client, auth token, SSE broadcast, TUI dashboard (`tui/`)
 - **plugin/** — Stream Deck SDK v2 plugin: actions for buttons/encoders, bridge WebSocket client
 - **shared/** — TypeScript types and utilities shared between bridge and plugin (protocol, states, timeline, adapter interfaces, `format-utils` time/count/bytes formatters, `timeline-summarizer` extractTopicHint/cleanLLMOutput, `deduplicateEntry` pipeline, `session-utils` stateRank/sortSessions/assignDisplayNames — 세션 정렬/번호 공통 유틸리티, 6곳에서 import)
-- **hooks/** — Claude Code CLI hook installer for `~/.claude/settings.json` (the App Store opt-in UI writes the same user-global file, user-selected), Codex lifecycle hook installer for `~/.codex/config.toml`, and OpenCode observer plugin installer for `~/.config/opencode/plugins/agentdeck.js`
+- **hooks/** — Claude Code CLI hook installer for `~/.claude/settings.json` (the App Store opt-in UI writes the same user-global file, user-selected), Codex lifecycle hook installer for `~/.codex/config.toml`, OpenCode observer plugin installer for `~/.config/opencode/plugins/agentdeck.js`, and read-only Hermes observer plugin installer for `~/.hermes/plugins/agentdeck-observer/`
 - **config/** — Default settings and prompt templates
 - **setup/** — npm setup package: `npx @agentdeck/setup` one-command installer
 - **android/** — Jetpack Compose launcher app: e-ink monitoring + interactive Deck control (CremaS, Onyx, Kobo, tablets)
@@ -44,6 +44,7 @@ Core bridge architecture, adapter hierarchy, and module system. See [daemon.md](
 
 - `ClaudeCodeAdapter` extends PtyAdapter with OutputParser + Shift+Tab mode switching
 - `CodexCliAdapter` extends PtyAdapter with CodexOutputParser plus Codex lifecycle hooks installed in `~/.codex/config.toml`; hooks are authoritative and rollout-tail parsing supplies response text where needed
+- Hermes sessions are external-daemon-only and read-only. The AgentDeck-owned Hermes plugin posts bounded loopback lifecycle events to `HermesSessionObserver`; it does not expose steering, inspect Hermes state storage, or enter Claude's state/APME pipeline
 - `OpenCodeAdapter` extends PtyAdapter + SSE overlay (spawns `opencode --port XXXX` TUI, connects to embedded HTTP server for structured events — no TUI parsing needed)
 - `MonitorAdapter` is hook-only (no PTY)
 
