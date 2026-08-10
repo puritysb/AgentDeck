@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -31,6 +32,12 @@ jobs:
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
+      # npm trusted publishing requires npm >=11.5.1. Pin the major/minor tool
+      # independently from Node so a GitHub runner image cannot silently fall
+      # back to the token-only npm bundled with an older Node 22 patch.
+      - name: Install OIDC-capable npm
+        run: npm install --global npm@11.19.0
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -44,11 +51,10 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#npm-v}" >> "$GITHUB_OUTPUT"
 
-      # --- npm publish (optional) ---
-      # No-op until the repo variable NPM_PUBLISH_ENABLED is set to 'true' and
-      # the secret NPM_TOKEN holds a granular automation token (a 2FA-on-publish
-      # token cannot be used unattended). Until then this track stays manual per
-      # RELEASING.md and this workflow only records the GitHub Release.
+      # npmjs.com trusts this exact GitHub Actions workflow through OIDC. There
+      # is deliberately no enable variable or long-lived publish token: an
+      # npm-v* tag is a delivery request, so a missing trust relationship must
+      # fail red rather than skip green.
       #
       # scripts/publish-npm.mjs owns the dependency order (shared+hooks before
       # bridge's exact pins) AND the workspace:* rewrite. It publishes with npm
@@ -56,15 +62,20 @@ jobs:
       # does not attach README.md to the registry packument — which left every
       # @agentdeck npm page blank until 1.0.15.
       - name: Publish packages
-        if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: node scripts/publish-npm.mjs
+
+      - name: Verify packages on npm registry
+        run: |
+          VERSION="${GITHUB_REF_NAME#npm-v}"
+          for PACKAGE in shared hooks bridge setup; do
+            ACTUAL=$(npm view "@agentdeck/${PACKAGE}@${VERSION}" version)
+            test "$ACTUAL" = "$VERSION"
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "AgentDeck npm v${{ steps.version.outputs.VERSION }}"
+          name: 'AgentDeck npm v${{ steps.version.outputs.VERSION }}'
           body: |
             ## AgentDeck npm v${{ steps.version.outputs.VERSION }}
 

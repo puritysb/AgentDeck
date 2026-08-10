@@ -1266,7 +1266,6 @@
 				TargetAttributes = {
 					1B95C9515EBB97FD5022C08C = {
 						DevelopmentTeam = QF36NDHYHD;
-						ProvisioningStyle = Automatic;
 					};
 					3BF710A3BC80FD9626668CA0 = {
 						DevelopmentTeam = QF36NDHYHD;
@@ -1277,7 +1276,6 @@
 					};
 					E4D80DB9ABDABC379778AF7C = {
 						DevelopmentTeam = QF36NDHYHD;
-						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -1295,10 +1293,10 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				1B95C9515EBB97FD5022C08C /* AgentDeck_iOS */,
-				E4D80DB9ABDABC379778AF7C /* AgentDeck_macOS */,
 				CAB442A856E23517772A7850 /* AgentDeckTests_iOS */,
 				3BF710A3BC80FD9626668CA0 /* AgentDeckTests_macOS */,
+				1B95C9515EBB97FD5022C08C /* AgentDeck_iOS */,
+				E4D80DB9ABDABC379778AF7C /* AgentDeck_macOS */,
 			);
 		};
 /* End PBXProject section */
@@ -1985,7 +1983,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = AgentDeck/Resources/AgentDeck.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = QF36NDHYHD;
 				ENABLE_PREVIEWS = YES;
@@ -1997,6 +1996,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
+				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard macOS AppStore";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = AGENTDECK_APP_STORE;
 			};
@@ -2064,8 +2064,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = QF36NDHYHD;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = AgentDeck/Resources/Info.plist;
@@ -2076,6 +2076,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
+				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard AppStore";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

@@ -25,7 +25,7 @@ Run `pnpm verify-version` before every build or release. CI rejects a `major.min
 
 CI going green is the first of five, not the last. Keep them apart in your head and in anything you write down:
 
-1. **CI succeeded** — the workflow exited 0. It may have *skipped* the step that matters (npm publishing is gated on `NPM_PUBLISH_ENABLED`; two tags produced green runs and published nothing).
+1. **CI succeeded** — the workflow exited 0. This alone still proves only the workflow, not the destination. Before 2026-08-10 npm publishing was gated on an unset variable, so two tags produced green runs and published nothing; the current workflow makes publishing mandatory and verifies the registry before creating the GitHub Release.
 2. **Artifact exists** — a GitHub Release carries the APK / `.streamDeckPlugin` / firmware.
 3. **Uploaded to the store** — the binary reached ASC / Play / a marketplace portal. Nobody outside can install it yet.
 4. **Submitted for review** — a human pressed a button in a portal. No tag, no workflow, and no repository artifact records this.
@@ -35,11 +35,11 @@ CI going green is the first of five, not the last. Keep them apart in your head 
 
 ### "Manual" means an interactive portal, not "only a human"
 
-Several steps here are marked *manual* or *a separate App Store Connect action*. That describes the **absence of an API**, not the absence of an agent. Portals accept a signed-in browser, and browser automation is available to agents working in this repo.
+Several steps here are marked _manual_ or _a separate App Store Connect action_. That describes the **absence of an API**, not the absence of an agent. Portals accept a signed-in browser, and browser automation is available to agents working in this repo.
 
 So an agent must not answer "I have no API access, so you'll have to do it." Before claiming a release step is impossible:
 
-- load the browser tools (they are frequently *deferred* — `ToolSearch` for `mcp__claude-in-chrome__*` rather than assuming they are absent), then `list_connected_browsers`;
+- load the browser tools (they are frequently _deferred_ — `ToolSearch` for `mcp__claude-in-chrome__*` rather than assuming they are absent), then `list_connected_browsers`;
 - **read state freely** — Play Console review status, ASC build list and submission readiness, Maker Console and Ulanzi submission status. Reading changes nothing and is never worth blocking on;
 - **ask before pressing a button that changes external state** — submitting for review, releasing to the public, replacing a build under review.
 
@@ -51,15 +51,15 @@ On 2026-08-09 an agent with those tools loaded from the first turn never invoked
 
 ## Compatible line, independent patch and delivery
 
-| Surface | Target version | Independent monotonic value | Tag / delivery |
-|---|---|---|---|
-| **Apple** (iOS+macOS) | `apple/project.yml` `MARKETING_VERSION` | `CURRENT_PROJECT_VERSION` (CI-owned) | `apple-v*` → TestFlight / App Store |
-| **Android** | `android/app/build.gradle.kts` `versionName` | `versionCode` (currently 7) | `android-v*` → APK Release / optional Play |
-| **npm** (`@agentdeck/hooks`, `shared`, `bridge`, `setup`) | public `package.json` files | npm registry version floor | `npm-v*` → manual publish |
-| **ESP32** | `esp32/src/config.h` `FIRMWARE_VERSION` | build hash / epoch in firmware metadata | `esp32-v*` → firmware Release |
-| **Stream Deck** | plugin manifest `Version` as `X.Y.Z.0` | fourth component if a same-product-version plugin rebuild is ever required | `streamdeck-v*` → Elgato Maker portal |
-| **Ulanzi** | Ulanzi manifest `Version` | marketplace submission record | `ulanzi-v*` → Ulanzi Studio Marketplace |
-| **Private JS workspaces** | their `package.json` files | not published | no independent delivery |
+| Surface                                                   | Target version                               | Independent monotonic value                                                | Tag / delivery                             |
+| --------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------ |
+| **Apple** (iOS+macOS)                                     | `apple/project.yml` `MARKETING_VERSION`      | `CURRENT_PROJECT_VERSION` (CI-owned)                                       | `apple-v*` → TestFlight / App Store        |
+| **Android**                                               | `android/app/build.gradle.kts` `versionName` | `versionCode` (currently 7)                                                | `android-v*` → APK Release / optional Play |
+| **npm** (`@agentdeck/hooks`, `shared`, `bridge`, `setup`) | public `package.json` files                  | npm registry version floor                                                 | `npm-v*` → manual publish                  |
+| **ESP32**                                                 | `esp32/src/config.h` `FIRMWARE_VERSION`      | build hash / epoch in firmware metadata                                    | `esp32-v*` → firmware Release              |
+| **Stream Deck**                                           | plugin manifest `Version` as `X.Y.Z.0`       | fourth component if a same-product-version plugin rebuild is ever required | `streamdeck-v*` → Elgato Maker portal      |
+| **Ulanzi**                                                | Ulanzi manifest `Version`                    | marketplace submission record                                              | `ulanzi-v*` → Ulanzi Studio Marketplace    |
+| **Private JS workspaces**                                 | their `package.json` files                   | not published                                                              | no independent delivery                    |
 
 Tag prefixes remain because channels ship independently and may point to different commits. A patch bump updates only the target being delivered. A channel is considered shipped only when its prefixed tag and external release/submission exist. Do not claim an unsubmitted marketplace artifact as released merely because another target advanced.
 
@@ -94,17 +94,18 @@ Tag prefixes remain because channels ship independently and may point to differe
 
 ### npm (`@agentdeck/*`)
 
-`hooks`, `shared`, `bridge`, and `setup` are public; root, plugin, and plugin-ulanzi are private. `bridge` has a runtime dependency on both `hooks` and `shared`, so all four must exist at the same product version. npm publishing requires a 2FA-enabled granular token.
+`hooks`, `shared`, `bridge`, and `setup` are public; root, plugin, and plugin-ulanzi are private. `bridge` has a runtime dependency on both `hooks` and `shared`, so all four must exist at the same product version. CI publishing authenticates with npm Trusted Publishing (OIDC); interactive maintenance still requires the maintainer's npm 2FA.
 
 **The tarballs are machine-independent — keep them that way.** Publishing from an arm64 Mac, an Intel Mac, or CI Linux must produce byte-equivalent package contents. The one thing that used to violate this was the Foundation Models voice/judge helper: a `prepack` hook baked `assets/fm-helper/agentdeck-fm-helper` (a gitignored, arch-specific, ad-hoc-signed Mach-O) into whatever the publishing machine could build — so 1.0.13 shipped arm64-only from a dev Mac, and a CI publish would have silently shipped nothing. Since 1.0.14 the tarball carries only the helper's Swift source plus `scripts/build-fm-helper.mjs`, and the daemon compiles it on demand into `~/.agentdeck/fm-helper/` (macOS 26+, needs Xcode CLT; `bridge/src/foundation-models-helper.ts` also arch-checks any present binary so an Intel Mac never spawns an arm64 leftover). Never reintroduce a `prepack` that emits machine-built artifacts — `bridge/src/__tests__/fm-helper-arch.test.ts` gates this.
 
 1. Verify all four public npm manifests match each other and that the target version is unused on npm.
 2. Run `pnpm build` and tests.
-3. Publish with `node scripts/publish-npm.mjs` — it enforces the dependency order (`shared`+`hooks` → `bridge` → `setup`) and rewrites `workspace:*` around each publish. Do **not** use `pnpm publish`: pnpm (verified 11.5.2) uploads README.md inside the tarball but never attaches it to the registry packument, and npmjs.com renders the package page from the packument — that is why every @agentdeck page was blank through 1.0.14.
-4. Confirm each package's `latest` dist-tag matches the npm target version and that `npm view @agentdeck/setup readme` is non-empty.
-5. Tag the exact published commit as `npm-v<TARGET_VERSION>` and push it.
+3. Tag the exact release commit as `npm-v<TARGET_VERSION>` and push it. CI runs `node scripts/publish-npm.mjs`, which enforces the dependency order (`shared`+`hooks` → `bridge` → `setup`) and rewrites `workspace:*` around each publish. Do **not** substitute `pnpm publish`: pnpm (verified 11.5.2) uploads README.md inside the tarball but never attaches the readme to the registry packument, and npmjs.com renders the package page from the packument — that is why every @agentdeck page was blank through 1.0.14.
+4. Confirm the workflow read all four exact versions back from npm, each package's `latest` dist-tag matches the target, and `npm view @agentdeck/setup readme` is non-empty.
 
-`npm-release.yml` runs on the tag: it re-verifies the version, builds, tests, and creates the GitHub Release. **Publishing stays manual by default** — step 3 above is still yours. To hand publishing to CI, set the repo variable `NPM_PUBLISH_ENABLED=true` and add an `NPM_TOKEN` secret holding a *granular automation* token (a 2FA-on-publish token cannot run unattended); the workflow then publishes in dependency order.
+`npm-release.yml` runs on the tag: it re-verifies the version, builds, tests, publishes in dependency order, reads all four exact versions back from the npm registry, and only then creates the GitHub Release. npmjs.com must configure a GitHub Actions **Trusted Publisher** for each public package with owner `puritysb`, repository `AgentDeck`, and workflow `npm-release.yml` (`npm publish` allowed). The workflow uses OIDC (`id-token: write`) and intentionally has no long-lived `NPM_TOKEN` or opt-in variable. Missing or drifted trust fails the release instead of producing a green no-op.
+
+`scripts/publish-npm.mjs` is retry-safe across a partial four-package delivery: an exact immutable version already visible on npm is skipped, the missing packages continue in dependency order, and every package is verified again at the end. This does not make the registry optional — a tag is complete only when all four exact versions are readable there.
 
 ### Apple (TestFlight / App Store)
 
@@ -112,10 +113,10 @@ macOS has been publicly available since 2026-07-21 at [AgentDeck Dashboard on th
 
 **The two platforms diverged for four days, then reconverged.** `1.0.4` / build 4501 remains live on both platforms, and `1.0.5` was submitted on 2026-08-10 with platform-specific CI build numbers:
 
-| Platform | Version record | Build | State |
-|---|---|---|---|
-| macOS | `1.0.5` | 4701 | **Waiting for Review since 2026-08-10 09:35 KST**; `1.0.4` (4501) remains live. Builds 4301 and 4401 were withdrawn rather than shipped — each predated a fix that landed the same day |
-| iPhone/iPad | `1.0.5` | 4702 | **Waiting for Review since 2026-08-10 09:37 KST**; `1.0.4` (4501) remains live since 2026-08-07T22:57Z |
+| Platform    | Version record | Build | State                                                                                                                                                                                  |
+| ----------- | -------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS       | `1.0.5`        | 4701  | **Waiting for Review since 2026-08-10 09:35 KST**; `1.0.4` (4501) remains live. Builds 4301 and 4401 were withdrawn rather than shipped — each predated a fix that landed the same day |
+| iPhone/iPad | `1.0.5`        | 4702  | **Waiting for Review since 2026-08-10 09:37 KST**; `1.0.4` (4501) remains live since 2026-08-07T22:57Z                                                                                 |
 
 Approval mail alone cannot tell the platforms apart: three "eligible for distribution" messages arrived between 2026-08-05 and 2026-08-07 (iOS, macOS, iOS again) with a 2.1(a) rejection in between, and only the `(iOS)` / `(macOS)` in the subject distinguishes them. Read the state from App Store Connect.
 
@@ -131,7 +132,7 @@ iOS was answered as a `1.0.2` resubmission rather than moved up to `1.0.3`: a re
 ls -d /Applications/AgentDeck.app/Contents/_MASReceipt && stat -f "installed: %Sm" /Applications/AgentDeck.app
 ```
 
-The receipt proves the App Store *distributed* that exact version-and-build, which is a stronger statement than "approved" — it is what confirmed macOS `1.0.4` (4501) was public on 2026-08-09, delivered to this machine at 11:49 local. Two limits: it reports what this Mac has, so a machine with auto-update off can lag the store, and it says nothing about a version still in review. For anything the receipt cannot answer — queue position, review state, a version you have not received — read App Store Connect.
+The receipt proves the App Store _distributed_ that exact version-and-build, which is a stronger statement than "approved" — it is what confirmed macOS `1.0.4` (4501) was public on 2026-08-09, delivered to this machine at 11:49 local. Two limits: it reports what this Mac has, so a machine with auto-update off can lag the store, and it says nothing about a version still in review. For anything the receipt cannot answer — queue position, review state, a version you have not received — read App Store Connect.
 
 A successful CI upload reaches App Store Connect/TestFlight; public App Store release remains a separate App Store Connect action.
 
@@ -156,9 +157,9 @@ bash scripts/build-apple-release.sh --all     # both + TestFlight upload
 **Identity and signing**
 
 - **Bundle ID**: `bound.serendipity.agent.deck` (App Store Connect 앱명: "AgentDeck Dashboard"). The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier and is unrelated to the app bundle ID.
-- **Team**: 조직 `QF36NDHYHD` (Serendipity Bound) — 2026-07-10 개인 팀(R22679GY5Z)에서 이관. 서명은 **cloud signing** (`CODE_SIGN_STYLE=Automatic` + ASC API key `-allowProvisioningUpdates`); 수동 p12/프로파일 시크릿 불필요.
+- **Team**: 조직 `QF36NDHYHD` (Serendipity Bound) — 2026-07-10 개인 팀(R22679GY5Z)에서 이관. 2026-08-10부터 archive/export는 조직 전용 Distribution `.p12`와 명시적 App Store profiles를 쓰는 **manual signing**이다. ephemeral runner의 automatic signing이 release job마다 DEVELOPMENT 인증서를 새로 만들어 계정 상한을 세 차례 소진했기 때문이다. ASC API key는 업로드와 인증서 inventory에만 사용한다.
 - **CI**: `.github/workflows/apple-release.yml` — `apple-v*` 태그 → macOS-15 runner → archive → TestFlight 업로드.
-- **Secrets**: `ASC_API_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_KEY_BASE64` (조직 팀 App Manager+ 역할 키). Step-by-step setup: [docs/asc-cert-setup.md](docs/asc-cert-setup.md).
+- **Secrets**: `APPLE_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_INSTALLER_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, iOS/macOS profile secrets, plus upload-only `ASC_API_KEY_ID` / `ASC_ISSUER_ID` / `ASC_API_KEY_BASE64`. Step-by-step setup and no-upload dry-run: [docs/asc-cert-setup.md](docs/asc-cert-setup.md).
 
 ### Android (APK / optional Play)
 

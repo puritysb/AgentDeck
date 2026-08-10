@@ -4,6 +4,18 @@ on:
   push:
     tags:
       - 'apple-v*'
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Numeric marketing version to archive/export'
+        required: true
+        default: '1.0.5'
+        type: string
+      upload:
+        description: 'Upload the exported artifacts to App Store Connect'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -34,13 +46,17 @@ jobs:
 
       - name: Verify release version
         run: |
-          VERSION="${GITHUB_REF_NAME#apple-v}"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.release_version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#apple-v}"
+          fi
           node scripts/verify-release-version.mjs apple "$VERSION"
           node scripts/verify-version-sync.mjs
 
       - name: Select Xcode
         run: |
-          XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          XCODE=$(find /Applications -maxdepth 1 -type d -name 'Xcode*.app' | sort -V | tail -1)
           echo "Using: $XCODE"
           sudo xcode-select -s "$XCODE/Contents/Developer"
 
@@ -58,19 +74,24 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#apple-v}" >> "$GITHUB_OUTPUT"
-
-      # Cloud signing: the ASC API key (App Manager+ role) lets xcodebuild
-      # create/manage the distribution certificate and App Store profile in
-      # the cloud — no p12 or provisioning-profile secrets on the runner.
-      - name: Create App Store Connect API key
-        env:
-          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
         run: |
-          mkdir -p ~/private_keys
-          echo -n "$ASC_API_KEY_BASE64" | base64 --decode -o ~/private_keys/AuthKey_${ASC_API_KEY_ID}.p8
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.release_version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#apple-v}"
+          fi
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Persistent manual signing prevents ephemeral runners from creating a
+      # fresh DEVELOPMENT certificate for every archive job. The helper also
+      # rejects a p12/profile from the retired personal team or bundle id.
+      - name: Install iOS signing assets
+        env:
+          APPLE_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: bash apple/scripts/install-ci-signing-assets.sh ios
 
       # CI owns the build number: ASC rejects re-uploading a (MARKETING_VERSION,
       # CURRENT_PROJECT_VERSION) pair it has already seen, so the value in
@@ -87,43 +108,39 @@ jobs:
             -project apple/AgentDeck.xcodeproj \
             -scheme AgentDeck_iOS \
             -destination 'generic/platform=iOS' \
-            -archivePath $RUNNER_TEMP/AgentDeck_iOS.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_API_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
+            -archivePath "$RUNNER_TEMP/AgentDeck_iOS.xcarchive" \
             MARKETING_VERSION=${{ steps.version.outputs.VERSION }} \
             CURRENT_PROJECT_VERSION=$(( ${{ github.run_number }} * 100 + ${{ github.run_attempt }} )) \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="AgentDeck Dashboard AppStore" \
             DEVELOPMENT_TEAM=QF36NDHYHD \
             ENABLE_PREVIEWS=NO
 
       - name: Export iOS IPA
         run: |
           xcodebuild -exportArchive \
-            -archivePath $RUNNER_TEMP/AgentDeck_iOS.xcarchive \
+            -archivePath "$RUNNER_TEMP/AgentDeck_iOS.xcarchive" \
             -exportOptionsPlist apple/ExportOptions.plist \
-            -exportPath $RUNNER_TEMP/export_ios \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_API_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+            -exportPath "$RUNNER_TEMP/export_ios"
 
       - name: Verify iOS App Store invariants (exported IPA)
         # Guards against bundled helpers (Apple 2.5.2), `home-relative-path`
         # entitlement exceptions, and stray embedded executables. Runs on the
-        # EXPORTED app (distribution-signed) — the archive itself is signed
-        # with a cloud development identity, which the verifier rightly
-        # rejects, so verifying pre-export would always fail.
+        # final EXPORTED app (distribution-signed), matching the artifact that
+        # is uploaded to App Store Connect.
         run: |
-          unzip -q $RUNNER_TEMP/export_ios/AgentDeck.ipa -d $RUNNER_TEMP/ipa_unpacked
+          unzip -q "$RUNNER_TEMP/export_ios/AgentDeck.ipa" -d "$RUNNER_TEMP/ipa_unpacked"
           bash apple/scripts/verify-appstore-archive.sh \
-            $RUNNER_TEMP/ipa_unpacked/Payload/AgentDeck.app
+            "$RUNNER_TEMP/ipa_unpacked/Payload/AgentDeck.app"
 
       - name: Upload iOS to TestFlight
+        if: ${{ github.event_name == 'push' || inputs.upload }}
         run: |
+          mkdir -p ~/private_keys
+          echo -n "${{ secrets.ASC_API_KEY_BASE64 }}" | base64 --decode -o ~/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8
           xcrun altool --upload-app \
-            -f $RUNNER_TEMP/export_ios/AgentDeck.ipa \
+            -f "$RUNNER_TEMP/export_ios/AgentDeck.ipa" \
             -t ios \
             --apiKey ${{ secrets.ASC_API_KEY_ID }} \
             --apiIssuer ${{ secrets.ASC_ISSUER_ID }}
@@ -131,6 +148,8 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/apple-distribution.p12"
           rm -rf ~/private_keys
 
   build-macos:
@@ -143,13 +162,17 @@ jobs:
 
       - name: Verify release version
         run: |
-          VERSION="${GITHUB_REF_NAME#apple-v}"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.release_version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#apple-v}"
+          fi
           node scripts/verify-release-version.mjs apple "$VERSION"
           node scripts/verify-version-sync.mjs
 
       - name: Select Xcode
         run: |
-          XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          XCODE=$(find /Applications -maxdepth 1 -type d -name 'Xcode*.app' | sort -V | tail -1)
           echo "Using: $XCODE"
           sudo xcode-select -s "$XCODE/Contents/Developer"
 
@@ -167,18 +190,22 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#apple-v}" >> "$GITHUB_OUTPUT"
-
-      # Cloud signing — see the iOS job note. The Mac Installer Distribution
-      # certificate for the App Store .pkg is also cloud-managed.
-      - name: Create App Store Connect API key
-        env:
-          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
         run: |
-          mkdir -p ~/private_keys
-          echo -n "$ASC_API_KEY_BASE64" | base64 --decode -o ~/private_keys/AuthKey_${ASC_API_KEY_ID}.p8
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.release_version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#apple-v}"
+          fi
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install macOS signing assets
+        env:
+          APPLE_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          APPLE_INSTALLER_CERTIFICATE_BASE64: ${{ secrets.APPLE_INSTALLER_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          MACOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
+        run: bash apple/scripts/install-ci-signing-assets.sh macos
 
       - name: Archive macOS
         run: |
@@ -186,43 +213,45 @@ jobs:
             -project apple/AgentDeck.xcodeproj \
             -scheme AgentDeck_macOS \
             -destination 'generic/platform=macOS' \
-            -archivePath $RUNNER_TEMP/AgentDeck_macOS.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_API_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
+            -archivePath "$RUNNER_TEMP/AgentDeck_macOS.xcarchive" \
             MARKETING_VERSION=${{ steps.version.outputs.VERSION }} \
             CURRENT_PROJECT_VERSION=$(( ${{ github.run_number }} * 100 + ${{ github.run_attempt }} )) \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="AgentDeck Dashboard macOS AppStore" \
             DEVELOPMENT_TEAM=QF36NDHYHD
 
       - name: Export macOS pkg
         run: |
+          EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions-macOS.plist"
+          cp apple/ExportOptions-macOS.plist "$EXPORT_OPTIONS"
+          /usr/libexec/PlistBuddy \
+            -c "Add :installerSigningCertificate string $MAC_INSTALLER_IDENTITY" \
+            "$EXPORT_OPTIONS"
           xcodebuild -exportArchive \
-            -archivePath $RUNNER_TEMP/AgentDeck_macOS.xcarchive \
-            -exportOptionsPlist apple/ExportOptions-macOS.plist \
-            -exportPath $RUNNER_TEMP/export_macos \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_API_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+            -archivePath "$RUNNER_TEMP/AgentDeck_macOS.xcarchive" \
+            -exportOptionsPlist "$EXPORT_OPTIONS" \
+            -exportPath "$RUNNER_TEMP/export_macos"
 
       - name: Verify App Store invariants (exported pkg)
         # Fails the build if bundled Node/adb/bridge helpers, iOS-only plist
         # keys, home-relative-path entitlement, or subprocess path strings
         # somehow leaked into the .app. Apple Guideline 2.5.2 enforcement.
-        # Runs on the EXPORTED app (distribution-signed) — the archive is
-        # signed with a cloud development identity that the verifier rejects.
+        # Runs on the final EXPORTED app (distribution-signed), matching the
+        # artifact that is uploaded to App Store Connect.
         run: |
-          pkgutil --expand-full $RUNNER_TEMP/export_macos/AgentDeck.pkg $RUNNER_TEMP/pkg_expanded
-          APP=$(find $RUNNER_TEMP/pkg_expanded -type d -name 'AgentDeck.app' | head -1)
+          pkgutil --expand-full "$RUNNER_TEMP/export_macos/AgentDeck.pkg" "$RUNNER_TEMP/pkg_expanded"
+          APP=$(find "$RUNNER_TEMP/pkg_expanded" -type d -name 'AgentDeck.app' | head -1)
           test -n "$APP"
           bash apple/scripts/verify-appstore-archive.sh "$APP"
 
       - name: Upload macOS to App Store Connect
+        if: ${{ github.event_name == 'push' || inputs.upload }}
         run: |
+          mkdir -p ~/private_keys
+          echo -n "${{ secrets.ASC_API_KEY_BASE64 }}" | base64 --decode -o ~/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8
           xcrun altool --upload-app \
-            -f $RUNNER_TEMP/export_macos/AgentDeck.pkg \
+            -f "$RUNNER_TEMP/export_macos/AgentDeck.pkg" \
             -t macos \
             --apiKey ${{ secrets.ASC_API_KEY_ID }} \
             --apiIssuer ${{ secrets.ASC_ISSUER_ID }}
@@ -230,9 +259,12 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/apple-distribution.p12" "$RUNNER_TEMP/apple-installer.p12"
           rm -rf ~/private_keys
 
   release:
+    if: github.event_name == 'push'
     needs: [build-ios, build-macos]
     runs-on: ubuntu-latest
     steps:
@@ -245,7 +277,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "AgentDeck Apple v${{ steps.version.outputs.version }}"
+          name: 'AgentDeck Apple v${{ steps.version.outputs.version }}'
           body: |
             ## AgentDeck Apple v${{ steps.version.outputs.version }}
 

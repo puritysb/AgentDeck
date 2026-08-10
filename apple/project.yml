@@ -40,10 +40,12 @@ targets:
         debug:
           CODE_SIGN_STYLE: Automatic
         release:
-          # Cloud signing: CI archives with an App Store Connect API key
-          # (-allowProvisioningUpdates -authenticationKey*), so certs and
-          # App Store profiles are cloud-managed — no profile secrets.
-          CODE_SIGN_STYLE: Automatic
+          # Release archives use one persistent organization Distribution
+          # identity. Automatic signing on an ephemeral CI runner creates a
+          # fresh Development certificate per job and exhausts Apple's cap.
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: AgentDeck Dashboard AppStore
 
   AgentDeck_macOS:
     type: application
@@ -83,8 +85,10 @@ targets:
           # Store token alone, so debug-only paths still never ship.
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: AGENTDECK_APP_STORE DEBUG
         release:
-          # Cloud signing — see the iOS release config note.
-          CODE_SIGN_STYLE: Automatic
+          # Persistent manual signing — see the iOS release config note.
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: AgentDeck Dashboard macOS AppStore
     entitlements:
       path: AgentDeck/Resources/AgentDeck.entitlements
       properties:

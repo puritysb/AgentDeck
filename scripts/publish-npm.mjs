@@ -27,6 +27,19 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 // order users install in.
 const ORDER = ['shared', 'hooks', 'bridge', 'setup'];
 
+function publishedVersion(name, version) {
+  try {
+    const output = execFileSync('npm', ['view', `${name}@${version}`, 'version'], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return output.trim() === version;
+  } catch {
+    return false;
+  }
+}
+
 const versionOf = new Map();
 for (const pkg of ORDER) {
   const manifest = JSON.parse(readFileSync(join(root, pkg, 'package.json'), 'utf8'));
@@ -59,13 +72,26 @@ for (const pkg of ORDER) {
   }
   try {
     if (rewritten) writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-    console.log(`[publish-npm] ==> @agentdeck/${pkg}`);
-    execFileSync('npm', ['publish', '--access', 'public'], {
-      cwd: join(root, pkg),
-      stdio: 'inherit',
-    });
+    if (publishedVersion(manifest.name, manifest.version)) {
+      // A workflow retry after a partial four-package publish must be able to
+      // continue past packages whose immutable version already reached npm.
+      console.log(`[publish-npm] ==> ${manifest.name}@${manifest.version} already published; skipping`);
+    } else {
+      console.log(`[publish-npm] ==> ${manifest.name}`);
+      execFileSync('npm', ['publish', '--access', 'public'], {
+        cwd: join(root, pkg),
+        stdio: 'inherit',
+      });
+    }
   } finally {
     if (rewritten) writeFileSync(manifestPath, original);
+  }
+}
+
+for (const [name, version] of versionOf) {
+  if (!publishedVersion(name, version)) {
+    console.error(`[publish-npm] registry verification failed: ${name}@${version}`);
+    process.exit(1);
   }
 }
 console.log('[publish-npm] done');
