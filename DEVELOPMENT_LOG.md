@@ -40,6 +40,12 @@
   targeted Prettier, `actionlint`, plist lint, `bash -n`, `git diff --check` 통과.
 - `node scripts/publish-npm.mjs`를 `1.0.17` 상태에서 재실행해 네 패키지를 모두 안전하게
   skip한 뒤 registry 재검증까지 통과했다.
+- npm package settings의 WebAuthn 저장은 `Something went wrong`으로 반복 실패했다.
+  전역 npm 자격증명은 건드리지 않고 임시 `npm login --auth-type=web` 세션을 만든 뒤,
+  공식 `npm trust github` CLI의 5분 2FA 승인 창에서 `shared`·`hooks`·`bridge`·`setup`
+  모두를 `puritysb/AgentDeck` / `npm-release.yml` / publish 권한으로 등록했다. 마지막에는
+  `npm trust list`로 네 package의 서로 다른 trust id와 동일한 repository/workflow를
+  registry에서 다시 읽었다.
 - Apple Developer portal에서 조직 Distribution(`Q4C8ZR6WR8`)과 Mac Installer
   Distribution(`87A2XACK78`) 인증서, 현재 bundle ID용 iOS/macOS profile을 발급해
   GitHub secrets를 교체했다. no-upload CI dry-run `31349849501` attempt 2는 두 플랫폼의
