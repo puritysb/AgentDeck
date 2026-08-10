@@ -40,6 +40,15 @@
   targeted Prettier, `actionlint`, plist lint, `bash -n`, `git diff --check` 통과.
 - `node scripts/publish-npm.mjs`를 `1.0.17` 상태에서 재실행해 네 패키지를 모두 안전하게
   skip한 뒤 registry 재검증까지 통과했다.
+- Apple Developer portal에서 조직 Distribution(`Q4C8ZR6WR8`)과 Mac Installer
+  Distribution(`87A2XACK78`) 인증서, 현재 bundle ID용 iOS/macOS profile을 발급해
+  GitHub secrets를 교체했다. no-upload CI dry-run `31349849501` attempt 2는 두 플랫폼의
+  archive/export/invariant 검증을 모두 통과했고 upload 단계는 skip됐다. 직후 inventory
+  `31350157488`에서 Development 인증서는 전과 같은 5개였다 — manual signing이 새
+  Development 인증서를 만들지 않았음을 외부 상태로 확인했다.
+- 첫 dry-run은 Homebrew OpenSSL의 최신 PKCS#12 암호화 형식을 macOS `security import`가
+  읽지 못해 실패했다. 같은 key/certificate를 legacy-compatible PKCS#12로 다시 export하고
+  로컬 `security import`로 두 identity를 실측한 뒤 secrets를 교체해 해결했다.
 - 전체 `pnpm lint`는 이번 변경과 무관한 `.venv` 및 vendored Ulanzi SDK JavaScript
   1,536건을 기존 ignore 설정이 포함하지 않아 실패한다.
 
