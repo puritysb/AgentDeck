@@ -238,7 +238,18 @@ build health.
 | **Internals** | [Architecture](docs/architecture.md) · [Daemon](docs/daemon.md) · [Protocol](docs/protocol.md) · [Gateway protocol](docs/gateway-protocol.md) · [Testing](docs/testing.md) |
 | **Evaluation** | [Why APME](docs/why-apme.md) · [APME](docs/apme.md) · [Pipeline](docs/apme-pipeline.md) |
 | **Design** | [DESIGN.md](DESIGN.md) · [Tokens](design/tokens.css) · [Resource map](design/RESOURCES.md) |
-| **Project** | [Roadmap](docs/roadmap.md) · [Releasing](RELEASING.md) · [Changelog](CHANGELOG.md) · [Agent harness](docs/agent-harness.md) |
+| **Project** | [Roadmap](docs/roadmap.md) · [Releasing](RELEASING.md) · [Changelog](CHANGELOG.md) · [Agent harness](docs/agent-harness.md) · [AI-assisted maintenance](docs/ai-assisted-maintenance.md) |
+
+---
+
+## Community
+
+Bug reports, hardware verification, documentation fixes, and focused pull requests
+are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), use the private process
+in [SECURITY.md](SECURITY.md) for vulnerabilities, and follow the
+[Code of Conduct](CODE_OF_CONDUCT.md) in project spaces. Maintainer use of coding
+agents is human-owned and documented in
+[AI-assisted maintenance](docs/ai-assisted-maintenance.md).
 
 ---
 

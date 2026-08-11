@@ -1,0 +1,54 @@
+name: Feature request
+description: Propose an improvement with a concrete user need
+title: '[Feature]: '
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or maintainer problem should AgentDeck solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe the behavior rather than only a specific implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Primary scope
+      options:
+        - CLI or daemon
+        - Terminal dashboard
+        - Stream Deck or Ulanzi plugin
+        - Apple app
+        - Android or e-ink app
+        - ESP32 or LED device
+        - Protocol or integrations
+        - Documentation or contributor experience
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional context
+      description: Examples, mockups, hardware constraints, or links that clarify the need
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and the roadmap for related work.
+          required: true
+        - label: I am willing to help validate or implement this proposal.
+          required: false
