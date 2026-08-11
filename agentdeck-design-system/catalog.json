@@ -28,6 +28,7 @@
     "spec.streamdeck-layout": { "en": "Stream Deck", "ko": "Stream Deck", "ja": "Stream Deck" },
     "spec.tui-dashboard": { "en": "TUI", "ko": "TUI", "ja": "TUI" },
     "policy.product-tiers": { "en": "Product tiers", "ko": "제품 티어", "ja": "製品ティア" },
+    "policy.ai-assisted-maintenance": { "en": "AI maintenance", "ko": "AI 유지보수", "ja": "AI メンテナンス" },
     "policy.app-review": { "en": "App review", "ko": "앱 심사", "ja": "App Review" },
     "policy.releasing": { "en": "Releases", "ko": "출시", "ja": "リリース" },
     "validation.testing": { "en": "Testing", "ko": "테스트", "ja": "テスト" },
@@ -189,6 +190,12 @@
       "id": "policy.product-tiers",
       "sources": {
         "en": "docs/appstore-feature-matrix.md"
+      }
+    },
+    {
+      "id": "policy.ai-assisted-maintenance",
+      "sources": {
+        "en": "docs/ai-assisted-maintenance.md"
       }
     },
     {

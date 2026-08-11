@@ -1,5 +1,5 @@
 ---
-id: project.ai-assisted-maintenance
+id: policy.ai-assisted-maintenance
 title: AI-Assisted Maintenance
 description: Human-owned policy and measurable workflows for using coding agents in public AgentDeck maintenance.
 category: Project

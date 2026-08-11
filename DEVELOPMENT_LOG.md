@@ -21,8 +21,8 @@
 
 ### 검증
 
-- `pnpm docs:check`, 새 Markdown/YAML 대상 Prettier 검사, Ruby Psych YAML parse,
-  `git diff --check` 통과.
+- `pnpm design-system:check`, `pnpm docs:check`, 새 Markdown/YAML 대상 Prettier 검사,
+  Ruby Psych YAML parse, `git diff --check` 통과.
 
 ---
 
