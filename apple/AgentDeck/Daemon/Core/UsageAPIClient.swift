@@ -162,7 +162,8 @@ final class UsageAPIClient: Sendable {
     private let codexRateLimitsQueue = DispatchQueue(
         label: "bound.serendipity.agentdeck.usage.codex-ratelimits"
     )
-    /// Cache keyed on "<rolloutPath>:<mtime>" so unchanged files are free.
+    /// Cache keyed on every candidate's "<rolloutPath>:<mtime>" so a fresh
+    /// snapshot written by any concurrent Codex session invalidates the read.
     nonisolated(unsafe) private var codexRateLimitsCache: (key: String, value: CodexRateLimitsLocal?)?
 
     nonisolated(unsafe) private var consecutiveFailures = 0
@@ -581,8 +582,8 @@ final class UsageAPIClient: Sendable {
     private func readCodexRateLimitsLocked() -> CodexRateLimitsLocal? {
         withCodexBase { base in
             let candidates = Self.codexRolloutCandidates(sessionsDir: base.appendingPathComponent("sessions"))
-            guard let newest = candidates.first else { return nil }
-            let key = "\(newest.url.path):\(newest.mtime)"
+            guard !candidates.isEmpty else { return nil }
+            let key = Self.codexRolloutCacheKey(candidates)
             if let cached = self.codexRateLimitsCache, cached.key == key { return cached.value }
 
             let parsed = Self.parseFirstUsableCodexRollout(candidates)
@@ -591,21 +592,35 @@ final class UsageAPIClient: Sendable {
         }
     }
 
-    /// Scan candidates newest-first and return the first that yields a usable
-    /// snapshot, falling through past a newer file that carries no `rate_limits`
-    /// line (a just-started session). Stamps `capturedAt` from the snapshot line's
-    /// own timestamp, falling back to the file mtime. Mirrors `parseFirstUsable`
-    /// in bridge/src/codex-rate-limits.ts.
+    /// Scan every candidate and return the usable snapshot with the newest
+    /// CAPTURE timestamp. File mtime decides which rollouts are worth inspecting,
+    /// not which account snapshot wins: concurrent Codex sessions can append
+    /// ordinary lines to one file after another file wrote a newer rate_limits
+    /// line. Stamps missing `capturedAt` from file mtime. Mirrors
+    /// `parseFirstUsable` in bridge/src/codex-rate-limits.ts.
     static func parseFirstUsableCodexRollout(_ candidates: [(url: URL, mtime: TimeInterval)]) -> CodexRateLimitsLocal? {
+        var newest: CodexRateLimitsLocal?
+        var newestCapturedAt = Date.distantPast
         for candidate in candidates {
             guard let tail = readCodexRolloutTail(candidate.url),
                   var parsed = parseCodexRateLimits(tail) else { continue }
             if parsed.capturedAt == nil {
                 parsed.capturedAt = codexCaptureISOString(Date(timeIntervalSince1970: candidate.mtime))
             }
-            return parsed
+            guard let stamp = parsed.capturedAt,
+                  let capturedAt = codexCaptureDate(stamp) else { continue }
+            if newest == nil || capturedAt > newestCapturedAt {
+                newest = parsed
+                newestCapturedAt = capturedAt
+            }
         }
-        return nil
+        return newest
+    }
+
+    /// A concurrent session outside candidates[0] can write the newest account
+    /// snapshot. The cache key must therefore cover every inspected rollout.
+    static func codexRolloutCacheKey(_ candidates: [(url: URL, mtime: TimeInterval)]) -> String {
+        candidates.map { "\($0.url.path):\($0.mtime)" }.joined(separator: "|")
     }
 
     /// Gather rollout files across the newest few day-directories of the
@@ -720,13 +735,20 @@ final class UsageAPIClient: Sendable {
     /// carries none / an unparseable one (older rollout formats). Mirrors
     /// `parseRolloutTimestamp` in bridge/src/codex-rate-limits.ts.
     static func normalizeCodexCaptureTimestamp(_ raw: String?) -> String? {
+        guard let date = codexCaptureDate(raw) else { return nil }
+        return codexCaptureISOString(date)
+    }
+
+    /// Parse either fractional or whole-second ISO-8601 timestamps. Kept as the
+    /// comparison primitive for cross-rollout newest-snapshot selection.
+    private static func codexCaptureDate(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return codexCaptureISOString(date) }
+        if let date = fractional.date(from: raw) { return date }
         let plain = ISO8601DateFormatter()
         plain.formatOptions = [.withInternetDateTime]
-        if let date = plain.date(from: raw) { return codexCaptureISOString(date) }
+        if let date = plain.date(from: raw) { return date }
         return nil
     }
 

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { parseCodexRateLimitsFromText, pickCodexRateLimits } from '../codex-rate-limits.js';
+import { parseCodexRateLimitsFromText, pickCodexRateLimits, readCodexRateLimits } from '../codex-rate-limits.js';
 
 // A realistic token_count line as Codex CLI writes it to a rollout file.
 const tokenCountLine = JSON.stringify({
@@ -137,6 +137,12 @@ const rolloutLine = (primaryPct: number, secondaryPct = 1): string =>
     },
   });
 
+const rolloutLineAt = (primaryPct: number, timestamp: string): string => {
+  const line = JSON.parse(rolloutLine(primaryPct));
+  line.timestamp = timestamp;
+  return JSON.stringify(line);
+};
+
 /**
  * pickCodexRateLimits selects the newest usable snapshot across recent
  * day-directories — not just the single newest day-dir. This guards the bug
@@ -149,7 +155,11 @@ describe('pickCodexRateLimits (file selection across day-dirs)', () => {
 
   afterEach(() => {
     for (const r of tmpRoots.splice(0)) {
-      try { fs.rmSync(r, { recursive: true, force: true }); } catch { /* ignore */ }
+      try {
+        fs.rmSync(r, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
     }
   });
 
@@ -206,6 +216,43 @@ describe('pickCodexRateLimits (file selection across day-dirs)', () => {
     expect(pickCodexRateLimits(root)!.primary!.usedPercent).toBe(33);
   });
 
+  it('chooses the newest captured snapshot across concurrent active rollouts', () => {
+    const root = makeTree({
+      '2026/07/05/rollout-newest-mtime-older-snapshot.jsonl': {
+        content: rolloutLineAt(39, '2026-07-05T18:00:00.000Z') + '\n{"type":"tool_output"}\n',
+        mtimeMs: Date.parse('2026-07-05T18:02:00Z'),
+      },
+      '2026/07/05/rollout-older-mtime-newer-snapshot.jsonl': {
+        content: rolloutLineAt(40, '2026-07-05T18:01:00.000Z') + '\n',
+        mtimeMs: Date.parse('2026-07-05T18:01:00Z'),
+      },
+    });
+    const result = pickCodexRateLimits(root);
+    expect(result!.primary!.usedPercent).toBe(40);
+    expect(result!.capturedAt).toBe('2026-07-05T18:01:00.000Z');
+  });
+
+  it('invalidates the cache when a non-leading rollout writes a newer snapshot', () => {
+    const root = makeTree({
+      '2026/07/05/rollout-leading.jsonl': {
+        content: rolloutLineAt(39, '2026-07-05T18:00:00.000Z') + '\n{"type":"tool_output"}\n',
+        mtimeMs: Date.parse('2026-07-05T18:05:00Z'),
+      },
+      '2026/07/05/rollout-secondary.jsonl': {
+        content: rolloutLineAt(40, '2026-07-05T18:01:00.000Z') + '\n',
+        mtimeMs: Date.parse('2026-07-05T18:01:00Z'),
+      },
+    });
+    expect(readCodexRateLimits(root)!.primary!.usedPercent).toBe(40);
+
+    const secondary = path.join(root, '2026/07/05/rollout-secondary.jsonl');
+    fs.writeFileSync(secondary, rolloutLineAt(41, '2026-07-05T18:02:00.000Z') + '\n');
+    const changed = new Date('2026-07-05T18:02:00Z');
+    fs.utimesSync(secondary, changed, changed);
+
+    expect(readCodexRateLimits(root)!.primary!.usedPercent).toBe(41);
+  });
+
   it('reaches across a month boundary for a still-active prior-month session', () => {
     const root = makeTree({
       '2026/08/01/rollout-2026-08-01T09-00-00-fresh.jsonl': {
@@ -234,7 +281,11 @@ describe('capturedAt (snapshot freshness anchor)', () => {
 
   afterEach(() => {
     for (const r of tmpRoots.splice(0)) {
-      try { fs.rmSync(r, { recursive: true, force: true }); } catch { /* ignore */ }
+      try {
+        fs.rmSync(r, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
     }
   });
 
@@ -255,11 +306,15 @@ describe('capturedAt (snapshot freshness anchor)', () => {
     // The rate_limits line is 4h old; the file kept growing since (mtime now).
     const root = makeTree({
       '2026/08/04/rollout-2026-08-04T20-30-56-active.jsonl': {
-        content: rolloutLine(94) + '\n' + JSON.stringify({
-          timestamp: '2026-08-04T22:38:42.000Z',
-          type: 'response_item',
-          payload: { type: 'reasoning' },
-        }) + '\n',
+        content:
+          rolloutLine(94) +
+          '\n' +
+          JSON.stringify({
+            timestamp: '2026-08-04T22:38:42.000Z',
+            type: 'response_item',
+            payload: { type: 'reasoning' },
+          }) +
+          '\n',
         mtimeMs: Date.parse('2026-08-04T22:38:42Z'),
       },
     });

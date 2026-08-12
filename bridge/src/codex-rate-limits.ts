@@ -114,10 +114,17 @@ function candidateRolloutFiles(root: string, maxDays = 3, maxFiles = 6): Rollout
   return files.slice(0, maxFiles);
 }
 
-/** Scan candidates newest-first and return the first that yields a usable
- *  rate-limits snapshot. Falls through past a newer file that carries no
- *  `rate_limits` line (e.g. a just-started session) to an older active one. */
+/** Scan every candidate and return the usable rate-limits snapshot with the
+ *  newest CAPTURE timestamp.
+ *
+ * File mtime only identifies which rollouts are active enough to inspect. It
+ * cannot decide which ACCOUNT snapshot is newest when several Codex sessions
+ * append concurrently: a reasoning/tool line can make one file newest while
+ * its last rate_limits line is older than a snapshot in another file. Choosing
+ * the first usable file made usage move backwards or appear frozen. */
 function parseFirstUsable(candidates: RolloutCandidate[]): CodexRateLimits | null {
+  let newest: CodexRateLimits | null = null;
+  let newestCapturedAtMs = -Infinity;
   for (const { full, mtime } of candidates) {
     const tail = readTail(full);
     const parsed = tail ? parseCodexRateLimitsFromText(tail) : null;
@@ -128,10 +135,14 @@ function parseFirstUsable(candidates: RolloutCandidate[]): CodexRateLimits | nul
       // reading stays put — that would under-report the age of exactly the frozen
       // snapshot this anchor exists to expose. mtime is the fallback.
       parsed.capturedAt = parsed.capturedAt ?? new Date(mtime).toISOString();
-      return parsed;
+      const capturedAtMs = new Date(parsed.capturedAt).getTime();
+      if (!newest || capturedAtMs > newestCapturedAtMs) {
+        newest = parsed;
+        newestCapturedAtMs = capturedAtMs;
+      }
     }
   }
-  return null;
+  return newest;
 }
 
 /**
@@ -158,7 +169,12 @@ function readTail(file: string, maxBytes = 262144): string | null {
   } catch {
     return null;
   } finally {
-    if (fd !== null) try { fs.closeSync(fd); } catch { /* ignore */ }
+    if (fd !== null)
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* ignore */
+      }
   }
 }
 
@@ -186,9 +202,7 @@ function toWindow(raw?: RawWindow): CodexRateLimitWindow | undefined {
     return undefined;
   }
   const resetsAt =
-    typeof raw.resets_at === 'number' && raw.resets_at > 0
-      ? new Date(raw.resets_at * 1000).toISOString()
-      : undefined;
+    typeof raw.resets_at === 'number' && raw.resets_at > 0 ? new Date(raw.resets_at * 1000).toISOString() : undefined;
   return {
     usedPercent: Math.min(100, Math.max(0, raw.used_percent)),
     windowMinutes: raw.window_minutes,
@@ -236,17 +250,16 @@ export function parseCodexRateLimitsFromText(text: string): CodexRateLimits | nu
   return null;
 }
 
-// Cache keyed on the newest candidate rollout's path + mtime so repeated usage
-// polls don't re-scan unchanged files. Keying on the newest candidate (not the
-// one that yielded the snapshot) means any fresh write to the active session
-// invalidates the cache and re-scans.
+// Cache keyed on EVERY candidate rollout's path + mtime. Multiple Codex
+// sessions append concurrently, and the freshest rate_limits snapshot may live
+// outside candidates[0]. Keying on only that first file let a newer snapshot in
+// another candidate remain invisible until the first file changed again.
 let cacheKey = '';
 let cacheValue: CodexRateLimits | null = null;
 
-export function readCodexRateLimits(): CodexRateLimits | null {
-  const candidates = candidateRolloutFiles(defaultSessionsRoot());
-  const newest = candidates[0];
-  const key = newest ? `${newest.full}:${newest.mtime}` : '';
+export function readCodexRateLimits(root: string = defaultSessionsRoot()): CodexRateLimits | null {
+  const candidates = candidateRolloutFiles(root);
+  const key = candidates.map(({ full, mtime }) => `${full}:${mtime}`).join('|');
   if (key && key === cacheKey) return cacheValue;
 
   const parsed = parseFirstUsable(candidates);

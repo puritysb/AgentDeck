@@ -608,6 +608,45 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(parsed?.capturedAt, "2026-08-04T18:38:42.000Z")
     }
 
+    func testCodexRolloutSelectionUsesNewestCaptureAcrossConcurrentSessions() throws {
+        let root = try makeCodexSessionsTree([
+            // This file was modified last by a non-usage line, but its account
+            // snapshot is older.
+            ("2026/08/05/rollout-leading-mtime.jsonl",
+             codexRolloutLine(usedPercent: 39, timestamp: "2026-08-05T13:16:55.770Z")
+                + "\n{\"type\":\"tool_output\"}\n",
+             "2026-08-05T13:17:00Z"),
+            // Another concurrently active session carries the actual newest
+            // account snapshot despite its lower file mtime.
+            ("2026/08/05/rollout-newest-capture.jsonl",
+             codexRolloutLine(usedPercent: 40, timestamp: "2026-08-05T13:16:57.297Z") + "\n",
+             "2026-08-05T13:16:57Z"),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let parsed = UsageAPIClient.parseFirstUsableCodexRollout(
+            UsageAPIClient.codexRolloutCandidates(sessionsDir: root)
+        )
+        XCTAssertEqual(parsed?.primary?.usedPercent, 40)
+        XCTAssertEqual(parsed?.capturedAt, "2026-08-05T13:16:57.297Z")
+    }
+
+    func testCodexRolloutCacheKeyTracksEveryConcurrentCandidate() {
+        let leading = URL(fileURLWithPath: "/tmp/rollout-leading.jsonl")
+        let secondary = URL(fileURLWithPath: "/tmp/rollout-secondary.jsonl")
+        let before = UsageAPIClient.codexRolloutCacheKey([
+            (leading, 200),
+            (secondary, 100),
+        ])
+        let afterSecondaryWrite = UsageAPIClient.codexRolloutCacheKey([
+            (leading, 200),
+            (secondary, 101),
+        ])
+
+        XCTAssertNotEqual(before, afterSecondaryWrite)
+        XCTAssertTrue(before.contains(secondary.path))
+    }
+
     private func codexRolloutLine(usedPercent: Double, timestamp: String?) -> String {
         let ts = timestamp.map { "\"timestamp\":\"\($0)\"," } ?? ""
         return "{\(ts)\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"rate_limits\":"

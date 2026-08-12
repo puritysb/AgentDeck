@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-08-12 — 동시 Codex 세션의 사용량 스냅샷 역행 수정
+
+### 문제
+
+- 여러 Codex 세션이 동시에 rollout을 append할 때 Swift 데몬 `/usage`의
+  `codexRateLimits.capturedAt`이 실제로 `13:16:57.297Z → 13:16:55.770Z`로 역행했다.
+  파일 mtime 순으로 후보를 정렬한 뒤 첫 `rate_limits`를 즉시 반환해, 일반 tool/reasoning
+  라인으로 가장 늦게 수정된 파일의 더 오래된 계정 스냅샷이 다른 세션의 최신 값을 덮었다.
+- Node와 Swift 캐시는 모두 선두 후보 파일 하나의 path+mtime만 키로 사용했다. 선두 파일이
+  그대로인 동안 다른 활성 rollout에 더 최신 사용량이 기록되면 재스캔하지 않아 숫자가
+  멈출 수 있었다.
+
+### 변경
+
+- Node `codex-rate-limits.ts`와 Swift `UsageAPIClient`가 최근 후보 전체를 파싱하고, 파일
+  mtime이 아니라 각 `rate_limits` 라인의 `capturedAt`이 가장 최신인 계정 스냅샷을 고른다.
+  타임스탬프가 없는 구형 라인만 기존처럼 해당 파일 mtime을 fallback으로 쓴다.
+- 양쪽 캐시 키를 검사 대상 후보 전체의 path+mtime 조합으로 바꿔, 어느 동시 세션이든 새로
+  쓰면 다음 usage tick에서 재스캔한다.
+- 실제 역행 모양과 비선두 후보 캐시 갱신을 Node/Swift 회귀 테스트로 고정했다.
+
+### 검증
+
+- Codex rate-limit Vitest 39개, Bridge TypeScript typecheck 통과.
+- macOS `AgentDeckTests_macOS/ProtocolTests` 통과. App Store subprocess invariant는 건드리지
+  않았으며 Swift 데몬은 계속 user-selected `~/.codex`의 rollout만 수동 읽기한다.
+
+---
+
 ## 2026-08-12 — Apple 사용 지표 수집과 네이티브 평점 흐름 추가
 
 ### 변경
