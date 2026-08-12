@@ -21,6 +21,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { waitForRegistryVersion } from './npm-registry-visibility.mjs';
+
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 // bridge depends on hooks + shared, so those two must exist on the registry
 // before bridge's exact-version pins can resolve; setup is last, matching the
@@ -89,7 +91,12 @@ for (const pkg of ORDER) {
 }
 
 for (const [name, version] of versionOf) {
-  if (!publishedVersion(name, version)) {
+  // npm's write endpoint can acknowledge a publish before the corresponding
+  // read endpoint exposes it. The setup package hit that window in 1.0.18:
+  // the publish succeeded with provenance, then this verification ran about
+  // 1.5 seconds later and failed. Keep the retry bounded so genuine registry
+  // or authentication failures still turn the release red.
+  if (!(await waitForRegistryVersion(publishedVersion, name, version))) {
     console.error(`[publish-npm] registry verification failed: ${name}@${version}`);
     process.exit(1);
   }
