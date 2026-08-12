@@ -376,7 +376,7 @@ responses. Build 4702 now preserves a successful pairing across dashboard-servic
 restarts and reports an authorization failure explicitly instead of showing a
 generic connection error.
 
-The iOS app is a pure client, contains no analytics or advertising SDK, and requires no sign-in. After the dashboard has seen a live agent session on three distinct days, StoreKit may show Apple's native review prompt; the dates and 180-day cooldown remain local in UserDefaults. Settings also has a user-initiated App Store review link.
+The iOS app is a pure client, contains no analytics or advertising SDK, and requires no sign-in. After all live agent sessions have returned to idle on three distinct days, StoreKit may show Apple's native review prompt; processing and awaiting states never qualify, and the dates and 180-day cooldown remain local in UserDefaults. Settings also has a user-initiated App Store review link.
 Contact: admin@foundby.kr
 ```
 
@@ -384,7 +384,7 @@ Contact: admin@foundby.kr
 
 ### macOS Notes field
 
-<!-- notes-field:begin (3,774 chars — recount with `wc -m` after any edit) -->
+<!-- notes-field:begin (3,813 chars — recount with `wc -m` after any edit) -->
 
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed — no external process or terminal setup is part of these instructions.
@@ -408,7 +408,7 @@ ENTITLEMENT RATIONALE
 • files.user-selected.read-write + bookmarks.app-scope — hook installation is fully opt-in: an NSAlert explains it, then an NSOpenPanel requires the user to pick ~/.claude/settings.json themselves. Only then do we take a security-scoped bookmark and write. A Remove button reverts it.
 
 PRIVACY / EVALUATION BACKENDS
-Evaluation defaults to on-device Apple Intelligence Foundation Models — no network. Remote backends are opt-in alternatives the user configures with their own endpoint and key (Anthropic API, any OpenAI-compatible server, or a local MLX server). Only when one is selected does turn content leave the device, to the endpoint the user chose. Disclosed in App Privacy and our privacy policy. No analytics or advertising SDK, and we operate no cloud backend. StoreKit may show Apple's native review prompt after live sessions were seen on three distinct days; only those dates and a local 180-day cooldown are retained. Settings also has a user-initiated App Store review link.
+Evaluation defaults to on-device Apple Intelligence Foundation Models — no network. Remote backends are opt-in alternatives the user configures with their own endpoint and key (Anthropic API, any OpenAI-compatible server, or a local MLX server). Only when one is selected does turn content leave the device, to the endpoint the user chose. Disclosed in App Privacy and our privacy policy. No analytics or advertising SDK, and we operate no cloud backend. StoreKit may show Apple's native review prompt only after all live sessions are idle on three distinct days; processing and awaiting states never qualify. Only those dates and a local 180-day cooldown are retained. Settings also has a user-initiated App Store review link.
 
 All hardware integrations are optional (Stream Deck+ also needs Elgato's software); reviewers can skip them and the rest of the app is unaffected.
 

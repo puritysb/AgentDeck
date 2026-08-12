@@ -3,8 +3,8 @@ import StoreKit
 
 /// Local-only eligibility for Apple's native App Store review prompt.
 ///
-/// This intentionally records only calendar days on which the dashboard saw
-/// at least one live agent session. Nothing is uploaded and no session id,
+/// This intentionally records only calendar days on which every live agent
+/// session reached an idle pause. Nothing is uploaded and no session id,
 /// project name, command, or user identifier is retained.
 struct AppReviewPromptPolicy {
     static let reviewURL = URL(
@@ -23,6 +23,11 @@ struct AppReviewPromptPolicy {
             return false
         }
         #endif
+    }
+
+    static func isNaturalPause(sessionStates: [String?]) -> Bool {
+        !sessionStates.isEmpty
+            && sessionStates.allSatisfy { $0 == "idle" }
     }
 
     private enum Keys {

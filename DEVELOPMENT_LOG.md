@@ -31,6 +31,70 @@
 
 ---
 
+## 2026-08-12 — Apple 사용 지표·평점 흐름 후속 리뷰 수정
+
+### 변경
+
+- 평점 요청 후보를 단순 live-session 존재가 아니라 **모든 live 세션이 idle인 자연스러운
+  중단점**으로 제한했다. processing 및 awaiting 상태는 날짜 기록과 프롬프트 모두에서
+  제외하며, 세션 상태가 바뀌면 2초 quiet-period task를 취소하고 다시 평가한다.
+- App Store Connect 도구에 `snapshot` 명령을 추가해 기존 사용자의 Apple 제공 전체
+  과거 데이터를 `ONE_TIME_SNAPSHOT`으로 요청할 수 있게 했다. request 생성은 Admin 전용,
+  기존 report 다운로드는 Admin/Finance/Sales and Reports 역할이라는 권한 경계를 문서화했다.
+- `fetch --days`가 이벤트 날짜가 아니라 report processing date를 필터링한다는 점을 명시해,
+  30일 옵션이 snapshot 내부의 과거 이벤트를 자르는 것으로 오해하지 않게 했다.
+
+### 검증
+
+- macOS `build-for-testing`으로 앱과 `AgentDeckTests_macOS` 전체를 컴파일했고, iOS
+  Simulator Debug build도 성공했다. 평점 정책 독립 runtime assertions에서 빈 세션,
+  processing/awaiting 혼합, 전 세션 idle, 3일 eligibility와 180일 cooldown을 확인했다.
+- mock App Store Connect 응답으로 `snapshot`의 `ONE_TIME_SNAPSHOT` POST와 반환 request-id
+  fetch 안내를 실행 검증했다. Node syntax/ESLint, docs check, App Store submission validator,
+  `git diff --check`를 통과했다.
+
+### 배포 후속
+
+- PR #180을 체크 5개 통과 후 squash merge(`6de6a408`)했다. 첫 1.0.6 업로드의 4901은
+  이 후속 수정 전 바이너리이므로, 같은 marketing version을 master에서 수동 dispatch한
+  Apple Release run `31606319424`로 교체 후보를 만들었다.
+- iOS와 macOS 모두 manual signing, archive/export, 최종 App Store invariant와 altool
+  upload를 통과했다. 두 플랫폼의 새 빌드는 **1.0.6 (5001)**이며 iOS Delivery UUID는
+  `02e06065-4915-4580-b8a6-f04d02fc1afe`, macOS는
+  `c892f9ba-be01-4961-bcf6-9c148abd8374`다.
+- App Store Connect TestFlight에서 두 플랫폼의 5001이 모두 **제출 준비 완료**로 처리된
+  것을 직접 확인했다. 심사 제출·빌드 선택·공개는 아직 수행하지 않았다.
+
+---
+
+## 2026-08-12 — npm 1.0.18 게시와 Apple 1.0.6 TestFlight 업로드 검증
+
+### 배포 결과
+
+- `npm-v1.0.18`은 GitHub Actions OIDC Trusted Publishing으로 `shared`, `hooks`,
+  `bridge`, `setup` 네 패키지를 provenance와 함께 게시했다. registry의 정확 버전과
+  `latest`, setup README, GitHub Release까지 확인해 #173의 npm 항목을 완료했다.
+- `apple-v1.0.6`은 조직 `Apple Distribution: Serendipity Bound (QF36NDHYHD)`와
+  platform별 App Store profile을 manual signing으로 사용했다. macOS installer도 조직
+  `3rd Party Mac Developer Installer` identity를 사용했다. 두 플랫폼의 archive/export,
+  App Store invariant, altool upload가 모두 성공했다.
+- 업로드 직후 ASC certificate inventory는 2026-08-10 baseline과 ID·serial까지 동일했다:
+  DEVELOPMENT 5, DISTRIBUTION 1(`Q4C8ZR6WR8`), MAC_INSTALLER_DISTRIBUTION
+  1(`87A2XACK78`). 새 Development 인증서가 생기지 않아 #173을 완료로 닫았다.
+- App Store Connect TestFlight에서 iOS와 macOS 모두 **1.0.6 (4901), 제출 준비 완료**로
+  직접 확인했다. 심사 제출과 공개는 별도 외부 상태이며 아직 수행하거나 완료로 표기하지
+  않았다.
+
+### npm read-after-write 대응
+
+- 첫 npm workflow는 네 immutable publish가 모두 성공한 뒤, 마지막 setup을 게시한 지 약
+  1.5초 만에 read endpoint를 조회해 전파 지연을 실패로 오인했다. retry-safe 재실행은 네
+  패키지를 모두 건너뛰고 registry 검증과 GitHub Release 생성을 완료했다.
+- `scripts/publish-npm.mjs`의 최종 검증에 5초 간격 최대 12회의 bounded retry를 추가하고,
+  뒤늦은 노출과 영구 미노출을 각각 고정하는 회귀 테스트를 추가했다(PR #179).
+
+---
+
 ## 2026-08-12 — Apple 사용 지표 수집과 네이티브 평점 흐름 추가
 
 ### 변경

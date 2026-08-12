@@ -54,4 +54,12 @@ final class AppReviewPromptTests: XCTestCase {
         XCTAssertFalse(policy.shouldRequestReview(at: start.addingTimeInterval(179 * 24 * 60 * 60)))
         XCTAssertTrue(policy.shouldRequestReview(at: start.addingTimeInterval(180 * 24 * 60 * 60)))
     }
+
+    func testNaturalPauseRequiresEveryLiveSessionToBeIdle() {
+        XCTAssertFalse(AppReviewPromptPolicy.isNaturalPause(sessionStates: []))
+        XCTAssertFalse(AppReviewPromptPolicy.isNaturalPause(sessionStates: ["idle", nil]))
+        XCTAssertFalse(AppReviewPromptPolicy.isNaturalPause(sessionStates: ["idle", "processing"]))
+        XCTAssertFalse(AppReviewPromptPolicy.isNaturalPause(sessionStates: ["awaiting_permission"]))
+        XCTAssertTrue(AppReviewPromptPolicy.isNaturalPause(sessionStates: ["idle", "idle"]))
+    }
 }
