@@ -7,15 +7,15 @@ locale: en
 canonical: true
 status: required
 owner: Apple release maintainers
-reviewed: 2026-08-10
-revision: 2026-08-10
+reviewed: 2026-08-12
+revision: 2026-08-12
 source_of_truth: apple/APP_REVIEW_NOTES.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status** (verified in App Store Connect, 2026-08-10): `1.0.4` (4501) remains live on both platforms at [AgentDeck Dashboard](https://apps.apple.com/app/id6784822497). The `1.0.5` update is **Waiting for Review** on macOS as build **4701** and on iPhone/iPad as build **4702**, submitted 2026-08-10 with automatic release enabled. The first iPhone/iPad submission, 1.0.2 (3901), was rejected on 2026-08-04 under Guideline 2.1(a); build 4002 carried the fix plus an offline Device Preview entry point and was released on 2026-08-06.
+**Release status** (verified from Apple's public platform pages, 2026-08-12): `1.0.5` is live on both platforms at [AgentDeck Dashboard](https://apps.apple.com/app/id6784822497) — macOS build **4701** and iPhone/iPad build **4702**. The first iPhone/iPad submission, 1.0.2 (3901), was rejected on 2026-08-04 under Guideline 2.1(a); build 4002 carried the fix plus an offline Device Preview entry point and was released on 2026-08-06.
 
 _Paste the relevant sections into App Store Connect's "Notes" field when submitting `apple-v<version>`._
 

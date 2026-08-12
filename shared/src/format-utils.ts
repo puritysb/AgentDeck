@@ -167,11 +167,15 @@ export function adjustUsagePercent(
  *
  * Grace (default 5m) keeps a genuinely-just-reset window briefly showing "now".
  */
-export function isCodexWindowStale(resetsAt: string | undefined, graceMs = 5 * 60_000): boolean {
+export function isCodexWindowStale(
+  resetsAt: string | undefined,
+  graceMs = 5 * 60_000,
+  nowMs = Date.now(),
+): boolean {
   if (!resetsAt) return false;
   const t = new Date(resetsAt).getTime();
   if (isNaN(t)) return false;
-  return Date.now() - t > graceMs;
+  return nowMs - t > graceMs;
 }
 
 /**

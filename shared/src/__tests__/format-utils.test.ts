@@ -222,7 +222,7 @@ describe('codex snapshot freshness', () => {
     it('THE REGRESSION: a 4h-old snapshot behind a 6-day-out weekly reset is aged', () => {
       // Exactly the shipped bug: `stale` is false (the window has not ended), so
       // nothing dimmed the gauge and a frozen 94% read as current.
-      expect(isCodexWindowStale(live.resetsAt)).toBe(false);
+      expect(isCodexWindowStale(live.resetsAt, 5 * 60_000, NOW)).toBe(false);
       expect(codexUsageFootnote(live, ago(3 * 3600_000 + 48 * 60_000), NOW))
         .toEqual({ text: '3h ago', dim: true });
     });
