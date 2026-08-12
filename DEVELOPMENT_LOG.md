@@ -24,6 +24,18 @@
   fetch 안내를 실행 검증했다. Node syntax/ESLint, docs check, App Store submission validator,
   `git diff --check`를 통과했다.
 
+### 배포 후속
+
+- PR #180을 체크 5개 통과 후 squash merge(`6de6a408`)했다. 첫 1.0.6 업로드의 4901은
+  이 후속 수정 전 바이너리이므로, 같은 marketing version을 master에서 수동 dispatch한
+  Apple Release run `31606319424`로 교체 후보를 만들었다.
+- iOS와 macOS 모두 manual signing, archive/export, 최종 App Store invariant와 altool
+  upload를 통과했다. 두 플랫폼의 새 빌드는 **1.0.6 (5001)**이며 iOS Delivery UUID는
+  `02e06065-4915-4580-b8a6-f04d02fc1afe`, macOS는
+  `c892f9ba-be01-4961-bcf6-9c148abd8374`다.
+- App Store Connect TestFlight에서 두 플랫폼의 5001이 모두 **제출 준비 완료**로 처리된
+  것을 직접 확인했다. 심사 제출·빌드 선택·공개는 아직 수행하지 않았다.
+
 ---
 
 ## 2026-08-12 — npm 1.0.18 게시와 Apple 1.0.6 TestFlight 업로드 검증
