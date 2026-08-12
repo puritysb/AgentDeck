@@ -62,6 +62,9 @@ android/*.jks
 AuthKey_*.p8
 private_keys/
 
+# Privacy-thresholded App Store Connect analytics exports (maintainer-local)
+reports/app-store-connect/
+
 # Build artifacts
 apple/build/
 *.profraw

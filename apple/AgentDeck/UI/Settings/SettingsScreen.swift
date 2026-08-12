@@ -801,6 +801,14 @@ struct SettingsScreen: View {
 
             Divider()
 
+            Link(destination: AppReviewPromptPolicy.reviewURL) {
+                Label("Rate AgentDeck on the App Store", systemImage: "star.bubble")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .accessibilityHint("Opens the App Store review page")
+
+            Divider()
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("Independent project. Not affiliated with Anthropic, OpenAI, Google, Elgato, DIVOOM, or other third parties referenced. All trademarks are property of their respective owners.")
                     .font(.system(size: 10))

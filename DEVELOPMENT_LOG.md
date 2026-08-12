@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-08-12 — Apple 사용 지표 수집과 네이티브 평점 흐름 추가
+
+### 변경
+
+- iOS/macOS 대시보드가 실제 live agent session을 본 날짜만 로컬 `UserDefaults`에
+  기록하고, 서로 다른 3일의 의미 있는 사용 뒤 StoreKit 네이티브 평점 요청을 시도한다.
+  production App Store 거래만 허용하고 TestFlight/Debug는 제외했으며, 시도 뒤 180일
+  cooldown을 둔다. 세션 ID·프로젝트명·명령은 저장하거나 전송하지 않는다.
+- Settings → About에 사용자가 직접 누를 수 있는 App Store 평가 링크를 추가했다.
+- `scripts/app-store-connect-analytics.mjs`와 `pnpm analytics:apple`을 추가했다. 별도
+  분석 SDK나 AgentDeck 운영 서버 없이 Apple의 opt-in·privacy-thresholded App Usage
+  보고서(App Sessions, Installations and Deletions, Opt-in)를 ONGOING request로 만들고
+  내려받는다. 원본 export는 `reports/app-store-connect/`에 저장하며 gitignored다.
+- 기능 매트릭스, 릴리스 운영 문서, iOS/macOS 심사 노트를 동일한 privacy 경계로
+  갱신했다. App Privacy disclosure를 바꾸는 자체 수집은 추가하지 않았다.
+
+### 검증
+
+- `xcodegen generate --spec apple/project.yml`, macOS Debug build, iOS Simulator build,
+  AppReviewPromptPolicy 독립 runtime assertions, Node syntax check, targeted ESLint,
+  JS/JSON targeted Prettier, `pnpm docs:check`, App Store submission validator,
+  `git diff --check` 통과.
+- macOS XCTest 실행은 설치된 배포판 AgentDeck과 같은 bundle id의 test host를 띄우는
+  Xcode 26.6 LaunchServices assertion으로 중단됐다. iOS test target은 기존
+  `SpokenDigestParityTests`가 iOS에서 제외된 `DaemonServer`를 참조해 전체 target compile이
+  중단됐지만, 새 `AppReviewPromptTests.swift` 자체는 양쪽 test target에서 컴파일됐다.
+
+---
+
 ## 2026-08-12 — 외부 이슈·PR·마켓 배포 상태 재점검
 
 ### 확인

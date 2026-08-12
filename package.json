@@ -26,6 +26,7 @@
     "design-system:build": "node scripts/build-design-system-viewer.mjs",
     "design-system:check": "node scripts/build-design-system-viewer.mjs --check",
     "docs:check": "node scripts/check-docs.mjs",
+    "analytics:apple": "node scripts/app-store-connect-analytics.mjs",
     "package": "bash scripts/package-plugin.sh",
     "setup": "bash scripts/install.sh",
     "test": "vitest run",

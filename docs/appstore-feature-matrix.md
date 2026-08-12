@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Apple product maintainers
-reviewed: 2026-08-09
-revision: 2026-08-09
+reviewed: 2026-08-12
+revision: 2026-08-12
 source_of_truth: docs/appstore-feature-matrix.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
@@ -54,6 +54,8 @@ All surfaces follow the same rule:
 | APME Layer 2 LLM evaluation | Yes | Yes | Apple Intelligence default; opt-in HTTP alternatives |
 | APME Layer 1 deterministic evaluation | No | Yes | Requires `git` / package-manager subprocesses |
 | Timeline completion summary | Yes | Yes | Foundation Models → optional MLX HTTP → heuristic |
+| Native App Store rating request and review link | Yes | — | StoreKit system prompt is attempted only after meaningful use on three distinct days, with a 180-day local cooldown; Settings keeps a user-initiated review link. Engagement dates and the last attempt stay in `UserDefaults` and are never uploaded. |
+| App Store Connect engagement reports | Yes | — | Maintainer tooling downloads Apple's opt-in, privacy-thresholded aggregate analytics through the App Store Connect API. No analytics SDK, device identifier, event upload, or AgentDeck-operated analytics backend is added to the app. |
 
 ## Usage and cost
 

@@ -161,6 +161,18 @@ bash scripts/build-apple-release.sh --all     # both + TestFlight upload
 - **CI**: `.github/workflows/apple-release.yml` — `apple-v*` 태그 → macOS-15 runner → archive → TestFlight 업로드.
 - **Secrets**: `APPLE_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_INSTALLER_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, iOS/macOS profile secrets, plus upload-only `ASC_API_KEY_ID` / `ASC_ISSUER_ID` / `ASC_API_KEY_BASE64`. Step-by-step setup and no-upload dry-run: [docs/asc-cert-setup.md](docs/asc-cert-setup.md).
 
+**Privacy-preserving usage analytics**
+
+AgentDeck does not ship an analytics SDK or send product events to an AgentDeck server. Use Apple's opt-in, privacy-thresholded aggregate reports instead. The API key needs access to Sales and Reports; the script accepts the release-secret names above or the shorter `ASC_KEY_ID` / `ASC_KEY_BASE64` aliases used by other maintenance scripts.
+
+```bash
+pnpm analytics:apple -- status            # read-only: show report requests
+pnpm analytics:apple -- init              # once: create an ONGOING request
+pnpm analytics:apple -- fetch --days 30   # sessions, installs/deletes, opt-in
+```
+
+Apple normally needs 1–2 days to produce the first request. Exports land under the gitignored `reports/app-store-connect/` directory. Usage rows represent only users who enabled sharing with Apple and developers, and low-volume rows can be absent because Apple applies privacy thresholds; treat these as directional retention signals, not a census. Re-run `fetch` regularly because Apple can add late-arriving or corrected batches.
+
 ### Android (APK / optional Play)
 
 1. Confirm the Android `versionName` remains on the shared compatibility line and increment `versionCode`.
