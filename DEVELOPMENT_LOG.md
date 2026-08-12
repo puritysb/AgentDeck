@@ -16,8 +16,9 @@
 - 업로드 직후 ASC certificate inventory는 2026-08-10 baseline과 ID·serial까지 동일했다:
   DEVELOPMENT 5, DISTRIBUTION 1(`Q4C8ZR6WR8`), MAC_INSTALLER_DISTRIBUTION
   1(`87A2XACK78`). 새 Development 인증서가 생기지 않아 #173을 완료로 닫았다.
-- Apple 1.0.6은 App Store Connect/TestFlight에 **업로드된 상태**다. 심사 제출과 공개는
-  별도 외부 상태이며 아직 수행하거나 완료로 표기하지 않았다.
+- App Store Connect TestFlight에서 iOS와 macOS 모두 **1.0.6 (4901), 제출 준비 완료**로
+  직접 확인했다. 심사 제출과 공개는 별도 외부 상태이며 아직 수행하거나 완료로 표기하지
+  않았다.
 
 ### npm read-after-write 대응
 
