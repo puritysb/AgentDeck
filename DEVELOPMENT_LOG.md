@@ -29,6 +29,16 @@
 - macOS `AgentDeckTests_macOS/ProtocolTests` 통과. App Store subprocess invariant는 건드리지
   않았으며 Swift 데몬은 계속 user-selected `~/.codex`의 rollout만 수동 읽기한다.
 
+### 배포 후속
+
+- PR #182를 원격 체크 5개 통과 후 squash merge(`7ee2039d`)했다. 이 Swift 수정까지
+  1.0.6에 포함하기 위해 Apple Release workflow `31608454704`를 최신 master에서 다시
+  실행했다.
+- iOS와 macOS 모두 manual signing, archive/export, 최종 App Store invariant와 altool
+  upload를 통과했다. 최종 제출 후보는 **1.0.6 (5101)**이며 iOS Delivery UUID는
+  `a03fa312-2227-4e51-ae4d-a9573d8b713f`, macOS는
+  `b0409ae6-335e-4cf7-988e-d814ccafaf3e`다. 심사 제출·빌드 선택·공개는 수행하지 않았다.
+
 ---
 
 ## 2026-08-12 — Apple 사용 지표·평점 흐름 후속 리뷰 수정
@@ -63,7 +73,8 @@
   `02e06065-4915-4580-b8a6-f04d02fc1afe`, macOS는
   `c892f9ba-be01-4961-bcf6-9c148abd8374`다.
 - App Store Connect TestFlight에서 두 플랫폼의 5001이 모두 **제출 준비 완료**로 처리된
-  것을 직접 확인했다. 심사 제출·빌드 선택·공개는 아직 수행하지 않았다.
+  것을 직접 확인했지만, 후속 PR #182가 Apple 코드를 바꿔 5101로 대체했다. 심사에는
+  4901이나 5001을 선택하지 않는다.
 
 ---
 
