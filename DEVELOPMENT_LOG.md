@@ -66,8 +66,10 @@
   2,909 tests). 관련 6개 파일의 targeted Vitest 251개도 통과했다.
 - `pnpm verify-version`, `pnpm docs:check`, targeted ESLint(error 0),
   `git diff --check`를 통과했다.
-- 외부 배포는 아직 하지 않았다. npm은 네 public package를 같은 1.0.19로 태그 배포해야
-  하며, wire/UI 변경이 없어 Apple/Android/Stream Deck/Ulanzi/ESP32 재배포는 필요 없다.
+- PR #184를 squash merge(`4e959b4e`)하고 `npm-v1.0.19`를 같은 커밋에 태그했다.
+  npm Release workflow `31610628648`이 네 public package를 게시하고 exact/latest 1.0.19를
+  레지스트리에서 재검증한 뒤 GitHub Release를 생성했다. wire/UI 변경이 없어
+  Apple/Android/Stream Deck/Ulanzi/ESP32는 재배포하지 않았다.
 
 ---
 
