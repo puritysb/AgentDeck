@@ -104,15 +104,22 @@ export class PtyManager extends EventEmitter {
   attachTerminal(stdin: NodeJS.ReadableStream, stdout: NodeJS.WritableStream): void {
     debug('PTY', 'attachTerminal');
 
+    // Decode stdin with a stateful UTF-8 decoder. Raw chunk boundaries land on
+    // arbitrary byte offsets, so decoding each chunk on its own — which
+    // data.toString() did — destroys any multi-byte character straddling one:
+    // its bytes are decoded as separate invalid sequences and become U+FFFD.
+    // A pasted CJK line loses roughly one character per chunk boundary.
+    stdin.setEncoding('utf8');
+
     // Proxy PTY output to user's stdout
     this.on('data', (data: string) => {
       stdout.write(data);
     });
 
     // Proxy user's stdin to PTY
-    stdin.on('data', (data: Buffer) => {
+    stdin.on('data', (data: string) => {
       if (this.ptyProcess) {
-        this.write(data.toString());
+        this.write(data);
       }
     });
 
