@@ -155,6 +155,32 @@ AgentDeck은 독립적인 프로젝트이며 Anthropic, OpenAI, Google, SST, Cor
 claude code,ai,agent,dashboard,stream deck,monitoring,apme,openclaw,codex,ipad,companion,developer
 ```
 
+### What's New (v1.0.6, macOS — 제출 문구)
+
+```
+피드백 흐름과 안정성을 개선했습니다.
+
+• 충분히 사용한 뒤 Apple의 기본 평점 창을 통해 바로 의견을 남길 수 있습니다
+• 설정에 App Store 평가 및 리뷰 페이지 링크를 추가했습니다
+• 사용 일수 판단은 기기에만 저장되며 세션·프로젝트 정보는 수집하거나 전송하지 않습니다
+• 안정성 개선
+
+피드백은 언제든 환영합니다: admin@foundby.kr
+```
+
+### What's New (v1.0.6, iOS — 제출 문구)
+
+```
+피드백 흐름과 안정성을 개선했습니다.
+
+• 충분히 사용한 뒤 Apple의 기본 평점 창을 통해 바로 의견을 남길 수 있습니다
+• 설정에 App Store 평가 및 리뷰 페이지 링크를 추가했습니다
+• 사용 일수 판단은 기기에만 저장되며 세션·프로젝트 정보는 수집하거나 전송하지 않습니다
+• 안정성 개선
+
+피드백은 언제든 환영합니다: admin@foundby.kr
+```
+
 ### What's New (v1.0.5, macOS — 제출 문구)
 
 ```
@@ -439,6 +465,32 @@ AgentDeckは独立したプロジェクトであり、Anthropic、OpenAI、Googl
 claude code,ai,エージェント,ダッシュボード,stream deck,monitoring,apme,openclaw,codex,ipad,developer
 ```
 
+### What's New (v1.0.6, macOS — 提出文言)
+
+```
+フィードバック導線と安定性を改善しました。
+
+• 十分に利用した後、Apple標準の評価画面からすぐにフィードバックできます
+• 設定にApp Storeの評価・レビュー画面へのリンクを追加しました
+• 利用日数の判定は端末内だけに保存され、セッションやプロジェクト情報を収集・送信しません
+• 安定性の改善
+
+フィードバックはいつでも歓迎します: admin@foundby.kr
+```
+
+### What's New (v1.0.6, iOS — 提出文言)
+
+```
+フィードバック導線と安定性を改善しました。
+
+• 十分に利用した後、Apple標準の評価画面からすぐにフィードバックできます
+• 設定にApp Storeの評価・レビュー画面へのリンクを追加しました
+• 利用日数の判定は端末内だけに保存され、セッションやプロジェクト情報を収集・送信しません
+• 安定性の改善
+
+フィードバックはいつでも歓迎します: admin@foundby.kr
+```
+
 ### What's New (v1.0.5, macOS — 提出文言)
 
 ```
@@ -719,6 +771,32 @@ AgentDeck is independent and is not affiliated with or endorsed by Anthropic, Op
 
 ```
 claude code,ai,agent,dashboard,monitoring,apme,openclaw,codex,ipad,stream deck,developer
+```
+
+### What's New (v1.0.6, macOS — submission copy)
+
+```
+Feedback-flow and stability improvements.
+
+• After meaningful use, share feedback directly through Apple's native rating prompt
+• Added an App Store rating and review link in Settings
+• Usage-day eligibility stays on device; no session or project information is collected or sent
+• Stability improvements
+
+Thanks for the feedback — keep it coming: admin@foundby.kr
+```
+
+### What's New (v1.0.6, iOS — submission copy)
+
+```
+Feedback-flow and stability improvements.
+
+• After meaningful use, share feedback directly through Apple's native rating prompt
+• Added an App Store rating and review link in Settings
+• Usage-day eligibility stays on device; no session or project information is collected or sent
+• Stability improvements
+
+Thanks for the feedback — keep it coming: admin@foundby.kr
 ```
 
 ### What's New (v1.0.5, macOS — submitted copy)
