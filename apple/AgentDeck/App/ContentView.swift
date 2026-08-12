@@ -9,15 +9,21 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
 
-    private var liveSessionIDs: [String] {
+    private var liveSessions: [SessionInfo] {
         stateHolder.state.siblingSessions
             .filter(\.alive)
-            .map(\.id)
-            .sorted()
+            .sorted { $0.id < $1.id }
+    }
+
+    private var isNaturalReviewPause: Bool {
+        AppReviewPromptPolicy.isNaturalPause(sessionStates: liveSessions.map(\.state))
     }
 
     private var reviewTaskKey: String {
-        "\(scenePhase)-\(liveSessionIDs.joined(separator: ","))"
+        let sessions = liveSessions
+            .map { "\($0.id):\($0.state ?? "unknown")" }
+            .joined(separator: ",")
+        return "\(scenePhase)-\(sessions)"
     }
 
     var body: some View {
@@ -46,20 +52,20 @@ struct ContentView: View {
     private func considerAppStoreReview() async {
         guard await AppReviewPromptPolicy.isProductionAppStoreInstall(),
               scenePhase == .active,
-              !liveSessionIDs.isEmpty else { return }
+              isNaturalReviewPause else { return }
 
         let policy = AppReviewPromptPolicy()
         policy.recordMeaningfulUse()
         guard policy.shouldRequestReview() else { return }
 
-        // Wait for the session list/dashboard transition to settle. Changes to
-        // the live-session set cancel this task and restart the quiet period.
+        // Wait for the session list/dashboard transition to settle. Any live
+        // session state change cancels this task and restarts the quiet period.
         do {
             try await Task.sleep(nanoseconds: 2_000_000_000)
         } catch {
             return
         }
-        guard scenePhase == .active, !liveSessionIDs.isEmpty else { return }
+        guard scenePhase == .active, isNaturalReviewPause else { return }
 
         policy.markRequestAttempt()
         requestReview()

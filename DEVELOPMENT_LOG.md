@@ -2,6 +2,29 @@
 
 ---
 
+## 2026-08-12 — Apple 사용 지표·평점 흐름 후속 리뷰 수정
+
+### 변경
+
+- 평점 요청 후보를 단순 live-session 존재가 아니라 **모든 live 세션이 idle인 자연스러운
+  중단점**으로 제한했다. processing 및 awaiting 상태는 날짜 기록과 프롬프트 모두에서
+  제외하며, 세션 상태가 바뀌면 2초 quiet-period task를 취소하고 다시 평가한다.
+- App Store Connect 도구에 `snapshot` 명령을 추가해 기존 사용자의 Apple 제공 전체
+  과거 데이터를 `ONE_TIME_SNAPSHOT`으로 요청할 수 있게 했다. request 생성은 Admin 전용,
+  기존 report 다운로드는 Admin/Finance/Sales and Reports 역할이라는 권한 경계를 문서화했다.
+- `fetch --days`가 이벤트 날짜가 아니라 report processing date를 필터링한다는 점을 명시해,
+  30일 옵션이 snapshot 내부의 과거 이벤트를 자르는 것으로 오해하지 않게 했다.
+
+### 검증
+
+- macOS `build-for-testing`으로 앱과 `AgentDeckTests_macOS` 전체를 컴파일했고, iOS
+  Simulator Debug build도 성공했다. 평점 정책 독립 runtime assertions에서 빈 세션,
+  processing/awaiting 혼합, 전 세션 idle, 3일 eligibility와 180일 cooldown을 확인했다.
+- mock App Store Connect 응답으로 `snapshot`의 `ONE_TIME_SNAPSHOT` POST와 반환 request-id
+  fetch 안내를 실행 검증했다. Node syntax/ESLint, docs check, App Store submission validator,
+  `git diff --check`를 통과했다.
+
+---
 ## 2026-08-12 — Apple 사용 지표 수집과 네이티브 평점 흐름 추가
 
 ### 변경

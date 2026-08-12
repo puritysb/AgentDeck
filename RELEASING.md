@@ -163,15 +163,16 @@ bash scripts/build-apple-release.sh --all     # both + TestFlight upload
 
 **Privacy-preserving usage analytics**
 
-AgentDeck does not ship an analytics SDK or send product events to an AgentDeck server. Use Apple's opt-in, privacy-thresholded aggregate reports instead. The API key needs access to Sales and Reports; the script accepts the release-secret names above or the shorter `ASC_KEY_ID` / `ASC_KEY_BASE64` aliases used by other maintenance scripts.
+AgentDeck does not ship an analytics SDK or send product events to an AgentDeck server. Use Apple's opt-in, privacy-thresholded aggregate reports instead. Creating either kind of analytics report request (`init` or `snapshot`) requires an **Admin** API key. After a request exists, Admin, Finance, or Sales and Reports access can download its reports. The script accepts the release-secret names above or the shorter `ASC_KEY_ID` / `ASC_KEY_BASE64` aliases used by other maintenance scripts.
 
 ```bash
-pnpm analytics:apple -- status            # read-only: show report requests
-pnpm analytics:apple -- init              # once: create an ONGOING request
-pnpm analytics:apple -- fetch --days 30   # sessions, installs/deletes, opt-in
+pnpm analytics:apple -- status                         # read-only: show requests
+pnpm analytics:apple -- init                           # Admin: ongoing reports
+pnpm analytics:apple -- snapshot                       # Admin: all available history
+pnpm analytics:apple -- fetch --request REQUEST_ID --days 30
 ```
 
-Apple normally needs 1–2 days to produce the first request. Exports land under the gitignored `reports/app-store-connect/` directory. Usage rows represent only users who enabled sharing with Apple and developers, and low-volume rows can be absent because Apple applies privacy thresholds; treat these as directional retention signals, not a census. Re-run `fetch` regularly because Apple can add late-arriving or corrected batches.
+Run `snapshot` once when onboarding an existing app, save the returned request id, and fetch that id to capture all historical data Apple makes available. Keep the `ONGOING` request for new daily batches. Apple normally needs 1–2 days to produce a new request. `--days` filters **report processing dates**, not the event dates inside the downloaded rows, so it does not limit a snapshot to the last 30 days. Exports land under the gitignored `reports/app-store-connect/` directory. Usage rows represent only users who enabled sharing with Apple and developers, and low-volume rows can be absent because Apple applies privacy thresholds; treat these as directional retention signals, not a census. Re-run `fetch` regularly because Apple can add late-arriving or corrected batches.
 
 ### Android (APK / optional Play)
 

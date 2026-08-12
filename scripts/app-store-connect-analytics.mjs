@@ -4,10 +4,11 @@
 //
 //   node scripts/app-store-connect-analytics.mjs status
 //   node scripts/app-store-connect-analytics.mjs init
+//   node scripts/app-store-connect-analytics.mjs snapshot
 //   node scripts/app-store-connect-analytics.mjs fetch --days 30
 //
-// `init` is the only mutating command: it creates an ONGOING report request.
-// Apple normally needs 1–2 days before that request produces its first data.
+// `init` and `snapshot` create report requests and require an Admin API key.
+// Apple normally needs 1–2 days before a new request produces its first data.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -25,11 +26,12 @@ function usage(exitCode = 0) {
 
 commands:
   status                    list existing analytics report requests
-  init                      create one ONGOING analytics report request
+  init                      create one ONGOING request (Admin role required)
+  snapshot                  create a ONE_TIME_SNAPSHOT (Admin role required)
   fetch [options]           download standard App Usage report segments
 
 fetch options:
-  --days <n>                processing dates to include (default: 30)
+  --days <n>                report processing dates, not event dates (default: 30)
   --request <id>            use a specific report-request id
   --report <text>           report-name filter (repeatable)
   --output <directory>      destination (default: reports/app-store-connect)
@@ -139,7 +141,8 @@ function isUsableRequest(request) {
 async function status() {
   const requests = await reportRequests();
   if (!requests.length) {
-    console.log(`No analytics report request exists for app ${APP_ID}. Run the init command once.`);
+    console.log(`No analytics report request exists for app ${APP_ID}.`);
+    console.log('Run init for new daily batches and snapshot once for available history.');
     return;
   }
   console.table(
@@ -151,25 +154,36 @@ async function status() {
   );
 }
 
+async function createReportRequest(accessType) {
+  const response = await api('/v1/analyticsReportRequests', {
+    method: 'POST',
+    body: {
+      data: {
+        type: 'analyticsReportRequests',
+        attributes: { accessType },
+        relationships: { app: { data: { type: 'apps', id: APP_ID } } },
+      },
+    },
+  });
+  console.log(`Created ${accessType} analytics request ${response.data.id}.`);
+  console.log('Apple normally produces the first reports in 1–2 days.');
+  return response.data;
+}
+
 async function init() {
   const existing = (await reportRequests()).find(isUsableRequest);
   if (existing) {
     console.log(`An active ONGOING request already exists: ${existing.id}`);
     return existing;
   }
-  const response = await api('/v1/analyticsReportRequests', {
-    method: 'POST',
-    body: {
-      data: {
-        type: 'analyticsReportRequests',
-        attributes: { accessType: 'ONGOING' },
-        relationships: { app: { data: { type: 'apps', id: APP_ID } } },
-      },
-    },
-  });
-  console.log(`Created ONGOING analytics request ${response.data.id}.`);
-  console.log('Apple normally produces the first reports in 1–2 days.');
-  return response.data;
+  return createReportRequest('ONGOING');
+}
+
+async function snapshot() {
+  const request = await createReportRequest('ONE_TIME_SNAPSHOT');
+  console.log('Save this request id; the snapshot contains all historical data Apple makes available.');
+  console.log(`Fetch it with: pnpm analytics:apple -- fetch --request ${request.id} --days 30`);
+  return request;
 }
 
 function wantedReport(report) {
@@ -217,7 +231,10 @@ async function fetchReports() {
     ? requests.find((candidate) => candidate.id === options.request)
     : requests.find(isUsableRequest);
   if (!request) {
-    throw new Error('No usable analytics request found. Run the init command once, then retry in 1–2 days.');
+    if (options.request) {
+      throw new Error(`Analytics request ${options.request} was not found for app ${APP_ID}.`);
+    }
+    throw new Error('No active ONGOING request found. Run the init command once, then retry in 1–2 days.');
   }
 
   const reports = (await allPages(`/v1/analyticsReportRequests/${request.id}/reports?limit=200`)).filter(wantedReport);
@@ -231,6 +248,7 @@ async function fetchReports() {
   const manifest = {
     appID: APP_ID,
     requestID: request.id,
+    requestAccessType: request.attributes?.accessType || null,
     fetchedAt: new Date().toISOString(),
     days: options.days,
     files: [],
@@ -276,5 +294,6 @@ async function fetchReports() {
 
 if (command === 'status') await status();
 else if (command === 'init') await init();
+else if (command === 'snapshot') await snapshot();
 else if (command === 'fetch') await fetchReports();
 else usage(2);
