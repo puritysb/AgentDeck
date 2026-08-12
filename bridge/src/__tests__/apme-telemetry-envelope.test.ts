@@ -2,7 +2,7 @@
  * Coverage for the telemetry-envelope ingestion path.
  *
  * Two layers under test:
- *   1. Adapters (claude-hook / claude-pty / timeline) — pure functions that
+ *   1. Adapters (claude-hook / timeline) — pure functions that
  *      translate per-source events into TelemetrySpan[]. Verified by direct
  *      input/output assertions, no DB.
  *   2. ingestSpan dispatch — uses a real SQLite store to confirm each span
@@ -19,10 +19,6 @@ import type { AdapterContext } from '@agentdeck/shared';
 import { EVAL_SCHEMA_VERSION, spanNameForKind } from '@agentdeck/shared';
 
 import { claudeHookToSpans } from '../apme/adapters/claude-hook.js';
-import {
-  claudePtyParserEventToSpans,
-  claudePtyResponseToSpan,
-} from '../apme/adapters/claude-pty.js';
 import { timelineEntryToSpans } from '../apme/adapters/timeline.js';
 import { ApmeStore } from '../apme/store.js';
 import { ApmeCollector } from '../apme/collector.js';
@@ -101,56 +97,6 @@ describe('claudeHookToSpans', () => {
   it('handles legacy { prompt: ... } shape on UserPromptSubmit', () => {
     const spans = claudeHookToSpans(ctx(), 'UserPromptSubmit', { prompt: 'hello' });
     expect(spans[0].attributes['agentdeck.prompt_text']).toBe('hello');
-  });
-});
-
-describe('claudePtyParserEventToSpans', () => {
-  it('maps tool_start to a tool_call span', () => {
-    const spans = claudePtyParserEventToSpans(ctx(), 'tool_start', { tool_name: 'Bash' });
-    expect(spans).toHaveLength(1);
-    expect(spans[0].kind).toBe('tool_call');
-    expect(spans[0].attributes['gen_ai.tool.name']).toBe('Bash');
-    // Raw event is the legacy hook name so ingestSpan dispatches via PreToolUse.
-    expect(spans[0].attributes['agentdeck.raw_event']).toBe('PreToolUse');
-  });
-
-  it('maps tool_end to a tool_result span', () => {
-    const spans = claudePtyParserEventToSpans(ctx(), 'tool_end', { tool_name: 'Bash' });
-    expect(spans[0].kind).toBe('tool_result');
-    expect(spans[0].attributes['agentdeck.raw_event']).toBe('PostToolUse');
-  });
-
-  it('emits a raw_step for spinner_start/idle/spinner_stop', () => {
-    expect(claudePtyParserEventToSpans(ctx(), 'spinner_start')[0].kind).toBe('raw_step');
-    expect(claudePtyParserEventToSpans(ctx(), 'idle')[0].kind).toBe('raw_step');
-    expect(claudePtyParserEventToSpans(ctx(), 'spinner_stop')[0].kind).toBe('raw_step');
-  });
-
-  it('drops unknown parser events', () => {
-    expect(claudePtyParserEventToSpans(ctx(), 'something_else')).toHaveLength(0);
-  });
-});
-
-describe('claudePtyResponseToSpan', () => {
-  it('returns a turn_response span for non-trivial text', () => {
-    const span = claudePtyResponseToSpan(ctx(), 'Done — patched the bug.');
-    expect(span).not.toBeNull();
-    expect(span!.kind).toBe('turn_response');
-    expect(span!.attributes['agentdeck.response_text']).toBe('Done — patched the bug.');
-    expect(span!.attributes['agentdeck.fallback_to_last_closed']).toBeUndefined();
-  });
-
-  it('marks fallback_to_last_closed when requested', () => {
-    const span = claudePtyResponseToSpan(ctx(), 'late response', {
-      fallbackToLastClosed: true,
-    });
-    expect(span!.attributes['agentdeck.fallback_to_last_closed']).toBe(true);
-  });
-
-  it('returns null for empty / single-character text (filters silence)', () => {
-    expect(claudePtyResponseToSpan(ctx(), '')).toBeNull();
-    expect(claudePtyResponseToSpan(ctx(), '   ')).toBeNull();
-    expect(claudePtyResponseToSpan(ctx(), '.')).toBeNull();
   });
 });
 
@@ -321,8 +267,11 @@ describe('ApmeCollector.ingestSpan dispatch', () => {
       collector.ingestSpan('S', s);
     }
     const turnId = collector.getActiveTurnId('S');
-    const span = claudePtyResponseToSpan(ctx(), 'the answer is 42');
-    collector.ingestSpan('S', span!);
+    const [span] = timelineEntryToSpans(ctx(), {
+      ts: Date.now(), type: 'chat_response', raw: 'the answer is 42',
+      detail: 'the answer is 42', agentType: 'claude-code',
+    });
+    collector.ingestSpan('S', span);
     expect(store.getTurn(turnId!)?.response).toBe('the answer is 42');
   });
 

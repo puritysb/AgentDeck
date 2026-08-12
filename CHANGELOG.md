@@ -7,6 +7,26 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.19
+
+### CLI and daemon — npm
+
+- Make lifecycle hooks and structured agent events the authority for session
+  state, timelines, and APME turns. Terminal parsing is now limited to UI-only
+  affordances that hooks do not expose, such as permission choices, model and
+  project labels, cursor position, and Claude's mode and diff display
+- Recover Claude responses from the Stop-hook transcript and Codex responses
+  from lifecycle notifications plus rollout JSONL, removing the spinner and
+  terminal-ring-buffer fallbacks without losing supported-path conversation
+  capture
+- Refresh Claude, Codex, and OpenCode integrations from
+  `agentdeck daemon install`, so users can run `claude`, `codex`, and
+  `opencode` directly. Managed `agentdeck <agent>` terminals remain optional
+- Keep the AgentDeck 1.0 wire protocol unchanged. The supported lifecycle
+  baselines are Claude Code 2.1.50 or newer and Codex CLI 0.141.0 or newer;
+  explicitly disabling Codex hooks leaves managed terminal UI observation but
+  not lifecycle timelines
+
 ## 1.0.8
 
 ### Setup — npm

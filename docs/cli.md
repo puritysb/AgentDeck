@@ -13,6 +13,11 @@ agentdeck claude   # or: agentdeck codex
 
 This spawns Claude Code or Codex CLI inside a PTY and starts a session bridge on a dynamic port (HTTP + hooks). Your terminal works exactly as before — the Stream Deck adds a parallel control channel. The **daemon** (port 9120, `0.0.0.0`) aggregates all sessions for external clients.
 
+Lifecycle compatibility: Claude Code `>=2.1.50` and Codex CLI `>=0.141.0` are
+the supported hook baselines. All AgentDeck `1.0.x` clients remain wire-compatible;
+older agent CLIs can still run in the managed terminal, but their lifecycle
+monitoring is not guaranteed.
+
 > **Security:** The daemon binds to `0.0.0.0` for LAN access (multi-surface monitoring). Local connections bypass authentication. Remote connections require the auth token from the AgentDeck data directory (`~/.agentdeck/auth-token` on Node CLI builds, `~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/auth-token` on Mac App Store).
 
 ## CLI Reference

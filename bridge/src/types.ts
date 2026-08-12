@@ -13,7 +13,6 @@ export {
   type AgentAdapter,
   type AgentAdapterEvents,
   type AdapterStartOptions,
-  type AdapterEvent,
   type AdapterHookEvent,
   type AdapterParserEvent,
   type AdapterMetadataEvent,
@@ -29,6 +28,19 @@ export {
   OPENCLAW_GATEWAY_PORT,
   OPENCODE_DEFAULT_PORT,
 } from '@agentdeck/shared';
+
+import type { AdapterEvent as SharedAdapterEvent } from '@agentdeck/shared';
+
+/** Bridge-internal terminal UI observation. Kept out of the public shared
+ * AdapterEvent union so adding this authority boundary is patch-compatible
+ * for external TypeScript consumers that exhaustively switch on that union. */
+export interface AdapterTerminalUiEvent {
+  source: 'terminal_ui';
+  event: string;
+  data?: Record<string, unknown>;
+}
+
+export type AdapterEvent = SharedAdapterEvent | AdapterTerminalUiEvent;
 
 export {
   type ModelCatalogEntry,

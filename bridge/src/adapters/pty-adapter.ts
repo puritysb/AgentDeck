@@ -20,8 +20,8 @@ import type {
  * Subclasses implement:
  * - capabilities — agent-specific feature flags
  * - getDefaultCommand() — CLI command to spawn (e.g. 'claude', 'codex')
- * - wireOutputParser() — connect output parser events → AdapterEvents
- * - feedParser(data) — feed PTY data to the output parser
+ * - wireOutputParser() — connect optional terminal UI observations
+ * - feedParser(data) — feed PTY data to that observer (or no-op)
  * - handleAgentCommand(cmd) — agent-specific commands (e.g. switch_mode)
  */
 export abstract class PtyAdapter extends EventEmitter implements AgentAdapter {

@@ -323,10 +323,9 @@ describe('deduplicateEntry pipeline', () => {
     expect(result.action).toBe('add');
   });
 
-  it('chat_response identical raw 6s apart → skip (PTY/Stop race)', () => {
-    // Regression: Stop hook arriving >5s after PTY fallback used to slip past
-    // the old 5s exact-dedup window, producing two identical chat_response
-    // lines on the dashboard. Window was widened to 8s.
+  it('chat_response identical raw 6s apart → skip (multi-producer race)', () => {
+    // A lifecycle event and durable-log reconciliation can report the same
+    // response several seconds apart. The 8s window collapses that race.
     const now = Date.now();
     const entries = [
       makeEntry({ ts: now, type: 'chat_response', raw: 'GUI freeze 해소 - AuthManager fix 작동' }),
@@ -341,8 +340,8 @@ describe('deduplicateEntry pipeline', () => {
   });
 
   it('chat_response near-duplicate beyond 8s → repetitive merge', () => {
-    // When PTY ringbuffer text and transcript JSONL produce SLIGHTLY different
-    // raws (markdown markers / whitespace) and arrive >8s apart, exact dedup
+    // When two producers emit slightly different raws (markdown markers /
+    // whitespace) and arrive >8s apart, exact dedup
     // misses but repetitive dedup (1h window, 60% keyword overlap) catches it.
     const now = Date.now();
     const entries = [
@@ -567,9 +566,9 @@ describe('BridgeTimelineStore.setAttributor — history replay attribution', () 
   });
 });
 
-// ─── Stop hook + PTY fallback race regression ──────────────────────
+// ─── Completion multi-producer race regression ─────────────────────
 
-describe('Stop hook + PTY fallback double-emit (regression)', () => {
+describe('completion multi-producer double-emit (regression)', () => {
   it('identical chat_response from two emit paths is collapsed by store', () => {
     const store = new BridgeTimelineStore();
     const t0 = Date.now();
@@ -577,7 +576,7 @@ describe('Stop hook + PTY fallback double-emit (regression)', () => {
     // turn boundary
     store.addEntry(makeEntry({ ts: t0, type: 'chat_start', raw: 'Prompt' }));
 
-    // PTY fallback emits at t0+1500ms
+    // First structured producer emits at t0+1500ms
     store.addEntry(makeEntry({
       ts: t0 + 1500,
       type: 'chat_response',
@@ -585,7 +584,7 @@ describe('Stop hook + PTY fallback double-emit (regression)', () => {
     }));
     store.addEntry(makeEntry({ ts: t0 + 1501, type: 'chat_end', raw: 'Refactor · 3s' }));
 
-    // Stop hook arrives 6s late with identical response text
+    // Durable-log reconciliation arrives 6s late with identical response text
     store.addEntry(makeEntry({
       ts: t0 + 7500,
       type: 'chat_response',

@@ -37,14 +37,13 @@ enum CodexSpanEvent: Sendable, Equatable {
 
 attribute 키는 `codex.thread_id` / `thread.id` / `thread_id` 식 변형을 모두 수용(파일 주석: *"Codex's OTel keys are not formally documented as a stable API"*). 즉 **Codex 자체도 GenAI semconv 가 아닌 자기 namespace** 를 쓴다.
 
-### 1.2 APME 의 3-경로 ingestion (현재)
+### 1.2 APME ingestion (2026-08-12 현재)
 
 | 경로 | 코드 위치 | 입력 형태 |
 |---|---|---|
-| **Claude Code 훅** | [`bridge/src/index.ts:481-504`](../bridge/src/index.ts), `apme.collector.ingestHook(sid, evt.event, evt.data)` | `{hook, data}` JSON POST → `steps` 행 |
-| **Claude PTY fallback** | [`bridge/src/index.ts:529-563`](../bridge/src/index.ts), `spinner_stop+500ms` → `⏺` 마커 후 텍스트 추출 → `setTurnResponse` | terminal ringbuffer tail |
-| **OpenClaw / OpenCode timeline** | [`bridge/src/index.ts:1269-1356`](../bridge/src/index.ts) `wireAgentApme()` — `chat_start` / `chat_response` / `tool_request` / `tool_resolved` | 정형화된 timeline event |
-| **Codex** | timeline 변환 + PTY fallback 혼합 | (Codex CLI 가 OTLP 도 emit 하지만 그 데이터는 Swift daemon 으로만 흐르고, bridge APME 로는 timeline+PTY 경로) |
+| **Claude Code** | [`bridge/src/index.ts`](../bridge/src/index.ts) + `claude-hook.ts` | lifecycle hook spans; Stop의 `transcript_path` JSONL에서 응답 본문 읽기 |
+| **OpenClaw / OpenCode** | [`bridge/src/index.ts`](../bridge/src/index.ts) `wireAgentApme()` | native Gateway/SSE timeline events |
+| **Codex** | `codex-hook.ts` + `codex-turn-manager.ts` | lifecycle/notify spans; rollout JSONL에서 응답 본문 읽기 |
 
 수렴 지점은 [`bridge/src/apme/collector.ts`](../bridge/src/apme/collector.ts):
 
@@ -161,7 +160,7 @@ attribute 키는 `codex.thread_id` / `thread.id` / `thread_id` 식 변형을 모
 ### 5.1 옵션 A (inbound 통일, 좁은 버전)
 
 - **사용자 체감 변화**: 0. 모든 변환은 bridge 내부.
-- **Hook unreliability(~18%) 해결?**: **아니오**. hook 자체가 안 도착하는 문제 (memory: `feedback_apme_stop_hook.md`, `claude-code-hook-file-watch.md`). PTY fallback 의존이 그대로 유지. 보고서가 이를 명시해야 함 — 옵션 A 를 "hook 신뢰성 개선" 으로 광고하면 안 됨.
+- **Hook 누락 대응**: Codex는 별도 `notify` completion과 다음 prompt 경계를 사용한다. Claude는 Stop payload의 `transcript_path`를 응답 정본으로 사용한다. 터미널 화면 파싱은 APME 복구 경로가 아니다.
 - **신규 에이전트 추가 비용**: 어댑터 1개로 끝 (현재는 ingestion 3분기 + collector 다중 entrypoint).
 - **디버깅**: telemetry envelope 통일 → log 출력이 일관됨. 현재 `debug('APME', …)` 로그를 OTel-shape envelope 로 바꿀 수 있음.
 
@@ -312,9 +311,10 @@ attribute 키는 `codex.thread_id` / `thread.id` / `thread_id` 식 변형을 모
 | `apple/AgentDeck/Daemon/Core/MiniToml.swift` | (전체 162줄) | fence 보존형 TOML 편집기 |
 | `bridge/src/index.ts` | 226-238 | APME 초기화 + judge result → timeline |
 | `bridge/src/index.ts` | 464-466 | `wireAgentApme()` 호출 (non-Claude) |
-| `bridge/src/index.ts` | 481-504 | Claude hook UPS / `/clear` split / Path B,C |
-| `bridge/src/index.ts` | 519-527 | parser 이벤트 → steps |
-| `bridge/src/index.ts` | 529-563 | Path A: spinner_stop+500ms PTY tail → setTurnResponse |
+| `bridge/src/index.ts` | hook event branch | Claude/Codex hook → telemetry span |
+| `bridge/src/index.ts` | `terminal_ui` branch | managed UI affordance만 state projection; APME 미사용 |
+| `bridge/src/apme/claude-transcript-reader.ts` | `readLastTurn()` | Claude transcript response extraction |
+| `bridge/src/codex-rollout-response.ts` | `codexTurnOutcomeFromRollout()` | Codex rollout response/error extraction |
 | `bridge/src/index.ts` | 1226-1259 | `classifyAndEnqueueTurn()` shared helper |
 | `bridge/src/index.ts` | 1269-1356 | `wireAgentApme()` 본체 (chat_start/response/tool_request/tool_resolved 분기) |
 | `bridge/src/apme/collector.ts` | 115-194 | `ingestHook()` |

@@ -65,7 +65,9 @@ export function checkDependencies(agentType?: AgentType): { ok: boolean; warning
   if (agentDep) {
     try {
       const output = shellExec(agentDep.command, { encoding: 'utf-8', timeout: 5000 }).toString().trim();
-      agentVersion = output.match(/^([\d.]+)/)?.[1] ?? undefined;
+      // Claude prints a bare version today; Codex commonly prefixes it with
+      // `codex-cli`. Accept the first complete SemVer token from either.
+      agentVersion = output.match(/\b(\d+\.\d+\.\d+)\b/)?.[1] ?? undefined;
     } catch {
       process.stderr.write(`[agentdeck] ERROR: ${agentDep.name} not found. Install: ${agentDep.installHint}\n`);
       ok = false;

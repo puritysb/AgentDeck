@@ -226,7 +226,7 @@ AgentDeck/
 │       ├── adapters/
 │       │   ├── index.ts              # createAdapter() factory
 │       │   ├── pty-adapter.ts        # PtyAdapter abstract base (PTY + HookServer common)
-│       │   ├── claude-code.ts        # ClaudeCodeAdapter extends PtyAdapter (OutputParser + mode switch)
+│       │   ├── claude-code.ts        # hook lifecycle + terminal UI observer + mode switch
 │       │   ├── monitor.ts            # MonitorAdapter (hook-only, no PTY)
 │       │   └── openclaw.ts           # OpenClawAdapter (Gateway WebSocket)
 │       ├── modules/

@@ -5,10 +5,10 @@ import { join } from 'path';
 import { ApmeStore } from '../apme/store.js';
 import { ApmeCollector } from '../apme/collector.js';
 import { CodexTurnManager } from '../apme/adapters/codex-turn-manager.js';
-import type { TimelineEntry, AdapterHookEvent, AdapterParserEvent } from '@agentdeck/shared';
+import type { TimelineEntry, AdapterHookEvent } from '@agentdeck/shared';
 
 /** Lightweight test harness: a real ApmeStore + ApmeCollector + a fake
- *  core.bridgeTimeline + a fake ptyRingBuffer. Tracks the timeline
+ *  core.bridgeTimeline + rollout outcome reader. Tracks the timeline
  *  entries CodexTurnManager emits so tests can assert turn structure. */
 async function makeHarness() {
   const dir = mkdtempSync(join(tmpdir(), 'codex-turn-test-'));
@@ -42,9 +42,8 @@ async function makeHarness() {
     onShutdown: (_cb: () => void) => { /* not exercised */ },
   };
 
-  let tail = '';
-  const fakePty: any = { getTail: (_n: number) => tail };
-  const setTail = (s: string) => { tail = s; };
+  let rolloutText = '';
+  const setTail = (s: string) => { rolloutText = s; };
 
   const fakeApme: any = {
     collector,
@@ -55,10 +54,15 @@ async function makeHarness() {
   const mgr = new CodexTurnManager(
     fakeCore,
     fakeApme,
-    fakePty,
     sessionId,
     'codex-cli' as any,
+    () => ({ text: rolloutText }),
   );
+  mgr.onHookEvent({
+    source: 'hook',
+    event: 'codex_session_start',
+    data: { sessionId: '019ff653-5d8e-7610-a8ce-22b1b7f7ebf1' },
+  });
 
   return { mgr, entries, store, collector, dir, setTail };
 }
@@ -66,10 +70,6 @@ async function makeHarness() {
 function hookEvt(event: string, data: Record<string, unknown> = {}): AdapterHookEvent {
   return { source: 'hook', event, data };
 }
-function parserEvt(event: string, data?: Record<string, unknown>): AdapterParserEvent {
-  return { source: 'parser', event, data };
-}
-
 describe('CodexTurnManager (hook-primary path)', () => {
   let harness: Awaited<ReturnType<typeof makeHarness>>;
 
@@ -87,6 +87,7 @@ describe('CodexTurnManager (hook-primary path)', () => {
     setTail('## Result\nDone in one shot.');
 
     mgr.onHookEvent(hookEvt('codex_user_prompt_submit', {
+      sessionId: '019ff653-5d8e-7610-a8ce-22b1b7f7ebf1',
       message: { content: 'list /tmp' },
     }));
     mgr.onHookEvent(hookEvt('codex_tool_start', {
@@ -197,27 +198,17 @@ describe('CodexTurnManager (hook-primary path)', () => {
     expect(endEntries).toHaveLength(2);
   });
 
-  it('hook freshness window suppresses PTY parser idle close', () => {
+  it('turn-complete notify closes a turn when codex_stop is absent', () => {
     const { mgr, entries, setTail } = harness;
-    setTail('output-from-tool');
+    setTail('notify fallback response');
 
     mgr.onHookEvent(hookEvt('codex_user_prompt_submit', {
+      sessionId: '019ff653-5d8e-7610-a8ce-22b1b7f7ebf1',
       message: { content: 'do it' },
     }));
-    mgr.onHookEvent(hookEvt('codex_tool_start', {
-      tool_name: 'shell', tool_input: { command: 'long-bash' },
-    }));
+    mgr.onHookEvent(hookEvt('codex_turn_complete', {}));
 
-    // Stale `›` chunk arrives mid-tool from the PTY parser — would
-    // normally schedule a deferred close. With a hook fresh, no-op.
-    mgr.onParserEvent(parserEvt('idle', { source: 'prompt' }));
-
-    // No chat_response / chat_end emitted yet — turn still open.
-    expect(entries.find((e) => e.type === 'chat_response')).toBeUndefined();
-    expect(entries.find((e) => e.type === 'chat_end')).toBeUndefined();
-
-    // Hook stop closes it.
-    mgr.onHookEvent(hookEvt('codex_stop', {}));
+    expect(entries.find((e) => e.type === 'chat_response')).toBeDefined();
     expect(entries.find((e) => e.type === 'chat_end')).toBeDefined();
   });
 
@@ -265,8 +256,8 @@ describe('CodexTurnManager (stale-turn recovery on prompt-submit)', () => {
 
     mgr.onHookEvent(hookEvt('codex_user_prompt_submit', { message: { content: 'q1' } }));
     mgr.onHookEvent(hookEvt('codex_tool_start', { tool_name: 'shell', tool_input: { command: 'ls' } }));
-    // codex_stop is dropped (Ink repaint glitch / daemon restart). The
-    // parser is hook-muted, so nothing closes turn 1. User submits q2.
+    // codex_stop and notify are dropped (daemon restart). A subsequent
+    // user prompt remains an authoritative boundary for the stale turn.
     vi.advanceTimersByTime(60_000);
 
     setTail('turn-1 answer\n› q2');
@@ -323,71 +314,5 @@ describe('CodexTurnManager (stale-turn recovery on prompt-submit)', () => {
     expect(startEntries).toHaveLength(2);
     expect(startEntries[1].raw).toBe('q-next');
     expect(entries.filter((e) => e.type === 'chat_end')).toHaveLength(1);
-  });
-});
-
-describe('CodexTurnManager (PTY-only fallback when hooks absent)', () => {
-  let harness: Awaited<ReturnType<typeof makeHarness>>;
-
-  beforeEach(async () => {
-    harness = await makeHarness();
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-    harness.mgr.cleanup();
-    harness.store.close();
-    rmSync(harness.dir, { recursive: true, force: true });
-  });
-
-  it('spinner_start opens turn, prompt-source idle closes after deferral', () => {
-    const { mgr, entries, setTail } = harness;
-    setTail('answer body');
-
-    mgr.onParserEvent(parserEvt('spinner_start'));
-    mgr.onParserEvent(parserEvt('idle', { source: 'prompt' }));
-
-    // Deferred 1.5 s; not yet closed.
-    expect(entries.find((e) => e.type === 'chat_end')).toBeUndefined();
-
-    vi.advanceTimersByTime(1500);
-
-    expect(entries.find((e) => e.type === 'chat_start')).toBeDefined();
-    expect(entries.find((e) => e.type === 'chat_end')).toBeDefined();
-  });
-
-  it('timeout-source idle without prior tool_action does not latch', () => {
-    const { mgr, entries, setTail } = harness;
-    setTail('ok');
-
-    mgr.onParserEvent(parserEvt('spinner_start'));
-    // No tool_action — pure thinking. Timeout idle should not block close.
-    mgr.onParserEvent(parserEvt('idle', { source: 'timeout' }));
-    mgr.onParserEvent(parserEvt('idle', { source: 'prompt' }));
-
-    vi.advanceTimersByTime(1500);
-    expect(entries.find((e) => e.type === 'chat_end')).toBeDefined();
-  });
-
-  it('tool_action then timeout-idle latches; spinner_start closes prev + opens new', () => {
-    const { mgr, entries, setTail } = harness;
-    setTail('tool result is the answer');
-
-    mgr.onParserEvent(parserEvt('spinner_start'));
-    mgr.onParserEvent(parserEvt('tool_action', { tool: 'shell', args: 'ls' }));
-    // bash runs silently — spinner timeout
-    mgr.onParserEvent(parserEvt('idle', { source: 'timeout' }));
-    // stale `›` mid-bash → latched, not acted on
-    mgr.onParserEvent(parserEvt('idle', { source: 'prompt' }));
-
-    expect(entries.find((e) => e.type === 'chat_end')).toBeUndefined();
-
-    // User starts next prompt — spinner_start closes prev turn N + opens N+1.
-    mgr.onParserEvent(parserEvt('spinner_start'));
-
-    const startEntries = entries.filter((e) => e.type === 'chat_start');
-    expect(startEntries).toHaveLength(2);
-    const endEntries = entries.filter((e) => e.type === 'chat_end');
-    expect(endEntries).toHaveLength(1);
   });
 });

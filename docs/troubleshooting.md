@@ -2,15 +2,15 @@
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Plugin shows DISCONNECTED | Bridge not running | Run `agentdeck claude` |
-| Plugin reconnects every 3s | Bridge crashed | Restart `agentdeck claude` |
-| Bridge enters disconnected state | Claude process exited | Restart `agentdeck claude` |
-| State tracking not working | Hook server unreachable | Verify `agentdeck` is running |
+| Plugin shows DISCONNECTED | Daemon not running | Run `agentdeck daemon status`; start with `agentdeck daemon start` or install autostart with `agentdeck daemon install` |
+| Plugin reconnects every 3s | Daemon restarting or unreachable | Run `agentdeck daemon restart`, then check `agentdeck daemon status` |
+| A session disappears | Agent exited or its lifecycle channel stopped | Confirm the agent is running normally, then refresh hooks with `agentdeck daemon install` |
+| State tracking not working | Hook/event channel cannot reach the daemon | Verify `agentdeck daemon status`, then refresh with `agentdeck daemon install` |
 | Stream Deck buttons inactive | Hardware not connected | Reconnect + restart app |
 | Stuck in PROCESSING > 5 min | Agent stalled | STOP button or Ctrl+C in terminal |
 | Voice transcription returns empty | Speech recognition permission denied, or OS dictation model still downloading | macOS Settings → Privacy & Security → Speech Recognition → enable AgentDeck. First-time recognition may wait ~30s while the OS finishes the on-device model download |
 | Plugin not in Stream Deck app | Plugin not linked | Restart Stream Deck app, then `cd plugin && streamdeck link bound.serendipity.agentdeck.sdPlugin` |
-| Hooks not firing | Hooks not installed or stale | `node hooks/dist/install.js` (re-installs all 7 hooks) |
+| Hooks not firing | Hooks not installed or stale | Run `agentdeck daemon install` (idempotently refreshes Claude/Codex/OpenCode integrations) |
 | Need to remove hooks | Uninstalling AgentDeck | `node hooks/dist/install.js uninstall` |
 | Plugin loads but buttons blank | Plugin needs rebuild | `pnpm build && pnpm generate-icons`, restart Stream Deck app |
 | Android app can't find bridge | mDNS blocked on network | Use QR pairing (`agentdeck qr`) or enter IP manually in Settings |
@@ -20,7 +20,9 @@
 
 ## tmux -CC Compatibility
 
-When using iTerm2's `tmux -CC` (control mode): run `agentdeck claude` inside a tmux window. The bridge manages its own PTY, so there's no conflict.
+Normal hook-observed sessions need no special handling under iTerm2 `tmux -CC`.
+If you opt into the managed-terminal path, run `agentdeck claude` inside a tmux
+window; the bridge owns only its child PTY.
 
 Signal chain: `tmux → iTerm2 → agentdeck → bridge PTY → claude`
 

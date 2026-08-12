@@ -5,8 +5,10 @@ import { CLAUDE_CODE_CAPABILITIES } from '../types.js';
 import { PtyAdapter } from './pty-adapter.js';
 
 /**
- * Claude Code adapter — extends PtyAdapter with Claude-specific output parsing
- * and mode switching (Shift+Tab).
+ * Claude Code adapter — lifecycle correctness comes from hooks. The terminal
+ * observer is deliberately limited to UI affordances Claude's hooks do not
+ * expose yet (mode, diff, options, cursor, status telemetry), plus Shift+Tab
+ * mode switching.
  */
 export class ClaudeCodeAdapter extends PtyAdapter {
   readonly capabilities: AgentCapabilities = CLAUDE_CODE_CAPABILITIES;
@@ -28,25 +30,22 @@ export class ClaudeCodeAdapter extends PtyAdapter {
   }
 
   protected wireOutputParser(): void {
-    // Parser events → AdapterEvents
-    const parserEvents = [
-      'spinner_start',
-      'spinner_stop',
+    // Terminal UI observations → AdapterEvents. Never add turn lifecycle or
+    // tool events here: hooks own state, timeline, and APME correctness.
+    const terminalUiEvents = [
       'permission_prompt',
       'option_prompt',
       'diff_prompt',
-      'idle',
       'status_line',
-      'tool_action',
       'project_name',
       'model_info',
       'mode_change',
       'suggested_prompt',
       'remote_url',
     ];
-    for (const eventName of parserEvents) {
+    for (const eventName of terminalUiEvents) {
       this.outputParser.on(eventName, (data?: Record<string, unknown>) => {
-        this.emitAdapterEvent({ source: 'parser', event: eventName, data });
+        this.emitAdapterEvent({ source: 'terminal_ui', event: eventName, data });
       });
     }
 

@@ -756,6 +756,21 @@ describe('CodexCliAdapter start lifecycle', () => {
       );
     }
   });
+
+  it('exports only terminal UI affordances, not parser lifecycle guesses', async () => {
+    await adapter.start({ port: 9172 });
+    events.length = 0;
+    const observer = (adapter as any).outputParser;
+    observer.emit('spinner_start', {});
+    observer.emit('idle', {});
+    observer.emit('tool_action', { tool: 'shell' });
+    observer.emit('permission_prompt', { question: 'Allow?', options: [] });
+
+    expect(events).toContainEqual(expect.objectContaining({
+      source: 'terminal_ui', event: 'permission_prompt',
+    }));
+    expect(events.some((event) => event.source === 'parser')).toBe(false);
+  });
 });
 
 describe('MonitorAdapter', () => {
@@ -923,6 +938,21 @@ describe('ClaudeCodeAdapter start lifecycle', () => {
         expect.objectContaining({ source: 'activity' }),
       );
     }
+  });
+
+  it('exports terminal UI detail without exporting lifecycle or tool guesses', async () => {
+    await adapter.start({ port: 9165 });
+    events.length = 0;
+    const observer = (adapter as any).outputParser;
+    observer.emit('spinner_start', {});
+    observer.emit('spinner_stop', {});
+    observer.emit('tool_action', { toolName: 'Bash' });
+    observer.emit('option_prompt', { options: [{ index: 0, label: 'A' }] });
+
+    expect(events).toContainEqual(expect.objectContaining({
+      source: 'terminal_ui', event: 'option_prompt',
+    }));
+    expect(events.some((event) => event.source === 'parser')).toBe(false);
   });
 
   it('emits SessionEnd and disconnected on PTY exit', async () => {

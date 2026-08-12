@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/bridge",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "engines": {
     "node": ">=22"
   },
@@ -68,6 +68,7 @@
     "node-pty": "^1.1.0"
   },
   "compatibleClaudeCode": ">=2.1.50",
+  "compatibleCodex": ">=0.141.0",
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",

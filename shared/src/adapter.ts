@@ -48,7 +48,8 @@ export interface AdapterHookEvent {
   data: Record<string, unknown>;
 }
 
-/** Parser-sourced event (PTY regex parsing / OpenClaw structured events) */
+/** Parser-sourced event (structured OpenCode/OpenClaw normalization; legacy
+ * PTY implementations may still produce it internally). */
 export interface AdapterParserEvent {
   source: 'parser';
   event: string;

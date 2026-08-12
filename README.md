@@ -88,15 +88,17 @@ useful to you.
   <img src="docs/media/tui-dashboard.png" width="720" alt="AgentDeck TUI dashboard in a terminal — sessions, braille terrarium, rate-limit gauges, and timeline">
 </p>
 
-### 3. Run a session
+### 3. Start observation, then run your agent normally
 
 ```bash
-agentdeck claude      # or: agentdeck codex · agentdeck opencode
+agentdeck daemon install   # installs/refreshes hooks and starts the daemon
+claude                     # or: codex · opencode
 ```
 
-Your agent runs exactly as before — the bridge is transparent, and if it is off,
-nothing changes. Already have an agent running in another terminal? The daemon
-observes it through hooks; you do not have to launch it through AgentDeck.
+AgentDeck observes normal agent commands through lifecycle hooks and native event
+channels. `agentdeck claude`, `agentdeck codex`, and `agentdeck opencode` remain
+available when you specifically want a managed terminal, session weights, or
+cross-machine remote attach; they are not required for ordinary local monitoring.
 
 Running agents on **several machines** with one deck on a main node? Sessions can
 attach to the main node's daemon. `--remote-daemon` is the opt-in switch — without
@@ -195,7 +197,8 @@ Full build-from-source and manual steps: **[docs/install.md](docs/install.md)**.
 
 State comes from agent-native lifecycle and event channels — hooks for Claude Code
 and Codex, OpenCode SSE, and the OpenClaw Gateway — rather than terminal-screen
-scraping. PTY parsing remains a best-effort assist for CLI-managed sessions.
+scraping. CLI-managed sessions retain an optional terminal UI observer only for
+real mode/diff/option affordances that those lifecycle payloads do not expose.
 
 ### How it fits together
 

@@ -49,6 +49,19 @@ function log(msg: string): void {
   process.stderr.write(msg + '\n');
 }
 
+/** `daemon install` is the canonical observation setup entry point. Keep
+ * Claude alongside the Codex/OpenCode installers below so normal `claude`
+ * sessions never depend on having launched `agentdeck claude` first. */
+async function refreshClaudeHooks(): Promise<void> {
+  try {
+    const { installHooks } = await import('@agentdeck/hooks');
+    installHooks();
+    log('Claude lifecycle hooks installed/refreshed in ~/.claude/settings.json');
+  } catch (err) {
+    log(`Claude hooks unavailable: ${String(err)}`);
+  }
+}
+
 /**
  * Parse a `--weight <n>` value into an integer sort override. Rejects
  * non-integers so a typo (`--weight foo`) fails loudly instead of silently
@@ -469,7 +482,7 @@ program
   .option('--local', 'Disable all device modules (WS only)')
   .option('--no-adb', 'Disable ADB reverse setup')
   .option('--no-postit', 'Disable terminal tab title updates')
-  .option('--no-codex-hooks', 'Skip ~/.codex/config.toml hook install')
+  .option('--no-codex-hooks', 'Skip ~/.codex/config.toml hook install (terminal UI only; lifecycle monitoring is unavailable)')
   .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
   .option('--daemon-host <host>', 'Explicit remote daemon endpoint (host or host:port); requires --remote-daemon')
   .option('--daemon-token <token>', 'Pairing token of the remote hub (~/.agentdeck/auth-token there); or set AGENTDECK_DAEMON_TOKEN')
@@ -492,10 +505,10 @@ program
         }
       } catch (err) {
         log(`Codex hooks unavailable: ${String(err)}`);
-        // PTY parser fallback still works without lifecycle hooks.
+        log('Codex lifecycle monitoring is unavailable; the managed terminal still works.');
       }
     } else {
-      log('Codex hooks skipped: --no-codex-hooks');
+      log('Codex hooks skipped: --no-codex-hooks (terminal UI only; no lifecycle timeline)');
     }
     const { startSession } = await import('./index.js');
     await startSession({
@@ -870,6 +883,7 @@ daemon
       } catch {
         log('Task registered; immediate start failed — it will start on next logon.');
       }
+      await refreshClaudeHooks();
       // Install Codex lifecycle hooks for parity with the macOS install path.
       try {
         const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
@@ -919,6 +933,7 @@ daemon
           process.exit(1);
         }
       }
+      await refreshClaudeHooks();
       // Install Codex + OpenCode hooks for parity with the macOS/Windows paths.
       try {
         const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
@@ -951,6 +966,7 @@ daemon
     try { execSync(`launchctl unload "${PLIST_PATH}" 2>/dev/null`); } catch {}
     execSync(`launchctl load "${PLIST_PATH}"`);
     log('LaunchAgent loaded. Daemon will auto-start on login.');
+    await refreshClaudeHooks();
     // Install Codex lifecycle hooks parallel to the LaunchAgent install
     // so the daemon hub gets codex_* events as soon as Codex CLI runs.
     try {

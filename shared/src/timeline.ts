@@ -578,9 +578,9 @@ export function isRepetitiveEntry(
  * Cleans text, checks exact dedup (8s), and repetitive dedup (1h).
  * Returns: 'skip' (duplicate), 'merge' + index (repetitive), or 'add' (new).
  *
- * Window rationale: PTY fallback fires 1.5s after spinner_stop; Stop hook can
- * arrive several seconds later if Claude Code's transcript_path JSONL flush is
- * slow. 8s covers worst-case race without merging genuinely separate turns.
+ * Window rationale: lifecycle and durable-log producers can report the same
+ * completion several seconds apart. Eight seconds covers that reconciliation
+ * race without merging genuinely separate turns.
  */
 export type DeduplicateResult =
   | { action: 'skip' }

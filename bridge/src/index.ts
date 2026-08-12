@@ -15,7 +15,6 @@ import { readLastTurn as readClaudeTranscriptLastTurn } from './apme/claude-tran
 import { claudeHookToSpans } from './apme/adapters/claude-hook.js';
 import { codexHookToSpans } from './apme/adapters/codex-hook.js';
 import { CodexTurnManager } from './apme/adapters/codex-turn-manager.js';
-import { claudePtyParserEventToSpans, claudePtyResponseToSpan } from './apme/adapters/claude-pty.js';
 import { timelineEntryToSpans } from './apme/adapters/timeline.js';
 import { classifyAndEnqueueTurn } from './apme/classify-turn.js';
 import type { AdapterContext as ApmeAdapterContext } from '@agentdeck/shared';
@@ -181,6 +180,14 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     const deps = checkDependencies(agentType);
     if (!deps.ok) process.exit(1);
     for (const w of deps.warnings) log(`WARNING: ${w}`);
+
+    if (agentType === 'codex-cli' && deps.agentVersion) {
+      const { satisfiesRange } = await import('./version-check.js');
+      if (!satisfiesRange(deps.agentVersion, '>=0.141.0')) {
+        log(`WARNING: Codex ${deps.agentVersion} predates the lifecycle-hook baseline (>=0.141.0). ` +
+          'The terminal can start, but AgentDeck lifecycle monitoring requires a newer Codex CLI.');
+      }
+    }
 
     // Version compatibility check (Claude Code only — uses npm registry + compatibleClaudeCode range)
     if (agentType === 'claude-code' && !opts.noUpdateCheck) {
@@ -546,21 +553,14 @@ export async function startSession(opts: SessionOptions): Promise<void> {
 
   // Claude Code hook events → timeline entries
   if (agentType === 'claude-code') {
-    wireClaudeCodeTimeline(adapter, core, journal, ptyRingBuffer);
+    wireClaudeCodeTimeline(adapter, core);
   }
   // APME wiring for non-Claude-Code agents (OpenCode, Codex, OpenClaw)
   if (apme && agentType !== 'claude-code' && agentType !== 'monitor') {
-    wireAgentApme(adapter, agentType, apme, core, ptyRingBuffer);
+    wireAgentApme(adapter, agentType, apme, core);
   }
 
   // ===== Wire adapter events → StateMachine + journal =====
-  // APME: PTY response fallback — captures response from terminal output when
-  // the Stop hook doesn't fire (unreliable in Claude Code v2.1+).
-  // Three capture paths handle the hook/PTY race condition:
-  //   Path A: idle fires, turn exists → apply directly
-  //   Path B: idle fires before hook (fast responses) → buffer, apply on hook arrival
-  //   Path C: UserPromptSubmit closes prev turn → apply PTY text to closed turn
-  let pendingPtyResponse: string | null = null;
   adapter.on('event', (evt: AdapterEvent) => {
     switch (evt.source) {
       case 'hook':
@@ -582,25 +582,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
             apme.collector.ingestSpan(core.sessionId, span);
           }
         }
-        if (evt.event === 'UserPromptSubmit' && apme) {
-          // Path B: apply buffered response to the NEW turn (idle fired before hook)
-          if (pendingPtyResponse) {
-            debug('APME', `hook:UPS Path B: applying pending (${pendingPtyResponse.length} chars)`);
-            const ctx = makeApmeAdapterCtx(apme, core.sessionId, agentType);
-            const span = claudePtyResponseToSpan(ctx, pendingPtyResponse);
-            if (span) apme.collector.ingestSpan(core.sessionId, span);
-            pendingPtyResponse = null;
-          }
-          // Path C: prev turn was just closed by ingestHook — apply pending response
-          if (pendingPtyResponse) {
-            debug('APME', `hook:UPS Path C: applying pending to closed turn (${pendingPtyResponse.length} chars)`);
-            const ctx = makeApmeAdapterCtx(apme, core.sessionId, agentType);
-            const span = claudePtyResponseToSpan(ctx, pendingPtyResponse, { fallbackToLastClosed: true });
-            if (span) apme.collector.ingestSpan(core.sessionId, span);
-            pendingPtyResponse = null;
-          }
-        }
-        if (evt.event === 'Stop') pendingPtyResponse = null; // Stop has cleaner response
         // APME-off fallback: task rows from boundary hooks alone.
         if (fallbackTasks) fallbackTasks.ingestHook(core.sessionId, evt.event, evt.data ?? {});
         if (evt.event === 'shutdown') {
@@ -611,59 +592,15 @@ export async function startSession(opts: SessionOptions): Promise<void> {
         break;
 
       case 'parser':
-        journal.write('parser_emit', 'pty', { event: evt.event, ...evt.data });
+        // Structured adapters (OpenCode SSE / OpenClaw Gateway) normalize
+        // their native event streams into the legacy state vocabulary.
+        journal.write('adapter_signal', agentType, { event: evt.event, ...evt.data });
         core.stateMachine.handleParserEvent(evt.event, evt.data);
-        // APME ingestion fallback: PTY parser sees tool use + state changes
-        // even when Claude Code hooks are flaky (memory: feedback_apme_stop_hook).
-        if (apme && evt.event) {
-          const ctx = makeApmeAdapterCtx(apme, core.sessionId, agentType);
-          for (const span of claudePtyParserEventToSpans(ctx, evt.event, evt.data ?? {})) {
-            apme.collector.ingestSpan(core.sessionId, span);
-          }
-        }
-        // APME: Path A — spinner_stop fires when Claude finishes responding.
-        // Delay 500ms to let response render in PTY, then extract text after ⏺ marker.
-        if (apme && evt.event === 'spinner_stop') {
-          const sid = core.sessionId;
-          setTimeout(async () => {
-            if (!apme) return;
-            const tail = ptyRingBuffer.getTail(5000);
-            // Claude's response starts with ⏺ — extract content after last ⏺ marker.
-            // Take only meaningful lines (stop at spinner chars ✢✻⏸, prompt ❯, or separator ──).
-            const marker = tail.lastIndexOf('⏺');
-            let response = '';
-            if (marker >= 0) {
-              const afterMarker = tail.slice(marker + 1).trim();
-              const lines = afterMarker.split('\n');
-              const clean: string[] = [];
-              for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                // Stop at UI artifacts: spinner chars (✢✳✶✻✽), plan mode (⏸), prompt (❯), separator (─)
-                if (/^[✢✳✶✻✽⏸⏵❯─>]/.test(trimmed)) break;
-                if (/planmode|plan\s*mode|shift\+tab|accept\s*edits/i.test(trimmed)) break;
-                // Status text: "Whirring…", "Finagling…", token count, shortcuts hint
-                if (/^\S+…(\s|$)/.test(trimmed) && /tokens|shortcuts|\d+[ms]\s/i.test(trimmed)) break;
-                if (/\?\s*for\s*shortcuts/.test(trimmed)) break;
-                clean.push(trimmed);
-              }
-              response = clean.join('\n').trim();
-            }
-            debug('APME', `spinner_stop+500ms: tailLen=${tail.length} marker=${marker} respLen=${response.length}`);
-            if (response.length > 2) {
-              const turnId = apme.collector.getActiveTurnId(sid);
-              if (turnId) {
-                const ctx = makeApmeAdapterCtx(apme, sid, agentType);
-                const span = claudePtyResponseToSpan(ctx, response);
-                if (span) apme.collector.ingestSpan(sid, span);
-                pendingPtyResponse = null;
-                await classifyAndEnqueueTurn(apme, sid);
-              } else {
-                pendingPtyResponse = response;
-              }
-            }
-          }, 500);
-        }
+        break;
+
+      case 'terminal_ui':
+        journal.write('terminal_ui', 'pty', { event: evt.event, ...evt.data });
+        core.stateMachine.handleTerminalUiEvent(evt.event, evt.data);
         break;
 
       case 'metadata':
@@ -679,11 +616,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
           case 'user_prompt': {
             const text = evt.data?.text as string | undefined;
             if (text) core.broadcast({ type: 'user_prompt', text } as BridgeEvent);
-            // APME: user_prompt is the PTY-detected prompt — use it to open a turn
-            // and capture the prompt text (fallback for when hooks don't fire).
-            if (apme && text) {
-              apme.collector.ingestHook(core.sessionId, 'UserPromptSubmit', { message: { content: text } });
-            }
             break;
           }
           case 'model_catalog': {
@@ -1396,15 +1328,12 @@ function wireAgentApme(
   agentType: import('@agentdeck/shared').AgentType,
   apme: import('./apme/index.js').ApmeModule,
   core: BridgeCore,
-  ptyRingBuffer: PtyRingBuffer,
 ): void {
   const sid = core.sessionId;
-  // Codex turn boundaries (hook-primary, PTY-fallback) live in their own
-  // module. The class encapsulates the seven-state-variable PTY-only
-  // machine plus the hook-fresh shortcut so non-codex sessions allocate
-  // nothing here.
+  // Codex turn boundaries and rollout response capture live in their own
+  // hook-owned module so non-Codex sessions allocate nothing here.
   const codexManager: CodexTurnManager | null = (agentType as string) === 'codex-cli'
-    ? new CodexTurnManager(core, apme, ptyRingBuffer, sid, agentType)
+    ? new CodexTurnManager(core, apme, sid, agentType)
     : null;
 
   adapter.on('event', (evt: import('./types.js').AdapterEvent) => {
@@ -1441,10 +1370,9 @@ function wireAgentApme(
       }
     }
 
-    // ── Codex: hook (primary) + PTY-parser fallback ──
+    // ── Codex: lifecycle hooks + notify turn-complete fallback ──
     if (codexManager) {
       if (evt.source === 'hook') codexManager.onHookEvent(evt);
-      else if (evt.source === 'parser') codexManager.onParserEvent(evt);
     }
   });
 
@@ -1480,16 +1408,12 @@ function isClaudeTaskNotificationPrompt(text: string): boolean {
 function wireClaudeCodeTimeline(
   adapter: import('./types.js').AgentAdapter,
   core: BridgeCore,
-  journal: EventJournal,
-  ptyRingBuffer: PtyRingBuffer,
 ): void {
   let ccChatStart: number | null = null;
   let ccPendingChatStart = false;
   let ccPendingChatStartTimer: ReturnType<typeof setTimeout> | null = null;
   let ccLastPromptText: string | null = null;
-  let ccLastHookToolTs = 0;          // Change 1: track last hook-based tool_request
-  let ccPendingCompletion = false;   // Change 2: track pending chat_end for PTY fallback
-  let ccPendingCompletionTimer: ReturnType<typeof setTimeout> | null = null;
+  let ccPendingCompletion = false;
 
   const emitChatStart = (text: string) => {
     if (ccPendingChatStartTimer) {
@@ -1522,28 +1446,8 @@ function wireClaudeCodeTimeline(
     });
   };
 
-  /** Extract response text from PTY ringbuffer after ⏺ marker (same pattern as APME) */
-  const extractPtyResponse = (): string => {
-    const tail = ptyRingBuffer.getTail(5000);
-    const marker = tail.lastIndexOf('⏺');
-    if (marker < 0) return '';
-    const afterMarker = tail.slice(marker + 1).trim();
-    const lines = afterMarker.split('\n');
-    const clean: string[] = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (/^[✢✳✶✻✽⏸⏵❯─>]/.test(trimmed)) break;
-      if (/planmode|plan\s*mode|shift\+tab|accept\s*edits/i.test(trimmed)) break;
-      if (/^\S+…(\s|$)/.test(trimmed) && /tokens|shortcuts|\d+[ms]\s/i.test(trimmed)) break;
-      if (/\?\s*for\s*shortcuts/.test(trimmed)) break;
-      clean.push(trimmed);
-    }
-    return clean.join('\n').trim();
-  };
-
   /**
-   * Emit a single Claude turn-close row (shared by Stop hook and PTY fallback):
+   * Emit a single Claude turn-close row from the authoritative Stop hook:
    * a `chat_response` when there is meaningful response text, otherwise a
    * `chat_end`. The two are mutually exclusive so a turn never produces both —
    * the paired dimmed `chat_end` used to fragment every turn into three rows on
@@ -1642,44 +1546,6 @@ function wireClaudeCodeTimeline(
     }
   });
 
-  // Change 1: PTY tool_action → tool_exec timeline entry (fills gap when hooks don't fire)
-  adapter.on('event', (evt: AdapterEvent) => {
-    if (evt.source !== 'parser' || evt.event !== 'tool_action') return;
-    const now = Date.now();
-    // Skip if hook already emitted tool_request within 2s (avoid duplicates)
-    if (now - ccLastHookToolTs < 2000) return;
-    const toolName = (evt.data?.toolName as string) || 'tool';
-    const toolArgs = (evt.data?.toolArgs as string) || '';
-    const raw = toolArgs ? `${toolName} ${toolArgs}` : toolName;
-    core.bridgeTimeline.addEntry({
-      ts: now, type: 'tool_exec',
-      raw: raw.length > 500 ? raw.slice(0, 497) + '...' : raw,
-      agentType: 'claude-code',
-    });
-  });
-
-  // Change 2: PTY fallback chat_end from spinner_stop/idle (when Stop hook doesn't fire)
-  adapter.on('event', (evt: AdapterEvent) => {
-    if (evt.source !== 'parser') return;
-    if ((evt.event === 'spinner_stop' || evt.event === 'idle') && ccPendingCompletion) {
-      // Wait 1.5s — Stop hook may still arrive
-      if (ccPendingCompletionTimer) clearTimeout(ccPendingCompletionTimer);
-      ccPendingCompletionTimer = setTimeout(() => {
-        ccPendingCompletionTimer = null;
-        if (!ccPendingCompletion) return; // Stop hook already handled it
-        ccPendingCompletion = false;
-        if (ccPendingChatStart) emitChatStart('');
-        const now = Date.now();
-        const duration = ccChatStart ? Math.round((now - ccChatStart) / 1000) : null;
-        const toolSummary = core.usageTracker.getToolSummary();
-        // Extract response from PTY ringbuffer
-        const responseText = extractPtyResponse();
-        debug('timeline', `CC PTY fallback chat_end: respLen=${responseText.length} duration=${duration}`);
-        emitCompletion(responseText, duration, toolSummary);
-      }, 1500);
-    }
-  });
-
   adapter.on('event', (evt: AdapterEvent) => {
     if (evt.source !== 'hook') return;
     if (isSubagentOnlyHook(evt.event, evt.data ?? {})) return;
@@ -1689,7 +1555,7 @@ function wireClaudeCodeTimeline(
         ccChatStart = now;
         core.usageTracker.resetToolCounts();
         ccPendingChatStart = true;
-        ccPendingCompletion = true;  // Change 2: arm PTY fallback
+        ccPendingCompletion = true;
         // Claude Code v2.1+ sends { message: { content: "..." } }, not { prompt: "..." }
         const msg = evt.data?.message;
         const hookText = (evt.data?.prompt as string)
@@ -1703,7 +1569,6 @@ function wireClaudeCodeTimeline(
         break;
       }
       case 'PreToolUse': {
-        ccLastHookToolTs = now;  // Change 1: mark hook tool time for dedup
         const toolName = (evt.data?.tool_name as string) || 'tool';
         const formatted = formatToolInputForTimeline(toolName, evt.data?.tool_input as Record<string, unknown> | undefined);
         core.bridgeTimeline.addEntry({
@@ -1720,18 +1585,10 @@ function wireClaudeCodeTimeline(
         break;
       }
       case 'Stop': {
-        // Race guard: if ccPendingCompletion is already false, the PTY fallback
-        // timer fired first (Stop hook arrived >1.5s after spinner_stop) and
-        // already emitted chat_response/chat_end. Skipping here prevents the
-        // duplicate-line bug visible on the dashboard timeline.
         const wasPending = ccPendingCompletion;
-        ccPendingCompletion = false;  // Change 2: disarm PTY fallback — hook handled it
-        if (ccPendingCompletionTimer) {
-          clearTimeout(ccPendingCompletionTimer);
-          ccPendingCompletionTimer = null;
-        }
+        ccPendingCompletion = false;
         if (!wasPending) {
-          debug('timeline', 'CC Stop hook arrived after PTY fallback emit — skipping duplicate');
+          debug('timeline', 'duplicate Claude Stop hook ignored');
           break;
         }
         if (ccPendingChatStart) emitChatStart('');
@@ -1746,8 +1603,6 @@ function wireClaudeCodeTimeline(
         //      payload points at it.
         //   2. last_assistant_message — ~18% reliable field on the hook
         //      payload; honoured when the transcript isn't reachable.
-        //   3. PTY ringbuffer — last-resort fallback already handled by
-        //      the existing spinner_stop pathway.
         const transcriptPath = (evt.data?.transcript_path as string) || '';
         let lastAssistantMsg = (evt.data?.last_assistant_message as string) || '';
         if (transcriptPath) {

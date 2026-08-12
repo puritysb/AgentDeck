@@ -18,7 +18,7 @@ Core bridge architecture, adapter hierarchy, and module system. See [daemon.md](
 
 ## Monorepo layout
 
-- **bridge/** — Node.js server: Daemon (sole hub for all clients, mDNS, device modules) + Session Bridge (PTY, hook HTTP, state machine). BridgeCore (shared infra), PtyAdapter hierarchy, output parser, WebSocket server, voice (Apple on-device Speech via the bundled helper), usage API client, auth token, SSE broadcast, TUI dashboard (`tui/`)
+- **bridge/** — Node.js server: Daemon (sole hub for all clients, mDNS, device modules) + optional managed Session Bridge (PTY transport, hook HTTP, state machine). BridgeCore (shared infra), lifecycle/event adapters, terminal UI observers, WebSocket server, voice (Apple on-device Speech via the bundled helper), usage API client, auth token, SSE broadcast, TUI dashboard (`tui/`)
 - **plugin/** — Stream Deck SDK v2 plugin: actions for buttons/encoders, bridge WebSocket client
 - **shared/** — TypeScript types and utilities shared between bridge and plugin (protocol, states, timeline, adapter interfaces, `format-utils` time/count/bytes formatters, `timeline-summarizer` extractTopicHint/cleanLLMOutput, `deduplicateEntry` pipeline, `session-utils` stateRank/sortSessions/assignDisplayNames — 세션 정렬/번호 공통 유틸리티, 6곳에서 import)
 - **hooks/** — Claude Code CLI hook installer for `~/.claude/settings.json` (the App Store opt-in UI writes the same user-global file, user-selected), Codex lifecycle hook installer for `~/.codex/config.toml`, and OpenCode observer plugin installer for `~/.config/opencode/plugins/agentdeck.js`
@@ -40,10 +40,10 @@ Core bridge architecture, adapter hierarchy, and module system. See [daemon.md](
 
 ## PtyAdapter hierarchy
 
-`bridge/src/adapters/pty-adapter.ts` — Abstract base class for PTY-based agents. Subclasses implement `getDefaultCommand()`, `wireOutputParser()`, `feedParser()`, `handleAgentCommand()`.
+`bridge/src/adapters/pty-adapter.ts` — Transport base for optional managed agent terminals. Subclasses implement `getDefaultCommand()`, terminal UI observation, and agent-specific input handling. PTY output is not a lifecycle authority.
 
-- `ClaudeCodeAdapter` extends PtyAdapter with OutputParser + Shift+Tab mode switching
-- `CodexCliAdapter` extends PtyAdapter with CodexOutputParser plus Codex lifecycle hooks installed in `~/.codex/config.toml`; hooks are authoritative and rollout-tail parsing supplies response text where needed
+- `ClaudeCodeAdapter` uses hooks for lifecycle/transcript response capture and a terminal UI observer only for real mode/diff/options/cursor affordances, plus Shift+Tab mode switching
+- `CodexCliAdapter` uses lifecycle hooks + notify completion, with rollout-tail response capture; its terminal UI observer is limited to real approval/options detail
 - `OpenCodeAdapter` extends PtyAdapter + SSE overlay (spawns `opencode --port XXXX` TUI, connects to embedded HTTP server for structured events — no TUI parsing needed)
 - `MonitorAdapter` is hook-only (no PTY)
 
@@ -77,13 +77,13 @@ Regression tests: `HTTPServerMainThreadStallTests` (transport must accept while 
 
 - `shared/src/adapter.ts` — `AgentAdapter` interface, `AgentCapabilities`, `AdapterEvent` types, and the canonical `AgentType` union (`claude-code`, `openclaw`, `codex-cli`, `codex-app`, `opencode`, `antigravity`, `monitor`)
 - `bridge/src/adapters/pty-adapter.ts` — `PtyAdapter` abstract base (PtyManager + HookServer + common start/command handling)
-- `bridge/src/adapters/claude-code.ts` — `ClaudeCodeAdapter extends PtyAdapter` (OutputParser + Shift+Tab mode switch). ~100줄 (was 227)
+- `bridge/src/adapters/claude-code.ts` — `ClaudeCodeAdapter extends PtyAdapter` (hook-owned lifecycle + terminal UI observer + Shift+Tab mode switch)
 - `bridge/src/adapters/monitor.ts` — `MonitorAdapter` (hook-only, no PTY, `isAlive()` always true)
 - `bridge/src/adapters/openclaw.ts` — `OpenClawAdapter` connecting to Gateway WebSocket
 - `bridge/src/adapters/index.ts` — `createAdapter(type, gatewayUrl?)` factory (`'monitor'` → MonitorAdapter)
 - Bridge `cli.ts` handles `--agent` + `--gateway` CLI flags; `index.ts` exports `startSession()`
 - `StateUpdateEvent` includes `agentType` + `agentCapabilities` for plugin capability gating
-- Adapter emits unified `AdapterEvent` (hook/parser/metadata/activity/connection)
+- Adapter emits unified `AdapterEvent` (`hook`, structured `parser`, optional `terminal_ui`, metadata/activity/connection)
 - **Command routing split**: ClaudeCode defers `select_option`/`navigate_option`/`send_prompt` to bridge (PTY); OpenClaw handles all commands via RPC. Bridge updates StateMachine for adapter-handled commands.
 - **OpenClaw capabilities**: `hasTerminal=false`, `hasModeSwitching=false`, `hasDiffReview=false`, `hasOptionLists=true`, `hasNavigablePrompts=false`, `hasSuggestedPrompts=false`, `hasApiUsage=false`
 

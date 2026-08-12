@@ -480,22 +480,22 @@ function success() {
   console.log('');
   console.log('  Next steps:');
   if (IS_LINUX) {
-    console.log("  1. Run 'agentdeck claude' or 'agentdeck codex' in terminal to start the bridge");
-    console.log("     Codex observation hooks are installed automatically by 'agentdeck codex'");
-    console.log("  2. Optional: run 'agentdeck daemon install' to auto-start the daemon on login");
+    console.log("  1. Run 'agentdeck daemon install' to start monitoring and auto-start on login");
     console.log("     (systemd --user unit; run 'loginctl enable-linger $USER' for headless boot)");
+    console.log("  2. Run 'claude', 'codex', or 'opencode' normally — hooks/events discover sessions");
   } else {
     console.log('  1. Restart Stream Deck app');
     console.log('  2. Add AgentDeck actions to your Stream Deck profile');
-    console.log("  3. Run 'agentdeck claude' or 'agentdeck codex' in terminal to start the bridge");
-    console.log("     Codex observation hooks are installed automatically by 'agentdeck codex'");
-    console.log("  4. Optional: run 'agentdeck daemon install' to auto-start the daemon on login");
+    console.log("  3. Run 'agentdeck daemon install' to start monitoring and auto-start on login");
     console.log("     (macOS LaunchAgent / Windows Scheduled Task)");
+    console.log("  4. Run 'claude', 'codex', or 'opencode' normally — hooks/events discover sessions");
   }
   console.log('');
   console.log('  Usage:');
-  console.log('    agentdeck claude   Start bridge + Claude');
-  console.log('    agentdeck codex    Start bridge + Codex');
+  console.log('    agentdeck daemon install   Start monitoring on login');
+  console.log('    agentdeck dashboard        Open the terminal dashboard');
+  console.log('    agentdeck claude           Optional managed Claude terminal');
+  console.log('    agentdeck codex            Optional managed Codex terminal');
   console.log('    agentdeck status   Check status');
   console.log('    agentdeck stop     Stop bridge');
   console.log('');

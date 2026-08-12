@@ -35,7 +35,9 @@ The upgrade story exists in README, web, and developer documentation only. App S
 All surfaces follow the same rule:
 
 1. Render steering controls only from real `options[]` the agent itself supplied — never invented ones. A PTY-managed session's options are always pressable; an observed session's are pressable only when the daemon reports `liveAnswerable`, meaning it has a way to deliver the answer (typing into that terminal, or holding the question's hook open to resolve it).
-2. An observed session never emits `requestId`.
+2. An observed session emits `requestId` only while the daemon is holding a real
+   PreToolUse decision open for that session. Display-only notifications and
+   non-held AskUserQuestion overlays never expose a request id.
 3. Display-only attention shows the question and “Respond in the terminal”; it does not invent Allow/Deny choices.
 4. Permission attention is keyed by `notification_type: permission_prompt`; free-text matching is legacy fallback only.
 
@@ -66,7 +68,7 @@ All surfaces follow the same rule:
 | Codex rate limits (passive rollout read) | Yes | Yes | User grants a security-scoped bookmark to `~/.codex`. Both tiers reconcile the snapshot against the live account tier in `auth.json` and **void** one minted under a plan the account no longer holds — neither freshness axis can retire it, since a lapsed plan's weekly window stays future-dated (`codexSnapshotMatchesAccountPlan`, mirrored to Swift as the generated `CodexPlanRules`). Voiding rides the wire as a windowless block, so Tier 1's own daemon retracts the gauge rather than leaving a client to guess |
 | Codex rate limits (live `app-server` query) | No | Yes | The rollout `rate_limits` block is a byproduct of a **successful turn**, so the reading freezes exactly when the quota is exhausted (no turn can complete) and never sees usage spent on Codex Cloud or another machine. Tier 2 backs it with a throttled `codex app-server` → `account/rateLimits/read` JSON-RPC query against the user's own CLI (`bridge/src/codex-rate-limits-live.ts`); the fresher of the two snapshots wins by `capturedAt`. Tier 1 cannot follow — the App Store daemon spawns no subprocess — so it keeps the passive read and its age footnote. This is also why plan reconciliation matters most on Tier 1: with no live query to overwrite it, a retired plan's snapshot is the *only* thing Tier 1 would ever read, and Codex is its only quota gauge (Claude's needs the relay). |
 | Anthropic Admin API usage | Yes | Yes | User supplies the API key |
-| PTY token and cost stream | Hook-only | Yes | PTY parsing belongs to Tier 2 |
+| Terminal status-line token and cost telemetry | Hook-only | Yes | Optional CLI-managed UI telemetry; lifecycle correctness comes from hooks/events, never terminal scraping |
 
 ## Hardware
 
@@ -93,7 +95,7 @@ All surfaces follow the same rule:
 | Existing terminal-session discovery | Limited | Yes | General `ps` / `lsof` / transcript discovery is CLI-only |
 | Display-only permission attention | Yes | Yes | Real permission notification; no fabricated options |
 | Session order pinning (`--weight` sort override) | Limited | Yes | Weight is CLI-set at session launch and reaches the Swift daemon via `session_push_register`; the App Store app displays the resulting order (no in-app weight editor, and observed-hook sessions never carry weight) |
-| PTY option steering | No | Yes | Real parsed options and key injection |
+| Managed terminal UI steering | No | Yes | A compatibility observer reads only real mode/diff/option UI and injects keys; lifecycle state, timeline, and APME remain hook/event-owned |
 | Observed AskUserQuestion — device answer (ask-gate) | Yes | Yes | The daemon holds the question's PreToolUse hook open and resolves it with the option the user picked, stated as the decision reason. Pure HTTP hold, no subprocess, so it works sandboxed. Engaged only when injection is unavailable (always so in Tier 1); an unanswered hold releases empty, and Claude's own picker appears in the terminal as usual. Multi-question calls are answered one question at a time |
 | Observed-session answer injection (device tap → host UI) | No | Yes | tmux / iTerm2 / Terminal.app by tty, GUI apps by AX button or key events. Needs `ps` tty discovery + tmux/osascript subprocesses — both CLI-only; sandbox has neither. Preferred over the ask-gate when available: it answers the live picker with no added latency for whoever is at that terminal |
 | OpenCode monitoring | Opt-in read-only | Yes | Tier 1 connects only to a configured/fixed local server; no port scan |

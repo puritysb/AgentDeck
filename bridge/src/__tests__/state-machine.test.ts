@@ -85,6 +85,27 @@ describe('StateMachine', () => {
     });
   });
 
+  describe('terminal UI authority boundary', () => {
+    it('accepts a real interaction affordance', () => {
+      const sm = bootToIdle();
+      sm.handleHookEvent('UserPromptSubmit', {});
+      sm.handleTerminalUiEvent('option_prompt', {
+        options: [{ index: 0, label: 'A' }, { index: 1, label: 'B' }],
+      });
+      expect(sm.getState()).toBe(State.AWAITING_OPTION);
+    });
+
+    it('ignores terminal lifecycle guesses', () => {
+      const sm = bootToIdle();
+      sm.handleHookEvent('UserPromptSubmit', {});
+      sm.handleTerminalUiEvent('spinner_stop', {});
+      sm.handleTerminalUiEvent('idle', {});
+      sm.handleTerminalUiEvent('tool_action', { toolName: 'Bash' });
+      expect(sm.getState()).toBe(State.PROCESSING);
+      expect(sm.getSnapshot().currentTool).toBeNull();
+    });
+  });
+
   // === Option Flow ===
 
   describe('option flow', () => {
@@ -633,11 +654,17 @@ describe('StateMachine', () => {
       expect(sm.getState()).toBe(State.IDLE);
     });
 
-    it('codex_turn_complete is a snapshot-emit no-op for state', () => {
+    it('codex_turn_complete closes PROCESSING when codex_stop is absent', () => {
+      const sm = bootCodexToIdle();
+      sm.handleHookEvent('codex_user_prompt_submit', {});
+      sm.handleHookEvent('codex_turn_complete', {});
+      expect(sm.getState()).toBe(State.IDLE);
+    });
+
+    it('codex_turn_complete remains idempotent after codex_stop', () => {
       const sm = bootCodexToIdle();
       sm.handleHookEvent('codex_user_prompt_submit', {});
       sm.handleHookEvent('codex_stop', {});
-      // codex_turn_complete after stop should not bounce state.
       sm.handleHookEvent('codex_turn_complete', {});
       expect(sm.getState()).toBe(State.IDLE);
     });

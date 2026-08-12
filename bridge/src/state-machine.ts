@@ -49,6 +49,19 @@ function truncateToolInput(s: string): string {
   return line.length > 120 ? line.slice(0, 119) + '\u2026' : line;
 }
 
+const TERMINAL_UI_EVENTS = new Set([
+  'permission_prompt',
+  'option_prompt',
+  'diff_prompt',
+  'suggested_prompt',
+  'mode_change',
+  'status_line',
+  'project_name',
+  'model_info',
+  'effort_level',
+  'remote_url',
+]);
+
 export class StateMachine extends EventEmitter {
   private state: State = State.DISCONNECTED;
   private permissionMode: PermissionMode = PermissionMode.DEFAULT;
@@ -187,10 +200,17 @@ export class StateMachine extends EventEmitter {
         break;
 
       case 'codex_turn_complete':
-        // Notify-fallback turn-completion ping. State already at IDLE via
-        // codex_stop in the normal path; this is a best-effort signal for
-        // metric counters when stop hook doesn't fire (rare).
-        this.emitSnapshot();
+        // Notify is the structured fallback when the Stop hook does not fire.
+        // It must close the same state as codex_stop; duplicate completion is
+        // harmless because transition() suppresses identical snapshots.
+        this.currentTool = null;
+        this.toolInput = null;
+        this.toolProgress = null;
+        this.options = [];
+        this.question = null;
+        this.navigable = false;
+        this.cursorIndex = 0;
+        this.transition(State.IDLE, 'stop', 'hook');
         break;
 
       default:
@@ -394,6 +414,18 @@ export class StateMachine extends EventEmitter {
       default:
         break;
     }
+  }
+
+  /** Apply optional managed-terminal UI detail without letting screen
+   * observation become a lifecycle authority. Structured hooks/events own
+   * processing/idle, tools, timeline and APME; this whitelist exists only for
+   * affordances the agent lifecycle payload does not expose yet. */
+  handleTerminalUiEvent(eventName: string, data?: Record<string, unknown>): void {
+    if (!TERMINAL_UI_EVENTS.has(eventName)) {
+      debug('SM', `terminal UI event ignored by policy: ${eventName}`);
+      return;
+    }
+    this.handleParserEvent(eventName, data);
   }
 
   /** Update billing type from external source (e.g., OAuth API response) if still unknown */
