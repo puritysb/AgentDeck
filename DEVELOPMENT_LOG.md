@@ -2,6 +2,23 @@
 
 ---
 
+## 2026-08-14 — npm 1.0.20 배포 완료
+
+- PR #188 을 squash 머지(04e2c71c)하고 `npm-v1.0.20` 태그를 푸시했다. npm Release
+  워크플로우(run 31743240593)가 성공해 `@agentdeck/shared`/`hooks`/`bridge`/`setup`
+  네 패키지가 registry `latest` **1.0.20** 으로 게시됐고 (2026-08-13 20:56Z),
+  GitHub Release "AgentDeck npm v1.0.20" 이 발행됐다.
+- 실측 검증: 네 패키지 `dist-tags.latest = 1.0.20`, packument readme 렌더 정상
+  (1.0.15 재발 없음), bridge 의 `compatibleClaudeCode >=2.1.50` /
+  `compatibleCodex >=0.141.0` 필드 정상. wire 무변경이므로 기기 채널 재배포 없음.
+- 다음 사이클 후보(우선순위순): 1.0.20 효과 실측(open 턴/무응답 폐쇄 비율 재측정,
+  기준선 = 9턴 중 2 open·7 중 3 무응답) + synthetic/real Stop 카운터로 유실률 상시
+  계측 → APME 턴 `ended_at` 을 다음 프롬프트가 아닌 Stop 시점으로 → ESC 중단 마커를
+  watchdog 프로브에 → observed 세션용 transcript watchdog (Node 데몬; Swift 는
+  샌드박스로 불가) → `states.ts → Swift` 전이 테이블 생성기화(drift gate).
+
+---
+
 ## 2026-08-14 — 1.0.19 AWAITING wedge·Stop 유실 회귀 수정 (npm 1.0.20 준비)
 
 ### 배경
