@@ -521,6 +521,7 @@ program
       daemonHost: opts.daemonHost,
       daemonToken: opts.daemonToken,
       weight: opts.weight,
+      codexHooksExpected: opts.codexHooks !== false,
       modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
         mdns: false,   // daemon-only
         adb: opts.adb !== false ? 'auto' : false,

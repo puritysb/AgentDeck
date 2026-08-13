@@ -44,14 +44,36 @@ export const transitions: StateTransition[] = [
   { from: State.AWAITING_OPTION, to: State.PROCESSING, trigger: 'user_selection', source: 'user' },
   { from: State.AWAITING_DIFF, to: State.PROCESSING, trigger: 'user_response', source: 'user' },
   { from: State.AWAITING_DIFF, to: State.PROCESSING, trigger: 'user_selection', source: 'user' },
-  // Recovery: spinner_start from awaiting states (user responded via keyboard, not Stream Deck)
+  // Recovery: spinner_start from awaiting states (user responded via keyboard,
+  // not a device). Only adapters that still emit parser lifecycle events
+  // (OpenCode, OpenClaw) can drive these; Claude/Codex adapters forward
+  // terminal_ui prompts only, so their keyboard-answer recovery is hook-based.
   { from: State.AWAITING_PERMISSION, to: State.PROCESSING, trigger: 'spinner_start', source: 'pty' },
   { from: State.AWAITING_OPTION, to: State.PROCESSING, trigger: 'spinner_start', source: 'pty' },
   { from: State.AWAITING_DIFF, to: State.PROCESSING, trigger: 'spinner_start', source: 'pty' },
+  // Hook exits from AWAITING_*: a prompt answered at the keyboard produces no
+  // user/device action and (for Claude/Codex) no parser signal, so the
+  // lifecycle hooks that keep firing are the only truthful dismissal evidence:
+  // tool activity means the turn is running again, stop means the turn ended,
+  // and a new user_prompt_submit means a new turn started. Without these the
+  // session wedges in AWAITING_* forever once the user touches the terminal.
+  { from: State.AWAITING_PERMISSION, to: State.PROCESSING, trigger: 'tool_activity', source: 'hook' },
+  { from: State.AWAITING_OPTION, to: State.PROCESSING, trigger: 'tool_activity', source: 'hook' },
+  { from: State.AWAITING_DIFF, to: State.PROCESSING, trigger: 'tool_activity', source: 'hook' },
+  { from: State.AWAITING_PERMISSION, to: State.IDLE, trigger: 'stop', source: 'hook' },
+  { from: State.AWAITING_OPTION, to: State.IDLE, trigger: 'stop', source: 'hook' },
+  { from: State.AWAITING_DIFF, to: State.IDLE, trigger: 'stop', source: 'hook' },
+  { from: State.AWAITING_PERMISSION, to: State.PROCESSING, trigger: 'user_prompt_submit', source: 'hook' },
+  { from: State.AWAITING_OPTION, to: State.PROCESSING, trigger: 'user_prompt_submit', source: 'hook' },
+  { from: State.AWAITING_DIFF, to: State.PROCESSING, trigger: 'user_prompt_submit', source: 'hook' },
+  // Hook-miss recovery: tool activity arriving while IDLE proves a turn is
+  // running even when its user_prompt_submit was dropped.
+  { from: State.IDLE, to: State.PROCESSING, trigger: 'tool_activity', source: 'hook' },
   // stuck_timeout: only PROCESSING recovers after STUCK_TIMEOUT_MS (Claude hung).
   // AWAITING_* intentionally have NO wall-clock backstop — an unanswered prompt
   // is a genuine, indefinitely-valid wait (the user may be away); it only leaves
-  // via a real signal (spinner_start / idle_detected / user response / stop), and
+  // via a real signal (hook tool_activity/stop/user_prompt_submit, parser
+  // spinner_start/idle_detected where still emitted, or a user response), and
   // a truly-dead session is reaped by liveness, not a timer. A blind awaiting
   // timer wrongly forced real prompts to IDLE and vanished them from dashboards.
   { from: State.PROCESSING, to: State.IDLE, trigger: 'stuck_timeout', source: 'internal' },

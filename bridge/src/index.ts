@@ -24,6 +24,8 @@ import { enableDebugLog, log, debug, setPtyMode } from './logger.js';
 import { EventJournal } from './event-journal.js';
 import { PtyRingBuffer } from './pty-ringbuffer.js';
 import { isSubagentOnlyHook, SubagentTimelineTracker } from './subagent-timeline.js';
+import { ClaudeTurnWatchdog } from './claude-turn-watchdog.js';
+import { CodexHookSilenceWarning } from './codex-hook-silence.js';
 import { createDiagDump } from './diag-analyzer.js';
 import { createAdapter, ClaudeCodeAdapter, CodexCliAdapter, OpenCodeAdapter } from './adapters/index.js';
 import { MonitorAdapter } from './adapters/monitor.js';
@@ -163,6 +165,9 @@ export interface SessionOptions {
   /** Explicit deck/tab sort override (default 0); lower sorts first. Lets a user
    *  pin terminal-tab order onto the Stream Deck via `--weight <n>`. */
   weight?: number;
+  /** False only under `--no-codex-hooks`: the user opted out of lifecycle
+   *  monitoring, so the hook-silence warning must not arm. */
+  codexHooksExpected?: boolean;
 }
 
 // ===== startSession =====
@@ -182,9 +187,10 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     for (const w of deps.warnings) log(`WARNING: ${w}`);
 
     if (agentType === 'codex-cli' && deps.agentVersion) {
-      const { satisfiesRange } = await import('./version-check.js');
-      if (!satisfiesRange(deps.agentVersion, '>=0.141.0')) {
-        log(`WARNING: Codex ${deps.agentVersion} predates the lifecycle-hook baseline (>=0.141.0). ` +
+      const { satisfiesRange, getCompatibleCodexRange } = await import('./version-check.js');
+      const codexRange = getCompatibleCodexRange() ?? '>=0.141.0';
+      if (!satisfiesRange(deps.agentVersion, codexRange)) {
+        log(`WARNING: Codex ${deps.agentVersion} predates the lifecycle-hook baseline (${codexRange}). ` +
           'The terminal can start, but AgentDeck lifecycle monitoring requires a newer Codex CLI.');
       }
     }
@@ -554,6 +560,47 @@ export async function startSession(opts: SessionOptions): Promise<void> {
   // Claude Code hook events → timeline entries
   if (agentType === 'claude-code') {
     wireClaudeCodeTimeline(adapter, core);
+    // Missed-Stop recovery: when the hook channel goes quiet mid-turn, the
+    // transcript JSONL tail (the Stop branch's own authority) is probed and a
+    // proven-finished turn is closed by injecting a synthetic Stop through
+    // this same event pipe — state machine, timeline, and APME all close via
+    // their existing Stop paths, and a late real Stop dedups downstream.
+    const turnWatchdog = new ClaudeTurnWatchdog({
+      onMissedStop: ({ transcript_path }) => {
+        adapter.emit('event', {
+          source: 'hook',
+          event: 'Stop',
+          data: { transcript_path, synthetic_stop: true },
+        } as AdapterEvent);
+      },
+    });
+    adapter.on('event', (evt: AdapterEvent) => {
+      if (evt.source === 'hook') turnWatchdog.noteHookEvent(evt.event, evt.data ?? {});
+    });
+  }
+  // Codex lifecycle-channel dead-on-arrival warning: hooks and notify share
+  // the same curl/port mechanism, so when both are silent the session is
+  // lifecycle-blind with no signal at all. Warn once if the PTY is clearly in
+  // use but no codex_* event ever arrived. `--no-codex-hooks` opted out.
+  if (agentType === 'codex-cli' && opts.codexHooksExpected !== false) {
+    const hookSilence = new CodexHookSilenceWarning({
+      onSilent: () => {
+        log('WARNING: no Codex lifecycle event has reached this bridge — state/timeline/eval are blind for this session.');
+        log('Repair: rerun `agentdeck codex` (reinstalls hooks) or `agentdeck daemon install`, and check [hooks]/notify in ~/.codex/config.toml.');
+        core.bridgeTimeline.addEntry({
+          ts: Date.now(),
+          type: 'error',
+          raw: 'Codex lifecycle hooks silent — session is lifecycle-blind',
+          detail: 'The terminal is active but no codex_* hook or notify event arrived. Hooks and the notify fallback share one curl/port path in ~/.codex/config.toml, so a stale port or config-layer conflict kills both. Rerun `agentdeck codex` or `agentdeck daemon install` to repair.',
+          agentType: 'codex-cli',
+        });
+      },
+    });
+    adapter.on('event', (evt: AdapterEvent) => {
+      if (evt.source === 'hook' && evt.event.startsWith('codex_')) hookSilence.noteHookEvent();
+      else if (evt.source === 'activity') hookSilence.noteActivity();
+    });
+    core.onShutdown(() => hookSilence.stop());
   }
   // APME wiring for non-Claude-Code agents (OpenCode, Codex, OpenClaw)
   if (apme && agentType !== 'claude-code' && agentType !== 'monitor') {

@@ -12,17 +12,20 @@
 │                                                                              │
 │  ┌──────────────┐    ┌──────────────────┐    ┌────────────────────────────┐  │
 │  │ claude-code  │    │ openclaw/opencode│    │ codex-cli                  │  │
-│  │ (PTY + hook) │    │ (timeline events)│    │ (PTY parser only)          │  │
+│  │ (lifecycle   │    │ (timeline events)│    │ (lifecycle hooks + notify  │  │
+│  │  hooks +     │    │                  │    │  turn-complete + rollout   │  │
+│  │  transcript) │    │                  │    │  JSONL)                    │  │
 │  └──────┬───────┘    └────────┬─────────┘    └────────────┬───────────────┘  │
 │         │                     │                           │                  │
-│         │ HTTP POST           │ adapter.on('event')       │ parser events    │
-│         │ /hook/:event        │ source:'timeline'         │ spinner_stop+⏺   │
+│         │ HTTP POST           │ adapter.on('event')       │ HTTP POST        │
+│         │ /hooks/:event       │ source:'timeline'         │ /hooks/codex_*   │
 └─────────┼─────────────────────┼───────────────────────────┼──────────────────┘
           │                     │                           │
           ▼                     ▼                           ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ L1  INGESTION              │  wireAgentApme() + PTY tail parser              │
-│                            │  bridge/src/index.ts:440, 505, 1169             │
+│ L1  INGESTION              │  claudeHookToSpans / wireAgentApme()            │
+│                            │  bridge/src/index.ts (hook switch + codex      │
+│                            │  turn manager)                                  │
 └──────────────────────────────┬───────────────────────────────────────────────┘
                                ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -93,42 +96,48 @@ PTY가 없거나 구조화된 이벤트 스트림이 있는 에이전트는 time
 
 - **앵커**: `bridge/src/index.ts:1169` (`wireAgentApme`), `:1181` (timeline 분기)
 
-### 1C. Codex CLI — PTY Parser Only
+### 1C. Codex CLI — Lifecycle Hooks + Notify + Rollout
 
-Codex는 hook도 timeline도 없어서 PTY 파서 + 터미널 tail 파싱이 유일한 경로다.
+Codex 수집은 `~/.codex/config.toml` 의 lifecycle hook (`codex_session_start` /
+`codex_user_prompt_submit` / `codex_tool_start` / `codex_tool_end` /
+`codex_stop`) 이 1차 경로다. 초기 구현이 쓰던 PTY 파서 turn 추적은 1.0.19 에서
+제거됐다 (화면 파싱은 lifecycle 정본이 아니다).
 
-- **소스**: `adapter.on('event', { source: 'parser', event: 'user_prompt' | 'spinner_stop' })`
-- **프롬프트 수집**: `user_prompt` 이벤트에서 직접 추출 (`index.ts:1213-1219`)
-- **응답 수집**: `spinner_stop` 이벤트 → 500ms 지연 후 링버퍼 tail 파싱 (`index.ts:1220-1233`)
-- **필터링**: spinner 문자 (`✢✳✶✻✽`), 모드 인디케이터 (`⏸⏵`), 프롬프트 (`❯`), separator, plan/accept-edit 패턴, `? for shortcuts` 등을 제거
+- **소스**: `adapter.on('event', { source: 'hook', event: 'codex_*' })` →
+  `CodexTurnManager.onHookEvent()` (`bridge/src/apme/adapters/codex-turn-manager.ts`)
+- **턴 경계**: `codex_user_prompt_submit` 이 열고 `codex_stop` 이 닫는다.
+  `codex_stop` 이 유실되면 notify `codex_turn_complete` 가 같은 턴을 닫고
+  StateMachine 도 IDLE 로 복구한다 (hook 과 notify 는 둘 다 curl/`AGENTDECK_PORT`
+  경로를 타므로, 세션 내내 양쪽 모두 침묵하면 `codex-hook-silence.ts` 가 경고를
+  타임라인에 남긴다)
+- **응답 수집**: inline payload (`last_assistant_message` 등) 우선, 없으면
+  rollout JSONL tail (`bridge/src/codex-rollout-response.ts`)
+- **오류 표기**: 명시적 `error` 키만 오류로 매핑한다 — `message` 는 다른 Codex
+  이벤트에서 콘텐츠를 담는 키라 오류로 해석하지 않는다 (실측 codex_stop 311건
+  기준 두 키 모두 등장 0회)
 
-### 1D. Claude Code PTY Response Capture (Hook 보조)
+### 1D. Claude Code Response Capture (transcript 정본)
 
-Claude Code의 `Stop` 훅은 v2.1.104 기준 **발화율 ~18%** (매우 불안정). 이를 보완하기 위해 PTY tail 파싱을 **1차 경로**로 사용한다.
+Claude Code 의 응답 본문은 `Stop` hook payload 의 `transcript_path` JSONL tail
+에서 읽는다 (`readClaudeTranscriptLastTurn` — `last_assistant_message` 필드는
+불안정해 transcript 가 닿지 않을 때의 보조로만 쓴다).
 
-- **트리거**: `spinner_stop` 이벤트 + 500ms 지연 (`index.ts:505-546`)
-- **추출 방식**: 링버퍼 tail 5000 bytes에서 **마지막 `⏺` 마커** 위치 찾기 → 그 이후 텍스트를 라인 단위 필터링
-- **필터** (`index.ts:517-527`):
-  ```
-  - spinner chars /^[✢✳✶✻✽⏸⏵❯─>]/
-  - /planmode|plan\s*mode|shift\+tab|accept\s*edits/i
-  - 상태 텍스트 "Whirring…", "Finagling…" + 토큰/시간
-  - /\?\s*for\s*shortcuts/
-  ```
-
-#### pendingPtyResponse — 3경로 race 해결
-
-`UserPromptSubmit` 훅과 `spinner_stop` 이벤트의 도착 순서가 **프롬프트 길이에 따라 역전**되는 race condition 때문에, 세 경로의 fallback 체인을 둔다:
+`Stop` hook 자체가 유실되는 경우가 실측으로 존재하므로 (v2.1.104 에서 발화율
+~18% 를 기록한 적이 있고, 2.1.231 에서도 유실이 관측된다) **transcript
+watchdog** (`bridge/src/claude-turn-watchdog.ts`) 이 구조적 fallback 이다:
 
 ```
-Path A: spinner_stop 도착 시점에 활성 turn 존재 → 바로 setTurnResponse
-Path B: spinner_stop이 먼저, turn이 아직 없음 → pendingPtyResponse에 버퍼링
-Path C: 이후 UserPromptSubmit이 도착하면 직전에 닫힌 turn에
-        setLastClosedTurnResponse로 적용 (bridge/src/index.ts:470-480)
-Stop 훅이 오면: 더 깨끗한 last_assistant_message로 덮어쓰고 버퍼 클리어
+턴 열림(UserPromptSubmit) 상태에서 hook 채널이 10s+ 침묵
+  → transcript tail 프로브 (mtime 게이트, 512KB cap)
+  → 마지막 message 레코드가 assistant + stop_reason "end_turn"
+    이고 timestamp 가 턴 시작 이후면 턴이 끝났다는 증거
+  → synthetic Stop 을 어댑터 이벤트 파이프에 주입
+  → 상태머신·타임라인·APME 가 기존 Stop 경로로 일관되게 닫힘
 ```
 
-- **앵커**: `index.ts:450` (`pendingPtyResponse` 선언), `:470-482`
+`stop_reason: "tool_use"` (권한 프롬프트/AskUserQuestion 대기) 는 절대 완료로
+판정하지 않으므로 진짜 대기를 강제로 닫는 일은 없다. 늦게 도착한 실제 Stop 은
+`ccPendingCompletion` 가드가 dedup 한다. 어느 단계에도 화면(PTY) 파싱은 없다.
 
 ---
 
@@ -472,7 +481,7 @@ ApmeConfig {
 
 | 레이어 | 파일 | 핵심 라인 |
 |---|---|---|
-| L1 — Ingestion | `bridge/src/index.ts` | `:440` (wireAgentApme 호출) · `:505-546` (PTY ⏺ 파싱) · `:470-482` (pendingPtyResponse 3경로) · `:1169` (wireAgentApme 정의) · `:1181-1209` (timeline 분기) · `:1213-1233` (Codex parser 분기) |
+| L1 — Ingestion | `bridge/src/index.ts` + `bridge/src/apme/adapters/` | index.ts hook switch (`claudeHookToSpans`/`codexHookToSpans` 분기) · `wireAgentApme` 정의 (timeline 분기 + CodexTurnManager 배선) · `claude-hook.ts` / `codex-hook.ts` / `codex-turn-manager.ts` · missed-Stop watchdog `bridge/src/claude-turn-watchdog.ts` |
 | L2 — Collector | `bridge/src/apme/collector.ts` | `:60` openRun · `:86` ingestHook · `:149` closeTurn · `:183` setTurnResponse · `:196` setLastClosedTurnResponse · `:239` splitRun · `:268` closeRun |
 | L2 — Store | `bridge/src/apme/store.ts` | `:32-57` runs · `:68-85` turns · `:98-109` evals · `:111-119` rubrics · `:137-174` 집계 뷰 · `:178-299` DEFAULT_RUBRIC_V1 + CATEGORY_RUBRICS · `:406-439` seedDefaultRubric |
 | L3 — Classifier | `bridge/src/apme/classifier.ts` | `:64` computeSignals · `:159` RULES · `:203` classify · `:239` classifyWithLlm · `:299` classifyRunSmart |

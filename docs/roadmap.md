@@ -13,7 +13,7 @@ AgentDeck is actively working on the next Apple companion release and on persona
 
 ## 2. Personalized Agent Evaluation System (APME)
 
-Building a data-driven answer to "which of my 6+ LLMs should I route this task to?" — replacing gut-feel model selection with measurement on my actual work. All three ingestion paths (Claude Code hooks + PTY, OpenClaw/OpenCode timeline events, Codex PTY parser) converge on a unified `ApmeCollector` → local SQLite. **Category-aware evaluation:**
+Building a data-driven answer to "which of my 6+ LLMs should I route this task to?" — replacing gut-feel model selection with measurement on my actual work. All three ingestion paths (Claude Code hooks + transcript JSONL, OpenClaw/OpenCode timeline events, Codex lifecycle hooks + notify + rollout JSONL) converge on a unified `ApmeCollector` → local SQLite. **Category-aware evaluation:**
 - **Coding (coding/refactoring/debugging)** — run-level eval after session ends, deterministic layer (lint/build/test) + LLM judge with category-specific rubrics
 - **Non-coding (conversation/planning/research/review)** — turn-level mid-session eval, fires immediately after each turn completes, no git diff needed
 - **Composite score** — 4-dimensional weighted sum (0.40 outcome + 0.40 judge + 0.15 efficiency + 0.05 vibe) so a single noisy signal can't poison the run

@@ -106,6 +106,26 @@ describe('CodexTurnManager (hook-primary path)', () => {
     expect(types).toContain('chat_end');
   });
 
+  it('a benign `message` on codex_stop is never rendered as an error', () => {
+    // Real codex_stop payloads (311 recorded, ≤0.146.0) carry
+    // last_assistant_message and never a bare `message`/`error` key — but
+    // `message` carries CONTENT on every other Codex event, so if a future
+    // build adds it to Stop it must not turn every close row into "Error: …".
+    const { mgr, entries, setTail } = harness;
+    setTail('');
+    mgr.onHookEvent(hookEvt('codex_user_prompt_submit', { message: { content: 'q' } }));
+    mgr.onHookEvent(hookEvt('codex_stop', { message: 'turn finished normally' }));
+    expect(entries.some((e) => (e.raw ?? '').startsWith('Error:'))).toBe(false);
+  });
+
+  it('an explicit `error` on codex_stop renders the error close row', () => {
+    const { mgr, entries, setTail } = harness;
+    setTail('');
+    mgr.onHookEvent(hookEvt('codex_user_prompt_submit', { message: { content: 'q' } }));
+    mgr.onHookEvent(hookEvt('codex_stop', { error: 'sandbox denied' }));
+    expect(entries.some((e) => (e.raw ?? '').startsWith('Error: sandbox denied'))).toBe(true);
+  });
+
   it('codex_stop does not reset subsequent turn_index numbering', () => {
     const { mgr, collector, store, setTail } = harness;
     setTail('first');

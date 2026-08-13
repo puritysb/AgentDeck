@@ -227,7 +227,12 @@ function outcomeFromHook(data: Record<string, unknown>): CodexTurnOutcome {
     const text = nonEmptyString(data[key]);
     if (text) return { text };
   }
-  const error = nonEmptyString(data.error) ?? nonEmptyString(data.message);
+  // Only an explicit `error` key maps to an error. `message` must NOT: on
+  // every other Codex event it carries content, and across 311 recorded real
+  // codex_stop payloads (≤0.146.0) neither key ever appeared — so a future
+  // benign `message` rendering every turn as "Error: …" is the costly
+  // misread, while a hypothetical message-shaped error only loses a label.
+  const error = nonEmptyString(data.error);
   return { text: '', ...(error ? { error } : {}) };
 }
 

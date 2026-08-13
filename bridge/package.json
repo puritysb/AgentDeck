@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/bridge",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "engines": {
     "node": ">=22"
   },

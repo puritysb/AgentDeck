@@ -77,49 +77,58 @@ Same-socket is the **only** reverse path (no inbound reachability required — w
 
 ## State Machine
 
-The bridge combines hook events and PTY output parsing to maintain 6 states:
+Lifecycle hooks own the 6 states; the managed terminal contributes only
+prompt-affordance observations (`terminal_ui` events) that hooks cannot see
+yet. The transition table is the SSOT in `shared/src/states.ts`.
 
 ```
                     +----------------+
          +---------|  DISCONNECTED  |<---- SessionEnd hook / PTY closed
          |         +----------------+
-         | agentdeck claude
+         | SessionStart hook
          v
-    +-----------+  Stop hook / idle detected
+    +-----------+  Stop hook (or transcript watchdog)
     |   IDLE    |<----------------------------------+
     +-----+-----+                                   |
-          | UserPromptSubmit hook / spinner          |
+          | UserPromptSubmit hook                    |
           v                                         |
-    +---------------+  permission prompt detected   |
+    +---------------+  permission prompt observed   |
     |  PROCESSING   |---------------------+         |
     +---+-------+---+                     |         |
         |       |                         v         |
         |       |                +--------------+   |
         |       |                |  AWAITING    |   |
-        |       |                |  PERMISSION  |---+ user responds (y/n/a)
-        |       |                +--------------+
-        |       | diff prompt detected
-        |       v
+        |       |                |  PERMISSION  |---+ user/device answers,
+        |       |                +--------------+     or hooks resume
+        |       | diff prompt observed                (tool activity / Stop /
+        |       v                                      next prompt)
         |  +--------------+
         |  |  AWAITING    |
-        |  |  DIFF        |-----------------------------+ user responds (v/a/d)
+        |  |  DIFF        |-----------------------------+ same exits
         |  +--------------+
-        | option UI detected
+        | option UI observed
         v
     +--------------+
     |  AWAITING    |
-    |  OPTION      |--------------------------------+ user selects option
+    |  OPTION      |--------------------------------+ same exits
     +--------------+
 ```
 
-| State | Description | Detection |
+| State | Description | Driven by |
 |-------|-------------|-----------|
 | `DISCONNECTED` | No session | `SessionEnd` hook, PTY exit |
-| `IDLE` | Waiting for prompt | `Stop` hook, `>` idle pattern |
-| `PROCESSING` | Agent working | `UserPromptSubmit` hook, spinner |
-| `AWAITING_PERMISSION` | Yes/No response needed | `Yes, allow once` / `(y/n)` pattern |
-| `AWAITING_OPTION` | Selection needed | Numbered list / navigable cursor |
-| `AWAITING_DIFF` | Diff review | `(V)iew/(A)pply/(D)eny` pattern |
+| `IDLE` | Waiting for prompt | `Stop` hook; missed-Stop transcript watchdog (Claude); notify `codex_turn_complete` (Codex) |
+| `PROCESSING` | Agent working | `UserPromptSubmit` hook; tool-activity hooks recover a dropped prompt-submit |
+| `AWAITING_PERMISSION` | Yes/No response needed | `terminal_ui` permission-prompt observation (managed sessions) |
+| `AWAITING_OPTION` | Selection needed | `terminal_ui` option-prompt observation (numbered list / navigable cursor) |
+| `AWAITING_DIFF` | Diff review | `terminal_ui` diff-prompt observation |
+
+`AWAITING_*` exits are hook-driven for Claude/Codex (tool activity after a
+short grace, `Stop`, or the next `UserPromptSubmit` — a prompt answered at the
+keyboard produces no device action, so the hooks that keep firing are the
+dismissal evidence). Adapters that still normalize their native event streams
+into parser signals (OpenCode, OpenClaw) additionally exit on
+`spinner_start`/`idle_detected`.
 
 ---
 

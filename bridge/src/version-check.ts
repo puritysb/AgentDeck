@@ -58,6 +58,18 @@ export function getAgentDeckVersion(): string {
   }
 }
 
+/** Codex CLI lifecycle-hook baseline, from this package's `compatibleCodex`
+ *  field — the one place the floor is stated (docs/cli.md quotes it). */
+export function getCompatibleCodexRange(): string | null {
+  try {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
+    return typeof pkg.compatibleCodex === 'string' ? pkg.compatibleCodex : null;
+  } catch {
+    return null;
+  }
+}
+
 function loadCompatState(): CompatState {
   try {
     if (existsSync(COMPAT_PATH)) {

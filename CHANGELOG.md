@@ -7,6 +7,40 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.20
+
+### CLI and daemon — npm
+
+Fixes two regressions that shipped in 1.0.19 when the terminal parser stopped
+driving lifecycle state, plus follow-up hardening. 1.0.19 removed the parser
+exit signals from the AWAITING states without adding hook-based replacements,
+and removed the Claude missed-Stop recovery without a substitute — the second
+of these was not called out in the 1.0.19 notes.
+
+- Close a managed session's permission/option/diff prompt state when the user
+  answers at the keyboard. 1.0.19 left such sessions wedged in "awaiting"
+  forever (with the stale question still answerable from devices); prompts now
+  exit on the turn's tool-activity hooks (after a short grace so a parallel
+  tool cannot dismiss a freshly drawn prompt), on Stop, and on the next prompt
+  submit
+- Recover Claude turns whose Stop hook never arrives: a watchdog probes the
+  transcript JSONL tail (never the screen) once the hook channel goes quiet
+  and closes state, timeline, and the APME turn through a synthetic Stop. A
+  genuine open prompt (`stop_reason: "tool_use"`) is never force-closed
+- Recover a dropped `UserPromptSubmit`: tool-activity hooks arriving while
+  IDLE now move the session to processing
+- Warn once, on the timeline and in the session log, when a managed Codex
+  session's terminal is active but no lifecycle hook or notify event ever
+  arrives — hooks and notify share one curl/port path, so a stale port kills
+  both silently
+- Map only an explicit `error` key on `codex_stop` to an error row. A bare
+  `message` is no longer treated as an error (it carries content on every
+  other Codex event; neither key appears in any of 311 recorded real Stop
+  payloads)
+- Read the Codex lifecycle baseline from the package's `compatibleCodex`
+  field instead of a hardcoded literal, and align the remaining
+  architecture docs (protocol, APME pipeline) with the hook-primary design
+
 ## 1.0.19
 
 ### CLI and daemon — npm

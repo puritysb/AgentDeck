@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { readLastTurn } from '../apme/claude-transcript-reader.js';
+import { readLastTurn, readTurnEndProbe } from '../apme/claude-transcript-reader.js';
 
 // Picks the most recent user→assistant turn out of a Claude Code JSONL
 // transcript. These fixtures mirror the structure Claude Code writes to
@@ -111,5 +111,81 @@ describe('readLastTurn', () => {
     const out = readLastTurn(path);
     expect(out!.userPrompt).toBe('legacy prompt');
     expect(out!.assistantText).toBe('legacy answer');
+  });
+});
+
+describe('readTurnEndProbe', () => {
+  let dir: string;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'transcript-probe-')); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  function writeTranscript(content: string): string {
+    const path = join(dir, 'session.jsonl');
+    writeFileSync(path, content);
+    return path;
+  }
+
+  it('reports end_turn with the record timestamp on a finished turn', () => {
+    const path = writeTranscript(fixture([
+      { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } },
+      { type: 'assistant', timestamp: '2026-08-13T12:00:05.000Z',
+        message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'hello' }] } },
+    ]));
+    const out = readTurnEndProbe(path);
+    expect(out).toEqual({
+      role: 'assistant',
+      stopReason: 'end_turn',
+      timestampMs: Date.parse('2026-08-13T12:00:05.000Z'),
+    });
+  });
+
+  it('skips trailing non-message records (mode markers)', () => {
+    // Claude Code appends e.g. {type:"mode"} after the assistant message.
+    const path = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T12:00:05.000Z',
+        message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }] } },
+      { type: 'mode', mode: 'normal', sessionId: 'x' },
+    ]));
+    const out = readTurnEndProbe(path);
+    expect(out!.role).toBe('assistant');
+    expect(out!.stopReason).toBe('end_turn');
+  });
+
+  it('reports tool_use mid-turn (prompt open / tools pending)', () => {
+    const path = writeTranscript(fixture([
+      { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'run it' }] } },
+      { type: 'assistant', timestamp: '2026-08-13T12:00:01.000Z',
+        message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } },
+    ]));
+    const out = readTurnEndProbe(path);
+    expect(out!.stopReason).toBe('tool_use');
+  });
+
+  it('reports the user role while a tool_result is the tail (assistant pending)', () => {
+    const path = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T12:00:01.000Z',
+        message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } },
+      { type: 'user', timestamp: '2026-08-13T12:00:02.000Z',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
+    ]));
+    const out = readTurnEndProbe(path);
+    expect(out!.role).toBe('user');
+    expect(out!.stopReason).toBeNull();
+  });
+
+  it('returns null timestamp when the record has none, and null on unreadable file', () => {
+    const path = writeTranscript(fixture([
+      { type: 'assistant', message: { role: 'assistant', stop_reason: 'end_turn', content: [] } },
+    ]));
+    expect(readTurnEndProbe(path)!.timestampMs).toBeNull();
+    expect(readTurnEndProbe(join(dir, 'missing.jsonl'))).toBeNull();
+  });
+
+  it('skips a truncated final line (concurrent write)', () => {
+    const good = JSON.stringify({ type: 'assistant', timestamp: '2026-08-13T12:00:05.000Z',
+      message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] } });
+    const path = writeTranscript(good + '\n' + '{"type":"assistant","message":{"role":"assist');
+    const out = readTurnEndProbe(path);
+    expect(out!.stopReason).toBe('end_turn');
   });
 });

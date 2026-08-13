@@ -102,7 +102,7 @@ Stage 4 — LLM Judge 튜닝 (사람과 일치하는 자동 평가)
 | 수집 대상 | 출처 |
 |---|---|
 | 프롬프트 | `UserPromptSubmit` hook / chat_start timeline |
-| 응답 | PTY `⏺` 마커 tail / chat_response / Stop hook |
+| 응답 | Stop hook `transcript_path` JSONL / chat_response / Codex rollout JSONL |
 | 툴 호출 히스토리 | `PreToolUse`/`PostToolUse` hooks |
 | 파일 변경 | git diff (before/after) |
 | 토큰 사용량 / 비용 | `/usage` 명령, Codex bash 로그 |
@@ -114,17 +114,18 @@ Stage 4 — LLM Judge 튜닝 (사람과 일치하는 자동 평가)
 ┌───────────────┬────────────────────────┬─────────────────────────────┐
 │   에이전트     │      수집 경로          │         특이사항             │
 ├───────────────┼────────────────────────┼─────────────────────────────┤
-│ Claude Code   │ hook HTTP POST         │ Stop 훅 발화율 ~18% (불안정)  │
-│               │ /hook/:event           │ → PTY ⏺ tail 파싱이 1차 경로  │
-│               │                        │ → pendingPtyResponse 3경로    │
-│               │                        │   race 해결                   │
+│ Claude Code   │ hook HTTP POST         │ Stop 훅 유실 시              │
+│               │ /hooks/:event          │ → transcript JSONL tail 이   │
+│               │ + transcript JSONL     │   정본, watchdog 이 synthetic │
+│               │                        │   Stop 으로 턴을 닫음         │
 ├───────────────┼────────────────────────┼─────────────────────────────┤
 │ OpenClaw      │ adapter timeline       │ chat_start/response/end      │
 │ OpenCode      │ events                 │ → collector 이벤트 매핑       │
 │               │ (source:'timeline')    │                              │
 ├───────────────┼────────────────────────┼─────────────────────────────┤
-│ Codex CLI     │ PTY parser             │ hook/timeline 없음           │
-│               │ (spinner_stop + ⏺)     │ → PTY tail 파싱 유일 경로     │
+│ Codex CLI     │ lifecycle hooks        │ codex_stop 유실 시 notify    │
+│               │ + notify + rollout     │ turn-complete 가 닫고,       │
+│               │ JSONL                  │ 응답은 rollout tail 로 보완   │
 └───────────────┴────────────────────────┴─────────────────────────────┘
                                 │
                                 ▼

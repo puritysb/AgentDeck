@@ -136,6 +136,62 @@ export function readModelFromTranscript(transcriptPath: string): string | null {
   return null;
 }
 
+export interface TurnEndProbe {
+  /** Role of the last message-bearing JSONL record. */
+  role: string;
+  /** `message.stop_reason` on that record (null when absent). */
+  stopReason: string | null;
+  /** Record `timestamp` in epoch ms (null when absent/unparseable). */
+  timestampMs: number | null;
+}
+
+/**
+ * Probe whether the transcript's most recent turn has finished. A completed
+ * turn's last message-bearing record is `role: "assistant"` with
+ * `stop_reason: "end_turn"`; mid-turn tails end in `stop_reason: "tool_use"`
+ * or a `user` tool_result record. Non-message records (`type: "mode"` etc.)
+ * can trail the assistant message, so the walk skips records without a
+ * `message.role`. Never throws; returns null when unreadable/empty.
+ *
+ * Used by the turn watchdog to close a turn whose Stop hook was dropped —
+ * the caller must additionally check `timestampMs` against its own turn-open
+ * time, because at turn start the tail still shows the PREVIOUS turn's
+ * `end_turn`.
+ */
+export function readTurnEndProbe(transcriptPath: string): TurnEndProbe | null {
+  let raw: string;
+  try {
+    raw = readFileSync(transcriptPath, 'utf-8');
+  } catch {
+    return null;
+  }
+  const MAX_TAIL = 512 * 1024;
+  const tail = raw.length > MAX_TAIL ? raw.slice(raw.length - MAX_TAIL) : raw;
+  const lines = tail.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    let rec: {
+      timestamp?: string;
+      message?: { role?: string; stop_reason?: string | null };
+    };
+    try {
+      rec = JSON.parse(line);
+    } catch {
+      continue; // skip malformed (possibly truncated) line
+    }
+    const role = rec?.message?.role;
+    if (!role) continue;
+    const ts = rec.timestamp ? Date.parse(rec.timestamp) : NaN;
+    return {
+      role,
+      stopReason: rec.message?.stop_reason ?? null,
+      timestampMs: Number.isFinite(ts) ? ts : null,
+    };
+  }
+  return null;
+}
+
 function contentToString(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
