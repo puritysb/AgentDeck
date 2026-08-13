@@ -27,6 +27,7 @@ import type {
   ApmeScorecardRow,
   ApmeTaskRow,
   ApmeTaskListRow,
+  ApmeStopDeliveryRow,
 } from './types.js';
 import type {
   ApmeSampleEventRow,
@@ -91,7 +92,16 @@ CREATE TABLE IF NOT EXISTS turns (
   task_category TEXT,
   outcome     TEXT,
   composite_score REAL,
-  efficiency_json TEXT
+  efficiency_json TEXT,
+  -- How this turn's end was learned. The Stop hook is the sole authority that
+  -- closes a Claude turn and its delivery is NOT guaranteed, so the closing
+  -- signal is recorded per turn: 'stop' (real hook), 'synthetic_stop'
+  -- (watchdog recovered it from the transcript), 'next_prompt' (no Stop ever
+  -- arrived — an unrecovered loss), 'session_end' / 'run_close' / 'clear'.
+  -- NULL while the turn is open. This column is the Stop-delivery instrument:
+  -- synthetic_stop/(stop+synthetic_stop+next_prompt) is the observed loss rate
+  -- and 'next_prompt' alone is the share the watchdog failed to recover.
+  end_source  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_turns_run ON turns(run_id);
@@ -548,6 +558,15 @@ export class ApmeStore {
       try { this.db.exec('ALTER TABLE turns ADD COLUMN task_id TEXT'); } catch { /* ignore */ }
       try { this.db.exec('CREATE INDEX IF NOT EXISTS idx_turns_task ON turns(task_id)'); } catch { /* ignore */ }
     }
+    // Stop-delivery attribution. Deliberately NOT backfilled: rows written
+    // before this column existed cannot be told apart (every one of them was
+    // closed by the next prompt regardless of whether a Stop arrived), and a
+    // guessed backfill would poison the very rate this column exists to
+    // measure. `end_source IS NULL AND ended_at IS NOT NULL` reads as
+    // "pre-instrument", which is what it is.
+    if (!turnCols.includes('end_source')) {
+      try { this.db.exec('ALTER TABLE turns ADD COLUMN end_source TEXT'); } catch { /* ignore */ }
+    }
     const evalCols = (this.db.prepare("PRAGMA table_info(evals)").all() as Array<{ name: string }>).map(c => c.name);
     if (!evalCols.includes('task_id')) {
       try { this.db.exec('ALTER TABLE evals ADD COLUMN task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE'); }
@@ -769,6 +788,7 @@ export class ApmeStore {
       filesCreated: 'files_created', gitAfter: 'git_after', taskCategory: 'task_category',
       outcome: 'outcome', compositeScore: 'composite_score', efficiencyJson: 'efficiency_json',
       prompt: 'prompt', response: 'response', taskId: 'task_id',
+      endSource: 'end_source',
     };
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(fields)) {
@@ -788,6 +808,48 @@ export class ApmeStore {
   listTurns(runId: string): Array<Record<string, unknown>> {
     if (!this.db) return [];
     return this.db.prepare('SELECT * FROM turns WHERE run_id = ? ORDER BY turn_index ASC').all(runId) as Array<Record<string, unknown>>;
+  }
+
+  /** Stop-hook delivery rate, per agent, over turns STARTED since `sinceMs`.
+   *
+   *  The window keys on `started_at` rather than `ended_at` so a turn that is
+   *  still open counts in the same denominator as its siblings — an open turn
+   *  is a Stop that has not arrived (yet), and dropping it from the sample
+   *  would hide exactly the failure being measured.
+   *
+   *  `preInstrument` is rows written before the `end_source` column existed;
+   *  they are reported separately instead of being folded into any bucket,
+   *  because their closing signal is genuinely unknown (see the migration).
+   */
+  stopDelivery(opts: { sinceMs: number; agentType?: string } = { sinceMs: 0 }): ApmeStopDeliveryRow[] {
+    if (!this.db) return [];
+    const params: unknown[] = [opts.sinceMs];
+    let where = 't.started_at >= ?';
+    if (opts.agentType) { where += ' AND r.agent_type = ?'; params.push(opts.agentType); }
+    const rows = this.db.prepare(
+      `SELECT r.agent_type AS agentType,
+              COUNT(*) AS total,
+              SUM(t.end_source = 'stop') AS stop,
+              SUM(t.end_source = 'synthetic_stop') AS syntheticStop,
+              SUM(t.end_source = 'next_prompt') AS nextPrompt,
+              SUM(t.end_source IN ('session_end','run_close','clear')) AS sessionEnd,
+              SUM(t.ended_at IS NULL) AS open,
+              SUM(t.ended_at IS NOT NULL AND t.end_source IS NULL) AS preInstrument
+         FROM turns t JOIN runs r ON r.id = t.run_id
+        WHERE ${where}
+        GROUP BY r.agent_type
+        ORDER BY r.agent_type`,
+    ).all(...params) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      agentType: String(r.agentType ?? 'unknown'),
+      total: Number(r.total ?? 0),
+      stop: Number(r.stop ?? 0),
+      syntheticStop: Number(r.syntheticStop ?? 0),
+      nextPrompt: Number(r.nextPrompt ?? 0),
+      sessionEnd: Number(r.sessionEnd ?? 0),
+      open: Number(r.open ?? 0),
+      preInstrument: Number(r.preInstrument ?? 0),
+    }));
   }
 
   // ─── Tasks ──────────────────────────────────────────────────────────────────
@@ -1223,7 +1285,10 @@ export class ApmeStore {
       'SELECT id, task_category FROM tasks WHERE run_id = ? AND ended_at IS NULL',
     ).all(runId) as Array<{ id: string; task_category: string | null }>;
     const tx = this.db.transaction(() => {
-      this.db!.prepare('UPDATE turns SET ended_at = ? WHERE run_id = ? AND ended_at IS NULL').run(endedAt, runId);
+      this.db!.prepare(
+        `UPDATE turns SET ended_at = ?, end_source = 'run_close'
+          WHERE run_id = ? AND ended_at IS NULL`,
+      ).run(endedAt, runId);
       this.db!.prepare(
         `UPDATE tasks SET ended_at = ?, boundary_signal = 'orphaned',
            first_turn_index = COALESCE(first_turn_index, ?),

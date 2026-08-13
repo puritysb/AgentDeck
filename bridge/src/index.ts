@@ -1674,10 +1674,18 @@ function wireClaudeCodeTimeline(
           }
         }
 
-        // APME: store Claude's response on the current turn
+        // APME: store Claude's response on the current turn, then close the
+        // turn at the Stop that produced it (response first — the trajectory
+        // event and response_kind tag read the still-active turn). The close
+        // records WHICH Stop closed it: a watchdog-injected synthetic Stop is
+        // one that the real hook dropped, and counting those is the standing
+        // measurement of hook loss (turns.end_source).
         const apmeRef = core.getApme();
-        if (apmeRef && lastAssistantMsg) {
-          apmeRef.collector.setTurnResponse(core.sessionId, lastAssistantMsg);
+        if (apmeRef) {
+          if (lastAssistantMsg) apmeRef.collector.setTurnResponse(core.sessionId, lastAssistantMsg);
+          apmeRef.collector.noteTurnStop(core.sessionId, {
+            synthetic: evt.data?.synthetic_stop === true,
+          });
         }
 
         emitCompletion(lastAssistantMsg, duration, toolSummary);

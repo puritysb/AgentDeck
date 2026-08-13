@@ -231,6 +231,50 @@ export interface ParsedJudge {
  *  the judge and produce noise scores. */
 export type ResponseKind = 'text' | 'tool_only' | 'empty';
 
+/** How a turn's end was learned, stored in `turns.end_source`.
+ *
+ *  A Claude turn is closed by exactly one authority — the Stop hook — whose
+ *  delivery is fire-and-forget and therefore lossy. Recording WHICH signal
+ *  closed each turn turns that loss from an anecdote into a rate:
+ *
+ *   - `stop`            the real Stop hook arrived. The healthy case.
+ *   - `synthetic_stop`  the Stop was lost and the missed-Stop watchdog
+ *                       recovered it from the transcript tail. Counting these
+ *                       IS the Stop-hook loss measurement.
+ *   - `next_prompt`     no Stop ever arrived and no watchdog recovered it —
+ *                       the turn stayed open until the following prompt
+ *                       displaced it. An unrecovered loss.
+ *   - `session_end`     the session ended while the turn was open (includes an
+ *                       interrupted / abandoned turn).
+ *   - `run_close`       the run was closed or reaped out from under the turn.
+ *   - `clear`           `/clear` split the run mid-turn.
+ *
+ *  NULL means either "still open" (`ended_at IS NULL`) or, on a row written
+ *  before the column existed, "unknown" — never assume a bucket for those. */
+export type TurnEndSource =
+  | 'stop'
+  | 'synthetic_stop'
+  | 'next_prompt'
+  | 'session_end'
+  | 'run_close'
+  | 'clear';
+
+/** Per-agent Stop-delivery rollup over a time window (`ApmeStore.stopDelivery`). */
+export interface ApmeStopDeliveryRow {
+  agentType: string;
+  /** Turns STARTED in the window — open ones included, on purpose. */
+  total: number;
+  stop: number;
+  syntheticStop: number;
+  nextPrompt: number;
+  /** `session_end` + `run_close` + `clear` folded together. */
+  sessionEnd: number;
+  /** Still open at query time. */
+  open: number;
+  /** Closed, but written before `end_source` existed — signal unknown. */
+  preInstrument: number;
+}
+
 // ─── HTTP API response envelopes ──────────────────────────────────────────────
 
 /** Common envelope for every APME GET response. External consumers should check

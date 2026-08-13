@@ -88,6 +88,18 @@ function formatBytes(value: unknown): string {
   return `${bytes}B`;
 }
 
+/** Parse a `--since`-style lookback (`90m`, `6h`, `3d`, `2w`) into milliseconds.
+ *  Returns null for anything unrecognized so the caller can reject it loudly —
+ *  silently defaulting a typo'd window would report a rate over the wrong span. */
+function parseLookbackWindow(value: string): number | null {
+  const m = /^(\d+(?:\.\d+)?)\s*(m|h|d|w)$/i.exec(String(value ?? '').trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const unit = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[m[2].toLowerCase() as 'm' | 'h' | 'd' | 'w'];
+  return n * unit;
+}
+
 function postJsonWithTimeout<T>(urlString: string, body: unknown, timeoutMs: number): Promise<{ statusCode: number; body: T }> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
@@ -2541,6 +2553,42 @@ apme
       const cpq = c.costPerQuality != null ? `$${c.costPerQuality.toFixed(2)}` : '—';
       log(`  ${c.modelId.slice(0, 26).padEnd(26)} ${c.agentType.padEnd(14)} ${String(c.runs).padEnd(6)} ${score.padEnd(8)} ${tests.padEnd(8)} ${cost.padEnd(10)} ${cpq}`);
     }
+  });
+
+apme
+  .command('stop-health')
+  .description('Stop-hook delivery rate — how turns actually got closed')
+  .option('--since <window>', 'Lookback window, e.g. 6h / 3d / 2w (default 7d)', '7d')
+  .option('--agent <type>', 'Restrict to one agent type (claude-code, codex-cli, …)')
+  .action(async (opts) => {
+    const { initApme } = await import('./apme/index.js');
+    const apme = await initApme();
+    if (!apme) { log('APME not available'); process.exit(1); }
+
+    const windowMs = parseLookbackWindow(opts.since);
+    if (windowMs == null) { log(`Unrecognized --since value: ${opts.since}`); process.exit(1); }
+    const sinceMs = Date.now() - windowMs;
+    const rows = apme.store.stopDelivery({ sinceMs, agentType: opts.agent });
+    if (rows.length === 0) { log(`No turns started in the last ${opts.since}.`); return; }
+
+    log(`\n  Turns started in the last ${opts.since} — how each one's end was learned`);
+    log(`  ${'Agent'.padEnd(14)} ${'Turns'.padEnd(7)} ${'Stop'.padEnd(7)} ${'Synth'.padEnd(7)} ${'NoStop'.padEnd(7)} ${'SessEnd'.padEnd(8)} ${'Open'.padEnd(6)} ${'?'.padEnd(6)} Stop loss`);
+    log(`  ${'─'.repeat(14)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(8)} ${'─'.repeat(6)} ${'─'.repeat(6)} ${'─'.repeat(9)}`);
+    for (const r of rows) {
+      // Denominator is turns whose Stop we can actually adjudicate: a real
+      // Stop, a recovered one, or a turn the next prompt displaced. Turns that
+      // ended with the session, are still open, or predate the column are NOT
+      // evidence either way and stay out of the ratio.
+      const adjudicated = r.stop + r.syntheticStop + r.nextPrompt;
+      const lost = r.syntheticStop + r.nextPrompt;
+      const rate = adjudicated > 0 ? `${((lost / adjudicated) * 100).toFixed(0)}% of ${adjudicated}` : '—';
+      log(`  ${r.agentType.slice(0, 14).padEnd(14)} ${String(r.total).padEnd(7)} ${String(r.stop).padEnd(7)} ${String(r.syntheticStop).padEnd(7)} ${String(r.nextPrompt).padEnd(7)} ${String(r.sessionEnd).padEnd(8)} ${String(r.open).padEnd(6)} ${String(r.preInstrument).padEnd(6)} ${rate}`);
+    }
+    log('');
+    log('  Synth  = Stop hook dropped, watchdog recovered it from the transcript');
+    log('  NoStop = Stop hook dropped and nothing recovered it (closed by the next prompt)');
+    log('  ?      = closed before end_source existed — signal unknown, never guessed');
+    log('');
   });
 
 apme

@@ -2389,6 +2389,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               // response, so a duplicate stop is a no-op instead of a clobber.
               apme.collector.setLastClosedTurnResponse(hookSid, responseText);
             }
+            // Close the APME turn on the Stop that ended it, tagged with which
+            // Stop that was. Runs AFTER the response capture above (the
+            // trajectory event wants the still-active turn) and is a no-op when
+            // no turn is open, so a duplicate/late stop cannot re-attribute an
+            // already-closed turn. `turnOpen` above is a TIMELINE predicate —
+            // it says nothing about the collector's turn, which is why this is
+            // unconditional rather than nested under it.
+            apme.collector.noteTurnStop(hookSid, { synthetic: json.synthetic_stop === true });
           }
           if (turnOpen && lastStart) {
             const now = Date.now();

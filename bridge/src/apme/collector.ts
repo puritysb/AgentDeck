@@ -23,7 +23,7 @@ import type { UsageSnapshot } from '../types.js';
 import type { SessionEntry } from '../session-registry.js';
 import type { ApmeStore } from './store.js';
 import type { ApmeRunRow } from './types.js';
-import type { AgentType, TelemetrySpan, ApmeSampleEventRow, TrajectoryEventKind } from '@agentdeck/shared';
+import type { AgentType, TelemetrySpan, ApmeSampleEventRow, TrajectoryEventKind, TurnEndSource } from '@agentdeck/shared';
 import { priceUsd, providerFor } from '@agentdeck/shared';
 import type { ApmeHwSampler } from './hw-sampler.js';
 import { classifyRunSmart, computeSignals, classify } from './classifier.js';
@@ -265,7 +265,10 @@ export class ApmeCollector {
           if (typeof lastIdx === 'number') prevIndex = lastIdx;
         }
       }
-      this.closeTurn(sessionId);
+      // A turn still open when the NEXT prompt arrives never got its Stop —
+      // and no watchdog recovered it either, or the synthetic Stop would have
+      // closed it already. That is the unrecovered-loss bucket.
+      this.closeTurn(sessionId, 'next_prompt');
       // Open new turn
       const turnIndex = prevIndex + 1;
       const run = this.store.getRun(runId);
@@ -412,12 +415,38 @@ export class ApmeCollector {
    *  to finalize the turn row immediately rather than wait for the next
    *  UserPromptSubmit / closeRun to flush endedAt + buffered counters.
    *  Idempotent — no-op when no active turn for the session. */
-  closeTurnForSession(sessionId: string): void {
-    this.closeTurn(sessionId);
+  closeTurnForSession(sessionId: string, source: TurnEndSource = 'stop'): void {
+    this.closeTurn(sessionId, source);
   }
 
-  /** Close the current turn for a session (called on new prompt or session end). */
-  private closeTurn(sessionId: string): void {
+  /** The agent reported its turn finished (Claude `Stop`, real or synthetic).
+   *
+   *  Two jobs, both of which need to happen at the Stop and not one prompt
+   *  later. First, `ended_at` is stamped HERE, so a turn's duration is the
+   *  agent's working time instead of that plus however long the user took to
+   *  type the next thing — before this, an overnight gap between prompts was
+   *  indistinguishable from a 5-hour turn, and every duration-derived
+   *  efficiency number was reading user think time. Second, `end_source`
+   *  records WHICH signal closed it, which is the whole Stop-delivery
+   *  instrument: a turn that reaches the next prompt still open is a Stop that
+   *  was lost, and one closed by `synthetic_stop` is a Stop that was lost and
+   *  recovered. Neither is visible if every turn closes the same way.
+   *
+   *  Callers must record the response BEFORE calling this — `setTurnResponse`
+   *  does fall back to the last-closed turn, but the sample trajectory and the
+   *  `response_kind` tag read cleaner while the turn is still active.
+   *
+   *  Idempotent: a duplicate or late Stop finds no active turn and no-ops, so
+   *  a synthetic Stop racing a real one cannot overwrite the real attribution. */
+  noteTurnStop(sessionId: string, opts: { synthetic?: boolean } = {}): void {
+    if (!this.store.enabled) return;
+    this.closeTurn(sessionId, opts.synthetic ? 'synthetic_stop' : 'stop');
+  }
+
+  /** Close the current turn for a session (called on Stop, new prompt, or
+   *  session end). `source` records which of those it was — see
+   *  `TurnEndSource`. */
+  private closeTurn(sessionId: string, source: TurnEndSource): void {
     const turn = this.sessionToTurn.get(sessionId);
     if (!turn) return;
     this.sessionToLastTurnId.set(sessionId, turn.id);
@@ -432,8 +461,9 @@ export class ApmeCollector {
         filesModified: turn.filesModified,
         filesCreated: turn.filesCreated,
         gitAfter,
+        endSource: source,
       });
-      debug('APME', `closeTurn ${turn.id.slice(0, 8)} index=${turn.index} tools=${turn.toolCalls}`);
+      debug('APME', `closeTurn ${turn.id.slice(0, 8)} index=${turn.index} tools=${turn.toolCalls} src=${source}`);
     } catch (err) {
       debug('APME', `closeTurn failed: ${String(err)}`);
     }
@@ -1021,7 +1051,7 @@ export class ApmeCollector {
     // boundary=clear before closeRun tears everything down.
     this.closeTask(sessionId, 'clear');
     // Close current run (no exitCode — session is still alive)
-    this.closeRun(sessionId, undefined, projectPath);
+    this.closeRun(sessionId, undefined, projectPath, 'clear');
     // Open a new run with the same session parameters, pointing back at the run
     // it continues. `/clear` resets the agent's context, not the user's work —
     // without this edge one conversation becomes N disconnected runs (a live
@@ -1051,12 +1081,17 @@ export class ApmeCollector {
   /** Finalize a run. Returns the runId so callers can enqueue evaluation.
    *  Empty runs (no prompts, no steps, no turns) are deleted — they're just
    *  connection noise and clutter the dashboard. */
-  closeRun(sessionId: string, exitCode?: number, projectPath?: string): string | null {
+  closeRun(
+    sessionId: string,
+    exitCode?: number,
+    projectPath?: string,
+    turnEndSource: TurnEndSource = 'session_end',
+  ): string | null {
     if (!this.store.enabled) return null;
     const runId = this.sessionToRun.get(sessionId);
     if (!runId) return null;
     // Close the last open turn + task before finalizing the run.
-    this.closeTurn(sessionId);
+    this.closeTurn(sessionId, turnEndSource);
     // splitRun already called closeTask('clear') before us, so this is usually
     // a no-op in the split path. Direct closeRun (session exit) still needs it.
     this.closeTask(sessionId, 'session_end');

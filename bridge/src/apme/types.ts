@@ -22,6 +22,8 @@ export type {
   TaskBoundarySignal,
   ParsedJudge,
   ResponseKind,
+  TurnEndSource,
+  ApmeStopDeliveryRow,
   EvalSchemaVersion,
 } from '@agentdeck/shared';
 

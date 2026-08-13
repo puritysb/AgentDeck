@@ -136,10 +136,31 @@ id, run_id, turn_index, prompt, response,
 started_at, ended_at, tool_calls,
 files_modified, files_created,
 git_before, git_after,
-task_category, outcome, composite_score, efficiency_json
+task_category, outcome, composite_score, efficiency_json,
+end_source
 ```
 
-턴은 `UserPromptSubmit`/`chat_start`/`user_prompt` 이벤트마다 생성되고, 응답 캡처 시 `response` 채워짐. 다음 턴 시작 또는 세션 종료 시 `closeTurn()` 호출.
+턴은 `UserPromptSubmit`/`chat_start`/`user_prompt` 이벤트마다 생성되고, 응답 캡처 시 `response` 채워짐. **닫히는 시점은 Stop** (`collector.noteTurnStop()`) — 다음 프롬프트가 아니다. 이전에는 `ended_at` 이 다음 프롬프트 시각이었으므로 턴 길이에 사용자가 다음 지시를 타이핑한 시간이 통째로 섞였고(실측: 5h 턴 = 대부분 유휴), duration 파생 효율 지표가 전부 오염돼 있었다.
+
+#### end_source — Stop hook 유실률 상시 계측
+
+Claude 턴을 닫는 권한은 Stop hook **하나뿐**이고 그 전달은 fire-and-forget 이라 보장되지 않는다. 문제는 유실이 구조적으로 안 보인다는 점이다 — Stop 이 유실된 턴은 "다음 프롬프트에 닫힌 턴"과 행 모양이 똑같다. `end_source` 는 **어느 신호가 그 턴을 닫았는지**를 기록해 유실을 일화가 아닌 비율로 만든다:
+
+| 값 | 의미 |
+|----|------|
+| `stop` | 진짜 Stop hook 도착 — 정상 |
+| `synthetic_stop` | Stop 유실 → `claude-turn-watchdog.ts` 가 transcript tail 근거로 복구. **이 개수가 곧 유실 측정치** |
+| `next_prompt` | Stop 도 없고 복구도 없었음 — 다음 프롬프트가 밀어내며 닫음. **미복구 유실** |
+| `session_end` / `run_close` / `clear` | 턴이 열린 채로 세션·run 이 끝나거나 `/clear` 로 잘림 |
+| `NULL` | 아직 열려 있음(`ended_at IS NULL`), 또는 컬럼 도입 이전 행 |
+
+컬럼 도입 이전 행은 **backfill 하지 않는다**. 당시엔 전부 다음 프롬프트에 닫혔으므로 Stop 도착 여부를 구분할 근거가 없고, 추측 backfill 은 이 컬럼이 재려는 바로 그 비율을 오염시킨다. `stop-health` 는 그 행들을 `?` 로 따로 센다.
+
+```bash
+agentdeck apme stop-health --since 7d [--agent claude-code]
+```
+
+분모는 **판정 가능한 턴만** — `stop + synthetic_stop + next_prompt`. 열린 턴·세션 종료로 닫힌 턴·도입 이전 행은 Stop 도착 여부의 증거가 아니므로 비율에서 제외한다. 다만 `total` 에는 열린 턴이 포함되는데, 열린 턴이야말로 "아직 안 온 Stop" 이라 분모에서 빼면 측정하려는 실패를 숨기게 되기 때문이다.
 
 ### steps — 훅 이벤트 + tool 호출 기록
 
