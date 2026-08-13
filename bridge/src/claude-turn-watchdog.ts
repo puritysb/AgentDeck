@@ -94,7 +94,13 @@ export class ClaudeTurnWatchdog {
         this.disarm();
         break;
       case 'SessionEnd':
-        this.stop();
+        // Disarm, but do NOT latch `stopped`: Claude Code fires SessionEnd on
+        // /clear too (paired with a SessionStart), and the bridge session
+        // lives on. A permanent latch here would disable missed-Stop recovery
+        // for the rest of the session after the first /clear. Permanent stop
+        // is the bridge shutdown path (core.onShutdown → stop()).
+        this.turnOpenedAt = null;
+        this.disarm();
         break;
       default:
         break;

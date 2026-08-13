@@ -206,7 +206,12 @@ export class BridgeCore {
 
     // Core components
     this.usageTracker = new UsageTracker();
-    this.stateMachine = new StateMachine(this.usageTracker);
+    // The daemon hub's machine multiplexes EVERY observed session's hooks, so
+    // one session's tool activity must never dismiss another's AWAITING
+    // prompt (e.g. a held OpenClaw approval) or reopen IDLE.
+    this.stateMachine = new StateMachine(this.usageTracker, {
+      toolActivityRecovery: !this.isDaemon,
+    });
     this.ollamaProbe = new OllamaProbe();
     this.displayMonitor = new DisplayMonitor();
     this.bridgeTimeline = new BridgeTimelineStore();

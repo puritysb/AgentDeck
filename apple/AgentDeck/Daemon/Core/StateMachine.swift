@@ -47,6 +47,22 @@ let stateTransitions: [StateTransition] = [
     .init(from: .awaitingPermission, to: .processing, trigger: "spinner_start", source: .pty),
     .init(from: .awaitingOption, to: .processing, trigger: "spinner_start", source: .pty),
     .init(from: .awaitingDiff, to: .processing, trigger: "spinner_start", source: .pty),
+    // Hook exits from AWAITING_* (mirrors states.ts): a prompt answered at the
+    // keyboard is dismissed by the lifecycle hooks that keep firing. NOTE:
+    // this daemon multiplexes every observed session into one machine, so —
+    // exactly like the Node daemon hub's `toolActivityRecovery: false` — the
+    // driver (DaemonServer) must never EMIT "tool_activity"; the entries exist
+    // to keep the table a faithful mirror of shared/src/states.ts.
+    .init(from: .awaitingPermission, to: .processing, trigger: "tool_activity", source: .hook),
+    .init(from: .awaitingOption, to: .processing, trigger: "tool_activity", source: .hook),
+    .init(from: .awaitingDiff, to: .processing, trigger: "tool_activity", source: .hook),
+    .init(from: .awaitingPermission, to: .idle, trigger: "stop", source: .hook),
+    .init(from: .awaitingOption, to: .idle, trigger: "stop", source: .hook),
+    .init(from: .awaitingDiff, to: .idle, trigger: "stop", source: .hook),
+    .init(from: .awaitingPermission, to: .processing, trigger: "user_prompt_submit", source: .hook),
+    .init(from: .awaitingOption, to: .processing, trigger: "user_prompt_submit", source: .hook),
+    .init(from: .awaitingDiff, to: .processing, trigger: "user_prompt_submit", source: .hook),
+    .init(from: .idle, to: .processing, trigger: "tool_activity", source: .hook),
     .init(from: .processing, to: .idle, trigger: "stuck_timeout", source: .internal),
     .init(from: nil, to: .disconnected, trigger: "session_end", source: .hook),
     .init(from: nil, to: .idle, trigger: "interrupt", source: .user),

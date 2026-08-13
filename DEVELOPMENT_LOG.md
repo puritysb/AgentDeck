@@ -47,12 +47,33 @@
   서술), `docs/why-apme.md`, `docs/roadmap.md` — hook-primary 구조와 watchdog 반영.
   `states.ts`/`state-machine.ts`의 낡은 주석도 함께 수정.
 
+### 머지 전 적대적 리뷰 반영 (2차 커밋)
+
+- 병렬 sibling 오해제: PostToolUse 해제는 in-flight 카운터(PreToolUse++/
+  PostToolUse--)가 0일 때만 — gated tool 이 pending 인 동안 sibling 완료는 해제
+  증거가 아니다. same-kind 프롬프트 재감지는 grace 를 갱신한다.
+- 늦은 tool-end straggler 가 Stop 후 IDLE 을 5분 phantom PROCESSING 으로 재개방하던
+  것 차단 (IDLE 복구는 tool START 만).
+- 데몬 hub 의 전역 상태머신은 관측 세션 전부를 멀티플렉스하므로
+  `toolActivityRecovery: false` — 남의 세션 tool hook 이 OpenClaw 승인 프롬프트를
+  지우는 오염 차단. Swift 미러 테이블도 states.ts 와 동기화 (hub 드라이버는
+  tool_activity 를 방출하지 않는다는 계약 주석 포함).
+- watchdog: SessionEnd 가 `stopped` 를 영구 래치하던 것 수정 — `/clear` 가
+  SessionEnd+SessionStart 를 쌍으로 발화하므로 래치는 첫 `/clear` 이후 복구를
+  영원히 껐다. 영구 정지는 `core.onShutdown → stop()` 경로만.
+- `readTurnEndProbe` 를 fd 기반 tail 읽기(256KB)로 교체 — 60MB transcript 를 5초
+  폴마다 전체 slurp 하던 것 제거. codex_session_start 조기 유실로 인한 hook-silence
+  오경보 수정 (adapter.start 전 조기 리스너). `compatibleCodex` 필드는 shape 검증
+  (satisfiesRange 가 미지원 문법을 조용히 통과시키는 fail-open 차단).
+
 ### 검증
 
-- 상태머신 hook-탈출 10케이스는 실경로(`handleHookEvent`)로 구동. watchdog 9케이스,
+- 상태머신 hook-탈출 15케이스는 실경로(`handleHookEvent`)로 구동. watchdog 10케이스,
   transcript 프로브 6케이스, hook-silence 5케이스, codex_stop 매핑 2케이스 신규.
+  전체 182 파일 2,945 테스트 green.
 - Stop 유실이 현재도 실재함을 실측: 1.0.19 배포 후 Claude 턴 9개 중 2개 open 잔존,
   닫힌 7개 중 3개 response 없음 (apme.sqlite, Claude Code 2.1.231).
+- codex_stop payload 실측 311건 (≤0.146.0): `message`/`error` 키 등장 0회.
 
 ---
 

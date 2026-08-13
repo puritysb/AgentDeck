@@ -16,7 +16,7 @@
  * `tool_only`) is the fallback.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, openSync, readSync, fstatSync, closeSync } from 'fs';
 import { debug } from '../logger.js';
 
 export interface LastTurnExcerpt {
@@ -159,14 +159,15 @@ export interface TurnEndProbe {
  * `end_turn`.
  */
 export function readTurnEndProbe(transcriptPath: string): TurnEndProbe | null {
-  let raw: string;
-  try {
-    raw = readFileSync(transcriptPath, 'utf-8');
-  } catch {
-    return null;
-  }
-  const MAX_TAIL = 512 * 1024;
-  const tail = raw.length > MAX_TAIL ? raw.slice(raw.length - MAX_TAIL) : raw;
+  // Unlike the per-Stop readers above, this runs on a POLL (the missed-Stop
+  // watchdog, every few seconds while a turn is quiet), and real transcripts
+  // reach tens of MB — so read only the trailing bytes through a file
+  // descriptor instead of slurping the whole file. Reading from a byte offset
+  // can start mid-line; the backward walk already skips lines that fail to
+  // parse, which covers the truncated head line.
+  const PROBE_TAIL_BYTES = 256 * 1024;
+  const tail = readTailString(transcriptPath, PROBE_TAIL_BYTES);
+  if (tail == null) return null;
   const lines = tail.split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
@@ -190,6 +191,27 @@ export function readTurnEndProbe(transcriptPath: string): TurnEndProbe | null {
     };
   }
   return null;
+}
+
+/** Read at most `maxBytes` from the end of a file without loading the rest.
+ *  Returns null when the file is unreadable. */
+function readTailString(path: string, maxBytes: number): string | null {
+  let fd: number | null = null;
+  try {
+    fd = openSync(path, 'r');
+    const size = fstatSync(fd).size;
+    const len = Math.min(size, maxBytes);
+    if (len === 0) return '';
+    const buf = Buffer.allocUnsafe(len);
+    readSync(fd, buf, 0, len, size - len);
+    return buf.toString('utf-8');
+  } catch {
+    return null;
+  } finally {
+    if (fd != null) {
+      try { closeSync(fd); } catch { /* ignore */ }
+    }
+  }
 }
 
 function contentToString(content: unknown): string {

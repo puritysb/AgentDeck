@@ -20,9 +20,12 @@ of these was not called out in the 1.0.19 notes.
 - Close a managed session's permission/option/diff prompt state when the user
   answers at the keyboard. 1.0.19 left such sessions wedged in "awaiting"
   forever (with the stale question still answerable from devices); prompts now
-  exit on the turn's tool-activity hooks (after a short grace so a parallel
-  tool cannot dismiss a freshly drawn prompt), on Stop, and on the next prompt
-  submit
+  exit on the turn's tool-activity hooks, on Stop, and on the next prompt
+  submit. Guards keep a live prompt safe: a short grace after the prompt is
+  drawn, a parallel sibling finishing never dismisses while the gated tool is
+  still pending, a straggler tool-end after Stop never reopens a finished
+  session, and the daemon hub's multiplexed state machine opts out of
+  tool-activity recovery entirely
 - Recover Claude turns whose Stop hook never arrives: a watchdog probes the
   transcript JSONL tail (never the screen) once the hook channel goes quiet
   and closes state, timeline, and the APME turn through a synthetic Stop. A

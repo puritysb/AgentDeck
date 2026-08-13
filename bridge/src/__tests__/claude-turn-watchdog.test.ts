@@ -100,10 +100,25 @@ describe('ClaudeTurnWatchdog', () => {
     expect(probe).toHaveBeenCalledTimes(1);
   });
 
-  it('stops permanently on SessionEnd', () => {
+  it('disarms on SessionEnd without killing later recovery (/clear fires SessionEnd mid-session)', () => {
     const { wd, fired } = makeWatchdog({ probe: () => endTurnAt(Date.now()) });
     wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
     wd.noteHookEvent('SessionEnd', {});
+    vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 5);
+    expect(fired).toHaveLength(0);
+    // /clear pairs SessionEnd with SessionStart and the bridge session lives
+    // on — the next turn's missed Stop must still be recoverable.
+    wd.noteHookEvent('SessionStart', { transcript_path: TP });
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
+    vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 2);
+    expect(fired).toHaveLength(1);
+  });
+
+  it('stop() (bridge shutdown) disarms permanently', () => {
+    const { wd, fired } = makeWatchdog({ probe: () => endTurnAt(Date.now()) });
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
+    wd.stop();
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
     vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 5);
     expect(fired).toHaveLength(0);
   });

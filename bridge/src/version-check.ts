@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
+import { debug } from './logger.js';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -59,12 +60,25 @@ export function getAgentDeckVersion(): string {
 }
 
 /** Codex CLI lifecycle-hook baseline, from this package's `compatibleCodex`
- *  field — the one place the floor is stated (docs/cli.md quotes it). */
+ *  field — the one place the floor is stated (docs/cli.md quotes it).
+ *
+ *  The shape is validated because `satisfiesRange` SKIPS any constraint it
+ *  cannot parse and falls through to `true`: an npm-idiomatic edit like
+ *  `^0.150.0` would otherwise silently disable the version warning. An
+ *  invalid field returns null and the caller falls back to its literal. */
 export function getCompatibleCodexRange(): string | null {
   try {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
-    return typeof pkg.compatibleCodex === 'string' ? pkg.compatibleCodex : null;
+    const range = typeof pkg.compatibleCodex === 'string' ? pkg.compatibleCodex.trim() : null;
+    if (!range) return null;
+    const constraint = /^(>=|<=|>|<)?\d+\.\d+\.\d+$/;
+    const parts = range.split(/\s+/);
+    if (!parts.every((p: string) => constraint.test(p))) {
+      debug('version', `compatibleCodex "${range}" is not a supported range shape — ignoring`);
+      return null;
+    }
+    return range;
   } catch {
     return null;
   }

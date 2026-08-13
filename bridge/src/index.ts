@@ -251,6 +251,15 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     adapter.seedProjectName(projectName);
   }
 
+  // Codex fires codex_session_start within seconds of the PTY spawning —
+  // before the main wiring below registers its listeners — so capture the
+  // fact early or the hook-silence warning would misread a healthy install
+  // as lifecycle-blind.
+  let codexHookSeenEarly = false;
+  adapter.on('event', (evt: AdapterEvent) => {
+    if (evt.source === 'hook' && evt.event.startsWith('codex_')) codexHookSeenEarly = true;
+  });
+
   // ===== Start adapter (creates HTTP server, spawns process) =====
   try {
     await adapter.start({ port, command: opts.command, gatewayUrl: opts.gatewayUrl });
@@ -577,6 +586,7 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     adapter.on('event', (evt: AdapterEvent) => {
       if (evt.source === 'hook') turnWatchdog.noteHookEvent(evt.event, evt.data ?? {});
     });
+    core.onShutdown(() => turnWatchdog.stop());
   }
   // Codex lifecycle-channel dead-on-arrival warning: hooks and notify share
   // the same curl/port mechanism, so when both are silent the session is
@@ -596,6 +606,7 @@ export async function startSession(opts: SessionOptions): Promise<void> {
         });
       },
     });
+    if (codexHookSeenEarly) hookSilence.noteHookEvent();
     adapter.on('event', (evt: AdapterEvent) => {
       if (evt.source === 'hook' && evt.event.startsWith('codex_')) hookSilence.noteHookEvent();
       else if (evt.source === 'activity') hookSilence.noteActivity();
