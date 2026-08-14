@@ -219,7 +219,11 @@ v_category_scorecard    -- (task_category, model_id) 그룹: runs, avg_overall,
 1. `startSession()` 진입 시 `await initApme()` → `core.setApme(apme, cwd)`
 2. **Claude Code**: `adapter.on('event', 'hook')` → `claudeHookToSpans` → `apme.collector.ingestSpan(sessionId, span)`
 3. **Non-Claude 에이전트** (OpenClaw/OpenCode/Codex): `wireAgentApme(adapter, agentType, apme, core)` — timeline 이벤트(OpenClaw/OpenCode)와 Codex lifecycle hook + notify를 collector로 변환
-4. **Claude Code 응답 캡처**: Stop hook의 `transcript_path` JSONL tail 을 읽어 `setTurnResponse()` (`readClaudeTranscriptLastTurn`). Stop 자체가 유실되면 `claude-turn-watchdog.ts` 가 hook 침묵 + transcript `end_turn` 레코드를 근거로 synthetic Stop 을 주입해 같은 경로로 닫는다 — 화면(PTY) 파싱은 어느 단계에도 없다
+4. **Claude Code 응답 캡처**: Stop hook의 `transcript_path` JSONL tail 을 읽어 `setTurnResponse()` (`readClaudeTranscriptLastTurn`). Stop 자체가 유실되면 hook 침묵 + transcript `end_turn` 레코드를 근거로 synthetic Stop 을 주입해 **같은 경로로** 닫는다 — 화면(PTY) 파싱은 어느 단계에도 없다. 복구는 세션 종류별로 두 벌:
+   - **managed PTY** (`agentdeck claude`) — `claude-turn-watchdog.ts`, 브리지 프로세스당 1개, 어댑터 이벤트 파이프로 직접 주입
+   - **hook-observed** (터미널에서 직접 `claude`) — `observed-turn-watchdogs.ts`, 데몬 1프로세스가 session_id 로 다중화하므로 **세션당 1개**. 복구는 데몬이 자기 loopback `/hooks/Stop` 으로 self-POST 한다: Stop 분기는 상태머신·타임라인·APME·모델복구·스티어링 6가지를 하는데 그 두 번째 사본은 반드시 드리프트하므로, 복구 경로는 원래 경로와 **같은 경로여야** 한다. 1.0.20 은 앞의 한 벌만 있었고 실측상 기록된 Claude 턴은 전부 후자여서 복구가 한 턴도 걸리지 않았다
+
+   synthetic Stop 에서 지켜야 할 계약 두 가지: **디렉티브 큐를 소비하면 안 된다**(`takeDirectiveForStop`) — 전달은 Claude 가 기다리는 hook 을 block 해서 이뤄지는데 self-POST 응답은 아무도 안 듣기 때문에, 큐에서 꺼내면 사용자 후속 지시가 조용히 증발한다. 그리고 **세션이 식으면 워치독을 수거해야 한다** — 관측 세션은 죽을 때 SessionEnd 를 안 보내므로(터미널 닫힘, 슬립) 수거 없이는 5초 폴링이 데몬 수명 내내 남는다
 
 > **관측(observed) 세션의 응답 캡처는 데몬 쪽에 따로 있다.** 위 세션 브리지 경로는 `agentdeck claude` 로 띄운 managed 세션 전용이라, 직접 실행한 `claude`/`codex`/`opencode` 는 이 경로를 타지 않는다. 그 결과 hook 으로만 관측되는 세션은 프롬프트와 툴 궤적만 아카이빙되고 **응답은 통째로 유실**됐다 (claude-code turn 1589개 중 response 219개, 마지막이 2026-07-11; `assistant_message` 궤적 이벤트는 전 기간 15개뿐이고 그중 12개가 OpenClaw). 대시보드가 TIMELINE 이 온전히 보여주는 대화를 재현할 수 없었고, judge 는 침묵을 채점하고 있었다. 지금은 `daemon-server.ts` 의 stop 훅 핸들러가 타임라인 행을 결정하는 **같은 분기에서** `setTurnResponse()` 를 호출한다. Swift 데몬도 같은 증상이었지만 원인이 달랐다 — `getLastEntry(type:"chat_end")` 를 읽었는데 `chat_end` 는 응답이 **없을 때만** 나오는 행이라 구조적으로 응답을 볼 수 없었다(`DaemonServer.appendClaudeCodeChatEnd` 로 이동).
 5. `usage_info` 메타데이터 → `apme.collector.updateUsage(sessionId, snapshot)`

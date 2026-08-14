@@ -178,6 +178,27 @@ export function takeDirective(sid: string): string | undefined {
   return s.directives.shift()?.text;
 }
 
+/** Take a directive for a Stop hook, given that hook's payload.
+ *
+ *  Delivery works by BLOCKING a hook Claude is waiting on and handing back the
+ *  directive as the continuation reason, so it is only deliverable when
+ *  something is actually listening. A synthetic Stop — the missed-Stop
+ *  watchdog posting to the daemon's own `/hooks/Stop` to close a turn whose
+ *  real hook dropped — has no listener: the daemon discards that response. So
+ *  taking here would pop the user's queued follow-up and drop it on the floor,
+ *  with no error and no trace. Leaving it queued costs one turn of latency and
+ *  the next real Stop delivers it.
+ *
+ *  This lives next to the queue rather than at the call site because the rule
+ *  belongs to the queue: any future caller draining it owes the same check. */
+export function takeDirectiveForStop(
+  sid: string,
+  payload: Record<string, unknown> | undefined,
+): string | undefined {
+  if (payload?.synthetic_stop === true) return undefined;
+  return takeDirective(sid);
+}
+
 export function queuedDirectiveCount(sid: string): number {
   const s = sessions.get(sid);
   if (!s) return 0;

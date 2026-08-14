@@ -50,7 +50,7 @@ import {
 import {
   shouldHoldPreToolUse, beginAskGate, gateReleased, buildGateQuestion, buildAskAnswerReason,
   consumeStop, requestStop, clearStop, STOP_DENY_REASON,
-  queueDirective, takeDirective, clearOnUserPrompt, clearSession as clearSteeringSession,
+  queueDirective, takeDirectiveForStop, clearOnUserPrompt, clearSession as clearSteeringSession,
 } from './observed-steering.js';
 import {
   notePermissionPromptShown, noteToolEnd, steeringSnapshot,
@@ -152,6 +152,7 @@ import { rgbToBmp, pixooLiveHtml } from './hook-server.js';
 import { enableDebugLog, debug, debugThrottled } from './logger.js';
 import { CodexOtelTracker, CODEX_OTEL_TRACES_PATH, spanNameSummary } from './codex-otel.js';
 import { HookCodexSessions } from './hook-codex-sessions.js';
+import { ObservedTurnWatchdogs } from './observed-turn-watchdogs.js';
 import { initApme, isTimelineProjectionEnabled, loadApmeConfig, type ApmeModule } from './apme/index.js';
 import { FallbackTaskTimeline } from './fallback-task-timeline.js';
 import { handleApmeRequest } from './apme/http.js';
@@ -1193,6 +1194,48 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    */
   const hookSessionLastSeenAt = new Map<string, number>();
 
+  /**
+   * Missed-Stop recovery for observed Claude sessions (plain `claude` in the
+   * user's own terminal — no PTY, hooks only).
+   *
+   * The Stop hook is the sole authority that closes a Claude turn, and its
+   * curl is fire-and-forget with a tight budget, so it drops. `agentdeck
+   * claude` has recovered from that since 1.0.20; observed sessions had
+   * nothing, which is the majority of real usage. Recovery re-enters this
+   * daemon's own `/hooks/Stop` over loopback rather than reimplementing that
+   * branch — see the class doc for why the same path matters.
+   *
+   * Declared before the HTTP server (hooks arrive the moment the port binds)
+   * and, like every other route, trusted purely because it is loopback: the
+   * auth gate treats same-machine as fully authorized, so no token is
+   * involved and none is minted.
+   */
+  const observedStopWatchdogs = new ObservedTurnWatchdogs({
+    onMissedStop: ({ sessionId, transcriptPath, cwd, projectName }) => {
+      const url = `http://127.0.0.1:${port}/hooks/Stop`;
+      const controller = new AbortController();
+      // Bounded like every other peer await, loopback or not: a daemon
+      // mid-shutdown accepts the socket and never answers, and an unbounded
+      // wait there would pin the recovery forever.
+      const timer = setTimeout(() => controller.abort(), 2_000);
+      void fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          session_id: sessionId,
+          transcript_path: transcriptPath,
+          // Tags the APME turn `end_source='synthetic_stop'`, which is the
+          // standing measurement of how often the real hook drops.
+          synthetic_stop: true,
+          ...(cwd ? { cwd } : {}),
+          ...(projectName ? { project_name: projectName } : {}),
+        }),
+      }).catch(() => { /* daemon shutting down or port moved — next turn retries */ })
+        .finally(() => clearTimeout(timer));
+    },
+  });
+
   // Codex OTel span state. Declared before the HTTP server because the
   // `/otel/v1/traces` handler closes over it — Codex's exporter can POST before
   // the rest of daemon startup finishes.
@@ -2193,6 +2236,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // (even one persisted before the restart) must not be force-closed.
         hookSessionsSeen.add(hookSid);
         hookSessionLastSeenAt.set(hookSid, Date.now());
+        // Missed-Stop recovery for observed Claude sessions. Fed the raw
+        // PascalCase event name — the watchdog's vocabulary is Claude's, and
+        // its transcript probe reads Claude's JSONL, so only Claude sessions
+        // are admitted (Codex/OpenCode carry their own turn-end signals).
+        // A synthetic Stop re-enters here as a normal hook and disarms the
+        // watchdog exactly like the real one would.
+        if (hookAgentType === 'claude-code') {
+          observedStopWatchdogs.noteHookEvent(hookSid, eventName, json);
+        }
         // Claude hooks carry `cwd` (the worktree dir), not project_name/path —
         // capture it so APME runs are attributable to a specific worktree.
         const hookCwd = (typeof json.cwd === 'string' ? json.cwd
@@ -2595,7 +2647,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // by blocking the stop with the directive as the continuation
           // reason. Empty queue (the overwhelmingly common case) → empty body,
           // Claude ends the turn normally — no stop_hook_active loop possible.
-          const directive = claudeSid ? takeDirective(claudeSid) : undefined;
+          //
+          // `takeDirectiveForStop` refuses a synthetic Stop (missed-Stop
+          // watchdog): nothing is listening on that response, so draining the
+          // queue there would silently eat the user's queued follow-up.
+          // `clearStop` still runs either way — the transcript proved the turn
+          // ended, so a pending soft-stop is moot however we learned it.
+          const directive = claudeSid ? takeDirectiveForStop(claudeSid, json) : undefined;
           if (claudeSid) clearStop(claudeSid); // turn ended — a pending soft-stop is moot
           res.writeHead(200, { 'Content-Type': 'application/json' });
           if (directive) {
@@ -2971,6 +3029,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     const TURN_WATCHDOG_SILENCE_MS = 3 * 60_000;
     const turnWatchdog = setInterval(() => {
       const now = Date.now();
+      // Drop per-session missed-Stop watchdogs whose session has gone cold.
+      // Rides this existing tick rather than owning a timer: an observed
+      // session that dies mid-turn never sends SessionEnd, so its watchdog
+      // would otherwise poll for the life of the daemon.
+      observedStopWatchdogs.sweep();
       const active = new Set<string>();
       for (const [sid, at] of hookSessionLastSeenAt) {
         if (now - at <= TURN_WATCHDOG_SILENCE_MS) active.add(sid);
@@ -5410,6 +5473,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     removeDaemonInfo();
     focusRelay.stop();
     timelineRelay.stop();
+    // Clears every per-session poll timer. A watchdog that survived teardown
+    // would keep firing self-POSTs at a port this daemon no longer owns.
+    observedStopWatchdogs.stop();
     voiceAssistant?.stop();
     bridgeLogStream.stop();
     // Flush synchronously — the process exits a few lines below and a pending

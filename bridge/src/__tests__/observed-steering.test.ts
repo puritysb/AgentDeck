@@ -12,7 +12,7 @@ import {
   shouldHoldPreToolUse, beginAskGate, gateReleased, buildGateQuestion,
   buildAskAnswerReason, gateSignature,
   requestStop, clearStop, isStopRequested, consumeStop,
-  queueDirective, takeDirective, queuedDirectiveCount, clearOnUserPrompt,
+  queueDirective, takeDirective, takeDirectiveForStop, queuedDirectiveCount, clearOnUserPrompt,
   notePermissionPromptShown, noteToolEnd, steeringSnapshot,
   _resetSteering,
 } from '../observed-steering.js';
@@ -233,6 +233,24 @@ describe('turn-end directive queue', () => {
   it('empty queue always returns undefined (no stop_hook_active loop)', () => {
     expect(takeDirective('s')).toBeUndefined();
     expect(takeDirective('s')).toBeUndefined();
+  });
+
+  it('a synthetic Stop leaves the queue intact — nothing is listening on that response', () => {
+    // The missed-Stop watchdog posts to the daemon's own /hooks/Stop to close
+    // a turn whose real hook dropped, and discards the response. Directives
+    // are delivered by blocking a hook Claude is waiting on, so draining the
+    // queue for a synthetic Stop would consume the user's follow-up and drop
+    // it silently. The next REAL Stop must still deliver it.
+    queueDirective('s', 'run the tests');
+    expect(takeDirectiveForStop('s', { synthetic_stop: true })).toBeUndefined();
+    expect(queuedDirectiveCount('s')).toBe(1);
+    expect(takeDirectiveForStop('s', { transcript_path: '/tmp/t.jsonl' })).toBe('run the tests');
+    expect(queuedDirectiveCount('s')).toBe(0);
+  });
+
+  it('takeDirectiveForStop tolerates a missing payload', () => {
+    queueDirective('s', 'go');
+    expect(takeDirectiveForStop('s', undefined)).toBe('go');
   });
 
   it('steeringSnapshot reflects both flags for device badges', () => {
