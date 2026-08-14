@@ -8,10 +8,15 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
-## Account state — published to production (2026-08-14)
+## Account state — 1.0.9 submitted; 1.0.6 live (2026-08-15)
 
 Both account verification steps are **done**, and AgentDeck 1.0.6 (versionCode
 8) is live on the public [Google Play listing](https://play.google.com/store/apps/details?id=dev.agentdeck):
+
+AgentDeck 1.0.9 (versionCode 11) was uploaded to production on 2026-08-15 as a
+100% rollout to all 177 target countries and submitted for review together with
+the revised short and full descriptions. Until Google approves that submission,
+the public listing and installs remain on 1.0.6.
 
 | Field | Value |
 |---|---|
@@ -203,10 +208,10 @@ cd android && ./gradlew bundleRelease     # → app/build/outputs/bundle/release
 ```
 
 Signing comes from `android/signing.properties` + `agentdeck-release.jks`
-(both gitignored, both local). The current release target is **1.0.9 /
-versionCode 11**, `targetSdkVersion 36`. Play requires a strictly higher
-`versionCode` on every subsequent upload; production currently serves 1.0.6 /
-versionCode 8.
+(both gitignored, both local). The submitted bundle is **1.0.9 / versionCode
+11**, 5.2 MB, `targetSdkVersion 36`. Play accepted it for production review on
+2026-08-15. Play requires a strictly higher `versionCode` on every subsequent
+upload; production continues to serve 1.0.6 / versionCode 8 until approval.
 
 **2. Create the app.** Console home → *앱 만들기 / Create app*. App name
 `AgentDeck`, default language, **App** (not game), **Free**. Accept the
