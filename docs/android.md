@@ -7,14 +7,41 @@ locale: en
 canonical: true
 status: stable
 owner: Android maintainers
-reviewed: 2026-07-30
-revision: 2026-07-30
+reviewed: 2026-08-14
+revision: 2026-08-14
 source_of_truth: docs/android.md
 validators: [pnpm test:android]
 ---
 # Android Dashboard
 
 Detailed reference for the AgentDeck Android app — build, device support, and creature behavior.
+
+---
+
+## Quick Start (Google Play or GitHub APK)
+
+AgentDeck for Android is a **companion dashboard**, not the daemon itself. It
+shows the coding-agent sessions reported by AgentDeck on your computer, so the
+Android device and computer must be on the same local network.
+
+1. **Install the Android app.** Use [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck)
+   (recommended), or download the signed APK from [GitHub Releases](https://github.com/puritysb/AgentDeck/releases).
+2. **Start AgentDeck on the computer running your agents.** On a Mac, open
+   [AgentDeck Dashboard from the Mac App Store](https://apps.apple.com/app/id6784822497).
+   On macOS, Windows, or Linux, install and start the local daemon with:
+
+   ```bash
+   npx @agentdeck/setup
+   ```
+
+3. **Open the Android app.** It discovers the daemon automatically over the
+   local network. Start Claude Code, Codex, or OpenCode normally; their sessions
+   then appear on the dashboard.
+
+If the app stays on **Searching for AgentDeck**, confirm that the computer app
+or daemon is still running and both devices are on the same Wi-Fi/LAN. Then use
+the app's **Manual URL** or **USB Connect** fallback described in
+[Connection ladder](#connection-ladder-ssot).
 
 ---
 

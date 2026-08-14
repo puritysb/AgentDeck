@@ -8,9 +8,10 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
-## Account state — verified, app record created (2026-08-07)
+## Account state — published to production (2026-08-14)
 
-Both account verification steps are **done** and the app record now exists:
+Both account verification steps are **done**, and AgentDeck 1.0.6 (versionCode
+8) is live on the public [Google Play listing](https://play.google.com/store/apps/details?id=dev.agentdeck):
 
 | Field | Value |
 |---|---|
@@ -182,14 +183,15 @@ declarations.
 
 **3. Store listing** — *Grow → Store presence → Main store listing*. Short and
 full description are in this file, already inside Play's limits (74/80 and
-2,076/4,000). Assets from `marketplace/play/1.0.5/`:
+2,076/4,000). Current assets are in `marketplace/play/1.0.6/`:
 
 | Field | File |
 |---|---|
 | App icon | `icon-512.png` |
 | Feature graphic | `feature-graphic-1024x500.png` |
-| Phone screenshots | `phone-01-dashboard.png`, `phone-02-attention.png` |
-| Tablet (10") screenshots | `tablet-01-dashboard.png` |
+| Phone screenshots | `phone-01-dashboard.png` through `phone-04-calm.png` |
+| Tablet (7") screenshots | `tablet7-01-attention.png`, `tablet7-02-dashboard.png` |
+| Tablet (10") screenshots | `tablet10-01-dashboard.png`, `tablet10-02-timeline.png` |
 
 **4. App content** — privacy policy `https://puritysb.github.io/AgentDeck/#privacy`,
 data safety per the table above (no data collected; microphone is push-to-talk

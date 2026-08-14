@@ -197,6 +197,10 @@
   .periph { margin:0 0 var(--s-4); color:var(--ink-500); font-size:var(--t-caption); }
   .periph span { display:block; font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-500); margin-bottom:2px; }
   .spec-note { margin:var(--s-6) 0 0; color:var(--ink-500); font-size:var(--t-caption); }
+  .android-setup { display:flex; align-items:center; justify-content:space-between; gap:var(--s-6); margin:0 0 var(--s-6); padding:var(--s-5) var(--s-6); border:1px solid var(--tide-200); border-radius:var(--r-2xl); background:var(--tide-100); }
+  .android-setup h3 { margin:0 0 var(--s-1); font-size:19px; }
+  .android-setup p { margin:0; color:var(--ink-500); font-size:var(--t-caption); max-width:68ch; }
+  .android-setup .actions { display:flex; flex:0 0 auto; gap:var(--s-2); flex-wrap:wrap; }
   .detail-link { margin-top:var(--s-12); padding:var(--s-6); border-radius:var(--r-2xl); background:var(--ink-900); color:var(--tide-300); display:flex; align-items:center; justify-content:space-between; gap:var(--s-6); }
   .detail-link h2 { color:var(--tide-50); font-size:24px; }
   .detail-link p { margin:4px 0 0; }
@@ -216,6 +220,7 @@
     .grid { grid-template-columns:1fr; }
     .spec-grid { grid-template-columns:1fr; }
     .device.wide { grid-column:auto; }
+    .android-setup { align-items:flex-start; flex-direction:column; }
     .detail-link { align-items:flex-start; flex-direction:column; }
   }
 </style>
@@ -281,6 +286,16 @@
 
   <section id="apps">
     <div class="section-head"><h2 data-i18n="s.apps.h">Apps &amp; terminal</h2><p data-i18n="s.apps.p">Each app is a separately designed UI — macOS and iOS/iPadOS are similar but distinct, while Android tablet and Android e-ink are entirely different layouts. The dependency-free TUI keeps the same sessions visible inside a terminal.</p></div>
+    <aside class="android-setup" aria-label="Android setup">
+      <div>
+        <h3 data-i18n="android.h">Android app + computer daemon</h3>
+        <p data-i18n="android.p">Install the app from Google Play, then run AgentDeck on a Mac, Windows, or Linux computer on the same network. The Android app is the dashboard; the computer daemon supplies the live sessions.</p>
+      </div>
+      <div class="actions">
+        <a class="btn primary" href="https://play.google.com/store/apps/details?id=dev.agentdeck" data-i18n="android.install">Get it on Google Play</a>
+        <a class="btn secondary" href="https://github.com/puritysb/AgentDeck/blob/master/docs/android.md#quick-start-google-play-or-github-apk" data-i18n="android.guide">Setup guide</a>
+      </div>
+    </aside>
     <div class="grid">
       <article class="device">
         <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/macos-dashboard.png" alt="AgentDeck macOS dashboard screenshot" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
@@ -298,13 +313,13 @@
         <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/android-tablet.jpg" alt="Android tablet running the AgentDeck Compose dashboard" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
         <div class="device-top"><h3>Android Tablet</h3><span class="badge native" data-i18n="b.native">Native</span></div>
         <p class="sub" data-i18n="d.android.tablet">Compose color dashboard — 60fps terrarium + HUD overlay.</p>
-        <div class="specs"><div class="spec"><span>Canvas</span><strong>Color LCD</strong></div><div class="spec"><span>Discovery</span><strong>mDNS · Wi-Fi WS</strong></div></div>
+        <div class="specs"><div class="spec"><span>Canvas</span><strong>Color LCD</strong></div><div class="spec"><span>Discovery</span><strong>mDNS · Wi-Fi WS</strong></div><div class="spec"><span>Install</span><strong><a href="https://play.google.com/store/apps/details?id=dev.agentdeck">Google Play</a></strong></div><div class="spec"><span>Needs</span><strong>Computer daemon</strong></div></div>
       </article>
       <article class="device">
         <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/android-eink.jpg" alt="AgentDeck Android e-ink reader photography" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
         <div class="device-top"><h3>Android E-ink</h3><span class="badge native" data-i18n="b.native">Native</span></div>
         <p class="sub" data-i18n="d.android.eink">Reader-tuned Compose layouts for Crema, Onyx, Kobo, and Bigme — B&amp;W and Kaleido 3 color.</p>
-        <div class="specs"><div class="spec"><span>Refresh</span><strong>GC16 · DU · A2</strong></div><div class="spec"><span>Color</span><strong>B&amp;W + Kaleido 3</strong></div></div>
+        <div class="specs"><div class="spec"><span>Refresh</span><strong>GC16 · DU · A2</strong></div><div class="spec"><span>Color</span><strong>B&amp;W + Kaleido 3</strong></div><div class="spec"><span>Install</span><strong><a href="https://play.google.com/store/apps/details?id=dev.agentdeck">Google Play</a></strong></div><div class="spec"><span>Needs</span><strong>Computer daemon</strong></div></div>
       </article>
       <article class="device">
         <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/tui-dashboard.png" alt="AgentDeck TUI dashboard in a terminal" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
@@ -523,6 +538,10 @@
         's.controls.p': '양방향 서피스입니다. 세션 상태를 보여주면서 터미널로 돌아가지 않고도 포커스·승인·중지·응답을 할 수 있습니다.',
         's.apps.h': '앱 & 터미널',
         's.apps.p': '각 앱은 따로 설계된 UI입니다 — macOS와 iOS/iPadOS는 비슷하지만 별개이고, Android 태블릿과 Android e-ink는 완전히 다른 레이아웃입니다. 의존성 없는 TUI는 같은 세션을 터미널 안에서 보여줍니다.',
+        'android.h': 'Android 앱 + 컴퓨터 데몬',
+        'android.p': 'Google Play에서 앱을 설치한 뒤, 같은 네트워크의 Mac·Windows·Linux 컴퓨터에서 AgentDeck을 실행하세요. Android 앱은 대시보드이고 컴퓨터 데몬이 라이브 세션을 제공합니다.',
+        'android.install': 'Google Play에서 받기',
+        'android.guide': '설정 가이드',
         's.esp32.h': 'ESP32 디스플레이',
         's.esp32.p': '네이티브 픽셀 그리드 위의 전용 펌웨어를 실제 세션 구동 중에 촬영했습니다. 픽셀 단위 펌웨어 프레임은 라이브 프리뷰에 있습니다.',
         's.pixel.h': '픽셀 디스플레이',
@@ -571,6 +590,10 @@
         's.controls.p': '双方向サーフェスです。セッション状態を表示しながら、ターミナルに戻らずにフォーカス・承認・停止・応答ができます。',
         's.apps.h': 'アプリ & ターミナル',
         's.apps.p': '各アプリは別設計のUIです — macOSとiOS/iPadOSは似ていて別物、AndroidタブレットとAndroid e-inkは完全に異なるレイアウトです。依存なしのTUIは同じセッションをターミナル内に表示します。',
+        'android.h': 'Androidアプリ + パソコンのdaemon',
+        'android.p': 'Google Playからアプリをインストールし、同じネットワークのMac・Windows・LinuxパソコンでAgentDeckを起動してください。Androidアプリはダッシュボードで、パソコンのdaemonがライブセッションを提供します。',
+        'android.install': 'Google Playで入手',
+        'android.guide': 'セットアップガイド',
         's.esp32.h': 'ESP32ディスプレイ',
         's.esp32.p': 'ネイティブピクセルグリッド上の専用ファームウェアを、実際のセッション動作中に撮影しました。ピクセル単位のファームウェアフレームはライブプレビューにあります。',
         's.pixel.h': 'ピクセルディスプレイ',

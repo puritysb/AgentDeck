@@ -177,6 +177,15 @@
   .btn-primary:hover { background: var(--kelp-500); }
   .btn-ghost { background: var(--tide-100); color: var(--ink-800); border-color: var(--tide-200); }
   .btn-ghost:hover { background: var(--tide-200); }
+  .android-callout {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s-6);
+    margin: var(--s-8) auto 0; max-width: 920px; padding: var(--s-5) var(--s-6);
+    text-align: left; background: var(--tide-100); border: 1px solid var(--tide-200);
+    border-radius: var(--r-2xl); box-shadow: var(--sh-card);
+  }
+  .android-callout strong { display: block; margin-bottom: var(--s-1); font-size: 17px; color: var(--ink-900); }
+  .android-callout p { margin: 0; color: var(--ink-500); font-size: 14px; }
+  .android-callout .actions { display: flex; gap: var(--s-2); flex: 0 0 auto; flex-wrap: wrap; }
 
   /* ── Stat strip ── */
   .stats { display: flex; justify-content: center; gap: var(--s-10); flex-wrap: wrap; margin: var(--s-8) 0 0; }
@@ -233,6 +242,7 @@
   @media (max-width: 720px) {
     /* GNB responsive rules live in the canonical GNB-CSS block above. */
     .wrap { padding: var(--s-12) var(--s-4) var(--s-16); }
+    .android-callout { align-items: flex-start; flex-direction: column; }
   }
 </style>
 </head>
@@ -270,11 +280,22 @@
     </p>
     <div class="cta">
       <a class="btn btn-primary" href="https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497" data-i18n="cta.appstore">Get the Mac app</a>
+      <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=dev.agentdeck" data-i18n="cta.play">Get it on Google Play</a>
       <a class="btn btn-ghost" href="https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464" data-i18n="cta.streamdeck">Get the Stream Deck plugin</a>
       <a class="btn btn-ghost" href="https://www.npmjs.com/package/@agentdeck/setup" data-i18n="cta.npm">Install the CLI (npm)</a>
       <a class="btn btn-ghost" href="hardware/" data-i18n="cta.devices">Explore the devices</a>
       <a class="btn btn-ghost" href="demo/" data-i18n="cta.demo">Try the live preview</a>
     </div>
+    <aside class="android-callout" aria-label="Android setup">
+      <div>
+        <strong data-i18n="android.h">Android needs AgentDeck on your computer</strong>
+        <p data-i18n="android.p">The Android app is a companion dashboard. Start the Mac app or run <code>npx @agentdeck/setup</code> on macOS, Windows, or Linux, then keep both devices on the same network.</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=dev.agentdeck" data-i18n="android.install">Install Android app</a>
+        <a class="btn btn-ghost" href="https://github.com/puritysb/AgentDeck/blob/master/docs/android.md#quick-start-google-play-or-github-apk" data-i18n="android.guide">3-step setup guide</a>
+      </div>
+    </aside>
     <div class="stats">
       <div class="stat"><div class="n">26</div><div class="l" data-i18n="stat.surfaces">display surfaces</div></div>
       <div class="stat"><div class="n">4</div><div class="l" data-i18n="stat.agents">coding agents</div></div>
@@ -402,10 +423,15 @@
         'hero.kicker': 'AI 코딩 에이전트를 위한 피지컬 컨트롤 서피스',
         'hero.lede': 'AgentDeck은 코딩 에이전트를 책상 위로 꺼내 놓습니다. 하나의 데몬 허브가 모든 세션을 26개 서피스에 라이브로 렌더링하고 — 키보드를 떠나지 않고 조종하게 해줍니다.',
         'cta.appstore': 'Mac 앱 받기',
+        'cta.play': 'Google Play에서 받기',
         'cta.streamdeck': 'Stream Deck 플러그인 받기',
         'cta.npm': 'CLI 설치 (npm)',
         'cta.devices': '디바이스 살펴보기',
         'cta.demo': '라이브 프리뷰 열기',
+        'android.h': 'Android에서는 컴퓨터의 AgentDeck이 필요합니다',
+        'android.p': 'Android 앱은 컴패니언 대시보드입니다. Mac 앱을 실행하거나 macOS·Windows·Linux에서 <code>npx @agentdeck/setup</code>을 실행한 뒤, 두 기기를 같은 네트워크에 두세요.',
+        'android.install': 'Android 앱 설치',
+        'android.guide': '3단계 설정 가이드',
         'stat.surfaces': '디스플레이 서피스',
         'stat.agents': '코딩 에이전트',
         'stat.local': '로컬 — 클라우드 없음',
@@ -430,10 +456,15 @@
         'hero.kicker': 'AIコーディングエージェントのためのフィジカルコントロールサーフェス',
         'hero.lede': 'AgentDeckはコーディングエージェントを机の上に連れ出します。ひとつのdaemonハブがすべてのセッションを26のサーフェスにライブ描画し — キーボードを離れずに操縦させてくれます。',
         'cta.appstore': 'Macアプリを入手',
+        'cta.play': 'Google Playで入手',
         'cta.streamdeck': 'Stream Deckプラグインを入手',
         'cta.npm': 'CLIをインストール (npm)',
         'cta.devices': 'デバイスを見る',
         'cta.demo': 'ライブプレビューを試す',
+        'android.h': 'Androidにはパソコン側のAgentDeckが必要です',
+        'android.p': 'Androidアプリはコンパニオンダッシュボードです。Macアプリを起動するか、macOS・Windows・Linuxで<code>npx @agentdeck/setup</code>を実行し、両方の端末を同じネットワークに接続してください。',
+        'android.install': 'Androidアプリをインストール',
+        'android.guide': '3ステップ設定ガイド',
         'stat.surfaces': 'ディスプレイサーフェス',
         'stat.agents': 'コーディングエージェント',
         'stat.local': 'ローカル — クラウドなし',
