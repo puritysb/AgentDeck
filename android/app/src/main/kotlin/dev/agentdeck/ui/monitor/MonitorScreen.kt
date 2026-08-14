@@ -2,6 +2,7 @@ package dev.agentdeck.ui.monitor
 
 import android.content.res.Configuration
 import dev.agentdeck.ui.common.ConnectionLexicon
+import dev.agentdeck.ui.common.ConnectionSetupGuide
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -413,6 +414,21 @@ private fun ConnectionOverlay(
                 color = AgentDeckColors.SlateText,
                 textAlign = TextAlign.Center,
             )
+
+            if (connectionStatus == ConnectionStatus.DISCONNECTED && !isReconnecting) {
+                Text(
+                    text = ConnectionSetupGuide.REQUIRED,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = AgentDeckColors.WhiteText,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "${ConnectionSetupGuide.MAC}\n${ConnectionSetupGuide.CLI}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AgentDeckColors.SlateText,
+                    textAlign = TextAlign.Center,
+                )
+            }
 
             if (isReconnecting) {
                 // Stop reconnecting button

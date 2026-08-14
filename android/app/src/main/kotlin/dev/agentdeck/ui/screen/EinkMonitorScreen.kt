@@ -2,6 +2,7 @@ package dev.agentdeck.ui.screen
 
 import android.content.res.Configuration
 import dev.agentdeck.ui.common.ConnectionLexicon
+import dev.agentdeck.ui.common.ConnectionSetupGuide
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -738,6 +739,23 @@ private fun EinkNotConnectedScreen(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        if (connectionStatus == ConnectionStatus.DISCONNECTED) {
+            Text(
+                text = ConnectionSetupGuide.REQUIRED,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "${ConnectionSetupGuide.MAC}\n${ConnectionSetupGuide.CLI}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         // Error message from last connection attempt
         if (lastError != null && connectionStatus == ConnectionStatus.DISCONNECTED) {

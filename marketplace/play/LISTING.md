@@ -102,13 +102,15 @@ unreadable, and the app's own header would collide with the wordmark.
 ## Short description (≤80 chars)
 
 ```
-Every coding agent session on one calm screen — running, waiting, or idle.
+Coding-agent dashboard — requires AgentDeck running on your computer.
 ```
 
 ## Full description (≤4000 chars)
 
 ```
-AgentDeck turns your Android tablet, phone, or e-ink reader into a live status surface for the AI coding agents running on your computer.
+AgentDeck is a companion dashboard. Before opening this app, run AgentDeck on a Mac, Windows, or Linux computer on the same network. On Mac, open the free AgentDeck Dashboard app. On any supported computer, you can instead run: npx @agentdeck/setup
+
+Your Android tablet, phone, or e-ink reader then becomes a live status surface for the AI coding agents running on that computer.
 
 Every session gets a row: which agent it is, which project it is in, which model it is using, and whether it is working, waiting on you, or idle. The screen repaints itself as that changes, so you can tell at a glance which of five sessions actually needs you.
 
@@ -149,6 +151,35 @@ AgentDeck is an independent project and is not affiliated with or endorsed by An
 
 Privacy policy: <https://puritysb.github.io/AgentDeck/#privacy>
 
+## Release notes — 1.0.9
+
+### English (US)
+
+```
+• Makes the required computer setup clear on the first connection screen.
+• Adds a unified USB, Wi-Fi discovery, and manual pairing path.
+• Prevents repeated connection attempts after a daemon rejects an unpaired device.
+• Fixes clipped usage-limit cards on e-ink screens.
+```
+
+### Korean
+
+```
+• 첫 연결 화면에서 컴퓨터에 AgentDeck을 실행해야 한다는 안내를 명확히 표시합니다.
+• USB, Wi-Fi 자동 검색, 수동 페어링 연결 경로를 하나로 통합했습니다.
+• 페어링되지 않은 기기가 거절된 뒤 반복해서 재접속하던 문제를 수정했습니다.
+• 전자책 단말기에서 사용량 제한 카드가 잘리던 문제를 수정했습니다.
+```
+
+### Japanese
+
+```
+• 初回接続画面で、パソコン側でAgentDeckの実行が必要なことを明確に表示します。
+• USB、Wi-Fi自動検出、手動ペアリングを一つの接続フローに統合しました。
+• 未ペアリング端末が拒否された後の繰り返し接続を防ぎます。
+• E Ink画面で利用上限カードが切れる問題を修正しました。
+```
+
 ## Declared permissions worth a note
 
 - `RECORD_AUDIO` — push-to-talk dictation to the user's own daemon.
@@ -172,10 +203,10 @@ cd android && ./gradlew bundleRelease     # → app/build/outputs/bundle/release
 ```
 
 Signing comes from `android/signing.properties` + `agentdeck-release.jks`
-(both gitignored, both local). The last verified build was **1.0.5 /
-versionCode 7**, 5.2 MB, `targetSdkVersion 36`. Play requires a strictly higher
-`versionCode` on every subsequent upload, so bump it before rebuilding if 7 has
-already been consumed.
+(both gitignored, both local). The current release target is **1.0.9 /
+versionCode 11**, `targetSdkVersion 36`. Play requires a strictly higher
+`versionCode` on every subsequent upload; production currently serves 1.0.6 /
+versionCode 8.
 
 **2. Create the app.** Console home → *앱 만들기 / Create app*. App name
 `AgentDeck`, default language, **App** (not game), **Free**. Accept the

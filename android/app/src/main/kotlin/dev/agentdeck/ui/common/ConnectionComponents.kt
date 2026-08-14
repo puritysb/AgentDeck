@@ -56,6 +56,13 @@ object ConnectionLexicon {
     const val RECONNECTING = "Reconnecting..."
 }
 
+/** First-run prerequisite shown anywhere a device has not found a daemon yet. */
+object ConnectionSetupGuide {
+    const val REQUIRED = "AgentDeck must be running on your computer."
+    const val MAC = "Mac: open AgentDeck Dashboard"
+    const val CLI = "macOS / Windows / Linux: npx @agentdeck/setup"
+}
+
 // ── Status Badge ──────────────────────────────────────────────────────
 
 @Composable
@@ -519,6 +526,17 @@ fun ConnectionPanel(
         }
 
         if (connectionStatus == ConnectionStatus.DISCONNECTED) {
+            Text(
+                text = ConnectionSetupGuide.REQUIRED,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "${ConnectionSetupGuide.MAC}\n${ConnectionSetupGuide.CLI}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
             UsbConnectButton(onClick = onConnectLocalhost)
 
             DiscoveredBridgeList(

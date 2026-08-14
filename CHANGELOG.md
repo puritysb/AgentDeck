@@ -7,6 +7,19 @@ repository baseline, not a patch ceiling: any numeric `A.B.C` and `A.B.D` are
 mutually compatible. `pnpm verify-version` gates the shared `A.B` line and
 target-internal version consistency. See [RELEASING.md](RELEASING.md).
 
+## 1.0.9
+
+### Android dashboard
+
+- State the computer prerequisite on every disconnected screen, including the
+  high-contrast e-ink layout: open AgentDeck Dashboard on a Mac or run
+  `npx @agentdeck/setup` on macOS, Windows, or Linux
+- Publish the unified first-connection path from 1.0.8 to Google Play: prefer
+  USB when present, discover a daemon over Wi-Fi, allow code-based pairing on
+  camera-less readers, and stop retry storms after an unpaired device is
+  rejected
+- Keep the 1.0.8 e-ink usage-limit clipping fix in the Play release
+
 ## 1.0.20
 
 ### CLI and daemon — npm
