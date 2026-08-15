@@ -8,7 +8,7 @@ function makeWatchdog(overrides: {
   probe?: () => TurnEndProbe | null;
   mtimeMs?: () => number | null;
 } = {}) {
-  const fired: Array<{ transcript_path: string }> = [];
+  const fired: Array<{ transcript_path: string; reason: string }> = [];
   let mtimeCounter = 0;
   const wd = new ClaudeTurnWatchdog({
     onMissedStop: (d) => fired.push(d),
@@ -21,7 +21,13 @@ function makeWatchdog(overrides: {
 }
 
 function endTurnAt(ts: number): TurnEndProbe {
-  return { role: 'assistant', stopReason: 'end_turn', timestampMs: ts };
+  return { role: 'assistant', stopReason: 'end_turn', timestampMs: ts, interrupted: false };
+}
+
+/** The tail Claude Code leaves after ESC: a `user` record carrying the
+ *  interrupt marker, and no assistant `end_turn` anywhere. */
+function interruptAt(ts: number): TurnEndProbe {
+  return { role: 'user', stopReason: null, timestampMs: ts, interrupted: true };
 }
 
 describe('ClaudeTurnWatchdog', () => {
@@ -42,7 +48,7 @@ describe('ClaudeTurnWatchdog', () => {
     probeResult = endTurnAt(Date.now() + 3_000);
 
     vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 2);
-    expect(fired).toEqual([{ transcript_path: TP }]);
+    expect(fired).toEqual([{ transcript_path: TP, reason: 'end_turn' }]);
   });
 
   it('fires at most once per turn', () => {
@@ -60,9 +66,45 @@ describe('ClaudeTurnWatchdog', () => {
     expect(fired).toHaveLength(0);
   });
 
+  it('closes a turn the user cancelled, tagged as an interrupt rather than a loss', () => {
+    // ESC produces NO hook of any kind and no assistant end_turn, so a
+    // watchdog that only looked for end_turn left the session PROCESSING
+    // until the stuck timeout and charged the turn to the dropped-Stop rate.
+    let probeResult: TurnEndProbe | null = null;
+    const { wd, fired } = makeWatchdog({ probe: () => probeResult });
+
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
+    probeResult = interruptAt(Date.now() + 3_000);
+
+    vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 2);
+    expect(fired).toEqual([{ transcript_path: TP, reason: 'interrupted' }]);
+  });
+
+  it('ignores the previous turn\'s interrupt marker', () => {
+    // Same guard as the stale end_turn: a cancel from before this turn opened
+    // is evidence about the previous turn, and closing on it would end a live
+    // turn the moment it started.
+    const stale = interruptAt(Date.now() - 60_000);
+    const { wd, fired } = makeWatchdog({ probe: () => stale });
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
+    vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 3);
+    expect(fired).toHaveLength(0);
+  });
+
+  it('a plain user record is not an interrupt', () => {
+    // The marker flag is the whole signal — a `user` tail is otherwise the
+    // normal mid-turn shape (a tool_result), which must never force-close.
+    const { wd, fired } = makeWatchdog({
+      probe: () => ({ role: 'user', stopReason: null, timestampMs: Date.now(), interrupted: false }),
+    });
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
+    vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 5);
+    expect(fired).toHaveLength(0);
+  });
+
   it('never closes a genuine wait (stop_reason tool_use)', () => {
     const { wd, fired } = makeWatchdog({
-      probe: () => ({ role: 'assistant', stopReason: 'tool_use', timestampMs: Date.now() }),
+      probe: () => ({ role: 'assistant', stopReason: 'tool_use', timestampMs: Date.now(), interrupted: false }),
     });
     wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
     vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 5);
@@ -131,6 +173,6 @@ describe('ClaudeTurnWatchdog', () => {
     // A later hook supplies the path (all Claude hook payloads carry it).
     wd.noteHookEvent('PostToolUse', { transcript_path: TP });
     vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 2);
-    expect(fired).toEqual([{ transcript_path: TP }]);
+    expect(fired).toEqual([{ transcript_path: TP, reason: 'end_turn' }]);
   });
 });

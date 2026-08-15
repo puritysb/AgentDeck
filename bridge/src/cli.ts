@@ -2572,21 +2572,23 @@ apme
     if (rows.length === 0) { log(`No turns started in the last ${opts.since}.`); return; }
 
     log(`\n  Turns started in the last ${opts.since} — how each one's end was learned`);
-    log(`  ${'Agent'.padEnd(14)} ${'Turns'.padEnd(7)} ${'Stop'.padEnd(7)} ${'Synth'.padEnd(7)} ${'NoStop'.padEnd(7)} ${'SessEnd'.padEnd(8)} ${'Open'.padEnd(6)} ${'?'.padEnd(6)} Stop loss`);
-    log(`  ${'─'.repeat(14)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(8)} ${'─'.repeat(6)} ${'─'.repeat(6)} ${'─'.repeat(9)}`);
+    log(`  ${'Agent'.padEnd(14)} ${'Turns'.padEnd(7)} ${'Stop'.padEnd(7)} ${'Synth'.padEnd(7)} ${'NoStop'.padEnd(7)} ${'Esc'.padEnd(6)} ${'SessEnd'.padEnd(8)} ${'Open'.padEnd(6)} ${'?'.padEnd(6)} Stop loss`);
+    log(`  ${'─'.repeat(14)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(6)} ${'─'.repeat(8)} ${'─'.repeat(6)} ${'─'.repeat(6)} ${'─'.repeat(9)}`);
     for (const r of rows) {
       // Denominator is turns whose Stop we can actually adjudicate: a real
       // Stop, a recovered one, or a turn the next prompt displaced. Turns that
-      // ended with the session, are still open, or predate the column are NOT
-      // evidence either way and stay out of the ratio.
+      // ended with the session, were cancelled by the user, are still open, or
+      // predate the column are NOT evidence either way and stay out of the
+      // ratio — a cancel in particular is a turn for which no Stop was owed.
       const adjudicated = r.stop + r.syntheticStop + r.nextPrompt;
       const lost = r.syntheticStop + r.nextPrompt;
       const rate = adjudicated > 0 ? `${((lost / adjudicated) * 100).toFixed(0)}% of ${adjudicated}` : '—';
-      log(`  ${r.agentType.slice(0, 14).padEnd(14)} ${String(r.total).padEnd(7)} ${String(r.stop).padEnd(7)} ${String(r.syntheticStop).padEnd(7)} ${String(r.nextPrompt).padEnd(7)} ${String(r.sessionEnd).padEnd(8)} ${String(r.open).padEnd(6)} ${String(r.preInstrument).padEnd(6)} ${rate}`);
+      log(`  ${r.agentType.slice(0, 14).padEnd(14)} ${String(r.total).padEnd(7)} ${String(r.stop).padEnd(7)} ${String(r.syntheticStop).padEnd(7)} ${String(r.nextPrompt).padEnd(7)} ${String(r.interrupted).padEnd(6)} ${String(r.sessionEnd).padEnd(8)} ${String(r.open).padEnd(6)} ${String(r.preInstrument).padEnd(6)} ${rate}`);
     }
     log('');
     log('  Synth  = Stop hook dropped, watchdog recovered it from the transcript');
     log('  NoStop = Stop hook dropped and nothing recovered it (closed by the next prompt)');
+    log('  Esc    = user cancelled the turn — Claude Code owes no Stop, so not a loss');
     log('  ?      = closed before end_source existed — signal unknown, never guessed');
     log('');
   });

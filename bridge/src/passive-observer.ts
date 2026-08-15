@@ -23,6 +23,9 @@ import { homedir } from 'node:os';
 import type { EnrichedSession } from './session-aggregator.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
 import { stripUnsafeText, rawSessionId } from '@agentdeck/shared';
+// The interrupt marker rule is shared with the turn watchdog / APME collector —
+// see claude-interrupt-marker.ts for why it must not be spelled twice.
+import { isClaudeInterruptMessage } from './claude-interrupt-marker.js';
 import {
   parseAntigravityTranscript,
   antigravityDefaultModel,
@@ -1144,14 +1147,6 @@ function redactSecrets(value: string): string {
 function isClaudeToolResultUserMessage(message: Record<string, unknown> | null): boolean {
   const content = message ? arrayAt(message, 'content') : null;
   return !!content?.length && content.every((block) => isRecord(block) && stringAt(block, 'type') === 'tool_result');
-}
-
-/** Does a user record carry Claude Code's interrupt/cancel marker
- *  (`[Request interrupted by user…]`) rather than real user prose? Emitted when
- *  the user presses ESC on a prompt or mid-turn — it fires no lifecycle hook,
- *  so the transcript is the only place the cancel is observable. */
-function isClaudeInterruptMessage(message: Record<string, unknown> | null): boolean {
-  return /\[Request interrupted by user/i.test(claudeUserText(message));
 }
 
 function contextWindowForModel(modelName?: string): number {

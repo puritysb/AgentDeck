@@ -820,6 +820,11 @@ export class ApmeStore {
    *  `preInstrument` is rows written before the `end_source` column existed;
    *  they are reported separately instead of being folded into any bucket,
    *  because their closing signal is genuinely unknown (see the migration).
+   *
+   *  `interrupted` is also its own column rather than part of any loss bucket:
+   *  a user cancel is a turn for which Claude Code owes no Stop at all, so
+   *  counting it as a dropped hook would report the user's own ESC key as
+   *  infrastructure loss.
    */
   stopDelivery(opts: { sinceMs: number; agentType?: string } = { sinceMs: 0 }): ApmeStopDeliveryRow[] {
     if (!this.db) return [];
@@ -832,6 +837,7 @@ export class ApmeStore {
               SUM(t.end_source = 'stop') AS stop,
               SUM(t.end_source = 'synthetic_stop') AS syntheticStop,
               SUM(t.end_source = 'next_prompt') AS nextPrompt,
+              SUM(t.end_source = 'interrupted') AS interrupted,
               SUM(t.end_source IN ('session_end','run_close','clear')) AS sessionEnd,
               SUM(t.ended_at IS NULL) AS open,
               SUM(t.ended_at IS NOT NULL AND t.end_source IS NULL) AS preInstrument
@@ -846,6 +852,7 @@ export class ApmeStore {
       stop: Number(r.stop ?? 0),
       syntheticStop: Number(r.syntheticStop ?? 0),
       nextPrompt: Number(r.nextPrompt ?? 0),
+      interrupted: Number(r.interrupted ?? 0),
       sessionEnd: Number(r.sessionEnd ?? 0),
       open: Number(r.open ?? 0),
       preInstrument: Number(r.preInstrument ?? 0),

@@ -17,6 +17,13 @@
  * then injects a synthetic Stop through the normal adapter event pipe so
  * state machine, timeline, and APME all close through their existing paths.
  *
+ * A turn the user CANCELLED (ESC) ends the same way as far as every consumer
+ * is concerned, but it never produces an `end_turn` and fires no hook at all,
+ * so it would otherwise sit PROCESSING until the stuck timeout and be charged
+ * to the dropped-Stop rate. The interrupt marker in the transcript is the only
+ * evidence that exists, so it closes the turn too — tagged `interrupted`, kept
+ * out of the loss measurement, because no hook was lost here.
+ *
  * False-positive guards:
  *  - `stop_reason: "tool_use"` (permission prompt / AskUserQuestion open,
  *    tools running) never matches, so a genuine wait is never force-closed.
@@ -40,9 +47,14 @@ export const WATCHDOG_POLL_MS = 5_000;
 /** Clock slack when comparing a record timestamp to the turn-open time. */
 const TURN_OPEN_SLACK_MS = 2_000;
 
+/** Why the transcript says the open turn is over. `end_turn` is a Stop that
+ *  was dropped in flight; `interrupted` is a turn the user cancelled, for
+ *  which no Stop was ever due. They close identically and are counted apart. */
+export type TurnEndReason = 'end_turn' | 'interrupted';
+
 export interface ClaudeTurnWatchdogOptions {
   /** Called when the transcript proves the open turn ended without a Stop. */
-  onMissedStop: (data: { transcript_path: string }) => void;
+  onMissedStop: (data: { transcript_path: string; reason: TurnEndReason }) => void;
   quietMs?: number;
   pollMs?: number;
   /** Injectable for tests. */
@@ -52,7 +64,7 @@ export interface ClaudeTurnWatchdogOptions {
 }
 
 export class ClaudeTurnWatchdog {
-  private readonly onMissedStop: (data: { transcript_path: string }) => void;
+  private readonly onMissedStop: (data: { transcript_path: string; reason: TurnEndReason }) => void;
   private readonly quietMs: number;
   private readonly pollMs: number;
   private readonly now: () => number;
@@ -139,15 +151,19 @@ export class ClaudeTurnWatchdog {
 
     const probe = this.probe(this.transcriptPath);
     if (!probe) return;
-    if (probe.role !== 'assistant' || probe.stopReason !== 'end_turn') return;
+    const finished = probe.role === 'assistant' && probe.stopReason === 'end_turn';
+    // The marker is a `user` record, so it can never satisfy `finished` — the
+    // two are alternatives, not a refinement of one another.
+    const reason: TurnEndReason | null = finished ? 'end_turn' : probe.interrupted ? 'interrupted' : null;
+    if (!reason) return;
     if (probe.timestampMs == null) return;
     if (probe.timestampMs < this.turnOpenedAt - TURN_OPEN_SLACK_MS) return;
 
-    debug('watchdog', `missed Stop recovered from transcript (end_turn @ ${probe.timestampMs})`);
+    debug('watchdog', `turn closed from transcript (${reason} @ ${probe.timestampMs})`);
     const transcriptPath = this.transcriptPath;
     this.turnOpenedAt = null;
     this.disarm();
-    this.onMissedStop({ transcript_path: transcriptPath });
+    this.onMissedStop({ transcript_path: transcriptPath, reason });
   }
 }
 

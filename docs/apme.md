@@ -151,16 +151,21 @@ Claude 턴을 닫는 권한은 Stop hook **하나뿐**이고 그 전달은 fire-
 | `stop` | 진짜 Stop hook 도착 — 정상 |
 | `synthetic_stop` | Stop 유실 → `claude-turn-watchdog.ts` 가 transcript tail 근거로 복구. **이 개수가 곧 유실 측정치** |
 | `next_prompt` | Stop 도 없고 복구도 없었음 — 다음 프롬프트가 밀어내며 닫음. **미복구 유실** |
+| `interrupted` | 사용자가 ESC 로 취소 — Claude Code 는 취소 시 hook 을 **하나도 emit 하지 않으므로** 애초에 올 Stop 이 없었다. 유실이 아니다 |
 | `session_end` / `run_close` / `clear` | 턴이 열린 채로 세션·run 이 끝나거나 `/clear` 로 잘림 |
 | `NULL` | 아직 열려 있음(`ended_at IS NULL`), 또는 컬럼 도입 이전 행 |
 
 컬럼 도입 이전 행은 **backfill 하지 않는다**. 당시엔 전부 다음 프롬프트에 닫혔으므로 Stop 도착 여부를 구분할 근거가 없고, 추측 backfill 은 이 컬럼이 재려는 바로 그 비율을 오염시킨다. `stop-health` 는 그 행들을 `?` 로 따로 센다.
 
+**ESC 취소를 유실로 세지 않는 이유와 그 근거 위치.** 취소는 `PostToolUse`/`Stop`/`UserPromptSubmit` 중 무엇도 emit 하지 않으므로(2026-07-18 실측) 전달될 Stop 자체가 없다 — 이걸 `next_prompt` 로 두면 사용자의 ESC 키가 인프라 유실로 집계된다. 증거는 transcript 의 interrupt 마커 하나뿐이고, 판별 규칙은 `bridge/src/claude-interrupt-marker.ts` 한 곳에 있다(관측자·워치독·collector 3소비자 공용). 마커는 **text 블록만** 본다 — `tool_result` 가 같은 문장을 인용하는 일이 흔해서(자기 transcript 를 grep 하는 세션이면 반드시 생긴다) 원문 매칭은 유령 취소를 만든다.
+
+취소는 두 지점에서 잡힌다. 마커가 tail 로 남아 있으면 워치독이(= ESC 후 그대로 둔 경우, 5분 stuck timeout 까지 PROCESSING 으로 남던 것도 같이 해소), 취소 직후 바로 다시 입력해 마커가 새 프롬프트 밑에 묻히면 다음 프롬프트의 close 경로가 `readInterruptSince` 로 확인한다. 후자의 읽기는 **이미 열린 채 밀려난 턴**에서만 발생한다 — 정상 턴은 Stop 이 그 전에 닫는다.
+
 ```bash
 agentdeck apme stop-health --since 7d [--agent claude-code]
 ```
 
-분모는 **판정 가능한 턴만** — `stop + synthetic_stop + next_prompt`. 열린 턴·세션 종료로 닫힌 턴·도입 이전 행은 Stop 도착 여부의 증거가 아니므로 비율에서 제외한다. 다만 `total` 에는 열린 턴이 포함되는데, 열린 턴이야말로 "아직 안 온 Stop" 이라 분모에서 빼면 측정하려는 실패를 숨기게 되기 때문이다.
+분모는 **판정 가능한 턴만** — `stop + synthetic_stop + next_prompt`. 열린 턴·취소된 턴·세션 종료로 닫힌 턴·도입 이전 행은 Stop 도착 여부의 증거가 아니므로 비율에서 제외한다. 다만 `total` 에는 열린 턴이 포함되는데, 열린 턴이야말로 "아직 안 온 Stop" 이라 분모에서 빼면 측정하려는 실패를 숨기게 되기 때문이다.
 
 ### steps — 훅 이벤트 + tool 호출 기록
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { readLastTurn, readTurnEndProbe } from '../apme/claude-transcript-reader.js';
+import { readLastTurn, readTurnEndProbe, readInterruptSince } from '../apme/claude-transcript-reader.js';
 
 // Picks the most recent user→assistant turn out of a Claude Code JSONL
 // transcript. These fixtures mirror the structure Claude Code writes to
@@ -136,6 +136,7 @@ describe('readTurnEndProbe', () => {
       role: 'assistant',
       stopReason: 'end_turn',
       timestampMs: Date.parse('2026-08-13T12:00:05.000Z'),
+      interrupted: false,
     });
   });
 
@@ -187,5 +188,85 @@ describe('readTurnEndProbe', () => {
     const path = writeTranscript(good + '\n' + '{"type":"assistant","message":{"role":"assist');
     const out = readTurnEndProbe(path);
     expect(out!.stopReason).toBe('end_turn');
+  });
+
+  it('flags the ESC interrupt marker as the turn end', () => {
+    const path = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T12:00:01.000Z',
+        message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }] } },
+      { type: 'user', timestamp: '2026-08-13T12:00:02.000Z', interruptedMessageId: 'msg_1',
+        message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user for tool use]' }] } },
+    ]));
+    const out = readTurnEndProbe(path);
+    expect(out!.role).toBe('user');
+    expect(out!.stopReason).toBeNull();
+    expect(out!.interrupted).toBe(true);
+  });
+
+  it('does not read a quoted marker inside a tool_result as an interrupt', () => {
+    // Any session that greps its own transcripts produces this exact line;
+    // matching raw text instead of text BLOCKS would invent a phantom cancel.
+    const path = writeTranscript(fixture([
+      { type: 'user', timestamp: '2026-08-13T12:00:02.000Z',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'match: [Request interrupted by user]' }] } },
+    ]));
+    expect(readTurnEndProbe(path)!.interrupted).toBe(false);
+  });
+});
+
+describe('readInterruptSince', () => {
+  let dir: string;
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'transcript-test-')); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  function writeTranscript(content: string): string {
+    const path = join(dir, 'session.jsonl');
+    writeFileSync(path, content);
+    return path;
+  }
+
+  const AT = (iso: string) => Date.parse(iso);
+
+  it('finds a marker buried under the retyped prompt that followed it', () => {
+    // The commonest ESC shape: cancel, then immediately retype. The marker is
+    // no longer the tail two records later, which is exactly why the tail
+    // probe alone cannot attribute this turn.
+    const path = writeTranscript(fixture([
+      { type: 'user', timestamp: '2026-08-13T12:00:02.000Z', interruptedMessageId: 'msg_1',
+        message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } },
+      { type: 'user', timestamp: '2026-08-13T12:00:09.000Z',
+        message: { role: 'user', content: [{ type: 'text', text: 'actually do this instead' }] } },
+    ]));
+    expect(readInterruptSince(path, AT('2026-08-13T12:00:00.000Z')))
+      .toBe(AT('2026-08-13T12:00:02.000Z'));
+  });
+
+  it('will not pay this turn for the previous turn\'s cancel', () => {
+    const path = writeTranscript(fixture([
+      { type: 'user', timestamp: '2026-08-13T11:00:00.000Z', interruptedMessageId: 'msg_0',
+        message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } },
+      { type: 'user', timestamp: '2026-08-13T12:00:00.000Z',
+        message: { role: 'user', content: [{ type: 'text', text: 'new turn' }] } },
+    ]));
+    expect(readInterruptSince(path, AT('2026-08-13T12:00:00.000Z'))).toBeNull();
+  });
+
+  it('a stampless record does not hide markers behind it', () => {
+    const path = writeTranscript(fixture([
+      { type: 'user', timestamp: '2026-08-13T12:00:02.000Z', interruptedMessageId: 'msg_1',
+        message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } },
+      { type: 'file-history-snapshot', messageId: 'x' },
+    ]));
+    expect(readInterruptSince(path, AT('2026-08-13T12:00:00.000Z')))
+      .toBe(AT('2026-08-13T12:00:02.000Z'));
+  });
+
+  it('returns null on a clean turn and on an unreadable file', () => {
+    const path = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T12:00:05.000Z',
+        message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] } },
+    ]));
+    expect(readInterruptSince(path, AT('2026-08-13T12:00:00.000Z'))).toBeNull();
+    expect(readInterruptSince(join(dir, 'missing.jsonl'), 0)).toBeNull();
   });
 });

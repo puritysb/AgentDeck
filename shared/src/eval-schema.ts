@@ -244,8 +244,14 @@ export type ResponseKind = 'text' | 'tool_only' | 'empty';
  *   - `next_prompt`     no Stop ever arrived and no watchdog recovered it —
  *                       the turn stayed open until the following prompt
  *                       displaced it. An unrecovered loss.
- *   - `session_end`     the session ended while the turn was open (includes an
- *                       interrupted / abandoned turn).
+ *   - `interrupted`     the user pressed ESC. Claude Code emits NO hook for a
+ *                       cancel — not PostToolUse, not Stop, not
+ *                       UserPromptSubmit — so no Stop was ever due and this is
+ *                       NOT a lost hook. It is its own bucket precisely so it
+ *                       stops being counted as one; the transcript's interrupt
+ *                       marker is the only evidence it happened.
+ *   - `session_end`     the session ended while the turn was open (an
+ *                       abandoned turn).
  *   - `run_close`       the run was closed or reaped out from under the turn.
  *   - `clear`           `/clear` split the run mid-turn.
  *
@@ -255,6 +261,7 @@ export type TurnEndSource =
   | 'stop'
   | 'synthetic_stop'
   | 'next_prompt'
+  | 'interrupted'
   | 'session_end'
   | 'run_close'
   | 'clear';
@@ -267,6 +274,8 @@ export interface ApmeStopDeliveryRow {
   stop: number;
   syntheticStop: number;
   nextPrompt: number;
+  /** User cancels. Reported beside the loss buckets, never inside them. */
+  interrupted: number;
   /** `session_end` + `run_close` + `clear` folded together. */
   sessionEnd: number;
   /** Still open at query time. */

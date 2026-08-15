@@ -22,7 +22,7 @@
  * the recovered path must be the same path, not a parallel one.
  */
 
-import { ClaudeTurnWatchdog } from './claude-turn-watchdog.js';
+import { ClaudeTurnWatchdog, type TurnEndReason } from './claude-turn-watchdog.js';
 import type { TurnEndProbe } from './apme/claude-transcript-reader.js';
 import { debug } from './logger.js';
 
@@ -40,6 +40,9 @@ export const OBSERVED_WATCHDOG_MAX_SESSIONS = 64;
 export interface ObservedStopRecovery {
   sessionId: string;
   transcriptPath: string;
+  /** Whether the transcript showed a finished turn or a cancelled one — the
+   *  close is the same, the attribution is not. */
+  reason: TurnEndReason;
   cwd?: string;
   projectName?: string;
 }
@@ -125,12 +128,13 @@ export class ObservedTurnWatchdogs {
 
   private makeWatchdog(sessionId: string): ClaudeTurnWatchdog {
     return new ClaudeTurnWatchdog({
-      onMissedStop: ({ transcript_path }) => {
+      onMissedStop: ({ transcript_path, reason }) => {
         const entry = this.sessions.get(sessionId);
-        debug('watchdog', `observed session ${sessionId.slice(0, 8)} missed Stop — injecting synthetic Stop`);
+        debug('watchdog', `observed session ${sessionId.slice(0, 8)} turn ended (${reason}) — injecting synthetic Stop`);
         this.opts.onMissedStop({
           sessionId,
           transcriptPath: transcript_path,
+          reason,
           cwd: entry?.cwd,
           projectName: entry?.projectName,
         });

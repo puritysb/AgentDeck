@@ -575,11 +575,16 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     // this same event pipe — state machine, timeline, and APME all close via
     // their existing Stop paths, and a late real Stop dedups downstream.
     const turnWatchdog = new ClaudeTurnWatchdog({
-      onMissedStop: ({ transcript_path }) => {
+      onMissedStop: ({ transcript_path, reason }) => {
         adapter.emit('event', {
           source: 'hook',
           event: 'Stop',
-          data: { transcript_path, synthetic_stop: true },
+          data: {
+            transcript_path,
+            synthetic_stop: true,
+            // A user cancel is not a lost hook — same close, different bucket.
+            ...(reason === 'interrupted' ? { interrupted: true } : {}),
+          },
         } as AdapterEvent);
       },
     });
@@ -1685,6 +1690,7 @@ function wireClaudeCodeTimeline(
           if (lastAssistantMsg) apmeRef.collector.setTurnResponse(core.sessionId, lastAssistantMsg);
           apmeRef.collector.noteTurnStop(core.sessionId, {
             synthetic: evt.data?.synthetic_stop === true,
+            interrupted: evt.data?.interrupted === true,
           });
         }
 

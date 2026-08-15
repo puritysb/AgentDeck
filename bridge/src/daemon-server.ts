@@ -1211,7 +1211,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    * involved and none is minted.
    */
   const observedStopWatchdogs = new ObservedTurnWatchdogs({
-    onMissedStop: ({ sessionId, transcriptPath, cwd, projectName }) => {
+    onMissedStop: ({ sessionId, transcriptPath, reason, cwd, projectName }) => {
       const url = `http://127.0.0.1:${port}/hooks/Stop`;
       const controller = new AbortController();
       // Bounded like every other peer await, loopback or not: a daemon
@@ -1226,8 +1226,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           session_id: sessionId,
           transcript_path: transcriptPath,
           // Tags the APME turn `end_source='synthetic_stop'`, which is the
-          // standing measurement of how often the real hook drops.
+          // standing measurement of how often the real hook drops — unless
+          // the user cancelled, in which case no Stop was ever due and the
+          // turn must not be charged to that rate.
           synthetic_stop: true,
+          ...(reason === 'interrupted' ? { interrupted: true } : {}),
           ...(cwd ? { cwd } : {}),
           ...(projectName ? { project_name: projectName } : {}),
         }),
@@ -2448,7 +2451,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // already-closed turn. `turnOpen` above is a TIMELINE predicate —
             // it says nothing about the collector's turn, which is why this is
             // unconditional rather than nested under it.
-            apme.collector.noteTurnStop(hookSid, { synthetic: json.synthetic_stop === true });
+            apme.collector.noteTurnStop(hookSid, {
+              synthetic: json.synthetic_stop === true,
+              interrupted: json.interrupted === true,
+            });
           }
           if (turnOpen && lastStart) {
             const now = Date.now();

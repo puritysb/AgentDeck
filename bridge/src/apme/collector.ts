@@ -27,6 +27,7 @@ import type { AgentType, TelemetrySpan, ApmeSampleEventRow, TrajectoryEventKind,
 import { priceUsd, providerFor } from '@agentdeck/shared';
 import type { ApmeHwSampler } from './hw-sampler.js';
 import { classifyRunSmart, computeSignals, classify } from './classifier.js';
+import { readInterruptSince } from './claude-transcript-reader.js';
 
 export interface OpenRunInput {
   sessionId: string;
@@ -58,6 +59,13 @@ interface ActiveTurn {
  *  `chat.send` span + the gateway's `session.message` role=user re-delivery
  *  of the same text), not a new turn. */
 const DUPLICATE_TURN_OPEN_WINDOW_MS = 15_000;
+
+/** Clock slack when asking whether an interrupt marker belongs to THIS turn.
+ *  The turn's `startedAt` is the daemon's clock at the hook POST while the
+ *  marker carries Claude Code's own record timestamp; without a little give,
+ *  a cancel milliseconds into a turn reads as belonging to the previous one.
+ *  Matches the watchdog's `TURN_OPEN_SLACK_MS` — same comparison, same risk. */
+const TURN_INTERRUPT_SLACK_MS = 2_000;
 
 interface ActiveTask {
   id: string;
@@ -185,6 +193,9 @@ export class ApmeCollector {
   constructor(
     private readonly store: ApmeStore,
     private readonly hwSampler?: ApmeHwSampler,
+    /** Newest user-interrupt marker at/after a timestamp. Injectable for
+     *  tests; the default reads the Claude transcript tail. */
+    private readonly interruptProbe: (transcriptPath: string, sinceMs: number) => number | null = readInterruptSince,
   ) {}
 
   /** Start a new run and return its id. Safe to call if store disabled (returns ''). */
@@ -267,8 +278,9 @@ export class ApmeCollector {
       }
       // A turn still open when the NEXT prompt arrives never got its Stop —
       // and no watchdog recovered it either, or the synthetic Stop would have
-      // closed it already. That is the unrecovered-loss bucket.
-      this.closeTurn(sessionId, 'next_prompt');
+      // closed it already. That is the unrecovered-loss bucket, UNLESS the
+      // user cancelled it, in which case no Stop was ever owed.
+      this.closeTurn(sessionId, this.resolveDisplacedTurnSource(sessionId, data));
       // Open new turn
       const turnIndex = prevIndex + 1;
       const run = this.store.getRun(runId);
@@ -438,9 +450,42 @@ export class ApmeCollector {
    *
    *  Idempotent: a duplicate or late Stop finds no active turn and no-ops, so
    *  a synthetic Stop racing a real one cannot overwrite the real attribution. */
-  noteTurnStop(sessionId: string, opts: { synthetic?: boolean } = {}): void {
+  noteTurnStop(sessionId: string, opts: { synthetic?: boolean; interrupted?: boolean } = {}): void {
     if (!this.store.enabled) return;
-    this.closeTurn(sessionId, opts.synthetic ? 'synthetic_stop' : 'stop');
+    // `interrupted` outranks `synthetic`: a cancel is always delivered as a
+    // synthetic Stop (there is no real one to deliver), so reading the flags
+    // the other way round would file every user cancel as a dropped hook.
+    const source: TurnEndSource = opts.interrupted ? 'interrupted'
+      : opts.synthetic ? 'synthetic_stop'
+        : 'stop';
+    this.closeTurn(sessionId, source);
+  }
+
+  /** Attribute a turn that is still open when the next prompt arrives.
+   *
+   *  The watchdog catches a cancel only while the interrupt marker is still
+   *  the transcript's tail. The commonest ESC shape — cancel, then retype
+   *  straight away — buries it under the new user message in seconds and
+   *  fires a fresh `UserPromptSubmit`, so the displaced turn would land in
+   *  `next_prompt` and inflate the very loss rate this instrument measures.
+   *  Asking the transcript here costs one bounded tail read, and only on the
+   *  path where a turn was already left open — a healthy turn is closed by
+   *  its Stop long before this runs. */
+  private resolveDisplacedTurnSource(sessionId: string, data: Record<string, unknown>): TurnEndSource {
+    const turn = this.sessionToTurn.get(sessionId);
+    // No open turn: closeTurn no-ops, so the value is immaterial.
+    if (!turn) return 'next_prompt';
+    // Claude-only: the marker and the JSONL shape are Claude Code's.
+    if (this.sessionToAgentType.get(sessionId) !== 'claude-code') return 'next_prompt';
+    const transcriptPath = typeof data.transcript_path === 'string' ? data.transcript_path : '';
+    if (!transcriptPath) return 'next_prompt';
+    try {
+      const at = this.interruptProbe(transcriptPath, turn.startedAt - TURN_INTERRUPT_SLACK_MS);
+      return at != null ? 'interrupted' : 'next_prompt';
+    } catch {
+      // An unreadable transcript is no evidence of a cancel — never guess.
+      return 'next_prompt';
+    }
   }
 
   /** Close the current turn for a session (called on Stop, new prompt, or

@@ -128,6 +128,70 @@ describe('turns.end_source', () => {
     expect(turnsOf(store, runId2)[0].end_source).toBe('clear');
   });
 
+  it('a cancel is tagged `interrupted`, even though it arrives as a synthetic Stop', () => {
+    // ESC always reaches the collector through the watchdog's synthetic Stop
+    // (there is no real one to deliver), so reading `synthetic` first would
+    // file every user cancel as a dropped hook.
+    const runId = openRun();
+    prompt(collector, SID, 'first');
+    collector.noteTurnStop(SID, { synthetic: true, interrupted: true });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('interrupted');
+  });
+
+  it('a displaced turn whose transcript shows a cancel is `interrupted`, not `next_prompt`', () => {
+    // Cancel-then-retype buries the marker under the new prompt within
+    // seconds, so the watchdog never sees it as the tail. Left unattributed,
+    // the commonest ESC shape would inflate the unrecovered-loss bucket.
+    const seen: Array<{ path: string; since: number }> = [];
+    const c = new ApmeCollector(store, undefined, (path, since) => {
+      seen.push({ path, since });
+      return since + 1_000;
+    });
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('interrupted');
+    expect(seen).toHaveLength(1);
+    expect(seen[0].path).toBe('/t.jsonl');
+  });
+
+  it('no marker in the window still means `next_prompt` — absence is never a cancel', () => {
+    const c = new ApmeCollector(store, undefined, () => null);
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
+  });
+
+  it('never reads a transcript for a non-Claude agent or a pathless hook', () => {
+    // The marker and the JSONL shape are Claude Code's; a Codex turn has
+    // neither, and probing one would be a wasted read at best.
+    let probed = 0;
+    const c = new ApmeCollector(store, undefined, () => { probed++; return Date.now(); });
+    c.openRun({ sessionId: 'codex-sess', agentType: 'codex-cli' });
+    c.ingestHook('codex-sess', 'UserPromptSubmit', { message: { content: 'a' }, transcript_path: '/t.jsonl' });
+    c.ingestHook('codex-sess', 'UserPromptSubmit', { message: { content: 'b' }, transcript_path: '/t.jsonl' });
+
+    const runId = c.openRun({ sessionId: 'claude-sess', agentType: 'claude-code' }) as string;
+    c.ingestHook('claude-sess', 'UserPromptSubmit', { message: { content: 'a' } });
+    c.ingestHook('claude-sess', 'UserPromptSubmit', { message: { content: 'b' } });
+
+    expect(probed).toBe(0);
+    expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
+  });
+
+  it('an unreadable transcript falls back to `next_prompt` rather than guessing', () => {
+    const c = new ApmeCollector(store, undefined, () => { throw new Error('EACCES'); });
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
+  });
+
   it('the response still lands on the turn when the Stop closes it first', () => {
     // Ordering contract: callers record the response before noteTurnStop, but
     // the daemon's observed path can reach setTurnResponse after — the
@@ -168,8 +232,26 @@ describe('ApmeStore.stopDelivery', () => {
     expect(row.stop).toBe(1);
     expect(row.syntheticStop).toBe(1);
     expect(row.nextPrompt).toBe(1);
+    expect(row.interrupted).toBe(0);
     expect(row.open).toBe(1);
     expect(row.preInstrument).toBe(0);
+  });
+
+  it('counts cancels in their own column, outside every loss bucket', () => {
+    // The whole point of the column: a user's ESC key must not be reported as
+    // infrastructure loss. It is not `stop` either — no Stop hook ever ran.
+    const sid = 'sess-esc';
+    collector.openRun({ sessionId: sid, agentType: 'claude-code' });
+    prompt(collector, sid, 'p1'); collector.noteTurnStop(sid);
+    prompt(collector, sid, 'p2'); collector.noteTurnStop(sid, { synthetic: true, interrupted: true });
+
+    const [row] = store.stopDelivery({ sinceMs: 0 });
+    expect(row.interrupted).toBe(1);
+    expect(row.syntheticStop).toBe(0);
+    expect(row.nextPrompt).toBe(0);
+    expect(row.stop).toBe(1);
+    // The rate the CLI prints: adjudicated turns only, cancels excluded.
+    expect(row.stop + row.syntheticStop + row.nextPrompt).toBe(1);
   });
 
   it('reports pre-instrument rows separately instead of guessing a bucket', () => {

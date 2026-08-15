@@ -18,6 +18,7 @@
 
 import { readFileSync, openSync, readSync, fstatSync, closeSync } from 'fs';
 import { debug } from '../logger.js';
+import { isClaudeInterruptRecord } from '../claude-interrupt-marker.js';
 
 export interface LastTurnExcerpt {
   userPrompt: string;
@@ -143,6 +144,9 @@ export interface TurnEndProbe {
   stopReason: string | null;
   /** Record `timestamp` in epoch ms (null when absent/unparseable). */
   timestampMs: number | null;
+  /** That record is Claude Code's ESC/interrupt marker — the turn is over,
+   *  cancelled by the user, and no Stop hook will ever arrive for it. */
+  interrupted: boolean;
 }
 
 /**
@@ -152,6 +156,11 @@ export interface TurnEndProbe {
  * or a `user` tool_result record. Non-message records (`type: "mode"` etc.)
  * can trail the assistant message, so the walk skips records without a
  * `message.role`. Never throws; returns null when unreadable/empty.
+ *
+ * The OTHER way a turn ends is the user pressing ESC, which produces no
+ * assistant `end_turn` at all — just the interrupt marker record — so
+ * `interrupted` is reported alongside, and a caller that only checked for
+ * `end_turn` would wait forever on a turn nothing will ever close.
  *
  * Used by the turn watchdog to close a turn whose Stop hook was dropped —
  * the caller must additionally check `timestampMs` against its own turn-open
@@ -188,7 +197,46 @@ export function readTurnEndProbe(transcriptPath: string): TurnEndProbe | null {
       role,
       stopReason: rec.message?.stop_reason ?? null,
       timestampMs: Number.isFinite(ts) ? ts : null,
+      interrupted: isClaudeInterruptRecord(rec),
     };
+  }
+  return null;
+}
+
+/**
+ * Timestamp of the newest user-interrupt (ESC) marker at or after `sinceMs`,
+ * or null when the window holds none.
+ *
+ * `readTurnEndProbe` only sees the marker while it is still the tail — the
+ * common ESC shape is "cancel, then immediately retype", which buries the
+ * marker under the new user message within seconds. That turn ends by
+ * cancellation just as surely, so the close path that runs at the next prompt
+ * asks this instead of assuming a dropped Stop.
+ *
+ * The backward walk stops at the first record older than the window, so an
+ * interrupt belonging to some earlier turn can neither be found nor paid for.
+ */
+export function readInterruptSince(transcriptPath: string, sinceMs: number): number | null {
+  const INTERRUPT_TAIL_BYTES = 256 * 1024;
+  const tail = readTailString(transcriptPath, INTERRUPT_TAIL_BYTES);
+  if (tail == null) return null;
+  const lines = tail.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    let rec: { timestamp?: string };
+    try {
+      rec = JSON.parse(line);
+    } catch {
+      continue; // skip malformed (possibly truncated) line
+    }
+    const ts = rec.timestamp ? Date.parse(rec.timestamp) : NaN;
+    // A record with no usable timestamp cannot be placed in or out of the
+    // window, so it is skipped rather than ending the walk — ending here
+    // would let one stampless line hide every marker behind it.
+    if (!Number.isFinite(ts)) continue;
+    if (ts < sinceMs) return null;
+    if (isClaudeInterruptRecord(rec)) return ts;
   }
   return null;
 }

@@ -21,7 +21,7 @@ const TP_A = '/tmp/a.jsonl';
 const TP_B = '/tmp/b.jsonl';
 
 function endTurnNow(): TurnEndProbe {
-  return { role: 'assistant', stopReason: 'end_turn', timestampMs: Date.now() };
+  return { role: 'assistant', stopReason: 'end_turn', timestampMs: Date.now(), interrupted: false };
 }
 
 function make(opts: { probe?: (tp: string) => TurnEndProbe | null; maxSessions?: number } = {}) {
@@ -53,7 +53,7 @@ describe('ObservedTurnWatchdogs', () => {
     mgr.noteHookEvent('sess-a', 'UserPromptSubmit', { transcript_path: TP_A, cwd: '/w/a', project_name: 'alpha' });
     elapse();
     expect(fired).toEqual([
-      { sessionId: 'sess-a', transcriptPath: TP_A, cwd: '/w/a', projectName: 'alpha' },
+      { sessionId: 'sess-a', transcriptPath: TP_A, reason: 'end_turn', cwd: '/w/a', projectName: 'alpha' },
     ]);
   });
 
@@ -108,7 +108,7 @@ describe('ObservedTurnWatchdogs', () => {
     // A permission prompt or an open AskUserQuestion leaves stop_reason
     // tool_use — force-closing there would answer for the user.
     const { mgr, fired } = make({
-      probe: () => ({ role: 'assistant', stopReason: 'tool_use', timestampMs: Date.now() }),
+      probe: () => ({ role: 'assistant', stopReason: 'tool_use', timestampMs: Date.now(), interrupted: false }),
     });
     mgr.noteHookEvent('sess-a', 'UserPromptSubmit', { transcript_path: TP_A });
     elapse(5);
