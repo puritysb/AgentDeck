@@ -1,72 +1,15 @@
 #if os(macOS)
 // StateMachine.swift — Agent state machine
 // Ported from shared/src/states.ts + shared/src/state-machine.ts
+//
+// `AgentState`, `TransitionSource`, `StateTransition` and the transition table
+// itself are GENERATED into StateTransitions.generated.swift from
+// shared/src/states.ts — the table is a rule set two daemons must agree on
+// exactly, and a hand-kept copy of one drifts silently. Only the driver below
+// (timers, prompt state, side effects on a state change) is hand-written.
+// Regenerate with `pnpm generate-state-transitions`.
 
 import Foundation
-
-enum AgentState: String, Codable, Sendable {
-    case disconnected
-    case idle
-    case processing
-    case awaitingPermission = "awaiting_permission"
-    case awaitingOption = "awaiting_option"
-    case awaitingDiff = "awaiting_diff"
-}
-
-enum TransitionSource: String, Sendable {
-    case hook, pty, user, `internal`
-}
-
-struct StateTransition: Sendable {
-    let from: AgentState?  // nil = wildcard *
-    let to: AgentState
-    let trigger: String
-    let source: TransitionSource
-}
-
-let stateTransitions: [StateTransition] = [
-    .init(from: .disconnected, to: .idle, trigger: "session_start", source: .hook),
-    .init(from: .idle, to: .processing, trigger: "user_prompt_submit", source: .hook),
-    .init(from: .idle, to: .processing, trigger: "spinner_start", source: .pty),
-    .init(from: .processing, to: .idle, trigger: "stop", source: .hook),
-    .init(from: .processing, to: .idle, trigger: "idle_detected", source: .pty),
-    .init(from: .awaitingPermission, to: .idle, trigger: "idle_detected", source: .pty),
-    .init(from: .awaitingOption, to: .idle, trigger: "idle_detected", source: .pty),
-    .init(from: .awaitingDiff, to: .idle, trigger: "idle_detected", source: .pty),
-    .init(from: .processing, to: .awaitingPermission, trigger: "permission_prompt", source: .pty),
-    .init(from: .idle, to: .awaitingPermission, trigger: "permission_prompt", source: .pty),
-    .init(from: .processing, to: .awaitingOption, trigger: "option_ui_detected", source: .pty),
-    .init(from: .idle, to: .awaitingOption, trigger: "option_ui_detected", source: .pty),
-    .init(from: .processing, to: .awaitingDiff, trigger: "diff_ui_detected", source: .pty),
-    .init(from: .idle, to: .awaitingDiff, trigger: "diff_ui_detected", source: .pty),
-    .init(from: .awaitingPermission, to: .processing, trigger: "user_response", source: .user),
-    .init(from: .awaitingPermission, to: .processing, trigger: "user_selection", source: .user),
-    .init(from: .awaitingOption, to: .processing, trigger: "user_selection", source: .user),
-    .init(from: .awaitingDiff, to: .processing, trigger: "user_response", source: .user),
-    .init(from: .awaitingDiff, to: .processing, trigger: "user_selection", source: .user),
-    .init(from: .awaitingPermission, to: .processing, trigger: "spinner_start", source: .pty),
-    .init(from: .awaitingOption, to: .processing, trigger: "spinner_start", source: .pty),
-    .init(from: .awaitingDiff, to: .processing, trigger: "spinner_start", source: .pty),
-    // Hook exits from AWAITING_* (mirrors states.ts): a prompt answered at the
-    // keyboard is dismissed by the lifecycle hooks that keep firing. NOTE:
-    // this daemon multiplexes every observed session into one machine, so —
-    // exactly like the Node daemon hub's `toolActivityRecovery: false` — the
-    // driver (DaemonServer) must never EMIT "tool_activity"; the entries exist
-    // to keep the table a faithful mirror of shared/src/states.ts.
-    .init(from: .awaitingPermission, to: .processing, trigger: "tool_activity", source: .hook),
-    .init(from: .awaitingOption, to: .processing, trigger: "tool_activity", source: .hook),
-    .init(from: .awaitingDiff, to: .processing, trigger: "tool_activity", source: .hook),
-    .init(from: .awaitingPermission, to: .idle, trigger: "stop", source: .hook),
-    .init(from: .awaitingOption, to: .idle, trigger: "stop", source: .hook),
-    .init(from: .awaitingDiff, to: .idle, trigger: "stop", source: .hook),
-    .init(from: .awaitingPermission, to: .processing, trigger: "user_prompt_submit", source: .hook),
-    .init(from: .awaitingOption, to: .processing, trigger: "user_prompt_submit", source: .hook),
-    .init(from: .awaitingDiff, to: .processing, trigger: "user_prompt_submit", source: .hook),
-    .init(from: .idle, to: .processing, trigger: "tool_activity", source: .hook),
-    .init(from: .processing, to: .idle, trigger: "stuck_timeout", source: .internal),
-    .init(from: nil, to: .disconnected, trigger: "session_end", source: .hook),
-    .init(from: nil, to: .idle, trigger: "interrupt", source: .user),
-]
 
 // Holds daemon state → runs on the daemon's executor. See DaemonActor.
 @DaemonActor
