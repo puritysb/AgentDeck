@@ -2,6 +2,79 @@
 
 ---
 
+## 2026-08-15 — Stop 계측 첫 실측 · ESC 취소 귀속 분리 · 전이표 생성기화
+
+### 실측 (계측 자체는 살아 있고, 아직 표본이 없다)
+
+계측 빌드가 9120 을 잡은 뒤(07:48) 축적된 신호를 `agentdeck apme stop-health
+--since 1d` 로 확인했다. 도입 이후 시작된 턴만 `end_source` 를 갖고 이전 행은
+전부 `?` — 설계대로 오염이 없다. 다만 **판정 가능한 턴이 8개**(claude 1, codex 7)
+뿐이고 유실 0 이라, 아직 비율을 말할 수 있는 양이 아니다. 며칠치가 필요하다.
+
+데몬 재시작은 이 비율을 오염시키지 않는다는 것도 같이 확인했다 — 진행 중이던
+run 의 열린 턴은 reaper 가 `run_close` 로 닫고 그 버킷은 분모에서 빠지며, 다음
+프롬프트의 lazy `openRun` 이 수집을 다시 잇는다.
+
+계측 브랜치(#194)를 머지하고 메인 repo 빌드로 데몬을 되돌렸다. 그전까지 9120 을
+잡고 있던 건 이미 **삭제된 워크트리**의 dist 를 물고 있던 프로세스였다(디스크에
+파일이 없는 채로 실행 중). 앱을 먼저 종료하고 데몬을 재시작해야 9120 을 뺏기지
+않는다.
+
+### ESC 취소 — 계측이 처음으로 "틀리게 잴" 항목이었다
+
+실측을 하려고 보니 첫 오측정 후보가 ESC 였다. ESC 는 Claude hook 을 **하나도
+emit 하지 않는다**(PostToolUse/Stop/UserPromptSubmit 전부 없음 — 2026-07-18 실측).
+즉 애초에 올 Stop 이 없는데, 그 턴이 `next_prompt`(미복구 유실)로 들어가 **사용자의
+ESC 키가 인프라 유실로** 집계되고 있었다. 게다가 assistant `end_turn` 도 안 남기니
+워치독도 못 닫아, 세션은 5분 stuck timeout 까지 PROCESSING 으로 남았다.
+
+- `end_source` 에 `interrupted` 추가. `stop-health` 에 `Esc` 컬럼으로 따로 세고
+  비율의 분자·분모 어디에도 넣지 않는다. 두 플래그가 같이 오면 `interrupted` 가
+  `synthetic` 을 이긴다 — 취소는 **언제나** synthetic Stop 으로만 도착하므로
+  반대로 읽으면 모든 취소가 유실로 기록된다.
+- **탐지는 양쪽 두 곳.** 마커가 tail 로 남은 경우(ESC 후 그대로 둠)는 워치독이,
+  취소 직후 다시 입력해 마커가 새 프롬프트 밑에 묻힌 경우(더 흔하다)는 다음
+  프롬프트의 close 경로가 `readInterruptSince` 로 잡는다. 후자의 읽기는 **이미
+  열린 채 밀려난 턴**에서만 발생한다.
+- 판별식은 `bridge/src/claude-interrupt-marker.ts` 한 곳(관측자·워치독·collector
+  3소비자 공용, 관측자에 있던 사본을 흡수). **text 블록만** 본다 — `tool_result`
+  가 같은 문장을 인용하는 일이 흔해서(자기 transcript 를 grep 하는 세션이면 반드시
+  생긴다) 원문 매칭은 살아있는 턴을 강제 종료시키는 유령 취소를 만든다.
+- 증거 없음은 취소가 아니다: 읽을 수 없는 transcript, 비-Claude 에이전트,
+  `transcript_path` 없는 hook 은 전부 `next_prompt` 로 떨어진다.
+
+검증은 실제 ESC transcript 레코드로 했다 — 마커가 tail 인 슬라이스는
+`interrupted=true`, 같은 레코드에 재입력 프롬프트를 붙이면 false 이면서 윈도
+읽기가 마커의 진짜 시각을 찾고, 마커 이후로 여는 윈도는 null(앞 턴의 취소를
+이 턴이 뒤집어쓰지 않는다).
+
+### states.ts → Swift 전이표 생성기 (drift gate)
+
+전이표는 **두 데몬이 실제 세션에 적용하는 규칙 집합**인데 손미러였다. 한쪽에만
+있는 행은 미관 문제가 아니라 "한 플랫폼에서는 `AWAITING_*` 에 영원히 물리고
+다른 쪽에서는 회복되는데 양쪽 로그 어디에도 이유가 없는" 세션이다. 이미 드리프트가
+시작돼 있었다 — Swift 쪽에만 있는 주석이 하나 자라 있었다.
+
+`pnpm generate-state-transitions` 가 `StateTransitions.generated.swift` 를 방출하고
+`StateMachine.swift` 는 드라이버만 남긴다. 방출된 행은 대체한 손미러와 **바이트
+동일**이라 동작 변경이 아니다.
+
+- **전이의 근거를 `note` 필드로 SSOT 에 태웠다.** 근거는 이 표에서 비싼 절반이자
+  미러가 조용히 잃는 절반이다. states.ts 에 두면 Swift 쪽이 그걸 다시 서술했다가
+  모순되는 일이 구조적으로 불가능해진다.
+- 생성 파일은 `Daemon/` 아래라 `#if os(macOS)` 를 붙이고, 게이트가 그걸 **검사**한다
+  — 빠뜨리면 macOS 는 전부 green 인데 iOS 아카이브만 깨져서 릴리스에서 처음 드러난다.
+- 게이트는 바이트 동일 외에 **행 하나만 봐서는 안 보이는 불변식**도 고정한다:
+  first-match 결정성(중복 from/trigger/source 금지), `AWAITING_*` 에 벽시계 backstop
+  없음, 각 `AWAITING_*` 의 hook 출구 3종 유지.
+- Kotlin 은 대상 아님 — Android 는 데몬이 계산한 state 를 렌더할 뿐 전이를 돌리지 않는다.
+
+게이트는 green 한 번이 아니라 **실제 실패**로 확인했다: 방출된 행 하나의 `source` 를
+손으로 바꾸면 `--check` 와 vitest 가 둘 다 실패하고, 되돌리면 sync 로 돌아온다.
+macOS·iOS 두 타깃 모두 빌드 확인.
+
+---
+
 ## 2026-08-15 — Android 1.0.9 GitHub Release · Google Play 제출
 
 - Android 첫 연결 화면(태블릿/전화/e-ink/설정 공통)에 **컴퓨터에서 AgentDeck을
