@@ -554,6 +554,7 @@ void drawAgentGlyph(const char* agentType, int16_t x, int16_t y, int size) {
     else if (strncmp(agentType, "codex", 5) == 0)   a8 = CreatureGlyphs::CODEX_A8;
     else if (strcmp(agentType, "opencode") == 0)    a8 = CreatureGlyphs::OPENCODE_A8;
     else if (strcmp(agentType, "antigravity") == 0) a8 = CreatureGlyphs::ANTIGRAVITY_A8;
+    else if (strncmp(agentType, "kiro", 4) == 0)    a8 = CreatureGlyphs::KIRO_A8;
     drawMask64(x, y, a8, size);
     if (openclaw) {
         // Eye pupils at viewBox-24 (8.835, 7.843) / (15.165, 7.843), r≈1.26 —

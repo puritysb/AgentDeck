@@ -214,6 +214,7 @@ fun agentIcon(agentType: String?): String = when (agentType) {
     "codex-app" -> "\u276F"           // ❯ (Codex mark)
     "opencode" -> "\u25A3"            // ▣ (nested square)
     "antigravity" -> "\u25B2"          // ▲ (Antigravity peak)
+    "kiro-cli", "kiro-ide" -> "K"     // compact text fallback; creature uses the canonical ghost asset
     else -> "\u25CF"                   // ● bullet
 }
 

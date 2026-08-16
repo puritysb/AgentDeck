@@ -174,6 +174,12 @@ import {
   type DeviceModule,
 } from './modules/index.js';
 import { SerialModule } from './modules/serial-module.js';
+import {
+  bindHostFor,
+  daemonModuleConfigs,
+  describeDaemonPosture,
+  resolveDaemonPosture,
+} from './network-posture.js';
 import { esp32ConnectionCount, getESP32DeviceInfo, onESP32Message, sendAuthProvisionToAll, sendWifiProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards } from './esp32-serial.js';
 import { loadWifiConfig } from './wifi-config.js';
 import { getConnectedAdbDevices, hasAdb, getAdbDeviceCount } from './adb-reverse.js';
@@ -921,18 +927,22 @@ export function enrichGatewayTimelineEntry<T extends { agentType?: string; proje
 export function classifyObservedHookEvent(
   eventName: string,
   mapped: string,
-): { boundary: string; agentType: 'claude-code' | 'codex-cli' | 'opencode' | 'antigravity' } {
+): { boundary: string; agentType: 'claude-code' | 'codex-cli' | 'opencode' | 'antigravity' | 'kiro-cli' | 'kiro-ide' } {
   if (eventName === 'codex_subagent_start' || eventName === 'codex_subagent_stop') {
     return { boundary: eventName, agentType: 'codex-cli' };
   }
-  const prefixed = /^(codex|opencode|antigravity)_(session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|notification|permission_asked|permission_replied)$/
+  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|notification|permission_asked|permission_replied)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
   return {
-    boundary: prefixed[2] === 'turn_complete' ? 'stop' : prefixed[2],
+    boundary: prefixed[2] === 'turn_complete' ? 'stop'
+      : prefixed[2] === 'agent_spawn' ? 'session_start'
+      : prefixed[2],
     agentType: prefixed[1] === 'codex' ? 'codex-cli'
       : prefixed[1] === 'opencode' ? 'opencode'
-      : 'antigravity',
+      : prefixed[1] === 'antigravity' ? 'antigravity'
+      : prefixed[1] === 'kiro_ide' ? 'kiro-ide'
+      : 'kiro-cli',
   };
 }
 
@@ -942,6 +952,10 @@ export interface DaemonOptions {
   port?: number;
   debug?: boolean;
   wakeWord?: boolean;
+  /** `--local`: every device module off, USB serial included. */
+  local?: boolean;
+  /** `--loopback`: bind 127.0.0.1 and emit nothing onto the LAN. */
+  loopback?: boolean;
 }
 
 function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, unknown> {
@@ -1078,6 +1092,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // CLI --wake-word flag OR settings.json wakeWord: true
   const settings = loadDaemonSettings();
   const wakeWordEnabled = opts.wakeWord || settings.wakeWord === true;
+
+  // Network posture (bind address + which device modules may run). Resolved once
+  // here so the bind, the module set, and the startup log cannot disagree about
+  // what this daemon is allowed to do.
+  const posture = resolveDaemonPosture({ local: opts.local, loopback: opts.loopback });
 
   // ===== Singleton guard + port allocation =====
   // 1. Check daemon.json and sessions.json for existing daemon
@@ -1475,6 +1494,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // Workers require this flag before remote-attaching; the Swift daemon
         // does not advertise it and is therefore never selected as a remote hub.
         sameSocketControl: true,
+        // Network posture, so `agentdeck daemon restart` can carry the running
+        // daemon's posture across the restart instead of silently downgrading
+        // an enterprise install back to "advertise everything". Local-only
+        // payload; it is diagnostic, not a credential.
+        posture,
         modules: moduleHealthProvider(),
         apme: apme
           ? {
@@ -2408,7 +2432,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           }
           const turnOpen = Boolean(lastStart && lastStart.ts > lastCompletionTs);
           const tp = typeof json.transcript_path === 'string' ? json.transcript_path : '';
-          const inlineResponse = [json.last_assistant_message, json.response, json.output, json.result]
+          const inlineResponse = [
+            json.last_assistant_message,
+            json.assistant_response,
+            json.response,
+            json.output,
+            json.result,
+          ]
             .find((v): v is string => typeof v === 'string' && v.trim().length > 0) ?? '';
           // Codex's stop payload rarely carries the text inline; its rollout
           // JSONL (agent_message / task_complete records) is the
@@ -2891,8 +2921,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // pull-sync e-ink clients live on the LAN — and the security boundary is the
   // pairing token (http-auth-gate.ts default-denies unauthenticated LAN
   // requests; the WS server has always token-gated non-local peers). Users
-  // with no LAN devices can opt into a loopback-only bind (issue #145).
-  const bindHost = process.env.AGENTDECK_LOOPBACK_ONLY === '1' ? '127.0.0.1' : '0.0.0.0';
+  // with no LAN devices can opt into a loopback-only posture (issue #145),
+  // which also silences everything the daemon emits (see network-posture.ts).
+  const bindHost = bindHostFor(posture);
   await new Promise<void>((resolve, reject) => {
     httpServer.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
@@ -2937,11 +2968,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     }
   });
 
-  if (bindHost === '127.0.0.1') {
-    log(`[agentdeck] AGENTDECK_LOOPBACK_ONLY=1 — daemon bound to 127.0.0.1:${port}; LAN devices (companion apps, ESP32/WiFi boards) cannot connect.`);
-  } else {
-    log(`[agentdeck] Daemon listening on all interfaces (:${port}) — LAN requests require the pairing token (~/.agentdeck/auth-token). Set AGENTDECK_LOOPBACK_ONLY=1 for a loopback-only bind.`);
-  }
+  log(describeDaemonPosture(posture, port));
 
   // Write daemon.json for client discovery (must be after successful bind).
   // Keep the original startedAt stable when the self-heal timer rewrites it.
@@ -3250,7 +3277,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // count in moduleHealthProvider below.
   const startedModules = await initModules(
     deviceModules,
-    { mdns: true, broadcast: true, adb: 'auto', serial: serialMode, pixoo: 'auto', timebox: 'auto', idotmatrix: 'auto' },
+    daemonModuleConfigs(posture, serialMode),
     { port, authToken: core.authToken, projectName: 'AgentDeck', wsServer: core.wsServer },
   );
 

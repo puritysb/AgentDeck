@@ -368,6 +368,7 @@ private fun renderEinkFrame(
                 scaleFactor = slot.scaleFactor,
                 animFrame = animFrame,
                 swimFrame = animFrame,
+                agentType = state.openCodeCreatures[i].agentType,
                 displayName = state.openCodeCreatures[i].displayName)
         }
     }
@@ -855,8 +856,10 @@ private fun drawEinkOpenCode(
     scaleFactor: Float = 1f,
     animFrame: Float = 0f,
     swimFrame: Float = 0f,
+    agentType: String? = "opencode",
     displayName: String? = null,
 ) {
+    val isKiro = agentType == "kiro-cli" || agentType == "kiro-ide"
     val wanderX = if (state == OctopusVisualState.WORKING) {
         val phase = swimFrame + ((centerXFraction * 100).toInt() * 9)
         0.06f * kotlin.math.sin(phase * kotlin.math.PI / 16.0).toFloat()
@@ -889,6 +892,50 @@ private fun drawEinkOpenCode(
             kotlin.math.sin(animFrame * kotlin.math.PI / 8).toFloat()
     }
     val cy = h * baseYFraction + bobY
+
+    // Canonical OpenCode ring or Kiro ghost. Both use the same motion/layout
+    // mechanics, but never substitute one agent's silhouette for the other.
+    if (isKiro) {
+        val markSize = w * 0.052f * scaleFactor * if (einkColorEnabled) 2.0f else 1.75f
+        val svgScale = markSize / dev.agentdeck.terrarium.CreatureGeometry.KIRO_VIEWBOX
+        paint.style = Paint.Style.FILL
+        paint.color = if (state == OctopusVisualState.SLEEPING) {
+            einkPick(GRAY_KIRO_SLEEP, COLOR_KIRO_SLEEP)
+        } else {
+            einkPick(GRAY_KIRO_BODY, COLOR_KIRO_BODY)
+        }
+        canvas.save()
+        canvas.translate(cx, cy)
+        canvas.scale(svgScale, svgScale)
+        canvas.translate(
+            -dev.agentdeck.terrarium.CreatureGeometry.KIRO_VIEWBOX / 2f,
+            -dev.agentdeck.terrarium.CreatureGeometry.KIRO_VIEWBOX / 2f,
+        )
+        canvas.drawPath(dev.agentdeck.terrarium.CreatureGeometry.kiroNativePath, paint)
+        canvas.restore()
+
+        if (displayName != null) {
+            drawEinkNameTag(canvas, paint, cx, cy - markSize / 2f, scaleFactor, displayName, w)
+        }
+        if (state == OctopusVisualState.ASKING) {
+            val bubbleR = markSize * 0.25f * scaleFactor
+            val bubbleX = cx + markSize * 0.6f
+            paint.color = einkPick(GRAY_AIR, COLOR_AIR)
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(bubbleX, cy, bubbleR, paint)
+            paint.color = einkPick(GRAY_KIRO_BODY, COLOR_KIRO_BODY)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f * scaleFactor
+            canvas.drawCircle(bubbleX, cy, bubbleR, paint)
+            paint.color = android.graphics.Color.BLACK
+            paint.style = Paint.Style.FILL
+            paint.textSize = bubbleR * 1.4f
+            paint.textAlign = Paint.Align.CENTER
+            canvas.drawText("?", bubbleX, cy + bubbleR * 0.45f, paint)
+            paint.textAlign = Paint.Align.LEFT
+        }
+        return
+    }
 
     // Canonical opencode mark: a single-color vertical rectangular RING (16:20) with a
     // HOLLOW center (water shows through), matching opencode.ai — not a filled square
@@ -1735,6 +1782,8 @@ private const val GRAY_CLOUD_SLEEP = 0xFF888888.toInt()  // level 8 — dormant/
 private const val GRAY_OPENCODE_OUTER = 0xFF888888.toInt() // level 8 — outer frame (visible contrast vs water BG level 13)
 private const val GRAY_OPENCODE_INNER = 0xFF444444.toInt() // level 4 — inner square (dark gray)
 private const val GRAY_OPENCODE_SLEEP = 0xFFAAAAAA.toInt() // level 10 — sleeping/dormant (faded, distinct from active outer)
+private const val GRAY_KIRO_BODY = 0xFF444444.toInt()
+private const val GRAY_KIRO_SLEEP = 0xFF999999.toInt()
 private const val GRAY_ANTIGRAVITY_BODY = 0xFF303030.toInt() // dark peak/arc body for B/W e-ink
 private const val GRAY_ANTIGRAVITY_SLEEP = 0xFF777777.toInt() // sleeping/dormant (faded)
 private const val GRAY_STARBURST  = 0xFF999999.toInt()  // level 9 — WORKING starburst glow
@@ -1803,6 +1852,8 @@ private val COLOR_CLOUD_SLEEP  = 0xFF8888AA.toInt()  // muted lavender sleep
 private val COLOR_OPENCODE_OUTER = 0xFFF1ECEC.toInt()  // light warm gray outer frame
 private val COLOR_OPENCODE_INNER = 0xFF4B4646.toInt()  // dark brown-gray inner square
 private val COLOR_OPENCODE_SLEEP = 0xFF9A9595.toInt()  // muted sleep
+private val COLOR_KIRO_BODY = 0xFF7C3AED.toInt()
+private val COLOR_KIRO_SLEEP = 0xFF7A6A91.toInt()
 
 // Antigravity (peak/arc mark — rainbow in color mode, gray fallback for B/W e-ink)
 private val COLOR_ANTIGRAVITY_BODY = 0xFF5F6368.toInt()  // Google gray primary

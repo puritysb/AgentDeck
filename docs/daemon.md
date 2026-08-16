@@ -135,7 +135,7 @@ The daemon deliberately binds `0.0.0.0` — companion apps, ESP32 boards, and pu
 - **Rotation**: `agentdeck token rotate` retires a leaked token (all paired clients re-pair) and clears the accepted ring — otherwise the retired token would survive in it. `agentdeck token show` prints it for provisioning.
 - **Re-arming a device**: the daemon pushes `auth_provision` (credential only, no WiFi side effects) to every serial-attached board whose token differs from the one it serves — independent of WiFi auto-provisioning, and *including* boards whose radio is already up, which `wifi_provision` deliberately skips. A board holding a credential the daemon no longer accepts is online and unreachable at the same time, and USB serial is the only channel that still works when authentication is what is broken. Boards persist the token in NVS (`wifiSaveAuthToken`) and restore it at boot, on every board — not just the two that also persist an endpoint.
 - **Pairing a device that has no camera and no cable — `agentdeck pair`** (see below). This is the *only* path by which the token reaches an unauthenticated LAN peer, and it exists because the alternatives cover every device except the ones that need it most: QR needs a camera, `wifi_provision` needs USB serial, and an e-ink reader has neither.
-- **Loopback-only opt-out**: `AGENTDECK_LOOPBACK_ONLY=1` binds `127.0.0.1` for users with no LAN devices. Startup logs state the bind mode either way.
+- **Loopback-only posture**: `AGENTDECK_LOOPBACK_ONLY=1` (or `agentdeck daemon start --loopback`) binds `127.0.0.1` **and silences everything the daemon emits** — mDNS advertisement, the 2-second UDP beacon, the Pixoo LAN sweep, the BLE scans, and the ADB reverse tunnel. USB serial keeps working: a board on a cable is not a network peer. It used to pick the bind address only, which left the daemon advertising and scanning for a service nobody on the segment could reach. The startup log names what is off. See [Enterprise / shared-network posture](#enterprise-and-shared-network-posture).
 - Tests: `bridge/src/__tests__/http-auth-gate.test.ts`, `pairing-window.test.ts`, `shared/src/__tests__/pairing-code.test.ts`, `mdns-hostname.test.ts` (TXT token absence), `discovery-security.test.ts` (UDP and startup-log absence), `ws-server-auth.test.ts`, Swift `HttpAccessPolicyTests`, `PairingWindowStoreTests`.
 
 ### Pairing codes (operator-held window)
@@ -210,6 +210,68 @@ The other two discovery transports are checkable locally, since neither is reque
 dns-sd -Z _agentdeck._tcp local     # TXT must carry project/agent/v/port/ip only
 # UDP beacon: bind 0.0.0.0:9121 with SO_REUSEADDR+SO_REUSEPORT alongside the daemon
 ```
+
+## Enterprise and shared-network posture
+
+AgentDeck is designed for one human at a desk with a fleet of LAN gadgets. On a
+corporate segment there are many daemons, usually **no** gadgets, and the LAN
+surface is pure attack surface. Two independent switches cover that, and they
+deliberately answer different questions:
+
+| Switch | Question it answers | Bind | mDNS / UDP beacon | Pixoo sweep, BLE, ADB | USB serial |
+|---|---|---|---|---|---|
+| *(default)* | — | `0.0.0.0` | on | on | on |
+| `--local` | May this daemon drive hardware? | `0.0.0.0` | off | off | **off** |
+| `--loopback` / `AGENTDECK_LOOPBACK_ONLY=1` | May this daemon be seen or heard on the LAN? | `127.0.0.1` | off | off | **on** |
+
+`--local` keeps the all-interfaces bind, so a paired phone or tablet companion
+still reaches the daemon with its token; it only stops the daemon driving
+devices. `--loopback` is the stricter posture — nothing goes on the wire — but
+keeps USB serial, because a board on a cable is not a network peer. They compose.
+
+Resolved once at startup by `resolveDaemonPosture()`
+(`bridge/src/network-posture.ts`) so the bind address, the module set, and the
+startup log cannot disagree. The startup line names what is off.
+
+**Installing the posture.** An enterprise install is an autostart install, so
+the flags are baked into the autostart unit's argv — the one channel all three
+writers share (Windows Task Scheduler has no environment element):
+
+```bash
+agentdeck daemon install --enterprise    # LaunchAgent / Scheduled Task / systemd unit runs `daemon start --foreground --loopback`
+npx @agentdeck/setup --enterprise        # install bridge + hooks + that autostart unit, one command
+```
+
+`agentdeck daemon restart` reads the running daemon's posture off `/health` and
+carries it across the restart, so a restart cannot silently downgrade an
+enterprise install back to "advertise everything". Explicit flags still win.
+
+**What you give up, per switch.** `--loopback` also stops the ADB reverse
+tunnel, so USB-tethered Android dashboards go dark — the tunnel itself carries no
+LAN traffic, but `adb` is a device module and an admin asking for loopback is
+asking for the machine to be quiet. `--loopback` likewise makes `agentdeck qr`
+and `agentdeck pair` pointless (the peer cannot open a socket to this host at
+all); both commands read `posture` off `/health` and say so instead of printing a
+dead pairing URL. Neither switch affects the macOS app's own connection — it
+dials `127.0.0.1`, not the LAN address.
+
+**Pixoo auto-discovery is off by default.** It used to be on, which meant every
+daemon start on a machine with no Pixoo configured POSTed to a third-party cloud
+endpoint (`app.divoom-gz.com`) and HTTP-probed all 254 hosts of the local /24 —
+undeclared egress plus what an IDS reads as a horizontal scan, from every
+developer's machine, on every start. A LAN sweep now happens only where the user
+asked for it: `agentdeck pixoo scan` (add `--no-cloud` to keep it on your own
+network), **Settings → Pixoo → Scan LAN** in the macOS app, or
+`pixooAutoDiscover: true` in `settings.json`. Recovering a *configured* panel
+whose DHCP lease moved is deliberately **not** gated on that setting
+(`attemptRediscoverIfStuck`): the user already opted into that device, and gating
+it turned an IP change into a permanent blackout with no way back in an app that
+has no CLI.
+
+**What this does *not* cover.** These switches address the shared-*subnet* case.
+The shared-*machine* case — two OS users on one host — has open holes: token
+adoption and the operator routes (`/shutdown`, `/stand-down`) trust any local
+peer regardless of UID. See [ENTERPRISE-ROADMAP.md](ENTERPRISE-ROADMAP.md) §1.
 
 ## Multi-surface monitoring
 

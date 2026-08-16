@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
@@ -138,6 +138,75 @@ export function buildHookCommandWin(eventName: string): string {
     `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
   ].join('; ');
   return `powershell -NoProfile -ExecutionPolicy Bypass -Command "${ps}"`;
+}
+
+export const KIRO_HOOK_EVENTS = [
+  ['SessionStart', 'kiro_session_start'],
+  ['UserPromptSubmit', 'kiro_user_prompt_submit'],
+  ['PreToolUse', 'kiro_tool_start'],
+  ['PostToolUse', 'kiro_tool_end'],
+  ['Stop', 'kiro_stop'],
+] as const;
+
+export interface KiroHookInstallResult {
+  installed: boolean;
+  path: string;
+  reason?: string;
+}
+
+export function kiroHookPath(home: string = homedir()): string {
+  return join(home, '.kiro', 'hooks', 'agentdeck-lifecycle.json');
+}
+
+/** Kiro v3 hooks are telemetry-only: never echo daemon steering into Kiro. */
+export function buildKiroHookFile(): Record<string, unknown> {
+  return {
+    version: 'v1',
+    hooks: KIRO_HOOK_EVENTS.map(([trigger, daemonEvent]) => ({
+      name: `AgentDeck ${trigger}`,
+      trigger,
+      action: {
+        type: 'command',
+        // A prefixed event bypasses Claude's request-response branches in
+        // buildHookCommand and reaches the agent-neutral observed pipeline.
+        command: process.platform === 'win32'
+          ? buildHookCommandWin(daemonEvent)
+          : buildHookCommand(daemonEvent),
+      },
+      timeout: 2,
+    })),
+  };
+}
+
+/** Install the global Kiro v3 hook without changing how users launch Kiro. */
+export function installKiroHooksIfNeeded(home: string = homedir()): KiroHookInstallResult {
+  const kiroRoot = join(home, '.kiro');
+  const path = kiroHookPath(home);
+  if (!existsSync(kiroRoot)) {
+    return { installed: false, path, reason: 'Kiro config directory not found' };
+  }
+  if (existsSync(path)) {
+    const existing = readFileSync(path, 'utf8');
+    if (!existing.includes('/hooks/kiro_') && !existing.includes('AgentDeck ')) {
+      return { installed: false, path, reason: 'hook path is occupied by a non-AgentDeck file' };
+    }
+  }
+  mkdirSync(join(kiroRoot, 'hooks'), { recursive: true });
+  const content = `${JSON.stringify(buildKiroHookFile(), null, 2)}\n`;
+  if (existsSync(path) && readFileSync(path, 'utf8') === content) {
+    return { installed: true, path, reason: 'already current' };
+  }
+  writeFileSync(path, content);
+  return { installed: true, path };
+}
+
+export function uninstallKiroHooks(home: string = homedir()): boolean {
+  const path = kiroHookPath(home);
+  if (!existsSync(path)) return false;
+  const existing = readFileSync(path, 'utf8');
+  if (!existing.includes('/hooks/kiro_') && !existing.includes('AgentDeck ')) return false;
+  unlinkSync(path);
+  return true;
 }
 
 // Claude Code v2.1+ requires 3-level nesting: event → matcher group → hook handler.

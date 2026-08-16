@@ -48,6 +48,9 @@ constexpr uint32_t AntigravityMark = 0xD2D6DC;  // canonical brand gray (agent-l
 constexpr uint32_t AntigravityCyan = 0x28BDF3;
 constexpr uint32_t AntigravityGreen = 0x2FD66D;
 constexpr uint32_t AntigravityYellow = 0xF3D233;
+
+// --- Kiro (ghost mark) ---
+constexpr uint32_t KiroMark = 0x7C3AED;
 constexpr uint32_t AntigravityOrange = 0xFF8A18;
 constexpr uint32_t AntigravityRed = 0xFF4F47;
 constexpr uint32_t AntigravityPurple = 0xA85CC8;

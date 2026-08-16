@@ -17,6 +17,10 @@ import {
   migrateHooksIfNeeded,
   sweepLegacyHooks,
   hasUnboundedHookCurl,
+  buildKiroHookFile,
+  installKiroHooksIfNeeded,
+  kiroHookPath,
+  uninstallKiroHooks,
 } from '../install.js';
 
 describe('Hook Installer', () => {
@@ -596,6 +600,52 @@ describe('install target (~/.claude/settings.json)', () => {
 
     expect(read(settings).hooks).toBeUndefined();
     expect(read(legacy).hooks).toBeUndefined();
+  });
+});
+
+describe('Kiro v3 global hook installer', () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'agentdeck-kiro-hooks-'));
+  });
+
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('skips hosts where Kiro has never created its config root', () => {
+    expect(installKiroHooksIfNeeded(home)).toMatchObject({
+      installed: false,
+      reason: 'Kiro config directory not found',
+    });
+  });
+
+  it('writes the measured v1 standalone schema with prefixed lifecycle endpoints', () => {
+    mkdirSync(join(home, '.kiro'), { recursive: true });
+    expect(installKiroHooksIfNeeded(home).installed).toBe(true);
+    const written = JSON.parse(readFileSync(kiroHookPath(home), 'utf8'));
+    expect(written).toEqual(buildKiroHookFile());
+    expect(written.hooks.map((hook: { trigger: string }) => hook.trigger)).toEqual([
+      'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop',
+    ]);
+    const serialized = JSON.stringify(written);
+    for (const event of ['kiro_session_start', 'kiro_user_prompt_submit', 'kiro_tool_start', 'kiro_tool_end', 'kiro_stop']) {
+      expect(serialized).toContain(event);
+    }
+    expect(serialized).toContain('AGENTDECK_PORT');
+  });
+
+  it('is idempotent, preserves an occupied path, and only removes its own file', () => {
+    mkdirSync(join(home, '.kiro', 'hooks'), { recursive: true });
+    installKiroHooksIfNeeded(home);
+    expect(installKiroHooksIfNeeded(home).reason).toBe('already current');
+    expect(uninstallKiroHooks(home)).toBe(true);
+
+    writeFileSync(kiroHookPath(home), '{"version":"v1","hooks":[]}\n');
+    expect(installKiroHooksIfNeeded(home).reason).toContain('occupied');
+    expect(uninstallKiroHooks(home)).toBe(false);
+    expect(existsSync(kiroHookPath(home))).toBe(true);
   });
 });
 

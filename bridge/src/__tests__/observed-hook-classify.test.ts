@@ -62,6 +62,17 @@ describe('classifyObservedHookEvent', () => {
       .toEqual({ boundary: 'stop', agentType: 'antigravity' });
   });
 
+  it('maps Kiro 2.x and 3.x hook vocabulary without requiring managed launch', () => {
+    expect(classifyObservedHookEvent('kiro_agent_spawn', 'kiro_agent_spawn'))
+      .toEqual({ boundary: 'session_start', agentType: 'kiro-cli' });
+    expect(classifyObservedHookEvent('kiro_user_prompt_submit', 'kiro_user_prompt_submit'))
+      .toEqual({ boundary: 'user_prompt_submit', agentType: 'kiro-cli' });
+    expect(classifyObservedHookEvent('kiro_stop', 'kiro_stop'))
+      .toEqual({ boundary: 'stop', agentType: 'kiro-cli' });
+    expect(classifyObservedHookEvent('kiro_ide_tool_start', 'kiro_ide_tool_start'))
+      .toEqual({ boundary: 'tool_start', agentType: 'kiro-ide' });
+  });
+
   it('leaves unknown or unprefixed names untouched (claude fallback)', () => {
     // A future agent prefix must be added explicitly — no accidental matches.
     expect(classifyObservedHookEvent('gemini_stop', 'gemini_stop'))

@@ -43,14 +43,17 @@ export function getCurrentTaskUser(): string {
   return domain ? `${domain}\\${user}` : user;
 }
 
-export function buildScheduledTaskXml(opts?: { node?: string; cliJs?: string; user?: string }): string {
+export function buildScheduledTaskXml(opts?: { node?: string; cliJs?: string; user?: string; extraArgs?: string[] }): string {
   const { node, cliJs } = { ...getDaemonNodeTarget(), ...opts };
   const user = opts?.user ?? getCurrentTaskUser();
   const workingDir = join(homedir(), '.agentdeck');
   const command = xmlEscape(node);
   // cli.js wrapped in quotes to survive paths with spaces; --foreground so the
   // task process IS the daemon (lets RestartOnFailure track the real process).
-  const args = xmlEscape(`"${cliJs}" daemon start --foreground`);
+  // extraArgs carries the network posture (`--local` / `--loopback`): Task
+  // Scheduler has no environment element, so argv is the only channel.
+  const extra = (opts?.extraArgs ?? []).map((a) => ` ${a}`).join('');
+  const args = xmlEscape(`"${cliJs}" daemon start --foreground${extra}`);
   const userEsc = xmlEscape(user);
   // schtasks /XML requires UTF-16 with a BOM (see installWindowsTask); declaring
   // UTF-8 triggers "unable to switch the encoding". The bytes are written as
@@ -110,8 +113,8 @@ export function buildScheduledTaskXml(opts?: { node?: string; cliJs?: string; us
  * Register (or overwrite) the AgentDeckDaemon scheduled task.
  * Throws if schtasks /Create fails (e.g. group policy disabling user task creation).
  */
-export function installWindowsTask(): void {
-  const xml = buildScheduledTaskXml();
+export function installWindowsTask(extraArgs: string[] = []): void {
+  const xml = buildScheduledTaskXml({ extraArgs });
   const tmpFile = join(tmpdir(), `agentdeck-task-${process.pid}-${Date.now()}.xml`);
   // Write UTF-16LE with a BOM (U+FEFF) — schtasks /XML rejects UTF-8 here.
   writeFileSync(tmpFile, '﻿' + xml, 'utf16le');

@@ -21,6 +21,7 @@ enum SessionBrand {
         case "openclaw":    return Color(red: 1.0,   green: 0.30,  blue: 0.30)  // #FF4D4D
         case "opencode":    return Color(red: 0.945, green: 0.925, blue: 0.925) // near-white
         case "antigravity": return Color(red: 0.373, green: 0.388, blue: 0.408) // #5F6368
+        case "kiro-cli", "kiro-ide": return Color(red: 0.486, green: 0.227, blue: 0.929) // #7C3AED
         case "daemon":      return Color(red: 0.55,  green: 0.55,  blue: 0.60)
         default:            return Color.secondary
         }
@@ -68,6 +69,8 @@ struct SessionCreatureIcon: View {
         case "codex-app":   return "Codex App session"
         case "opencode":    return "OpenCode session"
         case "antigravity": return "Antigravity session"
+        case "kiro-cli":    return "Kiro CLI session"
+        case "kiro-ide":    return "Kiro IDE session"
         case "daemon":      return "Daemon"
         default:            return "Unknown agent session"
         }
@@ -128,6 +131,8 @@ struct AgentBrandIcon: View {
         case "codex-app":   return "Codex App session"
         case "opencode":    return "OpenCode session"
         case "antigravity": return "Antigravity session"
+        case "kiro-cli":    return "Kiro CLI session"
+        case "kiro-ide":    return "Kiro IDE session"
         case "daemon":      return "Daemon"
         default:            return "Unknown agent session"
         }
@@ -147,6 +152,7 @@ private struct AgentBrandIconSpec {
         case "openclaw":    return .openClaw
         case "opencode":    return .openCode
         case "antigravity": return .antigravity
+        case "kiro-cli", "kiro-ide": return .kiro
         default:            return nil
         }
     }
@@ -177,6 +183,12 @@ private struct AgentBrandIconSpec {
 
     private static let antigravity = AgentBrandIconSpec(
         paths: [parse(antigravityPath)],
+        viewBox: 24,
+        evenOddFill: true
+    )
+
+    private static let kiro = AgentBrandIconSpec(
+        paths: [parse(kiroPath)],
         viewBox: 24,
         evenOddFill: true
     )
@@ -293,6 +305,10 @@ private struct AgentBrandIconSpec {
     // Antigravity mark — lobe-icons MIT (viewBox 0 0 24 24, peak/arc)
     private static let antigravityPath =
         "M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z"
+
+    // @lobehub/icons-static-svg@1.94.0, MIT (design/brand/kiro.svg)
+    private static let kiroPath =
+        "M4.594 6.677C6.67-2.226 18.746-2.211 21.16 6.632c.353 1.297 1.725 7.582-1.673 13.747-1.545 2.797-5.841 5.49-6.99 1.883C8.6 25.477 3.315 24.1 5.789 18.609l-.318.143c-3.57 1.305-3.863-1.208-3.173-2.513.45-.84.727-1.335.937-1.897.353-.975.458-1.568.593-2.498.27-1.837.277-3.607.765-5.167zm8.37.01a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.214-.705 1.214-1.89 0-.622-.127-1.125-.367-1.455a1.014 1.014 0 00-.855-.435zm4.08 0a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.215-.705 1.215-1.89 0-.622-.128-1.125-.368-1.455a1.014 1.014 0 00-.855-.435z"
 
     private static let openClawPaths = [
         "M9.046 7.104a.527.527 0 110 1.055.527.527 0 010-1.055z",

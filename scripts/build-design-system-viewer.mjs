@@ -283,6 +283,7 @@ const AGENT_LABELS = {
   openCode: 'OpenCode',
   openClaw: 'OpenClaw',
   antigravity: 'Antigravity',
+  kiro: 'Kiro',
 };
 
 function parseGlyphBlock(source, constant, size) {

@@ -20,6 +20,9 @@ import {
   deleteWindowsTask,
 } from './windows-service.js';
 import { deriveRemoteAttachOpts } from './session-registry.js';
+// From modules/types.js, not modules/index.js: the latter pulls the whole
+// device stack (serial, Pixoo, BLE) into `agentdeck --help`.
+import { allModulesOff } from './modules/types.js';
 import {
   SERVICE_NAME,
   hasSystemctl,
@@ -59,6 +62,21 @@ async function refreshClaudeHooks(): Promise<void> {
     log('Claude lifecycle hooks installed/refreshed in ~/.claude/settings.json');
   } catch (err) {
     log(`Claude hooks unavailable: ${String(err)}`);
+  }
+}
+
+/** Kiro v3 global hooks preserve native `kiro-cli --v3` launch behavior. */
+async function refreshKiroHooks(): Promise<void> {
+  try {
+    const { installKiroHooksIfNeeded } = await import('@agentdeck/hooks');
+    const result = installKiroHooksIfNeeded();
+    if (result.installed) {
+      log(`Kiro v3 lifecycle hooks installed/refreshed in ${result.path}`);
+    } else if (result.reason) {
+      log(`Kiro hooks skipped: ${result.reason}`);
+    }
+  } catch (err) {
+    log(`Kiro hooks unavailable: ${String(err)}`);
   }
 }
 
@@ -150,9 +168,52 @@ function getAgentdeckBin(): string {
   }
 }
 
-function buildPlist(): string {
+/**
+ * Extra `daemon start` argv the autostart unit must carry.
+ *
+ * A posture that only applies when typed by hand is not a posture: an
+ * enterprise install IS an autostart install, so the flags have to live in the
+ * LaunchAgent / Scheduled Task / systemd unit. Baking them into argv (rather
+ * than an environment variable) is the one mechanism all three writers already
+ * have — Task Scheduler has no environment element at all.
+ */
+/**
+ * Warn before handing out a LAN credential that cannot be used.
+ *
+ * `agentdeck qr` and `agentdeck pair` both hand a phone or a board a
+ * `ws://<lan-ip>:<port>` endpoint. Against a loopback-only daemon that endpoint
+ * refuses every connection, and nothing on either side says why — the user sees
+ * a QR that "doesn't work". Ask the daemon what posture it is in (that is what
+ * `posture` on `/health` is for) and say so, rather than printing a dead URL.
+ * Silent on any probe failure: this is an explanation, never a gate.
+ */
+async function warnIfLoopbackPosture(port: number): Promise<void> {
+  try {
+    const { probeDaemonHealth } = await import('./session-registry.js');
+    const health = await probeDaemonHealth(port);
+    if (health?.posture?.loopbackOnly !== true) return;
+    log('Note: this daemon is running loopback-only — it is bound to 127.0.0.1 and refuses LAN connections.');
+    log('      A phone, tablet or WiFi board cannot reach the address below, whatever credential it holds.');
+    log('      Restart without --loopback (and unset AGENTDECK_LOOPBACK_ONLY) to pair a LAN device.');
+  } catch {
+    /* daemon not answering — nothing to say about its posture */
+  }
+}
+
+export function daemonPostureArgs(opts: { local?: boolean; loopback?: boolean; enterprise?: boolean }): string[] {
+  const args: string[] = [];
+  // --enterprise is the admin-facing spelling of the loopback posture: bind
+  // 127.0.0.1 and put nothing on the wire. It deliberately does NOT imply
+  // --local — some sites want hardware on a lab subnet with discovery off.
+  if (opts.local) args.push('--local');
+  if (opts.loopback || opts.enterprise) args.push('--loopback');
+  return args;
+}
+
+export function buildPlist(extraArgs: string[] = []): string {
   const bin = getAgentdeckBin();
   const logDir = join(homedir(), '.agentdeck');
+  const extra = extraArgs.map((a) => `\n    <string>${a}</string>`).join('');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -164,7 +225,7 @@ function buildPlist(): string {
     <string>${bin}</string>
     <string>daemon</string>
     <string>start</string>
-    <string>--foreground</string>
+    <string>--foreground</string>${extra}
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -475,12 +536,15 @@ program
       daemonHost: opts.daemonHost,
       daemonToken: opts.daemonToken,
       weight: opts.weight,
-      modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
-        mdns: false,   // daemon-only — session bridges never advertise mDNS
+      modules: opts.local ? allModulesOff() : {
+        // Off by default, ADB back on: a session bridge is an internal hook/PTY
+        // process. Only the daemon hub advertises itself or drives devices —
+        // and spelling that as "all off, then add back" is what stops the next
+        // module from arriving as an implicit 'auto' here (idotmatrix did, and
+        // every session spawned a second Python BLE client alongside the
+        // daemon's).
+        ...allModulesOff(),
         adb: opts.adb !== false ? 'auto' : false,
-        serial: false, // daemon-only — session bridges never talk to ESP32
-        pixoo: false,  // daemon-only — session bridges never talk to Pixoo
-        timebox: false, // daemon-only — session bridges never talk to Timebox
       },
     });
   });
@@ -534,12 +598,11 @@ program
       daemonToken: opts.daemonToken,
       weight: opts.weight,
       codexHooksExpected: opts.codexHooks !== false,
-      modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
-        mdns: false,   // daemon-only
+      modules: opts.local ? allModulesOff() : {
+        // See the claude action: all off, ADB back on. Session bridges are
+        // internal hook/PTY processes; only the daemon hub drives devices.
+        ...allModulesOff(),
         adb: opts.adb !== false ? 'auto' : false,
-        serial: false, // daemon-only
-        pixoo: false,  // daemon-only
-        timebox: false, // daemon-only
       },
     });
   });
@@ -592,12 +655,10 @@ program
       daemonHost: opts.daemonHost,
       daemonToken: opts.daemonToken,
       weight: opts.weight,
-      modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : {
-        mdns: false,
+      modules: opts.local ? allModulesOff() : {
+        // See the claude action: all off, ADB back on.
+        ...allModulesOff(),
         adb: opts.adb !== false ? 'auto' : false,
-        serial: false,
-        pixoo: false,
-        timebox: false,
       },
     });
   });
@@ -628,7 +689,7 @@ program
       daemonHost: opts.daemonHost,
       daemonToken: opts.daemonToken,
       weight: opts.weight,
-      modules: opts.local ? { mdns: false, adb: false, serial: false, pixoo: false, timebox: false } : undefined,
+      modules: opts.local ? allModulesOff() : undefined,
     });
   });
 
@@ -680,6 +741,8 @@ daemon
   .option('-d, --debug', 'Enable debug logging')
   .option('-f, --foreground', 'Run in foreground (default: background fork)')
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
+  .option('--local', 'Disable all device modules (no mDNS, UDP beacon, LAN sweep, BLE, ADB or serial); still binds all interfaces for paired companion apps')
+  .option('--loopback', 'Bind 127.0.0.1 only and emit nothing onto the LAN (no mDNS, UDP beacon, LAN sweep, BLE or ADB). Same as AGENTDECK_LOOPBACK_ONLY=1')
   .action(async (opts) => {
     const { findExistingDaemon, probeDaemonHealth, readDaemonInfo, removeDaemonInfo, removeDaemonSession, requestDaemonStandDown, requestDaemonShutdown, waitForDaemonExit, waitForPortBindable } = await import('./session-registry.js');
     const { adoptPeerToken } = await import('./auth.js');
@@ -794,6 +857,10 @@ daemon
       if (opts.port !== String(BRIDGE_WS_PORT)) args.push('-p', opts.port);
       if (opts.debug) args.push('-d');
       if (opts.wakeWord) args.push('--wake-word');
+      // The posture flags must survive the fork — the forked process IS the
+      // daemon, and a posture that only applies to the parent is no posture.
+      if (opts.local) args.push('--local');
+      if (opts.loopback) args.push('--loopback');
 
       const [out, err] = await openDaemonLogs(logDir);
 
@@ -812,6 +879,8 @@ daemon
       port: parseInt(opts.port, 10),
       debug: opts.debug,
       wakeWord: !!opts.wakeWord,
+      local: !!opts.local,
+      loopback: !!opts.loopback,
     });
   });
 
@@ -828,7 +897,21 @@ daemon
   .description('Stop and restart the daemon')
   .option('-p, --port <port>', 'Server port', String(BRIDGE_WS_PORT))
   .option('-d, --debug', 'Enable debug logging')
+  .option('--local', 'Disable all device modules on the restarted daemon')
+  .option('--loopback', 'Restart with a loopback-only posture (see `daemon start --loopback`)')
   .action(async (opts) => {
+    // Read the running daemon's posture BEFORE stopping it. A restart that
+    // defaults to "advertise everything" would silently undo an enterprise
+    // install — the LaunchAgent / Scheduled Task / systemd unit carries the
+    // posture in its argv, and this command does not read those three files.
+    // Explicit flags still win; inheritance only fills in what wasn't asked for.
+    const { probeDaemonHealth: probeHealth } = await import('./session-registry.js');
+    const running = await probeHealth(parseInt(opts.port, 10));
+    const inheritedLocal = running?.posture?.noDeviceModules === true;
+    const inheritedLoopback = running?.posture?.loopbackOnly === true;
+    const useLocal = !!opts.local || inheritedLocal;
+    const useLoopback = !!opts.loopback || inheritedLoopback;
+
     await stopDaemon(parseInt(opts.port, 10));
     // Wait for port release + session cleanup
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -837,6 +920,14 @@ daemon
     const args = [scriptPath, 'daemon', 'start', '--foreground'];
     if (opts.port !== String(BRIDGE_WS_PORT)) args.push('-p', opts.port);
     if (opts.debug) args.push('-d');
+    if (useLocal) args.push('--local');
+    if (useLoopback) args.push('--loopback');
+    if ((inheritedLocal && !opts.local) || (inheritedLoopback && !opts.loopback)) {
+      log(`Carrying over the running daemon's posture (${[
+        inheritedLoopback ? 'loopback-only' : null,
+        inheritedLocal ? 'no device modules' : null,
+      ].filter(Boolean).join(', ')}).`);
+    }
 
     const [rOut, rErr] = await openDaemonLogs(join(homedir(), '.agentdeck'));
     const child = spawn(process.execPath, args, {
@@ -875,10 +966,17 @@ daemon
 daemon
   .command('install')
   .description('Install daemon auto-start (LaunchAgent on macOS, Scheduled Task on Windows, systemd --user unit on Linux)')
-  .action(async () => {
+  .option('--enterprise', 'Install with a loopback-only posture: bind 127.0.0.1, no mDNS, no UDP beacon, no LAN sweep, no BLE, no ADB')
+  .option('--local', 'Install with all device modules disabled')
+  .option('--loopback', 'Alias for --enterprise')
+  .action(async (opts) => {
+    const postureArgs = daemonPostureArgs(opts);
+    if (postureArgs.length > 0) {
+      log(`Autostart posture: ${postureArgs.join(' ')} (baked into the autostart unit's arguments).`);
+    }
     if (process.platform === 'win32') {
       try {
-        installWindowsTask();
+        installWindowsTask(postureArgs);
         log(`Scheduled task '${TASK_NAME}' registered. Daemon will auto-start on logon.`);
       } catch (e) {
         const detail = (e as { stderr?: Buffer }).stderr?.toString().trim() || (e as Error).message;
@@ -897,6 +995,7 @@ daemon
         log('Task registered; immediate start failed — it will start on next logon.');
       }
       await refreshClaudeHooks();
+      await refreshKiroHooks();
       // Install Codex lifecycle hooks for parity with the macOS install path.
       try {
         const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
@@ -928,7 +1027,7 @@ daemon
         log('(or add your own autostart entry).');
       } else {
         try {
-          installUnit();
+          installUnit(postureArgs);
           startUnit();
           log(`systemd user unit '${SERVICE_NAME}' installed and started.`);
           log(`Unit file: ${getUnitPath()}`);
@@ -947,6 +1046,7 @@ daemon
         }
       }
       await refreshClaudeHooks();
+      await refreshKiroHooks();
       // Install Codex + OpenCode hooks for parity with the macOS/Windows paths.
       try {
         const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
@@ -973,13 +1073,14 @@ daemon
       log('LaunchAgent is macOS-only');
       process.exit(1);
     }
-    const plist = buildPlist();
+    const plist = buildPlist(postureArgs);
     writeFileSync(PLIST_PATH, plist, 'utf-8');
     log(`Wrote ${PLIST_PATH}`);
     try { execSync(`launchctl unload "${PLIST_PATH}" 2>/dev/null`); } catch {}
     execSync(`launchctl load "${PLIST_PATH}"`);
     log('LaunchAgent loaded. Daemon will auto-start on login.');
     await refreshClaudeHooks();
+    await refreshKiroHooks();
     // Install Codex lifecycle hooks parallel to the LaunchAgent install
     // so the daemon hub gets codex_* events as soon as Codex CLI runs.
     try {
@@ -1415,6 +1516,7 @@ program
     }
 
     getOrCreateToken();
+    await warnIfLoopbackPosture(port);
     const url = getWsUrl(port);
     log(`\nPairing URL:\n  ${url}\n`);
 
@@ -1455,6 +1557,9 @@ program
       : (typeof opts.adopt === 'string' ? [opts.adopt] : []);
 
     const daemon = `http://127.0.0.1:${port}`;
+    // A pairing window against a loopback-only daemon can never be redeemed:
+    // the peer it is meant for cannot open a socket to this host at all.
+    await warnIfLoopbackPosture(port);
     type Redemption = { at: number; ip: string; name: string; kind: string };
     type Status = {
       open: boolean; secondsRemaining: number; attemptsRemaining: number;
@@ -1590,12 +1695,30 @@ program
   });
 
 program
-  .command('diag')
-  .description('Generate diagnostic dump')
+  .command('diag [target]')
+  .description('Generate a diagnostic dump, or a privacy-safe agent diagnostic')
   .option('-p, --port <port>', 'Bridge server port', String(BRIDGE_WS_PORT))
   .option('-a, --analyze', 'Run AI analysis on the dump')
   .option('-t, --tail <lines>', 'Number of journal entries', '200')
-  .action(async (opts) => {
+  .option('--json', 'Print target diagnostics as machine-readable JSON')
+  .action(async (target, opts) => {
+    if (target) {
+      if (target !== 'kiro') {
+        log(`Unknown diagnostic target: ${target}. Supported target: kiro`);
+        process.exitCode = 1;
+        return;
+      }
+      if (opts.analyze) {
+        log('`--analyze` is only available for the general daemon diagnostic dump.');
+        process.exitCode = 1;
+        return;
+      }
+      const { collectKiroDiagnosticReport, formatKiroDiagnosticReport } = await import('./kiro-diagnostics.js');
+      const report = await collectKiroDiagnosticReport();
+      process.stdout.write(`${opts.json ? JSON.stringify(report, null, 2) : formatKiroDiagnosticReport(report)}\n`);
+      return;
+    }
+
     const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
     const info = readDaemonInfo();
     const port = info?.httpPort ?? info?.port ?? findDaemonPort() ?? parseInt(opts.port, 10);
@@ -2104,13 +2227,24 @@ const pixoo = program.command('pixoo').description('Manage Pixoo64 LED matrix de
 
 pixoo
   .command('scan')
-  .description('Discover Pixoo devices on LAN')
-  .action(async () => {
-    const { discoverDevices, getDeviceConfig } = await import('./pixoo/pixoo-client.js');
+  .description('Discover Pixoo devices on LAN (Divoom cloud lookup, then a local /24 sweep)')
+  .option('--no-cloud', 'Skip the Divoom cloud lookup (app.divoom-gz.com) and sweep the local subnet only')
+  .action(async (opts) => {
+    const { getDeviceConfig } = await import('./pixoo/pixoo-client.js');
+    const { discoverPixoo } = await import('./pixoo/pixoo-discover.js');
     const { loadPixooDevices, savePixooDevices } = await import('./pixoo/pixoo-settings.js');
 
-    log('Scanning for Pixoo devices...');
-    const found = await discoverDevices();
+    // Say what this actually does before it does it. Auto-discovery is off by
+    // default precisely because these two steps are not free on a shared
+    // network; running them from an explicit command is fine, running them
+    // unannounced is not.
+    if (opts.cloud === false) {
+      log('Scanning the local subnet for Pixoo devices (cloud lookup skipped)...');
+    } else {
+      log('Scanning for Pixoo devices — querying the Divoom cloud (app.divoom-gz.com), then sweeping the local /24 if needed.');
+      log('Use --no-cloud to keep the scan on your own network.');
+    }
+    const found = await discoverPixoo({ cloud: opts.cloud !== false });
     if (found.length === 0) {
       log('No devices found.');
       return;
@@ -2190,7 +2324,12 @@ pixoo
     const { loadPixooDevices } = await import('./pixoo/pixoo-settings.js');
     const devices = loadPixooDevices();
     if (devices.length === 0) {
-      log('No Pixoo devices configured. Run `agentdeck pixoo scan`.');
+      // Says why nothing appeared on its own. The daemon no longer sweeps the
+      // LAN unprompted, so "I plugged it in and nothing happened" needs an
+      // answer here — this is where a user looks when the panel is missing.
+      log('No Pixoo devices configured. Run `agentdeck pixoo scan` (add --no-cloud to keep the lookup on your own network).');
+      log('Auto-discovery is off by default: the daemon does not sweep the LAN or call the Divoom cloud on its own.');
+      log('Set "pixooAutoDiscover": true in ~/.agentdeck/settings.json to opt back in.');
       return;
     }
     log(`${devices.length} device(s):`);

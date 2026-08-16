@@ -79,13 +79,20 @@ async function sweepSubnet(
 /**
  * Discover Pixoo devices: cloud API first, local subnet sweep as fallback.
  * Never throws — returns [] when nothing is found / reachable.
+ *
+ * `cloud: false` skips the Divoom lookup and sweeps only. The two steps are
+ * different disclosures — one is egress to a third party, the other is traffic
+ * that stays on the segment — so a caller on a corporate network can take the
+ * second without the first.
  */
-export async function discoverPixoo(): Promise<DiscoveredPixoo[]> {
-  try {
-    const cloud = await discoverDevices();
-    if (cloud.length > 0) return cloud.filter((d) => !!d.ip);
-  } catch {
-    /* cloud unreachable — fall through to local sweep */
+export async function discoverPixoo(opts: { cloud?: boolean } = {}): Promise<DiscoveredPixoo[]> {
+  if (opts.cloud !== false) {
+    try {
+      const cloud = await discoverDevices();
+      if (cloud.length > 0) return cloud.filter((d) => !!d.ip);
+    } catch {
+      /* cloud unreachable — fall through to local sweep */
+    }
   }
   const out: DiscoveredPixoo[] = [];
   for (const { base, self } of localIpv4Subnets()) {

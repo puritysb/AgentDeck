@@ -419,7 +419,9 @@ export function shouldDropLowSignalTimelineEntry(entry: TimelineEntry): boolean 
     (entry.agentType === 'codex-cli' ||
       entry.agentType === 'codex-app' ||
       entry.agentType === 'opencode' ||
-      entry.agentType === 'antigravity') &&
+      entry.agentType === 'antigravity' ||
+      entry.agentType === 'kiro-cli' ||
+      entry.agentType === 'kiro-ide') &&
     entry.type === 'tool_exec'
   ) {
     return true;

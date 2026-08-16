@@ -246,7 +246,7 @@ connMgr.on('state_update', (ev: StateUpdateEvent) => {
   currentMode = ev.permissionMode;
 
   // Track proxied agent type from daemon (state_update.agentType overrides connection-level detection)
-  if (ev.agentType === 'openclaw' || ev.agentType === 'claude-code' || ev.agentType === 'codex-cli' || ev.agentType === 'codex-app' || ev.agentType === 'opencode' || ev.agentType === 'antigravity') {
+  if (ev.agentType === 'openclaw' || ev.agentType === 'claude-code' || ev.agentType === 'codex-cli' || ev.agentType === 'codex-app' || ev.agentType === 'opencode' || ev.agentType === 'antigravity' || ev.agentType === 'kiro-cli' || ev.agentType === 'kiro-ide') {
     proxiedAgentType = ev.agentType;
   }
 

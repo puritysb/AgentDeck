@@ -174,6 +174,7 @@ extension PixooPreviewAgent {
         case "opencode":               return .opencode
         case "openclaw":               return .openclaw
         case "antigravity":            return .antigravity
+        case "kiro-cli", "kiro-ide": return .kiro
         default:                       return .claudeCode
         }
     }

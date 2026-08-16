@@ -64,7 +64,7 @@ import {
   createDefaultModules,
   SerialModule,
 } from './modules/index.js';
-import type { ModuleConfigs } from './modules/types.js';
+import { allModulesOff, type ModuleConfigs } from './modules/types.js';
 import type { HookServer } from './hook-server.js';
 import {
   onESP32Message,
@@ -447,12 +447,12 @@ export async function startSession(opts: SessionOptions): Promise<void> {
 
   // ===== Device modules =====
   const moduleConfigs: ModuleConfigs = {
-    ...(opts.modules ?? {
-      adb: 'auto',
-      serial: false, // daemon-only — session bridges never talk to ESP32
-      pixoo: false,  // daemon-only — session bridges never talk to Pixoo
-      timebox: false, // daemon-only — session bridges never talk to Timebox
-    }),
+    // "All off, then add back ADB" rather than a literal list of the modules
+    // that were known when this was written: initModules() reads an absent key
+    // as 'auto', so every module added since arrived here switched ON. That is
+    // how `idotmatrix` ended up spawning a Python BLE client per session
+    // bridge, duplicating the daemon's own.
+    ...(opts.modules ?? { ...allModulesOff(), adb: 'auto' }),
     // Session bridges are internal hook/PTY processes. Only the daemon hub is
     // discoverable on the LAN; never advertise per-session project metadata.
     mdns: false,

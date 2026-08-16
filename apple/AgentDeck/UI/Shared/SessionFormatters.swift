@@ -19,6 +19,8 @@ func displayAgentLabel(_ type: String?) -> String {
     case "codex-app":   return "Codex App"
     case "opencode":    return "OpenCode"
     case "antigravity": return "Antigravity"
+    case "kiro-cli":    return "Kiro CLI"
+    case "kiro-ide":    return "Kiro IDE"
     case "daemon":      return "Daemon"
     case .some(let t):  return t.replacingOccurrences(of: "-", with: " ").capitalized
     case nil:           return "Agent"

@@ -561,7 +561,14 @@ actor PixooModule: DeviceModule {
     private let rediscoverThrottleSec: TimeInterval = 300
 
     private func attemptRediscoverIfStuck() async {
-        guard Self.isAutoDiscoverEnabled() else { return }
+        // Deliberately NOT gated on `isAutoDiscoverEnabled()`. That setting
+        // governs finding a panel the user never told us about; this path
+        // re-locates a panel the user explicitly configured and which has since
+        // stopped answering. Gating it made a DHCP lease change a permanent
+        // blackout with no recovery in the App Store app, which has no CLI to
+        // re-scan from — the exact failure the block comment above describes.
+        // It stays bounded by the guards below: one configured device, already
+        // past the deep-hang boundary, at most once per 300s.
         // Only the single-device case can be safely re-mapped purely by IP.
         guard devices.count == 1, let device = devices.first else { return }
         guard let state = deviceLogStates[device.ip],
@@ -984,7 +991,13 @@ actor PixooModule: DeviceModule {
     // carries `Brightness` as a Pixoo. Only local HTTP (no external service, no
     // subprocess, no permission prompt), so this is App-Store-safe.
 
-    /// `pixooAutoDiscover` gate — defaults to true; set false in settings to opt out.
+    /// `pixooAutoDiscover` gate — **defaults to false**; set `true` in settings to opt in.
+    ///
+    /// Mirrors `isPixooAutoDiscoverEnabled()` in `bridge/src/pixoo/pixoo-settings.ts`.
+    /// The default flipped because an unattended /24 sweep (plus the Divoom cloud
+    /// lookup on the Node side) on every daemon start is undeclared scanning on a
+    /// shared network. An unreadable settings file therefore means "off", not "on":
+    /// the failure mode of a missing file must not be the scanning one.
     private static func isAutoDiscoverEnabled() -> Bool {
         let box = PixooSettingsDataBox()
         let semaphore = DispatchSemaphore(value: 0)
@@ -994,12 +1007,17 @@ actor PixooModule: DeviceModule {
         }
         guard semaphore.wait(timeout: .now() + settingsReadTimeout) == .success,
               let data = box.get(),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return true }
-        return (json["pixooAutoDiscover"] as? Bool) != false
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return (json["pixooAutoDiscover"] as? Bool) == true
     }
 
     /// Local non-internal IPv4 /24 subnets, with this host's address to skip.
-    private static func localIPv4Subnets() -> [(base: String, selfIP: String)] {
+    /// Internal (not private) so the Settings sheet's **Scan LAN** button can
+    /// run the same sweep this module does. Auto-discovery is off by default,
+    /// and the App Store app has no `agentdeck pixoo scan` to fall back on, so
+    /// the UI needs a first-class way to find a panel — user-initiated, in the
+    /// foreground, with the result on screen. Pure `getifaddrs`; no actor state.
+    static func localIPv4Subnets() -> [(base: String, selfIP: String)] {
         var subnets: [(String, String)] = []
         var ifaddrPtr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddrPtr) == 0 else { return [] }
@@ -1054,8 +1072,10 @@ actor PixooModule: DeviceModule {
     }
 
     /// Sweep a /24, `concurrency` probes in flight at a time.
-    nonisolated private static func sweepSubnet(base: String, selfIP: String,
-                                                concurrency: Int, timeoutSec: TimeInterval) async -> [String] {
+    /// Internal for the same reason as `localIPv4Subnets()` — the Settings
+    /// sheet's Scan LAN button reuses it rather than hand-mirroring the probe.
+    nonisolated static func sweepSubnet(base: String, selfIP: String,
+                                        concurrency: Int, timeoutSec: TimeInterval) async -> [String] {
         var hosts: [String] = []
         for i in 1...254 {
             let ip = "\(base).\(i)"

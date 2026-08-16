@@ -48,6 +48,19 @@ describe('buildScheduledTaskXml', () => {
     expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon start --foreground</Arguments>`);
   });
 
+  it('carries the network posture in Arguments — Task Scheduler has no env element', () => {
+    // An enterprise install IS an autostart install: a posture that only
+    // applies when the flag is typed by hand never reaches the logon-started
+    // daemon, which is the only one that ever runs.
+    const xml = buildScheduledTaskXml({ node, cliJs, extraArgs: ['--loopback'] });
+    expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon start --foreground --loopback</Arguments>`);
+  });
+
+  it('emits no trailing space when there is no posture to carry', () => {
+    const xml = buildScheduledTaskXml({ node, cliJs, extraArgs: [] });
+    expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon start --foreground</Arguments>`);
+  });
+
   it('XML-escapes special characters in the user id and paths', () => {
     const xml = buildScheduledTaskXml({
       node: 'C:\\n&ode.exe',

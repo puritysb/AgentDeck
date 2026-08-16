@@ -35,7 +35,7 @@ The CLI command is `agentdeck`.
 
 **Flags:** `-p <port>`, `-c <command>`, `-d` (debug), `--no-update-check`, `--weight <n>`
 **Remote attach flags:** `--remote-daemon`, `--daemon-host <host[:port]>`, `--daemon-token <token>` (pairing token of the remote hub — from `~/.agentdeck/auth-token` there, or `agentdeck token show`; env `AGENTDECK_DAEMON_TOKEN`). Required for a current hub: since issue #145 daemons no longer hand their token to unauthenticated LAN peers.
-**Module flags:** `--local` (all device modules off), `--no-adb` (skip ADB reverse). Hardware modules (mDNS/serial/Pixoo/Timebox) are daemon-only — session bridges never activate them, so there are no per-session `--no-mdns`/`--no-serial`/`--no-pixoo` flags.
+**Module flags:** `--local` (all device modules off — derived from the module registry, so it covers every module including ones added later), `--no-adb` (skip ADB reverse). Hardware modules (mDNS/serial/Pixoo/Timebox/iDotMatrix) are daemon-only — session bridges never activate them, so there are no per-session `--no-mdns`/`--no-serial`/`--no-pixoo` flags.
 
 The `-c` flag sets the full command AgentDeck spawns inside the session PTY, so any arguments you add are forwarded straight to the underlying agent. For example, to resume an earlier Claude Code session (the interactive picker appears when no id is given):
 
@@ -101,12 +101,23 @@ a session behaves.
 
 | Command | Description |
 |---------|-------------|
-| `agentdeck daemon start` | Start monitoring daemon |
+| `agentdeck daemon start` | Start monitoring daemon (`--local`, `--loopback` — see below) |
 | `agentdeck daemon stop` | Stop daemon |
-| `agentdeck daemon restart` | Restart daemon |
+| `agentdeck daemon restart` | Restart daemon (inherits the running daemon's posture) |
 | `agentdeck daemon status` | Show daemon status |
-| `agentdeck daemon install` | Register auto-start (macOS LaunchAgent / Windows Scheduled Task) |
+| `agentdeck daemon install` | Register auto-start (macOS LaunchAgent / Windows Scheduled Task / systemd unit); `--enterprise` bakes the loopback posture into it |
 | `agentdeck daemon uninstall` | Remove auto-start (LaunchAgent / Scheduled Task) |
+
+**Network posture on a shared or corporate network.** `--local` turns every
+device module off (the daemon still binds all interfaces, so a paired companion
+app keeps working). `--loopback` — equivalently `AGENTDECK_LOOPBACK_ONLY=1` —
+binds `127.0.0.1` and emits nothing onto the LAN: no mDNS advertisement, no UDP
+discovery beacon, no Pixoo subnet sweep, no BLE scans, no ADB reverse. USB
+serial survives `--loopback`, because a board on a cable is not a network peer.
+Use `agentdeck daemon install --enterprise` (or `npx @agentdeck/setup
+--enterprise`) so the posture lands in the autostart unit rather than only
+applying when the flag is typed by hand. Full table: [docs/daemon.md §
+Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-posture).
 
 ### Session Management
 
@@ -124,8 +135,21 @@ a session behaves.
 | `agentdeck qr` | Pairing QR code + URL |
 | `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |
 | `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
-| `agentdeck diag` | Diagnostic dump (`-a` for AI analysis) |
+| `agentdeck diag` | Daemon diagnostic dump (`-a` for AI analysis) |
+| `agentdeck diag kiro [--json]` | Privacy-safe Kiro passive-observation diagnostic; no daemon required |
 | `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
+
+`agentdeck diag kiro` is designed to be attached to an issue. It reports whether
+native Kiro CLI/IDE processes, conversation stores, schema markers, and
+process-to-session correlation are visible. It never includes prompt or response
+text, tool inputs, command lines, session titles, model names, or TTY names; cwd
+paths and session IDs become report-scoped salted keys. Use `--json` when a
+machine-readable attachment is more useful.
+
+Kiro CLI v2 is observed from its native process and read-only conversation
+store. Kiro v3 additionally supports AgentDeck's global lifecycle hook, so a
+normal `kiro-cli --v3` launch reports exact prompt/tool/stop boundaries without
+an `agentdeck kiro` wrapper.
 
 ### Pairing a device with no camera and no cable
 
@@ -185,9 +209,17 @@ no subprocesses.
 
 ### Device Setup
 
+Pixoo **auto**-discovery is off by default — the daemon no longer sweeps the LAN
+or calls the Divoom cloud on its own. Run `agentdeck pixoo scan` once, or set
+`"pixooAutoDiscover": true` in `~/.agentdeck/settings.json` to opt back in. In the
+macOS app (which has no CLI) the equivalent is **Settings → Pixoo → Scan LAN**.
+A configured panel that changes IP is still recovered automatically — that path
+is not gated on the discovery setting, because re-locating a device you added is
+not the same act as finding one you never asked for.
+
 | Command | Description |
 |---------|-------------|
-| `agentdeck pixoo scan` | Discover Pixoo devices on LAN |
+| `agentdeck pixoo scan` | Discover Pixoo devices on LAN (`--no-cloud` skips the Divoom cloud lookup and sweeps the local subnet only) |
 | `agentdeck pixoo add <ip>` | Add a Pixoo device |
 | `agentdeck pixoo list` | List configured devices |
 | `agentdeck pixoo remove <ip>` | Remove a device |

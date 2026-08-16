@@ -11,6 +11,35 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class TerrariumStateTest {
 
+    @Test
+    fun `primary Kiro session routes to the canonical vector-mark creature`() {
+        val terrarium = DashboardState(
+            agentState = AgentState.PROCESSING,
+            agentType = "kiro-cli",
+            sessionId = "kiro:primary",
+        ).toTerrariumState()
+
+        assertEquals(0, terrarium.agents.size)
+        assertEquals(1, terrarium.openCodeCreatures.size)
+        assertEquals("kiro-cli", terrarium.openCodeCreatures.single().agentType)
+        assertEquals(OctopusVisualState.WORKING, terrarium.openCodeCreatures.single().visualState)
+    }
+
+    @Test
+    fun `Kiro IDE sibling does not fall back to an octopus`() {
+        val terrarium = DashboardState(
+            agentState = AgentState.DISCONNECTED,
+            agentType = "daemon",
+            siblingSessions = listOf(
+                SessionInfo(id = "kiro:ide", port = 9120, agentType = "kiro-ide", alive = true, state = "idle"),
+            ),
+        ).toTerrariumState()
+
+        assertEquals(0, terrarium.agents.size)
+        assertEquals(1, terrarium.openCodeCreatures.size)
+        assertEquals("kiro-ide", terrarium.openCodeCreatures.single().agentType)
+    }
+
     // Presence-driven SSOT: the crayfish tracks the emitted OpenClaw SESSION,
     // never raw gateway flags. No session row ⇒ DORMANT, regardless of
     // reachability/auth/error — this is the regression lock for the

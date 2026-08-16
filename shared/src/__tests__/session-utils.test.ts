@@ -24,15 +24,17 @@ describe('OpenClaw visibility SSOT', () => {
 });
 
 describe('agentTypeRank', () => {
-  it('ranks openclaw first, then claude-code, codex-cli, codex-app, opencode, antigravity, others', () => {
+  it('ranks known agents stably, with Kiro after the existing agent set', () => {
     expect(agentTypeRank('openclaw')).toBe(0);
     expect(agentTypeRank('claude-code')).toBe(1);
     expect(agentTypeRank('codex-cli')).toBe(2);
     expect(agentTypeRank('codex-app')).toBe(3);
     expect(agentTypeRank('opencode')).toBe(4);
     expect(agentTypeRank('antigravity')).toBe(5);
-    expect(agentTypeRank('something-else')).toBe(6);
-    expect(agentTypeRank(undefined)).toBe(6);
+    expect(agentTypeRank('kiro-cli')).toBe(6);
+    expect(agentTypeRank('kiro-ide')).toBe(7);
+    expect(agentTypeRank('something-else')).toBe(8);
+    expect(agentTypeRank(undefined)).toBe(8);
   });
 });
 

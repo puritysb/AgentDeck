@@ -152,6 +152,7 @@ function creatureEmoji(agentType?: string): string {
     if ((agentType as string) === 'codex-cli' || (agentType as string) === 'codex-app') return 'X';
     if ((agentType as string) === 'opencode') return 'O';
     if ((agentType as string) === 'antigravity') return 'A';
+    if ((agentType as string) === 'kiro-cli' || (agentType as string) === 'kiro-ide') return 'K';
     return '*';
   }
   if ((agentType as string) === 'daemon') return '\u2699\uFE0F';      // ⚙️
@@ -159,6 +160,7 @@ function creatureEmoji(agentType?: string): string {
   if ((agentType as string) === 'codex-cli' || (agentType as string) === 'codex-app') return '\u2601';          // ☁ (cloud — matches creature)
   if ((agentType as string) === 'opencode') return '\u25A3';           // ▣ (nested square — matches creature)
   if ((agentType as string) === 'antigravity') return '\u25B2';        // ▲ (Antigravity peak)
+  if ((agentType as string) === 'kiro-cli' || (agentType as string) === 'kiro-ide') return '\uD83D\uDC7B'; // 👻 (official Kiro ghost motif)
   return '\u273B';  // ✻ (teardrop-spoked asterisk — Claude sparkle)
 }
 
@@ -171,6 +173,8 @@ function creatureBrandColor(agentType?: string): string {
     case 'codex-app': return fg(177, 167, 255);      // indigo
     case 'opencode': return fg(241, 236, 236);       // warm gray (#F1ECEC)
     case 'antigravity': return fg(210, 214, 220);    // Google gray
+    case 'kiro-cli':
+    case 'kiro-ide': return fg(124, 58, 237);        // Kiro purple
     default: return '';
   }
 }

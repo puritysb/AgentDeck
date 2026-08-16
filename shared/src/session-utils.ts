@@ -22,7 +22,7 @@
  * reply was synthesized for nobody. Add agents here, not at the call sites.
  */
 export const OBSERVED_SESSION_PREFIX_RE =
-  /^observed:(?:claude|codex|codex-app|opencode|antigravity):/;
+  /^observed:(?:claude|codex|codex-app|opencode|antigravity|kiro|kiro-ide):/;
 
 /** Bare uuid form of a session id — unchanged when it has no observed prefix. */
 export function rawSessionId(sessionId: string): string {
@@ -68,7 +68,8 @@ export function sessionTier(state: string | undefined): SessionTier {
 
 /**
  * Rank agent types for stable ordering.
- * openclaw=0 (always first), claude-code=1, codex-cli=2, codex-app=3, opencode=4, antigravity=5, others=6.
+ * openclaw=0 (always first), claude-code=1, codex-cli=2, codex-app=3,
+ * opencode=4, antigravity=5, kiro-cli=6, kiro-ide=7, others=8.
  */
 export function agentTypeRank(agentType: string | undefined): number {
   switch (agentType) {
@@ -78,7 +79,9 @@ export function agentTypeRank(agentType: string | undefined): number {
     case 'codex-app': return 3;
     case 'opencode': return 4;
     case 'antigravity': return 5;
-    default: return 6;
+    case 'kiro-cli': return 6;
+    case 'kiro-ide': return 7;
+    default: return 8;
   }
 }
 

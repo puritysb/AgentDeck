@@ -126,7 +126,7 @@ export function getUnitPath(): string {
   return join(getUnitDir(), UNIT_FILE);
 }
 
-export function buildUnitFile(opts?: { node?: string; cliJs?: string; dataDirOverride?: string }): string {
+export function buildUnitFile(opts?: { node?: string; cliJs?: string; dataDirOverride?: string; extraArgs?: string[] }): string {
   const { node, cliJs } = { ...getDaemonNodeTarget(), ...opts };
   // Single override source: BOTH WorkingDirectory= and the Environment= line
   // derive from the same value, so the unit can never chdir into one directory
@@ -141,6 +141,11 @@ export function buildUnitFile(opts?: { node?: string; cliJs?: string; dataDirOve
   const envLine = override
     ? `Environment=${escapeUnitEnvAssignment('AGENTDECK_DATA_DIR', override)}\n`
     : '';
+  // Posture flags (`--local` / `--loopback`) ride ExecStart argv, the same
+  // channel the LaunchAgent and Scheduled Task writers use — an enterprise
+  // install is an autostart install, so the posture must survive login.
+  // Validated like every other unit word: systemd word-splits ExecStart=.
+  const extra = (opts?.extraArgs ?? []).map((a) => ` ${escapeExecWord(a)}`).join('');
   // Both ExecStart words quoted so paths with spaces survive; --foreground so
   // the unit process IS the daemon (lets Restart=on-failure track it).
   return `[Unit]
@@ -150,7 +155,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${escapeExecWord(node)} ${escapeExecWord(cliJs)} daemon start --foreground
+ExecStart=${escapeExecWord(node)} ${escapeExecWord(cliJs)} daemon start --foreground${extra}
 WorkingDirectory=${escapeSpecifiers(workingDir)}
 ${envLine}Restart=on-failure
 RestartSec=5
@@ -187,10 +192,10 @@ export function unitExists(): boolean {
  * Write the unit file and enable it. Throws if systemctl fails (e.g. no user
  * D-Bus session).
  */
-export function installUnit(): void {
+export function installUnit(extraArgs: string[] = []): void {
   // Build (and thereby validate any AGENTDECK_DATA_DIR override) BEFORE any
   // side effect, so a rejected install leaves no stray directory behind.
-  const unit = buildUnitFile();
+  const unit = buildUnitFile({ extraArgs });
   // Ensure the unit's WorkingDirectory exists — on a fresh install ~/.agentdeck
   // (or the AGENTDECK_DATA_DIR override) may not exist yet, and systemd fails at
   // the CHDIR step before Node starts if it's missing.

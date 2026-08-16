@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-07-21
-revision: 2026-07-21
+reviewed: 2026-08-15
+revision: 2026-08-15
 source_of_truth: design/RESOURCES.md
 validators: [node scripts/build-design-system-viewer.mjs --check, python3 design/verify-tokens-sync.py]
 ---
@@ -43,6 +43,16 @@ index. If a location or gate changes, update this file in the same commit.
 embedded copies in the APME dashboard HTML, the Stream Deck PI CSS, and the
 Build Health generator's `:root` (`scripts/generate-html-report.py`).
 `python3 design/verify-tokens-sync.py` diffs all seven against `tokens.css`.
+
+## Third-party brand provenance
+
+Agent marks identify compatible third-party tools; they do not imply sponsorship
+or endorsement. Preserve the exact upstream geometry and the source record below
+when regenerating constrained-device masks.
+
+| Mark | Upstream source | Source license | Pinned artifact |
+|---|---|---|---|
+| Kiro ghost | `@lobehub/icons-static-svg@1.94.0`, `icons/kiro.svg` | MIT (Lobe Icons package); Kiro is a mark of Amazon.com, Inc. or its affiliates | npm integrity `sha512-Inx1TYkjLH6YeHOIHeVW9+OM/xxRnk8TmcQVKquFUDBmE3X9sUuRGt7kALrrDBNNAbrWz7Qq6fAiFj9E9Mmw9Q==` |
 
 ## Derived / consumer surfaces (safe to regenerate, never edit)
 

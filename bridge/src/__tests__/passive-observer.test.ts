@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activeKiroCliProcesses,
   CodexRolloutCache,
   collectCodexSessionsFromRollouts,
+  collectKiroSessionsFromSnapshots,
   dedupeObservedSessions,
   isAntigravityProcessCommand,
   isClaudeSessionProcessCommand,
   isCodexSessionProcessCommand,
+  isKiroCliProcessCommand,
+  isKiroIdeProcessCommand,
   observedStateAfterSilence,
   parseCimProcessTable,
   parseClaudeTranscript,
@@ -13,6 +17,7 @@ import {
   parseLsofRollouts,
   parseProcessTable,
 } from '../passive-observer.js';
+import { parseKiroSessionMetadata, parseKiroTranscript } from '../kiro-session.js';
 
 function jsonl(records: unknown[]): string {
   return records.map((record) => JSON.stringify(record)).join('\n');
@@ -391,6 +396,176 @@ describe('passive-observer parsers', () => {
     expect(isAntigravityProcessCommand(
       '/Applications/Antigravity.app/Contents/Frameworks/Antigravity Helper (Renderer).app/Contents/MacOS/Antigravity Helper (Renderer)',
     )).toBe(false);
+  });
+
+  it('matches Kiro CLI and IDE owners while rejecting Electron helpers', () => {
+    expect(isKiroCliProcessCommand('/Users/robin/.local/bin/kiro-cli --v3')).toBe(true);
+    expect(isKiroCliProcessCommand('/Users/robin/.local/bin/kiro-cli chat --no-interactive hello')).toBe(true);
+    expect(isKiroCliProcessCommand('/Applications/Kiro CLI.app/Contents/MacOS/kiro-cli-chat chat')).toBe(true);
+    expect(isKiroCliProcessCommand('kiro-cli --agent doctor')).toBe(true);
+    expect(isKiroCliProcessCommand('kiro-cli login --license free')).toBe(false);
+    expect(isKiroCliProcessCommand('kiro-cli doctor')).toBe(false);
+    expect(isKiroCliProcessCommand('kiro-cli --version')).toBe(false);
+    expect(isKiroCliProcessCommand('C:\\Users\\robin\\bin\\kiro.exe')).toBe(true);
+    expect(isKiroIdeProcessCommand('/Applications/Kiro.app/Contents/MacOS/Kiro')).toBe(true);
+    expect(
+      isKiroIdeProcessCommand('/Applications/Kiro CLI.app/Contents/MacOS/kiro_cli_desktop --no-dashboard'),
+    ).toBe(false);
+    expect(
+      isKiroIdeProcessCommand(
+        '/Applications/Kiro.app/Contents/Frameworks/Kiro Helper (Renderer).app/Contents/MacOS/Kiro Helper (Renderer) --type=renderer',
+      ),
+    ).toBe(false);
+  });
+
+  it('collapses the Kiro launcher and kiro-cli-chat child to one chat process', () => {
+    const processes = [
+      { pid: 100, ppid: 1, rssKb: 10, tty: 'ttys001', command: 'kiro-cli chat --legacy-ui' },
+      {
+        pid: 101,
+        ppid: 100,
+        rssKb: 20,
+        tty: 'ttys001',
+        command: '/Users/robin/.local/bin/kiro-cli-chat chat --legacy-ui',
+      },
+    ];
+    expect(activeKiroCliProcesses(processes).map((proc) => proc.pid)).toEqual([101]);
+  });
+
+  it('reads Kiro 2.x metadata and transcript turn state', () => {
+    const metadata = parseKiroSessionMetadata(
+      JSON.stringify({
+        cwd: '/repo/kiro',
+        title: 'Add passive observation',
+        created_at: '2026-08-15T01:00:00.000Z',
+        updated_at: '2026-08-15T01:01:00.000Z',
+        session_state: { rts_model_state: { model_info: { model_id: 'claude-sonnet-4' } } },
+      }),
+      'kiro-session',
+    );
+    expect(metadata).toMatchObject({
+      sessionId: 'kiro-session',
+      cwd: '/repo/kiro',
+      title: 'Add passive observation',
+      modelName: 'claude-sonnet-4',
+    });
+
+    const working = parseKiroTranscript(
+      jsonl([
+        { version: 'v1', kind: 'Prompt', data: { content: [{ kind: 'text', data: 'inspect the tests' }] } },
+        {
+          version: 'v1',
+          kind: 'AssistantMessage',
+          data: { content: [{ kind: 'toolUse', data: { name: 'execute_bash', input: { command: 'pnpm test' } } }] },
+        },
+        { version: 'v1', kind: 'ToolResults', data: { content: [] } },
+      ]),
+    );
+    expect(working).toMatchObject({
+      state: 'processing',
+      goal: 'inspect the tests',
+      currentTask: 'execute_bash pnpm test',
+    });
+
+    const redacted = parseKiroTranscript(
+      jsonl([
+        { version: 'v1', kind: 'Prompt', data: { content: [{ kind: 'text', data: 'call the API' }] } },
+        {
+          version: 'v1',
+          kind: 'AssistantMessage',
+          data: {
+            content: [
+              {
+                kind: 'toolUse',
+                data: { name: 'shell', input: { command: 'curl -H "Authorization: Bearer secret-123" example.test' } },
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    expect(redacted.currentTask).toContain('[REDACTED]');
+    expect(redacted.currentTask).not.toContain('secret-123');
+
+    const idle = parseKiroTranscript(
+      jsonl([
+        { version: 'v1', kind: 'Prompt', data: { content: [{ kind: 'text', data: 'inspect the tests' }] } },
+        { version: 'v1', kind: 'AssistantMessage', data: { content: [{ kind: 'text', data: 'All tests pass.' }] } },
+      ]),
+    );
+    expect(idle).toMatchObject({ state: 'idle', response: 'All tests pass.' });
+  });
+
+  it('reads documented Kiro ACP session notifications for the v3 fallback', () => {
+    const summary = parseKiroTranscript(
+      jsonl([
+        {
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'session/prompt',
+          params: { sessionId: 's1', content: [{ type: 'text', text: 'review this code' }] },
+        },
+        {
+          jsonrpc: '2.0',
+          method: 'session/notification',
+          params: {
+            sessionId: 's1',
+            update: { sessionUpdate: 'ToolCall', name: 'fs_read', input: { path: 'src/a.ts' } },
+          },
+        },
+        {
+          jsonrpc: '2.0',
+          method: 'session/notification',
+          params: { sessionId: 's1', update: { sessionUpdate: 'TurnEnd' } },
+        },
+      ]),
+    );
+    expect(summary).toMatchObject({ state: 'idle', goal: 'review this code' });
+  });
+
+  it('correlates a naturally launched Kiro process with its newest cwd session', () => {
+    const proc = {
+      pid: 777,
+      ppid: 1,
+      rssKb: 100,
+      tty: 'ttys007',
+      command: '/Users/robin/.local/bin/kiro-cli --v3 --resume-id session-1',
+    };
+    const sessions = collectKiroSessionsFromSnapshots(
+      [proc],
+      [
+        {
+          sessionId: 'newer-but-closed',
+          transcriptPath: '/Users/robin/.kiro/sessions/cli/newer-but-closed.jsonl',
+          cwd: '/repo/kiro',
+          lastActivityAt: Date.now() + 1000,
+          state: 'idle',
+          recordKinds: ['Prompt', 'AssistantMessage'],
+        },
+        {
+          sessionId: 'session-1',
+          transcriptPath: '/Users/robin/.kiro/sessions/cli/session-1.jsonl',
+          cwd: '/repo/kiro',
+          modelName: 'auto',
+          createdAt: Date.parse('2026-08-15T01:00:00.000Z'),
+          lastActivityAt: Date.now(),
+          state: 'processing',
+          goal: 'add observation',
+          currentTask: 'fs_read src/a.ts',
+          recordKinds: ['Prompt', 'AssistantMessage'],
+        },
+      ],
+      new Map([[777, '/repo/kiro']]),
+    );
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: 'observed:kiro:session-1',
+      agentType: 'kiro-cli',
+      pid: 777,
+      cwd: '/repo/kiro',
+      state: 'processing',
+      currentTask: 'fs_read src/a.ts',
+    });
   });
 
   it('marks internal subagent rollouts from session_meta source', () => {

@@ -81,6 +81,7 @@ fun brandColorForAgent(agentType: String?): Color = when (agentType) {
     "openclaw"    -> Color(0xFFFF4D4D)
     "opencode"    -> Color(0xFFF1ECEC)
     "antigravity" -> Color(0xFF5F6368)
+    "kiro-cli", "kiro-ide" -> Color(0xFF7C3AED)
     "daemon"      -> Color(0xFF8C8C99)
     else          -> Color(0xFF94A3B8)
 }
@@ -100,6 +101,8 @@ fun agentDisplayLabel(agentType: String?): String = when (agentType) {
     "openclaw" -> "OpenClaw"
     "opencode" -> "OpenCode"
     "antigravity" -> "Antigravity"
+    "kiro-cli" -> "Kiro CLI"
+    "kiro-ide" -> "Kiro IDE"
     "monitor" -> "Monitor"
     "daemon" -> "Daemon"
     null -> ""
@@ -148,6 +151,12 @@ private class BrandIconSpec(
                 einkColor = Color(0xFF444444),
                 rainbow = true,
             )
+            "kiro-cli", "kiro-ide" -> BrandIconSpec(
+                pathDataList = listOf(KIRO_PATH),
+                viewBox = 24f,
+                color = Color(0xFF7C3AED),
+                einkColor = Color(0xFF444444),
+            )
             else -> null
         }
     }
@@ -180,6 +189,10 @@ private const val OPENCODE_PATH =
 // Antigravity mark — lobe-icons MIT (viewBox 0 0 24 24, peak/arc)
 private const val ANTIGRAVITY_PATH =
     "M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z"
+
+// Kiro ghost — @lobehub/icons-static-svg@1.94.0, MIT (design/brand/kiro.svg)
+private const val KIRO_PATH =
+    "M4.594 6.677C6.67-2.226 18.746-2.211 21.16 6.632c.353 1.297 1.725 7.582-1.673 13.747-1.545 2.797-5.841 5.49-6.99 1.883C8.6 25.477 3.315 24.1 5.789 18.609l-.318.143c-3.57 1.305-3.863-1.208-3.173-2.513.45-.84.727-1.335.937-1.897.353-.975.458-1.568.593-2.498.27-1.837.277-3.607.765-5.167zm8.37.01a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.214-.705 1.214-1.89 0-.622-.127-1.125-.367-1.455a1.014 1.014 0 00-.855-.435zm4.08 0a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.215-.705 1.215-1.89 0-.622-.128-1.125-.368-1.455a1.014 1.014 0 00-.855-.435z"
 
 // OpenClaw — front-facing crayfish multi-path (viewBox 0 0 24 24)
 private val OPENCLAW_PATHS = listOf(

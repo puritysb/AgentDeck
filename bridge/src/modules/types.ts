@@ -33,14 +33,44 @@ export interface DeviceModule {
 }
 
 /**
+ * Every module in the registry, in `createDefaultModules` order.
+ *
+ * SSOT for both the config type below and `allModulesOff()`. It lives here — in
+ * the dependency-free types module — rather than being derived by constructing
+ * the registry, so the CLI can ask for "all off" without pulling esp32-serial,
+ * the Pixoo bridge, and the BLE clients into `agentdeck --help`.
+ *
+ * `bridge/src/__tests__/module-registry.test.ts` gates it against the real
+ * `createDefaultModules()`, so a module added there and forgotten here fails CI
+ * rather than silently reappearing under a flag that promised to disable it.
+ */
+export const MODULE_NAMES = [
+  'mdns',
+  'broadcast',
+  'adb',
+  'serial',
+  'pixoo',
+  'timebox',
+  'idotmatrix',
+] as const;
+
+export type ModuleName = (typeof MODULE_NAMES)[number];
+
+/**
  * Per-module configuration: 'auto' (detect), true (force on), false (force off).
  */
-export interface ModuleConfigs {
-  mdns?: 'auto' | boolean;
-  broadcast?: 'auto' | boolean;
-  adb?: 'auto' | boolean;
-  serial?: 'auto' | boolean;
-  pixoo?: 'auto' | boolean;
-  timebox?: 'auto' | boolean;
-  idotmatrix?: 'auto' | boolean;
+export type ModuleConfigs = Partial<Record<ModuleName, 'auto' | boolean>>;
+
+/**
+ * A `ModuleConfigs` record with every registered module forced off.
+ *
+ * Derived from `MODULE_NAMES` rather than written out as literal keys, because
+ * an allow-list of literals drifts every time a module is added: the
+ * hand-written `--local` records omitted `idotmatrix` and `broadcast`, and
+ * `initModules` defaults an absent key to `'auto'` — so `agentdeck claude
+ * --local`, documented as "Disable all device modules", still spawned the
+ * iDotMatrix Python BLE client.
+ */
+export function allModulesOff(): ModuleConfigs {
+  return Object.fromEntries(MODULE_NAMES.map((n) => [n, false])) as ModuleConfigs;
 }

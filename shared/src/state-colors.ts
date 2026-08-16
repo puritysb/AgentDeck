@@ -33,6 +33,8 @@ export const AGENT_BRAND_COLORS: Record<string, string> = {
   'codex-app':   '#6366f1',  // indigo
   'opencode':    '#F1ECEC',  // cream
   'antigravity': '#5F6368',  // Google gray
+  'kiro-cli':    '#7C3AED',  // Kiro purple
+  'kiro-ide':    '#7C3AED',  // Kiro purple
   'monitor':     '#94a3b8',  // slate
 };
 

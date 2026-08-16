@@ -98,8 +98,10 @@ const JELLYFISH_AGENTS = new Set(['codex-cli', 'codex-app']);
 const OPENCODE_AGENTS = new Set(['opencode']);
 /** Agent types drawn as the Antigravity peak/arc mark. */
 const ANTIGRAVITY_AGENTS = new Set(['antigravity']);
+/** Kiro CLI/IDE share the official ghost mark. */
+const KIRO_AGENTS = new Set(['kiro-cli', 'kiro-ide']);
 
-type CreatureType = 'octopus' | 'jellyfish' | 'opencode' | 'antigravity';
+type CreatureType = 'octopus' | 'jellyfish' | 'opencode' | 'antigravity' | 'kiro';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -135,6 +137,10 @@ function stateYForType(
       if (state === 'processing') return clamp(baseY - 0.04, 0.16, 0.30);
       if (state === 'awaiting') return clamp(baseY + 0.22, 0.46, 0.54);
       return clamp(baseY + 0.34, 0.56, 0.64);
+    case 'kiro':
+      if (state === 'processing') return clamp(baseY - 0.04, 0.16, 0.30);
+      if (state === 'awaiting') return clamp(baseY + 0.16, 0.42, 0.54);
+      return clamp(baseY + 0.26, 0.60, 0.70);
   }
 }
 
@@ -144,6 +150,9 @@ function slotsForType(creatureType: CreatureType, count: number): CreatureSlot[]
     case 'jellyfish': return layoutCloudCreatures(count);
     case 'opencode': return layoutOpenCodeCreatures(count);
     case 'antigravity': return layoutAntigravityCreatures(count);
+    // Until creature-layout.ts is generated across all three mirrors, reuse
+    // the upper-right floating band instead of introducing another hand mirror.
+    case 'kiro': return layoutAntigravityCreatures(count);
   }
 }
 
@@ -156,11 +165,12 @@ function slotAt(slots: CreatureSlot[], index: number): CreatureSlot {
 
 /** Check if agent type gets a creature. */
 function isCreatureAgent(agentType: string): boolean {
-  return CODING_AGENTS.has(agentType) || JELLYFISH_AGENTS.has(agentType) || OPENCODE_AGENTS.has(agentType) || ANTIGRAVITY_AGENTS.has(agentType);
+  return CODING_AGENTS.has(agentType) || JELLYFISH_AGENTS.has(agentType) || OPENCODE_AGENTS.has(agentType) || ANTIGRAVITY_AGENTS.has(agentType) || KIRO_AGENTS.has(agentType);
 }
 
 function creatureTypeFor(agentType: string): CreatureType {
   if (ANTIGRAVITY_AGENTS.has(agentType)) return 'antigravity';
+  if (KIRO_AGENTS.has(agentType)) return 'kiro';
   if (JELLYFISH_AGENTS.has(agentType)) return 'jellyfish';
   if (OPENCODE_AGENTS.has(agentType)) return 'opencode';
   return 'octopus';
@@ -867,6 +877,7 @@ function renderMicroFrame(
   if (dominant) {
     creature =
       dominant.agentType === 'antigravity' ? 'antigravity'
+        : dominant.creatureType === 'kiro' ? 'kiro'
         : dominant.creatureType === 'jellyfish' ? 'jellyfish'
           : dominant.creatureType === 'opencode' ? 'opencode'
             : 'octopus';
@@ -934,7 +945,7 @@ function renderCompact32Frame(
 
   const glyphFor = (kind: CreatureType): OfficialDotGlyphName =>
     kind === 'jellyfish' ? 'codex' : kind === 'opencode' ? 'openCode'
-      : kind === 'antigravity' ? 'antigravity' : 'claudeCode';
+      : kind === 'antigravity' ? 'antigravity' : kind === 'kiro' ? 'kiro' : 'claudeCode';
   const priority = (s: CreatureInstance['state']) => s === 'awaiting' ? 0 : s === 'processing' ? 1 : 2;
   const marks: Array<{
     glyph: OfficialDotGlyphName;
@@ -964,6 +975,7 @@ function renderCompact32Frame(
     if (glyph === 'codex') return [126, 116, 255];
     if (glyph === 'openCode') return [255, 246, 248];
     if (glyph === 'openClaw') return [255, 67, 84];
+    if (glyph === 'kiro') return [124, 58, 237];
     return antigravityBands[Math.min(antigravityBands.length - 1,
       Math.floor(sx * antigravityBands.length / OFFICIAL_DOT_GLYPH_SIZE))];
   };
@@ -1402,6 +1414,7 @@ export function renderFrame(
     const glyph = c.creatureType === 'jellyfish' ? 'codex'
       : c.creatureType === 'opencode' ? 'openCode'
         : c.creatureType === 'antigravity' ? 'antigravity'
+          : c.creatureType === 'kiro' ? 'kiro'
           : 'claudeCode';
     drawOfficialDotGlyph(
       outputBuf,
@@ -1461,6 +1474,8 @@ export function renderFrame(
           ? getOpenCodePaletteForSession(i).outer
           : c.creatureType === 'antigravity'
             ? getAntigravityPaletteForSession(i).yellow
+          : c.creatureType === 'kiro'
+            ? [124, 58, 237] as RGB
           : getOctopusPaletteForSession(i).body;
       setPixel(outputBuf, dotX, 1, dotColor);
       setPixel(outputBuf, dotX + 1, 1, dotColor);

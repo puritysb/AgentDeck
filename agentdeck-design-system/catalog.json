@@ -58,7 +58,8 @@
       "docs/windows.md": "User manual (see docs/install.md). Platform setup steps rather than a platform contract.",
       "docs/linux.md": "User manual (see docs/install.md). Platform setup steps rather than a platform contract.",
       "docs/troubleshooting.md": "User manual (see docs/install.md). Symptom-to-fix table, not a specification surface.",
-      "docs/roadmap.md": "Forward-looking plan. Binding it would imply the catalog publishes commitments rather than the system as built."
+      "docs/roadmap.md": "Forward-looking plan. Binding it would imply the catalog publishes commitments rather than the system as built.",
+      "docs/ENTERPRISE-ROADMAP.md": "Forward-looking plan (see docs/roadmap.md). Binding it would imply the catalog publishes commitments rather than the system as built."
     }
   },
   "documents": [

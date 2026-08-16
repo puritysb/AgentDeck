@@ -5,7 +5,16 @@ import type { TimelineEntry } from './timeline.js';
 
 // ===== Agent Types =====
 
-export type AgentType = 'claude-code' | 'openclaw' | 'codex-cli' | 'codex-app' | 'opencode' | 'antigravity' | 'monitor';
+export type AgentType =
+  | 'claude-code'
+  | 'openclaw'
+  | 'codex-cli'
+  | 'codex-app'
+  | 'opencode'
+  | 'antigravity'
+  | 'kiro-cli'
+  | 'kiro-ide'
+  | 'monitor';
 
 export interface AgentCapabilities {
   type: AgentType;

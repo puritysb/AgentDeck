@@ -645,6 +645,7 @@ private fun ColorTerrariumBackground(
                 slot.centerXFraction, slot.centerYFraction, slot.scaleFactor,
                 phaseOffset = idx * 1.9f,
                 displayName = agent?.displayName,
+                agentType = agent?.agentType,
             ).also {
                 if (agent != null) it.setState(agent.visualState)
                 it.onAskingExit = { nx, ny -> bubbleSystem.emitPopBurst(nx, ny) }
@@ -658,6 +659,7 @@ private fun ColorTerrariumBackground(
             openCodeCreatures[i].setHomePosition(slot.centerXFraction, slot.centerYFraction, slot.scaleFactor)
             if (i < state.openCodeCreatures.size) {
                 openCodeCreatures[i].setState(state.openCodeCreatures[i].visualState)
+                openCodeCreatures[i].setAgentType(state.openCodeCreatures[i].agentType)
                 openCodeCreatures[i].setDisplayName(
                     state.openCodeCreatures[i].displayName,
                     show = true,

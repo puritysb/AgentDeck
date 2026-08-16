@@ -592,6 +592,8 @@ enum ADAgentType: String, Codable, Equatable {
     case claudeCode = "claude-code"
     case codexApp = "codex-app"
     case codexCli = "codex-cli"
+    case kiroCli = "kiro-cli"
+    case kiroIde = "kiro-ide"
     case monitor = "monitor"
     case openclaw = "openclaw"
     case opencode = "opencode"

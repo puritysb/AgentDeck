@@ -19,6 +19,8 @@ inline const char* agentDisplayLabel(const char* agentType) {
     if (strcmp(agentType, "codex-app")   == 0) return "Codex App";
     if (strcmp(agentType, "opencode")    == 0) return "OpenCode";
     if (strcmp(agentType, "antigravity") == 0) return "Antigravity";
+    if (strcmp(agentType, "kiro-cli")    == 0) return "Kiro CLI";
+    if (strcmp(agentType, "kiro-ide")    == 0) return "Kiro IDE";
     if (strcmp(agentType, "monitor")     == 0) return "Monitor";
     if (strcmp(agentType, "daemon")      == 0) return "Daemon";
     return agentType; // unknown but non-empty — show the raw id rather than "Agent"
@@ -29,5 +31,7 @@ inline const char* agentDisplayLabel(const char* agentType) {
 inline const char* agentShortLabel(const char* agentType) {
     if (agentType && (strcmp(agentType, "codex-cli") == 0 ||
                       strcmp(agentType, "codex-app") == 0)) return "Codex";
+    if (agentType && (strcmp(agentType, "kiro-cli") == 0 ||
+                      strcmp(agentType, "kiro-ide") == 0)) return "Kiro";
     return agentDisplayLabel(agentType);
 }

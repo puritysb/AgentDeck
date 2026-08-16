@@ -10,6 +10,7 @@ export default defineConfig({
       'plugin/src/__tests__/**/*.test.ts',
       'plugin-ulanzi/src/__tests__/**/*.test.ts',
       'scripts/__tests__/**/*.test.ts',
+      'setup/src/__tests__/**/*.test.ts',
     ],
     testTimeout: 10_000,
     coverage: {

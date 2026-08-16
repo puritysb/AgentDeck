@@ -61,6 +61,7 @@ final class PixooRenderer {
         case cloud
         case opencode
         case antigravity
+        case kiro
     }
 
     private enum CreatureState {
@@ -180,6 +181,7 @@ final class PixooRenderer {
     private static let cloudAgents = Set(["codex-cli", "codex-app"])
     private static let opencodeAgents = Set(["opencode"])
     private static let antigravityAgents = Set(["antigravity"])
+    private static let kiroAgents = Set(["kiro-cli", "kiro-ide"])
 
     private static let octopusGrid: [[Int]] = [
         [0,0,1,1,1,1,1,1,1,1,1,0,0],
@@ -498,6 +500,7 @@ final class PixooRenderer {
                 case .cloud: .codex
                 case .opencode: .openCode
                 case .antigravity: .antigravity
+                case .kiro: .kiro
                 case .octopus: .claudeCode
                 }
                 drawOfficialDotGlyph(&output, glyph: glyph, worldX: creature.worldX, worldY: creature.worldY, state: spriteState, animFrame: animFrame + creature.phaseOffset, camera: camera, sessionToneIndex: sessionToneIndex, sizeScale: creature.sizeScale)
@@ -528,6 +531,8 @@ final class PixooRenderer {
                         Self.colors.white
                     case .antigravity:
                         antigravityPalette(for: i).yellow
+                    case .kiro:
+                        (124, 58, 237)
                     case .octopus:
                         octopusPalette(for: i).body
                     }
@@ -583,6 +588,7 @@ final class PixooRenderer {
         if let dominant {
             creature =
                 dominant.agentType == "antigravity" ? .antigravity
+                    : dominant.creatureType == .kiro ? .kiro
                     : dominant.creatureType == .cloud ? .codex
                     : (dominant.creatureType == .opencode ? .opencode : .octopus)
         } else if hasGateway {
@@ -647,6 +653,7 @@ final class PixooRenderer {
             case .cloud: return .codex
             case .opencode: return .openCode
             case .antigravity: return .antigravity
+            case .kiro: return .kiro
             }
         }
         func priority(_ state: CreatureState) -> Int {
@@ -679,6 +686,7 @@ final class PixooRenderer {
             case .codex: return (126, 116, 255)
             case .openCode: return (255, 246, 248)
             case .openClaw: return (255, 67, 84)
+            case .kiro: return (124, 58, 237)
             case .antigravity:
                 let bands: [RGB] = [
                     (92, 214, 77), (245, 203, 36), (255, 132, 16),
@@ -867,13 +875,14 @@ final class PixooRenderer {
         let cloudSlots = pixooSlots(for: .cloud, count: typeCounts[.cloud] ?? 0)
         let opencodeSlots = pixooSlots(for: .opencode, count: typeCounts[.opencode] ?? 0)
         let antigravitySlots = pixooSlots(for: .antigravity, count: typeCounts[.antigravity] ?? 0)
-        var typeIndices: [CreatureKind: Int] = [.octopus: 0, .cloud: 0, .opencode: 0, .antigravity: 0]
+        let kiroSlots = pixooSlots(for: .kiro, count: typeCounts[.kiro] ?? 0)
+        var typeIndices: [CreatureKind: Int] = [.octopus: 0, .cloud: 0, .opencode: 0, .antigravity: 0, .kiro: 0]
 
         for (index, session) in aliveCoding.enumerated() {
             let kind = creatureType(for: session.agentType)
             let slotIndex = typeIndices[kind, default: 0]
             typeIndices[kind, default: 0] = slotIndex + 1
-            let slot = pixooSlot(for: kind, index: slotIndex, octopusSlots: octopusSlots, cloudSlots: cloudSlots, opencodeSlots: opencodeSlots, antigravitySlots: antigravitySlots)
+            let slot = pixooSlot(for: kind, index: slotIndex, octopusSlots: octopusSlots, cloudSlots: cloudSlots, opencodeSlots: opencodeSlots, antigravitySlots: antigravitySlots, kiroSlots: kiroSlots)
             let worldX = Double(slot.x)
             let worldY = stateY(session.state, kind: kind, baseY: Double(slot.y))
 
@@ -918,7 +927,8 @@ final class PixooRenderer {
                 octopusSlots: octopusSlots,
                 cloudSlots: cloudSlots,
                 opencodeSlots: opencodeSlots,
-                antigravitySlots: antigravitySlots
+                antigravitySlots: antigravitySlots,
+                kiroSlots: kiroSlots
             )
             primary.worldY = stateY(preciseState, kind: primary.creatureType, baseY: Double(baseSlot.y))
             creatureInstances[aliveCoding[primaryIndex].id] = primary
@@ -935,6 +945,10 @@ final class PixooRenderer {
             return CreatureLayout.layoutOpenCodeCreatures(count: count)
         case .antigravity:
             return CreatureLayout.layoutAntigravityCreatures(count: count)
+        case .kiro:
+            // Reuse the generated upper-right floating band until the shared
+            // layout SSOT replaces the three hand-maintained mirrors.
+            return CreatureLayout.layoutAntigravityCreatures(count: count)
         }
     }
 
@@ -944,13 +958,15 @@ final class PixooRenderer {
         octopusSlots: [CreatureSlot],
         cloudSlots: [CreatureSlot],
         opencodeSlots: [CreatureSlot],
-        antigravitySlots: [CreatureSlot]
+        antigravitySlots: [CreatureSlot],
+        kiroSlots: [CreatureSlot]
     ) -> CreatureSlot {
         let slots: [CreatureSlot] = switch kind {
         case .octopus: octopusSlots
         case .cloud: cloudSlots
         case .opencode: opencodeSlots
         case .antigravity: antigravitySlots
+        case .kiro: kiroSlots
         }
         guard !slots.isEmpty else { return CreatureSlot(x: 0.38, y: 0.42, scale: 1.0) }
         return slots[min(index, slots.count - 1)]
@@ -1480,6 +1496,8 @@ final class PixooRenderer {
                 return state == .processing ? lerpColor(openCode.outer, openCode.pulse, processingPulse) : openCode.outer
             case .openClaw:
                 return state == .processing ? Self.colors.crayfishRouting : Self.colors.crayfishBody
+            case .kiro:
+                return state == .processing ? (167, 120, 255) : (124, 58, 237)
             case .antigravity:
                 return Self.colors.white
             }
@@ -1911,13 +1929,14 @@ final class PixooRenderer {
 
     private func creatureType(for agentType: String) -> CreatureKind {
         if Self.antigravityAgents.contains(agentType) { return .antigravity }
+        if Self.kiroAgents.contains(agentType) { return .kiro }
         if Self.cloudAgents.contains(agentType) { return .cloud }
         if Self.opencodeAgents.contains(agentType) { return .opencode }
         return .octopus
     }
 
     private func isCreatureAgent(_ agentType: String) -> Bool {
-        Self.codingAgents.contains(agentType) || Self.cloudAgents.contains(agentType) || Self.opencodeAgents.contains(agentType) || Self.antigravityAgents.contains(agentType)
+        Self.codingAgents.contains(agentType) || Self.cloudAgents.contains(agentType) || Self.opencodeAgents.contains(agentType) || Self.antigravityAgents.contains(agentType) || Self.kiroAgents.contains(agentType)
     }
 
     private func simplifiedState(_ state: AgentConnectionState) -> CreatureState {
@@ -1961,6 +1980,12 @@ final class PixooRenderer {
             case .processing: return clamp(baseY - 0.04, min: 0.16, max: 0.30)
             case .awaiting: return clamp(baseY + 0.22, min: 0.46, max: 0.54)
             case .idle: return clamp(baseY + 0.34, min: 0.56, max: 0.64)
+            }
+        case .kiro:
+            switch state {
+            case .processing: return clamp(baseY - 0.04, min: 0.16, max: 0.30)
+            case .awaiting: return clamp(baseY + 0.16, min: 0.42, max: 0.54)
+            case .idle: return clamp(baseY + 0.26, min: 0.60, max: 0.70)
             }
         }
     }

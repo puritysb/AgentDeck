@@ -46,6 +46,14 @@ describe('buildUnitFile', () => {
     expect(unit).toContain('Type=simple');
   });
 
+  it('carries the network posture in ExecStart, quoted like every other unit word', () => {
+    // systemd word-splits ExecStart=, so the posture flags go through the same
+    // escaper as the paths — an unquoted flag is a parse difference waiting to
+    // happen, and this is the only channel that survives a reboot.
+    const unit = buildUnitFile({ node, cliJs, dataDirOverride: posixDataDir, extraArgs: ['--loopback'] });
+    expect(unit).toContain(`ExecStart="${node}" "${cliJs}" daemon start --foreground "--loopback"`);
+  });
+
   it('mirrors LaunchAgent KeepAlive via Restart=on-failure', () => {
     const unit = buildUnitFile({ node, cliJs, dataDirOverride: posixDataDir });
     expect(unit).toContain('Restart=on-failure');

@@ -5,6 +5,7 @@ import {
   ANTIGRAVITY_PATH,
   CLAUDE_LOGO_PATH,
   CODEX_LOGO_PATH,
+  KIRO_GHOST_PATH,
   OPENCODE_RING_PATH,
   OPENCLAW_LOGO_PATHS,
   ROBOT_CREATURE_PATH,
@@ -19,6 +20,7 @@ const canonicalPaths = {
   openClaw: OPENCLAW_LOGO_PATHS,
   openCode: [OPENCODE_RING_PATH],
   antigravity: [ANTIGRAVITY_PATH],
+  kiro: [KIRO_GHOST_PATH],
 };
 
 describe('canonical agent brand assets', () => {
@@ -32,6 +34,7 @@ describe('canonical agent brand assets', () => {
     ['openclaw.svg', canonicalPaths.openClaw],
     ['opencode.svg', canonicalPaths.openCode],
     ['antigravity.svg', canonicalPaths.antigravity],
+    ['kiro.svg', canonicalPaths.kiro],
   ])('%s is the geometry used by shared renderers', (filename, paths) => {
     const svg = read(`design/brand/${filename}`);
     for (const path of paths) expect(svg).toContain(`d="${path}"`);
@@ -56,9 +59,15 @@ describe('canonical agent brand assets', () => {
       read('scripts/generate-creature-glyphs.mjs'),
       read('scripts/generate-micro-glyphs.mjs'),
     ];
-    for (const stem of ['claudecode', 'codex', 'openclaw', 'opencode', 'antigravity']) {
+    for (const stem of ['claudecode', 'codex', 'openclaw', 'opencode', 'antigravity', 'kiro']) {
       for (const generator of generators) expect(generator).toContain(stem);
     }
+  });
+
+  it('records the pinned Kiro source and trademark boundary', () => {
+    const resources = read('design/RESOURCES.md');
+    expect(resources).toContain('@lobehub/icons-static-svg@1.94.0');
+    expect(resources).toContain('Kiro is a mark of Amazon.com, Inc. or its affiliates');
   });
 
   it('does not retain alternate logo-source dumps', () => {

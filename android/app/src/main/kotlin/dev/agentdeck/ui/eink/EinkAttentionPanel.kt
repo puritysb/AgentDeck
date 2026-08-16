@@ -314,6 +314,8 @@ private fun agentLabel(agentType: String?): String = when (agentType) {
     "openclaw" -> "OpenClaw"
     "opencode" -> "OpenCode"
     "antigravity" -> "Antigravity"
+    "kiro-cli" -> "Kiro CLI"
+    "kiro-ide" -> "Kiro IDE"
     null -> "Agent"
     else -> agentType.replaceFirstChar { it.uppercaseChar() }
 }

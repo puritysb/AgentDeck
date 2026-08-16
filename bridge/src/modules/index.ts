@@ -9,7 +9,8 @@ import { IDotMatrixModule } from './idotmatrix-module.js';
 import type { AgentType } from '../types.js';
 import { debug } from '../logger.js';
 
-export type { DeviceModule, ModuleConfigs, BridgeContext } from './types.js';
+export type { DeviceModule, ModuleConfigs, ModuleName, BridgeContext } from './types.js';
+export { MODULE_NAMES, allModulesOff } from './types.js';
 export { MdnsModule } from './mdns-module.js';
 export { BroadcastModule } from './broadcast-module.js';
 export { AdbModule } from './adb-module.js';

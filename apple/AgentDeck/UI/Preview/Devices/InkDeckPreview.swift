@@ -29,7 +29,7 @@
 // fails CI when the firmware drifts ahead of this mirror. Update this view and
 // re-pin whenever the firmware layout changes.
 //
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 181fd6d9954b38a9d0c1eef08776e04118979a55
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 77c388341d225a3513cb8383899ddc149f822b55
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 9179d41777d6e2caff02735607ad7ca210de8bb8
 
 import SwiftUI
@@ -141,7 +141,7 @@ struct InkDeckPreview: View {
                         Text("no active sessions")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(ink.opacity(0.8))
-                        Text("start claude / codex / opencode in a workspace")
+                        Text("start claude / codex / opencode / kiro in a workspace")
                             .font(.system(size: 9))
                             .foregroundStyle(ink.opacity(0.55))
                     }

@@ -388,6 +388,7 @@ private enum Tc001Sprites {
         case .opencode: key = .openCode
         case .openclaw: key = .openClaw
         case .antigravity: key = .antigravity
+        case .kiro: key = .kiro
         }
         return OfficialTc001Glyphs.masks[key] ?? []
     }
@@ -402,6 +403,7 @@ private enum Tc001Sprites {
             case .codex:       rgb = (65, 65, 160)    // indigo, mid-pulse
             case .opencode:    rgb = (140, 132, 132)  // warm light gray, mid-pulse
             case .antigravity: rgb = (140, 143, 148)  // cool gray envelope, mid-pulse
+            case .kiro:        rgb = (98, 60, 174)    // Kiro purple, mid-pulse
             default:           rgb = (125, 75, 56)    // terracotta, mid-pulse
             }
         case .awaitingPrompt:
@@ -411,6 +413,7 @@ private enum Tc001Sprites {
             case .codex:       rgb = (30, 30, 80)
             case .opencode:    rgb = (72, 67, 67)
             case .antigravity: rgb = (68, 70, 73)     // dim rainbow envelope
+            case .kiro:        rgb = (58, 32, 103)    // dim Kiro purple
             default:           rgb = (80, 45, 35)
             }
         case .disconnected:

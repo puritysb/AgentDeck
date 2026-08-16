@@ -1275,6 +1275,8 @@ export function drawOfficialDotGlyph(
       }
       case 'antigravity':
         return COLORS.white;
+      case 'kiro':
+        return state === 'sleeping' ? [0x4f, 0x2b, 0x7a] : state === 'working' ? [0xa7, 0x78, 0xff] : [0x7c, 0x3a, 0xed];
     }
   };
   const base = solidColor();

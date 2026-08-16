@@ -21,6 +21,32 @@ function fail(msg: string) { console.log(`${RED}[FAIL]${NC} ${msg}`); }
 const IS_WIN = process.platform === 'win32';
 const IS_LINUX = process.platform === 'linux';
 
+// ─── Options ─────────────────────────────────────────────────────────
+
+export interface SetupOptions {
+  /** Run `agentdeck daemon install` as part of setup instead of printing it as step N. */
+  autoInstallDaemon: boolean;
+  /** Install the daemon with a loopback-only posture (no LAN discovery, no scans). */
+  enterprise: boolean;
+}
+
+/**
+ * Parse the flags `npx @agentdeck/setup` accepts.
+ *
+ * `--enterprise` implies `--yes`: an admin asking for the locked-down posture is
+ * asking for a finished install, and a posture that is printed as a suggested
+ * next step is not a posture. Unknown flags are ignored rather than fatal —
+ * `npx` users mistype, and refusing to install over a typo is worse than
+ * ignoring it.
+ */
+export function parseSetupArgs(argv: readonly string[]): SetupOptions {
+  const enterprise = argv.includes('--enterprise');
+  return {
+    enterprise,
+    autoInstallDaemon: enterprise || argv.includes('--yes') || argv.includes('-y'),
+  };
+}
+
 function which(cmd: string): string | null {
   try {
     // `where` on Windows can print multiple lines (one per match); take the first.
@@ -400,6 +426,49 @@ function installHooks() {
   ok(`Hooks installed to ${settingsPath}`);
 }
 
+function installKiroHooks() {
+  if (!which('kiro-cli')) {
+    warn('Skipping Kiro v3 hooks because `kiro-cli` is not installed');
+    return;
+  }
+  const kiroRoot = join(homedir(), '.kiro');
+  const hooksDir = join(kiroRoot, 'hooks');
+  const hookPath = join(hooksDir, 'agentdeck-lifecycle.json');
+  if (!existsSync(kiroRoot)) {
+    warn('Skipping Kiro v3 hooks because ~/.kiro has not been initialized');
+    return;
+  }
+  if (existsSync(hookPath)) {
+    const existing = readFileSync(hookPath, 'utf8');
+    if (!existing.includes('/hooks/kiro_') && !existing.includes('AgentDeck ')) {
+      warn(`Skipping Kiro hooks because ${hookPath} is occupied by another file`);
+      return;
+    }
+  }
+  const events = [
+    ['SessionStart', 'kiro_session_start'],
+    ['UserPromptSubmit', 'kiro_user_prompt_submit'],
+    ['PreToolUse', 'kiro_tool_start'],
+    ['PostToolUse', 'kiro_tool_end'],
+    ['Stop', 'kiro_stop'],
+  ] as const;
+  const config = {
+    version: 'v1',
+    hooks: events.map(([trigger, daemonEvent]) => ({
+      name: `AgentDeck ${trigger}`,
+      trigger,
+      action: {
+        type: 'command',
+        command: IS_WIN ? buildHookCommandWin(daemonEvent) : buildHookCommand(daemonEvent),
+      },
+      timeout: 2,
+    })),
+  };
+  mkdirSync(hooksDir, { recursive: true });
+  writeFileSync(hookPath, `${JSON.stringify(config, null, 2)}\n`);
+  ok(`Kiro v3 lifecycle hooks installed to ${hookPath}`);
+}
+
 // ─── 6. Data directory ───────────────────────────────────────────────
 
 function ensureDataDir() {
@@ -472,12 +541,53 @@ function checkOptionalDeps() {
 
 // ─── 8. Success ──────────────────────────────────────────────────────
 
-function success() {
+/**
+ * Run `agentdeck daemon install` here rather than telling the user to.
+ *
+ * This is the step that made "install with npx alone" not quite true. Failure
+ * is reported and then tolerated: the bridge and hooks are already installed at
+ * this point, so exiting non-zero would make a working install look broken.
+ */
+function installDaemonAutostart(opts: SetupOptions): boolean {
+  console.log('');
+  console.log('----- Daemon autostart -----');
+  const args = opts.enterprise ? ' --enterprise' : '';
+  if (opts.enterprise) {
+    info('Enterprise posture: the daemon will bind 127.0.0.1 only — no mDNS advertisement,');
+    info('no UDP discovery beacon, no LAN device sweep, no BLE scans, no ADB reverse.');
+  }
+  try {
+    execSync(`agentdeck daemon install${args}`, { stdio: 'inherit' });
+    ok('Daemon autostart installed');
+    return true;
+  } catch {
+    warn(`'agentdeck daemon install${args}' failed — run it manually once the shell PATH picks up the CLI.`);
+    return false;
+  }
+}
+
+function success(opts: SetupOptions, daemonInstalled: boolean) {
   console.log('');
   console.log('=========================================');
   console.log('  Setup Complete!');
   console.log('=========================================');
   console.log('');
+  if (daemonInstalled) {
+    console.log('  The daemon is installed and starts on login.');
+    console.log("  Run 'claude', 'codex', or 'opencode' normally — hooks/events discover sessions.");
+    if (!opts.enterprise) {
+      console.log('');
+      console.log('  On a shared/corporate network, re-run with --enterprise for a loopback-only daemon:');
+      console.log('    npx @agentdeck/setup --enterprise');
+    }
+    console.log('');
+    console.log('  Usage:');
+    console.log('    agentdeck dashboard        Open the terminal dashboard');
+    console.log('    agentdeck status           Check status');
+    console.log('    agentdeck stop             Stop bridge');
+    console.log('');
+    return;
+  }
   console.log('  Next steps:');
   if (IS_LINUX) {
     console.log("  1. Run 'agentdeck daemon install' to start monitoring and auto-start on login");
@@ -504,6 +614,7 @@ function success() {
 // ─── Main ────────────────────────────────────────────────────────────
 
 async function main() {
+  const opts = parseSetupArgs(process.argv.slice(2));
   banner();
 
   if (!checkPrerequisites()) {
@@ -514,13 +625,21 @@ async function main() {
   installBridge();
   console.log('');
   installHooks();
+  installKiroHooks();
   ensureDataDir();
   seedCompatibility();
   checkOptionalDeps();
-  success();
+  const daemonInstalled = opts.autoInstallDaemon ? installDaemonAutostart(opts) : false;
+  success(opts, daemonInstalled);
 }
 
-main().catch((err) => {
-  fail(`Unexpected error: ${err.message}`);
-  process.exit(1);
-});
+// Runs on import — this module IS the installer's entry point. The guard is
+// inverted on purpose: the default is "run", so no bin-shim/symlink resolution
+// quirk can turn `npx @agentdeck/setup` into a silent no-op. Only the unit test
+// that imports parseSetupArgs sets the variable.
+if (!process.env.AGENTDECK_SETUP_NO_AUTORUN) {
+  main().catch((err) => {
+    fail(`Unexpected error: ${err.message}`);
+    process.exit(1);
+  });
+}

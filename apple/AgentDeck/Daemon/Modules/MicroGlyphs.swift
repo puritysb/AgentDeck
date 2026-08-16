@@ -9,7 +9,7 @@
 
 import Foundation
 
-enum MicroCreature { case octopus, codex, opencode, crayfish, antigravity }
+enum MicroCreature { case octopus, codex, opencode, crayfish, antigravity, kiro }
 enum MicroAggregate { case idle, processing, awaiting, error }
 
 enum MicroGlyphs {
@@ -38,6 +38,7 @@ enum MicroGlyphs {
         case .opencode: return .openCode
         case .crayfish: return .openClaw
         case .antigravity: return .antigravity
+        case .kiro: return .kiro
         }
     }
 
@@ -47,6 +48,7 @@ enum MicroGlyphs {
         case .codex: return (112, 124, 255)
         case .openCode: return (238, 238, 238)
         case .openClaw: return (255, 92, 92)
+        case .kiro: return (124, 58, 237)
         case .antigravity:
             let bands: [RGB] = [
                 (92, 214, 77), (245, 203, 36), (255, 132, 16),

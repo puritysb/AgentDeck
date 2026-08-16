@@ -100,6 +100,7 @@ All surfaces follow the same rule:
 | Observed-session answer injection (device tap → host UI) | No | Yes | tmux / iTerm2 / Terminal.app by tty, GUI apps by AX button or key events. Needs `ps` tty discovery + tmux/osascript subprocesses — both CLI-only; sandbox has neither. Preferred over the ask-gate when available: it answers the live picker with no added latency for whoever is at that terminal |
 | OpenCode monitoring | Opt-in read-only | Yes | Tier 1 connects only to a configured/fixed local server; no port scan |
 | Antigravity session monitoring | No | Yes | Tier 1 may display user-approved usage data only |
+| Kiro CLI / IDE session monitoring | No | Yes | CLI daemon passively correlates native `kiro-cli`/Kiro processes with `KIRO_HOME/sessions/cli` metadata + JSONL. No managed launch or default-agent rewrite; App Store process discovery remains out of scope |
 | Subagent activity summaries + parent-linked orbit visuals | Yes | Yes | Read-only lifecycle hooks collapse each child to concise start/completion rows using existing Timeline types. Terrarium surfaces may derive non-interactive wire/ring/satellite accents around the owning parent; they never become selectable sessions. No subagent commands, approvals, team configuration, or process discovery |
 | Launch Claude / Codex / OpenCode session | No | Yes | App Store has no launch-session entry point |
 | OpenClaw Gateway WebSocket pairing | Yes | Yes | Local WS, Keychain identity, optional user-selected token file |

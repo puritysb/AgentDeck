@@ -18,7 +18,7 @@ import {
 describe('canonical dot-matrix agent masks', () => {
   it('ships every official agent mark at Pixoo/iDotMatrix and TC001 resolutions', () => {
     expect(Object.keys(OFFICIAL_DOT_GLYPHS).sort()).toEqual([
-      'antigravity', 'claudeCode', 'codex', 'openClaw', 'openCode',
+      'antigravity', 'claudeCode', 'codex', 'kiro', 'openClaw', 'openCode',
     ]);
     for (const mask of Object.values(OFFICIAL_DOT_GLYPHS)) {
       expect(mask).toHaveLength(OFFICIAL_DOT_GLYPH_SIZE ** 2);
@@ -54,7 +54,7 @@ describe('canonical dot-matrix agent masks', () => {
 });
 
 describe('Timebox Mini Agent Beacon', () => {
-  const creatures: MicroCreature[] = ['octopus', 'jellyfish', 'opencode', 'crayfish', 'antigravity'];
+  const creatures: MicroCreature[] = ['octopus', 'jellyfish', 'opencode', 'crayfish', 'antigravity', 'kiro'];
   const background = [2, 6, 10];
   const pixel = (frame: Uint8Array, x: number, y: number) =>
     [...frame.slice((y * MICRO_SIZE + x) * 3, (y * MICRO_SIZE + x) * 3 + 3)];

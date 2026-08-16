@@ -27,6 +27,8 @@ export function agentDisplayLabel(agentType: string | undefined | null): string 
     case 'codex-app':   return 'Codex App';
     case 'opencode':    return 'OpenCode';
     case 'antigravity': return 'Antigravity';
+    case 'kiro-cli':    return 'Kiro CLI';
+    case 'kiro-ide':    return 'Kiro IDE';
     case 'monitor':     return 'Monitor';
     case 'daemon':      return 'Daemon';
     default:
@@ -45,6 +47,8 @@ export function agentShortLabel(agentType: string | undefined | null): string {
   switch (agentType) {
     case 'codex-cli':
     case 'codex-app':   return 'Codex';
+    case 'kiro-cli':
+    case 'kiro-ide':    return 'Kiro';
     default:            return agentDisplayLabel(agentType);
   }
 }

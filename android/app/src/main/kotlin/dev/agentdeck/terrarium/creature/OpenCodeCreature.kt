@@ -29,8 +29,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * OpenCode creature using the exact design/brand/opencode.svg ring path.
- * No eyes, tentacles, or limbs. Animation is limited to bob/pulse only.
+ * Vector-mark creature using the canonical OpenCode or Kiro brand path.
+ * No added eyes, tentacles, or limbs. Animation is limited to bob/pulse only.
  *
  * Same public API as OctopusCreature/CloudCreature for interchangeable use.
  */
@@ -40,6 +40,7 @@ class OpenCodeCreature(
     private var scaleFactor: Float = 1f,
     phaseOffset: Float = 0f,
     displayName: String? = null,
+    agentType: String? = "opencode",
 ) : Creature {
 
     private var visualState by mutableStateOf(OctopusVisualState.FLOATING)
@@ -47,6 +48,7 @@ class OpenCodeCreature(
     private var transitionProgress by mutableFloatStateOf(1f)
     private var nameTag: String? by mutableStateOf(displayName)
     private var showNameTag by mutableStateOf(displayName != null)
+    private var renderedAgentType by mutableStateOf(agentType)
 
     // Swimming state
     private var homeX = centerXFraction
@@ -77,6 +79,12 @@ class OpenCodeCreature(
         nameTag = name
         showNameTag = show
     }
+
+    fun setAgentType(type: String?) {
+        renderedAgentType = type
+    }
+
+    private fun isKiro(): Boolean = renderedAgentType == "kiro-cli" || renderedAgentType == "kiro-ide"
 
     /** Update home position -- creature lerps naturally (no teleport). */
     fun setHomePosition(x: Float, y: Float, scale: Float) {
@@ -204,8 +212,8 @@ class OpenCodeCreature(
         }
         val scaledSize = bodySize * pulseScale
 
-        // Draw canonical OpenCode ring
-        drawNestedSquares(scope, centerX, centerY, scaledSize, bodyAlpha)
+        // Draw the canonical vector mark for this agent.
+        drawBrandMark(scope, centerX, centerY, scaledSize, bodyAlpha)
 
         // ASKING: speech bubble with "?"
         if (visualState == OctopusVisualState.ASKING) {
@@ -218,35 +226,41 @@ class OpenCodeCreature(
         }
     }
 
-    /** Draw the canonical square-cornered OpenCode ring. */
-    private fun drawNestedSquares(
+    /** Draw the canonical OpenCode ring or Kiro ghost. */
+    private fun drawBrandMark(
         scope: DrawScope,
         cx: Float, cy: Float,
         size: Float,
         alpha: Float,
     ) {
+        val kiro = isKiro()
+        val baseColor = if (kiro) KIRO_PURPLE else OUTER_FRAME
+        val brightColor = if (kiro) KIRO_BRIGHT else OUTER_BRIGHT
+        val dimColor = if (kiro) KIRO_DIM else OUTER_DIM
         val frameColor = when (visualState) {
-            OctopusVisualState.SLEEPING -> OUTER_DIM
+            OctopusVisualState.SLEEPING -> dimColor
             OctopusVisualState.WORKING -> {
                 val t = sin(time * TerrariumTiming.THINKING_PULSE_SPEED) * 0.5f + 0.5f
-                lerpColor(OUTER_FRAME, OUTER_BRIGHT, t)
+                lerpColor(baseColor, brightColor, t)
             }
-            else -> OUTER_FRAME
+            else -> baseColor
         }
 
-        val pathScale = size / CreatureGeometry.OPENCODE_VIEWBOX
+        val viewBox = if (kiro) CreatureGeometry.KIRO_VIEWBOX else CreatureGeometry.OPENCODE_VIEWBOX
+        val path = if (kiro) kiroPath else openCodePath
+        val pathScale = size / viewBox
         scope.withTransform({
             translate(cx - size / 2f, cy - size / 2f)
             scale(pathScale, pathScale, pivot = Offset.Zero)
         }) {
-            drawPath(openCodePath, color = frameColor, alpha = alpha)
+            drawPath(path, color = frameColor, alpha = alpha)
         }
 
         // Working state: subtle outer glow
         if (visualState == OctopusVisualState.WORKING) {
             val glowAlpha = (sin(time * 2f) * 0.15f + 0.15f) * alpha
             scope.drawRect(
-                color = GLOW_COLOR,
+                color = if (kiro) KIRO_PURPLE else GLOW_COLOR,
                 alpha = glowAlpha,
                 topLeft = Offset(cx - size * 0.34f - 2f, cy - size * 0.43f - 2f),
                 size = Size(size * 0.68f + 4f, size * 0.86f + 4f),
@@ -392,6 +406,9 @@ class OpenCodeCreature(
         private val openCodePath = PathParser().parsePathString(CreatureGeometry.OPENCODE_PATH_DATA).toPath().apply {
             fillType = PathFillType.EvenOdd
         }
+        private val kiroPath = PathParser().parsePathString(CreatureGeometry.KIRO_PATH_DATA).toPath().apply {
+            fillType = PathFillType.EvenOdd
+        }
         // Body size as fraction of canvas width
         private const val BODY_SIZE_FRACTION = 0.064f
 
@@ -408,5 +425,8 @@ class OpenCodeCreature(
         private val OUTER_DIM = Color(0xFF8A8585)       // sleeping outer
         private val INNER_DIM = Color(0xFF353232)        // sleeping inner
         private val GLOW_COLOR = Color(0xFFF1ECEC)       // working border glow
+        private val KIRO_PURPLE = Color(0xFF7C3AED)
+        private val KIRO_BRIGHT = Color(0xFFA78BFA)
+        private val KIRO_DIM = Color(0xFF6D5A8A)
     }
 }

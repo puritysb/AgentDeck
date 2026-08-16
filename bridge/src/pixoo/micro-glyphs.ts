@@ -17,7 +17,7 @@ import {
 } from './official-dot-glyphs.generated.js';
 
 export type RGB = readonly [number, number, number];
-export type MicroCreature = 'octopus' | 'jellyfish' | 'opencode' | 'crayfish' | 'antigravity';
+export type MicroCreature = 'octopus' | 'jellyfish' | 'opencode' | 'crayfish' | 'antigravity' | 'kiro';
 export type MicroAggregate = 'idle' | 'processing' | 'awaiting' | 'error';
 
 export const MICRO_SIZE = 11;
@@ -33,6 +33,7 @@ const AGENT_COLORS: Record<Exclude<OfficialDotGlyphName, 'antigravity'>, RGB> = 
   codex: [112, 124, 255],
   openCode: [238, 238, 238],
   openClaw: [255, 92, 92],
+  kiro: [124, 58, 237],
 };
 
 const PERIMETER: ReadonlyArray<readonly [number, number]> = [
@@ -57,6 +58,7 @@ function officialName(creature: MicroCreature): OfficialDotGlyphName {
     case 'opencode': return 'openCode';
     case 'crayfish': return 'openClaw';
     case 'antigravity': return 'antigravity';
+    case 'kiro': return 'kiro';
   }
 }
 

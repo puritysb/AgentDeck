@@ -22,6 +22,7 @@ import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import type { EnrichedSession } from './session-aggregator.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
+import { redactSecrets } from './utils/redact-secrets.js';
 import { stripUnsafeText, rawSessionId } from '@agentdeck/shared';
 // The interrupt marker rule is shared with the turn watchdog / APME collector —
 // see claude-interrupt-marker.ts for why it must not be spelled twice.
@@ -33,6 +34,11 @@ import {
   antigravityTranscriptPath,
   type AntigravityTranscriptSummary,
 } from './apme/antigravity-transcript.js';
+import {
+  KiroSessionCache,
+  readKiroNativeSessionSnapshots,
+  type KiroSessionSnapshot,
+} from './kiro-session.js';
 
 export type ObservedState = 'idle' | 'processing';
 
@@ -210,6 +216,7 @@ export class PassiveSessionObserver {
   private cached: ObservedSession[] = [];
   private scanInFlight = false;
   private codexRolloutCache = new CodexRolloutCache();
+  private kiroSessionCache = new KiroSessionCache();
 
   /** Fired after a background scan changed the cached list. Wire to a
    *  debounced sessions broadcast so fresh observations reach clients
@@ -244,6 +251,7 @@ export class PassiveSessionObserver {
       ...(await collectCodexSessions(processes, this.codexRolloutCache)),
       ...(await collectOpenCodeSessions(processes)),
       ...(await collectAntigravitySessions(processes)),
+      ...(await collectKiroSessions(processes, this.kiroSessionCache)),
     ];
     const next = dedupeObservedSessions(observed, managedSessions, processes);
     // Only notify on real change — an unconditional callback would emit a
@@ -508,7 +516,7 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
   };
 }
 
-async function collectProcessInfo(): Promise<ProcInfo[]> {
+export async function collectProcessInfo(): Promise<ProcInfo[]> {
   if (process.platform === 'win32') return collectProcessInfoWin32();
   try {
     const { stdout } = await execFileAsync('ps', ['-ww', '-eo', 'pid=,ppid=,rss=,tty=,command='], {
@@ -829,6 +837,191 @@ async function collectAntigravitySessions(processes: ProcInfo[]): Promise<Observ
   });
 }
 
+/**
+ * Surface Kiro sessions without changing how Kiro is launched. Kiro CLI
+ * 2.18.1 v2 persists `conversations_v2` in app-data SQLite; v3 persists nested
+ * session JSONL under `KIRO_HOME/sessions`. The CLI does not
+ * expose a daemon attach API, so active process cwd is correlated with the
+ * newest matching record. This is intentionally observation-only: no
+ * `agentdeck kiro` PTY and no default-agent rewrite.
+ */
+async function collectKiroSessions(
+  processes: ProcInfo[],
+  cache: KiroSessionCache,
+): Promise<ObservedSession[]> {
+  const cli = activeKiroCliProcesses(processes);
+  const ide = processes.filter((proc) => isKiroIdeProcessCommand(proc.command));
+  if (cli.length === 0 && ide.length === 0) return [];
+
+  const cwdByPid = await cwdForPids([...cli, ...ide].map((proc) => proc.pid));
+  const snapshots = cli.length > 0
+    ? (await readKiroNativeSessionSnapshots(undefined, cache)).snapshots
+    : [];
+  return collectKiroSessionsFromSnapshots(processes, snapshots, cwdByPid);
+}
+
+/** Testable projection from Kiro processes + persisted session pairs.
+ *
+ *  `now` is injectable because the projection is only pure if its clock is:
+ *  `observedStateAfterSilence` decays a `processing` snapshot to `idle` after
+ *  STALE_TURN_MS, so a fixture pinned to a fixed timestamp silently flips
+ *  verdict once the wall clock passes that threshold — a test written today
+ *  that fails tomorrow, having proven nothing in between. */
+export function collectKiroSessionsFromSnapshots(
+  processes: ProcInfo[],
+  snapshots: KiroSessionSnapshot[],
+  cwdByPid: ReadonlyMap<number, string> = new Map(),
+  now: number = Date.now(),
+): ObservedSession[] {
+  const byPid = new Map(processes.map((proc) => [proc.pid, proc]));
+  const cli = activeKiroCliProcesses(processes);
+  const ide = processes.filter((proc) => isKiroIdeProcessCommand(proc.command));
+  const claimed = new Set<string>();
+  const result: ObservedSession[] = [];
+
+  for (const proc of cli) {
+    const cwd = cwdByPid.get(proc.pid);
+    const hostApp = proc.tty ? undefined : resolveHostApp(proc.pid, byPid);
+    const inKiroIde = hostApp?.toLowerCase() === 'kiro';
+    const explicitSessionId = kiroResumeSessionId(proc.command);
+    const explicit = explicitSessionId
+      ? snapshots.find((snapshot) => snapshot.sessionId === explicitSessionId)
+      : undefined;
+    const sameCwd = snapshots.filter((snapshot) =>
+      !claimed.has(snapshot.sessionId) && cwd && snapshot.cwd && samePath(snapshot.cwd, cwd));
+    const snapshot = explicit
+      ?? (sameCwd.length > 0 ? sameCwd : snapshots.filter((item) => !claimed.has(item.sessionId)))[0];
+    if (snapshot) claimed.add(snapshot.sessionId);
+
+    const rawState = snapshot?.state ?? 'idle';
+    const state = observedStateAfterSilence(rawState, snapshot?.lastActivityAt, now);
+    const sessionKey = snapshot?.sessionId ?? String(proc.pid);
+    const realCwd = snapshot?.cwd ?? cwd;
+    const agentType = inKiroIde ? 'kiro-ide' as const : 'kiro-cli' as const;
+    result.push({
+      id: `observed:${inKiroIde ? 'kiro-ide' : 'kiro'}:${sessionKey}`,
+      port: 0,
+      pid: proc.pid,
+      projectName: realCwd ? projectNameFromCwd(realCwd) : (inKiroIde ? 'Kiro IDE' : 'Kiro'),
+      agentType,
+      alive: true,
+      state,
+      modelName: snapshot?.modelName,
+      startedAt: new Date(snapshot?.createdAt ?? now).toISOString(),
+      controlMode: 'observed',
+      cwd: realCwd,
+      tty: proc.tty,
+      appName: hostApp,
+      currentTask: state === 'processing' ? snapshot?.currentTask : undefined,
+      goal: snapshot?.goal,
+      lastActivityAt: snapshot?.lastActivityAt,
+    });
+  }
+
+  // A Kiro IDE parent with a kiro-cli/ACP child is already represented by that
+  // child above. Keep a process-only row only when the IDE has no observable
+  // agent child, which avoids one chat appearing twice.
+  for (const proc of ide) {
+    if (cli.some((child) => isDescendantOf(child.pid, proc.pid, byPid))) continue;
+    const cwd = cwdByPid.get(proc.pid);
+    result.push({
+      id: `observed:kiro-ide:${proc.pid}`,
+      port: 0,
+      pid: proc.pid,
+      projectName: cwd && cwd !== '/' ? projectNameFromCwd(cwd) : 'Kiro IDE',
+      agentType: 'kiro-ide',
+      alive: true,
+      state: 'idle',
+      startedAt: new Date(now).toISOString(),
+      controlMode: 'observed',
+      cwd: cwd && cwd !== '/' ? cwd : undefined,
+      appName: appNameFromCommand(proc.command) ?? 'Kiro',
+    });
+  }
+
+  return result;
+}
+
+export function isKiroCliProcessCommand(command: string): boolean {
+  const binary = cmdHasBinary(command, 'kiro-cli-chat')
+    ? 'kiro-cli-chat'
+    : cmdHasBinary(command, 'kiro-cli')
+      ? 'kiro-cli'
+      : cmdHasBinary(command, 'kiro')
+        ? 'kiro'
+        : undefined;
+  if (!binary || isElectronChildProcess(command) || command.includes('grep') || command.includes('agentdeck')) {
+    return false;
+  }
+  if (binary === 'kiro-cli-chat') return true;
+
+  // `kiro-cli` is also the management executable. A long-running browser login
+  // (and a scanner that happens to catch `doctor`, `settings`, etc.) is not a
+  // coding session. Bare invocation and the chat/ACP entry points are sessions;
+  // known management subcommands are not. Skip values of global options so an
+  // agent literally named "doctor" remains a valid chat invocation.
+  const args = argvishTokens(command);
+  const binaryIndex = args.findIndex((token) => binaryStem(token) === binary);
+  if (args.slice(binaryIndex + 1).some((token) => ['--version', '-V', '--help', '-h', '--help-all'].includes(token))) {
+    return false;
+  }
+  const positionals: string[] = [];
+  const optionsWithValues = new Set(['--agent', '--resume-id', '--repo']);
+  for (let index = binaryIndex + 1; index < args.length; index += 1) {
+    const token = args[index];
+    if (optionsWithValues.has(token)) {
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('-')) continue;
+    positionals.push(token);
+    break;
+  }
+  const subcommand = positionals[0];
+  if (!subcommand || ['chat', 'acp'].includes(subcommand)) return true;
+  return !KIRO_NON_SESSION_SUBCOMMANDS.has(subcommand);
+}
+
+/** Collapse Kiro's launcher -> `kiro-cli-chat` child pair to the child that
+ * actually owns the chat. Newer engines that remain in one process are kept. */
+export function activeKiroCliProcesses(processes: ProcInfo[]): ProcInfo[] {
+  const matches = processes.filter((proc) => isKiroCliProcessCommand(proc.command));
+  const byPid = new Map(processes.map((proc) => [proc.pid, proc]));
+  const chatChildren = matches.filter((proc) => cmdHasBinary(proc.command, 'kiro-cli-chat'));
+  return matches.filter((proc) =>
+    cmdHasBinary(proc.command, 'kiro-cli-chat')
+    || !chatChildren.some((child) => isDescendantOf(child.pid, proc.pid, byPid)));
+}
+
+const KIRO_NON_SESSION_SUBCOMMANDS = new Set([
+  'debug', 'settings', 'setup', 'update', 'diagnostic', 'init', 'theme', 'issue',
+  'login', 'logout', 'whoami', 'profile', 'user', 'doctor', 'launch', 'quit',
+  'restart', 'integrations', 'translate', 'dashboard', 'crew', 'mcp', 'inline',
+  'agent', 'help',
+]);
+
+export function isKiroIdeProcessCommand(command: string): boolean {
+  // The macOS CLI installer starts a persistent native host at
+  // `/Applications/Kiro CLI.app/.../kiro_cli_desktop --no-dashboard`. `ps`
+  // does not quote that path, so leadingCommandTokens() sees `/Applications/Kiro`
+  // and a bare `cmdHasBinary(..., 'Kiro')` would misclassify the CLI host as
+  // Kiro IDE before the user has even opened a chat.
+  if (/[/\\]Kiro CLI\.app[/\\].*[/\\]kiro_cli_desktop(?:\s|$)/.test(command)) return false;
+  return (
+    cmdHasBinary(command, 'Kiro')
+    || /\/Kiro\.app\/Contents\/MacOS\/Kiro(?:\s|$)/.test(command)
+  )
+    && !/\bKiro Helper\b/.test(command)
+    && !isElectronChildProcess(command)
+    && !command.includes('grep')
+    && !command.includes('agentdeck');
+}
+
+export function kiroResumeSessionId(command: string): string | undefined {
+  const match = command.match(/(?:^|\s)--resume-id(?:=|\s+)["']?([A-Za-z0-9_-]{1,256})/);
+  return match?.[1];
+}
+
 export function isAntigravityProcessCommand(command: string): boolean {
   return (
     // `agy` is the Antigravity CLI binary (Homebrew cask). This is the one the
@@ -854,7 +1047,7 @@ export function isAntigravityProcessCommand(command: string): boolean {
 }
 
 /** cwd path for each pid via `lsof -d cwd` (best-effort; empty map on failure). */
-async function cwdForPids(pids: number[]): Promise<Map<number, string>> {
+export async function cwdForPids(pids: number[]): Promise<Map<number, string>> {
   const map = new Map<number, string>();
   if (pids.length === 0) return map;
   // Windows ships no lsof, and Win32_Process carries no working directory —
@@ -1128,22 +1321,6 @@ function shortenArg(value: string): string {
   return redactSecrets(value).replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 
-function redactSecrets(value: string): string {
-  const patterns = ['sk-ant-', 'sk-proj-', 'sk-or-', 'sk_live_', 'sk_test_', 'ghp_', 'github_pat_', 'glpat-', 'xoxb-', 'xoxp-', 'Bearer '];
-  let result = value;
-  for (const pattern of patterns) {
-    let idx = result.indexOf(pattern);
-    while (idx >= 0) {
-      const tokenStart = idx + pattern.length;
-      const endOffset = result.slice(tokenStart).search(/\s/);
-      const end = endOffset >= 0 ? tokenStart + endOffset : result.length;
-      result = `${result.slice(0, idx)}[REDACTED]${result.slice(end)}`;
-      idx = result.indexOf(pattern, idx + '[REDACTED]'.length);
-    }
-  }
-  return result;
-}
-
 function isClaudeToolResultUserMessage(message: Record<string, unknown> | null): boolean {
   const content = message ? arrayAt(message, 'content') : null;
   return !!content?.length && content.every((block) => isRecord(block) && stringAt(block, 'type') === 'tool_result');
@@ -1198,6 +1375,19 @@ function leadingCommandTokens(command: string): string[] {
   const quoted = command.match(/^"([^"]*)"\s*(.*)$/);
   if (!quoted) return command.split(/\s+/).slice(0, 2);
   return [quoted[1], quoted[2].split(/\s+/)[0] ?? ''];
+}
+
+function argvishTokens(command: string): string[] {
+  const tokens: string[] = [];
+  for (const match of command.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)) {
+    tokens.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return tokens;
+}
+
+function binaryStem(token: string): string {
+  const bare = token.split(/[\\/]/).pop() ?? '';
+  return bare.replace(/\.exe$/i, '');
 }
 
 /**
@@ -1260,6 +1450,15 @@ function isDescendantOf(pid: number, ancestorPid: number, byPid: Map<number, Pro
     current = byPid.get(current.ppid);
   }
   return false;
+}
+
+function samePath(a: string, b: string): boolean {
+  const normalize = (value: string) => value.replace(/[\\/]+$/, '');
+  const left = normalize(a);
+  const right = normalize(b);
+  return process.platform === 'win32'
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
 }
 
 function lastMapValue<T>(map: Map<string, T>): T | undefined {

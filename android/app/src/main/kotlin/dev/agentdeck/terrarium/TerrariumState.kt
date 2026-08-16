@@ -196,9 +196,10 @@ fun DashboardState.toTerrariumState(
     val agents = mutableListOf<AgentCreatureState>()
 
     fun isCodexAgent(type: String?): Boolean = type == "codex-cli" || type == "codex-app"
+    fun isKiroAgent(type: String?): Boolean = type == "kiro-cli" || type == "kiro-ide"
 
-    // Primary agent — skip if disconnected (no session), daemon-like, openclaw proxy, codex, opencode, or antigravity
-    if (agentState != AgentState.DISCONNECTED && !isDaemonLike && agentType != "openclaw" && !isCodexAgent(agentType) && agentType != "opencode" && agentType != "antigravity") {
+    // Primary agent — brand-mark creatures are routed to their dedicated render lists below.
+    if (agentState != AgentState.DISCONNECTED && !isDaemonLike && agentType != "openclaw" && !isCodexAgent(agentType) && agentType != "opencode" && agentType != "antigravity" && !isKiroAgent(agentType)) {
         agents.add(
             AgentCreatureState(
                 sessionId = sessionId ?: "primary",
@@ -220,7 +221,7 @@ fun DashboardState.toTerrariumState(
             continue // skip self (null guard)
         }
         val siblingType = sibling.agentType
-        if (siblingType == "openclaw" || siblingType == "daemon" || isCodexAgent(siblingType) || siblingType == "opencode" || siblingType == "antigravity") {
+        if (siblingType == "openclaw" || siblingType == "daemon" || isCodexAgent(siblingType) || siblingType == "opencode" || siblingType == "antigravity" || isKiroAgent(siblingType)) {
             continue // not octopus
         }
         agents.add(
@@ -273,9 +274,10 @@ fun DashboardState.toTerrariumState(
         )
     }
 
-    // Build OpenCode creatures list from opencode sessions
+    // Build vector-mark creatures from OpenCode and Kiro sessions. They share
+    // motion/layout mechanics but render their own canonical brand geometry.
     val openCodeCreatures = mutableListOf<AgentCreatureState>()
-    if (agentState != AgentState.DISCONNECTED && !isDaemonLike && agentType == "opencode") {
+    if (agentState != AgentState.DISCONNECTED && !isDaemonLike && (agentType == "opencode" || isKiroAgent(agentType))) {
         openCodeCreatures.add(
             AgentCreatureState(
                 sessionId = sessionId ?: "primary-opencode",
@@ -292,7 +294,7 @@ fun DashboardState.toTerrariumState(
     var openCodeSlot = openCodeCreatures.size
     for (sibling in siblingSessions) {
         if (sessionId != null && sibling.id == sessionId) continue
-        if (sibling.agentType != "opencode") continue
+        if (sibling.agentType != "opencode" && !isKiroAgent(sibling.agentType)) continue
         openCodeCreatures.add(
             AgentCreatureState(
                 sessionId = sibling.id,

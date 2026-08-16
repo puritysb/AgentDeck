@@ -23,6 +23,9 @@ struct PixooSheet: View {
     @State private var testing: Bool = false
     @State private var testResult: TestResult?
     @State private var savingError: String?
+    @State private var scanning: Bool = false
+    @State private var scanResults: [String] = []
+    @State private var scanMessage: String?
 
     private enum TestResult {
         case reachable(deviceName: String?)
@@ -155,6 +158,57 @@ struct PixooSheet: View {
                 Button("Add") { addDevice() }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canAdd)
+
+                Spacer()
+
+                // Auto-discovery is off by default — an unattended LAN sweep on
+                // every daemon start is scanning nobody asked for. This button
+                // is where a sweep belongs instead: the user asked for it, it
+                // runs in the foreground, and the result is on screen. Without
+                // it the app's only path to a panel is knowing its IP, and the
+                // App Store build has no `agentdeck pixoo scan` to fall back on.
+                Button {
+                    scanLan()
+                } label: {
+                    if scanning {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Scanning…")
+                        }
+                    } else {
+                        Text("Scan LAN")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(scanning)
+                .help("Probe this machine's local subnet for Pixoo panels")
+            }
+
+            if !scanning, let scanMessage {
+                Text(scanMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            if !scanResults.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(scanResults, id: \.self) { ip in
+                        HStack(spacing: 8) {
+                            Image(systemName: "square.grid.3x3.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Text(ip).font(.system(size: 11, design: .monospaced))
+                            Spacer()
+                            // Adding stays an explicit act. On a shared subnet
+                            // the panel that answered may be a neighbour's, and
+                            // silently claiming it is how you end up rendering
+                            // your sessions on someone else's desk.
+                            Button("Add") { addDevice(ip: ip, name: nil) }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                        }
+                    }
+                }
             }
 
             if let testResult {
@@ -230,9 +284,18 @@ struct PixooSheet: View {
     }
 
     private func addDevice() {
-        let ip = ipInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = nameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        let entry = PixooDeviceEntry(ip: ip, name: name.isEmpty ? nil : name)
+        addDevice(
+            ip: ipInput.trimmingCharacters(in: .whitespacesAndNewlines),
+            name: {
+                let n = nameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                return n.isEmpty ? nil : n
+            }(),
+        )
+    }
+
+    private func addDevice(ip: String, name: String?) {
+        guard !devices.contains(where: { $0.ip == ip }) else { return }
+        let entry = PixooDeviceEntry(ip: ip, name: name)
         devices.append(entry)
         if !saveDevices() {
             devices.removeLast()
@@ -242,6 +305,7 @@ struct PixooSheet: View {
         ipInput = ""
         nameInput = ""
         testResult = nil
+        scanResults.removeAll { $0 == ip }
     }
 
     private func removeDevice(_ device: PixooDeviceEntry) {
@@ -278,6 +342,40 @@ struct PixooSheet: View {
         } catch {
             savingError = "Couldn't save: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    // MARK: - LAN scan
+
+    /// Probe every host on this machine's local /24s for a Pixoo, reusing the
+    /// daemon module's own sweep rather than hand-mirroring it (`PixooModule`
+    /// stays the single definition of what counts as a Pixoo on the wire).
+    /// Already-configured addresses are filtered out so the result list only
+    /// ever offers something new to add.
+    private func scanLan() {
+        scanning = true
+        scanResults = []
+        scanMessage = nil
+        let configured = Set(devices.map(\.ip))
+        Task {
+            var found: [String] = []
+            for (base, selfIP) in PixooModule.localIPv4Subnets() {
+                found += await PixooModule.sweepSubnet(
+                    base: base, selfIP: selfIP, concurrency: 32, timeoutSec: 0.6,
+                )
+            }
+            let fresh = found.filter { !configured.contains($0) }.sorted()
+            await MainActor.run {
+                scanning = false
+                scanResults = fresh
+                if fresh.isEmpty {
+                    scanMessage = found.isEmpty
+                        ? "No Pixoo found on this machine's local subnet."
+                        : "Every Pixoo found is already configured."
+                } else {
+                    scanMessage = nil
+                }
+            }
         }
     }
 

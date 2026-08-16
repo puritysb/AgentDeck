@@ -2,6 +2,105 @@
 
 ---
 
+## 2026-08-15 — Stop 계측 첫 유효 실측: 5/5 전달, 그리고 `~18%` 상수의 폐기
+
+`end_source` 계측기(#194~#196) 가동 후 첫 판독이다. claude-code 기준 판정 가능한
+5턴에서 **Stop 5 / Synth 0 / NoStop 0 / Esc 0 — 유실 0**. 7d 헤드라인의 `?` 105건은
+컬럼 도입 이전 행이며 backfill 하지 않는다(설계대로).
+
+**"0" 을 그대로 믿지 않고 경로별로 검증했다.** 숫자만 보면 "유실이 없다" 와 "그
+경로가 안 돈다" 가 구분되지 않는다.
+
+- `next_prompt`(미복구 유실) 경로는 **codex 에서 실제 3건** 기록됐다 → 살아있는 경로.
+- ESC 술어는 실 transcript 로 대조했다. 07-15 이후 진짜 취소 **19건이 전부 text
+  블록 형태**로 매치되고, `tool_result` 가 같은 문장을 인용한 **12건은 옳게 무시**
+  됐다 — raw-line 매칭이었다면 39%가 유령 취소가 됐다는 뜻이라, `claude-interrupt-
+  marker.ts` 의 "text 블록만" 규칙은 실측으로 값을 하고 있다. 마지막 실제 ESC 는
+  08-13 16:29 로 **계측 가동 이전**이다. 즉 `Esc=0` 은 "그 뒤로 안 눌렀다"이지
+  탐지 실패가 아니다.
+- 워치독은 실제 `ObservedTurnWatchdogs` 를 실 transcript fixture 로 구동해 확인했다
+  — `end_turn`/`interrupted` 양 분기가 발화하고, Stop 을 받은 세션은 발화하지 않는다
+  (disarm 정상). 프로덕션에서 아직 안 밟힌 링크는 synthetic Stop 의 loopback
+  self-POST 하나뿐이고, 그건 Stop 이 실제로 유실돼야만 밟힌다.
+- 행 재분류는 구조적으로 불가능하다: `closeTurn` 은 in-memory 맵에서 지운 뒤 쓰고,
+  `reapAbandonedRun` 은 `WHERE ended_at IS NULL` 이다. 닫혔는데 `end_source` 가 비어
+  있는 행도 0건이다.
+
+**표본이 느리게 쌓이는 이유는 데몬 재시작이다.** claude 11턴 중 6턴(55%)이
+`run_close` 로 빠졌다. 데몬이 내려가 있던 구간의 턴이라 Stop 이 갈 곳 자체가 없었고,
+따라서 분모에서 빼는 것이 맞다 — 고칠 버그가 아니라 재시작을 줄이는 것 외에 표본을
+늘릴 방법이 없다는 뜻이다.
+
+**`~18%` 는 더 이상 인용하지 않는다.** 출처를 추적하니 2026-04 Claude Code v2.1.104
+에서의 **2/11 관측 한 번**(n=11)이고, 그 숫자 하나가 코드·로그 ~12곳에 **서로 다른
+세 신호**로 복사돼 있었다 — ① Stop hook 전달률, ② `last_assistant_message` 필드
+신뢰도, ③ TodoWrite-all-completed 발화율. 한 번의 2/11 이 셋 다일 수는 없다.
+메모리에 적힌 대로 "Stop 이 ~18% 만 발화" 로 읽으면 이번 5/5 는 P = 0.18⁵ ≈ 2e-4 로
+**반박**되고, "유실률 18%" 로 느슨하게 읽으면 P(0/5) = 0.37 이라 아직 반박되지 않는다
+(p<0.05 하려면 ~15턴 필요).
+
+**소급 측정으로 표본을 늘리는 길은 막혀 있다.** "턴이 다음 프롬프트와 같은 순간에
+닫혔으면 Stop 유실" 이라는 판별식은 2026-04~07 전 구간에서 100% 를 내놓는데, 이는
+유실이 아니라 옛 설계다 — `4dbcc64b^` 전체트리 grep 결과 `closeTurnForSession` 의
+비-codex 호출자가 0이라, #194 이전 Claude 턴은 **언제나** 다음 프롬프트에서 닫혔다.
+히스토리에는 Stop 전달률을 복원할 신호가 남아 있지 않다.
+
+## 2026-08-15 — Kiro passive observation foundation (no managed launch)
+
+Issue #103의 Kiro 요청을 현재 제품 방향에 맞춰 조사·구현했다. 결론은 새
+`agentdeck kiro` PTY를 만드는 것이 아니라 사용자가 평소처럼 실행한 `kiro-cli` /
+Kiro IDE 위에 daemon 관측을 붙이는 것이다.
+
+- 로컬에 공식 Kiro CLI 2.18.1을 설치하고 Google 로그인 뒤 실제 대화를 실측했다.
+  이 버전은 예상한 JSONL이 아니라 macOS app-data의 `kiro-cli/data.sqlite3`
+  `conversations_v2`에 완료된 턴을 저장한다. observer는 이 DB에서 cwd/session id/
+  timestamp/model과 대화 상태에 필요한 열만 read-only + query-only로 읽고 auth·telemetry
+  테이블은 건드리지 않는다. v3는 별도로
+  `KIRO_HOME/sessions/<workspace-hash>/<session>/session.json` + `messages.jsonl`을
+  쓰는 것을 실측해 `payload.type`의 user/assistant/turn_start/turn_end를 읽는다.
+  flat `sessions/cli` reader와 ACP schema 처리는 legacy fallback으로 유지한다.
+- 응답 중에는 DB row가 아직 갱신되지 않지만 `~/.kiro/.cli_bash_history` mtime은 프롬프트
+  제출 즉시 바뀐다. 텍스트를 읽지 않고 이 mtime이 최신 conversation timestamp보다
+  새로운 동안만 최신 세션을 processing으로 표시한다(동시 다중 chat은 best-effort).
+- `PassiveSessionObserver`는 `kiro-cli`/`kiro` 프로세스 cwd와 가장 최근의 같은-cwd
+  세션을 결합해 `observed:kiro:<id>`를 만든다. Kiro IDE가 ACP child를 소유하면
+  `kiro-ide`로 귀속하고 IDE parent 행은 중복 생성하지 않는다. 세션 파일을 못
+  찾더라도 process-only idle 행은 유지한다.
+  공식 launcher가 만드는 wrapper → `kiro-cli-chat` child는 child 하나로 collapse하고,
+  상주 `kiro_cli_desktop --no-dashboard` 및 login/doctor 같은 관리 명령은 제외한다.
+- 후속 최신 문서/로컬 실측에서 이 결론을 정정했다. Kiro CLI 2.13부터 **v3 엔진에
+  한해** `~/.kiro/hooks/*.json` 전역 훅이 공식 지원된다. 2.18.1 `kiro-cli --v3`
+  TUI에 임시 v1 hook을 걸어 `SessionStart → UserPromptSubmit → Stop`이 동일 session id와
+  cwd로 발생함을 확인했다(비대화형 `--no-interactive`는 이번 실측에서 훅을 로드하지
+  않았다). `@agentdeck/hooks`와 setup에 `agentdeck-lifecycle.json` installer를 추가했고,
+  모든 이벤트를 `kiro_*` agent-neutral boundary로 fire-and-forget 전송한다. 따라서
+  사용자는 계속 native Kiro를 실행하고 AgentDeck는 그 위에 붙으며, v2는 SQLite/
+  process 관측, v3는 global hook + nested JSONL의 정밀 경로를 쓴다.
+- AgentType/생성 프로토콜/TS·Swift·Kotlin·ESP32 라벨과 브랜드 색상/TUI 표면에
+  `kiro-cli`와 `kiro-ide`를 추가했다. 크리처는 임의 동물이나 재작성 로고가 아니라
+  issue가 지정한 MIT 배포물 `@lobehub/icons-static-svg@1.94.0`의 `kiro.svg`를 정확히
+  고정했다. 제보자의 공개 프로필에 AWS 재직 정보가 있는 것은 요청의 신뢰 신호로만
+  취급했고 상표 사용 허가로 보지 않았다. 패키지 버전·npm integrity·원본 URL과
+  비제휴/비보증 상표 경계를 `design/RESOURCES.md`에 기록했다.
+- 이 SVG를 기존 brand/glyph 파이프라인에 넣어 64×64 creature mask와 24/9/8px
+  dot glyph를 생성하고, shared SVG, Android color/e-ink 테라리움, Apple 미리보기,
+  Pixoo full/compact/micro, ESP32 InkDeck/knob/office 표면에 연결했다. Android에서도
+  `kiro-cli`/`kiro-ide`가 기본 문어로 fallback하지 않고 동일한 ghost path를 그리며,
+  이동/상태 배치는 기존 vector-mark creature mechanics를 재사용한다.
+- 다음 단계로 데몬이 없어도 실행되는 `agentdeck diag kiro [--json]`를 추가했다.
+  native Kiro 프로세스/SQLite·JSONL store/schema marker/cwd·resume-id 상관관계만
+  보고한다. 프롬프트·응답·tool input·명령행·세션 제목·모델명·TTY 이름은 보고서
+  구조에 없고, cwd와 session id는 보고서마다 새 salt를 쓰는 opaque key로 바뀐다.
+  따라서 사용자가 issue에 그대로 첨부해도 프로젝트명이나 대화 내용이 노출되지 않는다.
+
+검증: 공식 CLI 2.18.1 설치/Google 로그인 후 v2와 v3 실제 대화를 수행했다. v2는
+SQLite에서 idle/processing/idle 및 resume-id exact correlation을, v3는 nested JSONL
+schema와 global hook lifecycle을 확인했다. 로컬 daemon APME에도 `kiro-cli` run 1개와
+완료 turn 1개가 기록됐다. 전체 workspace build/typecheck, Vitest 190 files / 3053 tests,
+Android JUnit/Robolectric 375 tests, macOS Debug build, ESP32
+`ips35`/`inkdeck`/`t_embed` build와 preview/design sync gate가 후속 변경까지 포함해
+통과했다.
+
 ## 2026-08-15 — Stop 계측 첫 실측 · ESC 취소 귀속 분리 · 전이표 생성기화
 
 ### 실측 (계측 자체는 살아 있고, 아직 표본이 없다)

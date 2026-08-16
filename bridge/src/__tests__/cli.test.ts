@@ -7,7 +7,10 @@ import {
   applyGlobalEnvArgs,
   weaveAgentCommand,
   resolveAgentCommand,
+  daemonPostureArgs,
+  buildPlist,
 } from '../cli.js';
+import { allModulesOff } from '../modules/types.js';
 
 // The claude action dynamically imports './index.js' (same module id as this
 // '../index.js') to reach startSession. The explicit factory matters:
@@ -275,6 +278,42 @@ describe('env defaults through real option parsing', () => {
 // parseOptions block in file order — parseAsync leaves parsed option values on
 // the subcommand until the next parse's lazy restore, and an earlier run here
 // would contaminate that block's beforeAll snapshot.
+describe('daemon autostart posture', () => {
+  it('--enterprise is the admin spelling of the loopback posture', () => {
+    expect(daemonPostureArgs({ enterprise: true })).toEqual(['--loopback']);
+    expect(daemonPostureArgs({ loopback: true })).toEqual(['--loopback']);
+  });
+
+  it('does not fold --local into --enterprise', () => {
+    // They answer different questions: --local is "no hardware", --enterprise
+    // is "no LAN behaviour at all". Some sites want hardware on a lab subnet
+    // with discovery off, so the two must remain independently selectable.
+    expect(daemonPostureArgs({ enterprise: true })).not.toContain('--local');
+    expect(daemonPostureArgs({ local: true })).toEqual(['--local']);
+    expect(daemonPostureArgs({ local: true, enterprise: true })).toEqual(['--local', '--loopback']);
+  });
+
+  it('a plain install carries no posture flags', () => {
+    expect(daemonPostureArgs({})).toEqual([]);
+  });
+
+  it('the LaunchAgent argv carries the posture, one <string> per flag', () => {
+    const plist = buildPlist(['--loopback']);
+    expect(plist).toContain('<string>daemon</string>');
+    expect(plist).toContain('<string>--foreground</string>');
+    expect(plist).toContain('<string>--loopback</string>');
+    // Order matters: the flags must follow the subcommand, not precede it.
+    expect(plist.indexOf('<string>--loopback</string>')).toBeGreaterThan(
+      plist.indexOf('<string>--foreground</string>'),
+    );
+  });
+
+  it('a plain LaunchAgent is byte-identical to the pre-posture one', () => {
+    expect(buildPlist()).toBe(buildPlist([]));
+    expect(buildPlist()).not.toContain('--loopback');
+  });
+});
+
 describe('claude action wiring (parseAsync end-to-end)', () => {
   const base = ['node', 'agentdeck'];
 
@@ -295,7 +334,12 @@ describe('claude action wiring (parseAsync end-to-end)', () => {
     expect(startSessionMock).toHaveBeenCalledTimes(1);
     const opts = startSessionMock.mock.calls[0][0] as Record<string, unknown>;
     expect(opts.command).toBe('claude --remote-control');
-    expect(opts.modules).toEqual({ mdns: false, adb: false, serial: false, pixoo: false, timebox: false });
+    // Every registered module, not the five that used to be listed by hand:
+    // `broadcast` and `idotmatrix` were missing, and initModules() reads an
+    // absent key as 'auto' — so --local still spawned the iDotMatrix BLE client.
+    expect(opts.modules).toEqual(allModulesOff());
+    expect((opts.modules as Record<string, unknown>).idotmatrix).toBe(false);
+    expect((opts.modules as Record<string, unknown>).broadcast).toBe(false);
   });
 
   it('--no-env-args disables BOTH layers for the invocation', async () => {
@@ -308,5 +352,15 @@ describe('claude action wiring (parseAsync end-to-end)', () => {
     expect(opts.command).toBe('claude');
     // Commander layer off: the env --local never reached the parser.
     expect((opts.modules as Record<string, unknown>).adb).toBe('auto');
+  });
+
+  it('a session bridge drives no device but ADB, even without --local', async () => {
+    // Not a --local concern: initModules() reads an absent key as 'auto', so
+    // every module added after this record was written arrived switched ON in
+    // ordinary sessions. idotmatrix did, and each session bridge spawned its
+    // own Python BLE client alongside the daemon's.
+    await program.parseAsync([...base, 'claude', '--no-env-args']);
+    const opts = startSessionMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(opts.modules).toEqual({ ...allModulesOff(), adb: 'auto' });
   });
 });

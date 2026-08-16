@@ -411,6 +411,8 @@ fun buildAttentionFeatured(
         "openclaw"    -> "OpenClaw"
         "opencode"    -> "OpenCode"
         "antigravity" -> "Antigravity"
+        "kiro-cli"    -> "Kiro CLI"
+        "kiro-ide"    -> "Kiro IDE"
         else          -> session.agentType?.replaceFirstChar { it.uppercaseChar() } ?: "Agent"
     }
     val parts = buildList {
