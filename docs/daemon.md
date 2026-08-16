@@ -135,7 +135,7 @@ The daemon deliberately binds `0.0.0.0` — companion apps, ESP32 boards, and pu
 - **Rotation**: `agentdeck token rotate` retires a leaked token (all paired clients re-pair) and clears the accepted ring — otherwise the retired token would survive in it. `agentdeck token show` prints it for provisioning.
 - **Re-arming a device**: the daemon pushes `auth_provision` (credential only, no WiFi side effects) to every serial-attached board whose token differs from the one it serves — independent of WiFi auto-provisioning, and *including* boards whose radio is already up, which `wifi_provision` deliberately skips. A board holding a credential the daemon no longer accepts is online and unreachable at the same time, and USB serial is the only channel that still works when authentication is what is broken. Boards persist the token in NVS (`wifiSaveAuthToken`) and restore it at boot, on every board — not just the two that also persist an endpoint.
 - **Pairing a device that has no camera and no cable — `agentdeck pair`** (see below). This is the *only* path by which the token reaches an unauthenticated LAN peer, and it exists because the alternatives cover every device except the ones that need it most: QR needs a camera, `wifi_provision` needs USB serial, and an e-ink reader has neither.
-- **Loopback-only posture**: `AGENTDECK_LOOPBACK_ONLY=1` (or `agentdeck daemon start --loopback`) binds `127.0.0.1` **and silences everything the daemon emits** — mDNS advertisement, the 2-second UDP beacon, the Pixoo LAN sweep, the BLE scans, and the ADB reverse tunnel. USB serial keeps working: a board on a cable is not a network peer. It used to pick the bind address only, which left the daemon advertising and scanning for a service nobody on the segment could reach. The startup log names what is off. See [Enterprise / shared-network posture](#enterprise-and-shared-network-posture).
+- **Loopback-only posture**: `AGENTDECK_LOOPBACK_ONLY=1` (or `agentdeck daemon start --loopback`) binds `127.0.0.1` **and silences everything the daemon emits** — mDNS advertisement, the 2-second UDP beacon, the Pixoo LAN sweep, and the BLE scans. The USB channels keep working: serial, because a board on a cable is not a network peer, and the ADB reverse tunnel, because it rides the cable into the host's own loopback. It used to pick the bind address only, which left the daemon advertising and scanning for a service nobody on the segment could reach. The startup log names what is off. See [Enterprise / shared-network posture](#enterprise-and-shared-network-posture).
 - Tests: `bridge/src/__tests__/http-auth-gate.test.ts`, `pairing-window.test.ts`, `shared/src/__tests__/pairing-code.test.ts`, `mdns-hostname.test.ts` (TXT token absence), `discovery-security.test.ts` (UDP and startup-log absence), `ws-server-auth.test.ts`, Swift `HttpAccessPolicyTests`, `PairingWindowStoreTests`.
 
 ### Pairing codes (operator-held window)
@@ -218,7 +218,7 @@ corporate segment there are many daemons, usually **no** gadgets, and the LAN
 surface is pure attack surface. Two independent switches cover that, and they
 deliberately answer different questions:
 
-| Switch | Question it answers | Bind | mDNS / UDP beacon | Pixoo sweep, BLE, ADB | USB serial |
+| Switch | Question it answers | Bind | mDNS / UDP beacon | Pixoo sweep, BLE | USB serial, ADB reverse |
 |---|---|---|---|---|---|
 | *(default)* | — | `0.0.0.0` | on | on | on |
 | `--local` | May this daemon drive hardware? | `0.0.0.0` | off | off | **off** |
@@ -227,7 +227,10 @@ deliberately answer different questions:
 `--local` keeps the all-interfaces bind, so a paired phone or tablet companion
 still reaches the daemon with its token; it only stops the daemon driving
 devices. `--loopback` is the stricter posture — nothing goes on the wire — but
-keeps USB serial, because a board on a cable is not a network peer. They compose.
+keeps the USB channels: serial, because a board on a cable is not a network
+peer, and ADB reverse, because `adb reverse` rides the cable into the host's
+own loopback (the exact interface this posture binds) and puts nothing on the
+LAN. They compose.
 
 Resolved once at startup by `resolveDaemonPosture()`
 (`bridge/src/network-posture.ts`) so the bind address, the module set, and the
@@ -246,10 +249,11 @@ npx @agentdeck/setup --enterprise        # install bridge + hooks + that autosta
 carries it across the restart, so a restart cannot silently downgrade an
 enterprise install back to "advertise everything". Explicit flags still win.
 
-**What you give up, per switch.** `--loopback` also stops the ADB reverse
-tunnel, so USB-tethered Android dashboards go dark — the tunnel itself carries no
-LAN traffic, but `adb` is a device module and an admin asking for loopback is
-asking for the machine to be quiet. `--loopback` likewise makes `agentdeck qr`
+**What you give up, per switch.** `--loopback` originally also stopped the ADB
+reverse tunnel — "an admin asking for loopback is asking for quiet" — which
+silently killed every USB-tethered Android dashboard for no security gain, since
+the tunnel carries no LAN traffic. It now survives loopback alongside serial;
+only `--local` (no device modules at all) turns it off. `--loopback` makes `agentdeck qr`
 and `agentdeck pair` pointless (the peer cannot open a socket to this host at
 all); both commands read `posture` off `/health` and say so instead of printing a
 dead pairing URL. Neither switch affects the macOS app's own connection — it

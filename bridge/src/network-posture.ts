@@ -9,9 +9,11 @@
  * - **`--loopback` / `AGENTDECK_LOOPBACK_ONLY=1`** answers "may this daemon be
  *   seen or heard on the LAN at all?". It binds `127.0.0.1` *and* silences
  *   everything the daemon emits onto the network — mDNS advertisement, the
- *   2-second UDP beacon, the Pixoo subnet sweep, the BLE scans, and the ADB
- *   reverse tunnel. USB serial survives, because a board on a cable is not a
- *   network peer.
+ *   2-second UDP beacon, the Pixoo subnet sweep, and the BLE scans. USB
+ *   serial survives, because a board on a cable is not a network peer — and
+ *   by the same test so does the ADB reverse tunnel: `adb reverse` rides the
+ *   USB cable and terminates on the host's own loopback, so it works under a
+ *   `127.0.0.1` bind and puts nothing on the LAN.
  *
  * Until now the env var did exactly one thing — pick the bind address — while
  * the daemon carried on advertising `_agentdeck._tcp`, broadcasting every two
@@ -71,9 +73,11 @@ export function daemonModuleConfigs(
 ): ModuleConfigs {
   if (posture.noDeviceModules) return allModulesOff();
   if (posture.loopbackOnly) {
-    // Everything the daemon would put on the wire is off; a USB-attached board
-    // is not a network peer, so serial keeps its normal mode.
-    return { ...allModulesOff(), serial: serialMode };
+    // Everything the daemon would put on the wire is off. A USB-attached board
+    // is not a network peer, so serial keeps its normal mode — and ADB reverse
+    // passes the same test: the tunnel rides the USB cable into the host's own
+    // loopback, which is exactly the interface this posture binds.
+    return { ...allModulesOff(), serial: serialMode, adb: 'auto' };
   }
   return {
     mdns: true,
@@ -99,9 +103,11 @@ export function bindHostFor(posture: DaemonPosture): string {
  */
 export function describeDaemonPosture(posture: DaemonPosture, port: number): string {
   if (posture.loopbackOnly) {
-    const extra = posture.noDeviceModules ? ', USB serial' : '';
+    const usb = posture.noDeviceModules
+      ? ', USB serial, ADB reverse are all off.'
+      : ' are all off; USB serial and ADB reverse (USB channels) stay on.';
     return `[agentdeck] Loopback-only posture — bound to 127.0.0.1:${port}. `
-      + `mDNS advertisement, UDP discovery beacon, Pixoo LAN sweep, BLE scans, ADB reverse${extra} are all off. `
+      + `mDNS advertisement, UDP discovery beacon, Pixoo LAN sweep, BLE scans${usb} `
       + `LAN devices (companion apps, ESP32/WiFi boards) cannot connect.`;
   }
   if (posture.noDeviceModules) {

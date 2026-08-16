@@ -742,7 +742,7 @@ daemon
   .option('-f, --foreground', 'Run in foreground (default: background fork)')
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
   .option('--local', 'Disable all device modules (no mDNS, UDP beacon, LAN sweep, BLE, ADB or serial); still binds all interfaces for paired companion apps')
-  .option('--loopback', 'Bind 127.0.0.1 only and emit nothing onto the LAN (no mDNS, UDP beacon, LAN sweep, BLE or ADB). Same as AGENTDECK_LOOPBACK_ONLY=1')
+  .option('--loopback', 'Bind 127.0.0.1 only and emit nothing onto the LAN (no mDNS, UDP beacon, LAN sweep or BLE; USB serial and ADB reverse stay on). Same as AGENTDECK_LOOPBACK_ONLY=1')
   .action(async (opts) => {
     const { findExistingDaemon, probeDaemonHealth, readDaemonInfo, removeDaemonInfo, removeDaemonSession, requestDaemonStandDown, requestDaemonShutdown, waitForDaemonExit, waitForPortBindable } = await import('./session-registry.js');
     const { adoptPeerToken } = await import('./auth.js');

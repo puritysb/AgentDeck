@@ -431,7 +431,7 @@ nothing.
 
 | # | Item | Diff | Est. | Status |
 |---|---|---|---|---|
-| 6 | `AGENTDECK_LOOPBACK_ONLY` disables discovery + sweeps + BLE, not just the bind (§3) | S | 1d | **done** — `network-posture.ts` |
+| 6 | `AGENTDECK_LOOPBACK_ONLY` disables discovery + sweeps + BLE, not just the bind (§3) | S | 1d | **done** — `network-posture.ts`; revised 08-17: ADB reverse survives loopback (USB tunnel into the host's own loopback, same test as serial) |
 | 7 | `--local` record derived from the module registry; fixes the `idotmatrix` leak (§4.1) | S | 0.5d | **done** — `allModulesOff()`; the leak was also in the *default* session record, not only `--local` |
 | 8 | `daemon start/install --enterprise`, persisted into the autostart unit (§4.2) | M | 1.5d | **done** — argv-baked into all three writers; `daemon restart` inherits via `/health` |
 | 9 | Pixoo auto-discovery default off, cloud call opt-in separately (§5) | S | 1d | **done** — default off (Node + Swift); `pixoo scan --no-cloud` splits the two disclosures |

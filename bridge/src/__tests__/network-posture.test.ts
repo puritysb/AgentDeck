@@ -88,11 +88,18 @@ describe('daemonModuleConfigs', () => {
     expect(c.pixoo).toBe(false);
     expect(c.timebox).toBe(false);
     expect(c.idotmatrix).toBe(false);
-    expect(c.adb).toBe(false);
   });
 
   it('loopback keeps USB serial — a board on a cable is not a network peer', () => {
     expect(daemonModuleConfigs(loopback, 'auto').serial).toBe('auto');
+  });
+
+  it('loopback keeps ADB reverse — the tunnel rides USB into the host loopback', () => {
+    // `adb reverse` forwards the device's localhost to the host's 127.0.0.1
+    // over the cable, so it works under a loopback bind and emits nothing onto
+    // the LAN — the same test USB serial passes. Turning it off here silently
+    // killed every USB-tethered Android dashboard for no security gain.
+    expect(daemonModuleConfigs(loopback, 'auto').adb).toBe('auto');
   });
 
   it('loopback still honours the AGENTDECK_DAEMON_NO_SERIAL diagnostic gate', () => {
@@ -113,10 +120,11 @@ describe('daemonModuleConfigs', () => {
     // Guards the shape, not a specific module: both branches are built from
     // allModulesOff() and add back only what the posture permits, so the
     // failure mode of forgetting a new module is "off", never "scanning".
+    const usbChannels = ['serial', 'adb'];
     for (const posture of [loopback, local]) {
       const c = daemonModuleConfigs(posture, 'auto') as Record<string, unknown>;
       const enabled = Object.entries(c).filter(([, v]) => v !== false).map(([k]) => k);
-      expect(enabled.every((k) => k === 'serial')).toBe(true);
+      expect(enabled.every((k) => usbChannels.includes(k))).toBe(true);
     }
   });
 });
@@ -125,9 +133,19 @@ describe('describeDaemonPosture', () => {
   it('names what is off, not just the bind address', () => {
     const line = describeDaemonPosture({ loopbackOnly: true, noDeviceModules: false }, 9120);
     expect(line).toContain('127.0.0.1:9120');
-    for (const claim of ['mDNS', 'UDP', 'sweep', 'BLE', 'ADB']) {
+    for (const claim of ['mDNS', 'UDP', 'sweep', 'BLE']) {
       expect(line, `posture line must mention ${claim}`).toContain(claim);
     }
+    // The USB channels survive loopback, and the line must say so — an admin
+    // reading "ADB reverse off" while a tethered dashboard is clearly alive
+    // would (rightly) stop trusting the rest of the line.
+    expect(line).toContain('USB serial and ADB reverse (USB channels) stay on');
+  });
+
+  it('folds the USB channels into the off-list when --local is also set', () => {
+    const line = describeDaemonPosture({ loopbackOnly: true, noDeviceModules: true }, 9120);
+    expect(line).toContain('USB serial, ADB reverse are all off');
+    expect(line).not.toContain('stay on');
   });
 
   it('points at the switch when the daemon is wide open', () => {

@@ -112,8 +112,9 @@ a session behaves.
 device module off (the daemon still binds all interfaces, so a paired companion
 app keeps working). `--loopback` — equivalently `AGENTDECK_LOOPBACK_ONLY=1` —
 binds `127.0.0.1` and emits nothing onto the LAN: no mDNS advertisement, no UDP
-discovery beacon, no Pixoo subnet sweep, no BLE scans, no ADB reverse. USB
-serial survives `--loopback`, because a board on a cable is not a network peer.
+discovery beacon, no Pixoo subnet sweep, no BLE scans. The USB channels survive
+`--loopback` — serial, because a board on a cable is not a network peer, and ADB
+reverse, because the tunnel rides the USB cable into the host's own loopback.
 Use `agentdeck daemon install --enterprise` (or `npx @agentdeck/setup
 --enterprise`) so the posture lands in the autostart unit rather than only
 applying when the flag is typed by hand. Full table: [docs/daemon.md §

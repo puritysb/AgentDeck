@@ -30,7 +30,7 @@
 `bridge/src/network-posture.ts` 가 SSOT. 시작 시 `resolveDaemonPosture()` 로 **한 번**
 결정해서 바인드·모듈셋·시작 로그가 서로 어긋날 수 없게 했다.
 
-| 스위치 | 바인드 | mDNS/UDP | Pixoo 스윕·BLE·ADB | USB serial |
+| 스위치 | 바인드 | mDNS/UDP | Pixoo 스윕·BLE | USB serial·ADB reverse |
 |---|---|---|---|---|
 | 기본 | `0.0.0.0` | on | on | on |
 | `--local` | `0.0.0.0` | off | off | **off** |
@@ -52,11 +52,14 @@
 - **두 축을 한 플래그로 접지 않는다.** `--local` = "하드웨어를 구동해도 되나",
   `--loopback` = "LAN 에서 보이거나 들려도 되나". 랩 서브넷에 하드웨어는 두되
   디스커버리는 끄고 싶은 곳이 있다.
-- **`--loopback` 에서 USB serial 은 산다.** 케이블에 물린 보드는 네트워크 피어가
-  아니다. 같은 논리로 ADB reverse 도 살릴 수 있었지만(호스트 loopback 으로 넘기는
-  USB 채널이라 127.0.0.1 바인드에서도 동작한다) 보안 posture 의 기본값은 꺼짐이
-  안전한 실패 모드라 껐다 — **USB 테더링 안드로이드 대시보드가 죽는 대가**는
-  `docs/daemon.md` 에 명시. 뒤집는 건 한 줄.
+- **`--loopback` 에서 USB 채널(serial + ADB reverse)은 산다.** 케이블에 물린
+  보드는 네트워크 피어가 아니다. ADB reverse 는 처음에 "보안 posture 는 꺼짐이
+  안전한 기본값"이라며 껐다가 하루 만에 뒤집었다(08-17): `adb reverse` 는 기기의
+  localhost 를 **호스트 자신의 loopback** 으로 넘기는 USB 터널이라 127.0.0.1
+  바인드에서 그대로 동작하고 LAN 에 아무것도 내보내지 않는다 — serial 을 살린
+  판정과 동일한 시험을 통과하는데 결과만 달랐던 것. 끄면 USB 테더링 안드로이드
+  대시보드 3대가 보안 이득 0 에 조용히 죽는다. "quiet by default" 는 LAN 방출이
+  있는 모듈에만 적용할 논리다. `--local` (모듈 전체 off)은 여전히 ADB 를 끈다.
 - **자동발견을 끄면서 만든 회귀 2건을 되돌렸다.** ① Swift `attemptRediscoverIfStuck`
   가 자동발견 게이트 뒤에 있어서, 등록된 패널의 DHCP 주소가 바뀌면 영구 블랙아웃이
   됐다. 게이트를 뺐다 — **사용자가 등록한 기기의 주소를 다시 찾는 것은 모르는 기기를
