@@ -13,7 +13,7 @@ import {
 } from './passive-observer.js';
 import { readKiroNativeSessionSnapshots, type KiroSessionSnapshot } from './kiro-session.js';
 
-export type KiroDiagnosticFormat = 'v2' | 'v3' | 'acp' | 'mixed' | 'unknown';
+export type KiroDiagnosticFormat = 'v2' | 'v3' | 'acp' | 'mixed' | 'empty' | 'unknown';
 export type KiroDiagnosticStore = 'sqlite-v2' | 'jsonl-v3' | 'jsonl-legacy' | 'mixed' | 'none';
 export type KiroCorrelationConfidence =
   | 'exact-resume-id'
@@ -298,7 +298,9 @@ export function formatKiroDiagnosticReport(report: KiroDiagnosticReport): string
   lines.push('', 'Transcript formats:');
   if (report.sessions.entries.length === 0) lines.push('- none');
   for (const entry of report.sessions.entries) {
-    const kinds = entry.recordKinds.length > 0 ? entry.recordKinds.join(', ') : 'no recognized markers';
+    const kinds = entry.recordKinds.length > 0
+      ? entry.recordKinds.join(', ')
+      : (entry.format === 'empty' ? 'no records yet' : 'no recognized markers');
     lines.push(`- ${entry.sessionKey}: ${entry.format}; ${kinds}; age ${entry.ageSeconds}s`);
   }
   lines.push('', 'Findings:', ...report.findings.map((finding) => `- ${finding}`));
@@ -306,7 +308,14 @@ export function formatKiroDiagnosticReport(report: KiroDiagnosticReport): string
   return lines.join('\n');
 }
 
+// A transcript with no records is not a transcript in an unknown FORMAT — it is
+// a session that has not been prompted yet, which is the normal state of a chat
+// for the seconds between launching it and typing. Reporting that as
+// "unrecognized record format" sends the reader hunting a parser gap that does
+// not exist (measured 2026-08-17: a 14s-old `kiro-cli chat` with a 0-byte
+// messages file raised exactly that finding).
 function diagnosticFormat(kinds: readonly string[]): KiroDiagnosticFormat {
+  if (kinds.length === 0) return 'empty';
   const v2 = kinds.some((kind) => ['ConversationV2', 'Prompt', 'AssistantMessage', 'ToolResults', 'ToolResult'].includes(kind));
   const v3 = kinds.some((kind) => ['user', 'assistant', 'turn_start', 'turn_end', 'session_start'].includes(kind));
   const acp = kinds.some((kind) => kind === 'session/prompt' || kind.startsWith('session/notification'));

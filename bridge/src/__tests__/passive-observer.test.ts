@@ -432,6 +432,29 @@ describe('passive-observer parsers', () => {
     expect(activeKiroCliProcesses(processes).map((proc) => proc.pid)).toEqual([101]);
   });
 
+  // The fixture above is two deep with a single kiro-cli-chat. A real chat is
+  // four deep and runs kiro-cli-chat TWICE — the `chat` process and an `acp`
+  // one under its bun TUI — so the shape that ships was never covered. Measured
+  // from `ps` on 2026-08-17, where `diag kiro` reported one conversation as
+  // "Processes: 2 (2 CLI)" and bound the surplus row to a 34h-old transcript.
+  it('collapses the real four-deep chat tree, acp child included, to one process', () => {
+    const processes = [
+      { pid: 63535, ppid: 51620, rssKb: 10, tty: 'ttys008', command: 'kiro-cli chat' },
+      { pid: 63631, ppid: 63535, rssKb: 20, tty: 'ttys008', command: '/Users/robin/.local/bin/kiro-cli-chat chat' },
+      {
+        pid: 64083,
+        ppid: 63631,
+        rssKb: 30,
+        tty: 'ttys008',
+        command: '/Users/robin/Library/Application Support/kiro-cli/bun /Users/robin/Library/Application Support/kiro-cli/tui.js chat',
+      },
+      { pid: 64091, ppid: 64083, rssKb: 15, tty: '??', command: '/Users/robin/.local/bin/kiro-cli-chat acp' },
+      // The persistent native host is not a chat and must stay out of both lists.
+      { pid: 7397, ppid: 1, rssKb: 40, tty: '??', command: '/Applications/Kiro CLI.app/Contents/MacOS/kiro_cli_desktop --no-dashboard' },
+    ];
+    expect(activeKiroCliProcesses(processes).map((proc) => proc.pid)).toEqual([63631]);
+  });
+
   it('reads Kiro 2.x metadata and transcript turn state', () => {
     const metadata = parseKiroSessionMetadata(
       JSON.stringify({

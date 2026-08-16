@@ -245,6 +245,37 @@ describe('Kiro privacy-safe diagnostics', () => {
     expect(JSON.stringify(summary)).not.toContain('secret-signature');
   });
 
+  // A chat that has been launched but not yet prompted writes a 0-byte
+  // transcript. Classifying that as `unknown` raised "unrecognized record
+  // format", which reads as a parser gap and is the first thing anyone would
+  // chase — measured 2026-08-17 against a 14s-old `kiro-cli chat`.
+  it('separates a not-yet-prompted transcript from an unrecognized one', () => {
+    const base = {
+      processes: [],
+      v3DirectoryPresent: true,
+      directoryPresent: true,
+      primaryStore: 'jsonl-v3' as const,
+      now: NOW,
+      salt: 'test-only-salt',
+    };
+    const empty = buildKiroDiagnosticReport({
+      ...base,
+      snapshots: [snapshot({ recordKinds: [] })],
+    });
+    expect(empty.sessions.entries[0].format).toBe('empty');
+    expect(empty.findings).not.toContain('At least one inspected transcript uses an unrecognized record format.');
+    expect(formatKiroDiagnosticReport(empty)).toContain('no records yet');
+
+    // A transcript that DOES carry records, none of them recognized, is still
+    // the real signal this finding exists for.
+    const unknown = buildKiroDiagnosticReport({
+      ...base,
+      snapshots: [snapshot({ recordKinds: ['SomeFutureKiroRecord'] })],
+    });
+    expect(unknown.sessions.entries[0].format).toBe('unknown');
+    expect(unknown.findings).toContain('At least one inspected transcript uses an unrecognized record format.');
+  });
+
   it('discovers the measured v3 workspace/session directory layout', async () => {
     const root = mkdtempSync(join(tmpdir(), 'agentdeck-kiro-v3-'));
     const sessionDir = join(root, 'workspace-hash', 'sess_test-v3');

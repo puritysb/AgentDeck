@@ -988,9 +988,22 @@ export function activeKiroCliProcesses(processes: ProcInfo[]): ProcInfo[] {
   const matches = processes.filter((proc) => isKiroCliProcessCommand(proc.command));
   const byPid = new Map(processes.map((proc) => [proc.pid, proc]));
   const chatChildren = matches.filter((proc) => cmdHasBinary(proc.command, 'kiro-cli-chat'));
-  return matches.filter((proc) =>
-    cmdHasBinary(proc.command, 'kiro-cli-chat')
-    || !chatChildren.some((child) => isDescendantOf(child.pid, proc.pid, byPid)));
+  return matches.filter((proc) => {
+    if (cmdHasBinary(proc.command, 'kiro-cli-chat')) {
+      // ONE chat runs TWO `kiro-cli-chat` processes, not one: the `chat`
+      // process, and an `acp` process its bun TUI spawns underneath it —
+      //   kiro-cli chat → kiro-cli-chat chat → bun tui.js → kiro-cli-chat acp
+      // Keeping both reported a single conversation as two sessions, and the
+      // surplus row then claimed an unrelated transcript (34h old, measured
+      // 2026-08-17) through the same-cwd fallback, so one live chat rendered
+      // as two decks — one of them showing yesterday's prompt as current.
+      // Keep the ancestor-most of each chain.
+      return !chatChildren.some((other) =>
+        other.pid !== proc.pid && isDescendantOf(proc.pid, other.pid, byPid));
+    }
+    // A launcher (`kiro-cli chat`) is represented by its kiro-cli-chat child.
+    return !chatChildren.some((child) => isDescendantOf(child.pid, proc.pid, byPid));
+  });
 }
 
 const KIRO_NON_SESSION_SUBCOMMANDS = new Set([
