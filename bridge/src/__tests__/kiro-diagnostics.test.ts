@@ -208,6 +208,43 @@ describe('Kiro privacy-safe diagnostics', () => {
     expect(JSON.stringify(report)).not.toContain('secret response');
   });
 
+  // A real v3 turn ends with a SECOND `assistant` record — `operationType:
+  // "Reasoning"`, content already redacted by Kiro to a literal "..." — and the
+  // newest assistant record wins. The fixture above has a single unqualified
+  // assistant record, which is why it passed while every real session came out
+  // with response === "...". Measured against 6 live transcripts on 2026-08-16.
+  it('takes the spoken reply, not the trailing redacted Reasoning block', () => {
+    const raw = [
+      JSON.stringify({ id: '1', timestamp: '2026-08-15T00:00:00Z', payload: { type: 'user', content: 'secret prompt' } }),
+      JSON.stringify({ id: '2', timestamp: '2026-08-15T00:00:01Z', payload: { type: 'turn_start', executionId: 'secret' } }),
+      JSON.stringify({
+        id: '3',
+        timestamp: '2026-08-15T00:00:02Z',
+        payload: { type: 'assistant', operationType: 'Say', content: 'the actual answer', executionId: 'secret' },
+      }),
+      JSON.stringify({
+        id: '4',
+        timestamp: '2026-08-15T00:00:03Z',
+        payload: {
+          type: 'assistant',
+          operationType: 'Reasoning',
+          content: '...',
+          reasoningSignature: 'secret-signature',
+          reasoningModelId: 'qdev::auto',
+        },
+      }),
+      JSON.stringify({ id: '5', timestamp: '2026-08-15T00:00:04Z', payload: { type: 'turn_end', executionId: 'secret' } }),
+    ].join('\n');
+
+    const summary = parseKiroTranscript(raw);
+    expect(summary.response).toBe('the actual answer');
+    expect(summary.state).toBe('idle');
+    // The reasoning block contributes nothing — neither its placeholder nor,
+    // should Kiro ever stop redacting it, its content.
+    expect(summary.response).not.toContain('...');
+    expect(JSON.stringify(summary)).not.toContain('secret-signature');
+  });
+
   it('discovers the measured v3 workspace/session directory layout', async () => {
     const root = mkdtempSync(join(tmpdir(), 'agentdeck-kiro-v3-'));
     const sessionDir = join(root, 'workspace-hash', 'sess_test-v3');

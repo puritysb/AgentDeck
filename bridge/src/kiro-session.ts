@@ -213,7 +213,21 @@ export function parseKiroTranscript(raw: string): KiroTranscriptSummary {
       continue;
     }
     if (kind === 'assistant') {
-      noteAssistant(contentText(data));
+      // Kiro writes one `assistant` record per operation, and the LAST one in a
+      // v3 turn is routinely `operationType: "Reasoning"` — a chain-of-thought
+      // block whose content Kiro has already redacted to a literal "...". Since
+      // the newest assistant record wins, taking it unconditionally captured
+      // that placeholder as the reply for every v3 session (measured against 6
+      // real transcripts: all six came out with response === "...", discarding
+      // the `operationType: "Say"` record that held the actual answer).
+      //
+      // Excluded by operation name, not by matching the "..." text: that string
+      // is a display artifact free to change, while the operation is the
+      // structural fact. Reasoning content must stay out of the timeline and
+      // APME on its own merits anyway.
+      if (firstString(envelope, ['operationType']) !== 'Reasoning') {
+        noteAssistant(contentText(data));
+      }
       turnOpen = true;
       continue;
     }
