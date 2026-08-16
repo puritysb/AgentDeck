@@ -50,9 +50,35 @@ Agent marks identify compatible third-party tools; they do not imply sponsorship
 or endorsement. Preserve the exact upstream geometry and the source record below
 when regenerating constrained-device masks.
 
-| Mark | Upstream source | Source license | Pinned artifact |
-|---|---|---|---|
-| Kiro ghost | `@lobehub/icons-static-svg@1.94.0`, `icons/kiro.svg` | MIT (Lobe Icons package); Kiro is a mark of Amazon.com, Inc. or its affiliates | npm integrity `sha512-Inx1TYkjLH6YeHOIHeVW9+OM/xxRnk8TmcQVKquFUDBmE3X9sUuRGt7kALrrDBNNAbrWz7Qq6fAiFj9E9Mmw9Q==` |
+**Every** mark in `design/brand/` comes from one upstream package —
+`@lobehub/icons-static-svg@1.94.0` (MIT), npm integrity
+`sha512-Inx1TYkjLH6YeHOIHeVW9+OM/xxRnk8TmcQVKquFUDBmE3X9sUuRGt7kALrrDBNNAbrWz7Qq6fAiFj9E9Mmw9Q==`.
+This table used to hold Kiro alone, which read as though Kiro were the one mark
+with a licensing question; the other five were simply undocumented. They stand
+or fall together, and they stand: the path geometry of all six is byte-identical
+to upstream (verified 2026-08-16 against the packed tarball; `kiro.svg` differs
+only by a trailing newline and `antigravity.svg` only by a self-closing `<path/>`).
+
+The trademark column is a *statement of whose mark it is*, not an open question
+per row. Nominative use — naming a tool AgentDeck interoperates with — is the
+posture for all of them equally, and none of the holders has granted or been
+asked for anything beyond that.
+
+| Mark | Upstream file | Trademark holder |
+|---|---|---|
+| Claude Code | `icons/claudecode.svg` | Anthropic |
+| Codex | `icons/codex.svg` | OpenAI |
+| Antigravity | `icons/antigravity.svg` | Google |
+| Kiro ghost | `icons/kiro.svg` | Amazon.com, Inc. or its affiliates |
+| opencode | `icons/opencode.svg` | the opencode project |
+| OpenClaw | `icons/openclaw.svg` | the OpenClaw project |
+
+Re-verify a mark against upstream with:
+
+```bash
+npm pack @lobehub/icons-static-svg@1.94.0 && tar xzf lobehub-icons-static-svg-1.94.0.tgz
+diff package/icons/<name>.svg design/brand/<name>.svg   # path data must match
+```
 
 ## Derived / consumer surfaces (safe to regenerate, never edit)
 
