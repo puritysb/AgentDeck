@@ -2,6 +2,85 @@
 
 ---
 
+## 2026-08-16 — 기업/공용 네트워크 posture: `--local`·`--loopback` 2축과 "off 는 파생"
+
+#198 의 세 워크스트림 중 이 건만 로그 항목이 없었다. 회사처럼 **한 네트워크에
+사용자가 여럿, 각자 자기 데몬**인 상황을 조사한 결과다(공유 *머신* 시나리오는
+없다고 확인 — `docs/ENTERPRISE-ROADMAP.md` §1 에 남겨두고 착수하지 않음).
+
+### 문제
+
+- `AGENTDECK_LOOPBACK_ONLY=1` 은 **바인드 주소 한 줄만** 골랐다. 그 플래그를 켠
+  데몬이 계속 `_agentdeck._tcp` 를 광고하고, 2초마다 UDP 비컨을 쏘고, Pixoo 를
+  찾아 /24 를 훑고, BLE 를 스캔했다 — **아무도 닿을 수 없는 서비스를 위한 소음**.
+  시작 로그는 "LAN devices cannot connect" 라고만 해서 관리자가 스윕이 도는 걸 알
+  방법이 없었다.
+- `--local` 의 모듈 레코드가 **리터럴 나열**이었다. `initModules` 는 없는 키를
+  `'auto'` 로 읽으므로, 레코드 작성 이후 추가된 모듈은 전부 켜진 채였다. "Disable
+  all device modules" 라고 문서화된 플래그가 iDotMatrix Python BLE 클라이언트를
+  띄우고 있었고, 더 나쁜 건 **`--local` 이 아닌 기본 세션 경로에도** 같은 구멍이
+  있어 매 `agentdeck claude` 세션이 데몬 것과 별개로 BLE 클라이언트를 하나씩 더
+  스폰했다.
+- Pixoo 자동발견이 기본 on 이라, Pixoo 를 안 쓰는 머신도 데몬 시작마다
+  `app.divoom-gz.com` 에 POST 하고 로컬 /24 254 호스트를 HTTP 프로브했다. 기업
+  기준으로는 미고지 3rd-party egress + IDS 가 수평 스캔으로 읽는 트래픽이다.
+
+### 해결
+
+`bridge/src/network-posture.ts` 가 SSOT. 시작 시 `resolveDaemonPosture()` 로 **한 번**
+결정해서 바인드·모듈셋·시작 로그가 서로 어긋날 수 없게 했다.
+
+| 스위치 | 바인드 | mDNS/UDP | Pixoo 스윕·BLE·ADB | USB serial |
+|---|---|---|---|---|
+| 기본 | `0.0.0.0` | on | on | on |
+| `--local` | `0.0.0.0` | off | off | **off** |
+| `--loopback` (≡ env) | `127.0.0.1` | off | off | **on** |
+
+- `allModulesOff()` 는 `MODULE_NAMES` 에서 **파생**하고, `createDefaultModules()` 와
+  대조하는 vitest 게이트를 걸었다. 제한 분기는 `{ ...allModulesOff(), <허용분> }`
+  으로 쓴다 — 나중에 추가된 모듈의 실패 모드가 "꺼짐"이 되도록.
+- **autostart 에 굽는다.** `daemon install --enterprise` 가 LaunchAgent /
+  Scheduled Task / systemd unit 의 **argv** 에 플래그를 넣는다(Task Scheduler 에는
+  environment 요소가 없어서 argv 가 셋의 유일한 공통 채널). 백그라운드 fork 도
+  플래그를 전달하고, `daemon restart` 는 돌던 데몬의 posture 를 `/health` 에서 읽어
+  승계한다. `npx @agentdeck/setup --enterprise` 는 `--yes` 를 함의하고 여기까지 한다.
+- Pixoo 자동발견 기본 **off** (Node + Swift). `pixoo scan` 에 `--no-cloud` 를 붙여
+  클라우드 조회와 서브넷 스윕을 분리했다(서로 다른 disclosure).
+
+### 핵심 설계 결정
+
+- **두 축을 한 플래그로 접지 않는다.** `--local` = "하드웨어를 구동해도 되나",
+  `--loopback` = "LAN 에서 보이거나 들려도 되나". 랩 서브넷에 하드웨어는 두되
+  디스커버리는 끄고 싶은 곳이 있다.
+- **`--loopback` 에서 USB serial 은 산다.** 케이블에 물린 보드는 네트워크 피어가
+  아니다. 같은 논리로 ADB reverse 도 살릴 수 있었지만(호스트 loopback 으로 넘기는
+  USB 채널이라 127.0.0.1 바인드에서도 동작한다) 보안 posture 의 기본값은 꺼짐이
+  안전한 실패 모드라 껐다 — **USB 테더링 안드로이드 대시보드가 죽는 대가**는
+  `docs/daemon.md` 에 명시. 뒤집는 건 한 줄.
+- **자동발견을 끄면서 만든 회귀 2건을 되돌렸다.** ① Swift `attemptRediscoverIfStuck`
+  가 자동발견 게이트 뒤에 있어서, 등록된 패널의 DHCP 주소가 바뀌면 영구 블랙아웃이
+  됐다. 게이트를 뺐다 — **사용자가 등록한 기기의 주소를 다시 찾는 것은 모르는 기기를
+  찾는 것과 다른 행위**다. ② Pixoo64 는 App Store 티어 기능인데 앱의 Pixoo 시트는
+  IP 수동 입력 전용이고 Tier 1 에는 `agentdeck pixoo scan` 이 없다. **Settings →
+  Pixoo → Scan LAN** 버튼을 추가하고 데몬 모듈의 `sweepSubnet`/`localIPv4Subnets`
+  를 그대로 재사용했다(손미러 금지). 찾은 IP 는 명시적 Add — 공용 서브넷에서 옆자리
+  패널을 조용히 채가지 않도록.
+- **`posture` 를 `/health` 에 실은 게 두 번 쓰인다**: `daemon restart` 승계, 그리고
+  `qr`/`pair` 가 loopback 데몬에서 **연결 불가능한 LAN URL 을 말없이 출력하던 함정**
+  차단(이유를 말하고 출력한다). Swift 데몬은 이 필드를 안 내보내므로 양쪽 다 조용히
+  무동작 — 오작동은 없다.
+
+### 미검증 / 남은 것
+
+- **실제 loopback 데몬 기동은 확인하지 못했다.** 싱글톤 가드가 사용 중인 9120 데몬을
+  보고 정상 종료해서다(가드 자체는 올바른 동작). 검증은 유닛 + 빌드 산출물에서
+  4가지 posture 조합·plist 생성 실행 + 빌드된 `daemon-server.js` 의
+  `resolveDaemonPosture → bindHostFor → listen` 배선 확인 수준.
+- **Swift 데몬에는 posture 스위치가 없다.** 앱만 쓰는 기업 사용자는 mDNS 광고를 끌
+  방법이 없다 — `AppPreferences` 토글 + Settings UI 필요(로드맵 12번).
+
+---
+
 ## 2026-08-15 — Stop 계측 첫 유효 실측: 5/5 전달, 그리고 `~18%` 상수의 폐기
 
 `end_source` 계측기(#194~#196) 가동 후 첫 판독이다. claude-code 기준 판정 가능한
