@@ -519,6 +519,41 @@ describe('passive-observer parsers', () => {
     expect(idle).toMatchObject({ state: 'idle', response: 'All tests pass.' });
   });
 
+  // `execute_bash` above carries its subject as `input.command`, which is the
+  // only shape the fixtures had. Kiro's `read` nests it in `input.operations[]`
+  // — captured verbatim from a live `ls -la` turn on 2026-08-17, where the
+  // label came out as a bare "read" while Kiro's own UI showed the path.
+  it('reads a Kiro tool subject out of the nested operations shape', () => {
+    const summary = parseKiroTranscript(
+      jsonl([
+        { version: 'v1', kind: 'Prompt', data: { content: [{ kind: 'text', data: 'ls -la 해줘' }] } },
+        {
+          version: 'v1',
+          kind: 'AssistantMessage',
+          data: {
+            content: [
+              {
+                kind: 'toolUse',
+                data: {
+                  toolUseId: 'tooluse_e6zfT83FyPlU7fK1Tv5z8u',
+                  name: 'read',
+                  input: {
+                    __tool_use_purpose: 'AgentDeck 루트 디렉토리 목록 확인',
+                    operations: [{ mode: 'Directory', path: '/Users/robin/github/AgentDeck', depth: 1 }],
+                  },
+                },
+              },
+            ],
+          },
+        },
+        { version: 'v1', kind: 'ToolResults', data: { content: [] } },
+      ]),
+    );
+    expect(summary.currentTask).toBe('read /Users/robin/github/AgentDeck');
+    // The model's free-text rationale for the call is not the task label.
+    expect(summary.currentTask).not.toContain('디렉토리 목록 확인');
+  });
+
   it('reads documented Kiro ACP session notifications for the v3 fallback', () => {
     const summary = parseKiroTranscript(
       jsonl([

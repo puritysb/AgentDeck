@@ -684,9 +684,19 @@ function kiroToolTask(record: Record<string, unknown>): string | undefined {
   const name = firstString(raw, ['name', 'tool_name', 'toolName', 'title']) ?? 'tool';
   const input = objectAt(raw, 'input') ?? objectAt(raw, 'tool_input') ?? objectAt(raw, 'rawInput');
   if (!input) return name;
-  for (const key of ['path', 'file_path', 'command', 'cmd', 'query', 'url']) {
-    const value = valueText(input[key]);
-    if (value) return `${name} ${redactSecrets(value).replace(/\s+/g, ' ').slice(0, 80)}`;
+  // Kiro's `read` puts its subject one level down, in `input.operations[]`
+  // (measured: `{name:"read", input:{operations:[{mode:"Directory",
+  // path:"/…", depth:1}]}}`), while `execute`-style tools carry `command`
+  // directly on `input`. Scanning only the top level yielded a bare "read"
+  // where Kiro's own UI shows `Read /Users/…/AgentDeck` — a task label with
+  // the subject stripped out, which is the part that makes it a label.
+  const operations = Array.isArray(input.operations) ? input.operations : [];
+  const scopes = [input, ...operations.filter(isRecord)];
+  for (const scope of scopes) {
+    for (const key of ['path', 'file_path', 'command', 'cmd', 'query', 'url']) {
+      const value = valueText(scope[key]);
+      if (value) return `${name} ${redactSecrets(value).replace(/\s+/g, ' ').slice(0, 80)}`;
+    }
   }
   return name;
 }
