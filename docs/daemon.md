@@ -228,9 +228,12 @@ deliberately answer different questions:
 still reaches the daemon with its token; it only stops the daemon driving
 devices. `--loopback` is the stricter posture — nothing goes on the wire — but
 keeps the USB channels: serial, because a board on a cable is not a network
-peer, and ADB reverse, because `adb reverse` rides the cable into the host's
-own loopback (the exact interface this posture binds) and puts nothing on the
-LAN. They compose.
+peer, and ADB reverse for **USB-attached** devices, because over a cable
+`adb reverse` terminates on the host's own loopback (the exact interface this
+posture binds) and puts nothing on the LAN. Network adb transports —
+`adb connect <ip>:5555`, wireless debugging — fail that test and are skipped
+under loopback (`isNetworkAdbTransport` in `bridge/src/adb-reverse.ts`). They
+compose.
 
 Resolved once at startup by `resolveDaemonPosture()`
 (`bridge/src/network-posture.ts`) so the bind address, the module set, and the
@@ -252,8 +255,9 @@ enterprise install back to "advertise everything". Explicit flags still win.
 **What you give up, per switch.** `--loopback` originally also stopped the ADB
 reverse tunnel — "an admin asking for loopback is asking for quiet" — which
 silently killed every USB-tethered Android dashboard for no security gain, since
-the tunnel carries no LAN traffic. It now survives loopback alongside serial;
-only `--local` (no device modules at all) turns it off. `--loopback` makes `agentdeck qr`
+the USB tunnel carries no LAN traffic. It now survives loopback alongside serial
+(USB transports only — network adb devices stay excluded); only `--local` (no
+device modules at all) turns it off. `--loopback` makes `agentdeck qr`
 and `agentdeck pair` pointless (the peer cannot open a socket to this host at
 all); both commands read `posture` off `/health` and say so instead of printing a
 dead pairing URL. Neither switch affects the macOS app's own connection — it

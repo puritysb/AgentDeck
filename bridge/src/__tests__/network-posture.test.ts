@@ -139,7 +139,7 @@ describe('describeDaemonPosture', () => {
     // The USB channels survive loopback, and the line must say so — an admin
     // reading "ADB reverse off" while a tethered dashboard is clearly alive
     // would (rightly) stop trusting the rest of the line.
-    expect(line).toContain('USB serial and ADB reverse (USB channels) stay on');
+    expect(line).toContain('USB serial and ADB reverse (USB-attached devices only) stay on');
   });
 
   it('folds the USB channels into the off-list when --local is also set', () => {

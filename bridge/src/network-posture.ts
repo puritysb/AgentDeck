@@ -11,9 +11,12 @@
  *   everything the daemon emits onto the network — mDNS advertisement, the
  *   2-second UDP beacon, the Pixoo subnet sweep, and the BLE scans. USB
  *   serial survives, because a board on a cable is not a network peer — and
- *   by the same test so does the ADB reverse tunnel: `adb reverse` rides the
- *   USB cable and terminates on the host's own loopback, so it works under a
- *   `127.0.0.1` bind and puts nothing on the LAN.
+ *   by the same test so does the ADB reverse tunnel for USB-attached devices:
+ *   `adb reverse` over a cable terminates on the host's own loopback, so it
+ *   works under a `127.0.0.1` bind and puts nothing on the LAN. Network adb
+ *   transports (`adb connect <ip>`, wireless debugging) fail that test and are
+ *   excluded by the module itself (`isNetworkAdbTransport`, threaded via
+ *   `BridgeContext.loopbackOnly`) — the config value stays `'auto'` here.
  *
  * Until now the env var did exactly one thing — pick the bind address — while
  * the daemon carried on advertising `_agentdeck._tcp`, broadcasting every two
@@ -105,7 +108,7 @@ export function describeDaemonPosture(posture: DaemonPosture, port: number): str
   if (posture.loopbackOnly) {
     const usb = posture.noDeviceModules
       ? ', USB serial, ADB reverse are all off.'
-      : ' are all off; USB serial and ADB reverse (USB channels) stay on.';
+      : ' are all off; USB serial and ADB reverse (USB-attached devices only) stay on.';
     return `[agentdeck] Loopback-only posture — bound to 127.0.0.1:${port}. `
       + `mDNS advertisement, UDP discovery beacon, Pixoo LAN sweep, BLE scans${usb} `
       + `LAN devices (companion apps, ESP32/WiFi boards) cannot connect.`;

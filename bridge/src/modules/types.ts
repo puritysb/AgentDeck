@@ -10,6 +10,14 @@ export interface BridgeContext {
   projectName: string;
   wsServer: WsServer;
   broadcastSse?: (evt: BridgeEvent) => void;
+  /**
+   * Daemon is running loopback-only (`--loopback` / AGENTDECK_LOOPBACK_ONLY).
+   * A module that survives that posture must still honour its promise: emit
+   * nothing onto the LAN. Today only AdbModule consults it — `adb reverse`
+   * is restricted to USB-transport devices, because the same command against
+   * a TCP/mDNS adb device stands up a LAN-carried tunnel.
+   */
+  loopbackOnly?: boolean;
 }
 
 /**

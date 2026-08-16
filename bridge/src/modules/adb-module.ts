@@ -26,8 +26,11 @@ export class AdbModule implements DeviceModule {
 
   async start(ctx: BridgeContext): Promise<void> {
     this.port = ctx.port;
-    setupAdbReverse(ctx.port);
-    this.stopPolling = startAdbReversePolling(ctx.port);
+    // Loopback posture: USB-transport devices only. A TCP/mDNS adb device
+    // (`adb connect`, wireless debugging) would carry the tunnel over the LAN.
+    const opts = { usbOnly: ctx.loopbackOnly === true };
+    setupAdbReverse(ctx.port, opts);
+    this.stopPolling = startAdbReversePolling(ctx.port, opts);
   }
 
   async stop(): Promise<void> {

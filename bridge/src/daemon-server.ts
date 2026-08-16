@@ -3278,7 +3278,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const startedModules = await initModules(
     deviceModules,
     daemonModuleConfigs(posture, serialMode),
-    { port, authToken: core.authToken, projectName: 'AgentDeck', wsServer: core.wsServer },
+    {
+      port, authToken: core.authToken, projectName: 'AgentDeck', wsServer: core.wsServer,
+      // AdbModule restricts `adb reverse` to USB transports under loopback —
+      // a TCP/mDNS adb device would carry the tunnel over the LAN.
+      loopbackOnly: posture.loopbackOnly,
+    },
   );
 
   moduleHealthProvider = () => {
