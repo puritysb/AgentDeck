@@ -64,10 +64,27 @@ describe('canonical agent brand assets', () => {
     }
   });
 
-  it('records the pinned Kiro source and trademark boundary', () => {
+  // Pinned per mark rather than for Kiro alone. The table used to carry one row
+  // and this test enforced exactly that row, which is how five marks shipped for
+  // months with no recorded source while the sixth read as the one with a
+  // licensing question. They come from one MIT package; the contract is that
+  // none of them may ship without its source and holder written down.
+  it('records the upstream source and trademark holder for every agent mark', () => {
     const resources = read('design/RESOURCES.md');
     expect(resources).toContain('@lobehub/icons-static-svg@1.94.0');
-    expect(resources).toContain('Kiro is a mark of Amazon.com, Inc. or its affiliates');
+    // The integrity hash is what makes "upstream geometry" checkable later.
+    expect(resources).toContain('sha512-Inx1TYkjLH6YeHOIHeVW9+OM/xxRnk8TmcQVKquFUDBmE3X9sUuRGt7kALrrDBNNAbrWz7Qq6fAiFj9E9Mmw9Q==');
+    for (const [stem, holder] of [
+      ['claudecode', 'Anthropic'],
+      ['codex', 'OpenAI'],
+      ['antigravity', 'Google'],
+      ['kiro', 'Amazon.com, Inc. or its affiliates'],
+      ['opencode', 'the opencode project'],
+      ['openclaw', 'the OpenClaw project'],
+    ] as const) {
+      expect(resources).toContain(`icons/${stem}.svg`);
+      expect(resources).toContain(holder);
+    }
   });
 
   it('does not retain alternate logo-source dumps', () => {
