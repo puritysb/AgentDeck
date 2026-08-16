@@ -252,6 +252,18 @@ npx @agentdeck/setup --enterprise        # install bridge + hooks + that autosta
 carries it across the restart, so a restart cannot silently downgrade an
 enterprise install back to "advertise everything". Explicit flags still win.
 
+**The macOS app has the same two switches.** A Tier-1 (App Store) user has no
+CLI and the sandboxed app cannot be told anything useful through env vars, so
+the posture lives in **Settings → Local server**: "Loopback only" and "Disable
+device modules" toggles (`AppPreferences.daemonLoopbackOnly` /
+`daemonNoDeviceModules`). Changing one restarts the in-process daemon so the
+bind address, the Bonjour advertisement, and the module set change together
+(`DaemonPosture` in `apple/AgentDeck/Daemon/Core/DaemonPosture.swift` —
+module registration is gated deny-by-default, mirroring
+`{ ...allModulesOff(), <permitted> }`). The Swift daemon also reports `posture`
+on its full `/health`, so `agentdeck qr` / `pair` warn against a loopback-only
+app daemon the same way they do against the Node one.
+
 **What you give up, per switch.** `--loopback` originally also stopped the ADB
 reverse tunnel — "an admin asking for loopback is asking for quiet" — which
 silently killed every USB-tethered Android dashboard for no security gain, since

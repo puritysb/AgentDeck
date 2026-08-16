@@ -109,13 +109,24 @@ actor WebSocketServer {
 
     /// Start the listener and wait until it reaches `.ready` (success) or `.failed`/`.cancelled` (throws).
     /// The `stateUpdateHandler` stays installed so post-bind failures still route to `onListenerFailed`.
-    func start(port: UInt16) async throws {
+    /// - Parameter loopbackOnly: bind `127.0.0.1` instead of all interfaces
+    ///   (enterprise posture — see `DaemonPosture`). The caller is responsible
+    ///   for not attaching a Bonjour service to a loopback-bound listener.
+    func start(port: UInt16, loopbackOnly: Bool = false) async throws {
         let params = NWParameters.tcp  // Raw TCP — no WebSocket protocol layer
         params.allowLocalEndpointReuse = true  // SO_REUSEADDR — allows rebind after TIME_WAIT/crash
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw NSError(domain: "WebSocketServer", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid port \(port)"])
         }
-        let listener = try NWListener(using: params, on: nwPort)
+        let listener: NWListener
+        if loopbackOnly {
+            // The port rides requiredLocalEndpoint; passing `on:` as well would
+            // hand NWListener two port sources to disagree about.
+            params.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: nwPort)
+            listener = try NWListener(using: params)
+        } else {
+            listener = try NWListener(using: params, on: nwPort)
+        }
         self.listener = listener
 
         // Attach Bonjour service for mDNS discovery

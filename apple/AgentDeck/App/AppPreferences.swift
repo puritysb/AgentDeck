@@ -52,6 +52,20 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Enterprise network posture for the in-process daemon (roadmap item 12;
+    /// Node analog: `daemon start --loopback` / AGENTDECK_LOOPBACK_ONLY). Bind
+    /// 127.0.0.1 only and emit nothing onto the LAN — no Bonjour advertisement,
+    /// no device-module network traffic. Applied on the next daemon (re)start;
+    /// the Settings toggle restarts the daemon on change.
+    @Published var daemonLoopbackOnly: Bool {
+        didSet { defaults.set(daemonLoopbackOnly, forKey: Keys.daemonLoopbackOnly) }
+    }
+    /// Node analog: `daemon start --local` — no device modules at all (serial
+    /// included). Independent of `daemonLoopbackOnly`; the two compose.
+    @Published var daemonNoDeviceModules: Bool {
+        didSet { defaults.set(daemonNoDeviceModules, forKey: Keys.daemonNoDeviceModules) }
+    }
+
     @Published var openDashboardOnLaunch: Bool {
         didSet { defaults.set(openDashboardOnLaunch, forKey: Keys.openDashboardOnLaunch) }
     }
@@ -268,6 +282,8 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.defaults = defaults
         let storedPort = defaults.object(forKey: Keys.daemonPort) as? Int
         self.daemonPort = Self.clampPort(storedPort ?? Self.defaultDaemonPort)
+        self.daemonLoopbackOnly = defaults.object(forKey: Keys.daemonLoopbackOnly) as? Bool ?? false
+        self.daemonNoDeviceModules = defaults.object(forKey: Keys.daemonNoDeviceModules) as? Bool ?? false
         self.openDashboardOnLaunch = defaults.object(forKey: Keys.openDashboardOnLaunch) as? Bool ?? true
         self.menuBarIconStyle = MenuBarIconStyle(rawValue: defaults.string(forKey: Keys.menuBarIconStyle) ?? "") ?? .status
         self.showSessionList = defaults.object(forKey: Keys.showSessionList) as? Bool ?? true
@@ -795,6 +811,8 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
 
     private enum Keys {
         static let daemonPort = "prefs.daemonPort"
+        static let daemonLoopbackOnly = "prefs.daemonLoopbackOnly"
+        static let daemonNoDeviceModules = "prefs.daemonNoDeviceModules"
         static let openDashboardOnLaunch = "prefs.openDashboardOnLaunch"
         static let menuBarIconStyle = "prefs.menuBarIconStyle"
         static let showSessionList = "prefs.showSessionList"

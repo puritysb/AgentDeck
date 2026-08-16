@@ -228,7 +228,14 @@ final class DaemonService: ObservableObject {
                 // pass an explicit port and skip that path.
                 let usingDefault = (port == AppPreferences.defaultDaemonPort && sessionOverridePort == nil)
                 let portArg: Int? = usingDefault ? nil : port
-                let daemon = try await DaemonServer(port: portArg, debug: false)
+                // Resolved once per start, so the bind, the Bonjour ad, the
+                // module set, and the startup log cannot disagree. A Settings
+                // change takes effect through DaemonService.restart().
+                let posture = DaemonPosture(
+                    loopbackOnly: AppPreferences.shared.daemonLoopbackOnly,
+                    noDeviceModules: AppPreferences.shared.daemonNoDeviceModules
+                )
+                let daemon = try await DaemonServer(port: portArg, debug: false, posture: posture)
                 await daemon.setShutdownHandler { [weak self] in
                     Task { @MainActor [weak self] in
                         guard let self else { return }

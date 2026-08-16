@@ -6,9 +6,10 @@ running their own daemon, on one corporate network — and sometimes on one mach
 Everything below was read out of the current tree (2026-08-15, `master` @ `7f6d2538`).
 Line references are anchors, not quotes; re-grep before editing.
 
-> **Status (2026-08-15).** The shared-*subnet* half has shipped — items 6, 7, 9,
-> 10 and 16 in §7, plus `daemon start --local/--loopback`, `daemon install
-> --enterprise`, and posture inheritance across `daemon restart`. See
+> **Status (2026-08-17).** The shared-*subnet* half has shipped — items 6, 7, 9,
+> 10, 12 and 16 in §7, plus `daemon start --local/--loopback`, `daemon install
+> --enterprise`, posture inheritance across `daemon restart`, and the Swift
+> daemon's Settings-driven posture (item 12). See
 > [docs/daemon.md § Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-posture).
 >
 > The shared-*machine* half (§1.2–§1.4, §2.1–§2.2 — UID checks, unique mDNS
@@ -437,7 +438,7 @@ nothing.
 | 9 | Pixoo auto-discovery default off, cloud call opt-in separately (§5) | S | 1d | **done** — default off (Node + Swift); `pixoo scan --no-cloud` splits the two disclosures |
 | 10 | UDP broadcast default off; back off when unused (§2.3) | S | 0.5d | **superseded** — off under `--local`/`--loopback`; a global default-off still open (§2.3) |
 | 11 | Configurable port window + persistent CLI daemon port (§1.5) | S | 1d | open |
-| 12 | Swift-side enterprise posture toggle in Settings (§3) | M | 2d | open — the App Store app has no way to be told "loopback only" |
+| 12 | Swift-side enterprise posture toggle in Settings (§3) | M | 2d | **done** (08-17) — Settings → Local server toggles → `DaemonPosture` (loopback bind, Bonjour skipped, module registration gated deny-by-default); posture rides Swift `/health` for `qr`/`pair`/`restart` parity |
 
 **P2 — cleanup.**
 

@@ -26,6 +26,7 @@
 		0A7DA2C45E7C6BDB33D0F736 /* DevicePreviewCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6C4FB1F847E5695EF75A4FB /* DevicePreviewCatalog.swift */; };
 		0AC3F569F362D121D985EA52 /* KelpField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0815111538C63CAF8766B367 /* KelpField.swift */; };
 		0B04CA71C040BE9955B8C032 /* AdbModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83589BA4C41B89C8EF1A46FD /* AdbModule.swift */; };
+		0B0D2D3CF0D97D237B671C5B /* DaemonPosture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FC16ECE363684E997BE01E /* DaemonPosture.swift */; };
 		0B12EC87653840EF7BA4555C /* SessionAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E3177DE60C73B3A102F9FB /* SessionAggregator.swift */; };
 		0C1C2B2A6F3ED44152244E55 /* DemoPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8A40550B31856011EBBCB7 /* DemoPlayback.swift */; };
 		0C1F83A74830BA41D99566C9 /* IDotMatrixIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */; };
@@ -40,6 +41,7 @@
 		13675372BAD515B5A8447296 /* BridgeConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A702CCCE11B4450E9EED163 /* BridgeConnection.swift */; };
 		136F28B1F6B5E4729ADA92EC /* HTTPServerMainThreadStallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C6D9385857E3BEB95A91496 /* HTTPServerMainThreadStallTests.swift */; };
 		13C1C940711C51743C8B5C97 /* DaemonOfflineAffordance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F99A265E8C83A287F7DB71 /* DaemonOfflineAffordance.swift */; };
+		149FCBCC393ED40C0C0EBAD9 /* DaemonPosture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FC16ECE363684E997BE01E /* DaemonPosture.swift */; };
 		151F41C1C4B7DF78558D546D /* SessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */; };
 		16BE41E2233EEE895F569E27 /* QRPairingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC54EAD04F534E783D87D4DB /* QRPairingWindow.swift */; };
 		1755CE50FB5EBB217B02AED7 /* TimeboxDivoomPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE667561A919A52759C5225E /* TimeboxDivoomPacket.swift */; };
@@ -96,6 +98,7 @@
 		36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */; };
 		37445F34EE5090F24D59EB4A /* DataParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57722317EDF1D567981112DE /* DataParticleSystem.swift */; };
 		378C03BA7C86CFABDD41FA06 /* PixooPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DC38F54A1C54AB134DB0535 /* PixooPreview.swift */; };
+		37AB2DCA4C89195958B01709 /* DaemonPostureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6675586368BA1D73919FA7E0 /* DaemonPostureTests.swift */; };
 		37EFA4D2AFEB4DDBBABD4F93 /* SquatterCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B120CABC9029C801CF0A77A2 /* SquatterCleaner.swift */; };
 		385B3F4A96DFFFBC72851371 /* NotificationPermission.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC62763B9E0E57235CFDACED /* NotificationPermission.swift */; };
 		38B8B9D479D582EE034C05DB /* ApmeCategoryE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F083DDE39507B6693AED227 /* ApmeCategoryE2ETests.swift */; };
@@ -355,6 +358,7 @@
 		D0668EACC4D50BE30B10ACE5 /* SessionPushRegisterMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73BB88D8C2921CB4B93EC8B9 /* SessionPushRegisterMergeTests.swift */; };
 		D0A70501108B295ED44C169E /* PortFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6165A6BFF174139F6AF07CED /* PortFormatting.swift */; };
 		D0FB0E0FFBBCE44786BA9B51 /* DaemonPortFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA9A38D1BD38841DF83F3017 /* DaemonPortFallbackTests.swift */; };
+		D130F3747ED283214E599734 /* DaemonPostureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6675586368BA1D73919FA7E0 /* DaemonPostureTests.swift */; };
 		D14972CEAF0D69E6918C86BA /* AgentDeckPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 056D70153C3F720A6D935C9F /* AgentDeckPaths.swift */; };
 		D169DFD5EA54C323E1128E7B /* AgentState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F15F55435772A15B8F0E92C1 /* AgentState.swift */; };
 		D2335AB9E3A5DEE25405617F /* TimeboxProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A351E073AB448BEE1DA392 /* TimeboxProtocolTests.swift */; };
@@ -482,6 +486,7 @@
 		1F26A93963C8E68242637581 /* SessionJumpRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionJumpRow.swift; sourceTree = "<group>"; };
 		1F9ACDDF739DF572C9280B38 /* BridgeLogStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeLogStream.swift; sourceTree = "<group>"; };
 		21073CA63BB9403D46212547 /* OpenCodeObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeObserverTests.swift; sourceTree = "<group>"; };
+		21FC16ECE363684E997BE01E /* DaemonPosture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonPosture.swift; sourceTree = "<group>"; };
 		234CFF4B2832E6B1CA98AF10 /* GatewayParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayParityTests.swift; sourceTree = "<group>"; };
 		26A4C8A53C312709350735F5 /* ApmeJudgeOpenAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeOpenAI.swift; sourceTree = "<group>"; };
 		279EAD7034309F8B8641DF78 /* SpokenDigestParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenDigestParityTests.swift; sourceTree = "<group>"; };
@@ -553,6 +558,7 @@
 		6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixIdentity.generated.swift; sourceTree = "<group>"; };
 		640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixProtocolTests.swift; sourceTree = "<group>"; };
 		64EB18086FC44B69D1CBE171 /* ApmeJudgeMlx.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeMlx.swift; sourceTree = "<group>"; };
+		6675586368BA1D73919FA7E0 /* DaemonPostureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonPostureTests.swift; sourceTree = "<group>"; };
 		66917928C455891D401F29E6 /* ConnectionOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionOverlayTests.swift; sourceTree = "<group>"; };
 		68F068BCFDB979A23AEDA5C3 /* IDotMatrixBLE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixBLE.swift; sourceTree = "<group>"; };
 		69470A0782BDF6A29012E9F0 /* DaemonActor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonActor.swift; sourceTree = "<group>"; };
@@ -705,6 +711,7 @@
 				FB4C24732A9A2DB27CC5F7C0 /* AnthropicAdminApiClient.swift */,
 				3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */,
 				69470A0782BDF6A29012E9F0 /* DaemonActor.swift */,
+				21FC16ECE363684E997BE01E /* DaemonPosture.swift */,
 				B6E0B3C7EBBFFD8C2EB08F11 /* HookInstaller.swift */,
 				908DB05568DE4E828CD7FCE6 /* Logger.swift */,
 				70F61897614FBE52B61AB8B4 /* MiniToml.swift */,
@@ -748,6 +755,7 @@
 				66917928C455891D401F29E6 /* ConnectionOverlayTests.swift */,
 				E84D819AA86894944600240C /* DaemonActorIndependenceTests.swift */,
 				DA9A38D1BD38841DF83F3017 /* DaemonPortFallbackTests.swift */,
+				6675586368BA1D73919FA7E0 /* DaemonPostureTests.swift */,
 				95997D1E19933CBB5A3F400D /* DeviceApprovalGateTests.swift */,
 				4E033ABF49F0DDF31D309181 /* DevicePreviewSnapshotTests.swift */,
 				C671E2324E45E6745813C681 /* ESP32WifiForwardTests.swift */,
@@ -1374,6 +1382,7 @@
 				23A9123293932E0B49628B1F /* ConnectionOverlayTests.swift in Sources */,
 				5110D91D663BA602A485005E /* DaemonActorIndependenceTests.swift in Sources */,
 				F30F046B8C2F044E12263AE8 /* DaemonPortFallbackTests.swift in Sources */,
+				37AB2DCA4C89195958B01709 /* DaemonPostureTests.swift in Sources */,
 				1DA82A36B17B48756691D2CD /* DeviceApprovalGateTests.swift in Sources */,
 				1D406D25862B20792A8293F3 /* DevicePreviewSnapshotTests.swift in Sources */,
 				AECF975059EA0A725DB1A3E7 /* ESP32WifiForwardTests.swift in Sources */,
@@ -1420,6 +1429,7 @@
 				0D27F8A8833CCEC21A91E867 /* ConnectionOverlayTests.swift in Sources */,
 				A7560FE516D5460EB526FA3A /* DaemonActorIndependenceTests.swift in Sources */,
 				D0FB0E0FFBBCE44786BA9B51 /* DaemonPortFallbackTests.swift in Sources */,
+				D130F3747ED283214E599734 /* DaemonPostureTests.swift in Sources */,
 				53D37B6B6CCF9EFD0013F153 /* DeviceApprovalGateTests.swift in Sources */,
 				19CDAF0B79C1F843366192C0 /* DevicePreviewSnapshotTests.swift in Sources */,
 				5E3FCF09BE50281AE6749762 /* ESP32WifiForwardTests.swift in Sources */,
@@ -1510,6 +1520,7 @@
 				5B7A5FC7C0209AF3CF13C563 /* D200HLayoutModel.swift in Sources */,
 				45F924FE8D817EB16CA71345 /* DaemonActor.swift in Sources */,
 				13C1C940711C51743C8B5C97 /* DaemonOfflineAffordance.swift in Sources */,
+				0B0D2D3CF0D97D237B671C5B /* DaemonPosture.swift in Sources */,
 				9A804F6E4630630D21967869 /* DaemonPttVoice.swift in Sources */,
 				263F5BDD1FD0077BCCCA5DE8 /* DaemonServer.swift in Sources */,
 				D80DDBEF3EDB811EFF6B834A /* DaemonService.swift in Sources */,
@@ -1690,6 +1701,7 @@
 				BB291B71C944FF384AFD634C /* D200HLayoutModel.swift in Sources */,
 				8A28584D14249A2DB2E94361 /* DaemonActor.swift in Sources */,
 				1833E28AEE39E209E4AA45B6 /* DaemonOfflineAffordance.swift in Sources */,
+				149FCBCC393ED40C0C0EBAD9 /* DaemonPosture.swift in Sources */,
 				F8C78DB678C94B49C23122AE /* DaemonPttVoice.swift in Sources */,
 				6BFB8392D79D133C46111364 /* DaemonServer.swift in Sources */,
 				50C1853357255E13C2F9EB93 /* DaemonService.swift in Sources */,

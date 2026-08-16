@@ -556,6 +556,37 @@ struct SettingsScreen: View {
                 .font(.system(size: 10))
                 .foregroundStyle(TerrariumHUD.subtext)
 
+            // Network posture (enterprise) — mirrors the two axes of the CLI
+            // daemon's --loopback / --local. Applying restarts the daemon so
+            // the bind, the Bonjour ad, and the module set change together.
+            Divider().overlay(Color.white.opacity(0.1)).padding(.vertical, 2)
+
+            Toggle(isOn: postureBinding(\.daemonLoopbackOnly)) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Loopback only")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white)
+                    Text("For shared or corporate networks: binds 127.0.0.1 and stops Bonjour advertising and LAN device modules. Companion apps and WiFi boards can't connect; USB serial keeps working.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(TerrariumHUD.subtext)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Color(red: 0.231, green: 0.51, blue: 0.965))
+
+            Toggle(isOn: postureBinding(\.daemonNoDeviceModules)) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Disable device modules")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white)
+                    Text("Stops driving hardware entirely (USB serial, Pixoo, BLE displays). Paired companion apps on the LAN still connect.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(TerrariumHUD.subtext)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Color(red: 0.231, green: 0.51, blue: 0.965))
+
             if let reason = daemonService.bindFailureReason {
                 Text(reason)
                     .font(.system(size: 11, design: .monospaced))
@@ -651,6 +682,20 @@ struct SettingsScreen: View {
         guard newPort != preferences.daemonPort else { return }
         preferences.daemonPort = newPort
         Task { await daemonService.restart() }
+    }
+
+    /// Posture toggles restart the daemon on change (same apply path as the
+    /// port field) so the new posture is what's actually running, not a
+    /// preference waiting for the next launch.
+    private func postureBinding(_ keyPath: ReferenceWritableKeyPath<AppPreferences, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { preferences[keyPath: keyPath] },
+            set: { newValue in
+                guard preferences[keyPath: keyPath] != newValue else { return }
+                preferences[keyPath: keyPath] = newValue
+                Task { await daemonService.restart() }
+            }
+        )
     }
     #endif
 

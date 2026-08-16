@@ -370,6 +370,10 @@ struct JudgeBackendStatus: Sendable {
 @DaemonActor
 final class DaemonServer {
     nonisolated let port: UInt16
+    /// Network posture (Settings → Local server). Resolved once at init so the
+    /// bind address, the Bonjour advertisement, the module set, and the
+    /// startup log cannot disagree — Node parity: `resolveDaemonPosture()`.
+    nonisolated let posture: DaemonPosture
     let sessionId = UUID().uuidString
     var onShutdown: (() -> Void)?
     /// Invoked when a CLI (Node) daemon POSTs `/stand-down` to take over the
@@ -939,7 +943,8 @@ final class DaemonServer {
 
     // MARK: - Init
 
-    init(port: Int?, debug: Bool) async throws {
+    init(port: Int?, debug: Bool, posture: DaemonPosture = .open) async throws {
+        self.posture = posture
         self.timelineRelay = TimelineRelay(selfPort: port ?? SessionRegistry.defaultPort)
         self.focusRelay = SessionFocusRelay()
 
@@ -1185,22 +1190,28 @@ final class DaemonServer {
         // token — mDNS is multicast, so a TXT token hands the credential to
         // every device on the network segment. Companions pair via QR /
         // manual URL instead. Keep in lockstep with bridge/src/mdns.ts.
-        let txtRecord = NWTXTRecord([
-            "project": "daemon",
-            "agent": "daemon",
-            "port": "\(port)",
-            "ip": AuthManager.getLanIP() ?? "127.0.0.1",
-            "v": "3",
-        ])
-        await wsServer.setBonjourService(NWListener.Service(
-            name: "daemon-\(port)",
-            type: "_agentdeck._tcp",
-            txtRecord: txtRecord
-        ))
+        // Skipped under the loopback posture: advertising a 127.0.0.1-bound
+        // listener would be noise for a service nobody on the segment can
+        // reach (republishBonjour no-ops on the nil service).
+        if posture.advertisesOnLAN {
+            let txtRecord = NWTXTRecord([
+                "project": "daemon",
+                "agent": "daemon",
+                "port": "\(port)",
+                "ip": AuthManager.getLanIP() ?? "127.0.0.1",
+                "v": "3",
+            ])
+            await wsServer.setBonjourService(NWListener.Service(
+                name: "daemon-\(port)",
+                type: "_agentdeck._tcp",
+                txtRecord: txtRecord
+            ))
+        }
 
         // Await listener `.ready` — throws on bind failure (EADDRINUSE etc).
         // Registry writes must NOT happen before this succeeds.
-        try await wsServer.start(port: port)
+        try await wsServer.start(port: port, loopbackOnly: posture.loopbackOnly)
+        DaemonLogger.shared.info(posture.describe(port: port))
 
         // 2. Register session (only after listener is actually bound)
         let entry = DaemonSessionEntry(
@@ -1558,73 +1569,89 @@ final class DaemonServer {
 
         // mDNS: Bonjour is attached to unified WebSocketServer listener — no separate module needed
 
+        // Posture gate (Settings → Local server): a module the posture forbids
+        // is never constructed, registered, or given observers — deny-by-default
+        // via DaemonPosture.allowsModule, so a module added below and forgotten
+        // in the posture rules fails safe as "off" in the restricted postures
+        // (Node parity: `{ ...allModulesOff(), <permitted> }`).
+
         // ADB (reverse tunnel only; D200H is handled by the Ulanzi Studio plugin)
-        let adb = AdbModule(daemonPort: portInt)
-        adb.commandHandler = { [weak self] cmd in
-            Task { @DaemonActor in self?.handleCommand(cmd) }
+        let adb: AdbModule? = posture.allowsModule("adb") ? AdbModule(daemonPort: portInt) : nil
+        if let adb {
+            adb.commandHandler = { [weak self] cmd in
+                Task { @DaemonActor in self?.handleCommand(cmd) }
+            }
+            self.adbModule = adb
+            moduleManager.register(adb)
         }
-        self.adbModule = adb
-        moduleManager.register(adb)
 
         // Serial (ESP32)
-        let serial = SerialModule()
-        self.serialModule = serial
-        moduleManager.register(serial)
+        let serial: SerialModule? = posture.allowsModule("serial") ? SerialModule() : nil
+        if let serial {
+            self.serialModule = serial
+            moduleManager.register(serial)
 
-        // ESP32 state providers — initial state on connect + heartbeat
-        let serialEventSnapshot = serialEventSnapshot
-        serial.serial.setStateProviderFn { serialEventSnapshot.currentStateEvent() }
-        serial.serial.setUsageProviderFn { serialEventSnapshot.currentUsageEvent() }
-        serial.serial.setSessionsListProviderFn { serialEventSnapshot.currentSessionsEvent() }
-        serial.serial.setDisplayStateProviderFn { serialEventSnapshot.currentDisplayStateEvent() }
-        serial.serial.setInitialStateProviderFn { serialEventSnapshot.initialEvents() }
+            // ESP32 state providers — initial state on connect + heartbeat
+            let serialEventSnapshot = serialEventSnapshot
+            serial.serial.setStateProviderFn { serialEventSnapshot.currentStateEvent() }
+            serial.serial.setUsageProviderFn { serialEventSnapshot.currentUsageEvent() }
+            serial.serial.setSessionsListProviderFn { serialEventSnapshot.currentSessionsEvent() }
+            serial.serial.setDisplayStateProviderFn { serialEventSnapshot.currentDisplayStateEvent() }
+            serial.serial.setInitialStateProviderFn { serialEventSnapshot.initialEvents() }
 
-        // Wire external client count (ESP32 serial connections count as clients for polling guards)
-        await wsServer.setExternalClientCountProvider { await serial.serial.connectionCount }
+            // Wire external client count (ESP32 serial connections count as clients for polling guards)
+            await wsServer.setExternalClientCountProvider { await serial.serial.connectionCount }
+        }
 
         // Pixoo
-        let pixoo = PixooModule()
-        self.pixooModule = pixoo
-        moduleManager.register(pixoo)
-        await pixoo.setOnStateChanged { [weak self] in
-            Task { @DaemonActor [weak self] in
-                self?.broadcastStateUpdate()
+        let pixoo: PixooModule? = posture.allowsModule("pixoo") ? PixooModule() : nil
+        if let pixoo {
+            self.pixooModule = pixoo
+            moduleManager.register(pixoo)
+            await pixoo.setOnStateChanged { [weak self] in
+                Task { @DaemonActor [weak self] in
+                    self?.broadcastStateUpdate()
+                }
             }
-        }
-        pixooSettingsObserver = NotificationCenter.default.addObserver(
-            forName: .pixooSettingsChanged, object: nil, queue: .main
-        ) { _ in
-            Task { await pixoo.reloadFromSettingsExternal() }
+            pixooSettingsObserver = NotificationCenter.default.addObserver(
+                forName: .pixooSettingsChanged, object: nil, queue: .main
+            ) { _ in
+                Task { await pixoo.reloadFromSettingsExternal() }
+            }
         }
 
         // iDotMatrix (Bluetooth LE — native CoreBluetooth, App Store legal)
-        let idotmatrix = IDotMatrixModule()
-        self.idotMatrixModule = idotmatrix
-        moduleManager.register(idotmatrix)
-        await idotmatrix.setOnStateChanged { [weak self] in
-            Task { @DaemonActor [weak self] in
-                self?.broadcastStateUpdate()
+        let idotmatrix: IDotMatrixModule? = posture.allowsModule("idotmatrix") ? IDotMatrixModule() : nil
+        if let idotmatrix {
+            self.idotMatrixModule = idotmatrix
+            moduleManager.register(idotmatrix)
+            await idotmatrix.setOnStateChanged { [weak self] in
+                Task { @DaemonActor [weak self] in
+                    self?.broadcastStateUpdate()
+                }
             }
-        }
-        idotmatrixSettingsObserver = NotificationCenter.default.addObserver(
-            forName: .idotmatrixSettingsChanged, object: nil, queue: .main
-        ) { _ in
-            Task { await idotmatrix.reloadFromSettingsExternal() }
+            idotmatrixSettingsObserver = NotificationCenter.default.addObserver(
+                forName: .idotmatrixSettingsChanged, object: nil, queue: .main
+            ) { _ in
+                Task { await idotmatrix.reloadFromSettingsExternal() }
+            }
         }
 
         // Timebox Mini (BLE — native CoreBluetooth, App Store legal).
-        let timebox = TimeboxModule()
-        self.timeboxModule = timebox
-        moduleManager.register(timebox)
-        await timebox.setOnStateChanged { [weak self] in
-            Task { @DaemonActor [weak self] in
-                self?.broadcastStateUpdate()
+        let timebox: TimeboxModule? = posture.allowsModule("timebox") ? TimeboxModule() : nil
+        if let timebox {
+            self.timeboxModule = timebox
+            moduleManager.register(timebox)
+            await timebox.setOnStateChanged { [weak self] in
+                Task { @DaemonActor [weak self] in
+                    self?.broadcastStateUpdate()
+                }
             }
-        }
-        timeboxSettingsObserver = NotificationCenter.default.addObserver(
-            forName: .timeboxSettingsChanged, object: nil, queue: .main
-        ) { _ in
-            Task { await timebox.reloadFromSettingsExternal() }
+            timeboxSettingsObserver = NotificationCenter.default.addObserver(
+                forName: .timeboxSettingsChanged, object: nil, queue: .main
+            ) { _ in
+                Task { await timebox.reloadFromSettingsExternal() }
+            }
         }
 
         // Display-sleep dim setting changed: refresh cache and, if the display
@@ -1692,23 +1719,33 @@ final class DaemonServer {
                 }
             }
 
-            adb.handleBroadcast(json)
-            serialRef.wireBroadcast(json)
+            adb?.handleBroadcast(json)
+            serialRef?.wireBroadcast(json)
             // PixooModule is an actor — hop onto its executor via a Task.
             // Box `json` through SendableDict so the Task closure doesn't
             // capture a non-Sendable `[String: Any]`. Broadcast ordering
             // matches Task launch order because the actor serializes
             // incoming calls.
-            let pixooEventBox = SendableDict(json)
-            Task { await pixooRef.handleEvent(pixooEventBox.value) }
+            if let pixooRef {
+                let pixooEventBox = SendableDict(json)
+                Task { await pixooRef.handleEvent(pixooEventBox.value) }
+            }
             // iDotMatrix module is also an actor — same SendableDict boxing.
-            let idmEventBox = SendableDict(json)
-            Task { await idotmatrixRef.handleEvent(idmEventBox.value) }
+            if let idotmatrixRef {
+                let idmEventBox = SendableDict(json)
+                Task { await idotmatrixRef.handleEvent(idmEventBox.value) }
+            }
             // Timebox (BLE) module is also an actor — same SendableDict boxing.
-            let timeboxEventBox = SendableDict(json)
-            Task { await timeboxRef.handleEvent(timeboxEventBox.value) }
+            if let timeboxRef {
+                let timeboxEventBox = SendableDict(json)
+                Task { await timeboxRef.handleEvent(timeboxEventBox.value) }
+            }
         }
         DaemonLogger.shared.info("startDeviceModules: wsServer.onBroadcast done")
+
+        // Everything below wires the ESP32 serial channel; in a posture with
+        // no serial module there is nothing left to do.
+        guard let serial else { return }
 
         // Wire the ESP32 serial message handler. ONE handler: `setOnMessage`
         // replaces rather than adds, so everything the serial channel drives
@@ -1927,6 +1964,11 @@ final class DaemonServer {
                 "pairingToken": AuthManager.shared.token,
                 "modules": health["modules"] as Any,
                 "isSwift": true,
+                // Node parity: `agentdeck qr`/`pair` read this to warn instead
+                // of printing a dead LAN URL against a loopback-only daemon.
+                // Full-health payload only — the unauthenticated LAN /health
+                // (httpAccessResponse) stays minimal.
+                "posture": self?.posture.healthDict ?? DaemonPosture.open.healthDict,
             ]
             if let m = focus.model { payload["modelName"] = m }
             if let e = focus.effort { payload["effortLevel"] = e }

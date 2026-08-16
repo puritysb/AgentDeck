@@ -46,6 +46,7 @@ All surfaces follow the same rule:
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
 | macOS dashboard and in-process daemon | Yes | — | Standalone Tier 1 product |
+| Enterprise network posture (loopback-only / no device modules) | Yes | Yes | Same two axes both tiers. Tier 2: `daemon start --loopback/--local`, baked into autostart via `daemon install --enterprise`. Tier 1: Settings → Local server toggles (`AppPreferences.daemonLoopbackOnly` / `daemonNoDeviceModules` → `DaemonPosture`), applied by daemon restart; the sandboxed app cannot read env vars meaningfully, so a preference is the switch |
 | iOS / iPadOS companion | Yes | Yes | Bonjour + same-LAN WS |
 | Stream Deck family | Yes | Yes | Requires Elgato Stream Deck host software |
 | Claude Code hook installation | Yes | Yes | Explicit `NSOpenPanel` file consent |
