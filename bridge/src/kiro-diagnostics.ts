@@ -168,7 +168,7 @@ export function buildKiroDiagnosticReport(input: KiroDiagnosticInput): KiroDiagn
       cwdKnown: Boolean(snapshot.cwd),
       ...(snapshot.cwd ? { cwdKey: opaqueKey('cwd', snapshot.cwd) } : {}),
       ageSeconds: Math.max(0, Math.round((now - snapshot.lastActivityAt) / 1000)),
-      format: diagnosticFormat(recordKinds),
+      format: diagnosticFormat(recordKinds, snapshot.transcriptLineCount),
       recordKinds,
       hasModel: Boolean(snapshot.modelName),
       hasCreatedAt: snapshot.createdAt !== undefined,
@@ -314,8 +314,21 @@ export function formatKiroDiagnosticReport(report: KiroDiagnosticReport): string
 // "unrecognized record format" sends the reader hunting a parser gap that does
 // not exist (measured 2026-08-17: a 14s-old `kiro-cli chat` with a 0-byte
 // messages file raised exactly that finding).
-function diagnosticFormat(kinds: readonly string[]): KiroDiagnosticFormat {
-  if (kinds.length === 0) return 'empty';
+//
+// But "no recognized kinds" is NOT the same claim as "nothing was written", and
+// gating on the kind set alone conflated them in the other direction: a
+// transcript whose lines fail to parse, or whose records carry no
+// `kind`/`type`/`method`, also yields an empty kind set — and reporting THAT as
+// "no records yet" suppresses the unrecognized-format finding at the exact
+// moment it is true. So `empty` requires evidence of emptiness: zero non-blank
+// lines. Lines present with nothing recognized is `unknown`, which is what the
+// finding is for. `lineCount` is optional because older snapshots predate it;
+// absent it, fall back to the kind set rather than inventing a count.
+function diagnosticFormat(kinds: readonly string[], lineCount?: number): KiroDiagnosticFormat {
+  if (kinds.length === 0) {
+    if (lineCount === undefined) return 'empty';
+    return lineCount === 0 ? 'empty' : 'unknown';
+  }
   const v2 = kinds.some((kind) => ['ConversationV2', 'Prompt', 'AssistantMessage', 'ToolResults', 'ToolResult'].includes(kind));
   const v3 = kinds.some((kind) => ['user', 'assistant', 'turn_start', 'turn_end', 'session_start'].includes(kind));
   const acp = kinds.some((kind) => kind === 'session/prompt' || kind.startsWith('session/notification'));

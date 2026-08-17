@@ -6,6 +6,7 @@ import { buildKiroDiagnosticReport, formatKiroDiagnosticReport } from '../kiro-d
 import {
   applyKiroPendingTurnMarker,
   kiroTranscriptRecordKinds,
+  kiroTranscriptLineCount,
   parseKiroTranscript,
   parseKiroSqliteRows,
   readKiroV3SessionSnapshots,
@@ -274,6 +275,45 @@ describe('Kiro privacy-safe diagnostics', () => {
     });
     expect(unknown.sessions.entries[0].format).toBe('unknown');
     expect(unknown.findings).toContain('At least one inspected transcript uses an unrecognized record format.');
+  });
+
+  // The other direction of the same conflation. `recordKinds` is empty both
+  // when nothing has been written and when this build could not read any of
+  // what WAS written — lines that fail to parse are dropped silently, and a
+  // record with no kind/type/method contributes nothing. Calling the second
+  // case "no records yet" suppresses the unrecognized-format finding exactly
+  // when it is true, which is the failure the finding exists to prevent.
+  it('reports an unreadable transcript as unrecognized, not as not-yet-prompted', () => {
+    const base = {
+      processes: [],
+      v3DirectoryPresent: true,
+      directoryPresent: true,
+      primaryStore: 'jsonl-v3' as const,
+      now: NOW,
+      salt: 'test-only-salt',
+    };
+    const unreadable = buildKiroDiagnosticReport({
+      ...base,
+      snapshots: [snapshot({ recordKinds: [], transcriptLineCount: 12 })],
+    });
+    expect(unreadable.sessions.entries[0].format).toBe('unknown');
+    expect(unreadable.findings).toContain('At least one inspected transcript uses an unrecognized record format.');
+
+    // Truly nothing written keeps the quiet reading.
+    const notYetPrompted = buildKiroDiagnosticReport({
+      ...base,
+      snapshots: [snapshot({ recordKinds: [], transcriptLineCount: 0 })],
+    });
+    expect(notYetPrompted.sessions.entries[0].format).toBe('empty');
+    expect(notYetPrompted.findings).not.toContain('At least one inspected transcript uses an unrecognized record format.');
+  });
+
+  it('counts only non-blank transcript lines as evidence of content', () => {
+    expect(kiroTranscriptLineCount('')).toBe(0);
+    expect(kiroTranscriptLineCount('\n\n   \n')).toBe(0);
+    expect(kiroTranscriptLineCount('{"a":1}\n\n{"b":2}\n')).toBe(2);
+    // Unparseable content still counts — that is the whole point.
+    expect(kiroTranscriptLineCount('not json at all\nnor this\n')).toBe(2);
   });
 
   it('discovers the measured v3 workspace/session directory layout', async () => {

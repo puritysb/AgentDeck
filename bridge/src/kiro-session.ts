@@ -63,6 +63,14 @@ export interface KiroSessionSnapshot extends KiroSessionMetadata, KiroTranscript
   transcriptPath: string;
   lastActivityAt: number;
   recordKinds: string[];
+  /** Non-blank lines in the sampled transcript, whether or not they parsed.
+   *  `recordKinds` alone cannot tell "nothing has been written yet" from
+   *  "written, but this build could not read any of it" — `parseJsonl` drops
+   *  unreadable lines silently, and a record with no `kind`/`type`/`method`
+   *  contributes nothing either. Both collapse to an empty kind set, and
+   *  calling that "empty" hides exactly the format drift the diagnostic is
+   *  meant to surface. */
+  transcriptLineCount?: number;
 }
 
 interface KiroSessionCacheEntry {
@@ -302,6 +310,16 @@ export function parseKiroTranscript(raw: string): KiroTranscriptSummary {
  * Return schema markers only. Safe for diagnostics: values, prompt text,
  * tool input, response text, and message ids never leave this function.
  */
+/** Non-blank lines in a transcript sample — the evidence that something WAS
+ *  written, independent of whether this build could interpret it. */
+export function kiroTranscriptLineCount(raw: string): number {
+  let count = 0;
+  for (const line of raw.split('\n')) {
+    if (line.trim()) count++;
+  }
+  return count;
+}
+
 export function kiroTranscriptRecordKinds(raw: string): string[] {
   const kinds = new Set<string>();
   for (const value of parseJsonl(raw)) {
@@ -415,6 +433,7 @@ export async function readKiroSessionSnapshots(
       lastActivityAt: metadata.updatedAt ?? file.mtimeMs,
       goal: summary.goal ?? metadata.title,
       recordKinds: kiroTranscriptRecordKinds(transcriptRaw),
+      transcriptLineCount: kiroTranscriptLineCount(transcriptRaw),
     };
     snapshots.push(snapshot);
     cache?.set(transcriptPath, { ...signature, snapshot });
@@ -500,6 +519,7 @@ export async function readKiroV3SessionSnapshots(
         ?? Math.max(candidate.transcriptMtimeMs, candidate.metadataMtimeMs),
       goal: summary.goal ?? metadata.title,
       recordKinds: kiroTranscriptRecordKinds(transcriptRaw),
+      transcriptLineCount: kiroTranscriptLineCount(transcriptRaw),
     };
     snapshots.push(snapshot);
     cache?.set(candidate.transcriptPath, { ...signature, snapshot });
@@ -648,6 +668,10 @@ export function parseKiroSqliteRows(rows: readonly KiroSqliteRow[], dbPath: stri
       state: 'idle',
       ...(goal ? { goal } : {}),
       ...(response ? { response } : {}),
+      // Row-backed, not line-backed: there is no transcript text to count, and
+      // 'ConversationV2' is always present, so the empty-kinds branch that uses
+      // this is unreachable here.
+      transcriptLineCount: 0,
       recordKinds: [
         'ConversationV2',
         ...(row.historyCount > 0 ? ['Prompt'] : []),
