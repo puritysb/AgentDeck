@@ -168,6 +168,7 @@ import {
   transcriptTimelineForSession, lastAssistantTextFromTranscript,
   lastAssistantTextForSession,
 } from './session-transcript-timeline.js';
+import { kiroTimelineForSession } from './kiro-transcript-timeline.js';
 import {
   DeviceVoiceReplyRouter, speakableReply, spokenDigest, pcmFromWav, type ReplySink,
 } from './device-voice-reply.js';
@@ -4128,6 +4129,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (entries.length === 0) {
           try {
             entries = transcriptTimelineForSession(sessionId, { since: sinceMs });
+          } catch { /* read-only best effort */ }
+        }
+        // Kiro keeps its transcript in its OWN store, so the Claude reader
+        // above can never find one — and no `kiro_*` hook has ever reached
+        // this daemon (v2 has no global hook surface at all), so the timeline
+        // store is empty for it too. Without this branch an observed Kiro
+        // session's Detail view is empty whatever it does.
+        if (entries.length === 0 && sessionId.startsWith('observed:kiro')) {
+          try {
+            entries = kiroTimelineForSession(sessionId, { since: sinceMs });
           } catch { /* read-only best effort */ }
         }
         const historyEvent = buildCappedTimelineHistory(entries, undefined, { sessionId });
