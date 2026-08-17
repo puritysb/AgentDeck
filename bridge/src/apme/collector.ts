@@ -504,7 +504,15 @@ export class ApmeCollector {
       if (evidence.abortedAt != null) return 'aborted';
       // Ordered last on purpose: a cancelled or aborted turn that also wrote
       // nothing is still a cancel or an abort, not a superseded prompt.
-      if (!evidence.sawAssistant) return 'superseded';
+      //
+      // Two independent facts must agree before a turn is called one that
+      // never ran, because the transcript walk alone is not quite enough for
+      // this claim: it stops at the first record older than the window, and
+      // Claude Code's JSONL is not strictly ordered (auxiliary records land
+      // tens of ms out of sequence), so one inverted stamp near the tail could
+      // truncate the walk and hide the assistant work behind it. A turn that
+      // called tools demonstrably ran whatever the transcript says.
+      if (!evidence.sawAssistant && turn.toolCalls === 0) return 'superseded';
       return 'next_prompt';
     } catch {
       return 'next_prompt';

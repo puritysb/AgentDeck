@@ -203,6 +203,21 @@ describe('turns.end_source', () => {
     expect(turnsOf(store, runId)[0].end_source).toBe('superseded');
   });
 
+  it('a displaced turn that called tools is never `superseded`, whatever the transcript says', () => {
+    // The transcript walk stops at the first record older than the window and
+    // Claude Code's JSONL is not strictly ordered, so one inverted stamp near
+    // the tail can hide the assistant work behind it. A tool call is
+    // independent proof the turn ran.
+    const c = new ApmeCollector(store, undefined, () =>
+      ({ interruptedAt: null, abortedAt: null, sawAssistant: false }));
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'PreToolUse', { tool_name: 'Bash', transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
+  });
+
   it('no evidence in the window still means `next_prompt` — absence is never a verdict', () => {
     const c = new ApmeCollector(store, undefined, () =>
       ({ interruptedAt: null, abortedAt: null, sawAssistant: true }));
