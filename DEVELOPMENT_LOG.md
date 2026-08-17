@@ -80,10 +80,17 @@
 
 ### 미검증 / 남은 것
 
-- **실제 loopback 데몬 기동은 확인하지 못했다.** 싱글톤 가드가 사용 중인 9120 데몬을
-  보고 정상 종료해서다(가드 자체는 올바른 동작). 검증은 유닛 + 빌드 산출물에서
-  4가지 posture 조합·plist 생성 실행 + 빌드된 `daemon-server.js` 의
-  `resolveDaemonPosture → bindHostFor → listen` 배선 확인 수준.
+- ~~**실제 loopback 데몬 기동은 확인하지 못했다.**~~ → 08-17 **실측 완료**(운영 9120
+  데몬, master d7d92efa 빌드): 바인드는 `127.0.0.1` 만(LAN IP 로 건 curl 은 TCP
+  거부), `dns-sd -B _agentdeck._tcp` 에 광고 없음, health 에서 `pixoo` 키가 사라지고
+  timebox/idotmatrix 는 `sync module not started`, **USB serial 보드 5대와 ADB
+  reverse(HVA095B4) 는 그대로 생존**, 시작 로그도 약속한 문장 그대로 출력.
+  `daemon stop`→`start` 로 기본 posture 복귀까지 확인.
+  **다만 격리 테스트는 여전히 불가**: `AGENTDECK_DATA_DIR` + `-p 9200` 으로 띄워도
+  싱글톤 가드의 **포트 윈도우 스윕**(9120–9139)이 운영 데몬을 발견해 `process.exit(0)`
+  한다 — 명시 포트로도 우회되지 않는다(가드 자체는 올바른 동작). 그래서 posture
+  실기동 검증은 **운영 데몬을 잠깐 그 posture 로 재시작하는 것이 유일한 경로**다.
+  로드맵 11번(포트 윈도우 설정화)이 들어오면 이 제약이 풀린다.
 - ~~**Swift 데몬에는 posture 스위치가 없다.**~~ → 08-17 해소(로드맵 12번 done):
   **Settings → Local server** 에 Loopback only / Disable device modules 토글
   (`AppPreferences.daemonLoopbackOnly`/`daemonNoDeviceModules`) → `DaemonPosture`
