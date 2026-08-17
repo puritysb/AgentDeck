@@ -561,6 +561,12 @@ if (isMainModule) {
     // the fenced block is AgentDeck's and removal has its own dedicated
     // flow to avoid touching user TOML).
     import('./opencode-install.js').then((m) => m.uninstallOpenCodeHooks()).catch(() => {});
+    // `~/.kiro/hooks/agentdeck-lifecycle.json` is AgentDeck-owned in its
+    // entirety like the OpenCode plugin, so uninstall removes the file.
+    // `uninstallKiroHooks` existed and was unit-tested from the day it landed
+    // but no caller ever reached it, so `scripts/uninstall.sh` left the file
+    // behind — a test proves a function works, never that anything runs it.
+    uninstallKiroHooks();
   } else {
     installHooks();
   }

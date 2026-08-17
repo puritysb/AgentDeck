@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { chmodSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import {
   HOOK_EVENTS,
@@ -740,5 +741,21 @@ describe('migration 7 — unbounded curl self-heal', () => {
     expect(hasUnboundedHookCurl({
       hooks: { SessionEnd: [{ matcher: '', hooks: [{ type: 'command', command: 'curl -X POST http://example.test/ping' }] }] },
     })).toBe(false);
+  });
+});
+
+describe('uninstall wiring', () => {
+  it('the uninstall entry point actually calls the Kiro remover', () => {
+    // `uninstallKiroHooks` shipped unit-tested and unreachable: nothing called
+    // it, so `scripts/uninstall.sh` left `~/.kiro/hooks/agentdeck-lifecycle.json`
+    // on disk. Asserting the FUNCTION works cannot catch that — this asserts the
+    // call site exists, which is the thing that was missing.
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'install.ts'),
+      'utf8',
+    );
+    const branch = src.slice(src.indexOf("if (action === 'uninstall')"));
+    expect(branch).toContain('uninstallKiroHooks(');
+    expect(branch).toContain('uninstallOpenCodeHooks(');
   });
 });
