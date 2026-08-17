@@ -119,7 +119,6 @@ import {
   listActive as listActiveSessions,
   findAvailablePort,
   findExistingDaemon,
-  DAEMON_DEFAULT_PORT,
   probeDaemonHealth,
   requestDaemonShutdown,
   scanDaemonPortWindow,
@@ -134,6 +133,13 @@ import {
   getCandidateDataDirs,
   getOwnTimelineFile,
 } from './session-registry.js';
+import { loadDaemonSettings } from './daemon-settings.js';
+import {
+  resolveDaemonPort,
+  describeDaemonPortSource,
+  PREFERRED_PORT_RECLAIM_MS,
+  type DaemonPortSource,
+} from './daemon-port.js';
 import { fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData } from './usage-api.js';
 import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
@@ -735,29 +741,6 @@ async function performWifiEsp32Ota(core: BridgeCore, target: string, firmwarePat
   }
 }
 
-function loadDaemonSettings(): Record<string, unknown> {
-  // Newest settings.json across candidate data dirs — mirrors the
-  // daemon.json/sessions.json cross-dir discovery (and honors the
-  // AGENTDECK_DATA_DIR test override, which the old hardcoded
-  // ~/.agentdeck path ignored). The App Store sandbox container is
-  // intentionally NOT a candidate (TCC hang risk — see
-  // getCandidateDataDirs), so settings written by the sandboxed Swift
-  // app stay invisible here; that coexistence limit is documented in
-  // docs/appstore-feature-matrix.md.
-  let best: { mtime: number; parsed: Record<string, unknown> } | null = null;
-  for (const dir of getCandidateDataDirs()) {
-    try {
-      const path = join(dir, 'settings.json');
-      const mtime = statSync(path).mtimeMs;
-      if (best && best.mtime >= mtime) continue;
-      best = { mtime, parsed: JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown> };
-    } catch {
-      // Missing or unreadable — skip this candidate.
-    }
-  }
-  return best?.parsed ?? {};
-}
-
 function latestTimelinePath(): string | null {
   let best: { path: string; mtime: number } | null = null;
   for (const dir of getCandidateDataDirs()) {
@@ -949,7 +932,15 @@ export function classifyObservedHookEvent(
 // ===== Daemon options =====
 
 export interface DaemonOptions {
+  /** The preferred port — already resolved by the caller when present. */
   port?: number;
+  /**
+   * Where `port` came from. Carried so the fallback log can name the real
+   * source: the CLI resolves the port itself (so the parent's singleton guard
+   * and the forked child cannot aim at different ports), which would otherwise
+   * make every port look like it was typed as `--port`.
+   */
+  portSource?: DaemonPortSource;
   debug?: boolean;
   wakeWord?: boolean;
   /** `--local`: every device module off, USB serial included. */
@@ -1142,30 +1133,38 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     }
   }
 
-  // 2. Determine port — try default first, fallback if occupied by non-daemon
-  const requestedPort = opts.port ?? DAEMON_DEFAULT_PORT;
+  // 2. Determine the preferred port — the one this daemon intends to serve.
+  // `opts.port` is already resolved by the CLI (flag › AGENTDECK_DAEMON_PORT ›
+  // settings.json `daemonPort` › 9120); resolving again here covers the
+  // library entry point, and both paths read the same sources.
+  const preferred = opts.port !== undefined
+    ? { port: opts.port, source: opts.portSource ?? 'flag' }
+    : resolveDaemonPort();
+  const requestedPort = preferred.port;
   let port = requestedPort;
 
-  // If using default port, check if it's available
-  if (requestedPort === DAEMON_DEFAULT_PORT) {
-    const health = await probeDaemonHealth(requestedPort);
-    if (health) {
-      if (health.mode === 'daemon') {
-        if (health.isSwift) {
-          log(`[agentdeck] Swift daemon detected on port ${requestedPort} via /health. Requesting shutdown to take over...`);
-          await requestDaemonShutdown(requestedPort);
-          await waitForDaemonExit(requestedPort);
-          await waitForPortBindable(requestedPort);
-        } else {
-          // Daemon alive but not in our registry — race condition or stale state
-          log(`[agentdeck] Daemon already running on port ${requestedPort} (detected via /health).`);
-          process.exit(0);
-        }
+  // Probe the preferred port before binding it. This used to run only for the
+  // built-in 9120, which made every other preferred port skip the Swift-daemon
+  // eviction and the occupied-port check — a persisted `daemonPort: 9200` would
+  // have been a second-class port on the same machine. The port a daemon
+  // intends to serve gets the same treatment wherever the intent came from.
+  const preferredOccupant = await probeDaemonHealth(requestedPort);
+  if (preferredOccupant) {
+    if (preferredOccupant.mode === 'daemon') {
+      if (preferredOccupant.isSwift) {
+        log(`[agentdeck] Swift daemon detected on port ${requestedPort} via /health. Requesting shutdown to take over...`);
+        await requestDaemonShutdown(requestedPort);
+        await waitForDaemonExit(requestedPort);
+        await waitForPortBindable(requestedPort);
       } else {
-        // Port occupied by non-daemon (e.g. session bridge) — find alternative
-        log(`[agentdeck] Port ${requestedPort} occupied (${health.mode ?? 'unknown'}), finding alternative...`);
-        port = await findAvailablePort();
+        // Daemon alive but not in our registry — race condition or stale state
+        log(`[agentdeck] Daemon already running on port ${requestedPort} (detected via /health).`);
+        process.exit(0);
       }
+    } else {
+      // Port occupied by non-daemon (e.g. session bridge) — find alternative
+      log(`[agentdeck] Port ${requestedPort} occupied (${preferredOccupant.mode ?? 'unknown'}), finding alternative...`);
+      port = await findAvailablePort();
     }
   }
 
@@ -2957,8 +2956,49 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       if (occupant?.mode === 'daemon') {
         log(`[agentdeck] Port ${requestedPort} reports a daemon but PID ${occupant.pid} is not a live distinct process; treating as stale and falling back.`);
       }
+
+      // Nobody answered on the preferred port, yet it refuses to bind. That is
+      // not a peer to yield to — it is the kernel still holding a port whose
+      // owner has already gone: macOS keeps a NECP reservation for ~14s after
+      // an `NWListener.cancel()` (measured 2026-08-06: bindable at ~17s, with
+      // `lsof` showing zero sockets throughout), and a half-closed socket in
+      // TIME_WAIT/LAST_ACK looks the same from here.
+      //
+      // Without this wait the daemon conceded instantly and moved to 9121 —
+      // permanently, because nothing ever moved it back. Seconds after that
+      // decision the canonical port was free and owned by nobody. Waiting is
+      // the whole recovery: `waitForPortBindable` polls, so a kernel-held port
+      // costs the ~14s it is actually held, and only a genuinely occupied port
+      // pays the full budget before falling back.
+      if (!occupant) {
+        log(`[agentdeck] Port ${requestedPort} is held but nothing answers /health — usually the kernel still `
+          + `releasing it after the previous owner exited. Waiting up to ${Math.round(PREFERRED_PORT_RECLAIM_MS / 1000)}s…`);
+        if (await waitForPortBindable(requestedPort, PREFERRED_PORT_RECLAIM_MS)) {
+          const bound = await new Promise<boolean>((resolve) => {
+            const onError = () => resolve(false);
+            httpServer.once('error', onError);
+            httpServer.listen(requestedPort, bindHost, () => {
+              httpServer.removeListener('error', onError);
+              resolve(true);
+            });
+          });
+          if (bound) {
+            log(`[agentdeck] Port ${requestedPort} came free — bound it instead of falling back.`);
+            return;
+          }
+          // Lost it again between the probe bind and ours. Rare, and the
+          // fallback below is exactly the right answer for it.
+          log(`[agentdeck] Port ${requestedPort} was taken again before this daemon could bind it.`);
+        } else {
+          log(`[agentdeck] Port ${requestedPort} is still held after ${Math.round(PREFERRED_PORT_RECLAIM_MS / 1000)}s — `
+            + `something outside AgentDeck is listening on it, or a sleeping device is holding a half-closed socket.`);
+        }
+      }
+
       port = await findAvailablePort();
       log(`[agentdeck] Port ${requestedPort} grabbed by ${occupant?.mode ?? 'a non-daemon'}, retrying on ${port}...`);
+      log(`[agentdeck] This daemon prefers port ${requestedPort} (${describeDaemonPortSource(preferred.source)}). `
+        + `Clients resolve the actual port from daemon.json; 'agentdeck daemon restart' aims at the preferred port again.`);
       await new Promise<void>((resolve, reject) => {
         httpServer.on('error', (e: NodeJS.ErrnoException) => reject(e));
         httpServer.listen(port, bindHost, () => resolve());
@@ -2969,6 +3009,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   });
 
   log(describeDaemonPosture(posture, port));
+  if (preferred.source === 'settings' || preferred.source === 'env') {
+    // A persisted or environmental port is invisible in the command line that
+    // started this daemon, so the log is the only place it can be discovered.
+    log(`[agentdeck] Preferred port ${requestedPort} comes from ${describeDaemonPortSource(preferred.source)}.`);
+  }
 
   // Write daemon.json for client discovery (must be after successful bind).
   // Keep the original startedAt stable when the self-heal timer rewrites it.

@@ -137,6 +137,24 @@ persistent `daemonPort` for the CLI to match the Swift app's `AppPreferences.dae
 at `apple/AgentDeck/App/AppPreferences.swift:44`), and make the exhaustion message name
 the real cause when other UIDs hold ports. **S** · ~1 day.
 
+**Done 2026-08-17.** `bridge/src/daemon-port.ts` resolves the preferred port
+(`-p` › `AGENTDECK_DAEMON_PORT` › `settings.json daemonPort` › 9120) and
+`agentdeck daemon port` reads/writes it. The exhaustion message now counts
+ports held by this install's own sessions separately from ports it cannot bind
+and does not own — the shared-box case, where "Stop an existing session first"
+is advice the reader cannot act on.
+
+Implementing it surfaced the half that mattered more in practice: **intent is
+persisted, the outcome never is.** A daemon bumped to a fallback port had no
+recorded intent, so nothing could tell it was on the wrong port — and writing
+the outcome down instead would have made the bump permanent. With an intent, a
+preferred port that is bound but answers no `/health` is recognised as a
+kernel-held port (macOS NECP reservation, ~14s) rather than a peer to yield to,
+and is waited out. `daemon restart` reads posture from the port the daemon is
+actually on and restarts on the preferred one, which also closes a silent
+enterprise downgrade: it used to probe 9120 blindly, and a daemon on 9121 then
+reported no posture at all — indistinguishable from an open one.
+
 ### 1.6 P2 — machine-global side effects
 
 - `adb reverse` (`bridge/src/adb-reverse.ts:5`) maps a device-side `9120` to the host
@@ -437,7 +455,7 @@ nothing.
 | 8 | `daemon start/install --enterprise`, persisted into the autostart unit (§4.2) | M | 1.5d | **done** — argv-baked into all three writers; `daemon restart` inherits via `/health` |
 | 9 | Pixoo auto-discovery default off, cloud call opt-in separately (§5) | S | 1d | **done** — default off (Node + Swift); `pixoo scan --no-cloud` splits the two disclosures |
 | 10 | UDP broadcast default off; back off when unused (§2.3) | S | 0.5d | **superseded** — off under `--local`/`--loopback`; a global default-off still open (§2.3) |
-| 11 | Configurable port window + persistent CLI daemon port (§1.5) | S | 1d | **port window done** (`--port-window` / `AGENTDECK_PORT_WINDOW`); persistent CLI port still open |
+| 11 | Configurable port window + persistent CLI daemon port (§1.5) | S | 1d | **done** (08-17) — `--port-window`; `agentdeck daemon port` persists `daemonPort`; a kernel-held preferred port is waited out (20s) instead of conceding forever; exhaustion message separates own from foreign ports |
 | 12 | Swift-side enterprise posture toggle in Settings (§3) | M | 2d | **done** (08-17) — Settings → Local server toggles → `DaemonPosture` (loopback bind, Bonjour skipped, module registration gated deny-by-default); posture rides Swift `/health` for `qr`/`pair`/`restart` parity |
 
 **P2 — cleanup.**

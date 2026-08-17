@@ -742,7 +742,13 @@ async function openDaemonLogs(logDir: string): Promise<[number, number]> {
 daemon
   .command('start')
   .description('Start monitoring daemon (WS + mDNS + Gateway proxy)')
-  .option('-p, --port <port>', 'Server port', String(BRIDGE_WS_PORT))
+  // No default value on purpose: an absent `-p` must be distinguishable from a
+  // typed one. The port then resolves through AGENTDECK_DAEMON_PORT and the
+  // persisted `daemonPort` (see `agentdeck daemon port`), and the "was this
+  // port asked for?" test below has something real to test. With commander's
+  // old default of "9120" that test was always true, so the branch meant to
+  // start on a fallback port could never be reached.
+  .option('-p, --port <port>', `Server port (default: the persisted daemonPort, else ${BRIDGE_WS_PORT})`)
   .option('-d, --debug', 'Enable debug logging')
   .option('-f, --foreground', 'Run in foreground (default: background fork)')
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
@@ -779,7 +785,17 @@ daemon
       log(`--port-window ${opts.portWindow} was not parseable — using the default window.`);
     }
 
-    const targetPort = opts.port ? parseInt(String(opts.port), 10) : BRIDGE_WS_PORT;
+    // The preferred port — what this daemon intends to serve. Everything below
+    // (the stand-down negotiation, the singleton guard, the bind) aims at it.
+    const { resolveDaemonPort, describeDaemonPortSource, DAEMON_PORT_MIN, DAEMON_PORT_MAX } = await import('./daemon-port.js');
+    const preferredPort = resolveDaemonPort({ flag: opts.port });
+    if (opts.port && preferredPort.source !== 'flag') {
+      log(`--port ${opts.port} is not a valid port (${DAEMON_PORT_MIN}-${DAEMON_PORT_MAX}) — using ${preferredPort.port} instead.`);
+    }
+    if (preferredPort.source === 'settings' || preferredPort.source === 'env') {
+      log(`Preferred port ${preferredPort.port} (${describeDaemonPortSource(preferredPort.source)}).`);
+    }
+    const targetPort = preferredPort.port;
     const incumbent = await probeDaemonHealth(targetPort);
     if (incumbent?.mode === 'daemon') {
       // Take over the fleet's credential along with the port. The app's daemon
@@ -878,7 +894,11 @@ daemon
       const logDir = join(homedir(), '.agentdeck');
       const scriptPath = fileURLToPath(import.meta.url);
       const args = [scriptPath, 'daemon', 'start', '--foreground'];
-      if (opts.port !== String(BRIDGE_WS_PORT)) args.push('-p', opts.port);
+      // Forward `-p` only when the user typed it. For every other source the
+      // child re-resolves from the same inherited environment and the same
+      // settings.json, so it lands on the same port — and it keeps its own
+      // provenance, which a forwarded `-p` would flatten into "asked for".
+      if (preferredPort.source === 'flag') args.push('-p', String(preferredPort.port));
       if (opts.debug) args.push('-d');
       if (opts.wakeWord) args.push('--wake-word');
       // The posture flags must survive the fork — the forked process IS the
@@ -903,7 +923,8 @@ daemon
 
     const { startDaemon } = await import('./daemon-server.js');
     await startDaemon({
-      port: parseInt(opts.port, 10),
+      port: preferredPort.port,
+      portSource: preferredPort.source,
       debug: opts.debug,
       wakeWord: !!opts.wakeWord,
       local: !!opts.local,
@@ -922,30 +943,48 @@ daemon
 daemon
   .command('restart')
   .description('Stop and restart the daemon')
-  .option('-p, --port <port>', 'Server port', String(BRIDGE_WS_PORT))
+  .option('-p, --port <port>', 'Server port to restart on (default: the persisted daemonPort)')
   .option('-d, --debug', 'Enable debug logging')
   .option('--local', 'Disable all device modules on the restarted daemon')
   .option('--loopback', 'Restart with a loopback-only posture (see `daemon start --loopback`)')
   .action(async (opts) => {
+    // Two different ports, and conflating them is what made this command lose
+    // the posture. The daemon must be PROBED and STOPPED where it actually is
+    // (daemon.json — which is 9121+ whenever it once fell back), but RESTARTED
+    // on the port it prefers. Probing 9120 blindly found nothing whenever the
+    // daemon had fallen back, and "no posture found" reads exactly like "open
+    // posture" — a silent enterprise downgrade, which is the one thing this
+    // inheritance exists to prevent.
+    const { probeDaemonHealth: probeHealth, readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+    const { resolveDaemonPort } = await import('./daemon-port.js');
+    const preferredPort = resolveDaemonPort({ flag: opts.port });
+    const info = readDaemonInfo();
+    const runningPort = info?.httpPort ?? info?.port ?? findDaemonPort() ?? preferredPort.port;
+
     // Read the running daemon's posture BEFORE stopping it. A restart that
     // defaults to "advertise everything" would silently undo an enterprise
     // install — the LaunchAgent / Scheduled Task / systemd unit carries the
     // posture in its argv, and this command does not read those three files.
     // Explicit flags still win; inheritance only fills in what wasn't asked for.
-    const { probeDaemonHealth: probeHealth } = await import('./session-registry.js');
-    const running = await probeHealth(parseInt(opts.port, 10));
+    const running = await probeHealth(runningPort);
     const inheritedLocal = running?.posture?.noDeviceModules === true;
     const inheritedLoopback = running?.posture?.loopbackOnly === true;
     const useLocal = !!opts.local || inheritedLocal;
     const useLoopback = !!opts.loopback || inheritedLoopback;
 
-    await stopDaemon(parseInt(opts.port, 10));
+    if (running && runningPort !== preferredPort.port) {
+      log(`Daemon is on port ${runningPort} but prefers ${preferredPort.port} — restarting there.`);
+    }
+
+    await stopDaemon(runningPort);
     // Wait for port release + session cleanup
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     const scriptPath = fileURLToPath(import.meta.url);
     const args = [scriptPath, 'daemon', 'start', '--foreground'];
-    if (opts.port !== String(BRIDGE_WS_PORT)) args.push('-p', opts.port);
+    // Same rule as `daemon start`: forward `-p` only when it was typed, so the
+    // child keeps the real provenance of its port.
+    if (preferredPort.source === 'flag') args.push('-p', String(preferredPort.port));
     if (opts.debug) args.push('-d');
     if (useLocal) args.push('--local');
     if (useLoopback) args.push('--loopback');
@@ -977,16 +1016,87 @@ daemon
     const info = readDaemonInfo();
     const sessions = listActive();
     const d = sessions.find(s => s.agentType === 'daemon');
-    const targetPort = info?.httpPort ?? info?.port ?? d?.port ?? port;
+    // Two ways to arrive at a port, and only one of them identifies OUR daemon.
+    // `registryPort` comes from this install's own daemon.json / sessions.json;
+    // the `?? port` tail is a blind probe of the default, which on a machine
+    // running a second AgentDeck answers with *its* daemon. Anything that
+    // claims something about "this daemon" may only use the registry-resolved
+    // port — a note attached to a stranger's daemon is worse than no note.
+    const registryPort = info?.httpPort ?? info?.port ?? d?.port ?? null;
+    const targetPort = registryPort ?? port;
     try {
       const res = await fetch(`http://127.0.0.1:${targetPort}/health`);
       const data = await res.json() as Record<string, unknown>;
       log(`Daemon status (port ${targetPort}): ${JSON.stringify(data, null, 2)}`);
+      // A daemon on a fallback port keeps working — clients resolve it from
+      // daemon.json — so nothing else ever says it happened. Without this line
+      // the only symptom is that the canonical port is owned by nobody.
+      const { resolveDaemonPort, describeDaemonPortSource } = await import('./daemon-port.js');
+      const preferred = resolveDaemonPort();
+      if (registryPort !== null && preferred.port !== registryPort) {
+        log(`Note: this daemon prefers port ${preferred.port} (${describeDaemonPortSource(preferred.source)}) `
+          + `but is serving ${registryPort} — it fell back at startup. `
+          + `Run 'agentdeck daemon restart' to aim at ${preferred.port} again.`);
+      }
     } catch {
       if (info) removeDaemonInfo();
       if (d) removeDaemonSession(d);
       log('Daemon is not running');
       process.exit(1);
+    }
+  });
+
+daemon
+  .command('port')
+  .argument('[port]', 'Port to persist as this machine\'s preferred daemon port')
+  .description('Show or set the persisted daemon port (settings.json daemonPort)')
+  .option('--clear', 'Forget the persisted port and go back to the built-in default')
+  .action(async (portArg: string | undefined, opts: { clear?: boolean }) => {
+    const {
+      resolveDaemonPort, describeDaemonPortSource, parseDaemonPort,
+      preferredDaemonPortFrom, DAEMON_PORT_SETTING_KEY, DAEMON_PORT_MIN, DAEMON_PORT_MAX,
+    } = await import('./daemon-port.js');
+    const { loadDaemonSettings, updateDaemonSetting, ownSettingsPath } = await import('./daemon-settings.js');
+    const { readDaemonInfo } = await import('./session-registry.js');
+
+    if (opts.clear) {
+      updateDaemonSetting(DAEMON_PORT_SETTING_KEY, undefined);
+      log(`Cleared the persisted daemon port in ${ownSettingsPath()}.`);
+    } else if (portArg !== undefined) {
+      const parsed = parseDaemonPort(portArg);
+      if (parsed === null) {
+        // Strict here, lenient in the reader: a typo must fail where the user
+        // can see it, not silently revert to 9120 six weeks later.
+        log(`"${portArg}" is not a valid port. Give an integer between ${DAEMON_PORT_MIN} and ${DAEMON_PORT_MAX}.`);
+        process.exit(1);
+      }
+      updateDaemonSetting(DAEMON_PORT_SETTING_KEY, parsed);
+      log(`Persisted daemon port ${parsed} in ${ownSettingsPath()}.`);
+      log(`It takes effect on the next 'agentdeck daemon restart'.`);
+      // A preferred port outside the sweep window is a quiet split-brain: the
+      // singleton guard scans the window, so a second daemon started later
+      // never sees this one and both run. Same warning `--port-window` prints,
+      // for the same reason — the window is a discovery contract, not a range
+      // of convenience.
+      const [lo, hi] = daemonPortWindow();
+      if (parsed < lo || parsed > hi) {
+        log(`Warning: ${parsed} is outside the daemon port window ${lo}-${hi}. Clients that discover `
+          + `by scanning that window will not find this daemon, and the singleton guard will not see `
+          + `it either — a second daemon could start alongside it. Move the window too `
+          + `(AGENTDECK_PORT_WINDOW), or pick a port inside it.`);
+      }
+    }
+
+    const resolved = resolveDaemonPort();
+    const stored = preferredDaemonPortFrom(loadDaemonSettings());
+    log(`Preferred port: ${resolved.port} (${describeDaemonPortSource(resolved.source)})`);
+    log(`Persisted value: ${stored ?? '(none)'}`);
+    const info = readDaemonInfo();
+    if (info) {
+      log(`Running daemon: port ${info.port} (PID ${info.pid})`
+        + (info.port === resolved.port ? '' : ' — on a fallback port, not its preferred one'));
+    } else {
+      log('Running daemon: none found');
     }
   });
 

@@ -62,6 +62,31 @@ Daemon owns port **9120** (default, fallback to 9121+ if occupied by non-daemon)
 
 `~/.agentdeck/daemon.json` stores `{ port, pid, startedAt, httpPort? }` for local client discovery (written on daemon bind, removed on shutdown). Remote clients discover via mDNS (daemon only advertises `_agentdeck._tcp`).
 
+### Preferred port vs actual port
+
+두 개는 다른 사실이고, 섞으면 폴백이 영구화된다.
+
+- **Preferred port** = 이 데몬이 서비스하려는 포트, 곧 *의도*. `-p/--port` › `AGENTDECK_DAEMON_PORT` › `settings.json` 의 `daemonPort` › 9120 순으로 해석된다 (`bridge/src/daemon-port.ts`). macOS 앱의 `AppPreferences.daemonPort` 와 같은 역할이고 같은 이름이다.
+- **Actual port** = 실제로 bind 에 성공한 포트, 곧 *결과*. `daemon.json` 이 이것을 기록하고 모든 클라이언트가 여기로 해석한다.
+
+**의도는 영속화하고 결과는 절대 영속화하지 않는다.** 시작 경로의 어떤 코드도 `daemonPort` 를 쓰지 않는다 — 사용자만 `agentdeck daemon port <n>` 로 쓴다. 결과를 적어버리면 자기강화가 된다: 14초짜리 커널 예약에 밀려 9121 에 앉은 데몬이 9121 을 기록하고 영원히 거기서 시작한다.
+
+```bash
+agentdeck daemon port          # 해석된 포트 + 출처 + 저장값 + 실제 서비스 중인 포트
+agentdeck daemon port 9200     # settings.json 에 저장 (다음 restart 부터 적용)
+agentdeck daemon port --clear  # 저장값 삭제 → 기본 9120 으로 복귀
+```
+
+저장값은 autostart 유닛에도 자동으로 적용된다 — LaunchAgent / Scheduled Task / systemd 는 `daemon start --foreground` 를 `-p` 없이 실행하고, 데몬이 시작 시점에 다시 해석하기 때문이다. (posture 플래그는 반대로 argv 에 구워야 한다. 그쪽은 파일이 아니라 명령줄에만 존재하는 사실이기 때문.)
+
+### 선호 포트를 잠깐 뺏겼을 때 — 기다린다, 포기하지 않는다
+
+선호 포트가 bind 되지 않는데 `/health` 에 아무도 응답하지 않으면, 그건 양보할 상대(peer)가 아니라 **주인이 이미 떠난 포트를 커널이 아직 붙들고 있는 것**이다. macOS 는 리스너를 cancel 한 뒤 ~14초 동안 NECP 예약을 유지한다(2026-08-06 실측: ~17초에 bind 가능, 그 사이 `lsof` 는 소켓을 0개로 보고한다). TIME_WAIT/LAST_ACK 반열림 소켓도 여기서는 똑같이 보인다.
+
+이 경우 데몬은 최대 20초(`PREFERRED_PORT_RECLAIM_MS`) 동안 폴링하며 기다렸다가 선호 포트를 잡는다. 폴링이므로 실제로 붙들린 시간만큼만 든다. 20초를 넘겨도 안 풀리면 그때 폴백 포트로 내려가되, **선호 포트가 무엇이고 왜 못 잡았는지 로그로 남긴다**. 이 대기가 없던 시절에는 즉시 9121 로 내려갔고, 몇 초 뒤 9120 이 비어도 아무것도 되돌리지 않아 그 데몬의 남은 수명 내내 canonical 포트가 주인 없는 상태로 남았다.
+
+폴백 상태는 `agentdeck daemon status` 가 알려주고(선호 포트와 실제 포트가 다를 때만), `agentdeck daemon restart` 가 선호 포트를 다시 겨냥한다 — restart 는 **실행 중인 실제 포트에서 posture 를 읽고 stop 한 뒤, 선호 포트로 start** 한다. 예전에는 9120 을 맹목적으로 probe 했기 때문에 데몬이 폴백 포트에 있으면 posture 를 못 읽었고, "posture 없음" 은 "개방 posture" 와 구별되지 않아 enterprise 설정이 조용히 풀렸다.
+
 ## Server implementations
 
 - **Node.js daemon**: single `http.createServer()` handles HTTP + WS upgrade on one port

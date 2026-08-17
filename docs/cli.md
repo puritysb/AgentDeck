@@ -39,6 +39,8 @@ The CLI command is `agentdeck`.
 
 **Port window (`--port-window <lo-hi>` / `AGENTDECK_PORT_WINDOW`).** The daemon's singleton guard sweeps the documented 9120–9139 window and concedes to any live daemon it finds, which is why an isolated daemon could not be started beside the real one — neither a separate `AGENTDECK_DATA_DIR` nor an explicit `-p` moved the sweep. Override the window to run a throwaway daemon for testing (`daemon start -p 9200 --port-window 9200-9209 --loopback --local`). A daemon outside the default window is invisible to clients that scan it, so `daemon start` prints the window whenever it is not the default, and an unparseable value falls back to the default rather than disabling the guard.
 
+**Preferred daemon port (`agentdeck daemon port`).** The daemon resolves the port it *intends* to serve from `-p/--port` › `AGENTDECK_DAEMON_PORT` › `settings.json` `daemonPort` › 9120, and records where it actually landed in `daemon.json`. Only the user writes the persisted value (`agentdeck daemon port 9200`, `--clear` to forget it); nothing in the startup path does, because persisting the *outcome* would turn a 14-second kernel hold on 9120 into a permanent move to 9121. When the preferred port is held but nothing answers `/health` there, the daemon waits up to 20s for it rather than conceding — see [docs/daemon.md § Preferred port vs actual port](daemon.md#preferred-port-vs-actual-port).
+
 The `-c` flag sets the full command AgentDeck spawns inside the session PTY, so any arguments you add are forwarded straight to the underlying agent. For example, to resume an earlier Claude Code session (the interactive picker appears when no id is given):
 
 ```bash
@@ -105,8 +107,9 @@ a session behaves.
 |---------|-------------|
 | `agentdeck daemon start` | Start monitoring daemon (`--local`, `--loopback`, `--port-window` — see below) |
 | `agentdeck daemon stop` | Stop daemon |
-| `agentdeck daemon restart` | Restart daemon (inherits the running daemon's posture) |
-| `agentdeck daemon status` | Show daemon status |
+| `agentdeck daemon restart` | Restart daemon — reads posture from the port it is actually on, restarts on its preferred port |
+| `agentdeck daemon status` | Show daemon status (says so when it is serving a fallback port) |
+| `agentdeck daemon port [n]` | Show or persist the preferred daemon port (`--clear` to forget it) |
 | `agentdeck daemon install` | Register auto-start (macOS LaunchAgent / Windows Scheduled Task / systemd unit); `--enterprise` bakes the loopback posture into it |
 | `agentdeck daemon uninstall` | Remove auto-start (LaunchAgent / Scheduled Task) |
 

@@ -8,7 +8,7 @@ import http from 'http';
 import { debug, logError } from './logger.js';
 
 /** Allow tests to override the data directory via env var */
-function getDataDir(): string {
+export function getDataDir(): string {
   return process.env.AGENTDECK_DATA_DIR || join(homedir(), '.agentdeck');
 }
 
@@ -292,13 +292,46 @@ export async function findAvailablePort(opts?: { reserveDaemon?: boolean }): Pro
   // Session bridges start from BASE_PORT+1 to reserve 9120 for the daemon.
   const [basePort, maxPort] = daemonPortWindow();
   const startPort = opts?.reserveDaemon ? basePort + 1 : basePort;
+  let mine = 0;
+  let foreign = 0;
   for (let port = startPort; port <= maxPort; port++) {
-    if (!usedPorts.has(port) && await isPortFree(port)) {
-      return port;
-    }
+    if (usedPorts.has(port)) { mine++; continue; }
+    if (await isPortFree(port)) return port;
+    foreign++;
   }
-  // All ports exhausted — throw instead of silently colliding
-  throw new Error(`All AgentDeck ports (${basePort}–${maxPort}) are in use. Stop an existing session first.`);
+  // All ports exhausted — throw instead of silently colliding.
+  throw new Error(portExhaustionMessage(basePort, maxPort, mine, foreign));
+}
+
+/**
+ * Why the window ran out, in the terms the user can act on.
+ *
+ * The old message said "Stop an existing session first", which names the wrong
+ * cause on a shared box: the ports this install can see in its own registry are
+ * only the ones it owns. Another OS user's daemon and sessions are invisible
+ * here — they show up as ports that simply refuse to bind — and telling that
+ * user to stop *their* sessions is advice that cannot work. Counting the two
+ * kinds separately is the cheapest honest distinction available without probing
+ * socket ownership, which needs a subprocess and is not portable.
+ *
+ * @internal Exported for the unit test.
+ */
+export function portExhaustionMessage(
+  basePort: number,
+  maxPort: number,
+  mine: number,
+  foreign: number,
+): string {
+  const parts = [`All AgentDeck ports (${basePort}–${maxPort}) are in use`];
+  const detail: string[] = [];
+  if (mine > 0) detail.push(`${mine} held by this install's own sessions`);
+  if (foreign > 0) detail.push(`${foreign} by processes outside its registry (another user's AgentDeck, or unrelated software)`);
+  if (detail.length) parts.push(`: ${detail.join(', ')}`);
+  parts.push('.');
+  if (mine > 0) parts.push(" Stop an existing session, or");
+  else parts.push(' Nothing here can free those ports —');
+  parts.push(` give this install its own window with AGENTDECK_PORT_WINDOW=${maxPort + 1}-${maxPort + 20}.`);
+  return parts.join('');
 }
 
 /** Detect tmux session name if running inside tmux */
