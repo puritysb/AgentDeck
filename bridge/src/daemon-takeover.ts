@@ -29,15 +29,24 @@ export interface IncumbentHealth {
   pairingToken?: string;
 }
 
+/**
+ * Everything with an effect is required, not optional-with-a-default. A
+ * defaulted `standDown` that resolves false reads as "the app refused" and a
+ * defaulted `waitForBindable` as "the port never came back" — so a caller that
+ * forgot to wire one would take a fallback port and log a hardware excuse for
+ * it, silently and plausibly. Making them required turns that into a type
+ * error. Only the two dependencies whose real implementation is always correct
+ * (ownership, logging) carry defaults.
+ */
 export interface TakeoverDeps {
   ownership?: (pid: number | null | undefined) => LocalPeerOwnership;
-  /** Returns true when the served token actually changed. */
-  adoptToken?: (token: unknown) => boolean;
-  standDown?: (port: number) => Promise<boolean>;
-  shutdown?: (port: number) => Promise<void>;
-  waitForExit?: (port: number, timeoutMs: number) => Promise<boolean>;
-  waitForBindable?: (port: number, timeoutMs: number) => Promise<boolean>;
   log?: (msg: string) => void;
+  /** Returns true when the served token actually changed. */
+  adoptToken: (token: unknown) => boolean;
+  standDown: (port: number) => Promise<boolean>;
+  shutdown: (port: number) => Promise<void>;
+  waitForExit: (port: number, timeoutMs: number) => Promise<boolean>;
+  waitForBindable: (port: number, timeoutMs: number) => Promise<boolean>;
 }
 
 export type TakeoverOutcome =
@@ -77,7 +86,7 @@ const BINDABLE_WAIT_MS = 30_000;
 
 export async function negotiateIncumbentDaemon(
   args: { port: number; incumbent: IncumbentHealth | null; portWasExplicit: boolean },
-  deps: TakeoverDeps = {},
+  deps: TakeoverDeps,
 ): Promise<TakeoverOutcome> {
   const { port, incumbent, portWasExplicit } = args;
   if (incumbent?.mode !== 'daemon') return 'proceed';
@@ -114,7 +123,7 @@ export async function negotiateIncumbentDaemon(
   // this loopback answer is the only place we can learn what every paired
   // board is currently holding. Adopting it BEFORE the stand-down means the
   // handover costs no device its pairing.
-  if ((deps.adoptToken ?? (() => false))(incumbent.pairingToken)) {
+  if (deps.adoptToken(incumbent.pairingToken)) {
     log(`Adopted the incumbent daemon's pairing token so paired devices survive the handover.`);
   }
 
@@ -131,9 +140,9 @@ export async function negotiateIncumbentDaemon(
   log(`AgentDeck app's in-process daemon holds port ${port} — requesting stand-down to take over with the full CLI feature set…`);
   // Prefer /stand-down (clean demote: the app stays running as a client).
   // Fall back to /shutdown for older app builds that predate the endpoint.
-  let acked = await (deps.standDown ?? (async () => false))(port);
+  let acked = await deps.standDown(port);
   if (!acked) {
-    await (deps.shutdown ?? (async () => {}))(port);
+    await deps.shutdown(port);
     acked = true; // shutdown is best-effort (no ack body); rely on the exit wait
   }
 
@@ -145,8 +154,8 @@ export async function negotiateIncumbentDaemon(
   // ownerless. The app's takeover-yield window is longer (45s), so it stays
   // off the port until well after this wait has claimed it.
   const yielded = acked
-    && await (deps.waitForExit ?? (async () => false))(port, EXIT_WAIT_MS)
-    && await (deps.waitForBindable ?? (async () => false))(port, BINDABLE_WAIT_MS);
+    && await deps.waitForExit(port, EXIT_WAIT_MS)
+    && await deps.waitForBindable(port, BINDABLE_WAIT_MS);
   if (yielded) {
     log(`App daemon yielded port ${port}. Starting CLI daemon…`);
     return 'proceed';
