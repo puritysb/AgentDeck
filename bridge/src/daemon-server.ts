@@ -1249,6 +1249,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // turn must not be charged to that rate.
           synthetic_stop: true,
           ...(reason === 'interrupted' ? { interrupted: true } : {}),
+          // Same for a client abort (usage limit, auth, API error): Claude
+          // Code fires no Stop for it, so nothing was lost to recover.
+          ...(reason === 'aborted' ? { aborted: true } : {}),
           ...(cwd ? { cwd } : {}),
           ...(projectName ? { project_name: projectName } : {}),
         }),
@@ -2483,6 +2486,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             apme.collector.noteTurnStop(hookSid, {
               synthetic: json.synthetic_stop === true,
               interrupted: json.interrupted === true,
+              aborted: json.aborted === true,
             });
           }
           if (turnOpen && lastStart) {

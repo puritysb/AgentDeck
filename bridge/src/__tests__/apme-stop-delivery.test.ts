@@ -139,6 +139,26 @@ describe('turns.end_source', () => {
     expect(turnsOf(store, runId)[0].end_source).toBe('interrupted');
   });
 
+  it('a client abort is tagged `aborted`, even though it arrives as a synthetic Stop', () => {
+    // Usage limit / expired auth / API error: Claude Code writes the message
+    // and fires no Stop, so the abort can only ever reach the collector as a
+    // synthetic one — reading `synthetic` first would file an exhausted usage
+    // window as dropped infrastructure.
+    const runId = openRun();
+    prompt(collector, SID, 'first');
+    collector.noteTurnStop(SID, { synthetic: true, aborted: true });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('aborted');
+  });
+
+  it('a cancel outranks an abort when both flags somehow arrive', () => {
+    const runId = openRun();
+    prompt(collector, SID, 'first');
+    collector.noteTurnStop(SID, { synthetic: true, interrupted: true, aborted: true });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('interrupted');
+  });
+
   it('a displaced turn whose transcript shows a cancel is `interrupted`, not `next_prompt`', () => {
     // Cancel-then-retype buries the marker under the new prompt within
     // seconds, so the watchdog never sees it as the tail. Left unattributed,
@@ -146,7 +166,7 @@ describe('turns.end_source', () => {
     const seen: Array<{ path: string; since: number }> = [];
     const c = new ApmeCollector(store, undefined, (path, since) => {
       seen.push({ path, since });
-      return since + 1_000;
+      return { interruptedAt: since + 1_000, abortedAt: null, sawAssistant: true };
     });
     const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
@@ -157,8 +177,35 @@ describe('turns.end_source', () => {
     expect(seen[0].path).toBe('/t.jsonl');
   });
 
-  it('no marker in the window still means `next_prompt` — absence is never a cancel', () => {
-    const c = new ApmeCollector(store, undefined, () => null);
+  it('a displaced turn whose transcript shows a client abort is `aborted`', () => {
+    // The watchdog closes these at +15s, but not when it was swept for
+    // idleness first or the daemon restarted mid-turn — and an aborted turn is
+    // exactly the shape that then sits open until the next morning's prompt.
+    const c = new ApmeCollector(store, undefined, (_p, since) =>
+      ({ interruptedAt: null, abortedAt: since + 2_000, sawAssistant: true }));
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('aborted');
+  });
+
+  it('a displaced turn the assistant never answered is `superseded`, not a lost Stop', () => {
+    // Two prompts ~130ms apart (queued messages, <task-notification> pairs):
+    // one model turn serves both and owes exactly one Stop, which closes the
+    // last of them. The first row never ran, so nothing was lost for it.
+    const c = new ApmeCollector(store, undefined, () =>
+      ({ interruptedAt: null, abortedAt: null, sawAssistant: false }));
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('superseded');
+  });
+
+  it('no evidence in the window still means `next_prompt` — absence is never a verdict', () => {
+    const c = new ApmeCollector(store, undefined, () =>
+      ({ interruptedAt: null, abortedAt: null, sawAssistant: true }));
     const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
@@ -170,7 +217,10 @@ describe('turns.end_source', () => {
     // The marker and the JSONL shape are Claude Code's; a Codex turn has
     // neither, and probing one would be a wasted read at best.
     let probed = 0;
-    const c = new ApmeCollector(store, undefined, () => { probed++; return Date.now(); });
+    const c = new ApmeCollector(store, undefined, () => {
+      probed++;
+      return { interruptedAt: Date.now(), abortedAt: null, sawAssistant: true };
+    });
     c.openRun({ sessionId: 'codex-sess', agentType: 'codex-cli' });
     c.ingestHook('codex-sess', 'UserPromptSubmit', { message: { content: 'a' }, transcript_path: '/t.jsonl' });
     c.ingestHook('codex-sess', 'UserPromptSubmit', { message: { content: 'b' }, transcript_path: '/t.jsonl' });
@@ -184,12 +234,20 @@ describe('turns.end_source', () => {
   });
 
   it('an unreadable transcript falls back to `next_prompt` rather than guessing', () => {
-    const c = new ApmeCollector(store, undefined, () => { throw new Error('EACCES'); });
-    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
-    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
-    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
+    // Both shapes of "cannot read": a throw, and the probe's own null. Neither
+    // may become `superseded` — "no assistant record" and "no transcript" are
+    // different facts and only the first one is evidence.
+    for (const probe of [
+      () => { throw new Error('EACCES'); },
+      () => null,
+    ]) {
+      const c = new ApmeCollector(store, undefined, probe as never);
+      const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+      c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
+      c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
 
-    expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
+      expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
+    }
   });
 
   it('the response still lands on the turn when the Stop closes it first', () => {

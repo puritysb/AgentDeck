@@ -2,6 +2,86 @@
 
 ---
 
+## 2026-08-17 — Stop 유실 5건은 전부 유실이 아니었다 (그리고 워치독은 살아 있었다)
+
+### 조사: `Synth 0`
+
+7일 창 계측이 이랬다 — 턴 100, Stop 55, **Synth 0**, NoStop 5, SessEnd 14, Open 2,
+`?` 24, 손실 "8% of 60". 워치독 복구가 0건인데 미복구 유실이 5건이면 둘 중 하나다:
+복구 경로가 프로덕션에서 한 번도 발화한 적 없거나(1.0.20 이 그랬듯), 그 5건이 워치독
+타임아웃 전에 다음 프롬프트로 닫혔거나. **0 은 죽은 경로와 구별되지 않으므로** 숫자가
+아니라 경로 발화를 직접 확인했다.
+
+경로는 살아 있었다. 격리 데몬(`-p 9199 --port-window 9190-9199 --loopback`,
+전용 `AGENTDECK_DATA_DIR`)에 가짜 transcript 와 hook POST 를 넣어 실측:
+
+```
+[watchdog] turn closed from transcript (end_turn @ ...)
+[watchdog] observed session aaaaaaaa turn ended (end_turn) — injecting synthetic Stop
+[APME]     closeTurn 63e02c35 index=0 tools=0 src=synthetic_stop
+```
+
+음성 대조군(끝나지 않은 transcript)에서는 25초 동안 발화하지 않았다. 즉 데몬 self-POST
+→ `/hooks/Stop` → collector 까지 전 구간이 동작한다.
+
+그렇다면 그 5건은 무엇이었나. 5건 전부 transcript 로 되짚어 확인했다 — **하나도 Stop
+유실이 아니었다.**
+
+- **3건: 클라이언트 중단.** `You've hit your session limit · resets 5:50pm` 이 assistant
+  레코드 하나로 `stop_reason: "stop_sequence"` 와 함께 기록되고, 그 뒤에
+  `stop_hook_summary` 가 **없다** — Claude Code 가 Stop hook 을 아예 쏘지 않는다. 워치독의
+  술어는 `end_turn` 뿐이라 걸리지 않았고, 두 건 모두 턴이 **8시간 넘게** 열려 있었다.
+- **2건: 돌지도 않은 턴.** `<task-notification>` 주입이 130ms 간격 쌍으로 들어오고 모델
+  턴 하나가 둘을 처리한다. 앞 행은 116ms 만에 다음 프롬프트에 밀려 닫혔다 — 애초에 그
+  턴에 빚진 Stop 이 없다.
+
+즉 측정된 Claude Stop 유실률은 **8% 가 아니라 0/60** 이고, 계측기가 유실이 아닌 두
+모양을 유실로 세고 있었다. (계측 도입 이래 기록된 Claude `next_prompt` 5건이 전부 이
+둘이다. 나머지 `next_prompt` 3건은 Codex 세션으로, 자기 `codex_stop` 을 갖는 다른 에이전트다.)
+
+### 해결
+
+`end_source` 에 버킷 둘을 추가했다. ESC 취소를 따로 세는 것과 정확히 같은 이유다 —
+**올 Stop 이 없었던 턴은 온 적 없는 Stop 을 보고할 수 없다.**
+
+- **`aborted`** — 클라이언트가 끝낸 턴(한도·인증·크레딧·API 오류). 워치독이
+  `stop_sequence` 를 세 번째 종료 근거로 인정해 ~15초 안에 닫는다. 통계보다 이쪽이 본질
+  이다: 중단된 턴이 8시간씩 열려 있으면 모든 기기에 PROCESSING 으로 뜨고 APME run 이
+  열린 채 남아 eval 을 굶긴다.
+- **`superseded`** — 다음 프롬프트가 밀어냈지만 그 사이 assistant 레코드가 **하나도**
+  없는 턴. 시간 임계값이 아니라 transcript 근거로 판별한다.
+
+술어를 믿기 전에 재 봤다. 로컬 transcript 211개 / assistant 레코드 61,281건에서
+`stop_reason` 은 `tool_use` 58,765 · `end_turn` 2,513 · `stop_sequence` 37 이고, 그 37건은
+전부 클라이언트 중단 메시지, **하나도** `stop_hook_summary` 가 뒤따르지 않으며, 같은 턴
+에서 assistant 작업이 이어진 것도 없다. 혼동할 양성 모양이 없다.
+
+다음 프롬프트 close 경로는 이제 tail 을 **한 번** 읽어 세 가지를 함께 답한다
+(`readOpenTurnEvidence`: 취소 마커 / 중단 레코드 / assistant 가 뭐라도 썼는지).
+`readInterruptSince` 를 대체한 것인데, 그 함수는 "읽을 수 없음"과 "근거 없음"을 같은
+`null` 로 뭉갰다 — 새 판별에서는 전자가 `next_prompt`(추측 금지), 후자가 `superseded` 로
+갈리므로 구별이 필요했다.
+
+두 새 경로 모두 격리 데몬에서 실측했다:
+
+```
+[watchdog] observed session bbbbbbbb turn ended (aborted) — injecting synthetic Stop
+[APME]     closeTurn e70cd2ed index=0 tools=0 src=aborted
+[APME]     closeTurn 7a9cf391 index=0 tools=0 src=superseded
+```
+
+### 교훈
+
+- **0 은 값이 아니라 질문이다.** 복구 0건은 "복구가 필요 없었다"와 "복구가 죽었다"를
+  구별하지 못한다. `debug()` 는 `--debug` 없이는 아무것도 쓰지 않으므로 로그의 침묵도
+  근거가 아니다. 경로를 직접 쏴 보는 것 말고 답이 없다.
+- **손실 계측기는 손실이 아닌 것을 먼저 정의해야 한다.** ESC(2026-08-15), 클라이언트
+  중단, 밀려난 프롬프트 — 셋 다 "Stop 이 빚지지 않은 턴"이고, 하나씩 발견될 때마다
+  유실률이 내려갔다. 분모 규칙을 `stopDeliveryLoss()` 한 곳에 둔 이유다.
+- **턴이 안 닫히는 버그는 통계 버그로 위장한다.** `Synth 0` 을 쫓다 나온 진짜 문제는
+  숫자가 아니라 8시간 열린 턴이었다.
+
+---
 ## 2026-08-17 — 데몬 포트에 "의도" 를 만들고, 잠깐 뺏긴 포트를 되찾게 하다
 
 ### 문제

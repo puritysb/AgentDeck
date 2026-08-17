@@ -582,8 +582,10 @@ export async function startSession(opts: SessionOptions): Promise<void> {
           data: {
             transcript_path,
             synthetic_stop: true,
-            // A user cancel is not a lost hook — same close, different bucket.
+            // A user cancel and a client abort are not lost hooks — same
+            // close, different buckets.
             ...(reason === 'interrupted' ? { interrupted: true } : {}),
+            ...(reason === 'aborted' ? { aborted: true } : {}),
           },
         } as AdapterEvent);
       },
@@ -1691,6 +1693,7 @@ function wireClaudeCodeTimeline(
           apmeRef.collector.noteTurnStop(core.sessionId, {
             synthetic: evt.data?.synthetic_stop === true,
             interrupted: evt.data?.interrupted === true,
+            aborted: evt.data?.aborted === true,
           });
         }
 

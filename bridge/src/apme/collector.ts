@@ -27,7 +27,7 @@ import type { AgentType, TelemetrySpan, ApmeSampleEventRow, TrajectoryEventKind,
 import { priceUsd, providerFor } from '@agentdeck/shared';
 import type { ApmeHwSampler } from './hw-sampler.js';
 import { classifyRunSmart, computeSignals, classify } from './classifier.js';
-import { readInterruptSince } from './claude-transcript-reader.js';
+import { readOpenTurnEvidence, type OpenTurnEvidence } from './claude-transcript-reader.js';
 
 export interface OpenRunInput {
   sessionId: string;
@@ -193,9 +193,10 @@ export class ApmeCollector {
   constructor(
     private readonly store: ApmeStore,
     private readonly hwSampler?: ApmeHwSampler,
-    /** Newest user-interrupt marker at/after a timestamp. Injectable for
-     *  tests; the default reads the Claude transcript tail. */
-    private readonly interruptProbe: (transcriptPath: string, sinceMs: number) => number | null = readInterruptSince,
+    /** What the transcript proves about a turn open since a timestamp — cancel,
+     *  client abort, or never having run at all. Injectable for tests; the
+     *  default reads the Claude transcript tail once for all three. */
+    private readonly openTurnProbe: (transcriptPath: string, sinceMs: number) => OpenTurnEvidence | null = readOpenTurnEvidence,
   ) {}
 
   /** Start a new run and return its id. Safe to call if store disabled (returns ''). */
@@ -450,27 +451,43 @@ export class ApmeCollector {
    *
    *  Idempotent: a duplicate or late Stop finds no active turn and no-ops, so
    *  a synthetic Stop racing a real one cannot overwrite the real attribution. */
-  noteTurnStop(sessionId: string, opts: { synthetic?: boolean; interrupted?: boolean } = {}): void {
+  noteTurnStop(sessionId: string, opts: { synthetic?: boolean; interrupted?: boolean; aborted?: boolean } = {}): void {
     if (!this.store.enabled) return;
-    // `interrupted` outranks `synthetic`: a cancel is always delivered as a
-    // synthetic Stop (there is no real one to deliver), so reading the flags
-    // the other way round would file every user cancel as a dropped hook.
+    // `interrupted` and `aborted` both outrank `synthetic`: neither ending
+    // produces a real Stop, so each can only ever arrive AS a synthetic one,
+    // and reading the flags the other way round would file every user cancel
+    // and every usage-limit abort as a dropped hook. Cancel wins over abort on
+    // the impossible both-set case, for the same reason it wins over synthetic
+    // — it is the narrower, user-caused claim.
     const source: TurnEndSource = opts.interrupted ? 'interrupted'
-      : opts.synthetic ? 'synthetic_stop'
-        : 'stop';
+      : opts.aborted ? 'aborted'
+        : opts.synthetic ? 'synthetic_stop'
+          : 'stop';
     this.closeTurn(sessionId, source);
   }
 
   /** Attribute a turn that is still open when the next prompt arrives.
    *
-   *  The watchdog catches a cancel only while the interrupt marker is still
-   *  the transcript's tail. The commonest ESC shape — cancel, then retype
-   *  straight away — buries it under the new user message in seconds and
-   *  fires a fresh `UserPromptSubmit`, so the displaced turn would land in
-   *  `next_prompt` and inflate the very loss rate this instrument measures.
-   *  Asking the transcript here costs one bounded tail read, and only on the
-   *  path where a turn was already left open — a healthy turn is closed by
-   *  its Stop long before this runs. */
+   *  `next_prompt` is the only bucket that means "a Stop was owed and never
+   *  came", so everything that reaches here for some other reason has to be
+   *  told apart before it inflates the very loss rate this instrument
+   *  measures. Three do, and one bounded tail read answers all three — on this
+   *  path only, since a healthy turn is closed by its Stop long before this
+   *  runs:
+   *
+   *   - A CANCEL. The watchdog catches one only while the interrupt marker is
+   *     still the transcript's tail; the commonest ESC shape — cancel, then
+   *     retype straight away — buries it under the new user message in seconds
+   *     and fires a fresh `UserPromptSubmit`.
+   *   - A CLIENT ABORT (usage limit, expired auth, API error). The watchdog
+   *     closes those at +15s, but not if it was swept for idleness first
+   *     (30 min) or the daemon restarted mid-turn — and an abort is exactly
+   *     the shape that then sits open for hours.
+   *   - A turn that NEVER RAN. Queued prompts and `<task-notification>`
+   *     injections arrive in pairs ~130 ms apart; Claude serves both with one
+   *     model turn and owes exactly one Stop, which closes the LAST of them.
+   *     A displaced row with no assistant record behind it at all is that
+   *     artifact, not a lost hook. */
   private resolveDisplacedTurnSource(sessionId: string, data: Record<string, unknown>): TurnEndSource {
     const turn = this.sessionToTurn.get(sessionId);
     // No open turn: closeTurn no-ops, so the value is immaterial.
@@ -480,10 +497,16 @@ export class ApmeCollector {
     const transcriptPath = typeof data.transcript_path === 'string' ? data.transcript_path : '';
     if (!transcriptPath) return 'next_prompt';
     try {
-      const at = this.interruptProbe(transcriptPath, turn.startedAt - TURN_INTERRUPT_SLACK_MS);
-      return at != null ? 'interrupted' : 'next_prompt';
+      const evidence = this.openTurnProbe(transcriptPath, turn.startedAt - TURN_INTERRUPT_SLACK_MS);
+      // An unreadable transcript is no evidence of anything — never guess.
+      if (!evidence) return 'next_prompt';
+      if (evidence.interruptedAt != null) return 'interrupted';
+      if (evidence.abortedAt != null) return 'aborted';
+      // Ordered last on purpose: a cancelled or aborted turn that also wrote
+      // nothing is still a cancel or an abort, not a superseded prompt.
+      if (!evidence.sawAssistant) return 'superseded';
+      return 'next_prompt';
     } catch {
-      // An unreadable transcript is no evidence of a cancel — never guess.
       return 'next_prompt';
     }
   }

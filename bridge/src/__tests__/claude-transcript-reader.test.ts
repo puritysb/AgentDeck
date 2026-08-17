@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { readLastTurn, readTurnEndProbe, readInterruptSince } from '../apme/claude-transcript-reader.js';
+import { readLastTurn, readTurnEndProbe, readOpenTurnEvidence } from '../apme/claude-transcript-reader.js';
 
 // Picks the most recent user→assistant turn out of a Claude Code JSONL
 // transcript. These fixtures mirror the structure Claude Code writes to
@@ -214,7 +214,7 @@ describe('readTurnEndProbe', () => {
   });
 });
 
-describe('readInterruptSince', () => {
+describe('readOpenTurnEvidence', () => {
   let dir: string;
   beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'transcript-test-')); });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
@@ -226,6 +226,8 @@ describe('readInterruptSince', () => {
   }
 
   const AT = (iso: string) => Date.parse(iso);
+  const readInterruptSince = (path: string, since: number) =>
+    readOpenTurnEvidence(path, since)?.interruptedAt ?? null;
 
   it('finds a marker buried under the retyped prompt that followed it', () => {
     // The commonest ESC shape: cancel, then immediately retype. The marker is
@@ -268,5 +270,57 @@ describe('readInterruptSince', () => {
     ]));
     expect(readInterruptSince(path, AT('2026-08-13T12:00:00.000Z'))).toBeNull();
     expect(readInterruptSince(join(dir, 'missing.jsonl'), 0)).toBeNull();
+  });
+
+  it('distinguishes an unreadable transcript from one holding no evidence', () => {
+    // The caller resolves "no evidence" into a bucket and "cannot read" into a
+    // refusal to guess, so folding them into one null was never safe.
+    const path = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T12:00:05.000Z',
+        message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'text', text: 'working' }] } },
+    ]));
+    expect(readOpenTurnEvidence(path, AT('2026-08-13T12:00:00.000Z')))
+      .toEqual({ interruptedAt: null, abortedAt: null, sawAssistant: true });
+    expect(readOpenTurnEvidence(join(dir, 'missing.jsonl'), 0)).toBeNull();
+  });
+
+  it('reports the client abort that ends a turn with no Stop hook', () => {
+    // "You've hit your session limit" and friends are written as an assistant
+    // record with stop_reason stop_sequence, and Claude Code fires no Stop.
+    const path = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T12:00:04.000Z',
+        message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Bash' }] } },
+      { type: 'assistant', timestamp: '2026-08-13T12:00:06.000Z',
+        message: { role: 'assistant', stop_reason: 'stop_sequence',
+          content: [{ type: 'text', text: "You've hit your session limit · resets 5:50pm (Asia/Seoul)" }] } },
+    ]));
+    const out = readOpenTurnEvidence(path, AT('2026-08-13T12:00:00.000Z'))!;
+    expect(out.abortedAt).toBe(AT('2026-08-13T12:00:06.000Z'));
+    expect(out.sawAssistant).toBe(true);
+  });
+
+  it('will not pay this turn for the previous turn\'s abort', () => {
+    const path = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T11:00:00.000Z',
+        message: { role: 'assistant', stop_reason: 'stop_sequence', content: [{ type: 'text', text: 'limit' }] } },
+      { type: 'user', timestamp: '2026-08-13T12:00:01.000Z',
+        message: { role: 'user', content: [{ type: 'text', text: 'new turn' }] } },
+    ]));
+    const out = readOpenTurnEvidence(path, AT('2026-08-13T12:00:00.000Z'))!;
+    expect(out.abortedAt).toBeNull();
+    expect(out.sawAssistant).toBe(false);
+  });
+
+  it('reports a turn that never ran — two prompts, no assistant record between', () => {
+    // Queued prompts and <task-notification> injections land ~130ms apart and
+    // one model turn serves both; only the last of them is owed a Stop.
+    const path = writeTranscript(fixture([
+      { type: 'user', timestamp: '2026-08-13T12:00:00.100Z',
+        message: { role: 'user', content: [{ type: 'text', text: '<task-notification>a' }] } },
+      { type: 'user', timestamp: '2026-08-13T12:00:00.230Z',
+        message: { role: 'user', content: [{ type: 'text', text: '<task-notification>b' }] } },
+    ]));
+    expect(readOpenTurnEvidence(path, AT('2026-08-13T12:00:00.000Z')))
+      .toEqual({ interruptedAt: null, abortedAt: null, sawAssistant: false });
   });
 });

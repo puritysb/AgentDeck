@@ -250,6 +250,23 @@ export type ResponseKind = 'text' | 'tool_only' | 'empty';
  *                       NOT a lost hook. It is its own bucket precisely so it
  *                       stops being counted as one; the transcript's interrupt
  *                       marker is the only evidence it happened.
+ *   - `aborted`         the CLIENT ended the turn: usage limit reached, auth
+ *                       expired (`Please run /login`), credit limit, an API
+ *                       429/529. Claude Code writes one assistant record with
+ *                       `stop_reason: "stop_sequence"` and fires no Stop hook,
+ *                       so — like a cancel — no Stop was ever due. Measured,
+ *                       not assumed: across 211 local transcripts (61k
+ *                       assistant records) every one of the 37 `stop_sequence`
+ *                       records was such an abort message, none was followed by
+ *                       a `stop_hook_summary`, and none was followed by more
+ *                       assistant work in the same turn.
+ *   - `superseded`      a second prompt landed before this one's turn ever ran
+ *                       (queued messages and `<task-notification>` injections
+ *                       arrive in pairs ~130 ms apart), so one model turn served
+ *                       both and only the LAST of them is owed a Stop. The
+ *                       displaced row is an artifact of counting turns per
+ *                       `UserPromptSubmit`; the evidence is that the transcript
+ *                       holds no assistant record at all since the turn opened.
  *   - `session_end`     the session ended while the turn was open (an
  *                       abandoned turn).
  *   - `run_close`       the run was closed or reaped out from under the turn.
@@ -262,6 +279,8 @@ export type TurnEndSource =
   | 'synthetic_stop'
   | 'next_prompt'
   | 'interrupted'
+  | 'aborted'
+  | 'superseded'
   | 'session_end'
   | 'run_close'
   | 'clear';
@@ -276,12 +295,33 @@ export interface ApmeStopDeliveryRow {
   nextPrompt: number;
   /** User cancels. Reported beside the loss buckets, never inside them. */
   interrupted: number;
+  /** Client-side aborts (usage limit, auth, API error). Like a cancel, no Stop
+   *  was owed — reported beside the loss buckets, never inside them. */
+  aborted: number;
+  /** Prompts folded into the following turn before they ran. No Stop owed. */
+  superseded: number;
   /** `session_end` + `run_close` + `clear` folded together. */
   sessionEnd: number;
   /** Still open at query time. */
   open: number;
   /** Closed, but written before `end_source` existed — signal unknown. */
   preInstrument: number;
+}
+
+/** The Stop-delivery rate a row actually supports.
+ *
+ *  Defined once, here, because "which buckets are evidence of a lost hook" is
+ *  the whole instrument and a second consumer restating it would quietly
+ *  measure something else. Only turns whose Stop can be adjudicated are in the
+ *  denominator: a real Stop, a recovered one, or a turn the next prompt
+ *  displaced while it was genuinely running. Cancels, client aborts, superseded
+ *  prompts, session ends, still-open turns and pre-column rows are not evidence
+ *  either way — a turn for which Claude Code never owed a Stop cannot report a
+ *  dropped one. */
+export function stopDeliveryLoss(row: ApmeStopDeliveryRow): { adjudicated: number; lost: number; ratio: number | null } {
+  const adjudicated = row.stop + row.syntheticStop + row.nextPrompt;
+  const lost = row.syntheticStop + row.nextPrompt;
+  return { adjudicated, lost, ratio: adjudicated > 0 ? lost / adjudicated : null };
 }
 
 // ─── HTTP API response envelopes ──────────────────────────────────────────────

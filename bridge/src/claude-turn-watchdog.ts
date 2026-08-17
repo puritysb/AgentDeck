@@ -24,6 +24,15 @@
  * evidence that exists, so it closes the turn too — tagged `interrupted`, kept
  * out of the loss measurement, because no hook was lost here.
  *
+ * A third ending has the same shape and used to be invisible: the CLIENT aborts
+ * the turn — usage limit reached, auth expired, an API 429/529. Claude Code
+ * writes one assistant record with `stop_reason: "stop_sequence"` carrying the
+ * message the user sees and fires no Stop hook. Both times this happened in the
+ * measured week the turn stayed open for over eight hours (state PROCESSING on
+ * every device, the APME run open behind it) until the next morning's prompt
+ * displaced it, and each was then filed as a dropped hook. `end_turn` was too
+ * narrow a predicate for "the turn is over".
+ *
  * False-positive guards:
  *  - `stop_reason: "tool_use"` (permission prompt / AskUserQuestion open,
  *    tools running) never matches, so a genuine wait is never force-closed.
@@ -37,7 +46,7 @@
  */
 
 import { statSync } from 'fs';
-import { readTurnEndProbe, type TurnEndProbe } from './apme/claude-transcript-reader.js';
+import { readTurnEndProbe, CLIENT_ABORT_STOP_REASON, type TurnEndProbe } from './apme/claude-transcript-reader.js';
 import { debug } from './logger.js';
 
 /** Hook-channel silence required before the transcript is consulted. */
@@ -48,9 +57,11 @@ export const WATCHDOG_POLL_MS = 5_000;
 const TURN_OPEN_SLACK_MS = 2_000;
 
 /** Why the transcript says the open turn is over. `end_turn` is a Stop that
- *  was dropped in flight; `interrupted` is a turn the user cancelled, for
- *  which no Stop was ever due. They close identically and are counted apart. */
-export type TurnEndReason = 'end_turn' | 'interrupted';
+ *  was dropped in flight; `interrupted` is a turn the user cancelled and
+ *  `aborted` one the client ended (usage limit, auth, API error), for neither
+ *  of which a Stop was ever due. All three close the turn identically and are
+ *  counted apart — only the first is a lost hook. */
+export type TurnEndReason = 'end_turn' | 'interrupted' | 'aborted';
 
 export interface ClaudeTurnWatchdogOptions {
   /** Called when the transcript proves the open turn ended without a Stop. */
@@ -152,9 +163,15 @@ export class ClaudeTurnWatchdog {
     const probe = this.probe(this.transcriptPath);
     if (!probe) return;
     const finished = probe.role === 'assistant' && probe.stopReason === 'end_turn';
+    // A client abort is an assistant record too, but with the abort stop
+    // reason — mutually exclusive with `end_turn`, never a refinement of it.
+    const aborted = probe.role === 'assistant' && probe.stopReason === CLIENT_ABORT_STOP_REASON;
     // The marker is a `user` record, so it can never satisfy `finished` — the
-    // two are alternatives, not a refinement of one another.
-    const reason: TurnEndReason | null = finished ? 'end_turn' : probe.interrupted ? 'interrupted' : null;
+    // three are alternatives, not refinements of one another.
+    const reason: TurnEndReason | null = finished ? 'end_turn'
+      : probe.interrupted ? 'interrupted'
+        : aborted ? 'aborted'
+          : null;
     if (!reason) return;
     if (probe.timestampMs == null) return;
     if (probe.timestampMs < this.turnOpenedAt - TURN_OPEN_SLACK_MS) return;

@@ -152,6 +152,8 @@ Claude 턴을 닫는 권한은 Stop hook **하나뿐**이고 그 전달은 fire-
 | `synthetic_stop` | Stop 유실 → `claude-turn-watchdog.ts` 가 transcript tail 근거로 복구. **이 개수가 곧 유실 측정치** |
 | `next_prompt` | Stop 도 없고 복구도 없었음 — 다음 프롬프트가 밀어내며 닫음. **미복구 유실** |
 | `interrupted` | 사용자가 ESC 로 취소 — Claude Code 는 취소 시 hook 을 **하나도 emit 하지 않으므로** 애초에 올 Stop 이 없었다. 유실이 아니다 |
+| `aborted` | **클라이언트가** 턴을 끝냄 — 사용량 한도(`You've hit your session limit`), 인증 만료(`Please run /login`), 크레딧 소진, API 429/529. assistant 레코드 하나에 `stop_reason: "stop_sequence"` 로 기록되고 Stop hook 은 발화하지 않는다. 취소와 같은 이유로 유실이 아니다 |
+| `superseded` | 이 프롬프트의 턴이 **돌기도 전에** 다음 프롬프트가 도착 — 큐잉된 메시지와 `<task-notification>` 주입은 ~130ms 간격 쌍으로 들어오고, 모델 턴 하나가 둘을 처리하며 Stop 도 하나만 빚진다(마지막 것에 대해). 밀려난 행은 "프롬프트당 턴 1개" 계수 방식의 산물이지 유실이 아니다 |
 | `session_end` / `run_close` / `clear` | 턴이 열린 채로 세션·run 이 끝나거나 `/clear` 로 잘림 |
 | `NULL` | 아직 열려 있음(`ended_at IS NULL`), 또는 컬럼 도입 이전 행 |
 
@@ -159,13 +161,19 @@ Claude 턴을 닫는 권한은 Stop hook **하나뿐**이고 그 전달은 fire-
 
 **ESC 취소를 유실로 세지 않는 이유와 그 근거 위치.** 취소는 `PostToolUse`/`Stop`/`UserPromptSubmit` 중 무엇도 emit 하지 않으므로(2026-07-18 실측) 전달될 Stop 자체가 없다 — 이걸 `next_prompt` 로 두면 사용자의 ESC 키가 인프라 유실로 집계된다. 증거는 transcript 의 interrupt 마커 하나뿐이고, 판별 규칙은 `bridge/src/claude-interrupt-marker.ts` 한 곳에 있다(관측자·워치독·collector 3소비자 공용). 마커는 **text 블록만** 본다 — `tool_result` 가 같은 문장을 인용하는 일이 흔해서(자기 transcript 를 grep 하는 세션이면 반드시 생긴다) 원문 매칭은 유령 취소를 만든다.
 
-취소는 두 지점에서 잡힌다. 마커가 tail 로 남아 있으면 워치독이(= ESC 후 그대로 둔 경우, 5분 stuck timeout 까지 PROCESSING 으로 남던 것도 같이 해소), 취소 직후 바로 다시 입력해 마커가 새 프롬프트 밑에 묻히면 다음 프롬프트의 close 경로가 `readInterruptSince` 로 확인한다. 후자의 읽기는 **이미 열린 채 밀려난 턴**에서만 발생한다 — 정상 턴은 Stop 이 그 전에 닫는다.
+취소는 두 지점에서 잡힌다. 마커가 tail 로 남아 있으면 워치독이(= ESC 후 그대로 둔 경우, 5분 stuck timeout 까지 PROCESSING 으로 남던 것도 같이 해소), 취소 직후 바로 다시 입력해 마커가 새 프롬프트 밑에 묻히면 다음 프롬프트의 close 경로가 `readOpenTurnEvidence` 로 확인한다. 후자의 읽기는 **이미 열린 채 밀려난 턴**에서만 발생한다 — 정상 턴은 Stop 이 그 전에 닫는다.
+
+**클라이언트 중단(`aborted`) 을 유실로 세지 않는 이유.** `stop_reason: "stop_sequence"` 는 모델이 아니라 클라이언트가 턴을 끝냈다는 뜻이고, 그 레코드 뒤에 Stop hook 은 오지 않는다. 추측이 아니라 실측이다 — 로컬 transcript 211개(assistant 레코드 61,281건)에서 `stop_reason` 은 `tool_use` 58,765 / `end_turn` 2,513 / `stop_sequence` 37 이었고, 그 37건은 **전부** 한도·인증·크레딧·API 오류 메시지였으며, **하나도** `stop_hook_summary` 레코드가 뒤따르지 않았고, 같은 턴에서 assistant 작업이 이어진 것도 없었다. 혼동할 양성 모양이 존재하지 않는다.
+
+이 값이 중요한 진짜 이유는 통계가 아니라 **턴이 안 닫히는 것**이다. 중단된 턴은 워치독의 `end_turn` 술어에 걸리지 않아 다음 프롬프트까지 열려 있었고 — 2026-08-16 실측 두 건 모두 **8시간 넘게** — 그동안 모든 기기에 PROCESSING 으로 떠 있고 APME run 도 열린 채였다(open run/task 는 eval 을 굶긴다). 이제 워치독이 ~15초 안에 닫는다.
+
+**`superseded` 는 계수 방식의 산물이다.** 턴은 `UserPromptSubmit` 마다 생성되는데, 큐잉된 메시지와 `<task-notification>` 주입은 ~130ms 간격 쌍으로 도착하고 Claude 는 그 둘을 **모델 턴 하나로** 처리한다. 그래서 앞 행은 "돌지도 않은 턴"이고 Stop 은 마지막 행 하나에만 빚진다. 판별 근거는 시간 임계값이 아니라 transcript 다 — 턴이 열린 뒤 assistant 레코드가 **하나도** 없으면 그 턴은 돈 적이 없다. transcript 를 못 읽으면 `next_prompt` 로 남긴다(읽을 수 없음 ≠ 근거 없음).
 
 ```bash
 agentdeck apme stop-health --since 7d [--agent claude-code]
 ```
 
-분모는 **판정 가능한 턴만** — `stop + synthetic_stop + next_prompt`. 열린 턴·취소된 턴·세션 종료로 닫힌 턴·도입 이전 행은 Stop 도착 여부의 증거가 아니므로 비율에서 제외한다. 다만 `total` 에는 열린 턴이 포함되는데, 열린 턴이야말로 "아직 안 온 Stop" 이라 분모에서 빼면 측정하려는 실패를 숨기게 되기 때문이다.
+분모는 **판정 가능한 턴만** — `stop + synthetic_stop + next_prompt`. 열린 턴·취소된 턴·중단된 턴·밀려난 턴·세션 종료로 닫힌 턴·도입 이전 행은 Stop 도착 여부의 증거가 아니므로 비율에서 제외한다. 어느 버킷이 분자·분모에 들어가는지는 `stopDeliveryLoss()`(`@agentdeck/shared`) 한 곳에만 있다 — 소비자가 그 규칙을 다시 적으면 범례가 주장하는 것과 다른 값을 재게 된다. 다만 `total` 에는 열린 턴이 포함되는데, 열린 턴이야말로 "아직 안 온 Stop" 이라 분모에서 빼면 측정하려는 실패를 숨기게 되기 때문이다.
 
 ### steps — 훅 이벤트 + tool 호출 기록
 

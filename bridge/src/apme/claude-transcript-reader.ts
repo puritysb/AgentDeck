@@ -149,6 +149,33 @@ export interface TurnEndProbe {
   interrupted: boolean;
 }
 
+/** `stop_reason` Claude Code writes when the CLIENT ended the turn instead of
+ *  the model: usage limit, expired auth, credit limit, an API 429/529. The
+ *  record carries the user-facing message ("You've hit your session limit ·
+ *  resets 5:50pm") and NO Stop hook follows it — so a turn that ends this way
+ *  owes no Stop and must not be charged to the dropped-hook rate.
+ *
+ *  Measured before it was trusted: across 211 local transcripts holding 61,281
+ *  assistant records, `stop_reason` was `tool_use` 58,765 times, `end_turn`
+ *  2,513 times, and `stop_sequence` 37 times — every one of those 37 a client
+ *  abort message, none followed by a `stop_hook_summary` record, and none
+ *  followed by further assistant work in the same turn. There is no benign
+ *  shape to confuse it with. */
+export const CLIENT_ABORT_STOP_REASON = 'stop_sequence';
+
+/** What a bounded backward walk from the transcript tail can prove about a turn
+ *  that is still open. Every field answers a question the next-prompt close has
+ *  to ask, and all three come from ONE tail read. */
+export interface OpenTurnEvidence {
+  /** Newest ESC/interrupt marker in the window (epoch ms), else null. */
+  interruptedAt: number | null;
+  /** Newest client-abort record in the window (epoch ms), else null. */
+  abortedAt: number | null;
+  /** Whether the assistant wrote ANYTHING since the window opened. False means
+   *  the turn never ran — a second prompt displaced it first. */
+  sawAssistant: boolean;
+}
+
 /**
  * Probe whether the transcript's most recent turn has finished. A completed
  * turn's last message-bearing record is `role: "assistant"` with
@@ -204,27 +231,35 @@ export function readTurnEndProbe(transcriptPath: string): TurnEndProbe | null {
 }
 
 /**
- * Timestamp of the newest user-interrupt (ESC) marker at or after `sinceMs`,
- * or null when the window holds none.
+ * Everything a bounded tail read can say about a turn that opened at `sinceMs`
+ * and is still open. Returns null when the transcript is unreadable — the
+ * absence of evidence, which callers must never resolve as a verdict.
  *
- * `readTurnEndProbe` only sees the marker while it is still the tail — the
- * common ESC shape is "cancel, then immediately retype", which buries the
- * marker under the new user message within seconds. That turn ends by
- * cancellation just as surely, so the close path that runs at the next prompt
- * asks this instead of assuming a dropped Stop.
+ * Three questions, one read, because the close path that runs at the next
+ * prompt has to ask all of them and each answer is a different bucket:
  *
- * The backward walk stops at the first record older than the window, so an
- * interrupt belonging to some earlier turn can neither be found nor paid for.
+ *  - Did the user cancel? `readTurnEndProbe` only sees the ESC marker while it
+ *    is still the tail, and the common shape is "cancel, then immediately
+ *    retype", which buries it under the new user message within seconds.
+ *  - Did the CLIENT abort (usage limit, auth, API error)? Same burial, and
+ *    Claude Code owes no Stop for it either.
+ *  - Did the assistant write anything at all? If not, this prompt never got a
+ *    turn of its own — a second prompt landed first and one model turn served
+ *    both, so the displaced row is a counting artifact, not a lost hook.
+ *
+ * The backward walk stops at the first record older than the window, so
+ * evidence belonging to an earlier turn can neither be found nor paid for.
  */
-export function readInterruptSince(transcriptPath: string, sinceMs: number): number | null {
-  const INTERRUPT_TAIL_BYTES = 256 * 1024;
-  const tail = readTailString(transcriptPath, INTERRUPT_TAIL_BYTES);
+export function readOpenTurnEvidence(transcriptPath: string, sinceMs: number): OpenTurnEvidence | null {
+  const EVIDENCE_TAIL_BYTES = 256 * 1024;
+  const tail = readTailString(transcriptPath, EVIDENCE_TAIL_BYTES);
   if (tail == null) return null;
+  const evidence: OpenTurnEvidence = { interruptedAt: null, abortedAt: null, sawAssistant: false };
   const lines = tail.split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
     if (!line.trim()) continue;
-    let rec: { timestamp?: string };
+    let rec: { timestamp?: string; message?: { role?: string; stop_reason?: string | null } };
     try {
       rec = JSON.parse(line);
     } catch {
@@ -235,10 +270,16 @@ export function readInterruptSince(transcriptPath: string, sinceMs: number): num
     // window, so it is skipped rather than ending the walk — ending here
     // would let one stampless line hide every marker behind it.
     if (!Number.isFinite(ts)) continue;
-    if (ts < sinceMs) return null;
-    if (isClaudeInterruptRecord(rec)) return ts;
+    if (ts < sinceMs) break;
+    if (evidence.interruptedAt == null && isClaudeInterruptRecord(rec)) evidence.interruptedAt = ts;
+    if (rec.message?.role === 'assistant') {
+      evidence.sawAssistant = true;
+      if (evidence.abortedAt == null && rec.message?.stop_reason === CLIENT_ABORT_STOP_REASON) {
+        evidence.abortedAt = ts;
+      }
+    }
   }
-  return null;
+  return evidence;
 }
 
 /** Read at most `maxBytes` from the end of a file without loading the rest.

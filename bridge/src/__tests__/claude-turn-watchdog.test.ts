@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ClaudeTurnWatchdog, WATCHDOG_QUIET_MS, WATCHDOG_POLL_MS } from '../claude-turn-watchdog.js';
-import type { TurnEndProbe } from '../apme/claude-transcript-reader.js';
+import { CLIENT_ABORT_STOP_REASON, type TurnEndProbe } from '../apme/claude-transcript-reader.js';
 
 const TP = '/tmp/fake-transcript.jsonl';
 
@@ -28,6 +28,13 @@ function endTurnAt(ts: number): TurnEndProbe {
  *  interrupt marker, and no assistant `end_turn` anywhere. */
 function interruptAt(ts: number): TurnEndProbe {
   return { role: 'user', stopReason: null, timestampMs: ts, interrupted: true };
+}
+
+/** The tail Claude Code leaves when the CLIENT ends the turn — usage limit,
+ *  expired auth, an API 429/529. An assistant record carrying the message the
+ *  user sees, and no Stop hook behind it. */
+function abortAt(ts: number): TurnEndProbe {
+  return { role: 'assistant', stopReason: CLIENT_ABORT_STOP_REASON, timestampMs: ts, interrupted: false };
 }
 
 describe('ClaudeTurnWatchdog', () => {
@@ -78,6 +85,29 @@ describe('ClaudeTurnWatchdog', () => {
 
     vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 2);
     expect(fired).toEqual([{ transcript_path: TP, reason: 'interrupted' }]);
+  });
+
+  it('closes a turn the client aborted (usage limit / auth / API error)', () => {
+    // Claude Code writes one assistant record with the abort stop reason and
+    // fires no Stop hook, so `end_turn` alone left these turns open for hours
+    // — PROCESSING on every device, the APME run open behind them — until the
+    // next prompt displaced them and filed them as dropped hooks.
+    let probeResult: TurnEndProbe | null = null;
+    const { wd, fired } = makeWatchdog({ probe: () => probeResult });
+
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
+    probeResult = abortAt(Date.now() + 3_000);
+
+    vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 2);
+    expect(fired).toEqual([{ transcript_path: TP, reason: 'aborted' }]);
+  });
+
+  it('ignores the previous turn\'s abort', () => {
+    const stale = abortAt(Date.now() - 60_000);
+    const { wd, fired } = makeWatchdog({ probe: () => stale });
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: TP });
+    vi.advanceTimersByTime(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS * 3);
+    expect(fired).toHaveLength(0);
   });
 
   it('ignores the previous turn\'s interrupt marker', () => {
