@@ -158,6 +158,18 @@ constexpr float AntigravitySwimMaxX   = 0.82f;
 constexpr float AntigravitySwimMinY   = 0.12f;
 constexpr float AntigravitySwimMaxY   = 0.56f;
 
+// Kiro (ghost mark). Sits between the octopus lane (0.32) and OpenCode (0.63)
+// so a tank holding one of each does not stack two marks on one column.
+constexpr float KiroRadiusFrac = 0.050f;
+constexpr float KiroHomeX      = 0.46f;
+constexpr float KiroStandingY  = 0.56f;
+constexpr float KiroSleepY     = 0.72f;
+constexpr float KiroWorkingY   = 0.32f;
+constexpr float KiroSwimMinX   = 0.34f;
+constexpr float KiroSwimMaxX   = 0.60f;
+constexpr float KiroSwimMinY   = 0.14f;
+constexpr float KiroSwimMaxY   = 0.60f;
+
 // Tetra
 constexpr float TetraSize     = 0.018f;
 constexpr float TetraSwimMinX = 0.10f;
@@ -223,6 +235,17 @@ constexpr float AntigravitySwimMinX   = 0.52f;
 constexpr float AntigravitySwimMaxX   = 0.84f;
 constexpr float AntigravitySwimMinY   = 0.10f;
 constexpr float AntigravitySwimMaxY   = 0.61f;
+
+// Kiro (ghost mark) — see the note in the block above.
+constexpr float KiroRadiusFrac = 0.045f;
+constexpr float KiroHomeX      = 0.45f;
+constexpr float KiroStandingY  = 0.56f;
+constexpr float KiroSleepY     = 0.76f;
+constexpr float KiroWorkingY   = 0.33f;
+constexpr float KiroSwimMinX   = 0.33f;
+constexpr float KiroSwimMaxX   = 0.60f;
+constexpr float KiroSwimMinY   = 0.12f;
+constexpr float KiroSwimMaxY   = 0.63f;
 
 // Tetra
 constexpr float TetraSize     = 0.015f;

@@ -204,6 +204,7 @@ struct DashboardState {
     uint8_t cloudCount;     // derived: Codex CLI/App sessions alive
     uint8_t opencodeCount;  // derived: opencode sessions alive
     uint8_t antigravityCount; // derived: antigravity sessions alive
+    uint8_t kiroCount;      // derived: kiro-cli/kiro-ide sessions alive
     uint8_t crayfishCount;  // derived: openclaw sessions alive
     bool sessionClearPending;       // empty sessions_list debounce in progress
     uint32_t sessionClearPendingMs; // millis() when the empty list first arrived
@@ -213,6 +214,7 @@ struct DashboardState {
     char cloudNames[10][24];   // display names for cloud instances
     char opencodeNames[10][24]; // display names for opencode instances
     char antigravityNames[10][24]; // display names for antigravity instances
+    char kiroNames[10][24]; // display names for kiro instances
 
     // Crayfish state (derived from sibling)
     CrayfishState crayfishState;
@@ -335,12 +337,14 @@ struct DashboardState {
         cloudCount = 0;
         opencodeCount = 0;
         antigravityCount = 0;
+        kiroCount = 0;
         crayfishCount = 0;
         memset(sessions, 0, sizeof(sessions));
         memset(sessionNames, 0, sizeof(sessionNames));
         memset(cloudNames, 0, sizeof(cloudNames));
         memset(opencodeNames, 0, sizeof(opencodeNames));
         memset(antigravityNames, 0, sizeof(antigravityNames));
+        memset(kiroNames, 0, sizeof(kiroNames));
         updateCreatureStates();
     }
 

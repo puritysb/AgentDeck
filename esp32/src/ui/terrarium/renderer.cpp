@@ -7,6 +7,7 @@
 #include "cloud.h"
 #include "opencode.h"
 #include "antigravity.h"
+#include "kiro.h"
 #include "crayfish.h"
 #include "tetra.h"
 #include "particles.h"
@@ -340,6 +341,7 @@ void init(lv_obj_t* parent) {
     Cloud::init();
     if (MAX_OPENCODE > 0) OpenCode::init();
     if (MAX_ANTIGRAVITY > 0) Antigravity::init();
+    if (MAX_KIRO > 0) Kiro::init();
     Crayfish::init();
     Particles::init();
     Tetra::init();
@@ -384,6 +386,10 @@ void render(float dt) {
     if (opencodeCount == 0 && isOpenCodeAgent) opencodeCount = 1;
     uint8_t antigravityCount = hasData ? g_state.antigravityCount : 0;
     if (antigravityCount == 0 && isAntigravityAgent) antigravityCount = 1;
+    // Both Kiro front ends share one creature — see kiro.cpp.
+    bool isKiroAgent = hasData && strncmp(g_state.agentType, "kiro", 4) == 0;
+    uint8_t kiroCount = hasData ? g_state.kiroCount : 0;
+    if (kiroCount == 0 && isKiroAgent) kiroCount = 1;
     // Crayfish is drawn only when the OpenClaw Gateway is authenticated
     // (or an error is surfaced). Reachability alone — `gatewayAvailable`
     // — used to draw a cheerful crayfish even when the shared token was
@@ -396,14 +402,16 @@ void render(float dt) {
     CreatureState cloudStates[(MAX_CLOUD > 0) ? MAX_CLOUD : 1];
     CreatureState opencodeStates[(MAX_OPENCODE > 0) ? MAX_OPENCODE : 1];
     CreatureState antigravityStates[(MAX_ANTIGRAVITY > 0) ? MAX_ANTIGRAVITY : 1];
+    CreatureState kiroStates[(MAX_KIRO > 0) ? MAX_KIRO : 1];
     uint8_t octSubagents[(MAX_OCTOPUS > 0) ? MAX_OCTOPUS : 1] = {};
     uint8_t cloudSubagents[(MAX_CLOUD > 0) ? MAX_CLOUD : 1] = {};
     uint8_t opencodeSubagents[(MAX_OPENCODE > 0) ? MAX_OPENCODE : 1] = {};
     uint8_t antigravitySubagents[(MAX_ANTIGRAVITY > 0) ? MAX_ANTIGRAVITY : 1] = {};
+    uint8_t kiroSubagents[(MAX_KIRO > 0) ? MAX_KIRO : 1] = {};
 
     // Preserve the session ordering used by the creature-state mapper.
     uint8_t octActivityIdx = 0, cloudActivityIdx = 0;
-    uint8_t openCodeActivityIdx = 0, antigravityActivityIdx = 0;
+    uint8_t openCodeActivityIdx = 0, antigravityActivityIdx = 0, kiroActivityIdx = 0;
     for (uint8_t s = 0; s < g_state.sessionCount; s++) {
         const SessionInfo& session = g_state.sessions[s];
         if (!session.alive) continue;
@@ -420,6 +428,9 @@ void render(float dt) {
         } else if (strcmp(session.agentType, "antigravity") == 0 &&
                    antigravityActivityIdx < MAX_ANTIGRAVITY) {
             antigravitySubagents[antigravityActivityIdx++] = active;
+        } else if (strncmp(session.agentType, "kiro", 4) == 0 &&
+                   kiroActivityIdx < MAX_KIRO) {
+            kiroSubagents[kiroActivityIdx++] = active;
         }
     }
 
@@ -443,6 +454,7 @@ void render(float dt) {
         uint8_t cloudIdx = 0;
         uint8_t ocIdx = 0;
         uint8_t agIdx = 0;
+        uint8_t kiIdx = 0;
         for (uint8_t s = 0; s < g_state.sessionCount; s++) {
             if (!g_state.sessions[s].alive) continue;
 
@@ -458,6 +470,9 @@ void render(float dt) {
             } else if (MAX_ANTIGRAVITY > 0 && strcmp(g_state.sessions[s].agentType, "antigravity") == 0 && agIdx < MAX_ANTIGRAVITY) {
                 antigravityStates[agIdx] = mapSessionState(g_state.sessions[s].state);
                 agIdx++;
+            } else if (MAX_KIRO > 0 && strncmp(g_state.sessions[s].agentType, "kiro", 4) == 0 && kiIdx < MAX_KIRO) {
+                kiroStates[kiIdx] = mapSessionState(g_state.sessions[s].state);
+                kiIdx++;
             }
         }
         // Fill remaining with daemon's own state
@@ -473,9 +488,12 @@ void render(float dt) {
         for (; agIdx < MAX_ANTIGRAVITY; agIdx++) {
             antigravityStates[agIdx] = cState;
         }
+        for (; kiIdx < MAX_KIRO; kiIdx++) {
+            kiroStates[kiIdx] = cState;
+        }
         // Also update the "overall" cState for particles/bubbles/tetra
         // Use the most active sibling state (across octopus + cloud)
-        if (octCount > 0 || cloudCount > 0 || opencodeCount > 0 || antigravityCount > 0) {
+        if (octCount > 0 || cloudCount > 0 || opencodeCount > 0 || antigravityCount > 0 || kiroCount > 0) {
             cState = CreatureState::FLOATING;
             for (uint8_t i = 0; i < octCount && i < MAX_OCTOPUS; i++) {
                 if (octStates[i] == CreatureState::WORKING) { cState = CreatureState::WORKING; break; }
@@ -495,6 +513,11 @@ void render(float dt) {
                     if (antigravityStates[i] == CreatureState::WORKING) { cState = CreatureState::WORKING; break; }
                 }
             }
+            if (cState != CreatureState::WORKING) {
+                for (uint8_t i = 0; i < kiroCount && i < MAX_KIRO; i++) {
+                    if (kiroStates[i] == CreatureState::WORKING) { cState = CreatureState::WORKING; break; }
+                }
+            }
         }
     } else {
         for (uint8_t i = 0; i < MAX_OCTOPUS; i++) {
@@ -508,6 +531,9 @@ void render(float dt) {
         }
         for (uint8_t i = 0; i < MAX_ANTIGRAVITY; i++) {
             antigravityStates[i] = cState;
+        }
+        for (uint8_t i = 0; i < MAX_KIRO; i++) {
+            kiroStates[i] = cState;
         }
     }
     unlockState();
@@ -596,6 +622,11 @@ void render(float dt) {
         Antigravity::render(canvas_buf, canvasW, canvasH, totalTime, dt, antigravityStates[i], i, antigravityCount);
     }
 
+    // 7e. Kiro creatures
+    for (uint8_t i = 0; i < kiroCount && i < MAX_KIRO; i++) {
+        Kiro::render(canvas_buf, canvasW, canvasH, totalTime, dt, kiroStates[i], i, kiroCount);
+    }
+
     // Parent-linked orbit accents sit above the creature layer but remain
     // decorative; the underlying session is still the only interaction target.
     for (uint8_t i = 0; i < octCount && i < MAX_OCTOPUS; i++) {
@@ -614,6 +645,9 @@ void render(float dt) {
             antigravitySubagents[i],
             totalTime
         );
+    }
+    for (uint8_t i = 0; i < kiroCount && i < MAX_KIRO; i++) {
+        drawSubagentOrbit(Kiro::getX(i), Kiro::getY(i), kiroSubagents[i], totalTime);
     }
 
     // 8. Data particles (food crumbs from working agents)

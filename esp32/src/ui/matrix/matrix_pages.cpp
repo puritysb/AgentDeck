@@ -430,7 +430,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     CrayfishState cfState = g_state.crayfishState;
 
     // Collect non-openclaw sessions with agent type
-    enum AgentKind { AGENT_CLAUDE, AGENT_CODEX, AGENT_OPENCODE, AGENT_ANTIGRAVITY };
+    enum AgentKind { AGENT_CLAUDE, AGENT_CODEX, AGENT_OPENCODE, AGENT_ANTIGRAVITY, AGENT_KIRO };
     struct AgentInfo {
         char state[20];
         AgentKind kind;
@@ -439,7 +439,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     };
     AgentInfo agents[6];
     int agentCount = 0;
-    int claudeSeen = 0, codexSeen = 0, opencodeSeen = 0, antigravitySeen = 0;
+    int claudeSeen = 0, codexSeen = 0, opencodeSeen = 0, antigravitySeen = 0, kiroSeen = 0;
     bool openclawAlive = false;
 
     for (int i = 0; i < sessionCount && agentCount < 6; i++) {
@@ -462,10 +462,15 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         } else if (strcmp(g_state.sessions[i].agentType, "antigravity") == 0) {
             agents[agentCount].kind = AGENT_ANTIGRAVITY;
             agents[agentCount].instanceIdx = antigravitySeen++;
+        } else if (strncmp(g_state.sessions[i].agentType, "kiro", 4) == 0) {
+            agents[agentCount].kind = AGENT_KIRO;
+            agents[agentCount].instanceIdx = kiroSeen++;
         } else if (strcmp(g_state.sessions[i].agentType, "claude-code") == 0) {
             agents[agentCount].kind = AGENT_CLAUDE;
             agents[agentCount].instanceIdx = claudeSeen++;
         } else {
+            // An agent this firmware predates. Skipping is the neutral answer —
+            // the row is missing rather than wearing someone else's mark.
             continue;
         }
         agentCount++;
@@ -552,6 +557,13 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
                     // Cool light gray brightness envelope for the rainbow micro mark.
                     baseColor = CRGB(70 + (uint8_t)(140 * pulse), 72 + (uint8_t)(142 * pulse), 76 + (uint8_t)(144 * pulse));
                     break;
+                case AGENT_KIRO:
+                    // Kiro purple #7C3AED. Mid-pulse lands on (98,60,171) to
+                    // match MatrixTerminalPreviews' (98,60,174); blue's range is
+                    // trimmed from 174 so peak pulse is 255 and not an 8-bit
+                    // wrap — the preview stores a mid value, not a max.
+                    baseColor = CRGB(49 + (uint8_t)(98 * pulse), 30 + (uint8_t)(60 * pulse), 87 + (uint8_t)(168 * pulse));
+                    break;
                 default: // AGENT_CLAUDE
                     baseColor = CRGB(50 + (uint8_t)(150 * pulse), 30 + (uint8_t)(90 * pulse), 22 + (uint8_t)(68 * pulse));
                     break;
@@ -566,6 +578,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
                 case AGENT_CODEX:    baseColor = CRGB(30, 30, 80);  break;  // dim indigo
                 case AGENT_OPENCODE: baseColor = CRGB(72, 67, 67);  break;  // dim warm gray (brand #F1ECEC)
                 case AGENT_ANTIGRAVITY: baseColor = CRGB(68, 70, 73); break;  // dim envelope for rainbow micro mark
+                case AGENT_KIRO:     baseColor = CRGB(58, 32, 103); break;  // dim Kiro purple (preview parity)
                 default:             baseColor = CRGB(80, 45, 35);  break;  // dim terracotta
             }
         }
@@ -586,6 +599,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
             case AGENT_CODEX: return OfficialDotGlyphs::CODEX;
             case AGENT_OPENCODE: return OfficialDotGlyphs::OPEN_CODE;
             case AGENT_ANTIGRAVITY: return OfficialDotGlyphs::ANTIGRAVITY;
+            case AGENT_KIRO: return OfficialDotGlyphs::KIRO;
             default: return OfficialDotGlyphs::CLAUDE_CODE;
         }
     };

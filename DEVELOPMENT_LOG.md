@@ -2,6 +2,59 @@
 
 ---
 
+## 2026-08-17 — ESP32 에 Kiro 를 그리다 (그리고 미러가 펌웨어보다 앞서 있었다)
+
+#216 이 남긴 마지막 조각. 보드 쪽 폴백 **극성은 옳았지만**(허용목록 + 중립 폴백) Kiro 는
+사실상 안 보였다 — ticker/pocket 은 회색 행, IPS10 HUD 는 글리프 대신 점, LED matrix 는
+`continue` 로 **행 자체가 없었고**, 수조엔 크리처가 없었다. 여섯 대 전부 실제 플릿에 있는
+표면이다(86box, ulanzi_tc001, ips_10, inkdeck, t_embed, t_display_pro).
+
+### 있던 것과 없던 것
+
+재료는 이미 있었다. `Theme::KiroMark = 0x7C3AED`, 수조용 `KIRO_A8` 64×64 알파 마스크,
+matrix 용 `OfficialDotGlyphs::KIRO` 8×8 도트 글리프, 라벨은 `agent_label.h` 가 이미
+"Kiro CLI"/"Kiro IDE" 로 반환하고 있었다. 없던 것은 **배선**뿐이다 — 8월 16일에 Kiro 관측을
+머지하면서 데몬이 Kiro 를 *보게* 만들었지만, 보드가 그걸 *그리게* 만들지는 않았다.
+
+- ticker / pocket `agentColor` → `Theme::KiroMark` (미지 에이전트는 여전히 `HUDDim`)
+- IPS10 `ips10AgentGlyph` → `glyphKiro` (`KIRO_A8` 를 A8 이미지 디스크립터로)
+- LED matrix → `AGENT_KIRO` 종류 + 도트 글리프 + processing/idle 색
+- 수조 → 새 크리처 `kiro.{h,cpp}`
+
+`kiro-cli` 와 `kiro-ide` 는 **한 크리처**로 합쳤다. 같은 에이전트를 두 프런트엔드로 보는
+것이고, 크리처를 나누면 아니라고 말하는 셈이다.
+
+크리처는 antigravity 의 형제다(둘 다 손으로 그린 몸이 아니라 알파 마스크 마크). 차이는
+둘: 그라디언트 대신 브랜드 색 하나로 채운다(Kiro 마크는 단색이고, 그라디언트를 지어내는 건
+남의 마크를 다시 그리는 것이다), 그리고 헤엄치는 대신 **떠다닌다** — 유령이니까. 레인은
+문어(0.32)와 OpenCode(0.63) 사이 0.46 으로 잡아 셋이 한 열에 겹치지 않게 했다.
+
+### 미러가 펌웨어보다 앞서 있었다
+
+`matrix_pages.cpp` 는 `MatrixTerminalPreviews.swift` 의 SYNC-HASH pinned origin 이다.
+핀이 깨져서 열어 보니 **미러엔 이미 Kiro 가 완비돼 있었다** — 마스크, processing 색,
+idle 색 전부. 포팅할 게 없었고, 반대로 펌웨어 색을 미러에 맞추는 작업이 됐다.
+
+거기서 하나 잡았다. 미러의 색은 **mid-pulse 표본**이지 base/range 가 아니다(antigravity 로
+교차 확인: 펌웨어 `70 + 140*pulse` → mid 140 = 미러 140). 그걸 그대로 base/range 로 옮기면
+Kiro 파랑이 `87 + 174 = 261` 로 **uint8 오버플로**해서 피크 펄스에서 색이 뒤집힌다. range 를
+168 로 깎아 mid 171(미러 174)·max 255 로 맞췄다.
+
+교훈: SYNC-HASH 는 "픽셀이 같은가"의 핀처럼 읽히지만 실제로 옮기는 것은 **파라미터**다.
+미러의 숫자가 렌더 결과의 표본일 때 역산은 안전하지 않고, 다른 크리처로 한 번 교차
+확인하는 것이 그 계측을 검증하는 방법이다.
+
+### 검증
+
+PlatformIO 11개 env 전부 컴파일 통과(led8x32 / ips10 / ips35 / amoled / box_86 /
+t_display_pro / t_embed / inkdeck / ttgo / esp32_c6_147 포함). vitest 3201,
+`check-preview-mirror-sync` 10 pin 전부 in sync.
+
+**시각 검증은 아직 안 했다.** 여섯 대가 전부 시리얼 연결이라(시리얼이 primary 면 보드가
+WS 를 내려놓는다) WiFi OTA 가 불가능하고, 시리얼 플래시는 데몬이 포트를 놓아야 한다.
+플래시 전까지 이 변경은 "컴파일되는 코드"이지 "보드에서 확인된 화면"이 아니다.
+
+---
 ## 2026-08-17 — Kiro 는 어디에 반영되었나: 표면별 실측과 세 가지 결함
 
 ### 계기

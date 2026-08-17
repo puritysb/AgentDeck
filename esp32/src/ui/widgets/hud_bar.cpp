@@ -136,6 +136,7 @@ static lv_image_dsc_t glyphCrayfish;   // OpenClaw
 static lv_image_dsc_t glyphOpencode;   // OpenCode
 static lv_image_dsc_t glyphAntigravityColor; // Antigravity full-color mark
 static lv_image_dsc_t glyphCodex;      // Codex (cloud + >_ mark)
+static lv_image_dsc_t glyphKiro;       // Kiro (ghost mark, design/brand/kiro.svg)
 static uint8_t glyphAntigravityColorData[64 * 64 * 3]; // RGB565 plane + A8 plane, IPS10-only static reuse.
 static bool glyphsReady = false;
 static void ips10BuildGlyph(lv_image_dsc_t& g, const uint8_t* data, int w, int h) {
@@ -196,6 +197,7 @@ static void ips10InitGlyphs() {
     ips10BuildGlyph(glyphOpencode, OPENCODE_A8,      OPENCODE_W,      OPENCODE_H);
     ips10BuildAntigravityColorGlyph();
     ips10BuildGlyph(glyphCodex,    CODEX_A8,         CODEX_W,         CODEX_H);
+    ips10BuildGlyph(glyphKiro,     KIRO_A8,          KIRO_W,          KIRO_H);
     glyphsReady = true;
 }
 static bool ips10IsAntigravityAgent(const char* agentType) {
@@ -209,6 +211,7 @@ static const lv_image_dsc_t* ips10AgentGlyph(const char* agentType) {
     if (strstr(agentType, "antigravity")) return &glyphAntigravityColor;
     if (strstr(agentType, "codex"))     return &glyphCodex;
     if (strstr(agentType, "claude"))    return &glyphOctopus;
+    if (strstr(agentType, "kiro"))      return &glyphKiro;
     return nullptr;   // unknown agent → dot fallback in the name line
 }
 
@@ -321,6 +324,7 @@ static uint32_t ips10AgentColor(const char* agentType) {
     if (strstr(agentType, "opencode") != nullptr) return Theme::OpenCodeInner; // Use dark grey instead of light off-white on white cards
     if (strstr(agentType, "antigravity") != nullptr) return Theme::AntigravityCyan;
     if (strstr(agentType, "claude") != nullptr) return Theme::ClaudeBody;
+    if (strstr(agentType, "kiro") != nullptr) return Theme::KiroMark;
     return Theme::HUDDim;
 }
 // D1 "Tide Bento" semantic state tokens (docs/design/tenin/screen.css :root):

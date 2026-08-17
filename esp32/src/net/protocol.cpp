@@ -354,6 +354,7 @@ static void handleSessionsList(JsonObject& obj) {
     g_state.cloudCount = 0;
     g_state.opencodeCount = 0;
     g_state.antigravityCount = 0;
+    g_state.kiroCount = 0;
     g_state.crayfishCount = 0;
 
     for (uint8_t i = 0; i < g_state.sessionCount; i++) {
@@ -431,6 +432,10 @@ static void handleSessionsList(JsonObject& obj) {
                 g_state.opencodeCount++;
             } else if (strcmp(g_state.sessions[i].agentType, "antigravity") == 0) {
                 g_state.antigravityCount++;
+            } else if (strncmp(g_state.sessions[i].agentType, "kiro", 4) == 0) {
+                // kiro-cli and kiro-ide share one creature: they are the same
+                // agent seen through two front ends.
+                g_state.kiroCount++;
             } else if (strcmp(g_state.sessions[i].agentType, "claude-code") == 0) {
                 g_state.octopusCount++;
             }
@@ -596,6 +601,46 @@ static void handleSessionsList(JsonObject& obj) {
         }
     }
     }  // MAX_ANTIGRAVITY > 0
+
+    // Populate kiroNames for kiro creature name tags (same dedup logic)
+    if (MAX_KIRO > 0) {
+    char kiroRawNames[MAX_KIRO > 0 ? MAX_KIRO : 1][24];
+    uint8_t kiroNameIdx = 0;
+    for (uint8_t i = 0; i < g_state.sessionCount && kiroNameIdx < MAX_KIRO; i++) {
+        if (g_state.sessions[i].alive &&
+            strncmp(g_state.sessions[i].agentType, "kiro", 4) == 0) {
+            const char* name = g_state.sessions[i].projectName;
+            if (name[0]) {
+                strncpy(kiroRawNames[kiroNameIdx], name, sizeof(kiroRawNames[kiroNameIdx]) - 1);
+                kiroRawNames[kiroNameIdx][sizeof(kiroRawNames[kiroNameIdx]) - 1] = '\0';
+            } else {
+                snprintf(kiroRawNames[kiroNameIdx], sizeof(kiroRawNames[kiroNameIdx]), "Kiro %d", kiroNameIdx + 1);
+            }
+            kiroNameIdx++;
+        }
+    }
+    for (uint8_t i = 0; i < kiroNameIdx; i++) {
+        bool hasDup = false;
+        for (uint8_t j = 0; j < kiroNameIdx; j++) {
+            if (j != i && strcmp(kiroRawNames[i], kiroRawNames[j]) == 0) {
+                hasDup = true;
+                break;
+            }
+        }
+        if (hasDup) {
+            uint8_t occurrence = 1;
+            for (uint8_t j = 0; j < i; j++) {
+                if (strcmp(kiroRawNames[i], kiroRawNames[j]) == 0) occurrence++;
+            }
+            snprintf(g_state.kiroNames[i], sizeof(g_state.kiroNames[i]),
+                     "%s #%d", kiroRawNames[i], occurrence);
+        } else {
+            strncpy(g_state.kiroNames[i], kiroRawNames[i],
+                    sizeof(g_state.kiroNames[i]) - 1);
+            g_state.kiroNames[i][sizeof(g_state.kiroNames[i]) - 1] = '\0';
+        }
+    }
+    }  // MAX_KIRO > 0
 
     // No OpenClaw sessions: gate crayfish on authentication, not reachability.
     if (g_state.crayfishCount == 0) {

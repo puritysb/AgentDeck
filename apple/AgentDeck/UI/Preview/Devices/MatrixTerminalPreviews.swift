@@ -175,7 +175,7 @@ private struct PixooPixelGrid: View {
 // documented here so the pin bump below is a conscious "checked, does not
 // affect the AGENTS render" acknowledgement.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 25b13ebe7281a38b27e43684b885632dcae55ccf
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp ff885f0187a2a0769fad084f146dcdb58733e07a
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 
