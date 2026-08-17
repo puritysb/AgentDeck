@@ -1291,6 +1291,16 @@ struct ADTimelineEntry: Codable, Equatable {
     var sessionId: String?
     var startedAt: Double?
     var status: ADEntryStatus?
+    /// Child-agent identity for subagent rows — the dispatch burst id on the `tool_exec` row,
+    /// the child's own id on its `tool_resolved` row.
+    ///
+    /// It exists because these rows are *structural*, not content: a fan-out of eight children
+    /// of the same `agent_type` produces eight byte-identical raw strings in the same instant,
+    /// and the 8-second exact-dedup below then keeps one and drops seven. Parallelism was
+    /// therefore unrepresentable — measured on a real workflow session, 66 children with a peak
+    /// of 8 concurrent left zero start rows in the buffer. Keying off an id (as task rows
+    /// already do) is what lets identical-looking siblings coexist.
+    var subagentId: String?
     /// How the row's `raw` summary was produced. Lets clients decide whether the detail pane is
     /// worth showing — when `'none'`, detail is just the unfiltered response that the heuristic
     /// couldn't summarize, and showing it duplicates content rather than adding value.   -
@@ -1333,6 +1343,7 @@ struct ADTimelineEntry: Codable, Equatable {
         case sessionId = "sessionId"
         case startedAt = "startedAt"
         case status = "status"
+        case subagentId = "subagentId"
         case summaryKind = "summaryKind"
         case taskCategory = "taskCategory"
         case taskId = "taskId"
@@ -1376,6 +1387,7 @@ extension ADTimelineEntry {
         sessionId: String?? = nil,
         startedAt: Double?? = nil,
         status: ADEntryStatus?? = nil,
+        subagentId: String?? = nil,
         summaryKind: ADSummaryKind?? = nil,
         taskCategory: String?? = nil,
         taskId: String?? = nil,
@@ -1399,6 +1411,7 @@ extension ADTimelineEntry {
             sessionId: sessionId ?? self.sessionId,
             startedAt: startedAt ?? self.startedAt,
             status: status ?? self.status,
+            subagentId: subagentId ?? self.subagentId,
             summaryKind: summaryKind ?? self.summaryKind,
             taskCategory: taskCategory ?? self.taskCategory,
             taskId: taskId ?? self.taskId,
@@ -2240,6 +2253,13 @@ struct ADSessionInfo: Codable, Equatable {
     /// Observed sessions: a device requested a soft STOP (deny at the next tool call) — render
     /// "stopping…" instead of an active STOP.
     var stopRequested: Bool?
+    /// Live child-agent census — see SubagentSummary.
+    ///
+    /// Emitted for every session that has EVER had a child, including once they all finish
+    /// (`active: 0`). Absent means "no child was ever seen here", not "zero right now": clients
+    /// merge retain-on-absent, so dropping the field when the last child exits would pin `8
+    /// running` on the row forever — the same one-way latch that `usageStale` hit twice.
+    var subagents: ADSubagentSummary?
     var totalTokens: Double?
     var weight: Double?
 
@@ -2276,6 +2296,7 @@ struct ADSessionInfo: Codable, Equatable {
         case startedAt = "startedAt"
         case state = "state"
         case stopRequested = "stopRequested"
+        case subagents = "subagents"
         case totalTokens = "totalTokens"
         case weight = "weight"
     }
@@ -2332,6 +2353,7 @@ extension ADSessionInfo {
         startedAt: String?? = nil,
         state: String?? = nil,
         stopRequested: Bool?? = nil,
+        subagents: ADSubagentSummary?? = nil,
         totalTokens: Double?? = nil,
         weight: Double?? = nil
     ) -> ADSessionInfo {
@@ -2368,6 +2390,7 @@ extension ADSessionInfo {
             startedAt: startedAt ?? self.startedAt,
             state: state ?? self.state,
             stopRequested: stopRequested ?? self.stopRequested,
+            subagents: subagents ?? self.subagents,
             totalTokens: totalTokens ?? self.totalTokens,
             weight: weight ?? self.weight
         )
@@ -2392,6 +2415,95 @@ enum ADReviewStatus: String, Codable, Equatable {
     case done = "done"
     case error = "error"
     case running = "running"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// Live child-agent census — see SubagentSummary.
+///
+/// Emitted for every session that has EVER had a child, including once they all finish
+/// (`active: 0`). Absent means "no child was ever seen here", not "zero right now": clients
+/// merge retain-on-absent, so dropping the field when the last child exits would pin `8
+/// running` on the row forever — the same one-way latch that `usageStale` hit twice.
+///
+/// Live child-agent census for one session.
+///
+/// A parent's `state` describes its OWN turn: when Claude Code dispatches eight subagents
+/// and its turn then closes, the parent is genuinely `idle` while the children keep working.
+/// That is a second axis, not a correction to the first, and without it the deck says "idle"
+/// for half an hour of real work.
+///
+/// The daemon's `SubagentTimelineTracker` is the source — it counts the
+/// `SubagentStart`/`SubagentStop` hook pairs directly. It is deliberately NOT derived from
+/// timeline rows: those are dropped by dedup and shed first by eviction, so a
+/// timeline-derived count reads zero in exactly the fan-out case it exists to describe.
+///
+/// Children never become `SessionInfo` entries of their own. They are not separately
+/// steerable, they would flood a deck sized for sessions, and a device pressing one has
+/// nothing to press it with.
+// MARK: - ADSubagentSummary
+struct ADSubagentSummary: Codable, Equatable {
+    /// Children currently running (started, no stop seen).
+    var active: Double
+    /// Children finished in this wave (reset with `peak` when `active` hits 0).
+    var completed: Double
+    /// Epoch ms of the most recent child stop, if any.
+    var lastCompletedAt: Double?
+    /// Highest concurrent `active` since the last time it reached zero — the width of the
+    /// current fan-out, which `active` alone loses as children drain one by one.
+    var peak: Double
+
+    enum CodingKeys: String, CodingKey {
+        case active = "active"
+        case completed = "completed"
+        case lastCompletedAt = "lastCompletedAt"
+        case peak = "peak"
+    }
+}
+
+// MARK: ADSubagentSummary convenience initializers and mutators
+
+extension ADSubagentSummary {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADSubagentSummary.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        active: Double? = nil,
+        completed: Double? = nil,
+        lastCompletedAt: Double?? = nil,
+        peak: Double? = nil
+    ) -> ADSubagentSummary {
+        return ADSubagentSummary(
+            active: active ?? self.active,
+            completed: completed ?? self.completed,
+            lastCompletedAt: lastCompletedAt ?? self.lastCompletedAt,
+            peak: peak ?? self.peak
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
 }
 
 /// Voice assistant pipeline state (wake word → STT → LLM → TTS)

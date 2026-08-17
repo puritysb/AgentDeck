@@ -2,6 +2,100 @@
 
 ---
 
+## 2026-08-17 — 병렬 서브에이전트는 왜 한 줄로 보였나: 중복제거·축출·정체성 축
+
+### 계기
+
+"epoch-of-tech Subagent workflow-subagent · Completed" 한 줄만 보이는 세션에 대해 세 가지 질문:
+(1) claude-glm 을 일반 Claude Code 로 표시할 것인가, (2) 병렬 서브에이전트가 UI 에 안 보인다,
+(3) 아직 안 끝났는데 끝난 것처럼 보인다.
+
+### 실측 먼저 (session `63b38d86`, 실데이터)
+
+| 측정 | 값 |
+|---|---|
+| wire 상의 세션 | `agentType: claude-code`, `modelName: **glm-5.3**`, `state: idle` |
+| subagent 완료행 | 72개, 그중 **66개가 `startedAt` 보유** → SubagentStart 훅은 정상 발화·수신 |
+| **동시 실행 피크** | **8개**, 겹치는 쌍 260/2145, 개별 수명 5s ~ **1961s(32분)** |
+| timeline 에 남은 dispatch 행 | **0개** |
+
+데몬은 병렬성을 **이미 정확히 알고 있었다**(66쌍의 start/end 구간 보유). 타임라인에 쓰는
+과정에서 전부 잃었다. 원인은 서로 다른 네 지점이었다.
+
+### 1. 8초 정확 중복제거가 동시 팬아웃을 지웠다
+
+`shared/src/timeline.ts` `deduplicateEntry` 2단계: 같은 type + 같은 raw 가 8초 안이면 `skip`.
+한 워크플로의 자식 N 개는 `agent_type` 이 같아 raw 가 **바이트 단위로 동일**하고 같은
+밀리초에 도착한다 → 1개만 남고 N-1 개가 조용히 사라진다. 병렬성이 *구조적으로 표현 불가*였다.
+
+task 행이 이미 쓰던 해법을 그대로 적용했다: `TimelineEntry.subagentId` 를 추가하고,
+id 를 가진 행은 내용 중복제거를 우회한다(구조 마커이지 내용이 아니므로).
+
+### 2. `evictOne` 이 dispatch 행을 최우선 축출했다
+
+"tool_exec 를 chat 행보다 먼저 버린다"는 규칙 자체는 옳지만, 폭발 반경이 틀렸다 —
+tool_exec 를 가장 많이 만드는 세션이 곧 팬아웃 세션이라, 지켜야 할 dispatch 행이 언제나
+첫 희생자였다. `subagentId` 를 가진 tool_exec 는 제외(= `task_start` 와 같은 취급).
+
+### 3. `Completed` 는 상태가 아니라 폴백 문자열이었다
+
+`last_assistant_message` 가 없을 때 찍히는 리터럴이다. 아직 11명이 돌고 있는 세션 옆에서
+이 한 줄은 "작업이 끝났다"로 읽힌다 — 사용자가 (3)으로 느낀 게 정확히 이것. `ended · no summary`
+로 바꿨고, 완료행은 이제 **어느 자식인지**(`workflow-subagent#a1f3`)와 **소요시간**을 함께 낸다.
+
+### 4. 부모 `idle` 옆에 자식 축이 없었다
+
+부모의 턴은 진짜로 닫혔으니 `idle` 이 틀린 게 아니다. "백그라운드 자식 N개"가 별개 축으로
+없었을 뿐이다. `SessionInfo.subagents {active, peak, completed}` 를 프로토콜에 추가하고,
+**훅에서 직접 센다**(`SubagentTimelineTracker` / Swift `subagentCensus`). 자기가 낸 행에서
+역산하지 않는 이유는 위 1·2 때문 — 그 행들은 설계상 손실적이라, 설명하려는 바로 그 팬아웃에서
+0 을 읽는다. 실제로 기존 `deriveSubagentActivity` 의 유일한 소비자(테라리움 장식)는
+그래서 항상 0 이었고, 게다가 **키가 어긋나 있었다**: 파생 맵은 bare uuid, 조회는 `sibling.id`
+(=`observed:claude:<uuid>`) — 관측 세션은 애초에 한 번도 매칭된 적이 없다.
+
+시작 행은 버스트당 **한 줄로 접는다**(`Subagent ×8 dispatched`, `task_start` 의 one-row-per-task
+패턴). 자식당 한 줄은 정직하지만 모든 세션이 공유하는 200칸 버퍼에 8 start + 8 stop 을 감당시키면
+정작 그 턴들이 밀려난다. 완료 행은 개별 유지 — 요약과 소요시간이 있고, 그게 읽히는 부분이다.
+
+센서스는 자식이 한 번이라도 있었던 세션이면 **0 도 명시적으로** 실어보낸다. 마지막 자식이
+빠질 때 필드를 빼면 retain-on-absent 병합에서 `8 running` 이 영구히 박힌다(`usageStale` 이
+반대 방향으로 두 번 당한 그 래치).
+
+### 5. claude-glm 은 새 agentType 이 아니라 provider 축이다
+
+`agentType` 은 **하네스 정체성**이다 — 같은 바이너리, 같은 훅 세트, 같은 transcript, 같은
+steering 경로. claude-glm 은 `ANTHROPIC_BASE_URL` 만 바꾼 Claude Code 이고, 그래서 이미
+`claude-code` / `glm-5.3` 으로 **정확히** 도착하고 있었다. 새 agentType 을 파면 (a) 모든 표면의
+에이전트 처리가 허용목록이라 그 값을 모르는 클라이언트에서 **아무것도 아닌 것으로** 렌더되고,
+(b) kimi/minimax 등 엔드포인트 스왑마다 증식하며, (c) modelName 이 이미 옳게 나르는 정보를 중복한다.
+
+빠진 건 두 필드 어느 쪽도 단독으로 말하지 않는 한 비트 — *이 Claude 는 Anthropic 과 말하고 있지
+않다*. `shared/src/model-provider.ts` (→ `pnpm generate-model-provider`, Swift/Kotlin 미러 + 드리프트
+게이트). `offHarnessProvider` 는 **양쪽이 모두 알려져 있고 서로 다를 때만** non-null 이다:
+미지 두 개가 주장으로 합쳐지면 안 되고, 다중 프로바이더 하네스(OpenClaw/OpenCode/Antigravity/Kiro)는
+native provider 가 없어서 자기 일을 한 대가로 배지를 달지 않는다.
+
+### 검증
+
+격리 데몬(`--port-window 9200-9209`, 9120 무간섭)에 실제 세션 id 로 8-wide 팬아웃을 쐈다:
+
+```
+TIMELINE:
+  tool_exec     | Subagent ×8 dispatched · workflow-subagent
+  tool_resolved | Subagent workflow-subagent#0003 · 1s · ended · no summary
+  tool_resolved | Subagent workflow-subagent#0005 · 1s · ended · no summary
+SESSIONS:
+  observed:claude:63b38d86… state=idle model=glm-5.3
+                            subagents={"active":6,"peak":8,"completed":2}
+```
+
+`state=idle` 과 `active:6` 이 나란히 서는 것이 이 작업의 요점이다. 다른 세션의 동일 문자열
+dispatch 행도 나란히 살아남는다(예전이면 8초 창에서 하나가 사라졌다).
+
+vitest 3201 통과(신규 14), Android unit + compileDebugKotlin, macOS/iOS 아카이브 빌드 통과.
+
+---
+
 ## 2026-08-17 — ESP32 에 Kiro 를 그리다 (그리고 미러가 펌웨어보다 앞서 있었다)
 
 #216 이 남긴 마지막 조각. 보드 쪽 폴백 **극성은 옳았지만**(허용목록 + 중립 폴백) Kiro 는

@@ -354,6 +354,34 @@ data class SessionInfo(
     // SSOT for the session summary line — render this instead of hand-rolling
     // model/state strings so all surfaces (InkDeck/Android/Apple) agree.
     val activity: String? = null,
+    // Live child-agent census. A SECOND axis to [state], not a correction to
+    // it: a parent whose turn closed is genuinely idle while its subagents keep
+    // working, and the row said "idle" through a half-hour fan-out.
+    //
+    // Absent means "no child was ever seen here", never "zero right now" — the
+    // daemon keeps emitting an explicit zero once a session has had children,
+    // because a field that vanishes when the last child exits latches its last
+    // count forever under retain-on-absent merging.
+    val subagents: SubagentSummary? = null,
+)
+
+/**
+ * Live child-agent census for one session. See [SessionInfo.subagents].
+ *
+ * Children never appear as [SessionInfo] rows of their own: they are not
+ * separately steerable, and they would flood a deck sized for sessions.
+ */
+@Serializable
+data class SubagentSummary(
+    /** Children currently running (started, no stop seen). */
+    val active: Int = 0,
+    /** Highest concurrent [active] since it last reached zero — the width of
+     *  the current fan-out, which [active] alone loses as children drain. */
+    val peak: Int = 0,
+    /** Children finished in this wave. */
+    val completed: Int = 0,
+    /** Epoch ms of the most recent child stop. */
+    val lastCompletedAt: Long? = null,
 )
 
 @Serializable
@@ -464,6 +492,11 @@ data class BridgeTimelineEntry(
     val taskOutcome: String? = null,
     val taskCategory: String? = null,
     val taskSummary: String? = null,
+    // Child-agent identity. Drop it here and a live fan-out collapses on the
+    // client exactly the way it used to on the daemon: identical sibling rows
+    // dedup away, and the growing dispatch row is matched by timestamp instead
+    // of by id.
+    val subagentId: String? = null,
 )
 
 fun BridgeTimelineEntry.toTimelineEntry() = dev.agentdeck.state.TimelineEntry(
@@ -486,6 +519,7 @@ fun BridgeTimelineEntry.toTimelineEntry() = dev.agentdeck.state.TimelineEntry(
     taskOutcome = taskOutcome,
     taskCategory = taskCategory,
     taskSummary = taskSummary,
+    subagentId = subagentId,
 )
 
 /**

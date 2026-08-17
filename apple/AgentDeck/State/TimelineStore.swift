@@ -49,20 +49,34 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
     /// Whether we're receiving timeline from bridge (suppress local generation)
     @Published var receivingBridgeTimeline = false
 
-    /// Parent/child decoration derived entirely from existing timeline rows.
-    /// Keeping this out of DashboardState preserves wire compatibility with
-    /// older app, daemon, Android, Pixoo, and ESP32 builds.
+    /// `Subagent ×8 dispatched · researcher` → 8; anything else → 1.
+    static func subagentBurstCount(_ raw: String) -> Int {
+        guard raw.hasPrefix("Subagent ×") else { return 1 }
+        let digits = raw.dropFirst("Subagent ×".count).prefix { $0.isNumber }
+        return Int(digits).flatMap { $0 > 0 ? $0 : nil } ?? 1
+    }
+
+    /// Parent/child decoration derived from timeline rows.
+    ///
+    /// **This is the fallback path.** `SessionInfo.subagents` carries the
+    /// daemon's own census and is authoritative wherever present; prefer it
+    /// (see `MonitorScreen.subagentActivityForTerrarium`). This exists for what
+    /// the wire field cannot cover — a rehydrated timeline from an older daemon
+    /// — and is inherently approximate, because the rows it reads are bounded
+    /// and lossy by design: a dispatch burst folds into one upserted row, and
+    /// the buffer evicts. Mirrors shared/src/subagent-activity.ts.
     func subagentActivityBySession(
         now: Double = Date().timeIntervalSince1970 * 1000,
         activeTtlMs: Double = 6 * 60 * 60 * 1000
     ) -> [String: SubagentVisualActivity] {
-        struct ActiveStart {
+        struct Burst {
             let ts: Double
-            let startedAt: Double?
+            let count: Int
         }
 
-        var active: [String: [ActiveStart]] = [:]
+        var bursts: [String: [Burst]] = [:]
         var completed: [String: Double] = [:]
+        var drained: [String: Int] = [:]
         let ordered = entries.enumerated().sorted {
             $0.element.ts == $1.element.ts
                 ? $0.offset < $1.offset
@@ -76,28 +90,33 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
             let isTeamCompletion = entry.raw.hasPrefix("Team ")
 
             if entry.type == .toolExec && isSubagent {
-                active[sessionId, default: []].append(
-                    ActiveStart(ts: entry.ts, startedAt: entry.startedAt)
-                )
+                let anchor = entry.startedAt ?? entry.ts
+                let burst = Burst(ts: anchor, count: Self.subagentBurstCount(entry.raw))
+                var list = bursts[sessionId, default: []]
+                // A dispatch row is upserted as its burst grows, so the same
+                // anchor must replace rather than accumulate.
+                if let existing = list.firstIndex(where: { $0.ts == anchor }) {
+                    list[existing] = burst
+                } else {
+                    list.append(burst)
+                }
+                bursts[sessionId] = list
                 continue
             }
             guard entry.type == .toolResolved, isSubagent || isTeamCompletion else { continue }
 
             completed[sessionId] = max(completed[sessionId] ?? 0, entry.endedAt ?? entry.ts)
-            guard isSubagent, var starts = active[sessionId], !starts.isEmpty else { continue }
-            let matchingIndex = entry.startedAt.flatMap { target in
-                starts.firstIndex(where: { $0.startedAt == target })
-            } ?? starts.startIndex
-            starts.remove(at: matchingIndex)
-            active[sessionId] = starts
+            guard isSubagent else { continue }
+            drained[sessionId] = (drained[sessionId] ?? 0) + 1
         }
 
         var result: [String: SubagentVisualActivity] = [:]
-        let sessionIds = Set(active.keys).union(completed.keys)
+        let sessionIds = Set(bursts.keys).union(completed.keys)
         for sessionId in sessionIds {
-            let activeCount = active[sessionId, default: []]
+            let dispatched = bursts[sessionId, default: []]
                 .filter { now - $0.ts <= activeTtlMs }
-                .count
+                .reduce(0) { $0 + $1.count }
+            let activeCount = max(0, dispatched - (drained[sessionId] ?? 0))
             let lastCompletedAt = completed[sessionId]
             guard activeCount > 0 || lastCompletedAt != nil else { continue }
             result[sessionId] = SubagentVisualActivity(
@@ -126,6 +145,16 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
                let idx = entries.lastIndex(where: { $0.type == .taskEnd && $0.taskId == taskId }) {
                 entries[idx] = mergedUpsert(base: entries[idx], incoming: entry)
                 return
+            }
+            // A dispatch burst re-upserts ONE row while it grows, so key it
+            // by id. The (ts, type) match below is wide enough to land on an
+            // unrelated `tool_exec` from another session that arrived in the
+            // same millisecond and overwrite it.
+            if let subagentId = entry.subagentId, !subagentId.isEmpty {
+                if let idx = entries.lastIndex(where: { $0.subagentId == subagentId }) {
+                    entries[idx] = mergedUpsert(base: entries[idx], incoming: entry)
+                    return
+                }
             }
             // Update existing entry with same ts + type
             if let idx = entries.firstIndex(where: { $0.ts == entry.ts && $0.type == entry.type }) {
@@ -169,7 +198,11 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
                 return
             }
         }
-        if let idx = entries.firstIndex(where: { $0.type == .toolExec }) {
+        // Subagent dispatch rows are exempt: they pair with the children's
+        // `tool_resolved` rows the way a `task_start` pairs with its
+        // `task_end`, and fan-out sessions produce the most tool_exec rows —
+        // so shedding them first always split the pair it meant to protect.
+        if let idx = entries.firstIndex(where: { $0.type == .toolExec && $0.subagentId == nil }) {
             entries.remove(at: idx)
             return
         }
@@ -212,7 +245,8 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
             taskScore: incoming.taskScore ?? base.taskScore,
             taskOutcome: incoming.taskOutcome ?? base.taskOutcome,
             taskCategory: incoming.taskCategory ?? base.taskCategory,
-            taskSummary: incoming.taskSummary ?? base.taskSummary
+            taskSummary: incoming.taskSummary ?? base.taskSummary,
+            subagentId: incoming.subagentId ?? base.subagentId
         )
     }
 

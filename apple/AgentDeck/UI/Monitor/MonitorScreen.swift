@@ -481,8 +481,42 @@ struct MonitorScreen: View {
     private func updateTerrariumState() {
         terrariumState = stateHolder.state.toTerrariumState(
             previous: terrariumState,
-            subagentActivityBySession: stateHolder.timelineStore.subagentActivityBySession()
+            subagentActivityBySession: subagentActivityForTerrarium()
         )
+    }
+
+    /// Child activity for the creature decoration, wire census first.
+    ///
+    /// Two fixes live here. The census now rides `SessionInfo.subagents`, which
+    /// the daemon counts from the hooks themselves — the timeline-derived
+    /// fallback reads near zero in a real fan-out, because dispatch rows fold
+    /// and the bounded buffer evicts. And the two sources are keyed
+    /// differently: timeline rows carry the BARE uuid while `sibling.id` is
+    /// `observed:<agent>:<uuid>`, so the derived map never matched an observed
+    /// session at all and every such creature rendered childless. Publish both
+    /// id forms so the lookup cannot miss on spelling.
+    private func subagentActivityForTerrarium() -> [String: SubagentVisualActivity] {
+        var merged: [String: SubagentVisualActivity] = [:]
+        for (sessionId, activity) in stateHolder.timelineStore.subagentActivityBySession() {
+            merged[sessionId] = activity
+        }
+        for sibling in stateHolder.state.siblingSessions {
+            guard let census = sibling.subagents else { continue }
+            let activity = SubagentVisualActivity(
+                activeCount: census.active,
+                lastCompletedAt: census.lastCompletedAt
+            )
+            merged[sibling.id] = activity
+            merged[ObservedAgentRules.rawSessionId(sibling.id)] = activity
+        }
+        // A bare-uuid key from the fallback still has to reach a row addressed
+        // by its prefixed id.
+        for sibling in stateHolder.state.siblingSessions where merged[sibling.id] == nil {
+            if let byRaw = merged[ObservedAgentRules.rawSessionId(sibling.id)] {
+                merged[sibling.id] = byRaw
+            }
+        }
+        return merged
     }
 }
 

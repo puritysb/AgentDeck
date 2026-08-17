@@ -38,6 +38,19 @@ export interface TimelineEntry {
   automated?: boolean;
   /** APME task id. Set on task_start/task_end and on every turn entry inside the task scope. */
   taskId?: string;
+  /**
+   * Child-agent identity for subagent rows — the dispatch burst id on the
+   * `tool_exec` row, the child's own id on its `tool_resolved` row.
+   *
+   * It exists because these rows are *structural*, not content: a fan-out of
+   * eight children of the same `agent_type` produces eight byte-identical raw
+   * strings in the same instant, and the 8-second exact-dedup below then keeps
+   * one and drops seven. Parallelism was therefore unrepresentable — measured
+   * on a real workflow session, 66 children with a peak of 8 concurrent left
+   * zero start rows in the buffer. Keying off an id (as task rows already do)
+   * is what lets identical-looking siblings coexist.
+   */
+  subagentId?: string;
   /** Only on task_end. Why the task closed. */
   boundarySignal?: TaskBoundarySignal;
   /**
@@ -622,6 +635,16 @@ export function deduplicateEntry(
   // and two `task_milestone` rows carrying identical raw ("Todos done") but
   // different taskIds within the 8s exact-dedup window must not collapse.
   if (entry.type === 'task_start' || entry.type === 'task_end' || entry.type === 'task_milestone') {
+    return { action: 'add', entry };
+  }
+
+  // Subagent rows bypass dedup for the same reason task rows do: they are
+  // hierarchy markers keyed by `subagentId`, not content. Siblings of one
+  // fan-out share an `agent_type` and therefore a raw string, and they start
+  // within the same millisecond — so content dedup reads a burst of eight as
+  // one row and silently discards the other seven. The id is what distinguishes
+  // them; a caller that sets it is asserting "this is a distinct child".
+  if (entry.subagentId) {
     return { action: 'add', entry };
   }
 

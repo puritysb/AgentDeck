@@ -21,6 +21,17 @@ data class TimelineEntry(
     val automated: Boolean? = null,
     /** APME task id. Set on task_start/task_end and on every turn entry inside the task scope. */
     val taskId: String? = null,
+    /**
+     * Child-agent identity — the dispatch burst id on a `tool_exec` row, the
+     * child's own id on its `tool_resolved` row. Mirrors
+     * `TimelineEntry.subagentId`.
+     *
+     * A growing fan-out re-upserts ONE dispatch row, and the generic upsert
+     * matches by (type, ±1 s) — wide enough to land on an unrelated `tool_exec`
+     * from another session that arrived in the same second and overwrite it.
+     * Keying by id removes that.
+     */
+    val subagentId: String? = null,
     /** Only on task_end. todo_complete | clear | session_end | manual | idle_gap. */
     val boundarySignal: String? = null,
     /** "llm" | "heuristic" | "none". Lets clients suppress the detail pane
@@ -53,15 +64,32 @@ data class SubagentVisualActivity(
  * This deliberately avoids a protocol/session-schema change: older clients
  * can ignore the same rows while newer terrariums draw their orbit accents.
  */
+/** `Subagent ×8 dispatched · researcher` → 8; anything else → 1. */
+fun subagentBurstCount(raw: String): Int {
+    val match = Regex("^Subagent\\s+×(\\d+)\\b").find(raw) ?: return 1
+    return match.groupValues[1].toIntOrNull()?.takeIf { it > 0 } ?: 1
+}
+
+/**
+ * Derive parent/child activity from timeline rows.
+ *
+ * **This is the fallback path.** `SessionInfo.subagents` carries the daemon's
+ * own census and is authoritative wherever present; prefer it. This exists for
+ * what the wire field cannot cover — a rehydrated timeline from an older daemon
+ * — and is inherently approximate, because the rows it reads are bounded and
+ * lossy by design (a dispatch burst folds into one upserted row, and the
+ * buffer evicts). Mirrors shared/src/subagent-activity.ts.
+ */
 fun deriveSubagentActivity(
     entries: List<TimelineEntry>,
     now: Long = System.currentTimeMillis(),
     activeTtlMs: Long = 6 * 60 * 60 * 1000L,
 ): Map<String, SubagentVisualActivity> {
-    data class ActiveStart(val timestamp: Long, val startedAt: Long?)
+    data class Burst(val timestamp: Long, val count: Int)
 
-    val active = mutableMapOf<String, MutableList<ActiveStart>>()
+    val bursts = mutableMapOf<String, MutableList<Burst>>()
     val completed = mutableMapOf<String, Long>()
+    val drained = mutableMapOf<String, Int>()
     val ordered = entries.withIndex().sortedWith(
         compareBy<IndexedValue<TimelineEntry>> { it.value.timestamp }
             .thenBy { it.index }
@@ -74,8 +102,13 @@ fun deriveSubagentActivity(
         val isTeamCompletion = entry.summary.startsWith("Team ")
 
         if (entry.type == "tool_exec" && isSubagent) {
-            active.getOrPut(sessionId) { mutableListOf() }
-                .add(ActiveStart(entry.timestamp, entry.startedAt))
+            val list = bursts.getOrPut(sessionId) { mutableListOf() }
+            val anchor = entry.startedAt ?: entry.timestamp
+            val burst = Burst(anchor, subagentBurstCount(entry.summary))
+            // A dispatch row is upserted as its burst grows, so the same
+            // anchor must replace rather than accumulate.
+            val existing = list.indexOfFirst { it.timestamp == anchor }
+            if (existing >= 0) list[existing] = burst else list.add(burst)
             continue
         }
         if (entry.type != "tool_resolved" || (!isSubagent && !isTeamCompletion)) continue
@@ -85,20 +118,16 @@ fun deriveSubagentActivity(
             entry.endedAt ?: entry.timestamp,
         )
         if (!isSubagent) continue
-        val starts = active[sessionId] ?: continue
-        if (starts.isEmpty()) continue
-        val matchingIndex = entry.startedAt
-            ?.let { target -> starts.indexOfFirst { it.startedAt == target } }
-            ?.takeIf { it >= 0 }
-            ?: 0
-        starts.removeAt(matchingIndex)
+        drained[sessionId] = (drained[sessionId] ?: 0) + 1
     }
 
     val result = mutableMapOf<String, SubagentVisualActivity>()
-    for (sessionId in active.keys + completed.keys) {
-        val activeCount = active[sessionId]
+    for (sessionId in bursts.keys + completed.keys) {
+        val dispatched = bursts[sessionId]
             .orEmpty()
-            .count { now - it.timestamp <= activeTtlMs }
+            .filter { now - it.timestamp <= activeTtlMs }
+            .sumOf { it.count }
+        val activeCount = maxOf(0, dispatched - (drained[sessionId] ?: 0))
         val lastCompletedAt = completed[sessionId]
         if (activeCount > 0 || lastCompletedAt != null) {
             result[sessionId] = SubagentVisualActivity(activeCount, lastCompletedAt)
@@ -356,7 +385,12 @@ class TimelineStore private constructor() {
         val taskMatchIdx = if (normalized.type == "task_end" && !normalized.taskId.isNullOrEmpty()) {
             list.indexOfLast { it.type == "task_end" && it.taskId == normalized.taskId }
         } else -1
-        val idx = if (taskMatchIdx >= 0) taskMatchIdx else {
+        // A dispatch burst re-upserts ONE row while it grows; key it by id so
+        // the timestamp window below can't overwrite another session's row.
+        val subagentMatchIdx = if (!normalized.subagentId.isNullOrEmpty()) {
+            list.indexOfLast { it.subagentId == normalized.subagentId }
+        } else -1
+        val idx = if (taskMatchIdx >= 0) taskMatchIdx else if (subagentMatchIdx >= 0) subagentMatchIdx else {
             list.indexOfLast { it.type == normalized.type && kotlin.math.abs(it.timestamp - normalized.timestamp) < 1000L }
         }
         if (idx >= 0) {
@@ -378,6 +412,7 @@ class TimelineStore private constructor() {
                 taskOutcome = normalized.taskOutcome ?: list[idx].taskOutcome,
                 taskCategory = normalized.taskCategory ?: list[idx].taskCategory,
                 taskSummary = normalized.taskSummary ?: list[idx].taskSummary,
+                subagentId = normalized.subagentId ?: list[idx].subagentId,
             )
             _entries.value = list
         } else {

@@ -1,6 +1,11 @@
 import { listActive as listActiveSessions, type SessionEntry } from './session-registry.js';
 import type { AgentType } from './types.js';
-import { sortSessions, sanitizeWeightForWire, type PromptOption } from '@agentdeck/shared';
+import {
+  sortSessions,
+  sanitizeWeightForWire,
+  type PromptOption,
+  type SubagentSummary,
+} from '@agentdeck/shared';
 
 export interface EnrichedSession {
   id: string;
@@ -46,6 +51,10 @@ export interface EnrichedSession {
   lastEventTask?: string;
   /** Host-local "HH:MM" of that row (boards are NTP-UTC or clockless). */
   lastEventHm?: string;
+  /** Live child-agent census (see `SubagentSummary`). A second axis to `state`:
+   *  a parent whose turn closed is genuinely `idle` while its subagents keep
+   *  running, and without this the deck says "idle" through the whole fan-out. */
+  subagents?: SubagentSummary;
 }
 
 /** Cache last-known sibling state to avoid propagating undefined on transient fetch failures.

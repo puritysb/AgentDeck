@@ -76,6 +76,7 @@ import dev.agentdeck.net.DiscoveredBridge
 import dev.agentdeck.net.PairingCredential
 import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.state.DashboardState
+import dev.agentdeck.state.ObservedAgentRules
 import dev.agentdeck.state.TimelineSessionFilter
 import dev.agentdeck.state.TimelineStore
 import dev.agentdeck.terrarium.CrayfishVisualState
@@ -125,8 +126,32 @@ fun MonitorScreen(
 ) {
     val dashState by stateHolder.state.collectAsState()
     val timelineEntries by TimelineStore.instance.entries.collectAsState()
-    val subagentActivity = remember(timelineEntries) {
-        dev.agentdeck.state.deriveSubagentActivity(timelineEntries)
+    // Child activity for the creature decoration, wire census first.
+    //
+    // Two fixes here. The census now rides SessionInfo.subagents, which the
+    // daemon counts from the hooks themselves — the timeline-derived fallback
+    // reads near zero in a real fan-out, because dispatch rows fold into one
+    // upserted row and the bounded buffer evicts. And the two sources are
+    // keyed differently: timeline rows carry the BARE uuid while sibling.id is
+    // `observed:<agent>:<uuid>`, so the derived map never matched an observed
+    // session at all and every such creature rendered childless. Publish both
+    // id forms so the lookup cannot miss on spelling.
+    val subagentActivity = remember(timelineEntries, dashState.siblingSessions) {
+        val merged = dev.agentdeck.state.deriveSubagentActivity(timelineEntries).toMutableMap()
+        for (sibling in dashState.siblingSessions) {
+            val census = sibling.subagents
+            if (census != null) {
+                val activity = dev.agentdeck.state.SubagentVisualActivity(
+                    activeCount = census.active,
+                    lastCompletedAt = census.lastCompletedAt,
+                )
+                merged[sibling.id] = activity
+                merged[ObservedAgentRules.rawSessionId(sibling.id)] = activity
+            } else {
+                merged[ObservedAgentRules.rawSessionId(sibling.id)]?.let { merged[sibling.id] = it }
+            }
+        }
+        merged.toMap()
     }
     val terrariumState = remember(dashState, subagentActivity) {
         dashState.toTerrariumState(subagentActivity)

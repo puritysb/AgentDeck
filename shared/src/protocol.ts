@@ -409,6 +409,37 @@ export interface DisplayStateEvent {
 
 // ===== Multi-session Discovery =====
 
+/**
+ * Live child-agent census for one session.
+ *
+ * A parent's `state` describes its OWN turn: when Claude Code dispatches eight
+ * subagents and its turn then closes, the parent is genuinely `idle` while the
+ * children keep working. That is a second axis, not a correction to the first,
+ * and without it the deck says "idle" for half an hour of real work.
+ *
+ * The daemon's `SubagentTimelineTracker` is the source — it counts the
+ * `SubagentStart`/`SubagentStop` hook pairs directly. It is deliberately NOT
+ * derived from timeline rows: those are dropped by dedup and shed first by
+ * eviction, so a timeline-derived count reads zero in exactly the fan-out case
+ * it exists to describe.
+ *
+ * Children never become `SessionInfo` entries of their own. They are not
+ * separately steerable, they would flood a deck sized for sessions, and a
+ * device pressing one has nothing to press it with.
+ */
+export interface SubagentSummary {
+  /** Children currently running (started, no stop seen). */
+  active: number;
+  /** Highest concurrent `active` since the last time it reached zero — the
+   *  width of the current fan-out, which `active` alone loses as children
+   *  drain one by one. */
+  peak: number;
+  /** Children finished in this wave (reset with `peak` when `active` hits 0). */
+  completed: number;
+  /** Epoch ms of the most recent child stop, if any. */
+  lastCompletedAt?: number;
+}
+
 export interface SessionInfo {
   id: string;
   port: number;
@@ -470,6 +501,14 @@ export interface SessionInfo {
   promptType?: 'yes_no' | 'yes_no_always' | 'multi_select' | 'diff_review';  // shape of the awaiting prompt (per-session, for inline approve/deny + option buttons on rich panels)
   options?: PromptOption[];  // per-session awaiting options (multi_select) — lets a 10-up panel render inline choices for any session, not just the focused one
   elapsedSec?: number;  // derived seconds since startedAt — devices without reliable NTP render elapsed without recomputing from a wall clock
+  /** Live child-agent census — see SubagentSummary.
+   *
+   *  Emitted for every session that has EVER had a child, including once they
+   *  all finish (`active: 0`). Absent means "no child was ever seen here", not
+   *  "zero right now": clients merge retain-on-absent, so dropping the field
+   *  when the last child exits would pin `8 running` on the row forever — the
+   *  same one-way latch that `usageStale` hit twice. */
+  subagents?: SubagentSummary;
 }
 
 export interface SessionsListEvent {

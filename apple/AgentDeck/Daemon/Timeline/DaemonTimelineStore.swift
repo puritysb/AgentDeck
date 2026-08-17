@@ -59,6 +59,15 @@ struct DaemonTimelineEntry: Codable, Sendable {
     var taskOutcome: String? = nil
     var taskCategory: String? = nil
     var taskSummary: String? = nil
+    /// Child-agent identity — the dispatch burst id on the `tool_exec` row, the
+    /// child's own id on its `tool_resolved` row. Mirrors
+    /// `TimelineEntry.subagentId`.
+    ///
+    /// These rows are structural, not content: a fan-out of eight children of
+    /// one `agent_type` produces eight byte-identical raw strings in the same
+    /// instant, which content dedup reads as one row. Keying off an id is what
+    /// lets identical-looking siblings coexist.
+    var subagentId: String? = nil
 }
 
 actor DaemonTimelineStore {
@@ -132,7 +141,11 @@ actor DaemonTimelineStore {
         // content, so two `task_milestone` rows carrying identical raw
         // ("Todos done") from different tasks within the 8s window must not
         // collapse. Mirrors the bypass in shared/src/timeline.ts deduplicateEntry.
-        if !Self.isTaskRow(entry) {
+        // Subagent rows bypass it for the same reason: siblings of one fan-out
+        // share an `agent_type` and therefore a raw string, and they start in
+        // the same millisecond — content dedup read a burst of eight as one row
+        // and silently discarded the other seven.
+        if !Self.isTaskRow(entry), entry.subagentId == nil {
             // Exact dedup: same ts + type + raw within 8s.
             // Window matches shared/src/timeline.ts deduplicateEntry — covers the
             // PTY-fallback / Stop-hook race that can leak two identical chat_response
@@ -193,7 +206,13 @@ actor DaemonTimelineStore {
         // reconnecting client's `timeline_history`. tool_exec is standalone (no
         // request/resolved pair to split), so shedding it first is safe and
         // keeps the two daemons' replay buffers converged.
-        if let idx = entries.firstIndex(where: { $0.type == "tool_exec" }) {
+        //
+        // Subagent dispatch rows are the exception: they pair with the
+        // children's `tool_resolved` rows exactly the way a `task_start` pairs
+        // with its `task_end`. Shedding them first inverted the rule's intent —
+        // fan-out sessions produce the most tool_exec rows, so the dispatch row
+        // was always the first casualty and the completions read as unattached.
+        if let idx = entries.firstIndex(where: { $0.type == "tool_exec" && $0.subagentId == nil }) {
             entries.remove(at: idx)
             return
         }
@@ -206,8 +225,21 @@ actor DaemonTimelineStore {
         entries.removeFirst()
     }
 
-    func upsert(_ entry: DaemonTimelineEntry) {
+    func upsert(_ entry: DaemonTimelineEntry, bypassSuppression: Bool = false) {
         guard let entry = Self.normalizeForStorage(entry) else { return }
+        // A dispatch burst is keyed by id, not by timestamp: a fan-out can keep
+        // growing for the whole burst window, and matching on `ts` would fork a
+        // second row the moment a sibling arrived a millisecond later.
+        if let subagentId = entry.subagentId, !subagentId.isEmpty {
+            if let idx = entries.lastIndex(where: { $0.subagentId == subagentId }) {
+                entries[idx] = entry
+                dirty = true
+                flush()
+            } else {
+                add(entry, bypassSuppression: bypassSuppression)
+            }
+            return
+        }
         // task_end follow-up emits land 5–30 s later than the initial boundary
         // emit, so the original (ts, type) key won't match. Prefer matching by
         // (type=="task_end", taskId) — the taskId is stable across both emits.
@@ -239,8 +271,12 @@ actor DaemonTimelineStore {
     func historyForSession(_ sessionId: String, since: Double? = nil, limit: Int = 16) -> [DaemonTimelineEntry] {
         // sessions_list ids for observed sessions are prefixed ("observed:claude:<uuid>")
         // while entries are keyed by the raw uuid — accept either.
-        let raw = sessionId.replacingOccurrences(
-            of: "^observed:(?:claude|codex|opencode|antigravity):", with: "", options: .regularExpression)
+        //
+        // This is the route a DEVICE takes to pull a session's timeline
+        // (`query_session_timeline`), and the inlined list it used to carry had
+        // drifted twice over: no Kiro and no codex-app, so both agents' rows
+        // were unreachable from every device talking to the Swift daemon.
+        let raw = ObservedAgentRules.rawSessionId(sessionId)
         let matched = entries.filter {
             ($0.sessionId == sessionId || $0.sessionId == raw) && (since == nil || $0.ts > since!)
         }

@@ -2127,13 +2127,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         const earlyHookProject = (typeof json.project_name === 'string' && json.project_name)
           ? json.project_name
           : (earlyHookCwd ? earlyHookCwd.split('/').filter(Boolean).pop() : undefined);
-        const childHook = subagentTimeline?.handle({
+        const childResult = subagentTimeline?.handle({
           eventName,
           payload: json,
           sessionId: earlyHookSid,
           agentType: hookAgentType,
           projectName: earlyHookProject,
-        }).childOnly === true;
+        });
+        // A child starting or stopping is the ONLY thing that moves a parent's
+        // `subagents` block, and it moves nothing else — the parent's own state
+        // is untouched by design. Without this rebroadcast the census would sit
+        // stale until some unrelated event happened to refresh the list, which
+        // for an idle parent waiting on eight children is never.
+        if (childResult?.censusChangedFor) {
+          core.broadcastSessionsList().catch(() => {});
+        }
+        const childHook = childResult?.childOnly === true;
         if (childHook) {
           // Child activity is observation-only. Never let child PreToolUse
           // reach the parent's approval, STOP, state, or APME paths.
@@ -3046,8 +3055,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     httpServer,
     isDaemon: true,
   });
-  subagentTimeline = new SubagentTimelineTracker((entry) => {
-    core.bridgeTimeline.addEntry(entry, { bypassSuppression: true });
+  subagentTimeline = new SubagentTimelineTracker((entry, upsert) => {
+    // A dispatch row is upserted as its burst grows (one row per fan-out, the
+    // `task_start` folding pattern) — emitting a fresh row per child would
+    // spend a 200-entry buffer shared by every session on one workflow.
+    if (upsert) core.bridgeTimeline.upsertEntry(entry, { bypassSuppression: true });
+    else core.bridgeTimeline.addEntry(entry, { bypassSuppression: true });
   });
   // Hooks resolve a fallback daemon port through daemon.json. Another process
   // can delete that file while this daemon remains healthy, which makes every
@@ -3661,14 +3674,23 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Derive per-session elapsed seconds from startedAt so NTP-less devices
     // (ESP32 IPS10 mosaic) render an elapsed value per cell without a wall clock.
     const now = Date.now();
+    // Live child-agent census. Hooks key children by the BARE session uuid
+    // while these rows are `observed:<agent>:<uuid>`, so normalize before the
+    // lookup — the two id forms are the standing trap here.
+    const subagentCensus = subagentTimeline?.summaries() ?? new Map();
     const enrichedSessions = [...sessions, ...observed, ...remote].map((s) => {
       // On-demand review badge (REVIEW tile verdict / REVIEWING state) —
       // applies to every session type, managed included.
       const review = reviewSnapshot(s.id);
       const withReview = Object.keys(review).length > 0 ? { ...s, ...review } : s;
-      if (withReview.elapsedSec != null || !withReview.startedAt) return withReview;
-      const sec = Math.round((now - Date.parse(withReview.startedAt)) / 1000);
-      return Number.isFinite(sec) && sec >= 0 ? { ...withReview, elapsedSec: sec } : withReview;
+      // Emitted whenever this session has EVER had a child, zeros included: a
+      // field that disappears when the last child exits latches "8 running" on
+      // every client that merges retain-on-absent.
+      const census = subagentCensus.get(rawSessionId(withReview.id));
+      const withCensus = census ? { ...withReview, subagents: census } : withReview;
+      if (withCensus.elapsedSec != null || !withCensus.startedAt) return withCensus;
+      const sec = Math.round((now - Date.parse(withCensus.startedAt)) / 1000);
+      return Number.isFinite(sec) && sec >= 0 ? { ...withCensus, elapsedSec: sec } : withCensus;
     });
     // SSOT: inject iff Gateway is authenticated (gatewayConnected). Reachability
     // / adapter-liveness alone must not materialize a session — that kept a

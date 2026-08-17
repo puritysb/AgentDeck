@@ -14,17 +14,29 @@ export interface SubagentActivityOptions {
 
 const DEFAULT_ACTIVE_TTL_MS = 6 * 60 * 60 * 1000;
 
-interface ActiveStart {
+interface ActiveBurst {
   ts: number;
-  startedAt?: number;
+  count: number;
+}
+
+/** `Subagent ×8 dispatched · researcher` → 8; anything else → 1. */
+export function subagentBurstCount(raw: string): number {
+  const match = /^Subagent\s+×(\d+)\b/.exec(raw);
+  if (!match) return 1;
+  const n = Number.parseInt(match[1], 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 /**
- * Derive the decorative parent/child activity shown by terrarium renderers.
+ * Derive parent/child activity from timeline rows.
  *
- * The result is intentionally computed from existing timeline rows, so older
- * clients can continue to ignore subagent visuals without a protocol or
- * session-schema change.
+ * **This is the fallback path.** `SessionInfo.subagents` carries the daemon's
+ * own census and is authoritative wherever it is present; prefer it. This
+ * function exists for the case the wire field cannot cover — a client reading a
+ * rehydrated `timeline.json` from an older daemon, or one that predates the
+ * field — and it is inherently approximate, because the rows it reads are
+ * bounded and lossy by design (dispatch bursts fold into one row, and the
+ * 200-entry buffer evicts).
  */
 export function deriveSubagentActivity(
   entries: readonly TimelineEntry[],
@@ -32,8 +44,9 @@ export function deriveSubagentActivity(
 ): SubagentActivityBySession {
   const now = options.now ?? Date.now();
   const activeTtlMs = options.activeTtlMs ?? DEFAULT_ACTIVE_TTL_MS;
-  const activeBySession = new Map<string, ActiveStart[]>();
+  const burstsBySession = new Map<string, ActiveBurst[]>();
   const completedBySession = new Map<string, number>();
+  const drainedBySession = new Map<string, number>();
 
   const ordered = entries
     .map((entry, index) => ({ entry, index }))
@@ -47,9 +60,16 @@ export function deriveSubagentActivity(
     const isTeamCompletion = entry.raw.startsWith('Team ');
 
     if (entry.type === 'tool_exec' && isSubagent) {
-      const active = activeBySession.get(sessionId) ?? [];
-      active.push({ ts: entry.ts, startedAt: entry.startedAt });
-      activeBySession.set(sessionId, active);
+      const bursts = burstsBySession.get(sessionId) ?? [];
+      // A dispatch row is upserted as its burst grows, so the same
+      // `subagentId` must replace rather than accumulate.
+      const existing = entry.subagentId
+        ? bursts.findIndex((b) => b.ts === (entry.startedAt ?? entry.ts))
+        : -1;
+      const burst = { ts: entry.startedAt ?? entry.ts, count: subagentBurstCount(entry.raw) };
+      if (existing >= 0) bursts[existing] = burst;
+      else bursts.push(burst);
+      burstsBySession.set(sessionId, bursts);
       continue;
     }
 
@@ -63,25 +83,20 @@ export function deriveSubagentActivity(
     );
 
     if (!isSubagent) continue;
-    const active = activeBySession.get(sessionId);
-    if (!active?.length) continue;
-
-    const matchingIndex = entry.startedAt == null
-      ? 0
-      : active.findIndex((start) => start.startedAt === entry.startedAt);
-    active.splice(matchingIndex >= 0 ? matchingIndex : 0, 1);
+    drainedBySession.set(sessionId, (drainedBySession.get(sessionId) ?? 0) + 1);
   }
 
   const result: SubagentActivityBySession = {};
   const sessionIds = new Set([
-    ...activeBySession.keys(),
+    ...burstsBySession.keys(),
     ...completedBySession.keys(),
   ]);
 
   for (const sessionId of sessionIds) {
-    const activeCount = (activeBySession.get(sessionId) ?? [])
-      .filter((start) => now - start.ts <= activeTtlMs)
-      .length;
+    const dispatched = (burstsBySession.get(sessionId) ?? [])
+      .filter((burst) => now - burst.ts <= activeTtlMs)
+      .reduce((sum, burst) => sum + burst.count, 0);
+    const activeCount = Math.max(0, dispatched - (drainedBySession.get(sessionId) ?? 0));
     const lastCompletedAt = completedBySession.get(sessionId);
     if (activeCount === 0 && lastCompletedAt == null) continue;
     result[sessionId] = {

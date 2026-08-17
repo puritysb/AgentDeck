@@ -1,7 +1,9 @@
 import {
   extractTopicHintWithKind,
+  formatDurationSec,
   promptSnippetFallback,
   stripUnsafeText,
+  type SubagentSummary,
   type TimelineEntry,
 } from '@agentdeck/shared';
 
@@ -19,16 +21,52 @@ export interface SubagentTimelineResult {
    * parent session's state, approval, steering, or APME pipelines.
    */
   childOnly: boolean;
+  /**
+   * The parent session whose child census changed, if it did. The caller
+   * rebroadcasts `sessions_list` for it — a child starting or stopping is the
+   * only signal that a parent's `subagents` block moved, and nothing else in
+   * the hook path would notice.
+   */
+  censusChangedFor?: string;
 }
 
-type TimelineEmitter = (entry: TimelineEntry) => void;
+type TimelineEmitter = (entry: TimelineEntry, upsert?: boolean) => void;
 
 interface ActiveSubagent {
   startedAt: number;
   label: string;
+  /** The dispatch burst this child was launched in — its siblings share it. */
+  burstId: string;
+}
+
+/** Per-parent census. Mirrors the `SubagentSummary` wire shape plus the
+ *  bookkeeping needed to keep `peak` meaningful across waves. */
+interface SessionCensus {
+  active: Map<string, ActiveSubagent>;
+  peak: number;
+  completed: number;
+  lastCompletedAt?: number;
+  /** Open dispatch burst: children starting within BURST_WINDOW_MS of each
+   *  other fold into one timeline row. */
+  burstId: string | null;
+  burstStartedAt: number;
+  burstCount: number;
+  burstLabels: string[];
 }
 
 const ACTIVE_TTL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * How long a dispatch stays "the same fan-out" for row-folding purposes.
+ *
+ * One row per child would be honest and unreadable: a 200-entry buffer shared
+ * by every session cannot absorb 8 starts + 8 stops per wave without evicting
+ * the turns they belong to. So starts fold into a single upserted row carrying
+ * the count (the `task_start` one-row-per-task pattern), while stops stay
+ * individual — a completion carries a summary and a duration, which is the part
+ * a reader actually reads.
+ */
+const BURST_WINDOW_MS = 10_000;
 
 function nonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -83,6 +121,21 @@ function agentLabel(payload: Record<string, unknown>): string {
   return cap(raw.replace(/^general-purpose$/i, 'General'), 28);
 }
 
+/**
+ * A short, stable handle for one child.
+ *
+ * Twelve children of one workflow all report `agent_type: "workflow-subagent"`,
+ * so the type alone names none of them — every row read as the same row, and a
+ * reader had no way to tell "one of twelve finished" from "the work finished".
+ * The suffix is the child's own `agent_id`, which is the only thing that
+ * differs.
+ */
+function childHandle(label: string, agentId: string | null): string {
+  if (!agentId) return label;
+  const short = agentId.replace(/[^A-Za-z0-9]/g, '').slice(-4).toLowerCase();
+  return short ? `${label}#${short}` : label;
+}
+
 function completionSummary(payload: Record<string, unknown>): {
   text: string;
   summaryKind: 'heuristic' | 'none';
@@ -101,18 +154,31 @@ function completionSummary(payload: Record<string, unknown>): {
     const fallback = promptSnippetFallback(response, 96);
     if (fallback) return { text: fallback, summaryKind: 'none' };
   }
-  return { text: 'Completed', summaryKind: 'none' };
+  // NOT "Completed". That string is what a child that reported nothing used to
+  // look like, and next to a session whose other eleven children were still
+  // running it read as "the work is done" — the single most misleading row on
+  // the strip. Say what actually happened: it ended, and it said nothing.
+  return { text: 'ended · no summary', summaryKind: 'none' };
 }
 
 /**
- * Read-only lifecycle reducer for Claude Code/Codex child agents.
+ * Lifecycle reducer for Claude Code/Codex child agents, and the source of
+ * truth for the parent's `subagents` census.
  *
- * It intentionally emits only existing Timeline row types. This keeps old
- * macOS/iOS/Android/Node/ESP32 clients compatible and prevents child activity
- * from appearing as a controllable SessionInfo entry.
+ * Two outputs, deliberately separate:
+ *
+ *   - **timeline rows**, which stay within the existing entry types so older
+ *     macOS/iOS/Android/Node/ESP32 clients keep rendering them; and
+ *   - **`summary()`**, the live count the daemon stamps onto `sessions_list`.
+ *
+ * The census is kept HERE rather than derived from the rows it emits, because
+ * the rows are lossy on purpose — dedup folds a burst into one entry and the
+ * 200-cap sheds tool rows first. A census read back out of them counts zero in
+ * precisely the fan-out it exists to describe.
  */
 export class SubagentTimelineTracker {
-  private readonly active = new Map<string, ActiveSubagent>();
+  private readonly sessions = new Map<string, SessionCensus>();
+  private burstSeq = 0;
 
   constructor(
     private readonly emit: TimelineEmitter,
@@ -128,43 +194,76 @@ export class SubagentTimelineTracker {
 
     if (event === 'subagent_start') {
       const id = agentId ?? nonEmptyString(hook.payload.task_id) ?? `anonymous:${this.now()}`;
-      const key = `${hook.sessionId}:${id}`;
       const startedAt = this.now();
       const label = agentLabel(hook.payload);
-      this.active.set(key, { startedAt, label });
+      const census = this.censusFor(hook.sessionId);
+
+      // Open a burst, or join the one still open.
+      if (census.burstId == null || startedAt - census.burstStartedAt > BURST_WINDOW_MS) {
+        census.burstId = `burst:${hook.sessionId}:${++this.burstSeq}`;
+        census.burstStartedAt = startedAt;
+        census.burstCount = 0;
+        census.burstLabels = [];
+      }
+      census.burstCount += 1;
+      if (!census.burstLabels.includes(label)) census.burstLabels.push(label);
+
+      census.active.set(id, { startedAt, label, burstId: census.burstId });
+      census.peak = Math.max(census.peak, census.active.size);
+
       this.emit({
-        ts: startedAt,
+        // Anchor the row at the burst's first child so a growing fan-out
+        // updates in place instead of walking down the strip.
+        ts: census.burstStartedAt,
         type: 'tool_exec',
-        raw: `Subagent ${label} · Started`,
+        raw: this.burstRaw(census),
         sessionId: hook.sessionId,
         agentType: hook.agentType,
         projectName: hook.projectName,
-        startedAt,
+        startedAt: census.burstStartedAt,
+        subagentId: census.burstId,
         summaryKind: 'progress',
-      });
-      return { childOnly: true };
+      }, true);
+      return { childOnly: true, censusChangedFor: hook.sessionId };
     }
 
     if (event === 'subagent_stop') {
       const id = agentId ?? nonEmptyString(hook.payload.task_id) ?? '';
-      const key = `${hook.sessionId}:${id}`;
-      const active = this.active.get(key);
-      if (active) this.active.delete(key);
+      const census = this.censusFor(hook.sessionId);
+      const active = census.active.get(id);
+      if (active) census.active.delete(id);
       const endedAt = this.now();
       const label = active?.label ?? agentLabel(hook.payload);
       const summary = completionSummary(hook.payload);
+      const elapsedSec = active ? Math.round((endedAt - active.startedAt) / 1000) : null;
+
+      census.completed += 1;
+      census.lastCompletedAt = endedAt;
+      // A wave that has fully drained resets the wave-scoped counters, so the
+      // next fan-out reports its own width rather than a running total.
+      if (census.active.size === 0) {
+        census.burstId = null;
+        census.burstCount = 0;
+        census.burstLabels = [];
+      }
+
+      const handle = childHandle(label, agentId);
+      const duration = elapsedSec != null && elapsedSec > 0
+        ? ` · ${formatDurationSec(elapsedSec)}`
+        : '';
       this.emit({
         ts: endedAt,
         type: 'tool_resolved',
-        raw: `Subagent ${label} · ${summary.text}`,
+        raw: `Subagent ${handle}${duration} · ${summary.text}`,
         sessionId: hook.sessionId,
         agentType: hook.agentType,
         projectName: hook.projectName,
-        startedAt: active?.startedAt,
+        ...(active ? { startedAt: active.startedAt } : {}),
         endedAt,
+        subagentId: `child:${hook.sessionId}:${id}`,
         summaryKind: summary.summaryKind,
       });
-      return { childOnly: true };
+      return { childOnly: true, censusChangedFor: hook.sessionId };
     }
 
     if (event === 'task_completed') {
@@ -193,10 +292,75 @@ export class SubagentTimelineTracker {
     return { childOnly: false };
   }
 
+  /**
+   * The parent's live census, or `null` when this session has never had a
+   * child. Never fold "no children ever" into `active: 0` here — the caller
+   * omits the wire field for the former and emits an explicit zero for the
+   * latter, which is what stops a drained fan-out from latching on clients
+   * that merge retain-on-absent.
+   */
+  summary(sessionId: string): SubagentSummary | null {
+    this.sweep();
+    const census = this.sessions.get(sessionId);
+    if (!census) return null;
+    return {
+      active: census.active.size,
+      peak: census.peak,
+      completed: census.completed,
+      ...(census.lastCompletedAt == null ? {} : { lastCompletedAt: census.lastCompletedAt }),
+    };
+  }
+
+  /** Every session with a census, keyed as the tracker saw it (bare uuid). */
+  summaries(): Map<string, SubagentSummary> {
+    this.sweep();
+    const out = new Map<string, SubagentSummary>();
+    for (const sessionId of this.sessions.keys()) {
+      const summary = this.summary(sessionId);
+      if (summary) out.set(sessionId, summary);
+    }
+    return out;
+  }
+
+  private burstRaw(census: SessionCensus): string {
+    const names = census.burstLabels.slice(0, 2).join(', ')
+      + (census.burstLabels.length > 2 ? ` +${census.burstLabels.length - 2}` : '');
+    return census.burstCount > 1
+      ? `Subagent ×${census.burstCount} dispatched · ${names}`
+      : `Subagent ${names} · dispatched`;
+  }
+
+  private censusFor(sessionId: string): SessionCensus {
+    let census = this.sessions.get(sessionId);
+    if (!census) {
+      census = {
+        active: new Map(),
+        peak: 0,
+        completed: 0,
+        burstId: null,
+        burstStartedAt: 0,
+        burstCount: 0,
+        burstLabels: [],
+      };
+      this.sessions.set(sessionId, census);
+    }
+    return census;
+  }
+
+  /** Expire children whose stop never arrived, so a lost hook cannot pin a
+   *  parent at "running" forever. The census row itself survives: a session
+   *  that once had children keeps reporting an explicit zero. */
   private sweep(): void {
     const cutoff = this.now() - ACTIVE_TTL_MS;
-    for (const [key, value] of this.active) {
-      if (value.startedAt < cutoff) this.active.delete(key);
+    for (const census of this.sessions.values()) {
+      for (const [key, value] of census.active) {
+        if (value.startedAt < cutoff) census.active.delete(key);
+      }
+      if (census.active.size === 0 && census.burstId != null) {
+        census.burstId = null;
+        census.burstCount = 0;
+        census.burstLabels = [];
+      }
     }
   }
 }

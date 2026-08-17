@@ -113,6 +113,10 @@ struct SessionListPanel: View {
         /// Shared activity one-liner (bridge SSOT) — same summary the
         /// InkDeck cards and Android rows show, so surfaces don't drift.
         var activity: String?
+        /// Live child-agent census. A SECOND axis to `state`: a parent whose
+        /// turn closed is genuinely idle while its subagents keep working, and
+        /// this row said "IDLE" through a half-hour eight-wide fan-out.
+        var subagents: SubagentSummary?
     }
 
     private func buildEntries() -> [SessionEntry] {
@@ -157,7 +161,8 @@ struct SessionListPanel: View {
                 isPrimary: true,
                 isFocused: focusedSessionId != nil && stateHolder.state.sessionId == focusedSessionId,
                 sessionId: stateHolder.state.sessionId,
-                activity: primaryAnchorSibling?.activity
+                activity: primaryAnchorSibling?.activity,
+                subagents: primaryAnchorSibling?.subagents
             ))
         }
 
@@ -196,7 +201,8 @@ struct SessionListPanel: View {
                 isPrimary: false,
                 isFocused: sibling.id == focusedSessionId,
                 sessionId: sibling.id,
-                activity: sibling.activity
+                activity: sibling.activity,
+                subagents: sibling.subagents
             ))
         }
 
@@ -352,12 +358,27 @@ struct SessionListPanel: View {
 
     private func sessionMetaRow(entry: SessionEntry) -> some View {
         let detailText = buildDetailText(entry: entry)
+        let running = entry.subagents?.active ?? 0
         return HStack(spacing: 4) {
             Text(compactStateMarker(entry.state))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(stateColor(entry.state))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+
+            // Children in flight. Sits beside the state marker rather than
+            // replacing it, because the two are different facts: the parent
+            // really is idle, and there really are eight subagents running.
+            // Amber is the awaiting/attention token — this is the one place a
+            // session is doing work the state marker cannot describe.
+            if running > 0 {
+                Text("⟨\(running) running⟩")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(DesignTokens.Amber.s500)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .help("\(running) subagent\(running == 1 ? "" : "s") still running")
+            }
 
             if let detailText {
                 Text("·")
@@ -377,6 +398,17 @@ struct SessionListPanel: View {
         var parts: [String] = []
         if let model = entry.modelName, !model.isEmpty {
             parts.append(displayShortModelName(model, maxLength: 18))
+            // Third identity axis: whose endpoint answered. A `claude-glm`
+            // session is Claude Code — same binary, same hooks, same transcript
+            // — with ANTHROPIC_BASE_URL pointed elsewhere, so the harness icon
+            // and the agent type are right and only this was missing. Shown
+            // ONLY when the harness has a native provider and the model
+            // demonstrably came from another one; two unknowns never combine
+            // into a claim, so an unrecognized model adds nothing here.
+            let provider = ModelProviderRules.offHarnessProviderLabel(
+                agentType: entry.agentType, model: model
+            )
+            if !provider.isEmpty { parts.append(provider) }
         }
         // Skip neutral efforts — "medium" (legacy default) and "default"
         // (Claude Code 2.1+ per-model default). Show everything else

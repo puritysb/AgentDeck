@@ -148,6 +148,15 @@ struct TimelineEntry: Codable, Sendable, Identifiable {
     var taskOutcome: String?
     var taskCategory: String?
     var taskSummary: String?
+    /// Child-agent identity — the dispatch burst id on a `tool_exec` row, the
+    /// child's own id on its `tool_resolved` row. Mirrors
+    /// `TimelineEntry.subagentId`.
+    ///
+    /// A growing fan-out re-upserts ONE dispatch row, and the generic upsert
+    /// matches by (type, ±1s) — wide enough to land on an unrelated
+    /// `tool_exec` from another session that happened to arrive in the same
+    /// second, overwriting it. Keying by id removes that.
+    var subagentId: String?
 
     var id: Double { ts }
 
@@ -158,7 +167,7 @@ struct TimelineEntry: Codable, Sendable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case ts, type, raw, detail, approvalId, status, agentType, automated, projectName
         case sessionId, runId, startedAt, endedAt, taskId, boundarySignal, summaryKind
-        case taskScore, taskOutcome, taskCategory, taskSummary
+        case taskScore, taskOutcome, taskCategory, taskSummary, subagentId
     }
 
     init(
@@ -181,7 +190,8 @@ struct TimelineEntry: Codable, Sendable, Identifiable {
         taskScore: Double? = nil,
         taskOutcome: String? = nil,
         taskCategory: String? = nil,
-        taskSummary: String? = nil
+        taskSummary: String? = nil,
+        subagentId: String? = nil
     ) {
         self.ts = ts
         self.type = type
@@ -203,6 +213,7 @@ struct TimelineEntry: Codable, Sendable, Identifiable {
         self.taskOutcome = taskOutcome
         self.taskCategory = taskCategory
         self.taskSummary = taskSummary
+        self.subagentId = subagentId
     }
 
     init(from decoder: Decoder) throws {
@@ -243,6 +254,7 @@ struct TimelineEntry: Codable, Sendable, Identifiable {
         self.taskOutcome = try c.decodeIfPresent(String.self, forKey: .taskOutcome)
         self.taskCategory = try c.decodeIfPresent(String.self, forKey: .taskCategory)
         self.taskSummary = try c.decodeIfPresent(String.self, forKey: .taskSummary)
+        self.subagentId = try c.decodeIfPresent(String.self, forKey: .subagentId)
     }
 }
 

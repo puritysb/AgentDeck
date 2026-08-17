@@ -524,13 +524,38 @@ final class DaemonServer {
     /// advances on each one, so a bouncing key must not answer two questions.
     private var askPressGuardUntil: [String: Date] = [:]
     /// Read-only child lifecycle state. Child agents never become
-    /// DaemonSessionEntry rows and never participate in steering/approval;
-    /// this map exists only to pair concise Timeline start/completion rows.
+    /// DaemonSessionEntry rows and never participate in steering/approval.
+    ///
+    /// This is also the SOURCE for a parent's `subagents` census on
+    /// `sessions_list` — deliberately not derived back out of the timeline
+    /// rows it emits, because those rows are lossy by design (a dispatch burst
+    /// folds into one row, and the bounded buffer evicts) and a census read
+    /// from them counts near zero in exactly the fan-out it describes.
+    /// Mirrors `bridge/src/subagent-timeline.ts`.
     private struct ActiveSubagentTimeline {
         let startedAt: Double
         let label: String
     }
-    private var activeSubagentTimeline: [String: ActiveSubagentTimeline] = [:]
+    /// Per-parent census. `peak` and `completed` are wave-scoped: they reset
+    /// when the last child of a fan-out exits, so the next dispatch reports its
+    /// own width rather than a running total.
+    private struct SubagentCensus {
+        var active: [String: ActiveSubagentTimeline] = [:]
+        var peak: Int = 0
+        var completed: Int = 0
+        var lastCompletedAt: Double?
+        var burstId: String?
+        var burstStartedAt: Double = 0
+        var burstCount: Int = 0
+        var burstLabels: [String] = []
+    }
+    private var subagentCensus: [String: SubagentCensus] = [:]
+    private var subagentBurstSeq = 0
+    /// Children starting within this window fold into ONE dispatch row. Per
+    /// child would be honest and unreadable: a buffer shared by every session
+    /// cannot absorb eight starts plus eight stops per wave without evicting
+    /// the turns they belong to.
+    private static let subagentBurstWindowMs: Double = 10_000
 
     // Observed-session attention: ordinary permission prompts remain
     // Notification-driven. AskUserQuestion is the safe exception because its
@@ -3580,17 +3605,31 @@ final class DaemonServer {
         let identity = agentId
             ?? clean(json["task_id"])
             ?? "anonymous"
-        let key = "\(sid):\(identity)"
         let now = Date().timeIntervalSince1970 * 1000
-        let staleCutoff = now - (6 * 60 * 60 * 1000)
-        activeSubagentTimeline = activeSubagentTimeline.filter { $0.value.startedAt >= staleCutoff }
+        sweepSubagentCensus(now: now)
 
         if event == "subagent_start" || event == "codex_subagent_start" {
-            activeSubagentTimeline[key] = ActiveSubagentTimeline(startedAt: now, label: label)
+            var census = subagentCensus[sid] ?? SubagentCensus()
+            // Open a burst, or join the one still open.
+            if census.burstId == nil || now - census.burstStartedAt > Self.subagentBurstWindowMs {
+                subagentBurstSeq += 1
+                census.burstId = "burst:\(sid):\(subagentBurstSeq)"
+                census.burstStartedAt = now
+                census.burstCount = 0
+                census.burstLabels = []
+            }
+            census.burstCount += 1
+            if !census.burstLabels.contains(label) { census.burstLabels.append(label) }
+            census.active[identity] = ActiveSubagentTimeline(startedAt: now, label: label)
+            census.peak = max(census.peak, census.active.count)
+            subagentCensus[sid] = census
+
             var entry = DaemonTimelineEntry(
-                ts: now,
+                // Anchored at the burst's first child so a growing fan-out
+                // updates in place instead of walking down the strip.
+                ts: census.burstStartedAt,
                 type: "tool_exec",
-                raw: "Subagent \(label) · Started",
+                raw: Self.subagentBurstRaw(count: census.burstCount, labels: census.burstLabels),
                 detail: nil,
                 approvalId: nil,
                 status: nil,
@@ -3600,10 +3639,20 @@ final class DaemonServer {
             )
             entry.sessionId = sid
             entry.projectName = project
-            entry.startedAt = now
+            entry.startedAt = census.burstStartedAt
             entry.summaryKind = "progress"
-            await timelineStore.add(entry, bypassSuppression: true)
-            broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
+            entry.subagentId = census.burstId
+            await timelineStore.upsert(entry, bypassSuppression: true)
+            broadcastRaw([
+                "type": "timeline_event",
+                "entry": claudeCodeEntryDict(entry),
+                "upsert": true,
+            ])
+            // A child starting is the only thing that moves the parent's
+            // census, and it moves nothing else — without this the count sits
+            // stale until some unrelated event refreshes the list, which for an
+            // idle parent waiting on eight children is never.
+            broadcastSessionsList()
             return true
         }
 
@@ -3630,13 +3679,34 @@ final class DaemonServer {
             return true
         }
 
-        let active = activeSubagentTimeline.removeValue(forKey: key)
+        var census = subagentCensus[sid] ?? SubagentCensus()
+        let active = census.active.removeValue(forKey: identity)
+        census.completed += 1
+        census.lastCompletedAt = now
+        // A wave that has fully drained closes its burst, so the next dispatch
+        // reports its own width rather than continuing this one.
+        if census.active.isEmpty {
+            census.burstId = nil
+            census.burstCount = 0
+            census.burstLabels = []
+        }
+        subagentCensus[sid] = census
+
         let response = clean(json["last_assistant_message"])
-        let summary = response.flatMap(TimelineSummarizer.extractTopicHint) ?? "Completed"
+        // NOT "Completed". That string is what a child reporting nothing looked
+        // like, and beside a session whose other eleven children were still
+        // running it read as "the work is done" — the single most misleading
+        // row on the strip. Say what happened: it ended, and it said nothing.
+        let summary = response.flatMap(TimelineSummarizer.extractTopicHint)
+            ?? response
+            ?? "ended · no summary"
+        let handle = Self.subagentHandle(label: active?.label ?? label, agentId: agentId)
+        let elapsedSec = active.map { Int(((now - $0.startedAt) / 1000).rounded()) } ?? 0
+        let duration = elapsedSec > 0 ? " · \(DaemonTimelineStore.formatDurationSec(elapsedSec))" : ""
         var entry = DaemonTimelineEntry(
             ts: now,
             type: "tool_resolved",
-            raw: "Subagent \(active?.label ?? label) · \(String(summary.prefix(96)))",
+            raw: "Subagent \(handle)\(duration) · \(String(summary.prefix(96)))",
             detail: nil,
             approvalId: nil,
             status: nil,
@@ -3649,10 +3719,61 @@ final class DaemonServer {
         entry.startedAt = active?.startedAt
         entry.endedAt = now
         entry.summaryKind = response == nil ? "none" : "heuristic"
+        entry.subagentId = "child:\(sid):\(identity)"
         await timelineStore.add(entry, bypassSuppression: true)
         broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
+        broadcastSessionsList()
         return true
     }
+
+    /// Expire children whose stop never arrived, so a lost hook cannot pin a
+    /// parent at "running" forever. The census row itself survives: a session
+    /// that once had children keeps reporting an explicit zero.
+    private func sweepSubagentCensus(now: Double) {
+        let cutoff = now - (6 * 60 * 60 * 1000)
+        for (sid, var census) in subagentCensus {
+            census.active = census.active.filter { $0.value.startedAt >= cutoff }
+            if census.active.isEmpty && census.burstId != nil {
+                census.burstId = nil
+                census.burstCount = 0
+                census.burstLabels = []
+            }
+            subagentCensus[sid] = census
+        }
+    }
+
+    /// The parent's live census, or nil when this session never had a child.
+    /// Never fold "no children ever" into `active: 0`: clients merge
+    /// retain-on-absent, so a field that disappears when the last child exits
+    /// pins its last count on the row forever.
+    func subagentSummary(for sessionId: String) -> [String: Any]? {
+        guard let census = subagentCensus[sessionId] else { return nil }
+        var out: [String: Any] = [
+            "active": census.active.count,
+            "peak": census.peak,
+            "completed": census.completed,
+        ]
+        if let last = census.lastCompletedAt { out["lastCompletedAt"] = last }
+        return out
+    }
+
+    /// Twelve children of one workflow all report the same `agent_type`, so the
+    /// type alone names none of them. The suffix is the child's own id — the
+    /// only thing that differs.
+    static func subagentHandle(label: String, agentId: String?) -> String {
+        guard let agentId else { return label }
+        let short = String(agentId.filter { $0.isLetter || $0.isNumber }.suffix(4)).lowercased()
+        return short.isEmpty ? label : "\(label)#\(short)"
+    }
+
+    static func subagentBurstRaw(count: Int, labels: [String]) -> String {
+        let shown = labels.prefix(2).joined(separator: ", ")
+            + (labels.count > 2 ? " +\(labels.count - 2)" : "")
+        return count > 1
+            ? "Subagent ×\(count) dispatched · \(shown)"
+            : "Subagent \(shown) · dispatched"
+    }
+
 
     private func handleHookEvent(_ json: [String: Any]) async {
         guard let event = json["event"] as? String else { return }
@@ -5898,13 +6019,16 @@ final class DaemonServer {
         Task { @MainActor [weak self] in self?.pttVoice?.speakReply(spoken) }
     }
 
-    /// Mirror of `rawSessionId` in shared/src/session-utils.ts (the SSOT for
-    /// the observed-prefix agent list) — keep the two in step.
+    /// Bare id form, via the generated mirror of `rawSessionId` in
+    /// shared/src/session-utils.ts.
+    ///
+    /// This used to inline the agent list as a regex and had fallen a release
+    /// behind (no Kiro), which is exactly the failure the SSOT comment
+    /// describes: a spoken reply armed under the prefixed id and looked up
+    /// under the bare one matches nothing, so the reply is synthesized for
+    /// nobody.
     nonisolated static func pttRawSessionId(_ id: String) -> String {
-        return id.replacingOccurrences(
-            of: "^observed:(?:claude|codex|codex-app|opencode|antigravity):",
-            with: "",
-            options: .regularExpression)
+        return ObservedAgentRules.rawSessionId(id)
     }
 
     /// Mirror of `speakableReply` in shared/src/voice-reply-digest.ts: strip
@@ -8579,6 +8703,16 @@ final class DaemonServer {
             d["elapsedSec"] = elapsed
         }
         if let activity = sessionActivitySummary(s) { d["activity"] = activity }
+        // Live child-agent census — a SECOND axis to `state`, not a correction
+        // to it: a parent whose turn closed is genuinely idle while its
+        // subagents keep working. Hooks key children by the BARE session uuid
+        // while these rows are `observed:<agent>:<uuid>`, so normalize first.
+        // Emitted with explicit zeros once a session has had children: a field
+        // that vanishes when the last one exits latches its count on every
+        // client that merges retain-on-absent.
+        if let census = subagentSummary(for: ObservedAgentRules.rawSessionId(s.id)) {
+            d["subagents"] = census
+        }
         if let cm = s.controlMode {
             d["controlMode"] = cm
             // Will a device press on this row's options reach the agent? Typing
@@ -9681,6 +9815,10 @@ final class DaemonServer {
         if let v = e.taskOutcome { dict["taskOutcome"] = v }
         if let v = e.taskCategory { dict["taskCategory"] = v }
         if let v = e.taskSummary { dict["taskSummary"] = v }
+        // Child identity. Clients key their own dedup and their dispatch-row
+        // upsert off this; drop it from the broadcast and a live fan-out
+        // collapses on the client exactly the way it used to on the daemon.
+        if let v = e.subagentId { dict["subagentId"] = v }
         return dict
     }
 

@@ -568,6 +568,31 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     /// SSOT for the session summary line — render this instead of hand-rolling
     /// model/state strings so all surfaces (InkDeck/Android/Apple) agree.
     var activity: String?
+    /// Live child-agent census. A SECOND axis to `state`, not a correction to
+    /// it: a parent whose turn closed is genuinely `idle` while its subagents
+    /// keep working, and the row said "idle" through a half-hour fan-out.
+    ///
+    /// Absent means "no child was ever seen here", never "zero right now" — the
+    /// daemon keeps emitting an explicit zero once a session has had children,
+    /// because a field that vanishes when the last child exits latches its last
+    /// count forever under retain-on-absent merging.
+    var subagents: SubagentSummary?
+}
+
+/// Live child-agent census for one session. See `SessionInfo.subagents`.
+///
+/// Children never appear as `SessionInfo` rows of their own: they are not
+/// separately steerable, and they would flood a deck sized for sessions.
+struct SubagentSummary: Codable, Sendable, Equatable {
+    /// Children currently running (started, no stop seen).
+    var active: Int
+    /// Highest concurrent `active` since it last reached zero — the width of
+    /// the current fan-out, which `active` alone loses as children drain.
+    var peak: Int
+    /// Children finished in this wave.
+    var completed: Int
+    /// Epoch ms of the most recent child stop.
+    var lastCompletedAt: Double?
 }
 
 // MARK: - Bridge Events (Bridge → Client)

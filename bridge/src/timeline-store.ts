@@ -161,7 +161,15 @@ export class BridgeTimelineStore {
     // face of the "answer with no prompt" symptom. tool_exec is standalone
     // (unlike the tool_request/tool_resolved approval pair, which must not be
     // split), so shedding it first is safe and preserves the turn skeleton.
-    const toolIdx = this.entries.findIndex((e) => e.type === 'tool_exec');
+    //
+    // Subagent dispatch rows are the exception: they carry a `subagentId` and
+    // pair with the children's `tool_resolved` rows exactly the way a
+    // `task_start` pairs with its `task_end`. Shedding them first inverted the
+    // rule's intent — the sessions that produce the most tool_exec rows are the
+    // fan-out sessions, so the dispatch row was always the first casualty and
+    // the completions below it read as unattached. Skip them here; they still
+    // FIFO out with everything else once the plain tool rows are gone.
+    const toolIdx = this.entries.findIndex((e) => e.type === 'tool_exec' && !e.subagentId);
     if (toolIdx >= 0) {
       this.entries.splice(toolIdx, 1);
       return;
@@ -445,6 +453,22 @@ export class BridgeTimelineStore {
     if (!normalized) return;
 
     if (this.tryMergeTaskEndByTaskId(normalized)) {
+      return;
+    }
+
+    // Subagent dispatch rows are keyed by id, not by timestamp proximity: a
+    // fan-out can keep growing for the whole burst window, which is wider than
+    // the 1s tolerance below, and a burst that outran it would fork into a
+    // second row mid-dispatch.
+    if (normalized.subagentId) {
+      for (let i = this.entries.length - 1; i >= 0; i--) {
+        if (this.entries[i].subagentId !== normalized.subagentId) continue;
+        this.entries[i] = { ...this.entries[i], ...normalized };
+        this.schedulePersist();
+        for (const cb of this.listeners) cb(this.entries[i], true);
+        return;
+      }
+      this.addEntry(normalized, opts);
       return;
     }
 

@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.sp
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.net.PermissionMode
 import dev.agentdeck.net.SessionInfo
+import dev.agentdeck.net.SubagentSummary
+import dev.agentdeck.state.ModelProviderRules
 import dev.agentdeck.terrarium.TerrariumColors
 import dev.agentdeck.ui.component.AgentDeckLogo
 import dev.agentdeck.ui.component.BrandIcon
@@ -69,6 +71,10 @@ fun SessionListPanel(
         val isPrimary: Boolean,
         val sessionId: String?,
         val activity: String? = null,
+        /** Live child-agent census. A SECOND axis to [agentState]: a parent
+         *  whose turn closed is genuinely idle while its subagents keep
+         *  working, and this row said "IDLE" through the whole fan-out. */
+        val subagents: SubagentSummary? = null,
     )
 
     fun compareEntries(left: SessionEntry, right: SessionEntry): Int {
@@ -127,6 +133,7 @@ fun SessionListPanel(
             isPrimary = true,
             sessionId = sessionId,
             activity = primaryAnchorSibling?.activity,
+            subagents = primaryAnchorSibling?.subagents,
         )
     }
 
@@ -154,6 +161,7 @@ fun SessionListPanel(
                 isPrimary = false,
                 sessionId = session.id,
                 activity = session.activity,
+                subagents = session.subagents,
             )
         }
     val displayEntries = entries.sortedWith(::compareEntries)
@@ -195,17 +203,35 @@ fun SessionListPanel(
         @Composable
         fun sessionRow(entry: SessionEntry, label: String, indent: Boolean) {
             val stateMarker = compactStateMarker(entry.agentState)
+            // Third identity axis: whose endpoint answered. A `claude-glm`
+            // session is Claude Code — same binary, same hooks, same transcript
+            // — with ANTHROPIC_BASE_URL pointed elsewhere, so the brand icon and
+            // agentType are right and only this was missing. Empty unless the
+            // harness has a native provider AND the model demonstrably came
+            // from another; two unknowns never combine into a claim.
+            val providerLabel = ModelProviderRules.offHarnessProviderLabel(
+                entry.agentType, entry.modelName
+            )
+            val modelWithProvider = entry.modelName?.let { model ->
+                if (providerLabel.isEmpty()) model else "$model \u00B7 $providerLabel"
+            }
             val modelEffort = when {
-                entry.modelName != null && entry.effortLevel != null
+                modelWithProvider != null && entry.effortLevel != null
                     && entry.effortLevel != "medium" && entry.effortLevel != "default" ->
-                    "${entry.modelName} \u00B7 ${entry.effortLevel}"
-                entry.modelName != null -> entry.modelName
+                    "$modelWithProvider \u00B7 ${entry.effortLevel}"
+                modelWithProvider != null -> modelWithProvider
                 else -> null
             }
+            // Children in flight sit BESIDE the state marker rather than
+            // replacing it: the parent really is idle, and eight subagents
+            // really are running. Both facts are true at once.
+            val running = entry.subagents?.active ?: 0
+            val stateWithChildren =
+                if (running > 0) "$stateMarker \u27E8$running running\u27E9" else stateMarker
             val subLine = if (modelEffort != null) {
-                "$modelEffort \u00B7 $stateMarker"
+                "$modelEffort \u00B7 $stateWithChildren"
             } else {
-                stateMarker
+                stateWithChildren
             }
 
             Column(
