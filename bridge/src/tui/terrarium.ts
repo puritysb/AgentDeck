@@ -489,13 +489,16 @@ export function setOctopi(
   ctx: TerrariumContext,
   sessions: Array<{ id?: string; state: string; name?: string; agentType?: string }>,
 ): void {
-  const octSessions = sessions.filter(s =>
-    (s.agentType as string) !== 'daemon' &&
-    (s.agentType as string) !== 'openclaw' &&
-    (s.agentType as string) !== 'codex-cli' &&
-    (s.agentType as string) !== 'codex-app' &&
-    (s.agentType as string) !== 'opencode'
-  );
+  // Allow-list, not a deny-list. Spelled the other way round this read
+  // "everything that isn't one of these five is a Claude octopus", so every
+  // agent added after it was written swam as Claude: antigravity and both Kiro
+  // types were drawn with Claude's creature in the TUI aquarium. A wrong
+  // identity is worse than a missing one — an unknown agent renders as nothing
+  // here, which is the documented polarity (CLAUDE.md, "An unknown agentType
+  // renders as nothing or as a neutral default — never as another agent").
+  // Mirrors `isOctopusAgent` (Swift) / `isOctopusAgentType` (Kotlin) and
+  // `CODING_AGENTS` in bridge/src/pixoo/pixoo-renderer.ts.
+  const octSessions = sessions.filter(s => (s.agentType as string) === 'claude-code');
   const count = octSessions.length;
   // Count name occurrences to number duplicates
   const nameCounts = new Map<string, number>();

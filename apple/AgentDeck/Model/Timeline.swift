@@ -447,14 +447,10 @@ private func sameTimelineContext(_ a: TimelineEntry, _ b: TimelineEntry) -> Bool
 /// and Node `BridgeTimelineStore.getHistoryForSession`.
 func canonicalTimelineSessionId(_ value: String?) -> String? {
     guard let value = timelineNonBlank(value) else { return nil }
-    let prefixes = [
-        "observed:claude:",
-        "observed:codex:",
-        "observed:codex-app:",
-        "observed:opencode:",
-        "observed:antigravity:",
-    ]
-    for prefix in prefixes where value.hasPrefix(prefix) {
+    // Generated from the TypeScript source rather than written here: this list
+    // was hand-mirrored and drifted, missing both Kiro keys, so selecting a
+    // Kiro session matched no rows and its timeline came up empty.
+    for prefix in ObservedAgentRules.sessionPrefixes where value.hasPrefix(prefix) {
         return timelineNonBlank(String(value.dropFirst(prefix.count)))
     }
     return value

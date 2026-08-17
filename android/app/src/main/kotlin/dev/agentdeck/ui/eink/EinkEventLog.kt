@@ -182,6 +182,8 @@ private fun sourceTag(entry: TimelineEntry): String {
         "codex-app" -> "Codex App "
         "opencode" -> "OpenCode "
         "antigravity" -> "Antigravity "
+        "kiro-cli" -> "Kiro CLI "
+        "kiro-ide" -> "Kiro IDE "
         null -> ""
         else -> "Agent "
     }

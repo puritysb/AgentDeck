@@ -85,12 +85,32 @@ describe('TUI terrarium snapshots', () => {
   it('setOctopi configures octopus instances', () => {
     const ctx = initTerrarium();
     setOctopi(ctx, [
-      { id: 'a', state: 'idle', name: 'TestProject' },
-      { id: 'b', state: 'processing', name: 'AgentDeck' },
+      { id: 'a', state: 'idle', name: 'TestProject', agentType: 'claude-code' },
+      { id: 'b', state: 'processing', name: 'AgentDeck', agentType: 'claude-code' },
     ]);
     expect(ctx.octopi).toHaveLength(2);
     expect(ctx.octopi[0].name).toBe('TestProject');
     expect(ctx.octopi[1].state).toBe('processing');
+  });
+
+  it('draws an octopus for Claude and for nobody else', () => {
+    // The filter used to be a deny-list — "everything that is not one of these
+    // five is a Claude octopus" — so every agent added after it was written
+    // swam as Claude. Kiro and Antigravity sessions were drawn with Claude's
+    // creature here while the Stream Deck, Pixoo and both apps had them right.
+    //
+    // This pins the POLARITY, not the membership: adding a real agent needs no
+    // edit here, but spelling the filter as an exclusion again fails.
+    const ctx = initTerrarium();
+    setOctopi(ctx, [
+      { id: 'claude', state: 'idle', name: 'Claude', agentType: 'claude-code' },
+      { id: 'kiro', state: 'idle', name: 'Kiro', agentType: 'kiro-cli' },
+      { id: 'kiro-ide', state: 'idle', name: 'KiroIDE', agentType: 'kiro-ide' },
+      { id: 'agy', state: 'idle', name: 'Antigravity', agentType: 'antigravity' },
+      { id: 'future', state: 'idle', name: 'NotYetInvented', agentType: 'some-2027-agent' },
+      { id: 'none', state: 'idle', name: 'NoType' },
+    ]);
+    expect(ctx.octopi.map(o => o.name)).toEqual(['Claude']);
   });
 
   it('setCrayfish configures crayfish state', () => {
@@ -127,7 +147,7 @@ describe('TUI terrarium snapshots', () => {
 
   it('renderTerrariumFrame with idle octopus', () => {
     const ctx = initTerrarium();
-    setOctopi(ctx, [{ id: 'a', state: 'idle', name: 'Test' }]);
+    setOctopi(ctx, [{ id: 'a', state: 'idle', name: 'Test', agentType: 'claude-code' }]);
     updateTerrarium(ctx, 0);
     const lines = renderTerrariumFrame(ctx, 80, 20, 0);
     expect(lines.length).toBeGreaterThan(0);
@@ -136,7 +156,7 @@ describe('TUI terrarium snapshots', () => {
 
   it('renderTerrariumFrame with processing octopus', () => {
     const ctx = initTerrarium();
-    setOctopi(ctx, [{ id: 'a', state: 'processing', name: 'AgentDeck' }]);
+    setOctopi(ctx, [{ id: 'a', state: 'processing', name: 'AgentDeck', agentType: 'claude-code' }]);
     updateTerrarium(ctx, 10);
     const lines = renderTerrariumFrame(ctx, 80, 20, 10);
     expect(lines).toMatchSnapshot();

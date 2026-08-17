@@ -162,7 +162,7 @@ internal fun isLowSignalEntry(entry: TimelineEntry): Boolean {
     // included forward-compat (the observed-hook classifier already accepts
     // antigravity_* events).
     val isSubagentLifecycle = entry.type == "tool_exec" && entry.summary.trimStart().startsWith("Subagent ")
-    if (!isSubagentLifecycle && (entry.agentType == "codex-cli" || entry.agentType == "codex-app" || entry.agentType == "opencode" || entry.agentType == "antigravity") && entry.type == "tool_exec") {
+    if (!isSubagentLifecycle && ObservedAgentRules.TOOL_EXEC_SUPPRESSED.contains(entry.agentType) && entry.type == "tool_exec") {
         return true
     }
     // Real signal in detail → keep regardless of placeholder raw. The
@@ -377,6 +377,8 @@ data class TimelineSessionFilter(
                 "codex-app" -> "Codex App"
                 "opencode" -> "OpenCode"
                 "antigravity" -> "Antigravity"
+                "kiro-cli" -> "Kiro CLI"
+                "kiro-ide" -> "Kiro IDE"
                 else -> sessionId
             }
         }
@@ -388,14 +390,10 @@ data class TimelineSessionFilter(
  * `canonicalTimelineSessionId` and Node `getHistoryForSession`. */
 fun canonicalTimelineSessionId(value: String?): String? {
     val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val prefixes = listOf(
-        "observed:claude:",
-        "observed:codex:",
-        "observed:codex-app:",
-        "observed:opencode:",
-        "observed:antigravity:",
-    )
-    val prefix = prefixes.firstOrNull { trimmed.startsWith(it) } ?: return trimmed
+    // Generated from the TypeScript source rather than written here: this list
+    // was hand-mirrored and drifted, missing both Kiro keys, so selecting a
+    // Kiro session matched no rows and its timeline came up empty.
+    val prefix = ObservedAgentRules.SESSION_PREFIXES.firstOrNull { trimmed.startsWith(it) } ?: return trimmed
     return trimmed.removePrefix(prefix).trim().takeIf { it.isNotEmpty() }
 }
 

@@ -395,6 +395,28 @@ export function summarizeOpenClawCronPrompt(text?: string): string {
   return `자동 작업 \u00b7 ${capped}`;
 }
 
+/**
+ * Agents whose OBSERVED per-tool rows are kept out of the user-facing timeline.
+ *
+ * A list rather than an inline chain because it is mirrored on four surfaces
+ * (Swift `TimelineStripView`, Kotlin `TimelineDisplay`, and the device
+ * renderers) and the chain drifted: Kiro was added here and to nothing else, so
+ * a Kiro turn drowned its own prompt/response rows on iOS/macOS and Android
+ * while reading clean on the deck. Generated outward by
+ * `pnpm generate-observed-agent-rules` (vitest drift gate).
+ *
+ * Claude is deliberately absent: its tool rows are the managed-session signal
+ * the strip is built around.
+ */
+export const TOOL_EXEC_SUPPRESSED_AGENTS = [
+  'codex-cli', 'codex-app', 'opencode', 'antigravity', 'kiro-cli', 'kiro-ide',
+] as const;
+
+/** True when this agent's observed `tool_exec` rows must not be persisted. */
+export function isToolExecSuppressedAgent(agentType: string | undefined): boolean {
+  return (TOOL_EXEC_SUPPRESSED_AGENTS as readonly string[]).includes(agentType ?? '');
+}
+
 export function shouldDropLowSignalTimelineEntry(entry: TimelineEntry): boolean {
   if (isTaskNotificationChatStart(entry)) return true;
   if (isOpenClawLowSignalResponse(entry)) return true;
@@ -415,15 +437,7 @@ export function shouldDropLowSignalTimelineEntry(entry: TimelineEntry): boolean 
   // included forward-compat: `classifyObservedHookEvent` already accepts
   // `antigravity_*` hooks, so if an AGY observer producer lands its tool rows
   // must not flood the strip either.
-  if (
-    (entry.agentType === 'codex-cli' ||
-      entry.agentType === 'codex-app' ||
-      entry.agentType === 'opencode' ||
-      entry.agentType === 'antigravity' ||
-      entry.agentType === 'kiro-cli' ||
-      entry.agentType === 'kiro-ide') &&
-    entry.type === 'tool_exec'
-  ) {
+  if (isToolExecSuppressedAgent(entry.agentType) && entry.type === 'tool_exec') {
     return true;
   }
   if (detailHasRealSignal(entry.detail)) return false;

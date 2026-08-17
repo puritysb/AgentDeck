@@ -122,6 +122,7 @@
 		441CE4E0A61236F1346DAFFC /* DevicePreviewShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46AB7A0263C3AFB217C9DF13 /* DevicePreviewShared.swift */; };
 		447BEA00A4A2B8DA5DEC15AF /* TimelineStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F37E295246F5931D533E31 /* TimelineStripView.swift */; };
 		4492EC65271E1C630601393F /* UsageAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBBD731AC01994F5C7C1A78A /* UsageAPIClient.swift */; };
+		44DF8C2AE35CEC24AC9C2460 /* ObservedAgentRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */; };
 		4578F976C71274F3C7C2620C /* InkDeckPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8404D4037BF665BA54E03F0 /* InkDeckPreview.swift */; };
 		45C2A8320BF4C10E8106CF6B /* OpenClawToolNoiseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4C62CBEEE99555CED707 /* OpenClawToolNoiseTests.swift */; };
 		45F924FE8D817EB16CA71345 /* DaemonActor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69470A0782BDF6A29012E9F0 /* DaemonActor.swift */; };
@@ -292,6 +293,7 @@
 		A8293F557BD8D3FB91BF4CF4 /* StateTimelineGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */; };
 		A869C24476DAE485D0B950EC /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B6B05AD3CC720BD76A681F9 /* QRScannerView.swift */; };
 		AA5C41BFDE43A8EDC2C85AA3 /* TerrariumRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF3CC89437DF95538AA2AE5 /* TerrariumRules.generated.swift */; };
+		AB96439EFAFE10B03D547935 /* ObservedAgentRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */; };
 		ABE80C830C69CB0A2D03A767 /* LightRaySystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53F4A08898B95CB592E133A /* LightRaySystem.swift */; };
 		ABEE4D6EFD64ECCBDBCD843B /* AntigravityCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB382D6E482410C30E597EC /* AntigravityCreature.swift */; };
 		AC658605D32EEDED79556598 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B6B05AD3CC720BD76A681F9 /* QRScannerView.swift */; };
@@ -486,6 +488,7 @@
 		0F083DDE39507B6693AED227 /* ApmeCategoryE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeCategoryE2ETests.swift; sourceTree = "<group>"; };
 		118F64508CC1FE2827516440 /* LocalCodexAppObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCodexAppObserver.swift; sourceTree = "<group>"; };
 		125A43BCFF7E55A34B4C5FC1 /* AgentDeckLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDeckLogo.swift; sourceTree = "<group>"; };
+		12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAgentRules.generated.swift; sourceTree = "<group>"; };
 		15083D65B8571C662DD6E2CE /* PortDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortDiagnostics.swift; sourceTree = "<group>"; };
 		1603E1F58E35F85044D7913A /* MicroGlyphs.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroGlyphs.generated.swift; sourceTree = "<group>"; };
 		165E4184E24C198326D600A6 /* HookIdleTTLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HookIdleTTLTests.swift; sourceTree = "<group>"; };
@@ -1165,6 +1168,7 @@
 				979988BB4CB2A4B5948FD360 /* Adapter.swift */,
 				F15F55435772A15B8F0E92C1 /* AgentState.swift */,
 				9DC487120E810897B3BF0FC4 /* CodexFreshnessRules.generated.swift */,
+				12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */,
 				9C75E7B3676BD283B9A4BE27 /* PairingCodeRules.generated.swift */,
 				E532E5457B6DFDE324D8F11C /* Protocol.swift */,
 				BBAB8DFED8E277FFB6136742 /* SessionGrouping.swift */,
@@ -1590,6 +1594,7 @@
 				F5B2BB7991E7283F4B99902F /* MonitorHUD.swift in Sources */,
 				DCDA12FC8E9B9961BA2D8182 /* MonitorScreen.swift in Sources */,
 				385B3F4A96DFFFBC72851371 /* NotificationPermission.swift in Sources */,
+				AB96439EFAFE10B03D547935 /* ObservedAgentRules.generated.swift in Sources */,
 				4D747DC11E54E8A60894D481 /* ObservedSteering.swift in Sources */,
 				4B34D6CBC040FE9BE5E51856 /* OctopusCreature.swift in Sources */,
 				F1C357A840E59D7A188C808B /* OnboardingScreen.swift in Sources */,
@@ -1776,6 +1781,7 @@
 				DEBCF013EEAB22462CF0044C /* MonitorHUD.swift in Sources */,
 				A50EA56C00F6A51F498DD20E /* MonitorScreen.swift in Sources */,
 				0ED91B65645B05541D82E446 /* NotificationPermission.swift in Sources */,
+				44DF8C2AE35CEC24AC9C2460 /* ObservedAgentRules.generated.swift in Sources */,
 				48B83035D9FC3732361014F8 /* ObservedSteering.swift in Sources */,
 				CCB2A2848DDAADBEB6F7BB53 /* OctopusCreature.swift in Sources */,
 				BF6E216F74A8205677B8B82B /* OnboardingScreen.swift in Sources */,

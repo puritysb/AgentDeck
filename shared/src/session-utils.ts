@@ -20,9 +20,28 @@
  * fifth site that skipped stripping altogether silently never matched: a spoken
  * reply was armed under the prefixed id and looked up under the bare one, so the
  * reply was synthesized for nobody. Add agents here, not at the call sites.
+ *
+ * "Not at the call sites" did not reach the two mobile ones, which kept their
+ * own hand-written arrays and both missed Kiro — so selecting a Kiro session on
+ * iOS/macOS or Android matched no timeline rows at all and its detail view came
+ * up empty. They are generated from this list now
+ * (`pnpm generate-observed-agent-rules`, vitest drift gate).
+ *
+ * These are the id KEYS, which are not always the agentType: Claude Code is
+ * `claude-code` as an agent and `observed:claude:` as an id.
  */
+export const OBSERVED_SESSION_AGENT_KEYS = [
+  'claude', 'codex', 'codex-app', 'opencode', 'antigravity', 'kiro', 'kiro-ide',
+] as const;
+
+/** `observed:<key>:` for every key above — the form clients actually match. */
+export const OBSERVED_SESSION_PREFIXES: readonly string[] =
+  OBSERVED_SESSION_AGENT_KEYS.map((k) => `observed:${k}:`);
+
+// Built from the list rather than written beside it, so the regex and the
+// array cannot disagree about which agents exist.
 export const OBSERVED_SESSION_PREFIX_RE =
-  /^observed:(?:claude|codex|codex-app|opencode|antigravity|kiro|kiro-ide):/;
+  new RegExp(`^observed:(?:${OBSERVED_SESSION_AGENT_KEYS.join('|')}):`);
 
 /** Bare uuid form of a session id — unchanged when it has no observed prefix. */
 export function rawSessionId(sessionId: string): string {

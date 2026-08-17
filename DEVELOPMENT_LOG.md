@@ -2,6 +2,86 @@
 
 ---
 
+## 2026-08-17 — Kiro 는 어디에 반영되었나: 표면별 실측과 세 가지 결함
+
+### 계기
+
+"Kiro CLI 가 기기별로 다 반영되었나? macOS Dashboard 만 거의 제대로 나오는 것 같은데."
+표면별로 에이전트 종류를 열거하는 지점을 전수 비교했다(`opencode` 가 있는데 `kiro` 가
+없는 파일). 답은 **아니오**였고, 결함은 세 종류로 갈렸다.
+
+### 1. 잘못 표시 — TUI 가 Kiro 를 Claude 문어로 그렸다
+
+`bridge/src/tui/terrarium.ts` 의 `setOctopi` 가 **거부목록**이었다:
+
+```ts
+sessions.filter(s => s.agentType !== 'daemon' && ... !== 'opencode')
+```
+
+"이 다섯이 아니면 전부 Claude 문어"라는 뜻이므로, 그 뒤에 추가된 에이전트는 **전부**
+Claude 로 헤엄쳤다 — Kiro 두 종류와 Antigravity 가 그랬다. CLAUDE.md 가 명시한 폴백
+극성 규칙("미지의 agentType 은 아무것도 아니거나 중립으로 — 절대 남의 정체성으로")의
+정확한 위반이고, 2026-08-16 에 Kiro 를 머지하며 Stream Deck·Pixoo·양쪽 앱은 고쳤지만
+TUI 한 곳이 남아 있었다.
+
+허용목록(`=== 'claude-code'`)으로 뒤집었다. 결과적으로 Kiro/Antigravity 는 TUI 수조에서
+**안 보이게** 되는데, 그게 옳다 — 틀린 정체성보다 없는 편이 낫다.
+
+기존 테스트가 이걸 못 잡은 이유도 같이 고쳤다: fixture 가 `agentType` 을 **아예 안 넘겼다**.
+코드가 분기하는 필드를 fixture 가 비워두면 어느 쪽으로 고쳐도 green 이다. 실제 모양
+(데몬은 항상 agentType 을 보낸다)으로 바꾸고, **극성을 고정하는** 게이트를 넣었다 —
+멤버십이 아니라 극성이라 진짜 에이전트를 추가할 때 테스트를 고칠 필요가 없다.
+
+### 2. 안 보임 — Kiro 세션의 타임라인이 양쪽 앱에서 비어 있었다
+
+관측 세션은 `sessions_list` 와 기기에서 `observed:<agent>:<uuid>` 로, 타임라인 행·훅
+페이로드·transcript 에서는 **맨 uuid** 로 키잉된다. `session-utils.ts` 의 SSOT 주석은
+이미 이렇게 적고 있었다 — *"같은 정규식이 네 곳에 인라인돼 세 가지 다른 에이전트 목록으로
+갈라졌다. 에이전트는 호출 지점이 아니라 여기에 추가하라."*
+
+그 "호출 지점이 아니라"가 모바일 두 곳에는 닿지 않았다. `canonicalTimelineSessionId` 가
+Swift(`Model/Timeline.swift`)와 Kotlin(`state/TimelineDisplay.kt`)에 손으로 미러돼 있었고,
+**둘 다 Kiro 두 키가 없었다.** 그래서 Kiro 세션을 선택하면 접두어가 안 벗겨져 어떤 행과도
+매칭되지 않고 상세 화면이 텅 비었다. 사용자가 "macOS 만 거의 제대로"라고 느낀 "거의"가 이것이다.
+
+같은 부류로 관측 `tool_exec` 억제 목록(4미러 규칙)도 Swift `TimelineStripView` 와 Kotlin
+`TimelineDisplay` 에서 Kiro 가 빠져 있었다 — Kiro 턴의 도구 행이 자기 프롬프트·응답 행을
+바운디드 버퍼에서 밀어낸다.
+
+두 목록 다 **생성기로 옮겼다**(`shared` → `pnpm generate-observed-agent-rules` →
+Swift/Kotlin, vitest 드리프트 게이트). 목록이 짧아서 손 미러가 공짜처럼 보이지만, 비용은
+**에이전트를 추가할 때마다 조용해지는 표면 하나**다. 게이트는 호출 지점에 멤버십이 다시
+적히는 것도 잡는다.
+
+### 3. 중립이지만 안 보임 — ESP32
+
+극성은 **옳다**(허용목록 + 중립 폴백). 다만 Kiro 는:
+
+- ticker / pocket: `agentColor` 폴백 `HUDDim` → 회색 행(라벨은 `agent_label.h` 덕에 "Kiro CLI" 로 정확)
+- IPS10 hud_bar: `ips10AgentGlyph` → `nullptr` → 글리프 대신 점
+- LED matrix: `matrix_pages.cpp` 가 `continue` → **행 자체가 안 나옴**
+- 수조(terrarium): Kiro 크리처 없음
+
+반대로 office 씬 / knob / e-ink 는 Kiro 색·라벨·글리프(KIRO_A8)를 이미 갖고 있다.
+펌웨어 변경은 OTA 컷 + 하드웨어 검증이 필요해 별도 작업으로 남긴다.
+
+### 이미 맞던 곳
+
+shared SSOT 전부(라벨·색·로고/크리처 아이콘·정렬 가중치·adapter 타입), Apple 앱
+(`KiroCreature.swift` + 라벨 4곳), Stream Deck, Ulanzi D200H(둘 다 공용 `renderSessionSlot`
+경유), Pixoo/Timebox/iDotMatrix(마스크·색·크리처 레이아웃).
+
+### 교훈
+
+- **"머지했다"는 표면별 질문이다.** Kiro 관측은 8월 16일에 머지됐지만, 그건 데몬이 Kiro 를
+  *본다*는 뜻이었지 열 개 표면이 그걸 *그린다*는 뜻이 아니었다. 새 에이전트는 열거 지점의
+  수만큼 반영 작업이 있다.
+- **거부목록으로 쓴 폴백은 미래의 모든 에이전트를 남의 정체성으로 만든다.** 극성은 멤버십과
+  달리 테스트로 고정할 수 있고, 그래야 한다.
+- **SSOT 주석에 "여기에 추가하라"라고 적는 것만으로는 손 미러가 안 따라온다.** 게이트가 없는
+  규칙은 규칙이 아니라 희망이다.
+
+---
 ## 2026-08-17 — "같은 머신"과 "나"는 다른 질문이다 (로드맵 P0 1~5)
 
 ### 문제
