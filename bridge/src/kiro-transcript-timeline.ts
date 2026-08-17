@@ -131,6 +131,13 @@ export function kiroTimelineForSession(
   // Carried across records: an AssistantMessage has no timestamp of its own, so
   // it is stamped with the prompt it answers.
   let turnTs = 0;
+  // Kiro writes SEVERAL AssistantMessage records for one prompt (a reply that
+  // continues after a tool call is a second record). Giving them all
+  // `turnTs + 1` made them collide: the timeline's ts-based dedup folded them
+  // into one row, and — worse — the feed's watermark could not tell a new
+  // record from the one it had already seen, so everything after the first
+  // reply of a turn was silently dropped. Each record gets its own offset.
+  let replyIndex = 0;
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     let rec: { kind?: string; data?: { content?: unknown; meta?: { timestamp?: unknown } } };
@@ -144,6 +151,7 @@ export function kiroTimelineForSession(
       const stamp = rec.data?.meta?.timestamp;
       // Seconds on the wire, milliseconds in TimelineEntry.
       if (typeof stamp === 'number' && Number.isFinite(stamp)) turnTs = stamp * 1000;
+      replyIndex = 0;
       const text = textOf(content);
       if (!turnTs || !text) continue;
       rows.push({
@@ -157,8 +165,11 @@ export function kiroTimelineForSession(
     } else if (rec.kind === 'AssistantMessage') {
       const text = textOf(content);
       if (!turnTs || !text) continue;
+      replyIndex += 1;
       rows.push({
-        ts: turnTs + 1, // sorts after its prompt; the record carries no time
+        // Sorts after its prompt and after any earlier reply in the same turn;
+        // the record carries no time of its own.
+        ts: turnTs + replyIndex,
         type: 'chat_response',
         raw: firstLine(text),
         detail: text.slice(0, 4000),

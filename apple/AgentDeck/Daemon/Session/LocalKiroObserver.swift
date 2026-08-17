@@ -172,6 +172,13 @@ enum LocalKiroObserver {
 
         var turns: [Turn] = []
         var turnTs: Double = 0
+        // Kiro writes SEVERAL AssistantMessage records for one prompt — a reply
+        // that resumes after a tool call is a second record. Giving them all
+        // `turnTs + 1` made them collide, and a colliding timestamp is not a
+        // cosmetic ordering issue here: the timeline dedups on it and the
+        // feed's watermark uses it to tell an unseen record from an emitted
+        // one, so every reply after a turn's first was silently dropped.
+        var replyIndex: Double = 0
         for line in raw.split(separator: "\n", omittingEmptySubsequences: true) {
             guard let lineData = line.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
@@ -183,11 +190,13 @@ enum LocalKiroObserver {
                    let seconds = (meta["timestamp"] as? NSNumber)?.doubleValue {
                     turnTs = seconds * 1000
                 }
+                replyIndex = 0
                 guard turnTs > 0, !text.isEmpty else { continue }
                 turns.append(Turn(isPrompt: true, text: text, ts: turnTs))
             } else if kind == "AssistantMessage" {
                 guard turnTs > 0, !text.isEmpty else { continue }
-                turns.append(Turn(isPrompt: false, text: text, ts: turnTs + 1))
+                replyIndex += 1
+                turns.append(Turn(isPrompt: false, text: text, ts: turnTs + replyIndex))
             }
         }
         return turns

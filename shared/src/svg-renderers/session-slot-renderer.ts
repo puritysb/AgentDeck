@@ -126,6 +126,34 @@ function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + '\u2026';
 }
 
+/**
+ * Accent colour for a session slot — the IDLE label and the drifting particles.
+ *
+ * Deliberately NOT `agentBrandColor`: these are the brand hues lightened for
+ * legibility on an unlit key, which is why the Swift preview mirror carries the
+ * same pairs rather than reading StateColors.
+ *
+ * **The default is a neutral slate, and that polarity is the point.** This was
+ * written as a chain ending in OpenCode's cream, so every agent the build had
+ * never heard of — Kiro included — wore OpenCode's colour on the hardware while
+ * the Swift preview (which had already been given a neutral default) showed it
+ * correctly. An unknown agent must read as "some agent", never as a specific
+ * other one.
+ */
+export function agentSlotAccent(agentType: string | undefined | null): string {
+  switch (agentType) {
+    case 'claude-code':               return '#D97757';
+    case 'codex-cli':
+    case 'codex-app':                 return '#8BA4FF';
+    case 'openclaw':                  return '#FF6B6B';
+    case 'kiro-cli':
+    case 'kiro-ide':                  return '#A78BFA';
+    case 'opencode':                  return '#F1ECEC';
+    case 'antigravity':               return '#9AA0A6';
+    default:                          return '#B8BEC8';
+  }
+}
+
 function wrapSessionName(name: string, maxChars: number, maxLines = 4): string[] {
   if (name.length <= maxChars) return [name];
   const lines: string[] = [];
@@ -394,7 +422,7 @@ export function renderSessionSlot(
   const agent = (session.agentType as AgentType) || 'claude-code';
   const nameForDisplay = displayName ?? session.projectName;
   const modelText = formatModelEffort(session.modelName, session.effortLevel, 15);
-  const p1 = agent === 'claude-code' ? '#D97757' : (agent === 'codex-cli' || agent === 'codex-app') ? '#8BA4FF' : agent === 'openclaw' ? '#FF6B6B' : '#F1ECEC';
+  const p1 = agentSlotAccent(agent);
   const sColor = stateColor(session.state);
   // RUNNING reads as a COOL teal (calm "in progress"); PERM keeps the semantic
   // amber (stateColor → #f59e0b). Previously RUNNING used a gold #F5B942 that

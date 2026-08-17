@@ -29,7 +29,7 @@
 //     the anchor cancelled the rotation and froze the dashes.
 // Ported 2026-08-08: the original 72×72 Stream Deck key's low-resolution
 // typography profile (`wrapSessionName`, 20pt names, and lower tool baseline).
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts a943e7e09cc29dbaa75b654a5d6f25c6322e40d7
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 6950eec6400d7116161231a765a7bcc8fb856cee
 //
 // Scope for this first pass:
 //   - renderSessionSlot (primary session button)
@@ -78,6 +78,8 @@ private struct AgentSlotPalette {
             return .init(primary: Color(hex: "#A78BFA"), secondary: Color(hex: "#7C3AED"))
         case "opencode":
             return .init(primary: Color(hex: "#F1ECEC"), secondary: Color(hex: "#AFAFAF"))
+        case "antigravity":
+            return .init(primary: Color(hex: "#9AA0A6"), secondary: Color(hex: "#5F6368"))
         default:
             // Unknown agent — a neutral slate, not OpenCode's cream. The
             // daemon can name an agent this build has never seen, and it

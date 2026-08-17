@@ -19,7 +19,7 @@
  * shared) because the shared renderers are owned elsewhere.
  */
 import type { AgentType, SessionInfo, StatusCardTone, State } from '@agentdeck/shared';
-import { stateColor, formatModelEffort, escSvgText, PASSIVE_OFFLINE_LABEL } from '@agentdeck/shared';
+import { stateColor, formatModelEffort, escSvgText, PASSIVE_OFFLINE_LABEL, agentSlotAccent } from '@agentdeck/shared';
 
 const SIZE = 144;
 const FONT = 'Inter, -apple-system, system-ui, Helvetica Neue, sans-serif';
@@ -113,12 +113,6 @@ export function renderStatusReadout(config: StatusReadoutConfig): string {
   return readoutFrame(c.accent, els.join(''));
 }
 
-const AGENT_ACCENT: Record<string, string> = {
-  'claude-code': '#D97757',
-  'codex-cli': '#8BA4FF',
-  'codex-app': '#8BA4FF',
-  openclaw: '#FF6B6B',
-};
 
 /**
  * Flat, non-interactive session INFO tile for the detail view (drop-in for the
@@ -133,7 +127,7 @@ export function renderSessionReadout(
   effortLevel?: string,
 ): string {
   const agent = (session.agentType as AgentType) || 'claude-code';
-  const accent = AGENT_ACCENT[agent] ?? '#94a3b8';
+  const accent = agentSlotAccent(agent);
   const name = truncate(displayName ?? session.projectName, 12);
   const effectiveState = (state || session.state) as string | undefined;
   const sColor = effectiveState ? stateColor(effectiveState) : READOUT_INK;

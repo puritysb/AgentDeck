@@ -74,6 +74,33 @@ final class LocalKiroObserverTests: XCTestCase {
         XCTAssertEqual(turns[1].ts, turns[0].ts + 1, accuracy: 0.5)
     }
 
+    func testEveryReplyRecordInOneTurnGetsItsOwnTimestamp() throws {
+        // Kiro writes SEVERAL AssistantMessage records for one prompt — a reply
+        // that resumes after a tool call is a second record, and the measured
+        // transcript has two such turns. Stamping them all `prompt + 1`
+        // collided them, and a colliding stamp is not cosmetic here: the
+        // timeline dedups on it and KiroTimelineFeed's watermark uses it to
+        // tell an unseen record from an emitted one, so every reply after a
+        // turn's first was silently dropped.
+        let toolResults = """
+        {"version":"v1","kind":"ToolResults","data":{"content":[{"kind":"toolResult","data":{"toolUseId":"tooluse_e6z"}}]}}
+        """
+        let url = try write([
+            prompt("go", 1786975378),
+            assistant("first part"),
+            toolResults,
+            assistant("second part"),
+            prompt("next", 1786975379),
+            assistant("third"),
+        ])
+        let turns = LocalKiroObserver.readTurns(url)
+        XCTAssertEqual(turns.map(\.text), ["go", "first part", "second part", "next", "third"])
+        XCTAssertEqual(Set(turns.map(\.ts)).count, turns.count, "two rows share a timestamp")
+        // Strictly increasing, so a `since` cut can walk them one at a time and
+        // the next prompt still sorts after the replies it follows.
+        XCTAssertEqual(turns.map(\.ts), turns.map(\.ts).sorted())
+    }
+
     func testThinkingBlocksAndToolResultsStayOutOfTheText() throws {
         let toolResults = """
         {"version":"v1","kind":"ToolResults","data":{"content":[{"kind":"toolResult","data":{"toolUseId":"tooluse_e6z"}}]}}

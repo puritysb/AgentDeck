@@ -8,12 +8,12 @@
 // shows up in the HUD beside a timeline that stays empty forever — which is
 // exactly what the user saw before this landed on the Node side.
 //
-// **A first sighting emits nothing.** It only records where the transcript
-// currently ends. Without that, every daemon start would replay each Kiro
-// session's whole history into a bounded activity log, evicting live rows from
-// other agents to re-tell a two-day-old conversation. Hook-driven agents get
-// this property for free — their rows exist only from the moment the daemon is
-// listening — and this makes Kiro behave the same way.
+// **A first sighting emits the last turn, and only that.** Replaying the whole
+// transcript would push days of old conversation into a bounded activity log,
+// evicting live rows from other agents. Emitting NOTHING was the first version
+// and read as broken: a session that had been talking for an hour came back
+// after a daemon restart with a visible session row and a blank strip beside
+// it. One turn is enough to say what the session is doing.
 
 import Foundation
 
@@ -52,10 +52,10 @@ final class KiroTimelineFeed {
                 if watermark[id] == nil { watermark[id] = 0 }
                 continue
             }
-            guard let since = watermark[id] else {
-                watermark[id] = newest          // first sighting: seed, emit nothing
-                continue
-            }
+            // Read the cut BEFORE moving the watermark: on a first sighting it
+            // is the start of the last turn (so that turn, and nothing older,
+            // is emitted); on every later tick it is what was already sent.
+            let since = watermark[id] ?? Self.lastTurnStart(turns)
             watermark[id] = newest
             for turn in turns where turn.ts > since {
                 out.append(DaemonTimelineEntry(
@@ -90,6 +90,19 @@ final class KiroTimelineFeed {
             guard watermark.count > Self.maxTracked else { break }
             watermark.removeValue(forKey: id)
         }
+    }
+
+    /// A cut that admits the newest prompt and everything answering it.
+    ///
+    /// Walks back to the last prompt rather than taking a fixed count: a Kiro
+    /// turn is one prompt plus however many reply records the agent wrote, so
+    /// cutting by count would show a reply with no question above it. Returns
+    /// just under that prompt's stamp, since the filter is strictly greater.
+    private static func lastTurnStart(_ turns: [LocalKiroObserver.Turn]) -> Double {
+        for turn in turns.reversed() where turn.isPrompt { return turn.ts - 1 }
+        // No prompt in the window (a transcript whose tail is all replies):
+        // fall back to the last two rows rather than the whole file.
+        return turns.count > 2 ? turns[turns.count - 3].ts : 0
     }
 
     private static func firstLine(_ text: String, cap: Int = 120) -> String {

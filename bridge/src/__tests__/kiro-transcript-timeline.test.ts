@@ -96,6 +96,33 @@ describe('kiroTimelineForSession', () => {
     expect(response.ts).toBe(prompt.ts + 1);
   });
 
+  it('gives every reply record in one turn its own timestamp', () => {
+    // Kiro writes SEVERAL AssistantMessage records for one prompt — a reply
+    // that resumes after a tool call is a second record, and the measured
+    // transcript has two such turns. Stamping them all `prompt + 1` collided
+    // them: the timeline's ts-keyed dedup folded them into one row, and the
+    // feed's watermark could not tell an unseen record from one it had already
+    // emitted, so every reply after a turn's first was silently dropped.
+    writeTranscript([
+      PROMPT('go', 1786975378),
+      ASSISTANT('first part'),
+      TOOL_RESULTS,
+      ASSISTANT('second part'),
+    ]);
+    const rows = kiroTimelineForSession(`observed:kiro:${UUID}`, { sessionsRoot: root });
+    expect(rows.map((r) => r.raw)).toEqual(['go', 'first part', 'second part']);
+    expect(new Set(rows.map((r) => r.ts)).size).toBe(3);
+    // Strictly increasing, so `since` can walk them one at a time.
+    expect(rows[1].ts).toBeLessThan(rows[2].ts);
+    // And the next prompt still sorts after all of them.
+    writeTranscript([
+      PROMPT('go', 1786975378), ASSISTANT('a'), ASSISTANT('b'),
+      PROMPT('next', 1786975379), ASSISTANT('c'),
+    ]);
+    const ts = kiroTimelineForSession(`observed:kiro:${UUID}`, { sessionsRoot: root }).map((r) => r.ts);
+    expect([...ts].sort((a, b) => a - b)).toEqual(ts);
+  });
+
   it('keeps thinking blocks and tool results out of the rows', () => {
     writeTranscript([PROMPT('ls -la 해줘', 1786898236), TOOL_RESULTS, ASSISTANT('현재 디렉토리 내용')]);
     const rows = kiroTimelineForSession(`observed:kiro:${UUID}`, { sessionsRoot: root });

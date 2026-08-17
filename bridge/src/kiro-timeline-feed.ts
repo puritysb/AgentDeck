@@ -13,12 +13,13 @@
  * whatever is new in each Kiro session's transcript and emits it as ordinary
  * timeline rows, so the strip fills the way it does for every other agent.
  *
- * **A first sighting emits nothing.** It only records where the transcript
- * currently ends. Without that, every daemon start would dump each Kiro
- * session's entire history into a bounded activity log — evicting live rows
- * from other agents to re-tell a conversation from two days ago. Hook-driven
- * agents have the same property for free: their rows exist only from the
- * moment the daemon is listening. This makes Kiro behave the same way.
+ * **A first sighting emits the last turn, and only that.** Emitting nothing at
+ * all was the first version and it was wrong in practice: a hook-driven agent
+ * accumulates rows continuously, so a daemon restart costs it little, while a
+ * Kiro session that had been talking for an hour came back with a visible
+ * session row and a blank strip beside it — which reads as broken, not as
+ * "history you missed". One turn is enough context to say what the session is
+ * doing without replaying days of conversation into a bounded activity log.
  */
 
 import type { TimelineEntry } from '@agentdeck/shared';
@@ -37,6 +38,20 @@ export type KiroRowReader = (
   sessionId: string,
   opts: { since?: number; limit?: number },
 ) => TimelineEntry[];
+
+/**
+ * The last prompt and everything that answered it.
+ *
+ * Walks back to the newest `chat_start` rather than taking a fixed count: a
+ * Kiro turn is one prompt followed by however many reply records the agent
+ * happened to write, and cutting by count would show a reply with no question.
+ */
+function tailTurn(rows: TimelineEntry[]): TimelineEntry[] {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].type === 'chat_start') return rows.slice(i);
+  }
+  return rows.slice(-2);
+}
 
 export class KiroTimelineFeed {
   /** sessionId → newest row timestamp already accounted for. */
@@ -74,9 +89,12 @@ export class KiroTimelineFeed {
       }
       const newest = rows[rows.length - 1].ts;
       if (since === undefined) {
-        // First sighting: remember where the transcript ends, emit nothing.
+        // First sighting: show the last turn so the strip is not blank beside
+        // a live session row, and mark everything older as history.
         this.watermark.set(id, newest);
-        debug('daemon', `kiro-feed seeded ${id} at ${newest}`);
+        const lastTurn = tailTurn(rows);
+        debug('daemon', `kiro-feed seeded ${id} at ${newest} (+${lastTurn.length} row(s))`);
+        out.push(...lastTurn);
         continue;
       }
       this.watermark.set(id, newest);

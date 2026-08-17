@@ -17,6 +17,10 @@ function row(ts: number, raw: string): TimelineEntry {
   return { ts, type: 'chat_start', raw, agentType: 'kiro-cli', sessionId: 'x' };
 }
 
+function reply(ts: number, raw: string): TimelineEntry {
+  return { ts, type: 'chat_response', raw, agentType: 'kiro-cli', sessionId: 'x' };
+}
+
 /** A fake transcript that grows between ticks, honouring `since` like the real
  *  reader does. */
 function reader(rowsBySession: Record<string, TimelineEntry[]>) {
@@ -31,13 +35,31 @@ function reader(rowsBySession: Record<string, TimelineEntry[]>) {
 }
 
 describe('KiroTimelineFeed', () => {
-  it('emits nothing the first time it sees a session', () => {
-    // Otherwise every daemon start replays days of an old conversation into a
-    // bounded activity log, evicting live rows from other agents to do it.
-    const rows = { [SID]: [row(1000, 'old prompt'), row(2000, 'old reply')] };
+  it('emits the last turn — and only that — the first time it sees a session', () => {
+    // Emitting the whole backlog would replay days of conversation into a
+    // bounded activity log, evicting live rows from other agents. Emitting
+    // NOTHING was the first version and read as broken: a session that had
+    // been talking for an hour came back after a daemon restart with a visible
+    // session row and a blank strip beside it. One turn says what it is doing.
+    const rows = {
+      [SID]: [
+        row(1000, 'ancient prompt'), reply(1001, 'ancient reply'),
+        row(3000, 'last prompt'), reply(3001, 'part one'), reply(3002, 'part two'),
+      ],
+    };
     const { read } = reader(rows);
     const feed = new KiroTimelineFeed(read);
+    expect(feed.pump([SID]).map((r) => r.raw)).toEqual(['last prompt', 'part one', 'part two']);
+    // The whole file is now history: nothing repeats on the next tick.
     expect(feed.pump([SID])).toEqual([]);
+  });
+
+  it('cuts the seeded turn at its prompt, never mid-turn', () => {
+    // A turn is one prompt plus however many reply records the agent wrote, so
+    // a fixed row count would show a reply with no question above it.
+    const rows = { [SID]: [row(3000, 'q'), ...Array.from({ length: 6 }, (_, i) => reply(3001 + i, `r${i}`))] };
+    const { read } = reader(rows);
+    expect(new KiroTimelineFeed(read).pump([SID])[0].raw).toBe('q');
   });
 
   it('emits only what appeared after the first sighting', () => {
@@ -76,8 +98,8 @@ describe('KiroTimelineFeed', () => {
     expect(feed.size).toBe(1);
     feed.pump([]);                                  // session ended
     expect(feed.size).toBe(0);
-    // Re-seen later: seeded again, so its backlog is not replayed.
-    expect(feed.pump([SID])).toEqual([]);
+    // Re-seen later: seeded again — its last turn, not its whole backlog.
+    expect(feed.pump([SID]).map((r) => r.raw)).toEqual(['a']);
   });
 
   it('orders rows across sessions and survives a reader that throws', () => {
@@ -90,7 +112,7 @@ describe('KiroTimelineFeed', () => {
       return base.read(id, opts);
     };
     const feed = new KiroTimelineFeed(read);
-    feed.pump([good, bad]);
+    feed.pump([good, bad]);                          // seeds `good` at 10
     rows[good].push(row(30, 'later'), row(20, 'earlier'));
     // One unreadable session must not cost the other its rows, and the output
     // is chronological regardless of read order.

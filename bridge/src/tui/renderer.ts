@@ -161,7 +161,12 @@ function creatureEmoji(agentType?: string): string {
   if ((agentType as string) === 'opencode') return '\u25A3';           // ▣ (nested square — matches creature)
   if ((agentType as string) === 'antigravity') return '\u25B2';        // ▲ (Antigravity peak)
   if ((agentType as string) === 'kiro-cli' || (agentType as string) === 'kiro-ide') return '\uD83D\uDC7B'; // 👻 (official Kiro ghost motif)
-  return '\u273B';  // ✻ (teardrop-spoked asterisk — Claude sparkle)
+  if ((agentType as string) === 'claude-code') return '\u273B';  // ✻ (teardrop-spoked asterisk — Claude sparkle)
+  // An agent this build predates gets a NEUTRAL mark, never Claude's. The
+  // daemon ships on its own schedule and will name agents that were not in
+  // this list when it was written; dressing one as Claude is a wrong view, not
+  // a degraded one — which is exactly how Kiro sessions first read as Claude.
+  return '\u25CB';  // ○
 }
 
 function creatureBrandColor(agentType?: string): string {
