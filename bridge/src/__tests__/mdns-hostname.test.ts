@@ -71,15 +71,16 @@ describe('mDNS service hostname', () => {
     // A client has to be able to tell two daemons apart before dialling one.
     expect(txt.user).toMatch(/^[0-9a-f]{4}$/);
     expect(txt.host).toBe(call.name.split('-').slice(1, -2).join('-'));
-    // …but multicast is readable by everyone on the segment, so the account
-    // name must never be the value of anything. Asserted per-value rather than
-    // over the serialized record: the hostname IS published on purpose and can
-    // legitimately contain the username as a substring (CI's runner is user
-    // `runner` on host `runnervmzvulz`), so a substring test over the whole
-    // TXT blob fails on a machine that is doing nothing wrong.
+    // …but multicast is readable by everyone on the segment, so no OPAQUE field
+    // may be the account name. `host` is excluded by name rather than by value:
+    // it is the one field published on purpose, and a machine whose hostname
+    // equals its username (common on Linux boxes, containers, some CI images)
+    // is not leaking anything the OS does not already put in an A record.
+    // Excluding it by name also keeps the invariant honest as keys are added.
     const username = os.userInfo().username;
+    const { host: _advertisedOnPurpose, ...opaque } = txt;
     expect(txt.user).not.toContain(username);
-    expect(Object.values(txt)).not.toContain(username);
+    expect(Object.values(opaque)).not.toContain(username);
 
     cleanup();
   });
