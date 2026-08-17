@@ -199,7 +199,11 @@ fun DashboardState.toTerrariumState(
     fun isKiroAgent(type: String?): Boolean = isKiroAgentType(type)
 
     // Primary agent — brand-mark creatures are routed to their dedicated render lists below.
-    if (agentState != AgentState.DISCONNECTED && !isDaemonLike && agentType != "openclaw" && !isCodexAgent(agentType) && agentType != "opencode" && agentType != "antigravity" && !isKiroAgent(agentType)) {
+    // ALLOW-list, not a deny-list: an agentType this build has never heard of
+    // must render as nothing, never as a Claude octopus wearing another
+    // agent's identity. Daemon and dashboard ship separately, so unknown
+    // types WILL arrive. Mirrors CODING_AGENTS in pixoo-renderer.ts.
+    if (agentState != AgentState.DISCONNECTED && !isDaemonLike && isOctopusAgentType(agentType)) {
         agents.add(
             AgentCreatureState(
                 sessionId = sessionId ?: "primary",
@@ -221,7 +225,7 @@ fun DashboardState.toTerrariumState(
             continue // skip self (null guard)
         }
         val siblingType = sibling.agentType
-        if (siblingType == "openclaw" || siblingType == "daemon" || isCodexAgent(siblingType) || siblingType == "opencode" || siblingType == "antigravity" || isKiroAgent(siblingType)) {
+        if (!isOctopusAgentType(siblingType)) {
             continue // not octopus
         }
         agents.add(

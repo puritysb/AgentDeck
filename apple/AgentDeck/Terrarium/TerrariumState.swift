@@ -139,26 +139,21 @@ extension DashboardState {
         var result = TerrariumState()
 
         // Primary session creature (skip daemon/openclaw/codex-cli/opencode/antigravity — they're not octopuses)
-        let primaryIsOctopus = state != .disconnected
-            && agentType != "daemon"
-            && agentType != "openclaw"
-            && agentType != "codex-cli"
-            && agentType != "codex-app"
-            && agentType != "opencode"
-            && agentType != "antigravity"
-            // Kiro ghosts have their own band. Note this bucket is defined by
-            // EXCLUSION, so an agent nobody lists here silently becomes a
-            // Claude octopus — which is exactly what Kiro sessions did until
-            // this line existed.
-            && agentType != "kiro-cli"
-            && agentType != "kiro-ide"
+        // ALLOW-list, not a deny-list. This bucket used to be spelled as
+        // "everything except the agents we happen to know about", which meant an
+        // agentType this build has never heard of was drawn as a Claude octopus
+        // — a session wearing another agent's identity. Daemon and dashboard
+        // ship separately, so the daemon WILL send types an older dashboard does
+        // not know; the correct answer for those is no creature, never someone
+        // else's. Mirrors `CODING_AGENTS` in bridge/src/pixoo/pixoo-renderer.ts,
+        // which has always been an allow-list.
+        let primaryIsOctopus = state != .disconnected && Self.isOctopusAgent(agentType)
 
         // Octopus siblings (exclude daemon/openclaw/codex-cli/opencode/antigravity), sorted by ID for stable positioning.
         // Also exclude the currently-focused session's id to prevent double-rendering when focus relay
         // promotes a sibling to primary (agentType → claude-code, sessionId → sibling.id).
         let siblings = siblingSessions
-            .filter { $0.agentType != "daemon" && $0.agentType != "openclaw" && $0.agentType != "codex-cli" && $0.agentType != "codex-app" && $0.agentType != "opencode" && $0.agentType != "antigravity" }
-            .filter { $0.agentType != "kiro-cli" && $0.agentType != "kiro-ide" }
+            .filter { Self.isOctopusAgent($0.agentType) }
             .filter { !(primaryIsOctopus && $0.id == sessionId) }
             .sorted { $0.id < $1.id }
 
@@ -583,6 +578,14 @@ extension DashboardState {
         case .processing: .working
         case .awaitingPermission, .awaitingOption, .awaitingDiff: .asking
         }
+    }
+
+    /// Agent types drawn as the octopus. SSOT-mirrored from `CODING_AGENTS`
+    /// in `bridge/src/pixoo/pixoo-renderer.ts` — keep the two in step, and keep
+    /// this an allow-list so an unknown agent renders as nothing rather than as
+    /// Claude.
+    static func isOctopusAgent(_ agentType: String?) -> Bool {
+        agentType == "claude-code"
     }
 
     private func mapToKiroState(_ connState: AgentConnectionState) -> KiroVisualState {

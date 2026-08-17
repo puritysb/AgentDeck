@@ -161,3 +161,47 @@ describe('pixoo creature sync — the `_primary` fallback', () => {
     expect(snapshot[0].state).toBe('processing');
   });
 });
+
+describe('pixoo creature sync — unknown agent types', () => {
+  // The daemon and every dashboard/device renderer ship separately, so this
+  // renderer WILL be handed agentType values it predates. The rule is: a
+  // neutral default or nothing — never another agent's creature. `octopus` is
+  // Claude's, and `creatureTypeFor` falls back to it, so the guard that matters
+  // is the allow-list in front of it.
+  it('draws no creature for an agent type it has never heard of', () => {
+    const snapshot = getCreatureLayoutSnapshot([
+      session({ id: 'future:1', agentType: 'some-future-agent' }),
+    ], null);
+
+    expect(snapshot).toHaveLength(0);
+  });
+
+  it('does not let an unknown agent become a Claude octopus alongside real ones', () => {
+    const snapshot = getCreatureLayoutSnapshot([
+      session({ id: 'claude:1', agentType: 'claude-code', projectName: 'AgentDeck' }),
+      session({ id: 'future:1', agentType: 'some-future-agent', projectName: 'AgentDeck' }),
+    ], null);
+
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0].creatureType).toBe('octopus');
+  });
+
+  it('gives every known agent type its own creature', () => {
+    const expected: Array<[string, string]> = [
+      ['claude-code', 'octopus'],
+      ['codex-cli', 'jellyfish'],
+      ['codex-app', 'jellyfish'],
+      ['opencode', 'opencode'],
+      ['antigravity', 'antigravity'],
+      ['kiro-cli', 'kiro'],
+      ['kiro-ide', 'kiro'],
+    ];
+    for (const [agentType, creatureType] of expected) {
+      const snapshot = getCreatureLayoutSnapshot([
+        session({ id: `s:${agentType}`, agentType, projectName: agentType }),
+      ], null);
+      expect(snapshot, `${agentType} should produce a creature`).toHaveLength(1);
+      expect(snapshot[0].creatureType, `${agentType} creature`).toBe(creatureType);
+    }
+  });
+});

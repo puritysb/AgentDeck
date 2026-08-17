@@ -239,6 +239,11 @@ fun layoutWorkerCrayfish(
 internal fun isKiroAgentType(type: String?): Boolean =
     type == "kiro-cli" || type == "kiro-ide"
 
+/** Agent types drawn as the octopus. SSOT-mirrored from CODING_AGENTS in
+ * bridge/src/pixoo/pixoo-renderer.ts. Kept an allow-list so an unknown agent
+ * renders as nothing rather than as Claude. */
+internal fun isOctopusAgentType(type: String?): Boolean = type == "claude-code"
+
 internal fun vectorMarkSlots(creatures: List<AgentCreatureState>): List<CreatureSlot> {
     val kiroCount = creatures.count { isKiroAgentType(it.agentType) }
     val openCodeSlots = layoutOpenCodeCreatures(creatures.size - kiroCount)

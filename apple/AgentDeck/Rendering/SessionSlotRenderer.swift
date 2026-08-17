@@ -76,8 +76,13 @@ private struct AgentSlotPalette {
             return .init(primary: Color(hex: "#FF6B6B"), secondary: Color(hex: "#CC3333"))
         case "kiro-cli", "kiro-ide":
             return .init(primary: Color(hex: "#A78BFA"), secondary: Color(hex: "#7C3AED"))
-        default: // opencode + unknown
+        case "opencode":
             return .init(primary: Color(hex: "#F1ECEC"), secondary: Color(hex: "#AFAFAF"))
+        default:
+            // Unknown agent — a neutral slate, not OpenCode's cream. The
+            // daemon can name an agent this build has never seen, and it
+            // should read as "some agent", not as a specific other one.
+            return .init(primary: Color(hex: "#B8BEC8"), secondary: Color(hex: "#7A828F"))
         }
     }
 }

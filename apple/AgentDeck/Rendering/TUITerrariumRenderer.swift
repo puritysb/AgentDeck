@@ -362,7 +362,11 @@ private enum TerrariumGridBuilder {
             return state == "processing" ? ["(", "\u{25D5}", ")"]
                                          : ["(", "\u{25CB}", ")"]
         default:
-            return ["(", "o", ")"]
+            // An agentType this build does not know renders as a neutral
+            // marker, NOT as Claude's "(o)". The daemon ships separately and
+            // will send types added after this build; borrowing another
+            // agent's glyph makes a new agent look like an old one.
+            return ["[", "\u{00B7}", "]"]
         }
     }
 
