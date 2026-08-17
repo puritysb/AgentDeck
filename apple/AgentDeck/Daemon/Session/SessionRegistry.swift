@@ -358,7 +358,13 @@ final class SessionRegistry: Sendable {
             for port in Self.basePort...Self.maxPort where !excluding.contains(port) {
                 group.addTask { [self] in
                     let health = await self.probeDaemonHealth(port: port)
-                    return (health?["mode"] as? String) == "daemon" ? port : nil
+                    guard (health?["mode"] as? String) == "daemon" else { return nil }
+                    // Another OS user's daemon is not a sibling to hand over to:
+                    // attaching to it would render THEIR sessions in this user's
+                    // dashboard, and reporting it here is what makes the caller
+                    // stand down for it (docs/ENTERPRISE-ROADMAP.md §1.3).
+                    if LocalPeerOwnership.isForeignDaemon(health: health) { return nil }
+                    return port
                 }
             }
             var found: Int?

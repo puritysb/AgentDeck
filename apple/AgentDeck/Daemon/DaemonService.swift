@@ -423,6 +423,12 @@ final class DaemonService: ObservableObject {
         // daemon is left alone and this app starts its own instead
         // (docs/ENTERPRISE-ROADMAP.md §1.2, §1.3).
         if LocalPeerOwnership.isForeignDaemon(health: health) {
+            // Defence in depth: the ownership decision is made where the daemon
+            // is DISCOVERED (DaemonServer.init and scanForDaemonPort), so a
+            // foreign daemon should never produce `alreadyRunning` and reach
+            // here at all. If a race gets one through, the retry below is what
+            // resolves it — and it must be slow enough not to spin, since the
+            // path that sent us here would send us here again.
             DaemonLogger.shared.info("Daemon on port \(resolvedPort) belongs to another user — not attaching to it; starting our own daemon instead")
             self.server = nil
             self.isRunning = false
@@ -435,7 +441,7 @@ final class DaemonService: ObservableObject {
             // from inside start()'s own Task), so an inline call would be
             // swallowed with no log and no retry — leaving the app daemonless.
             Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(1))
+                try? await Task.sleep(for: .seconds(5))
                 self?.start()
             }
             return

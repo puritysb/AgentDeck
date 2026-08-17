@@ -207,7 +207,12 @@ export function localPeerOwnership(pid: number | null | undefined): LocalPeerOwn
     return 'same-user';
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
-    if (code === 'EPERM') return 'other-user';
+    // Windows has no POSIX signals: libuv implements this as OpenProcess, which
+    // is refused for an ELEVATED process of the same user as readily as for
+    // another user's. Reading that as `other-user` would break the ordinary
+    // "daemon runs elevated, CLI does not" case — a real regression in exchange
+    // for a protection Windows cannot express here anyway.
+    if (code === 'EPERM' && process.platform !== 'win32') return 'other-user';
     // ESRCH (gone) or anything else: no information.
     return 'unknown';
   }

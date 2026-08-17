@@ -996,7 +996,21 @@ final class DaemonServer {
                 throw DaemonError.alreadyRunning(port: scannedPort)
             }
             if let health = await registry.probeDaemonHealth(port: requestedPort) {
-                if health["mode"] as? String == "daemon" {
+                // Another user's daemon on this port is neither a hub to join
+                // nor one to evict — take a port of our own instead. Deciding
+                // it HERE and not at the connect site matters: `alreadyRunning`
+                // is what sends the app into client mode, and a refusal made
+                // afterwards would bounce straight back into this initializer
+                // once a second, forever.
+                if health["mode"] as? String == "daemon",
+                   LocalPeerOwnership.isForeignDaemon(health: health) {
+                    DaemonLogger.shared.info("Port \(requestedPort) is held by another user's daemon — taking a port of our own")
+                    if let alt = await registry.findAvailablePort() {
+                        resolvedPort = UInt16(alt)
+                    } else {
+                        throw DaemonError.noPortAvailable
+                    }
+                } else if health["mode"] as? String == "daemon" {
                     throw DaemonError.alreadyRunning(port: requestedPort)
                 }
                 if let alt = await registry.findAvailablePort() {
