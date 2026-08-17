@@ -407,7 +407,10 @@ struct ControlTowerPanel: View {
             .buttonStyle(.plain)
             .foregroundStyle(Color.accentColor)
 
-            Button { openWindow(id: "pairing-qr") } label: {
+            Button {
+                DockVisibilityController.shared.prepareToShowWindow()
+                openWindow(id: "pairing-qr")
+            } label: {
                 Label("Pair iPad", systemImage: "qrcode")
                     .font(.system(size: 10.5, weight: .medium))
             }
@@ -614,6 +617,7 @@ struct ControlTowerPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
             if !connected {
                 Button {
+                    DockVisibilityController.shared.prepareToShowWindow()
                     NSApp.activate(ignoringOtherApps: true)
                     openWindow(id: "settings")
                 } label: {
@@ -907,6 +911,7 @@ struct ControlTowerPanel: View {
 
     private var settingsPillButton: some View {
         Button {
+            DockVisibilityController.shared.prepareToShowWindow()
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: "settings")
         } label: {
@@ -1033,6 +1038,10 @@ struct ControlTowerPanel: View {
     }
 
     private func openDashboard() {
+        // Promote out of "menu bar only" BEFORE the window exists — promoting
+        // afterwards makes AppKit drop key focus and the window lands behind
+        // whatever the user was in.
+        DockVisibilityController.shared.prepareToShowWindow()
         // SwiftUI's openWindow brings an existing window of this scene to front
         // if one exists, otherwise creates it. Avoids fragile title string matching.
         openWindow(id: "dashboard")
@@ -1059,6 +1068,7 @@ struct ControlTowerPanel: View {
     /// roundtrip, no token in address bar history.
     private func openApmeDashboard() {
         guard daemonService.port > 0 else { return }
+        DockVisibilityController.shared.prepareToShowWindow()
         openWindow(id: "apme-dashboard")
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
@@ -1066,6 +1076,7 @@ struct ControlTowerPanel: View {
     /// Open the Device Preview window. Safe to call whether or not any
     /// hardware is connected — this is the whole point of the window.
     private func openDevicePreview() {
+        DockVisibilityController.shared.prepareToShowWindow()
         openWindow(id: "device-preview")
         NSApplication.shared.activate(ignoringOtherApps: true)
     }

@@ -884,6 +884,15 @@ struct SettingsScreen: View {
                 }
             }
 
+            Toggle("Menu bar only", isOn: $preferences.menuBarOnlyMode)
+            // The user is reading this inside a window, so the Dock icon will
+            // still be there after they flip it. Say so — otherwise the toggle
+            // reads as broken at the exact moment it is switched on.
+            Text("Hides the Dock icon while no AgentDeck window is open. The icon comes back whenever you open one, so \u{2318}Tab keeps working. While it's hidden, Quit and Settings live in the menu bar icon.")
+                .font(.system(size: 10))
+                .foregroundStyle(TerrariumHUD.subtext)
+                .fixedSize(horizontal: false, vertical: true)
+
             Divider()
             #endif
 

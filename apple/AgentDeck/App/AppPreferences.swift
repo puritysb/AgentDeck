@@ -72,6 +72,13 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
     @Published var menuBarIconStyle: MenuBarIconStyle {
         didSet { defaults.set(menuBarIconStyle.rawValue, forKey: Keys.menuBarIconStyle) }
     }
+    /// "Menu bar only" — hide the Dock icon while no AgentDeck window is open
+    /// (issue #221). Applied at runtime by `DockVisibilityController`; see that
+    /// file for why this is not a permanent `.accessory` policy and not an
+    /// Info.plist `LSUIElement`. Default off — existing behavior unchanged.
+    @Published var menuBarOnlyMode: Bool {
+        didSet { defaults.set(menuBarOnlyMode, forKey: Keys.menuBarOnlyMode) }
+    }
     @Published var showSessionList: Bool {
         didSet { defaults.set(showSessionList, forKey: Keys.showSessionList) }
     }
@@ -290,6 +297,7 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.daemonNoDeviceModules = defaults.object(forKey: Keys.daemonNoDeviceModules) as? Bool ?? false
         self.openDashboardOnLaunch = defaults.object(forKey: Keys.openDashboardOnLaunch) as? Bool ?? true
         self.menuBarIconStyle = MenuBarIconStyle(rawValue: defaults.string(forKey: Keys.menuBarIconStyle) ?? "") ?? .status
+        self.menuBarOnlyMode = defaults.object(forKey: Keys.menuBarOnlyMode) as? Bool ?? false
         self.showSessionList = defaults.object(forKey: Keys.showSessionList) as? Bool ?? true
         self.showTankStatus = defaults.object(forKey: Keys.showTankStatus) as? Bool ?? true
         self.showDeviceDiagnostic = defaults.object(forKey: Keys.showDeviceDiagnostic) as? Bool ?? true
@@ -929,6 +937,7 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         static let daemonNoDeviceModules = "prefs.daemonNoDeviceModules"
         static let openDashboardOnLaunch = "prefs.openDashboardOnLaunch"
         static let menuBarIconStyle = "prefs.menuBarIconStyle"
+        static let menuBarOnlyMode = "prefs.menuBarOnlyMode"
         static let showSessionList = "prefs.showSessionList"
         static let showTankStatus = "prefs.showTankStatus"
         static let showDeviceDiagnostic = "prefs.showDeviceDiagnostic"

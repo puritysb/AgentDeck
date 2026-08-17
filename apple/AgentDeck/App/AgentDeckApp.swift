@@ -35,7 +35,6 @@ struct AgentDeckApp: App {
                 .environmentObject(stateHolder)
                 .environmentObject(preferences)
                 .environmentObject(daemonService)
-                .task { configureDaemonConnection() }
                 // First-launch onboarding sheet. Shown once per install; the
                 // xctest guard in AppPreferences ensures tests never block
                 // on a modal. Safe to render unconditionally — the sheet
@@ -137,6 +136,8 @@ struct AgentDeckApp: App {
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {
+                    // Promote BEFORE the window exists — see prepareToShowWindow().
+                    DockVisibilityController.shared.prepareToShowWindow()
                     NSApp.activate(ignoringOtherApps: true)
                     openWindow(id: "settings")
                 }
@@ -154,13 +155,26 @@ struct AgentDeckApp: App {
                 bridgeConnected: stateHolder.state.bridgeConnected,
                 style: preferences.menuBarIconStyle
             )
+            .onAppear {
+                DockVisibilityController.shared.openDashboard = { openWindow(id: "dashboard") }
+                configureDaemonConnection()
+            }
         }
         .menuBarExtraStyle(.window)
         #endif
     }
 
     #if os(macOS)
+    /// `configureDaemonConnection()` used to ride the Dashboard's `.task`, so it
+    /// ran exactly once because the window opened exactly once. Its new host is
+    /// the MenuBarExtra label's `.onAppear`, which SwiftUI may call again when
+    /// the label re-renders — hence an explicit one-shot.
+    @MainActor private static var didConfigureDaemonConnection = false
+
     private func configureDaemonConnection() {
+        guard !Self.didConfigureDaemonConnection else { return }
+        Self.didConfigureDaemonConnection = true
+
         // Wire AppDelegate to daemon service for clean shutdown
         appDelegate.daemonService = daemonService
         appDelegate.stateHolder = stateHolder
@@ -180,9 +194,21 @@ struct AgentDeckApp: App {
             DispatchQueue.main.async { stateHolder.clearRelayedUsageState() }
         }
 
+        // SwiftUI ALWAYS shows the first `Window` scene at launch, and
+        // `.defaultLaunchBehavior(.suppressed)` does not apply to it — measured
+        // 2026-08-18 with no saved application state present, the Dashboard's
+        // NSWindow is created and `isVisible` regardless. So the preference
+        // could not be honoured by declining to open the window; it has to
+        // close the one macOS opened for us. `ControlTowerPanel.closeDashboard()`
+        // already closes this window the same way and SwiftUI reopens the scene
+        // cleanly afterwards.
         if preferences.openDashboardOnLaunch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 openWindow(id: "dashboard")
+            }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                NSApp.windows.first { $0.identifier?.rawValue == "dashboard" }?.close()
             }
         }
 
@@ -196,8 +222,13 @@ struct AgentDeckApp: App {
         // bypasses early under xctest, so the poll loop is safe.
         Task { @MainActor in
             let isXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-            while !preferences.hasSeenOnboarding && !isXCTest {
+            // Bounded: the onboarding sheet rides the Dashboard window, which
+            // a menu-bar-only user may never open. An unbounded poll would
+            // then tick every 500 ms for the life of the process.
+            var waited = 0
+            while !preferences.hasSeenOnboarding && !isXCTest && waited < 120 {
                 try? await Task.sleep(for: .milliseconds(500))
+                waited += 1
             }
             try? await Task.sleep(for: .seconds(1))
             await NotificationPermission.requestIfNeeded()
@@ -219,6 +250,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Foreground-banner presentation for attention notifications
         // (see UNUserNotificationCenterDelegate extension below).
         UNUserNotificationCenter.current().delegate = self
+
+        // "Menu bar only" mode (issue #221) — no-op unless the preference is on.
+        DockVisibilityController.shared.start(preferences: AppPreferences.shared)
+
+        // A second instance can't raise us by activation alone once the Dock
+        // icon is gone, so SingletonGuard hands the request over as a
+        // distributed notification instead. Name-only: App Sandbox strips
+        // userInfo from distributed notifications and we don't need any.
+        DistributedNotificationCenter.default().addObserver(
+            forName: DockVisibilityController.showDashboardNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                DockVisibilityController.shared.prepareToShowWindow()
+                DockVisibilityController.shared.openDashboard?()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
     }
 
     /// Intercept termination to run daemon cleanup without blocking the main

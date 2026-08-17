@@ -63,8 +63,21 @@ enum SingletonGuard {
             Thread.sleep(forTimeInterval: 0.3)
         }
 
-        // Activate existing instance so user sees a window come to front
+        // Activate existing instance so user sees a window come to front.
         other.activate(options: [.activateAllWindows])
+        // ...except that activation is a no-op when the existing instance is
+        // running menu-bar-only with no window open: there is no Dock icon and
+        // nothing to bring forward, so relaunching from Finder/Spotlight would
+        // look like the app simply failed to start. Ask it to show the
+        // Dashboard as well. Name-only post — App Sandbox strips `userInfo`
+        // from distributed notifications, and a regular-policy instance
+        // treats this as the harmless "raise the Dashboard" it already is.
+        DistributedNotificationCenter.default().postNotificationName(
+            DockVisibilityController.showDashboardNotification,
+            object: nil,
+            userInfo: nil,
+            deliverImmediately: true
+        )
         Thread.sleep(forTimeInterval: 0.2)
         NSLog("[AgentDeck] Activated existing instance — this instance exiting")
         exit(0)
