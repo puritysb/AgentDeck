@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts bf1f4798a011ff041242ba42997180b8b4f4f521
+// SYNC-HASH shared/src/d200h-layout.ts 74445bade8a9ad9656d623d0724fb8b69683b6d9
 // SYNC-HASH shared/src/session-utils.ts e3963a0fe056d7d4e92046763078999a8a3d4e88
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -528,12 +528,16 @@ public enum D200HLayoutModel {
         if isAwaiting(sState) {
             let navigable = focused ? input.navigable : false
             let isObserved = sess?.controlMode == "observed"
-            // A hook-observed session's options are pressable only when the
-            // daemon can deliver the answer — by typing into that session's
-            // terminal, or by holding its AskUserQuestion open to resolve with
-            // the choice. Without the flag the cells mirror the terminal rather
-            // than pretend a press will work.
-            let observedAnswerable = isObserved && (sess?.liveAnswerable == true)
+            // Options are pressable only when the daemon can deliver the answer
+            // — by typing into that session's terminal, by holding its
+            // AskUserQuestion open to resolve with the choice, or (the OpenClaw
+            // Gateway row) by resolving the approval over the Gateway RPC.
+            // `liveAnswerable` covers all three and is NOT observed-only: the
+            // Gateway row is `managed` and has no terminal to fall back to, so
+            // gating on `isObserved` rendered its decisions as a dead mirror.
+            // Without the flag the cells mirror the terminal rather than pretend
+            // a press will work.
+            let answerable = sess?.liveAnswerable == true
             if !options.isEmpty {
                 for (i, opt) in options.enumerated() {
                     // The server-assigned index is what a press must send back;
@@ -544,14 +548,14 @@ public enum D200HLayoutModel {
                     // focused live state first, then the roster row.
                     let q = (focused ? (input.question ?? sess?.question) : sess?.question) ?? ""
                     if !q.isEmpty { payload["question"] = q }
-                    let action: D200HDeckAction = (navigable || observedAnswerable)
+                    let action: D200HDeckAction = (navigable || answerable)
                         ? .command(type: "select_option", payload: payload)
                         : .command(type: "respond", payload: ["value": respondValue(opt, index: i)])
                     cells.append(Cell(
                         kind: .option(index: i),
                         label: optionLabel(opt, index: i),
                         subtitle: nil,
-                        action: (isObserved && !observedAnswerable) ? .none : action))
+                        action: (isObserved && !answerable) ? .none : action))
                 }
             } else if isObserved, let gate = sess?.requestId, !gate.isEmpty {
                 // Held PreToolUse gate: device-native semantics (permit/deny
