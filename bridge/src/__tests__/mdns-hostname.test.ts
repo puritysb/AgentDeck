@@ -72,8 +72,14 @@ describe('mDNS service hostname', () => {
     expect(txt.user).toMatch(/^[0-9a-f]{4}$/);
     expect(txt.host).toBe(call.name.split('-').slice(1, -2).join('-'));
     // …but multicast is readable by everyone on the segment, so the account
-    // name must never be on it.
-    expect(JSON.stringify(txt)).not.toContain(os.userInfo().username);
+    // name must never be the value of anything. Asserted per-value rather than
+    // over the serialized record: the hostname IS published on purpose and can
+    // legitimately contain the username as a substring (CI's runner is user
+    // `runner` on host `runnervmzvulz`), so a substring test over the whole
+    // TXT blob fails on a machine that is doing nothing wrong.
+    const username = os.userInfo().username;
+    expect(txt.user).not.toContain(username);
+    expect(Object.values(txt)).not.toContain(username);
 
     cleanup();
   });
