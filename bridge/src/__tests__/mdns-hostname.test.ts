@@ -16,7 +16,11 @@ vi.mock('bonjour-service', () => ({
   },
 }));
 
-vi.mock('@agentdeck/shared', () => ({
+// Only `getLanIp` is faked — the identity helpers are the thing under test
+// here, and stubbing them would let the publish call go out with `undefined`
+// where a name belongs while every assertion still passed.
+vi.mock('@agentdeck/shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@agentdeck/shared')>()),
   getLanIp: () => '192.0.2.10',
 }));
 
@@ -45,12 +49,31 @@ describe('mDNS service hostname', () => {
     expect(MDNS_SERVICE_HOST).not.toBe(os.hostname());
     expect(bonjourMocks.publish).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: 'AgentDeck-9120',
+        // The instance name identifies host and user now (it used to be
+        // `AgentDeck-9120` on every machine on the segment — see
+        // docs/ENTERPRISE-ROADMAP.md §2.1), so this asserts the SHAPE: those
+        // components come from the machine running the test.
+        name: expect.stringMatching(/^AgentDeck-[A-Za-z0-9-]*9120$/),
         host: MDNS_SERVICE_HOST,
         type: 'agentdeck',
         port: 9120,
       }),
     );
+
+    cleanup();
+  });
+
+  it('identifies which daemon it is without naming the account', () => {
+    const cleanup = advertiseBridge(9120, 'AgentDeck', 'daemon');
+
+    const call = bonjourMocks.publish.mock.calls[0][0];
+    const txt = call.txt as Record<string, string>;
+    // A client has to be able to tell two daemons apart before dialling one.
+    expect(txt.user).toMatch(/^[0-9a-f]{4}$/);
+    expect(txt.host).toBe(call.name.split('-').slice(1, -2).join('-'));
+    // …but multicast is readable by everyone on the segment, so the account
+    // name must never be on it.
+    expect(JSON.stringify(txt)).not.toContain(os.userInfo().username);
 
     cleanup();
   });

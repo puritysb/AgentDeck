@@ -29,6 +29,13 @@ final class MdnsModule: DeviceModule, @unchecked Sendable {
 
             // Advertise Bonjour service. Never include the pairing token —
             // mDNS TXT is multicast (issue #145).
+            // An instance name must be unique per network SEGMENT, and
+            // "\(projectName)-\(port)" was the same string on every Mac in an
+            // office. Host + user + port are the three ways two daemons on one
+            // segment legitimately differ. Shape is generated from
+            // shared/src/mdns-identity.ts so both daemons compute it alike.
+            let shortHostname = MdnsIdentity.sanitizeLabel(ProcessInfo.processInfo.hostName)
+            let userTag = MdnsIdentity.currentUserTag()
             let txtRecord = NWTXTRecord([
                 "project": projectName,
                 "agent": agentType,
@@ -36,11 +43,17 @@ final class MdnsModule: DeviceModule, @unchecked Sendable {
                 "ip": AuthManager.getLanIP() ?? "127.0.0.1",
                 // TXT schema version — keep in lockstep with the Node daemon's
                 // advertisement (bridge/src/mdns.ts).
-                "v": "3",
+                "v": MdnsIdentity.txtSchemaVersion,
+                // So a client can tell WHICH daemon this is without resolving
+                // and dialling it. `user` is a hash, never the account name —
+                // multicast is readable by everyone on the segment.
+                "host": shortHostname,
+                "user": userTag,
             ])
 
             listener.service = NWListener.Service(
-                name: "\(projectName)-\(port)",
+                name: MdnsIdentity.instanceName(
+                    project: projectName, hostname: shortHostname, userTag: userTag, port: Int(port)),
                 type: "_agentdeck._tcp",
                 txtRecord: txtRecord
             )

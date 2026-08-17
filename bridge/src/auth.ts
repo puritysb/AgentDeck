@@ -160,6 +160,59 @@ export function adoptPeerToken(peerToken: unknown): boolean {
   return true;
 }
 
+/**
+ * Who owns the process behind a same-machine daemon.
+ *
+ * `isLocalConnection` answers "is this the same machine", which used to be
+ * treated as "is this us". On a shared box those are different questions, and
+ * every privileged same-machine interaction rides on the second one: adopting
+ * an incumbent's pairing token (`adoptPeerToken`), asking it to stand down or
+ * shut down, and attaching a session to a daemon found by port scan. A
+ * coworker's daemon answers `/health` on 127.0.0.1 exactly like ours does.
+ *
+ * Three values, and the third is not a rounding of the other two:
+ *
+ *  - `same-user`  the caller may signal the process, so it runs as this user
+ *                 (or this process is root, which may signal anyone — root is
+ *                 already unconstrained and needs no protection from itself).
+ *  - `other-user` the OS refused permission. That refusal IS the answer.
+ *  - `unknown`    no pid was reported, the process is already gone, or the
+ *                 probe failed some other way.
+ *
+ * **`unknown` stays permissive**, deliberately. The alternative — refuse
+ * whenever ownership cannot be proven — would break the documented
+ * one-machine-one-token convergence against any peer that reports no pid, and
+ * a fleet that cannot authenticate is a far likelier and far worse outcome
+ * than a token adopted across users on a shared host. Both current daemons
+ * report `pid` in their full `/health`, so `unknown` means an old build or a
+ * dead process, not an attacker's choice; call sites log when they proceed on
+ * it. See docs/ENTERPRISE-ROADMAP.md §1.2 for what this does NOT cover: any
+ * local process can still READ the token from `/health`, because a TCP socket
+ * carries no peer credentials.
+ *
+ * The Swift daemon mirrors this CONTRACT, not this syscall — it is sandboxed,
+ * where a denied `kill` would mean "the sandbox said no", not "another user
+ * owns it", so it compares uids through `proc_pidinfo` and reports `unknown`
+ * on any failure. Same three values, same permissive `unknown`.
+ */
+export type LocalPeerOwnership = 'same-user' | 'other-user' | 'unknown';
+
+export function localPeerOwnership(pid: number | null | undefined): LocalPeerOwnership {
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return 'unknown';
+  try {
+    // Signal 0 performs the permission check and delivers nothing. POSIX: the
+    // sender's real or effective uid must match the target's real or saved
+    // uid, so EPERM is precisely "a different user owns this process".
+    process.kill(pid, 0);
+    return 'same-user';
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === 'EPERM') return 'other-user';
+    // ESRCH (gone) or anything else: no information.
+    return 'unknown';
+  }
+}
+
 /** Check if a connection originates from this machine (localhost or own LAN IPs). */
 export function isLocalConnection(ip: string): boolean {
   if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return true;

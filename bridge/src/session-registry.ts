@@ -5,7 +5,8 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import http from 'http';
-import { debug, logError } from './logger.js';
+import { debug, log, logError } from './logger.js';
+import { localPeerOwnership, type LocalPeerOwnership } from './auth.js';
 
 /** Allow tests to override the data directory via env var */
 export function getDataDir(): string {
@@ -621,13 +622,30 @@ export function findDaemonPort(): number | null {
  *
  * Returns `{ port, httpPort? }` for callers that need both (WS connects
  * on `port`, hook HTTP posts target `httpPort ?? port`).
+ *
+ * The scan half is the one place a session can attach to a daemon nobody told
+ * it about, so it is also the one place it can attach to a **coworker's**
+ * daemon: on a shared host the first `mode: 'daemon'` answer in the window may
+ * belong to another OS user, and registering there hands them a session their
+ * Stream Deck can focus and type into. A port owned by another user is skipped
+ * and named, because refuse-and-explain is the right failure — the registry
+ * half needs no such check, since `daemon.json` is resolved per user through
+ * `$HOME` and already answers with this user's own daemon.
  */
-export async function findDaemonPortAsync(): Promise<{ port: number; httpPort?: number; sameSocketControl?: boolean } | null> {
+export async function findDaemonPortAsync(
+  deps?: {
+    probe?: (port: number) => Promise<{ mode?: string; pid?: number; sameSocketControl?: boolean } | null>;
+    ownership?: (pid: number | null | undefined) => LocalPeerOwnership;
+  },
+): Promise<{ port: number; httpPort?: number; sameSocketControl?: boolean } | null> {
+  const probe = deps?.probe ?? probeDaemonHealth;
+  const ownership = deps?.ownership ?? localPeerOwnership;
+
   // 1. Registry first — matches the sync path.
   const info = readDaemonInfo();
   if (info) {
     const probePort = info.httpPort ?? info.port;
-    const health = await probeDaemonHealth(probePort);
+    const health = await probe(probePort);
     if (health?.mode === 'daemon') {
       return { port: info.port, httpPort: info.httpPort, sameSocketControl: health.sameSocketControl === true };
     }
@@ -639,13 +657,22 @@ export async function findDaemonPortAsync(): Promise<{ port: number; httpPort?: 
   //    daemon.json sits in a dir this process can't read" case. Narrow
   //    range (9120-9139) matches the documented daemon port window.
   const [scanLo, scanHi] = daemonPortWindow();
+  const foreignPorts: number[] = [];
   for (let p = scanLo; p <= scanHi; p++) {
-    const health = await probeDaemonHealth(p);
-    if (health?.mode === 'daemon') {
-      return { port: p, sameSocketControl: health.sameSocketControl === true };
+    const health = await probe(p);
+    if (health?.mode !== 'daemon') continue;
+    if (ownership(health.pid) === 'other-user') {
+      foreignPorts.push(p);
+      continue;
     }
+    return { port: p, sameSocketControl: health.sameSocketControl === true };
   }
 
+  if (foreignPorts.length > 0) {
+    log(`No daemon of yours found. Port${foreignPorts.length > 1 ? 's' : ''} `
+      + `${foreignPorts.join(', ')} ${foreignPorts.length > 1 ? 'are' : 'is'} held by another user's daemon `
+      + `and will not be joined — start your own with 'agentdeck daemon start', or attach explicitly with --daemon-host.`);
+  }
   return null;
 }
 

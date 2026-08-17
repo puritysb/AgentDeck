@@ -90,6 +90,36 @@ already in the health payload; resolve its UID (`process.getuid()` vs `ps -o uid
 or `libproc` on Swift) and refuse to adopt across users, logging why. **M** · ~2 days
 including the Swift mirror (`AuthManager.adoptPeerToken`).
 
+**Done 2026-08-17.** `localPeerOwnership` (`bridge/src/auth.ts`) and its Swift
+counterpart `LocalPeerOwnership` answer `same-user` / `other-user` / `unknown`,
+and the whole start-time decision moved into `negotiateIncumbentDaemon`
+(`bridge/src/daemon-takeover.ts`) so a test can drive it against a
+foreign-owned incumbent and prove the adopt never happened. `unknown` stays
+PERMISSIVE on purpose: refusing whenever ownership cannot be proven would break
+the documented one-machine-one-token convergence against any peer that reports
+no pid, and a fleet that cannot authenticate is a likelier and worse outcome
+than a token adopted across users — so the branch logs instead of refusing.
+
+Two implementation notes worth keeping. The Swift mirror copies the CONTRACT,
+not the syscall: Node reads `kill(pid, 0)` → EPERM as "another user owns it",
+but under the App Sandbox that same EPERM mostly means "the sandbox said no",
+which would turn every ordinary same-user handover into a refusal — the one
+failure mode that locks a whole paired fleet out. Swift compares uids through
+`proc_pidinfo` and lands every failure in `unknown`.
+
+**What this does NOT close.** Any local process can still READ `pairingToken`
+from the full `/health`, because a TCP socket carries no peer credentials —
+`isLocalConnection` is an IP test and there is no portable way to ask "which
+user opened this connection" for TCP (`LOCAL_PEERCRED` is UNIX-domain only, and
+resolving it via `lsof` means a subprocess, which the App Store build forbids).
+The ownership gate therefore protects against every AgentDeck code path acting
+across users; it does not protect against a local user who simply curls
+`/health`. Closing that needs one of: a UNIX-domain control socket for the
+credential handover (peer-credential-checkable, but the sandboxed app cannot
+reach a path outside its container), or dropping the token from `/health`
+entirely in favour of a filesystem handshake where the reader proves its uid by
+opening a 0600 file the writer just created.
+
 ### 1.3 P0 — a second OS user's CLI can stand down the first user's daemon
 
 Same call site (`bridge/src/cli.ts:710`): if the incumbent is a Swift daemon, the CLI
@@ -110,6 +140,32 @@ decision before `connectToExternalDaemon`. **M** · ~2 days (two daemons, plus t
 that drive the real state machine — a truth table over the predicate is not a gate; see
 `ConnectionOverlayTests` for the pattern).
 
+**Done 2026-08-17, on the CALLING side — which is the side that can be
+checked.** Every path where AgentDeck's own code acts on another daemon now
+asks who owns it first:
+
+- `agentdeck daemon start` (`negotiateIncumbentDaemon`) — no adopt, no
+  stand-down, no shutdown across users; it takes a free port instead, or
+  refuses loudly when that port was named with `-p`.
+- The daemon's own startup, which was worse than the CLI path because it is
+  automatic: it sweeps the whole port window and shut down EVERY Swift daemon
+  it found there, so one user starting a CLI daemon killed every colleague's
+  macOS app on the box. Both the preferred-port branch and the sweep now skip
+  foreign daemons (`isForeignDaemon`).
+- `agentdeck daemon stop`, whose `-p` fallback resolves to whatever is on that
+  port when this user has no daemon of their own.
+- Swift `connectToExternalDaemon` (refuses to attach as a client to another
+  user's daemon — attaching would render THEIR sessions, prompts and project
+  names in this user's dashboard), the health-poll adopt, and
+  `reclaimCanonicalPortIfNeeded` (no standing down a working hub for a daemon
+  that is not ours).
+
+The RECEIVING side is not gated, and cannot be by a UID check: the routes are
+HTTP over TCP and the caller's uid is not knowable there (see §1.2). Requiring
+the pairing token on those routes was considered and rejected — a deliberate
+attacker reads the token from `/health` first, so it would add no protection
+against them while risking the same-user handover it exists to serve.
+
 ### 1.4 P0 — a session bridge with no daemon of its own joins someone else's
 
 `findDaemonPortAsync` (`session-registry.ts:530-565`) falls back to scanning the whole
@@ -125,6 +181,12 @@ per-user and therefore correct.
 **Fix**: the scan must confirm ownership before attaching — same UID, or an explicit
 `--daemon-host`/token. Refuse-and-explain is the right failure, not silent attach.
 **S** · ~1 day.
+
+**Done 2026-08-17.** `findDaemonPortAsync` skips ports owned by another user
+and keeps sweeping (one foreign daemon must not end the search — ours may be
+further along), then names the ports it refused and what to do instead. The
+registry half needs no check: `daemon.json` resolves per user through `$HOME`
+and already answers with this user's own daemon.
 
 ### 1.5 P1 — 20 ports is thin for a shared box
 
@@ -195,6 +257,20 @@ exactly that reason (`mdns.ts:21`) — the **instance name** never got the same 
 schema version is already documented as a lockstep contract. **M** · ~2 days including
 the ESP32/Apple/Android read side.
 
+**Done 2026-08-17.** `shared/src/mdns-identity.ts` is the SSOT and the Swift
+daemon's copy is generated (`pnpm generate-mdns-identity`, drift-gated) — the
+value of this name is entirely in being computed the same way twice, so a hand
+mirror was the one thing it could not have. Both daemons publish
+`AgentDeck-<host>-<userTag>-<port>` and add `host` / `user` TXT keys.
+
+`v` stays `3`: no reader validates the key SET (the ESP32 walks the record
+looking for `agent` and `project`), so additive keys are readable by every
+existing client, and bumping would be a compatibility event with no
+compatibility problem to solve. The user tag is a 4-hex FNV-1a of
+`uid:username`, never the account name — multicast is readable by everyone on
+the segment, and the tag only has to separate the handful of accounts on one
+machine.
+
 ### 2.2 P0 — clients pick a daemon with no identity filter
 
 The ESP32 takes the **first** service whose TXT says `agent=daemon`
@@ -209,6 +285,27 @@ paired with and must not roam to an unpaired daemon just because it answered fir
 credential rules from #145/#149 already say "a known endpoint inherits the credential it
 is paired with" — this is the missing selection half. **M** · ~2 days, firmware +
 `mdns-discover.ts` + the two mobile discovery paths.
+
+**Partially done 2026-08-17 — the Node half only.** `discoverDaemons` now
+orders candidates by `sortDiscoveredDaemons`: an explicitly named host first,
+then a daemon whose TXT `user` tag matches this process's, then an identified
+daemon belonging to someone else, then one that predates the TXT keys. It is a
+preference, never a filter — attaching across users is a legitimate ask (it is
+what `--daemon-host` is for), so a daemon is only ever demoted, never dropped.
+
+**Still open, and these are the surfaces where the failure actually hurts:**
+
+- **ESP32** (`esp32/src/net/mdns_discovery.cpp`) still takes the first service
+  whose TXT says `agent=daemon`. Two changes belong together there: prefer the
+  stored bridge endpoint when it appears among the discovered services, and
+  stop re-dialling an endpoint that closed us 4001 while other daemons were
+  discovered — retrying the one daemon that rejected us, forever, with nothing
+  on screen the user can act on, is the whole complaint. Costs an OTA cut and
+  hardware verification, so it is its own change.
+- **Apple / Android** discovery picks the first confirmed bridge. The
+  credential rules (`PairingCredential`) already say a known endpoint keeps its
+  credential; the missing half is preferring that endpoint during SELECTION.
+  The new `user` TXT key is what makes it decidable without dialling.
 
 ### 2.3 P1 — UDP beacons multiply
 
@@ -438,13 +535,13 @@ nothing.
 
 **P0 — multi-tenant correctness. Nothing ships to an office until these land.**
 
-| # | Item | Diff | Est. |
-|---|---|---|---|
-| 1 | UID check before `adoptPeerToken` (§1.2) | M | 2d |
-| 2 | UID check on `/shutdown`, `/stand-down`, `/pair/*`, and the Swift reclaim decision (§1.3) | M | 2d |
-| 3 | Daemon port-scan fallback must not attach to another UID's daemon (§1.4) | S | 1d |
-| 4 | Unique mDNS instance name per host+user, both daemons (§2.1) | M | 2d |
-| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d |
+| # | Item | Diff | Est. | Status |
+|---|---|---|---|---|
+| 1 | UID check before `adoptPeerToken` (§1.2) | M | 2d | **done** (08-17) — `localPeerOwnership` + `negotiateIncumbentDaemon`; residual: `/health` still serves the token to any local process (TCP carries no peer credentials) |
+| 2 | UID check on `/shutdown`, `/stand-down`, `/pair/*`, and the Swift reclaim decision (§1.3) | M | 2d | **done on the calling side** (08-17) — every path where our code acts on another daemon, including the daemon's own port-window sweep, which used to shut down every colleague's macOS app. Receiving side is not UID-checkable over TCP (§1.2) |
+| 3 | Daemon port-scan fallback must not attach to another UID's daemon (§1.4) | S | 1d | **done** (08-17) — `findDaemonPortAsync` skips foreign ports, keeps sweeping, and names what it refused |
+| 4 | Unique mDNS instance name per host+user, both daemons (§2.1) | M | 2d | **done** (08-17) — `shared/src/mdns-identity.ts` SSOT + generated Swift mirror; `host`/`user` TXT keys added, `v` stays `3` |
+| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **partial** (08-17) — Node `sortDiscoveredDaemons` ranks by identity; **ESP32 and the two mobile discovery paths are still first-seen** |
 
 **P1 — the enterprise off switch.**
 
@@ -484,9 +581,25 @@ Rough totals: **P0 ≈ 9 days**, **P1 ≈ 7.5 days**, **P2 ≈ 2.5 days**.
 - **The UID checks are one predicate, not five.** Put it in `bridge/src/auth.ts` beside
   `isLocalConnection` and mirror it once into Swift. Five hand-written copies is how
   `rawSessionId()` drifted into three different agent lists.
+  *Done as written* — with one correction learned in the doing: the two
+  platforms mirror the predicate's CONTRACT (`same-user` / `other-user` /
+  `unknown`, permissive on `unknown`), not its syscall. `kill(pid, 0)` is right
+  for Node and wrong for the sandboxed app, where EPERM would mean "the sandbox
+  said no" and every same-user handover would read as foreign.
+- **`unknown` must stay permissive, and must never be silent.** A refusal on
+  unproven ownership breaks the one-machine-one-token convergence, which is the
+  failure that locks an entire paired fleet out (CLAUDE.md, 2026-08-08). Every
+  branch that proceeds without proof logs that it did.
 - **Test the state machine, not the predicate.** A truth table over
   `isSameUserDaemon()` stays green while the call site forgets to call it. Drive
   `daemon start` against a fixture daemon owned by a different UID.
+  *Done as far as it can be*: a process owned by another user cannot be created
+  in a test without root, so ownership is injected and the assertions are about
+  what the call site DID — whether a stand-down was POSTed, whether a token was
+  taken, which port came back (`bridge/src/__tests__/daemon-takeover.test.ts`).
+  That is why the whole decision was lifted out of the CLI action into
+  `negotiateIncumbentDaemon`: an inline closure in a commander action has no
+  seam to drive.
 - **`--enterprise` must survive `daemon install`.** A posture that only applies when
   typed by hand is not a posture. The LaunchAgent / Scheduled Task / systemd writers are
   three separate files.

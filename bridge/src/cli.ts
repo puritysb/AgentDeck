@@ -255,9 +255,18 @@ export function buildPlist(extraArgs: string[] = []): string {
 // ===== Helpers =====
 
 async function stopDaemon(port: number): Promise<void> {
-  const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+  const { readDaemonInfo, findDaemonPort, probeDaemonHealth } = await import('./session-registry.js');
+  const { isForeignDaemon } = await import('./daemon-takeover.js');
   const info = readDaemonInfo();
   const targetPort = info?.httpPort ?? info?.port ?? findDaemonPort() ?? port;
+  // The registry resolves to this user's own daemon, but the `-p` fallback
+  // resolves to whatever is on that port — which on a shared host is somebody
+  // else's daemon, and `/shutdown` is trusted purely for being local.
+  if (isForeignDaemon(await probeDaemonHealth(targetPort))) {
+    log(`Port ${targetPort} is held by another user's daemon — refusing to stop it.`);
+    log(`You have no daemon of your own running.`);
+    return;
+  }
   try {
     await fetch(`http://127.0.0.1:${targetPort}/shutdown`, {
       method: 'POST',
@@ -796,76 +805,24 @@ daemon
       log(`Preferred port ${preferredPort.port} (${describeDaemonPortSource(preferredPort.source)}).`);
     }
     const targetPort = preferredPort.port;
+    // Adopting a credential from the incumbent and asking it to stand down are
+    // both same-user-only operations, and the whole decision — including who
+    // owns that process — lives in `negotiateIncumbentDaemon` so it can be
+    // driven in tests against a foreign-owned incumbent.
+    const { negotiateIncumbentDaemon } = await import('./daemon-takeover.js');
     const incumbent = await probeDaemonHealth(targetPort);
-    if (incumbent?.mode === 'daemon') {
-      // Take over the fleet's credential along with the port. The app's daemon
-      // keeps its token inside its sandbox container, unreadable from here, so
-      // this loopback answer is the only place we can learn what every paired
-      // board is currently holding. Adopting it BEFORE the stand-down means the
-      // handover costs no device its pairing.
-      if (adoptPeerToken(incumbent.pairingToken)) {
-        log(`Adopted the incumbent daemon's pairing token so paired devices survive the handover.`);
-      }
-      if (incumbent.isSwift) {
-        log(`AgentDeck app's in-process daemon holds port ${targetPort} — requesting stand-down to take over with the full CLI feature set…`);
-        // Prefer /stand-down (clean demote: the app stays running as a client).
-        // Fall back to /shutdown for older app builds that predate the endpoint.
-        let acked = await requestDaemonStandDown(targetPort);
-        if (!acked) {
-          await requestDaemonShutdown(targetPort);
-          acked = true; // shutdown is best-effort (no ack body); rely on the exit wait
-        }
-        // Two conditions, not one. `waitForDaemonExit` proves the app stopped
-        // answering; `waitForPortBindable` proves the socket is actually gone.
-        // The app releases the port with NWListener.cancel(), which returns
-        // before the teardown completes — binding on the first signal alone is
-        // what silently demoted this daemon to the 9121 fallback and left the
-        // canonical port ownerless.
-        if (acked
-          && await waitForDaemonExit(targetPort, 12000)
-          // 30s, and that is not padding. Cancelling the app's NWListener does
-          // not free the port: macOS keeps a NECP reservation on it for ~14s
-          // afterwards, during which `lsof` shows no sockets at all and bind()
-          // still returns EADDRINUSE (measured 2026-08-06 — bindable at ~17s).
-          // Anything shorter gives up while the kernel, not the app, is holding
-          // the port. The app's takeover-yield window is longer still (45s), so
-          // it stays off the port until well after this wait has claimed it.
-          && await waitForPortBindable(targetPort, 30000)) {
-          log(`App daemon yielded port ${targetPort}. Starting CLI daemon…`);
-          // fall through — port is clear, proceed to bind below
-        } else {
-          // The app yielded but the PORT did not come back, and that is often
-          // not the app's doing: a WiFi device that has gone to sleep with bytes
-          // still queued to it leaves its socket in LAST_ACK on this port, and
-          // TCP holds that until it exhausts retransmits — minutes, sometimes.
-          // Network.framework exposes no SO_LINGER, so the app cannot RST out of
-          // it (measured 2026-08-06: two sleeping ESP32 boards, 11901 and 4
-          // bytes queued, were the only things left on 9120).
-          //
-          // Carry on rather than exiting. The daemon binds a fallback port and
-          // writes it to daemon.json, which is what every client resolves
-          // through and what the app itself re-reads when its yield window ends
-          // — so the deck keeps working. What must NOT happen is this being
-          // silent, which is how the canonical port ended up owned by nobody
-          // with the CLI reporting success.
-          log(`The AgentDeck app yielded port ${targetPort} but the port has not been released `
-            + `(usually a sleeping WiFi device holding a half-closed socket on it).`);
-          if (opts.port) {
-            // The port was ASKED for, not defaulted to. Quietly binding a
-            // different one would answer a question the user did not ask;
-            // an explicit choice fails loudly instead.
-            log(`Quit the AgentDeck app and retry, or choose another port.`);
-            process.exit(1);
-          }
-          log(`Starting on a fallback port instead — clients resolve it from daemon.json. `
-            + `For the canonical port, quit the AgentDeck app and retry, or pass -p.`);
-          // fall through to normal port selection
-        }
-      } else {
-        log(`Daemon already running on port ${targetPort}. Use 'agentdeck daemon stop' first.`);
-        process.exit(0);
-      }
-    }
+    const outcome = await negotiateIncumbentDaemon(
+      { port: targetPort, incumbent, portWasExplicit: !!opts.port },
+      {
+        adoptToken: adoptPeerToken,
+        standDown: requestDaemonStandDown,
+        shutdown: requestDaemonShutdown,
+        waitForExit: waitForDaemonExit,
+        waitForBindable: waitForPortBindable,
+      },
+    );
+    if (outcome === 'already-running') process.exit(0);
+    if (outcome === 'refuse') process.exit(1);
 
     const daemonInfo = readDaemonInfo();
     if (daemonInfo) {

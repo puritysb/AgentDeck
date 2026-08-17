@@ -416,6 +416,31 @@ final class DaemonService: ObservableObject {
             return
         }
 
+        // A daemon on this machine is not necessarily a daemon of THIS USER's.
+        // Attaching to another account's daemon would render their sessions,
+        // prompts and project names in this user's dashboard, and adopting its
+        // token would copy their credential into this container — so a foreign
+        // daemon is left alone and this app starts its own instead
+        // (docs/ENTERPRISE-ROADMAP.md §1.2, §1.3).
+        if LocalPeerOwnership.isForeignDaemon(health: health) {
+            DaemonLogger.shared.info("Daemon on port \(resolvedPort) belongs to another user — not attaching to it; starting our own daemon instead")
+            self.server = nil
+            self.isRunning = false
+            self.isUsingExternalDaemon = false
+            self.port = 0
+            self.readyUrl = nil
+            self.errorMessage = nil
+            // Scheduled, never inline: `start()` guards re-entry with
+            // `isStarting`, which is still true here (this method is reached
+            // from inside start()'s own Task), so an inline call would be
+            // swallowed with no log and no retry — leaving the app daemonless.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                self?.start()
+            }
+            return
+        }
+
         // One machine, one fleet credential. The CLI daemon keeps its pairing
         // token in ~/.agentdeck, which this sandboxed app cannot read, so this
         // loopback /health answer is the only place we can learn what every
@@ -653,7 +678,13 @@ final class DaemonService: ObservableObject {
                 // not just at the moment we became one: the incumbent can
                 // rotate its token, and a promotion afterwards would otherwise
                 // serve a credential no device on the LAN holds any more.
-                AuthManager.shared.adoptPeerToken(health?["pairingToken"] as? String)
+                // Same ownership gate as the attach itself — a daemon that
+                // changed hands to another user mid-flight must stop feeding
+                // this app its credential (defence in depth: the attach path
+                // refuses a foreign daemon before we ever get here).
+                if !LocalPeerOwnership.isForeignDaemon(health: health) {
+                    AuthManager.shared.adoptPeerToken(health?["pairingToken"] as? String)
+                }
                 return
             }
 
@@ -722,6 +753,17 @@ final class DaemonService: ObservableObject {
         let registry = SessionRegistry.shared
         if let health = await registry.probeDaemonHealth(port: canonical, patient: true),
            (health["mode"] as? String) == "daemon" {
+            // Another user's daemon on the canonical port is not a hub to
+            // concede to — standing down for it would trade a working hub for
+            // a client session showing someone else's work. Keep the fallback
+            // port and stop trying to reclaim into them.
+            if LocalPeerOwnership.isForeignDaemon(health: health) {
+                DaemonLogger.shared.throttledDebug(
+                    "Daemon", key: "reclaim-foreign:\(canonical)",
+                    "Canonical port \(canonical) is held by another user's daemon — keeping fallback port \(port)",
+                    minInterval: 60)
+                return
+            }
             DaemonLogger.shared.info("Healthy daemon reappeared on canonical port \(canonical) — standing down fallback-port hub (\(port)) to client mode")
             await standDownServer(current)
             await connectToExternalDaemon(port: canonical)

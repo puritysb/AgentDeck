@@ -1,8 +1,15 @@
 import Bonjour from 'bonjour-service';
 import { randomUUID } from 'node:crypto';
+import { hostname, userInfo } from 'node:os';
 import type { AgentType } from './types.js';
 import { debug, log } from './logger.js';
-import { getLanIp } from '@agentdeck/shared';
+import {
+  getLanIp,
+  buildMdnsInstanceName,
+  mdnsUserTag,
+  sanitizeMdnsLabel,
+  MDNS_TXT_SCHEMA_VERSION,
+} from '@agentdeck/shared';
 
 let instance: Bonjour | null = null;
 
@@ -133,19 +140,34 @@ export function advertiseBridge(
           : undefined;
       instance = new Bonjour(bonjourOpts);
 
+      // An instance name must be unique per network SEGMENT. `${project}-${port}`
+      // was the same string on every machine, so an office subnet had fifty
+      // daemons fighting over one name — and the conflict path here does not
+      // rename, it republishes every 5s forever. Host + user + port are the
+      // three ways two daemons on one segment legitimately differ.
+      const shortHostname = sanitizeMdnsLabel(hostname());
+      const userTag = mdnsUserTag(
+        typeof process.getuid === 'function' ? process.getuid() : 0,
+        userInfo().username,
+      );
       const txt: Record<string, string> = {
         project: projectName,
         agent: agentType,
         // TXT schema version — keep in lockstep with the Swift daemon's
         // advertisement (apple/AgentDeck/Daemon/Modules/MdnsModule.swift) so
         // clients see one contract regardless of which daemon owns the port.
-        v: '3',
+        v: MDNS_TXT_SCHEMA_VERSION,
         port: String(port),
+        // So a client can tell WHICH daemon this is without resolving and
+        // dialling it. `user` is a hash, never the account name — multicast is
+        // readable by everyone on the segment.
+        host: shortHostname,
+        user: userTag,
       };
       if (lanIp) txt.ip = lanIp;
 
       const service = instance.publish({
-        name: `${projectName}-${port}`,
+        name: buildMdnsInstanceName({ project: projectName, hostname: shortHostname, userTag, port }),
         host: MDNS_SERVICE_HOST,
         type: 'agentdeck',
         port,

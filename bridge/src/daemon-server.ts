@@ -133,6 +133,7 @@ import {
   getCandidateDataDirs,
   getOwnTimelineFile,
 } from './session-registry.js';
+import { isForeignDaemon } from './daemon-takeover.js';
 import { loadDaemonSettings } from './daemon-settings.js';
 import {
   resolveDaemonPort,
@@ -1150,7 +1151,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // intends to serve gets the same treatment wherever the intent came from.
   const preferredOccupant = await probeDaemonHealth(requestedPort);
   if (preferredOccupant) {
-    if (preferredOccupant.mode === 'daemon') {
+    if (preferredOccupant.mode === 'daemon' && isForeignDaemon(preferredOccupant)) {
+      // Another OS user's daemon. Neither evict it nor concede to it — this
+      // user still gets a daemon, on a port of their own.
+      log(`[agentdeck] Port ${requestedPort} is held by another user's daemon — leaving it alone and taking a free port.`);
+      port = await findAvailablePort();
+    } else if (preferredOccupant.mode === 'daemon') {
       if (preferredOccupant.isSwift) {
         log(`[agentdeck] Swift daemon detected on port ${requestedPort} via /health. Requesting shutdown to take over...`);
         await requestDaemonShutdown(requestedPort);
@@ -1178,6 +1184,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // a live Node daemon wins and we exit.
   const strayDaemons = await scanDaemonPortWindow(new Set([requestedPort]));
   for (const stray of strayDaemons) {
+    if (isForeignDaemon(stray.health)) {
+      // Not a stray — someone else's daemon, doing its job for its own user.
+      // This sweep runs on every start, so without this check one user
+      // starting a CLI daemon shuts down every colleague's macOS app on the
+      // box (docs/ENTERPRISE-ROADMAP.md §1.3).
+      log(`[agentdeck] Port ${stray.port} is held by another user's daemon — not touching it.`);
+      continue;
+    }
     if (stray.health.isSwift) {
       log(`[agentdeck] Swift daemon detected on fallback port ${stray.port}. Requesting shutdown to take over...`);
       await requestDaemonShutdown(stray.port);
