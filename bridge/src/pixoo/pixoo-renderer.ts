@@ -108,41 +108,74 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Helper to count active providers in usage HUD. */
+export function getUsageProviderCount(usageEvent: UsageEvent | null): number {
+  if (!usageEvent) return 0;
+  let count = 0;
+  if (usageEvent.usageStale !== true && usageEvent.fiveHourPercent != null) {
+    count++;
+  }
+  const freshCodexWindow = (w: { stale?: boolean; usedPercent?: number; resetsAt?: string } | undefined) =>
+    w && w.stale !== true && w.usedPercent != null;
+  const codexPrimaryWindow = freshCodexWindow(usageEvent.codexRateLimits?.primary);
+  const codexSecondaryWindow = freshCodexWindow(usageEvent.codexRateLimits?.secondary);
+  if (codexPrimaryWindow || codexSecondaryWindow) {
+    count++;
+  }
+  return count;
+}
+
 /**
  * Vertical stratification per creature type, applied on top of the band's base
  * Y. Each type keeps its own water layer so a mixed Claude+Codex+OpenCode tank
  * stays readable: clouds ride near the surface while working and sink to answer,
  * octopuses hold mid-water, and everything settles to the sand when idle.
  *
- * Mirror of `stateY(_:kind:baseY:)` in apple/AgentDeck/Daemon/Modules/PixooRenderer.swift.
+ * When Usage HUD is active at the bottom, idle creatures are clamped above the
+ * HUD overlay to ensure full visibility.
+ *
+ * Mirror of `stateY(_:kind:baseY:hudProviderCount:)` in apple/AgentDeck/Daemon/Modules/PixooRenderer.swift.
  */
 function stateYForType(
   state: 'idle' | 'processing' | 'awaiting',
   creatureType: CreatureType,
   baseY: number,
+  hudProviderCount = 0,
 ): number {
+  let y: number;
   switch (creatureType) {
     case 'octopus':
-      if (state === 'processing') return clamp(baseY, 0.40, 0.54);
-      if (state === 'awaiting') return clamp(baseY - 0.04, 0.35, 0.48);
-      return 0.80;
+      if (state === 'processing') y = clamp(baseY, 0.40, 0.54);
+      else if (state === 'awaiting') y = clamp(baseY - 0.04, 0.35, 0.48);
+      else y = 0.80;
+      break;
     case 'jellyfish':
-      if (state === 'processing') return clamp(baseY, 0.16, 0.28);
-      if (state === 'awaiting') return clamp(baseY + 0.26, 0.52, 0.64);
-      return clamp(baseY + 0.40, 0.80, 0.82);
+      if (state === 'processing') y = clamp(baseY, 0.16, 0.28);
+      else if (state === 'awaiting') y = clamp(baseY + 0.26, 0.52, 0.64);
+      else y = clamp(baseY + 0.40, 0.80, 0.82);
+      break;
     case 'opencode':
-      if (state === 'processing') return clamp(baseY - 0.02, 0.20, 0.34);
-      if (state === 'awaiting') return clamp(baseY + 0.22, 0.50, 0.62);
-      return clamp(baseY + 0.36, 0.79, 0.81);
+      if (state === 'processing') y = clamp(baseY - 0.02, 0.20, 0.34);
+      else if (state === 'awaiting') y = clamp(baseY + 0.22, 0.50, 0.62);
+      else y = clamp(baseY + 0.36, 0.79, 0.81);
+      break;
     case 'antigravity':
-      if (state === 'processing') return clamp(baseY - 0.04, 0.16, 0.30);
-      if (state === 'awaiting') return clamp(baseY + 0.22, 0.46, 0.54);
-      return clamp(baseY + 0.34, 0.56, 0.64);
+      if (state === 'processing') y = clamp(baseY - 0.04, 0.16, 0.30);
+      else if (state === 'awaiting') y = clamp(baseY + 0.22, 0.46, 0.54);
+      else y = clamp(baseY + 0.34, 0.56, 0.64);
+      break;
     case 'kiro':
-      if (state === 'processing') return clamp(baseY - 0.04, 0.16, 0.30);
-      if (state === 'awaiting') return clamp(baseY + 0.16, 0.42, 0.54);
-      return clamp(baseY + 0.26, 0.60, 0.70);
+      if (state === 'processing') y = clamp(baseY - 0.04, 0.16, 0.30);
+      else if (state === 'awaiting') y = clamp(baseY + 0.16, 0.42, 0.54);
+      else y = clamp(baseY + 0.26, 0.60, 0.70);
+      break;
   }
+  if (hudProviderCount >= 2) {
+    return Math.min(y, 0.65);
+  } else if (hudProviderCount === 1) {
+    return Math.min(y, 0.72);
+  }
+  return y;
 }
 
 function slotsForType(creatureType: CreatureType, count: number): CreatureSlot[] {
@@ -178,7 +211,9 @@ function creatureTypeFor(agentType: string): CreatureType {
 function syncCreatures(
   sessions: SessionInfo[] | null,
   stateEvent: StateUpdateEvent | null,
+  usageEvent: UsageEvent | null = null,
 ): void {
+  const hudCount = getUsageProviderCount(usageEvent);
   // Determine which sessions are alive creature agents (octopus or jellyfish).
   // Codex rows fold by project first: each Claude Code rescue/stop-gate spawns a
   // fresh codex thread, so without folding one workspace lights up 4-5 cloud
@@ -237,7 +272,7 @@ function syncCreatures(
     const slot = slotAt(slotsByType.get(creatureType) ?? [], slotIndex);
     const x = slot.x;
     baseYById.set(s.id, slot.y);
-    const worldY = stateYForType(sessionState, creatureType, slot.y);
+    const worldY = stateYForType(sessionState, creatureType, slot.y, hudCount);
 
     if (existing) {
       existing.state = sessionState;
@@ -275,7 +310,7 @@ function syncCreatures(
     if (primary) {
       const st = simplifiedState(stateEvent.state ?? State.IDLE) as 'idle' | 'processing' | 'awaiting';
       primary.state = st;
-      primary.worldY = stateYForType(st, primary.creatureType, baseYById.get('_primary') ?? primary.worldY);
+      primary.worldY = stateYForType(st, primary.creatureType, baseYById.get('_primary') ?? primary.worldY, hudCount);
     }
   }
 }
@@ -960,6 +995,19 @@ function renderCompact32Frame(
     marks.push({ glyph: 'openClaw', state: routing ? 'processing' : 'idle' });
   }
   marks.sort((a, b) => priority(a.state) - priority(b.state));
+  // One slot per DISTINCT agent before any agent gets a second one.
+  //
+  // Three slots filled in priority order renders whatever the user happens to
+  // run most of — five Claude sessions took all three and Codex, Kiro and
+  // OpenClaw vanished from a 32x32 whose entire job is "which agents are
+  // live". Three identical marks carry strictly less information than three
+  // different ones, and the agent that disappears is always the one the user
+  // has fewest of, which is exactly the one worth reporting. Measured with the
+  // live session set (2026-08-18): kiro 0px before, visible after.
+  const seen = new Set<OfficialDotGlyphName>();
+  const distinct = marks.filter((m) => !seen.has(m.glyph) && seen.add(m.glyph));
+  const duplicates = marks.filter((m) => !distinct.includes(m));
+  marks.splice(0, marks.length, ...distinct, ...duplicates);
   marks.splice(3);
 
   const slots = marks.length === 1 ? [{ x: 16, y: 14, size: 18 }]
@@ -1275,7 +1323,9 @@ export function renderFrame(
   const hasGateway = hasOpenClawSession(sessions ?? []);
 
   // === Sync creature instances ===
-  syncCreatures(sessions, stateEvent);
+  syncCreatures(sessions, stateEvent, usageEvent);
+
+  const hudProviderCount = getUsageProviderCount(usageEvent);
 
   // === Build active creatures list for camera ===
   const activeCreatures: ActiveCreature[] = [];
@@ -1287,9 +1337,9 @@ export function renderFrame(
     }
   }
 
-  // Crayfish routing
+  // Crayfish routing — clamp Y when Usage HUD is active so sitting position stays visible
   const cfX = CF_DEFAULT_X;
-  const cfY = CF_DEFAULT_Y;
+  const cfY = hudProviderCount >= 2 ? 0.65 : hudProviderCount === 1 ? 0.72 : CF_DEFAULT_Y;
   const crayfishRouting = hasGateway && (sessions?.some(s =>
     s.agentType === 'openclaw' && s.state === 'processing'
   ) ?? false);
@@ -1370,8 +1420,8 @@ export function renderFrame(
     glowPixel(worldBuf, Math.round(p.x), Math.round(p.y), color, 0.5 * fadeAlpha);
   }
 
-  // Tetras — update always
-  const tetraMaxY = SAND_TOP - 3;
+  // Tetras — update always, clamped above HUD when present
+  const tetraMaxY = hudProviderCount >= 2 ? 46 : hudProviderCount === 1 ? 52 : (SAND_TOP - 3);
   updateTetras(animFrame, surfaceY, tetraMaxY);
 
   // Surface waves — use effectiveState so daemon doesn't suppress wave animation
@@ -1511,6 +1561,7 @@ export function renderDisconnectedFrame(): Uint8Array {
 export function getCreatureLayoutSnapshot(
   sessions: SessionInfo[] | null,
   stateEvent: StateUpdateEvent | null,
+  usageEvent: UsageEvent | null = null,
 ): Array<{
   sessionId: string;
   agentType: string;
@@ -1520,7 +1571,7 @@ export function getCreatureLayoutSnapshot(
   worldY: number;
   sizeScale: number;
 }> {
-  syncCreatures(sessions, stateEvent);
+  syncCreatures(sessions, stateEvent, usageEvent);
   return [...creatureInstances.values()].map(c => ({
     sessionId: c.sessionId,
     agentType: c.agentType,

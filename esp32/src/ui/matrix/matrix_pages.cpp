@@ -430,7 +430,8 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     CrayfishState cfState = g_state.crayfishState;
 
     // Collect non-openclaw sessions with agent type
-    enum AgentKind { AGENT_CLAUDE, AGENT_CODEX, AGENT_OPENCODE, AGENT_ANTIGRAVITY, AGENT_KIRO };
+    enum AgentKind { AGENT_CLAUDE, AGENT_CODEX, AGENT_OPENCODE, AGENT_ANTIGRAVITY, AGENT_KIRO,
+                     AGENT_KIND_COUNT };
     struct AgentInfo {
         char state[20];
         AgentKind kind;
@@ -442,7 +443,21 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     int claudeSeen = 0, codexSeen = 0, opencodeSeen = 0, antigravitySeen = 0, kiroSeen = 0;
     bool openclawAlive = false;
 
+    // TWO passes, and the order matters: one slot per DISTINCT agent kind
+    // before any kind takes a second slot.
+    //
+    // A single pass fills the six slots in the daemon's sort order, which is
+    // keyed on agentType RANK — so the lowest-ranked agent is always the first
+    // one pushed out. Five Claude sessions plus a Codex filled the strip
+    // exactly and Kiro (rank 6, last) never reached the panel at all, while
+    // its session sat right there in the list. Measured 2026-08-18.
+    // Sized to AgentState::sessions[10] (state/agent_state.h); sessionCount
+    // is already clamped to it by the protocol parser.
+    bool placed[10] = {false};
+    bool kindTaken[AGENT_KIND_COUNT] = {false};
+    for (int pass = 0; pass < 2 && agentCount < 6; pass++)
     for (int i = 0; i < sessionCount && agentCount < 6; i++) {
+        if (placed[i]) continue;
         if (!g_state.sessions[i].alive) continue;
         if (strcmp(g_state.sessions[i].agentType, "openclaw") == 0) {
             openclawAlive = true;
@@ -473,6 +488,21 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
             // the row is missing rather than wearing someone else's mark.
             continue;
         }
+        // Pass 0 declines a kind it already placed, leaving that session for
+        // pass 1 to pick up if slots remain. The `*Seen` counter was already
+        // advanced above, so roll it back to keep per-kind numbering dense.
+        if (pass == 0 && kindTaken[agents[agentCount].kind]) {
+            switch (agents[agentCount].kind) {
+                case AGENT_CODEX:       codexSeen--; break;
+                case AGENT_OPENCODE:    opencodeSeen--; break;
+                case AGENT_ANTIGRAVITY: antigravitySeen--; break;
+                case AGENT_KIRO:        kiroSeen--; break;
+                default:                claudeSeen--; break;
+            }
+            continue;
+        }
+        kindTaken[agents[agentCount].kind] = true;
+        placed[i] = true;
         agentCount++;
     }
     unlockState();

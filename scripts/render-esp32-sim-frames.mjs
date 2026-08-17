@@ -50,7 +50,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const simDir = path.resolve(__dirname, '../esp32/sim');
 const outDir = path.resolve(__dirname, '../tools/creature-simulator/sim-frames');
 
-const AGENTS = ['claude', 'codex', 'opencode', 'openclaw', 'antigravity'];
+const AGENTS = ['claude', 'codex', 'opencode', 'openclaw', 'antigravity', 'kiro'];
 const STATES = ['idle', 'working', 'asking', 'sleeping'];
 
 // env name → demo board slug. LCD envs render the composed LVGL screen (the

@@ -34,6 +34,7 @@ function buildSessions() {
     { id: 's-open', alive: true, agentType: 'opencode', state: 'idle', projectName: 'OpenCode', modelName: 'opencode' },
     { id: 's-claw', alive: true, agentType: 'openclaw', state: 'idle', projectName: 'OpenClaw', modelName: 'OPENCLAW' },
     { id: 's-antigravity', alive: true, agentType: 'antigravity', state: 'idle', projectName: 'Antigravity', modelName: 'gemini' },
+    { id: 's-kiro', alive: true, agentType: 'kiro-cli', state: 'idle', projectName: 'Kiro', modelName: 'auto' },
   ];
 }
 

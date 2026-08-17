@@ -28,6 +28,7 @@ const AGENTS = {
   opencode: { type: 'opencode', name: 'OpenCode' },
   openclaw: { type: 'openclaw', name: 'OpenClaw' },
   antigravity: { type: 'antigravity', name: 'Antigravity' },
+  kiro: { type: 'kiro-cli', name: 'Kiro' },
 };
 const STATES = ['idle', 'working', 'sleeping', 'asking'];
 
@@ -58,6 +59,7 @@ function buildSessions(selectedAgent, state) {
     { key: 'opencode', id: 's-open', alive: true, agentType: 'opencode', state: selectedAgent === 'opencode' ? simStateToBridge(state) : 'idle', projectName: 'OpenCode', modelName: 'opencode' },
     { key: 'openclaw', id: 's-claw', alive: true, agentType: 'openclaw', state: selectedAgent === 'openclaw' && state === 'working' ? 'processing' : 'idle', projectName: 'OpenClaw', modelName: 'OPENCLAW' },
     { key: 'antigravity', id: 's-antigravity', alive: true, agentType: 'antigravity', state: selectedAgent === 'antigravity' ? simStateToBridge(state) : 'idle', projectName: 'Antigravity', modelName: 'gemini' },
+    { key: 'kiro', id: 's-kiro', alive: true, agentType: 'kiro-cli', state: selectedAgent === 'kiro' ? simStateToBridge(state) : 'idle', projectName: 'Kiro', modelName: 'auto' },
   ];
   const selected = ordered.find((session) => session.key === selectedAgent);
   const rest = ordered.filter((session) => session.key !== selectedAgent);
@@ -303,6 +305,7 @@ function renderTuiData() {
           { id: 's-open', state: agent === 'opencode' ? simStateToBridge(state) : 'idle', name: 'OpenCode', agentType: 'opencode' },
           { id: 's-claw', state: agent === 'openclaw' && state === 'working' ? 'processing' : 'idle', name: 'OpenClaw', agentType: 'openclaw' },
           { id: 's-antigravity', state: agent === 'antigravity' ? simStateToBridge(state) : 'idle', name: 'Antigravity', agentType: 'antigravity' },
+          { id: 's-kiro', state: agent === 'kiro' ? simStateToBridge(state) : 'idle', name: 'Kiro', agentType: 'kiro-cli' },
         ];
         setOctopi(ctx, sessions);
         setJellyfish(ctx, sessions);
@@ -317,7 +320,7 @@ function renderTuiData() {
           connectionStatus: 'connected',
           isStale: false,
           projectName: AGENTS[agent].name,
-          modelName: agent === 'claude' ? 'opus-4' : agent === 'codex' ? 'gpt-5-codex' : agent === 'opencode' ? 'opencode' : agent === 'antigravity' ? 'gemini' : 'OPENCLAW',
+          modelName: agent === 'claude' ? 'opus-4' : agent === 'codex' ? 'gpt-5-codex' : agent === 'opencode' ? 'opencode' : agent === 'antigravity' ? 'gemini' : agent === 'kiro' ? 'auto' : 'OPENCLAW',
           currentTool: state === 'working' ? 'Read file' : null,
           sessions: buildSessions(agent, state),
           usage: {
@@ -362,6 +365,7 @@ function renderTuiTerrariumData() {
           { id: 's-open', state: agent === 'opencode' ? simStateToBridge(state) : 'idle', name: 'OpenCode', agentType: 'opencode' },
           { id: 's-claw', state: agent === 'openclaw' && state === 'working' ? 'processing' : 'idle', name: 'OpenClaw', agentType: 'openclaw' },
           { id: 's-antigravity', state: agent === 'antigravity' ? simStateToBridge(state) : 'idle', name: 'Antigravity', agentType: 'antigravity' },
+          { id: 's-kiro', state: agent === 'kiro' ? simStateToBridge(state) : 'idle', name: 'Kiro', agentType: 'kiro-cli' },
         ];
         setOctopi(ctx, sessions);
         setJellyfish(ctx, sessions);

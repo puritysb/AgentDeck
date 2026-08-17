@@ -1,7 +1,8 @@
 // Named mock DashboardState presets for the host simulator. These populate the
 // same g_state the firmware fills from the daemon's `state_update` — the
 // terrarium reads it identically, so a scene here exercises the real creature
-// derivation (session → octopus/cloud/opencode/antigravity + crayfish gateway).
+// derivation (session → octopus/cloud/opencode/antigravity/kiro + crayfish
+// gateway).
 #include "sim.h"
 #include "config.h"
 #include "state/agent_state.h"
@@ -39,6 +40,14 @@ void addSession(const char* agentType, const char* state, const char* project) {
     setStr(g_state.opencodeNames[g_state.opencodeCount++], 24, project);
   else if (std::strcmp(agentType, "antigravity") == 0)
     setStr(g_state.antigravityNames[g_state.antigravityCount++], 24, project);
+  // Prefix match, exactly as protocol.cpp does: kiro-cli and kiro-ide are the
+  // same product on two surfaces and share one creature. This whole chain is a
+  // hand copy of protocol.cpp's classifier and it had already drifted — Kiro
+  // landed on the boards while the simulator kept rendering it as nothing, so
+  // every pixel-exact board frame on the demo page was missing an agent the
+  // firmware supports.
+  else if (std::strncmp(agentType, "kiro", 4) == 0)
+    setStr(g_state.kiroNames[g_state.kiroCount++], 24, project);
 }
 
 // Append a timeline row the way protocol.cpp handleTimelineEvent does, so card
@@ -85,7 +94,7 @@ void base(CreatureState cs) {
 }
 
 // `demo:<agent>:<state>` — the creature-simulator web demo's agent × state
-// matrix (agents: claude|codex|opencode|openclaw|antigravity, states:
+// matrix (agents: claude|codex|opencode|openclaw|antigravity|kiro, states:
 // idle|working|asking|sleeping). Session shape and usage values mirror
 // scripts/render-creature-simulator.mjs buildSessions()/buildUsage() so the
 // ESP32 panels on the demo page stay visually coherent with the LED-matrix /
@@ -118,6 +127,7 @@ bool applyDemoScene(const char* agent, const char* state) {
       {"codex", "codex-cli", "Codex"},
       {"opencode", "opencode", "OpenCode"},
       {"antigravity", "antigravity", "Antigravity"},
+      {"kiro", "kiro-cli", "Kiro"},
   };
   bool known = std::strcmp(agent, "openclaw") == 0;
   const char* selectedState = working ? "processing"
@@ -181,12 +191,27 @@ bool SimScenes::apply(const char* name) {
     addSession("codex-cli", "processing", "firmware");
     return true;
   }
+  // Regression scene for the capped agent strip: five Claudes + Codex fill six
+  // slots exactly, so a single-pass fill drops Kiro (lowest agentType rank)
+  // entirely. `crowded` is what that bug looked like on the real deck.
+  if (std::strcmp(name, "crowded") == 0) {
+    base(CreatureState::WORKING);
+    addSession("claude-code", "processing", "AgentDeck");
+    addSession("claude-code", "idle", "epoch");
+    addSession("claude-code", "processing", "OpenClaw");
+    addSession("claude-code", "idle", "foundby");
+    addSession("claude-code", "idle", "site");
+    addSession("codex-app", "idle", "epoch");
+    addSession("kiro-cli", "idle", "AgentDeck");
+    return true;
+  }
   if (std::strcmp(name, "multi") == 0) {
     base(CreatureState::WORKING);
     addSession("claude-code", "processing", "AgentDeck");
     addSession("codex-cli", "processing", "esp32");
     addSession("opencode", "idle", "docs");
     addSession("antigravity", "idle", "apple");
+    addSession("kiro-cli", "idle", "hooks");
     g_state.crayfishState = CrayfishState::ROUTING;
     g_state.gatewayConnected = true;   // OpenClaw gateway → crayfish visible
     g_state.crayfishCount = 1;

@@ -175,7 +175,7 @@ private struct PixooPixelGrid: View {
 // documented here so the pin bump below is a conscious "checked, does not
 // affect the AGENTS render" acknowledgement.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp ff885f0187a2a0769fad084f146dcdb58733e07a
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp b82038ac26992af4ab927906675a7eff6ca69d81
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 
@@ -240,7 +240,14 @@ struct UlanziMatrixPreview: View {
 
         // Live-follow → real sessions (per-session agent + state); manual → the
         // synthesized palette. One creature per alive session, like the firmware.
-        let sessions = selection.displaySessions
+        //
+        // One slot per DISTINCT agent before any agent takes a second, mirroring
+        // the two-pass fill in matrix_pages.cpp. The strip holds only a handful
+        // of glyphs and the daemon hands them over sorted by agentType RANK, so
+        // a straight walk drops the lowest-ranked agent first: five Claudes and
+        // a Codex filled it exactly and Kiro never appeared. A preview that
+        // keeps the old order would disagree with the panel beside it.
+        let sessions = distinctAgentsFirst(selection.displaySessions)
         let hasOpenClaw = sessions.contains { $0.agent == .openclaw }
         let crayfishX = 24
         let agentMaxX = hasOpenClaw ? crayfishX - 8 : matrixW - 8
@@ -289,6 +296,19 @@ struct UlanziMatrixPreview: View {
                 cellW: cellW, cellH: cellH
             )
         }
+    }
+
+    /// One session per agent kind first, then the duplicates in their original
+    /// order. Mirrors the two-pass fill in `matrix_pages.cpp`.
+    func distinctAgentsFirst(_ sessions: [PreviewDisplaySession]) -> [PreviewDisplaySession] {
+        var seen = Set<PixooPreviewAgent>()
+        var first: [PreviewDisplaySession] = []
+        var rest: [PreviewDisplaySession] = []
+        for session in sessions {
+            if seen.insert(session.agent).inserted { first.append(session) }
+            else { rest.append(session) }
+        }
+        return first + rest
     }
 
     /// Subagent satellites — mirrors `drawSubagentSatellites` in

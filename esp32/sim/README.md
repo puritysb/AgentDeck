@@ -96,7 +96,7 @@ so they exercise the real session → creature/card derivation. On InkDeck,
 keeps useful status visible when the host monitors are off.
 
 There is also a parameterized scene family `demo:<agent>:<state>` (agents:
-`claude|codex|opencode|openclaw|antigravity`; states:
+`claude|codex|opencode|openclaw|antigravity|kiro`; states:
 `idle|working|asking|sleeping`) that mirrors the creature-simulator web demo's
 agent × state matrix — session shape and usage values match
 `scripts/render-creature-simulator.mjs`, so the GitHub Pages `/demo` ESP32
