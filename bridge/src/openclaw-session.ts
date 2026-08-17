@@ -5,6 +5,7 @@
  * drift. Mirror of Swift `buildSessionsListEvent`.
  */
 import { isOpenClawSessionActive, hasOpenClawSession } from '@agentdeck/shared';
+import type { OpenClawApprovalPrompt } from '@agentdeck/shared';
 import type { EnrichedSession } from './session-aggregator.js';
 
 /**
@@ -22,6 +23,15 @@ export interface InjectOpenClawOptions {
   projectName?: string;
   modelName?: string;
   controlMode?: 'managed';
+  /**
+   * The exec approval the Gateway is blocked on, when there is one. Every deck
+   * surface already renders `question`/`options` off the session row and only
+   * falls back to the dead-end "PERMIT? / answer in terminal" tile when they are
+   * absent — which they always were, because this row never carried them. The
+   * Gateway session has no terminal to answer in, so that fallback left the user
+   * with no route at all.
+   */
+  approval?: OpenClawApprovalPrompt | null;
 }
 
 /**
@@ -46,5 +56,17 @@ export function injectOpenClawSession(
   if (opts.state !== undefined) injected.state = opts.state;
   if (opts.modelName !== undefined) injected.modelName = opts.modelName;
   if (opts.controlMode !== undefined) injected.controlMode = opts.controlMode;
+  if (opts.approval) {
+    injected.question = opts.approval.question;
+    injected.options = opts.approval.options.map((o) => ({
+      index: o.index, label: o.label, shortcut: o.shortcut,
+    }));
+    injected.promptType = 'yes_no_always';
+    // The daemon can deliver this answer over the Gateway RPC, so the option
+    // cells are live rather than display-only. `requestId` stays absent: it
+    // makes surfaces render a binary Allow/Deny gate over a list that may carry
+    // three real choices.
+    injected.liveAnswerable = true;
+  }
   return [...sessions, injected];
 }

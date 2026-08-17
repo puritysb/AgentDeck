@@ -29,6 +29,10 @@ export interface EnrichedSession {
   requestId?: string;
   promptType?: 'yes_no' | 'yes_no_always' | 'multi_select' | 'diff_review';
   options?: PromptOption[];
+  /** A device press on `options` reaches this session's real answer path
+   *  (observed steering, or the OpenClaw Gateway's approval RPC). Without it the
+   *  option cells render display-only. Mirrors `SessionInfo.liveAnswerable`. */
+  liveAnswerable?: boolean;
   /** Seconds since startedAt — derived at broadcast time so NTP-less devices (ESP32) render elapsed per session. */
   elapsedSec?: number;
   /** Daemon-synthesized "what is this agent doing right now" one-liner (heuristic,

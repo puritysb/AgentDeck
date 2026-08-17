@@ -473,10 +473,14 @@ describe('OpenClawAdapter gateway protocol', () => {
     completeHandshake();
     events.length = 0;
 
+    // The real event nests everything under `request` — see
+    // `buildRequestedApprovalEvent` in OpenClaw's approval-shared bundle. This
+    // fixture used to be flat, which is why it stayed green for the entire
+    // period no user could see what they were approving.
     simulateMessage({
       type: 'event',
       event: 'exec.approval.requested',
-      payload: { id: 'approval-1', command: 'rm -rf /tmp/test' },
+      payload: { id: 'approval-1', request: { command: 'rm -rf /tmp/test' } },
     });
 
     expect(events).toContainEqual(
@@ -486,7 +490,7 @@ describe('OpenClawAdapter gateway protocol', () => {
         data: expect.objectContaining({
           question: 'rm -rf /tmp/test',
           options: expect.arrayContaining([
-            expect.objectContaining({ label: 'Allow' }),
+            expect.objectContaining({ label: 'Allow once' }),
             expect.objectContaining({ label: 'Deny' }),
           ]),
         }),
@@ -500,7 +504,7 @@ describe('OpenClawAdapter gateway protocol', () => {
     simulateMessage({
       type: 'event',
       event: 'exec.approval.requested',
-      payload: { id: 'approval-42', command: 'npm install' },
+      payload: { id: 'approval-42', request: { command: 'npm install' } },
     });
 
     wsInstance.send.mockClear();
@@ -512,7 +516,9 @@ describe('OpenClawAdapter gateway protocol', () => {
     expect(sent.type).toBe('req');
     expect(sent.method).toBe('exec.approval.resolve');
     expect(sent.params.id).toBe('approval-42');
-    expect(sent.params.decision).toBe('allow');
+    // NOT 'allow' — the Gateway's `isApprovalDecision` rejects that spelling
+    // before it even looks the id up, so the approval would stay pending.
+    expect(sent.params.decision).toBe('allow-once');
   });
 
   it('sends exec.approval.resolve with deny on respond "n"', () => {
@@ -521,6 +527,8 @@ describe('OpenClawAdapter gateway protocol', () => {
     simulateMessage({
       type: 'event',
       event: 'exec.approval.requested',
+      // Deliberately flat: a Gateway that ever inlines the fields must still
+      // produce an answerable prompt rather than a blank one.
       payload: { id: 'approval-99', command: 'dangerous-cmd' },
     });
 

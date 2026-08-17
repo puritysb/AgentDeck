@@ -884,9 +884,27 @@ function buildDetail(
   const sess = state.allSessions.find((s) => s.id === sid);
   // Focused-session detail comes from the top-level state_update when it relays
   // this session (focusedSessionId/sessionId match); else fall back to SessionInfo.
-  const focused = stateEvt?.focusedSessionId === sid || stateEvt?.sessionId === sid;
+  const focusedEvent = stateEvt?.focusedSessionId === sid || stateEvt?.sessionId === sid;
+  // `focusedSessionId` proves the daemon RELAYED this event while the session
+  // was focused — not that the state in it came from this session. The daemon's
+  // machine is fed by every observed hook session and by the Gateway alike, so
+  // an unrelated agent going idle overwrites it and the relay still carries our
+  // id. When the session's OWN row asserts a live prompt and the relayed event
+  // does not, the row wins: a row that says "awaiting, here are the options" is
+  // information about this session; a global "idle" is not.
+  //
+  // Only ever an upgrade — where the relayed event does present a prompt it
+  // stays authoritative, because it is the fresher copy and the only one that
+  // carries a PTY's navigable cursor.
+  const rowOptions = sess?.options ?? [];
+  const eventPresentsPrompt = focusedEvent
+    && awaitingState(String(state.state).toLowerCase())
+    && (state.options?.length ?? 0) > 0;
+  const rowPresentsPrompt = awaitingState(String(sess?.state ?? '').toLowerCase())
+    && rowOptions.length > 0;
+  const focused = focusedEvent && !(rowPresentsPrompt && !eventPresentsPrompt);
   const sState = (focused ? state.state : (sess?.state ?? 'idle')).toLowerCase();
-  const options = (focused ? state.options : (sess?.options ?? [])) ?? [];
+  const options = (focused ? state.options : rowOptions) ?? [];
   // Whatever question these options belong to, echoed back on a press so the
   // daemon can tell an answer apart from one aimed at a superseded question.
   const question = (focused ? (state.question ?? sess?.question) : sess?.question) || undefined;
@@ -974,9 +992,14 @@ function buildDetail(
       // the cells stay display-only. Always select_option when answerable (the
       // observed route acts on that command only); a shortcut-`respond` has no
       // observed meaning.
-      const observedAnswerable = isObserved && Boolean(sess?.liveAnswerable);
+      // `liveAnswerable` means "the daemon can deliver this answer" — it is not
+      // an observed-only concept. The OpenClaw Gateway row sets it too (the
+      // daemon resolves the approval over the Gateway RPC), and it has no
+      // terminal, so gating the live path on `isObserved` left its options
+      // rendering as an inert mirror of a prompt nobody could reach.
+      const answerable = Boolean(sess?.liveAnswerable);
       options.forEach((opt, i) => {
-        const command: ButtonCommand = (navigable || observedAnswerable)
+        const command: ButtonCommand = (navigable || answerable)
           // The question echo lets the daemon drop a press aimed at a question
           // a multi-group AskUserQuestion has already moved past, instead of
           // applying its index to the new option list.
@@ -989,7 +1012,7 @@ function buildDetail(
           : { type: 'respond', value: opt.shortcut || opt.label?.charAt(0)?.toLowerCase() || String(i + 1) };
         cells.push({
           svg: renderOptionButton(opt, i),
-          action: (isObserved && !observedAnswerable) ? null : { kind: 'command', command },
+          action: (isObserved && !answerable) ? null : { kind: 'command', command },
         });
       });
     } else if (isObserved && gateRequestId) {

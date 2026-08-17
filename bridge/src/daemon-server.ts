@@ -3672,6 +3672,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       projectName: 'OpenClaw',
       modelName: gatewayModelName,
       controlMode: 'managed',
+      // Read live from the adapter rather than cached alongside
+      // `gatewaySessionState`: the two would drift, and a row that says
+      // "awaiting_permission" while carrying no options is exactly the
+      // dead end this fixes.
+      approval: gatewayAdapter?.getPendingApproval() ?? null,
     });
   });
 
@@ -3729,6 +3734,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           if (evt.event === 'spinner_start') gatewaySessionState = 'processing';
           else if (evt.event === 'idle') gatewaySessionState = 'idle';
           else if (evt.event === 'permission_prompt') gatewaySessionState = 'awaiting_permission';
+          // The virtual Gateway row carries the approval's question/options, so
+          // a prompt appearing or clearing changes `sessions_list` — not just
+          // the state event. Devices read their option cells from that list; a
+          // state-only broadcast left them showing the previous prompt (or
+          // none) until some unrelated event forced a refresh.
+          if (evt.event === 'spinner_start' || evt.event === 'idle' || evt.event === 'permission_prompt') {
+            core.broadcastSessionsList().catch(() => {});
+          }
           // The OpenClaw adapter emits the real model via a model_info parser
           // event, but it only ever updated the display StateMachine — the APME
           // run was never told, so every openclaw run persisted model_id=NULL.
@@ -3779,6 +3792,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             if (evt.upsert) core.bridgeTimeline.upsertEntry(enriched);
             else core.bridgeTimeline.addEntry(enriched);
             if (enriched.type === 'tool_request') bridgeLogStream.trackToolRequest(enriched.raw);
+            // Flip the matching `tool_request` row off `pending`. The resolution
+            // has always been emitted as its own row, so the request row kept
+            // `status: 'pending'` forever — an approval answered minutes ago
+            // still read as outstanding in the timeline. `updateEntryStatus`
+            // existed for exactly this and had no production caller.
+            if (enriched.type === 'tool_resolved' && enriched.approvalId) {
+              core.bridgeTimeline.updateEntryStatus(
+                enriched.approvalId,
+                enriched.status === 'approved' ? 'approved' : 'denied',
+              );
+            }
           }
           break;
         case 'connection': {

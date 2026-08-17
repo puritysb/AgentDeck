@@ -436,48 +436,220 @@
       ],
       "type": "object"
     },
+    "ExecApprovalDecision": {
+      "description": "The decisions the Gateway will accept for an exec approval. Mirror of OpenClaw's `isApprovalDecision` / `DEFAULT_EXEC_APPROVAL_DECISIONS`. `'allow'` is NOT a member — sending it is rejected as an invalid decision.",
+      "enum": [
+        "allow-once",
+        "allow-always",
+        "deny"
+      ],
+      "type": "string"
+    },
+    "ExecApprovalListParams": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ExecApprovalListResult": {
+      "description": "Same element shape as the requested event, minus the envelope.",
+      "items": {
+        "$ref": "#/definitions/ExecApprovalRequestedPayload"
+      },
+      "type": "array"
+    },
+    "ExecApprovalRequestBody": {
+      "additionalProperties": false,
+      "description": "The `request` body OpenClaw nests inside the requested event.",
+      "properties": {
+        "agentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "allowedDecisions": {
+          "description": "Decisions this specific request permits (policy may drop allow-always).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ask": {
+          "description": "Approval POLICY (\"on-miss\" | \"always\" | …), never a question.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "command": {
+          "description": "Sanitized command display text — the thing the user is approving.",
+          "type": "string"
+        },
+        "commandAnalysis": {
+          "description": "Gateway-side static analysis summary of the command.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commandArgv": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "commandPreview": {
+          "description": "Non-node hosts send a preview instead of the full command.",
+          "type": "string"
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolvedPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "security": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unavailableDecisions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "warningText": {
+          "description": "Human-readable risk note, when the Gateway produced one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ExecApprovalRequestedPayload": {
       "additionalProperties": false,
+      "description": "`exec.approval.requested` payload. The nested `request` is the real shape; the flat fields are tolerated so a future/legacy Gateway that inlines them still parses instead of silently producing an empty prompt.",
       "properties": {
+        "agentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "allowedDecisions": {
+          "description": "Decisions this specific request permits (policy may drop allow-always).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ask": {
+          "description": "Approval POLICY (\"on-miss\" | \"always\" | …), never a question.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "command": {
+          "description": "Sanitized command display text — the thing the user is approving.",
           "type": "string"
+        },
+        "commandAnalysis": {
+          "description": "Gateway-side static analysis summary of the command.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commandArgv": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "commandPreview": {
+          "description": "Non-node hosts send a preview instead of the full command.",
+          "type": "string"
+        },
+        "createdAtMs": {
+          "type": "number"
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expiresAtMs": {
+          "type": "number"
+        },
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "id": {
           "type": "string"
         },
-        "options": {
-          "description": "Options surfaced to the user (default: allow/deny).",
+        "request": {
+          "$ref": "#/definitions/ExecApprovalRequestBody"
+        },
+        "resolvedPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "security": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unavailableDecisions": {
           "items": {
-            "additionalProperties": false,
-            "properties": {
-              "key": {
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "key",
-              "label"
-            ],
-            "type": "object"
+            "type": "string"
           },
           "type": "array"
         },
-        "reason": {
-          "type": "string"
-        },
-        "sessionKey": {
-          "type": "string"
-        },
-        "tool": {
-          "type": "string"
+        "warningText": {
+          "description": "Human-readable risk note, when the Gateway produced one.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
-        "id",
-        "tool"
+        "id"
       ],
       "type": "object"
     },
@@ -485,11 +657,7 @@
       "additionalProperties": false,
       "properties": {
         "decision": {
-          "enum": [
-            "allow",
-            "deny"
-          ],
-          "type": "string"
+          "$ref": "#/definitions/ExecApprovalDecision"
         },
         "id": {
           "type": "string"
@@ -503,32 +671,45 @@
     },
     "ExecApprovalResolveResult": {
       "additionalProperties": false,
+      "description": "The Gateway answers `{ ok: true }`; `resolved` is kept for older builds.",
       "properties": {
+        "ok": {
+          "type": "boolean"
+        },
         "resolved": {
           "type": "boolean"
         }
       },
-      "required": [
-        "resolved"
-      ],
       "type": "object"
     },
     "ExecApprovalResolvedPayload": {
       "additionalProperties": false,
+      "description": "`exec.approval.resolved` payload (`buildResolvedEvent` in exec-approval).",
       "properties": {
         "decision": {
-          "enum": [
-            "allow",
-            "deny",
-            "timeout"
-          ],
-          "type": "string"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ExecApprovalDecision"
+            },
+            {
+              "type": "string"
+            }
+          ]
         },
         "id": {
           "type": "string"
         },
-        "sessionKey": {
-          "type": "string"
+        "request": {
+          "$ref": "#/definitions/ExecApprovalRequestBody"
+        },
+        "resolvedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ts": {
+          "type": "number"
         }
       },
       "required": [
@@ -663,6 +844,7 @@
         "chat.send",
         "chat.abort",
         "exec.approval.resolve",
+        "exec.approval.list",
         "sessions.list",
         "sessions.subscribe",
         "sessions.messages.subscribe",
@@ -692,6 +874,9 @@
         },
         {
           "$ref": "#/definitions/ExecApprovalResolveParams"
+        },
+        {
+          "$ref": "#/definitions/ExecApprovalListParams"
         },
         {
           "$ref": "#/definitions/SessionsListParams"
@@ -729,6 +914,9 @@
         },
         {
           "$ref": "#/definitions/ExecApprovalResolveResult"
+        },
+        {
+          "$ref": "#/definitions/ExecApprovalListResult"
         },
         {
           "$ref": "#/definitions/SessionsListResult"

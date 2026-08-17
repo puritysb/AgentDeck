@@ -18,7 +18,7 @@ struct ADGatewayFrame: Codable {
     var type: ADGatewayFrameType
     var error: ADGatewayError?
     var ok: Bool?
-    var payload: ADGateway?
+    var payload: ADGatewayMethodResult?
     var event: ADGatewayEventName?
     /// Monotonic sequence number (optional, used for ordering on reconnect).
     var seq: String?
@@ -64,7 +64,7 @@ extension ADGatewayFrame {
         type: ADGatewayFrameType? = nil,
         error: ADGatewayError?? = nil,
         ok: Bool?? = nil,
-        payload: ADGateway?? = nil,
+        payload: ADGatewayMethodResult?? = nil,
         event: ADGatewayEventName?? = nil,
         seq: String?? = nil,
         stateVersion: String?? = nil
@@ -163,6 +163,7 @@ enum ADGatewayMethodName: String, Codable {
     case chatAbort = "chat.abort"
     case chatSend = "chat.send"
     case connect = "connect"
+    case execApprovalList = "exec.approval.list"
     case execApprovalResolve = "exec.approval.resolve"
     case health = "health"
     case logsTail = "logs.tail"
@@ -200,7 +201,7 @@ struct ADGatewayMethodParams: Codable {
     var message: String?
     var sessionKey: String?
     var runId: String?
-    var decision: ADGatewayMethodParamsDecision?
+    var decision: ADExecApprovalDecision?
     var id: String?
     var kind: String?
     var key: String?
@@ -272,7 +273,7 @@ extension ADGatewayMethodParams {
         message: String?? = nil,
         sessionKey: String?? = nil,
         runId: String?? = nil,
-        decision: ADGatewayMethodParamsDecision?? = nil,
+        decision: ADExecApprovalDecision?? = nil,
         id: String?? = nil,
         kind: String?? = nil,
         key: String?? = nil
@@ -446,8 +447,12 @@ enum ADMode: String, Codable {
     case node = "node"
 }
 
-enum ADGatewayMethodParamsDecision: String, Codable {
-    case allow = "allow"
+/// The decisions the Gateway will accept for an exec approval. Mirror of OpenClaw's
+/// `isApprovalDecision` / `DEFAULT_EXEC_APPROVAL_DECISIONS`. `'allow'` is NOT a member —
+/// sending it is rejected as an invalid decision.
+enum ADExecApprovalDecision: String, Codable {
+    case allowAlways = "allow-always"
+    case allowOnce = "allow-once"
     case deny = "deny"
 }
 
@@ -513,17 +518,280 @@ extension ADDeviceAuth {
     }
 }
 
-// MARK: - ADGateway
-struct ADGateway: Codable {
+enum ADGatewayMethodResult: Codable {
+    case adConnectResult(ADConnectResult)
+    case adExecApprovalRequestedPayloadArray([ADExecApprovalRequestedPayload])
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let x = try? container.decode([ADExecApprovalRequestedPayload].self) {
+            self = .adExecApprovalRequestedPayloadArray(x)
+            return
+        }
+        if let x = try? container.decode(ADConnectResult.self) {
+            self = .adConnectResult(x)
+            return
+        }
+        throw DecodingError.typeMismatch(ADGatewayMethodResult.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for ADGatewayMethodResult"))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .adConnectResult(let x):
+            try container.encode(x)
+        case .adExecApprovalRequestedPayloadArray(let x):
+            try container.encode(x)
+        }
+    }
+}
+
+/// Same element shape as the requested event, minus the envelope.
+///
+/// `exec.approval.requested` payload. The nested `request` is the real shape; the flat
+/// fields are tolerated so a future/legacy Gateway that inlines them still parses instead of
+/// silently producing an empty prompt.
+// MARK: - ADExecApprovalRequestedPayload
+struct ADExecApprovalRequestedPayload: Codable {
+    var agentId: String?
+    /// Decisions this specific request permits (policy may drop allow-always).
+    var allowedDecisions: [String]?
+    /// Approval POLICY ("on-miss" | "always" | …), never a question.
+    var ask: String?
+    /// Sanitized command display text — the thing the user is approving.
+    var command: String?
+    /// Gateway-side static analysis summary of the command.
+    var commandAnalysis: String?
+    var commandArgv: [String]?
+    /// Non-node hosts send a preview instead of the full command.
+    var commandPreview: String?
+    var createdAtMs: Double?
+    var cwd: String?
+    var expiresAtMs: Double?
+    var host: String?
+    var id: String
+    var request: ADExecApprovalRequestBody?
+    var resolvedPath: String?
+    var security: String?
+    var sessionKey: String?
+    var unavailableDecisions: [String]?
+    /// Human-readable risk note, when the Gateway produced one.
+    var warningText: String?
+
+    enum CodingKeys: String, CodingKey {
+        case agentId = "agentId"
+        case allowedDecisions = "allowedDecisions"
+        case ask = "ask"
+        case command = "command"
+        case commandAnalysis = "commandAnalysis"
+        case commandArgv = "commandArgv"
+        case commandPreview = "commandPreview"
+        case createdAtMs = "createdAtMs"
+        case cwd = "cwd"
+        case expiresAtMs = "expiresAtMs"
+        case host = "host"
+        case id = "id"
+        case request = "request"
+        case resolvedPath = "resolvedPath"
+        case security = "security"
+        case sessionKey = "sessionKey"
+        case unavailableDecisions = "unavailableDecisions"
+        case warningText = "warningText"
+    }
+}
+
+// MARK: ADExecApprovalRequestedPayload convenience initializers and mutators
+
+extension ADExecApprovalRequestedPayload {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADExecApprovalRequestedPayload.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        agentId: String?? = nil,
+        allowedDecisions: [String]?? = nil,
+        ask: String?? = nil,
+        command: String?? = nil,
+        commandAnalysis: String?? = nil,
+        commandArgv: [String]?? = nil,
+        commandPreview: String?? = nil,
+        createdAtMs: Double?? = nil,
+        cwd: String?? = nil,
+        expiresAtMs: Double?? = nil,
+        host: String?? = nil,
+        id: String? = nil,
+        request: ADExecApprovalRequestBody?? = nil,
+        resolvedPath: String?? = nil,
+        security: String?? = nil,
+        sessionKey: String?? = nil,
+        unavailableDecisions: [String]?? = nil,
+        warningText: String?? = nil
+    ) -> ADExecApprovalRequestedPayload {
+        return ADExecApprovalRequestedPayload(
+            agentId: agentId ?? self.agentId,
+            allowedDecisions: allowedDecisions ?? self.allowedDecisions,
+            ask: ask ?? self.ask,
+            command: command ?? self.command,
+            commandAnalysis: commandAnalysis ?? self.commandAnalysis,
+            commandArgv: commandArgv ?? self.commandArgv,
+            commandPreview: commandPreview ?? self.commandPreview,
+            createdAtMs: createdAtMs ?? self.createdAtMs,
+            cwd: cwd ?? self.cwd,
+            expiresAtMs: expiresAtMs ?? self.expiresAtMs,
+            host: host ?? self.host,
+            id: id ?? self.id,
+            request: request ?? self.request,
+            resolvedPath: resolvedPath ?? self.resolvedPath,
+            security: security ?? self.security,
+            sessionKey: sessionKey ?? self.sessionKey,
+            unavailableDecisions: unavailableDecisions ?? self.unavailableDecisions,
+            warningText: warningText ?? self.warningText
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+/// The `request` body OpenClaw nests inside the requested event.
+// MARK: - ADExecApprovalRequestBody
+struct ADExecApprovalRequestBody: Codable {
+    var agentId: String?
+    /// Decisions this specific request permits (policy may drop allow-always).
+    var allowedDecisions: [String]?
+    /// Approval POLICY ("on-miss" | "always" | …), never a question.
+    var ask: String?
+    /// Sanitized command display text — the thing the user is approving.
+    var command: String?
+    /// Gateway-side static analysis summary of the command.
+    var commandAnalysis: String?
+    var commandArgv: [String]?
+    /// Non-node hosts send a preview instead of the full command.
+    var commandPreview: String?
+    var cwd: String?
+    var host: String?
+    var resolvedPath: String?
+    var security: String?
+    var sessionKey: String?
+    var unavailableDecisions: [String]?
+    /// Human-readable risk note, when the Gateway produced one.
+    var warningText: String?
+
+    enum CodingKeys: String, CodingKey {
+        case agentId = "agentId"
+        case allowedDecisions = "allowedDecisions"
+        case ask = "ask"
+        case command = "command"
+        case commandAnalysis = "commandAnalysis"
+        case commandArgv = "commandArgv"
+        case commandPreview = "commandPreview"
+        case cwd = "cwd"
+        case host = "host"
+        case resolvedPath = "resolvedPath"
+        case security = "security"
+        case sessionKey = "sessionKey"
+        case unavailableDecisions = "unavailableDecisions"
+        case warningText = "warningText"
+    }
+}
+
+// MARK: ADExecApprovalRequestBody convenience initializers and mutators
+
+extension ADExecApprovalRequestBody {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADExecApprovalRequestBody.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        agentId: String?? = nil,
+        allowedDecisions: [String]?? = nil,
+        ask: String?? = nil,
+        command: String?? = nil,
+        commandAnalysis: String?? = nil,
+        commandArgv: [String]?? = nil,
+        commandPreview: String?? = nil,
+        cwd: String?? = nil,
+        host: String?? = nil,
+        resolvedPath: String?? = nil,
+        security: String?? = nil,
+        sessionKey: String?? = nil,
+        unavailableDecisions: [String]?? = nil,
+        warningText: String?? = nil
+    ) -> ADExecApprovalRequestBody {
+        return ADExecApprovalRequestBody(
+            agentId: agentId ?? self.agentId,
+            allowedDecisions: allowedDecisions ?? self.allowedDecisions,
+            ask: ask ?? self.ask,
+            command: command ?? self.command,
+            commandAnalysis: commandAnalysis ?? self.commandAnalysis,
+            commandArgv: commandArgv ?? self.commandArgv,
+            commandPreview: commandPreview ?? self.commandPreview,
+            cwd: cwd ?? self.cwd,
+            host: host ?? self.host,
+            resolvedPath: resolvedPath ?? self.resolvedPath,
+            security: security ?? self.security,
+            sessionKey: sessionKey ?? self.sessionKey,
+            unavailableDecisions: unavailableDecisions ?? self.unavailableDecisions,
+            warningText: warningText ?? self.warningText
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+/// The Gateway answers `{ ok: true }`; `resolved` is kept for older builds.
+///
+/// Same element shape as the requested event, minus the envelope.
+///
+/// `exec.approval.requested` payload. The nested `request` is the real shape; the flat
+/// fields are tolerated so a future/legacy Gateway that inlines them still parses instead of
+/// silently producing an empty prompt.
+///
+/// `exec.approval.resolved` payload (`buildResolvedEvent` in exec-approval).
+// MARK: - ADConnectResult
+struct ADConnectResult: Codable {
     var accepted: Bool?
-    var auth: ADPayloadAuth?
+    var auth: ADConnectResultAuth?
     var expiresAt: Double?
     var features: ADFeatures?
     var policy: ADPolicy?
-    var gatewayProtocol: Double?
+    var connectResultProtocol: Double?
     var server: ADServer?
     var sessionToken: String?
-    var type: ADPayloadType?
+    var type: ADConnectResultType?
     var checks: [ADCheck]?
     var durationMs: Double?
     var ok: Bool?
@@ -573,11 +841,31 @@ struct ADGateway: Codable {
     var output: JSONAny?
     var tool: String?
     var reason: String?
+    var agentId: String?
+    /// Decisions this specific request permits (policy may drop allow-always).
+    var allowedDecisions: [String]?
+    /// Approval POLICY ("on-miss" | "always" | …), never a question.
+    var ask: String?
+    /// Sanitized command display text — the thing the user is approving.
     var command: String?
+    /// Gateway-side static analysis summary of the command.
+    var commandAnalysis: String?
+    var commandArgv: [String]?
+    /// Non-node hosts send a preview instead of the full command.
+    var commandPreview: String?
+    var createdAtMs: Double?
+    var cwd: String?
+    var expiresAtMs: Double?
+    var host: String?
     var id: String?
-    /// Options surfaced to the user (default: allow/deny).
-    var options: [ADOption]?
-    var decision: ADPayloadDecision?
+    var request: ADExecApprovalRequestBody?
+    var resolvedPath: String?
+    var security: String?
+    var unavailableDecisions: [String]?
+    /// Human-readable risk note, when the Gateway produced one.
+    var warningText: String?
+    var decision: String?
+    var resolvedBy: String?
     var clientId: String?
     var connected: Bool?
     var deviceId: String?
@@ -590,7 +878,7 @@ struct ADGateway: Codable {
         case expiresAt = "expiresAt"
         case features = "features"
         case policy = "policy"
-        case gatewayProtocol = "protocol"
+        case connectResultProtocol = "protocol"
         case server = "server"
         case sessionToken = "sessionToken"
         case type = "type"
@@ -635,10 +923,25 @@ struct ADGateway: Codable {
         case output = "output"
         case tool = "tool"
         case reason = "reason"
+        case agentId = "agentId"
+        case allowedDecisions = "allowedDecisions"
+        case ask = "ask"
         case command = "command"
+        case commandAnalysis = "commandAnalysis"
+        case commandArgv = "commandArgv"
+        case commandPreview = "commandPreview"
+        case createdAtMs = "createdAtMs"
+        case cwd = "cwd"
+        case expiresAtMs = "expiresAtMs"
+        case host = "host"
         case id = "id"
-        case options = "options"
+        case request = "request"
+        case resolvedPath = "resolvedPath"
+        case security = "security"
+        case unavailableDecisions = "unavailableDecisions"
+        case warningText = "warningText"
         case decision = "decision"
+        case resolvedBy = "resolvedBy"
         case clientId = "clientId"
         case connected = "connected"
         case deviceId = "deviceId"
@@ -647,11 +950,11 @@ struct ADGateway: Codable {
     }
 }
 
-// MARK: ADGateway convenience initializers and mutators
+// MARK: ADConnectResult convenience initializers and mutators
 
-extension ADGateway {
+extension ADConnectResult {
     init(data: Data) throws {
-        self = try newJSONDecoder().decode(ADGateway.self, from: data)
+        self = try newJSONDecoder().decode(ADConnectResult.self, from: data)
     }
 
     init(_ json: String, using encoding: String.Encoding = .utf8) throws {
@@ -667,14 +970,14 @@ extension ADGateway {
 
     func with(
         accepted: Bool?? = nil,
-        auth: ADPayloadAuth?? = nil,
+        auth: ADConnectResultAuth?? = nil,
         expiresAt: Double?? = nil,
         features: ADFeatures?? = nil,
         policy: ADPolicy?? = nil,
-        gatewayProtocol: Double?? = nil,
+        connectResultProtocol: Double?? = nil,
         server: ADServer?? = nil,
         sessionToken: String?? = nil,
-        type: ADPayloadType?? = nil,
+        type: ADConnectResultType?? = nil,
         checks: [ADCheck]?? = nil,
         durationMs: Double?? = nil,
         ok: Bool?? = nil,
@@ -716,23 +1019,38 @@ extension ADGateway {
         output: JSONAny?? = nil,
         tool: String?? = nil,
         reason: String?? = nil,
+        agentId: String?? = nil,
+        allowedDecisions: [String]?? = nil,
+        ask: String?? = nil,
         command: String?? = nil,
+        commandAnalysis: String?? = nil,
+        commandArgv: [String]?? = nil,
+        commandPreview: String?? = nil,
+        createdAtMs: Double?? = nil,
+        cwd: String?? = nil,
+        expiresAtMs: Double?? = nil,
+        host: String?? = nil,
         id: String?? = nil,
-        options: [ADOption]?? = nil,
-        decision: ADPayloadDecision?? = nil,
+        request: ADExecApprovalRequestBody?? = nil,
+        resolvedPath: String?? = nil,
+        security: String?? = nil,
+        unavailableDecisions: [String]?? = nil,
+        warningText: String?? = nil,
+        decision: String?? = nil,
+        resolvedBy: String?? = nil,
         clientId: String?? = nil,
         connected: Bool?? = nil,
         deviceId: String?? = nil,
         serverTime: Double?? = nil,
         restartAt: Double?? = nil
-    ) -> ADGateway {
-        return ADGateway(
+    ) -> ADConnectResult {
+        return ADConnectResult(
             accepted: accepted ?? self.accepted,
             auth: auth ?? self.auth,
             expiresAt: expiresAt ?? self.expiresAt,
             features: features ?? self.features,
             policy: policy ?? self.policy,
-            gatewayProtocol: gatewayProtocol ?? self.gatewayProtocol,
+            connectResultProtocol: connectResultProtocol ?? self.connectResultProtocol,
             server: server ?? self.server,
             sessionToken: sessionToken ?? self.sessionToken,
             type: type ?? self.type,
@@ -777,10 +1095,25 @@ extension ADGateway {
             output: output ?? self.output,
             tool: tool ?? self.tool,
             reason: reason ?? self.reason,
+            agentId: agentId ?? self.agentId,
+            allowedDecisions: allowedDecisions ?? self.allowedDecisions,
+            ask: ask ?? self.ask,
             command: command ?? self.command,
+            commandAnalysis: commandAnalysis ?? self.commandAnalysis,
+            commandArgv: commandArgv ?? self.commandArgv,
+            commandPreview: commandPreview ?? self.commandPreview,
+            createdAtMs: createdAtMs ?? self.createdAtMs,
+            cwd: cwd ?? self.cwd,
+            expiresAtMs: expiresAtMs ?? self.expiresAtMs,
+            host: host ?? self.host,
             id: id ?? self.id,
-            options: options ?? self.options,
+            request: request ?? self.request,
+            resolvedPath: resolvedPath ?? self.resolvedPath,
+            security: security ?? self.security,
+            unavailableDecisions: unavailableDecisions ?? self.unavailableDecisions,
+            warningText: warningText ?? self.warningText,
             decision: decision ?? self.decision,
+            resolvedBy: resolvedBy ?? self.resolvedBy,
             clientId: clientId ?? self.clientId,
             connected: connected ?? self.connected,
             deviceId: deviceId ?? self.deviceId,
@@ -798,8 +1131,8 @@ extension ADGateway {
     }
 }
 
-// MARK: - ADPayloadAuth
-struct ADPayloadAuth: Codable {
+// MARK: - ADConnectResultAuth
+struct ADConnectResultAuth: Codable {
     var deviceToken: String
     var deviceTokens: [ADDeviceToken]?
     var issuedAtMs: Double?
@@ -815,11 +1148,11 @@ struct ADPayloadAuth: Codable {
     }
 }
 
-// MARK: ADPayloadAuth convenience initializers and mutators
+// MARK: ADConnectResultAuth convenience initializers and mutators
 
-extension ADPayloadAuth {
+extension ADConnectResultAuth {
     init(data: Data) throws {
-        self = try newJSONDecoder().decode(ADPayloadAuth.self, from: data)
+        self = try newJSONDecoder().decode(ADConnectResultAuth.self, from: data)
     }
 
     init(_ json: String, using encoding: String.Encoding = .utf8) throws {
@@ -839,8 +1172,8 @@ extension ADPayloadAuth {
         issuedAtMs: Double?? = nil,
         role: String? = nil,
         scopes: [String]? = nil
-    ) -> ADPayloadAuth {
-        return ADPayloadAuth(
+    ) -> ADConnectResultAuth {
+        return ADConnectResultAuth(
             deviceToken: deviceToken ?? self.deviceToken,
             deviceTokens: deviceTokens ?? self.deviceTokens,
             issuedAtMs: issuedAtMs ?? self.issuedAtMs,
@@ -968,12 +1301,6 @@ extension ADCheck {
     func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
         return String(data: try self.jsonData(), encoding: encoding)
     }
-}
-
-enum ADPayloadDecision: String, Codable {
-    case allow = "allow"
-    case deny = "deny"
-    case timeout = "timeout"
 }
 
 // MARK: - ADGatewayPresenceEntry
@@ -1148,54 +1475,6 @@ extension ADOpenClawModel {
             provider: provider ?? self.provider,
             tags: tags ?? self.tags,
             title: title ?? self.title
-        )
-    }
-
-    func jsonData() throws -> Data {
-        return try newJSONEncoder().encode(self)
-    }
-
-    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
-        return String(data: try self.jsonData(), encoding: encoding)
-    }
-}
-
-// MARK: - ADOption
-struct ADOption: Codable {
-    var key: String
-    var label: String
-
-    enum CodingKeys: String, CodingKey {
-        case key = "key"
-        case label = "label"
-    }
-}
-
-// MARK: ADOption convenience initializers and mutators
-
-extension ADOption {
-    init(data: Data) throws {
-        self = try newJSONDecoder().decode(ADOption.self, from: data)
-    }
-
-    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
-        guard let data = json.data(using: encoding) else {
-            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
-        }
-        try self.init(data: data)
-    }
-
-    init(fromURL url: URL) throws {
-        try self.init(data: try Data(contentsOf: url))
-    }
-
-    func with(
-        key: String? = nil,
-        label: String? = nil
-    ) -> ADOption {
-        return ADOption(
-            key: key ?? self.key,
-            label: label ?? self.label
         )
     }
 
@@ -1437,7 +1716,7 @@ enum ADStatus: String, Codable {
     case success = "success"
 }
 
-enum ADPayloadType: String, Codable {
+enum ADConnectResultType: String, Codable {
     case helloOk = "hello-ok"
 }
 

@@ -1113,10 +1113,19 @@ export class SessionSlotManager {
     // processing from it instead of the (never-primed) detail relay state.
     const isObserved = session?.controlMode === 'observed';
     const observedState = (session?.state ?? '').toLowerCase();
-    const isAwaiting = isObserved
+    // The OpenClaw Gateway row is `managed` but has no state_update channel of
+    // its own either: `focus_session` is answered with the daemon's GLOBAL
+    // state, which every observed hook session also feeds, so an unrelated
+    // Claude turn going idle wipes the relayed detail state — and with it the
+    // approval the row is still asserting. When the row presents a prompt the
+    // relay does not, the row is the live source, exactly as for observed.
+    const rowPresentsPrompt = observedState.startsWith('awaiting')
+      && (session?.options?.length ?? 0) > 0;
+    const rowDriven = isObserved || (rowPresentsPrompt && !this.isAwaitingDetailState());
+    const isAwaiting = rowDriven
       ? observedState.startsWith('awaiting')
       : this.isAwaitingDetailState();
-    const isProcessing = isObserved
+    const isProcessing = rowDriven
       ? observedState === 'processing'
       : this._detailState === State.PROCESSING;
     const isOpenClaw = session?.agentType === 'openclaw';
@@ -1163,7 +1172,11 @@ export class SessionSlotManager {
     // Observed sessions get their own capability-aware content: gate
     // Allow/Deny while a held PreToolUse is pending, queueable directives
     // while processing, and an honest "control in terminal" tile when idle.
-    if (isObserved) {
+    // `rowDriven` also covers the Gateway's exec approval: its options live on
+    // the row, and this renderer is the one that turns them into pressable
+    // cells gated on `liveAnswerable`. Restricted to the awaiting case so an
+    // idle/processing OpenClaw row keeps its existing managed layout.
+    if (isObserved || (rowDriven && isAwaiting)) {
       return this.observedContentSlot(session, contentIdx, isAwaiting, isProcessing);
     }
 

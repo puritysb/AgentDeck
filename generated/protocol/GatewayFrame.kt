@@ -15,15 +15,15 @@ private fun <T> Klaxon.convert(k: kotlin.reflect.KClass<*>, fromJson: (JsonValue
     })
 
 private val klaxon = Klaxon()
-    .convert(GatewayEventName::class,            { GatewayEventName.fromValue(it.string!!) },            { "\"${it.value}\"" })
-    .convert(GatewayMethodName::class,           { GatewayMethodName.fromValue(it.string!!) },           { "\"${it.value}\"" })
-    .convert(Mode::class,                        { Mode.fromValue(it.string!!) },                        { "\"${it.value}\"" })
-    .convert(GatewayMethodParamsDecision::class, { GatewayMethodParamsDecision.fromValue(it.string!!) }, { "\"${it.value}\"" })
-    .convert(PayloadDecision::class,             { PayloadDecision.fromValue(it.string!!) },             { "\"${it.value}\"" })
-    .convert(State::class,                       { State.fromValue(it.string!!) },                       { "\"${it.value}\"" })
-    .convert(Status::class,                      { Status.fromValue(it.string!!) },                      { "\"${it.value}\"" })
-    .convert(PayloadType::class,                 { PayloadType.fromValue(it.string!!) },                 { "\"${it.value}\"" })
-    .convert(GatewayFrameType::class,            { GatewayFrameType.fromValue(it.string!!) },            { "\"${it.value}\"" })
+    .convert(GatewayEventName::class,     { GatewayEventName.fromValue(it.string!!) },     { "\"${it.value}\"" })
+    .convert(GatewayMethodName::class,    { GatewayMethodName.fromValue(it.string!!) },    { "\"${it.value}\"" })
+    .convert(Mode::class,                 { Mode.fromValue(it.string!!) },                 { "\"${it.value}\"" })
+    .convert(ExecApprovalDecision::class, { ExecApprovalDecision.fromValue(it.string!!) }, { "\"${it.value}\"" })
+    .convert(State::class,                { State.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(Status::class,               { Status.fromValue(it.string!!) },               { "\"${it.value}\"" })
+    .convert(ConnectResultType::class,    { ConnectResultType.fromValue(it.string!!) },    { "\"${it.value}\"" })
+    .convert(GatewayFrameType::class,     { GatewayFrameType.fromValue(it.string!!) },     { "\"${it.value}\"" })
+    .convert(GatewayMethodResult::class,  { GatewayMethodResult.fromJson(it) },            { it.toJson() }, true)
 
 /**
  * Client → Gateway: RPC request.
@@ -39,7 +39,7 @@ data class GatewayFrame (
     val type: GatewayFrameType,
     val error: GatewayError? = null,
     val ok: Boolean? = null,
-    val payload: Gateway? = null,
+    val payload: GatewayMethodResult? = null,
     val event: GatewayEventName? = null,
 
     /**
@@ -102,6 +102,7 @@ enum class GatewayMethodName(val value: String) {
     ChatAbort("chat.abort"),
     ChatSend("chat.send"),
     Connect("connect"),
+    ExecApprovalList("exec.approval.list"),
     ExecApprovalResolve("exec.approval.resolve"),
     Health("health"),
     LogsTail("logs.tail"),
@@ -116,6 +117,7 @@ enum class GatewayMethodName(val value: String) {
             "chat.abort"                  -> ChatAbort
             "chat.send"                   -> ChatSend
             "connect"                     -> Connect
+            "exec.approval.list"          -> ExecApprovalList
             "exec.approval.resolve"       -> ExecApprovalResolve
             "health"                      -> Health
             "logs.tail"                   -> LogsTail
@@ -172,7 +174,7 @@ data class GatewayMethodParams (
     @Json(name = "runId")
     val runID: String? = null,
 
-    val decision: GatewayMethodParamsDecision? = null,
+    val decision: ExecApprovalDecision? = null,
     val id: String? = null,
     val kind: String? = null,
     val key: String? = null
@@ -218,15 +220,22 @@ enum class Mode(val value: String) {
     }
 }
 
-enum class GatewayMethodParamsDecision(val value: String) {
-    Allow("allow"),
+/**
+ * The decisions the Gateway will accept for an exec approval. Mirror of OpenClaw's
+ * `isApprovalDecision` / `DEFAULT_EXEC_APPROVAL_DECISIONS`. `'allow'` is NOT a member —
+ * sending it is rejected as an invalid decision.
+ */
+enum class ExecApprovalDecision(val value: String) {
+    AllowAlways("allow-always"),
+    AllowOnce("allow-once"),
     Deny("deny");
 
     companion object {
-        public fun fromValue(value: String): GatewayMethodParamsDecision = when (value) {
-            "allow" -> Allow
-            "deny"  -> Deny
-            else    -> throw IllegalArgumentException()
+        public fun fromValue(value: String): ExecApprovalDecision = when (value) {
+            "allow-always" -> AllowAlways
+            "allow-once"   -> AllowOnce
+            "deny"         -> Deny
+            else           -> throw IllegalArgumentException()
         }
     }
 }
@@ -243,16 +252,152 @@ data class DeviceAuth (
     val signedAt: Double
 )
 
-data class Gateway (
+sealed class GatewayMethodResult {
+    class ConnectResultValue(val value: ConnectResult)                                          : GatewayMethodResult()
+    class ExecApprovalRequestedPayloadArrayValue(val value: List<ExecApprovalRequestedPayload>) : GatewayMethodResult()
+
+    public fun toJson(): String = klaxon.toJsonString(when (this) {
+        is ConnectResultValue                     -> this.value
+        is ExecApprovalRequestedPayloadArrayValue -> this.value
+    })
+
+    companion object {
+        public fun fromJson(jv: JsonValue): GatewayMethodResult = when (jv.inside) {
+            is JsonObject   -> ConnectResultValue(jv.obj?.let { klaxon.parseFromJsonObject<ConnectResult>(it) }!!)
+            is JsonArray<*> -> ExecApprovalRequestedPayloadArrayValue(jv.array?.let { klaxon.parseFromJsonArray<ExecApprovalRequestedPayload>(it) }!!)
+            else            -> throw IllegalArgumentException()
+        }
+    }
+}
+
+/**
+ * Same element shape as the requested event, minus the envelope.
+ *
+ * `exec.approval.requested` payload. The nested `request` is the real shape; the flat
+ * fields are tolerated so a future/legacy Gateway that inlines them still parses instead of
+ * silently producing an empty prompt.
+ */
+data class ExecApprovalRequestedPayload (
+    @Json(name = "agentId")
+    val agentID: String? = null,
+
+    /**
+     * Decisions this specific request permits (policy may drop allow-always).
+     */
+    val allowedDecisions: List<String>? = null,
+
+    /**
+     * Approval POLICY ("on-miss" | "always" | …), never a question.
+     */
+    val ask: String? = null,
+
+    /**
+     * Sanitized command display text — the thing the user is approving.
+     */
+    val command: String? = null,
+
+    /**
+     * Gateway-side static analysis summary of the command.
+     */
+    val commandAnalysis: String? = null,
+
+    val commandArgv: List<String>? = null,
+
+    /**
+     * Non-node hosts send a preview instead of the full command.
+     */
+    val commandPreview: String? = null,
+
+    @Json(name = "createdAtMs")
+    val createdAtMS: Double? = null,
+
+    val cwd: String? = null,
+
+    @Json(name = "expiresAtMs")
+    val expiresAtMS: Double? = null,
+
+    val host: String? = null,
+    val id: String,
+    val request: ExecApprovalRequestBody? = null,
+    val resolvedPath: String? = null,
+    val security: String? = null,
+    val sessionKey: String? = null,
+    val unavailableDecisions: List<String>? = null,
+
+    /**
+     * Human-readable risk note, when the Gateway produced one.
+     */
+    val warningText: String? = null
+)
+
+/**
+ * The `request` body OpenClaw nests inside the requested event.
+ */
+data class ExecApprovalRequestBody (
+    @Json(name = "agentId")
+    val agentID: String? = null,
+
+    /**
+     * Decisions this specific request permits (policy may drop allow-always).
+     */
+    val allowedDecisions: List<String>? = null,
+
+    /**
+     * Approval POLICY ("on-miss" | "always" | …), never a question.
+     */
+    val ask: String? = null,
+
+    /**
+     * Sanitized command display text — the thing the user is approving.
+     */
+    val command: String? = null,
+
+    /**
+     * Gateway-side static analysis summary of the command.
+     */
+    val commandAnalysis: String? = null,
+
+    val commandArgv: List<String>? = null,
+
+    /**
+     * Non-node hosts send a preview instead of the full command.
+     */
+    val commandPreview: String? = null,
+
+    val cwd: String? = null,
+    val host: String? = null,
+    val resolvedPath: String? = null,
+    val security: String? = null,
+    val sessionKey: String? = null,
+    val unavailableDecisions: List<String>? = null,
+
+    /**
+     * Human-readable risk note, when the Gateway produced one.
+     */
+    val warningText: String? = null
+)
+
+/**
+ * The Gateway answers `{ ok: true }`; `resolved` is kept for older builds.
+ *
+ * Same element shape as the requested event, minus the envelope.
+ *
+ * `exec.approval.requested` payload. The nested `request` is the real shape; the flat
+ * fields are tolerated so a future/legacy Gateway that inlines them still parses instead of
+ * silently producing an empty prompt.
+ *
+ * `exec.approval.resolved` payload (`buildResolvedEvent` in exec-approval).
+ */
+data class ConnectResult (
     val accepted: Boolean? = null,
-    val auth: PayloadAuth? = null,
+    val auth: ConnectResultAuth? = null,
     val expiresAt: Double? = null,
     val features: Features? = null,
     val policy: Policy? = null,
     val protocol: Double? = null,
     val server: Server? = null,
     val sessionToken: String? = null,
-    val type: PayloadType? = null,
+    val type: ConnectResultType? = null,
     val checks: List<Check>? = null,
 
     @Json(name = "durationMs")
@@ -337,15 +482,59 @@ data class Gateway (
     val output: Any? = null,
     val tool: String? = null,
     val reason: String? = null,
-    val command: String? = null,
-    val id: String? = null,
+
+    @Json(name = "agentId")
+    val agentID: String? = null,
 
     /**
-     * Options surfaced to the user (default: allow/deny).
+     * Decisions this specific request permits (policy may drop allow-always).
      */
-    val options: List<Option>? = null,
+    val allowedDecisions: List<String>? = null,
 
-    val decision: PayloadDecision? = null,
+    /**
+     * Approval POLICY ("on-miss" | "always" | …), never a question.
+     */
+    val ask: String? = null,
+
+    /**
+     * Sanitized command display text — the thing the user is approving.
+     */
+    val command: String? = null,
+
+    /**
+     * Gateway-side static analysis summary of the command.
+     */
+    val commandAnalysis: String? = null,
+
+    val commandArgv: List<String>? = null,
+
+    /**
+     * Non-node hosts send a preview instead of the full command.
+     */
+    val commandPreview: String? = null,
+
+    @Json(name = "createdAtMs")
+    val createdAtMS: Double? = null,
+
+    val cwd: String? = null,
+
+    @Json(name = "expiresAtMs")
+    val expiresAtMS: Double? = null,
+
+    val host: String? = null,
+    val id: String? = null,
+    val request: ExecApprovalRequestBody? = null,
+    val resolvedPath: String? = null,
+    val security: String? = null,
+    val unavailableDecisions: List<String>? = null,
+
+    /**
+     * Human-readable risk note, when the Gateway produced one.
+     */
+    val warningText: String? = null,
+
+    val decision: String? = null,
+    val resolvedBy: String? = null,
 
     @Json(name = "clientId")
     val clientID: String? = null,
@@ -359,7 +548,7 @@ data class Gateway (
     val restartAt: Double? = null
 )
 
-data class PayloadAuth (
+data class ConnectResultAuth (
     val deviceToken: String,
     val deviceTokens: List<DeviceToken>? = null,
 
@@ -386,21 +575,6 @@ data class Check (
     val name: String? = null,
     val status: String? = null
 )
-
-enum class PayloadDecision(val value: String) {
-    Allow("allow"),
-    Deny("deny"),
-    Timeout("timeout");
-
-    companion object {
-        public fun fromValue(value: String): PayloadDecision = when (value) {
-            "allow"   -> Allow
-            "deny"    -> Deny
-            "timeout" -> Timeout
-            else      -> throw IllegalArgumentException()
-        }
-    }
-}
 
 data class GatewayPresenceEntry (
     @Json(name = "clientId")
@@ -430,11 +604,6 @@ data class OpenClawModel (
     val provider: String? = null,
     val tags: List<String>? = null,
     val title: String? = null
-)
-
-data class Option (
-    val key: String,
-    val label: String
 )
 
 data class Policy (
@@ -502,11 +671,11 @@ enum class Status(val value: String) {
     }
 }
 
-enum class PayloadType(val value: String) {
+enum class ConnectResultType(val value: String) {
     HelloOk("hello-ok");
 
     companion object {
-        public fun fromValue(value: String): PayloadType = when (value) {
+        public fun fromValue(value: String): ConnectResultType = when (value) {
             "hello-ok" -> HelloOk
             else       -> throw IllegalArgumentException()
         }

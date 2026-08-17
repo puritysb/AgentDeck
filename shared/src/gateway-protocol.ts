@@ -10,6 +10,12 @@
  * under `generated/protocol/`, ensuring protocol parity across the three implementations.
  */
 
+import type {
+  ExecApprovalDecision,
+  ExecApprovalRequestedPayload,
+  ExecApprovalResolvedPayload,
+} from './openclaw-approval.js';
+
 // ===== Protocol version =====
 
 /** Protocol major version. Bridge rejects mismatched Gateway versions. */
@@ -69,6 +75,7 @@ export type GatewayMethodName =
   | 'chat.send'
   | 'chat.abort'
   | 'exec.approval.resolve'
+  | 'exec.approval.list'
   | 'sessions.list'
   | 'sessions.subscribe'
   | 'sessions.messages.subscribe'
@@ -82,6 +89,7 @@ export type GatewayMethodParams =
   | ChatSendParams
   | ChatAbortParams
   | ExecApprovalResolveParams
+  | ExecApprovalListParams
   | SessionsListParams
   | SessionsSubscribeParams
   | SessionsMessagesSubscribeParams
@@ -95,6 +103,7 @@ export type GatewayMethodResult =
   | ChatSendResult
   | ChatAbortResult
   | ExecApprovalResolveResult
+  | ExecApprovalListResult
   | SessionsListResult
   | SessionsSubscribeResult
   | SessionsMessagesSubscribeResult
@@ -245,15 +254,34 @@ export interface ChatAbortResult {
   aborted: boolean;
 }
 
-// exec.approval.resolve — allow/deny a tool execution approval
+// exec.approval.resolve — resolve a pending tool execution approval.
+//
+// `decision` is NOT free-form: the Gateway validates it against
+// `isApprovalDecision` BEFORE it looks the id up, so an unsupported spelling
+// (notably the plain `'allow'` this type used to declare) is rejected with
+// INVALID_REQUEST and the approval stays pending forever. The vocabulary lives
+// in `openclaw-approval.ts` and is derived from OpenClaw's own bundle.
 export interface ExecApprovalResolveParams {
   id: string;
-  decision: 'allow' | 'deny';
+  decision: ExecApprovalDecision;
 }
 
+/** The Gateway answers `{ ok: true }`; `resolved` is kept for older builds. */
 export interface ExecApprovalResolveResult {
-  resolved: boolean;
+  ok?: boolean;
+  resolved?: boolean;
 }
+
+// exec.approval.list — the approvals currently waiting for a decision.
+//
+// `exec.approval.requested` is a broadcast, never replayed: a client that
+// connects while an approval is already outstanding hears nothing about it. So
+// a daemon restart or a Gateway reconnect used to leave the agent blocked with
+// an empty deck and no way to find out. This is the catch-up read.
+export interface ExecApprovalListParams {}
+
+/** Same element shape as the requested event, minus the envelope. */
+export type ExecApprovalListResult = ExecApprovalRequestedPayload[];
 
 // sessions.list — enumerate active Gateway sessions
 export interface SessionsListParams {
@@ -313,6 +341,7 @@ export interface GatewayMethodMap {
   'chat.send': { params: ChatSendParams; result: ChatSendResult };
   'chat.abort': { params: ChatAbortParams; result: ChatAbortResult };
   'exec.approval.resolve': { params: ExecApprovalResolveParams; result: ExecApprovalResolveResult };
+  'exec.approval.list': { params: ExecApprovalListParams; result: ExecApprovalListResult };
   'sessions.list': { params: SessionsListParams; result: SessionsListResult };
   'sessions.subscribe': { params: SessionsSubscribeParams; result: SessionsSubscribeResult };
   'sessions.messages.subscribe': { params: SessionsMessagesSubscribeParams; result: SessionsMessagesSubscribeResult };
@@ -384,21 +413,12 @@ export interface ChatToolInvocation {
   status?: 'pending' | 'success' | 'error';
 }
 
-export interface ExecApprovalRequestedPayload {
-  id: string;
-  sessionKey?: string;
-  tool: string;
-  command?: string;
-  reason?: string;
-  /** Options surfaced to the user (default: allow/deny). */
-  options?: Array<{ key: string; label: string }>;
-}
-
-export interface ExecApprovalResolvedPayload {
-  id: string;
-  decision: 'allow' | 'deny' | 'timeout';
-  sessionKey?: string;
-}
+// `ExecApprovalRequestedPayload` / `ExecApprovalResolvedPayload` are defined in
+// `openclaw-approval.ts` alongside the parser that normalizes them. They used to
+// be declared here from an assumed shape (`tool`, `reason`, a flat `command`,
+// `options:[{key,label}]`) — none of which the Gateway sends — which is why the
+// approval prompt reached every device with no command text on it.
+export type { ExecApprovalRequestedPayload, ExecApprovalResolvedPayload };
 
 export interface GatewayPresenceEntry {
   connected: boolean;

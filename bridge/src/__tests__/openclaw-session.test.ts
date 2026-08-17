@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseExecApprovalRequest } from '@agentdeck/shared';
 import { injectOpenClawSession } from '../openclaw-session.js';
 import type { EnrichedSession } from '../session-aggregator.js';
 
@@ -44,6 +45,37 @@ describe('injectOpenClawSession', () => {
     expect(oc.projectName).toBe('my-repo');
     expect(oc.modelName).toBe('opus-4');
     expect(oc.controlMode).toBe('managed');
+  });
+
+  it('carries the pending approval so decks render real, pressable options', () => {
+    // Without these fields every deck falls through to its
+    // "PERMIT? / answer in terminal" tile — and the Gateway session has no
+    // terminal, so that tile is a dead end rather than a hint.
+    const approval = parseExecApprovalRequest({
+      id: 'ap-1',
+      request: { command: 'rm -rf build', allowedDecisions: ['allow-once', 'deny'] },
+    }, 0)!;
+    const out = injectOpenClawSession([claude], {
+      gatewayConnected: true, state: 'awaiting_permission', controlMode: 'managed', approval,
+    });
+    const oc = out.find(s => s.agentType === 'openclaw')!;
+    expect(oc.question).toBe('rm -rf build');
+    expect(oc.options?.map(o => o.label)).toEqual(['Allow once', 'Deny']);
+    expect(oc.promptType).toBe('yes_no_always');
+    expect(oc.liveAnswerable).toBe(true);
+    // `requestId` would make surfaces draw a binary Allow/Deny gate over the
+    // real option list.
+    expect(oc.requestId).toBeUndefined();
+  });
+
+  it('leaves the prompt fields off when nothing is pending', () => {
+    const out = injectOpenClawSession([claude], {
+      gatewayConnected: true, state: 'processing', controlMode: 'managed', approval: null,
+    });
+    const oc = out.find(s => s.agentType === 'openclaw')!;
+    expect(oc.question).toBeUndefined();
+    expect(oc.options).toBeUndefined();
+    expect(oc.liveAnswerable).toBeUndefined();
   });
 
   it('is idempotent — does not duplicate an already-present openclaw session', () => {

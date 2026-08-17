@@ -96,6 +96,7 @@
 		3173BC2B844664891B8F3934 /* ProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B7A8A00EB9D3B9345E36EB4 /* ProtocolTests.swift */; };
 		32577E0D7F449489455D0C9D /* HTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF390BEA92326B1152B55A9 /* HTTPServer.swift */; };
 		34444319598506828DE09006 /* SessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */; };
+		36177FF16DB44FF20C64B33D /* OpenClawApprovalRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */; };
 		36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */; };
 		37445F34EE5090F24D59EB4A /* DataParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57722317EDF1D567981112DE /* DataParticleSystem.swift */; };
 		378C03BA7C86CFABDD41FA06 /* PixooPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DC38F54A1C54AB134DB0535 /* PixooPreview.swift */; };
@@ -130,6 +131,7 @@
 		48B83035D9FC3732361014F8 /* ObservedSteering.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4AC33AE24184BF90D4CAFE /* ObservedSteering.swift */; };
 		4A0D8F7C56E1BEB0167E62CB /* ApmeRecommender.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A8B27A341D1DAE1FCF1D01 /* ApmeRecommender.swift */; };
 		4AA7D220242CD3041FB589D8 /* SessionFocusRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788166EF7E8CB65CDE3D3D67 /* SessionFocusRelay.swift */; };
+		4B12BD71DAC0B74F7FB41BDA /* OpenClawApprovalRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */; };
 		4B34D6CBC040FE9BE5E51856 /* OctopusCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776467350B975D0CA1A18E84 /* OctopusCreature.swift */; };
 		4BE94600C86341D01E166A9C /* AttentionTheaterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1853443C348441BF748662A /* AttentionTheaterView.swift */; };
 		4C5100ED3B4CE6BEDA3F2721 /* ProjectNameResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF6D4E03A73AA83A363FA94 /* ProjectNameResolverTests.swift */; };
@@ -532,6 +534,7 @@
 		48F37E295246F5931D533E31 /* TimelineStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineStripView.swift; sourceTree = "<group>"; };
 		4A2D26F6BDF08F6E4F2F8439 /* ApmeHttpRoutes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeHttpRoutes.swift; sourceTree = "<group>"; };
 		4AA25996ACA820A3C8D6273A /* CreatureGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatureGeometry.swift; sourceTree = "<group>"; };
+		4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawApprovalRules.generated.swift; sourceTree = "<group>"; };
 		4BE102D050319B6A78A505B3 /* AquariumSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AquariumSurface.swift; sourceTree = "<group>"; };
 		4C2005980598D651492006A3 /* OpenCodeCreature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeCreature.swift; sourceTree = "<group>"; };
 		4CEC7D8557C3DA805DBA75E1 /* TailDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailDecoder.swift; sourceTree = "<group>"; };
@@ -1089,6 +1092,7 @@
 			children = (
 				7BCC68BE56702DFD637FFE02 /* GatewayProbe.swift */,
 				427B912EBD043285F0A0008D /* OpenClawAdapter.swift */,
+				4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */,
 			);
 			path = Gateway;
 			sourceTree = "<group>";
@@ -1581,6 +1585,7 @@
 				F1C357A840E59D7A188C808B /* OnboardingScreen.swift in Sources */,
 				E98F3FC6D7134E8E65163D93 /* OnboardingSheet.swift in Sources */,
 				FD86AF81DA987540254BA326 /* OpenClawAdapter.swift in Sources */,
+				4B12BD71DAC0B74F7FB41BDA /* OpenClawApprovalRules.generated.swift in Sources */,
 				7AA10F90E922138D683C318D /* OpenClawTokenImporter.swift in Sources */,
 				46086D1358BD25389E304052 /* OpenCodeCreature.swift in Sources */,
 				F9EEBCC88FC55225E6D60AEE /* OpenCodeObserver.swift in Sources */,
@@ -1764,6 +1769,7 @@
 				BF6E216F74A8205677B8B82B /* OnboardingScreen.swift in Sources */,
 				F608DAD197953CC405F306A5 /* OnboardingSheet.swift in Sources */,
 				58591ABC081F2367FEE6B563 /* OpenClawAdapter.swift in Sources */,
+				36177FF16DB44FF20C64B33D /* OpenClawApprovalRules.generated.swift in Sources */,
 				D53FC33DD05A32D719809874 /* OpenClawTokenImporter.swift in Sources */,
 				996C92E310F9A7E69C40C803 /* OpenCodeCreature.swift in Sources */,
 				FA2AA2B226EBD69F45238A1F /* OpenCodeObserver.swift in Sources */,

@@ -137,6 +137,62 @@ describe('SessionSlotManager detail layout', () => {
     });
   });
 
+  it('renders the OpenClaw exec approval from the row when the relay says idle', () => {
+    // `focus_session` is answered with the daemon's GLOBAL state_update, and
+    // that machine is fed by every observed hook session — so an unrelated
+    // Claude turn ending relays IDLE for the focused Gateway session and wipes
+    // the approval out of the detail cache. The row still asserts it, and the
+    // row is the only per-session source there is.
+    const manager = new SessionSlotManager();
+    manager.updateSessions([
+      makeSession({
+        id: 'openclaw-gateway',
+        agentType: 'openclaw',
+        controlMode: 'managed',
+        state: State.AWAITING_PERMISSION,
+        question: 'rg --files-with-matches TODO src',
+        options: [
+          { index: 0, label: 'Allow once', shortcut: 'y' },
+          { index: 1, label: 'Always allow', shortcut: 'a' },
+          { index: 2, label: 'Deny', shortcut: 'n' },
+        ],
+        liveAnswerable: true,
+      }),
+    ]);
+    manager.enterDetailView('openclaw-gateway');
+    // The contaminated relay.
+    manager.updateDetailState(State.IDLE, []);
+
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({
+      type: 'option', optionIndex: 0, option: { label: 'Allow once' },
+    });
+    expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({
+      type: 'option', optionIndex: 1, option: { label: 'Always allow' },
+    });
+    expect(manager.getSlotConfig(4, SD_PLUS_LAYOUT)).toMatchObject({
+      type: 'option', optionIndex: 2, option: { label: 'Deny' },
+    });
+  });
+
+  it('shows an OpenClaw approval as display-only when it is not deliverable', () => {
+    // No fabricated buttons: without `liveAnswerable` a press has nowhere to go.
+    const manager = new SessionSlotManager();
+    manager.updateSessions([
+      makeSession({
+        id: 'openclaw-gateway',
+        agentType: 'openclaw',
+        controlMode: 'managed',
+        state: State.AWAITING_PERMISSION,
+        question: 'rm -rf build',
+        options: [{ index: 0, label: 'Allow once', shortcut: 'y' }],
+      }),
+    ]);
+    manager.enterDetailView('openclaw-gateway');
+    manager.updateDetailState(State.IDLE, []);
+
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'status' });
+  });
+
   it('puts processing tool info before OpenClaw presets', () => {
     const manager = new SessionSlotManager();
     manager.updateSessions([

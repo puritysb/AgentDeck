@@ -217,7 +217,12 @@ actor OpenClawAdapter {
     /// ts, sails past the store's 8s dedup window, and lands as a duplicate
     /// row on every reconnect. Dedup must therefore key on line content.
     private var replayedLogLines: Set<Int> = []
-    private var pendingApprovalId: String?
+    /// The exec approval the Gateway is blocked on, normalized for display AND
+    /// for answering. Replaced a bare id: the id alone let the daemon forward a
+    /// device press with no `decision` on it (rejected by the Gateway), and left
+    /// every surface with nothing to show but "PERMIT?".
+    private var pendingApproval: OpenClawApprovalPrompt?
+    private var pendingApprovalId: String? { pendingApproval?.id }
     private struct RPCResponse: @unchecked Sendable {
         let ok: Bool
         let payload: [String: Any]?
@@ -545,10 +550,25 @@ actor OpenClawAdapter {
             if let runId = currentRunId { chatEvent["runId"] = runId }
             self._onEvent?(chatEvent)
         case ADGatewayEventName.execApprovalRequested.rawValue:
-            pendingApprovalId = payload["id"] as? String
-            self._onEvent?(["type": "gateway_approval", "payload": payload])
+            // Parse through the SSOT rather than reading fields off the payload
+            // here: everything the user needs to see lives under `request`, and
+            // reading it flat (`payload["tool"]`, which never exists) is what
+            // shipped an approval with no command on it.
+            pendingApproval = OpenClawApprovalRules.parse(payload, nowMs: Date().timeIntervalSince1970 * 1000)
+            var approvalEvent: [String: Any] = ["type": "gateway_approval", "payload": payload]
+            if let prompt = pendingApproval {
+                approvalEvent["prompt"] = Self.promptDict(prompt)
+            }
+            self._onEvent?(approvalEvent)
         case ADGatewayEventName.execApprovalResolved.rawValue:
-            pendingApprovalId = nil
+            // Key off the payload's own id: a resolution can arrive for an
+            // approval we already dropped, and clearing unconditionally would
+            // discard a newer pending one.
+            if let resolvedId = payload["id"] as? String, resolvedId != pendingApproval?.id {
+                // Not ours — leave the pending prompt alone.
+            } else {
+                pendingApproval = nil
+            }
             self._onEvent?(["type": "gateway_approval_resolved", "payload": payload])
         case ADGatewayEventName.presence.rawValue, ADGatewayEventName.systemPresence.rawValue:
             self._onEvent?(["type": "gateway_presence", "payload": payload])
@@ -694,6 +714,11 @@ actor OpenClawAdapter {
             requestBaselineState()
             requestSessionsList()
             Task { await self.emitModelCatalog() }
+            // Catch up on approvals already waiting. `exec.approval.requested`
+            // is a broadcast and is never replayed, so without this a daemon
+            // restart leaves the agent blocked on an approval that exists on
+            // exactly one side — idle deck, stalled agent, nothing to act on.
+            Task { await self.adoptPendingApprovals() }
         case "sessions.subscribe":
             let subscribed = payload?["subscribed"] as? Bool ?? false
             sessionsSubscribed = subscribed
@@ -966,6 +991,121 @@ actor OpenClawAdapter {
         sendRPC(method: method, params: params, continuation: nil)
     }
 
+    // MARK: - Pending exec approval
+
+    /// The approval the Gateway is blocked on, for the virtual
+    /// `openclaw-gateway` session row. Without the question and options on that
+    /// row, every deck falls back to "PERMIT? / answer in terminal" — and the
+    /// Gateway session has no terminal to answer in.
+    func currentPendingApproval() -> [String: Any]? {
+        pendingApproval.map(Self.promptDict)
+    }
+
+    /// Read the approvals the Gateway is already blocked on and surface the
+    /// oldest one. Called once per handshake.
+    ///
+    /// Only one is adopted: the deck renders a single question at a time, and
+    /// the Gateway blocks the agent on each in turn, so the oldest is the one
+    /// actually holding work up.
+    private func adoptPendingApprovals() async {
+        let response = await rpcRequest(method: "exec.approval.list", params: [:])
+        guard response.ok else { return }
+        // The result is a bare array, which some transports box under a key.
+        let rows: [[String: Any]] = {
+            if let list = response.payload as? [[String: Any]] { return list }
+            if let dict = response.payload as? [String: Any],
+               let list = dict["approvals"] as? [[String: Any]] { return list }
+            return []
+        }()
+        guard !rows.isEmpty else { return }
+        let sorted = rows.sorted {
+            (($0["createdAtMs"] as? Double) ?? 0) < (($1["createdAtMs"] as? Double) ?? 0)
+        }
+        guard let oldest = sorted.first,
+              let prompt = OpenClawApprovalRules.parse(
+                oldest, nowMs: Date().timeIntervalSince1970 * 1000),
+              prompt.id != pendingApproval?.id
+        else { return }
+        pendingApproval = prompt
+        DaemonLogger.shared.debug("OpenClaw", "adopted pending approval \(prompt.id) on connect")
+        self._onEvent?([
+            "type": "gateway_approval",
+            "payload": oldest,
+            "prompt": Self.promptDict(prompt),
+        ])
+    }
+
+    /// Answer the pending approval from a device command (`select_option` /
+    /// `respond`).
+    ///
+    /// This exists because the call sites used to forward the RAW device command
+    /// as the RPC params — `{type:"select_option", index:0, sessionId:…}`, which
+    /// carries no `decision` at all. The Gateway validates `decision` before it
+    /// looks the id up, so every press came back INVALID_REQUEST and the
+    /// approval stayed pending with nothing logged.
+    ///
+    /// Returns false when there is nothing pending or the press names no
+    /// decision this request allows — an ambiguous press is dropped, never
+    /// guessed into an approval.
+    @discardableResult
+    func resolvePendingApproval(command: [String: Any]) -> Bool {
+        guard let prompt = pendingApproval else { return false }
+        let type = command["type"] as? String ?? ""
+        let decision: ExecApprovalDecision?
+        switch type {
+        case "select_option":
+            // A press must name the question it answers: a prompt the Gateway
+            // has already moved past would otherwise apply this index to a
+            // different command.
+            if let echo = command["question"] as? String, !Self.approvalEchoMatches(prompt, echo) {
+                DaemonLogger.shared.debug(
+                    "OpenClaw", "select_option dropped: question echo does not match pending approval")
+                return false
+            }
+            let index = command["index"] as? Int ?? -1
+            decision = OpenClawApprovalRules.decision(forOptionIndex: index, in: prompt)
+        case "respond":
+            decision = OpenClawApprovalRules.decision(
+                forRespondValue: command["value"] as? String ?? "", in: prompt)
+        default:
+            decision = nil
+        }
+        guard let decision else {
+            DaemonLogger.shared.debug(
+                "OpenClaw", "approval \(type) named no allowed decision — ignored")
+            return false
+        }
+        sendRPC(method: "exec.approval.resolve", params: ["id": prompt.id, "decision": decision.rawValue])
+        return true
+    }
+
+    /// Truncation-tolerant echo compare. Devices cap the question they display,
+    /// so an exact match would refuse every press from a small surface.
+    /// Compares `.utf16` so the Swift and TS daemons cut at the same units.
+    private static func approvalEchoMatches(_ prompt: OpenClawApprovalPrompt, _ echo: String) -> Bool {
+        let a = Array(prompt.question.trimmingCharacters(in: .whitespacesAndNewlines).utf16)
+        let b = Array(echo.trimmingCharacters(in: .whitespacesAndNewlines).utf16)
+        if b.isEmpty { return true }
+        let n = min(a.count, b.count)
+        return Array(a.prefix(n)) == Array(b.prefix(n))
+    }
+
+    /// Wire form of a prompt — the same field names the Node daemon puts on the
+    /// session row, so devices see one shape regardless of which daemon runs.
+    private static func promptDict(_ prompt: OpenClawApprovalPrompt) -> [String: Any] {
+        var dict: [String: Any] = [
+            "id": prompt.id,
+            "question": prompt.question,
+            "command": prompt.command,
+            "options": prompt.options.map {
+                ["index": $0.index, "label": $0.label, "shortcut": $0.shortcut]
+            },
+        ]
+        if let detail = prompt.detail { dict["detail"] = detail }
+        if let cwd = prompt.cwd { dict["cwd"] = cwd }
+        return dict
+    }
+
     private func rpcRequest(method: String, params: [String: Any]) async -> RPCResponse {
         await withCheckedContinuation { continuation in
             sendRPC(method: method, params: params, continuation: continuation)
@@ -1003,8 +1143,34 @@ actor OpenClawAdapter {
                 resolvedParams["runId"] = runId
             }
         case "exec.approval.resolve":
+            // Direct callers (the held-gate `permission_decision` path) still
+            // build their own params; only fill in what they left out. Device
+            // presses go through `resolvePendingApproval(command:)` instead,
+            // which is the only path that can map an index to a decision.
             if resolvedParams["id"] == nil, let pendingApprovalId {
                 resolvedParams["id"] = pendingApprovalId
+            }
+            // A decision the Gateway does not recognize is rejected before the
+            // id is even looked up, so normalize the legacy `allow`/`deny`
+            // spellings through the SSOT instead of letting them leave as-is.
+            // Never substitute a decision the user did not express: an
+            // unmappable value is dropped and logged, not turned into a deny.
+            let rawDecision = resolvedParams["decision"] as? String ?? ""
+            if ExecApprovalDecision(rawValue: rawDecision) == nil {
+                if let prompt = pendingApproval,
+                   let mapped = OpenClawApprovalRules.decision(forRespondValue: rawDecision, in: prompt) {
+                    resolvedParams["decision"] = mapped.rawValue
+                } else {
+                    DaemonLogger.shared.debug(
+                        "OpenClaw",
+                        "exec.approval.resolve dropped: '\(rawDecision)' is not a decision this approval allows")
+                    continuation?.resume(returning: RPCResponse(
+                        ok: false,
+                        payload: nil,
+                        error: ["code": "INVALID_DECISION", "message": "unsupported approval decision"]
+                    ))
+                    return
+                }
             }
         default:
             break

@@ -463,6 +463,12 @@ final class DaemonServer {
     private var gatewaySessionState: String = "idle"
     private var gatewayCurrentTool: String? = nil
     private var gatewayModelName: String? = nil
+    /// Wire form of the exec approval the Gateway is blocked on, mirrored here
+    /// from the adapter event so the (synchronous) sessions-list builder can put
+    /// it on the virtual row. Cleared on resolve, on any turn end, and on
+    /// disconnect — the Gateway emits no `resolved` event for the last two, so
+    /// nothing else would ever take the prompt off the deck.
+    private var gatewayPendingApproval: [String: Any]? = nil
 
     // State caches
     private var cachedSessions: [DaemonSessionEntry] = []
@@ -3185,13 +3191,16 @@ final class DaemonServer {
                 return
             }
             let gw = gatewayAdapter
-            let cmdBox = SendableDict(cmd)
+            // Send ONLY the two params the method takes. Forwarding the whole
+            // device command dragged `type`/`requestId` into the RPC alongside a
+            // decision spelling the Gateway does not accept.
+            let cmdBox = SendableDict(["type": "respond", "value": decision])
             Task {
                 if await ObservedSteering.shared.resolveGate(requestId: requestId, decision: decision) != nil {
                     return // held route handler resumes + clears the overlay
                 }
                 if let gw {
-                    await gw.sendRPC(method: "exec.approval.resolve", params: cmdBox.value)
+                    await gw.resolvePendingApproval(command: cmdBox.value)
                 } else {
                     DaemonLogger.shared.debug("Daemon", "permission_decision: no gate/gateway for request \(requestId)")
                 }
@@ -3293,11 +3302,15 @@ final class DaemonServer {
         if !sessionScopedCmd, let gw = gatewayAdapter {
             let cmdBox = SendableDict(cmd)
             switch type {
-            case "respond": Task { await gw.sendRPC(method: "exec.approval.resolve", params: cmdBox.value) }
+            // Device presses carry an option index or a shortcut, never a
+            // Gateway decision — forwarding the raw command as RPC params (which
+            // this did) sent `{type:"respond", value:"y"}` and no `decision` at
+            // all, so the Gateway rejected it and the approval stayed pending.
+            case "respond": Task { await gw.resolvePendingApproval(command: cmdBox.value) }
                 _ = stateMachine.transition(trigger: "user_response", source: .user); broadcastStateUpdate()
             case "interrupt": Task { await gw.sendRPC(method: "chat.abort", params: [:]) }
                 _ = stateMachine.transition(trigger: "interrupt", source: .user); broadcastStateUpdate()
-            case "select_option": Task { await gw.sendRPC(method: "exec.approval.resolve", params: cmdBox.value) }
+            case "select_option": Task { await gw.resolvePendingApproval(command: cmdBox.value) }
                 _ = stateMachine.transition(trigger: "user_selection", source: .user); broadcastStateUpdate()
             case "send_prompt": Task { await gw.sendRPC(method: "chat.send", params: cmdBox.value) }
                 _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook); broadcastStateUpdate()
@@ -6336,6 +6349,10 @@ final class DaemonServer {
                         _ = self?.stateMachine.transition(trigger: "session_end", source: .hook)
                         self?.gatewaySessionState = "idle"
                         self?.gatewayCurrentTool = nil
+                        // Pending approvals are Gateway-process state: a
+                        // reconnect issues new ids, so a retained prompt would
+                        // offer buttons that resolve to "unknown or expired".
+                        self?.gatewayPendingApproval = nil
                         // APME: close the gateway run on disconnect
                         self?.apmeCollectorGateway?.handleHook(event: "session_end", data: [
                             "session_id": "openclaw-gateway",
@@ -6388,6 +6405,7 @@ final class DaemonServer {
         cachedGatewayAuthMessage = nil
         gatewaySessionState = "idle"
         gatewayCurrentTool = nil
+        gatewayPendingApproval = nil
         // Note: gatewayModelName is intentionally preserved across brief disconnects
         // so the model row doesn't flash empty on reconnect.
         _ = stateMachine.transition(trigger: "session_end", source: .hook)
@@ -6405,10 +6423,15 @@ final class DaemonServer {
         case "gateway_chat":
             let chatPayload = event["payload"] as? [String: Any] ?? [:]
             let chatState = chatPayload["state"] as? String
+            let hadApproval = gatewayPendingApproval != nil
             switch chatState {
             case "final", "aborted":
                 gatewaySessionState = "idle"
                 gatewayCurrentTool = nil
+                // A run cancelled while an approval was outstanding is what
+                // stranded the deck on PERMIT?: the Gateway drops the approval
+                // without emitting `resolved`, so this is its only close.
+                gatewayPendingApproval = nil
                 // APME: record response text → triggers inline classification + eval
                 let response = chatPayload["response"] as? String ?? ""
                 if !response.isEmpty {
@@ -6417,24 +6440,37 @@ final class DaemonServer {
             case "error":
                 gatewaySessionState = "idle"
                 gatewayCurrentTool = nil
+                gatewayPendingApproval = nil
             default:
                 gatewaySessionState = "processing"
             }
             broadcastStateUpdate()
+            // Only when the row's prompt actually went away — `default` fires on
+            // every streaming delta, and a sessions_list per delta is a broadcast
+            // storm on a fleet of boards.
+            if hadApproval && gatewayPendingApproval == nil { broadcastSessionsList() }
         case "gateway_approval":
             gatewaySessionState = "awaiting_permission"
-            if let payload = event["payload"] as? [String: Any] {
-                gatewayCurrentTool = payload["tool"] as? String
-            }
+            // `prompt` is the adapter's SSOT-parsed form. The old
+            // `payload["tool"]` read was an invented field the Gateway never
+            // sends, so the row showed PERMIT? with nothing on it.
+            gatewayPendingApproval = event["prompt"] as? [String: Any]
+            gatewayCurrentTool = (gatewayPendingApproval?["command"] as? String)
+                .flatMap { $0.split(separator: " ").first.map(String.init) }
             broadcastStateUpdate()
+            broadcastSessionsList()
         case "gateway_approval_resolved":
             let resolvedPayload = event["payload"] as? [String: Any]
             let decision = resolvedPayload?["decision"] as? String
-            // "deny" means tool execution was blocked — agent returns to idle.
-            // "allow" (or any other value) means execution resumes → processing.
-            gatewaySessionState = (decision == "deny") ? "idle" : "processing"
+            // Only an allow resumes the turn. The decisions are allow-once /
+            // allow-always / deny — testing for the string "deny" was right by
+            // accident, but testing for allow (as the Node side did) was not.
+            let allowed = ExecApprovalDecision(rawValue: decision ?? "")?.allowsExecution ?? false
+            gatewaySessionState = allowed ? "processing" : "idle"
+            gatewayPendingApproval = nil
             gatewayCurrentTool = nil
             broadcastStateUpdate()
+            broadcastSessionsList()
         case "gateway_presence":
             break // Heartbeat
         case "gateway_auth":
@@ -7018,6 +7054,19 @@ final class DaemonServer {
                 }
                 if let tool = gatewayCurrentTool { gatewaySession["currentTool"] = tool }
                 if let modelName = gatewayModelName { gatewaySession["modelName"] = modelName }
+                // The exec approval the Gateway is blocked on. Every deck reads
+                // its option cells off the session row and only falls back to
+                // the dead-end "PERMIT? / answer in terminal" tile when they are
+                // absent — and this row never carried them, while the Gateway
+                // session has no terminal to answer in.
+                if let prompt = gatewayPendingApproval {
+                    gatewaySession["question"] = prompt["question"]
+                    gatewaySession["options"] = prompt["options"]
+                    gatewaySession["promptType"] = "yes_no_always"
+                    // The daemon can deliver this answer over the Gateway RPC,
+                    // so the cells are live rather than display-only.
+                    gatewaySession["liveAnswerable"] = true
+                }
                 // The virtual row bypasses sessionToDict, so attach the REVIEW
                 // badge here too — without it the deck never shows REVIEWING /
                 // the verdict for OpenClaw reviews.
