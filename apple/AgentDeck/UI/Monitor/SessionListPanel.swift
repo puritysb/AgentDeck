@@ -371,8 +371,16 @@ struct SessionListPanel: View {
             // really is idle, and there really are eight subagents running.
             // Amber is the awaiting/attention token — this is the one place a
             // session is doing work the state marker cannot describe.
+            //
+            // `+N`, not `⟨N running⟩`: this panel is capped at 220pt, which
+            // leaves ~194pt for the meta line, and the spelled-out form put a
+            // GLM row at ~204pt. Since the count is `fixedSize` and the detail
+            // truncates, the overflow was paid by the model name — the durable
+            // fact losing to the transient one. `+N` is also what the terrarium
+            // already uses for the children it cannot draw individually, and it
+            // does not collide with the group header's `×N` (sessions).
             if running > 0 {
-                Text("⟨\(running) running⟩")
+                Text("+\(running)")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(DesignTokens.Amber.s500)
                     .lineLimit(1)

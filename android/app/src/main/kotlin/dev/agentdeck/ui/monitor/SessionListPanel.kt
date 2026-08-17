@@ -225,9 +225,16 @@ fun SessionListPanel(
             // Children in flight sit BESIDE the state marker rather than
             // replacing it: the parent really is idle, and eight subagents
             // really are running. Both facts are true at once.
+            //
+            // "+N", not the spelled-out form: this panel is narrow (Apple caps
+            // it at 220pt) and the long version pushed the meta line past the
+            // width, where the truncation was paid by the model name — the
+            // durable fact losing to the transient one. "+N" is also what the
+            // terrarium already uses for children it cannot draw individually,
+            // and it does not collide with the group header's "xN" (sessions).
             val running = entry.subagents?.active ?: 0
             val stateWithChildren =
-                if (running > 0) "$stateMarker \u27E8$running running\u27E9" else stateMarker
+                if (running > 0) "$stateMarker +$running" else stateMarker
             val subLine = if (modelEffort != null) {
                 "$modelEffort \u00B7 $stateWithChildren"
             } else {
