@@ -264,6 +264,8 @@ struct SessionListPanel: View {
             case "openclaw": return "OpenClaw"
             case "opencode": return "OpenCode"
             case "antigravity": return "Antigravity"
+            case "kiro-cli": return "Kiro CLI"
+            case "kiro-ide": return "Kiro IDE"
             default: break
             }
         }
@@ -389,10 +391,15 @@ struct SessionListPanel: View {
 
     // MARK: - Brand Icons (SVG path data, viewBox 0 0 24 24)
 
+    /// Ask the icon table whether it has a mark, rather than restating which
+    /// agents have one. The literal list here fell behind `AgentBrandIconSpec`
+    /// the moment Kiro shipped: the spec, the brand color, the creature and the
+    /// accessibility label all knew `kiro-cli`, and this switch did not, so
+    /// every Kiro row in the dashboard rendered as the grey bullet below —
+    /// the fallback for an agent nobody has drawn yet.
     @ViewBuilder
     private func agentIconView(for agentType: String?) -> some View {
-        switch agentType {
-        case "claude-code", "codex-cli", "codex-app", "openclaw", "opencode", "antigravity":
+        if SessionBrand.hasBrandMark(for: agentType) {
             AgentBrandIcon(
                 agentType: agentType,
                 tint: SessionBrand.color(for: agentType),
@@ -400,7 +407,7 @@ struct SessionListPanel: View {
                 contentInset: sessionListIconInset(for: agentType)
             )
             .frame(width: 16, height: 16)
-        default:
+        } else {
             Text("●")
                 .font(.system(size: 8))
                 .foregroundStyle(TerrariumHUD.subtext)
@@ -432,6 +439,8 @@ struct SessionListPanel: View {
         case "openclaw": return "OpenClaw"
         case "opencode": return "OpenCode"
         case "antigravity": return "Antigravity"
+        case "kiro-cli": return "Kiro CLI"
+        case "kiro-ide": return "Kiro IDE"
         default: return "Agent"
         }
     }

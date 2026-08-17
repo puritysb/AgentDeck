@@ -74,7 +74,14 @@ enum DashboardDataRules {
         case "codex-app": 3
         case "opencode": 4
         case "antigravity": 5
-        default: 6
+        // Kiro's own slots, and `others` moved off 6 to make room. This mirror
+        // had gone stale against shared/src/session-utils.ts (and against the
+        // D200H mirror, which was updated): every unknown agent shared rank 6
+        // with kiro-cli, so the dashboard and the D200H preview ordered the
+        // same session list differently.
+        case "kiro-cli": 6
+        case "kiro-ide": 7
+        default: 8
         }
     }
 

@@ -29,6 +29,7 @@ enum StateColors {
         static let codexCli   = "#6366f1"  // indigo-500
         static let opencode   = "#F1ECEC"  // cream
         static let antigravity = "#5F6368"  // Google gray
+        static let kiro       = "#7C3AED"  // Kiro violet
         static let monitor    = "#94a3b8"  // slate-400
     }
 
@@ -77,6 +78,7 @@ enum StateColors {
         case "codex-app":   return Color(hex: Hex.codexCli)
         case "opencode":    return Color(hex: Hex.opencode)
         case "antigravity": return Color(hex: Hex.antigravity)
+        case "kiro-cli", "kiro-ide": return Color(hex: Hex.kiro)
         case "monitor":     return Color(hex: Hex.monitor)
         default:            return Color(hex: Hex.monitor)  // slate fallback
         }

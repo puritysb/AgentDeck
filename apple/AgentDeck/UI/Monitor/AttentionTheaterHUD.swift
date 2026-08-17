@@ -40,6 +40,8 @@ struct AttentionTheaterHUD: View {
         case "openclaw":    return "OpenClaw"
         case "opencode":    return "OpenCode"
         case "antigravity": return "Antigravity"
+        case "kiro-cli":    return "Kiro CLI"
+        case "kiro-ide":    return "Kiro IDE"
         default:            return session.agentType?.capitalized ?? "Agent"
         }
     }

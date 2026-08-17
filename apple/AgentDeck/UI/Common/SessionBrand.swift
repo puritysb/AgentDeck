@@ -26,6 +26,17 @@ enum SessionBrand {
         default:            return Color.secondary
         }
     }
+
+    /// Whether a drawn brand mark exists for this agent.
+    ///
+    /// Surfaces that need to fall back to a placeholder must ask this instead
+    /// of restating which agents have a mark. A hand-kept list in
+    /// `SessionListPanel` fell behind the icon table the moment Kiro shipped —
+    /// the spec, the color and the accessibility label all knew `kiro-cli`
+    /// while that one switch did not, so every Kiro row drew the grey bullet.
+    static func hasBrandMark(for agentType: String?) -> Bool {
+        AgentBrandIconSpec.fromAgentType(agentType) != nil
+    }
 }
 
 /// Renders an agent's branded creature in its brand color.
