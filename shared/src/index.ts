@@ -12,6 +12,7 @@ export * from './pairing-code.js';
 export * from './mdns-identity.js';
 export * from './timeline.js';
 export * from './subagent-activity.js';
+export * from './model-provider.js';
 export * from './timeline-icons.js';
 export * from './timeline-label.js';
 export * from './timeline-task-display.js';

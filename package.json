@@ -22,6 +22,7 @@
     "generate-pairing-code-rules": "node scripts/generate-pairing-code-rules.mjs",
     "generate-mdns-identity": "node scripts/generate-mdns-identity.mjs",
     "generate-observed-agent-rules": "node scripts/generate-observed-agent-rules.mjs",
+    "generate-model-provider": "node scripts/generate-model-provider.mjs",
     "generate-openclaw-approval-rules": "node scripts/generate-openclaw-approval-rules.mjs",
     "generate-streamdeck-profiles": "node scripts/generate-streamdeck-profiles.mjs",
     "verify-version": "node scripts/verify-version-sync.mjs",
