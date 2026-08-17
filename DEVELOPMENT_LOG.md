@@ -2,6 +2,82 @@
 
 ---
 
+## 2026-08-17 — OpenClaw 실패 턴: 이유를 남기고, 경계 타이머를 다시 건다
+
+타임라인에 찍힌 한 줄 — "The AI service is temporarily overloaded. Please try
+again in a moment." — 이 왜 거기 있는지 추적하다 시작됐다. 문자열은 레포 어디에도
+없었고 OpenClaw 번들의 `OVERLOADED_ERROR_USER_MESSAGE` 였다. 게이트웨이 로그
+실측: 10:41:26 zai/glm-5.2 POST → 10:41:27.199 **HTTP 429** → failover 가
+`overloaded` 로 분류하고 프로파일 로테이션 상한을 넘겨 `FailoverError` throw →
+10:41:32 glm-5.3 으로 폴백해 200. **즉 고장이 아니라 폴백이 작동한 흔적**이었고
+사용자가 본 최종 결과는 성공이었다. 그런데 타임라인만으로는 그걸 알 방법이 없었다.
+
+### 문제
+
+- **행이 턴에 대해 아무 말도 안 했다.** `raw` 는 프로바이더 문장 하나뿐, `detail`
+  없음. run 도 소요 시간도 사용 툴도 없어서 원인을 알려면 gateway 로그를 손으로
+  열어야 했다.
+- **에러 턴의 APME 태스크가 영영 안 닫혔다.** `chat.send` 가 idle-gap 타이머를
+  지우고 **`final` 만** 다시 걸었다. 코드 주석은 "the idle timer continues to run"
+  이라고 주장하는데 실제로는 아무것도 안 걸려 있었다 — 에러 후 사용자가 자리를 뜬
+  프롬프트는 태스크가 열린 채 남고, 열린 태스크는 eval 을 굶긴다.
+- **실패가 궤적에 흔적을 안 남겼다.** 실패 턴이 `turn_start` 만 있고 응답도 주석도
+  없는 모양으로 judge 에 도착했다 — **응답 이벤트가 유실된 턴과 바이트 단위로
+  동일**해서, judge 도 사람도 프로바이더 장애와 우리 캡처 버그를 구분 못 했다.
+- 부수적으로, 메시지 없는 프레임은 `unknown` 이라는 낱말 하나를 통째로 한 행으로
+  썼고, 에러 행만 `automated` 플래그가 빠져 있어 cron 턴 실패와 사용자 턴 실패가
+  구분되지 않았다.
+
+### 해결
+
+`bridge/src/adapters/openclaw.ts` 의 `case 'error'` 와
+`bridge/src/apme/adapters/openclaw-hook.ts`:
+
+```
+raw:    The AI service is temporarily overloaded. Please try again in a moment.
+detail: The AI service is temporarily overloaded. Please try again in a moment.
+        failed after 12s · 1 tool: bash
+        kind unavailable · stop error · run 95babe45
+```
+
+- 새 `agent_error` TelemetrySpan (`agentdeck.error_label` / `.error_detail`) →
+  collector 가 `info` 궤적 이벤트로 기록. `info` 는 `shared/src/sample.ts` 와
+  `sample-to-timeline.ts` 양쪽에 **읽는 쪽만 있고 쓰는 쪽이 없던** 종류였다.
+- 에러 시 `armIdleGapTimer()` 를 호출. `final` 과 동일.
+- `error` 행에도 `automated` / `startedAt` / `endedAt` 부여.
+
+### 핵심 설계 결정
+
+1. **없는 건 추측하지 않는다.** Gateway 의 error 프레임은
+   `errorMessage`/`errorKind`/`stopReason`/`runId` 만 싣는다 — 프로바이더도 모델도
+   없다(failover 때문에 실패한 모델은 턴이 끝난 모델과 애초에 다르다). 마지막으로
+   본 모델을 끼워넣고 싶은 유혹이 있었지만 그건 틀린 귀속이다. 대신 `runId` 를
+   넣는다 — 프로바이더·모델·HTTP 상태가 **실제로** 남는 gateway 로그로 들어가는
+   join key 다.
+2. **실패는 태스크를 닫지 않는다.** 에이전트가 같은 프롬프트를 재시도할 수 있으므로
+   경계는 여전히 idle-gap 타이머 소유. 기록과 경계를 분리한 것이 핵심이고,
+   `agent_error` 가 `task_boundary` 를 내지 않는다는 걸 테스트로 못박았다.
+3. **라벨은 한 헬퍼에서만 나온다** (`openclawChatErrorLabel`).
+   `AGENTDECK_TIMELINE_PROJECTION=1` 이면 projection 이 그 `info` 이벤트를 다시
+   `error` 행으로 되돌리는데, `error` 는 `PROJECTED_TYPES` 에 없어 어댑터 행이
+   억제되지 않는다. 두 문자열이 **바이트 동일**해야 스토어의 exact-dedup(같은
+   type+raw, 8초)이 둘을 합친다. 캡(120/1000)도 projection 의 slice 와 맞췄다.
+4. **`automated` 플래그는 공짜가 아니다.** `isRepetitiveEntry` 는 automated 끼리
+   **플래그만 보고** 8시간 창에서 병합한다 — cron 잡담을 막는 규칙이지만 에러 행에
+   적용되면 서로 다른 이유로 실패한 두 cron 턴이 새 메시지를 입은 한 행으로
+   합쳐진다. 하루치 서로 다른 실패가 한 줄로 읽힌다는 뜻이다. `error` 를 그
+   content-agnostic 병합에서 제외했다(기존 `Interrupted` 예외와 같은 모양).
+   유사도 dedup 은 남아서 진짜 반복되는 실패는 `repeatCount` 하나로 접힌다.
+
+교훈 하나 더: **플래그 하나를 "일관성" 때문에 추가할 때 그 플래그의 기존 소비자를
+전부 읽어라.** `automated` 를 파리티 목적으로 붙였는데 그 플래그에는 8시간
+content-agnostic 병합이라는 소비자가 달려 있었고, 그걸 안 봤으면 행을 풍부하게
+만들려던 커밋이 정작 행을 서로 잡아먹게 만들었을 것이다.
+
+PR #209 (`8ffe4fd6`). 상세는 [docs/apme.md](docs/apme.md) 의 "실패한 턴도 턴이다" 절.
+
+---
+
 ## 2026-08-16 — 기업/공용 네트워크 posture: `--local`·`--loopback` 2축과 "off 는 파생"
 
 #198 의 세 워크스트림 중 이 건만 로그 항목이 없었다. 회사처럼 **한 네트워크에
