@@ -175,6 +175,11 @@ data class DeviceProfile(
      * Vendor names live here rather than in the rail so the two cannot drift.
      */
     val shortLabel: String,
+    /**
+     * True for rare reader firmwares (Pantone 6 / MOAAN) that ignore
+     * requestedOrientation and require direct Settings.System writes.
+     */
+    val requiresSystemFixedRotation: Boolean = false,
 ) {
     val isEink: Boolean get() = panel.isEink
     val isColorEink: Boolean get() = panel == PanelKind.EinkColor
@@ -300,6 +305,7 @@ fun classifyDevice(
         overridden = override != PanelOverride.Auto,
         displayName = displayNameFor(fp),
         shortLabel = shortLabelFor(fp, formFactor),
+        requiresSystemFixedRotation = requiresSystemFixedRotationFor(fp),
     )
 }
 
@@ -540,6 +546,13 @@ private val COLOR_EINK_MODELS: Map<String, Set<String>> = mapOf(
     "remarkable" to setOf("paper pro"),
     "viwoods" to setOf("color"),
 )
+
+private fun requiresSystemFixedRotationFor(fp: DeviceFingerprint): Boolean {
+    val identity = vendorIdentityOf(fp)
+    val model = normalizeVendor(fp.model)
+    // Pantone 6 (MOAAN Pantone) ignores requestedOrientation in its RK3566 framework build.
+    return identity.any { it.contains("moaan") || it.contains("moan") } || model.contains("pantone")
+}
 
 /**
  * Short device label for the daemon topology row. Named readers keep their own

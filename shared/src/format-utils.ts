@@ -294,27 +294,23 @@ export function codexUsageFootnote(
  */
 export function scopedLimitClaimsUsageKey(
   scoped: { active?: boolean } | undefined | null,
-  codexWindowCount: number,
+  _codexWindowCount?: number,
 ): boolean {
   if (!scoped) return false;
-  return scoped.active === true || codexWindowCount === 0;
+  return true;
 }
 
 /**
- * The Codex windows that still fit once the scoped cap has taken its key.
+ * The Codex windows that sit beside the scoped limit tile.
  *
- * A claiming cap REPLACES a Codex gauge, it does not stack onto the strip: the
- * usage block is a fixed budget carved out of session keys, so growing it to fit
- * both would quietly cost the user a session tile. The trailing (longer) window
- * yields first — with Codex's usual single weekly/monthly window that means the
- * cap simply takes its place, which is the whole point.
+ * Retains all present Codex windows so devices with 15+ keys can show
+ * Claude 5H, 7D, Scoped (Fable), and Codex windows together across up to 4 usage keys.
  */
 export function codexWindowsBeside<T>(
   codexWindows: T[],
-  scopedClaimsKey: boolean,
+  _scopedClaimsKey?: boolean,
 ): T[] {
-  if (!scopedClaimsKey || codexWindows.length === 0) return codexWindows;
-  return codexWindows.slice(0, -1);
+  return codexWindows;
 }
 
 /**

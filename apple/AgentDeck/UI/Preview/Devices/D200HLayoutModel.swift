@@ -675,8 +675,7 @@ public enum D200HLayoutModel {
             codexTiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexSecondaryWindowMinutes), percent: s, known: true, stale: usage.codexSecondaryStale, inactive: false, footnote: codexFootnote(stale: usage.codexSecondaryStale, capturedAt: usage.codexCapturedAt)), usageWindowLabel(usage.codexSecondaryWindowMinutes), "codex"))
         }
         let worstScoped = usage.known ? usage.scopedLimits.first : nil
-        let scopedClaims = worstScoped.map { $0.active || codexTiles.isEmpty } ?? false
-        if scopedClaims && !codexTiles.isEmpty { codexTiles.removeLast() }
+        let scopedClaims = worstScoped != nil
         let scopedTile: (D200HSlotKind, String, String)? = {
             guard scopedClaims, let s = worstScoped else { return nil }
             let label = s.label

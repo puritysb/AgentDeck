@@ -197,14 +197,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var originalAccelerometerRotation: Int? = null
+    private var originalUserRotation: Int? = null
+    private var hasModifiedSystemRotation: Boolean = false
+
+    override fun onDestroy() {
+        super.onDestroy()
+        restoreSystemRotationIfNeeded()
+    }
+
+    private fun restoreSystemRotationIfNeeded() {
+        if (hasModifiedSystemRotation && Settings.System.canWrite(this)) {
+            try {
+                originalAccelerometerRotation?.let {
+                    Settings.System.putInt(contentResolver, Settings.System.ACCELEROMETER_ROTATION, it)
+                }
+                originalUserRotation?.let {
+                    Settings.System.putInt(contentResolver, Settings.System.USER_ROTATION, it)
+                }
+                hasModifiedSystemRotation = false
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to restore system rotation: ${e.message}")
+            }
+        }
+    }
+
     /**
-     * Apply system-level rotation for RK3566 devices that ignore requestedOrientation.
+     * Apply system-level rotation only for devices that ignore requestedOrientation (e.g. Pantone 6).
      * Auto-requests WRITE_SETTINGS permission if not granted (lost on APK reinstall).
      */
     private fun applyOrientationPreference(orientation: Int) {
         requestedOrientation = DashboardOrientation.requestedActivityOrientation(orientation)
 
-        if (!deviceProfile.isEink) return
+        if (!deviceProfile.requiresSystemFixedRotation) return
 
         when {
             orientation == DashboardOrientation.Landscape -> applySystemFixedRotation(Surface.ROTATION_90)
@@ -217,8 +242,17 @@ class MainActivity : ComponentActivity() {
     private fun applySystemFixedRotation(rotation: Int) {
         if (Settings.System.canWrite(this)) {
             try {
+                if (!hasModifiedSystemRotation) {
+                    originalAccelerometerRotation = try {
+                        Settings.System.getInt(contentResolver, Settings.System.ACCELEROMETER_ROTATION)
+                    } catch (_: Exception) { null }
+                    originalUserRotation = try {
+                        Settings.System.getInt(contentResolver, Settings.System.USER_ROTATION)
+                    } catch (_: Exception) { null }
+                }
                 Settings.System.putInt(contentResolver, Settings.System.ACCELEROMETER_ROTATION, 0)
                 Settings.System.putInt(contentResolver, Settings.System.USER_ROTATION, rotation)
+                hasModifiedSystemRotation = true
             } catch (e: Exception) {
                 Log.w(TAG, "System rotation fallback failed: ${e.message}")
             }

@@ -43,19 +43,8 @@ All keypad buttons are `session-slot`; the plugin reads the physical device grid
 
 Encoder/dial families: the **Stream Deck+** (4 dials) and **Stream Deck + XL** (6 dials) carry usage on their dials, so the keypad reserves no usage keys. E1–E4 map to Volume / Claude Usage / Codex Usage / Launcher; on the + XL, E5–E6 are intentionally unassigned. The **Stream Deck XL** has no dials and pins usage to its last keypad keys, like the classic deck. Device→family is resolved from the Elgato `DeviceType` (2 = XL, 7 = Plus, 13 = + XL); bundled profiles `agentdeck-sdxl` (DeviceType 2) and `agentdeck-sdplusxl` (DeviceType 13) AutoInstall and auto-switch on connect.
 
-**The keypad usage strip is hide-if-absent, and the scoped cap competes for what Codex leaves.**
-Claude 5H/7D take the first two reserved keys; the rest go to Codex windows. A
-provider reporting nothing claims no key at all, so the freed slots flow back to
-sessions — most commonly on a **free ChatGPT tier**, which has no rolling
-subscription windows (the daemon still ships the account tier as a windowless
-`codexRateLimits`, so the plan stays nameable and a retired plan's gauge can be
-retracted). The worst per-model scoped cap — the weekly "Fable" limit and its
-kin, otherwise reachable only via the E2 encoder and the opt-in `limit-key` —
-takes a key under `scopedLimitClaimsUsageKey` (`shared/src/format-utils.ts`),
-shared with the D200H strip so the two decks can't disagree about which limit the
-user is looking at: an **active** cap is the binding one and is placed ahead of
-Codex; an **inactive** one only lands on a key Codex left spare, and never
-displaces a live window.
+**The keypad usage strip is hide-if-absent, taking up to 4 keys on 15+ key devices.**
+Claude 5H/7D take the first two reserved keys; a per-model scoped cap (e.g. weekly "Fable") and Codex windows (e.g. Codex 7D) occupy the remaining reserved keys without displacing each other. On devices with 15+ keys, up to 4 reserved buttons are used so Claude 5H, Claude 7D, Fable, and Codex 7D can all be displayed simultaneously. A provider reporting nothing claims no key at all, so freed slots flow back to sessions — most commonly on a **free ChatGPT tier**, which has no rolling subscription windows. An **active** scoped cap (the binding limit) is placed ahead of Codex windows; an **inactive** cap renders muted after Codex windows. Stream Deck+ dial encoders (E2/E3) and 0-keypad usage reserve remain unchanged.
 
 No daemon: single recovery hero. The geometric center key (`floor(rows/2) * columns + floor(columns/2)` — SD+ 4×2 → slot 6, SD MK2 5×3 → slot 7, SD XL 8×4 → slot 20, SD Mini 3×2 → slot 4) shows **OFFLINE / Open AgentDeck** and launches the AgentDeck Dashboard app on press; every other key is intentionally dark and inert. Auto-reconnect handles re-discovery so no manual RETRY affordance is exposed.
 

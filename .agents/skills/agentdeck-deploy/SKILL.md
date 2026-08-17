@@ -134,12 +134,12 @@ adb -s $SERIAL reverse tcp:9120 tcp:9120
 
 **Pantone 6** (after ANY install, especially after uninstall→reinstall):
 ```bash
-# Rotation fix — reinstall resets system rotation settings
+# Rotation fix — reinstall resets system rotation settings (NOTE: Pantone 6 only! Do NOT run on Crema S or ordinary tablets)
 adb -s AA007422R24C1300039 shell settings put system accelerometer_rotation 0
 adb -s AA007422R24C1300039 shell settings put system user_rotation 1  # 1=landscape
 ```
 
-**Crema S**: No special steps needed.
+**Crema S**: No special steps needed. (Standard `requestedOrientation` is used; do not modify system-wide `user_rotation`.)
 
 **Lenovo Tab**: No special steps needed.
 

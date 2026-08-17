@@ -903,19 +903,19 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
     expect(tiles[2]).toMatchObject({ usageLabel: 'FABLE', usagePercent: 61, usageInactive: true });
   });
 
-  it('lets an ACTIVE cap TAKE the Codex key — it is the limit that binds', () => {
+  it('shows Claude 5H, 7D, active Fable, and Codex weekly together on 4 reserved keys', () => {
     const tiles = gauges({
       fiveHourPercent: 42, sevenDayPercent: 17,
       codexRateLimits: CODEX_WEEKLY, scopedLimits: [FABLE],
     });
-    // Replacement, not addition: the reserve is carved out of session keys, so
-    // three gauges stay three. The lone Codex weekly is what the cap took.
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE']);
+    // On 15+ key Stream Deck devices, up to 4 keys are reserved.
+    // Claude 5H, 7D, Fable, and Codex 7D (weekly) all show together across 4 keys.
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE', '7D']);
     expect(tiles[2]).toMatchObject({ usageInactive: false, usageAgent: 'claude' });
-    expect(tiles.some((t) => t.usageAgent === 'codex')).toBe(false);
+    expect(tiles[3]).toMatchObject({ usageAgent: 'codex' });
   });
 
-  it('keeps the first Codex window when Codex reports two', () => {
+  it('keeps Codex windows beside active Fable and enables paging when >4 gauges exist', () => {
     const tiles = gauges({
       fiveHourPercent: 42, sevenDayPercent: 17,
       codexRateLimits: {
@@ -924,17 +924,19 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
       },
       scopedLimits: [FABLE],
     });
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE', '5H']);
-    expect(tiles[3]).toMatchObject({ usageAgent: 'codex' });
+    // 5 gauges total (Claude 5H, 7D, Fable, Codex 5H, Codex 7D) > MAX_USAGE_RESERVE (4).
+    // Page 1 displays 3 usage tiles + 1 page toggle tile.
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE']);
   });
 
-  it('never lets an INACTIVE cap displace a live Codex window', () => {
+  it('places an inactive cap after live Codex windows on 4 reserved keys', () => {
     const tiles = gauges({
       fiveHourPercent: 42, sevenDayPercent: 17,
       codexRateLimits: CODEX_WEEKLY, scopedLimits: [FABLE_IDLE],
     });
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', '7D']);
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', '7D', 'FABLE']);
     expect(tiles[2]).toMatchObject({ usageAgent: 'codex' });
+    expect(tiles[3]).toMatchObject({ usageLabel: 'FABLE', usageInactive: true });
   });
 
   it('drops the scoped cap along with the Claude gauges when usage goes stale', () => {
@@ -947,10 +949,7 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
     expect(tiles).toHaveLength(0);
   });
 
-  it('handles the live free-tier shape: a lone 30-day window yields to the binding cap', () => {
-    // Verbatim from the daemon on a free ChatGPT tier (2026-08-08): one 43200-min
-    // window at 0% and no credits. It is a real window, so it is NOT voided — but
-    // an active weekly cap at 76% is the limit the user is actually up against.
+  it('shows Claude 5H, 7D, Fable, and a lone 30-day Codex window together across 4 reserved keys', () => {
     const tiles = gauges({
       fiveHourPercent: 45, sevenDayPercent: 65,
       codexRateLimits: {
@@ -960,7 +959,7 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
       },
       scopedLimits: [{ label: 'Fable', percent: 76, active: true }],
     });
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE']);
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE', '30D']);
   });
 
   it('shows the scoped cap for a Codex-less, Claude-only user too', () => {

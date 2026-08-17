@@ -119,30 +119,34 @@ class DeviceProfileTest {
     // MARK: - Devices the previous detector recognised must keep working
 
     @Test
-    fun `crema stays eink`() {
+    fun `crema stays eink and does not require system fixed rotation`() {
         val profile = classifyDevice(fingerprint(manufacturer = "crema", model = "Crema S"))
         assertEquals(PanelKind.EinkMono, profile.panel)
         assertEquals(EinkEvidence.KnownVendor, profile.einkEvidence)
         assertEquals(FormFactor.Reader, profile.formFactor)
+        assertFalse(profile.requiresSystemFixedRotation)
     }
 
     @Test
     fun `onyx boox stays eink`() {
         val profile = classifyDevice(fingerprint(manufacturer = "ONYX", model = "Nova3"))
         assertEquals(PanelKind.EinkMono, profile.panel)
+        assertFalse(profile.requiresSystemFixedRotation)
     }
 
     @Test
     fun `kobo stays eink`() {
         val profile = classifyDevice(fingerprint(manufacturer = "Kobo", model = "Clara HD"))
         assertEquals(PanelKind.EinkMono, profile.panel)
+        assertFalse(profile.requiresSystemFixedRotation)
     }
 
     @Test
-    fun `moaan pantone is color eink`() {
+    fun `moaan pantone is color eink and requires system fixed rotation`() {
         val profile = classifyDevice(fingerprint(manufacturer = "MOAAN", model = "Pantone 6"))
         assertEquals(PanelKind.EinkColor, profile.panel)
         assertTrue(profile.isColorEink)
+        assertTrue(profile.requiresSystemFixedRotation)
     }
 
     @Test

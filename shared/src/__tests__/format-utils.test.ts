@@ -326,18 +326,9 @@ describe('scopedLimitClaimsUsageKey', () => {
   const active = { active: true };
   const idle = { active: false };
 
-  it('lets an ACTIVE cap take a key even when Codex is reporting', () => {
-    // The point of surfacing scoped caps (issue #99): a weekly per-model cap can
-    // sit at 98% while 5H/7D read low, so it outranks a non-binding window.
+  it('claims a key when a scoped cap is present', () => {
     expect(scopedLimitClaimsUsageKey(active, 2)).toBe(true);
-  });
-
-  it('never lets an INACTIVE cap displace a live Codex window', () => {
-    expect(scopedLimitClaimsUsageKey(idle, 1)).toBe(false);
-  });
-
-  it('gives an inactive cap the key Codex left spare', () => {
-    // The ordinary free-ChatGPT-tier state: no rolling windows at all.
+    expect(scopedLimitClaimsUsageKey(idle, 1)).toBe(true);
     expect(scopedLimitClaimsUsageKey(idle, 0)).toBe(true);
   });
 
@@ -345,26 +336,19 @@ describe('scopedLimitClaimsUsageKey', () => {
     expect(scopedLimitClaimsUsageKey(undefined, 0)).toBe(false);
     expect(scopedLimitClaimsUsageKey(null, 2)).toBe(false);
   });
-
-  it('treats a missing `active` as not binding (wire-flag rule)', () => {
-    expect(scopedLimitClaimsUsageKey({}, 1)).toBe(false);
-    expect(scopedLimitClaimsUsageKey({}, 0)).toBe(true);
-  });
 });
 
 describe('codexWindowsBeside', () => {
-  it('drops the trailing window when the scoped cap claims a key', () => {
-    // The cap REPLACES a Codex gauge. Growing the strip to fit both would
-    // quietly cost a session tile, which is the budget the strip is carved from.
-    expect(codexWindowsBeside(['5h', '7d'], true)).toEqual(['5h']);
-    expect(codexWindowsBeside(['7d'], true)).toEqual([]);
+  it('retains all Codex windows beside the scoped cap', () => {
+    expect(codexWindowsBeside(['5h', '7d'], true)).toEqual(['5h', '7d']);
+    expect(codexWindowsBeside(['7d'], true)).toEqual(['7d']);
   });
 
   it('leaves Codex untouched when no cap claims a key', () => {
     expect(codexWindowsBeside(['5h', '7d'], false)).toEqual(['5h', '7d']);
   });
 
-  it('has nothing to drop when Codex reports nothing', () => {
+  it('returns empty when Codex reports nothing', () => {
     expect(codexWindowsBeside([], true)).toEqual([]);
   });
 });
