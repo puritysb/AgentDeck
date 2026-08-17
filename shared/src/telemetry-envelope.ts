@@ -37,6 +37,13 @@ export type TelemetrySpanKind =
   /** Model id resolved or usage snapshot updated. Carries either
    *  `gen_ai.request.model` or `agentdeck.usage.*`. */
   | 'session_meta'
+  /** The agent reported a failure for the current turn (provider error,
+   *  failover exhaustion, transport give-up). Records the reason in the
+   *  trajectory WITHOUT closing the turn or the task — the agent may retry
+   *  the same prompt. Carries `agentdeck.error_label` (+ optional
+   *  `agentdeck.error_detail`). Without it a failed turn is byte-identical
+   *  to a turn whose response event was simply dropped. */
+  | 'agent_error'
   /** Generic step — record verbatim into `steps` table without lifecycle
    *  side effects. Carries `agentdeck.raw_event` + `agentdeck.raw_payload`. */
   | 'raw_step';
@@ -68,6 +75,12 @@ export interface TelemetryAttributes {
   'agentdeck.raw_payload'?: Record<string, unknown>;
   /** Tool name as reported by the source (Claude hooks use `tool_name`). */
   'agentdeck.tool_name'?: string;
+  /** One-line failure label for agent_error. Doubles as the timeline row's
+   *  `raw`, so the projected row and the adapter's own row are byte-equal
+   *  and the store's exact-dedup collapses them instead of rendering twice. */
+  'agentdeck.error_label'?: string;
+  /** Optional multi-line context for agent_error (duration, tools, ids). */
+  'agentdeck.error_detail'?: string;
 
   // ─── Usage (session_meta when usage updated) ───
   'agentdeck.usage.input_tokens'?: number;
@@ -135,6 +148,7 @@ export function spanNameForKind(kind: TelemetrySpanKind): string {
     case 'tool_result':   return 'agentdeck.tool.result';
     case 'task_boundary': return 'agentdeck.task.boundary';
     case 'session_meta':  return 'agentdeck.session.meta';
+    case 'agent_error':   return 'agentdeck.agent.error';
     case 'raw_step':      return 'agentdeck.step.raw';
   }
 }

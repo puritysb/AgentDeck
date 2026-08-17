@@ -234,6 +234,10 @@ v_category_scorecard    -- (task_category, model_id) 그룹: runs, avg_overall,
 5. `usage_info` 메타데이터 → `apme.collector.updateUsage(sessionId, snapshot)`
 6. `state_changed` → `apme.collector.updateModel(sessionId, modelName)`
 
+> **실패한 턴도 턴이다 — 이유를 남기고, 경계는 그대로 둔다.** OpenClaw `chat` 의 `error` 프레임은 오래도록 궤적에 아무것도 남기지 않았다. 그래서 실패한 턴이 `turn_start` 만 있고 응답도 주석도 없는 모양으로 도착했고, 이는 **응답 이벤트가 유실된 턴과 바이트 단위로 동일**해서 judge 도 사람도 프로바이더 장애와 우리 캡처 버그를 구분할 수 없었다. 지금은 `agent_error` span(`agentdeck.error_label` / `.error_detail`)이 `info` 궤적 이벤트로 기록된다. 두 가지가 계약이다 — **(1) 태스크를 닫지 않는다**: 에이전트가 같은 프롬프트를 재시도할 수 있으므로 경계는 여전히 idle-gap 타이머 소유다. **(2) 그 타이머를 다시 건다**: `chat.send` 가 타이머를 지우고 `final` 만 다시 걸었기 때문에, 에러 후 사용자가 자리를 뜬 프롬프트는 태스크가 영영 열린 채 남아 eval 을 굶겼다. 라벨 문자열은 어댑터의 타임라인 행 `raw` 와 **같은 헬퍼**(`openclawChatErrorLabel`)에서 나온다 — `AGENTDECK_TIMELINE_PROJECTION=1` 일 때 projection 이 같은 실패를 `error` 행으로 되돌리는데, `error` 는 `PROJECTED_TYPES` 에 없어 어댑터 행이 억제되지 않으므로 두 문자열이 바이트 동일해야 스토어의 exact-dedup(같은 type+raw, 8초)이 둘을 합친다.
+>
+> Gateway 의 error 프레임은 `errorMessage`/`errorKind`/`stopReason`/`runId` 만 싣는다 — **프로바이더도 모델도 없다**(failover 때문에 실패한 모델은 턴이 끝난 모델과 애초에 다르다). 그래서 행의 `detail` 은 프레임이 준 것 + 어댑터가 아는 턴 사실(소요 시간, 사용 툴)로만 구성하고 없는 건 추측하지 않는다. `runId` 는 프로바이더·모델·HTTP 상태가 실제로 남는 OpenClaw gateway 로그로 들어가는 join key 라서 넣는다.
+
 ### BridgeCore (`bridge/src/bridge-core.ts`)
 
 - `registerSession(agentType)` → `apme.collector.openRun()` (daemon meta-session 제외)

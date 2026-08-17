@@ -1012,6 +1012,31 @@ export class ApmeCollector {
         }
         return;
       }
+      case 'agent_error': {
+        // Record the failure in the trajectory. Deliberately does NOT close
+        // the turn or the task: the agent may retry the same prompt, and the
+        // adapter owns the boundary (OpenClaw re-arms its idle-gap timer).
+        // Without this the judge sees a turn_start with no response and no
+        // reason — indistinguishable from a dropped event.
+        const label = (a['agentdeck.error_label'] as string | undefined)?.trim();
+        if (!label) return;
+        const detail = (a['agentdeck.error_detail'] as string | undefined)?.trim();
+        const task = this.sessionToTask.get(sessionId);
+        const turnIndex = this.sessionToTurn.get(sessionId)?.index;
+        if (!task || turnIndex === undefined) {
+          debug('APME', `agent_error span dropped: no open task/turn for ${sessionId}`);
+          return;
+        }
+        this.appendSampleEvent(
+          { taskId: task.id, runId: task.runId, turnIndex, turnId: this.turnIdFor(sessionId) },
+          {
+            kind: 'info',
+            dedupCore: `agent_error:${label}`,
+            payloadObj: { label, ...(detail ? { detail } : {}) },
+          },
+        );
+        return;
+      }
       case 'raw_step': {
         const event = (a['agentdeck.raw_event'] as string | undefined) ?? 'raw';
         const payload = (a['agentdeck.raw_payload'] as Record<string, unknown> | undefined) ?? {};

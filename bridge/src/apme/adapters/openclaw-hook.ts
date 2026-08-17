@@ -72,6 +72,91 @@ import { spanNameForKind } from '@agentdeck/shared';
 export const OPENCLAW_IDLE_GAP_MS = 90_000;
 
 /**
+ * `ChatEventPayload` widened with the turn facts only the OpenClaw adapter
+ * holds. The Gateway's `chat` error frame carries just
+ * `errorMessage`/`errorKind`/`stopReason`/`runId` — no provider, no model, and
+ * nothing about what the turn had already done — so "how long did it run" and
+ * "which tools ran" have to come from the adapter's own turn counters.
+ *
+ * Kept here rather than on `ChatEventPayload` (`shared/src/gateway-protocol.ts`)
+ * because that type describes the wire, and these fields are not on the wire.
+ * `ChatEventPayload` is assignable to this, so existing callers are unaffected.
+ */
+export type OpenClawChatEventInput = ChatEventPayload & {
+  /** Gateway `errorKind`, e.g. "unavailable". */
+  errorKind?: string;
+  /** Gateway `stopReason` for the failed run. */
+  stopReason?: string;
+  /** Seconds the turn ran before failing. 0/absent when unknown. */
+  durationSec?: number;
+  /** Tool names used in the failed turn, first-use order. */
+  toolNames?: readonly string[];
+};
+
+/** Cap for the one-line label. Matches the slice `sample-to-timeline.ts`
+ *  applies when projecting an `info` event, so the projected row and the
+ *  adapter's own row stay byte-equal (see `openclawChatErrorLabel`). */
+const ERROR_LABEL_MAX = 120;
+/** Cap for the detail block. Matches the projection's slice for the same reason. */
+const ERROR_DETAIL_MAX = 1000;
+
+/**
+ * One-line failure label for a `chat` error frame.
+ *
+ * **Single source on purpose.** The adapter writes this string into the
+ * timeline row's `raw`, and the same string rides the `agent_error` span into
+ * the trajectory as the `info` event's label. Under
+ * `AGENTDECK_TIMELINE_PROJECTION=1` the projection turns that `info` event
+ * back into an `error` row — if the two strings differed the user would see
+ * the same failure twice; being byte-equal, the timeline store's exact-dedup
+ * (same type + raw within 8 s) collapses them.
+ */
+export function openclawChatErrorLabel(payload: OpenClawChatEventInput): string {
+  const message = (payload.error ?? '').trim();
+  if (message) return message.slice(0, ERROR_LABEL_MAX);
+  const kind = (payload.errorKind ?? '').trim();
+  // Previously this fell back to the bare word "unknown", which as a whole
+  // timeline row told the reader nothing at all.
+  return (kind ? `Chat error (${kind})` : 'Chat error').slice(0, ERROR_LABEL_MAX);
+}
+
+/**
+ * Context block for the failure row's `detail`. The gateway message alone
+ * ("The AI service is temporarily overloaded") says what the provider replied
+ * but nothing about *this* turn, so reading the timeline used to require
+ * opening the OpenClaw gateway log to learn anything else. The run id is the
+ * join key into that log, hence its inclusion.
+ *
+ * Returns undefined when there is nothing beyond the label — a `detail` that
+ * merely repeats `raw` is noise on every surface that renders both.
+ */
+export function openclawChatErrorDetail(payload: OpenClawChatEventInput): string | undefined {
+  const lines: string[] = [];
+  const message = (payload.error ?? '').trim();
+  if (message) lines.push(message);
+
+  const facts: string[] = [];
+  const duration = payload.durationSec ?? 0;
+  if (duration > 0) facts.push(`failed after ${duration}s`);
+  const tools = (payload.toolNames ?? []).filter((t) => !!t && t.trim());
+  if (tools.length) facts.push(`${tools.length} tool${tools.length === 1 ? '' : 's'}: ${tools.join(', ')}`);
+  if (facts.length) lines.push(facts.join(' · '));
+
+  const ids: string[] = [];
+  const kind = (payload.errorKind ?? '').trim();
+  if (kind) ids.push(`kind ${kind}`);
+  const stopReason = (payload.stopReason ?? '').trim();
+  if (stopReason) ids.push(`stop ${stopReason}`);
+  const runId = (payload.runId ?? '').trim();
+  if (runId) ids.push(`run ${runId.slice(0, 8)}`);
+  if (ids.length) lines.push(ids.join(' · '));
+
+  if (lines.length === 0) return undefined;
+  if (lines.length === 1 && lines[0] === openclawChatErrorLabel(payload)) return undefined;
+  return lines.join('\n').slice(0, ERROR_DETAIL_MAX);
+}
+
+/**
  * Convert a Gateway `chat` event payload into the spans the APME collector
  * should ingest right now. Does NOT emit the idle-gap `task_boundary` —
  * that's owned by the adapter's timer (it needs setTimeout + per-session
@@ -80,7 +165,7 @@ export const OPENCLAW_IDLE_GAP_MS = 90_000;
  */
 export function openclawChatEventToSpans(
   ctx: AdapterContext,
-  payload: ChatEventPayload,
+  payload: OpenClawChatEventInput,
 ): TelemetrySpan[] {
   const ts = Date.now();
   const baseAttrs: TelemetryAttributes = {
@@ -137,10 +222,22 @@ export function openclawChatEventToSpans(
   }
 
   if (payload.state === 'error') {
-    // Error doesn't close the task — agent might retry on the same prompt.
-    // The error is recorded for context but the idle timer continues to
-    // run. Returning empty array lets the adapter keep its lifecycle state.
-    return [];
+    // Error doesn't close the task — the agent might retry on the same
+    // prompt, so the boundary stays with the adapter's idle-gap timer (which
+    // it re-arms here, exactly as it does after `final`; before that it armed
+    // nothing and a prompt that ERRORED and was then abandoned left the task
+    // open forever, which starves the eval).
+    //
+    // What this span adds is the *reason*. Returning [] meant a failed turn
+    // reached the trajectory as a turn_start with no response and no
+    // annotation — byte-identical to a turn whose response event was dropped,
+    // so neither a judge nor a human could tell a provider outage from a bug
+    // in our own capture.
+    const detail = openclawChatErrorDetail(payload);
+    return [make('agent_error', {
+      'agentdeck.error_label': openclawChatErrorLabel(payload),
+      ...(detail ? { 'agentdeck.error_detail': detail } : {}),
+    })];
   }
 
   return [];

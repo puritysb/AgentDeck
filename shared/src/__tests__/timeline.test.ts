@@ -346,6 +346,26 @@ describe('isRepetitiveEntry', () => {
     expect(isRepetitiveEntry(entry, recent)).toBe(0);
   });
 
+  it('exempts error rows from the content-agnostic automated collapse', () => {
+    // The flag-only merge exists to stop cron chatter flooding the strip. On
+    // an `error` row it would collapse two automated turns that failed for
+    // completely different reasons into one row wearing the newer message —
+    // and the window is 8 h, so a whole day of distinct failures reads as one.
+    const recent: TimelineEntry[] = [
+      { ts: 500, type: 'error', raw: 'The AI service is temporarily overloaded.', automated: true },
+    ];
+    const different: TimelineEntry = {
+      ts: 800, type: 'error', raw: 'API key has run out of credits.', automated: true,
+    };
+    expect(isRepetitiveEntry(different, recent)).toBe(-1);
+
+    // A genuinely recurring failure still collapses, by similarity.
+    const same: TimelineEntry = {
+      ts: 900, type: 'error', raw: 'The AI service is temporarily overloaded.', automated: true,
+    };
+    expect(isRepetitiveEntry(same, recent)).toBe(0);
+  });
+
   it('does not dedup automated vs non-automated', () => {
     const recent: TimelineEntry[] = [
       { ts: 500, type: 'chat_end', raw: 'WhatsApp 연결 확인 완료', automated: true },

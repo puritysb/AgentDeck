@@ -35,11 +35,14 @@ import { fetchModelCatalog, getDefaultModelName, invalidateModelCache } from '..
 import { getApme } from '../apme/index.js';
 import {
   openclawChatEventToSpans,
+  openclawChatErrorLabel,
+  openclawChatErrorDetail,
   openclawChatSendToSpan,
   openclawIdleGapTaskBoundary,
   openclawSessionToolToSpans,
   openclawSessionMessageToSpans,
   OPENCLAW_IDLE_GAP_MS,
+  type OpenClawChatEventInput,
 } from '../apme/adapters/openclaw-hook.js';
 import type { SessionToolPayload, SessionMessagePayload } from '@agentdeck/shared';
 
@@ -1015,15 +1018,57 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
           }
 
           case 'error': {
-            const errMsg = (payload.errorMessage as string) || 'unknown';
+            // The Gateway's error frame reports only the user-facing message
+            // plus `errorKind`/`stopReason`/`runId` — never the provider or
+            // model that failed (OpenClaw's failover means the failing model
+            // isn't the one the turn ends on anyway). So the row is built from
+            // the frame PLUS this adapter's own turn counters; anything not
+            // reported stays absent rather than getting guessed. `runId` is
+            // the join key into the gateway log, where the provider/model and
+            // the HTTP status do live.
+            //
+            // The frame spells the sentence `errorMessage` while
+            // `ChatEventPayload` declares `error` — accept either rather than
+            // silently losing it to a name mismatch.
+            const errText = [payload.errorMessage, payload.error]
+              .find((v): v is string => typeof v === 'string' && v.trim().length > 0)?.trim();
+            const errInput: OpenClawChatEventInput = {
+              state: 'error',
+              ...(errText ? { error: errText } : {}),
+              ...(typeof payload.errorKind === 'string' ? { errorKind: payload.errorKind } : {}),
+              ...(typeof payload.stopReason === 'string' ? { stopReason: payload.stopReason } : {}),
+              ...(runId ? { runId } : {}),
+              ...(sessionKey ? { sessionKey } : {}),
+              durationSec: this.chatStarted ? Math.round((Date.now() - this.chatStartTime) / 1000) : 0,
+              toolNames: [...this.chatToolNames],
+            };
+            const errLabel = openclawChatErrorLabel(errInput);
+            const errDetail = openclawChatErrorDetail(errInput);
+            const errTs = Date.now();
             this.emitTimelineEntry({
-              ts: Date.now(), type: 'error', raw: errMsg,
+              ts: errTs, type: 'error', raw: errLabel,
+              ...(errDetail ? { detail: errDetail } : {}),
+              // Parity with the `final`/`aborted` rows: without this an
+              // errored cron turn is indistinguishable from a user's.
+              ...(this.chatIsAutomated ? { automated: true } : {}),
+              ...(this.chatStarted ? { startedAt: this.chatStartTime, endedAt: errTs } : {}),
             });
+
+            // APME: record the failure in the trajectory, then re-arm the
+            // idle-gap timer. `chat.send` cleared that timer and only `final`
+            // used to re-arm it, so a prompt that errored and was then
+            // abandoned left its task open indefinitely.
+            const errCtx = this.buildApmeCtx();
+            if (errCtx) {
+              this.ingestApmeSpans(openclawChatEventToSpans(errCtx, errInput));
+              this.armIdleGapTimer();
+            }
+
             this.chatStarted = false;
             this.lastPrompt = null;
             this.accumulatedResponse = '';
             this.currentRunId = null;
-            debug('adapter:openclaw', `Chat error: ${errMsg}`);
+            debug('adapter:openclaw', `Chat error: ${errLabel}`);
             this.emitAdapterEvent({ source: 'parser', event: 'idle' });
             break;
           }

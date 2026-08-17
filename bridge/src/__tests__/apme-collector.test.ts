@@ -316,4 +316,45 @@ describe('ApmeCollector', () => {
     collector.ingestHook('s-resend', 'UserPromptSubmit', { prompt: '반복 질문' });
     expect(store.listTurns(runId).length).toBe(3);
   });
+
+  it('an agent_error span records the failure reason in the trajectory without closing the task', async () => {
+    const collector = new ApmeCollector(store);
+    const runId = collector.openRun({ sessionId: 's-err', agentType: 'openclaw', projectName: 'OpenClaw' });
+    collector.ingestHook('s-err', 'UserPromptSubmit', { prompt: 'summarize today' });
+
+    collector.ingestSpan('s-err', {
+      traceId: 't', spanId: 'sp1', name: 'agentdeck.agent.error', kind: 'agent_error',
+      ts: Date.now(),
+      attributes: {
+        'agentdeck.error_label': 'The AI service is temporarily overloaded. Please try again in a moment.',
+        'agentdeck.error_detail': 'kind unavailable · run 95babe45',
+      },
+    });
+
+    const taskId = store.listTasksForRun(runId)[0]?.id;
+    expect(taskId).toBeTruthy();
+    const sample = store.getSample(taskId!);
+    const info = sample!.events.find((e) => e.kind === 'info');
+    // Before this, a failed turn reached the eval as a turn_start with no
+    // response and no annotation — indistinguishable from a dropped event.
+    expect(info).toMatchObject({
+      kind: 'info',
+      label: 'The AI service is temporarily overloaded. Please try again in a moment.',
+      detail: 'kind unavailable · run 95babe45',
+    });
+    // The task stays open: the agent may retry the same prompt, and the
+    // boundary belongs to the adapter's idle-gap timer.
+    expect(store.listTasksForRun(runId)[0].boundarySignal).toBe('open');
+  });
+
+  it('drops an agent_error span with no open task instead of inventing one', async () => {
+    const collector = new ApmeCollector(store);
+    const runId = collector.openRun({ sessionId: 's-err2', agentType: 'openclaw', projectName: 'OpenClaw' });
+    collector.ingestSpan('s-err2', {
+      traceId: 't', spanId: 'sp1', name: 'agentdeck.agent.error', kind: 'agent_error',
+      ts: Date.now(),
+      attributes: { 'agentdeck.error_label': 'boom' },
+    });
+    expect(store.listTasksForRun(runId).length).toBe(0);
+  });
 });

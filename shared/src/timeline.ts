@@ -566,8 +566,14 @@ export function isRepetitiveEntry(
     // old behavior).
     if (entry.sessionId && e.sessionId && entry.sessionId !== e.sessionId) continue;
 
-    // Automated entries: content-agnostic dedup (any two automated chats collapse)
-    if (entry.automated && e.automated) return i;
+    // Automated entries: content-agnostic dedup (any two automated chats collapse).
+    // NOT for `error` rows. That rule exists to stop cron chatter from flooding
+    // the strip, and it merges on the flag alone — so with an 8 h window two
+    // automated turns that failed for completely different reasons would
+    // collapse into one row wearing the newer message. A failure's whole value
+    // IS its content; errors still dedup by similarity below, which keeps a
+    // genuinely recurring failure at one row with a repeatCount.
+    if (entry.automated && e.automated && entry.type !== 'error') return i;
 
     const eCore = extractSemanticCore(e.raw, e.type);
     if (isSimilarCore(core, eCore)) return i;
