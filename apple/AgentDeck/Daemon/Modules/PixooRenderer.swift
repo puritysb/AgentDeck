@@ -423,11 +423,13 @@ final class PixooRenderer {
             }
         }
 
+        let hudCount = hudProviderCount(from: dashboardState)
+        let crayfishY = hudCount >= 2 ? 0.65 : (hudCount == 1 ? 0.72 : Self.cfDefaultY)
         let crayfishRouting = hasGateway && dashboardState.siblingSessions.contains {
             $0.agentType == "openclaw" && $0.state == "processing"
         }
         if crayfishRouting {
-            activeCreatures.append(.init(x: Self.cfDefaultX, y: Self.cfDefaultY, priority: 2))
+            activeCreatures.append(.init(x: Self.cfDefaultX, y: crayfishY, priority: 2))
         }
 
         let nowMs = Date().timeIntervalSince1970 * 1000
@@ -438,7 +440,7 @@ final class PixooRenderer {
             dt: dt,
             activeCreatures: activeCreatures,
             crayfishRouting: crayfishRouting,
-            crayfishPos: hasGateway ? (Self.cfDefaultX, Self.cfDefaultY) : nil,
+            crayfishPos: hasGateway ? (Self.cfDefaultX, crayfishY) : nil,
             schoolPos: schoolPos
         ))
 
@@ -480,7 +482,7 @@ final class PixooRenderer {
                 glowPixel(&world, Int(round(particle.x)), Int(round(particle.y)), color, 0.5 * fadeAlpha)
             }
 
-            let tetraMaxY = Self.sandTop - 3
+            let tetraMaxY = hudCount >= 2 ? 46 : (hudCount == 1 ? 52 : (Self.sandTop - 3))
             updateTetras(animFrame: animFrame, surfaceY: Self.surfaceY, maxY: tetraMaxY)
             drawSurface(&world, animFrame: animFrame, surfaceY: Self.surfaceY, palette: palette, state: effectiveState)
 
@@ -507,7 +509,7 @@ final class PixooRenderer {
             }
 
             if hasGateway {
-                drawOfficialDotGlyph(&output, glyph: .openClaw, worldX: Self.cfDefaultX, worldY: Self.cfDefaultY, state: crayfishRouting ? .processing : .idle, animFrame: animFrame, camera: camera, sessionToneIndex: 0, sick: dashboardState.gatewayHasError)
+                drawOfficialDotGlyph(&output, glyph: .openClaw, worldX: Self.cfDefaultX, worldY: crayfishY, state: crayfishRouting ? .processing : .idle, animFrame: animFrame, camera: camera, sessionToneIndex: 0, sick: dashboardState.gatewayHasError)
             }
 
             if usagePct >= 90 {
@@ -878,13 +880,14 @@ final class PixooRenderer {
         let kiroSlots = pixooSlots(for: .kiro, count: typeCounts[.kiro] ?? 0)
         var typeIndices: [CreatureKind: Int] = [.octopus: 0, .cloud: 0, .opencode: 0, .antigravity: 0, .kiro: 0]
 
+        let hudCount = hudProviderCount(from: dashboardState)
         for (index, session) in aliveCoding.enumerated() {
             let kind = creatureType(for: session.agentType)
             let slotIndex = typeIndices[kind, default: 0]
             typeIndices[kind, default: 0] = slotIndex + 1
             let slot = pixooSlot(for: kind, index: slotIndex, octopusSlots: octopusSlots, cloudSlots: cloudSlots, opencodeSlots: opencodeSlots, antigravitySlots: antigravitySlots, kiroSlots: kiroSlots)
             let worldX = Double(slot.x)
-            let worldY = stateY(session.state, kind: kind, baseY: Double(slot.y))
+            let worldY = stateY(session.state, kind: kind, baseY: Double(slot.y), hudProviderCount: hudCount)
 
             if var existing = creatureInstances[session.id] {
                 existing.state = session.state
@@ -930,7 +933,7 @@ final class PixooRenderer {
                 antigravitySlots: antigravitySlots,
                 kiroSlots: kiroSlots
             )
-            primary.worldY = stateY(preciseState, kind: primary.creatureType, baseY: Double(baseSlot.y))
+            primary.worldY = stateY(preciseState, kind: primary.creatureType, baseY: Double(baseSlot.y), hudProviderCount: hudCount)
             creatureInstances[aliveCoding[primaryIndex].id] = primary
         }
     }
@@ -1955,39 +1958,61 @@ final class PixooRenderer {
         }
     }
 
-    private func stateY(_ state: CreatureState, kind: CreatureKind, baseY: Double) -> Double {
-        switch kind {
+    private func hudProviderCount(from dashboardState: DashboardState) -> Int {
+        var count = 0
+        if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil {
+            count += 1
+        }
+        func freshCodexWindow(_ window: CodexRateLimitWindow?) -> Bool {
+            window?.stale != true && window?.usedPercent != nil
+        }
+        let codexPrimary = freshCodexWindow(dashboardState.codexRateLimits?.primary)
+        let codexSecondary = freshCodexWindow(dashboardState.codexRateLimits?.secondary)
+        if codexPrimary || codexSecondary {
+            count += 1
+        }
+        return count
+    }
+
+    private func stateY(_ state: CreatureState, kind: CreatureKind, baseY: Double, hudProviderCount: Int = 0) -> Double {
+        let y: Double = switch kind {
         case .octopus:
             switch state {
-            case .processing: return clamp(baseY, min: 0.40, max: 0.54)
-            case .awaiting: return clamp(baseY - 0.04, min: 0.35, max: 0.48)
-            case .idle: return 0.80
+            case .processing: clamp(baseY, min: 0.40, max: 0.54)
+            case .awaiting: clamp(baseY - 0.04, min: 0.35, max: 0.48)
+            case .idle: 0.80
             }
         case .cloud:
             switch state {
-            case .processing: return clamp(baseY, min: 0.16, max: 0.28)
-            case .awaiting: return clamp(baseY + 0.26, min: 0.52, max: 0.64)
-            case .idle: return clamp(baseY + 0.40, min: 0.80, max: 0.82)
+            case .processing: clamp(baseY, min: 0.16, max: 0.28)
+            case .awaiting: clamp(baseY + 0.26, min: 0.52, max: 0.64)
+            case .idle: clamp(baseY + 0.40, min: 0.80, max: 0.82)
             }
         case .opencode:
             switch state {
-            case .processing: return clamp(baseY - 0.02, min: 0.20, max: 0.34)
-            case .awaiting: return clamp(baseY + 0.22, min: 0.50, max: 0.62)
-            case .idle: return clamp(baseY + 0.36, min: 0.79, max: 0.81)
+            case .processing: clamp(baseY - 0.02, min: 0.20, max: 0.34)
+            case .awaiting: clamp(baseY + 0.22, min: 0.50, max: 0.62)
+            case .idle: clamp(baseY + 0.36, min: 0.79, max: 0.81)
             }
         case .antigravity:
             switch state {
-            case .processing: return clamp(baseY - 0.04, min: 0.16, max: 0.30)
-            case .awaiting: return clamp(baseY + 0.22, min: 0.46, max: 0.54)
-            case .idle: return clamp(baseY + 0.34, min: 0.56, max: 0.64)
+            case .processing: clamp(baseY - 0.04, min: 0.16, max: 0.30)
+            case .awaiting: clamp(baseY + 0.22, min: 0.46, max: 0.54)
+            case .idle: clamp(baseY + 0.34, min: 0.56, max: 0.64)
             }
         case .kiro:
             switch state {
-            case .processing: return clamp(baseY - 0.04, min: 0.16, max: 0.30)
-            case .awaiting: return clamp(baseY + 0.16, min: 0.42, max: 0.54)
-            case .idle: return clamp(baseY + 0.26, min: 0.60, max: 0.70)
+            case .processing: clamp(baseY - 0.04, min: 0.16, max: 0.30)
+            case .awaiting: clamp(baseY + 0.16, min: 0.42, max: 0.54)
+            case .idle: clamp(baseY + 0.26, min: 0.60, max: 0.70)
             }
         }
+        if hudProviderCount >= 2 {
+            return min(y, 0.65)
+        } else if hudProviderCount == 1 {
+            return min(y, 0.72)
+        }
+        return y
     }
 
     private func clamp(_ value: Double, min minValue: Double, max maxValue: Double) -> Double {

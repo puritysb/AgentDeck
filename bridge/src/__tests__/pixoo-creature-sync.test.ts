@@ -205,3 +205,62 @@ describe('pixoo creature sync — unknown agent types', () => {
     }
   });
 });
+
+describe('pixoo creature sync — Usage HUD safe area floor', () => {
+  const usage = (over: Record<string, unknown> = {}) => ({
+    type: 'usage_update',
+    sessionDurationSec: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    toolCalls: 0,
+    ...over,
+  } as never);
+
+  it('keeps normal ground depth (0.80) when no usage HUD is active', () => {
+    const snapshot = getCreatureLayoutSnapshot([
+      session({ id: 'claude:1', agentType: 'claude-code', state: 'idle' }),
+    ], null, null);
+
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0].worldY).toBeCloseTo(0.80, 2);
+  });
+
+  it('clamps idle creatures to 0.72 when a single-provider HUD is active', () => {
+    const singleHudUsage = usage({ fiveHourPercent: 42 });
+    const snapshot = getCreatureLayoutSnapshot([
+      session({ id: 'claude:1', agentType: 'claude-code', state: 'idle' }),
+    ], null, singleHudUsage);
+
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0].worldY).toBeCloseTo(0.72, 2);
+  });
+
+  it('clamps idle creatures to 0.65 when a dual-provider HUD is active', () => {
+    const dualHudUsage = usage({
+      fiveHourPercent: 42,
+      codexRateLimits: { secondary: { usedPercent: 80, windowMinutes: 10080 } },
+    });
+    const snapshot = getCreatureLayoutSnapshot([
+      session({ id: 'claude:1', agentType: 'claude-code', state: 'idle' }),
+      session({ id: 'codex:1', agentType: 'codex-cli', state: 'idle' }),
+    ], null, dualHudUsage);
+
+    expect(snapshot).toHaveLength(2);
+    expect(snapshot.every(c => c.worldY <= 0.65)).toBe(true);
+  });
+
+  it('does not alter upper/mid-water processing creatures when HUD is active', () => {
+    const dualHudUsage = usage({
+      fiveHourPercent: 42,
+      codexRateLimits: { secondary: { usedPercent: 80, windowMinutes: 10080 } },
+    });
+    const snapshot = getCreatureLayoutSnapshot([
+      session({ id: 'claude:1', agentType: 'claude-code', state: 'processing' }),
+    ], null, dualHudUsage);
+
+    expect(snapshot).toHaveLength(1);
+    // Processing octopus holds mid-water (<= 0.54), well above 0.65
+    expect(snapshot[0].worldY).toBeLessThanOrEqual(0.54);
+  });
+});
+
