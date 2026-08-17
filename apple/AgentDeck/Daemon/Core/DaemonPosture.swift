@@ -41,9 +41,13 @@ struct DaemonPosture: Equatable, Sendable {
     }
 
     /// Whether the daemon may advertise `_agentdeck._tcp` over Bonjour.
-    /// Advertising a loopback-bound listener would be the pre-fix Node bug in
-    /// reverse: noise for a service nobody on the segment can reach.
-    var advertisesOnLAN: Bool { !loopbackOnly }
+    /// Off under loopback (advertising a loopback-bound listener would be the
+    /// pre-fix Node bug in reverse: noise for a service nobody on the segment
+    /// can reach) and off under noDeviceModules too — Node parity: `--local`
+    /// forces the mdns module off with the rest of `allModulesOff()`. A paired
+    /// companion still connects; it remembers its endpoint and doesn't need
+    /// discovery.
+    var advertisesOnLAN: Bool { !loopbackOnly && !noDeviceModules }
 
     /// Wire form for `/health`, matching the Node daemon's `posture` field so
     /// `agentdeck daemon restart` inheritance and the `qr`/`pair` "this daemon

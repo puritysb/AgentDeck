@@ -41,9 +41,12 @@ final class DaemonPostureTests: XCTestCase {
         for name in registeredModules {
             XCTAssertFalse(local.allowsModule(name), "\(name) must be off under noDeviceModules")
         }
-        // --local still binds all interfaces, so the advertisement stays: a
-        // paired companion should keep discovering the daemon.
-        XCTAssertTrue(local.advertisesOnLAN)
+        // Node parity: --local forces the mdns module off with the rest of
+        // allModulesOff(). The all-interfaces bind stays, so a paired
+        // companion (which remembers its endpoint) still connects — but the
+        // daemon must not advertise, or the describe line's "no Bonjour"
+        // claim would be a lie.
+        XCTAssertFalse(local.advertisesOnLAN)
     }
 
     func testLocalWinsOverLoopbackWhenBothAreSet() {

@@ -1878,6 +1878,11 @@ final class DaemonServer {
 
     private func setupHTTPRoutes() async {
         let daemonPort = self.port
+        // Captured by value: posture is immutable for the server's lifetime,
+        // and a `self?`-with-fallback read inside the /health closure would
+        // fail OPEN (report the permissive posture) exactly when the server
+        // is going away.
+        let posture = self.posture
 
         // LAN default-deny (issue #145, Node http-auth-gate.ts parity): a
         // request that is neither same-machine nor token-bearing reaches
@@ -1968,7 +1973,7 @@ final class DaemonServer {
                 // of printing a dead LAN URL against a loopback-only daemon.
                 // Full-health payload only — the unauthenticated LAN /health
                 // (httpAccessResponse) stays minimal.
-                "posture": self?.posture.healthDict ?? DaemonPosture.open.healthDict,
+                "posture": posture.healthDict,
             ]
             if let m = focus.model { payload["modelName"] = m }
             if let e = focus.effort { payload["effortLevel"] = e }
