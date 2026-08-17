@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
@@ -24,6 +24,19 @@ import { TOOL_EXEC_SUPPRESSED_AGENTS, isToolExecSuppressedAgent } from '../timel
 import { OUTPUTS } from '../../../scripts/generate-observed-agent-rules.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+const SOURCE_EXT = /\.(swift|kt|ts)$/;
+
+/** Every source file under `dir`, recursively. */
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walk(full));
+    else if (SOURCE_EXT.test(entry.name)) out.push(full);
+  }
+  return out;
+}
 
 describe('observed session ids', () => {
   it('strips every advertised prefix, Kiro included', () => {
@@ -72,17 +85,35 @@ describe('generated mirrors', () => {
     }
   });
 
-  it('leaves no hand-written copy of either list behind', () => {
-    // The point of generating them is that there is one list. A call site that
-    // spells the membership out again is the drift this replaced, so it fails
-    // here rather than silently on one platform.
-    for (const rel of [
-      'apple/AgentDeck/Model/Timeline.swift',
-      'android/app/src/main/kotlin/dev/agentdeck/state/TimelineDisplay.kt',
-      'apple/AgentDeck/UI/Monitor/TimelineStripView.swift',
-    ]) {
-      const src = readFileSync(join(repoRoot, rel), 'utf8');
-      expect(src, `${rel} still hand-lists observed prefixes`).not.toContain('"observed:codex-app:"');
+  it('leaves no hand-written copy of the list anywhere in the app sources', () => {
+    // Scanned, not enumerated, and matched on the AGENT NAMES rather than one
+    // spelling of them. The first version of this check listed three files and
+    // looked for `"observed:codex-app:"`; two more copies were written as
+    // REGEXES (`^observed:(?:claude|codex|opencode|antigravity):`) in files it
+    // never opened, and one of those was the route every device takes to pull a
+    // session's timeline. It had drifted twice — no Kiro, no codex-app — so
+    // both agents' rows were unreachable from any device.
+    //
+    // A gate that knows the shape it is looking for only catches the copy you
+    // already found.
+    const offenders: string[] = [];
+    for (const dir of ['apple/AgentDeck', 'android/app/src/main', 'plugin/src', 'plugin-ulanzi/src']) {
+      for (const file of walk(join(repoRoot, dir))) {
+        if (file.includes('.generated.')) continue;
+        for (const [i, line] of readFileSync(file, 'utf8').split('\n').entries()) {
+          // Two of the keys together is a LIST, not a mention: a comment, a
+          // fixture, or code constructing ONE agent's id stays legal.
+          //
+          // Matched on the full `observed:<key>:` form including the trailing
+          // colon. Without it `observed:codex-app:` also counts as
+          // `observed:codex` and every legitimate single-agent line reads as a
+          // list of two — the check flagged two innocent files before this.
+          const named = OBSERVED_SESSION_PREFIXES.filter((p) => line.includes(p)).length;
+          const inlineList = named >= 2 || /observed:\(\?:/.test(line);
+          if (inlineList) offenders.push(`${file.slice(repoRoot.length + 1)}:${i + 1}`);
+        }
+      }
     }
+    expect(offenders, 'inlined observed-prefix list — use the generated ObservedAgentRules').toEqual([]);
   });
 });
