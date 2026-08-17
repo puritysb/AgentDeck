@@ -198,6 +198,10 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
     /// user-selected security-scoped bookmark, no `~`-relative entitlement.
     @Published private(set) var codexUsageAccessEnabled: Bool
     @Published private(set) var codexUsageSelectedPath: String?
+    /// Kiro observation needs `~/.kiro`, which the sandbox does not reach on a
+    /// home-relative path. Same user-granted bookmark shape as Codex above.
+    @Published private(set) var kiroAccessEnabled: Bool
+    @Published private(set) var kiroSelectedPath: String?
 
     /// User's current consent state for writing to `~/.claude/settings.local.json`.
     /// `.unknown` on fresh install → HookInstaller no-ops until user opts in.
@@ -300,6 +304,8 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.antigravityAccessEnabled = defaults.data(forKey: Keys.antigravityBookmark) != nil
         self.codexUsageSelectedPath = defaults.string(forKey: Keys.codexUsagePath)
         self.codexUsageAccessEnabled = defaults.data(forKey: Keys.codexUsageBookmark) != nil
+        self.kiroSelectedPath = defaults.string(forKey: Keys.kiroPath)
+        self.kiroAccessEnabled = defaults.data(forKey: Keys.kiroBookmark) != nil
         self.apmeJudgeBackend = defaults.string(forKey: Keys.apmeJudgeBackend) ?? "foundationModels"
         self.apmeJudgeEndpoint = defaults.string(forKey: Keys.apmeJudgeEndpoint) ?? ""
         self.apmeJudgeModel = defaults.string(forKey: Keys.apmeJudgeModel) ?? ""
@@ -616,6 +622,114 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         codexUsageAccessEnabled = false
     }
 
+    // MARK: - Kiro ~/.kiro directory security-scoped bookmark (session observation)
+
+    /// Best-effort default location for the NSOpenPanel — `~/.kiro` if it
+    /// exists, else the home directory.
+    private static func defaultKiroDirectoryURL() -> URL? {
+        guard let pw = getpwuid(getuid()), let ptr = pw.pointee.pw_dir else { return nil }
+        let home = URL(fileURLWithPath: String(cString: ptr))
+        let kiro = home.appendingPathComponent(".kiro", isDirectory: true)
+        return FileManager.default.fileExists(atPath: kiro.path) ? kiro : home
+    }
+
+    /// `true` when a usable `~/.kiro` bookmark is stored. Read off the daemon
+    /// actor by the observer, so it touches `defaults` directly rather than the
+    /// `@Published` mirror.
+    var hasKiroBookmark: Bool {
+        defaults.data(forKey: Keys.kiroBookmark) != nil
+    }
+
+    #if os(macOS)
+    @discardableResult
+    @MainActor
+    func chooseKiroDirectory() -> Bool {
+        let panel = NSOpenPanel()
+        panel.title = "Select your .kiro folder"
+        panel.message = "Choose Kiro's local ~/.kiro folder so the sandboxed app can see your Kiro sessions and their activity. Kiro CLI reports nothing to AgentDeck on its own, so this folder is the only source."
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.showsHiddenFiles = true
+        if let defaultDir = Self.defaultKiroDirectoryURL() {
+            panel.directoryURL = defaultDir
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        return storeKiroBookmark(for: url)
+    }
+    #endif
+
+    @discardableResult
+    func storeKiroBookmark(for url: URL) -> Bool {
+        do {
+            #if os(macOS)
+            let options: URL.BookmarkCreationOptions = [.withSecurityScope]
+            #else
+            let options: URL.BookmarkCreationOptions = []
+            #endif
+            let bookmark = try url.bookmarkData(
+                options: options,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            defaults.set(bookmark, forKey: Keys.kiroBookmark)
+            defaults.set(url.path, forKey: Keys.kiroPath)
+            // Flush now, and not because UserDefaults usually needs it: this
+            // app FORCE-EXITS on quit (AppDelegate arms a 3s watchdog so a
+            // wedged module cannot hang termination), and an unflushed write
+            // dies with it. Measured 2026-08-17 — the grant took effect
+            // immediately, the folder was read, sessions appeared, and the
+            // preference was simply gone on next launch while every other
+            // integration's bookmark survived. A permission the user just
+            // granted interactively is the worst thing to lose that way.
+            defaults.synchronize()
+            kiroSelectedPath = url.path
+            kiroAccessEnabled = true
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Run `body` with the bookmarked `~/.kiro` directory URL under an active
+    /// security scope. Returns nil when no bookmark is stored or it cannot be
+    /// resolved. Mirrors `withCodexDirectoryAccess`.
+    func withKiroDirectoryAccess<T>(_ body: (URL) throws -> T?) rethrows -> T? {
+        guard let bookmark = defaults.data(forKey: Keys.kiroBookmark) else { return nil }
+        var stale = false
+        let url: URL
+        do {
+            #if os(macOS)
+            let resolveOptions: URL.BookmarkResolutionOptions = [.withSecurityScope]
+            #else
+            let resolveOptions: URL.BookmarkResolutionOptions = []
+            #endif
+            url = try URL(
+                resolvingBookmarkData: bookmark,
+                options: resolveOptions,
+                relativeTo: nil,
+                bookmarkDataIsStale: &stale
+            )
+        } catch {
+            return nil
+        }
+
+        if stale {
+            _ = storeKiroBookmark(for: url)
+        }
+
+        guard url.startAccessingSecurityScopedResource() else { return nil }
+        defer { url.stopAccessingSecurityScopedResource() }
+        return try body(url)
+    }
+
+    func clearKiroAccess() {
+        defaults.removeObject(forKey: Keys.kiroBookmark)
+        defaults.removeObject(forKey: Keys.kiroPath)
+        kiroSelectedPath = nil
+        kiroAccessEnabled = false
+    }
+
     // MARK: - Claude settings.local.json security-scoped bookmark
 
     /// Persist a security-scoped bookmark to `~/.claude/settings.local.json`.
@@ -845,6 +959,8 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         static let codexConfigPath = "prefs.codexConfigPath"
         static let codexUsageBookmark = "prefs.codexUsageBookmark"
         static let codexUsagePath = "prefs.codexUsagePath"
+        static let kiroBookmark = "prefs.kiroBookmark"
+        static let kiroPath = "prefs.kiroPath"
         static let openclawConfigBookmark = "prefs.openclawConfigBookmark"
         static let openclawConfigSelectedPath = "prefs.openclawConfigSelectedPath"
         static let hasSeenDevicePreview = "prefs.hasSeenDevicePreview"

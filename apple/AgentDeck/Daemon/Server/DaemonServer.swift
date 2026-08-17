@@ -411,6 +411,9 @@ final class DaemonServer {
     private let timelineRelay: TimelineRelay
     private let focusRelay: SessionFocusRelay
     private let timelineStore = DaemonTimelineStore()
+    /// Live timeline rows for observed Kiro sessions — Kiro emits no hooks, so
+    /// nothing else would ever fill its strip. See the class doc.
+    private let kiroTimelineFeed = KiroTimelineFeed()
     private let logStream = BridgeLogStream()
     private let usageAPI = UsageAPIClient.shared
     private var serialModule: SerialModule?
@@ -7016,6 +7019,28 @@ final class DaemonServer {
         let mergedIds = Set(merged.map(\.id))
         for observed in observedCodexAppSessions where !mergedIds.contains(observed.id) {
             merged.append(observed)
+        }
+
+        // Kiro is observed the same way, and for a stronger reason: it emits no
+        // hooks at all, so without this it is invisible to an App-Store-only
+        // install. A hook-pushed Kiro row (Kiro IDE does fire the standalone
+        // hooks; CLI chat does not) still wins — observation only fills gaps.
+        let observedKiroSessions = LocalKiroObserver.collect()
+        if !observedKiroSessions.isEmpty {
+            let idsAfterCodex = Set(merged.map(\.id))
+            for observed in observedKiroSessions where !idsAfterCodex.contains(observed.id) {
+                merged.append(observed)
+            }
+            for row in kiroTimelineFeed.pump(observedKiroSessions.map(\.id)) {
+                await timelineStore.add(row)
+                // Storing is not showing. Every other producer here pairs the
+                // store with a `timeline_event` push, and without it the rows
+                // exist but no connected client learns of them until it
+                // reconnects and re-reads the history — which is exactly how
+                // this looked on screen: the WS history carried the Kiro rows
+                // while the live strip stayed on the previous entry.
+                broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(row)])
+            }
         }
 
         let enriched = await enrichSessionsWithState(merged)

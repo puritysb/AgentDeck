@@ -169,6 +169,7 @@ import {
   lastAssistantTextForSession,
 } from './session-transcript-timeline.js';
 import { kiroTimelineForSession } from './kiro-transcript-timeline.js';
+import { KiroTimelineFeed } from './kiro-timeline-feed.js';
 import {
   DeviceVoiceReplyRouter, speakableReply, spokenDigest, pcmFromWav, type ReplySink,
 } from './device-voice-reply.js';
@@ -1288,6 +1289,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // the rest of startup finishes. A later `const` would leave that window
   // throwing on the temporal dead zone.
   const passiveSessionObserver = new PassiveSessionObserver();
+  /** Produces live timeline rows for observed Kiro sessions — see the class
+   *  doc for why Kiro needs a producer when hook agents do not. */
+  const kiroTimelineFeed = new KiroTimelineFeed();
 
   /** Observed Claude sessions whose AskUserQuestion PreToolUse is held open for
    *  a device answer, keyed by the bare Claude session UUID. Its presence is
@@ -3620,7 +3624,23 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // The observer scans in the background now (collect() returns the cache
   // immediately). When a scan lands fresh observations, push them out via
   // the debounced broadcast so clients don't wait for the next 10 s poll.
-  passiveSessionObserver.onRefreshed = () => core.maybeBroadcastSessionsList();
+  passiveSessionObserver.onRefreshed = () => {
+    // Kiro pushes nothing: no `kiro_*` hook has ever reached this daemon, so
+    // without a producer here its session shows in the HUD while the timeline
+    // beside it stays empty. #218 taught the per-session QUERY to read Kiro's
+    // own transcript; the main timeline is a STREAM, and this is what feeds it.
+    try {
+      const kiroIds = passiveSessionObserver.collect([])
+        .filter((s) => typeof s.agentType === 'string' && s.agentType.startsWith('kiro'))
+        .map((s) => s.id);
+      for (const entry of kiroTimelineFeed.pump(kiroIds)) {
+        core.bridgeTimeline.addEntry(entry);
+      }
+    } catch (err) {
+      debug('daemon', `kiro timeline feed failed: ${String(err)}`);
+    }
+    core.maybeBroadcastSessionsList();
+  };
   // OTel turn boundaries arrive in milliseconds where the observer only re-reads
   // the rollout tail every scan interval, so a span that changed thread state is
   // worth a broadcast of its own.

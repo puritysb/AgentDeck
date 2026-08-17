@@ -31,6 +31,7 @@
 		0C1C2B2A6F3ED44152244E55 /* DemoPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8A40550B31856011EBBCB7 /* DemoPlayback.swift */; };
 		0C1F83A74830BA41D99566C9 /* IDotMatrixIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */; };
 		0D27F8A8833CCEC21A91E867 /* ConnectionOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66917928C455891D401F29E6 /* ConnectionOverlayTests.swift */; };
+		0D57DF3988B2D40AC1EE2436 /* LocalKiroObserverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B49DE4157BFB50F9F51EF40 /* LocalKiroObserverTests.swift */; };
 		0E136B3EF9DD10F02BFC158D /* LocalPeerOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 685766B4F565619F7EC7DB28 /* LocalPeerOwnership.swift */; };
 		0E60D3FBC7626624FF7B5A2E /* TopologyRailHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D05CE505E1EC5729C69752E /* TopologyRailHelpersTests.swift */; };
 		0ED91B65645B05541D82E446 /* NotificationPermission.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC62763B9E0E57235CFDACED /* NotificationPermission.swift */; };
@@ -180,6 +181,7 @@
 		62D5FBB2899D2690B43FF0C5 /* DemoPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8A40550B31856011EBBCB7 /* DemoPlayback.swift */; };
 		62F20845F1953514EFB1C11B /* SingletonGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B5C866AF54937CD8E433F49 /* SingletonGuard.swift */; };
 		634EEC168E46C62A2DBD1ACA /* FormatUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2994478DEFAA4A1CC8EC54D /* FormatUtils.swift */; };
+		63934274932C59864347F6AB /* LocalKiroObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */; };
 		6678969903C6A061CFE809EA /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D17A24E0C5B16A097D62E9 /* AuthManager.swift */; };
 		67BC9141429FBD039D306858 /* ApmeRecommender.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A8B27A341D1DAE1FCF1D01 /* ApmeRecommender.swift */; };
 		67DE7845FCE75F95098DD679 /* MicroGlyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF67F9EA0CB4FD3EE8C963A /* MicroGlyphs.swift */; };
@@ -298,6 +300,7 @@
 		ABE80C830C69CB0A2D03A767 /* LightRaySystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53F4A08898B95CB592E133A /* LightRaySystem.swift */; };
 		ABEE4D6EFD64ECCBDBCD843B /* AntigravityCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB382D6E482410C30E597EC /* AntigravityCreature.swift */; };
 		AC658605D32EEDED79556598 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B6B05AD3CC720BD76A681F9 /* QRScannerView.swift */; };
+		AC7A256DA7085C4BE9D0B7A1 /* KiroTimelineFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603AE403ECE592BCF9FAD994 /* KiroTimelineFeed.swift */; };
 		AC7E59A42A23408F8FEC3AC5 /* WaterEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47A555A3917875178A5B7E5 /* WaterEffect.swift */; };
 		ADD8AE7242AA662A3ACBB98B /* AgentDeckLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125A43BCFF7E55A34B4C5FC1 /* AgentDeckLogo.swift */; };
 		AECF975059EA0A725DB1A3E7 /* ESP32WifiForwardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C671E2324E45E6745813C681 /* ESP32WifiForwardTests.swift */; };
@@ -351,6 +354,7 @@
 		C37CD3CFD263A0903096C515 /* TimeboxSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362BC758256086C0D78EF7A8 /* TimeboxSheet.swift */; };
 		C46F9CBAF1E5CFC66037BDA2 /* IDotMatrixIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */; };
 		C4F117E796C0C81A8E52A02B /* PortDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15083D65B8571C662DD6E2CE /* PortDiagnostics.swift */; };
+		C60311E11652C03785B9F449 /* LocalKiroObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */; };
 		C68C5F90DA83B7DFE263289D /* ESP32ProvisionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6229A084E6CE2AB75D86F83 /* ESP32ProvisionSheet.swift */; };
 		C71587998379ED779ADFF54F /* ESP32Serial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C62F7ABA6BDEE39F39DBDFA /* ESP32Serial.swift */; };
 		C811739586EAB613B7881490 /* ApmeClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5857149AEB13F8BEC5CDE41B /* ApmeClassifier.swift */; };
@@ -362,6 +366,7 @@
 		CCB2A2848DDAADBEB6F7BB53 /* OctopusCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776467350B975D0CA1A18E84 /* OctopusCreature.swift */; };
 		CD0FEA280FA39493518D285A /* LocalPeerOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 685766B4F565619F7EC7DB28 /* LocalPeerOwnership.swift */; };
 		CD8B866925EF6BC839EC467D /* HttpAccessPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D805A12FAC706136018710BC /* HttpAccessPolicyTests.swift */; };
+		CDABC5CCE965EF7FA30DE280 /* LocalKiroObserverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B49DE4157BFB50F9F51EF40 /* LocalKiroObserverTests.swift */; };
 		CF27ABB66E4B268C31C44E6E /* IntegrationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B7BAB1080F7958F74A1B74 /* IntegrationsView.swift */; };
 		CFCABF9422E74B8CF2A23C7E /* CodexOtelParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BE1D983995443760EDE3A4A /* CodexOtelParserTests.swift */; };
 		D036600F5679C1A191132F87 /* SingletonGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B5C866AF54937CD8E433F49 /* SingletonGuard.swift */; };
@@ -397,6 +402,7 @@
 		DC29B22C7BD6878E30E0D856 /* SessionFormatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = F028824993D611B356EA86D3 /* SessionFormatters.swift */; };
 		DCD31A20E9139F8661F0E321 /* TimelineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95824B0CF6571507DBAF27C5 /* TimelineStore.swift */; };
 		DCDA12FC8E9B9961BA2D8182 /* MonitorScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7B4E454713DFE2DECC4D154 /* MonitorScreen.swift */; };
+		DD310EA2F4C0FDDB2AC0FA00 /* KiroTimelineFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603AE403ECE592BCF9FAD994 /* KiroTimelineFeed.swift */; };
 		DD57AEBB6F916C984C85F48F /* UsageAPIClientThreadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9841FBF8AFC5D5C65809F8B /* UsageAPIClientThreadingTests.swift */; };
 		DDB79DF8FFBAF3367C0399EF /* HTTPServerMainThreadStallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C6D9385857E3BEB95A91496 /* HTTPServerMainThreadStallTests.swift */; };
 		DDD59AC6454DD5A14E6E3C4D /* MdnsIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952A48256A53B55E304F7D67 /* MdnsIdentity.generated.swift */; };
@@ -567,6 +573,7 @@
 		5B7A8A00EB9D3B9345E36EB4 /* ProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolTests.swift; sourceTree = "<group>"; };
 		5D8D7D1387331B547042853D /* AgentDeck.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AgentDeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5F7897FE76F480951CD34749 /* ProjectNameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectNameResolver.swift; sourceTree = "<group>"; };
+		603AE403ECE592BCF9FAD994 /* KiroTimelineFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiroTimelineFeed.swift; sourceTree = "<group>"; };
 		6165A6BFF174139F6AF07CED /* PortFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortFormatting.swift; sourceTree = "<group>"; };
 		6176599CD3E03A96EA977362 /* ESP32WifiOta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESP32WifiOta.swift; sourceTree = "<group>"; };
 		6186E147F760B85461F02022 /* ActivityPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityPanel.swift; sourceTree = "<group>"; };
@@ -612,6 +619,7 @@
 		89F9A134A1BC3EDEE8309695 /* DisplaySyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplaySyncService.swift; sourceTree = "<group>"; };
 		8A5A10C1FD79BB64BD2BB8D5 /* ConnectionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionOverlay.swift; sourceTree = "<group>"; };
 		8A702CCCE11B4450E9EED163 /* BridgeConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeConnection.swift; sourceTree = "<group>"; };
+		8B49DE4157BFB50F9F51EF40 /* LocalKiroObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalKiroObserverTests.swift; sourceTree = "<group>"; };
 		8BE1D983995443760EDE3A4A /* CodexOtelParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexOtelParserTests.swift; sourceTree = "<group>"; };
 		8C8A40550B31856011EBBCB7 /* DemoPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoPlayback.swift; sourceTree = "<group>"; };
 		8D80206C489734918E56FB0B /* TUITerrariumRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TUITerrariumRenderer.swift; sourceTree = "<group>"; };
@@ -672,6 +680,7 @@
 		D54B6A5B14E7FEFC4CD93EF2 /* ApmeTaskBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeTaskBoundaryTests.swift; sourceTree = "<group>"; };
 		D805A12FAC706136018710BC /* HttpAccessPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HttpAccessPolicyTests.swift; sourceTree = "<group>"; };
 		D8FF164B1E859BEE08BBF646 /* TopologyRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopologyRail.swift; sourceTree = "<group>"; };
+		D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalKiroObserver.swift; sourceTree = "<group>"; };
 		D9FBCA5AE4B47A5D67D12207 /* StateTransitions.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateTransitions.generated.swift; sourceTree = "<group>"; };
 		DA46D3D4A84FBDE6C8B3AB62 /* StateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateMachine.swift; sourceTree = "<group>"; };
 		DA58B8921954E616F8ECCC53 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
@@ -787,6 +796,7 @@
 				D805A12FAC706136018710BC /* HttpAccessPolicyTests.swift */,
 				3C6D9385857E3BEB95A91496 /* HTTPServerMainThreadStallTests.swift */,
 				640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */,
+				8B49DE4157BFB50F9F51EF40 /* LocalKiroObserverTests.swift */,
 				3B1754EEF69FF454C638CF1C /* MiniTomlTests.swift */,
 				767EE1D15C8564C2A5AC5713 /* ObservedAskUserQuestionTests.swift */,
 				DAF69E65D3118C105A193227 /* OpenClawTokenExtractTests.swift */,
@@ -1069,7 +1079,9 @@
 		BC0F891F91474D201E8D5F53 /* Session */ = {
 			isa = PBXGroup;
 			children = (
+				603AE403ECE592BCF9FAD994 /* KiroTimelineFeed.swift */,
 				118F64508CC1FE2827516440 /* LocalCodexAppObserver.swift */,
+				D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */,
 				BB4AC33AE24184BF90D4CAFE /* ObservedSteering.swift */,
 				F9C1092C93CA846103C9692C /* OpenCodeObserver.swift */,
 				07E03521107C667F3ED4EA7A /* OpenCodeSSEClient.swift */,
@@ -1419,6 +1431,7 @@
 				C13B92B69ACA5F6CA1D8EE1E /* HookIdleTTLTests.swift in Sources */,
 				A78A1918B0FC99BAA4B1F6E9 /* HttpAccessPolicyTests.swift in Sources */,
 				89C78B3EB58A06C87CC5CDE0 /* IDotMatrixProtocolTests.swift in Sources */,
+				0D57DF3988B2D40AC1EE2436 /* LocalKiroObserverTests.swift in Sources */,
 				23EA982402128EB1158AB6A9 /* MiniTomlTests.swift in Sources */,
 				BA45B7FBDCFDD8971904714D /* ObservedAskUserQuestionTests.swift in Sources */,
 				7B0F7E18D01881EF81E3F08E /* OpenClawTokenExtractTests.swift in Sources */,
@@ -1467,6 +1480,7 @@
 				D5B04048B117D3FA74BE4769 /* HookIdleTTLTests.swift in Sources */,
 				CD8B866925EF6BC839EC467D /* HttpAccessPolicyTests.swift in Sources */,
 				FDE24F470C55939E9503C810 /* IDotMatrixProtocolTests.swift in Sources */,
+				CDABC5CCE965EF7FA30DE280 /* LocalKiroObserverTests.swift in Sources */,
 				A7E6158A1A9242B77356F1E8 /* MiniTomlTests.swift in Sources */,
 				3DF6BC8D6B4841A3EF370023 /* ObservedAskUserQuestionTests.swift in Sources */,
 				9A5DC975FE1C36D4AB0B13A4 /* OpenClawTokenExtractTests.swift in Sources */,
@@ -1582,8 +1596,10 @@
 				CF27ABB66E4B268C31C44E6E /* IntegrationsView.swift in Sources */,
 				54A5C71CB7264DAFC6FF694D /* KelpField.swift in Sources */,
 				3EF77B464A70587DAF191FFD /* KiroCreature.swift in Sources */,
+				DD310EA2F4C0FDDB2AC0FA00 /* KiroTimelineFeed.swift in Sources */,
 				ABE80C830C69CB0A2D03A767 /* LightRaySystem.swift in Sources */,
 				5ADCEA267661D3C4934EC6BD /* LocalCodexAppObserver.swift in Sources */,
+				C60311E11652C03785B9F449 /* LocalKiroObserver.swift in Sources */,
 				CD0FEA280FA39493518D285A /* LocalPeerOwnership.swift in Sources */,
 				E35D8D73F3FFFCD795B1236A /* LocalSessionDiscovery.swift in Sources */,
 				3935F4C5BEE0F6FA479AB2A6 /* Logger.swift in Sources */,
@@ -1770,8 +1786,10 @@
 				8B7311262C05E2B32F563760 /* IntegrationsView.swift in Sources */,
 				0AC3F569F362D121D985EA52 /* KelpField.swift in Sources */,
 				E8484D2A78F8F3C35EAD8204 /* KiroCreature.swift in Sources */,
+				AC7A256DA7085C4BE9D0B7A1 /* KiroTimelineFeed.swift in Sources */,
 				7B25A56536275C7DF023DFEB /* LightRaySystem.swift in Sources */,
 				A0E4BE7512FF07BD0DFDB2E0 /* LocalCodexAppObserver.swift in Sources */,
+				63934274932C59864347F6AB /* LocalKiroObserver.swift in Sources */,
 				0E136B3EF9DD10F02BFC158D /* LocalPeerOwnership.swift in Sources */,
 				5B1640167CAEBC66B8D0BE35 /* LocalSessionDiscovery.swift in Sources */,
 				F0C03AF0FCFD56AC72DE9FD3 /* Logger.swift in Sources */,

@@ -12,6 +12,7 @@ struct SettingsScreen: View {
     @State private var manualUrl = ""
     @State private var showRemoveAntigravityConfirm = false
     @State private var showRemoveCodexUsageConfirm = false
+    @State private var showRemoveKiroConfirm = false
     @State private var openClawGatewayTokenInput: String = ""
     @State private var openClawGatewayTokenSaved: Bool = false
     @State private var openClawGatewayTokenError: String?
@@ -1752,6 +1753,8 @@ struct SettingsScreen: View {
             codexUsageDirectorySlot
         case "opencode":
             openCodeMonitoringSlot
+        case "kiro":
+            kiroDirectorySlot
         default:
             EmptyView()
         }
@@ -1841,6 +1844,55 @@ struct SettingsScreen: View {
                         Button("Cancel", role: .cancel) {}
                     } message: {
                         Text("This will revoke file access to the Antigravity database. You can re-enable it later.")
+                    }
+                }
+            }
+        }
+        #else
+        EmptyView()
+        #endif
+    }
+
+    @ViewBuilder
+    private var kiroDirectorySlot: some View {
+        #if os(macOS)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("See Kiro sessions and their activity, read from your local ~/.kiro folder. Kiro CLI reports nothing to AgentDeck on its own, so this folder is the only source.")
+                .font(.system(size: 10))
+                .foregroundStyle(TerrariumHUD.subtext.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+            if let path = preferences.kiroSelectedPath, preferences.kiroAccessEnabled {
+                Text(path)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+            HStack(spacing: 8) {
+                Button(preferences.kiroAccessEnabled ? "Re-pick folder" : "Choose .kiro folder") {
+                    _ = preferences.chooseKiroDirectory()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                if preferences.kiroAccessEnabled {
+                    Button("Remove access") {
+                        showRemoveKiroConfirm = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .confirmationDialog(
+                        "Remove Kiro folder access?",
+                        isPresented: $showRemoveKiroConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Remove", role: .destructive) {
+                            preferences.clearKiroAccess()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This will revoke file access to your ~/.kiro folder. Kiro sessions will stop appearing. You can re-enable it later.")
                     }
                 }
             }

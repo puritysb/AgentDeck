@@ -2,6 +2,77 @@
 
 ---
 
+## 2026-08-17 — Kiro 는 아무것도 보고하지 않는다 (그래서 양쪽 데몬이 직접 읽는다)
+
+### 측정: 훅은 로드되지만 발화하지 않는다
+
+"크리처가 왜 늦게 뜨나?" 에서 시작해 훅부터 확인했다. `~/.kiro/hooks/agentdeck-lifecycle.json`
+은 설치돼 있고 Kiro 자신의 로그도 `[KiroAgent] v2 hooks loaded 5 standalone hooks` 라고
+적는다. 그런데 데몬에는 `kiro_*` 이벤트가 **한 번도** 온 적이 없었다(로그 grep 0건).
+
+추측 대신 계측했다. 훅 5개에 각각 마커 파일 생성을 심고 진짜 턴을 돌렸다:
+
+```
+$ kiro-cli chat --no-interactive "reply with the single word: ok"
+> ok                                  ← 실제 응답, 0.06 크레딧
+$ ls /tmp/kiro-fired-*
+없음                                   ← SessionStart/UserPromptSubmit/PreToolUse/PostToolUse/Stop 전부 0
+```
+
+수신 경로는 멀쩡하다 — 손으로 POST 하니 `chat_start | agentType=kiro-cli` 행이 정상 생성됐다.
+**standalone hook 표면은 Kiro IDE 것이고 CLI chat 은 호출하지 않는다.** CLAUDE.md 의
+"v3 CLI 가 전역 훅을 공식 지원한다" 는 문장을 실측으로 교체했다.
+
+이것이 두 증상의 공통 원인이다: 크리처가 몇 초 늦는 것(밀어주는 게 없어 폴링한다)과
+타임라인이 비는 것(생산자가 없다).
+
+### Swift 단독 지원 — 3중 장벽
+
+App Store 앱만 쓰는 사용자에게 Kiro 는 **아예 안 보였다**. 장벽이 셋이었다:
+
+- **샌드박스가 `~/.kiro` 를 못 읽는다.** home-relative 엔타이틀먼트는 없고 앞으로도 없다.
+  → `~/.codex` 용으로 이미 확립된 패턴(NSOpenPanel → security-scoped bookmark →
+  `withKiroDirectoryAccess`)을 그대로 미러링. **승인이 없으면 아무것도 관측하지 않는다** —
+  부분 관측이나 추측이 아니라 0.
+- **Swift 에 Kiro 관측자가 없었다.** → `LocalKiroObserver`. 전사 파일이 곧 세션 목록이다
+  (mtime 30분 이내 = 라이브). 프로세스 열거로는 세션 id 를 얻을 수 없는데, id 가 모든
+  표면의 키다.
+- **타임라인 생산자가 없었다.** → `KiroTimelineFeed`(Node 쪽과 동일한 시드 규칙: 첫 목격은
+  무발화, 안 그러면 데몬 시작마다 이틀치 대화가 바운디드 로그를 밀어낸다).
+
+그리고 사용자가 권한을 줄 방법이 필요해서 Settings → Integrations 에 Kiro CLI 행을 넣었다.
+
+### 실행해서 잡은 버그 둘
+
+빌드가 통과했다고 끝이 아니었다. Node 데몬을 내려 **앱이 유일한 데몬**인 상태를 만들고
+화면으로 확인하다가 둘을 잡았다.
+
+1. **저장은 되는데 화면에 안 뜬다.** 타임라인 행을 store 에 넣고 `timeline_event` 방송을
+   빠뜨렸다. WS 히스토리에는 행이 있는데 라이브 스트립은 그대로였다. 같은 파일의 다른
+   생산자 두 곳은 전부 store+방송을 짝으로 하고 있었다. **저장은 표시가 아니다.**
+2. **방금 준 권한이 재시작하면 사라진다.** 이 앱은 종료 시 force-exit 한다(AppDelegate 의
+   3초 워치독 — 먹통 모듈이 종료를 막지 못하게). `UserDefaults` 가 flush 되기 전에 죽어서,
+   저장된 24개 키 중 kiro 키만 없었다. `synchronize()` 로 고쳤다. 사용자가 방금 대화형으로
+   승인한 권한은 그렇게 잃기에 가장 나쁜 값이다.
+
+### 검증
+
+화면 실측: 권한 전 kiro 0 → 승인 후 HUD 에 `Kiro CLI · IDLE` + 수조에 보라 유령 크리처.
+권한 지속: 재시작 후에도 키 2개 유지, 세션 재관측. Swift 테스트 5개, vitest 3209,
+macOS·iOS 빌드, 미러 핀 10개 전부 통과.
+
+**확인하지 못한 것**: 타임라인 라이브 방송은 코드만 고쳤고 화면으로는 못 봤다.
+`--no-interactive` 원샷 턴은 **전사 파일을 남기지 않아서**(응답과 크레딧 차감은 정상인데
+`~/.kiro` mtime 이 움직이지 않는다) 전사 기반 관측자가 볼 수 없고, 대화형 세션은
+이 세션에서 구동할 수 없었다.
+
+### 남는 두 한계는 구조적이다
+
+- **몇 초 늦게 뜬다.** 밀어주는 게 없으니 폴링이다(`SCAN_INTERVAL_MS`).
+- **항상 `idle` 로 보고한다.** 전사는 답이 끝나야 assistant 레코드가 생긴다. 진행 중인 턴을
+  볼 방법이 없고, `processing` 이라 쓰면 없는 상태를 지어내는 것이다.
+
+---
 ## 2026-08-17 — 병렬 서브에이전트는 왜 한 줄로 보였나: 중복제거·축출·정체성 축
 
 ### 계기

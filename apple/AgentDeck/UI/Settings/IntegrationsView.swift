@@ -143,6 +143,21 @@ enum IntegrationCatalog {
         connectInstructions: "Turn on monitoring to connect to a running OpenCode server (`opencode serve`)."
     )
 
+    static let kiro = IntegrationDescriptor(
+        id: "kiro",
+        displayName: "Kiro CLI",
+        kind: .accountLinked,
+        iconSystemName: "ghost",
+        iconAgentType: "kiro-cli",
+        iconTint: SessionBrand.color(for: "kiro-cli"),
+        oneLineHelp: "See Kiro sessions and their activity, read from your local ~/.kiro folder.",
+        // Kiro reports nothing to AgentDeck on its own — measured, not assumed:
+        // its standalone lifecycle hooks load but CLI chat never fires them, so
+        // this folder is the only source there is. Configuration-factual copy
+        // only, never an install step (App Review 4.2.3).
+        connectInstructions: "Pick your ~/.kiro folder once so the sandboxed app can read Kiro's own session files."
+    )
+
     static let anthropicAdmin = IntegrationDescriptor(
         id: "anthropic-admin",
         displayName: "Anthropic Admin API",
@@ -155,7 +170,7 @@ enum IntegrationCatalog {
     )
 
     static let all: [IntegrationDescriptor] = [
-        claudeCode, codex, openClaw, antigravity, openCode, anthropicAdmin,
+        claudeCode, codex, openClaw, antigravity, openCode, kiro, anthropicAdmin,
     ]
 }
 
@@ -225,6 +240,8 @@ enum IntegrationStatusEvaluator {
             return antigravityStatus(state: state, preferences: preferences)
         case "opencode":
             return openCodeStatus(preferences: preferences)
+        case "kiro":
+            return kiroStatus(preferences: preferences)
         case "anthropic-admin":
             return anthropicStatus(state: state, hasKey: anthropicKeySaved)
         default:
@@ -355,6 +372,18 @@ enum IntegrationStatusEvaluator {
         let credits = info.availableCredits.map { "\($0) cr" }
         let detail = [plan, credits].compactMap { $0 }.joined(separator: " · ")
         return .connected(detail: detail)
+    }
+
+    private static func kiroStatus(preferences: AppPreferences) -> IntegrationStatus {
+        guard preferences.kiroAccessEnabled else {
+            return .notConfigured(detail: "Pick your ~/.kiro folder to grant read access.")
+        }
+        // Granting the folder IS the configuration. Whether a session is
+        // visible right now is a separate fact and not this row's claim —
+        // reporting a count here would make an empty desk look like a fault.
+        return .connected(detail: preferences.kiroSelectedPath.map {
+            URL(fileURLWithPath: $0).lastPathComponent
+        })
     }
 
     private static func openCodeStatus(preferences: AppPreferences) -> IntegrationStatus {
