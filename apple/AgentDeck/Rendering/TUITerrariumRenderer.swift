@@ -356,6 +356,11 @@ private enum TerrariumGridBuilder {
             // crayfish — pincers
             return state == "processing" ? ["\u{03BB}", "\u{25C9}", "\u{03BB}"]
                                          : ["\u{03BB}", "o", "\u{03BB}"]
+        case "kiro-cli", "kiro-ide":
+            // ghost - domed head between parentheses; the filled disc marks
+            // WORKING, matching how the other creatures signal it here.
+            return state == "processing" ? ["(", "\u{25D5}", ")"]
+                                         : ["(", "\u{25CB}", ")"]
         default:
             return ["(", "o", ")"]
         }
@@ -369,6 +374,8 @@ private enum TerrariumGridBuilder {
         case "opencode":    return "oc"
         case "antigravity": return "ag"
         case "openclaw":    return "ow"
+        case "kiro-cli":    return "kc"
+        case "kiro-ide":    return "ki"
         default:            return "a\(index)"
         }
     }

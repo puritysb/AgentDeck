@@ -69,6 +69,25 @@ enum CreatureLayout {
         )
     }
 
+    /// Kiro ghosts — top-left band, INSIDE the visible tank. Above the
+    /// octopuses and left of the Codex clouds (0.30+). The x floor is 0.21,
+    /// not the tank edge: the session-list HUD covers roughly the left 0.19,
+    /// and a band starting at 0.08 put the ghosts behind it. The right side is
+    /// the upstream HUD plus the Antigravity strip and crayfish floor.
+    static func layoutKiroCreatures(count: Int) -> [CreatureSlot] {
+        layoutBand(
+            count: count,
+            xMin: 0.21,
+            xMax: 0.32,
+            frontY: 0.10,
+            backY: 0.20,
+            singleRowLimit: 3,
+            baseScale: 0.96,
+            minScale: 0.56,
+            creatureWidth: 0.086
+        )
+    }
+
     /// Hard floor for the crowd-driven shrink. Below the per-band `minScale`
     /// so tightly packed bands can still shrink enough to honor the overlap cap
     /// before we give up and accept brief overlap.

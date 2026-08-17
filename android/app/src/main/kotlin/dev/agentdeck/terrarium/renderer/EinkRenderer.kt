@@ -358,7 +358,7 @@ private fun renderEinkFrame(
 
     // OpenCode creatures (nested-square logo agents)
     if (state.openCodeCreatures.isNotEmpty()) {
-        val openCodeSlots = dev.agentdeck.terrarium.layoutOpenCodeCreatures(state.openCodeCreatures.size)
+        val openCodeSlots = dev.agentdeck.terrarium.vectorMarkSlots(state.openCodeCreatures)
         for (i in state.openCodeCreatures.indices) {
             val slot = openCodeSlots.getOrElse(i) { openCodeSlots.last() }
             drawEinkOpenCode(canvas, paint, width, height,

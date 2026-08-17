@@ -94,6 +94,17 @@ struct AntigravityCreatureState: Identifiable {
     var subagentActivity: SubagentVisualActivity = .none
 }
 
+struct KiroCreatureState: Identifiable {
+    let id: String
+    let projectName: String?
+    let modelName: String?
+    let state: KiroVisualState
+    let homeX: Float
+    let homeY: Float
+    let scale: Float
+    var subagentActivity: SubagentVisualActivity = .none
+}
+
 // MARK: - Terrarium State (aggregate)
 
 struct TerrariumState {
@@ -101,6 +112,7 @@ struct TerrariumState {
     var cloudCreatures: [CloudCreatureState] = []
     var opencodeCreatures: [OpenCodeCreatureState] = []
     var antigravityCreatures: [AntigravityCreatureState] = []
+    var kiroCreatures: [KiroCreatureState] = []
     var crayfishState: CrayfishVisualState = .dormant
     var crayfishVisible: Bool = false
     var tetraState: TetraVisualState = .circling
@@ -134,12 +146,19 @@ extension DashboardState {
             && agentType != "codex-app"
             && agentType != "opencode"
             && agentType != "antigravity"
+            // Kiro ghosts have their own band. Note this bucket is defined by
+            // EXCLUSION, so an agent nobody lists here silently becomes a
+            // Claude octopus — which is exactly what Kiro sessions did until
+            // this line existed.
+            && agentType != "kiro-cli"
+            && agentType != "kiro-ide"
 
         // Octopus siblings (exclude daemon/openclaw/codex-cli/opencode/antigravity), sorted by ID for stable positioning.
         // Also exclude the currently-focused session's id to prevent double-rendering when focus relay
         // promotes a sibling to primary (agentType → claude-code, sessionId → sibling.id).
         let siblings = siblingSessions
             .filter { $0.agentType != "daemon" && $0.agentType != "openclaw" && $0.agentType != "codex-cli" && $0.agentType != "codex-app" && $0.agentType != "opencode" && $0.agentType != "antigravity" }
+            .filter { $0.agentType != "kiro-cli" && $0.agentType != "kiro-ide" }
             .filter { !(primaryIsOctopus && $0.id == sessionId) }
             .sorted { $0.id < $1.id }
 
@@ -415,6 +434,45 @@ extension DashboardState {
         }
         result.antigravityCreatures = antigravityCreatures
 
+        // Kiro ghosts
+        let isKiro: (String?) -> Bool = { $0 == "kiro-cli" || $0 == "kiro-ide" }
+        let primaryIsKiro = state != .disconnected && isKiro(agentType)
+        let kiroSiblings = siblingSessions
+            .filter { isKiro($0.agentType) }
+            .filter { !(primaryIsKiro && $0.id == sessionId) }
+            .sorted { $0.id < $1.id }
+        let kiroCount = (primaryIsKiro ? 1 : 0) + kiroSiblings.count
+        let kiroSlots = CreatureLayout.layoutKiroCreatures(count: kiroCount)
+
+        var kiroCreatures: [KiroCreatureState] = []
+        var kiroSlotIdx = 0
+        if primaryIsKiro {
+            let s = kiroSlots.first ?? CreatureSlot(x: 0.18, y: 0.24, scale: 1.0)
+            kiroCreatures.append(KiroCreatureState(
+                id: sessionId ?? "kiro-primary",
+                projectName: projectName,
+                modelName: modelName,
+                state: mapToKiroState(state),
+                homeX: s.x, homeY: s.y, scale: s.scale,
+                subagentActivity: subagentActivityBySession[sessionId ?? "kiro-primary"] ?? .none
+            ))
+            kiroSlotIdx = 1
+        }
+        for (i, sibling) in kiroSiblings.enumerated() {
+            guard !kiroSlots.isEmpty else { break }
+            let idx = min(kiroSlotIdx + i, kiroSlots.count - 1)
+            let s = kiroSlots[idx]
+            kiroCreatures.append(KiroCreatureState(
+                id: sibling.id,
+                projectName: sibling.projectName,
+                modelName: sibling.modelName,
+                state: mapSiblingToKiroState(sibling.state),
+                homeX: s.x, homeY: s.y, scale: s.scale,
+                subagentActivity: subagentActivityBySession[sibling.id] ?? .none
+            ))
+        }
+        result.kiroCreatures = kiroCreatures
+
         // Environment state — in daemon mode, derive from most active sibling
         let isDaemonLike = agentType == "daemon" ||
             (agentType != nil && siblingSessions.contains(where: { $0.agentType == agentType }))
@@ -524,6 +582,24 @@ extension DashboardState {
         case .idle: .floating
         case .processing: .working
         case .awaitingPermission, .awaitingOption, .awaitingDiff: .asking
+        }
+    }
+
+    private func mapToKiroState(_ connState: AgentConnectionState) -> KiroVisualState {
+        switch connState {
+        case .disconnected: .sleeping
+        case .idle: .floating
+        case .processing: .working
+        case .awaitingPermission, .awaitingOption, .awaitingDiff: .asking
+        }
+    }
+
+    private func mapSiblingToKiroState(_ stateStr: String?) -> KiroVisualState {
+        switch stateStr {
+        case "processing": .working
+        case "awaiting_permission", "awaiting_option", "awaiting_diff": .asking
+        case "idle": .floating
+        default: .sleeping
         }
     }
 

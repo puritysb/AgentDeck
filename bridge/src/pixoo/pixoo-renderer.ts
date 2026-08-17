@@ -30,6 +30,7 @@ import { hasOpenClawSession, foldCodexSessionsForDisplay } from '@agentdeck/shar
 import {
   type CreatureSlot,
   layoutOctopuses, layoutCloudCreatures, layoutOpenCodeCreatures, layoutAntigravityCreatures,
+  layoutKiroCreatures,
 } from '@agentdeck/shared';
 import { drawTextCentered } from './pixoo-font.js';
 import {
@@ -150,9 +151,7 @@ function slotsForType(creatureType: CreatureType, count: number): CreatureSlot[]
     case 'jellyfish': return layoutCloudCreatures(count);
     case 'opencode': return layoutOpenCodeCreatures(count);
     case 'antigravity': return layoutAntigravityCreatures(count);
-    // Until creature-layout.ts is generated across all three mirrors, reuse
-    // the upper-right floating band instead of introducing another hand mirror.
-    case 'kiro': return layoutAntigravityCreatures(count);
+    case 'kiro': return layoutKiroCreatures(count);
   }
 }
 

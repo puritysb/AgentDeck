@@ -102,6 +102,25 @@ fun layoutAntigravityCreatures(count: Int): List<CreatureSlot> {
     )
 }
 
+/** Kiro ghosts — top-left band, INSIDE the visible tank. Above the octopuses
+ * and left of the Codex clouds (0.30+). The x floor is 0.21, not the tank edge:
+ * the session-list HUD covers roughly the left 0.19, and a band starting at
+ * 0.08 put the ghosts behind it. The right side is the upstream HUD plus the
+ * Antigravity strip and crayfish floor. */
+fun layoutKiroCreatures(count: Int): List<CreatureSlot> {
+    return layoutBand(
+        count = count,
+        xMin = 0.21f,
+        xMax = 0.32f,
+        frontY = 0.10f,
+        backY = 0.20f,
+        singleRowLimit = 3,
+        baseScale = 0.96f,
+        minScale = 0.56f,
+        creatureWidth = 0.086f,
+    )
+}
+
 /**
  * Hard floor for the crowd-driven shrink. Below the per-band [minScale] so
  * tightly packed bands can still shrink enough to honor the overlap cap before
@@ -204,5 +223,38 @@ fun layoutWorkerCrayfish(
             mainY + sin(angle) * arcRadius,
             0.5f,
         )
+    }
+}
+
+/**
+ * Per-entry slots for the vector-mark creature list, which holds OpenCode rings
+ * and Kiro ghosts together (they share a class, not a band). Each entry is
+ * placed from ITS OWN band so the two platforms agree on where a session is
+ * drawn — the layout mirrors are only a single source of truth if both sides
+ * ask the same function for the same agent.
+ */
+/** Single spelling of "is this a Kiro session", shared by the layout split
+ * and the state builder. Two copies of this predicate is how one surface
+ * ends up placing a ghost in a band the other does not. */
+internal fun isKiroAgentType(type: String?): Boolean =
+    type == "kiro-cli" || type == "kiro-ide"
+
+internal fun vectorMarkSlots(creatures: List<AgentCreatureState>): List<CreatureSlot> {
+    val kiroCount = creatures.count { isKiroAgentType(it.agentType) }
+    val openCodeSlots = layoutOpenCodeCreatures(creatures.size - kiroCount)
+    val kiroSlots = layoutKiroCreatures(kiroCount)
+    val fallback = CreatureSlot(0.55f, 0.40f, 1.0f)
+    var openCodeIndex = 0
+    var kiroIndex = 0
+    return creatures.map { creature ->
+        if (isKiroAgentType(creature.agentType)) {
+            val slot = kiroSlots.getOrElse(kiroIndex) { kiroSlots.lastOrNull() ?: fallback }
+            kiroIndex++
+            slot
+        } else {
+            val slot = openCodeSlots.getOrElse(openCodeIndex) { openCodeSlots.lastOrNull() ?: fallback }
+            openCodeIndex++
+            slot
+        }
     }
 }

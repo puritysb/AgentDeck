@@ -61,6 +61,13 @@ enum TerrariumColors {
     static let antigravityDim = Color(red: 0.235, green: 0.251, blue: 0.263)    // #3C4043 sleeping shadow
     static let antigravityNameBg = Color(red: 0.373, green: 0.388, blue: 0.408).opacity(0.6)
 
+    // Kiro — violet #7C3AED (design/brand/kiro.svg is a silhouette, so the
+    // palette is ours; the SHAPE is what must match upstream, not the hue).
+    static let kiroBody = Color(red: 0.486, green: 0.227, blue: 0.929)         // #7C3AED
+    static let kiroLight = Color(red: 0.655, green: 0.545, blue: 0.980)        // #A78BFA working sheen
+    static let kiroDim = Color(red: 0.263, green: 0.145, blue: 0.482)          // #43257B sleeping
+    static let kiroNameBg = Color(red: 0.486, green: 0.227, blue: 0.929).opacity(0.6)
+
     // Environment
     static let bubbleWhite = Color.white.opacity(0.25)      // 0x40FFFFFF
     static let bubbleHighlight = Color.white.opacity(0.5)    // 0x80FFFFFF

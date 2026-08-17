@@ -407,7 +407,10 @@ actor PixooModule: DeviceModule {
             let eventAgentType = event["agentType"] as? String
             // Only update primary state from creature agents — daemon/openclaw
             // events would otherwise overwrite the coding agent's PROCESSING state
-            let creatureAgents: Set<String> = ["claude-code", "codex-cli", "codex-app", "opencode", "antigravity"]
+            // Kiro included: MicroGlyphs already carries its official 24/9/8px
+            // masks and violet, so leaving it out of this gate was the only thing
+            // keeping the ghost off the dot-matrix devices.
+            let creatureAgents: Set<String> = ["claude-code", "codex-cli", "codex-app", "opencode", "antigravity", "kiro-cli", "kiro-ide"]
             if let at = eventAgentType, creatureAgents.contains(at) {
                 cachedState = event["state"] as? String ?? "disconnected"
                 cachedProject = event["projectName"] as? String

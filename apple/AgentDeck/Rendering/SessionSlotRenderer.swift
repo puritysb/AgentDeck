@@ -74,6 +74,8 @@ private struct AgentSlotPalette {
             return .init(primary: Color(hex: "#8BA4FF"), secondary: Color(hex: "#5981FF"))
         case "openclaw":
             return .init(primary: Color(hex: "#FF6B6B"), secondary: Color(hex: "#CC3333"))
+        case "kiro-cli", "kiro-ide":
+            return .init(primary: Color(hex: "#A78BFA"), secondary: Color(hex: "#7C3AED"))
         default: // opencode + unknown
             return .init(primary: Color(hex: "#F1ECEC"), secondary: Color(hex: "#AFAFAF"))
         }

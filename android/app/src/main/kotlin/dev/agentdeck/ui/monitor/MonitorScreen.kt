@@ -101,6 +101,7 @@ import dev.agentdeck.terrarium.layoutOctopuses
 import dev.agentdeck.terrarium.layoutOctopusesByProject
 import dev.agentdeck.terrarium.layoutCloudCreatures
 import dev.agentdeck.terrarium.layoutOpenCodeCreatures
+import dev.agentdeck.terrarium.vectorMarkSlots
 import dev.agentdeck.terrarium.layoutAntigravityCreatures
 import dev.agentdeck.terrarium.layoutWorkerCrayfish
 import dev.agentdeck.terrarium.renderer.ColorTerrariumCanvas
@@ -632,7 +633,7 @@ private fun ColorTerrariumBackground(
     }
 
     // OpenCode creatures (nested-square logo agents)
-    val openCodeSlots = layoutOpenCodeCreatures(state.openCodeCreatures.size)
+    val openCodeSlots = vectorMarkSlots(state.openCodeCreatures)
     val openCodeCreatures = remember { mutableStateListOf<OpenCodeCreature>() }
 
     LaunchedEffect(state.openCodeCreatures) {

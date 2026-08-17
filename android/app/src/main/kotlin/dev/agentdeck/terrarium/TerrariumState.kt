@@ -196,7 +196,7 @@ fun DashboardState.toTerrariumState(
     val agents = mutableListOf<AgentCreatureState>()
 
     fun isCodexAgent(type: String?): Boolean = type == "codex-cli" || type == "codex-app"
-    fun isKiroAgent(type: String?): Boolean = type == "kiro-cli" || type == "kiro-ide"
+    fun isKiroAgent(type: String?): Boolean = isKiroAgentType(type)
 
     // Primary agent — brand-mark creatures are routed to their dedicated render lists below.
     if (agentState != AgentState.DISCONNECTED && !isDaemonLike && agentType != "openclaw" && !isCodexAgent(agentType) && agentType != "opencode" && agentType != "antigravity" && !isKiroAgent(agentType)) {

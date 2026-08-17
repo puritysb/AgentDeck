@@ -10,6 +10,7 @@ final class TerrariumRenderer {
     private var clouds: [String: CloudCreature] = [:]
     private var opencodeCreatures: [String: OpenCodeCreature] = [:]
     private var antigravityCreatures: [String: AntigravityCreature] = [:]
+    private var kiroCreatures: [String: KiroCreature] = [:]
     private let crayfish = CrayfishCreature()
     private let tetra = DataParticleSystem()
     private let bubbles = BubbleSystem()
@@ -79,6 +80,7 @@ final class TerrariumRenderer {
         syncClouds(state: state)
         syncOpenCode(state: state)
         syncAntigravity(state: state)
+        syncKiro(state: state)
 
         // Focus halo state
         focusedSessionId = state.focusedSessionId
@@ -91,6 +93,7 @@ final class TerrariumRenderer {
                 clouds[id] != nil ||
                 opencodeCreatures[id] != nil ||
                 antigravityCreatures[id] != nil ||
+                kiroCreatures[id] != nil ||
                 (isCrayfishFocusId(id) && crayfish.visible)
         }()
         let presenceTarget: Float = hasVisibleFocus ? 1.0 : 0.0
@@ -116,6 +119,9 @@ final class TerrariumRenderer {
         }
         for ag in antigravityCreatures.values {
             sand.creaturePositions.append(ag.currentPosition())
+        }
+        for k in kiroCreatures.values {
+            sand.creaturePositions.append(k.currentPosition())
         }
         if crayfish.visible {
             sand.creaturePositions.append(crayfish.currentPosition())
@@ -159,6 +165,10 @@ final class TerrariumRenderer {
                 let pos = ag.currentPosition()
                 bubbles.emitCreatureBubbles(x: pos.x, y: pos.y - 0.02, count: 1)
             }
+            for k in kiroCreatures.values where k.visualState != .sleeping {
+                let pos = k.currentPosition()
+                bubbles.emitCreatureBubbles(x: pos.x, y: pos.y - 0.02, count: 1)
+            }
         }
 
         // Tetra coupling — working octopi + pulsing jellyfish attract fish
@@ -172,6 +182,9 @@ final class TerrariumRenderer {
             .filter { $0.state == .pulsing }
             .map { ($0.homeX, $0.homeY) }
         workingPositions += state.antigravityCreatures
+            .filter { $0.state == .working }
+            .map { ($0.homeX, $0.homeY) }
+        workingPositions += state.kiroCreatures
             .filter { $0.state == .working }
             .map { ($0.homeX, $0.homeY) }
         tetra.octopusPositions = workingPositions
@@ -191,6 +204,9 @@ final class TerrariumRenderer {
         }
         for ag in antigravityCreatures.values {
             ag.update(dt: dt, state: state)
+        }
+        for k in kiroCreatures.values {
+            k.update(dt: dt, state: state)
         }
         crayfish.update(dt: dt, state: state)
 
@@ -261,6 +277,11 @@ final class TerrariumRenderer {
             ag.draw(context: &context, size: size)
         }
 
+        // Layer 9.45: Kiro ghosts
+        for k in kiroCreatures.values {
+            k.draw(context: &context, size: size)
+        }
+
         // Layer 9.5: Front-layer fish
         tetra.drawFrontLayer(context: &context, size: size)
 
@@ -300,6 +321,8 @@ final class TerrariumRenderer {
             pos = (oc.currentX, oc.currentY, oc.scale)
         } else if let ag = antigravityCreatures[id] {
             pos = (ag.currentX, ag.currentY, ag.scale)
+        } else if let k = kiroCreatures[id] {
+            pos = (k.currentX, k.currentY, k.scale)
         } else if isCrayfishFocusId(id), crayfish.visible {
             let cp = crayfish.currentPosition()
             pos = (cp.x, cp.y, 1.1)
@@ -391,6 +414,17 @@ final class TerrariumRenderer {
         }
         for creature in state.antigravityCreatures {
             guard let live = antigravityCreatures[creature.id] else { continue }
+            drawSubagentOrbit(
+                context: &context,
+                size: size,
+                x: live.currentX,
+                y: live.currentY,
+                scale: live.scale,
+                activity: creature.subagentActivity
+            )
+        }
+        for creature in state.kiroCreatures {
+            guard let live = kiroCreatures[creature.id] else { continue }
             drawSubagentOrbit(
                 context: &context,
                 size: size,
@@ -593,6 +627,37 @@ final class TerrariumRenderer {
                 oc.homeY = creature.homeY
                 oc.scale = creature.scale
                 oc.displayName = creature.projectName
+            }
+        }
+    }
+
+    private func syncKiro(state: TerrariumState) {
+        let currentIds = Set(state.kiroCreatures.map(\.id))
+        let existingIds = Set(kiroCreatures.keys)
+
+        for id in existingIds.subtracting(currentIds) {
+            kiroCreatures.removeValue(forKey: id)
+        }
+
+        for creature in state.kiroCreatures {
+            if kiroCreatures[creature.id] == nil {
+                let k = KiroCreature(
+                    sessionId: creature.id,
+                    homeX: creature.homeX,
+                    homeY: creature.homeY,
+                    scale: creature.scale
+                )
+                k.displayName = creature.projectName
+                k.onAskingExit = { [weak self] in
+                    self?.bubbles.emitPopBurst(x: creature.homeX, y: creature.homeY)
+                }
+                kiroCreatures[creature.id] = k
+            } else {
+                let k = kiroCreatures[creature.id]!
+                k.homeX = creature.homeX
+                k.homeY = creature.homeY
+                k.scale = creature.scale
+                k.displayName = creature.projectName
             }
         }
     }

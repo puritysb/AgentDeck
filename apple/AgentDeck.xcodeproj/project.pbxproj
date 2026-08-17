@@ -110,6 +110,7 @@
 		3C2668742A6920AB392BA3EA /* CrayfishCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD30721AD4CBA74DD049A1F /* CrayfishCreature.swift */; };
 		3C58A78598B065AC2EDD44B8 /* BridgeDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F34DE9E44936BAC6D96F19 /* BridgeDiscovery.swift */; };
 		3DF6BC8D6B4841A3EF370023 /* ObservedAskUserQuestionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767EE1D15C8564C2A5AC5713 /* ObservedAskUserQuestionTests.swift */; };
+		3EF77B464A70587DAF191FFD /* KiroCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF126528728AEF6E07C3C7ED /* KiroCreature.swift */; };
 		3F707E15A1A8E2707F36796D /* TerrariumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BCA057209786EF62993762 /* TerrariumView.swift */; };
 		4063C8A5D6C17B415AA11D2A /* AgentStatusIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61F4A4AE7D86132501CA1096 /* AgentStatusIcon.swift */; };
 		42A735D885E2F8A95F75673D /* GatewayProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCC68BE56702DFD637FFE02 /* GatewayProbe.swift */; };
@@ -403,6 +404,7 @@
 		E55963FC1E5C23442A500CE4 /* CodexOtelParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BE1D983995443760EDE3A4A /* CodexOtelParserTests.swift */; };
 		E59E0351EAA083B954985854 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3B886C1F467A011D242E296E /* PrivacyInfo.xcprivacy */; };
 		E5B1774D921E5B4C508D73A0 /* AgentStateHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F84E0AB4261F8308A45186 /* AgentStateHolder.swift */; };
+		E8484D2A78F8F3C35EAD8204 /* KiroCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF126528728AEF6E07C3C7ED /* KiroCreature.swift */; };
 		E940E2714946D07856C8FB37 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5200B4548DFE9F98AEE8D504 /* ContentView.swift */; };
 		E98F3FC6D7134E8E65163D93 /* OnboardingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 302810B07A9DC093700A7C31 /* OnboardingSheet.swift */; };
 		EA32929C78C6088451DDF476 /* TimelineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95824B0CF6571507DBAF27C5 /* TimelineStore.swift */; };
@@ -673,6 +675,7 @@
 		E9342D343A701D2BDC92C845 /* PixooModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooModule.swift; sourceTree = "<group>"; };
 		EB1470AE66304DC838676016 /* ApmeJudgeDetect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeDetect.swift; sourceTree = "<group>"; };
 		EC83A78EA479592D015AA2F6 /* UtilityProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityProxy.swift; sourceTree = "<group>"; };
+		EF126528728AEF6E07C3C7ED /* KiroCreature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiroCreature.swift; sourceTree = "<group>"; };
 		F028824993D611B356EA86D3 /* SessionFormatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionFormatters.swift; sourceTree = "<group>"; };
 		F15F55435772A15B8F0E92C1 /* AgentState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentState.swift; sourceTree = "<group>"; };
 		F2E6BEE1A730418C1EBDC048 /* StatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBadge.swift; sourceTree = "<group>"; };
@@ -735,6 +738,7 @@
 				3FD30721AD4CBA74DD049A1F /* CrayfishCreature.swift */,
 				05A9A073192C93C1277AE490 /* Creature.swift */,
 				57722317EDF1D567981112DE /* DataParticleSystem.swift */,
+				EF126528728AEF6E07C3C7ED /* KiroCreature.swift */,
 				776467350B975D0CA1A18E84 /* OctopusCreature.swift */,
 				4C2005980598D651492006A3 /* OpenCodeCreature.swift */,
 			);
@@ -1551,6 +1555,7 @@
 				B6674B508C256A29E68E3E12 /* InkDeckPreview.swift in Sources */,
 				CF27ABB66E4B268C31C44E6E /* IntegrationsView.swift in Sources */,
 				54A5C71CB7264DAFC6FF694D /* KelpField.swift in Sources */,
+				3EF77B464A70587DAF191FFD /* KiroCreature.swift in Sources */,
 				ABE80C830C69CB0A2D03A767 /* LightRaySystem.swift in Sources */,
 				5ADCEA267661D3C4934EC6BD /* LocalCodexAppObserver.swift in Sources */,
 				E35D8D73F3FFFCD795B1236A /* LocalSessionDiscovery.swift in Sources */,
@@ -1733,6 +1738,7 @@
 				4578F976C71274F3C7C2620C /* InkDeckPreview.swift in Sources */,
 				8B7311262C05E2B32F563760 /* IntegrationsView.swift in Sources */,
 				0AC3F569F362D121D985EA52 /* KelpField.swift in Sources */,
+				E8484D2A78F8F3C35EAD8204 /* KiroCreature.swift in Sources */,
 				7B25A56536275C7DF023DFEB /* LightRaySystem.swift in Sources */,
 				A0E4BE7512FF07BD0DFDB2E0 /* LocalCodexAppObserver.swift in Sources */,
 				5B1640167CAEBC66B8D0BE35 /* LocalSessionDiscovery.swift in Sources */,

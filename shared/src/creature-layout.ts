@@ -80,6 +80,29 @@ export function layoutAntigravityCreatures(count: number): CreatureSlot[] {
   });
 }
 
+/** Kiro ghosts — top-left band, INSIDE the visible tank.
+ *
+ * Above the octopuses and just left of the Codex clouds (0.30+). The x floor is
+ * 0.21 rather than the tank edge because the dashboard's session-list HUD is
+ * drawn over roughly the left 0.19 of the tank — a band starting at 0.08 put
+ * the ghosts behind that panel, where they were measured to be invisible. The
+ * right side is likewise unavailable: the upstream HUD covers it, and what it
+ * does not cover belongs to the Antigravity hover strip and the crayfish
+ * floor. */
+export function layoutKiroCreatures(count: number): CreatureSlot[] {
+  return layoutBand({
+    count,
+    xMin: 0.21,
+    xMax: 0.32,
+    frontY: 0.10,
+    backY: 0.20,
+    singleRowLimit: 3,
+    baseScale: 0.96,
+    minScale: 0.56,
+    creatureWidth: 0.086,
+  });
+}
+
 /**
  * Hard floor for the crowd-driven shrink. Below the per-band `minScale` so
  * tightly packed bands can still shrink enough to honor the overlap cap before
