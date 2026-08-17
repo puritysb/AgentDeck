@@ -79,7 +79,11 @@ describe('mDNS service hostname', () => {
     // Excluding it by name also keeps the invariant honest as keys are added.
     const username = os.userInfo().username;
     const { host: _advertisedOnPurpose, ...opaque } = txt;
-    expect(txt.user).not.toContain(username);
+    // Equality, not substring: `txt.user` is a string, so `toContain` would
+    // red-light the machine of anyone whose short hex-only name (ada, bea,
+    // fed) happened to fall inside the hash. The regex above already proves
+    // it IS a hash, so identity is the whole remaining claim.
+    expect(txt.user).not.toBe(username);
     expect(Object.values(opaque)).not.toContain(username);
 
     cleanup();
