@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import http from 'http';
-import { scanDaemonPortWindow, shouldConcedePortToOccupant, waitForDaemonExit, waitForPortBindable } from '../session-registry.js';
+import {
+  scanDaemonPortWindow, shouldConcedePortToOccupant, waitForDaemonExit, waitForPortBindable,
+  resolveDaemonPortWindow, isDefaultDaemonPortWindow, DEFAULT_DAEMON_PORT_WINDOW,
+} from '../session-registry.js';
 import { readFileSync, mkdirSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -305,5 +308,49 @@ describe('Session Registry Logic', () => {
     it('waitForPortBindable resolves true immediately for a free port', async () => {
       expect(await waitForPortBindable(WINDOW[0] + 7, 2000)).toBe(true);
     });
+  });
+});
+
+describe('daemon port window', () => {
+  // The window is a discovery contract every client scans, and the singleton
+  // guard sweeps it to refuse a second daemon. Both are correct for the one
+  // real daemon and are exactly what made a throwaway daemon unstartable:
+  // neither AGENTDECK_DATA_DIR nor an explicit -p moved the sweep off 9120.
+  // Overriding it is therefore allowed, but a MALFORMED override must fall
+  // back to the default rather than widen, narrow or disable the guard.
+  it('defaults when unset or blank', () => {
+    expect(resolveDaemonPortWindow(undefined)).toEqual(DEFAULT_DAEMON_PORT_WINDOW);
+    expect(resolveDaemonPortWindow('')).toEqual(DEFAULT_DAEMON_PORT_WINDOW);
+    expect(resolveDaemonPortWindow('   ')).toEqual(DEFAULT_DAEMON_PORT_WINDOW);
+  });
+
+  it('accepts a well-formed range', () => {
+    expect(resolveDaemonPortWindow('9200-9209')).toEqual([9200, 9209]);
+    expect(resolveDaemonPortWindow(' 9200 - 9209 ')).toEqual([9200, 9209]);
+    expect(resolveDaemonPortWindow('1024-65535')).toEqual([1024, 65535]);
+  });
+
+  it('falls back to the default for anything it cannot trust', () => {
+    for (const bad of [
+      'nonsense',
+      '9200',            // not a range
+      '9209-9200',       // inverted
+      '80-90',           // below the privileged-port floor
+      '9200-70000',      // above the port ceiling
+      '9200-',           // truncated
+      '-9209',
+      '9200-9209-9210',
+      '0x2400-0x2409',
+    ]) {
+      expect(resolveDaemonPortWindow(bad), bad).toEqual(DEFAULT_DAEMON_PORT_WINDOW);
+    }
+  });
+
+  it('reports whether the resolved window is the documented one', () => {
+    expect(isDefaultDaemonPortWindow(DEFAULT_DAEMON_PORT_WINDOW)).toBe(true);
+    expect(isDefaultDaemonPortWindow([9200, 9209])).toBe(false);
+    // A malformed override reads as default — the CLI relies on this to know
+    // it should say "not parseable" rather than announce a custom window.
+    expect(isDefaultDaemonPortWindow(resolveDaemonPortWindow('nonsense'))).toBe(true);
   });
 });

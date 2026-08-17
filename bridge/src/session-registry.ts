@@ -64,10 +64,60 @@ function getSessionsFile(): string { return join(getDataDir(), 'sessions.json');
 export function getOwnTimelineFile(): string { return join(getDataDir(), 'timeline.json'); }
 function getDaemonFile(): string { return join(getDataDir(), 'daemon.json'); }
 export const DAEMON_DEFAULT_PORT = 9120;
-const BASE_PORT = 9120;
-const MAX_PORT = 9139;
-/** Documented daemon port window (docs/daemon.md) — scanned for cross-implementation discovery. */
-export const DAEMON_PORT_WINDOW: readonly [number, number] = [BASE_PORT, MAX_PORT];
+/** Documented daemon port window (docs/daemon.md). */
+export const DEFAULT_DAEMON_PORT_WINDOW: readonly [number, number] = [9120, 9139];
+
+/**
+ * Resolve the port window this process works in.
+ *
+ * The window is a cross-implementation discovery contract, so the default is
+ * fixed and every real client scans it. It is overridable ONLY to make an
+ * isolated daemon testable: the singleton guard sweeps this range and concedes
+ * to any live daemon it finds, which is correct for the machine's one real
+ * daemon and is exactly what made a throwaway daemon impossible to start —
+ * neither `AGENTDECK_DATA_DIR` nor an explicit `-p` moved the sweep off 9120,
+ * so the only way to exercise a posture was to restart the production daemon
+ * into it.
+ *
+ * A daemon started outside the default window is invisible to clients that
+ * scan the documented range. That is the point for a test daemon and a
+ * footgun for anything else, so `daemon start` says so out loud when the
+ * window is not the default.
+ *
+ * Format: `AGENTDECK_PORT_WINDOW=9200-9209`. Anything unparseable, inverted,
+ * or outside 1024–65535 is ignored in favour of the default — a malformed
+ * window must not silently disable the guard that prevents two live daemons.
+ */
+export function resolveDaemonPortWindow(
+  raw: string | undefined = process.env.AGENTDECK_PORT_WINDOW,
+): readonly [number, number] {
+  const text = raw?.trim();
+  if (!text) return DEFAULT_DAEMON_PORT_WINDOW;
+  const match = /^(\d{4,5})\s*-\s*(\d{4,5})$/.exec(text);
+  if (!match) return DEFAULT_DAEMON_PORT_WINDOW;
+  const lo = Number(match[1]);
+  const hi = Number(match[2]);
+  if (!Number.isInteger(lo) || !Number.isInteger(hi)) return DEFAULT_DAEMON_PORT_WINDOW;
+  if (lo < 1024 || hi > 65535 || hi < lo) return DEFAULT_DAEMON_PORT_WINDOW;
+  return [lo, hi];
+}
+
+/** True when this process is working in the documented window. */
+export function isDefaultDaemonPortWindow(
+  window: readonly [number, number] = daemonPortWindow(),
+): boolean {
+  return window[0] === DEFAULT_DAEMON_PORT_WINDOW[0] && window[1] === DEFAULT_DAEMON_PORT_WINDOW[1];
+}
+
+/** Daemon port window for THIS process — the default unless overridden.
+ *
+ *  Resolved per call, not once at import: `daemon start --port-window` sets the
+ *  env inside its action, which runs long after this module is imported, so a
+ *  module-level constant would freeze the default and make the flag a no-op.
+ *  Reading an env var a few dozen times during startup costs nothing. */
+export function daemonPortWindow(): readonly [number, number] {
+  return resolveDaemonPortWindow();
+}
 
 export interface DaemonInfo {
   port: number;
@@ -240,14 +290,15 @@ export async function findAvailablePort(opts?: { reserveDaemon?: boolean }): Pro
   const sessions = listActive();
   const usedPorts = new Set(sessions.map((s) => s.port));
   // Session bridges start from BASE_PORT+1 to reserve 9120 for the daemon.
-  const startPort = opts?.reserveDaemon ? BASE_PORT + 1 : BASE_PORT;
-  for (let port = startPort; port <= MAX_PORT; port++) {
+  const [basePort, maxPort] = daemonPortWindow();
+  const startPort = opts?.reserveDaemon ? basePort + 1 : basePort;
+  for (let port = startPort; port <= maxPort; port++) {
     if (!usedPorts.has(port) && await isPortFree(port)) {
       return port;
     }
   }
   // All ports exhausted — throw instead of silently colliding
-  throw new Error(`All AgentDeck ports (${BASE_PORT}–${MAX_PORT}) are in use. Stop an existing session first.`);
+  throw new Error(`All AgentDeck ports (${basePort}–${maxPort}) are in use. Stop an existing session first.`);
 }
 
 /** Detect tmux session name if running inside tmux */
@@ -396,7 +447,7 @@ export function probeDaemonHealth(port: number): Promise<{ mode?: string; pid?: 
  */
 export async function scanDaemonPortWindow(
   skip: ReadonlySet<number> = new Set(),
-  window: readonly [number, number] = DAEMON_PORT_WINDOW,
+  window: readonly [number, number] = daemonPortWindow(),
 ): Promise<Array<{ port: number; health: { mode?: string; pid?: number; isSwift?: boolean } }>> {
   const ports: number[] = [];
   for (let p = window[0]; p <= window[1]; p++) {
@@ -554,7 +605,8 @@ export async function findDaemonPortAsync(): Promise<{ port: number; httpPort?: 
   // 2. Port scan fallback — covers the "App Store daemon is up but its
   //    daemon.json sits in a dir this process can't read" case. Narrow
   //    range (9120-9139) matches the documented daemon port window.
-  for (let p = DAEMON_PORT_WINDOW[0]; p <= DAEMON_PORT_WINDOW[1]; p++) {
+  const [scanLo, scanHi] = daemonPortWindow();
+  for (let p = scanLo; p <= scanHi; p++) {
     const health = await probeDaemonHealth(p);
     if (health?.mode === 'daemon') {
       return { port: p, sameSocketControl: health.sameSocketControl === true };

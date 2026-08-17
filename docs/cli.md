@@ -37,6 +37,8 @@ The CLI command is `agentdeck`.
 **Remote attach flags:** `--remote-daemon`, `--daemon-host <host[:port]>`, `--daemon-token <token>` (pairing token of the remote hub — from `~/.agentdeck/auth-token` there, or `agentdeck token show`; env `AGENTDECK_DAEMON_TOKEN`). Required for a current hub: since issue #145 daemons no longer hand their token to unauthenticated LAN peers.
 **Module flags:** `--local` (all device modules off — derived from the module registry, so it covers every module including ones added later), `--no-adb` (skip ADB reverse). Hardware modules (mDNS/serial/Pixoo/Timebox/iDotMatrix) are daemon-only — session bridges never activate them, so there are no per-session `--no-mdns`/`--no-serial`/`--no-pixoo` flags.
 
+**Port window (`--port-window <lo-hi>` / `AGENTDECK_PORT_WINDOW`).** The daemon's singleton guard sweeps the documented 9120–9139 window and concedes to any live daemon it finds, which is why an isolated daemon could not be started beside the real one — neither a separate `AGENTDECK_DATA_DIR` nor an explicit `-p` moved the sweep. Override the window to run a throwaway daemon for testing (`daemon start -p 9200 --port-window 9200-9209 --loopback --local`). A daemon outside the default window is invisible to clients that scan it, so `daemon start` prints the window whenever it is not the default, and an unparseable value falls back to the default rather than disabling the guard.
+
 The `-c` flag sets the full command AgentDeck spawns inside the session PTY, so any arguments you add are forwarded straight to the underlying agent. For example, to resume an earlier Claude Code session (the interactive picker appears when no id is given):
 
 ```bash
@@ -101,7 +103,7 @@ a session behaves.
 
 | Command | Description |
 |---------|-------------|
-| `agentdeck daemon start` | Start monitoring daemon (`--local`, `--loopback` — see below) |
+| `agentdeck daemon start` | Start monitoring daemon (`--local`, `--loopback`, `--port-window` — see below) |
 | `agentdeck daemon stop` | Stop daemon |
 | `agentdeck daemon restart` | Restart daemon (inherits the running daemon's posture) |
 | `agentdeck daemon status` | Show daemon status |

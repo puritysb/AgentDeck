@@ -19,7 +19,12 @@ import {
   endWindowsTask,
   deleteWindowsTask,
 } from './windows-service.js';
-import { deriveRemoteAttachOpts } from './session-registry.js';
+import {
+  deriveRemoteAttachOpts,
+  daemonPortWindow,
+  isDefaultDaemonPortWindow,
+  DEFAULT_DAEMON_PORT_WINDOW,
+} from './session-registry.js';
 // From modules/types.js, not modules/index.js: the latter pulls the whole
 // device stack (serial, Pixoo, BLE) into `agentdeck --help`.
 import { allModulesOff } from './modules/types.js';
@@ -743,6 +748,7 @@ daemon
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
   .option('--local', 'Disable all device modules (no mDNS, UDP beacon, LAN sweep, BLE, ADB or serial); still binds all interfaces for paired companion apps')
   .option('--loopback', 'Bind 127.0.0.1 only and emit nothing onto the LAN (no mDNS, UDP beacon, LAN sweep or BLE; USB serial and ADB reverse stay on). Same as AGENTDECK_LOOPBACK_ONLY=1')
+  .option('--port-window <range>', 'Work in a non-default daemon port window, e.g. 9200-9209. Only for running a throwaway daemon beside the real one: the singleton guard sweeps this range, and a daemon outside the documented 9120-9139 window is invisible to clients that scan it. Same as AGENTDECK_PORT_WINDOW')
   .action(async (opts) => {
     const { findExistingDaemon, probeDaemonHealth, readDaemonInfo, removeDaemonInfo, removeDaemonSession, requestDaemonStandDown, requestDaemonShutdown, waitForDaemonExit, waitForPortBindable } = await import('./session-registry.js');
     const { adoptPeerToken } = await import('./auth.js');
@@ -755,6 +761,24 @@ daemon
     // CLI daemon can take over with the full feature set, then wait for the port
     // to clear before binding. A real Node daemon on the port still means
     // "already running".
+    // Set before anything reads the window: the singleton sweep, the port
+    // allocator and the daemon itself all resolve it per call, and this action
+    // is the first place the flag is known.
+    if (opts.portWindow) process.env.AGENTDECK_PORT_WINDOW = String(opts.portWindow);
+    const portWindow = daemonPortWindow();
+    if (!isDefaultDaemonPortWindow(portWindow)) {
+      const [lo, hi] = portWindow;
+      const [dlo, dhi] = DEFAULT_DAEMON_PORT_WINDOW;
+      log(`Port window ${lo}-${hi} (default ${dlo}-${dhi}).`);
+      log(`Note: clients discover daemons by scanning ${dlo}-${dhi}, so a daemon outside that range `
+        + `is reachable only by explicit host/port. Use this for a throwaway daemon, not the real one.`);
+      if (opts.portWindow && String(opts.portWindow).trim() && lo === dlo && hi === dhi) {
+        log(`(--port-window ${opts.portWindow} was not parseable — falling back to the default window.)`);
+      }
+    } else if (opts.portWindow) {
+      log(`--port-window ${opts.portWindow} was not parseable — using the default window.`);
+    }
+
     const targetPort = opts.port ? parseInt(String(opts.port), 10) : BRIDGE_WS_PORT;
     const incumbent = await probeDaemonHealth(targetPort);
     if (incumbent?.mode === 'daemon') {
@@ -861,6 +885,9 @@ daemon
       // daemon, and a posture that only applies to the parent is no posture.
       if (opts.local) args.push('--local');
       if (opts.loopback) args.push('--loopback');
+      // Same reason as the posture flags: the forked process IS the daemon, and
+      // a window that only applies to the parent moves nothing.
+      if (opts.portWindow) args.push('--port-window', String(opts.portWindow));
 
       const [out, err] = await openDaemonLogs(logDir);
 

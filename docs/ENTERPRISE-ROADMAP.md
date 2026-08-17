@@ -437,7 +437,7 @@ nothing.
 | 8 | `daemon start/install --enterprise`, persisted into the autostart unit (§4.2) | M | 1.5d | **done** — argv-baked into all three writers; `daemon restart` inherits via `/health` |
 | 9 | Pixoo auto-discovery default off, cloud call opt-in separately (§5) | S | 1d | **done** — default off (Node + Swift); `pixoo scan --no-cloud` splits the two disclosures |
 | 10 | UDP broadcast default off; back off when unused (§2.3) | S | 0.5d | **superseded** — off under `--local`/`--loopback`; a global default-off still open (§2.3) |
-| 11 | Configurable port window + persistent CLI daemon port (§1.5) | S | 1d | open |
+| 11 | Configurable port window + persistent CLI daemon port (§1.5) | S | 1d | **port window done** (`--port-window` / `AGENTDECK_PORT_WINDOW`); persistent CLI port still open |
 | 12 | Swift-side enterprise posture toggle in Settings (§3) | M | 2d | **done** (08-17) — Settings → Local server toggles → `DaemonPosture` (loopback bind, Bonjour skipped, module registration gated deny-by-default); posture rides Swift `/health` for `qr`/`pair`/`restart` parity |
 
 **P2 — cleanup.**

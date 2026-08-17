@@ -71,6 +71,8 @@ Daemon owns port **9120** (default, fallback to 9121+ if occupied by non-daemon)
 
 4단계 — (1) `readDaemonInfo()` from `~/.agentdeck/daemon.json` (PID alive 검증) (2) `findExistingDaemon()` from `sessions.json` fallback (3) `probeDaemonHealth()` HTTP `/health` probe (default port에 응답하는 daemon 감지) (4) `scanDaemonPortWindow()` — 9120–9139 전 구간 `/health` 병렬 sweep. (4)가 필요한 이유: App Store Swift daemon 의 `daemon.json` 은 sandbox private container 에 있어 Node 가 읽지 못하고, 일시적 9120 경합으로 daemon 이 fallback port (9121+) 에 앉아 있을 수 있다 — 파일/기본포트 검사만으로는 둘 다 놓쳐 split-brain (이중 mDNS 광고, Gateway/timeline 중복 relay, adb reverse flapping) 이 된다. `daemon-server.ts` + `cli.ts` + `daemon.ts`(legacy) 에서 체크. 기존 Node daemon 있으면 `process.exit(0)` (LaunchAgent KeepAlive 재시작 루프 방지); Swift daemon 이면 `/shutdown` 요청 후 `waitForDaemonExit()` 로 health 가 사라질 때까지 poll (고정 sleep 아님 — Swift 가 serial/ADB/BLE 모듈을 정리하기 전에 인수하면 tty/adb reverse 를 잠시 두 프로세스가 잡는다). Port occupied by non-daemon → auto-fallback to next available port.
 
+이 sweep 범위는 `--port-window <lo-hi>` (또는 `AGENTDECK_PORT_WINDOW=9200-9209`) 로 바꿀 수 있다. 용도는 하나뿐이다 — **운영 데몬 옆에서 일회용 데몬을 띄워 검증하는 것**. sweep 이 창 전체를 훑고 살아있는 Node daemon 을 만나면 `process.exit(0)` 하므로, `AGENTDECK_DATA_DIR` 로 데이터 디렉토리를 분리하고 `-p` 로 포트를 지정해도 격리 데몬은 뜨지 못했다(가드 자체는 올바른 동작). **기본 창을 벗어난 데몬은 9120–9139 를 훑는 클라이언트에게 보이지 않는다** — 명시 host/port 로만 닿는다. 그래서 `daemon start` 는 창이 기본값이 아닐 때 그 사실을 반드시 출력한다. 파싱 불가한 값은 조용히 무시되지 않고 **기본 창으로 되돌아간다** — 잘못된 창이 split-brain 가드를 무력화해서는 안 되기 때문이다.
+
 ## Shutdown timeout
 
 `httpServer.close()` + 5s `setTimeout(() => process.exit(0))` — CLOSE_WAIT connections from disconnected clients can block `close()` callback indefinitely, causing zombie daemons (session bridge has 3s failsafe in `index.ts`).
