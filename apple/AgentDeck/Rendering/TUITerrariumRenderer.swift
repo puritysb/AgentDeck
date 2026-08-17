@@ -9,7 +9,7 @@
 // Sync pin — verified by `scripts/check-preview-mirror-sync.mjs` (CI). When the
 // origin changes, re-port (or confirm no visual impact given the deliberate
 // simplifications below) and bump the pin in the same commit.
-// SYNC-HASH bridge/src/tui/terrarium.ts 47a475ebde15a4333b3395deeb67f83cc00a2290
+// SYNC-HASH bridge/src/tui/terrarium.ts 3a3fd52739be3d60647ac6d15deb01e720fbeea4
 //
 // Scope / deliberate simplifications (vs the TS original):
 //   - No Braille sprites: creatures render as 3-char ASCII glyphs colored by
@@ -33,8 +33,10 @@ import SwiftUI
 /// Configuration for a single static/animated frame of the TUI terrarium preview.
 struct TerrariumPreviewConfig: Equatable {
     /// Agent identifiers, one per creature. Accepts:
-    ///   "claude-code", "codex-cli", "opencode", "openclaw"
-    /// Unknown strings render as the default octopus glyph.
+    ///   "claude-code", "codex-cli", "opencode", "openclaw", "antigravity",
+    ///   "kiro-cli", "kiro-ide"
+    /// An identifier this build does not know renders as a NEUTRAL marker,
+    /// never as Claude's octopus — see `glyph(for:state:)`.
     var agents: [String]
     /// Parallel to `agents`. Accepts canonical state strings:
     ///   "idle", "processing", "awaiting_permission", "awaiting_option",
