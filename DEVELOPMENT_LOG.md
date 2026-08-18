@@ -2,6 +2,70 @@
 
 ---
 
+## 2026-08-18 — Dock 아이콘을 숨기려면, 먼저 SwiftUI 가 연 창을 닫아야 했다 (#221 → #222)
+
+### 문제
+
+이슈 #221: 메뉴바 컨트롤 표면으로만 쓰는 사용자에게 Dock 아이콘이 상시 잡동사니다.
+
+의미론이 갈렸다. **항상 숨김**(영구 `.accessory`)은 Bartender 류 유틸의 답이지 이 앱의
+답이 아니다 — Dashboard 는 1280×840 짜리 진짜 앱 창이고, App Store 단독 사용자에겐 그게
+곧 앱이다. 영구 accessory 는 그 창을 ⌘Tab 과 Mission Control 에서 빼버려서, 다른 앱 뒤로
+가는 순간 메뉴바 아이콘 말고는 돌아올 길이 없다. 그 고장은 **"내가 켠 설정" 으로 안 읽히고
+"AgentDeck 이 ⌘Tab 에서 깨졌다" 로 읽힌다.** 그래서 **창이 없을 때만 숨김**을 골랐다.
+
+### 해결
+
+런타임 `NSApp.setActivationPolicy` + `menuBarOnlyMode` (기본 off). Info.plist `LSUIElement`
+는 재실행 없이 못 끄고 기본값이 켜져서 "default off" 요구와 충돌하므로 쓰지 않았다.
+
+구현이 실제로 부딪힌 macOS 사실 둘 — 둘 다 실측:
+
+1. **`NSApp.windows` 는 앱의 창 목록이 아니다.** `MenuBarExtra` `.window` 패널·상태
+   아이템·AppKit 내부 창이 섞여 있고 전부 scene identifier 가 없다. 그래서 "열린 창이
+   있나?" 를 **개수**로 쓰면 0 에 영영 도달하지 못하고 강등이 조용히 안 일어난다 — 토글은
+   켜지는데 아이콘은 그대로. **scene id 허용목록**으로 써야 한다. 최소화된 창은 열린
+   것으로 세야 하고(`isVisible` 이 false 라 강등하면 Dock 타일이 갈 곳을 잃는다), 반대로
+   *닫힌* SwiftUI `Window` scene 은 `isVisible == false` 로 목록에 남아 있어서 id 만으로는
+   닫힘/열림을 구분할 수 없다.
+2. **`.defaultLaunchBehavior(.suppressed)` 는 첫 `Window` scene 에 적용되지 않는다.**
+   저장된 창 상태를 지운 상태에서도 Dashboard 의 NSWindow 는 생성되고 `isVisible` 이었다.
+   그래서 `openDashboardOnLaunch` 는 **평생 동작한 적이 없었다** — 창은 암묵적으로 한 번,
+   `openWindow` 로 또 한 번 열리고 있었다. 설정을 지키는 유일한 방법은 macOS 가 연 창을
+   **닫는 것**이다.
+
+### 핵심 설계 결정
+
+- **실행당 한 번 도는 코드는 Dashboard 의 `.task` 에 있으면 안 된다.** 메뉴바 전용
+  사용자에겐 그게 영영 안 돈다. `configureDaemonConnection()` 을 `MenuBarExtra` 라벨로
+  옮겼다. 이건 데몬을 시작하지 않는다(`DaemonService.init` 이 한다) — AppDelegate 의 종료
+  핸들과 `onReady`/`onPromotedToOwner` 를 배선한다. 온보딩 폴링 루프도 상한을 걸었다:
+  Dashboard 를 안 여는 사용자에겐 500ms 마다 영원히 돌던 루프였다.
+- **승격은 창보다 먼저.** 창이 생긴 뒤에 `.regular` 로 올리면 AppKit 이 key 포커스를
+  떨궈서 새 창이 뒤로 간다. 모든 창 진입점이 `openWindow` **전에** 승격한다.
+- **숨은 인스턴스는 activate 로 못 깨운다.** `NSRunningApplication.activate()` 는 Dock
+  아이콘도 창도 없는 인스턴스에 무의미하다 — Finder 에서 재실행하면 "실행 실패" 로 보였다.
+  `SingletonGuard` 가 distributed notification 을 같이 쏜다.
+- 숨은 동안 글로벌 메뉴바도 사라지므로 Quit/Settings/Start at Login 은 메뉴바 패널에만
+  남는다. 셋 다 이미 `ControlTowerPanel` 에 있고, **그래서 메뉴바 아이콘 자체는 숨길 수
+  없게 뒀다** — 그게 탈출구다.
+
+### 검증
+
+실행 중인 빌드에서 라이브 창 목록과 `background only of process` 를 읽어 4가지 조합 전부
+측정: 토글 ON+창없음 → accessory(아이콘 사라짐), 나머지 3 조합 → regular. 마지막 행(창 없음
++ 토글 OFF → regular)이 기본값 보호 장치다. 숨은 상태 재실행 → 아이콘 복귀, 인스턴스 1개
+유지. 매 실행에서 허용목록이 identifier 없는 창들을 정확히 걸러냈다. 유닛 테스트 7개,
+macOS 614 테스트 통과, iOS 빌드.
+
+**계측 자체가 함정이었다**: 이 앱의 NSLog 는 `log show` 에도 stderr 에도(pty 를 물려도)
+안 나오고, `System Events` 의 창 열거는 권한이 없어 Finder/iTerm 도 0 을 반환하며,
+`defaults write <bundleid>` 는 cfprefsd 가 App Store 컨테이너로 리다이렉트해서 샌드박스가
+아닌 개발 빌드는 그 값을 못 읽는다. 쓸 수 있었던 계측은 컨테이너에 쓴 임시 probe 파일과
+`background only of process`(Dock/ControlCenter 로 양방향 검증) 뿐이었다.
+
+---
+
 ## 2026-08-18 — Pixoo64 하단 사용량 HUD 활성 시 크리처 Safe Area Floor 동적 클램핑
 
 ### 배경 및 원인
