@@ -37,15 +37,23 @@ import IOKit
 @MainActor
 final class DaemonService: ObservableObject {
     @Published private(set) var isRunning = false
-    @Published private(set) var isUsingExternalDaemon = false {
-        didSet {
-            // Promotion edge: was an external-daemon client, now not (becoming
-            // owner). Purge Node-relayed usage/subscription cache so features
-            // the self-daemon can't produce stop showing as a stale trace. A
-            // false→true flip (connecting to a returning external daemon)
-            // re-populates naturally, so only true→false clears.
-            if oldValue && !isUsingExternalDaemon { onPromotedToOwner?() }
-        }
+    @Published private(set) var isUsingExternalDaemon = false
+
+    /// Which daemon owns the port, as one of three states. The two published
+    /// booleans above are derived from it and kept only because the views bind
+    /// to them; this is the value that decides the promotion edge. See
+    /// `DaemonOwnership` for why the edge cannot live in a `didSet`.
+    private(set) var ownership: DaemonOwnership = .none
+
+    /// Record an ownership change and fire `onPromotedToOwner` if — and only
+    /// if — it is the external-client → owner edge. Every site that used to
+    /// assign `isUsingExternalDaemon` directly goes through here, so a
+    /// teardown can no longer masquerade as a promotion.
+    private func changeOwnership(_ change: DaemonOwnershipChange) {
+        let promoted = ownership.promotes(change)
+        ownership = ownership.applying(change)
+        isUsingExternalDaemon = ownership.isUsingExternalDaemon
+        if promoted { onPromotedToOwner?() }
     }
 
     /// Fired on the external→owner promotion edge (see `isUsingExternalDaemon`
@@ -253,7 +261,7 @@ final class DaemonService: ObservableObject {
                 self.server = daemon
                 self.port = daemon.port
                 self.isRunning = true
-                self.isUsingExternalDaemon = false
+                self.changeOwnership(.tookOwnership)
                 self.localFailureCount = 0
                 self.externalFailureCount = 0
                 self.errorMessage = nil
@@ -296,7 +304,7 @@ final class DaemonService: ObservableObject {
             } catch {
                 self.server = nil
                 self.isRunning = false
-                self.isUsingExternalDaemon = false
+                self.changeOwnership(.toreDown)
                 self.port = 0
                 self.readyUrl = nil
                 self.errorMessage = "Daemon failed: \(error.localizedDescription)"
@@ -339,7 +347,7 @@ final class DaemonService: ObservableObject {
         await server?.shutdown()
         server = nil
         isRunning = false
-        isUsingExternalDaemon = false
+        changeOwnership(.toreDown)
         port = 0
         readyUrl = nil
     }
@@ -354,7 +362,7 @@ final class DaemonService: ObservableObject {
         guard let resolvedPort else {
             self.server = nil
             self.isRunning = false
-            self.isUsingExternalDaemon = false
+            self.changeOwnership(.toreDown)
             self.port = 0
             self.readyUrl = nil
             self.errorMessage = "External daemon detected, but port lookup failed"
@@ -397,7 +405,7 @@ final class DaemonService: ObservableObject {
             DaemonLogger.shared.info("External daemon on port \(resolvedPort) is stale — starting local daemon instead")
             self.server = nil
             self.isRunning = false
-            self.isUsingExternalDaemon = false
+            self.changeOwnership(.toreDown)
             self.port = 0
             self.readyUrl = nil
             self.errorMessage = nil
@@ -432,7 +440,7 @@ final class DaemonService: ObservableObject {
             DaemonLogger.shared.info("Daemon on port \(resolvedPort) belongs to another user — not attaching to it; starting our own daemon instead")
             self.server = nil
             self.isRunning = false
-            self.isUsingExternalDaemon = false
+            self.changeOwnership(.toreDown)
             self.port = 0
             self.readyUrl = nil
             self.errorMessage = nil
@@ -459,7 +467,7 @@ final class DaemonService: ObservableObject {
         self.server = nil
         self.port = UInt16(resolvedPort)
         self.isRunning = false
-        self.isUsingExternalDaemon = true
+        self.changeOwnership(.becameClient)
         self.localFailureCount = 0
         self.externalFailureCount = 0
         self.errorMessage = nil
@@ -511,7 +519,7 @@ final class DaemonService: ObservableObject {
         await server?.shutdown()
         server = nil
         isRunning = false
-        isUsingExternalDaemon = false
+        changeOwnership(.toreDown)
         port = 0
         readyUrl = nil
         await retryOrFallback(error: error, attemptedPort: attemptedPort)
@@ -722,7 +730,9 @@ final class DaemonService: ObservableObject {
             DaemonLogger.shared.error("External daemon on port \(currentPort) disappeared — promoting this app to own the daemon")
             server = nil
             isRunning = false
-            isUsingExternalDaemon = false
+            // The external daemon is gone and we are about to bind: this is
+            // the one edge that IS a promotion.
+            changeOwnership(.tookOwnership)
             port = 0
             readyUrl = nil
             errorMessage = nil
