@@ -214,7 +214,7 @@
     </div>
     <div class="type-row">
       <div class="meta"><b>Body</b>17px · 400 · 1.6<br/>Plex Sans</div>
-      <div style="font-size: 17px; line-height: 1.6; max-width: 56ch;">AgentDeck routes Claude Code, Codex CLI, OpenClaw and OpenCode through a single deck. The agents do the work; you keep your attention.</div>
+      <div style="font-size: 17px; line-height: 1.6; max-width: 56ch;">AgentDeck routes Claude Code, Codex CLI, OpenClaw, OpenCode, Antigravity and Kiro through a single deck. The agents do the work; you keep your attention.</div>
     </div>
     <div class="type-row">
       <div class="meta"><b>Small / list</b>14.5px · 400 · 1.55<br/>Plex Sans</div>
@@ -416,7 +416,7 @@
   <section class="ds-section" id="logos" data-screen-label="10 Logos">
     <div class="ds-num">10 · BRAND MARKS</div>
     <h2>One product, four agents.</h2>
-    <p class="ds-sub">The product mark is the AgentDeck aquarium icon — a full-color illustration that ships with the App Store build and lives in the Dock. The agent marks are the real brand SVGs of each upstream tool (Claude Code, Codex, OpenClaw, OpenCode), used wherever a session is identified. We do <strong>not</strong> redraw or stylize them; they keep their own brand color from <code style="font-family: var(--font-mono); color: var(--coral-700);">data.js → AGENTS</code>.</p>
+    <p class="ds-sub">The product mark is the AgentDeck aquarium icon — a full-color illustration that ships with the App Store build and lives in the Dock. The agent marks are the real brand SVGs of each upstream tool (Claude Code, Codex, OpenClaw, OpenCode, Antigravity, Kiro), used wherever a session is identified. We do <strong>not</strong> redraw or stylize them; they keep their own brand color from <code style="font-family: var(--font-mono); color: var(--coral-700);">data.js → AGENTS</code>.</p>
 
     <div class="brand-hero">
       <div class="icon-card">
@@ -525,10 +525,12 @@
     const AD = window.AD;
     if (!C || !AD) return setTimeout(mountLogos, 50);
     const agents = [
-      { id: 'claude-code', creature: 'claudecode', label: 'Claude Code', source: 'Anthropic · Antigravity mark' },
-      { id: 'codex-cli',   creature: 'codex',      label: 'Codex',       source: 'OpenAI · Codex mark' },
-      { id: 'openclaw',    creature: 'openclaw',   label: 'OpenClaw',    source: 'OpenClaw · upstream mark' },
-      { id: 'opencode',    creature: 'opencode',   label: 'OpenCode',    source: 'OpenCode · upstream mark' },
+      { id: 'claude-code',  creature: 'claudecode',  label: 'Claude Code', source: 'Anthropic · Claude Code mark' },
+      { id: 'codex-cli',    creature: 'codex',       label: 'Codex',       source: 'OpenAI · Codex mark' },
+      { id: 'openclaw',     creature: 'openclaw',    label: 'OpenClaw',    source: 'OpenClaw · upstream mark' },
+      { id: 'opencode',     creature: 'opencode',    label: 'OpenCode',    source: 'OpenCode · upstream mark' },
+      { id: 'antigravity',  creature: 'antigravity', label: 'Antigravity', source: 'Google · Antigravity mark' },
+      { id: 'kiro-cli',     creature: 'kiro',        label: 'Kiro',        source: 'Lobe Icons (MIT) · Kiro mark' },
     ];
     function App() {
       return (

@@ -12,7 +12,7 @@ const checkOnly = process.argv.includes('--check');
 
 /* Exact pin, not a floor: a silently dropped token is as much a regression as a
  * silently added one. Bump this deliberately when design/tokens.css changes. */
-const EXPECTED_TOKEN_COUNT = 97;
+const EXPECTED_TOKEN_COUNT = 99;
 const requiredFields = [
   'id',
   'title',

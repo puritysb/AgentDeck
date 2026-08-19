@@ -13,6 +13,8 @@
     'codex-cli':   { label: 'Codex',    color: DT.Brand.codex,      creature: 'codex' },
     'openclaw':    { label: 'OpenClaw', color: DT.Brand.openclaw,   creature: 'openclaw' },
     'opencode':    { label: 'OpenCode', color: DT.Brand.opencode,   creature: 'opencode' },
+    'antigravity': { label: 'Antigravity', color: DT.Brand.antigravity, creature: 'antigravity' },
+    'kiro-cli':    { label: 'Kiro',     color: DT.Brand.kiro,       creature: 'kiro' },
   };
 
   const STATE_COLOR = {

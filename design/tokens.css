@@ -36,6 +36,8 @@
   --brand-codex:       #6166E0;
   --brand-openclaw:    #FF4D4D;
   --brand-opencode:    #3a3a3a;
+  --brand-antigravity: #5F6368;
+  --brand-kiro:        #7C3AED;
 
   /* === Semantic status (marketing / editorial surfaces) === */
   --status-idle:       var(--ink-300);

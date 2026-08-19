@@ -97,6 +97,8 @@ enum DesignTokens {
         static let codex      = tokenColor("#6166E0")
         static let openclaw   = tokenColor("#FF4D4D")
         static let opencode   = tokenColor("#3a3a3a")
+        static let antigravity = tokenColor("#5F6368")
+        static let kiro       = tokenColor("#7C3AED")
     }
 
     // MARK: - Type stack

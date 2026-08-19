@@ -379,8 +379,9 @@
       configuration in the app sandbox on the user's device.</p>
     <h3>Optional Integrations</h3>
     <p>Users may opt in to local integrations such as Claude Code hooks, Codex lifecycle hooks, OpenClaw Gateway pairing,
-      iPhone/iPad dashboard pairing, voice input, ESP32, Pixoo, or D200H hardware support. User-selected hook configuration files
-      are accessed only after explicit file picker consent.</p>
+      Kiro CLI observation, iPhone/iPad dashboard pairing, voice input, ESP32, Pixoo, or D200H hardware support. User-selected hook
+      configuration files are accessed only after explicit file picker consent, and Kiro observation reads the user's own
+      <code>~/.kiro</code> folder only after they grant access to it in Settings; without that grant AgentDeck observes nothing.</p>
     <h3>Optional Remote Model Services</h3>
     <p>Evaluation runs on the on-device Foundation Models backend by default, which contacts no network endpoint. The user may
       instead select an opt-in remote backend and supply the endpoint and their own credential. When they do, AgentDeck sends the

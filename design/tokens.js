@@ -51,6 +51,8 @@
     codex: '#6166E0',
     openclaw: '#FF4D4D',
     opencode: '#3a3a3a',
+    antigravity: '#5F6368',
+    kiro: '#7C3AED',
   };
 
   window.DT = { Tide, Ink, Kelp, Coral, Amber, Status, UI, Brand };
