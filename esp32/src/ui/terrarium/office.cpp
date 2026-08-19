@@ -56,23 +56,17 @@ static uint32_t agentColor(const char* t) {
     if (strstr(t, "claude"))   return 0xC07058;
     return 0x9aa0a8;
 }
-static const char* agentShort(const char* t) {
-    if (!t) return "Agent";
-    if (strstr(t, "openclaw")) return "OpenClaw";
-    if (strstr(t, "codex"))    return "Codex";
-    if (strstr(t, "opencode")) return "OpenCode";
-    if (strstr(t, "antigravity")) return "Antigravity";
-    if (strstr(t, "kiro"))    return "Kiro";
-    if (strstr(t, "claude"))   return "Claude";
-    return "Agent";
-}
-// state → bubble/accent color (STATE.*.color)
-static uint32_t stateColor(const char* s) {
-    if (strstr(s, "awaiting")) return 0xFFA93D;
-    if (strstr(s, "error") || strstr(s, "fail")) return 0xFF6B6B;
-    if (strcmp(s, "processing") == 0) return 0x3ED6E8;
-    return 0x7a8a9c;  // idle
-}
+// Two maps used to sit here and both were dead, for different reasons worth
+// keeping apart. `agentShort` never had a call site at all — this scene draws
+// project nameplates, not brand names, and if it ever grows a brand label it
+// comes from `../agent_label.h` (`agentShortLabel`), not from a copy. `stateColor`
+// did have two: desks were tinted by session state and the tint fed the redraw
+// signature, until de6b1519 ("Fix IPS10 HUD stack smash") removed both nine days
+// after the file was written; the bubble colours have been chosen inline in the
+// worker draw below ever since. Its idle value had already drifted from the live
+// one (0x7a8a9c here vs 0x9fb0ac inline), which is what a copy nothing reads does.
+// They were hand-maintained anyway, which is how the Kiro round paid to add a
+// `kiro` row to a table nothing read.
 static const uint8_t* agentGlyphA8(const char* t) {
     using namespace CreatureGlyphs;
     if (!t) return nullptr;
