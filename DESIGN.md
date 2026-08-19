@@ -259,9 +259,10 @@ Mono caption inside: 12px, `--ink-500`, 0.04em tracked, e.g. `// menubar popup �
 - `codex.svg` — OpenAI Codex · `#6166E0`
 - `openclaw.svg` — OpenClaw · `#FF4D4D`
 - `opencode.svg` — OpenCode · `#3a3a3a`
-- `antigravity.svg` — Antigravity · rainbow on color, monochrome on e-ink
+- `antigravity.svg` — Antigravity · `#5F6368`, rainbow on color, monochrome on e-ink
+- `kiro.svg` — Kiro CLI / Kiro IDE · `#7C3AED` · upstream [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT). One mark for both ids: they are the same agent seen through two front ends
 
-The five SVGs live **only** in `design/brand/`, which is the canonical source. Runtime path constants and firmware bitmaps are generated or contract-tested mirrors; they are not alternate design sources. Full-vector surfaces preserve the exact path geometry. Pixel-constrained displays may use reviewed raster or hand-tuned reductions that preserve the identifying silhouette and cutouts. Do not substitute provider-company marks (for example the generic OpenAI or Anthropic logo), redraw the vector on capable surfaces, or add a second logo dump elsewhere.
+The six SVGs live **only** in `design/brand/`, which is the canonical source. Runtime path constants and firmware bitmaps are generated or contract-tested mirrors; they are not alternate design sources. Full-vector surfaces preserve the exact path geometry. Pixel-constrained displays may use reviewed raster or hand-tuned reductions that preserve the identifying silhouette and cutouts. Do not substitute provider-company marks (for example the generic OpenAI or Anthropic logo), redraw the vector on capable surfaces, or add a second logo dump elsewhere.
 
 > The earlier abstract logo explorations in `explore/logos.jsx` (Stacked Deck, Hub & Spokes, etc.) are kept for reference only and are not used in production.
 
