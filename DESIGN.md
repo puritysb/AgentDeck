@@ -260,7 +260,9 @@ Mono caption inside: 12px, `--ink-500`, 0.04em tracked, e.g. `// menubar popup �
 - `openclaw.svg` — OpenClaw · `#FF4D4D`
 - `opencode.svg` — OpenCode · `#3a3a3a`
 - `antigravity.svg` — Antigravity · `#5F6368`, rainbow on color, monochrome on e-ink
-- `kiro.svg` — Kiro CLI / Kiro IDE · `#7C3AED` · upstream [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT). One mark for both ids: they are the same agent seen through two front ends
+- `kiro.svg` — Kiro CLI / Kiro IDE · `#7C3AED`. One mark for both ids: they are the same agent seen through two front ends
+
+All six come from one upstream package and stand or fall together — the provenance, the npm integrity hash, and the trademark holder per mark are recorded once in [design/RESOURCES.md § Third-party brand provenance](design/RESOURCES.md). Do not attribute one mark here and leave the rest silent: a lopsided record reads as though the named one is the mark with a licensing question.
 
 The six SVGs live **only** in `design/brand/`, which is the canonical source. Runtime path constants and firmware bitmaps are generated or contract-tested mirrors; they are not alternate design sources. Full-vector surfaces preserve the exact path geometry. Pixel-constrained displays may use reviewed raster or hand-tuned reductions that preserve the identifying silhouette and cutouts. Do not substitute provider-company marks (for example the generic OpenAI or Anthropic logo), redraw the vector on capable surfaces, or add a second logo dump elsewhere.
 

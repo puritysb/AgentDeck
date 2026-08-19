@@ -24,7 +24,7 @@ index. If a location or gate changes, update this file in the same commit.
 | Resource | Canonical location | Enforced by |
 |---|---|---|
 | Visual language spec | `DESIGN.md` | `design/lint.sh` (R1–R8, CI baseline in `docs/design-lint-baseline.md`) |
-| Color/type/spacing tokens | `design/tokens.css` | `design/verify-tokens-sync.py` (6 mirrors) |
+| Color/type/spacing tokens | `design/tokens.css` | `design/verify-tokens-sync.py` (7 mirrors) |
 | Component & pattern CSS | `design/components.css`, `design/patterns.css` | consumed verbatim by generators |
 | Icons | `design/icons.jsx` | `scripts/design-sync-gen.mjs` transform |
 | Brand marks (agents) | `design/brand/*.svg` | `pnpm generate-creature-glyphs` / `generate-micro-glyphs` regression tests |
