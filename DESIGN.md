@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-07-18
-revision: 2026-07-18
+reviewed: 2026-08-20
+revision: 2026-08-20
 source_of_truth: DESIGN.md
 validators: [python3 design/verify-tokens-sync.py, bash design/lint.sh]
 ---
@@ -262,7 +262,7 @@ Mono caption inside: 12px, `--ink-500`, 0.04em tracked, e.g. `// menubar popup �
 - `antigravity.svg` — Antigravity · `#5F6368`, rainbow on color, monochrome on e-ink
 - `kiro.svg` — Kiro CLI / Kiro IDE · `#7C3AED`. One mark for both ids: they are the same agent seen through two front ends
 
-All six come from one upstream package and stand or fall together — the provenance, the npm integrity hash, and the trademark holder per mark are recorded once in [design/RESOURCES.md § Third-party brand provenance](design/RESOURCES.md). Do not attribute one mark here and leave the rest silent: a lopsided record reads as though the named one is the mark with a licensing question.
+All six come from one upstream package and stand or fall together — the provenance, the npm integrity hash, and the trademark holder per mark are recorded once in [design/RESOURCES.md § Third-party brand provenance](design/RESOURCES.md#third-party-brand-provenance). Do not attribute one mark here and leave the rest silent: a lopsided record reads as though the named one is the mark with a licensing question.
 
 The six SVGs live **only** in `design/brand/`, which is the canonical source. Runtime path constants and firmware bitmaps are generated or contract-tested mirrors; they are not alternate design sources. Full-vector surfaces preserve the exact path geometry. Pixel-constrained displays may use reviewed raster or hand-tuned reductions that preserve the identifying silhouette and cutouts. Do not substitute provider-company marks (for example the generic OpenAI or Anthropic logo), redraw the vector on capable surfaces, or add a second logo dump elsewhere.
 
@@ -361,10 +361,11 @@ android/app/.../ui/theme/DesignTokens.kt       ← Compose binding
 
 `design/tokens.css` is the **single source of truth.** Every other token file
 (`tokens.js`, `design-tokens.ts`, `DesignTokens.swift`, `DesignTokens.kt`, plus
-the embedded copies in the APME dashboard HTML and the Stream Deck PI
-`design-tokens.css`) is a mirror — when CSS values change, all six mirrors must
-be updated in the same commit. Verify with `python3 design/verify-tokens-sync.py`,
-which gates exactly that mirror set.
+the embedded copies in the APME dashboard HTML, the Stream Deck PI
+`design-tokens.css`, and the Build Health generator `scripts/generate-html-report.py`)
+is a mirror — when CSS values change, all seven mirrors must be updated in the same
+commit. Verify with `python3 design/verify-tokens-sync.py`; its footer prints the
+count it actually checked, which is the number to trust over this sentence.
 
 When adding a new component:
 1. Define its tokens in `design/tokens.css` if you need new ones (rare).

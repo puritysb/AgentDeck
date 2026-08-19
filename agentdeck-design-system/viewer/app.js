@@ -50,7 +50,7 @@
         reference: 'Reference surfaces',
       },
       assetGroupNotes: {
-        brand: 'The product mark and the five agent marks, verbatim upstream. DESIGN.md R6 — never redraw them.',
+        brand: 'The product mark and the six agent marks, verbatim upstream. DESIGN.md R6 — never redraw them.',
         masks: 'Rendered from the brand SVGs by `pnpm generate-micro-glyphs`, parsed here straight out of the generated file. Device code may add color, shading, and motion around a mask, but must never replace it with hand-drawn agent geometry — regression tests pin each mark’s defining negative space.',
         creatures: 'Creatures are rendered live on the Live Preview surface, from the geometry SSOT. They are deliberately not redrawn here.',
         icons: 'The one canonical UI icon system. Never substitute a generic icon font.',
@@ -102,7 +102,7 @@
         reference: '레퍼런스 표면',
       },
       assetGroupNotes: {
-        brand: '제품 마크와 5개 에이전트 마크를 업스트림 그대로 씁니다. DESIGN.md R6 — 다시 그리지 않아요.',
+        brand: '제품 마크와 6개 에이전트 마크를 업스트림 그대로 씁니다. DESIGN.md R6 — 다시 그리지 않아요.',
         masks: '`pnpm generate-micro-glyphs`가 브랜드 SVG에서 만든 마스크를, 생성 파일에서 직접 파싱해 표시해요. 기기 코드는 마스크 주위에 색·음영·모션을 더할 수 있지만 손으로 그린 에이전트 도형으로 대체하면 안 됩니다 — 각 마크의 여백을 회귀 테스트가 고정하고 있어요.',
         creatures: '크리처는 지오메트리 SSOT를 통해 Live Preview에서 실제로 렌더됩니다. 여기서 다시 그리지 않아요.',
         icons: '정본 UI 아이콘 시스템 하나뿐이에요. 범용 아이콘 폰트로 대체 금지.',
@@ -154,7 +154,7 @@
         reference: 'リファレンス面',
       },
       assetGroupNotes: {
-        brand: '製品マークと 5 つの agent マークを upstream のまま使います。DESIGN.md R6 — 描き直しません。',
+        brand: '製品マークと 6 つの agent マークを upstream のまま使います。DESIGN.md R6 — 描き直しません。',
         masks: '`pnpm generate-micro-glyphs` が brand SVG から生成した mask を、生成ファイルから直接 parse して表示します。デバイス側は mask の周囲に色・陰影・motion を足せますが、手描きの agent 図形に置き換えてはいけません — 各マークの余白は regression test が固定しています。',
         creatures: 'クリーチャーは geometry SSOT を通じて Live Preview で実際に描画されます。ここでは描き直しません。',
         icons: '正本の UI アイコンシステムはこれ一つ。汎用アイコンフォントで代替しないこと。',
@@ -415,7 +415,7 @@
         label: strings().assets,
         category: 'Preview',
         locale: 'live',
-        search: 'assets logo icon brands masks glyphs creatures reference mockups typography fonts plex jetbrains photography hardware photos captures claude codex openclaw opencode antigravity preview live',
+        search: 'assets logo icon brands masks glyphs creatures reference mockups typography fonts plex jetbrains photography hardware photos captures claude codex openclaw opencode antigravity kiro preview live',
       },
     );
     return items.filter((item) => !query || item.search.includes(query));
