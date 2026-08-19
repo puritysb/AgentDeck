@@ -53,7 +53,6 @@ import {
 } from './session-registry.js';
 import { resolveProjectName } from './utils/project-name.js';
 import { DaemonWsClient } from './daemon-ws-client.js';
-import { fetchUsageFromApi, hasOAuthToken } from './usage-api.js';
 import { buildUsageEvent } from './usage-event.js';
 import { getLanIp } from '@agentdeck/shared';
 import { buildEnrichedSessionsList } from './session-aggregator.js';
@@ -1061,7 +1060,10 @@ export async function startSession(opts: SessionOptions): Promise<void> {
 
   // ===== Polling =====
   core.startUsageTick();
-  core.startApiUsagePolling(90_000);
+  // 60s, matching the daemon. A 90s poll against the 120s file-cache TTL can
+  // only ever fetch on its second tick, so this bridge's readings — which the
+  // daemon relays from via /usage — were pinned to a 180s floor.
+  core.startApiUsagePolling(60_000);
   core.startOllamaProbe();
   core.startMlxProbe();
   core.startAntigravityProbe();

@@ -142,6 +142,23 @@ export class HookServer extends EventEmitter {
         return;
       }
       const data = this.apiUsageGetter();
+      // Numbers and their age travel together, or not at all. `fetchedAt` is
+      // `BridgeCore.lastApiFetchTime`, which advances only on a LIVE reading —
+      // so a bridge whose cache came from a failed fetch's fallback has numbers
+      // with a 0 timestamp. This endpoint exists to be a relay SOURCE, and a
+      // bridge that never completed a live fetch is not one: say so with an
+      // explicit null rather than shipping unstamped values.
+      //
+      // Both relay consumers gate on a positive `fetchedAt` and neither handles
+      // the pair {numbers, 0}: Node's fetchUsageViaHttp computes a huge age and
+      // skips (harmless), but Swift's fetchUsageViaHTTP skips its whole
+      // `fetchedAt > 0` block — dropping the age gate AND the key — so
+      // parseRelayedUsage falls to `lastApiFetchTime = Date()` and stamps
+      // unknown-age data as just-fetched. Closing it at the producer fixes both.
+      if (!data.fetchedAt) {
+        res.json({ status: 'ok', usage: null, fetchedAt: 0 });
+        return;
+      }
       res.json({ status: 'ok', usage: data.usage, fetchedAt: data.fetchedAt });
     });
 

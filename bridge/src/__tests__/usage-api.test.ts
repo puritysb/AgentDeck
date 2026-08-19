@@ -1,7 +1,7 @@
 import { homedir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildCredSources, resolveOAuthCredentials, parseScopedLimits, type CredSources } from '../usage-api.js';
+import { buildCredSources, resolveOAuthCredentials, parseScopedLimits, fileCacheExpired, type CredSources } from '../usage-api.js';
 
 /** Build a CredSources with sane defaults; override per case. Spies let us assert which
  *  I/O path was taken (critically, that `runSecurityCli` never fires off-darwin). */
@@ -190,5 +190,39 @@ describe('parseScopedLimits', () => {
     expect(parseScopedLimits(undefined)).toEqual([]);
     expect(parseScopedLimits(null)).toEqual([]);
     expect(parseScopedLimits({})).toEqual([]);
+  });
+});
+
+describe('fileCacheExpired — TTL slack', () => {
+  // The shared file cache nominally lives 120s. `fetchedAt` is stamped AFTER the
+  // HTTP round trip, so a poller whose interval divides the TTL always arrives a
+  // little EARLY at the tick that should have expired it, reads a hit, and waits
+  // a whole extra interval. With the daemon's 60s poll that turned the intended
+  // 120s refresh into a hard 180s floor (measured 2026-08-19: network fetches at
+  // 08:25:43 / 08:28:43 / 08:31:43, exact to the second).
+  const NOW = 1_800_000_000_000;
+
+  it('expires a cache that is a fetch-latency hair under the nominal TTL', () => {
+    // The exact shape of the bug: the 120s tick lands at age 119.6s.
+    expect(fileCacheExpired(NOW - 119_600, NOW)).toBe(true);
+  });
+
+  it('expires at the nominal TTL and beyond', () => {
+    expect(fileCacheExpired(NOW - 120_000, NOW)).toBe(true);
+    expect(fileCacheExpired(NOW - 300_000, NOW)).toBe(true);
+  });
+
+  it('still holds a genuinely recent cache — the cross-session 429 dedupe survives', () => {
+    // One poll interval in (60s) must NOT re-fetch, or two bridges double the
+    // request rate the TTL exists to cap.
+    expect(fileCacheExpired(NOW - 60_000, NOW)).toBe(false);
+    expect(fileCacheExpired(NOW - 1_000, NOW)).toBe(false);
+    expect(fileCacheExpired(NOW, NOW)).toBe(false);
+  });
+
+  it('slack stays well inside the poll interval', () => {
+    // The effective TTL must remain above the 60s this started at, so the slack
+    // can never be widened into "fetch on every tick".
+    expect(fileCacheExpired(NOW - 100_000, NOW)).toBe(false);
   });
 });

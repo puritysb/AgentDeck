@@ -181,6 +181,59 @@ describe('BridgeCore Orchestration', () => {
       const snapshot = core.stateMachine.getSnapshot();
       expect(snapshot.billingType).toBe('subscription');
     });
+
+    // ─── Failed fetch must not launder as a fresh one ────────────────
+    //
+    // Every failure branch of fetchUsageFromApi (429 / 401 / !ok / API-error /
+    // network-throw) still returns the last good numbers off the shared cache
+    // file. Before UsageFetchResult those were indistinguishable from a live
+    // reading, so updateApiUsage() pushed lastApiFetchTime forward and cleared
+    // apiUsageStale — leaving the `usageStale` wire flag unreachable and the
+    // USAGE_STALE_TTL backstop permanently disarmed. On 2026-08-19 that shipped
+    // a 7-minute-old 0% to every surface, marked `usageStale: false`.
+    describe('stale fetch results', () => {
+      it('a not-fresh result keeps the numbers but marks them stale', () => {
+        core.applyUsageResult({ data: sampleApiUsage({ fiveHourPercent: 41 }), fresh: false });
+
+        expect(core.cachedApiUsage?.fiveHourPercent).toBe(41);
+        expect(core.apiUsageStale).toBe(true);
+      });
+
+      it('a not-fresh result does NOT advance lastApiFetchTime', () => {
+        // The freshness clock is what USAGE_STALE_TTL and fetchUsageIfStale both
+        // read; advancing it on a failure is what disarmed them.
+        core.applyUsageResult({ data: sampleApiUsage(), fresh: true });
+        const afterFresh = core.lastApiFetchTime;
+        expect(afterFresh).toBeGreaterThan(0);
+
+        core.applyUsageResult({ data: sampleApiUsage({ fiveHourPercent: 99 }), fresh: false });
+
+        expect(core.lastApiFetchTime).toBe(afterFresh);
+        expect(core.apiUsageStale).toBe(true);
+      });
+
+      it('a fresh result clears staleness again', () => {
+        core.applyUsageResult({ data: sampleApiUsage(), fresh: false });
+        expect(core.apiUsageStale).toBe(true);
+
+        core.applyUsageResult({ data: sampleApiUsage({ fiveHourPercent: 8 }), fresh: true });
+
+        expect(core.apiUsageStale).toBe(false);
+        expect(core.cachedApiUsage?.fiveHourPercent).toBe(8);
+      });
+
+      it('a null result (no numbers at all) marks an existing cache stale', () => {
+        core.applyUsageResult({ data: sampleApiUsage(), fresh: true });
+
+        expect(core.applyUsageResult(null)).toBe(false);
+        expect(core.apiUsageStale).toBe(true);
+      });
+
+      it('reports freshness back to the caller', () => {
+        expect(core.applyUsageResult({ data: sampleApiUsage(), fresh: true })).toBe(true);
+        expect(core.applyUsageResult({ data: sampleApiUsage(), fresh: false })).toBe(false);
+      });
+    });
   });
 
   // ─── Client connect: initial state ────────────────────────────────

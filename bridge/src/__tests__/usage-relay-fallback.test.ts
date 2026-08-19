@@ -99,11 +99,11 @@ describe('fetchUsageRelayed — direct-API fallback (regression: fa1d98c9)', () 
   // used the direct API before fa1d98c9. Pins that it still does.
   it('no siblings → uses the direct API', async () => {
     const direct = sampleUsage({ fiveHourPercent: 7 });
-    fetchUsageFromApiMock.mockResolvedValue(direct);
+    fetchUsageFromApiMock.mockResolvedValue({ data: direct, fresh: true });
 
     const result = await fetchUsageRelayed(SELF_PORT);
 
-    expect(result).toBe(direct);
+    expect(result?.data).toBe(direct);
     expect(fetchUsageFromApiMock).toHaveBeenCalledTimes(1);
   });
 
@@ -114,11 +114,11 @@ describe('fetchUsageRelayed — direct-API fallback (regression: fa1d98c9)', () 
     registryState.siblings = [{ port: deadPort, agentType: 'claude' }];
 
     const direct = sampleUsage({ fiveHourPercent: 63 });
-    fetchUsageFromApiMock.mockResolvedValue(direct);
+    fetchUsageFromApiMock.mockResolvedValue({ data: direct, fresh: true });
 
     const result = await fetchUsageRelayed(SELF_PORT);
 
-    expect(result).toBe(direct);
+    expect(result?.data).toBe(direct);
     expect(fetchUsageFromApiMock).toHaveBeenCalledTimes(1);
   });
 
@@ -129,11 +129,11 @@ describe('fetchUsageRelayed — direct-API fallback (regression: fa1d98c9)', () 
     registryState.siblings = [{ port: sibling.port, agentType: 'claude' }];
 
     const direct = sampleUsage({ fiveHourPercent: 88 });
-    fetchUsageFromApiMock.mockResolvedValue(direct);
+    fetchUsageFromApiMock.mockResolvedValue({ data: direct, fresh: true });
 
     try {
       const result = await fetchUsageRelayed(SELF_PORT);
-      expect(result).toBe(direct);
+      expect(result?.data).toBe(direct);
       expect(fetchUsageFromApiMock).toHaveBeenCalledTimes(1);
     } finally {
       await sibling.close();
@@ -145,11 +145,12 @@ describe('fetchUsageRelayed — direct-API fallback (regression: fa1d98c9)', () 
     const sibling = await startSibling(() => ({ usage: relayed, fetchedAt: Date.now() }));
     registryState.siblings = [{ port: sibling.port, agentType: 'claude' }];
 
-    fetchUsageFromApiMock.mockResolvedValue(sampleUsage({ fiveHourPercent: 1 }));
+    fetchUsageFromApiMock.mockResolvedValue({ data: sampleUsage({ fiveHourPercent: 1 }), fresh: true });
 
     try {
       const result = await fetchUsageRelayed(SELF_PORT);
-      expect(result?.fiveHourPercent).toBe(55);
+      expect(result?.data.fiveHourPercent).toBe(55);
+      expect(result?.fresh).toBe(true);
       expect(fetchUsageFromApiMock).not.toHaveBeenCalled();
     } finally {
       await sibling.close();
@@ -162,11 +163,11 @@ describe('fetchUsageRelayed — direct-API fallback (regression: fa1d98c9)', () 
     registryState.siblings = [{ port: sibling.port, agentType: 'claude' }];
 
     const direct = sampleUsage({ fiveHourPercent: 33 });
-    fetchUsageFromApiMock.mockResolvedValue(direct);
+    fetchUsageFromApiMock.mockResolvedValue({ data: direct, fresh: true });
 
     try {
       const result = await fetchUsageRelayed(SELF_PORT);
-      expect(result).toBe(direct);
+      expect(result?.data).toBe(direct);
       expect(fetchUsageFromApiMock).toHaveBeenCalledTimes(1);
     } finally {
       await sibling.close();

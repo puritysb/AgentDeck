@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { debug } from './logger.js';
+import { debug, logTagged } from './logger.js';
 import type { ScopedUsageLimit } from './types.js';
 
 const USAGE_API_URL = 'https://api.anthropic.com/api/oauth/usage';
@@ -12,6 +12,30 @@ const USAGE_CACHE_FILE = join(AGENTDECK_DIR, 'usage-cache.json');
 
 /** Shared file cache TTL — multiple bridge sessions share one cache file */
 const FILE_CACHE_TTL_MS = 120_000; // 120s — reduced from 60s to avoid 429 from multiple pollers
+
+/**
+ * Slack subtracted from the TTL when testing expiry.
+ *
+ * `fetchedAt` is stamped AFTER the HTTP round trip completes, so a poller whose
+ * interval divides the TTL always arrives a few hundred ms EARLY at the tick
+ * that should have expired the cache: it reads a hit and then waits a whole
+ * extra interval. With the daemon's 60s poll and a 120s TTL that turned the
+ * intended 120s refresh into a hard 180s floor — measured 2026-08-19, three
+ * consecutive network fetches at 08:25:43 / 08:28:43 / 08:31:43, exact to the
+ * second, never once landing on 120s.
+ *
+ * The slack must exceed fetch latency plus timer drift, and stay well under the
+ * poll interval so the cross-session dedupe the TTL exists for is preserved
+ * (effective TTL 105s — still comfortably above the 60s this started at).
+ */
+const FILE_CACHE_SLACK_MS = 15_000;
+
+/** True when the on-disk cache is old enough that a poller should go to the network.
+ *  Exported for the slack regression test — the bug it prevents is invisible in
+ *  any single call and only shows up as a cadence, so pin the predicate. */
+export function fileCacheExpired(fetchedAt: number, nowMs = Date.now()): boolean {
+  return (nowMs - fetchedAt) >= (FILE_CACHE_TTL_MS - FILE_CACHE_SLACK_MS);
+}
 
 /** Token expiry safety margin — skip fetch if token expires within this window */
 const TOKEN_EXPIRY_MARGIN_MS = 10 * 60 * 1000; // 10 minutes
@@ -31,6 +55,30 @@ export interface ApiUsageData {
   scopedLimits: ScopedUsageLimit[];
   /** Inferred from API response: subscription if rate-limit fields present, api if 401/no fields */
   inferredBillingType: 'subscription' | 'api' | null;
+}
+
+/**
+ * A usage reading plus whether it is a LIVE one.
+ *
+ * Freshness must not be folded into the data or into a null return. Every
+ * failure branch below can still produce numbers — the last good ones off the
+ * shared cache file — and a caller that cannot tell those apart from a live
+ * reading will stamp them as fresh: that is exactly what happened before this
+ * type existed. `fetchUsageFromApi` returned `fileCache?.data ?? null` on 429 /
+ * 401 / !ok / API-error / network-throw, so `BridgeCore.updateApiUsage()` ran on
+ * the truthy value, pushed `lastApiFetchTime` forward and cleared
+ * `apiUsageStale`. The `usageStale` wire flag was therefore unreachable for the
+ * commonest failure mode, `USAGE_STALE_TTL` never tripped, and a 7-minute freeze
+ * on 2026-08-19 shipped a stale 0% to every surface marked `usageStale: false`.
+ *
+ * `null` now means only "no numbers at all" (no cache file and no live fetch).
+ */
+export interface UsageFetchResult {
+  data: ApiUsageData;
+  /** True only when `data` came from the network, or from a cache entry a
+   *  network fetch wrote within the TTL. False when it is a fallback served
+   *  because the fetch could not be made or failed. */
+  fresh: boolean;
 }
 
 export type TokenStatus = 'valid' | 'expired' | 'missing' | 'unknown';
@@ -58,6 +106,38 @@ export function getTokenStatus(): TokenStatus {
 export function resetConsecutiveFailures(): void {
   consecutiveFailures = 0;
   lastFetchFailed = false;
+}
+
+/**
+ * Record a failed fetch and make it visible in the daemon's own log.
+ *
+ * `debug()` was the only breadcrumb here, and the daemon runs without DEBUG —
+ * so a run of failed fetches left NO record anywhere. The 2026-08-19 freeze had
+ * to be reconstructed from cache-file mtimes, and the reason for it is still
+ * unknown because nothing wrote it down. Log the first failure and every fifth
+ * after it: a persistent outage stays visible without flooding a file that a
+ * 60s poller writes to.
+ */
+function noteFailure(reason: string): void {
+  lastFetchFailed = true;
+  consecutiveFailures++;
+  if (consecutiveFailures === 1 || consecutiveFailures % 5 === 0) {
+    logTagged(
+      'usage',
+      `Claude usage fetch failed (${consecutiveFailures}x): ${reason} — serving cached values as stale, next attempt after ${Math.round(getBackoffMs() / 1000)}s backoff`,
+    );
+  }
+  debug('UsageAPI', `Fetch failed (${consecutiveFailures}x): ${reason}`);
+}
+
+/** Clear failure state after a live fetch, announcing recovery if one was needed. */
+function noteSuccess(): void {
+  if (consecutiveFailures > 0) {
+    logTagged('usage', `Claude usage fetch recovered after ${consecutiveFailures} failure(s)`);
+  }
+  lastFetchFailed = false;
+  consecutiveFailures = 0;
+  lastTokenStatus = 'valid';
 }
 
 /** Backoff interval based on consecutive failures: 0→0, 1→45s, 2→90s, 3→180s, 4+→300s */
@@ -281,15 +361,20 @@ export function parseScopedLimits(limits: unknown): ScopedUsageLimit[] {
 
 // ===== Main fetch =====
 
-export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
+export async function fetchUsageFromApi(): Promise<UsageFetchResult | null> {
+  // A cached reading served because the live path could not run or failed. Never
+  // `fresh` — see UsageFetchResult.
+  const stale = (fc: UsageCacheFile | null): UsageFetchResult | null =>
+    (fc ? { data: fc.data, fresh: false } : null);
+
   // 1. Check file cache first — shared across all bridge sessions
   const fileCache = readFileCache();
-  if (fileCache && (Date.now() - fileCache.fetchedAt) < FILE_CACHE_TTL_MS) {
+  if (fileCache && !fileCacheExpired(fileCache.fetchedAt)) {
     debug('UsageAPI', `File cache hit (age ${Math.round((Date.now() - fileCache.fetchedAt) / 1000)}s)`);
-    lastFetchFailed = false;
-    consecutiveFailures = 0;
-    lastTokenStatus = 'valid';
-    return fileCache.data;
+    // A within-TTL entry was written by a real network fetch (only the success
+    // path writes it), so this IS a fresh reading — just a shared one.
+    noteSuccess();
+    return { data: fileCache.data, fresh: true };
   }
 
   // 2. Read OAuth credentials
@@ -297,7 +382,7 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
   if (!creds) {
     debug('UsageAPI', 'No OAuth token available');
     lastTokenStatus = 'missing';
-    return fileCache?.data ?? null; // return stale cache if available
+    return stale(fileCache); // last known values, explicitly not fresh
   }
 
   // 3. Token expiry check
@@ -307,12 +392,12 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
       debug('UsageAPI', 'OAuth token expired — waiting for Claude Code to refresh');
       lastTokenStatus = 'expired';
       lastFetchFailed = true;
-      return fileCache?.data ?? null;
+      return stale(fileCache);
     }
     if (timeUntilExpiry < TOKEN_EXPIRY_MARGIN_MS) {
       debug('UsageAPI', `OAuth token expires in ${Math.round(timeUntilExpiry / 60000)}m — skipping fetch`);
       lastTokenStatus = 'expired';
-      return fileCache?.data ?? null;
+      return stale(fileCache);
     }
   }
 
@@ -320,7 +405,7 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
   const backoff = getBackoffMs();
   if (backoff > 0 && fileCache && (Date.now() - fileCache.fetchedAt) < backoff) {
     debug('UsageAPI', `Backoff active (${consecutiveFailures} failures, next in ${Math.round((backoff - (Date.now() - fileCache.fetchedAt)) / 1000)}s)`);
-    return fileCache.data; // return stale cache
+    return stale(fileCache); // holding off on purpose — the numbers are still old
   }
 
   // 5. Actual API fetch
@@ -338,8 +423,7 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
 
     // 429 — respect Retry-After header, backoff on next poll
     if (res.status === 429) {
-      consecutiveFailures++;
-      lastFetchFailed = true;
+      noteFailure('rate limited (429)');
       const retryAfter = res.headers.get('retry-after');
       if (retryAfter) {
         const retrySec = parseInt(retryAfter, 10);
@@ -363,23 +447,19 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
       } else {
         debug('UsageAPI', `Rate limited (429), consecutive failures: ${consecutiveFailures}, backoff: ${getBackoffMs() / 1000}s`);
       }
-      return fileCache?.data ?? null;
+      return stale(fileCache);
     }
 
     // 401/403 — token issue
     if (res.status === 401 || res.status === 403) {
-      debug('UsageAPI', `Auth error ${res.status} — token may be invalid or expired`);
       lastTokenStatus = 'expired';
-      lastFetchFailed = true;
-      consecutiveFailures++;
-      return fileCache?.data ?? null;
+      noteFailure(`auth error ${res.status} — token may be invalid or expired`);
+      return stale(fileCache);
     }
 
     if (!res.ok) {
-      debug('UsageAPI', `API returned ${res.status}: ${res.statusText}`);
-      lastFetchFailed = true;
-      consecutiveFailures++;
-      return fileCache?.data ?? null;
+      noteFailure(`API returned ${res.status} ${res.statusText}`);
+      return stale(fileCache);
     }
 
     const data = await res.json() as Record<string, any>;
@@ -397,10 +477,8 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
     } catch { /* ignore */ }
 
     if (data.error) {
-      debug('UsageAPI', `API error: ${data.error.type}`);
-      lastFetchFailed = true;
-      consecutiveFailures++;
-      return fileCache?.data ?? null;
+      noteFailure(`API error: ${data.error.type}`);
+      return stale(fileCache);
     }
 
     const extraUsage = data.extra_usage;
@@ -421,17 +499,13 @@ export async function fetchUsageFromApi(): Promise<ApiUsageData | null> {
     debug('UsageAPI', `5h: ${result.fiveHourPercent}%, 7d: ${result.sevenDayPercent}%, extra: ${result.extraUsageEnabled ? 'enabled' : 'disabled'}`);
 
     // Success — reset counters, write cache
-    lastFetchFailed = false;
-    consecutiveFailures = 0;
-    lastTokenStatus = 'valid';
+    noteSuccess();
     writeFileCache(result);
 
-    return result;
+    return { data: result, fresh: true };
   } catch (err) {
-    debug('UsageAPI', `Fetch failed: ${err}`);
-    lastFetchFailed = true;
-    consecutiveFailures++;
-    return fileCache?.data ?? null;
+    noteFailure(String(err).slice(0, 160));
+    return stale(fileCache);
   }
 }
 

@@ -141,7 +141,7 @@ import {
   PREFERRED_PORT_RECLAIM_MS,
   type DaemonPortSource,
 } from './daemon-port.js';
-import { fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData } from './usage-api.js';
+import { fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
 import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
 import {
@@ -836,15 +836,17 @@ async function fetchUsageViaWs(siblings: { port: number }[]): Promise<ApiUsageDa
 }
 
 /** @internal Exported for the relay-fallback regression test. */
-export async function fetchUsageRelayed(selfPort: number): Promise<ApiUsageData | null> {
+export async function fetchUsageRelayed(selfPort: number): Promise<UsageFetchResult | null> {
   const sessions = listActiveSessions();
   const siblings = sessions.filter(s => s.port !== selfPort && s.agentType !== 'daemon');
 
+  // A sibling's reading is a real successful one, not a failure fallback, so it
+  // is `fresh` — its age contract is the 5-minute gate inside fetchUsageViaHttp.
   if (siblings.length > 0) {
     const httpResult = await fetchUsageViaHttp(siblings);
-    if (httpResult) return httpResult.usage;
+    if (httpResult) return { data: httpResult.usage, fresh: true };
     const wsResult = await fetchUsageViaWs(siblings);
-    if (wsResult) return wsResult;
+    if (wsResult) return { data: wsResult, fresh: true };
     // Relay is only an optimization to avoid multiple API pollers. A PTY session
     // bridge only refreshes usage when it has *direct* inbound WS clients, but
     // dashboards/Stream Deck connect to the daemon (sole entry point) — so a
@@ -3232,13 +3234,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Reset backoff from pre-sleep failures and fetch fresh usage after network stabilizes
     resetConsecutiveFailures();
     setTimeout(() => {
-      fetchUsageRelayed(port).then((usage) => {
-        if (usage) core.updateApiUsage(usage);
-        else {
-          core.oauthConnected = hasOAuthToken();
-          if (core.cachedApiUsage) core.apiUsageStale = true;
-        }
-      });
+      fetchUsageRelayed(port).then((result) => core.applyUsageResult(result));
     }, 4000);
   });
 
@@ -4605,10 +4601,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       return;
     }
     if (cmd.type === 'query_usage') {
-      fetchUsageRelayed(port).then((usage) => {
-        if (usage) core.updateApiUsage(usage);
-        else if (core.cachedApiUsage) core.apiUsageStale = true;
-      });
+      fetchUsageRelayed(port).then((result) => core.applyUsageResult(result));
     }
   };
   // ── Device-sourced voice ──────────────────────────────────────────────
@@ -5405,13 +5398,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Fetch usage on connect if stale
     const cacheAge = Date.now() - core.lastApiFetchTime;
     if (!core.cachedApiUsage || (core.lastApiFetchTime > 0 && cacheAge > 5 * 60 * 1000)) {
-      fetchUsageRelayed(port).then((usage) => {
-        if (usage) core.updateApiUsage(usage);
-        else {
-          core.oauthConnected = hasOAuthToken();
-          if (core.cachedApiUsage) core.apiUsageStale = true;
-        }
-      });
+      fetchUsageRelayed(port).then((result) => core.applyUsageResult(result));
     }
   });
 
@@ -5628,13 +5615,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // Initial usage fetch (delayed 10s)
   core.addTimeout(setTimeout(() => {
-    fetchUsageRelayed(port).then((usage) => {
-      if (usage) core.updateApiUsage(usage);
-      else {
-        core.oauthConnected = hasOAuthToken();
-        if (core.cachedApiUsage) core.apiUsageStale = true;
-      }
-    });
+    fetchUsageRelayed(port).then((result) => core.applyUsageResult(result));
   }, 10_000));
 
   // Backstop sweep for held PreToolUse approval responses whose per-entry timer

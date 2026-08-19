@@ -17,7 +17,7 @@ import { fetchMlxModels } from './mlx-probe.js';
 import { buildDisplayStateEvent } from './display-dim.js';
 import { loadMlxSettings } from '@agentdeck/shared';
 import { probeGateway, checkGatewayHealth } from './gateway-probe.js';
-import { fetchUsageFromApi, hasOAuthToken, getTokenStatus, type ApiUsageData } from './usage-api.js';
+import { fetchUsageFromApi, hasOAuthToken, getTokenStatus, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
 import { buildEnrichedSessionsList } from './session-aggregator.js';
 import { activityFor } from './session-activity.js';
 import {
@@ -436,34 +436,59 @@ export class BridgeCore {
   /**
    * Update cached API usage and broadcast.
    * Handles billingType inference.
+   *
+   * `fresh` decides whether this counts as a LIVE reading. A false value still
+   * updates the numbers shown (they are the best available) but must NOT push
+   * `lastApiFetchTime` forward or clear `apiUsageStale` — doing so is what made
+   * a failed fetch indistinguishable from a successful one, disarming both the
+   * `usageStale` wire flag and the `USAGE_STALE_TTL` backstop that exists to
+   * catch exactly this. See `UsageFetchResult`.
    */
-  updateApiUsage(usage: ApiUsageData): void {
+  updateApiUsage(usage: ApiUsageData, fresh = true): void {
     this.cachedApiUsage = usage;
-    this.lastApiFetchTime = Date.now();
-    this.oauthConnected = true;
-    this.apiUsageStale = false;
     this.apiUsagePreAdjusted = false; // raw data from API, needs adjustment
+    if (fresh) {
+      this.lastApiFetchTime = Date.now();
+      this.oauthConnected = true;
+      this.apiUsageStale = false;
+    } else {
+      // Numbers survive; the claim that they are current does not.
+      this.oauthConnected = hasOAuthToken();
+      this.apiUsageStale = true;
+    }
     if (usage.inferredBillingType) {
       this.stateMachine.inferBillingType(usage.inferredBillingType);
     }
     this.broadcastUsage();
   }
 
-  /** Fetch usage from API and update cache. Returns true if successful. */
-  async fetchAndUpdateUsage(): Promise<boolean> {
-    const usage = await fetchUsageFromApi();
-    if (usage) {
-      this.updateApiUsage(usage);
-      // Token status check — if expired, mark stale even though we got cached data
+  /**
+   * Apply the outcome of a usage fetch — the single place that turns a
+   * `UsageFetchResult | null` into cache + staleness state.
+   *
+   * Five call sites in the daemon each hand-rolled this three-line branch; they
+   * agreed only by luck, and every one of them was reachable-in-theory dead code
+   * because the fetch never returned null. One function so a new caller cannot
+   * reintroduce the divergence.
+   */
+  applyUsageResult(result: UsageFetchResult | null): boolean {
+    if (result) {
+      this.updateApiUsage(result.data, result.fresh);
+      // Token status check — if expired, mark stale even though we got numbers
       const tokenStatus = getTokenStatus();
       if (tokenStatus === 'expired' || tokenStatus === 'missing') {
         this.apiUsageStale = true;
       }
-      return true;
+      return result.fresh;
     }
     this.oauthConnected = hasOAuthToken();
     if (this.cachedApiUsage) this.apiUsageStale = true;
     return false;
+  }
+
+  /** Fetch usage from API and update cache. Returns true on a LIVE reading. */
+  async fetchAndUpdateUsage(): Promise<boolean> {
+    return this.applyUsageResult(await fetchUsageFromApi());
   }
 
   /** Fetch usage if cache is stale or empty (best-effort, no throw) */
@@ -601,18 +626,11 @@ export class BridgeCore {
    * Start periodic API usage refresh.
    * @param fetchFn Custom fetch function (for daemon relay). Defaults to direct API.
    */
-  startApiUsagePolling(intervalMs: number, fetchFn?: () => Promise<ApiUsageData | null>): void {
+  startApiUsagePolling(intervalMs: number, fetchFn?: () => Promise<UsageFetchResult | null>): void {
     const fetch = fetchFn ?? (() => fetchUsageFromApi());
     this.addInterval(setInterval(() => {
       if (!this.hasClients()) return;
-      fetch().then((usage) => {
-        if (usage) {
-          this.updateApiUsage(usage);
-        } else {
-          this.oauthConnected = hasOAuthToken();
-          if (this.cachedApiUsage) this.apiUsageStale = true;
-        }
-      }).catch(() => {});
+      fetch().then((result) => this.applyUsageResult(result)).catch(() => {});
     }, intervalMs));
   }
 
