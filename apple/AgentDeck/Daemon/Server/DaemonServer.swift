@@ -7273,10 +7273,15 @@ final class DaemonServer {
                 cachedApiUsage = parseRelayedUsage(usage)
                 if let fetchedAt = cachedApiUsage?.fetchedAt {
                     lastApiFetchTime = Date(timeIntervalSince1970: fetchedAt)
+                    apiUsageStale = cachedApiUsage?.stale ?? false
                 } else {
-                    lastApiFetchTime = Date()
+                    // Unreachable now that `fetchUsageViaHTTP` rejects an
+                    // unstamped payload outright; kept as the floor. Stamping
+                    // `Date()` here would make numbers of unknown age the one
+                    // reading `usageStaleTTL` can never retire, so leave the
+                    // clock alone and say the value is stale instead.
+                    apiUsageStale = true
                 }
-                apiUsageStale = cachedApiUsage?.stale ?? false
                 apiUsagePreAdjusted = false  // raw data from HTTP, needs adjustment
                 oauthConnected = usage["oauthConnected"] as? Bool ?? true
                 // Infer billing type
@@ -7322,10 +7327,11 @@ final class DaemonServer {
             cachedApiUsage = usage
             if let fetchedAt = usage.fetchedAt {
                 lastApiFetchTime = Date(timeIntervalSince1970: fetchedAt)
+                apiUsageStale = usage.stale
             } else {
-                lastApiFetchTime = Date()
+                // Same floor as Tier 1: unknown age is not fresh.
+                apiUsageStale = true
             }
-            apiUsageStale = usage.stale
             apiUsagePreAdjusted = false  // raw data from API, needs adjustment
             oauthConnected = usageAPI.tokenStatus == .valid
             if let inferred = usage.inferredBillingType {
@@ -7364,11 +7370,15 @@ final class DaemonServer {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   var usage = json["usage"] as? [String: Any] else { return nil }
-            // Validate fetchedAt — skip stale data (>5 min)
-            if let fetchedAt = json["fetchedAt"] as? Int, fetchedAt > 0 {
-                let ageMs = Int(Date().timeIntervalSince1970 * 1000) - fetchedAt
-                if ageMs > 5 * 60 * 1000 { return nil }
-                usage["fetchedAt"] = Double(fetchedAt) / 1000.0
+            // Age-gate the sibling's reading. An unstamped payload is not
+            // "fresh with no stamp" — it is a reading we cannot age, so it is
+            // skipped like any other unusable source. See `UsageRelayFreshness`.
+            switch UsageRelay.classify(fetchedAtMs: json["fetchedAt"] as? Int,
+                                       nowMs: Int(Date().timeIntervalSince1970 * 1000)) {
+            case .usable(let seconds):
+                usage["fetchedAt"] = seconds
+            case .tooOld, .unknownAge:
+                return nil
             }
             usage["type"] = "usage_update"
             return usage
