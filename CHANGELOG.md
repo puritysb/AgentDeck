@@ -26,6 +26,34 @@ inventing a changelog after the fact states things nobody measured:
 `streamdeck 1.0.4`–`1.0.5`, `esp32 1.0.2`–`1.0.4`, `ulanzi 1.0.2`.
 Their content is recoverable from the commit range between their tags.
 
+## 2026-08-19 — ESP32 1.0.6
+
+One fix, and it is worth saying how it was found.
+
+- The IPS 10.1" card header called a Kiro session `Agent`, while the office desk
+  beside it — on the same screen, for the same session — said `Kiro`.
+  `ui/agent_label.h` is the one place the firmware turns an agentType into a
+  brand name and names this exact surface as its consumer, but `hud_bar.cpp`
+  included it and then declared a private copy of the same map, written before
+  Kiro existed. The local map is now a call to `agentShortLabel`: every other
+  agent keeps its exact label, and an unknown agentType falls to its raw id
+  rather than to `Agent`
+  ([#235](https://github.com/puritysb/AgentDeck/pull/235)).
+
+No compiler or test could have caught this. A label map with a `default` is
+total — every input returns something — so what was missing was a distinction,
+not a case. It was found by rendering the screen in `esp32/sim`, which compiles
+these sources verbatim at each board's real resolution, and looking at it. That
+also discharges the caveat 1.0.5 shipped with ("this is code that compiles, not
+a screen that was looked at"): the boards were serial-attached and unflashable,
+but the simulator never needed them.
+
+**Only `ips_10` changes.** The edit sits behind
+`BOARD_IPS10 && BOARD_HAS_VOICE_CAPTURE`, so every other board's image differs
+from 1.0.5 by the version string alone. Firmware for all ten boards is published
+here regardless, since a release set that skips boards is how three of them
+ended up with no downloadable firmware at 1.0.1.
+
 ## 2026-08-18 — npm 1.0.21 · Apple 1.0.7 · Android 1.0.10 · Stream Deck 1.0.6 · ESP32 1.0.5
 
 One round, cut across five channels from the same commit, so the entries are
