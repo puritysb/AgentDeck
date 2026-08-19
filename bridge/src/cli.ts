@@ -1558,6 +1558,19 @@ program
         throw new Error(String(body.error ?? `HTTP ${statusCode}`));
       }
       log(`Staged for ${body.board}: ${formatBytes(body.bytes)} md5=${body.md5}`);
+      if (body.pullSeen === false) {
+        // "Staged" is a promise the board has to keep, and only a board that
+        // pulls the feed can keep it. Boards in this repo's esp32/ tree hold a
+        // live WebSocket and never pull, so a stage for one is a reservation
+        // nothing will ever collect — reported as success, which is how a board
+        // sat a full release behind while its OTA looked handled.
+        log(`WARNING: this daemon has seen no feed pull from ${body.board} since it started.`);
+        log('  Only pull-sync boards (XTeink X3/X4/M6) fetch staged firmware. A board that');
+        log('  holds a live WS never asks for it, so this stage may never install.');
+        log('  Check `agentdeck devices` (card-feed clients); otherwise flash over USB serial.');
+        log('  Verify with the board\'s reported buildHash, never with this message.');
+        return;
+      }
       log('The board installs it on its next feed pull (battery cadence: typically within 15-60 min).');
       return;
     }

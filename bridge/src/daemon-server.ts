@@ -361,16 +361,51 @@ function saveStagedFw(): void {
   }
 }
 
+/** Resolve a stage target (canonical board, registry key, or IP) to the board
+ *  string the advert is keyed on.
+ *
+ *  This map is read back by `stagedFwAdvert(device_info.board)`, so anything
+ *  else stored as the key is an advert that can never fire. Staging with an IP
+ *  is not a misuse to reject — it is the documented way to name one unit when
+ *  two share a `board` string (see esp32-ota's ambiguity error) — so normalize
+ *  it here instead. Consequence worth stating: the feed pull carries only a
+ *  board, so a stage aimed at one unit adverts to every unit of that board.
+ *  They run the same image, so that is correct rather than merely tolerable.
+ *
+ *  Unlike `findWifiOtaTarget` this must NOT require an open socket: a
+ *  wake-sync-sleep board holds none by design, which is the entire reason
+ *  staging exists. An unrecognized target is kept verbatim — staging for a
+ *  board this daemon has not met yet is legitimate. */
+function resolveStagedFwBoard(target: string): string {
+  for (const [key, device] of wifiEsp32Devices) {
+    if (key === target || device.board === target || device.ip === target) return device.board;
+  }
+  // A pull-sync client ages out of the WS roster between wakes; the feed
+  // tracker keeps its IP→board memory precisely for that gap.
+  const puller = feedPulls.clients().find((c) => c.client === target || c.board === target);
+  return puller?.board ?? target;
+}
+
 /** Stage a build for a board. Reads the file once to fingerprint it; the file
  *  itself is re-read at device download time (a rebuild at the same path is
- *  re-fingerprinted by re-staging). */
-function stageEsp32Fw(board: string, firmwarePath: string): { board: string; bytes: number; md5: string } {
+ *  re-fingerprinted by re-staging).
+ *
+ *  `pullSeen` reports whether this daemon has actually observed a feed pull
+ *  from the board, because "staged" proves neither transfer nor install and a
+ *  bare success reads as if it did. Only pull-sync firmware fetches a staged
+ *  image; a board that holds a live WS never asks, so its stage sits forever
+ *  while the CLI says it is handled. It is daemon-lifetime state, so `false`
+ *  means "not seen since this daemon started" — not "cannot pull". */
+function stageEsp32Fw(target: string, firmwarePath: string): { board: string; bytes: number; md5: string; pullSeen: boolean } {
+  const board = resolveStagedFwBoard(target);
   const firmware = readFileSync(firmwarePath);
   const md5 = createHash('md5').update(firmware).digest('hex');
   stagedFwByBoard.set(board, { firmwarePath, md5, size: firmware.length, stagedAt: Date.now() });
   saveStagedFw();
-  log(`[agentdeck] staged firmware for ${board}: ${firmware.length} bytes md5=${md5} — installs on its next feed pull`);
-  return { board, bytes: firmware.length, md5 };
+  const pullSeen = feedPulls.clients().some((c) => c.board === board);
+  log(`[agentdeck] staged firmware for ${board}: ${firmware.length} bytes md5=${md5} — ${
+    pullSeen ? 'installs on its next feed pull' : 'NO feed pull seen from this board since daemon start'}`);
+  return { board, bytes: firmware.length, md5, pullSeen };
 }
 
 /** The staged advert for a feed response, re-validated against the file on
@@ -646,6 +681,11 @@ export const __wifiOtaTestApi = {
   unregisterWifiEsp32Socket,
   handleEsp32OtaReply,
   performWifiEsp32Ota,
+  resolveStagedFwBoard,
+  stageEsp32Fw,
+  stagedFwAdvert,
+  feedPulls,
+  clearStagedFwForTest: (): void => { stagedFwByBoard.clear(); },
 };
 
 async function performWifiEsp32Ota(core: BridgeCore, target: string, firmwarePath: string): Promise<Record<string, unknown>> {
