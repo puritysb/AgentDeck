@@ -350,14 +350,14 @@ static void ips10FormatElapsed(uint32_t sec, char* out, size_t n) {
     else if (sec < 86400)    snprintf(out, n, "%luh", (unsigned long)(sec / 3600));
     else                     snprintf(out, n, "%lud", (unsigned long)(sec / 86400));
 }
-// Bold agent label for the card header (the project name goes on its own dim line).
+// Bold agent label for the card header (the project name goes on its own dim
+// line). Deliberately NOT a local map: this was one, it predated Kiro, and a
+// Kiro session rendered its card header as the generic "Agent" while the desk
+// beside it — which reads a different copy — said "Kiro". agent_label.h names
+// this exact surface as its consumer and the file already includes it, so the
+// local copy was shadowing the SSOT rather than filling a gap.
 static const char* ips10AgentLabel(const char* agentType) {
-    if (strstr(agentType, "openclaw") != nullptr) return "OpenClaw";
-    if (strstr(agentType, "codex") != nullptr)    return "Codex";
-    if (strstr(agentType, "opencode") != nullptr) return "OpenCode";
-    if (strstr(agentType, "antigravity") != nullptr) return "Antigravity";
-    if (strstr(agentType, "claude") != nullptr)   return "Claude";
-    return "Agent";
+    return agentShortLabel(agentType);
 }
 // Short uppercase pill text (D1 state pill).
 static const char* ips10StatePill(const char* state) {
