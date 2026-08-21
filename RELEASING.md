@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Release maintainers
-reviewed: 2026-08-20
-revision: 2026-08-20
+reviewed: 2026-08-21
+revision: 2026-08-21
 source_of_truth: RELEASING.md
 validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-version]
 ---
@@ -54,6 +54,14 @@ On 2026-08-09 an agent with those tools loaded from the first turn never invoked
 ### Apple build numbers are per-platform — read them, do not compute them
 
 `CURRENT_PROJECT_VERSION` comes from `run_number * 100 + run_attempt`, so it is tempting to derive. Do not: **`build-macos` and `build-ios` are separate jobs, and a rerun of one advances only that one.** `apple-v1.0.5` shipped macOS as **4701** (attempt 1) and iOS as **4702** (attempt 2, after the iOS archive was rerun past a certificate cap). One number reported for both is wrong for one of them. Read each platform's build from App Store Connect.
+
+### Reaching state 5 leaves a doc set behind, and no gate covers it
+
+Going live changes what the repository should say, and nothing in CI notices when it doesn't. Google Play served AgentDeck from 2026-08-15; six days later `docs/roadmap.md` still carried `- [ ] Play Store distribution` unchecked and still described the iPhone/iPad companion as unreleased and awaiting resubmission, `marketplace/play/LISTING.md` was pinned at *"1.0.9 submitted; 1.0.6 live"*, and `.github/release-notes/android.md` — the install text appended to **every** Android GitHub Release — routed every visitor to sideloading with no Play link at all. `docs:check` and `design-system:check` were green the whole time: they verify links, anchors, and catalog coverage, never whether a sentence is still true.
+
+So when a channel first goes live, sweep the surfaces that state its status: the landing page and `README.md` first, then `docs/roadmap.md`, then `marketplace/<channel>/LISTING.md`, then `.github/release-notes/<channel>.md`. The last one is the easiest to forget and the only one that shapes what a user does next.
+
+**Play's live state reads without a console login.** `curl "https://play.google.com/store/apps/details?id=dev.agentdeck&hl=en"` returns the download bucket, the content rating, `Updated on`, and the localized *What's new* — so the notes a store is actually serving can be transcribed instead of reconstructed from the changelog — and `store/search?q=<term>&c=apps` measures whether the listing surfaces for anything besides its own name. Only the exact install count and the acquisition funnel (listing views versus installs) need the owner's login; that pair is what separates "nobody arrived" from "arrived and did not install".
 
 ## Compatible line, independent patch and delivery
 
@@ -108,6 +116,13 @@ round shipped a whole new observed agent across five channels with no line about
 it anywhere a user could read. Each release workflow now fails at its
 `verify-release-version` step when the entry is missing — before anything is
 built, published, or tagged.
+
+Back-filling an **already published** body needs one correction to the rendered
+output: `release-notes.mjs` pins its `Full changelog` link to the tag, which is
+right at cut time and wrong retroactively. `android-v1.0.10` was cut on 08-17
+and the entry describing it was written on 08-18, so that tag's tree holds a
+`CHANGELOG.md` without this release's own notes — keep the link on `master`
+when editing a published body.
 
 ## Channel release steps
 
@@ -201,11 +216,11 @@ pnpm analytics:apple -- fetch --request REQUEST_ID --days 30
 
 Run `snapshot` once when onboarding an existing app, save the returned request id, and fetch that id to capture all historical data Apple makes available. Keep the `ONGOING` request for new daily batches. Apple normally needs 1–2 days to produce a new request. `--days` filters **report processing dates**, not the event dates inside the downloaded rows, so it does not limit a snapshot to the last 30 days. Exports land under the gitignored `reports/app-store-connect/` directory. Usage rows represent only users who enabled sharing with Apple and developers, and low-volume rows can be absent because Apple applies privacy thresholds; treat these as directional retention signals, not a census. Re-run `fetch` regularly because Apple can add late-arriving or corrected batches.
 
-### Android (APK / optional Play)
+### Android (Google Play + APK)
 
-1. Confirm the Android `versionName` remains on the shared compatibility line and increment `versionCode`.
+1. Confirm the Android `versionName` remains on the shared compatibility line and increment `versionCode`. Play refuses any upload whose `versionCode` is not strictly higher than the live one.
 2. Follow `.agents/workflows/build-android.md` for the signed release APK.
-3. Tag and push `android-v<ANDROID_VERSION>` to create the GitHub Release. Optional Play upload remains gated by `ANDROID_PLAY_ENABLED` and its service-account secret.
+3. Tag and push `android-v<ANDROID_VERSION>` to create the GitHub Release. CI's Play upload stays gated by `ANDROID_PLAY_ENABLED` and its service-account secret, so in practice the AAB is built locally (`./gradlew bundleRelease`) and uploaded through the console — see [marketplace/play/LISTING.md](marketplace/play/LISTING.md) for the runbook, including that saving a release is not submitting it and that release notes keep only the first language across a save.
 
 ### ESP32 firmware
 

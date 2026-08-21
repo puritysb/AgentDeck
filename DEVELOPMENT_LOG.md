@@ -2,6 +2,54 @@
 
 ---
 
+## 2026-08-21 — Play는 왜 다운로드가 없는가, 그리고 라이브 전환 뒤 아무 게이트도 보지 않는 문서 집합
+
+### 문제
+
+"Android는 왜 다운로드가 발생하지 않을까?" 라는 질문에서 출발했다. Play는 08-15부터
+서비스 중이고 08-19에 1.0.10(vc 12)이 177개국 100%로 게시됐는데 공개 카운터가 `0+`
+였다. 차단인지 수요인지 먼저 갈라야 했고, 그 다음 질문("소개 페이지가 덜 업데이트된 건
+아닌가")에서 진짜 구조적 원인 하나가 나왔다.
+
+### 해결
+
+**차단 가설은 전부 기각.** 리스팅 200 응답, 등급 Everyone, `uses-feature` 0건(기기
+필터링 없음, minSdk 29 / targetSdk 36), `AgentDeck` 검색 **1위**. 반면 의도 검색어
+4종(`Claude Code`, `AI agent dashboard`, `coding agent monitor`, `Stream Deck AI`)은
+전부 미노출 — 이름을 이미 아는 사람만 도달 가능한 상태였다. 상류도 작다: npm 주간
+bridge 442 / setup 412, GitHub APK는 릴리스당 1~3건, 그리고 Android는 데몬 없이는
+값이 0인 2차 표면이다.
+
+**유일하게 구조적이었던 것**은 `.github/release-notes/android.md` — 모든 Android
+GitHub Release 하단에 붙는 설치 안내가 APK 사이드로딩 단독이었고 Play 링크가 0건이었다.
+릴리스 페이지에 온 사람을 스토어 반대쪽으로 보내고 있었다. 같은 드리프트가 세 곳 더:
+`docs/roadmap.md`의 `- [ ] Play Store distribution` 미체크와 "iPhone/iPad 미출시·
+재제출 대기"(실제로는 iOS 1.0.7 08-18, macOS 1.0.7 08-19 라이브), `marketplace/play/
+LISTING.md`의 "1.0.9 submitted; 1.0.6 live" 고정. **`docs:check`와
+`design-system:check`는 그동안 계속 green** 이었다 — 링크·앵커·카탈로그 커버리지는
+보지만 문장이 아직 참인지는 보지 않는다. PR #250으로 네 곳 정정, 발행된
+`android-v1.0.10` 릴리스 본문도 갱신.
+
+### 핵심 설계 결정
+
+- **라이브 전환은 게이트 없는 문서 집합을 남긴다.** 채널이 state 5에 도달하면
+  랜딩/README → `docs/roadmap.md` → `marketplace/<channel>/LISTING.md` →
+  `.github/release-notes/<channel>.md` 순으로 쓸어야 한다. 마지막 것이 가장 잘
+  잊히면서 사용자의 다음 행동을 결정하는 유일한 파일이다. RELEASING.md에 절차로 박았다.
+- **Play도 상당 부분 로그인 없이 읽힌다.** 리스팅 HTML에 다운로드 버킷·등급·
+  `Updated on`·현지화 What's new가 들어 있고 `store/search?q=`로 검색 순위까지 측정된다.
+  덕분에 1.0.10 릴리스 노트를 **지어내지 않고 스토어에서 전사**해 LISTING.md에 넣었다.
+  로그인이 필요한 건 설치 실수치와 획득 퍼널뿐이며, 그 둘이 "아무도 안 왔다"와
+  "와서 설치를 안 했다"를 가르는 지표다.
+- **`0+`는 0의 증명이 아니다.** Play 공개 버킷은 `0+ → 1+ → 5+ → 10+` 해상도에 지연이
+  있어 설치 수를 위에서 바운드할 뿐이다. 측정하지 않은 값을 단정하지 않기 위해 문서에도
+  버킷이라고 명시했다.
+- **소급 편집은 태그 고정 링크를 되돌려야 한다.** `release-notes.mjs`는 `Full
+  changelog`를 태그에 고정하는데, `android-v1.0.10` 태그 트리에는 08-18에 쓰인 자기
+  자신의 CHANGELOG 항목이 없다. 발행 후 편집분만 `master` 링크를 유지했다.
+
+---
+
 ## 2026-08-21 — 첫 외부 프로토콜 소비자 수용, 그리고 컴파일된 적 없는 표면의 마지막 구멍
 
 ### 문제
