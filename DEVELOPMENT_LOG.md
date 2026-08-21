@@ -72,6 +72,11 @@ fail-safe다 — diff를 못 구하면 스킵이 아니라 컴파일한다. 잘�
 일반 규칙: **required로 올릴 체크에는 `paths:` 필터를 달 수 없다.** required가 아닌
 android-test.yml / apple-test.yml은 지금 형태 그대로 둔다.
 
+양쪽 분기를 각각 실측했다. 컴파일 분기는 #248(워크플로 자체를 건드림) — 콜드 3m51s
+green, `mergeStateStatus: CLEAN`. 스킵 분기는 이 PR(docs 한 파일) — 컨텍스트가
+`success`로 **보고되고** PR이 풀린다. 고치기 전 같은 모양의 PR이 BLOCKED였던 것과
+대조된다.
+
 ---
 
 ## 2026-08-20 — OS가 죽이는 자식을 60초마다 되살린 루프, 그리고 Rosetta가 통과한 probe
