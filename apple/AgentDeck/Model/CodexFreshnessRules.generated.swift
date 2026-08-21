@@ -89,7 +89,7 @@ enum CodexUsageFreshness {
 enum CodexPlanRules {
     /// True when the ChatGPT tier carries no paid Codex subscription.
     static func isFreePlan(_ plan: String?) -> Bool {
-        return normalized(plan) == "free"
+        return planKey(plan) == "free"
     }
 
     /// True when the snapshot still belongs to the plan the account holds.
@@ -97,8 +97,8 @@ enum CodexPlanRules {
     /// licence to void real data (an API-key install reports no account tier, a
     /// pre-`plan_type` rollout reports no snapshot tier).
     static func snapshotMatchesAccountPlan(snapshot: String?, account: String?) -> Bool {
-        let snap = normalized(snapshot)
-        let acct = normalized(account)
+        let snap = planKey(snapshot)
+        let acct = planKey(account)
         if snap.isEmpty || acct.isEmpty { return true }
         return snap == acct
     }
@@ -133,8 +133,19 @@ enum CodexPlanRules {
         return candidateCapturedAt > incumbentCapturedAt
     }
 
-    private static func normalized(_ value: String?) -> String {
-        return (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    /// The one comparison form for a raw `chatgpt_plan_type`: trimmed,
+    /// lowercased, separators stripped. `prolite`, `pro_lite` and `pro lite` are
+    /// one plan, so they must key the display table AND compare equal — the two
+    /// sides of the plan check come from different producers (the auth token for
+    /// the account tier, the rollout stamp for the snapshot), and normalizing
+    /// only one path would land every candidate in the "mismatch" class for a
+    /// spelling the table exists to absorb. A value that is nothing but
+    /// separators normalizes to "", which reads as unknown, not as void.
+    static func planKey(_ value: String?) -> String {
+        return (value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .filter { !$0.isWhitespace && $0 != "_" && $0 != "-" }
     }
 }
 
@@ -152,8 +163,7 @@ enum CodexPlanRules {
 enum ChatGPTPlan {
     static func displayName(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = trimmed.lowercased().filter { !$0.isWhitespace && $0 != "_" && $0 != "-" }
-        switch key {
+        switch CodexPlanRules.planKey(trimmed) {
         case "free": return "ChatGPT Free"
         case "plus": return "ChatGPT Plus"
         case "pro": return "ChatGPT Pro"

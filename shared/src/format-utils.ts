@@ -344,10 +344,32 @@ export const CHATGPT_PLAN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
 export function formatChatGptPlanName(planType?: string | null): string | undefined {
   const raw = planType?.trim();
   if (!raw) return undefined;
-  const key = raw.toLowerCase().replace(/[\s_-]+/g, '');
-  const known = CHATGPT_PLAN_DISPLAY_NAMES[key];
+  const known = CHATGPT_PLAN_DISPLAY_NAMES[normalizeChatGptPlanKey(raw)];
   if (known) return known;
   return `ChatGPT ${raw.charAt(0).toUpperCase()}${raw.slice(1)}`;
+}
+
+/**
+ * The one comparison form for a raw `chatgpt_plan_type`.
+ *
+ * Trimmed, lowercased, and stripped of separators — `prolite`, `pro_lite` and
+ * `pro lite` are one plan, so they must key the display table AND compare equal.
+ * Normalizing only the display path was an internal contradiction with teeth:
+ * the two sides of the plan check come from different producers (the auth token
+ * for the account tier, the rollout stamp for the snapshot), so a spelling the
+ * table was written to absorb would still land every candidate in the "mismatch"
+ * class — ranking would have nothing to prefer, the winner would be voided, and
+ * on the Node daemon `passivePlanMatchesAccount` would be permanently false, so
+ * `codex app-server` would be spawned every 5 minutes forever and its answer
+ * voided too. The exact failure this module exists to prevent, via a different
+ * spelling.
+ *
+ * A value that is nothing but separators normalizes to `''` — i.e. "unknown",
+ * which the predicate already treats as no information rather than as a licence
+ * to void.
+ */
+export function normalizeChatGptPlanKey(value?: string | null): string {
+  return (value ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '');
 }
 
 /**
@@ -358,7 +380,7 @@ export function formatChatGptPlanName(planType?: string | null): string | undefi
  * rollout snapshots below.
  */
 export function isCodexFreePlan(plan?: string | null): boolean {
-  return (plan ?? '').trim().toLowerCase() === 'free';
+  return normalizeChatGptPlanKey(plan) === 'free';
 }
 
 /**
@@ -382,8 +404,8 @@ export function codexSnapshotMatchesAccountPlan(
   snapshotPlan?: string | null,
   accountPlan?: string | null,
 ): boolean {
-  const snap = (snapshotPlan ?? '').trim().toLowerCase();
-  const account = (accountPlan ?? '').trim().toLowerCase();
+  const snap = normalizeChatGptPlanKey(snapshotPlan);
+  const account = normalizeChatGptPlanKey(accountPlan);
   if (!snap || !account) return true;
   return snap === account;
 }

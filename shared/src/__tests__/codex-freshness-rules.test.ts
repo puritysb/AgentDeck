@@ -101,8 +101,16 @@ describe('generated mirrors in sync', () => {
       expect(kotlin).toContain(`"${key}" -> "${name}"`);
     }
     // Separators are stripped before lookup, so `pro_lite` cannot miss `prolite`.
-    expect(swift).toContain('$0 != "_"');
     expect(kotlin).toContain("it == '_'");
+    // ...and Swift strips them in exactly ONE place, shared by the display table
+    // and the match predicate. Two copies is how the display absorbs a spelling
+    // that the predicate then reads as a mismatch — every candidate voided, and
+    // the live query respawned forever to have its answer voided too.
+    expect(swift).toContain('static func planKey(');
+    expect(swift.match(/\$0 != "_"/g) ?? []).toHaveLength(1);
+    expect(swift).toContain('switch CodexPlanRules.planKey(trimmed)');
+    expect(swift).toContain('let snap = planKey(snapshot)');
+    expect(swift).toContain('return planKey(plan) == "free"');
   });
 
   it('emits the same three footnote states the TS SSOT resolves', () => {

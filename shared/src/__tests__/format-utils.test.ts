@@ -301,6 +301,22 @@ describe('codexSnapshotMatchesAccountPlan', () => {
     expect(codexSnapshotMatchesAccountPlan(' Plus ', 'plus')).toBe(true);
   });
 
+  it('compares the same normalized form the display table is keyed by', () => {
+    // The two sides come from different producers — the auth token names the
+    // account tier, the rollout stamp names the snapshot's — so a spelling the
+    // display table absorbs must not still read as a mismatch here. Otherwise
+    // every candidate lands in the "mismatch" class, ranking has nothing to
+    // prefer, the winner is voided, and the live query is respawned every 5
+    // minutes forever only to have its answer voided too.
+    expect(codexSnapshotMatchesAccountPlan('pro_lite', 'prolite')).toBe(true);
+    expect(codexSnapshotMatchesAccountPlan('prolite', 'pro lite')).toBe(true);
+    expect(codexSnapshotMatchesAccountPlan('Pro-Lite', 'prolite')).toBe(true);
+    // Still a real mismatch when the tiers genuinely differ.
+    expect(codexSnapshotMatchesAccountPlan('plus', 'pro_lite')).toBe(false);
+    // A value that is nothing but separators is unknown, not void.
+    expect(codexSnapshotMatchesAccountPlan('-', 'prolite')).toBe(true);
+  });
+
   it('treats an unknown tier on either side as no information, never as licence to void', () => {
     // API-key installs report no account tier; pre-`plan_type` rollouts report
     // no snapshot tier. Voiding real data on absence is the bug, not the fix.

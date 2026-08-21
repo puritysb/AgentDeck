@@ -31,6 +31,7 @@ class ChatGPTPlanTest {
         // Separators are stripped before lookup: one plan, three spellings.
         assertEquals("ChatGPT Pro Lite", ChatGPTPlan.displayName("pro_lite"))
         assertEquals("ChatGPT Pro Lite", ChatGPTPlan.displayName("pro-lite"))
+        assertEquals("ChatGPT Pro Lite", ChatGPTPlan.displayName("Pro-Lite"))
         assertEquals("ChatGPT Pro Lite", ChatGPTPlan.displayName(" Pro Lite "))
     }
 

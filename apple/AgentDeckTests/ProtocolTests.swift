@@ -762,6 +762,20 @@ final class ProtocolTests: XCTestCase {
         ))
     }
 
+    func testCodexPlanMatchUsesTheSameNormalizationAsTheDisplayTable() {
+        // The account tier comes from the auth token and the snapshot tier from
+        // the rollout stamp — different producers. A spelling the display table
+        // absorbs must not still read as a mismatch, or every candidate is voided
+        // and the sandboxed daemon (no live query) has nothing left to show.
+        XCTAssertTrue(CodexPlanRules.snapshotMatchesAccountPlan(snapshot: "pro_lite", account: "prolite"))
+        XCTAssertTrue(CodexPlanRules.snapshotMatchesAccountPlan(snapshot: "prolite", account: "pro lite"))
+        XCTAssertTrue(CodexPlanRules.snapshotMatchesAccountPlan(snapshot: "Pro-Lite", account: "prolite"))
+        XCTAssertFalse(CodexPlanRules.snapshotMatchesAccountPlan(snapshot: "plus", account: "pro_lite"))
+        // Nothing but separators is unknown, not void.
+        XCTAssertTrue(CodexPlanRules.snapshotMatchesAccountPlan(snapshot: "-", account: "prolite"))
+        XCTAssertTrue(CodexPlanRules.isFreePlan(" FREE "))
+    }
+
     func testChatGPTPlanNamesATierTheBuildPredates() {
         // `prolite` arrived unannounced on 2026-08-22. An unrecognised tier is
         // capitalised, never dropped and never shown as the raw token.

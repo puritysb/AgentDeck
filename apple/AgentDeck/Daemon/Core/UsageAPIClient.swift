@@ -190,24 +190,18 @@ final class UsageAPIClient: Sendable {
     }
     var antigravityStatus: AntigravityStatus? { readAntigravityStatus() }
 
-    /// Latest Codex usage limits from local rollout files. Cached by active
-    /// rollout path + mtime + account tier so repeated polls don't re-read an
-    /// unchanged file, while a plan change still re-ranks the same rollouts.
+    /// Latest Codex usage limits from local rollout files, ranked against the
+    /// caller's already-resolved account tier. Cached by active rollout path +
+    /// mtime + tier so repeated polls don't re-read an unchanged file, while a
+    /// plan change still re-ranks the same rollouts.
     ///
-    /// The tier is resolved OUTSIDE `codexRateLimitsQueue` — `codexAuthStatus`
-    /// takes `codexAuthQueue`, and nesting the two locks in one order here while
-    /// some future caller nests them the other way is how a daemon deadlocks.
-    var codexRateLimits: CodexRateLimitsLocal? {
-        codexRateLimits(accountPlan: codexAuthStatus?.planType)
-    }
-
-    /// Same read, with the caller's already-resolved account tier.
-    ///
-    /// The payload builder reconciles the snapshot against a tier it read for
-    /// itself; handing that same value down keeps ONE plan per usage frame. Two
-    /// independent reads can straddle a token refresh — and a build that ranks
-    /// rollouts under the new plan and then voids them against the old one (or
-    /// the reverse) blanks the gauges for reasons neither read can explain.
+    /// The tier is a PARAMETER, deliberately — there is no zero-argument spelling
+    /// that resolves it here. The payload builder reconciles the snapshot against
+    /// a tier it read for itself, so a convenience overload reading its own would
+    /// let one build rank rollouts under the new plan and void them against the
+    /// old one (or the reverse) whenever the two reads straddle a token refresh —
+    /// the hazard this signature exists to close, reintroduced across the pair
+    /// instead of within it. One tier per usage frame, passed down.
     func codexRateLimits(accountPlan: String?) -> CodexRateLimitsLocal? {
         codexRateLimitsQueue.sync { readCodexRateLimitsLocked(accountPlan: accountPlan) }
     }
