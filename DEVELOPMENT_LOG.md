@@ -38,6 +38,23 @@ Discussions도 이 계기로 활성화.
   게이트 패턴으로 마지막 미컴파일 표면(C++)을 닫았다. 이제 PR에서 컴파일러가 한 번도
   읽지 않는 소스 트리는 없다. required check 지정은 첫 esp32 PR이 게이트를 지난 뒤.
 
+### 후속 — 게이트를 required로 올리면서 드러난 두 가지 (#247)
+
+"첫 esp32 PR이 게이트를 지난 뒤"를 확인하러 갔더니 **게이트는 한 번도 돈 적이 없었다**.
+#243은 이슈였고 그 수정 커밋은 master로 직접 갔으므로 `pull_request` 이벤트가 발생한
+적이 없다 — 워크플로 실행 이력이 0건. 게이트를 신설한 커밋 자체가 그 게이트를
+통과하지 않는다는 것은 path-scoped PR 게이트의 일반적 성질이다.
+
+첫 실행을 만들면서 required 지정의 선결 조건 하나를 먼저 고쳤다. **브랜치 보호가
+고정하는 status check context는 워크플로 이름이 아니라 job 이름이다.** `compile` job에
+`name:`이 없었으므로 required로 올릴 이름은 ESP32도 sim도 말하지 않는 맨 `compile`이
+됐을 것이다. `name: ESP32 Sim Compile`을 붙였고, 이 편집 자체가 `esp32-sim.yml`을
+건드리므로 그 PR이 게이트의 최초 실행이 됐다 — 콜드 캐시 11개 env 전부 green, 3m47s
+(워크플로 주석이 예상한 웜 캐시 1–2분과 정합).
+
+master 보호에는 그때까지 required status check가 **하나도** 없었다. `ESP32 Sim Compile`
+하나를 `strict: false`로 지정(기존 보호 설정은 전부 보존).
+
 ---
 
 ## 2026-08-20 — OS가 죽이는 자식을 60초마다 되살린 루프, 그리고 Rosetta가 통과한 probe
