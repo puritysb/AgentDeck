@@ -7957,8 +7957,13 @@ final class DaemonServer {
         if let codex = codexAuth {
             Self.writeCodexAuthStatus(codex, into: &e)
         }
+        // One tier per usage frame: the same `codexAuth` that decides which
+        // snapshot WINS also decides whether it is voided. Reading the plan twice
+        // could straddle a token refresh and rank under one plan while voiding
+        // against another.
+        let codexAccountPlan = codexAuth?.planType
         if let payload = Self.codexRateLimitsPayload(
-            usageAPI.codexRateLimits, accountPlan: codexAuth?.planType
+            usageAPI.codexRateLimits(accountPlan: codexAccountPlan), accountPlan: codexAccountPlan
         ) {
             e["codexRateLimits"] = payload
         }

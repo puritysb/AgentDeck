@@ -2,24 +2,14 @@ import type { StateSnapshot, UsageEvent } from './types.js';
 import type { ApiUsageData } from './usage-api.js';
 import { getTokenStatus } from './usage-api.js';
 import type { OllamaStatus } from './ollama-probe.js';
-import { adjustUsagePercent, codexSnapshotMatchesAccountPlan, isCodexWindowStale } from '@agentdeck/shared';
+import {
+  adjustUsagePercent,
+  codexSnapshotMatchesAccountPlan,
+  formatChatGptPlanName,
+  isCodexWindowStale,
+} from '@agentdeck/shared';
 import type { CodexAuthStatus } from './codex-auth.js';
 import type { AntigravityStatusInfo, BillingType, CodexRateLimits, CodexRateLimitWindow, ModelCatalogEntry, SubscriptionInfo } from './types.js';
-
-function formatChatGptPlan(planType?: string | null): string | undefined {
-  const raw = planType?.trim();
-  if (!raw) return undefined;
-  switch (raw.toLowerCase()) {
-    case 'free': return 'ChatGPT Free';
-    case 'plus': return 'ChatGPT Plus';
-    case 'pro': return 'ChatGPT Pro';
-    case 'team': return 'ChatGPT Team';
-    case 'enterprise': return 'ChatGPT Enterprise';
-    // Capitalize an unknown plan instead of passing the raw lowercase value
-    // through — it renders beside Plus/Pro/Team in the subscriptions footer.
-    default: return `ChatGPT ${raw.charAt(0).toUpperCase()}${raw.slice(1)}`;
-  }
-}
 
 function formatClaudeSubscription(
   apiUsage?: ApiUsageData | null,
@@ -38,7 +28,7 @@ export function buildSubscriptions(
   antigravityStatus?: AntigravityStatusInfo | null,
 ): SubscriptionInfo[] | undefined {
   const items: SubscriptionInfo[] = [];
-  const chatgptName = formatChatGptPlan(codexAuth?.planType);
+  const chatgptName = formatChatGptPlanName(codexAuth?.planType);
   if (chatgptName) {
     items.push({
       name: chatgptName,

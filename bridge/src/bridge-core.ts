@@ -405,6 +405,12 @@ export class BridgeCore {
   /** Build and return a usage event */
   buildUsage(): BridgeEvent {
     const snapshot = this.stateMachine.getSnapshot();
+    // Read the account tier ONCE and hand the same value to every consumer: the
+    // rollout picker, the live-query gate and the void rule all reconcile against
+    // it, and two reads a moment apart could straddle a token refresh and
+    // disagree about which plan this build belongs to.
+    const codexAuth = readCodexAuthStatus();
+    const codexAccountPlan = codexAuth?.planType;
     return buildUsageEvent(
       snapshot,
       this.cachedApiUsage,
@@ -412,7 +418,7 @@ export class BridgeCore {
       this.cachedOllamaStatus,
       this.cachedMlxModels,
       this.apiUsageStale,
-      readCodexAuthStatus(),
+      codexAuth,
       snapshot.billingType,
       this.cachedModelCatalog,
       this.cachedAntigravityStatus,
@@ -422,7 +428,17 @@ export class BridgeCore {
       // — including the moment it hits the wall — so the daemon backs it with a
       // throttled live query against the user's own `codex app-server`. Session
       // bridges keep the passive read only (no host-side processes there).
-      this.isDaemon ? codexRateLimitsWithLiveRefresh(readCodexRateLimits()) : readCodexRateLimits(),
+      // The account tier rides into both readers: a rollout stamped with a plan
+      // the account no longer holds is voided downstream, so it must not win the
+      // selection on recency (a Codex session left open across a plan change
+      // keeps minting exactly such snapshots), and its freshness must not
+      // suppress the live query that carries the only usable number.
+      this.isDaemon
+        ? codexRateLimitsWithLiveRefresh(
+            readCodexRateLimits(undefined, codexAccountPlan),
+            codexAccountPlan,
+          )
+        : readCodexRateLimits(undefined, codexAccountPlan),
     );
   }
 

@@ -276,6 +276,94 @@ describe('pickCodexRateLimits (file selection across day-dirs)', () => {
  * no `rate_limits`, so mtime drifts forward while the newest usage reading stays
  * put, under-reporting the age of exactly the frozen snapshot it must expose.
  */
+/**
+ * Plan-aware selection. Both lines below are VERBATIM from
+ * `~/.codex/sessions` on 2026-08-22, minutes after a ChatGPT plan upgrade:
+ *
+ *   • the `plus` line comes from a Codex session opened BEFORE the upgrade and
+ *     still running — Codex stamps `plan_type` from the auth token its process
+ *     started with, so it keeps writing the retired tier, and being the busy
+ *     session it also keeps minting the newest timestamps (16:50 here).
+ *   • the `prolite` line comes from a session started AFTER the upgrade. Older
+ *     (16:43), and the only snapshot the account can actually use.
+ *
+ * A newest-wins picker returns the `plus` one, `normalizeCodexRateLimits` voids
+ * it as a plan mismatch, and every Codex gauge goes blank for as long as the old
+ * session stays open — with a valid snapshot unread on disk the whole time.
+ *
+ * Fixtures are copied, not composed: a line built from what the parser expects
+ * cannot fail the way a real one does.
+ */
+describe('pickCodexRateLimits (plan-aware selection)', () => {
+  const tmpRoots: string[] = [];
+
+  afterEach(() => {
+    for (const r of tmpRoots.splice(0)) {
+      try {
+        fs.rmSync(r, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  // Captured verbatim from a rollout written by a pre-upgrade Codex session.
+  const retiredPlanLine =
+    "{\"timestamp\":\"2026-08-21T16:51:25.441Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":64019700,\"cached_input_tokens\":62304000,\"cache_write_input_tokens\":0,\"output_tokens\":269177,\"reasoning_output_tokens\":64317,\"total_tokens\":64288877},\"last_token_usage\":{\"input_tokens\":163728,\"cached_input_tokens\":162816,\"cache_write_input_tokens\":0,\"output_tokens\":81,\"reasoning_output_tokens\":29,\"total_tokens\":163809},\"model_context_window\":258400},\"rate_limits\":{\"limit_id\":\"codex_bengalfox\",\"limit_name\":\"GPT-5.3-Codex-Spark\",\"primary\":{\"used_percent\":0.0,\"window_minutes\":300,\"resets_at\":1787349069},\"secondary\":{\"used_percent\":0.0,\"window_minutes\":10080,\"resets_at\":1787934922},\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individual_limit\":null,\"spend_control_reached\":null,\"plan_type\":\"plus\",\"rate_limit_reached_type\":null}}}";
+  // Captured verbatim from a rollout written by a post-upgrade Codex session.
+  const currentPlanLine =
+    "{\"timestamp\":\"2026-08-21T16:43:09.009Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":17356,\"cached_input_tokens\":11008,\"cache_write_input_tokens\":0,\"output_tokens\":5,\"reasoning_output_tokens\":0,\"total_tokens\":17361},\"last_token_usage\":{\"input_tokens\":17356,\"cached_input_tokens\":11008,\"cache_write_input_tokens\":0,\"output_tokens\":5,\"reasoning_output_tokens\":0,\"total_tokens\":17361},\"model_context_window\":258400},\"rate_limits\":{\"limit_id\":\"codex\",\"limit_name\":null,\"primary\":{\"used_percent\":0.0,\"window_minutes\":10080,\"resets_at\":1787934975},\"secondary\":null,\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individual_limit\":null,\"spend_control_reached\":null,\"plan_type\":\"prolite\",\"rate_limit_reached_type\":null}}}";
+
+  function makeTree(): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plan-'));
+    tmpRoots.push(root);
+    const files: Record<string, { content: string; mtimeMs: number }> = {
+      // The pre-upgrade session is the busiest one, so it also has the newest
+      // mtime — it wins the candidate ordering too, not just the timestamps.
+      '2026/08/21/rollout-2026-08-21T20-35-38-old.jsonl': {
+        content: retiredPlanLine + '\n',
+        mtimeMs: Date.parse('2026-08-21T16:51:26.000Z'),
+      },
+      '2026/08/22/rollout-2026-08-22T01-43-04-new.jsonl': {
+        content: currentPlanLine + '\n',
+        mtimeMs: Date.parse('2026-08-21T16:43:10.000Z'),
+      },
+    };
+    for (const [rel, { content, mtimeMs }] of Object.entries(files)) {
+      const full = path.join(root, rel);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content);
+      const t = new Date(mtimeMs);
+      fs.utimesSync(full, t, t);
+    }
+    return root;
+  }
+
+  it('takes the older snapshot that matches the account tier', () => {
+    const result = pickCodexRateLimits(makeTree(), 'prolite');
+    expect(result).not.toBeNull();
+    expect(result!.planType).toBe('prolite');
+  });
+
+  it('keeps pure newest-wins when the account tier is unknown', () => {
+    // An API-key install reports no tier. Absence must not reshuffle real data.
+    const result = pickCodexRateLimits(makeTree(), undefined);
+    expect(result!.planType).toBe('plus');
+  });
+
+  it('still returns a mismatched snapshot when it is the only one', () => {
+    // Ranking orders snapshots; it never rescues one. The caller voids this
+    // downstream — but "no snapshot at all" and "a voided snapshot" are
+    // different wire payloads, and only the second one carries the live tier.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-plan-solo-'));
+    tmpRoots.push(root);
+    const full = path.join(root, '2026/08/21/rollout-old.jsonl');
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, retiredPlanLine + '\n');
+    expect(pickCodexRateLimits(root, 'prolite')!.planType).toBe('plus');
+  });
+});
+
 describe('capturedAt (snapshot freshness anchor)', () => {
   const tmpRoots: string[] = [];
 

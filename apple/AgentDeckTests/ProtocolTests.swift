@@ -647,6 +647,131 @@ final class ProtocolTests: XCTestCase {
         XCTAssertTrue(before.contains(secondary.path))
     }
 
+    // MARK: - Plan-aware rollout selection (mirror of codexSnapshotOutranks)
+
+    /// Both lines are VERBATIM from `~/.codex/sessions` on 2026-08-22, minutes
+    /// after a ChatGPT plan upgrade. Codex stamps `plan_type` from the auth token
+    /// its process started with, so a session opened BEFORE the upgrade keeps
+    /// writing the retired tier — and, being the busy session, keeps minting the
+    /// newest timestamps too. A newest-wins picker therefore feeds
+    /// `codexRateLimitsPayload` a snapshot it voids one step later, and every
+    /// Codex gauge goes blank while a valid snapshot sits unread on disk.
+    ///
+    /// This matters most for the sandboxed App Store daemon: it cannot spawn
+    /// `codex app-server`, so the rollout tree is its ONLY source. The Node
+    /// daemon gates the identical bytes in
+    /// bridge/src/__tests__/codex-rate-limits.test.ts — a fixture composed from
+    /// what the parser expects cannot fail the way a real line does.
+    private var retiredPlanRolloutLine: String {
+        #"{"timestamp":"2026-08-21T16:52:53.766Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":65005105,"cached_input_tokens":63284992,"cache_write_input_tokens":0,"output_tokens":269731,"reasoning_output_tokens":64427,"total_tokens":65274836},"last_token_usage":{"input_tokens":164545,"cached_input_tokens":163840,"cache_write_input_tokens":0,"output_tokens":140,"reasoning_output_tokens":47,"total_tokens":164685},"model_context_window":258400},"rate_limits":{"limit_id":"codex_bengalfox","limit_name":"GPT-5.3-Codex-Spark","primary":{"used_percent":0.0,"window_minutes":300,"resets_at":1787349167},"secondary":{"used_percent":0.0,"window_minutes":10080,"resets_at":1787934922},"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"individual_limit":null,"spend_control_reached":null,"plan_type":"plus","rate_limit_reached_type":null}}}"#
+    }
+
+    private var currentPlanRolloutLine: String {
+        #"{"timestamp":"2026-08-21T16:43:09.009Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":17356,"cached_input_tokens":11008,"cache_write_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":17361},"last_token_usage":{"input_tokens":17356,"cached_input_tokens":11008,"cache_write_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":17361},"model_context_window":258400},"rate_limits":{"limit_id":"codex","limit_name":null,"primary":{"used_percent":0.0,"window_minutes":10080,"resets_at":1787934975},"secondary":null,"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"individual_limit":null,"spend_control_reached":null,"plan_type":"prolite","rate_limit_reached_type":null}}}"#
+    }
+
+    func testCodexRolloutSelectionPrefersTheAccountPlanOverRecency() throws {
+        let root = try makeCodexSessionsTree([
+            // Pre-upgrade session: newer capture AND newer mtime.
+            ("2026/08/21/rollout-2026-08-21T20-35-38-old.jsonl",
+             retiredPlanRolloutLine + "\n",
+             "2026-08-21T16:51:26Z"),
+            // Post-upgrade session: older, and the only usable snapshot.
+            ("2026/08/22/rollout-2026-08-22T01-43-04-new.jsonl",
+             currentPlanRolloutLine + "\n",
+             "2026-08-21T16:43:10Z"),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let candidates = UsageAPIClient.codexRolloutCandidates(sessionsDir: root)
+        let parsed = UsageAPIClient.parseFirstUsableCodexRollout(candidates, accountPlan: "prolite")
+        XCTAssertEqual(parsed?.planType, "prolite")
+        XCTAssertEqual(parsed?.capturedAt, "2026-08-21T16:43:09.009Z")
+    }
+
+    func testCodexRolloutSelectionKeepsNewestWinsWhenAccountPlanUnknown() throws {
+        // An API-key install reports no account tier. Absence is "no
+        // information" — it must never reshuffle real data.
+        let root = try makeCodexSessionsTree([
+            ("2026/08/21/rollout-old.jsonl", retiredPlanRolloutLine + "\n", "2026-08-21T16:51:26Z"),
+            ("2026/08/22/rollout-new.jsonl", currentPlanRolloutLine + "\n", "2026-08-21T16:43:10Z"),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let parsed = UsageAPIClient.parseFirstUsableCodexRollout(
+            UsageAPIClient.codexRolloutCandidates(sessionsDir: root)
+        )
+        XCTAssertEqual(parsed?.planType, "plus")
+    }
+
+    func testCodexRolloutSelectionStillReturnsASoleMismatchedSnapshot() throws {
+        // Ranking orders snapshots; it never rescues one. `codexRateLimitsPayload`
+        // voids this downstream — but "no snapshot" and "a voided snapshot" are
+        // different wire payloads, and only the second carries the live tier that
+        // keeps the subscription row readable.
+        let root = try makeCodexSessionsTree([
+            ("2026/08/21/rollout-old.jsonl", retiredPlanRolloutLine + "\n", "2026-08-21T16:51:26Z"),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let parsed = UsageAPIClient.parseFirstUsableCodexRollout(
+            UsageAPIClient.codexRolloutCandidates(sessionsDir: root), accountPlan: "prolite"
+        )
+        XCTAssertEqual(parsed?.planType, "plus")
+    }
+
+    func testCodexRolloutCacheKeyTracksTheAccountPlan() {
+        // The selection is plan-aware, so the same files rank differently the
+        // instant the tier changes. A files-only key would serve the pre-upgrade
+        // winner until some rollout happened to be touched again.
+        let rollout = URL(fileURLWithPath: "/tmp/rollout-leading.jsonl")
+        XCTAssertNotEqual(
+            UsageAPIClient.codexRolloutCacheKey([(rollout, 200)], accountPlan: "plus"),
+            UsageAPIClient.codexRolloutCacheKey([(rollout, 200)], accountPlan: "prolite")
+        )
+    }
+
+    func testCodexSnapshotOutranksPutsPlanAgreementAboveAge() {
+        // Mirror of the TS `codexSnapshotOutranks` cases.
+        XCTAssertTrue(CodexPlanRules.snapshotOutranks(
+            candidatePlan: "prolite", candidateCapturedAt: 100,
+            incumbentPlan: "plus", incumbentCapturedAt: 100_000,
+            account: "prolite"
+        ))
+        XCTAssertFalse(CodexPlanRules.snapshotOutranks(
+            candidatePlan: "plus", candidateCapturedAt: 100_000,
+            incumbentPlan: "prolite", incumbentCapturedAt: 100,
+            account: "prolite"
+        ))
+        // Same match class → recency; exact tie keeps the incumbent.
+        XCTAssertTrue(CodexPlanRules.snapshotOutranks(
+            candidatePlan: "prolite", candidateCapturedAt: 101,
+            incumbentPlan: "prolite", incumbentCapturedAt: 100,
+            account: "prolite"
+        ))
+        XCTAssertFalse(CodexPlanRules.snapshotOutranks(
+            candidatePlan: "prolite", candidateCapturedAt: 100,
+            incumbentPlan: "prolite", incumbentCapturedAt: 100,
+            account: "prolite"
+        ))
+        // Unknown account tier → pure recency, nothing reshuffled.
+        XCTAssertTrue(CodexPlanRules.snapshotOutranks(
+            candidatePlan: "plus", candidateCapturedAt: 101,
+            incumbentPlan: "prolite", incumbentCapturedAt: 100,
+            account: nil
+        ))
+    }
+
+    func testChatGPTPlanNamesATierTheBuildPredates() {
+        // `prolite` arrived unannounced on 2026-08-22. An unrecognised tier is
+        // capitalised, never dropped and never shown as the raw token.
+        XCTAssertEqual(ChatGPTPlan.displayName("prolite"), "ChatGPT Pro Lite")
+        XCTAssertEqual(ChatGPTPlan.displayName("pro_lite"), "ChatGPT Pro Lite")
+        XCTAssertEqual(ChatGPTPlan.displayName(" Pro Lite "), "ChatGPT Pro Lite")
+        XCTAssertEqual(ChatGPTPlan.displayName("plus"), "ChatGPT Plus")
+        XCTAssertEqual(ChatGPTPlan.displayName("nebula"), "ChatGPT Nebula")
+    }
+
     private func codexRolloutLine(usedPercent: Double, timestamp: String?) -> String {
         let ts = timestamp.map { "\"timestamp\":\"\($0)\"," } ?? ""
         return "{\(ts)\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"rate_limits\":"

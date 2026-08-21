@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { codexSnapshotOutranks } from '@agentdeck/shared';
 import type { CodexCredits, CodexRateLimits, CodexRateLimitWindow } from '@agentdeck/shared';
 
 /**
@@ -114,17 +115,25 @@ function candidateRolloutFiles(root: string, maxDays = 3, maxFiles = 6): Rollout
   return files.slice(0, maxFiles);
 }
 
-/** Scan every candidate and return the usable rate-limits snapshot with the
- *  newest CAPTURE timestamp.
+/** Scan every candidate and return the best usable rate-limits snapshot.
  *
  * File mtime only identifies which rollouts are active enough to inspect. It
  * cannot decide which ACCOUNT snapshot is newest when several Codex sessions
  * append concurrently: a reasoning/tool line can make one file newest while
  * its last rate_limits line is older than a snapshot in another file. Choosing
- * the first usable file made usage move backwards or appear frozen. */
-function parseFirstUsable(candidates: RolloutCandidate[]): CodexRateLimits | null {
-  let newest: CodexRateLimits | null = null;
-  let newestCapturedAtMs = -Infinity;
+ * the first usable file made usage move backwards or appear frozen.
+ *
+ * `accountPlan` (the live tier from `auth.json`) makes the ranking plan-aware —
+ * see `codexSnapshotOutranks`. Without it a Codex session left open across a
+ * plan change wins on recency forever with a snapshot that is voided one step
+ * later, blanking every gauge while a valid snapshot sits in another rollout.
+ * Omitting it (tests, an API-key install with no tier) keeps pure newest-wins. */
+function parseFirstUsable(
+  candidates: RolloutCandidate[],
+  accountPlan?: string,
+): CodexRateLimits | null {
+  let best: CodexRateLimits | null = null;
+  let bestCapturedAtMs = -Infinity;
   for (const { full, mtime } of candidates) {
     const tail = readTail(full);
     const parsed = tail ? parseCodexRateLimitsFromText(tail) : null;
@@ -136,13 +145,20 @@ function parseFirstUsable(candidates: RolloutCandidate[]): CodexRateLimits | nul
       // snapshot this anchor exists to expose. mtime is the fallback.
       parsed.capturedAt = parsed.capturedAt ?? new Date(mtime).toISOString();
       const capturedAtMs = new Date(parsed.capturedAt).getTime();
-      if (!newest || capturedAtMs > newestCapturedAtMs) {
-        newest = parsed;
-        newestCapturedAtMs = capturedAtMs;
+      if (
+        !best ||
+        codexSnapshotOutranks(
+          { planType: parsed.planType, capturedAtMs },
+          { planType: best.planType, capturedAtMs: bestCapturedAtMs },
+          accountPlan,
+        )
+      ) {
+        best = parsed;
+        bestCapturedAtMs = capturedAtMs;
       }
     }
   }
-  return newest;
+  return best;
 }
 
 /**
@@ -150,8 +166,11 @@ function parseFirstUsable(candidates: RolloutCandidate[]): CodexRateLimits | nul
  * Exported (root-injectable) for unit testing; `readCodexRateLimits` wraps this
  * with mtime caching against the live `~/.codex/sessions` tree.
  */
-export function pickCodexRateLimits(root: string = defaultSessionsRoot()): CodexRateLimits | null {
-  return parseFirstUsable(candidateRolloutFiles(root));
+export function pickCodexRateLimits(
+  root: string = defaultSessionsRoot(),
+  accountPlan?: string,
+): CodexRateLimits | null {
+  return parseFirstUsable(candidateRolloutFiles(root), accountPlan);
 }
 
 /** Read the trailing bytes of a file without slurping the whole rollout (these
@@ -257,12 +276,19 @@ export function parseCodexRateLimitsFromText(text: string): CodexRateLimits | nu
 let cacheKey = '';
 let cacheValue: CodexRateLimits | null = null;
 
-export function readCodexRateLimits(root: string = defaultSessionsRoot()): CodexRateLimits | null {
+export function readCodexRateLimits(
+  root: string = defaultSessionsRoot(),
+  accountPlan?: string,
+): CodexRateLimits | null {
   const candidates = candidateRolloutFiles(root);
-  const key = candidates.map(({ full, mtime }) => `${full}:${mtime}`).join('|');
-  if (key && key === cacheKey) return cacheValue;
+  // The account tier is part of the key, not just the files: the selection is
+  // plan-aware, so the same set of rollouts ranks differently the instant the
+  // user's plan changes. Keying on files alone would serve the pre-upgrade
+  // winner until some rollout happened to be touched again.
+  const key = `${accountPlan ?? ''}|${candidates.map(({ full, mtime }) => `${full}:${mtime}`).join('|')}`;
+  if (candidates.length > 0 && key === cacheKey) return cacheValue;
 
-  const parsed = parseFirstUsable(candidates);
+  const parsed = parseFirstUsable(candidates, accountPlan);
   cacheKey = key;
   cacheValue = parsed;
   return parsed;

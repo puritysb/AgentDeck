@@ -191,9 +191,25 @@ final class UsageAPIClient: Sendable {
     var antigravityStatus: AntigravityStatus? { readAntigravityStatus() }
 
     /// Latest Codex usage limits from local rollout files. Cached by active
-    /// rollout path + mtime so repeated polls don't re-read an unchanged file.
+    /// rollout path + mtime + account tier so repeated polls don't re-read an
+    /// unchanged file, while a plan change still re-ranks the same rollouts.
+    ///
+    /// The tier is resolved OUTSIDE `codexRateLimitsQueue` — `codexAuthStatus`
+    /// takes `codexAuthQueue`, and nesting the two locks in one order here while
+    /// some future caller nests them the other way is how a daemon deadlocks.
     var codexRateLimits: CodexRateLimitsLocal? {
-        codexRateLimitsQueue.sync { readCodexRateLimitsLocked() }
+        codexRateLimits(accountPlan: codexAuthStatus?.planType)
+    }
+
+    /// Same read, with the caller's already-resolved account tier.
+    ///
+    /// The payload builder reconciles the snapshot against a tier it read for
+    /// itself; handing that same value down keeps ONE plan per usage frame. Two
+    /// independent reads can straddle a token refresh — and a build that ranks
+    /// rollouts under the new plan and then voids them against the old one (or
+    /// the reverse) blanks the gauges for reasons neither read can explain.
+    func codexRateLimits(accountPlan: String?) -> CodexRateLimitsLocal? {
+        codexRateLimitsQueue.sync { readCodexRateLimitsLocked(accountPlan: accountPlan) }
     }
 
     // MARK: - Fetch
@@ -579,28 +595,39 @@ final class UsageAPIClient: Sendable {
     /// Must only be invoked inside `codexRateLimitsQueue.sync { ... }`. The
     /// whole find-newest-file + tail-read runs inside `withCodexBase` so the
     /// security scope (App Store sandbox) stays active during the file read.
-    private func readCodexRateLimitsLocked() -> CodexRateLimitsLocal? {
+    private func readCodexRateLimitsLocked(accountPlan: String?) -> CodexRateLimitsLocal? {
         withCodexBase { base in
             let candidates = Self.codexRolloutCandidates(sessionsDir: base.appendingPathComponent("sessions"))
             guard !candidates.isEmpty else { return nil }
-            let key = Self.codexRolloutCacheKey(candidates)
+            let key = Self.codexRolloutCacheKey(candidates, accountPlan: accountPlan)
             if let cached = self.codexRateLimitsCache, cached.key == key { return cached.value }
 
-            let parsed = Self.parseFirstUsableCodexRollout(candidates)
+            let parsed = Self.parseFirstUsableCodexRollout(candidates, accountPlan: accountPlan)
             self.codexRateLimitsCache = (key, parsed)
             return parsed
         }
     }
 
-    /// Scan every candidate and return the usable snapshot with the newest
-    /// CAPTURE timestamp. File mtime decides which rollouts are worth inspecting,
-    /// not which account snapshot wins: concurrent Codex sessions can append
-    /// ordinary lines to one file after another file wrote a newer rate_limits
-    /// line. Stamps missing `capturedAt` from file mtime. Mirrors
-    /// `parseFirstUsable` in bridge/src/codex-rate-limits.ts.
-    static func parseFirstUsableCodexRollout(_ candidates: [(url: URL, mtime: TimeInterval)]) -> CodexRateLimitsLocal? {
-        var newest: CodexRateLimitsLocal?
-        var newestCapturedAt = Date.distantPast
+    /// Scan every candidate and return the best usable snapshot. File mtime
+    /// decides which rollouts are worth inspecting, not which account snapshot
+    /// wins: concurrent Codex sessions can append ordinary lines to one file
+    /// after another file wrote a newer rate_limits line. Stamps missing
+    /// `capturedAt` from file mtime. Mirrors `parseFirstUsable` in
+    /// bridge/src/codex-rate-limits.ts.
+    ///
+    /// `accountPlan` (the live tier from `auth.json`) makes the ranking
+    /// plan-aware — `CodexPlanRules.snapshotOutranks`. Without it a Codex session
+    /// left open across a plan change wins on recency forever with a snapshot
+    /// that `codexRateLimitsPayload` voids one step later, blanking every gauge
+    /// while a valid snapshot sits unread in another rollout. This matters most
+    /// for the App Store daemon, which cannot spawn `codex app-server` and has
+    /// no second source to fall back on.
+    static func parseFirstUsableCodexRollout(
+        _ candidates: [(url: URL, mtime: TimeInterval)],
+        accountPlan: String? = nil
+    ) -> CodexRateLimitsLocal? {
+        var best: CodexRateLimitsLocal?
+        var bestCapturedAt = TimeInterval(-Double.greatestFiniteMagnitude)
         for candidate in candidates {
             guard let tail = readCodexRolloutTail(candidate.url),
                   var parsed = parseCodexRateLimits(tail) else { continue }
@@ -609,18 +636,33 @@ final class UsageAPIClient: Sendable {
             }
             guard let stamp = parsed.capturedAt,
                   let capturedAt = codexCaptureDate(stamp) else { continue }
-            if newest == nil || capturedAt > newestCapturedAt {
-                newest = parsed
-                newestCapturedAt = capturedAt
+            let capturedAtSeconds = capturedAt.timeIntervalSince1970
+            if best == nil || CodexPlanRules.snapshotOutranks(
+                candidatePlan: parsed.planType,
+                candidateCapturedAt: capturedAtSeconds,
+                incumbentPlan: best?.planType,
+                incumbentCapturedAt: bestCapturedAt,
+                account: accountPlan
+            ) {
+                best = parsed
+                bestCapturedAt = capturedAtSeconds
             }
         }
-        return newest
+        return best
     }
 
     /// A concurrent session outside candidates[0] can write the newest account
-    /// snapshot. The cache key must therefore cover every inspected rollout.
-    static func codexRolloutCacheKey(_ candidates: [(url: URL, mtime: TimeInterval)]) -> String {
-        candidates.map { "\($0.url.path):\($0.mtime)" }.joined(separator: "|")
+    /// snapshot. The cache key must therefore cover every inspected rollout — and
+    /// the account tier, because the selection is plan-aware: the same set of
+    /// rollouts ranks differently the instant the user's plan changes, and a
+    /// files-only key would serve the pre-upgrade winner until some rollout
+    /// happened to be touched again.
+    static func codexRolloutCacheKey(
+        _ candidates: [(url: URL, mtime: TimeInterval)],
+        accountPlan: String? = nil
+    ) -> String {
+        let files = candidates.map { "\($0.url.path):\($0.mtime)" }.joined(separator: "|")
+        return "\(accountPlan ?? "")|\(files)"
     }
 
     /// Gather rollout files across the newest few day-directories of the

@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
   parseLiveCodexRateLimits,
-  pickFresherCodexRateLimits,
+  pickBestCodexRateLimits,
   shouldQueryCodexRateLimitsLive,
   queryCodexRateLimitsLive,
   codexSpawnPlan,
@@ -70,7 +70,7 @@ describe('parseLiveCodexRateLimits', () => {
   });
 });
 
-describe('pickFresherCodexRateLimits', () => {
+describe('pickBestCodexRateLimits', () => {
   const at = (iso: string, usedPercent: number) => ({
     primary: { usedPercent, windowMinutes: 10080 },
     capturedAt: iso,
@@ -79,26 +79,47 @@ describe('pickFresherCodexRateLimits', () => {
   it('prefers the newer capture', () => {
     const passive = at('2026-08-04T18:38:42.076Z', 94);
     const live = at('2026-08-05T12:18:00.000Z', 100);
-    expect(pickFresherCodexRateLimits(passive, live)).toBe(live);
+    expect(pickBestCodexRateLimits(passive, live)).toBe(live);
   });
 
   it('keeps a passive reading that is newer than the cached live one', () => {
     const passive = at('2026-08-05T13:00:00.000Z', 3);
     const live = at('2026-08-05T12:18:00.000Z', 100);
-    expect(pickFresherCodexRateLimits(passive, live)).toBe(passive);
+    expect(pickBestCodexRateLimits(passive, live)).toBe(passive);
   });
 
   it('handles either side being absent', () => {
     const live = at('2026-08-05T12:18:00.000Z', 100);
-    expect(pickFresherCodexRateLimits(null, live)).toBe(live);
-    expect(pickFresherCodexRateLimits(live, null)).toBe(live);
-    expect(pickFresherCodexRateLimits(null, null)).toBeNull();
+    expect(pickBestCodexRateLimits(null, live)).toBe(live);
+    expect(pickBestCodexRateLimits(live, null)).toBe(live);
+    expect(pickBestCodexRateLimits(null, null)).toBeNull();
   });
 
   it('lets a stamped snapshot beat an unstamped one', () => {
     const unstamped = { primary: { usedPercent: 94, windowMinutes: 10080 } };
     const live = at('2026-08-05T12:18:00.000Z', 100);
-    expect(pickFresherCodexRateLimits(unstamped, live)).toBe(live);
+    expect(pickBestCodexRateLimits(unstamped, live)).toBe(live);
+  });
+
+  it('takes the live reading over a NEWER rollout minted under the old plan', () => {
+    // The 2026-08-22 upgrade: a Codex session opened before the plan change kept
+    // writing `plus` snapshots with the newest timestamps, so the live answer —
+    // correct, current, and the only source carrying the new tier — lost every
+    // comparison and was then voided as a mismatch. Recency picked the one
+    // snapshot guaranteed to be discarded.
+    const passive = { ...at('2026-08-21T16:40:29.100Z', 66), planType: 'plus' };
+    const live = { ...at('2026-08-21T16:35:00.000Z', 0), planType: 'prolite' };
+    expect(pickBestCodexRateLimits(passive, live, 'prolite')).toBe(live);
+    // Without a known account tier nothing is reshuffled: recency still rules.
+    expect(pickBestCodexRateLimits(passive, live, undefined)).toBe(passive);
+  });
+
+  it('still prefers a fresh passive reading once the rollout carries the new plan', () => {
+    // The rescue must not become permanent: a rollout written by a session
+    // started after the upgrade is the cheaper, more exact source again.
+    const passive = { ...at('2026-08-22T01:43:09.000Z', 12), planType: 'prolite' };
+    const live = { ...at('2026-08-22T01:35:00.000Z', 0), planType: 'prolite' };
+    expect(pickBestCodexRateLimits(passive, live, 'prolite')).toBe(passive);
   });
 });
 
@@ -123,6 +144,45 @@ describe('shouldQueryCodexRateLimitsLive', () => {
         lastAttemptMs: 0,
         consecutiveFailures: 0,
         passiveCapturedAtMs: now - 30 * 1000,
+      }),
+    ).toBe(false);
+  });
+
+  it('queries a fresh passive snapshot when its plan is one the account no longer holds', () => {
+    // "The rollout is writing fresh readings" is only a reason to skip if those
+    // readings are usable. A snapshot stamped with a retired plan is voided
+    // downstream, so honouring its freshness suppressed the one source that
+    // still had a number — precisely while Codex was being used hardest.
+    expect(
+      shouldQueryCodexRateLimitsLive({
+        nowMs: now,
+        lastAttemptMs: 0,
+        consecutiveFailures: 0,
+        passiveCapturedAtMs: now - 30 * 1000,
+        passivePlanMatchesAccount: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('does not let a plan mismatch defeat the spawn throttles', () => {
+    // A mismatch is a reason to PREFER the live read, never a licence to spawn a
+    // subprocess on every usage build (they are built several times a minute).
+    expect(
+      shouldQueryCodexRateLimitsLive({
+        nowMs: now,
+        lastAttemptMs: now - 60 * 1000,
+        consecutiveFailures: 0,
+        passiveCapturedAtMs: now - 30 * 1000,
+        passivePlanMatchesAccount: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldQueryCodexRateLimitsLive({
+        nowMs: now,
+        lastAttemptMs: now - 6 * 60 * 1000,
+        consecutiveFailures: 3,
+        passiveCapturedAtMs: now - 30 * 1000,
+        passivePlanMatchesAccount: false,
       }),
     ).toBe(false);
   });

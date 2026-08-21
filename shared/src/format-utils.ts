@@ -314,6 +314,43 @@ export function codexWindowsBeside<T>(
 }
 
 /**
+ * Display name for a raw `chatgpt_plan_type`, keyed by the tier with every
+ * separator removed — `prolite`, `pro_lite` and `pro lite` are one plan.
+ *
+ * SSOT for both daemons: the Swift mirror (`ChatGPTPlan` in
+ * CodexFreshnessRules.generated.swift) is emitted from this table. It used to be
+ * a hand copy, and a tier missing from one copy does not degrade gracefully —
+ * it renders as the fallback capitalisation ("ChatGPT Prolite") on that surface
+ * only, so the same account reads differently on the dashboard and the deck.
+ */
+export const CHATGPT_PLAN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  free: 'ChatGPT Free',
+  plus: 'ChatGPT Plus',
+  pro: 'ChatGPT Pro',
+  prolite: 'ChatGPT Pro Lite',
+  team: 'ChatGPT Team',
+  enterprise: 'ChatGPT Enterprise',
+};
+
+/**
+ * Format a raw `chatgpt_plan_type` for display, or `undefined` when there is no
+ * tier to show.
+ *
+ * An unrecognised tier is capitalised rather than dropped: OpenAI mints new plan
+ * names on its own schedule (`prolite` arrived unannounced), and a tier this
+ * build predates must still read as a plan beside Plus/Pro/Team — never as the
+ * raw lowercase token, and never as nothing.
+ */
+export function formatChatGptPlanName(planType?: string | null): string | undefined {
+  const raw = planType?.trim();
+  if (!raw) return undefined;
+  const key = raw.toLowerCase().replace(/[\s_-]+/g, '');
+  const known = CHATGPT_PLAN_DISPLAY_NAMES[key];
+  if (known) return known;
+  return `ChatGPT ${raw.charAt(0).toUpperCase()}${raw.slice(1)}`;
+}
+
+/**
  * True when the ChatGPT tier carries no paid Codex subscription.
  *
  * The tier string comes from `~/.codex/auth.json` (`chatgpt_plan_type`), which is
@@ -349,6 +386,43 @@ export function codexSnapshotMatchesAccountPlan(
   const account = (accountPlan ?? '').trim().toLowerCase();
   if (!snap || !account) return true;
   return snap === account;
+}
+
+/**
+ * Rank one Codex usage snapshot against another for the live account tier.
+ *
+ * Recency alone is the wrong ordering, because a snapshot that will be VOIDED a
+ * step later must not first win the selection. Codex stamps `plan_type` from the
+ * auth token the WRITING PROCESS started with, so a Codex session opened before
+ * a plan change keeps appending old-plan snapshots for as long as it stays open
+ * — and, being the busiest session, it also keeps minting the newest timestamps.
+ * A newest-wins picker therefore hands `normalizeCodexRateLimits` a mismatched
+ * snapshot on every single build, the windows are voided, and every gauge goes
+ * blank even though a valid same-plan snapshot is sitting right there in another
+ * rollout (measured 2026-08-22: a 20:35 pre-upgrade session out-stamping a 01:43
+ * post-upgrade one indefinitely).
+ *
+ * So plan agreement is the PRIMARY key and age is only the tie-break:
+ *   1. a snapshot matching the account plan outranks one that does not, at any age
+ *   2. within the same match class, the newer `capturedAtMs` wins
+ *   3. exact ties keep the incumbent (both pickers scan in priority order)
+ *
+ * This orders snapshots; it never rescues one. A mismatched snapshot that wins
+ * because it is the only one left is still voided downstream — the point is that
+ * it must not displace a valid peer first.
+ *
+ * `capturedAtMs` is a number, not a string, so both a parsed rollout stamp and
+ * "unknown" (`-Infinity` / `-.infinity`) order without a second date parse.
+ */
+export function codexSnapshotOutranks(
+  candidate: { planType?: string | null; capturedAtMs: number },
+  incumbent: { planType?: string | null; capturedAtMs: number },
+  accountPlan?: string | null,
+): boolean {
+  const candidateMatches = codexSnapshotMatchesAccountPlan(candidate.planType, accountPlan);
+  const incumbentMatches = codexSnapshotMatchesAccountPlan(incumbent.planType, accountPlan);
+  if (candidateMatches !== incumbentMatches) return candidateMatches;
+  return candidate.capturedAtMs > incumbent.capturedAtMs;
 }
 
 /**

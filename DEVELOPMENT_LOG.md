@@ -2,6 +2,73 @@
 
 ---
 
+## 2026-08-22 — Codex 요금제를 올렸더니 사용량이 전부 사라졌다: void 판정이 선택보다 뒤에 있었다
+
+### 문제
+
+ChatGPT 요금제를 Plus → Pro Lite(`prolite`)로 올린 직후 모든 표면에서 Codex 게이지가
+사라졌다. 데몬 와이어 실측은 `codexRateLimits: { planType: "prolite" }` — 창이 하나도
+없는 void 블록. 규칙 자체는 설계대로였다: 스냅샷의 `plan_type`이 계정 티어와 다르면
+그 수치는 "오래된" 게 아니라 "무의미"하므로 버린다(`codexSnapshotMatchesAccountPlan`).
+
+문제는 그 불일치가 과도기가 아니라 **영구 상태로 고착**됐다는 것이다. 측정값:
+`auth.json` JWT는 갱신 즉시 `prolite`, 그런데 롤아웃 8,314줄(07-31~08-22)은 **전부**
+`plus`. Codex는 `plan_type`을 **프로세스가 시작할 때 들고 있던 토큰**에서 찍는다 —
+업그레이드 전에 열어 둔 세션은 살아 있는 한 계속 구 플랜을 찍고, 가장 바쁜 세션이므로
+**가장 최신 타임스탬프도 계속 갱신**한다. 업그레이드 후 시작한 새 세션은 정상적으로
+`prolite`를 찍었지만(01:43 실측), 최신순 선택이 매번 구 세션의 `plus`를 골라 void로
+버렸다. 유효한 스냅샷이 디스크에 있는데 한 번도 읽히지 않은 것이다.
+
+구제 경로도 두 겹으로 막혀 있었다. `shouldQueryCodexRateLimitsLive`는 패시브가 2분
+이내면 live 질의를 건너뛰고(= Codex를 쓰는 중엔 상시 skip), `pickFresherCodexRateLimits`는
+`capturedAt`만 비교해 정상적인 live 응답(`prolite`, 정상 창)을 더 최신인 `plus`에게
+지게 만들었다. **void 판정이 freshness 선택 *이후*에 적용**되므로 "곧 버려질 최신본"이
+"유효한 조금 덜 최신본"을 항상 이겼다.
+
+### 해결
+
+**plan 일치를 1순위 키로, 나이를 tie-break로** — `codexSnapshotOutranks`(SSOT
+`shared/src/format-utils.ts`)를 신설하고 양쪽 데몬의 롤아웃 선택기와 Node의 live/passive
+선택기가 모두 이것을 쓰게 했다. 이 함수는 **순서만 정하고 구제하지는 않는다**: 불일치
+스냅샷이 유일해서 이겼다면 downstream에서 그대로 void된다(그래야 티어만 실린 명시적
+windowless 페이로드가 유지된다 — retain-on-absent 래치 회피).
+
+- `shouldQueryCodexRateLimitsLive`에 `passivePlanMatchesAccount` 추가 — 불일치면
+  "패시브가 신선하다"는 skip 사유를 무시한다. 단, spawn 스로틀(5분 간격·실패 백오프)은
+  무조건 유지: 불일치는 live를 **선호할** 이유이지 매 빌드마다 서브프로세스를 띄울
+  면허가 아니다.
+- `pickFresherCodexRateLimits` → `pickBestCodexRateLimits`(이름이 규칙과 어긋났다).
+- 캐시 키에 계정 티어를 넣었다(Node·Swift 양쪽). 파일만으로 키를 잡으면 플랜이 바뀐
+  순간에도 어떤 롤아웃이 다시 touch될 때까지 업그레이드 이전 승자를 계속 서빙한다.
+- `formatChatGptPlan`을 shared SSOT `formatChatGptPlanName` + `CHATGPT_PLAN_DISPLAY_NAMES`로
+  올리고, Swift `ChatGPTPlan`(손 미러였다)을 생성 파일로 옮겼다. `prolite` 추가.
+  구분자를 제거해 키를 만들므로 `prolite`/`pro_lite`/`pro lite`가 한 플랜이다.
+
+### 핵심 설계 결정
+
+- **버려질 값이 먼저 선택을 이기면 안 된다.** 무효화 규칙과 선택 규칙이 따로 있으면
+  순서가 곧 버그다. 무효화가 존재하는 파이프라인에서 선택기는 반드시 무효화 기준을
+  알아야 한다 — 그렇지 않으면 "유효한 후보가 있는데도 전부 비었다"가 정상 동작처럼 보인다.
+- **Swift 단독(App Store) 모드가 이 수정의 진짜 수혜자다.** 샌드박스라 `codex app-server`를
+  띄울 수 없어 롤아웃 트리가 유일한 소스다 — Node에는 live 질의라는 두 번째 소스가
+  있지만 Swift에는 없으므로, 선택을 plan-aware로 만들지 않으면 복구 경로가 아예 없다.
+  두 데몬이 `timeline.json`처럼 교대로 9120을 소유하므로 규칙은 SSOT에서 생성해 미러한다.
+- **한 usage 프레임에는 티어가 하나.** 순위를 매길 때와 void할 때 계정 플랜을 따로 읽으면
+  토큰 갱신을 사이에 두고 서로 다른 플랜으로 판단할 수 있다. Node는 `buildUsage()`에서,
+  Swift는 `DaemonServer`에서 한 번 읽어 아래로 내린다.
+- **fixture는 지어내지 않고 복사했다.** 양쪽 데몬 테스트가 2026-08-22 실제 롤아웃 두
+  줄(구 세션 `plus` / 신 세션 `prolite`)을 **동일 바이트로** 물고 있다. 파서가 기대하는
+  모양으로 조립한 fixture는 실제 줄이 실패하는 방식으로 실패하지 못한다.
+
+### 검증
+
+- 실제 두 세션 트리(복사본)에서 plan-blind는 `plus`(→void), plan-aware는 `prolite` 선택 — 계측기 검증 완료.
+- 데몬 재시작 후 와이어 실측: `codexRateLimits.secondary` 7d 1% / resets 2026-08-28,
+  `planType: prolite`, 구독행 "ChatGPT Pro Lite"(이전 "ChatGPT Prolite").
+- vitest 3,267개 통과, macOS XCTest ProtocolTests 70개 통과, 생성 미러 drift 게이트 in sync.
+
+---
+
 ## 2026-08-21 — Play는 왜 다운로드가 없는가, 그리고 라이브 전환 뒤 아무 게이트도 보지 않는 문서 집합
 
 ### 문제

@@ -26,7 +26,7 @@ const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const HEADER =
   'GENERATED FILE — DO NOT EDIT.\n' +
   'Source of truth: shared/src/format-utils.ts (CODEX_SNAPSHOT_STALE_MS, codexUsageFootnote,\n' +
-  'codexSnapshotMatchesAccountPlan)\n' +
+  'codexSnapshotMatchesAccountPlan, codexSnapshotOutranks, CHATGPT_PLAN_DISPLAY_NAMES)\n' +
   'Regenerate: pnpm generate-codex-freshness-rules (drift gated by shared/src/__tests__/codex-freshness-rules.test.ts)';
 
 function comment(prefix) {
@@ -136,8 +136,62 @@ enum CodexPlanRules {
         return snap == acct
     }
 
+    /// Rank one snapshot against another for the live account tier.
+    ///
+    /// Recency alone is the wrong ordering: a snapshot that will be VOIDED a step
+    /// later must not first win the selection. Codex stamps \`plan_type\` from the
+    /// auth token the WRITING PROCESS started with, so a session opened before a
+    /// plan change keeps appending old-plan snapshots for as long as it stays
+    /// open — and, being the busiest session, keeps minting the newest timestamps
+    /// too. A newest-wins picker hands the void rule a mismatched snapshot on
+    /// every build and every gauge goes blank, while a valid same-plan snapshot
+    /// sits unread in another rollout.
+    ///
+    /// Plan agreement is the PRIMARY key, age only the tie-break; exact ties keep
+    /// the incumbent. This orders snapshots, it never rescues one — a mismatched
+    /// snapshot that wins for lack of a peer is still voided downstream.
+    ///
+    /// Capture stamps are seconds-since-epoch so "unknown" can be \`-.infinity\`
+    /// and order without a second date parse.
+    static func snapshotOutranks(
+        candidatePlan: String?,
+        candidateCapturedAt: TimeInterval,
+        incumbentPlan: String?,
+        incumbentCapturedAt: TimeInterval,
+        account: String?
+    ) -> Bool {
+        let candidateMatches = snapshotMatchesAccountPlan(snapshot: candidatePlan, account: account)
+        let incumbentMatches = snapshotMatchesAccountPlan(snapshot: incumbentPlan, account: account)
+        if candidateMatches != incumbentMatches { return candidateMatches }
+        return candidateCapturedAt > incumbentCapturedAt
+    }
+
     private static func normalized(_ value: String?) -> String {
         return (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+/// Display name for a raw \`chatgpt_plan_type\`.
+///
+/// Generated so the daemons cannot disagree about what an account is called. The
+/// mapping had already drifted into three hand-written Swift call sites once,
+/// each passing an unrecognised plan through verbatim; keeping it hand-mirrored
+/// against the TS copy repeated that at the platform level — OpenAI mints tiers
+/// on its own schedule (\`prolite\` arrived unannounced) and whichever copy was
+/// not updated renders the fallback capitalisation for the same account.
+///
+/// Keys carry no separators: \`prolite\`, \`pro_lite\` and \`pro lite\` are one plan.
+/// An unrecognised tier is capitalised, never dropped and never shown raw.
+enum ChatGPTPlan {
+    static func displayName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = trimmed.lowercased().filter { !$0.isWhitespace && $0 != "_" && $0 != "-" }
+        switch key {
+${Object.entries(rules.planNames)
+        .map(([key, name]) => `        case "${key}": return "${name}"`)
+        .join('\n')}
+        default: return "ChatGPT " + trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+        }
     }
 }
 `;
@@ -226,13 +280,16 @@ export const OUTPUTS = [
 
 async function main() {
   let staleMs;
+  let planNames;
   try {
-    ({ CODEX_SNAPSHOT_STALE_MS: staleMs } = await import('../shared/dist/format-utils.js'));
+    ({ CODEX_SNAPSHOT_STALE_MS: staleMs, CHATGPT_PLAN_DISPLAY_NAMES: planNames } = await import(
+      '../shared/dist/format-utils.js'
+    ));
   } catch {
     console.error('shared/dist not found — run `pnpm --filter @agentdeck/shared build` first');
     process.exit(1);
   }
-  const rules = { staleMs };
+  const rules = { staleMs, planNames };
   const check = process.argv.includes('--check');
   let drifted = false;
   for (const [rel, emit] of OUTPUTS) {

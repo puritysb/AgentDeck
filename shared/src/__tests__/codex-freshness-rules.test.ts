@@ -14,11 +14,17 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { CODEX_SNAPSHOT_STALE_MS, codexUsageFootnote, formatSnapshotAge } from '../format-utils.js';
+import {
+  CHATGPT_PLAN_DISPLAY_NAMES,
+  CODEX_SNAPSHOT_STALE_MS,
+  codexUsageFootnote,
+  formatChatGptPlanName,
+  formatSnapshotAge,
+} from '../format-utils.js';
 import { OUTPUTS, emitSwift, emitKotlin } from '../../../scripts/generate-codex-freshness-rules.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
-const rules = { staleMs: CODEX_SNAPSHOT_STALE_MS };
+const rules = { staleMs: CODEX_SNAPSHOT_STALE_MS, planNames: CHATGPT_PLAN_DISPLAY_NAMES };
 
 describe('codex freshness threshold invariants', () => {
   it('is an absolute duration, not a fraction of any window', () => {
@@ -62,6 +68,33 @@ describe('generated mirrors in sync', () => {
     expect(emitKotlin(rules)).not.toContain('CodexPlanRules');
   });
 
+  it('mirrors the plan-aware RANKING to Swift, not just the void rule', () => {
+    // Voiding alone is not enough on either daemon: a snapshot that will be
+    // voided must not first WIN the selection, or the valid same-plan snapshot
+    // sitting in another rollout is never read. The Swift daemon needs this most
+    // — sandboxed, it cannot spawn `codex app-server` and has no second source.
+    const swift = emitSwift(rules);
+    expect(swift).toContain('static func snapshotOutranks(');
+    // Plan agreement is the PRIMARY key; age only breaks a tie within a class.
+    expect(swift).toContain('if candidateMatches != incumbentMatches { return candidateMatches }');
+    expect(swift).toContain('return candidateCapturedAt > incumbentCapturedAt');
+    expect(emitKotlin(rules)).not.toContain('snapshotOutranks');
+  });
+
+  it('emits every plan display name from the SSOT table, Swift only', () => {
+    // The tier table is generated because OpenAI mints plans unannounced
+    // (`prolite`, 2026-08-22) and a hand mirror updated on one side renders the
+    // same account two different ways. Android consumes the formatted wire name.
+    const swift = emitSwift(rules);
+    expect(swift).toContain('enum ChatGPTPlan');
+    for (const [key, name] of Object.entries(CHATGPT_PLAN_DISPLAY_NAMES)) {
+      expect(swift).toContain(`case "${key}": return "${name}"`);
+    }
+    // Separators are stripped before lookup, so `pro_lite` cannot miss `prolite`.
+    expect(swift).toContain('$0 != "_"');
+    expect(emitKotlin(rules)).not.toContain('ChatGPTPlan');
+  });
+
   it('emits the same three footnote states the TS SSOT resolves', () => {
     for (const src of [emitSwift(rules), emitKotlin(rules)]) {
       expect(src).toContain('"stale"');   // window ended
@@ -75,6 +108,16 @@ describe('generated mirrors in sync', () => {
 describe('TS side still produces what the mirrors promise', () => {
   const NOW = Date.parse('2026-08-05T07:27:00.000Z');
   const ago = (ms: number) => new Date(NOW - ms).toISOString();
+
+  it('names a tier the build predates without dropping it or showing it raw', () => {
+    expect(formatChatGptPlanName('prolite')).toBe('ChatGPT Pro Lite');
+    expect(formatChatGptPlanName('pro_lite')).toBe('ChatGPT Pro Lite');
+    expect(formatChatGptPlanName(' Pro Lite ')).toBe('ChatGPT Pro Lite');
+    // Unrecognised: capitalised, never the raw token and never undefined.
+    expect(formatChatGptPlanName('nebula')).toBe('ChatGPT Nebula');
+    expect(formatChatGptPlanName('')).toBeUndefined();
+    expect(formatChatGptPlanName(undefined)).toBeUndefined();
+  });
 
   it('threshold boundary matches the emitted constant', () => {
     expect(codexUsageFootnote({ resetsAt: '2099-01-01T00:00:00Z' }, ago(CODEX_SNAPSHOT_STALE_MS), NOW))

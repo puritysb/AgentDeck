@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { codexSnapshotMatchesAccountPlan, codexSnapshotOutranks } from '@agentdeck/shared';
 import type { CodexCredits, CodexRateLimits, CodexRateLimitWindow } from '@agentdeck/shared';
 
 /**
@@ -238,17 +239,31 @@ function capturedAtMs(rl?: CodexRateLimits | null): number {
 }
 
 /**
- * Choose the snapshot that was captured more recently. A snapshot with no
- * `capturedAt` at all loses to a stamped one; ties keep the passive reading,
- * which is the on-disk ground truth. Exported for unit testing.
+ * Choose between the passive rollout reading and the live app-server reading.
+ *
+ * Plan agreement first, capture time second (`codexSnapshotOutranks`). Recency
+ * alone let the wrong one win in exactly the case the live query exists to
+ * cover: a Codex session opened before a plan change keeps writing old-plan
+ * rollout snapshots with ever-newer timestamps, so the live answer — correct,
+ * current, and the ONLY source carrying the new tier — lost every comparison and
+ * was then voided as a mismatch. A snapshot with no `capturedAt` at all loses to
+ * a stamped one within its match class; ties keep the passive reading, which is
+ * the on-disk ground truth. Exported for unit testing.
  */
-export function pickFresherCodexRateLimits(
+export function pickBestCodexRateLimits(
   passive: CodexRateLimits | null,
   live: CodexRateLimits | null,
+  accountPlan?: string,
 ): CodexRateLimits | null {
   if (!live) return passive;
   if (!passive) return live;
-  return capturedAtMs(live) > capturedAtMs(passive) ? live : passive;
+  return codexSnapshotOutranks(
+    { planType: live.planType, capturedAtMs: capturedAtMs(live) },
+    { planType: passive.planType, capturedAtMs: capturedAtMs(passive) },
+    accountPlan,
+  )
+    ? live
+    : passive;
 }
 
 /** Throttle policy, kept pure so the cadence is testable without spawning. */
@@ -257,13 +272,34 @@ export function shouldQueryCodexRateLimitsLive(input: {
   lastAttemptMs: number;
   consecutiveFailures: number;
   passiveCapturedAtMs: number;
+  /** False when the passive snapshot is stamped with a plan the account no
+   *  longer holds — i.e. it is about to be voided and carries no usable number.
+   *  Defaults to true so callers that know no account tier behave as before. */
+  passivePlanMatchesAccount?: boolean;
 }): boolean {
-  const { nowMs, lastAttemptMs, consecutiveFailures, passiveCapturedAtMs } = input;
+  const {
+    nowMs,
+    lastAttemptMs,
+    consecutiveFailures,
+    passiveCapturedAtMs,
+    passivePlanMatchesAccount = true,
+  } = input;
   const interval =
     consecutiveFailures >= MAX_CONSECUTIVE_FAILURES ? FAILURE_BACKOFF_MS : MIN_QUERY_INTERVAL_MS;
+  // Spawn throttles are unconditional: a mismatch is a reason to prefer the live
+  // read, never a licence to spawn a subprocess on every usage build.
   if (lastAttemptMs > 0 && nowMs - lastAttemptMs < interval) return false;
-  // Codex is mid-turn: the rollout is already writing fresh readings.
-  if (passiveCapturedAtMs > 0 && nowMs - passiveCapturedAtMs < PASSIVE_FRESH_MS) return false;
+  // Codex is mid-turn: the rollout is already writing fresh readings — but only
+  // if those readings are usable at all. A snapshot stamped with a retired plan
+  // is voided downstream, so "the passive read is fresh" would suppress the one
+  // source that still has a number, precisely while Codex is being used hardest.
+  if (
+    passivePlanMatchesAccount &&
+    passiveCapturedAtMs > 0 &&
+    nowMs - passiveCapturedAtMs < PASSIVE_FRESH_MS
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -278,12 +314,20 @@ export function getLiveCodexRateLimits(): CodexRateLimits | null {
 }
 
 /**
- * Daemon entry point: return the fresher of the passive and live readings, and
- * kick off a throttled background refresh when the passive one has gone quiet.
- * Fire-and-forget by design — the current call is answered from cache so usage
- * building never awaits a subprocess.
+ * Daemon entry point: return the better of the passive and live readings, and
+ * kick off a throttled background refresh when the passive one has gone quiet
+ * OR has been minted under a plan the account no longer holds. Fire-and-forget
+ * by design — the current call is answered from cache so usage building never
+ * awaits a subprocess.
+ *
+ * `accountPlan` is the live tier from `auth.json`. Passing it is what lets both
+ * halves of this function tell "old" from "void"; omitting it keeps the previous
+ * newest-wins behaviour.
  */
-export function codexRateLimitsWithLiveRefresh(passive: CodexRateLimits | null): CodexRateLimits | null {
+export function codexRateLimitsWithLiveRefresh(
+  passive: CodexRateLimits | null,
+  accountPlan?: string,
+): CodexRateLimits | null {
   if (process.env.AGENTDECK_CODEX_LIVE_USAGE !== '0') {
     const nowMs = Date.now();
     if (
@@ -293,6 +337,7 @@ export function codexRateLimitsWithLiveRefresh(passive: CodexRateLimits | null):
         lastAttemptMs,
         consecutiveFailures,
         passiveCapturedAtMs: capturedAtMs(passive),
+        passivePlanMatchesAccount: codexSnapshotMatchesAccountPlan(passive?.planType, accountPlan),
       })
     ) {
       inFlight = true;
@@ -314,7 +359,7 @@ export function codexRateLimitsWithLiveRefresh(passive: CodexRateLimits | null):
         });
     }
   }
-  return pickFresherCodexRateLimits(passive, cachedLive);
+  return pickBestCodexRateLimits(passive, cachedLive, accountPlan);
 }
 
 /** Test hook — clears the module-level cache and throttle state. */
