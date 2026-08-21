@@ -27,7 +27,11 @@ permissions:
   contents: read
 
 jobs:
+  # The job name — not the workflow name — is the status-check context branch
+  # protection pins, so it has to say which gate it is: an unnamed job here
+  # would be required as the bare `compile`.
   compile:
+    name: ESP32 Sim Compile
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
