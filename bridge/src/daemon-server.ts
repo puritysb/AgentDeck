@@ -3369,6 +3369,19 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // So split the event by half instead of by event: the ACCOUNT half (quota,
       // scoped caps, extra usage, subscriptions, Codex/Ollama, usageStale) comes
       // from the daemon's authoritative aggregate, the SESSION half from the relay.
+      //
+      // That split applies on the `else` branch ONLY. When the relay carries
+      // Claude percentages its event goes out verbatim, so the account half —
+      // `codexRateLimits` included — is the BRIDGE's. Usually identical: both
+      // sides run the same plan-aware rollout read. They can differ only when no
+      // plan-matching rollout exists at all, since the daemon additionally holds
+      // a `codex app-server` reading that a session bridge structurally cannot
+      // (no host processes there) — then successive events alternate between a
+      // real Codex window and a voided one. Left as is deliberately: the only
+      // targeted fix is to overwrite the block from `core.buildUsage()` here, and
+      // that is the call which arms the throttled spawn, on the one path whose
+      // whole history is about not clobbering the dashboard. Tracked as issue
+      // #253, not just as this comment.
       if (hasClaudeData) {
         core.wsServer.broadcast(evt);
       } else {

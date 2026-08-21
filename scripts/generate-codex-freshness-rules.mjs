@@ -129,6 +129,11 @@ enum CodexPlanRules {
     /// Unknown on either side matches: absence is "no information", never a
     /// licence to void real data (an API-key install reports no account tier, a
     /// pre-\`plan_type\` rollout reports no snapshot tier).
+    ///
+    /// The emptiness test MUST stay ahead of the equality test: \`planKey\` strips
+    /// separators, so two separator-only values both reduce to "" and, reordered,
+    /// would compare equal and report a positive plan MATCH where the answer is
+    /// "neither side named a tier".
     static func snapshotMatchesAccountPlan(snapshot: String?, account: String?) -> Bool {
         let snap = planKey(snapshot)
         let acct = planKey(account)

@@ -399,6 +399,13 @@ export function isCodexFreePlan(plan?: string | null): boolean {
  * Unknown on either side → matches. Absence is "no information", never a licence
  * to void real data: an API-key Codex install reports no account tier, and a
  * pre-`plan_type` rollout reports no snapshot tier.
+ *
+ * The emptiness test MUST stay ahead of the equality test, and not because it is
+ * a cheap early-out. Normalization strips separators, so two separator-only
+ * values (`"-"`, `" "`) both reduce to `''` — reordered, they would compare equal
+ * and report a positive plan MATCH where the answer is "neither side named a
+ * tier". Every current caller happens to act the same way on both answers, which
+ * is exactly why the difference would go unnoticed. Mirrored in Swift.
  */
 export function codexSnapshotMatchesAccountPlan(
   snapshotPlan?: string | null,
