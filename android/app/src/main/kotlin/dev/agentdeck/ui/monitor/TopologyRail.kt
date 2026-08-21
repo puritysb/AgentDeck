@@ -54,6 +54,7 @@ import dev.agentdeck.state.DashboardState
 import dev.agentdeck.terrarium.TerrariumColors
 import dev.agentdeck.ui.component.AgentDeckMark
 import dev.agentdeck.ui.component.brandColorForAgent
+import dev.agentdeck.util.ChatGPTPlan
 import dev.agentdeck.util.DeviceProfileHolder
 import dev.agentdeck.util.codexLimitRows
 import dev.agentdeck.util.formatResetTime
@@ -814,20 +815,18 @@ private fun buildCodexRateChips(limits: CodexRateLimits?): List<RateChip> =
 
 /**
  * Friendly ChatGPT plan label from a raw `chatgpt_plan_type`. Returns null
- * when blank so the subtitle stays hidden. Mirrors iOS `chatGptPlanLabel`.
+ * when blank so the subtitle stays hidden.
+ *
+ * The tier table itself is NOT written here. This row formats the raw plan type
+ * rather than reading the pre-formatted `subscriptions[].name`, so a hand copy
+ * renders the fallback capitalisation for any tier this build predates while
+ * every other surface shows the real name — `prolite` read as "ChatGPT Prolite"
+ * on Android alone (2026-08-22). `ChatGPTPlan` is generated from the same SSOT
+ * as the Swift mirror (`shared/src/format-utils.ts` CHATGPT_PLAN_DISPLAY_NAMES).
  */
 private fun chatGptPlanLabel(raw: String?): String? {
     val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    return when (trimmed.lowercase()) {
-        "free" -> "ChatGPT Free"
-        "plus" -> "ChatGPT Plus"
-        "pro" -> "ChatGPT Pro"
-        "team" -> "ChatGPT Team"
-        "enterprise" -> "ChatGPT Enterprise"
-        // Capitalize an unknown plan type rather than passing the lowercased
-        // raw value through next to Plus/Pro/Team.
-        else -> "ChatGPT " + trimmed.replaceFirstChar { it.uppercase() }
-    }
+    return ChatGPTPlan.displayName(trimmed)
 }
 
 /**

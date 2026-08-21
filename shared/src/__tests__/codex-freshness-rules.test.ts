@@ -81,18 +81,28 @@ describe('generated mirrors in sync', () => {
     expect(emitKotlin(rules)).not.toContain('snapshotOutranks');
   });
 
-  it('emits every plan display name from the SSOT table, Swift only', () => {
+  it('emits every plan display name from the SSOT table to BOTH mirrors', () => {
     // The tier table is generated because OpenAI mints plans unannounced
     // (`prolite`, 2026-08-22) and a hand mirror updated on one side renders the
-    // same account two different ways. Android consumes the formatted wire name.
+    // same account two different ways.
+    //
+    // Kotlin gets a copy even though Android is a pure consumer of the SNAPSHOT:
+    // its Codex row formats the raw `codexPlanType` rather than reading the
+    // pre-formatted `subscriptions[].name`, so the hand copy it used to carry
+    // showed "ChatGPT Prolite" on Android alone while every other surface said
+    // "ChatGPT Pro Lite". Consuming the wire for one field is not consuming it
+    // for all of them.
     const swift = emitSwift(rules);
+    const kotlin = emitKotlin(rules);
     expect(swift).toContain('enum ChatGPTPlan');
+    expect(kotlin).toContain('object ChatGPTPlan');
     for (const [key, name] of Object.entries(CHATGPT_PLAN_DISPLAY_NAMES)) {
       expect(swift).toContain(`case "${key}": return "${name}"`);
+      expect(kotlin).toContain(`"${key}" -> "${name}"`);
     }
     // Separators are stripped before lookup, so `pro_lite` cannot miss `prolite`.
     expect(swift).toContain('$0 != "_"');
-    expect(emitKotlin(rules)).not.toContain('ChatGPTPlan');
+    expect(kotlin).toContain("it == '_'");
   });
 
   it('emits the same three footnote states the TS SSOT resolves', () => {
