@@ -9,19 +9,30 @@
 # real esp32/src headers — so it needs no Xtensa toolchain and no hardware.
 # It is a compile gate, not the hardware Robot suite; that stays hardware-only.
 #
-# The paths gate keeps the cost off unrelated PRs, mirroring android-test.yml /
-# apple-test.yml. The cache key is shared with test-report.yml on purpose:
-# master pushes keep the default-branch cache warm, and PR runs restore from it
-# (warm-cache full build is ~1–2 minutes; only a platformio.ini change pays the
-# cold toolchain download).
+# The scope check keeps the cost off unrelated PRs, but it is a STEP condition,
+# not a workflow-level `paths:` filter, because this is a required status check.
+# A `paths:`-filtered workflow does not run on a PR outside its paths, so its
+# context never reports at all — and branch protection cannot tell "did not
+# apply" from "has not finished yet". Measured on #248: a docs-only PR with
+# every other check green sat at BLOCKED / "Expected — waiting for status"
+# forever. So the job always runs and always reports; when nothing under esp32/
+# changed it reports success in ~15s without installing a toolchain.
+# (android-test.yml / apple-test.yml keep their `paths:` filters — neither is
+# required, so the same shape is fine there.)
+#
+# Detection is fail-safe in the compile direction: if the diff cannot be
+# resolved, compile rather than skip. A wrong skip is a green light on code no
+# compiler read, which is the exact hole #243 was opened to close.
+#
+# The cache key is shared with test-report.yml on purpose: master pushes keep
+# the default-branch cache warm, and PR runs restore from it (warm-cache full
+# build is ~1–2 minutes; a cold first run measured 3m47s, and only a
+# platformio.ini change pays the toolchain download again).
 name: ESP32 Sim Compile
 
 on:
   pull_request:
     branches: [master]
-    paths:
-      - 'esp32/**'
-      - '.github/workflows/esp32-sim.yml'
 
 permissions:
   contents: read
@@ -35,8 +46,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The merge commit plus both parents, so HEAD^1..HEAD is exactly the
+          # PR's net change against the base tip.
+          fetch-depth: 2
+
+      - name: Does this PR touch the ESP32 tree?
+        id: scope
+        run: |
+          if ! base=$(git rev-parse --verify --quiet HEAD^1); then
+            echo "No first parent (PR not mergeable?) — compiling to stay safe."
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$base" HEAD)
+          if grep -qE '^(esp32/|\.github/workflows/esp32-sim\.yml$)' <<<"$changed"; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            echo 'No `esp32/**` change in this PR — nothing to compile.' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Cache PlatformIO (sim)
+        if: steps.scope.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -47,8 +79,10 @@ jobs:
           restore-keys: pio-sim-
 
       - name: Install PlatformIO
+        if: steps.scope.outputs.run == 'true'
         run: pip install platformio
 
       - name: Compile every sim env
+        if: steps.scope.outputs.run == 'true'
         working-directory: esp32/sim
         run: pio run
