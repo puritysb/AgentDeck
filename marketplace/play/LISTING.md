@@ -8,15 +8,28 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
-## Account state — 1.0.9 submitted; 1.0.6 live (2026-08-15)
+## Account state — 1.0.10 live (2026-08-19)
 
-Both account verification steps are **done**, and AgentDeck 1.0.6 (versionCode
-8) is live on the public [Google Play listing](https://play.google.com/store/apps/details?id=dev.agentdeck):
+Both account verification steps are **done**, and AgentDeck **1.0.10
+(versionCode 12)** is live on the public [Google Play listing](https://play.google.com/store/apps/details?id=dev.agentdeck):
 
-AgentDeck 1.0.9 (versionCode 11) was uploaded to production on 2026-08-15 as a
-100% rollout to all 177 target countries and submitted for review together with
-the revised short and full descriptions. Until Google approves that submission,
-the public listing and installs remain on 1.0.6.
+It was published on 2026-08-19 as a 100% rollout to all 177 target countries,
+superseding 1.0.9 (versionCode 11, uploaded 2026-08-15) and the first public
+build 1.0.6 (versionCode 8). Store assets are still the set captured for
+1.0.6 — the listing has not been re-shot since.
+
+**Read without a console login** (measured 2026-08-21). The public listing page
+carries more than the marketing copy: `curl` it and the HTML contains the
+download bucket, the content rating, the `Updated on` date, and the localized
+*What's new* text. On that date the listing answered `200`, was rated
+*Everyone*, ranked **first** for the query `AgentDeck` in Play search — and
+reported its download bucket as **`0+`**, Play's lowest step, which bounds
+installs from above rather than proving zero. Discovery-intent queries
+(`Claude Code`, `AI agent dashboard`, `coding agent monitor`, `Stream Deck AI`)
+did not surface it at any rank. The two figures that do need the owner's login
+are the exact install count and the acquisition funnel — listing views versus
+installs, which is what separates "nobody arrived" from "arrived and did not
+install".
 
 | Field | Value |
 |---|---|
@@ -156,7 +169,42 @@ AgentDeck is an independent project and is not affiliated with or endorsed by An
 
 Privacy policy: <https://puritysb.github.io/AgentDeck/#privacy>
 
-## Release notes — 1.0.9
+## Release notes — 1.0.10 (live)
+
+Transcribed 2026-08-21 from the public listing itself (`?hl=en` / `?hl=ko` /
+`?hl=ja`), so this is what the store is serving rather than what was drafted.
+
+### English (US)
+
+```
+Kiro joins your deck. Kiro CLI and Kiro IDE sessions now appear alongside Claude Code, Codex and OpenCode — in the session list, on the timeline, and as their own creature in the terrarium.
+Also in this release:
+• A live count of the subagents working under each session
+• A badge showing which provider actually answered
+• A clearer approval prompt for OpenClaw
+```
+
+### Korean
+
+```
+이제 Kiro도 함께 보입니다. Kiro CLI와 Kiro IDE 세션이 Claude Code, Codex, OpenCode와 나란히 세션 목록과 타임라인에 나타나고, 테라리움에서는 자기만의 크리처로 헤엄칩니다.
+이번 버전의 다른 개선 사항:
+• 각 세션 아래에서 일하는 서브에이전트 수를 실시간으로 표시
+• 어느 제공자가 실제로 응답했는지 배지로 표시
+• OpenClaw 승인 요청을 더 읽기 쉽게 개선
+```
+
+### Japanese
+
+```
+Kiroが仲間入りしました。Kiro CLIとKiro IDEのセッションが、Claude Code・Codex・OpenCodeと並んでセッション一覧とタイムラインに表示され、テラリウムでは専用のクリーチャーとして泳ぎます。
+このバージョンのその他の改善:
+• 各セッションで動いているサブエージェントの数をリアルタイムに表示
+• どのプロバイダーが実際に応答したかをバッジで表示
+• OpenClawの承認リクエストをより読みやすく改善
+```
+
+## Release notes — 1.0.9 (superseded)
 
 ### English (US)
 
@@ -208,10 +256,10 @@ cd android && ./gradlew bundleRelease     # → app/build/outputs/bundle/release
 ```
 
 Signing comes from `android/signing.properties` + `agentdeck-release.jks`
-(both gitignored, both local). The submitted bundle is **1.0.9 / versionCode
-11**, 5.2 MB, `targetSdkVersion 36`. Play accepted it for production review on
-2026-08-15. Play requires a strictly higher `versionCode` on every subsequent
-upload; production continues to serve 1.0.6 / versionCode 8 until approval.
+(both gitignored, both local). The live bundle is **1.0.10 / versionCode 12**,
+`targetSdkVersion 36`, published 2026-08-19; 1.0.9 / versionCode 11 (5.2 MB,
+uploaded 2026-08-15) preceded it. Play requires a strictly higher `versionCode`
+on every subsequent upload.
 
 **2. Create the app.** Console home → *앱 만들기 / Create app*. App name
 `AgentDeck`, default language, **App** (not game), **Free**. Accept the
