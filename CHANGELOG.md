@@ -26,6 +26,62 @@ inventing a changelog after the fact states things nobody measured:
 `streamdeck 1.0.4`–`1.0.5`, `esp32 1.0.2`–`1.0.4`, `ulanzi 1.0.2`.
 Their content is recoverable from the commit range between their tags.
 
+## 2026-08-22 — npm 1.0.22 · Apple 1.0.8
+
+Codex usage was reporting the wrong number in two independent ways. Both are
+producer-side, so every surface — dashboard, menubar, Stream Deck, D200H,
+e-ink, ESP32 — is fixed by updating the daemon; no plugin reinstall or firmware
+reflash is involved.
+
+### Codex usage reported the wrong quantity, then no quantity at all
+
+- **A per-model limit was published as the account's.** Codex writes several
+  rate-limit *families* and each rollout line carries whichever one that request
+  was metered against — `codex` and `premium` meter the account, while
+  `codex_bengalfox` ("GPT-5.3-Codex-Spark") meters one model. Within a single
+  session the family alternates hour to hour, and the readers took the newest
+  line regardless, so the gauge showed Spark's 5h 0% / 7d 0% while the account
+  sat at 13%. A named limit is now recognised as a scoped one and skipped; the
+  readers keep scanning to the account-wide line behind it, and the live
+  `codex app-server` query falls back to the unnamed family. When only scoped
+  lines exist nothing is reported rather than 0% under the wrong label.
+- **A plan change blanked every Codex gauge.** A snapshot stamped with a plan
+  the account no longer holds is void, not merely old — but that check ran
+  *after* the snapshot was chosen, so the one snapshot guaranteed to be
+  discarded won on recency every time, while a valid one sat unread on disk.
+  Plan agreement is now the primary ranking key and age only the tie-break, and
+  a mismatch no longer lets a "fresh" rollout suppress the live query that
+  carries the only usable number. Upgrading or downgrading a ChatGPT plan is the
+  case this covers.
+- `prolite` (ChatGPT Pro Lite) is named correctly instead of falling back to
+  "ChatGPT Prolite", and the tier table is now generated for Swift and Kotlin
+  from one source so the same account cannot read differently per surface.
+
+### Also in npm 1.0.22
+
+- Python BLE workers the OS kills for a revoked Bluetooth grant no longer
+  respawn forever: three consecutive SIGABRT exits halt the loop and name the
+  fix. A Rosetta (x86_64-only) interpreter is refused by reading the Mach-O
+  header rather than by importing `bleak`, and such a venv is removed and
+  rebuilt rather than reused.
+- A failed usage fetch no longer launders itself as a fresh one, and a file
+  cache whose TTL is an exact multiple of the poll interval no longer costs a
+  whole extra interval.
+- Firmware staged for a board that never pulls its feed is reported as staged
+  rather than as delivered.
+
+### Also in Apple 1.0.8
+
+- The three daemon topologies (no daemon / in-process Swift / external Node
+  with this app as its client) are a single state with explicit transitions, so
+  a teardown while in client mode no longer clears the Claude quota, Codex rate
+  limits and subscription rows — which is what editing any setting while
+  attached to a Node daemon used to do.
+- A relayed usage reading with no producer timestamp is treated as
+  unknown-age instead of being restamped as just-fetched.
+- Kiro's brand colours reached the design tokens, and its documentation caught
+  up with the code that already observed it.
+
 ## 2026-08-19 — ESP32 1.0.6
 
 One fix, and it is worth saying how it was found.
