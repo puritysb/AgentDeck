@@ -647,10 +647,76 @@ final class ProtocolTests: XCTestCase {
         XCTAssertTrue(before.contains(secondary.path))
     }
 
+    // MARK: - Limit family (mirror of isModelScopedCodexLimit)
+
+    /// Both lines are VERBATIM from ONE real rollout on 2026-08-22 — the same
+    /// session, hours apart, nothing edited. Codex writes more than one limit
+    /// family and the rollout carries whichever the last request was metered
+    /// against; within this session it alternated codex -> codex_bengalfox ->
+    /// codex -> codex_bengalfox over ten hours. With the tail ending on the
+    /// scoped family, Spark's 0%/0% was reported as the account's Codex usage
+    /// while the account sat at 13%.
+    ///
+    /// This daemon is where it hurts most: sandboxed, it cannot spawn
+    /// `codex app-server`, so the rollout is its ONLY source and the scoped line
+    /// would simply BE the number every surface shows. The Node daemon gates the
+    /// identical bytes in bridge/src/__tests__/codex-rate-limits.test.ts.
+    private var scopedFamilyLine: String {
+        #"{"timestamp":"2026-08-22T03:35:01.817Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":171933079,"cached_input_tokens":168024576,"cache_write_input_tokens":0,"output_tokens":553033,"reasoning_output_tokens":134283,"total_tokens":172486112},"last_token_usage":{"input_tokens":61724,"cached_input_tokens":59904,"cache_write_input_tokens":0,"output_tokens":284,"reasoning_output_tokens":96,"total_tokens":62008},"model_context_window":258400},"rate_limits":{"limit_id":"codex_bengalfox","limit_name":"GPT-5.3-Codex-Spark","primary":{"used_percent":0.0,"window_minutes":300,"resets_at":1787387692},"secondary":{"used_percent":0.0,"window_minutes":10080,"resets_at":1787934922},"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"individual_limit":null,"spend_control_reached":null,"plan_type":"prolite","rate_limit_reached_type":null}}}"#
+    }
+
+    private var accountFamilyLine: String {
+        #"{"timestamp":"2026-08-21T20:31:37.933Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":90363999,"cached_input_tokens":88225792,"cache_write_input_tokens":0,"output_tokens":336556,"reasoning_output_tokens":84038,"total_tokens":90700555},"last_token_usage":{"input_tokens":146078,"cached_input_tokens":145536,"cache_write_input_tokens":0,"output_tokens":689,"reasoning_output_tokens":139,"total_tokens":146767},"model_context_window":258400},"rate_limits":{"limit_id":"codex","limit_name":null,"primary":{"used_percent":5.0,"window_minutes":10080,"resets_at":1787934975},"secondary":null,"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"individual_limit":null,"spend_control_reached":null,"plan_type":"prolite","rate_limit_reached_type":null}}}"#
+    }
+
+    func testCodexRolloutSkipsPerModelLimitToReachTheAccountWideLine() throws {
+        let root = try makeCodexSessionsTree([
+            ("2026/08/21/rollout-mixed.jsonl",
+             accountFamilyLine + "\n" + scopedFamilyLine + "\n",
+             "2026-08-21T20:35:38Z"),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let parsed = UsageAPIClient.parseFirstUsableCodexRollout(
+            UsageAPIClient.codexRolloutCandidates(sessionsDir: root)
+        )
+        XCTAssertEqual(parsed?.limitId, "codex")
+        XCTAssertEqual(parsed?.capturedAt, "2026-08-21T20:31:37.933Z")
+        XCTAssertEqual(parsed?.primary?.windowMinutes, 10080)
+    }
+
+    func testCodexRolloutReportsNothingRatherThanOneModelsQuota() throws {
+        // A number under the wrong label is a wrong reading, not a missing one.
+        let root = try makeCodexSessionsTree([
+            ("2026/08/21/rollout-scoped-only.jsonl", scopedFamilyLine + "\n", "2026-08-21T20:35:38Z"),
+        ])
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        XCTAssertNil(UsageAPIClient.parseFirstUsableCodexRollout(
+            UsageAPIClient.codexRolloutCandidates(sessionsDir: root)
+        ))
+    }
+
+    func testCodexPlanRulesModelScopedPolarity() {
+        XCTAssertTrue(CodexPlanRules.isModelScoped(limitName: "GPT-5.3-Codex-Spark"))
+        // Allow-list of the UNNAMED: a family this build predates is excluded.
+        XCTAssertTrue(CodexPlanRules.isModelScoped(limitName: "GPT-6-Codex-Whatever"))
+        // The account-wide families, credit plans (limit_id "premium") included.
+        XCTAssertFalse(CodexPlanRules.isModelScoped(limitName: nil))
+        XCTAssertFalse(CodexPlanRules.isModelScoped(limitName: ""))
+        XCTAssertFalse(CodexPlanRules.isModelScoped(limitName: "   "))
+    }
+
     // MARK: - Plan-aware rollout selection (mirror of codexSnapshotOutranks)
 
-    /// Both lines are VERBATIM from `~/.codex/sessions` on 2026-08-22, minutes
-    /// after a ChatGPT plan upgrade. Codex stamps `plan_type` from the auth token
+    /// Both lines come from `~/.codex/sessions` on 2026-08-22, minutes after a
+    /// ChatGPT plan upgrade. Both are ACCOUNT-WIDE (`limit_id: "codex"`, no
+    /// `limit_name`) so this isolates the plan axis from the limit-family one;
+    /// the pre-upgrade line carries ONE edit, its `timestamp` moved forward, so
+    /// the plan-mismatched snapshot is the newer of the pair. That ordering did
+    /// occur in the wild, but the line that produced it was the per-model
+    /// `codex_bengalfox` snapshot the family filter now skips — among
+    /// account-wide lines this tree never has a `plus` newer than a `prolite`. Codex stamps `plan_type` from the auth token
     /// its process started with, so a session opened BEFORE the upgrade keeps
     /// writing the retired tier — and, being the busy session, keeps minting the
     /// newest timestamps too. A newest-wins picker therefore feeds
@@ -663,7 +729,7 @@ final class ProtocolTests: XCTestCase {
     /// bridge/src/__tests__/codex-rate-limits.test.ts — a fixture composed from
     /// what the parser expects cannot fail the way a real line does.
     private var retiredPlanRolloutLine: String {
-        #"{"timestamp":"2026-08-21T16:52:53.766Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":65005105,"cached_input_tokens":63284992,"cache_write_input_tokens":0,"output_tokens":269731,"reasoning_output_tokens":64427,"total_tokens":65274836},"last_token_usage":{"input_tokens":164545,"cached_input_tokens":163840,"cache_write_input_tokens":0,"output_tokens":140,"reasoning_output_tokens":47,"total_tokens":164685},"model_context_window":258400},"rate_limits":{"limit_id":"codex_bengalfox","limit_name":"GPT-5.3-Codex-Spark","primary":{"used_percent":0.0,"window_minutes":300,"resets_at":1787349167},"secondary":{"used_percent":0.0,"window_minutes":10080,"resets_at":1787934922},"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"individual_limit":null,"spend_control_reached":null,"plan_type":"plus","rate_limit_reached_type":null}}}"#
+        #"{"timestamp":"2026-08-21T16:55:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":59664963,"cached_input_tokens":58193152,"cache_write_input_tokens":0,"output_tokens":240328,"reasoning_output_tokens":58567,"total_tokens":59905291},"last_token_usage":{"input_tokens":83931,"cached_input_tokens":82432,"cache_write_input_tokens":0,"output_tokens":763,"reasoning_output_tokens":311,"total_tokens":84694},"model_context_window":258400},"rate_limits":{"limit_id":"codex","limit_name":null,"primary":{"used_percent":100.0,"window_minutes":10080,"resets_at":1787805401},"secondary":null,"credits":{"has_credits":false,"unlimited":false,"balance":"0"},"individual_limit":null,"spend_control_reached":null,"plan_type":"plus","rate_limit_reached_type":null}}}"#
     }
 
     private var currentPlanRolloutLine: String {

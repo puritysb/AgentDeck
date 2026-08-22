@@ -12,6 +12,7 @@ import {
   isCodexSnapshotAged,
   codexSnapshotMatchesAccountPlan,
   codexSnapshotOutranks,
+  isModelScopedCodexLimit,
   isCodexFreePlan,
   scopedLimitClaimsUsageKey,
   codexWindowsBeside,
@@ -323,6 +324,30 @@ describe('codexSnapshotMatchesAccountPlan', () => {
     expect(codexSnapshotMatchesAccountPlan('plus', undefined)).toBe(true);
     expect(codexSnapshotMatchesAccountPlan(undefined, 'free')).toBe(true);
     expect(codexSnapshotMatchesAccountPlan('', '')).toBe(true);
+  });
+});
+
+describe('isModelScopedCodexLimit', () => {
+  it('treats a NAMED limit as scoped to one model, never as the account', () => {
+    // Measured 2026-08-22 across 823 rollout files: the only named family is
+    // codex_bengalfox / "GPT-5.3-Codex-Spark".
+    expect(isModelScopedCodexLimit('GPT-5.3-Codex-Spark')).toBe(true);
+  });
+
+  it('treats the unnamed families as the account, credit plans included', () => {
+    // limit_id "codex" and "premium" both report limit_name null. An id-based
+    // filter would have dropped "premium" and its credits gauge with it.
+    expect(isModelScopedCodexLimit(null)).toBe(false);
+    expect(isModelScopedCodexLimit(undefined)).toBe(false);
+    expect(isModelScopedCodexLimit('')).toBe(false);
+    expect(isModelScopedCodexLimit('   ')).toBe(false);
+  });
+
+  it('is an allow-list of the unnamed, so a future scoped family is excluded by default', () => {
+    // Polarity, not membership — the point of the rule. A deny-list of known ids
+    // would render a model family this build predates AS the account's number,
+    // which is a wrong reading rather than a missing one (CLAUDE.md).
+    expect(isModelScopedCodexLimit('GPT-6-Codex-Whatever')).toBe(true);
   });
 });
 

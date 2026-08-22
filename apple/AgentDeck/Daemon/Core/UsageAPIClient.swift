@@ -734,6 +734,13 @@ final class UsageAPIClient: Sendable {
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let payload = obj["payload"] as? [String: Any],
                   let rl = payload["rate_limits"] as? [String: Any] else { continue }
+            // A per-model limit is a different QUANTITY, not a staler one, so keep
+            // scanning instead of returning it: within one session the family
+            // alternates hour to hour, and the account-wide line usually sits
+            // further back in this same tail. This matters most here — the
+            // sandboxed daemon cannot spawn `codex app-server`, so the rollout is
+            // its only source and a scoped line would BE the reported number.
+            if CodexPlanRules.isModelScoped(limitName: rl["limit_name"] as? String) { continue }
             let primary = parseCodexWindow(rl["primary"] as? [String: Any])
             let secondary = parseCodexWindow(rl["secondary"] as? [String: Any])
             let limitId = rl["limit_id"] as? String

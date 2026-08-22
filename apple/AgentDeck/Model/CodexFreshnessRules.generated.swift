@@ -1,6 +1,7 @@
 // GENERATED FILE — DO NOT EDIT.
 // Source of truth: shared/src/format-utils.ts (CODEX_SNAPSHOT_STALE_MS, codexUsageFootnote,
-// codexSnapshotMatchesAccountPlan, codexSnapshotOutranks, CHATGPT_PLAN_DISPLAY_NAMES)
+// codexSnapshotMatchesAccountPlan, codexSnapshotOutranks, isModelScopedCodexLimit,
+// CHATGPT_PLAN_DISPLAY_NAMES)
 // Regenerate: pnpm generate-codex-freshness-rules (drift gated by shared/src/__tests__/codex-freshness-rules.test.ts)
 
 import Foundation
@@ -146,6 +147,24 @@ enum CodexPlanRules {
     /// only one path would land every candidate in the "mismatch" class for a
     /// spelling the table exists to absorb. A value that is nothing but
     /// separators normalizes to "", which reads as unknown, not as void.
+    /// True when a `rate_limits` snapshot meters ONE MODEL rather than the
+    /// account. Codex writes several limit families and the rollout carries
+    /// whichever the last request was metered against; measured across 823
+    /// rollout files (2026-08-22), the account-wide families (`codex`,
+    /// `premium`) report a null `limit_name` while a scoped one names its model
+    /// ("GPT-5.3-Codex-Spark"). Neither freshness nor plan can catch this — the
+    /// scoped snapshot is current and on the right plan, it is simply a
+    /// different quantity, and rendering it as the account's reports 0% while
+    /// the account sits at 13%.
+    ///
+    /// An allow-list of the UNNAMED on purpose (CLAUDE.md unknown-value rule): a
+    /// scoped family this build predates is excluded automatically, whereas a
+    /// deny-list of known ids would render it AS the account's number — a wrong
+    /// reading rather than a missing one.
+    static func isModelScoped(limitName: String?) -> Bool {
+        return !(limitName ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     static func planKey(_ value: String?) -> String {
         return (value ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)

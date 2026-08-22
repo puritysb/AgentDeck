@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
   parseLiveCodexRateLimits,
+  pickAccountWideLiveLimits,
   pickBestCodexRateLimits,
   shouldQueryCodexRateLimitsLive,
   queryCodexRateLimitsLive,
@@ -67,6 +68,34 @@ describe('parseLiveCodexRateLimits', () => {
     expect(parseLiveCodexRateLimits(null, 'x')).toBeNull();
     expect(parseLiveCodexRateLimits({}, 'x')).toBeNull();
     expect(parseLiveCodexRateLimits({ rateLimits: { primary: null, secondary: null } }, 'x')).toBeNull();
+  });
+});
+
+describe('pickAccountWideLiveLimits', () => {
+  // Shapes from the real `account/rateLimits/read` result on 2026-08-22: the
+  // top-level block is the account's, and `rateLimitsByLimitId` carries every
+  // family including the per-model one.
+  const account = { limitId: 'codex', limitName: null, primary: { usedPercent: 13, windowDurationMins: 10080 } };
+  const spark = {
+    limitId: 'codex_bengalfox',
+    limitName: 'GPT-5.3-Codex-Spark',
+    primary: { usedPercent: 0, windowDurationMins: 300 },
+  };
+
+  it('keeps the top-level block, which is what the Codex CLI itself shows', () => {
+    expect(pickAccountWideLiveLimits(account, { codex: account, codex_bengalfox: spark })).toBe(account);
+  });
+
+  it('falls back to the unnamed family when the top level is scoped to one model', () => {
+    expect(pickAccountWideLiveLimits(spark, { codex_bengalfox: spark, codex: account })).toBe(account);
+  });
+
+  it('answers null when every family is model-scoped', () => {
+    // "No account-wide reading" is the honest answer: the caller then keeps what
+    // the rollout path found instead of adopting one model's quota as the
+    // account's. Same rule as the passive reader.
+    expect(pickAccountWideLiveLimits(spark, { codex_bengalfox: spark })).toBeNull();
+    expect(pickAccountWideLiveLimits(null, null)).toBeNull();
   });
 });
 

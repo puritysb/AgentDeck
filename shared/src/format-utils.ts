@@ -418,6 +418,46 @@ export function codexSnapshotMatchesAccountPlan(
 }
 
 /**
+ * True when a Codex `rate_limits` snapshot meters a single model or feature
+ * rather than the account.
+ *
+ * Codex writes more than one limit FAMILY, and the rollout carries whichever one
+ * the last request was metered against — not necessarily the account's. Measured
+ * across 823 rollout files on 2026-08-22, the whole observed space is three
+ * families and the discriminator is exact:
+ *
+ *   limit_id "codex"            limit_name null                     37,985 lines  account
+ *   limit_id "premium"          limit_name null                         66 lines  account (credit plan)
+ *   limit_id "codex_bengalfox"  limit_name "GPT-5.3-Codex-Spark"       915 lines  ONE MODEL
+ *
+ * A named limit is a scoped limit — the name exists precisely to say which model
+ * it applies to. So the account-wide families are the unnamed ones, and that is
+ * what "Codex usage" on a deck, dial or panel means.
+ *
+ * This is not a freshness or a plan question, and neither axis can catch it: the
+ * scoped snapshot is CURRENT and belongs to the right plan. It is simply a
+ * different quantity, and rendering it under the account's label reports 0%
+ * while the account sits at 13% (observed). Within a single session the family
+ * alternates hour to hour, so "newest line wins" silently switches quantities
+ * mid-stream.
+ *
+ * Polarity is deliberate and follows the unknown-agent rule (CLAUDE.md): this is
+ * an allow-list of the UNNAMED, never a deny-list of known scoped ids. A new
+ * scoped family — OpenAI ships models on its own schedule — is excluded
+ * automatically; the failure mode of a deny-list is that the new family renders
+ * AS the account's number, which is a wrong reading rather than a missing one.
+ * If a future account-wide family ever carries a name, this hides it, and a
+ * missing gauge is the safe direction.
+ *
+ * Callers skip such snapshots and keep scanning; they must not treat a scoped
+ * snapshot as "no Codex data" for the file, because a session that alternates
+ * families still has an account-wide line further back in the same tail.
+ */
+export function isModelScopedCodexLimit(limitName?: string | null): boolean {
+  return (limitName ?? '').trim().length > 0;
+}
+
+/**
  * Rank one Codex usage snapshot against another for the live account tier.
  *
  * Recency alone is the wrong ordering, because a snapshot that will be VOIDED a

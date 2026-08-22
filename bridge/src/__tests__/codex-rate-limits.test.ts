@@ -307,9 +307,24 @@ describe('pickCodexRateLimits (plan-aware selection)', () => {
     }
   });
 
-  // Captured verbatim from a rollout written by a pre-upgrade Codex session.
+  // A real pre-upgrade ACCOUNT-WIDE line (`limit_id: "codex"`, no `limit_name`),
+  // with ONE field changed: its `timestamp` is moved from 16:30:22 to 16:55:00 so
+  // the plan-mismatched snapshot is the NEWER one. Two notes on why, because a
+  // fixture that is edited has to say what it is:
+  //
+  //  - That ordering did occur in the wild — but the line that produced it was a
+  //    per-model `codex_bengalfox` snapshot, which the limit-family filter now
+  //    skips. Among ACCOUNT-WIDE lines this user's tree never contains a `plus`
+  //    line newer than a `prolite` one, because once the account-wide family
+  //    caught up it stayed caught up. The ordering is real; this pairing of it
+  //    with an account-wide line is constructed.
+  //  - The first version of this fixture WAS that `codex_bengalfox` line, taken
+  //    as "the newest rate_limits line in the file". Real, and wrong for this
+  //    test: it conflated the plan axis with the limit-family axis, and it
+  //    started failing the moment the family filter landed. A fixture has to
+  //    isolate the axis under test.
   const retiredPlanLine =
-    "{\"timestamp\":\"2026-08-21T16:51:25.441Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":64019700,\"cached_input_tokens\":62304000,\"cache_write_input_tokens\":0,\"output_tokens\":269177,\"reasoning_output_tokens\":64317,\"total_tokens\":64288877},\"last_token_usage\":{\"input_tokens\":163728,\"cached_input_tokens\":162816,\"cache_write_input_tokens\":0,\"output_tokens\":81,\"reasoning_output_tokens\":29,\"total_tokens\":163809},\"model_context_window\":258400},\"rate_limits\":{\"limit_id\":\"codex_bengalfox\",\"limit_name\":\"GPT-5.3-Codex-Spark\",\"primary\":{\"used_percent\":0.0,\"window_minutes\":300,\"resets_at\":1787349069},\"secondary\":{\"used_percent\":0.0,\"window_minutes\":10080,\"resets_at\":1787934922},\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individual_limit\":null,\"spend_control_reached\":null,\"plan_type\":\"plus\",\"rate_limit_reached_type\":null}}}";
+    "{\"timestamp\":\"2026-08-21T16:55:00.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":59664963,\"cached_input_tokens\":58193152,\"cache_write_input_tokens\":0,\"output_tokens\":240328,\"reasoning_output_tokens\":58567,\"total_tokens\":59905291},\"last_token_usage\":{\"input_tokens\":83931,\"cached_input_tokens\":82432,\"cache_write_input_tokens\":0,\"output_tokens\":763,\"reasoning_output_tokens\":311,\"total_tokens\":84694},\"model_context_window\":258400},\"rate_limits\":{\"limit_id\":\"codex\",\"limit_name\":null,\"primary\":{\"used_percent\":100.0,\"window_minutes\":10080,\"resets_at\":1787805401},\"secondary\":null,\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individual_limit\":null,\"spend_control_reached\":null,\"plan_type\":\"plus\",\"rate_limit_reached_type\":null}}}";
   // Captured verbatim from a rollout written by a post-upgrade Codex session.
   const currentPlanLine =
     "{\"timestamp\":\"2026-08-21T16:43:09.009Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":17356,\"cached_input_tokens\":11008,\"cache_write_input_tokens\":0,\"output_tokens\":5,\"reasoning_output_tokens\":0,\"total_tokens\":17361},\"last_token_usage\":{\"input_tokens\":17356,\"cached_input_tokens\":11008,\"cache_write_input_tokens\":0,\"output_tokens\":5,\"reasoning_output_tokens\":0,\"total_tokens\":17361},\"model_context_window\":258400},\"rate_limits\":{\"limit_id\":\"codex\",\"limit_name\":null,\"primary\":{\"used_percent\":0.0,\"window_minutes\":10080,\"resets_at\":1787934975},\"secondary\":null,\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individual_limit\":null,\"spend_control_reached\":null,\"plan_type\":\"prolite\",\"rate_limit_reached_type\":null}}}";
@@ -361,6 +376,89 @@ describe('pickCodexRateLimits (plan-aware selection)', () => {
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, retiredPlanLine + '\n');
     expect(pickCodexRateLimits(root, 'prolite')!.planType).toBe('plus');
+  });
+});
+
+/**
+ * Limit-family selection. Both lines are VERBATIM from ONE real rollout on
+ * 2026-08-22 — the same session, hours apart, nothing edited.
+ *
+ * Codex writes more than one limit family and the rollout carries whichever the
+ * last request was metered against. Within this single session the family
+ * alternated codex -> codex_bengalfox -> codex -> codex_bengalfox over ten
+ * hours, so "newest line wins" silently switches which QUANTITY is reported.
+ * With the tail ending on the scoped family the deck showed Spark's 0%/0% as
+ * the account's Codex usage while the account sat at 13%.
+ *
+ * Neither existing axis catches it: the scoped line is the newest AND carries
+ * the right plan. Only `limit_name` separates them.
+ */
+describe('pickCodexRateLimits (limit family)', () => {
+  const tmpRoots: string[] = [];
+
+  afterEach(() => {
+    for (const r of tmpRoots.splice(0)) {
+      try {
+        fs.rmSync(r, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  // limit_id "codex_bengalfox", limit_name "GPT-5.3-Codex-Spark" — one model.
+  const scopedLine = "{\"timestamp\":\"2026-08-22T03:35:01.817Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":171933079,\"cached_input_tokens\":168024576,\"cache_write_input_tokens\":0,\"output_tokens\":553033,\"reasoning_output_tokens\":134283,\"total_tokens\":172486112},\"last_token_usage\":{\"input_tokens\":61724,\"cached_input_tokens\":59904,\"cache_write_input_tokens\":0,\"output_tokens\":284,\"reasoning_output_tokens\":96,\"total_tokens\":62008},\"model_context_window\":258400},\"rate_limits\":{\"limit_id\":\"codex_bengalfox\",\"limit_name\":\"GPT-5.3-Codex-Spark\",\"primary\":{\"used_percent\":0.0,\"window_minutes\":300,\"resets_at\":1787387692},\"secondary\":{\"used_percent\":0.0,\"window_minutes\":10080,\"resets_at\":1787934922},\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individual_limit\":null,\"spend_control_reached\":null,\"plan_type\":\"prolite\",\"rate_limit_reached_type\":null}}}";
+  // limit_id "codex", limit_name null — the account. Older than the line above.
+  const accountLine = "{\"timestamp\":\"2026-08-21T20:31:37.933Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":90363999,\"cached_input_tokens\":88225792,\"cache_write_input_tokens\":0,\"output_tokens\":336556,\"reasoning_output_tokens\":84038,\"total_tokens\":90700555},\"last_token_usage\":{\"input_tokens\":146078,\"cached_input_tokens\":145536,\"cache_write_input_tokens\":0,\"output_tokens\":689,\"reasoning_output_tokens\":139,\"total_tokens\":146767},\"model_context_window\":258400},\"rate_limits\":{\"limit_id\":\"codex\",\"limit_name\":null,\"primary\":{\"used_percent\":5.0,\"window_minutes\":10080,\"resets_at\":1787934975},\"secondary\":null,\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":\"0\"},\"individual_limit\":null,\"spend_control_reached\":null,\"plan_type\":\"prolite\",\"rate_limit_reached_type\":null}}}";
+
+  function makeTree(content: string): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-family-'));
+    tmpRoots.push(root);
+    const full = path.join(root, '2026/08/21/rollout-2026-08-21T20-35-38-mixed.jsonl');
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content);
+    return root;
+  }
+
+  it('scans past a newer per-model line to the account-wide one behind it', () => {
+    const result = pickCodexRateLimits(makeTree(accountLine + '\n' + scopedLine + '\n'));
+    expect(result).not.toBeNull();
+    expect(result!.limitId).toBe('codex');
+    expect(result!.capturedAt).toBe('2026-08-21T20:31:37.933Z');
+    // Codex reports the weekly window in its own `primary` slot here, so this is
+    // the 10080-minute account window — not Spark's 5h one.
+    expect(result!.primary!.windowMinutes).toBe(10080);
+  });
+
+  it("reports no snapshot rather than one model's quota as the account's", () => {
+    // A tail with only scoped lines yields nothing. The daemon then falls back to
+    // its live `codex app-server` read, which is account-wide; a session bridge
+    // shows no Codex gauge. Both beat printing 0: a number under the wrong label
+    // is a wrong reading, not a missing one.
+    expect(pickCodexRateLimits(makeTree(scopedLine + '\n'))).toBeNull();
+  });
+
+  it('keeps the credit-plan family, which is account-wide despite its odd id', () => {
+    // limit_id "premium" reports null windows plus a credits block, and
+    // limit_name null. 66 such lines exist in the real tree; an id-based filter
+    // would have dropped them and taken the credits gauge with them.
+    const premium = JSON.stringify({
+      timestamp: '2026-07-21T16:17:18.519Z',
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        rate_limits: {
+          limit_id: 'premium',
+          limit_name: null,
+          primary: null,
+          secondary: null,
+          credits: { has_credits: true, unlimited: false, balance: '12' },
+        },
+      },
+    });
+    const result = pickCodexRateLimits(makeTree(premium + '\n'));
+    expect(result!.limitId).toBe('premium');
+    expect(result!.credits!.balance).toBe('12');
   });
 });
 

@@ -1,5 +1,9 @@
 import { spawn } from 'child_process';
-import { codexSnapshotMatchesAccountPlan, codexSnapshotOutranks } from '@agentdeck/shared';
+import {
+  codexSnapshotMatchesAccountPlan,
+  codexSnapshotOutranks,
+  isModelScopedCodexLimit,
+} from '@agentdeck/shared';
 import type { CodexCredits, CodexRateLimits, CodexRateLimitWindow } from '@agentdeck/shared';
 
 /**
@@ -69,6 +73,8 @@ interface RawLiveRateLimits {
   secondary?: RawLiveWindow | null;
   planType?: string;
   limitId?: string;
+  /** Set only on a limit scoped to one model/feature — see `isModelScopedCodexLimit`. */
+  limitName?: string | null;
   credits?: RawLiveCredits | null;
 }
 
@@ -108,7 +114,17 @@ function toCredits(raw?: RawLiveCredits | null): CodexCredits | undefined {
  * what clears the age footnote downstream. Exported for unit testing.
  */
 export function parseLiveCodexRateLimits(result: unknown, capturedAt: string): CodexRateLimits | null {
-  const rl = (result as { rateLimits?: RawLiveRateLimits } | null)?.rateLimits;
+  const res = result as {
+    rateLimits?: RawLiveRateLimits;
+    rateLimitsByLimitId?: Record<string, RawLiveRateLimits>;
+  } | null;
+  // The top-level block is the account's today, and that is what the Codex CLI
+  // itself presents. But the app-server also returns every family keyed by id,
+  // so when the top level is scoped to one model there is still an account-wide
+  // answer in the map — take it rather than reporting a single model's quota as
+  // the account's. (Not currently reachable; the guard costs one lookup and the
+  // alternative is the rollout bug in a place with no second source.)
+  const rl = pickAccountWideLiveLimits(res?.rateLimits, res?.rateLimitsByLimitId);
   if (!rl || typeof rl !== 'object') return null;
   const primary = toWindow(rl.primary);
   const secondary = toWindow(rl.secondary);
@@ -123,6 +139,26 @@ export function parseLiveCodexRateLimits(result: unknown, capturedAt: string): C
     credits,
     capturedAt,
   };
+}
+
+/**
+ * The account-wide limit block among what `account/rateLimits/read` returned.
+ *
+ * Prefers the top-level `rateLimits` (what the Codex CLI shows) and falls back
+ * to the first unnamed entry of `rateLimitsByLimitId`. Returns null when every
+ * family is model-scoped: "no account-wide reading" is the honest answer, and
+ * the caller then keeps whatever the rollout path found rather than adopting one
+ * model's quota as the account's. Exported for unit testing.
+ */
+export function pickAccountWideLiveLimits(
+  top?: RawLiveRateLimits | null,
+  byLimitId?: Record<string, RawLiveRateLimits> | null,
+): RawLiveRateLimits | null {
+  if (top && !isModelScopedCodexLimit(top.limitName)) return top;
+  for (const candidate of Object.values(byLimitId ?? {})) {
+    if (candidate && !isModelScopedCodexLimit(candidate.limitName)) return candidate;
+  }
+  return null;
 }
 
 function codexBinary(): string {

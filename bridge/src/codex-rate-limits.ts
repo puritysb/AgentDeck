@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { codexSnapshotOutranks } from '@agentdeck/shared';
+import { codexSnapshotOutranks, isModelScopedCodexLimit } from '@agentdeck/shared';
 import type { CodexCredits, CodexRateLimits, CodexRateLimitWindow } from '@agentdeck/shared';
 
 /**
@@ -43,6 +43,9 @@ interface RawRateLimits {
   secondary?: RawWindow;
   plan_type?: string;
   limit_id?: string;
+  /** Present only on a limit scoped to one model/feature ("GPT-5.3-Codex-Spark").
+   *  The account-wide families report null — see `isModelScopedCodexLimit`. */
+  limit_name?: string | null;
   credits?: RawCredits;
 }
 
@@ -247,6 +250,12 @@ export function parseCodexRateLimitsFromText(text: string): CodexRateLimits | nu
       };
       const rl = obj?.payload?.rate_limits;
       if (!rl) continue;
+      // A per-model limit is a different QUANTITY, not a staler one, so keep
+      // scanning instead of returning it: within one session the family
+      // alternates hour to hour, and the account-wide line usually sits further
+      // back in this same tail. Returning null for the file would throw that
+      // line away along with the scoped one.
+      if (isModelScopedCodexLimit(rl.limit_name)) continue;
       const primary = toWindow(rl.primary);
       const secondary = toWindow(rl.secondary);
       const credits = toCredits(rl.credits);
