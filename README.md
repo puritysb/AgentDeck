@@ -299,7 +299,7 @@ builds on [Releases](https://github.com/puritysb/AgentDeck/releases).
 | Channel | Tag | Status |
 |---|---|---|
 | **npm** — `@agentdeck/setup` | `npm-v*` | [1.0.22](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.0.22) live on the registry |
-| **Apple App Store** — macOS + iPhone/iPad | `apple-v*` | [1.0.7 live on both platforms](https://apps.apple.com/app/id6784822497) — build 5201, iPhone/iPad released 2026-08-18 and macOS 2026-08-19 (each verified against the store's own record, not the approval mail). **1.0.8 submitted 2026-08-22** |
+| **Apple App Store** — macOS + iPhone/iPad | `apple-v*` | [1.0.7 live on both platforms](https://apps.apple.com/app/id6784822497) — build 5201, iPhone/iPad released 2026-08-18 and macOS 2026-08-19 (each verified against the store's own record, not the approval mail). **1.0.8 submitted 2026-08-22 on build 5301, both platforms Waiting for Review** (each platform is its own submission draft in App Store Connect — one click per platform, not one for the app) |
 | **Elgato Marketplace** — Stream Deck plugin | `streamdeck-v*` | [1.0.6 live](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) — published 2026-08-18, `status: published` on the product page's own payload |
 | **Ulanzi Marketplace** — D200H plugin | `ulanzi-v*` | [1.0.3 release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v1.0.3); submitted 2026-08-07, **still under review** as of 2026-08-20 and never published. The reviewer confirmed on 2026-08-14 that review had begun with no outstanding issues ([details](marketplace/ulanzi/LISTING.md)) |
 | **GitHub Release** — Android APK | `android-v*` | [1.0.10](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.0.10) |

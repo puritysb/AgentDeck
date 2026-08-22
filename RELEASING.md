@@ -182,6 +182,22 @@ While a version sits in **Waiting for Review**, do not upload a replacement buil
 
 **A rejection is the opposite case, and it moves the tag.** A rejected version keeps its `MARKETING_VERSION`, so the replacement ships under the same Apple version — and rule 6 below requires the tag to match that version exactly. Re-pointing `apple-v<VERSION>` at the fix commit and force-pushing is therefore the intended path (CI derives the build number from `run_number * 100 + run_attempt`, so it stays monotonic across re-tags). The cost is that the tag no longer identifies the commit that produced the build already in the store: after a re-tag, that commit is recoverable only from the earlier workflow run for the same tag (`gh run list --workflow=apple-release.yml`). Record it in the changelog entry rather than relying on the tag.
 
+**Submitting is per platform, and the portal will not tell you that.** `심사에 추가`
+on the iOS version creates an *iOS* submission draft; doing it on macOS creates a
+*second, separate* draft. The panel's back link shows both ("iOS 제출 초안(1개)",
+"macOS 제출 초안(1개)") and each needs its own `심사를 위해 제출`. Submitting one and
+walking away leaves the other sitting in `제출 준비 중` looking done — which is the
+same trap as reading an approval mail without its `(iOS)` / `(macOS)` suffix.
+
+**An App Store Connect session expires mid-edit and the UI does not say so.** The
+save button turns red with an error glyph and nothing explains why; the requests
+behind it are `401` on `PATCH /iris/v1/appStoreVersionLocalizations/…`. It looks
+exactly like a validation failure on the field you just typed. Check the network
+panel before hunting for a bad field, sign in again in the same tab, and press
+save once more — unsaved edits survive the re-auth, so nothing has to be retyped.
+Then reload and re-read every locale: a save that failed this way leaves the form
+looking correct while the server still holds the previous text.
+
 1. Confirm Apple `MARKETING_VERSION` matches between `apple/project.yml` and the Xcode project mirror (`pnpm verify-version` checks this).
 2. Run the Release build and App Store archive verifier described in `CLAUDE.md`.
 3. Tag and push `apple-v<APPLE_VERSION>`; CI archives and uploads to TestFlight.
