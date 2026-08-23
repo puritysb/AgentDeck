@@ -212,7 +212,19 @@ actor DaemonTimelineStore {
         // with its `task_end`. Shedding them first inverted the rule's intent —
         // fan-out sessions produce the most tool_exec rows, so the dispatch row
         // was always the first casualty and the completions read as unattached.
-        if let idx = entries.firstIndex(where: { $0.type == "tool_exec" && $0.subagentId == nil }) {
+        //
+        // OpenClaw transcript rows are the second exception. This rule targets
+        // the observed-agent hook firehose; OpenClaw's tool rows are read from
+        // its own transcript because the Gateway stream carries no tool calls
+        // at all, and they are bounded at the producer. Shedding them first did
+        // not thin them but deleted them: on a full buffer an OpenClaw row is
+        // typically the only plain `tool_exec` present, so it evicted ITSELF on
+        // insertion (measured 2026-08-23). Mirrored from the Node rule because
+        // both daemons take turns owning `timeline.json` — a carve-out on one
+        // side only would leave the two replay buffers diverged.
+        if let idx = entries.firstIndex(where: {
+            $0.type == "tool_exec" && $0.subagentId == nil && $0.agentType != "openclaw"
+        }) {
             entries.remove(at: idx)
             return
         }

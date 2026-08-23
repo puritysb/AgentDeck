@@ -70,3 +70,48 @@ describe('subagent rows in the bridge timeline store', () => {
     expect(store.getHistory().some((e) => e.subagentId === 'burst:p:1')).toBe(true);
   });
 });
+
+/**
+ * The same rule with the wrong blast radius, one agent over.
+ *
+ * OpenClaw reaches the daemon over the Gateway WebSocket, and that stream
+ * carries no tool calls at all — so its tool rows are read from OpenClaw's own
+ * transcript and are the ONLY account of what it did. "Shed `tool_exec` first"
+ * targets the observed-agent hook firehose (measured at 87% of a live buffer);
+ * applied to a producer that emits nothing else, it did not thin those rows but
+ * removed them entirely. Measured 2026-08-23: the feed logged its emission and
+ * the buffer never held a single row.
+ */
+describe('OpenClaw transcript rows vs. tool_exec-first eviction', () => {
+  const openclawRow = (ts: number, raw: string) => ({
+    ts,
+    type: 'tool_exec' as const,
+    raw,
+    detail: 'session: main\nok · exit 0',
+    agentType: 'openclaw',
+    sessionId: 'openclaw-gateway',
+  });
+
+  it('does not let an OpenClaw row evict itself on insertion into a full buffer', () => {
+    const store = new BridgeTimelineStore();
+    // A busy machine: the buffer is already at capacity with other agents'
+    // turns, which is the steady state whenever anything else is running.
+    for (let i = 0; i < 200; i++) {
+      store.addEntry({ ts: 100 + i, type: 'chat_response', raw: `reply ${i}`, sessionId: `c${i}` });
+    }
+    store.addEntry(openclawRow(9_000, 'read · heartbeat-state.json'));
+    // `addEntry` pushes then evicts. With the carve-out missing, the row just
+    // added was the only plain `tool_exec` in the buffer and so was its own
+    // first casualty — the emission and the absence looked identical.
+    expect(store.getHistory().filter((e) => e.agentType === 'openclaw')).toHaveLength(1);
+  });
+
+  it('sheds an observed agent\'s tool rows ahead of OpenClaw\'s', () => {
+    const store = new BridgeTimelineStore();
+    store.addEntry(openclawRow(1, 'read · heartbeat-state.json'));
+    for (let i = 0; i < 400; i++) {
+      store.addEntry({ ts: 100 + i, type: 'tool_exec', raw: `Bash cmd-${i}`, sessionId: 'p' });
+    }
+    expect(store.getHistory().some((e) => e.agentType === 'openclaw')).toBe(true);
+  });
+});

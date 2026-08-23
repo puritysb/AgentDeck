@@ -169,7 +169,24 @@ export class BridgeTimelineStore {
     // fan-out sessions, so the dispatch row was always the first casualty and
     // the completions below it read as unattached. Skip them here; they still
     // FIFO out with everything else once the plain tool rows are gone.
-    const toolIdx = this.entries.findIndex((e) => e.type === 'tool_exec' && !e.subagentId);
+    //
+    // OpenClaw transcript rows are the second exception, for the same reason
+    // read the other way round. This rule targets the observed-agent hook
+    // firehose — one row per internal action, measured at 87% of a live buffer.
+    // OpenClaw's tool rows are neither hooks nor a firehose: the Gateway stream
+    // carries no tool calls at all, so they are read from OpenClaw's own
+    // transcript (`openclaw-timeline-feed.ts`) and are the ONLY account of what
+    // it did, deliberately bounded at the producer (recently-active sessions
+    // only, a dozen rows per session per tick, measured traffic 28 tool calls
+    // in 3 h). Shedding them first did not thin them — it deleted them
+    // outright: `addEntry` pushes then evicts, so on a full buffer an OpenClaw
+    // row was the only plain `tool_exec` present and therefore evicted ITSELF
+    // on insertion. Measured 2026-08-23 against a live daemon and reproduced at
+    // this store: the feed emitted its row, and the buffer never held one. They
+    // still FIFO out with everything else once the plain tool rows are gone.
+    const toolIdx = this.entries.findIndex(
+      (e) => e.type === 'tool_exec' && !e.subagentId && e.agentType !== 'openclaw',
+    );
     if (toolIdx >= 0) {
       this.entries.splice(toolIdx, 1);
       return;

@@ -39,6 +39,18 @@ import {
 } from './openclaw-transcript-timeline.js';
 import { debug } from './logger.js';
 
+/**
+ * How often the daemon pumps this feed.
+ *
+ * Deliberately equal to the passive observer's `SCAN_INTERVAL_MS`: this feed is
+ * polled, so an OpenClaw tool call reaches the timeline seconds late rather
+ * than instantly, which is the same contract every transcript-observed agent
+ * already carries. It is exported so the daemon cannot quietly drift to a
+ * cadence nobody measured — the pump is synchronous fs work (~7 ms typical,
+ * ~28 ms worst case against a real store).
+ */
+export const OPENCLAW_FEED_INTERVAL_MS = 5_000;
+
 /** How recently a session must have been written to be worth reading. */
 const ACTIVE_WINDOW_MS = 30 * 60 * 1000;
 /** Sessions read per tick, newest-first. An eval suite runs a handful at once. */

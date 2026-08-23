@@ -1479,6 +1479,61 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(entries[0].raw, "Fix timeline noise")
     }
 
+    /// OpenClaw's transcript rows must survive the tool_exec-first rule.
+    ///
+    /// OpenClaw reaches the daemon over the Gateway WebSocket, which carries no
+    /// tool calls at all — so its tool rows come from OpenClaw's own transcript
+    /// and are the only account of what it did. Shedding them first did not thin
+    /// them but deleted them: `add` appends then evicts, so on a full buffer the
+    /// row just added was typically the only plain `tool_exec` present and
+    /// evicted itself. Measured on the Node side 2026-08-23 and mirrored here
+    /// because both daemons take turns owning `timeline.json`.
+    func testDaemonTimelineStoreKeepsOpenClawToolRowsUnderPressure() async {
+        let store = DaemonTimelineStore()
+        // A busy machine: the buffer is already at capacity with other turns.
+        for i in 0..<200 {
+            await store.add(DaemonTimelineEntry(
+                ts: Double(100 + i),
+                type: "chat_response",
+                raw: "reply \(i)",
+                detail: nil,
+                approvalId: nil,
+                status: nil,
+                agentType: "claude-code",
+                repeatCount: nil,
+                automated: nil,
+                projectName: "AgentDeck",
+                sessionId: "s\(i)",
+                startedAt: nil,
+                endedAt: nil,
+                runId: nil
+            ))
+        }
+        await store.add(DaemonTimelineEntry(
+            ts: 9_000,
+            type: "tool_exec",
+            raw: "read · heartbeat-state.json",
+            detail: "session: main\nok · exit 0",
+            approvalId: nil,
+            status: nil,
+            agentType: "openclaw",
+            repeatCount: nil,
+            automated: nil,
+            projectName: "OpenClaw",
+            sessionId: "openclaw-gateway",
+            startedAt: nil,
+            endedAt: nil,
+            runId: nil
+        ))
+
+        let entries = await store.getAll()
+        XCTAssertLessThanOrEqual(entries.count, 200)
+        XCTAssertTrue(
+            entries.contains { $0.agentType == "openclaw" && $0.type == "tool_exec" },
+            "OpenClaw transcript row evicted itself on insertion into a full buffer"
+        )
+    }
+
     /// Under buffer pressure the store sheds `tool_exec` before chat/turn rows —
     /// mirrors Node `BridgeTimelineStore.evictOne`. PTY `agentdeck claude`
     /// sessions emit claude-code tool_exec per tool action; only codex tool_exec

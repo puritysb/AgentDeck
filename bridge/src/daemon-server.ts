@@ -170,7 +170,7 @@ import {
 } from './session-transcript-timeline.js';
 import { kiroTimelineForSession } from './kiro-transcript-timeline.js';
 import { KiroTimelineFeed } from './kiro-timeline-feed.js';
-import { OpenClawTimelineFeed } from './openclaw-timeline-feed.js';
+import { OpenClawTimelineFeed, OPENCLAW_FEED_INTERVAL_MS } from './openclaw-timeline-feed.js';
 import {
   DeviceVoiceReplyRouter, speakableReply, spokenDigest, pcmFromWav, type ReplySink,
 } from './device-voice-reply.js';
@@ -3756,25 +3756,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       debug('daemon', `kiro timeline feed failed: ${String(err)}`);
     }
 
-    // OpenClaw is Gateway-observed, and that stream carries the prompt, the
-    // final response and the approvals it has to block on — never the tool
-    // calls. The only tools that ever reached the strip were the ones that
-    // happened to need approval, which is a biased sample rather than a log.
-    // This reads the transcript OpenClaw writes anyway and emits the rest.
-    //
-    // Gated on the SSOT presence predicate, not on the store: the rows are
-    // attributed to the virtual `openclaw-gateway` session, and that row exists
-    // only while the Gateway is authenticated. Emitting them otherwise would
-    // put activity under a session no surface is showing.
-    try {
-      if (core.cachedGatewayConnected) {
-        for (const entry of openclawTimelineFeed.pump()) {
-          core.bridgeTimeline.addEntry(entry);
-        }
-      }
-    } catch (err) {
-      debug('daemon', `openclaw timeline feed failed: ${String(err)}`);
-    }
+    // NOTE: the OpenClaw transcript feed used to pump from here and must not —
+    // see `openclawFeedTimer` below for why this callback cannot drive it.
     core.maybeBroadcastSessionsList();
   };
   // OTel turn boundaries arrive in milliseconds where the observer only re-reads
@@ -5771,10 +5754,63 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const permissionSweepTimer = setInterval(() => { sweepStalePending(60_000); }, 30_000);
   permissionSweepTimer.unref?.();
 
+  // OpenClaw is Gateway-observed, and that stream carries the prompt, the final
+  // response and the approvals it has to block on — never the tool calls. The
+  // only tools that ever reached the strip were the ones that happened to need
+  // approval, which is a biased sample rather than a log. This reads the
+  // transcript OpenClaw writes anyway and emits the rest.
+  //
+  // **This needs a timer of its own, and that is the whole point.** The pump
+  // originally hung off `passiveSessionObserver.onRefreshed`, which fires only
+  // when the observed PROCESS set changes (`scan()` compares `next` against the
+  // cache and calls back only on a difference). Every other transcript feed can
+  // ride that edge because its subject is in that set — a Kiro turn moves its
+  // own row's `state`/`lastActivityAt`, so Kiro activity wakes the Kiro feed.
+  // OpenClaw is reached over the Gateway WebSocket and has NO process row at
+  // all, so an OpenClaw turn moves nothing the observer can see: the feed woke
+  // only when some unrelated agent happened to start or stop, and on the first
+  // scan after boot (empty cache → populated, which always counts as a change).
+  // Measured 2026-08-23 on a live daemon: three consecutive OpenClaw turns each
+  // wrote a tool call to the store, the reader returned it, and the pump ran
+  // exactly twice — both at startup — so the timeline showed zero `tool_exec`
+  // rows. A producer must be driven by a signal its own subject can move.
+  //
+  // Gated on the SSOT presence predicate, not on the store: the rows are
+  // attributed to the virtual `openclaw-gateway` session, and that row exists
+  // only while the Gateway is authenticated. Emitting them otherwise would put
+  // activity under a session no surface is showing.
+  //
+  // Cadence matches the passive observer's own `SCAN_INTERVAL_MS`, which is the
+  // "seconds late, never instant" contract every transcript-observed agent
+  // already carries. The pump is synchronous fs work; measured against a real
+  // store it costs ~7 ms typically and ~28 ms in its worst case (the index
+  // parse plus the eight largest transcripts), so the duty cycle stays well
+  // under 1% of the interval it shares with the observer.
+  const openclawFeedTimer = setInterval(() => {
+    try {
+      if (!core.cachedGatewayConnected) return;
+      const rows = openclawTimelineFeed.pump();
+      // Logged because the silent path and the broken path look identical from
+      // outside: a tick that emits nothing writes nothing, so "no rows on the
+      // strip" cannot be told from "the pump never ran" without this line. That
+      // ambiguity is exactly what hid the `onRefreshed` coupling.
+      if (rows.length > 0) {
+        debug('daemon', `openclaw-feed emitting ${rows.length} row(s)`);
+      }
+      for (const entry of rows) {
+        core.bridgeTimeline.addEntry(entry);
+      }
+    } catch (err) {
+      debug('daemon', `openclaw timeline feed failed: ${String(err)}`);
+    }
+  }, OPENCLAW_FEED_INTERVAL_MS);
+  openclawFeedTimer.unref?.();
+
   // ===== Shutdown =====
   core.onShutdown(async () => {
     clearInterval(permissionSweepTimer);
     clearInterval(daemonInfoHealTimer);
+    clearInterval(openclawFeedTimer);
     drainAllPending();
     removeDaemonInfo();
     focusRelay.stop();
