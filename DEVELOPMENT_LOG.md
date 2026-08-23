@@ -2,6 +2,105 @@
 
 ---
 
+## 2026-08-23 — 승인 요청은 읽히지 않았고, 데이터는 처음부터 다 있었다
+
+### 문제
+
+사용자가 OpenClaw exec approve 요청을 승인하지 못했다. 거부한 게 아니라 **무엇을 승인하는
+건지 읽을 수 없었다.** 실측: 그날 승인 8건 중 7건이 75~402초 뒤 무응답으로 닫혔고, 같은
+명령이 1시간 반 동안 7번 반복 요청됐다.
+
+프로듀서는 멀쩡했다. `parseExecApprovalRequest` 는 명령 전문과 정책 경고
+(`strict inline-eval mode requires reviewer or explicit approval for sed inline program`)
+를 정확히 뽑고 있었고 `timeline.json` 에 온전히 남아 있었다. **유실은 전적으로 표면
+렌더 단계**였다.
+
+### 실측으로 드러난 것
+
+**1. 데크의 head-cut 이 목적어를 죽인다.** `truncateStr(question, 18)`. 승인 질문은 전부
+셸 명령이고 명령은 동사가 앞, 목적어가 뒤다. 그래서 18자를 앞에서 자르면 *모든 요청이
+공유하는 부분*을 남기고 *이 요청을 식별하는 부분*을 버린다. 실제 렌더는
+`sed -n '20,35p' ~…` — 경로가 시작되는 바로 그 바이트에서 잘렸다. 기록된 두 요청 모두
+같은 지점에서 잘렸다.
+
+**2. "왜 승인이 필요한가" 가 와이어에 필드가 없었다.** `injectOpenClawSession` 이
+`prompt.detail` 을 세션 행으로 옮기지 않았고 `SessionInfo` 에 대응 필드도 없었다. 무해해
+보이는 `sed -n` 이 왜 승인을 요구하는지 알 방법이 어느 표면에도 없었다.
+
+**3. D200H 는 질문을 그리는 픽셀이 0이었다.** `d200h-layout.ts` 의 `question` 은 press
+echo 전용이었고 hero 셀 `renderDetailInfo` 에는 question 파라미터 자체가 없었다.
+Allow/Deny/Always 세 개의 라이브 버튼이 주어(主語) 없이 떠 있었다.
+
+**4. 부수 — 포기가 거부로 기록됐다.** 7건은 사용자가 거부한 게 아니라 OpenClaw run 이
+취소되며 포기된 것인데(`abandonPendingApprovalForTurnEnd`), 행은 `status:'denied'` 였다.
+사용자의 명시적 거부와 "아무도 답한 적 없음" 이 같은 값이었고, 후자가 압도적으로 흔하며
+그게 바로 "프롬프트가 사람에게 못 닿았다" 는 신호다.
+
+### 해결
+
+- `summarizeQuestionForKey` (shared SSOT): 동사 + 목적어 basename, 중간 생략 →
+  `sed … config.py`. 목적어는 **앞에서부터** 찾는다 — 남긴 동사의 목적어여야 하기
+  때문. 복합 명령에서 뒤에서 찾으면 `sed … serve.py` 처럼 실제로 함께 등장한 적 없는
+  쌍이 나온다(부분 정보가 아니라 틀린 정보). `rm … build-cache` 가 이게 가독성이 아니라
+  **안전** 규칙인 이유.
+- `SessionInfo.questionDetail` (additive): 정책 이유 + cwd + **어느 OpenClaw 세션이
+  물었는지**. SSOT 파서의 `detail` 을 most-decisive-first 로 재정렬 — 한 줄만 들어가는
+  표면이 head 를 집는데 cwd 가 선두면 에이전트마다 늘 같은, 아무것도 구분 못 하는 값이
+  그 한 줄을 차지한다. `approvalReasonHead` 가 `Warning:` 라벨을 벗긴다(amber 톤이 이미
+  말하는 걸 22자 예산의 9자로 반복하고 있었다).
+- `renderDetailInfo` 가 대기 중일 때 질문 3줄 + 이유를 그린다. 파라미터 추가가 아니라
+  `session` 에서 읽으므로 모든 호출부와 미러가 자동으로 받는다.
+- `status` 에 `'abandoned'` 추가. 겸사겸사 `tool_resolved` 아이콘이 status 무관 success
+  였던 잠복 버그도 드러났다(거부에 초록 체크).
+
+### OpenClaw 관측 티어 — Gateway 스트림의 보수(補數)
+
+"OpenClaw 이 뭘 하는지 더 보고 싶다" 는 요청에서 나온 두 번째 절반. Gateway WS 는
+프롬프트·최종 응답·차단해야 하는 승인만 나른다. 그래서 **타임라인에 나타난 툴은 승인이
+필요했던 것뿐**이었다 — 로그가 아니라 편향된 표본.
+
+OpenClaw 은 어차피 세션마다 전문 transcript 를 쓴다
+(`~/.openclaw/agents/<agent>/sessions/<uuid>.jsonl` + 타입 있는 `.trajectory.jsonl`,
+인덱스 `sessions.json` 의 **키가 세션 키**). `openclaw-transcript-timeline.ts` +
+`openclaw-timeline-feed.ts` 가 이를 읽어 **`tool_exec` 행만** 낸다.
+
+경계 셋, 전부 실측 근거:
+- 활동창 30분 안의 세션만 (스토어는 세션을 영원히 보관 — 이 머신에 103개)
+- **첫 관측은 무발행.** `KiroTimelineFeed` 와 정반대다: Kiro 는 라이브 행 옆 빈 스트립이
+  고장으로 읽혀서 마지막 턴을 시딩하지만, OpenClaw 은 Gateway 스트림이 이미 스트립을
+  채우고 있어 그 문제가 없다. 시딩하면 끝난 eval 런의 낡은 툴콜만 주입된다.
+- 가상 `openclaw-gateway` 행에 귀속, 세션 신설 금지 (eval 스위트가 런마다 새 키를 연다 —
+  측정한 3시간에 6개)
+
+### 핵심 설계 결정
+
+**"macOS 앱에 대화 기록이 없다" 는 앱 버그가 아니었다.** 승인 8건 전부
+`agent:main:eval-full-unified-mlx-…__r2` — model-eval 하네스 런 소속이었고, 앱이 보여주는
+`agent:main:main` 은 그 시각 3시간째 조용했다. 찾는 세션이 없는 게 아니라 다른 세션 키에
+있었다. `main` / `cron:<id>` / `eval-…__r2` 가 전부 단일 리터럴 "OpenClaw" 로 도착하는
+게 원인이므로, 세션 키가 `questionDetail` 과 모든 tool 행 `detail` 머리에 실린다.
+
+**fixture 는 실제 스토어에서 그대로 복사.** 특히 `isError:true` 인데 `exitCode` 가 **없는**
+실제 실패 케이스를 넣었다 — exitCode 만 믿으면 성공으로 읽는다. (이 저장소는 상상으로
+쓴 Kiro fixture 가 테스트를 통과하면서 아무것도 매치하지 않은 전과가 있다.)
+
+**`clip()` 이 개행까지 뭉개던 버그를 만들면서 잡았다.** most-decisive-first 정렬의 전제는
+소비자가 `split('\n')[0]` 로 머리를 집는다는 것인데, 블록 전체를 flatten 하면 집을 머리가
+없다 — 정렬이 장식이 되고 표면은 이어붙은 문자열의 앞 22자를 보여준다. `clipLines()` 로
+줄 단위 예산 분배.
+
+### 남은 것
+
+- **trajectory → APME 미연결.** `.trajectory.jsonl` 이 canonical `SessionSample` 과 거의
+  1:1 이라 가장 탐나지만, Gateway 어댑터가 이미 OpenClaw APME run 을 열고 있어 화해 규칙
+  없이 두 번째 프로듀서를 달면 이중계상된다. turn/task 경계의 주인을 먼저 정해야 한다.
+- **Swift 데몬 미러 없음.** 샌드박스가 `~/.openclaw` 를 user-granted security-scoped
+  bookmark 없이 못 읽는다 — Kiro 와 같은 동의 흐름이 선행돼야 하는 별건.
+- **피드의 라이브 발행은 미관측.** 실제 스토어 단독 실행(6개 세션 키/28행)과 컴파일된
+  배선까지만 확인. OpenClaw 이 유휴라 30분 창에 드는 세션이 0개였다.
+
+---
+
 ## 2026-08-23 — stubless 쓰기는 stub 문제가 아니었다: ips_10 의 SYNC 무응답과 계측기 두 번의 거짓말
 
 ### 문제
