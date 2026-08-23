@@ -357,4 +357,64 @@ describe('ApmeCollector', () => {
     });
     expect(store.listTasksForRun(runId).length).toBe(0);
   });
+
+  // ── Regressions found by adversarial review of PR #263 ──
+
+  const span = (kind: string, attributes: Record<string, unknown>) => ({
+    traceId: 't', spanId: Math.random().toString(36).slice(2), parentSpanId: undefined,
+    name: kind, kind, ts: Date.now(), attributes,
+  } as never);
+
+  it('accumulates PER-MESSAGE usage instead of stamping the last message as the total', async () => {
+    // `updateUsage` is cumulative by contract — its other caller is the PTY
+    // poller's running UsageTracker snapshot. A `session.message`(assistant)
+    // frame reports one message's tokens, and those are NOT monotonic. These
+    // are the real values measured off an OpenClaw session store.
+    const collector = new ApmeCollector(store);
+    const runId = collector.openRun({ sessionId: 's', agentType: 'openclaw', projectName: 'p' });
+    collector.ingestSpan('s', span('turn_start', { 'agentdeck.prompt_text': 'go' }));
+    for (const input of [30302, 21375, 335, 96, 114]) {
+      collector.ingestSpan('s', span('session_meta', {
+        'gen_ai.request.model': 'm', 'agentdeck.usage.input_tokens': input,
+        'agentdeck.usage.output_tokens': 0,
+      }));
+    }
+    const run = store.getRun(runId!);
+    // Fed straight to updateUsage this was 114 — the last message's own count,
+    // for a session that consumed 52,222.
+    expect(run?.inputTokens).toBe(52222);
+  });
+
+  it('closes the turn on an explicit turn_end and records which signal closed it', async () => {
+    // The turn_end span emission was gated by a test; ACTING on it was not.
+    // Reverting the collector's close left the whole suite green, so
+    // `turns.end_source` — the column `apme stop-health` reads, and the reason
+    // CLAUDE.md gives for the column existing — was unverified end to end.
+    const collector = new ApmeCollector(store);
+    const runId = collector.openRun({ sessionId: 's2', agentType: 'openclaw', projectName: 'p' });
+    collector.ingestSpan('s2', span('turn_start', { 'agentdeck.prompt_text': 'go' }));
+    collector.ingestSpan('s2', span('turn_response', { 'agentdeck.response_text': 'done' }));
+    collector.ingestSpan('s2', span('turn_end', { 'agentdeck.turn_end_source': 'stop' }));
+    const turns = store.listTurns(runId!);
+    expect(turns.length).toBe(1);
+    // listTurns returns raw rows, so these are the column names.
+    expect(turns[0].end_source).toBe('stop');
+    expect(turns[0].ended_at).toBeTruthy();
+  });
+
+  it('treats a whitespace-differing prompt echo as the same turn, not a Stop loss', async () => {
+    // Our `chat.send` span carries the prompt verbatim; the Gateway's
+    // `session.message`(user) echo arrives trimmed. Under exact equality the
+    // second one closed the first turn via `resolveDisplacedTurnSource`, which
+    // for a non-claude-code agent is `next_prompt` — the unrecovered-Stop-loss
+    // bucket. A trailing newline invented a Stop loss for an agent that has no
+    // Stop hook, and stranded an empty turn 0.
+    const collector = new ApmeCollector(store);
+    const runId = collector.openRun({ sessionId: 's3', agentType: 'openclaw', projectName: 'p' });
+    collector.ingestSpan('s3', span('turn_start', { 'agentdeck.prompt_text': 'fix this\n' }));
+    collector.ingestSpan('s3', span('turn_start', { 'agentdeck.prompt_text': 'fix this' }));
+    const turns = store.listTurns(runId!);
+    expect(turns.length).toBe(1);
+    expect(turns[0].end_source).toBeFalsy();
+  });
 });

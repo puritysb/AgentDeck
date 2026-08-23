@@ -915,7 +915,7 @@ daemon
       probeDaemonHealth: probeHealth, readDaemonInfo, findDaemonPort,
       waitForDaemonExit, waitForPortBindable,
     } = await import('./session-registry.js');
-    const { resolveDaemonPort } = await import('./daemon-port.js');
+    const { resolveDaemonPort, PREFERRED_PORT_RECLAIM_MS } = await import('./daemon-port.js');
     const preferredPort = resolveDaemonPort({ flag: opts.port });
     const info = readDaemonInfo();
     const runningPort = info?.httpPort ?? info?.port ?? findDaemonPort() ?? preferredPort.port;
@@ -941,8 +941,21 @@ daemon
     // socket close, plus a NECP reservation macOS holds for ~14s after a
     // listener is cancelled. The 1500ms guess that used to sit here covered
     // neither reliably — it was simply longer than the common case.
-    await waitForDaemonExit(runningPort, 8000);
-    await waitForPortBindable(preferredPort.port, 8000);
+    const exited = await waitForDaemonExit(runningPort, 8000);
+    // The NECP reservation this comment names outlasts an 8s budget, so the
+    // bind wait is derived from the child's own worst case rather than guessed:
+    // on EADDRINUSE the child waits PREFERRED_PORT_RECLAIM_MS before falling
+    // back. Budgeting less than that made the parent give up WHILE the child
+    // was still legitimately waiting, print "restart FAILED", and exit 1 — on
+    // exactly the contended case this code exists for. The user's next move is
+    // to run `daemon restart` again, which kills the daemon that just came up.
+    const portFree = await waitForPortBindable(preferredPort.port, PREFERRED_PORT_RECLAIM_MS);
+    if (!exited) {
+      log(`Warning: the daemon on port ${runningPort} was still answering when the stop budget ran out.`);
+    }
+    if (!portFree) {
+      log(`Port ${preferredPort.port} is still held; the new daemon will wait for it and fall back if it never frees.`);
+    }
 
     const scriptPath = fileURLToPath(import.meta.url);
     const args = [scriptPath, 'daemon', 'start', '--foreground'];
@@ -975,12 +988,20 @@ daemon
     // daemon log. Verify by asking the daemon who it is.
     const spawnedPid = child.pid;
     const started = spawnedPid !== undefined
-      ? await waitForDaemonPid(spawnedPid, preferredPort.port, probeHealth, readDaemonInfo, findDaemonPort)
+      // Must outlast the child's own reclaim wait plus its fallback bind and
+      // `daemon.json` write — the default 20s is exactly the reclaim wait, so a
+      // child that used all of it was reported failed the moment it succeeded.
+      ? await waitForDaemonPid(spawnedPid, preferredPort.port, probeHealth, readDaemonInfo, findDaemonPort,
+          PREFERRED_PORT_RECLAIM_MS + 10_000)
       : null;
 
     if (!started) {
       log(`Daemon restart FAILED — no daemon with PID ${spawnedPid ?? '?'} is answering.`);
-      log(`The reason is in ${join(homedir(), '.agentdeck', 'daemon-stderr.log')}.`);
+      // Both streams, not just stderr: the likeliest failure is the child
+      // hitting `daemon start`'s incumbent guard, which reports through `log()`
+      // — i.e. stdout. Naming only stderr pointed at the empty file.
+      log(`The reason is in ${join(homedir(), '.agentdeck', 'daemon-stdout.log')}`
+        + ` or ${join(homedir(), '.agentdeck', 'daemon-stderr.log')}.`);
       process.exit(1);
     }
     if (started.port !== preferredPort.port) {
