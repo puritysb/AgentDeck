@@ -202,7 +202,17 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
         // `tool_resolved` rows the way a `task_start` pairs with its
         // `task_end`, and fan-out sessions produce the most tool_exec rows —
         // so shedding them first always split the pair it meant to protect.
-        if let idx = entries.firstIndex(where: { $0.type == .toolExec && $0.subagentId == nil }) {
+        //
+        // OpenClaw rows are exempt for a different reason: `tool_exec` is the
+        // ONLY row type its producers emit, so on a full buffer an OpenClaw row
+        // is typically the only plain `tool_exec` present and evicting it first
+        // does not thin those rows, it deletes them. `DaemonTimelineStore`
+        // (which this function is a port of) and the Node store both carve it
+        // out; this mirror had drifted, so the app's own view would shed
+        // exactly the rows its daemon had just decided to keep.
+        if let idx = entries.firstIndex(where: {
+            $0.type == .toolExec && $0.subagentId == nil && $0.agentType != "openclaw"
+        }) {
             entries.remove(at: idx)
             return
         }

@@ -587,6 +587,42 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(grouped.count, 2)
     }
 
+    /// The CLIENT store must carve OpenClaw out of the `tool_exec`-first
+    /// eviction rule exactly as `DaemonTimelineStore` does.
+    ///
+    /// `TimelineStore.evictOne` names itself a port of that function, and it
+    /// had drifted: the daemon kept OpenClaw tool rows under buffer pressure
+    /// while the app's own view shed them, so the rows the daemon had just
+    /// decided to protect disappeared one layer later. `tool_exec` is the ONLY
+    /// row type OpenClaw's producers emit, so evicting it first does not thin
+    /// those rows — it deletes them.
+    func testTimelineStoreKeepsOpenClawToolRowsUnderPressure() {
+        let store = TimelineStore()
+        // A busy machine: the buffer is already at capacity with OTHER turns.
+        // The filler must not be `tool_exec` — the bug only bites when the
+        // OpenClaw row is the only plain `tool_exec` present, so it is the
+        // first (and only) match and evicts itself on insertion. Filling with
+        // tool rows instead makes an older row the match and the test passes
+        // with or without the carve-out, proving nothing.
+        for i in 0..<520 {
+            store.addEntry(TimelineEntry(
+                ts: Double(i), type: .chatResponse, raw: "reply \(i)",
+                agentType: "claude-code", sessionId: "s\(i)"
+            ))
+        }
+        store.addEntry(TimelineEntry(
+            ts: 9000, type: .toolExec, raw: "read · heartbeat-state.json",
+            detail: "session: main\nok · exit 0",
+            agentType: "openclaw", sessionId: "openclaw-gateway"
+        ))
+
+        XCTAssertLessThanOrEqual(store.entries.count, 500)
+        XCTAssertTrue(
+            store.entries.contains { $0.agentType == "openclaw" && $0.type == .toolExec },
+            "OpenClaw row evicted itself on insertion into a full client buffer"
+        )
+    }
+
     func testTimelineStoreUpsert() {
         let store = TimelineStore()
         store.addEntry(TimelineEntry(ts: 1000, type: .toolRequest, raw: "Read", status: "pending"))
