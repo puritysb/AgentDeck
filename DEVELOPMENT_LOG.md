@@ -131,6 +131,21 @@ Gateway 에서 뜬 실물이고, 내용만 스크럽했다(파서가 읽는 필�
 은 `shared/src/openclaw-approval.ts` 헤더가 "틀렸다"고 명시해 둔 평평한 모양을 그 수정 이후로도
 계속 들고 있었다 — Gateway 가 거부하는 `'allow'` 결정까지 포함해서. 같은 병이다.
 
+### 라이브 트래픽이 잡아준 결함 (이번 라운드에 내가 넣은 것)
+
+세션 키별 run 을 배포하고 실측하니 진짜 `agent:main:main:heartbeat` 키가 **turn 0 / step 0 /
+event 0 짜리 run** 을 열었다. 원인: run 을 **컨텍스트를 만들 때** 열고 있었다. 컨텍스트는
+프레임마다 만들어지고 그중에는 span 0개로 파싱되는 것도 있다 — Gateway 가 heartbeat 메시지
+쌍을 `session.message` 에서 걸러내므로 그런 프레임은 예외가 아니라 일상이다. 즉 **이 라운드가
+없애려던 빈 run 노이즈를 내가 다시 만들고 있었다.** run 은 이제 그 키의 **첫 ingest 가능한
+span** 에서 열린다. 게이트는 되돌려서 빨개지는 것까지 확인했다.
+
+**남아 있는 같은 종류의 구멍(정직하게 기록)**: 접속 단위 fallback run 은 여전히 connect 에서
+eager 하게 열린다. 이제 사실상 모든 프레임이 키를 달고 오므로 이 row 는 대개 비어 있고 orphan
+으로 reap 된다 — Gateway 접속당 1행, **분리 전과 같은 비율**. 이걸 lazy 로 만들려면
+`setApmeSession` 을 재구성해야 하는데, `hasDirectApmeIngestion` 이 그 위에서 bridge 의
+timeline→span 변환을 게이팅한다. 이번 범위에서 뺐다.
+
 ### 남긴 것
 
 - 옛 `openclaw-<uuid>` 행 657개는 **백필하지 않는다.** 세션 키가 애초에 기록된 적이 없어서

@@ -186,7 +186,8 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
    *  timer for a user chat that ended half an hour ago, and that task would
    *  never close — a task that never closes is never evaluated. */
   private apmeBySessionKey = new Map<string, {
-    sessionId: string;
+    /** null until this key's first ingestable span opens its run. */
+    sessionId: string | null;
     traceId: string;
     idleTimer: ReturnType<typeof setTimeout> | null;
   }>();
@@ -267,7 +268,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   /** APME session ids this adapter has opened, so the daemon can close them
    *  all when the Gateway link drops. */
   apmeSessionIds(): string[] {
-    return [...this.apmeBySessionKey.values()].map((e) => e.sessionId);
+    return [...this.apmeBySessionKey.values()]
+      .map((e) => e.sessionId)
+      .filter((id): id is string => id !== null);
   }
 
   /** True when this adapter pipes Gateway events into the APME collector
@@ -285,10 +288,14 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   private buildApmeCtx(sessionKey?: string | null): AdapterContext | null {
     if (!getApme()) return null;
     const entry = sessionKey ? this.apmeEntryFor(sessionKey) : null;
+    // `sessionId` here is provisional: for a keyed context the run may not be
+    // open yet (see `apmeEntryFor`), and `ingestApmeSpans` re-resolves it
+    // against `sessionKey` before writing anything. It is never read into a
+    // span attribute — only used to route the ingest.
     const sessionId = entry?.sessionId ?? this.apmeSessionId;
-    if (!sessionId) return null;
+    if (!sessionId && !entry) return null;
     return {
-      sessionId,
+      sessionId: sessionId ?? '',
       agentType: 'openclaw',
       cwd: this.apmeCwdHint,
       traceId: entry?.traceId ?? this.apmeTraceId,
@@ -296,30 +303,57 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
     };
   }
 
-  /** Get-or-open the per-session-key entry. */
-  private apmeEntryFor(sessionKey: string): { sessionId: string; traceId: string } | null {
+  /** Get-or-create the per-session-key entry — WITHOUT opening its APME run.
+   *
+   *  Opening the run here is what a first version did, and it manufactured
+   *  exactly the noise this whole split exists to remove: a context is built
+   *  for every frame, including ones that parse to zero spans, so a real
+   *  `agent:main:main:heartbeat` key opened a run holding 0 turns, 0 steps and
+   *  0 events (measured on live traffic 2026-08-23). The Gateway filters
+   *  heartbeat message pairs out of `session.message`, so such a key can emit
+   *  frames that carry nothing to record. A run is opened on the first span
+   *  that is actually ingested. */
+  private apmeEntryFor(sessionKey: string): {
+    sessionId: string | null; traceId: string; idleTimer: ReturnType<typeof setTimeout> | null;
+  } | null {
     const existing = this.apmeBySessionKey.get(sessionKey);
     if (existing) return existing;
     if (!this.apmeRunFor) return null;
-    const sessionId = this.apmeRunFor(sessionKey);
-    if (!sessionId) return null;
-    const entry = { sessionId, traceId: randomUUID(), idleTimer: null };
+    const entry = { sessionId: null as string | null, traceId: randomUUID(), idleTimer: null };
     this.apmeBySessionKey.set(sessionKey, entry);
-    debug('adapter:openclaw', `APME run opened for ${sessionKey} → ${sessionId.slice(0, 12)}`);
     return entry;
   }
 
-  /** Ingest spans against the run the context resolved to. The session id must
-   *  come from `ctx`, not from `this.apmeSessionId` — reading the field here is
-   *  what would silently re-collapse every per-key run back into one. */
+  /** The APME session id for a key, opening its run on first use. */
+  private apmeSessionIdFor(sessionKey: string): string | null {
+    const entry = this.apmeEntryFor(sessionKey);
+    if (!entry) return null;
+    if (entry.sessionId) return entry.sessionId;
+    const sessionId = this.apmeRunFor?.(sessionKey) ?? null;
+    if (!sessionId) return null;
+    entry.sessionId = sessionId;
+    debug('adapter:openclaw', `APME run opened for ${sessionKey} → ${sessionId.slice(0, 16)}`);
+    return sessionId;
+  }
+
+  /** Ingest spans against the run belonging to `sessionKey`.
+   *
+   *  The target must be re-resolved from the key, never read off
+   *  `this.apmeSessionId` — reading that field here is what would silently
+   *  re-collapse every per-key run back into one. Returns early on an empty
+   *  span list so no run is opened for a frame that records nothing. */
   private ingestApmeSpans(
-    ctx: AdapterContext,
+    sessionKey: string | null | undefined,
     spans: ReadonlyArray<ReturnType<typeof openclawChatSendToSpan>>,
   ): void {
     const apme = getApme();
     if (!apme || spans.length === 0) return;
+    const target = sessionKey
+      ? this.apmeSessionIdFor(sessionKey) ?? this.apmeSessionId
+      : this.apmeSessionId;
+    if (!target) return;
     for (const span of spans) {
-      try { apme.collector.ingestSpan(ctx.sessionId, span); }
+      try { apme.collector.ingestSpan(target, span); }
       catch (err) { debug('apme:openclaw', `ingestSpan failed: ${String(err)}`); }
     }
   }
@@ -337,8 +371,13 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
       else this.apmeFallbackIdleTimer = null;
       const apme = getApme();
       if (!apme) return;
+      // Resolve at FIRE time, and never open a run here: a boundary closing a
+      // task that was never opened would mint an empty run at the exact moment
+      // the conversation went quiet.
+      const target = holder?.sessionId ?? (sessionKey ? null : this.apmeSessionId);
+      if (!target) return;
       const span = openclawIdleGapTaskBoundary(ctx);
-      try { apme.collector.ingestSpan(ctx.sessionId, span); }
+      try { apme.collector.ingestSpan(target, span); }
       catch (err) { debug('apme:openclaw', `idle_gap ingestSpan failed: ${String(err)}`); }
     }, OPENCLAW_IDLE_GAP_MS);
     // Don't keep the event loop alive just for this timer; the adapter is
@@ -643,7 +682,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
           const ctx = this.buildApmeCtx(this.currentSessionKey);
           if (ctx) {
             this.clearIdleGapTimer(this.currentSessionKey);
-            this.ingestApmeSpans(ctx, [openclawChatSendToSpan(ctx, cmd.text)]);
+            this.ingestApmeSpans(this.currentSessionKey, [openclawChatSendToSpan(ctx, cmd.text)]);
           }
           this.rpcCall('chat.send', {
             sessionKey: this.currentSessionKey,
@@ -1250,7 +1289,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
                 ...(responseContent ? { response: responseContent } : {}),
                 ...(Array.isArray(payload.tools) ? { tools: payload.tools as ChatEventPayload['tools'] } : {}),
               };
-              this.ingestApmeSpans(apmeCtx, openclawChatEventToSpans(apmeCtx, apmePayload));
+              this.ingestApmeSpans(sessionKey, openclawChatEventToSpans(apmeCtx, apmePayload));
               this.armIdleGapTimer(sessionKey);
             }
 
@@ -1281,7 +1320,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
             const abortCtx = this.buildApmeCtx(sessionKey);
             if (abortCtx) {
               this.clearIdleGapTimer(sessionKey);
-              this.ingestApmeSpans(abortCtx, openclawChatEventToSpans(abortCtx, {
+              this.ingestApmeSpans(sessionKey, openclawChatEventToSpans(abortCtx, {
                 state: 'aborted',
                 ...(payload.runId ? { runId: payload.runId as string } : {}),
                 ...(payload.sessionKey ? { sessionKey: payload.sessionKey as string } : {}),
@@ -1342,7 +1381,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
             // abandoned left its task open indefinitely.
             const errCtx = this.buildApmeCtx(sessionKey);
             if (errCtx) {
-              this.ingestApmeSpans(errCtx, openclawChatEventToSpans(errCtx, errInput));
+              this.ingestApmeSpans(sessionKey, openclawChatEventToSpans(errCtx, errInput));
               this.armIdleGapTimer(sessionKey);
             }
 
@@ -1470,14 +1509,14 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
       case 'session.tool': {
         const toolPayload = payload as SessionToolPayload;
         const apmeCtx = this.buildApmeCtx(toolPayload.sessionKey);
-        if (apmeCtx) this.ingestApmeSpans(apmeCtx, openclawSessionToolToSpans(apmeCtx, toolPayload));
+        if (apmeCtx) this.ingestApmeSpans(toolPayload.sessionKey, openclawSessionToolToSpans(apmeCtx, toolPayload));
         break;
       }
       case 'session.message': {
         const msgPayload = payload as SessionMessagePayload;
         const apmeCtx = this.buildApmeCtx(msgPayload.sessionKey);
         if (!apmeCtx) break;
-        this.ingestApmeSpans(apmeCtx, openclawSessionMessageToSpans(apmeCtx, msgPayload));
+        this.ingestApmeSpans(msgPayload.sessionKey, openclawSessionMessageToSpans(apmeCtx, msgPayload));
         // A user message re-opens the conversation: cancel the pending
         // idle-gap boundary for THIS key so a follow-up question stays in the
         // same task. An assistant message means the turn just landed, so the

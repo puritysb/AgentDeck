@@ -127,6 +127,40 @@ describe('OpenClaw chat error → APME lifecycle', () => {
     clear();
   });
 
+  it('opens no run for a key whose frames record nothing', () => {
+    ingestSpan.mockClear();
+    const adapter = new OpenClawAdapter({ autoReconnect: false });
+    adapter.setApmeSession('openclaw-gateway', '/tmp/proj');
+    const opened: string[] = [];
+    adapter.setApmeRunResolver((key) => { opened.push(key); return `openclaw:${key}`; });
+
+    // Measured on live traffic 2026-08-23: a real `agent:main:main:heartbeat`
+    // key opened a run holding 0 turns, 0 steps and 0 events, because the run
+    // was opened while BUILDING the context — which happens for every frame,
+    // including ones that parse to nothing. The Gateway filters heartbeat
+    // message pairs out of `session.message`, so such frames are routine. That
+    // is the same empty-run noise the per-key split exists to remove.
+    gw(adapter, 'session.message', { sessionKey: 'agent:main:main:heartbeat', message: {} });
+    gw(adapter, 'session.message', {
+      sessionKey: 'agent:main:main:heartbeat',
+      message: { role: 'user', content: '   ' },
+    });
+    gw(adapter, 'session.tool', { sessionKey: 'agent:main:main:heartbeat', data: { phase: 'start' } });
+
+    expect(opened).toEqual([]);
+    expect(ingestSpan).not.toHaveBeenCalled();
+
+    // …and the first frame that DOES record something opens it.
+    gw(adapter, 'session.message', {
+      sessionKey: 'agent:main:main:heartbeat',
+      message: { role: 'user', content: 'real work', timestamp: 1 },
+    });
+    expect(opened).toEqual(['agent:main:main:heartbeat']);
+    expect(ingestSpan.mock.calls[0][0]).toBe('openclaw:agent:main:main:heartbeat');
+
+    (adapter as unknown as { clearAllIdleGapTimers(): void }).clearAllIdleGapTimers();
+  });
+
   it('scopes the run — and the idle-gap timer — per Gateway session key', () => {
     ingestSpan.mockClear();
     const adapter = new OpenClawAdapter({ autoReconnect: false });
