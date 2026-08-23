@@ -5,15 +5,24 @@
 // the firmware now uses lives in esp32/src/ui/eink/eink_dashboard_layout.h
 // (AgentDeckEink::makeLayout) — a print-style 1-bit 800×480 page with
 //   - brand header: dome-over-deck mark + "AgentDeck" wordmark, a link
-//     chip (filled when connected), session count, double rule at y≈62;
+//     chip (filled when connected), session count, double rule at y≈62. When
+//     the fixed paper grid is full the count says what it collapsed —
+//     "10 sessions | hidden: 2 input / 3 working" — because a session that
+//     vanished behind a full page was indistinguishable from one that ended;
 //   - session card grid: double-outline rounded cards with the agent
 //     creature glyph + project name + state line + a TIMELINE-grade work
 //     summary; a card whose session has active subagents reserves a right
 //     strip for a static miniature orbit + child count (static by design —
-//     e-ink pays for animation in ghosting); the first awaiting card inverts
-//     to solid black with white ink.
+//     e-ink pays for animation in ghosting); every awaiting card inverts to
+//     solid black with white ink (drawSessionCard branches on `awaiting`, not
+//     on `firstAwaiting` — that flag gates only the option list on a tall
+//     card, and this line used to say "the first" because manual mode never
+//     produces a second awaiting session to contradict it).
 //     Columns are chosen by makeLayout: 1 for a lone session, 2 landscape,
-//     3 once five+ sessions share the 800px panel (rows capped at 2);
+//     3 once five+ sessions share the 800px panel (rows capped at 2). Cards
+//     are filled in the firmware's glance order — user input first, then live
+//     work, then quiet context, daemon order preserved within each tier — so
+//     what survives a full grid is what needs a human;
 //   - adaptive usage band (usageRowCount 0/1/2): provider rows (CLAUDE /
 //     CODEX, 5H/7D bar gauges) draw only for providers that actually report
 //     usage, and a missing window is dropped (present ones pack left) rather
@@ -29,7 +38,7 @@
 // fails CI when the firmware drifts ahead of this mirror. Update this view and
 // re-pin whenever the firmware layout changes.
 //
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 77c388341d225a3513cb8383899ddc149f822b55
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 4203816f0ffb7bc1fccf5495999159d35e6abe4c
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 9179d41777d6e2caff02735607ad7ca210de8bb8
 
 import SwiftUI
@@ -85,8 +94,15 @@ struct InkDeckPreview: View {
                     .foregroundStyle(ink)
                 Spacer(minLength: 8)
                 if selection.sessionCount > 0 {
-                    Text("\(selection.sessionCount) session\(selection.sessionCount == 1 ? "" : "s")")
+                    // The firmware drops the count to CLASSIC_FONT when the
+                    // hidden tally no longer fits the space left of the chip
+                    // (`textWidth(cnt) <= available`). Shrinking is the same
+                    // decision here; truncating would cut the very tally the
+                    // line was added to show.
+                    Text(sessionCountLabel)
                         .font(.system(size: 9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
                         .foregroundStyle(ink.opacity(0.8))
                 }
                 linkChip
@@ -116,14 +132,78 @@ struct InkDeckPreview: View {
             )
     }
 
+    // MARK: Glance order and hidden counts — prioritizedSessionOrder /
+    //       hiddenSessionSummary (eink_display.cpp)
+
+    /// Firmware glance order: user input first, then live work, then quiet
+    /// context, with daemon order preserved inside each tier. Attention and
+    /// processing used to share one tier, so a permission prompt could sort
+    /// behind a busy session and be the card that fell off the page.
+    private func prioritized(_ sessions: [PreviewDisplaySession]) -> [PreviewDisplaySession] {
+        sessions.filter { $0.state == .awaitingPrompt }
+            + sessions.filter { $0.state == .processing }
+            + sessions.filter { $0.state != .awaitingPrompt && $0.state != .processing }
+    }
+
+    private func columnCount(for count: Int) -> Int {
+        count <= 1 ? 1 : (count >= 5 ? 3 : 2)
+    }
+
+    /// `makeLayout`'s `capacity` — columns × rows, rows capped at 2 on this
+    /// 800×480 landscape page (the firmware additionally derives rows from the
+    /// available height; on a fixed panel that bound is never the tighter one).
+    private func cardCapacity(for count: Int, columns: Int) -> Int {
+        guard count > 0, columns > 0 else { return 0 }
+        return columns * min(2, (count + columns - 1) / columns)
+    }
+
+    /// "2 input / 3 working" — what the fixed paper grid collapsed, by state.
+    /// Empty when everything fits, which is what keeps the plain
+    /// "N sessions" wording for the ordinary case.
+    private func hiddenSummary(_ sessions: [PreviewDisplaySession]) -> String {
+        let columns = columnCount(for: sessions.count)
+        let dropped = prioritized(sessions)
+            .dropFirst(cardCapacity(for: sessions.count, columns: columns))
+        var input = 0, working = 0, idle = 0, offline = 0
+        for session in dropped {
+            switch session.state {
+            case .awaitingPrompt: input += 1
+            case .processing:     working += 1
+            case .idle:           idle += 1
+            case .disconnected:   offline += 1
+            }
+        }
+        return [(input, "input"), (working, "working"), (idle, "idle"), (offline, "offline")]
+            .filter { $0.0 > 0 }
+            .map { "\($0.0) \($0.1)" }
+            .joined(separator: " / ")
+    }
+
+    /// Firmware header count. The total stays `totalSessions` while the hidden
+    /// tally is computed over the rows actually on hand — the same split the
+    /// firmware makes between `s.totalSessions` and `s.rows`.
+    private var sessionCountLabel: String {
+        let total = selection.sessionCount
+        let hidden = hiddenSummary(selection.displaySessions)
+        if hidden.isEmpty {
+            return "\(total) session\(total == 1 ? "" : "s")"
+        }
+        return "\(total) sessions | hidden: \(hidden)"
+    }
+
     // MARK: Session grid — drawSessionGrid / drawSessionCard
 
     private var sessionGrid: some View {
-        let sessions = selection.displaySessions
+        // Glance order first, then the fixed capacity — the firmware fills
+        // cards from `prioritizedSessionOrder` and simply stops at
+        // `layout.capacity`, so what a full page drops is always the quietest
+        // thing, never whatever happened to sort last.
+        let ordered = prioritized(selection.displaySessions)
         // Column count mirrors AgentDeckEink::makeLayout for the 800×480
         // landscape panel: 1 for a lone session, 3 once five+ sessions pack the
         // panel, else 2. (Portrait X3/X4 use a single wide column — N/A here.)
-        let columns = sessions.count <= 1 ? 1 : (sessions.count >= 5 ? 3 : 2)
+        let columns = columnCount(for: ordered.count)
+        let sessions = Array(ordered.prefix(cardCapacity(for: ordered.count, columns: columns)))
         return Group {
             if sessions.isEmpty {
                 // Two distinct empty states, like the firmware: disconnected →
@@ -148,8 +228,9 @@ struct InkDeckPreview: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // makeLayout caps the grid at 2 card rows; with ≤5 preview
-                // sessions and 2–3 columns the chunking never exceeds that.
+                // makeLayout caps the grid at 2 card rows; `sessions` is already
+                // trimmed to that capacity above, so the chunking cannot exceed
+                // it even in live-follow mode with a crowded daemon.
                 let rows = Array(sessions.enumerated()).chunked(into: columns)
                 VStack(spacing: 6) {
                     ForEach(rows, id: \.first!.offset) { rowEntries in

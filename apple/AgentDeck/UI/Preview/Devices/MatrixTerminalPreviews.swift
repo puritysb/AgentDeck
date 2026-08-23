@@ -173,9 +173,11 @@ private struct PixooPixelGrid: View {
 // codex violet numeral + renderGaugePair) render on pages this preview does
 // not draw, so they leave the mirrored AGENTS pixels unchanged; they are
 // documented here so the pin bump below is a conscious "checked, does not
-// affect the AGENTS render" acknowledgement.
+// affect the AGENTS render" acknowledgement. The same applies to
+// drawStateDot's attention floor: that dot is drawn only by renderUsage and
+// renderCodex, never by renderAgents.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp b82038ac26992af4ab927906675a7eff6ca69d81
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 2a7dce26966db94028f0d69e351e394e6a702501
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 
@@ -427,7 +429,12 @@ private enum Tc001Sprites {
             default:           rgb = (125, 75, 56)    // terracotta, mid-pulse
             }
         case .awaitingPrompt:
-            rgb = (130, 78, 0)                     // amber, mid-pulse
+            // Firmware floors the attention pulse at 45% luminance
+            // (`wave = 0.5 + 0.5*sin`, `pulse = 0.45 + 0.55*wave`) — the old
+            // 0.3 + 0.7*sin envelope reached -0.4, underflowed uint8_t and
+            // periodically rendered the whole glyph black. Mid-pulse is the
+            // normalized envelope at 0.5, i.e. 0.725 → (145, 87, 0).
+            rgb = (145, 87, 0)                     // amber, mid-pulse
         case .idle:
             switch agent {
             case .codex:       rgb = (30, 30, 80)

@@ -121,6 +121,11 @@ final class DevicePreviewSnapshotTests: XCTestCase {
         // Round uses the tank-group HUD, IPS10 has its own office + cards pane,
         // TTGO the focused-session metric panel — all now live-aware.)
         try snapshot(InkDeckPreview(selection: livePixooSelection(.inkDeck)), name: "inkdeck-live-emulator")
+        // Dense page — more sessions than the fixed paper grid can hold. This
+        // is the case the glance order exists for: every awaiting card must
+        // survive and the header must name what was collapsed. The firmware
+        // keeps an equivalent 10-session `dense` simulator scene.
+        try snapshot(InkDeckPreview(selection: denseInkDeckSelection()), name: "inkdeck-dense-hidden")
         try snapshot(Esp32Ips10Preview(selection: livePixooSelection(.esp32Ips10)), name: "ips10-live-emulator")
         try snapshot(Esp3286BoxPreview(selection: livePixooSelection(.esp32_86box)), name: "86box-live-emulator")
         try snapshot(Esp32RoundPreview(selection: livePixooSelection(.esp32Round)), name: "round-live-emulator")
@@ -155,6 +160,39 @@ final class DevicePreviewSnapshotTests: XCTestCase {
                         alive: true, state: "idle", modelName: "gpt-5", startedAt: nil),
         ]
         var sel = selection(device, sessions: 2)
+        sel.live = LivePreviewData.from(state)
+        return sel
+    }
+
+    /// Ten live sessions on an 800×480 page that fits six — 4 awaiting,
+    /// 4 processing, 2 idle. Exercises the parts of drawBrandHeader /
+    /// drawSessionGrid that only appear over capacity: every awaiting card
+    /// survives the trim, and the header reports "hidden: 2 working / 2 idle"
+    /// instead of letting four sessions disappear silently.
+    private func denseInkDeckSelection() -> DevicePreviewSelection {
+        var state = DashboardState()
+        state.bridgeConnected = true
+        state.state = .awaitingPermission
+        state.agentType = "claude-code"
+        state.fiveHourPercent = 42
+        state.sevenDayPercent = 68
+        let plan: [(String, String, String)] = [
+            ("AgentDeck", "claude-code", "awaiting_permission"),
+            ("BabelForge", "codex-cli", "awaiting_permission"),
+            ("Terrarium", "opencode", "awaiting_permission"),
+            ("InkDeck", "kiro", "awaiting_permission"),
+            ("Pixoo", "claude-code", "processing"),
+            ("Bridge", "codex-cli", "processing"),
+            ("Flasher", "antigravity", "processing"),
+            ("Docs", "opencode", "processing"),
+            ("Sim", "claude-code", "idle"),
+            ("Plugin", "codex-cli", "idle"),
+        ]
+        state.siblingSessions = plan.enumerated().map { index, row in
+            SessionInfo(id: "d\(index)", port: 9121 + index, projectName: row.0, agentType: row.1,
+                        alive: true, state: row.2, modelName: nil, startedAt: nil)
+        }
+        var sel = selection(.inkDeck, state: .awaitingPrompt, sessions: plan.count)
         sel.live = LivePreviewData.from(state)
         return sel
     }
