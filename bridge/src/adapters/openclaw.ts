@@ -364,7 +364,16 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
   private setPendingApproval(prompt: OpenClawApprovalPrompt): void {
     this.clearPendingApproval();
-    this.pendingApproval = prompt;
+    // Which OpenClaw session asked is the single most orienting fact about an
+    // approval — `agent:main:main` (the chat the user is looking at) vs
+    // `agent:main:cron:<id>` vs `agent:main:eval-…__r2` are wildly different
+    // things to approve, and the deck row is pinned to the literal "OpenClaw"
+    // for all of them. The Gateway does not always put `sessionKey` on the
+    // approval body, but the adapter has been tracking it off the chat stream
+    // all along, so fall back to that rather than surfacing nothing.
+    this.pendingApproval = prompt.sessionKey || !this.currentSessionKey
+      ? prompt
+      : { ...prompt, sessionKey: this.currentSessionKey };
     if (typeof prompt.expiresAtMs === 'number') {
       const delay = prompt.expiresAtMs - Date.now();
       // An already-expired stamp still needs the sweep to run (on the next
@@ -397,7 +406,12 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
     this.clearPendingApproval();
     this.emitTimelineEntry({
       ts: Date.now(), type: 'tool_resolved', raw: `Not approved · ${reason}`,
-      approvalId, status: 'denied',
+      // NOT `denied` — nobody refused this. It expired, its run was cancelled,
+      // its turn ended, or the link dropped. Writing `denied` here made a user's
+      // deliberate refusal byte-identical to an approval that was never
+      // answered, which is the commoner case by far and the one that means the
+      // prompt failed to reach a human in time. `raw` names which of the four.
+      approvalId, status: 'abandoned',
     });
     this.emitAdapterEvent({ source: 'parser', event: 'idle' });
   }

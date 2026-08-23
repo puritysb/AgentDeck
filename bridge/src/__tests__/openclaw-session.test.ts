@@ -89,3 +89,54 @@ describe('injectOpenClawSession', () => {
     expect(injectOpenClawSession(input, { gatewayConnected: false })).toBe(input);
   });
 });
+
+// `question` alone is a bare shell command, and a bare shell command is not a
+// decision. Everything that makes it one — the policy reason, the cwd, and
+// WHICH OpenClaw session asked — was parsed and then dropped at this boundary,
+// so the deck asked the user to approve a benign-looking `sed -n` with no
+// statement of what was being asked or why (2026-08-23: 7 of 8 unanswered).
+describe('injectOpenClawSession — the approval carries its context', () => {
+  const prompt = parseExecApprovalRequest({
+    id: 'x1',
+    request: {
+      command: "sed -n '20,35p' ~/a/config.py",
+      cwd: '/Users/x/.openclaw/workspace',
+      warningText: 'strict inline-eval mode requires reviewer or explicit approval for sed inline program.',
+      sessionKey: 'agent:main:eval-full-unified-a03__r2',
+    },
+  }, 0)!;
+
+  const row = () => injectOpenClawSession([], { gatewayConnected: true, approval: prompt })
+    .find((s) => s.agentType === 'openclaw')!;
+
+  it('puts the reason approval was demanded at the head of questionDetail', () => {
+    expect(row().questionDetail!.split('\n')[0]).toContain('strict inline-eval');
+  });
+
+  it('names WHICH OpenClaw session asked', () => {
+    // `agent:main:main` (the chat on screen), `agent:main:cron:<id>` and
+    // `agent:main:eval-…__r2` are wildly different things to approve, and the
+    // row's projectName is pinned to the literal "OpenClaw" for all of them —
+    // which is why the macOS app's chat view showed no such conversation.
+    expect(row().questionDetail).toContain('session: agent:main:eval-full-unified-a03__r2');
+  });
+
+  it('leaves the question itself untouched — detail is additive', () => {
+    expect(row().question).toBe("sed -n '20,35p' ~/a/config.py");
+  });
+
+  it('emits no questionDetail when the Gateway sent nothing to say', () => {
+    const bare = parseExecApprovalRequest({ id: 'x2', request: { command: 'ls' } }, 0)!;
+    const out = injectOpenClawSession([], { gatewayConnected: true, approval: bare })
+      .find((s) => s.agentType === 'openclaw')!;
+    expect(out.questionDetail).toBeUndefined();
+    expect(out.question).toBe('ls');
+  });
+
+  it('carries nothing when there is no approval at all', () => {
+    const out = injectOpenClawSession([], { gatewayConnected: true })
+      .find((s) => s.agentType === 'openclaw')!;
+    expect(out.questionDetail).toBeUndefined();
+    expect(out.question).toBeUndefined();
+  });
+});

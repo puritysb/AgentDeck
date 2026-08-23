@@ -171,3 +171,40 @@ describe('answering', () => {
     expect(execApprovalAllows('allow')).toBe(false);
   });
 });
+
+// Ordering, not membership. A surface with room for ONE supporting line takes
+// the head of `detail`, so which line leads decides what the user is told.
+describe('parseExecApprovalRequest — detail is most-decisive-first', () => {
+  const payload = {
+    id: 'a1',
+    request: {
+      command: "sed -n '20,35p' ~/a/config.py",
+      cwd: '/Users/x/.openclaw/workspace',
+      warningText: 'strict inline-eval mode requires reviewer or explicit approval for sed inline program.',
+      commandAnalysis: 'reads a file range',
+    },
+  };
+
+  it('leads with WHY approval was demanded, not with the cwd', () => {
+    const prompt = parseExecApprovalRequest(payload, 0)!;
+    const lines = prompt.detail!.split('\n');
+    // cwd is identical for every request from a given agent, so leading with it
+    // spent the one line a small surface has on the part carrying no
+    // information — which is exactly what the deck showed.
+    expect(lines[0]).toContain('strict inline-eval');
+    expect(lines[lines.length - 1]).toBe('cwd: /Users/x/.openclaw/workspace');
+  });
+
+  it('still carries every part — this is a reorder, not a drop', () => {
+    const prompt = parseExecApprovalRequest(payload, 0)!;
+    expect(prompt.detail!.split('\n')).toHaveLength(3);
+    expect(prompt.detail).toContain('reads a file range');
+  });
+
+  it('degrades to whatever the Gateway did send', () => {
+    const bare = parseExecApprovalRequest({ id: 'a2', request: { command: 'ls' } }, 0)!;
+    expect(bare.detail).toBeUndefined();
+    const cwdOnly = parseExecApprovalRequest({ id: 'a3', request: { command: 'ls', cwd: '/tmp' } }, 0)!;
+    expect(cwdOnly.detail).toBe('cwd: /tmp');
+  });
+});

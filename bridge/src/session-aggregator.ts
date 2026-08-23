@@ -31,6 +31,9 @@ export interface EnrichedSession {
   contextPercent?: number;
   totalTokens?: number;
   question?: string;
+  /** Supporting lines under `question` (reason approval is required, cwd,
+   *  originating session key). Mirrors `SessionInfo.questionDetail`. */
+  questionDetail?: string;
   requestId?: string;
   promptType?: 'yes_no' | 'yes_no_always' | 'multi_select' | 'diff_review';
   options?: PromptOption[];

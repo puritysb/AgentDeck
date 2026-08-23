@@ -1290,6 +1290,14 @@ struct ADTimelineEntry: Codable, Equatable {
     var runId: String?
     var sessionId: String?
     var startedAt: Double?
+    /// Approval lifecycle. `'abandoned'` is a NON-decision and is deliberately not folded into
+    /// `'denied'`: an approval that went away because its run was cancelled, its turn ended, the
+    /// Gateway link dropped, or it expired was never refused by anyone. Both closures used to
+    /// write `'denied'`, so a row reading "the user said no" was byte-identical to "nobody was
+    /// ever asked" — and the measured traffic is overwhelmingly the second (7 of 8 OpenClaw
+    /// approvals on 2026-08-23 closed as `run cancelled`, waits of 75s–402s, while the deck was
+    /// showing a question nobody could read). The reason itself rides `raw` ("Not approved · run
+    /// cancelled"); this field is what a renderer branches on.
     var status: ADEntryStatus?
     /// Child-agent identity for subagent rows — the dispatch burst id on the `tool_exec` row,
     /// the child's own id on its `tool_resolved` row.
@@ -1432,7 +1440,16 @@ extension ADTimelineEntry {
     }
 }
 
+/// Approval lifecycle. `'abandoned'` is a NON-decision and is deliberately not folded into
+/// `'denied'`: an approval that went away because its run was cancelled, its turn ended, the
+/// Gateway link dropped, or it expired was never refused by anyone. Both closures used to
+/// write `'denied'`, so a row reading "the user said no" was byte-identical to "nobody was
+/// ever asked" — and the measured traffic is overwhelmingly the second (7 of 8 OpenClaw
+/// approvals on 2026-08-23 closed as `run cancelled`, waits of 75s–402s, while the deck was
+/// showing a question nobody could read). The reason itself rides `raw` ("Not approved · run
+/// cancelled"); this field is what a renderer branches on.
 enum ADEntryStatus: String, Codable, Equatable {
+    case abandoned = "abandoned"
     case approved = "approved"
     case denied = "denied"
     case pending = "pending"
@@ -2238,6 +2255,17 @@ struct ADSessionInfo: Codable, Equatable {
     var projectName: String
     var promptType: ADPromptType?
     var question: String?
+    /// Supporting lines under `question` — the cwd it runs in, the policy warning that says WHY
+    /// approval is required, the originating session key. Newline separated, ordered
+    /// most-decisive-first, and additive: a surface with no room ignores it.
+    ///
+    /// It exists because `question` alone is not a decision. An OpenClaw exec approval arrives
+    /// with the reason attached ("strict inline-eval mode requires reviewer or explicit approval
+    /// for sed inline program") and the daemon dropped it at the session-row boundary — so every
+    /// deck asked the user to approve a benign-looking `sed -n` with no statement of what was
+    /// being asked or why, and 7 of 8 real approvals on 2026-08-23 timed out unanswered. The
+    /// text was never missing; it just had no field to ride in.
+    var questionDetail: String?
     /// Observed sessions: deck prompts queued for delivery at the current turn's end (Stop-hook
     /// directive queue).
     var queuedDirectives: Double?
@@ -2288,6 +2316,7 @@ struct ADSessionInfo: Codable, Equatable {
         case projectName = "projectName"
         case promptType = "promptType"
         case question = "question"
+        case questionDetail = "questionDetail"
         case queuedDirectives = "queuedDirectives"
         case requestId = "requestId"
         case reviewFindings = "reviewFindings"
@@ -2345,6 +2374,7 @@ extension ADSessionInfo {
         projectName: String? = nil,
         promptType: ADPromptType?? = nil,
         question: String?? = nil,
+        questionDetail: String?? = nil,
         queuedDirectives: Double?? = nil,
         requestId: String?? = nil,
         reviewFindings: Double?? = nil,
@@ -2382,6 +2412,7 @@ extension ADSessionInfo {
             projectName: projectName ?? self.projectName,
             promptType: promptType ?? self.promptType,
             question: question ?? self.question,
+            questionDetail: questionDetail ?? self.questionDetail,
             queuedDirectives: queuedDirectives ?? self.queuedDirectives,
             requestId: requestId ?? self.requestId,
             reviewFindings: reviewFindings ?? self.reviewFindings,

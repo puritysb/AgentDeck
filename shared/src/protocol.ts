@@ -465,6 +465,19 @@ export interface SessionInfo {
   contextPercent?: number;
   totalTokens?: number;
   question?: string;  // awaiting prompt question text (hook/observed sessions: from Notification message; managed PTY: parsed header)
+  /** Supporting lines under `question` — the cwd it runs in, the policy warning
+   *  that says WHY approval is required, the originating session key. Newline
+   *  separated, ordered most-decisive-first, and additive: a surface with no
+   *  room ignores it.
+   *
+   *  It exists because `question` alone is not a decision. An OpenClaw exec
+   *  approval arrives with the reason attached ("strict inline-eval mode
+   *  requires reviewer or explicit approval for sed inline program") and the
+   *  daemon dropped it at the session-row boundary — so every deck asked the
+   *  user to approve a benign-looking `sed -n` with no statement of what was
+   *  being asked or why, and 7 of 8 real approvals on 2026-08-23 timed out
+   *  unanswered. The text was never missing; it just had no field to ride in. */
+  questionDetail?: string;
   requestId?: string;  // present when a gated PreToolUse permission is pending device approval; devices render Allow/Deny + send permission_decision
   /** Observed sessions: a device requested a soft STOP (deny at the next tool call) — render "stopping…" instead of an active STOP. */
   stopRequested?: boolean;

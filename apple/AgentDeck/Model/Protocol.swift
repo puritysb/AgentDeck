@@ -537,6 +537,12 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     var foldedSessionIds: [String]?
     /// Awaiting prompt question text (managed PTY or observed hook overlay).
     var question: String?
+    /// Supporting lines under `question` — the reason approval was demanded, the
+    /// cwd, the originating session key. Newline separated, most-decisive-first,
+    /// and additive: a surface with no room ignores it. Without it a deck asks
+    /// the user to approve a command with no statement of what is being asked
+    /// or why, which is how 7 of 8 real OpenClaw approvals went unanswered.
+    var questionDetail: String?
     /// Per-session prompt choices. For an observed session these are pressable
     /// only when `liveAnswerable` is true — otherwise the daemon has no way to
     /// deliver the answer and the UI must point the user at their terminal.

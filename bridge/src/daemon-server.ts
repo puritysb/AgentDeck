@@ -170,6 +170,7 @@ import {
 } from './session-transcript-timeline.js';
 import { kiroTimelineForSession } from './kiro-transcript-timeline.js';
 import { KiroTimelineFeed } from './kiro-timeline-feed.js';
+import { OpenClawTimelineFeed } from './openclaw-timeline-feed.js';
 import {
   DeviceVoiceReplyRouter, speakableReply, spokenDigest, pcmFromWav, type ReplySink,
 } from './device-voice-reply.js';
@@ -1335,6 +1336,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   /** Produces live timeline rows for observed Kiro sessions — see the class
    *  doc for why Kiro needs a producer when hook agents do not. */
   const kiroTimelineFeed = new KiroTimelineFeed();
+  const openclawTimelineFeed = new OpenClawTimelineFeed();
   /** Kiro has no CLI hooks, so transcript rows also feed APME. These maps are
    *  bounded by the observer's current live set and discarded on disappearance. */
   const kiroApmeSessions = new Set<string>();
@@ -3753,6 +3755,26 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     } catch (err) {
       debug('daemon', `kiro timeline feed failed: ${String(err)}`);
     }
+
+    // OpenClaw is Gateway-observed, and that stream carries the prompt, the
+    // final response and the approvals it has to block on — never the tool
+    // calls. The only tools that ever reached the strip were the ones that
+    // happened to need approval, which is a biased sample rather than a log.
+    // This reads the transcript OpenClaw writes anyway and emits the rest.
+    //
+    // Gated on the SSOT presence predicate, not on the store: the rows are
+    // attributed to the virtual `openclaw-gateway` session, and that row exists
+    // only while the Gateway is authenticated. Emitting them otherwise would
+    // put activity under a session no surface is showing.
+    try {
+      if (core.cachedGatewayConnected) {
+        for (const entry of openclawTimelineFeed.pump()) {
+          core.bridgeTimeline.addEntry(entry);
+        }
+      }
+    } catch (err) {
+      debug('daemon', `openclaw timeline feed failed: ${String(err)}`);
+    }
     core.maybeBroadcastSessionsList();
   };
   // OTel turn boundaries arrive in milliseconds where the observer only re-reads
@@ -3969,9 +3991,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // still read as outstanding in the timeline. `updateEntryStatus`
             // existed for exactly this and had no production caller.
             if (enriched.type === 'tool_resolved' && enriched.approvalId) {
+              // Carry the resolution's own status onto the request row rather
+              // than collapsing everything-not-approved into `denied`: an
+              // abandoned approval (run cancelled / turn ended / expired) is a
+              // non-decision, and flattening it here would undo the split at
+              // the one place the two rows are reconciled.
               core.bridgeTimeline.updateEntryStatus(
                 enriched.approvalId,
-                enriched.status === 'approved' ? 'approved' : 'denied',
+                enriched.status === 'approved' ? 'approved'
+                  : enriched.status === 'abandoned' ? 'abandoned'
+                    : 'denied',
               );
             }
           }

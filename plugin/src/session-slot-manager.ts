@@ -6,7 +6,7 @@
  * - Detail View: button 1=BACK, button 2=session info, buttons 3-7=options, button 8=ESC/STOP
  */
 import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits, ScopedUsageLimit } from '@agentdeck/shared';
-import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, formatScopedLabel, scopedLimitClaimsUsageKey, codexWindowsBeside, usageWindowKind, usageWindowLabel, codexUsageFootnote, UI } from '@agentdeck/shared';
+import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, formatScopedLabel, scopedLimitClaimsUsageKey, codexWindowsBeside, usageWindowKind, usageWindowLabel, codexUsageFootnote, summarizeQuestionForKey, approvalReasonHead, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
 import { stateFromSession } from './focused-detail-state.js';
@@ -895,12 +895,22 @@ export class SessionSlotManager {
     idx: number,
     includeModel = true,
   ): SessionSlotConfig {
-    const question = this._detailQuestion ? truncateStr(this._detailQuestion, 18) : 'choose option';
+    // `summarizeQuestionForKey`, not a head cut: these questions are shell
+    // commands, so 18 chars from the front keeps the verb every request shares
+    // and drops the object that identifies this one (`sed -n '20,35p' ~…`).
+    const question = this._detailQuestion
+      ? summarizeQuestionForKey(this._detailQuestion, 18)
+      : 'choose option';
+    // The reason approval was demanded. Taken from the session row — it is the
+    // SSOT for a virtual/observed session's prompt — and it is the difference
+    // between "approve a sed" and "approve a sed that policy flagged".
+    const why = approvalReasonHead(session?.questionDetail);
     const cards = [
       {
         type: 'status',
         label: 'AWAITING',
         subtitle: question,
+        ...(why ? { detail: why } : {}),
         icon: 'option',
         tone: 'warning',
       } satisfies SessionSlotConfig,
@@ -1053,7 +1063,10 @@ export class SessionSlotManager {
       if (idx === 0 && !session?.options?.length) {
         return {
           type: 'status', label: 'PERMIT?',
-          subtitle: session?.question ? truncateStr(session.question, 18) : 'answer in terminal',
+          subtitle: session?.question ? summarizeQuestionForKey(session.question, 18) : 'answer in terminal',
+          ...(approvalReasonHead(session?.questionDetail)
+            ? { detail: approvalReasonHead(session?.questionDetail) }
+            : {}),
           icon: 'option', tone: 'warning',
         };
       }

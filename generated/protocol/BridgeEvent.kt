@@ -656,6 +656,17 @@ data class TimelineEntry (
     val sessionID: String? = null,
 
     val startedAt: Double? = null,
+
+    /**
+     * Approval lifecycle. `'abandoned'` is a NON-decision and is deliberately not folded into
+     * `'denied'`: an approval that went away because its run was cancelled, its turn ended, the
+     * Gateway link dropped, or it expired was never refused by anyone. Both closures used to
+     * write `'denied'`, so a row reading "the user said no" was byte-identical to "nobody was
+     * ever asked" — and the measured traffic is overwhelmingly the second (7 of 8 OpenClaw
+     * approvals on 2026-08-23 closed as `run cancelled`, waits of 75s–402s, while the deck was
+     * showing a question nobody could read). The reason itself rides `raw` ("Not approved · run
+     * cancelled"); this field is what a renderer branches on.
+     */
     val status: EntryStatus? = null,
 
     /**
@@ -713,17 +724,29 @@ data class TimelineEntry (
     val type: TimelineEntryType
 )
 
+/**
+ * Approval lifecycle. `'abandoned'` is a NON-decision and is deliberately not folded into
+ * `'denied'`: an approval that went away because its run was cancelled, its turn ended, the
+ * Gateway link dropped, or it expired was never refused by anyone. Both closures used to
+ * write `'denied'`, so a row reading "the user said no" was byte-identical to "nobody was
+ * ever asked" — and the measured traffic is overwhelmingly the second (7 of 8 OpenClaw
+ * approvals on 2026-08-23 closed as `run cancelled`, waits of 75s–402s, while the deck was
+ * showing a question nobody could read). The reason itself rides `raw` ("Not approved · run
+ * cancelled"); this field is what a renderer branches on.
+ */
 enum class EntryStatus(val value: String) {
+    Abandoned("abandoned"),
     Approved("approved"),
     Denied("denied"),
     Pending("pending");
 
     companion object {
         public fun fromValue(value: String): EntryStatus = when (value) {
-            "approved" -> Approved
-            "denied"   -> Denied
-            "pending"  -> Pending
-            else       -> throw IllegalArgumentException()
+            "abandoned" -> Abandoned
+            "approved"  -> Approved
+            "denied"    -> Denied
+            "pending"   -> Pending
+            else        -> throw IllegalArgumentException()
         }
     }
 }
@@ -1144,6 +1167,20 @@ data class SessionInfo (
     val projectName: String,
     val promptType: PromptType? = null,
     val question: String? = null,
+
+    /**
+     * Supporting lines under `question` — the cwd it runs in, the policy warning that says WHY
+     * approval is required, the originating session key. Newline separated, ordered
+     * most-decisive-first, and additive: a surface with no room ignores it.
+     *
+     * It exists because `question` alone is not a decision. An OpenClaw exec approval arrives
+     * with the reason attached ("strict inline-eval mode requires reviewer or explicit approval
+     * for sed inline program") and the daemon dropped it at the session-row boundary — so every
+     * deck asked the user to approve a benign-looking `sed -n` with no statement of what was
+     * being asked or why, and 7 of 8 real approvals on 2026-08-23 timed out unanswered. The
+     * text was never missing; it just had no field to ride in.
+     */
+    val questionDetail: String? = null,
 
     /**
      * Observed sessions: deck prompts queued for delivery at the current turn's end (Stop-hook

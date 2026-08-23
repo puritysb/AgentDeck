@@ -1103,6 +1103,11 @@ actor OpenClawAdapter {
         ]
         if let detail = prompt.detail { dict["detail"] = detail }
         if let cwd = prompt.cwd { dict["cwd"] = cwd }
+        // Which OpenClaw session asked. `agent:main:main` (the chat on screen),
+        // `agent:main:cron:<id>` and `agent:main:eval-…__r2` are wildly
+        // different things to approve, and the row is pinned to the literal
+        // "OpenClaw" for all three.
+        if let sessionKey = prompt.sessionKey { dict["sessionKey"] = sessionKey }
         return dict
     }
 

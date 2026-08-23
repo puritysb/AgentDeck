@@ -199,12 +199,19 @@ export function parseExecApprovalRequest(
   ) ?? '';
 
   const cwd = firstNonEmpty(body.cwd ?? undefined);
+  // Most-decisive-first. A surface with room for ONE supporting line takes the
+  // head of this list, and the line that decides an approval is the one saying
+  // WHY it was demanded ("strict inline-eval mode requires reviewer or explicit
+  // approval for sed inline program") — not the working directory, which is the
+  // same for every request from a given agent and therefore distinguishes
+  // nothing. cwd led this list, so the one-line surfaces showed the one part
+  // that carried no information.
   const detailParts: string[] = [];
-  if (cwd) detailParts.push(`cwd: ${cwd}`);
   const warning = firstNonEmpty(body.warningText ?? undefined);
   if (warning) detailParts.push(warning);
   const analysis = firstNonEmpty(body.commandAnalysis ?? undefined);
   if (analysis && analysis !== warning) detailParts.push(analysis);
+  if (cwd) detailParts.push(`cwd: ${cwd}`);
 
   const options: ExecApprovalOption[] = resolveDecisions(body).map((decision, index) => ({
     index,

@@ -48,8 +48,18 @@ export function timelineIconKey(entry: Pick<TimelineEntry, 'type' | 'status'>): 
     case 'tool_request':
       if (entry.status === 'approved') return 'success';
       if (entry.status === 'denied') return 'error';
+      // `abandoned` and `pending` share the amber "no decision was made" icon.
+      // They are the same fact at two points in time — one still open, one
+      // closed without an answer — and neither is a refusal.
       return 'awaiting';
     case 'tool_resolved':
+      // The resolution row carries the SAME status as the request it closes, so
+      // it must branch on it. Returning 'success' unconditionally (as this did)
+      // drew a green check on a denial and on an abandonment alike — the one
+      // row whose entire job is to say how the approval ended was the one row
+      // that could not say it.
+      if (entry.status === 'denied') return 'error';
+      if (entry.status === 'abandoned') return 'awaiting';
       return 'success';
     case 'tool_exec':
       return 'tool';

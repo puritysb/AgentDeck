@@ -325,6 +325,11 @@ data class SessionInfo(
     // `agentdeck <agent> --weight <n>`. Mirrors shared SessionInfo.weight.
     val weight: Int? = null,
     val question: String? = null,
+    // Supporting lines under `question` — the reason approval was demanded, the
+    // cwd, the originating session key. Newline separated, most-decisive-first.
+    // A surface with no room ignores it; one that has room must show it, because
+    // `question` alone (a bare shell command) is not enough to decide on.
+    val questionDetail: String? = null,
     // For an observed session these are pressable only when liveAnswerable is
     // true; otherwise render them but send nothing (answer in the terminal).
     val options: List<PromptOption>? = null,

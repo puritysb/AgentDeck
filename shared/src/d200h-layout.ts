@@ -914,10 +914,26 @@ function buildDetail(
   // may override the sessions_list row.
   const model = focused ? (state.modelName || sess?.modelName || '') : (sess?.modelName || '');
 
-  const heroSess: SessionInfo = sess ?? {
+  const baseHero: SessionInfo = sess ?? {
     id: sid, port: 0, alive: true, projectName: state.projectName,
     agentType: state.agentType as any, state: sState, modelName: model,
   };
+  // The hero cell is the ONLY place this view can say what is being asked — the
+  // option keys below carry labels ("Allow once"), never a subject. `question`
+  // was resolved above for the press echo alone, so the detail view rendered
+  // three live buttons over no statement of what they applied to. Hand the
+  // resolved prompt to the renderer, and take the supporting lines from the
+  // sessions_list row, which is the SSOT for an observed/virtual session's
+  // prompt (a focused `state_update` is the daemon's global snapshot and would
+  // blank them).
+  const heroSess: SessionInfo = (question || sess?.questionDetail)
+    ? {
+      ...baseHero,
+      state: sState,
+      ...(question ? { question } : {}),
+      ...(sess?.questionDetail ? { questionDetail: sess.questionDetail } : {}),
+    }
+    : baseHero;
 
   const first = slots[0];
   const last = slots[slots.length - 1];

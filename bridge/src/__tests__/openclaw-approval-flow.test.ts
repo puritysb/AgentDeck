@@ -172,7 +172,11 @@ describe('the prompt goes away when the approval does', () => {
     expect(adapter.getPendingApproval()).toBeNull();
     const resolved = rows.find((r) => r.type === 'tool_resolved')!;
     expect(resolved.approvalId).toBe(REQUESTED.id);
-    expect(resolved.status).toBe('denied');
+    // `abandoned`, NOT `denied` — nobody refused this. Writing `denied` here
+    // made a user's deliberate refusal byte-identical to an approval that was
+    // never answered, and the second is by far the commoner case: of 8 real
+    // approvals on 2026-08-23, 7 closed exactly this way after 75–402s.
+    expect(resolved.status).toBe('abandoned');
     expect(resolved.raw).toContain('run cancelled');
     expect(parser.at(-1)?.event).toBe('idle');
   });
@@ -219,5 +223,53 @@ describe('the prompt goes away when the approval does', () => {
     gw('exec.approval.requested', REQUESTED);
     gw('exec.approval.resolved', { id: 'some-other-id', decision: 'deny' });
     expect(adapter.getPendingApproval()?.id).toBe(REQUESTED.id);
+  });
+});
+
+// A closed approval must say HOW it closed. Every non-approval used to write
+// `denied`, so the timeline could not tell "the user said no" from "nobody was
+// ever asked" — and only the second is a signal that the prompt failed to reach
+// a human.
+describe('a non-decision is not a denial', () => {
+  it('a real deny stays denied', () => {
+    const { rows, gw } = harness();
+    gw('exec.approval.requested', REQUESTED);
+    gw('exec.approval.resolved', { id: REQUESTED.id, decision: 'deny' });
+    expect(rows.find((r) => r.type === 'tool_resolved')!.status).toBe('denied');
+  });
+
+  it('every abandonment reason lands in `abandoned`, and names itself in raw', () => {
+    for (const [payload, reason] of [
+      [{ state: 'aborted', runId: 'r1' }, 'run cancelled'],
+      [{ state: 'error', runId: 'r1', errorMessage: 'overloaded' }, 'turn failed'],
+    ] as const) {
+      const { rows, gw } = harness();
+      gw('exec.approval.requested', REQUESTED);
+      gw('chat', payload as Record<string, unknown>);
+      const resolved = rows.find((r) => r.type === 'tool_resolved')!;
+      expect(resolved.status).toBe('abandoned');
+      expect(resolved.raw).toContain(reason);
+    }
+  });
+
+  it('names WHICH OpenClaw session asked, falling back to the tracked one', () => {
+    // The Gateway does not always put `sessionKey` on the approval body, but
+    // the adapter has been tracking it off the chat stream all along. Without
+    // it every approval reads as plain "OpenClaw" — a cron heartbeat and a
+    // model-eval run are indistinguishable.
+    const { adapter, gw } = harness();
+    gw('chat', { state: 'delta', runId: 'r1', sessionKey: 'agent:main:eval-a03__r2' });
+    gw('exec.approval.requested', REQUESTED);
+    expect(adapter.getPendingApproval()!.sessionKey).toBe('agent:main:eval-a03__r2');
+  });
+
+  it('does not overwrite a sessionKey the request carried itself', () => {
+    const { adapter, gw } = harness();
+    gw('chat', { state: 'delta', runId: 'r1', sessionKey: 'agent:main:main' });
+    gw('exec.approval.requested', {
+      ...REQUESTED,
+      request: { ...REQUESTED.request, sessionKey: 'agent:main:cron:abc' },
+    });
+    expect(adapter.getPendingApproval()!.sessionKey).toBe('agent:main:cron:abc');
   });
 });

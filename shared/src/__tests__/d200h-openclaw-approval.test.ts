@@ -100,3 +100,50 @@ describe('D200H — OpenClaw exec approval', () => {
     expect(svgs).not.toContain('Allow once');
   });
 });
+
+// The detail view is the D200H's whole answer surface for a Gateway approval,
+// and until 2026-08-23 it rendered three live decision keys over ZERO pixels of
+// subject: `question` was resolved only to be echoed back on a press, and the
+// hero cell drew project + state. Measured that day: 8 real approvals, 7 closed
+// unanswered after 75–402s, because nothing on the deck said what was being
+// approved or why it needed approving.
+describe('D200H — the approval says what it is', () => {
+  const CMD = "sed -n '20,35p' ~/github/OpenClaw/yt_dubber/config.py";
+  const WHY = 'Warning: strict inline-eval mode requires reviewer or explicit approval for sed inline program.';
+
+  const pending = stateEvt({
+    state: 'awaiting_permission',
+    question: CMD,
+    questionDetail: `${WHY}\ncwd: /Users/x/.openclaw/workspace\nsession: agent:main:eval-a03__r2`,
+    options: APPROVAL_OPTIONS,
+    promptType: 'yes_no_always',
+    liveAnswerable: true,
+  });
+
+  it('renders the command on the hero cell, not only in the press echo', () => {
+    const svgs = [...detailCells(pending).values()].map((c) => c.svg).join('');
+    expect(svgs).toContain('config.py');
+  });
+
+  it('renders WHY approval was demanded — the head of questionDetail', () => {
+    const svgs = [...detailCells(pending).values()].map((c) => c.svg).join('');
+    // Most-decisive-first ordering means the policy warning is the head, not
+    // the cwd (which is identical for every request and distinguishes nothing).
+    expect(svgs).toContain('strict inline-eval');
+    expect(svgs).not.toContain('cwd:');
+  });
+
+  it('still echoes the question on a press (the answer path is unchanged)', () => {
+    const cmds = commandsOf(detailCells(pending));
+    const selects = cmds.filter((c) => c.type === 'select_option');
+    expect(selects.length).toBe(3);
+    expect(selects.every((c) => (c as { question?: string }).question === CMD)).toBe(true);
+  });
+
+  it('an idle row draws no prompt text — this is not a permanent header', () => {
+    const idle = stateEvt({ state: 'idle', question: CMD, questionDetail: WHY });
+    const svgs = [...detailCells(idle).values()].map((c) => c.svg).join('');
+    expect(svgs).not.toContain('config.py');
+    expect(svgs).not.toContain('strict inline-eval');
+  });
+});

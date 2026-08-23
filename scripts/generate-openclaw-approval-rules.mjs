@@ -151,13 +151,18 @@ enum OpenClawApprovalRules {
         ]) ?? ""
 
         let cwd = firstNonEmpty([body["cwd"] as? String])
+        // Most-decisive-first — mirror of the TS SSOT. A surface with room for
+        // ONE supporting line takes the head, and the line that decides an
+        // approval is the one saying WHY it was demanded, not the cwd (which is
+        // identical for every request from a given agent and distinguishes
+        // nothing).
         var detailParts: [String] = []
-        if let cwd { detailParts.append("cwd: \\(cwd)") }
         let warning = firstNonEmpty([body["warningText"] as? String])
         if let warning { detailParts.append(warning) }
         if let analysis = firstNonEmpty([body["commandAnalysis"] as? String]), analysis != warning {
             detailParts.append(analysis)
         }
+        if let cwd { detailParts.append("cwd: \\(cwd)") }
 
         let options = resolveDecisions(body).enumerated().map { idx, decision in
             ExecApprovalOption(

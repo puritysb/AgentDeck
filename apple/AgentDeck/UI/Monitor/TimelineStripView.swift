@@ -2553,13 +2553,23 @@ func timelineIconKey(for type: TimelineEntryType, status: String? = nil) -> Time
     case .modelCall:
         return .model
     case .toolRequest:
+        // `abandoned` shares the amber no-decision icon with `pending`: the same
+        // fact at two points in time (still open / closed unanswered), and
+        // neither is a refusal.
         switch status {
         case "approved": return .success
         case "denied": return .error
         default: return .awaiting
         }
     case .toolResolved:
-        return .success
+        // The resolution row carries the SAME status as the request it closes,
+        // so it must branch on it. Returning .success unconditionally drew a
+        // green check on a denial and on an abandonment alike.
+        switch status {
+        case "denied": return .error
+        case "abandoned": return .awaiting
+        default: return .success
+        }
     case .toolExec:
         return .tool
     case .error:

@@ -108,6 +108,21 @@ struct AttentionTheaterHUD: View {
                             .foregroundStyle(TerrariumHUD.text)
                             .lineLimit(3)
                             .padding(.top, 6)
+                        // The question is WHAT is being asked; this is why it is
+                        // being asked (policy reason), where it runs, and which
+                        // OpenClaw session asked. Read off the session rather
+                        // than through a new parameter so every call site gets
+                        // it. Without it the card shows a benign-looking shell
+                        // command with no statement of what made it need
+                        // approval — the card is legible and still not
+                        // answerable.
+                        if let detail = session.questionDetail, !detail.isEmpty {
+                            Text(detail)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(TerrariumHUD.subtext)
+                                .lineLimit(3)
+                                .padding(.top, 2)
+                        }
                     }
                 }
             }

@@ -29,7 +29,11 @@
 //     the anchor cancelled the rotation and froze the dashes.
 // Ported 2026-08-08: the original 72×72 Stream Deck key's low-resolution
 // typography profile (`wrapSessionName`, 20pt names, and lower tool baseline).
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 6950eec6400d7116161231a765a7bcc8fb856cee
+// Pin moved 2026-08-23 with NO port: the origin gained `summarizeQuestionForKey`
+// and taught `renderDetailInfo` to draw the pending prompt, and both live
+// outside this mirror's declared scope below. Recorded so the next reader does
+// not hunt for a missing port — the pin tracks the whole file, not the subset.
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 15e72f1c9790d8d98ac7a01e49f21a06e2bbcb3e
 //
 // Scope for this first pass:
 //   - renderSessionSlot (primary session button)

@@ -113,10 +113,22 @@ struct AttentionTheaterView: View {
                             .foregroundColor(Color(red: 0.416, green: 0.353, blue: 0.188))
                             .lineLimit(1)
                         if let question, !question.isEmpty {
-                            Text(question)
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(red: 0.102, green: 0.102, blue: 0.122))
-                                .lineLimit(2)
+                            // Question + the reason it was demanded, in one
+                            // block. `question` alone is a bare shell command,
+                            // which is not enough to decide on — see
+                            // `SessionInfo.questionDetail`.
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(question)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(red: 0.102, green: 0.102, blue: 0.122))
+                                    .lineLimit(2)
+                                if let detail = session.questionDetail, !detail.isEmpty {
+                                    Text(detail)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(Color(red: 0.416, green: 0.353, blue: 0.188))
+                                        .lineLimit(3)
+                                }
+                            }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 7)
                                 .frame(maxWidth: .infinity, alignment: .leading)

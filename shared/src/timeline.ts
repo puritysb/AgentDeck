@@ -27,7 +27,18 @@ export interface TimelineEntry {
   raw: string;
   detail?: string;
   approvalId?: string;
-  status?: 'pending' | 'approved' | 'denied';
+  /**
+   * Approval lifecycle. `'abandoned'` is a NON-decision and is deliberately not
+   * folded into `'denied'`: an approval that went away because its run was
+   * cancelled, its turn ended, the Gateway link dropped, or it expired was never
+   * refused by anyone. Both closures used to write `'denied'`, so a row reading
+   * "the user said no" was byte-identical to "nobody was ever asked" — and the
+   * measured traffic is overwhelmingly the second (7 of 8 OpenClaw approvals on
+   * 2026-08-23 closed as `run cancelled`, waits of 75s–402s, while the deck was
+   * showing a question nobody could read). The reason itself rides `raw`
+   * ("Not approved · run cancelled"); this field is what a renderer branches on.
+   */
+  status?: 'pending' | 'approved' | 'denied' | 'abandoned';
   agentType?: string;
   projectName?: string;
   sessionId?: string;

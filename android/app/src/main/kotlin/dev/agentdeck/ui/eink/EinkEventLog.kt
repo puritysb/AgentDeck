@@ -131,9 +131,15 @@ private fun typeIcon(type: String, status: String? = null): String = when (type)
     "tool_request" -> when (status) {
         "approved" -> "✓"
         "denied" -> "✗"
-        else -> "⚠"
+        else -> "⚠"   // pending or abandoned — both mean "no decision was made"
     }
-    "tool_resolved" -> "✓"
+    // Mirrors timelineIconKey(): the resolution row carries the same status as
+    // the request it closes, so a denial or an abandonment must not draw ✓.
+    "tool_resolved" -> when (status) {
+        "denied" -> "✗"
+        "abandoned" -> "⚠"
+        else -> "✓"
+    }
     "tool_exec" -> "▸"
     "model_call" -> "◆"
     "model_response" -> "◇"
@@ -161,9 +167,14 @@ private fun typeColor(type: String, status: String?): Color? {
         "chat_response" -> Color(0xFF335588)             // blue — model response
         "tool_request" -> when (status) {
             "denied" -> Color(0xFFCC2222)                // red — denied
-            else -> Color(0xFFBB7700)                    // amber — pending/approved
+            else -> Color(0xFFBB7700)                    // amber — pending/abandoned/approved
         }
-        "tool_resolved", "tool_exec" -> Color(0xFF557722)// olive — tool done
+        "tool_resolved" -> when (status) {
+            "denied" -> Color(0xFFCC2222)                // red — refused by a human
+            "abandoned" -> Color(0xFFBB7700)             // amber — closed with no decision
+            else -> Color(0xFF557722)                    // olive — tool done
+        }
+        "tool_exec" -> Color(0xFF557722)                 // olive — tool done
         "model_call", "model_response" -> Color(0xFF335588) // blue — model
         "error" -> Color(0xFFCC2222)                     // red — error
         "memory_recall" -> Color(0xFF775599)             // purple — memory

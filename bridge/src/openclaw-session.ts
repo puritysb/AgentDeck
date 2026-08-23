@@ -58,6 +58,18 @@ export function injectOpenClawSession(
   if (opts.controlMode !== undefined) injected.controlMode = opts.controlMode;
   if (opts.approval) {
     injected.question = opts.approval.question;
+    // The question is the command; `questionDetail` is everything that makes it
+    // a decision — the policy reason approval was demanded, the cwd, and WHICH
+    // OpenClaw session asked. All three were parsed and then dropped here, so a
+    // deck asked the user to approve a bare `sed -n` with no reason and no way
+    // to tell a cron heartbeat apart from a model-eval run (measured
+    // 2026-08-23: every approval came from `agent:main:eval-…__r2`, while the
+    // row said only "OpenClaw").
+    const detailLines = [
+      ...(opts.approval.detail ? opts.approval.detail.split('\n') : []),
+      ...(opts.approval.sessionKey ? [`session: ${opts.approval.sessionKey}`] : []),
+    ].map((l) => l.trim()).filter(Boolean);
+    if (detailLines.length > 0) injected.questionDetail = detailLines.join('\n');
     injected.options = opts.approval.options.map((o) => ({
       index: o.index, label: o.label, shortcut: o.shortcut,
     }));

@@ -69,12 +69,22 @@ fun timelineIconKey(type: String, status: String? = null): TimelineIconKey = whe
     "chat_start" -> TimelineIconKey.Running
     "chat_end", "chat_response", "model_response" -> TimelineIconKey.Success
     "model_call" -> TimelineIconKey.Model
+    // `abandoned` shares the amber no-decision icon with `pending`: they are the
+    // same fact at two points in time (still open / closed unanswered) and
+    // neither is a refusal.
     "tool_request" -> when (status) {
         "approved" -> TimelineIconKey.Success
         "denied" -> TimelineIconKey.Error
         else -> TimelineIconKey.Awaiting
     }
-    "tool_resolved" -> TimelineIconKey.Success
+    // The resolution row carries the SAME status as the request it closes, so it
+    // must branch on it. Returning Success unconditionally drew a green check on
+    // a denial and on an abandonment alike.
+    "tool_resolved" -> when (status) {
+        "denied" -> TimelineIconKey.Error
+        "abandoned" -> TimelineIconKey.Awaiting
+        else -> TimelineIconKey.Success
+    }
     "tool_exec" -> TimelineIconKey.Tool
     "error" -> TimelineIconKey.Error
     "user_action" -> TimelineIconKey.User

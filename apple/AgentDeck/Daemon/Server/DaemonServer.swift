@@ -7283,6 +7283,20 @@ final class DaemonServer {
                 // session has no terminal to answer in.
                 if let prompt = gatewayPendingApproval {
                     gatewaySession["question"] = prompt["question"]
+                    // The question is the command; `questionDetail` is what makes
+                    // it a decision — the policy reason approval was demanded,
+                    // the cwd, and WHICH OpenClaw session asked. Parsed all along
+                    // and dropped here, so a deck asked the user to approve a
+                    // bare `sed -n` with no reason attached. Mirror of the Node
+                    // injector (`bridge/src/openclaw-session.ts`).
+                    let detailLines = ((prompt["detail"] as? String)?
+                        .split(separator: "\n").map(String.init) ?? [])
+                        + ((prompt["sessionKey"] as? String).map { ["session: \($0)"] } ?? [])
+                    let questionDetail = detailLines
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }
+                        .joined(separator: "\n")
+                    if !questionDetail.isEmpty { gatewaySession["questionDetail"] = questionDetail }
                     gatewaySession["options"] = prompt["options"]
                     gatewaySession["promptType"] = "yes_no_always"
                     // The daemon can deliver this answer over the Gateway RPC,

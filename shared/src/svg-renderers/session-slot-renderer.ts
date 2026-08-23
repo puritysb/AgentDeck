@@ -127,6 +127,83 @@ function truncate(s: string, max: number): string {
 }
 
 /**
+ * Fit an approval/permission question onto a narrow key.
+ *
+ * A head-cut is the WORST cut for this string class. Every one of these
+ * questions is a shell command, and a command puts its verb first and its
+ * object last \u2014 so `slice(0, 18)` keeps the part that is the same for every
+ * request and drops the only part that differs. Measured on real traffic
+ * (2026-08-23): `sed -n '20,35p' ~/github/OpenClaw/yt_dubber/config.py` rendered
+ * as `sed -n '20,35p' ~\u2026` and a 164-char compound command rendered as
+ * `sed -n '1,60p' ~/\u2026`. Both cut at exactly the byte where the path begins, so
+ * the deck could not say WHICH file was being read, and 7 of 8 approvals went
+ * unanswered.
+ *
+ * So keep the verb and the object and drop the middle: `sed \u2026 config.py`. The
+ * fallbacks descend by how much still fits \u2014 object alone, then a plain head
+ * cut \u2014 and a string that already fits is returned untouched, because the
+ * elision is a cost and must only be paid when it buys something.
+ *
+ * Pure and exported so the deck key, the D200H hero cell and their Swift/Kotlin
+ * mirrors cannot each invent their own answer.
+ */
+/**
+ * The one supporting line a narrow surface has room for, taken off
+ * `SessionInfo.questionDetail` (which is ordered most-decisive-first, so the
+ * head is the reason approval was demanded).
+ *
+ * Strips a leading `Warning:` / `Error:` label because the surface already says
+ * that: these lines land on an amber `tone: 'warning'` card whose detail slot is
+ * 22 characters, so the label spent 9 of them — 40% of the budget — restating
+ * the colour. `Warning: strict inlin…` becomes `strict inline-eval mo…`.
+ *
+ * Exported so the deck key, the D200H hero cell and the Swift preview mirror
+ * cannot each strip differently.
+ */
+export function approvalReasonHead(detail: string | undefined | null): string | undefined {
+  const head = (detail ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .find(Boolean);
+  if (!head) return undefined;
+  return head.replace(/^(warning|error|note)\s*:\s*/i, '') || undefined;
+}
+
+export function summarizeQuestionForKey(question: string, max: number): string {
+  const flat = (question || '').replace(/\s+/g, ' ').trim();
+  if (max <= 1) return flat.slice(0, Math.max(0, max));
+  if (flat.length <= max) return flat;
+
+  const tokens = flat.split(' ');
+  const verb = tokens[0] ?? '';
+  // The object is the last token that looks like a path or a filename. Options
+  // (`-n`), quoted ranges (`'20,35p'`) and shell operators are not objects, so
+  // they are skipped rather than being allowed to win by position alone.
+  //
+  // Scanned FORWARD, not backward: the verb kept above is `tokens[0]`, so the
+  // object rendered beside it must be that verb's own object. A compound
+  // command (`sed … config.py; echo …; grep … serve.py | head`) ends on a later
+  // stage's file, and `sed … serve.py` names a pair that never appeared
+  // together — a wrong reading, not a partial one.
+  let object = '';
+  for (let i = 1; i < tokens.length; i += 1) {
+    const t = tokens[i].replace(/^["'`(]+|["'`);|&]+$/g, '');
+    if (!t || t.startsWith('-')) continue;
+    if (t.includes('/') || /\.[A-Za-z0-9]{1,6}$/.test(t)) {
+      object = t.slice(t.lastIndexOf('/') + 1);
+      break;
+    }
+  }
+
+  if (object && object.length <= max) {
+    const joined = `${verb} \u2026 ${object}`;
+    if (verb && joined.length <= max) return joined;
+    return object;
+  }
+  return truncate(flat, max);
+}
+
+/**
  * Accent colour for a session slot — the IDLE label and the drifting particles.
  *
  * Deliberately NOT `agentBrandColor`: these are the brand hues lightened for
@@ -647,14 +724,41 @@ export function renderDetailInfo(
   const watermark = `<g transform="translate(92, 80)" opacity="0.42">${agentLogoIcon(agent, 48, 1, 0, 0)}</g>`;
   const badgeObj = `<rect x="100" y="14" width="28" height="16" rx="8" fill="#ffffff" opacity="0.1" /><text x="114" y="25" font-size="10" font-weight="700" text-anchor="middle" fill="#A1A1AA" font-family="${fontFam}">INFO</text>`;
   const toolDisplay = tool ? `▶ ${truncate(tool, 18)}` : stateLbl;
+  // An awaiting session's INFO cell must state WHAT is being asked. This cell
+  // used to render project + model + state and nothing else, while the D200H —
+  // whose whole detail view is this cell plus the option keys — passed the
+  // question in only as a press echo. The result was three live buttons
+  // (Allow once / Always allow / Deny) over zero pixels of subject: the user
+  // could answer, but not know what they were answering. Read off the session
+  // rather than through new parameters so every caller and mirror gets it.
+  const isAwaiting = effectiveState === State.AWAITING_PERMISSION
+    || effectiveState === State.AWAITING_OPTION
+    || effectiveState === State.AWAITING_DIFF;
+  const awaitingPrompt = isAwaiting
+    ? (session.question ?? '').replace(/\s+/g, ' ').trim()
+    : '';
+  const promptLines = awaitingPrompt ? wrapTextByWidth(awaitingPrompt, 122, 11).slice(0, 3) : [];
+  // The reason approval is required is the most decisive supporting line, and
+  // `questionDetail` is ordered most-decisive-first, so take its head.
+  const promptWhy = awaitingPrompt ? (approvalReasonHead(session.questionDetail) ?? '') : '';
+  const promptEls = promptLines.length > 0
+    ? promptLines.map((line, i) => `<text x="20" y="${62 + i * 13}" font-size="11" font-weight="700" text-anchor="start" fill="#fbbf24" font-family="${fontFam}">${escXml(line)}</text>`).join('')
+      + (promptWhy ? `<text x="20" y="${62 + promptLines.length * 13 + 2}" font-size="9.5" font-weight="600" text-anchor="start" fill="#94a3b8" font-family="${fontFam}">${escXml(truncate(promptWhy, 30))}</text>` : '')
+    : '';
   const elements = [
     `<defs><linearGradient id="${gradId}" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#151720"/><stop offset="100%" stop-color="#0A0B10"/></linearGradient></defs>`,
     `<rect width="${SIZE}" height="${SIZE}" rx="16" fill="url(#${gradId})"/>`,
     `<rect x="8" y="8" width="128" height="128" rx="12" fill="#1C1F2E" opacity="0.8"/>`,
-    watermark, badgeObj,
+    // The watermark sits at translate(92,80) and the prompt text runs to x≈138,
+    // so a pending question would be read over the agent glyph. The glyph is
+    // decoration and the question is the decision — drop it while one is up.
+    promptEls ? '' : watermark,
+    badgeObj,
     `<text x="20" y="34" font-size="18" font-weight="800" text-anchor="start" fill="#ffffff" font-family="${fontFam}">${escXml(truncate(nameForDisplay, 10))}</text>`,
-    (modelName && agent !== 'openclaw') ? `<text x="20" y="56" font-size="12" font-weight="600" text-anchor="start" fill="#94a3b8" font-family="${fontFam}">${escXml(formatModelEffort(modelName, effortLevel, 17))}</text>` : '',
-    (mode && mode !== 'default' && agent !== 'openclaw') ? `<text x="20" y="74" font-size="11" font-weight="700" text-anchor="start" fill="#a78bfa" font-family="${fontFam}">${escXml(mode.toUpperCase())}</text>` : '',
+    // Model and mode yield their rows to the prompt for the same reason.
+    (modelName && agent !== 'openclaw' && !promptEls) ? `<text x="20" y="56" font-size="12" font-weight="600" text-anchor="start" fill="#94a3b8" font-family="${fontFam}">${escXml(formatModelEffort(modelName, effortLevel, 17))}</text>` : '',
+    (mode && mode !== 'default' && agent !== 'openclaw' && !promptEls) ? `<text x="20" y="74" font-size="11" font-weight="700" text-anchor="start" fill="#a78bfa" font-family="${fontFam}">${escXml(mode.toUpperCase())}</text>` : '',
+    promptEls,
     `<text x="20" y="120" font-size="12" font-weight="700" text-anchor="start" fill="${tool ? '#fbbf24' : sColor}" font-family="${fontFam}">${escXml(toolDisplay)}</text>`,
   ].join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}">${elements}</svg>`;

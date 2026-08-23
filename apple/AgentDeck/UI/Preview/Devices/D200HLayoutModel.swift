@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts 74445bade8a9ad9656d623d0724fb8b69683b6d9
+// SYNC-HASH shared/src/d200h-layout.ts 014062e44d2bf70f633285b6dd6b3a71ae008ed1
 // SYNC-HASH shared/src/session-utils.ts 3f6629cd69bd4d77f380cb5e37972f28863058e7
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -105,6 +105,10 @@ public struct D200HSession: Equatable, Sendable {
     public var requestId: String?
     /// Awaiting prompt question, echoed back on a press.
     public var question: String?
+    /// Supporting lines under `question` — the reason approval was demanded, the
+    /// cwd, the originating session key. Most-decisive-first; the hero cell
+    /// renders the head.
+    public var questionDetail: String?
     /// Codex display-fold bookkeeping (mutated by folding; supply nil/1 normally).
     public var groupSize: Int?
     public var foldedSessionIds: [String]?
@@ -123,6 +127,7 @@ public struct D200HSession: Equatable, Sendable {
         liveAnswerable: Bool? = nil,
         requestId: String? = nil,
         question: String? = nil,
+        questionDetail: String? = nil,
         groupSize: Int? = nil,
         foldedSessionIds: [String]? = nil
     ) {
@@ -139,6 +144,7 @@ public struct D200HSession: Equatable, Sendable {
         self.liveAnswerable = liveAnswerable
         self.requestId = requestId
         self.question = question
+        self.questionDetail = questionDetail
         self.groupSize = groupSize
         self.foldedSessionIds = foldedSessionIds
     }
@@ -304,7 +310,13 @@ public enum D200HSlotKind: Equatable, Sendable {
     /// BACK to session list (renderBackButton).
     case back
     /// Focused-session detail header (renderDetailInfo).
-    case detailInfo(agentType: String, state: String)
+    ///
+    /// `question`/`why` are the pending prompt and the reason it was demanded.
+    /// This cell is the ONLY place the detail view can say what the option keys
+    /// below apply to — they carry labels ("Allow once"), never a subject — and
+    /// it used to render project + state alone, so the view offered three live
+    /// buttons over zero pixels of subject.
+    case detailInfo(agentType: String, state: String, question: String?, why: String?)
     /// STOP tile (renderStopButton); `active` = an interruptible run.
     case stop(active: Bool)
     /// ESC tile (renderEscButton); `active` = an awaiting prompt to cancel.
@@ -503,7 +515,16 @@ public enum D200HLayoutModel {
         let (ic, ir) = parse(infoPos)
         out.append(D200HKeySlot(
             position: infoPos, col: ic, row: ir,
-            kind: .detailInfo(agentType: agentType, state: sState),
+            kind: .detailInfo(
+                agentType: agentType,
+                state: sState,
+                // Only an awaiting session has a prompt to state; `question` is
+                // resolved above (focused state_update › row) and the supporting
+                // lines come off the row, which is the SSOT for an
+                // observed/virtual session's prompt.
+                question: isAwaiting(sState) ? (input.question ?? sess?.question) : nil,
+                why: isAwaiting(sState) ? approvalReasonHead(sess?.questionDetail) : nil
+            ),
             label: truncate(sess?.projectName ?? "", 10),
             subtitle: detailInfoSubtitle(state: sState, tool: tool, model: model),
             action: .none
@@ -734,6 +755,26 @@ public enum D200HLayoutModel {
 
     /// Detail header lower line (renderDetailInfo `toolDisplay`): "▶ <tool>" when
     /// a tool is active, else the human state label.
+    /// The one supporting line a narrow surface has room for, off
+    /// `questionDetail` (ordered most-decisive-first, so the head is the reason
+    /// approval was demanded). Mirror of the TS `approvalReasonHead`.
+    ///
+    /// The leading `Warning:` / `Error:` label is stripped because the surface
+    /// already says that — these lines land on an amber card whose detail slot
+    /// is 22 characters, so the label spent 9 of them restating the colour.
+    static func approvalReasonHead(_ detail: String?) -> String? {
+        guard let head = detail?
+            .split(separator: "\n")
+            .map({ $0.trimmingCharacters(in: CharacterSet.whitespaces) })
+            .first(where: { !$0.isEmpty })
+        else { return nil }
+        let stripped = head.replacingOccurrences(
+            of: "^(warning|error|note)\\s*:\\s*",
+            with: "",
+            options: [.regularExpression, .caseInsensitive])
+        return stripped.isEmpty ? nil : stripped
+    }
+
     static func detailInfoSubtitle(state: String, tool: String?, model: String) -> String? {
         if let t = tool, !t.isEmpty { return "▶ " + truncate(t, 18) }
         return stateLabelHuman(state)
