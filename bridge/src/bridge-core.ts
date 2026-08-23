@@ -31,6 +31,7 @@ import { invalidateMdnsInstance, triggerMdnsRecovery, isNonFatalMdnsError } from
 import {
   State,
   type BridgeEvent,
+  type CodexRateLimits,
   type StateSnapshot,
   type AgentType,
   type AgentCapabilities,
@@ -402,6 +403,16 @@ export class BridgeCore {
     this.stateMachine.emit('state_changed', this.stateMachine.getSnapshot());
   }
 
+  /**
+   * The `codexRateLimits` block this core last PUT ON THE WIRE — the normalized,
+   * plan-reconciled output of the most recent `buildUsage()`, not one of its
+   * inputs. Remembered so the daemon's relayed-`usage_update` path can reconcile
+   * a session bridge's weaker block against it without calling `buildUsage()`,
+   * which arms the throttled `codex app-server` spawn (issue #253). Null until
+   * the first build.
+   */
+  lastBuiltCodexRateLimits: CodexRateLimits | null = null;
+
   /** Build and return a usage event */
   buildUsage(): BridgeEvent {
     const snapshot = this.stateMachine.getSnapshot();
@@ -411,7 +422,7 @@ export class BridgeCore {
     // disagree about which plan this build belongs to.
     const codexAuth = readCodexAuthStatus();
     const codexAccountPlan = codexAuth?.planType;
-    return buildUsageEvent(
+    const event = buildUsageEvent(
       snapshot,
       this.cachedApiUsage,
       this.oauthConnected,
@@ -440,6 +451,8 @@ export class BridgeCore {
           )
         : readCodexRateLimits(undefined, codexAccountPlan),
     );
+    this.lastBuiltCodexRateLimits = event.codexRateLimits ?? null;
+    return event;
   }
 
   /** Broadcast current usage to all clients */

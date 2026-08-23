@@ -211,7 +211,7 @@ import { WeatherProvider, parseWeatherSettings } from './weather.js';
 import { CalendarProvider, parseCalendarSettings } from './calendar.js';
 import { renderGlanceFrame, GLANCE_FRAME_BOARDS } from './glance-frame.js';
 import type { UsageEvent } from './types.js';
-import { mergeRelayedSessionUsage } from './usage-event.js';
+import { resolveRelayedUsageEvent } from './relayed-usage.js';
 import { CARD_FEED_PATH, CARD_OUTBOX_PATH, GLANCE_FRAME_PATH, type CardFeedResponse, type SessionInfo, type OutboxPushRequest } from '@agentdeck/shared';
 import { readFileSync, statSync, writeFileSync, appendFileSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
@@ -3399,7 +3399,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     } else if (evt.type === 'usage_update') {
       // Sync daemon cache with relay's already-adjusted values (prevents oscillation)
       const u = evt as any;
-      const hasClaudeData = u.fiveHourPercent != null || u.sevenDayPercent != null;
       if (core.cachedApiUsage && u.fiveHourPercent != null) {
         core.cachedApiUsage.fiveHourPercent = u.fiveHourPercent;
         core.cachedApiUsage.fiveHourResetsAt = u.fiveHourResetsAt ?? null;
@@ -3412,42 +3411,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         core.cachedApiUsage.scopedLimits = Array.isArray(u.scopedLimits) ? u.scopedLimits : [];
         core.apiUsagePreAdjusted = true;
       }
-      // A session bridge broadcasts usage on EVERY state change. In daemon-first
-      // mode its snapshot usually has no model context, so the Claude quota model
-      // gate (isClaudeSubscriptionModel) yields no percents and the event carries
-      // usageStale=true. Forwarding that bare event verbatim clobbered the daemon's
-      // own authoritative aggregate on the dashboard: the Claude gauge blanked to
-      // "No usage data" on every state tick (the Codex gauge, which ignores global
-      // staleness, stayed put — hence the Claude-only flicker).
-      //
-      // Suppressing the relay instead is NOT an option: usage_update is the ONLY
-      // carrier of per-session tokens / cost / duration (state_update has none of
-      // those fields), and the daemon's own buildUsage() reads a UsageTracker that
-      // no PTY ever feeds, so its session half is zeros. Dropping the event would
-      // blank the session numbers for every focus that legitimately carries no
-      // Claude quota — Codex, OpenCode, API billing.
-      //
-      // So split the event by half instead of by event: the ACCOUNT half (quota,
-      // scoped caps, extra usage, subscriptions, Codex/Ollama, usageStale) comes
-      // from the daemon's authoritative aggregate, the SESSION half from the relay.
-      //
-      // That split applies on the `else` branch ONLY. When the relay carries
-      // Claude percentages its event goes out verbatim, so the account half —
-      // `codexRateLimits` included — is the BRIDGE's. Usually identical: both
-      // sides run the same plan-aware rollout read. They can differ only when no
-      // plan-matching rollout exists at all, since the daemon additionally holds
-      // a `codex app-server` reading that a session bridge structurally cannot
-      // (no host processes there) — then successive events alternate between a
-      // real Codex window and a voided one. Left as is deliberately: the only
-      // targeted fix is to overwrite the block from `core.buildUsage()` here, and
-      // that is the call which arms the throttled spawn, on the one path whose
-      // whole history is about not clobbering the dashboard. Tracked as issue
-      // #253, not just as this comment.
-      if (hasClaudeData) {
-        core.wsServer.broadcast(evt);
-      } else {
-        core.wsServer.broadcast(mergeRelayedSessionUsage(core.buildUsage() as UsageEvent, u));
-      }
+      // WHICH half of the relayed event survives, and why, lives in
+      // `resolveRelayedUsageEvent`. It was inlined here until issue #253: this is
+      // the daemon's most flicker-sensitive path, its whole history is about not
+      // clobbering the dashboard, and an inline branch had no test seam.
+      core.wsServer.broadcast(resolveRelayedUsageEvent({
+        relayed: u,
+        ownCodexRateLimits: core.lastBuiltCodexRateLimits,
+        buildOwnUsage: () => core.buildUsage() as UsageEvent,
+      }));
     } else {
       // prompt_options — relay as-is
       core.wsServer.broadcast(evt);
