@@ -31,42 +31,62 @@
     },
     "ChatEventPayload": {
       "additionalProperties": false,
+      "description": "The Gateway's `chat` frame. Shape verified against the emitter itself (`openclaw/dist/server-chat-wgxNCdC3.js` — `emitChatDelta`, `flushBufferedChatDeltaIfNeeded`, `emitChatTerminal`), not assumed.\n\n**This frame is assistant-only.** It carries no user prompt, no tool array and no token accounting — `message.role` is always `'assistant'`. Fields named `prompt`, `tools`, `modelId`, `inputTokens` and `outputTokens` were declared here from an assumed shape and the Gateway has never sent any of them; reading them yielded `undefined` on every real frame, which is why no turn was ever opened for an OpenClaw-app conversation. The prompt, the tool calls and the per-turn model/usage all arrive on `session.message` / `session.tool` instead, and only after `sessions.subscribe`.\n\nSame failure mode, and the same fix, as `ExecApprovalRequestedPayload` below — see the note there.",
       "properties": {
-        "delta": {
-          "description": "Incremental text chunk (delta state).",
+        "agentId": {
+          "description": "Agent that owns the session, when not the default one.",
+          "type": "string"
+        },
+        "deltaText": {
+          "description": "Incremental text chunk (delta state). Named `deltaText` on the wire.",
           "type": "string"
         },
         "error": {
-          "description": "Error message (error state).",
+          "description": "Never sent by the Gateway; `openclaw-hook.ts` fills it from `errorMessage`.",
           "type": "string"
         },
-        "inputTokens": {
-          "description": "Token accounting (final state).",
-          "type": "number"
-        },
-        "modelId": {
-          "description": "Model identifier used for this turn.",
+        "errorKind": {
+          "description": "Failure classification (error state), e.g. \"unavailable\".",
           "type": "string"
         },
-        "newSessionId": {
-          "description": "Session identifier when Gateway creates a new session mid-chat.",
+        "errorMessage": {
+          "description": "Failure sentence (error state), and the abort reason on `aborted`.",
           "type": "string"
         },
-        "outputTokens": {
-          "type": "number"
+        "message": {
+          "additionalProperties": false,
+          "description": "Assistant message. `content` is an array of typed blocks.",
+          "properties": {
+            "content": {},
+            "role": {
+              "type": "string"
+            },
+            "timestamp": {
+              "type": "number"
+            }
+          },
+          "type": "object"
         },
-        "prompt": {
-          "description": "User prompt text, as echoed by Gateway on first delta.",
-          "type": "string"
+        "replace": {
+          "description": "True when `deltaText` replaces the buffer rather than appending.",
+          "type": "boolean"
         },
         "response": {
-          "description": "Full assembled response (final state).",
+          "description": "Full assembled response. Never sent by the Gateway — retained because `openclaw-hook.ts` synthesizes it from `message` before building spans.",
           "type": "string"
         },
         "runId": {
           "type": "string"
         },
+        "seq": {
+          "description": "Monotonic per-run sequence number.",
+          "type": "number"
+        },
         "sessionKey": {
+          "type": "string"
+        },
+        "spawnedBy": {
+          "description": "Set when this run was spawned by another session (cron, subagent).",
           "type": "string"
         },
         "state": {
@@ -78,8 +98,12 @@
           ],
           "type": "string"
         },
+        "stopReason": {
+          "description": "Why the run stopped.",
+          "type": "string"
+        },
         "tools": {
-          "description": "Tool invocations observed in this turn.",
+          "description": "Never sent by the Gateway. Retained for the same reason as `response`.",
           "items": {
             "$ref": "#/definitions/ChatToolInvocation"
           },
@@ -1220,21 +1244,57 @@
     },
     "SessionMessagePayload": {
       "additionalProperties": {},
+      "description": "`session.message` — delivered only to connections that have called `sessions.subscribe` (or `sessions.messages.subscribe` for one key). The Gateway unions `sessionEventSubscribers` into the recipient set unconditionally, so the no-param `sessions.subscribe` delivers every session's messages.\n\nShape from `openclaw/dist/server-session-events-JGRZmnwO.js` (`handleTranscriptUpdateBroadcast`). The message object is `projectChatDisplayMessage`'s output, which preserves the store's `{role, content, …}` verbatim — it is NOT a flat `{role, text}`.",
       "properties": {
-        "content": {
+        "agentId": {
           "type": "string"
         },
         "key": {
           "type": "string"
         },
-        "message": {},
-        "role": {
+        "message": {
+          "additionalProperties": {},
+          "description": "`content` is a plain string for `user` messages and an array of typed blocks (`{type:'text',text}` / `{type:'toolCall',id,name,arguments}`) otherwise. Assistant messages additionally carry `provider`, `model` and `usage` — the per-turn facts the `chat` frame never reports.",
+          "properties": {
+            "api": {
+              "type": "string"
+            },
+            "content": {},
+            "model": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "usage": {
+              "additionalProperties": {},
+              "properties": {
+                "input": {
+                  "type": "number"
+                },
+                "output": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "messageId": {
           "type": "string"
+        },
+        "messageSeq": {
+          "type": "number"
+        },
+        "senderIsOwner": {
+          "description": "True when the message was sent by the session's owner.",
+          "type": "boolean"
         },
         "sessionKey": {
-          "type": "string"
-        },
-        "text": {
           "type": "string"
         },
         "ts": {
@@ -1245,22 +1305,50 @@
     },
     "SessionToolPayload": {
       "additionalProperties": {},
+      "description": "`session.tool` — the per-tool stream, delivered to `sessionEventSubscribers` (minus the run's own tool recipients). Requires `sessions.subscribe`.\n\nShape from `openclaw/dist/server-chat-wgxNCdC3.js` (`agentPayload` spread over the agent event): the tool facts live under `data`, not at the top level. A flat `{name, tool, input, output, status}` was assumed here previously and matches no frame the Gateway sends.",
       "properties": {
-        "input": {},
+        "agentId": {
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": {},
+          "properties": {
+            "args": {},
+            "isError": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "result": {},
+            "toolCallId": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "isHeartbeat": {
+          "type": "boolean"
+        },
         "key": {
           "type": "string"
         },
-        "name": {
+        "runId": {
           "type": "string"
         },
-        "output": {},
+        "seq": {
+          "type": "number"
+        },
         "sessionKey": {
           "type": "string"
         },
-        "status": {
+        "spawnedBy": {
           "type": "string"
         },
-        "tool": {
+        "stream": {
           "type": "string"
         },
         "ts": {

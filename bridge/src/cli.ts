@@ -911,7 +911,10 @@ daemon
     // daemon had fallen back, and "no posture found" reads exactly like "open
     // posture" — a silent enterprise downgrade, which is the one thing this
     // inheritance exists to prevent.
-    const { probeDaemonHealth: probeHealth, readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+    const {
+      probeDaemonHealth: probeHealth, readDaemonInfo, findDaemonPort,
+      waitForDaemonExit, waitForPortBindable,
+    } = await import('./session-registry.js');
     const { resolveDaemonPort } = await import('./daemon-port.js');
     const preferredPort = resolveDaemonPort({ flag: opts.port });
     const info = readDaemonInfo();
@@ -933,8 +936,13 @@ daemon
     }
 
     await stopDaemon(runningPort);
-    // Wait for port release + session cleanup
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Two conditions, not a fixed sleep. `waitForDaemonExit` proves the old
+    // daemon stopped ANSWERING; between that and "the port is free" sits the
+    // socket close, plus a NECP reservation macOS holds for ~14s after a
+    // listener is cancelled. The 1500ms guess that used to sit here covered
+    // neither reliably — it was simply longer than the common case.
+    await waitForDaemonExit(runningPort, 8000);
+    await waitForPortBindable(preferredPort.port, 8000);
 
     const scriptPath = fileURLToPath(import.meta.url);
     const args = [scriptPath, 'daemon', 'start', '--foreground'];
@@ -958,9 +966,65 @@ daemon
       windowsHide: true,
     });
     child.unref();
-    log(`Daemon restarted (PID ${child.pid})`);
+
+    // `spawn` resolving a pid means the OS forked a process — it is not
+    // evidence that a daemon is running. A child that dies on EADDRINUSE (the
+    // old port still held) exits within a second, and this command used to
+    // announce `Daemon restarted (PID …)` regardless, so a failed restart was
+    // indistinguishable from a good one and the real reason sat unread in the
+    // daemon log. Verify by asking the daemon who it is.
+    const spawnedPid = child.pid;
+    const started = spawnedPid !== undefined
+      ? await waitForDaemonPid(spawnedPid, preferredPort.port, probeHealth, readDaemonInfo, findDaemonPort)
+      : null;
+
+    if (!started) {
+      log(`Daemon restart FAILED — no daemon with PID ${spawnedPid ?? '?'} is answering.`);
+      log(`The reason is in ${join(homedir(), '.agentdeck', 'daemon-stderr.log')}.`);
+      process.exit(1);
+    }
+    if (started.port !== preferredPort.port) {
+      log(`Daemon restarted (PID ${started.pid}) on port ${started.port} — it could not take ${preferredPort.port}.`);
+    } else {
+      log(`Daemon restarted (PID ${started.pid}) on port ${started.port}`);
+    }
     process.exit(0);
   });
+
+/**
+ * Poll until a daemon reporting `pid` answers `/health`, or give up.
+ *
+ * The pid comparison is the load-bearing part: probing the port alone can be
+ * satisfied by the daemon we were trying to REPLACE (a stop that silently
+ * failed), which would report a restart that never happened. The fallback-port
+ * sweep exists because the daemon is allowed to land elsewhere when it cannot
+ * win its preferred port — that is a different outcome from "did not start",
+ * and the caller says so rather than calling it a failure.
+ */
+export async function waitForDaemonPid(
+  pid: number,
+  preferredPort: number,
+  probeHealth: (port: number) => Promise<{ pid?: number } | null>,
+  readDaemonInfo: () => { httpPort?: number; port?: number } | null,
+  findDaemonPort: () => number | null,
+  timeoutMs = 20_000,
+): Promise<{ pid: number; port: number } | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const candidates = new Set<number>([preferredPort]);
+    const info = readDaemonInfo();
+    if (info?.httpPort) candidates.add(info.httpPort);
+    if (info?.port) candidates.add(info.port);
+    const found = findDaemonPort();
+    if (found) candidates.add(found);
+    for (const port of candidates) {
+      const health = await probeHealth(port);
+      if (health?.pid === pid) return { pid, port };
+    }
+    if (Date.now() >= deadline) return null;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+}
 
 daemon
   .command('status')

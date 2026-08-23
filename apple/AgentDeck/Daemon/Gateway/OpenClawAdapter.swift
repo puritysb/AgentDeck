@@ -1727,12 +1727,49 @@ actor OpenClawAdapter {
     /// static helper so the placeholder-row drop predicate is testable
     /// without spinning up a full adapter actor.
     static func resolveToolName(_ payload: [String: Any]) -> String? {
-        let nested = payload["message"] as? [String: Any]
-            ?? payload["item"] as? [String: Any]
-            ?? payload["call"] as? [String: Any]
+        let nested = sessionToolBody(payload)
         return firstJSONValue([
             payload["name"], payload["tool"], payload["toolName"],
             nested?["name"], nested?["tool"],
+        ]) as? String
+    }
+
+    /// The sub-object a `session.tool` frame actually carries its tool facts
+    /// in.
+    ///
+    /// **`data` is the real one**, and it was missing here. The Gateway builds
+    /// this frame as `{...agentEvent, sessionKey, …sessionSnapshot}` where the
+    /// agent event is `{runId, stream:"tool", seq, ts, data}` and `data` is
+    /// `{phase, name, toolCallId, args, result, isError}`
+    /// (`openclaw/dist/server-chat-wgxNCdC3.js`). Looking only at
+    /// `message`/`item`/`call` and the top level meant every real frame
+    /// resolved no name, no input and no output — so
+    /// `isPlaceholderOnlySessionTool` reported true and the row was dropped as
+    /// noise. The adapter subscribed, received the frames, and discarded all of
+    /// them; the drop even made the loss look deliberate. Measured 2026-08-23
+    /// against a live Gateway. The legacy keys stay ahead of nothing and behind
+    /// nothing — they simply never match a real frame.
+    private static func sessionToolBody(_ payload: [String: Any]) -> [String: Any]? {
+        payload["data"] as? [String: Any]
+            ?? payload["message"] as? [String: Any]
+            ?? payload["item"] as? [String: Any]
+            ?? payload["call"] as? [String: Any]
+    }
+
+    /// The tool's own phase, which is NOT the frame's top-level `status`.
+    /// That top-level field belongs to the session snapshot the Gateway
+    /// spreads over every `session.*` frame — reading it labelled a finished
+    /// tool with whatever the SESSION was doing.
+    static func resolveToolStatus(_ payload: [String: Any]) -> String? {
+        let nested = sessionToolBody(payload)
+        if let phase = firstJSONValue([nested?["phase"]]) as? String, !phase.isEmpty {
+            if phase == "result" || phase == "end" {
+                return (nested?["isError"] as? Bool) == true ? "error" : "success"
+            }
+            return phase == "start" ? "running" : phase
+        }
+        return firstJSONValue([
+            payload["status"], payload["state"], nested?["status"],
         ]) as? String
     }
 
@@ -1743,33 +1780,36 @@ actor OpenClawAdapter {
     /// at source so they never reach disk, broadcast, or APME hook
     /// routing.
     static func isPlaceholderOnlySessionTool(_ payload: [String: Any]) -> Bool {
-        let nested = payload["message"] as? [String: Any]
-            ?? payload["item"] as? [String: Any]
-            ?? payload["call"] as? [String: Any]
         let name = resolveToolName(payload)
-        let input = firstJSONValue([
+        return name == nil
+            && resolveToolInput(payload) == nil
+            && resolveToolOutput(payload) == nil
+    }
+
+    static func resolveToolInput(_ payload: [String: Any]) -> Any? {
+        let nested = sessionToolBody(payload)
+        return firstJSONValue([
             payload["input"], payload["arguments"], payload["args"],
-            payload["tool_input"], nested?["input"], nested?["arguments"],
+            payload["tool_input"],
+            nested?["args"], nested?["input"], nested?["arguments"],
         ])
-        let output = firstJSONValue([
+    }
+
+    static func resolveToolOutput(_ payload: [String: Any]) -> Any? {
+        let nested = sessionToolBody(payload)
+        return firstJSONValue([
             payload["output"], payload["result"], payload["error"],
-            nested?["output"], nested?["result"], nested?["error"],
+            nested?["result"], nested?["output"], nested?["error"],
         ])
-        return name == nil && input == nil && output == nil
     }
 
     private func emitTimelineEntry(fromSessionTool payload: [String: Any]) {
-        let nested = payload["message"] as? [String: Any]
-            ?? payload["item"] as? [String: Any]
-            ?? payload["call"] as? [String: Any]
         // Resolve tool name and remember whether we hit the literal "tool"
         // fallback so the placeholder guard below can drop rows that carry
         // zero useful signal.
         let resolvedName = Self.resolveToolName(payload)
         let toolName = resolvedName ?? "tool"
-        let status = (payload["status"] as? String)
-            ?? (payload["state"] as? String)
-            ?? (nested?["status"] as? String)
+        let status = Self.resolveToolStatus(payload)
         // Include tool input summary in detail so the timeline row shows what
         // the tool was actually called with, not just its name.
         //
@@ -1778,14 +1818,8 @@ actor OpenClawAdapter {
         // candidate and propagate NSNull downstream. `Self.firstJSONValue`
         // unwraps NSNull as absent, so the fallback chain skips past
         // explicit-null fields the way the field-not-present case does.
-        let input = Self.firstJSONValue([
-            payload["input"], payload["arguments"], payload["args"],
-            payload["tool_input"], nested?["input"], nested?["arguments"],
-        ])
-        let output = Self.firstJSONValue([
-            payload["output"], payload["result"], payload["error"],
-            nested?["output"], nested?["result"], nested?["error"],
-        ])
+        let input = Self.resolveToolInput(payload)
+        let output = Self.resolveToolOutput(payload)
         // Placeholder-only row drop. When OpenClaw upstream sends a
         // session.tool event with no usable name and no input/output, the
         // resulting timeline row is "tool · running" / "tool · complete"

@@ -79,6 +79,89 @@ final class OpenClawToolNoiseTests: XCTestCase {
         XCTAssertNil(OpenClawAdapter.resolveToolName(payload))
     }
 
+    // MARK: - The REAL `session.tool` shape (captured off a live Gateway)
+    //
+    // Every case below this adapter's `data`-aware fix used the flat shape
+    // (`["name": "shell", "input": …]`) — a shape the Gateway has never sent.
+    // The real frame nests its tool facts under `data`, so `resolveToolName`
+    // returned nil for all of them, `isPlaceholderOnlySessionTool` reported
+    // true, and the adapter dropped 100% of real tool rows AS NOISE. The
+    // adapter had subscribed and was receiving them the whole time.
+
+    /// `session.tool` phase=start. Facts under `data`, args included.
+    private var realToolStart: [String: Any] {
+        [
+            "runId": "e38dc766-a373-4249-b720-a0dee9f37103",
+            "stream": "tool",
+            "sessionKey": "agent:main:agentdeck-probe",
+            "seq": 2,
+            "ts": 1_787_462_373_731,
+            // The session snapshot the Gateway spreads over every `session.*`
+            // frame. `status` here is the SESSION's, not the tool's.
+            "status": "running",
+            "model": "glm-5.2",
+            "data": [
+                "phase": "start",
+                "name": "read",
+                "toolCallId": "call_49c5d5c018d5497ca4ca7666",
+                "args": ["path": "/Users/example/workspace/heartbeat-state.json"],
+            ] as [String: Any],
+        ]
+    }
+
+    /// `session.tool` phase=result, carrying the tool output.
+    private var realToolResult: [String: Any] {
+        [
+            "runId": "e38dc766-a373-4249-b720-a0dee9f37103",
+            "stream": "tool",
+            "sessionKey": "agent:main:agentdeck-probe",
+            "seq": 4,
+            "ts": 1_787_462_373_775,
+            "status": "running",
+            "data": [
+                "phase": "result",
+                "name": "read",
+                "toolCallId": "call_49c5d5c018d5497ca4ca7666",
+                "isError": false,
+                "result": ["content": [["type": "text", "text": "{}"]]],
+            ] as [String: Any],
+        ]
+    }
+
+    func testRealSessionToolStartIsNotDroppedAsPlaceholder() {
+        XCTAssertFalse(OpenClawAdapter.isPlaceholderOnlySessionTool(realToolStart),
+            "a real tool frame must never be dropped as noise")
+        XCTAssertEqual(OpenClawAdapter.resolveToolName(realToolStart), "read")
+        XCTAssertNotNil(OpenClawAdapter.resolveToolInput(realToolStart))
+    }
+
+    func testRealSessionToolResultCarriesItsOutput() {
+        XCTAssertFalse(OpenClawAdapter.isPlaceholderOnlySessionTool(realToolResult))
+        XCTAssertEqual(OpenClawAdapter.resolveToolName(realToolResult), "read")
+        XCTAssertNotNil(OpenClawAdapter.resolveToolOutput(realToolResult))
+    }
+
+    /// The tool's status is its `data.phase`, never the frame's top-level
+    /// `status` — that one belongs to the session snapshot, so reading it
+    /// labelled a finished tool with whatever the SESSION happened to be doing.
+    func testToolStatusComesFromPhaseNotTheSessionSnapshot() {
+        XCTAssertEqual(OpenClawAdapter.resolveToolStatus(realToolStart), "running")
+        XCTAssertEqual(OpenClawAdapter.resolveToolStatus(realToolResult), "success")
+        var errored = realToolResult
+        var data = errored["data"] as! [String: Any]
+        data["isError"] = true
+        errored["data"] = data
+        XCTAssertEqual(OpenClawAdapter.resolveToolStatus(errored), "error")
+    }
+
+    /// A frame carrying only the session snapshot (no `data`) is still noise
+    /// and must still be dropped — the fix widens where we look, it does not
+    /// weaken the guard.
+    func testSnapshotOnlyFrameIsStillDropped() {
+        let payload: [String: Any] = ["sessionKey": "agent:main:main", "status": "running"]
+        XCTAssertTrue(OpenClawAdapter.isPlaceholderOnlySessionTool(payload))
+    }
+
     /// Real tool with name only (no input/output yet — start of a tool that
     /// emits ack before arguments resolve) must NOT be dropped. The name
     /// alone carries enough signal for the user to see what's happening.

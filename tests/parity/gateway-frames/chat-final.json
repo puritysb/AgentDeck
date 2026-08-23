@@ -5,9 +5,9 @@
     "runId": "e38dc766-a373-4249-b720-a0dee9f37103",
     "sessionKey": "agent:main:agentdeck-probe",
     "agentId": "main",
-    "seq": 6,
-    "state": "delta",
-    "deltaText": "2",
+    "seq": 8,
+    "state": "final",
+    "stopReason": "stop",
     "message": {
       "role": "assistant",
       "content": [
@@ -16,7 +16,7 @@
           "text": "2"
         }
       ],
-      "timestamp": 1787462378310
+      "timestamp": 1787462378564
     }
   }
 }

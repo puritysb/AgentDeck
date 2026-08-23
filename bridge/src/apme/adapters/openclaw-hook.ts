@@ -211,14 +211,26 @@ export function openclawChatEventToSpans(
         }));
       }
     }
+    // `chat.final` IS OpenClaw's stop signal — close the turn on it rather than
+    // waiting for the next `turn_start`. Without this a single-turn
+    // conversation left its turn open until the whole run closed, so the turn
+    // carried no duration and its tool tally was never flushed. Measured
+    // 2026-08-23: openclaw was the ONLY agent with turns still open under an
+    // already-closed task.
+    spans.push(make('turn_end', { 'agentdeck.turn_end_source': 'stop' }));
     return spans;
   }
 
   if (payload.state === 'aborted') {
     // Treat as a manual boundary — user explicitly stopped this turn. The
     // composite outcome derivation will see the absence of a complete
-    // response and score accordingly.
-    return [make('task_boundary', { 'agentdeck.boundary_signal': 'manual' })];
+    // response and score accordingly. The turn closes as `interrupted`, which
+    // is its own bucket and NOT a lost stop signal: the user cancelled, so no
+    // normal close was ever due.
+    return [
+      make('turn_end', { 'agentdeck.turn_end_source': 'interrupted' }),
+      make('task_boundary', { 'agentdeck.boundary_signal': 'manual' }),
+    ];
   }
 
   if (payload.state === 'error') {
@@ -244,32 +256,87 @@ export function openclawChatEventToSpans(
 }
 
 /**
- * Convert a Gateway `session.tool` event into spans. This granular per-tool
- * stream carries the tool INPUT/OUTPUT that the coarse `chat.final` tools array
- * lacks — and it was previously silently dropped (openclaw.ts default case), so
- * the sample's tool trajectory had no detail. A `running`/`pending` status maps
- * to a `tool_call` (opens a pending ToolEvent); a terminal status maps to a
- * `tool_result` (resolves it). Pure — no side effects.
+ * Text carried by an OpenClaw message `content`, which is a string for user
+ * messages and an array of typed blocks for assistant / toolResult ones.
+ *
+ * Shape taken from the live store (`~/.openclaw/agents/<agent>/sessions/*.jsonl`)
+ * and from the Gateway's own projection (`projectChatDisplayMessage`, which
+ * preserves `{role, content}` verbatim) — NOT from an assumed flat
+ * `{role, text}`, which is what the previous version of this function read and
+ * why it would have found nothing even once the frames started arriving.
+ */
+function messageText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue;
+    const b = block as { type?: unknown; text?: unknown };
+    if (b.type === 'text' && typeof b.text === 'string') parts.push(b.text);
+  }
+  return parts.join('');
+}
+
+/** `toolCall` blocks inside an assistant message's `content` array. */
+function toolCallBlocks(content: unknown): Array<{ id?: string; name: string; arguments?: unknown }> {
+  if (!Array.isArray(content)) return [];
+  const out: Array<{ id?: string; name: string; arguments?: unknown }> = [];
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue;
+    const b = block as { type?: unknown; id?: unknown; name?: unknown; arguments?: unknown };
+    if (b.type !== 'toolCall' || typeof b.name !== 'string' || !b.name) continue;
+    out.push({
+      ...(typeof b.id === 'string' ? { id: b.id } : {}),
+      name: b.name,
+      ...(b.arguments !== undefined ? { arguments: b.arguments } : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * Convert a Gateway `session.tool` event into spans.
+ *
+ * **Real shape** (`dist/server-chat-wgxNCdC3.js`, the `agentPayload` spread):
+ * `{...agentEvent, sessionKey, agentId?, spawnedBy?, isHeartbeat?, ...snapshot}`
+ * where the agent event is `{runId, stream:'tool', seq, ts, data}` and `data`
+ * is `{phase:'start'|'result', name, toolCallId, meta?, args?, isError?, result?}`.
+ * The previous version read a flat `{name|tool, status, input, output}` — a
+ * shape the Gateway has never sent — so every field would have come back
+ * undefined and the function would have returned `[]` for every real frame.
+ *
+ * `phase:'start'` opens a pending ToolEvent; `phase:'result'` resolves it.
  */
 export function openclawSessionToolToSpans(
   ctx: AdapterContext,
   payload: SessionToolPayload,
 ): TelemetrySpan[] {
-  const name = payload.name ?? payload.tool;
+  const data = (payload.data ?? {}) as {
+    phase?: unknown; name?: unknown; toolCallId?: unknown;
+    args?: unknown; result?: unknown; isError?: unknown;
+  };
+  const name = typeof data.name === 'string' && data.name ? data.name : undefined;
   if (!name) return [];
+  const phase = typeof data.phase === 'string' ? data.phase : '';
+  // Anything that is not an explicit terminal phase is treated as still
+  // running — the permissive direction, since a `tool_call` with no matching
+  // `tool_result` reads as "unfinished" while the reverse invents a
+  // completion that never happened.
+  const isResult = phase === 'result' || phase === 'end' || phase === 'error';
+  const kind: TelemetrySpan['kind'] = isResult ? 'tool_result' : 'tool_call';
   const ts = typeof payload.ts === 'number' ? payload.ts : Date.now();
-  const status = (payload.status ?? '').toLowerCase();
-  const pending = status === '' || status === 'running' || status === 'pending' || status === 'started' || status === 'in_progress';
-  const kind: TelemetrySpan['kind'] = pending ? 'tool_call' : 'tool_result';
+  const status = isResult ? (data.isError === true ? 'error' : 'success') : 'running';
   const attrs: TelemetryAttributes = {
     'agentdeck.agent_type': ctx.agentType,
     ...(ctx.cwd ? { 'agentdeck.cwd': ctx.cwd } : {}),
+    ...(payload.sessionKey ? { 'agentdeck.gateway_session_key': payload.sessionKey } : {}),
     'gen_ai.tool.name': name,
     'agentdeck.tool_name': name,
     'agentdeck.raw_payload': {
-      ...(payload.status ? { status: payload.status } : {}),
-      ...(payload.input !== undefined ? { tool_input: payload.input } : {}),
-      ...(payload.output !== undefined ? { tool_response: payload.output } : {}),
+      status,
+      ...(typeof data.toolCallId === 'string' ? { tool_call_id: data.toolCallId } : {}),
+      ...(data.args !== undefined ? { tool_input: data.args } : {}),
+      ...(data.result !== undefined ? { tool_response: data.result } : {}),
     },
   };
   return [{
@@ -284,35 +351,107 @@ export function openclawSessionToolToSpans(
 }
 
 /**
- * Convert a Gateway `session.out-of-band message` into a turn span. User
- * messages open a turn (turn_start); assistant messages set the response
- * (turn_response). Previously dropped, so gateway-initiated turns (cron,
- * automations) had no captured prompt/response in the sample.
+ * Convert a Gateway `session.message` event into spans.
+ *
+ * **This is the only channel that carries the user's prompt.** The `chat`
+ * frame is assistant-only (`emitChatDelta` / `emitChatTerminal` build
+ * `message:{role:'assistant',…}` and nothing else), so before this event was
+ * subscribed to, no `turn_start` was ever emitted for a conversation started
+ * in the OpenClaw app — and a `turn_response` with no open turn is dropped by
+ * `Collector.setTurnResponse`. That is why 657 of 665 recorded OpenClaw runs
+ * hold zero turns.
+ *
+ * **Real shape**: `{sessionKey, agentId?, senderIsOwner?, message, messageId?,
+ * messageSeq?, ...sessionSnapshot}` where `message` is
+ * `{role:'user'|'assistant'|'toolResult', content, …}` — `content` a string for
+ * user messages, an array of typed blocks otherwise. Assistant messages also
+ * carry `provider` / `model` / `usage:{input,output}`, the per-turn facts the
+ * `chat` frame never reports.
+ *
+ * **Ownership, so nothing is counted twice.** The two Gateway channels carry
+ * overlapping halves, so each fact has exactly one source here:
+ *   - the prompt comes from this event (nothing else has it);
+ *   - tool calls come from `session.tool`, which carries args AND result —
+ *     the `toolCall` blocks in an assistant message are deliberately ignored;
+ *   - the response is emitted from here too, because a run the Gateway hides
+ *     from the control UI never reaches us as a `chat` final at all. When both
+ *     arrive they carry the same text, and the sample layer dedups on
+ *     `kind|turnIndex|hash(text)` while `turns.response` is simply rewritten
+ *     with the same value.
  */
 export function openclawSessionMessageToSpans(
   ctx: AdapterContext,
   payload: SessionMessagePayload,
 ): TelemetrySpan[] {
-  const text = (typeof payload.text === 'string' ? payload.text : undefined)
-    ?? (typeof payload.content === 'string' ? payload.content : undefined);
-  if (!text || !text.trim()) return [];
-  const ts = typeof payload.ts === 'number' ? payload.ts : Date.now();
-  const role = (payload.role ?? '').toLowerCase();
-  const kind: TelemetrySpan['kind'] = role === 'assistant' ? 'turn_response' : 'turn_start';
-  const attrs: TelemetryAttributes = {
+  const message = payload.message as
+    | {
+      role?: unknown; content?: unknown; provider?: unknown; model?: unknown;
+      usage?: unknown; timestamp?: unknown;
+    }
+    | undefined;
+  if (!message || typeof message !== 'object') return [];
+  const role = typeof message.role === 'string' ? message.role.toLowerCase() : '';
+  // Measured: the `session.message` frame carries no top-level `ts` (its top
+  // level is the session snapshot), but the message itself is stamped. Using
+  // `Date.now()` for a message the Gateway already dated would put every event
+  // at delivery time instead of at the time it happened.
+  const stamped = (message as { timestamp?: unknown }).timestamp;
+  const ts = typeof payload.ts === 'number' ? payload.ts
+    : (typeof stamped === 'number' ? stamped : Date.now());
+  const base: TelemetryAttributes = {
     'agentdeck.agent_type': ctx.agentType,
     ...(ctx.cwd ? { 'agentdeck.cwd': ctx.cwd } : {}),
-    ...(kind === 'turn_start' ? { 'agentdeck.prompt_text': text } : { 'agentdeck.response_text': text }),
+    ...(payload.sessionKey ? { 'agentdeck.gateway_session_key': payload.sessionKey } : {}),
   };
-  return [{
+  const make = (
+    kind: TelemetrySpan['kind'],
+    attributes: TelemetryAttributes,
+  ): TelemetrySpan => ({
     traceId: ctx.traceId,
     spanId: randomUUID(),
     parentSpanId: ctx.activeTurnId,
     name: spanNameForKind(kind),
     kind,
     ts,
-    attributes: attrs,
-  }];
+    attributes: { ...base, ...attributes },
+  });
+
+  const text = messageText(message.content).trim();
+
+  if (role === 'user') {
+    if (!text) return [];
+    return [make('turn_start', { 'agentdeck.prompt_text': text })];
+  }
+
+  if (role === 'assistant') {
+    const spans: TelemetrySpan[] = [];
+    // Per-turn provider/model/usage. These ride the store and this event but
+    // never the `chat` frame, so without them a turn's model is whatever the
+    // run-level `updateModel` last wrote — which on a multi-model agent is the
+    // wrong answer for most turns rather than a missing one.
+    const usage = message.usage as {
+      input?: unknown; output?: unknown; cost?: { total?: unknown };
+    } | undefined;
+    const cost = usage?.cost?.total;
+    const model = typeof message.model === 'string' ? message.model : undefined;
+    const provider = typeof message.provider === 'string' ? message.provider : undefined;
+    if (model || provider || usage) {
+      spans.push(make('session_meta', {
+        ...(model ? { 'gen_ai.request.model': model } : {}),
+        ...(provider ? { 'gen_ai.system': provider } : {}),
+        ...(typeof usage?.input === 'number' ? { 'agentdeck.usage.input_tokens': usage.input } : {}),
+        ...(typeof usage?.output === 'number' ? { 'agentdeck.usage.output_tokens': usage.output } : {}),
+        ...(typeof cost === 'number' ? { 'agentdeck.usage.cost_usd': cost } : {}),
+      }));
+    }
+    if (text) spans.push(make('turn_response', { 'agentdeck.response_text': text }));
+    return spans;
+  }
+
+  // `toolResult` messages duplicate what `session.tool` already reports with
+  // more detail (it carries the args too), so they are deliberately dropped
+  // rather than counted a second time against the turn's tool tally.
+  return [];
 }
 
 /**

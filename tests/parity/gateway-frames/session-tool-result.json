@@ -1,0 +1,32 @@
+{
+  "type": "event",
+  "event": "session.tool",
+  "payload": {
+    "runId": "e38dc766-a373-4249-b720-a0dee9f37103",
+    "stream": "tool",
+    "sessionKey": "agent:main:agentdeck-probe",
+    "agentId": "main",
+    "seq": 4,
+    "ts": 1787462373775,
+    "sessionId": "c2406d0e-35fb-474f-b867-d63a7e2c8f0d",
+    "kind": "direct",
+    "modelProvider": "zai",
+    "model": "glm-5.2",
+    "status": "running",
+    "data": {
+      "phase": "result",
+      "name": "read",
+      "toolCallId": "call_49c5d5c018d5497ca4ca7666",
+      "meta": "from ~/workspace/heartbeat-state.json",
+      "isError": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"lastChecks\": {\n    \"email\": null\n  },\n  \"notes\": \"sample\"\n}\n"
+          }
+        ]
+      }
+    }
+  }
+}

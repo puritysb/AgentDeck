@@ -731,6 +731,14 @@ export class ApmeCollector {
     try {
       this.store.updateTask(task.id, {
         endedAt: Date.now(),
+        // `first_turn_index` too, not just the last. The task row is INSERTed
+        // from inside the turn_start handler, i.e. before the turn exists, so
+        // it is written NULL and the real index only ever landed in memory —
+        // 294 of 1080 closed claude-code tasks carry NULL here, and the task
+        // rollup the layer-2 judge reads is keyed on these two columns.
+        // `reapAbandonedRun` already COALESCEs a value in at reap time, which
+        // is this defect's workaround rather than its fix.
+        firstTurnIndex: task.firstTurnIndex,
         lastTurnIndex: task.lastTurnIndex ?? task.firstTurnIndex,
         boundarySignal,
         taskCategory,
@@ -977,9 +985,19 @@ export class ApmeCollector {
         else this.setTurnResponse(sessionId, text);
         return;
       }
-      case 'turn_end':
-        // No-op: turns auto-close on the next `turn_start` or session end.
+      case 'turn_end': {
+        // An explicit close, from a source that HAS a stop signal of its own.
+        // This used to be a no-op on the theory that turns auto-close on the
+        // next `turn_start` — which is true, and is exactly the shape the
+        // `end_source` column exists to avoid: closing at the next prompt puts
+        // the user's thinking time inside the turn's duration, and a
+        // conversation with one turn never closes it at all. OpenClaw is the
+        // first emitter (its `chat.final` is the stop signal); every other
+        // adapter still auto-closes, unchanged.
+        const source = (a['agentdeck.turn_end_source'] as TurnEndSource | undefined) ?? 'stop';
+        this.closeTurn(sessionId, source);
         return;
+      }
       case 'tool_call': {
         const toolName = (a['gen_ai.tool.name'] ?? a['agentdeck.tool_name']) as string | undefined;
         const raw = (a['agentdeck.raw_payload'] as Record<string, unknown> | undefined) ?? {};

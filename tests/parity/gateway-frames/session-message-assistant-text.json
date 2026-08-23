@@ -1,0 +1,48 @@
+{
+  "type": "event",
+  "event": "session.message",
+  "payload": {
+    "sessionKey": "agent:main:agentdeck-probe",
+    "agentId": "main",
+    "messageId": "6a2efc66",
+    "messageSeq": 30,
+    "sessionId": "c2406d0e-35fb-474f-b867-d63a7e2c8f0d",
+    "kind": "direct",
+    "modelProvider": "zai",
+    "model": "glm-5.2",
+    "status": "running",
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "2"
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "zai",
+      "model": "glm-5.2",
+      "usage": {
+        "input": 194,
+        "output": 3,
+        "totalTokens": 34245,
+        "cacheRead": 34048,
+        "cacheWrite": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "stop",
+      "timestamp": 1787462373787,
+      "responseId": "20260823131934e2728b429a5c486d",
+      "__openclaw": {
+        "id": "6a2efc66",
+        "seq": 30
+      }
+    }
+  }
+}

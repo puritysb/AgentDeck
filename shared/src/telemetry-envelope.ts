@@ -26,7 +26,13 @@ export type TelemetrySpanKind =
   | 'turn_start'
   /** Assistant response captured → set on the active turn. Carries `agentdeck.response_text`. */
   | 'turn_response'
-  /** Explicit turn close (rare — most sources auto-close on next `turn_start`). */
+  /** Explicit turn close. Carries `agentdeck.turn_end_source` (a
+   *  `TurnEndSource`) naming WHICH signal closed the turn — a dropped close is
+   *  otherwise byte-identical to a normal one, so its rate is unmeasurable.
+   *  Most sources never emit this and auto-close on the next `turn_start`;
+   *  OpenClaw does, because its `chat.final` IS the turn's stop signal and
+   *  waiting for the next prompt would leave a single-turn conversation's turn
+   *  open until the run closes. */
   | 'turn_end'
   /** A tool was invoked. Carries `gen_ai.tool.name`. */
   | 'tool_call'
@@ -86,6 +92,8 @@ export interface TelemetryAttributes {
   'agentdeck.usage.input_tokens'?: number;
   'agentdeck.usage.output_tokens'?: number;
   'agentdeck.usage.cost_usd'?: number;
+  /** Which signal closed the turn, for `turn_end`. A `TurnEndSource` value. */
+  'agentdeck.turn_end_source'?: string;
 
   /** Open extension. Adapters may attach extra string-keyed scalars. */
   [k: string]: string | number | boolean | Record<string, unknown> | undefined;

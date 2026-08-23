@@ -64,9 +64,12 @@ describe('openclaw-hook → telemetry spans', () => {
       state: 'aborted',
       runId: 'r1',
     });
-    expect(spans.length).toBe(1);
-    expect(spans[0].kind).toBe('task_boundary');
-    expect(spans[0].attributes['agentdeck.boundary_signal']).toBe('manual');
+    expect(spans.map((sp) => sp.kind)).toEqual(['turn_end', 'task_boundary']);
+    // A cancel closes the turn as `interrupted`, which is its own bucket and
+    // not a lost stop signal — the user stopped the run, so no normal close
+    // was ever due.
+    expect(spans[0].attributes['agentdeck.turn_end_source']).toBe('interrupted');
+    expect(spans[1].attributes['agentdeck.boundary_signal']).toBe('manual');
   });
 
   it('chat.error emits an agent_error span — and NOT a task_boundary, the agent may retry', () => {

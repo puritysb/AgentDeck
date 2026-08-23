@@ -774,6 +774,39 @@ extension ADExecApprovalRequestBody {
 
 /// The Gateway answers `{ ok: true }`; `resolved` is kept for older builds.
 ///
+/// The Gateway's `chat` frame. Shape verified against the emitter itself
+/// (`openclaw/dist/server-chat-wgxNCdC3.js` — `emitChatDelta`,
+/// `flushBufferedChatDeltaIfNeeded`, `emitChatTerminal`), not assumed.
+///
+/// **This frame is assistant-only.** It carries no user prompt, no tool array and no token
+/// accounting — `message.role` is always `'assistant'`. Fields named `prompt`, `tools`,
+/// `modelId`, `inputTokens` and `outputTokens` were declared here from an assumed shape and
+/// the Gateway has never sent any of them; reading them yielded `undefined` on every real
+/// frame, which is why no turn was ever opened for an OpenClaw-app conversation. The prompt,
+/// the tool calls and the per-turn model/usage all arrive on `session.message` /
+/// `session.tool` instead, and only after `sessions.subscribe`.
+///
+/// Same failure mode, and the same fix, as `ExecApprovalRequestedPayload` below — see the
+/// note there.
+///
+/// `session.message` — delivered only to connections that have called `sessions.subscribe`
+/// (or `sessions.messages.subscribe` for one key). The Gateway unions
+/// `sessionEventSubscribers` into the recipient set unconditionally, so the no-param
+/// `sessions.subscribe` delivers every session's messages.
+///
+/// Shape from `openclaw/dist/server-session-events-JGRZmnwO.js`
+/// (`handleTranscriptUpdateBroadcast`). The message object is `projectChatDisplayMessage`'s
+/// output, which preserves the store's `{role, content, …}` verbatim — it is NOT a flat
+/// `{role, text}`.
+///
+/// `session.tool` — the per-tool stream, delivered to `sessionEventSubscribers` (minus the
+/// run's own tool recipients). Requires `sessions.subscribe`.
+///
+/// Shape from `openclaw/dist/server-chat-wgxNCdC3.js` (`agentPayload` spread over the agent
+/// event): the tool facts live under `data`, not at the top level. A flat `{name, tool,
+/// input, output, status}` was assumed here previously and matches no frame the Gateway
+/// sends.
+///
 /// Same element shape as the requested event, minus the envelope.
 ///
 /// `exec.approval.requested` payload. The nested `request` is the real shape; the flat
@@ -813,35 +846,46 @@ struct ADConnectResult: Codable {
     var devices: [ADGatewayPresenceEntry]?
     var entries: [ADGatewayPresenceEntry]?
     var nonce: String?
-    /// Incremental text chunk (delta state).
-    var delta: String?
-    /// Error message (error state).
-    var error: String?
-    /// Token accounting (final state).
-    var inputTokens: Double?
-    /// Model identifier used for this turn.
-    var modelId: String?
-    /// Session identifier when Gateway creates a new session mid-chat.
-    var newSessionId: String?
-    var outputTokens: Double?
-    /// User prompt text, as echoed by Gateway on first delta.
-    var prompt: String?
-    /// Full assembled response (final state).
-    var response: String?
-    var sessionKey: String?
-    var state: ADState?
-    /// Tool invocations observed in this turn.
-    var tools: [ADChatToolInvocation]?
-    var content: String?
-    var message: JSONAny?
-    var role: String?
-    var text: String?
-    var input: JSONAny?
-    var name: String?
-    var output: JSONAny?
-    var tool: String?
-    var reason: String?
+    /// Agent that owns the session, when not the default one.
     var agentId: String?
+    /// Incremental text chunk (delta state). Named `deltaText` on the wire.
+    var deltaText: String?
+    /// Never sent by the Gateway; `openclaw-hook.ts` fills it from `errorMessage`.
+    var error: String?
+    /// Failure classification (error state), e.g. "unavailable".
+    var errorKind: String?
+    /// Failure sentence (error state), and the abort reason on `aborted`.
+    var errorMessage: String?
+    /// Assistant message. `content` is an array of typed blocks.
+    ///
+    /// `content` is a plain string for `user` messages and an array of typed blocks
+    /// (`{type:'text',text}` / `{type:'toolCall',id,name,arguments}`) otherwise. Assistant
+    /// messages additionally carry `provider`, `model` and `usage` — the per-turn facts the
+    /// `chat` frame never reports.
+    var message: ADMessage?
+    /// True when `deltaText` replaces the buffer rather than appending.
+    var replace: Bool?
+    /// Full assembled response. Never sent by the Gateway — retained because `openclaw-hook.ts`
+    /// synthesizes it from `message` before building spans.
+    var response: String?
+    /// Monotonic per-run sequence number.
+    var seq: Double?
+    var sessionKey: String?
+    /// Set when this run was spawned by another session (cron, subagent).
+    var spawnedBy: String?
+    var state: ADState?
+    /// Why the run stopped.
+    var stopReason: String?
+    /// Never sent by the Gateway. Retained for the same reason as `response`.
+    var tools: [ADChatToolInvocation]?
+    var messageId: String?
+    var messageSeq: Double?
+    /// True when the message was sent by the session's owner.
+    var senderIsOwner: Bool?
+    var data: ADData?
+    var isHeartbeat: Bool?
+    var stream: String?
+    var reason: String?
     /// Decisions this specific request permits (policy may drop allow-always).
     var allowedDecisions: [String]?
     /// Approval POLICY ("on-miss" | "always" | …), never a question.
@@ -903,27 +947,27 @@ struct ADConnectResult: Codable {
         case devices = "devices"
         case entries = "entries"
         case nonce = "nonce"
-        case delta = "delta"
-        case error = "error"
-        case inputTokens = "inputTokens"
-        case modelId = "modelId"
-        case newSessionId = "newSessionId"
-        case outputTokens = "outputTokens"
-        case prompt = "prompt"
-        case response = "response"
-        case sessionKey = "sessionKey"
-        case state = "state"
-        case tools = "tools"
-        case content = "content"
-        case message = "message"
-        case role = "role"
-        case text = "text"
-        case input = "input"
-        case name = "name"
-        case output = "output"
-        case tool = "tool"
-        case reason = "reason"
         case agentId = "agentId"
+        case deltaText = "deltaText"
+        case error = "error"
+        case errorKind = "errorKind"
+        case errorMessage = "errorMessage"
+        case message = "message"
+        case replace = "replace"
+        case response = "response"
+        case seq = "seq"
+        case sessionKey = "sessionKey"
+        case spawnedBy = "spawnedBy"
+        case state = "state"
+        case stopReason = "stopReason"
+        case tools = "tools"
+        case messageId = "messageId"
+        case messageSeq = "messageSeq"
+        case senderIsOwner = "senderIsOwner"
+        case data = "data"
+        case isHeartbeat = "isHeartbeat"
+        case stream = "stream"
+        case reason = "reason"
         case allowedDecisions = "allowedDecisions"
         case ask = "ask"
         case command = "command"
@@ -999,27 +1043,27 @@ extension ADConnectResult {
         devices: [ADGatewayPresenceEntry]?? = nil,
         entries: [ADGatewayPresenceEntry]?? = nil,
         nonce: String?? = nil,
-        delta: String?? = nil,
-        error: String?? = nil,
-        inputTokens: Double?? = nil,
-        modelId: String?? = nil,
-        newSessionId: String?? = nil,
-        outputTokens: Double?? = nil,
-        prompt: String?? = nil,
-        response: String?? = nil,
-        sessionKey: String?? = nil,
-        state: ADState?? = nil,
-        tools: [ADChatToolInvocation]?? = nil,
-        content: String?? = nil,
-        message: JSONAny?? = nil,
-        role: String?? = nil,
-        text: String?? = nil,
-        input: JSONAny?? = nil,
-        name: String?? = nil,
-        output: JSONAny?? = nil,
-        tool: String?? = nil,
-        reason: String?? = nil,
         agentId: String?? = nil,
+        deltaText: String?? = nil,
+        error: String?? = nil,
+        errorKind: String?? = nil,
+        errorMessage: String?? = nil,
+        message: ADMessage?? = nil,
+        replace: Bool?? = nil,
+        response: String?? = nil,
+        seq: Double?? = nil,
+        sessionKey: String?? = nil,
+        spawnedBy: String?? = nil,
+        state: ADState?? = nil,
+        stopReason: String?? = nil,
+        tools: [ADChatToolInvocation]?? = nil,
+        messageId: String?? = nil,
+        messageSeq: Double?? = nil,
+        senderIsOwner: Bool?? = nil,
+        data: ADData?? = nil,
+        isHeartbeat: Bool?? = nil,
+        stream: String?? = nil,
+        reason: String?? = nil,
         allowedDecisions: [String]?? = nil,
         ask: String?? = nil,
         command: String?? = nil,
@@ -1075,27 +1119,27 @@ extension ADConnectResult {
             devices: devices ?? self.devices,
             entries: entries ?? self.entries,
             nonce: nonce ?? self.nonce,
-            delta: delta ?? self.delta,
-            error: error ?? self.error,
-            inputTokens: inputTokens ?? self.inputTokens,
-            modelId: modelId ?? self.modelId,
-            newSessionId: newSessionId ?? self.newSessionId,
-            outputTokens: outputTokens ?? self.outputTokens,
-            prompt: prompt ?? self.prompt,
-            response: response ?? self.response,
-            sessionKey: sessionKey ?? self.sessionKey,
-            state: state ?? self.state,
-            tools: tools ?? self.tools,
-            content: content ?? self.content,
-            message: message ?? self.message,
-            role: role ?? self.role,
-            text: text ?? self.text,
-            input: input ?? self.input,
-            name: name ?? self.name,
-            output: output ?? self.output,
-            tool: tool ?? self.tool,
-            reason: reason ?? self.reason,
             agentId: agentId ?? self.agentId,
+            deltaText: deltaText ?? self.deltaText,
+            error: error ?? self.error,
+            errorKind: errorKind ?? self.errorKind,
+            errorMessage: errorMessage ?? self.errorMessage,
+            message: message ?? self.message,
+            replace: replace ?? self.replace,
+            response: response ?? self.response,
+            seq: seq ?? self.seq,
+            sessionKey: sessionKey ?? self.sessionKey,
+            spawnedBy: spawnedBy ?? self.spawnedBy,
+            state: state ?? self.state,
+            stopReason: stopReason ?? self.stopReason,
+            tools: tools ?? self.tools,
+            messageId: messageId ?? self.messageId,
+            messageSeq: messageSeq ?? self.messageSeq,
+            senderIsOwner: senderIsOwner ?? self.senderIsOwner,
+            data: data ?? self.data,
+            isHeartbeat: isHeartbeat ?? self.isHeartbeat,
+            stream: stream ?? self.stream,
+            reason: reason ?? self.reason,
             allowedDecisions: allowedDecisions ?? self.allowedDecisions,
             ask: ask ?? self.ask,
             command: command ?? self.command,
@@ -1303,6 +1347,70 @@ extension ADCheck {
     }
 }
 
+// MARK: - ADData
+struct ADData: Codable {
+    var args: JSONAny?
+    var isError: Bool?
+    var name: String?
+    var phase: String?
+    var result: JSONAny?
+    var toolCallId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case args = "args"
+        case isError = "isError"
+        case name = "name"
+        case phase = "phase"
+        case result = "result"
+        case toolCallId = "toolCallId"
+    }
+}
+
+// MARK: ADData convenience initializers and mutators
+
+extension ADData {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADData.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        args: JSONAny?? = nil,
+        isError: Bool?? = nil,
+        name: String?? = nil,
+        phase: String?? = nil,
+        result: JSONAny?? = nil,
+        toolCallId: String?? = nil
+    ) -> ADData {
+        return ADData(
+            args: args ?? self.args,
+            isError: isError ?? self.isError,
+            name: name ?? self.name,
+            phase: phase ?? self.phase,
+            result: result ?? self.result,
+            toolCallId: toolCallId ?? self.toolCallId
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
 // MARK: - ADGatewayPresenceEntry
 struct ADGatewayPresenceEntry: Codable {
     var clientId: String?
@@ -1403,6 +1511,128 @@ extension ADFeatures {
         return ADFeatures(
             events: events ?? self.events,
             methods: methods ?? self.methods
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+/// Assistant message. `content` is an array of typed blocks.
+///
+/// `content` is a plain string for `user` messages and an array of typed blocks
+/// (`{type:'text',text}` / `{type:'toolCall',id,name,arguments}`) otherwise. Assistant
+/// messages additionally carry `provider`, `model` and `usage` — the per-turn facts the
+/// `chat` frame never reports.
+// MARK: - ADMessage
+struct ADMessage: Codable {
+    var content: JSONAny?
+    var role: String?
+    var timestamp: Double?
+    var api: String?
+    var model: String?
+    var provider: String?
+    var usage: ADUsage?
+
+    enum CodingKeys: String, CodingKey {
+        case content = "content"
+        case role = "role"
+        case timestamp = "timestamp"
+        case api = "api"
+        case model = "model"
+        case provider = "provider"
+        case usage = "usage"
+    }
+}
+
+// MARK: ADMessage convenience initializers and mutators
+
+extension ADMessage {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADMessage.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        content: JSONAny?? = nil,
+        role: String?? = nil,
+        timestamp: Double?? = nil,
+        api: String?? = nil,
+        model: String?? = nil,
+        provider: String?? = nil,
+        usage: ADUsage?? = nil
+    ) -> ADMessage {
+        return ADMessage(
+            content: content ?? self.content,
+            role: role ?? self.role,
+            timestamp: timestamp ?? self.timestamp,
+            api: api ?? self.api,
+            model: model ?? self.model,
+            provider: provider ?? self.provider,
+            usage: usage ?? self.usage
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+// MARK: - ADUsage
+struct ADUsage: Codable {
+    var input: Double?
+    var output: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case input = "input"
+        case output = "output"
+    }
+}
+
+// MARK: ADUsage convenience initializers and mutators
+
+extension ADUsage {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADUsage.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        input: Double?? = nil,
+        output: Double?? = nil
+    ) -> ADUsage {
+        return ADUsage(
+            input: input ?? self.input,
+            output: output ?? self.output
         )
     }
 

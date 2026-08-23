@@ -9,6 +9,7 @@ import {
   resolveAgentCommand,
   daemonPostureArgs,
   buildPlist,
+  waitForDaemonPid,
 } from '../cli.js';
 import { allModulesOff } from '../modules/types.js';
 
@@ -362,5 +363,51 @@ describe('claude action wiring (parseAsync end-to-end)', () => {
     await program.parseAsync([...base, 'claude', '--no-env-args']);
     const opts = startSessionMock.mock.calls[0][0] as Record<string, unknown>;
     expect(opts.modules).toEqual({ ...allModulesOff(), adb: 'auto' });
+  });
+});
+
+describe('waitForDaemonPid — `daemon restart` reports what it measured', () => {
+  const noInfo = () => null;
+  const noPort = () => null;
+
+  it('returns null when nothing ever answers', async () => {
+    // The defect this replaced: `spawn()` resolving a pid was treated as proof
+    // the daemon started, so a child that died on EADDRINUSE was still
+    // announced as `Daemon restarted (PID …)` and the real reason sat unread
+    // in the daemon log.
+    const probe = vi.fn(async () => null);
+    const got = await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 400);
+    expect(got).toBeNull();
+    expect(probe).toHaveBeenCalled();
+  });
+
+  it('does NOT accept the daemon it was trying to replace', async () => {
+    // A port probe alone is satisfied by the OLD daemon when the stop silently
+    // failed — which would report a restart that never happened. The pid
+    // comparison is the whole point.
+    const probe = vi.fn(async () => ({ pid: 36318 }));
+    expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 400)).toBeNull();
+  });
+
+  it('accepts the spawned pid on the preferred port', async () => {
+    const probe = vi.fn(async (port: number) => (port === 9120 ? { pid: 4242 } : null));
+    expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 2000))
+      .toEqual({ pid: 4242, port: 9120 });
+  });
+
+  it('finds the daemon on a fallback port and reports THAT port', async () => {
+    // Landing elsewhere is a different outcome from not starting, and the
+    // caller says which one happened instead of calling both a failure.
+    const probe = vi.fn(async (port: number) => (port === 9121 ? { pid: 4242 } : null));
+    expect(await waitForDaemonPid(4242, 9120, probe, () => ({ httpPort: 9121 }), noPort, 2000))
+      .toEqual({ pid: 4242, port: 9121 });
+  });
+
+  it('waits rather than giving up on the first miss', async () => {
+    let calls = 0;
+    const probe = vi.fn(async () => (++calls < 3 ? null : { pid: 4242 }));
+    expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 5000))
+      .toEqual({ pid: 4242, port: 9120 });
+    expect(calls).toBeGreaterThanOrEqual(3);
   });
 });

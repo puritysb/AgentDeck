@@ -1,0 +1,53 @@
+{
+  "type": "event",
+  "event": "session.message",
+  "payload": {
+    "sessionKey": "agent:main:agentdeck-probe",
+    "agentId": "main",
+    "messageId": "c1a0450f",
+    "messageSeq": 28,
+    "sessionId": "c2406d0e-35fb-474f-b867-d63a7e2c8f0d",
+    "kind": "direct",
+    "modelProvider": "zai",
+    "model": "glm-5.2",
+    "status": "running",
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "call_49c5d5c018d5497ca4ca7666",
+          "name": "read",
+          "arguments": {
+            "path": "/Users/example/workspace/heartbeat-state.json"
+          },
+          "partialArgs": "{\"path\": \"/Users/example/workspace/heartbeat-state.json\"}"
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "zai",
+      "model": "glm-5.2",
+      "usage": {
+        "input": 33931,
+        "output": 23,
+        "totalTokens": 34082,
+        "cacheRead": 128,
+        "cacheWrite": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1787462367956,
+      "responseId": "202608231319287924a6ab98c3455f",
+      "__openclaw": {
+        "id": "c1a0450f",
+        "seq": 28
+      }
+    }
+  }
+}

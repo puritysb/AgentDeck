@@ -383,27 +383,57 @@ export interface ConnectChallengePayload {
   expiresAt?: number;
 }
 
+/**
+ * The Gateway's `chat` frame. Shape verified against the emitter itself
+ * (`openclaw/dist/server-chat-wgxNCdC3.js` — `emitChatDelta`,
+ * `flushBufferedChatDeltaIfNeeded`, `emitChatTerminal`), not assumed.
+ *
+ * **This frame is assistant-only.** It carries no user prompt, no tool array
+ * and no token accounting — `message.role` is always `'assistant'`. Fields
+ * named `prompt`, `tools`, `modelId`, `inputTokens` and `outputTokens` were
+ * declared here from an assumed shape and the Gateway has never sent any of
+ * them; reading them yielded `undefined` on every real frame, which is why no
+ * turn was ever opened for an OpenClaw-app conversation. The prompt, the tool
+ * calls and the per-turn model/usage all arrive on `session.message` /
+ * `session.tool` instead, and only after `sessions.subscribe`.
+ *
+ * Same failure mode, and the same fix, as `ExecApprovalRequestedPayload`
+ * below — see the note there.
+ */
 export interface ChatEventPayload {
   state: 'delta' | 'final' | 'aborted' | 'error';
   runId?: string;
   sessionKey?: string;
-  /** Incremental text chunk (delta state). */
-  delta?: string;
-  /** Full assembled response (final state). */
+  /** Agent that owns the session, when not the default one. */
+  agentId?: string;
+  /** Set when this run was spawned by another session (cron, subagent). */
+  spawnedBy?: string;
+  /** Monotonic per-run sequence number. */
+  seq?: number;
+  /** Incremental text chunk (delta state). Named `deltaText` on the wire. */
+  deltaText?: string;
+  /** True when `deltaText` replaces the buffer rather than appending. */
+  replace?: boolean;
+  /** Assistant message. `content` is an array of typed blocks. */
+  message?: {
+    role?: string;
+    content?: unknown;
+    timestamp?: number;
+  };
+  /** Failure sentence (error state), and the abort reason on `aborted`. */
+  errorMessage?: string;
+  /** Failure classification (error state), e.g. "unavailable". */
+  errorKind?: string;
+  /** Why the run stopped. */
+  stopReason?: string;
+  /** Full assembled response. Never sent by the Gateway — retained because
+   *  `openclaw-hook.ts` synthesizes it from `message` before building spans. */
   response?: string;
-  /** Tool invocations observed in this turn. */
+  /** Never sent by the Gateway. Retained for the same reason as `response`. */
   tools?: ChatToolInvocation[];
-  /** User prompt text, as echoed by Gateway on first delta. */
-  prompt?: string;
-  /** Error message (error state). */
+  /** Never sent by the Gateway; `openclaw-hook.ts` fills it from
+   *  `errorMessage`. */
   error?: string;
-  /** Model identifier used for this turn. */
-  modelId?: string;
-  /** Token accounting (final state). */
-  inputTokens?: number;
-  outputTokens?: number;
-  /** Session identifier when Gateway creates a new session mid-chat. */
-  newSessionId?: string;
 }
 
 export interface ChatToolInvocation {
@@ -446,25 +476,72 @@ export interface SessionsChangedPayload {
   reason?: string;
 }
 
+/**
+ * `session.message` — delivered only to connections that have called
+ * `sessions.subscribe` (or `sessions.messages.subscribe` for one key). The
+ * Gateway unions `sessionEventSubscribers` into the recipient set
+ * unconditionally, so the no-param `sessions.subscribe` delivers every
+ * session's messages.
+ *
+ * Shape from `openclaw/dist/server-session-events-JGRZmnwO.js`
+ * (`handleTranscriptUpdateBroadcast`). The message object is
+ * `projectChatDisplayMessage`'s output, which preserves the store's
+ * `{role, content, …}` verbatim — it is NOT a flat `{role, text}`.
+ */
 export interface SessionMessagePayload {
   key?: string;
   sessionKey?: string;
-  role?: string;
-  text?: string;
-  content?: string;
-  message?: unknown;
+  agentId?: string;
+  /** True when the message was sent by the session's owner. */
+  senderIsOwner?: boolean;
+  messageId?: string;
+  messageSeq?: number;
+  /**
+   * `content` is a plain string for `user` messages and an array of typed
+   * blocks (`{type:'text',text}` / `{type:'toolCall',id,name,arguments}`)
+   * otherwise. Assistant messages additionally carry `provider`, `model` and
+   * `usage` — the per-turn facts the `chat` frame never reports.
+   */
+  message?: {
+    role?: string;
+    content?: unknown;
+    provider?: string;
+    model?: string;
+    api?: string;
+    usage?: { input?: number; output?: number; [key: string]: unknown };
+    [key: string]: unknown;
+  };
   ts?: number;
   [key: string]: unknown;
 }
 
+/**
+ * `session.tool` — the per-tool stream, delivered to `sessionEventSubscribers`
+ * (minus the run's own tool recipients). Requires `sessions.subscribe`.
+ *
+ * Shape from `openclaw/dist/server-chat-wgxNCdC3.js` (`agentPayload` spread
+ * over the agent event): the tool facts live under `data`, not at the top
+ * level. A flat `{name, tool, input, output, status}` was assumed here
+ * previously and matches no frame the Gateway sends.
+ */
 export interface SessionToolPayload {
   key?: string;
   sessionKey?: string;
-  name?: string;
-  tool?: string;
-  input?: unknown;
-  output?: unknown;
-  status?: string;
+  agentId?: string;
+  spawnedBy?: string;
+  isHeartbeat?: boolean;
+  runId?: string;
+  stream?: string;
+  seq?: number;
+  data?: {
+    phase?: string;
+    name?: string;
+    toolCallId?: string;
+    args?: unknown;
+    result?: unknown;
+    isError?: boolean;
+    [key: string]: unknown;
+  };
   ts?: number;
   [key: string]: unknown;
 }

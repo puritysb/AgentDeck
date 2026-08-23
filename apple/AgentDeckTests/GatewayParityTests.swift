@@ -5,6 +5,13 @@
 // the same discriminator/shape invariants the Node adapter relies on. Both
 // test suites walk the same directory, so adding/removing a fixture on either
 // side surfaces immediately across languages.
+//
+// The fixtures are now CAPTURES off a live Gateway (`openclaw@2026.7.1-2`),
+// content-scrubbed, with every parsed field verbatim. They used to be composed
+// from the TypeScript type — and the type, the fixture and the assertion in
+// both suites had all been authored together from one guess, so three
+// mutually-consistent copies agreed with each other forever while matching no
+// frame OpenClaw sends. See that directory's README.
 
 import XCTest
 
@@ -111,42 +118,101 @@ final class GatewayParityTests: XCTestCase {
 
     // MARK: - Adapter-contract fixtures
 
-    func testChatFinalFixtureCarriesFieldsTheAdapterDependsOn() throws {
+    /// The `chat` frame is ASSISTANT-ONLY. Asserting the absence of the
+    /// assumed fields is the load-bearing part: `prompt` is what the Node
+    /// adapter believed it had, so no APME turn was ever opened for a
+    /// conversation started in the OpenClaw app.
+    func testChatFramesCarryNoPromptAndNoTools() throws {
         let fixtures = try loadFixtures()
-        guard let f = fixtures.first(where: { $0.name == "chat-final-with-tools.json" }) else {
-            XCTFail("chat-final-with-tools.json fixture not found")
-            return
+        for name in ["chat-delta.json", "chat-final.json"] {
+            guard let f = fixtures.first(where: { $0.name == name }) else {
+                XCTFail("\(name) fixture not found")
+                continue
+            }
+            XCTAssertEqual(f.json["event"] as? String, "chat", "[\(name)]")
+            let payload = f.json["payload"] as? [String: Any] ?? [:]
+            XCTAssertNil(payload["prompt"], "[\(name)] the chat frame carries no user prompt")
+            XCTAssertNil(payload["tools"], "[\(name)] the chat frame carries no tools array")
+            XCTAssertNil(payload["modelId"], "[\(name)] the chat frame names no model")
+            let message = payload["message"] as? [String: Any] ?? [:]
+            XCTAssertEqual(message["role"] as? String, "assistant", "[\(name)]")
         }
-        XCTAssertEqual(f.json["type"] as? String, "event")
-        XCTAssertEqual(f.json["event"] as? String, "chat")
-
-        let payload = f.json["payload"] as? [String: Any] ?? [:]
-        XCTAssertEqual(payload["state"] as? String, "final")
-        XCTAssertTrue(payload["response"] is String, "final payload must carry `response` string")
-        XCTAssertTrue(payload["tools"] is [Any], "final payload must carry `tools` array")
-        XCTAssertTrue(payload["modelId"] is String, "final payload must carry `modelId` string")
     }
 
-    func testExecApprovalRequestedFixtureExposesOptionsForTheUserPrompt() throws {
+    /// `session.message` is the only channel carrying the user's prompt, and
+    /// `content` is a plain string for user messages.
+    func testSessionMessageUserCarriesThePrompt() throws {
+        let fixtures = try loadFixtures()
+        guard let f = fixtures.first(where: { $0.name == "session-message-user.json" }) else {
+            XCTFail("session-message-user.json fixture not found")
+            return
+        }
+        let payload = f.json["payload"] as? [String: Any] ?? [:]
+        let message = payload["message"] as? [String: Any] ?? [:]
+        XCTAssertEqual(message["role"] as? String, "user")
+        XCTAssertTrue(message["content"] is String, "a user message's content is a plain string")
+        // No top-level `ts`: the frame's top level is the session snapshot, so
+        // an event stamped from it would carry delivery time, not event time.
+        XCTAssertNil(payload["ts"])
+        XCTAssertTrue(message["timestamp"] is NSNumber, "the message itself is stamped")
+    }
+
+    /// `session.tool` nests its tool facts under `data`. This is exactly what
+    /// `OpenClawAdapter.sessionToolBody` had been missing, which made
+    /// `isPlaceholderOnlySessionTool` drop every real tool row as noise.
+    func testSessionToolFactsLiveUnderData() throws {
+        let fixtures = try loadFixtures()
+        for name in ["session-tool-start.json", "session-tool-result.json"] {
+            guard let f = fixtures.first(where: { $0.name == name }) else {
+                XCTFail("\(name) fixture not found")
+                continue
+            }
+            let payload = f.json["payload"] as? [String: Any] ?? [:]
+            guard let data = payload["data"] as? [String: Any] else {
+                XCTFail("[\(name)] tool facts must be under `data`")
+                continue
+            }
+            XCTAssertTrue(data["name"] is String, "[\(name)] data.name")
+            XCTAssertTrue(data["phase"] is String, "[\(name)] data.phase")
+            // The assumed flat shape, asserted absent so nobody reads it back.
+            XCTAssertNil(payload["name"], "[\(name)] no top-level tool name")
+            XCTAssertNil(payload["input"], "[\(name)] no top-level input")
+            XCTAssertNil(payload["output"], "[\(name)] no top-level output")
+        }
+    }
+
+    /// The approval event nests everything renderable under `request`. This
+    /// fixture kept the flat `{tool, command, reason, options:[{key:"allow"}]}`
+    /// shape long after `openclaw-approval.ts` was rewritten to document it as
+    /// disproven — including the `"allow"` decision the Gateway rejects.
+    func testExecApprovalRequestedNestsUnderRequest() throws {
         let fixtures = try loadFixtures()
         guard let f = fixtures.first(where: { $0.name == "exec-approval-requested.json" }) else {
             XCTFail("exec-approval-requested.json fixture not found")
             return
         }
-        XCTAssertEqual(f.json["type"] as? String, "event")
         XCTAssertEqual(f.json["event"] as? String, "exec.approval.requested")
 
         let payload = f.json["payload"] as? [String: Any] ?? [:]
         XCTAssertTrue(payload["id"] is String, "approval.requested must carry `id` string")
+        XCTAssertNil(payload["command"], "the command is nested, never flat")
+        XCTAssertNil(payload["options"], "the Gateway sends allowedDecisions, not options")
 
-        guard let options = payload["options"] as? [[String: Any]] else {
-            XCTFail("approval.requested must carry `options` array")
+        guard let request = payload["request"] as? [String: Any] else {
+            XCTFail("approval.requested must nest everything under `request`")
             return
         }
-        XCTAssertGreaterThanOrEqual(options.count, 2, "approval options should include at least allow+deny")
-        for (idx, opt) in options.enumerated() {
-            XCTAssertTrue(opt["key"] is String, "options[\(idx)].key must be String")
-            XCTAssertTrue(opt["label"] is String, "options[\(idx)].label must be String")
+        XCTAssertTrue(request["command"] is String, "request.command is what the user must read")
+        guard let decisions = request["allowedDecisions"] as? [String] else {
+            XCTFail("request must carry `allowedDecisions`")
+            return
+        }
+        XCTAssertGreaterThanOrEqual(decisions.count, 2)
+        for d in decisions {
+            // `"allow"` is not in the Gateway's vocabulary — sending it comes
+            // back INVALID_REQUEST and the approval stays pending forever.
+            XCTAssertTrue(["allow-once", "allow-always", "deny"].contains(d),
+                          "unexpected decision: \(d)")
         }
     }
 

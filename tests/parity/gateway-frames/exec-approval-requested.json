@@ -2,14 +2,17 @@
   "type": "event",
   "event": "exec.approval.requested",
   "payload": {
-    "id": "appr_001",
-    "sessionKey": "sess_xyz",
-    "tool": "bash",
-    "command": "rm -rf /tmp/build",
-    "reason": "Clean build artifacts before rebuild",
-    "options": [
-      { "key": "allow", "label": "Allow" },
-      { "key": "deny", "label": "Deny" }
-    ]
+    "id": "aa2318a0-dfdb-40e2-8238-c09e7905f95e",
+    "createdAtMs": 1786940704797,
+    "expiresAtMs": 1786940764797,
+    "request": {
+      "command": "rg --files-with-matches TODO src",
+      "cwd": "/Users/example/project",
+      "ask": "on-miss",
+      "security": "full",
+      "warningText": "Reads every file under src.",
+      "allowedDecisions": ["allow-once", "allow-always", "deny"],
+      "sessionKey": "agent:main:eval-a03"
+    }
   }
 }

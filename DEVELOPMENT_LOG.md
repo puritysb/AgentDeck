@@ -2,6 +2,147 @@
 
 ---
 
+## 2026-08-23 — 구독한 적 없는 이벤트는 "Gateway 가 안 보내는 이벤트"와 구별되지 않는다
+
+### 발단
+
+앞 세션이 남긴 다음 과제는 "OpenClaw APME run 의 스코프 결함"이었다. run 이 세션이 아니라
+Gateway 접속 단위로 열려서 사용자 채팅 + cron + 동시 eval 이 한 run 에 섞인다는 것. 맞는
+지적이지만, **작동하는 결함이 아니었다.**
+
+### 실측 — 스코프를 고쳐봐야 나눌 게 없었다
+
+```
+OpenClaw run 총계                 665
+그 중 turn 이 0개인 run          657  (98.8%)
+APME 가 기록한 마지막 openclaw turn   2026-08-16
+```
+
+turn 이 남은 8개 run 의 프롬프트는 전부 `안녕하세요 안녕하세요` / `review the changes` —
+**AgentDeck 을 통해 타이핑한 테스트 문장뿐**이었다. OpenClaw 앱에서 시작한 대화는 단 한 턴도
+기록된 적이 없다. run 길이가 거의 전부 정확히 ~1800s 인 것도 여기서 나온다: 30분 orphan
+reaper 가 닫은 것이다.
+
+라이브로도 확인했다. run `ecb79751` 은 13:02:12 에 열렸고, 13:03:16 에 실제 cron 턴이
+타임라인 행(`SEVEN`)을 남겼는데, 같은 run 의 `turns=0, steps=0`, 13:32:14 에 orphan 으로
+reap. 타임라인에는 보이고 APME 에는 없다.
+
+### 원인 — 세 벌의 추측이 서로를 검증하고 있었다
+
+설치된 패키지(`openclaw@2026.7.1-2`)의 실제 발신부(`dist/server-chat-wgxNCdC3.js` 의
+`emitChatDelta` / `emitChatTerminal`)를 읽었다. `chat` 프레임은 **assistant 전용**이다:
+
+```
+{runId, sessionKey, agentId, spawnedBy, seq, state, deltaText, replace,
+ message:{role:"assistant", content:[…]}, errorMessage?, errorKind?, stopReason?}
+```
+
+사용자 프롬프트도, `tools` 배열도, `modelId` 도, 토큰도 없다. 그런데 우리
+`ChatEventPayload` 는 `prompt` / `tools` / `modelId` / `inputTokens` 를 선언하고 있었고,
+`chat-final-with-tools.json` 픽스처가 그 필드를 채워줬고, parity 테스트가 그걸 도로 읽었다.
+**픽스처·타입·단언을 한 번의 추측에서 같이 만들면 셋은 영원히 서로 동의한다.** 루프 안 어디도
+OpenClaw 와 대조된 적이 없었다.
+
+turn 은 `turn_start` 로만 열리고, `turn_start` 는 `send_prompt`(AgentDeck 타이핑)에서만
+나왔다. 그래서 OpenClaw 앱 턴은 `chat.final` → `turn_response` →
+`Collector.setTurnResponse` 의 `if (!turnId) return` 에서 조용히 버려졌다.
+
+### 빠져 있던 건 RPC 한 줄이었다
+
+`sessions.subscribe`. 파라미터 없고, 스코프는 `operator.read` — 이미 `sessions.list` 가
+쓰는 그 스코프다. Gateway 의 `session.message` / `session.tool` 수신자 집합은
+`sessionEventSubscribers ∪ sessionMessageSubscribers` 이고, **둘 다 아닌 접속은 아무것도
+받지 못한다.** `openclaw.ts:1385-1393` 의 두 핸들러와 `openclaw-hook.ts` 의 두 파서는
+작성된 이래 프레임을 단 한 번도 받아본 적이 없다. 구현 존재 ≠ 동작.
+
+라이브 Gateway 에 붙여 실측했다(전용 프로브, 실제 어댑터 그대로):
+
+```
+sessions.subscribe ok
+session.message → turn_start            ← 프롬프트. 다른 어떤 채널도 안 실어준다
+session.tool    → tool_call             ← args 포함
+session.tool    → tool_result           ← result 포함, 같은 toolCallId
+session.message → session_meta          ← provider/model/usage (턴별)
+session.message → session_meta + turn_response
+```
+
+두 파서의 **이전 코드**를 그 실제 프레임에 돌려보면 4개 전부 `[]` 를 돌려준다. 평평한
+`{role,text}` / `{name,status,input,output}` 은 Gateway 가 보낸 적 없는 모양이었다.
+
+### 그래서 스코프 결함이 그제서야 진짜 문제가 됐다
+
+데이터가 흐르기 시작하면 사용자 채팅 · cron · eval 이 전부 한 run 에 들어온다 — 앞 세션이
+경고한 바로 그 상태. 그래서 같은 라운드에서 같이 고쳤다. run 은 이제 세션 키 단위
+(`openclaw:<sessionKey>`, `projectName` 도 키 그 자체)로 lazy 하게 열리고, **idle-gap 타이머도
+키마다 하나씩** 이다 — 몇 분마다 도는 heartbeat 이 30분 전에 끝난 사용자 채팅의 타이머를 계속
+리셋하면 그 task 는 영원히 안 닫히고, 안 닫히는 task 는 평가되지 않는다.
+
+실측(데몬 재기동 후, 서로 다른 두 키):
+
+```
+openclaw:agent:main:agentdeck-probe    glm-5.2  turns=1  steps=3
+openclaw:agent:main:agentdeck-probe2   glm-5.2  turns=1  steps=1
+```
+
+trajectory 도 온전하다: `user_message → model(54/23 tok) → tool(read, success, input+output)
+→ model → assistant_message`. 2026-08-16 이후 첫 turn 이고, AgentDeck 으로 타이핑하지 않은
+대화에서 나온 **첫** turn 이다.
+
+### 켜고 나서야 보인 결함 두 개
+
+**1. OpenClaw 만 turn 을 안 닫고 있었다.** 닫힌 task 아래 열린 채 남은 turn 을 에이전트별로
+세어보니 `openclaw 3`, 나머지 전부 0. turn 은 다음 `turn_start` 나 run 종료에만 닫히는데,
+단일 턴 대화는 그 다음이 없다. `chat.final` 이 OpenClaw 의 stop 신호이므로 거기서
+`turn_end`(`end_source='stop'`, 취소는 `interrupted`)를 낸다. `turn_end` span 은 그동안
+`ingestSpan` 에서 no-op 이었고 발신자도 없었으므로 기능을 채워 넣어도 다른 어댑터에 영향이
+없다. 실측: `end_source=stop`, duration 9s, 툴 쓴 턴은 `tool_calls=1`.
+
+**2. `tasks.first_turn_index` 가 NULL 로 저장되고 있었다 — OpenClaw 만이 아니라 전반적으로.**
+닫힌 claude-code task 1080 개 중 294 개가 NULL. task 행은 turn_start 핸들러 *안에서*
+INSERT 되므로 turn 이 아직 없고, 실제 인덱스는 메모리에만 들어간다. `closeTask` 의
+`updateTask` 가 `lastTurnIndex` 만 쓰고 있었다. layer-2 judge 가 읽는 task rollup 이 이 두
+컬럼을 키로 삼는다. `reapAbandonedRun` 의 `COALESCE` 는 이 결함의 우회였지 수정이 아니었다.
+
+### trajectory→APME 는 붙이지 않는다 (재검토 결론)
+
+앞 세션이 보류했던 "trajectory 를 보강 축으로" 안건은 **닫는다.** 거기서 얻으려던 턴별
+provider / modelId / 토큰 usage 는 이제 `session.message`(assistant) 로 **1차 소스에서**
+들어오고 이미 `session_meta` 로 수집된다. 폴링되는 파일에서 같은 컬럼을 한 번 더 읽는 건 이미
+가진 값의 두 번째 출처를 만드는 일이고, 드리프트는 거기서 생긴다.
+
+### `agentdeck daemon restart` — 죽어도 성공이라고 말했다
+
+`spawn()` 이 pid 를 돌려준 것을 데몬이 떴다는 증거로 취급하고 있었다. 포트를 못 잡아 자식이
+1초 만에 죽어도 `Daemon restarted (PID …)` 를 출력했고, 진짜 이유는 아무도 안 읽는 데몬
+로그에 남았다. 고정 1500ms sleep 도 측정이 아니라 추측이었다(macOS 는 리스너 취소 후 ~14s
+NECP 예약을 잡는다).
+
+이제 `waitForDaemonExit` + `waitForPortBindable` 로 기다리고, 뜬 뒤 `/health` 의 `pid` 가
+방금 spawn 한 pid 와 **같은지** 확인한다. pid 대조가 핵심이다 — 포트만 찔러보면 *교체하려던
+그 데몬*이 응답해도 성공으로 읽힌다. 폴백 포트에 떴으면 실패가 아니라 그 사실을 말한다.
+
+실측: `Daemon restarted (PID 18227) on port 9120` → `/health` pid 18227 일치.
+
+### 픽스처는 이제 캡처본이다
+
+`tests/parity/gateway-frames/` 의 `chat` / `session.*` / `exec.approval.*` 는 전부 라이브
+Gateway 에서 뜬 실물이고, 내용만 스크럽했다(파서가 읽는 필드는 verbatim). parity 테스트는
+픽스처의 필드를 되읽는 대신 **실제 파서의 출력**을 단언한다. `exec-approval-requested.json`
+은 `shared/src/openclaw-approval.ts` 헤더가 "틀렸다"고 명시해 둔 평평한 모양을 그 수정 이후로도
+계속 들고 있었다 — Gateway 가 거부하는 `'allow'` 결정까지 포함해서. 같은 병이다.
+
+### 남긴 것
+
+- 옛 `openclaw-<uuid>` 행 657개는 **백필하지 않는다.** 세션 키가 애초에 기록된 적이 없어서
+  귀속을 지어내는 일이 된다.
+- timeline 의 tool 행은 여전히 transcript 피드가 소유한다. `session.tool` 은 APME 로만
+  보낸다 — 둘 다 타임라인에 쓰면 중복이 된다.
+- `chat_start` 행이 gateway 발 턴에서 아직 `자동 작업` 으로 뜬다. 이제 `session.message`
+  로 진짜 프롬프트를 알 수 있지만, `lastPrompt` 를 건드리면 `chatIsAutomated` 휴리스틱과
+  8시간 automated dedup 이 같이 움직여서 이번 범위에서 뺐다.
+
+---
+
 ## 2026-08-23 — transcript 피드는 켜져 있었지만, 한 줄도 나간 적이 없었다
 
 ### 문제

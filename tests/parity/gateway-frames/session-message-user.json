@@ -1,0 +1,24 @@
+{
+  "type": "event",
+  "event": "session.message",
+  "payload": {
+    "sessionKey": "agent:main:agentdeck-probe",
+    "agentId": "main",
+    "messageId": "ba98c9dc",
+    "messageSeq": 27,
+    "sessionId": "c2406d0e-35fb-474f-b867-d63a7e2c8f0d",
+    "kind": "direct",
+    "modelProvider": "zai",
+    "model": "glm-5.2",
+    "status": "done",
+    "message": {
+      "role": "user",
+      "content": "Read the file /Users/example/workspace/heartbeat-state.json using your read tool and reply with ONLY the number of top-level keys it has. Do not use shell commands.",
+      "timestamp": 1787462367373,
+      "__openclaw": {
+        "id": "ba98c9dc",
+        "seq": 27
+      }
+    }
+  }
+}

@@ -3863,6 +3863,42 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // `connectGatewayAdapter` open + `disconnectGatewayAdapter` close paths
   // can reference the same id.
   let openclawApmeSessionId: string | null = null;
+  /** Gateway session key → APME session id. One APME run per OpenClaw session
+   *  key, opened on that key's first event and closed when the link drops.
+   *
+   *  Before this map the run was scoped to the Gateway CONNECTION, so a user
+   *  chat, every cron job and every model-eval run (a suite opens a fresh key
+   *  per run) shared one run, one `model_id` and one idle-gap boundary. */
+  const openclawRunsBySessionKey = new Map<string, string>();
+
+  /** Open (or return) the APME run for one Gateway session key.
+   *
+   *  `projectName` is the key itself rather than the bare literal "openclaw":
+   *  that literal is what made an approval raised by a model-eval harness look
+   *  like it came from a conversation the user could not find. */
+  function openclawRunForSessionKey(sessionKey: string): string | null {
+    const existing = openclawRunsBySessionKey.get(sessionKey);
+    if (existing) return existing;
+    if (!apme) return null;
+    const sessionId = `openclaw:${sessionKey}`;
+    try {
+      apme.collector.openRun({
+        sessionId,
+        agentType: 'openclaw',
+        projectName: sessionKey,
+        // Seed with whatever the catalog last reported. Runs open lazily on a
+        // key's first event, so a run opened AFTER `model_info` fired would
+        // otherwise persist `model_id=NULL` — the defect that per-run
+        // `updateModel` was added to fix, reintroduced by the lazy open.
+        ...(gatewayModelName ? { modelId: gatewayModelName } : {}),
+      });
+    } catch (err) {
+      debug('APME', `openRun for OpenClaw ${sessionKey} failed: ${String(err)}`);
+      return null;
+    }
+    openclawRunsBySessionKey.set(sessionKey, sessionId);
+    return sessionId;
+  }
 
   function connectGatewayAdapter(): void {
     if (gatewayAdapter || gatewayConnecting) return;
@@ -3883,6 +3919,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           projectName: 'openclaw',
         });
         adapter.setApmeSession(openclawApmeSessionId, process.cwd());
+        adapter.setApmeRunResolver(openclawRunForSessionKey);
       } catch (err) {
         debug('APME', `openRun for OpenClaw failed: ${String(err)}`);
         openclawApmeSessionId = null;
@@ -3925,7 +3962,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             const model = evt.data?.model as string | undefined;
             if (model) {
               gatewayModelName = model;
-              if (apme && openclawApmeSessionId) apme.collector.updateModel(openclawApmeSessionId, model);
+              // `model_info` rides the connection, not a session key — the
+              // Gateway's `chat` frame reports no model, so this is the
+              // catalog default rather than the model that answered any one
+              // turn. Apply it to every open run as a FLOOR; a per-turn
+              // `session_meta` span (which does name the model that answered)
+              // overwrites it wherever one arrives.
+              if (apme) {
+                if (openclawApmeSessionId) apme.collector.updateModel(openclawApmeSessionId, model);
+                for (const sessionId of openclawRunsBySessionKey.values()) {
+                  apme.collector.updateModel(sessionId, model);
+                }
+              }
             }
           }
           break;
@@ -4053,11 +4101,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // APME: close the OpenClaw run so the collector fires its
     // session_end boundary and the run becomes eligible for the layer-2
     // judge queue.
-    if (apme && openclawApmeSessionId) {
-      try { apme.collector.closeRun(openclawApmeSessionId); }
-      catch (err) { debug('APME', `closeRun for OpenClaw failed: ${String(err)}`); }
-      openclawApmeSessionId = null;
+    if (apme) {
+      // Every per-session-key run, not just the connection-scoped one. A run
+      // left open is never finalized, and a task that never closes is never
+      // evaluated — the failure the abandoned-run reaper exists to clean up
+      // after, hours later and with `boundary_signal='orphaned'`.
+      for (const sessionId of openclawRunsBySessionKey.values()) {
+        try { apme.collector.closeRun(sessionId); }
+        catch (err) { debug('APME', `closeRun for OpenClaw ${sessionId} failed: ${String(err)}`); }
+      }
+      openclawRunsBySessionKey.clear();
+      if (openclawApmeSessionId) {
+        try { apme.collector.closeRun(openclawApmeSessionId); }
+        catch (err) { debug('APME', `closeRun for OpenClaw failed: ${String(err)}`); }
+      }
     }
+    openclawApmeSessionId = null;
     core.cachedGatewayConnected = false;
     core.cachedGatewayAuthStatus = 'gateway_not_found';
     core.cachedModelCatalog = null;

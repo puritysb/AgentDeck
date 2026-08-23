@@ -380,6 +380,39 @@ data class ExecApprovalRequestBody (
 /**
  * The Gateway answers `{ ok: true }`; `resolved` is kept for older builds.
  *
+ * The Gateway's `chat` frame. Shape verified against the emitter itself
+ * (`openclaw/dist/server-chat-wgxNCdC3.js` — `emitChatDelta`,
+ * `flushBufferedChatDeltaIfNeeded`, `emitChatTerminal`), not assumed.
+ *
+ * **This frame is assistant-only.** It carries no user prompt, no tool array and no token
+ * accounting — `message.role` is always `'assistant'`. Fields named `prompt`, `tools`,
+ * `modelId`, `inputTokens` and `outputTokens` were declared here from an assumed shape and
+ * the Gateway has never sent any of them; reading them yielded `undefined` on every real
+ * frame, which is why no turn was ever opened for an OpenClaw-app conversation. The prompt,
+ * the tool calls and the per-turn model/usage all arrive on `session.message` /
+ * `session.tool` instead, and only after `sessions.subscribe`.
+ *
+ * Same failure mode, and the same fix, as `ExecApprovalRequestedPayload` below — see the
+ * note there.
+ *
+ * `session.message` — delivered only to connections that have called `sessions.subscribe`
+ * (or `sessions.messages.subscribe` for one key). The Gateway unions
+ * `sessionEventSubscribers` into the recipient set unconditionally, so the no-param
+ * `sessions.subscribe` delivers every session's messages.
+ *
+ * Shape from `openclaw/dist/server-session-events-JGRZmnwO.js`
+ * (`handleTranscriptUpdateBroadcast`). The message object is `projectChatDisplayMessage`'s
+ * output, which preserves the store's `{role, content, …}` verbatim — it is NOT a flat
+ * `{role, text}`.
+ *
+ * `session.tool` — the per-tool stream, delivered to `sessionEventSubscribers` (minus the
+ * run's own tool recipients). Requires `sessions.subscribe`.
+ *
+ * Shape from `openclaw/dist/server-chat-wgxNCdC3.js` (`agentPayload` spread over the agent
+ * event): the tool facts live under `data`, not at the top level. A flat `{name, tool,
+ * input, output, status}` was assumed here previously and matches no frame the Gateway
+ * sends.
+ *
  * Same element shape as the requested event, minus the envelope.
  *
  * `exec.approval.requested` payload. The nested `request` is the real shape; the flat
@@ -427,64 +460,90 @@ data class ConnectResult (
     val nonce: String? = null,
 
     /**
-     * Incremental text chunk (delta state).
+     * Agent that owns the session, when not the default one.
      */
-    val delta: String? = null,
+    @Json(name = "agentId")
+    val agentID: String? = null,
 
     /**
-     * Error message (error state).
+     * Incremental text chunk (delta state). Named `deltaText` on the wire.
+     */
+    val deltaText: String? = null,
+
+    /**
+     * Never sent by the Gateway; `openclaw-hook.ts` fills it from `errorMessage`.
      */
     val error: String? = null,
 
     /**
-     * Token accounting (final state).
+     * Failure classification (error state), e.g. "unavailable".
      */
-    val inputTokens: Double? = null,
+    val errorKind: String? = null,
 
     /**
-     * Model identifier used for this turn.
+     * Failure sentence (error state), and the abort reason on `aborted`.
      */
-    @Json(name = "modelId")
-    val modelID: String? = null,
+    val errorMessage: String? = null,
 
     /**
-     * Session identifier when Gateway creates a new session mid-chat.
+     * Assistant message. `content` is an array of typed blocks.
+     *
+     * `content` is a plain string for `user` messages and an array of typed blocks
+     * (`{type:'text',text}` / `{type:'toolCall',id,name,arguments}`) otherwise. Assistant
+     * messages additionally carry `provider`, `model` and `usage` — the per-turn facts the
+     * `chat` frame never reports.
      */
-    @Json(name = "newSessionId")
-    val newSessionID: String? = null,
-
-    val outputTokens: Double? = null,
+    val message: Message? = null,
 
     /**
-     * User prompt text, as echoed by Gateway on first delta.
+     * True when `deltaText` replaces the buffer rather than appending.
      */
-    val prompt: String? = null,
+    val replace: Boolean? = null,
 
     /**
-     * Full assembled response (final state).
+     * Full assembled response. Never sent by the Gateway — retained because `openclaw-hook.ts`
+     * synthesizes it from `message` before building spans.
      */
     val response: String? = null,
 
+    /**
+     * Monotonic per-run sequence number.
+     */
+    val seq: Double? = null,
+
     val sessionKey: String? = null,
+
+    /**
+     * Set when this run was spawned by another session (cron, subagent).
+     */
+    val spawnedBy: String? = null,
+
     val state: State? = null,
 
     /**
-     * Tool invocations observed in this turn.
+     * Why the run stopped.
+     */
+    val stopReason: String? = null,
+
+    /**
+     * Never sent by the Gateway. Retained for the same reason as `response`.
      */
     val tools: List<ChatToolInvocation>? = null,
 
-    val content: String? = null,
-    val message: Any? = null,
-    val role: String? = null,
-    val text: String? = null,
-    val input: Any? = null,
-    val name: String? = null,
-    val output: Any? = null,
-    val tool: String? = null,
-    val reason: String? = null,
+    @Json(name = "messageId")
+    val messageID: String? = null,
 
-    @Json(name = "agentId")
-    val agentID: String? = null,
+    val messageSeq: Double? = null,
+
+    /**
+     * True when the message was sent by the session's owner.
+     */
+    val senderIsOwner: Boolean? = null,
+
+    val data: Data? = null,
+    val isHeartbeat: Boolean? = null,
+    val stream: String? = null,
+    val reason: String? = null,
 
     /**
      * Decisions this specific request permits (policy may drop allow-always).
@@ -576,6 +635,17 @@ data class Check (
     val status: String? = null
 )
 
+data class Data (
+    val args: Any? = null,
+    val isError: Boolean? = null,
+    val name: String? = null,
+    val phase: String? = null,
+    val result: Any? = null,
+
+    @Json(name = "toolCallId")
+    val toolCallID: String? = null
+)
+
 data class GatewayPresenceEntry (
     @Json(name = "clientId")
     val clientID: String? = null,
@@ -593,6 +663,29 @@ data class GatewayPresenceEntry (
 data class Features (
     val events: List<String>,
     val methods: List<String>
+)
+
+/**
+ * Assistant message. `content` is an array of typed blocks.
+ *
+ * `content` is a plain string for `user` messages and an array of typed blocks
+ * (`{type:'text',text}` / `{type:'toolCall',id,name,arguments}`) otherwise. Assistant
+ * messages additionally carry `provider`, `model` and `usage` — the per-turn facts the
+ * `chat` frame never reports.
+ */
+data class Message (
+    val content: Any? = null,
+    val role: String? = null,
+    val timestamp: Double? = null,
+    val api: String? = null,
+    val model: String? = null,
+    val provider: String? = null,
+    val usage: Usage? = null
+)
+
+data class Usage (
+    val input: Double? = null,
+    val output: Double? = null
 )
 
 data class OpenClawModel (

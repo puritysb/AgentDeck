@@ -100,11 +100,17 @@ describe('OpenClaw chat error → APME lifecycle', () => {
     ingestSpan.mockClear();
     const adapter = new OpenClawAdapter({ autoReconnect: false });
     adapter.setApmeSession('openclaw-gateway', '/tmp/proj');
-    const idleTimer = () => (adapter as unknown as { apmeIdleTimer: NodeJS.Timeout | null }).apmeIdleTimer;
+    // No run resolver installed: a frame's session key falls back to the
+    // connection-scoped run, which is the pre-split behaviour and must keep
+    // working rather than dropping the record.
+    const fallbackTimer = () =>
+      (adapter as unknown as { apmeFallbackIdleTimer: NodeJS.Timeout | null }).apmeFallbackIdleTimer;
+    const clear = () =>
+      (adapter as unknown as { clearIdleGapTimer(k?: string | null): void }).clearIdleGapTimer();
 
     // `chat.send` clears the timer; that is the state a failing turn starts in.
-    (adapter as unknown as { clearIdleGapTimer(): void }).clearIdleGapTimer();
-    expect(idleTimer()).toBeNull();
+    clear();
+    expect(fallbackTimer()).toBeNull();
 
     gw(adapter, 'chat', { state: 'delta', runId: 'r1', sessionKey: 's1' });
     gw(adapter, 'chat', errorFrame());
@@ -116,8 +122,51 @@ describe('OpenClaw chat error → APME lifecycle', () => {
     // The failure must not close the task — the agent may retry the prompt.
     expect(spans.some((s) => s.kind === 'task_boundary')).toBe(false);
     // …but the timer that eventually WILL close it has to be running again.
-    expect(idleTimer()).not.toBeNull();
+    expect(fallbackTimer()).not.toBeNull();
 
-    (adapter as unknown as { clearIdleGapTimer(): void }).clearIdleGapTimer();
+    clear();
+  });
+
+  it('scopes the run — and the idle-gap timer — per Gateway session key', () => {
+    ingestSpan.mockClear();
+    const adapter = new OpenClawAdapter({ autoReconnect: false });
+    adapter.setApmeSession('openclaw-gateway', '/tmp/proj');
+    const opened: string[] = [];
+    adapter.setApmeRunResolver((key) => { opened.push(key); return `openclaw:${key}`; });
+
+    // A user chat and a cron job, interleaved the way one Gateway connection
+    // actually sees them.
+    gw(adapter, 'session.message', {
+      sessionKey: 'agent:main:main',
+      message: { role: 'user', content: 'why is the build red?', timestamp: 1000 },
+    });
+    gw(adapter, 'session.message', {
+      sessionKey: 'agent:main:cron:hb',
+      message: { role: 'user', content: 'heartbeat', timestamp: 1001 },
+    });
+
+    expect(opened).toEqual(['agent:main:main', 'agent:main:cron:hb']);
+    // Each span must be ingested against ITS OWN run, or the two conversations
+    // land in one trajectory under one model id.
+    const targets = ingestSpan.mock.calls.map((c) => c[0] as string);
+    expect(targets).toEqual(['openclaw:agent:main:main', 'openclaw:agent:main:cron:hb']);
+    expect(targets).not.toContain('openclaw-gateway');
+
+    // The cron turn's boundary timer must not be the chat's. A heartbeat
+    // firing every few minutes would otherwise keep resetting the user chat's
+    // idle gap, and a task that never closes is never evaluated.
+    const timers = (adapter as unknown as {
+      apmeBySessionKey: Map<string, { idleTimer: NodeJS.Timeout | null }>;
+    }).apmeBySessionKey;
+    expect([...timers.keys()]).toEqual(['agent:main:main', 'agent:main:cron:hb']);
+
+    gw(adapter, 'session.message', {
+      sessionKey: 'agent:main:cron:hb',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }], timestamp: 1002 },
+    });
+    expect(timers.get('agent:main:cron:hb')!.idleTimer).not.toBeNull();
+    expect(timers.get('agent:main:main')!.idleTimer).toBeNull();
+
+    (adapter as unknown as { clearAllIdleGapTimers(): void }).clearAllIdleGapTimers();
   });
 });
