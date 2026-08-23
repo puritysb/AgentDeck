@@ -174,21 +174,23 @@ export type OnTaskMilestone = (args: {
  * "\n" would invent a Stop loss for an agent that has no Stop hook at all,
  * strand an empty turn, and shift every later `turn_index`.
  *
- * So compare trimmed, and tolerate truncation the way `askEchoMatches` does for
- * device echoes: a prefix counts only when the shorter side is actually AT the
- * cap, so two genuinely different prompts that merely share an opening line
- * still read as different.
+ * Comparing TRIMMED is the whole fix, and deliberately all of it. A first pass
+ * here also allowed a prefix match when the shorter side sat at the Gateway's
+ * 8,000-character cap — that branch could never fire: both operands reach this
+ * function through the caller's own `slice(0, 8_000)`, so "the shorter one is
+ * at 8,000" forces both to be exactly 8,000 characters, and two equal-length
+ * strings where one is a prefix of the other are identical, which the equality
+ * check above already answered. Reintroducing truncation tolerance means
+ * comparing BEFORE that slice, not adding a branch after it.
+ *
+ * Known and NOT closed by this: because the caller slices first, two genuinely
+ * different prompts that share their first 8,000 characters compare equal and
+ * collapse into one turn — an eval harness sending a long fixed preamble with a
+ * differing tail is exactly that shape. That predates this comparison and is
+ * fixed by keying on a hash of the unsliced prompt, not here.
  */
-/** The Gateway caps a projected message at this many characters. */
-const PROMPT_ECHO_TRUNCATION_LEN = 8_000;
-
 function samePromptEcho(original: string, echo: string): boolean {
-  const a = original.trim();
-  const b = echo.trim();
-  if (a === b) return true;
-  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-  if (short.length < PROMPT_ECHO_TRUNCATION_LEN) return false;
-  return long.startsWith(short);
+  return original.trim() === echo.trim();
 }
 
 export class ApmeCollector {
@@ -202,8 +204,10 @@ export class ApmeCollector {
   /** Running cost total for producers that report PER-MESSAGE cost.
    *  Separate from `sessionToUsage` because `updateUsage` writes the cost
    *  column absolutely and would otherwise stamp one message's cost as the
-   *  run's. */
-  private readonly sessionToCostTotal = new Map<string, number>();
+   *  run's. `seen` keeps a reported ZERO distinct from nothing reported —
+   *  glm-5.2 answers `usage.cost.total = 0` on every message, so folding the
+   *  two would record "free" as "unknown" for a whole class of run. */
+  private readonly sessionToCostTotal = new Map<string, { total: number; seen: boolean }>();
 
   /** Optional listener fired after `closeTask` persists the row. The runner
    *  wires this to enqueue a task-level judge call. */
@@ -1174,14 +1178,27 @@ export class ApmeCollector {
     delta: { inputTokens: number; outputTokens: number; costUsd: number | null },
   ): void {
     if (!this.store.enabled) return;
+    // ONE guard for both accumulators. `updateUsage` drops everything when the
+    // session has no open run, so advancing the cost total before that check
+    // let cost count messages the token total did not: a span arriving before
+    // the run opened, then one after, recorded 7 tokens at $10.50. Two
+    // accumulators with different failure modes is the same defect shape as a
+    // guard cleared only by a `defer` it shares a failure mode with.
+    if (!this.sessionToRun.get(sessionId)) return;
     const prev = this.sessionToUsage.get(sessionId) ?? { in: 0, out: 0 };
-    const costTotal = (this.sessionToCostTotal.get(sessionId) ?? 0)
-      + (typeof delta.costUsd === 'number' ? delta.costUsd : 0);
-    this.sessionToCostTotal.set(sessionId, costTotal);
+    const prevCost = this.sessionToCostTotal.get(sessionId) ?? { total: 0, seen: false };
+    const reported = typeof delta.costUsd === 'number';
+    const cost = { total: prevCost.total + (reported ? delta.costUsd as number : 0),
+                   seen: prevCost.seen || reported };
+    this.sessionToCostTotal.set(sessionId, cost);
     this.updateUsage(sessionId, {
+      // The clamp is deliberate, not defensive: `updateUsage` derives its
+      // ModelEvent as `max(0, cur - prev)`, so the series handed to it must be
+      // monotonic. No producer here reports a negative correction; if one ever
+      // does, it needs its own path rather than silently shrinking the total.
       inputTokens: prev.in + Math.max(0, delta.inputTokens),
       outputTokens: prev.out + Math.max(0, delta.outputTokens),
-      estimatedCostUsd: costTotal > 0 ? costTotal : null,
+      estimatedCostUsd: cost.seen ? cost.total : null,
     } as unknown as UsageSnapshot);
   }
 

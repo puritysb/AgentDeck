@@ -417,4 +417,43 @@ describe('ApmeCollector', () => {
     expect(turns.length).toBe(1);
     expect(turns[0].end_source).toBeFalsy();
   });
+
+  it('never lets cost count messages the token total did not', async () => {
+    // The two accumulators must share ONE guard. `updateUsage` drops everything
+    // when the session has no open run; advancing the cost total before that
+    // check recorded 7 input tokens at $10.50 — a 21x overstatement, and the
+    // run row's cost is what the Pareto tab and cost reporting read.
+    const collector = new ApmeCollector(store);
+    const meta = (input: number, cost: number) => span('session_meta', {
+      'gen_ai.request.model': 'm',
+      'agentdeck.usage.input_tokens': input,
+      'agentdeck.usage.output_tokens': 0,
+      'agentdeck.usage.cost_usd': cost,
+    });
+    // Two costly messages arrive before the run exists — excluded from BOTH.
+    collector.ingestSpan('s4', meta(1000, 5.0));
+    collector.ingestSpan('s4', meta(1000, 5.0));
+    const runId = collector.openRun({ sessionId: 's4', agentType: 'openclaw', projectName: 'p' });
+    collector.ingestSpan('s4', span('turn_start', { 'agentdeck.prompt_text': 'go' }));
+    collector.ingestSpan('s4', meta(7, 0.5));
+    const run = store.getRun(runId!);
+    expect(run?.inputTokens).toBe(7);
+    expect(run?.costUsd).toBeCloseTo(0.5, 6);
+  });
+
+  it('records a reported cost of zero as zero, not as unknown', async () => {
+    // glm-5.2 answers `usage.cost.total = 0` on every assistant message, so
+    // folding a reported zero into null would record a whole class of run as
+    // "cost unknown" when the producer actually said "free".
+    const collector = new ApmeCollector(store);
+    const runId = collector.openRun({ sessionId: 's5', agentType: 'openclaw', projectName: 'p' });
+    collector.ingestSpan('s5', span('turn_start', { 'agentdeck.prompt_text': 'go' }));
+    collector.ingestSpan('s5', span('session_meta', {
+      'gen_ai.request.model': 'm',
+      'agentdeck.usage.input_tokens': 10,
+      'agentdeck.usage.output_tokens': 1,
+      'agentdeck.usage.cost_usd': 0,
+    }));
+    expect(store.getRun(runId!)?.costUsd).toBe(0);
+  });
 });

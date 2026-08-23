@@ -949,12 +949,13 @@ daemon
     // was still legitimately waiting, print "restart FAILED", and exit 1 — on
     // exactly the contended case this code exists for. The user's next move is
     // to run `daemon restart` again, which kills the daemon that just came up.
-    const portFree = await waitForPortBindable(preferredPort.port, PREFERRED_PORT_RECLAIM_MS);
+    // The parent deliberately does NOT wait for the port to become bindable.
+    // Its probe opens a listener and closes it again, so it proves nothing the
+    // child does not re-prove — and the child does it better, because it KEEPS
+    // the port on success. Waiting here only serialized two reclaim waits back
+    // to back, making a contended restart twice as slow for no information.
     if (!exited) {
       log(`Warning: the daemon on port ${runningPort} was still answering when the stop budget ran out.`);
-    }
-    if (!portFree) {
-      log(`Port ${preferredPort.port} is still held; the new daemon will wait for it and fall back if it never frees.`);
     }
 
     const scriptPath = fileURLToPath(import.meta.url);
@@ -978,6 +979,10 @@ daemon
       stdio: ['ignore', rOut, rErr],
       windowsHide: true,
     });
+    // Liveness is what the wait below actually keys on. `detached` + `unref`
+    // still delivers 'exit' to this process for as long as it is running.
+    let childAlive = true;
+    child.once('exit', () => { childAlive = false; });
     child.unref();
 
     // `spawn` resolving a pid means the OS forked a process — it is not
@@ -988,11 +993,8 @@ daemon
     // daemon log. Verify by asking the daemon who it is.
     const spawnedPid = child.pid;
     const started = spawnedPid !== undefined
-      // Must outlast the child's own reclaim wait plus its fallback bind and
-      // `daemon.json` write — the default 20s is exactly the reclaim wait, so a
-      // child that used all of it was reported failed the moment it succeeded.
       ? await waitForDaemonPid(spawnedPid, preferredPort.port, probeHealth, readDaemonInfo, findDaemonPort,
-          PREFERRED_PORT_RECLAIM_MS + 10_000)
+          PREFERRED_PORT_RECLAIM_MS, () => childAlive)
       : null;
 
     if (!started) {
@@ -1029,8 +1031,27 @@ export async function waitForDaemonPid(
   readDaemonInfo: () => { httpPort?: number; port?: number } | null,
   findDaemonPort: () => number | null,
   timeoutMs = 20_000,
+  /**
+   * Is the spawned child still running?
+   *
+   * A derived timeout is still a guess, and this one was wrong twice: the
+   * budget has to cover not just the child's port-reclaim wait but its
+   * incumbent negotiation first — a Swift daemon standing down costs up to
+   * `EXIT_WAIT_MS + BINDABLE_WAIT_MS` before `startDaemon` is even reached, so
+   * the whole worst case runs past a minute. Giving up early prints
+   * "restart FAILED" while the daemon is coming up, and the user's natural
+   * retry then kills it.
+   *
+   * "The child is still running" is a real condition rather than a derived one,
+   * so `timeoutMs` becomes a floor: while the child is alive we keep waiting,
+   * and only a child that EXITED without a matching pid is a failure. The
+   * ceiling still bounds a child that hangs forever.
+   */
+  isChildAlive?: () => boolean,
+  ceilingMs = 180_000,
 ): Promise<{ pid: number; port: number } | null> {
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
   for (;;) {
     const candidates = new Set<number>([preferredPort]);
     const info = readDaemonInfo();
@@ -1042,7 +1063,9 @@ export async function waitForDaemonPid(
       const health = await probeHealth(port);
       if (health?.pid === pid) return { pid, port };
     }
-    if (Date.now() >= deadline) return null;
+    const now = Date.now();
+    if (now >= startedAt + ceilingMs) return null;
+    if (now >= deadline && !(isChildAlive?.() ?? false)) return null;
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 }

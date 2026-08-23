@@ -389,6 +389,28 @@ describe('waitForDaemonPid — `daemon restart` reports what it measured', () =>
     expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 400)).toBeNull();
   });
 
+  it('keeps waiting past the floor while the child is still alive', async () => {
+    // The budget used to be a derived constant, and it was wrong twice: the
+    // child can spend `EXIT_WAIT_MS + BINDABLE_WAIT_MS` negotiating a Swift
+    // incumbent's stand-down BEFORE it even reaches its own port-reclaim wait,
+    // so the whole worst case runs past a minute. Giving up early prints
+    // "restart FAILED" while the daemon is coming up, and the natural retry
+    // kills it. Liveness is a real condition; the timeout is only a floor.
+    let answers = false;
+    setTimeout(() => { answers = true; }, 600);
+    const probe = vi.fn(async (port: number) => (port === 9120 && answers ? { pid: 4242 } : null));
+    const got = await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 200, () => true);
+    expect(got).toEqual({ pid: 4242, port: 9120 });
+  });
+
+  it('gives up once the child has EXITED without ever answering', async () => {
+    // The other half of the same rule: a floor that never expires would hang
+    // on a child that died on startup, which is the failure this whole
+    // verification exists to surface.
+    const probe = vi.fn(async () => null);
+    expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 200, () => false)).toBeNull();
+  });
+
   it('accepts the spawned pid on the preferred port', async () => {
     const probe = vi.fn(async (port: number) => (port === 9120 ? { pid: 4242 } : null));
     expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 2000))
