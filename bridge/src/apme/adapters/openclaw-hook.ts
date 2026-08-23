@@ -325,7 +325,16 @@ export function openclawSessionToolToSpans(
   const isResult = phase === 'result' || phase === 'end' || phase === 'error';
   const kind: TelemetrySpan['kind'] = isResult ? 'tool_result' : 'tool_call';
   const ts = typeof payload.ts === 'number' ? payload.ts : Date.now();
-  const status = isResult ? (data.isError === true ? 'error' : 'success') : 'running';
+  // `phase: 'error'` is itself the failure signal and does not have to be
+  // accompanied by `isError`. Deriving status from `isError` alone recorded
+  // such a frame as a SUCCESSFUL tool result — a silent wrong answer that also
+  // feeds the tool tally the APME judge scores. The Swift adapter classifies
+  // the same three terminal phases identically; the two daemons take turns
+  // owning `timeline.json`, so a disagreement here rewrites history by whoever
+  // held the port.
+  const status = isResult
+    ? (data.isError === true || phase === 'error' ? 'error' : 'success')
+    : 'running';
   const attrs: TelemetryAttributes = {
     'agentdeck.agent_type': ctx.agentType,
     ...(ctx.cwd ? { 'agentdeck.cwd': ctx.cwd } : {}),

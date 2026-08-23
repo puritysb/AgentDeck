@@ -1676,14 +1676,37 @@ actor OpenClawAdapter {
         }
     }
 
+    /// Flatten a `session.message` `content` into display text.
+    ///
+    /// **`content` is a String for a user message and an ARRAY of typed blocks
+    /// for anything else** (`{type:"text",text}`, `{type:"toolCall",…}`), so a
+    /// lone `as? String` resolves user messages and silently yields nothing for
+    /// every assistant one. Mirrors `messageText` in
+    /// `bridge/src/apme/adapters/openclaw-hook.ts`.
+    static func sessionMessageText(_ content: Any?) -> String {
+        if let s = content as? String { return s }
+        guard let blocks = content as? [[String: Any]] else { return "" }
+        return blocks
+            .filter { $0["type"] as? String == "text" }
+            .compactMap { $0["text"] as? String }
+            .joined()
+    }
+
     private func emitTimelineEntry(fromSessionMessage payload: [String: Any]) {
-        let text = payload["text"] as? String
-            ?? payload["content"] as? String
-            ?? (payload["message"] as? [String: Any])?["text"] as? String
-            ?? (payload["message"] as? [String: Any])?["content"] as? String
-            ?? ""
+        // The frame's top level is the session snapshot the Gateway spreads over
+        // every `session.*` event — the message itself is nested. Reading
+        // `payload["role"]`/`["text"]`/`["content"]` therefore never resolved
+        // anything: `role` fell back to the literal "message" so the
+        // `model_response` branch was unreachable, and the only text that ever
+        // surfaced was a user message's plain-string `content`. Every assistant
+        // frame flattened to "" and was dropped by the guard below, which read
+        // as noise suppression while discarding 100% of real replies — the same
+        // shape as the `session.tool` body bug this file fixed one function up.
+        let message = payload["message"] as? [String: Any]
+        var text = Self.sessionMessageText(message?["content"])
+        if text.isEmpty { text = message?["text"] as? String ?? "" }
         guard !text.isEmpty else { return }
-        let role = payload["role"] as? String ?? "message"
+        let role = (message?["role"] as? String)?.lowercased() ?? "message"
         // Mirror the chat-event path: cap `detail` (cron/instruction prompts can be
         // multi-KB blobs of shell-verb text) and flag scheduled turns `automated`
         // so the dashboard can dim/collapse the raw prompt instead of surfacing it.
@@ -1691,8 +1714,12 @@ actor OpenClawAdapter {
             && text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("[cron:")
         let raw = isCron ? DaemonTimelineStore.summarizeOpenClawCronPrompt(text) : String(text.prefix(200))
         let detail = isCron ? nil : String(text.prefix(1000))
+        // The message carries its own stamp; the frame does not (`payload["ts"]`
+        // is absent — the parity fixture asserts it). Stamping from the frame
+        // would date every row at DELIVERY time instead of when it happened.
+        let stampedMs = (message?["timestamp"] as? NSNumber)?.doubleValue
         let entry = DaemonTimelineEntry(
-            ts: Self.payloadTimestamp(payload),
+            ts: stampedMs ?? Self.payloadTimestamp(payload),
             type: role == "assistant" ? "model_response" : "model_call",
             raw: raw,
             detail: detail,
@@ -1763,10 +1790,19 @@ actor OpenClawAdapter {
     static func resolveToolStatus(_ payload: [String: Any]) -> String? {
         let nested = sessionToolBody(payload)
         if let phase = firstJSONValue([nested?["phase"]]) as? String, !phase.isEmpty {
-            if phase == "result" || phase == "end" {
-                return (nested?["isError"] as? Bool) == true ? "error" : "success"
+            // `error` is a TERMINAL phase and must be classified with the other
+            // two, not returned verbatim. Node treats all three as terminal
+            // (`openclaw-hook.ts`), so leaving it out here made the identical
+            // frame read `error` on this daemon and `success` on the other —
+            // and the two take turns owning `timeline.json`.
+            if phase == "result" || phase == "end" || phase == "error" {
+                return (nested?["isError"] as? Bool) == true || phase == "error"
+                    ? "error" : "success"
             }
-            return phase == "start" ? "running" : phase
+            // Any other phase is still running. Never return the wire word
+            // itself: `status` is a rendered field with its own vocabulary, and
+            // a future Gateway phase would leak into the UI verbatim.
+            return "running"
         }
         return firstJSONValue([
             payload["status"], payload["state"], nested?["status"],

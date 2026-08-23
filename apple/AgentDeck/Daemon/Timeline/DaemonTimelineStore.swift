@@ -213,10 +213,13 @@ actor DaemonTimelineStore {
         // fan-out sessions produce the most tool_exec rows, so the dispatch row
         // was always the first casualty and the completions read as unattached.
         //
-        // OpenClaw transcript rows are the second exception. This rule targets
-        // the observed-agent hook firehose; OpenClaw's tool rows are read from
-        // its own transcript because the Gateway stream carries no tool calls
-        // at all, and they are bounded at the producer. Shedding them first did
+        // OpenClaw tool rows are the second exception. This rule targets the
+        // observed-agent hook firehose; OpenClaw's are bounded at the producer.
+        // Their SOURCE differs per daemon and this comment used to state only
+        // the Node one: Node reads them from the transcript feed (routing
+        // `session.tool` there too would double-emit), while this daemon has no
+        // transcript feed — it reaches `~/.openclaw` only through a
+        // security-scoped bookmark — so here `session.tool` IS the source. Shedding them first did
         // not thin them but deleted them: on a full buffer an OpenClaw row is
         // typically the only plain `tool_exec` present, so it evicted ITSELF on
         // insertion (measured 2026-08-23). Mirrored from the Node rule because

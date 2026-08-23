@@ -77,6 +77,19 @@ describe('OpenClaw session.tool / session.message → spans', () => {
     expect((spans[0].attributes['agentdeck.raw_payload'] as Record<string, unknown>).status).toBe('error');
   });
 
+  it("treats phase 'error' as a failure even when isError is absent", () => {
+    // The Gateway can signal failure with the phase alone. Deriving status from
+    // `isError` only recorded such a frame as a SUCCESSFUL tool result — a
+    // silent wrong answer that also feeds the tool tally the APME judge scores,
+    // and it disagreed with the Swift adapter, which classified the same frame
+    // as an error. The two daemons take turns owning `timeline.json`.
+    const spans = openclawSessionToolToSpans(ctx, {
+      data: { phase: 'error', name: 'Bash', result: 'boom' },
+    });
+    expect(spans[0].kind).toBe('tool_result');
+    expect((spans[0].attributes['agentdeck.raw_payload'] as Record<string, unknown>).status).toBe('error');
+  });
+
   it('maps a user message to turn_start — the prompt no other channel carries', () => {
     const u = openclawSessionMessageToSpans(ctx, {
       sessionKey: 'agent:main:main',
