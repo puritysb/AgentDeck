@@ -47,6 +47,27 @@ export function unpricedLast(costPerQuality: number | null | undefined): number 
   return costPerQuality ? costPerQuality : Infinity;
 }
 
+/**
+ * Three-way, never subtraction — CLAUDE.md states the rule and this is the
+ * first time the comparison has a named home to honour it in.
+ *
+ * Subtracting is not merely stylistic here: every unpriced key maps to
+ * `Infinity`, so `a - b` is `Infinity - Infinity` = **NaN** for any pair of
+ * them. A NaN comparator leaves the sort order implementation-defined, so with
+ * enough unpriced candidates the top-3 slice is an arbitrary permutation rather
+ * than a ranking. Equal keys now compare equal, which is what "we cannot tell
+ * these apart" should produce.
+ */
+export function byCostPerQuality(
+  a: number | null | undefined,
+  b: number | null | undefined,
+): number {
+  const av = unpricedLast(a);
+  const bv = unpricedLast(b);
+  if (av === bv) return 0;
+  return av < bv ? -1 : 1;
+}
+
 export class ApmeRecommender {
   constructor(private readonly store: ApmeStore) {}
 
@@ -109,7 +130,7 @@ export class ApmeRecommender {
       .filter((r) => r.runs >= 3 && (r.avgOverall ?? 0) > 0)
       .sort((a, b) => {
         if (input.budgetUsd !== undefined && input.budgetUsd < 5) {
-          return unpricedLast(a.costPerQuality) - unpricedLast(b.costPerQuality);
+          return byCostPerQuality(a.costPerQuality, b.costPerQuality);
         }
         return (b.avgOverall ?? 0) - (a.avgOverall ?? 0);
       })
