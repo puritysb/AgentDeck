@@ -936,24 +936,18 @@ daemon
     }
 
     await stopDaemon(runningPort);
-    // Two conditions, not a fixed sleep. `waitForDaemonExit` proves the old
-    // daemon stopped ANSWERING; between that and "the port is free" sits the
-    // socket close, plus a NECP reservation macOS holds for ~14s after a
-    // listener is cancelled. The 1500ms guess that used to sit here covered
-    // neither reliably — it was simply longer than the common case.
+    // Wait for the old daemon to stop ANSWERING — a real condition, not the
+    // 1500ms guess that used to sit here and merely outlasted the common case.
+    //
+    // The parent deliberately does NOT also wait for the port to become
+    // bindable. Its probe opens a listener and closes it again, so it proves
+    // nothing the child does not re-prove seconds later — and the child does it
+    // better, because it KEEPS the port on success. Waiting here serialized two
+    // port-reclaim waits back to back (macOS holds a NECP reservation for ~14s
+    // after a listener is cancelled) and made a contended restart twice as slow
+    // for no extra information. Whether the child got the port is answered
+    // below, by asking the daemon that came up who it is.
     const exited = await waitForDaemonExit(runningPort, 8000);
-    // The NECP reservation this comment names outlasts an 8s budget, so the
-    // bind wait is derived from the child's own worst case rather than guessed:
-    // on EADDRINUSE the child waits PREFERRED_PORT_RECLAIM_MS before falling
-    // back. Budgeting less than that made the parent give up WHILE the child
-    // was still legitimately waiting, print "restart FAILED", and exit 1 — on
-    // exactly the contended case this code exists for. The user's next move is
-    // to run `daemon restart` again, which kills the daemon that just came up.
-    // The parent deliberately does NOT wait for the port to become bindable.
-    // Its probe opens a listener and closes it again, so it proves nothing the
-    // child does not re-prove — and the child does it better, because it KEEPS
-    // the port on success. Waiting here only serialized two reclaim waits back
-    // to back, making a contended restart twice as slow for no information.
     if (!exited) {
       log(`Warning: the daemon on port ${runningPort} was still answering when the stop budget ran out.`);
     }
@@ -994,7 +988,8 @@ daemon
     const spawnedPid = child.pid;
     const started = spawnedPid !== undefined
       ? await waitForDaemonPid(spawnedPid, preferredPort.port, probeHealth, readDaemonInfo, findDaemonPort,
-          PREFERRED_PORT_RECLAIM_MS, () => childAlive)
+          PREFERRED_PORT_RECLAIM_MS, () => childAlive, undefined,
+          (p) => log(`Still starting — child PID ${p} is alive; waiting for it to bind.`))
       : null;
 
     if (!started) {
@@ -1049,7 +1044,9 @@ export async function waitForDaemonPid(
    */
   isChildAlive?: () => boolean,
   ceilingMs = 180_000,
+  onStillWaiting?: (pid: number) => void,
 ): Promise<{ pid: number; port: number } | null> {
+  let announcedWait = false;
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
   for (;;) {
@@ -1066,6 +1063,14 @@ export async function waitForDaemonPid(
     const now = Date.now();
     if (now >= startedAt + ceilingMs) return null;
     if (now >= deadline && !(isChildAlive?.() ?? false)) return null;
+    // Past the floor with the child still alive, this can legitimately run for
+    // another couple of minutes (a Swift incumbent standing down, then a port
+    // reclaim). Say so once, or a correct wait is indistinguishable from a hung
+    // terminal.
+    if (now >= deadline && !announcedWait) {
+      announcedWait = true;
+      onStillWaiting?.(pid);
+    }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 }

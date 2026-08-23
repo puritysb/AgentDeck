@@ -29,6 +29,24 @@ export interface RecommendCandidate {
   rationale: string;
 }
 
+/**
+ * Order a cost-per-quality key, putting anything with no usable price LAST.
+ *
+ * `null` has always meant "no cost recorded". **Zero has to join it**, because
+ * `runs.cost_usd` is one REAL column with no room to say why it is zero: a
+ * provider that ships no price table reports `usage.cost.total = 0` on every
+ * message, and so does a model that is genuinely free. Collapsing them at the
+ * column is unavoidable; ranking on the collapsed value is not. Sorting zero
+ * FIRST made "cheapest per unit of quality" answerable by having no prices at
+ * all — `apme recommend --budget 3` would return whichever model is worst
+ * instrumented as the best buy. Last is the honest place for both: a claim we
+ * cannot support, ordered behind every model whose cost we actually measured.
+ */
+/** Exported for the ordering gate — the rule is the whole finding. */
+export function unpricedLast(costPerQuality: number | null | undefined): number {
+  return costPerQuality ? costPerQuality : Infinity;
+}
+
 export class ApmeRecommender {
   constructor(private readonly store: ApmeStore) {}
 
@@ -91,7 +109,7 @@ export class ApmeRecommender {
       .filter((r) => r.runs >= 3 && (r.avgOverall ?? 0) > 0)
       .sort((a, b) => {
         if (input.budgetUsd !== undefined && input.budgetUsd < 5) {
-          return (a.costPerQuality ?? Infinity) - (b.costPerQuality ?? Infinity);
+          return unpricedLast(a.costPerQuality) - unpricedLast(b.costPerQuality);
         }
         return (b.avgOverall ?? 0) - (a.avgOverall ?? 0);
       })
