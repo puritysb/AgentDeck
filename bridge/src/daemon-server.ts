@@ -1281,6 +1281,7 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
       port: status.port,
       connected: status.connected,
       transportOpen: status.transportOpen,
+      deviceInfoFresh: status.deviceInfoFresh,
       deviceInfo: status.board ? {
         board: status.board,
         version: status.version,
@@ -1299,6 +1300,7 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
         sessionCount: status.sessionCount,
         usageFiveH: status.usageFiveH,
         processingCount: status.processingCount,
+        deviceInfoFresh: status.deviceInfoFresh,
       } : null,
       lastReadAt: status.lastReadAt,
       lastWriteAt: status.lastWriteAt,

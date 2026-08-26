@@ -1674,6 +1674,9 @@ export function shouldSendWifiProvision(conn: Pick<SerialConnection, 'connected'
  */
 export function getESP32DeviceInfo(): Array<{
   port: string;
+  /** True only after device_info arrived on this live serial connection. */
+  deviceInfoFresh: boolean;
+  lastReadSecondsAgo: number | null;
   board?: string;
   version?: string;
   buildHash?: string;
@@ -1694,7 +1697,28 @@ export function getESP32DeviceInfo(): Array<{
     .map(c => ({
       port: c.port,
       ...c.deviceInfo,
+      deviceInfoFresh: c.deviceInfoFresh,
+      lastReadSecondsAgo: c.lastReadAt > 0 ? Math.floor((now - c.lastReadAt) / 1000) : null,
     }));
+}
+
+/**
+ * A serial path may suppress the same board's WiFi display stream only when
+ * it has proved two-way liveness in this daemon lifetime. A cache-seeded CDC
+ * descriptor with successful writes but zero reads is not proof that the
+ * board received or applied the roster; treating it as live stranded boards
+ * on stale session counts while their healthy WiFi socket was muted.
+ *
+ * @internal Exported for regression tests.
+ */
+export function isSerialReachableForDedup(
+  conn: Pick<SerialConnection, 'connected' | 'deviceInfo' | 'deviceInfoFresh' | 'lastReadAt' | 'lastWriteAt' | 'port' | 'connectedAt'>,
+  now = Date.now(),
+): boolean {
+  return conn.deviceInfoFresh
+    && conn.lastReadAt > 0
+    && now - conn.lastReadAt <= STALE_THRESHOLD_MS
+    && isResponsive(conn, now);
 }
 
 /**
@@ -1713,7 +1737,7 @@ export function getSerialReachableBoards(): Array<{ board: string; ip?: string }
   const now = Date.now();
   const out: Array<{ board: string; ip?: string }> = [];
   for (const c of connections) {
-    if (!isResponsive(c, now)) continue;
+    if (!isSerialReachableForDedup(c, now)) continue;
     const board = c.deviceInfo?.board;
     if (!board) continue;
     out.push({ board, ip: c.deviceInfo?.wifiConnected ? c.deviceInfo?.ip : undefined });
@@ -1852,6 +1876,7 @@ export function getSerialConnectionStatus(): Array<{
   sessionCount?: number;
   usageFiveH?: number;
   processingCount?: number;
+  deviceInfoFresh: boolean;
   transportOpen: boolean;
   lastReadAt: number;
   lastWriteAt: number;
@@ -1883,6 +1908,7 @@ export function getSerialConnectionStatus(): Array<{
     sessionCount: c.deviceInfo?.sessionCount,
     usageFiveH: c.deviceInfo?.usageFiveH,
     processingCount: c.deviceInfo?.processingCount,
+    deviceInfoFresh: c.deviceInfoFresh,
     lastReadAt: c.lastReadAt,
     lastWriteAt: c.lastWriteAt,
     lastReadSecondsAgo: c.lastReadAt > 0 ? Math.floor((now - c.lastReadAt) / 1000) : null,

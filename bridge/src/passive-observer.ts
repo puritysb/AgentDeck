@@ -138,6 +138,15 @@ const MAX_TAIL_BYTES = 512 * 1024;
 const MAX_SAMPLE_BYTES = 1024 * 1024;
 /** Transcript/rollout silence after which an end-event-less turn is presumed dead. */
 const STALE_TURN_MS = 10 * 60 * 1000;
+/**
+ * A desktop app-server keeps rollout descriptors open for chats retained by
+ * the Codex App, including conversations that have not done work for days.
+ * An idle descriptor is therefore only a recent observation, not process
+ * liveness. Mirror the Swift daemon's `codexIdleObservationStaleTTL`: after
+ * this window the chat remains resumable in Codex, but leaves AgentDeck's
+ * active-session roster until its rollout changes again.
+ */
+export const CODEX_APP_IDLE_ROLLOUT_TTL_MS = 90_000;
 
 export function observedStateAfterSilence(
   state: ObservedState,
@@ -715,6 +724,7 @@ export async function collectCodexSessionsFromRollouts(
   processes: ProcInfo[],
   rolloutsByPid: Map<number, string[]>,
   rolloutCache: CodexRolloutCache,
+  now = Date.now(),
 ): Promise<ObservedSession[]> {
   const byPid = new Map(processes.map((p) => [p.pid, p]));
   const codex = processes.filter((p) => isCodexSessionProcessCommand(p.command));
@@ -733,14 +743,17 @@ export async function collectCodexSessionsFromRollouts(
       if (!snapshot || snapshot.summary.isSubagent) continue;
       const parsed = snapshot.summary;
       let state = parsed.state;
-      if (state === 'processing' && !parsed.hasPendingCalls && Date.now() - snapshot.mtimeMs > STALE_TURN_MS) {
+      if (state === 'processing' && !parsed.hasPendingCalls && now - snapshot.mtimeMs > STALE_TURN_MS) {
         state = 'idle';
+      }
+      const desktop = proc.command.includes('app-server');
+      if (desktop && state === 'idle' && now - snapshot.mtimeMs > CODEX_APP_IDLE_ROLLOUT_TTL_MS) {
+        continue;
       }
       const sessionId = parsed.sessionId ?? codexRolloutId(rollout);
       if (seen.has(sessionId)) continue;
       seen.add(sessionId);
       const cwd = parsed.cwd;
-      const desktop = proc.command.includes('app-server');
       sessions.push({
         id: desktop ? `observed:codex-app:${sessionId}` : `observed:codex:${sessionId}`,
         port: 0,

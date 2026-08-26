@@ -73,6 +73,42 @@ describe('BridgeCore sessions_list', () => {
     });
   });
 
+  it('folds same-project Codex App chats in the canonical snapshot', async () => {
+    mockBuildEnrichedSessionsList.mockResolvedValue([
+      {
+        id: 'observed:codex-app:old',
+        port: 0,
+        projectName: 'AgentDeck',
+        alive: true,
+        state: 'idle',
+        agentType: 'codex-app',
+        startedAt: '2026-08-25T00:00:00.000Z',
+      },
+      {
+        id: 'observed:codex-app:working',
+        port: 0,
+        projectName: 'AgentDeck',
+        alive: true,
+        state: 'processing',
+        agentType: 'codex-app',
+        startedAt: '2026-08-26T00:00:00.000Z',
+      },
+    ]);
+
+    const sessions = await core.buildSessionsSnapshot();
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: 'observed:codex-app:working',
+      state: 'processing',
+      groupSize: 2,
+      foldedSessionIds: [
+        'observed:codex-app:old',
+        'observed:codex-app:working',
+      ],
+    });
+  });
+
   it('sendInitialState sends enriched sessions_list to the connecting client', async () => {
     mockBuildEnrichedSessionsList.mockResolvedValue([
       {
@@ -115,16 +151,16 @@ describe('BridgeCore sessions_list', () => {
       expect(sessionsEvent).toBeDefined();
       expect((sessionsEvent as any).sessions).toEqual([
         expect.objectContaining({
-          id: 'sibling-2',
-          projectName: 'Frontend',
-          state: 'processing',
-          modelName: 'opus-4',
-        }),
-        expect.objectContaining({
           id: 'openclaw-gateway',
           projectName: 'OpenClaw',
           agentType: 'openclaw',
           state: 'idle',
+        }),
+        expect.objectContaining({
+          id: 'sibling-2',
+          projectName: 'Frontend',
+          state: 'processing',
+          modelName: 'opus-4',
         }),
       ]);
     });

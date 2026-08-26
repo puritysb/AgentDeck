@@ -32,6 +32,7 @@ import {
   shouldSendWifiProvision,
   shouldSendAuthProvision,
   shouldRetryDeviceInfoIdentify,
+  isSerialReachableForDedup,
   recordForeignProbeFailure,
   isForeignPortDenylisted,
   __resetForeignPortState,
@@ -889,6 +890,34 @@ describe('device-info re-identify gating', () => {
 
   it('does not retry a disconnected connection', () => {
     expect(shouldRetryDeviceInfoIdentify(identifyConn({ connected: false }))).toBe(false);
+  });
+});
+
+describe('serial/WiFi display-path dedup', () => {
+  const now = 1_000_000;
+
+  it('does not suppress WiFi for a cache-seeded CDC port with no inbound traffic', () => {
+    const c = identifyConn({
+      port: '/dev/cu.usbmodem832401',
+      connectedAt: now - 10_000,
+      lastReadAt: 0,
+      lastWriteAt: now,
+      deviceInfo: { board: 't_display_pro', ip: '192.168.1.20', wifiConnected: true },
+    });
+    expect(isSerialReachableForDedup(c, now)).toBe(false);
+  });
+
+  it('suppresses WiFi only while a live device_info connection has recent inbound traffic', () => {
+    const c = identifyConn({
+      port: '/dev/cu.usbmodem832401',
+      connectedAt: now - 10_000,
+      lastReadAt: now - 1_000,
+      lastWriteAt: now,
+      deviceInfoFresh: true,
+      deviceInfo: { board: 't_display_pro', ip: '192.168.1.20', wifiConnected: true },
+    });
+    expect(isSerialReachableForDedup(c, now)).toBe(true);
+    expect(isSerialReachableForDedup({ ...c, lastReadAt: now - 61_000 }, now)).toBe(false);
   });
 });
 

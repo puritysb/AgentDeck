@@ -15,7 +15,7 @@ import { readCodexRateLimits } from './codex-rate-limits.js';
 import { codexRateLimitsWithLiveRefresh } from './codex-rate-limits-live.js';
 import { fetchMlxModels } from './mlx-probe.js';
 import { buildDisplayStateEvent } from './display-dim.js';
-import { loadMlxSettings } from '@agentdeck/shared';
+import { foldCodexSessionsForDisplay, loadMlxSettings, sortSessions } from '@agentdeck/shared';
 import { probeGateway, checkGatewayHealth } from './gateway-probe.js';
 import { fetchUsageFromApi, hasOAuthToken, getTokenStatus, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
 import { buildEnrichedSessionsList } from './session-aggregator.js';
@@ -705,6 +705,11 @@ export class BridgeCore {
       snapshot.effortLevel ?? undefined,
     );
     if (this.sessionsEnricher) sessions = this.sessionsEnricher(sessions);
+    // Canonical user-facing projection. The Swift daemon already folds here;
+    // doing the same in Node keeps ESP32/native dashboards aligned with the
+    // Stream Deck and Pixoo consumers that otherwise had to fold locally.
+    // The raw registry remains untouched for routing and diagnostics.
+    sessions = sortSessions(foldCodexSessionsForDisplay(sessions));
     // Attach the shared per-session activity one-liner to the FINAL list (covers
     // managed + observed sessions). Heuristic is immediate; a Foundation Models
     // summary, when available, lands on a later periodic broadcast via the cache.
@@ -857,14 +862,8 @@ export class BridgeCore {
     }
 
     // Sessions list
-    buildEnrichedSessionsList(
-      this.sessionId,
-      snapshot.state,
-      snapshot.modelName ?? undefined,
-      snapshot.effortLevel ?? undefined,
-    ).then((sessions) => {
-      const enriched = this.sessionsEnricher ? this.sessionsEnricher(sessions) : sessions;
-      this.wsServer.sendTo(ws, { type: 'sessions_list', sessions: enriched } as BridgeEvent);
+    this.buildSessionsSnapshot().then((sessions) => {
+      this.wsServer.sendTo(ws, { type: 'sessions_list', sessions } as BridgeEvent);
     }).catch(() => {});
 
     // Extra events from caller

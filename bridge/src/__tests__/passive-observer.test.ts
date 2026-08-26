@@ -683,6 +683,7 @@ describe('passive-observer parsers', () => {
       [process],
       new Map([[999, ['/rollout-parent.jsonl', '/rollout-child.jsonl']]]),
       cache,
+      100,
     );
 
     expect(sessions).toHaveLength(1);
@@ -691,6 +692,82 @@ describe('passive-observer parsers', () => {
       agentType: 'codex-app',
       pid: 999,
       cwd: '/repo/parent',
+    });
+  });
+
+  it('drops stale idle Desktop rollouts while retaining recent and processing chats', async () => {
+    const process = {
+      pid: 999,
+      ppid: 1,
+      rssKb: 100,
+      command: '/Applications/ChatGPT.app/Contents/Resources/codex app-server',
+    };
+    const now = 1_000_000;
+    const cache = new CodexRolloutCache({
+      stat: async (path) => ({
+        mtimeMs: path.includes('recent') ? now - 1_000 : now - 91_000,
+        size: 10,
+      }),
+      read: async (path) => jsonl([
+        {
+          type: 'session_meta',
+          payload: {
+            id: path.replace('/rollout-', '').replace('.jsonl', ''),
+            cwd: '/repo/app',
+            originator: 'Codex Desktop',
+          },
+        },
+        ...(path.includes('processing')
+          ? [{ type: 'event_msg', payload: { type: 'task_started' } }]
+          : []),
+      ]),
+    });
+
+    const sessions = await collectCodexSessionsFromRollouts(
+      [process],
+      new Map([[999, [
+        '/rollout-stale.jsonl',
+        '/rollout-recent.jsonl',
+        '/rollout-processing.jsonl',
+      ]]]),
+      cache,
+      now,
+    );
+
+    expect(sessions.map((session) => session.id)).toEqual([
+      'observed:codex-app:recent',
+      'observed:codex-app:processing',
+    ]);
+  });
+
+  it('keeps an idle Codex CLI rollout because its owning process is the live session', async () => {
+    const process = {
+      pid: 1000,
+      ppid: 1,
+      rssKb: 100,
+      command: '/opt/homebrew/bin/codex',
+    };
+    const now = 1_000_000;
+    const cache = new CodexRolloutCache({
+      stat: async () => ({ mtimeMs: now - 600_000, size: 10 }),
+      read: async () => jsonl([{
+        type: 'session_meta',
+        payload: { id: 'cli-idle', cwd: '/repo/cli', originator: 'codex-tui' },
+      }]),
+    });
+
+    const sessions = await collectCodexSessionsFromRollouts(
+      [process],
+      new Map([[1000, ['/rollout-cli-idle.jsonl']]]),
+      cache,
+      now,
+    );
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: 'observed:codex:cli-idle',
+      agentType: 'codex-cli',
+      state: 'idle',
     });
   });
 
