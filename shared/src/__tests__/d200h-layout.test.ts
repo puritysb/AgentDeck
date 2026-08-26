@@ -3,6 +3,7 @@ import {
   buildSessionDeck,
   parseState,
   renderUsageButton,
+  renderUsagePairGauge,
   renderUsageWideSlot,
 } from '../d200h-layout.js';
 
@@ -38,6 +39,18 @@ describe('usage tiles — usageKnown tri-state', () => {
     const svg = renderUsageWideSlot(12, 34, true);
     expect(svg).toContain('12%');
     expect(svg).toContain('34%');
+  });
+
+  it('compact pair preserves both window labels and values in one key', () => {
+    const svg = renderUsagePairGauge('codex', [
+      { agent: 'codex', window: '5h', label: '5H', usedPercent: 31 },
+      { agent: 'codex', window: '7d', label: '7D', usedPercent: 67 },
+    ]);
+    expect(svg).toContain('5H');
+    expect(svg).toContain('>31<');
+    expect(svg).toContain('7D');
+    expect(svg).toContain('>67<');
+    expect(svg).toContain('#6166E0');
   });
 
   it('parseState infers usageKnown=false when no percent fields are present', () => {
@@ -243,7 +256,7 @@ describe('usage tiles — scoped caps and the three-key strip budget', () => {
   };
 
   /** All usage-strip SVG text for a state, joined. The strip is three keys wide
-   *  (USAGE_PREFERRED_POS) and buildSessionDeck drops tiles past it. */
+   *  (USAGE_PREFERRED_POS), so provider windows are paired before placement. */
   function stripText(extra: Record<string, unknown>): string {
     const deck = buildSessionDeck(
       { state: 'IDLE', allSessions: [], fiveHourPercent: 32, sevenDayPercent: 64, codexRateLimits, ...extra },
@@ -266,14 +279,15 @@ describe('usage tiles — scoped caps and the three-key strip budget', () => {
     expect(text).not.toContain('SONNET');
   });
 
-  it('documents the cost: the scoped tile takes the slot Codex 5H used to hold', () => {
+  it('compacts provider pairs so scoped and Codex limits all remain visible', () => {
     const withScoped = stripText({ scopedLimits: [{ label: 'Fable', percent: 98, active: true }] });
     const withoutScoped = stripText({});
-    // 5H + 7D + scoped fills the three-key strip exactly.
+    // Claude pair + scoped + Codex pair fills the three-key strip exactly.
     expect(withScoped).toContain('FABLE');
-    // Codex's own 5H gauge rides the strip only when no scoped cap is present.
     expect(withoutScoped.match(/>5H</g)?.length).toBe(2);
-    expect(withScoped.match(/>5H</g)?.length).toBe(1);
+    expect(withScoped.match(/>5H</g)?.length).toBe(2);
+    expect(withScoped).toContain('>55<');
+    expect(withScoped).toContain('>20<');
   });
 
   it('sanitizes and truncates the API label before it reaches SVG text', () => {

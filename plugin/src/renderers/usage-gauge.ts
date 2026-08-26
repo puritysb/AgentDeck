@@ -215,9 +215,8 @@ export interface UsageEncoderTank {
 
 /**
  * Companion readout shown beside a lone gauge in the 'both' view. A provider can
- * permanently report a single window (Codex dropped its 5h rolling window
- * upstream on 2026-07-12 and has reported the weekly cap alone ever since), which
- * left the other half of the LCD as a dim "—" ghost. This card fills that half
+ * report a single window (for example Codex Pro's weekly-only quota), which
+ * would leave the other half of the LCD as a dim "—" ghost. This card fills it
  * with the facts the gauge itself cannot carry: how far out the reset is in
  * absolute terms, or the plan tier.
  */
@@ -381,8 +380,7 @@ function encSideCard(x: number, y: number, w: number, h: number, card: UsageEnco
  * 'both' view: 5H and 7D as two side-by-side full-bleed mini level-fills.
  *
  * When the provider reports only ONE live window the second panel would be a
- * permanent dim "—" ghost (Codex dropped its 5h rolling window upstream on
- * 2026-07-12 and has reported the weekly cap alone since). The lone gauge KEEPS
+ * permanent dim "—" ghost (for example Codex Pro has no 5h window). The lone gauge KEEPS
  * its half-width geometry — stretching one level-fill across the full 200px LCD
  * reads as a banner, not a gauge — and the freed half carries the side card
  * instead. Providers still reporting both windows are unaffected.

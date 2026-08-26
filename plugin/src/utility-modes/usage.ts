@@ -189,9 +189,8 @@ export type UsageView = typeof USAGE_VIEWS[number];
 
 /**
  * Views actually reachable for the current payload. A window's zoom stop exists
- * only while that window does: Codex stopped reporting its 5h rolling window
- * upstream on 2026-07-12, so a fixed list left one of four rotation stops
- * showing a full-bleed "—" for a window that no longer exists.
+ * only while that window does. Plus can expose both 5h and 7d, while Pro can
+ * expose only 7d; a fixed list would create a full-bleed "—" zoom stop.
  */
 export function availableUsageViews(enc: Pick<UsageEncoderData, 'fiveHour' | 'sevenDay'>): UsageView[] {
   const views: UsageView[] = ['both'];
@@ -225,12 +224,9 @@ export function buildCodexUsageEncoder(data: UsageModeData, hasReceivedData: boo
       note = 'No Codex usage';
     }
   }
-  // Exactly one live window — Codex has reported the weekly cap alone since
-  // 2026-07-12, when the 5h rolling window disappeared upstream for good (not the
-  // transient post-reset slot flip the daemon normalizer already handles). Fill
-  // the half the missing gauge used to occupy with the SUBSCRIPTION behind the
-  // quota: which plan is paying for it and when it next renews. The window's own
-  // countdown stays inside the gauge, where E2 also prints it.
+  // Exactly one live window (for example Pro's weekly-only shape). Fill the half
+  // the missing gauge would occupy with the subscription behind the quota. The
+  // window's own countdown stays inside the gauge, where E2 also prints it.
   const solo = primary != null && secondary == null ? primary
     : primary == null && secondary != null ? secondary
     : undefined;

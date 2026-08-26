@@ -390,6 +390,49 @@ private struct D200HSlotTile: View {
                 }
                 .padding(size * 0.08)
             }
+        case .usagePair(let agent, let windows):
+            // Mirrors renderUsagePairGauge: two real windows share one physical
+            // key only when the fixed three-key strip would otherwise drop one.
+            ZStack(alignment: .topTrailing) {
+                VStack(spacing: size * 0.025) {
+                    ForEach(Array(windows.enumerated()), id: \.offset) { index, window in
+                        let dim = window.stale || (window.footnote?.isEmpty == false)
+                        VStack(spacing: size * 0.015) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(window.label)
+                                    .font(.system(size: size * 0.13, weight: .bold, design: .monospaced))
+                                Spacer(minLength: 0)
+                                Text("\(Int(window.percent))%")
+                                    .font(.system(size: size * 0.14, weight: .heavy))
+                            }
+                            .padding(.trailing, index == 0 ? size * 0.12 : 0)
+                            .foregroundStyle(dim ? .white.opacity(0.45) : .white)
+                            if let note = window.footnote ?? (window.stale ? "stale" : nil) {
+                                Text(note)
+                                    .font(.system(size: size * 0.075, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.45))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Rectangle().fill(.white.opacity(0.12))
+                                    Rectangle()
+                                        .fill(gaugeColor(percent: window.percent, known: true, stale: dim))
+                                        .frame(width: geo.size.width * min(1, max(0, window.percent / 100)))
+                                }
+                            }
+                            .frame(height: 2)
+                        }
+                    }
+                }
+                .padding(size * 0.08)
+                CanonicalCreatureView(
+                    agentType: agent == "codex" ? "codex-cli" : "claude-code",
+                    size: size * 0.14,
+                    color: StateColors.brand(agent: agent == "codex" ? "codex-cli" : "claude-code")
+                )
+                .padding(size * 0.055)
+            }
         case .info(_, _):
             Text(slot.label)
                 .font(.system(size: size * 0.11, weight: .semibold))

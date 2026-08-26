@@ -31,6 +31,70 @@ function makeState(overrides: Partial<DashboardState> = {}): DashboardState {
 }
 
 describe('TUI dashboard models', () => {
+  it.each([
+    ['wide', 140],
+    ['standard', 100],
+    ['narrow', 70],
+  ])('renders Codex Plus 5h and 7d limits in the %s layout', (_layout, cols) => {
+    const output = stripAnsi(renderDashboard(
+      makeState({
+        usage: {
+          type: 'usage_update',
+          sessionDurationSec: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          toolCalls: 0,
+          codexRateLimits: {
+            primary: { usedPercent: 31, windowMinutes: 300 },
+            secondary: { usedPercent: 67, windowMinutes: 10080 },
+            planType: 'plus',
+          },
+        },
+      }),
+      cols,
+      34,
+      [],
+      0,
+      0,
+    ));
+
+    expect(output).toContain('Codex 5h');
+    expect(output).toContain('31%');
+    expect(output).toContain('Codex 7d');
+    expect(output).toContain('67%');
+  });
+
+  it.each([
+    ['wide', 140],
+    ['standard', 100],
+    ['narrow', 70],
+  ])('renders a Codex Pro weekly-only primary window without a phantom 5h row in the %s layout', (_layout, cols) => {
+    const output = stripAnsi(renderDashboard(
+      makeState({
+        usage: {
+          type: 'usage_update',
+          sessionDurationSec: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          toolCalls: 0,
+          codexRateLimits: {
+            primary: { usedPercent: 44, windowMinutes: 10080 },
+            planType: 'pro',
+          },
+        },
+      }),
+      cols,
+      34,
+      [],
+      0,
+      0,
+    ));
+
+    expect(output).toContain('Codex 7d');
+    expect(output).toContain('44%');
+    expect(output).not.toContain('Codex 5h');
+  });
+
   it('stores modelCatalog from state_update', () => {
     const state = makeState({
       modelCatalog: [{ name: 'old-model', role: 'configured', available: true }],

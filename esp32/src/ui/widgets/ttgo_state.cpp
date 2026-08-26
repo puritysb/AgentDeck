@@ -71,6 +71,30 @@ static const char* stateString(AgentState st) {
     }
 }
 
+/** One provider per compact line when both Claude and Codex must share the two
+ * usage rows. Absent windows are omitted instead of rendered as a phantom `--`. */
+static void formatProviderUsage(char* out, size_t outSize, const char* provider,
+                                float fiveHour, float sevenDay) {
+    if (fiveHour >= 0.0f && sevenDay >= 0.0f) {
+        snprintf(out, outSize, "%s 5:%d 7:%d%%", provider, (int)fiveHour, (int)sevenDay);
+    } else if (fiveHour >= 0.0f) {
+        snprintf(out, outSize, "%s 5h:%d%%", provider, (int)fiveHour);
+    } else if (sevenDay >= 0.0f) {
+        snprintf(out, outSize, "%s 7d:%d%%", provider, (int)sevenDay);
+    } else {
+        out[0] = '\0';
+    }
+}
+
+static void setUsageLabel(lv_obj_t* label, const char* text) {
+    if (text && text[0]) {
+        lv_label_set_text(label, text);
+        lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 namespace TTGO {
 namespace StateWidget {
 
@@ -288,35 +312,29 @@ void update() {
         lv_label_set_text(lblModel, "");
     }
 
-    // Update usage gauges. Prefer Claude; fall back to Codex when Claude has no
-    // data so a Codex-only user still sees their real windows.
-    char buf[16];
+    // Update the two compact usage rows. When both providers exist, each gets
+    // one compressed line containing every present window. With one provider,
+    // each window keeps its own more legible row. No absent window prints `--`.
+    char first[24];
+    char second[24];
+    first[0] = '\0';
+    second[0] = '\0';
     bool hasClaude = p5h >= 0.0f || p7d >= 0.0f;
     bool hasCodex = cxP5h >= 0.0f || cxP7d >= 0.0f;
     bool showTankStatus = connected && (hasClaude || hasCodex);
     if (showTankStatus) {
-        lv_obj_clear_flag(lblUsage5h, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lblUsage7d, LV_OBJ_FLAG_HIDDEN);
-
-        const char* pfx = hasClaude ? "" : "CX ";
-        float u5 = hasClaude ? p5h : cxP5h;
-        float u7 = hasClaude ? p7d : cxP7d;
-
-        if (u5 >= 0.0f) {
-            snprintf(buf, sizeof(buf), "%s5h: %d%%", pfx, (int)u5);
-            lv_label_set_text(lblUsage5h, buf);
+        if (hasClaude && hasCodex) {
+            formatProviderUsage(first, sizeof(first), "CL", p5h, p7d);
+            formatProviderUsage(second, sizeof(second), "CX", cxP5h, cxP7d);
         } else {
-            snprintf(buf, sizeof(buf), "%s5h: --", pfx);
-            lv_label_set_text(lblUsage5h, buf);
+            const char* prefix = hasCodex ? "CX " : "";
+            float u5 = hasCodex ? cxP5h : p5h;
+            float u7 = hasCodex ? cxP7d : p7d;
+            if (u5 >= 0.0f) snprintf(first, sizeof(first), "%s5h: %d%%", prefix, (int)u5);
+            if (u7 >= 0.0f) snprintf(second, sizeof(second), "%s7d: %d%%", prefix, (int)u7);
         }
-
-        if (u7 >= 0.0f) {
-            snprintf(buf, sizeof(buf), "%s7d: %d%%", pfx, (int)u7);
-            lv_label_set_text(lblUsage7d, buf);
-        } else {
-            snprintf(buf, sizeof(buf), "%s7d: --", pfx);
-            lv_label_set_text(lblUsage7d, buf);
-        }
+        setUsageLabel(lblUsage5h, first);
+        setUsageLabel(lblUsage7d, second);
     } else {
         lv_obj_add_flag(lblUsage5h, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lblUsage7d, LV_OBJ_FLAG_HIDDEN);

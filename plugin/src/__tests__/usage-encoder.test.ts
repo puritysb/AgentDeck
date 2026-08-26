@@ -77,11 +77,9 @@ describe('buildCodexUsageEncoder', () => {
 /**
  * Single-window companion readout.
  *
- * Codex stopped reporting its 5h rolling window upstream on 2026-07-12 and has
- * reported the weekly cap alone since (verified across every rollout from
- * 2026-07-13 on), so the "one live window" shape is the steady state, not an
- * edge case. The freed half carries the SUBSCRIPTION behind the quota; the
- * window's own countdown stays inside the gauge, where E2 also prints it.
+ * Pro can report only its weekly cap, while Plus can report both windows. For a
+ * one-window payload the freed half carries the subscription behind the quota;
+ * the window's own countdown stays inside the gauge, where E2 also prints it.
  */
 describe('buildCodexUsageEncoder — single live window', () => {
   const WEEKLY_ONLY = { secondary: CODEX_LIMITS.secondary, planType: 'plus' };

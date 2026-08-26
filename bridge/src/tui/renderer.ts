@@ -16,7 +16,7 @@ import {
 } from './ansi.js';
 import { blockGauge, resetTimeStr, formatTokens } from './gauge.js';
 import type { DashboardState, LayoutMode } from './dashboard.js';
-import type { ModelCatalogEntry, OllamaStatus, SessionInfo, TimelineEntry, TimelineEntryType } from '@agentdeck/shared';
+import type { CodexRateLimitWindow, ModelCatalogEntry, OllamaStatus, SessionInfo, TimelineEntry, TimelineEntryType } from '@agentdeck/shared';
 import {
   stateRank, sortSessions, assignDisplayNames,
   timelineShouldRenderTaskRow, timelineTaskHeaderDisplay,
@@ -643,6 +643,39 @@ function renderScopedLimitLines(u: NonNullable<DashboardState['usage']>, gaugeW:
   return lines;
 }
 
+/**
+ * Codex windows are labelled by duration, never by primary/secondary slot. A
+ * Pro account can report its only weekly window in `primary`; treating that
+ * slot as 5h would manufacture a limit the account does not have.
+ */
+function codexWindowLabel(window: CodexRateLimitWindow): string {
+  const minutes = window.windowMinutes;
+  if (minutes >= 1440 && minutes % 1440 === 0) return `${minutes / 1440}d`;
+  if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${minutes}m`;
+}
+
+function renderCodexLimitLines(
+  u: NonNullable<DashboardState['usage']>, gaugeW: number, inlineReset: boolean,
+): string[] {
+  const lines: string[] = [];
+  const cx = u.codexRateLimits;
+  const windows = [cx?.primary, cx?.secondary].filter((w): w is CodexRateLimitWindow => w != null);
+  for (const window of windows) {
+    const pct = Math.round(window.usedPercent);
+    const label = `Codex ${codexWindowLabel(window)}`;
+    const gauge = blockGauge(pct, gaugeW, window.stale === true);
+    const reset = window.stale === true ? 'stale' : resetTimeStr(window.resetsAt);
+    if (inlineReset) {
+      lines.push(` ${label} [${gauge}] ${pct}%${reset ? ` ${colors.dim}${reset}${RESET}` : ''}`);
+    } else {
+      lines.push(` ${label} [${gauge}] ${pct}%`);
+      if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
+    }
+  }
+  return lines;
+}
+
 function renderStatusLimitsLines(state: DashboardState, width: number): string[] {
   const lines: string[] = [];
   const u = state.usage;
@@ -661,6 +694,7 @@ function renderStatusLimitsLines(state: DashboardState, width: number): string[]
     if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
   }
   lines.push(...renderScopedLimitLines(u, gaugeW, false));
+  lines.push(...renderCodexLimitLines(u, gaugeW, false));
   if (state.currentTool) {
     lines.push(` ${colors.tool}${truncText(state.currentTool, width - 2)}${RESET}`);
   }
@@ -693,6 +727,7 @@ function renderStatusLines(state: DashboardState, width: number): string[] {
       lines.push(` 7d [${blockGauge(pct, gaugeW)}] ${pct}% ${colors.dim}${resetTimeStr(u.sevenDayResetsAt)}${RESET}`);
     }
     lines.push(...renderScopedLimitLines(u, gaugeW, true));
+    lines.push(...renderCodexLimitLines(u, gaugeW, true));
   }
   if (state.currentTool) lines.push(` ${colors.tool}Tool: ${truncText(state.currentTool, width - 8)}${RESET}`);
   if (state.modelName) lines.push(`${colors.dim} Model: ${state.modelName}${RESET}`);

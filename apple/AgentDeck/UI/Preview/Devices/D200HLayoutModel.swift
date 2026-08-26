@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts 014062e44d2bf70f633285b6dd6b3a71ae008ed1
+// SYNC-HASH shared/src/d200h-layout.ts 684d497bd054842d4b4ac5afdd3509a5f95983e9
 // SYNC-HASH shared/src/session-utils.ts 3f6629cd69bd4d77f380cb5e37972f28863058e7
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -329,6 +329,15 @@ public enum D200HSlotKind: Equatable, Sendable {
     case nextPage
     /// A usage gauge tile (renderUsageGauge). `agent` = "claude"|"codex".
     case usageGauge(agent: String, window: String, percent: Double, known: Bool, stale: Bool, inactive: Bool, footnote: String?)
+    /// Two same-provider windows compacted into one physical usage key.
+    case usagePair(agent: String, windows: [D200HUsagePairWindow])
+}
+
+public struct D200HUsagePairWindow: Equatable, Sendable {
+    public let label: String
+    public let percent: Double
+    public let stale: Bool
+    public let footnote: String?
 }
 
 /// One key of the deck, addressed by `col`/`row` (index == row*GRID_COLS+col).
@@ -351,9 +360,9 @@ public enum D200HLayoutModel {
 
     /// D200H usage placement — the three bottom-row keys immediately left of the
     /// wide bottom-right clock widget, filled from the RIGHT end so a missing
-    /// tile frees the leftmost key instead of holing the strip. Its length also
-    /// caps usage at three keys (Claude prioritised). Mirrors the shared
-    /// `USAGE_PREFERRED_POS`.
+    /// tile frees the leftmost key instead of holing the strip. When more than
+    /// three logical limits exist, same-provider pairs compact so none drop.
+    /// Mirrors the shared `USAGE_PREFERRED_POS`.
     static let usagePreferredPositions = ["0_2", "1_2", "2_2"]
 
     static let offlineLabel = "OFFLINE"
@@ -414,7 +423,7 @@ public enum D200HLayoutModel {
         // strip left of the clock widget, filled from its right end; fall back to
         // trailing positions for strip keys the user didn't place. Never reserve
         // more than the strip is wide, nor more than slots.count - 1 so at least
-        // one key stays for sessions. Codex tiles drop first (Claude prioritised).
+        // one key stays for sessions. Same-provider pairs compact before reserve.
         var usageHere: [String: (D200HSlotKind, String, String)] = [:]
         if view.showUsage, let usage = input.usage {
             let usageTiles = buildUsageTiles(usage)
@@ -668,32 +677,38 @@ public enum D200HLayoutModel {
     /// when that window's quota is actually known, so fewer (or zero) tiles are
     /// reserved and the freed slots flow to session tiles.
     private static func buildUsageTiles(_ usage: D200HUsage) -> [(D200HSlotKind, String, String)] {
-        var tiles: [(D200HSlotKind, String, String)] = []
+        var claudeTiles: [(D200HSlotKind, String, String)] = []
+        var claudePair: [D200HUsagePairWindow] = []
         if usage.known, let p = usage.fiveHourPercent {
-            tiles.append((.usageGauge(agent: "claude", window: "5h", percent: p, known: true, stale: false, inactive: false, footnote: nil), "5H", "claude"))
+            claudeTiles.append((.usageGauge(agent: "claude", window: "5h", percent: p, known: true, stale: false, inactive: false, footnote: nil), "5H", "claude"))
+            claudePair.append(.init(label: "5H", percent: p, stale: false, footnote: nil))
         }
         if usage.known, let p = usage.sevenDayPercent {
-            tiles.append((.usageGauge(agent: "claude", window: "7d", percent: p, known: true, stale: false, inactive: false, footnote: nil), "7D", "claude"))
+            claudeTiles.append((.usageGauge(agent: "claude", window: "7d", percent: p, known: true, stale: false, inactive: false, footnote: nil), "7D", "claude"))
+            claudePair.append(.init(label: "7D", percent: p, stale: false, footnote: nil))
         }
-        // The worst per-model scoped weekly cap (e.g. "Fable") and the third strip
-        // key it competes with Codex for. Inclusion, placement and what Codex keeps
-        // come from the shared arbiters `scopedLimitClaimsUsageKey` /
-        // `codexWindowsBeside` (TS format-utils), restated here as the same
-        // clauses: an ACTIVE cap is the binding limit, goes AHEAD of Codex and
-        // TAKES one of its keys (a replacement, never a stack); an inactive one
-        // only lands on a key Codex left spare — the ordinary state of a free
-        // ChatGPT tier with nothing to meter. Rendered muted (informational cyan),
-        // never the critical ramp. Only cap[0] can reach the 3-slot usage region,
-        // matching the TS builder.
+        // The worst per-model scoped weekly cap (e.g. "Fable") claims one logical
+        // usage tile. An active cap is ordered ahead of Codex; an inactive cap is
+        // ordered after it. The fixed three-key strip retains every known reading
+        // by pairing a provider's two windows when the logical tile count exceeds
+        // the physical budget. Rendered muted (informational cyan), never the
+        // critical ramp. Only cap[0] can reach the usage region, matching TS.
         // Codex windows are labelled by their own length, never by slot: Codex now
         // sometimes reports the weekly (10080-min) window as `primary` with
         // `secondary` null, so a slot-based "7D = secondary" would drop the gauge.
         var codexTiles: [(D200HSlotKind, String, String)] = []
+        var codexPair: [D200HUsagePairWindow] = []
         if let p = usage.codexPrimaryPercent {
-            codexTiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexPrimaryWindowMinutes), percent: p, known: true, stale: usage.codexPrimaryStale, inactive: false, footnote: codexFootnote(stale: usage.codexPrimaryStale, capturedAt: usage.codexCapturedAt)), usageWindowLabel(usage.codexPrimaryWindowMinutes), "codex"))
+            let label = usageWindowLabel(usage.codexPrimaryWindowMinutes)
+            let footnote = codexFootnote(stale: usage.codexPrimaryStale, capturedAt: usage.codexCapturedAt)
+            codexTiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexPrimaryWindowMinutes), percent: p, known: true, stale: usage.codexPrimaryStale, inactive: false, footnote: footnote), label, "codex"))
+            codexPair.append(.init(label: label, percent: p, stale: usage.codexPrimaryStale, footnote: footnote))
         }
         if let s = usage.codexSecondaryPercent {
-            codexTiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexSecondaryWindowMinutes), percent: s, known: true, stale: usage.codexSecondaryStale, inactive: false, footnote: codexFootnote(stale: usage.codexSecondaryStale, capturedAt: usage.codexCapturedAt)), usageWindowLabel(usage.codexSecondaryWindowMinutes), "codex"))
+            let label = usageWindowLabel(usage.codexSecondaryWindowMinutes)
+            let footnote = codexFootnote(stale: usage.codexSecondaryStale, capturedAt: usage.codexCapturedAt)
+            codexTiles.append((.usageGauge(agent: "codex", window: usageWindowKind(usage.codexSecondaryWindowMinutes), percent: s, known: true, stale: usage.codexSecondaryStale, inactive: false, footnote: footnote), label, "codex"))
+            codexPair.append(.init(label: label, percent: s, stale: usage.codexSecondaryStale, footnote: footnote))
         }
         let worstScoped = usage.known ? usage.scopedLimits.first : nil
         let scopedClaims = worstScoped != nil
@@ -706,8 +721,16 @@ public enum D200HLayoutModel {
             let capped = String(label.prefix(6))
             return (.usageGauge(agent: "claude", window: "7d", percent: s.percent, known: true, stale: false, inactive: !s.active, footnote: nil), capped.isEmpty ? "MODEL" : capped, "claude")
         }()
+        let logicalCount = claudeTiles.count + codexTiles.count + (scopedTile == nil ? 0 : 1)
+        let compactCodex = logicalCount > usagePreferredPositions.count && codexPair.count == 2
+        let compactClaude = logicalCount - (compactCodex ? 1 : 0) > usagePreferredPositions.count && claudePair.count == 2
+        func cells(_ agent: String, _ tiles: [(D200HSlotKind, String, String)], _ pair: [D200HUsagePairWindow], compact: Bool) -> [(D200HSlotKind, String, String)] {
+            compact ? [(.usagePair(agent: agent, windows: pair), pair.map(\.label).joined(separator: " · "), agent)] : tiles
+        }
+
+        var tiles = cells("claude", claudeTiles, claudePair, compact: compactClaude)
         if let scopedTile, worstScoped?.active == true { tiles.append(scopedTile) }
-        tiles.append(contentsOf: codexTiles)
+        tiles.append(contentsOf: cells("codex", codexTiles, codexPair, compact: compactCodex))
         if let scopedTile, worstScoped?.active != true { tiles.append(scopedTile) }
         return tiles
     }

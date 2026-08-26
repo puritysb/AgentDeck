@@ -214,8 +214,8 @@ final class DevicePreviewSnapshotTests: XCTestCase {
             navigable: false,
             focusedOptions: [],
             fiveHourPercent: 42, sevenDayPercent: 68, usageKnown: true,
-            codexPrimaryPercent: 23, codexPrimaryStale: false,
-            codexSecondaryPercent: 51, codexSecondaryStale: false
+            codexPrimaryPercent: 23, codexPrimaryWindowMinutes: 300, codexPrimaryStale: false,
+            codexSecondaryPercent: 51, codexSecondaryWindowMinutes: 10080, codexSecondaryStale: false
         )
         var sel = selection(.d200hDeck, sessions: 3)
         sel.live = live
@@ -312,5 +312,11 @@ final class DevicePreviewSnapshotTests: XCTestCase {
         // A pinned usage gauge tile is present (real 42% Claude 5H).
         let hasUsageGauge = slots.contains { if case .usageGauge = $0.kind { return true } else { return false } }
         XCTAssertTrue(hasUsageGauge, "expected pinned usage gauge tiles")
+        let codexPair = slots.compactMap { slot -> [D200HUsagePairWindow]? in
+            if case .usagePair(let agent, let windows) = slot.kind, agent == "codex" { return windows }
+            return nil
+        }.first
+        XCTAssertEqual(codexPair?.map(\.label), ["5H", "7D"])
+        XCTAssertEqual(codexPair?.map(\.percent), [23, 51])
     }
 }

@@ -5,9 +5,9 @@ import { buildSessionDeck } from '../d200h-layout.js';
 // Ulanzi): with `showUsage`, the three bottom-row keys LEFT of the wide clock
 // widget (0_2/1_2/2_2) form a horizontal quota strip. The strip fills from its
 // RIGHT end — flush against the clock — so an absent tile frees the LEFTMOST
-// key back to sessions instead of holing the row, and it caps usage at three
-// keys (Claude prioritised). Sessions/paging reflow into the remaining keys,
-// and the tiles refresh usage on press.
+// key back to sessions instead of holing the row. Four or five logical limits
+// compact same-provider 5H+7D pairs rather than dropping a real window.
+// Sessions/paging reflow into the remaining keys, and tiles refresh on press.
 
 const POS = ['0_0', '1_0', '2_0', '3_0', '4_0', '0_1', '1_1', '2_1', '3_1', '4_1', '0_2', '1_2', '2_2', '3_2', '4_2'];
 
@@ -170,9 +170,9 @@ describe('buildSessionDeck list-view usage tiles', () => {
     expect(deck.get(C7D)!.svg).toContain('7D');
   });
 
-  it('caps the strip at 3 keys, dropping the 4th tile (Claude prioritised)', () => {
-    // Claude 5H/7D + Codex 5H/7D = 4 tiles, but the strip is 3 wide: the trailing
-    // Codex window drops rather than pushing usage off the bottom row.
+  it('compacts the Codex pair so Plus 5H and 7D both fit the 3-key strip', () => {
+    // Claude 5H/7D + Codex 5H/7D = 4 logical limits. The two Codex windows
+    // share the third physical key, preserving the clock and every limit.
     const codex = {
       codexRateLimits: {
         primary: { usedPercent: 30, windowMinutes: 300, resetsAt: undefined },
@@ -186,7 +186,7 @@ describe('buildSessionDeck list-view usage tiles', () => {
     // provider LOGO — terracotta-tinted Claude mark, blue Codex mark.
     const claude5 = deck.get(STRIP_L)!.svg;
     const claude7 = deck.get(STRIP_M)!.svg;
-    const codex5 = deck.get(STRIP_R)!.svg;
+    const codexPair = deck.get(STRIP_R)!.svg;
     expect(claude5).toContain('5H');
     expect(claude5).toContain(CLAUDE_MARK);
     expect(claude5).toContain('M20.998 10.949'); // canonical Claude Code robot path
@@ -195,13 +195,12 @@ describe('buildSessionDeck list-view usage tiles', () => {
     expect(claude5).not.toContain('opacity="0.72"');
     expect(claude7).toContain('7D');
     expect(claude7).toContain(CLAUDE_MARK);
-    expect(codex5).toContain('5H');       // Codex 5H, used 30%
-    expect(codex5).toContain('>30<');
-    expect(codex5).toContain(CODEX_MARK);
-    expect(codex5).toContain('M8.086.457'); // Codex provider logo path
-    expect(codex5).toContain('opacity="0.38"');
-    // The Codex weekly window (10% used) is the tile that dropped.
-    expect(usageCells(deck).map((c) => c.svg).join('')).not.toContain('>10<');
+    expect(codexPair).toContain('5H');
+    expect(codexPair).toContain('>30<');
+    expect(codexPair).toContain('7D');
+    expect(codexPair).toContain('>10<');
+    expect(codexPair).toContain(CODEX_MARK);
+    expect(codexPair).toContain('M8.086.457'); // Codex provider logo path
   });
 
   it('renders only the Codex window whose datum exists', () => {
@@ -286,11 +285,10 @@ describe('buildSessionDeck list-view usage tiles', () => {
   });
 });
 
-// The scoped per-model cap (e.g. the weekly "Fable" limit) and the third strip
-// key it competes with Codex for. `scopedLimitClaimsUsageKey` is the shared
-// arbiter — the Stream Deck keypad strip runs the same rule, so the two decks
-// can never disagree about which limit the user is looking at.
-describe('buildSessionDeck scoped cap vs the third usage key', () => {
+// The scoped per-model cap (e.g. the weekly "Fable" limit) shares the fixed
+// usage strip with Codex. The Stream Deck keypad applies the shared inclusion
+// and ordering rules, then compacts provider windows rather than dropping them.
+describe('buildSessionDeck scoped cap within the fixed usage strip', () => {
   const FABLE = { label: 'Fable', percent: 98, active: true };
   const FABLE_IDLE = { label: 'Fable', percent: 61, active: false };
   const codexWeekly = {
@@ -315,17 +313,19 @@ describe('buildSessionDeck scoped cap vs the third usage key', () => {
     expect(tiles[2]).toContain('>61<');
   });
 
-  it('lets an ACTIVE cap TAKE the Codex key — it is the limit that binds', () => {
-    // Replacement, not addition: the strip is a fixed budget carved out of
-    // session keys, so a cap the user cannot act on must not cost them a tile.
+  it('keeps an ACTIVE cap and the live Codex window by compacting Claude', () => {
     const tiles = svgs({ ...codexWeekly, scopedLimits: [FABLE] });
     expect(tiles).toHaveLength(3);
-    expect(tiles[2]).toContain('FABLE');
-    expect(tiles[2]).toContain('>98<');
-    expect(tiles.join('')).not.toContain(CODEX_MARK);
+    expect(tiles[0]).toContain(CLAUDE_MARK);
+    expect(tiles[0]).toContain('>42<');
+    expect(tiles[0]).toContain('>17<');
+    expect(tiles[1]).toContain('FABLE');
+    expect(tiles[1]).toContain('>98<');
+    expect(tiles[2]).toContain(CODEX_MARK);
+    expect(tiles[2]).toContain('>10<');
   });
 
-  it('leaves the first Codex window standing when Codex reports two', () => {
+  it('compacts both providers when an active scoped cap would otherwise overflow', () => {
     const bothWindows = {
       codexRateLimits: {
         primary: { usedPercent: 30, windowMinutes: 300 },
@@ -334,16 +334,22 @@ describe('buildSessionDeck scoped cap vs the third usage key', () => {
       },
     };
     const tiles = svgs({ ...bothWindows, scopedLimits: [FABLE] });
-    // 5H, 7D, FABLE, CX-5H → the 3-key strip keeps the first three.
+    // Claude pair, FABLE, Codex pair: five logical readings in three keys.
     expect(tiles).toHaveLength(3);
-    expect(tiles[2]).toContain('FABLE');
+    expect(tiles[0]).toContain(CLAUDE_MARK);
+    expect(tiles[0]).toContain('>42<');
+    expect(tiles[0]).toContain('>17<');
+    expect(tiles[1]).toContain('FABLE');
+    expect(tiles[2]).toContain(CODEX_MARK);
+    expect(tiles[2]).toContain('>30<');
+    expect(tiles[2]).toContain('>10<');
   });
 
-  it('never lets an INACTIVE cap displace a live Codex window', () => {
+  it('keeps an INACTIVE cap without displacing a live Codex window', () => {
     const tiles = svgs({ ...codexWeekly, scopedLimits: [FABLE_IDLE] });
     expect(tiles).toHaveLength(3);
-    expect(tiles[2]).toContain(CODEX_MARK);
-    expect(tiles.join('')).not.toContain('FABLE');
+    expect(tiles[1]).toContain(CODEX_MARK);
+    expect(tiles[2]).toContain('FABLE');
   });
 
   it('shows nothing but Claude when neither Codex nor a scoped cap exists', () => {

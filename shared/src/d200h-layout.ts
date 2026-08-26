@@ -25,7 +25,7 @@ import {
 import { State, type PromptOption } from './states.js';
 import { sortSessions, foldCodexSessionsForDisplay } from './session-utils.js';
 import type { SessionInfo, SubscriptionInfo, CodexRateLimits, CodexRateLimitWindow, ScopedUsageLimit } from './protocol.js';
-import { Brand, UI } from './design-tokens.js';
+import { Brand, Tide, UI } from './design-tokens.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from './connection-status.js';
 import { CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from './svg-renderers/agent-logos.js';
 import { formatScopedLabel, codexUsageFootnote, scopedLimitClaimsUsageKey, codexWindowsBeside } from './format-utils.js';
@@ -57,9 +57,10 @@ export const GRID_COLS = 5;
  * key falls out of the strip and flows back to sessions instead of leaving a
  * hole in the middle of the row.
  *
- * Its length also caps usage at three keys: a fourth tile (Codex 5H *and* 7D)
- * drops, Claude prioritised by `buildUsageTiles` order. That cap is why the
- * scoped per-model caps contribute at most ONE tile — see `buildUsageTiles`.
+ * Its length caps usage at three physical keys. When four or five windows are
+ * present, `buildUsageTiles` compacts same-provider 5H+7D windows into a dual
+ * readout so no real limit is dropped. Scoped per-model caps still contribute
+ * at most one tile.
  */
 const USAGE_PREFERRED_POS = ['0_2', '1_2', '2_2'];
 
@@ -377,6 +378,35 @@ export function renderUsageGauge(data: UsageTankData): string {
 }
 
 /**
+ * Two rolling windows compacted into one physical key. The D200H reserves only
+ * the three keys left of its wide clock, so Claude 5H/7D + Codex 5H/7D cannot
+ * be represented as four independent tiles. Compacting a provider pair keeps
+ * every real window visible without stealing the clock or dropping a limit.
+ */
+export function renderUsagePairGauge(agent: 'claude' | 'codex', windows: [UsageTankData, UsageTankData]): string {
+  const W = 144, H = 144, RX = 12;
+  const bg = `<rect width="${W}" height="${H}" rx="${RX}" fill="${UI.popupBgMid}"/>`;
+  const logo = usageBrandLogo(agent, 128, 16, 16, false);
+  const rows = windows.map((window, index) => {
+    const used = Math.max(0, Math.min(100, window.usedPercent));
+    const dim = window.stale === true || Boolean(window.footnote);
+    const ramp = usageRampColor(used, dim, window.inactive === true);
+    const y = index === 0 ? 0 : 72;
+    const reset = window.footnote || (window.stale ? 'stale' : formatResetCountdown(window.resetsAt));
+    const textColor = dim ? UI.ttyDim : Tide.s50;
+    const barW = Math.round(120 * used / 100);
+    return `<text x="12" y="${y + 29}" font-family="JetBrains Mono, monospace" font-size="18" font-weight="bold" fill="${textColor}">${escXml(window.label)}</text>`
+      + `<text x="100" y="${y + 29}" text-anchor="end" font-family="IBM Plex Sans, sans-serif" font-size="20" font-weight="bold" fill="${textColor}">${Math.round(used)}</text>`
+      + `<text x="102" y="${y + 29}" font-family="IBM Plex Sans, sans-serif" font-size="12" font-weight="bold" fill="${textColor}">%</text>`
+      + (reset ? `<text x="12" y="${y + 51}" font-family="JetBrains Mono, monospace" font-size="11" font-weight="bold" fill="${textColor}">${escXml(reset)}</text>` : '')
+      + `<rect x="12" y="${y + 62}" width="120" height="3" rx="1.5" fill="${UI.ttyFaint}"/>`
+      + (barW > 0 ? `<rect x="12" y="${y + 62}" width="${barW}" height="3" rx="1.5" fill="${ramp.fill}" opacity="${dim ? 0.55 : 1}"/>` : '');
+  }).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
+    + bg + `<rect x="8" y="71" width="128" height="1" fill="${UI.ttyFaint}"/>` + rows + logo + `</svg>`;
+}
+
+/**
  * Codex credit-based plans (e.g. `limit_id: "premium"`) report null 5h/7d
  * windows and convey usage via a credits balance instead. Render a flat readout
  * tile — limit label + balance (or ∞ when unlimited) — matching the gauge frame
@@ -412,50 +442,72 @@ export function renderCreditsTile(data: { limitId?: string; balance?: string; un
 function buildUsageTiles(state: DashState): SessionDeckCell[] {
   const action: DeckAction = { kind: 'command', command: { type: 'query_usage' } };
   const known = state.usageKnown !== false;
-  const tiles: SessionDeckCell[] = [];
+  const claudeWindows: UsageTankData[] = [];
   if (known && state.fiveHourPercent != null) {
-    tiles.push({ svg: renderUsageGauge({ agent: 'claude', window: '5h', label: '5H', usedPercent: state.fiveHourPercent, resetsAt: state.fiveHourResetsAt, known: true }), action });
+    claudeWindows.push({ agent: 'claude', window: '5h', label: '5H', usedPercent: state.fiveHourPercent, resetsAt: state.fiveHourResetsAt, known: true });
   }
   if (known && state.sevenDayPercent != null) {
-    tiles.push({ svg: renderUsageGauge({ agent: 'claude', window: '7d', label: '7D', usedPercent: state.sevenDayPercent, resetsAt: state.sevenDayResetsAt, known: true }), action });
+    claudeWindows.push({ agent: 'claude', window: '7d', label: '7D', usedPercent: state.sevenDayPercent, resetsAt: state.sevenDayResetsAt, known: true });
   }
   // At most ONE scoped tile — the worst-sorted cap (active desc, then percent
   // desc), rendered muted when it isn't the binding one.
   //
-  // The usage strip is three keys wide (USAGE_PREFERRED_POS) and `buildSessionDeck`
-  // drops every tile past it, so scoped tiles never stack: only [0] could ever
-  // reach a key, and building the rest is dead work. Paging through them lives on
-  // the SD+ encoder, which has room for it.
+  // The usage strip is three keys wide (USAGE_PREFERRED_POS), so scoped tiles
+  // never stack: only [0] can reach a key, and building the rest is dead work.
+  // Same-provider rolling windows compact below when the total would overflow;
+  // paging through the remaining scoped caps lives on the SD+ encoder.
   //
-  // Whether it takes a key at all is `scopedLimitClaimsUsageKey`, and what Codex
-  // keeps once it has is `codexWindowsBeside` — both shared with the Stream Deck
-  // keypad strip so the two decks can't disagree about which limit the user is
-  // looking at. An ACTIVE cap is placed ahead of Codex and TAKES one of its keys
-  // (it replaces, never stacks); an inactive one only lands when Codex reports
-  // nothing at all.
+  // Inclusion comes from `scopedLimitClaimsUsageKey`, and the Codex windows to
+  // retain from `codexWindowsBeside` — both shared with the Stream Deck keypad.
+  // Active caps sort ahead of Codex; inactive caps follow it. Capacity pressure
+  // is solved by compacting provider pairs below, never by deleting a window.
   const cx = state.codexRateLimits;
   const allCodexWindows = [cx?.primary, cx?.secondary].filter((w): w is CodexRateLimitWindow => w != null);
   const worstScoped = known ? state.scopedLimits?.[0] : undefined;
   const scopedClaims = scopedLimitClaimsUsageKey(worstScoped, allCodexWindows.length);
   const codexWindows = codexWindowsBeside(allCodexWindows, scopedClaims);
-  const scopedTile = scopedClaims && worstScoped
+  const scopedTile: SessionDeckCell | undefined = scopedClaims && worstScoped
     ? { svg: renderUsageGauge({ agent: 'claude' as const, window: '7d' as const, label: formatScopedLabel(worstScoped.label, 6), usedPercent: worstScoped.percent, resetsAt: worstScoped.resetsAt, known: true, inactive: worstScoped.active !== true }), action }
     : undefined;
-  if (scopedTile && worstScoped?.active === true) tiles.push(scopedTile);
   // Codex windows carry the same short "5H"/"7D" labels — the brand dot conveys
   // the agent, not a "CX " prefix. Label each present window by its own length
   // (windowMinutes), never by slot: Codex now sometimes reports the weekly
   // (10080-min) window as `primary` with `secondary` null, so a slot-based "7D
   // = secondary" would drop the gauge entirely.
-  for (const w of codexWindows) {
-    tiles.push({ svg: renderUsageGauge({ agent: 'codex', window: usageWindowKind(w.windowMinutes), label: usageWindowLabel(w.windowMinutes) || '5H', usedPercent: w.usedPercent, resetsAt: w.resetsAt, known: true, stale: w.stale === true, footnote: codexUsageFootnote(w, cx?.capturedAt)?.text }), action });
-  }
+  const codexWindowData: UsageTankData[] = codexWindows.map((w) => ({
+    agent: 'codex',
+    window: usageWindowKind(w.windowMinutes),
+    label: usageWindowLabel(w.windowMinutes) || '5H',
+    usedPercent: w.usedPercent,
+    resetsAt: w.resetsAt,
+    known: true,
+    stale: w.stale === true,
+    footnote: codexUsageFootnote(w, cx?.capturedAt)?.text,
+  }));
+
+  // Compact only as much as the fixed three-key strip requires. In the common
+  // Plus shape, Claude keeps its two familiar tiles and Codex 5H+7D share one.
+  // If a binding scoped cap also exists, Claude compacts too, preserving all
+  // five readings in three physical keys.
+  const creditsTile: SessionDeckCell | undefined = !cx?.primary && !cx?.secondary && (cx?.credits || cx?.limitId)
+    ? { svg: renderCreditsTile({ limitId: cx.limitId, balance: cx.credits?.balance, unlimited: cx.credits?.unlimited }), action }
+    : undefined;
+  const logicalCount = claudeWindows.length + codexWindowData.length + (scopedTile ? 1 : 0) + (creditsTile ? 1 : 0);
+  const compactCodex = logicalCount > USAGE_PREFERRED_POS.length && codexWindowData.length === 2;
+  const afterCodex = logicalCount - (compactCodex ? 1 : 0);
+  const compactClaude = afterCodex > USAGE_PREFERRED_POS.length && claudeWindows.length === 2;
+  const cellsFor = (agent: 'claude' | 'codex', windows: UsageTankData[], compact: boolean): SessionDeckCell[] => {
+    if (compact && windows.length === 2) {
+      return [{ svg: renderUsagePairGauge(agent, [windows[0], windows[1]]), action }];
+    }
+    return windows.map((window) => ({ svg: renderUsageGauge(window), action }));
+  };
+
+  const tiles: SessionDeckCell[] = cellsFor('claude', claudeWindows, compactClaude);
+  if (scopedTile && worstScoped?.active === true) tiles.push(scopedTile);
+  tiles.push(...cellsFor('codex', codexWindowData, compactCodex));
+  if (creditsTile) tiles.push(creditsTile);
   if (scopedTile && worstScoped?.active !== true) tiles.push(scopedTile);
-  // Credit-based Codex plan: no windows, show the credits balance instead so the
-  // Codex usage doesn't silently vanish.
-  if (!cx?.primary && !cx?.secondary && (cx?.credits || cx?.limitId)) {
-    tiles.push({ svg: renderCreditsTile({ limitId: cx.limitId, balance: cx.credits?.balance, unlimited: cx.credits?.unlimited }), action });
-  }
   return tiles;
 }
 
@@ -816,8 +868,8 @@ function buildList(
   // Pin the bottom-row usage strip to the global quota gauges (opt-in,
   // water-tank style). On the D200H the strip sits just left of the native clock
   // widget; on classic Stream Deck it replaces the encoder LCD this surface
-  // lacks. We reserve as many keys as we have usage tiles (Claude 5H/7D + any
-  // Codex window), but never more than the strip is wide, and never more than
+  // lacks. We reserve as many keys as we have usage tiles (same-provider pairs
+  // compact when necessary), but never more than the strip is wide or more than
   // `slots.length - 1` so at least one key stays for sessions — the latter is
   // the fix for the old `slots.length >= 6` gate that silently dropped ALL usage
   // when the user placed only a few AgentDeck keys. Reserved keys are pinned on

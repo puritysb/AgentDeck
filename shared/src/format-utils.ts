@@ -275,22 +275,13 @@ export function codexUsageFootnote(
  * decides what happens to the remainder. Shared so the two decks cannot disagree
  * about which limit a user is looking at.
  *
- * Two ways in, and only two:
- *   - the cap is ACTIVE, i.e. it is the limit currently binding. Then it outranks
- *     Codex and is placed ahead of it: the whole point of surfacing scoped caps
- *     is that a per-model weekly cap can sit at 98% while 5H/7D still read low
- *     (issue #99). A strip that shows only the windows that aren't binding is
- *     worse than one gauge short.
- *   - Codex contributes no window at all — no Codex account, or a free ChatGPT
- *     tier with nothing to meter. The key is going spare, so an inactive cap is
- *     better context than an empty tile.
+ * Any surfaced cap claims one logical usage tile. An ACTIVE cap outranks Codex
+ * and is placed ahead of it because a per-model weekly cap can be binding while
+ * the aggregate 5H/7D windows still read low (issue #99). An inactive cap is
+ * informational and is placed after live Codex windows.
  *
- * An inactive cap never displaces a live Codex window: "not currently binding" is
- * weaker information than a real quota the user is spending right now.
- *
- * The cap TAKES Codex's key rather than adding one beside it (see
- * `codexWindowsBeside`) — the strip is a fixed budget carved out of session keys,
- * and a limit the user cannot act on should not cost them a session tile.
+ * Physical surfaces enforce their own budgets by pairing or paging readings;
+ * this shared arbiter never authorizes silently dropping a known quota.
  */
 export function scopedLimitClaimsUsageKey(
   scoped: { active?: boolean } | undefined | null,
@@ -303,8 +294,8 @@ export function scopedLimitClaimsUsageKey(
 /**
  * The Codex windows that sit beside the scoped limit tile.
  *
- * Retains all present Codex windows so devices with 15+ keys can show
- * Claude 5H, 7D, Scoped (Fable), and Codex windows together across up to 4 usage keys.
+ * Retains every present Codex window. Fixed-size surfaces compact or page the
+ * resulting logical tiles instead of discarding a known window.
  */
 export function codexWindowsBeside<T>(
   codexWindows: T[],
