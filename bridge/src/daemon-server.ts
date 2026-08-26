@@ -540,9 +540,9 @@ function resolveStagedFwBoard(target: string): string {
   return puller?.board ?? target;
 }
 
-/** Stage a build for a board. Reads the file once to fingerprint it; the file
- *  itself is re-read at device download time (a rebuild at the same path is
- *  re-fingerprinted by re-staging).
+/** Stage a build for a board. Reads the file once to fingerprint it. The Feed
+ *  advert path re-fingerprints a rebuild at the same path before advertising,
+ *  and the download path re-reads the bytes that are actually served.
  *
  *  `pullSeen` reports whether this daemon has actually observed a feed pull
  *  from the board, because "staged" proves neither transfer nor install and a
