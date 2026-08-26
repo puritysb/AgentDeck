@@ -469,6 +469,21 @@ function applyOne(d: OutboxDecision, deps: OutboxApplyDeps): OutboxDecisionResul
  *  the band is generous; anything outside it is a wake worth looking at. */
 export const PULL_CADENCE_TOLERANCE = 0.25;
 
+/**
+ * A staged image always takes precedence over a full portable Feed. The
+ * device already has a durable deck on SD, while the small `unchanged`
+ * envelope is the only prerequisite for entering the resumable OTA path.
+ * Making this RSSI-independent avoids unstable threshold crossings between
+ * discovery and the redirected request.
+ */
+export function applyPullOtaBootstrap(feed: CardFeedResponse, hasFirmwareAdvert: boolean): boolean {
+  if (!hasFirmwareAdvert || feed.unchanged) return false;
+  feed.cards = [];
+  feed.unchanged = true;
+  delete feed.glance;
+  return true;
+}
+
 export interface FeedPullEvent {
   /** Client IP — the only identity a `GET /feed` carries. */
   client: string;

@@ -203,6 +203,7 @@ import { getLanIp, stripUnsafeText, cleanRawText, prepareMarkdownDetail, normali
 import { injectOpenClawSession, OPENCLAW_SESSION_ID } from './openclaw-session.js';
 import {
   buildCardFeed, buildGlance, projectPortableReaderGlance, applyOutboxDecisions, FeedPullTracker, formatFeedPull,
+  applyPullOtaBootstrap,
   OutboxIdempotencyLedger,
   normalizeClientIp, parsePullTelemetry,
 } from './card-feed.js';
@@ -368,23 +369,35 @@ const glanceCalendar = new CalendarProvider();
 // the device downloads `GET /esp32/fw` + flashes itself on its next pull.
 // Persisted across daemon restarts; a device that already took an md5 skips it
 // (its applied-marker), so a stale staging is harmless.
-interface StagedFw { firmwarePath: string; md5: string; size: number; stagedAt: number; }
+interface StagedFw {
+  firmwarePath: string;
+  md5: string;
+  size: number;
+  stagedAt: number;
+  /** Build identity embedded by CrossPoint/Pocket Daily, when discoverable. */
+  firmwareVersion?: string;
+}
 interface PersistedStagedFwV2 {
   version: 2;
   identities: Array<StagedFw & SurfaceOtaIdentity>;
   legacy: Record<string, StagedFw>;
 }
-// Keep each response below the 256 KiB size that the measured X3 completed in
-// 1–2 seconds even on its lossy path. The device asks again immediately and
-// keeps six attempts per Sync, so 128 KiB segments make useful progress
-// durable before the 60-second socket timeout instead of gambling the whole
-// remaining image on one long response.
-const PULL_OTA_SEGMENT_BYTES = 128 * 1024;
+// Legacy firmware does only six GETs per awake pass, so its previous 128 KiB
+// response cap made at most 768 KiB progress before sleeping. 256 KiB was
+// measured to complete in 1–2 seconds on X3 and halves those reconnects. New
+// cooperative clients explicitly ask for a smaller `limit` when they need a
+// tighter UI-yield budget.
+const PULL_OTA_SEGMENT_BYTES = 256 * 1024;
+const PULL_OTA_MIN_SEGMENT_BYTES = 32 * 1024;
+const PULL_OTA_MAX_SEGMENT_BYTES = 512 * 1024;
 
-function pullOtaSegment(firmware: Buffer, requestedFrom: number): { from: number; body: Buffer } {
+function pullOtaSegment(firmware: Buffer, requestedFrom: number, requestedLimit?: number): { from: number; body: Buffer } {
   const from = Number.isFinite(requestedFrom) && requestedFrom > 0
     ? Math.min(Math.floor(requestedFrom), firmware.length) : 0;
-  return { from, body: firmware.subarray(from, Math.min(from + PULL_OTA_SEGMENT_BYTES, firmware.length)) };
+  const limit = Number.isFinite(requestedLimit) && requestedLimit! > 0
+    ? Math.max(PULL_OTA_MIN_SEGMENT_BYTES, Math.min(Math.floor(requestedLimit!), PULL_OTA_MAX_SEGMENT_BYTES))
+    : PULL_OTA_SEGMENT_BYTES;
+  return { from, body: firmware.subarray(from, Math.min(from + limit, firmware.length)) };
 }
 
 /** The route above keeps dual-homed hosts on the device-side Wi-Fi interface.
@@ -438,6 +451,25 @@ const stagedFwStatePath = (): string => join(getDataDir(), 'staged-fw.json');
 
 function otaIdentityKey(identity: SurfaceOtaIdentity): string {
   return JSON.stringify([identity.productId, identity.board, identity.updateChannel]);
+}
+
+/** Read the NUL-terminated build identity already present in Pocket images.
+ * This avoids inventing another manifest field and also repairs older persisted
+ * stages that predate firmwareVersion. */
+function embeddedFirmwareVersion(firmware: Buffer): string | undefined {
+  const marker = Buffer.from('CrossPoint version: ', 'ascii');
+  const start = firmware.indexOf(marker);
+  if (start < 0) return undefined;
+  const valueStart = start + marker.length;
+  let end = valueStart;
+  while (end < firmware.length && end - valueStart < 96) {
+    const byte = firmware[end]!;
+    if (byte === 0 || byte === 0x0a || byte === 0x0d) break;
+    if (byte < 0x20 || byte > 0x7e) return undefined;
+    end++;
+  }
+  if (end === valueStart || end - valueStart >= 96) return undefined;
+  return firmware.subarray(valueStart, end).toString('ascii');
 }
 
 function loadStagedFw(): void {
@@ -530,7 +562,13 @@ function stageEsp32Fw(
   }
   const firmware = readFileSync(firmwarePath);
   const md5 = createHash('md5').update(firmware).digest('hex');
-  const staged = { firmwarePath, md5, size: firmware.length, stagedAt: Date.now() };
+  const staged = {
+    firmwarePath,
+    md5,
+    size: firmware.length,
+    stagedAt: Date.now(),
+    firmwareVersion: embeddedFirmwareVersion(firmware),
+  };
   if (identity) stagedFwByIdentity.set(otaIdentityKey(identity), { ...staged, ...identity });
   else legacyStagedFwByBoard.set(board, staged);
   saveStagedFw();
@@ -548,6 +586,7 @@ function stageEsp32Fw(
 function stagedFwAdvert(
   board: string | undefined,
   identity?: SurfaceOtaIdentity,
+  clientVersion?: string,
 ): ({ size: number; md5: string } & Partial<SurfaceOtaIdentity>) | undefined {
   if (!board) return undefined;
   const validatedIdentity = identity ? validateSurfaceOtaIdentity(identity) : undefined;
@@ -558,13 +597,21 @@ function stagedFwAdvert(
   try {
     const firmware = readFileSync(staged.firmwarePath);
     const md5 = createHash('md5').update(firmware).digest('hex');
-    if (md5 !== staged.md5 || firmware.length !== staged.size) {
+    const firmwareVersion = embeddedFirmwareVersion(firmware);
+    if (md5 !== staged.md5 || firmware.length !== staged.size || firmwareVersion !== staged.firmwareVersion) {
       if (validatedIdentity) stagedFwByIdentity.set(otaIdentityKey(validatedIdentity), {
-        ...staged, ...validatedIdentity, md5, size: firmware.length,
+        ...staged, ...validatedIdentity, md5, size: firmware.length, firmwareVersion,
       });
-      else legacyStagedFwByBoard.set(board, { ...staged, md5, size: firmware.length });
+      else legacyStagedFwByBoard.set(board, { ...staged, md5, size: firmware.length, firmwareVersion });
       saveStagedFw();
       return { size: firmware.length, md5, ...(validatedIdentity ?? {}) };
+    }
+    if (clientVersion && firmwareVersion && clientVersion === firmwareVersion) {
+      if (validatedIdentity) stagedFwByIdentity.delete(otaIdentityKey(validatedIdentity));
+      else legacyStagedFwByBoard.delete(board);
+      saveStagedFw();
+      log(`[agentdeck] staged firmware acknowledged by ${validatedIdentity?.productId ?? 'legacy'}/${board}: v${clientVersion}`);
+      return undefined;
     }
     return { size: staged.size, md5: staged.md5, ...(validatedIdentity ?? {}) };
   } catch {
@@ -833,6 +880,7 @@ export const __wifiOtaTestApi = {
   resolveStagedFwBoard,
   stageEsp32Fw,
   stagedFwAdvert,
+  embeddedFirmwareVersion,
   pullOtaSegment,
   preferredPullOtaIp,
   feedPulls,
@@ -2167,7 +2215,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // never converge there). The device appends whatever arrives and
         // re-asks from where it stopped, so partial transfers accumulate.
         const fromRaw = Number(parsedUrl.searchParams.get('from') ?? 0);
-        const { from, body } = pullOtaSegment(firmware, fromRaw);
+        const limitRaw = parsedUrl.searchParams.has('limit')
+          ? Number(parsedUrl.searchParams.get('limit')) : undefined;
+        const { from, body } = pullOtaSegment(firmware, fromRaw, limitRaw);
         log(`[agentdeck] pull-OTA download: ${board} (${ip}) ← ${body.length} bytes`
           + (from > 0 ? ` (resume from ${from}/${firmware.length})` : ''));
         // Early Pocket Daily builds persisted partial bodies but treated 206
@@ -2224,6 +2274,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           return;
         }
         throw err;
+      }
+      if (surfaceIdentity) {
+        const preferredIp = preferredPullOtaIp(ip, req.socket.localAddress ?? '');
+        if (preferredIp) {
+          const port = req.socket.localPort ?? 9120;
+          log(`[agentdeck] Surface path redirect: glance-frame ${surfaceIdentity.board} (${ip}) via ${preferredIp}`);
+          res.writeHead(307, {
+            Location: `http://${preferredIp}:${port}${parsedUrl.pathname}${parsedUrl.search}`,
+            'Cache-Control': 'no-store',
+            'Connection': 'close',
+          });
+          res.end();
+          return;
+        }
       }
       (async () => {
         const board = surfaceIdentity?.board ?? parsedUrl.searchParams.get('board') ?? 'xteink_x3';
@@ -2293,6 +2357,25 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }
         throw err;
       }
+      // Redirect bodyless Feed GETs only. Pocket builds predating the explicit
+      // POST replay support cannot follow a 307 Outbox response and stall the
+      // whole Sync before Feed/OTA. Outbox is tiny and idempotency-keyed, so
+      // serving it on the accepted local interface is both compatible and
+      // safe; current clients still learn/promote the Wi-Fi origin from Feed.
+      if (surfaceIdentity && req.method === 'GET') {
+        const preferredIp = preferredPullOtaIp(ip, req.socket.localAddress ?? '');
+        if (preferredIp) {
+          const port = req.socket.localPort ?? 9120;
+          log(`[agentdeck] Surface path redirect: ${pathname.slice(1)} ${surfaceIdentity.board} (${ip}) via ${preferredIp}`);
+          res.writeHead(307, {
+            Location: `http://${preferredIp}:${port}${parsedUrl.pathname}${parsedUrl.search}`,
+            'Cache-Control': 'no-store',
+            'Connection': 'close',
+          });
+          res.end();
+          return;
+        }
+      }
       (async () => {
         if (req.method === 'GET') {
           const sessions = await core.buildSessionsSnapshot();
@@ -2321,14 +2404,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // sleeping board learns about a staged build on any pull. Board
           // identity from the query (newer firmware) or the IP memory.
           const pullBoard = surfaceIdentity?.board ?? parsedUrl.searchParams.get('board') ?? boardForClientIp(ip);
-          if (!feed.unchanged) pocketAutonomy.observeDelivery(feed.cards, now, pullBoard ?? undefined);
           const otaIdentity = surfaceIdentity ? {
             productId: surfaceIdentity.productId,
             board: surfaceIdentity.board,
             updateChannel: surfaceIdentity.updateChannel,
           } : undefined;
-          const fwAdvert = stagedFwAdvert(pullBoard ?? undefined, otaIdentity);
+          const fwAdvert = stagedFwAdvert(pullBoard ?? undefined, otaIdentity, surfaceIdentity?.clientVersion);
           if (fwAdvert) feed.fw = fwAdvert;
+          const telemetry = parsePullTelemetry(parsedUrl.searchParams);
+          if (applyPullOtaBootstrap(feed, fwAdvert !== undefined)) {
+            // Do not make a weak-link X3 receive and parse a full content deck
+            // before it can discover the resumable image. `unchanged` tells it
+            // to retain the durable cards already on SD; after the update its
+            // next ordinary pull receives the complete current deck.
+            log(`[agentdeck] OTA-first Feed bootstrap: ${pullBoard ?? 'unknown'} (${ip})${telemetry.rssiDbm !== undefined ? ` rssi ${telemetry.rssiDbm}dBm` : ''}`);
+          }
+          if (!feed.unchanged) pocketAutonomy.observeDelivery(feed.cards, now, pullBoard ?? undefined);
           // A sleeping client's whole visit is this one request: no body, no
           // board id, nothing pushed. Record it, because the gap between two
           // pulls is the only evidence that the timer wake fired at all.
@@ -2338,7 +2429,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             cards: feed.cards.length,
             nextPullSec: feed.nextPullSec,
             unchanged: feed.unchanged === true,
-            telemetry: parsePullTelemetry(parsedUrl.searchParams),
+            telemetry,
           }))}`);
           return feed;
         }

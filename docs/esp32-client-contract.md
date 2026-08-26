@@ -258,14 +258,30 @@ Card Feed implementation.
   md5 against its applied-marker (`/.crosspoint/agentdeck-fw-applied.txt` —
   written *before* flashing so a bad image can't re-download every pull),
   guards battery ≥30% and the OTA slot size, downloads `GET /esp32/fw` with
-  the same tuple in query + Surface headers to the shared SD OTA cache, validates
+  the same tuple in query + Surface headers to the shared SD OTA cache, and
+  resumes with `from=<persistedBytes>`. Foreground clients may add
+  `limit=<bytes>` (32–512 KiB; Pocket Daily uses 128 KiB) to yield between
+  bounded responses without discarding half of a server segment. It validates
   (whole-file MD5 + bootloader-mirror structural check), and flashes +
   restarts on that same wake. Staging persists across daemon restarts
   (`~/.agentdeck/staged-fw.json`); re-staging a rebuilt binary refreshes the
-  md5. Product-aware requests never consult board-only stages; X3/X4 CLI staging
+  md5. For Pocket images, the daemon reads the embedded `CrossPoint version`
+  build identity and clears the stage once a subsequent product-aware Feed
+  identifies that exact client version. The staged file's size, MD5, and
+  embedded identity are refreshed before this acknowledgement, so a
+  rebuilt-in-place image cannot be silently discarded. Product-aware requests
+  never consult board-only stages; X3/X4 CLI staging
   without a full tuple is refused. Existing board-only state is retained only for
   headerless legacy AgentDeck requests. Device: Pocket Daily `src/agentdeck/ota_pull.*`;
   daemon: the versioned full-tuple staging store in `bridge/src/daemon-server.ts`.
+- **Dual-homed Surface routing (2026-08-26)**: Feed, Glance Frame, and pull OTA
+  can answer `307` when a Mac has Ethernet and Wi-Fi addresses on the device
+  subnet. Outbox is served on the accepted interface so older Pocket builds do
+  not stall before Feed; current clients nevertheless support safe replay of
+  its idempotency-keyed POST. Portable clients promote the final redirected GET
+  origin in their persisted endpoint candidates. This prevents a successful
+  request from losing its response on the competing return interface after
+  host wake without breaking the OTA bootstrap path for legacy clients.
 - **Glance Frame (M8, 2026-07-31)**: `GET /glance-frame?board=<id>` returns
   the daemon-**rendered** glance as packed 1bpp framebuffer rows (MSB-first,
   bit 1 = white) with `X-Frame-Width`/`X-Frame-Height`/`X-Frame-Sig` headers —

@@ -114,6 +114,41 @@ describe('pull-OTA staging', () => {
     expect(__wifiOtaTestApi.stagedFwAdvert('xteink_x3')).toBeUndefined();
   });
 
+  it('acknowledges an SD-installed staged image by its embedded client version', () => {
+    const version = '1.4.1-dev-pocket-w12345678';
+    const image = Buffer.concat([
+      Buffer.alloc(64, 0x5a),
+      Buffer.from(`CrossPoint version: ${version}\0`, 'ascii'),
+      Buffer.alloc(64, 0x5a),
+    ]);
+    writeFileSync(firmware, image);
+    const x3 = { productId: 'io.pocketdaily.reader', board: 'xteink_x3', updateChannel: 'stable' };
+    __wifiOtaTestApi.stageEsp32Fw('xteink_x3', firmware, x3);
+
+    expect(__wifiOtaTestApi.embeddedFirmwareVersion(image)).toBe(version);
+    expect(__wifiOtaTestApi.stagedFwAdvert('xteink_x3', x3, version)).toBeUndefined();
+    expect(__wifiOtaTestApi.getStagedFw(x3)).toBeUndefined();
+  });
+
+  it('refreshes a rebuilt-in-place image before accepting a version acknowledgement', () => {
+    const version = '1.4.1-dev-pocket-w12345678';
+    const image = (fill: number) => Buffer.concat([
+      Buffer.alloc(64, fill),
+      Buffer.from(`CrossPoint version: ${version}\0`, 'ascii'),
+      Buffer.alloc(64, fill),
+    ]);
+    writeFileSync(firmware, image(0x11));
+    const x3 = { productId: 'io.pocketdaily.reader', board: 'xteink_x3', updateChannel: 'stable' };
+    const staged = __wifiOtaTestApi.stageEsp32Fw('xteink_x3', firmware, x3);
+
+    writeFileSync(firmware, image(0x22));
+    const advert = __wifiOtaTestApi.stagedFwAdvert('xteink_x3', x3, version);
+
+    expect(advert).toMatchObject(x3);
+    expect(advert?.md5).not.toBe(staged.md5);
+    expect(__wifiOtaTestApi.getStagedFw(x3)?.md5).toBe(advert?.md5);
+  });
+
   it('rejects cross-product and cross-channel stages before persisting', () => {
     expect(() => __wifiOtaTestApi.stageEsp32Fw('xteink_x3', firmware, {
       productId: 'dev.agentdeck.dashboard-firmware', board: 'xteink_x3', updateChannel: 'stable',
@@ -134,13 +169,19 @@ describe('pull-OTA staging', () => {
     const tail = __wifiOtaTestApi.pullOtaSegment(image, second.from + second.body.length);
 
     expect(first).toMatchObject({ from: 0 });
-    expect(first.body).toHaveLength(128 * 1024);
-    expect(second).toMatchObject({ from: 128 * 1024 });
-    expect(second.body).toHaveLength(128 * 1024);
-    expect(second.body[0]).toBe(0x22);
-    expect(tail).toMatchObject({ from: 256 * 1024 });
-    expect(tail.body).toHaveLength(44 * 1024);
-    expect(tail.body[0]).toBe(0x33);
+    expect(first.body).toHaveLength(256 * 1024);
+    expect(second).toMatchObject({ from: 256 * 1024 });
+    expect(second.body).toHaveLength(44 * 1024);
+    expect(second.body[0]).toBe(0x33);
+    expect(tail).toMatchObject({ from: 300 * 1024 });
+    expect(tail.body).toHaveLength(0);
+  });
+
+  it('honors a bounded cooperative OTA segment limit', () => {
+    const image = Buffer.alloc(700 * 1024);
+    expect(__wifiOtaTestApi.pullOtaSegment(image, 0, 128 * 1024).body).toHaveLength(128 * 1024);
+    expect(__wifiOtaTestApi.pullOtaSegment(image, 0, 1).body).toHaveLength(32 * 1024);
+    expect(__wifiOtaTestApi.pullOtaSegment(image, 0, 2 * 1024 * 1024).body).toHaveLength(512 * 1024);
   });
 
   it('redirects dual-homed OTA traffic to the device-side Wi-Fi interface once', () => {

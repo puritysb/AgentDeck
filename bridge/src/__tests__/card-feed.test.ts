@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   classifySessionCard,
   buildCardFeed,
+  applyPullOtaBootstrap,
   applyOutboxDecisions,
   OutboxIdempotencyLedger,
   FeedPullTracker,
@@ -89,6 +90,31 @@ describe('buildCardFeed', () => {
     expect(buildCardFeed([session({ state: 'processing' })], NOW).nextPullSec).toBe(CARD_FEED_ACTIVE_PULL_SEC);
     expect(buildCardFeed([session({ state: 'awaiting_permission' })], NOW).nextPullSec).toBe(CARD_FEED_ACTIVE_PULL_SEC);
     expect(buildCardFeed([], NOW).nextPullSec).toBe(CARD_FEED_IDLE_PULL_SEC);
+  });
+});
+
+describe('pull OTA Feed bootstrap', () => {
+  it('replaces a full deck with a cache-preserving OTA bootstrap envelope', () => {
+    const feed = buildCardFeed([session()], NOW, undefined, {
+      glance: buildGlance({ sessions: [] }),
+    });
+
+    expect(applyPullOtaBootstrap(feed, true)).toBe(true);
+    expect(feed.cards).toEqual([]);
+    expect(feed.unchanged).toBe(true);
+    expect(feed.glance).toBeUndefined();
+  });
+
+  it('leaves ordinary and already-conditional feeds untouched', () => {
+    const ordinary = buildCardFeed([session()], NOW);
+    const ordinaryCards = ordinary.cards;
+    expect(applyPullOtaBootstrap(ordinary, false)).toBe(false);
+    expect(ordinary.cards).toBe(ordinaryCards);
+    expect(ordinary.unchanged).toBeUndefined();
+
+    const conditional = buildCardFeed([session()], NOW, undefined, { echoSig: ordinary.deckSig });
+    expect(applyPullOtaBootstrap(conditional, true)).toBe(false);
+    expect(conditional.unchanged).toBe(true);
   });
 });
 

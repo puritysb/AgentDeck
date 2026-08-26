@@ -111,7 +111,20 @@ Headerless clients and `surface=pocket-reader` retain their previous baseline.
 Resumable OTA clients may offer `ota.resume-206`; negotiated clients receive
 `206 Partial Content` for `?from=` downloads, while older clients receive the
 same remaining bytes with status `200` so an already persisted partial image can
-still converge instead of requiring SD-card recovery.
+still converge instead of requiring SD-card recovery. `GET /esp32/fw` also
+accepts an optional `limit=<bytes>` cooperative response budget, clamped to
+32–512 KiB. Current Pocket Daily requests 128 KiB so it can yield to input
+between bursts; legacy clients omit it and receive 256 KiB to reduce reconnects.
+For firmware carrying a `CrossPoint version` build identity, a later Feed whose
+`AgentDeck-Client-Version` matches that identity acknowledges installation and
+clears the persisted stage. The daemon re-fingerprints the staged file before
+accepting that acknowledgement, preserving a rebuilt-in-place image.
+On a dual-homed daemon host, Surface Feed, Glance Frame, and pull OTA may return
+`307` to the host interface sharing the device's Wi-Fi path. Outbox is handled
+on the accepted interface for compatibility with Pocket builds that predate
+explicit POST replay; current clients can replay its idempotency-keyed body but
+are not required to do so. Successful clients cache the redirected GET origin
+as their next preferred route.
 
 The in-process Swift daemon serves a weather-only Card Feed envelope, validates the
 same eight Pocket identity headers, and negotiates a bounded subset:
