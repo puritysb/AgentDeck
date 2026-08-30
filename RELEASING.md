@@ -196,13 +196,17 @@ when editing a published body.
 #### Pre-tag three-mode daemon soak
 
 Run this from a clean checkout of the commit that will receive the tag. Record the
-previous installed CLI version and a rollback command before replacing it, and put
-the measured results in the release issue. All three rows are required:
+previous installed CLI version and a rollback command before replacing it. Also
+record the macOS app's exact version and build: an npm-only release must test
+against the currently delivered app, while a coordinated Apple+npm round uses the
+Apple release candidate. Put the measured results in the release issue. All three
+rows are required:
 
-1. **Swift daemon only** — stop the CLI daemon, launch the built macOS app, and
+1. **Swift daemon only** — stop the CLI daemon, launch the recorded macOS app, and
    confirm port 9120 is owned by `AgentDeck` with `/health` reporting `isSwift:
    true`. Use at least one real directly launched agent turn and confirm that its
-   state reaches the app plus at least one connected downstream surface.
+   state reaches the app plus at least one connected downstream surface. Do not
+   run two copies with the same bundle identifier to stand in for this row.
 2. **CLI daemon only** — quit the macOS app, start the installed release-candidate
    `agentdeck` daemon, and confirm the installed binary reports the target version
    and `/health` reports `isSwift: false`. Repeat a real agent turn and downstream
