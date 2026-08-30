@@ -24,14 +24,14 @@ This matrix defines which capabilities belong to the standalone App Store produc
 | Tier | Contract |
 |---|---|
 | Tier 1 — App Store | Complete sandboxed dashboard. No PTY, subprocess, bundled interpreter, helper executable, or install prompt. |
-| Tier 2 — CLI | Optional Node daemon that owns integrations requiring external tools or unrestricted process discovery. Its legacy managed-PTY launcher remains functional during the 1.x deprecation window but is not the default session path. |
+| Tier 2 — CLI | Optional Node daemon that owns integrations requiring external tools or unrestricted process discovery. Its legacy managed-PTY launcher remains functional as a replacement-gated compatibility path but is not the default session path. |
 
-> **Managed-session deprecation:** `agentdeck claude`, `agentdeck codex`,
-> `agentdeck opencode`, and `agentdeck monitor` are deprecated under
-> [#273](https://github.com/puritysb/AgentDeck/issues/273). Install the daemon,
-> then run the agent normally. The commands remain functional throughout the
-> current compatibility-major; their PTY-only capabilities are tracked here
-> until each has a replacement or an explicit retirement decision.
+> **Managed-session compatibility:** `agentdeck claude`, `agentdeck codex`,
+> `agentdeck opencode`, and `agentdeck monitor` remain functional with no
+> removal date. Install the daemon, then run the agent normally for the default
+> path. [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278)
+> collects workflows for managed-only capabilities; implementation and release
+> gates live in [#273](https://github.com/puritysb/AgentDeck/issues/273).
 
 The submitted macOS app must not contain `Process()`, `/bin/sh`, AppleScript, generated `.command` files, or bundled Node/Python/sqlite binaries. Native serial, BLE, local-network, and user-selected-file access remain valid when implemented with Apple frameworks and declared entitlements.
 
@@ -82,7 +82,7 @@ All surfaces follow the same rule:
 | Codex rate limits (passive rollout read) | Yes | Yes | User grants a security-scoped bookmark to `~/.codex`. Both tiers reconcile the snapshot against the live account tier in `auth.json` and **void** one minted under a plan the account no longer holds — neither freshness axis can retire it, since a lapsed plan's weekly window stays future-dated (`codexSnapshotMatchesAccountPlan`, mirrored to Swift as the generated `CodexPlanRules`). Voiding rides the wire as a windowless block, so Tier 1's own daemon retracts the gauge rather than leaving a client to guess |
 | Codex rate limits (live `app-server` query) | No | Yes | The rollout `rate_limits` block is a byproduct of a **successful turn**, so the reading freezes exactly when the quota is exhausted (no turn can complete) and never sees usage spent on Codex Cloud or another machine. Tier 2 backs it with a throttled `codex app-server` → `account/rateLimits/read` JSON-RPC query against the user's own CLI (`bridge/src/codex-rate-limits-live.ts`); the fresher of the two snapshots wins by `capturedAt`. Tier 1 cannot follow — the App Store daemon spawns no subprocess — so it keeps the passive read and its age footnote. This is also why plan reconciliation matters most on Tier 1: with no live query to overwrite it, a retired plan's snapshot is the *only* thing Tier 1 would ever read, and Codex is its only quota gauge (Claude's needs the relay). |
 | Anthropic Admin API usage | Yes | Yes | User supplies the API key |
-| Terminal status-line token and cost telemetry | Hook-only | Yes (deprecated) | Legacy CLI-managed UI telemetry; no direct-launch replacement. Lifecycle correctness comes from hooks/events, never terminal scraping. Tracked in #273 |
+| Terminal status-line token and cost telemetry | Hook-only | Yes (compatibility) | Legacy CLI-managed UI telemetry; no daemon-first replacement. Lifecycle correctness comes from hooks/events, never terminal scraping. Tracked in #273 |
 
 ## Hardware
 
@@ -109,18 +109,19 @@ All surfaces follow the same rule:
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
 | Existing terminal-session discovery | Limited | Yes | General `ps` / `lsof` / transcript discovery is CLI-only |
 | Display-only permission attention | Yes | Yes | Real permission notification; no fabricated options |
-| Session order pinning (`--weight` sort override) | Limited | Yes (deprecated) | Weight is CLI-set only by the deprecated managed launcher and reaches the Swift daemon via `session_push_register`; observed-hook sessions never carry it. Replacement-or-retirement decision is tracked in #273 |
+| Session order pinning (`--weight` sort override) | Limited | Yes (compatibility) | Weight is CLI-set only by the managed launcher and reaches the Swift daemon via `session_push_register`; observed-hook sessions never carry it. A daemon-persisted replacement must be validated before this path can be removed; tracked in Discussion #278 and issue #273 |
 | Adaptive high-volume menu bar overview | Yes | Yes | The popup keeps a bounded height at every session/device count: actionable sessions stay visible, idle sessions and repeated surface families collapse into counted summaries, and Activity shows completed work from a named recent window instead of unbounded duration totals. The Dashboard retains the complete roster, topology, and report. This is presentation-only and uses the same daemon state in both tiers |
 | Adaptive high-volume Dashboard session panel | Yes | Yes | The left HUD reserves the Timeline region, widens within a fixed landscape cap, switches to compact rows for larger rosters, and scrolls the complete session collection inside its own bounded card instead of painting over Timeline. Adjacent setup guidance shifts beside the roster rather than covering it. Presentation-only; focus and session data remain identical in both tiers |
 | Form-factor-readable Dashboard HUD | Yes | Yes | iPhone/compact-phone portrait presents one full-width readable HUD rail at a time with an explicit Sessions/System switch; phone landscape, iPad/tablet, and macOS retain the dual-rail terrarium composition with bounded Timeline-safe heights. Android e-ink keeps its static high-contrast, no-scroll projection while typography and spacing scale by reader size. Presentation-only; all tiers consume the same session, topology, and timeline state |
-| Managed terminal UI steering | No | Yes (deprecated) | The legacy compatibility observer reads only real mode/diff/option UI and injects keys; lifecycle state, timeline, and APME remain hook/event-owned. Direct-launch steering uses ask-gates/injection and is not fully equivalent. Tracked in #273 |
+| Managed terminal UI steering | No | Yes (compatibility) | The legacy compatibility observer reads only real mode/diff/option UI and injects keys; lifecycle state, timeline, and APME remain hook/event-owned. Direct-launch steering uses ask-gates/injection and is not fully equivalent. Tracked in #273 |
 | Observed AskUserQuestion — device answer (ask-gate) | Yes | Yes | The daemon holds the question's PreToolUse hook open and resolves it with the option the user picked, stated as the decision reason. Pure HTTP hold, no subprocess, so it works sandboxed. Engaged only when injection is unavailable (always so in Tier 1); an unanswered hold releases empty, and Claude's own picker appears in the terminal as usual. Multi-question calls are answered one question at a time |
 | Observed-session answer injection (device tap → host UI) | No | Yes | tmux / iTerm2 / Terminal.app by tty, GUI apps by AX button or key events. Needs `ps` tty discovery + tmux/osascript subprocesses — both CLI-only; sandbox has neither. Preferred over the ask-gate when available: it answers the live picker with no added latency for whoever is at that terminal |
 | OpenCode monitoring | Opt-in read-only | Yes | Tier 1 connects only to a configured/fixed local server; no port scan |
 | Antigravity session monitoring | No | Yes | Tier 1 may display user-approved usage data only |
 | Kiro CLI / IDE session monitoring | Yes, after granting `~/.kiro` | Yes | Both tiers read Kiro's own store, because Kiro reports nothing on its own: its standalone lifecycle hooks load but CLI chat fires none of them (measured 2026-08-17, kiro-cli 2.18.1 — each hook instrumented with a marker, a live turn produced zero markers while a hand-POSTed hook produced a row normally). The App Store build reaches `~/.kiro` only through a **user-granted security-scoped bookmark** (Settings → Integrations → Kiro CLI), the same shape as `~/.codex`; with no grant it observes nothing rather than guessing. Sessions and their chat rows come from the transcript, so an observed Kiro session is always reported `idle` — passive reading cannot see a turn in flight. Process discovery stays CLI-only; the App Store path keys on the transcript instead |
 | Subagent activity summaries + parent-linked orbit visuals | Yes | Yes | Read-only lifecycle hooks collapse each child to concise start/completion rows using existing Timeline types. Terrarium surfaces may derive non-interactive wire/ring/satellite accents around the owning parent; they never become selectable sessions. No subagent commands, approvals, team configuration, or process discovery |
-| Launch Claude / Codex / OpenCode session | No | Yes (deprecated) | `agentdeck <agent>` remains functional during the 1.x deprecation window. The supported default is `agentdeck daemon install`, then a normal agent command. Tracked in #273 |
+| Managed launch argument profiles (`AGENTDECK_COMMANDER_ARGS`, `AGENTDECK_*_ARGS`, `-c`) | No | Yes (compatibility) | The managed launcher composes persistent and one-off arguments, including resume commands, with platform-specific quoting and override rules. No daemon-first equivalent exists; Discussion #278 and issue #273 gate replacement/removal |
+| Launch Claude / Codex / OpenCode session | No | Yes (compatibility) | `agentdeck <agent>` remains functional with no removal date. The supported default for ordinary local sessions is `agentdeck daemon install`, then a normal agent command. Tracked in #273 |
 | OpenClaw Gateway WebSocket pairing | Yes | Yes | Local WS, Keychain identity, optional user-selected token file |
 | OpenClaw CLI pairing | No | Yes | Requires external `openclaw` process |
 

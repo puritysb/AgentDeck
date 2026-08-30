@@ -18,7 +18,7 @@ Core bridge architecture, adapter hierarchy, and module system. See [daemon.md](
 
 ## Monorepo layout
 
-- **bridge/** — Node.js server: Daemon (sole hub for all clients, mDNS, device modules) + deprecated managed Session Bridge (PTY transport, hook HTTP, state machine; removal tracked in [#273](https://github.com/puritysb/AgentDeck/issues/273)). BridgeCore (shared infra), lifecycle/event adapters, terminal UI observers, WebSocket server, voice (Apple on-device Speech via the bundled helper), usage API client, auth token, SSE broadcast, TUI dashboard (`tui/`)
+- **bridge/** — Node.js server: Daemon (sole hub for all clients, mDNS, device modules) + legacy managed Session Bridge (PTY transport, hook HTTP, state machine; replacement gates tracked in [#273](https://github.com/puritysb/AgentDeck/issues/273)). BridgeCore (shared infra), lifecycle/event adapters, terminal UI observers, WebSocket server, voice (Apple on-device Speech via the bundled helper), usage API client, auth token, SSE broadcast, TUI dashboard (`tui/`)
 - **plugin/** — Stream Deck SDK v2 plugin: actions for buttons/encoders, bridge WebSocket client
 - **shared/** — TypeScript types and utilities shared between bridge and plugin (protocol, states, timeline, adapter interfaces, `format-utils` time/count/bytes formatters, `timeline-summarizer` extractTopicHint/cleanLLMOutput, `deduplicateEntry` pipeline, `session-utils` stateRank/sortSessions/assignDisplayNames — 세션 정렬/번호 공통 유틸리티, 6곳에서 import)
 - **hooks/** — Claude Code CLI hook installer for `~/.claude/settings.json` (the App Store opt-in UI writes the same user-global file, user-selected), Codex lifecycle hook installer for `~/.codex/config.toml`, and OpenCode observer plugin installer for `~/.config/opencode/plugins/agentdeck.js`
@@ -40,11 +40,11 @@ Core bridge architecture, adapter hierarchy, and module system. See [daemon.md](
 
 ## PtyAdapter hierarchy
 
-`bridge/src/adapters/pty-adapter.ts` — Transport base for deprecated managed
+`bridge/src/adapters/pty-adapter.ts` — Transport base for legacy managed
 agent terminals. Subclasses implement `getDefaultCommand()`, terminal UI
 observation, and agent-specific input handling. PTY output is not a lifecycle
-authority. This hierarchy remains only for the compatibility-major deprecation
-window; new features target daemon-first observed sessions.
+authority. This hierarchy remains as a replacement-gated compatibility path;
+new ordinary-session features target daemon-first observed sessions.
 
 - `ClaudeCodeAdapter` uses hooks for lifecycle/transcript response capture and a terminal UI observer only for real mode/diff/options/cursor affordances, plus Shift+Tab mode switching
 - `CodexCliAdapter` uses lifecycle hooks + notify completion, with rollout-tail response capture; its terminal UI observer is limited to real approval/options detail
@@ -108,7 +108,7 @@ Not every agent enters through an adapter. Three tiers exist, and which one an
 agent lands in is decided by what that agent will actually tell us — not by
 preference.
 
-1. **Managed PTY (deprecated)** — `agentdeck <agent>`. AgentDeck owns the terminal; removal is tracked in #273.
+1. **Managed PTY (legacy compatibility)** — `agentdeck <agent>`. AgentDeck owns the terminal; Discussion #278 captures workflows and removal gates are tracked in #273.
 2. **Hook-observed** — the user runs `claude` / `codex` / `opencode` normally and
    AgentDeck-installed lifecycle hooks POST to the daemon. This is the default
    and covers the great majority of real traffic.

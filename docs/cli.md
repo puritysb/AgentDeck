@@ -16,12 +16,15 @@ The daemon installs or refreshes the lifecycle integrations and observes agents
 started through their normal commands. The **daemon** (port 9120, `0.0.0.0` by
 default) aggregates all sessions for external clients.
 
-> **Deprecation notice:** `agentdeck claude`, `agentdeck codex`,
-> `agentdeck opencode`, and `agentdeck monitor` still work in the current
-> compatibility-major, but their per-session PTY/bridge path is deprecated.
-> They will be removed in a future coordinated major. PTY-only remote attach,
-> `--weight`, terminal steering, and terminal telemetry have no direct-launch
-> equivalent yet; see [#273](https://github.com/puritysb/AgentDeck/issues/273).
+> **Legacy compatibility notice:** `agentdeck claude`, `agentdeck codex`,
+> `agentdeck opencode`, and `agentdeck monitor` still work, and no removal date
+> is set. The daemon-first default is `agentdeck daemon install` followed by a
+> normal agent launch. Remote attach, `--weight`, `AGENTDECK_<AGENT>_ARGS`,
+> terminal steering, and terminal telemetry do not have daemon-first
+> equivalents yet. Replacement design is discussed in
+> [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
+> implementation remains tracked in
+> [#273](https://github.com/puritysb/AgentDeck/issues/273).
 
 Lifecycle compatibility: Claude Code `>=2.1.50` and Codex CLI `>=0.141.0` are
 the supported hook baselines. All same-major AgentDeck clients remain wire-compatible;
@@ -38,13 +41,14 @@ The CLI command is `agentdeck`.
 
 | Command | Description |
 |---------|-------------|
-| `agentdeck claude` | **Deprecated:** start Claude Code in the legacy PTY session bridge |
-| `agentdeck codex` | **Deprecated:** start Codex in the legacy PTY session bridge |
-| `agentdeck opencode` | **Deprecated:** start OpenCode in the legacy PTY/SSE session bridge |
-| `agentdeck monitor` | **Deprecated:** start the legacy hook-only per-session bridge |
+| `agentdeck claude` | **Legacy compatibility:** start Claude Code in the managed PTY session bridge |
+| `agentdeck codex` | **Legacy compatibility:** start Codex in the managed PTY session bridge |
+| `agentdeck opencode` | **Legacy compatibility:** start OpenCode in the managed PTY/SSE session bridge |
+| `agentdeck monitor` | **Legacy compatibility:** start the managed hook-only per-session bridge |
 
-The following flags document the still-functional deprecation window; new
-workflows should not adopt them.
+The following flags document the managed compatibility path. New ordinary local
+sessions should use the normal agent commands; keep this path when one of these
+capabilities is required.
 
 **Flags:** `-p <port>`, `-c <command>`, `-d` (debug), `--no-update-check`, `--weight <n>`
 **Remote attach flags:** `--remote-daemon`, `--daemon-host <host[:port]>`, `--daemon-token <token>` (pairing token of the remote hub — from `~/.agentdeck/auth-token` there, or `agentdeck token show`; env `AGENTDECK_DAEMON_TOKEN`). Required for a current hub: since issue #145 daemons no longer hand their token to unauthenticated LAN peers.
@@ -60,7 +64,7 @@ workflows should not adopt them.
 
 **Preferred daemon port (`agentdeck daemon port`).** The daemon resolves the port it *intends* to serve from `-p/--port` › `AGENTDECK_DAEMON_PORT` › `settings.json` `daemonPort` › 9120, and records where it actually landed in `daemon.json`. Only the user writes the persisted value (`agentdeck daemon port 9200`, `--clear` to forget it); nothing in the startup path does, because persisting the *outcome* would turn a 14-second kernel hold on 9120 into a permanent move to 9121. When the preferred port is held but nothing answers `/health` there, the daemon waits up to 20s for it rather than conceding — see [docs/daemon.md § Preferred port vs actual port](daemon.md#preferred-port-vs-actual-port).
 
-On the deprecated managed path, the `-c` flag sets the full command AgentDeck
+On the managed compatibility path, the `-c` flag sets the full command AgentDeck
 spawns inside the session PTY, so any arguments you add are forwarded straight
 to the underlying agent. For example, to resume an earlier Claude Code session
 (the interactive picker appears when no id is given):

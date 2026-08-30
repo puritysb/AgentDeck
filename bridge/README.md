@@ -31,9 +31,11 @@ report through lifecycle hooks or native event channels and can be steered where
 the observed session exposes a real delivery path.
 
 The legacy `agentdeck claude|codex|opencode|monitor` per-session bridges remain
-functional during the current compatibility-major but are deprecated under
-[#273](https://github.com/puritysb/AgentDeck/issues/273). Do not build new
-workflows around their PTY-only options.
+functional compatibility paths with no removal date. Prefer daemon-first for
+ordinary local sessions, but keep managed-only workflows working while
+[Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
+[#273](https://github.com/puritysb/AgentDeck/issues/273) define and validate
+replacements.
 
 Full CLI reference: https://github.com/puritysb/AgentDeck/blob/master/docs/cli.md
 

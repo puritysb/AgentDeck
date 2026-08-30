@@ -33,10 +33,12 @@ AgentDeck runs two daemon implementations that are **not competitors but collabo
 | mDNS 광고 | 먼저 바인드한 쪽 | 동일 |
 | 세션 집계 + 상태 브로드캐스트 | **CLI 있을 때**, 없으면 Swift | singleton guard |
 
-> **Managed PTY deprecation:** the CLI PTY-spawn row is a compatibility
+> **Managed PTY compatibility:** the CLI PTY-spawn row is a compatibility
 > capability, not the default architecture. `agentdeck claude|codex|opencode`
-> and `agentdeck monitor` remain functional during the current major and are
-> scheduled for retirement under
+> and `agentdeck monitor` remain functional with no removal date. Replacement
+> design is discussed in
+> [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
+> implementation gates live in
 > [#273](https://github.com/puritysb/AgentDeck/issues/273). Daemon-first hook and
 > event observation is the supported path for new workflows.
 
@@ -356,11 +358,11 @@ peer regardless of UID. See [ENTERPRISE-ROADMAP.md](ENTERPRISE-ROADMAP.md) §1.
 
 A session bridge (`agentdeck claude` etc.) normally attaches only to a daemon on its own machine. With **opt-in** remote attach it can instead push to a daemon on another machine and be controlled from that machine's Stream Deck — the use case being "I run Claude Code on several boxes (often over SSH) but have one Stream Deck on a main node."
 
-This feature belongs to the deprecated managed-session path and currently has no
-daemon-first replacement. It remains functional during the current
-compatibility-major while #273 collects affected topologies and decides whether
-to replace or explicitly retire it. Do not adopt it for a new deployment without
-following that issue.
+This feature belongs to the legacy managed-session compatibility path and
+currently has no daemon-first replacement. It remains functional with no removal
+date. Discussion #278 collects affected topologies; #273 requires a validated
+outbound worker/relay replacement before the managed implementation can be
+removed.
 
 - **Enable**: `--remote-daemon` is THE opt-in switch. `--daemon-host <host[:port]>` only names the explicit endpoint (cross-subnet / SSH where multicast doesn't reach) and **requires the switch** — the recommended explicit form is `--remote-daemon --daemon-host mainnode.lan`. Env equivalents: `AGENTDECK_REMOTE_DAEMON=1`, `AGENTDECK_DAEMON_HOST` (alias `AGENTDECK_REMOTE_DAEMON_HOST`). Default is unchanged (local-only).
 - **Opt-in gate (security boundary)**: remote attach never happens on ambient/inherited state — `--remote-daemon` / `AGENTDECK_REMOTE_DAEMON=1` gates **both** remote paths. A host hint given without the switch is inert (the CLI prints a pre-PTY warning via the shared `deriveRemoteAttachOpts` helper, so the derivations can't drift). Within the switch: an unreachable or capability-less named host returns null rather than falling through to mDNS, and mDNS is never consulted on any other signal. With no opt-in and no local daemon, `resolveDaemonTarget` returns null and the session stays local-only (byte-for-byte unchanged). Regression-tested in `bridge/src/__tests__/daemon-target.test.ts` (`resolveDaemonTarget precedence + opt-in gate`).

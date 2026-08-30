@@ -39,7 +39,7 @@ cd plugin; streamdeck link bound.serendipity.agentdeck.sdPlugin; cd ..   # then 
 agentdeck daemon install # hooks + per-user Scheduled Task
 # In another terminal:
 claude                  # supported default: normal observed launch
-agentdeck claude        # deprecated managed ConPTY compatibility path
+agentdeck claude        # legacy managed ConPTY compatibility path
 ```
 
 ## Windows differences (intentional)
@@ -48,10 +48,11 @@ agentdeck claude        # deprecated managed ConPTY compatibility path
 - **Env-var default args** — `AGENTDECK_COMMANDER_ARGS` works identically (tokenized in pure JS, no shell). For `AGENTDECK_CLAUDE_ARGS`/`AGENTDECK_CODEX_ARGS`/`AGENTDECK_OPENCODE_ARGS` the appended string is re-parsed by `cmd.exe`, which does not treat single quotes as quoting — use double quotes for values containing spaces. See [cli.md → Environment-variable defaults](cli.md).
 - **PTY** — ConPTY through `cmd.exe` with `/d /s /c` (POSIX uses `/bin/zsh -l -c`). `node-pty`'s Windows prebuild is used as-is, so no Visual Studio Build Tools are required.
 
-The managed ConPTY path remains functional only during the current
-compatibility-major and is scheduled for retirement under
-[#273](https://github.com/puritysb/AgentDeck/issues/273). New Windows workflows
-should install the daemon and run agents normally.
+The managed ConPTY path remains functional with no removal date. Replacement
+design and gates live in
+[Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
+[#273](https://github.com/puritysb/AgentDeck/issues/273). New ordinary Windows
+workflows should install the daemon and run agents normally.
 - **Hooks** — Claude Code hook entries run a `powershell -NoProfile -ExecutionPolicy Bypass -Command "…"` one-liner that reads `daemon.json`, probes `/health`, and POSTs the payload via `Invoke-RestMethod`.
 - **`agentdeck daemon install` / `uninstall`** — registers a per-user **Scheduled Task** `AgentDeckDaemon` with a logon trigger (built-in `schtasks.exe`, no admin elevation), the Windows analog of the macOS LaunchAgent. `install` registers + starts it now and installs Codex hooks; `uninstall` stops the daemon and removes the task. A real Windows Service is intentionally **not** used — it runs in session 0 with no desktop/device access, breaking USB-HID (D200H), audio (wake-word), and the Stream Deck app. See [daemon.md → Autostart](daemon.md#autostart-loginlogon).
 - **Device modules** — `adb` is probed cross-platform; the `/dev/tty.*` USB-serial scan is skipped on Windows (COM-port enumeration not implemented). mDNS and `better-sqlite3` (APME) support Windows; D200H is driven by the Ulanzi Studio plugin over daemon WebSocket.

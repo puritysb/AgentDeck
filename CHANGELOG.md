@@ -42,24 +42,27 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 This is a backward-compatible minor release. It keeps protocol compatibility
 major 1 and delivers the daemon, Surface, and Work-board changes accumulated
-since npm 1.1.0. Managed agent launchers still work in this release; their
-deprecation is an announced migration, not a removal.
+since npm 1.1.0. Managed agent launchers still work in this release. They are a
+legacy compatibility path with no removal date, not a capability-removal notice.
 
-### Normal agent commands are now the only recommended launch path
+### Normal agent commands are now the default launch path
 
 `agentdeck claude`, `agentdeck codex`, `agentdeck opencode`, and
-`agentdeck monitor` now identify themselves as deprecated in help and print an
-actionable warning before starting their existing per-session bridge. The
-replacement is `agentdeck daemon install` followed by the agent's normal
-command. `agentdeck diag agents [--json]` checks the installed Claude Code,
+`agentdeck monitor` now identify themselves as legacy compatibility commands in
+help and print an actionable notice before starting their existing per-session
+bridge. The recommended default for ordinary local sessions is `agentdeck daemon
+install` followed by the agent's normal command. `agentdeck diag agents [--json]`
+checks the installed Claude Code,
 Codex, and OpenCode versions against AgentDeck's lifecycle compatibility
 baselines without opening a PTY or requiring a running daemon.
 
-The old commands are not tombstones: remote attach, `--weight`, terminal UI
-steering, and terminal telemetry still have no direct-launch equivalent, so
-the managed implementation and `node-pty` remain available through the 1.x
-compatibility window. A 1.1 managed worker's register/state frames remain
-accepted by the 1.2 daemon and continue to surface as managed sessions.
+The old commands are not tombstones: remote attach, `--weight`,
+`AGENTDECK_COMMANDER_ARGS`, agent-specific `AGENTDECK_*_ARGS`, terminal UI
+steering, and terminal telemetry still have no daemon-first equivalent. The
+managed implementation and `node-pty` remain available while replacements are
+designed and validated in Discussion #278 and issue #273. A 1.1 managed worker's
+register/state frames remain accepted by the 1.2 daemon and continue to surface
+as managed sessions.
 
 ### Portable readers receive complete, bounded content
 

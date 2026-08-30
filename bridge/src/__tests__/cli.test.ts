@@ -12,7 +12,7 @@ import {
   daemonPostureArgs,
   buildPlist,
   waitForDaemonPid,
-  managedPtyDeprecationNotice,
+  managedPtyCompatibilityNotice,
 } from '../cli.js';
 import { allModulesOff } from '../modules/types.js';
 
@@ -57,28 +57,32 @@ describe('agentdeck CLI parser', () => {
     expect(stderr).not.toContain('too many arguments');
   });
 
-  it('marks every legacy per-session command as deprecated in --help metadata', () => {
+  it('marks every managed per-session command as legacy compatibility in --help metadata', () => {
     for (const name of ['claude', 'codex', 'opencode', 'monitor']) {
       const command = program.commands.find((candidate) => candidate.name() === name);
-      expect(command?.description()).toContain('[deprecated]');
+      expect(command?.description()).toContain('[legacy compatibility]');
     }
   });
 });
 
-describe('managed PTY deprecation contract', () => {
+describe('managed PTY compatibility contract', () => {
   it.each(['claude', 'codex', 'opencode'] as const)(
     'points agentdeck %s users to daemon-first direct launch',
     (command) => {
-      const notice = managedPtyDeprecationNotice(command).join('\n');
+      const notice = managedPtyCompatibilityNotice(command).join('\n');
       expect(notice).toContain(`agentdeck ${command}`);
       expect(notice).toContain('agentdeck daemon install');
       expect(notice).toContain(`run \`${command}\` directly`);
+      expect(notice).toContain('AGENTDECK_<AGENT>_ARGS');
+      expect(notice).toContain('No removal date is set');
+      expect(notice).toContain('discussions/278');
       expect(notice).toContain('issues/273');
+      expect(notice).not.toContain('will be removed');
     },
   );
 
   it('points monitor users to all normal agent entry points', () => {
-    const notice = managedPtyDeprecationNotice('monitor').join('\n');
+    const notice = managedPtyCompatibilityNotice('monitor').join('\n');
     expect(notice).toContain('agentdeck monitor');
     expect(notice).toContain('run `claude`, `codex`, or `opencode` normally');
   });
@@ -396,12 +400,12 @@ describe('claude action wiring (parseAsync end-to-end)', () => {
     vi.restoreAllMocks();
   });
 
-  it('prints the migration warning before starting the still-functional bridge', async () => {
+  it('prints the compatibility notice before starting the still-functional bridge', async () => {
     const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
     await program.parseAsync([...base, 'claude', '--no-env-args']);
 
     expect(startSessionMock).toHaveBeenCalledTimes(1);
-    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('DEPRECATED'));
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('LEGACY COMPATIBILITY MODE'));
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('agentdeck daemon install'));
   });
 

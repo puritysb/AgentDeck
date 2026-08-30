@@ -129,6 +129,6 @@ export function formatAgentCliDiagnosticReport(report: AgentCliDiagnosticReport)
       lines.push(`- ${agent.label}: ${version} — could not evaluate ${agent.compatibleRange}`);
     }
   }
-  lines.push('', `Managed-session deprecation: ${report.trackingIssue}`);
+  lines.push('', `Managed-session compatibility: ${report.trackingIssue}`);
   return lines.join('\n');
 }

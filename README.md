@@ -70,7 +70,8 @@ terminal dashboard. Install both on the same Mac and the app automatically
 attaches to the CLI daemon, adding the CLI-tier capabilities on top — Claude
 subscription quota gauges and ADB-driven Android/e-ink surfaces. The legacy
 managed-terminal tier also retains PTY session launching and cross-machine
-remote attach during its deprecation window. The exact split is documented in
+remote attach while daemon-first replacements are designed and validated. The
+exact split is documented in
 [docs/appstore-feature-matrix.md](docs/appstore-feature-matrix.md).
 
 **The CLI path needs:** macOS 15+, Windows 11 ([guide](docs/windows.md)), or Linux
@@ -111,17 +112,20 @@ agentdeck diag agents
 
 > [!IMPORTANT]
 > `agentdeck claude`, `agentdeck codex`, `agentdeck opencode`, and
-> `agentdeck monitor` are deprecated. They remain functional during the current
-> compatibility-major, but will be removed in a future coordinated major.
-> Migrate now with `agentdeck daemon install`, then run the agent normally.
-> PTY-only features such as remote attach, `--weight`, terminal UI steering,
-> and terminal telemetry do not yet have direct-launch equivalents; follow
-> [#273](https://github.com/puritysb/AgentDeck/issues/273) or report your use case there.
+> `agentdeck monitor` are legacy compatibility commands. They remain functional,
+> and no removal date is set. For ordinary local sessions, prefer
+> `agentdeck daemon install`, then run the agent normally. Managed-only features
+> such as remote attach, `--weight`, `AGENTDECK_<AGENT>_ARGS`, terminal UI
+> steering, and terminal telemetry do not yet have daemon-first equivalents.
+> Share workflows and help design replacements in
+> [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278);
+> implementation and release work remain tracked in
+> [#273](https://github.com/puritysb/AgentDeck/issues/273).
 
 Kiro has no managed form at all — see [Agents](#agents) for why, and for what its
 sessions do and do not report.
 
-The deprecated managed path can still attach agents on **several machines** to
+The legacy managed compatibility path can attach agents on **several machines** to
 one deck on a main node. `--remote-daemon` is the opt-in switch — without it
 nothing leaves the machine and the default stays local-only:
 
@@ -292,7 +296,8 @@ managed session supplies real options, or when an observed session advertises a
 real answer-delivery path (`liveAnswerable`) through an ask-gate or terminal
 injection. Otherwise the prompt is display-only. On macOS the SwiftUI app ships a
 **standalone in-process Swift dashboard daemon** with no Node.js. The PTY Session
-Bridge remains available only as a deprecated CLI compatibility feature.
+Bridge remains available as a CLI compatibility feature until its managed-only
+workflows have validated daemon-first replacements.
 
 Details: **[docs/architecture.md](docs/architecture.md)**.
 

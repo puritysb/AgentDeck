@@ -251,7 +251,7 @@ v_category_scorecard    -- (task_category, model_id) 그룹: runs, avg_overall,
 2. **Claude Code**: `adapter.on('event', 'hook')` → `claudeHookToSpans` → `apme.collector.ingestSpan(sessionId, span)`
 3. **Non-Claude 에이전트** (OpenClaw/OpenCode/Codex): `wireAgentApme(adapter, agentType, apme, core)` — timeline 이벤트(OpenClaw/OpenCode)와 Codex lifecycle hook + notify를 collector로 변환
 4. **Claude Code 응답 캡처**: Stop hook의 `transcript_path` JSONL tail 을 읽어 `setTurnResponse()` (`readClaudeTranscriptLastTurn`). Stop 자체가 유실되면 hook 침묵 + transcript `end_turn` 레코드를 근거로 synthetic Stop 을 주입해 **같은 경로로** 닫는다 — 화면(PTY) 파싱은 어느 단계에도 없다. 복구는 세션 종류별로 두 벌:
-   - **deprecated managed PTY** (`agentdeck claude`) — `claude-turn-watchdog.ts`, 브리지 프로세스당 1개, 어댑터 이벤트 파이프로 직접 주입
+   - **legacy managed PTY** (`agentdeck claude`) — `claude-turn-watchdog.ts`, 브리지 프로세스당 1개, 어댑터 이벤트 파이프로 직접 주입
    - **hook-observed** (터미널에서 직접 `claude`) — `observed-turn-watchdogs.ts`, 데몬 1프로세스가 session_id 로 다중화하므로 **세션당 1개**. 복구는 데몬이 자기 loopback `/hooks/Stop` 으로 self-POST 한다: Stop 분기는 상태머신·타임라인·APME·모델복구·스티어링 6가지를 하는데 그 두 번째 사본은 반드시 드리프트하므로, 복구 경로는 원래 경로와 **같은 경로여야** 한다. 1.0.20 은 앞의 한 벌만 있었고 실측상 기록된 Claude 턴은 전부 후자여서 복구가 한 턴도 걸리지 않았다
 
    synthetic Stop 에서 지켜야 할 계약 두 가지: **디렉티브 큐를 소비하면 안 된다**(`takeDirectiveForStop`) — 전달은 Claude 가 기다리는 hook 을 block 해서 이뤄지는데 self-POST 응답은 아무도 안 듣기 때문에, 큐에서 꺼내면 사용자 후속 지시가 조용히 증발한다. 그리고 **세션이 식으면 워치독을 수거해야 한다** — 관측 세션은 죽을 때 SessionEnd 를 안 보내므로(터미널 닫힘, 슬립) 수거 없이는 5초 폴링이 데몬 수명 내내 남는다

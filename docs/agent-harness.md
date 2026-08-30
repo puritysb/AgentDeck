@@ -28,14 +28,14 @@ This repo is built by switching between **Claude Code, Codex, OpenCode, and occa
 
 | Agent | Enters repo via | Instruction files it reads | Skill/workflow auto-discovery | Known limits in the harness |
 |---|---|---|---|---|
-| **Claude Code** | native `claude` (`agentdeck claude` deprecated) | `CLAUDE.md`; `.claude/skills/` | `.claude/skills/*.md` (pointers → `.agents/skills/`) | `.claude/skills/` files must stay **pointers**, not procedure copies |
-| **Codex** | native `codex` (`agentdeck codex` deprecated) | `AGENTS.md` → `CLAUDE.md` | `.agents/skills/` (repo-scoped) + `.agents/workflows/` | — |
-| **OpenCode** | native `opencode` (`agentdeck opencode` deprecated) | `AGENTS.md` → `CLAUDE.md` | No repo hook/skill auto-discovery | Fully supported as a product session type through the observer plugin; when authoring this repo, point it explicitly at `.agents/workflows/<name>.md` |
+| **Claude Code** | native `claude` (`agentdeck claude` is legacy compatibility) | `CLAUDE.md`; `.claude/skills/` | `.claude/skills/*.md` (pointers → `.agents/skills/`) | `.claude/skills/` files must stay **pointers**, not procedure copies |
+| **Codex** | native `codex` (`agentdeck codex` is legacy compatibility) | `AGENTS.md` → `CLAUDE.md` | `.agents/skills/` (repo-scoped) + `.agents/workflows/` | — |
+| **OpenCode** | native `opencode` (`agentdeck opencode` is legacy compatibility) | `AGENTS.md` → `CLAUDE.md` | No repo hook/skill auto-discovery | Fully supported as a product session type through the observer plugin; when authoring this repo, point it explicitly at `.agents/workflows/<name>.md` |
 | **Antigravity** | manual editing, or native Antigravity CLI/app | `AGENTS.md` → `CLAUDE.md` | Instruction files only; no repo hook/skill auto-discovery | Current product session visibility is CLI-daemon passive discovery only; the App Store app shows usage/credit status, not coding-session observation |
 
 Notes:
 - **Claude Code & Codex** are the two first-class authoring agents: both get lifecycle hooks (Claude: `~/.claude/settings.json` — written by the CLI installer, or by the App Store opt-in installer against the user-selected file; Codex: `~/.codex/config.toml`) and discover skills.
-- **OpenCode** is a fully supported *product session type* through its observer plugin. The deprecated `agentdeck opencode` PTY + SSE overlay remains available only during the current compatibility-major. OpenCode still does not auto-discover this repo's skills or hooks as an authoring tool; explicit workflow paths are the supported handoff.
+- **OpenCode** is a fully supported *product session type* through its observer plugin. The legacy `agentdeck opencode` PTY + SSE overlay remains available as a replacement-gated compatibility path. OpenCode still does not auto-discover this repo's skills or hooks as an authoring tool; explicit workflow paths are the supported handoff.
 - **Antigravity** reads the repo instruction chain only. AgentDeck does not install or auto-discover Antigravity hooks/skills; the App Store app reads only the user-approved usage/credit database, while coding-session creatures require optional CLI-daemon passive discovery.
 
 ## SSOT rules (where each kind of knowledge lives)

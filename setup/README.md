@@ -24,9 +24,11 @@ agentdeck dashboard  # optional terminal dashboard
 ```
 
 The legacy `agentdeck claude`, `agentdeck codex`, `agentdeck opencode`, and
-`agentdeck monitor` session bridges are deprecated and tracked in
-[#273](https://github.com/puritysb/AgentDeck/issues/273). They remain functional
-during the current compatibility-major for migration.
+`agentdeck monitor` session bridges remain functional compatibility paths with
+no removal date. Workflow design is discussed in
+[Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
+implementation is tracked in
+[#273](https://github.com/puritysb/AgentDeck/issues/273).
 
 No Stream Deck required — the daemon is the product; decks and other devices are optional ways to look at it.
 

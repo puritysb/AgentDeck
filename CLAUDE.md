@@ -17,13 +17,17 @@ Stream Deck+ controller for AI coding agents — a bidirectional local control s
 
 See [docs/architecture.md](docs/architecture.md) for full architecture details (BridgeCore, PtyAdapter hierarchy, device modules, AgentAdapter abstraction, Gateway protocol, plugin connection model).
 
-**Managed-session deprecation:** `agentdeck claude`, `agentdeck codex`,
-`agentdeck opencode`, and `agentdeck monitor` remain functional during the
-current compatibility-major but are deprecated under
-[#273](https://github.com/puritysb/AgentDeck/issues/273). New work targets
-`agentdeck daemon install` plus normal agent commands. Do not add new PTY parser,
-per-session bridge, `--weight`, or remote-attach dependencies unless #273 first
-records why the daemon-first path cannot own the capability.
+**Managed-session compatibility:** `agentdeck claude`, `agentdeck codex`,
+`agentdeck opencode`, and `agentdeck monitor` remain functional with no removal
+date. New ordinary-session work targets `agentdeck daemon install` plus normal
+agent commands, but managed-only remote attach, `--weight`,
+`AGENTDECK_<AGENT>_ARGS`, and terminal controls are product contracts until
+validated replacements exist. [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278)
+collects workflows; [#273](https://github.com/puritysb/AgentDeck/issues/273)
+owns implementation gates. Do not add new PTY parser or per-session bridge
+dependencies unless #273 first records why daemon-first cannot own the
+capability; likewise, do not delete a managed dependency while a tracked
+workflow still relies on it.
 
 ## Build
 
@@ -122,7 +126,7 @@ The Node.js bridge, hook installer, and Stream Deck plugin run on Windows 11 (Ap
 
 ## Linux dev setup
 
-The Node.js bridge + daemon run on Linux; the **Stream Deck desktop app is unavailable**, so the plugin host and its setup/CLI steps are skipped (device control is via the daemon + Apple/Android companions). Normal `claude`/`codex`/`opencode` observation, mDNS (pure-JS `bonjour-service`), and hook HTTP all work; the deprecated `agentdeck <agent>` managed path remains functional only during the compatibility window. Autostart is a per-user **systemd `--user` unit** `agentdeck-daemon.service` (`bridge/src/linux-service.ts`, analog of the LaunchAgent/Scheduled Task; degrades to a manual-start hint without systemd; `loginctl enable-linger` for headless boot). `npx @agentdeck/setup` checks for a C toolchain (`node-pty` still builds from source for the deprecated PTY path) instead of Xcode CLT and skips Stream Deck checks. Full prereqs/differences: **[docs/linux.md](docs/linux.md)** (README links it the same way as docs/windows.md). Code refs: `bridge/src/linux-service.ts`, `bridge/src/cli.ts`, `bridge/src/pty-manager.ts`, `setup/src/setup.ts`.
+The Node.js bridge + daemon run on Linux; the **Stream Deck desktop app is unavailable**, so the plugin host and its setup/CLI steps are skipped (device control is via the daemon + Apple/Android companions). Normal `claude`/`codex`/`opencode` observation, mDNS (pure-JS `bonjour-service`), and hook HTTP all work; the legacy `agentdeck <agent>` managed path remains functional for compatibility while replacements are validated. Autostart is a per-user **systemd `--user` unit** `agentdeck-daemon.service` (`bridge/src/linux-service.ts`, analog of the LaunchAgent/Scheduled Task; degrades to a manual-start hint without systemd; `loginctl enable-linger` for headless boot). `npx @agentdeck/setup` checks for a C toolchain (`node-pty` still builds from source for the managed PTY path) instead of Xcode CLT and skips Stream Deck checks. Full prereqs/differences: **[docs/linux.md](docs/linux.md)** (README links it the same way as docs/windows.md). Code refs: `bridge/src/linux-service.ts`, `bridge/src/cli.ts`, `bridge/src/pty-manager.ts`, `setup/src/setup.ts`.
 
 Dev-only note: when debugging Windows issues, run commands directly in PowerShell so output appears in the conversation — the Apple/Xcode diagnostic bundle is macOS-only.
 
