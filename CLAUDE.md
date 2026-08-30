@@ -142,6 +142,16 @@ Full command list: `agentdeck --help`, or [docs/cli.md](docs/cli.md) for the ann
 
 **Env-var default args** (`bridge/src/cli.ts` — `applyGlobalEnvArgs`/`weaveAgentCommand`/`resolveAgentCommand`): `AGENTDECK_COMMANDER_ARGS` injects flags into the `agentdeck` (commander) layer — spliced into argv right after the session subcommand, **keyed on `argv[2]`** (`claude`/`codex`/`opencode`/`monitor`; any other command ignores it, even with a session word as a positional value). Env tokens land before typed flags: scalar options are overridden by retyping (last-write); boolean flags have no inverse spelling, so the per-invocation override is **`--no-env-args`**, which disables BOTH layers (the splice pre-parse, the per-agent weave in the action). `AGENTDECK_CLAUDE_ARGS` / `AGENTDECK_CODEX_ARGS` / `AGENTDECK_OPENCODE_ARGS` append to the spawned agent command, weaving onto an existing `-c` (e.g. `AGENTDECK_CLAUDE_ARGS="--remote-control"` + `-c "claude --resume X"` → `claude --resume X --remote-control`). The per-agent append rides the same platform shell path as `-c` (`pty-manager.ts`); the global var is tokenized in pure JS and never touches a shell.
 
+**node-pty macOS helper mode** (`bridge/src/pty-manager.ts`): stable
+`node-pty@1.1.0` is published with both Darwin `spawn-helper` prebuilds at mode
+0644 (upstream microsoft/node-pty#850/#919), so the native addon imports but its
+first spawn fails with the misleading generic `posix_spawnp failed`. Before the
+dynamic import, `PtyManager` resolves the actual installed package and adds only
+the missing execute bits to a regular helper file (prebuild first, source-build
+fallback). This runtime repair intentionally covers direct bridge installs as
+well as `@agentdeck/setup` and does not depend on npm/pnpm install scripts. Never
+replace it with an import-only probe; the measured failure occurs only at spawn.
+
 ESP32 provisioning, WiFi OTA scope, the external-client wire contract, and Autonomous Pocket are documented in [esp32/CLAUDE.md](esp32/CLAUDE.md) (loads when working under `esp32/`) and [docs/esp32.md](docs/esp32.md).
 
 ## Key Conventions

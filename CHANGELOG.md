@@ -64,6 +64,12 @@ designed and validated in Discussion #278 and issue #273. A 1.1 managed worker's
 register/state frames remain accepted by the 1.2 daemon and continue to surface
 as managed sessions.
 
+Fresh macOS installs also repair the missing executable bit in the stable
+`node-pty@1.1.0` `spawn-helper` before the first managed PTY launch. The upstream
+tarball imports successfully but otherwise fails only at the first real spawn,
+so import-only installation checks could report a broken compatibility path as
+healthy.
+
 ### Portable readers receive complete, bounded content
 
 The daemon now distributes the licensed Pocket Daily Japanese N3 learning

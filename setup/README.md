@@ -34,7 +34,7 @@ No Stream Deck required — the daemon is the product; decks and other devices a
 
 ## Platform notes
 
-**Node.js 22 or later** is required everywhere. Native modules (`node-pty`, `sharp`, `better-sqlite3`) install from prebuilt binaries first; a compiler is only needed if a prebuild is missing for your platform.
+**Node.js 22 or later** is required everywhere. Native modules (`node-pty`, `sharp`, `better-sqlite3`) install from prebuilt binaries first; a compiler is only needed if a prebuild is missing for your platform. On macOS, AgentDeck repairs the known missing execute bit in the stable node-pty `spawn-helper` at first PTY use, including for direct bridge installs.
 
 ### macOS
 

@@ -16,7 +16,7 @@
 | Android app can't find bridge | mDNS blocked on network | Use QR pairing (`agentdeck qr`) or enter IP manually in Settings |
 | Android shows "Not Connected" | Bridge not reachable | Verify same LAN; for USB: `adb reverse tcp:9120 tcp:9120` then connect to 127.0.0.1:9120 |
 | E-ink ghosting on Crema | Missing full GC16 refresh | State transitions trigger full refresh automatically; force refresh by toggling bridge connection |
-| `posix_spawnp failed` | Prebuilt node-pty binary incompatible with Node version | `cd $(npm root -g)/@agentdeck/bridge/node_modules/node-pty && npx node-gyp rebuild` |
+| `posix_spawnp failed` | On macOS, old installs may have a non-executable node-pty `spawn-helper`; otherwise the native prebuild may be incompatible | Current AgentDeck repairs the helper mode on first use. Reinstall with `npx @agentdeck/setup`; only if it still fails, run `cd $(npm root -g)/@agentdeck/bridge/node_modules/node-pty && npx node-gyp rebuild` |
 
 ## tmux -CC Compatibility
 

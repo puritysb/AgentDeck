@@ -1,5 +1,67 @@
 import { EventEmitter } from 'events';
+import { chmodSync, existsSync, lstatSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { debug } from './logger.js';
+
+const requireFromHere = createRequire(import.meta.url);
+
+/**
+ * node-pty 1.1.0's npm tarball ships the macOS spawn-helper as 0644 even
+ * though posix_spawn requires an executable file (upstream #850/#919). Repair
+ * the selected helper at the point of use so direct bridge installs and setup
+ * installs behave the same and do not depend on package-manager script policy.
+ *
+ * Returns the repaired path, or null when no repair was needed/applicable.
+ */
+export function ensureNodePtySpawnHelperExecutable(
+  packageRoot: string,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): string | null {
+  if (platform !== 'darwin') return null;
+
+  const candidates = [
+    join(packageRoot, 'prebuilds', `${platform}-${arch}`, 'spawn-helper'),
+    join(packageRoot, 'build', 'Release', 'spawn-helper'),
+  ];
+
+  for (const helperPath of candidates) {
+    if (!existsSync(helperPath)) continue;
+    const stat = lstatSync(helperPath);
+    if (!stat.isFile()) continue;
+    if ((stat.mode & 0o111) !== 0) return null;
+    // Mirror each read bit to its execute bit. The published 0644 becomes
+    // 0755 without granting execution to a class that could not read the file.
+    const permissions = stat.mode & 0o777;
+    chmodSync(helperPath, permissions | ((permissions & 0o444) >> 2));
+    return helperPath;
+  }
+  return null;
+}
+
+function repairInstalledNodePtySpawnHelper(): void {
+  if (process.platform !== 'darwin') return;
+
+  let packageRoot: string;
+  try {
+    packageRoot = dirname(dirname(requireFromHere.resolve('node-pty')));
+  } catch {
+    // The dynamic import below owns the public "not installed" error.
+    return;
+  }
+
+  try {
+    const repaired = ensureNodePtySpawnHelperExecutable(packageRoot);
+    if (repaired) debug('PTY', `restored executable permission on ${repaired}`);
+  } catch (error) {
+    throw new Error(
+      `node-pty spawn-helper is not executable and AgentDeck could not repair it under ${packageRoot}.\n` +
+      `Fix its permissions with: chmod +x "${join(packageRoot, 'prebuilds', `darwin-${process.arch}`, 'spawn-helper')}"\n` +
+      `Cause: ${String(error)}`,
+    );
+  }
+}
 
 /** Minimal interface matching node-pty's IPty */
 interface IPty {
@@ -19,7 +81,9 @@ export class PtyManager extends EventEmitter {
       throw new Error('PTY process already running');
     }
 
-    // Dynamic import — node-pty is optionalDependency
+    // Dynamic import — node-pty is optionalDependency. Repair the stable
+    // macOS tarball's missing helper execute bit before node-pty resolves it.
+    repairInstalledNodePtySpawnHelper();
     let pty: typeof import('node-pty');
     try {
       pty = await import('node-pty');
@@ -57,10 +121,10 @@ export class PtyManager extends EventEmitter {
     } catch (err: any) {
       if (err?.message?.includes('posix_spawnp')) {
         throw new Error(
-          'posix_spawnp failed — the prebuilt node-pty binary is incompatible with your Node.js version.\n' +
-          'Fix: rebuild node-pty from source:\n' +
+          'posix_spawnp failed while launching node-pty. AgentDeck already checked the macOS spawn-helper execute bit.\n' +
+          'Reinstall with `npx @agentdeck/setup`, or rebuild a genuinely incompatible native prebuild:\n' +
           '  cd $(npm root -g)/@agentdeck/bridge/node_modules/node-pty && npx node-gyp rebuild\n' +
-          'Or reinstall: npx @agentdeck/setup',
+          `Original error: ${String(err)}`,
         );
       }
       throw err;
