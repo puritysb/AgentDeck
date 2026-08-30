@@ -185,8 +185,39 @@ when editing a published body.
 
 1. Verify all four public npm manifests match each other and that the target version is unused on npm.
 2. Run `pnpm build` and tests.
-3. Tag the exact release commit as `npm-v<TARGET_VERSION>` and push it. CI runs `node scripts/publish-npm.mjs`, which enforces the dependency order (`shared`+`hooks` → `bridge` → `setup`) and rewrites `workspace:*` around each publish. Do **not** substitute `pnpm publish`: pnpm (verified 11.5.2) uploads README.md inside the tarball but never attaches the readme to the registry packument, and npmjs.com renders the package page from the packument — that is why every @agentdeck page was blank through 1.0.14.
-4. Confirm the workflow read all four exact versions back from npm, each package's `latest` dist-tag matches the target, and `npm view @agentdeck/setup readme` is non-empty.
+3. Pack all four packages from the exact release commit, install that candidate through
+   the maintainer's real `agentdeck` command path, and complete the **three-mode
+   daemon soak** below. A temporary-prefix smoke is useful but does not replace this
+   gate: it does not exercise upgrades, the installed hook configuration, port 9120
+   ownership, or the macOS app's hand-off behavior.
+4. Tag the exact release commit as `npm-v<TARGET_VERSION>` and push it. CI runs `node scripts/publish-npm.mjs`, which enforces the dependency order (`shared`+`hooks` → `bridge` → `setup`) and rewrites `workspace:*` around each publish. Do **not** substitute `pnpm publish`: pnpm (verified 11.5.2) uploads README.md inside the tarball but never attaches the readme to the registry packument, and npmjs.com renders the package page from the packument — that is why every @agentdeck page was blank through 1.0.14.
+5. Confirm the workflow read all four exact versions back from npm, each package's `latest` dist-tag matches the target, and `npm view @agentdeck/setup readme` is non-empty.
+
+#### Pre-tag three-mode daemon soak
+
+Run this from a clean checkout of the commit that will receive the tag. Record the
+previous installed CLI version and a rollback command before replacing it, and put
+the measured results in the release issue. All three rows are required:
+
+1. **Swift daemon only** — stop the CLI daemon, launch the built macOS app, and
+   confirm port 9120 is owned by `AgentDeck` with `/health` reporting `isSwift:
+   true`. Use at least one real directly launched agent turn and confirm that its
+   state reaches the app plus at least one connected downstream surface.
+2. **CLI daemon only** — quit the macOS app, start the installed release-candidate
+   `agentdeck` daemon, and confirm the installed binary reports the target version
+   and `/health` reports `isSwift: false`. Repeat a real agent turn and downstream
+   surface update; also exercise one release-relevant CLI diagnostic or action.
+3. **Both processes running** — launch the macOS app and the CLI daemon together.
+   Confirm there is exactly one listener on 9120, the app defers to or attaches to
+   the CLI daemon without a duplicate roster, and connected surfaces stay live.
+   Stop the CLI daemon while leaving the app open and confirm the Swift daemon
+   reclaims 9120 and the roster/surfaces recover without reinstalling hooks.
+
+Do not tag on a launch-only observation. Each single-daemon row needs a real agent
+turn and visible downstream delivery, and the coexistence row needs both takeover
+and recovery. Any crash, duplicate session/device, stale state, lost hook, failed
+port hand-off, or required manual repair blocks the tag until it is explained and
+either fixed or explicitly waived in the release issue.
 
 `npm-release.yml` runs on the tag: it re-verifies the version, builds, tests, publishes in dependency order, reads all four exact versions back from the npm registry, and only then creates the GitHub Release. npmjs.com must configure a GitHub Actions **Trusted Publisher** for each public package with owner `puritysb`, repository `AgentDeck`, and workflow `npm-release.yml` (`npm publish` allowed). The workflow uses OIDC (`id-token: write`) and intentionally has no long-lived `NPM_TOKEN` or opt-in variable. Missing or drifted trust fails the release instead of producing a green no-op.
 
