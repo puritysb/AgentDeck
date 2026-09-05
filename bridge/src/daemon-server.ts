@@ -3004,7 +3004,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const codexSid = typeof json.session_id === 'string' ? json.session_id : '';
           if (codexSid) {
             if (eventName === 'codex_permission_request') {
-              setAwaitingOverlay(codexSid, buildCodexPermissionQuestion(json));
+              // `sticky`: the transcript-recency drop is a Claude ESC heuristic;
+              // a Codex rollout may be appended while the approval waits, and
+              // the explicit hook clears below already end this wait.
+              setAwaitingOverlay(codexSid, buildCodexPermissionQuestion(json), undefined, { sticky: true });
               core.broadcastSessionsList().catch(() => {});
             } else if (getAwaitingOverlay(codexSid)?.kind === 'permission') {
               if (clearAwaitingOverlay(codexSid)) core.broadcastSessionsList().catch(() => {});
@@ -3083,7 +3086,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // never held again this session. User prompt / session end clear
             // pending STOP + queued directives (the user took over).
             if (mapped === 'tool_end') {
-              noteToolEnd(claudeSid, toolName || undefined);
+              noteToolEnd(claudeSid, toolName || undefined, toolUseId);
             } else if (mapped === 'user_prompt_submit') {
               if (clearOnUserPrompt(claudeSid)) core.broadcastSessionsList().catch(() => {});
             } else if (mapped === 'session_end') {
@@ -3582,6 +3585,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
                   // the signature is suppressed for this session.
                   gateReleased(claudeSid, requestId, {
                     undecided: decision === 'pass', tool: toolName, toolInput,
+                    toolUseId: typeof json.tool_use_id === 'string' ? json.tool_use_id : undefined,
                   });
                   clearAwaitingOverlay(claudeSid);
                   core.broadcastSessionsList().catch(() => {});

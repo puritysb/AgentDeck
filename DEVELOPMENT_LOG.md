@@ -24,7 +24,12 @@ Swift `ObservedSteering.swift`도 손미러라 **같은 결함**을 갖고 있�
 복합 명령은 `&& || ; | |& &`로 나눠 **모든** 부분이 덮여야 자동승인, 내장 read-only 집합
 (`ls cat git status …`)은 어느 모드에서도 프롬프트 없음, `acceptEdits`는 `mkdir touch rm rmdir mv
 cp sed`도 자동, 래퍼/환경변수 대입은 벗김. 학습창 8초→15분(Notification이 오면 학습을 지우므로
-창은 도구 실행 시간만 제한한다).
+창은 도구 실행 시간만 제한한다). 머지 전 리뷰에서 두 가지를 더 닫았다: 창이 넓어진 만큼 학습기는
+도구 이름이 아니라 홀드한 호출의 `tool_use_id`(PreToolUse/PostToolUse가 공유)로만 배우고(무관한
+병렬 Bash가 홀드 시그니처를 가르치던 경합 제거), 구식 `:*`는 문서의 ` *` 별칭과 예전 raw prefix
+읽기를 **둘 다** 허용한다(`npm run test:*` ⇒ `npm run test:watch`; 과매치는 홀드 누락 방향이라 안전).
+Codex PERM 오버레이는 `sticky`로 표시해 transcript 최신성으로 지우는 Claude ESC 휴리스틱에서 뺐다
+(승인 대기 중에도 rollout이 append될 수 있음).
 
 **에이전트 전수 점검(양 데몬).** Claude: Notification `permission_prompt` 표시 + 홀드(위). Codex:
 승인 신호가 **아예 없었다** — rollout 이벤트 어휘에 approval 타입이 없고 훅 목록에도 없어

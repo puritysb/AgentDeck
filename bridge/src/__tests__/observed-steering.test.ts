@@ -208,8 +208,29 @@ describe('auto-approval learner (session "always allow" is invisible — learn i
   it('does NOT learn from device-decided releases', () => {
     const d = shouldHoldPreToolUse(baseCtx());
     gateReleased('sid-1', d.requestId!, { undecided: false, tool: 'Bash', toolInput: { command: 'git push origin master' } });
+
     noteToolEnd('sid-1', 'Bash');
     expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(true);
+  });
+
+  it('a release that recorded its tool_use_id learns only from ITS OWN PostToolUse (a parallel Bash must not teach it)', () => {
+    const d = shouldHoldPreToolUse(baseCtx());
+    gateReleased('sid-1', d.requestId!, {
+      undecided: true, tool: 'Bash', toolInput: { command: 'git push origin master' }, toolUseId: 'toolu_held',
+    });
+    // An unrelated allowlisted Bash finishing inside the 15-minute window
+    // must NOT teach the held signature.
+    noteToolEnd('sid-1', 'Bash', 'toolu_other');
+    const d2 = shouldHoldPreToolUse(baseCtx());
+    expect(d2.hold).toBe(true);
+    // Its own completion does teach it.
+    gateReleased('sid-1', d2.requestId!, {
+      undecided: true, tool: 'Bash', toolInput: { command: 'git push origin master' }, toolUseId: 'toolu_held2',
+    });
+    noteToolEnd('sid-1', 'Bash', 'toolu_held2');
+    const d3 = shouldHoldPreToolUse(baseCtx());
+    expect(d3.hold).toBe(false);
+    expect(d3.reason).toBe('signature learned auto-approved');
   });
 
   it('signature granularity: Bash uses the first two command tokens', () => {

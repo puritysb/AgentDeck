@@ -482,3 +482,24 @@ describe('awaiting-overlay', () => {
     });
   });
 });
+
+describe('sticky overlays (Codex PermissionRequest)', () => {
+  it('a sticky display-only overlay survives transcript activity newer than itself', async () => {
+    const { setAwaitingOverlay, applyAwaitingOverlayToObserved, _resetAwaitingOverlay } =
+      await import('../awaiting-overlay.js');
+    _resetAwaitingOverlay();
+    const sid = '019fc7c8-23b0-7aa1-bd65-8758d55a56e8';
+    setAwaitingOverlay(sid, 'Approve shell: rm -rf build', undefined, { sticky: true });
+    const rows = applyAwaitingOverlayToObserved([{
+      id: `observed:codex:${sid}`, state: 'processing', lastActivityAt: Date.now() + 60_000,
+    }]);
+    expect(rows[0].state).toBe('awaiting_permission');
+    expect(rows[0].question).toBe('Approve shell: rm -rf build');
+    // The non-sticky form is dropped by the same activity (the Claude ESC rule).
+    setAwaitingOverlay(sid, 'Claude needs your permission to use Bash');
+    const dropped = applyAwaitingOverlayToObserved([{
+      id: `observed:claude:${sid}`, state: 'processing', lastActivityAt: Date.now() + 60_000,
+    }]);
+    expect(dropped[0].state).toBe('processing');
+  });
+});

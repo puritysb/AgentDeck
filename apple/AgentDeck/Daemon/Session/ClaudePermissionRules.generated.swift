@@ -293,7 +293,11 @@ enum ClaudePermissionRules {
         let cmd = command.trimmingCharacters(in: .whitespacesAndNewlines)
         if spec == "*" { return true }
         var pattern = spec
-        if pattern.hasSuffix(":*") { pattern = String(pattern.dropLast(2)) + " *" }
+        if pattern.hasSuffix(":*") {
+            // Two readings exist in the field; accept both (the safe direction).
+            if cmd.hasPrefix(String(pattern.dropLast(2))) { return true }
+            pattern = String(pattern.dropLast(2)) + " *"
+        }
         let stars = pattern.unicodeScalars.filter { $0 == "*" }.count
         if stars == 0 { return cmd == pattern }
         if stars == 1, pattern.hasSuffix(" *"), cmd == String(pattern.dropLast(2)) { return true }

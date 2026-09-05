@@ -23,7 +23,11 @@
  *   - `Bash(npm run *)`        → `*` matches any text INCLUDING spaces; a rule
  *                                whose only wildcard is a trailing ` *` also
  *                                matches the bare command (`ls *` ⇒ `ls`)
- *   - `Bash(ls:*)`             → legacy spelling of `Bash(ls *)`, end-only
+ *   - `Bash(ls:*)`             → legacy end-only spelling; the docs now define
+ *                                it as `Bash(ls *)`, older builds read it as a
+ *                                raw prefix (`npm run test:*` ⇒ `npm run
+ *                                test:watch`), so it matches under EITHER —
+ *                                over-matching only ever costs a missed hold
  *   - `Bash(git * main)`       → wildcards anywhere
  *   - compound commands split on `&&` `||` `;` `|` `|&` `&` and newlines, and
  *     EVERY subcommand must be covered for Claude to skip the prompt
@@ -260,7 +264,11 @@ export function bashRuleMatches(spec: string, command: string): boolean {
   const cmd = command.trim();
   if (spec === '*') return true;
   let pattern = spec;
-  if (pattern.endsWith(':*')) pattern = `${pattern.slice(0, -2)} *`;
+  if (pattern.endsWith(':*')) {
+    // Two readings exist in the field; accept both (the safe direction).
+    if (cmd.startsWith(pattern.slice(0, -2))) return true;
+    pattern = `${pattern.slice(0, -2)} *`;
+  }
   const stars = pattern.split('*').length - 1;
   if (stars === 0) return cmd === pattern;
   if (stars === 1 && pattern.endsWith(' *') && cmd === pattern.slice(0, -2)) return true;

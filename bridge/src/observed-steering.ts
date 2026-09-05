@@ -47,7 +47,7 @@ const DIRECTIVE_QUEUE_CAP = 3;
 const ASK_RELEASE_LEARN_WINDOW_MS = GATE_LEARN_WINDOW_MS;
 
 interface DirectiveEntry { text: string; ts: number; }
-interface AskRelease { tool: string; signature: string; ts: number; }
+interface AskRelease { tool: string; signature: string; ts: number; toolUseId?: string; }
 
 interface SteeringSession {
   stopRequestedAt?: number;
@@ -299,7 +299,7 @@ export function beginAskGate(ctx: {
 export function gateReleased(
   sid: string,
   requestId: string,
-  opts: { undecided: boolean; tool: string; toolInput?: Record<string, unknown> },
+  opts: { undecided: boolean; tool: string; toolInput?: Record<string, unknown>; toolUseId?: string },
 ): void {
   const s = sessions.get(sid);
   if (!s) return;
@@ -309,6 +309,7 @@ export function gateReleased(
       tool: opts.tool,
       signature: gateSignature(opts.tool, opts.toolInput),
       ts: Date.now(),
+      toolUseId: opts.toolUseId,
     });
     if (s.recentAskReleases.length > 8) s.recentAskReleases.shift();
   }
@@ -327,14 +328,20 @@ export function notePermissionPromptShown(sid: string): void {
  * (session-scoped "always allow" we cannot read) — suppress the signature so
  * it is never held again this session.
  */
-export function noteToolEnd(sid: string, tool: string | undefined): void {
+export function noteToolEnd(sid: string, tool: string | undefined, toolUseId?: string): void {
   const s = sessions.get(sid);
   if (!s || !tool || s.recentAskReleases.length === 0) return;
   const now = Date.now();
   const kept: AskRelease[] = [];
   for (const r of s.recentAskReleases) {
     if (now - r.ts > ASK_RELEASE_LEARN_WINDOW_MS) continue; // expired
-    if (r.tool === tool) {
+    // The held call and its PostToolUse share a `tool_use_id`, so a release
+    // that recorded one learns ONLY from its own completion — a parallel
+    // allowlisted Bash finishing inside the window must not teach the held
+    // signature (the window is 15 min now, wide enough for that to happen).
+    // Releases without an id (older Claude) fall back to the tool name.
+    const matches = r.toolUseId ? r.toolUseId === toolUseId : r.tool === tool;
+    if (matches) {
       s.suppressed.add(r.signature);
       debug('steering', `learned auto-approved signature for ${sid}: ${r.signature}`);
     } else {

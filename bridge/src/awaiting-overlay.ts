@@ -35,6 +35,12 @@ export interface AwaitingEntry {
   kind: AwaitingKind;
   state: 'awaiting_permission' | 'awaiting_option';
   question: string;
+  /** Not subject to the transcript-recency drop in
+   *  `applyAwaitingOverlayToObserved`. That drop is a Claude ESC heuristic
+   *  (the transcript freezes while Claude waits); an agent whose record keeps
+   *  moving during its wait (a Codex rollout) sets this and relies on its own
+   *  hook clears + the TTL instead. */
+  sticky?: boolean;
   /** Structured AskUserQuestion choices for the ACTIVE group. Pressable only
    *  when the daemon can deliver the answer (terminal injection or a held
    *  ask-gate) — otherwise devices direct the user back to the terminal. */
@@ -93,7 +99,12 @@ const MAX_QUESTION_LEN = 120;
 
 const overlay = new Map<string, AwaitingEntry>();
 
-export function setAwaitingOverlay(sessionId: string, question: string, requestId?: string): void {
+export function setAwaitingOverlay(
+  sessionId: string,
+  question: string,
+  requestId?: string,
+  opts: { sticky?: boolean } = {},
+): void {
   const trimmed = (question || '').replace(/\s+/g, ' ').trim().slice(0, MAX_QUESTION_LEN);
   overlay.set(sessionId, {
     kind: 'permission',
@@ -101,6 +112,7 @@ export function setAwaitingOverlay(sessionId: string, question: string, requestI
     question: trimmed,
     requestId,
     updatedAt: Date.now(),
+    ...(opts.sticky ? { sticky: true } : {}),
   });
 }
 
@@ -314,6 +326,7 @@ export function applyAwaitingOverlayToObserved<
     if (
       ov.kind === 'permission' &&
       !ov.requestId &&
+      !ov.sticky &&
       typeof s.lastActivityAt === 'number' &&
       s.lastActivityAt > ov.updatedAt + RESOLVED_ACTIVITY_MARGIN_MS
     ) {

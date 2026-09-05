@@ -65,7 +65,8 @@ final class ClaudePermissionRulesTests: XCTestCase {
             ("* --help *", "npm --help x", true),
             ("* --help *", "npm --help", false),
             ("ls:*", "ls -la", true),
-            ("ls:*", "lsof", false),
+            ("ls:*", "lsof", true),   // raw-prefix reading kept: over-matching only costs a missed hold
+            ("npm run test:*", "npm run test:watch", true),
             ("*", "anything at all", true),
         ]
         for (spec, command, expected) in table {

@@ -5415,7 +5415,8 @@ final class DaemonServer {
             // Claude auto-approved the call — never hold that signature again.
             if event == "tool_end", let sessionId {
                 let tool = json["tool_name"] as? String
-                Task { await ObservedSteering.shared.noteToolEnd(sessionId: sessionId, tool: tool) }
+                let toolUseId = json["tool_use_id"] as? String
+                Task { await ObservedSteering.shared.noteToolEnd(sessionId: sessionId, tool: tool, toolUseId: toolUseId) }
             }
             if let sessionId,
                json["tool_name"] as? String == "AskUserQuestion",
@@ -6925,7 +6926,8 @@ final class DaemonServer {
             commandText: commandText,
             permissionMode: json["permission_mode"] as? String,
             cwd: json["cwd"] as? String,
-            clientCount: activeWSConnectionIds.count
+            clientCount: activeWSConnectionIds.count,
+            toolUseId: json["tool_use_id"] as? String
         ) else {
             return .text("")
         }

@@ -15,6 +15,11 @@
     "rules": { "allow": ["Bash(git push:*)"], "deny": [], "ask": [] }, "hold": false
   },
   {
+    "note": "legacy colon-star also keeps its raw-prefix reading (npm run test:* ⇒ npm run test:watch) — over-matching is the safe direction",
+    "tool": "Bash", "command": "npm run test:watch", "mode": "default",
+    "rules": { "allow": ["Bash(npm run test:*)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
     "note": "trailing ' *' also matches the bare command (Bash(ls *) ⇒ ls)",
     "tool": "Bash", "command": "ls", "mode": "default",
     "rules": { "allow": ["Bash(ls *)"], "deny": [], "ask": [] }, "hold": false

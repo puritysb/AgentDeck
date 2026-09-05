@@ -82,7 +82,8 @@ describe('bashRuleMatches — documented wildcard table', () => {
     ['* --help *', 'npm --help', false],
     ['ls:*', 'ls -la', true],
     ['ls:*', 'ls', true],
-    ['ls:*', 'lsof', false],
+    ['ls:*', 'lsof', true], // raw-prefix reading kept: over-matching only costs a missed hold
+    ['npm run test:*', 'npm run test:watch', true],
     ['*', 'anything at all', true],
   ];
   for (const [spec, command, expected] of table) {

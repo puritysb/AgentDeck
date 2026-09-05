@@ -146,7 +146,7 @@ actor ObservedSteering {
     /// Signatures learned to be auto-approved (session "always allow" lives
     /// only in Claude's memory — this is the only way to see it).
     private var suppressed: [String: Set<String>] = [:]
-    private var recentAskReleases: [String: [(tool: String, signature: String, ts: Date)]] = [:]
+    private var recentAskReleases: [String: [(tool: String, signature: String, ts: Date, toolUseId: String?)]] = [:]
 
     /// Which kind of hook hold this is. They resolve differently: a permission
     /// gate carries a device's allow/deny, while an ask-gate carries the user's
@@ -162,6 +162,9 @@ actor ObservedSteering {
         let kind: GateKind
         let tool: String
         let signature: String
+        /// The held call's `tool_use_id`, shared with its PostToolUse — the
+        /// learner matches on it so a parallel tool cannot teach this gate.
+        var toolUseId: String? = nil
         var continuation: CheckedContinuation<String, Never>?
     }
     private var heldGates: [String: HeldGate] = [:]
@@ -259,13 +262,16 @@ actor ObservedSteering {
     /// PostToolUse arrived. A recent undecided release for the same tool with
     /// no permission_prompt Notification in between means Claude auto-approved
     /// (session "always allow") — suppress the signature for this session.
-    func noteToolEnd(sessionId: String, tool: String?) {
+    func noteToolEnd(sessionId: String, tool: String?, toolUseId: String? = nil) {
         guard let tool, var recents = recentAskReleases[sessionId], !recents.isEmpty else { return }
         let now = Date()
-        var kept: [(tool: String, signature: String, ts: Date)] = []
+        var kept: [(tool: String, signature: String, ts: Date, toolUseId: String?)] = []
         for r in recents {
             if now.timeIntervalSince(r.ts) > learnWindow { continue }
-            if r.tool == tool {
+            // A release that recorded its tool_use_id learns ONLY from its own
+            // completion; releases without one (older Claude) match the tool.
+            let matches = r.toolUseId != nil ? r.toolUseId == toolUseId : r.tool == tool
+            if matches {
                 suppressed[sessionId, default: []].insert(r.signature)
                 DaemonLogger.shared.debug("Steering", "learned auto-approved signature for \(sessionId): \(r.signature)")
             } else {
@@ -297,7 +303,8 @@ actor ObservedSteering {
         commandText: String?,
         permissionMode: String?,
         cwd: String?,
-        clientCount: Int
+        clientCount: Int,
+        toolUseId: String? = nil
     ) -> String? {
         guard Self.gateEnabled else { return nil }
         guard clientCount > 0 else { return nil }
@@ -314,7 +321,8 @@ actor ObservedSteering {
         guard prediction.hold else { return nil }
         let requestId = UUID().uuidString.lowercased()
         heldGates[requestId] = HeldGate(
-            sessionId: sessionId, kind: .permission, tool: tool, signature: signature, continuation: nil)
+            sessionId: sessionId, kind: .permission, tool: tool, signature: signature,
+            toolUseId: toolUseId, continuation: nil)
         heldBySession.insert(sessionId)
         return requestId
     }
@@ -375,7 +383,7 @@ actor ObservedSteering {
         // Claude auto-approves, so learning from it would suppress real gates.
         if gate.kind == .permission {
             recentAskReleases[gate.sessionId, default: []].append(
-                (tool: gate.tool, signature: gate.signature, ts: Date()))
+                (tool: gate.tool, signature: gate.signature, ts: Date(), toolUseId: gate.toolUseId))
             if recentAskReleases[gate.sessionId]!.count > 8 {
                 recentAskReleases[gate.sessionId]!.removeFirst()
             }
