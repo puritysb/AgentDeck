@@ -25,7 +25,7 @@
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
 // SYNC-HASH shared/src/d200h-layout.ts 0a8da601be0e95e753084a72c0ed788caabcdc59
-// SYNC-HASH shared/src/session-utils.ts 3f6629cd69bd4d77f380cb5e37972f28863058e7
+// SYNC-HASH shared/src/session-utils.ts 7f8022d89d51bd496a7d09ca25e9f676ab80e036
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -971,7 +971,7 @@ public enum D200HLayoutModel {
         if group.count <= 1 { return group[0] }
         let ranked = group.enumerated().sorted { lhs, rhs in
             let a = lhs.element, b = rhs.element
-            let rd = stateRank(a.state) - stateRank(b.state)
+            let rd = DashboardDataRules.codexFoldStateRank(a.state) - DashboardDataRules.codexFoldStateRank(b.state)
             if rd != 0 { return rd < 0 }
             let aStarted = parseDate(a.startedAt)?.timeIntervalSince1970 ?? -.infinity
             let bStarted = parseDate(b.startedAt)?.timeIntervalSince1970 ?? -.infinity
@@ -984,7 +984,7 @@ public enum D200HLayoutModel {
         folded.foldedSessionIds = group.flatMap { $0.foldedSessionIds ?? [$0.id] }
         folded.groupSize = group.reduce(0) { $0 + ($1.groupSize ?? 1) }
         let currentTool = ranked.first { stateRank($0.state) == 0 && ($0.currentTool?.trimmingCharacters(in: .whitespaces).isEmpty == false) }?.currentTool
-        folded.currentTool = currentTool
+        if stateRank(folded.state) != 1 { folded.currentTool = currentTool }
         return folded
     }
 

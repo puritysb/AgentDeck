@@ -233,6 +233,10 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertTrue(DaemonServer.shouldSynthesizeUnknownHookSessionForTest(event: "codex_user_prompt_submit"))
         XCTAssertFalse(DaemonServer.shouldSynthesizeUnknownHookSessionForTest(event: "codex_tool_start"))
         XCTAssertFalse(DaemonServer.shouldSynthesizeUnknownHookSessionForTest(event: "codex_tool_end"))
+        // Permission requests share the tombstone-gated mid-turn resurrection
+        // path: after a daemon restart, the first hook may be a live approval.
+        XCTAssertFalse(DaemonServer.shouldSynthesizeUnknownHookSessionForTest(event: "codex_permission_request"))
+        XCTAssertTrue(DaemonServer.shouldIgnorePostTerminalCodexProgressForTest(event: "codex_permission_request"))
         XCTAssertFalse(DaemonServer.shouldSynthesizeUnknownHookSessionForTest(event: "codex_stop"))
         XCTAssertFalse(DaemonServer.shouldSynthesizeUnknownHookSessionForTest(event: "codex_turn_complete"))
     }

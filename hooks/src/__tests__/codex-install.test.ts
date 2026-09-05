@@ -269,6 +269,9 @@ describe('codex-install: managedBlockBody', () => {
     expect(withFence).toContain('/hooks/codex_permission_request');
     expect(withFence).toContain('[[hooks.Interrupt]]');
     expect(withFence).toContain('/hooks/codex_interrupt');
+    const interrupt = withFence.split('[[hooks.Interrupt]]')[1];
+    expect(interrupt).toContain('timeout = 3');
+    expect(interrupt).not.toContain('timeout = 5');
     expect(withFence).toContain('--connect-timeout 0.2 --max-time 0.8');
     expect(withFence).toContain('*[!0-9]*');
     expect(withFence).toContain('type(p) is int and 1 <= p <= 65535');

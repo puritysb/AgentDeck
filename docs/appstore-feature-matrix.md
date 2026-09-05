@@ -57,7 +57,7 @@ All surfaces follow the same rule:
 | iOS / iPadOS companion | Yes | Yes | Bonjour + same-LAN WS |
 | Stream Deck family | Yes | Yes | Requires Elgato Stream Deck host software |
 | Claude Code hook installation | Yes | Yes | Explicit `NSOpenPanel` file consent |
-| Codex lifecycle observation | Yes | Yes | Explicit `NSOpenPanel`; managed TOML block only |
+| Codex lifecycle observation | Yes | Yes | Explicit `NSOpenPanel`; managed TOML block only. Both installers include `PermissionRequest` and `Interrupt` (≤3s); new hooks require Codex trust review. Live-verified CLI 0.149.0 omits Interrupt, 0.151.0 supports it |
 | Voice input | Yes | Yes | Apple on-device speech in both tiers — Tier 1 calls the framework, Tier 2 the bundled Swift helper. macOS-only; no whisper/model install |
 | Deck voice key (Stream Deck hold-to-talk / D200H tap-toggle) | Yes | Yes | Deck key = trigger only; host mic/STT/TTS do the work. Tier 1: native AVFoundation+Speech (`DaemonPttVoice`), observed-Claude delivery is the queued-directive ladder (live typing needs the CLI daemon). Tier 2: bundled helper `record`, observed delivery via terminal injection |
 | Device Preview catalog | Yes | Yes | macOS exposes the full catalog window; iOS/iPadOS exposes the same synthetic previews from the no-Mac connection state so the app remains inspectable without a paired host. CLI-only targets appear only with external daemon |

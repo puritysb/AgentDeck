@@ -293,11 +293,19 @@ function codexDisplayKind(session: FoldableSession): 'codex-cli' | 'codex-app' {
   return session.agentType === 'codex-app' ? 'codex-app' : 'codex-cli';
 }
 
+// A folded row must expose the member waiting on the user. The general
+// activity rank favors processing; using it here hid live Codex approvals
+// whenever another task in the same project was still working.
+function codexFoldStateRank(state: string | undefined): number {
+  const rank = stateRank(state);
+  return rank === 1 ? -1 : rank;
+}
+
 function foldCodexProjectGroup<T extends FoldableSession>(group: T[]): T {
   if (group.length <= 1) return group[0];
 
   const ranked = [...group].sort((a, b) => {
-    const rankDiff = stateRank(a.state) - stateRank(b.state);
+    const rankDiff = codexFoldStateRank(a.state) - codexFoldStateRank(b.state);
     if (rankDiff !== 0) return rankDiff;
 
     const aStarted = a.startedAt ? new Date(a.startedAt).getTime() : Number.NEGATIVE_INFINITY;
@@ -310,7 +318,9 @@ function foldCodexProjectGroup<T extends FoldableSession>(group: T[]): T {
   const representative = ranked[0];
   const foldedIds = group.flatMap(s => s.foldedSessionIds ?? [s.id]);
   const groupSize = group.reduce((total, s) => total + (s.groupSize ?? 1), 0);
-  const currentTool = ranked.find(s => stateRank(s.state) === 0 && s.currentTool?.trim())?.currentTool;
+  const currentTool = stateRank(representative.state) === 1
+    ? representative.currentTool
+    : ranked.find(s => stateRank(s.state) === 0 && s.currentTool?.trim())?.currentTool;
 
   const folded = {
     ...representative,

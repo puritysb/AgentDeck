@@ -4987,6 +4987,16 @@ final class DaemonServer {
             return true
         }
 
+        // Claude's internal fork queries (e.g. prompt suggestions) emit a
+        // stop with an explicitly empty type, but never a start. They must
+        // not inflate the worker census or the parent's APME trajectory.
+        // Preserve typed orphan stops, legacy absent types, and known children.
+        if Self.isUnstartedClaudeInternalStop(
+            event: event, agentType: json["agent_type"],
+            hasActiveChild: subagentCensus[sid]?.active[identity] != nil
+        ) {
+            return true
+        }
         var census = subagentCensus[sid] ?? SubagentCensus()
         let active = census.active.removeValue(forKey: identity)
         census.completed += 1
@@ -5041,6 +5051,12 @@ final class DaemonServer {
         broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
         broadcastSessionsList()
         return true
+    }
+
+    nonisolated static func isUnstartedClaudeInternalStop(
+        event: String, agentType: Any?, hasActiveChild: Bool
+    ) -> Bool {
+        event == "subagent_stop" && agentType as? String == "" && !hasActiveChild
     }
 
     /// Expire children whose stop never arrived, so a lost hook cannot pin a
@@ -5156,7 +5172,7 @@ final class DaemonServer {
         // gate an actively-working `codex` CLI session stayed invisible from
         // the moment of eviction until the user's NEXT prompt.
         let codexMidTurnResurrection = isCodexEvent
-            && (event == "codex_tool_start" || event == "codex_tool_end")
+            && Self.shouldIgnorePostTerminalCodexProgressEvent(event)
             && sessionId.map {
                 codexTerminalTombstoneBySession[$0] == nil
                     && lastTerminalCodexEventBySession[$0] == nil
@@ -6577,7 +6593,7 @@ final class DaemonServer {
             // creature vanish during a "long thinking" pause and never come
             // back even though the codex process is alive.
             //
-            // `codex_tool_start`/`codex_tool_end` stay excluded from THIS
+            // Tool progress and `codex_permission_request` stay excluded from THIS
             // predicate because they are mid-turn — but the hook call site
             // layers a tombstone-gated bypass on top: when the thread has no
             // recorded terminal event, a tool event is a live turn whose row
@@ -6603,7 +6619,7 @@ final class DaemonServer {
     }
 
     nonisolated private static func shouldIgnorePostTerminalCodexProgressEvent(_ event: String) -> Bool {
-        event == "codex_tool_start" || event == "codex_tool_end"
+        event == "codex_tool_start" || event == "codex_tool_end" || event == "codex_permission_request"
     }
 
     /// Stop-drift guard predicate for an OTel `turnEnd` span: should it close

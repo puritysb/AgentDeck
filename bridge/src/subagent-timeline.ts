@@ -251,6 +251,16 @@ export class SubagentTimelineTracker {
 
     if (event === 'subagent_stop') {
       const id = agentId ?? nonEmptyString(hook.payload.task_id) ?? '';
+      // Claude 2.1.261 also emits SubagentStop for internal fork queries
+      // (prompt suggestions / agent summaries). Live captures carry an
+      // explicitly empty agent_type and have no SubagentStart. They are not
+      // dispatched workers. Keep missing legacy types, typed orphan stops,
+      // and known children; never guess a start for a helper query.
+      if (hook.agentType === 'claude-code'
+        && hook.payload.agent_type === ''
+        && !this.sessions.get(hook.sessionId)?.active.has(id)) {
+        return { childOnly: true };
+      }
       const census = this.censusFor(hook.sessionId);
       const active = census.active.get(id);
       if (active) census.active.delete(id);

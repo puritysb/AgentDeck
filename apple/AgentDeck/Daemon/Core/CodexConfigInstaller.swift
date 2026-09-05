@@ -325,6 +325,8 @@ enum CodexConfigInstaller {
             ("Stop", "codex_stop", nil),
             ("SubagentStart", "codex_subagent_start", "*"),
             ("SubagentStop", "codex_subagent_stop", "*"),
+            ("PermissionRequest", "codex_permission_request", "*"),
+            ("Interrupt", "codex_interrupt", nil),
         ]
 
         var lines: [String] = []
@@ -337,7 +339,8 @@ enum CodexConfigInstaller {
             lines.append("[[hooks.\(hook.codexEvent).hooks]]")
             lines.append("type = \"command\"")
             lines.append("command = \(MiniToml.quoted(buildLifecycleHookCommand(event: hook.agentDeckEvent)))")
-            lines.append("timeout = 5")
+            // Codex 0.151+ caps Interrupt at three seconds.
+            lines.append("timeout = \(hook.codexEvent == "Interrupt" ? 3 : 5)")
         }
         return lines
     }

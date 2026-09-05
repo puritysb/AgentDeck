@@ -3,6 +3,44 @@ import type { TimelineEntry } from '@agentdeck/shared';
 import { isSubagentOnlyHook, SubagentTimelineTracker } from '../subagent-timeline.js';
 
 describe('SubagentTimelineTracker', () => {
+  it('consumes Claude internal suggestion stops without inventing a worker or APME event', () => {
+    const entries: TimelineEntry[] = [];
+    const tracker = new SubagentTimelineTracker(entry => entries.push(entry));
+    // Captured from Claude 2.1.261 after a normal turn: no Agent invocation
+    // started this id, and the fork query explicitly has no agent type.
+    const result = tracker.handle({
+      eventName: 'SubagentStop', sessionId: 'parent', agentType: 'claude-code',
+      payload: { agent_id: 'suggestion', agent_type: '', last_assistant_message: '<no suggestion>' },
+    });
+    expect(result).toEqual({ childOnly: true });
+    expect(tracker.summary('parent')).toBeNull();
+    expect(entries).toEqual([]);
+  });
+
+  it.each([
+    ['claude-code', { agent_type: 'Explore' }],
+    ['claude-code', {}], // older payload without the field is not proof of an internal fork
+    ['codex-cli', { agent_type: '' }],
+  ])('preserves typed/legacy orphan and non-Claude stops (%s, %j)', (agentType, fields) => {
+    const tracker = new SubagentTimelineTracker(() => {});
+    const result = tracker.handle({
+      eventName: agentType === 'codex-cli' ? 'codex_subagent_stop' : 'SubagentStop',
+      sessionId: 'parent', agentType, payload: { agent_id: 'worker', ...fields },
+    });
+    expect(result.sampleEvent?.phase).toBe('completed');
+    expect(tracker.summary('parent')?.completed).toBe(1);
+  });
+
+  it('closes a known child even when its stop loses its type', () => {
+    const tracker = new SubagentTimelineTracker(() => {});
+    tracker.handle({ eventName: 'SubagentStart', sessionId: 'parent', agentType: 'claude-code',
+      payload: { agent_id: 'worker', agent_type: 'Explore' } });
+    const result = tracker.handle({ eventName: 'SubagentStop', sessionId: 'parent', agentType: 'claude-code',
+      payload: { agent_id: 'worker', agent_type: '' } });
+    expect(result.sampleEvent?.phase).toBe('completed');
+    expect(tracker.summary('parent')).toMatchObject({ active: 0, peak: 1, completed: 1 });
+  });
+
   it('collapses start and stop into existing compatible Timeline types', () => {
     const entries: TimelineEntry[] = [];
     let now = 1_000;

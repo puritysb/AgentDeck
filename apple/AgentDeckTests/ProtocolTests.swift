@@ -1150,6 +1150,24 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(DashboardDataRules.sortSessions(sessions).map(\.id), ["4", "2", "1"])
     }
 
+    func testFoldCodexKeepsAwaitingMemberAndItsOwnControls() {
+        for state in ["awaiting_permission", "awaiting_option", "awaiting_diff"] {
+            let waiting: [String: Any] = ["id": "waiting", "agentType": "codex-cli", "projectName": "Audit",
+                "state": state, "question": "Approve Bash: printf audit", "requestId": "approval",
+                "currentTool": "Bash", "startedAt": "2026-09-05T10:00:00Z"]
+            let working: [String: Any] = ["id": "working", "agentType": "codex-cli", "projectName": "Audit",
+                "state": "processing", "currentTool": "other-tool", "startedAt": "2026-09-05T11:00:00Z"]
+            for rows in [[waiting, working], [working, waiting]] {
+                let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay(rows)[0]
+                XCTAssertEqual(folded["id"] as? String, "waiting")
+                XCTAssertEqual(folded["state"] as? String, state)
+                XCTAssertEqual(folded["question"] as? String, "Approve Bash: printf audit")
+                XCTAssertEqual(folded["requestId"] as? String, "approval")
+                XCTAssertEqual(folded["currentTool"] as? String, "Bash")
+            }
+        }
+    }
+
     func testFoldCodexSessionPayloadsForDisplayCollapsesSameProject() {
         let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
             [

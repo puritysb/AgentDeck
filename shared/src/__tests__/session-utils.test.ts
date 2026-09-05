@@ -232,6 +232,24 @@ describe('sortSessions weight override', () => {
 });
 
 describe('foldCodexSessionsForDisplay', () => {
+  it.each(['awaiting_permission', 'awaiting_option', 'awaiting_diff'])(
+    'keeps %s visible with its own identity and controls beside a processing sibling', state => {
+      const waiting = { id: 'codex:waiting', agentType: 'codex-cli', projectName: 'Audit',
+        state, question: 'Approve Bash: printf audit', requestId: 'approval',
+        startedAt: '2026-09-05T10:00:00Z', currentTool: 'Bash' };
+      const working = { id: 'codex:working', agentType: 'codex-cli', projectName: 'Audit',
+        state: 'processing', startedAt: '2026-09-05T11:00:00Z', currentTool: 'other-tool' };
+      for (const rows of [[waiting, working], [working, waiting]]) {
+        const [folded] = foldCodexSessionsForDisplay(rows);
+        expect(folded).toMatchObject({ ...waiting, groupSize: 2 });
+        expect(foldCodexSessionsForDisplay([folded])[0]).toEqual(folded);
+      }
+      const [resolved] = foldCodexSessionsForDisplay([{ ...waiting, state: 'idle', question: undefined,
+        requestId: undefined }, working]);
+      expect(resolved.id).toBe(working.id);
+      expect(resolved).not.toHaveProperty('question');
+    });
+
   it('folds Codex CLI and Codex App separately even with the same project', () => {
     const sessions: FoldableSession[] = [
       { id: 'codex:cli', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'processing' },

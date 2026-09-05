@@ -234,7 +234,8 @@ function buildLifecycleHookTables(platform: NodeJS.Platform): string[] {
     lines.push(`[[hooks.${hook.codexEvent}.hooks]]`);
     lines.push(`type = "command"`);
     lines.push(`command = ${quoted(buildLifecycleHookCommand(hook.agentDeckEvent, platform))}`);
-    lines.push(`timeout = 5`);
+    // Interrupt has a three-second hard maximum in Codex (0.151+).
+    lines.push(`timeout = ${hook.codexEvent === 'Interrupt' ? 3 : 5}`);
   }
   return lines;
 }

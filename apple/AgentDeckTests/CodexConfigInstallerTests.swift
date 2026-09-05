@@ -61,6 +61,13 @@ final class CodexConfigInstallerTests: XCTestCase {
         XCTAssertTrue(withFence.contains("/hooks/codex_tool_start"))
         XCTAssertTrue(withFence.contains("/hooks/codex_tool_end"))
         XCTAssertTrue(withFence.contains("/hooks/codex_stop"))
+        XCTAssertTrue(withFence.contains("[[hooks.PermissionRequest]]"))
+        XCTAssertTrue(withFence.contains("/hooks/codex_permission_request"))
+        XCTAssertTrue(withFence.contains("[[hooks.Interrupt]]"))
+        XCTAssertTrue(withFence.contains("/hooks/codex_interrupt"))
+        let interrupt = withFence.components(separatedBy: "[[hooks.Interrupt]]").last!
+        XCTAssertTrue(interrupt.contains("timeout = 3"))
+        XCTAssertFalse(interrupt.contains("timeout = 5"))
         XCTAssertTrue(withFence.contains("--connect-timeout 0.2 --max-time 0.8"))
         XCTAssertTrue(withFence.contains("*[!0-9]*"))
         XCTAssertTrue(withFence.contains("type(p) is int and 1 <= p <= 65535"))

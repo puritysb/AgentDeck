@@ -319,11 +319,18 @@ enum DashboardDataRules {
         return trimmed.isEmpty ? nil : string
     }
 
+    // Mirrors shared/session-utils: folding must not hide an awaiting member
+    // behind a processing sibling. General session ordering remains unchanged.
+    static func codexFoldStateRank(_ state: String?) -> Int {
+        let rank = stateRank(state)
+        return rank == 1 ? -1 : rank
+    }
+
     private static func foldCodexProjectGroup(_ group: [[String: Any]]) -> [String: Any] {
         guard group.count > 1 else { return group[0] }
 
         let ranked = group.sorted { lhs, rhs in
-            let rankDiff = stateRank(lhs["state"] as? String) - stateRank(rhs["state"] as? String)
+            let rankDiff = codexFoldStateRank(lhs["state"] as? String) - codexFoldStateRank(rhs["state"] as? String)
             if rankDiff != 0 { return rankDiff < 0 }
 
             let lhsStarted = startedAtTime(lhs["startedAt"] as? String)
@@ -350,7 +357,9 @@ enum DashboardDataRules {
         }
 
         folded["state"] = ranked.first?["state"] as? String
-        if let tool = ranked.compactMap({ session -> String? in
+        if stateRank(folded["state"] as? String) == 1 {
+            // Keep the waiting member's own tool, never a sibling's.
+        } else if let tool = ranked.compactMap({ session -> String? in
             guard stateRank(session["state"] as? String) == 0 else { return nil }
             return nonEmptyString(session["currentTool"])
         }).first {

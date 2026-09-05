@@ -25,6 +25,19 @@ import XCTest
 @MainActor
 final class OpenClawToolNoiseTests: XCTestCase {
 
+    func testClaudeInternalSuggestionStopIsNotAWorkerCompletion() {
+        XCTAssertTrue(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "subagent_stop", agentType: "", hasActiveChild: false))
+        XCTAssertFalse(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "subagent_stop", agentType: "", hasActiveChild: true))
+        XCTAssertFalse(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "subagent_stop", agentType: "Explore", hasActiveChild: false))
+        XCTAssertFalse(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "subagent_stop", agentType: nil, hasActiveChild: false))
+        XCTAssertFalse(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "codex_subagent_stop", agentType: "", hasActiveChild: false))
+    }
+
     func testMainSessionModelUsesProviderQualifiedIdentifier() {
         let sessions: [[String: Any]] = [
             ["key": "agent:other:main", "model": "qwen-local"],
