@@ -263,6 +263,12 @@ describe('codex-install: managedBlockBody', () => {
     expect(withFence).toContain('/hooks/codex_tool_start');
     expect(withFence).toContain('/hooks/codex_tool_end');
     expect(withFence).toContain('/hooks/codex_stop');
+    // Codex's own approval prompt and Ctrl+C are lifecycle hooks too; both
+    // daemons read them as PERM and an interrupted turn.
+    expect(withFence).toContain('[[hooks.PermissionRequest]]');
+    expect(withFence).toContain('/hooks/codex_permission_request');
+    expect(withFence).toContain('[[hooks.Interrupt]]');
+    expect(withFence).toContain('/hooks/codex_interrupt');
     expect(withFence).toContain('--connect-timeout 0.2 --max-time 0.8');
     expect(withFence).toContain('*[!0-9]*');
     expect(withFence).toContain('type(p) is int and 1 <= p <= 65535');
@@ -292,7 +298,7 @@ describe('codex-install: managedBlockBody', () => {
 
     const decodedLifecycleCommands = [...withFence.matchAll(/-EncodedCommand ([A-Za-z0-9+/=]+)"/g)]
       .map((match) => Buffer.from(match[1], 'base64').toString('utf16le'));
-    expect(decodedLifecycleCommands).toHaveLength(7);
+    expect(decodedLifecycleCommands).toHaveLength(9);
     const decoded = decodedLifecycleCommands.join('\n');
     expect(decoded).toContain('/hooks/codex_user_prompt_submit');
     expect(decoded).toContain('/hooks/codex_subagent_start');
@@ -300,6 +306,8 @@ describe('codex-install: managedBlockBody', () => {
     expect(decoded).toContain('/hooks/codex_tool_start');
     expect(decoded).toContain('/hooks/codex_tool_end');
     expect(decoded).toContain('/hooks/codex_stop');
+    expect(decoded).toContain('/hooks/codex_permission_request');
+    expect(decoded).toContain('/hooks/codex_interrupt');
     expect(decoded).toContain("$ProgressPreference = 'SilentlyContinue'");
     expect(decoded).toContain('exit 0');
     // Stdin must be read as UTF-8 ([Console]::In decodes with the OEM

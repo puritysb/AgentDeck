@@ -82,3 +82,17 @@ describe('classifyObservedHookEvent', () => {
       .toEqual({ boundary: 'codex_bogus', agentType: 'claude-code' });
   });
 });
+
+describe('classifyObservedHookEvent — Codex PermissionRequest / Interrupt', () => {
+  it('permission_request keeps its own boundary (a wait, not a turn edge)', () => {
+    expect(classifyObservedHookEvent('codex_permission_request', 'codex_permission_request'))
+      .toEqual({ boundary: 'permission_request', agentType: 'codex-cli' });
+  });
+
+  it('interrupt is a turn END with no Stop coming, so it rides the stop boundary', () => {
+    expect(classifyObservedHookEvent('codex_interrupt', 'codex_interrupt'))
+      .toEqual({ boundary: 'stop', agentType: 'codex-cli' });
+    expect(classifyObservedHookEvent('opencode_interrupt', 'opencode_interrupt'))
+      .toEqual({ boundary: 'stop', agentType: 'opencode' });
+  });
+});

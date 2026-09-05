@@ -90,6 +90,12 @@ fun deriveSubagentActivity(
     val bursts = mutableMapOf<String, MutableList<Burst>>()
     val completed = mutableMapOf<String, Long>()
     val drained = mutableMapOf<String, Int>()
+    // Latest turn close per session. A dispatch older than the parent's own
+    // chat_end/chat_response is finished work: this is a FALLBACK read of a
+    // lossy buffer that keeps dispatch rows but sheds the children's stop
+    // rows, so without the bound a fan-out read "+8 running" for the whole
+    // TTL after every daemon restart. Mirrors shared/src/subagent-activity.ts.
+    val turnClosed = mutableMapOf<String, Long>()
     val ordered = entries.withIndex().sortedWith(
         compareBy<IndexedValue<TimelineEntry>> { it.value.timestamp }
             .thenBy { it.index }
@@ -100,6 +106,12 @@ fun deriveSubagentActivity(
         if (sessionId.isEmpty()) continue
         val isSubagent = entry.summary.startsWith("Subagent ")
         val isTeamCompletion = entry.summary.startsWith("Team ")
+
+        if (entry.type == "chat_end" || entry.type == "chat_response") {
+            val closedAt = entry.endedAt ?: entry.timestamp
+            turnClosed[sessionId] = maxOf(turnClosed[sessionId] ?: 0L, closedAt)
+            continue
+        }
 
         if (entry.type == "tool_exec" && isSubagent) {
             val list = bursts.getOrPut(sessionId) { mutableListOf() }
@@ -123,9 +135,10 @@ fun deriveSubagentActivity(
 
     val result = mutableMapOf<String, SubagentVisualActivity>()
     for (sessionId in bursts.keys + completed.keys) {
+        val turnClosedAt = turnClosed[sessionId] ?: 0L
         val dispatched = bursts[sessionId]
             .orEmpty()
-            .filter { now - it.timestamp <= activeTtlMs }
+            .filter { now - it.timestamp <= activeTtlMs && it.timestamp >= turnClosedAt }
             .sumOf { it.count }
         val activeCount = maxOf(0, dispatched - (drained[sessionId] ?: 0))
         val lastCompletedAt = completed[sessionId]

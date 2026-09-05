@@ -133,10 +133,42 @@ describe('shouldHoldPreToolUse — precision guards (never hold auto-approved ca
     expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
   });
 
-  it('compound command: allow rule on the first segment suppresses the hold', () => {
+  it('compound command: every segment must be covered — an uncovered second segment still holds', () => {
+    // Claude Code matches each subcommand independently, so `Bash(git status *)`
+    // does not approve `git status && rm -rf /`: the prompt is genuine.
     writeSettings(homeDir, 'settings.json', { allow: ['Bash(git status:*)'] });
     expect(shouldHoldPreToolUse(baseCtx({
       toolInput: { command: 'git status && rm -rf /' },
+    })).hold).toBe(true);
+  });
+
+  it('compound command: allow rules plus the built-in read-only set covering every segment suppress the hold', () => {
+    writeSettings(homeDir, 'settings.json', { allow: ['Bash(npm test *)'] });
+    expect(shouldHoldPreToolUse(baseCtx({
+      toolInput: { command: 'cd packages/api && npm test -- --watch | tail -20' },
+    })).hold).toBe(false);
+  });
+
+  it('space-star allow rules (the form the permission dialog writes) suppress the hold', () => {
+    // The 2026-09-05 defect: only the legacy `:*` spelling was understood, so
+    // every `Bash(curl *)` rule matched nothing and each batch was held 25 s.
+    writeSettings(homeDir, 'settings.json', { allow: ['Bash(curl *)'] });
+    expect(shouldHoldPreToolUse(baseCtx({
+      permissionMode: 'acceptEdits',
+      toolInput: { command: 'curl -sL -A "Mozilla/5.0" https://example.com' },
+    })).hold).toBe(false);
+  });
+
+  it('acceptEdits auto-approves the filesystem commands without any rule', () => {
+    expect(shouldHoldPreToolUse(baseCtx({
+      permissionMode: 'acceptEdits',
+      toolInput: { command: 'mkdir -p data/out && cp a.json data/out/' },
+    })).hold).toBe(false);
+  });
+
+  it('built-in read-only commands never hold in default mode', () => {
+    expect(shouldHoldPreToolUse(baseCtx({
+      toolInput: { command: 'git status --short' },
     })).hold).toBe(false);
   });
 
@@ -262,15 +294,19 @@ describe('turn-end directive queue', () => {
 });
 
 describe('evaluatePermissionRules verdicts', () => {
-  it('none when no files exist', () => {
-    expect(evaluatePermissionRules('Bash', { command: 'ls' }, cwd)).toBe('none');
+  it('none when no files exist (and the command is not built-in read-only)', () => {
+    expect(evaluatePermissionRules('Bash', { command: 'npm test' }, cwd)).toBe('none');
+  });
+
+  it('built-in read-only commands are allow even with no rules', () => {
+    expect(evaluatePermissionRules('Bash', { command: 'ls' }, cwd)).toBe('allow');
   });
 
   it('exact vs prefix Bash specs', () => {
-    writeSettings(homeDir, 'settings.json', { allow: ['Bash(git status)'] });
-    expect(evaluatePermissionRules('Bash', { command: 'git status' }, cwd)).toBe('allow');
+    writeSettings(homeDir, 'settings.json', { allow: ['Bash(npm run build)'] });
+    expect(evaluatePermissionRules('Bash', { command: 'npm run build' }, cwd)).toBe('allow');
     _clearRulesCache();
-    expect(evaluatePermissionRules('Bash', { command: 'git status -sb' }, cwd)).toBe('none');
+    expect(evaluatePermissionRules('Bash', { command: 'npm run build --watch' }, cwd)).toBe('none');
   });
 
   it('deny beats allow', () => {

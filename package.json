@@ -26,6 +26,7 @@
     "generate-esp32-board-matrix": "node scripts/generate-esp32-board-matrix.mjs",
     "generate-mdns-identity": "node scripts/generate-mdns-identity.mjs",
     "generate-observed-agent-rules": "node scripts/generate-observed-agent-rules.mjs",
+    "generate-claude-permission-rules": "node scripts/generate-claude-permission-rules.mjs",
     "generate-model-provider": "node scripts/generate-model-provider.mjs",
     "generate-openclaw-approval-rules": "node scripts/generate-openclaw-approval-rules.mjs",
     "generate-streamdeck-profiles": "node scripts/generate-streamdeck-profiles.mjs",

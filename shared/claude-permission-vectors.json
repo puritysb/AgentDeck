@@ -1,0 +1,214 @@
+[
+  {
+    "note": "no rules, default mode: a prompt-prone Bash call is the genuine-wait case",
+    "tool": "Bash", "command": "git push origin master", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "space-star allow rule (the form the permission dialog writes) suppresses the hold",
+    "tool": "Bash", "command": "curl -sL -A \"Mozilla/5.0\" https://example.com", "mode": "acceptEdits",
+    "rules": { "allow": ["Bash(curl *)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "legacy colon-star spelling is an alias of the trailing space-star",
+    "tool": "Bash", "command": "git push origin master", "mode": "default",
+    "rules": { "allow": ["Bash(git push:*)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "trailing ' *' also matches the bare command (Bash(ls *) ⇒ ls)",
+    "tool": "Bash", "command": "ls", "mode": "default",
+    "rules": { "allow": ["Bash(ls *)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "the space before a trailing * is part of the rule: Bash(ls *) does not cover lsof",
+    "tool": "Bash", "command": "lsof -nP -iTCP:9120", "mode": "default",
+    "rules": { "allow": ["Bash(ls *)"], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "Bash(ls*) has no space, so it does cover lsof",
+    "tool": "Bash", "command": "lsof -nP -iTCP:9120", "mode": "default",
+    "rules": { "allow": ["Bash(ls*)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "a wildcard in the middle: Bash(git log * main) covers git log --oneline main",
+    "tool": "Bash", "command": "git log --oneline main", "mode": "default",
+    "rules": { "allow": ["Bash(git log * main)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "Bash(git log * main) does not cover git log main (the * needs text in its place)",
+    "tool": "Bash", "command": "git log main", "mode": "default",
+    "rules": { "allow": ["Bash(git log * main)"], "deny": [], "ask": [] }, "hold": false,
+    "why": "git log is in the built-in read-only set, so Claude never prompts for it anyway"
+  },
+  {
+    "note": "Bash(git * main) covers git push origin main",
+    "tool": "Bash", "command": "git push origin main", "mode": "default",
+    "rules": { "allow": ["Bash(git * main)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "a leading wildcard: Bash(* --version) covers node --version",
+    "tool": "Bash", "command": "node --version", "mode": "default",
+    "rules": { "allow": ["Bash(* --version)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "Bash(* --version) does not cover node -v",
+    "tool": "Bash", "command": "node -v", "mode": "default",
+    "rules": { "allow": ["Bash(* --version)"], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "two wildcards: Bash(* --help *) covers npm --help x but not the bare npm --help",
+    "tool": "Bash", "command": "npm --help", "mode": "default",
+    "rules": { "allow": ["Bash(* --help *)"], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "exact rule matches only the exact command",
+    "tool": "Bash", "command": "npm run build --watch", "mode": "default",
+    "rules": { "allow": ["Bash(npm run build)"], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "bare tool-name allow rule covers everything",
+    "tool": "Bash", "command": "rm -rf build", "mode": "default",
+    "rules": { "allow": ["Bash"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "compound command: every subcommand must be covered — one uncovered segment still prompts",
+    "tool": "Bash", "command": "git status && rm -rf /tmp/x", "mode": "default",
+    "rules": { "allow": ["Bash(git status *)"], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "compound command fully covered by allow rules and the read-only set",
+    "tool": "Bash", "command": "cd packages/api && ls -la | wc -l", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "an operator inside quotes does not split the command",
+    "tool": "Bash", "command": "grep -E \"a|b\" file.txt", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "acceptEdits auto-approves mkdir/cp even without a rule",
+    "tool": "Bash", "command": "mkdir -p out/people && cp a.json out/people/", "mode": "acceptEdits",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "default mode does NOT auto-approve mkdir/cp",
+    "tool": "Bash", "command": "mkdir -p out/people && cp a.json out/people/", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "built-in read-only command never prompts (no rule needed)",
+    "tool": "Bash", "command": "cat package.json", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "read-only git form never prompts",
+    "tool": "Bash", "command": "git status --short", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "git branch with a name argument writes, so it is not read-only",
+    "tool": "Bash", "command": "git branch feature/x", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "a write redirect makes a read-only command prompt",
+    "tool": "Bash", "command": "ls > out.txt", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "a /dev/null redirect is not a write",
+    "tool": "Bash", "command": "ls -la 2>/dev/null", "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "wrappers and safe env assignments are stripped before matching",
+    "tool": "Bash", "command": "NODE_ENV=test timeout 30 npm test", "mode": "default",
+    "rules": { "allow": ["Bash(npm test *)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "an unparseable compound (operator with nothing after it) is matched as one text and prompts",
+    "tool": "Bash", "command": "npm test &&", "mode": "default",
+    "rules": { "allow": ["Bash(npm *)"], "deny": [], "ask": [] }, "hold": false,
+    "why": "matched as one text, Bash(npm *) still covers it — a missed hold is the safe error"
+  },
+  {
+    "note": "heredoc is not split; the whole text is matched against the rule",
+    "tool": "Bash", "command": "python3 - <<'EOF'\nprint(1)\nEOF", "mode": "acceptEdits",
+    "rules": { "allow": ["Bash(python3 *)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "deny rule: Claude auto-denies without prompting",
+    "tool": "Bash", "command": "git push origin master", "mode": "default",
+    "rules": { "allow": [], "deny": ["Bash(git push *)"], "ask": [] }, "hold": false
+  },
+  {
+    "note": "ask rule definitely prompts",
+    "tool": "Bash", "command": "git push origin master", "mode": "default",
+    "rules": { "allow": ["Bash(git *)"], "deny": [], "ask": ["Bash(git push *)"] }, "hold": true
+  },
+  {
+    "note": "unreadable settings: never hold",
+    "tool": "Bash", "command": "git push origin master", "mode": "default",
+    "rules": null, "hold": false
+  },
+  {
+    "note": "auto mode never holds (the classifier decides outside the settings files)",
+    "tool": "Bash", "command": "git push origin master", "mode": "auto",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "bypassPermissions never holds",
+    "tool": "Bash", "command": "git push origin master", "mode": "bypassPermissions",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "dontAsk never holds",
+    "tool": "Bash", "command": "git push origin master", "mode": "dontAsk",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "plan mode never holds",
+    "tool": "Bash", "command": "git push origin master", "mode": "plan",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "absent mode is treated as default",
+    "tool": "Bash", "command": "git push origin master", "mode": null,
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "acceptEdits: edit-family tools never hold",
+    "tool": "Edit", "command": null, "mode": "acceptEdits",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "default: Edit with no rule holds",
+    "tool": "Edit", "command": null, "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+  },
+  {
+    "note": "non-Bash tool with any allow rule for it: loose match suppresses the hold",
+    "tool": "WebFetch", "command": null, "mode": "default",
+    "rules": { "allow": ["WebFetch(domain:github.com)"], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "never-prompt tools never hold",
+    "tool": "Read", "command": null, "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "MCP tools never hold (per-server trust state is invisible)",
+    "tool": "mcp__github__create_issue", "command": null, "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "unknown future tools never hold",
+    "tool": "SomeFutureTool", "command": null, "mode": "default",
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
+  },
+  {
+    "note": "code-point matching: a Korean argument matches through a wildcard",
+    "tool": "Bash", "command": "echo 안녕 && python3 tools/validate.py 데이터", "mode": "default",
+    "rules": { "allow": ["Bash(python3 tools/*)"], "deny": [], "ask": [] }, "hold": false
+  }
+]

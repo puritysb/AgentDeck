@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HookCodexSessions } from '../hook-codex-sessions.js';
+import { HookCodexSessions, buildCodexPermissionQuestion } from '../hook-codex-sessions.js';
 import type { ObservedSession } from '../passive-observer.js';
 
 const SID = '019fc7c8-23b0-7aa1-bd65-8758d55a56e8';
@@ -160,5 +160,37 @@ describe('HookCodexSessions', () => {
     expect(hooks.note('opencode_session_start', { sessionId: SID, cwd: CWD })).toBe(false);
     expect(hooks.note('codex_session_start', { cwd: CWD })).toBe(false);
     expect(hooks.snapshot()).toEqual([]);
+  });
+});
+
+describe('Codex PermissionRequest / Interrupt hooks', () => {
+  it('a permission request keeps the row alive as progress; an interrupt is terminal', () => {
+    const hooks = new HookCodexSessions();
+    hooks.note('codex_session_start', { sessionId: SID, cwd: CWD }, 1_000);
+    hooks.note('codex_user_prompt_submit', { sessionId: SID, cwd: CWD }, 1_100);
+    hooks.note('codex_permission_request', { sessionId: SID, cwd: CWD, toolName: 'shell' }, 1_200);
+    // The row stays `processing` here: PERM rides the awaiting overlay, keyed
+    // by session id, which the daemon applies on top of this row.
+    expect(hooks.applyTo([], 1_300)[0].state).toBe('processing');
+    hooks.note('codex_interrupt', { sessionId: SID, cwd: CWD }, 1_400);
+    expect(hooks.applyTo([], 1_500)[0].state).toBe('idle');
+  });
+
+  it('a permission request can open a row the scan never found (the hook proves the session)', () => {
+    const hooks = new HookCodexSessions();
+    hooks.note('codex_permission_request', { sessionId: SID, cwd: CWD, toolName: 'shell' }, 1_000);
+    expect(hooks.applyTo([], 1_100)).toHaveLength(1);
+  });
+
+  it('buildCodexPermissionQuestion names the command, never the whole input', () => {
+    expect(buildCodexPermissionQuestion({ tool_name: 'shell', tool_input: { command: ['rm', '-rf', 'build'] } }))
+      .toBe('Approve shell: rm -rf build');
+    expect(buildCodexPermissionQuestion({ tool_name: 'shell', tool_input: { command: 'npm  test\n' } }))
+      .toBe('Approve shell: npm test');
+    expect(buildCodexPermissionQuestion({ tool_name: 'apply_patch', tool_input: { patch: '*** Begin Patch …' } }))
+      .toBe('Approve apply_patch?');
+    expect(buildCodexPermissionQuestion({ tool_name: 'network', tool_input: { host: 'registry.npmjs.org' } }))
+      .toBe('Approve network: registry.npmjs.org');
+    expect(buildCodexPermissionQuestion({})).toBe('Approve tool?');
   });
 });

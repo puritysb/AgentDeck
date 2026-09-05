@@ -38,7 +38,7 @@ const SILENT_TTL_MS = 30 * 60_000;
 /** Hook events that may create a row. */
 const OPENING_EVENTS = new Set(['codex_session_start', 'codex_user_prompt_submit']);
 /** Hook events that end a turn. `codex_turn_complete` is the notify-only fallback. */
-const TERMINAL_EVENTS = new Set(['codex_stop', 'codex_session_end', 'codex_turn_complete']);
+const TERMINAL_EVENTS = new Set(['codex_stop', 'codex_session_end', 'codex_turn_complete', 'codex_interrupt']);
 /**
  * A finished session stays un-resurrectable this long — longer than its row
  * lives, so a trailing tool callback can't revive a creature 90 s after the turn
@@ -215,5 +215,33 @@ export class HookCodexSessions {
 
 /** Mid-turn hooks: progress on a session that must already be known. */
 function isProgressEvent(event: string): boolean {
-  return event === 'codex_tool_start' || event === 'codex_tool_end';
+  return event === 'codex_tool_start' || event === 'codex_tool_end'
+    || event === 'codex_permission_request';
+}
+
+/**
+ * Device-native question for a Codex `PermissionRequest` — "Approve Bash:
+ * <command>" when the payload names a command, the tool name otherwise. The
+ * hook's `tool_input` is a free JSON value: the shell tool carries `command`
+ * as a string or an argv array, patch tools carry a `patch`, network approvals
+ * carry a `host`/`url`. Never quote the whole input: a 4 KB patch would land
+ * on a 120-character device line.
+ */
+export function buildCodexPermissionQuestion(json: Record<string, unknown>): string {
+  const tool = typeof json.tool_name === 'string' && json.tool_name.trim() ? json.tool_name.trim() : 'tool';
+  const input = json.tool_input;
+  let preview = '';
+  if (input && typeof input === 'object') {
+    const rec = input as Record<string, unknown>;
+    const command = rec.command ?? rec.cmd;
+    if (typeof command === 'string') preview = command;
+    else if (Array.isArray(command)) preview = command.filter((c): c is string => typeof c === 'string').join(' ');
+    else if (typeof rec.url === 'string') preview = rec.url;
+    else if (typeof rec.host === 'string') preview = rec.host;
+    else if (typeof rec.path === 'string') preview = rec.path;
+  } else if (typeof input === 'string') {
+    preview = input;
+  }
+  preview = preview.replace(/\s+/g, ' ').trim();
+  return preview ? `Approve ${tool}: ${preview}` : `Approve ${tool}?`;
 }

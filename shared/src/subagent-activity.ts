@@ -47,6 +47,15 @@ export function deriveSubagentActivity(
   const burstsBySession = new Map<string, ActiveBurst[]>();
   const completedBySession = new Map<string, number>();
   const drainedBySession = new Map<string, number>();
+  /** Latest turn close per session (`chat_end` / `chat_response`). A dispatch
+   *  older than the parent's own turn close is finished work: foreground
+   *  children end before their parent's Stop, and this is a FALLBACK read of
+   *  a lossy buffer — the daemon's census outranks it whenever present. The
+   *  buffer keeps dispatch rows (they carry a `subagentId`) but sheds the
+   *  children's stop rows under the FIFO, so without this bound a session
+   *  that fanned out eight children read "+8 running" for the whole 6-hour
+   *  TTL after every daemon restart. */
+  const turnClosedBySession = new Map<string, number>();
 
   const ordered = entries
     .map((entry, index) => ({ entry, index }))
@@ -58,6 +67,12 @@ export function deriveSubagentActivity(
 
     const isSubagent = entry.raw.startsWith('Subagent ');
     const isTeamCompletion = entry.raw.startsWith('Team ');
+
+    if (entry.type === 'chat_end' || entry.type === 'chat_response') {
+      const closedAt = entry.endedAt ?? entry.ts;
+      turnClosedBySession.set(sessionId, Math.max(turnClosedBySession.get(sessionId) ?? 0, closedAt));
+      continue;
+    }
 
     if (entry.type === 'tool_exec' && isSubagent) {
       const bursts = burstsBySession.get(sessionId) ?? [];
@@ -93,8 +108,9 @@ export function deriveSubagentActivity(
   ]);
 
   for (const sessionId of sessionIds) {
+    const turnClosedAt = turnClosedBySession.get(sessionId) ?? 0;
     const dispatched = (burstsBySession.get(sessionId) ?? [])
-      .filter((burst) => now - burst.ts <= activeTtlMs)
+      .filter((burst) => now - burst.ts <= activeTtlMs && burst.ts >= turnClosedAt)
       .reduce((sum, burst) => sum + burst.count, 0);
     const activeCount = Math.max(0, dispatched - (drainedBySession.get(sessionId) ?? 0));
     const lastCompletedAt = completedBySession.get(sessionId);

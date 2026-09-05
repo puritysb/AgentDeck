@@ -2,6 +2,52 @@
 
 ---
 
+## 2026-09-05 — PERM은 "사람을 기다린다"는 주장이다: 에이전트별 근거를 재검토하고, 예측하는 유일한 경로를 생성 SSOT로 묶었다
+
+**발단.** epoch-of-tech의 glm-5.3 워커 두 세션이 데크에 `Allow Bash: curl …` PERM을 25초 주기로
+켰다 껐다 반복했는데 터미널엔 아무 프롬프트도 없었다. WS 리스너로 실측: 두 세션은
+`acceptEdits` 모드였고(같은 glm이라도 `auto`인 세션은 한 번도 안 뜸 — 모델이 아니라 모드),
+PERM은 Notification이 아니라 관측 세션 PreToolUse **홀드 게이트**가 만든 것이었으며
+(requestId 동반), awaiting→processing 간격이 정확히 25.0초 = `OBSERVED_APPROVAL_HOLD_MS`
+타임아웃이었다. 아무도 응답하지 않았고 홀드가 풀린 뒤 Claude 자체 allow 규칙이 통과시켰다.
+서브에이전트 가설은 기각(자식 훅은 `agent_id`로 걸러져 게이트에 닿지 않음).
+
+**원인 둘.** (1) 예측기 `bashSpecMatches`가 구식 `Bash(cmd:*)` 접미사만 이해했다. 권한 다이얼로그가
+쓰는 공백 형식 `Bash(cmd *)`이 전역 설정 Bash 규칙 73개 중 67개인데 전부 매치 실패 → 매번 홀드.
+Swift `ObservedSteering.swift`도 손미러라 **같은 결함**을 갖고 있었다. (2) 자동승인 학습기의 8초
+창은 웹페이지를 받는 `curl`보다 짧아 같은 `curl -sL` 시그니처가 배치마다 다시 홀드됐다.
+
+**조치.** 예측기를 `shared/src/claude-permission-rules.ts` SSOT로 옮기고
+`pnpm generate-claude-permission-rules`가 `ClaudePermissionRules.generated.swift`를 방출,
+`shared/claude-permission-vectors.json`(42 벡터)을 vitest와 XCTest 양쪽이 재생한다. 규칙은 Claude
+문서를 따른다: `*`는 공백 포함 임의 텍스트, 끝의 ` *`는 맨 명령도 매치(`ls *`⇒`ls`), `:*`는 별칭,
+복합 명령은 `&& || ; | |& &`로 나눠 **모든** 부분이 덮여야 자동승인, 내장 read-only 집합
+(`ls cat git status …`)은 어느 모드에서도 프롬프트 없음, `acceptEdits`는 `mkdir touch rm rmdir mv
+cp sed`도 자동, 래퍼/환경변수 대입은 벗김. 학습창 8초→15분(Notification이 오면 학습을 지우므로
+창은 도구 실행 시간만 제한한다).
+
+**에이전트 전수 점검(양 데몬).** Claude: Notification `permission_prompt` 표시 + 홀드(위). Codex:
+승인 신호가 **아예 없었다** — rollout 이벤트 어휘에 approval 타입이 없고 훅 목록에도 없어
+`approval_policy = "on-request"`로 막힌 세션은 10분 stale-turn 폴백까지 `processing`으로 보였다.
+Codex 공식 `PermissionRequest`(묻기 직전에만 발화)와 `Interrupt`(Ctrl+C)를 설치기에 추가, Node는
+awaiting 오버레이(표시 전용)·Swift는 `codex_permission_request`/`codex_interrupt` 케이스, APME는
+interrupt를 `end_source='interrupted'`로 닫는다. OpenCode: Swift는 `permission.asked`를 답변 가능한
+`ocperm:` requestId로 올렸지만 **Node는 분류만 하고 상태로는 버렸다**(관측 행이 PID 키라 세션 id
+훅과 연결 불가) → `hook-opencode-sessions.ts`가 훅 기반 행을 만들고 같은 cwd의 PID 행을
+양보시킨다. OpenClaw: Gateway가 실제로 막힌 `exec.approval.requested`만, 만료/포기 처리 포함 — 건전.
+Kiro/Antigravity: 권한 소스 없음, PERM 없음(문서화).
+
+**서브에이전트 과표시.** 세션 행으로 과표시되는 경로는 없다(Claude 자식은 in-process·`agent_id`로
+소비, Codex 자식 훅은 부모 session_id, OpenClaw는 가상 단일 행, 실측 7프로세스=7행). 잠재 경로
+하나: 타임라인 폴백 `deriveSubagentActivity`는 dispatch 행(`subagentId`, 축출 면제)은 남고 자식
+stop 행(`tool_resolved`)은 FIFO로 잘리므로 데몬 재시작 후 센서스가 비면 "+8 running"이 TTL 6시간
+동안 남는다 → 부모의 `chat_end`/`chat_response` 이후 dispatch는 drained로 간주(shared/Kotlin/Swift
+3미러+테스트), 양 데몬 session_end에서 센서스 삭제. **반대 방향 실측**: 7일간 APME 자식 이벤트
+started 7 vs completed 221, 오케스트레이터 행이 `peak 0 / completed 11` — `SubagentStart`가 데몬에
+거의 닿지 않는다(훅 명령은 Stop과 경로만 다름). 원인 미확정, 별도 추적.
+
+검증: vitest 3980 pass(255 파일), macOS XCTest 대상 4스위트 83 pass, Android TimelineStoreTest.
+
 ## 2026-09-05 — macOS 1.2.0 (5801) 승인·출시: 1.2.0 라운드 여섯 채널 전부 라이브
 
 9/2 리젝 → 9/2 회신 → 9/3 재제출(`심사 대기 중`) → 9/4 `심사 중` → 9/4 승인·출시.

@@ -25,6 +25,7 @@ import { PassiveSessionObserver } from './passive-observer.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
 import { SubagentTimelineTracker } from './subagent-timeline.js';
+import { HookOpenCodeSessions } from './hook-opencode-sessions.js';
 import {
   getRemoteSession,
   getRemoteSender,
@@ -178,7 +179,7 @@ import { rgbToBmp, pixooLiveHtml } from './hook-server.js';
 import { enableDebugLog, debug, debugThrottled } from './logger.js';
 import { LegacyRearmLedger } from './legacy-rearm-ledger.js';
 import { CodexOtelTracker, CODEX_OTEL_TRACES_PATH, spanNameSummary } from './codex-otel.js';
-import { HookCodexSessions } from './hook-codex-sessions.js';
+import { HookCodexSessions, buildCodexPermissionQuestion } from './hook-codex-sessions.js';
 import { ObservedTurnWatchdogs } from './observed-turn-watchdogs.js';
 import {
   getApmeInitFailure,
@@ -1199,11 +1200,14 @@ export function classifyObservedHookEvent(
   if (eventName === 'codex_subagent_start' || eventName === 'codex_subagent_stop') {
     return { boundary: eventName, agentType: 'codex-cli' };
   }
-  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|notification|permission_asked|permission_replied)$/
+  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
   return {
-    boundary: prefixed[2] === 'turn_complete' ? 'stop'
+    // `interrupt` (Codex Ctrl+C) is a turn END with no Stop coming, so it
+    // rides the stop boundary; the caller stamps `interrupted` on the payload
+    // so the collector records `end_source='interrupted'`.
+    boundary: prefixed[2] === 'turn_complete' || prefixed[2] === 'interrupt' ? 'stop'
       : prefixed[2] === 'agent_spawn' ? 'session_start'
       : prefixed[2],
     agentType: prefixed[1] === 'codex' ? 'codex-cli'
@@ -1578,6 +1582,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Codex sessions known only from `codex_*` hooks — the backstop for when the
   // process scan can't see one (lsof timeout, no rollout held open).
   const hookCodexSessions = new HookCodexSessions();
+  const hookOpenCodeSessions = new HookOpenCodeSessions();
   // Declared before the HTTP server: the PreToolUse route reads it to decide
   // whether this daemon can type into a session's terminal, and hooks start
   // arriving the moment the port binds — several hundred milliseconds before
@@ -2941,6 +2946,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // codex/opencode *state* is owned by the passive observer's turn
         // semantics, not these hooks.
         const { boundary, agentType: hookAgentType } = classifyObservedHookEvent(eventName, mapped);
+        // A Codex/OpenCode Interrupt is the user's Ctrl+C: the turn ended with
+        // no Stop, and the collector must not read it as a normal stop.
+        if (/_interrupt$/.test(eventName)) json.interrupted = true;
         const earlyHookSid = typeof json.session_id === 'string' && json.session_id
           ? json.session_id : 'daemon-hook';
         const earlyHookCwd = (typeof json.cwd === 'string' ? json.cwd
@@ -2986,6 +2994,34 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             cwd: earlyHookCwd || undefined,
             projectName: earlyHookProject,
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
+          });
+          // Codex PERM: `PermissionRequest` fires only when Codex is about to
+          // ask the user (approval_policy on-request), so it is a genuine
+          // awaiting signal with no prediction — display-only, respond in the
+          // terminal. Any later lifecycle hook on the session ends the wait:
+          // an approval runs the tool (tool_start/tool_end), a denial or
+          // Ctrl+C ends the turn (stop/interrupt), a new prompt supersedes it.
+          const codexSid = typeof json.session_id === 'string' ? json.session_id : '';
+          if (codexSid) {
+            if (eventName === 'codex_permission_request') {
+              setAwaitingOverlay(codexSid, buildCodexPermissionQuestion(json));
+              core.broadcastSessionsList().catch(() => {});
+            } else if (getAwaitingOverlay(codexSid)?.kind === 'permission') {
+              if (clearAwaitingOverlay(codexSid)) core.broadcastSessionsList().catch(() => {});
+            }
+          }
+        }
+        // OpenCode observed rows: the process scan keys them by PID and knows
+        // nothing about turns or permissions; the observer plugin's hooks key
+        // by OpenCode session id and carry both. See hook-opencode-sessions.ts.
+        if (eventName.startsWith('opencode_')) {
+          hookOpenCodeSessions.note(eventName, {
+            sessionId: typeof json.session_id === 'string' ? json.session_id : undefined,
+            cwd: earlyHookCwd || undefined,
+            projectName: earlyHookProject,
+            toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
+            permissionId: typeof json.permission_id === 'string' ? json.permission_id : undefined,
+            title: typeof json.title === 'string' ? json.title : undefined,
           });
         }
         // State machine
@@ -3149,6 +3185,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // Mirrors the Swift daemon's session_end force-close (`hasOpenTurn`
         // → interrupted chat_end).
         if (boundary === 'session_end') {
+          // Every child the session had ends with it — a lost SubagentStop
+          // must not pin "+N" on a row that no longer exists.
+          subagentTimeline?.forget(hookSid);
           const rows = core.bridgeTimeline.getHistoryForSession(hookSid, undefined, 24);
           let lastStart: TimelineEntry | undefined;
           let lastCompletionTs = 0;
@@ -4570,6 +4609,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // worth a broadcast of its own.
   codexOtel.onChanged = () => core.maybeBroadcastSessionsList();
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
+  hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
 
   // ===== Gateway adapter lifecycle =====
   // (gatewayAdapter + gatewayConnecting declared earlier, before HTTP server)
@@ -4588,7 +4628,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Swift's only Codex-app source, here a second opinion on top of the
     // observer. See bridge/src/codex-otel.ts.
     const observed = applyAwaitingOverlayToObserved(
-      hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions))),
+      hookOpenCodeSessions.applyTo(
+        hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions))),
+      ),
     )
       .map((s) => {
         // Steering feedback for observed Claude sessions: devices render

@@ -209,6 +209,17 @@ const LIFECYCLE_HOOKS: LifecycleHook[] = [
   { codexEvent: 'Stop',             agentDeckEvent: 'codex_stop',               matcher: null },
   { codexEvent: 'SubagentStart',    agentDeckEvent: 'codex_subagent_start',     matcher: '*' },
   { codexEvent: 'SubagentStop',     agentDeckEvent: 'codex_subagent_stop',      matcher: '*' },
+  // PermissionRequest fires only when Codex is ABOUT TO ASK the user (a shell
+  // escalation or managed-network approval under `approval_policy =
+  // "on-request"`) — a zero-false-positive PERM signal, unlike Claude's
+  // PreToolUse, which fires for every call. Without it a Codex session blocked
+  // on an approval rendered `processing` until the 10-minute stale-turn
+  // fallback; the rollout carries no approval event to recover it from.
+  { codexEvent: 'PermissionRequest', agentDeckEvent: 'codex_permission_request', matcher: '*' },
+  // Interrupt is the user's Ctrl+C on an active turn: the turn ends with no
+  // Stop, so without it the session stayed `processing` and its APME turn
+  // waited for the next prompt to close.
+  { codexEvent: 'Interrupt',        agentDeckEvent: 'codex_interrupt',          matcher: null },
 ];
 
 function buildLifecycleHookTables(platform: NodeJS.Platform): string[] {

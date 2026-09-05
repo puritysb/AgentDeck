@@ -391,43 +391,7 @@ export function isPermissionNotification(
   return looksLikePermissionMessage(message);
 }
 
-/** Edit-family tools that Claude auto-approves in `acceptEdits` mode. */
-const EDIT_FAMILY_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
-
-/**
- * Should the daemon HOLD a gated PreToolUse for device approval, given the
- * session's `permission_mode`?
- *
- * Claude's PreToolUse hook fires for EVERY tool call regardless of mode or
- * allowlist — even when Claude will auto-approve and never prompt the user.
- * `permission_mode` is the session's global decision posture, so gate only in
- * modes where Claude could still surface its own prompt; otherwise the device
- * nags for a decision the agent never asked for (the reported false-attention
- * bug). Mirrors the Swift `DaemonServer.shouldGate(permissionMode:tool:)`.
- *
- *  - `bypassPermissions` / `dontAsk` → never prompts            → don't gate
- *  - `auto`                          → policy engine auto-approves; its
- *    decisions live outside the settings allowlist files, so the rule
- *    predictor can't see them and every unlisted call would false-hold.
- *    The rare genuine prompt still surfaces via the Notification
- *    `permission_prompt` overlay                                 → don't gate
- *  - `plan`                          → tools don't execute       → don't gate
- *  - `acceptEdits`                   → edits auto-approved, Bash still prompts
- *  - `default` / unknown             → Claude may prompt         → gate
- *
- * Unknown/absent mode is treated as `default` (gate) to preserve behavior on
- * older Claude versions that don't send the field.
- */
-export function shouldGatePreToolUse(permissionMode: string | undefined, tool: string): boolean {
-  switch ((permissionMode || 'default').trim()) {
-    case 'bypassPermissions':
-    case 'dontAsk':
-    case 'auto':
-    case 'plan':
-      return false;
-    case 'acceptEdits':
-      return !EDIT_FAMILY_TOOLS.has(tool);
-    default:
-      return true;
-  }
-}
+/** Mode gate for the PreToolUse device-approval hold — SSOT in
+ *  @agentdeck/shared (generated into the Swift daemon). Re-exported here for
+ *  the daemon's existing import path. */
+export { shouldGatePreToolUse } from '@agentdeck/shared';

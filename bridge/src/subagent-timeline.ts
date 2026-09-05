@@ -353,6 +353,13 @@ export class SubagentTimelineTracker {
     };
   }
 
+  /** The session ended: every child it had is gone with it. Without this a
+   *  child whose stop hook was lost kept its parent's census at "+1" for the
+   *  whole ACTIVE_TTL after the parent itself had exited. */
+  forget(sessionId: string): void {
+    this.sessions.delete(sessionId);
+  }
+
   /** Every session with a census, keyed as the tracker saw it (bare uuid). */
   summaries(): Map<string, SubagentSummary> {
     this.sweep();

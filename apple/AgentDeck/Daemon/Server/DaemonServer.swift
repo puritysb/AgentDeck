@@ -5524,6 +5524,30 @@ final class DaemonServer {
             // Stamp terminal time so codexPostTerminalTTL can reap the
             // ephemeral companion-task entry well before pushedSessionStaleTTL.
             if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
+        case "codex_permission_request":
+            // Codex PERM: `PermissionRequest` fires only when Codex is ABOUT TO
+            // ASK the user (approval_policy on-request) — a genuine awaiting
+            // signal with no prediction, display-only (respond in the
+            // terminal). The next lifecycle hook on the session ends the wait:
+            // an approval runs the tool, a denial or Ctrl+C ends the turn, a
+            // new prompt supersedes it — all of which pass through
+            // updateSessionHookState and overwrite the state.
+            if let sessionId, var entry = pushedSessionsById[sessionId] {
+                entry.state = "awaiting_permission"
+                entry.question = Self.codexPermissionQuestion(json)
+                entry.requestId = nil
+                pushedSessionsById[sessionId] = entry
+                upsertIntoCachedSessions(entry)
+                broadcastSessionsList()
+            }
+        case "codex_interrupt":
+            // The user's Ctrl+C on an active turn: no Stop follows, so close
+            // the turn here as interrupted (the APME normalization above
+            // stamps `interrupted` for the collector).
+            _ = stateMachine.transition(trigger: "stop", source: .hook)
+            updateSessionHookState(sessionId: sessionId, state: "idle", clearTool: true)
+            appendCodexChatEnd(json: json, sessionId: sessionId, interrupted: true)
+            if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
         case "codex_turn_complete":
             // Codex notify currently emits exactly one event per turn:
             // `agent-turn-complete`. There's no matching `turn_start` on
@@ -5647,6 +5671,12 @@ final class DaemonServer {
             lastHookAtByPushedSession.removeValue(forKey: sessionId)
             codexProcessingTouchedAtBySession.removeValue(forKey: sessionId)
             if currentHookSessionId == sessionId { currentHookSessionId = nil }
+            // Every child the session had ends with it — a lost SubagentStop
+            // must not pin "+N" on a row that no longer exists. Children are
+            // keyed by the BARE session uuid; codex/opencode rows carry a
+            // prefix, so drop both spellings.
+            subagentCensus.removeValue(forKey: sessionId)
+            subagentCensus.removeValue(forKey: ObservedAgentRules.rawSessionId(sessionId))
         }
 
         broadcastStateUpdate()
@@ -6641,35 +6671,43 @@ final class DaemonServer {
         return looksLikePermissionMessage(message)
     }
 
-    /// Edit-family tools that Claude auto-approves in `acceptEdits` mode.
-    nonisolated static let editFamilyTools: Set<String> = ["Write", "Edit", "MultiEdit", "NotebookEdit"]
+    /// Device-native question for a Codex `PermissionRequest` — "Approve Bash:
+    /// <command>" when the payload names a command, the tool name otherwise.
+    /// Mirrors the Node `buildCodexPermissionQuestion`. `tool_input` is a free
+    /// JSON value (string or argv array `command`, `url`/`host`, `path`);
+    /// never quote the whole input — a patch would land on a 120-char line.
+    nonisolated static func codexPermissionQuestion(_ json: [String: Any]) -> String {
+        let rawTool = (json["tool_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let tool = rawTool.isEmpty ? "tool" : rawTool
+        var preview = ""
+        if let input = json["tool_input"] as? [String: Any] {
+            let command = input["command"] ?? input["cmd"]
+            if let s = command as? String {
+                preview = s
+            } else if let parts = command as? [Any] {
+                preview = parts.compactMap { $0 as? String }.joined(separator: " ")
+            } else if let url = input["url"] as? String {
+                preview = url
+            } else if let host = input["host"] as? String {
+                preview = host
+            } else if let path = input["path"] as? String {
+                preview = path
+            }
+        } else if let s = json["tool_input"] as? String {
+            preview = s
+        }
+        preview = preview.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
+        let question = preview.isEmpty ? "Approve \(tool)?" : "Approve \(tool): \(preview)"
+        return String(question.prefix(120))
+    }
 
     /// Should the daemon HOLD a gated PreToolUse for device approval, given the
-    /// session's `permission_mode`? Claude's PreToolUse hook fires for EVERY tool
-    /// call regardless of mode or allowlist — even when Claude will auto-approve
-    /// and never prompt the user. Gate only in modes where Claude could still
-    /// surface its own prompt; otherwise the device nags for a decision the agent
-    /// never asked for (the reported false-attention bug). Mirrors the Node
-    /// `shouldGatePreToolUse`.
-    ///
-    ///  - `bypassPermissions` / `dontAsk` → never prompts            → don't gate
-    ///  - `auto`                          → policy engine auto-approves; its
-    ///    decisions live outside the settings allowlist files, so the rule
-    ///    predictor can't see them and every unlisted call would false-hold.
-    ///    The rare genuine prompt still surfaces via the Notification
-    ///    `permission_prompt` overlay                                 → don't gate
-    ///  - `plan`                          → tools don't execute       → don't gate
-    ///  - `acceptEdits`                   → edits auto-approved, Bash still prompts
-    ///  - `default` / unknown             → Claude may prompt         → gate
+    /// session's `permission_mode`? SSOT in the generated
+    /// `ClaudePermissionRules` (shared/src/claude-permission-rules.ts); kept
+    /// here as the historical call-site name.
     nonisolated static func shouldGate(permissionMode: String?, tool: String) -> Bool {
-        switch (permissionMode ?? "default").trimmingCharacters(in: .whitespaces) {
-        case "bypassPermissions", "dontAsk", "auto", "plan":
-            return false
-        case "acceptEdits":
-            return !editFamilyTools.contains(tool)
-        default:
-            return true
-        }
+        ClaudePermissionRules.shouldGatePreToolUse(permissionMode: permissionMode, tool: tool)
     }
 
     private func shouldIgnorePostTerminalCodexProgress(sessionId: String?, event: String) -> Bool {
@@ -10553,6 +10591,13 @@ final class DaemonServer {
             guard let sessionId, !sessionId.isEmpty else { return nil }
             normalizedEvent = String(event.dropFirst(source.prefix.count)).lowercased()
             if normalizedEvent == "turn_complete" { normalizedEvent = "stop" }
+            // A Codex/OpenCode Interrupt is the user's Ctrl+C: the turn ended
+            // with no Stop coming, and the collector must record it as
+            // `interrupted`, never as a normal stop.
+            if normalizedEvent == "interrupt" {
+                normalizedEvent = "stop"
+                payload["interrupted"] = true
+            }
             payload["session_id"] = sessionId
             payload["agent_type"] = source.agentType
         } else {
