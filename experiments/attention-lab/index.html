@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AgentDeck · Attention Lab</title>
+    <link rel="icon" href="/assets/logo.png" />
+    <link rel="stylesheet" href="/assets/tokens.css" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#preview">미리보기로 이동</a>
+    <header class="lab-header">
+      <div class="lab-brand">
+        <img src="/assets/logo.png" width="38" height="38" alt="" />
+        <div>
+          <strong>AgentDeck <span>Attention Lab</span></strong
+          ><small>합성 데이터 · 로컬 실험</small>
+        </div>
+      </div>
+      <button id="reference" class="ghost">기존 화면 참고 ↗</button>
+    </header>
+    <section class="controls" aria-label="비교 설정">
+      <div class="control-row">
+        <div id="layouts" class="segments" aria-label="레이아웃"></div>
+        <div class="selectors">
+          <label
+            >표현
+            <select id="surface">
+              <option value="desktop">데스크톱</option>
+              <option value="eink">E-ink 읽기</option>
+              <option value="deck">키 데크</option>
+            </select></label
+          ><label
+            >세션
+            <select id="count">
+              <option>1</option>
+              <option selected>5</option>
+              <option>12</option>
+            </select></label
+          >
+        </div>
+      </div>
+      <div id="scenarios" class="scenarios" aria-label="재생 시나리오"></div>
+      <div class="replay-row">
+        <p id="scenario-note"></p>
+        <button id="play" class="ghost">▶ 순서대로 재생</button><button id="reset" class="ghost">초기화</button>
+      </div>
+    </section>
+    <main id="preview" tabindex="-1"></main>
+    <section class="experiment-notes">
+      <div>
+        <span class="eyebrow">CAPABILITY 실험</span
+        ><label class="capability"
+          ><input id="native-reply" type="checkbox" /> API Client · api에 직접 승인 API가 생긴다면</label
+        >
+        <p>해당 세션의 합성 permission 요청만 응답 가능해집니다. 모든 표면이 같은 응답 가능 여부를 사용합니다.</p>
+      </div>
+      <div>
+        <span class="eyebrow">이번 비교에서 볼 것</span>
+        <p id="hypothesis"></p>
+        <p id="trace" class="trace"></p>
+      </div>
+    </section>
+    <div id="live" class="sr-only" role="status" aria-live="polite"></div>
+    <dialog id="reference-dialog">
+      <div class="dialog-head">
+        <h2>기존 제품의 저장된 화면</h2>
+        <button id="close-reference">닫기</button>
+      </div>
+      <p>저장소의 과거 macOS 캡처입니다. 현재 실행 화면이나 A/B/C와 동일한 데이터의 비교 기준선은 아닙니다.</p>
+      <img src="/assets/baseline.png" alt="기존 AgentDeck macOS terrarium 대시보드의 저장된 캡처" />
+    </dialog>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

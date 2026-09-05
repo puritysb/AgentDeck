@@ -1,0 +1,10 @@
+{
+  "name": "agentdeck-attention-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test *.test.mjs",
+    "check": "node --check app.js && node --check model.mjs && node --check server.mjs"
+  }
+}
