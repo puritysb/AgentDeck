@@ -1,5 +1,9 @@
 # Attention Lab — isolated UX hypothesis
 
+이 문서는 합성 데이터의 **브라우저 A/B/C 비교**를 설명합니다.
+실제 세션을 읽는 후속 SwiftUI 관찰 창과 제품 메뉴바의 opt-in 패널은
+[Native attention observation](native/README.md)을 참고하세요. 두 실행 경로는 분리되어 있습니다.
+
 기존 제품을 교체하지 않고 **테라리움의 존재감, 사람이 필요한 순간, 되돌아올 맥락**의 관계를 비교하는 로컬 프로토타입입니다. 제작 시점의 기준 커밋은 `7ff90b27`입니다.
 
 ## 실행

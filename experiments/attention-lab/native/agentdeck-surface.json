@@ -1,0 +1,8 @@
+{
+  "protocol": 1,
+  "clientId": "dev.agentdeck.attention-lab",
+  "clientVersion": "0.1.0",
+  "productId": "dev.agentdeck.attention-lab",
+  "profiles": [{ "id": "dashboard-live/v1", "capabilities": ["sessions.read"] }],
+  "status": "experimental-local-only"
+}

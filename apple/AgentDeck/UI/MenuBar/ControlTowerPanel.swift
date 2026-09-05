@@ -46,6 +46,8 @@ struct ControlTowerPanel: View {
     @State private var activityLastRefresh: Date? = nil
     @State private var idleSessionsExpanded = false
     @State private var fullTopologyExpanded = false
+    // Default-off, reversible experiment. Local selection never changes daemon focus.
+    @AppStorage("attentionContextExperimentEnabled") private var attentionContextExperimentEnabled = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -148,24 +150,33 @@ struct ControlTowerPanel: View {
     }
 
     private var overviewPanel: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                activitySummaryPanel
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    if attentionContextExperimentEnabled {
+                        AttentionContextPanel(snapshot: attentionContextSnapshot, onSelect: {
+                            proxy.scrollTo("attention-context", anchor: .top)
+                        })
+                        .id("attention-context")
+                    } else {
+                        activitySummaryPanel
+                    }
 
-                Divider()
-                    .overlay(DesignTokens.Tide.s50.opacity(0.08))
+                    Divider()
+                        .overlay(DesignTokens.Tide.s50.opacity(0.08))
 
-                compactUsageSummary
-                    .padding(14)
+                    compactUsageSummary
+                        .padding(14)
 
-                Divider()
-                    .overlay(DesignTokens.Tide.s50.opacity(0.08))
+                    Divider()
+                        .overlay(DesignTokens.Tide.s50.opacity(0.08))
 
-                adaptiveTopologySummary
-                    .padding(14)
+                    adaptiveTopologySummary
+                        .padding(14)
+                }
             }
+            .background(DesignTokens.UI.popupBgDeep.opacity(0.18))
         }
-        .background(DesignTokens.UI.popupBgDeep.opacity(0.18))
     }
 
     /// True when a window with the dashboard scene id is on screen and not
@@ -177,6 +188,22 @@ struct ControlTowerPanel: View {
                 && $0.isVisible
                 && !$0.isMiniaturized
         }
+    }
+
+    private var attentionContextSnapshot: AttentionContextSnapshot {
+        AttentionContextSnapshot(
+            rows: stateHolder.state.siblingSessions.map { session in
+                AttentionContextRow(
+                    id: session.id, projectName: session.projectName,
+                    agentType: session.agentType, state: session.state,
+                    activity: session.activity, question: session.question,
+                    questionDetail: session.questionDetail,
+                    liveAnswerable: session.liveAnswerable, alive: session.alive
+                )
+            },
+            connected: stateHolder.state.bridgeConnected && stateHolder.state.sessionsListReceived,
+            receivedAt: stateHolder.lastDataReceivedAt
+        )
     }
 
     /// The session the attention theater should feature. Prefers the
@@ -1510,6 +1537,8 @@ struct ControlTowerPanel: View {
 
     private var settingsPillButton: some View {
         Menu {
+            Toggle("Attention context (experimental)", isOn: $attentionContextExperimentEnabled)
+            Divider()
             Button("Open Settings") {
                 DockVisibilityController.shared.prepareToShowWindow()
                 NSApp.activate(ignoringOtherApps: true)

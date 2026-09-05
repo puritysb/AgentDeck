@@ -60,6 +60,18 @@ targets:
         group: AgentDeck/Generated
       - path: ../generated/protocol/GatewayFrame.swift
         group: AgentDeck/Generated
+      - path: ../design/fonts/IBMPlexSansKR-Regular.ttf
+        buildPhase: resources
+        group: AgentDeck/AttentionFonts
+      - path: ../design/fonts/IBMPlexSansKR-Bold.ttf
+        buildPhase: resources
+        group: AgentDeck/AttentionFonts
+      - path: ../bridge/assets/fonts/JetBrainsMono-Regular.ttf
+        buildPhase: resources
+        group: AgentDeck/AttentionFonts
+      - path: ../bridge/assets/fonts/LICENSES.md
+        buildPhase: resources
+        group: AgentDeck/AttentionFonts
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck
