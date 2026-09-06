@@ -202,6 +202,24 @@ describe('shared coordination-evidence vectors', () => {
     for (const [sid, exp] of Object.entries(expectSummary)) expect(tracker.summary(sid)).toMatchObject(exp as object);
   });
 
+  it('makes no claim when the process table could not be read', () => {
+    const { processes, peers, expectRelations } = VECTORS.unreadableProcessTable;
+    const tracker = new CoordinationTracker(() => 3_000);
+    expect(tracker.observe(processes, peers)).toEqual(expectRelations);
+
+    // The case that makes it permanent: a session with an open child and an
+    // open job, then one failed `ps`. Closing here would be written to the
+    // sample under `spawned:out:closed:<child>`, and the re-open on the next
+    // tick is discarded as a duplicate of the `open` already stored — so the
+    // trajectory would say "ended" for work that never stopped.
+    const live = VECTORS.backgroundJobs;
+    const t2 = new CoordinationTracker(() => 4_000);
+    t2.observe(live.processes, live.peers);
+    expect(t2.summary('parent-1')).toMatchObject({ spawnedActive: 1, backgroundJobs: 1 });
+    expect(t2.observe([], live.peers)).toEqual([]);
+    expect(t2.summary('parent-1')).toMatchObject({ spawnedActive: 1, backgroundJobs: 1 });
+  });
+
   it('registers a hook pid and walks a wrapper shell up to the agent process', () => {
     const tracker = new CoordinationTracker(() => 2_000);
     const processes = [

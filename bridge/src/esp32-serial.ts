@@ -539,7 +539,10 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
       }
       // How many sessions the roster holds beyond the cards: the firmware
       // renders "+N" so a capped roster never reads as the whole machine.
-      if (raw.length > rows.length) (prepared as any).total = raw.length;
+      // Counted over ALIVE rows only — `stableCardRoster` drops dead sessions,
+      // so counting `raw` would advertise a `+N` for rows nothing can show.
+      const aliveCount = raw.filter((s: any) => s?.alive !== false).length;
+      if (aliveCount > rows.length) (prepared as any).total = aliveCount;
       if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) {
         for (const row of rows) { delete row.subagents; delete row.coordination; }
       }

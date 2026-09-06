@@ -236,6 +236,25 @@ final class CoordinationEvidenceVectorTests: XCTestCase {
         XCTAssertNil(lonely.summary(sessionId: "a"))
     }
 
+    func testAnUnreadableProcessTableMakesNoClaim() throws {
+        let v = try vectors()
+        let u = try XCTUnwrap(v["unreadableProcessTable"] as? [String: Any])
+        let tracker = CoordinationTracker(now: { 3_000 })
+        XCTAssertTrue(tracker.observe(rows(u["processes"]), peers: peers(u["peers"])).isEmpty)
+
+        // Closing on a failed sysctl would be permanent: the sample dedup key
+        // is relation:direction:phase:key, so the re-open is dropped as a
+        // duplicate and the trajectory stays "ended" for live work.
+        let b = try XCTUnwrap(v["backgroundJobs"] as? [String: Any])
+        let live = CoordinationTracker(now: { 4_000 })
+        _ = live.observe(rows(b["processes"]), peers: peers(b["peers"]))
+        XCTAssertEqual(live.summary(sessionId: "parent-1")?.spawnedActive, 1)
+        XCTAssertEqual(live.summary(sessionId: "parent-1")?.backgroundJobs, 1)
+        XCTAssertTrue(live.observe([], peers: peers(b["peers"])).isEmpty)
+        XCTAssertEqual(live.summary(sessionId: "parent-1")?.spawnedActive, 1)
+        XCTAssertEqual(live.summary(sessionId: "parent-1")?.backgroundJobs, 1)
+    }
+
     func testStableCardRosterKeepsAwaitingAndOrdersById() {
         func s(_ id: String, _ state: String, _ started: String) -> [String: Any] {
             ["id": id, "state": state, "startedAt": started, "alive": true]

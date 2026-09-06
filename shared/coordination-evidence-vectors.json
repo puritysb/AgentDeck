@@ -258,5 +258,16 @@
       "command": "/opt/homebrew/bin/node dist/server.js /private/tmp/claude-501/p/parent-1/scratchpad",
       "expect": "server.js"
     }
-  ]
+  ],
+  "unreadableProcessTable": {
+    "$comment": "ps/sysctl failing returns an empty table. That is 'I could not look', not 'everything ended': closing here would be permanent, because the sample dedup key is relation:direction:phase:key and the re-open is then discarded as a duplicate.",
+    "processes": [],
+    "peers": [
+      {
+        "sessionId": "parent-1",
+        "pid": 56789
+      }
+    ],
+    "expectRelations": []
+  }
 }

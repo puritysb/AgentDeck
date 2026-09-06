@@ -259,6 +259,11 @@ final class CoordinationTracker {
 
     /// Mirrors `observe`: reconcile against the process table.
     func observe(_ processes: [ProcessEnumerator.ProcessRow], peers: [CoordinationPeer]) -> [CoordinationRelation] {
+        // An empty process table is "I could not look", never "everything
+        // ended" — see the Node `observe`. `sysctl` returning nothing must not
+        // close every open child and job, because the sample's dedup key makes
+        // that closure permanent.
+        if processes.isEmpty { return [] }
         let ts = now()
         var out: [CoordinationRelation] = []
         pidToSession = [:]

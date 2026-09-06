@@ -373,6 +373,16 @@ export class CoordinationTracker {
    * child's process is gone, `waiting_on` open/closed for background jobs.
    */
   observe(processes: ProcessRow[], peers: ObservedPeer[]): RelationObservation[] {
+    // An empty process table is "I could not look", never "everything ended".
+    // `collectProcessInfo` returns [] when `ps` fails or times out, and the
+    // sweeps below close every open child and every job they cannot find — so
+    // one failed scan would emit a `closed` relation for the whole machine and
+    // drop every census to zero. The next tick cannot undo it either: the
+    // sample's dedup key is `relation:direction:phase:key`, so the re-`open`
+    // is discarded as a duplicate of the one already stored and the trajectory
+    // stays closed while the live census says active. Same rule as the flash-id
+    // and lsof probes: three answers, and "unknown" makes no claim.
+    if (processes.length === 0) return [];
     const ts = this.now();
     const out: RelationObservation[] = [];
     this.pidToSession = new Map(peers.map((p) => [p.pid, p.sessionId]));
