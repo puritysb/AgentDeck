@@ -871,10 +871,15 @@ actor ApmeRunner {
     /// in bridge/src/apme/runner.ts and is pinned by
     /// shared/apme-judge-response-vectors.json.
     static func holdsCompleteJsonObject(_ text: String) -> Bool {
-        guard let block = extractFirstJsonBlock(text),
-              let data = block.data(using: .utf8)
-        else { return false }
-        return (try? JSONSerialization.jsonObject(with: data)) != nil
+        // Purely STRUCTURAL: did a `{…}` close. Deliberately not "does it
+        // parse" — the two daemons' JSON parsers do not agree on leniency
+        // (measured: `JSONSerialization` accepts the trailing commas Gemma 4
+        // emits and Node's `JSON.parse` does not), so a gate phrased that way
+        // answers differently on each daemon, which is the one thing the shared
+        // vectors exist to prevent. The balanced scanners ARE identical, so
+        // this question is. Whether the closed object is a usable verdict is
+        // `parseJudgeJson`'s job, where the leniency already lives.
+        extractFirstJsonBlock(text) != nil
     }
 
     /// Extract the first balanced `{...}` block from arbitrary text.

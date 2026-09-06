@@ -127,6 +127,28 @@ describe('parseJudgeJson', () => {
     expect(parseJudgeJson(txt)?.summary).toBe('renders a } and a { literally');
   });
 
+  // Scanning balanced blocks makes MORE spans parseable, so "the first one that
+  // parses" stops being a safe rule: a local reasoning model emits a scratchpad
+  // object before the real verdict, and taking the first turns a loud failure
+  // into a silently persisted wrong score. Two spans both carrying `overall`
+  // are ambiguous and resolve to null — which is what the old greedy match did
+  // here, and the right answer, because a wrong score in `evals` is strictly
+  // worse than a skip.
+  it.each([
+    ['an unstripped thinking block', '<think>Let me score: {"overall":0.5,"summary":"draft"}</think>\n{"overall":0.9,"summary":"final"}'],
+    ['a draft above the final answer', 'Draft: {"overall":0.3}\nFinal: {"overall":0.9,"summary":"x"}'],
+  ])('refuses to guess which verdict is the verdict: %s', (_name, txt) => {
+    expect(parseJudgeJson(txt)).toBeNull();
+  });
+
+  // …but a single verdict beside a non-verdict object is not ambiguous.
+  it('ignores a non-verdict object beside the verdict', () => {
+    const txt = '{"overall":0.8,"summary":"done"}\n\nFor example {"x":1} and then it was cu';
+    expect(parseJudgeJson(txt)?.scores.overall).toBeCloseTo(0.8);
+    const other = 'Context {"note":"ignore me"} then {"overall":0.2,"summary":"real"}';
+    expect(parseJudgeJson(other)?.summary).toBe('real');
+  });
+
   // `effectiveJudgeModelTag` is the provenance stamped onto stored eval rows.
   // The API leg does not necessarily call `cfg.model` — `apiJudgeModel` falls
   // back when the configured id belongs to another backend — so stamping the

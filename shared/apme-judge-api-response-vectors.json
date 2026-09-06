@@ -1,0 +1,61 @@
+[
+  {
+    "note": "complete",
+    "response": {
+      "stop_reason": "end_turn",
+      "content": [{ "type": "text", "text": "{\"completion\":0.8,\"coherence\":0.8,\"efficiency\":0.7,\"overall\":0.8,\"summary\":\"Regression covered.\"}" }]
+    },
+    "accepted": true
+  },
+  {
+    "note": "thinking block before the verdict is not text",
+    "why": "Adaptive thinking is on for this leg; only `type: \"text\"` blocks are the answer.",
+    "response": {
+      "stop_reason": "end_turn",
+      "content": [
+        { "type": "thinking", "thinking": "" },
+        { "type": "text", "text": "{\"overall\":0.8,\"summary\":\"Regression covered.\"}" }
+      ]
+    },
+    "accepted": true
+  },
+  {
+    "note": "object closes in one block, cut lands in the next",
+    "why": "Why the blocks are joined BEFORE the completeness check rather than checked one by one.",
+    "response": {
+      "stop_reason": "max_tokens",
+      "content": [
+        { "type": "text", "text": "{\"overall\":0.8,\"summary\":\"Regression covered.\"}" },
+        { "type": "text", "text": "and then it kept going until it was cu" }
+      ]
+    },
+    "accepted": true
+  },
+  {
+    "note": "cut mid-object",
+    "response": {
+      "stop_reason": "max_tokens",
+      "content": [{ "type": "text", "text": "{\"overall\":0." }]
+    },
+    "accepted": false
+  },
+  {
+    "note": "refusal",
+    "why": "A refusal is never a verdict, whatever the body looks like.",
+    "response": {
+      "stop_reason": "refusal",
+      "content": [{ "type": "text", "text": "{\"overall\":0.8}" }]
+    },
+    "accepted": false
+  },
+  {
+    "note": "no text blocks",
+    "response": { "stop_reason": "end_turn", "content": [{ "type": "thinking", "thinking": "" }] },
+    "accepted": false
+  },
+  {
+    "note": "empty content array",
+    "response": { "stop_reason": "end_turn", "content": [] },
+    "accepted": false
+  }
+]

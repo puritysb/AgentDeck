@@ -170,5 +170,20 @@
       ]
     },
     "accepted": true
+  },
+  {
+    "note": "closed object at the output limit that needs repair",
+    "why": "The object closed, so the gate accepts it \u2014 the gate's question is structural and its balanced scanner is identical on both daemons. Whether the trailing commas are then tolerated belongs to parseJudgeJson, and the two parsers reach the same answer by different routes (Node repairs; Swift's JSONSerialization accepts them outright). A gate phrased as 'does it parse' would have answered differently on each daemon.",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "{\"overall\":0.7,\"reasoning\":\"ok\",\"done\":[\"fixed\",],\"missed\":[],}"
+          },
+          "finish_reason": "length"
+        }
+      ]
+    },
+    "accepted": true
   }
 ]

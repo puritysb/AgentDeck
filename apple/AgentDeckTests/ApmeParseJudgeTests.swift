@@ -68,7 +68,55 @@ final class ApmeParseJudgeTests: XCTestCase {
         XCTAssertEqual(ApmeJudgeApi.resolveModel("mlx-community/gemma-4-26b-a4b-it-4bit"),
                        ApmeJudgeApi.defaultModel)
         XCTAssertEqual(ApmeJudgeApi.resolveModel("claude-haiku-4-5"), "claude-haiku-4-5")
+        // Against a custom endpoint the substitution is off: this daemon (unlike
+        // Node) honours `endpoint`, so the leg may be pointed at an
+        // Anthropic-compatible gateway whose ids are legitimately not
+        // `claude…`-prefixed, and swapping one would bill the user for a model
+        // they did not name.
+        XCTAssertEqual(
+            ApmeJudgeApi.resolveModel("anthropic.claude-opus-4-6-v1:0", endpoint: "https://gateway.invalid/v1/messages"),
+            "anthropic.claude-opus-4-6-v1:0")
+        XCTAssertEqual(
+            ApmeJudgeApi.resolveModel("gemma-3-27b", endpoint: ApmeJudgeApi.defaultEndpoint),
+            ApmeJudgeApi.defaultModel)
+    }
+
+    /// The label is the provenance stamped onto stored eval rows, so it must
+    /// name the model that RAN — as a hardcoded constant it went on claiming
+    /// `claude-opus-4-6` after the default moved. Driven through the same
+    /// function `judge()` uses, so the assertion is on the real path rather
+    /// than on the fallback branch.
+    func testApiJudgeLabelNamesTheModelThatRan() {
+        var config = ApmeJudgeConfig()
+        config.backend = .api
+        config.model = "claude-haiku-4-5"
+        XCTAssertEqual(ApmeJudgeApi.resolvedModelForRequest(config), "claude-haiku-4-5")
+        XCTAssertEqual(ApmeJudgeApi.judgeModelLabel, "api:claude-haiku-4-5")
+
+        config.model = "mlx-community/gemma-4-26b-a4b-it-4bit"
+        XCTAssertEqual(ApmeJudgeApi.resolvedModelForRequest(config), ApmeJudgeApi.defaultModel)
         XCTAssertEqual(ApmeJudgeApi.judgeModelLabel, "api:\(ApmeJudgeApi.defaultModel)")
+    }
+
+    /// The Anthropic leg's completion rule, replayed from the same file Vitest
+    /// replays. It is reached only through an SDK/network call, so without this
+    /// the rule had no gate on either daemon and reverting it stayed green.
+    func testApiResponseMatchesSharedVectors() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/apme-judge-api-response-vectors.json")
+        let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        XCTAssertGreaterThanOrEqual(vectors.count, 7)
+        for vector in vectors {
+            let note = try XCTUnwrap(vector["note"] as? String)
+            let response = try XCTUnwrap(vector["response"] as? [String: Any])
+            if vector["accepted"] as? Bool == true {
+                let text = try ApmeJudgeApi.content(response)
+                XCTAssertNotNil(ApmeRunner.parseJudgeJson(text), note)
+            } else {
+                XCTAssertThrowsError(try ApmeJudgeApi.content(response), note)
+            }
+        }
     }
 
     // MARK: - Happy path

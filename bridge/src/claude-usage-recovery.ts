@@ -125,7 +125,12 @@ export function runClaudeUsageRecovery(): Promise<void> {
     // never be the reason this process stays alive.
     child.unref();
     liveRecoveryChildren.add(child);
-    child.once('exit', () => liveRecoveryChildren.delete(child));
+    // `close`, not `exit`: a spawn that fails outright (the resolved binary
+    // vanished between the probe and the spawn) emits `error` + `close` and
+    // never `exit`, so an `exit` listener retains a dead ChildProcess for the
+    // life of the daemon — one per attempt, against a comment that says "at
+    // most one". `close` fires on both paths.
+    child.once('close', () => liveRecoveryChildren.delete(child));
   });
 }
 

@@ -9972,7 +9972,14 @@ final class DaemonServer {
                 return JudgeBackendStatus(
                     backend: backend.rawValue,
                     status: "ready",
-                    model: ApmeJudgeApi.judgeModelLabel,
+                    // Resolved from the config, NOT `judgeModelLabel`. That
+                    // label is eval-row provenance — it names the model that
+                    // RAN, so before the first call it can only report the
+                    // default, and a user who configured `claude-haiku-4-5`
+                    // saw `claude-opus-5` in the judge status until an eval
+                    // happened to run. Node's probe reports the resolved
+                    // config value here too, unprefixed.
+                    model: ApmeJudgeApi.resolveModel(config.judge.model),
                     endpoint: nil,
                     checkedAt: checkedAt,
                     reason: nil

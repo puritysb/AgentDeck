@@ -430,6 +430,10 @@ APME의 핵심 결정: **카테고리마다 평가 방법이 다르다.**
 MLX와 OpenAI 호환 응답은 **양 데몬 모두** `choices`가 비어 있지 않은 **배열**이어야 하고,
 content 는 비어 있지 않은 문자열이어야 한다. 빈 문자열·공백·content 누락·`choices` 부재는
 실패다. `finish_reason=length` 는 **본문이 닫힌 JSON 객체를 담고 있지 않을 때만** 거부한다
+(순수하게 **구조적** 질문이다 — "파싱되는가"가 아니다. 두 데몬의 JSON 파서는 관대함이
+다르다: 실측상 Swift `JSONSerialization` 은 Gemma 4 가 뱉는 trailing comma 를 받아들이고
+Node `JSON.parse` 는 거부한다. 그렇게 물으면 데몬마다 답이 갈리는데, 균형 스캐너는 양쪽이
+동일하므로 이 질문은 갈리지 않는다)
 — 객체가 닫혔다면 그것이 완성된 판정이고 닫는 중괄호 뒤에 모델이 더 쓴 것은 판정의 일부가
 아니다. 반대로 객체 도중에 잘린 본문은 애초에 파싱되지 않으므로 `parseJudgeJson` 이 같은
 케이스를 이미 거부한다. 잘림 검사는 실패 사유를 "잘렸다"고 말할 수 있게 하려고 남아 있다
@@ -441,8 +445,16 @@ content 는 비어 있지 않은 문자열이어야 한다. 빈 문자열·공�
 한쪽만 거부한다. 잘린 본문을 받아들이기 시작하면 "닫는 중괄호 뒤의 텍스트"가 바로 그
 경로이므로 Node 도 균형 스캔을 먼저 쓴다. 다만 키의 여는 따옴표가 빠진 본문은 문자열
 추적 자체가 어긋나므로(그래서 `repairJudgeJson` 이 있다) greedy 구간을 두 번째 후보로
-남긴다. 응답 게이트는 `shared/apme-judge-response-vectors.json`을 Vitest와 macOS XCTest
-에서 함께 재생하며, JSON 파싱·루브릭 검증은 그 다음 단계다.
+남긴다. 응답 게이트는 `shared/apme-judge-response-vectors.json`을, Anthropic `api` 레그는
+`shared/apme-judge-api-response-vectors.json`을 Vitest와 macOS XCTest 에서 함께 재생한다
+(`api` 레그는 SDK 를 통해서만 도달하므로 자기 벡터 파일이 없으면 규칙을 지워도 양쪽
+스위트가 초록이었다). JSON 파싱·루브릭 검증은 그 다음 단계다.
+
+여러 객체 중 **무엇이 판정인지는 위치가 아니라 `overall` 필드로 정한다.** 균형 스캔은
+파싱 가능한 구간을 늘리므로 "먼저 파싱되는 것"은 안전한 규칙이 아니다 — 로컬 추론 모델이
+답 앞에 스크래치패드 객체를 뱉으면 그걸 점수로 저장한다. `overall` 을 가진 구간이 둘 이상이면
+**모호**로 보고 null(=시끄러운 실패)로 떨어뜨린다. eval 에 들어간 틀린 점수는 건너뛴 것보다
+확실히 나쁘다.
 
 판정 요청은 **`response_format: {"type":"json_object"}`를 보낸다**. 프롬프트가 JSON을
 요구하고 러너가 JSON으로 파싱하는데 서버에는 아무것도 요구하지 않던 상태였고, 모델이

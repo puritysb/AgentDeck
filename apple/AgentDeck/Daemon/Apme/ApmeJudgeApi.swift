@@ -34,15 +34,37 @@ enum ApmeJudgeApi {
     /// Node said `claude-opus-4-8`, until #286).
     static let defaultModel = "claude-opus-5"
 
-    /// Which model this leg will actually call. Mirrors Node's `apiJudgeModel`:
-    /// a configured id that is not an Anthropic model is NOT forwarded, because
-    /// there is no `resetBackendCoupledFields` on this side to wipe a leftover
-    /// MLX id on a backend switch — POSTing `gemma-3-27b` to api.anthropic.com
-    /// returns a 400, and this leg reports a failure as `nil`, which is
-    /// byte-identical to "no API key found".
-    static func resolveModel(_ configured: String) -> String {
-        configured.hasPrefix("claude") ? configured : defaultModel
+    /// Which model this leg will actually call.
+    ///
+    /// Mirrors Node's `apiJudgeModel` — a configured id that is not an
+    /// Anthropic model is not forwarded, because there is no
+    /// `resetBackendCoupledFields` on this side to wipe a leftover MLX id on a
+    /// backend switch, and POSTing `gemma-3-27b` to api.anthropic.com returns a
+    /// 400 that this leg reports as `nil`, byte-identical to "no API key found".
+    ///
+    /// …but ONLY against api.anthropic.com. Unlike Node, this daemon honours
+    /// `config.endpoint`, so the leg may be pointed at an Anthropic-compatible
+    /// gateway whose model ids legitimately are not `claude…` prefixed
+    /// (`anthropic.claude-…-v1:0` and friends). Substituting there would spend
+    /// the user's money on a model they did not name, against this file's own
+    /// cost-sensitive rule that API failures stay failures. A custom endpoint
+    /// forwards verbatim; the resolved model is logged either way so a 400 is
+    /// diagnosable instead of silent.
+    static func resolveModel(_ configured: String, endpoint: String? = nil) -> String {
+        if let endpoint, !endpoint.isEmpty, endpoint != defaultEndpoint { return configured }
+        return configured.hasPrefix("claude") ? configured : defaultModel
     }
+
+    /// Resolve the model for a real request AND record it, so `judgeModelLabel`
+    /// names what ran. `judge()` goes through this and nothing else, which is
+    /// what makes the label testable without a network call.
+    static func resolvedModelForRequest(_ config: ApmeJudgeConfig) -> String {
+        let model = resolveModel(config.model, endpoint: config.endpoint)
+        LastResolvedModel.set(model)
+        return model
+    }
+
+    static let defaultEndpoint = "https://api.anthropic.com/v1/messages"
 
     /// Provenance stamped onto stored eval rows — it must name the model that
     /// RAN, not the one the code was written against. Held like the MLX and
@@ -73,11 +95,10 @@ enum ApmeJudgeApi {
             return nil
         }
 
-        let model = resolveModel(config.model)
-        LastResolvedModel.set(model)
-
-        let endpoint = config.endpoint ?? "https://api.anthropic.com/v1/messages"
+        let model = resolvedModelForRequest(config)
+        let endpoint = config.endpoint ?? defaultEndpoint
         guard let url = URL(string: endpoint) else { return nil }
+        DaemonLogger.shared.debug("APME", "API judge → \(model) at \(endpoint)")
 
         // `max_tokens` mirrors `API_JUDGE_MAX_TOKENS` in runner.ts. It was
         // 1,024 here against Node's 8,192, so the same task judged on the same
@@ -114,38 +135,57 @@ enum ApmeJudgeApi {
                 DaemonLogger.shared.debug("APME", "API judge HTTP \(http.statusCode)")
                 return nil
             }
-            // Anthropic response shape: { content: [ { type: "text", text: "..." } ] }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let content = json["content"] as? [[String: Any]]
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             else { return nil }
-            // Concatenate all text blocks — claude typically returns one but
-            // the schema allows multiple.
-            var combined = ""
-            for block in content {
-                if let type = block["type"] as? String, type == "text",
-                   let text = block["text"] as? String {
-                    combined += text
-                }
-            }
-            if combined.isEmpty { return nil }
-            // The same completion rules the MLX/OpenAI legs already enforce,
-            // on the leg that had none. Anthropic spells a refusal and a cut
-            // as `stop_reason`; a cut body is still a verdict when its JSON
-            // object closed, which is why the text is concatenated first.
-            let stopReason = json["stop_reason"] as? String
-            if stopReason == "refusal" {
-                DaemonLogger.shared.debug("APME", "API judge refused the request (stop_reason=refusal)")
+            do { return try content(json) } catch {
+                DaemonLogger.shared.debug("APME", "API judge: \(error)")
                 return nil
             }
-            if stopReason == "max_tokens", !ApmeRunner.holdsCompleteJsonObject(combined) {
-                DaemonLogger.shared.debug("APME", "API judge reached output limit before completion (stop_reason=max_tokens)")
-                return nil
-            }
-            return combined
         } catch {
             DaemonLogger.shared.debug("APME", "API judge network error: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    enum ApiJudgeError: Error, CustomStringConvertible {
+        case empty
+        case refused
+        case outputLimit
+        var description: String {
+            switch self {
+            case .empty: return "the judge returned no text"
+            case .refused: return "the judge refused the request (stop_reason=refusal)"
+            case .outputLimit: return "the judge reached its output limit before completion (stop_reason=max_tokens)"
+            }
+        }
+    }
+
+    /// The Anthropic-shaped counterpart of `ApmeJudgeChatResponse.content`, and
+    /// the same rule under Anthropic's spelling: a refusal is not a verdict,
+    /// and a body cut at `max_tokens` is one only when its JSON object closed.
+    /// The text blocks are joined first because the object can close in one
+    /// block and the cut land in the next. Response shape:
+    /// `{ content: [ { type: "text", text: "…" } ], stop_reason: "…" }`.
+    /// Behavior is pinned by shared/apme-judge-api-response-vectors.json,
+    /// which both suites replay — mirrors `apiJudgeText` in
+    /// bridge/src/apme/runner.ts.
+    static func content(_ json: [String: Any]) throws -> String {
+        let blocks = json["content"] as? [[String: Any]] ?? []
+        var combined = ""
+        for block in blocks {
+            if let type = block["type"] as? String, type == "text",
+               let text = block["text"] as? String {
+                if !combined.isEmpty { combined += "\n" }
+                combined += text
+            }
+        }
+        let stopReason = json["stop_reason"] as? String
+        if stopReason == "refusal" { throw ApiJudgeError.refused }
+        if stopReason == "max_tokens", !ApmeRunner.holdsCompleteJsonObject(combined) {
+            throw ApiJudgeError.outputLimit
+        }
+        if combined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { throw ApiJudgeError.empty }
+        return combined
     }
 
     /// Whether an API key is currently available. Used by the Settings

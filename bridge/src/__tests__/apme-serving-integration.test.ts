@@ -3,8 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import vectors from '../../../shared/apme-judge-response-vectors.json';
+import apiVectors from '../../../shared/apme-judge-api-response-vectors.json';
 import { ApmeStore } from '../apme/store.js';
-import { ApmeRunner, callJudgeWithMeta, parseJudgeJson } from '../apme/runner.js';
+import { ApmeRunner, callJudgeWithMeta, parseJudgeJson, apiJudgeText } from '../apme/runner.js';
 import { ApmeCollector } from '../apme/collector.js';
 import { DEFAULT_APME_CONFIG } from '../apme/settings.js';
 
@@ -194,6 +195,19 @@ describe.each(['mlx', 'openai'] as const)('%s shared response contract', (backen
       expect(parseJudgeJson(text)).not.toBeNull();
     } else {
       await expect(result).rejects.toThrow();
+    }
+  });
+});
+
+// The Anthropic leg is reached only through the SDK, so nothing exercised its
+// completion rule and reverting either line left both suites green. These exact
+// envelopes are also replayed by macOS ApmeParseJudgeTests.
+describe('Anthropic API response contract', () => {
+  it.each(apiVectors)('$note', (vector) => {
+    if (vector.accepted) {
+      expect(parseJudgeJson(apiJudgeText(vector.response))).not.toBeNull();
+    } else {
+      expect(() => apiJudgeText(vector.response)).toThrow();
     }
   });
 });

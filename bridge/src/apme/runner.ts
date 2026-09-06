@@ -1862,18 +1862,31 @@ async function callApi(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
     thinking: { type: 'adaptive' },
     messages: [{ role: 'user', content: prompt }],
   });
+  return apiJudgeText(response);
+}
+
+/** The Anthropic-shaped counterpart of `judgeChatContent`, and the same rule
+ *  under Anthropic's spelling: a refusal is not a verdict, and a body cut at
+ *  `max_tokens` is one only when its JSON object closed. The text blocks are
+ *  joined first because the object can close in one block and the cut land in
+ *  the next.
+ *
+ *  Pure and exported so the rule has a gate: it is reached only through the
+ *  Anthropic SDK, so nothing exercised it and reverting either line left both
+ *  suites green. Mirrored by `ApmeJudgeApi.content`; behavior is pinned by
+ *  `shared/apme-judge-api-response-vectors.json`, which both suites replay. */
+export function apiJudgeText(response: {
+  stop_reason?: string | null;
+  content?: Array<{ type?: string; text?: string }>;
+}): string {
+  const text = (response.content ?? [])
+    .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text as string)
+    .join('\n')
+    .trim();
   if (response.stop_reason === 'refusal') {
     throw new Error('API judge refused the request (stop_reason=refusal)');
   }
-  const text = response.content
-    .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
-    .map((b) => b.text)
-    .join('\n')
-    .trim();
-  // Same rule as the MLX/OpenAI gate below, on the leg that had none: a cut
-  // body is only a verdict if its JSON object closed. Anthropic spells the cut
-  // `stop_reason: 'max_tokens'`, and the blocks are joined first because the
-  // object can close in one block and the cut land in the next.
   if (response.stop_reason === 'max_tokens' && !holdsCompleteJsonObject(text)) {
     throw new Error('API judge reached output limit before completion (stop_reason=max_tokens)');
   }
@@ -1925,34 +1938,76 @@ export function judgeChatContent(payload: unknown, label: string): string {
  *  has to share the repair step: a body the parser would repair but the gate
  *  refused would be rejected for being cut and then never looked at. */
 function holdsCompleteJsonObject(text: string): boolean {
-  return parseJudgeObject(text) !== null;
+  // Purely STRUCTURAL: did a `{…}` close. Deliberately not "does it parse".
+  // The two daemons' JSON parsers do not agree on leniency — measured, Swift's
+  // `JSONSerialization` accepts the trailing commas Gemma 4 emits and Node's
+  // `JSON.parse` does not — so a gate phrased as "does it parse" answers
+  // differently on each, which is the one thing the shared vectors exist to
+  // prevent. The balanced scanners ARE identical, so this question is. Whether
+  // the closed object is a usable verdict is `parseJudgeJson`'s job, where the
+  // leniency and the repair already live.
+  return extractFirstJsonBlock(text) !== null;
 }
 
-/** The candidate `{…}` spans to try, in order.
+/** Every top-level balanced `{…}` span in `text`, then the greedy
+ *  first-`{`-to-last-`}` span when it differs from all of them.
  *
- *  The balanced block first, so a verdict followed by prose containing a brace
- *  reads the same on both daemons. The greedy first-`{`-to-last-`}` span second,
- *  because the scanner is string-aware and `repairJudgeJson` exists for bodies
- *  whose quoting is itself broken — a key that lost its opening quote desyncs
- *  any such scanner, and that body used to parse. Keeping the span as a second
- *  try loses nothing the parser accepted before. */
-function jsonBlockCandidates(text: string): string[] {
+ *  Balanced first, so a verdict followed by prose containing a brace reads the
+ *  same on both daemons. ALL of them, not just the first, because the first is
+ *  not necessarily the verdict — a local reasoning model emits a scratchpad
+ *  object before the real one. The greedy span last, because the balanced
+ *  scanner is string-aware and `repairJudgeJson` exists for bodies whose
+ *  quoting is itself broken: a key that lost its opening quote desyncs any such
+ *  scanner, and that body used to parse. */
+function jsonBlockSpans(text: string): string[] {
   const out: string[] = [];
-  const balanced = extractFirstJsonBlock(text);
-  if (balanced !== null) out.push(balanced);
+  let from = 0;
+  for (;;) {
+    const block = extractFirstJsonBlock(text, from);
+    if (block === null) break;
+    out.push(block.text);
+    from = block.end;
+  }
   const greedy = text.match(/\{[\s\S]*\}/);
-  if (greedy && greedy[0] !== out[0]) out.push(greedy[0]);
+  if (greedy && !out.includes(greedy[0])) out.push(greedy[0]);
   return out;
 }
 
-/** The judge's JSON object, or null when the body does not hold one. Shared by
- *  the transport gate and `parseJudgeJson` so the two cannot disagree about
- *  whether a body is a verdict at all. */
+function strictParseObject(block: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(block) as unknown;
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch { return null; }
+}
+
+function parseOrRepairObject(block: string): Record<string, unknown> | null {
+  return strictParseObject(block) ?? strictParseObject(repairJudgeJson(block));
+}
+
+/** The judge's verdict object, chosen by the one field that identifies a
+ *  verdict rather than by position.
+ *
+ *  Taking the first span that merely PARSES is how the balanced scan turned a
+ *  loud failure into a silently wrong score: `<think>{"overall":0.5}</think>`
+ *  followed by the real `{"overall":0.9}` scored the scratchpad. An unstripped
+ *  thinking block is the exact shape `reasoningEffort: "none"` exists to
+ *  suppress, i.e. the local models this judge chain targets.
+ *
+ *  Two spans both carrying `overall` are AMBIGUOUS and resolve to null — the
+ *  loud "unparseable verdict" the greedy match produced before, and the right
+ *  answer, because a wrong score written to `evals` is strictly worse than a
+ *  skip. */
 function parseJudgeObject(text: string): Record<string, unknown> | null {
-  for (const block of jsonBlockCandidates(text)) {
-    try { return JSON.parse(block) as Record<string, unknown>; } catch { /* try the repair */ }
-    try { return JSON.parse(repairJudgeJson(block)) as Record<string, unknown>; } catch { /* next candidate */ }
+  const parsed: Record<string, unknown>[] = [];
+  for (const block of jsonBlockSpans(text)) {
+    const obj = parseOrRepairObject(block);
+    if (obj) parsed.push(obj);
   }
+  const verdicts = parsed.filter((o) => typeof o.overall === 'number' && isFinite(o.overall as number));
+  if (verdicts.length === 1) return verdicts[0];
+  if (verdicts.length > 1) return null;
   return null;
 }
 
@@ -1969,8 +2024,8 @@ function parseJudgeObject(text: string): Record<string, unknown> | null {
  *
  *  Braces inside strings do not count, so an escaped brace in a `summary`
  *  cannot end the block early. */
-function extractFirstJsonBlock(text: string): string | null {
-  const start = text.indexOf('{');
+function extractFirstJsonBlock(text: string, from = 0): { text: string; end: number } | null {
+  const start = text.indexOf('{', from);
   if (start < 0) return null;
   let depth = 0;
   let inString = false;
@@ -1987,7 +2042,7 @@ function extractFirstJsonBlock(text: string): string | null {
     else if (char === '{') depth++;
     else if (char === '}') {
       depth--;
-      if (depth === 0) return text.slice(start, i + 1);
+      if (depth === 0) return { text: text.slice(start, i + 1), end: i + 1 };
     }
   }
   return null;

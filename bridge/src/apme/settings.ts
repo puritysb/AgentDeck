@@ -49,7 +49,12 @@ export interface ApmeJudgeConfig {
    *  reads the same settings.json field. */
   apiKey?: string;
   /** Optional OpenAI-compatible reasoning control. `none` disables Ollama thinking;
-   * omission retains the provider default. Node daemon only. */
+   * omission retains the provider default. Read by BOTH daemons — the Swift
+   * mirror is `ApmeJudgeConfig.reasoningEffort` in ApmeSettings.swift. It was
+   * Node-only until #286, and since both read this same file and call the same
+   * user-configured endpoint, a user who set `none` had it obeyed on one daemon
+   * and ignored on the other, whose request then came back
+   * `finish_reason: "length"`. */
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'max';
   /** When `foundationModels` is unavailable, retry via local MLX instead of
    *  skipping the eval. Default `true` on the Node bridge so CLI-only setups
