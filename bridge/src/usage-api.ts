@@ -4,6 +4,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { debug, logTagged } from './logger.js';
 import type { ScopedUsageLimit } from './types.js';
+import { claudeUsageRecovery } from './claude-usage-recovery.js';
 
 const USAGE_API_URL = 'https://api.anthropic.com/api/oauth/usage';
 const KEYCHAIN_SERVICE = 'Claude Code-credentials';
@@ -34,11 +35,11 @@ const FILE_CACHE_SLACK_MS = 15_000;
  *  Exported for the slack regression test — the bug it prevents is invisible in
  *  any single call and only shows up as a cadence, so pin the predicate. */
 export function fileCacheExpired(fetchedAt: number, nowMs = Date.now()): boolean {
-  return (nowMs - fetchedAt) >= (FILE_CACHE_TTL_MS - FILE_CACHE_SLACK_MS);
+  return !Number.isFinite(fetchedAt) || fetchedAt > nowMs || (nowMs - fetchedAt) >= (FILE_CACHE_TTL_MS - FILE_CACHE_SLACK_MS);
 }
 
 /** Token expiry safety margin — skip fetch if token expires within this window */
-const TOKEN_EXPIRY_MARGIN_MS = 10 * 60 * 1000; // 10 minutes
+const TOKEN_EXPIRY_MARGIN_MS = 30_000; // enough for the bounded HTTP request
 
 export interface ApiUsageData {
   fiveHourPercent: number | null;
@@ -86,6 +87,7 @@ export type TokenStatus = 'valid' | 'expired' | 'missing' | 'unknown';
 interface UsageCacheFile {
   data: ApiUsageData;
   fetchedAt: number; // epoch ms
+  retryAfter?: number; // server throttle deadline, NEVER a successful-fetch timestamp
 }
 
 // ===== Error tracking =====
@@ -93,6 +95,15 @@ interface UsageCacheFile {
 let lastFetchFailed = false;
 let consecutiveFailures = 0;
 let lastTokenStatus: TokenStatus = 'unknown';
+let lastAttemptAt = 0;
+let retryDeadline = 0;
+let lastCredential: string | null = null;
+let rejectedCredential: string | null = null;
+let recoveryEnabled = false;
+let inFlight: Promise<UsageFetchResult | null> | null = null;
+
+/** Called only by the bound Node daemon, never by managed session bridges. */
+export function enableClaudeUsageRecovery(): void { recoveryEnabled = true; }
 
 export function didLastFetchFail(): boolean {
   return lastFetchFailed;
@@ -105,6 +116,7 @@ export function getTokenStatus(): TokenStatus {
 /** Reset error tracking on system wake — fresh start without pre-sleep backoff */
 export function resetConsecutiveFailures(): void {
   consecutiveFailures = 0;
+  lastAttemptAt = 0;
   lastFetchFailed = false;
 }
 
@@ -138,6 +150,7 @@ function noteSuccess(): void {
   lastFetchFailed = false;
   consecutiveFailures = 0;
   lastTokenStatus = 'valid';
+  rejectedCredential = null;
 }
 
 /** Backoff interval based on consecutive failures: 0→0, 1→45s, 2→90s, 3→180s, 4+→300s */
@@ -362,6 +375,12 @@ export function parseScopedLimits(limits: unknown): ScopedUsageLimit[] {
 // ===== Main fetch =====
 
 export async function fetchUsageFromApi(): Promise<UsageFetchResult | null> {
+  if (inFlight) return inFlight;
+  inFlight = fetchUsageOnce().finally(() => { inFlight = null; });
+  return inFlight;
+}
+
+async function fetchUsageOnce(): Promise<UsageFetchResult | null> {
   // A cached reading served because the live path could not run or failed. Never
   // `fresh` — see UsageFetchResult.
   const stale = (fc: UsageCacheFile | null): UsageFetchResult | null =>
@@ -369,7 +388,7 @@ export async function fetchUsageFromApi(): Promise<UsageFetchResult | null> {
 
   // 1. Check file cache first — shared across all bridge sessions
   const fileCache = readFileCache();
-  if (fileCache && !fileCacheExpired(fileCache.fetchedAt)) {
+  if (fileCache && !fileCache.retryAfter && !fileCacheExpired(fileCache.fetchedAt)) {
     debug('UsageAPI', `File cache hit (age ${Math.round((Date.now() - fileCache.fetchedAt) / 1000)}s)`);
     // A within-TTL entry was written by a real network fetch (only the success
     // path writes it), so this IS a fresh reading — just a shared one.
@@ -378,35 +397,50 @@ export async function fetchUsageFromApi(): Promise<UsageFetchResult | null> {
   }
 
   // 2. Read OAuth credentials
-  const creds = getOAuthCredentials();
+  let creds = getOAuthCredentials();
   if (!creds) {
-    debug('UsageAPI', 'No OAuth token available');
+    if (lastTokenStatus !== 'missing') logTagged('usage', 'Claude usage authorization unavailable — waiting for credentials');
     lastTokenStatus = 'missing';
+    lastFetchFailed = true;
     return stale(fileCache); // last known values, explicitly not fresh
   }
 
-  // 3. Token expiry check
-  if (creds.expiresAt) {
-    const timeUntilExpiry = creds.expiresAt - Date.now();
-    if (timeUntilExpiry <= 0) {
-      debug('UsageAPI', 'OAuth token expired — waiting for Claude Code to refresh');
-      lastTokenStatus = 'expired';
-      lastFetchFailed = true;
-      return stale(fileCache);
+  // Re-read after Claude's own refresh. Exit code / a successful model response
+  // cannot certify the credential we will use for the usage request.
+  const credentialBeforeRecovery = creds.accessToken;
+  if (creds.expiresAt && (creds.expiresAt - Date.now() < TOKEN_EXPIRY_MARGIN_MS
+    || creds.accessToken === rejectedCredential)) {
+    if (lastTokenStatus !== 'expired') logTagged('usage', 'Claude usage authorization expired — usage paused until renewal');
+    lastTokenStatus = 'expired';
+    lastFetchFailed = true;
+    if (recoveryEnabled && process.env.AGENTDECK_CLAUDE_USAGE_RECOVERY !== '0') {
+      await claudeUsageRecovery.recover(creds.accessToken);
+      creds = getOAuthCredentials();
     }
-    if (timeUntilExpiry < TOKEN_EXPIRY_MARGIN_MS) {
-      debug('UsageAPI', `OAuth token expires in ${Math.round(timeUntilExpiry / 60000)}m — skipping fetch`);
-      lastTokenStatus = 'expired';
-      return stale(fileCache);
+    if (!creds) { lastTokenStatus = 'missing'; return stale(fileCache); }
+    if (!creds.expiresAt || creds.expiresAt - Date.now() < TOKEN_EXPIRY_MARGIN_MS) return stale(fileCache);
+    // A 401 may be transient. An unexpired, unchanged token still gets a
+    // backed-off API retry, including when CLI recovery is disabled/unavailable.
+    if (creds.accessToken !== credentialBeforeRecovery) {
+      logTagged('usage', 'Claude usage credentials renewed — retrying usage fetch');
     }
   }
 
-  // 4. Exponential backoff — skip if too soon after consecutive failures
-  const backoff = getBackoffMs();
-  if (backoff > 0 && fileCache && (Date.now() - fileCache.fetchedAt) < backoff) {
-    debug('UsageAPI', `Backoff active (${consecutiveFailures} failures, next in ${Math.round((backoff - (Date.now() - fileCache.fetchedAt)) / 1000)}s)`);
-    return stale(fileCache); // holding off on purpose — the numbers are still old
+  // A newly rotated credential must not inherit the old token's auth backoff.
+  if (lastCredential !== creds.accessToken) {
+    lastCredential = creds.accessToken;
+    rejectedCredential = null;
+    consecutiveFailures = 0;
+    lastAttemptAt = 0;
+    lastTokenStatus = 'unknown';
   }
+  if (Date.now() < Math.max(retryDeadline, fileCache?.retryAfter ?? 0)) {
+    lastFetchFailed = true;
+    return stale(fileCache);
+  }
+  const backoff = getBackoffMs();
+  if (lastAttemptAt && Date.now() - lastAttemptAt < backoff) return stale(fileCache);
+  lastAttemptAt = Date.now();
 
   // 5. Actual API fetch
   try {
@@ -421,23 +455,26 @@ export async function fetchUsageFromApi(): Promise<UsageFetchResult | null> {
       signal: AbortSignal.timeout(10000),
     });
 
+    // A later response is authoritative: do not keep an earlier 401 latched
+    // through 403, rate limits or a successful response with the same token.
+    rejectedCredential = res.status === 401 ? creds.accessToken : null;
+
     // 429 — respect Retry-After header, backoff on next poll
     if (res.status === 429) {
       noteFailure('rate limited (429)');
       const retryAfter = res.headers.get('retry-after');
       if (retryAfter) {
-        const retrySec = parseInt(retryAfter, 10);
-        if (!isNaN(retrySec) && retrySec > 0) {
-          // Write a synthetic cache entry so backoff uses Retry-After timing
-          const staleCacheData = fileCache?.data ?? null;
-          if (staleCacheData) {
-            // Push fetchedAt forward so cache TTL covers Retry-After period
-            const syntheticCache: UsageCacheFile = {
-              data: staleCacheData,
-              fetchedAt: Date.now() + (retrySec * 1000) - FILE_CACHE_TTL_MS,
-            };
+        const seconds = Number(retryAfter);
+        const retrySec = Number.isFinite(seconds) ? seconds
+          : (Date.parse(retryAfter) - Date.now()) / 1000;
+        if (Number.isFinite(retrySec) && retrySec > 0) {
+          retryDeadline = Date.now() + retrySec * 1000;
+          // Retry-After is scheduling metadata, never freshness. The old code
+          // moved fetchedAt into the future and made stale quota look live.
+          if (fileCache) {
             try {
-              writeFileSync(USAGE_CACHE_FILE, JSON.stringify(syntheticCache), 'utf-8');
+              writeFileSync(USAGE_CACHE_FILE, JSON.stringify({ ...fileCache,
+                retryAfter: retryDeadline }), 'utf-8');
             } catch { /* ignore */ }
           }
           debug('UsageAPI', `Rate limited (429), Retry-After: ${retrySec}s, consecutive failures: ${consecutiveFailures}`);
@@ -452,8 +489,8 @@ export async function fetchUsageFromApi(): Promise<UsageFetchResult | null> {
 
     // 401/403 — token issue
     if (res.status === 401 || res.status === 403) {
-      lastTokenStatus = 'expired';
-      noteFailure(`auth error ${res.status} — token may be invalid or expired`);
+      lastTokenStatus = res.status === 401 ? 'expired' : 'unknown';
+      noteFailure(`auth error ${res.status} — authorization unavailable`);
       return stale(fileCache);
     }
 

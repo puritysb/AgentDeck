@@ -59,6 +59,7 @@ describe('buildUsageEvent subscription quota scoping', () => {
       true,
     ) as UsageEvent;
 
+    expect(evt.tokenStatus).toBe("unknown"); // retract a prior auth failure on the wire
     expect(evt.fiveHourPercent).toBeUndefined();
     expect(evt.sevenDayPercent).toBeUndefined();
     expect(evt.extraUsageEnabled).toBeUndefined();

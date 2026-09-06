@@ -26,6 +26,13 @@ function withTempDataDir(fn: (dir: string) => void): void {
 }
 
 describe('loadApmeConfig — defaults + merge behaviour', () => {
+  it.each(['none', 'high', 'unsupported', null])('validates optional reasoning effort %s', value => {
+    withTempDataDir(dir => {
+      writeFileSync(join(dir, 'settings.json'), JSON.stringify({apme:{judge:{backend:'openai',reasoningEffort:value}}}));
+      expect(loadApmeConfig().judge.reasoningEffort).toBe(value === 'none' || value === 'high' ? value : undefined);
+    });
+  });
+
   it('returns full defaults when settings.json does not exist', () => {
     withTempDataDir(() => {
       const cfg = loadApmeConfig();
