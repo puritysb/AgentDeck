@@ -23,6 +23,9 @@ App Store 구조/금지경로 verifier를 통과했으며, 이것은 배포 서�
 11대 serial 연결을 유지했다. 큰 작업 기록 live 검증에서 발견한 UI actor 병목은
 bounded stream/decode를 nonisolated로 이동해 수정했다(동일 736KB isolated probe 8.36s → 0.03s).
 범위·사용법·복구 경로: [collaboration trial](experiments/collaboration/README.md).
+세션 간 인계/관찰은 [#287](https://github.com/puritysb/AgentDeck/issues/287)에서 추적한다.
+원격 실험 브랜치는 검증 런타임 보존용이며 병합 준비 상태가 아니다. #284/#285의 검토된
+수정을 유지하도록 현재 master의 별도 worktree에 UI 실험 커밋만 분리하고 재검증해야 한다.
 
 ## 2026-09-06 — PERM 후속 라이브 감사: 내부 Claude 종료 잡음과 Codex 표시·설치 누락
 

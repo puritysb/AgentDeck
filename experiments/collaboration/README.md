@@ -4,6 +4,76 @@ This is a local-only experiment on `codex/dashboard-collaboration`, not a public
 Apple or ESP32 release. The first two commits preserve pre-existing Apple and
 daemon working-tree changes from the main checkout; they are not UI work.
 
+## Resume here — agent/session handoff
+
+Tracking and observation log: [GitHub issue #287](https://github.com/puritysb/AgentDeck/issues/287).
+Add follow-up observations there; keep durable contracts and recovery here.
+
+This branch is a **tested-runtime snapshot, not a merge-ready integration branch**.
+Keep it intact while the owner observes the installed app and IPS10. Do not
+merge the entire snapshot into `master`: its two baseline commits contain earlier
+versions of changes subsequently reviewed in [#284](https://github.com/puritysb/AgentDeck/pull/284)
+and [#285](https://github.com/puritysb/AgentDeck/pull/285). Both PRs were merged when
+this handoff was written. Integration must preserve their reviewed fixes.
+
+### Product direction
+
+Preserve the terrarium as an ambient overview and put work/coordination evidence
+in a selectable lens on the existing macOS Dashboard. Trial a glance-oriented
+IPS10 representation independently; do not replicate one layout across every
+surface. Harness improvements should enrich a shared, capability-driven evidence
+model and naturally improve each surface, rather than require a new hard-coded
+workflow for each agent. Unknown relationships stay unknown. Agent-native tools
+remain the execution/control authority; this trial adds no orchestration engine.
+
+### Commit and file map
+
+| Commit | Role |
+| --- | --- |
+| `5af1b374` | Original upstream base |
+| `ea6df63b`, `4979298f` | Pre-existing Apple/Node work preserved for the local runtime; do not transplant these as UI work |
+| `a167b18e` | macOS lens, IPS10 cards, optional census transport, tests and feature-matrix entry |
+| `41e0c486` | Large-history read off the UI actor; payload regression test |
+| `5477cb71` | Final deployment/test evidence |
+
+- macOS: `apple/AgentDeck/UI/Monitor/{CollaborationModel,CollaborationPanel,MonitorHUD,MonitorScreen}.swift`.
+- Transport: `bridge/src/{esp32-serial,daemon-server}.ts` and `apple/AgentDeck/Daemon/Modules/ESP32Serial.swift`.
+- IPS10: `esp32/src/ui/widgets/{hud_bar.cpp,collaboration_layout.h}`, `esp32/src/net/protocol.cpp`, `esp32/src/state/agent_state.h`.
+- Gates: `apple/AgentDeckTests/CollaborationProjectionTests.swift`, `ESP32WifiForwardTests.swift`,
+  `bridge/src/__tests__/ips10-collaboration.test.ts`, `esp32/test/collaboration_layout_test.cpp`.
+
+### Exact next action
+
+1. Read this document and the linked tracking issue before changing the runtime.
+   Observe the installed **협업 보기 · 실험** and physical IPS10 on the same real work.
+   Record failures to orient, missing evidence, and unnecessary motion separately.
+2. If preparing a merge, fetch current `master` and create a **new** integration
+   worktree. Apply only `a167b18e`, `41e0c486`, `5477cb71` plus the handoff docs;
+   resolve overlap against the reviewed #284/#285 implementations. Do not rebase
+   or overwrite the running snapshot, and do not copy `output/` into the PR.
+3. Re-run tests/build gates on that resolved tree. The numbers below apply to
+   the deployed snapshot, **not** to a future cherry-pick or clean clone.
+4. Keep the lens opt-in until the owner reviews observation results. No public
+   release, merge, broader firmware rollout, or autostart change is implied.
+
+Open validation work:
+
+- Physical IPS10 legibility, touch/scroll, portrait/landscape and more than ten
+  sessions (the inherited rotating subset can still move cards).
+- Parent idle with active children; awaiting-user focus; multiple sessions in
+  one project; disconnected/stale/unsupported/over-2-MiB history.
+- A typed start is not current liveness; a typed stop is not result integration.
+  Separate child sessions without parent evidence must remain unlinked.
+- Exercise standalone Swift-daemon mode against actual samples; the local
+  end-to-end trial used Node. Do not mistake transport unit parity for that test.
+- Confirm whether the right rail actually improves task/parent/delegate/attention
+  recognition over the original view. A rendered graph is not usability proof.
+
+The existing e-ink/voice research in [#272](https://github.com/puritysb/AgentDeck/issues/272)
+is related surface strategy, not superseded by this macOS/IPS10 experiment.
+Runtime logs, raw task payloads, screenshots of live prompts, app bundles and
+firmware backups stay local under `output/`; they are not GitHub attachments.
+
 ## Use
 
 Open the locally installed AgentDeck Dashboard. The title-bar switch offers
