@@ -52,11 +52,14 @@ final class CollaborationFeed: ObservableObject {
         }
     }
 
-    private func read<T: Decodable>(_ url: URL, using session: URLSession) async throws -> T {
+    // Iterate and decode off the UI actor: a real task can contain hundreds of
+    // KiB of tool evidence even though this projection ignores those payloads.
+    nonisolated private func read<T: Decodable & Sendable>(_ url: URL, using session: URLSession) async throws -> T {
         // Same authenticated local API as the existing APME window. Keep the
         // adopted daemon token only in ephemeral requests, never in UI/logs.
         var authorized = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        authorized.queryItems = (authorized.queryItems ?? []) + [URLQueryItem(name: "token", value: AuthManager.shared.token)]
+        let token = await AuthManager.shared.token
+        authorized.queryItems = (authorized.queryItems ?? []) + [URLQueryItem(name: "token", value: token)]
         let (bytes, response) = try await session.bytes(from: authorized.url!)
         guard let response = response as? HTTPURLResponse, response.statusCode == 200,
               response.expectedContentLength <= 2_097_152 else { throw URLError(.badServerResponse) }

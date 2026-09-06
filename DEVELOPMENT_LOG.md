@@ -236,6 +236,9 @@ IPS10 portrait/landscape 1–10세션 geometry host test 통과, P4 firmware 빌
 Release archive는 로컬 실행용 조직 Development 서명이다. 별도 ad-hoc 재서명 복사본으로
 App Store 구조/금지경로 verifier를 통과했으며, 이것은 배포 서명/스토어 제출 검증이 아니다.
 기본 작업 폴더의 다른 변경은 별도 baseline commit으로 보존하고 이 실험 브랜치에서만 작업했다.
+실제 로컬 설치 후 IPS10 WiFi OTA가 완료되어 `1.2.1 / a167b18e-dirty`로 재연결했고
+11대 serial 연결을 유지했다. 큰 작업 기록 live 검증에서 발견한 UI actor 병목은
+bounded stream/decode를 nonisolated로 이동해 수정했다(동일 736KB isolated probe 8.36s → 0.03s).
 범위·사용법·복구 경로: [collaboration trial](experiments/collaboration/README.md).
 
 ## 2026-09-06 — PERM 후속 라이브 감사: 내부 Claude 종료 잡음과 Codex 표시·설치 누락
