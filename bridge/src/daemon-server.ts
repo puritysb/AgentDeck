@@ -118,9 +118,11 @@ const APME_ABANDONED_RUN_STALE_SEC = Math.max(
 /** Backlog tasks handed to the judge per eval tick when it is idle — see the drain. */
 const APME_TASK_JUDGE_DRAIN_PER_TICK = 1;
 /** How many backlog candidates the drain looks at to find one it may feed.
- *  Larger than the per-tick budget on purpose — see the drain for why. Reading
- *  rows is free (one indexed SELECT); only the judge call is serial. */
-const APME_TASK_JUDGE_DRAIN_WINDOW = 25;
+ *  Much larger than the per-tick budget on purpose — see the drain for why.
+ *  Reading rows is free (one indexed SELECT); only the judge call is serial.
+ *  Sized so a run of consecutive poison tasks at the head cannot fill the whole
+ *  window and starve the older backlog behind them the way one task did. */
+const APME_TASK_JUDGE_DRAIN_WINDOW = 200;
 /** How often a judge backend that last probed unavailable is probed again.
  *  The probe used to run once, at startup; a local MLX server busy with
  *  someone else's inference at that moment answered nothing inside the

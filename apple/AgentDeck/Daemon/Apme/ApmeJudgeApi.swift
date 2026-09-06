@@ -25,7 +25,38 @@
 import Foundation
 
 enum ApmeJudgeApi {
-    static let judgeModelLabel = "api:claude-opus-4-6"
+    /// Default when the configured `model` belongs to another backend (e.g. an
+    /// MLX id left over from a backend switch). Mirrored by
+    /// `API_JUDGE_DEFAULT_MODEL` in bridge/src/apme/runner.ts: both daemons
+    /// read the same settings.json and are the same judge, so a user who opted
+    /// into this leg without naming a model must not get a different model
+    /// depending on which daemon holds the port (this said `claude-opus-4-6`,
+    /// Node said `claude-opus-4-8`, until #286).
+    static let defaultModel = "claude-opus-5"
+
+    /// Which model this leg will actually call. Mirrors Node's `apiJudgeModel`:
+    /// a configured id that is not an Anthropic model is NOT forwarded, because
+    /// there is no `resetBackendCoupledFields` on this side to wipe a leftover
+    /// MLX id on a backend switch — POSTing `gemma-3-27b` to api.anthropic.com
+    /// returns a 400, and this leg reports a failure as `nil`, which is
+    /// byte-identical to "no API key found".
+    static func resolveModel(_ configured: String) -> String {
+        configured.hasPrefix("claude") ? configured : defaultModel
+    }
+
+    /// Provenance stamped onto stored eval rows — it must name the model that
+    /// RAN, not the one the code was written against. Held like the MLX and
+    /// OpenAI legs' labels rather than hardcoded: a constant went on claiming
+    /// `claude-opus-4-6` after the default moved, which is the same
+    /// cross-daemon attribution error #286 set out to remove.
+    static var judgeModelLabel: String { "api:\(LastResolvedModel.get() ?? defaultModel)" }
+
+    private enum LastResolvedModel {
+        nonisolated(unsafe) private static var value: String?
+        private static let lock = NSLock()
+        static func get() -> String? { lock.lock(); defer { lock.unlock() }; return value }
+        static func set(_ v: String) { lock.lock(); defer { lock.unlock() }; value = v }
+    }
 
     /// Run the Anthropic API judge. Returns nil if:
     ///   - No API key available
@@ -42,16 +73,8 @@ enum ApmeJudgeApi {
             return nil
         }
 
-        // Model selection: config.model if set to a real id, else a safe default.
-        // The default is mirrored by `API_JUDGE_DEFAULT_MODEL` in
-        // bridge/src/apme/runner.ts. Both daemons read the same settings.json
-        // and are the same judge, so a user who opted into this leg without
-        // naming a model must not get a different model depending on which
-        // daemon holds the port (this said `claude-opus-4-6`, Node said
-        // `claude-opus-4-8`, until #286).
-        let model = (config.model == "default" || config.model.isEmpty)
-            ? "claude-opus-5"
-            : config.model
+        let model = resolveModel(config.model)
+        LastResolvedModel.set(model)
 
         let endpoint = config.endpoint ?? "https://api.anthropic.com/v1/messages"
         guard let url = URL(string: endpoint) else { return nil }

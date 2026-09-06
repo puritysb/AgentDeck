@@ -310,8 +310,21 @@ export class ApmeRunner {
       if (this.isTaskParked(candidate.id)) continue;
       picked.push(candidate);
     }
+    // A window in which EVERY candidate is parked is the stall this function
+    // exists to prevent, one level up: the drain silently does nothing again,
+    // and silence is what let the original bug run for two weeks. Say it, at
+    // most once per park period so a wide outage is one line, not one a tick.
+    if (picked.length === 0 && candidates.length > 0) {
+      const now = Date.now();
+      if (now - this.lastAllParkedLogAt >= TASK_EVAL_PARK_MS) {
+        this.lastAllParkedLogAt = now;
+        log(`APME task judge: all ${candidates.length} backlog candidate(s) in the window are parked — the drain is idle until a park expires (latest failure: ${this.lastTaskEvalFailure || 'unknown'})`);
+      }
+    }
     return picked;
   }
+
+  private lastAllParkedLogAt = 0;
 
   /** Whether this task is parked right now, i.e. `enqueueTask` would drop it. */
   isTaskParked(taskId: string): boolean {
@@ -1028,6 +1041,11 @@ export function effectiveJudgeModelTag(cfg: ApmeJudgeConfig): string {
   // Must stay byte-identical with Swift's `ApmeJudgeFoundationModels.judgeModelLabel`
   // so analytics queries aggregate FM evals across the Node and Swift stacks.
   if (cfg.backend === 'foundationModels') return 'foundationModels:apple-intelligence';
+  // The API leg does not necessarily call `cfg.model` — `apiJudgeModel` falls
+  // back when the configured id belongs to another backend. Stamping the
+  // configured value recorded a verdict as produced by a model that never ran.
+  // Mirrored by `ApmeJudgeApi.judgeModelLabel`.
+  if (cfg.backend === 'api') return `api:${apiJudgeModel(cfg)}`;
   return `${cfg.backend}:${cfg.model}`;
 }
 
@@ -1907,30 +1925,84 @@ export function judgeChatContent(payload: unknown, label: string): string {
  *  has to share the repair step: a body the parser would repair but the gate
  *  refused would be rejected for being cut and then never looked at. */
 function holdsCompleteJsonObject(text: string): boolean {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return false;
-  try { JSON.parse(match[0]); return true; }
-  catch {
-    try { JSON.parse(repairJudgeJson(match[0])); return true; }
-    catch { return false; }
+  return parseJudgeObject(text) !== null;
+}
+
+/** The candidate `{…}` spans to try, in order.
+ *
+ *  The balanced block first, so a verdict followed by prose containing a brace
+ *  reads the same on both daemons. The greedy first-`{`-to-last-`}` span second,
+ *  because the scanner is string-aware and `repairJudgeJson` exists for bodies
+ *  whose quoting is itself broken — a key that lost its opening quote desyncs
+ *  any such scanner, and that body used to parse. Keeping the span as a second
+ *  try loses nothing the parser accepted before. */
+function jsonBlockCandidates(text: string): string[] {
+  const out: string[] = [];
+  const balanced = extractFirstJsonBlock(text);
+  if (balanced !== null) out.push(balanced);
+  const greedy = text.match(/\{[\s\S]*\}/);
+  if (greedy && greedy[0] !== out[0]) out.push(greedy[0]);
+  return out;
+}
+
+/** The judge's JSON object, or null when the body does not hold one. Shared by
+ *  the transport gate and `parseJudgeJson` so the two cannot disagree about
+ *  whether a body is a verdict at all. */
+function parseJudgeObject(text: string): Record<string, unknown> | null {
+  for (const block of jsonBlockCandidates(text)) {
+    try { return JSON.parse(block) as Record<string, unknown>; } catch { /* try the repair */ }
+    try { return JSON.parse(repairJudgeJson(block)) as Record<string, unknown>; } catch { /* next candidate */ }
   }
+  return null;
+}
+
+/** The first BALANCED `{…}` block, mirroring Swift `extractFirstJsonBlock`.
+ *
+ *  This used to be a greedy `/\{[\s\S]*\}/`, which spans the first `{` to the
+ *  LAST `}` in the body — so a verdict followed by any prose containing a brace
+ *  parsed here and not on the other daemon, whose scanner stops at the object's
+ *  own closing brace. That divergence became load-bearing once a cut body is
+ *  accepted when its object closed: text after the closing brace is exactly
+ *  what a `finish_reason: "length"` body has, and a model that keeps talking
+ *  past the verdict mentioning a brace is routine. Node rejected it as cut
+ *  while Swift accepted and scored it.
+ *
+ *  Braces inside strings do not count, so an escaped brace in a `summary`
+ *  cannot end the block early. */
+function extractFirstJsonBlock(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (escaped) { escaped = false; continue; }
+    if (inString) {
+      if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === '{') depth++;
+    else if (char === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 export function parseJudgeJson(text: string): ParsedJudge | null {
-  // Models often wrap JSON in prose or code fences — grab the first {...} block.
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  let obj: Record<string, unknown>;
-  try { obj = JSON.parse(match[0]); }
-  catch {
-    // Local judges occasionally emit otherwise-valid JSON with a comma before
-    // `}`/`]`, or omit the opening quote of an auxiliary object key while
-    // retaining its closing quote (both observed with Gemma 4 on long
-    // task_rollup prompts). Repair only structural text outside strings so
-    // evidence content remains byte-for-byte intact.
-    try { obj = JSON.parse(repairJudgeJson(match[0])); }
-    catch { return null; }
-  }
+  // Models often wrap JSON in prose or code fences, emit a comma before `}`/`]`,
+  // or omit the opening quote of an auxiliary object key while retaining its
+  // closing quote (both observed with Gemma 4 on long task_rollup prompts).
+  // `parseJudgeObject` handles the extraction and the repair — and is shared
+  // with the transport gate so the two cannot disagree about whether this body
+  // holds a verdict. Repair only touches structural text outside strings, so
+  // evidence content stays byte-for-byte intact.
+  const obj = parseJudgeObject(text);
+  if (obj === null) return null;
 
   // Accept any numeric axis — category-specific rubrics define their own
   // (conversation: accuracy/helpfulness/conciseness; research: thoroughness/…;

@@ -140,5 +140,35 @@
       "object": "chat.completion"
     },
     "accepted": false
+  },
+  {
+    "note": "closed object at the output limit, then more prose with a brace",
+    "why": "The shape a `finish_reason: length` body actually has once a cut body may be accepted: the verdict closed and the model kept talking. Node's greedy first-{-to-last-} match spanned into the trailing text and called this cut, while Swift's balanced scanner stopped at the verdict's own closing brace and scored it. Both scan for a balanced block now.",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "{\"completion\":0.8,\"coherence\":0.8,\"efficiency\":0.7,\"overall\":0.8,\"summary\":\"Regression covered.\"}\n\nFor example {\"x\":1} and then it was cu"
+          },
+          "finish_reason": "length"
+        }
+      ]
+    },
+    "accepted": true
+  },
+  {
+    "note": "brace inside a string does not close the object",
+    "why": "An escaped or quoted brace in `summary` must not end the block early on either scanner.",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "{\"overall\":0.8,\"summary\":\"renders a } and a { literally\"}"
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "accepted": true
   }
 ]

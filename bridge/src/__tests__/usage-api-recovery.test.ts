@@ -44,10 +44,14 @@ describe('usage fetching and recovery', () => {
       io.files.set(cacheFile, JSON.stringify({ data: { fiveHour: 99 }, fetchedAt: Date.now() }));
       return new Response('slow down', { status: 429, headers: { 'retry-after': '60' } });
     }));
-    await api.fetchUsageFromApi();
+    const result = await api.fetchUsageFromApi();
     const written = JSON.parse(io.files.get(cacheFile)!);
     expect(written.data.fiveHour).toBe(99);
     expect(written.retryAfter).toBe(Date.now() + 60_000);
+    // …and it must not hand its own consumers the older numbers it just
+    // declined to write back: persisting 99 while broadcasting 1 is the same
+    // rollback, one layer up.
+    expect(result).toMatchObject({ data: { fiveHour: 99 }, fresh: false });
   });
 
   it('recovers an expired credential and retries with the newly read token in the same poll', async () => {

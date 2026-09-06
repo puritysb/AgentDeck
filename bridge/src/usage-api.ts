@@ -385,8 +385,14 @@ export async function fetchUsageFromApi(): Promise<UsageFetchResult | null> {
 async function fetchUsageOnce(): Promise<UsageFetchResult | null> {
   // A cached reading served because the live path could not run or failed. Never
   // `fresh` — see UsageFetchResult.
-  const stale = (fc: UsageCacheFile | null): UsageFetchResult | null =>
-    (fc ? { data: fc.data, fresh: false } : null);
+  // Serves the freshest reading ON DISK, not the snapshot this call started
+  // with: another bridge polling the same file may have written a live reading
+  // while the request was in flight, and handing back the older numbers we
+  // just declined to overwrite is a rollback nobody asked for.
+  const stale = (fc: UsageCacheFile | null): UsageFetchResult | null => {
+    const current = readFileCache() ?? fc;
+    return current ? { data: current.data, fresh: false } : null;
+  };
 
   // 1. Check file cache first — shared across all bridge sessions
   const fileCache = readFileCache();

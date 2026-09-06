@@ -54,6 +54,23 @@ final class ApmeParseJudgeTests: XCTestCase {
         XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data))
     }
 
+    /// The label is the provenance stamped onto stored eval rows, so it must
+    /// name the model that RAN. As a hardcoded constant it went on claiming
+    /// `claude-opus-4-6` after the default moved — the same cross-daemon
+    /// attribution error #286 set out to remove. And a configured id that is
+    /// not an Anthropic model is not forwarded: there is no
+    /// `resetBackendCoupledFields` on this side to wipe a leftover MLX id on a
+    /// backend switch, and this leg reports a 400 as `nil`, which is
+    /// byte-identical to "no API key found".
+    func testApiJudgeResolvesTheModelItWillActuallyCall() {
+        XCTAssertEqual(ApmeJudgeApi.resolveModel("default"), ApmeJudgeApi.defaultModel)
+        XCTAssertEqual(ApmeJudgeApi.resolveModel(""), ApmeJudgeApi.defaultModel)
+        XCTAssertEqual(ApmeJudgeApi.resolveModel("mlx-community/gemma-4-26b-a4b-it-4bit"),
+                       ApmeJudgeApi.defaultModel)
+        XCTAssertEqual(ApmeJudgeApi.resolveModel("claude-haiku-4-5"), "claude-haiku-4-5")
+        XCTAssertEqual(ApmeJudgeApi.judgeModelLabel, "api:\(ApmeJudgeApi.defaultModel)")
+    }
+
     // MARK: - Happy path
 
     func testValidCodeAxes() {

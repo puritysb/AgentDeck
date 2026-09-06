@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import vectors from '../../../shared/apme-judge-response-vectors.json';
 import { ApmeStore } from '../apme/store.js';
-import { ApmeRunner, callJudgeWithMeta } from '../apme/runner.js';
+import { ApmeRunner, callJudgeWithMeta, parseJudgeJson } from '../apme/runner.js';
 import { ApmeCollector } from '../apme/collector.js';
 import { DEFAULT_APME_CONFIG } from '../apme/settings.js';
 
@@ -185,8 +185,16 @@ describe.each(['mlx', 'openai'] as const)('%s shared response contract', (backen
       fallbackToMlx: false,
       fallbackToFoundationModels: false,
     });
-    if (vector.accepted) await expect(result).resolves.toHaveProperty('text');
-    else await expect(result).rejects.toThrow();
+    if (vector.accepted) {
+      // Accepted means accepted as a VERDICT, not merely returned by the gate —
+      // the same assertion macOS ApmeParseJudgeTests makes, so the vectors pin
+      // both daemons end to end rather than one at the transport and one at the
+      // parser.
+      const { text } = await result;
+      expect(parseJudgeJson(text)).not.toBeNull();
+    } else {
+      await expect(result).rejects.toThrow();
+    }
   });
 });
 
@@ -272,8 +280,23 @@ describe('task judge backlog drain', () => {
     expect(runner.pickBacklogTasks(backlog, 1)).toEqual([{ id: 'a' }]);
   });
 
-  it('feeds nothing when every candidate is parked', async () => {
+  it('feeds nothing when every candidate is parked, and says so once', async () => {
     const parked = await poison('poison-session');
-    expect(runner.pickBacklogTasks([{ id: parked }], 1)).toEqual([]);
+    const lines: string[] = [];
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: any) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    try {
+      expect(runner.pickBacklogTasks([{ id: parked }], 1)).toEqual([]);
+      // Silence is what let the original stall run for two weeks — but a line
+      // per 30s tick is its own kind of unreadable, so it is throttled.
+      expect(runner.pickBacklogTasks([{ id: parked }], 1)).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+    const said = lines.filter((l) => l.includes('backlog candidate(s) in the window are parked'));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('all 1 backlog candidate(s)');
   });
 });
