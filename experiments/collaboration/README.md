@@ -7,7 +7,7 @@ daemon working-tree changes from the main checkout; they are not UI work.
 ## Use
 
 Open the locally installed AgentDeck Dashboard. The title-bar switch offers
-**기존 보기** (original Habitat) and **협업 보기 · 실험** (collaboration lens).
+**Habitat** (the original view, default) and **Collaboration · Beta** (the lens).
 Select a session in the existing left roster or its terrarium creature. The right
 rail shows its most recent canonical task and observed child branches. The network
 button in that rail opens the existing system/topology panel. Existing attention
@@ -120,7 +120,7 @@ Created from current `master` with only the three UI commits cherry-picked
   process table with a worker and a matrix job).
 - IPS10: stable card roster on both daemons (awaiting kept, newest fill, id
   order) with `total` → header `+N`; cards render the coordination census
-  ("대기 작업 N" / "띄운 작업 N 실행") in amber when the session is waiting.
+  ("waiting on N" / "N spawned") in amber when the session is waiting.
   Firmware treats an absent census as unknown, never a stale count.
 
 ### Second-pass verification — 2026-09-06 18:50

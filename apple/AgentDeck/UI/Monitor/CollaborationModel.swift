@@ -12,7 +12,7 @@ struct CollaborationTask: Decodable, Sendable, Identifiable {
     let summary: String?
     let endedAt: Double?
 
-    var displayTitle: String { summary ?? title ?? "작업 제목이 아직 관측되지 않았습니다" }
+    var displayTitle: String { summary ?? title ?? "No task title observed yet" }
 }
 
 struct CollaborationDetail: Decodable, Sendable {

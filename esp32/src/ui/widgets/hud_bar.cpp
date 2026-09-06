@@ -2751,15 +2751,15 @@ void update() {
             // waiting, not resting — the amber pill says so.
             const uint16_t waiting = mc[i].coordinationKnown ? (uint16_t)(mc[i].backgroundJobs + mc[i].spawnedActive) : 0;
             if (mc[i].childrenKnown && mc[i].coordinationKnown)
-                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " 하위 %u 활동 / %u 종료 " LV_SYMBOL_BULLET " 대기 작업 %u",
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " %u active / %u done " LV_SYMBOL_BULLET " waiting on %u",
                          mc[i].childrenActive, mc[i].childrenCompleted, waiting);
             else if (mc[i].childrenKnown)
-                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " 하위 %u 활동 / %u 종료", mc[i].childrenActive, mc[i].childrenCompleted);
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " %u active / %u done", mc[i].childrenActive, mc[i].childrenCompleted);
             else if (mc[i].coordinationKnown)
-                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_LOOP " 띄운 작업 %u 실행 " LV_SYMBOL_BULLET " 대기 작업 %u",
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_LOOP " %u spawned " LV_SYMBOL_BULLET " waiting on %u",
                          mc[i].spawnedActive, mc[i].backgroundJobs);
             else
-                snprintf(coord, sizeof(cellCoordText[i]), "하위 관계 미관측");
+                snprintf(coord, sizeof(cellCoordText[i]), "no child data");
             lv_label_set_text_static(cellCoord[i], coord);
             const bool childBusy = mc[i].childrenKnown && mc[i].childrenActive > 0;
             lv_obj_set_style_text_color(cellCoord[i], lv_color_hex(childBusy || waiting > 0
@@ -2770,7 +2770,7 @@ void update() {
             // state pill chip — bright states get dark text; the dim idle bg gets light text.
             if (ph >= 44) {
                 char parentState[64];
-                snprintf(parentState, sizeof(parentState), "주 에이전트 %s", ips10StatePill(mc[i].state));
+                snprintf(parentState, sizeof(parentState), "%s", ips10StatePill(mc[i].state));
                 lv_label_set_text(cellPill[i], parentState);
                 lv_obj_set_style_bg_color(cellPill[i], lv_color_hex(mc[i].stateCol), 0);
                 lv_obj_set_style_text_color(cellPill[i],

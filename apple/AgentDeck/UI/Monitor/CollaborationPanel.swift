@@ -6,15 +6,15 @@ final class CollaborationFeed: ObservableObject {
     @Published var task: CollaborationTask?
     @Published var children: [CollaborationChild] = []
     @Published var relations: [CollaborationRelation] = []
-    @Published var message = "왼쪽에서 세션을 선택하세요"
+    @Published var message = "Select a session on the left"
     @Published var fetchedAt: Date?
     @Published var failed = false
 
     func observe(sessionId: String, port: Int) async {
         task = nil; children = []; relations = []; fetchedAt = nil; failed = false
-        message = "작업 관계를 확인하고 있습니다…"
+        message = "Reading task relations…"
         guard !sessionId.isEmpty, port > 0 else {
-            message = "왼쪽에서 세션을 선택하세요"; return
+            message = "Select a session on the left"; return
         }
         let sampleSessionID = ObservedAgentRules.rawSessionId(sessionId)
         let configuration = URLSessionConfiguration.ephemeral
@@ -31,7 +31,7 @@ final class CollaborationFeed: ObservableObject {
                 // Also validate the server's filter: an older route may ignore it.
                 guard let latest = page.tasks.first, latest.sessionId == sampleSessionID else {
                     task = nil; children = []; relations = []; failed = false; fetchedAt = Date()
-                    message = "이 세션의 작업 기록이 아직 없습니다"
+                    message = "No task record for this session yet"
                     try await Task.sleep(for: .seconds(15)); continue
                 }
                 let detailURL = URL(string: "http://127.0.0.1:\(port)/apme/tasks")!
@@ -42,13 +42,13 @@ final class CollaborationFeed: ObservableObject {
                 children = CollaborationProjection.children(sample: detail.sample, sessionId: sampleSessionID, taskId: latest.id)
                 relations = CollaborationProjection.relations(sample: detail.sample, sessionId: sampleSessionID, taskId: latest.id)
                 fetchedAt = Date(); failed = false
-                message = detail.sample == nil ? "개별 위임 기록을 제공하지 않는 연결입니다" : "관측된 위임만 표시 · 결과 반영 여부는 별도 확인이 필요합니다"
+                message = detail.sample == nil ? "This daemon does not serve per-task evidence" : "Observed relations only · whether results were integrated is not tracked"
             } catch {
                 guard !Task.isCancelled else { return }
                 failed = true
                 message = fetchedAt == nil
-                    ? "작업 기록을 읽을 수 없습니다 · 현재 세션 상태는 계속 표시합니다"
-                    : "기록 갱신 실패 · 아래 관계는 마지막으로 읽은 기록입니다"
+                    ? "Could not read the task record · live session state is still shown"
+                    : "Refresh failed · relations below are from the last successful read"
             }
             do { try await Task.sleep(for: .seconds(15)) } catch { return }
         }
@@ -92,17 +92,17 @@ struct CollaborationPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("협업 보기", systemImage: "point.3.connected.trianglepath.dotted")
+                Label("Collaboration", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 17, weight: .semibold))
                 Spacer()
-                Text("Beta").font(.caption).foregroundStyle(DesignTokens.UI.cyan)
+                Text("BETA").font(.caption.weight(.semibold)).foregroundStyle(DesignTokens.UI.cyan)
                 Button { showsSystem.toggle() } label: {
                     Image(systemName: "network")
-                }.help("기존 시스템 상태 보기").popover(isPresented: $showsSystem) {
+                }.help("Show system status").popover(isPresented: $showsSystem) {
                     TopologyRail(maxHeight: 560).frame(width: 330).padding(12)
                 }
             }
-            Text("세션 선택 → 작업 → 확인된 하위 에이전트")
+            Text("Session → latest task → confirmed child agents and relations")
                 .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
             Divider().overlay(DesignTokens.Ink.s500)
             ScrollView {
@@ -111,7 +111,7 @@ struct CollaborationPanel: View {
                         sessionHeader(selected)
                         if let task = feed.task {
                             VStack(alignment: .leading, spacing: 6) {
-                                Label(task.endedAt == nil ? "최근 작업 · 열린 기록" : "최근 작업 · 닫힌 기록",
+                                Label(task.endedAt == nil ? "Latest task · open" : "Latest task · closed",
                                       systemImage: "square.stack.3d.up")
                                     .font(.caption).foregroundStyle(DesignTokens.UI.cyan)
                                 Text(task.displayTitle).font(.system(size: 16, weight: .medium)).lineLimit(4)
@@ -122,34 +122,34 @@ struct CollaborationPanel: View {
                         if selected.subagents != nil || selected.coordination != nil {
                             HStack(spacing: 8) {
                                 if let census = selected.subagents {
-                                    metric(census.active, "하위 활동", "circle.dotted", DesignTokens.UI.cyan)
-                                    metric(census.completed, "이번 묶음 종료", "checkmark.circle", DesignTokens.UI.ok)
+                                    metric(census.active, "Subagents active", "circle.dotted", DesignTokens.UI.cyan)
+                                    metric(census.completed, "Done this wave", "checkmark.circle", DesignTokens.UI.ok)
                                 }
                                 if let coord = selected.coordination {
-                                    metric(coord.spawnedActive, "띄운 세션 실행", "arrow.up.right.circle", DesignTokens.UI.cyan)
-                                    metric(coord.backgroundJobs, "대기 중 작업", "hourglass", DesignTokens.UI.attn)
+                                    metric(coord.spawnedActive, "Spawned running", "arrow.up.right.circle", DesignTokens.UI.cyan)
+                                    metric(coord.backgroundJobs, "Jobs waited on", "hourglass", DesignTokens.UI.attn)
                                 }
                             }
                             if let coord = selected.coordination, coord.messagesIn + coord.messagesOut > 0 {
-                                Text("세션 간 메시지 · 받음 \(coord.messagesIn) · 보냄 \(coord.messagesOut)\(coord.lastPeerName.map { " · 최근 \($0)" } ?? "")")
+                                Text("Peer messages · in \(coord.messagesIn) · out \(coord.messagesOut)\(coord.lastPeerName.map { " · last \($0)" } ?? "")")
                                     .font(.system(size: 10)).foregroundStyle(DesignTokens.Ink.s300)
                             }
-                            Text("현재 세션 집계 · 아래 작업 기록과 범위가 다를 수 있습니다")
+                            Text("Live session census · may differ in scope from the task record below")
                                 .font(.system(size: 10)).foregroundStyle(DesignTokens.Ink.s300)
                         }
                         if !feed.children.isEmpty {
-                            Label("관측된 위임 관계", systemImage: "arrow.triangle.branch")
+                            Label("Observed child agents", systemImage: "arrow.triangle.branch")
                                 .font(.caption).foregroundStyle(DesignTokens.UI.cyan)
                             ForEach(feed.children.prefix(24)) { child in childRow(child) }
                             if feed.children.count > 24 {
-                                Text("외 \(feed.children.count - 24)개 · 이 화면은 24개까지 표시합니다").font(.caption)
+                                Text("+\(feed.children.count - 24) more · this panel shows 24").font(.caption)
                             }
                         } else {
                             VStack(spacing: 8) {
                                 Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                                     .font(.system(size: 28)).foregroundStyle(DesignTokens.Ink.s300)
-                                Text("아직 확인된 가지가 없습니다").font(.subheadline)
-                                Text("같은 프로젝트의 세션을 임의로 연결하지 않습니다.")
+                                Text("No confirmed branches yet").font(.subheadline)
+                                Text("Sessions in the same project are never linked by assumption.")
                                     .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
                             }.frame(maxWidth: .infinity).padding(.vertical, 16)
                         }
@@ -157,12 +157,12 @@ struct CollaborationPanel: View {
                         Label(feed.message, systemImage: feed.failed ? "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90" : "eye")
                             .font(.caption).foregroundStyle(feed.failed ? DesignTokens.UI.attn : DesignTokens.Ink.s300)
                         if let fetched = feed.fetchedAt {
-                            Text("기록 확인 \(fetched.formatted(date: .omitted, time: .standard)) · 15초마다 갱신")
+                            Text("Read \(fetched.formatted(date: .omitted, time: .standard)) · refreshes every 15 s")
                                 .font(.system(size: 10)).foregroundStyle(DesignTokens.Ink.s300)
                         }
                     } else {
                         Image(systemName: "cursorarrow.click.2").font(.largeTitle).padding(.top, 20)
-                        Text(inspectedID == nil ? "왼쪽 세션이나 테라리움의 에이전트를 선택하세요" : "선택한 세션이 목록에서 사라졌습니다. 다른 세션을 선택하세요.")
+                        Text(inspectedID == nil ? "Select a session in the roster or a creature in the habitat" : "The selected session left the roster. Pick another one.")
                             .font(.subheadline)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
@@ -191,25 +191,25 @@ struct CollaborationPanel: View {
                 Image(systemName: waiting ? "person.crop.circle.badge.exclamationmark" : "circle.hexagongrid.fill")
                     .font(.system(size: 25)).foregroundStyle(waiting ? DesignTokens.UI.attn : DesignTokens.UI.cyan)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(session.projectName ?? "프로젝트 미확인").font(.headline).lineLimit(2)
+                    Text(session.projectName ?? "Unknown project").font(.headline).lineLimit(2)
                     Text("\(session.agentType ?? "Unknown agent") · \(ObservedAgentRules.rawSessionId(session.id).prefix(8))")
                         .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
                 }
             }
-            Label(waiting ? "주 에이전트 · 사용자 입력 필요"
-                    : working ? "주 에이전트 · 실행 중"
-                    : awaitingResults ? "주 에이전트 · 턴 종료 · 띄운 작업 \(pending)개 결과 대기"
-                    : "주 에이전트 · \(session.state ?? "상태 미확인")",
+            Label(waiting ? "Session · needs your input"
+                    : working ? "Session · working"
+                    : awaitingResults ? "Session · turn closed · waiting on \(pending) job\(pending == 1 ? "" : "s")"
+                    : "Session · \(session.state ?? "unknown")",
                   systemImage: waiting ? "hand.raised.fill" : working ? "waveform" : awaitingResults ? "hourglass" : "pause.circle")
                 .font(.caption).foregroundStyle(waiting || awaitingResults ? DesignTokens.UI.attn : DesignTokens.UI.cyan)
             if let activity = session.activity, !activity.isEmpty {
                 Text(activity).font(.subheadline).lineLimit(3)
             }
             if waiting {
-                Text(session.question ?? "질문 내용은 기존 응답 화면에서 확인하세요")
+                Text(session.question ?? "See the question in the answer card")
                     .font(.subheadline).lineLimit(4).padding(10)
                     .background(DesignTokens.UI.attn.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                Text("응답은 기존 질문 카드 또는 원래 에이전트에서 진행하세요")
+                Text("Answer from the question card or in the agent itself")
                     .font(.caption).foregroundStyle(DesignTokens.UI.attn)
             }
         }
@@ -234,25 +234,25 @@ struct CollaborationPanel: View {
     @ViewBuilder
     private var relationSections: some View {
         if !spawnedIn.isEmpty {
-            Label("이 세션을 띄운 세션", systemImage: "arrow.down.left.circle")
+            Label("Spawned by", systemImage: "arrow.down.left.circle")
                 .font(.caption).foregroundStyle(DesignTokens.UI.cyan)
             ForEach(spawnedIn.prefix(4)) { relationRow($0) }
         }
         if !spawnedOut.isEmpty {
-            Label("띄운 세션 · 프로세스 계보로 확인", systemImage: "arrow.up.right.circle")
+            Label("Spawned sessions · by process ancestry", systemImage: "arrow.up.right.circle")
                 .font(.caption).foregroundStyle(DesignTokens.UI.cyan)
             ForEach(spawnedOut.prefix(12)) { relationRow($0) }
             if spawnedOut.count > 12 {
-                Text("외 \(spawnedOut.count - 12)개").font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+                Text("+\(spawnedOut.count - 12) more").font(.caption).foregroundStyle(DesignTokens.Ink.s300)
             }
         }
         if !jobs.isEmpty {
-            Label("기다리는 백그라운드 작업", systemImage: "hourglass")
+            Label("Background jobs waited on", systemImage: "hourglass")
                 .font(.caption).foregroundStyle(DesignTokens.UI.attn)
             ForEach(jobs.prefix(6)) { relationRow($0) }
         }
         if !messages.isEmpty {
-            Label("세션 간 메시지 · 최근 \(min(messages.count, 8))건", systemImage: "bubble.left.and.bubble.right")
+            Label("Peer messages · latest \(min(messages.count, 8))", systemImage: "bubble.left.and.bubble.right")
                 .font(.caption).foregroundStyle(DesignTokens.UI.cyan)
             ForEach(messages.suffix(8).reversed()) { relationRow($0) }
         }
@@ -263,10 +263,10 @@ struct CollaborationPanel: View {
             if let name = row.peerName, !name.isEmpty { return name }
             if let sid = row.peerSessionId, !sid.isEmpty {
                 let match = stateHolder.state.siblingSessions.first { ObservedAgentRules.rawSessionId($0.id) == sid }
-                let project = match?.projectName ?? "세션"
-                return "\(project) · \(sid.prefix(8))\(match == nil ? " · 종료됨" : "")"
+                let project = match?.projectName ?? "Session"
+                return "\(project) · \(sid.prefix(8))\(match == nil ? " · ended" : "")"
             }
-            return row.relation == "spawned" ? "세션 미확인 · 실행 요청만 관측" : "미확인"
+            return row.relation == "spawned" ? "Session not resolved · launch observed" : "Unknown"
         }()
         let symbol: String
         let status: String
@@ -274,15 +274,15 @@ struct CollaborationPanel: View {
         switch row.relation {
         case "spawned":
             symbol = row.direction == "in" ? "arrow.down.left" : "arrow.up.right"
-            status = row.isOpen ? (row.evidence == "bash_claude_p" ? "실행 요청 관측 · 세션 확인 전" : "실행 중") : "종료 관측 · 결과 반영 여부 미확인"
+            status = row.isOpen ? (row.evidence == "bash_claude_p" ? "Launch observed · session not yet seen" : "Running") : "Ended · result integration not tracked"
             color = row.isOpen ? DesignTokens.UI.cyan : DesignTokens.UI.ok
         case "waiting_on":
             symbol = "hourglass"
-            status = row.isOpen ? "실행 중 · 완료되면 이 세션이 재개됩니다" : "종료 관측"
+            status = row.isOpen ? "Running · this session resumes when it finishes" : "Ended"
             color = row.isOpen ? DesignTokens.UI.attn : DesignTokens.Ink.s300
         default:
             symbol = row.direction == "in" ? "arrow.down.left.circle" : "arrow.up.right.circle"
-            status = (row.direction == "in" ? "받음" : "보냄") + " · " + Date(timeIntervalSince1970: row.observedAt / 1000).formatted(date: .omitted, time: .shortened)
+            status = (row.direction == "in" ? "Received" : "Sent") + " · " + Date(timeIntervalSince1970: row.observedAt / 1000).formatted(date: .omitted, time: .shortened)
             color = DesignTokens.UI.cyan
         }
         return HStack(alignment: .top, spacing: 8) {
@@ -310,7 +310,7 @@ struct CollaborationPanel: View {
                     Text(child.name).font(.subheadline.bold()).lineLimit(2)
                     Spacer(minLength: 0)
                 }
-                Text(ended ? "종료 관측 · 결과 반영 여부 미확인" : "시작 관측 · 현재 실행 여부는 집계 참고")
+                Text(ended ? "Ended · result integration not tracked" : "Started · see the live census for whether it still runs")
                     .font(.system(size: 10)).foregroundStyle(DesignTokens.Ink.s300)
                 if let summary = child.summary, !summary.isEmpty {
                     Text(summary).font(.caption).lineLimit(4)

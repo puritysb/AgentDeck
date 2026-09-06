@@ -50,8 +50,8 @@ records those three shapes of divided work from evidence it can actually see —
 a worker whose process descends from the session's process, a cross-session
 message on the sender's tool call and the receiver's envelope, and a background
 process whose command line names the session's scratchpad — and never from
-shared project membership. The macOS Dashboard gains an opt-in **협업 보기 ·
-Beta** switch in the title bar: pick a session and the right rail shows its
+shared project membership. The macOS Dashboard gains an opt-in **Collaboration · Beta**
+switch in the title bar (the default **Habitat** view is unchanged): pick a session and the right rail shows its
 latest task, confirmed child agents, spawned sessions, peer messages and the
 jobs it is waiting on, with "turn closed · waiting on N" replacing a bare
 `idle`. The roster row shows `⧗N` beside the subagent `+N`. The original view is

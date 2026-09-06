@@ -94,12 +94,12 @@ struct MonitorScreen: View {
             .modifier(KeyboardShortcutsModifier(stateHolder: stateHolder))
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Picker("Dashboard 보기", selection: $collaborationEnabled) {
-                        Text("기존 보기").tag(false)
-                        Text("협업 보기 · Beta").tag(true)
+                    Picker("Dashboard view", selection: $collaborationEnabled) {
+                        Text("Habitat").tag(false)
+                        Text("Collaboration · Beta").tag(true)
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 235)
+                    .frame(width: 250)
                     .accessibilityIdentifier("dashboard-collaboration-switch")
                 }
             }
