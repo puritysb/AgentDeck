@@ -141,6 +141,27 @@ final class ProviderRailEvaluatorTests: XCTestCase {
         XCTAssertNil(s.claudeUsageIssue, "fresh numbers retract the reason")
     }
 
+    // MARK: - Hub port (Swift→Node handoff)
+
+    /// `daemonPort` is Swift-daemon-only and merges retain-on-absent, so after
+    /// a handoff it names a port nobody is listening on. The connected URL must
+    /// win — and the case that matters is exactly the one where the two
+    /// disagree.
+    func testHubPortPrefersTheConnectedURLOverARetainedDaemonPort() {
+        XCTAssertEqual(HubPortRules.portText(connectionURL: "ws://127.0.0.1:9120?token=x",
+                                             daemonPort: 9121, fallback: 9120), "9120")
+        XCTAssertEqual(HubPortRules.portText(connectionURL: nil,
+                                             daemonPort: 9121, fallback: 9120), "9121")
+        XCTAssertEqual(HubPortRules.portText(connectionURL: nil,
+                                             daemonPort: nil, fallback: 9120), "9120")
+        XCTAssertEqual(HubPortRules.portText(connectionURL: nil,
+                                             daemonPort: 0, fallback: 9120), "9120",
+                       "0 means never populated, not a port")
+        // A URL carrying no explicit port says nothing about the hub's port.
+        XCTAssertEqual(HubPortRules.portText(connectionURL: "not a url",
+                                             daemonPort: 9121, fallback: 9120), "9121")
+    }
+
     // MARK: - OpenClaw (presence-driven rail — SSOT)
     //
     // The rail evaluator gates on the emitted OpenClaw SESSION (the daemon

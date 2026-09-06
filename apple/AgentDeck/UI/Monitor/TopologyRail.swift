@@ -197,19 +197,10 @@ struct TopologyRail: View {
         return .live
     }
 
-    /// The connected URL identifies the current hub. A partial state update
-    /// from a new owner can omit daemonPort and retain the previous owner's
-    /// fallback port (for example Swift :9121 after connecting to Node :9120).
     private var daemonPortText: String {
-        if let url = stateHolder.connection.url,
-           let parsed = URL(string: url),
-           let port = parsed.port {
-            return String(port)
-        }
-        if let port = stateHolder.state.daemonPort, port > 0 {
-            return String(port)
-        }
-        return String(AppPreferences.defaultDaemonPort)
+        HubPortRules.portText(connectionURL: stateHolder.connection.url,
+                              daemonPort: stateHolder.state.daemonPort,
+                              fallback: AppPreferences.defaultDaemonPort)
     }
 
     // MARK: - Upstream rows
@@ -1435,5 +1426,30 @@ private struct RailContentHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+/// Which port the dashboard calls "the hub".
+///
+/// `daemonPort` is emitted by the Swift daemon ONLY (`DaemonServer`), and every
+/// client merges retain-on-absent, so after a Swift→Node handoff the retained
+/// value names a port nobody is listening on — the Swift daemon's own fallback
+/// :9121 outlived the handoff and was shown while the app was talking to Node
+/// on :9120. The connected URL is the one fact that always describes the hub
+/// actually answering, so it outranks the retained field.
+///
+/// Extracted from the view because a `private var` on a SwiftUI `View` cannot
+/// be reached from the test target — the original fix shipped with no gate.
+enum HubPortRules {
+    static func portText(connectionURL: String?, daemonPort: Int?, fallback: Int) -> String {
+        if let url = connectionURL, let port = URL(string: url)?.port {
+            return String(port)
+        }
+        // No connection (or a URL with no explicit port): the retained field is
+        // the best remaining evidence, and 0 means "never populated".
+        if let port = daemonPort, port > 0 {
+            return String(port)
+        }
+        return String(fallback)
     }
 }

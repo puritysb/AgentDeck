@@ -31,6 +31,16 @@ Swift의 MLX/OpenAI 호환 어댑터가 finish_reason을 검사하지 않던 차
 APME 커밋의 일반 CI 9개 잡은 통과했고(Node 4,054 통과·2 skip), 정식 서명 iOS/macOS
 archive 검증도 upload=false로 통과했다. 포트 표시 후속 수정은 같은 절차로 재검증한다.
 
+머지 전 적대적 리뷰에서 이 항목 두 가지를 더 고쳤다. 포트 표시 수정은 SwiftUI `View`의
+`private var`라 테스트 타깃에서 닿지 않았다 — **CI가 이 변경으로 실패할 수 없었다**.
+`HubPortRules.portText`로 꺼내 네 경우(연결 URL 우선·URL 없음·둘 다 없음·`0`은 미채움)를
+고정했고, 순서를 되돌리면 실패한다(뮤테이션 확인). 그리고 `finish_reason=length` 거부가
+기본 체인에서 조용히 Foundation Models(측정 0.580, 4,096 토큰)로 내려가던 전환을 DEBUG가
+아닌 일반 로그로 올렸다 — "mlx 사용 불가"와 "잘린 응답"은 다른 사실이고, 후자는 비율을
+재보기 전에는 알 수 없다. 실측 참고: 이 기기의 최근 30일 판정 759건은 전부 MLX이고 본문
+p99가 약 1,025자라 현재 상한에 닿지 않는다. 남은 항목은 Anthropic `api` 레그의 동일한
+잘림 가드 부재와 Swift의 `reasoningEffort` 미적용으로, 별도 이슈로 옮겼다.
+
 ## 2026-09-06 — Claude 사용량 인증 만료를 설명하고 제한적으로 자동 복구
 
 정상 실행 중인 Node 데몬에서 Claude 사용량만 사라진 사건을 계측했다. 마지막 성공 조회는
