@@ -1,7 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ClaudeUsageRecovery, CLAUDE_USAGE_RECOVERY_ARGS } from '../claude-usage-recovery.js';
+import { resolve } from 'path';
+import { ClaudeUsageRecovery, CLAUDE_USAGE_RECOVERY_ARGS, buildClaudeUsageRecoveryEnv } from '../claude-usage-recovery.js';
 
 describe('ClaudeUsageRecovery', () => {
+  it('never recovers a different macOS Keychain namespace', () => {
+    expect(buildClaudeUsageRecoveryEnv({ CLAUDE_CONFIG_DIR: '/custom/claude' }, 'darwin', '/users/test')).toBeNull();
+    expect(buildClaudeUsageRecoveryEnv({}, 'darwin', '/users/test')).not.toBeNull();
+  });
+
+  it('resolves a relative credential directory before changing the child cwd', () => {
+    const env = buildClaudeUsageRecoveryEnv({ CLAUDE_CONFIG_DIR: './other-claude' }, 'linux');
+    expect(env?.CLAUDE_CONFIG_DIR).toBe(resolve('./other-claude'));
+  });
+
+  it('removes inherited credential/provider and session overrides without changing the parent', () => {
+    const source = { ANTHROPIC_API_KEY: 'api-key', ANTHROPIC_BASE_URL: 'https://other.invalid',
+      CLAUDE_CODE_OAUTH_TOKEN: 'override', CLAUDECODE: '1', AGENTDECK_PORT: '9120',
+      CLAUDE_CODE_USE_BEDROCK: '1', PATH: '/bin' };
+    expect(buildClaudeUsageRecoveryEnv(source, 'linux')).toEqual({ PATH: '/bin', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' });
+    expect(source.ANTHROPIC_API_KEY).toBe('api-key');
+  });
+
   it('deduplicates concurrent callers and survives restarts without storing credentials', async () => {
     let now = 1000;
     let saved: any = null;

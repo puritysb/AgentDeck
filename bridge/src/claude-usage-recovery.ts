@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import { createHash } from 'crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { logTagged } from './logger.js';
 
 const RECOVERY_TIMEOUT_MS = 25_000;
@@ -24,14 +24,38 @@ export const CLAUDE_USAGE_RECOVERY_ARGS = [
   '--system-prompt', 'Reply with OK.', '--output-format', 'json', 'Reply with OK.',
 ];
 
-export function runClaudeUsageRecovery(): Promise<void> {
-  const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
+/** Keep the recovery CLI on the same credential store as usage-api.ts.
+ * On macOS that reader targets the default Keychain service; a custom config
+ * directory can select a DIFFERENT Keychain namespace in Claude. Fail closed
+ * rather than spend quota or renew an unrelated account. On other platforms,
+ * resolve relative paths before the child changes cwd to the temporary folder.
+ */
+export function buildClaudeUsageRecoveryEnv(
+  source: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  home = homedir(),
+): NodeJS.ProcessEnv | null {
+  const env: NodeJS.ProcessEnv = { ...source, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' };
+  if (env.CLAUDE_CONFIG_DIR) {
+    const configDir = resolve(env.CLAUDE_CONFIG_DIR);
+    if (platform === 'darwin' && configDir !== join(home, '.claude')) return null;
+    env.CLAUDE_CONFIG_DIR = configDir;
+  }
   // A daemon started from an agent must not be mistaken for its nested session.
   // API-key / provider overrides must not redirect an OAuth recovery request.
   for (const key of Object.keys(env)) {
     if (key === 'CLAUDECODE' || key === 'ANTHROPIC_API_KEY' || key === 'ANTHROPIC_AUTH_TOKEN'
       || key === 'ANTHROPIC_BASE_URL' || key === 'CLAUDE_CODE_OAUTH_TOKEN'
       || key.startsWith('CLAUDE_CODE_USE_') || key.startsWith('AGENTDECK_')) delete env[key];
+  }
+  return env;
+}
+
+export function runClaudeUsageRecovery(): Promise<void> {
+  const env = buildClaudeUsageRecoveryEnv();
+  if (!env) {
+    logTagged('usage', 'Claude authorization recovery skipped: custom macOS credential namespace cannot be matched');
+    return Promise.resolve();
   }
   return new Promise((resolve) => {
     const child = execFile('claude', CLAUDE_USAGE_RECOVERY_ARGS, {
