@@ -68,6 +68,46 @@ the identified IPS10, never all boards:
 node bridge/dist/cli.js esp32-ota ips_10 --firmware output/rollback/agentdeck-ips_10.bin
 ```
 
+## Integration branch — 2026-09-06 (`feat/collaboration-lens`)
+
+Created from current `master` with only the three UI commits cherry-picked
+(the two baseline commits were superseded by #284/#285). Changes on top:
+
+- `TaskCompleted` no longer becomes a `subagent` completion (both daemons).
+  Measured: the claude-glm session `5e58fcbf` carried six "Subagent" branches
+  for six TaskCreate items; it ran no children.
+- New `relation` sample events + `SessionInfo.coordination` census
+  (`bridge/src/coordination-evidence.ts`): `spawned` (process ancestry /
+  `claude -p` intent), `messaged` (SendMessage tool + cross-session envelope),
+  `waiting_on` (background process naming the session's scratchpad). The lens
+  renders them as their own sections and the roster row shows `⧗N`.
+- IPS10 cards keep the equal-size layout but restore the tool / model /
+  elapsed gates the treemap had (`ph >= 80 / 64`, body height at 216) and drop
+  the session-id suffix from the project line — the trial's `300px` gate hid
+  all three on every card (simulator render, 2026-09-06).
+
+### Integration-branch deployment evidence — 2026-09-06 15:48
+
+- Vitest 262 files / 4,079 passed / 1 skipped; macOS XCTest 748 passed
+  (`CollaborationProjectionTests` incl. two relation cases,
+  `CoordinationEvidenceParserTests`); IPS10 geometry host test PASS; IPS10
+  firmware build + simulator render (tool / model lines back on every card).
+- Daemon on 9120 is this worktree's build `f0af7d8eff4c`. Two earlier OTA
+  attempts through the master daemon died with `ECONNRESET`: the daemon logged
+  `Shutting down…` mid-upload each time and came back as the same master build
+  — run the OTA through a daemon whose build matches the CLI.
+- IPS10 WiFi OTA complete (4.0 MB, 4,137 chunks) and reconnected at
+  192.168.68.54 (`1.2.1`, serial primary).
+- Live within a minute of the restart: the epoch-of-tech parent row carries
+  `coordination: {backgroundJobs: 1, …}` and a `waiting_on · run_bot_matrix.sh`
+  relation was persisted on its open task — the exact case that started this.
+- Release app built Development-signed at
+  `output-dd-rel/Build/Products/Release/AgentDeck.app` (structural verifier
+  fails only on the dev certificate, as the trial's did). **Not installed**:
+  the install step was declined in-session. To trial it, quit AgentDeck and
+  copy that bundle over `/Applications/AgentDeck.app` (the trial's rollback
+  copies under `../AgentDeck-collaboration/output/rollback/` still apply).
+
 ## Review questions
 
 Compare original and collaboration views on the same real work. Can you identify

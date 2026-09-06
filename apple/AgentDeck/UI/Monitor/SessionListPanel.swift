@@ -140,6 +140,11 @@ struct SessionListPanel: View {
         /// turn closed is genuinely idle while its subagents keep working, and
         /// this row said "IDLE" through a half-hour eight-wide fan-out.
         var subagents: SubagentSummary?
+        /// Cross-session coordination census — the other way a parent is busy
+        /// while `state` says idle: `claude -p` workers it spawned, a
+        /// background job it is waiting on. Measured 2026-09-06: six spawned
+        /// workers and a 22-minute matrix job, and the row read IDLE.
+        var coordination: CoordinationSummary?
     }
 
     private func buildEntries() -> [SessionEntry] {
@@ -185,7 +190,8 @@ struct SessionListPanel: View {
                 isFocused: focusedSessionId != nil && stateHolder.state.sessionId == focusedSessionId,
                 sessionId: stateHolder.state.sessionId,
                 activity: primaryAnchorSibling?.activity,
-                subagents: primaryAnchorSibling?.subagents
+                subagents: primaryAnchorSibling?.subagents,
+                coordination: primaryAnchorSibling?.coordination
             ))
         }
 
@@ -225,7 +231,8 @@ struct SessionListPanel: View {
                 isFocused: sibling.id == focusedSessionId,
                 sessionId: sibling.id,
                 activity: sibling.activity,
-                subagents: sibling.subagents
+                subagents: sibling.subagents,
+                coordination: sibling.coordination
             ))
         }
 
@@ -388,9 +395,20 @@ struct SessionListPanel: View {
         }
     }
 
+    private func coordinationHelp(_ c: CoordinationSummary?) -> String {
+        guard let c else { return "" }
+        var parts: [String] = []
+        if c.spawnedActive > 0 { parts.append("\(c.spawnedActive) spawned session\(c.spawnedActive == 1 ? "" : "s") still running") }
+        if c.backgroundJobs > 0 { parts.append("waiting on \(c.backgroundJobs) background job\(c.backgroundJobs == 1 ? "" : "s")") }
+        return parts.joined(separator: " · ")
+    }
+
     private func sessionMetaRow(entry: SessionEntry, compact: Bool) -> some View {
         let detailText = buildDetailText(entry: entry)
         let running = entry.subagents?.active ?? 0
+        // Work in flight that is not a subagent: spawned peer sessions still
+        // alive plus background jobs this session will be re-invoked by.
+        let waiting = (entry.coordination?.spawnedActive ?? 0) + (entry.coordination?.backgroundJobs ?? 0)
         return HStack(spacing: 4) {
             Text(compactStateMarker(entry.state))
                 .font(.system(size: compact ? 9.5 : 10, design: .monospaced))
@@ -411,6 +429,14 @@ struct SessionListPanel: View {
             // fact losing to the transient one. `+N` is also what the terrarium
             // already uses for the children it cannot draw individually, and it
             // does not collide with the group header's `×N` (sessions).
+            if waiting > 0 {
+                Text("⧗\(waiting)")
+                    .font(.system(size: compact ? 9.5 : 10, design: .monospaced))
+                    .foregroundStyle(DesignTokens.Amber.s500)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .help(coordinationHelp(entry.coordination))
+            }
             if running > 0 {
                 Text("+\(running)")
                     .font(.system(size: compact ? 9.5 : 10, design: .monospaced))

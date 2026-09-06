@@ -440,6 +440,33 @@ export interface SubagentSummary {
   lastCompletedAt?: number;
 }
 
+/**
+ * Live cross-session coordination census for one session — the second axis
+ * beside `subagents`, for work divided WITHOUT a SubagentStart: `claude -p`
+ * workers spawned from a background Bash, peer sessions messaged over
+ * SendMessage, and background processes the session is waiting on. Measured
+ * 2026-09-06: a parent whose turn had closed read `idle` on every surface
+ * while six spawned workers ran and a 22-minute background job it would be
+ * re-invoked by was still going. Observed only — never inferred from shared
+ * project membership. Emitted with explicit zeros once a session has ever had
+ * a relation (retain-on-absent clients would otherwise latch the last count).
+ */
+export interface CoordinationSummary {
+  /** Background processes started by this session still running (argv names its scratchpad). */
+  backgroundJobs: number;
+  /** Peer sessions spawned by this session whose process is still alive. */
+  spawnedActive: number;
+  /** Peer sessions spawned by this session that have ended. */
+  spawnedCompleted: number;
+  /** Cross-session messages received / sent in this session. */
+  messagesIn: number;
+  messagesOut: number;
+  /** Name of the most recent peer messaged with, if the evidence carried one. */
+  lastPeerName?: string;
+  /** Epoch ms of the most recent relation observation. */
+  lastRelationAt?: number;
+}
+
 export interface SessionInfo {
   id: string;
   port: number;
@@ -522,6 +549,10 @@ export interface SessionInfo {
    *  when the last child exits would pin `8 running` on the row forever — the
    *  same one-way latch that `usageStale` hit twice. */
   subagents?: SubagentSummary;
+  /** Cross-session coordination census — see CoordinationSummary. Same
+   *  emission rule as `subagents`: present with zeros once observed, absent
+   *  only when this session has never had a relation. */
+  coordination?: CoordinationSummary;
 }
 
 export interface SessionsListEvent {

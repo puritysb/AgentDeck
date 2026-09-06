@@ -2125,6 +2125,18 @@ function sampleEventRowToTrajectory(r: ApmeSampleEventRow): TrajectoryEvent | nu
       return { ...base, kind: 'state', from: (p.from as string | null) ?? null, to: (p.to as string) ?? 'unknown' };
     case 'info':
       return { ...base, kind: 'info', label: (p.label as string) ?? 'info', detail: (p.detail as string | null) ?? null };
+    case 'relation':
+      return {
+        ...base,
+        kind: 'relation',
+        relation: p.relation === 'spawned' || p.relation === 'messaged' ? p.relation : 'waiting_on',
+        direction: p.direction === 'in' ? 'in' : 'out',
+        phase: p.phase === 'closed' ? 'closed' : 'open',
+        peerSessionId: (p.peerSessionId as string | null) ?? null,
+        peerName: (p.peerName as string | null) ?? null,
+        evidence: (p.evidence as string) ?? 'unknown',
+        detail: (p.detail as string | null) ?? null,
+      };
     default:
       return null;
   }

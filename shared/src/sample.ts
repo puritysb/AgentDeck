@@ -57,7 +57,8 @@ export type TrajectoryEventKind =
   | 'tool'
   | 'subagent'
   | 'state'
-  | 'info';
+  | 'info'
+  | 'relation';
 
 export type ToolStatus = 'pending' | 'success' | 'error';
 
@@ -115,6 +116,40 @@ export interface SubagentEvent extends TrajectoryEventBase {
   durationMs?: number | null;
 }
 
+/** How this session coordinates with OTHER sessions or processes — the
+ *  evidence a harness leaves when work is divided without a SubagentStart:
+ *
+ *   - `spawned`: a peer session whose process is a descendant of this one
+ *     (`claude -p` workers launched from a background Bash), or the intent
+ *     to spawn one (`bash_claude_p`) before the child has been observed.
+ *   - `messaged`: a cross-session message (Claude Code `SendMessage` on the
+ *     sender, the `<cross-session-message>` envelope on the receiver).
+ *   - `waiting_on`: a background process this session started and will be
+ *     re-invoked by (its argv names this session's scratchpad), running
+ *     while the session's own turn is closed.
+ *
+ *  A relation is observed, never inferred: same-project membership creates
+ *  none, and a peer that cannot be resolved stays `peerSessionId: null`
+ *  with only the name/pid the evidence itself carried. */
+export interface RelationEvent extends TrajectoryEventBase {
+  kind: 'relation';
+  relation: 'spawned' | 'messaged' | 'waiting_on';
+  /** `out`: this session did it (spawned / sent / started); `in`: it was done to this session. */
+  direction: 'in' | 'out';
+  /** `open` while the peer/process is still running; `closed` once it ended
+   *  or for an instantaneous event (a message). */
+  phase: 'open' | 'closed';
+  /** Bare session id of the peer when resolvable. */
+  peerSessionId?: string | null;
+  /** The name/handle the evidence carried (`from-name`, `to`, a command basename). */
+  peerName?: string | null;
+  /** Which observation produced this row (`process_ancestry`, `bash_claude_p`,
+   *  `send_message_tool`, `cross_session_message`, `background_process`). */
+  evidence: string;
+  /** Short free text: the message summary, the process command, … */
+  detail?: string | null;
+}
+
 /** An agent-state machine transition (idle → processing → awaiting …). */
 export interface StateTransitionEvent extends TrajectoryEventBase {
   kind: 'state';
@@ -136,7 +171,8 @@ export type TrajectoryEvent =
   | ToolEvent
   | SubagentEvent
   | StateTransitionEvent
-  | InfoEvent;
+  | InfoEvent
+  | RelationEvent;
 
 // ─── Scores (filled by the Scorer registry) ───────────────────────────────────
 

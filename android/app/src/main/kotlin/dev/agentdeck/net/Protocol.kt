@@ -368,6 +368,37 @@ data class SessionInfo(
     // because a field that vanishes when the last child exits latches its last
     // count forever under retain-on-absent merging.
     val subagents: SubagentSummary? = null,
+    /** Cross-session coordination census — see [CoordinationSummary]. Same
+     *  emission rule as [subagents]: zeros once observed, absent only when the
+     *  session has never had a relation. */
+    val coordination: CoordinationSummary? = null,
+)
+
+/**
+ * Live cross-session coordination census — the second axis beside
+ * [SessionInfo.subagents], for work divided WITHOUT a SubagentStart:
+ * `claude -p` workers spawned from a background Bash, peer sessions messaged
+ * over SendMessage, and background processes the session is waiting on.
+ * Observed only, never inferred from shared project membership. Mirrors
+ * shared CoordinationSummary.
+ */
+@Serializable
+data class CoordinationSummary(
+    /** Background processes started by this session still running. */
+    val backgroundJobs: Int = 0,
+    /** Peer sessions spawned by this session whose process is still alive. */
+    val spawnedActive: Int = 0,
+    /** Peer sessions spawned by this session that have ended. */
+    val spawnedCompleted: Int = 0,
+    /** Cross-session messages received / sent in this session. */
+    val messagesIn: Int = 0,
+    val messagesOut: Int = 0,
+    /** Name of the most recent peer messaged with, if the evidence carried one. */
+    val lastPeerName: String? = null,
+    /** Epoch ms of the most recent relation observation (flexible: the Swift
+     *  daemon may write a fractional Double — see [SubagentSummary.lastCompletedAt]). */
+    @Serializable(with = FlexibleLongSerializer::class)
+    val lastRelationAt: Long? = null,
 )
 
 /**

@@ -25,6 +25,7 @@ import { PassiveSessionObserver } from './passive-observer.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
 import { SubagentTimelineTracker } from './subagent-timeline.js';
+import { CoordinationTracker, type RelationObservation } from './coordination-evidence.js';
 import { HookOpenCodeSessions } from './hook-opencode-sessions.js';
 import {
   getRemoteSession,
@@ -1768,6 +1769,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Assigned after BridgeCore exists. The HTTP handler reads it only after
   // startup; nullable keeps the tiny listen→core initialization window safe.
   let subagentTimeline: SubagentTimelineTracker | null = null;
+  // Cross-session coordination (spawned workers, peer messages, background
+  // jobs) — the second census axis beside `subagents`. See coordination-evidence.ts.
+  const coordination = new CoordinationTracker();
 
   // The learning pack is immutable for one daemon lifetime. Package upgrades
   // arrive with a new AgentDeck build; validating once keeps every sleeping
@@ -2981,6 +2985,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (childResult?.sampleEvent) {
           apme?.collector.noteSubagentLifecycle(earlyHookSid, childResult.sampleEvent);
         }
+        if (childResult?.infoEvent) {
+          apme?.collector.noteInfo(earlyHookSid, childResult.infoEvent);
+        }
         const childHook = childResult?.childOnly === true;
         if (childHook) {
           // Child activity is observation-only. Never let child PreToolUse
@@ -3198,6 +3205,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // Every child the session had ends with it — a lost SubagentStop
           // must not pin "+N" on a row that no longer exists.
           subagentTimeline?.forget(hookSid);
+          coordination.forget(hookSid);
           const rows = core.bridgeTimeline.getHistoryForSession(hookSid, undefined, 24);
           let lastStart: TimelineEntry | undefined;
           let lastCompletionTs = 0;
@@ -3255,6 +3263,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // vocabulary (user_prompt_submit / tool_start / …), so raw
             // codex_* / opencode_* names would silently skip turn management.
             apme.collector.ingestHook(hookSid, boundary, json);
+          }
+          // Coordination evidence carried BY the hook itself: a received
+          // cross-session envelope, a SendMessage call, a `claude -p` launch.
+          // After ingestHook so a prompt's turn is open before the relation
+          // is attached to it. Process-table evidence (ancestry, background
+          // jobs) arrives on the observer tick instead.
+          if (boundary === 'user_prompt_submit' && hookPromptText) {
+            persistRelation(coordination.noteMessageIn(hookSid, hookPromptText));
+          } else if (eventName === 'PostToolUse' || boundary === 'tool_end') {
+            persistRelation(coordination.noteToolCall(hookSid, json.tool_name, json.tool_input));
           }
           // Direct `claude` runs reach the daemon only via these hooks, which
           // never carry the model — so every such run persisted model_id=NULL.
@@ -4565,6 +4583,30 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // The observer scans in the background now (collect() returns the cache
   // immediately). When a scan lands fresh observations, push them out via
   // the debounced broadcast so clients don't wait for the next 10 s poll.
+  // A relation lands on the session's active APME task; a change to any
+  // census rebroadcasts the roster, because a background job starting or a
+  // spawned worker exiting moves nothing else a client could notice.
+  const persistRelation = (rel: RelationObservation | null): boolean => {
+    if (!rel) return false;
+    apme?.collector.noteRelation(rel.sessionId, rel);
+    return true;
+  };
+  // Driven by its own timer, not by `onRefreshed`: that edge fires only when
+  // the observed PROCESS SET changes, and a background job appearing or a
+  // worker finishing changes the process table without changing that set —
+  // the same trap the OpenClaw transcript feed fell into.
+  const coordinationTick = () => {
+    const peers = passiveSessionObserver.collect([])
+      .filter((s) => typeof s.pid === 'number' && s.pid > 0)
+      .map((s) => ({ sessionId: rawSessionId(s.id), pid: s.pid }));
+    let changed = false;
+    for (const rel of coordination.observe(passiveSessionObserver.processes(), peers)) {
+      if (persistRelation(rel)) changed = true;
+    }
+    if (changed) core.broadcastSessionsList().catch(() => {});
+  };
+  const coordinationTimer = setInterval(coordinationTick, 5_000);
+  coordinationTimer.unref?.();
   passiveSessionObserver.onRefreshed = () => {
     // Kiro pushes nothing: no `kiro_*` hook has ever reached this daemon, so
     // without a producer here its session shows in the HUD while the timeline
@@ -4677,6 +4719,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // while these rows are `observed:<agent>:<uuid>`, so normalize before the
     // lookup — the two id forms are the standing trap here.
     const subagentCensus = subagentTimeline?.summaries() ?? new Map();
+    const coordinationCensus = coordination.summaries();
     const enrichedSessions = [...sessions, ...observed, ...remote].map((s) => {
       // On-demand review badge (REVIEW tile verdict / REVIEWING state) —
       // applies to every session type, managed included.
@@ -4686,7 +4729,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // field that disappears when the last child exits latches "8 running" on
       // every client that merges retain-on-absent.
       const census = subagentCensus.get(rawSessionId(withReview.id));
-      const withCensus = census ? { ...withReview, subagents: census } : withReview;
+      const withSubagents = census ? { ...withReview, subagents: census } : withReview;
+      // Same emission rule for the coordination census: zeros once observed.
+      const coord = coordinationCensus.get(rawSessionId(withReview.id));
+      const withCensus = coord ? { ...withSubagents, coordination: coord } : withSubagents;
       if (withCensus.elapsedSec != null || !withCensus.startedAt) return withCensus;
       const sec = Math.round((now - Date.parse(withCensus.startedAt)) / 1000);
       return Number.isFinite(sec) && sec >= 0 ? { ...withCensus, elapsedSec: sec } : withCensus;

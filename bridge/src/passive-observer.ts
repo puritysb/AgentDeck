@@ -235,6 +235,12 @@ export class PassiveSessionObserver {
    *  without the enricher ever blocking on the scan. */
   onRefreshed: (() => void) | undefined;
 
+  /** The process table the last scan read. Exposed so a producer that needs
+   *  ancestry or argv (the coordination tracker) can reuse the `ps` this
+   *  observer already pays for instead of running a second one per tick. */
+  private lastProcesses: ProcInfo[] = [];
+  processes(): ProcInfo[] { return this.lastProcesses; }
+
   /**
    * Returns the cached observed sessions immediately and, when the cache is
    * stale (≥ SCAN_INTERVAL_MS), kicks off a background rescan. The scan used
@@ -258,6 +264,7 @@ export class PassiveSessionObserver {
 
   private async scan(managedSessions: EnrichedSession[]): Promise<void> {
     const processes = await collectProcessInfo();
+    this.lastProcesses = processes;
     const observed = [
       ...collectClaudeSessions(processes),
       ...(await collectCodexSessions(processes, this.codexRolloutCache)),

@@ -4847,6 +4847,38 @@ final class DaemonServer {
     // MARK: - Hook Events
 
     /// Collapse child/team lifecycle into existing Timeline row types.
+    /// Cross-session coordination evidence a hook carries on its own. Mirrors
+    /// the hook half of bridge/src/coordination-evidence.ts: the receiver's
+    /// `<cross-session-message>` envelope (sender pid → session through the
+    /// pushed-session table) and the sender's `SendMessage` tool input.
+    private func noteCoordinationEvidence(event: String, json: [String: Any], sessionId: String?) {
+        guard let sid = sessionId, let collector = apmeCollector else { return }
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        func sessionForPid(_ pid: Int?) -> String? {
+            guard let pid else { return nil }
+            return pushedSessionsById.values.first { $0.pid == pid }?.id
+        }
+        // Raw hook names: Claude posts `UserPromptSubmit` / `PostToolUse`, the
+        // agent-neutral observers post `*_user_prompt_submit` / `*_tool_end`.
+        let isPrompt = event == "UserPromptSubmit" || event.hasSuffix("user_prompt_submit")
+        let isToolEnd = event == "PostToolUse" || event.hasSuffix("tool_end")
+        if isPrompt, let prompt = json["prompt"] as? String,
+           let env = ApmeCollector.parseCrossSessionEnvelope(prompt) {
+            collector.noteRelation(
+                sessionId: sid, relation: "messaged", direction: "in", phase: "closed",
+                peerSessionId: sessionForPid(env.fromPid), peerName: env.fromName,
+                evidence: "cross_session_message", detail: env.body.isEmpty ? nil : env.body,
+                ts: now, key: "\(env.fromPid.map(String.init) ?? env.fromName ?? "peer"):\(now)")
+        } else if isToolEnd, (json["tool_name"] as? String) == "SendMessage",
+                  let target = ApmeCollector.parseSendMessageTarget(json["tool_input"] as? [String: Any]) {
+            collector.noteRelation(
+                sessionId: sid, relation: "messaged", direction: "out", phase: "closed",
+                peerSessionId: sessionForPid(target.peerPid), peerName: target.peerName,
+                evidence: "send_message_tool", detail: target.summary,
+                ts: now, key: "\(target.peerPid.map(String.init) ?? target.peerName ?? "peer"):\(now)")
+        }
+    }
+
     /// Returning true means the caller must stop: child hooks are never parent
     /// session state, approval, command, or APME input.
     private func handleSubagentTimelineHook(
@@ -4959,10 +4991,16 @@ final class DaemonServer {
         if event == "task_completed" {
             let subject = clean(json["task_subject"]) ?? clean(json["task_description"])
             let summary = subject.flatMap(TimelineSummarizer.extractTopicHint) ?? subject ?? "Completed"
+            // A teammate name is the one thing that makes this a TEAM event;
+            // the ordinary TaskCreate/TaskUpdate checklist carries none, and
+            // calling that "Team Subagent" invented a worker (2026-09-06: six
+            // finished "Subagent" branches on a session that ran no children).
+            let teammate = clean(json["teammate_name"]).map { String($0.prefix(28)) }
+            let taskLabel = teammate.map { "Team \($0)" } ?? "Task done"
             var entry = DaemonTimelineEntry(
                 ts: now,
                 type: "tool_resolved",
-                raw: "Team \(label) · \(String(summary.prefix(96)))",
+                raw: "\(taskLabel) · \(String(summary.prefix(96)))",
                 detail: nil,
                 approvalId: nil,
                 status: nil,
@@ -4975,13 +5013,13 @@ final class DaemonServer {
             entry.endedAt = now
             entry.summaryKind = subject == nil ? "none" : "heuristic"
             await timelineStore.add(entry, bypassSuppression: true)
-            apmeCollector?.noteSubagentLifecycle(
+            // Observation-only, as an `info` annotation — never a `subagent`
+            // completion the collaboration lens would draw as a child branch.
+            apmeCollector?.noteInfo(
                 sessionId: sid,
-                id: clean(json["task_id"]) ?? "team:\(label):\(Int(now))",
-                name: label,
-                phase: "completed",
-                ts: Int(now),
-                summary: summary
+                label: teammate == nil ? "task_completed" : "team_task_completed",
+                detail: summary,
+                ts: Int(now)
             )
             broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
             return true
@@ -5669,6 +5707,11 @@ final class DaemonServer {
         if !apmeHandledEarly, let hook = normalizedApmeHook {
             apmeCollector?.handleHook(event: hook.event, data: hook.payload)
         }
+        // Coordination evidence carried BY the hook itself (the Node daemon's
+        // `CoordinationTracker` hook half): a received cross-session envelope
+        // and a SendMessage call. Process-table evidence (spawned workers,
+        // background jobs) is Node-only — the sandboxed daemon has no ps.
+        noteCoordinationEvidence(event: event, json: json, sessionId: sessionId)
 
         // Attribute the next state_update + timeline entries to the session
         // that fired this hook: remember the sessionId, and mirror the

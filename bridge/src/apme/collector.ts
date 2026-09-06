@@ -1259,6 +1259,65 @@ export class ApmeCollector {
     return true;
   }
 
+  /** Persist a free-form annotation on the session's active task (a task-list
+   *  item checked off, a team event without a child identity). Returns false
+   *  when no task is open — there is nothing honest to attach it to. */
+  noteInfo(sessionId: string, event: { label: string; detail?: string | null; ts?: number }): boolean {
+    if (!this.store.enabled) return false;
+    const label = event.label.trim();
+    if (!label) return false;
+    const ctx = this.sampleCtxForTurn(sessionId);
+    if (!ctx) return false;
+    const ts = event.ts ?? Date.now();
+    this.appendSampleEvent(ctx, {
+      kind: 'info',
+      ts,
+      dedupCore: `${label}:${ts}:${event.detail ?? ''}`,
+      payloadObj: { label, ...(event.detail ? { detail: event.detail } : {}) },
+    });
+    return true;
+  }
+
+  /** Persist a cross-session coordination observation (`RelationEvent`) on
+   *  the session's active task. Like child lifecycle, this is evidence for the
+   *  work board and the collaboration lens, never a steerable session or a
+   *  parent link guessed from project membership: the producer
+   *  (`CoordinationTracker`) only calls this with what a process table, a
+   *  SendMessage tool call or a cross-session envelope actually said. */
+  noteRelation(sessionId: string, event: {
+    relation: 'spawned' | 'messaged' | 'waiting_on';
+    direction: 'in' | 'out';
+    phase: 'open' | 'closed';
+    peerSessionId?: string | null;
+    peerName?: string | null;
+    evidence: string;
+    detail?: string | null;
+    ts?: number;
+    /** Identity the dedup key is built on — the peer pid / session / message
+     *  hash — so a re-scan does not append the same open relation twice. */
+    key: string;
+  }): boolean {
+    if (!this.store.enabled) return false;
+    const ctx = this.sampleCtxForTurn(sessionId);
+    if (!ctx) return false;
+    const ts = event.ts ?? Date.now();
+    this.appendSampleEvent(ctx, {
+      kind: 'relation',
+      ts,
+      dedupCore: `${event.relation}:${event.direction}:${event.phase}:${event.key}`,
+      payloadObj: {
+        relation: event.relation,
+        direction: event.direction,
+        phase: event.phase,
+        ...(event.peerSessionId ? { peerSessionId: event.peerSessionId } : {}),
+        ...(event.peerName ? { peerName: event.peerName } : {}),
+        evidence: event.evidence,
+        ...(event.detail ? { detail: event.detail } : {}),
+      },
+    });
+    return true;
+  }
+
   /** Merge instead of replacing the sample identity header. Model updates can
    *  arrive after subagent starts (and vice versa); overwriting model_config
    *  here was why a future subagents producer would have appeared to work and

@@ -32,6 +32,13 @@ export interface SubagentTimelineResult {
    *  consumed before the normal APME path, so this explicit handoff is the
    *  only honest producer for SampleModelConfig.subagents and graph nodes. */
   sampleEvent?: SubagentSampleEvent;
+  /** A team/task-list completion is NOT a child agent. It used to be handed
+   *  back as a `subagent` completion with the task id as the child id and
+   *  "Subagent" as its name, so a session that ran no children at all rendered
+   *  six finished "Subagent" branches — one per TaskCreate item it had
+   *  checked off (measured 2026-09-06 on a claude-glm session). It stays
+   *  observation-only, but as an `info` annotation on the trajectory. */
+  infoEvent?: { label: string; detail?: string; ts: number };
 }
 
 export interface SubagentSampleEvent {
@@ -311,12 +318,16 @@ export class SubagentTimelineTracker {
 
     if (event === 'task_completed') {
       const endedAt = this.now();
-      const label = agentLabel(hook.payload);
       const summary = completionSummary(hook.payload);
+      // A teammate name is the one thing that makes this a TEAM event; the
+      // ordinary TaskCreate/TaskUpdate checklist carries none, and calling
+      // that "Team Subagent" invented a worker.
+      const teammate = nonEmptyString(hook.payload.teammate_name);
+      const label = teammate ? `Team ${cap(teammate, 28)}` : 'Task done';
       this.emit({
         ts: endedAt,
         type: 'tool_resolved',
-        raw: `Team ${label} · ${summary.text}`,
+        raw: `${label} · ${summary.text}`,
         sessionId: hook.sessionId,
         agentType: hook.agentType,
         projectName: hook.projectName,
@@ -325,12 +336,10 @@ export class SubagentTimelineTracker {
       });
       return {
         childOnly: true,
-        sampleEvent: {
-          id: nonEmptyString(hook.payload.task_id) ?? `team:${label}:${endedAt}`,
-          name: label,
-          phase: 'completed',
+        infoEvent: {
+          label: teammate ? 'team_task_completed' : 'task_completed',
+          detail: summary.text,
           ts: endedAt,
-          summary: summary.text,
         },
       };
     }

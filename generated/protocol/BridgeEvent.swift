@@ -2262,6 +2262,10 @@ struct ADSessionInfo: Codable, Equatable {
     var askGroupIndex: Double?
     var contextPercent: Double?
     var controlMode: ADControlMode?
+    /// Cross-session coordination census — see CoordinationSummary. Same emission rule as
+    /// `subagents`: present with zeros once observed, absent only when this session has never
+    /// had a relation.
+    var coordination: ADCoordinationSummary?
     var currentTask: String?
     var currentTool: String?
     var cwd: String?
@@ -2335,6 +2339,7 @@ struct ADSessionInfo: Codable, Equatable {
         case askGroupIndex = "askGroupIndex"
         case contextPercent = "contextPercent"
         case controlMode = "controlMode"
+        case coordination = "coordination"
         case currentTask = "currentTask"
         case currentTool = "currentTool"
         case cwd = "cwd"
@@ -2393,6 +2398,7 @@ extension ADSessionInfo {
         askGroupIndex: Double?? = nil,
         contextPercent: Double?? = nil,
         controlMode: ADControlMode?? = nil,
+        coordination: ADCoordinationSummary?? = nil,
         currentTask: String?? = nil,
         currentTool: String?? = nil,
         cwd: String?? = nil,
@@ -2431,6 +2437,7 @@ extension ADSessionInfo {
             askGroupIndex: askGroupIndex ?? self.askGroupIndex,
             contextPercent: contextPercent ?? self.contextPercent,
             controlMode: controlMode ?? self.controlMode,
+            coordination: coordination ?? self.coordination,
             currentTask: currentTask ?? self.currentTask,
             currentTool: currentTool ?? self.currentTool,
             cwd: cwd ?? self.cwd,
@@ -2475,6 +2482,98 @@ extension ADSessionInfo {
 enum ADControlMode: String, Codable, Equatable {
     case managed = "managed"
     case observed = "observed"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// Cross-session coordination census — see CoordinationSummary. Same emission rule as
+/// `subagents`: present with zeros once observed, absent only when this session has never
+/// had a relation.
+///
+/// Live cross-session coordination census for one session — the second axis beside
+/// `subagents`, for work divided WITHOUT a SubagentStart: `claude -p` workers spawned from a
+/// background Bash, peer sessions messaged over SendMessage, and background processes the
+/// session is waiting on. Measured 2026-09-06: a parent whose turn had closed read `idle` on
+/// every surface while six spawned workers ran and a 22-minute background job it would be
+/// re-invoked by was still going. Observed only — never inferred from shared project
+/// membership. Emitted with explicit zeros once a session has ever had a relation
+/// (retain-on-absent clients would otherwise latch the last count).
+// MARK: - ADCoordinationSummary
+struct ADCoordinationSummary: Codable, Equatable {
+    /// Background processes started by this session still running (argv names its scratchpad).
+    var backgroundJobs: Double
+    /// Name of the most recent peer messaged with, if the evidence carried one.
+    var lastPeerName: String?
+    /// Epoch ms of the most recent relation observation.
+    var lastRelationAt: Double?
+    /// Cross-session messages received / sent in this session.
+    var messagesIn: Double
+    var messagesOut: Double
+    /// Peer sessions spawned by this session whose process is still alive.
+    var spawnedActive: Double
+    /// Peer sessions spawned by this session that have ended.
+    var spawnedCompleted: Double
+
+    enum CodingKeys: String, CodingKey {
+        case backgroundJobs = "backgroundJobs"
+        case lastPeerName = "lastPeerName"
+        case lastRelationAt = "lastRelationAt"
+        case messagesIn = "messagesIn"
+        case messagesOut = "messagesOut"
+        case spawnedActive = "spawnedActive"
+        case spawnedCompleted = "spawnedCompleted"
+    }
+}
+
+// MARK: ADCoordinationSummary convenience initializers and mutators
+
+extension ADCoordinationSummary {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADCoordinationSummary.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        backgroundJobs: Double? = nil,
+        lastPeerName: String?? = nil,
+        lastRelationAt: Double?? = nil,
+        messagesIn: Double? = nil,
+        messagesOut: Double? = nil,
+        spawnedActive: Double? = nil,
+        spawnedCompleted: Double? = nil
+    ) -> ADCoordinationSummary {
+        return ADCoordinationSummary(
+            backgroundJobs: backgroundJobs ?? self.backgroundJobs,
+            lastPeerName: lastPeerName ?? self.lastPeerName,
+            lastRelationAt: lastRelationAt ?? self.lastRelationAt,
+            messagesIn: messagesIn ?? self.messagesIn,
+            messagesOut: messagesOut ?? self.messagesOut,
+            spawnedActive: spawnedActive ?? self.spawnedActive,
+            spawnedCompleted: spawnedCompleted ?? self.spawnedCompleted
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
 }
 
 /// On-demand review lifecycle for the REVIEW badge tile ('running' while the judge works).

@@ -612,6 +612,47 @@
       ],
       "type": "object"
     },
+    "CoordinationSummary": {
+      "additionalProperties": false,
+      "description": "Live cross-session coordination census for one session — the second axis beside `subagents`, for work divided WITHOUT a SubagentStart: `claude -p` workers spawned from a background Bash, peer sessions messaged over SendMessage, and background processes the session is waiting on. Measured 2026-09-06: a parent whose turn had closed read `idle` on every surface while six spawned workers ran and a 22-minute background job it would be re-invoked by was still going. Observed only — never inferred from shared project membership. Emitted with explicit zeros once a session has ever had a relation (retain-on-absent clients would otherwise latch the last count).",
+      "properties": {
+        "backgroundJobs": {
+          "description": "Background processes started by this session still running (argv names its scratchpad).",
+          "type": "number"
+        },
+        "lastPeerName": {
+          "description": "Name of the most recent peer messaged with, if the evidence carried one.",
+          "type": "string"
+        },
+        "lastRelationAt": {
+          "description": "Epoch ms of the most recent relation observation.",
+          "type": "number"
+        },
+        "messagesIn": {
+          "description": "Cross-session messages received / sent in this session.",
+          "type": "number"
+        },
+        "messagesOut": {
+          "type": "number"
+        },
+        "spawnedActive": {
+          "description": "Peer sessions spawned by this session whose process is still alive.",
+          "type": "number"
+        },
+        "spawnedCompleted": {
+          "description": "Peer sessions spawned by this session that have ended.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "backgroundJobs",
+        "spawnedActive",
+        "spawnedCompleted",
+        "messagesIn",
+        "messagesOut"
+      ],
+      "type": "object"
+    },
     "DeckSlotConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1179,6 +1220,10 @@
             "observed"
           ],
           "type": "string"
+        },
+        "coordination": {
+          "$ref": "#/definitions/CoordinationSummary",
+          "description": "Cross-session coordination census — see CoordinationSummary. Same emission rule as `subagents`: present with zeros once observed, absent only when this session has never had a relation."
         },
         "currentTask": {
           "type": "string"

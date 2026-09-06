@@ -2762,9 +2762,8 @@ void update() {
             // project (dim) — its own line under the name
             if (ph >= 56 && mc[i].name[0]) {
                 char projBuf[64];
-                const size_t sidLen = strlen(mc[i].sid);
-                snprintf(projBuf, sizeof(projBuf), "%s " LV_SYMBOL_BULLET " %s", mc[i].name,
-                         sidLen > 6 ? mc[i].sid + sidLen - 6 : mc[i].sid);
+                strncpy(projBuf, mc[i].name, sizeof(projBuf) - 1);
+                projBuf[sizeof(projBuf) - 1] = '\0';
                 sanitizeIps10Text(projBuf);
                 lv_label_set_text(cellProj[i], projBuf);
                 lv_obj_clear_flag(cellProj[i], LV_OBJ_FLAG_HIDDEN);
@@ -2773,7 +2772,7 @@ void update() {
             }
 
             // tool box (working/awaiting, when there's room)
-            if (!idle && mc[i].tool[0] && ph >= 300) {
+            if (!idle && mc[i].tool[0] && ph >= 80) {
                 char tb[64]; snprintf(tb, sizeof(tb), LV_SYMBOL_PLAY " %s", mc[i].tool);
                 sanitizeIps10Text(tb);
                 lv_label_set_text(cellTool[i], tb);
@@ -2821,7 +2820,7 @@ void update() {
                 Utf8::utf8TrimEnd(full);   // byte cap can split a 한글 glyph
                 sanitizeIps10Text(full);
                 lv_label_set_text(cellBody[i], full);
-                lv_obj_set_height(cellBody[i], ph >= 300 ? 80 : 40);
+                lv_obj_set_height(cellBody[i], ph >= 216 ? 80 : 40);
                 lv_obj_clear_flag(cellBody[i], LV_OBJ_FLAG_HIDDEN);
             } else {
                 lv_obj_add_flag(cellBody[i], LV_OBJ_FLAG_HIDDEN);
@@ -2840,7 +2839,7 @@ void update() {
             // footer: model · elapsed (idle cards show just header + this). Hidden when
             // the inline buttons own the space.
             char el[12]; ips10FormatElapsed(mc[i].elapsed, el, sizeof(el));
-            if (!showButtons && ph >= 300 && (mc[i].model[0] || el[0])) {
+            if (!showButtons && ph >= 64 && (mc[i].model[0] || el[0])) {
                 char fb[56];
                 if (mc[i].model[0] && el[0]) snprintf(fb, sizeof(fb), "%s " LV_SYMBOL_BULLET " %s", mc[i].model, el);
                 else if (mc[i].model[0])     snprintf(fb, sizeof(fb), "%s", mc[i].model);

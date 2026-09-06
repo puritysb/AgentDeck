@@ -692,6 +692,82 @@ final class ApmeCollector {
         return true
     }
 
+    /// Persist a free-form annotation on the session's active task (a task-list
+    /// item checked off, a team event without a child identity). Mirrors the
+    /// Node collector's `noteInfo`: a `TaskCompleted` hook is NOT a child agent.
+    @discardableResult
+    func noteInfo(sessionId: String, label: String, detail: String?, ts: Int) -> Bool {
+        let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanLabel.isEmpty, let task = sessionToTask[sessionId] else { return false }
+        var payload: [String: Any] = ["label": cleanLabel]
+        if let detail, !detail.isEmpty { payload["detail"] = detail }
+        let turnIndex = task.lastTurnIndex ?? task.firstTurnIndex ?? 0
+        return appendSampleEvent(
+            taskId: task.id, runId: task.runId, turnIndex: turnIndex,
+            kind: "info", core: "\(cleanLabel):\(ts):\(detail ?? "")", ts: ts, payload: payload)
+    }
+
+    /// Persist a cross-session coordination observation (`RelationEvent`) on
+    /// the session's active task. Mirrors the Node collector's `noteRelation`:
+    /// evidence for the collaboration lens, never a steerable session or a
+    /// parent link guessed from project membership.
+    @discardableResult
+    func noteRelation(
+        sessionId: String, relation: String, direction: String, phase: String,
+        peerSessionId: String?, peerName: String?, evidence: String, detail: String?,
+        ts: Int, key: String
+    ) -> Bool {
+        guard let task = sessionToTask[sessionId] else { return false }
+        var payload: [String: Any] = [
+            "relation": relation, "direction": direction, "phase": phase, "evidence": evidence,
+        ]
+        if let peerSessionId, !peerSessionId.isEmpty { payload["peerSessionId"] = peerSessionId }
+        if let peerName, !peerName.isEmpty { payload["peerName"] = peerName }
+        if let detail, !detail.isEmpty { payload["detail"] = detail }
+        let turnIndex = task.lastTurnIndex ?? task.firstTurnIndex ?? 0
+        return appendSampleEvent(
+            taskId: task.id, runId: task.runId, turnIndex: turnIndex,
+            kind: "relation", core: "\(relation):\(direction):\(phase):\(key)", ts: ts, payload: payload)
+    }
+
+    /// The receiver's side of a Claude Code cross-session message. Captured
+    /// live from 2.1.261: `<cross-session-message from="uds:/…/<pid>.sock"
+    /// from-name="…" from-mode="…">` — the socket basename is the SENDER's pid.
+    /// Mirrors bridge/src/coordination-evidence.ts `parseCrossSessionEnvelope`.
+    nonisolated static func parseCrossSessionEnvelope(_ prompt: String) -> (fromPid: Int?, fromName: String?, body: String)? {
+        guard let open = prompt.range(of: "<cross-session-message"),
+              let close = prompt[open.upperBound...].firstIndex(of: ">") else { return nil }
+        let attrs = String(prompt[open.upperBound..<close])
+        func attr(_ name: String) -> String? {
+            guard let r = attrs.range(of: "\(name)=\"") else { return nil }
+            let rest = attrs[r.upperBound...]
+            guard let end = rest.firstIndex(of: "\"") else { return nil }
+            let v = String(rest[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return v.isEmpty ? nil : v
+        }
+        var pid: Int? = nil
+        if let from = attr("from"), let sock = from.split(separator: "/").last,
+           sock.hasSuffix(".sock"), let n = Int(sock.dropLast(5)), n > 0 { pid = n }
+        var body = String(prompt[prompt.index(after: close)...])
+        if let blank = body.range(of: "\n\\s*\n", options: .regularExpression) {
+            body = String(body[blank.upperBound...])
+        }
+        if let closing = body.range(of: "</cross-session-message>") { body = String(body[..<closing.lowerBound]) }
+        let flat = body.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        return (pid, attr("from-name"), String(flat.prefix(140)))
+    }
+
+    /// The `to` of a SendMessage tool call: a session name or a `uds:` path.
+    nonisolated static func parseSendMessageTarget(_ input: [String: Any]?) -> (peerName: String?, peerPid: Int?, summary: String?)? {
+        guard let to = (input?["to"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !to.isEmpty else { return nil }
+        var pid: Int? = nil
+        if to.hasPrefix("uds:"), let sock = to.split(separator: "/").last,
+           sock.hasSuffix(".sock"), let n = Int(sock.dropLast(5)), n > 0 { pid = n }
+        let summaryRaw = (input?["summary"] as? String) ?? (input?["message"] as? String)
+        let summary = summaryRaw.map { String($0.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").prefix(140)) }
+        return (pid == nil ? to : nil, pid, (summary?.isEmpty ?? true) ? nil : summary)
+    }
+
     // MARK: - Sibling session tracking
 
     /// Called when a sibling session bridge registers in sessions.json.

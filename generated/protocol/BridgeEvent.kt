@@ -1158,6 +1158,14 @@ data class SessionInfo (
 
     val contextPercent: Double? = null,
     val controlMode: ControlMode? = null,
+
+    /**
+     * Cross-session coordination census — see CoordinationSummary. Same emission rule as
+     * `subagents`: present with zeros once observed, absent only when this session has never
+     * had a relation.
+     */
+    val coordination: CoordinationSummary? = null,
+
     val currentTask: String? = null,
     val currentTool: String? = null,
     val cwd: String? = null,
@@ -1268,6 +1276,54 @@ enum class ControlMode(val value: String) {
         }
     }
 }
+
+/**
+ * Cross-session coordination census — see CoordinationSummary. Same emission rule as
+ * `subagents`: present with zeros once observed, absent only when this session has never
+ * had a relation.
+ *
+ * Live cross-session coordination census for one session — the second axis beside
+ * `subagents`, for work divided WITHOUT a SubagentStart: `claude -p` workers spawned from a
+ * background Bash, peer sessions messaged over SendMessage, and background processes the
+ * session is waiting on. Measured 2026-09-06: a parent whose turn had closed read `idle` on
+ * every surface while six spawned workers ran and a 22-minute background job it would be
+ * re-invoked by was still going. Observed only — never inferred from shared project
+ * membership. Emitted with explicit zeros once a session has ever had a relation
+ * (retain-on-absent clients would otherwise latch the last count).
+ */
+data class CoordinationSummary (
+    /**
+     * Background processes started by this session still running (argv names its scratchpad).
+     */
+    val backgroundJobs: Double,
+
+    /**
+     * Name of the most recent peer messaged with, if the evidence carried one.
+     */
+    val lastPeerName: String? = null,
+
+    /**
+     * Epoch ms of the most recent relation observation.
+     */
+    val lastRelationAt: Double? = null,
+
+    /**
+     * Cross-session messages received / sent in this session.
+     */
+    val messagesIn: Double,
+
+    val messagesOut: Double,
+
+    /**
+     * Peer sessions spawned by this session whose process is still alive.
+     */
+    val spawnedActive: Double,
+
+    /**
+     * Peer sessions spawned by this session that have ended.
+     */
+    val spawnedCompleted: Double
+)
 
 /**
  * On-demand review lifecycle for the REVIEW badge tile ('running' while the judge works).

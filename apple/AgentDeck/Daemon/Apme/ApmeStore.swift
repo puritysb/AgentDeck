@@ -1206,6 +1206,16 @@ final class ApmeStore: @unchecked Sendable {
         case "state":
             out["from"] = p["from"]
             out["to"] = p["to"] as? String ?? "unknown"
+        case "relation":
+            // Mirrors bridge/src/apme/store.ts sampleEventRowToTrajectory.
+            let relation = p["relation"] as? String
+            out["relation"] = (relation == "spawned" || relation == "messaged") ? relation! : "waiting_on"
+            out["direction"] = (p["direction"] as? String) == "in" ? "in" : "out"
+            out["phase"] = (p["phase"] as? String) == "closed" ? "closed" : "open"
+            out["peerSessionId"] = p["peerSessionId"]
+            out["peerName"] = p["peerName"]
+            out["evidence"] = p["evidence"] as? String ?? "unknown"
+            out["detail"] = p["detail"]
         default:
             out["label"] = p["label"] as? String ?? "info"
             out["detail"] = p["detail"]

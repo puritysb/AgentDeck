@@ -592,6 +592,10 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     /// because a field that vanishes when the last child exits latches its last
     /// count forever under retain-on-absent merging.
     var subagents: SubagentSummary?
+    /// Cross-session coordination census — see `CoordinationSummary`. Same
+    /// emission rule as `subagents`: zeros once observed, absent only when the
+    /// session has never had a relation.
+    var coordination: CoordinationSummary?
 }
 
 /// Live child-agent census for one session. See `SessionInfo.subagents`.
@@ -608,6 +612,27 @@ struct SubagentSummary: Codable, Sendable, Equatable {
     var completed: Int
     /// Epoch ms of the most recent child stop.
     var lastCompletedAt: Double?
+}
+
+/// Live cross-session coordination census — the second axis beside
+/// `subagents`, for work divided WITHOUT a SubagentStart: `claude -p` workers
+/// spawned from a background Bash, peer sessions messaged over SendMessage,
+/// and background processes the session is waiting on. Observed only, never
+/// inferred from shared project membership. Mirrors shared CoordinationSummary.
+struct CoordinationSummary: Codable, Sendable, Equatable {
+    /// Background processes started by this session still running.
+    var backgroundJobs: Int
+    /// Peer sessions spawned by this session whose process is still alive.
+    var spawnedActive: Int
+    /// Peer sessions spawned by this session that have ended.
+    var spawnedCompleted: Int
+    /// Cross-session messages received / sent in this session.
+    var messagesIn: Int
+    var messagesOut: Int
+    /// Name of the most recent peer messaged with, if the evidence carried one.
+    var lastPeerName: String?
+    /// Epoch ms of the most recent relation observation.
+    var lastRelationAt: Double?
 }
 
 // MARK: - Bridge Events (Bridge → Client)

@@ -142,6 +142,33 @@ describe('SubagentTimelineTracker', () => {
     ]);
   });
 
+  // Measured 2026-09-06: a claude-glm session that ran ZERO child agents
+  // carried six `subagent` completions named "Subagent" — one per TaskCreate
+  // item it checked off — and the collaboration lens drew six finished
+  // branches for it. A checklist item is an annotation, never a child.
+  it('records a task-list completion as info, never as a child agent', () => {
+    const entries: TimelineEntry[] = [];
+    const tracker = new SubagentTimelineTracker((entry) => entries.push(entry), () => 9_000);
+
+    const result = tracker.handle({
+      eventName: 'TaskCompleted',
+      payload: { task_id: '3', task_subject: 'b106 묶음 2/4 — 회사 4곳 원장 작성' },
+      sessionId: 'parent-1',
+      agentType: 'claude-code',
+    });
+
+    expect(result.childOnly).toBe(true);
+    expect(result.sampleEvent).toBeUndefined();
+    expect(result.infoEvent).toEqual({
+      label: 'task_completed',
+      detail: 'b106 묶음 2/4 — 회사 4곳 원장 작성',
+      ts: 9_000,
+    });
+    expect(result.censusChangedFor).toBeUndefined();
+    expect(tracker.summary('parent-1')).toBeNull();
+    expect(entries[0]).toMatchObject({ type: 'tool_resolved', raw: 'Task done · b106 묶음 2/4 — 회사 4곳 원장 작성' });
+  });
+
   it('recognizes Codex lifecycle names and preserves the provider', () => {
     const entries: TimelineEntry[] = [];
     const tracker = new SubagentTimelineTracker((entry) => entries.push(entry), () => 5_000);
