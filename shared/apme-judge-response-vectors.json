@@ -185,5 +185,36 @@
       ]
     },
     "accepted": true
+  },
+  {
+    "note": "a closed scratchpad above a verdict that was cut",
+    "why": "The case the ambiguity rule cannot see: a local reasoning model emits a thinking block containing a complete object, then is cut partway through the real verdict. Exactly ONE span closed, so nothing looks ambiguous \u2014 and taking it scores the draft. An unterminated `{` after the last closed span means the model was still writing when the cut landed, so what closed is not the answer.",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "<think>draft {\"overall\":0.5,\"summary\":\"draft\"}</think>\n{\"overall\":0.9,\"summary\":\"fin"
+          },
+          "finish_reason": "length"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "a scratchpad above the real verdict",
+    "why": "Two spans both carrying `overall`. Nothing was cut, so the gate has no objection; the parser refuses because it cannot know which is the answer, and a wrong score in `evals` is strictly worse than a skip. Node selected by field and Swift took the first block until this vector, which fails on whichever daemon still guesses.",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "<think>Let me score: {\"overall\":0.5,\"summary\":\"draft\"}</think>\n{\"overall\":0.9,\"summary\":\"final\"}"
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "accepted": true,
+    "verdict": false
   }
 ]

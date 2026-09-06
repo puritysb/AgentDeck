@@ -9979,7 +9979,7 @@ final class DaemonServer {
                     // saw `claude-opus-5` in the judge status until an eval
                     // happened to run. Node's probe reports the resolved
                     // config value here too, unprefixed.
-                    model: ApmeJudgeApi.resolveModel(config.judge.model),
+                    model: ApmeJudgeApi.resolveModel(config.judge.model, endpoint: config.judge.endpoint),
                     endpoint: nil,
                     checkedAt: checkedAt,
                     reason: nil

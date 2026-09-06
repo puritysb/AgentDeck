@@ -1879,7 +1879,12 @@ export function apiJudgeText(response: {
   stop_reason?: string | null;
   content?: Array<{ type?: string; text?: string }>;
 }): string {
-  const text = (response.content ?? [])
+  // `content` must be an ARRAY — the same hole just closed for `choices` in
+  // `judgeChatContent`. Without the guard a string or object map throws a
+  // TypeError instead of a judge error, while Swift's `as? [[String: Any]] ?? []`
+  // degrades to empty and raises a proper one.
+  const blocks = Array.isArray(response.content) ? response.content : [];
+  const text = blocks
     .filter((b) => b?.type === 'text' && typeof b.text === 'string')
     .map((b) => b.text as string)
     .join('\n')
@@ -1933,20 +1938,43 @@ export function judgeChatContent(payload: unknown, label: string): string {
   return content;
 }
 
-/** Whether `text` carries a JSON object that closed — the same extraction and
- *  repair `parseJudgeJson` performs, minus the rubric-level field checks. It
- *  has to share the repair step: a body the parser would repair but the gate
- *  refused would be rejected for being cut and then never looked at. */
+/**
+ * Whether a body the server says it CUT still holds the finished verdict.
+ *
+ * Two structural questions, both of them deliberately not "does it parse". The
+ * two daemons' JSON parsers do not agree on leniency — measured, Swift's
+ * `JSONSerialization` accepts the trailing commas Gemma 4 emits on long
+ * `task_rollup` prompts and Node's `JSON.parse` does not — so a gate phrased
+ * that way answers differently on each daemon, which is the one thing the
+ * shared vectors exist to prevent. The balanced scanners ARE identical, so
+ * these questions are. Whether a closed object is a USABLE verdict is
+ * `parseJudgeJson`'s job, where the leniency and the repair already live.
+ *
+ *  1. Did any `{…}` close at all. A body cut mid-object closes none.
+ *  2. Was the model still inside an object when the cut landed — i.e. is there
+ *     an unterminated `{` after the last closed one. This is the case the
+ *     ambiguity rule in `parseJudgeObject` cannot see: a local reasoning model
+ *     that emits `<think>{"overall":0.5}</think>` and is then cut partway
+ *     through the real `{"overall":0.9…` leaves exactly ONE closed span, so
+ *     nothing looks ambiguous and the scratchpad scores. The verdict that was
+ *     being written is the answer; a draft above it is not.
+ *
+ * A known and accepted cost: a body carrying the lost-opening-quote defect
+ * `repairJudgeJson` exists for desyncs the string-aware scanner, so at
+ * `finish_reason: length` it reads as cut and is refused even though the parser
+ * could have repaired it. That is identical on both daemons — which is the
+ * property that matters — and it needs BOTH defects at once to occur.
+ */
 function holdsCompleteJsonObject(text: string): boolean {
-  // Purely STRUCTURAL: did a `{…}` close. Deliberately not "does it parse".
-  // The two daemons' JSON parsers do not agree on leniency — measured, Swift's
-  // `JSONSerialization` accepts the trailing commas Gemma 4 emits and Node's
-  // `JSON.parse` does not — so a gate phrased as "does it parse" answers
-  // differently on each, which is the one thing the shared vectors exist to
-  // prevent. The balanced scanners ARE identical, so this question is. Whether
-  // the closed object is a usable verdict is `parseJudgeJson`'s job, where the
-  // leniency and the repair already live.
-  return extractFirstJsonBlock(text) !== null;
+  let end = -1;
+  for (let from = 0; ; ) {
+    const block = extractFirstJsonBlock(text, from);
+    if (block === null) break;
+    end = block.end;
+    from = block.end;
+  }
+  if (end < 0) return false;
+  return text.indexOf('{', end) < 0;
 }
 
 /** Every top-level balanced `{…}` span in `text`, then the greedy

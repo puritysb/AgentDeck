@@ -187,12 +187,14 @@ describe.each(['mlx', 'openai'] as const)('%s shared response contract', (backen
       fallbackToFoundationModels: false,
     });
     if (vector.accepted) {
-      // Accepted means accepted as a VERDICT, not merely returned by the gate —
-      // the same assertion macOS ApmeParseJudgeTests makes, so the vectors pin
-      // both daemons end to end rather than one at the transport and one at the
-      // parser.
+      // `accepted` is the transport gate; `verdict` (defaulting to it) is
+      // whether the parser must then produce one. Both are asserted here and in
+      // macOS ApmeParseJudgeTests, so the vectors pin both daemons end to end
+      // rather than one at the transport and one at the parser.
       const { text } = await result;
-      expect(parseJudgeJson(text)).not.toBeNull();
+      const wantsVerdict = (vector as { verdict?: boolean }).verdict ?? true;
+      if (wantsVerdict) expect(parseJudgeJson(text)).not.toBeNull();
+      else expect(parseJudgeJson(text)).toBeNull();
     } else {
       await expect(result).rejects.toThrow();
     }

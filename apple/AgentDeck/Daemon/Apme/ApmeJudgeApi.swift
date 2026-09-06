@@ -51,6 +51,13 @@ enum ApmeJudgeApi {
     /// forwards verbatim; the resolved model is logged either way so a 400 is
     /// diagnosable instead of silent.
     static func resolveModel(_ configured: String, endpoint: String? = nil) -> String {
+        // The placeholder is not a model on ANY endpoint. `ApmeJudgeConfig.model`
+        // defaults to the literal "default", so scoping this to
+        // api.anthropic.com made a user with a gateway and no `model` POST
+        // `"model": "default"` — a 400 this leg reports as `nil`, byte-identical
+        // to "no API key found".
+        if configured.isEmpty || configured == "default" { return defaultModel }
+        // Only the pass-through of a real, non-Anthropic id is endpoint-scoped.
         if let endpoint, !endpoint.isEmpty, endpoint != defaultEndpoint { return configured }
         return configured.hasPrefix("claude") ? configured : defaultModel
     }

@@ -829,11 +829,7 @@ actor ApmeRunner {
     ///     ignore the "float in [0,1]" instruction).
     ///   - Requires an `overall` score — returns nil otherwise.
     static func parseJudgeJson(_ text: String) -> ApmeParsedJudge? {
-        // Grab first {...} block via a regex that matches the outermost braces.
-        guard let jsonBlock = extractFirstJsonBlock(text) else { return nil }
-        guard let data = jsonBlock.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
+        guard let obj = selectVerdictObject(text) else { return nil }
 
         var scores: [String: Double] = [:]
         for (key, value) in obj {
@@ -864,29 +860,63 @@ actor ApmeRunner {
         )
     }
 
-    /// Whether `text` carries a JSON object that closed — the same extraction
-    /// `parseJudgeJson` performs, minus the rubric-level field checks. Read by
-    /// `ApmeJudgeChatResponse` so a `finish_reason: "length"` body is refused
-    /// only when it was actually cut mid-object; mirrors `holdsCompleteJsonObject`
-    /// in bridge/src/apme/runner.ts and is pinned by
-    /// shared/apme-judge-response-vectors.json.
+    /// The judge's verdict object, chosen by the one field that identifies a
+    /// verdict rather than by position. Mirrors `parseJudgeObject` in
+    /// bridge/src/apme/runner.ts.
+    ///
+    /// Taking the FIRST balanced block is how a local reasoning model's
+    /// scratchpad got scored instead of its answer:
+    /// `<think>{"overall":0.5}</think>` followed by the real `{"overall":0.9}`.
+    /// An unstripped thinking block is the exact shape `reasoningEffort: "none"`
+    /// exists to suppress, i.e. the models this judge chain targets. Two spans
+    /// both carrying `overall` are AMBIGUOUS and resolve to nil — a wrong score
+    /// written to `evals` is strictly worse than a skip.
+    static func selectVerdictObject(_ text: String) -> [String: Any]? {
+        var verdicts: [[String: Any]] = []
+        var from = text.startIndex
+        while let block = extractFirstJsonBlock(text, from: from) {
+            from = block.end
+            if let data = block.text.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let overall = obj["overall"] as? Double, overall.isFinite {
+                verdicts.append(obj)
+            } else if let data = block.text.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let overall = obj["overall"] as? Int, Double(overall).isFinite {
+                verdicts.append(obj)
+            }
+        }
+        return verdicts.count == 1 ? verdicts[0] : nil
+    }
+
+    /// Whether a body the server says it CUT still holds the finished verdict.
+    /// Mirrors `holdsCompleteJsonObject` in bridge/src/apme/runner.ts — two
+    /// structural questions, deliberately not "does it parse" (the two daemons'
+    /// JSON parsers disagree on leniency; the balanced scanners do not):
+    /// did any `{…}` close, and was the model still inside an object when the
+    /// cut landed. The second is the case `selectVerdictObject`'s ambiguity
+    /// rule cannot see — a closed scratchpad above a verdict that was cut
+    /// leaves exactly ONE span, so nothing looks ambiguous and the draft wins.
     static func holdsCompleteJsonObject(_ text: String) -> Bool {
-        // Purely STRUCTURAL: did a `{…}` close. Deliberately not "does it
-        // parse" — the two daemons' JSON parsers do not agree on leniency
-        // (measured: `JSONSerialization` accepts the trailing commas Gemma 4
-        // emits and Node's `JSON.parse` does not), so a gate phrased that way
-        // answers differently on each daemon, which is the one thing the shared
-        // vectors exist to prevent. The balanced scanners ARE identical, so
-        // this question is. Whether the closed object is a usable verdict is
-        // `parseJudgeJson`'s job, where the leniency already lives.
-        extractFirstJsonBlock(text) != nil
+        var lastEnd: String.Index?
+        var from = text.startIndex
+        while let block = extractFirstJsonBlock(text, from: from) {
+            lastEnd = block.end
+            from = block.end
+        }
+        guard let end = lastEnd else { return false }
+        return text[end...].firstIndex(of: "{") == nil
     }
 
     /// Extract the first balanced `{...}` block from arbitrary text.
     /// Handles the common case of models wrapping JSON in ```json fences
     /// or adding "Here is the JSON:" prefixes.
-    private static func extractFirstJsonBlock(_ text: String) -> String? {
-        guard let firstBrace = text.firstIndex(of: "{") else { return nil }
+    private static func extractFirstJsonBlock(
+        _ text: String,
+        from: String.Index? = nil
+    ) -> (text: String, end: String.Index)? {
+        let start = from ?? text.startIndex
+        guard start < text.endIndex, let firstBrace = text[start...].firstIndex(of: "{") else { return nil }
         var depth = 0
         var i = firstBrace
         var inString = false
@@ -904,7 +934,8 @@ actor ApmeRunner {
                 else if c == "}" {
                     depth -= 1
                     if depth == 0 {
-                        return String(text[firstBrace...i])
+                        let end = text.index(after: i)
+                        return (String(text[firstBrace...i]), end)
                     }
                 }
             }

@@ -17,14 +17,21 @@ final class ApmeParseJudgeTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("shared/apme-judge-response-vectors.json")
         let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
-        XCTAssertGreaterThanOrEqual(vectors.count, 9)
+        XCTAssertGreaterThanOrEqual(vectors.count, 16)
         for vector in vectors {
             let note = try XCTUnwrap(vector["note"] as? String)
             let response = try XCTUnwrap(vector["response"] as? [String: Any])
             let data = try JSONSerialization.data(withJSONObject: response)
             if vector["accepted"] as? Bool == true {
                 let content = try ApmeJudgeChatResponse.content(data)
-                XCTAssertNotNil(ApmeRunner.parseJudgeJson(content), note)
+                // `accepted` is the transport gate; `verdict` (defaulting to it)
+                // is whether the parser must then produce one, so the vectors
+                // pin both daemons end to end rather than one at each layer.
+                if vector["verdict"] as? Bool ?? true {
+                    XCTAssertNotNil(ApmeRunner.parseJudgeJson(content), note)
+                } else {
+                    XCTAssertNil(ApmeRunner.parseJudgeJson(content), note)
+                }
             } else {
                 XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data), note)
             }
