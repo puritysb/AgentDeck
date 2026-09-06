@@ -133,6 +133,16 @@ master 기준 새 워크트리(`feat/collaboration-lens`)에 UI 3커밋만 이�
 중 69(23%)만 보유, codex 64/kiro 15/openclaw 14 태스크는 0건, 스트림 자체가 9/4 07:53 시작.
 Codex는 `~/.codex/config.toml`에 SubagentStart/Stop이 있어도 0건 — 다음 측정 대상.
 
+같은 날 저녁, "npm 없이 Swift 데몬만 쓰는 사용자도 같아야 한다"는 조건으로 두 번째 패스를
+넣었다. Swift 데몬은 `messaged`만 만들고 있었는데, 부족한 것은 프로세스 표가 아니라
+세션→pid 대응이었다 — 샌드박스는 `~/.claude/sessions/<pid>.json`을 못 읽고 transcript는
+열려 있지 않다(실측 lsof 0). 그래서 훅 curl 세 미러 모두에 `-H "X-AgentDeck-Pid: $PPID"`를
+붙였다(훅 셸의 부모가 에이전트 프로세스; Node는 migration 10, Swift 설치기는 스니펫 변경 시
+자동 재작성). `CoordinationTracker.swift`는 Node 모듈의 근접 전사이고 `ProcessEnumerator.processTable()`
+(sysctl, 엔타이틀먼트 없음) 위에서 5초 틱으로 돌며, 두 데몬이 `shared/coordination-evidence-vectors.json`을
+재생한다. IPS10은 라운드로빈 대신 안정 로스터(`stableCardRoster`: awaiting 유지·최신순 채움·ID 정렬,
+`total`→헤더 `+N`)를 양 데몬에서 받고, 카드가 coordination 센서스("대기 작업 N")를 앰버로 그린다.
+
 검증: Vitest 262파일 4,079 통과·1 건너뜀(신규 `coordination-evidence.test.ts` 포함), IPS10
 geometry host test 통과, IPS10 펌웨어 빌드 통과, macOS XCTest·Release 빌드·IPS10 OTA 결과는
 아래 트라이얼 문서에 기록. 범위·사용법·복구:

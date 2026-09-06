@@ -362,6 +362,9 @@ static void handleSessionsList(JsonObject& obj) {
     g_state.sessionClearPending = false;
     g_state.sessionClearPendingMs = 0;
     g_state.sessionCount = incomingCount;
+#if defined(BOARD_IPS10)
+    g_state.sessionsTotal = obj["total"].is<int>() ? (uint16_t)constrain(obj["total"].as<int>(), 0, 65535) : 0;
+#endif
     g_state.octopusCount = 0;
     g_state.cloudCount = 0;
     g_state.opencodeCount = 0;
@@ -427,6 +430,12 @@ static void handleSessionsList(JsonObject& obj) {
             g_state.sessions[i].childrenKnown = known;
             g_state.sessions[i].childrenActive = known ? (uint16_t)constrain(children["active"].as<int>(), 0, 65535) : 0;
             g_state.sessions[i].childrenCompleted = known ? (uint16_t)constrain(children["completed"].as<int>(), 0, 65535) : 0;
+            const JsonObject coord = s["coordination"].as<JsonObject>();
+            const bool coordKnown = coord["backgroundJobs"].is<int>() && coord["spawnedActive"].is<int>()
+                && coord["backgroundJobs"].as<int>() >= 0 && coord["spawnedActive"].as<int>() >= 0;
+            g_state.sessions[i].coordinationKnown = coordKnown;
+            g_state.sessions[i].backgroundJobs = coordKnown ? (uint16_t)constrain(coord["backgroundJobs"].as<int>(), 0, 65535) : 0;
+            g_state.sessions[i].spawnedActive = coordKnown ? (uint16_t)constrain(coord["spawnedActive"].as<int>(), 0, 65535) : 0;
         }
 #endif
         // Shared per-session activity one-liner (heuristic → Foundation Models

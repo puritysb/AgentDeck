@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { prepareForSerial, TIMELINE_HISTORY_BYTE_BUDGET } from '../esp32-serial.js';
+import { prepareForSerial, stableCardRoster, TIMELINE_HISTORY_BYTE_BUDGET } from '../esp32-serial.js';
 import type { BridgeEvent } from '@agentdeck/shared/protocol';
 
 const event = (census?: unknown, size = 1): BridgeEvent => ({
@@ -41,5 +41,39 @@ describe('IPS10 additive collaboration census', () => {
     expect(out).toEqual(baseline);
     expect(out.sessions.every((s: any) => s.subagents === undefined)).toBe(true);
     expect(out.sessions).toHaveLength(10);
+  });
+});
+
+describe('IPS10 stable card roster', () => {
+  const session = (id: string, state: string, startedAt: string, alive = true) =>
+    ({ id, port: 0, alive, agentType: 'claude-code', state, projectName: 'p', startedAt });
+
+  it('keeps every awaiting session, fills with the newest, and orders by id', () => {
+    const rows = [
+      session('k', 'idle', '2026-09-06T01:00:00Z'),
+      session('b', 'awaiting_permission', '2026-09-06T00:00:00Z'),
+      session('a', 'processing', '2026-09-06T05:00:00Z'),
+      session('z', 'idle', '2026-09-06T04:00:00Z'),
+      session('dead', 'processing', '2026-09-06T09:00:00Z', false),
+    ];
+    expect(stableCardRoster(rows, 3).map((s) => s.id)).toEqual(['a', 'b', 'z']);
+    // A state change never changes the set: the same three come back.
+    rows[0].state = 'processing';
+    expect(stableCardRoster(rows, 3).map((s) => s.id)).toEqual(['a', 'b', 'z']);
+    expect(stableCardRoster(rows.slice(0, 2), 3).map((s) => s.id)).toEqual(['k', 'b']);
+  });
+
+  it('adds the coordination census and the roster total for IPS10 only', () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...session(`s${String(i).padStart(2, '0')}`, 'idle', `2026-09-06T0${i % 10}:00:00Z`),
+      coordination: { backgroundJobs: 1, spawnedActive: 2, spawnedCompleted: 0, messagesIn: 0, messagesOut: 0 },
+    }));
+    const out = prepareForSerial({ type: 'sessions_list', sessions: many } as any, { deviceInfo: { board: 'ips_10' } }) as any;
+    expect(out.sessions).toHaveLength(10);
+    expect(out.total).toBe(12);
+    expect(out.sessions[0].coordination).toEqual({ backgroundJobs: 1, spawnedActive: 2 });
+    const other = prepareForSerial({ type: 'sessions_list', sessions: many } as any, { deviceInfo: { board: '86box' } }) as any;
+    expect(other.total).toBeUndefined();
+    expect(other.sessions.every((s: any) => s.coordination === undefined)).toBe(true);
   });
 });

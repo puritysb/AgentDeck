@@ -59,6 +59,14 @@ export const HOOK_EVENTS = [
  * crashed daemon doesn't swallow the hook.
  */
 export function buildHookCommand(eventName: string): string {
+  // `X-AgentDeck-Pid: $PPID` — the hook shell's parent is the agent process
+  // that spawned it, and the hook payload carries no pid of its own. It is the
+  // only consent-free way either daemon can tie a session id to a process:
+  // the CLI daemon can also read `~/.claude/sessions/<pid>.json`, but the
+  // sandboxed daemon cannot, and the transcript is not held open. The daemon
+  // walks up from this pid to the nearest agent process, so a wrapper shell
+  // in between does not break it. This is what lets a `claude -p` worker be
+  // attributed to the session whose Bash launched it (process ancestry).
   const preamble = [
     `PORT="\${AGENTDECK_PORT:-}"`,
     `case "$PORT" in ''|*[!0-9]*) PORT="" ;; *) [ "$PORT" -ge 1 ] 2>/dev/null && [ "$PORT" -le 65535 ] 2>/dev/null || PORT="" ;; esac`,
@@ -79,7 +87,7 @@ export function buildHookCommand(eventName: string): string {
   // reaches Claude before curl quits.
   if (eventName === 'PreToolUse') {
     return preamble.concat([
-      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' --max-time 60 -d @- 2>/dev/null)`,
+      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 60 -d @- 2>/dev/null)`,
       `printf '%s' "\${RESP:-}"`,
     ]).join('\n');
   }
@@ -89,7 +97,7 @@ export function buildHookCommand(eventName: string): string {
   // this runs on EVERY turn end, so a wedged daemon must never stall the TUI.
   if (eventName === 'Stop') {
     return preamble.concat([
-      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' --max-time 10 -d @- 2>/dev/null)`,
+      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 10 -d @- 2>/dev/null)`,
       `printf '%s' "\${RESP:-}"`,
     ]).join('\n');
   }
@@ -102,7 +110,7 @@ export function buildHookCommand(eventName: string): string {
   // gets killed mid-flight and Claude prints `SessionEnd hook [...] failed:
   // Hook cancelled` on exit.
   return preamble.concat([
-    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -d @- >/dev/null 2>&1 || true`,
+    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
   ]).join('\n');
 }
 
@@ -531,6 +539,13 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
       ? raw.includes('[int]::TryParse')
       : raw.includes('*[!0-9]*');
     if (!hasValidatedPort) {
+      applyHooks(settings);
+      migrated = true;
+    }
+
+    // Migration 10: hooks predating the pid header cannot tell the daemon
+    // which process posted them, so spawned-worker ancestry never resolves.
+    if (process.platform !== 'win32' && !raw.includes('X-AgentDeck-Pid')) {
       applyHooks(settings);
       migrated = true;
     }

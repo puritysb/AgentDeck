@@ -350,7 +350,7 @@ function buildHookCommand(eventName: string): string {
   if (eventName === 'PreToolUse') {
     return preamble
       .concat([
-        `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' --max-time 60 -d @- 2>/dev/null)`,
+        `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 60 -d @- 2>/dev/null)`,
         `printf '%s' "\${RESP:-}"`,
       ])
       .join('\n');
@@ -360,7 +360,7 @@ function buildHookCommand(eventName: string): string {
   if (eventName === 'Stop') {
     return preamble
       .concat([
-        `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' --max-time 10 -d @- 2>/dev/null)`,
+        `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 10 -d @- 2>/dev/null)`,
         `printf '%s' "\${RESP:-}"`,
       ])
       .join('\n');
@@ -370,7 +370,7 @@ function buildHookCommand(eventName: string): string {
   // See hooks/src/install.ts.
   return preamble
     .concat([
-      `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -d @- >/dev/null 2>&1 || true`,
+      `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
     ])
     .join('\n');
 }

@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   CoordinationTracker,
   findAncestorSession,
+  isAgentProcessCommand,
   isAgentSpawnCommand,
   parseCrossSessionEnvelope,
   parseSendMessageInput,
 } from '../coordination-evidence.js';
+
+const VECTORS = JSON.parse(readFileSync(
+  fileURLToPath(new URL('../../../shared/coordination-evidence-vectors.json', import.meta.url)), 'utf8'));
 
 // Captured live from Claude Code 2.1.261 on 2026-09-06 (receiver transcript,
 // `type: "user"` row): the attribute order and the uds socket path are the
@@ -155,5 +161,54 @@ describe('CoordinationTracker', () => {
     );
     expect(rels).toEqual([]);
     expect(tracker.summary('a')).toBeNull();
+  });
+});
+
+// The shared vector file both daemons replay — the Swift tracker is a
+// transliteration, and a rule restated in different words can drift.
+describe('shared coordination-evidence vectors', () => {
+  it('envelopes', () => {
+    for (const v of VECTORS.envelopes) {
+      const env = parseCrossSessionEnvelope(v.prompt);
+      if (v.expect === null) expect(env, v.name).toBeNull();
+      else expect({ fromPid: env?.fromPid, fromName: env?.fromName, body: env?.body }, v.name).toEqual(v.expect);
+    }
+  });
+  it('sendMessage', () => {
+    for (const v of VECTORS.sendMessage) expect(parseSendMessageInput(v.input), v.name).toEqual(v.expect);
+  });
+  it('spawn and agent commands', () => {
+    for (const v of VECTORS.spawnCommands) expect(isAgentSpawnCommand(v.command), v.command).toBe(v.expect);
+    for (const v of VECTORS.agentProcesses) expect(isAgentProcessCommand(v.command), v.command).toBe(v.expect);
+  });
+  it('ancestry', () => {
+    const { processes, peers, cases } = VECTORS.ancestry;
+    for (const c of cases) expect(findAncestorSession(processes, c.pid, peers)?.sessionId ?? null).toBe(c.expect);
+  });
+  it('background jobs and spawned workers from the measured process table', () => {
+    const { processes, peers, expectRelations, expectSummary } = VECTORS.backgroundJobs;
+    const tracker = new CoordinationTracker(() => 1_000);
+    const rels = tracker.observe(processes, peers).map((r) => ({
+      sessionId: r.sessionId, relation: r.relation, direction: r.direction, phase: r.phase,
+      ...(r.peerSessionId ? { peerSessionId: r.peerSessionId } : {}),
+      ...(r.peerName ? { peerName: r.peerName } : {}),
+      evidence: r.evidence,
+    }));
+    expect(rels).toEqual(expectRelations);
+    for (const [sid, exp] of Object.entries(expectSummary)) expect(tracker.summary(sid)).toMatchObject(exp as object);
+  });
+
+  it('registers a hook pid and walks a wrapper shell up to the agent process', () => {
+    const tracker = new CoordinationTracker(() => 2_000);
+    const processes = [
+      { pid: 100, ppid: 1, command: '/opt/homebrew/bin/claude' },
+      { pid: 150, ppid: 100, command: '/bin/zsh -lc curl ...' },
+    ];
+    tracker.registerPid('s1', 150, processes);
+    expect(tracker.mergePeers([])).toEqual([{ sessionId: 's1', pid: 100 }]);
+    // The observer's own pid wins when both exist.
+    expect(tracker.mergePeers([{ sessionId: 's1', pid: 999 }])).toEqual([{ sessionId: 's1', pid: 999 }]);
+    tracker.forget('s1');
+    expect(tracker.mergePeers([])).toEqual([]);
   });
 });

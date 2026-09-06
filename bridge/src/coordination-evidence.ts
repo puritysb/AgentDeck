@@ -147,6 +147,17 @@ export function isAgentSpawnCommand(command: unknown): boolean {
   return /(^|[\s;&|(])claude\s+(?:[^\n;&|]*\s)?(?:-p|--print)(?:\s|$)/.test(command);
 }
 
+/** The interactive/headless agent binaries a session runs as. Used to stop
+ *  the hook-pid walk and to keep an agent's own descendants out of the
+ *  background-job set. */
+export function isAgentProcessCommand(command: string): boolean {
+  const head = command.split(/\s+/).filter(Boolean).find((t) => !/^[A-Z_]+=/.test(t)) ?? '';
+  const base = head.split('/').pop() ?? '';
+  if (/^(claude|codex|opencode|kiro-cli)$/.test(base)) return true;
+  // `node …/cli.js` style launches name the agent in a later token.
+  return /(^|\/)(claude|codex|opencode)(\.js|\.mjs)?(\s|$)/.test(command.split(/\s+/).slice(0, 3).join(' '));
+}
+
 /** Scratchpad directory Claude Code hands a session (the `SP=` every
  *  background job in the measured transcript inherited). The session id is
  *  the last path segment before `/scratchpad`. */
@@ -216,6 +227,9 @@ export class CoordinationTracker {
   private readonly sessionToName = new Map<string, string>();
   /** Latest pid → session map from the observer, for uds resolution. */
   private pidToSession = new Map<number, string>();
+  /** Session → agent pid learned from the hook header (`X-AgentDeck-Pid`),
+   *  the path a sandboxed daemon has no file-based alternative to. */
+  private readonly hookPids = new Map<string, number>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -231,6 +245,38 @@ export class CoordinationTracker {
   private touch(e: SessionCoordination, peerName: string | null | undefined, ts: number): void {
     if (peerName) e.lastPeerName = peerName;
     e.lastRelationAt = ts;
+  }
+
+  /** A hook arrived with the posting shell's parent pid. The shell's parent
+   *  is normally the agent process itself; if a wrapper sits in between, walk
+   *  up to the nearest agent process so the registered pid is the one whose
+   *  children are the session's workers. */
+  registerPid(sessionId: string, pid: number, processes: ProcessRow[] = []): void {
+    if (!Number.isInteger(pid) || pid <= 1) return;
+    const byPid = new Map(processes.map((p) => [p.pid, p]));
+    let cur = byPid.get(pid);
+    let chosen = pid;
+    for (let depth = 0; cur && depth < 4 && !isAgentProcessCommand(cur.command); depth++) {
+      const parent = byPid.get(cur.ppid);
+      if (!parent || parent.pid <= 1) break;
+      cur = parent;
+      if (isAgentProcessCommand(cur.command)) chosen = cur.pid;
+    }
+    this.hookPids.set(sessionId, chosen);
+    this.pidToSession.set(chosen, sessionId);
+  }
+
+  /** Observer peers plus hook-registered pids for sessions the observer did
+   *  not resolve (a session whose `sessions/<pid>.json` is unreadable, or the
+   *  whole roster on a daemon with no file access). The observer's pid wins
+   *  when both exist. */
+  mergePeers(observed: ObservedPeer[]): ObservedPeer[] {
+    const seen = new Set(observed.map((p) => p.sessionId));
+    const out = [...observed];
+    for (const [sessionId, pid] of this.hookPids) {
+      if (!seen.has(sessionId)) out.push({ sessionId, pid });
+    }
+    return out;
   }
 
   /** The receiver's side of a message: the prompt carried the envelope. */
@@ -320,6 +366,7 @@ export class CoordinationTracker {
     const ts = this.now();
     const out: RelationObservation[] = [];
     this.pidToSession = new Map(peers.map((p) => [p.pid, p.sessionId]));
+    for (const [sessionId, pid] of this.hookPids) if (!this.pidToSession.has(pid)) this.pidToSession.set(pid, sessionId);
     const peerPids = new Set(peers.map((p) => p.pid));
     const alivePeerIds = new Set(peers.map((p) => p.sessionId));
     const rows = processes.map((p) => ({ ...p, command: p.command.slice(0, MAX_COMMAND_CHARS) }));
@@ -403,6 +450,9 @@ export class CoordinationTracker {
   /** The session ended: its jobs and children are no longer its concern. */
   forget(sessionId: string): void {
     this.sessions.delete(sessionId);
+    const pid = this.hookPids.get(sessionId);
+    this.hookPids.delete(sessionId);
+    if (pid != null && this.pidToSession.get(pid) === sessionId) this.pidToSession.delete(pid);
   }
 
   /** `null` when the session has never had a relation — the caller omits the

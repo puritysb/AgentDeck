@@ -113,6 +113,11 @@ struct SessionInfo {
     bool childrenKnown;
     uint16_t childrenActive;
     uint16_t childrenCompleted;
+    // Optional coordination census (workers spawned + background jobs this
+    // session is waiting on). Unknown when absent, never a stale count.
+    bool coordinationKnown;
+    uint16_t backgroundJobs;
+    uint16_t spawnedActive;
 #endif
     // Daemon-computed "latest milestone" for this session (TIMELINE parity):
     // the newest chat/task row from the daemon's authoritative timeline store.
@@ -203,6 +208,10 @@ struct DashboardState {
     // bridge/src/esp32-serial.ts and the daemon WS sessions_list. Keep in sync.
     SessionInfo sessions[10];
     uint8_t sessionCount;
+#if defined(BOARD_IPS10)
+    // Roster size on the daemon when it exceeds the cards (0 = not sent).
+    uint16_t sessionsTotal;
+#endif
     // Session explicitly selected by a steering surface. The daemon includes
     // it on state_update so companion devices can behave as one desk set.
     char focusedSessionId[32];

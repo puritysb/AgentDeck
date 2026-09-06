@@ -136,3 +136,111 @@ final class CoordinationEvidenceParserTests: XCTestCase {
     }
 }
 #endif
+
+#if os(macOS)
+/// Replays shared/coordination-evidence-vectors.json — the same file the Node
+/// suite replays — so both daemons decide the same thing from the same
+/// evidence (process ancestry, background jobs, envelopes, SendMessage).
+final class CoordinationEvidenceVectorTests: XCTestCase {
+    private func vectors() throws -> [String: Any] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/coordination-evidence-vectors.json")
+        let data = try Data(contentsOf: url)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func rows(_ list: Any?) -> [ProcessEnumerator.ProcessRow] {
+        ((list as? [[String: Any]]) ?? []).map {
+            ProcessEnumerator.ProcessRow(pid: $0["pid"] as? Int ?? 0, ppid: $0["ppid"] as? Int ?? 0, command: $0["command"] as? String ?? "")
+        }
+    }
+
+    private func peers(_ list: Any?) -> [CoordinationPeer] {
+        ((list as? [[String: Any]]) ?? []).map { CoordinationPeer(sessionId: $0["sessionId"] as? String ?? "", pid: $0["pid"] as? Int ?? 0) }
+    }
+
+    func testEnvelopesAndSendMessage() throws {
+        let v = try vectors()
+        for c in try XCTUnwrap(v["envelopes"] as? [[String: Any]]) {
+            let env = ApmeCollector.parseCrossSessionEnvelope(c["prompt"] as? String ?? "")
+            if c["expect"] is NSNull {
+                XCTAssertNil(env, c["name"] as? String ?? "")
+            } else {
+                let exp = try XCTUnwrap(c["expect"] as? [String: Any])
+                XCTAssertEqual(env?.fromPid, exp["fromPid"] as? Int, c["name"] as? String ?? "")
+                XCTAssertEqual(env?.fromName, exp["fromName"] as? String)
+                XCTAssertEqual(env?.body, exp["body"] as? String)
+            }
+        }
+        for c in try XCTUnwrap(v["sendMessage"] as? [[String: Any]]) {
+            let t = ApmeCollector.parseSendMessageTarget(c["input"] as? [String: Any])
+            if c["expect"] is NSNull {
+                XCTAssertNil(t, c["name"] as? String ?? "")
+            } else {
+                let exp = try XCTUnwrap(c["expect"] as? [String: Any])
+                XCTAssertEqual(t?.peerPid, exp["peerPid"] as? Int, c["name"] as? String ?? "")
+                XCTAssertEqual(t?.peerName, exp["peerName"] as? String)
+                XCTAssertEqual(t?.summary, exp["summary"] as? String)
+            }
+        }
+    }
+
+    func testCommandsAndAncestry() throws {
+        let v = try vectors()
+        for c in try XCTUnwrap(v["spawnCommands"] as? [[String: Any]]) {
+            XCTAssertEqual(CoordinationEvidence.isAgentSpawnCommand(c["command"] as? String), c["expect"] as? Bool, c["command"] as? String ?? "")
+        }
+        for c in try XCTUnwrap(v["agentProcesses"] as? [[String: Any]]) {
+            XCTAssertEqual(CoordinationEvidence.isAgentProcessCommand(c["command"] as? String ?? ""), c["expect"] as? Bool, c["command"] as? String ?? "")
+        }
+        let a = try XCTUnwrap(v["ancestry"] as? [String: Any])
+        let table = rows(a["processes"]); let ps = peers(a["peers"])
+        for c in try XCTUnwrap(a["cases"] as? [[String: Any]]) {
+            let got = CoordinationEvidence.findAncestorSession(table, pid: c["pid"] as? Int ?? 0, peers: ps)?.sessionId
+            XCTAssertEqual(got, c["expect"] as? String, "pid \(c["pid"] ?? 0)")
+        }
+    }
+
+    func testMeasuredProcessTableYieldsTheSameRelationsAsNode() throws {
+        let v = try vectors()
+        let b = try XCTUnwrap(v["backgroundJobs"] as? [String: Any])
+        let tracker = CoordinationTracker(now: { 1_000 })
+        let rels = tracker.observe(rows(b["processes"]), peers: peers(b["peers"]))
+        let got: [[String: Any]] = rels.map { r in
+            var d: [String: Any] = ["sessionId": r.sessionId, "relation": r.relation, "direction": r.direction, "phase": r.phase, "evidence": r.evidence]
+            if let p = r.peerSessionId { d["peerSessionId"] = p }
+            if let n = r.peerName { d["peerName"] = n }
+            return d
+        }
+        let expected = try XCTUnwrap(b["expectRelations"] as? [[String: Any]])
+        XCTAssertEqual(got.count, expected.count)
+        for (g, e) in zip(got, expected) {
+            XCTAssertEqual(g as NSDictionary, e as NSDictionary)
+        }
+        let summary = try XCTUnwrap(b["expectSummary"] as? [String: [String: Int]])
+        for (sid, exp) in summary {
+            let s = try XCTUnwrap(tracker.summary(sessionId: sid))
+            XCTAssertEqual(s.backgroundJobs, exp["backgroundJobs"])
+            XCTAssertEqual(s.spawnedActive, exp["spawnedActive"])
+            XCTAssertEqual(s.spawnedCompleted, exp["spawnedCompleted"])
+        }
+        // Never a relation from shared project membership.
+        let lonely = CoordinationTracker(now: { 2_000 })
+        XCTAssertTrue(lonely.observe(
+            [.init(pid: 10, ppid: 1, command: "claude"), .init(pid: 11, ppid: 1, command: "claude")],
+            peers: [.init(sessionId: "a", pid: 10), .init(sessionId: "b", pid: 11)]).isEmpty)
+        XCTAssertNil(lonely.summary(sessionId: "a"))
+    }
+
+    func testStableCardRosterKeepsAwaitingAndOrdersById() {
+        func s(_ id: String, _ state: String, _ started: String) -> [String: Any] {
+            ["id": id, "state": state, "startedAt": started, "alive": true]
+        }
+        let rows = [s("k", "idle", "2026-09-06T01:00:00Z"), s("b", "awaiting_permission", "2026-09-06T00:00:00Z"),
+                    s("a", "processing", "2026-09-06T05:00:00Z"), s("z", "idle", "2026-09-06T04:00:00Z")]
+        XCTAssertEqual(ESP32Serial.stableCardRoster(rows, cap: 3).map { $0["id"] as? String }, ["a", "b", "z"])
+        XCTAssertEqual(ESP32Serial.stableCardRoster(Array(rows.prefix(2)), cap: 3).map { $0["id"] as? String }, ["k", "b"])
+    }
+}
+#endif

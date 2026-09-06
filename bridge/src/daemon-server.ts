@@ -2941,6 +2941,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       req.on('end', () => {
         let json: Record<string, unknown> = {};
         try { json = body ? JSON.parse(body) : {}; } catch { /* ignore */ }
+        // The hook shell's parent pid (`X-AgentDeck-Pid: $PPID` in the
+        // installed snippet) — the only consent-free session→process link.
+        // Carried inside the payload as `agentdeck_pid` so every consumer
+        // downstream sees one shape; a payload that already names one wins.
+        const pidHeader = req.headers['x-agentdeck-pid'];
+        const headerPid = Number(Array.isArray(pidHeader) ? pidHeader[0] : pidHeader);
+        if (Number.isInteger(headerPid) && headerPid > 1 && json.agentdeck_pid == null) {
+          json.agentdeck_pid = headerPid;
+        }
         // Map PascalCase event names to snake_case for state machine + APME
         const eventMap: Record<string, string> = {
           SessionStart: 'session_start', SessionEnd: 'session_end',
@@ -3269,6 +3278,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // After ingestHook so a prompt's turn is open before the relation
           // is attached to it. Process-table evidence (ancestry, background
           // jobs) arrives on the observer tick instead.
+          if (typeof json.agentdeck_pid === 'number') {
+            coordination.registerPid(hookSid, json.agentdeck_pid, passiveSessionObserver.processes());
+          }
           if (boundary === 'user_prompt_submit' && hookPromptText) {
             persistRelation(coordination.noteMessageIn(hookSid, hookPromptText));
           } else if (eventName === 'PostToolUse' || boundary === 'tool_end') {
@@ -4596,9 +4608,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // worker finishing changes the process table without changing that set —
   // the same trap the OpenClaw transcript feed fell into.
   const coordinationTick = () => {
-    const peers = passiveSessionObserver.collect([])
+    const peers = coordination.mergePeers(passiveSessionObserver.collect([])
       .filter((s) => typeof s.pid === 'number' && s.pid > 0)
-      .map((s) => ({ sessionId: rawSessionId(s.id), pid: s.pid }));
+      .map((s) => ({ sessionId: rawSessionId(s.id), pid: s.pid })));
     let changed = false;
     for (const rel of coordination.observe(passiveSessionObserver.processes(), peers)) {
       if (persistRelation(rel)) changed = true;

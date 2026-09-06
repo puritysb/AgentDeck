@@ -1229,6 +1229,30 @@ actor ESP32Serial {
         return result
     }
 
+    /// IPS10 card roster — a direct port of `stableCardRoster`
+    /// (bridge/src/esp32-serial.ts): every awaiting session kept, the most
+    /// recently started fill the rest, result ordered by id so the firmware's
+    /// identity sort sees the same set in the same order on every push.
+    static func stableCardRoster(_ sessions: [[String: Any]], cap: Int) -> [[String: Any]] {
+        let alive = sessions.filter { ($0["alive"] as? Bool) ?? true }
+        guard alive.count > cap else { return alive }
+        let isAwaiting: ([String: Any]) -> Bool = { ($0["state"] as? String)?.hasPrefix("awaiting") == true }
+        let awaiting = alive.filter(isAwaiting)
+        let formatter = ISO8601DateFormatter()
+        func started(_ s: [String: Any]) -> Double {
+            guard let raw = s["startedAt"] as? String, let d = formatter.date(from: raw) else { return 0 }
+            return d.timeIntervalSince1970
+        }
+        let rest = alive.filter { !isAwaiting($0) }.enumerated()
+            .sorted { a, b in
+                let sa = started(a.element), sb = started(b.element)
+                return sa != sb ? sa > sb : a.offset < b.offset
+            }
+            .map(\.element)
+        let picked = Array((awaiting + rest).prefix(cap))
+        return picked.sorted { (($0["id"] as? String) ?? "") < (($1["id"] as? String) ?? "") }
+    }
+
     private static func shapeSessionsList(_ event: [String: Any], type: String?, deviceInfo: DeviceInfo?) -> [String: Any] {
         var e = event
         if type == "sessions_list" {
@@ -1245,9 +1269,14 @@ actor ESP32Serial {
                 // line (stale cards), but the WiFi WS client CLOSES on it —
                 // the chronic connect→choke→reconnect flap of every
                 // WiFi-only board whenever session count was high.
-                e["sessions"] = Self.roundRobinByAgentType(
-                    sessions.filter { s in (s["alive"] as? Bool) ?? true },
-                    cap: Self.serialSessionsCap)
+                let aliveSessions = sessions.filter { s in (s["alive"] as? Bool) ?? true }
+                let isIps10 = deviceInfo?.board == "ips_10"
+                // IPS10 cards get a STABLE pick (awaiting kept, then newest),
+                // never the state-ranked rotation — see `stableCardRoster`.
+                if isIps10, aliveSessions.count > Self.serialSessionsCap { e["total"] = aliveSessions.count }
+                e["sessions"] = (isIps10
+                    ? Self.stableCardRoster(aliveSessions, cap: Self.serialSessionsCap)
+                    : Self.roundRobinByAgentType(aliveSessions, cap: Self.serialSessionsCap))
                     .map { s -> [String: Any] in
                         var o: [String: Any] = [
                             "id": lim(s["id"], 31),
@@ -1281,6 +1310,13 @@ actor ESP32Serial {
                            (0...65535).contains(active), (0...65535).contains(peak), (0...65535).contains(completed) {
                             o["subagents"] = ["active": active, "peak": peak, "completed": completed]
                         }
+                        // Coordination census: workers spawned that still run +
+                        // background jobs the session waits on (Node parity).
+                        if deviceInfo?.board == "ips_10", let k = s["coordination"] as? [String: Any],
+                           let jobs = k["backgroundJobs"] as? Int, let spawned = k["spawnedActive"] as? Int,
+                           (0...65535).contains(jobs), (0...65535).contains(spawned) {
+                            o["coordination"] = ["backgroundJobs": jobs, "spawnedActive": spawned]
+                        }
                         // Daemon-computed latest milestone (TIMELINE parity for the
                         // IPS10 cards). Omitted when absent — empty strings would
                         // cost ~50 bytes/session on the 4KB serial line budget.
@@ -1303,7 +1339,10 @@ actor ESP32Serial {
            bytes.count > Self.timelineHistoryByteBudget,
            let rows = e["sessions"] as? [[String: Any]] {
             e["sessions"] = rows.map { row in
-                var baseline = row; baseline.removeValue(forKey: "subagents"); return baseline
+                var baseline = row
+                baseline.removeValue(forKey: "subagents")
+                baseline.removeValue(forKey: "coordination")
+                return baseline
             }
         }
 

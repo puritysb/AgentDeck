@@ -108,6 +108,31 @@ Created from current `master` with only the three UI commits cherry-picked
   copy that bundle over `/Applications/AgentDeck.app` (the trial's rollback
   copies under `../AgentDeck-collaboration/output/rollback/` still apply).
 
+### Second pass — Swift-daemon parity and the IPS10 gaps (2026-09-06 evening)
+
+- Swift daemon now produces `spawned` / `waiting_on` too: `CoordinationTracker.swift`
+  over `ProcessEnumerator.processTable()` (sysctl pid/ppid/argv), 5 s tick,
+  `coordination` stamped on its own `sessions_list`. Session→pid comes from the
+  new hook header `X-AgentDeck-Pid: $PPID` (all three snippet mirrors; Node
+  migration 10, the Swift installer rewrites on any snippet change).
+- Shared vectors: `shared/coordination-evidence-vectors.json` replayed by both
+  suites (envelope, SendMessage, spawn/agent commands, ancestry, the measured
+  process table with a worker and a matrix job).
+- IPS10: stable card roster on both daemons (awaiting kept, newest fill, id
+  order) with `total` → header `+N`; cards render the coordination census
+  ("대기 작업 N" / "띄운 작업 N 실행") in amber when the session is waiting.
+  Firmware treats an absent census as unknown, never a stale count.
+
+### Second-pass verification — 2026-09-06 18:50
+
+- Vitest 262 files / 4,087 passed / 1 skipped (vector replay, stable roster, pid
+  registration); macOS XCTest: Executed 9 tests, with 0 failures (incl. `CoordinationEvidenceVectorTests`).
+- IPS10 firmware rebuilt and flashed over WiFi OTA (4.0 MB, 4,138 chunks) through
+  the worktree daemon (`a97fcd55b34b`), which is the build on 9120.
+- Installed `~/.claude/settings.json` hooks now carry `X-AgentDeck-Pid` (migrated
+  by the daemon restart). Sessions that started before the migration keep
+  posting through their already-loaded hook set until they restart.
+
 ## Review questions
 
 Compare original and collaboration views on the same real work. Can you identify

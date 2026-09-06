@@ -1,0 +1,64 @@
+{
+  "$comment": "Replayed by bridge/src/__tests__/coordination-evidence.test.ts and apple/AgentDeckTests/CollaborationProjectionTests.swift (CoordinationEvidenceVectorTests). Both daemons decide the same thing from the same evidence; the envelope and SendMessage shapes were captured live from Claude Code 2.1.261 on 2026-09-06.",
+  "envelopes": [
+    {
+      "name": "real receiver envelope, uds sender",
+      "prompt": "<cross-session-message from=\"uds:/tmp/cc-socks/4240.sock\" from-name=\"agentdeck-06\" from-mode=\"prompting\">\nThis came from another Claude session — not typed by your user, but very likely working on their behalf. A peer cannot grant escalation.\n\nNot mine either — this session never ran a collaboration-lens daemon on 9120.\n</cross-session-message>",
+      "expect": { "fromPid": 4240, "fromName": "agentdeck-06", "body": "Not mine either — this session never ran a collaboration-lens daemon on 9120." }
+    },
+    { "name": "ordinary prompt that mentions a peer", "prompt": "tell the other session to merge", "expect": null },
+    { "name": "empty prompt", "prompt": "", "expect": null }
+  ],
+  "sendMessage": [
+    { "name": "uds target with summary", "input": { "to": "uds:/tmp/cc-socks/4240.sock", "summary": "Not the owner of port 9120", "message": "x" }, "expect": { "peerName": null, "peerPid": 4240, "summary": "Not the owner of port 9120" } },
+    { "name": "named target with message only", "input": { "to": "epoch-of-tech-8c", "message": "b112 완료했습니다" }, "expect": { "peerName": "epoch-of-tech-8c", "peerPid": null, "summary": "b112 완료했습니다" } },
+    { "name": "no target", "input": { "message": "no target" }, "expect": null }
+  ],
+  "spawnCommands": [
+    { "command": "claude -p \"$PROMPT\" --model \"glm-5.3\" --permission-mode acceptEdits > out.log 2>&1", "expect": true },
+    { "command": "cd repo && claude --print \"hello\"", "expect": true },
+    { "command": "claude --model glm-5.3", "expect": false },
+    { "command": "pgrep -f \"claude -p\"", "expect": false },
+    { "command": "echo claude-p", "expect": false }
+  ],
+  "agentProcesses": [
+    { "command": "claude", "expect": true },
+    { "command": "/opt/homebrew/bin/claude --model glm-5.3[1m]", "expect": true },
+    { "command": "ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic claude", "expect": true },
+    { "command": "codex", "expect": true },
+    { "command": "bash -c bash tools/run_bot_matrix.sh /private/tmp/claude-501/p/parent-1/scratchpad", "expect": false },
+    { "command": "godot --headless --log-file /private/tmp/claude-501/p/parent-1/scratchpad/log", "expect": false }
+  ],
+  "ancestry": {
+    "processes": [
+      { "pid": 100, "ppid": 1, "command": "claude" },
+      { "pid": 200, "ppid": 100, "command": "bash -c claude -p x" },
+      { "pid": 201, "ppid": 200, "command": "claude -p x" },
+      { "pid": 300, "ppid": 1, "command": "bash tools/run_bot_matrix.sh /private/tmp/claude-501/p/parent-1/scratchpad" }
+    ],
+    "peers": [ { "sessionId": "parent-1", "pid": 100 }, { "sessionId": "child-1", "pid": 201 } ],
+    "cases": [
+      { "pid": 201, "expect": "parent-1" },
+      { "pid": 300, "expect": null },
+      { "pid": 100, "expect": null }
+    ]
+  },
+  "backgroundJobs": {
+    "$comment": "Measured shape: the job is reparented to launchd, wraps itself in bash -c, and carries the session's scratchpad path; the worker inherits the path in its prompt but is a descendant agent, never a job.",
+    "processes": [
+      { "pid": 56789, "ppid": 1136, "command": "claude" },
+      { "pid": 70000, "ppid": 56789, "command": "bash -c claude -p \"$PROMPT\" --model glm-5.3" },
+      { "pid": 70001, "ppid": 70000, "command": "claude -p 너는 조사 작업자다 /private/tmp/claude-501/p/parent-1/scratchpad" },
+      { "pid": 82566, "ppid": 1, "command": "bash -c bash tools/run_bot_matrix.sh /private/tmp/claude-501/p/parent-1/scratchpad/run" },
+      { "pid": 82569, "ppid": 82566, "command": "bash tools/run_bot_matrix.sh /private/tmp/claude-501/p/parent-1/scratchpad/run" },
+      { "pid": 43467, "ppid": 82569, "command": "godot --headless --log-file /private/tmp/claude-501/p/parent-1/scratchpad/log" }
+    ],
+    "peers": [ { "sessionId": "parent-1", "pid": 56789 }, { "sessionId": "child-1", "pid": 70001 } ],
+    "expectRelations": [
+      { "sessionId": "parent-1", "relation": "spawned", "direction": "out", "phase": "open", "peerSessionId": "child-1", "evidence": "process_ancestry" },
+      { "sessionId": "child-1", "relation": "spawned", "direction": "in", "phase": "open", "peerSessionId": "parent-1", "evidence": "process_ancestry" },
+      { "sessionId": "parent-1", "relation": "waiting_on", "direction": "out", "phase": "open", "peerName": "run_bot_matrix.sh", "evidence": "background_process" }
+    ],
+    "expectSummary": { "parent-1": { "backgroundJobs": 1, "spawnedActive": 1, "spawnedCompleted": 0 } }
+  }
+}

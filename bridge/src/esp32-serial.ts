@@ -356,6 +356,26 @@ export function roundRobinByAgentType(sessions: any[], cap: number): any[] {
   return result;
 }
 
+/**
+ * IPS10 card roster: a STABLE pick, not a rotation. The equal-size cards
+ * promise that a state change never moves a session, and the round-robin
+ * (which re-ranks by state) broke that promise the moment the machine held
+ * more than `cap` sessions — the card set itself changed. Rules, in order:
+ * every session waiting on a human is kept (a hidden PERM is a lie on the
+ * one surface built to show it), then the most recently started fill the
+ * rest, and the result is ordered by id so the firmware's identity sort sees
+ * the same set in the same order on every push. Dead rows are dropped first.
+ */
+export function stableCardRoster(sessions: any[], cap: number): any[] {
+  const alive = sessions.filter((s) => s?.alive !== false);
+  if (alive.length <= cap) return alive;
+  const awaiting = alive.filter((s) => typeof s?.state === 'string' && s.state.startsWith('awaiting'));
+  const rest = alive.filter((s) => !awaiting.includes(s))
+    .sort((a, b) => (Date.parse(b?.startedAt ?? '') || 0) - (Date.parse(a?.startedAt ?? '') || 0));
+  const picked = [...awaiting, ...rest].slice(0, cap);
+  return picked.sort((a, b) => String(a?.id ?? '').localeCompare(String(b?.id ?? '')));
+}
+
 export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnection, 'deviceInfo'>): BridgeEvent {
   const e = event as any;
 
@@ -461,7 +481,8 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
 
   if (event.type === 'sessions_list') {
     const raw = Array.isArray(e.sessions) ? e.sessions : [];
-    const selected = roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP);
+    const isIps10 = _conn?.deviceInfo?.board === 'ips_10';
+    const selected = isIps10 ? stableCardRoster(raw, SERIAL_SESSIONS_CAP) : roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP);
     const prepared = {
       type: 'sessions_list',
       sessions: selected.map((s: any) => ({
@@ -501,16 +522,26 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
     // Optional read-only census on IPS10 only. Every older/smaller board gets
     // exactly the baseline projection. Preserve the conservative frame budget;
     // omission is explicitly "unknown" on the new firmware, never zero.
-    if (_conn?.deviceInfo?.board === 'ips_10') {
+    if (isIps10) {
       const rows = (prepared as any).sessions;
       for (let i = 0; i < rows.length; i++) {
         const c = selected[i].subagents;
         if (c && [c.active, c.peak, c.completed].every(v => Number.isInteger(v) && v >= 0 && v <= 65535)) {
           rows[i].subagents = { active: c.active, peak: c.peak, completed: c.completed };
         }
+        // Coordination census: the two counts a card can act on — workers this
+        // session spawned that are still running, and background jobs it is
+        // waiting on. Messages stay on the macOS lens.
+        const k = selected[i].coordination;
+        if (k && [k.backgroundJobs, k.spawnedActive].every(v => Number.isInteger(v) && v >= 0 && v <= 65535)) {
+          rows[i].coordination = { backgroundJobs: k.backgroundJobs, spawnedActive: k.spawnedActive };
+        }
       }
+      // How many sessions the roster holds beyond the cards: the firmware
+      // renders "+N" so a capped roster never reads as the whole machine.
+      if (raw.length > rows.length) (prepared as any).total = raw.length;
       if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) {
-        for (const row of rows) delete row.subagents;
+        for (const row of rows) { delete row.subagents; delete row.coordination; }
       }
     }
     return prepared;

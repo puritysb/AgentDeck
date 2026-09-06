@@ -2341,7 +2341,8 @@ void update() {
                        // card's TIMELINE feed — rendered dimmed under `body`,
                        // count gated by the cell height at label-set time.
                        char feed[3][120]; uint8_t feedCount;
-                       char activity[80]; bool childrenKnown; uint16_t childrenActive; uint16_t childrenCompleted; };
+                       char activity[80]; bool childrenKnown; uint16_t childrenActive; uint16_t childrenCompleted;
+                       bool coordinationKnown; uint16_t backgroundJobs; uint16_t spawnedActive; };
         // static: ~10 × 1.2KB no longer fits comfortably on the LVGL task
         // stack; update() is only ever entered from the single UI task.
         static MCell mc[MOSAIC_MAX];
@@ -2363,6 +2364,9 @@ void update() {
             mc[n].childrenKnown = si.childrenKnown;
             mc[n].childrenActive = si.childrenActive;
             mc[n].childrenCompleted = si.childrenCompleted;
+            mc[n].coordinationKnown = si.coordinationKnown;
+            mc[n].backgroundJobs = si.backgroundJobs;
+            mc[n].spawnedActive = si.spawnedActive;
             strncpy(mc[n].sid, si.id, sizeof(mc[n].sid) - 1); mc[n].sid[sizeof(mc[n].sid) - 1] = '\0';
             strncpy(mc[n].requestId, si.requestId, sizeof(mc[n].requestId) - 1); mc[n].requestId[sizeof(mc[n].requestId) - 1] = '\0';
             strncpy(mc[n].question, si.question, sizeof(mc[n].question) - 1); mc[n].question[sizeof(mc[n].question) - 1] = '\0';
@@ -2474,7 +2478,8 @@ void update() {
             strcpy(mc[n].state, "idle"); mc[n].model[0] = '\0'; mc[n].tool[0] = '\0'; mc[n].elapsed = 0;
             mc[n].sid[0] = '\0'; mc[n].requestId[0] = '\0'; mc[n].question[0] = '\0'; mc[n].body[0] = '\0';
             mc[n].feedCount = 0; mc[n].activity[0] = '\0';
-            mc[n].childrenKnown = false; mc[n].childrenActive = 0; mc[n].childrenCompleted = 0; n++;
+            mc[n].childrenKnown = false; mc[n].childrenActive = 0; mc[n].childrenCompleted = 0;
+            mc[n].coordinationKnown = false; mc[n].backgroundJobs = 0; mc[n].spawnedActive = 0; n++;
         }
         if (n == 0 && hasData) {  // single-session fallback (no sessions_list yet)
             mc[0].accent = ips10AgentColor(g_state.agentType);
@@ -2577,7 +2582,11 @@ void update() {
             }
         }
         if (terrCount) {
-            char tc[64]; snprintf(tc, sizeof(tc), "PROJECT ROOMS " LV_SYMBOL_BULLET " %d SESSIONS", n);
+            char tc[64];
+            if (g_state.sessionsTotal > n)
+                snprintf(tc, sizeof(tc), "PROJECT ROOMS " LV_SYMBOL_BULLET " %d SESSIONS " LV_SYMBOL_BULLET " +%d", n, (int)g_state.sessionsTotal - n);
+            else
+                snprintf(tc, sizeof(tc), "PROJECT ROOMS " LV_SYMBOL_BULLET " %d SESSIONS", n);
             lv_label_set_text(terrCount, tc);
         }
 
@@ -2656,7 +2665,9 @@ void update() {
             // Change signature (content + size + focus). Skip label churn when unchanged.
             uint32_t sig = 2166136261u;
             sig ^= (uint32_t)mc[i].childrenActive * 131u + (uint32_t)mc[i].childrenCompleted * 17u
-                + (mc[i].childrenKnown ? 97u : 0u);
+                + (mc[i].childrenKnown ? 97u : 0u)
+                + (uint32_t)mc[i].backgroundJobs * 1031u + (uint32_t)mc[i].spawnedActive * 4099u
+                + (mc[i].coordinationKnown ? 61u : 0u);
             for (const char* s = mc[i].sid; *s; s++) sig = sig * 31u + (uint8_t)*s;
             for (const char* s = mc[i].state;    *s; s++) sig = sig * 31u + (uint8_t)*s;
             for (const char* s = mc[i].name;     *s; s++) sig = sig * 31u + (uint8_t)*s;
@@ -2733,16 +2744,27 @@ void update() {
             lv_obj_set_width(cellCoord[i], innerW);
             lv_obj_set_height(cellCoord[i], 24);
             char* coord = cellCoordText[i];
-            if (mc[i].childrenKnown) {
+            // Two censuses on one line, each only when the daemon sent it:
+            // child agents (SubagentStart) and coordination (spawned workers
+            // still running + background jobs the session is waiting on).
+            // A parent whose turn closed while either count is non-zero is
+            // waiting, not resting — the amber pill says so.
+            const uint16_t waiting = mc[i].coordinationKnown ? (uint16_t)(mc[i].backgroundJobs + mc[i].spawnedActive) : 0;
+            if (mc[i].childrenKnown && mc[i].coordinationKnown)
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " 하위 %u 활동 / %u 종료 " LV_SYMBOL_BULLET " 대기 작업 %u",
+                         mc[i].childrenActive, mc[i].childrenCompleted, waiting);
+            else if (mc[i].childrenKnown)
                 snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " 하위 %u 활동 / %u 종료", mc[i].childrenActive, mc[i].childrenCompleted);
-            } else {
+            else if (mc[i].coordinationKnown)
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_LOOP " 띄운 작업 %u 실행 " LV_SYMBOL_BULLET " 대기 작업 %u",
+                         mc[i].spawnedActive, mc[i].backgroundJobs);
+            else
                 snprintf(coord, sizeof(cellCoordText[i]), "하위 관계 미관측");
-            }
             lv_label_set_text_static(cellCoord[i], coord);
-            lv_obj_set_style_text_color(cellCoord[i], lv_color_hex(mc[i].childrenKnown && mc[i].childrenActive > 0
+            const bool childBusy = mc[i].childrenKnown && mc[i].childrenActive > 0;
+            lv_obj_set_style_text_color(cellCoord[i], lv_color_hex(childBusy || waiting > 0
                 ? Theme::DeepSea : Theme::HUDFaint), 0);
-            lv_obj_set_style_bg_color(cellCoord[i], lv_color_hex(mc[i].childrenKnown && mc[i].childrenActive > 0
-                ? D1_OK : Theme::HUDText), 0);
+            lv_obj_set_style_bg_color(cellCoord[i], lv_color_hex(childBusy ? D1_OK : waiting > 0 ? D1_ATTN : Theme::HUDText), 0);
             }
 
             // state pill chip — bright states get dark text; the dim idle bg gets light text.
