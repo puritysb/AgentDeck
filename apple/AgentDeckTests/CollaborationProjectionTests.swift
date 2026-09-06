@@ -49,4 +49,15 @@ final class CollaborationProjectionTests: XCTestCase {
         let detail = try JSONDecoder().decode(CollaborationDetail.self, from: Data("{}".utf8))
         XCTAssertNil(detail.sample)
     }
+
+    func testLargeToolPayloadDoesNotBecomeRetainedGraphData() throws {
+        let value = try sample("""
+        [{"kind":"tool","ts":1,"name":"Bash","output":"\(String(repeating: "x", count: 700_000))"},
+         {"kind":"subagent","ts":2,"id":"child","name":"Explore","phase":"started"}]
+        """)
+        let rows = CollaborationProjection.children(sample: value, sessionId: "s1", taskId: "t1")
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.name, "Explore")
+        XCTAssertNil(rows.first?.summary)
+    }
 }

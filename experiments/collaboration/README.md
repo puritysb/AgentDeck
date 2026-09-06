@@ -32,7 +32,9 @@ by the new UI, and it adds no agent-control commands.
 
 Only `BOARD_IPS10` changes. Work cards are identity-ordered and equal-sized, with
 a minimum readable height and vertical overflow. A state change does not move a
-card or encode a progress percentage. Project rooms remain co-location, not a
+card within an unchanged supplied roster or encode a progress percentage. The
+existing transport cap/rotation is retained: with more than ten sessions the
+supplied subset can change. Project rooms remain co-location, not a
 claim of delegation. Parent state and child census are separate labelled lines;
 individual child identity/dependency graphs are **not** available on this firmware.
 
@@ -78,3 +80,24 @@ build/OTA health is not proof of visual usability.
 
 Verification artifacts: `output/all-tests.log`, `output/transport-tests.log`,
 `output/macos-tests.log`, `output/macos-archive.log`, `output/ips10-build.log`.
+
+## Local deployment evidence — 2026-09-06
+
+- The trial app replaces `/Applications/AgentDeck.app`; the original bundle is
+  also retained as `output/rollback/AgentDeck-before-install.app`. It is a locally
+  Development-signed Release archive, not an App Store submission.
+- Trial Node daemon: port 9120, build `4b45793017d1`. No autostart edits.
+- IPS10 at `192.168.68.54` completed WiFi OTA (4,137 chunks), then reported
+  version `1.2.1`, build `a167b18e-dirty`, fresh session updates and increasing
+  uptime. All 11 serial devices remained connected. No other board was flashed.
+  The dirty suffix includes the untracked local output directory.
+- Live verification found a large-history UI-actor bottleneck. Reading the same
+  736,558-byte response in an optimized isolated probe took 8.36 seconds on the
+  main actor versus 0.03 seconds off it. Streaming/decoding now runs off the UI
+  actor while published state remains main-actor isolated; the 2 MiB cap remains.
+- Observability is still harness-dependent: a real active session had tool and
+  message events but no typed delegation events. That session correctly shows
+  no confirmed branches; this release does not manufacture links from prose.
+- After the large-history fix, the installed app rendered a real `Explore`
+  completion branch alongside a current census of 0 active / 1 completed.
+  Original-view restoration and switching back were both verified in the app.
