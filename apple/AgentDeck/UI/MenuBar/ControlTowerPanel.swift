@@ -877,7 +877,7 @@ struct ControlTowerPanel: View {
                     .kerning(0.5)
                     .foregroundStyle(TerrariumHUD.subtext)
                 if stateHolder.state.usageStale == true {
-                    Text(stateHolder.state.claudeUsageIssue ?? "stale")
+                    Text(stateHolder.state.claudeUsageBadge ?? "stale")
                         .font(.system(size: 9))
                         .foregroundStyle(DesignTokens.UI.attn)
                 }
@@ -1055,7 +1055,7 @@ struct ControlTowerPanel: View {
                         .kerning(0.5)
                         .foregroundColor(TerrariumHUD.subtext)
                     if stateHolder.state.usageStale == true {
-                        Text(stateHolder.state.claudeUsageIssue ?? "stale")
+                        Text(stateHolder.state.claudeUsageBadge ?? "stale")
                             .font(.system(size: 9))
                             .foregroundStyle(.orange)
                     }

@@ -69,6 +69,25 @@ $0.000644 상당 사용을 보고했다. 만료→갱신→재조회·실패·�
 고정했다. macOS의 기존 사용량 reader는 기본 Keychain service만 읽으므로 사용자 지정
 namespace에서는 복구를 생략해 다른 계정의 토큰을 갱신하거나 사용량을 소모하지 않는다.
 
+적대적 리뷰 2종(correctness / 계약)에서 세 건을 더 고쳤다. **표준 App Store 단독 설치가
+영구적으로 "사용량 고장"을 표시했다**: 샌드박스 데몬은 Claude OAuth 항목을 읽지 않으므로
+(`directOAuthUsageSupported == false`) `tokenStatus`가 언제나 `unknown`이고 `usageStale`은
+항상 true이며, `effectiveOauthConnected()`는 claude-code 세션이 하나라도 있으면 true다 —
+세 값에서 이유를 합성하던 `default` 분기가 모든 단독 사용자에게 발화했다(모델 목록·
+"Hooks on"·USAGE/RATE LIMITS 머리말을 대체). 이제 **명시적 `expired`만** 실패 주장이며,
+`missing`은 실패가 아니다(API 키·오프하니스 설치는 설계상 OAuth 자격 증명이 없다).
+프로덕션 줄을 되돌리면 새 테스트 5개 단언이 실패한다(뮤테이션 확인). 표시 순서도
+"연결 없음"이 사용량 문장보다 위이고, 레일에서는 모델 목록을 대체하지 않고 병기한다.
+
+두 번째는 `expiresAt`이 없는 자격 증명(`CLAUDE_CODE_OAUTH_TOKEN`, `claude setup-token`)이
+401을 받아도 복구가 한 번도 호출되지 않던 죽은 분기다 — 401 기억만으로도 분기가 열리게
+했다. 세 번째는 `execFile('claude')`가 PATHEXT도 셸도 참조하지 않아 Windows에서는 항상
+ENOENT였고 LaunchAgent의 baked PATH에서도 실패할 수 있던 점이다. 이제 PATH를 직접 훑어
+실행 파일을 한 번 확인하고, 셸 shim(`claude.cmd`)뿐이면 JSON 인자를 cmd.exe로 인용하는
+대신 "복구 불가"를 한 번만 기록한다(`AGENTDECK_CLAUDE_CLI`로 지정 가능). 쿨다운 파일도
+tmp+rename으로 쓴다 — 찢어진 쓰기는 "쿨다운 없음"으로 읽혀 할당량을 쓰는 유일한 실패다.
+재검증: Vitest 257파일 4,012 통과·1 건너뜀, macOS 레일 XCTest 14 통과.
+
 ## 2026-09-06 — PERM 후속 라이브 감사: 내부 Claude 종료 잡음과 Codex 표시·설치 누락
 
 PR #282의 두 TODO를 실제 CLI로 다시 계측했다. Claude Code **2.1.261**의 일반 Agent 호출은

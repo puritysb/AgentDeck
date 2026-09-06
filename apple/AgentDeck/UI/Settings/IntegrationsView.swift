@@ -674,9 +674,12 @@ enum ProviderRailEvaluator {
             return .dim
         }()
         let subtitle: String? = {
-            if let issue = state.claudeUsageIssue { return issue }
             if hooksInstalled && !oauthOn { return "Hooks on" }
             if oauthKnownDown             { return "Not connected" }
+            // An expired usage authorization is a quota fact, so it ranks
+            // BELOW "the provider is not connected at all" — otherwise the row
+            // talks about usage while the actual condition is no connection.
+            if let issue = state.claudeUsageIssue { return issue }
             return nil
         }()
         return RowState(status: status, subtitle: subtitle)

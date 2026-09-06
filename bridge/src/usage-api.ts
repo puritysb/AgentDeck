@@ -408,8 +408,13 @@ async function fetchUsageOnce(): Promise<UsageFetchResult | null> {
   // Re-read after Claude's own refresh. Exit code / a successful model response
   // cannot certify the credential we will use for the usage request.
   const credentialBeforeRecovery = creds.accessToken;
-  if (creds.expiresAt && (creds.expiresAt - Date.now() < TOKEN_EXPIRY_MARGIN_MS
-    || creds.accessToken === rejectedCredential)) {
+  // A credential with no `expiresAt` (Windows/Linux `CLAUDE_CODE_OAUTH_TOKEN`,
+  // `claude setup-token`) can only ever be found invalid by the server, so the
+  // 401 memory must be able to open this branch ON ITS OWN. Gating both halves
+  // on `expiresAt` left exactly those stores unable to recover at all: 401,
+  // latched `expired`, recovery never called.
+  const expiringSoon = (at?: number) => at !== undefined && at - Date.now() < TOKEN_EXPIRY_MARGIN_MS;
+  if (expiringSoon(creds.expiresAt) || creds.accessToken === rejectedCredential) {
     if (lastTokenStatus !== 'expired') logTagged('usage', 'Claude usage authorization expired — usage paused until renewal');
     lastTokenStatus = 'expired';
     lastFetchFailed = true;
@@ -418,7 +423,9 @@ async function fetchUsageOnce(): Promise<UsageFetchResult | null> {
       creds = getOAuthCredentials();
     }
     if (!creds) { lastTokenStatus = 'missing'; return stale(fileCache); }
-    if (!creds.expiresAt || creds.expiresAt - Date.now() < TOKEN_EXPIRY_MARGIN_MS) return stale(fileCache);
+    // Only a KNOWN-expiring credential holds the fetch back; "no expiry
+    // recorded" is not information about the credential.
+    if (expiringSoon(creds.expiresAt)) return stale(fileCache);
     // A 401 may be transient. An unexpired, unchanged token still gets a
     // backed-off API retry, including when CLI recovery is disabled/unavailable.
     if (creds.accessToken !== credentialBeforeRecovery) {

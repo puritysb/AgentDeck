@@ -283,8 +283,15 @@ struct TopologyRail: View {
                 .filter(\.available)
                 .map { shortClaudeModel($0.name) }
         }()
-        let subtitle: String? = stateHolder.state.claudeUsageIssue
-            ?? (claudeModels.isEmpty ? base.subtitle : claudeModels.joined(separator: ", "))
+        // A usage issue rides ALONGSIDE the catalog, never in place of it —
+        // the model list is this row's primary content, and replacing it made
+        // a quota fact look like the row lost its models.
+        let subtitle: String? = {
+            guard !claudeModels.isEmpty else { return base.subtitle }
+            let models = claudeModels.joined(separator: ", ")
+            guard let issue = stateHolder.state.claudeUsageIssue else { return models }
+            return "\(issue) · \(models)"
+        }()
         return ProviderRow(
             name: "Claude",
             status: base.status,

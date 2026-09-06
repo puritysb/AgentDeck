@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolve } from 'path';
-import { ClaudeUsageRecovery, CLAUDE_USAGE_RECOVERY_ARGS, buildClaudeUsageRecoveryEnv } from '../claude-usage-recovery.js';
+import { join, resolve } from 'path';
+import { mkdirSync, writeFileSync } from 'fs';
+import { mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
+import { ClaudeUsageRecovery, CLAUDE_USAGE_RECOVERY_ARGS, buildClaudeUsageRecoveryEnv, resolveClaudeCli } from '../claude-usage-recovery.js';
 
 describe('ClaudeUsageRecovery', () => {
   it('never recovers a different macOS Keychain namespace', () => {
@@ -62,6 +65,33 @@ describe('ClaudeUsageRecovery', () => {
       write: () => { throw Error('disk full'); }, run });
     await recovery.recover('token');
     expect(run).not.toHaveBeenCalled();
+  });
+
+  // `execFile` searches neither PATHEXT nor a shell, so a bare 'claude' was
+  // ENOENT on every Windows install and on any daemon whose baked PATH omits
+  // the CLI — a permanent no-op that only ever surfaced as a generic failure.
+  it('resolves the CLI off PATH, honours PATHEXT, and reports a shell shim as unusable', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentdeck-cli-'));
+    const winDir = mkdtempSync(join(tmpdir(), 'agentdeck-cli-win-'));
+    writeFileSync(join(dir, 'claude'), '#!/bin/sh\n');
+    writeFileSync(join(winDir, 'claude.cmd'), '@echo off\n');
+
+    expect(resolveClaudeCli({ PATH: dir }, 'linux')).toEqual({ path: join(dir, 'claude'), shim: false });
+    expect(resolveClaudeCli({ PATH: '/nonexistent-agentdeck' }, 'linux')).toBeNull();
+    expect(resolveClaudeCli({}, 'linux')).toBeNull();
+
+    // Extension case follows PATHEXT verbatim (Windows is case-insensitive);
+    // spelled lowercase here so the fixture also resolves on a case-sensitive
+    // CI filesystem.
+    const win = resolveClaudeCli({ PATH: winDir, PATHEXT: '.EXE;.cmd' }, 'win32');
+    expect(win).toEqual({ path: join(winDir, 'claude.cmd'), shim: true });
+    expect(resolveClaudeCli({ PATH: winDir, PATHEXT: '.EXE' }, 'win32')).toBeNull();
+
+    // An explicit override wins, and a missing override is not silently
+    // replaced by a PATH hit — the operator named a specific binary.
+    expect(resolveClaudeCli({ AGENTDECK_CLAUDE_CLI: join(dir, 'claude'), PATH: dir }, 'linux'))
+      .toEqual({ path: join(dir, 'claude'), shim: false });
+    expect(resolveClaudeCli({ AGENTDECK_CLAUDE_CLI: join(dir, 'absent'), PATH: dir }, 'linux')).toBeNull();
   });
 
   it('disables tools and customizations while keeping OAuth available', () => {
