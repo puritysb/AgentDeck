@@ -48,6 +48,9 @@ export interface ApmeJudgeConfig {
    *  login` profile) when unset. Mirrors the Swift ApmeJudgeApi loader, which
    *  reads the same settings.json field. */
   apiKey?: string;
+  /** Optional OpenAI-compatible reasoning control. `none` disables Ollama thinking;
+   * omission retains the provider default. Node daemon only. */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'max';
   /** When `foundationModels` is unavailable, retry via local MLX instead of
    *  skipping the eval. Default `true` on the Node bridge so CLI-only setups
    *  still get zero-cost local evals when the Swift daemon is not running. */
@@ -139,6 +142,9 @@ export function loadApmeConfig(): ApmeConfig {
   }
   // Clamp pathological values.
   judge.sampleRate = Math.max(0, Math.min(1, Number(judge.sampleRate) || 0));
+  if (judge.reasoningEffort !== undefined && !['none','low','medium','high','max'].includes(judge.reasoningEffort)) {
+    judge.reasoningEffort = undefined;
+  }
 
   // Any forced backend change MUST also wipe backend-specific endpoint/model
   // so we don't end up calling, e.g., callMlx() against an Anthropic URL or
@@ -149,6 +155,7 @@ export function loadApmeConfig(): ApmeConfig {
     debug('APME', `${reason} — also resetting judge.endpoint and judge.model to mlx defaults to avoid cross-backend leakage.`);
     judge.endpoint = undefined;
     judge.model = DEFAULT_APME_CONFIG.judge.model;
+    judge.reasoningEffort = undefined;
   };
 
   if (!['mlx', 'api', 'openclaw', 'foundationModels', 'openai'].includes(judge.backend)) {

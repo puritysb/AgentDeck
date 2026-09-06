@@ -1,0 +1,120 @@
+[
+  {
+    "note": "complete",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "{\"completion\":0.8,\"coherence\":0.8,\"efficiency\":0.7,\"overall\":0.8,\"summary\":\"Regression covered.\"}"
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "accepted": true
+  },
+  {
+    "note": "legacy without finish reason",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "{\"completion\":0.8,\"coherence\":0.8,\"efficiency\":0.7,\"overall\":0.8,\"summary\":\"Regression covered.\"}"
+          }
+        }
+      ]
+    },
+    "accepted": true
+  },
+  {
+    "note": "valid JSON at output limit",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "{\"completion\":0.8,\"coherence\":0.8,\"efficiency\":0.7,\"overall\":0.8,\"summary\":\"Regression covered.\"}"
+          },
+          "finish_reason": "length"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "truncated JSON",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": "{\"overall\":0."
+          },
+          "finish_reason": "length"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "empty",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": ""
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "whitespace",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": " \t\n"
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "missing content",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": null
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "non-string content",
+    "response": {
+      "choices": [
+        {
+          "message": {
+            "content": 12
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "no choices",
+    "response": {
+      "choices": []
+    },
+    "accepted": false
+  }
+]

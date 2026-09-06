@@ -1,5 +1,30 @@
 # AgentDeck Development Log
 
+## 2026-09-06 — APME 실험 보존과 Swift 판정 유효성 일치
+
+사용량 복구 PR #284 위의 `codex/apme-serving-validity`에서 기존 APME 미커밋 변경·테스트·
+재현 도구와 아래 두 실험 기록을 보존했다. 원본 작업 트리를 빌드했던 CLI에는 이미
+APME 변경과 사용량 복구가 함께 들어 있었으며, #284의 CI는 사용량 PR 범위만 검증했다.
+
+Swift의 MLX/OpenAI 호환 어댑터가 finish_reason을 검사하지 않던 차이를 보완했다.
+양 데몬은 출력 상한에 도달한 응답을 JSON 모양과 무관하게 거부하고 공백 응답도 실패로
+처리한다. 공유 응답 벡터를 양 테스트에서 재생한다. Node 선택 reasoningEffort는 기존
+설계대로 Node 전용이며, 운영 MLX 설정과 사용자 데이터는 변경하지 않는다.
+
+재생 도구는 운영 경로·경로 탈출·출력 symlink를 거부하고 입력/빌드/스크립트 해시·소스
+커밋·서버 설정 설명을 manifest로 고정한다. 조건이 바뀌면 새 프로필을 요구한다.
+로컬 요청의 redirect도 차단한다. 운영 DB가 아니라 사본을 사용하고 비공개 증거는
+커밋하지 않는다. docs/apme.md에 응답 계약·재현 절차·품질 비교의 미완료 조건을 정리했다.
+
+기존 PERM 후속 감사 항목의 Swift 단독/Node 라이브 검증 근거를 재확인했다.
+이번에는 기기에서 소리가 나는 승인 실험이나 운영 모델 비교를 다시 실행하지 않는다.
+
+검증: 전체 Vitest 259파일 4,051 통과·1 skip 후, 중단 시도 보존 검사를 추가해 관련
+스크립트 테스트 12개 통과. macOS 판정 XCTest 20개, 전 패키지 빌드·TypeScript·docs check
+통과. 새 도구로 합성 작업 1건을 격리 재생해 네 축·task/run 연결·저장 후 이벤트를 확인하고,
+동일 조건 재개는 허용·서버 식별 변경은 거절했다. Release 빌드 성공. 로컬 archive verifier는
+개발 인증서 서명만 거절했으며, 정식 배포 서명 검증은 upload=false CI에서 수행한다.
+
 ## 2026-09-06 — Claude 사용량 인증 만료를 설명하고 제한적으로 자동 복구
 
 정상 실행 중인 Node 데몬에서 Claude 사용량만 사라진 사건을 계측했다. 마지막 성공 조회는
@@ -102,6 +127,43 @@ PostToolUse는 질문 없는 processing → idle, Esc 거부와 Ctrl+C는 실제
 영향을 먼저 안내하고 필요한 경우 격리한다. 테스트 CLI·관측 프로세스를 종료하고
 운영 CLI PID 31283 / build 91ccd5dd0dbe / 9120과 앱 클라이언트 연결을 복구했다.
 원시 WS·마커와 요약은 저장소 밖 `swift-live-summary.json` 등에 보관했다.
+
+---
+
+## 2026-09-06 — 서빙 재측정: 기본 MLX를 운영 선택으로 확정
+
+동일 메시지·출력 800·온도 0·top_p 1·seed 42로 실제 Runner를 4개 설정 × 30회 재생했다.
+기본 MLX 30/30, APC 기본 27/30, Ollama 30/30, APC 24개+JSON object 27/30회 저장.
+APC는 CTRL_PASS의 JSON 문법 오류, JSON object 강제는 AD07의 summary 반복으로 출력 한도 실패를 냈다.
+JSON 모드 선택 설정은 실험에서 제거했고 운영에 추가하지 않았다. 초기 중단 19회도 별도 보존했다.
+현재 MLX·APC 끔·16K·동시성 1 구성을 선택했고, 출력 상한 응답을 MLX에서도 미완료로 거절한다.
+재측정 도구는 `scripts/apme-serving-normalized.mjs`; 익명 결과는 OpenClaw model-eval의
+`normalized-comparison.json`과 foundby-eval `/serving#normalized`에 보존한다.
+검증: bridge 빌드 성공, 관련 테스트 5개 파일 106개 통과. 운영 DB에 실험 판정을 쓰지 않았다.
+
+## 2026-09-06 — Ollama 판정 경로 격리 재생과 추론 옵션
+
+실제 Node `ApmeRunner.runTaskEval`에서 비공개 작업 8개와 합성 성공/실패 2개를
+각 실행기 3회 재생했다. 운영 SQLite를 읽기 전용으로 스냅샷하고 사본에서만 평가를 저장했다.
+MLX 30/30, Ollama 추론 끔 30/30에서 네 축·task/run 연결·저장 후 이벤트·기존 outcome 보존을 확인했다.
+원문과 SQLite는 저장소 밖 비공개 디렉터리에 보관하며 공개 결과는 익명 계측만 싣는다.
+
+최초 Ollama 기본 요청은 1,024 출력 토큰이 추론에 소진되어 HTTP 200이어도 content가 비었고
+점수가 저장되지 않았다. 선택 설정 `apme.judge.reasoningEffort`를 OpenAI 호환 요청의
+`reasoning_effort`로 전달하며 `none`으로 완료를 확인했다. 설정 생략 시 기존 기본값을 유지한다.
+`finish_reason=length`는 JSON 모양이 있어도 미완료로 거절한다. 이 옵션은 Node CLI 전용이며
+Swift/App Store에 반영하지 않았다. capabilities matrix에 범위를 기록했다.
+
+합성 12K/17K HTTP 경계에서 MLX는 17K 입력을 400으로 거절한 후 기존 축약 재시도로 완료했다.
+Ollama는 파생 태그 `num_ctx=16384`에도 17,004 입력 토큰을 완료했고 캐시 로그도 이를 확인했다.
+따라서 제한 동등성과 판정 점수 일치를 확정하지 않는다. 실작업 AD04의 overall은 MLX 0.7, Ollama 첫 회 0.2·반복 0.4로 달랐고,
+일부 과거 작업은 원래 목표 누락·응답 갱신으로 과거 점수를 정답으로 삼을 수 없었다.
+
+검증: `pnpm --filter @agentdeck/bridge build` 성공. APME serving-integration·runner·task-boundary·
+judge-probe·settings 테스트 5개 파일 104개 통과. HTTP 오류, 잘못된 JSON, 시간 초과 예외,
+출력 한도 후 미저장/복구와 중복 진행 요청을 검사했다. 시간 초과는 예외 주입이며 실시간 90초 검증은 아니다.
+`apme-serving-replay.mjs`와 `apme-serving-boundary.mjs`가 재생 도구다.
+운영 설정·DB·실행 중 데몬 버전은 전환하지 않았으며 MLX 복구와 데몬 재개를 확인했다.
 
 ---
 

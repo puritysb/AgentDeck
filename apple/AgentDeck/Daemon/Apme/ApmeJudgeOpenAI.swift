@@ -29,11 +29,13 @@ enum ApmeJudgeOpenAI {
         case noEndpoint
         case http(Int)
         case empty
+        case outputLimit
         case transport(String)
         var description: String {
             switch self {
             case .noEndpoint: return "no endpoint configured (set apme.judge.endpoint)"
             case .http(let c): return "server returned HTTP \(c)"
+            case .outputLimit: return "the judge reached its output limit before completion"
             case .empty: return "the judge returned an empty response"
             case .transport(let m): return m
             }
@@ -121,17 +123,30 @@ enum ApmeJudgeOpenAI {
             let (data, response) = try await URLSession.shared.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard code == 200 else { throw JudgeError.http(code) }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = json["choices"] as? [[String: Any]],
-                  let content = (choices.first?["message"] as? [String: Any])?["content"] as? String,
-                  !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else { throw JudgeError.empty }
-            return content
+            return try ApmeJudgeChatResponse.content(data)
         } catch let e as JudgeError {
             throw e
         } catch {
             throw JudgeError.transport(String(describing: error))
         }
+    }
+}
+/// Shared MLX/OpenAI response gate. A complete-looking JSON object is still
+/// not a verdict when the server says generation hit the output limit.
+/// Behavior is pinned in shared/apme-judge-response-vectors.json for both daemons.
+enum ApmeJudgeChatResponse {
+    static func content(_ data: Data) throws -> String {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let first = choices.first
+        else { throw ApmeJudgeOpenAI.JudgeError.empty }
+        if first["finish_reason"] as? String == "length" {
+            throw ApmeJudgeOpenAI.JudgeError.outputLimit
+        }
+        guard let content = (first["message"] as? [String: Any])?["content"] as? String,
+              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { throw ApmeJudgeOpenAI.JudgeError.empty }
+        return content
     }
 }
 #endif

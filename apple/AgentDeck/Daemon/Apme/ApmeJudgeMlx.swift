@@ -71,14 +71,7 @@ enum ApmeJudgeMlx {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 return nil
             }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = json["choices"] as? [[String: Any]],
-                  let first = choices.first,
-                  let message = first["message"] as? [String: Any],
-                  let content = message["content"] as? String,
-                  !content.isEmpty
-            else { return nil }
-            return content
+            return try ApmeJudgeChatResponse.content(data)
         } catch {
             return nil
         }

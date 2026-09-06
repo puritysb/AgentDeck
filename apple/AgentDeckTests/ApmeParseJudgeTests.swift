@@ -12,6 +12,34 @@ import XCTest
 
 final class ApmeParseJudgeTests: XCTestCase {
 
+    func testChatResponseMatchesSharedVectors() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/apme-judge-response-vectors.json")
+        let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        XCTAssertGreaterThanOrEqual(vectors.count, 9)
+        for vector in vectors {
+            let note = try XCTUnwrap(vector["note"] as? String)
+            let response = try XCTUnwrap(vector["response"] as? [String: Any])
+            let data = try JSONSerialization.data(withJSONObject: response)
+            if vector["accepted"] as? Bool == true {
+                let content = try ApmeJudgeChatResponse.content(data)
+                XCTAssertNotNil(ApmeRunner.parseJudgeJson(content), note)
+            } else {
+                XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data), note)
+            }
+        }
+    }
+
+    func testOutputLimitHasAnExplicitErrorEvenWithValidJson() {
+        let data = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"{\"overall\":0.8}"}}]}"#.utf8)
+        XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data)) { error in
+            guard case ApmeJudgeOpenAI.JudgeError.outputLimit = error else {
+                return XCTFail("Expected output limit, got \(error)")
+            }
+        }
+    }
+
     // MARK: - Happy path
 
     func testValidCodeAxes() {

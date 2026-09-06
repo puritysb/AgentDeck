@@ -1503,9 +1503,10 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
     }
   }
   if (!resp.ok) throw new Error(`MLX judge HTTP ${resp.status}`);
-  const json = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const json = await resp.json() as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> };
+  if (json.choices?.[0]?.finish_reason === 'length') throw new Error('MLX judge reached output limit before completion');
   const text = json.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || text.length === 0) {
+  if (typeof text !== 'string' || text.trim().length === 0) {
     throw new Error('MLX judge returned empty content');
   }
   return text;
@@ -1593,11 +1594,13 @@ async function callOpenAICompatible(prompt: string, cfg: ApmeJudgeConfig): Promi
       ],
       temperature: 0,
       max_tokens: 1024,
+      ...(cfg.reasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
     }),
     signal: AbortSignal.timeout(90_000),
   });
   if (!resp.ok) throw new Error(`openai judge HTTP ${resp.status} (${url})`);
-  const json = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const json = await resp.json() as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> };
+  if (json.choices?.[0]?.finish_reason === 'length') throw new Error('openai judge reached output limit before completion');
   const text = json.choices?.[0]?.message?.content;
   if (typeof text !== 'string' || text.trim().length === 0) throw new Error('openai judge returned empty content');
   return text;

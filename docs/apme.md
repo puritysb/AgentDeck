@@ -425,6 +425,55 @@ APME의 핵심 결정: **카테고리마다 평가 방법이 다르다.**
 
 게이팅 기본값: `sampleRate: 1.0` (모든 run 평가), `onlyWhenDisagreement: false`. 로컬 MLX라 비용이 0이므로 전수 평가가 기본. 필요 시 축소 가능.
 
+### 판정 응답 유효성과 서빙 재현
+
+MLX와 OpenAI 호환 응답은 **양 데몬 모두** `finish_reason=length`이면 content가 유효한
+JSON처럼 보여도 거부한다. 빈 문자열·공백·content 누락도 실패다. 이 응답들은 점수나
+성공 요약으로 저장하지 않는다. 정상 응답을 반환하는 legacy 서버가 finish reason을
+생략하는 경우는 지원한다. 응답 게이트는 `shared/apme-judge-response-vectors.json`을
+Vitest와 macOS XCTest에서 함께 재생하며, JSON 파싱·루브릭 검증은 그 다음 단계다.
+
+`apme.judge.reasoningEffort`는 **Node의 OpenAI 호환 백엔드 전용 선택 옵션**이다.
+`none | low | medium | high | max`를 `reasoning_effort`로 전달하며 생략하면 서버 기본값을
+유지한다. 지원 여부는 서버·모델에 달려 있다. Swift에는 이 옵션을 아직 적용하지 않았으며,
+공통 응답 유효성 규칙과 백엔드별 조절 옵션을 구분한다.
+
+개발용 재생 도구는 데몬을 시작하지 않고, 사용자가 준비한 일관된 SQLite 스냅샷의
+**사본에만** 판정을 저장한다. WAL 사용 중인 DB 파일만 복사하지 말고 SQLite backup으로
+`fixture.sqlite`를 준비한다. `selection.json` 형식은
+`[{"case":"AD01","taskId":"<snapshot task id>"}]`이며, 원문·DB·응답은 저장소 밖에 둔다.
+`boundaries.json`은 `[{"case":"INPUT12K","prompt":"<synthetic prompt>"}]` 형식이다.
+
+```bash
+pnpm build
+BENCH_PROFILE=mlx-baseline-01 BENCH_SERVER_REVISION='<server commit + model digest + context/cache settings>' \
+  node scripts/apme-serving-normalized.mjs /absolute/private/fixtures mlx
+# 비정규화 요청/프롬프트 캡처: apme-serving-replay.mjs PRIVATE_DIR capture|mlx|ollama
+# 입력 경계: apme-serving-boundary.mjs PRIVATE_DIR mlx|ollama
+```
+
+정규화는 출력 800·온도 0·top_p 1·seed 42·추론 끔을 요청하고, 최초/즉시 반복/전체 재방문을
+기록한다. 서버가 요청 옵션을 실제로 적용했는지는 서버 계측으로 별도 확인해야 한다.
+`manifest.json`에는 소스 커밋과 작업 트리 상태, 실제 bridge/shared 빌드 해시, 스크립트·입력
+해시, Node 버전, 서버 식별 설명이 들어간다. 조건이 달라지면 새 프로필을 요구하고 기존
+성공·실패·중단 결과를 덮어쓰지 않는다. 결과 없는 `.started.json`은 중단 시도다. 모델 이름은 과거 실험의 명시적 고정값이다.
+다른 모델로 실험하면 스크립트 변경과 서버 모델 digest를 함께 기록해야 한다.
+
+2026-09-06 기록상 기본 MLX와 추론을 끈 Ollama는 각각 30/30 저장에 성공했다.
+APC 기본과 APC 24개+JSON object는 각각 27/30이었고, 초기 중단 19회도 보존했다.
+이는 **서빙 완료율**이다. 판정 정확도·동등성의 근거로 사용하지 않는다. 운영 MLX 선택과
+실패 사례의 상세 근거는 DEVELOPMENT_LOG의 같은 날짜 두 실험 항목에 유지한다.
+
+다음 품질 비교는 고정 입력·루브릭 버전과 사람이 확인한 기준 판정을 먼저 준비한다.
+완료율/형식 유효성, 사람과의 축별 일치·오판, 반복 편차, 지연·토큰·비용을 각각 보고한다.
+과거 자동 점수는 정답으로 취급하지 않고, 누락·변경된 응답이 있는 작업은 기준셋에서
+구분한다. 이 기준셋과 품질 비교는 아직 완료되지 않았다.
+
+관측 검증도 평가의 선행 조건이다. SubagentStart와 PERM의 라이브 근거는
+DEVELOPMENT_LOG의 `2026-09-06 — PERM 후속 라이브 감사`에 있다. 내부 Claude fork의 Stop을
+Agent 실행으로 세지 않으며, 사용량 복구용 CLI 호출은 도구·훅·세션 저장을 비활성화해
+사용자 작업의 관측과 평가에 섞이지 않게 한다.
+
 ### Turn-level judge (`runner.enqueueTurn`)
 
 비코딩 카테고리 (conversation/planning/research/review)는 턴 완료 직후 즉시 평가:
