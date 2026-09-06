@@ -156,15 +156,28 @@ struct DashboardState: Sendable {
     var usageStale: Bool?
     var tokenStatus: String?
 
-    /// A quota failure is separate from session connectivity. Only show a
-    /// relayed failure; the standalone daemon has no Claude OAuth capability.
+    /// A quota failure is separate from session connectivity, and only an
+    /// EXPLICIT expiry is a failure claim.
+    ///
+    /// The sandboxed standalone daemon never reads Claude's OAuth entry
+    /// (`UsageAPIClient.directOAuthUsageSupported == false`), so it always
+    /// emits `tokenStatus: "unknown"` with `usageStale: true`, and
+    /// `effectiveOauthConnected()` reports `true` whenever any `claude-code`
+    /// session is cached. Synthesizing a reason from that trio told every
+    /// ordinary standalone user their quota was broken — the opposite of the
+    /// "reads as feature-complete, never as broken" rule in CLAUDE.md
+    /// § App Store build invariants. `missing` is not a failure either: an
+    /// API-key or off-harness install has no OAuth credential by design, and
+    /// `usageStale` already means "no numbers", never "authorization failed".
     var claudeUsageIssue: String? {
-        guard usageStale == true else { return nil }
-        switch tokenStatus {
-        case "expired": return "Usage authorization expired"
-        case "missing": return "Usage authorization unavailable"
-        default: return oauthConnected == true ? "Usage temporarily unavailable" : nil
-        }
+        guard usageStale == true, tokenStatus == "expired" else { return nil }
+        return "Usage authorization expired"
+    }
+
+    /// Compact form for the shared USAGE / RATE LIMITS headers, which sit
+    /// beside Codex gauges — so it names the provider and stays short.
+    var claudeUsageBadge: String? {
+        claudeUsageIssue == nil ? nil : "Claude auth expired"
     }
 
     var codexAuthMode: String?

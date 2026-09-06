@@ -1,8 +1,8 @@
 import { execFile } from 'child_process';
 import { createHash } from 'crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
-import { join, resolve } from 'path';
+import { delimiter, join, resolve } from 'path';
 import { logTagged } from './logger.js';
 
 const RECOVERY_TIMEOUT_MS = 25_000;
@@ -51,14 +51,60 @@ export function buildClaudeUsageRecoveryEnv(
   return env;
 }
 
+/** `execFile` runs one executable — it does not search PATHEXT and (since the
+ * Node 20.12/18.20 spawn hardening) will not run a `.cmd`/`.bat` shim without a
+ * shell. A bare `'claude'` was therefore ENOENT on every Windows install, and a
+ * LaunchAgent carries the installing shell's PATH, which may not contain the
+ * CLI at all — both surfaced only as a recurring generic failure line. Resolve
+ * the real file once so the unavailable case can SAY it is unavailable.
+ * Returns `{ shim: true }` for a Windows shell shim: shell-quoting a JSON
+ * argument through cmd.exe is a worse failure than declining, so recovery is
+ * skipped there and says so. */
+export function resolveClaudeCli(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): { path: string; shim: boolean } | null {
+  const isFile = (candidate: string): boolean => {
+    try { return statSync(candidate).isFile(); } catch { return false; }
+  };
+  const override = env.AGENTDECK_CLAUDE_CLI;
+  if (override) return isFile(override) ? { path: override, shim: false } : null;
+  const exts = platform === 'win32'
+    ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+    : [''];
+  for (const dir of (env.PATH || '').split(delimiter).filter(Boolean)) {
+    for (const ext of exts) {
+      const candidate = join(dir, `claude${ext}`);
+      if (isFile(candidate)) return { path: candidate, shim: /\.(cmd|bat)$/i.test(ext) };
+    }
+  }
+  return null;
+}
+
+let reportedUnavailable = false;
+function reportUnavailableOnce(reason: string): void {
+  if (reportedUnavailable) return;
+  reportedUnavailable = true;
+  logTagged('usage', `Claude authorization recovery unavailable: ${reason}`);
+}
+
 export function runClaudeUsageRecovery(): Promise<void> {
   const env = buildClaudeUsageRecoveryEnv();
   if (!env) {
     logTagged('usage', 'Claude authorization recovery skipped: custom macOS credential namespace cannot be matched');
     return Promise.resolve();
   }
+  const cli = resolveClaudeCli(env);
+  if (!cli) {
+    reportUnavailableOnce('the claude CLI was not found on this daemon\'s PATH (set AGENTDECK_CLAUDE_CLI to its full path)');
+    return Promise.resolve();
+  }
+  if (cli.shim) {
+    reportUnavailableOnce(`only a shell shim is installed (${cli.path}); point AGENTDECK_CLAUDE_CLI at an executable`);
+    return Promise.resolve();
+  }
   return new Promise((resolve) => {
-    const child = execFile('claude', CLAUDE_USAGE_RECOVERY_ARGS, {
+    const child = execFile(cli.path, CLAUDE_USAGE_RECOVERY_ARGS, {
       cwd: tmpdir(), env, timeout: RECOVERY_TIMEOUT_MS, killSignal: 'SIGKILL',
       maxBuffer: 64 * 1024, windowsHide: true,
     }, (error) => {
@@ -110,7 +156,11 @@ export const claudeUsageRecovery = new ClaudeUsageRecovery({
   },
   write: (record) => {
     mkdirSync(join(homedir(), '.agentdeck'), { recursive: true });
-    writeFileSync(recoveryFile, JSON.stringify(record), { mode: 0o600 });
+    // tmp+rename like every other file in this directory: a torn write reads
+    // back as "no cooldown", which is the one failure that spends quota.
+    const tmp = `${recoveryFile}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(record), { mode: 0o600 });
+    renameSync(tmp, recoveryFile);
   },
   run: runClaudeUsageRecovery,
 });

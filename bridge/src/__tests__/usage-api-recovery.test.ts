@@ -53,6 +53,24 @@ describe('usage fetching and recovery', () => {
     expect(api.getTokenStatus()).toBe('expired');
   });
 
+  // Windows/Linux `CLAUDE_CODE_OAUTH_TOKEN` and `claude setup-token` credentials
+  // carry no expiry at all, so the 401 memory is the ONLY signal that can open
+  // the recovery branch for them. Gating the branch on `expiresAt` made this
+  // combination silently unrecoverable.
+  it('recovers a server-rejected credential that records no local expiry', async () => {
+    io.credentials = JSON.stringify({ claudeAiOauth: { accessToken: 'noexp' } });
+    api.enableClaudeUsageRecovery();
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 401 }));
+    await api.fetchUsageFromApi();
+    expect(io.recover).not.toHaveBeenCalled();
+    io.recover.mockImplementation(async () => { io.credentials = token('renewed', Date.now() + 3600_000); });
+    vi.setSystemTime(Date.now() + 60_000); // past the auth-failure backoff
+    const result = await api.fetchUsageFromApi();
+    expect(io.recover).toHaveBeenCalledWith('noexp');
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.headers).toMatchObject({ Authorization: 'Bearer renewed' });
+    expect(result?.fresh).toBe(true);
+  });
+
   it('recovers a server-rejected token even when its local expiry is in the future', async () => {
     api.enableClaudeUsageRecovery();
     vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 401 }));
