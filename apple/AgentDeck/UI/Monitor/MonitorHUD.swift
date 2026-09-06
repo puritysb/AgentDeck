@@ -130,6 +130,7 @@ struct MonitorHUD: View {
     @State private var compactPage: CompactDashboardHUDPage = .sessions
     #if os(macOS)
     @EnvironmentObject private var daemonService: DaemonService
+    @AppStorage("dashboardCollaborationEnabled") private var collaborationEnabled = false
     @State private var weather: DashboardWeatherSnapshot?
     @State private var weatherDeckSig: String?
     @State private var nativeWeatherFetchedAt: Date?
@@ -170,12 +171,12 @@ struct MonitorHUD: View {
                     // Visible if either of the legacy preferences is on; the
                     // rail is a single unified view so we don't try to hide
                     // upstream or downstream independently anymore.
-                    if preferences.showTankStatus || preferences.showDeviceDiagnostic {
+                    if showsRightRail {
                         if panelMaxHeight >= DashboardHUDLayout.minimumPanelHeight {
                             HStack {
                                 Spacer()
-                                TopologyRail(maxHeight: panelMaxHeight)
-                                    .frame(maxWidth: min(geo.size.width * 0.32, 300))
+                                dashboardRightRail(maxHeight: panelMaxHeight)
+                                    .frame(maxWidth: min(geo.size.width * 0.32, rightRailWidth))
                                     .padding(.trailing, DashboardHUDLayout.edgePadding)
                                     .padding(.top, DashboardHUDLayout.edgePadding)
                             }
@@ -223,8 +224,8 @@ struct MonitorHUD: View {
                             SessionListPanel(maxHeight: panelMaxHeight)
                                 .frame(maxWidth: .infinity)
                         }
-                        if preferences.showTankStatus || preferences.showDeviceDiagnostic {
-                            TopologyRail(maxHeight: panelMaxHeight)
+                        if showsRightRail {
+                            dashboardRightRail(maxHeight: panelMaxHeight)
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -241,6 +242,35 @@ struct MonitorHUD: View {
             weatherDeckSig = nil
             Task { await refreshWeather() }
         }
+        #endif
+    }
+
+    private var showsRightRail: Bool {
+        #if os(macOS)
+        collaborationEnabled || preferences.showTankStatus || preferences.showDeviceDiagnostic
+        #else
+        preferences.showTankStatus || preferences.showDeviceDiagnostic
+        #endif
+    }
+
+    private var rightRailWidth: CGFloat {
+        #if os(macOS)
+        collaborationEnabled ? 390 : 300
+        #else
+        300
+        #endif
+    }
+
+    @ViewBuilder
+    private func dashboardRightRail(maxHeight: CGFloat) -> some View {
+        #if os(macOS)
+        if collaborationEnabled {
+            CollaborationPanel(maxHeight: maxHeight)
+        } else {
+            TopologyRail(maxHeight: maxHeight)
+        }
+        #else
+        TopologyRail(maxHeight: maxHeight)
         #endif
     }
 

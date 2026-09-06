@@ -53,6 +53,7 @@ All surfaces follow the same rule:
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
 | macOS dashboard and in-process daemon | Yes | — | Standalone Tier 1 product |
+| Experimental macOS collaboration lens | Yes | Yes | Opt-in Dashboard right rail; preserves Habitat, roster, timeline and existing controls. Reads the selected session's canonical task sample through existing local APME GET routes. Child branches require typed subagent evidence; live census is separate from historical starts/stops. No inferred project/team links, progress percentage or new steering commands. Missing/older endpoints degrade to roster + census. |
 | Enterprise network posture (loopback-only / no device modules) | Yes | Yes | Same two axes both tiers. Tier 2: `daemon start --loopback/--local`, baked into autostart via `daemon install --enterprise`. Tier 1: Settings → Local server toggles (`AppPreferences.daemonLoopbackOnly` / `daemonNoDeviceModules` → `DaemonPosture`), applied by daemon restart; the sandboxed app cannot read env vars meaningfully, so a preference is the switch |
 | iOS / iPadOS companion | Yes | Yes | Bonjour + same-LAN WS |
 | Stream Deck family | Yes | Yes | Requires Elgato Stream Deck host software |

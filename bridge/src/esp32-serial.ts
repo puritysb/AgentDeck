@@ -461,9 +461,10 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
 
   if (event.type === 'sessions_list') {
     const raw = Array.isArray(e.sessions) ? e.sessions : [];
-    return {
+    const selected = roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP);
+    const prepared = {
       type: 'sessions_list',
-      sessions: roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP).map((s: any) => ({
+      sessions: selected.map((s: any) => ({
         id: limitString(s.id, 31),
         projectName: limitString(s.projectName, 39),
         modelName: limitString(s.modelName, 31),
@@ -497,6 +498,22 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
         options: sanitizeOptions(s.options),
       })),
     } as BridgeEvent;
+    // Optional read-only census on IPS10 only. Every older/smaller board gets
+    // exactly the baseline projection. Preserve the conservative frame budget;
+    // omission is explicitly "unknown" on the new firmware, never zero.
+    if (_conn?.deviceInfo?.board === 'ips_10') {
+      const rows = (prepared as any).sessions;
+      for (let i = 0; i < rows.length; i++) {
+        const c = selected[i].subagents;
+        if (c && [c.active, c.peak, c.completed].every(v => Number.isInteger(v) && v >= 0 && v <= 65535)) {
+          rows[i].subagents = { active: c.active, peak: c.peak, completed: c.completed };
+        }
+      }
+      if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) {
+        for (const row of rows) delete row.subagents;
+      }
+    }
+    return prepared;
   }
 
   return event;

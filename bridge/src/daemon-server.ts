@@ -4000,7 +4000,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // its lastSeen fresh. When serial disconnects, this flips false on the next
     // event and WiFi resumes automatically — no state migration needed.
     if (SERIAL_FORWARDED_EVENTS.has(event.type) && isWifiEsp32RedundantWithSerial(client)) return null;
-    return prepareForSerial(event);
+    const identity = wifiEsp32IdentityForSocket(client);
+    return prepareForSerial(event, identity?.board ? { deviceInfo: { board: identity.board } } : undefined);
   });
 
   // Timeline

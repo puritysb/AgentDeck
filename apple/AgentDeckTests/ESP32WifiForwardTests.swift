@@ -13,6 +13,20 @@ import XCTest
 /// unshrunk / non-display events at ESP32 boards again, these fail.
 /// See memory `esp32-wifi-flap-broadcast-amplification`.
 final class ESP32WifiForwardTests: XCTestCase {
+    func testCollaborationCensusOnlyEnhancesIPS10AndKeepsZero() throws {
+        let event: [String: Any] = ["type": "sessions_list", "sessions": [[
+            "id": "parent", "alive": true, "state": "idle",
+            "subagents": ["active": 0, "peak": 3, "completed": 3]
+        ]]]
+        let ips10 = ESP32Serial.wifiDeviceInfo(["board": "ips_10"])
+        let other = ESP32Serial.wifiDeviceInfo(["board": "86box"])
+        let enhanced = ESP32Serial.prepareForSerial(event, deviceInfo: ips10)
+        let rows = try XCTUnwrap(enhanced["sessions"] as? [[String: Any]])
+        XCTAssertEqual((rows.first?["subagents"] as? [String: Int])?["active"], 0)
+        XCTAssertEqual(rows.first?["state"] as? String, "idle")
+        let baseline = ESP32Serial.prepareForSerial(event, deviceInfo: other)
+        XCTAssertNil((baseline["sessions"] as? [[String: Any]])?.first?["subagents"])
+    }
 
     func testWifiDeviceInfoKeepsEinkRefreshCounters() throws {
         let info = try XCTUnwrap(ESP32Serial.wifiDeviceInfo([
