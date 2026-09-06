@@ -1449,6 +1449,53 @@ export async function probeJudgeBackend(cfg: ApmeJudgeConfig): Promise<JudgeBack
   }
 }
 
+/**
+ * OpenAI JSON mode for the local judge legs.
+ *
+ * The judge prompt asks for strict JSON and the runner parses the reply as
+ * JSON, but nothing ever ASKED the server to constrain its output — so a model
+ * that decides to wrap the object in prose produces an unparseable verdict, the
+ * task is retried, fails again, and parks for 30 minutes. Measured on the
+ * author's store: one task (`de9afcc5`) parked six times in three hours and 17
+ * times since 2026-09-03, never judged. `response_format: { type: 'json_object' }`
+ * turns that from a hope into a request the server can honour.
+ *
+ * It is not universal: `apme.judge.endpoint` may be any OpenAI-compatible
+ * server, and some answer 400/422 to the field itself. Such a server must not
+ * lose its judge entirely, so a rejection retries once WITHOUT the field and is
+ * remembered per endpoint — the probe then costs one request per endpoint per
+ * process, not one per verdict.
+ */
+const judgeJsonModeUnsupported = new Set<string>();
+
+/** Reset the per-endpoint JSON-mode memory (tests only). */
+export function clearJudgeJsonModeCacheForTests(): void {
+  judgeJsonModeUnsupported.clear();
+}
+
+function judgeJsonModeEnabled(url: string): boolean {
+  return !judgeJsonModeUnsupported.has(url);
+}
+
+/** A 400/422 to a request carrying `response_format` is the server refusing the
+ *  FIELD. Every other status is about the request or the account (401, 429,
+ *  5xx) and must surface unchanged — retrying those without JSON mode would
+ *  hide an auth failure behind a second identical failure. */
+function isJsonModeRejection(status: number): boolean {
+  return status === 400 || status === 422;
+}
+
+function noteJsonModeUnsupported(url: string, status: number): void {
+  if (judgeJsonModeUnsupported.has(url)) return;
+  judgeJsonModeUnsupported.add(url);
+  log(`APME judge: ${url} rejected response_format json_object (HTTP ${status}) — retrying without JSON mode and not sending it again this process`);
+}
+
+/** `{ response_format: … }` or nothing, so a call site can spread it. */
+function jsonModeField(enabled: boolean): Record<string, unknown> {
+  return enabled ? { response_format: { type: 'json_object' } } : {};
+}
+
 async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
   // MLX server speaks OpenAI chat-completions. The llm.mlx pin (shared with
   // timeline/label summarizers) is the source of truth; cfg.endpoint/model
@@ -1471,7 +1518,7 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
     } catch { /* use configured model */ }
   }
 
-  const request = (userPrompt: string) => fetch(url, {
+  const request = (userPrompt: string, jsonMode: boolean) => fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1482,6 +1529,7 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
       ],
       temperature: 0.0,
       max_tokens: 800,
+      ...jsonModeField(jsonMode),
     }),
     // Long task_rollup prompts can cross 60s at the tail under sustained
     // local load (68.7s observed with Gemma 4). Keep the timeout bounded but
@@ -1489,11 +1537,19 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
     signal: AbortSignal.timeout(90_000),
   });
 
-  let resp = await request(prompt);
-  if (!resp.ok && resp.status === 400) {
+  let jsonMode = judgeJsonModeEnabled(url);
+  let resp = await request(prompt, jsonMode);
+  if (!resp.ok && isJsonModeRejection(resp.status)) {
     const detail = await resp.text();
     const overflow = detail.match(/Request needs \d+ context tokens \((\d+) prompt \+ (\d+) max generation\), but MAX_KV_SIZE is (\d+)/);
-    if (overflow) {
+    if (!overflow && jsonMode) {
+      // Not the context-overflow shape, so this server is refusing the field
+      // rather than the prompt. Retry once without it; a genuinely bad request
+      // fails again below with its own status.
+      noteJsonModeUnsupported(url, resp.status);
+      jsonMode = false;
+      resp = await request(prompt, false);
+    } else if (overflow) {
       const promptTokens = Number(overflow[1]);
       const maxGeneration = Number(overflow[2]);
       const maxKv = Number(overflow[3]);
@@ -1504,7 +1560,7 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
       const ratio = Math.min(0.95, (targetPromptTokens / promptTokens) * 0.98);
       const compacted = compactPromptForMlxContext(prompt, Math.max(1000, Math.floor(prompt.length * ratio)));
       debug('APME', `MLX context overflow (${promptTokens}+${maxGeneration}>${maxKv}); retrying with ${compacted.length}/${prompt.length} prompt chars`);
-      resp = await request(compacted);
+      resp = await request(compacted, jsonMode);
     }
   }
   if (!resp.ok) throw new Error(`MLX judge HTTP ${resp.status}`);
@@ -1588,7 +1644,7 @@ async function callOpenAICompatible(prompt: string, cfg: ApmeJudgeConfig): Promi
   const model = await resolveOpenAIModel(base, cfg.apiKey, cfg.model);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
-  const resp = await fetch(url, {
+  const send = (jsonMode: boolean) => fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -1600,9 +1656,16 @@ async function callOpenAICompatible(prompt: string, cfg: ApmeJudgeConfig): Promi
       temperature: 0,
       max_tokens: 1024,
       ...(cfg.reasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
+      ...jsonModeField(jsonMode),
     }),
     signal: AbortSignal.timeout(90_000),
   });
+  const jsonMode = judgeJsonModeEnabled(url);
+  let resp = await send(jsonMode);
+  if (!resp.ok && jsonMode && isJsonModeRejection(resp.status)) {
+    noteJsonModeUnsupported(url, resp.status);
+    resp = await send(false);
+  }
   if (!resp.ok) throw new Error(`openai judge HTTP ${resp.status} (${url})`);
   const json = await resp.json() as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> };
   if (json.choices?.[0]?.finish_reason === 'length') throw new Error('openai judge reached output limit before completion');

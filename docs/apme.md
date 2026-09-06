@@ -433,6 +433,16 @@ JSON처럼 보여도 거부한다. 빈 문자열·공백·content 누락도 실�
 생략하는 경우는 지원한다. 응답 게이트는 `shared/apme-judge-response-vectors.json`을
 Vitest와 macOS XCTest에서 함께 재생하며, JSON 파싱·루브릭 검증은 그 다음 단계다.
 
+판정 요청은 **`response_format: {"type":"json_object"}`를 보낸다**. 프롬프트가 JSON을
+요구하고 러너가 JSON으로 파싱하는데 서버에는 아무것도 요구하지 않던 상태였고, 모델이
+객체를 산문으로 감싸면 판정 불가 → 재시도 → 30분 park 가 반복된다(실측: 한 task 가
+3시간에 6회, 9/3 이후 17회 park 되고 끝내 판정되지 않았다). 이 필드는 보편적이지 않아
+일부 OpenAI 호환 서버는 400/422로 거부하는데, 그런 서버가 판정 자체를 잃으면 안 되므로
+**거부 시 필드 없이 1회 재시도**하고 그 엔드포인트를 기억한다 — 탐색 비용은 프로세스당
+엔드포인트 1회이지 판정 1회당이 아니다. 401·429·5xx는 필드 거부가 아니므로 그대로
+올린다(재시도하면 인증 실패가 같은 실패 뒤에 숨는다). MLX의 context overflow 400은
+기존대로 프롬프트를 압축해 재시도하며 JSON 모드를 유지한다.
+
 `apme.judge.reasoningEffort`는 **Node의 OpenAI 호환 백엔드 전용 선택 옵션**이다.
 `none | low | medium | high | max`를 `reasoning_effort`로 전달하며 생략하면 서버 기본값을
 유지한다. 지원 여부는 서버·모델에 달려 있다. Swift에는 이 옵션을 아직 적용하지 않았으며,
