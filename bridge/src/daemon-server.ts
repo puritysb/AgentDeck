@@ -152,7 +152,7 @@ import {
   PREFERRED_PORT_RECLAIM_MS,
   type DaemonPortSource,
 } from './daemon-port.js';
-import { fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
+import { enableClaudeUsageRecovery, fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
 import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
 import {
@@ -3940,6 +3940,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Keep the original startedAt stable when the self-heal timer rewrites it.
   const daemonInfo = { port, pid: process.pid, startedAt: new Date().toISOString() };
   writeDaemonInfo(daemonInfo);
+  enableClaudeUsageRecovery();
 
   // ===== BridgeCore =====
   const core = new BridgeCore({

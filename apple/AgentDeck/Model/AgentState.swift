@@ -154,6 +154,19 @@ struct DashboardState: Sendable {
     var oauthConnected: Bool?
     var ollamaStatus: OllamaStatus?
     var usageStale: Bool?
+    var tokenStatus: String?
+
+    /// A quota failure is separate from session connectivity. Only show a
+    /// relayed failure; the standalone daemon has no Claude OAuth capability.
+    var claudeUsageIssue: String? {
+        guard usageStale == true else { return nil }
+        switch tokenStatus {
+        case "expired": return "Usage authorization expired"
+        case "missing": return "Usage authorization unavailable"
+        default: return oauthConnected == true ? "Usage temporarily unavailable" : nil
+        }
+    }
+
     var codexAuthMode: String?
     var codexWebAuthConnected: Bool?
     var codexPlanType: String?

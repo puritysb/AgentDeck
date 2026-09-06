@@ -998,6 +998,10 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         s.extraUsageUsedCredits = e.extraUsageUsedCredits ?? s.extraUsageUsedCredits
         s.extraUsageUtilization = e.extraUsageUtilization ?? s.extraUsageUtilization
         s.oauthConnected = e.oauthConnected ?? s.oauthConnected
+        // A fresh frame from an older producer also clears a prior auth error.
+        let freshQuotaFrame = e.usageStale != true && (e.usageStale == false
+            || e.fiveHourPercent != nil || e.sevenDayPercent != nil)
+        s.tokenStatus = e.tokenStatus ?? (freshQuotaFrame ? nil : s.tokenStatus)
         if let os = e.ollamaStatus { s.ollamaStatus = os }
         s.usageStale = Self.mergedUsageStale(
             incoming: e.usageStale,
@@ -1132,6 +1136,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         state.sevenDayPercent = nil
         state.sevenDayResetsAt = nil
         state.usageStale = nil
+        state.tokenStatus = nil
+        state.oauthConnected = nil
         state.codexAuthMode = nil
         state.codexPlanType = nil
         state.codexRateLimits = nil

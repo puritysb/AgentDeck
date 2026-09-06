@@ -255,7 +255,8 @@ export function buildUsageEvent(
     // The cost-based API-billing percent path keeps usageStale honest too
     // (defined percent → not forced stale).
     usageStale: stale || (fiveHourPercent === undefined && sevenDayPercent === undefined),
-    tokenStatus: getTokenStatus() !== 'unknown' ? getTokenStatus() : undefined,
+    // Unknown must retract a prior expired status after renewal or host changes.
+    tokenStatus: getTokenStatus(),
     codexAuthMode: codexAuth?.authMode,
     codexWebAuthConnected: codexAuth?.webAuthConnected,
     codexPlanType: codexAuth?.planType,
