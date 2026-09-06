@@ -101,3 +101,6 @@ Verification artifacts: `output/all-tests.log`, `output/transport-tests.log`,
 - After the large-history fix, the installed app rendered a real `Explore`
   completion branch alongside a current census of 0 active / 1 completed.
   Original-view restoration and switching back were both verified in the app.
+- Final Release XCTest run: 37 passed / 0 failed, including the 700 KB ignored
+  tool-payload regression. See `output/macos-tests-final.log` and the 12:51:55
+  result bundle under `output/macos-build/Logs/Test/`.
