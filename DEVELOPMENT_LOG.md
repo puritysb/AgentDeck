@@ -14,7 +14,7 @@ IPS10만 동일 크기·ID 순서 카드로 변경하고, 부모 상태와 하�
 보존하며 3,500바이트 보수적 예산을 넘으면 추가 필드만 제외한다. 다른 기기 payload는
 그대로다. firmware 상태 및 텍스트는 IPS10 전용 고정 크기 버퍼이며 라벨은 초기화 때만 생성한다.
 
-검증: Vitest 259파일/4,025통과·1건너뜀, macOS XCTest 36통과,
+검증: Vitest 259파일/4,025통과·1건너뜀, 최종 macOS XCTest 37통과(큰 payload 회귀 포함),
 IPS10 portrait/landscape 1–10세션 geometry host test 통과, P4 firmware 빌드 통과.
 Release archive는 로컬 실행용 조직 Development 서명이다. 별도 ad-hoc 재서명 복사본으로
 App Store 구조/금지경로 verifier를 통과했으며, 이것은 배포 서명/스토어 제출 검증이 아니다.
