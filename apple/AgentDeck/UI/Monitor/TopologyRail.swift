@@ -284,9 +284,8 @@ struct TopologyRail: View {
                 .filter(\.available)
                 .map { shortClaudeModel($0.name) }
         }()
-        let subtitle: String? = claudeModels.isEmpty
-            ? base.subtitle
-            : claudeModels.joined(separator: ", ")
+        let subtitle: String? = stateHolder.state.claudeUsageIssue
+            ?? (claudeModels.isEmpty ? base.subtitle : claudeModels.joined(separator: ", "))
         return ProviderRow(
             name: "Claude",
             status: base.status,

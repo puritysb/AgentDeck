@@ -9440,8 +9440,7 @@ final class DaemonServer {
         // (iOS stale-usage bug, 2026-07-17).
         e["usageStale"] = apiUsageStale || (cachedApiUsage?.stale ?? true)
         mergeEngineSnapshot(into: &e)
-        let ts = usageAPI.tokenStatus
-        if ts != .unknown { e["tokenStatus"] = ts.rawValue }
+        e["tokenStatus"] = usageAPI.tokenStatus.rawValue
         let codexAuth = codexAuthStatusSnapshot()
         if let codex = codexAuth {
             Self.writeCodexAuthStatus(codex, into: &e)

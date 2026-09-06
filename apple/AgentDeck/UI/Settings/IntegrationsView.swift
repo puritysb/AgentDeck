@@ -674,6 +674,7 @@ enum ProviderRailEvaluator {
             return .dim
         }()
         let subtitle: String? = {
+            if let issue = state.claudeUsageIssue { return issue }
             if hooksInstalled && !oauthOn { return "Hooks on" }
             if oauthKnownDown             { return "Not connected" }
             return nil
