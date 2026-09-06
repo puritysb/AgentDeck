@@ -108,6 +108,12 @@ struct SessionInfo {
     SessionOption options[SESSION_OPTIONS_CAP];
     uint8_t optionCount;
     char activity[80];      // shared one-liner summary of recent work ("" when none)
+#if defined(BOARD_IPS10)
+    // Optional existing wire census. Six bytes per session, IPS10 only; no heap.
+    bool childrenKnown;
+    uint16_t childrenActive;
+    uint16_t childrenCompleted;
+#endif
     // Daemon-computed "latest milestone" for this session (TIMELINE parity):
     // the newest chat/task row from the daemon's authoritative timeline store.
     // The on-device ring is tiny and empty after every (re)boot, so cards that

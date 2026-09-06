@@ -1273,6 +1273,14 @@ actor ESP32Serial {
                         if let p = s["port"] { o["port"] = p }
                         if let es = s["elapsedSec"] { o["elapsedSec"] = es }
                         if let op = s["options"] { o["options"] = op }
+                        // IPS10-only additive census. Old firmware ignores it;
+                        // other boards keep their byte-for-byte baseline fields.
+                        if deviceInfo?.board == "ips_10", let c = s["subagents"] as? [String: Any],
+                           let active = c["active"] as? Int, let peak = c["peak"] as? Int,
+                           let completed = c["completed"] as? Int,
+                           (0...65535).contains(active), (0...65535).contains(peak), (0...65535).contains(completed) {
+                            o["subagents"] = ["active": active, "peak": peak, "completed": completed]
+                        }
                         // Daemon-computed latest milestone (TIMELINE parity for the
                         // IPS10 cards). Omitted when absent — empty strings would
                         // cost ~50 bytes/session on the 4KB serial line budget.
@@ -1286,6 +1294,16 @@ actor ESP32Serial {
                         }
                         return o
                     }
+            }
+        }
+
+        if type == "sessions_list", deviceInfo?.board == "ips_10",
+           JSONSerialization.isValidJSONObject(e),
+           let bytes = try? JSONSerialization.data(withJSONObject: e),
+           bytes.count > Self.timelineHistoryByteBudget,
+           let rows = e["sessions"] as? [[String: Any]] {
+            e["sessions"] = rows.map { row in
+                var baseline = row; baseline.removeValue(forKey: "subagents"); return baseline
             }
         }
 

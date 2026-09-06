@@ -61,6 +61,7 @@ static void appendBounded(char* buf, size_t len, size_t& pos, const char* fmt, .
 #endif
 
 #if defined(BOARD_IPS10)
+#include "collaboration_layout.h"
 // === IPS10 (800×1280) tablet sidebar: a LIVING AGENT MOSAIC ===
 // One cell per active agent; each cell's height fluidly grows when the agent is working
 // and shrinks when idle, and shows inline what that agent is doing. Replaces the static
@@ -112,6 +113,12 @@ static lv_obj_t* cellProj[MOSAIC_MAX] = {nullptr};   // project name (dim)
 static lv_obj_t* cellTool[MOSAIC_MAX] = {nullptr};   // "▸ tool" in a bordered box
 static lv_obj_t* cellBody[MOSAIC_MAX] = {nullptr};   // think / awaiting question (single line, dotted)
 static lv_obj_t* cellMeta[MOSAIC_MAX] = {nullptr};   // model · elapsed footer (hidden on short cells)
+// Allocated by LVGL once at init, one short census label per existing card.
+// No per-frame heap object creation; values are bounded in the session snapshot.
+static lv_obj_t* cellCoord[MOSAIC_MAX] = {nullptr};
+// 960 bytes of IPS10-only static text, reused instead of lv_label_set_text's
+// heap copy on every census change. The ten label widgets live with the HUD.
+static char cellCoordText[MOSAIC_MAX][96] = {};
 // Animated current rect per cell (lerped toward the treemap target) — fluid boundaries.
 static float cellCurX[MOSAIC_MAX] = {0};
 static float cellCurY[MOSAIC_MAX] = {0};
@@ -1584,7 +1591,9 @@ void init(lv_obj_t* parent) {
     lv_obj_set_style_radius(cellsBox, 12, 0);
     lv_obj_set_style_border_width(cellsBox, 0, 0);
     lv_obj_set_style_pad_all(cellsBox, 0, 0);
-    lv_obj_clear_flag(cellsBox, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(cellsBox, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(cellsBox, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(cellsBox, LV_SCROLLBAR_MODE_AUTO);
     // No flex layout → children are placed by absolute lv_obj_set_pos (the treemap).
 
     ips10InitGlyphs();   // build the A8 creature-mark descriptors once before the cells use them
@@ -1666,6 +1675,20 @@ void init(lv_obj_t* parent) {
         lv_label_set_long_mode(cellProj[i], LV_LABEL_LONG_DOT);
         lv_obj_set_width(cellProj[i], 60);
         lv_label_set_text(cellProj[i], "");
+
+        // Child activity is a second axis: an idle parent can have live children.
+        cellCoord[i] = lv_label_create(cell[i]);
+        if (cellCoord[i]) {
+        lv_obj_set_style_text_font(cellCoord[i], &font_kr_16, 0);
+        lv_obj_set_style_text_color(cellCoord[i], lv_color_hex(Theme::HUDDim), 0);
+        lv_obj_set_style_bg_color(cellCoord[i], lv_color_hex(Theme::HUDText), 0);
+        lv_obj_set_style_bg_opa(cellCoord[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(cellCoord[i], 6, 0);
+        lv_label_set_long_mode(cellCoord[i], LV_LABEL_LONG_DOT);
+        lv_label_set_text_static(cellCoord[i], cellCoordText[i]);
+        } else {
+            Serial.printf("[collaboration] census label %d allocation failed\n", i);
+        }
 
         // Tool box: "▸ tool" in a bordered/filled box.
         cellTool[i] = lv_label_create(cell[i]);
@@ -2318,7 +2341,7 @@ void update() {
                        // card's TIMELINE feed — rendered dimmed under `body`,
                        // count gated by the cell height at label-set time.
                        char feed[3][120]; uint8_t feedCount;
-                       char activity[80]; };
+                       char activity[80]; bool childrenKnown; uint16_t childrenActive; uint16_t childrenCompleted; };
         // static: ~10 × 1.2KB no longer fits comfortably on the LVGL task
         // stack; update() is only ever entered from the single UI task.
         static MCell mc[MOSAIC_MAX];
@@ -2337,6 +2360,9 @@ void update() {
             strncpy(mc[n].model, si.modelName, sizeof(mc[n].model) - 1); mc[n].model[sizeof(mc[n].model) - 1] = '\0';
             strncpy(mc[n].tool, si.currentTool, sizeof(mc[n].tool) - 1); mc[n].tool[sizeof(mc[n].tool) - 1] = '\0';
             mc[n].elapsed = si.elapsedSec;
+            mc[n].childrenKnown = si.childrenKnown;
+            mc[n].childrenActive = si.childrenActive;
+            mc[n].childrenCompleted = si.childrenCompleted;
             strncpy(mc[n].sid, si.id, sizeof(mc[n].sid) - 1); mc[n].sid[sizeof(mc[n].sid) - 1] = '\0';
             strncpy(mc[n].requestId, si.requestId, sizeof(mc[n].requestId) - 1); mc[n].requestId[sizeof(mc[n].requestId) - 1] = '\0';
             strncpy(mc[n].question, si.question, sizeof(mc[n].question) - 1); mc[n].question[sizeof(mc[n].question) - 1] = '\0';
@@ -2447,7 +2473,8 @@ void update() {
             strcpy(mc[n].name, "OpenClaw"); strcpy(mc[n].agent, "openclaw");
             strcpy(mc[n].state, "idle"); mc[n].model[0] = '\0'; mc[n].tool[0] = '\0'; mc[n].elapsed = 0;
             mc[n].sid[0] = '\0'; mc[n].requestId[0] = '\0'; mc[n].question[0] = '\0'; mc[n].body[0] = '\0';
-            mc[n].feedCount = 0; mc[n].activity[0] = '\0'; n++;
+            mc[n].feedCount = 0; mc[n].activity[0] = '\0';
+            mc[n].childrenKnown = false; mc[n].childrenActive = 0; mc[n].childrenCompleted = 0; n++;
         }
         if (n == 0 && hasData) {  // single-session fallback (no sessions_list yet)
             mc[0].accent = ips10AgentColor(g_state.agentType);
@@ -2550,7 +2577,7 @@ void update() {
             }
         }
         if (terrCount) {
-            char tc[40]; snprintf(tc, sizeof(tc), "THE BULLPEN " LV_SYMBOL_BULLET " %d LIVE", n);
+            char tc[64]; snprintf(tc, sizeof(tc), "PROJECT ROOMS " LV_SYMBOL_BULLET " %d SESSIONS", n);
             lv_label_set_text(terrCount, tc);
         }
 
@@ -2561,58 +2588,22 @@ void update() {
         int availH = lv_obj_get_content_height(cellsBox);
         if (availH < 320) availH = (g_screenH - 16) - 150;  // robust fallback (logo + usage bands)
 
-        // Activity weights + descending order (bigger weight → placed first / larger tile).
-        float weights[MOSAIC_MAX]; int order[MOSAIC_MAX]; float wsum = 0;
-        for (int i = 0; i < n; i++) { weights[i] = ips10StateWeight(mc[i].state); wsum += weights[i]; order[i] = i; }
-        if (wsum <= 0) wsum = 1;
+        // Identity-sorted, equal-sized work cards. State changes never move a
+        // session or imply work percentage. Overflow scrolls rather than shrinking
+        // labels; the terrarium remains visible beside the bounded card region.
+        int order[MOSAIC_MAX];
+        for (int i = 0; i < n; i++) order[i] = i;
         for (int a = 0; a < n; a++)
             for (int b = a + 1; b < n; b++)
-                if (weights[order[b]] > weights[order[a]]) { int tmp = order[a]; order[a] = order[b]; order[b] = tmp; }
-
-        // Squarified treemap (matches the D1 mockup): pack tiles so each stays as
-        // close to square as possible — far better for the in-cell text than the old
-        // slice-and-dice, which made full-height slivers in a wide pane.
+                if (strcmp(mc[order[b]].sid, mc[order[a]].sid) < 0) {
+                    int tmp = order[a]; order[a] = order[b]; order[b] = tmp;
+                }
         float tgtX[MOSAIC_MAX], tgtY[MOSAIC_MAX], tgtW[MOSAIC_MAX], tgtH[MOSAIC_MAX];
-        float area[MOSAIC_MAX];
-        for (int i = 0; i < n; i++) area[i] = (weights[i] / wsum) * (float)availW * (float)availH;
-
-        float rx = 0, ry = 0, rw = (float)availW, rh = (float)availH;
-        int rowStart = 0, k = 0;
-        // Lay out order[a..b-1] as one row along the shorter side of the remaining rect.
-        auto layoutRow = [&](int a, int b) {
-            float s = 0; for (int j = a; j < b; j++) s += area[order[j]];
-            if (s <= 0) return;
-            if (rw >= rh) {                    // remaining rect is wide → stack row vertically in a left column
-                float cw = s / (rh > 0 ? rh : 1); float cy = ry;
-                for (int j = a; j < b; j++) { int gi = order[j]; float ch = area[gi] / (cw > 0 ? cw : 1);
-                    tgtX[gi] = rx; tgtY[gi] = cy; tgtW[gi] = cw; tgtH[gi] = ch; cy += ch; }
-                rx += cw; rw -= cw;
-            } else {                           // remaining rect is tall → lay row horizontally along the top
-                float ch = s / (rw > 0 ? rw : 1); float cx = rx;
-                for (int j = a; j < b; j++) { int gi = order[j]; float cw = area[gi] / (ch > 0 ? ch : 1);
-                    tgtX[gi] = cx; tgtY[gi] = ry; tgtW[gi] = cw; tgtH[gi] = ch; cx += cw; }
-                ry += ch; rh -= ch;
-            }
-        };
-        // Worst (largest) aspect ratio of order[a..b-1] laid along `side`.
-        auto rowWorst = [&](int a, int b, float side) -> float {
-            float s = 0, mn = 1e30f, mx = 0;
-            for (int j = a; j < b; j++) { float v = area[order[j]]; s += v; if (v < mn) mn = v; if (v > mx) mx = v; }
-            if (s <= 0 || side <= 0) return 1e30f;
-            float s2 = s * s, sd2 = side * side;
-            float r1 = sd2 * mx / s2, r2 = s2 / (sd2 * mn);
-            return r1 > r2 ? r1 : r2;
-        };
-        while (k < n) {
-            float side = (rw < rh) ? rw : rh;
-            if (k > rowStart && rowWorst(rowStart, k, side) < rowWorst(rowStart, k + 1, side)) {
-                layoutRow(rowStart, k);        // adding order[k] would worsen aspect → close row
-                rowStart = k;
-            } else {
-                k++;                           // keep growing the row
-            }
+        for (int rank = 0; rank < n; rank++) {
+            const auto rect = CollaborationLayout::cell(rank, n, availW, availH);
+            const int i = order[rank];
+            tgtX[i] = rect.x; tgtY[i] = rect.y; tgtW[i] = rect.width; tgtH[i] = rect.height;
         }
-        if (rowStart < n) layoutRow(rowStart, n);
 
         const float GAP = 6.0f;
         // Per-cell change signature: when a settled cell's content is unchanged we
@@ -2636,6 +2627,7 @@ void update() {
 
             // Persist cell data for the tap handler / detail overlay.
             CellMeta& cm = cellMetaData[i];
+            if (detailCellIdx == i && strcmp(cm.sid, mc[i].sid) != 0) detailClose();
             strncpy(cm.sid, mc[i].sid, sizeof(cm.sid) - 1); cm.sid[sizeof(cm.sid) - 1] = '\0';
             strncpy(cm.requestId, mc[i].requestId, sizeof(cm.requestId) - 1); cm.requestId[sizeof(cm.requestId) - 1] = '\0';
             strncpy(cm.state, mc[i].state, sizeof(cm.state) - 1); cm.state[sizeof(cm.state) - 1] = '\0';
@@ -2663,6 +2655,9 @@ void update() {
 
             // Change signature (content + size + focus). Skip label churn when unchanged.
             uint32_t sig = 2166136261u;
+            sig ^= (uint32_t)mc[i].childrenActive * 131u + (uint32_t)mc[i].childrenCompleted * 17u
+                + (mc[i].childrenKnown ? 97u : 0u);
+            for (const char* s = mc[i].sid; *s; s++) sig = sig * 31u + (uint8_t)*s;
             for (const char* s = mc[i].state;    *s; s++) sig = sig * 31u + (uint8_t)*s;
             for (const char* s = mc[i].name;     *s; s++) sig = sig * 31u + (uint8_t)*s;
             for (const char* s = mc[i].tool;     *s; s++) sig = sig * 31u + (uint8_t)*s;
@@ -2734,10 +2729,27 @@ void update() {
             snprintf(nb, sizeof(nb), "#%06lX " LV_SYMBOL_BULLET "# %s",
                      (unsigned long)mc[i].accent, ips10AgentLabel(mc[i].agent));
             lv_label_set_text(cellName[i], nb);
+            if (cellCoord[i]) {
+            lv_obj_set_width(cellCoord[i], innerW);
+            lv_obj_set_height(cellCoord[i], 24);
+            char* coord = cellCoordText[i];
+            if (mc[i].childrenKnown) {
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " 하위 %u 활동 / %u 종료", mc[i].childrenActive, mc[i].childrenCompleted);
+            } else {
+                snprintf(coord, sizeof(cellCoordText[i]), "하위 관계 미관측");
+            }
+            lv_label_set_text_static(cellCoord[i], coord);
+            lv_obj_set_style_text_color(cellCoord[i], lv_color_hex(mc[i].childrenKnown && mc[i].childrenActive > 0
+                ? Theme::DeepSea : Theme::HUDFaint), 0);
+            lv_obj_set_style_bg_color(cellCoord[i], lv_color_hex(mc[i].childrenKnown && mc[i].childrenActive > 0
+                ? D1_OK : Theme::HUDText), 0);
+            }
 
             // state pill chip — bright states get dark text; the dim idle bg gets light text.
             if (ph >= 44) {
-                lv_label_set_text(cellPill[i], ips10StatePill(mc[i].state));
+                char parentState[64];
+                snprintf(parentState, sizeof(parentState), "주 에이전트 %s", ips10StatePill(mc[i].state));
+                lv_label_set_text(cellPill[i], parentState);
                 lv_obj_set_style_bg_color(cellPill[i], lv_color_hex(mc[i].stateCol), 0);
                 lv_obj_set_style_text_color(cellPill[i],
                     lv_color_hex(idle ? 0x1E293B : 0x05140F), 0);
@@ -2750,8 +2762,9 @@ void update() {
             // project (dim) — its own line under the name
             if (ph >= 56 && mc[i].name[0]) {
                 char projBuf[64];
-                strncpy(projBuf, mc[i].name, sizeof(projBuf) - 1);
-                projBuf[sizeof(projBuf) - 1] = '\0';
+                const size_t sidLen = strlen(mc[i].sid);
+                snprintf(projBuf, sizeof(projBuf), "%s " LV_SYMBOL_BULLET " %s", mc[i].name,
+                         sidLen > 6 ? mc[i].sid + sidLen - 6 : mc[i].sid);
                 sanitizeIps10Text(projBuf);
                 lv_label_set_text(cellProj[i], projBuf);
                 lv_obj_clear_flag(cellProj[i], LV_OBJ_FLAG_HIDDEN);
@@ -2760,7 +2773,7 @@ void update() {
             }
 
             // tool box (working/awaiting, when there's room)
-            if (!idle && mc[i].tool[0] && ph >= 80) {
+            if (!idle && mc[i].tool[0] && ph >= 300) {
                 char tb[64]; snprintf(tb, sizeof(tb), LV_SYMBOL_PLAY " %s", mc[i].tool);
                 sanitizeIps10Text(tb);
                 lv_label_set_text(cellTool[i], tb);
@@ -2778,8 +2791,8 @@ void update() {
             // session showing "what it last did" beats a blank card).
             const char* body = "";
             if (awaiting && mc[i].question[0]) body = mc[i].question;
-            else if (mc[i].body[0]) body = mc[i].body;
             else if (!idle && mc[i].activity[0]) body = mc[i].activity;
+            else if (mc[i].body[0]) body = mc[i].body;
             if (body[0] && ph >= 104) {
                 // TIMELINE feed: the newest line renders bright; up to
                 // `feedCount` older rows follow dimmed (recolor markup), the
@@ -2808,6 +2821,7 @@ void update() {
                 Utf8::utf8TrimEnd(full);   // byte cap can split a 한글 glyph
                 sanitizeIps10Text(full);
                 lv_label_set_text(cellBody[i], full);
+                lv_obj_set_height(cellBody[i], ph >= 300 ? 80 : 40);
                 lv_obj_clear_flag(cellBody[i], LV_OBJ_FLAG_HIDDEN);
             } else {
                 lv_obj_add_flag(cellBody[i], LV_OBJ_FLAG_HIDDEN);
@@ -2826,7 +2840,7 @@ void update() {
             // footer: model · elapsed (idle cards show just header + this). Hidden when
             // the inline buttons own the space.
             char el[12]; ips10FormatElapsed(mc[i].elapsed, el, sizeof(el));
-            if (!showButtons && ph >= 64 && (mc[i].model[0] || el[0])) {
+            if (!showButtons && ph >= 300 && (mc[i].model[0] || el[0])) {
                 char fb[56];
                 if (mc[i].model[0] && el[0]) snprintf(fb, sizeof(fb), "%s " LV_SYMBOL_BULLET " %s", mc[i].model, el);
                 else if (mc[i].model[0])     snprintf(fb, sizeof(fb), "%s", mc[i].model);

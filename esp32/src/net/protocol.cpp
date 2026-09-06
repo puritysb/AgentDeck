@@ -417,6 +417,18 @@ static void handleSessionsList(JsonObject& obj) {
             }
             g_state.sessions[i].optionCount = n;
         }
+#if defined(BOARD_IPS10)
+        // sessions_list is a full snapshot: absent/malformed census means
+        // unknown, never a retained count from a previous daemon or session.
+        {
+            const JsonObject children = s["subagents"].as<JsonObject>();
+            const bool known = children["active"].is<int>() && children["completed"].is<int>()
+                && children["active"].as<int>() >= 0 && children["completed"].as<int>() >= 0;
+            g_state.sessions[i].childrenKnown = known;
+            g_state.sessions[i].childrenActive = known ? (uint16_t)constrain(children["active"].as<int>(), 0, 65535) : 0;
+            g_state.sessions[i].childrenCompleted = known ? (uint16_t)constrain(children["completed"].as<int>(), 0, 65535) : 0;
+        }
+#endif
         // Shared per-session activity one-liner (heuristic → Foundation Models
         // summary) — the most meaningful glanceable line for a dashboard row.
         copyTextU8(g_state.sessions[i].activity, sizeof(g_state.sessions[i].activity),

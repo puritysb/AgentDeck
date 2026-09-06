@@ -1,5 +1,26 @@
 # AgentDeck Development Log
 
+## 2026-09-06 — macOS 협업 렌즈와 IPS10 안정 배치 로컬 실험
+
+기존 테라리움/세션 선택/질문 응답/타임라인을 유지하고 macOS Dashboard 제목 표시줄에
+기존 보기와 협업 보기 전환을 추가했다(default off). 새 오른쪽 패널은 선택한 세션의
+관측 ID를 기존 generated 규칙으로 정규화한 뒤 canonical task sample을 인증된 로컬
+GET으로 읽는다. 작업 귀속이 맞는 typed subagent만 가지를 만들며, 과거 시작/종료와
+현재 census를 별도 표시한다. 같은 프로젝트의 멤버십을 위임/의존 관계로 추정하지 않는다.
+기존 APME가 없거나 갱신에 실패하면 명시적인 미관측/마지막 기록 상태로 내려간다.
+
+IPS10만 동일 크기·ID 순서 카드로 변경하고, 부모 상태와 하위 활동/종료 집계를 분리했다.
+두 데몬의 기기 축약 경로가 census를 누락하므로 identified ips_10에만 optional 필드를
+보존하며 3,500바이트 보수적 예산을 넘으면 추가 필드만 제외한다. 다른 기기 payload는
+그대로다. firmware 상태 및 텍스트는 IPS10 전용 고정 크기 버퍼이며 라벨은 초기화 때만 생성한다.
+
+검증: Vitest 259파일/4,025통과·1건너뜀, macOS XCTest 36통과,
+IPS10 portrait/landscape 1–10세션 geometry host test 통과, P4 firmware 빌드 통과.
+Release archive는 로컬 실행용 조직 Development 서명이다. 별도 ad-hoc 재서명 복사본으로
+App Store 구조/금지경로 verifier를 통과했으며, 이것은 배포 서명/스토어 제출 검증이 아니다.
+기본 작업 폴더의 다른 변경은 별도 baseline commit으로 보존하고 이 실험 브랜치에서만 작업했다.
+범위·사용법·복구 경로: [collaboration trial](experiments/collaboration/README.md).
+
 ## 2026-09-06 — PERM 후속 라이브 감사: 내부 Claude 종료 잡음과 Codex 표시·설치 누락
 
 PR #282의 두 TODO를 실제 CLI로 다시 계측했다. Claude Code **2.1.261**의 일반 Agent 호출은
