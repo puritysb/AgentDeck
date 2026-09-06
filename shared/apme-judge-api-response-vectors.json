@@ -31,8 +31,8 @@
     "accepted": true
   },
   {
-    "note": "object closes in one block, cut lands in the next",
-    "why": "Why the blocks are joined BEFORE the completeness check rather than checked one by one.",
+    "note": "cut after the object closed",
+    "why": "The `finish_reason: length` exemption for \"its object closed\" was tried and removed: brace topology cannot tell whether the model finished (it admitted a scratchpad when the verdict was cut, and refused complete verdicts whose trailing prose held an unmatched brace), and it had no measured beneficiary \u2014 the one cut mode observed on this fleet is a repetition loop INSIDE the summary string, where depth never returns to zero.",
     "response": {
       "stop_reason": "max_tokens",
       "content": [
@@ -46,7 +46,7 @@
         }
       ]
     },
-    "accepted": true
+    "accepted": false
   },
   {
     "note": "cut mid-object",

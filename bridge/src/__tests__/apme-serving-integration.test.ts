@@ -151,12 +151,14 @@ describe('incomplete judge response', () => {
     await expect(call(backend)).rejects.toThrow(/output limit/);
   });
 
-  // The rule is about the body, not the flag. A cut that landed after the JSON
-  // object closed left a finished verdict; rejecting it dropped a good verdict
-  // and, on the default chain, rerouted to the Foundation Models floor.
-  it.each(['mlx', 'openai'] as const)('%s accepts a closed object at the output limit', async (backend) => {
+  // A cut response is not a verdict, whatever the body looks like. The
+  // exemption for "its object closed" was tried and removed: brace topology
+  // cannot tell whether the model finished, and it had no measured beneficiary
+  // — the one cut mode observed on this fleet is a repetition loop inside the
+  // summary string, where depth never returns to zero.
+  it.each(['mlx', 'openai'] as const)('%s rejects a cut that landed after the object closed', async (backend) => {
     serve(`${answer} …and then the model kept talking`, 'length');
-    await expect(call(backend)).resolves.toHaveProperty('text');
+    await expect(call(backend)).rejects.toThrow(/output limit/);
   });
 
   // Node indexed `json.choices?.[0]`, which reads this happily; Swift's
@@ -209,7 +211,10 @@ describe('Anthropic API response contract', () => {
     if (vector.accepted) {
       expect(parseJudgeJson(apiJudgeText(vector.response))).not.toBeNull();
     } else {
-      expect(() => apiJudgeText(vector.response)).toThrow();
+      // The MESSAGE, not merely that something threw: without the
+      // `Array.isArray` guard a non-array `content` throws a TypeError, and a
+      // bare `.toThrow()` accepts that — the guard could be reverted green.
+      expect(() => apiJudgeText(vector.response)).toThrow(/refused|output limit|returned no text/);
     }
   });
 });

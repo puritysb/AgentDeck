@@ -38,20 +38,30 @@ final class ApmeParseJudgeTests: XCTestCase {
         }
     }
 
-    /// The output-limit rule is about the BODY, not the flag: a cut that landed
-    /// after the JSON object closed left a finished verdict behind, while a cut
-    /// mid-object left something that is not a verdict at all. #285 rejected
-    /// both; #286 item 3 keeps the rejection only for the second.
-    func testOutputLimitRejectsOnlyAnUnclosedBody() throws {
-        let cut = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"{\"overall\":0."}}]}"#.utf8)
-        XCTAssertThrowsError(try ApmeJudgeChatResponse.content(cut)) { error in
-            guard case ApmeJudgeOpenAI.JudgeError.outputLimit = error else {
-                return XCTFail("Expected output limit, got \(error)")
+    /// A cut response is not a verdict, whatever the body looks like. An
+    /// exemption for "its object closed" was tried and removed — brace topology
+    /// cannot tell whether the model finished, and it had no measured
+    /// beneficiary on this fleet.
+    func testOutputLimitRejectsWhateverTheBodyLooksLike() {
+        for content in [#"{\"overall\":0."#, #"{\"overall\":0.8} and then some prose"#] {
+            let data = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"\#(content)"}}]}"#.utf8)
+            XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data)) { error in
+                guard case ApmeJudgeOpenAI.JudgeError.outputLimit = error else {
+                    return XCTFail("Expected output limit, got \(error)")
+                }
             }
         }
-        let closed = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"{\"overall\":0.8} and then some prose"}}]}"#.utf8)
-        let content = try ApmeJudgeChatResponse.content(closed)
-        XCTAssertEqual(ApmeRunner.parseJudgeJson(content)?.scores["overall"], 0.8)
+    }
+
+    /// `JSONSerialization` bridges JSON booleans to NSNumber, so `as? Double`
+    /// read `{"overall":true}` as a perfect 1.0 score here while Node refused
+    /// the body, and turned `{"passed":true}` into a numeric axis row in
+    /// `evals` on one daemon only.
+    func testBooleansAreNotScores() {
+        XCTAssertNil(ApmeRunner.parseJudgeJson(#"{"overall":true}"#))
+        XCTAssertNil(ApmeRunner.parseJudgeJson(#"{"overall":false,"summary":"x"}"#))
+        let parsed = ApmeRunner.parseJudgeJson(#"{"overall":0.8,"passed":true,"flag":false}"#)
+        XCTAssertEqual(parsed?.scores, ["overall": 0.8])
     }
 
     /// `choices` must be an ARRAY. Swift rejected an object map all along and
@@ -113,7 +123,7 @@ final class ApmeParseJudgeTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("shared/apme-judge-api-response-vectors.json")
         let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
-        XCTAssertGreaterThanOrEqual(vectors.count, 7)
+        XCTAssertGreaterThanOrEqual(vectors.count, 9)
         for vector in vectors {
             let note = try XCTUnwrap(vector["note"] as? String)
             let response = try XCTUnwrap(vector["response"] as? [String: Any])

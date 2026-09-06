@@ -154,16 +154,10 @@ enum ApmeJudgeChatResponse {
         guard let content = (first["message"] as? [String: Any])?["content"] as? String,
               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { throw ApmeJudgeOpenAI.JudgeError.empty }
-        // `finish_reason: "length"` is rejected only when the body does not
-        // hold a complete JSON object. A closed object IS the finished verdict
-        // — what the model wrote after the closing brace is not part of it —
-        // and a body cut mid-object cannot parse anyway, so `parseJudgeJson`
-        // already refuses exactly the incomplete case. Rejecting the complete
-        // one dropped a good verdict and, on the default chain, silently
-        // rerouted to the Foundation Models floor (#286 item 3). The check
-        // stays so the failure can still say the body was cut.
-        if first["finish_reason"] as? String == "length",
-           !ApmeRunner.holdsCompleteJsonObject(content) {
+        // A cut response is not a verdict. See `judgeChatContent` in
+        // bridge/src/apme/runner.ts for why the "unless its object closed"
+        // exemption was tried and removed.
+        if first["finish_reason"] as? String == "length" {
             throw ApmeJudgeOpenAI.JudgeError.outputLimit
         }
         return content

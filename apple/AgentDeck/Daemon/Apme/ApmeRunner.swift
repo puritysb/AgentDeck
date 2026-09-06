@@ -834,12 +834,8 @@ actor ApmeRunner {
         var scores: [String: Double] = [:]
         for (key, value) in obj {
             if reservedFields.contains(key) { continue }
-            if let num = value as? Double {
-                scores[key] = Self.clamp01(num)
-            } else if let num = value as? Int {
-                scores[key] = Self.clamp01(Double(num))
-            }
-            // Non-numeric fields (strings, arrays, objects) are ignored.
+            // Non-numeric fields (strings, booleans, arrays, objects) are ignored.
+            if let num = Self.jsonNumber(value) { scores[key] = Self.clamp01(num) }
         }
         guard scores["overall"] != nil else { return nil }
 
@@ -860,6 +856,18 @@ actor ApmeRunner {
         )
     }
 
+    /// Numeric value of a JSON field, mirroring TS `typeof v === 'number'`.
+    /// NOT `as? Double`: `JSONSerialization` bridges JSON booleans to NSNumber,
+    /// so `{"overall":true}` read as a perfect 1.0 score on this daemon while
+    /// Node refused the body — and `{"passed":true}` became a numeric axis row
+    /// in `evals` on one daemon only.
+    private static func jsonNumber(_ value: Any?) -> Double? {
+        guard let number = value as? NSNumber else { return nil }
+        if CFGetTypeID(number) == CFBooleanGetTypeID() { return nil }
+        let d = number.doubleValue
+        return d.isFinite ? d : nil
+    }
+
     /// The judge's verdict object, chosen by the one field that identifies a
     /// verdict rather than by position. Mirrors `parseJudgeObject` in
     /// bridge/src/apme/runner.ts.
@@ -878,34 +886,11 @@ actor ApmeRunner {
             from = block.end
             if let data = block.text.data(using: .utf8),
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let overall = obj["overall"] as? Double, overall.isFinite {
-                verdicts.append(obj)
-            } else if let data = block.text.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let overall = obj["overall"] as? Int, Double(overall).isFinite {
+               Self.jsonNumber(obj["overall"]) != nil {
                 verdicts.append(obj)
             }
         }
         return verdicts.count == 1 ? verdicts[0] : nil
-    }
-
-    /// Whether a body the server says it CUT still holds the finished verdict.
-    /// Mirrors `holdsCompleteJsonObject` in bridge/src/apme/runner.ts — two
-    /// structural questions, deliberately not "does it parse" (the two daemons'
-    /// JSON parsers disagree on leniency; the balanced scanners do not):
-    /// did any `{…}` close, and was the model still inside an object when the
-    /// cut landed. The second is the case `selectVerdictObject`'s ambiguity
-    /// rule cannot see — a closed scratchpad above a verdict that was cut
-    /// leaves exactly ONE span, so nothing looks ambiguous and the draft wins.
-    static func holdsCompleteJsonObject(_ text: String) -> Bool {
-        var lastEnd: String.Index?
-        var from = text.startIndex
-        while let block = extractFirstJsonBlock(text, from: from) {
-            lastEnd = block.end
-            from = block.end
-        }
-        guard let end = lastEnd else { return false }
-        return text[end...].firstIndex(of: "{") == nil
     }
 
     /// Extract the first balanced `{...}` block from arbitrary text.

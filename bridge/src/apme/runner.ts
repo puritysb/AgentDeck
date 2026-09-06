@@ -1892,7 +1892,7 @@ export function apiJudgeText(response: {
   if (response.stop_reason === 'refusal') {
     throw new Error('API judge refused the request (stop_reason=refusal)');
   }
-  if (response.stop_reason === 'max_tokens' && !holdsCompleteJsonObject(text)) {
+  if (response.stop_reason === 'max_tokens') {
     throw new Error('API judge reached output limit before completion (stop_reason=max_tokens)');
   }
   if (!text) throw new Error(`API judge returned no text (stop_reason=${response.stop_reason})`);
@@ -1911,16 +1911,19 @@ export function apiJudgeText(response: {
  *    reads `{"choices":{"0":{…}}}`, which Swift's `as? [[String: Any]]` cast
  *    rejects — the two daemons disagreed on that shape until #286.
  *  - Content must be a non-empty string.
- *  - `finish_reason: "length"` is rejected ONLY when the body does not hold a
- *    complete JSON object. #285 rejected every cut response before reading it,
- *    on the rule that transport completion is part of verdict validity. But a
- *    closed JSON object IS the finished verdict — whatever the model wrote
- *    after the closing brace is not part of it — and a body cut mid-object
- *    cannot parse anyway, so `parseJudgeJson` already refuses exactly the
- *    incomplete case. Rejecting the complete one bought nothing and cost the
- *    verdict: on the default chain it silently reroutes to the Foundation
- *    Models floor (0.580 on judge-fidelity vs 0.86-1.00 for the MLX tier).
- *    The check stays here so the failure can still SAY the body was cut.
+ *  - `finish_reason: "length"` is rejected, full stop. #285's rule, restored
+ *    after an exemption for "the object closed, so the verdict finished" was
+ *    tried and removed. It produced a defect in three consecutive review
+ *    rounds — first admitting a reasoning model's scratchpad when the real
+ *    verdict was cut, then refusing complete verdicts whose trailing prose
+ *    held an unmatched brace — because brace topology cannot actually tell
+ *    whether the model finished. It also had no measured beneficiary: the one
+ *    cut mode observed on this fleet is a repetition loop INSIDE the `summary`
+ *    string, where depth can never return to zero, so the exemption and this
+ *    rule agree on every real body seen. #286 item 3 lists "keep rejecting and
+ *    alert on the rate" among its options; the park log names this failure, and
+ *    a re-attempt clears it two times in three (measured over the 24 parked
+ *    tasks, 2026-09-06).
  */
 export function judgeChatContent(payload: unknown, label: string): string {
   const choices = (payload as { choices?: unknown } | null)?.choices;
@@ -1932,49 +1935,10 @@ export function judgeChatContent(payload: unknown, label: string): string {
   if (typeof content !== 'string' || content.trim().length === 0) {
     throw new Error(`${label} judge returned empty content`);
   }
-  if (first?.finish_reason === 'length' && !holdsCompleteJsonObject(content)) {
+  if (first?.finish_reason === 'length') {
     throw new Error(`${label} judge reached output limit before completion`);
   }
   return content;
-}
-
-/**
- * Whether a body the server says it CUT still holds the finished verdict.
- *
- * Two structural questions, both of them deliberately not "does it parse". The
- * two daemons' JSON parsers do not agree on leniency — measured, Swift's
- * `JSONSerialization` accepts the trailing commas Gemma 4 emits on long
- * `task_rollup` prompts and Node's `JSON.parse` does not — so a gate phrased
- * that way answers differently on each daemon, which is the one thing the
- * shared vectors exist to prevent. The balanced scanners ARE identical, so
- * these questions are. Whether a closed object is a USABLE verdict is
- * `parseJudgeJson`'s job, where the leniency and the repair already live.
- *
- *  1. Did any `{…}` close at all. A body cut mid-object closes none.
- *  2. Was the model still inside an object when the cut landed — i.e. is there
- *     an unterminated `{` after the last closed one. This is the case the
- *     ambiguity rule in `parseJudgeObject` cannot see: a local reasoning model
- *     that emits `<think>{"overall":0.5}</think>` and is then cut partway
- *     through the real `{"overall":0.9…` leaves exactly ONE closed span, so
- *     nothing looks ambiguous and the scratchpad scores. The verdict that was
- *     being written is the answer; a draft above it is not.
- *
- * A known and accepted cost: a body carrying the lost-opening-quote defect
- * `repairJudgeJson` exists for desyncs the string-aware scanner, so at
- * `finish_reason: length` it reads as cut and is refused even though the parser
- * could have repaired it. That is identical on both daemons — which is the
- * property that matters — and it needs BOTH defects at once to occur.
- */
-function holdsCompleteJsonObject(text: string): boolean {
-  let end = -1;
-  for (let from = 0; ; ) {
-    const block = extractFirstJsonBlock(text, from);
-    if (block === null) break;
-    end = block.end;
-    from = block.end;
-  }
-  if (end < 0) return false;
-  return text.indexOf('{', end) < 0;
 }
 
 /** Every top-level balanced `{…}` span in `text`, then the greedy

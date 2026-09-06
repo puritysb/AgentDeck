@@ -188,9 +188,7 @@ enum ApmeJudgeApi {
         }
         let stopReason = json["stop_reason"] as? String
         if stopReason == "refusal" { throw ApiJudgeError.refused }
-        if stopReason == "max_tokens", !ApmeRunner.holdsCompleteJsonObject(combined) {
-            throw ApiJudgeError.outputLimit
-        }
+        if stopReason == "max_tokens" { throw ApiJudgeError.outputLimit }
         if combined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { throw ApiJudgeError.empty }
         return combined
     }

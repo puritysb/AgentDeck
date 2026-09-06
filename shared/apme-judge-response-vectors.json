@@ -38,8 +38,8 @@
         }
       ]
     },
-    "accepted": true,
-    "why": "A closed JSON object is the finished verdict; whatever the model wrote after the closing brace is not part of it. Rejecting this body dropped a good verdict and, on the default chain, silently rerouted to the Foundation Models floor."
+    "accepted": false,
+    "why": "A cut response is not a verdict, whatever the body looks like. The `finish_reason: length` exemption for \"its object closed\" was tried and removed: brace topology cannot tell whether the model finished (it admitted a scratchpad when the verdict was cut, and refused complete verdicts whose trailing prose held an unmatched brace), and it had no measured beneficiary \u2014 the one cut mode observed on this fleet is a repetition loop INSIDE the summary string, where depth never returns to zero."
   },
   {
     "note": "truncated JSON",
@@ -143,7 +143,7 @@
   },
   {
     "note": "closed object at the output limit, then more prose with a brace",
-    "why": "The shape a `finish_reason: length` body actually has once a cut body may be accepted: the verdict closed and the model kept talking. Node's greedy first-{-to-last-} match spanned into the trailing text and called this cut, while Swift's balanced scanner stopped at the verdict's own closing brace and scored it. Both scan for a balanced block now.",
+    "why": "The `finish_reason: length` exemption for \"its object closed\" was tried and removed: brace topology cannot tell whether the model finished (it admitted a scratchpad when the verdict was cut, and refused complete verdicts whose trailing prose held an unmatched brace), and it had no measured beneficiary \u2014 the one cut mode observed on this fleet is a repetition loop INSIDE the summary string, where depth never returns to zero.",
     "response": {
       "choices": [
         {
@@ -154,7 +154,7 @@
         }
       ]
     },
-    "accepted": true
+    "accepted": false
   },
   {
     "note": "brace inside a string does not close the object",
@@ -173,7 +173,7 @@
   },
   {
     "note": "closed object at the output limit that needs repair",
-    "why": "The object closed, so the gate accepts it \u2014 the gate's question is structural and its balanced scanner is identical on both daemons. Whether the trailing commas are then tolerated belongs to parseJudgeJson, and the two parsers reach the same answer by different routes (Node repairs; Swift's JSONSerialization accepts them outright). A gate phrased as 'does it parse' would have answered differently on each daemon.",
+    "why": "The `finish_reason: length` exemption for \"its object closed\" was tried and removed: brace topology cannot tell whether the model finished (it admitted a scratchpad when the verdict was cut, and refused complete verdicts whose trailing prose held an unmatched brace), and it had no measured beneficiary \u2014 the one cut mode observed on this fleet is a repetition loop INSIDE the summary string, where depth never returns to zero.",
     "response": {
       "choices": [
         {
@@ -184,11 +184,11 @@
         }
       ]
     },
-    "accepted": true
+    "accepted": false
   },
   {
     "note": "a closed scratchpad above a verdict that was cut",
-    "why": "The case the ambiguity rule cannot see: a local reasoning model emits a thinking block containing a complete object, then is cut partway through the real verdict. Exactly ONE span closed, so nothing looks ambiguous \u2014 and taking it scores the draft. An unterminated `{` after the last closed span means the model was still writing when the cut landed, so what closed is not the answer.",
+    "why": "Cut, so refused \u2014 and note it would ALSO have to be refused on the merits: exactly one span closed, so the ambiguity rule sees nothing wrong and the draft would have scored.",
     "response": {
       "choices": [
         {
