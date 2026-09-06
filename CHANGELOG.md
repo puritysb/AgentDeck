@@ -38,6 +38,47 @@ file's own rule forbids reconstructing its notes. The commit above is the
 record. `npm 1.0.16` (`37c674b8`) is a different case and needs nothing — it was
 bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
+## 2026-09-06 — npm 1.2.1, Apple 1.2.1, ESP32 1.2.2
+
+### Collaboration view (Beta): who is doing what, and what is being waited on
+
+A session whose turn has closed reads `idle` on every surface, and until now
+that was the whole story even while six headless workers it had launched were
+still running, a sibling session was exchanging messages with it, and a
+20-minute background job it would be re-invoked by kept going. The daemon now
+records those three shapes of divided work from evidence it can actually see —
+a worker whose process descends from the session's process, a cross-session
+message on the sender's tool call and the receiver's envelope, and a background
+process whose command line names the session's scratchpad — and never from
+shared project membership. The macOS Dashboard gains an opt-in **협업 보기 ·
+Beta** switch in the title bar: pick a session and the right rail shows its
+latest task, confirmed child agents, spawned sessions, peer messages and the
+jobs it is waiting on, with "turn closed · waiting on N" replacing a bare
+`idle`. The roster row shows `⧗N` beside the subagent `+N`. The original view is
+unchanged and remains the default.
+
+Both daemons produce the evidence. The App Store daemon reads the process table
+with `sysctl` and needs no subprocess; the session-to-process link on either
+daemon is a new `X-AgentDeck-Pid` header the Claude hooks send, so rerun
+`agentdeck daemon install` (npm) once after upgrading — the app refreshes its own
+hooks on launch.
+
+### A checklist item is not a child agent
+
+A `TaskCompleted` hook (a TaskCreate/TaskUpdate item checked off) used to be
+recorded as a finished subagent named "Subagent", so a session that ran no
+children could show six completed branches. It is an annotation now, on both
+daemons.
+
+### IPS10: stable cards that keep their information
+
+The IPS10 tablet keeps the equal-size project-room cards but restores the tool,
+model and elapsed lines the previous layout dropped, shows the child and
+coordination censuses in amber when the session is waiting, and picks its ten
+cards deterministically — every session waiting on a human is kept, the newest
+fill the rest, ordered by id — with `+N` in the header for the ones beyond the
+cards. A state change never moves a card any more.
+
 ## 2026-09-04 — ESP32 1.2.1
 
 ### A pager chime now points at the session that needs you

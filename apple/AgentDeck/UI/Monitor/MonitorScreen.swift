@@ -96,7 +96,7 @@ struct MonitorScreen: View {
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Dashboard 보기", selection: $collaborationEnabled) {
                         Text("기존 보기").tag(false)
-                        Text("협업 보기 · 실험").tag(true)
+                        Text("협업 보기 · Beta").tag(true)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 235)

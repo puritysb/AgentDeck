@@ -95,7 +95,7 @@ struct CollaborationPanel: View {
                 Label("협업 보기", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 17, weight: .semibold))
                 Spacer()
-                Text("실험").font(.caption).foregroundStyle(DesignTokens.UI.cyan)
+                Text("Beta").font(.caption).foregroundStyle(DesignTokens.UI.cyan)
                 Button { showsSystem.toggle() } label: {
                     Image(systemName: "network")
                 }.help("기존 시스템 상태 보기").popover(isPresented: $showsSystem) {
