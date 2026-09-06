@@ -197,17 +197,16 @@ struct TopologyRail: View {
         return .live
     }
 
-    /// Hub port surfaces in descending order of trust: explicit daemonService
-    /// port (populated when the Swift daemon is in-process) is unavailable
-    /// from this view (daemonService is only exposed to the menubar panel),
-    /// so we fall back to the state-level session port when we have one.
+    /// The connected URL identifies the current hub. A partial state update
+    /// from a new owner can omit daemonPort and retain the previous owner's
+    /// fallback port (for example Swift :9121 after connecting to Node :9120).
     private var daemonPortText: String {
-        if let port = stateHolder.state.daemonPort, port > 0 {
-            return String(port)
-        }
         if let url = stateHolder.connection.url,
            let parsed = URL(string: url),
            let port = parsed.port {
+            return String(port)
+        }
+        if let port = stateHolder.state.daemonPort, port > 0 {
             return String(port)
         }
         return String(AppPreferences.defaultDaemonPort)

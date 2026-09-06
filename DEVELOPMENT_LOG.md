@@ -25,6 +25,12 @@ Swift의 MLX/OpenAI 호환 어댑터가 finish_reason을 검사하지 않던 차
 동일 조건 재개는 허용·서버 식별 변경은 거절했다. Release 빌드 성공. 로컬 archive verifier는
 개발 인증서 서명만 거절했으며, 정식 배포 서명 검증은 upload=false CI에서 수행한다.
 
+실행본 검증 중 Swift가 임시 9121을 사용하다 Node 9120의 클라이언트로 전환한 뒤에도
+대시보드 허브가 :9121로 표시되는 것을 확인했다. 이전 state의 daemonPort가 남는 부분
+프레임에서, 허브 표시는 실제 연결 URL의 포트를 우선하도록 수정했다.
+APME 커밋의 일반 CI 9개 잡은 통과했고(Node 4,054 통과·2 skip), 정식 서명 iOS/macOS
+archive 검증도 upload=false로 통과했다. 포트 표시 후속 수정은 같은 절차로 재검증한다.
+
 ## 2026-09-06 — Claude 사용량 인증 만료를 설명하고 제한적으로 자동 복구
 
 정상 실행 중인 Node 데몬에서 Claude 사용량만 사라진 사건을 계측했다. 마지막 성공 조회는
