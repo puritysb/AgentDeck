@@ -42,6 +42,7 @@ describe('Ollama-compatible task judge persistence and recovery', () => {
     );
     collector.closeTaskExternal('serving-test', 'manual');
     taskId = store.listTasksForRun(runId)[0].id;
+    store.updateTask(taskId, { outcome: 'abandoned' });
     runner = new ApmeRunner(store);
     runner._setConfig({
       ...DEFAULT_APME_CONFIG,
@@ -100,6 +101,8 @@ describe('Ollama-compatible task judge persistence and recovery', () => {
       expect(rows.every((r) => r.judgeModel === 'openai:foundby-gemma4-ad:16k')).toBe(true);
       expect(storedAtEvent).toBe(store.listEvalsForTask(taskId).length);
       expect(store.getTask(taskId)?.summary).toBe('Added regression coverage.');
+      expect(store.getTask(taskId)?.outcome).toBe('abandoned');
+      expect(rows.every((row) => row.runId === runId)).toBe(true);
       expect(fetcher).toHaveBeenCalledTimes(2);
     },
   );
@@ -163,5 +166,25 @@ describe.each(['mlx', 'openai'] as const)('%s shared response contract', (backen
     });
     if (vector.accepted) await expect(result).resolves.toHaveProperty('text');
     else await expect(result).rejects.toThrow();
+  });
+});
+
+describe('optional OpenAI-compatible reasoning control', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it.each([undefined, 'none', 'high'] as const)('sends only the requested effort: %s', async (reasoningEffort) => {
+    const fetcher = vi.fn(async () => response());
+    vi.stubGlobal('fetch', fetcher);
+    await callJudgeWithMeta('judge', {
+      ...DEFAULT_APME_CONFIG.judge,
+      backend: 'openai',
+      model: 'fixture-model',
+      endpoint: 'http://127.0.0.1:11434/v1',
+      reasoningEffort,
+      fallbackToMlx: false,
+      fallbackToFoundationModels: false,
+    });
+    const request = JSON.parse((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    if (reasoningEffort === undefined) expect(request).not.toHaveProperty('reasoning_effort');
+    else expect(request.reasoning_effort).toBe(reasoningEffort);
   });
 });
