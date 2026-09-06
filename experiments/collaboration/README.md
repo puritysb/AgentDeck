@@ -126,12 +126,16 @@ Created from current `master` with only the three UI commits cherry-picked
 ### Second-pass verification — 2026-09-06 18:50
 
 - Vitest 262 files / 4,087 passed / 1 skipped (vector replay, stable roster, pid
-  registration); macOS XCTest: Executed 9 tests, with 0 failures (incl. `CoordinationEvidenceVectorTests`).
+  registration); macOS XCTest: Executed 76 tests, with 0 failures (incl. `CoordinationEvidenceVectorTests`).
 - IPS10 firmware rebuilt and flashed over WiFi OTA (4.0 MB, 4,138 chunks) through
   the worktree daemon (`a97fcd55b34b`), which is the build on 9120.
-- Installed `~/.claude/settings.json` hooks now carry `X-AgentDeck-Pid` (migrated
-  by the daemon restart). Sessions that started before the migration keep
-  posting through their already-loaded hook set until they restart.
+- The installed `~/.claude/settings.json` hooks do NOT yet carry
+  `X-AgentDeck-Pid` on this machine: writing that file was declined in-session.
+  Run `agentdeck daemon install` (Node migration 10) or re-run the app's hook
+  opt-in once; until then `spawned` on the Swift daemon has no pid to attribute
+  to, and the Node daemon keeps using `~/.claude/sessions/<pid>.json`.
+- Background-job labels were tightened after the first live read produced
+  "NO" / "\012" for heredoc-driven shells (both daemons; `labels` vectors).
 
 ## Review questions
 

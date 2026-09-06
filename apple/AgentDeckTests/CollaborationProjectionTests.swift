@@ -194,6 +194,9 @@ final class CoordinationEvidenceVectorTests: XCTestCase {
         for c in try XCTUnwrap(v["agentProcesses"] as? [[String: Any]]) {
             XCTAssertEqual(CoordinationEvidence.isAgentProcessCommand(c["command"] as? String ?? ""), c["expect"] as? Bool, c["command"] as? String ?? "")
         }
+        for c in try XCTUnwrap(v["labels"] as? [[String: Any]]) {
+            XCTAssertEqual(CoordinationEvidence.commandLabel(c["command"] as? String ?? ""), c["expect"] as? String, c["command"] as? String ?? "")
+        }
         let a = try XCTUnwrap(v["ancestry"] as? [String: Any])
         let table = rows(a["processes"]); let ps = peers(a["peers"])
         for c in try XCTUnwrap(a["cases"] as? [[String: Any]]) {

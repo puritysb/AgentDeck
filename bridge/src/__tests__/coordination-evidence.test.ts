@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CoordinationTracker,
   findAncestorSession,
+  commandLabel,
   isAgentProcessCommand,
   isAgentSpawnCommand,
   parseCrossSessionEnvelope,
@@ -180,6 +181,9 @@ describe('shared coordination-evidence vectors', () => {
   it('spawn and agent commands', () => {
     for (const v of VECTORS.spawnCommands) expect(isAgentSpawnCommand(v.command), v.command).toBe(v.expect);
     for (const v of VECTORS.agentProcesses) expect(isAgentProcessCommand(v.command), v.command).toBe(v.expect);
+  });
+  it('labels', () => {
+    for (const v of VECTORS.labels) expect(commandLabel(v.command), JSON.stringify(v.command)).toBe(v.expect);
   });
   it('ancestry', () => {
     const { processes, peers, cases } = VECTORS.ancestry;

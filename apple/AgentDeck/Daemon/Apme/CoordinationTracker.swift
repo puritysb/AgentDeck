@@ -95,15 +95,26 @@ enum CoordinationEvidence {
         return command.contains("/\(sessionId)/") || command.hasSuffix("/\(sessionId)")
     }
 
-    /// Mirrors `commandLabel`.
+    /// Mirrors `commandLabel`: conservative — a script/path token or a 3+
+    /// character word, else "process" (the first live read produced "NO" and
+    /// "\012" from heredoc-driven shells).
     static func commandLabel(_ command: String) -> String {
-        let tokens = command.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        let skip: Set<String> = ["bash", "sh", "zsh", "-c", "-lc", "python", "python3", "node", "npx", "pnpm", "env"]
-        let candidates = tokens.filter { !skip.contains($0) }
-        let first = candidates.first {
-            !$0.hasPrefix("-") && !$0.contains("/private/tmp/") && $0.range(of: #"^[A-Z_]+="#, options: .regularExpression) == nil
-        } ?? tokens.first ?? "process"
+        let skip: Set<String> = ["bash", "sh", "zsh", "-c", "-lc", "-l", "-e", "python", "python3", "node", "npx", "pnpm", "env", "exec", "nohup", "timeout", "cd", "&&", ";", "||"]
+        let raw = command.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        var tokens: [String] = []
+        for (i, t) in raw.enumerated() {
+            // A `cd <dir>` target is where the job runs, not what it is.
+            if i > 0, raw[i - 1] == "cd" { continue }
+            if skip.contains(t) { continue }
+            if t.range(of: #"^[A-Za-z_][A-Za-z0-9_]*="#, options: .regularExpression) != nil || t.hasPrefix("-") || t.contains("/private/tmp/") { continue }
+            tokens.append(t)
+        }
+        let script = tokens.first { $0.range(of: #"\.(sh|py|mjs|cjs|js|ts|rb|pl|swift)$"#, options: .regularExpression) != nil }
+        let path = tokens.first { $0.contains("/") && $0.range(of: #"^\d+$"#, options: .regularExpression) == nil }
+        let word = tokens.first { $0.range(of: #"^[A-Za-z][A-Za-z0-9._-]{2,}$"#, options: .regularExpression) != nil }
+        guard let first = script ?? path ?? word else { return "process" }
         let base = first.split(separator: "/").last.map(String.init) ?? first
+        guard base.range(of: #"^[A-Za-z0-9][A-Za-z0-9._-]{1,}$"#, options: .regularExpression) != nil else { return "process" }
         return clip(base, 48)
     }
 

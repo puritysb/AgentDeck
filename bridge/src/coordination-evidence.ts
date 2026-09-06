@@ -166,14 +166,24 @@ export function commandNamesSession(command: string, sessionId: string): boolean
   return command.includes(`/${sessionId}/`) || command.endsWith(`/${sessionId}`);
 }
 
-function commandLabel(command: string): string {
-  // "bash -c bash tools/run_bot_matrix.sh /private/tmp/…" → "run_bot_matrix.sh"
-  const tokens = command.split(/\s+/).filter(Boolean);
-  const candidates = tokens.filter((t) => !/^(bash|sh|zsh|-c|-lc|python3?|node|npx|pnpm|env)$/.test(t));
-  const first = candidates.find((t) => !t.startsWith('-') && !t.includes('/private/tmp/') && !/^[A-Z_]+=/.test(t))
-    ?? tokens[0] ?? 'process';
-  const base = first.split('/').pop() ?? first;
-  return clip(base, 48);
+export function commandLabel(command: string): string {
+  // "bash -c bash tools/run_bot_matrix.sh /private/tmp/…" → "run_bot_matrix.sh".
+  // Conservative on purpose: the first live read produced "NO" and "\012" as
+  // labels for heredoc-driven shells, so a label must be a script/path token
+  // or a word of 3+ characters; anything else is just "process".
+  const raw = command.split(/\s+/).filter(Boolean);
+  const tokens = raw
+    // A `cd <dir>` target is where the job runs, not what it is.
+    .filter((t, i) => i === 0 || raw[i - 1] !== 'cd')
+    .filter((t) => !/^(bash|sh|zsh|-c|-lc|-l|-e|python3?|node|npx|pnpm|env|exec|nohup|timeout|cd|&&|;|\|\|)$/.test(t))
+    .filter((t) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(t) && !t.startsWith('-') && !t.includes('/private/tmp/'));
+  const script = tokens.find((t) => /\.(sh|py|mjs|cjs|js|ts|rb|pl|swift)$/.test(t));
+  const path = tokens.find((t) => t.includes('/') && !/^\d+$/.test(t));
+  const word = tokens.find((t) => /^[A-Za-z][A-Za-z0-9._-]{2,}$/.test(t));
+  const first = script ?? path ?? word;
+  if (!first) return 'process';
+  const base = first.split('/').filter(Boolean).pop() ?? first;
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{1,}$/.test(base) ? clip(base, 48) : 'process';
 }
 
 /** Walk the parent chain from `pid` (exclusive) up to `maxDepth` levels and
