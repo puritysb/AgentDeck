@@ -31,13 +31,27 @@ final class ApmeParseJudgeTests: XCTestCase {
         }
     }
 
-    func testOutputLimitHasAnExplicitErrorEvenWithValidJson() {
-        let data = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"{\"overall\":0.8}"}}]}"#.utf8)
-        XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data)) { error in
+    /// The output-limit rule is about the BODY, not the flag: a cut that landed
+    /// after the JSON object closed left a finished verdict behind, while a cut
+    /// mid-object left something that is not a verdict at all. #285 rejected
+    /// both; #286 item 3 keeps the rejection only for the second.
+    func testOutputLimitRejectsOnlyAnUnclosedBody() throws {
+        let cut = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"{\"overall\":0."}}]}"#.utf8)
+        XCTAssertThrowsError(try ApmeJudgeChatResponse.content(cut)) { error in
             guard case ApmeJudgeOpenAI.JudgeError.outputLimit = error else {
                 return XCTFail("Expected output limit, got \(error)")
             }
         }
+        let closed = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"{\"overall\":0.8} and then some prose"}}]}"#.utf8)
+        let content = try ApmeJudgeChatResponse.content(closed)
+        XCTAssertEqual(ApmeRunner.parseJudgeJson(content)?.scores["overall"], 0.8)
+    }
+
+    /// `choices` must be an ARRAY. Swift rejected an object map all along and
+    /// Node did not; the vector file now pins it for both (#286 item 4).
+    func testChoicesMustBeAnArray() {
+        let data = Data(#"{"choices":{"0":{"message":{"content":"{\"overall\":0.8}"}}}}"#.utf8)
+        XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data))
     }
 
     // MARK: - Happy path

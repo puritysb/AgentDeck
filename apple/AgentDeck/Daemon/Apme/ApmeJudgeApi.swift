@@ -43,17 +43,32 @@ enum ApmeJudgeApi {
         }
 
         // Model selection: config.model if set to a real id, else a safe default.
+        // The default is mirrored by `API_JUDGE_DEFAULT_MODEL` in
+        // bridge/src/apme/runner.ts. Both daemons read the same settings.json
+        // and are the same judge, so a user who opted into this leg without
+        // naming a model must not get a different model depending on which
+        // daemon holds the port (this said `claude-opus-4-6`, Node said
+        // `claude-opus-4-8`, until #286).
         let model = (config.model == "default" || config.model.isEmpty)
-            ? "claude-opus-4-6"
+            ? "claude-opus-5"
             : config.model
 
         let endpoint = config.endpoint ?? "https://api.anthropic.com/v1/messages"
         guard let url = URL(string: endpoint) else { return nil }
 
+        // `max_tokens` mirrors `API_JUDGE_MAX_TOKENS` in runner.ts. It was
+        // 1,024 here against Node's 8,192, so the same task judged on the same
+        // settings was cut 8x earlier on this daemon and both bodies were
+        // accepted as verdicts. It is a ceiling, not a charge — only tokens
+        // actually produced are billed.
+        //
+        // No `temperature`: sampling parameters are rejected outright on
+        // Opus 4.7 and later, so sending one made this leg fail with a 400 for
+        // every current model — the failure then read as `nil`, i.e. the same
+        // shape as "no API key".
         let body: [String: Any] = [
             "model": model,
-            "max_tokens": 1024,
-            "temperature": 0,
+            "max_tokens": 8192,
             "system": "You are an exacting code evaluator. Reply with strict JSON only.",
             "messages": [
                 ["role": "user", "content": prompt],
@@ -89,7 +104,21 @@ enum ApmeJudgeApi {
                     combined += text
                 }
             }
-            return combined.isEmpty ? nil : combined
+            if combined.isEmpty { return nil }
+            // The same completion rules the MLX/OpenAI legs already enforce,
+            // on the leg that had none. Anthropic spells a refusal and a cut
+            // as `stop_reason`; a cut body is still a verdict when its JSON
+            // object closed, which is why the text is concatenated first.
+            let stopReason = json["stop_reason"] as? String
+            if stopReason == "refusal" {
+                DaemonLogger.shared.debug("APME", "API judge refused the request (stop_reason=refusal)")
+                return nil
+            }
+            if stopReason == "max_tokens", !ApmeRunner.holdsCompleteJsonObject(combined) {
+                DaemonLogger.shared.debug("APME", "API judge reached output limit before completion (stop_reason=max_tokens)")
+                return nil
+            }
+            return combined
         } catch {
             DaemonLogger.shared.debug("APME", "API judge network error: \(error.localizedDescription)")
             return nil

@@ -8,8 +8,10 @@ import { claudeUsageRecovery } from './claude-usage-recovery.js';
 
 const USAGE_API_URL = 'https://api.anthropic.com/api/oauth/usage';
 const KEYCHAIN_SERVICE = 'Claude Code-credentials';
-const AGENTDECK_DIR = join(homedir(), '.agentdeck');
-const USAGE_CACHE_FILE = join(AGENTDECK_DIR, 'usage-cache.json');
+/** See `claude-usage-recovery.ts` — the two files resolve the same directory
+ *  and must move together. */
+const AGENTDECK_DIR = process.env.AGENTDECK_DATA_DIR || join(homedir(), '.agentdeck');
+export const USAGE_CACHE_FILE = join(AGENTDECK_DIR, 'usage-cache.json');
 
 /** Shared file cache TTL — multiple bridge sessions share one cache file */
 const FILE_CACHE_TTL_MS = 120_000; // 120s — reduced from 60s to avoid 429 from multiple pollers
@@ -478,9 +480,17 @@ async function fetchUsageOnce(): Promise<UsageFetchResult | null> {
           retryDeadline = Date.now() + retrySec * 1000;
           // Retry-After is scheduling metadata, never freshness. The old code
           // moved fetchedAt into the future and made stale quota look live.
-          if (fileCache) {
+          //
+          // Stamp it onto the cache as it is NOW, not the snapshot this call
+          // read minutes ago: a session bridge polling the same file may have
+          // written a fresher reading in between, and re-serializing the older
+          // object rolls that reading back. Only the throttle field is ours to
+          // add. A cache that vanished mid-call is not resurrected — the
+          // deadline still holds in memory for this process.
+          const currentCache = readFileCache();
+          if (currentCache) {
             try {
-              writeFileSync(USAGE_CACHE_FILE, JSON.stringify({ ...fileCache,
+              writeFileSync(USAGE_CACHE_FILE, JSON.stringify({ ...currentCache,
                 retryAfter: retryDeadline }), 'utf-8');
             } catch { /* ignore */ }
           }

@@ -117,6 +117,10 @@ const APME_ABANDONED_RUN_STALE_SEC = Math.max(
 );
 /** Backlog tasks handed to the judge per eval tick when it is idle — see the drain. */
 const APME_TASK_JUDGE_DRAIN_PER_TICK = 1;
+/** How many backlog candidates the drain looks at to find one it may feed.
+ *  Larger than the per-tick budget on purpose — see the drain for why. Reading
+ *  rows is free (one indexed SELECT); only the judge call is serial. */
+const APME_TASK_JUDGE_DRAIN_WINDOW = 25;
 /** How often a judge backend that last probed unavailable is probed again.
  *  The probe used to run once, at startup; a local MLX server busy with
  *  someone else's inference at that moment answered nothing inside the
@@ -153,6 +157,7 @@ import {
   type DaemonPortSource,
 } from './daemon-port.js';
 import { enableClaudeUsageRecovery, fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
+import { stopClaudeUsageRecoveryChildren } from './claude-usage-recovery.js';
 import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
 import {
@@ -6627,8 +6632,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }).catch(() => {}).finally(() => { judgeReprobeInFlight = false; });
       }
       if (probe?.status === 'ready' && apme!.runner.inFlightTaskEvals === 0) {
-        const backlog = apme!.store.listTasksNeedingSummary(APME_TASK_JUDGE_DRAIN_PER_TICK, Date.now() - 30 * 86_400_000);
-        for (const t of backlog) {
+        // The backlog query cannot see a park, so ask for a WINDOW and let
+        // `pickBacklogTasks` choose. Asking for one row fed the head of
+        // `ended_at DESC` and nothing else: a task whose judge call fails
+        // every attempt owns that head, and `enqueueTask` drops a parked task
+        // silently, so every tick spent its one slot on it and the backlog
+        // behind it starved (156 tasks, 2026-08-07..23, measured 2026-09-06).
+        // Still one task per tick — the window only decides WHICH one.
+        const backlog = apme!.store.listTasksNeedingSummary(APME_TASK_JUDGE_DRAIN_WINDOW, Date.now() - 30 * 86_400_000);
+        for (const t of apme!.runner.pickBacklogTasks(backlog, APME_TASK_JUDGE_DRAIN_PER_TICK)) {
           apme!.runner.enqueueTask({ runId: t.runId, taskId: t.id, ...(t.taskCategory ? { category: t.taskCategory } : {}) });
         }
       }
@@ -6797,6 +6809,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // would keep firing self-POSTs at a port this daemon no longer owns.
     observedStopWatchdogs.stop();
     voiceAssistant?.stop();
+    // A recovery turn in flight is a `claude` child whose own timeout dies with
+    // this process; ending it here is the difference between a bounded 25s
+    // request and an orphan.
+    stopClaudeUsageRecoveryChildren();
     bridgeLogStream.stop();
     // Flush synchronously — the process exits a few lines below and a pending
     // debounce timer would take the last turn's entries with it.

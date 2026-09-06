@@ -27,7 +27,7 @@
     "accepted": true
   },
   {
-    "note": "valid JSON at output limit",
+    "note": "complete JSON at output limit",
     "response": {
       "choices": [
         {
@@ -38,7 +38,8 @@
         }
       ]
     },
-    "accepted": false
+    "accepted": true,
+    "why": "A closed JSON object is the finished verdict; whatever the model wrote after the closing brace is not part of it. Rejecting this body dropped a good verdict and, on the default chain, silently rerouted to the Foundation Models floor."
   },
   {
     "note": "truncated JSON",
@@ -52,7 +53,8 @@
         }
       ]
     },
-    "accepted": false
+    "accepted": false,
+    "why": "Cut mid-object: no closing brace, so it is not a verdict. This is the case the output-limit rule actually exists for, and the parser refuses it too."
   },
   {
     "note": "empty",
@@ -114,6 +116,28 @@
     "note": "no choices",
     "response": {
       "choices": []
+    },
+    "accepted": false
+  },
+  {
+    "note": "choices as an object map",
+    "why": "Swift casts `choices` to `[[String: Any]]` and rejects this; Node indexed `json.choices?.[0]`, which reads the '0' key happily. The two daemons disagreed on this shape with nothing pinning it.",
+    "response": {
+      "choices": {
+        "0": {
+          "message": {
+            "content": "{\"overall\":0.8}"
+          },
+          "finish_reason": "stop"
+        }
+      }
+    },
+    "accepted": false
+  },
+  {
+    "note": "choices missing",
+    "response": {
+      "object": "chat.completion"
     },
     "accepted": false
   }

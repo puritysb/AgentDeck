@@ -33,6 +33,23 @@ beforeEach(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('usage fetching and recovery', () => {
+  // The 429 branch stamped `retryAfter` onto the snapshot read at the START of
+  // the call, so a fresher reading another bridge wrote in between was rolled
+  // back — a throttle response silently reverting live quota numbers (#286).
+  it('stamps retryAfter onto the cache as it is now, not the snapshot it started with', async () => {
+    const cacheFile = api.USAGE_CACHE_FILE;
+    io.files.set(cacheFile, JSON.stringify({ data: { fiveHour: 1 }, fetchedAt: Date.now() - 10 * 60_000 }));
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      // Another bridge polls the same file mid-call and writes a live reading.
+      io.files.set(cacheFile, JSON.stringify({ data: { fiveHour: 99 }, fetchedAt: Date.now() }));
+      return new Response('slow down', { status: 429, headers: { 'retry-after': '60' } });
+    }));
+    await api.fetchUsageFromApi();
+    const written = JSON.parse(io.files.get(cacheFile)!);
+    expect(written.data.fiveHour).toBe(99);
+    expect(written.retryAfter).toBe(Date.now() + 60_000);
+  });
+
   it('recovers an expired credential and retries with the newly read token in the same poll', async () => {
     io.credentials = token('expired', Date.now() - 1);
     api.enableClaudeUsageRecovery();

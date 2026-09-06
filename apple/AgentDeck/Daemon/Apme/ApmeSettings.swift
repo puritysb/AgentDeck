@@ -57,6 +57,14 @@ struct ApmeJudgeConfig: Codable {
     /// Bearer key for the `openai` backend (OpenRouter etc.). Optional for
     /// local servers (Ollama/LM Studio). Also read by `api` (Anthropic).
     var apiKey: String?
+    /// `reasoning_effort` for the OpenAI-compatible leg — `none` is how a user
+    /// stops a local reasoning model spending the output cap on thinking
+    /// tokens. Node has read this since the field existed; this daemon did not,
+    /// so identical settings produced a thinking-enabled request here that came
+    /// back `finish_reason: "length"` (#286 item 2). Values mirror settings.ts:
+    /// none | low | medium | high | max; anything else is not a choice and is
+    /// dropped rather than forwarded.
+    var reasoningEffort: String?
     /// When the MLX server does not answer, retry on-device Foundation Models
     /// instead of skipping the eval. True for the DEFAULT only: a user who
     /// names `mlx` and whose server is offline still gets a visible skip
@@ -184,6 +192,11 @@ enum ApmeSettings {
             if let s = judge["sampleRate"] as? Int { cfg.judge.sampleRate = max(0, min(1, Double(s))) }
             if let d = judge["onlyWhenDisagreement"] as? Bool { cfg.judge.onlyWhenDisagreement = d }
             if let ep = judge["endpoint"] as? String { cfg.judge.endpoint = ep }
+            if let k = judge["apiKey"] as? String, !k.isEmpty { cfg.judge.apiKey = k }
+            if let e = judge["reasoningEffort"] as? String,
+               ["none", "low", "medium", "high", "max"].contains(e) {
+                cfg.judge.reasoningEffort = e
+            }
         }
 
         if let models = apme["availableModels"] as? [String] { cfg.availableModels = models }

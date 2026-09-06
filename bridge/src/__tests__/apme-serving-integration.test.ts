@@ -78,9 +78,12 @@ describe('Ollama-compatible task judge persistence and recovery', () => {
           if (kind === 'empty') return new Response(JSON.stringify({ choices: [{ message: { content: '  ' } }] }));
           if (kind === 'http') return new Response('unavailable', { status: 503 });
           if (kind === 'json') return new Response(JSON.stringify({ choices: [{ message: { content: 'not JSON' } }] }));
+          // Cut mid-object — the only shape the output-limit rule still
+          // refuses. A `length` response whose JSON closed is a finished
+          // verdict and is now accepted (#286 item 3).
           if (kind === 'length')
             return new Response(
-              JSON.stringify({ choices: [{ message: { content: answer }, finish_reason: 'length' }] }),
+              JSON.stringify({ choices: [{ message: { content: answer.slice(0, 30) }, finish_reason: 'length' }] }),
             );
           throw new DOMException('request timed out', 'TimeoutError');
         })
@@ -127,24 +130,42 @@ describe('Ollama-compatible task judge persistence and recovery', () => {
 
 describe('incomplete judge response', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it.each(['mlx', 'openai'] as const)('%s rejects a length-limited JSON response', async (backend) => {
+  const call = (backend: 'mlx' | 'openai') =>
+    callJudgeWithMeta('judge', {
+      ...DEFAULT_APME_CONFIG.judge,
+      backend,
+      model: 'gemma-test',
+      endpoint: 'http://127.0.0.1:8800/v1/chat/completions',
+      fallbackToMlx: false,
+      fallbackToFoundationModels: false,
+    });
+  const serve = (content: string, finish_reason: string) =>
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ choices: [{ message: { content: answer }, finish_reason: 'length' }] })),
-      ),
+      vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason }] }))),
     );
-    await expect(
-      callJudgeWithMeta('judge', {
-        ...DEFAULT_APME_CONFIG.judge,
-        backend,
-        model: 'gemma-test',
-        endpoint: 'http://127.0.0.1:8800/v1/chat/completions',
-        fallbackToMlx: false,
-        fallbackToFoundationModels: false,
-      }),
-    ).rejects.toThrow(/output limit/);
+
+  it.each(['mlx', 'openai'] as const)('%s rejects a response cut mid-object', async (backend) => {
+    serve(answer.slice(0, 30), 'length');
+    await expect(call(backend)).rejects.toThrow(/output limit/);
+  });
+
+  // The rule is about the body, not the flag. A cut that landed after the JSON
+  // object closed left a finished verdict; rejecting it dropped a good verdict
+  // and, on the default chain, rerouted to the Foundation Models floor.
+  it.each(['mlx', 'openai'] as const)('%s accepts a closed object at the output limit', async (backend) => {
+    serve(`${answer} …and then the model kept talking`, 'length');
+    await expect(call(backend)).resolves.toHaveProperty('text');
+  });
+
+  // Node indexed `json.choices?.[0]`, which reads this happily; Swift's
+  // `as? [[String: Any]]` cast rejected it. Nothing pinned the disagreement.
+  it.each(['mlx', 'openai'] as const)('%s rejects choices that is not an array', async (backend) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ choices: { 0: { message: { content: answer } } } }))),
+    );
+    await expect(call(backend)).rejects.toThrow(/no choices/);
   });
 });
 
@@ -186,5 +207,73 @@ describe('optional OpenAI-compatible reasoning control', () => {
     const request = JSON.parse((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
     if (reasoningEffort === undefined) expect(request).not.toHaveProperty('reasoning_effort');
     else expect(request.reasoning_effort).toBe(reasoningEffort);
+  });
+});
+
+// The backlog drain feeds ONE task per tick, taken from a query ordered by
+// `ended_at DESC`. A task whose judge call fails every attempt therefore owns
+// that head, and `enqueueTask` drops a parked task silently — so every tick
+// spent its one slot on it and everything behind it starved. Measured
+// 2026-09-06: 156 closed tasks from 2026-08-07..23 unjudged for two weeks
+// while the day's own tasks were judged normally by the live close path.
+describe('task judge backlog drain', () => {
+  let dir: string;
+  let store: ApmeStore;
+  let runner: ApmeRunner;
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'ad-drain-test-'));
+    store = new ApmeStore(join(dir, 'apme.sqlite'));
+    expect(await store.init()).toBe(true);
+    runner = new ApmeRunner(store);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function poison(taskId: string) {
+    // Two failed attempts is the park threshold; a judge that answers nothing
+    // parseable is the cheapest way to reach it.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'not JSON' } }] }))));
+    const collector = new ApmeCollector(store);
+    const runId = collector.openRun({ sessionId: taskId, agentType: 'claude-code', projectName: 'fixture' })!;
+    collector.ingestHook(taskId, 'UserPromptSubmit', {
+      prompt: 'Add a regression test for missing configuration files.',
+    });
+    collector.setTurnResponse(
+      taskId,
+      'Added and ran the regression test. The missing-file path now returns the default configuration.',
+    );
+    collector.closeTaskExternal(taskId, 'manual');
+    const id = store.listTasksForRun(runId)[0].id;
+    runner._setConfig({
+      ...DEFAULT_APME_CONFIG,
+      enabled: true,
+      deterministic: { enabled: false, timeoutSec: 1, commands: {} },
+      judge: { backend: 'openai', model: 'm', endpoint: 'http://127.0.0.1:11434/v1', fallbackToMlx: false, fallbackToFoundationModels: false },
+    });
+    for (let i = 0; i < 2; i++) {
+      runner.enqueueTask({ runId, taskId: id });
+      await vi.waitFor(() => expect(runner.inFlightTaskEvals).toBe(0));
+    }
+    return id;
+  }
+
+  it('skips the parked head instead of spending the tick on it', async () => {
+    const parked = await poison('poison-session');
+    expect(runner.isTaskParked(parked)).toBe(true);
+    const backlog = [{ id: parked }, { id: 'next-in-line' }, { id: 'after-that' }];
+    expect(runner.pickBacklogTasks(backlog, 1)).toEqual([{ id: 'next-in-line' }]);
+  });
+
+  it('still feeds one task per tick', () => {
+    const backlog = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    expect(runner.pickBacklogTasks(backlog, 1)).toEqual([{ id: 'a' }]);
+  });
+
+  it('feeds nothing when every candidate is parked', async () => {
+    const parked = await poison('poison-session');
+    expect(runner.pickBacklogTasks([{ id: parked }], 1)).toEqual([]);
   });
 });

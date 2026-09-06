@@ -864,6 +864,19 @@ actor ApmeRunner {
         )
     }
 
+    /// Whether `text` carries a JSON object that closed — the same extraction
+    /// `parseJudgeJson` performs, minus the rubric-level field checks. Read by
+    /// `ApmeJudgeChatResponse` so a `finish_reason: "length"` body is refused
+    /// only when it was actually cut mid-object; mirrors `holdsCompleteJsonObject`
+    /// in bridge/src/apme/runner.ts and is pinned by
+    /// shared/apme-judge-response-vectors.json.
+    static func holdsCompleteJsonObject(_ text: String) -> Bool {
+        guard let block = extractFirstJsonBlock(text),
+              let data = block.data(using: .utf8)
+        else { return false }
+        return (try? JSONSerialization.jsonObject(with: data)) != nil
+    }
+
     /// Extract the first balanced `{...}` block from arbitrary text.
     /// Handles the common case of models wrapping JSON in ```json fences
     /// or adding "Here is the JSON:" prefixes.

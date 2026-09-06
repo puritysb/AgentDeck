@@ -94,6 +94,28 @@ describe('ClaudeUsageRecovery', () => {
     expect(resolveClaudeCli({ AGENTDECK_CLAUDE_CLI: join(dir, 'absent'), PATH: dir }, 'linux')).toBeNull();
   });
 
+  // The cooldown record used to resolve under `homedir()/.agentdeck` while
+  // every other file in that directory honours AGENTDECK_DATA_DIR — so two
+  // daemons on different data dirs silently shared one retry budget, each
+  // spending the other's quota. usage-api.ts's cache resolves the same way and
+  // the two move together (#286).
+  it('resolves the cooldown record and the usage cache under AGENTDECK_DATA_DIR', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ad-datadir-'));
+    const original = process.env.AGENTDECK_DATA_DIR;
+    process.env.AGENTDECK_DATA_DIR = dataDir;
+    try {
+      vi.resetModules();
+      const recovery = await import('../claude-usage-recovery.js');
+      const usage = await import('../usage-api.js');
+      expect(recovery.CLAUDE_USAGE_RECOVERY_FILE).toBe(join(dataDir, 'claude-usage-recovery.json'));
+      expect(usage.USAGE_CACHE_FILE).toBe(join(dataDir, 'usage-cache.json'));
+    } finally {
+      if (original === undefined) delete process.env.AGENTDECK_DATA_DIR;
+      else process.env.AGENTDECK_DATA_DIR = original;
+      vi.resetModules();
+    }
+  });
+
   it('disables tools and customizations while keeping OAuth available', () => {
     const args = CLAUDE_USAGE_RECOVERY_ARGS;
     expect(args).toContain('--safe-mode');

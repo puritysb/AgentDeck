@@ -8,7 +8,14 @@ import { logTagged } from './logger.js';
 const RECOVERY_TIMEOUT_MS = 25_000;
 const RETRY_MS = 30 * 60_000;
 const LONG_RETRY_MS = 6 * 60 * 60_000;
-const recoveryFile = join(homedir(), '.agentdeck', 'claude-usage-recovery.json');
+/** The daemon's data directory — `AGENTDECK_DATA_DIR` when set, else
+ *  `~/.agentdeck`. Every other file in that directory resolves it this way; the
+ *  cooldown record did not, so two daemons pointed at different data dirs
+ *  silently shared one retry budget and each spent the other's quota. Kept
+ *  identical to `usage-api.ts`'s AGENTDECK_DIR — they are the same directory,
+ *  and item 5 of #286 is explicit that both move together or neither does. */
+const AGENTDECK_DIR = process.env.AGENTDECK_DATA_DIR || join(homedir(), '.agentdeck');
+export const CLAUDE_USAGE_RECOVERY_FILE = join(AGENTDECK_DIR, 'claude-usage-recovery.json');
 
 /** Claude owns the rotating refresh token and its interprocess lock. Never copy,
  * rotate, or write those credentials ourselves. This bounded turn may consume a
@@ -112,7 +119,27 @@ export function runClaudeUsageRecovery(): Promise<void> {
       resolve(); // Outcome is verified by re-reading credentials, never stdout.
     });
     child.stdin?.end();
+    // The child holds no port and gates no shutdown, but a clean stop that
+    // SIGKILLs the daemon takes `execFile`'s timeout with it — the orphan then
+    // runs unbounded. Track it so shutdown can end it, and unref it so it can
+    // never be the reason this process stays alive.
+    child.unref();
+    liveRecoveryChildren.add(child);
+    child.once('exit', () => liveRecoveryChildren.delete(child));
   });
+}
+
+/** Recovery children currently running. At most one — the class serializes on
+ *  `pending` — but a Set costs nothing and cannot go negative. */
+const liveRecoveryChildren = new Set<ReturnType<typeof execFile>>();
+
+/** Kill any in-flight recovery child. Called from the daemon's shutdown path;
+ *  safe to call with none running. */
+export function stopClaudeUsageRecoveryChildren(): void {
+  for (const child of liveRecoveryChildren) {
+    try { child.kill('SIGKILL'); } catch { /* already gone */ }
+  }
+  liveRecoveryChildren.clear();
 }
 
 interface RecoveryRecord { credentialHash: string; attempts: number; nextAttemptAt: number }
@@ -149,18 +176,18 @@ export const claudeUsageRecovery = new ClaudeUsageRecovery({
   now: Date.now,
   read: () => {
     try {
-      const r = JSON.parse(readFileSync(recoveryFile, 'utf8'));
+      const r = JSON.parse(readFileSync(CLAUDE_USAGE_RECOVERY_FILE, 'utf8'));
       return typeof r.credentialHash === 'string' && Number.isFinite(r.attempts)
         && Number.isFinite(r.nextAttemptAt) ? r : null;
     } catch { return null; }
   },
   write: (record) => {
-    mkdirSync(join(homedir(), '.agentdeck'), { recursive: true });
+    mkdirSync(AGENTDECK_DIR, { recursive: true });
     // tmp+rename like every other file in this directory: a torn write reads
     // back as "no cooldown", which is the one failure that spends quota.
-    const tmp = `${recoveryFile}.${process.pid}.tmp`;
+    const tmp = `${CLAUDE_USAGE_RECOVERY_FILE}.${process.pid}.tmp`;
     writeFileSync(tmp, JSON.stringify(record), { mode: 0o600 });
-    renameSync(tmp, recoveryFile);
+    renameSync(tmp, CLAUDE_USAGE_RECOVERY_FILE);
   },
   run: runClaudeUsageRecovery,
 });

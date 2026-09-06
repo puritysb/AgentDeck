@@ -288,6 +288,38 @@ export class ApmeRunner {
     return this.runningTaskIds.size;
   }
 
+  /** The backlog candidates this tick may actually feed, newest first and at
+   *  most `limit` of them.
+   *
+   *  The drain feeds exactly one task per tick, taken from the head of a query
+   *  ordered by `ended_at DESC`, and `enqueueTask` drops a parked task
+   *  silently — so a task that fails every attempt owns that head and every
+   *  tick spends its one slot on it while everything behind it starves.
+   *  Measured 2026-09-06: 156 closed tasks from 2026-08-07..23 unjudged for
+   *  two weeks, while the day's own tasks (83 of 95) were judged normally by
+   *  the live close path. The count is the tell — 217 -> 156 while the head
+   *  was still judgeable, then flat.
+   *
+   *  A truth table over `isTaskParked` rather than a loop at the call site,
+   *  because a call site that forgets the check leaves every test green while
+   *  the backlog stops moving. */
+  pickBacklogTasks<T extends { id: string }>(candidates: readonly T[], limit: number): T[] {
+    const picked: T[] = [];
+    for (const candidate of candidates) {
+      if (picked.length >= limit) break;
+      if (this.isTaskParked(candidate.id)) continue;
+      picked.push(candidate);
+    }
+    return picked;
+  }
+
+  /** Whether this task is parked right now, i.e. `enqueueTask` would drop it. */
+  isTaskParked(taskId: string): boolean {
+    const failed = this.taskEvalFailures.get(taskId);
+    if (!failed || failed.attempts < TASK_EVAL_MAX_ATTEMPTS) return false;
+    return Date.now() - failed.lastAt < TASK_EVAL_PARK_MS;
+  }
+
   /** One visible line per decade of parks (the 1st, 10th, 100th…): enough to
    *  see a stalled judge in the daemon log, never a line per task. */
   private noteTaskParked(taskId: string): void {
@@ -1564,13 +1596,7 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
     }
   }
   if (!resp.ok) throw new Error(`MLX judge HTTP ${resp.status}`);
-  const json = await resp.json() as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> };
-  if (json.choices?.[0]?.finish_reason === 'length') throw new Error('MLX judge reached output limit before completion');
-  const text = json.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || text.trim().length === 0) {
-    throw new Error('MLX judge returned empty content');
-  }
-  return text;
+  return judgeChatContent(await resp.json(), 'MLX');
 }
 
 function compactPromptForMlxContext(text: string, maxChars: number): string {
@@ -1667,11 +1693,7 @@ async function callOpenAICompatible(prompt: string, cfg: ApmeJudgeConfig): Promi
     resp = await send(false);
   }
   if (!resp.ok) throw new Error(`openai judge HTTP ${resp.status} (${url})`);
-  const json = await resp.json() as { choices?: Array<{ message?: { content?: string }; finish_reason?: string }> };
-  if (json.choices?.[0]?.finish_reason === 'length') throw new Error('openai judge reached output limit before completion');
-  const text = json.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || text.trim().length === 0) throw new Error('openai judge returned empty content');
-  return text;
+  return judgeChatContent(await resp.json(), 'openai');
 }
 
 async function callOpenClaw(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
@@ -1786,8 +1808,20 @@ async function resolveFoundationModelsUrl(): Promise<string | null> {
 
 /** Default model for the opt-in Anthropic API judge when the configured
  *  `model` belongs to another backend (e.g. an MLX id left over from a
- *  backend switch). */
-const API_JUDGE_DEFAULT_MODEL = 'claude-opus-4-8';
+ *  backend switch). Mirrored by `ApmeJudgeApi.swift`: the two daemons read the
+ *  same `settings.json` and are the same judge, so a user who opted into the
+ *  API leg without naming a model must not get a different model depending on
+ *  which daemon happens to hold the port (Node said `claude-opus-4-8`, Swift
+ *  `claude-opus-4-6`, until #286). */
+const API_JUDGE_DEFAULT_MODEL = 'claude-opus-5';
+
+/** Output cap for the API leg, mirrored by `ApmeJudgeApi.swift`. Verdict
+ *  bodies measure p99 ~1,025 chars (~335 tokens), so this is headroom rather
+ *  than a budget — but adaptive thinking spends against the same cap, and
+ *  `max_tokens` is a ceiling, not a charge: only tokens actually produced are
+ *  billed. Swift sent 1,024, so the same task judged on the same settings was
+ *  cut 8x earlier there. */
+const API_JUDGE_MAX_TOKENS = 8192;
 
 function apiJudgeModel(cfg: ApmeJudgeConfig): string {
   return cfg.model && cfg.model.startsWith('claude') ? cfg.model : API_JUDGE_DEFAULT_MODEL;
@@ -1806,7 +1840,7 @@ async function callApi(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
   });
   const response = await client.messages.create({
     model: apiJudgeModel(cfg),
-    max_tokens: 8192,
+    max_tokens: API_JUDGE_MAX_TOKENS,
     thinking: { type: 'adaptive' },
     messages: [{ role: 'user', content: prompt }],
   });
@@ -1818,8 +1852,68 @@ async function callApi(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
     .map((b) => b.text)
     .join('\n')
     .trim();
+  // Same rule as the MLX/OpenAI gate below, on the leg that had none: a cut
+  // body is only a verdict if its JSON object closed. Anthropic spells the cut
+  // `stop_reason: 'max_tokens'`, and the blocks are joined first because the
+  // object can close in one block and the cut land in the next.
+  if (response.stop_reason === 'max_tokens' && !holdsCompleteJsonObject(text)) {
+    throw new Error('API judge reached output limit before completion (stop_reason=max_tokens)');
+  }
   if (!text) throw new Error(`API judge returned no text (stop_reason=${response.stop_reason})`);
   return text;
+}
+
+/**
+ * Shared MLX / OpenAI-compatible chat response gate.
+ *
+ * Mirrored by Swift `ApmeJudgeChatResponse`; the cases both daemons must agree
+ * on live in `shared/apme-judge-response-vectors.json`, which both suites
+ * replay. Three rules, and the ORDER of the first two matters because a
+ * truncated body is still a non-empty one:
+ *
+ *  - `choices` must be a non-empty ARRAY. Indexing `json.choices?.[0]` happily
+ *    reads `{"choices":{"0":{…}}}`, which Swift's `as? [[String: Any]]` cast
+ *    rejects — the two daemons disagreed on that shape until #286.
+ *  - Content must be a non-empty string.
+ *  - `finish_reason: "length"` is rejected ONLY when the body does not hold a
+ *    complete JSON object. #285 rejected every cut response before reading it,
+ *    on the rule that transport completion is part of verdict validity. But a
+ *    closed JSON object IS the finished verdict — whatever the model wrote
+ *    after the closing brace is not part of it — and a body cut mid-object
+ *    cannot parse anyway, so `parseJudgeJson` already refuses exactly the
+ *    incomplete case. Rejecting the complete one bought nothing and cost the
+ *    verdict: on the default chain it silently reroutes to the Foundation
+ *    Models floor (0.580 on judge-fidelity vs 0.86-1.00 for the MLX tier).
+ *    The check stays here so the failure can still SAY the body was cut.
+ */
+export function judgeChatContent(payload: unknown, label: string): string {
+  const choices = (payload as { choices?: unknown } | null)?.choices;
+  if (!Array.isArray(choices) || choices.length === 0) {
+    throw new Error(`${label} judge returned no choices`);
+  }
+  const first = choices[0] as { message?: { content?: unknown } | null; finish_reason?: unknown } | null;
+  const content = first?.message?.content;
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    throw new Error(`${label} judge returned empty content`);
+  }
+  if (first?.finish_reason === 'length' && !holdsCompleteJsonObject(content)) {
+    throw new Error(`${label} judge reached output limit before completion`);
+  }
+  return content;
+}
+
+/** Whether `text` carries a JSON object that closed — the same extraction and
+ *  repair `parseJudgeJson` performs, minus the rubric-level field checks. It
+ *  has to share the repair step: a body the parser would repair but the gate
+ *  refused would be rejected for being cut and then never looked at. */
+function holdsCompleteJsonObject(text: string): boolean {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return false;
+  try { JSON.parse(match[0]); return true; }
+  catch {
+    try { JSON.parse(repairJudgeJson(match[0])); return true; }
+    catch { return false; }
+  }
 }
 
 export function parseJudgeJson(text: string): ParsedJudge | null {
