@@ -336,6 +336,43 @@ export interface ApmeStopDeliveryRow {
   preInstrument: number;
 }
 
+/** Per-day judge outcome rollup over a time window (`ApmeStore.judgeHealth`).
+ *
+ *  The forward-looking counterpart of `ApmeStopDeliveryRow`: that one asks how
+ *  turns got closed, this one asks whether the closed work got a verdict. Days
+ *  are the local date the tasks CLOSED, not the date they were judged — the
+ *  question is "did this day's work get evaluated", and a task judged three
+ *  days late still belongs to the day it happened. */
+export interface ApmeJudgeHealthRow {
+  /** Local date the tasks closed, YYYY-MM-DD. */
+  day: string;
+  closed: number;
+  judged: number;
+  /** Refused by task-gradeability — no reply, aborted-only, trivial. NOT a
+   *  failure: a verdict about the agent's work needs the agent's work. */
+  declined: number;
+  /** Unjudged and still inside the drain's lookback. The judge may yet reach
+   *  these, so they are pending rather than lost. */
+  waiting: number;
+  /** Unjudged and OUTSIDE the drain's lookback. The drain can no longer offer
+   *  these to the judge, so they never will be. Its own column because the
+   *  alternative is what happened before it existed: 226 gradeable tasks aged
+   *  out silently while the total just looked like "some old backlog". */
+  agedOut: number;
+}
+
+/** The share of a day's gradeable work that actually has a verdict.
+ *
+ *  Defined once, here, for the same reason `stopDeliveryLoss` is: the choice of
+ *  denominator IS the instrument. Declined tasks are excluded because refusing
+ *  to grade an empty task is the judge working correctly, not a miss; waiting
+ *  and aged-out rows stay in, because both are work that should have been
+ *  graded and is not. */
+export function judgeCoverage(row: ApmeJudgeHealthRow): { adjudicable: number; ratio: number | null } {
+  const adjudicable = row.judged + row.waiting + row.agedOut;
+  return { adjudicable, ratio: adjudicable > 0 ? row.judged / adjudicable : null };
+}
+
 /** The Stop-delivery rate a row actually supports.
  *
  *  Defined once, here, because "which buckets are evidence of a lost hook" is

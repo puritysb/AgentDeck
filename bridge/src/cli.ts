@@ -9,7 +9,8 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { request } from 'http';
 import { BRIDGE_WS_PORT } from './types.js';
-import { SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX, stopDeliveryLoss, ESP32_BOARDS } from '@agentdeck/shared';
+import { SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX, stopDeliveryLoss, judgeCoverage, ESP32_BOARDS,
+  type ApmeJudgeHealthRow } from '@agentdeck/shared';
 import { ensureBleRuntime, getBleRuntimeStatus } from './python-ble-runtime.js';
 import {
   TASK_NAME,
@@ -3597,6 +3598,58 @@ apme
     log('  Folded = a second prompt arrived before this one ran; one turn served both');
     log('  Reaped = the run was reaped under the open turn — the daemon that would have taken its Stop was gone (a restart)');
     log('  ?      = closed before end_source existed — signal unknown, never guessed');
+    log('');
+  });
+
+apme
+  .command('judge-health')
+  .description('Judge coverage — whether closed work actually got a verdict')
+  .option('--since <window>', 'Lookback window, e.g. 6h / 3d / 2w (default 14d)', '14d')
+  .option('--json', 'Emit JSON instead of the table')
+  .action(async (opts) => {
+    const { initApme } = await import('./apme/index.js');
+    const { TASK_JUDGE_DRAIN_WINDOW_MS } = await import('./apme/runner.js');
+    const apme = await initApme();
+    if (!apme) { log('APME not available'); process.exit(1); }
+
+    const windowMs = parseLookbackWindow(opts.since);
+    if (windowMs == null) { log(`Unrecognized --since value: ${opts.since}`); process.exit(1); }
+    const sinceMs = Date.now() - windowMs;
+    // The drain's own boundary, not a second copy of it — see
+    // TASK_JUDGE_DRAIN_WINDOW_MS.
+    const agedCutoffMs = Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS;
+    const rows = apme.store.judgeHealth({ sinceMs, agedCutoffMs });
+    const latency = apme.store.judgeLatency({ sinceMs });
+
+    if (opts.json) {
+      log(JSON.stringify({ since: opts.since, drainWindowDays: TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000, days: rows, latency }, null, 2));
+      return;
+    }
+    if (rows.length === 0) { log(`No tasks closed in the last ${opts.since}.`); return; }
+
+    log(`\n  Tasks closed in the last ${opts.since} — whether each day's work got a verdict`);
+    log(`  ${'Day'.padEnd(12)} ${'Closed'.padEnd(7)} ${'Judged'.padEnd(7)} ${'Declined'.padEnd(9)} ${'Waiting'.padEnd(8)} ${'AgedOut'.padEnd(8)} Coverage`);
+    log(`  ${'─'.repeat(12)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(9)} ${'─'.repeat(8)} ${'─'.repeat(8)} ${'─'.repeat(9)}`);
+    const totals: ApmeJudgeHealthRow = { day: 'total', closed: 0, judged: 0, declined: 0, waiting: 0, agedOut: 0 };
+    for (const r of rows) {
+      totals.closed += r.closed; totals.judged += r.judged; totals.declined += r.declined;
+      totals.waiting += r.waiting; totals.agedOut += r.agedOut;
+      const { adjudicable, ratio } = judgeCoverage(r);
+      const cov = ratio != null ? `${(ratio * 100).toFixed(0)}% of ${adjudicable}` : '—';
+      log(`  ${r.day.padEnd(12)} ${String(r.closed).padEnd(7)} ${String(r.judged).padEnd(7)} ${String(r.declined).padEnd(9)} ${String(r.waiting).padEnd(8)} ${String(r.agedOut).padEnd(8)} ${cov}`);
+    }
+    const t = judgeCoverage(totals);
+    log(`  ${'─'.repeat(12)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(9)} ${'─'.repeat(8)} ${'─'.repeat(8)} ${'─'.repeat(9)}`);
+    log(`  ${'all'.padEnd(12)} ${String(totals.closed).padEnd(7)} ${String(totals.judged).padEnd(7)} ${String(totals.declined).padEnd(9)} ${String(totals.waiting).padEnd(8)} ${String(totals.agedOut).padEnd(8)} ${t.ratio != null ? `${(t.ratio * 100).toFixed(0)}% of ${t.adjudicable}` : '—'}`);
+    log('');
+    if (latency.n > 0) {
+      const sec = (ms: number | null) => ms == null ? '—' : `${(ms / 1000).toFixed(0)}s`;
+      log(`  Close → verdict: p50 ${sec(latency.p50Ms)}  p90 ${sec(latency.p90Ms)}  max ${sec(latency.maxMs)}  (n=${latency.n})`);
+    }
+    log('  Declined = the judge correctly refused: no reply, aborted-only, or trivial. Not a miss.');
+    log('  Waiting  = unjudged but still inside the drain\'s lookback — the judge may yet reach it.');
+    log(`  AgedOut  = unjudged and older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback. Nothing will judge these.`);
+    log('  Coverage = judged / (judged + waiting + aged out). Declined rows are not in the denominator.');
     log('');
   });
 

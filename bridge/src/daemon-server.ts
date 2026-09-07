@@ -160,6 +160,7 @@ import {
   type DaemonPortSource,
 } from './daemon-port.js';
 import { enableClaudeUsageRecovery, fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
+import { TASK_JUDGE_DRAIN_WINDOW_MS } from './apme/runner.js';
 import { stopClaudeUsageRecoveryChildren } from './claude-usage-recovery.js';
 import { AGENT_IDLE_GAP_MS, resolveGatewayHealth } from '@agentdeck/shared';
 import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
@@ -6719,7 +6720,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // silently, so every tick spent its one slot on it and the backlog
         // behind it starved (156 tasks, 2026-08-07..23, measured 2026-09-06).
         // Still one task per tick — the window only decides WHICH one.
-        const backlog = apme!.store.listTasksNeedingSummary(APME_TASK_JUDGE_DRAIN_WINDOW, Date.now() - 30 * 86_400_000);
+        const backlog = apme!.store.listTasksNeedingSummary(APME_TASK_JUDGE_DRAIN_WINDOW, Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS);
         for (const t of apme!.runner.pickBacklogTasks(backlog, APME_TASK_JUDGE_DRAIN_PER_TICK)) {
           apme!.runner.enqueueTask({ runId: t.runId, taskId: t.id, ...(t.taskCategory ? { category: t.taskCategory } : {}) });
         }

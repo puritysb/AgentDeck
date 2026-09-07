@@ -28,6 +28,7 @@ import type {
   ApmeTaskRow,
   ApmeTaskListRow,
   ApmeStopDeliveryRow,
+  ApmeJudgeHealthRow,
 } from './types.js';
 import type {
   ApmeSampleEventRow,
@@ -1061,6 +1062,56 @@ export class ApmeStore {
    *  per prompt as infrastructure loss. `stopDeliveryLoss` in
    *  `@agentdeck/shared` owns which buckets the ratio may read.
    */
+  /** Per-day judge outcomes for tasks that CLOSED in the window.
+   *
+   *  `agedCutoffMs` is the drain's own lookback boundary, passed in rather than
+   *  recomputed so the instrument cannot report a window the drain does not
+   *  use. Rows older than it are counted as aged out: still unjudged, and no
+   *  longer reachable. */
+  judgeHealth(opts: { sinceMs: number; agedCutoffMs: number }): ApmeJudgeHealthRow[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      `SELECT date(t.ended_at / 1000, 'unixepoch', 'localtime') AS day,
+              COUNT(*) AS closed,
+              SUM(t.summary IS NOT NULL) AS judged,
+              SUM(t.summary IS NULL AND t.notes_json LIKE '%"notGradeable"%') AS declined,
+              SUM(t.summary IS NULL AND (t.notes_json IS NULL OR t.notes_json NOT LIKE '%"notGradeable"%')
+                  AND t.ended_at >= ?) AS waiting,
+              SUM(t.summary IS NULL AND (t.notes_json IS NULL OR t.notes_json NOT LIKE '%"notGradeable"%')
+                  AND t.ended_at < ?) AS agedOut
+         FROM tasks t
+        WHERE t.ended_at IS NOT NULL AND t.ended_at >= ?
+        GROUP BY day
+        ORDER BY day DESC`,
+    ).all(opts.agedCutoffMs, opts.agedCutoffMs, opts.sinceMs) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      day: String(r.day),
+      closed: Number(r.closed ?? 0),
+      judged: Number(r.judged ?? 0),
+      declined: Number(r.declined ?? 0),
+      waiting: Number(r.waiting ?? 0),
+      agedOut: Number(r.agedOut ?? 0),
+    }));
+  }
+
+  /** Close→verdict latency for tasks that closed in the window, in ms.
+   *  Percentiles rather than a mean: one backfilled task judged weeks late
+   *  drags a mean past every real number. */
+  judgeLatency(opts: { sinceMs: number }): { n: number; p50Ms: number | null; p90Ms: number | null; maxMs: number | null } {
+    if (!this.db) return { n: 0, p50Ms: null, p90Ms: null, maxMs: null };
+    const rows = this.db.prepare(
+      `SELECT MIN(e.created_at) - t.ended_at AS ms
+         FROM tasks t JOIN evals e ON e.task_id = t.id AND e.layer = 'task_judge'
+        WHERE t.ended_at IS NOT NULL AND t.ended_at >= ?
+        GROUP BY t.id
+        ORDER BY ms`,
+    ).all(opts.sinceMs) as Array<{ ms: number }>;
+    const vals = rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n) && n >= 0);
+    if (vals.length === 0) return { n: 0, p50Ms: null, p90Ms: null, maxMs: null };
+    const at = (q: number) => vals[Math.min(vals.length - 1, Math.floor(vals.length * q))];
+    return { n: vals.length, p50Ms: at(0.5), p90Ms: at(0.9), maxMs: vals[vals.length - 1] };
+  }
+
   stopDelivery(opts: { sinceMs: number; agentType?: string } = { sinceMs: 0 }): ApmeStopDeliveryRow[] {
     if (!this.db) return [];
     const params: unknown[] = [opts.sinceMs];

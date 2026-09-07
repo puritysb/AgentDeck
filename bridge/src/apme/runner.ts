@@ -36,6 +36,17 @@ const TASK_EVAL_MAX_ATTEMPTS = 2;
  *  still pending and not one line in the log (2026-09-03). */
 export const TASK_EVAL_PARK_MS = 30 * 60_000;
 
+/** How far back the backlog drain will look for unjudged tasks.
+ *
+ *  Older rows mostly predate response capture and would be declined anyway —
+ *  measured 2026-09-07, 536 of the 762 unjudged tasks outside this window are
+ *  `no_reply`. The other 226 are gradeable and simply age out, which is why
+ *  `agentdeck apme judge-health` reports them in their own column instead of
+ *  letting the leak stay invisible. Exported because the drain and that
+ *  instrument must use the SAME number: an instrument reporting a window the
+ *  drain does not use measures nothing. */
+export const TASK_JUDGE_DRAIN_WINDOW_MS = 30 * 86_400_000;
+
 export interface EvalJob {
   runId: string;
   /** Optional project path override; falls back to the run row. */

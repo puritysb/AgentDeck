@@ -258,6 +258,7 @@ no subprocesses.
 | `agentdeck apme judge` | Evaluate pending runs manually (no daemon required) |
 | `agentdeck apme scorecard` | Model scorecard by category and overall |
 | `agentdeck apme stop-health` | Stop-hook delivery rate — how turns actually closed (`--since 7d`, `--agent`) |
+| `agentdeck apme judge-health` | Judge coverage — whether closed work actually got a verdict (`--since 14d`, `--json`) |
 | `agentdeck apme tune` | Trigger rubric auto-tuner (OPRO loop) |
 | `agentdeck apme vibe <runId> <verdict>` | Label a run (`approve`/`reject`/`neutral`) |
 | `agentdeck apme tag <runId> <category>` | Manually set task category |
