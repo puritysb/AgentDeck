@@ -1062,6 +1062,19 @@ export class ApmeStore {
    *  per prompt as infrastructure loss. `stopDeliveryLoss` in
    *  `@agentdeck/shared` owns which buckets the ratio may read.
    */
+  /** What "judged" means, in one place.
+   *
+   *  NOT `summary IS NOT NULL`: only the `task_rollup` rubric asks for a
+   *  summary, so a task judged under a category or `general` rubric carries a
+   *  composite score and eval rows with a NULL summary. Reading that as
+   *  unjudged told the operator "nothing will judge this" about a task that
+   *  already had a verdict, while `judgeLatency` counted the same row — two
+   *  numbers on one screen contradicting each other. `listJudgedTasks` had it
+   *  right first; this is that predicate, shared rather than restated. */
+  private static readonly JUDGED_SQL = '(t.composite_score IS NOT NULL OR t.summary IS NOT NULL)';
+  /** The gradeability stamp, likewise once. */
+  private static readonly DECLINED_SQL = `(t.notes_json IS NOT NULL AND t.notes_json LIKE '%"notGradeable"%')`;
+
   /** Per-day judge outcomes for tasks that CLOSED in the window.
    *
    *  `agedCutoffMs` is the drain's own lookback boundary, passed in rather than
@@ -1073,11 +1086,11 @@ export class ApmeStore {
     const rows = this.db.prepare(
       `SELECT date(t.ended_at / 1000, 'unixepoch', 'localtime') AS day,
               COUNT(*) AS closed,
-              SUM(t.summary IS NOT NULL) AS judged,
-              SUM(t.summary IS NULL AND t.notes_json LIKE '%"notGradeable"%') AS declined,
-              SUM(t.summary IS NULL AND (t.notes_json IS NULL OR t.notes_json NOT LIKE '%"notGradeable"%')
+              SUM(${ApmeStore.JUDGED_SQL}) AS judged,
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND ${ApmeStore.DECLINED_SQL}) AS declined,
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND NOT ${ApmeStore.DECLINED_SQL}
                   AND t.ended_at >= ?) AS waiting,
-              SUM(t.summary IS NULL AND (t.notes_json IS NULL OR t.notes_json NOT LIKE '%"notGradeable"%')
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND NOT ${ApmeStore.DECLINED_SQL}
                   AND t.ended_at < ?) AS agedOut
          FROM tasks t
         WHERE t.ended_at IS NOT NULL AND t.ended_at >= ?
@@ -1094,11 +1107,30 @@ export class ApmeStore {
     }));
   }
 
+  /** Every unjudged, undeclined task older than the drain's lookback.
+   *
+   *  A WHOLE-STORE fact, reported separately for a structural reason: the
+   *  per-day `agedOut` column can only be non-zero on days that are themselves
+   *  older than the drain window, so at any `--since` inside that window the
+   *  column is all zeros by construction — the leak this command exists to
+   *  surface would be invisible unless the reader already knew to widen it. */
+  judgeAgedOutTotal(opts: { agedCutoffMs: number }): number {
+    if (!this.db) return 0;
+    const row = this.db.prepare(
+      `SELECT COUNT(*) AS n FROM tasks t
+        WHERE t.ended_at IS NOT NULL AND t.ended_at < ?
+          AND NOT ${ApmeStore.JUDGED_SQL} AND NOT ${ApmeStore.DECLINED_SQL}`,
+    ).get(opts.agedCutoffMs) as { n?: number } | undefined;
+    return Number(row?.n ?? 0);
+  }
+
   /** Close→verdict latency for tasks that closed in the window, in ms.
    *  Percentiles rather than a mean: one backfilled task judged weeks late
    *  drags a mean past every real number. */
-  judgeLatency(opts: { sinceMs: number }): { n: number; p50Ms: number | null; p90Ms: number | null; maxMs: number | null } {
-    if (!this.db) return { n: 0, p50Ms: null, p90Ms: null, maxMs: null };
+  judgeLatency(opts: { sinceMs: number }): {
+    n: number; p50Ms: number | null; p90Ms: number | null; maxMs: number | null; excluded: number;
+  } {
+    if (!this.db) return { n: 0, p50Ms: null, p90Ms: null, maxMs: null, excluded: 0 };
     const rows = this.db.prepare(
       `SELECT MIN(e.created_at) - t.ended_at AS ms
          FROM tasks t JOIN evals e ON e.task_id = t.id AND e.layer = 'task_judge'
@@ -1106,10 +1138,20 @@ export class ApmeStore {
         GROUP BY t.id
         ORDER BY ms`,
     ).all(opts.sinceMs) as Array<{ ms: number }>;
-    const vals = rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n) && n >= 0);
-    if (vals.length === 0) return { n: 0, p50Ms: null, p90Ms: null, maxMs: null };
-    const at = (q: number) => vals[Math.min(vals.length - 1, Math.floor(vals.length * q))];
-    return { n: vals.length, p50Ms: at(0.5), p90Ms: at(0.9), maxMs: vals[vals.length - 1] };
+    const finite = rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n));
+    const vals = finite.filter((n) => n >= 0);
+    // A close backdated past its own verdict (a reaped task closed at its last
+    // activity time after a manual judge) yields a negative span. It cannot be
+    // a latency, but dropping it silently leaves `n` disagreeing with the
+    // Judged column beside it by a number nothing reports.
+    const excluded = finite.length - vals.length;
+    if (vals.length === 0) return { n: 0, p50Ms: null, p90Ms: null, maxMs: null, excluded };
+    // NEAREST-RANK. `floor(q·n)` selects one rank too high, so p90 equalled the
+    // maximum for every n where q·n is an integer — at n=10 it reported the one
+    // backfilled outlier as the p90, which is exactly what a percentile is
+    // chosen to resist.
+    const at = (q: number) => vals[Math.min(vals.length - 1, Math.max(0, Math.ceil(q * vals.length) - 1))];
+    return { n: vals.length, p50Ms: at(0.5), p90Ms: at(0.9), maxMs: vals[vals.length - 1], excluded };
   }
 
   stopDelivery(opts: { sinceMs: number; agentType?: string } = { sinceMs: 0 }): ApmeStopDeliveryRow[] {
