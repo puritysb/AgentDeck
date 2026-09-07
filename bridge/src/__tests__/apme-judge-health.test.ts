@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { ApmeStore } from '../apme/store.js';
 import { TASK_JUDGE_DRAIN_WINDOW_MS } from '../apme/runner.js';
 import { judgeCoverage, type ApmeJudgeHealthRow } from '@agentdeck/shared';
+import { coverageText, duration, judgeHealthWindowStart, localDay } from '../cli.js';
 
 const row = (o: Partial<ApmeJudgeHealthRow>): ApmeJudgeHealthRow =>
   ({ day: 'd', closed: 0, judged: 0, declined: 0, waiting: 0, agedOut: 0, ...o });
@@ -233,5 +234,43 @@ describe('ApmeStore.judgeLatency', () => {
 
   it('reports nulls rather than NaN when nothing has been judged', () => {
     expect(store.judgeLatency({ sinceMs: 0 })).toEqual({ n: 0, p50Ms: null, p90Ms: null, maxMs: null, excluded: 0 });
+  });
+});
+
+// The CLI helpers round 2 changed on reasoning alone — a rounding rule removed,
+// a seam re-floored, a snap made conditional — had no test to regress against.
+describe('judge-health presentation', () => {
+  it('never rounds coverage up to 100% while anything is unjudged', () => {
+    expect(coverageText({ adjudicable: 471, ratio: 469 / 471 })).toBe('99% of 471');
+    expect(coverageText({ adjudicable: 10_000, ratio: 9_999 / 10_000 })).toBe('99% of 10000');
+    expect(coverageText({ adjudicable: 7, ratio: 1 })).toBe('100% of 7');
+    expect(coverageText({ adjudicable: 0, ratio: null })).toBe('—');
+  });
+
+  // 90s printed `2m` and 90m printed `2h` when the demoted unit was rounded,
+  // so the 1m and 1h bands did not exist and every seam overstated by a third.
+  it('floors the demoted unit so no band is skipped', () => {
+    expect(duration(0)).toBe('0s');
+    expect(duration(59_400)).toBe('59s');
+    expect(duration(90_000)).toBe('1m');
+    expect(duration(3_599_000)).toBe('59m');
+    expect(duration(5_400_000)).toBe('1h');
+    expect(duration(47 * 3_600_000)).toBe('47h');
+    expect(duration(48 * 3_600_000)).toBe('2d');
+    expect(duration(null)).toBe('—');
+  });
+
+  it('snaps day-or-longer windows to a local midnight and leaves shorter ones alone', () => {
+    const now = new Date(2026, 8, 7, 20, 5, 0).getTime();
+    // A sub-day window is the one case where snapping would report more than
+    // was asked for — 6h at 01:00 would reach back to yesterday's midnight.
+    expect(judgeHealthWindowStart(6 * 3_600_000, now)).toBe(now - 6 * 3_600_000);
+    const snapped = judgeHealthWindowStart(86_400_000, now);
+    expect(new Date(snapped).getHours()).toBe(0);
+    expect(new Date(snapped).getMinutes()).toBe(0);
+    // Snapping may only move the start EARLIER, so a 23- or 25-hour local day
+    // can never shorten the window below what was asked for.
+    expect(snapped).toBeLessThanOrEqual(now - 86_400_000);
+    expect(localDay(snapped)).toBe('2026-09-06');
   });
 });
