@@ -70,6 +70,47 @@ recorded as a finished subagent named "Subagent", so a session that ran no
 children could show six completed branches. It is an annotation now, on both
 daemons.
 
+### Attention only when a human is really being waited for
+
+A Claude session in `acceptEdits` or `default` mode showed PERM — "waiting for
+you" — for tool calls its own terminal never asked about, then sat there for the
+full 25-second hold before continuing on its own. The hold predictor understood
+only the legacy `Bash(cmd:*)` spelling of a permission rule, while the
+permission dialog writes `Bash(cmd *)`: on one measured machine that was 67 of
+73 rules, so nearly every allowlisted call raised a false alert. The rule
+matcher is now generated from one source for both daemons and follows the
+documented syntax, including compound commands, the built-in read-only set, and
+wrapper stripping. Every remaining uncertainty resolves to "do not hold": a
+missed hold costs nothing, a false one costs a lie and a stall.
+
+Claude's internal fork queries — the prompt suggestions and agent summaries it
+runs for itself — emit a stop event with no matching start and no agent type.
+Those were being counted as finished workers, so `wait for it…` and
+`<no suggestion>` appeared as completed subagents. They are consumed silently
+now. A folded Codex project row also keeps the member that is actually waiting
+on you visible instead of hiding it behind a busy sibling.
+
+### The usage panel says why a quota is missing
+
+When Claude credentials expired, the subscription gauges went blank or stale
+with no reason given, which is indistinguishable from a network blip. The
+provider row now names the cause — authorization expired, unavailable, or a
+temporary failure — and retracts it automatically once a reading succeeds. The
+status is relayed to the app; the Node daemon can additionally ask your own
+Claude CLI to renew the credential with one small, tool-free turn, throttled
+across restarts.
+
+### Evaluation only scores work that exists
+
+A task with no captured agent reply, one that was only aborted, or a trivial
+exchange is now retained as explicitly not graded rather than scored against
+silence — on one week's data that was 69 of 182 judged tasks, including a
+usage-limit abort that scored 0% on its own error notice. Judge replies that
+were cut off by a token limit, or that came back empty, are rejected instead of
+parsed. A single unparseable task can no longer stall the queue behind it, and
+the daemon keeps its evaluation state across a restart instead of stranding
+every open task for the reaper.
+
 ### IPS10: stable cards that keep their information
 
 The IPS10 tablet keeps the equal-size project-room cards but restores the tool,
