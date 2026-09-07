@@ -3601,6 +3601,32 @@ apme
     log('');
   });
 
+/** Coverage as text, rounded DOWN.
+ *
+ *  `toFixed(0)` rounds 469/471 to `100%` while the Waiting column on the same
+ *  line says 2. An instrument whose only job is surfacing loss must never round
+ *  toward perfection, so a day with any miss reads `>99%` instead. */
+function coverageText(c: { adjudicable: number; ratio: number | null }): string {
+  if (c.ratio == null) return '—';
+  const pct = Math.floor(c.ratio * 100);
+  const label = c.ratio < 1 && pct === 100 ? '>99%' : `${pct}%`;
+  return `${label} of ${c.adjudicable}`;
+}
+
+/** A span in the largest unit that keeps it readable. Seconds alone printed a
+ *  real p90 as `369266s`, which is the multi-day case this command exists to
+ *  surface. */
+function duration(ms: number | null): string {
+  if (ms == null) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 90) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 90) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+}
+
 apme
   .command('judge-health')
   .description('Judge coverage — whether closed work actually got a verdict')
@@ -3614,15 +3640,34 @@ apme
 
     const windowMs = parseLookbackWindow(opts.since);
     if (windowMs == null) { log(`Unrecognized --since value: ${opts.since}`); process.exit(1); }
-    const sinceMs = Date.now() - windowMs;
+    // Snapped to a LOCAL midnight. `sinceMs` is an instant while the buckets
+    // are local dates, so an unsnapped window makes the oldest row a partial
+    // day that renders identically to a full one — and its coverage is computed
+    // over a partial denominator, so it can read 100% while the untruncated day
+    // had misses.
+    const start = new Date(Date.now() - windowMs);
+    start.setHours(0, 0, 0, 0);
+    const sinceMs = start.getTime();
     // The drain's own boundary, not a second copy of it — see
     // TASK_JUDGE_DRAIN_WINDOW_MS.
     const agedCutoffMs = Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS;
     const rows = apme.store.judgeHealth({ sinceMs, agedCutoffMs });
     const latency = apme.store.judgeLatency({ sinceMs });
+    // Whole-store, not windowed — see judgeAgedOutTotal.
+    const agedOutTotal = apme.store.judgeAgedOutTotal({ agedCutoffMs });
 
     if (opts.json) {
-      log(JSON.stringify({ since: opts.since, drainWindowDays: TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000, days: rows, latency }, null, 2));
+      log(JSON.stringify({
+        since: opts.since,
+        sinceMs,
+        drainWindowDays: TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000,
+        agedOutTotal,
+        // Coverage travels with the counts: a consumer left to recompute it is
+        // a consumer restating the denominator rule, which is what
+        // `judgeCoverage` exists to prevent.
+        days: rows.map((r) => ({ ...r, coverage: judgeCoverage(r) })),
+        latency,
+      }, null, 2));
       return;
     }
     if (rows.length === 0) { log(`No tasks closed in the last ${opts.since}.`); return; }
@@ -3634,18 +3679,27 @@ apme
     for (const r of rows) {
       totals.closed += r.closed; totals.judged += r.judged; totals.declined += r.declined;
       totals.waiting += r.waiting; totals.agedOut += r.agedOut;
-      const { adjudicable, ratio } = judgeCoverage(r);
-      const cov = ratio != null ? `${(ratio * 100).toFixed(0)}% of ${adjudicable}` : '—';
+      const cov = coverageText(judgeCoverage(r));
       log(`  ${r.day.padEnd(12)} ${String(r.closed).padEnd(7)} ${String(r.judged).padEnd(7)} ${String(r.declined).padEnd(9)} ${String(r.waiting).padEnd(8)} ${String(r.agedOut).padEnd(8)} ${cov}`);
     }
     const t = judgeCoverage(totals);
     log(`  ${'─'.repeat(12)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(9)} ${'─'.repeat(8)} ${'─'.repeat(8)} ${'─'.repeat(9)}`);
-    log(`  ${'all'.padEnd(12)} ${String(totals.closed).padEnd(7)} ${String(totals.judged).padEnd(7)} ${String(totals.declined).padEnd(9)} ${String(totals.waiting).padEnd(8)} ${String(totals.agedOut).padEnd(8)} ${t.ratio != null ? `${(t.ratio * 100).toFixed(0)}% of ${t.adjudicable}` : '—'}`);
+    log(`  ${'all'.padEnd(12)} ${String(totals.closed).padEnd(7)} ${String(totals.judged).padEnd(7)} ${String(totals.declined).padEnd(9)} ${String(totals.waiting).padEnd(8)} ${String(totals.agedOut).padEnd(8)} ${coverageText(t)}`);
     log('');
     if (latency.n > 0) {
-      const sec = (ms: number | null) => ms == null ? '—' : `${(ms / 1000).toFixed(0)}s`;
-      log(`  Close → verdict: p50 ${sec(latency.p50Ms)}  p90 ${sec(latency.p90Ms)}  max ${sec(latency.maxMs)}  (n=${latency.n})`);
+      const excl = latency.excluded > 0 ? `, ${latency.excluded} excluded (verdict predates the close)` : '';
+      log(`  Close → verdict: p50 ${duration(latency.p50Ms)}  p90 ${duration(latency.p90Ms)}  max ${duration(latency.maxMs)}  (n=${latency.n}${excl})`);
     }
+    // Unconditional: the per-day column can only be non-zero for days older
+    // than the drain window, so at any --since inside it the column is all
+    // zeros and this line is the only place the leak shows.
+    log(`  Aged out, whole store: ${agedOutTotal} task(s) older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback and never judged.`);
+    // Not all of them are lost verdicts, and saying so is the difference
+    // between a number and a claim: these were never offered to
+    // task-gradeability either, and measured on one store it refuses 70% of
+    // them for having no agent reply. Computing that here would mean loading
+    // every turn of every aged-out task.
+    log(`  ${' '.repeat(21)} Not all are gradeable — they were never offered to the gradeability check either.`);
     log('  Declined = the judge correctly refused: no reply, aborted-only, or trivial. Not a miss.');
     log('  Waiting  = unjudged but still inside the drain\'s lookback — the judge may yet reach it.');
     log(`  AgedOut  = unjudged and older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback. Nothing will judge these.`);

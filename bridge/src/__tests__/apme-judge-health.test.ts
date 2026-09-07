@@ -54,16 +54,46 @@ describe('ApmeStore.judgeHealth', () => {
 
   // The aged-out column exists because this boundary is otherwise invisible:
   // one millisecond decides whether the drain can ever offer the task again.
-  it('splits waiting from aged out at the drain cutoff, not near it', () => {
+  it('splits waiting from aged out AT the drain cutoff, not merely near it', () => {
     const now = Date.now();
     const cutoff = now - TASK_JUDGE_DRAIN_WINDOW_MS;
     day('inside', cutoff + 1);
+    day('exact', cutoff);
     day('outside', cutoff - 1);
     const rows = store.judgeHealth({ sinceMs: 0, agedCutoffMs: cutoff });
     const total = rows.reduce((a, r) => ({
+      closed: a.closed + r.closed, judged: a.judged + r.judged, declined: a.declined + r.declined,
       waiting: a.waiting + r.waiting, agedOut: a.agedOut + r.agedOut,
-    }), { waiting: 0, agedOut: 0 });
-    expect(total).toEqual({ waiting: 1, agedOut: 1 });
+    }), { closed: 0, judged: 0, declined: 0, waiting: 0, agedOut: 0 });
+    // The row sitting exactly on the boundary is the one a `>=`/`>` slip drops:
+    // with `>` on waiting and `<` on aged out it lands in NEITHER bucket and
+    // the partition silently stops summing to `closed`.
+    expect(total.waiting).toBe(2);
+    expect(total.agedOut).toBe(1);
+    expect(total.judged + total.declined + total.waiting + total.agedOut).toBe(total.closed);
+  });
+
+  // The predicate this used to get wrong: only the task_rollup rubric asks for
+  // a summary, so a task judged under a category or `general` rubric carries a
+  // score and eval rows with a NULL summary. Reading that as unjudged printed
+  // "nothing will judge this" about a task that already had a verdict.
+  it('counts a scored task with no summary as judged', () => {
+    const now = Date.now();
+    day('scored-only', now - 3600_000, { compositeScore: 0.8 });
+    const [r] = store.judgeHealth({ sinceMs: now - 86_400_000, agedCutoffMs: now - TASK_JUDGE_DRAIN_WINDOW_MS });
+    expect(r).toMatchObject({ closed: 1, judged: 1, waiting: 0, agedOut: 0 });
+  });
+
+  it('reports the aged-out total for the whole store, not the window', () => {
+    const now = Date.now();
+    const cutoff = now - TASK_JUDGE_DRAIN_WINDOW_MS;
+    day('ancient', cutoff - 86_400_000);
+    day('recent', now - 3600_000);
+    // A window inside the drain's lookback cannot contain an aged-out row at
+    // all — which is why the total is not derived from these rows.
+    const windowed = store.judgeHealth({ sinceMs: now - 7 * 86_400_000, agedCutoffMs: cutoff });
+    expect(windowed.reduce((a, r) => a + r.agedOut, 0)).toBe(0);
+    expect(store.judgeAgedOutTotal({ agedCutoffMs: cutoff })).toBe(1);
   });
 
   it('never counts a declined task as aged out, however old it is', () => {
@@ -101,17 +131,48 @@ describe('ApmeStore.judgeLatency', () => {
 
   // Percentiles, not a mean: one task backfilled weeks after it closed drags a
   // mean past every number a live turn ever produces.
+  // n=10 is the case `floor(q·n)` got wrong: it selects one rank too high, so
+  // the p90 WAS the single outlier — precisely what the percentile is chosen to
+  // resist, and what this test's name claims. Asserting p50 and max alone let
+  // that pass.
   it('reports percentiles a single backfilled outlier cannot move', () => {
     const now = Date.now();
     for (let i = 0; i < 9; i++) closedWithVerdict(`fast-${i}`, now - 10_000, 10_000);
     closedWithVerdict('backfilled', now - 10_000, 30 * 86_400_000);
     const l = store.judgeLatency({ sinceMs: 0 });
-    expect(l.n).toBe(10);
-    expect(l.p50Ms).toBe(10_000);
-    expect(l.maxMs).toBe(30 * 86_400_000);
+    expect(l).toMatchObject({ n: 10, p50Ms: 10_000, p90Ms: 10_000, maxMs: 30 * 86_400_000 });
+  });
+
+  it('places p50 and p90 by nearest rank across sizes', () => {
+    const now = Date.now();
+    // 1..20 seconds: nearest-rank p50 is the 10th value, p90 the 18th.
+    for (let i = 1; i <= 20; i++) closedWithVerdict(`t-${i}`, now - 60_000, i * 1000);
+    const l = store.judgeLatency({ sinceMs: 0 });
+    expect(l).toMatchObject({ n: 20, p50Ms: 10_000, p90Ms: 18_000, maxMs: 20_000 });
+  });
+
+  it('measures the FIRST verdict when a task carries several', () => {
+    const now = Date.now();
+    closedWithVerdict('multi', now - 60_000, 5_000);
+    store.insertEvalForTask({
+      id: 0, runId: 'run-multi', taskId: 'multi', layer: 'task_judge', metric: 'coherence',
+      score: 0.5, raw: null, rubricVer: 1, judgeModel: 'test', createdAt: now - 60_000 + 900_000,
+    });
+    expect(store.judgeLatency({ sinceMs: 0 }).p50Ms).toBe(5_000);
+  });
+
+  // A close backdated past its own verdict is not a latency, but dropping it
+  // silently leaves `n` disagreeing with the Judged column by a number nothing
+  // reports.
+  it('counts a verdict that predates the close instead of dropping it silently', () => {
+    const now = Date.now();
+    closedWithVerdict('backdated', now - 60_000, -30_000);
+    closedWithVerdict('normal', now - 60_000, 4_000);
+    const l = store.judgeLatency({ sinceMs: 0 });
+    expect(l).toMatchObject({ n: 1, excluded: 1, p50Ms: 4_000 });
   });
 
   it('reports nulls rather than NaN when nothing has been judged', () => {
-    expect(store.judgeLatency({ sinceMs: 0 })).toEqual({ n: 0, p50Ms: null, p90Ms: null, maxMs: null });
+    expect(store.judgeLatency({ sinceMs: 0 })).toEqual({ n: 0, p50Ms: null, p90Ms: null, maxMs: null, excluded: 0 });
   });
 });

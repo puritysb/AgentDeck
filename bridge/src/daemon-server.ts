@@ -4552,7 +4552,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // stop ranking real work. Bounded to the same 30-day window the backlog
     // drain reads; idempotent after the first pass.
     try {
-      const r = retractUngradeableVerdicts(apme.store, Date.now() - 30 * 86_400_000);
+      // The drain's bound, not a second copy of it: readmitting a task the
+      // drain can no longer reach puts it straight into the aged-out column.
+      const r = retractUngradeableVerdicts(apme.store, Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS);
       const n = r.no_reply + r.aborted_only + r.trivial;
       if (n > 0) log(`[agentdeck] APME withdrew ${n} verdict(s) reached without the agent's work — no reply ${r.no_reply}, client-ended ${r.aborted_only}, trivial ${r.trivial}`);
       if (r.readmitted > 0) log(`[agentdeck] APME re-admitted ${r.readmitted} declined task(s) to the judge backlog — their tool trajectory is the agent's work`);
