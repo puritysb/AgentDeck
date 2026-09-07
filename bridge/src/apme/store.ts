@@ -1436,10 +1436,20 @@ export class ApmeStore {
       `SELECT t.id, t.run_id, t.task_category FROM tasks t
        WHERE t.ended_at IS NOT NULL
          AND t.ended_at >= ?
-         AND t.summary IS NULL
+         -- NOT summary IS NULL. Only the task_rollup rubric asks for a
+         -- summary, so a task judged under a category or general rubric has a
+         -- composite score and eval rows with a NULL summary. Selecting on the
+         -- summary alone re-offered such a task every tick forever - and
+         -- because the judge SUCCEEDS on it, enqueueTask never parks it, so
+         -- pickBacklogTasks cannot skip it either and it owns the head of this
+         -- ended_at DESC query permanently. That is the #289 starvation in the
+         -- one shape the park-aware drain is blind to. JUDGED_SQL is the same
+         -- test judge-health reports with: an instrument and a drain that
+         -- disagree about "judged" describe different systems.
+         AND NOT ${ApmeStore.JUDGED_SQL}
          -- A task the judge already declined (task-gradeability.ts) is not a
          -- backlog; re-offering it every sweep re-declines it forever.
-         AND (t.notes_json IS NULL OR t.notes_json NOT LIKE '%"notGradeable"%')
+         AND NOT ${ApmeStore.DECLINED_SQL}
        ORDER BY t.ended_at DESC
        LIMIT ?`,
     ).all(sinceMs, limit) as Array<{ id: string; run_id: string; task_category: string | null }>;

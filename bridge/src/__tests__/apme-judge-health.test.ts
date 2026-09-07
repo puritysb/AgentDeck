@@ -84,6 +84,33 @@ describe('ApmeStore.judgeHealth', () => {
     expect(r).toMatchObject({ closed: 1, judged: 1, waiting: 0, agedOut: 0 });
   });
 
+  // Mutation-verified gaps: both filters on the headline number, and the
+  // layer/locale conditions the day grouping and the latency join depend on.
+  it('excludes judged and declined tasks from the aged-out total', () => {
+    const now = Date.now();
+    const cutoff = now - TASK_JUDGE_DRAIN_WINDOW_MS;
+    const old = cutoff - 86_400_000;
+    day('old-judged', old, { compositeScore: 0.7 });
+    day('old-declined', old, { notesJson: JSON.stringify({ notGradeable: 'no_reply' }) });
+    day('old-unjudged', old);
+    // Only the third is a lost verdict. Counting the other two would inflate
+    // the number printed unconditionally as "never judged" by the whole
+    // declined-and-old population, which on a real store is hundreds.
+    expect(store.judgeAgedOutTotal({ agedCutoffMs: cutoff })).toBe(1);
+  });
+
+  it('groups days in LOCAL time, matching the window the CLI snaps', () => {
+    // 00:30 local belongs to today; a UTC-grouped query would file it under
+    // yesterday wherever the offset is positive, disagreeing with a sinceMs
+    // that was snapped to local midnight.
+    const local = new Date();
+    local.setHours(0, 30, 0, 0);
+    day('early', local.getTime());
+    const expected = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
+    const rows = store.judgeHealth({ sinceMs: local.getTime() - 1000, agedCutoffMs: 0 });
+    expect(rows.map((r) => r.day)).toContain(expected);
+  });
+
   it('reports the aged-out total for the whole store, not the window', () => {
     const now = Date.now();
     const cutoff = now - TASK_JUDGE_DRAIN_WINDOW_MS;
@@ -102,6 +129,23 @@ describe('ApmeStore.judgeHealth', () => {
     const rows = store.judgeHealth({ sinceMs: 0, agedCutoffMs: now - TASK_JUDGE_DRAIN_WINDOW_MS });
     expect(rows.reduce((a, r) => a + r.agedOut, 0)).toBe(0);
     expect(rows.reduce((a, r) => a + r.declined, 0)).toBe(1);
+  });
+
+  // The drain and the instrument must answer "judged" the same way, or they
+  // describe different systems. This is the shape the park-aware drain is blind
+  // to: the judge SUCCEEDS on a scored-but-summaryless task, so nothing parks
+  // it, `pickBacklogTasks` cannot skip it, and it owns the head of the
+  // `ended_at DESC` query forever — the #289 starvation with no failure to
+  // detect it by.
+  it('does not re-offer a task that already has a verdict but no summary', () => {
+    const now = Date.now();
+    day('scored-only', now - 3600_000, { compositeScore: 0.8 });
+    day('genuinely-unjudged', now - 7200_000);
+    const offered = store.listTasksNeedingSummary(20, now - 86_400_000).map((t) => t.id);
+    expect(offered).toEqual(['genuinely-unjudged']);
+    // …and the instrument agrees, on the same predicate.
+    const [today] = store.judgeHealth({ sinceMs: now - 86_400_000, agedCutoffMs: now - TASK_JUDGE_DRAIN_WINDOW_MS });
+    expect(today).toMatchObject({ judged: 1, waiting: 1 });
   });
 
   it('reports no rows rather than throwing when nothing closed in the window', () => {
@@ -149,6 +193,21 @@ describe('ApmeStore.judgeLatency', () => {
     for (let i = 1; i <= 20; i++) closedWithVerdict(`t-${i}`, now - 60_000, i * 1000);
     const l = store.judgeLatency({ sinceMs: 0 });
     expect(l).toMatchObject({ n: 20, p50Ms: 10_000, p90Ms: 18_000, maxMs: 20_000 });
+  });
+
+  it('measures task_judge rows only, not every eval layer', () => {
+    const now = Date.now();
+    store.insertRun({ id: 'run-traj', sessionId: 'traj', agentType: 'claude-code', startedAt: now - 70_000 });
+    store.insertTask({ id: 'traj', runId: 'run-traj', taskIndex: 0, boundarySignal: 'manual', startedAt: now - 70_000 });
+    store.updateTask('traj', { endedAt: now - 60_000 } as never);
+    // A trajectory scorer row is not a verdict. Counting it would redefine
+    // "judged" as "has any eval row" and shift `n` away from the Judged column
+    // it is printed beside.
+    store.insertEvalForTask({
+      id: 0, runId: 'run-traj', taskId: 'traj', layer: 'trajectory', metric: 'tool_churn',
+      score: 0.5, raw: null, rubricVer: null, judgeModel: 'scorer:test', createdAt: now - 50_000,
+    });
+    expect(store.judgeLatency({ sinceMs: 0 }).n).toBe(0);
   });
 
   it('measures the FIRST verdict when a task carries several', () => {

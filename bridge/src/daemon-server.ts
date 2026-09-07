@@ -4552,8 +4552,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // stop ranking real work. Bounded to the same 30-day window the backlog
     // drain reads; idempotent after the first pass.
     try {
-      // The drain's bound, not a second copy of it: readmitting a task the
-      // drain can no longer reach puts it straight into the aged-out column.
+      // The drain's bound, not a second copy of it — an SSOT, not a fix. The
+      // residual is real and stays: retraction runs once at daemon start
+      // against its own clock, while the drain and `judge-health` evaluate the
+      // boundary later against theirs, so a task readmitted at day 29.9 is past
+      // the cutoff within hours. `readmitTask` clears its notGradeable stamp,
+      // moving it out of `declined` (explicitly not a miss) into `agedOut`
+      // (permanent). Narrowing the readmission window would trade that for
+      // never readmitting a class of task at all, which is the worse loss.
       const r = retractUngradeableVerdicts(apme.store, Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS);
       const n = r.no_reply + r.aborted_only + r.trivial;
       if (n > 0) log(`[agentdeck] APME withdrew ${n} verdict(s) reached without the agent's work — no reply ${r.no_reply}, client-ended ${r.aborted_only}, trivial ${r.trivial}`);

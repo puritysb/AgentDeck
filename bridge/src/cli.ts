@@ -3603,14 +3603,14 @@ apme
 
 /** Coverage as text, rounded DOWN.
  *
- *  `toFixed(0)` rounds 469/471 to `100%` while the Waiting column on the same
- *  line says 2. An instrument whose only job is surfacing loss must never round
- *  toward perfection, so a day with any miss reads `>99%` instead. */
+ *  `toFixed(0)` rounded 469/471 to `100%` while the Waiting column on the same
+ *  line said 2. An instrument whose only job is surfacing loss must never round
+ *  toward perfection. `Math.floor` alone is sufficient — it can only reach 100
+ *  at a true ratio of 1 — so there is deliberately no `>99%` special case to go
+ *  stale beside it. */
 function coverageText(c: { adjudicable: number; ratio: number | null }): string {
   if (c.ratio == null) return '—';
-  const pct = Math.floor(c.ratio * 100);
-  const label = c.ratio < 1 && pct === 100 ? '>99%' : `${pct}%`;
-  return `${label} of ${c.adjudicable}`;
+  return `${Math.floor(c.ratio * 100)}% of ${c.adjudicable}`;
 }
 
 /** A span in the largest unit that keeps it readable. Seconds alone printed a
@@ -3619,12 +3619,15 @@ function coverageText(c: { adjudicable: number; ratio: number | null }): string 
 function duration(ms: number | null): string {
   if (ms == null) return '—';
   const s = Math.round(ms / 1000);
-  if (s < 90) return `${s}s`;
-  const m = Math.round(s / 60);
-  if (m < 90) return `${m}m`;
-  const h = Math.round(m / 60);
+  if (s < 60) return `${s}s`;
+  // FLOOR the demoted unit. Rounding it inflated every seam by up to a third —
+  // 90s printed `2m`, 90m printed `2h` — and the 1m and 1h bands did not exist
+  // at all. An instrument for surfacing loss must not overstate its own spans.
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
   if (h < 48) return `${h}h`;
-  return `${Math.round(h / 24)}d`;
+  return `${Math.floor(h / 24)}d`;
 }
 
 apme
@@ -3640,14 +3643,20 @@ apme
 
     const windowMs = parseLookbackWindow(opts.since);
     if (windowMs == null) { log(`Unrecognized --since value: ${opts.since}`); process.exit(1); }
-    // Snapped to a LOCAL midnight. `sinceMs` is an instant while the buckets
-    // are local dates, so an unsnapped window makes the oldest row a partial
-    // day that renders identically to a full one — and its coverage is computed
-    // over a partial denominator, so it can read 100% while the untruncated day
-    // had misses.
-    const start = new Date(Date.now() - windowMs);
-    start.setHours(0, 0, 0, 0);
-    const sinceMs = start.getTime();
+    // Day-or-longer windows snap back to a LOCAL midnight: `sinceMs` is an
+    // instant while the buckets are local dates, so an unsnapped 14d makes the
+    // oldest row a partial day that renders identically to a full one, with
+    // coverage over a partial denominator. Sub-day windows are NOT snapped —
+    // that would move `--since 6h` back to yesterday's midnight and report 25
+    // hours, two day rows and two days of percentiles under a header saying 6h.
+    // There the single partial day is exactly what was asked for.
+    const rawSince = Date.now() - windowMs;
+    let sinceMs = rawSince;
+    if (windowMs >= 86_400_000) {
+      const start = new Date(rawSince);
+      start.setHours(0, 0, 0, 0);
+      sinceMs = start.getTime();
+    }
     // The drain's own boundary, not a second copy of it — see
     // TASK_JUDGE_DRAIN_WINDOW_MS.
     const agedCutoffMs = Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS;
@@ -3655,6 +3664,15 @@ apme
     const latency = apme.store.judgeLatency({ sinceMs });
     // Whole-store, not windowed — see judgeAgedOutTotal.
     const agedOutTotal = apme.store.judgeAgedOutTotal({ agedCutoffMs });
+    // Not all of them are lost verdicts, and saying so is the difference
+    // between a number and a claim: these were never offered to
+    // task-gradeability either, and measured on one store it refuses 70% of
+    // them for having no agent reply. Computing that here would mean loading
+    // every turn of every aged-out task.
+    const logAgedOutTotal = () => {
+      log(`  Aged out, whole store: ${agedOutTotal} task(s) older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback and never judged.`);
+      log(`  ${' '.repeat(21)} Not all are gradeable — they were never offered to the gradeability check either.`);
+    };
 
     if (opts.json) {
       log(JSON.stringify({
@@ -3670,7 +3688,17 @@ apme
       }, null, 2));
       return;
     }
-    if (rows.length === 0) { log(`No tasks closed in the last ${opts.since}.`); return; }
+    // The aged-out total and the legend print even with no rows. A machine idle
+    // for a fortnight with hundreds of aged-out tasks is exactly the state this
+    // command exists for, and returning early there showed only "nothing
+    // closed" — while --json still carried the number, so the two output modes
+    // disagreed about whether it exists.
+    if (rows.length === 0) {
+      log(`\n  No tasks closed in the last ${opts.since}.`);
+      logAgedOutTotal();
+      log('');
+      return;
+    }
 
     log(`\n  Tasks closed in the last ${opts.since} — whether each day's work got a verdict`);
     log(`  ${'Day'.padEnd(12)} ${'Closed'.padEnd(7)} ${'Judged'.padEnd(7)} ${'Declined'.padEnd(9)} ${'Waiting'.padEnd(8)} ${'AgedOut'.padEnd(8)} Coverage`);
@@ -3693,13 +3721,7 @@ apme
     // Unconditional: the per-day column can only be non-zero for days older
     // than the drain window, so at any --since inside it the column is all
     // zeros and this line is the only place the leak shows.
-    log(`  Aged out, whole store: ${agedOutTotal} task(s) older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback and never judged.`);
-    // Not all of them are lost verdicts, and saying so is the difference
-    // between a number and a claim: these were never offered to
-    // task-gradeability either, and measured on one store it refuses 70% of
-    // them for having no agent reply. Computing that here would mean loading
-    // every turn of every aged-out task.
-    log(`  ${' '.repeat(21)} Not all are gradeable — they were never offered to the gradeability check either.`);
+    logAgedOutTotal();
     log('  Declined = the judge correctly refused: no reply, aborted-only, or trivial. Not a miss.');
     log('  Waiting  = unjudged but still inside the drain\'s lookback — the judge may yet reach it.');
     log(`  AgedOut  = unjudged and older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback. Nothing will judge these.`);
