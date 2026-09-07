@@ -65,6 +65,11 @@ struct ApmeJudgeConfig: Codable {
     /// none | low | medium | high | max; anything else is not a choice and is
     /// dropped rather than forwarded.
     var reasoningEffort: String?
+    /// Repetition penalty for the MLX leg. Mirrors `repetitionPenalty` in
+    /// bridge/src/apme/settings.ts; the default lives in
+    /// `ApmeJudgeMlx.defaultRepetitionPenalty`. Out of range is not a choice
+    /// and falls back to the measured default rather than being sent.
+    var repetitionPenalty: Double?
     /// When the MLX server does not answer, retry on-device Foundation Models
     /// instead of skipping the eval. True for the DEFAULT only: a user who
     /// names `mlx` and whose server is offline still gets a visible skip
@@ -158,8 +163,15 @@ enum ApmeSettings {
     /// Load APME config from ~/.agentdeck/settings.json.
     /// Returns defaults on any failure — the daemon must keep booting.
     static func load() -> ApmeConfig {
-        guard let data = readSettingsDataBounded(),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let data = readSettingsDataBounded() else { return ApmeConfig() }
+        return parse(data)
+    }
+
+    /// The parse, split from the file read so the validation rules can be
+    /// driven directly. `load()` is otherwise reachable only through the real
+    /// settings.json, which is a user file this suite must not depend on.
+    static func parse(_ data: Data) -> ApmeConfig {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
             return ApmeConfig()
         }
@@ -176,26 +188,52 @@ enum ApmeSettings {
         }
 
         if let judge = apme["judge"] as? [String: Any] {
-            if let b = judge["backend"] as? String,
-               let parsed = ApmeJudgeBackend(rawValue: b) {
+            // An unknown backend name REJECTS the whole backend selection,
+            // including the fields coupled to it. Node does this explicitly
+            // (`resetBackendCoupledFields` in bridge/src/apme/settings.ts wipes
+            // endpoint/model/reasoningEffort and forces `mlx`); Swift used to
+            // fall through and read `model` and `endpoint` anyway, so
+            // `{"backend":"grok","endpoint":"https://api.example.com/…"}` — a
+            // typo'd name beside a remote URL — sent the judge prompt, which
+            // carries the user's code and trajectory, to that third party on a
+            // config line the loader had just refused. The old comment here
+            // claimed this "matches settings.ts". It did not.
+            let namedBackend = judge["backend"] as? String
+            let parsedBackend = namedBackend.flatMap { ApmeJudgeBackend(rawValue: $0) }
+            let backendRejected = namedBackend != nil && parsedBackend == nil
+            if let parsed = parsedBackend {
                 cfg.judge.backend = parsed
                 // The user NAMED a backend, so the default chain's FM leg is
-                // off unless they asked for it. An unparseable/unknown string
-                // is not a choice — it leaves the default (and its fallback)
-                // in place, matching settings.ts.
+                // off unless they asked for it.
                 cfg.judge.fallbackToFoundationModels = judge["fallbackToFoundationModels"] as? Bool ?? false
             } else if let f = judge["fallbackToFoundationModels"] as? Bool {
                 cfg.judge.fallbackToFoundationModels = f
             }
-            if let m = judge["model"] as? String { cfg.judge.model = m }
+            if let m = judge["model"] as? String, !backendRejected { cfg.judge.model = m }
             if let s = judge["sampleRate"] as? Double { cfg.judge.sampleRate = max(0, min(1, s)) }
             if let s = judge["sampleRate"] as? Int { cfg.judge.sampleRate = max(0, min(1, Double(s))) }
             if let d = judge["onlyWhenDisagreement"] as? Bool { cfg.judge.onlyWhenDisagreement = d }
-            if let ep = judge["endpoint"] as? String { cfg.judge.endpoint = ep }
+            if let ep = judge["endpoint"] as? String, !backendRejected { cfg.judge.endpoint = ep }
             if let k = judge["apiKey"] as? String, !k.isEmpty { cfg.judge.apiKey = k }
-            if let e = judge["reasoningEffort"] as? String,
+            if let e = judge["reasoningEffort"] as? String, !backendRejected,
                ["none", "low", "medium", "high", "max"].contains(e) {
                 cfg.judge.reasoningEffort = e
+            }
+            // No Int branch: the dict comes from JSONSerialization, so a JSON
+            // integer arrives as NSNumber and `as? Double` already takes it
+            // losslessly. A second branch would read as covering a case this
+            // one misses, and it does not.
+            //
+            // The boolean guard is NOT redundant: JSONSerialization bridges
+            // `true` to an NSNumber too, and `true as? Double` is 1.0 — so
+            // `"repetitionPenalty": true` would enable the penalty here while
+            // Node's `typeof !== 'number'` rejects it, and the same
+            // settings.json would judge differently depending on which daemon
+            // held the port. Same trap as the score parser's (#294).
+            if let n = judge["repetitionPenalty"] as? NSNumber,
+               CFGetTypeID(n) != CFBooleanGetTypeID(),
+               n.doubleValue.isFinite, n.doubleValue >= 1, n.doubleValue <= 2 {
+                cfg.judge.repetitionPenalty = n.doubleValue
             }
         }
 

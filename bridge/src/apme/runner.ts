@@ -1530,8 +1530,13 @@ export async function probeJudgeBackend(cfg: ApmeJudgeConfig): Promise<JudgeBack
 const judgeJsonModeUnsupported = new Set<string>();
 
 /** Reset the per-endpoint JSON-mode memory (tests only). */
-export function clearJudgeJsonModeCacheForTests(): void {
+export function clearJudgeEndpointCachesForTests(): void {
+  // BOTH per-endpoint memories, and the name says so. One test marking an
+  // endpoint otherwise leaks into every later test in the file — that is how
+  // the `!overflow` guard came to be "covered" by a suite that never exercised
+  // it, the penalty already being null by the time the overflow case ran.
   judgeJsonModeUnsupported.clear();
+  judgePenaltyUnsupported.clear();
 }
 
 function judgeJsonModeEnabled(url: string): boolean {
@@ -1552,10 +1557,105 @@ function noteJsonModeUnsupported(url: string, status: number): void {
   log(`APME judge: ${url} rejected response_format json_object (HTTP ${status}) — retrying without JSON mode and not sending it again this process`);
 }
 
+/** Endpoints that answered 4xx while carrying `repetition_penalty`. Same shape
+ *  as `judgeJsonModeUnsupported`: per-process, so the cost of discovering a
+ *  strict server is one request per endpoint rather than one per judge call. */
+const judgePenaltyUnsupported = new Set<string>();
+function judgePenaltyEnabled(url: string): boolean {
+  return !judgePenaltyUnsupported.has(url);
+}
+function notePenaltyUnsupported(url: string, status: number): void {
+  if (judgePenaltyUnsupported.has(url)) return;
+  judgePenaltyUnsupported.add(url);
+  log(`APME judge: ${url} rejected repetition_penalty (HTTP ${status}) — retrying without it and not sending it again this process`);
+}
+
+/** `{ repetition_penalty: … }` or nothing, so a call site can spread it. */
+function penaltyField(penalty: number | null): Record<string, unknown> {
+  return penalty === null ? {} : { repetition_penalty: penalty };
+}
+
 /** `{ response_format: … }` or nothing, so a call site can spread it. */
 function jsonModeField(enabled: boolean): Record<string, unknown> {
   return enabled ? { response_format: { type: 'json_object' } } : {};
 }
+
+/** Repetition penalty for the MLX judge leg, unless the user overrides.
+ *
+ *  WHY A DEFAULT AT ALL. gemma-4-26b enters a repetition loop inside the
+ *  `summary` string on some judge prompts and runs to the token cap without
+ *  ever closing the object, so the verdict is lost. Measured 2026-09-07/08
+ *  under two designs — three back-to-back repeats, then three repeats
+ *  INTERLEAVED so each is separated by five other prompts, which evicts the
+ *  server's prompt cache between measurements. Both produced identical totals,
+ *  and identical task by task: **4 of 6 tasks cut without the penalty, 1 of 6
+ *  with it at 1.05**, no task worse, and every cell stable across its own
+ *  repeats (18 observations per condition under each design — 12/18 → 3/18).
+ *
+ *  LEAD WITH THE TASK COUNT, not the observation count. The repeats are the
+ *  stability result, not the sample size: this same comment argues below that
+ *  greedy decoding at temperature 0 is SPECIFIED to repeat itself, so the
+ *  three repeats of one prompt are one measurement observed three times. The
+ *  independent unit is the task, n = 6. Writing 12/18 in the headline while
+ *  calling the identical six-task group "an unreplicated n=6" a few lines
+ *  down — which this comment did — inflates the evidence in exactly one
+ *  direction: n=18 for the claim, n=6 for the counter-evidence against it.
+ *
+ *  The back-to-back log is a RE-RUN (2026-09-08, scratchpad `repeat.log`): the
+ *  original run's output was never saved, so for a while this comment cited a
+ *  number from a design whose artifact did not exist. The re-run is pinned to
+ *  the same six task ids because the live backlog query keeps shifting as
+ *  tasks close, and it reproduced the interleaved result exactly, task by
+ *  task. (No row count is given: that number is stale the moment the next
+ *  task closes — the same reason the pass counts are not quoted either.) What that costs
+ *  in independence is stated in the caveat below: every run in the record was
+ *  served by ONE `mlx_vlm.server` process, up since 2026-09-06 03:58.
+ *  (The package name matters: `mlx_lm` and `mlx_vlm` are different
+ *  distributions with different sampler code, and whether
+ *  `repetition_penalty` is honoured is a sampler-level fact — so this
+ *  measurement does not transfer to `mlx_lm.server` unchecked.)
+ *
+ *  The quality arm is NOT part of "both designs" — see KNOWN GAP.
+ *
+ *  WHAT THE REPEATS DO NOT SHOW. Every task agreed with itself across its
+ *  repeats — but that is what greedy decoding at `temperature: 0` is SPECIFIED
+ *  to do given identical server state, so agreement within a run is not a
+ *  discovery. That cuts BOTH ways and the caveat below is the other half of
+ *  the same fact: the spec covers a fixed server, so a cross-restart flip is
+ *  neither predicted nor excluded by it. The interleave rules out only the
+ *  prompt cache. Whether an outcome flips across a server restart or model
+ *  reload is therefore UNTESTED, and now measurably so: every run in the
+ *  record was answered by the same server process (pid alive since 2026-09-06
+ *  03:58, checked 2026-09-08), so no run spans a restart at all. A model
+ *  reload inside that process is not excluded either — the server holds
+ *  several and loads on demand.
+ *  (An earlier version of this note claimed a pair of runs hours apart had
+ *  disagreed. The record says otherwise: the only PRODUCTION-prompt pair 14 h apart agrees
+ *  5/5 (and a probe-prompt pair 15.8 h apart agrees 4/4), and the disagreement it was remembering is production-vs-probe
+ *  — a different PROMPT, which is the confound that retired the "clears two
+ *  times in three" figure. Withdrawn.) So this claims no permanent failure,
+ *  and it does not claim park-and-retry could never clear it — the drain has
+ *  its own reasons to stall (one task per tick, an all-parked window idling
+ *  it, two attempts per 30 min). The claim the default rests on is the rate.
+ *
+ *  1.1 IS NOT THE DEFAULT, and the case is thinner than "higher is worse".
+ *  Single-shot on the same six tasks it cut two that 1.05 passed (ba27d31a,
+ *  bbb519fe) — that is two worse THAN 1.05, one worse than sending nothing,
+ *  since ba27d31a was already cut. But it also cleared d9f2d409, the one task 1.05
+ *  did not clear in any observed run and the whole of its residual cut rate. So the margin is
+ *  5 ok vs 4 ok on an unreplicated n=6, not a trend, and this default is the
+ *  better of two thinly separated candidates rather than a located optimum.
+ *
+ *  KNOWN GAP. The quality arm is weak, and weaker than it reads. The five
+ *  already-passing control tasks were measured ONCE, in the single-shot run;
+ *  neither repeat design included them or recorded a score at all, so no
+ *  quality result is backed by repeats. All five scored 1.0, which has no
+ *  headroom upward. One observation with headroom does exist, in the failing
+ *  group — f8ee310b went 0.95 → 1.0, i.e. upward — so it is DOWNWARD movement
+ *  in a nuanced score that is untested, not nuanced scores altogether. JSON
+ *  validity is covered: `ok` means `parseJudgeJson` succeeded, and no run in
+ *  any design produced `unparseable`. */
+export const MLX_JUDGE_REPETITION_PENALTY = 1.05;
 
 async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
   // MLX server speaks OpenAI chat-completions. The llm.mlx pin (shared with
@@ -1579,6 +1679,18 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
     } catch { /* use configured model */ }
   }
 
+  // `apme.judge.endpoint` may point at any OpenAI-shaped server, and
+  // `repetition_penalty` is NOT an OpenAI-standard field. A strict server
+  // answers 400, which `isJsonModeRejection` reads as "this endpoint refuses
+  // response_format" — so it would drop JSON mode for the life of the process
+  // AND retry still carrying the penalty, failing identically. The field gets
+  // the same escape hatch json mode has: dropped and remembered per endpoint.
+  // `1` means OFF, and off means the field is not sent at all. Sending
+  // `repetition_penalty: 1` is a no-op for the model but still costs a user on
+  // a strict server the 400 + retry probe and marks their endpoint — i.e.
+  // "disabling" it would have had a price.
+  const configured = cfg.repetitionPenalty ?? MLX_JUDGE_REPETITION_PENALTY;
+  let penalty: number | null = judgePenaltyEnabled(url) && configured > 1 ? configured : null;
   const request = (userPrompt: string, jsonMode: boolean) => fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1590,6 +1702,17 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
       ],
       temperature: 0.0,
       max_tokens: 800,
+      // The server silently IGNORES unknown fields — a made-up parameter
+      // returns HTTP 200 exactly like a real one — so acceptance proves
+      // nothing. That this one is honoured is established by the OUTCOMES in
+      // the logged runs: at temperature 0 the decode is fixed given identical
+      // server state, yet the same prompt yields different results across the
+      // penalty conditions (ba27d31a: none=cut, 1.05=ok, 1.1=cut) — and the same task reads none[cut,cut,cut] / rp1.05[ok,ok,ok] in BOTH repeat designs, i.e. 12 observations spanning a warm and an evicted prompt cache, so the split is not a cache artifact. A field the
+      // server ignored could not do that. (An earlier note here cited a
+      // control-field byte-comparison instead; no logged run captured response
+      // TEXT at all, so that instrument is not in the record and the claim now
+      // rests on the evidence that is.)
+      ...penaltyField(penalty),
       ...jsonModeField(jsonMode),
     }),
     // Long task_rollup prompts can cross 60s at the tail under sustained
@@ -1599,18 +1722,23 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
   });
 
   let jsonMode = judgeJsonModeEnabled(url);
-  let resp = await request(prompt, jsonMode);
-  if (!resp.ok && isJsonModeRejection(resp.status)) {
+  let body = prompt;
+  // What the ladder gave up, and at which status — held until a request
+  // actually succeeds, because "the call failed while carrying X" is not
+  // "this endpoint refuses X".
+  let droppedPenaltyStatus: number | null = null;
+  let droppedJsonModeStatus: number | null = null;
+  let resp = await request(body, jsonMode);
+  // A 400 here is ambiguous: it may be the context budget, or either of two
+  // fields the server may not know. Re-diagnose after EVERY retry rather than
+  // nesting, because a nested ladder made the overflow branch unreachable once
+  // the penalty branch had been taken — a server that refuses the penalty AND
+  // is then handed an oversized prompt lost its verdict entirely, with JSON
+  // mode switched off for the process on the way out.
+  for (let attempt = 0; attempt < 3 && !resp.ok && isJsonModeRejection(resp.status); attempt++) {
     const detail = await resp.text();
     const overflow = detail.match(/Request needs \d+ context tokens \((\d+) prompt \+ (\d+) max generation\), but MAX_KV_SIZE is (\d+)/);
-    if (!overflow && jsonMode) {
-      // Not the context-overflow shape, so this server is refusing the field
-      // rather than the prompt. Retry once without it; a genuinely bad request
-      // fails again below with its own status.
-      noteJsonModeUnsupported(url, resp.status);
-      jsonMode = false;
-      resp = await request(prompt, false);
-    } else if (overflow) {
+    if (overflow) {
       const promptTokens = Number(overflow[1]);
       const maxGeneration = Number(overflow[2]);
       const maxKv = Number(overflow[3]);
@@ -1619,12 +1747,57 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
       // and the latest turns/trajectory/instruction at the end.
       const targetPromptTokens = Math.max(256, maxKv - maxGeneration - 128);
       const ratio = Math.min(0.95, (targetPromptTokens / promptTokens) * 0.98);
-      const compacted = compactPromptForMlxContext(prompt, Math.max(1000, Math.floor(prompt.length * ratio)));
-      debug('APME', `MLX context overflow (${promptTokens}+${maxGeneration}>${maxKv}); retrying with ${compacted.length}/${prompt.length} prompt chars`);
-      resp = await request(compacted, jsonMode);
+      const compacted = compactPromptForMlxContext(body, Math.max(1000, Math.floor(body.length * ratio)));
+      if (compacted === body) break;
+      debug('APME', `MLX context overflow (${promptTokens}+${maxGeneration}>${maxKv}); retrying with ${compacted.length}/${body.length} prompt chars`);
+      body = compacted;
+    } else if (penalty !== null) {
+      // Not the overflow shape, so a FIELD is being refused. Give up
+      // `repetition_penalty` before `response_format`: it is the non-standard
+      // one, so it is the likelier culprit, and losing it only raises the cut
+      // rate while losing JSON mode costs the strict-JSON request entirely.
+      // Dropping it is a HYPOTHESIS; it is not written to the per-endpoint
+      // memory until a later request proves it (see `droppedPenaltyStatus`).
+      droppedPenaltyStatus = resp.status;
+      penalty = null;
+    } else if (jsonMode) {
+      // Retry once without it; a genuinely bad request fails again below with
+      // its own status.
+      droppedJsonModeStatus = resp.status;
+      jsonMode = false;
+    } else {
+      break;                                    // nothing left to give up
     }
+    resp = await request(body, jsonMode);
   }
   if (!resp.ok) throw new Error(`MLX judge HTTP ${resp.status}`);
+  // The request succeeded, so whatever was still dropped at that point is what
+  // the endpoint actually refuses — and ONLY that. Two ways to get this wrong,
+  // both of which shipped before this line existed:
+  //
+  //  - Writing the memory at the moment a field is dropped records a
+  //    conclusion the retry has not reached yet. One unrelated 400 (a wrong
+  //    model id, an auth proxy, a rejected request of any kind) walks the whole
+  //    ladder, marks BOTH fields, and then throws — proving neither was the
+  //    cause — leaving the endpoint permanently deprived of JSON mode, which is
+  //    what #288 shipped to stop tasks parking on unparseable verdicts.
+  //  - When BOTH came off before it succeeded, the evidence does not say
+  //    which one mattered, so the choice is about which mistake to make. Blame
+  //    the PENALTY. The two errors are not symmetric:
+  //      * Wrongly writing off the penalty costs the cut-rate improvement on
+  //        that endpoint, and the next call still probes JSON mode, drops it,
+  //        succeeds, and records THAT correctly — the system converges to the
+  //        right json-mode state.
+  //      * Wrongly writing off JSON mode is permanent and never re-probed, so
+  //        a server that merely 400'd twice for an unrelated reason (a model
+  //        hot-swap, a moment of overload) loses the JSON mode #288 shipped —
+  //        with nothing to bring it back short of a restart.
+  //    The comment above already states the cost asymmetry ("losing it only
+  //    raises the cut rate while losing JSON mode costs the strict-JSON
+  //    request entirely"); this is that same asymmetry applied to ambiguous
+  //    evidence rather than only to the order fields are dropped in.
+  if (droppedPenaltyStatus !== null) notePenaltyUnsupported(url, droppedPenaltyStatus);
+  else if (droppedJsonModeStatus !== null) noteJsonModeUnsupported(url, droppedJsonModeStatus);
   return judgeChatContent(await resp.json(), 'MLX');
 }
 
@@ -1711,6 +1884,14 @@ async function callOpenAICompatible(prompt: string, cfg: ApmeJudgeConfig): Promi
       temperature: 0,
       max_tokens: 1024,
       ...(cfg.reasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
+      // Deliberately NO `repetition_penalty` here. This adapter's own doc lists
+      // OpenRouter and "any other OpenAI-compatible endpoint" among its
+      // targets, so sending it would reach hosted providers — several of which
+      // DO honour the field, silently changing sampling for a judge the user
+      // pays per call, on evidence measured only against a local gemma-4-26b.
+      // The setting is documented as MLX-leg only; a local server reached
+      // through this backend does not get it, which is a stated scope rather
+      // than a silent discard.
       ...jsonModeField(jsonMode),
     }),
     signal: AbortSignal.timeout(90_000),
@@ -1932,9 +2113,15 @@ export function apiJudgeText(response: {
  *    cut mode observed on this fleet is a repetition loop INSIDE the `summary`
  *    string, where depth can never return to zero, so the exemption and this
  *    rule agree on every real body seen. #286 item 3 lists "keep rejecting and
- *    alert on the rate" among its options; the park log names this failure, and
- *    a re-attempt clears it two times in three (measured over the 24 parked
- *    tasks, 2026-09-06).
+ *    alert on the rate" among its options; the park log names this failure.
+ *    (An earlier note put the re-attempt success at two in three. That figure
+ *    came from a probe whose prompt differed from production in TWO ways: it
+ *    wrote `task_category: unknown` where `runTaskEval` resolves the category
+ *    from the run, and it omitted the cost line. So it described a request the
+ *    daemon never sends, and the figure is WITHDRAWN. `ab.log` isolates the
+ *    category token alone and still flips 4 of 10 tasks, so that difference is
+ *    sufficient on its own — which is not the same as it being the only one.
+ *    See MLX_JUDGE_REPETITION_PENALTY for what replaced it.)
  */
 export function judgeChatContent(payload: unknown, label: string): string {
   const choices = (payload as { choices?: unknown } | null)?.choices;

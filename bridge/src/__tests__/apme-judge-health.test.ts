@@ -144,9 +144,13 @@ describe('ApmeStore.judgeHealth', () => {
     day('genuinely-unjudged', now - 7200_000);
     const offered = store.listTasksNeedingSummary(20, now - 86_400_000).map((t) => t.id);
     expect(offered).toEqual(['genuinely-unjudged']);
-    // …and the instrument agrees, on the same predicate.
-    const [today] = store.judgeHealth({ sinceMs: now - 86_400_000, agedCutoffMs: now - TASK_JUDGE_DRAIN_WINDOW_MS });
-    expect(today).toMatchObject({ judged: 1, waiting: 1 });
+    // …and the instrument agrees, on the same predicate. Summed across rows,
+    // not read from `[0]`: the rows are LOCAL day buckets, so two tasks an hour
+    // apart straddle midnight and land in different buckets for part of every
+    // day — which made this assertion fail only between 00:00 and 02:00 local.
+    const rows = store.judgeHealth({ sinceMs: now - 86_400_000, agedCutoffMs: now - TASK_JUDGE_DRAIN_WINDOW_MS });
+    const total = rows.reduce((a, r) => ({ judged: a.judged + r.judged, waiting: a.waiting + r.waiting }), { judged: 0, waiting: 0 });
+    expect(total).toEqual({ judged: 1, waiting: 1 });
   });
 
   it('reports no rows rather than throwing when nothing closed in the window', () => {

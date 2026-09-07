@@ -214,13 +214,20 @@ enum ApmeClassifier {
     /// Routes through ApmeJudgeFoundationModels by default; other backends
     /// (MLX, API) are reached via the same dispatch path ApmeRunner uses
     /// for eval scoring, keeping the classifier/eval backend choice in sync.
-    private static func callConfiguredJudge(prompt: String) async -> String? {
-        let config = ApmeSettings.load()
+    /// `config` is a parameter rather than a `load()` inside the body so this
+    /// dispatch — including the penalty exclusion below — can be driven in a
+    /// test without depending on the machine's real settings.json. Flipping
+    /// that exclusion back on was invisible to the suite until this seam
+    /// existed.
+    static func callConfiguredJudge(prompt: String, config: ApmeConfig = ApmeSettings.load()) async -> String? {
         switch config.judge.backend {
         case .foundationModels:
             return await ApmeJudgeFoundationModels.judge(prompt: prompt)
         case .mlx:
-            if let text = await ApmeJudgeMlx.judge(prompt: prompt, config: config.judge) {
+            // No repetition penalty: the measurement behind it is about judge
+            // prompts, and Node's classifier never carried the field.
+            if let text = await ApmeJudgeMlx.judge(prompt: prompt, config: config.judge,
+                                                   sendsRepetitionPenalty: false) {
                 return text
             }
             // Default chain (mlx → on-device FM). Cleared by the loader when

@@ -22,6 +22,15 @@ enum ApmeJudgeMlx {
     /// model id the user loaded.
     static var judgeModelLabel: String { "mlx:\(LastResolvedModel.get() ?? "default")" }
 
+    /// Mirrors `MLX_JUDGE_REPETITION_PENALTY` in bridge/src/apme/runner.ts,
+    /// which carries the measurement and its limits — the claim is the cut
+    /// rate (4 of 6 tasks → 1 of 6, i.e. 12/18 → 3/18 observations, under two
+    /// designs), not that the failure is
+    /// permanent. The two constants are a hand mirror with no generator, so
+    /// they must be edited together; each side pins the literal in its own
+    /// suite.
+    static let defaultRepetitionPenalty = 1.05
+
     /// Thread-safe storage for the most recently resolved model id.
     /// Swift 6 strict concurrency disallows non-isolated mutable globals,
     /// so we wrap the single string in an NSLock-backed box.
@@ -40,7 +49,12 @@ enum ApmeJudgeMlx {
 
     /// Run the judge via MLX HTTP endpoint. Returns nil on any failure —
     /// caller (ApmeRunner) treats nil as "skip this eval" and doesn't retry.
-    static func judge(prompt: String, config: ApmeJudgeConfig) async -> String? {
+    /// `sendsRepetitionPenalty` is false for the CLASSIFIER, which shares this
+    /// transport but not the measurement: the 4-of-6 → 1-of-6 cut rate was
+    /// measured on judge prompts, and Node's classifier has its own `fetch`
+    /// that never carried the field. Sending it here would extend a measured
+    /// claim to a different prompt shape on one daemon only.
+    static func judge(prompt: String, config: ApmeJudgeConfig, sendsRepetitionPenalty: Bool = true) async -> String? {
         let endpoint = config.endpoint ?? "http://127.0.0.1:8800/chat/completions"
         guard let url = URL(string: endpoint) else { return nil }
 
@@ -49,7 +63,7 @@ enum ApmeJudgeMlx {
         let model = await resolveModel(config: config, endpoint: endpoint)
         LastResolvedModel.set(model)
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": "You are an exacting code evaluator. Reply with strict JSON only."],
@@ -58,23 +72,193 @@ enum ApmeJudgeMlx {
             "temperature": 0.0,
             "max_tokens": 800,
         ]
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        // Rationale and default: `MLX_JUDGE_REPETITION_PENALTY` in
+        // bridge/src/apme/runner.ts. `repetition_penalty` is NOT an
+        // OpenAI-standard field, and `apme.judge.endpoint` may point at a
+        // strict OpenAI-shaped server — which answers 4xx. This leg has no
+        // retry ladder and reports every non-200 as `nil`, so without a
+        // fallback such a user would lose EVERY eval, permanently, and the
+        // skip would be indistinguishable from "MLX offline". One retry
+        // without the field is the whole recovery, and a refusal the retry
+        // PROVED is remembered so the cost is one request per endpoint rather
+        // than one per verdict — see the `.clientError` branch for why the
+        // proof is load-bearing.
+        let penalty = sendsRepetitionPenalty
+            ? Self.resolvedPenalty(configured: config.repetitionPenalty, suppressed: Self.penaltySuppressed(for: url))
+            : nil
+        if let penalty { body["repetition_penalty"] = penalty }
 
+        switch await send(body, to: url) {
+        case .ok(let text):
+            return text
+        case .noVerdict, .transportFailure:
+            // NOT a refused field. `noVerdict` is the repetition cut itself —
+            // HTTP 200 whose body `content` rejects — so reading it as a
+            // refusal would let the very failure this penalty exists to reduce
+            // switch the penalty off for every later verdict on this endpoint.
+            // A transport failure (server not up yet at login) says nothing
+            // about the field either, and suppressing on it would disable the
+            // penalty for the life of the app after one refused connection.
+            return nil
+        case .clientError(let status):
+            // The request was rejected while carrying a non-standard field, so
+            // the field is a CANDIDATE cause — not yet the established one.
+            guard penalty != nil else { return nil }
+            body.removeValue(forKey: "repetition_penalty")
+            switch await send(body, to: url) {
+            case .ok(let text):
+                Self.suppressPenalty(for: url, status: status)
+                return text
+            case .noVerdict:
+                // The server ACCEPTED the request once the field was gone —
+                // that is the evidence, and it is complete. Whether the reply
+                // was then a usable verdict is a different question about the
+                // MODEL, and requiring it here made the promise one line above
+                // ("one request per endpoint, not one per verdict") void in
+                // exactly the combination this PR is about: a strict server
+                // plus the cut-prone model. Node records it (its ladder exits
+                // on `resp.ok`, before the body is judged), so requiring a
+                // verdict also made the two daemons disagree.
+                Self.suppressPenalty(for: url, status: status)
+                return nil
+            case .clientError, .transportFailure:
+                // Dropping the field did not help, so it was never the reason.
+                // Writing the endpoint off here is how one unrelated 400 (a
+                // wrong model id, an auth proxy) disabled the penalty for the
+                // life of the app while claiming, in the log, to have observed
+                // a refusal that never happened.
+                return nil
+            }
+        }
+    }
+
+    /// The value that actually goes on the wire, given the user's setting and
+    /// this endpoint's suppression memory. Pure, so both halves of the rule
+    /// can be driven without a server.
+    ///
+    /// `1` means OFF, and off means the field is not sent AT ALL — the same
+    /// rule as `configured > 1` in bridge/src/apme/runner.ts. Sending
+    /// `repetition_penalty: 1` is a no-op for the model but still costs a user
+    /// on a strict OpenAI-shaped server a 400 plus the retry probe, and marks
+    /// their endpoint; "disabling" it must not have a price. This gate lives
+    /// at the SEND, not in `ApmeSettings.parse`, because the parser's job is
+    /// to say whether the user wrote a usable number (it keeps 1...2) and this
+    /// one's is to say whether the field is sent.
+    static func resolvedPenalty(configured: Double?, suppressed: Bool) -> Double? {
+        if suppressed { return nil }
+        let value = configured ?? Self.defaultRepetitionPenalty
+        return value > 1 ? value : nil
+    }
+
+    /// Why a request produced no verdict, kept distinct because the caller's
+    /// decision differs: only `clientError` may be read as a refused field.
+    enum JudgeAttempt {
+        case ok(String)
+        /// 200, but the body is not a verdict (empty, or cut at the token cap).
+        case noVerdict
+        case clientError(Int)
+        /// Non-2xx that is not a 4xx, or the request never completed.
+        case transportFailure
+    }
+
+    /// How a request reaches the server. Injectable ONLY so `judge()` itself
+    /// can be driven in tests.
+    ///
+    /// This exists because three consecutive review rounds found the same
+    /// hole: `judge()` called `URLSession.shared` directly, so it had zero
+    /// coverage, and every fix landed in it was unpinned. Rounds 3 and 4 each
+    /// answered "this path has no tests" by extracting one more PURE seam
+    /// (`classify`, then `resolvedPenalty`) — so the pieces ended up tested
+    /// twice over while the caller that COMPOSES them, where every one of
+    /// those fixes actually lives, stayed untested. Four mutations proved it:
+    /// deleting the line that sends the field, moving the suppression back
+    /// before the retry, letting a repetition cut suppress, and re-enabling
+    /// the penalty for the classifier ALL left the suite green.
+    ///
+    /// A pure seam can only pin a decision. The composition is the behaviour.
+    typealias Transport = @Sendable ([String: Any], URL) async -> JudgeAttempt
+
+    nonisolated(unsafe) private static var injectedTransport: Transport?
+    private static let transportLock = NSLock()
+
+    /// Swap the transport for one test and restore it afterwards. The closure
+    /// form makes the restore unskippable — an early `XCTAssert` failure must
+    /// not leak a stub into the next test.
+    static func withTransportForTests<T>(_ transport: @escaping Transport,
+                                         _ body: () async throws -> T) async rethrows -> T {
+        setTransport(transport)
+        defer { setTransport(nil) }
+        return try await body()
+    }
+
+    // Swift 6 makes `NSLock.lock()` unavailable from an async context, so the
+    // critical sections stay in these synchronous helpers and the async code
+    // only calls them. Nothing is awaited while the lock is held.
+    private static func setTransport(_ t: Transport?) {
+        transportLock.lock(); defer { transportLock.unlock() }
+        injectedTransport = t
+    }
+
+    private static func currentTransport() -> Transport? {
+        transportLock.lock(); defer { transportLock.unlock() }
+        return injectedTransport
+    }
+
+    static func send(_ body: [String: Any], to url: URL) async -> JudgeAttempt {
+        if let injected = currentTransport() { return await injected(body, url) }
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else { return .transportFailure }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = bodyData
         request.timeoutInterval = 60
-
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                return nil
-            }
-            return try ApmeJudgeChatResponse.content(data)
+            guard let http = response as? HTTPURLResponse else { return .transportFailure }
+            return classify(status: http.statusCode, data: data)
         } catch {
-            return nil
+            return .transportFailure
         }
+    }
+
+    /// Which outcome a completed response is. Pure, so the distinction the
+    /// caller depends on can be driven without a server: only `clientError`
+    /// may be read as a refused field, and a 200 whose body is not a verdict
+    /// (the repetition cut this penalty exists to reduce) must NOT be.
+    static func classify(status: Int, data: Data) -> JudgeAttempt {
+        // 400/422 ONLY, mirroring `isJsonModeRejection` in
+        // bridge/src/apme/runner.ts — these are the statuses a server uses to
+        // reject the REQUEST. The whole 4xx range reads a 404 from a wrong
+        // endpoint path, or a 429 from an auth proxy, as "this server refuses
+        // repetition_penalty", which is a claim about a field nobody looked at.
+        if status == 400 || status == 422 { return .clientError(status) }
+        // `resp.ok` on the Node side is 200–299, so a proxy answering 201/202
+        // must not be a failure on one daemon and a verdict on the other.
+        guard (200..<300).contains(status) else { return .transportFailure }
+        do { return .ok(try ApmeJudgeChatResponse.content(data)) }
+        catch { return .noVerdict }
+    }
+
+    /// Endpoints that failed while carrying `repetition_penalty`. Mirrors
+    /// `judgePenaltyUnsupported` in bridge/src/apme/runner.ts: per-process, so
+    /// discovering a strict server costs one request, not one per judge call.
+    nonisolated(unsafe) private static var penaltyUnsupported = Set<String>()
+    private static let penaltyLock = NSLock()
+    static func penaltySuppressed(for url: URL) -> Bool {
+        penaltyLock.lock(); defer { penaltyLock.unlock() }
+        return penaltyUnsupported.contains(url.absoluteString)
+    }
+    static func suppressPenalty(for url: URL, status: Int) {
+        penaltyLock.lock()
+        let inserted = penaltyUnsupported.insert(url.absoluteString).inserted
+        penaltyLock.unlock()
+        if inserted {
+            DaemonLogger.shared.info("[APME] judge: \(url.absoluteString) rejected repetition_penalty (HTTP \(status)) — retrying without it and not sending it again this process")
+        }
+    }
+    static func clearPenaltySuppressionForTests() {
+        penaltyLock.lock(); defer { penaltyLock.unlock() }
+        penaltyUnsupported.removeAll()
     }
 
     /// Query the MLX server's models endpoint. Falls back to the user's
