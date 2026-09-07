@@ -96,10 +96,12 @@ struct MonitorScreen: View {
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Dashboard view", selection: $collaborationEnabled) {
                         Text("Habitat").tag(false)
-                        Text("Collaboration · Beta").tag(true)
+                        // The segment names the view; its Beta status is a
+                        // badge in the panel header, not half of the label.
+                        Text("Collaboration").tag(true)
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 250)
+                    .frame(width: 220)
                     .accessibilityIdentifier("dashboard-collaboration-switch")
                 }
             }

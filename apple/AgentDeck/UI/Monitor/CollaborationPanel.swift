@@ -95,7 +95,18 @@ struct CollaborationPanel: View {
                 Label("Collaboration", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 17, weight: .semibold))
                 Spacer()
-                Text("BETA").font(.caption.weight(.semibold)).foregroundStyle(DesignTokens.UI.cyan)
+                // Badge, not a word: the existing capsule idiom (caption-size
+                // text, 6/2 padding, 20% tinted Capsule) used by the
+                // connection overlay's `local` / agent chips.
+                Text("BETA")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .kerning(0.8)
+                    .foregroundStyle(DesignTokens.UI.cyan)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(DesignTokens.UI.cyan.opacity(0.18), in: Capsule())
+                    .overlay(Capsule().stroke(DesignTokens.UI.cyan.opacity(0.35), lineWidth: 0.5))
+                    .accessibilityLabel("Beta feature")
                 Button { showsSystem.toggle() } label: {
                     Image(systemName: "network")
                 }.help("Show system status").popover(isPresented: $showsSystem) {
