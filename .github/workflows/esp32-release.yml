@@ -74,8 +74,25 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Pinned for the same reason esptool is, and it broke the same way: a
+      # routine upstream release breaks a firmware cut AT TAG TIME, when the
+      # tag is already pushed. PlatformIO 6.2.0 (PyPI, 2026-09-05) requires
+      # `platformio/tool-scons @ ~4.41101.0` (SCons 4.11.1) while the
+      # pioarduino ESP32 platform pins its own `tool-scons` 4.8.1 — the build
+      # installs BOTH and links against the mixture, which no longer carries
+      # `SCons.Tool.FortranCommon`. Every board fails at the firmware.elf link
+      # step; `esp32-v1.2.2` died there two days after `esp32-v1.2.1` (PlatformIO
+      # 6.1.19 + SCons 4.8.1) had passed on the same source.
+      #
+      # TAKE THIS NUMBER FROM PyPI AND FROM A GREEN RUN, never from a local
+      # `pio --version`: a dev machine's ~/.platformio/penv is whatever it
+      # first installed and keeps working long after CI has moved on — which
+      # is exactly why this cut built locally and failed in CI.
+      #
+      # 6.1.19 is measured: it is what run 33819354649 (`esp32-v1.2.1`,
+      # 2026-09-03) installed alongside SCons 4.8.1 for all ten boards.
       - name: Install PlatformIO
-        run: pip install platformio
+        run: pip install "platformio==6.1.19"
 
       # Pinned deliberately. esptool renamed its subcommands between v4 and v5
       # (`merge_bin`/`--flash_size` -> `merge-bin`/`--flash-size`); un-pinned, a
