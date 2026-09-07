@@ -161,6 +161,7 @@ import {
 } from './daemon-port.js';
 import { enableClaudeUsageRecovery, fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
 import { stopClaudeUsageRecoveryChildren } from './claude-usage-recovery.js';
+import { AGENT_IDLE_GAP_MS, resolveGatewayHealth } from '@agentdeck/shared';
 import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
 import {
@@ -4911,12 +4912,30 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               core.broadcastUsage();
             }
           } else if (evt.event === 'gateway_health') {
-            // Use real-time health event from Gateway WS instead of polling `openclaw doctor`
-            const hasError = !(evt.data?.ok as boolean);
-            const changed = hasError !== core.cachedGatewayHasError;
-            core.cachedGatewayHasError = hasError;
-            if (changed) {
-              core.stateMachine.emit('state_changed', core.stateMachine.getSnapshot());
+            // Real-time health from the Gateway WS instead of polling
+            // `openclaw doctor`. THREE answers, not two: this flag is what
+            // turns the OpenClaw creature SICK and the topology LED red on
+            // every surface, and `!(evt.data?.ok)` made a frame that simply
+            // carried no `ok` indistinguishable from a failing one — the
+            // creature then stayed sick until the next frame happened to
+            // carry one, up to OpenClaw's 300 s health-monitor interval.
+            // `resolveGatewayHealth` is the SSOT both daemons read (shared
+            // vectors: shared/gateway-health-vectors.json); an unreadable
+            // frame RETAINS the previous value rather than inventing one.
+            const verdict = resolveGatewayHealth(evt.data?.payload ?? evt.data);
+            if (verdict.known) {
+              const changed = verdict.hasError !== core.cachedGatewayHasError;
+              core.cachedGatewayHasError = verdict.hasError;
+              if (changed) {
+                // The one transition that makes a creature look broken was
+                // unlogged, so a momentary sick crayfish left no trace and the
+                // next report could only be guessed at. Say what decided it.
+                log(`[agentdeck] OpenClaw gateway health: ${verdict.hasError ? 'ERROR' : 'ok'}`
+                  + ` (via ${verdict.reason}${verdict.detail ? `: ${verdict.detail}` : ''})`);
+                core.stateMachine.emit('state_changed', core.stateMachine.getSnapshot());
+              }
+            } else {
+              debug('Gateway', `health frame carried no usable verdict (${verdict.reason}) — keeping hasError=${core.cachedGatewayHasError}`);
             }
           }
           break;
@@ -6769,6 +6788,40 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       //    this path — the new daemon adopts the open runs — so what reaches
       //    it is a run nobody resumed: a session bridge that died, or a
       //    daemon that was down for longer than the stale window.
+      // 5b. OpenClaw per-key runs have no close signal of their own.
+      //     Every other agent's run ends on `session_end`; an OpenClaw run is
+      //     opened lazily per session KEY and only ever closed when the Gateway
+      //     disconnects. A key that did one turn and went quiet — a cron job, a
+      //     model-eval run, the nightly `dreaming-narrative` pair OpenClaw
+      //     itself prunes as orphans — therefore kept its run open for as long
+      //     as the Gateway stayed up, and step 5 cannot reach it either: the
+      //     run is still in the collector's in-memory map, so `isLiveRun`
+      //     protects it. Measured 2026-09-07: two runs open 16 h, tasks long
+      //     since closed as `idle_gap`, while every other OpenClaw run in the
+      //     store had closed at ~1800 s.
+      //
+      //     The bound is the key's own idleness — what CLAUDE.md already says
+      //     each key owns. Dropping the key is not a loss:
+      //     `openclawRunForSessionKey` re-opens lazily on that key's next
+      //     event, which is the documented behaviour.
+      for (const [sessionKey, sessionId] of [...openclawRunsBySessionKey]) {
+        const runId = apme!.collector.getRunId(sessionId);
+        if (!runId) { openclawRunsBySessionKey.delete(sessionKey); continue; }
+        const run = apme!.store.getRun(runId);
+        if (!run || run.endedAt != null) { openclawRunsBySessionKey.delete(sessionKey); continue; }
+        const tasks = apme!.store.listTasksForRun(runId);
+        // An open task means the turn machinery still owns this run.
+        if (tasks.some((t) => t.endedAt == null)) continue;
+        // No task at all is a fresh open, not an abandoned one — leave it to
+        // step 4's empty-shell sweep.
+        if (tasks.length === 0) continue;
+        const lastActivity = Math.max(run.startedAt, ...tasks.map((t) => t.endedAt ?? t.startedAt));
+        if (Date.now() - lastActivity < AGENT_IDLE_GAP_MS) continue;
+        try { apme!.collector.closeRun(sessionId); }
+        catch (err) { debug('APME', `closeRun for idle OpenClaw key ${sessionKey} failed: ${String(err)}`); }
+        openclawRunsBySessionKey.delete(sessionKey);
+        debug('APME', `closed idle OpenClaw run for key ${sessionKey}`);
+      }
       const abandoned = apme!.store.listAbandonedRuns(APME_ABANDONED_RUN_STALE_SEC, 5);
       for (const run of abandoned) {
         if (apme!.collector.isLiveRun(run.id)) continue; // still owned by us

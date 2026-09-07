@@ -8167,12 +8167,28 @@ final class DaemonServer {
                 }
             }
         case "gateway_health":
-            let payload = event["payload"] as? [String: Any]
-            let hasError = !((payload?["ok"] as? Bool) ?? false)
-            let changed = hasError != cachedGatewayHasError
-            cachedGatewayHasError = hasError
-            if changed {
-                handleStateChanged()
+            // THREE answers, not two. This flag turns the OpenClaw creature
+            // SICK and the topology LED red on every surface, and
+            // `!(ok ?? false)` made a frame carrying no usable `ok`
+            // indistinguishable from a failing one. `GatewayHealthRules` is
+            // the Node SSOT's mirror (shared/gateway-health-vectors.json);
+            // an unreadable frame RETAINS the previous value.
+            let verdict = GatewayHealthRules.resolve(event["payload"] as? [String: Any])
+            if verdict.known {
+                let changed = verdict.hasError != cachedGatewayHasError
+                cachedGatewayHasError = verdict.hasError
+                if changed {
+                    // Previously unlogged: a momentary sick crayfish left no
+                    // trace, so the next report could only be guessed at.
+                    DaemonLogger.shared.info(
+                        "OpenClaw gateway health: \(verdict.hasError ? "ERROR" : "ok")"
+                        + " (via \(verdict.reason)\(verdict.detail.map { ": \($0)" } ?? ""))")
+                    handleStateChanged()
+                }
+            } else {
+                DaemonLogger.shared.debug(
+                    "Gateway",
+                    "health frame carried no usable verdict (\(verdict.reason)) — keeping hasError=\(cachedGatewayHasError)")
             }
         case "model_catalog":
             // Gateway sends full model catalog — replace entirely (same as Node.js)

@@ -1479,11 +1479,16 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
       // ===== Gateway health =====
       case 'health': {
-        const ok = payload.ok as boolean;
+        // Forward the payload whole and let `resolveGatewayHealth` read it.
+        // This used to cast `payload.ok` to a boolean here and drop the rest,
+        // so the two shapes the frame may also use — a `checks` array and a
+        // top-level `status` string, both of which the Swift adapter already
+        // understood — reached the daemon as `undefined` and were read as a
+        // failure. `ok` stays on the event for older consumers.
         this.emitAdapterEvent({
           source: 'metadata',
           event: 'gateway_health',
-          data: { ok, payload },
+          data: { ok: payload.ok as boolean | undefined, payload },
         });
         break;
       }

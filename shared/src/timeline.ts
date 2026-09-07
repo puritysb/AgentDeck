@@ -659,11 +659,32 @@ export function deduplicateEntry(
     return { action: 'add', entry };
   }
 
-  // 2. Exact dedup: skip if same type + raw within 8 seconds
+  // 2. Exact dedup: skip if same type + raw within 8 seconds.
+  //
+  // The window is |Δ|, not Δ. The `break` bounds entries OLDER than the
+  // incoming one, which is the only direction a live append can produce — so
+  // a BACK-DATED insert was compared against the entire newer tail of the
+  // buffer with no window at all. The turn watchdog inserts exactly that: a
+  // `chat_end` stamped at the orphan turn's own timestamp. Every orphan close
+  // renders as the byte-identical string `Interrupted · –`, so one earlier
+  // close anywhere in the buffer made the new one a "duplicate" — the close
+  // was skipped, the orphan `chat_start` was never paired, and the 60 s
+  // watchdog re-reaped the same row forever (measured 2026-09-07: 10,603
+  // fires, exactly 60 s apart, since 2026-08-21, the orphan still open and
+  // spinning on every surface).
+  //
+  // A turn-close is also identified by the TURN it closes, not by its text:
+  // two different turns both closing as `Interrupted · –` are not duplicates
+  // of each other. So when either side carries `startedAt`, it must match.
+  // (Step 3 exempts these from the 1h repetitive dedup for the same reason.)
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
     if (entry.ts - e.ts > 8_000) break;
-    if (e.type === entry.type && e.raw === entry.raw) return { action: 'skip' };
+    if (Math.abs(entry.ts - e.ts) > 8_000) continue;
+    if (e.type !== entry.type || e.raw !== entry.raw) continue;
+    if (entry.type === 'chat_end' && (entry.startedAt != null || e.startedAt != null)
+      && entry.startedAt !== e.startedAt) continue;
+    return { action: 'skip' };
   }
 
   // 3. Repetitive entry dedup (1h window). Interrupted turn-closes are exempt:
