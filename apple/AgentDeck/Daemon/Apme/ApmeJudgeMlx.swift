@@ -47,6 +47,27 @@ enum ApmeJudgeMlx {
         }
     }
 
+    /// Where the MLX judge posts.
+    ///
+    /// `apme.judge.endpoint` first — the user naming a judge server outright —
+    /// then the `llm.mlx` pin, which `resolveModel` below has always honoured
+    /// and which Node resolves for the URL too (`runner.ts`:
+    /// `cfg.endpoint ?? mlxChatUrl()`). Reading only the first is what made the
+    /// two daemons disagree about one settings file: with
+    /// `{"llm":{"mlx":{"endpoint":"http://192.168.1.5:8800"}}}` and no
+    /// `apme.judge.endpoint`, Node judged against the LAN server while Swift
+    /// posted to loopback, got nothing, and dropped silently to the Foundation
+    /// Models floor — 0.580 against 0.86–1.00 on the judge-fidelity rubric,
+    /// with nothing in either log saying which leg had answered.
+    ///
+    /// `LlmMlxConfig.endpoint` is the base URL with any chat suffix already
+    /// stripped, and defaults to `http://127.0.0.1:8800`, so the resolved
+    /// default is unchanged.
+    static func chatCompletionsEndpoint(config: ApmeJudgeConfig) -> String {
+        if let ep = config.endpoint, !ep.isEmpty { return ep }
+        return ApmeSettings.loadMlxConfig().endpoint + "/chat/completions"
+    }
+
     /// Run the judge via MLX HTTP endpoint. Returns nil on any failure —
     /// caller (ApmeRunner) treats nil as "skip this eval" and doesn't retry.
     /// `sendsRepetitionPenalty` is false for the CLASSIFIER, which shares this
@@ -55,7 +76,7 @@ enum ApmeJudgeMlx {
     /// that never carried the field. Sending it here would extend a measured
     /// claim to a different prompt shape on one daemon only.
     static func judge(prompt: String, config: ApmeJudgeConfig, sendsRepetitionPenalty: Bool = true) async -> String? {
-        let endpoint = config.endpoint ?? "http://127.0.0.1:8800/chat/completions"
+        let endpoint = chatCompletionsEndpoint(config: config)
         guard let url = URL(string: endpoint) else { return nil }
 
         // Auto-detect model if not explicitly configured. Matches TS runner.ts:
@@ -211,7 +232,11 @@ enum ApmeJudgeMlx {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = bodyData
-        request.timeoutInterval = 60
+        // 90 s, matching `runner.ts`'s judge fetch. 68.7 s was observed on a
+        // real `task_rollup` prompt with Gemma 4 under local load, so at 60 s
+        // a verdict that lands on the Node daemon times out on this one — the
+        // same prompt, the same server, two answers.
+        request.timeoutInterval = 90
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return .transportFailure }
@@ -305,7 +330,7 @@ enum ApmeJudgeMlx {
     /// Used by the Settings Picker to show "MLX ready" vs "MLX offline".
     static func isReachable() async -> Bool {
         let config = ApmeSettings.load()
-        let endpoint = config.judge.endpoint ?? "http://127.0.0.1:8800/chat/completions"
+        let endpoint = chatCompletionsEndpoint(config: config.judge)
         let base = endpoint
             .replacingOccurrences(of: "/v1/chat/completions", with: "")
             .replacingOccurrences(of: "/chat/completions", with: "")

@@ -61,6 +61,19 @@ describe('release notes lookup', () => {
     expect(findEntry(md, { version: '1.0.21', label: 'npm' })?.body).toBe('mine');
   });
 
+  it('never matches the Unreleased section, and never spills it into a real entry', () => {
+    // Landed-but-unshipped work is collected under `## Unreleased` so a release
+    // cut renames one heading instead of reconstructing a commit range — the
+    // failure this file exists to stop. No tag may resolve to it, and it must
+    // not leak into the section below it either.
+    const md = [
+      '## Unreleased', '', 'not shipped yet', '',
+      '## 2026-09-06 — npm 1.2.1, Apple 1.2.1, ESP32 1.2.2', '', 'shipped', '',
+    ].join('\n');
+    expect(findEntry(md, { version: '1.2.2', label: 'npm' })).toBeNull();
+    expect(findEntry(md, { version: '1.2.1', label: 'Apple' })?.body).toBe('shipped');
+  });
+
   it('rejects anything that is not a delivery tag', () => {
     expect(() => parseTag('v1.0.21')).toThrow();
     expect(() => parseTag('npm-1.0.21')).toThrow();

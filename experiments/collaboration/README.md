@@ -1,8 +1,19 @@
 # Dashboard collaboration trial
 
-This is a local-only experiment on `codex/dashboard-collaboration`, not a public
-Apple or ESP32 release. The first two commits preserve pre-existing Apple and
-daemon working-tree changes from the main checkout; they are not UI work.
+**Status (2026-09-09): shipped.** The integration branch described below landed
+on `master` as #291 and was released in Apple 1.2.1 / ESP32 1.2.2, so the
+collaboration view is a normal opt-in feature (`dashboardCollaborationEnabled`,
+default off) rather than a local trial. Everything under this heading is kept as
+the **record of how it was measured and deployed**, not as current instructions:
+the paths under `output/`, the rollback bundles and the `192.168.68.54` OTA are
+one machine's state on 2026-09-06 and no longer exist for anyone else. What is
+still open is the owner's judgement on the lens itself — the *Review questions*
+section below is the live part of this document.
+
+The trial ran on `codex/dashboard-collaboration`, which is retained as the
+runtime snapshot and **must not be merged wholesale**: its first two commits
+preserve pre-existing Apple and daemon working-tree changes from the main
+checkout, superseded by the reviewed #284/#285. They are not UI work.
 
 ## Use
 

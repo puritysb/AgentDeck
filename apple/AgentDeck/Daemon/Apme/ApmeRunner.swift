@@ -590,7 +590,15 @@ actor ApmeRunner {
             // visible skip rather than a silent downgrade. The loader clears
             // this flag whenever the user named the backend.
             guard config.judge.fallbackToFoundationModels else { return nil }
-            DaemonLogger.shared.debug("APME", "mlx unavailable, falling back to foundationModels")
+            // `info`, not `debug`: this is the switch to a measurably weaker
+            // judge (0.580 against 0.86–1.00 on the judge-fidelity rubric), and
+            // the MLX repetition-penalty default is calibrated against how
+            // often it happens. Behind the debug flag its rate cannot be
+            // measured on this daemon at all. Node states the same requirement
+            // in `runner.ts` and uses `log()`. "No verdict" covers both an
+            // unreachable server and an answer that was cut — different facts,
+            // same consequence, so neither may be asserted here.
+            DaemonLogger.shared.info("APME judge: mlx produced no verdict — falling back to foundationModels")
             return await ApmeJudgeFoundationModels.judge(prompt: prompt)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeFoundationModels.judgeModelLabel) }
         case .openai:
@@ -600,7 +608,7 @@ actor ApmeRunner {
             return await ApmeJudgeApi.judge(prompt: prompt, config: config.judge)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeApi.judgeModelLabel) }
         case .openclaw:
-            DaemonLogger.shared.debug("APME", "openclaw backend not wired, degrading to foundationModels")
+            DaemonLogger.shared.info("APME judge: openclaw backend not wired — degrading to foundationModels")
             return await ApmeJudgeFoundationModels.judge(prompt: prompt)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeFoundationModels.judgeModelLabel) }
         }

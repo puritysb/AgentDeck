@@ -129,15 +129,60 @@ enum ApmeJudgeOpenAI {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard code == 200 else { throw JudgeError.http(code) }
+            let (data, code) = try await send(request)
+            // 200–299, mirroring `resp.ok` in bridge/src/apme/runner.ts. The
+            // sibling MLX leg was widened for exactly this reason and this one
+            // was left behind: a proxy answering 201 or 202 is a verdict on the
+            // Node daemon and a failure here, on the same endpoint the user
+            // configured once.
+            guard (200...299).contains(code) else { throw JudgeError.http(code) }
             return try ApmeJudgeChatResponse.content(data)
         } catch let e as JudgeError {
             throw e
         } catch {
             throw JudgeError.transport(String(describing: error))
         }
+    }
+
+    // MARK: - Transport seam
+
+    /// How a request reaches the server. Injectable ONLY so `judgeThrowing`
+    /// itself can be driven, for the reason recorded on `ApmeJudgeMlx.Transport`:
+    /// answering "this path has no tests" with one more PURE seam moves the
+    /// hole up a layer instead of closing it. The status gate above is not a
+    /// pure function anywhere — it is one line inside the call — so pinning it
+    /// means being able to answer the call.
+    typealias Transport = @Sendable (URLRequest) async throws -> (Data, Int)
+
+    nonisolated(unsafe) private static var injectedTransport: Transport?
+    private static let transportLock = NSLock()
+
+    /// Swap the transport for one test and restore it afterwards. The closure
+    /// form makes the restore unskippable — an early `XCTAssert` failure must
+    /// not leak a stub into the next test.
+    static func withTransportForTests<T>(_ transport: @escaping Transport,
+                                         _ body: () async throws -> T) async rethrows -> T {
+        setTransport(transport)
+        defer { setTransport(nil) }
+        return try await body()
+    }
+
+    // Swift 6 makes `NSLock.lock()` unavailable from an async context, so the
+    // critical sections stay in these synchronous helpers.
+    private static func setTransport(_ t: Transport?) {
+        transportLock.lock(); defer { transportLock.unlock() }
+        injectedTransport = t
+    }
+
+    private static func currentTransport() -> Transport? {
+        transportLock.lock(); defer { transportLock.unlock() }
+        return injectedTransport
+    }
+
+    private static func send(_ request: URLRequest) async throws -> (Data, Int) {
+        if let injected = currentTransport() { return try await injected(request) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
     }
 }
 /// Shared MLX/OpenAI response gate: `choices` must be a non-empty ARRAY, the

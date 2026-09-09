@@ -4843,19 +4843,38 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // adapter's idle-gap timer + chat.send/final ingestion needs an active
     // run to attach turns and task boundaries to.
     if (apme) {
+      // The id is minted here (so `hasDirectApmeIngestion` answers from the
+      // moment the adapter is wired), but the RUN ROW is opened on first use.
+      // Opened eagerly, it was almost always empty: a Gateway restart mints a
+      // new one, and 57 such rows over the week to 2026-09-09 held zero turns,
+      // zero steps and zero events, each held to the 30-minute orphan reaper.
+      // Frames carrying no session key are the only thing that lands in it,
+      // and most connections never see one.
       openclawApmeSessionId = `openclaw-${randomUUID()}`;
-      try {
-        apme.collector.openRun({
-          sessionId: openclawApmeSessionId,
-          agentType: 'openclaw',
-          projectName: 'openclaw',
-        });
-        adapter.setApmeSession(openclawApmeSessionId, process.cwd());
-        adapter.setApmeRunResolver(openclawRunForSessionKey);
-      } catch (err) {
-        debug('APME', `openRun for OpenClaw failed: ${String(err)}`);
-        openclawApmeSessionId = null;
-      }
+      const fallbackSessionId = openclawApmeSessionId;
+      let fallbackOpened = false;
+      adapter.setApmeSession(fallbackSessionId, process.cwd(), () => {
+        if (fallbackOpened) return fallbackSessionId;
+        try {
+          apme.collector.openRun({
+            sessionId: fallbackSessionId,
+            agentType: 'openclaw',
+            projectName: 'openclaw',
+            // Seeded for the same reason `openclawRunForSessionKey` seeds it:
+            // a run opened AFTER `model_info` fired misses the `updateModel`
+            // broadcast that names the catalog default, and persists
+            // `model_id=NULL`. Read at OPEN time, so it carries whatever the
+            // catalog last reported rather than what it said at connect.
+            ...(gatewayModelName ? { modelId: gatewayModelName } : {}),
+          });
+        } catch (err) {
+          debug('APME', `openRun for OpenClaw failed: ${String(err)}`);
+          return null;
+        }
+        fallbackOpened = true;
+        return fallbackSessionId;
+      });
+      adapter.setApmeRunResolver(openclawRunForSessionKey);
     }
 
     adapter.on('event', (evt: AdapterEvent) => {

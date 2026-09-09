@@ -1728,6 +1728,10 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
   // "this endpoint refuses X".
   let droppedPenaltyStatus: number | null = null;
   let droppedJsonModeStatus: number | null = null;
+  // Whether the PROMPT also changed after something was dropped. A success
+  // reached after both is evidence for neither: the request that worked
+  // differed from the one that failed in two ways at once.
+  let compactedAfterDrop = false;
   let resp = await request(body, jsonMode);
   // A 400 here is ambiguous: it may be the context budget, or either of two
   // fields the server may not know. Re-diagnose after EVERY retry rather than
@@ -1748,8 +1752,12 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
       const targetPromptTokens = Math.max(256, maxKv - maxGeneration - 128);
       const ratio = Math.min(0.95, (targetPromptTokens / promptTokens) * 0.98);
       const compacted = compactPromptForMlxContext(body, Math.max(1000, Math.floor(body.length * ratio)));
+      // Already at or under the target: compacting again would resend the
+      // identical body and spend the remaining attempts on a request that
+      // cannot change. The ladder has nothing left for this diagnosis.
       if (compacted === body) break;
       debug('APME', `MLX context overflow (${promptTokens}+${maxGeneration}>${maxKv}); retrying with ${compacted.length}/${body.length} prompt chars`);
+      if (droppedPenaltyStatus !== null || droppedJsonModeStatus !== null) compactedAfterDrop = true;
       body = compacted;
     } else if (penalty !== null) {
       // Not the overflow shape, so a FIELD is being refused. Give up
@@ -1796,7 +1804,18 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
   //    raises the cut rate while losing JSON mode costs the strict-JSON
   //    request entirely"); this is that same asymmetry applied to ambiguous
   //    evidence rather than only to the order fields are dropped in.
-  if (droppedPenaltyStatus !== null) notePenaltyUnsupported(url, droppedPenaltyStatus);
+  //  - And when the PROMPT changed after a field came off, the success is
+  //    evidence for neither field: the request that worked differed from the
+  //    one that failed in two ways, and the other one — the prompt no longer
+  //    overflowing the context — is a complete explanation on its own. The
+  //    asymmetry above is about choosing between two fields; it does not reach
+  //    a case where a field may not have been the cause at all. Writing one off
+  //    here would mark an endpoint permanently for a prompt that was simply too
+  //    long once. Nothing is recorded, and the next call re-probes — which is
+  //    the cheap mistake, and self-correcting.
+  if (compactedAfterDrop) {
+    debug('APME', `MLX ladder: succeeded after a drop AND a prompt compaction — attributing to neither (${url})`);
+  } else if (droppedPenaltyStatus !== null) notePenaltyUnsupported(url, droppedPenaltyStatus);
   else if (droppedJsonModeStatus !== null) noteJsonModeUnsupported(url, droppedJsonModeStatus);
   return judgeChatContent(await resp.json(), 'MLX');
 }

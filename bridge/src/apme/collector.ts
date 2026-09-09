@@ -1591,6 +1591,52 @@ export class ApmeCollector {
     }
   }
 
+  /** Can a span of this kind record anything in a run that has no open turn
+   *  and no open task — i.e. in a run that has just been opened for it?
+   *
+   *  This is the honest predicate behind "should a lazy producer open a run
+   *  for these spans?". Asking instead whether the span LIST is non-empty is
+   *  what left 25 OpenClaw per-key runs and 57 connection-scoped runs holding
+   *  zero turns, zero steps and zero events over one week (measured
+   *  2026-09-09): an assistant `session.message` builds a `session_meta` and a
+   *  `turn_response` span whatever the state, so the array is never empty, the
+   *  run opens, and then `ingestSpan` discards both — `setTurnResponse` and
+   *  `updateTurnIdentity` are no-ops with no turn to write to. The run is then
+   *  held open until the 30-minute orphan reaper.
+   *
+   *  The four `true` kinds are exactly the ones whose `ingestSpan` branch
+   *  reaches `ingestHook`, which inserts a `steps` row unconditionally once the
+   *  run exists (and, for `turn_start`, opens the turn and task as well). The
+   *  five `false` kinds all resolve an open turn or task first and return
+   *  early without it.
+   *
+   *  Kept adjacent to `ingestSpan` on purpose: it is a claim ABOUT that
+   *  dispatch, so a branch that changes what it records must change this in the
+   *  same edit. The switch is exhaustive, so a new `TelemetrySpanKind` cannot
+   *  compile until it is classified here — deliberately, since the safe
+   *  default differs per kind and guessing it is what this function exists to
+   *  stop. */
+  static spanCanOpenRun(kind: TelemetrySpan['kind']): boolean {
+    switch (kind) {
+      // → ingestHook: inserts a step row, and opens the turn + task.
+      case 'turn_start': return true;
+      // → ingestHook: inserts a step row even with no open turn.
+      case 'tool_call':
+      case 'tool_result':
+      case 'raw_step': return true;
+      // Needs a turn (open, or closed inside the late-reply window).
+      case 'turn_response':
+      case 'turn_end':
+      // Needs an open turn to write identity/usage onto.
+      case 'session_meta':
+      // Needs an open task (`manual`/`idle_gap`), an open run (`clear`), or an
+      // open task AND turn (`todo_complete`).
+      case 'task_boundary':
+      // Explicitly drops itself with no open task/turn.
+      case 'agent_error': return false;
+    }
+  }
+
   /** Ingest a generic timeline-style event (non-hook). */
   ingestStep(sessionId: string, kind: string, payload: Record<string, unknown>, toolName?: string): void {
     if (!this.store.enabled) return;

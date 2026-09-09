@@ -144,6 +144,53 @@ describe('the retry ladder allows every diagnosis', () => {
     expect(seen[2]).not.toHaveProperty('response_format');
     expect(String((seen[3].messages as Array<{ content: string }>)[1].content).length).toBeLessThan(20_000);
   });
+
+  it('writes nothing off when the prompt was compacted after a field came off', async () => {
+    // Two changes between the failing request and the succeeding one: the
+    // field is gone AND the prompt no longer overflows. The second is a
+    // complete explanation by itself, so blaming the field would mark this
+    // endpoint permanently for a prompt that happened to be too long once.
+    const calls: Array<Record<string, unknown>> = [];
+    const f = vi.fn(async (_u: string, o: RequestInit) => {
+      const body = JSON.parse(o.body as string);
+      calls.push(body);
+      const content = (body.messages as Array<{ content: string }>)[1].content;
+      if ('repetition_penalty' in body) return new Response('unknown field', { status: 400 });
+      if (content.length > 15_000) {
+        return new Response('Request needs 9000 context tokens (8000 prompt + 800 max generation), but MAX_KV_SIZE is 4096', { status: 400 });
+      }
+      return ok();
+    });
+    vi.stubGlobal('fetch', f);
+    const cfg = mlxCfg({ endpoint: 'http://127.0.0.1:9991/v1/chat/completions' });
+    const { text } = await callJudgeWithMeta('z'.repeat(20_000), cfg);
+    expect(text).toContain('overall');
+    const firstRun = calls.length;
+
+    // The next call must probe the penalty again: nothing was proven about it.
+    await callJudgeWithMeta('short prompt', cfg);
+    expect(calls[firstRun]).toHaveProperty('repetition_penalty');
+  });
+
+  it('stops when the prompt is already at the compaction target instead of resending it', async () => {
+    // `compacted === body` means another pass would post byte-identical bytes.
+    // Without the break the loop spends its remaining attempts on a request
+    // that cannot change, and the caller waits out every one of them.
+    const bodies: string[] = [];
+    const f = vi.fn(async (_u: string, o: RequestInit) => {
+      const body = JSON.parse(o.body as string);
+      bodies.push((body.messages as Array<{ content: string }>)[1].content);
+      // Always claims overflow, and always with numbers that resolve to a
+      // target ABOVE this prompt's length — so compaction is a no-op.
+      return new Response('Request needs 9000 context tokens (8000 prompt + 800 max generation), but MAX_KV_SIZE is 40960', { status: 400 });
+    });
+    vi.stubGlobal('fetch', f);
+    await expect(callJudgeWithMeta('short', mlxCfg({
+      endpoint: 'http://127.0.0.1:9990/v1/chat/completions',
+      repetitionPenalty: 1,
+    }))).rejects.toThrow(/MLX judge HTTP 400/);
+    expect(bodies).toHaveLength(1);
+  });
 });
 
 describe('openai-compatible leg is deliberately excluded', () => {

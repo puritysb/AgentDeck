@@ -41,6 +41,7 @@ import {
 import { OPENCLAW_CAPABILITIES, OPENCLAW_GATEWAY_PORT } from '../types.js';
 import { fetchModelCatalog, getDefaultModelName, invalidateModelCache } from '../model-catalog.js';
 import { getApme } from '../apme/index.js';
+import { ApmeCollector } from '../apme/collector.js';
 import {
   openclawChatEventToSpans,
   openclawChatErrorLabel,
@@ -169,6 +170,13 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   /** Opens (or returns) the APME run for one Gateway session key. Supplied by
    *  the daemon, which owns the collector. */
   private apmeRunFor: ((sessionKey: string) => string | null) | null = null;
+  /** Opens (or returns) the CONNECTION-scoped fallback run — the one a frame
+   *  carrying no session key lands in. Supplied by the daemon alongside the
+   *  session id, which is minted eagerly (so `hasDirectApmeIngestion` still
+   *  answers at connect time) while the row itself is created on first use. */
+  private apmeFallbackRunFor: (() => string | null) | null = null;
+  /** Whether `apmeSessionId`'s run row actually exists yet. */
+  private apmeFallbackRunOpened = false;
   /** Per-Gateway-session-key APME state.
    *
    *  **Why this is keyed by session key and not by connection.** One Gateway
@@ -251,9 +259,11 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
   /** Bind the adapter to an APME session id so Gateway events can be
    *  ingested as TelemetrySpans. No-op when APME isn't initialized. */
-  setApmeSession(sessionId: string, cwd?: string): void {
+  setApmeSession(sessionId: string, cwd?: string, openRun?: () => string | null): void {
     this.apmeSessionId = sessionId;
     this.apmeCwdHint = cwd;
+    this.apmeFallbackRunFor = openRun ?? null;
+    this.apmeFallbackRunOpened = false;
   }
 
   /** Install the per-session-key run opener. The daemon owns the collector, so
@@ -340,22 +350,66 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
    *
    *  The target must be re-resolved from the key, never read off
    *  `this.apmeSessionId` — reading that field here is what would silently
-   *  re-collapse every per-key run back into one. Returns early on an empty
-   *  span list so no run is opened for a frame that records nothing. */
+   *  re-collapse every per-key run back into one.
+   *
+   *  A run is opened only for a span that can actually record something in an
+   *  empty run (`ApmeCollector.spanCanOpenRun`). A non-empty span LIST is not
+   *  that question: an assistant `session.message` always builds a
+   *  `session_meta`, and one carrying text also builds a `turn_response`, so
+   *  the array is never empty — but with no turn open the collector discards
+   *  both, leaving a run with nothing in it until the 30-minute orphan reaper.
+   *  Measured over the week to 2026-09-09: 25 per-key and 57 connection-scoped
+   *  OpenClaw runs held zero turns, zero steps and zero events. Spans that
+   *  cannot open a run are still ingested once one is open — they are dropped
+   *  here only while there is nothing to drop them into, which is what the
+   *  collector was doing to them anyway. */
   private ingestApmeSpans(
     sessionKey: string | null | undefined,
     spans: ReadonlyArray<ReturnType<typeof openclawChatSendToSpan>>,
   ): void {
     const apme = getApme();
     if (!apme || spans.length === 0) return;
-    const target = sessionKey
-      ? this.apmeSessionIdFor(sessionKey) ?? this.apmeSessionId
-      : this.apmeSessionId;
-    if (!target) return;
+    // A key can only get its OWN run when a resolver is installed; without one
+    // it falls back to the connection-scoped run, which is the pre-split
+    // behaviour. Reading the fallback for a key that COULD have its own run is
+    // what would silently re-collapse every per-key run back into one.
+    const keyedOwnRun = sessionKey != null && sessionKey !== '' && this.apmeRunFor != null;
+    // Already-open runs only: no branch may OPEN one before a span has earned it.
+    let target = keyedOwnRun
+      ? this.apmeBySessionKey.get(sessionKey as string)?.sessionId ?? null
+      : this.apmeFallbackSessionIdIfOpen();
     for (const span of spans) {
+      if (!target) {
+        if (!ApmeCollector.spanCanOpenRun(span.kind)) continue;
+        target = keyedOwnRun
+          ? this.apmeSessionIdFor(sessionKey as string) ?? this.openApmeFallbackRun()
+          : this.openApmeFallbackRun();
+        if (!target) return;
+      }
       try { apme.collector.ingestSpan(target, span); }
       catch (err) { debug('apme:openclaw', `ingestSpan failed: ${String(err)}`); }
     }
+  }
+
+  /** The connection-scoped fallback run's id, but only once its row exists.
+   *
+   *  With no opener supplied the caller is pre-lazy wiring that opened the run
+   *  eagerly at connect, so the id names a run that already exists. Reading
+   *  `this.apmeSessionId` unconditionally instead would name one that may never
+   *  have been opened at all. */
+  private apmeFallbackSessionIdIfOpen(): string | null {
+    if (!this.apmeFallbackRunFor) return this.apmeSessionId;
+    return this.apmeFallbackRunOpened ? this.apmeSessionId : null;
+  }
+
+  /** Open the connection-scoped fallback run on first use. */
+  private openApmeFallbackRun(): string | null {
+    if (!this.apmeSessionId) return null;
+    if (!this.apmeFallbackRunFor || this.apmeFallbackRunOpened) return this.apmeSessionId;
+    if (!this.apmeFallbackRunFor()) return null;
+    this.apmeFallbackRunOpened = true;
+    debug('adapter:openclaw', `APME fallback run opened → ${this.apmeSessionId.slice(0, 16)}`);
+    return this.apmeSessionId;
   }
 
   /** Reset (or start) the idle-gap timer. Fires

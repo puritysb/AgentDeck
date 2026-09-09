@@ -20,6 +20,13 @@ list every channel in the heading when one round is cut across several.
 Entries below `## 2026-08-07 — npm 1.0.8` predate that rule and are kept as
 written, under the shared numbering of the time. They are not looked up by tag.
 
+Work that has landed but not shipped goes under `## Unreleased`, which no tag can
+match (the lookup needs a channel label and a version in the heading) and which
+the release cut renames to the real heading. It exists because the alternative
+that kept happening is worse: entries written only at cut time meant the round
+that shipped Kiro observation across five channels announced it nowhere, and the
+1.2.1 cut had to reconstruct #282–#289 from a commit log first.
+
 ### Known gaps
 
 These versions shipped without an entry and are not reconstructed here, because
@@ -37,6 +44,74 @@ would fire the release workflow against a version npm already holds, and this
 file's own rule forbids reconstructing its notes. The commit above is the
 record. `npm 1.0.16` (`37c674b8`) is a different case and needs nothing — it was
 bumped, superseded by 1.0.17, and never published, so it exists only in git.
+
+## Unreleased
+
+### The daemon's own health signals stop lying quietly
+
+An OpenClaw Gateway health frame that carried no readable verdict was counted as
+a failing one, so the crayfish went sick and the topology light went red for up
+to five minutes at a time — the gap between health checks — with nothing on any
+surface saying why. An unreadable frame is now no answer at all: the previous
+verdict is kept, and every real transition is logged, on both daemons. A Gateway
+that keeps restarting also says so now, naming the reason from OpenClaw's own
+log rather than reporting eleven healthy reconnections.
+
+Two long-running reapers that could never finish were closed off in the same
+pass, and `agentdeck apme judge-health` reports whether the work that closed
+actually received a verdict, rather than leaving that to be inferred from an
+empty scorecard.
+
+### Evaluation: the same settings file now produces the same verdict
+
+Either daemon may hold the port, and both read one `settings.json`, so a
+difference between them means the same configuration scores differently
+depending on which one answered — with nothing in either log saying so. The
+macOS daemon now resolves the local judge server's address from the same
+`llm.mlx` setting the Node daemon uses (it previously read that setting for the
+model but posted to loopback regardless, then dropped silently to the weaker
+on-device judge), waits the same 90 seconds for a verdict, accepts the same
+range of HTTP success codes, and records a fallback to the on-device judge in
+its normal log instead of behind a debug flag — the last one is what made that
+fallback's rate unmeasurable on that daemon at all.
+
+The local judge also stops writing off a server capability on ambiguous
+evidence: when a request succeeded after both a field was dropped **and** the
+prompt was shortened, neither is now blamed, because the shortened prompt
+explains the success by itself.
+
+### OpenClaw runs are only opened when there is something to record
+
+Over one measured week, 87 of 113 OpenClaw evaluation runs held nothing at all
+and were closed half an hour later by the abandoned-run reaper. An assistant
+message always produces telemetry to hand over, so "is there anything to
+ingest?" was answered yes and the run was opened — and then everything in it was
+discarded for want of an open turn. A run is now opened by the first event that
+can actually be recorded, which also covers the connection-wide run that was
+being opened at connect and usually stayed empty.
+
+### Usage gauges
+
+A Codex usage window the API did not report is no longer drawn as a window at
+0%, a gauge's position on the deck no longer depends on whether it happens to be
+the binding limit, and a scoped limit's name no longer collides with a
+three-digit percentage on the D200H's shared row.
+
+### ESP32: InkDeck is now `trmnl_75`
+
+The board is named after the kit it actually is — a Seeed TRMNL 7.5" OG DIY Kit
+running AgentDeck firmware. `inkdeck` remains an accepted alias, because a board
+already in the field reports the name it was flashed with and must stay
+reachable by the update that renames it.
+
+### `agentdeck daemon restart` reports what actually came up
+
+On any machine with daemon autostart installed, the supervisor's respawn
+routinely wins the port back before the restart command's own child does. The
+command was checking for the process id it had forked, so it printed a failure
+over a daemon that was serving correctly — and the natural retry then stopped a
+healthy daemon. It now verifies the daemon that answered: that one is running,
+that it is not the one just stopped, and that it is serving the build on disk.
 
 ## 2026-09-06 — npm 1.2.1, Apple 1.2.1, ESP32 1.2.2
 
