@@ -8,7 +8,7 @@ canonical: true
 status: required
 owner: Release maintainers
 reviewed: 2026-08-26
-revision: 2026-08-26
+revision: 2026-09-13
 source_of_truth: RELEASING.md
 validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-version]
 ---
@@ -203,6 +203,7 @@ when editing a published body.
    ownership, or the macOS app's hand-off behavior.
 4. Tag the exact release commit as `npm-v<TARGET_VERSION>` and push it. CI runs `node scripts/publish-npm.mjs`, which enforces the dependency order (`shared`+`hooks` → `bridge` → `setup`) and rewrites `workspace:*` around each publish. Do **not** substitute `pnpm publish`: pnpm (verified 11.5.2) uploads README.md inside the tarball but never attaches the readme to the registry packument, and npmjs.com renders the package page from the packument — that is why every @agentdeck page was blank through 1.0.14.
 5. Confirm the workflow read all four exact versions back from npm, each package's `latest` dist-tag matches the target, and `npm view @agentdeck/setup readme` is non-empty.
+   **If the run is red at `Publish packages` with `registry verification failed`, read the log before touching the tag.** The read-back after publishing is bounded (12 × 5 s); on 1.3.1 every package had been published within 25 s and `@agentdeck/shared@1.3.1` was still not visible to `npm view` 84 s after its publish started, so the first attempt exited 1 with nothing left to publish. The fix is **re-run the failed job**: `publish-npm.mjs` skips versions already on the registry, so the rerun only verifies, renders notes, and creates the GitHub Release. Do not delete and re-push the tag and do not bump the version — the version is already immutable on npm and a re-tag is a publish attempt that fails its first gate (see *A release has five states* above).
 
 #### Pre-tag three-mode daemon soak
 
@@ -236,7 +237,7 @@ either fixed or explicitly waived in the release issue.
 
 `npm-release.yml` runs on the tag: it re-verifies the version, builds, tests, publishes in dependency order, reads all four exact versions back from the npm registry, and only then creates the GitHub Release. npmjs.com must configure a GitHub Actions **Trusted Publisher** for each public package with owner `puritysb`, repository `AgentDeck`, and workflow `npm-release.yml` (`npm publish` allowed). The workflow uses OIDC (`id-token: write`) and intentionally has no long-lived `NPM_TOKEN` or opt-in variable. Missing or drifted trust fails the release instead of producing a green no-op.
 
-`scripts/publish-npm.mjs` is retry-safe across a partial four-package delivery: an exact immutable version already visible on npm is skipped, the missing packages continue in dependency order, and every package is verified again at the end. This does not make the registry optional — a tag is complete only when all four exact versions are readable there.
+`scripts/publish-npm.mjs` is retry-safe across a partial four-package delivery: an exact immutable version already visible on npm is skipped, the missing packages continue in dependency order, and every package is verified again at the end. This does not make the registry optional — a tag is complete only when all four exact versions are readable there. The same skip path is what makes a rerun after a registry-propagation timeout safe (1.3.1, 2026-09-12); the visibility window lives in `scripts/npm-registry-visibility.mjs` and is deliberately short so a genuine auth or trust failure still turns red quickly — widen it only if the propagation timeout recurs or a rerun also misses the window.
 
 ### Apple (TestFlight / App Store)
 
