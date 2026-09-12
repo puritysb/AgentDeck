@@ -10,6 +10,32 @@ content-record mismatch reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category. **Resolved:** the published record
 is `/contentView/1141` and resolves to AgentDeck.
 
+## 1.3.0 — submitted for review (2026-09-12)
+
+Created a review version from the published AgentDeck work. The portal confirmed
+**Works under review (1)**; reopening that record showed version `1.3.0` and
+UUID `com.ulanzi.ulanzistudio.agentdeck`. The public 1.2.0 listing remains the
+delivered version until approval.
+
+After uploading the ZIP, restored all seven Summary / Detailed introduction
+pairs from the canonical locale sections below. Reopened the submitted record
+and verified every pair exactly. D200, D200H and D200X are selected; **Dial is
+off**. All seven languages and Windows, Mac ARM and Mac Intel are selected.
+The signed-in owner's published-work list contained AgentDeck; the listing's
+author display address is not evidence of a different owning account.
+
+The submitted CDN ZIP `7ae4e162ad2441890dd6c84d758020c4.zip` was downloaded and
+matched the locally packaged release byte for byte. SHA-256:
+`eff83eaf05c101ea060567aa3b91096f71ac8d64183543c16ab5cfd4fcae55fc`.
+The `ulanzi-v1.3.0` tag was pushed only after these submission checks, at
+`04233b7223ede3c8f40ba2bcde9a0500828ea4e5`.
+
+Update note:
+
+```text
+1.3.0 improves agent identity and session-state updates, supports OpenClaw plugin approval requests alongside tool approvals, shows only reported quota windows, and improves connection recovery. D200, D200H and D200X keypad support; encoder/Dial actions are not included. Requires the free AgentDeck daemon on the same computer.
+```
+
 ## 1.2.0 — the aggregate resubmission (2026-09-02, submitted)
 
 The store last saw 1.0.3, so this submission carries everything since: the
