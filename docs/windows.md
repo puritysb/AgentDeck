@@ -29,7 +29,7 @@ pnpm test               # optional: run the Vitest suite
 node hooks/dist/install.js
 
 # Link the CLI + Stream Deck plugin
-cd bridge; pnpm link --global; cd ..
+node bridge/dist/cli.js daemon install
 cd plugin; streamdeck link bound.serendipity.agentdeck.sdPlugin; cd ..   # then restart the Stream Deck app
 ```
 
