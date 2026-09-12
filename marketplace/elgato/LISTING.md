@@ -13,9 +13,19 @@
 Submitted the official artifact from GitHub Actions run `34679062629`.
 Maker Console verified version `1.3.0.0`, SDK 3, DRM enabled, macOS 26+ and
 Windows 10+, then displayed `Pending review · 1.3`. Automatically publish after
-approval is **off**. No processed preview is available in the pending row yet;
-the DRM encoder loop remains required before public release. The description
-below was saved in General before submitting this version.
+approval is **off**. The description below was saved in General before
+submitting this version.
+
+**Owner follow-up on 2026-09-12:** publication after approval is authorized
+without waiting for a separate DRM encoder check. This overrides the earlier
+pre-publication gate for this release. Opening the `1.3` version cell exposes
+Edit version; `Download version` is now available there. The automatic-publish
+switch can be toggled locally, but `Submit for review` remains disabled, there
+is no Save/Update action, and reopening the dialog resets the switch to off.
+The setting change therefore did **not** persist. Keep the submitted review;
+once approval exposes `Release`, publication is authorized without another
+permission prompt. Do not describe this as automatic publication being enabled.
+See [delivery tracking](https://github.com/puritysb/AgentDeck/issues/314).
 
 ```
 AgentDeck 1.3.0 improves session and agent identity across the dashboard, adds OpenClaw plugin approval requests alongside tool approvals, and makes collaboration and connection recovery more consistent. Usage windows now reflect only the quota data actually reported by each provider. Bundled profiles cover Stream Deck, Mini, XL, +, and + XL. Requires the free AgentDeck daemon on the same computer.
