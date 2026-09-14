@@ -14,5 +14,5 @@
     "ota.feed",
     "device.telemetry"
   ],
-  "serverVersion": "1.3.4"
+  "serverVersion": "1.3.5"
 }
