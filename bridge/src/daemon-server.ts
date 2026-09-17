@@ -275,6 +275,8 @@ import {
   pullOtaResponseStatus,
   surfaceErrorBody,
   surfaceAllowsEvent,
+  surfaceHasCapability,
+  CLAUDE_TOOL_EVENTS_CAPABILITY,
   SurfaceProtocolError,
   validateSurfaceOtaIdentity,
   validateSurfaceQueryTuple,
@@ -282,6 +284,7 @@ import {
   type SurfaceNegotiation,
   type SurfaceOtaIdentity,
 } from './surface-protocol.js';
+import { claudeHookTimelineEntry } from './claude-hook-timeline.js';
 import type { UsageEvent } from './types.js';
 import { resolveRelayedUsageEvent } from './relayed-usage.js';
 import { CARD_FEED_PATH, CARD_OUTBOX_PATH, FONT_PACK_PATH, GLANCE_FRAME_PATH, LEARNING_PACK_PATH, type CardFeedResponse, type SessionInfo, type OutboxPushRequest } from '@agentdeck/shared';
@@ -3080,6 +3083,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             : JSON.stringify({ received: true }));
           return;
         }
+        const hookTimelineEntry = claudeHookTimelineEntry(eventName, json);
+        if (hookTimelineEntry) core.bridgeTimeline.addEntry(hookTimelineEntry);
         // Hook-derived Codex session rows. Placed after the child-hook return so
         // subagent lifecycle never drives the parent row, and kept independent
         // of the state machine: this only decides whether a Codex the process
@@ -4115,6 +4120,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   ]);
   core.wsServer.setEventTransformer((event, client) => {
     const surface = surfaceNegotiations.get(client);
+    const historyEntries = event.type === 'timeline_history'
+      ? (event as { entries?: Array<{ toolEvent?: boolean }> }).entries ?? []
+      : [];
+    const detailedTimeline = (event.type === 'timeline_event'
+      && (event as { entry?: { toolEvent?: boolean } }).entry?.toolEvent === true)
+      || (event.type === 'timeline_history' && historyEntries.some((entry) => entry.toolEvent === true));
+    if (detailedTimeline && !surfaceHasCapability(surface, CLAUDE_TOOL_EVENTS_CAPABILITY)) {
+      if (event.type === 'timeline_history') {
+        return { ...event, entries: historyEntries.filter((entry) => entry.toolEvent !== true) } as BridgeEvent;
+      }
+      return null;
+    }
     if (surface && isPortableReaderProfile(surface.profile)) {
       // portable-reader/v1 is pull-first. A negotiated socket gets only its
       // acknowledgement and bounded liveness/device probes; it never inherits
@@ -5462,6 +5479,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           try {
             entries = kiroTimelineForSession(sessionId, { since: sinceMs });
           } catch { /* read-only best effort */ }
+        }
+        if (!surfaceHasCapability(surfaceNegotiations.get(sender), CLAUDE_TOOL_EVENTS_CAPABILITY)) {
+          entries = entries.filter((entry) => entry.toolEvent !== true);
         }
         const historyEvent = buildCappedTimelineHistory(entries, undefined, { sessionId });
         if (historyEvent) {

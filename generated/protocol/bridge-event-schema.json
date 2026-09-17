@@ -1755,6 +1755,14 @@
         "taskSummary": {
           "type": "string"
         },
+        "toolEvent": {
+          "description": "True for bounded per-tool rows produced from Claude Code hooks.",
+          "type": "boolean"
+        },
+        "toolUseId": {
+          "description": "Claude hook tool invocation identity (distinct from an approval id).",
+          "type": "string"
+        },
         "ts": {
           "type": "number"
         },

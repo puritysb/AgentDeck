@@ -27,6 +27,10 @@ export interface TimelineEntry {
   raw: string;
   detail?: string;
   approvalId?: string;
+  /** Claude hook tool invocation identity (distinct from an approval id). */
+  toolUseId?: string;
+  /** True for bounded per-tool rows produced from Claude Code hooks. */
+  toolEvent?: boolean;
   /**
    * Approval lifecycle. `'abandoned'` is a NON-decision and is deliberately not
    * folded into `'denied'`: an approval that went away because its run was

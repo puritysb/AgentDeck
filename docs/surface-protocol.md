@@ -241,6 +241,7 @@ profile major.
 | `sessions.read`         | consume the bounded `sessions_list` projection                                           |
 | `usage.read`            | request and consume `usage_update`                                                       |
 | `timeline.read`         | consume timeline events and request per-session history                                  |
+| `timeline.tool-events.read` | opt in to bounded per-tool `tool_request`/`tool_resolved` rows from Claude Code hooks |
 | `display-state.read`    | consume host display/dim state                                                           |
 | `session.focus`         | focus or clear focus for a named session                                                 |
 | `permission.decide`     | answer a live `requestId` gate with Allow or Deny                                        |
@@ -280,6 +281,14 @@ Baseline daemon-to-client messages are `connection`, `sessions_list`,
 This profile is for a rich live dashboard, not a promise that every field of the
 internal `state_update`, APME, voice, device-module, or layout events is public.
 Unknown top-level events and unknown optional fields must be ignored.
+
+Clients that also offer `timeline.tool-events.read` receive bounded Claude Code
+hook rows in the same timeline stream. `PreToolUse` produces `tool_request`; a
+successful `PostToolUse` produces `tool_resolved` with `completed` text, and
+`PostToolUseFailure` produces a `tool_resolved` row with `failed` text. The
+optional `toolUseId` correlates the rows. Tool input and output are summarized,
+bounded, and common credential-shaped values are redacted. Clients that do not
+offer the capability receive the existing turn-level rows only.
 
 ### companion-control/v1
 

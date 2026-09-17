@@ -744,6 +744,18 @@ data class TimelineEntry (
     val taskScore: Double? = null,
 
     val taskSummary: String? = null,
+
+    /**
+     * True for bounded per-tool rows produced from Claude Code hooks.
+     */
+    val toolEvent: Boolean? = null,
+
+    /**
+     * Claude hook tool invocation identity (distinct from an approval id).
+     */
+    @Json(name = "toolUseId")
+    val toolUseID: String? = null,
+
     val ts: Double,
     val type: TimelineEntryType
 )

@@ -4,6 +4,7 @@ import { ESP32_BOARDS } from '@agentdeck/shared';
 export const SURFACE_PROTOCOL_MAJOR = 1 as const;
 export const PORTABLE_READER_PROFILE = 'portable-reader/v1' as const;
 export const OTA_RESUME_PARTIAL_CAPABILITY = 'ota.resume-206' as const;
+export const CLAUDE_TOOL_EVENTS_CAPABILITY = 'timeline.tool-events.read' as const;
 export const AGENTDECK_FIRMWARE_PRODUCT_ID = 'dev.agentdeck.dashboard-firmware' as const;
 export const POCKET_DAILY_PRODUCT_ID = 'io.pocketdaily.reader' as const;
 
@@ -12,7 +13,7 @@ export const SURFACE_SERVER_VERSION = packageJson.version;
 
 const PROFILE_CAPABILITIES = {
   'dashboard-live/v1': new Set([
-    'sessions.read', 'usage.read', 'timeline.read', 'display-state.read',
+    'sessions.read', 'usage.read', 'timeline.read', CLAUDE_TOOL_EVENTS_CAPABILITY, 'display-state.read',
   ]),
   'companion-control/v1': new Set([
     'sessions.read', 'usage.read', 'session.focus', 'permission.decide',
@@ -27,7 +28,7 @@ const PROFILE_CAPABILITIES = {
     // Deliberately no inbox.ws until the public invalidation runtime exists.
   ]),
   'display-only/v1': new Set([
-    'sessions.read', 'usage.read', 'timeline.read', 'display-state.read',
+    'sessions.read', 'usage.read', 'timeline.read', CLAUDE_TOOL_EVENTS_CAPABILITY, 'display-state.read',
   ]),
 } as const;
 
@@ -300,6 +301,10 @@ export function isPortableReaderProfile(profile: string | undefined): boolean {
 export function surfaceAllowsEvent(profile: SurfaceProfileId, eventType: string): boolean {
   if (profile !== PORTABLE_READER_PROFILE) return true;
   return eventType === 'surface_welcome' || eventType === 'connection' || eventType === 'device_info_request';
+}
+
+export function surfaceHasCapability(surface: SurfaceNegotiation | undefined, capability: string): boolean {
+  return surface?.capabilities.includes(capability) ?? false;
 }
 
 /** Additive projection switch: negotiated headers are preferred, while the

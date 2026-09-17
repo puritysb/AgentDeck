@@ -1365,6 +1365,10 @@ struct ADTimelineEntry: Codable, Equatable {
     /// one-line judge summary
     var taskScore: Double?
     var taskSummary: String?
+    /// True for bounded per-tool rows produced from Claude Code hooks.
+    var toolEvent: Bool?
+    /// Claude hook tool invocation identity (distinct from an approval id).
+    var toolUseId: String?
     var ts: Double
     var type: ADTimelineEntryType
 
@@ -1389,6 +1393,8 @@ struct ADTimelineEntry: Codable, Equatable {
         case taskOutcome = "taskOutcome"
         case taskScore = "taskScore"
         case taskSummary = "taskSummary"
+        case toolEvent = "toolEvent"
+        case toolUseId = "toolUseId"
         case ts = "ts"
         case type = "type"
     }
@@ -1433,6 +1439,8 @@ extension ADTimelineEntry {
         taskOutcome: String?? = nil,
         taskScore: Double?? = nil,
         taskSummary: String?? = nil,
+        toolEvent: Bool?? = nil,
+        toolUseId: String?? = nil,
         ts: Double? = nil,
         type: ADTimelineEntryType? = nil
     ) -> ADTimelineEntry {
@@ -1457,6 +1465,8 @@ extension ADTimelineEntry {
             taskOutcome: taskOutcome ?? self.taskOutcome,
             taskScore: taskScore ?? self.taskScore,
             taskSummary: taskSummary ?? self.taskSummary,
+            toolEvent: toolEvent ?? self.toolEvent,
+            toolUseId: toolUseId ?? self.toolUseId,
             ts: ts ?? self.ts,
             type: type ?? self.type
         )
