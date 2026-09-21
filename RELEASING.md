@@ -205,6 +205,19 @@ when editing a published body.
 5. Confirm the workflow read all four exact versions back from npm, each package's `latest` dist-tag matches the target, and `npm view @agentdeck/setup readme` is non-empty.
    **If the run is red at `Publish packages` with `registry verification failed`, read the log before touching the tag.** The read-back after publishing is bounded (12 × 5 s); on 1.3.1 every package had been published within 25 s and `@agentdeck/shared@1.3.1` was still not visible to `npm view` 84 s after its publish started, so the first attempt exited 1 with nothing left to publish. The fix is **re-run the failed job**: `publish-npm.mjs` skips versions already on the registry, so the rerun only verifies, renders notes, and creates the GitHub Release. Do not delete and re-push the tag and do not bump the version — the version is already immutable on npm and a re-tag is a publish attempt that fails its first gate (see *A release has five states* above).
 
+**A successful upload can remain unavailable while npm scans it.** On 2026-09-21,
+all four 1.4.0 uploads were accepted, but a retry while `bridge` was still being
+processed returned `E409 Cannot publish over previously staged version`.
+That response is not permission to replace the tag, unpublish, or bump versions.
+Wait for each exact version to become readable before rerunning the failed job;
+already visible packages are skipped. `npm stage list <package> --json` can
+distinguish an explicit maintainer-approval queue from an empty queue, but an
+empty queue does not prove public availability. npm's [publish-time scanning
+notice](https://github.blog/changelog/2026-07-28-npm-publish-time-malware-scanning-and-dual-use-metadata/)
+describes typical delays around five minutes, sometimes 15 minutes or longer.
+Record a held/blocked notification separately if one appears; do not label a
+package live just because `npm publish` returned success.
+
 #### Pre-tag three-mode daemon soak
 
 Run this from a clean checkout of the commit that will receive the tag. Record the

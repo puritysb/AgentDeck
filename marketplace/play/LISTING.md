@@ -8,6 +8,16 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## 1.4.0 submitted (2026-09-21)
+
+Version **1.4.0 (18)** is submitted for a full production rollout. Console
+publishing overview was rechecked on 2026-09-21: **changes under review**, with
+managed publishing disabled. English, Korean and Japanese release notes and
+177-country coverage were retained. No further submission is pending locally;
+approval will release automatically. Version 1.3.1 remains the last verified
+live Play release. The [1.4.0 APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.4.0)
+is already available on GitHub.
+
 ## 1.3.1 published (2026-09-13)
 
 Version **1.3.1 (17)** was uploaded as a signed production AAB, with English,

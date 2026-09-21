@@ -361,21 +361,21 @@ identified separately below. Matching minor versions are never a requirement.
 
 | Artifact | Publicly available | Connects to |
 |---|---|---|
-| npm CLI + daemon (`@agentdeck/*`) | 1.3.5 | — (the hub every client dials) |
-| Apple app (macOS · iPhone/iPad) | 1.3.2 | its built-in Swift daemon, or any 1.x daemon |
+| npm CLI + daemon (`@agentdeck/*`) | 1.4.0 | — (the hub every client dials) |
+| Apple app (macOS · iPhone/iPad) | 1.3.2 macOS / 1.4.0 iOS | its built-in Swift daemon, or any 1.x daemon |
 | Android app | 1.4.0 APK / 1.3.1 Play | any 1.x daemon |
 | Stream Deck plugin | 1.4.0 GitHub / 1.3 Marketplace | any 1.x daemon |
 | Ulanzi D200H/D200X plugin | 1.4.0 GitHub / 1.2.0 Marketplace | any 1.x daemon |
-| ESP32 firmware (12 boards) | 1.3.0 | any 1.x daemon (serial or Wi-Fi) |
+| ESP32 firmware (12 boards) | 1.4.0 | any 1.x daemon (serial or Wi-Fi) |
 
 | Channel | Tag | Status |
 |---|---|---|
-| **npm** — `@agentdeck/setup` | `npm-v*` | **1.3.5 live** — all four package versions, `latest` tags and source commit registry-verified on 2026-09-15. Windows console-free autostart, safe supervision probes and e-ink broadcast metrics; installed three-mode verification recorded in [#314](https://github.com/puritysb/AgentDeck/issues/314#issuecomment-5678349841). |
-| **Apple App Store** — macOS + iPhone/iPad | `apple-v*` | **1.4.0 (7001) submitted for review on both platforms** on 2026-09-21; automatic release after approval. [Release and verification receipt](docs/devlog/entries/2026-09-21-apple-140-submission.md). **1.3.2 remains the last verified live version.** |
+| **npm** — `@agentdeck/setup` | `npm-v*` | **1.4.0 live** — all four package versions, `latest` tags and source commit registry-verified on 2026-09-21. Includes z.ai usage, recovered Codex Luna reserve retirement and daemon/launchd handover fixes. Installed three-mode verification: [#314](https://github.com/puritysb/AgentDeck/issues/314#issuecomment-5761721871). |
+| **Apple App Store** — macOS + iPhone/iPad | `apple-v*` | **iOS 1.4.0 live; macOS 1.4.0 awaiting review**, verified independently through App Store Connect on 2026-09-21. Build 7001; automatic release after approval. macOS 1.3.2 remains live. [Submission receipt](docs/devlog/entries/2026-09-21-apple-140-submission.md). |
 | **Elgato Marketplace** — Stream Deck plugin | `streamdeck-v*` | **1.4.0 submitted for review on 2026-09-21** (Maker Console: Pending review · 1.4); automatic publication off for the processed-package check. **1.3 remains the last verified public version.** [Record](marketplace/elgato/LISTING.md). |
 | **Ulanzi Marketplace** — D200H / D200X plugin | `ulanzi-v*` | [1.2.0 remains public](https://ugc.ulanzistudio.com/contentView/1141), rechecked 2026-09-15. **1.4.0 replaced the pending review in place on 2026-09-21**; the new ZIP, seven locale pairs and keypad-only device scope were verified ([record](marketplace/ulanzi/LISTING.md)). |
 | **GitHub Release** — Android APK | `android-v*` | [1.4.0](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.4.0) — versionCode 18, APK published 2026-09-21. Google Play 1.4.0 was submitted separately on 2026-09-21. |
-| **GitHub Release** — ESP32 firmware | `esp32-v*` | [1.3.0](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v1.3.0) — 62 assets published 2026-09-13 for all 12 boards. All 60 firmware binaries were downloaded and verified against SHA256SUMS and manifest size/hash fields. Adds TTGO Usage default, T-Embed approval queue and T-Display-S3-Pro pinned-session/waiting-list interaction. |
+| **GitHub Release** — ESP32 firmware | `esp32-v*` | [1.4.0](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v1.4.0) — 62 assets published 2026-09-21 for all 12 boards. All 60 firmware images were downloaded and verified against manifest size/hash fields. |
 | **Google Play** — Android AAB | `android-v*` | **1.4.0 (18) submitted on 2026-09-21**; Console reports changes under review, with automatic prechecks still running at submission. 100% rollout and all target countries retained. [1.3.1 remains last verified live](https://play.google.com/store/apps/details?id=dev.agentdeck) — versionCode 17, published 2026-09-13 at 21:08 KST after review. Listing assets and runbook: [marketplace/play/](marketplace/play/LISTING.md). |
 
 ---

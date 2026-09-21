@@ -52,6 +52,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - Improve Stream Deck connection recovery by bounding initial handshakes, quarantining failed endpoints, retiring pending sockets before retry and cancelling retries on explicit disconnect.
 - Improve compact three-provider layouts and provider selection while preserving existing action identifiers and profiles.
 - Include Node daemon session ordering, asynchronous device probes and serial handover/flash preflight improvements accumulated since npm 1.3.5.
+- npm: retire stale Codex Luna reserve status when fresh account limits recover after a reset.
+- npm: reset accepted HTTP/SSE/WebSocket sockets before daemon teardown and wait for launchd job removal before restarting, improving Mac app/CLI handover and supervised restarts. Normal TCP expiry and the app’s existing retry cooldown can still delay canonical-port recovery.
 - Apple 1.4.0 remains a separate submission. Ulanzi 1.4.0 replaces the pending review version; marketplace approval and public availability are tracked separately from these artifacts.
 
 ## 2026-09-21 — Apple 1.4.0
