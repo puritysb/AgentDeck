@@ -86,6 +86,12 @@ const SPARK_MISLABELLED_AS_ACCOUNT = {
 };
 
 describe('parseLiveCodexRateLimits', () => {
+  it('does not activate an additional reserve pool while ordinary quota is available', () => {
+    const result = structuredClone(liveResult);
+    result.rateLimits.primary.usedPercent = 19;
+    expect(parseLiveCodexRateLimits(result, '2026-08-05T12:00:00.000Z')?.lunaReserve).toBeUndefined();
+  });
+
   it('maps the app-server shape onto the wire shape', () => {
     const parsed = parseLiveCodexRateLimits(liveResult, '2026-08-05T12:00:00.000Z');
     expect(parsed).not.toBeNull();
@@ -288,6 +294,26 @@ describe('pickBestCodexRateLimits', () => {
     const picked = pickBestCodexRateLimits(passive, live);
     expect(picked?.primary?.usedPercent).toBe(100);
     expect(picked?.lunaReserve?.usedPercent).toBe(10);
+  });
+
+  it('does not resurrect an old passive reserve when a fresh live answer omits it', () => {
+    const passive = {
+      ...at('2026-08-05T12:00:00.000Z', 100),
+      lunaReserve: { usedPercent: 10 },
+    };
+    for (const used of [19, 100]) {
+      const live = at('2026-08-05T13:00:00.000Z', used);
+      expect(pickBestCodexRateLimits(passive, live)?.lunaReserve).toBeUndefined();
+    }
+  });
+
+  it('does not carry cached live reserve into recovered ordinary quota', () => {
+    const live = {
+      ...at('2026-08-05T12:00:00.000Z', 100),
+      lunaReserve: { usedPercent: 10 },
+    };
+    const passive = at('2026-08-05T13:00:00.000Z', 19);
+    expect(pickBestCodexRateLimits(passive, live)?.lunaReserve).toBeUndefined();
   });
 
   it('handles either side being absent', () => {

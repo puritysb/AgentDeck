@@ -287,6 +287,21 @@ describe('buildUsageEvent Codex window normalization', () => {
       codexRateLimits,
     ] as Parameters<typeof buildUsageEvent>;
 
+  it.each([
+    [19, false, false],
+    [100, false, true],
+    [100, true, false],
+  ])('retires reserve for recovered or ended windows (%s, expired=%s)', (usedPercent, expired, keep) => {
+    const resetsAt = new Date(Date.now() + (expired ? -1 : 1) * 3600_000).toISOString();
+    const evt = buildUsageEvent(...codexArgs({
+      primary: { usedPercent, windowMinutes: 10080, resetsAt },
+      lunaReserve: { usedPercent: 10, available: true },
+    })) as UsageEvent;
+    const wire = JSON.parse(JSON.stringify(evt));
+    expect(wire.codexRateLimits.secondary.usedPercent).toBe(usedPercent);
+    expect(Boolean(wire.codexRateLimits.lunaReserve)).toBe(keep);
+  });
+
   it('marks an expired window stale and drops its resetsAt (no misleading "now")', () => {
     const expired = new Date(Date.now() - 30 * 60_000).toISOString();
     const evt = buildUsageEvent(

@@ -172,7 +172,7 @@ export function parseLiveCodexRateLimits(result: unknown, capturedAt: string): C
     planType: typeof rl.planType === 'string' ? rl.planType : undefined,
     limitId,
     credits,
-    lunaReserve: lunaPrimary || lunaSecondary
+    lunaReserve: [primary, secondary].some((w) => w && w.usedPercent >= 100) && (lunaPrimary || lunaSecondary)
       ? {
           usedPercent: (lunaPrimary ?? lunaSecondary)!.usedPercent,
           resetsAt: (lunaPrimary ?? lunaSecondary)!.resetsAt,
@@ -668,7 +668,8 @@ export function pickBestCodexRateLimits(
   opts: { liveOwnsFamilyAuthority?: boolean } = {},
 ): CodexRateLimits | null {
   const keepLuna = (chosen: CodexRateLimits, other: CodexRateLimits): CodexRateLimits =>
-    chosen.lunaReserve || !other.lunaReserve
+    chosen === live || chosen.lunaReserve || !other.lunaReserve
+      || ![chosen.primary, chosen.secondary].some((w) => w && w.usedPercent >= 100)
       ? chosen
       : { ...chosen, lunaReserve: other.lunaReserve };
   if (!live) return passive;
@@ -700,7 +701,9 @@ export function pickBestCodexRateLimits(
     : passive;
   // The passive rollout is normally newer and wins the account-window race,
   // but it cannot carry additional pools. Preserve Luna metadata from the live
-  // account read — both snapshots describe the same account, so no family
+  // account read only while ordinary quota remains exhausted. A selected live
+  // answer without Luna is authoritative absence, never filled from old passive
+  // metadata. Both snapshots describe the same account, so no family
   // gate is needed here; a plan-mismatched snapshot (its own Luna included)
   // is voided later by normalizeCodexRateLimits.
   return keepLuna(chosen, chosen === live ? passive : live);

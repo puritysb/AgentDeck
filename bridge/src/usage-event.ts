@@ -156,7 +156,13 @@ function normalizeCodexRateLimits(
       shortWindow = { usedPercent: 100, windowMinutes: 0 };
     }
   }
-  return { ...rl, primary: normalizeCodexWindow(shortWindow), secondary: normalizeCodexWindow(longWindow) };
+  const primary = normalizeCodexWindow(shortWindow);
+  const secondary = normalizeCodexWindow(longWindow);
+  // Reserve metadata can survive in cached/relayed readings after a reset.
+  // It may replace the ordinary gauges only while a live ordinary window is
+  // exhausted. Send the full Codex block so clients retire the old reserve.
+  const exhausted = [primary, secondary].some((w) => w && !w.stale && w.usedPercent >= 100);
+  return { ...rl, primary, secondary, lunaReserve: exhausted ? rl.lunaReserve : undefined };
 }
 
 /**
