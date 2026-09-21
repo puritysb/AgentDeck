@@ -24,11 +24,29 @@ describe('ClaudeUsageRecovery', () => {
     expect(source.ANTHROPIC_API_KEY).toBe('api-key');
   });
 
+  it('preserves the configured Claude executable through recovery environment sanitization', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentdeck-cli-override-'));
+    const cliPath = join(dir, 'claude');
+    writeFileSync(cliPath, '#!/bin/sh\n');
+
+    const env = buildClaudeUsageRecoveryEnv({
+      AGENTDECK_CLAUDE_CLI: cliPath,
+      AGENTDECK_PORT: '9120',
+      PATH: '/missing-from-daemon-path',
+    }, 'linux');
+
+    expect(env?.AGENTDECK_CLAUDE_CLI).toBe(cliPath);
+    expect(env?.AGENTDECK_PORT).toBeUndefined();
+    expect(resolveClaudeCli(env!, 'linux')).toEqual({ path: cliPath, shim: false });
+  });
+
   it('deduplicates concurrent callers and survives restarts without storing credentials', async () => {
     let now = 1000;
     let saved: any = null;
     let finish!: () => void;
-    const run = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    const run = vi.fn(() => new Promise<'cli-completed'>(resolve => {
+      finish = () => resolve('cli-completed');
+    }));
     const deps = { now: () => now, read: () => saved, write: (r: any) => { saved = r; }, run };
     const recovery = new ClaudeUsageRecovery(deps);
     const first = recovery.recover('secret');
@@ -57,6 +75,38 @@ describe('ClaudeUsageRecovery', () => {
     now = saved.nextAttemptAt;
     await recovery.recover('token');
     expect(run).toHaveBeenCalledTimes(4);
+  });
+
+  it('retries an unchanged credential after one minute before using the normal backoff', async () => {
+    let now = 1000;
+    let saved: any = null;
+    const run = vi.fn().mockResolvedValue('cli-completed' as const);
+    const recovery = new ClaudeUsageRecovery({ now: () => now, read: () => saved,
+      write: r => { saved = r; }, run });
+
+    await recovery.recover('unchanged-token');
+    now += 60_000 - 1;
+    await recovery.recover('unchanged-token');
+    expect(run).toHaveBeenCalledTimes(1);
+
+    now += 1;
+    await recovery.recover('unchanged-token');
+    expect(run).toHaveBeenCalledTimes(2);
+
+    now += 60_000;
+    await recovery.recover('unchanged-token');
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists a sanitized recovery outcome for detached-daemon diagnostics', async () => {
+    let saved: any = null;
+    const recovery = new ClaudeUsageRecovery({ now: () => 1000, read: () => saved,
+      write: r => { saved = r; }, run: vi.fn().mockResolvedValue('cli-completed' as const) });
+
+    await recovery.recover('secret-token');
+
+    expect(saved).toMatchObject({ attempts: 1, lastAttemptAt: 1000, lastOutcome: 'cli-completed' });
+    expect(JSON.stringify(saved)).not.toContain('secret-token');
   });
 
   it('fails closed if the retry budget cannot be persisted', async () => {

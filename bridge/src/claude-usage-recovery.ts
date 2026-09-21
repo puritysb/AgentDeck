@@ -6,6 +6,7 @@ import { delimiter, join, resolve } from 'path';
 import { logTagged } from './logger.js';
 
 const RECOVERY_TIMEOUT_MS = 25_000;
+const QUICK_RETRY_MS = 60_000;
 const RETRY_MS = 30 * 60_000;
 const LONG_RETRY_MS = 6 * 60 * 60_000;
 /** The daemon's data directory — `AGENTDECK_DATA_DIR` when set, else
@@ -53,7 +54,8 @@ export function buildClaudeUsageRecoveryEnv(
   for (const key of Object.keys(env)) {
     if (key === 'CLAUDECODE' || key === 'ANTHROPIC_API_KEY' || key === 'ANTHROPIC_AUTH_TOKEN'
       || key === 'ANTHROPIC_BASE_URL' || key === 'CLAUDE_CODE_OAUTH_TOKEN'
-      || key.startsWith('CLAUDE_CODE_USE_') || key.startsWith('AGENTDECK_')) delete env[key];
+      || key.startsWith('CLAUDE_CODE_USE_')
+      || (key.startsWith('AGENTDECK_') && key !== 'AGENTDECK_CLAUDE_CLI')) delete env[key];
   }
   return env;
 }
@@ -95,28 +97,40 @@ function reportUnavailableOnce(reason: string): void {
   logTagged('usage', `Claude authorization recovery unavailable: ${reason}`);
 }
 
-export function runClaudeUsageRecovery(): Promise<void> {
+type ClaudeUsageRecoveryRunOutcome =
+  | 'cli-completed'
+  | 'cli-timeout'
+  | 'cli-failed'
+  | 'cli-unavailable'
+  | 'config-skipped';
+type ClaudeUsageRecoveryOutcome = ClaudeUsageRecoveryRunOutcome | 'started';
+
+export function runClaudeUsageRecovery(): Promise<ClaudeUsageRecoveryRunOutcome> {
   const env = buildClaudeUsageRecoveryEnv();
   if (!env) {
     logTagged('usage', 'Claude authorization recovery skipped: custom macOS credential namespace cannot be matched');
-    return Promise.resolve();
+    return Promise.resolve('config-skipped');
   }
   const cli = resolveClaudeCli(env);
   if (!cli) {
     reportUnavailableOnce('the claude CLI was not found on this daemon\'s PATH (set AGENTDECK_CLAUDE_CLI to its full path)');
-    return Promise.resolve();
+    return Promise.resolve('cli-unavailable');
   }
   if (cli.shim) {
     reportUnavailableOnce(`only a shell shim is installed (${cli.path}); point AGENTDECK_CLAUDE_CLI at an executable`);
-    return Promise.resolve();
+    return Promise.resolve('cli-unavailable');
   }
-  return new Promise((resolve) => {
+  const childEnv = { ...env };
+  delete childEnv.AGENTDECK_CLAUDE_CLI;
+  return new Promise<ClaudeUsageRecoveryRunOutcome>((resolve) => {
     const child = execFile(cli.path, CLAUDE_USAGE_RECOVERY_ARGS, {
-      cwd: tmpdir(), env, timeout: RECOVERY_TIMEOUT_MS, killSignal: 'SIGKILL',
+      cwd: tmpdir(), env: childEnv, timeout: RECOVERY_TIMEOUT_MS, killSignal: 'SIGKILL',
       maxBuffer: 64 * 1024, windowsHide: true,
     }, (error) => {
       if (error) logTagged('usage', `Claude authorization recovery CLI ended (${error.killed ? 'timeout' : error.code ?? 'failed'})`);
-      resolve(); // Outcome is verified by re-reading credentials, never stdout.
+      resolve(error ? (error.killed ? 'cli-timeout' : 'cli-failed') : 'cli-completed');
+      // Credential renewal is still verified by usage-api.ts re-reading the
+      // credential store; this outcome describes only the bounded subprocess.
     });
     child.stdin?.end();
     // The child holds no port and gates no shutdown, but a clean stop that
@@ -147,12 +161,18 @@ export function stopClaudeUsageRecoveryChildren(): void {
   liveRecoveryChildren.clear();
 }
 
-interface RecoveryRecord { credentialHash: string; attempts: number; nextAttemptAt: number }
+interface RecoveryRecord {
+  credentialHash: string;
+  attempts: number;
+  nextAttemptAt: number;
+  lastAttemptAt?: number;
+  lastOutcome?: ClaudeUsageRecoveryOutcome;
+}
 interface RecoveryDependencies {
   now: () => number;
   read: () => RecoveryRecord | null;
   write: (record: RecoveryRecord) => void;
-  run: () => Promise<void>;
+  run: () => Promise<ClaudeUsageRecoveryRunOutcome>;
 }
 
 /** Single daemon owner; persisted cooldown also survives daemon restart. */
@@ -167,12 +187,22 @@ export class ClaudeUsageRecovery {
     const previous = this.record ?? this.deps.read();
     if (previous && this.deps.now() < previous.nextAttemptAt) return;
     const attempts = previous?.credentialHash === credentialHash ? previous.attempts + 1 : 1;
-    this.record = { credentialHash, attempts,
-      nextAttemptAt: this.deps.now() + (attempts >= 3 ? LONG_RETRY_MS : RETRY_MS) };
+    const attemptedAt = this.deps.now();
+    const retryMs = attempts === 1 ? QUICK_RETRY_MS : attempts >= 3 ? LONG_RETRY_MS : RETRY_MS;
+    this.record = { credentialHash, attempts, nextAttemptAt: attemptedAt + retryMs,
+      lastAttemptAt: attemptedAt, lastOutcome: 'started' };
     // Record BEFORE spawning: a crash/restart must not cause a recovery loop.
     try { this.deps.write(this.record); } catch { return; }
     logTagged('usage', `Claude usage authorization expired — requesting bounded CLI recovery (attempt ${attempts})`);
-    this.pending = this.deps.run().catch(() => {}).finally(() => { this.pending = null; });
+    this.pending = (async () => {
+      let outcome: ClaudeUsageRecoveryRunOutcome;
+      try { outcome = await this.deps.run(); }
+      catch { outcome = 'cli-failed'; }
+      if (this.record?.credentialHash !== credentialHash || this.record.lastAttemptAt !== attemptedAt) return;
+      const outcomeRecord = { ...this.record, lastOutcome: outcome };
+      this.record = outcomeRecord;
+      try { this.deps.write(outcomeRecord); } catch { /* initial cooldown remains safe */ }
+    })().finally(() => { this.pending = null; });
     return this.pending;
   }
 }
