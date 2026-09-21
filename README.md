@@ -153,7 +153,7 @@ to the same daemon and can be added in any order:
 | **iOS / Android AgentDeck Companion** | iPhone/iPad use the same [App Store listing](https://apps.apple.com/app/id6784822497); Android installs from [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck). Both pair with a daemon over the LAN. |
 | **AgentDeck ESP32 Dashboard Firmware** | Flash LCD panels and the TRMNL 7.5" e-ink from [**puritysb.github.io/AgentDeck/flash/**](https://puritysb.github.io/AgentDeck/flash/) or run `agentdeck esp32 flash <board>`. After the first USB flash, supported boards update over Wi-Fi OTA. |
 | **Official Stream Deck integration** | Install for Stream Deck / Mini / XL / Plus / + XL from the [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464). |
-| **Official Ulanzi integration** | Install from the [Ulanzi Studio Marketplace](https://ugc.ulanzistudio.com/contentView/1141). Version 1.2.0 is live; 1.3.0 was submitted for review on 2026-09-12. Both cover D200H keys and D200X LCD keys. D200X encoders remain unsupported. See the [listing/review status](marketplace/ulanzi/LISTING.md) or [build it yourself](plugin-ulanzi/VERIFY.md). |
+| **Official Ulanzi integration** | Install from the [Ulanzi Studio Marketplace](https://ugc.ulanzistudio.com/contentView/1141). Version 1.2.0 is live; the pending review was updated in place to 1.4.0 on 2026-09-21. Both cover D200H keys and D200X LCD keys. D200X encoders remain unsupported. See the [listing/review status](marketplace/ulanzi/LISTING.md) or [build it yourself](plugin-ulanzi/VERIFY.md). |
 | **Official device integrations** | Pixoo64, TC001, Timebox, and iDotMatrix are driven by the daemon — see [docs/devices.md](docs/devices.md). |
 
 > **Android, Stream Deck, and Ulanzi are companion surfaces.** They talk to the
@@ -361,11 +361,11 @@ identified separately below. Matching minor versions are never a requirement.
 
 | Artifact | Publicly available | Connects to |
 |---|---|---|
-| npm CLI + daemon (`@agentdeck/*`) | 1.3.4 | — (the hub every client dials) |
-| Apple app (macOS · iPhone/iPad) | 1.3.0 | its built-in Swift daemon, or any 1.x daemon |
-| Android app | 1.3.1 APK / Play | any 1.x daemon |
-| Stream Deck plugin | 1.2.0 | any 1.x daemon |
-| Ulanzi D200H/D200X plugin | 1.2.0 | any 1.x daemon |
+| npm CLI + daemon (`@agentdeck/*`) | 1.3.5 | — (the hub every client dials) |
+| Apple app (macOS · iPhone/iPad) | 1.3.2 | its built-in Swift daemon, or any 1.x daemon |
+| Android app | 1.4.0 APK / 1.3.1 Play | any 1.x daemon |
+| Stream Deck plugin | 1.4.0 GitHub / 1.3 Marketplace | any 1.x daemon |
+| Ulanzi D200H/D200X plugin | 1.4.0 GitHub / 1.2.0 Marketplace | any 1.x daemon |
 | ESP32 firmware (12 boards) | 1.3.0 | any 1.x daemon (serial or Wi-Fi) |
 
 | Channel | Tag | Status |
@@ -373,10 +373,10 @@ identified separately below. Matching minor versions are never a requirement.
 | **npm** — `@agentdeck/setup` | `npm-v*` | **1.3.5 live** — all four package versions, `latest` tags and source commit registry-verified on 2026-09-15. Windows console-free autostart, safe supervision probes and e-ink broadcast metrics; installed three-mode verification recorded in [#314](https://github.com/puritysb/AgentDeck/issues/314#issuecomment-5678349841). |
 | **Apple App Store** — macOS + iPhone/iPad | `apple-v*` | **1.4.0 (7001) submitted for review on both platforms** on 2026-09-21; automatic release after approval. [Release and verification receipt](docs/devlog/entries/2026-09-21-apple-140-submission.md). **1.3.2 remains the last verified live version.** |
 | **Elgato Marketplace** — Stream Deck plugin | `streamdeck-v*` | **1.4.0 submitted for review on 2026-09-21** (Maker Console: Pending review · 1.4); automatic publication off for the processed-package check. **1.3 remains the last verified public version.** [Record](marketplace/elgato/LISTING.md). |
-| **Ulanzi Marketplace** — D200H / D200X plugin | `ulanzi-v*` | [1.2.0 remains public](https://ugc.ulanzistudio.com/contentView/1141), rechecked 2026-09-15. **1.3.0 remains under review**, verified on 2026-09-21; the requested in-place 1.4.0 replacement is prepared but has not been saved ([record](marketplace/ulanzi/LISTING.md)). |
-| **GitHub Release** — Android APK | `android-v*` | [1.4.0](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.4.0) — versionCode 18, APK published 2026-09-21. Google Play submission is separate. |
+| **Ulanzi Marketplace** — D200H / D200X plugin | `ulanzi-v*` | [1.2.0 remains public](https://ugc.ulanzistudio.com/contentView/1141), rechecked 2026-09-15. **1.4.0 replaced the pending review in place on 2026-09-21**; the new ZIP, seven locale pairs and keypad-only device scope were verified ([record](marketplace/ulanzi/LISTING.md)). |
+| **GitHub Release** — Android APK | `android-v*` | [1.4.0](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.4.0) — versionCode 18, APK published 2026-09-21. Google Play 1.4.0 was submitted separately on 2026-09-21. |
 | **GitHub Release** — ESP32 firmware | `esp32-v*` | [1.3.0](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v1.3.0) — 62 assets published 2026-09-13 for all 12 boards. All 60 firmware binaries were downloaded and verified against SHA256SUMS and manifest size/hash fields. Adds TTGO Usage default, T-Embed approval queue and T-Display-S3-Pro pinned-session/waiting-list interaction. |
-| **Google Play** — Android AAB | `android-v*` | [1.3.1 live](https://play.google.com/store/apps/details?id=dev.agentdeck) — versionCode 17, published 2026-09-13 at 21:08 KST after review. Console reports “Available on Google Play”; 100% rollout and 177-country coverage retained. Listing assets and runbook: [marketplace/play/](marketplace/play/LISTING.md). |
+| **Google Play** — Android AAB | `android-v*` | **1.4.0 (18) submitted on 2026-09-21**; Console reports changes under review, with automatic prechecks still running at submission. 100% rollout and all target countries retained. [1.3.1 remains last verified live](https://play.google.com/store/apps/details?id=dev.agentdeck) — versionCode 17, published 2026-09-13 at 21:08 KST after review. Listing assets and runbook: [marketplace/play/](marketplace/play/LISTING.md). |
 
 ---
 

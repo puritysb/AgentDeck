@@ -10,6 +10,24 @@ content-record mismatch reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category. **Resolved:** the published record
 is `/contentView/1141` and resolves to AgentDeck.
 
+## 1.4.0 — existing review updated (2026-09-21)
+
+Replaced the pending 1.3.0 review using **Edit review work**, then **Save review
+changes** and **Confirm changes**. Reopened the record and verified version
+`1.4.0`, ZIP `c323cd5e56288669ca0791917abcefa1.zip`, all seven canonical
+Summary / Detailed introduction pairs, D200/D200H/D200X selected, Dial excluded,
+and all three operating-system targets. Existing banners were retained.
+The ZIP upload overwrote locale text and selected Dial; both were corrected
+before confirmation. Approval remains pending; 1.2.0 is the last verified public
+version. Tag `ulanzi-v1.4.0` was pushed after readback at `1c1f51b7`;
+GitHub release run 35599883103 succeeded.
+
+Update note:
+
+```text
+1.4.0 adds optional z.ai Coding Plan usage with reset countdowns and MCP tool-call usage, improves provider selection and compact layouts, and improves connection recovery. Includes the pending 1.3.0 agent identity, session-state and OpenClaw approval improvements. D200, D200H and D200X keypad support; encoder/Dial actions are not included. Requires the free AgentDeck daemon or macOS app. Configure z.ai on the daemon supplying usage.
+```
+
 ## 1.3.0 — submitted for review (2026-09-12)
 
 **2026-09-15 readback:** the public listing still reports 1.2.0. The private
