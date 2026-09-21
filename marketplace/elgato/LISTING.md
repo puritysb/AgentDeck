@@ -8,6 +8,20 @@
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
+## 1.4.0 submitted for review (2026-09-21)
+
+Uploaded the official [Stream Deck release](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v1.4.0)
+from CI run `35548111974`, SHA-256
+`6f00b544cb4a25a3388ae7b6f7287b8d435228cf53469fd752e13c93478d33ce`.
+Maker Console parsed `1.4.0.0`, SDK 3, DRM enabled, macOS 26+ and Windows 10+.
+After submission, the version row reads **Pending review · 1.4**.
+Automatic publication is off for the processed-package encoder verification.
+The 1.3-specific waiver below is historical and is not a 1.4 verification receipt.
+
+Submitted release notes:
+
+> Adds optional z.ai Coding Plan usage to keys and usage dials, with reset countdowns and MCP tool-call usage where space permits. Improves provider selection and compact layouts. Fixes connection recovery when a daemon handshake stalls or a pending socket is replaced. Existing actions and profiles remain compatible. Requires the free AgentDeck daemon or macOS app; configure z.ai on the daemon that supplies usage.
+
 ## 1.3.0 publication (2026-09-15)
 
 Maker Console showed `Ready to publish` for 1.3. Released under the existing
