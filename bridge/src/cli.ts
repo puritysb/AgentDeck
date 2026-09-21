@@ -39,6 +39,7 @@ import {
   supervisorStartPlan,
   supervisorPosture,
   runSupervisorPlan,
+  waitForSupervisorUnload,
   supervisorLivenessProbe,
   oneOffFlagsBlockingSupervisor,
   routeDaemonLifecycle,
@@ -351,6 +352,9 @@ async function stopDaemon(
   const supervisor = opts.supervisor !== undefined ? opts.supervisor : detectSupervisor();
   if (supervisor) {
     const result = runSupervisorPlan(supervisorStopPlan(supervisor));
+    if (!await waitForSupervisorUnload(supervisor)) {
+      throw new Error(`The ${describeSupervisor(supervisor)} has not finished unloading; refusing to race its replacement. Retry after it stops.`);
+    }
     const stopped = result.ran.some((r) => r.ok);
     if (stopped) {
       log(`Stopped the ${describeSupervisor(supervisor)} (it will start again at the next login, `

@@ -14,6 +14,7 @@
 import { createServer, type Server, type ServerResponse } from 'http';
 import { createHash, randomUUID } from 'crypto';
 import WebSocket from 'ws';
+import { trackDaemonSockets } from './daemon-socket-drain.js';
 import { BridgeCore, buildCappedTimelineHistory } from './bridge-core.js';
 import { buildDisplayStateEvent } from './display-dim.js';
 import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
@@ -3927,12 +3928,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
     if (req.method === 'POST' && pathname === '/shutdown') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'shutting_down' }));
+      res.end(JSON.stringify({ status: 'shutting_down' }), () => { void core.shutdown(); });
       const hardExitTimer = setTimeout(() => {
         log('[agentdeck] Shutdown route timeout — forcing exit.');
         exitProcessNow(0);
       }, 5000);
-      core.shutdown();
       return;
     }
 
@@ -4072,6 +4072,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
   });
+
+  const drainDaemonSockets = trackDaemonSockets(httpServer);
 
   // Catch HTTP-level client errors (malformed requests, abrupt disconnects during upgrade)
   httpServer.on('clientError', (err, socket) => {
@@ -7197,6 +7199,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // ===== Shutdown =====
   core.onShutdown(async () => {
+    drainDaemonSockets();
     clearInterval(permissionSweepTimer);
     clearInterval(daemonInfoHealTimer);
     clearInterval(openclawFeedTimer);

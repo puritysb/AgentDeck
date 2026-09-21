@@ -15,6 +15,7 @@ import {
   oneOffFlagsBlockingSupervisor,
   routeDaemonLifecycle,
   runSupervisorPlan,
+  waitForSupervisorUnload,
   supervisorJobRunning,
   supervisorPosture,
   parseSystemdActive,
@@ -384,5 +385,32 @@ describe('classifySupervision — does the unit own the daemon this machine is r
     for (const job of [true, false, undefined]) {
       expect(c(true, job, true)).toBe('foreign');
     }
+  });
+});
+
+
+describe('launchd removal barrier', () => {
+  it('waits through a loaded job and unknown probes before accepting removal', async () => {
+    const states = [false, undefined, false, true];
+    let time = 0;
+    let probes = 0;
+    expect(await waitForSupervisorUnload(LAUNCHD, {
+      probe: () => { probes++; return states.shift(); },
+      now: () => time,
+      sleep: async ms => { time += ms; },
+    })).toBe(true);
+    expect(probes).toBe(4);
+    expect(time).toBe(300);
+  });
+
+  it.each([false, undefined])('bounds a job that never proves removal (%s)', async state => {
+    let time = 0;
+    expect(await waitForSupervisorUnload(LAUNCHD, {
+      timeoutMs: 200,
+      probe: () => state,
+      now: () => time,
+      sleep: async ms => { time += ms; },
+    })).toBe(false);
+    expect(time).toBe(200);
   });
 });

@@ -229,6 +229,41 @@ export function runSupervisorPlan(plan: SupervisorCommand[]): SupervisorRunResul
   return { ok, ran };
 }
 
+/** bootout acknowledges removal before the old job has necessarily disappeared.
+ * Do not bootstrap its replacement while launchd can still remove that label.
+ * A stopped-but-loaded job is not enough; only a missing service is terminal.
+ */
+export async function waitForSupervisorUnload(
+  f: SupervisorFacts,
+  options: {
+    timeoutMs?: number;
+    probe?: () => boolean | undefined;
+    sleep?: (ms: number) => Promise<void>;
+    now?: () => number;
+  } = {},
+): Promise<boolean> {
+  if (f.kind !== 'launchd') return true;
+  const probe = options.probe ?? (() => {
+    try {
+      execFileSync('launchctl', ['print', `gui/${f.uid ?? 0}/${f.label}`],
+        { stdio: 'pipe', timeout: 1_000 });
+      return false;
+    } catch (error) {
+      // ESRCH from launchctl means the service is absent. Permission errors,
+      // timeouts and a missing executable do not establish removal.
+      return (error as { status?: number }).status === 113 ? true : undefined;
+    }
+  });
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
+  const deadline = now() + (options.timeoutMs ?? 20_000);
+  do {
+    if (probe() === true) return true;
+    if (now() >= deadline) return false;
+    await sleep(Math.min(100, deadline - now()));
+  } while (true);
+}
+
 /**
  * Flags that cannot be handed to the supervisor.
  *
