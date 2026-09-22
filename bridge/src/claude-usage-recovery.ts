@@ -77,7 +77,12 @@ export function resolveClaudeCli(
     try { return statSync(candidate).isFile(); } catch { return false; }
   };
   const override = env.AGENTDECK_CLAUDE_CLI;
-  if (override) return isFile(override) ? { path: override, shim: false } : null;
+  if (override) {
+    const overridePath = resolve(override);
+    return isFile(overridePath)
+      ? { path: overridePath, shim: platform === 'win32' && /\.(cmd|bat)$/i.test(overridePath) }
+      : null;
+  }
   const exts = platform === 'win32'
     ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
     : [''];
@@ -188,7 +193,9 @@ export class ClaudeUsageRecovery {
     if (previous && this.deps.now() < previous.nextAttemptAt) return;
     const attempts = previous?.credentialHash === credentialHash ? previous.attempts + 1 : 1;
     const attemptedAt = this.deps.now();
-    const retryMs = attempts === 1 ? QUICK_RETRY_MS : attempts >= 3 ? LONG_RETRY_MS : RETRY_MS;
+    const hashChanged = previous != null && previous.credentialHash !== credentialHash;
+    const retryMs = attempts === 1 && !hashChanged ? QUICK_RETRY_MS
+      : attempts >= 3 ? LONG_RETRY_MS : RETRY_MS;
     this.record = { credentialHash, attempts, nextAttemptAt: attemptedAt + retryMs,
       lastAttemptAt: attemptedAt, lastOutcome: 'started' };
     // Record BEFORE spawning: a crash/restart must not cause a recovery loop.

@@ -6,6 +6,39 @@ import { tmpdir } from 'os';
 import { ClaudeUsageRecovery, CLAUDE_USAGE_RECOVERY_ARGS, buildClaudeUsageRecoveryEnv, resolveClaudeCli } from '../claude-usage-recovery.js';
 
 describe('ClaudeUsageRecovery', () => {
+  it('resolves a relative executable before recovery changes cwd', () => {
+    const path = 'package.json';
+    expect(resolveClaudeCli({ AGENTDECK_CLAUDE_CLI: path }, 'linux'))
+      .toEqual({ path: resolve(path), shim: false });
+  });
+
+  it.each(['.cmd', '.BAT'])('identifies an overridden Windows %s shim', ext => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentdeck-cli-shim-'));
+    const path = join(dir, `claude${ext}`);
+    writeFileSync(path, '');
+    expect(resolveClaudeCli({ AGENTDECK_CLAUDE_CLI: path }, 'win32'))
+      .toEqual({ path, shim: true });
+  });
+
+  it('does not restart the quick tier on repeatedly rotated rejected credentials', async () => {
+    let now = 1000;
+    let saved: any = null;
+    const run = vi.fn().mockResolvedValue('cli-completed' as const);
+    const deps = { now: () => now, read: () => saved, write: (r: any) => { saved = r; }, run };
+    await new ClaudeUsageRecovery(deps).recover('token-A');
+    now += 60_000;
+    await new ClaudeUsageRecovery(deps).recover('token-B');
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(saved.nextAttemptAt - now).toBe(30 * 60_000);
+    now += 60_000;
+    await new ClaudeUsageRecovery(deps).recover('token-C');
+    expect(run).toHaveBeenCalledTimes(2);
+    now = saved.nextAttemptAt;
+    await new ClaudeUsageRecovery(deps).recover('token-C');
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(saved.nextAttemptAt - now).toBe(30 * 60_000);
+  });
+
   it('never recovers a different macOS Keychain namespace', () => {
     expect(buildClaudeUsageRecoveryEnv({ CLAUDE_CONFIG_DIR: '/custom/claude' }, 'darwin', '/users/test')).toBeNull();
     expect(buildClaudeUsageRecoveryEnv({}, 'darwin', '/users/test')).not.toBeNull();
