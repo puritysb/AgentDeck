@@ -23,6 +23,7 @@ import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
 import { PassiveSessionObserver } from './passive-observer.js';
+import { HookClaudeSessions } from './hook-claude-sessions.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
 import { SubagentTimelineTracker } from './subagent-timeline.js';
@@ -1637,6 +1638,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Codex sessions known only from `codex_*` hooks — the backstop for when the
   // process scan can't see one (lsof timeout, no rollout held open).
   const hookCodexSessions = new HookCodexSessions();
+  const hookClaudeSessions = new HookClaudeSessions();
   // Who last moved the hub's global state machine — see hub-state-identity.ts.
   const hubDriver = new HubStateDriverTracker();
   // Codex Desktop ambient-suggestions threads — see codex-ambient-hooks.ts.
@@ -3197,6 +3199,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             : JSON.stringify({ received: true }));
           return;
         }
+        // After child-only filtering and before any state-machine broadcast.
+        if (hookClaudeSessions.note(eventName, json)) core.maybeBroadcastSessionsList();
         const hookTimelineEntry = claudeHookTimelineEntry(eventName, json);
         if (hookTimelineEntry) core.bridgeTimeline.addEntry(hookTimelineEntry);
         // Hook-derived Codex session rows. Placed after the child-hook return so
@@ -4950,9 +4954,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // synthesize a `codex-app` row for any thread the process scan missed —
     // Swift's only Codex-app source, here a second opinion on top of the
     // observer. See bridge/src/codex-otel.ts.
+    // Claude hooks correct only existing row state/tool before awaiting wins.
+    const passive = hookClaudeSessions.applyTo(passiveSessionObserver.collect(sessions));
     const observed = applyAwaitingOverlayToObserved(
       hookOpenCodeSessions.applyTo(
-        hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions))),
+        hookCodexSessions.applyTo(codexOtel.applyTo(passive)),
       ),
     )
       .map((s) => {

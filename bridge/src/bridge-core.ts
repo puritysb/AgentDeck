@@ -218,6 +218,7 @@ export class BridgeCore {
   private intervals: ReturnType<typeof setInterval>[] = [];
   private timeouts: ReturnType<typeof setTimeout>[] = [];
   private lastSessionsListBroadcast = 0;
+  private sessionsListTrailingTimer: ReturnType<typeof setTimeout> | undefined;
   private lastSessionsListEvent: BridgeEvent | null = null;
   private shutdownInProgress = false;
   private shutdownCallbacks: (() => void | Promise<void>)[] = [];
@@ -953,10 +954,20 @@ export class BridgeCore {
 
   /** Debounced sessions list broadcast (for state_changed handler) */
   maybeBroadcastSessionsList(): void {
+    if (this.shutdownInProgress || !this.hasClients()) return;
     const now = Date.now();
-    if (now - this.lastSessionsListBroadcast > 2000 && this.hasClients()) {
+    const remaining = 2000 - (now - this.lastSessionsListBroadcast);
+    if (remaining <= 0) {
+      clearTimeout(this.sessionsListTrailingTimer);
+      this.sessionsListTrailingTimer = undefined;
       this.lastSessionsListBroadcast = now;
       this.broadcastSessionsList().catch(() => {});
+    } else if (!this.sessionsListTrailingTimer) {
+      this.sessionsListTrailingTimer = setTimeout(() => {
+        this.sessionsListTrailingTimer = undefined;
+        this.maybeBroadcastSessionsList();
+      }, remaining);
+      this.sessionsListTrailingTimer.unref?.();
     }
   }
 
@@ -1189,6 +1200,8 @@ export class BridgeCore {
       return;
     }
     this.shutdownInProgress = true;
+    clearTimeout(this.sessionsListTrailingTimer);
+    this.sessionsListTrailingTimer = undefined;
 
     log('Shutting down...');
     const hardExitTimer = setTimeout(() => {

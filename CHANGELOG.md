@@ -47,6 +47,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Node daemon: merge Claude lifecycle hooks into the matching observed session's state and current tool; suppress ended sessions and deliver the final roster update after rapid changes (#367). Feed and WebSocket clients share the same snapshot; no protocol or firmware change.
+
 - ESP32: compact horizontal usage gauges on 86 Box, IPS 3.5 and round AMOLED; visible GLM usage on IPS 10 and NM-EPD-420; proportional card fills on TTGO; five-window layouts without clipping or array overflow on T-Display Pro.
 - ESP32 firmware delivery remains deferred while IPS10 work is in progress.
 
