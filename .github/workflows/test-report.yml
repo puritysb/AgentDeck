@@ -176,7 +176,7 @@ jobs:
           mkdir -p _site/media
           cp docs/media/*.jpg _site/media/ 2>/dev/null || true
           # Required real-app motion demo for the overview (fail on missing media).
-          cp docs/media/aquarium-demo.mp4 docs/media/aquarium-preview.gif _site/media/
+          cp docs/media/aquarium-demo.mp4 docs/media/aquarium-preview.gif docs/media/aquarium-story.*.vtt _site/media/
           cp docs/media/macos-dashboard.png _site/media/ 2>/dev/null || true
           cp docs/media/android-eink.png _site/media/ 2>/dev/null || true
           cp docs/media/tui-dashboard.png _site/media/ 2>/dev/null || true

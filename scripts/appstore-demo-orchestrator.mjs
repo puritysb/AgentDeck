@@ -16,12 +16,15 @@ import process from 'node:process';
 import { readFileSync } from 'node:fs';
 import { WebSocketServer } from '../bridge/node_modules/ws/wrapper.mjs';
 import { createServer } from 'node:http';
+import { aquariumStory } from './aquarium-demo-story.mjs';
 
-const CYCLE_MS = 30_000;
+const options = parseArgs(process.argv.slice(2));
+
+const CYCLE_MS = options.story ? aquariumStory.durationMs : 30_000;
 const DEFAULT_PORT = Number(process.env.AGENTDECK_DEMO_PORT || 9220);
 const productVersion = readFileSync(new URL('../VERSION', import.meta.url), 'utf8').trim();
 
-const phases = [
+const storePhases = [
   // Cold open: a connected daemon with no sessions yet. This is the frame the
   // recording starts on, and it is what a new user actually sees before the
   // first agent runs.
@@ -177,6 +180,8 @@ const phases = [
   },
 ];
 
+const phases = options.story ? aquariumStory.phases : storePhases;
+
 const agents = {
   claude: {
     id: 'demo-claude',
@@ -276,6 +281,7 @@ function parseArgs(argv) {
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === '--once') options.once = true;
+    else if (arg === '--story') options.story = true;
     else if (arg === '--port') options.port = Number(rest[++index]);
     else if (arg === '--epoch-ms') options.epochMs = Number(rest[++index]);
     else if (arg === '--agent') options.agent = rest[++index];
@@ -284,6 +290,7 @@ function parseArgs(argv) {
     else if (arg === '--relay-usage') options.relayUsage = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
+  if (options.story && command !== 'serve') throw new Error('--story supports serve only');
   return options;
 }
 
@@ -478,7 +485,15 @@ function eventsForPhase(index, cycleStartedAt, includeHistory, relayUsage = fals
     // field leaves the previous focus in place, so the timeline would stay
     // filtered to whichever session was focused last
     // (`AgentStateHolder.swift`: `if let id = e.focusedSessionId { … isEmpty ? nil : id }`).
-    : { state: 'idle', focusedSessionId: '' };
+    : options.story && Object.keys(phase.sessions).length
+      ? (() => {
+          // An unfocused hub still identifies its primary session. Otherwise
+          // native clients correctly synthesize a legacy anonymous primary.
+          const key = Object.keys(phase.sessions)[0];
+          const primary = sessionInfo(key, phase.sessions[key]);
+          return { ...primary, sessionId: primary.id, focusedSessionId: '' };
+        })()
+      : { state: 'idle', focusedSessionId: '' };
 
   const events = [
     {
@@ -720,7 +735,6 @@ async function replayTerminal(options) {
   }
 }
 
-const options = parseArgs(process.argv.slice(2));
 if (options.command === 'serve') await serve(options);
 else if (options.command === 'terminal') await replayTerminal(options);
 else throw new Error(`Unknown command: ${options.command}`);

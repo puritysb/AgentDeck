@@ -23,13 +23,41 @@ the overview plays `docs/media/aquarium-demo.mp4` with native controls and
 `aquarium-ipad.jpg` illustrates the Apple guide. The Pages assembly copies these
 assets explicitly (JPEGs use the existing photo copy step).
 
-These captures were made on 2026-09-23 with the native apps from `ce3a7127`, using
-six synthetic sessions and no private project or timeline data. The 18-second
-Android recording shows normal view, viewing mode, and return. System bars were cropped and the recorder’s aspect ratio was corrected to
-match the device; no app graphics were composited or retouched. The GIF is a six-second
-excerpt at 10 fps; the MP4 is encoded as H.264 at 30 fps without motion interpolation. Keep the public
-copy in English, with optional Korean/Japanese landing-page translations. Store
-links should stay evergreen; preserve measured submission receipts in release
-records rather than repeating temporary review states in installation copy.
+The hero was re-recorded on 2026-09-23 in the native iPad app (1.5.0 UI,
+source `6ba97043`; the app sources are unchanged at `cea760b6`). It uses five
+fictional sessions: implement session search, write regression tests, check
+accessibility, document the feature, and reproduce an empty-result report.
+Sessions arrive one at a time; an unfocused timeline interleaves edits, tests,
+permission waiting, and completion. Approval is simulated in the source terminal,
+not presented as an action performed by the dashboard.
+
+Reproduce the feed with
+`node scripts/appstore-demo-orchestrator.mjs serve --story --port 9231`.
+[`scripts/aquarium-demo-story.mjs`](../scripts/aquarium-demo-story.mjs) owns the
+46-second cycle. The existing 30-second App Store scenario remains the default.
+Use a Debug simulator build with `-AgentDeckScreenshotURL ws://127.0.0.1:9231`
+and `-prefs.dashboardType aquarium3d`, in landscape. Capture with
+`xcrun simctl io <device-id> recordVideo --codec=h264 <output.mov>` and stop with
+SIGINT. Keep the fixture loopback-only and out of production daemons.
+
+The published MP4 is **2752 × 2000, 30 fps, 42.8 seconds**, H.264 CRF 18,
+`yuv420p`, with fast-start metadata (about 20 MB). The source display is
+2752 × 2064; only the 64-pixel system bar was cropped. There is no upscaling,
+motion interpolation, retouching, or composited app UI. The cut begins after the
+first session arrives and ends with all five idle. The eight-second GIF excerpt
+starts three seconds into the MP4, runs at native speed and 8 fps, and is scaled
+to 720 pixels wide. The poster is extracted at 21 seconds. The Apple guide's
+separate `aquarium-ipad.jpg` remains the earlier capture.
+
+English captions are on by default; Korean and Japanese tracks are selectable
+in the native player. The three `aquarium-story.*.vtt` files describe the story
+without audio. The overview retains controls, full screen, and `preload="none"`;
+it does not fetch the 20 MB video until requested. README uses the lightweight
+GIF linked to this player because inline MP4 playback is not portable across
+GitHub Markdown surfaces.
+
+Keep public copy in English, with optional Korean/Japanese translations. Store
+links stay evergreen; measured submission receipts belong in release records,
+not temporary review-status copy in installation instructions.
 
 See [testing.md](testing.md) for the full testing reference.

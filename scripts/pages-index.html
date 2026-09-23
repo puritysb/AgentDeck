@@ -207,10 +207,12 @@
 
   /* ── Hero proof shot ── */
   .hero-shot {
+    scroll-margin-top: var(--s-20);
     margin: var(--s-12) 0 0; border-radius: var(--r-2xl); overflow: hidden;
     background: var(--ink-900); box-shadow: var(--sh-card);
   }
-  .hero-shot video { display: block; width: 100%; height: auto; aspect-ratio: 180 / 103; }
+  .hero-shot video { display: block; width: 100%; height: auto; aspect-ratio: 172 / 125; }
+  .hero-shot video::cue { font-family: var(--font-sans); font-size: clamp(12px, 1.5vw, 20px); color: var(--tide-50); background: var(--ink-900); }
   .hero-shot img { display: block; width: 100%; aspect-ratio: 3/2; object-fit: cover; }
   .hero-shot figcaption {
     padding: var(--s-3) var(--s-4); font-size: 13px; color: var(--ink-500);
@@ -299,11 +301,14 @@
       <a class="btn btn-ghost" href="demo/" data-i18n="cta.demo">Try the live preview</a>
     </div>
     <figure id="aquarium" class="hero-shot">
-      <video controls playsinline preload="none" poster="media/aquarium-dashboard.jpg" width="1440" height="824" aria-describedby="aquarium-caption">
+      <video controls playsinline preload="none" poster="media/aquarium-dashboard.jpg" width="2752" height="2000" aria-describedby="aquarium-caption">
         <source src="media/aquarium-demo.mp4" type="video/mp4">
+        <track kind="captions" src="media/aquarium-story.en.vtt" srclang="en" label="English" default>
+        <track kind="captions" src="media/aquarium-story.ko.vtt" srclang="ko" label="한국어">
+        <track kind="captions" src="media/aquarium-story.ja.vtt" srclang="ja" label="日本語">
         <a href="media/aquarium-demo.mp4" data-i18n="video.download">Download the aquarium demo</a>
       </video>
-      <figcaption id="aquarium-caption" data-i18n="video.caption">The native Android aquarium, recorded with sample sessions. Tap empty water to hide the panels and move closer; tap again to return. Silent video, 18 seconds.</figcaption>
+      <figcaption id="aquarium-caption" data-i18n="video.caption">One coding task, five sessions: watch agents join, edit, test, wait for permission, and finish as the timeline fills. Recorded in the native iPad app with fictional sample activity. Silent, 43 seconds, 2752 × 2000; expand to full screen for detail.</figcaption>
     </figure>
     <section id="get-agentdeck" class="get-started" aria-labelledby="get-agentdeck-title">
       <div class="get-started-head">
@@ -498,7 +503,7 @@
         "stat.agents": "공통 세션 모델",
         "stat.local": "컴퓨터에서 실행하는 허브",
         "video.download": "수족관 데모 다운로드",
-        "video.caption": "샘플 세션으로 촬영한 실제 Android 수족관입니다. 빈 수면을 탭하면 패널이 사라지며 가까워지고, 다시 탭하면 돌아옵니다. 무음 영상, 18초.",
+        "video.caption": "하나의 코딩 작업에 다섯 세션이 합류해 수정·테스트·권한 대기·완료로 이어지고, 타임라인이 채워집니다. 가상의 샘플 작업으로 실제 iPad 앱을 촬영했습니다. 무음, 43초, 2752 × 2000. 전체 화면으로 자세히 보세요.",
         "aquarium.h": "에이전트가 한눈에",
         "aquarium.p": "화면과 작업 방식에 맞는 대시보드를 선택하세요. 기존 화면 설정은 그대로 유지됩니다.",
         "view.ci": "네이티브 수족관",
@@ -556,7 +561,7 @@
         "stat.agents": "共通セッションモデル",
         "stat.local": "コンピューター上のハブ",
         "video.download": "水槽デモをダウンロード",
-        "video.caption": "サンプルセッションを使った実際のAndroidアプリです。空いている水面をタップするとパネルが消えて近づき、もう一度タップすると戻ります。無音、18秒。",
+        "video.caption": "ひとつの開発タスクに5つのセッションが参加。編集・テスト・許可待ち・完了の流れがタイムラインに並びます。架空のサンプル作業を実際のiPadアプリで撮影。無音、43秒、2752 × 2000。全画面で詳細をご覧ください。",
         "aquarium.h": "エージェントをひと目で",
         "aquarium.p": "画面と作業スタイルに合うダッシュボードを選べます。既存の表示設定は保持されます。",
         "view.ci": "ネイティブ水槽",
