@@ -1,14 +1,16 @@
 # Apple 1.5.0 store submission
 
-Status (2026-09-23, 14:18 KST): macOS and iOS **1.5.0 (7301)** were withdrawn
-from Waiting for Review to refresh their App Preview videos. All replacement
-uploads have been accepted by the media manager; final processing/poster checks
-and resubmission are pending. The Mac automatically locked during the last
-checks. Neither version is currently claimed submitted or live.
+Status (2026-09-23): macOS and iOS **1.5.0 (7301)** were resubmitted after
+refreshing App Previews. Both portals confirmed **Waiting for Review**, with
+automatic release after approval. macOS was resubmitted at approximately
+14:38 KST and iOS at 14:42 KST. Neither version is yet claimed live.
+
+- [Current macOS review receipt](https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/b81fa81f-5eb2-4ee8-af85-1df0c5f00c36)
+- [Current iOS review receipt](https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/8aeb9c21-f569-4a90-9ce3-b285e153b49c)
 
 Build artifacts remain those from [Apple release run 35805428128](https://github.com/puritysb/AgentDeck/actions/runs/35805428128),
 commit `4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. No binary or build-number change
-is needed for this media correction. Preserve automatic release after approval.
+is needed for this media correction. Automatic release after approval was verified on both version pages.
 
 Historical receipts, withdrawn for the media refresh:
 
@@ -22,9 +24,9 @@ Korean and Japanese storefront. Localized screenshots and metadata are retained.
 
 | Platform | Upload scope | Processing / visual verification |
 |---|---|---|
-| macOS | English retained; Korean and Japanese replaced | English and Korean processed; latest 3D poster verified. Japanese final check pending. |
-| iPhone 6.5-inch | English, Korean, Japanese replaced | All uploads accepted; final processing/poster checks pending. |
-| iPad 13-inch | English, Korean, Japanese replaced | All uploads accepted; final processing/poster checks pending. |
+| macOS | English retained; Korean and Japanese replaced | All three locales processed; latest 3D posters visually verified. |
+| iPhone 6.5-inch | English, Korean, Japanese replaced | All three locales processed; latest 3D posters visually verified. |
+| iPad 13-inch | English, Korean, Japanese replaced | All three locales processed; latest 3D posters visually verified. |
 
 Validation: the existing Release archive gates passed for build 7301. A fresh
 Debug Simulator build of the current Apple source succeeded for mobile captures.
