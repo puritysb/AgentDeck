@@ -15,12 +15,14 @@ not the current submission package.
 
 ## App Preview videos
 
-The existing upload files are `previews/<platform>/agentdeck-preview.mp4` for
+The upload files are `previews/<platform>/agentdeck-preview.mp4` for
 `macOS`, `iPhone` and `iPad`. The macOS cut includes the aquarium, Collaboration
-and Dashboard settings. The mobile cuts show the standard dashboard. These
-files need a final visual freshness check before the 1.5.0 submission; an
-existing file or passed format validator does not establish that its graphics
-match the final build.
+and Dashboard settings. The mobile cuts were recaptured on 2026-09-23 from
+the current 1.5.0 Apple source and show the 3D aquarium, growing session roster,
+attention request and completion. Each mobile cut is 25 seconds. These English
+UI recordings are the canonical videos for all storefront languages; localized
+screenshots and metadata remain available. See the delivery record for actual
+portal upload and submission status.
 
 Use 1920×1080 for Mac, 886×1920 for iPhone and 1200×1600 for portrait iPad.
 Previews must be 15–30 seconds, H.264 High Profile Level 4.0, progressive,

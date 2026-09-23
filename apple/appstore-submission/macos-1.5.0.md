@@ -1,13 +1,43 @@
 # Apple 1.5.0 store submission
 
-Status (2026-09-23): macOS and iOS **1.5.0 (7301)** are submitted for review with automatic release after approval. Both portals report Waiting for Review. Build artifacts came from [Apple release run 35805428128](https://github.com/puritysb/AgentDeck/actions/runs/35805428128), commit `4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. Neither version is yet claimed live.
+Status (2026-09-23, 14:18 KST): macOS and iOS **1.5.0 (7301)** were withdrawn
+from Waiting for Review to refresh their App Preview videos. All replacement
+uploads have been accepted by the media manager; final processing/poster checks
+and resubmission are pending. The Mac automatically locked during the last
+checks. Neither version is currently claimed submitted or live.
 
-- [macOS review receipt](https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/b3c5da04-443f-4562-9873-3e5c48219104)
-- [iOS review receipt](https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/ed244930-0283-4129-acb4-b958b9c5a7ab)
+Build artifacts remain those from [Apple release run 35805428128](https://github.com/puritysb/AgentDeck/actions/runs/35805428128),
+commit `4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. No binary or build-number change
+is needed for this media correction. Preserve automatic release after approval.
 
-English promotional copy and descriptions now explain the optional 3D aquarium. English, Korean and Japanese release notes were saved for both platforms. The macOS English preview was replaced with a fresh aquarium capture followed by Collaboration and settings; existing localized and iOS media remain. Review notes explain bundled assets, retained preferences and the iOS 18 requirement.
+Historical receipts, withdrawn for the media refresh:
 
-Validation: Release archive and submission-package gates passed. The refreshed video is 1920×1080, 30 fps, H.264 High level 4.0 with AAC, 28.7 seconds and an average bitrate of **10,935,065 bps**. An initial 8.46 Mbps encode failed the local 10–12 Mbps target; it was re-encoded and the complete validator passed before replacing the portal preview and resubmitting the unchanged 7301 build.
+- [macOS previous receipt](https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/b3c5da04-443f-4562-9873-3e5c48219104)
+- [iOS previous receipt](https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/ed244930-0283-4129-acb4-b958b9c5a7ab)
+
+English promotional copy and descriptions explain the optional 3D aquarium.
+English, Korean and Japanese release notes were saved for both platforms.
+The current English UI video is now uploaded to each platform's English,
+Korean and Japanese storefront. Localized screenshots and metadata are retained.
+
+| Platform | Upload scope | Processing / visual verification |
+|---|---|---|
+| macOS | English retained; Korean and Japanese replaced | English and Korean processed; latest 3D poster verified. Japanese final check pending. |
+| iPhone 6.5-inch | English, Korean, Japanese replaced | All uploads accepted; final processing/poster checks pending. |
+| iPad 13-inch | English, Korean, Japanese replaced | All uploads accepted; final processing/poster checks pending. |
+
+Validation: the existing Release archive gates passed for build 7301. A fresh
+Debug Simulator build of the current Apple source succeeded for mobile captures.
+The complete submission-package validator passed all three final videos;
+[storyboard and encode hashes](APP_PREVIEW_STORYBOARD.md) record their provenance.
+Mobile videos are actual 25-second 3D aquarium captures; macOS is the current
+28.7-second aquarium, Collaboration and settings cut. Review notes explain
+bundled assets, retained preferences and the iOS 18 requirement.
+
+Replacing App Previews requires an editable version state. Withdrawal and
+resubmission may delay review; no queue position or completion date is promised.
+Apple states that preview processing may take up to 24 hours. See
+[Apple upload guidance](https://developer.apple.com/help/app-store-connect/manage-app-information/upload-app-previews-and-screenshots).
 
 Copy-ready localized fields: [macOS metadata](macos-1.5.0-metadata.json) and [iOS metadata](ios-1.5.0-metadata.json). The sections below retain the preparation history; the dated status above is the current delivery state.
 
