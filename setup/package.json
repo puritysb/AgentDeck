@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/setup",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "engines": {
     "node": "22.x || 24.x || 26.x"
   },

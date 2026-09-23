@@ -34,7 +34,7 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.jks
 
-      - name: Build release APK
+      - name: Build sideload APK (wireless updates enabled)
         working-directory: android
         env:
           ANDROID_KEYSTORE_PATH: /tmp/release.jks

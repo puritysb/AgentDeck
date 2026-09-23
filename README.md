@@ -381,9 +381,9 @@ versions is not required. Use each channel for its current download and update h
 
 | Artifact | Install / update | Release tag |
 |---|---|---|
-| CLI + daemon | [npm setup](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v*` |
+| CLI + daemon | [npm setup](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.4.1` |
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497) | `apple-v*` |
-| Android | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) or [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v*` |
+| Android | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) or [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.5.0` |
 | Stream Deck | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141) | `ulanzi-v*` |
 | ESP32 firmware | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) or [GitHub Releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |

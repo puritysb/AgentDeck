@@ -48,7 +48,14 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 ## Unreleased
 
 - ESP32: compact horizontal usage gauges on 86 Box, IPS 3.5 and round AMOLED; visible GLM usage on IPS 10 and NM-EPD-420; proportional card fills on TTGO; five-window layouts without clipping or array overflow on T-Display Pro.
-- iDotMatrix: display the fresh GLM credit quota in both Node and native macOS renderers.
+- ESP32 firmware delivery remains deferred while IPS10 work is in progress.
+
+## 2026-09-23 — npm 1.4.1
+
+- Recover Claude usage authorization more promptly: retry the first recovery after one minute, retain bounded backoff, and record the outcome of each attempt.
+- Honor the configured `AGENTDECK_CLAUDE_CLI` executable during recovery, resolve relative paths, and reject unsupported Windows shell shims safely.
+- Show fresh GLM credit-quota usage on compact iDotMatrix displays connected to the Node daemon; stale readings remain hidden.
+- Publish hooks, shared, bridge and setup together at 1.4.1. Existing 1.x apps and device firmware remain compatible; no ESP32 firmware or deck-plugin update is included.
 
 ## 2026-09-23 — Android 1.5.0
 
