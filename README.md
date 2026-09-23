@@ -23,7 +23,7 @@ keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
 <p align="center">
-  <a href="https://puritysb.github.io/AgentDeck/#aquarium"><img src="docs/media/aquarium-preview.gif" width="820" alt="Native 3D aquarium in motion — agent creatures and schooling fish; click to watch the full video"></a>
+  <a href="https://puritysb.github.io/AgentDeck/#aquarium"><img src="docs/media/aquarium-preview.gif" width="720" alt="Native 3D aquarium in motion — agent creatures and schooling fish; click to watch the full video"></a>
 </p>
 
 <p align="center">
