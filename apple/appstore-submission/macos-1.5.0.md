@@ -1,6 +1,13 @@
-# macOS 1.5.0 release preparation
+# Apple 1.5.0 store submission
 
-Status (2026-09-23): macOS and iOS 1.5.0 build **7301** uploaded successfully in [Apple release run 35805428128](https://github.com/puritysb/AgentDeck/actions/runs/35805428128), from commit `4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. Release archive and submission-package gates passed. Portal build selection, refreshed store media and final review submission remain pending. Neither platform is claimed submitted or live.
+Status (2026-09-23): macOS and iOS **1.5.0 (7301)** are submitted for review with automatic release after approval. Both portals report Waiting for Review. Build artifacts came from [Apple release run 35805428128](https://github.com/puritysb/AgentDeck/actions/runs/35805428128), commit `4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. Neither version is yet claimed live.
+
+- [macOS review receipt](https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/b3c5da04-443f-4562-9873-3e5c48219104)
+- [iOS review receipt](https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/ed244930-0283-4129-acb4-b958b9c5a7ab)
+
+English promotional copy and descriptions now explain the optional 3D aquarium. English, Korean and Japanese release notes were saved for both platforms. The macOS English preview was replaced with a fresh aquarium capture followed by Collaboration and settings; existing localized and iOS media remain. Review notes explain bundled assets, retained preferences and the iOS 18 requirement.
+
+Validation: Release archive and submission-package gates passed. The refreshed video is 1920×1080, 30 fps, H.264 High level 4.0 with AAC, 28.7 seconds and an average bitrate of **10,935,065 bps**. An initial 8.46 Mbps encode failed the local 10–12 Mbps target; it was re-encoded and the complete validator passed before replacing the portal preview and resubmitting the unchanged 7301 build.
 
 Copy-ready localized fields: [macOS metadata](macos-1.5.0-metadata.json) and [iOS metadata](ios-1.5.0-metadata.json). The sections below retain the preparation history; the dated status above is the current delivery state.
 

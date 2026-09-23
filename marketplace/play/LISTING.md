@@ -8,7 +8,7 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
-## 1.5.0 preparation (2026-09-23)
+## 1.5.0 submitted (2026-09-23)
 
 The signed production AAB is **1.5.0 (21)**, built from commit
 `4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. Local `bundleRelease` and signature
@@ -17,14 +17,22 @@ verification passed. SHA-256:
 Copy-ready English, Korean and Japanese updates are in
 [release-notes.json](1.5.0/release-notes.json).
 
-The console was inspected before upload: it still contained an **unsubmitted
-1.5.0 (20)** production change. Replace that draft with **21** before sending
-changes for review. Build 21 is not yet verified uploaded, submitted or live.
-Preserve the current country coverage and automatic publishing setting.
-The actual-device [3D aquarium video](../../docs/media/aquarium-demo.mp4) and
-[tablet screenshot](../../docs/media/aquarium-dashboard.jpg) are available for
-content preparation; Play's promotional-video field requires a YouTube URL,
-so the MP4 must not be entered as that field's URL.
+Uploaded **21**, replacing the unsubmitted **20** production draft, and confirmed
+the final send-for-review action. The publishing overview now lists **Changes in
+review**: production 21, the English full description, and two new 10-inch tablet
+screenshots. Automatic checks for the added listing content were still running
+at receipt time; Play says review forwarding follows successful completion.
+The existing 177-country coverage, full rollout and automatic publishing remain.
+Version 21 is submitted, not yet verified live.
+
+New actual-device captures show the [3D aquarium](1.5.0/tablet10-01-aquarium.png)
+and [input request](1.5.0/tablet10-02-attention.png), using synthetic sessions on
+the Lenovo tablet. The English description explains layout choice and tap-to-view
+mode. The [public aquarium video](../../docs/media/aquarium-demo.mp4) remains on
+GitHub Pages; no new YouTube promotional-video URL was added to Play.
+
+The console also verified **1.4.0 (18)** as available on Google Play, published
+2026-09-21 at 22:16 KST. Older status entries below are historical observations.
 
 ## 1.4.0 submitted (2026-09-21)
 
