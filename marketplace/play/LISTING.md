@@ -8,6 +8,24 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## 1.5.0 preparation (2026-09-23)
+
+The signed production AAB is **1.5.0 (21)**, built from commit
+`4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. Local `bundleRelease` and signature
+verification passed. SHA-256:
+`05b5ecddca0daaab25282355c4ef82b46c0875ff112106b7d1479053548803bd`.
+Copy-ready English, Korean and Japanese updates are in
+[release-notes.json](1.5.0/release-notes.json).
+
+The console was inspected before upload: it still contained an **unsubmitted
+1.5.0 (20)** production change. Replace that draft with **21** before sending
+changes for review. Build 21 is not yet verified uploaded, submitted or live.
+Preserve the current country coverage and automatic publishing setting.
+The actual-device [3D aquarium video](../../docs/media/aquarium-demo.mp4) and
+[tablet screenshot](../../docs/media/aquarium-dashboard.jpg) are available for
+content preparation; Play's promotional-video field requires a YouTube URL,
+so the MP4 must not be entered as that field's URL.
+
 ## 1.4.0 submitted (2026-09-21)
 
 Version **1.4.0 (18)** is submitted for a full production rollout. Console

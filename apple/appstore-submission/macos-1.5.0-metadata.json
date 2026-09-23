@@ -1,0 +1,13 @@
+{
+  "version": "1.5.0",
+  "platform": "macos",
+  "whatsNew": {
+    "en-US": "Choose 3D aquarium · Preview in Dashboard settings. Familiar agent characters work in a planted habitat with reactive schools of fish and a wandering snail. Crowded scenes prioritize selected sessions and requests for input while retaining the full session list. Collaboration offers clearer related-session navigation and recent task history. Existing dashboard choices are preserved. Also improves GLM usage on connected iDotMatrix devices.",
+    "ko": "대시보드 설정에서 3D 수족관 미리보기를 선택하세요. 익숙한 에이전트 캐릭터와 반응하는 물고기 떼, 작은 달팽이가 수중 환경에서 움직입니다. 세션이 많아도 선택한 세션과 입력 요청을 우선 표시하며 전체 세션 목록은 유지합니다. Collaboration의 관련 세션 탐색과 최근 작업 기록을 개선했습니다. 기존 화면 설정은 유지되며, 연결된 iDotMatrix의 GLM 사용량 표시도 개선했습니다.",
+    "ja": "ダッシュボード設定で3D水族館のプレビューを選べます。おなじみのキャラクター、反応する魚の群れ、小さなカタツムリが水中で動きます。セッションが多い場合は選択中のセッションと入力待ちを優先し、全セッションの一覧も保持します。Collaborationの関連セッションへの移動と最近のタスク履歴を改善しました。既存の画面設定は維持され、接続したiDotMatrixのGLM使用量表示も改善しました。"
+  },
+  "promotionalText": {
+    "en-US": "Keep an eye on your AI coding sessions in an optional 3D aquarium, with familiar characters and reactive schools of fish. Your dashboard, your choice."
+  },
+  "reviewerSupplement": "Optional 3D aquarium: Settings > Dashboard > Dashboard type on Mac; Settings > Display panels > Dashboard type on iOS. All assets are bundled. No new permissions or downloads. Existing dashboard choices are preserved. Preview media uses synthetic sessions."
+}

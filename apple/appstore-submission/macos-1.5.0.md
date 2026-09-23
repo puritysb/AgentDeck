@@ -1,6 +1,8 @@
 # macOS 1.5.0 release preparation
 
-Status: local release preparation and branch audit in progress. Native crowd bounds are implemented; final device and Release archive checks remain. Not uploaded, submitted, or live.
+Status (2026-09-23): macOS and iOS 1.5.0 build **7301** uploaded successfully in [Apple release run 35805428128](https://github.com/puritysb/AgentDeck/actions/runs/35805428128), from commit `4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. Release archive and submission-package gates passed. Portal build selection, refreshed store media and final review submission remain pending. Neither platform is claimed submitted or live.
+
+Copy-ready localized fields: [macOS metadata](macos-1.5.0-metadata.json) and [iOS metadata](ios-1.5.0-metadata.json). The sections below retain the preparation history; the dated status above is the current delivery state.
 
 ## Scope
 
