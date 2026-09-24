@@ -58,9 +58,10 @@ Before a future release:
 - Reassess the final scope and version numbers if more improvements land.
 - Rebuild signed artifacts if Apple executable/build inputs change; the existing
   receipt covers only its recorded source commit.
-- Complete the exact-release-commit npm installed three-mode acceptance in
-  [RELEASING.md](../../RELEASING.md), preserving and restoring the development
-  daemon and Stream Deck runtime.
+- The installed three-mode daemon acceptance passed for candidate `1a40fe5c`;
+  see the [measured receipt](../../docs/devlog/entries/2026-09-24-candidate-daemon-acceptance.md).
+  Repeat relevant acceptance if executable inputs change before the final release.
+  The original development daemon, app and Stream Deck runtime were restored.
 - Finish the Elgato processed-package physical encoder gate in #349 when the owner
   can operate the device; retain the latest development plugin in the meantime.
 - Refresh per-platform store state; Ulanzi requires renewed sign-in. External

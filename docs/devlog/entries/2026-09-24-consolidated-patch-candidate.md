@@ -39,9 +39,10 @@ submission records.
 
 ## Delivery holds
 
-- Final npm tarballs must come from the eventual exact release commit and pass
-  the installed CLI-only, Swift-only and coexistence/recovery gate described in
-  [RELEASING.md](RELEASING.md). Earlier #370 A/B evidence is retained separately.
+- Candidate `1a40fe5c` passed the installed CLI-only, Swift-only and coexistence/
+  recovery gate; see the [acceptance receipt](docs/devlog/entries/2026-09-24-candidate-daemon-acceptance.md).
+  Revalidate relevant acceptance if executable inputs change before release.
+  Earlier #370 A/B evidence is retained separately.
 - Official Elgato 1.4 processed-package physical encoder verification remains
   open in #349. Keep the verified development plugin installed until the owner
   is available for physical rotation, press and touch interactions; restore and
