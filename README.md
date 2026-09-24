@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/media/agentdeck-icon.png" width="160" alt="AgentDeck icon — aquarium dome with octopus and crayfish on a Stream Deck control surface">
+  <img src="docs/media/agentdeck-icon.png" width="96" alt="AgentDeck icon — aquarium dome with octopus and crayfish on a Stream Deck control surface">
 </p>
 
 # AgentDeck
@@ -15,7 +15,7 @@
   <a href="https://puritysb.github.io/AgentDeck/"><img src="https://img.shields.io/badge/website-puritysb.github.io%2FAgentDeck-1f6157.svg" alt="Website"></a>
 </p>
 
-**Your coding agents, at a glance.**
+**Your coding agents, at a glance. Across your desk.**
 
 AgentDeck shows which agents are working, waiting for you, or finished—across
 projects and tools. Watch them in a living aquarium, follow the timeline, and
@@ -23,8 +23,14 @@ keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
 <p align="center">
-  <a href="https://puritysb.github.io/AgentDeck/#aquarium"><img src="docs/media/aquarium-preview.gif" width="720" alt="Native 3D aquarium in motion — agent creatures and schooling fish; click to watch the full video"></a>
+  <a href="docs/media/setup-full.jpg"><img src="docs/media/setup-full.jpg" width="900" alt="AgentDeck running across a real desk: terminal and desktop dashboards, tablets, Stream Deck and Ulanzi controls, e-ink readers, ESP32 panels, and LED matrices"></a>
 </p>
+
+**Start with what you already have. No extra hardware required.**
+Use your Mac or terminal on its own, then add the displays that fit your desk.
+
+[**Get started →**](#start-here) · [**Choose your view ↓**](#choose-your-view) ·
+[Watch the hardware desk tour](https://youtu.be/s-f8ICBcC4o)
 
 <p align="center">
   <a href="https://puritysb.github.io/AgentDeck/#aquarium"><strong>▶ Watch the aquarium demo</strong></a>
@@ -38,7 +44,96 @@ Stream Deck, e-ink reader, or small desk display.
   <a href="https://puritysb.github.io/AgentDeck/design-system/">Design system</a>
 </p>
 
+## Choose your view
+
+One local daemon connects your sessions to these screens and controls.
+Pick one or use several together. Click any image to see it at full size.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/media/streamdeck-plus.jpg"><img src="docs/media/streamdeck-plus.jpg" width="440" alt="Stream Deck+ running AgentDeck — Live session keys and physical controls at your fingertips."></a><br>
+<b>Stream Deck+</b><br>
+Live session keys and physical controls at your fingertips.<br>
+<a href="docs/streamdeck-layout.md">Setup guide →</a>
+</td>
+<td width="50%" valign="top">
+<a href="docs/media/tui-dashboard.png"><img src="docs/media/tui-dashboard.png" width="440" alt="Terminal / TUI running AgentDeck — Sessions, a braille aquarium, usage, and timeline. No extra hardware."></a><br>
+<b>Terminal / TUI</b><br>
+Sessions, a braille aquarium, usage, and timeline. No extra hardware.<br>
+<a href="docs/tui-dashboard.md">Setup guide →</a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/media/aquarium-dashboard.jpg"><img src="docs/media/aquarium-dashboard.jpg" width="440" alt="Mac running AgentDeck — A native dashboard beside your work, with its own local daemon."></a><br>
+<b>Mac</b><br>
+A native dashboard beside your work, with its own local daemon.<br>
+<a href="docs/apple-app.md">Setup guide →</a>
+</td>
+<td width="50%" valign="top">
+<a href="docs/media/tablets-aquarium-desk.jpg"><img src="docs/media/tablets-aquarium-desk.jpg" width="440" alt="iPhone / iPad running AgentDeck — The native aquarium on a companion screen, alongside the rest of your desk."></a><br>
+<b>iPhone / iPad</b><br>
+The native aquarium on a companion screen, alongside the rest of your desk.<br>
+<a href="docs/apple-app.md">Setup guide →</a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/media/android-tablet.jpg"><img src="docs/media/android-tablet.jpg" width="440" alt="Android tablet running AgentDeck — Give a tablet a place on your desk as a dedicated dashboard."></a><br>
+<b>Android tablet</b><br>
+Give a tablet a place on your desk as a dedicated dashboard.<br>
+<a href="docs/android.md">Setup guide →</a>
+</td>
+<td width="50%" valign="top">
+<a href="docs/media/android-eink.jpg"><img src="docs/media/android-eink.jpg" width="440" alt="E-ink reader running AgentDeck — A quiet, persistent view of your sessions beside your work."></a><br>
+<b>E-ink reader</b><br>
+A quiet, persistent view of your sessions beside your work.<br>
+<a href="docs/android.md">Setup guide →</a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/media/round-amoled.jpg"><img src="docs/media/round-amoled.jpg" width="440" alt="ESP32 displays running AgentDeck — Small LCD and AMOLED panels with layouts made for their screens."></a><br>
+<b>ESP32 displays</b><br>
+Small LCD and AMOLED panels with layouts made for their screens.<br>
+<a href="docs/esp32.md">Setup guide →</a>
+</td>
+<td width="50%" valign="top">
+<a href="docs/media/pixoo64.jpg"><img src="docs/media/pixoo64.jpg" width="440" alt="LED matrix running AgentDeck — Pixel-art agents on a desk display. Pixoo64 shown."></a><br>
+<b>LED matrix</b><br>
+Pixel-art agents on a desk display. Pixoo64 shown.<br>
+<a href="docs/devices.md">Setup guide →</a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/media/d200h.jpg"><img src="docs/media/d200h.jpg" width="440" alt="Ulanzi deck running AgentDeck — Session keys on D200H and D200X; D200X encoders are not supported."></a><br>
+<b>Ulanzi deck</b><br>
+Session keys on D200H and D200X; D200X encoders are not supported.<br>
+<a href="docs/devices.md">Setup guide →</a>
+</td>
+<td width="50%" valign="top">
+<a href="docs/media/trmnl_75.jpg"><img src="docs/media/trmnl_75.jpg" width="440" alt="TRMNL 7.5-inch running AgentDeck — An e-ink status board running AgentDeck firmware."></a><br>
+<b>TRMNL 7.5-inch</b><br>
+An e-ink status board running AgentDeck firmware.<br>
+<a href="docs/esp32.md">Setup guide →</a>
+</td>
+</tr>
+</table>
+
+**[Explore all supported devices and live previews →](https://puritysb.github.io/AgentDeck/hardware/)**
+
+Mobile apps and hardware connect to a daemon on your computer. Controls are
+available when the session exposes a supported control path; other surfaces
+show status. See the [hardware compatibility matrix](docs/hardware-compatibility.md)
+for model-specific capabilities.
+
 ## A dashboard that feels alive
+
+<p align="center">
+  <a href="https://puritysb.github.io/AgentDeck/#aquarium"><img src="docs/media/aquarium-preview.gif" width="720" alt="Native 3D aquarium in motion — agent creatures and schooling fish; click to watch the full video"></a>
+</p>
 
 Choose the familiar dashboard or the **native 3D aquarium** on Mac, iPhone/iPad,
 and Android LCD devices. Each session becomes a creature; its activity changes
@@ -94,10 +189,6 @@ In another terminal:
 ```bash
 agentdeck dashboard        # live sessions, aquarium, usage, and timeline
 ```
-
-<p align="center">
-  <img src="docs/media/tui-dashboard.png" width="720" alt="Terminal dashboard with live sessions, a braille aquarium, usage gauges, and timeline">
-</p>
 
 The Mac app can also attach to the CLI daemon for additional integrations,
 including Claude subscription gauges and ADB device support.
@@ -161,19 +252,6 @@ and iDotMatrix setup is covered in the [device guide](docs/devices.md).
 
 [Changelog](CHANGELOG.md) · [All releases](https://github.com/puritysb/AgentDeck/releases)
 · [Release policy](RELEASING.md)
-
-## What it looks like on real hardware
-
-<table>
-<tr>
-<td width="50%"><img src="docs/media/streamdeck-plus.jpg" alt="Stream Deck+ with live session keys and usage gauges"></td>
-<td width="50%"><img src="docs/media/android-eink.jpg" alt="Android e-ink reader running AgentDeck"></td>
-</tr>
-<tr><td><b>Stream Deck+</b> — session controls at your fingertips</td><td><b>E-ink</b> — a quiet view beside your work</td></tr>
-</table>
-
-[Browse all 29 surfaces](https://puritysb.github.io/AgentDeck/hardware/), including
-ESP32 touch panels, TRMNL, LED matrices, tablets, and Ulanzi decks.
 
 ## Compatible Companion Projects
 
