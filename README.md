@@ -305,9 +305,10 @@ advance independently; you do not need to update every device together.
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**Store status, 2026-09-24 (owner report):** iOS 1.5.0 is released; macOS
-1.5.0 remains under review. Google Play 1.5.0 and Elgato 1.4 are approved;
-public availability has not been rechecked. Ulanzi 1.4.0 remains pending.
+**Store status, 2026-09-24:** iOS 1.5.0 is released and macOS 1.5.0 remains
+under review (owner report). Google Play 1.5.0 (21) is live in production,
+confirmed in Play Console. Elgato 1.4 is ready to publish but remains held for
+processed-package encoder verification. Ulanzi 1.4.0 remains under review.
 See [delivery tracking](https://github.com/puritysb/AgentDeck/issues/314)
 for remaining publication and verification work.
 
