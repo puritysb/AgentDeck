@@ -351,9 +351,16 @@ struct SessionListPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .background(
-                    entry.isFocused ? TerrariumHUD.tetraNeon.opacity(0.14) : Color.clear,
+                    entry.state == .processing ? DesignTokens.Kelp.s500.opacity(0.24)
+                        : entry.isFocused ? TerrariumHUD.tetraNeon.opacity(0.14) : Color.clear,
                     in: RoundedRectangle(cornerRadius: 5)
                 )
+                .overlay {
+                    if entry.state == .processing {
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(DesignTokens.UI.ok.opacity(0.65), lineWidth: 1)
+                    }
+                }
                 .overlay(alignment: .leading) {
                     if entry.isFocused {
                         RoundedRectangle(cornerRadius: 1)
@@ -374,7 +381,7 @@ struct SessionListPanel: View {
                 Text(label)
                     .font(.system(
                         size: compact ? 11 : 12,
-                        weight: entry.isFocused || entry.isPrimary ? .bold : .regular
+                        weight: entry.state == .processing || entry.isFocused || entry.isPrimary ? .bold : .regular
                     ))
                     .foregroundStyle(TerrariumHUD.text)
                     .lineLimit(compact ? 1 : 2)
@@ -586,7 +593,7 @@ private extension SessionListPanel {
     func compactStateMarker(_ state: AgentConnectionState) -> String {
         switch state {
         case .idle: "● IDLE"
-        case .processing: "◉ PROC"
+        case .processing: "◉ WORKING"
         case .awaitingPermission: "⚠ PERM"
         case .awaitingOption: "◇ SEL"
         case .awaitingDiff: "□ DIFF"
@@ -596,8 +603,8 @@ private extension SessionListPanel {
 
     private func stateColor(_ state: AgentConnectionState) -> Color {
         switch state {
-        case .idle: TerrariumHUD.ledGreen
-        case .processing: Color(red: 0.231, green: 0.51, blue: 0.965) // #3B82F6
+        case .idle: DesignTokens.UI.idle
+        case .processing: DesignTokens.UI.ok
         case .awaitingPermission, .awaitingOption, .awaitingDiff: TerrariumHUD.ledAmber
         case .disconnected: TerrariumHUD.subtext
         }
