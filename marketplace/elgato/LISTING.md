@@ -17,9 +17,11 @@ and installed through Stream Deck, which launched version `1.4.0.0`.
 The Stream Deck+ editor renders four encoder regions and z.ai 5h/MCP labels
 with the Node development daemon.
 
-The delivered macOS 1.3.2 Swift daemon exposed a remaining case: E2 and E3 both
-rendered Codex 7d usage when Codex was the available usage provider. Physical
-rotation/press/touch behavior is also unverified. Keep publication held for
+With the delivered macOS 1.3.2 Swift daemon, E2 and E3 both rendered Codex 7d
+usage. The `streamdeck-v1.4.0` source explicitly permits this when only one
+usage provider is available; it is not evidence of a duplicate-selection bug.
+Multi-provider selection/cycling and physical rotation/press/touch remain to
+be verified. Keep publication held for
 [#349](https://github.com/puritysb/AgentDeck/issues/349); installation and visual
 rendering alone do not pass the four-encoder gate. No new upload or public
 release was performed.
