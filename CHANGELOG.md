@@ -52,14 +52,14 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-09-24 — npm 1.4.3
 
-Release candidate only; publication is held for the coordinated patch round.
+Preparation only; publication is on hold at the owner’s request until a later release instruction.
 
 - Retry the preferred daemon listener for up to 90 seconds on macOS (20 seconds elsewhere) when a silent port conflict delays app-to-CLI handoff. Recheck peer ownership before falling back; already connected fallback clients are not moved (#370).
 - Publish hooks, shared, bridge and setup together. Existing 1.x applications, plugins and device firmware remain compatible.
 
 ## 2026-09-24 — Apple 1.5.1
 
-Release candidate only; no upload or submission has been performed. Keep macOS 1.5.0 in its existing review queue.
+Preparation only; no upload or submission has been performed. Publication is on hold until a later release instruction. Keep macOS 1.5.0 in its existing review queue.
 
 - Make working agents easier to identify in the Dashboard roster with a tinted row, stronger outline and bold WORKING label; idle rows remain neutral.
 - Activity emphasis follows the reported agent state without extending completed turns artificially. This release does not add the separate experimental IPS10 personal-voice implementation.
