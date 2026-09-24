@@ -8,6 +8,14 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## 1.5.0 approved — owner report (2026-09-24)
+
+The owner confirmed approval of the current submission. The submission receipt
+below identifies 1.5.0 (21). Public availability and rollout were not rechecked
+in this triage; the earlier automatic-publishing setting is not a fresh live
+receipt. The signed GitHub APK is already available independently. Follow
+[#314](https://github.com/puritysb/AgentDeck/issues/314) for delivery readback.
+
 ## 1.5.0 submitted (2026-09-23)
 
 The signed production AAB is **1.5.0 (21)**, built from commit

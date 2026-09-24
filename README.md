@@ -305,6 +305,12 @@ advance independently; you do not need to update every device together.
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
+**Store status, 2026-09-24 (owner report):** iOS 1.5.0 is released; macOS
+1.5.0 remains under review. Google Play 1.5.0 and Elgato 1.4 are approved;
+public availability has not been rechecked. Ulanzi 1.4.0 remains pending.
+See [delivery tracking](https://github.com/puritysb/AgentDeck/issues/314)
+for remaining publication and verification work.
+
 Mobile apps and hardware are companion surfaces: keep a daemon running on your
 computer. Supported ESP32 boards offer Wi-Fi OTA after the first USB flash;
 GitHub Android APKs offer wireless updates from Settings. Pixoo, TC001, Timebox,

@@ -10,6 +10,14 @@ content-record mismatch reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category. **Resolved:** the published record
 is `/contentView/1141` and resolves to AgentDeck.
 
+## Current review status — owner report (2026-09-24)
+
+Ulanzi is the remaining unapproved non-Apple store submission. The pending
+version is 1.4.0, which replaced the 1.3.0 review in place as recorded below.
+No duplicate review or replacement upload was created during this triage.
+The last independently verified public version remains 1.2.0; public delivery
+has not been rechecked. Follow [#314](https://github.com/puritysb/AgentDeck/issues/314).
+
 ## 1.4.0 — existing review updated (2026-09-21)
 
 Replaced the pending 1.3.0 review using **Edit review work**, then **Save review

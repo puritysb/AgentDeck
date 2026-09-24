@@ -2,11 +2,20 @@
 
 > **Live since 2026-07-28.** The product page is at
 > <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>,
-> and the current public version is `1.3` (verified 2026-09-15 at 12:43 KST,
+> and the last independently verified public version is `1.3` (verified 2026-09-15 at 12:43 KST,
 > 748.66 KB), following `1.2` (2026-09-02) and `1.0.6`
 > (2026-08-18), `1.0.5` (2026-08-10), `1.0.4` (2026-08-05), `1.0.3` (2026-07-31)
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
+
+## 1.4.0 approved — owner report (2026-09-24)
+
+The owner confirmed approval. Public publication/propagation and the
+DRM-processed four-encoder check have not been reverified in this triage.
+Approval alone does not complete that hardware check; it remains tracked in
+[#349](https://github.com/puritysb/AgentDeck/issues/349). The submission below
+recorded automatic publication off. No new upload or publication action was
+performed during this status update.
 
 ## 1.4.0 submitted for review (2026-09-21)
 
