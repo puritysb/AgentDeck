@@ -8,14 +8,23 @@
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
-## 1.4.0 approved — owner report (2026-09-24)
+## 1.4.0 ready to publish — processed-package check (2026-09-24)
 
-The owner confirmed approval. Public publication/propagation and the
-DRM-processed four-encoder check have not been reverified in this triage.
-Approval alone does not complete that hardware check; it remains tracked in
-[#349](https://github.com/puritysb/AgentDeck/issues/349). The submission below
-recorded automatic publication off. No new upload or publication action was
-performed during this status update.
+Signed-in Maker Console shows **1.4 Ready to publish** and **1.3 Published**.
+The official processed package was downloaded (774,880 bytes; SHA-256
+`3f85af9d7619c8dcaa32af25c4f213f5fec8bc4c48a127ce7f138f80a1c9824f`)
+and installed through Stream Deck, which launched version `1.4.0.0`.
+The Stream Deck+ editor renders four encoder regions and z.ai 5h/MCP labels
+with the Node development daemon.
+
+With the delivered macOS 1.3.2 Swift daemon, E2 and E3 both rendered Codex 7d
+usage. The `streamdeck-v1.4.0` source explicitly permits this when only one
+usage provider is available; it is not evidence of a duplicate-selection bug.
+Multi-provider selection/cycling and physical rotation/press/touch remain to
+be verified. Keep publication held for
+[#349](https://github.com/puritysb/AgentDeck/issues/349); installation and visual
+rendering alone do not pass the four-encoder gate. No new upload or public
+release was performed.
 
 ## 1.4.0 submitted for review (2026-09-21)
 
