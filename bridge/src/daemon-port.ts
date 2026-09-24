@@ -45,19 +45,21 @@ export const DAEMON_PORT_MIN = 1024;
 export const DAEMON_PORT_MAX = 65535;
 
 /**
- * How long the daemon waits for its preferred port to come free before
- * conceding to a fallback, when nothing answers `/health` on it.
- *
- * Sized from a measurement, not a guess: cancelling a listener on macOS leaves
- * a NECP reservation on the port for ~14s (bindable at ~17s, measured
- * 2026-08-06 — `lsof` shows zero sockets for the whole interval and `bind()`
- * still returns EADDRINUSE). 20s clears that with margin.
- *
- * The wait polls, so it costs only as long as the port is actually held. The
- * full budget is paid only when something outside AgentDeck really is
- * listening there — once per daemon start, with a log line saying so.
+ * Original startup reclaim budget and CLI restart-observation floor. The older
+ * macOS measurement bound successfully at ~17s; #370 exceeded this 20s budget.
+ * The listener's platform-specific budget below is separate from that floor.
  */
 export const PREFERRED_PORT_RECLAIM_MS = 20_000;
+
+/**
+ * #370 exhausted 20s on macOS; a subsequent restart bound the preferred port
+ * about 58s after the first wait began. This is an upper-bound observation,
+ * not proof of a particular kernel cause. Allow 90s on Darwin before fallback;
+ * other platforms retain 20s. A successful real bind ends the wait immediately.
+ */
+export function preferredPortReclaimBudgetMs(platform: NodeJS.Platform = process.platform): number {
+  return platform === 'darwin' ? 90_000 : PREFERRED_PORT_RECLAIM_MS;
+}
 
 export type DaemonPortSource = 'flag' | 'env' | 'settings' | 'default';
 

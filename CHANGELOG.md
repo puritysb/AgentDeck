@@ -47,6 +47,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- CLI daemon startup allows up to 90 seconds on macOS for a silent preferred-port conflict (20 seconds elsewhere), retrying the actual listener and rechecking peers before fallback. This mitigates delayed app-to-CLI handoff without moving already connected fallback clients; hardware validation remains tracked in #370.
+
 - ESP32: compact horizontal usage gauges on 86 Box, IPS 3.5 and round AMOLED; visible GLM usage on IPS 10 and NM-EPD-420; proportional card fills on TTGO; five-window layouts without clipping or array overflow on T-Display Pro.
 - ESP32 firmware delivery remains deferred while IPS10 work is in progress.
 
