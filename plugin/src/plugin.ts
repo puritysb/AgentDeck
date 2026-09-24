@@ -1,3 +1,4 @@
+import { captureRuntimeIdentity, writeRuntimeIdentity } from './runtime-identity.js';
 import streamDeck from '@elgato/streamdeck';
 import {
   StateUpdateEvent,
@@ -79,6 +80,10 @@ import {
 import { isDisplayDimmed, setDisplayDimmed, dimActionIfNeeded } from './display-dim.js';
 import { FocusedDetailState, type FocusedDetailSnapshot } from './focused-detail-state.js';
 import { voiceCommandForAction } from '@agentdeck/shared';
+
+let runtimeIdentity: ReturnType<typeof captureRuntimeIdentity> | undefined;
+try { runtimeIdentity = captureRuntimeIdentity(import.meta.url); }
+catch (error) { console.warn('Plugin build identity unavailable', error); }
 
 // ---- Shared state ----
 let currentState = State.DISCONNECTED;
@@ -664,6 +669,8 @@ function sendSlotMap(): void {
 // ---- Connect ----
 
 streamDeck.connect().then(async () => {
+  try { if (runtimeIdentity) writeRuntimeIdentity(runtimeIdentity); }
+  catch (error) { console.warn('Plugin runtime receipt unavailable', error); }
   dinfo('Plugin', 'Stream Deck connected, starting daemon-only connection');
   connMgr.start();
 

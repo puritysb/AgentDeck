@@ -1,5 +1,7 @@
 import { rollup } from 'rollup';
 import config from '../rollup.config.mjs';
+import { installedPath, inspectInstallation } from './deployment-state.mjs';
+import { fileURLToPath } from 'node:url';
 
 const configs = Array.isArray(config) ? config : [config];
 
@@ -21,4 +23,9 @@ try {
   process.exit(1);
 }
 
+if (process.platform === 'darwin' || process.platform === 'win32') {
+  const source = fileURLToPath(new URL('../bound.serendipity.agentdeck.sdPlugin', import.meta.url));
+  const problem = inspectInstallation(source, installedPath());
+  console.warn(problem ? `Built only; ${problem}. Run pnpm plugin:deploy from the main checkout.` : 'Built only; restart and verify the running plugin with pnpm plugin:deploy.');
+}
 process.exit(0);

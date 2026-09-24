@@ -56,7 +56,9 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "postinstall": "node scripts/postinstall.mjs"
+    "postinstall": "node scripts/postinstall.mjs",
+    "plugin:deploy": "node plugin/scripts/deploy.mjs",
+    "plugin:check": "node plugin/scripts/deploy.mjs --check"
   },
   "engines": {
     "node": "22.x || 24.x || 26.x",

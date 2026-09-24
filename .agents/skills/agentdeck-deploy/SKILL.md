@@ -200,15 +200,19 @@ agentdeck daemon status
 
 ### Step 6: Plugin
 
-If Stream Deck is running and plugin is linked (`streamdeck link`), `pnpm build` (Step 1) is sufficient.
+A build is not a deployment: Marketplace installation can replace the source
+link, and an already-running process keeps its old JavaScript after a rebuild.
+On macOS, from the persistent main checkout, run `pnpm plugin:deploy`. It refuses linked
+worktrees and checkouts missing known `origin/master` changes, builds shared and
+plugin, preserves a replaced installation outside the host scan directory,
+links the source, restarts it, and requires a fresh runtime receipt matching the
+bundle path and SHA-256. `pnpm plugin:check` checks the current installation and
+running process without changing them. Never report success from `pnpm build`
+or a successful `streamdeck link` alone.
 
-For fresh install:
-```bash
-cd /Users/puritysb/github/AgentDeck
-pnpm package
-# Output: dist/bound.serendipity.agentdeck.streamDeckPlugin
-# User must drag into Stream Deck app manually
-```
+After a Marketplace/DRM validation session, restore the development installation
+with `pnpm plugin:deploy` and record `pnpm plugin:check` before finishing. A
+failed switch restores the prior installation; do not delete its backup.
 
 ### Step 7: ESP32 Firmware
 
@@ -323,7 +327,7 @@ Deploy Summary
  Target          Status   Details
 ──────────────────────────────────────────────────
  Bridge           OK      Daemon port 9120
- Plugin           OK      Built, SD running
+ Plugin           OK      Runtime hash verified
  Pantone 6        OK      Installed + launched + rotation fix
  Crema S          OK      Installed + launched
  Lenovo Tab       OK      Installed + launched

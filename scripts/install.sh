@@ -16,21 +16,11 @@ fail() { echo -e "${RED}[FAIL]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# A worktree checkout (__worktrees/<name>) is a temporary collaboration surface:
-# merging it removes the directory while the Stream Deck plugin symlink, the
-# global CLI link and any daemon installed from here keep pointing at the
-# removed files. Observed 2026-09-19: the luna-reserve worktree was pruned after
-# merge and every Stream Deck status key went dark because the plugin symlink
-# still pointed into it. Refuse up front — run this from the main checkout.
-case "$(cd "$PROJECT_DIR" && pwd -P)" in
-  */__worktrees/*)
-    echo ""
-    fail "This is a worktree checkout: $PROJECT_DIR"
-    fail "Long-lived links (Stream Deck plugin, agentdeck CLI, daemon autostart) would dangle once the worktree is merged and removed."
-    fail "Run the installer from the main checkout instead."
-    exit 1
-    ;;
-esac
+# Git topology detects linked worktrees regardless of their directory names.
+if [ "$(git -C "$PROJECT_DIR" rev-parse --absolute-git-dir)" != "$(cd "$PROJECT_DIR" && cd "$(git rev-parse --git-common-dir)" && pwd -P)" ]; then
+  fail "Run the installer from the persistent main checkout, not a linked worktree."
+  exit 1
+fi
 
 echo ""
 echo "========================================="
@@ -162,13 +152,10 @@ fi
 echo ""
 
 # --- Link plugin ---
-info "Linking plugin to Stream Deck..."
-cd "$PROJECT_DIR/plugin"
-streamdeck link bound.serendipity.agentdeck.sdPlugin 2>/dev/null || {
-  warn "streamdeck link failed — you may need to link manually"
-  warn "Run: cd plugin && streamdeck link bound.serendipity.agentdeck.sdPlugin"
-}
-ok "Plugin linked"
+info "Deploying and verifying the Stream Deck plugin..."
+cd "$PROJECT_DIR"
+pnpm plugin:deploy
+ok "Plugin runtime verified"
 
 echo ""
 
