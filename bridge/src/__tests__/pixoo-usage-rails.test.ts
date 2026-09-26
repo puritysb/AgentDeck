@@ -112,6 +112,18 @@ function bandRows(buf: Uint8Array, brand: [number, number, number]): number[] {
 describe('Pixoo64 usage HUD bands', () => {
   const pixoo = (u: UsageEvent | null) => renderFrame(null, u, [], 1_000, 64);
 
+  it('shows all three providers simultaneously and reserves a band for a seven-day-only Claude sample', () => {
+    const frame = pixoo(usage({ sevenDayPercent: 17,
+      codexRateLimits: { secondary: { usedPercent: 30, windowMinutes: 10080 } },
+      zaiRateLimits: { primary: { usedPercent: 36, windowMinutes: 300 } },
+    }));
+    const bands = [CLAUDE_BRAND, CODEX_BRAND, [31, 99, 236] as [number, number, number]].map(b => bandRows(frame, b));
+    expect(bands.every(rows => rows.length > 0)).toBe(true);
+    expect(Math.max(...bands[0])).toBeLessThan(Math.min(...bands[1]));
+    expect(Math.max(...bands[1])).toBeLessThan(Math.min(...bands[2]));
+    expect(Math.min(...bands[0])).toBeGreaterThanOrEqual(43);
+  });
+
   it('drops the Codex band for a windowless free-tier block, and the lone Claude band slides down', () => {
     const both = pixoo(usage({
       fiveHourPercent: 42,

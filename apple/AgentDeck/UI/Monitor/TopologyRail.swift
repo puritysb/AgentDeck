@@ -423,11 +423,14 @@ struct TopologyRail: View {
         guard hasLimits || (plan?.isEmpty == false) else {
             return unavailableProvider("Codex")
         }
+        // The Luna chip's percent is what is LEFT; the subtitle says so.
+        let parts = [Self.codexSubtitle(plan: plan, limits: limits),
+                     limits?.activeLunaReserve() != nil ? "Luna reserve left" : nil].compactMap { $0 }
         return AnyView(
             ProviderRow(
                 name: "Codex",
                 status: .ok,
-                subtitle: subscriptionSubtitle(Self.codexSubtitle(plan: plan, limits: limits), plan: Self.chatGptPlanLabel(plan)),
+                subtitle: subscriptionSubtitle(parts.isEmpty ? nil : parts.joined(separator: " · "), plan: Self.chatGptPlanLabel(plan)),
                 rateLimits: codexRateLimitChips,
                 consumers: consumerCreatures(for: .codex)
             )
@@ -1094,6 +1097,16 @@ struct TopologyRail: View {
     /// with different windows still reads correctly.
     private var codexRateLimitChips: [RateChip] {
         guard let limits = stateHolder.state.codexRateLimits else { return [] }
+        // An exhausted account window hands the row to the Luna reserve,
+        // read as what is LEFT (the shared cross-surface rule).
+        if let luna = limits.activeLunaReserve() {
+            return [.init(
+                label: "Luna",
+                percent: max(0, 100 - luna.usedPercent),
+                reset: formatResetTime(luna.resetsAt),
+                remaining: true
+            )]
+        }
         var chips: [RateChip] = []
         if let p = limits.primary, let pct = p.usedPercent {
             chips.append(.init(
@@ -1291,6 +1304,9 @@ struct RateChip: Identifiable {
     /// Non-binding per-model scoped cap: render neutral, never the critical ramp,
     /// regardless of percent (issue #99 — inactive ≠ same critical treatment).
     var inactive: Bool = false
+    /// `percent` is what REMAINS (the Codex Luna reserve), not what is used:
+    /// the bar fills by it and the colour ramp reads the used complement.
+    var remaining: Bool = false
     /// Codex freshness note ("stale" / "3h ago") from `CodexUsageFreshness`.
     /// Takes the right-hand slot and dims the bar: a passively-read snapshot of a
     /// still-live window keeps its last true percent, but must not read as live.
@@ -1365,8 +1381,9 @@ private struct RateChipView: View {
     private var fillColor: Color {
         // Inactive scoped cap: neutral, never the critical ramp regardless of %.
         if chip.inactive { return TerrariumHUD.subtext }
-        if chip.percent >= 90 { return TerrariumHUD.ledRed }
-        if chip.percent >= 70 { return TerrariumHUD.ledAmber }
+        let used = chip.remaining ? 100 - chip.percent : chip.percent
+        if used >= 90 { return TerrariumHUD.ledRed }
+        if used >= 70 { return TerrariumHUD.ledAmber }
         return TerrariumHUD.ledGreen
     }
 
@@ -1434,6 +1451,7 @@ private struct RateChipView: View {
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(chip.stale ? TerrariumHUD.subtext : fillColor)
                 .frame(width: 32, alignment: .trailing)
+                .accessibilityLabel(chip.remaining ? "\(Int(chip.percent)) percent left" : "\(Int(chip.percent)) percent used")
 
             rightSlot
         }

@@ -475,6 +475,42 @@ struct CodexRateLimits: Codable, Sendable {
     /// when Codex stops being used, and `stale` cannot expose that — it fires only
     /// once the window has ENDED, which for the weekly window is up to 7 days out.
     var capturedAt: String?
+    /// Additional Luna-only pool, separate from the account 5h/7d windows.
+    /// Reported by the Node daemon's live Codex reading.
+    var lunaReserve: CodexLunaReserve?
+}
+
+/// Luna-only reserve returned as an additional Codex rate-limit pool.
+struct CodexLunaReserve: Codable, Sendable {
+    var usedPercent: Double
+    var resetsAt: String?
+    var regularResetsAt: String?
+    var available: Bool?
+}
+
+extension CodexRateLimits {
+    /// The Luna reserve while it replaces the account windows — mirror of
+    /// `selectedLunaReserve` in shared/src/usage-presentation.ts, with the
+    /// numeric predicate from the generated `UsagePresentation.lunaActive`.
+    /// A reported reserve alone is not exhaustion: only a live account window
+    /// at 100% hands the Codex gauges to the reserve, and the next snapshot
+    /// with no exhausted window restores them.
+    func activeLunaReserve(now: Date = Date()) -> CodexLunaReserve? {
+        guard let reserve = lunaReserve else { return nil }
+        func instant(_ iso: String?) -> Date? {
+            guard let iso else { return nil }
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        }
+        if let reset = instant(reserve.resetsAt), reset <= now { return nil }
+        func live(_ window: CodexRateLimitWindow?) -> Double {
+            guard let window, window.stale != true, let used = window.usedPercent else { return -1 }
+            if let reset = instant(window.resetsAt), reset <= now { return -1 }
+            return used
+        }
+        return UsagePresentation.lunaActive(live(primary), live(secondary), reserve.usedPercent) ? reserve : nil
+    }
 }
 
 /// A z.ai quota window — the shared window shape plus WHICH QUANTITY it

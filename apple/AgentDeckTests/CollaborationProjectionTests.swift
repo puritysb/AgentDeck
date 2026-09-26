@@ -318,7 +318,7 @@ final class CoordinationEvidenceVectorTests: XCTestCase {
         }
         let rows = [s("k", "idle", "2026-09-06T01:00:00Z"), s("b", "awaiting_permission", "2026-09-06T00:00:00Z"),
                     s("a", "processing", "2026-09-06T05:00:00Z"), s("z", "idle", "2026-09-06T04:00:00Z")]
-        XCTAssertEqual(ESP32Serial.stableCardRoster(rows, cap: 3).map { $0["id"] as? String }, ["a", "b", "z"])
+        XCTAssertEqual(ESP32Serial.stableCardRoster(rows, cap: 3, nowMs: 0).map { $0["id"] as? String }, ["a", "b", "z"])
         XCTAssertEqual(ESP32Serial.stableCardRoster(Array(rows.prefix(2)), cap: 3).map { $0["id"] as? String }, ["k", "b"])
     }
 }

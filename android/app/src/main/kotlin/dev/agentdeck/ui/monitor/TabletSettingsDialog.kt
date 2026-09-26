@@ -350,15 +350,12 @@ private fun MacIntegrationsReadOnlyCard(dashState: DashboardState) {
                 },
                 ok = dashState.usage.codexWebAuthConnected == true,
             )
+            val gatewaySetup = dev.agentdeck.net.GatewaySetupStatus.evaluate(
+                dashState.gatewayAuthStatus, dashState.gatewayConnected, dashState.gatewayAvailable)
             IntegrationStatusRow(
                 label = "OpenClaw",
-                status = when {
-                    dashState.gatewayHasError == true -> "Error"
-                    dashState.gatewayConnected == true -> "Connected"
-                    dashState.gatewayAvailable == true -> "Available"
-                    else -> "Not available"
-                },
-                ok = dashState.gatewayConnected == true,
+                status = if (dashState.gatewayHasError == true) "Gateway error" else gatewaySetup.detail,
+                ok = dashState.gatewayConnected == true && !gatewaySetup.needsAttention,
             )
             IntegrationStatusRow(
                 label = "Ollama",

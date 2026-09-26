@@ -1,4 +1,5 @@
 #ifdef BOARD_LED8X32
+#include "../../util/usage_presentation.generated.h"
 #include "matrix_pages.h"
 #include "matrix_font.h"
 #include "official_dot_glyphs_generated.h"
@@ -213,11 +214,11 @@ static void drawStateDot(CRGB* leds, float animTime) {
     lockState();
     uint8_t sessionCount = g_state.sessionCount;
     // Find most active state among live non-daemon sessions
-    enum { ST_NONE, ST_IDLE, ST_AWAITING, ST_PROCESSING } best = ST_NONE;
+    enum { ST_NONE, ST_IDLE, ST_PROCESSING, ST_AWAITING } best = ST_NONE;
     for (int i = 0; i < sessionCount; i++) {
         if (!g_state.sessions[i].alive) continue;
         if (strcmp(g_state.sessions[i].agentType, "daemon") == 0) continue;
-        if (strcmp(g_state.sessions[i].state, "processing") == 0) { best = ST_PROCESSING; break; }
+        if (strcmp(g_state.sessions[i].state, "processing") == 0) { if (best < ST_PROCESSING) best = ST_PROCESSING; }
         if (strstr(g_state.sessions[i].state, "awaiting")) { if (best < ST_AWAITING) best = ST_AWAITING; }
         else if (strcmp(g_state.sessions[i].state, "idle") == 0) { if (best < ST_IDLE) best = ST_IDLE; }
     }
@@ -226,8 +227,7 @@ static void drawStateDot(CRGB* leds, float animTime) {
     CRGB c = CRGB::Black;
     switch (best) {
         case ST_PROCESSING: {
-            float pulse = 0.5f + 0.5f * sinf(animTime * 8.0f);
-            c = CRGB((uint8_t)(200 * pulse), (uint8_t)(120 * pulse), (uint8_t)(90 * pulse));
+            c = CRGB(200, 120, 90);
             break;
         }
         case ST_AWAITING: {
@@ -281,75 +281,38 @@ static CRGB gaugeColor(float percent, float animTime) {
     return CRGB(59, 130, 246);                        // Blue
 }
 
-// Full-screen gauge: percent number (gauge color, left) + reset time (gray, right)
-static void drawFullScreenGauge(CRGB* leds, float percent,
-                                 const char* resetStr, float animTime, int slideX,
-                                 bool codex = false) {
-    if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
-
-    CRGB fillColor = gaugeColor(percent, animTime);
-    // Dimmed fill (20% brightness) — maximizes contrast for bright text on LED matrix
-    CRGB dimFill = CRGB(fillColor.r / 5, fillColor.g / 5, fillColor.b / 5);
-
-    // Fill entire screen: used portion = dimmed color, unused = near-black
-    int fillPx = (int)(percent / 100.0f * MATRIX_W);
-    for (int x = 0; x < MATRIX_W; x++) {
-        int sx = x + slideX;
-        if (sx < 0 || sx >= MATRIX_W) continue;
-        CRGB c = (x < fillPx) ? dimFill : CRGB(4, 4, 6);
-        for (int y = 0; y < MATRIX_H; y++) {
-            setPixel(leds, sx, y, c);
-        }
-    }
-
-    // Percentage in bright white — maximum contrast on both filled and empty areas
-    char pctBuf[5];
-    snprintf(pctBuf, sizeof(pctBuf), "%d%%", (int)(percent + 0.5f));
-    bool dim = isDimMode();
-    // Codex windows use an electric-violet numeral; the fill still follows
-    // blue→amber→red severity so a nearly exhausted token limit is unmistakable.
-    CRGB pctColor = codex ? CRGB(196, 112, 255) : CRGB(255, 255, 255);
-    MatrixFont::drawScrollText(leds, pctBuf, 1 + slideX, 1, pctColor, MATRIX_W, MATRIX_H);
-
-    // Reset time in muted gray (right-aligned)
-    char timeBuf[8];
-    if (formatResetCompact(resetStr, timeBuf, sizeof(timeBuf)) > 0) {
-        int tw = MatrixFont::textWidth(timeBuf);
-        CRGB timeColor = dim ? CRGB(0xA0, 0xA0, 0xA0) : CRGB(0x60, 0x70, 0x80);
-        MatrixFont::drawScrollText(leds, timeBuf, MATRIX_W - tw - 1 + slideX, 1, timeColor, MATRIX_W, MATRIX_H);
-    }
+// Window labels follow the reported length, never the primary/secondary slot.
+static void windowLabel(int minutes, const char* fallback, char (&out)[5]) {
+    if (minutes > 0 && minutes < 60) snprintf(out, sizeof(out), "%dM", minutes);
+    else if (minutes >= 60 && minutes < 1440 && minutes % 60 == 0)
+        snprintf(out, sizeof(out), "%dH", minutes / 60);
+    else if (minutes >= 1440 && minutes <= 99 * 1440 && minutes % 1440 == 0)
+        snprintf(out, sizeof(out), "%dD", minutes / 1440);
+    else snprintf(out, sizeof(out), "%s", fallback);
 }
 
+// Provider mark remains visible throughout the reading. Use bounded stack text:
+// TC001 has no PSRAM, and this path runs on every frame.
 static void renderGaugePair(CRGB* leds, float animTime,
-                            float first, const char* firstReset,
-                            float second, const char* secondReset,
-                            bool codex) {
-    if (first < 0 && second >= 0) {
-        first = second;
-        firstReset = secondReset;
-        second = -1;
-    }
-    if (first < 0) return;
-    if (second < 0) {
-        drawFullScreenGauge(leds, first, firstReset, animTime, 0, codex);
-        return;
-    }
-
-    const float phase = fmodf(animTime, 9.0f);
-    if (phase < 4.0f) {
-        drawFullScreenGauge(leds, first, firstReset, animTime, 0, codex);
-    } else if (phase < 4.5f) {
-        const int offset = (int)(((phase - 4.0f) / 0.5f) * MATRIX_W);
-        drawFullScreenGauge(leds, first, firstReset, animTime, -offset, codex);
-        drawFullScreenGauge(leds, second, secondReset, animTime, MATRIX_W - offset, codex);
-    } else if (phase < 8.5f) {
-        drawFullScreenGauge(leds, second, secondReset, animTime, 0, codex);
-    } else {
-        const int offset = (int)(((phase - 8.5f) / 0.5f) * MATRIX_W);
-        drawFullScreenGauge(leds, second, secondReset, animTime, -offset, codex);
-        drawFullScreenGauge(leds, first, firstReset, animTime, MATRIX_W - offset, codex);
-    }
+                            float first, const char* firstLabel,
+                            float second, const char* secondLabel,
+                            const uint8_t* glyph, CRGB brand) {
+    const bool useSecond = second >= 0 && (first < 0 || fmodf(animTime, 8.0f) >= 4.0f);
+    float percent = useSecond ? second : first;
+    if (percent < 0) return;
+    percent = fminf(100.0f, fmaxf(0.0f, percent));
+    const char* label = useSecond ? secondLabel : firstLabel;
+    drawOfficialMatrixGlyph(leds, 0, glyph, brand);
+    char reading[12];
+    snprintf(reading, sizeof(reading), "%s%d%%", label, (int)(percent + 0.5f));
+    // MCP100% exceeds the 23-pixel reading area. The usage rail below still
+    // conveys a percentage; keep MCP's quantity label intact.
+    if (MatrixFont::textWidth(reading) > MATRIX_W - 9)
+        snprintf(reading, sizeof(reading), "%s%d", label, (int)(percent + 0.5f));
+    MatrixFont::drawScrollText(leds, reading, 9, 1, brand, MATRIX_W, MATRIX_H);
+    const int fill = (int)(percent * 21.0f / 100.0f + 0.5f);
+    for (int x = 0; x < 21; ++x)
+        setPixel(leds, 9 + x, 7, x < fill ? brand : CRGB(4, 4, 6));
 }
 
 // ================================================================
@@ -358,13 +321,8 @@ static void renderGaugePair(CRGB* leds, float animTime,
 void MatrixPages::renderUsage(CRGB* leds, float animTime) {
     lockState();
     bool connected = g_state.wsConnected || Net::serialConnected();
-    float pct5h = g_state.fiveHourPercent;
-    float pct7d = g_state.sevenDayPercent;
-    char reset5h[20], reset7d[20];
-    strncpy(reset5h, g_state.fiveHourReset, sizeof(reset5h) - 1);
-    reset5h[sizeof(reset5h) - 1] = '\0';
-    strncpy(reset7d, g_state.sevenDayReset, sizeof(reset7d) - 1);
-    reset7d[sizeof(reset7d) - 1] = '\0';
+    float pct5h = g_state.usageStale ? -1.0f : g_state.fiveHourPercent;
+    float pct7d = g_state.usageStale ? -1.0f : g_state.sevenDayPercent;
     unlockState();
 
     if (!connected) {
@@ -378,7 +336,7 @@ void MatrixPages::renderUsage(CRGB* leds, float animTime) {
         return;
     }
 
-    renderGaugePair(leds, animTime, pct5h, reset5h, pct7d, reset7d, false);
+    renderGaugePair(leds, animTime, pct5h, "5H", pct7d, "7D", OfficialDotGlyphs::CLAUDE_CODE, CRGB(192, 112, 88));
 
     // State dot overlay — shows agent activity on gauge page
     drawStateDot(leds, animTime);
@@ -392,18 +350,23 @@ void MatrixPages::renderCodex(CRGB* leds, float animTime) {
     bool connected = g_state.wsConnected || Net::serialConnected();
     float primary = g_state.codexPrimaryPercent;
     float secondary = g_state.codexSecondaryPercent;
-    char primaryReset[20], secondaryReset[20];
-    strncpy(primaryReset, g_state.codexPrimaryReset, sizeof(primaryReset) - 1);
-    primaryReset[sizeof(primaryReset) - 1] = '\0';
-    strncpy(secondaryReset, g_state.codexSecondaryReset, sizeof(secondaryReset) - 1);
-    secondaryReset[sizeof(secondaryReset) - 1] = '\0';
+    char primaryLabel[5], secondaryLabel[5];
+    windowLabel(g_state.codexPrimaryMinutes, "P", primaryLabel);
+    windowLabel(g_state.codexSecondaryMinutes, "S", secondaryLabel);
+    // An exhausted account window hands the page to the Luna reserve, read as
+    // what is LEFT (the shared UsagePresentation rule every surface uses).
+    if (UsagePresentation::lunaActive(primary, secondary, g_state.codexLunaPercent)) {
+        primary = 100.0f - g_state.codexLunaPercent;
+        secondary = -1.0f;
+        snprintf(primaryLabel, sizeof(primaryLabel), "LUNA");
+    }
     unlockState();
 
     if (!connected) {
         renderDisconnectStatus(leds, animTime);
         return;
     }
-    renderGaugePair(leds, animTime, primary, primaryReset, secondary, secondaryReset, true);
+    renderGaugePair(leds, animTime, primary, primaryLabel, secondary, secondaryLabel, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224));
     drawStateDot(leds, animTime);
 }
 
@@ -418,18 +381,17 @@ void MatrixPages::renderZai(CRGB* leds, float animTime) {
     bool connected = g_state.wsConnected || Net::serialConnected();
     float primary = g_state.zaiPrimaryPercent;
     float secondary = g_state.zaiSecondaryPercent;
-    char primaryReset[20], secondaryReset[20];
-    strncpy(primaryReset, g_state.zaiPrimaryReset, sizeof(primaryReset) - 1);
-    primaryReset[sizeof(primaryReset) - 1] = '\0';
-    strncpy(secondaryReset, g_state.zaiSecondaryReset, sizeof(secondaryReset) - 1);
-    secondaryReset[sizeof(secondaryReset) - 1] = '\0';
+    bool secondaryIsMcp = g_state.zaiSecondaryIsMcp;
+    char primaryLabel[5], secondaryLabel[5];
+    windowLabel(g_state.zaiPrimaryMinutes, "P", primaryLabel);
+    windowLabel(g_state.zaiSecondaryMinutes, "S", secondaryLabel);
     unlockState();
 
     if (!connected) {
         renderDisconnectStatus(leds, animTime);
         return;
     }
-    renderGaugePair(leds, animTime, primary, primaryReset, secondary, secondaryReset, true);
+    renderGaugePair(leds, animTime, primary, primaryLabel, secondary, secondaryIsMcp ? "MCP" : secondaryLabel, OfficialDotGlyphs::ZAI, CRGB(31, 99, 236));
     drawStateDot(leds, animTime);
 }
 

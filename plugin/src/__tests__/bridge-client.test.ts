@@ -59,6 +59,25 @@ describe('BridgeClient — port provider', () => {
     if (client) client.disconnect();
   });
 
+  it('counts a real pong as activity and clears a stale connection', async () => {
+    const server = await createTestServer();
+    try {
+      client = new BridgeClient();
+      client.connect(server.port);
+      await vi.waitFor(() => expect(client.isConnected()).toBe(true));
+      const internal = client as any;
+      internal._lastActivityAt = 0;
+      internal.setStale(true);
+      internal.ws.ping(); // the real ws server replies automatically
+      await vi.waitFor(() => expect(client.isStale()).toBe(false));
+      expect(internal._lastActivityAt).toBeGreaterThan(0);
+      expect(client.isConnected()).toBe(true);
+    } finally {
+      client.disconnect();
+      await server.close();
+    }
+  });
+
   it('retries an in-flight connection without leaving the old generation stuck', async () => {
     const server = await createTestServer();
     try {

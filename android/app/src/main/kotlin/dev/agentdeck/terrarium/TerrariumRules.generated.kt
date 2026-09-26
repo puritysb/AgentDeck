@@ -9,6 +9,29 @@ package dev.agentdeck.terrarium
  */
 object TerrariumRules {
     const val NATIVE_RESIDENT_LIMIT = 8
+    const val NATIVE_ACTIVITY_IDLE_RATE = 0.65f
+    const val NATIVE_ACTIVITY_WORK_RATE = 2.5f
+    const val NATIVE_ACTIVITY_GROUND_TRAVEL = 0.32f
+    const val NATIVE_ACTIVITY_WATER_TRAVEL = 0.28f
+    const val NATIVE_ACTIVITY_GROUND_YAW = 0.38f
+    const val NATIVE_ACTIVITY_WORK_YAW = 0.24f
+    const val NATIVE_ACTIVITY_WORK_ROLL = 0.22f
+    const val NATIVE_ACTIVITY_WORK_BREATH = 0.095f
+    const val NATIVE_ACTIVITY_FOOT_LIFT = 0.065f
+    const val NATIVE_ACTIVITY_BAR_MINIMUM = 0.45f
+    const val NATIVE_ACTIVITY_BAR_RANGE = 0.55f
+    const val NATIVE_ACTIVITY_BAR_RATE = 2.0f
+    const val NATIVE_ACTIVITY_BAR_PHASE = 1.2f
+    const val NATIVE_ACTIVITY_BAR_COUNT = 3.0f
+    const val NATIVE_ACTIVITY_BAR_X = 0.82f
+    const val NATIVE_ACTIVITY_BAR_SPACING = 0.085f
+    const val NATIVE_ACTIVITY_BAR_Y = 0.1f
+    const val NATIVE_ACTIVITY_BAR_WIDTH = 0.055f
+    const val NATIVE_ACTIVITY_BAR_HEIGHT = 0.28f
+    const val NATIVE_ACTIVITY_BAR_RADIUS = 0.02f
+    const val NATIVE_ACTIVITY_SELECTION_X = 0.7f
+    const val NATIVE_ACTIVITY_SELECTION_WIDTH = 0.025f
+    const val NATIVE_ACTIVITY_SELECTION_HEIGHT = 0.72f
     const val NATIVE_CAMERA_FOV = 38.0f
     const val NATIVE_CAMERA_WIDE_FOV = 32.0f
     const val NATIVE_VIEWING_DISTANCE = 0.82f

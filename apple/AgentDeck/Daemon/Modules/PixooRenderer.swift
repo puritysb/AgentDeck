@@ -427,7 +427,7 @@ final class PixooRenderer {
         }
 
         let hudCount = hudProviderCount(from: dashboardState)
-        let crayfishY = hudCount >= 2 ? 0.65 : (hudCount == 1 ? 0.72 : Self.cfDefaultY)
+        let crayfishY = hudCount > 0 ? Double(Self.height - hudCount * TerrariumRules.pixooUsageRowHeight - TerrariumRules.pixooUsageCreatureMargin) / Double(Self.height) : Self.cfDefaultY
         let crayfishRouting = hasGateway && dashboardState.siblingSessions.contains {
             $0.agentType == "openclaw" && $0.state == "processing"
         }
@@ -485,7 +485,7 @@ final class PixooRenderer {
                 glowPixel(&world, Int(round(particle.x)), Int(round(particle.y)), color, 0.5 * fadeAlpha)
             }
 
-            let tetraMaxY = hudCount >= 2 ? 46 : (hudCount == 1 ? 52 : (Self.sandTop - 3))
+            let tetraMaxY = hudCount > 0 ? Self.height - hudCount * TerrariumRules.pixooUsageRowHeight - 4 : (Self.sandTop - 3)
             updateTetras(animFrame: animFrame, surfaceY: Self.surfaceY, maxY: tetraMaxY)
             drawSurface(&world, animFrame: animFrame, surfaceY: Self.surfaceY, palette: palette, state: effectiveState)
 
@@ -1343,10 +1343,10 @@ final class PixooRenderer {
         }
 
         var providers: [ProviderRow] = []
-        if dashboardState.usageStale != true, let fiveHour = dashboardState.fiveHourPercent {
+        if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil || dashboardState.sevenDayPercent != nil {
             providers.append(ProviderRow(
                 glyph: .claudeCode, brand: (255, 112, 76),
-                primary: UsageWindow(percent: fiveHour, resetsAt: dashboardState.fiveHourResetsAt),
+                primary: dashboardState.fiveHourPercent.map { UsageWindow(percent: $0, resetsAt: dashboardState.fiveHourResetsAt) },
                 secondary: dashboardState.sevenDayPercent.map {
                     UsageWindow(percent: $0, resetsAt: dashboardState.sevenDayResetsAt)
                 },
@@ -1374,13 +1374,9 @@ final class PixooRenderer {
             ))
         }
         guard !providers.isEmpty else { return }
-        // The 64px panel budgets exactly two 7px provider rows — with all three
-        // providers live the two established seats win (mirrors the Node
-        // renderer; geometry is not renegotiated per provider count).
-        let seatedProviders = Array(providers.prefix(2))
-
+        let seatedProviders = providers
         let timeColor: RGB = (0x60, 0x70, 0x80)
-        let firstY = seatedProviders.count > 1 ? 50 : 57
+        let firstY = Self.height - seatedProviders.count * TerrariumRules.pixooUsageRowHeight
 
         func drawCreatureMarker(_ provider: ProviderRow, rowY: Int) {
             guard let mask = OfficialDotGlyphs.masks[provider.glyph] else { return }
@@ -2002,7 +1998,7 @@ final class PixooRenderer {
 
     private func hudProviderCount(from dashboardState: DashboardState) -> Int {
         var count = 0
-        if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil {
+        if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil || dashboardState.sevenDayPercent != nil {
             count += 1
         }
         func freshCodexWindow(_ window: CodexRateLimitWindow?) -> Bool {
@@ -2011,6 +2007,11 @@ final class PixooRenderer {
         let codexPrimary = freshCodexWindow(dashboardState.codexRateLimits?.primary)
         let codexSecondary = freshCodexWindow(dashboardState.codexRateLimits?.secondary)
         if codexPrimary || codexSecondary {
+            count += 1
+        }
+        let zai = dashboardState.zaiRateLimits
+        if (zai?.primary?.stale != true && zai?.primary?.usedPercent != nil)
+            || (zai?.secondary?.stale != true && zai?.secondary?.usedPercent != nil) {
             count += 1
         }
         return count
@@ -2049,10 +2050,9 @@ final class PixooRenderer {
             case .idle: clamp(baseY + 0.26, min: 0.60, max: 0.70)
             }
         }
-        if hudProviderCount >= 2 {
-            return min(y, 0.65)
-        } else if hudProviderCount == 1 {
-            return min(y, 0.72)
+        if hudProviderCount > 0 {
+            return min(y, Double(Self.height - hudProviderCount * TerrariumRules.pixooUsageRowHeight
+                - TerrariumRules.pixooUsageCreatureMargin) / Double(Self.height))
         }
         return y
     }

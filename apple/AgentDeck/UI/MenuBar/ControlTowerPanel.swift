@@ -902,6 +902,12 @@ struct ControlTowerPanel: View {
 
             if hasCodex {
                 usageProviderHeader(agentType: "codex-cli", title: "Codex")
+                if let luna = codex?.activeLunaReserve() {
+                    // Account window exhausted: the Luna reserve replaces both
+                    // windows and reads as what is left.
+                    compactGauge(label: "Luna", percent: max(0, 100 - luna.usedPercent),
+                                 resetTime: luna.resetsAt, remaining: true)
+                } else {
                 if let primary = codex?.primary, let percent = primary.usedPercent {
                     compactGauge(
                         label: TopologyRail.windowLabel(primary.windowMinutes),
@@ -919,6 +925,7 @@ struct ControlTowerPanel: View {
                         stale: secondary.stale == true,
                         footnote: CodexUsageFreshness.footnote(window: secondary, capturedAt: codex?.capturedAt)
                     )
+                }
                 }
                 if codex?.primary == nil, codex?.secondary == nil, let credits = codex?.credits {
                     HStack {
@@ -1119,6 +1126,10 @@ struct ControlTowerPanel: View {
                         .kerning(0.5)
                         .foregroundColor(TerrariumHUD.subtext.opacity(0.8))
                         .padding(.top, 2)
+                    if let luna = codex.activeLunaReserve() {
+                        compactGauge(label: "Luna", percent: max(0, 100 - luna.usedPercent),
+                                     resetTime: luna.resetsAt, remaining: true)
+                    } else {
                     if let p = codex.primary, let pct = p.usedPercent {
                         compactGauge(
                             label: TopologyRail.windowLabel(p.windowMinutes),
@@ -1136,6 +1147,7 @@ struct ControlTowerPanel: View {
                             stale: s.stale == true,
                             footnote: CodexUsageFreshness.footnote(window: s, capturedAt: codex.capturedAt)
                         )
+                    }
                     }
                     if codex.primary == nil, codex.secondary == nil,
                        codex.credits != nil || codex.limitId != nil {
@@ -1313,7 +1325,7 @@ struct ControlTowerPanel: View {
         return s
     }
 
-    private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false, muted: Bool = false, footnote: String? = nil) -> some View {
+    private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false, muted: Bool = false, footnote: String? = nil, remaining: Bool = false) -> some View {
         // Expired Codex window: desaturate the fill and show a "stale" marker
         // instead of a (misleading) reset countdown. The % stays last-known.
         // `muted` = a non-binding per-model scoped cap: neutral, never the critical
@@ -1322,7 +1334,10 @@ struct ControlTowerPanel: View {
         // an aged snapshot of a still-live window is not current either, and its
         // reset countdown says nothing about when the number was measured.
         let dim = stale || (footnote?.isEmpty == false)
-        let color = (dim || muted) ? TerrariumHUD.subtext : gaugeColor(percent)
+        // `remaining`: percent is what is LEFT (the Codex Luna reserve); the
+        // bar fills by it while the colour ramp reads the used complement.
+        let used = remaining ? 100 - percent : percent
+        let color = (dim || muted) ? TerrariumHUD.subtext : gaugeColor(used)
         return HStack(spacing: 8) {
             Text(label)
                 .font(.system(size: 10, design: .monospaced))
@@ -1344,10 +1359,10 @@ struct ControlTowerPanel: View {
                 }
             }
             .frame(height: 6)
-            Text(customSuffix ?? "\(Int(percent))%")
+            Text(customSuffix ?? (remaining ? "\(Int(percent))% left" : "\(Int(percent))%"))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(color)
-                .frame(width: customSuffix != nil ? 75 : 36, alignment: .trailing)
+                .frame(width: customSuffix != nil ? 75 : remaining ? 62 : 36, alignment: .trailing)
             if customSuffix == nil {
                 if let note = footnote, !note.isEmpty {
                     Text(note)
@@ -1361,8 +1376,8 @@ struct ControlTowerPanel: View {
                         .frame(width: 48, alignment: .trailing)
                 } else if let reset = resetTime, let formatted = formatResetTime(reset) {
                     Text(formatted)
-                        .font(.system(size: 10, weight: percent >= 70 ? .semibold : .regular))
-                        .foregroundColor(percent >= 70 ? .orange : TerrariumHUD.subtext)
+                        .font(.system(size: 10, weight: used >= 70 ? .semibold : .regular))
+                        .foregroundColor(used >= 70 ? .orange : TerrariumHUD.subtext)
                         .frame(width: 48, alignment: .trailing)
                 }
             }

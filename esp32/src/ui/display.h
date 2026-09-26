@@ -54,6 +54,9 @@ void hwI2cDumpDevice(uint8_t addr);
 /** Log raw + mapped touch points, to tell a dead controller from a bad map. */
 void setTouchTrace(bool on);
 
+/** UI-task-only rolling measurements; loop rate is not panel FPS. */
+void recordFrameTiming(uint32_t viewUs, uint32_t lvglUs);
+
 /**
  * Single-register access on the panel's I2C bus, for peripherals that share it
  * with touch (the ES8311 codec at 0x18). Routed through here rather than
@@ -61,6 +64,8 @@ void setTouchTrace(bool on);
  * consumer of this header — and so there is exactly one bus on those pads.
  */
 bool hwI2cReadReg8(uint8_t addr, uint8_t reg, uint8_t* out);
+/** Read OV02C10 identity over the existing touch/SCCB bus; never start streaming. */
+void hwCameraProbe();
 bool hwI2cWriteReg8(uint8_t addr, uint8_t reg, uint8_t val);
 #endif
 

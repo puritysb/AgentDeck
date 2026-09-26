@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Firmware maintainers
-reviewed: 2026-07-22
-revision: 2026-07-22
+reviewed: 2026-09-23
+revision: 2026-09-23
 source_of_truth: docs/esp32.md
 validators: [bash esp32/robot/run.sh build]
 ---
@@ -32,8 +32,7 @@ pnpm esp32:sim box_86 working  # one board, one scene
 ```
 
 Covers all board classes: LCD terrarium + HUD (`box_86` 480×480, `ips35` 480×320,
-`amoled` 360×360 round, `ttgo` 135×240 compact overlay), the IPS10 tablet "pixel
-office" + sidebar mosaic (`ips10` 1280×800), the two companion render trees
+`amoled` 360×360 round, `ttgo` 135×240 compact overlay), the IPS10 task workspace (`ips10` 1280×800, also tested at 800×1280), the two companion render trees
 (`t_embed` 320×170 encoder knob, `t_display_pro` 480×222 focus strip), the TC001
 8×32 LED matrix (`led8x32`, usage/agents pages), and the three paper-face layouts
 (`trmnl_75` 800×480, `nm_epd_420_preview` 400×300, and
@@ -51,9 +50,31 @@ firmware fills from the daemon's `state_update`, exercising the real session →
 creature/card derivation. Frames are deterministic (virtual clock + re-seeded
 PRNG) for golden tests. Adding a board = one `platformio.ini` env block.
 Standalone PlatformIO project (does not inherit `esp32/platformio.ini`), so
-WiFi/WebSockets/LovyanGFX never enter the native build. Limitations: Latin labels
-only (CJK stubbed); e-ink is a single full-buffer pass (no partial-refresh
-ghosting). See [esp32/sim/README.md](../esp32/sim/README.md).
+WiFi/WebSockets/LovyanGFX never enter the native build. IPS10 renders the real
+Korean fonts. Hardware flush timing and physical touch accuracy are not modeled;
+e-ink is a single full-buffer pass (no partial-refresh ghosting). See [esp32/sim/README.md](../esp32/sim/README.md).
+
+## IPS10 task workspace
+
+IPS10 defaults to an English ambient aquarium: current work, recent received activity, and attention remain visible without touch. Session detail is available on demand. The installed P4 display driver is currently fixed to 1280×800 landscape; `set_orientation` does not rotate this board. The 800×1280 layout is validated in the native simulator, not as a physical rotation feature. The fixed layout is:
+
+- A conditional attention strip names the first waiting project and its question, including when that project is on another page. State filters remain in detail mode.
+- Three equal-width project spaces (one in the portrait preview) per page group canonical creatures by exact reported project name. Project ordering and creature numbers follow identities; attention takes priority when choosing visible creatures. Additional spaces appear automatically every 12 seconds; tapping the page caption pauses/resumes rotation. Each space shows up to three creatures and their activities; additional peers rotate every 8 seconds. Up to two attention agents stay visible within each project; remaining slots rotate fairly and always fill when enough peers exist. Each creature, status and activity forms one aligned 96–120px row; a worker label shows reported active children. The latest attributable ring event appears below them in 20px text. Unknown project names remain separate. Grouping means co-presence, not a measured delegation relationship. Creatures retain state badges, dim idle states, and touch-to-inspect detail.
+- **USAGE** persists in both modes and groups Claude/Codex/z.ai quota windows with confirmed subscription plans and reported dates. Antigravity is plan/date only, never raw credits or a fabricated percentage. Missing windows remain absent, including plans without 5h quotas; zero is valid. Luna uses a crescent and remaining allowance only while a regular Codex limit is exhausted, returning to normal windows after reset. A plan-only row can keep USAGE visible. The rail is content-sized, with bounded scrolling when all providers are present. Unknown/unlinked providers have no placeholder.
+- A scrollable session rail in detail mode, with attention first and selection retained by session ID when the daemon reorders its roster. Task names use reported milestones when available.
+- A detail surface that collapses unknown collaboration cards and sizes the activity/history regions to content with the canonical agent glyph, current activity or permission question, reported child/background counts, and two recent events. **History** expands to the eight newest events retained on the device; it is not a complete archive. Long questions and history rows scroll instead of losing their ending.
+- A bottom voice dock replaces token/tool/cost counters and the old top ready label. It shows wake availability, muted/listening/recognizing/processing/speaking/error states, the recognized sentence, processing owner and reply. The header contains only the product mark and a graphical two-segment Aquarium/Details switch. A separate voice drawer retains hold-to-talk, wake toggle, stop and volume controls.
+- A connection banner retains inspectable last-known data during reconnects. Unknown usage is omitted in the aquarium and remains explicit in on-demand details; idle never claims that a task completed. Permission prompts direct the user to the agent terminal, preserving the existing attention-only policy.
+
+Dashboard labels are English: IBM Plex Sans KR Bold 20px headings and 28px wordmark and 20px quota values, Regular 20px activity text and Regular 16px metadata, with Korean fallback for received content. User and agent text retain their original language; large detail counts use a compact 36px digit subset. The generated fonts are IPS10-only and the full Hangul face uses uncompressed 2bpp to bound flash and avoid decompression during drawing.
+
+The former full-frame pixel-office/mosaic renderer remains unused. Project decks now use reusable LVGL widgets, existing creature masks, and fixed text/session/event stores. Three Blender-baked canonical creature reliefs add depth without a live 3D renderer (110.25 KiB shared RGB565+A8 flash data). Equal project columns use 16px gutters/insets and share heading baselines with the quota rail. A subdued generated underwater background adds spatial context with a single 500 KiB RGB565 flash image; `design/ips10/ocean.png` and `encode_ocean.py` are its source and conversion gate. Live canonical glyphs and text remain independent of that static image. Ten project containers and ten creature seats are allocated at initialization and reused; no canvas allocation or per-frame growing container is needed. Other boards retain their existing render trees. `workspace_diag` is a read-only firmware-local serial command returning a UI-core snapshot (layout, session counts, update count and processing time); it does not access LVGL from the network task and its timings exclude the later display flush.
+
+Both daemons send at most ten detailed sessions per frame. For larger rosters, up to three attention sessions stay pinned while every remaining alive session rotates through the other slots every 60 seconds. Even excess attention sessions eventually appear; no unbounded firmware roster is allocated. `bridge/src/ips10-roster.ts` owns the selection policy and generates the Swift kernel via `node bridge/generate-ips10-roster.mjs`; parity and full-coverage tests gate both. The additive IPS10-local `rosterRotating` Boolean distinguishes new paging hosts from legacy priority-only hosts (missing means false), and `total` reports the alive roster size. Project pages rotate every 12 seconds; peers every 8 seconds. A selected detail that leaves the received page remains explicitly marked as a saved detail, rather than switching silently to another agent. Deleted selections disappear when the host is no longer oversubscribed. Empty activity, event and reset fields do not reserve placeholder rows.
+
+The voice dock distinguishes local wake readiness from gateway availability. `Say OpenClaw` requires a ready/enabled detector, daemon connection and healthy gateway; muted/unavailable/offline states remain explicit. `shared/src/collaboration-presentation.ts` generates the live-census vocabulary and waiting-on-work predicate used by both IPS10 Details and macOS Collaboration. Task-scoped history remains separate from these live counts; no relationship is inferred from shared projects.
+
+The native simulator's `ips10 --verify-interactions` covers closed-drawer voice states, identity-stable placement, automatic project paging, provider units and reset sentinels, pointer press/release, creature-seat navigation, project grouping (including ten peers, ten distinct projects, and unnamed projects), zero/missing/stale quota handling, priority selection, same-project session attribution, ring wrap, roster reorder/removal, empty filters, voice drawer bounds, offline state, and empty state. Run it in both default landscape and `--portrait` modes. These previews validate actual firmware widgets; they do not establish physical touch accuracy or microphone recognition quality. Speech recognition revalidation and front-camera vision remain separate work.
 
 ## Flash over USB
 

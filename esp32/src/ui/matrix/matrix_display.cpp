@@ -29,7 +29,7 @@ static float pageCycleTimer = 0.0f;
 static bool hasUsageData() {
     lockState();
     bool connected = g_state.wsConnected || Net::serialConnected();
-    bool has = connected && (g_state.fiveHourPercent >= 0.0f || g_state.sevenDayPercent >= 0.0f);
+    bool has = connected && !g_state.usageStale && (g_state.fiveHourPercent >= 0.0f || g_state.sevenDayPercent >= 0.0f);
     unlockState();
     return has;
 }

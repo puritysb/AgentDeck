@@ -446,7 +446,7 @@ export class SessionSlotButtonAction extends SingletonAction {
     }
 
     if (result.action === 'cycle-usage-page') {
-      manager.cycleUsagePage();
+      manager.cycleUsagePage(layout);
       refreshAll();
       return;
     }

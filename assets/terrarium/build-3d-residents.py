@@ -62,12 +62,20 @@ def hinge(o,name,pivot,root):
 def clipped(source,name,planes):
     bm=bmesh.new();bm.from_mesh(source.data)
     bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=.00001)
+    bmesh.ops.triangulate(bm,faces=list(bm.faces))
     for origin,normal in planes:
         cut=bmesh.ops.bisect_plane(bm,geom=list(bm.verts)+list(bm.edges)+list(bm.faces),dist=.000001,
             plane_co=origin,plane_no=normal,clear_outer=True,clear_inner=False)
         edges=[e for e in cut['geom_cut'] if isinstance(e,bmesh.types.BMEdge) and e.is_boundary]
         if edges:bmesh.ops.holes_fill(bm,edges=edges,sides=0)
+        bmesh.ops.triangulate(bm,faces=list(bm.faces))
     mesh=bpy.data.meshes.new(name);bm.to_mesh(mesh);bm.free()
+    # Intersecting the SVG's pixel-step edges can leave a zero-area cap;
+    # glTF rejects that even though Blender displays the silhouette normally.
+    mesh.validate(clean_customdata=False)
+    check=bmesh.new();check.from_mesh(mesh)
+    broken=sum(not edge.is_manifold for edge in check.edges);check.free()
+    if broken:raise RuntimeError(f'{name}: {broken} open or overlapping cut edges')
     o=bpy.data.objects.new(name,mesh);scene.collection.objects.link(o)
     o.data.materials.append(source.data.materials[0]);return o
 for brand in brands:
@@ -110,20 +118,48 @@ for brand in brands:
         o=convert(o);o.name=brand+'_canonical_'+str(n);o.parent=root;meshes.append(o)
     if brand=='claudecode':
         # Split only existing limbs from the source; neutral pose is unchanged.
-        bpy.ops.object.select_all(action='DESELECT')
-        for o in meshes:o.select_set(True)
-        bpy.context.view_layer.objects.active=meshes[0];bpy.ops.object.join();source=bpy.context.object
+        # Fuse the rear closure before cutting limbs. Object-join leaves two
+        # overlapping shells, so bisect caps can contain intersecting loops.
+        source=meshes[-1]
+        bpy.ops.object.select_all(action='DESELECT');source.select_set(True)
+        bpy.context.view_layer.objects.active=source
+        for closure in meshes[:-1]:
+            union=source.modifiers.new('Fuse rear closure','BOOLEAN')
+            union.operation='UNION';union.solver='EXACT';union.object=closure
+            bpy.ops.object.modifier_apply(modifier=union.name)
+            bpy.data.objects.remove(closure,do_unlink=True)
         bpy.ops.object.transform_apply(location=True,rotation=False,scale=True)
         middle=[((.375,0,0),(1,0,0)),((-.375,0,0),(-1,0,0))]
-        torso=clipped(source,'claudecode_canonical_body',middle+[((0,-.19079,0),(0,-1,0))]);torso.parent=root
+        # Cut just inside the torso rather than through the bevel's existing
+        # collinear junction vertices, which would produce overlapping caps.
+        foot_top=-.19079
+        torso_cut=-.1906
+        torso=clipped(source,'claudecode_canonical_body',middle+[((0,torso_cut,0),(0,-1,0))]);torso.parent=root
+        for v in torso.data.vertices:
+            if abs(v.co.y-torso_cut)<.000001:v.co.y=foot_top
+        # The SVG's horizontal arms occupy y=10.949..14.051 (in a 24-unit
+        # viewBox). Clipping only by x also picked up the full-height outer
+        # torso edge; rotating that edge produced broken-looking spikes behind
+        # the character. Keep the non-arm parts of each side fixed to the body.
+        # Include the complete bevel. Cutting at the SVG's un-beveled edge
+        # leaves its top/bottom skin attached to the fixed flank like shards.
+        arm_edge_margin=.00601
+        arm_top=(12.5-10.949)/24+arm_edge_margin
+        arm_bottom=(12.5-14.051)/24-arm_edge_margin
         for index,side in enumerate([-1,1]):
-            arm=clipped(source,'claudecode_canonical_arm', [((side*.375,0,0),(-side,0,0))])
+            outer=[((side*.375,0,0),(-side,0,0))]
+            arm=clipped(source,'claudecode_canonical_arm',outer+[
+                ((0,arm_top,0),(0,1,0)),((0,arm_bottom,0),(0,-1,0))])
             hinge(arm,'arm_'+str(index),(side*.375,0,0),root)
+            for name,cut in [('upper',((0,arm_top,0),(0,-1,0))),
+                             ('lower',((0,arm_bottom,0),(0,1,0)))]:
+                flank=clipped(source,'claudecode_canonical_flank_'+name,outer+[cut])
+                flank.parent=root
         # Original four pixel feet, cut at their existing junction with the body.
         intervals=[(-.31305,-.25),(-.18805,-.125),(.125,.18805),(.25,.31305)]
         for i,(left,right) in enumerate(intervals):
-            foot=clipped(source,'claudecode_canonical_foot', [((0,-.19079,0),(0,1,0)),((left,0,0),(-1,0,0)),((right,0,0),(1,0,0))])
-            hinge(foot,'foot_'+str(i),((left+right)/2,-.19079,0),root)
+            foot=clipped(source,'claudecode_canonical_foot', [((0,foot_top,0),(0,1,0)),((left,0,0),(-1,0,0)),((right,0,0),(1,0,0))])
+            hinge(foot,'foot_'+str(i),((left+right)/2,foot_top,0),root)
         bpy.data.objects.remove(source,do_unlink=True)
     elif brand=='openclaw':
         # SVG paths already separate the two canonical claws from the torso.

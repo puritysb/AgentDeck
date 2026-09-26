@@ -424,7 +424,9 @@ private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale, visib
             )
         }
 
-        val openClawVisible = "openclaw" in visible
+        val gatewaySetup = dev.agentdeck.net.GatewaySetupStatus.evaluate(
+            state.gatewayAuthStatus, state.gatewayConnected, state.gatewayAvailable)
+        val openClawVisible = "openclaw" in visible || (state.bridgeConnected && gatewaySetup.needsAttention)
         if (openClawVisible) {
             // Only surface the catalog under OpenClaw when it actually
             // belongs to OpenClaw — same gate we apply to the Claude row.
@@ -434,6 +436,7 @@ private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale, visib
                 emptyList()
             }
             val subtitle = when {
+                gatewaySetup.needsAttention -> gatewaySetup.detail
                 openClawLines.isNotEmpty() -> openClawLines.joinToString(", ")
                 state.gatewayConnected != true -> "Not connected"
                 else -> null
@@ -442,13 +445,12 @@ private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale, visib
                 name = "OpenClaw",
                 status = when {
                     state.gatewayHasError == true -> LEDStatus.ERROR
-                    // OK only when the Gateway is authenticated — reachability
-                    // alone keeps the row amber so users know setup isn't
-                    // finished (matches iOS topology semantics).
+                    gatewaySetup.needsAttention -> LEDStatus.WARN
                     state.gatewayConnected == true -> LEDStatus.OK
-                    else -> LEDStatus.WARN
+                    else -> LEDStatus.DIM
                 },
                 subtitle = subtitle,
+                subtitleMaxLines = if (gatewaySetup.needsAttention) 4 else 1,
                 consumers = consumersFor(ProviderKey.OPENCLAW, state),
                 rateLimits = emptyList(),
             )
@@ -616,6 +618,8 @@ private data class RateChip(
     /// for > 10min the chip dims and shows `stale` in the reset slot so
     /// the cached value can't be mistaken for current data.
     val stale: Boolean = false,
+    /** `percent` is what remains (the Codex Luna reserve); colour reads the used complement. */
+    val remaining: Boolean = false,
 )
 
 @Composable
@@ -625,6 +629,7 @@ private fun ProviderRow(
     subtitle: String?,
     consumers: List<Color>,
     rateLimits: List<RateChip>,
+    subtitleMaxLines: Int = 1,
 ) {
     val tight = PlatformTextStyle(includeFontPadding = false)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -678,7 +683,7 @@ private fun ProviderRow(
                 color = TerrariumColors.HUDSubtext,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
-                maxLines = 1,
+                maxLines = subtitleMaxLines,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 14.dp),
                 style = TextStyle(platformStyle = tight),
@@ -698,9 +703,10 @@ private fun ProviderRow(
 @Composable
 private fun RateChipView(chip: RateChip) {
     val pct = chip.percent.coerceIn(0.0, 100.0)
+    val used = if (chip.remaining) 100.0 - pct else pct
     val fillColor = when {
-        pct >= 90 -> TerrariumColors.LEDRed
-        pct >= 70 -> TerrariumColors.LEDAmber
+        used >= 90 -> TerrariumColors.LEDRed
+        used >= 70 -> TerrariumColors.LEDAmber
         else -> TerrariumColors.LEDGreen
     }
     val fillFraction = (pct / 100.0).toFloat()
@@ -866,6 +872,7 @@ private fun buildCodexRateChips(limits: CodexRateLimits?): List<RateChip> =
             percent = row.percent,
             reset = row.footnote ?: row.resetIso?.let { formatResetTime(it) },
             stale = row.stale || row.footnote != null,
+            remaining = row.remaining,
         )
     }
 

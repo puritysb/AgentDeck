@@ -410,4 +410,8 @@ const char* wifiLocalIP() {
     return ipBuf;
 }
 
+int wifiRssiDbm() {
+    return WiFi.RSSI();
+}
+
 }  // namespace Net

@@ -253,6 +253,36 @@ describe('ConnectionManager', () => {
       vi.spyOn(process, 'kill').mockImplementation(() => true as any);
     });
 
+    it('tries the socket when a daemon PID probe is permission denied', () => {
+      daemonFiles.set(cliFile, JSON.stringify({ port: 9120, pid: 1234 }));
+      vi.mocked(process.kill).mockImplementation(() => {
+        throw Object.assign(new Error('permission denied'), { code: 'EPERM' });
+      });
+      cm.start();
+      expect(cm.getConnectionSnapshot().daemonPort).toBe(9120);
+    });
+
+    it('skips a daemon whose PID is confirmed absent', () => {
+      daemonFiles.set(cliFile, JSON.stringify({ port: 9120, pid: 1234 }));
+      vi.mocked(process.kill).mockImplementation(() => {
+        throw Object.assign(new Error('no such process'), { code: 'ESRCH' });
+      });
+      cm.start();
+      expect(cm.getConnectionSnapshot().daemonPort).toBeNull();
+    });
+
+    it.each([
+      { port: 9120, pid: 0 }, { port: 9120, pid: -1 },
+      { port: 9120, pid: '1234' }, { port: 65536, pid: 1234 },
+      { port: 0, pid: 1234 }, { port: '9120', pid: 1234 },
+    ])('rejects malformed daemon identity %j before probing', info => {
+      daemonFiles.set(cliFile, JSON.stringify(info));
+      vi.mocked(process.kill).mockClear();
+      cm.start();
+      expect(cm.getConnectionSnapshot().daemonPort).toBeNull();
+      expect(process.kill).not.toHaveBeenCalled();
+    });
+
     it('prefers the CLI daemon when it is healthy', () => {
       daemonFiles.set(cliFile, JSON.stringify({ port: 9120, pid: 1234 }));
       daemonFiles.set(swiftFile, JSON.stringify({ port: 9130, pid: 5678 }));

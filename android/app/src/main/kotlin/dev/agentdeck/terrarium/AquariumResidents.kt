@@ -2,7 +2,6 @@ package dev.agentdeck.terrarium
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Paint
 import android.opengl.Matrix
 import com.google.android.filament.EntityManager
 import com.google.android.filament.gltfio.AssetLoader
@@ -10,8 +9,6 @@ import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
 import com.google.android.filament.utils.ModelViewer
-import dev.agentdeck.ui.theme.DesignTokens
-import androidx.compose.ui.graphics.toArgb
 import java.nio.ByteBuffer
 import kotlin.math.*
 
@@ -77,10 +74,9 @@ internal class AquariumResidents(private val context: Context, private val viewe
     private val floatProjection = FloatArray(16)
     private val point = FloatArray(4)
     private val projected = FloatArray(4)
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = android.graphics.Typeface.createFromAsset(context.assets, "fonts/IBMPlexSans-Regular.ttf")
-    }
-    private val density = context.resources.displayMetrics.density
+    private val overlay = AquariumResidentOverlay(context)
+    private var screenX = 0f
+    private var screenY = 0f
     private var snailTime = 0.0
     private val snailEntity = viewer.asset?.getFirstEntityByName("Fauna snail") ?: 0
 
@@ -185,7 +181,7 @@ internal class AquariumResidents(private val context: Context, private val viewe
         bodies.values.forEach { body ->
             body.effort += ((if (body.item.state == OctopusVisualState.WORKING) 1f else 0f) - body.effort) * blend
             body.attention += ((if (body.item.state == OctopusVisualState.ASKING) 1f else 0f) - body.attention) * blend
-            body.phase += dt * (.65f + body.effort * 1.7f)
+            body.phase += dt * (TerrariumRules.NATIVE_ACTIVITY_IDLE_RATE + body.effort * TerrariumRules.NATIVE_ACTIVITY_WORK_RATE)
             val grounded = body.item.kind == "claudecode" || body.item.kind == "openclaw"
             val scale = if (grounded) min(baseScale, 1.8f / sqrt(groundedCount.toFloat())) else baseScale
             body.size = scale
@@ -194,7 +190,9 @@ internal class AquariumResidents(private val context: Context, private val viewe
             val count = min(columns, (if (grounded) groundedCount else bodies.size - groundedCount) - row * columns)
             val spacing = width / (if (grounded) min(columns, groundedCount) else columns).coerceAtLeast(1)
             val homeX = (index % columns - (count - 1) / 2f) * spacing
-            body.x = homeX + sin(body.phase) * body.effort * .10f
+            val swing = sin(body.phase) * body.effort
+            body.x = homeX + scale * if (grounded) sin(body.phase * .5f) * body.effort * TerrariumRules.NATIVE_ACTIVITY_GROUND_TRAVEL
+                else sin(body.phase * .5f) * .18f + swing * TerrariumRules.NATIVE_ACTIVITY_WATER_TRAVEL
             val waterRows = (bodies.size - groundedCount + columns - 1) / columns
             body.y = if (grounded) body.footHeight * scale + .95f + row * .48f
                 else (if (waterRows <= 1) 2.8f else 4.0f - row * 1.6f) + sin(body.phase * .7f) * .06f
@@ -207,13 +205,20 @@ internal class AquariumResidents(private val context: Context, private val viewe
             }
             Matrix.setIdentityM(matrix, 0)
             Matrix.translateM(matrix, 0, body.x, body.y, body.z)
-            Matrix.rotateM(matrix, 0, sin(body.phase * .5f) * (3f + body.effort * 12f), 0f, 1f, 0f)
-            Matrix.scaleM(matrix, 0, scale, scale, scale)
+            val yaw = sin(body.phase * .5f) * if (grounded) body.effort * TerrariumRules.NATIVE_ACTIVITY_GROUND_YAW
+                else .20f + body.effort * TerrariumRules.NATIVE_ACTIVITY_WORK_YAW
+            Matrix.rotateM(matrix, 0, Math.toDegrees(yaw.toDouble()).toFloat(), 0f, 1f, 0f)
+            if (!grounded) {
+                Matrix.rotateM(matrix, 0, Math.toDegrees((swing * TerrariumRules.NATIVE_ACTIVITY_WORK_YAW).toDouble()).toFloat(), 1f, 0f, 0f)
+                Matrix.rotateM(matrix, 0, Math.toDegrees((-swing * TerrariumRules.NATIVE_ACTIVITY_WORK_ROLL).toDouble()).toFloat(), 0f, 0f, 1f)
+            }
+            val breath = if (grounded) 0f else sin(body.phase * 1.3f) * .009f + swing * TerrariumRules.NATIVE_ACTIVITY_WORK_BREATH
+            Matrix.scaleM(matrix, 0, scale * (1f + breath), scale * (1f - breath * .6f), scale * (1f + breath))
             transforms.setTransform(transforms.getInstance(body.asset.root), matrix)
             for ((i, joint) in body.joints.withIndex()) {
                 joint.rest.copyInto(pose)
                 if (joint.name.startsWith("joint_foot")) {
-                    Matrix.translateM(pose, 0, 0f, 0f, -max(0f, sin(body.phase * 2f + i * PI.toFloat())) * body.effort * .04f)
+                    Matrix.translateM(pose, 0, 0f, 0f, -max(0f, sin(body.phase * 2f + i * PI.toFloat())) * body.effort * TerrariumRules.NATIVE_ACTIVITY_FOOT_LIFT)
                 } else {
                     val side = if (joint.name.endsWith("_0")) -1f else 1f
                     Matrix.rotateM(pose, 0, side * (body.attention * 24f + body.effort * (12f + sin(body.phase) * 33f)), 0f, 1f, 0f)
@@ -225,42 +230,30 @@ internal class AquariumResidents(private val context: Context, private val viewe
         stepSnail(dt)
     }
 
-    fun drawLabels(canvas: Canvas) {
+    private fun project(canvas: Canvas, x: Float, y: Float, z: Float): Boolean {
+        point[0] = x; point[1] = y; point[2] = z; point[3] = 1f
+        Matrix.multiplyMV(projected, 0, viewProjection, 0, point, 0)
+        if (projected[3] <= 0f) return false
+        screenX = (projected[0] / projected[3] + 1f) * canvas.width / 2f
+        screenY = (1f - projected[1] / projected[3]) * canvas.height / 2f
+        return true
+    }
+
+    fun drawLabels(canvas: Canvas, labelsVisible: Boolean = true) {
         viewer.camera.getViewMatrix(cameraView)
         viewer.camera.getProjectionMatrix(cameraProjection)
         for (i in 0..15) floatProjection[i] = cameraProjection[i].toFloat()
         Matrix.multiplyMM(viewProjection, 0, floatProjection, 0, cameraView, 0)
-        paint.textAlign = Paint.Align.CENTER
         for (body in bodies.values) {
-            point[0] = body.x; point[1] = body.y + .75f; point[2] = body.z; point[3] = 1f
-            Matrix.multiplyMV(projected, 0, viewProjection, 0, point, 0)
-            if (projected[3] <= 0f) continue
-            val x = (projected[0] / projected[3] + 1f) * canvas.width / 2f
-            val y = (1f - projected[1] / projected[3]) * canvas.height / 2f
-            val title = body.item.title.take(22)
-            val state = when(body.item.state) {
-                OctopusVisualState.WORKING -> "WORKING"
-                OctopusVisualState.ASKING -> "WAITING"
-                else -> "IDLE"
-            } + if (body.item.helpers > 0) " · ${body.item.helpers} agents" else ""
-            paint.textSize = 12f * density
-            val half = max(paint.measureText(title), paint.measureText(state)) / 2f + 9f * density
-            paint.color = TerrariumColors.DeepSea.toArgb()
-            canvas.drawRoundRect(x-half, y-16f*density, x+half, y+20f*density, 6f*density, 6f*density, paint)
-            paint.color = DesignTokens.Tide.s50.toArgb()
-            canvas.drawText(title, x, y-2f*density, paint)
-            paint.textSize = 10f * density
-            paint.color = when(body.item.state) {
-                OctopusVisualState.WORKING -> DesignTokens.Status.processing
-                OctopusVisualState.ASKING -> DesignTokens.Status.awaiting
-                else -> DesignTokens.Status.idle
-            }.toArgb()
-            canvas.drawText(state, x, y+12f*density, paint)
+            if (!project(canvas, body.x, body.y, body.z)) continue
+            val bodyX = screenX; val bodyY = screenY
+            if (!project(canvas, body.x + body.size, body.y, body.z)) continue
+            val unit = abs(screenX - bodyX)
+            if (!project(canvas, body.x, body.y + .75f, body.z)) continue
+            overlay.draw(canvas, body.item, screenX, screenY, bodyX, bodyY, unit, body.phase,
+                body.item.id == focusedId, labelsVisible)
         }
-        if (all.size > bodies.size) {
-            paint.color = DesignTokens.Tide.s50.toArgb()
-            canvas.drawText("${all.size} sessions · select a session in the list to bring it into view", canvas.width / 2f, 30f*density, paint)
-        }
+        if (labelsVisible && all.size > bodies.size) overlay.drawOverflow(canvas, all.size)
     }
 
     fun dispose() {

@@ -1,0 +1,46 @@
+{
+  "connected": [
+    "connected",
+    "Paired through Gateway"
+  ],
+  "reconnecting": [
+    "awaitingData",
+    "Reconnecting to Gateway…"
+  ],
+  "gateway_reachable": [
+    "awaitingData",
+    "Connecting to Gateway…"
+  ],
+  "approval_pending": [
+    "awaiting",
+    "Approve the AgentDeck host in OpenClaw’s Web UI."
+  ],
+  "pairing_required": [
+    "awaiting",
+    "Approve the AgentDeck host in OpenClaw’s Web UI."
+  ],
+  "gateway_token_missing": [
+    "awaiting",
+    "A shared token is required. Configure the Gateway token on the AgentDeck host."
+  ],
+  "token_mismatch": [
+    "failed",
+    "The shared token was rejected. Check the Gateway token on the AgentDeck host."
+  ],
+  "connect_timeout": [
+    "awaitingData",
+    "Gateway did not answer the connection attempt. Waiting to reconnect."
+  ],
+  "device_auth_invalid": [
+    "failed",
+    "Gateway rejected the host’s pairing identity. Check its approved device entry in OpenClaw."
+  ],
+  "auth_failed": [
+    "failed",
+    "Gateway authentication failed. Check OpenClaw settings on the AgentDeck host."
+  ],
+  "unsupported_protocol": [
+    "unsupported",
+    "Gateway protocol is unsupported. Check compatibility on the AgentDeck host."
+  ]
+}

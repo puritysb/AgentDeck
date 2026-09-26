@@ -49,7 +49,7 @@ paused while Usage is selected. The host display-sleep policy still applies.
 
 ## T-Embed CC1101 (Companion Knob)
 
-**Shipping since 2026-07-25.** The LilyGO T-Embed CC1101 is the fleet's only board with a **rotary encoder**, and the only one you steer with rather than only read from — every other Shipping board is output-only apart from touch. Its UI (`esp32/src/ui/knob/`) starts with an arrival-ordered waiting queue showing the project and question. Rotate between waiting requests or the All sessions destination, then press to enter. Detail requires a deliberate turn to select before pressing; changed questions or choices clear the selection. A pending reply stays unconfirmed until a state update is observed; disconnected or stale requests cannot be sent. Holding the encoder is push-to-talk — the board captures voice, the host transcribes, and the reply is spoken back through the board speaker.
+**Shipping since 2026-07-25.** The LilyGO T-Embed CC1101 is the fleet's only board with a **rotary encoder**, and the only one you steer with rather than only read from — every other Shipping board is output-only apart from touch. Its UI (`esp32/src/ui/knob/`) starts with the full session roster showing the project and activity or question. Rotate to inspect another session, then press to enter local detail. A waiting-only queue remains available. Opening detail keeps selection local and does not change desktop focus. Detail requires a deliberate turn to select before pressing; changed questions or choices clear the selection. A pending reply stays unconfirmed until a state update is observed; disconnected or stale requests cannot be sent. Holding the encoder is push-to-talk — the board captures voice, the host transcribes, and the reply is spoken back through the board speaker.
 
 It is a **dual-mode companion**: USB-powered on the desk it is a steering knob; on its 1300 mAh cell it becomes a carry-around pager that chimes when a session starts waiting. The 8× WS2812 ring is a session-status ring (one LED per session, up to eight). The BQ27220 fuel gauge gives it a real state-of-charge readout rather than an inferred one.
 
@@ -57,10 +57,19 @@ Peripheral breadth is the widest in the fleet — CC1101 sub-GHz, PN532 NFC, IR 
 
 ## T-Display-S3-Pro (Focus Strip / Pocket)
 
-**Shipping since 2026-07-26.** The LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. **One firmware serves two physically different units**, and it picks its own personality at boot: `Camera::init()` probes the rear POGO camera shield, and a unit that has one comes up **portrait** in the Pocket UI while a unit that does not comes up **landscape** in the Ticker UI (`esp32/src/main.cpp`). The camera is a purchase option on a shield header — not a board revision — so both units report the same `device_info.board` of `t_display_pro` and take the same OTA image.
+**Shipping since 2026-07-26; desk-awareness default since 2026-09-26.** The
+LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. Both camera and
+camera-less units now boot into landscape Focus. A camera shield is still
+probed and adds an explicit CAM page rather than automatically selecting the
+portrait Pocket UI.
 
-- **Landscape (Ticker, no camera)** — **Focus** shows a pinned project, current activity, and a retained result. Tap the project or press `BOOT` on Focus to pin/unpin; tap NEW RESULT to refresh. An ended pinned session remains visible. The persistent waiting count opens the waiting list without stealing the current page. **Usage** shows available provider windows; **Sessions** offers three readable rows with pagination, and tapping a row pins it. Separate labelled Deny/Approve targets check the displayed request before sending. The split rocker moves pages; `BOOT` on another page returns to Focus.
-- **Portrait (Pocket, camera unit)** — a phone-shaped stack of **SESSIONS** (momentum-scrolled cards, tap to focus), **CAM** (upright viewfinder with SNAP and LED; tapping the target line cycles which session receives the photo), and **USAGE**. The whole hardware stack is portrait-native — panel GRAM, CST226SE touch reporting, and camera mounting — so this orientation needs no rotation fights and LVGL's pointer indev drives real widgets instead of hand-rolled gestures.
+Focus pins the initial task and retains it when the session ends. It shows the
+latest observed activity with a local observation age (not proof of a stalled
+agent), and keeps actual response events separately from asks and tool activity.
+The first response appears automatically; later replacements are offered with
+NEW RESULT. Waiting updates the rail without stealing the page. Usage and
+Sessions remain available through the rocker/tabs; explicit actions keep their
+request guards. BOOT returns to Focus or toggles the local pin.
 
 The **LTR-553 ambient light sensor** makes this the first board where the display-sleep contract takes a sensor input: brightness follows room light and the strip dims itself at night, decided locally. The SY6970 charger has no coulomb-counting register, so the header reports sampled **cell voltage** and charge state rather than an invented percentage.
 
@@ -251,7 +260,11 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
 - **Transport**: BLE GATT transparent-UART. The App Store daemon uses native CoreBluetooth; the CLI daemon uses `bridge/src/idotmatrix/sync.py`.
 - **Discovery**: brand-independent. A peripheral counts as a panel when it advertises service `000000fa-…`, or when its advertised name matches a known family (`IDM-` iDotMatrix, `iPixel-`). The same 32×32 hardware ships under several brand names, so a vendor prefix alone is not the filter. Both scanners — Swift CoreBluetooth and `scan.py` (bleak) — apply the identical predicate from `shared/src/idotmatrix-identity.ts` via generated mirrors (`pnpm generate-idotmatrix-identity`). For a panel that neither advertises the service nor uses a known name, add `idotmatrixNamePrefixes: ["myprefix-"]` to `settings.json`; adding the BLE address to `idotmatrixDevices` by hand still bypasses discovery entirely.
 - **CLI runtime**: `@agentdeck/bridge` ships the Python clients. The first explicit BLE command prepares `bleak`, Pillow, and `idotmatrix` in `~/.agentdeck/python-ble`; use `agentdeck ble status` or `agentdeck ble setup` to inspect or prepare it directly. npm installation itself does not contact PyPI.
-- **Rendering**: Node and Swift compose the same native 32×32 identity stage. Up to three generated official marks are placed directly at 18/13/10 physical pixels on a blue-black field using a high-saturation device palette. One-pixel telemetry rails carry Claude 5h/7d and Codex primary/secondary limits, **present ones only, anchored to the bottom edge** — each rail is 3% of the whole display, so a reserved-but-empty row was a dead black stripe rather than a placeholder. A Claude-only account draws two rails; an account with no quota path at all (App Store daemon, free ChatGPT tier) draws none and gives the rows back to the tank. Note that a free tier is not automatically empty — it reports real windows; what disappears is a snapshot voided by a plan change (see [§ Codex usage](#codex-usage-is-a-passive-read-of-your-own-rollout-files)). It does not shrink the finished Pixoo64 scene, so hollow centers, eyes, and negative space survive the diffuser.
+- **Rendering**: the Node daemon serves a desk-awareness count view: WAIT, ERROR,
+  RESULT, WORK or IDLE, with a large count. Only waiting pulses. Explicit results
+  remain visible for 90 seconds; quota usage does not trigger errors. Swift-native
+  rendering retains the prior official-mark/usage-rail view. The installed desk
+  uses Node; Pixoo64 remains on its existing aquarium renderer.
 - **Output tuning**: conservative 1.22 brightness / 1.08 contrast compensation in both native and CLI paths; the former 1.6 / 1.2 boost washed out defining holes.
 - **Constraint**: one BLE connection per daemon; brightness command range 5–100%.
 
@@ -261,7 +274,11 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
 
 - **BLE** — BLE GATT over the ISSC transparent-UART service `49535343-fe7d-…` (write char `49535343-8841-…`, write-without-response, 20-byte chunks). Advertises as `TimeBox-mini-light` (sharing its BD_ADDR with the Classic audio endpoint `TimeBox-mini-audio`). Driven by `sync_ble.py` (bleak) on the CLI daemon **and natively by the App Store Swift daemon over CoreBluetooth** (no subprocess). (The legacy Bluetooth Classic SPP variant was removed — poor macOS compatibility, no App Store path.)
 
-- **Rendering — Agent Beacon**: the panel is intentionally not a miniature aquarium. A generated 9×9 official agent mark occupies the stable center with four deliberate 4-bit-safe shading levels, while a continuous dim perimeter frame carries brighter status motion: cyan chase for processing, alternating amber corners for awaiting, red dashed pulse for error, and calm green corners for idle. Identity geometry never animates or deforms. The 9×9 masks come directly from `design/brand/*.svg` through `pnpm generate-micro-glyphs`; `bridge/src/pixoo/micro-glyphs.ts` and `apple/.../Modules/MicroGlyphs.swift` own only device-specific color, shading, and motion. Usage rails are intentionally omitted because they would consume the identity pixels. The 11×11 RGB → Divoom static-image packet uses 4-bit nibbles, `0x44`, and escaped `0x01…0x02` framing; `TimeboxDivoomPacket` is byte-verified against `sync_ble.py`.
+- **Rendering — desk signal**: the Node daemon sends a native 11×11 glyph:
+  amber exclamation for waiting, red cross for errors, green check for a recent
+  response, static dim cyan bars for working, a dim dot for idle, and a distinct
+  unknown/disconnected indication. Only waiting pulses. Swift-native rendering
+  retains the earlier official-agent beacon. The BLE packet format is unchanged.
 - **Heartbeat**: polls the frame endpoint (~1.5s) and sends only changed frames.
 - **Config**: `~/.agentdeck/settings.json` — `{ timeboxDevices: [{ address, name?, brightness? }] }`
 - **Source**: `bridge/src/timebox/` (settings, daemon sync manager, `sync_ble.py`/`scan_ble.py`); App Store: `apple/AgentDeck/Daemon/Modules/Timebox{BLE,Module,DivoomPacket}.swift`

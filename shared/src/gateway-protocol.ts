@@ -246,6 +246,8 @@ export interface LogsTailResult {
 
 // chat.send — dispatch user message to active session
 export interface ChatSendParams {
+  /** Per-turn override supported by the Gateway; does not patch session defaults. */
+  thinking?: string;
   sessionKey: string;
   message: string;
   idempotencyKey: string;

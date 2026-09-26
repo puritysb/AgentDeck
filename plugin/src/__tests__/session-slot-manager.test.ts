@@ -641,13 +641,14 @@ describe('SessionSlotManager list-view usage tiles', () => {
     expect(types.filter((t) => t === 'usage')).toHaveLength(2);
   });
 
-  it('replaces the Codex 5h/7d keys with one LUNA gauge while a reserve is reported', () => {
+  it('replaces the Codex 5h/7d keys with one LUNA gauge while account quota is exhausted', () => {
     const manager = new SessionSlotManager();
     manager.updateUsage({
       fiveHourPercent: 42,
       sevenDayPercent: 17,
       codexRateLimits: {
         ...CODEX_LIMITS,
+        secondary: { ...CODEX_LIMITS.secondary!, usedPercent: 100 },
         lunaReserve: { usedPercent: 32, regularResetsAt: '2099-01-01T00:00:00Z', available: true },
       },
     });
@@ -926,6 +927,31 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
       .filter((c) => c.type === 'usage');
   };
 
+  it('uses the entire Classic bottom row for Claude, weekly Codex and z.ai without MORE', () => {
+    const manager = new SessionSlotManager();
+    manager.updateUsage({ fiveHourPercent: 22, sevenDayPercent: 46,
+      codexRateLimits: CODEX_WEEKLY,
+      zaiRateLimits: { primary: { usedPercent: 36, windowMinutes: 300 },
+        secondary: { usedPercent: 42, windowMinutes: 10080 } },
+    });
+    const slots = Array.from({ length: 15 }, (_, i) => manager.getSlotConfig(i, SD_CLASSIC_LAYOUT));
+    expect(slots.slice(10).map(s => s.usageAgent)).toEqual(['claude', 'claude', 'codex', 'zai', 'zai']);
+    expect(slots.some(s => s.type === 'usage-page')).toBe(false);
+  });
+
+  it('pages only when the row overflows and recovers when the usage set shrinks', () => {
+    const manager = new SessionSlotManager();
+    manager.updateUsage({ fiveHourPercent: 22, sevenDayPercent: 46,
+      codexRateLimits: { primary: { usedPercent: 30, windowMinutes: 300 }, secondary: { usedPercent: 12, windowMinutes: 10080 } },
+      zaiRateLimits: { primary: { usedPercent: 36, windowMinutes: 300 }, secondary: { usedPercent: 42, windowMinutes: 10080 } },
+    });
+    expect(manager.getSlotConfig(14, SD_CLASSIC_LAYOUT)).toMatchObject({ type: 'usage-page', label: '1/2' });
+    manager.cycleUsagePage(SD_CLASSIC_LAYOUT);
+    expect(manager.getSlotConfig(14, SD_CLASSIC_LAYOUT)).toMatchObject({ type: 'usage-page', label: '2/2' });
+    manager.updateUsage({ fiveHourPercent: 22, sevenDayPercent: 46, codexRateLimits: { primary: { usedPercent: 30, windowMinutes: 300 }, secondary: { usedPercent: 12, windowMinutes: 10080 } }, zaiRateLimits: {} });
+    expect(manager.getSlotConfig(11, SD_CLASSIC_LAYOUT)).toMatchObject({ type: 'usage', usageAgent: 'claude' });
+  });
+
   it('gives the key Codex vacated to the scoped cap on a free ChatGPT tier', () => {
     const tiles = gauges({
       fiveHourPercent: 42, sevenDayPercent: 17,
@@ -948,7 +974,7 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
     expect(tiles[3]).toMatchObject({ usageAgent: 'codex' });
   });
 
-  it('pages by rank and seats each page canonically', () => {
+  it('seats five readings canonically across the whole bottom row', () => {
     // Two questions, two answers. RANK decides what a scarce strip shows first:
     // an informational (inactive) cap must not push a live Codex window onto
     // page two, so it ranks last. SEAT decides where the survivors sit: within
@@ -966,14 +992,12 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
     const page = () => Array.from({ length: 15 }, (_, i) => manager.getSlotConfig(i, SD_CLASSIC_LAYOUT))
       .filter((c) => c.type === 'usage')
       .map((c) => c.usageLabel);
-    // Five gauges over four keys: three readings + a page toggle.
-    expect(page()).toEqual(['5H', '7D', '5H']);
-    manager.cycleUsagePage();
-    // The cap is a Claude limit, so it leads its page even here.
-    expect(page()).toEqual(['FABLE', '7D']);
+    expect(page()).toEqual(['5H', '7D', 'FABLE', '5H', '7D']);
+    manager.cycleUsagePage(SD_CLASSIC_LAYOUT);
+    expect(page()).toEqual(['5H', '7D', 'FABLE', '5H', '7D']);
   });
 
-  it('keeps Codex windows beside active Fable and enables paging when >4 gauges exist', () => {
+  it('keeps both Codex windows beside active Fable across five keys', () => {
     const tiles = gauges({
       fiveHourPercent: 42, sevenDayPercent: 17,
       codexRateLimits: {
@@ -982,9 +1006,7 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
       },
       scopedLimits: [FABLE],
     });
-    // 5 gauges total (Claude 5H, 7D, Fable, Codex 5H, Codex 7D) > MAX_USAGE_RESERVE (4).
-    // Page 1 displays 3 usage tiles + 1 page toggle tile.
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE']);
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE', '5H', '7D']);
   });
 
   it('seats an inactive cap where the active one sat — ramp changes, position does not', () => {

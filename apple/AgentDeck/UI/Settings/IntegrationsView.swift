@@ -315,66 +315,9 @@ enum IntegrationStatusEvaluator {
         }
     }
 
-    private static func openClawStatus(state: DashboardState) -> IntegrationStatus {
-        // Short deviceId (first 8 hex chars) for pairing copy so the user
-        // can match what they see here against the entry OpenClaw's Web UI
-        // shows when approving a new device. Nil → omit the identifier
-        // entirely rather than showing a stub.
-        let deviceIdHint: String = state.gatewayDeviceId
-            .flatMap { $0.isEmpty ? nil : String($0.prefix(8)) }
-            .map { " — deviceId `\($0)…`" } ?? ""
-
-        switch state.gatewayAuthStatus {
-        case "connected":
-            return .connected(detail: "Paired through Gateway")
-        case "reconnecting":
-            // WebSocket dropped but Gateway TCP is still up — adapter reconnects
-            // automatically. Show amber "Awaiting" instead of "Not configured" so
-            // the user knows this is transient and no action is required.
-            return .awaiting(detail: "Reconnecting to Gateway\(deviceIdHint)…")
-        case "approval_pending", "pairing_required":
-            return .awaiting(detail: "Approve this Mac in OpenClaw's Web UI (http://localhost:18789)\(deviceIdHint).")
-        case "gateway_reachable":
-            // WebSocket is open and we've sent connect — waiting for Gateway to
-            // respond. If this state persists for >30s the Gateway is likely
-            // dropping the request without a response (e.g. plugin missing /
-            // protocol mismatch). Don't direct the user to Web UI here: the
-            // device only appears in the pair list once Gateway has actually
-            // processed our signed connect, which a wedged Gateway hasn't.
-            return .awaiting(detail: "Connecting to Gateway\(deviceIdHint)…")
-        case "gateway_token_missing":
-            return .awaiting(detail: "Gateway is in shared-token mode but no token is set. Use \"Import token\" below to load it from a JSON config file, or paste it into Advanced.")
-        case "token_mismatch":
-            return .failed(detail: "Shared token doesn't match\(deviceIdHint). Re-import or paste the current value below.")
-        case "connect_timeout":
-            return .failed(detail: "Gateway did not answer the handshake\(deviceIdHint). In Settings → Integrations, import the current token and use \"Reconnect adapter\".")
-        case "device_auth_invalid":
-            // Two scenarios produce this status:
-            //  ① Fresh install — this Mac's key isn't yet in OpenClaw's approved
-            //     list. Resolved by approving in Web UI (normal first-pair flow).
-            //  ② Stale identity — OpenClaw rejects this Mac's signature even
-            //     after approval (e.g. its stored public key doesn't match the
-            //     one this Mac is signing with — usually after re-installing or
-            //     migrating between Debug / App Store builds whose Keychain
-            //     access groups differ). Resolved by tapping "Reset pairing"
-            //     in Settings → Integrations → OpenClaw to wipe the local
-            //     identity, then re-approving in Web UI.
-            // We can't tell ① from ② from status alone, so the copy points at
-            // both paths and lets the user pick.
-            return .awaiting(detail: "Pairing rejected\(deviceIdHint). Open OpenClaw's Web UI (http://localhost:18789) and approve this Mac. If it's already approved, use \"Reset pairing identity\" in Settings → OpenClaw and try again.")
-        case "auth_failed":
-            return .failed(detail: "Authentication error\(deviceIdHint). Try \"Reset pairing identity\" in Settings → OpenClaw, or paste a fresh shared token in Advanced.")
-        case "unsupported_protocol":
-            return .unsupported(detail: "Update OpenClaw Gateway to a 2026.4.14+ build.")
-        default:
-            if state.gatewayAvailable {
-                return .awaiting(detail: "Gateway reachable. Open the OpenClaw Web UI to approve this Mac\(deviceIdHint).")
-            }
-            // Deliberately neutral — we don't tell the user to install or
-            // launch a separate program. The row simply waits for an OpenClaw
-            // Gateway to appear on its standard local port.
-            return .notConfigured(detail: "No OpenClaw Gateway detected on ws://127.0.0.1:18789. This row will activate once one is reachable.")
-        }
+    static func openClawStatus(state: DashboardState) -> IntegrationStatus {
+        GatewaySetupStatus.evaluate(authStatus: state.gatewayAuthStatus,
+            connected: state.gatewayConnected, available: state.gatewayAvailable)
     }
 
     private static func antigravityStatus(state: DashboardState, preferences: AppPreferences) -> IntegrationStatus {
@@ -749,3 +692,29 @@ enum ProviderRailEvaluator {
         return RowState(status: status, subtitle: subtitle)
     }
 }
+
+// BEGIN GENERATED GATEWAY SETUP STATUS
+// Source: shared/gateway-setup-status.json; regenerate: node scripts/generate-gateway-setup-status.mjs
+// Drift gate: scripts/__tests__/gateway-setup-status.test.ts
+enum GatewaySetupStatus {
+    static func evaluate(authStatus: String?, connected: Bool?, available: Bool?) -> IntegrationStatus {
+        switch authStatus {
+        case "connected": return .connected(detail: "Paired through Gateway")
+        case "reconnecting": return .awaitingData(detail: "Reconnecting to Gateway…")
+        case "gateway_reachable": return .awaitingData(detail: "Connecting to Gateway…")
+        case "approval_pending": return .awaiting(detail: "Approve the AgentDeck host in OpenClaw’s Web UI.")
+        case "pairing_required": return .awaiting(detail: "Approve the AgentDeck host in OpenClaw’s Web UI.")
+        case "gateway_token_missing": return .awaiting(detail: "A shared token is required. Configure the Gateway token on the AgentDeck host.")
+        case "token_mismatch": return .failed(detail: "The shared token was rejected. Check the Gateway token on the AgentDeck host.")
+        case "connect_timeout": return .awaitingData(detail: "Gateway did not answer the connection attempt. Waiting to reconnect.")
+        case "device_auth_invalid": return .failed(detail: "Gateway rejected the host’s pairing identity. Check its approved device entry in OpenClaw.")
+        case "auth_failed": return .failed(detail: "Gateway authentication failed. Check OpenClaw settings on the AgentDeck host.")
+        case "unsupported_protocol": return .unsupported(detail: "Gateway protocol is unsupported. Check compatibility on the AgentDeck host.")
+        default:
+            if connected == true { return .connected(detail: "Paired through Gateway") }
+            if available == true { return .awaitingData(detail: "Gateway reachable; connection status unavailable.") }
+            return .notConfigured(detail: "No OpenClaw Gateway connection.")
+        }
+    }
+}
+// END GENERATED GATEWAY SETUP STATUS

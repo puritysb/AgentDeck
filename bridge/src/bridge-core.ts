@@ -750,9 +750,16 @@ export class BridgeCore {
     }, intervalMs));
   }
 
+  /**
+   * `onAvailable` fires on EVERY tick the Gateway port answers, not only on the
+   * rising edge: the port stays open while a Gateway WS dies (a restart racing
+   * its own boot, a dropped link), and an edge-only callback never fired again —
+   * the daemon sat on a dead adapter for 16 h (2026-09-16) and again 2026-09-26.
+   * The callee must be idempotent. `onDisappeared` stays falling-edge.
+   */
   startGatewayProbe(
     intervalMs: number,
-    onAppeared?: () => void,
+    onAvailable?: () => void,
     onDisappeared?: () => void,
   ): void {
     const poll = async () => {
@@ -760,9 +767,9 @@ export class BridgeCore {
       const wasAvailable = this.cachedGatewayAvailable;
       this.cachedGatewayAvailable = status.available;
 
-      if (status.available && !wasAvailable) {
-        onAppeared?.();
-      } else if (!status.available && wasAvailable) {
+      if (status.available) {
+        onAvailable?.();
+      } else if (wasAvailable) {
         this.cachedGatewayConnected = false;
         this.cachedGatewayAuthStatus = 'gateway_not_found';
         this.cachedGatewayHasError = false;

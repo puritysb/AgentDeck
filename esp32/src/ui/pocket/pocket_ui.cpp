@@ -11,6 +11,8 @@
 #include "../theme.h"
 #include "../agent_label.h"
 #include "../../util/utf8.h"
+#include "../../util/usage_rows.h"
+#include "../ticker/usage_panel.h"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -509,90 +511,26 @@ static void renderCamTab() {
 static void renderUsageTab() {
     lv_obj_set_layout(s_content, LV_LAYOUT_NONE);
     lv_obj_set_style_pad_all(s_content, 6, 0);
-    struct GaugeData { const char* label; float pct; char reset[20]; };
-    GaugeData rowsArr[5];
-    uint8_t n = 0;
-    char subsLine[96] = {0};
+    // Stacked provider cards from the shared UsageRows model (z.ai MCP, the
+    // Codex Luna reserve, and a plan in the slot a missing window leaves).
+    UsageRows::Group groups[UsageRows::MAX_GROUPS];
     lockState();
-    auto take = [&](const char* label, float pct, const char* reset) {
-        if (pct < 0.0f || n >= sizeof(rowsArr) / sizeof(rowsArr[0])) return;
-        rowsArr[n].label = label;
-        rowsArr[n].pct = pct;
-        strncpy(rowsArr[n].reset, reset, sizeof(rowsArr[n].reset) - 1);
-        rowsArr[n].reset[sizeof(rowsArr[n].reset) - 1] = '\0';
-        n++;
-    };
-    take("Claude 5h", g_state.fiveHourPercent, g_state.fiveHourReset);
-    take("Claude 7d", g_state.sevenDayPercent, g_state.sevenDayReset);
-    take("Codex 5h", g_state.codexPrimaryPercent, g_state.codexPrimaryReset);
-    take("Codex 7d", g_state.codexSecondaryPercent, g_state.codexSecondaryReset);
-    // z.ai (#350) — the 5h credits window only; MCP is secondary at glance
-    // distance on this pocket-sized screen.
-    take("Z.AI 5h", g_state.zaiPrimaryPercent, g_state.zaiPrimaryReset);
-    // Account subscriptions — the "what am I paying for" line the landscape
-    // strip and other dashboards carry.
-    {
-        size_t off = 0;
-        for (uint8_t i = 0; i < g_state.subscriptionCount && off < sizeof(subsLine) - 24; i++) {
-            off += snprintf(subsLine + off, sizeof(subsLine) - off, "%s%s %s",
-                            i > 0 ? " " LV_SYMBOL_BULLET " " : "",
-                            g_state.subscriptions[i].name,
-                            g_state.subscriptions[i].until);
-        }
-    }
+    const uint8_t count = UsageRows::build(g_state, groups);
     unlockState();
-
-    if (n == 0 && !subsLine[0]) {
+    if (count == 0) {
         lv_obj_t* l = makeLabel(s_content, &lv_font_montserrat_14, Theme::HUDDim,
                                 "Waiting for usage data...");
         lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
         return;
     }
-    for (uint8_t i = 0; i < n; i++) {
-        const int rowStep = n > 3 ? 64 : 92;
-        int y = 8 + i * rowStep;
-        lv_obj_t* name = makeLabel(s_content, &lv_font_montserrat_14,
-                                   Theme::HUDText, rowsArr[i].label);
-        lv_obj_set_pos(name, 6, y);
-        lv_obj_t* track = lv_obj_create(s_content);
-        lv_obj_remove_style_all(track);
-        lv_obj_set_size(track, POCKET_W - 24, 34);
-        lv_obj_set_style_bg_color(track, lv_color_hex(Theme::MidWater), 0);
-        lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(track, 4, 0);
-        lv_obj_set_pos(track, 6, y + 22);
-        float clamped = rowsArr[i].pct > 100.0f ? 100.0f : rowsArr[i].pct;
-        int w = (int)((POCKET_W - 24) * clamped / 100.0f);
-        if (w > 0) {
-            uint32_t color = clamped >= 85.0f ? Theme::StatusRed
-                           : clamped >= 60.0f ? Theme::StatusAmber
-                                              : Theme::StatusGreen;
-            lv_obj_t* fill = lv_obj_create(track);
-            lv_obj_remove_style_all(fill);
-            lv_obj_set_size(fill, w < 4 ? 4 : w, 34);
-            lv_obj_set_style_bg_color(fill, lv_color_hex(color), 0);
-            lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
-            lv_obj_set_style_radius(fill, 4, 0);
-            lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
-        }
-        char pctText[8];
-        snprintf(pctText, sizeof(pctText), "%d%%", (int)clamped);
-        lv_obj_t* p = makeLabel(track, &lv_font_montserrat_16, 0xFFFFFF, pctText);
-        lv_obj_align(p, LV_ALIGN_LEFT_MID, 8, 0);
-        if (rowsArr[i].reset[0]) {
-            lv_obj_t* r = makeLabel(s_content, &lv_font_montserrat_12,
-                                    Theme::HUDDim, rowsArr[i].reset);
-            lv_obj_align(r, LV_ALIGN_TOP_RIGHT, -8, y + 2);
-        }
-    }
-
-    if (subsLine[0]) {
-        Utf8::sanitizeLvglText(subsLine);
-        lv_obj_t* s = makeLabel(s_content, &font_kr_12, Theme::HUDDim, subsLine);
-        lv_label_set_long_mode(s, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(s, POCKET_W - 24);
-        lv_obj_set_pos(s, 6, 12 + n * (n > 3 ? 64 : 92));
-    }
+    const UsagePanel::Fonts fonts{&lv_font_montserrat_12, &lv_font_montserrat_14, &lv_font_montserrat_16};
+    // Cards keep a readable height; a short roster leaves the rest empty
+    // rather than stretching two bars across the whole portrait panel.
+    int rows = 0;
+    for (uint8_t i = 0; i < count; ++i) rows += groups[i].rowCount < 2 && groups[i].hasPlan() ? groups[i].rowCount + 1 : groups[i].rowCount ? groups[i].rowCount : 1;
+    int h = rows * 66 + count * 26 + (count - 1) * 6;
+    const int maxH = CONTENT_H - 12;
+    UsagePanel::render(s_content, 0, 0, POCKET_W - 12, h > maxH ? maxH : h, groups, count, false, fonts);
 }
 
 namespace Pocket {
@@ -742,10 +680,12 @@ void update(float dt) {
         focused[sizeof(focused) - 1] = '\0';
         uint8_t count = g_state.sessionCount;
         uint8_t subsCount = g_state.subscriptionCount;
+        // The Luna reserve and z.ai window kind change what Usage shows.
+        const int lunaKey = (int)g_state.codexLunaPercent * 2 + (g_state.zaiSecondaryIsMcp ? 1 : 0);
         bool connected = g_state.wsConnected;
         unlockState();
-        snprintf(sig, sizeof(sig), "%d|%d|%d.%d.%d.%d.%d.%d|%d|%d%d%d%d|%d|%d|%d%d|%.31s|%s",
-                 s_tab, count, c5, c7, x5, x7, z5, z7, subsCount,
+        snprintf(sig, sizeof(sig), "%d|%d|%d.%d.%d.%d.%d.%d.%d|%d|%d%d%d%d|%d|%d|%d%d|%.31s|%s",
+                 s_tab, count, c5, c7, x5, x7, z5, z7, lunaKey, subsCount,
                  connected ? 1 : 0, wifiUp ? 1 : 0, wsUp ? 1 : 0, serialUp ? 1 : 0,
                  Camera::lampDuty() > 0 ? 1 : 0,
                  power.voltageMv / 20, power.charging ? 1 : 0,

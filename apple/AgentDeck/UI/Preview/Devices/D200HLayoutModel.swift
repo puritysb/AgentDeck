@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts 279946cd41405af03d4f665e6cc348244925cf26
+// SYNC-HASH shared/src/d200h-layout.ts 5b9077f18e6697a828fd9d1e8c2722f57f7460b2
 // SYNC-HASH shared/src/session-utils.ts 9b6eebeba19a0bb6ffe7c633d98c83dcee9e55cf
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -791,7 +791,10 @@ public enum D200HLayoutModel {
         // reserve is the quota that binds (TS: `cx?.lunaReserve ? [] : …`).
         var codexTiles: [(D200HSlotKind, String, String)] = []
         var codexPair: [D200HUsagePairWindow] = []
-        if usage.lunaReserve == nil {
+        let selectedLuna = UsagePresentation.lunaActive(
+            usage.codexPrimaryStale ? -1 : (usage.codexPrimaryPercent ?? -1), usage.codexSecondaryStale ? -1 : (usage.codexSecondaryPercent ?? -1),
+            usage.lunaReserve?.usedPercent ?? -1) ? usage.lunaReserve : nil
+        if selectedLuna == nil {
             if let p = usage.codexPrimaryPercent {
                 let label = usageWindowLabel(usage.codexPrimaryWindowMinutes)
                 let footnote = codexFootnote(stale: usage.codexPrimaryStale, capturedAt: usage.codexCapturedAt)
@@ -845,7 +848,7 @@ public enum D200HLayoutModel {
         }
         // The Luna tile is its own logical reading — it counts toward strip
         // pressure exactly like a Codex window would (TS: `+ (lunaTile ? 1 : 0)`).
-        let lunaTile: (D200HSlotKind, String, String)? = usage.lunaReserve.map { luna in
+        let lunaTile: (D200HSlotKind, String, String)? = selectedLuna.map { luna in
             let used = min(100, max(0, luna.usedPercent))
             let remaining = (100 - used).rounded()
             let active = luna.available != false && remaining > 0

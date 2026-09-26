@@ -12,6 +12,8 @@ import {
   buildClaudeUsageEncoder, buildCodexUsageEncoder, buildZaiUsageEncoder,
   availableUsageViews, availableUsageProviders, buildProviderUsageEncoder,
   pickAutoUsageProvider, noteUsageProviderActivity, modelProviderToUsageProvider,
+  selectUsageDialProvider, getUsageDialSelections, resolveE2UsageProvider, resetE2UsageProvider,
+  usageDialPreferences, restoreUsageDialPreferences,
 } from '../utility-modes/usage.js';
 import { renderUsageEncoderBoth } from '../renderers/usage-gauge.js';
 
@@ -261,6 +263,7 @@ describe('renderUsageEncoderBoth — single live window', () => {
   it('keeps the Codex identity while showing Luna in the wide SD+ layout', () => {
     const svg = renderUsageEncoderBoth(buildCodexUsageEncoder({
       codexRateLimits: {
+        secondary: { usedPercent: 100, windowMinutes: 10080 },
         lunaReserve: {
           usedPercent: 11,
           regularResetsAt: new Date(Date.now() + 2 * 86400000).toISOString(),
@@ -326,6 +329,39 @@ describe('provider pages and the auto selection', () => {
     codexRateLimits: { primary: { usedPercent: 55, windowMinutes: 300 } },
     zaiRateLimits: { primary: { usedPercent: 12, windowMinutes: 300, quantity: 'tokens' } },
   };
+
+  it('restores manual selections across plugin restarts and retains automatic mode', () => {
+    restoreUsageDialPreferences({ e2: 'zai', e3: 'claude' });
+    expect(resolveE2UsageProvider({})).toBe('zai');
+    restoreUsageDialPreferences({ e2: 'claude', e3: 'zai' });
+    expect(resolveE2UsageProvider(DATA)).toBe('claude');
+    expect(usageDialPreferences()).toEqual({ e2: 'claude', e3: 'zai' });
+    restoreUsageDialPreferences({ e2: 'auto', e3: 'codex' });
+    expect(usageDialPreferences()).toEqual({ e2: 'auto', e3: 'codex' });
+  });
+
+  it('lets either dial claim every provider and swaps a collision without duplication', () => {
+    selectUsageDialProvider('e2', 'claude', DATA);
+    selectUsageDialProvider('e3', 'codex', DATA);
+    selectUsageDialProvider('e2', 'codex', DATA);
+    expect(getUsageDialSelections()).toEqual({ e2: 'codex', e3: 'claude' });
+    selectUsageDialProvider('e3', 'codex', DATA);
+    expect(getUsageDialSelections()).toEqual({ e2: 'claude', e3: 'codex' });
+    selectUsageDialProvider('e2', 'zai', DATA);
+    noteUsageProviderActivity('claude', 20, 999);
+    expect(resolveE2UsageProvider(DATA)).toBe('zai');
+    selectUsageDialProvider('e2', 'claude', DATA);
+    expect(resolveE2UsageProvider(DATA)).toBe('claude');
+    resetE2UsageProvider(DATA);
+  });
+
+  it('falls back on data loss and permits one-provider duplication only when unavoidable', () => {
+    selectUsageDialProvider('e2', 'zai', DATA);
+    expect(resolveE2UsageProvider({ fiveHourPercent: 0 })).toBe('claude');
+    selectUsageDialProvider('e3', 'claude', { fiveHourPercent: 0 });
+    expect(getUsageDialSelections()).toEqual({ e2: 'claude', e3: 'claude' });
+    resetE2UsageProvider(DATA);
+  });
 
   it('lists every provider that currently has a page', () => {
     expect(availableUsageProviders(DATA)).toEqual(['claude', 'codex', 'zai']);

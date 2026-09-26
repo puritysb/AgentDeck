@@ -1,3 +1,4 @@
+import { ips10RosterIndices } from './ips10-roster.js';
 /**
  * ESP32 Serial Bridge — bidirectional USB serial communication.
  *
@@ -31,7 +32,7 @@ import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import type { AuthProvisionMessage, ESP32ToHostMessage, WifiProvisionMessage } from '@agentdeck/shared/protocol';
 import { formatResetTime, truncateUtf8Bytes } from '@agentdeck/shared';
 import { readLease } from './esp32-flash-lease.js';
-import { debug, logTagged } from './logger.js';
+import { debug, log, logTagged } from './logger.js';
 
 /** @internal Exported for testing only */
 export const ESP32_PORT_PATTERNS = [
@@ -172,6 +173,7 @@ export interface SerialConnection {
     processingCount?: number;
     repaintCount?: number;
     fullRefreshCount?: number;
+    rssiDbm?: number;
     /** Peripheral telemetry/diag (capability-advertising boards). */
     capabilities?: string[];
     batteryPercent?: number;
@@ -358,23 +360,18 @@ export function roundRobinByAgentType(sessions: any[], cap: number): any[] {
   return result;
 }
 
-/**
- * IPS10 card roster: a STABLE pick, not a rotation. The equal-size cards
- * promise that a state change never moves a session, and the round-robin
- * (which re-ranks by state) broke that promise the moment the machine held
- * more than `cap` sessions — the card set itself changed. Rules, in order:
- * every session waiting on a human is kept (a hidden PERM is a lie on the
- * one surface built to show it), then the most recently started fill the
- * rest, and the result is ordered by id so the firmware's identity sort sees
- * the same set in the same order on every push. Dead rows are dropped first.
- */
-export function stableCardRoster(sessions: any[], cap: number): any[] {
+/** IPS10 keeps a bounded page stable for a minute, pins up to three attention
+ * rows and fairly visits every other alive session. The pure selection policy
+ * is shared with the generated Swift kernel; result ordering follows identity. */
+export function stableCardRoster(sessions: any[], cap: number, nowMs = Date.now()): any[] {
+  if (cap <= 0) return [];
   const alive = sessions.filter((s) => s?.alive !== false);
   if (alive.length <= cap) return alive;
   const awaiting = alive.filter((s) => typeof s?.state === 'string' && s.state.startsWith('awaiting'));
   const rest = alive.filter((s) => !awaiting.includes(s))
     .sort((a, b) => (Date.parse(b?.startedAt ?? '') || 0) - (Date.parse(a?.startedAt ?? '') || 0));
-  const picked = [...awaiting, ...rest].slice(0, cap);
+  const ordered = [...awaiting.sort((a, b) => String(a.id).localeCompare(String(b.id))), ...rest];
+  const picked = ips10RosterIndices(ordered.length, awaiting.length, cap, nowMs).map(i => ordered[i]);
   return picked.sort((a, b) => String(a?.id ?? '').localeCompare(String(b?.id ?? '')));
 }
 
@@ -389,11 +386,18 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
     // EVERY usage_update and their gauges froze on stale values.
     const cx = e.codexRateLimits
       ? {
+          // Every board renders the Luna reserve once an account window is
+          // exhausted (UsagePresentation.lunaActive); ~90 bytes of headroom.
+          ...(e.codexRateLimits.lunaReserve ? {
+            lunaReserve: { usedPercent: e.codexRateLimits.lunaReserve.usedPercent,
+              resetsAt: formatResetTime(e.codexRateLimits.lunaReserve.resetsAt),
+              stale: e.codexRateLimits.lunaReserve.resetsAt ? Date.parse(e.codexRateLimits.lunaReserve.resetsAt) <= Date.now() : false },
+          } : {}),
           primary: e.codexRateLimits.primary
-            ? { usedPercent: e.codexRateLimits.primary.usedPercent, resetsAt: formatResetTime(e.codexRateLimits.primary.resetsAt), stale: e.codexRateLimits.primary.stale }
+            ? { usedPercent: e.codexRateLimits.primary.usedPercent, windowMinutes: e.codexRateLimits.primary.windowMinutes, resetsAt: formatResetTime(e.codexRateLimits.primary.resetsAt), stale: e.codexRateLimits.primary.stale }
             : undefined,
           secondary: e.codexRateLimits.secondary
-            ? { usedPercent: e.codexRateLimits.secondary.usedPercent, resetsAt: formatResetTime(e.codexRateLimits.secondary.resetsAt), stale: e.codexRateLimits.secondary.stale }
+            ? { usedPercent: e.codexRateLimits.secondary.usedPercent, windowMinutes: e.codexRateLimits.secondary.windowMinutes, resetsAt: formatResetTime(e.codexRateLimits.secondary.resetsAt), stale: e.codexRateLimits.secondary.stale }
             : undefined,
         }
       : undefined;
@@ -558,6 +562,7 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
       // so counting `raw` would advertise a `+N` for rows nothing can show.
       const aliveCount = raw.filter((s: any) => s?.alive !== false).length;
       if (aliveCount > rows.length) (prepared as any).total = aliveCount;
+      (prepared as any).rosterRotating = aliveCount > rows.length;
       if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) {
         for (const row of rows) { delete row.subagents; delete row.coordination; }
       }
@@ -909,6 +914,7 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
           processingCount: (msg as any).processingCount,
           repaintCount: (msg as any).repaintCount,
           fullRefreshCount: (msg as any).fullRefreshCount,
+          rssiDbm: sanitizeRssiDbm(msg.rssiDbm),
           capabilities: (msg as any).capabilities,
           batteryPercent: (msg as any).batteryPercent,
           batteryVoltageMv: (msg as any).batteryVoltageMv,
@@ -1370,10 +1376,23 @@ export function shouldRetryDeviceInfoIdentify(
   return true;
 }
 
+/** A board-reported RSSI in dBm, or undefined when absent or implausible. */
+export function sanitizeRssiDbm(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < -120 || value >= 0) return undefined;
+  const rounded = Math.round(value);
+  return rounded < 0 ? rounded : undefined;
+}
+
 function denylistForeignPort(port: string, reason: string): void {
   foreignDenylistUntil.set(port, Date.now() + FOREIGN_DENYLIST_COOLDOWN_MS);
   foreignProbeFailures.delete(port);
-  debug('ESP32', `Denylisting non-AgentDeck port ${port} for ${Math.round(FOREIGN_DENYLIST_COOLDOWN_MS / 60000)}min (${reason})`);
+  const minutes = Math.round(FOREIGN_DENYLIST_COOLDOWN_MS / 60000);
+  // An identified AgentDeck board reaching the denylist means its USB link is
+  // dead in one direction; that is a user-visible outage, not probe noise
+  // (2026-09-26: a round AMOLED sat here silently for hours on debug-only logs).
+  const board = lastKnownDeviceInfoByPort.get(port)?.board;
+  if (board) log(`ESP32 serial ${port} (${board}) sends nothing back — skipping it for ${minutes}min (${reason})`);
+  else debug('ESP32', `Denylisting non-AgentDeck port ${port} for ${minutes}min (${reason})`);
 }
 
 /** @internal Exported for testing only. True if the port is in active cooldown. */
@@ -1430,7 +1449,7 @@ function checkStaleConnections(): void {
       // probe-failure counter so a permanently-dead board denylists after a few
       // strikes instead of getting DTR/RTS-reset every grace window.
       if (isHalfOpenIdentifiedCdc(conn, now)) {
-        debug('ESP32', `Half-open CDC (identified, no read since connect): ${conn.port} — recycling`);
+        log(`ESP32 serial ${conn.port} (${conn.deviceInfo?.board ?? lastKnownDeviceInfoByPort.get(conn.port)?.board ?? 'unknown'}) read nothing for ${Math.round(CDC_SILENT_READ_TIMEOUT_MS / 1000)}s after connect — recycling`);
         recordForeignProbeFailure(conn.port);
         closeConnection(conn);
         staleCount++;
@@ -1748,6 +1767,7 @@ export function getESP32DeviceInfo(): Array<{
   otaSlotSize?: number;
   otaFreeSketchSpace?: number;
   otaReason?: string;
+  rssiDbm?: number;
 }> {
   const now = Date.now();
   return connections
@@ -1938,6 +1958,7 @@ export function getSerialConnectionStatus(): Array<{
   processingCount?: number;
   repaintCount?: number;
   fullRefreshCount?: number;
+  rssiDbm?: number;
   deviceInfoFresh: boolean;
   transportOpen: boolean;
   lastReadAt: number;
@@ -1974,6 +1995,7 @@ export function getSerialConnectionStatus(): Array<{
     processingCount: c.deviceInfo?.processingCount,
     repaintCount: c.deviceInfo?.repaintCount,
     fullRefreshCount: c.deviceInfo?.fullRefreshCount,
+    rssiDbm: c.deviceInfo?.rssiDbm,
     deviceInfoFresh: c.deviceInfoFresh,
     lastReadAt: c.lastReadAt,
     lastWriteAt: c.lastWriteAt,

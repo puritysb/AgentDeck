@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-08-15
-revision: 2026-08-15
+reviewed: 2026-09-23
+revision: 2026-09-23
 source_of_truth: design/RESOURCES.md
 validators: [node scripts/build-design-system-viewer.mjs --check, python3 design/verify-tokens-sync.py]
 ---
@@ -30,6 +30,8 @@ index. If a location or gate changes, update this file in the same commit.
 | Brand marks (agents) | `design/brand/*.svg` | `pnpm generate-creature-glyphs` / `generate-micro-glyphs` regression tests |
 | Brand type (Latin) | `bridge/assets/fonts/` (IBM Plex Sans, JetBrains Mono) | first consumer: bridge renderers |
 | Brand type (CJK) | `design/fonts/` (IBM Plex Sans KR/JP, OFL) | `design/fonts/README.md` records origin |
+| IPS10 underwater background | `design/ips10/ocean.png` (image generation; prompt in adjacent README) | `python3 design/ips10/encode_ocean.py --check` verifies the RGB565 flash consumer; native IPS10 previews verify live overlays |
+| IPS10 creature reliefs | `design/ips10/creatures.py` → three `*-relief.png` images, derived from canonical creature masks | `python3 design/ips10/encode_creatures.py --check`; native geometry and interaction checks |
 | Real photography / captures | `assets/` (sources: `assets/hardware-photos/`) | `scripts/crop-hardware-images.mjs` crop table |
 | Android LCD aquarium habitat | `assets/terrarium/aquarium-habitat.blend` | `assets/terrarium/export-habitat.py`; manual Blender export and on-device visual review |
 | Native 3D aquarium study / TRMNL plate | `assets/terrarium/living-aquarium.blend` | `export-living-aquarium.py` / `export-paper-aquarium.py` in the same directory; native preview and panel review |

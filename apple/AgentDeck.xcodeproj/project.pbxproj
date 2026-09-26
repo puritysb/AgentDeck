@@ -345,6 +345,7 @@
 		93AB7595B2EC62D78A09A58F /* DeskPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83D5CE0F7637C0913938BA6B /* DeskPreviews.swift */; };
 		942417AA37DAD475B023BED1 /* PairingWindowStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F0B91327EB48703713A68C /* PairingWindowStore.swift */; };
 		942DEF7F0BE77DF0FA264AF8 /* StateTimelineGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */; };
+		955B482B990E5FB3C933144A /* UsagePresentation.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6326E2C31C37BF2D87D5F8C5 /* UsagePresentation.generated.swift */; };
 		97549061F4CF4DE01270245E /* CodexOtelRoutes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB6B378D92D82E58DA5E925 /* CodexOtelRoutes.swift */; };
 		981C289DD626CAD0B9900C39 /* SandDisturbance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F9B51FC480E3419A6334A20 /* SandDisturbance.swift */; };
 		98B8B1F86B399218B89247D8 /* TUITerrariumRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D80206C489734918E56FB0B /* TUITerrariumRenderer.swift */; };
@@ -459,6 +460,7 @@
 		C329FA364A949AB61F0A8AD9 /* ApmeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBBE1258602AB5ABC83560EE /* ApmeSettings.swift */; };
 		C32B1F7FE07A02EE3EB41E04 /* CreatureGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA25996ACA820A3C8D6273A /* CreatureGeometry.swift */; };
 		C3572381069C025842EB85EA /* MlxSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E8405A0184E8ED644F8BEB /* MlxSafetyTests.swift */; };
+		C365D322CA1B1E44995A4FDE /* UsagePresentation.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6326E2C31C37BF2D87D5F8C5 /* UsagePresentation.generated.swift */; };
 		C37CD3CFD263A0903096C515 /* TimeboxSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362BC758256086C0D78EF7A8 /* TimeboxSheet.swift */; };
 		C39BADC18C8D030A110B5158 /* AquariumResidents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C41CE28781400748CBA9AE6 /* AquariumResidents.swift */; };
 		C46F9CBAF1E5CFC66037BDA2 /* IDotMatrixIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */; };
@@ -537,6 +539,7 @@
 		E22E6C703C183F1E8C36E7D9 /* SquatterCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B120CABC9029C801CF0A77A2 /* SquatterCleaner.swift */; };
 		E29B9F7B467F17A2B4FB65EE /* SessionWeightRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03941C6DD60609AB9D1E12C1 /* SessionWeightRules.generated.swift */; };
 		E2A2D16B6B22232302404F71 /* ApmeClassifierBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B060A15BF6B6EFD1848C81 /* ApmeClassifierBackendTests.swift */; };
+		E3443977CFF2BE69686BCC8E /* CollaborationPresentation.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB2A3FFAE22D9ACDCBEB92B /* CollaborationPresentation.generated.swift */; };
 		E352DD774E32BE1E365EBF90 /* MenuBarTopologyList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509C0F3555343E9DF1AE1964 /* MenuBarTopologyList.swift */; };
 		E35D8D73F3FFFCD795B1236A /* LocalSessionDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FD383032B3C47C9B547426 /* LocalSessionDiscovery.swift */; };
 		E46B6EAACB14A6B0B5BC2C12 /* EinkEsp32Previews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B2045E80851C81C327DFBC /* EinkEsp32Previews.swift */; };
@@ -568,6 +571,7 @@
 		F4150CA5E9A31CD575F69F0C /* SessionGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBAB8DFED8E277FFB6136742 /* SessionGrouping.swift */; };
 		F42F09D300661953D5F0EAFF /* StateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA46D3D4A84FBDE6C8B3AB62 /* StateMachine.swift */; };
 		F4A65D852B783D1D78C7F1A4 /* CollaborationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B987710CFB6B547DB06A21 /* CollaborationModel.swift */; };
+		F4C47FB32A500977A88AAF66 /* CollaborationPresentation.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB2A3FFAE22D9ACDCBEB92B /* CollaborationPresentation.generated.swift */; };
 		F5B2BB7991E7283F4B99902F /* MonitorHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19949AA33CE27D478B358976 /* MonitorHUD.swift */; };
 		F608DAD197953CC405F306A5 /* OnboardingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 302810B07A9DC093700A7C31 /* OnboardingSheet.swift */; };
 		F608EB171F09E38587FE9BA7 /* ApmeTaskBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54B6A5B14E7FEFC4CD93EF2 /* ApmeTaskBoundaryTests.swift */; };
@@ -668,6 +672,7 @@
 		2E75D955A31F999F568B7BED /* TerrariumCrayfishPresenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerrariumCrayfishPresenceTests.swift; sourceTree = "<group>"; };
 		2F134F38758589B5D47652C8 /* WaterSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaterSurface.swift; sourceTree = "<group>"; };
 		2F831DDF30D6993F5F3B1334 /* ModelProviderRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProviderRules.generated.swift; sourceTree = "<group>"; };
+		2FB2A3FFAE22D9ACDCBEB92B /* CollaborationPresentation.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollaborationPresentation.generated.swift; sourceTree = "<group>"; };
 		302810B07A9DC093700A7C31 /* OnboardingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSheet.swift; sourceTree = "<group>"; };
 		3124B9668030FDF0A9CE513F /* AttentionNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionNotifier.swift; sourceTree = "<group>"; };
 		31609846ED73DC70F674FCF0 /* SessionLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLauncher.swift; sourceTree = "<group>"; };
@@ -736,6 +741,7 @@
 		61E3177DE60C73B3A102F9FB /* SessionAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAggregator.swift; sourceTree = "<group>"; };
 		61F4A4AE7D86132501CA1096 /* AgentStatusIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusIcon.swift; sourceTree = "<group>"; };
 		6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixIdentity.generated.swift; sourceTree = "<group>"; };
+		6326E2C31C37BF2D87D5F8C5 /* UsagePresentation.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsagePresentation.generated.swift; sourceTree = "<group>"; };
 		640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixProtocolTests.swift; sourceTree = "<group>"; };
 		64EB18086FC44B69D1CBE171 /* ApmeJudgeMlx.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeMlx.swift; sourceTree = "<group>"; };
 		6675586368BA1D73919FA7E0 /* DaemonPostureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonPostureTests.swift; sourceTree = "<group>"; };
@@ -1464,6 +1470,7 @@
 				979988BB4CB2A4B5948FD360 /* Adapter.swift */,
 				F15F55435772A15B8F0E92C1 /* AgentState.swift */,
 				9DC487120E810897B3BF0FC4 /* CodexFreshnessRules.generated.swift */,
+				2FB2A3FFAE22D9ACDCBEB92B /* CollaborationPresentation.generated.swift */,
 				2F831DDF30D6993F5F3B1334 /* ModelProviderRules.generated.swift */,
 				12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */,
 				9C75E7B3676BD283B9A4BE27 /* PairingCodeRules.generated.swift */,
@@ -1471,6 +1478,7 @@
 				BBAB8DFED8E277FFB6136742 /* SessionGrouping.swift */,
 				03941C6DD60609AB9D1E12C1 /* SessionWeightRules.generated.swift */,
 				28DFE82D8F7AC7C7566940F3 /* Timeline.swift */,
+				6326E2C31C37BF2D87D5F8C5 /* UsagePresentation.generated.swift */,
 				1715E68E852E233131E1E1C3 /* ZaiQuotaRules.generated.swift */,
 			);
 			path = Model;
@@ -1924,6 +1932,7 @@
 				015A03710C2A81307EDC2159 /* CodexTelemetryModule.swift in Sources */,
 				F4A65D852B783D1D78C7F1A4 /* CollaborationModel.swift in Sources */,
 				422A611A94580B34F92BBB62 /* CollaborationPanel.swift in Sources */,
+				F4C47FB32A500977A88AAF66 /* CollaborationPresentation.generated.swift in Sources */,
 				DBDF1CEA6BCF9332097D55A1 /* ConnectionOverlay.swift in Sources */,
 				DB3357B8FB7E0377BC728BB6 /* ContentView.swift in Sources */,
 				81D7B5B58DF4D7429082432B /* ControlTowerPanel.swift in Sources */,
@@ -2072,6 +2081,7 @@
 				7A3F1644ABE4AE5BDDD0BB85 /* TopologyRail.swift in Sources */,
 				1DD64D5ABE5A6DB9B73B2589 /* Trmnl75Preview.swift in Sources */,
 				4492EC65271E1C630601393F /* UsageAPIClient.swift in Sources */,
+				C365D322CA1B1E44995A4FDE /* UsagePresentation.generated.swift in Sources */,
 				C53E6FF3C458CFE3A65A926F /* UsageRelayFreshness.swift in Sources */,
 				840FBBACA9DC9EF12D49D37D /* UtilityProxy.swift in Sources */,
 				7FE91079BB8AE03AB4F092CD /* WaterEffect.swift in Sources */,
@@ -2143,6 +2153,7 @@
 				896B4B7AD5A5DA6FB6B4B7D4 /* CodexTelemetryModule.swift in Sources */,
 				244C343C9D7A724CBC70AD9F /* CollaborationModel.swift in Sources */,
 				851025D4E314BF0970A0432D /* CollaborationPanel.swift in Sources */,
+				E3443977CFF2BE69686BCC8E /* CollaborationPresentation.generated.swift in Sources */,
 				838450A0CF588614736D3F60 /* ConnectionOverlay.swift in Sources */,
 				E940E2714946D07856C8FB37 /* ContentView.swift in Sources */,
 				72CEB6C700EFD3EA4D8F1A56 /* ControlTowerPanel.swift in Sources */,
@@ -2292,6 +2303,7 @@
 				7F2EF2FA2C61302C14EC7D77 /* TopologyRail.swift in Sources */,
 				33E64126B91B640A48A9D034 /* Trmnl75Preview.swift in Sources */,
 				B13C4855773086AA7115A5D4 /* UsageAPIClient.swift in Sources */,
+				955B482B990E5FB3C933144A /* UsagePresentation.generated.swift in Sources */,
 				BAF60F55BB39F43FE479652D /* UsageRelayFreshness.swift in Sources */,
 				28BBAAFD6BE94905F082370E /* UtilityProxy.swift in Sources */,
 				AC7E59A42A23408F8FEC3AC5 /* WaterEffect.swift in Sources */,

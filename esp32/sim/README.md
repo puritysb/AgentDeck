@@ -57,7 +57,7 @@ pio run -e box_86                                       # build the host binary
 The LCD boards render the **real composed screen** via each board's own render
 tree — `Screens::aquariumCreate()` (Terrarium+HUD / Office / TTGO overlay),
 `Knob::create()` or `Ticker::create()` — not a hand-assembled approximation. The
-matrix (`--page usage|agents`, upscaled ×16) and e-ink are LVGL-free and use
+matrix (`--page usage|codex|zai|agents`, upscaled ×16) and e-ink are LVGL-free and use
 their own render paths.
 
 The two `_preview` envs compile the exact shared face renderer and responsive

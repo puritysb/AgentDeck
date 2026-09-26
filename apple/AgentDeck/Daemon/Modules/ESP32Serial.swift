@@ -1359,11 +1359,22 @@ actor ESP32Serial {
         return result
     }
 
-    /// IPS10 card roster — a direct port of `stableCardRoster`
-    /// (bridge/src/esp32-serial.ts): every awaiting session kept, the most
-    /// recently started fill the rest, result ordered by id so the firmware's
-    /// identity sort sees the same set in the same order on every push.
-    static func stableCardRoster(_ sessions: [[String: Any]], cap: Int) -> [[String: Any]] {
+    // BEGIN GENERATED IPS10 ROSTER — bridge/generate-ips10-roster.mjs
+    // Source SHA256: 2db0d200789870c7b53b86629b27d3702f3025661d590cf7446fe0273c2e8c0c
+    nonisolated static func ips10RosterIndices(total: Int, attention: Int, cap: Int, nowMs: Double) -> [Int] {
+        guard cap > 0, total > 0 else { return [] }
+        if total <= cap { return Array(0..<total) }
+        let pinned = min(attention, 3, cap - 1)
+        let slots = cap - pinned, remaining = total - pinned
+        let phase = Int(max(0, nowMs) / 60000)
+        let offset = (phase * slots) % remaining
+        return Array(0..<pinned) + (0..<slots).map { pinned + (offset + $0) % remaining }
+    }
+    // END GENERATED IPS10 ROSTER
+
+    /// IPS10 roster: generated bounded selection kernel, stable within each
+    /// minute. Up to three attention rows stay pinned; every other row rotates.
+    static func stableCardRoster(_ sessions: [[String: Any]], cap: Int, nowMs: Double = Date().timeIntervalSince1970 * 1000) -> [[String: Any]] {
         let alive = sessions.filter { ($0["alive"] as? Bool) ?? true }
         guard alive.count > cap else { return alive }
         let isAwaiting: ([String: Any]) -> Bool = { ($0["state"] as? String)?.hasPrefix("awaiting") == true }
@@ -1379,7 +1390,8 @@ actor ESP32Serial {
                 return sa != sb ? sa > sb : a.offset < b.offset
             }
             .map(\.element)
-        let picked = Array((awaiting + rest).prefix(cap))
+        let ordered = awaiting.sorted { (($0["id"] as? String) ?? "") < (($1["id"] as? String) ?? "") } + rest
+        let picked = ips10RosterIndices(total: ordered.count, attention: awaiting.count, cap: cap, nowMs: nowMs).map { ordered[$0] }
         return picked.sorted { (($0["id"] as? String) ?? "") < (($1["id"] as? String) ?? "") }
     }
 
@@ -1401,9 +1413,11 @@ actor ESP32Serial {
                 // WiFi-only board whenever session count was high.
                 let aliveSessions = sessions.filter { s in (s["alive"] as? Bool) ?? true }
                 let isIps10 = deviceInfo?.board == "ips_10"
-                // IPS10 cards get a STABLE pick (awaiting kept, then newest),
-                // never the state-ranked rotation — see `stableCardRoster`.
-                if isIps10, aliveSessions.count > Self.serialSessionsCap { e["total"] = aliveSessions.count }
+                // IPS10 pages stay stable for a minute, then visit the next cohort.
+                if isIps10 {
+                    e["rosterRotating"] = aliveSessions.count > Self.serialSessionsCap
+                    if aliveSessions.count > Self.serialSessionsCap { e["total"] = aliveSessions.count }
+                }
                 e["sessions"] = (isIps10
                     ? Self.stableCardRoster(aliveSessions, cap: Self.serialSessionsCap)
                     : Self.roundRobinByAgentType(aliveSessions, cap: Self.serialSessionsCap))

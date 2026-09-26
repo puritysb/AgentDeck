@@ -115,6 +115,7 @@ data class StateUpdate(
     val antigravityStatus: AntigravityStatusInfo? = null,
     val gatewayAvailable: Boolean? = null,
     val gatewayConnected: Boolean? = null,
+    val gatewayAuthStatus: String? = null,
     val gatewayHasError: Boolean? = null,
     val moduleHealth: ModuleHealthState? = null,
     val voiceAssistantState: String? = null,
@@ -246,6 +247,17 @@ data class CodexRateLimits(
      *  that — it fires only once the window has ENDED, which for the weekly window
      *  is up to 7 days out. */
     val capturedAt: String? = null,
+    /** Additional Luna-only pool, separate from the account 5h/7d windows. */
+    val lunaReserve: CodexLunaReserve? = null,
+)
+
+/** Luna-only reserve returned as an additional Codex rate-limit pool. */
+@Serializable
+data class CodexLunaReserve(
+    val usedPercent: Double,
+    val resetsAt: String? = null,
+    val regularResetsAt: String? = null,
+    val available: Boolean? = null,
 )
 
 /** A z.ai quota window — the shared window shape plus WHICH QUANTITY it

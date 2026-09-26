@@ -43,8 +43,8 @@ All keypad buttons are `session-slot`; the plugin reads the physical device grid
 
 Encoder/dial families: the **Stream Deck+** (4 dials) and **Stream Deck + XL** (6 dials) carry usage on their dials, so the keypad reserves no usage keys. E1–E4 map to Volume / Claude Usage / Codex Usage / Launcher; on the + XL, E5–E6 are intentionally unassigned. The **Stream Deck XL** has no dials and pins usage to its last keypad keys, like the classic deck. Device→family is resolved from the Elgato `DeviceType` (2 = XL, 7 = Plus, 13 = + XL); bundled profiles `agentdeck-sdxl` (DeviceType 2) and `agentdeck-sdplusxl` (DeviceType 13) AutoInstall and auto-switch on connect.
 
-**The keypad usage strip is hide-if-absent, taking up to 4 keys on 15+ key devices.**
-Claude 5H/7D take the first two reserved keys; a per-model scoped cap (e.g. weekly "Fable") and Codex windows (e.g. Codex 7D) occupy the remaining reserved keys without displacing each other. On devices with 15+ keys, up to 4 reserved buttons are used so Claude 5H, Claude 7D, Fable, and Codex 7D can all be displayed simultaneously. A provider reporting nothing claims no key at all, so freed slots flow back to sessions — most commonly on a **free ChatGPT tier**, which has no rolling subscription windows. An **active** scoped cap (the binding limit) is placed ahead of Codex windows; an **inactive** cap renders muted after Codex windows. Stream Deck+ dial encoders (E2/E3) and 0-keypad usage reserve remain unchanged.
+**The keypad usage strip uses up to the full bottom row: five keys on Classic, eight on XL.**
+Only reported windows reserve keys. Claude, its scoped cap, Codex, and z.ai are seated in that order; inactive scoped caps keep their position with Claude. With Claude 5H/7D, one Codex window, and two z.ai windows, Classic shows all five readings without MORE. Overflow reserves the last key for paging. Plus-family devices use their encoder screens instead.
 
 No daemon: single recovery hero. The geometric center key (`floor(rows/2) * columns + floor(columns/2)` — SD+ 4×2 → slot 6, SD MK2 5×3 → slot 7, SD XL 8×4 → slot 20, SD Mini 3×2 → slot 4) shows **OFFLINE / Open AgentDeck** and launches the AgentDeck Dashboard app on press; every other key is intentionally dark and inert. Auto-reconnect handles re-discovery so no manual RETRY affordance is exposed.
 
@@ -87,7 +87,12 @@ No session while daemon is connected: healthy idle dashboard, not recovery UI. S
 | E3 | Codex Usage | Cycle view (both/5h/7d/session) | Refresh usage data |
 | E4 | Launcher | Select agent | Open agent |
 
-No encoder handles LCD touch.
+E2 and E3 LCD touch-taps cycle through every available provider (Claude, Codex, z.ai).
+An explicit selection wins: when it collides with the other dial, the other dial moves
+to the vacated provider or another available provider. With only one provider, both
+may show it. Choices persist across plugin restarts. E2 starts in automatic mode,
+following current activity while avoiding E3; hold its LCD to resume automatic mode.
+Rotation chooses a view within the selected provider; pressing refreshes usage.
 
 **Usage encoders rotate only through the windows the provider actually reports.**
 A window's zoom stop exists while that window does, so E3 is `both → 7d → session`

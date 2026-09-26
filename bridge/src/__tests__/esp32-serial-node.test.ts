@@ -25,6 +25,7 @@ import {
   isUnidentifiedForeign,
   isHalfOpenIdentifiedCdc,
   isSilentIdentifiedUart,
+  sanitizeRssiDbm,
   SERIAL_KEEPALIVE_JSON,
   budgetTimelineEntries,
   serialOpenFailureBackoffMs,
@@ -142,6 +143,14 @@ describe('handleSerialLine (source)', () => {
     expect(conn.deviceInfo!.fullRefreshCount).toBe(461);
     expect(conn.deviceInfo!.usageCodex5H).toBe(-1);
     expect(conn.deviceInfo!.usageCodex7D).toBe(37);
+  });
+
+  it('carries the board-reported WiFi RSSI and drops implausible values', () => {
+    const conn = mockConn();
+    handleSerialLine(conn, '{"type":"device_info","board":"round_amoled","version":"1.4.0","wifiConfigured":true,"wifiConnected":true,"ip":"192.168.68.55","rssiDbm":-78}');
+    expect(conn.deviceInfo!.rssiDbm).toBe(-78);
+    handleSerialLine(conn, '{"type":"device_info","board":"round_amoled","version":"1.4.0","wifiConfigured":true,"wifiConnected":true,"rssiDbm":0}');
+    expect(conn.deviceInfo!.rssiDbm).toBeUndefined();
   });
 
   it('skips debug lines (non-JSON)', () => {
@@ -951,6 +960,18 @@ describe('serialOpenFailureBackoffMs', () => {
   it('uses the flat 5-min block for EACCES (permanent) failures', () => {
     for (let n = 1; n <= 5; n++) {
       expect(serialOpenFailureBackoffMs(n, true)).toBe(300_000);
+    }
+  });
+});
+
+describe('sanitizeRssiDbm', () => {
+  it('keeps a plausible dBm reading, rounded', () => {
+    expect(sanitizeRssiDbm(-67.4)).toBe(-67);
+    expect(sanitizeRssiDbm(-120)).toBe(-120);
+  });
+  it('treats absent, zero, positive and non-numeric values as no reading', () => {
+    for (const v of [undefined, null, 0, -0.1, -0.49, 5, -121, Number.NaN, '-60']) {
+      expect(sanitizeRssiDbm(v)).toBeUndefined();
     }
   });
 });

@@ -183,6 +183,11 @@ data class GatewayMethodParams (
     val message: String? = null,
     val sessionKey: String? = null,
 
+    /**
+     * Per-turn override supported by the Gateway; does not patch session defaults.
+     */
+    val thinking: String? = null,
+
     @Json(name = "runId")
     val runID: String? = null,
 

@@ -1,8 +1,158 @@
 # Wake Word Detection
 
-> **Status note (2026-08-05):** Porcupine (§1) is the only wake word AgentDeck ships; it was last verified 2026-03. §2 microWakeWord is **not in the firmware** — the on-board listener was removed on 2026-08-05 and only the trained model + the trainer recipe remain. Read §2 as a resume guide, not as a description of running code.
+> **Status (2026-09-23):** Deployed to IPS10 and the Mac Studio Node daemon.
+> An acoustic synthetic-speech test passed wake detection → capture → HTTP
+> upload → personal OpenClaw run → local TTS → panel playback → listening again.
+> This is a hardware smoke test, not a room-distance accuracy measurement.
 
-AgentDeck는 두 가지 wake word 감지 시스템을 지원한다.
+## Recognition diagnostics (2026-09-24)
+
+For a wake that reacts but misrecognizes the following utterance, inspect the
+running daemon as well as the settings. The Mac Studio was running an older
+npm installation that called Apple Speech directly, while its local settings
+selected `whisper-cpp`, `ko-KR`, and `large-v3-turbo`. Updating the source tree or
+firmware alone did not change that running implementation. The current loopback
+health response reports `voice.transcriber`, `voice.locale`, and
+`voice.personalRoute`; these describe configuration, not model readiness or
+recognition quality. The CLI now resolves to the stable main checkout rather
+than a temporary worktree. Previously captured microphone audio still produced
+some incorrect words when replayed through Whisper, so a successful round trip
+must not be reported as a room-distance recognition-accuracy result.
+
+The v8 hardware check also exposed an independent upload failure: the workspace
+left roughly 49 KiB internal heap against the existing 60 KiB WiFi TX guard.
+IPS10 now uses three 8-line internal DMA buffers, returning 60 KiB without moving
+per-pixel rendering into slower PSRAM. The upload guard remains intact. On the post-flash check, internal free memory
+settled at 106–108 KiB (largest block 62–65 KiB). The triggered utterance uploaded
+successfully on its first attempt, received a personal OpenClaw response, played
+it on the panel, and returned to wake state. This remains a synthetic-speech
+smoke test, not a recognition-accuracy benchmark.
+
+## IPS10 desk companion
+
+The on-device **OpenClaw** button enables/disables the local Korean wake-word
+model and retains the setting across reboot. New installations default off.
+Say **오픈클로**, wait for the short listening tone, then speak the command.
+A pause ends the utterance; the stop button cancels recording or stops playback.
+During reply playback the listener is suppressed, so the speaker cannot trigger
+itself. This is half-duplex voice interaction, not acoustic echo cancellation.
+Manual hold-to-talk is retained. Tap a work card for task details; hold a card
+to choose the manual voice target. Wake-word requests always address the
+personal OpenClaw session regardless of the selected work card.
+
+The foreground dashboard shows current work or the last outcome, with event
+history behind the detail view. Empty child-agent telemetry is omitted instead
+of filling cards with diagnostic text. Voice status and stop controls remain
+visible below the work area.
+
+### Surface and camera decisions
+
+IPS10 is the desk's glanceable work surface: stable agent/project cards answer
+who is working, on what, and whether input is needed. A tap reveals the details;
+the default view does not repeat a timeline under every agent. The office scene
+continues to use real agent state. Blender-authored baked poses can extend that
+scene later; this change does not introduce a real-time 3D renderer.
+
+Voice has an always-visible enable/disable control, listening feedback,
+silence endpointing, and a stop control. It uses the panel microphone even when
+the Mac display sleeps. Room-distance recognition, acoustic echo cancellation,
+and speaking over an answer are not established by the synthetic smoke tests.
+
+For the unused front camera, the first useful experiments are opt-in presence
+(to switch between glance and detail density) and a user-requested still image
+for a question to the personal agent. Prefer local, low-rate processing and
+retain no frames for presence. Person identity, emotion, and attention are not
+needed. CSI capture/ISP integration, frame validation, and resource coexistence
+with display/audio must precede any lightweight vision model. The firmware's
+`camera_probe` only reads the expected sensor ID over the existing SCCB bus; it
+does not start a camera stream or claim successful capture.
+
+### Transport and ownership
+
+- IPS10 owns I2S RX in one lifetime task. Its frontend, streaming model state,
+  pre-roll and bounded 30-second capture reuse boot allocations. Capture and
+  model arenas live in PSRAM. The upload borrows a frozen capture buffer;
+  another recording cannot overwrite it while the HTTP worker owns it.
+- Only a triggered utterance is sent over the existing paired Wi-Fi voice
+  endpoint. Wake-word processing requires no cloud audio stream.
+- The Node daemon acknowledges receipt before transcription, then calls `chat.send` on
+  `agent:main:main` (override: `voice.openclawSessionKey`, restricted to an
+  agent's main session). It matches both the acknowledged run ID and session
+  key before speaking. Cron and unrelated chat completions cannot provide
+  the response. Existing `voice.locale` and `voice.speakReplies` apply.
+- `voice.transcriber` defaults to `apple`. `whisper-cpp` selects an explicitly
+  configured local `voice.whisperCli` and `voice.whisperModel` (absolute paths).
+  It has a 60-second timeout, uses argument-based process execution, and never
+  downloads a model or sends audio to a cloud ASR service. This Mac Studio uses
+  its existing native ARM64 Whisper and large-v3-turbo model because Apple
+  Speech authorization stalled in the launchd helper. TTS still uses the
+  existing native speech helper.
+- This personal-session route currently requires the Node daemon on the Mac
+  Studio. The Swift daemon has not gained the new personal voice route.
+- Firmware diagnostics expose `wakeReady`, `wakeEnabled`, detection/inference
+  counters, worst inference time, score, microphone level and voice phase in
+  a requested `device_info` frame. `wake_word_config` changes the persisted
+  setting; `mic_test` reads the owner's telemetry without stealing I2S frames.
+
+### Model and limits
+
+The embedded 63,520-byte model uses 40-channel frontend features at 16 kHz,
+30 ms windows / 10 ms steps, and two slices per invocation. The frontend is
+pinned to `esphome-libs/esp-micro-speech-features` commit
+`351c4c69530f5a802da5433581c4863afadf0a00` (Apache-2.0).
+Detection requires three consecutive outputs at least 128/256 after warm-up.
+The frontend uses its ESP32 PSRAM allocator; IPS10 omits the unused 12 KB
+streaming ring. Hardware upload headroom increased from 56 KB to 80 KB.
+
+A 12-sample training-audio smoke test reached detection on all samples; this
+is not a held-out accuracy or far-field false-trigger result.
+
+Camera support remains a separate hardware bring-up: this repository has no
+IPS10 CSI capture driver. A new [OV02C10 component tested on this board](https://github.com/sullb/esphome-p4-csi-camera)
+provides a useful implementation reference. The deployed read-only probe confirmed
+`0x5602` (OV02C10) on this unit; no video frame has been captured. Useful first features
+are opt-in presence-based information density and an explicitly requested still
+image for the personal agent. Do not infer identity, emotion or attention from
+presence, or claim a camera feature before a real frame has been validated.
+
+
+### Deployment verification (2026-09-23)
+
+- IPS10 USB deployment: ESP32-P4 revision 1.3, detected 16 MB flash, full image
+  write with hash verification and hard reset. Running build epoch `1790127440`
+  (`3fe22c11-dirty`, compiled before commit `310d2c8e`) was read back from the
+  device. A preceding Wi-Fi OTA timed out at chunk 3290; USB completed.
+- Mac Studio: supervised Node daemon build `ad38d0e5312e`, source CLI linked to
+  the stable checkout. Local Whisper transcribes Korean; the existing native
+  helper generates 16 kHz speech. HTTP receipt returned in 67 ms in a host test.
+- Initial acoustic testing passed a full round trip, then a repeated upload
+  stalled at 81,920/200,512 bytes. Firmware now uses nonblocking 512-byte sends,
+  drains WS/serial control traffic during transfer, and bounds both total and
+  stalled duration. Two subsequent 200,512-byte uploads returned HTTP 200 and
+  both replies completed on the same boot. Idle internal heap returned to 79 KB.
+- A subsequent 8 KB reply-download burst briefly drove minimum internal heap to
+  2 KB. The Mac now paces IPS10 replies at 1 KB/20 ms, above 16 kHz mono playback
+  rate; firmware starts playback before the entire answer has arrived. A final
+  404,812-byte reply was downloaded/fed completely; minimum internal heap on
+  that boot stayed at 63 KB, versus 2 KB before host pacing.
+- A Korean negative utterance caused no additional detection. Wake-only speech
+  followed by silence returned to listening without uploading a command.
+  Muting froze the inference/detection counters even when the wake word played;
+  re-enabling restored the listener. The enabled preference survived reboot.
+- **Recognition limitation:** replaying the captured microphone WAV through
+  the local recognizer produced word substitutions (for example, requested
+  “음성 연결 확인” became “음성 연결 고민”). Successful delivery/playback does not
+  establish faithful command transcription. Human speech, placement/distance,
+  background noise and language accuracy need a broader acceptance set. The
+  current recognizer is local Whisper, not a calibrated far-field speech system.
+  One later acoustic replay also failed to wake the panel; a successful local
+  listening loop does not guarantee detection of every utterance. Manual PTT
+  remains available when the wake word is missed.
+- Native LVGL simulations passed tap/detail/close/hold/wake-toggle interactions
+  and modal bounds in landscape and portrait. Build, typecheck and 4,654 tests
+  passed (2 skipped). Protocol generation and token mirrors passed. Design lint
+  still reports pre-existing HTML/JS violations outside the changed files.
+
 
 ## 1. Porcupine (Mac — 현재 운영)
 
@@ -16,9 +166,9 @@ Mac Studio 모니터 마이크로 "오픈클로" 키워드 감지.
 - **설정**: `~/.agentdeck/settings.json` — `wakeWordMic`, `wakeWordSensitivity`
 - **제한**: 모니터 sleep 시 마이크 비활성 → 감지 불가
 
-## 2. microWakeWord (ESP32 — 펌웨어에서 제거됨, 모델만 보관)
+## 2. microWakeWord training history
 
-목표는 ESP32-S3의 내장 마이크로 상시 감지해서 모니터가 잠들어도 동작하게 하는 것이었다. **현재 펌웨어에는 이 기능이 없다.**
+목표는 ESP32-S3의 내장 마이크로 상시 감지해서 모니터가 잠들어도 동작하게 하는 것이었다. 2026-08-05의 제거 경위는 아래에 보존한다. 현재 IPS10 구현은 위 절을 참조한다.
 
 - **엔진**: microWakeWord (TFLite Micro, MixConv streaming)
 - **모델**: `esp32/models/openclaw_wake_word.tflite` (62KB, INT8 양자화)

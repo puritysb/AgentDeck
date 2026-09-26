@@ -24,6 +24,51 @@ final class TerrariumCloudFoldTests: XCTestCase {
     }
 
     @MainActor
+    func testEveryNativeKindShowsWorkingCueAndClearsItWhilePaused() async throws {
+        let scene = AquariumResidents()
+        scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))))
+        var state = TerrariumState()
+        state.creatures = [.init(id: "claude", projectName: "Claude", modelName: nil, state: .working, homeX: 0, homeY: 0, scale: 1)]
+        state.cloudCreatures = [.init(id: "codex", projectName: "Codex", modelName: nil, state: .pulsing, homeX: 0, homeY: 0, scale: 1)]
+        state.opencodeCreatures = [.init(id: "opencode", projectName: "OpenCode", modelName: nil, state: .pulsing, homeX: 0, homeY: 0, scale: 1)]
+        state.antigravityCreatures = [.init(id: "antigravity", projectName: "Antigravity", modelName: nil, state: .working, homeX: 0, homeY: 0, scale: 1)]
+        state.kiroCreatures = [.init(id: "kiro", projectName: "Kiro", modelName: nil, state: .working, homeX: 0, homeY: 0, scale: 1)]
+        state.crayfishVisible = true
+        state.crayfishState = .routing
+        scene.sync(state, aspect: 1.6)
+        XCTAssertEqual(scene.residents.count, 6)
+        for resident in scene.residents.values {
+            XCTAssertEqual(resident.findEntity(named: "activity")?.isEnabled, true)
+            XCTAssertNotNil(resident.findEntity(named: "working-badge"))
+        }
+        let resident = try XCTUnwrap(scene.residents["claude"])
+        let indicator = try XCTUnwrap(resident.findEntity(named: "activity"))
+        let bar = try XCTUnwrap(indicator.children.first)
+        let initial = bar.transform
+        scene.step(0.05)
+        XCTAssertNotEqual(bar.transform, initial)
+        scene.labelsVisible = false
+        XCTAssertTrue(indicator.isEnabled, "Viewing mode retains the activity cue")
+        scene.animate = false
+        let frozen = bar.transform
+        scene.step(1)
+        XCTAssertEqual(bar.transform, frozen)
+        // A live state change must clear work cues without waiting for an animation tick.
+        state.creatures = [.init(id: "claude", projectName: "Claude", modelName: nil, state: .asking, homeX: 0, homeY: 0, scale: 1)]
+        state.cloudCreatures = []
+        state.opencodeCreatures = []
+        state.antigravityCreatures = []
+        state.kiroCreatures = []
+        state.crayfishVisible = false
+        scene.sync(state, aspect: 1.6)
+        XCTAssertFalse(indicator.isEnabled)
+        XCTAssertNil(resident.findEntity(named: "working-badge"))
+        XCTAssertEqual(scene.residents.count, 1)
+        scene.sync(TerrariumState(), aspect: 1.6)
+        XCTAssertTrue(scene.residents.isEmpty)
+    }
+
+    @MainActor
     func testNativeResidentAssetsAndLiveReconciliation() async throws {
         let url = try XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))
         let library = try await Entity(contentsOf: url)
@@ -326,6 +371,18 @@ final class TerrariumCloudFoldTests: XCTestCase {
         let bounds = claude.visualBounds(relativeTo: nil).extents
         XCTAssertGreaterThan(bounds.x / bounds.y, 1.5, "Retain the original wide pixel silhouette")
         XCTAssertEqual(names(claude).filter { $0.hasPrefix("joint_foot_") }.count, 4)
+        for side in 0...1 {
+            let arm = try XCTUnwrap(claude.findEntity(named: "joint_arm_\(side)"))
+            let span = arm.visualBounds(relativeTo: arm).extents
+            XCTAssertLessThan(max(span.x, span.y, span.z), 0.30,
+                "An arm hinge must not rotate a full-height side of Claude's torso")
+        }
+        let flanks = claude.children.filter { $0.name.hasPrefix("claudecode_canonical_flank_") }
+        XCTAssertEqual(flanks.count, 4)
+        for flank in flanks {
+            XCTAssertLessThan(flank.visualBounds(relativeTo: flank).extents.x, 0.015,
+                "Fixed torso bevels must not retain thin shelves above or below the moving arms")
+        }
         XCTAssertNotNil(library.findEntity(named: "joint_claw_0"))
         XCTAssertNotNil(library.findEntity(named: "joint_claw_1"))
     }

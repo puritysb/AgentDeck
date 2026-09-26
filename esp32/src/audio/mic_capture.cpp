@@ -2,7 +2,7 @@
 // macro, not a -D flag.
 #include "../../boards/board_config.h"
 
-#if defined(BOARD_HAS_VOICE_CAPTURE)
+#if defined(BOARD_HAS_VOICE_CAPTURE) && !defined(BOARD_IPS10)
 
 #include "mic_capture.h"
 #include "../net/ws_client.h"

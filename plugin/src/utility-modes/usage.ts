@@ -1,3 +1,4 @@
+import { selectedLunaReserve } from '@agentdeck/shared';
 /**
  * Usage data types and shared formatting helpers.
  * Used by the dedicated Usage Dial (E3) renderer.
@@ -240,7 +241,7 @@ export function buildCodexUsageEncoder(data: UsageModeData, hasReceivedData: boo
     sevenDay: { label: '7D', usedPercent: secondary?.usedPercent ?? 0, resetsAt: secondary?.resetsAt, known: secondary != null, stale: secondary?.stale === true, footnote: codexUsageFootnote(secondary, cx?.capturedAt)?.text },
     note,
     sideCard: solo ? buildCodexSideCard(data, cx, solo) : undefined,
-    luna: cx?.lunaReserve,
+    luna: selectedLunaReserve(cx),
   };
 }
 
@@ -343,7 +344,7 @@ export function noteUsageProviderActivity(
  * user's sticky "what do I want to watch" dial (touch-tap to pin). The two
  * roles are deliberately asymmetric:
  *
- * - E2 AUTO-adapts (no interaction): it re-selects on every roster tick and
+ * - Unpinned E2 AUTO-adapts: it re-selects on every roster tick and
  *   avoids E3's current page when the ranking allows, so the two dials show
  *   different providers by default — but E2 is the one that yields, not E3.
  * - E3 is STICKY (user-chosen): once the user touch-taps to a provider page,
@@ -366,7 +367,7 @@ export function pickAutoUsageProvider(data: UsageModeData, avoid?: UsageProvider
 }
 
 // The two dials' live selections, shared so each can honour the
-// never-same-provider rule. E2 owns its entry (auto), E3 owns its entry
+// never-same-provider rule. E2 supports automatic or manual choice; E3 owns its entry
 // (touch-tap cycle).
 let e2Provider: UsageProviderId = 'claude';
 let e3Provider: UsageProviderId = 'codex';
@@ -375,6 +376,65 @@ export function getUsageDialSelections(): { e2: UsageProviderId; e3: UsageProvid
 }
 export function setE2UsageProvider(p: UsageProviderId): void { e2Provider = p; }
 export function setE3UsageProvider(p: UsageProviderId): void { e3Provider = p; }
+
+let e2Pinned = false;
+/** Persist explicit provider choices; automatic E2 follows current activity. */
+export function usageDialPreferences(): { e2: UsageProviderId | 'auto'; e3: UsageProviderId } {
+  return { e2: e2Pinned ? e2Provider : 'auto', e3: e3Provider };
+}
+
+export function restoreUsageDialPreferences(value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  const prefs = value as Record<string, unknown>;
+  const isProvider = (p: unknown): p is UsageProviderId => p === 'claude' || p === 'codex' || p === 'zai';
+  e2Pinned = isProvider(prefs.e2);
+  if (isProvider(prefs.e2)) e2Provider = prefs.e2;
+  if (isProvider(prefs.e3)) e3Provider = prefs.e3;
+}
+
+const dialSelectionListeners = new Set<() => void>();
+export function onUsageDialSelectionChanged(listener: () => void): void {
+  dialSelectionListeners.add(listener);
+}
+
+/** Explicit choice wins; move the other dial to the vacated provider on collision. */
+export function selectUsageDialProvider(dial: 'e2' | 'e3', provider: UsageProviderId, data: UsageModeData): void {
+  const available = availableUsageProviders(data);
+  if (!available.includes(provider)) return;
+  const previous = dial === 'e2' ? e2Provider : e3Provider;
+  const alternative = available.find(p => p === previous && p !== provider)
+    ?? available.find(p => p !== provider) ?? provider;
+  if (dial === 'e2') {
+    e2Pinned = true;
+    e2Provider = provider;
+    if (e3Provider === provider) e3Provider = alternative;
+  } else {
+    e3Provider = provider;
+    if (e2Provider === provider) e2Provider = alternative;
+  }
+  for (const listener of dialSelectionListeners) listener();
+}
+
+export function resolveE2UsageProvider(data: UsageModeData): UsageProviderId {
+  const available = availableUsageProviders(data);
+  // Startup/disconnect carries no quota yet; retain the saved manual choice.
+  if (available.length === 0) return e2Provider;
+  if (e2Pinned && available.includes(e2Provider) && e2Provider === e3Provider && available.length > 1) {
+    e3Provider = available.find(p => p !== e2Provider)!;
+  }
+  if (!e2Pinned || !available.includes(e2Provider)) {
+    e2Provider = pickAutoUsageProvider(data, e3Provider);
+  }
+  return e2Provider;
+}
+
+/** Long touch returns the adaptive dial to automatic selection. */
+export function resetE2UsageProvider(data: UsageModeData): void {
+  e2Pinned = false;
+  resolveE2UsageProvider(data);
+  for (const listener of dialSelectionListeners) listener();
+}
+
 
 /**
  * The companion card beside a lone Codex gauge, best-available first:

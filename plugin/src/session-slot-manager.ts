@@ -1,3 +1,4 @@
+import { selectedLunaReserve } from '@agentdeck/shared';
 /**
  * SessionSlotManager — central state machine for v4 dynamic session-per-button layout.
  *
@@ -43,10 +44,6 @@ export interface UsageGauge {
   scoped?: boolean;
   luna?: CodexLunaReserve;
 }
-
-/** Max bottom-row keys usage may claim: Claude 5h/7d + Codex 5h/7d (or, when
- *  Codex reports nothing, the scoped cap standing in for it). */
-const MAX_USAGE_RESERVE = 4;
 
 const CLAUDE_USAGE_COLOR = Brand.claudeCode;
 const CODEX_USAGE_COLOR = Brand.codex;
@@ -294,8 +291,12 @@ export class SessionSlotManager {
    *  Codex for a reserved key rather than adding one — see `usageGauges`. */
   private _worstScoped: ScopedUsageLimit | undefined;
   // Page cursor for the (Phase-1-dormant) gauge paging when present gauges
-  // exceed MAX_USAGE_RESERVE. Never advances with ≤4 gauges.
-  private _usagePage = 0;
+  // exceed the current device bottom-row capacity.
+  private readonly usagePages = new Map<string, number>();
+
+  private usagePageKey(layout: DeckLayout): string {
+    return `${layout.family}:${layout.columns}:${layout.rows}`;
+  }
 
   // Detail view state (from the focused session's bridge)
   private _detailState = State.DISCONNECTED;
@@ -439,7 +440,7 @@ export class SessionSlotManager {
     this._codexSecondary = cx?.secondary
       ? { percent: cx.secondary.usedPercent, resetsAt: cx.secondary.resetsAt, windowMinutes: cx.secondary.windowMinutes, stale: cx.secondary.stale === true }
       : null;
-    this._codexLunaReserve = cx?.lunaReserve;
+    this._codexLunaReserve = selectedLunaReserve(cx);
     this._codexCapturedAt = cx?.capturedAt;
     // Worst-first already (active desc, then percent desc) — only [0] can ever
     // reach a key, so the rest is dead work here. Paging through them lives on
@@ -560,7 +561,7 @@ export class SessionSlotManager {
    */
   private usageGaugesForDisplay(gauges: UsageGauge[]): UsageGauge[] {
     const seat = (g: UsageGauge): number =>
-      usageStripRank(g.scoped === true ? 'scoped' : g.agent === 'codex' ? 'codex' : 'claude');
+      usageStripRank(g.scoped === true ? 'scoped' : g.agent === 'codex' ? 'codex' : g.agent === 'zai' ? 'zai' : 'claude');
     return gauges
       .map((g, i) => ({ g, i }))
       .sort((a, b) => seat(a.g) - seat(b.g) || a.i - b.i)
@@ -572,20 +573,22 @@ export class SessionSlotManager {
    * Deck (15 keys) and XL (32) carry usage here (no encoder LCD); the Plus
    * family (Stream Deck+ 4-dial and Stream Deck + XL 6-dial, see isPlusFamily)
    * shows usage on its dials instead, and the Mini (<6 keys) is too small to
-   * spare any. Capped at MAX_USAGE_RESERVE.
+   * spare any. Use the full physical bottom row.
    */
   private usageReserve(layout: DeckLayout): number {
     if (isPlusFamily(layout.family) || layout.keyCount < 6) return 0;
-    return Math.min(this.usageGauges().length, MAX_USAGE_RESERVE);
+    return Math.min(this.usageGauges().length, layout.columns, layout.keyCount - 1);
   }
 
-  /** Cycle the gauge page (only meaningful when gauges overflow MAX_USAGE_RESERVE). */
-  cycleUsagePage(): void {
+  /** Cycle the usage strip for this deck layout when its bottom row overflows. */
+  cycleUsagePage(layout: DeckLayout = DEFAULT_LAYOUT): void {
     const gauges = this.usageGauges();
-    if (gauges.length <= MAX_USAGE_RESERVE) { this._usagePage = 0; return; }
-    const perPage = MAX_USAGE_RESERVE - 1;
+    const capacity = this.usageReserve(layout);
+    const key = this.usagePageKey(layout);
+    if (capacity < 2 || gauges.length <= capacity) { this.usagePages.delete(key); return; }
+    const perPage = capacity - 1;
     const pages = Math.max(1, Math.ceil(gauges.length / perPage));
-    this._usagePage = (this._usagePage + 1) % pages;
+    this.usagePages.set(key, ((this.usagePages.get(key) ?? 0) + 1) % pages);
   }
 
   // ---- Detail view state updates ----
@@ -845,18 +848,17 @@ export class SessionSlotManager {
         const gauges = this.usageGauges();
         const idx = slot - blockStart;
         const overflow = gauges.length > usageReserve;
-        // Dormant in Phase 1 (≤4 gauges never overflow 4 reserved keys): when a
-        // future 5th gauge appears, the last reserved key becomes a page toggle.
-        if (overflow && idx === usageReserve - 1) {
-          const perPage = usageReserve - 1;
-          const pages = Math.max(1, Math.ceil(gauges.length / perPage));
-          return { type: 'usage-page', label: `${(this._usagePage % pages) + 1}/${pages}` };
-        }
         const perPage = overflow ? usageReserve - 1 : usageReserve;
+        const pages = Math.max(1, Math.ceil(gauges.length / perPage));
+        const pageIndex = overflow ? (this.usagePages.get(this.usagePageKey(layout)) ?? 0) % pages : 0;
+        // Reserve a page control only when the actual bottom row overflows.
+        if (overflow && idx === usageReserve - 1) {
+          return { type: 'usage-page', label: `${pageIndex + 1}/${pages}` };
+        }
         // Page by RANK, seat by `USAGE_STRIP_ORDER`: the page is chosen from the
         // ranked list, then reordered so the tiles never move between renders.
         const page = this.usageGaugesForDisplay(
-          gauges.slice(this._usagePage * perPage, this._usagePage * perPage + perPage),
+          gauges.slice(pageIndex * perPage, (pageIndex + 1) * perPage),
         );
         const g = page[idx];
         if (g) {

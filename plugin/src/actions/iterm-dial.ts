@@ -27,7 +27,7 @@ import {
   type UsageModeData, type UsageProviderId, type UsageView,
   updateUsageModeData, getUsageModeData, fireUsageRefresh,
   availableUsageProviders, availableUsageViews, buildProviderUsageEncoder,
-  getUsageDialSelections, setE3UsageProvider,
+  getUsageDialSelections, setE3UsageProvider, selectUsageDialProvider, onUsageDialSelectionChanged,
 } from '../utility-modes/usage.js';
 import type { ConnectionManager } from '../connection-manager.js';
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
@@ -48,13 +48,13 @@ let currentView: UsageView = 'both';
  * E3's provider page (#349) — the user's STICKY "what do I want to watch" dial.
  * Touch-tap cycles through all available providers; rotation cycles the views
  * of the current page; press refreshes. The page only re-anchors when the
- * current provider loses its data entirely — E2 re-selections never move it.
+ * current provider loses its data entirely or an explicit E2 choice claims it.
  */
 function anchoredProvider(): UsageProviderId {
   const data = getUsageModeData();
   const available = availableUsageProviders(data);
   const current = getUsageDialSelections().e3;
-  if (available.includes(current)) return current;
+  if (available.length === 0 || available.includes(current)) return current;
   // Data loss: re-anchor to any live page (prefer one E2 is not on).
   const next = available.find((p) => p !== getUsageDialSelections().e2) ?? available[0];
   const anchored = next ?? 'codex';
@@ -64,6 +64,7 @@ function anchoredProvider(): UsageProviderId {
 
 export function initUsageDial(_bridge: ConnectionManager): void {
   dinfo('CodexUsageDial', 'initUsageDial called');
+  onUsageDialSelectionChanged(refreshUsageDials);
 }
 
 /** Called from plugin.ts when usage_update arrives. */
@@ -162,7 +163,7 @@ export class UsageDialAction extends SingletonAction {
     const current = getUsageDialSelections().e3;
     const at = available.indexOf(current);
     const next = available[((at < 0 ? 0 : at) + 1) % available.length];
-    setE3UsageProvider(next);
+    selectUsageDialProvider('e3', next, getUsageModeData());
     dlog('UsageDial', `touch-tap → provider=${next}`);
     refreshUsageDials();
   }

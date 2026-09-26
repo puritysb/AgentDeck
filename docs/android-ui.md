@@ -61,7 +61,7 @@ Landscape: 상단 chrome + `Sessions | Terrarium`, 하단 text Timeline
 [Sessions]                 ∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿
   agentdeck #1             🐙  🦞  cloud
     opus-4 · ● PROC        sand / fish / state labels
-  agentdeck #2                                           LIMITS
+  agentdeck #2                                           USAGE
     sonnet · ○ IDLE                                      5h ███░
   codex-main
     gpt-5 · ● PROC

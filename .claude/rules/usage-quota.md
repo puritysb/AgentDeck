@@ -61,3 +61,33 @@ coupon redemption remain owned by Codex. The endpoint follows Codex's upstream
 implementation and is not a public, versioned OpenAI API contract.
 
 `AGENTDECK_CLAUDE_CLI` can select the recovery executable when the daemon PATH lacks it. Relative paths resolve before the child changes working directory; Windows `.cmd`/`.bat` shims are diagnosed and skipped rather than executed through a shell.
+
+## Antigravity dashboard display
+
+Antigravity's local `availableCredits` is backend metering, not the model-group usage quota. Do not show the raw count (such as `1000`), a credits row, or a percentage derived from it on dashboards. Show only a confirmed plan: `AGY Pro` via `formatAntigravityPlanShort` / native `UsageFormat::formatAgyPlan` where nothing else names the provider, or the tier alone (`Pro`, from `usageSubscriptionTier`) beside the Antigravity mark and name; omit it when no plan is known. Credit-only data must not create a quota rail. This preserves the existing shared formatter and Apple upstream-rail contract; integration diagnostics may still expose the underlying data.
+
+## Shared display selection
+
+Use **USAGE** for the quota/subscription section heading. `shared/src/usage-presentation.ts`
+owns provider attribution and the Luna selection predicate, with generated native mirrors.
+A reported Luna pool replaces regular Codex windows only while a non-ended regular
+window is exhausted; a reset snapshot restores regular windows even when the extra
+pool remains reported. Unknown windows never become zero. An exhausted Luna pool
+still shows its actual zero remaining allowance. Window labels follow reported
+lengths, including credit-based plans with no rolling duration.
+
+IPS10 places confirmed subscriptions (including plan-only Antigravity) inside USAGE,
+with reported subscription dates separate from reset countdowns. An unknown plan,
+a raw credit count, or an unlinked integration does not create a placeholder row.
+
+Every ESP32 USAGE surface renders from `esp32/src/util/usage_rows.h`, never from raw
+`g_state` quota fields: provider groups in Claude → Codex → z.ai → Antigravity order,
+z.ai's MCP window labelled by quantity on every board that has room, and the Luna
+reserve as "% left" on every board (the serial whitelist forwards it fleet-wide). A
+provider's plan tier (`usageSubscriptionTier`: the subscription name without its
+provider prefix) sits beside its brand mark; on grid surfaces it fills the slot a
+missing window leaves (a Codex plan with no 5h window shows `Plan  Pro · ~7/28` there).
+When a small panel must drop windows, later providers give up their second window
+first, so every provider keeps its primary row. Apple and Android select Luna with the
+same predicate (`CodexRateLimits.activeLunaReserve` / `activeLunaReserve`), and colour
+a remaining-reading row by its used complement.

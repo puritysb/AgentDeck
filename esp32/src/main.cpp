@@ -405,12 +405,11 @@ static void tickerApplyBrightness(uint32_t now) {
 static void uiTask(void* param) {
     Serial.printf("[UI] Ticker task started on core %d\n", xPortGetCoreID());
 
-    // The camera probe decides the unit's role BEFORE the display comes up:
-    // a shield present means this is the handheld Pocket unit (portrait
-    // phone UI); absent means the desk-mounted landscape Focus Strip. The
-    // probe manages Wire itself and deinits straight after (power fence).
-    bool pocket = Camera::init();
-    if (pocket) UI::requestPortrait();
+    // Desk awareness is the default on either unit. A camera shield remains
+    // available in the strip's explicit CAM page; it no longer selects a
+    // different portrait UI before the user can see their pinned task.
+    Camera::init();
+    const bool pocket = false;
     UI::displayInit();
     Input::lightInit();
     Input::touchInit();
@@ -737,6 +736,7 @@ static void uiTask(void* param) {
     // Swipe on settings → back
     lv_obj_add_event_cb(scrSettings, settingsGesture, LV_EVENT_GESTURE, NULL);
 
+    logHeap("ui-ready");
     Serial.println("[UI] Screens created, entering main loop");
 
     uint32_t lastFrameMs = millis();
@@ -964,6 +964,9 @@ static void uiTask(void* param) {
 #endif
         // LVGL timer handler
         lv_timer_handler();
+#if defined(BOARD_IPS10)
+        UI::recordFrameTiming(tView1-tView0, micros()-tView1);
+#endif
 
 #if defined(IPS10_PERF_HUD)
         // On-screen perf overlay source: track the WORST single frame over a rolling ~1.5s window.

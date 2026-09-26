@@ -53,6 +53,8 @@ void epd_draw_image(LilyEpdRect area, uint8_t* data, int mode);
 #include "ui/eink/epd47_page_policy.h"
 #include "ui/eink/epd47_refresh_policy.h"
 #include "util/usage_format.h"
+#include "util/usage_rows.h"
+#include <cctype>
 #include "util/utf8.h"
 #include "util/memory.h"
 #if defined(BOARD_LILYGO_EPD47)
@@ -314,6 +316,11 @@ struct Snap {
     char claudePlan[40];
     char codexPlan[40];
     char agPlan[40];   // pre-shortened "AGY Pro ~8/1" chip text
+    // Provider-grouped usage (shared UsageRows rules: z.ai MCP, the Codex
+    // Luna reserve, per-provider plan tier/until). The dashboard band and the
+    // EPD47/NM usage columns render from this.
+    UsageRows::Group usage[UsageRows::MAX_GROUPS];
+    uint8_t usageCount;
     char ip[16];
     // Recent-work strip: latest milestone timeline events, newest first.
     // EXCLUDED from the content hash — the strip earns its own redraw at most
@@ -441,6 +448,7 @@ void snapshot(Snap& s) {
     if (!s.agPlan[0] && g_state.antigravityPlan[0]) {
         UsageFormat::formatAgyPlan(g_state.antigravityPlan, s.agPlan, sizeof(s.agPlan));
     }
+    s.usageCount = UsageRows::build(g_state, s.usage);
     // Latest MILESTONE timeline entries → recent-work strip (newest first).
     // Only turn/task-level rows qualify (chat_start/chat_response/chat_end/
     // task_start/task_end): per-tool rows from managed PTY sessions
@@ -456,8 +464,7 @@ void snapshot(Snap& s) {
         if (!t.raw[0] || t.raw[0] == '{' || t.raw[0] == '[') continue;
         // Turn rows only (see the one-row-per-task note above); task_start
         // labels are still resolved below as the turn's task CONTEXT chip.
-        bool milestone = strcmp(t.type, "chat_start") == 0 || strcmp(t.type, "chat_end") == 0 ||
-                         strcmp(t.type, "chat_response") == 0;
+        bool milestone = strcmp(t.type, "chat_response") == 0;
         if (!milestone) continue;
         uint8_t row = s.tickerCount;
         if (t.hm[0]) {
@@ -515,6 +522,24 @@ uint32_t fnv(uint32_t h, const void* data, size_t len) {
     return h;
 }
 uint32_t fnvStr(uint32_t h, const char* s) { return fnv(h, s, strlen(s) + 1); }
+// Usage groups at integer resolution — float jitter never costs a refresh.
+// `withResets=false` keeps countdown churn out of the calm faces.
+uint32_t hashUsage(uint32_t h, const Snap& s, bool withResets) {
+    h = fnv(h, &s.usageCount, sizeof(s.usageCount));
+    for (uint8_t i = 0; i < s.usageCount; i++) {
+        const auto& g = s.usage[i];
+        h = fnv(h, &g.provider, sizeof(g.provider));
+        h = fnv(h, &g.rowCount, sizeof(g.rowCount));
+        h = fnvStr(h, g.tier); h = fnvStr(h, g.until);
+        for (uint8_t r = 0; r < g.rowCount; r++) {
+            const int shown = g.rows[r].shown();
+            h = fnvStr(h, g.rows[r].label);
+            h = fnv(h, &shown, sizeof(shown));
+            if (withResets) h = fnvStr(h, g.rows[r].reset);
+        }
+    }
+    return h;
+}
 
 uint32_t contentHash(const Snap& s) {
     uint32_t h = 2166136261u;
@@ -544,6 +569,7 @@ uint32_t contentHash(const Snap& s) {
     h = fnv(h, &s.zaiIsMcp, 1);
     h = fnvStr(h, s.claudePlan); h = fnvStr(h, s.codexPlan); h = fnvStr(h, s.agPlan);
     h = fnvStr(h, s.zaiPlan);
+    h = hashUsage(h, s, true);
     h = fnv(h, &s.usageStale, 1);
     h = fnvStr(h, s.ip);
     // NOTE: ticker row TEXT intentionally NOT hashed — see Snap. The row
@@ -933,62 +959,74 @@ void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& layout) {
     display.drawFastHLine(0, 66, W, GxEPD_BLACK);
 }
 
-// Reserve label/value space, then let the bar fill its available window slot.
-void drawGaugeBar(int16_t x, int16_t y, const char* tag, float pct, const char* reset, int16_t slotW) {
-    constexpr int16_t barH = 12;
-    const int16_t barW = max((int16_t)24, (int16_t)(slotW - 92));
-    textAt(x, y + 13, tag, &FreeSansBold9pt7b);
-    const int16_t bx = x + 30;
-    display.drawRect(bx, y, barW, barH, GxEPD_BLACK);
-    const float p = min(100.0f, max(0.0f, pct));
-    display.fillRect(bx + 2, y + 2, (int16_t)((barW - 4) * p / 100.0f), barH - 4, GxEPD_BLACK);
-    char val[12]; snprintf(val, sizeof(val), "%d%%", (int)p);
-    textAt(bx + barW + 6, y + 13, val, &FreeSans9pt7b);
-    if (reset[0]) textAt(bx, y + 30, reset, &FreeSans9pt7b);
-
-}
-
-// Provider row (28px): mini glyph + label (+ subscription plan sub-line in the
-// classic font when known) + available-window gauges. Returns true if drawn.
-// A missing window is NOT rendered as a "--" placeholder: after a Codex 5h
-// reset the 5H window disappears entirely (7d flips to the primary slot), and
-// a dead "--" gauge next to the live 7D read as breakage. Present windows
-// pack left instead.
-bool drawProviderUsage(int16_t y, const char* agentType, const char* label,
-                       const char* plan, float p5, const char* r5,
-                       float p7, const char* r7, bool stale,
-                       const char* secondaryLabel = "7D") {
-    if (p5 < 0.0f && p7 < 0.0f && !plan[0]) return false;
-    drawAgentGlyph(agentType, 14, y + 2, 22);
-    char lbl[24];
-    snprintf(lbl, sizeof(lbl), "%s%s", label, stale ? "*" : "");
-    textAt(44, y + 13, lbl, &FreeSansBold9pt7b);
-    // A readable subscription column shares the width with actual windows.
-    const int16_t planW = plan[0] ? 190 : 0;
-    const int16_t planX = W - 12 - planW;
-    if (planW) {
-        display.drawFastVLine(planX, y + 2, 28, GxEPD_BLACK);
-        char fitted[40];
-        smartFitText(fitted, sizeof(fitted), plan, planW - 20, &FreeSans9pt7b);
-        smartTextAt(planX + 12, y + 20, fitted, &FreeSans9pt7b);
+static const char* usageAgentType(UsageRows::Provider p) {
+    switch (p) {
+        case UsageRows::CLAUDE: return "claude-code";
+        case UsageRows::CODEX:  return "codex-cli";
+        case UsageRows::ZAI:    return "zai";
+        default:                return "antigravity";
     }
-    int16_t slotX = 150;
-    const int16_t slotW = (planX - slotX - 8) / ((p5 >= 0 && p7 >= 0) ? 2 : 1);
-    if (p5 >= 0.0f) { drawGaugeBar(slotX, y + 2, "5H", p5, r5, slotW); slotX += slotW; }
-    if (p7 >= 0.0f) drawGaugeBar(slotX, y + 2, secondaryLabel, p7, r7, slotW);
-    return true;
 }
 
-// Provider usage rows that will actually draw (mirrors the p5<0 && p7<0 gate
-// above). This count feeds the shared geometry engine used by TRMNL 7.5" + XTeink.
-static int usageRowCount(const Snap& s) {
-    int n = 0;
-    if (s.fiveH >= 0.0f || s.sevenD >= 0.0f || s.claudePlan[0]) n++;
-    if (s.codexP >= 0.0f || s.codexS >= 0.0f || s.codexPlan[0]) n++;
-    if (s.zaiP >= 0.0f || s.zaiS >= 0.0f || s.zaiPlan[0]) n++;
-    if (s.agPlan[0]) n++;
-    return n;
+// Usage table geometry — every provider row shares the same columns, so the
+// 5H / 7D (MCP, Luna) gauges line up down the band.
+namespace UsageTable {
+constexpr int16_t NameX = 14, LabelX = 44, SlotX = 184, TagW = 58, ValueW = 84;
+inline int16_t slotW() { return (W - 12 - SlotX) / 2; }
 }
+
+// One window: fixed tag column | bar | value, reset countdown underneath.
+void drawGaugeBar(int16_t x, int16_t y, const UsageRows::Row& row, int16_t slotW) {
+    using namespace UsageTable;
+    constexpr int16_t barH = 12;
+    const int16_t bx = x + TagW;
+    const int16_t barW = max((int16_t)24, (int16_t)(slotW - TagW - ValueW - 8));
+    char tag[8]; snprintf(tag, sizeof(tag), "%s", row.label);
+    for (char* c = tag; *c; ++c) *c = (char)toupper((unsigned char)*c);
+    textAt(x, y + 13, tag, &FreeSansBold9pt7b);
+    display.drawRect(bx, y, barW, barH, GxEPD_BLACK);
+    display.fillRect(bx + 2, y + 2, (int16_t)((barW - 4) * row.shown() / 100), barH - 4, GxEPD_BLACK);
+    char val[16]; snprintf(val, sizeof(val), row.left ? "%d%% left" : "%d%%", row.shown());
+    textAt(bx + barW + 6, y + 13, val, &FreeSans9pt7b);
+    if (row.reset[0]) {
+        char reset[32]; snprintf(reset, sizeof(reset), "resets %s", row.reset);
+        textAt(bx, y + 30, reset, &FreeSans9pt7b);
+    }
+}
+
+// The provider's plan in the slot a missing window leaves: "PLAN  Pro  until ~7/28".
+void drawPlanSlot(int16_t x, int16_t y, const UsageRows::Group& g, int16_t slotW) {
+    using namespace UsageTable;
+    textAt(x, y + 13, "PLAN", &FreeSansBold9pt7b);
+    char plan[48];
+    if (g.until[0]) snprintf(plan, sizeof(plan), "%s%suntil %s", g.tier, g.tier[0] ? "  " : "", g.until);
+    else snprintf(plan, sizeof(plan), "%s", g.tier);
+    char fitted[48]; smartFitText(fitted, sizeof(fitted), plan, slotW - TagW - 8, &FreeSans9pt7b);
+    smartTextAt(x + TagW, y + 13, fitted, &FreeSans9pt7b);
+}
+
+// Provider row (36px): mark + name, then two aligned slots. A missing window is
+// never a "--" placeholder; the plan takes its slot, or — with both windows —
+// sits under the provider name.
+void drawProviderUsage(int16_t y, const UsageRows::Group& g) {
+    using namespace UsageTable;
+    drawAgentGlyph(usageAgentType(g.provider), NameX, y + 2, 22);
+    char name[24]; snprintf(name, sizeof(name), "%s", g.name());
+    for (char* c = name; *c; ++c) *c = (char)toupper((unsigned char)*c);
+    textAt(LabelX, y + 13, name, &FreeSansBold9pt7b);
+    const bool planSlot = g.hasPlan() && g.rowCount < 2;
+    if (g.hasPlan() && !planSlot) {
+        char plan[40]; UsageRows::planText(g, plan, sizeof(plan), " ");
+        char fitted[40]; smartFitText(fitted, sizeof(fitted), plan, SlotX - LabelX - 8, &FreeSans9pt7b);
+        smartTextAt(LabelX, y + 30, fitted, &FreeSans9pt7b);
+    }
+    for (uint8_t r = 0; r < g.rowCount; r++) drawGaugeBar(SlotX + r * slotW(), y + 2, g.rows[r], slotW());
+    if (planSlot) drawPlanSlot(SlotX + g.rowCount * slotW(), y + 2, g, slotW());
+}
+
+// Provider usage rows that will actually draw. This count feeds the shared
+// geometry engine used by TRMNL 7.5" + XTeink.
+static int usageRowCount(const Snap& s) { return s.usageCount; }
 
 static uint8_t dashboardActivityRows(const Snap& s) {
     if (!s.bridgeConnected) return 0;
@@ -1018,21 +1056,9 @@ void drawUsageFooter(const Snap& s, bool showIdentity, const AgentDeckEink::Layo
     if (!layout.usage.empty()) {
         display.fillRect(0, layout.usage.y, W, 2, GxEPD_BLACK);
         int16_t y = layout.usage.y + layout.gap;
-        bool any = false;
-        if (drawProviderUsage(y, "claude-code", "CLAUDE", s.claudePlan, s.fiveH, s.fiveReset,
-                              s.sevenD, s.sevenReset, s.usageStale)) { y += 36; any = true; }
-        if (drawProviderUsage(y, "codex-cli", "CODEX", s.codexPlan, s.codexP, s.codexPReset,
-                              s.codexS, s.codexSReset, false)) { y += 36; any = true; }
-        // z.ai (#350) — the secondary label follows the QUANTITY: MCP meters
-        // tool calls and must never read as a token window length.
-        if (drawProviderUsage(y, "zai", "Z.AI", s.zaiPlan, s.zaiP, s.zaiPReset,
-                              s.zaiS, s.zaiSReset, false,
-                              s.zaiIsMcp ? "MCP" : "7D")) { y += 36; any = true; }
-        if (s.agPlan[0]) {
-            textAt(44, y + 20, "SUBSCRIPTION", &FreeSansBold9pt7b);
-            smartTextAt(240, y + 20, s.agPlan, &FreeSans9pt7b);
-            any = true;
-        }
+        for (uint8_t g = 0; g < s.usageCount; g++, y += 36)
+            drawProviderUsage(y, s.usage[g]);
+        const bool any = s.usageCount > 0;
         if (!any) textAt(16, y + 16, "usage: waiting for data", &FreeSans9pt7b);
     }
 
@@ -1481,7 +1507,7 @@ uint32_t paperHash(const Snap& s, PaperFace face) {
     int fh = (int)s.fiveH, sd = (int)s.sevenD, cp = (int)s.codexP, cs = (int)s.codexS;
     h = fnv(h, &fh, sizeof(fh)); h = fnv(h, &sd, sizeof(sd));
     h = fnv(h, &cp, sizeof(cp)); h = fnv(h, &cs, sizeof(cs));
-    return h;
+    return hashUsage(h, s, false);
 }
 
 int drawParagraph(int16_t x, int16_t y, int16_t maxW, int16_t lineH,
@@ -1616,6 +1642,10 @@ void drawEp47Chrome(const Snap& s, AgentDeckEpd47::Page selected) {
         display.drawRoundRect(EPD47_TAB_X, 14, EPD47_TAB_W, 48, 4, GxEPD_BLACK);
         textAt(EPD47_TAB_X + 24, 45, "HOME", &FreeSansBold12pt7b);
     }
+    if (selected == AgentDeckEpd47::Page::Home && renderFace == PaperFace::Glance) {
+        display.drawRoundRect(EPD47_TAB_X, 14, EPD47_TAB_W, 48, 4, GxEPD_BLACK);
+        textAt(EPD47_TAB_X + 18, 45, "LIMITS", &FreeSansBold12pt7b);
+    }
     // Exception-based, like the paper header: silence means healthy.
     if (!s.bridgeConnected) {
         textRight(W - 20, 42, "OFFLINE", &FreeSansBold9pt7b);
@@ -1655,10 +1685,11 @@ void drawEp47Footer(const Snap& s, int16_t y = 492) {
 }
 
 void drawEp47Window(int16_t x, int16_t y, int16_t w, const char* label,
-                    float pct, const char* reset) {
+                    float pct, const char* reset, bool left = false) {
     textAt(x, y + 18, label, &FreeSansBold12pt7b);
     char value[16];
-    snprintf(value, sizeof(value), pct >= 0 ? "%d%% USED" : "--", (int)pct);
+    // A reserve (Codex Luna) reads as what is LEFT; every window else as used.
+    snprintf(value, sizeof(value), pct >= 0 ? (left ? "%d%% LEFT" : "%d%% USED") : "--", (int)pct);
     textRight(x + w, y + 18, value, &FreeSansBold12pt7b);
     // A light track makes the unused remainder readable as a quantity instead
     // of as empty paper — the one thing a 1-bit gauge cannot say.
@@ -1675,53 +1706,56 @@ void drawEp47Window(int16_t x, int16_t y, int16_t w, const char* label,
     textAt(x, y + 78, resetLine, &FreeSans9pt7b);
 }
 
-void drawEp47ProviderCard(int16_t x, int16_t w, const char* agentType, const char* name,
-                          const char* plan, float first, const char* firstReset,
-                          float second, const char* secondReset, bool stale) {
+void drawEp47ProviderCard(int16_t x, int16_t w, int16_t h, const UsageRows::Group& g) {
     constexpr int16_t y = 104;
-    const int16_t h = first >= 0 && second >= 0 ? 356 : 244;
     display.drawRoundRect(x, y, w, h, 8, EINK_INK_RULE);
-    drawAgentGlyph(agentType, x + 24, y + 24, 54);
-    textAt(x + 96, y + 55, name, &FreeSansBold18pt7b);
-    if (plan && plan[0]) {
+    drawAgentGlyph(usageAgentType(g.provider), x + 24, y + 24, 54);
+    char name[24]; snprintf(name, sizeof(name), "%s", g.name());
+    for (char* c = name; *c; ++c) *c = (char)toupper((unsigned char)*c);
+    char fitted[40]; smartFitText(fitted, sizeof(fitted), name, w - 120, &FreeSansBold18pt7b);
+    smartTextAt(x + 96, y + 55, fitted, &FreeSansBold18pt7b);
+    if (g.hasPlan()) {
         InkScope ink(EINK_INK_MUTED);
-        smartTextAt(x + 96, y + 80, plan, &FreeSans9pt7b);
+        char plan[40]; UsageRows::planText(g, plan, sizeof(plan), "  until ");
+        smartFitText(fitted, sizeof(fitted), plan, w - 120, &FreeSans9pt7b);
+        smartTextAt(x + 96, y + 80, fitted, &FreeSans9pt7b);
     }
-    if (stale) textRight(x + w - 22, y + 54, "STALE", CLASSIC_FONT);
     display.drawFastHLine(x + 22, y + 102, w - 44, EINK_INK_RULE);
-    if (first < 0 && second < 0) {
-        textAt(x + 24, y + 178, "Waiting for usage data", &FreeSansBold12pt7b);
-        InkScope ink(EINK_INK_BODY);
-        textAt(x + 24, y + 208, "AgentDeck will refresh this page when limits arrive.",
-               &FreeSans9pt7b);
-        return;
-    }
     // Only the windows the account exposes (the Stream Deck dial rule, #269):
     // an absent window drew a "--" frame and an empty track, which reads as a
     // broken gauge, not as "this plan has no 5H limit". A lone window keeps
     // the first slot and the card breathes below it.
     int16_t wy = y + 126;
-    if (first >= 0) {
-        drawEp47Window(x + 24, wy, w - 48, "5H", first, firstReset);
-        wy += 112;
+    for (uint8_t r = 0; r < g.rowCount; r++, wy += 112) {
+        const auto& row = g.rows[r];
+        char label[8]; snprintf(label, sizeof(label), "%s", row.label);
+        for (char* c = label; *c; ++c) *c = (char)toupper((unsigned char)*c);
+        drawEp47Window(x + 24, wy, w - 48, label, (float)row.shown(), row.reset, row.left);
     }
-    if (second >= 0) drawEp47Window(x + 24, wy, w - 48, "7D", second, secondReset);
+    if (!g.rowCount) {
+        InkScope ink(EINK_INK_BODY);
+        textAt(x + 24, y + 150, "Plan only - no usage windows", &FreeSans9pt7b);
+    }
 }
 
 void drawEp47Limits(const Snap& s) {
     drawEp47Chrome(s, AgentDeckEpd47::Page::Limits);
-    const bool claude = s.fiveH >= 0 || s.sevenD >= 0;
-    const bool codex = s.codexP >= 0 || s.codexS >= 0;
-    const int16_t cardW = claude && codex ? (W - 72) / 2 : W - 48;
-    if (claude) drawEp47ProviderCard(24, cardW, "claude-code", "CLAUDE", s.claudePlan,
-                         s.fiveH, s.fiveReset, s.sevenD, s.sevenReset, s.usageStale);
-    if (codex) drawEp47ProviderCard(claude ? 48 + cardW : 24, cardW, "codex-cli", "CODEX", s.codexPlan,
-                         s.codexP, s.codexPReset, s.codexS, s.codexSReset, false);
-    if (!claude && !codex) {
+    // One card per provider (shared UsageRows: z.ai MCP, the Codex Luna
+    // reserve, plan tier/until). Three fit side by side; a plan-only
+    // provider yields first.
+    uint8_t picked[3], count = 0;
+    for (uint8_t g = 0; g < s.usageCount && count < 3; g++) if (s.usage[g].rowCount) picked[count++] = g;
+    for (uint8_t g = 0; g < s.usageCount && count < 3; g++) if (!s.usage[g].rowCount) picked[count++] = g;
+    bool twoWindows = false;
+    for (uint8_t i = 0; i < count; i++) twoWindows |= s.usage[picked[i]].rowCount == 2;
+    const int16_t cardH = twoWindows ? 356 : 244;
+    const int16_t cardW = count ? (W - 48 - 24 * (count - 1)) / count : W - 48;
+    for (uint8_t i = 0; i < count; i++)
+        drawEp47ProviderCard(24 + i * (cardW + 24), cardW, cardH, s.usage[picked[i]]);
+    if (!count) {
         textAt(44, 180, "No usage limits available", &FreeSansBold18pt7b);
         textAt(44, 220, "Usage appears here when your account reports a limit.", &FreeSans9pt7b);
     }
-    const bool twoWindows = (s.fiveH >= 0 && s.sevenD >= 0) || (s.codexP >= 0 && s.codexS >= 0);
     drawEp47Footer(s, twoWindows ? 492 : 380);
 }
 
@@ -1913,13 +1947,15 @@ void drawEp47Home(const Snap& s) {
     constexpr int16_t split = 562, right = 590, rightW = 346;
     display.drawFastVLine(split, 92, 414, EINK_INK_RULE);
     textAt(24, 108, "WORK", &FreeSansBold9pt7b);
-    textAt(right, 108, "USAGE", &FreeSansBold9pt7b);
+    textAt(right, 108, "ALL WORK", &FreeSansBold9pt7b);
     const int i = primarySession(s);
     if (i >= 0) {
         const auto& r = s.rows[i];
         char name[64]; smartFitText(name, sizeof(name), r.name, 480, &FreeSansBold18pt7b);
         smartTextAt(24, 148, name, &FreeSansBold18pt7b);
-        const char* body = r.work[0] ? r.work : r.activity[0] ? r.activity :
+        const char* body = AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Attention && r.question[0] ? r.question :
+            AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing && r.activity[0] ? r.activity :
+            r.work[0] ? r.work : r.activity[0] ? r.activity :
             AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing ? "Working. Waiting for the next result." : "Standing by.";
         drawParagraph(24, 181, 500, 26, 3, body, &FreeSansBold12pt7b);
         textAt(24, 268, "Open work >", &FreeSans9pt7b);
@@ -1928,44 +1964,28 @@ void drawEp47Home(const Snap& s) {
     }
     textAt(24, 312, "RECENT RESULTS", &FreeSansBold9pt7b);
     for (uint8_t ti = 0; ti < min(s.tickerCount, (uint8_t)3); ti++) {
-        char event[116]; smartFitText(event, sizeof(event), s.tickerText[ti], 500, &FreeSans9pt7b);
-        smartTextAt(24, 346 + ti * 38, event, &FreeSans9pt7b);
+        char event[116]; smartFitText(event, sizeof(event), s.tickerText[ti], 438, &FreeSans9pt7b);
+        textAt(24, 346 + ti * 38, s.tickerTime[ti], &FreeSans9pt7b);
+        smartTextAt(86, 346 + ti * 38, event, &FreeSans9pt7b);
     }
     if (s.rowCount > 1) textAt(24, 496, "All work >", &FreeSans9pt7b);
-    const int windowCount = (s.fiveH >= 0) + (s.sevenD >= 0) + (s.codexP >= 0) + (s.codexS >= 0)
-        + (s.zaiP >= 0) + (s.zaiS >= 0);
-    int16_t y = 140;
-    auto provider = [&](const char* name, const char* plan, float a, const char* ar,
-                        float b, const char* br, const char* secondaryLabel = "7D") {
-        if (a < 0 && b < 0 && !plan[0]) return;
-        textAt(right, y, name, &FreeSansBold12pt7b); y += 12;
-        auto window = [&](const char* label, float pct, const char* reset) {
-            if (windowCount <= 2) {
-                drawEp47Window(right, y, rightW, label, pct, reset);
-                y += 90;
-            } else {
-                textAt(right, y + 14, label, &FreeSansBold9pt7b);
-                char value[12]; snprintf(value, sizeof(value), "%d%%", (int)pct);
-                textRight(right + rightW, y + 14, value, &FreeSansBold9pt7b);
-                display.drawRect(right + 40, y + 2, rightW - 100, 12, GxEPD_BLACK);
-                display.fillRect(right + 42, y + 4, (int16_t)((rightW - 104) * min(100.0f, max(0.0f, pct)) / 100.0f), 8, GxEPD_BLACK);
-                if (reset[0]) textAt(right, y + 36, reset, &FreeSans9pt7b);
-                y += 52;
-            }
-        };
-        if (a >= 0) window("5H", a, ar);
-        if (b >= 0) window(secondaryLabel, b, br);
-        if (plan[0]) { smartTextAt(right, y + 8, plan, &FreeSans9pt7b); y += 28; }
-        y += 22;
-    };
-    provider("CLAUDE", s.claudePlan, s.fiveH, s.fiveReset, s.sevenD, s.sevenReset);
-    provider("CODEX", s.codexPlan, s.codexP, s.codexPReset, s.codexS, s.codexSReset);
-    // z.ai (#350): the MCP window labels by its QUANTITY, never its length.
-    provider("Z.AI", s.zaiPlan, s.zaiP, s.zaiPReset, s.zaiS, s.zaiSReset,
-             s.zaiIsMcp ? "MCP" : "7D");
-    if (y == 140) { textAt(right, y, "No usage limits", &FreeSansBold12pt7b); y += 44; }
-    if (s.agPlan[0] && y < 470) smartTextAt(right, y, s.agPlan, &FreeSans9pt7b);
-    textAt(right, 496, "Usage details >", &FreeSans9pt7b);
+    // Stable roster at glance distance. Detailed quotas stay on LIMITS.
+    for (uint8_t row = 0; row < min(s.rowCount, (uint8_t)3); ++row) {
+        const auto& r = s.rows[row];
+        const int16_t y = 146 + row * 112;
+        char name[64]; smartFitText(name, sizeof(name), r.name, rightW, &FreeSansBold12pt7b);
+        smartTextAt(right, y, name, &FreeSansBold12pt7b);
+        const auto kind = AgentDeckEink::classifyStatus(r.state);
+        const char* state = kind == AgentDeckEink::StatusKind::Attention ? "NEEDS YOU" :
+            kind == AgentDeckEink::StatusKind::Processing ? "WORKING" : "IDLE";
+        textAt(right, y + 23, state, &FreeSansBold9pt7b);
+        const char* activity = kind == AgentDeckEink::StatusKind::Attention && r.question[0] ? r.question :
+            kind == AgentDeckEink::StatusKind::Processing && r.activity[0] ? r.activity :
+            r.work[0] ? r.work : "No activity reported";
+        drawParagraph(right, y + 46, rightW, 20, 2, activity, &FreeSans9pt7b);
+    }
+    if (!s.rowCount) textAt(right, 146, "No sessions", &FreeSans9pt7b);
+    textAt(right, 496, "All work >", &FreeSans9pt7b);
     if (!epd47TouchAvailable()) {
         const char* choices[] = {"Work", "All work", "Usage"};
         char hint[64]; snprintf(hint, sizeof(hint), ">%s  /  Tap next, hold open", choices[epd47HomeSelection]);
@@ -1996,14 +2016,17 @@ void drawGlanceFace(const Snap& s) {
     char summary[48]; snprintf(summary, sizeof(summary), "%u needs you  /  %u working", attention, working);
     { InkScope ink(attention ? accentColor() : GxEPD_BLACK);
       textAt(14, 72, summary, &FreeSansBold9pt7b); }
-    const int windowCount = (s.fiveH >= 0) + (s.sevenD >= 0) + (s.codexP >= 0) + (s.codexS >= 0) + (s.zaiP >= 0);
+    int windowCount = 0;
+    for (uint8_t g = 0; g < s.usageCount; g++) windowCount += s.usage[g].rowCount;
     const int16_t usageTop = windowCount > 2 ? 158 : 192;
     const int i = primarySession(s);
     if (i >= 0) {
         const auto& r = s.rows[i];
         char name[64]; smartFitText(name, sizeof(name), r.name, W - 28, &FreeSansBold12pt7b);
         smartTextAt(14, 104, name, &FreeSansBold12pt7b);
-        const char* body = r.work[0] ? r.work : r.activity[0] ? r.activity :
+        const char* body = AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Attention && r.question[0] ? r.question :
+            AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing && r.activity[0] ? r.activity :
+            r.work[0] ? r.work : r.activity[0] ? r.activity :
             AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing ? "Working. Waiting for the next result." : "Standing by.";
         drawParagraph(14, 128, W - 28, 23, windowCount > 2 ? 1 : 2, body, &FreeSans9pt7b);
     } else textAt(14, 110, "No active work", &FreeSansBold12pt7b);
@@ -2012,30 +2035,46 @@ void drawGlanceFace(const Snap& s) {
     auto window = [&](const char* label, float pct, const char* reset) {
         if (pct < 0) return;
         textAt(14, y + 14, label, &FreeSans9pt7b);
-        display.drawRect(114, y + 2, 136, 12, GxEPD_BLACK);
-        display.fillRect(116, y + 4, (int16_t)(132 * min(100.0f, max(0.0f, pct)) / 100.0f), 8, GxEPD_BLACK);
+        display.drawRect(126, y + 2, 124, 12, GxEPD_BLACK);
+        display.fillRect(128, y + 4, (int16_t)(120 * min(100.0f, max(0.0f, pct)) / 100.0f), 8, GxEPD_BLACK);
         char value[12]; snprintf(value, sizeof(value), "%d%%", (int)pct);
         textRight(306, y + 14, value, &FreeSans9pt7b);
         textRight(W - 14, y + 12, reset, CLASSIC_FONT);
         y += 23;
     };
-    window("Claude 5H", s.fiveH, s.fiveReset);
-    window("Claude 7D", s.sevenD, s.sevenReset);
-    window("Codex 5H", s.codexP, s.codexPReset);
-    window("Codex 7D", s.codexS, s.codexSReset);
-    window("Z.AI 5H", s.zaiP, s.zaiPReset);
-    if (!windowCount) { textAt(14, y + 12, "No usage limits", &FreeSans9pt7b); y += 23; }
-    const char* plan = s.codexPlan[0] ? s.codexPlan : s.claudePlan[0] ? s.claudePlan : s.agPlan;
-    if (plan[0] && y < 266) {
-        if (s.claudePlan[0] && s.codexPlan[0]) {
-            char left[40], right[40];
-            smartFitText(left, sizeof(left), s.claudePlan, 176, &FreeSans9pt7b);
-            smartFitText(right, sizeof(right), s.codexPlan, 176, &FreeSans9pt7b);
-            smartTextAt(14, y + 14, left, &FreeSans9pt7b);
-            smartTextAt(210, y + 14, right, &FreeSans9pt7b);
-        } else smartTextAt(14, y + 14, plan, &FreeSans9pt7b);
-        y += 23;
+    // Shared UsageRows groups (z.ai MCP, the Codex Luna reserve), then up to
+    // two provider plans on one line. When the band cannot hold every window,
+    // later providers give up their second window first — every provider
+    // keeps at least its primary row rather than the last one vanishing.
+    bool hasPlans = false;
+    for (uint8_t g = 0; g < s.usageCount; g++) hasPlans |= s.usage[g].hasPlan();
+    const int budget = (266 - usageTop) / 23 + 1 - (hasPlans ? 1 : 0);   // lines that start above y=266
+    uint8_t shownRows[UsageRows::MAX_GROUPS];
+    int rowsShown = 0;
+    for (uint8_t g = 0; g < s.usageCount; g++) { shownRows[g] = s.usage[g].rowCount; rowsShown += shownRows[g]; }
+    for (int g = s.usageCount - 1; g >= 0 && rowsShown > budget; --g)
+        if (shownRows[g] > 1) { shownRows[g]--; rowsShown--; }
+    for (uint8_t g = 0; g < s.usageCount; g++) {
+        for (uint8_t r = 0; r < shownRows[g]; r++) {
+            const auto& row = s.usage[g].rows[r];
+            char label[24]; snprintf(label, sizeof(label), "%s %s", s.usage[g].name(), row.label);
+            for (char* c = label + strlen(s.usage[g].name()); *c; ++c) *c = (char)toupper((unsigned char)*c);
+            char reset[28]; snprintf(reset, sizeof(reset), "%s%s", row.left ? "left " : "", row.reset);
+            window(label, (float)row.shown(), reset);
+        }
     }
+    if (!windowCount) { textAt(14, y + 12, "No usage limits", &FreeSans9pt7b); y += 23; }
+    uint8_t planned = 0;
+    for (uint8_t g = 0; g < s.usageCount && planned < 2 && y < 266; g++) {
+        if (!s.usage[g].hasPlan()) continue;
+        char plan[48], tail[32];
+        UsageRows::planText(s.usage[g], tail, sizeof(tail), " ");
+        snprintf(plan, sizeof(plan), "%s %s", s.usage[g].name(), tail);
+        char fitted[48]; smartFitText(fitted, sizeof(fitted), plan, 176, &FreeSans9pt7b);
+        smartTextAt(planned ? 210 : 14, y + 14, fitted, &FreeSans9pt7b);
+        planned++;
+    }
+    if (planned) y += 23;
     if (s.tickerCount && y < 266) {
         char recent[116]; smartFitText(recent, sizeof(recent), s.tickerText[0], W - 28, &FreeSans9pt7b);
         smartTextAt(14, 285, recent, &FreeSans9pt7b);
@@ -2875,13 +2914,14 @@ void update(float /*dt*/) {
 
         if (!handled && touch.y >= 14 && touch.y <= 62 &&
             touch.x >= EPD47_TAB_X && touch.x < EPD47_TAB_X + EPD47_TAB_W) {
-            epd47Page = AgentDeckEpd47::Page::Home;
+            epd47Page = epd47Page == AgentDeckEpd47::Page::Home && renderFace == PaperFace::Glance
+                ? AgentDeckEpd47::Page::Limits : AgentDeckEpd47::Page::Home;
             if (renderFace == PaperFace::Decision) suppressedDecisionHash = lastDecisionHash;
             manualFace = PaperFace::Glance;
             handled = true;
         } else if (!handled && renderFace == PaperFace::Glance &&
                    epd47Page == AgentDeckEpd47::Page::Home && touch.y > 86 && touch.y < 520) {
-            epd47Page = touch.x >= 562 ? AgentDeckEpd47::Page::Limits :
+            epd47Page = touch.x >= 562 ? AgentDeckEpd47::Page::Queue :
                 (touch.y >= 470 ? AgentDeckEpd47::Page::Queue : AgentDeckEpd47::Page::Focus);
             epd47FocusedId[0] = '\0';
             manualFace = PaperFace::Glance;

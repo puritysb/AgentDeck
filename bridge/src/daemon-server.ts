@@ -1,3 +1,5 @@
+import { startPersonalVoiceTurn } from './personal-voice-turn.js';
+import { transcribeDeviceAudio, type VoiceTranscriptionSettings } from './device-transcription.js';
 /**
  * AgentDeck Daemon — lightweight monitoring server.
  *
@@ -74,7 +76,7 @@ import { parsePeripheralMappings, resolvePeripheralAction, commandForAction } fr
 import { DeviceVoiceCollector } from './device-voice.js';
 import { DevicePhotoCollector } from './device-photo.js';
 import {
-  transcribeWithHelper, synthesizeWavWithHelper,
+  synthesizeWavWithHelper,
   recordWithHelper, stopHelperRecording, speakWithHelper,
 } from './foundation-models-helper.js';
 import { enqueueOpenCodeCommand, pollOpenCodeCommands } from './opencode-steering.js';
@@ -241,7 +243,7 @@ import {
   describeDaemonPosture,
   resolveDaemonPosture,
 } from './network-posture.js';
-import { esp32ConnectionCount, getESP32DeviceInfo, onESP32Message, sendAuthProvisionToAll, sendWifiProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards, releaseESP32SerialPorts } from './esp32-serial.js';
+import { esp32ConnectionCount, getESP32DeviceInfo, onESP32Message, sendAuthProvisionToAll, sendWifiProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards, releaseESP32SerialPorts, sanitizeRssiDbm } from './esp32-serial.js';
 import { clampLeaseSeconds, clearLease, readLease, writeLease } from './esp32-flash-lease.js';
 import { loadWifiConfig } from './wifi-config.js';
 import { getAdbDeviceCountCached, getCachedAdbDevices } from './adb-reverse.js';
@@ -359,6 +361,7 @@ interface WifiEsp32Device {
   fullRefreshCount?: number;
   usageCodex5H?: number;
   usageCodex7D?: number;
+  rssiDbm?: number;
   lastSeenMs: number;
 }
 const wifiEsp32Devices = new Map<string, WifiEsp32Device>();
@@ -788,6 +791,7 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
     usageCodex7D: typeof d.usageCodex7D === 'number' ? d.usageCodex7D : undefined,
     repaintCount: typeof d.repaintCount === 'number' ? d.repaintCount : undefined,
     fullRefreshCount: typeof d.fullRefreshCount === 'number' ? d.fullRefreshCount : undefined,
+    rssiDbm: sanitizeRssiDbm(d.rssiDbm),
     lastSeenMs: Date.now(),
   });
   wifiEsp32Sockets.set(key, ws);
@@ -1386,6 +1390,7 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
         processingCount: status.processingCount,
         repaintCount: status.repaintCount,
         fullRefreshCount: status.fullRefreshCount,
+        rssiDbm: status.rssiDbm,
         deviceInfoFresh: status.deviceInfoFresh,
       } : null,
       lastReadAt: status.lastReadAt,
@@ -1696,6 +1701,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // when the first /health request arrives.
   let gatewayAdapter: OpenClawAdapter | null = null;
   let gatewayConnecting = false;
+  // Backoff for adapters that die before their handshake completes (Gateway
+  // still booting, auth refused). The probe retries on every tick while the
+  // port is open, so without this a refusing Gateway is dialled every 5 s.
+  let gatewayFailedAttempts = 0;
+  let gatewayRetryAtMs = 0;
   let moduleHealthProvider: () => Record<string, unknown> = () => ({});
 
   // Gateway-local activity state for the virtual `openclaw-gateway` session row.
@@ -1973,6 +1983,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // Workers require this flag before remote-attaching; the Swift daemon
         // does not advertise it and is therefore never selected as a remote hub.
         sameSocketControl: true,
+        // Report the configured recognition path, not inferred engine readiness.
+        // This lets device diagnostics detect a runtime that predates the local backend.
+        voice: {
+          transcriber: (loadDaemonSettings().voice as VoiceTranscriptionSettings | undefined)?.transcriber ?? 'apple',
+          locale: (loadDaemonSettings().voice as VoiceTranscriptionSettings | undefined)?.locale ?? 'auto',
+          personalRoute: 'openclaw-personal',
+        },
         // Network posture, so `agentdeck daemon restart` can carry the running
         // daemon's posture across the restart instead of silently downgrading
         // an enterprise install back to "advertise everything". Local-only
@@ -2355,7 +2372,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         });
         // The HTTP response only confirms receipt of the bytes; the
         // transcript/outcome goes to the board as a voice_result frame.
-        await finishVoiceCapture(saved, boardResultSinkFor(board));
+        const id = Number(parsedUrl.searchParams.get('requestId'));
+        void finishVoiceCapture({ ...saved, requestId: Number.isInteger(id) && id > 0 && id <= 0xffffffff ? id : undefined }, boardResultSinkFor(board));
         return { ok: true, bytes: total };
       })().then((result) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2400,13 +2418,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // 2026-07-31 12:06). 2 KB per 15 ms ≈ 133 KB/s keeps at most a couple
       // of segments in flight while still beating playback rate 4x.
       {
-        // 8 KB / 10 ms ≈ 800 KB/s — a 2 MB answer lands in ~2.5 s. The
-        // original 2 KB / 15 ms (~133 KB/s) predated the PSRAM-mempool core
-        // fix and made long replies take 15+ s to start, which read as "no
-        // playback"; with the hosted mempool in PSRAM the burst constraint is
-        // gone and only gentle pacing is kept as hygiene.
-        const CHUNK = 8192;
-        const GAP_MS = 10;
+        // IPS10 still has internal lwIP/SDIO pressure despite the PSRAM pool:
+        // an 8 KB burst drove its minimum heap to 2 KB in repeated voice tests.
+        // 1 KB / 20 ms stays ahead of 16 kHz PCM playback (32 KB/s). Firmware
+        // streams after a short prebuffer, so it need not wait for a full reply.
+        const CHUNK = board === 'ips_10' ? 1024 : 8192;
+        const GAP_MS = board === 'ips_10' ? 20 : 10;
         let off = 0;
         const writeNext = (): void => {
           if (res.destroyed) return;
@@ -4516,6 +4533,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           usageCodex7D: d.usageCodex7D ?? null,
           repaintCount: d.repaintCount ?? null,
           fullRefreshCount: d.fullRefreshCount ?? null,
+          rssiDbm: d.rssiDbm ?? null,
         })),
       };
     }
@@ -5044,6 +5062,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   function connectGatewayAdapter(): void {
     if (gatewayAdapter || gatewayConnecting) return;
+    if (Date.now() < gatewayRetryAtMs) return;
     gatewayConnecting = true;
     log('[agentdeck] OpenClaw Gateway detected, connecting...');
 
@@ -5227,6 +5246,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             core.cachedGatewayAuthStatus = 'connected';
             gatewaySessionState = 'idle';
             bridgeLogStream.start();
+            gatewayFailedAttempts = 0;
+            gatewayRetryAtMs = 0;
             log('[agentdeck] OpenClaw Gateway connected');
             settleGatewayInstability(Date.now());
             if (core.stateMachine.getSnapshot().state === 'disconnected') {
@@ -5263,7 +5284,23 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       }
     });
 
-    adapter.on('exit', () => disconnectGatewayAdapter());
+    // The adapter runs without autoReconnect, so 'exit' (its socket closed) is
+    // final: drop it so the next probe tick can dial a fresh one. Guarded by
+    // identity — a late exit from a replaced adapter must not tear down its
+    // successor.
+    let everConnected = false;
+    adapter.on('event', (evt: AdapterEvent) => {
+      if (evt.source === 'connection' && evt.status === 'connected') everConnected = true;
+    });
+    adapter.on('exit', () => {
+      if (!everConnected) {
+        gatewayFailedAttempts += 1;
+        const delayMs = Math.min(5000 * 2 ** (gatewayFailedAttempts - 1), 300_000);
+        gatewayRetryAtMs = Date.now() + delayMs;
+        log(`[agentdeck] OpenClaw Gateway handshake did not complete; retrying in ${Math.round(delayMs / 1000)}s`);
+      }
+      if (gatewayAdapter === adapter) disconnectGatewayAdapter();
+    });
 
     adapter.start({ port, externalServer: httpServer } as any).then(() => {
       gatewayAdapter = adapter;
@@ -6092,14 +6129,21 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    */
   /** Speak `text` to every board waiting on `sessionId`, or tell them there was
    *  nothing to read. Shared by both completion shapes below. */
-  const speakReplyTo = (sessionId: string, text: string): void => {
+  const speakReplyTo = (sessionId: string, text: string, requestId?: number, isCurrent: () => boolean = () => true): void => {
+    if (!isCurrent()) return;
     const targets = voiceReply.targetsFor(sessionId);
     if (targets.length === 0) return;
     log(`[agentdeck] voice: reply ready for ${sessionId.slice(0, 32)}`
       + ` -> ${targets.length} board(s)`);
     const voiceCfg = loadDaemonSettings().voice as
       { locale?: unknown; speakReplies?: unknown; speakFullReply?: unknown } | undefined;
-    if (voiceCfg?.speakReplies === false) return;  // opt-out, default on
+    if (voiceCfg?.speakReplies === false) {
+      for (const sink of targets) {
+        sink.send(JSON.stringify({ type: 'voice_reply_skipped', requestId }));
+        voiceReply.disarm(sink);
+      }
+      return;
+    }
     // Speech gets the lead, not the transcript: an explicit summary line if the
     // answer has one, else its first sentence. The full answer is already on the
     // screen the user is sitting at, where it can be skimmed — read aloud it is
@@ -6117,7 +6161,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // spelling out punctuation, so the user still knows the turn finished.
       log('[agentdeck] voice: reply held nothing speakable — skipped');
       for (const sink of targets) {
-        try { sink.send(JSON.stringify({ type: 'voice_reply_skipped' })); } catch { /* closing */ }
+        try { sink.send(JSON.stringify({ type: 'voice_reply_skipped', requestId })); } catch { /* closing */ }
         // Consume the arming either way: the dictation was answered, and
         // leaving it armed would read out the session's *next* turn instead.
         voiceReply.disarm(sink);
@@ -6149,7 +6193,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       try {
         await synthesizeWavWithHelper(spoken, out, locale ? { locale } : {});
         const wav = await readFile(out);
-        for (const sink of boardTargets) {
+        if (!isCurrent()) return;
+        for (const armedSink of boardTargets) {
+          const sink = voiceReply.resolveTarget(armedSink);
+          if (!sink.isOpen()) throw new Error("reply_transport_unavailable");
           // Pull-capable boards fetch the audio themselves over HTTP — the WS
           // push stream both stuttered and could crash the hosted-link RX
           // path (pkt_rxbuff assert). Stage the PCM, send a tiny notify
@@ -6162,7 +6209,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               });
               try {
                 sink.send(JSON.stringify({
-                  type: 'audio_reply_ready',
+                  type: 'audio_reply_ready', requestId,
                   bytes: parsed.pcm.length,
                   sampleRate: parsed.sampleRate,
                   durationMs: Math.round((parsed.pcm.length / 2) / parsed.sampleRate * 1000),
@@ -6171,16 +6218,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
                 log(`[agentdeck] voice: staged reply for ${sink.deviceKey()}`
                   + ` (${parsed.pcm.length}B pull, ${spoken.length} chars)`);
               } catch { /* sink closing — TTL sweep reclaims the staging */ }
-              voiceReply.disarm(sink);
+              voiceReply.disarm(armedSink);
               continue;
             }
           }
-          const ok = await voiceReply.stream(sink, wav, spoken);
+          const ok = await voiceReply.stream(armedSink, wav, spoken);
           log(`[agentdeck] voice: ${ok ? 'spoke' : 'FAILED to speak'} reply`
             + ` (${wav.length}B, ${spoken.length} chars)`);
         }
       } catch (err) {
         log(`[agentdeck] voice: reply synthesis failed: ${String(err).slice(0, 140)}`);
+        if (isCurrent()) for (const sink of boardTargets) {
+          try { sink.send(JSON.stringify({ type: 'voice_result', requestId, delivered: false, error: 'reply_synthesis_failed' })); } catch { /* disconnected */ }
+          voiceReply.disarm(sink);
+        }
       } finally {
         await rm(out, { force: true }).catch(() => {});
       }
@@ -6436,27 +6487,62 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     return sink;
   };
 
+  const personalVoiceActive = new Map<string, string>();
+
   const finishVoiceCapture = async (
     captured: {
       wavPath: string;
       sessionId: string;
       board: string;
       integrityError?: string;
+      requestId?: number;
       cleanup: () => void;
     },
     sink: ReplySink,
   ): Promise<void> => {
+        const device = sink.deviceKey();
+        const generation = randomUUID();
+        const personal = captured.sessionId === 'openclaw-personal';
+        if (personal) personalVoiceActive.set(device, generation);
+        const isCurrent = () => !personal || personalVoiceActive.get(device) === generation;
         try {
           if (captured.integrityError) {
             throw new Error(captured.integrityError);
           }
-          // Locale matters: the recognizer falls back to the system locale,
-          // which mangles speech in another language. settings.json
-          // `voice.locale` (BCP-47, e.g. "en-US") overrides it.
-          const voiceCfg = loadDaemonSettings().voice as { locale?: unknown } | undefined;
-          const locale = typeof voiceCfg?.locale === 'string' && voiceCfg.locale
-            ? voiceCfg.locale : undefined;
-          const text = await transcribeWithHelper(captured.wavPath, locale);
+          const text = await transcribeDeviceAudio(captured.wavPath, loadDaemonSettings().voice as VoiceTranscriptionSettings | undefined);
+          if (!isCurrent()) return;
+          if (personal) {
+            if (!gatewayAdapter?.isAlive()) throw new Error('openclaw_unavailable');
+            const settings = loadDaemonSettings().voice as { openclawSessionKey?: unknown; openclawThinking?: unknown } | undefined;
+            const key = typeof settings?.openclawSessionKey === 'string'
+              ? settings.openclawSessionKey : 'agent:main:main';
+            const thinking = settings?.openclawThinking === 'off' || settings?.openclawThinking === 'low'
+              ? settings.openclawThinking : undefined;
+            const started = performance.now();
+            const turn = await startPersonalVoiceTurn(gatewayAdapter, text, key, undefined, thinking);
+            if (!isCurrent()) { void turn.completion.catch(() => {}); return; }
+            const voiceId = `openclaw-voice:${turn.runId}`;
+            const armSink = audioArmSinkFor(sink, captured.board);
+            // This ID is never used by generic timeline completions. Only the
+            // session+run matched response below can cause personal speech.
+            voiceReply.disarm(armSink);
+            voiceReply.arm(armSink, voiceId);
+            sink.send(JSON.stringify({ type: 'voice_result', requestId: captured.requestId, text, sessionId: captured.sessionId,
+              delivered: true, via: 'gateway-personal', runId: turn.runId }));
+            log(`[agentdeck] personal voice accepted: ${key} run=${turn.runId} board=${device}`);
+            void turn.completion.then((answer) => {
+              if (personalVoiceActive.get(device) !== generation) return;
+              log(`[agentdeck] voice latency: agentMs=${Math.round(performance.now() - started)} thinking=${thinking ?? 'inherit'} run=${turn.runId}`);
+              speakReplyTo(voiceId, answer, captured.requestId, isCurrent);
+            }).catch((error) => {
+              if (personalVoiceActive.get(device) !== generation) return;
+              personalVoiceActive.delete(device);
+              voiceReply.disarm(armSink);
+              if (sink.isOpen()) sink.send(JSON.stringify({ type: 'voice_result', requestId: captured.requestId, text: '',
+                delivered: false, error: 'openclaw_reply_failed', detail: String(error).slice(0, 160) }));
+            });
+            return;
+          }
           const sessionId = resolveDeviceSessionId(captured.sessionId);
           debug('voice', `transcript "${text.slice(0, 60)}" → ${sessionId.slice(0, 20) || '(no session)'}`);
           // Always tell the board what was heard, even when it is empty or
@@ -6528,12 +6614,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           }
           try {
             sink.send(JSON.stringify({
-              type: 'voice_result', text, sessionId, delivered,
+              type: 'voice_result', requestId: captured.requestId, text, sessionId, delivered,
               ...(via ? { via } : {}),
               ...(deliverReason ? { deliverReason } : {}),
             }));
           } catch { /* client disconnecting */ }
         } catch (err) {
+          if (!isCurrent()) return;
           const reason = String(err).slice(0, 300);
           // Voice turns are rare and user-initiated. Keep failures at info
           // level so a board's short "Voice error" banner can always be
@@ -6550,7 +6637,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             : 'voice_failed';
           try {
             sink.send(JSON.stringify({
-              type: 'voice_result', text: '', error: code, detail: reason.slice(0, 160),
+              type: 'voice_result', requestId: captured.requestId, text: '', error: code, detail: reason.slice(0, 160),
             }));
           } catch { /* client disconnecting */ }
         } finally {
@@ -6812,6 +6899,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   core.startOllamaProbe();
   core.startMlxProbe();
   core.startAntigravityProbe();
+  // Level-triggered: `onAvailable` runs on every tick the port is open, and
+  // connectGatewayAdapter's own guards make it a no-op while an adapter lives.
   core.startGatewayProbe(5000,
     () => connectGatewayAdapter(),
     () => { if (gatewayAdapter && !gatewayAdapter.isAlive()) disconnectGatewayAdapter(); },

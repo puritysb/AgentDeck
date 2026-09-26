@@ -1,3 +1,4 @@
+import { selectedLunaReserve } from './usage-presentation.js';
 /**
  * D200H / deck layout engine used by the Ulanzi Studio plugin
  * (plugin-ulanzi) and Apple device previews. Given the current agent state it
@@ -542,13 +543,14 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   // (`USAGE_STRIP_ORDER`). Capacity pressure is solved by pairing readings on
   // one key below, never by deleting a window.
   const cx = state.codexRateLimits;
-  const lunaTile: SessionDeckCell | undefined = cx?.lunaReserve
-    ? { svg: renderLunaReserveTile(cx.lunaReserve), action }
+  const luna = selectedLunaReserve(cx);
+  const lunaTile: SessionDeckCell | undefined = luna
+    ? { svg: renderLunaReserveTile(luna), action }
     : undefined;
   const allCodexWindows = [cx?.primary, cx?.secondary].filter((w): w is CodexRateLimitWindow => w != null);
   const worstScoped = known ? state.scopedLimits?.[0] : undefined;
   const scopedClaims = scopedLimitClaimsUsageKey(worstScoped, allCodexWindows.length);
-  const codexWindows = cx?.lunaReserve ? [] : codexWindowsBeside(allCodexWindows, scopedClaims);
+  const codexWindows = luna ? [] : codexWindowsBeside(allCodexWindows, scopedClaims);
   // Kept as tank DATA, not only as a rendered cell: under strip pressure the cap
   // pairs with 7D on one key (below), and a pre-rendered cell cannot be paired.
   const scopedTank: UsageTankData | undefined = scopedClaims && worstScoped

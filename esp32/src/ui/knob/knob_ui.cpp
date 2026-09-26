@@ -69,7 +69,7 @@ static Mode s_mode = Mode::LIST;
 static int s_listIdx = 0;
 static char s_listSessionId[32] = {};
 static Companion::WaitingQueue<10> s_waiting;
-static bool s_waitingOnly = true;
+static bool s_waitingOnly = false;
 static bool s_queueShortcut = false;
 // Exact request and receipt storage are bounded (~1.5 KB total) and reused for
 // the device lifetime on this PSRAM-equipped S3 board. Never per-frame alloc.
@@ -234,12 +234,7 @@ static void sendHistoryQuery(const char* sid) {
     Net::queueOutbound(buf);
 }
 
-static void sendFocusSession(const char* sid) {
-    char buf[80];
-    snprintf(buf, sizeof(buf),
-             "{\"type\":\"focus_session\",\"sessionId\":\"%s\"}", sid);
-    Net::queueOutbound(buf);
-}
+
 
 static void flash(const char* text) {
     strncpy(s_flashText, text, sizeof(s_flashText) - 1);
@@ -537,86 +532,23 @@ static void renderListBody(bool connected, uint8_t sessionCount) {
 
     SessionSnap s;
     if (!snapshotSession(s_listIdx, s)) return;
-    int slideDir = carouselSlideDir(s_listIdx, sessionCount);
-
-    // The encoder is a physical carousel: the selected agent creature owns the
-    // center, while the previous/next creatures peek in from either side. A
-    // detent now has an immediate visual identity change instead of merely
-    // replacing several similar text rows.
-    auto addCreature = [&](int idx, int x, int y, int scale, uint8_t opa) {
-        SessionSnap peer;
-        if (!snapshotSession(idx, peer)) return;
-        const lv_image_dsc_t* glyph = glyphForAgent(peer.agentType);
-        if (!glyph) return;
-        lv_obj_t* image = lv_image_create(s_body);
-        lv_image_set_src(image, glyph);
-        lv_image_set_scale(image, scale);
-        lv_obj_set_style_image_recolor(image, lv_color_hex(agentColor(peer.agentType)), 0);
-        lv_obj_set_style_image_recolor_opa(image, LV_OPA_COVER, 0);
-        lv_obj_set_style_opa(image, opa, 0);
-        lv_obj_set_pos(image, x, y);
-    };
-    if (sessionCount > 1) {
-        int prev = (s_listIdx + sessionCount - 1) % sessionCount;
-        int next = (s_listIdx + 1) % sessionCount;
-        addCreature(prev, 24, 8, 150, LV_OPA_40);
-        addCreature(next, 232, 8, 150, LV_OPA_40);
-    }
-
-    lv_obj_t* halo = lv_obj_create(s_body);
-    lv_obj_remove_style_all(halo);
-    lv_obj_set_size(halo, 78, 70);
-    lv_obj_set_style_bg_color(halo, lv_color_hex(Theme::MidWater), 0);
-    lv_obj_set_style_bg_opa(halo, LV_OPA_50, 0);
-    lv_obj_set_style_border_color(halo, lv_color_hex(stateColorOf(s.state)), 0);
-    lv_obj_set_style_border_width(halo, strstr(s.state, "awaiting") ? 3 : 1, 0);
-    lv_obj_set_style_radius(halo, 35, 0);
-    lv_obj_align(halo, LV_ALIGN_TOP_MID, 0, 0);
-
-    const lv_image_dsc_t* selectedGlyph = glyphForAgent(s.agentType);
-    if (selectedGlyph) {
-        lv_obj_t* image = lv_image_create(s_body);
-        lv_image_set_src(image, selectedGlyph);
-        lv_obj_set_style_image_recolor(image, lv_color_hex(agentColor(s.agentType)), 0);
-        lv_obj_set_style_image_recolor_opa(image, LV_OPA_COVER, 0);
-        lv_obj_align(image, LV_ALIGN_TOP_MID, 0, 3);
-        startCarouselSlide(image, slideDir);
-    } else {
-        lv_obj_t* brand = makeLabel(s_body, &lv_font_montserrat_18,
-                                    agentColor(s.agentType), agentShortLabel(s.agentType));
-        lv_obj_align(brand, LV_ALIGN_TOP_MID, 0, 24);
-        startCarouselSlide(brand, slideDir);
-    }
-
-    char elapsed[12];
-    fmtElapsed(s.elapsedSec, elapsed, sizeof(elapsed));
-    char stateLine[64];
-    snprintf(stateLine, sizeof(stateLine), "%s  %s%s%s", agentShortLabel(s.agentType),
-             statePhrase(s.state),
-             elapsed[0] ? " " LV_SYMBOL_BULLET " " : "", elapsed);
-    lv_obj_t* st = makeLabel(s_body, &lv_font_montserrat_12,
-                             stateColorOf(s.state), stateLine);
-    lv_obj_align(st, LV_ALIGN_TOP_MID, 0, 68);
-
-    lv_obj_t* proj = makeLabel(s_body, &font_kr_16, Theme::HUDText,
-                               s.projectName[0] ? s.projectName : "(no project)");
-    lv_obj_set_width(proj, 304);
-    lv_obj_set_style_text_align(proj, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(proj, LV_LABEL_LONG_DOT);
-    lv_obj_align(proj, LV_ALIGN_TOP_MID, 0, 84);
-
-    // Context line: awaiting question > live tool > activity > last milestone.
-    const char* ctx = "";
-    if (strstr(s.state, "awaiting") && s.question[0]) ctx = s.question;
-    else if (s.currentTool[0]) ctx = s.currentTool;
-    else if (s.activity[0]) ctx = s.activity;
-    else if (s.lastEventText[0]) ctx = s.lastEventText;
-    lv_obj_t* ctxl = makeLabel(s_body, &font_kr_16, Theme::HUDText, ctx);
-    lv_obj_set_width(ctxl, 304);
-    lv_obj_set_style_text_align(ctxl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(ctxl, LV_LABEL_LONG_DOT);
-    lv_obj_set_height(ctxl, 20);
-    lv_obj_align(ctxl, LV_ALIGN_TOP_MID, 0, 105);
+    auto* brand = makeLabel(s_body, &lv_font_montserrat_12,
+                            agentColor(s.agentType), agentShortLabel(s.agentType));
+    lv_obj_set_pos(brand, 8, 2);
+    auto* status = makeLabel(s_body, &lv_font_montserrat_12,
+                             stateColorOf(s.state), statePhrase(s.state));
+    lv_obj_align(status, LV_ALIGN_TOP_RIGHT, -8, 2);
+    auto* project = makeLabel(s_body, &font_kr_16, Theme::HUDText,
+                              s.projectName[0] ? s.projectName : "(no project)");
+    lv_obj_set_pos(project, 8, 23); lv_obj_set_size(project, 304, 23);
+    lv_label_set_long_mode(project, LV_LABEL_LONG_DOT);
+    const char* ctx = strstr(s.state, "awaiting") && s.question[0] ? s.question :
+        !strcmp(s.state, "processing") && s.activity[0] ? s.activity :
+        !strcmp(s.state, "processing") && s.currentTool[0] ? s.currentTool :
+        s.lastEventText[0] ? s.lastEventText : "No activity reported";
+    auto* activity = makeLabel(s_body, &font_kr_16, Theme::HUDText, ctx);
+    lv_obj_set_pos(activity, 8, 52); lv_obj_set_size(activity, 304, 68);
+    lv_label_set_long_mode(activity, LV_LABEL_LONG_DOT);
 
     // Awaiting badge: make "needs you" unmissable even on the context line.
     if (strstr(s.state, "awaiting") != nullptr) {
@@ -872,11 +804,8 @@ void onKey(Input::KeyEvent evt) {
         if (!snapshotSession(s_listIdx, s)) return;
         strncpy(s_detailSessionId, s.id, sizeof(s_detailSessionId) - 1);
         s_detailSessionId[sizeof(s_detailSessionId) - 1] = '\0';
-        // This was specified by the product grammar but never sent. Publishing
-        // it lets the Focus Strip and every other surface follow the knob.
-        sendFocusSession(s.id);
-        strncpy(s_lastSharedFocus, s.id, sizeof(s_lastSharedFocus) - 1);
-        s_lastSharedFocus[sizeof(s_lastSharedFocus) - 1] = '\0';
+        // Inspect locally; a physical dial must not steal the desktop focus.
+        s_userNavigated = true;
         s_menuIdx = 0;
         s_menuScroll = 0;
         buildMenu(s, true);
@@ -1040,7 +969,7 @@ void update(float dt) {
 
     if (s_mode == Mode::LIST && connected) {
         const bool newFocus = sharedFocus[0] && strcmp(sharedFocus, s_lastSharedFocus);
-        if (newFocus) {
+        if (newFocus && !s_userNavigated) {
             int idx = findSessionById(sharedFocus);
             if (idx >= 0 && !(s_waitingOnly && s_waiting.count)) {
                 selectListSession(idx); s_userNavigated = true;
@@ -1048,7 +977,7 @@ void update(float dt) {
         }
         Companion::copy(s_lastSharedFocus, sharedFocus);
         if (!s_waiting.count) s_queueShortcut = false;
-        if (s_waiting.count && !s_userNavigated) s_waitingOnly = true;
+        // Keep the full roster stable; waiting remains visible in the rail.
         if (s_waitingOnly && !s_waiting.count) {
             s_waitingOnly = false; s_queueShortcut = false; s_userNavigated = false;
         }
@@ -1267,7 +1196,7 @@ void update(float dt) {
         // Hold-to-talk lives on the encoder and only at list level — without
         // this hint the mic is undiscoverable (the listening banner only
         // appears once you already know to hold).
-        const char* hint = "turn: session " LV_SYMBOL_BULLET " press: open "
+        const char* hint = "turn: inspect " LV_SYMBOL_BULLET " press: open "
                            LV_SYMBOL_BULLET " hold: talk";
         if (s_mode == Mode::LIST && s_queueShortcut) hint = "press: switch list";
         else if (s_mode == Mode::LIST && s_waitingOnly) hint = "turn: waiting / all   press: open";

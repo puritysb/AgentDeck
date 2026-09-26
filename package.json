@@ -57,6 +57,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "postinstall": "node scripts/postinstall.mjs",
+    "generate-usage-presentation": "node scripts/generate-usage-presentation.mjs",
+    "generate-collaboration-presentation": "node scripts/generate-collaboration-presentation.mjs",
     "plugin:deploy": "node plugin/scripts/deploy.mjs",
     "plugin:check": "node plugin/scripts/deploy.mjs --check"
   },

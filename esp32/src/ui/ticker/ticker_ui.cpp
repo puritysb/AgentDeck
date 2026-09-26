@@ -13,6 +13,8 @@
 #include "../widgets/connection_card.h"
 #include "../agent_label.h"
 #include "../../util/utf8.h"
+#include "../../util/usage_rows.h"
+#include "usage_panel.h"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -43,6 +45,10 @@ static uint8_t s_page = 0;
 static char s_pinId[32]{};
 static char s_pinnedResult[100]{}, s_pinnedResultHm[6]{};
 static bool s_capturePin = false, s_newResult = false;
+static bool s_initialFocusChosen = false;
+static uint32_t s_activityHash = 0, s_activityObservedMs = 0;
+// Bounded, device-lifetime retained result for the one visible task.
+static char s_resultSession[32]{}, s_completedText[100]{}, s_completedHm[6]{};
 static bool s_waitingFilter = false;
 static uint8_t s_sessionOffset = 0, s_sessionTotal = 0;
 static Companion::WaitingQueue<10> s_waiting;
@@ -152,9 +158,9 @@ static int pickFocusSession() {
         if (firstProcessing < 0 && strcmp(g_state.sessions[i].state, "processing") == 0)
             firstProcessing = i;
     }
-    if (firstAwaiting >= 0) return firstAwaiting;
     if (explicitFocus >= 0) return explicitFocus;
     if (firstProcessing >= 0) return firstProcessing;
+    if (firstAwaiting >= 0) return firstAwaiting;
     return g_state.sessionCount > 0 ? 0 : -1;
 }
 
@@ -166,6 +172,7 @@ struct FocusSnap {
     bool canAnswer;
     char result[100];
     char resultHm[6];
+    char observed[36];
     char id[32];
     char agentType[16];
     char projectName[40];
@@ -183,12 +190,6 @@ static lv_obj_t* makeLabel(lv_obj_t* parent, const lv_font_t* font,
     lv_obj_set_style_text_color(l, lv_color_hex(color), 0);
     lv_label_set_text(l, text);
     return l;
-}
-
-static uint32_t gaugeColor(float pct) {
-    if (pct >= 85.0f) return Theme::StatusRed;
-    if (pct >= 60.0f) return Theme::StatusAmber;
-    return Theme::StatusGreen;
 }
 
 static lv_obj_t* makeKeyHint(lv_obj_t* rail, const char* text, int x,
@@ -239,107 +240,22 @@ static void updateKeyHints(uint32_t now) {
     }
 }
 
-// One full-fill gauge row: label | bar (fill = pct) | % numeral | reset.
-static void renderGaugeRow(lv_obj_t* parent, int y, const char* label,
-                           float pct, const char* reset, int rowHeight) {
-    lv_obj_t* name = makeLabel(parent, (rowHeight >= 34 ? &lv_font_montserrat_16 : &lv_font_montserrat_12), Theme::HUDText, label);
-    lv_obj_align(name, LV_ALIGN_TOP_LEFT, 10, y + (rowHeight - 14) / 2);
-
-    lv_obj_t* track = lv_obj_create(parent);
-    lv_obj_remove_style_all(track);
-    lv_obj_set_size(track, 250, rowHeight);
-    lv_obj_set_style_bg_color(track, lv_color_hex(Theme::MidWater), 0);
-    lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(track, 4, 0);
-    lv_obj_align(track, LV_ALIGN_TOP_LEFT, 118, y);
-
-    bool haveData = pct >= 0.0f;
-    if (haveData) {
-        float clamped = pct > 100.0f ? 100.0f : pct;
-        int w = (int)(250.0f * clamped / 100.0f);
-        if (w > 0) {
-            lv_obj_t* fill = lv_obj_create(track);
-            lv_obj_remove_style_all(fill);
-            lv_obj_set_size(fill, w < 4 ? 4 : w, rowHeight);
-            lv_obj_set_style_bg_color(fill, lv_color_hex(gaugeColor(clamped)), 0);
-            lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, 0);
-            lv_obj_set_style_radius(fill, 4, 0);
-            lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
-        }
-        // White numeral ON the bar (gauge grammar: full fill, sharp stage
-        // colors, white numerals).
-        char pctText[8];
-        snprintf(pctText, sizeof(pctText), "%d%%", (int)clamped);
-        lv_obj_t* p = makeLabel(track, (rowHeight >= 34 ? &lv_font_montserrat_18 : &lv_font_montserrat_14), 0xFFFFFF, pctText);
-        lv_obj_align(p, LV_ALIGN_LEFT_MID, 8, 0);
-    } else {
-        lv_obj_t* p = makeLabel(track, (rowHeight >= 34 ? &lv_font_montserrat_18 : &lv_font_montserrat_14), Theme::HUDFaint, "--");
-        lv_obj_align(p, LV_ALIGN_LEFT_MID, 8, 0);
-    }
-
-    lv_obj_t* r = makeLabel(parent, (rowHeight >= 34 ? &lv_font_montserrat_14 : &lv_font_montserrat_12), Theme::HUDDim,
-                            (haveData && reset[0]) ? reset : "");
-    lv_obj_align(r, LV_ALIGN_TOP_LEFT, 378, y + (rowHeight - 14) / 2);
-}
-
 static void renderUsagePage() {
-    // Only windows that exist render — a retired window (e.g. Codex 5h on
-    // current plans) disappears instead of showing a fabricated "--" row.
-    struct GaugeData { const char* label; float pct; char reset[20]; };
-    GaugeData rows[5];
-    uint8_t n = 0;
-    char subsLine[96] = {0};
-
+    // Provider cards from the shared UsageRows model: only present windows
+    // render, z.ai keeps its MCP window, an exhausted Codex account shows its
+    // Luna reserve, and a plan fills the slot a missing window leaves.
+    UsageRows::Group groups[UsageRows::MAX_GROUPS];
     lockState();
-    auto take = [&](const char* label, float pct, const char* reset) {
-        if (pct < 0.0f || n >= sizeof(rows) / sizeof(rows[0])) return;
-        rows[n].label = label;
-        rows[n].pct = pct;
-        strncpy(rows[n].reset, reset, sizeof(rows[n].reset) - 1);
-        rows[n].reset[sizeof(rows[n].reset) - 1] = '\0';
-        n++;
-    };
-    take("Claude 5h", g_state.fiveHourPercent, g_state.fiveHourReset);
-    take("Claude 7d", g_state.sevenDayPercent, g_state.sevenDayReset);
-    take("Codex 5h", g_state.codexPrimaryPercent, g_state.codexPrimaryReset);
-    take("Codex 7d", g_state.codexSecondaryPercent, g_state.codexSecondaryReset);
-    // z.ai (#350) — the 5h credits window only; MCP is secondary on this strip.
-    take("Z.AI 5h", g_state.zaiPrimaryPercent, g_state.zaiPrimaryReset);
-    // Account subscriptions (usage_update subscriptions[]) — the "what am I
-    // paying for" line other dashboards carry.
-    {
-        size_t off = 0;
-        for (uint8_t i = 0; i < g_state.subscriptionCount && off < sizeof(subsLine) - 24; i++) {
-            off += snprintf(subsLine + off, sizeof(subsLine) - off, "%s%s %s",
-                            i > 0 ? "  " LV_SYMBOL_BULLET "  " : "",
-                            g_state.subscriptions[i].name,
-                            g_state.subscriptions[i].until);
-        }
-    }
+    const uint8_t count = UsageRows::build(g_state, groups);
     unlockState();
-
-    bool haveSubs = subsLine[0] != '\0';
-    if (n == 0 && !haveSubs) {
+    if (count == 0) {
         lv_obj_t* l = makeLabel(s_body, &lv_font_montserrat_14, Theme::HUDDim,
                                 "Waiting for usage data...");
         lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
         return;
     }
-
-    int areaH = haveSubs ? BODY_H - 24 : BODY_H;
-    int pitch = n > 0 ? areaH / (n > 0 ? n : 1) : 0;
-    if (pitch > 48) pitch = 48;
-    for (uint8_t i = 0; i < n; i++) {
-        renderGaugeRow(s_body, 2 + i * pitch, rows[i].label, rows[i].pct, rows[i].reset, (pitch > 37 ? 34 : pitch - 3));
-    }
-
-    if (haveSubs) {
-        Utf8::sanitizeLvglText(subsLine);
-        lv_obj_t* s = makeLabel(s_body, &lv_font_montserrat_14, Theme::HUDDim, subsLine);
-        lv_label_set_long_mode(s, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(s, 460);
-        lv_obj_align(s, LV_ALIGN_BOTTOM_LEFT, 10, -3);
-    }
+    const UsagePanel::Fonts fonts{&lv_font_montserrat_12, &lv_font_montserrat_14, &lv_font_montserrat_18};
+    UsagePanel::render(s_body, 8, 4, SCREEN_W - 16, BODY_H - 8, groups, count, true, fonts);
 }
 
 static uint32_t agentColor(const char* agentType) {
@@ -414,8 +330,12 @@ static void renderFocusPage(const FocusSnap& f, bool connected) {
     lv_obj_set_width(cap, 452);
     lv_label_set_long_mode(cap, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_line_space(cap, 6, 0);
-    lv_obj_set_height(cap, f.awaiting ? 62 : 42);
-    lv_obj_align(cap, LV_ALIGN_TOP_LEFT, 16, 51);
+    lv_obj_set_height(cap, f.awaiting ? 62 : 27);
+    lv_obj_align(cap, LV_ALIGN_TOP_LEFT, 16, 44);
+    if (!f.awaiting) {
+        auto* age = makeLabel(s_body, &font_kr_12, Theme::HUDDim, f.observed);
+        lv_obj_set_pos(age, 16, 77);
+    }
 
     bool flashOn = s_flashText[0] != '\0';
     if (s_pendingReply.active) {
@@ -955,8 +875,25 @@ void update(float dt) {
             focus.awaiting = strstr(sess.state, "awaiting") != nullptr;
             focus.canAnswer = focus.awaiting && (sess.optionCount == 0 || !strcmp(sess.promptType, "yes_no"));
             s_frameRequest.capture(sess);
-            Companion::copy(focus.result, sess.lastEventText);
-            Companion::copy(focus.resultHm, sess.lastEventHm);
+            if (!s_initialFocusChosen) {
+                Companion::copy(s_pinId, sess.id);
+                s_capturePin = true; s_initialFocusChosen = true;
+            }
+            if (strcmp(s_resultSession, sess.id)) {
+                Companion::copy(s_resultSession, sess.id);
+                s_completedText[0] = s_completedHm[0] = 0;
+            }
+            // A question/start/tool event is not a result. Keep the newest
+            // response even after a new turn starts or the ring evicts it.
+            for (uint8_t back = 0; back < g_state.timelineCount; ++back) {
+                const auto& e = g_state.timeline[(g_state.timelineHead + g_state.timelineCount - 1 - back) % TIMELINE_MAX_ENTRIES];
+                if (!sameSessionId(e.sessionId, sess.id) || strcmp(e.type, "chat_response") || !e.raw[0]) continue;
+                Companion::copy(s_completedText, e.raw);
+                Companion::copy(s_completedHm, e.hm);
+                break;
+            }
+            Companion::copy(focus.result, s_completedText);
+            Companion::copy(focus.resultHm, s_completedHm);
             strncpy(focus.id, sess.id, sizeof(focus.id));
             strncpy(focus.agentType, sess.agentType, sizeof(focus.agentType));
             strncpy(focus.projectName, sess.projectName, sizeof(focus.projectName));
@@ -972,12 +909,12 @@ void update(float dt) {
             else if (sess.lastEventText[0])
                 strncpy(focus.caption, sess.lastEventText, sizeof(focus.caption));
             else
-                strncpy(focus.caption, "Ready for the next task", sizeof(focus.caption));
+                strncpy(focus.caption, !strcmp(sess.state, "processing") ? "Working - no activity detail reported" : "Ready for the next task", sizeof(focus.caption));
             focus.caption[sizeof(focus.caption) - 1] = '\0';
         }
         if (s_pinId[0]) {
             if (idx >= 0) {
-                if (s_capturePin) {
+                if (s_capturePin || (!s_pinnedResult[0] && focus.result[0])) {
                     Companion::copy(s_pinnedResult, focus.result);
                     Companion::copy(s_pinnedResultHm, focus.resultHm);
                     s_capturePin = false;
@@ -995,6 +932,17 @@ void update(float dt) {
         Utf8::sanitizeLvglText(focus.result);
         Utf8::sanitizeLvglText(focus.projectName);
         Utf8::sanitizeLvglText(focus.caption);
+    }
+
+    if (focus.have && !focus.ended && (serialUp || wsUp)) {
+        uint32_t observedHash = Companion::textHash(focus.id);
+        observedHash = Companion::textHash(focus.caption, observedHash);
+        observedHash = Companion::textHash(focus.state, observedHash);
+        if (observedHash != s_activityHash) { s_activityHash = observedHash; s_activityObservedMs = now; }
+        const uint32_t age = (now - s_activityObservedMs) / 1000;
+        if (age < 10) Companion::copy(focus.observed, "New activity observed");
+        else if (age < 60) snprintf(focus.observed, sizeof(focus.observed), "Observed %lus ago", (unsigned long)(age / 10 * 10));
+        else snprintf(focus.observed, sizeof(focus.observed), "Observed %lum ago", (unsigned long)(age / 60));
     }
 
     // Signature: page + coarse usage buckets + session states/lines.
@@ -1022,10 +970,12 @@ void update(float dt) {
         snprintf(resets, sizeof(resets), "%.9s|%.9s|%.9s|%.9s",
                  g_state.fiveHourReset, g_state.sevenDayReset,
                  g_state.codexPrimaryReset, g_state.codexSecondaryReset);
+        // The Luna reserve and z.ai window kind change what Usage shows.
+        const int lunaKey = (int)g_state.codexLunaPercent * 2 + (g_state.zaiSecondaryIsMcp ? 1 : 0);
         unlockState();
-        snprintf(sig, sizeof(sig), "%d|%d.%d.%d.%d.%d.%d|%s|%d|%d|%d%d%d%d|%d|%d%d|%.20s|%.6s%.10s%.36s|%.31s|%s",
+        snprintf(sig, sizeof(sig), "%d|%d.%d.%d.%d.%d.%d.%d|%s|%d|%d|%d%d%d%d|%d|%d%d|%.20s|%.6s%.10s%.36s|%.31s|%s",
                  s_page,
-                 c5, c7, x5, x7, z5, z7, resets, subsCount, count,
+                 c5, c7, x5, x7, z5, z7, lunaKey, resets, subsCount, count,
                  connected ? 1 : 0, wifiUp ? 1 : 0, wsUp ? 1 : 0, serialUp ? 1 : 0,
                  power.voltageMv / 20, power.charging ? 1 : 0, power.usbPowered ? 1 : 0,
                  s_flashText,
@@ -1035,6 +985,7 @@ void update(float dt) {
     {
         uint32_t full = Companion::textHash(sig);
         full = Companion::textHash(focus.caption, full);
+        full = Companion::textHash(focus.observed, full);
         full = Companion::textHash(focus.result, full);
         full = Companion::textHash(focus.resultHm, full);
         lockState();

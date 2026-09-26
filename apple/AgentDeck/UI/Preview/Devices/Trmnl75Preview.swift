@@ -29,7 +29,7 @@
 //     usage, and a missing window is dropped (present ones pack left) rather
 //     than shown as a dead "--". With 0 rows the separator rule is omitted and
 //     the session grid reclaims the band;
-//   - recent-work strip: up to Snap::TICKER_ROWS (3) latest milestone timeline
+//   - recent-work strip: up to Snap::TICKER_ROWS (3) latest response timeline
 //     rows, newest at the top, gated on the live daemon link. Replaces the old
 //     single ticker line. The host-display-sleep card was removed — TRMNL 7.5" is
 //     always USB-powered and keeps the dashboard retained instead.
@@ -39,7 +39,7 @@
 // fails CI when the firmware drifts ahead of this mirror. Update this view and
 // re-pin whenever the firmware layout changes.
 //
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp a684689f2d9114eacebc3c951e4dfcacc8b1f488
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp d13a3ba36b85d3203e20b14c2efa54ddb7519fb7
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI
@@ -368,7 +368,7 @@ struct Trmnl75Preview: View {
     }
 
     /// Card detail — awaiting shows the pending question; otherwise the
-    /// daemon-computed latest milestone as "HH:MM · task · text".
+    /// daemon-computed latest response as "HH:MM · task · text".
     private func detailLine(for state: PixooPreviewState) -> String {
         switch state {
         case .awaitingPrompt: return "may I edit eink_display.cpp?"
@@ -428,17 +428,16 @@ struct Trmnl75Preview: View {
                 }
             }
             if selection.state != .disconnected {
+                // A plan-only provider (Antigravity) is its own row: mark, name,
+                // and its plan in the first slot (UsageRows group, no windows).
                 ForEach(Array(otherPlans.enumerated()), id: \.offset) { _, sub in
-                    HStack {
-                        Text("SUBSCRIPTION").font(.system(size: 8, weight: .bold))
-                        Spacer()
-                        Text([sub.name, sub.until ?? ""].filter { !$0.isEmpty }.joined(separator: " "))
-                            .font(.system(size: 8)).lineLimit(1)
-                    }.foregroundStyle(ink)
+                    providerRow(agentType: "antigravity", label: "ANTIGRAVITY",
+                                plan: [sub.name, sub.until ?? ""].filter { !$0.isEmpty }.joined(separator: " "),
+                                p5: -1, p7: -1, secondaryLabel: "7D")
                 }
                 Text("RECENT").font(.system(size: 8, weight: .bold)).foregroundStyle(ink)
             }
-            // Recent-work strip — up to Snap::TICKER_ROWS (3) latest milestone
+            // Recent-work strip — up to Snap::TICKER_ROWS (3) latest response
             // rows, newest first, gated on the live daemon link (a stale line
             // under the "searching…" screen read as if still connected).
             if selection.state != .disconnected {
@@ -464,14 +463,14 @@ struct Trmnl75Preview: View {
         switch selection.state {
         case .processing:
             return [
-                ("14:02", "claude · agentdeck · response streaming…"),
-                ("13:57", "claude · agentdeck · edited eink_display.cpp"),
+                ("14:02", "claude · agentdeck · Response received"),
+                ("13:57", "claude · agentdeck · Display fix ready for review"),
                 ("13:41", "codex · bridge · task complete"),
             ]
         case .awaitingPrompt:
             return [
-                ("14:02", "claude · agentdeck · awaiting permission"),
-                ("13:57", "claude · agentdeck · ran the test suite"),
+                ("14:02", "claude · agentdeck · Previous response received"),
+                ("13:57", "claude · agentdeck · Test results received"),
             ]
         case .idle:
             return [
@@ -483,23 +482,40 @@ struct Trmnl75Preview: View {
         }
     }
 
+    /// drawProviderUsage: fixed name column, then two aligned window slots.
+    /// The plan (tier without the provider prefix) takes the slot a missing
+    /// window leaves; with both windows it sits under the provider name.
     private func providerRow(agentType: String, label: String, plan: String, p5: Double, p7: Double, secondaryLabel: String) -> some View {
-        HStack(spacing: 6) {
+        let tier = UsagePresentation.subscriptionTier(plan)
+        let windows = (p5 >= 0 ? 1 : 0) + (p7 >= 0 ? 1 : 0)
+        // A prefix-only subscription ("Claude") has no tier and shows nothing.
+        let planSlot = !tier.isEmpty && windows < 2
+        return HStack(spacing: 6) {
             PreviewUsageMark(agentType: agentType, size: 13, color: ink)
             VStack(alignment: .leading, spacing: 0) {
                 Text(label)
                     .font(.system(size: 8, weight: .bold))
-
+                if !tier.isEmpty && !planSlot {
+                    Text(tier).font(.system(size: 7)).lineLimit(1)
+                }
             }
             .foregroundStyle(ink)
-            .frame(width: 52, alignment: .leading)
-            // Present windows share the available width; an absent window
-            // leaves its space to the remaining gauge.
-            if p5 >= 0 { gaugeBar(tag: "5H", pct: p5) }
-            if p7 >= 0 { gaugeBar(tag: secondaryLabel, pct: p7) }
-            if !plan.isEmpty {
-                Text(plan).font(.system(size: 8)).foregroundStyle(ink)
-                    .frame(width: 90, alignment: .trailing).lineLimit(1)
+            .frame(width: 70, alignment: .leading)
+            HStack(spacing: 8) {
+                if p5 >= 0 { gaugeBar(tag: "5H", pct: p5).frame(maxWidth: .infinity) }
+                if p7 >= 0 { gaugeBar(tag: secondaryLabel, pct: p7).frame(maxWidth: .infinity) }
+                if planSlot {
+                    HStack(spacing: 4) {
+                        Text("PLAN").font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                        Text(tier).font(.system(size: 8)).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(ink)
+                    .frame(maxWidth: .infinity)
+                }
+                ForEach(0..<max(0, 2 - windows - (planSlot ? 1 : 0)), id: \.self) { _ in
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                }
             }
         }
     }

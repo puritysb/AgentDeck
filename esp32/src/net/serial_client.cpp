@@ -153,6 +153,7 @@ static void sendDeviceInfoSerial() {
     }
     if (wifiConnected()) {
         resp["ip"] = wifiLocalIP();
+        resp["rssiDbm"] = wifiRssiDbm();
     }
 #if defined(BOARD_T_EMBED)
     {

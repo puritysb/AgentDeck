@@ -47,8 +47,37 @@
  *   invariant: clearMaxX + resterMaxWidthFrac/2 < crayfish claw left edge.
  */
 export const TERRARIUM_RULES = {
+  /** Pixoo HUD rows reserve space for every live provider in both daemons. */
+  pixooUsageRowHeight: 7,
+  pixooUsageCreatureMargin: 11,
   /** Native 3D foreground budget; the full roster remains independently accessible. */
   nativeResidentLimit: 8,
+  /** Shared native activity rhythm and cue geometry; screen-space label sizing remains surface-specific. */
+  nativeActivity: {
+    idleRate: 0.65,
+    workRate: 2.5,
+    groundTravel: 0.32,
+    waterTravel: 0.28,
+    groundYaw: 0.38,
+    workYaw: 0.24,
+    workRoll: 0.22,
+    workBreath: 0.095,
+    footLift: 0.065,
+    barMinimum: 0.45,
+    barRange: 0.55,
+    barRate: 2,
+    barPhase: 1.2,
+    barCount: 3,
+    barX: 0.82,
+    barSpacing: 0.085,
+    barY: 0.10,
+    barWidth: 0.055,
+    barHeight: 0.28,
+    barRadius: 0.02,
+    selectionX: 0.70,
+    selectionWidth: 0.025,
+    selectionHeight: 0.72,
+  },
   /** Vertical field of view for the same authored habitat across native engines. */
   nativeCameraFov: 38,
   nativeCameraWideFov: 32,

@@ -10,7 +10,7 @@ int main() {
     assert(boundedPercent(120) == 100);
     for (int rotation = 0; rotation < 4; ++rotation) {
         const int w = rotation % 2 ? 240 : 135, h = rotation % 2 ? 135 : 240;
-        for (int count = 1; count <= 5; ++count) {
+        for (int count = 1; count <= 6; ++count) {
             for (int i = 0; i < count; ++i) {
                 auto a = cardRect(w, h, count, i);
                 assert(a.x >= 0 && a.y >= 18 && a.x + a.w <= w && a.y + a.h <= h - 14);

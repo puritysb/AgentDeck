@@ -38,7 +38,7 @@ describe('IPS10 additive collaboration census', () => {
     const out = prepareForSerial(input, { deviceInfo: { board: 'ips_10' } }) as any;
     const baseline = prepareForSerial(input) as any;
     expect(Buffer.byteLength(JSON.stringify(baseline))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
-    expect(out).toEqual(baseline);
+    expect(out).toEqual({ ...baseline, rosterRotating: false });
     expect(out.sessions.every((s: any) => s.subagents === undefined)).toBe(true);
     expect(out.sessions).toHaveLength(10);
   });
@@ -56,11 +56,11 @@ describe('IPS10 stable card roster', () => {
       session('z', 'idle', '2026-09-06T04:00:00Z'),
       session('dead', 'processing', '2026-09-06T09:00:00Z', false),
     ];
-    expect(stableCardRoster(rows, 3).map((s) => s.id)).toEqual(['a', 'b', 'z']);
+    expect(stableCardRoster(rows, 3, 0).map((s) => s.id)).toEqual(['a', 'b', 'z']);
     // A state change never changes the set: the same three come back.
     rows[0].state = 'processing';
-    expect(stableCardRoster(rows, 3).map((s) => s.id)).toEqual(['a', 'b', 'z']);
-    expect(stableCardRoster(rows.slice(0, 2), 3).map((s) => s.id)).toEqual(['k', 'b']);
+    expect(stableCardRoster(rows, 3, 0).map((s) => s.id)).toEqual(['a', 'b', 'z']);
+    expect(stableCardRoster(rows.slice(0, 2), 3, 0).map((s) => s.id)).toEqual(['k', 'b']);
   });
 
   it('adds the coordination census and the roster total for IPS10 only', () => {
@@ -75,5 +75,23 @@ describe('IPS10 stable card roster', () => {
     const other = prepareForSerial({ type: 'sessions_list', sessions: many } as any, { deviceInfo: { board: '86box' } }) as any;
     expect(other.total).toBeUndefined();
     expect(other.sessions.every((s: any) => s.coordination === undefined)).toBe(true);
+  });
+});
+
+describe('IPS10 quota transport fidelity', () => {
+  it('preserves a missing 5h slot, actual window lengths, Luna (fleet-wide), and all subscription dates', () => {
+    const usage = { type: 'usage_update', codexRateLimits: {
+      secondary: { usedPercent: 100, windowMinutes: 10080 },
+      lunaReserve: { usedPercent: 32, resetsAt: '2099-01-01T00:00:00Z' },
+    }, subscriptions: [{ name: 'ChatGPT Pro' }, { name: 'Claude' }, { name: 'GLM Coding Plan' }, { name: 'Google AI Pro', until: '2099-02-03T00:00:00Z' }] } as BridgeEvent;
+    const out = prepareForSerial(usage, { deviceInfo: { board: 'ips_10' } }) as any;
+    expect(out.codexRateLimits.primary).toBeUndefined();
+    expect(out.codexRateLimits.secondary.windowMinutes).toBe(10080);
+    expect(out.codexRateLimits.lunaReserve.usedPercent).toBe(32);
+    expect(out.subscriptions).toHaveLength(4);
+    expect(out.subscriptions[3].until).toContain('2/3');
+    // Every board renders the reserve now (esp32/src/util/usage_rows.h), so the
+    // whitelist forwards it regardless of the connected board.
+    expect((prepareForSerial(usage) as any).codexRateLimits.lunaReserve.usedPercent).toBe(32);
   });
 });

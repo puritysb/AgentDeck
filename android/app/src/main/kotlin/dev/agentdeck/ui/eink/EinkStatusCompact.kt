@@ -111,7 +111,7 @@ private fun LimitsColumn(state: DashboardState) {
     // (a user may run only Codex). Each window carries its own stale flag.
     val limitRows = providerLimitRows(state.codexRateLimits, state.zaiRateLimits)
 
-    SectionLabel("LIMITS")
+    SectionLabel(dev.agentdeck.util.UsagePresentation.heading)
 
     if (hasLimits) {
         if (has5h) {
@@ -164,7 +164,7 @@ private fun CodexGaugeRow(row: ProviderLimitRow) {
             fontSize = 13.sp,
             lineHeight = 17.sp,
             fontFamily = FontFamily.Monospace,
-            color = gaugeColor(row.percent),
+            color = gaugeColor(row.usedPercent),
             maxLines = 1,
         )
     }

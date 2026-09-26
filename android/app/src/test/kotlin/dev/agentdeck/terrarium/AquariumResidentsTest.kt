@@ -82,4 +82,35 @@ class AquariumResidentsTest {
             assertTrue(json.getJSONArray("meshes").length() > 0)
         }
     }
+
+    @Test fun `Claude arm meshes exclude the fixed torso edges`() {
+        val bytes = RuntimeEnvironment.getApplication().assets.open("residents/claudecode.glb").use { it.readBytes() }
+        val jsonLength = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt(12)
+        val json = JSONObject(String(bytes, 20, jsonLength, Charsets.UTF_8))
+        val nodes = json.getJSONArray("nodes")
+        for (side in 0..1) {
+            val joint = (0 until nodes.length()).map { nodes.getJSONObject(it) }
+                .single { it.optString("name") == "joint_arm_$side" }
+            val arm = nodes.getJSONObject(joint.getJSONArray("children").getInt(0))
+            val primitive = json.getJSONArray("meshes").getJSONObject(arm.getInt("mesh"))
+                .getJSONArray("primitives").getJSONObject(0)
+            val positions = json.getJSONArray("accessors").getJSONObject(
+                primitive.getJSONObject("attributes").getInt("POSITION"))
+            val low = positions.getJSONArray("min")
+            val high = positions.getJSONArray("max")
+            assertTrue("Arm $side must be a narrow horizontal strip, not a full-height torso edge",
+                high.getDouble(2) - low.getDouble(2) < 0.20)
+        }
+        val flanks = (0 until nodes.length()).map { nodes.getJSONObject(it) }
+            .filter { it.optString("name").startsWith("claudecode_canonical_flank_") }
+        assertEquals(4, flanks.size)
+        for (flank in flanks) {
+            val primitive = json.getJSONArray("meshes").getJSONObject(flank.getInt("mesh"))
+                .getJSONArray("primitives").getJSONObject(0)
+            val positions = json.getJSONArray("accessors").getJSONObject(
+                primitive.getJSONObject("attributes").getInt("POSITION"))
+            assertTrue("Fixed bevel must not leave a shelf reaching to the arm tip",
+                positions.getJSONArray("max").getDouble(0) - positions.getJSONArray("min").getDouble(0) < 0.015)
+        }
+    }
 }

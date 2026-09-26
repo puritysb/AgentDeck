@@ -126,6 +126,10 @@
         },
         "sessionKey": {
           "type": "string"
+        },
+        "thinking": {
+          "description": "Per-turn override supported by the Gateway; does not patch session defaults.",
+          "type": "string"
         }
       },
       "required": [

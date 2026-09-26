@@ -154,30 +154,14 @@ private struct PixooPixelGrid: View {
 
 // MARK: - Ulanzi TC001 matrix
 //
-// Real firmware (esp32/src/ui/matrix/matrix_pages.cpp) rotates through
-// pages: AGENTS (creature sprites, renderAgents), USAGE (full-screen 5h/7d
-// percent gauges, renderUsage), CODEX (primary/secondary token-window
-// gauges, renderCodex), and a disconnect breathing pulse. USAGE and CODEX
-// both delegate to renderGaugePair(): with two windows present it cross-fades
-// first↔second on a 9s cycle (0.5s slides); a single window draws one gauge,
-// and a missing first window promotes the second. Gauge fill follows the
-// blue→amber→red severity ramp; the CODEX page paints its percent numeral
-// electric-violet CRGB(196,112,255) while the USAGE page keeps it white.
+// Firmware cycles AGENTS and the live Claude/Codex/z.ai usage pages. Each
+// usage page keeps the official provider mark beside its window/percentage,
+// alternates present windows every four seconds, and overlays agent activity.
+// This preview mirrors ONLY renderAgents: its generated 8×8 masks, state
+// colours, and subagent satellites. Usage layout and drawStateDot changes do
+// not alter the mirrored AGENTS pixels.
 //
-// This preview reproduces ONLY the AGENTS page — the firmware's exact
-// generated 8×8 alpha masks rasterized from design/brand/*.svg, its per-kind
-// state colors, and the subagent satellites (up to three cyan perimeter pixels
-// per glyph, each with a dim wire pixel toward the glyph centre) — as a single
-// static frame (no page cycling, gauge numerals, or text scroller). The
-// USAGE/CODEX gauge additions above (the
-// codex violet numeral + renderGaugePair) render on pages this preview does
-// not draw, so they leave the mirrored AGENTS pixels unchanged; they are
-// documented here so the pin bump below is a conscious "checked, does not
-// affect the AGENTS render" acknowledgement. The same applies to
-// drawStateDot's attention floor: that dot is drawn only by renderUsage and
-// renderCodex, never by renderAgents.
-//
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp d549e4712f45ec4b5802638dc35d232994e7cc37
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 4b8922490e58889795e1806d61bb3d7404cd2597
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 

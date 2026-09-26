@@ -525,6 +525,15 @@ describe('buildUsageEvent Codex plan reconciliation', () => {
       codexRateLimits,
     ] as Parameters<typeof buildUsageEvent>;
 
+  it('retires expired Luna metadata on the common wire for WiFi and serial clients', () => {
+    const expired = { usedPercent: 20, resetsAt: new Date(Date.now() - 60_000).toISOString() };
+    const live = { ...expired, resetsAt: future };
+    for (const [reserve, expected] of [[expired, undefined], [live, live]] as const) {
+      const evt = buildUsageEvent(...args({ secondary: { ...weekly, usedPercent: 100 }, lunaReserve: reserve }, undefined)) as UsageEvent;
+      expect(evt.codexRateLimits?.lunaReserve).toEqual(expected);
+    }
+  });
+
   it('voids a snapshot minted under a plan the account no longer holds', () => {
     // The exact shape a lapsed ChatGPT Plus leaves behind: the rollout still
     // carries a 94% weekly window whose resetsAt is days in the future, so

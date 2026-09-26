@@ -193,6 +193,19 @@ export class DeviceVoiceReplyRouter {
     return out;
   }
 
+  /** Resolve again after synthesis: HTTP-pull notifications need the same
+   * reconnect handling as streamed PCM. */
+  resolveTarget(armedSink: ReplySink): ReplySink {
+    let sink = armedSink.isOpen()
+      ? armedSink
+      : this.resolveLive(armedSink.deviceKey()) ?? armedSink;
+    if (!sink.capabilities().some((c) => c === 'audio_out' || c === 'audio_http_pull')) {
+      const live = this.resolveLive(armedSink.deviceKey());
+      if (live && live.capabilities().some((c) => c === 'audio_out' || c === 'audio_http_pull')) sink = live;
+    }
+    return sink;
+  }
+
   /**
    * Stream one already-synthesized WAV to a board. Consumes the arming, so a
    * single dictation yields a single spoken reply rather than narrating every
@@ -206,13 +219,7 @@ export class DeviceVoiceReplyRouter {
     // can PLAY the audio: when the armed sink does not advertise audio_out
     // (arm-time fallback while the board's WS was blinking), upgrade to the
     // board's live audio-capable transport resolved now, at stream time.
-    let sink = armedSink.isOpen()
-      ? armedSink
-      : this.resolveLive(armedSink.deviceKey()) ?? armedSink;
-    if (!sink.capabilities().includes('audio_out')) {
-      const live = this.resolveLive(armedSink.deviceKey());
-      if (live && live.capabilities().includes('audio_out')) sink = live;
-    }
+    const sink = this.resolveTarget(armedSink);
     if (this.streaming.has(sink)) return false; // one utterance at a time per board
     const parsed = pcmFromWav(wav);
     if (!parsed || !sink.isOpen()) return false;

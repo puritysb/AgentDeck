@@ -219,6 +219,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   private pluginApprovalReconcileTimer: ReturnType<typeof setInterval> | null = null;
 
   // Chat tracking for timeline events
+  private readonly personalActivity = new Set<symbol>();
   private chatStarted = false;
   private chatStartTime = 0;
   private chatToolCount = 0;
@@ -1464,6 +1465,13 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         this.pendingRpc.delete(id);
       }
 
+      // Without autoReconnect this socket was the adapter's only life: say so,
+      // or the owner holds a dead adapter that its `if (adapter) return` guard
+      // then treats as connected — the daemon wedge of 2026-09-16 and 09-26.
+      if (!this.autoReconnect && !this.shutdownRequested) {
+        this.emit('exit', 0, 0);
+        return;
+      }
       this.scheduleReconnect();
     });
 
@@ -1488,6 +1496,29 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   }
 
   // ===== Private: Request/Response =====
+
+  /** Activity starts at dispatch, including the silent model-thinking interval.
+   * The voice turn owns the bounded lifetime (completion, refusal or timeout).
+   * Separate leases prevent an unrelated/older final from hiding a newer turn. */
+  beginPersonalActivity(sessionKey: string): () => void {
+    const token = Symbol(sessionKey);
+    this.personalActivity.add(token);
+    this.emitAdapterEvent({ source: 'parser', event: 'spinner_start' });
+    return () => {
+      if (!this.personalActivity.delete(token)) return;
+      if (this.activePendingApproval()) {
+        this.rebroadcastActivePrompt();
+        return;
+      }
+      const otherChat = this.chatStarted && this.currentSessionKey !== sessionKey;
+      this.emitAdapterEvent({ source: 'parser', event: otherChat ? 'spinner_start' : 'idle' });
+    };
+  }
+
+  /** Explicit personal voice route; acknowledgement is not inferred from enqueue. */
+  sendPersonalPrompt(text: string, sessionKey: string, idempotencyKey: string, thinking?: 'off' | 'low') {
+    return this.rpcCall('chat.send', { sessionKey, message: text, idempotencyKey, ...(thinking ? { thinking } : {}) });
+  }
 
   /**
    * Typed RPC dispatch. `GatewayMethodMap` correlates the method name with
@@ -1585,6 +1616,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         const state = payload.state as string;
         const runId = payload.runId as string;
         const sessionKey = payload.sessionKey as string;
+        this.emit('voice_chat', {
+          state, runId, sessionKey, text: this.extractMessageText(payload),
+        });
 
         // Debug: log payload structure for diagnostic (delta/final only)
         if (state === 'delta' || state === 'final') {
@@ -2177,6 +2211,10 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
     const id = 'init-1';
     const message = { type: 'req' as const, id, method: 'connect', params };
+    // A socket that never completes the handshake is never `alive`, so close
+    // it: the close handler is the one path that reconnects (or, without
+    // autoReconnect, reports exit).
+    const handshakeWs = this.ws;
 
     this.pendingRpc.set(id, {
       resolve: (payload) => {
@@ -2234,7 +2272,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
       },
       reject: (err) => {
         debug('adapter:openclaw', `Handshake failed: ${err.message}`);
-        // WebSocket will close → reconnect
+        handshakeWs?.close();
       },
       method: 'connect',
     });
@@ -2244,6 +2282,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
       if (this.pendingRpc.has(id)) {
         this.pendingRpc.delete(id);
         debug('adapter:openclaw', 'Connect handshake timeout');
+        handshakeWs?.terminate();
       }
     }, OpenClawAdapter.RPC_TIMEOUT);
 
@@ -2466,6 +2505,16 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   }
 
   private emitAdapterEvent(evt: AdapterEvent): void {
+    if (evt.source === 'parser' && (evt.event === 'idle' || evt.event === 'spinner_start')) {
+      // Active permissions outrank work, including while a voice turn is open.
+      if (this.personalActivity.size > 0 && this.activePendingApproval()) {
+        this.rebroadcastActivePrompt();
+        return;
+      }
+      if (evt.event === 'idle' && this.personalActivity.size > 0) {
+        evt = { ...evt, event: 'spinner_start' };
+      }
+    }
     this.emit('event', evt);
   }
 }

@@ -6,6 +6,7 @@
 #include <FastLED.h>
 #include <WiFi.h>
 #include "config.h"
+#include "audio/mic_capture.h"
 #include "state/agent_state.h"
 
 // Korean-fallback label font. On-device (display.cpp) this is a RAM copy of
@@ -75,8 +76,9 @@ long arduino_random(long howsmall, long howbig) {
 // ── Net / device-status shims ────────────────────────────────────────────────
 // Scenes render as an online device (serial + WiFi connected). Definitions back
 // the sim/shims/net/*.h declarations.
+bool g_simSerialConnected = true;
 namespace Net {
-bool serialConnected() { return true; }
+bool serialConnected() { return g_simSerialConnected; }
 void serialWriteJsonLine(const char*) {}
 bool wifiConnected() { return true; }
 const char* wifiLocalIP() { return "192.168.1.42"; }
@@ -143,6 +145,10 @@ bool queuePhotoHttpUpload(uint8_t*, size_t, const char*, int, int) { return fals
 
 // ── Audio shims (defined in audio/mic_capture.cpp on-device) ────────────────
 // Mic-ready but never capturing: the PTT control renders in its resting state.
+const char* g_simVoiceState="wake";
+#if defined(BOARD_IPS10)
+Audio::MicFeedback g_simMicFeedback{0,80,196,0,false,false};
+#endif
 namespace Audio {
 bool micInit() { return true; }
 bool micReady() { return true; }
@@ -151,11 +157,24 @@ uint32_t micElapsedMs(uint32_t) { return 0; }
 void micStart(const char*) {}
 void micPump() {}
 void micStop(bool) {}
+const char* voiceState() { return g_simVoiceState; }
+uint16_t micLevel() { return 0; }
+#if defined(BOARD_IPS10)
+MicFeedback micFeedback() { return g_simMicFeedback; }
+#endif
+void micVoiceResult(bool) {}
+void playbackStop() {}
 // Press/sent feedback tone (audio/speaker_playback.cpp on-device). Silent here;
 // it is referenced from the voice control's event callbacks, which the sim
 // still has to link even though it never dispatches an input event.
 void playTone(uint32_t, uint32_t, float) {}
 }  // namespace Audio
+namespace WakeWord {
+static bool wakeEnabled = true;
+bool ready() { return true; }
+bool enabled() { return wakeEnabled; }
+void setEnabled(bool value) { wakeEnabled = value; }
+}
 
 // ── ES8311 codec shims (audio/es8311_codec.cpp on-device) ───────────────────
 // The IPS10 voice banner's volume steppers read and write the codec level. The

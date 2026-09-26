@@ -401,7 +401,7 @@ private fun EinkLimitsCornerCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "LIMITS",
+                    text = dev.agentdeck.util.UsagePresentation.heading,
                     fontSize = 10.sp,
                     lineHeight = 12.sp,
                     fontFamily = FontFamily.Monospace,

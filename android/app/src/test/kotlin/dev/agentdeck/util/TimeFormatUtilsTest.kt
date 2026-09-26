@@ -1,5 +1,6 @@
 package dev.agentdeck.util
 
+import dev.agentdeck.net.CodexLunaReserve
 import dev.agentdeck.net.CodexRateLimits
 import dev.agentdeck.net.CodexRateLimitWindow
 import org.junit.Assert.*
@@ -250,5 +251,45 @@ class TimeFormatUtilsTest {
         )
         assertEquals(1, rows.size)
         assertEquals("7d", rows[0].label)
+    }
+
+    // --- Luna reserve (mirror of shared/src/__tests__/usage-presentation.test.ts) ---
+
+    @Test
+    fun `codexLimitRows swaps exhausted windows for the Luna reserve read as left`() {
+        val rows = codexLimitRows(
+            CodexRateLimits(
+                primary = CodexRateLimitWindow(usedPercent = 100.0, windowMinutes = 300),
+                secondary = CodexRateLimitWindow(usedPercent = 62.0, windowMinutes = 10080),
+                lunaReserve = CodexLunaReserve(usedPercent = 32.0, resetsAt = "2099-01-01T00:00:00Z"),
+            ),
+        )
+        assertEquals(1, rows.size)
+        assertEquals("luna", rows[0].label)
+        assertTrue(rows[0].remaining)
+        assertEquals(68.0, rows[0].percent, 0.0)
+        assertEquals(32.0, rows[0].usedPercent, 0.0)
+    }
+
+    @Test
+    fun `a reported Luna reserve alone keeps the regular windows`() {
+        val limits = CodexRateLimits(
+            primary = CodexRateLimitWindow(usedPercent = 99.0, windowMinutes = 300),
+            lunaReserve = CodexLunaReserve(usedPercent = 32.0),
+        )
+        assertNull(activeLunaReserve(limits))
+        assertEquals("5h", codexLimitRows(limits).single().label)
+        // A stale (ended) exhausted window is not exhaustion either.
+        assertNull(activeLunaReserve(limits.copy(primary = CodexRateLimitWindow(usedPercent = 100.0, stale = true))))
+    }
+
+    @Test
+    fun `an expired Luna reserve restores the regular windows`() {
+        val now = java.time.Instant.parse("2026-09-24T00:00:00Z").toEpochMilli()
+        val limits = CodexRateLimits(
+            primary = CodexRateLimitWindow(usedPercent = 100.0, windowMinutes = 300),
+            lunaReserve = CodexLunaReserve(usedPercent = 32.0, resetsAt = "2026-09-23T23:00:00Z"),
+        )
+        assertNull(activeLunaReserve(limits, now))
     }
 }

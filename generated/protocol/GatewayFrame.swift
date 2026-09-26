@@ -205,6 +205,8 @@ struct ADGatewayMethodParams: Codable {
     var idempotencyKey: String?
     var message: String?
     var sessionKey: String?
+    /// Per-turn override supported by the Gateway; does not patch session defaults.
+    var thinking: String?
     var runId: String?
     var decision: ADExecApprovalDecision?
     var id: String?
@@ -231,6 +233,7 @@ struct ADGatewayMethodParams: Codable {
         case idempotencyKey = "idempotencyKey"
         case message = "message"
         case sessionKey = "sessionKey"
+        case thinking = "thinking"
         case runId = "runId"
         case decision = "decision"
         case id = "id"
@@ -277,6 +280,7 @@ extension ADGatewayMethodParams {
         idempotencyKey: String?? = nil,
         message: String?? = nil,
         sessionKey: String?? = nil,
+        thinking: String?? = nil,
         runId: String?? = nil,
         decision: ADExecApprovalDecision?? = nil,
         id: String?? = nil,
@@ -303,6 +307,7 @@ extension ADGatewayMethodParams {
             idempotencyKey: idempotencyKey ?? self.idempotencyKey,
             message: message ?? self.message,
             sessionKey: sessionKey ?? self.sessionKey,
+            thinking: thinking ?? self.thinking,
             runId: runId ?? self.runId,
             decision: decision ?? self.decision,
             id: id ?? self.id,

@@ -53,6 +53,15 @@ bool SimEink::renderToPng(const char* scene, const char* path) {
     suppressedDecisionHash = 0;
   }
 #endif
+#if defined(AGENTDECK_EPD47_UI)
+  // SIM_EPD47_PAGE=limits renders the EPD47 Limits page (reached by touch on
+  // the device) so its provider cards can be reviewed without hardware.
+  if (const char* page = std::getenv("SIM_EPD47_PAGE"))
+    if (std::strcmp(page, "limits") == 0) {
+      epd47Page = AgentDeckEpd47::Page::Limits;
+      epd47PageHoldUntilMs = g_sim_millis + 3600000;   // as a touch would hold it
+    }
+#endif
   // render() is content-hash + min-refresh-interval gated. In an --all run these
   // statics persist across scenes with millis() otherwise frozen, so advance the
   // virtual clock past the coalesce window and render twice to force a fresh draw.

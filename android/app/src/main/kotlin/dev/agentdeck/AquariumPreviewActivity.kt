@@ -95,7 +95,7 @@ class AquariumSurface(context: Context) : FrameLayout(context), Choreographer.Fr
             if (immersion > 0f) canvas.drawColor(TerrariumColors.DeepSea.copy(alpha = TerrariumRules.NATIVE_WATER_TINT * immersion).toArgb())
             depthPaint.alpha = ((1f - immersion) * 255).toInt()
             canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), depthPaint)
-            if (!viewingMode) residents?.drawLabels(canvas)
+            residents?.drawLabels(canvas, labelsVisible = !viewingMode)
         }
     }
     private var active = false

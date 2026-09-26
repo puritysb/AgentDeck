@@ -155,7 +155,7 @@ struct CollaborationPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Collaboration", systemImage: "point.3.connected.trianglepath.dotted")
+                Label(CollaborationPresentation.heading, systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 17, weight: .semibold))
                 Spacer()
                 // Badge, not a word: the existing capsule idiom (caption-size
@@ -337,7 +337,7 @@ struct CollaborationPanel: View {
         // worker counts into a fabricated total. Direct children matter too.
         let hasActiveWorkers = (session.subagents?.active ?? 0) > 0 || (session.coordination?.spawnedActive ?? 0) > 0
         let pendingJobs = session.coordination?.backgroundJobs ?? 0
-        let awaitingResults = !waiting && !working && (hasActiveWorkers || pendingJobs > 0)
+        let awaitingResults = CollaborationPresentation.phase(waiting, working, session.subagents?.active ?? 0, session.coordination?.spawnedActive ?? 0, pendingJobs) == 2
         let continuation = hasActiveWorkers ? "Session · turn closed · workers still running"
             : "Session · turn closed · waiting on \(pendingJobs) job\(pendingJobs == 1 ? "" : "s")"
         return VStack(alignment: .leading, spacing: 10) {

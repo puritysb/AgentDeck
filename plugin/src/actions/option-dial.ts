@@ -1,13 +1,8 @@
 /**
- * E2 — Claude usage dial (Stream Deck+).
- *
- * This encoder shows the Claude subscription quota on its 200×100 LCD using the
- * full-bleed level-fill gauge. The dial ROTATION cycles between views: 'triple'
- * (5H + 7D + the worst per-model scoped cap side-by-side) → '5h' → '7d' → one
- * zoom view per scoped model → 'session'. The dial PRESS requests a usage
- * refresh. It never gets commandeered for option/permission selection — that interaction
- * lives on the keypad detail view (session-slot). The UUID (`option-dial`) is
- * kept for profile/manifest stability even though the role is "Claude usage".
+ * E2 usage dial: tap to select a provider, rotate to select its view, press
+ * to refresh. Hold the touchscreen to resume activity-driven selection.
+ * Explicit choices take precedence; a collision moves the peer dial.
+ * The option-dial UUID remains stable for installed profiles.
  */
 import streamDeck, {
   action,
@@ -41,9 +36,12 @@ import {
   buildProviderUsageEncoder,
   availableUsageViews,
   getUsageDialSelections,
-  pickAutoUsageProvider,
+  availableUsageProviders,
+  resolveE2UsageProvider,
+  selectUsageDialProvider,
+  resetE2UsageProvider,
+  onUsageDialSelectionChanged,
   pickWorstScopedLimit,
-  setE2UsageProvider,
 } from '../utility-modes/usage.js';
 import type { ScopedUsageLimit } from '@agentdeck/shared';
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
@@ -72,16 +70,9 @@ function liveScopedLimits(data: UsageModeData, provider: UsageProviderId): Scope
   return data.usageStale === true ? [] : (data.scopedLimits ?? []);
 }
 
-/**
- * The auto-selected provider for E2 (#349): the most-recently-used upstream,
- * avoiding E3's current page when the live set allows — the two dials never
- * show the same provider at once. Recomputed every refresh; recorded in the
- * shared dial selections so E3's touch cycle can skip it.
- */
+/** Resolve a user-pinned provider, or follow activity while E2 is automatic. */
 function autoProvider(data: UsageModeData): UsageProviderId {
-  const p = pickAutoUsageProvider(data, getUsageDialSelections().e3);
-  setE2UsageProvider(p);
-  return p;
+  return resolveE2UsageProvider(data);
 }
 
 /** The dial-rotation view list, built dynamically: 'triple' default, the two
@@ -102,7 +93,7 @@ function toEncScoped(s?: ScopedUsageLimit): UsageEncoderScoped | undefined {
 }
 
 export function initOptionDial(_b: AgentLink): void {
-  // No bridge interaction required — refreshes ride fireUsageRefresh().
+  onUsageDialSelectionChanged(refreshClaudeUsageDials);
 }
 
 /** Called from plugin.ts when usage_update arrives. */
@@ -231,11 +222,18 @@ export class ResponseDialAction extends SingletonAction {
 
   override async onDialUp(_ev: DialUpEvent): Promise<void> {}
 
-  override async onTouchTap(_ev: TouchTapEvent): Promise<void> {
+  override async onTouchTap(ev: TouchTapEvent): Promise<void> {
     if (!isDaemonConnected()) {
       void openAgentDeckAppOrGitHub().catch(() => {});
       return;
     }
+    const data = getUsageModeData();
+    if (ev.payload.hold) { resetE2UsageProvider(data); return; }
+    const available = availableUsageProviders(data);
+    if (!available.length) return;
+    const current = autoProvider(data);
+    selectUsageDialProvider('e2', available[(available.indexOf(current) + 1) % available.length], data);
+    refreshClaudeUsageDials();
   }
 
   override onWillDisappear(ev: WillDisappearEvent): void {

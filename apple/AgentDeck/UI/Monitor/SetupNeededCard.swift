@@ -315,7 +315,7 @@ extension AgentStateHolder {
     }
 
     /// The OpenClaw setup item earns a one-click "Import token" button only when
-    /// the gateway auth failure is one a token import actually fixes. These three
+    /// the gateway auth failure is one a token import actually fixes. These two
     /// statuses all tell the user (in `IntegrationStatusEvaluator.openClawStatus`)
     /// to import/paste the shared token. Pairing / device-auth failures
     /// (`pairing_required`, `device_auth_invalid`, `auth_failed`) need the
@@ -325,7 +325,7 @@ extension AgentStateHolder {
         #if AGENTDECK_APP_STORE
         guard descriptor.id == IntegrationCatalog.openClaw.id else { return nil }
         switch state.gatewayAuthStatus {
-        case "gateway_token_missing", "token_mismatch", "connect_timeout":
+        case "gateway_token_missing", "token_mismatch":
             return .importOpenClawToken
         default:
             return nil
@@ -385,7 +385,7 @@ extension AgentStateHolder {
                 icon: descriptor.iconSystemName,
                 tint: status.tint,
                 title: descriptor.displayName,
-                hint: macHint
+                hint: status.detail ?? macHint
             )
         }
     }

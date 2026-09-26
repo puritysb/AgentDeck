@@ -1,3 +1,4 @@
+import { TERRARIUM_RULES } from '@agentdeck/shared';
 /**
  * Pixoo64 Frame Renderer — camera-based animated terrarium.
  *
@@ -112,7 +113,7 @@ function clamp(value: number, min: number, max: number): number {
 export function getUsageProviderCount(usageEvent: UsageEvent | null): number {
   if (!usageEvent) return 0;
   let count = 0;
-  if (usageEvent.usageStale !== true && usageEvent.fiveHourPercent != null) {
+  if (usageEvent.usageStale !== true && (usageEvent.fiveHourPercent != null || usageEvent.sevenDayPercent != null)) {
     count++;
   }
   const freshCodexWindow = (w: { stale?: boolean; usedPercent?: number; resetsAt?: string } | undefined) =>
@@ -175,10 +176,9 @@ function stateYForType(
       else y = clamp(baseY + 0.26, 0.60, 0.70);
       break;
   }
-  if (hudProviderCount >= 2) {
-    return Math.min(y, 0.65);
-  } else if (hudProviderCount === 1) {
-    return Math.min(y, 0.72);
+  if (hudProviderCount > 0) {
+    return Math.min(y, (64 - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight
+      - TERRARIUM_RULES.pixooUsageCreatureMargin) / 64);
   }
   return y;
 }
@@ -746,10 +746,10 @@ function drawUsageHUD(
   };
 
   const providers: Provider[] = [];
-  if (usageEvent.usageStale !== true && usageEvent.fiveHourPercent != null) {
+  if (usageEvent.usageStale !== true && (usageEvent.fiveHourPercent != null || usageEvent.sevenDayPercent != null)) {
     providers.push({
       glyph: 'claudeCode', brand: [255, 112, 76],
-      primary: { percent: usageEvent.fiveHourPercent, resetsAt: usageEvent.fiveHourResetsAt },
+      primary: usageEvent.fiveHourPercent == null ? undefined : { percent: usageEvent.fiveHourPercent, resetsAt: usageEvent.fiveHourResetsAt },
       secondary: usageEvent.sevenDayPercent == null ? undefined : {
         percent: usageEvent.sevenDayPercent, resetsAt: usageEvent.sevenDayResetsAt,
       },
@@ -783,14 +783,9 @@ function drawUsageHUD(
     });
   }
   if (providers.length === 0) return;
-  // The 64px panel budgets exactly two 7px provider rows (50-56, 57-63). With
-  // all three providers live, the two established seats win and z.ai stays on
-  // the surfaces that can compose three (D200H strip, glance rows, dashboard
-  // rail) — geometry is not renegotiated per provider count.
-  const seatedProviders = providers.slice(0, 2);
-
+  const seatedProviders = providers;
   const timeColor: RGB = [0x60, 0x70, 0x80];
-  const firstY = seatedProviders.length > 1 ? 50 : 57;
+  const firstY = 64 - seatedProviders.length * TERRARIUM_RULES.pixooUsageRowHeight;
 
   function drawCreatureMarker(provider: Provider, rowY: number): void {
     const mask = OFFICIAL_DOT_GLYPHS[provider.glyph];
@@ -1361,7 +1356,7 @@ export function renderFrame(
 
   // Crayfish routing — clamp Y when Usage HUD is active so sitting position stays visible
   const cfX = CF_DEFAULT_X;
-  const cfY = hudProviderCount >= 2 ? 0.65 : hudProviderCount === 1 ? 0.72 : CF_DEFAULT_Y;
+  const cfY = hudProviderCount > 0 ? (64 - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight - TERRARIUM_RULES.pixooUsageCreatureMargin) / 64 : CF_DEFAULT_Y;
   const crayfishRouting = hasGateway && (sessions?.some(s =>
     s.agentType === 'openclaw' && s.state === 'processing'
   ) ?? false);
@@ -1443,7 +1438,7 @@ export function renderFrame(
   }
 
   // Tetras — update always, clamped above HUD when present
-  const tetraMaxY = hudProviderCount >= 2 ? 46 : hudProviderCount === 1 ? 52 : (SAND_TOP - 3);
+  const tetraMaxY = hudProviderCount > 0 ? 64 - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight - 4 : (SAND_TOP - 3);
   updateTetras(animFrame, surfaceY, tetraMaxY);
 
   // Surface waves — use effectiveState so daemon doesn't suppress wave animation

@@ -47,6 +47,19 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Apple and Android: show OpenClaw setup guidance only for explicit pairing or authentication failures. Reachability, reconnecting and unknown status no longer imply missing approval; connection timeouts no longer recommend replacing the token. Android now receives Gateway authentication status and displays actionable guidance.
+
+- Apple and Android 3D dashboards: emphasize working agents with high-contrast WORKING badges, visible activity bars and stronger motion across all six creature types. Keep activity cues visible in viewing mode, respect reduced motion, and separate selection from the creature silhouette. Repair Claude Code's arm geometry, including leftover bevel fragments and overlapping cut surfaces that appeared broken during movement. Native activity tuning is generated from a shared definition.
+
+- Stream Deck Classic/XL: use the full bottom row for subscription usage. Claude 5H/7D, one Codex window and two z.ai windows fit together on Classic without MORE; page only when the physical row overflows.
+- Stream Deck+: select Claude, Codex or z.ai on either usage LCD. Explicit selections adjust the other dial to avoid duplication and survive plugin restart; hold E2 to resume automatic selection.
+- Pixoo64 (Node and Swift daemons): display all three usage providers together, reserve room above their rows, and retain Claude when only its seven-day window is reported.
+- TC001: retain work status while cycling provider usage with official marks, actual window-length labels and MCP quantity labels; omit stale Claude usage and clear retired z.ai readings on disconnect.
+
+These multi-provider changes are next-release candidates ([PR #379](https://github.com/puritysb/AgentDeck/pull/379)). They are installed locally and user-confirmed, but have not been publicly released. Publication remains on hold while more improvements are collected; integrate them with the existing [consolidated candidate #378](https://github.com/puritysb/AgentDeck/pull/378) and reassess channel versions at the eventual release cut.
+
+- CLI daemon startup allows up to 90 seconds on macOS for a silent preferred-port conflict (20 seconds elsewhere), retrying the actual listener and rechecking peers before fallback. This mitigates delayed app-to-CLI handoff without moving already connected fallback clients; hardware validation remains tracked in #370.
+
 - ESP32: compact horizontal usage gauges on 86 Box, IPS 3.5 and round AMOLED; visible GLM usage on IPS 10 and NM-EPD-420; proportional card fills on TTGO; five-window layouts without clipping or array overflow on T-Display Pro.
 - ESP32 firmware delivery remains deferred while IPS10 work is in progress.
 

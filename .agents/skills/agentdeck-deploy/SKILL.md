@@ -18,8 +18,8 @@ Parse the argument string to determine target(s). Multiple targets can be combin
 | `pantone` / `pantone6` | Pantone 6 only |
 | `crema` | Crema S only |
 | `lenovo` / `tablet` / `tab` | Lenovo Tab only |
-| `ios` | All iOS devices (iPad + iPhone) |
-| `iphone` | iPhone XR only |
+| `ios` | Connected routine iOS targets (iPad Air M2 + iPhone 14 Pro Max) |
+| `iphone` | iPhone 14 Pro Max only |
 | `ipad` | iPad Air M2 only |
 | `macos` / `mac` | macOS app only |
 | `apple` | iOS + macOS |
@@ -47,8 +47,12 @@ Parse the argument string to determine target(s). Multiple targets can be combin
 | Device | devicectl ID | xcodebuild destination | Type |
 |--------|-------------|----------------------|------|
 | **iPad Air 11" (M2)** | `8B71247D-A740-535E-8B2C-6FE9A196F342` | `platform=iOS,id=00008112-001608A02ED2601E` | WiFi/USB |
-| **iPhone XR** | `E5F3252C-69A4-5AC9-9E9A-BC2B328D24E3` | `platform=iOS,id=E5F3252C-69A4-5AC9-9E9A-BC2B328D24E3` | WiFi/USB |
+| **iPhone 14 Pro Max** | `00008120-001169AA11D8C01E` | `platform=iOS,id=00008120-001169AA11D8C01E` | WiFi/USB |
 | **macOS** | — | `platform=macOS` | Local |
+
+iPhone XR is retired from routine test and deploy targets. Do not include it in
+`all`, `ios`, or `iphone` runs even if it appears in device discovery; target it
+only when the user explicitly requests that device.
 
 ### ESP32 Boards
 
@@ -251,13 +255,39 @@ pio run -e <environment> -t upload --upload-port <port>
 **86 Box CH340 fallback**: If PIO upload fails at high baud (chip stops responding), build separately then flash with esptool at 115200:
 ```bash
 pio run -e box_86  # build only
+BOOT_APP0=~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
 ~/.platformio/penv/bin/esptool --chip esp32s3 --port <port> --baud 115200 \
   --before default-reset --after hard-reset write-flash -z \
-  --flash-mode dio --flash-freq 80m --flash-size 8MB \
+  --flash-mode dio --flash-freq 80m --flash-size 16MB \
   0x0 .pio/build/box_86/bootloader.bin \
   0x8000 .pio/build/box_86/partitions.bin \
+  0xe000 "$BOOT_APP0" \
   0x10000 .pio/build/box_86/firmware.bin
 ```
+The flash size must match `board_upload.flash_size` (16MB since the 2026-07-05
+dual-OTA migration): `8MB` patches the bootloader header below the partition table
+and the board boot-loops on `partition 3 invalid ... exceeds flash chip size`.
+`boot_app0.bin` resets otadata; without it the bootloader keeps booting the older
+OTA slot and the board reports the previous build (both measured 2026-09-26).
+
+**Stray serial readers**: with the Node daemon stopped, the macOS AgentDeck app's
+Swift daemon opens the boards' serial ports; two readers on one TTY show up as
+esptool "serial noise"/checksum failures. Quit the app (or keep the Node daemon up
+and use its `/esp32/serial/suspend` lease) before a USB write, and reopen it after.
+
+**IPS10 USB recovery**: identify the current CH340 port from `device_info`; the
+fixed port in platformio.ini may be stale. Python esptool 5.3 with
+`--before default-reset --after hard-reset` and its default stub works at 460800
+(measured 2026-09-26, P4 rev1.3). Do not reuse the historical no-reset/no-stub
+recipe. Use 16MB/DIO/40MHz, bootloader at `0x2000`, partitions at `0x8000`,
+`boot_app0.bin` at `0xe000`, firmware at `0x10000`. Browser flashing is still
+unverified. Suspend serial with a lease while keeping the Node daemon running.
+
+**Boards with OTA**: TRMNL re-enumerates to a download node. Once a board
+has a dual-OTA partition table, `agentdeck esp32-ota <board> -e <env> --build`
+over WiFi is the simpler path; confirm the running build by a direct
+`device_info` read under a serial lease — the daemon's device list can keep
+reporting the previous build after an OTA.
 
 After flash: USB re-plug required for JTAG boards (IPS 3.5", Round AMOLED).
 
@@ -292,6 +322,7 @@ cd /Users/puritysb/github/AgentDeck/esp32
   --flash-mode dio --flash-freq 40m --flash-size 8MB \
   0x1000 .pio/build/led8x32/bootloader.bin \
   0x8000 .pio/build/led8x32/partitions.bin \
+  0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
   0x10000 .pio/build/led8x32/firmware.bin
 ```
 

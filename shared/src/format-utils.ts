@@ -320,7 +320,7 @@ export function codexWindowsBeside<T>(
  * windows, ahead of Codex — always, whether or not it is currently binding.
  * See `scopedLimitClaimsUsageKey` for why placement and rank are separate.
  */
-export const USAGE_STRIP_ORDER = ['claude', 'scoped', 'codex', 'credits'] as const;
+export const USAGE_STRIP_ORDER = ['claude', 'scoped', 'codex', 'zai', 'credits'] as const;
 export type UsageStripSlot = typeof USAGE_STRIP_ORDER[number];
 
 /** Display rank of a usage-strip reading. Lower sorts left. */

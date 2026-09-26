@@ -200,7 +200,13 @@ export class ConnectionManager extends EventEmitter implements AgentLink {
         try {
           const data = readFileSync(daemonFile, 'utf-8');
           const info = JSON.parse(data) as { port: number; pid: number };
-          try { process.kill(info.pid, 0); } catch { continue; }
+          if (!Number.isSafeInteger(info.pid) || info.pid <= 0 ||
+              !Number.isInteger(info.port) || info.port < 1 || info.port > 65535) continue;
+          try { process.kill(info.pid, 0); } catch (err) {
+            // Access denial (e.g. an elevated Windows daemon) is not proof of
+            // absence. Let the bounded WebSocket handshake judge reachability.
+            if ((err as NodeJS.ErrnoException).code === 'ESRCH') continue;
+          }
           out.push({ file: daemonFile, port: info.port });
         } catch {
           continue;

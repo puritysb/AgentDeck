@@ -64,7 +64,7 @@ lv_obj_t* aquariumCreate() {
     // Create the living scene. IPS10 uses the sprite/dirty-rect "office" (cheap on the big
     // panel — only moving agents flush); other boards keep the per-pixel aquarium terrarium.
 #if defined(BOARD_IPS10)
-    Office::init(screen);
+    // IPS10 workspace owns the whole display; no decorative office behind it.
 #else
     Terrarium::init(screen);
 #endif
@@ -285,7 +285,7 @@ void aquariumUpdate(float dt) {
 #endif
     if (renderScene) {
 #if defined(BOARD_IPS10)
-        Office::update(dt);
+        // Workspace updates bounded LVGL widgets in HUD::update().
 #else
         Terrarium::render(dt);
 #endif
@@ -304,6 +304,11 @@ void aquariumUpdate(float dt) {
 }
 
 void aquariumSetConnectionStatus(ConnOverlayStatus status) {
+#if defined(BOARD_IPS10)
+    // The workspace retains inspectable last-known work with an offline banner.
+    // Do not cover the whole working surface during a temporary reconnect.
+    return;
+#endif
     if (!connScrim || !connStatusLabel) return;
 
     // Diagnostic: scrim transitions are the prime suspect for "black screen"

@@ -794,6 +794,13 @@ export interface DeviceInfoMessage {
   /** Raw esp_reset_reason_t numeric code for cases not covered by resetReason. */
   resetReasonCode?: number;
   ip?: string;
+  /**
+   * WiFi signal strength in dBm (WiFi.RSSI()), emitted only while associated.
+   * The one link-quality number a board can report about itself: without it a
+   * weak radio is indistinguishable from a daemon-side fault (2026-09-26 round
+   * AMOLED: 80% ping loss vs 0-15% on its neighbours). Absent on older firmware.
+   */
+  rssiDbm?: number;
   otaSupported?: boolean;
   otaSlotCount?: number;
   otaSlotSize?: number;

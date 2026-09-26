@@ -187,6 +187,12 @@ export class BridgeClient extends EventEmitter implements AgentLink {
       });
 
       this.ws.on('ping', () => {
+        if (gen !== this._connectGeneration) return;
+        this.markActivity();
+      });
+
+      this.ws.on('pong', () => {
+        if (gen !== this._connectGeneration) return;
         this.markActivity();
       });
 

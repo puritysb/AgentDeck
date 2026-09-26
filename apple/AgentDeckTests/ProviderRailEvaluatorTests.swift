@@ -9,6 +9,26 @@ import XCTest
 
 final class ProviderRailEvaluatorTests: XCTestCase {
 
+    func testOpenClawReachableDoesNotInventApproval() {
+        var s = DashboardState()
+        s.gatewayAvailable = true
+        for status in [nil, "gateway_not_found", "future_status", "gateway_reachable", "reconnecting", "connect_timeout"] as [String?] {
+            s.gatewayAuthStatus = status
+            XCTAssertFalse(IntegrationStatusEvaluator.openClawStatus(state: s).needsAttention, "\(status ?? "nil")")
+        }
+        s.gatewayConnected = true
+        s.gatewayAuthStatus = nil
+        XCTAssertEqual(IntegrationStatusEvaluator.openClawStatus(state: s), .connected(detail: "Paired through Gateway"))
+    }
+
+    func testOpenClawExplicitAuthFailuresStillRequestAction() {
+        var s = DashboardState()
+        for status in ["approval_pending", "pairing_required", "gateway_token_missing", "token_mismatch", "device_auth_invalid", "auth_failed", "unsupported_protocol"] {
+            s.gatewayAuthStatus = status
+            XCTAssertTrue(IntegrationStatusEvaluator.openClawStatus(state: s).needsAttention, status)
+        }
+    }
+
     // MARK: - Claude
 
     func testClaudeBothOn() {

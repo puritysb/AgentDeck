@@ -1,5 +1,6 @@
 package dev.agentdeck.util
 
+import dev.agentdeck.net.CodexLunaReserve
 import dev.agentdeck.net.CodexRateLimits
 import dev.agentdeck.net.ZaiRateLimits
 import dev.agentdeck.net.ZaiWindow
@@ -91,7 +92,13 @@ data class ProviderLimitRow(
      *  snapshot of a still-live window keeps its last true percent, but a weekly
      *  window's countdown says nothing about when that percent was measured. */
     val footnote: String? = null,
-)
+    /** `percent` is what REMAINS (the Codex Luna reserve), not what is used.
+     *  Renderers fill by it and colour by [usedPercent]. */
+    val remaining: Boolean = false,
+) {
+    /** The consumed share, whichever way [percent] reads — the colour ramp input. */
+    val usedPercent: Double get() = if (remaining) 100.0 - percent else percent
+}
 
 /**
  * Compact window label from a duration in minutes: whole days → "Nd", whole
@@ -116,6 +123,16 @@ fun windowLabel(minutes: Int?): String {
  */
 fun codexLimitRows(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMillis()): List<ProviderLimitRow> {
     if (limits == null) return emptyList()
+    // An exhausted account window hands the Codex rows to the Luna reserve,
+    // read as what is LEFT — the cross-surface rule (UsagePresentation).
+    activeLunaReserve(limits, nowMs)?.let { luna ->
+        return listOf(
+            ProviderLimitRow(
+                "codex", "luna", (100.0 - luna.usedPercent).coerceIn(0.0, 100.0),
+                luna.resetsAt, false, remaining = true,
+            ),
+        )
+    }
     return buildList {
         limits.primary?.let { p ->
             val pct = p.usedPercent
@@ -140,6 +157,25 @@ fun codexLimitRows(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMil
             }
         }
     }
+}
+
+/**
+ * The Luna reserve while it replaces the account windows — mirror of
+ * `selectedLunaReserve` (shared/src/usage-presentation.ts) with the generated
+ * [UsagePresentation.lunaActive] predicate. A reported reserve alone is not
+ * exhaustion: only a live account window at 100% selects it.
+ */
+fun activeLunaReserve(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMillis()): CodexLunaReserve? {
+    val reserve = limits?.lunaReserve ?: return null
+    fun epoch(iso: String?): Long? = iso?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
+    if (epoch(reserve.resetsAt)?.let { it <= nowMs } == true) return null
+    fun live(w: dev.agentdeck.net.CodexRateLimitWindow?): Double {
+        val used = w?.usedPercent ?: return -1.0
+        if (w.stale == true) return -1.0
+        if (epoch(w.resetsAt)?.let { it <= nowMs } == true) return -1.0
+        return used
+    }
+    return reserve.takeIf { UsagePresentation.lunaActive(live(limits.primary), live(limits.secondary), it.usedPercent) }
 }
 
 /**

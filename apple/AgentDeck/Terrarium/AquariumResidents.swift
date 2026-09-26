@@ -153,11 +153,18 @@ final class AquariumResidents {
                 resident.addChild(body)
                 body.generateCollisionShapes(recursive: true)
                 resident.components.set(InputTargetComponent())
-                let focus = ModelEntity(mesh: .generateSphere(radius: 0.63), materials: [UnlitMaterial(color: nativeColor(TerrariumColors.tetraNeon).withAlphaComponent(0.16))])
+                // Keep selection outside the silhouette: a rear glow can peek
+                // through articulated limbs and look like broken geometry.
+                let focus = Entity()
                 focus.name = "focus"
-                focus.scale = [1, 1, 0.05]
-                focus.position.z = -0.65
+                for side: Float in [-1, 1] {
+                    let rail = ModelEntity(mesh: .generateBox(size: [TerrariumRules.nativeActivitySelectionWidth, TerrariumRules.nativeActivitySelectionHeight, 0.008]),
+                        materials: [UnlitMaterial(color: nativeColor(TerrariumColors.tetraNeon), applyPostProcessToneMap: false)])
+                    rail.position = [side * TerrariumRules.nativeActivitySelectionX, 0, 0.42]
+                    focus.addChild(rail)
+                }
                 resident.addChild(focus)
+                resident.addChild(makeActivityIndicator())
                 resident.position = targets[item.id]!
                 root.addChild(resident)
                 residents[item.id] = resident
@@ -168,6 +175,8 @@ final class AquariumResidents {
                 joints[item.id] = collect(body)
             }
             guard let resident = residents[item.id] else { continue }
+            // Canonical state controls visibility immediately, even while paused.
+            resident.findEntity(named: "activity")?.isEnabled = item.activity == .working
             resident.scale = .init(repeating: size)
             if !animate { resident.position = targets[item.id]! }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
@@ -195,7 +204,7 @@ final class AquariumResidents {
             motion.fatigue += ((item.activity == .error ? 1 : 0) - motion.fatigue) * blend
             // Integrate phase rather than multiplying time by a state-dependent rate.
             // State transitions and changes in the roster must never snap a pose.
-            motion.phase += Float(dt) * (0.65 + motion.effort * 1.7)
+            motion.phase += Float(dt) * (TerrariumRules.nativeActivityIdleRate + motion.effort * TerrariumRules.nativeActivityWorkRate)
             let phase = motion.phase
             motions[item.id] = motion
             // A short power stroke followed by a longer recovery. The same stroke
@@ -206,9 +215,9 @@ final class AquariumResidents {
             let residentSize = entity.scale.x
             // Bottom dwellers pace horizontally with planted feet. No vertical
             // sine wave, spring settling, roll, or whole-body scale at contact.
-            target.x += sin(phase * 0.5) * residentSize * (grounded ? motion.effort * 0.20 : 0.25)
+            target.x += sin(phase * 0.5) * residentSize * (grounded ? motion.effort * TerrariumRules.nativeActivityGroundTravel : 0.18)
             if !grounded {
-                target.x += workSwing * residentSize * 0.16
+                target.x += workSwing * residentSize * TerrariumRules.nativeActivityWaterTravel
                 target.z += sin(phase * 0.5) * 0.12 + stroke * residentSize * 0.24
             }
             if stroke > 0.001 {
@@ -217,12 +226,12 @@ final class AquariumResidents {
             entity.position += (target - entity.position) * blend
             if grounded { entity.position.y = target.y }
             if let body = entity.findEntity(named: "body") {
-                let yaw = sin(phase * 0.5) * (grounded ? motion.effort * 0.24 : 0.35)
+                let yaw = sin(phase * 0.5) * (grounded ? motion.effort * TerrariumRules.nativeActivityGroundYaw : 0.20 + motion.effort * TerrariumRules.nativeActivityWorkYaw)
                 let orientation = simd_quatf(angle: yaw, axis: [0,1,0])
-                    * simd_quatf(angle: grounded ? 0 : motion.fatigue * 0.16 + workSwing * 0.18, axis: [1,0,0])
-                    * simd_quatf(angle: grounded ? 0 : -workSwing * 0.16, axis: [0,0,1])
+                    * simd_quatf(angle: grounded ? 0 : motion.fatigue * 0.16 + workSwing * TerrariumRules.nativeActivityWorkYaw, axis: [1,0,0])
+                    * simd_quatf(angle: grounded ? 0 : -workSwing * TerrariumRules.nativeActivityWorkRoll, axis: [0,0,1])
                 body.orientation = simd_slerp(body.orientation, orientation, blend)
-                let breath = grounded ? Float(0) : sin(phase * 1.3) * 0.009 + workSwing * 0.075
+                let breath = grounded ? Float(0) : sin(phase * 1.3) * 0.009 + workSwing * TerrariumRules.nativeActivityWorkBreath
                 body.scale = [1 + breath, 1 - breath * 0.6, 1 + breath]
             }
             for (index, pose) in (joints[item.id] ?? []).enumerated() {
@@ -235,11 +244,16 @@ final class AquariumResidents {
                     // Alternate original-foot steps; swing feet only rise above rest.
                     let number = Int(name.split(separator: "_").last ?? "0") ?? 0
                     let stride = sin(phase * 2 + Float(number % 2) * .pi)
-                    joint.position.y += max(0, stride) * 0.045 * motion.effort
+                    joint.position.y += max(0, stride) * TerrariumRules.nativeActivityFootLift * motion.effort
                     joint.orientation = pose.rest.rotation * simd_quatf(angle: stride * 0.12 * motion.effort, axis: [0,1,0])
                 } else {
                     let lift = motion.attention * 0.40 - motion.fatigue * 0.25
                     joint.orientation = pose.rest.rotation * simd_quatf(angle: side * (lift + wave * 0.025 + motion.effort * (0.20 + sin(phase) * 0.58)), axis: [0,0,1])
+                }
+            }
+            if item.activity == .working, let indicator = entity.findEntity(named: "activity") {
+                for (index, bar) in indicator.children.enumerated() {
+                    bar.scale.y = TerrariumRules.nativeActivityBarMinimum + TerrariumRules.nativeActivityBarRange * (0.5 + 0.5 * sin(phase * TerrariumRules.nativeActivityBarRate + Float(index) * TerrariumRules.nativeActivityBarPhase))
                 }
             }
             // Only awaiting attention pulses; other status colors stay steady.
@@ -313,26 +327,51 @@ final class AquariumResidents {
         return nil
     }
 
+    /// A small equalizer beside (never behind) the body works for every provider.
+    /// It remains visible in viewing mode and frozen under Reduce Motion.
+    private func makeActivityIndicator() -> Entity {
+        let group = Entity()
+        group.name = "activity"
+        for index in 0..<Int(TerrariumRules.nativeActivityBarCount) {
+            let bar = ModelEntity(mesh: .generateBox(size: [TerrariumRules.nativeActivityBarWidth, TerrariumRules.nativeActivityBarHeight, 0.012], cornerRadius: TerrariumRules.nativeActivityBarRadius),
+                materials: [UnlitMaterial(color: nativeColor(DesignTokens.Tide.s50), applyPostProcessToneMap: false)])
+            bar.position = [TerrariumRules.nativeActivityBarX + Float(index) * TerrariumRules.nativeActivityBarSpacing, TerrariumRules.nativeActivityBarY, 0.44]
+            group.addChild(bar)
+        }
+        return group
+    }
+
     private func makeLabel(_ title: String, activity: AquariumResident.Activity, helpers: Int) -> Entity {
         let group = Entity()
         group.name = "label"
-        let backing = ModelEntity(mesh: .generateBox(size: [2.05, 0.48, 0.008], cornerRadius: 0.06),
-            materials: [UnlitMaterial(color: nativeColor(TerrariumColors.deepSea), applyPostProcessToneMap: false)])
-        backing.position = [0, 0.80, 0.38]
-        group.addChild(backing)
+        let active = activity == .working
         let color: Color = switch activity {
         case .waiting: DesignTokens.Status.awaiting
         case .working: DesignTokens.Status.processing
         case .error: DesignTokens.Status.error
         case .idle: DesignTokens.Status.idle
         }
+        let backing = ModelEntity(mesh: .generateBox(size: [2.05, 0.58, 0.008], cornerRadius: 0.06),
+            materials: [UnlitMaterial(color: nativeColor(TerrariumColors.deepSea), applyPostProcessToneMap: false)])
+        backing.position = [0, 0.83, 0.40]
+        group.addChild(backing)
+        if active {
+            let badge = ModelEntity(mesh: .generateBox(size: [1.95, 0.26, 0.008], cornerRadius: 0.04),
+                materials: [UnlitMaterial(color: nativeColor(color), applyPostProcessToneMap: false)])
+            badge.name = "working-badge"
+            badge.position = [0, 0.70, 0.42]
+            group.addChild(badge)
+        }
         for (index, text) in [title, activity.rawValue + (helpers > 0 ? " · \(helpers) agents" : "")].enumerated() {
-            let mesh = MeshResource.generateText(text, extrusionDepth: 0.002, font: .systemFont(ofSize: index == 0 ? 0.16 : 0.105))
-            let label = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: nativeColor(index == 0 ? TerrariumColors.hudText : color), applyPostProcessToneMap: false)])
+            let mesh = MeshResource.generateText(text, extrusionDepth: 0.002,
+                font: .init(name: index == 1 && active ? "IBMPlexSans-Bold" : "IBMPlexSans", size: 0.16)
+                    ?? .systemFont(ofSize: 0.16, weight: index == 1 ? .bold : .regular))
+            let ink = index == 0 ? TerrariumColors.hudText : active ? DesignTokens.Ink.s900 : color
+            let label = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: nativeColor(ink), applyPostProcessToneMap: false)])
             let bounds = label.visualBounds(relativeTo: label)
-            let fit = min(1, 1.9 / max(0.01, bounds.extents.x))
+            let fit = min(1, 1.82 / max(0.01, bounds.extents.x))
             label.scale = .init(repeating: fit)
-            label.position = [-bounds.center.x * fit, index == 0 ? 0.83 : 0.64, 0.40]
+            label.position = [-bounds.center.x * fit, (index == 0 ? 0.96 : 0.70) - bounds.center.y * fit, 0.44]
             group.addChild(label)
         }
         return group

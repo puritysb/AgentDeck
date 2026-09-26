@@ -1190,6 +1190,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         timelineVersion += 1
         // Preserve lastKnownState for offline display
         state.bridgeConnected = false
+        state.gatewayAuthStatus = nil
+        state.gatewayConnected = false
+        state.gatewayAvailable = false
         state.mlxResidency = nil
         if var ollama = state.ollamaStatus {
             ollama.residency = ModelResidency(known: false, models: [])

@@ -2436,7 +2436,8 @@ program
                 const ota = dev.otaSupported === true
                   ? ` OTA ${formatBytes(dev.otaSlotSize)}`
                   : dev.otaReason ? ` OTA no:${dev.otaReason}` : '';
-                lines.push(`                 ${board}${ver}${hash}${ota} @ ${dev.port}`);
+                const rssi = typeof dev.rssiDbm === 'number' ? ` rssi ${dev.rssiDbm}dBm` : '';
+                lines.push(`                 ${board}${ver}${hash}${ota}${rssi} @ ${dev.port}`);
               }
             } else {
               const portInfo = ports.length ? ` (${ports.join(', ')})` : '';
@@ -2460,7 +2461,8 @@ program
               // Single-path: a board also live on USB serial is driven over
               // serial; its WiFi link is a hot standby (no duplicate traffic).
               const transport = dev.serialActive ? ' [serial-active · wifi standby]' : '';
-              lines.push(`                 ${board}${ver}${hash}${product}${ota}${stale}${transport} @ ${dev.ip ?? 'wifi'}`);
+              const rssi = typeof dev.rssiDbm === 'number' ? ` rssi ${dev.rssiDbm}dBm` : '';
+              lines.push(`                 ${board}${ver}${hash}${product}${ota}${rssi}${stale}${transport} @ ${dev.ip ?? 'wifi'}`);
             }
             total += devices.length;
           }

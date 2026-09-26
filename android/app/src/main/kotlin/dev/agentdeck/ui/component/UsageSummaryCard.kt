@@ -111,8 +111,10 @@ fun UsageSummaryCard(
                             label = row.label,
                             percent = row.percent,
                             resetAt = if (row.stale || row.footnote != null) null else row.resetIso,
-                            suffix = row.footnote ?: if (row.stale) "stale" else null,
+                            // The Luna reserve reads as what is LEFT.
+                            suffix = row.footnote ?: if (row.stale) "stale" else if (row.remaining) "${row.percent.toInt()}% left" else null,
                             agentType = row.agentType,
+                            remaining = row.remaining,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -194,12 +196,16 @@ private fun CompactGauge(
     // A non-binding per-model scoped cap: render neutral, never the critical ramp,
     // regardless of percent (issue #99 — inactive ≠ same critical treatment).
     muted: Boolean = false,
+    // `percent` is what remains (the Codex Luna reserve): the bar fills by it,
+    // the colour ramp reads the used complement.
+    remaining: Boolean = false,
 ) {
     val fraction = (percent / 100.0).coerceIn(0.0, 1.0).toFloat()
+    val used = if (remaining) 100.0 - percent else percent
     val color = when {
         muted -> MaterialTheme.colorScheme.onSurfaceVariant
-        percent >= 90 -> AgentDeckColors.Red
-        percent >= 70 -> AgentDeckColors.Amber
+        used >= 90 -> AgentDeckColors.Red
+        used >= 70 -> AgentDeckColors.Amber
         else -> AgentDeckColors.Green
     }
 

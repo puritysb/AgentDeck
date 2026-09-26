@@ -274,3 +274,57 @@ cannot acknowledge the action, and after 15 seconds it is marked unconfirmed.
 Native interaction checks use the production LVGL renderers, covering queue
 reordering, changed options, offline input, pinned results, ended sessions, and
 pagination. These screens use bounded reusable request snapshots and queue state.
+
+## Desk awareness (2026-09-26)
+
+The user's primary need is to see progress while working without switching the
+desktop screen. Agent control is already comfortable on the desktop. Therefore
+adding more approval pages or using every peripheral is not the goal. The
+current Focus Strip and Companion Knob already have many controls; the proposed
+change is to make their default glance useful without any interaction.
+
+| Surface | Primary question | Proposed default | Optional interaction |
+| --- | --- | --- | --- |
+| T-Display-S3-Pro | Is my chosen task still moving? | One pinned task, latest observed activity, activity age, waiting reason, retained completion | Tap to pin or inspect the latest result; no automatic page cycling |
+| T-Embed CC1101 | Which parallel task needs a glance next? | Stable session status ring and one readable selected task | Turn to inspect sessions without stealing desktop focus; press to pin the local view; voice capture remains optional |
+| EPD47 | What changed across my work? | Stable task sheet: current tasks, blocked reasons, recent completed results, last update time | Deliberate detail view; refresh on meaningful changes, not every tool event |
+| Other e-ink | What should remain visible all day? | Distinct task groups or a retained daily work summary; avoid duplicating the same fleet overview everywhere | Manual page change only where needed |
+| iDotMatrix | Does any task need me? | A small count plus a legible state symbol: attention first, otherwise active tasks, then recent completion | None required; omit tiny quota rails from this proposed mode |
+| Timebox Mini | Can I keep concentrating? | A simple, stable attention beacon with a distinct disconnected state | None; transient completion acknowledgement rather than endless decorative animation |
+
+The useful data contract is **observed activity**, not a fabricated completion
+percentage: project/task identity, last observed phase, last activity timestamp,
+waiting reason when known, a retained result, and freshness/disconnection.
+"No activity observed for 2m" must not assert that a model is hung; a test runner
+or a long reasoning interval can be silent. Idle, completed, disconnected and
+unknown must stay distinct. A completion indication should survive long enough
+to be noticed, and new activity should not silently replace a pinned result.
+
+The test of this proposal is whether the user can answer "which task, what
+changed, do I need to act?" with a one-second glance. Prototype the S3-Pro and
+one LED beacon first; compare against the existing modes before expanding.
+T-Embed's NFC/IR/CC1101 should only earn new work from a concrete repeated need;
+peripheral availability alone does not justify another interaction to learn.
+Implemented for the desk fleet on 2026-09-26: the S3-Pro boots into the landscape
+strip even with a camera shield (CAM remains explicit), pins the initial task,
+shows locally observed activity age, and retains actual response events.
+T-Embed defaults to all sessions, gives activity text most of the screen, and
+opens detail locally without publishing desktop focus. Its press opens a stable
+local detail view; it is not a new pin/unpin toggle. Existing deliberate action
+menus remain available there.
+
+EPD47 HOME uses the right column for three session summaries and has an explicit
+LIMITS button. All three e-ink renderers restrict the recent-results strip to
+response events rather than requests/tool activity. Existing refresh cadence
+and manual page holds remain in force.
+
+The Node daemon now serves a native count/status view at 32 pixels and a quiet
+signal glyph at 11 pixels. Waiting takes precedence over errors, then explicit
+results retained for 90 seconds, then working/idle; only waiting pulses. Missing
+roster information is distinct from idle, and transport failure retains the
+existing disconnected path. The old aquarium/brand renderers remain available
+internally and Pixoo64 is unchanged. Swift-native BLE rendering has not adopted
+this mode; the installed desk runs the Node daemon.
+
+Dedicated daily task groups and cross-session result acknowledgement remain
+future options, rather than inferred group assignments.

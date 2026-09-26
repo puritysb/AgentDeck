@@ -265,14 +265,14 @@ describe('buildSessionDeck list-view usage tiles', () => {
     expect(deck.get(STRIP_R)!.svg).toContain('∞');
   });
 
-  it('replaces the Codex windows with one LUNA tile while a reserve is reported', () => {
+  it('replaces the Codex windows with one LUNA tile while account quota is exhausted', () => {
     // Same full Codex report as the compaction case, plus a reserve: the two
     // account windows stand down — the reserve is the quota that binds — and
     // exactly one LUNA tile takes their place. Claude readings are untouched.
     const withLuna = {
       codexRateLimits: {
         primary: { usedPercent: 30, windowMinutes: 300, resetsAt: undefined },
-        secondary: { usedPercent: 10, windowMinutes: 10080, resetsAt: undefined },
+        secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: undefined },
         planType: 'plus',
         lunaReserve: { usedPercent: 32, regularResetsAt: '2099-01-01T00:00:00Z', available: true },
       },
@@ -291,7 +291,7 @@ describe('buildSessionDeck list-view usage tiles', () => {
     // The displaced windows' percents render nowhere on the strip.
     const all = usageCells(deck).map((c) => c.svg).join('');
     expect(all).not.toContain('>30<');
-    expect(all).not.toContain('>10<');
+    expect(all).not.toContain('>100<');
     // An exhausted reserve reads EMPTY, not a zero gauge.
     const empty = buildSessionDeck(baseState(12, {
       codexRateLimits: { ...withLuna.codexRateLimits, lunaReserve: { usedPercent: 100, available: true } },
@@ -307,7 +307,7 @@ describe('buildSessionDeck list-view usage tiles', () => {
     const restored = buildSessionDeck(baseState(12, withoutLuna), { mode: 'list', showUsage: true }, POS);
     expect(usageCells(restored)).toHaveLength(3);
     expect(usageCells(restored)[2].svg).toContain('>30<');
-    expect(usageCells(restored)[2].svg).toContain('>10<');
+    expect(usageCells(restored)[2].svg).toContain('>100<');
   });
 
   it('falls back to trailing keys on a tiny deck where the strip is not placed', () => {

@@ -65,6 +65,7 @@ constexpr uint8_t REGFF_VERSION     = 0xFF;
 constexpr uint8_t ADDR = BOARD_ES8311_I2C_ADDR;
 
 bool s_ready = false;
+uint32_t s_readyRate = 0;
 // Survives begin(): the playback task re-inits the codec, and without a stored
 // level that init would silently undo whatever the caller just set.
 // -18 dB. Picked by ear on the ips10 amplifier (2026-07-28): 0 dB and above
@@ -231,6 +232,11 @@ void dumpRegs(const char* tag) {
     Serial.println();
 }
 
+bool ensure(uint32_t sampleRate) {
+    if (s_ready && s_readyRate == sampleRate) return true;
+    return begin(sampleRate);
+}
+
 bool begin(uint32_t sampleRate) {
     s_ready = false;
     codecRailEnable();
@@ -322,6 +328,7 @@ bool begin(uint32_t sampleRate) {
     setMicGain(s_micGain);
     paEnable(true);
 
+    s_readyRate = sampleRate;
     s_ready = true;
     Serial.printf("[ES8311] ready — 0x%02X ver 0x%02X, %lu Hz, MCLK %lu Hz "
                   "(pins MCLK %d / BCLK %d / LRCK %d / DOUT %d / PA %d)\n",

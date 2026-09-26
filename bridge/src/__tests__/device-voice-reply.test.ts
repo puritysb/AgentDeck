@@ -319,3 +319,20 @@ describe('following the board across transports', () => {
     expect(other.binary).toEqual([]);
   });
 });
+
+ describe('HTTP reply target after synthesis', () => {
+  it('moves a pull notification to the live connection after reconnect', () => {
+    const old = fakeSink(['audio_http_pull']);
+    const live = fakeSink(['audio_http_pull']);
+    const router = new DeviceVoiceReplyRouter(Date.now, async () => {}, () => live);
+    router.arm(old, 'personal-run');
+    old.close();
+    expect(router.resolveTarget(router.targetsFor('personal-run')[0])).toBe(live);
+  });
+  it('upgrades a metadata-only connection to a pull-capable transport', () => {
+    const serial = fakeSink([]);
+    const live = fakeSink(['audio_http_pull']);
+    const router = new DeviceVoiceReplyRouter(Date.now, async () => {}, () => live);
+    expect(router.resolveTarget(serial)).toBe(live);
+  });
+ });

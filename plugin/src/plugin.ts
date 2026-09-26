@@ -28,6 +28,7 @@ import {
   noteUsageProviderActivity,
   updateUsageModeData,
   setUsageRefreshCallback,
+  restoreUsageDialPreferences, usageDialPreferences, onUsageDialSelectionChanged,
 } from './utility-modes/usage.js';
 import { setEncoderDaemonConnected } from './encoder-registry.js';
 import { dlog, dinfo } from './log.js';
@@ -671,6 +672,18 @@ function sendSlotMap(): void {
 streamDeck.connect().then(async () => {
   try { if (runtimeIdentity) writeRuntimeIdentity(runtimeIdentity); }
   catch (error) { console.warn('Plugin runtime receipt unavailable', error); }
+  // Bound host settings retrieval so a silent host cannot block daemon startup.
+  try {
+    const settings = await Promise.race([
+      streamDeck.settings.getGlobalSettings(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('settings timeout')), 2000)),
+    ]);
+    restoreUsageDialPreferences(settings.usageDialProviders);
+    onUsageDialSelectionChanged(() => {
+      settings.usageDialProviders = usageDialPreferences();
+      void streamDeck.settings.setGlobalSettings(settings).catch(error => console.warn('Usage selection save failed', error));
+    });
+  } catch (error) { console.warn('Usage selection restore unavailable', error); }
   dinfo('Plugin', 'Stream Deck connected, starting daemon-only connection');
   connMgr.start();
 

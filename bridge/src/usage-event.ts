@@ -162,7 +162,7 @@ function normalizeCodexRateLimits(
   // It may replace the ordinary gauges only while a live ordinary window is
   // exhausted. Send the full Codex block so clients retire the old reserve.
   const exhausted = [primary, secondary].some((w) => w && !w.stale && w.usedPercent >= 100);
-  return { ...rl, primary, secondary, lunaReserve: exhausted ? rl.lunaReserve : undefined };
+  return { ...rl, primary, secondary, lunaReserve: exhausted && !(rl.lunaReserve?.resetsAt && Date.parse(rl.lunaReserve.resetsAt) <= Date.now()) ? rl.lunaReserve : undefined };
 }
 
 /**

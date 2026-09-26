@@ -7,6 +7,7 @@
  * State latency is controlled separately from the motion cadence.
  */
 
+import { renderDeskAwareness } from './desk-awareness.js';
 import { State } from '../types.js';
 import type { BridgeEvent, StateUpdateEvent, UsageEvent } from '../types.js';
 import type { SessionInfo, SessionsListEvent } from '@agentdeck/shared/protocol';
@@ -171,6 +172,7 @@ export function broadcastPixoo(event: BridgeEvent): void {
     case 'connection':
       if ((event as any).status === 'disconnected') {
         lastStateEvent = null;
+        lastSessions = null;
         lastUsageEvent = null;
         lastTimelineEntries = [];
       }
@@ -441,6 +443,7 @@ function doStateCheckAndPush(): void {
  * Used by the live preview endpoint when no Pixoo device is connected.
  */
 export function renderPreviewFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array {
+  if (size === 11 || size === 32) return renderDeskAwareness(size, lastSessions, lastTimelineEntries, Date.now());
   return renderFrame(
     lastStateEvent,
     lastUsageEvent,
@@ -456,6 +459,7 @@ export function renderPreviewFrame(size?: 11 | 32 | 64, layout: 'standard' | 'mi
  * Get the last calculated frame.
  */
 export function getLastFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array | null {
+  if (size === 11 || size === 32) return renderDeskAwareness(size, lastSessions, lastTimelineEntries, Date.now());
   return renderFrame(
     lastStateEvent,
     lastUsageEvent,

@@ -1,3 +1,5 @@
+#include "../audio/wake_word.h"
+#include "../audio/mic_capture.h"
 #include "protocol.h"
 #include "wifi_manager.h"
 #include "ws_client.h"
@@ -42,6 +44,7 @@
 #endif
 #if defined(BOARD_IPS10)
 #include "../ui/display.h"         // UI::hwI2cProbe — audio-codec hardware probe
+#include "../ui/widgets/ips10_workspace.h"
 #endif
 #if defined(BOARD_EINK_SURFACE)
 #include "../ui/eink/eink_display.h"
@@ -282,17 +285,26 @@ static void handleUsageUpdate(JsonObject& obj) {
     // Codex (ChatGPT) rolling-window limits. Nested object mirrors the Claude
     // 5h/7d shape — primary ≈ 5h window, secondary ≈ 7d. Absent (→ sentinel)
     // for non-Codex users. Reuses the storeResetTime lambda on each window.
+    g_state.codexPrimaryMinutes = g_state.codexSecondaryMinutes = 0;
     g_state.codexPrimaryPercent = -1.0f;
     g_state.codexSecondaryPercent = -1.0f;
     g_state.codexPrimaryReset[0] = '\0';
     g_state.codexSecondaryReset[0] = '\0';
+    g_state.codexLunaPercent = -1;
+    g_state.codexLunaReset[0] = '\0';
     if (obj["codexRateLimits"].is<JsonObject>()) {
         JsonObject cx = obj["codexRateLimits"].as<JsonObject>();
+        JsonObject luna = cx["lunaReserve"];
+        if (luna["usedPercent"].is<float>() && !luna["stale"].as<bool>()) {
+            g_state.codexLunaPercent = luna["usedPercent"].as<float>();
+            storeResetTime(luna, "resetsAt", g_state.codexLunaReset, sizeof(g_state.codexLunaReset));
+        }
         if (cx["primary"].is<JsonObject>()) {
             JsonObject p = cx["primary"].as<JsonObject>();
             if (!p["stale"].as<bool>()) {
                 if (p["usedPercent"].is<float>()) g_state.codexPrimaryPercent = p["usedPercent"].as<float>();
                 storeResetTime(p, "resetsAt", g_state.codexPrimaryReset, sizeof(g_state.codexPrimaryReset));
+                g_state.codexPrimaryMinutes = p["windowMinutes"] | 300;
             }
         }
         if (cx["secondary"].is<JsonObject>()) {
@@ -300,6 +312,7 @@ static void handleUsageUpdate(JsonObject& obj) {
             if (!s["stale"].as<bool>()) {
                 if (s["usedPercent"].is<float>()) g_state.codexSecondaryPercent = s["usedPercent"].as<float>();
                 storeResetTime(s, "resetsAt", g_state.codexSecondaryReset, sizeof(g_state.codexSecondaryReset));
+                g_state.codexSecondaryMinutes = s["windowMinutes"] | 10080;
             }
         }
     }
@@ -307,6 +320,7 @@ static void handleUsageUpdate(JsonObject& obj) {
     // z.ai GLM Coding Plan limits (#350) — same nested grammar. The secondary
     // window carries `quantity`: "mcp" meters TOOL CALLS and renderers label
     // it "MCP", never a window length; anything else meters token credits.
+    g_state.zaiPrimaryMinutes = g_state.zaiSecondaryMinutes = 0;
     g_state.zaiPrimaryPercent = -1.0f;
     g_state.zaiSecondaryPercent = -1.0f;
     g_state.zaiPrimaryReset[0] = '\0';
@@ -319,6 +333,7 @@ static void handleUsageUpdate(JsonObject& obj) {
             if (!p["stale"].as<bool>()) {
                 if (p["usedPercent"].is<float>()) g_state.zaiPrimaryPercent = p["usedPercent"].as<float>();
                 storeResetTime(p, "resetsAt", g_state.zaiPrimaryReset, sizeof(g_state.zaiPrimaryReset));
+                g_state.zaiPrimaryMinutes = p["windowMinutes"] | 0;
             }
         }
         if (zr["secondary"].is<JsonObject>()) {
@@ -326,6 +341,7 @@ static void handleUsageUpdate(JsonObject& obj) {
             if (!s["stale"].as<bool>()) {
                 if (s["usedPercent"].is<float>()) g_state.zaiSecondaryPercent = s["usedPercent"].as<float>();
                 storeResetTime(s, "resetsAt", g_state.zaiSecondaryReset, sizeof(g_state.zaiSecondaryReset));
+                g_state.zaiSecondaryMinutes = s["windowMinutes"] | 0;
                 if (s["quantity"].is<const char*>() &&
                     strcmp(s["quantity"].as<const char*>(), "mcp") == 0) {
                     g_state.zaiSecondaryIsMcp = true;
@@ -355,7 +371,7 @@ static void handleUsageUpdate(JsonObject& obj) {
         JsonArray subs = obj["subscriptions"].as<JsonArray>();
         g_state.subscriptionCount = 0;
         for (JsonObject sub : subs) {
-            if (g_state.subscriptionCount >= 3) break;
+            if (g_state.subscriptionCount >= 4) break;
             auto& slot = g_state.subscriptions[g_state.subscriptionCount];
             strncpy(slot.name, sub["name"] | "", sizeof(slot.name) - 1);
             slot.name[sizeof(slot.name) - 1] = '\0';
@@ -402,6 +418,7 @@ static void handleSessionsList(JsonObject& obj) {
     g_state.sessionClearPendingMs = 0;
     g_state.sessionCount = incomingCount;
 #if defined(BOARD_IPS10)
+    g_state.sessionsRotating = obj["rosterRotating"] | false;
     g_state.sessionsTotal = obj["total"].is<int>() ? (uint16_t)constrain(obj["total"].as<int>(), 0, 65535) : 0;
 #endif
     g_state.octopusCount = 0;
@@ -1171,6 +1188,17 @@ static void sendDeviceInfo() {
 
     resp["version"] = FIRMWARE_VERSION;
     resp["buildHash"] = GIT_SHA;
+#if defined(BOARD_IPS10)
+    resp["wakeReady"] = WakeWord::ready();
+    resp["wakeEnabled"] = WakeWord::enabled();
+    resp["wakeDetections"] = WakeWord::detections();
+    resp["wakeInferences"] = WakeWord::inferences();
+    resp["wakeMaxUs"] = WakeWord::maxInferenceUs();
+    resp["wakeScore"] = WakeWord::score();
+    resp["voiceState"] = Audio::voiceState();
+    resp["voiceRequestId"] = Audio::micReplyGeneration();
+    resp["micLevel"] = Audio::micLevel();
+#endif
     resp["buildEpoch"] = (uint32_t)BUILD_EPOCH;
     resp["protocolRevision"] = PROTOCOL_REVISION;
     resp["wifiConfigured"] = Net::wifiConfigured();
@@ -1216,6 +1244,7 @@ static void sendDeviceInfo() {
 #endif
     if (Net::wifiConnected()) {
         resp["ip"] = Net::wifiLocalIP();
+        resp["rssiDbm"] = Net::wifiRssiDbm();
     }
 #if defined(BOARD_T_EMBED)
     {
@@ -1320,7 +1349,11 @@ static void sendDeviceInfo() {
     // 896: t_embed capabilities + battery pushed past 512, and the strip's
     // touch forensics fields pushed past 768 (serializeJson truncates
     // silently on overflow — size for the fattest board, not the average).
+#if defined(BOARD_IPS10)
+    static char buf[1536];
+#else
     char buf[896];
+#endif
 #if defined(BOARD_IPS10)
     // Per-transport capability split. This board's host link is a CH340
     // pinned at 115200 (~11.5 KB/s) while a base64'd PCM16 reply needs
@@ -1450,6 +1483,16 @@ void parseMessage(const char* json, size_t length) {
         handleAuthProvision(obj);
     } else if (strcmp(type, "device_info_request") == 0) {
         sendDeviceInfo();
+#if defined(BOARD_IPS10)
+    } else if (strcmp(type, "workspace_diag") == 0) {
+        // Read-only, fixed UI-core snapshot. Never inspect LVGL from netTask.
+        const auto d=IPS10Workspace::diagnostics();
+        char reply[384];
+        snprintf(reply,sizeof(reply),"{\"type\":\"workspace_diag\",\"ui\":\"aquarium-v8\",\"width\":%u,\"height\":%u,\"sessions\":%u,\"visible\":%u,\"updates\":%lu,\"lastUs\":%lu,\"maxUs\":%lu,\"connected\":%s,\"filter\":%u,\"events\":%u,\"projects\":%u,\"overview\":%s,\"usageVisible\":%s,\"quotaWindows\":%u,\"rosterTotal\":%u,\"rosterRotating\":%s}",
+            d.width,d.height,d.sessions,d.visibleSessions,(unsigned long)d.updates,
+            (unsigned long)d.lastUpdateUs,(unsigned long)d.maxUpdateUs,d.connected?"true":"false",d.filter,d.eventCount,d.projects,d.overview?"true":"false",d.usageVisible?"true":"false",d.quotaWindows,d.rosterTotal,d.rosterRotating?"true":"false");
+        Net::serialWriteJsonLine(reply);
+#endif
     } else if (strcmp(type, "esp32_ota_begin") == 0) {
         handleOtaBegin(obj);
     } else if (strcmp(type, "esp32_ota_chunk") == 0) {
@@ -1624,6 +1667,9 @@ void parseMessage(const char* json, size_t length) {
         HUD::clearSpeaking();
 #if defined(BOARD_VOICE_HTTP_UPLOAD)
     } else if (strcmp(type, "audio_reply_ready") == 0) {
+#if defined(BOARD_IPS10)
+        if (obj["requestId"].is<uint32_t>() && obj["requestId"].as<uint32_t>() != Audio::micReplyGeneration()) return;
+#endif
         // The daemon staged a spoken reply for HTTP pull (audio_http_pull
         // capability): fetch it into PSRAM and play locally. See
         // queueVoiceReplyDownload for why this board never takes the WS
@@ -1639,16 +1685,26 @@ void parseMessage(const char* json, size_t length) {
                 HUD::setSpeaking(said[0] ? said : "(reply)");
                 HUD::setVoiceAnswer(said);
             } else {
+#if defined(BOARD_IPS10)
+                Audio::micVoiceResult(false);
+#endif
                 HUD::notify("Reply fetch busy - skipped");
             }
         }
 #endif
     } else if (strcmp(type, "voice_result") == 0) {
+#if defined(BOARD_IPS10)
+        if (obj["requestId"].is<uint32_t>() && obj["requestId"].as<uint32_t>() != Audio::micReplyGeneration()) return;
+#endif
         // What the host heard, and whether it landed. Silence here was the worst
         // part of the knob's early voice UX: a failed delivery looked identical
         // to a successful one.
         const char* text = obj["text"] | "";
         bool delivered = obj["delivered"] | false;
+#if defined(BOARD_IPS10)
+        Audio::micVoiceResult(delivered);
+        IPS10Workspace::voiceTranscript(text);
+#endif
         const char* err = obj["error"] | "";
         char note[160];
         if (err[0]) {
@@ -1668,55 +1724,26 @@ void parseMessage(const char* json, size_t length) {
         if (delivered && text[0]) HUD::pushVoiceQuestion(text);
         HUD::notify(note);
     } else if (strcmp(type, "voice_reply_skipped") == 0) {
+#if defined(BOARD_IPS10)
+        if (obj["requestId"].is<uint32_t>() && obj["requestId"].as<uint32_t>() != Audio::micReplyGeneration()) return;
+#endif
+#if defined(BOARD_IPS10)
+        Audio::micVoiceResult(false);
+#endif
         HUD::notify("Reply: nothing to read aloud");
 #endif
-#if defined(BOARD_PIN_MIC_DIN)
+#if defined(BOARD_IPS10)
+    } else if (strcmp(type, "camera_probe") == 0) {
+        UI::hwCameraProbe();
+    } else if (strcmp(type, "wake_word_config") == 0) {
+        if (obj["enabled"].is<bool>()) WakeWord::setEnabled(obj["enabled"].as<bool>());
+        Protocol::announceDeviceInfo();
     } else if (strcmp(type, "mic_test") == 0) {
-        // Capture probe, same firmware-local rationale as i2c_diag. The mic pin
-        // is the one part of this board's audio map that has never been proven:
-        // the BSP names GPIO 11, but only the TX direction was confirmed by ear.
-        // Reports level rather than audio, because level is what distinguishes
-        // "wrong pin" (flat) from "right pin, quiet" (floor moves with speech).
-        {
-            int gain = obj["gain"].is<int>() ? obj["gain"].as<int>() : -1;
-            int ms   = obj["ms"].is<int>() ? obj["ms"].as<int>() : 1500;
-            if (ms < 200) ms = 200;
-            if (ms > 5000) ms = 5000;
-            if (gain >= 0) Es8311::setMicGain(gain);
+        // Continuous voice task owns RX; diagnostics must never steal frames.
+        if (obj["gain"].is<int>()) Es8311::setMicGain(obj["gain"].as<int>());
+        Serial.printf("[MicTest] continuous rms=%u gain=%d ready=%d\n",
+                      unsigned(Audio::micLevel()), Es8311::micGain(), int(Audio::micReady()));
 
-            // The codec ADC only runs once begin() has programmed it, and
-            // begin() needs the I2S clock already up.
-            if (!Audio::captureReady()) Audio::playbackInit();
-            if (!Es8311::ready()) Es8311::begin(16000);
-
-            Serial.printf("[MicTest] %d ms at gain step %d (%d dB) — make some noise\n",
-                          ms, Es8311::micGain(), Es8311::micGain() * 6);
-            static int16_t mic[512];
-            const int frames = (16000 * ms / 1000) / 512;
-            int32_t peak = 0; int64_t sumSq = 0; int32_t samples = 0; int zeroFrames = 0;
-            for (int f = 0; f < frames; f++) {
-                size_t got = Audio::captureRead((uint8_t*)mic, sizeof(mic));
-                if (got == 0) { zeroFrames++; continue; }
-                const int n = (int)(got / 2);
-                for (int i = 0; i < n; i++) {
-                    int32_t v = mic[i];
-                    if (v < 0) v = -v;
-                    if (v > peak) peak = v;
-                    sumSq += (int64_t)mic[i] * mic[i];
-                }
-                samples += n;
-            }
-            if (samples == 0) {
-                Serial.printf("[MicTest] no samples (%d empty reads) — RX channel not delivering\n",
-                              zeroFrames);
-            } else {
-                const double rms = sqrt((double)sumSq / (double)samples);
-                Serial.printf("[MicTest] %ld samples, peak %ld (%.1f%% FS), rms %.0f (%.2f%% FS)%s\n",
-                              (long)samples, (long)peak, peak * 100.0 / 32768.0,
-                              rms, rms * 100.0 / 32768.0,
-                              peak < 16 ? "  <- flat: wrong pin, or ADC muted" : "");
-            }
-        }
 #endif
     } else if (strcmp(type, "audio_test") == 0) {
         // Firmware-local, same rationale as i2c_diag above. Plays a 1 s 440 Hz
