@@ -4,7 +4,8 @@
  * Tests the actual serial bridge source functions (prepareForSerial,
  * handleSerialLine, port patterns) without requiring real serial hardware.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import * as logger from '../logger.js';
 import { SERIAL_FORWARDED_EVENTS, DISPLAY_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import type {
   StateUpdateEvent,
@@ -19,6 +20,7 @@ import {
   SERIAL_SESSIONS_CAP,
   handleSerialLine,
   capturePanicLine,
+  isVoiceDiagnosticLine,
   isRetryableSerialIoError,
   ESP32_PORT_PATTERNS,
   EXCLUDE_PATTERNS,
@@ -161,6 +163,52 @@ describe('handleSerialLine (source)', () => {
     handleSerialLine(conn, '');
 
     expect(conn.deviceInfo).toBeNull(); // Nothing parsed
+  });
+
+  it('records allowed voice stages under normal serial ownership', () => {
+    const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
+    try {
+      const conn = mockConn();
+      handleSerialLine(conn, '[Voice] HTTP upload 85824 bytes -> 200 (attempt 1)');
+      handleSerialLine(conn, '[Voice] transcript: private speech');
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith('esp32-voice',
+        `${conn.port}: [Voice] HTTP upload 85824 bytes -> 200 (attempt 1)`);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('does not misclassify the normal I2C register probe as a panic', () => {
+    const conn = mockConn();
+    expect(capturePanicLine(conn, '[I2CDiag] --- register dump 0x18 (read-only) ---')).toBe(false);
+    expect(conn.panicLogUntil).toBeUndefined();
+    expect(capturePanicLine(conn, 'Core  0 register dump:')).toBe(true);
+  });
+
+  it.each([
+    '[WakeVoice] detected score=242',
+    '[WakeVoice] capture end samples=42912 queued=1',
+    '[Voice] HTTP upload attempt 1: 85824 bytes, internal heap 84 KB',
+    '[Voice] HTTP upload 85824 bytes -> 200 (attempt 1)',
+    '[Voice] HTTP upload 85824 bytes -> -2 (attempt 1)',
+    '[VoicePerf] uploadMs=198 minInternalKB=59 pressureWaits=2',
+    '[Speaker] played 28132/28132 bytes (0.9s), 0 frames dropped',
+    '[VoiceFeedback] state=waiting captureElapsedMs=0',
+    '[VoiceEndpoint] complete elapsedMs=2422 quietMs=1217 rms=99 threshold=209',
+  ])('retains a content-free voice milestone: %s', line => {
+    expect(isVoiceDiagnosticLine(line)).toBe(true);
+  });
+
+  it.each([
+    '[Voice] upload peer=192.168.68.100:9120',
+    '[WakeVoice] capture wake target=private-session noise=88 threshold=209',
+    '[VoiceFeedback] state=waiting captureElapsedMs=0 secret text',
+    '[Voice] transcript: private speech',
+    '{"type":"voice_result","text":"private speech"}',
+    '[Voice] ' + 'x'.repeat(500),
+  ])('does not log unapproved voice content: %s', line => {
+    expect(isVoiceDiagnosticLine(line)).toBe(false);
   });
 
   it('opens a panic capture window on crash markers and captures the dump', () => {

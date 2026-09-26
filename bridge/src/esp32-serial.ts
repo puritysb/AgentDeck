@@ -777,7 +777,7 @@ function hasLiveDeviceInfo(conn: Pick<SerialConnection, 'deviceInfo' | 'lastRead
 // ESP32 crash output is plain text on the same UART/CDC stream as the JSON
 // protocol. These markers open a capture window so the whole dump (register
 // dump lines don't individually match) is logged before the board reboots.
-const PANIC_MARKER_RE = /Guru Meditation|Backtrace:|register dump|abort\(\) was called|assert failed|Stack smashing|Stack canary|Debug exception reason|ELF file SHA256|Rebooting\.\.\./i;
+const PANIC_MARKER_RE = /Guru Meditation|Backtrace:|Core\s+\d+ register dump:|abort\(\) was called|assert failed|Stack smashing|Stack canary|Debug exception reason|ELF file SHA256|Rebooting\.\.\./i;
 const PANIC_CAPTURE_WINDOW_MS = 10_000;
 const PANIC_CAPTURE_MAX_LINES = 200;
 
@@ -798,6 +798,25 @@ export function capturePanicLine(conn: SerialConnection, line: string): boolean 
   conn.panicLogLines = count + 1;
   logTagged('esp32-panic', `${conn.port}: ${line}`);
   return true;
+}
+
+// Keep only numeric voice milestones, never transcripts, targets, URLs or tokens.
+// These survive under normal serial ownership, unlike a separate UART reader
+// which changes the transport being diagnosed.
+const VOICE_DIAGNOSTIC_PATTERNS = [
+  /^\[WakeVoice\] detected score=\d+$/,
+  /^\[WakeVoice\] capture end samples=\d+ queued=[01]$/,
+  /^\[VoiceEndpoint\] complete elapsedMs=\d+ quietMs=\d+ rms=\d+ threshold=\d+$/,
+  /^\[Voice\] HTTP upload attempt \d+: \d+ bytes, internal heap \d+ KB$/,
+  /^\[Voice\] HTTP upload \d+ bytes -> -?\d+ \(attempt \d+\)$/,
+  /^\[VoicePerf\] uploadMs=\d+ minInternalKB=\d+ pressureWaits=\d+$/,
+  /^\[Speaker\] played \d+\/\d+ bytes \(\d+(?:\.\d+)?s\), \d+ frames dropped$/,
+  /^\[VoiceFeedback\] state=(?:wake|listening|sending|transcribing|waiting|speaking|error) captureElapsedMs=\d+$/,
+];
+
+/** @internal Exported for testing only */
+export function isVoiceDiagnosticLine(line: string): boolean {
+  return line.length <= 200 && VOICE_DIAGNOSTIC_PATTERNS.some(pattern => pattern.test(line));
 }
 
 // Daemon-installed sink for device-originated commands arriving over serial.
@@ -873,7 +892,9 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
   if (!line.startsWith('{')) {
     // Not protocol JSON — usually boot/debug chatter, but crash dumps arrive
     // here too. Capture those instead of dropping them.
-    capturePanicLine(conn, line);
+    if (!capturePanicLine(conn, line) && isVoiceDiagnosticLine(line)) {
+      logTagged('esp32-voice', `${conn.port}: ${line}`);
+    }
     return;
   }
 
