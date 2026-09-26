@@ -95,7 +95,7 @@ describe('sweepAndSuspendDaemons', () => {
 });
 
 describe('scanTcpListener (live loopback)', () => {
-  it('names the process listening on a port and reports a closed port as known-empty', async () => {
+  it('names its listener and observes its release', async () => {
     const { createServer } = await import('net');
     const server = createServer(() => { /* never respond — the silent-listener shape */ });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
@@ -105,15 +105,16 @@ describe('scanTcpListener (live loopback)', () => {
       expect(scan.known).toBe(true);
       if (scan.known) {
         expect(scan.holders.length).toBeGreaterThan(0);
-        expect(scan.holders.every((h) => h.pid > 0)).toBe(true);
+        expect(scan.holders.some((h) => h.pid === process.pid)).toBe(true);
       }
-      const closed = await scanTcpListener(port + 1);
-      // A port nobody listens on must come back known-and-empty, never
-      // unknown: this is the signal the sweep's "nothing" branch reads.
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      const closed = await scanTcpListener(port);
+      // Never assume port + 1 is unused: parallel tests can bind it. Observe
+      // this listener's removal; another process may reuse the released port.
       expect(closed.known).toBe(true);
-      if (closed.known) expect(closed.holders).toEqual([]);
+      if (closed.known) expect(closed.holders.some((h) => h.pid === process.pid)).toBe(false);
     } finally {
-      server.close();
+      if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });
