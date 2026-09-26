@@ -673,6 +673,66 @@ Validation on the 1.5.0 source: JavaScript build/typecheck and 4,693 tests pass 
 
 The first local UI build used the older voice-development Apple baseline (1.3.2). It was replaced by this 1.5.0-based build; the previous 1.5.0 app is retained locally for rollback. No store artifact was replaced or published.
 
+## 2026-09-24 — Consolidated npm and Apple patch candidate
+
+Prepared npm **1.4.3** and Apple **1.5.1** together from upstream `d2e4d439`,
+keeping the local IPS10 personal-voice development branch outside this release.
+The owner now requests preparation only: no immediate release, upload, submission
+or release tags. A future release requires a later instruction. This
+entry records candidate preparation, not publication, upload or submission.
+
+## Scope
+
+- npm carries the preferred-port startup retry fix from PR #374 / issue #370.
+- Apple carries the working-agent Dashboard row emphasis from PR #376.
+- Stream Deck development installation/runtime verification is already merged
+  in PR #377. It does not by itself replace the approved Marketplace binary.
+- ESP32 firmware delivery remains deferred; no new firmware was flashed.
+
+## Validation
+
+Build and typecheck passed. Vitest: **4,696 passed, two skipped**. Protocol
+generation left no drift; version, Markdown, design catalog and seven token
+mirror checks passed. Design lint reports the existing 89 source violations
+plus three generated Ulanzi bundle findings in this built checkout.
+
+The local iOS development build is signed and reports 1.5.1. The owner explicitly
+waived further iOS device installation and verification for this round. Before
+that instruction, installation on the connected iPad completed; the iPhone XR
+attempt timed out without a confirmed installation. These are not a completed
+iOS device acceptance pass. No further iOS device checks are required this round.
+
+The local unsigned macOS Release archive compiled, but the App Store verifier
+correctly rejected its missing signed sandbox entitlement. This is not a signed
+distribution acceptance pass. The subsequent
+[CI manual-signing run 35966139745](https://github.com/puritysb/AgentDeck/actions/runs/35966139745)
+passed for both exported platforms at 1.5.1 (7401), source `5c8b6445`, with upload
+disabled. All nine PR checks passed. This supersedes the unsigned local archive
+limitation for that source; no App Store delivery occurred. Prepared English,
+Korean and Japanese patch metadata for later use without changing the 1.5.0
+submission records.
+
+## Delivery holds
+
+- Candidate `1a40fe5c` passed the installed CLI-only, Swift-only and coexistence/
+  recovery gate; see the [acceptance receipt](docs/devlog/entries/2026-09-24-candidate-daemon-acceptance.md).
+  Revalidate relevant acceptance if executable inputs change before release.
+  Earlier #370 A/B evidence is retained separately.
+- Official Elgato 1.4 processed-package physical encoder verification remains
+  open in #349. Keep the verified development plugin installed until the owner
+  is available for physical rotation, press and touch interactions; restore and
+  verify that development runtime after the Marketplace test.
+- ASC read-only run [35965282565](https://github.com/puritysb/AgentDeck/actions/runs/35965282565)
+  confirms iOS 1.5.0 `READY_FOR_SALE` and macOS 1.5.0 `IN_REVIEW` independently.
+  Preserve the existing macOS review; do not replace its build.
+- Ulanzi 1.4.0 was last observed under review on September 24. A later refresh
+  redirected to login, so a newer private review state is unverified.
+- #303 and #367 await external Windows evidence; #272, #273 and #348 remain
+  separately scoped research/migration/consumer-dependent work.
+
+No release tag, registry publication, App Store upload or replacement submission
+was performed while preparing this candidate.
+
 ## 2026-09-24 — Bound CLI startup recovery after a silent app handoff
 
 Issue #370 recorded fallback after a 20-second preferred-port wait, followed by a successful restart about 58 seconds after that wait began. This is an upper bound on eventual availability, not a measurement of the exact release time or proof of NECP as the cause.
@@ -682,6 +742,53 @@ The Node daemon now retries its actual listener with its resolved bind address, 
 This is a startup mitigation, not runtime migration of an already-serving fallback fleet. Persistent conflicts still fall back; no daemon, app, hook, device or store installation was changed. Same-condition published 1.4.1/1.4.2 comparison and real App Store/device coexistence validation remain open in #370.
 
 Validation: build and typecheck passed; 306 test files / 4,693 tests passed (two skipped), including nine new reclaim cases with simulated 58-second contention and real isolated loopback sockets. Protocol generation left no drift. Documentation/catalog and seven token mirrors passed. Broad design lint returned 92 findings: the same 89 source findings as the clean base, plus three findings in ignored Ulanzi build output (record-by-record comparison). No source lint regression; no UI source was edited.
+
+## 2026-09-24 — Candidate installed daemon acceptance
+
+Verified the npm 1.4.3 candidate from `1a40fe5c` through the real installed
+`agentdeck` path, with Apple 1.5.1 (local build 4), development-signed Release
+from the same source. The separate distribution-signed CI export receipt remains
+1.5.1 (7401), source `5c8b6445`; no store artifact was modified or uploaded.
+
+## Results
+
+| Mode | Measured result |
+| --- | --- |
+| CLI only | Installed four candidate tarballs; Node 26.5.0 / ABI 147, SQLite 12.11.1 ready. PID 37809, build `4f057a9de4eb`, sole listener on 9120. A directly launched Codex turn ran a timing command and returned `CLI_143_OK`; Stream Deck showed the working session, and the app subsequently displayed its completion. Ten steady-state health samples passed, maximum 8 ms. |
+| Swift only | PID 31219, `isSwift: true`, 9120. A directly launched Codex turn returned `SWIFT_9120_OK`; Dashboard and Stream Deck both showed working state, then completion. Ten steady-state health samples passed, maximum 7 ms. |
+| Both / recovery | The app attached to the CLI on 9120 with a single listener and no observed duplicate roster. Stopping the supervised CLI promoted Swift: temporary 9121 at 09:45:06Z, automatic canonical reclaim at 09:47:07Z and listening on 9120 at 09:47:11Z. No app restart or hook reinstall was used. |
+| Swift exit → CLI | Candidate started at 09:48:03.900Z and bound 9120 at 09:48:30.143Z, about 26.24 seconds later, without fallback. Running identity matched the installed build. |
+
+The two-minute Swift failed-bind cooldown is existing behavior; it recovered
+automatically. Earlier CLI health sampling deliberately overlapped shutdown:
+eight responses followed by two connection failures, so it is not a clean
+steady-state series. The ten-sample results above are the separate completed
+series. Python's default URL opener initially timed out through system proxy
+handling; direct no-proxy requests and curl answered promptly. This was not
+counted as a daemon failure.
+
+Initial standalone Claude execution was blocked by account subscription policy.
+The default Codex CLI/model combination was rejected as too old, and a legacy
+model attempt was unsupported for the account. Those attempts do not count as
+successful agent turns. The successful probes used the supported Codex 5.5 model.
+No account settings or CLI installation were changed to bypass those restrictions.
+
+## Restoration and remaining physical gate
+
+Restored the original global package directory and CLI link to the persistent
+main checkout, plus macOS 1.5.0 (4). Supported lifecycle start restored launchd
+PID 43034, build `e30d55a7714e`, on 9120; the app reattached with downstream devices.
+`pnpm plugin:check` passed: existing development bundle `ef7d18b7e87c`, PID 60701.
+Candidate artifacts and private raw evidence are retained under the task worktree's
+ignored diagnostics directory. No hooks, firmware or iOS device installs changed.
+
+Elgato #349 remains incomplete: the official processed package's physical
+rotation/press/touch gate requires an operator. A request for that participation
+is pending. The development plugin was not replaced while awaiting the response.
+Do not convert display observations into a physical interaction receipt.
+
+Publication remains on hold. This receipt covers the recorded candidate; a later
+release with changed executable inputs requires renewed relevant acceptance.
 
 ## 2026-09-23 — Public aquarium media and evergreen documentation
 

@@ -37,6 +37,38 @@ in [macOS metadata](macos-1.5.0-metadata.json) and
 Japanese are translations. Preserve existing dashboard choices and identify
 3D as an optional preview. Apple update text must describe the Apple app only.
 
+## 1.5.1 preparation — publication on hold
+
+The owner requested preparation only on September 24; do not upload, submit,
+publish or create release tags until a later release instruction. Draft PR #378
+contains the proposed version mirrors and Dashboard working-row improvement.
+Copy-ready localized text is in [macOS 1.5.1 metadata](macos-1.5.1-metadata.json)
+and [iOS 1.5.1 metadata](ios-1.5.1-metadata.json). These files have not been sent
+to App Store Connect. Preserve the existing macOS 1.5.0 review.
+
+[Signed CI run 35966139745](https://github.com/puritysb/AgentDeck/actions/runs/35966139745)
+archived and exported both platforms at **1.5.1 (7401)** from `5c8b6445`.
+Both exported applications passed the App Store verifier. `upload=false` kept
+TestFlight/App Store Connect delivery disabled; artifacts exist only in CI.
+The nine PR checks also passed. Further iOS device installation and verification
+are waived for this round by the owner; this does not waive automated checks.
+
+Before a future release:
+
+- Reassess the final scope and version numbers if more improvements land.
+- Rebuild signed artifacts if Apple executable/build inputs change; the existing
+  receipt covers only its recorded source commit.
+- The installed three-mode daemon acceptance passed for candidate `1a40fe5c`;
+  see the [measured receipt](../../docs/devlog/entries/2026-09-24-candidate-daemon-acceptance.md).
+  Repeat relevant acceptance if executable inputs change before the final release.
+  The original development daemon, app and Stream Deck runtime were restored.
+- Finish the Elgato processed-package physical encoder gate in #349 when the owner
+  can operate the device; retain the latest development plugin in the meantime.
+- Refresh per-platform store state; Ulanzi requires renewed sign-in. External
+  review/reporter waits are not evidence of an incomplete local implementation.
+- Update the candidate-only CHANGELOG wording and actual release date at release
+  time, then independently verify upload, submission and public availability.
+
 ## Metadata and review material
 
 - Copy-ready Korean and English fields: `docs/appstore-metadata-draft.md`
