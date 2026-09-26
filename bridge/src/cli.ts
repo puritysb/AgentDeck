@@ -750,7 +750,8 @@ export function applyGlobalEnvArgs(
   // token scan) keeps non-session commands a true no-op even when a
   // positional VALUE equals a session command name (`agentdeck speak b claude`).
   const sub = argv[2];
-  if (sub === undefined || !(SESSION_COMMANDS as readonly string[]).includes(sub)) return argv;
+  const launch = sub === 'run';
+  if (!launch && (sub === undefined || !(SESSION_COMMANDS as readonly string[]).includes(sub))) return argv;
   // Typed escape hatch — checked on the RAW argv before splicing, because
   // post-parse is too late (env tokens would already have parsed into opts).
   // Exact-token match: a flag VALUE lexically equal to --no-env-args would
@@ -879,6 +880,29 @@ weatherCommand
     log(`Weather location cleared from ${ownSettingsPath()}.`);
     log(`Persisted forecast cache removed from ${cachePath}.`);
     log('The running daemon stops adding weather on the next feed pull; no restart is required.');
+  });
+
+// ===== Observed launch (no managed PTY) =====
+
+program
+  .command('run <agent>')
+  .description('Launch claude, codex or opencode in this terminal without a managed PTY; uses installed daemon hooks')
+  .option('-c, --command <cmd>', 'Shell command; defaults to the selected agent')
+  .option('--no-env-args', 'Ignore both AGENTDECK_COMMANDER_ARGS and agent-specific defaults')
+  .action(async (agent: string, opts: { command?: string; envArgs?: boolean }) => {
+    const agentTypes = { claude: 'claude-code', codex: 'codex-cli', opencode: 'opencode' } as const;
+    if (!Object.hasOwn(agentTypes, agent)) {
+      program.error('run supports claude, codex or opencode');
+    }
+    const agentType = agentTypes[agent as keyof typeof agentTypes];
+    try {
+      const { launchObservedCommand } = await import('./observed-launch.js');
+      process.exitCode = launchObservedCommand(
+        resolveAgentCommand(agentType, opts.command ?? agent, opts.envArgs !== false),
+      );
+    } catch (error) {
+      program.error(`Could not launch agent: ${error instanceof Error ? error.message : String(error)}`);
+    }
   });
 
 // ===== Agent session commands =====

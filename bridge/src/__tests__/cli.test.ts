@@ -660,3 +660,16 @@ describe('waitForRestartedDaemon — `daemon restart` reports what it measured',
     expect(calls).toBeGreaterThanOrEqual(3);
   });
 });
+
+
+describe('observed run environment arguments', () => {
+  it('inserts defaults before typed run options', () => {
+    expect(applyGlobalEnvArgs(['node', 'ad', 'run', 'codex', '-c', 'codex --resume typed'], {
+      AGENTDECK_COMMANDER_ARGS: '-c "codex --resume default"',
+    })).toEqual(['node', 'ad', 'run', '-c', 'codex --resume default', 'codex', '-c', 'codex --resume typed']);
+  });
+  it('keeps the typed both-layer escape hatch for run', () => {
+    const argv = ['node', 'ad', 'run', 'claude', '--no-env-args'];
+    expect(applyGlobalEnvArgs(argv, { AGENTDECK_COMMANDER_ARGS: '--remote-daemon' })).toBe(argv);
+  });
+});

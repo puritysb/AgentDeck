@@ -27,3 +27,15 @@ window (#273 / #278). CLI reference: [docs/cli.md](../../docs/cli.md).
 ## node-pty macOS helper mode
 
 **node-pty macOS helper mode** (`bridge/src/pty-manager.ts`): stable `node-pty@1.1.0` is published with both Darwin `spawn-helper` prebuilds at mode 0644 (upstream microsoft/node-pty#850/#919), so the native addon imports but its first spawn fails with the misleading generic `posix_spawnp failed`. Before the dynamic import, `PtyManager` resolves the actual installed package and adds only the missing execute bits to a regular helper file (prebuild first, source-build fallback). This runtime repair intentionally covers direct bridge installs as well as `@agentdeck/setup` and does not depend on npm/pnpm install scripts. Never replace it with an import-only probe; the measured failure occurs only at spawn.
+
+
+## Non-PTY local launch
+
+`agentdeck run <claude|codex|opencode>` is additive. It composes the same shell
+command and agent-specific defaults, then inherits the caller's terminal without
+a PTY or per-session bridge. The commander defaults are inserted immediately
+after `run`, before typed arguments; `--no-env-args` disables both layers.
+Unsupported managed-only options must fail rather than be silently ignored.
+A managed `AGENTDECK_PORT` marker refuses launch to prevent hook misrouting.
+Remote control and terminal-only affordances still use the managed path; this
+launcher is not evidence that those replacement gates in #273 are complete.

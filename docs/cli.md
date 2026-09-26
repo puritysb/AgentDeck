@@ -38,6 +38,34 @@ monitoring is not guaranteed.
 
 The CLI command is `agentdeck`.
 
+### Observed launch without a PTY
+
+`agentdeck run claude`, `agentdeck run codex`, or `agentdeck run opencode` launches
+in the current terminal without a managed bridge or PTY. Install the daemon and
+hooks first with the ordinary setup flow. Hooks/transcripts own observation, just
+as when running the agent directly. The launcher does not auto-start a daemon,
+rewrite hook settings or capture terminal output.
+
+```bash
+agentdeck run claude -c 'claude --resume my-session'
+agentdeck run codex --no-env-args
+```
+
+`-c` and the agent-specific `AGENTDECK_*_ARGS` append retain their shell grammar:
+POSIX uses the configured login shell (`SHELL`, default `/bin/bash`); Windows uses
+`COMSPEC` (default `cmd.exe`) with `/d /s /c`. `AGENTDECK_COMMANDER_ARGS` is inserted
+after `run`, before typed options; typed `-c` wins. `--no-env-args` disables
+both layers. Exit status and terminal streams are inherited. Commands remain
+user-authored shell text, including pipes and redirects.
+
+Managed-only flags such as `--remote-daemon`, `--weight`, wake word and terminal
+controls are rejected by `run`, including when supplied through environment
+defaults. Use the existing managed command for those workflows, or
+`agentdeck order` for observed ordering. Launching inside an existing managed
+session is rejected to avoid routing hooks to its `AGENTDECK_PORT`. This is an
+additive local launcher; remote relay and managed terminal-control parity remain
+open in #273. Existing managed commands have no removal date.
+
 ### Sessions
 
 | Command | Description |
