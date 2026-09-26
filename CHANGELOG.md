@@ -47,6 +47,9 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- CLI: `agentdeck run claude|codex|opencode` launches in the current terminal without a managed PTY, preserving custom shell commands and environment argument defaults. Existing managed commands remain available for remote control and terminal-only features.
+- E-ink diagnostics: record actual refresh completion times and full-refresh counts without mixing render-task logs into serial protocol JSON. The firmware is installed locally on TRMNL, EPD47 and NM-EPD-420; public firmware delivery remains held.
+
 - Apple and Android: show OpenClaw setup guidance only for explicit pairing or authentication failures. Reachability, reconnecting and unknown status no longer imply missing approval; connection timeouts no longer recommend replacing the token. Android now receives Gateway authentication status and displays actionable guidance.
 
 - Apple and Android 3D dashboards: emphasize working agents with high-contrast WORKING badges, visible activity bars and stronger motion across all six creature types. Keep activity cues visible in viewing mode, respect reduced motion, and separate selection from the creature silhouette. Repair Claude Code's arm geometry, including leftover bevel fragments and overlapping cut surfaces that appeared broken during movement. Native activity tuning is generated from a shared definition.
@@ -67,6 +70,8 @@ These multi-provider changes are next-release candidates ([PR #379](https://gith
 
 Preparation only; publication is on hold at the owner’s request until a later release instruction.
 
+- Add an optional non-PTY local agent launcher (`agentdeck run`) while retaining managed compatibility commands.
+- Retain allowlisted numeric voice and e-ink diagnostics in the serial-owning daemon for device incident analysis.
 - Retry the preferred daemon listener for up to 90 seconds on macOS (20 seconds elsewhere) when a silent port conflict delays app-to-CLI handoff. Recheck peer ownership before falling back; already connected fallback clients are not moved (#370).
 - Publish hooks, shared, bridge and setup together. Existing 1.x applications, plugins and device firmware remain compatible.
 

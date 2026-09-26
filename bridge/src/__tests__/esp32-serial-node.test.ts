@@ -165,6 +165,21 @@ describe('handleSerialLine (source)', () => {
     expect(conn.deviceInfo).toBeNull(); // Nothing parsed
   });
 
+  it('retains numeric e-ink completion events without painted content', () => {
+    const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
+    try {
+      const conn = mockConn();
+      const event = '[EinkRefresh] count=12 full=1 startedMs=123456 durationMs=3500';
+      handleSerialLine(conn, event);
+      handleSerialLine(conn, event + ' private painted text');
+      handleSerialLine(conn, '[EinkRefresh] count=12 full=2 startedMs=1 durationMs=3');
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith('esp32-eink', `${conn.port}: ${event}`);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('records allowed voice stages under normal serial ownership', () => {
     const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
     try {

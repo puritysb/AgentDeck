@@ -15,6 +15,7 @@
 namespace Eink {
 
 void init();
+void logRefreshCompletions();  // call only from the serial-owning network task
 void update(float dt);   // button polling (KEY1/KEY2 → force full refresh)
 void render();           // hash-gated draw + panel refresh (may block ~0.3-3s)
 uint32_t repaintCount();       // actual panel refreshes since boot

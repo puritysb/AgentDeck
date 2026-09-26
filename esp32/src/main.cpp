@@ -156,6 +156,9 @@ static void networkTask(void* param) {
     while (true) {
         // === Always poll serial (USB JSON from bridge) ===
         Net::serialLoop();
+#if defined(BOARD_EINK_SURFACE)
+        Eink::logRefreshCompletions();
+#endif
 
         // === WiFi portal (non-blocking, processes captive portal if active) ===
         Net::wifiLoop();

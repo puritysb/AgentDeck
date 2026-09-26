@@ -15,6 +15,18 @@ Every row below is either **measured** (a cited source line) or **open** (named 
 unmeasured). Nothing here decides a replacement design; it establishes what a replacement
 would have to reproduce.
 
+## September 27 implementation update
+
+`agentdeck run <claude|codex|opencode>` now implements the local non-PTY launch
+candidate. It retains login-shell/custom-command grammar, typed scalar override,
+raw agent defaults, the both-layer opt-out and inherited terminal streams. A real
+macOS TTY fixture confirmed input/output and exit 7, plus Ctrl-C exit 130; real CLI
+invocations confirmed quoted arguments, env append/opt-out and exit 23. The
+cross-platform shell test is also included in the Windows Node 22/24/26 CI matrix.
+A real Claude request hit the account's weekly limit, so this is not a successful
+agent-turn or Windows desktop attribution receipt. Remote relay, weights at launch
+and terminal-only controls remain on the managed compatibility path.
+
 ---
 
 ## 1. Custom launch arguments

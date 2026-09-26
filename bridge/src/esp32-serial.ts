@@ -892,8 +892,11 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
   if (!line.startsWith('{')) {
     // Not protocol JSON — usually boot/debug chatter, but crash dumps arrive
     // here too. Capture those instead of dropping them.
-    if (!capturePanicLine(conn, line) && isVoiceDiagnosticLine(line)) {
+    if (capturePanicLine(conn, line)) return;
+    if (isVoiceDiagnosticLine(line)) {
       logTagged('esp32-voice', `${conn.port}: ${line}`);
+    } else if (/^\[EinkRefresh\] count=\d{1,10} full=[01] startedMs=\d{1,10} durationMs=\d{1,10}$/.test(line)) {
+      logTagged('esp32-eink', `${conn.port}: ${line}`);
     }
     return;
   }
