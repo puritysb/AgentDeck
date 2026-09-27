@@ -18,12 +18,15 @@ marks in brand colour; each text zone is its own refresh region (sessions A2,
 usage and finished work DU), and the terrarium keeps its own animated region,
 which moves only while a creature is active.
 
-Usage took three passes. Page-wide bars in two columns wasted width and made
-the numbers the smallest thing on the zone; compact chips then dropped the reset
-time and thinned the bars; chips with `resets 4h 37m` repeated one word per
-window and wrapped in no fixed order. It is now an aligned table — window, bar
-of one fixed width, `42%`, `4h 37m` — with the captions said once, so the eye
-runs straight down the numbers.
+Usage took four passes. Page-wide bars wasted width; compact chips dropped the
+reset time and thinned the bars; chips repeating `resets` wrapped in no fixed
+order; a bottom band cost the terrarium a fifth of the portrait height. It is
+now grouped by provider — a line with mark, name and plan (`Codex  Pro · until
+Oct 10`, where a loose `ChatGPT → Oct 10` note used to float), then aligned
+window rows with captions said once — and in portrait it sits in the white
+space beside the session list, dense as the old overlay card without covering
+the tank. Every subscription mix was captured on the tablet (all, one
+provider, a plan without windows, none) and is pinned by `EinkUsageGroupsTest`.
 
 "Done" shows a judged task's `taskSummary`, else an answered turn's first
 sentence; a prompt still awaiting its answer, automated turns, abandoned tasks

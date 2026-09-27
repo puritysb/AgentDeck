@@ -247,7 +247,7 @@ fun EinkMonitorScreen(
                     timelineEntries = if (showTimeline) timelineEntries else emptyList(),
                     landscape = true,
                     onFocusSession = { connection.sendFocusSession(it) },
-                    usageRows = buildEinkLimitRows(state),
+                    usage = buildEinkUsageGroups(state),
                     sleepSnapshotMode = sleepSnapshotMode,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) { tankModifier ->
@@ -355,39 +355,62 @@ internal fun buildEinkLimitRows(state: DashboardState, now: Instant = Instant.no
     // "!" instead of disappearing. The leading brand mark identifies the provider,
     // so labels stay plain 5h/7d.
     providerLimitRows(state.codexRateLimits, state.zaiRateLimits).forEach {
-        // The small monochrome mark alone is easy to miss on e-ink. Keep
-        // GLM identifiable in text alongside the adaptive gauge.
-        val label = if (it.agentType != "zai") it.label
-            else if (it.label.equals("mcp", ignoreCase = true)) "MCP" else "GLM${it.label}"
+        // The provider line above the windows names GLM; the row names only
+        // the window, and the MCP quota by its quantity.
+        val label = if (it.label.equals("mcp", ignoreCase = true)) "MCP" else it.label
         rows.add(EinkLimitLine(label = label, percent = it.percent, agentType = it.agentType, stale = it.stale,
             reset = it.footnote ?: it.resetIso?.let(::formatResetTime)))
     }
-    // Subscription expiry rows — show "<provider> → M D" when the plan carries an
-    // expiry (Antigravity has its own chip below, so skip it here). When the
-    // daemon can't supply an expiry (e.g. the App Store Swift daemon exposes no
-    // subscription `until`), subscriptionTrailing returns null and the row is
-    // simply omitted — the card stays honest rather than showing a blank date.
-    state.subscriptions.forEach { sub ->
-        // The daemon stores the Antigravity subscription under its raw plan name
-        // ("Google AI Pro"), so skip it here — it's rendered by the AGY chip below.
-        if (isAntigravityPlanName(sub.name)) return@forEach
-        val trailing = subscriptionTrailing(sub.until, now) ?: return@forEach
-        val expiry = if (trailing.expired) "→ renew" else formatEinkExpiry(sub.until) ?: return@forEach
-        rows.add(EinkLimitLine(label = "", value = "${sub.name.substringBefore(' ')} $expiry"))
-    }
-    buildAntigravityLimitValue(state)?.let { rows.add(EinkLimitLine(label = "", value = it)) }
     return rows
 }
 
 /**
- * True when a subscription entry's name is really the Antigravity plan. The
- * daemon stores it as the raw plan name (e.g. "Google AI Pro"), not a literal
- * "Antigravity …" string. Mirrors ESP32 `UsageFormat::isAntigravityPlanName`.
+ * One provider on the e-ink usage zone: its name, its plan when the daemon
+ * knows one ("Plus · until Oct 10"), and its usage windows. A provider with a
+ * plan but no metered windows (Antigravity) is a group with no rows; a
+ * provider with neither is absent, so one subscription shows one group and
+ * none shows no zone at all.
  */
-private fun isAntigravityPlanName(name: String): Boolean =
-    name.startsWith("Google AI", ignoreCase = true) ||
-        name.startsWith("Antigravity", ignoreCase = true) ||
-        name.startsWith("AGY", ignoreCase = true)
+internal data class EinkUsageGroup(
+    val agentType: String,
+    val provider: String,
+    val plan: String?,
+    val windows: List<EinkLimitLine>,
+)
+
+private val USAGE_PROVIDER_ORDER = listOf("claude-code", "codex", "zai", "antigravity")
+
+internal fun buildEinkUsageGroups(state: DashboardState, now: Instant = Instant.now()): List<EinkUsageGroup> {
+    val windows = buildEinkLimitRows(state, now).groupBy { it.agentType }
+    val plans = mutableMapOf<String, String?>()
+    fun untilText(until: String?): String? {
+        val trailing = subscriptionTrailing(until, now) ?: return null
+        return if (trailing.expired) "renew" else formatEinkExpiry(until)?.let { "until ${it.removePrefix("→ ")}" }
+    }
+    fun planLine(tier: String?, until: String?): String? =
+        listOfNotNull(tier?.takeIf { it.isNotBlank() }, untilText(until)).joinToString(" · ").ifEmpty { null }
+    state.subscriptions.forEach { sub ->
+        when {
+            sub.name.startsWith("ChatGPT", ignoreCase = true) ->
+                plans["codex"] = planLine(sub.name.removePrefix("ChatGPT").trim(), sub.until)
+            sub.name.startsWith("GLM Coding Plan", ignoreCase = true) ->
+                plans["zai"] = planLine(sub.name.substringAfter(" · ", "").ifEmpty { null }, sub.until)
+            sub.name.equals("Claude", ignoreCase = true) ->
+                plans["claude-code"] = planLine(null, sub.until)
+        }
+    }
+    state.antigravityStatus?.let { status ->
+        val tier = status.planName?.replace("Google AI ", "")?.replace("Antigravity ", "")
+            ?.takeIf { it.isNotBlank() } ?: "Pro"
+        plans["antigravity"] = planLine(tier, status.subscriptionActiveUntil)
+    }
+    val names = mapOf("claude-code" to "Claude", "codex" to "Codex", "zai" to "GLM", "antigravity" to "Antigravity")
+    return USAGE_PROVIDER_ORDER.mapNotNull { type ->
+        val rows = windows[type].orEmpty()
+        if (rows.isEmpty() && type !in plans) return@mapNotNull null
+        EinkUsageGroup(type, names.getValue(type), plans[type], rows)
+    }
+}
 
 /** ISO date → "→ Mon D" for the clock-less e-ink chips; null when absent/unparseable. */
 private fun formatEinkExpiry(iso: String?): String? {
@@ -407,20 +430,6 @@ private fun formatEinkExpiry(iso: String?): String? {
     } catch (e: Exception) {
         null
     }
-}
-
-private fun buildAntigravityLimitValue(state: DashboardState): String? {
-    val status = state.antigravityStatus ?: return null
-    // Shorten the plan to "AGY <tier>" (e.g. "Google AI Pro" → "AGY Pro"). The raw
-    // availableCredits count is deliberately NOT surfaced — it's a backend metering
-    // number that means nothing at a glance.
-    val tier = status.planName
-        ?.replace("Google AI ", "")
-        ?.replace("Antigravity ", "")
-        ?.takeIf { it.isNotBlank() } ?: "Pro"
-    val plan = "AGY $tier"
-    val until = formatEinkExpiry(status.subscriptionActiveUntil)
-    return if (until != null) "$plan $until" else plan
 }
 
 @Composable
@@ -901,7 +910,7 @@ private fun EinkPortraitLayout(
             timelineEntries = if (showTimeline) timelineEntries else emptyList(),
             landscape = false,
             onFocusSession = { connection.sendFocusSession(it) },
-            usageRows = buildEinkLimitRows(state),
+            usage = buildEinkUsageGroups(state),
             sleepSnapshotMode = sleepSnapshotMode,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) { tankModifier ->
@@ -919,3 +928,4 @@ private fun EinkPortraitLayout(
         }
     }
 }
+

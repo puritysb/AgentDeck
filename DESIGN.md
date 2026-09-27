@@ -419,7 +419,7 @@ grammar, laid out per panel:
 | Needs you | Only when a session awaits. **Inverted block**: who, what it asks, the options | Inversion is paper's amber: the one loud thing, and it does not move. |
 | Working | One row per working session: brand mark · project (largest type) · live activity line | Real activity or nothing. No filler (`Working. Waiting for the next update.`). The zone heading names the state once; rows do not repeat it. |
 | Quiet | Idle sessions as one wrapped line of mark + name; offline as a count | Idle rows never take a working row's space. The mark disambiguates same-named sessions. |
-| Usage | An aligned table, one row per window: mark (first row of a provider) · window · bar · `42%` · `4h 37m`; captions `used` / `resets in` once | Columns line up so the eye runs down the numbers; nothing is repeated per row. One fixed bar width everywhere — a comparison cue, never a page-wide ruler. Two tables side by side where the width allows. `!` at critical, `?` when stale. |
+| Usage | Per provider: a line with mark · name · plan (`Codex  Pro · until Oct 10`), then its windows as aligned rows — window · bar · `42%` · `4h 37m`; captions `used` / `resets in` once | A plan belongs to its provider, never a loose note. Columns line up so the eye runs down the numbers; one bar width per zone. Absent providers are absent: one subscription is one group, a plan without metered windows is its line alone, none draws no zone. `!` at critical, `?` when stale. |
 | Done | Latest finished agent work: time · mark · project · one line | A judged task's summary first, otherwise an answered turn's first sentence. A prompt still waiting for its answer, automated turns, abandoned tasks and tool noise are not "done". |
 | Terrarium | The aquarium, in whatever space the text zones leave | Optional and never over a zone; dropped below a useful height rather than shown as a keyhole. |
 
@@ -435,7 +435,7 @@ and each is used where it exists:
 Judge a board by a human glance, not by data completeness: what a reader takes
 in within a second or two must be the few facts they act on.
 
-Layout: portrait stacks Now → terrarium → Usage/Done; landscape reads text
+Layout: portrait puts Usage in the white space beside Now, then the terrarium, then Done; landscape reads text
 down one column beside a full-height terrarium window. Fixed zones so a change
 refreshes only its own zone; type sizes step, never shrink to fit. Empty states
 state facts (`No sessions`), never placeholders.
