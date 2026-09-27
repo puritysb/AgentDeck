@@ -81,6 +81,13 @@ class EinkPaperBoardTest {
     }
 
     @Test
+    fun `the same finished work is listed once`() {
+        val reply = entry(210, "chat_response", "Uploaded the build; only review submission is left.")
+        val recent = paperRecent(listOf(reply, reply.copy(timestamp = 212)), limit = 5)
+        assertEquals(1, recent.size)
+    }
+
+    @Test
     fun `headline skips bare headings and machine output`() {
         assertEquals("Two findings need a decision today", paperHeadline("# Summary", "Two findings need a decision today"))
         assertEquals("Short", paperHeadline("Short", null))

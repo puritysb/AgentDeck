@@ -159,6 +159,9 @@ internal fun paperRecent(entries: List<TimelineEntry>, limit: Int): List<PaperRe
         .filter { (taskId, isTask, _) -> isTask || taskId == null || taskId !in judged }
         .map { it.third }
         .sortedByDescending { it.timestamp }
+        // One piece of work is listed once: a replayed history row or a turn
+        // and its task ending on the same sentence must not read as two.
+        .distinctBy { (it.projectName ?: "") + "\u0000" + it.text }
         .take(limit)
 }
 
@@ -444,6 +447,18 @@ private fun RecentZone(entries: List<TimelineEntry>, scale: EinkLayoutScale, lim
     }
 }
 
+/** One finished item is a project line plus up to two lines of text. */
+private val RecentItemHeight = 62.dp
+
+/** As many finished items as the zone's height holds — the zone is sized by the layout, not by the list. */
+@Composable
+private fun RecentFill(entries: List<TimelineEntry>, scale: EinkLayoutScale, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val fits = ((maxHeight - 26.dp) / RecentItemHeight).toInt().coerceIn(1, 10)
+        Column { RecentZone(entries, scale, limit = fits) }
+    }
+}
+
 /** A text zone: its own partial-refresh region, sized to its content. */
 @Composable
 private fun TextZone(
@@ -520,10 +535,10 @@ internal fun EinkPaperBoard(
                     HorizontalDivider(thickness = 1.dp, color = Ink, modifier = Modifier.padding(horizontal = pad))
                 }
                 TextZone(Zone.STATUS_SLOW, usage to timelineEntries.size, sleepSnapshotMode, Modifier.weight(1f), fill = true) {
-                    Column(Modifier.padding(pad)) {
+                    Column(Modifier.fillMaxHeight().padding(pad)) {
                         UsageZone(usage, scale)
                         if (usage.isNotEmpty() && hasRecent) BoardDivider()
-                        RecentZone(timelineEntries, scale, limit = 4)
+                        if (hasRecent) RecentFill(timelineEntries, scale, Modifier.weight(1f))
                     }
                 }
             }
@@ -545,15 +560,18 @@ internal fun EinkPaperBoard(
                     }
                 }
             }
+            // With finished work to show, the terrarium yields about two fifths
+            // of its height to it; without, it keeps the whole remainder.
+            val tankWeight = if (hasRecent) 0.6f else 1f
             if (tank != null) {
-                TankZone(Modifier.weight(1f).padding(horizontal = pad).padding(top = 4.dp, bottom = pad), tank)
+                TankZone(Modifier.weight(tankWeight).padding(horizontal = pad).padding(top = 4.dp, bottom = pad), tank)
             } else {
-                Box(Modifier.weight(1f))
+                Box(Modifier.weight(tankWeight))
             }
             if (hasRecent) {
                 HorizontalDivider(thickness = 2.dp, color = Ink)
-                TextZone(Zone.STATUS_SLOW, timelineEntries.size, sleepSnapshotMode) {
-                    Column(Modifier.padding(pad)) { RecentZone(timelineEntries, scale, limit = 3) }
+                TextZone(Zone.STATUS_SLOW, timelineEntries.size, sleepSnapshotMode, Modifier.weight(0.4f), fill = true) {
+                    RecentFill(timelineEntries, scale, Modifier.fillMaxHeight().padding(pad))
                 }
             }
         }

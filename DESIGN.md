@@ -435,7 +435,7 @@ and each is used where it exists:
 Judge a board by a human glance, not by data completeness: what a reader takes
 in within a second or two must be the few facts they act on.
 
-Layout: portrait puts Usage in the white space beside Now, then the terrarium, then Done; landscape reads text
+Layout: portrait puts Usage in the white space beside Now, then the terrarium, then Done (the terrarium yields about two fifths of its height when there is finished work, and Done shows as many items as that height holds); landscape reads text
 down one column beside a full-height terrarium window. Fixed zones so a change
 refreshes only its own zone; type sizes step, never shrink to fit. Empty states
 state facts (`No sessions`), never placeholders.
