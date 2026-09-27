@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -321,33 +321,28 @@ private fun BoardDivider() {
 }
 
 /**
- * Usage, one line per provider: mark, then `window NN%` chips. The number is
- * the information, so it is the largest thing here; the short bar under it is
- * a glance cue, not a ruler across the page. `!` at critical, `?` when stale.
+ * Usage as an aligned table, one row per window: mark · window · bar · used ·
+ * time left. Columns line up so the eye runs straight down the numbers, and
+ * the captions are said once, not on every row. The bar has one fixed width
+ * everywhere — a comparison cue, never a ruler across the page. `!` at
+ * critical, `?` when stale (the time column then carries the freshness note).
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun UsageZone(rows: List<EinkLimitLine>, scale: EinkLayoutScale) {
     if (rows.isEmpty()) return
+    val gauges = rows.filter { it.percent != null }
+    val notes = rows.filter { it.percent == null }.mapNotNull { it.value }
     ZoneLabel("USAGE", scale)
-    val byProvider = rows.filter { it.percent != null }.groupBy { it.agentType }
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(36.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        byProvider.forEach { (agentType, gauges) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BrandIcon(agentType = agentType, isEink = !einkColorEnabled, size = 18.dp, tint = markTint())
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    modifier = Modifier.padding(start = 10.dp),
-                ) {
-                    gauges.forEach { UsageChip(it, scale) }
-                }
+    if (gauges.isNotEmpty()) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val twoColumns = maxWidth >= UsageTableWidth * 2 + UsageTableGap
+            val columns = if (twoColumns) listOf(gauges.take((gauges.size + 1) / 2), gauges.drop((gauges.size + 1) / 2))
+                else listOf(gauges)
+            Row(horizontalArrangement = Arrangement.spacedBy(UsageTableGap)) {
+                columns.filter { it.isNotEmpty() }.forEach { UsageTable(it, scale) }
             }
         }
     }
-    val notes = rows.filter { it.percent == null }.mapNotNull { it.value }
     if (notes.isNotEmpty()) {
         Text(
             text = notes.joinToString("  ·  "),
@@ -359,49 +354,63 @@ private fun UsageZone(rows: List<EinkLimitLine>, scale: EinkLayoutScale) {
     }
 }
 
-/** One width for every usage bar, so two windows compare by eye without reading numbers. */
-private val UsageBarWidth = 104.dp
+private val UsageMarkW = 24.dp
+private val UsageLabelW = 58.dp
+private val UsageBarW = 132.dp
+private val UsagePctW = 64.dp
+private val UsageTimeW = 76.dp
+private val UsageTableWidth = UsageMarkW + UsageLabelW + UsageBarW + UsagePctW + UsageTimeW
+private val UsageTableGap = 28.dp
 
 @Composable
-private fun UsageChip(row: EinkLimitLine, scale: EinkLayoutScale) {
-    val pct = (row.percent ?: 0.0).coerceIn(0.0, 100.0)
-    val critical = pct >= 90
-    val numberSize = scale.sessionTitleFont * 1.2f
-    Column(Modifier.width(UsageBarWidth)) {
+private fun UsageTable(rows: List<EinkLimitLine>, scale: EinkLayoutScale) {
+    val caption = scale.sessionMetaFont
+    val body = (scale.sessionMetaFont.value + 2).sp
+    Column(Modifier.width(UsageTableWidth), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        // Captions once, over the two columns that need naming.
         Row {
-            Text(
-                text = row.label,
-                fontSize = scale.sessionMetaFont,
-                fontFamily = FontFamily.Monospace,
-                color = Ink,
-                maxLines = 1,
-                modifier = Modifier.alignByBaseline().padding(end = 5.dp),
-            )
-            Text(
-                text = "${pct.toInt()}%" + if (row.stale) "?" else if (critical) "!" else "",
-                fontSize = numberSize,
-                lineHeight = numberSize,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = if (critical) FontWeight.Bold else FontWeight.Medium,
-                color = Ink,
-                maxLines = 1,
-                modifier = Modifier.alignByBaseline(),
-            )
+            Box(Modifier.width(UsageMarkW + UsageLabelW + UsageBarW))
+            Text("used", fontSize = caption, fontFamily = FontFamily.Monospace, color = Ink,
+                textAlign = TextAlign.End, modifier = Modifier.width(UsagePctW))
+            Text("resets in", fontSize = caption, fontFamily = FontFamily.Monospace, color = Ink,
+                textAlign = TextAlign.End, modifier = Modifier.width(UsageTimeW))
         }
-        Box(Modifier.padding(top = 3.dp).fillMaxWidth().height(12.dp).border(1.5.dp, Ink)) {
-            val fill = if (einkColorEnabled && !row.stale) Color(UsageSeverity.color(pct, onPaper = true)) else Ink
-            Box(Modifier.fillMaxHeight().fillMaxWidth((pct / 100.0).toFloat()).background(fill))
-        }
-        // Time left is what the reader plans around; it sits directly under its bar.
-        row.reset?.let {
-            Text(
-                text = if (row.stale) it else "resets $it",
-                fontSize = (scale.sessionMetaFont.value + 1).sp,
-                fontFamily = FontFamily.Monospace,
-                color = Ink,
-                maxLines = 1,
-                modifier = Modifier.padding(top = 2.dp),
-            )
+        rows.forEachIndexed { i, row ->
+            val pct = (row.percent ?: 0.0).coerceIn(0.0, 100.0)
+            val critical = pct >= 90
+            val newProvider = i == 0 || rows[i - 1].agentType != row.agentType
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(UsageMarkW)) {
+                    if (newProvider) {
+                        BrandIcon(agentType = row.agentType, isEink = !einkColorEnabled, size = 16.dp, tint = markTint())
+                    }
+                }
+                Text(row.label, fontSize = body, fontFamily = FontFamily.Monospace, color = Ink,
+                    maxLines = 1, modifier = Modifier.width(UsageLabelW))
+                Box(Modifier.width(UsageBarW).height(12.dp).border(1.5.dp, Ink)) {
+                    val fill = if (einkColorEnabled && !row.stale) Color(UsageSeverity.color(pct, onPaper = true)) else Ink
+                    Box(Modifier.fillMaxHeight().fillMaxWidth((pct / 100.0).toFloat()).background(fill))
+                }
+                Text(
+                    text = "${pct.toInt()}%" + if (row.stale) "?" else if (critical) "!" else "",
+                    fontSize = (body.value + 2).sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = if (critical) FontWeight.Bold else FontWeight.Medium,
+                    color = Ink,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    modifier = Modifier.width(UsagePctW),
+                )
+                Text(
+                    text = row.reset ?: "",
+                    fontSize = body,
+                    fontFamily = FontFamily.Monospace,
+                    color = Ink,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    modifier = Modifier.width(UsageTimeW),
+                )
+            }
         }
     }
 }
@@ -543,7 +552,7 @@ internal fun EinkPaperBoard(
         Column(modifier = modifier.fillMaxSize().background(Paper)) {
             TextZone(Zone.CONTEXT_FAST, nowKey, sleepSnapshotMode, content = sessions)
             if (tank != null) {
-                TankZone(Modifier.weight(1f).padding(horizontal = pad), tank)
+                TankZone(Modifier.weight(1f).padding(horizontal = pad).padding(top = 4.dp, bottom = pad), tank)
             } else {
                 Box(Modifier.weight(1f))
             }

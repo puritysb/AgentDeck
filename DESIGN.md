@@ -419,7 +419,7 @@ grammar, laid out per panel:
 | Needs you | Only when a session awaits. **Inverted block**: who, what it asks, the options | Inversion is paper's amber: the one loud thing, and it does not move. |
 | Working | One row per working session: brand mark · project (largest type) · live activity line | Real activity or nothing. No filler (`Working. Waiting for the next update.`). The zone heading names the state once; rows do not repeat it. |
 | Quiet | Idle sessions as one wrapped line of mark + name; offline as a count | Idle rows never take a working row's space. The mark disambiguates same-named sessions. |
-| Usage | Per provider: mark, then chips of `window NN%` · a thick bar · `resets 4h 37m` | Three tiers read in order: the number (largest), a bar of one fixed width on every chip so windows compare by eye, then the time left, which is what the reader plans around. Never a page-wide ruler. `!` at critical, `?` when stale. |
+| Usage | An aligned table, one row per window: mark (first row of a provider) · window · bar · `42%` · `4h 37m`; captions `used` / `resets in` once | Columns line up so the eye runs down the numbers; nothing is repeated per row. One fixed bar width everywhere — a comparison cue, never a page-wide ruler. Two tables side by side where the width allows. `!` at critical, `?` when stale. |
 | Done | Latest finished agent work: time · mark · project · one line | A judged task's summary first, otherwise an answered turn's first sentence. A prompt still waiting for its answer, automated turns, abandoned tasks and tool noise are not "done". |
 | Terrarium | The aquarium, in whatever space the text zones leave | Optional and never over a zone; dropped below a useful height rather than shown as a keyhole. |
 
