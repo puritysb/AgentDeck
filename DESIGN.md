@@ -479,14 +479,14 @@ Each panel has its own pixel grid, dynamic range, and refresh rate. Designs MUST
 | Lenovo Tab dashboard | 1920×1200    | Always-on, slight burn-in risk      | Dark ink ground, calm motion       |
 | E-ink (D200H)        | 280×240      | 1-bit, slow refresh                 | High-contrast, hatch fills, mono   |
 | Pixoo64 LED          | 64×64        | LAN HTTP, fragile GIF buffer        | Terrarium + tiny device-side loop  |
-| iDotMatrix LED       | 32×32        | BLE, diffuser, constrained detail   | Native compact terrarium           |
-| Timebox Mini LED     | 11×11        | 121 LEDs, 4-bit packed color        | Official mark + perimeter status rail |
+| iDotMatrix LED       | 32×32        | BLE, diffuser, constrained detail   | Numeric fleet summary + event creatures |
+| Timebox Mini LED     | 11×11        | 121 LEDs, 4-bit packed color        | Expressive robot face / eyes       |
 | TC001 LED            | 32×8         | RGB matrix, blocky                  | Multi-mark status strip            |
 | IPS 10.1 office      | 1280×800     | Many pods/cards, glance distance    | Shape-coded state + text-first cards |
 | TRMNL 7.5" native       | 800×480      | 1-bit, fixed card capacity          | Priority grid + exact hidden-state counts |
 | ESP32 round AMOLED   | 466×466      | Round mask, low brightness          | Single creature centered           |
 
-Dot-matrix marks are generated from `design/brand/*.svg`; device code may tune color and surrounding motion, not invent replacement geometry. At 11×11, Timebox uses the dedicated Agent Beacon grammar: the 9×9 identity mark is stable and all motion lives on the one-pixel perimeter. At 32×32, iDotMatrix composes natively instead of reducing a completed 64×64 scene. Pixoo64 keeps HTTP load low by preloading a short loop for device-side playback.
+Dot-matrix agent marks are generated from `design/brand/*.svg`; event scenes preserve their geometry. Timebox Mini is the agents' collective face: eye poses and expressions convey activity, attention, responses and errors. It is an original robot face, not a redrawn provider mark. iDotMatrix prioritizes simultaneous waiting/work/result/live counts; only actual new-session or response events earn a brief creature scene, and attention/errors preempt it. Node and Swift share generated pixel frames and executable parity tests. These expressive displays permit eye blinks and event-driven movement; only amber attention modulates status brightness. There is no timer-driven creature carousel. See [device semantics](docs/devices.md#idotmatrix-3232) for exact count and retention rules. Pixoo64 retains its existing renderer and transport policy.
 
 ---
 

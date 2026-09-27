@@ -100,8 +100,8 @@ All surfaces follow the same rule:
 | Ulanzi D200H | Yes | Yes | Ulanzi Studio plugin is the only driver; no direct HID |
 | Ulanzi D200X LCD keys | Partial | Partial | Same 14-key Ulanzi Studio action as D200H; SDK/simulator contract is covered, but real-hardware verification is pending and the three encoders are not supported |
 | Pixoo64 | Yes | Yes | Native LAN HTTP |
-| Timebox Mini | Yes | Yes | Tier 1 CoreBluetooth; Tier 2 BLE helper path |
-| iDotMatrix | Yes | Yes | Tier 1 CoreBluetooth; one BLE display connection at a time |
+| Timebox Mini | Yes | Yes | Expressive robot face; shared Node/Swift state rules and generated animation frames; native CoreBluetooth / CLI BLE helper |
+| iDotMatrix | Yes | Yes | Animated agent world, new-session entrances and fleet status; shared Node/Swift frames; one BLE display connection at a time |
 | ESP32 state display and Wi-Fi provisioning | Yes | Yes | Native serial and network frameworks |
 | ESP32 serial firmware flash | No | Yes | `agentdeck esp32 flash` bundles esptool-js and drives the port through the optional native `serialport` module — no user-installed `esptool.py`. Also available with no install at all from the browser flasher (Chrome/Edge desktop, Web Serial). **The App Store target is unchanged and stays No**: the sandbox is not the obstacle (`com.apple.security.device.serial` is already granted and the app already does raw POSIX serial writes) — the no-subprocess contract is, and clearing it would mean reimplementing the ESP32 ROM loader in Swift. Not planned. |
 | ESP32 Wi-Fi OTA push | Yes | Yes | Firmware bytes pushed over existing WS; firmware build remains CLI-only |

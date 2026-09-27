@@ -328,3 +328,9 @@ this mode; the installed desk runs the Node daemon.
 
 Dedicated daily task groups and cross-session result acknowledgement remain
 future options, rather than inferred group assignments.
+
+The 2026-09-27 refinement gives Timebox a collective robot face and brings both
+BLE devices to Node/Swift parity. iDotMatrix keeps information primary: simultaneous
+waiting, working, recent result and live/error counts, with brief official-creature
+scenes only for new sessions and actual responses. There is no decorative species
+rotation. See [the device contract](devices.md#idotmatrix-3232).

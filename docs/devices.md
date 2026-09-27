@@ -260,11 +260,25 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
 - **Transport**: BLE GATT transparent-UART. The App Store daemon uses native CoreBluetooth; the CLI daemon uses `bridge/src/idotmatrix/sync.py`.
 - **Discovery**: brand-independent. A peripheral counts as a panel when it advertises service `000000fa-…`, or when its advertised name matches a known family (`IDM-` iDotMatrix, `iPixel-`). The same 32×32 hardware ships under several brand names, so a vendor prefix alone is not the filter. Both scanners — Swift CoreBluetooth and `scan.py` (bleak) — apply the identical predicate from `shared/src/idotmatrix-identity.ts` via generated mirrors (`pnpm generate-idotmatrix-identity`). For a panel that neither advertises the service nor uses a known name, add `idotmatrixNamePrefixes: ["myprefix-"]` to `settings.json`; adding the BLE address to `idotmatrixDevices` by hand still bypasses discovery entirely.
 - **CLI runtime**: `@agentdeck/bridge` ships the Python clients. The first explicit BLE command prepares `bleak`, Pillow, and `idotmatrix` in `~/.agentdeck/python-ble`; use `agentdeck ble status` or `agentdeck ble setup` to inspect or prepare it directly. npm installation itself does not contact PyPI.
-- **Rendering**: the Node daemon serves a desk-awareness count view: WAIT, ERROR,
-  RESULT, WORK or IDLE, with a large count. Only waiting pulses. Explicit results
-  remain visible for 90 seconds; quota usage does not trigger errors. Swift-native
-  rendering retains the prior official-mark/usage-rail view. The installed desk
-  uses Node; Pixoo64 remains on its existing aquarium renderer.
+- **Rendering — agent world**: Node and native Swift share the same policy and pixel
+  art. The default is a simultaneous numeric summary: `WAIT` (live awaiting
+  sessions), `WORK` (live processing sessions), `RSLT` (explicit response/task-end
+  events in the last 90 seconds), and `LIVE` (all live sessions). `ERR` replaces
+  the last row when any live session is in error, even if waiting has priority.
+  Zero rows are dim; values over 99 show `99+`. These are observed counts, not
+  progress percentages, attempt counts, or a claim that all work has completed.
+- **Event scenes**: a new live session gets a six-second official-creature entrance;
+  an explicit response gets a six-second result scene. Then the numeric summary
+  returns. There is no decorative creature carousel. Waiting/errors preempt both
+  scenes; quota usage never causes an error. Initial/reconnected rosters establish
+  a baseline rather than replaying entrances. A burst coalesces to one entrance.
+  The bottom event-scene dots show up to eight live session states (overflow is
+  marked); unknown agents use a neutral resident, never another agent's logo.
+- **Parity**: `shared/src/matrix-expression.ts` owns state/timing policy;
+  `bridge/src/pixoo/matrix-art.ts` owns the art. `pnpm generate-matrix-expressions`
+  bakes Swift RLE frames, and executable Node/Swift tests compare event sequences
+  and RGB pixels. Missing roster data shows `SYNC`, separately from an empty
+  roster and the existing transport `OFFLINE` badge. Pixoo64 is unchanged.
 - **Output tuning**: conservative 1.22 brightness / 1.08 contrast compensation in both native and CLI paths; the former 1.6 / 1.2 boost washed out defining holes.
 - **Constraint**: one BLE connection per daemon; brightness command range 5–100%.
 
@@ -274,11 +288,16 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
 
 - **BLE** — BLE GATT over the ISSC transparent-UART service `49535343-fe7d-…` (write char `49535343-8841-…`, write-without-response, 20-byte chunks). Advertises as `TimeBox-mini-light` (sharing its BD_ADDR with the Classic audio endpoint `TimeBox-mini-audio`). Driven by `sync_ble.py` (bleak) on the CLI daemon **and natively by the App Store Swift daemon over CoreBluetooth** (no subprocess). (The legacy Bluetooth Classic SPP variant was removed — poor macOS compatibility, no App Store path.)
 
-- **Rendering — desk signal**: the Node daemon sends a native 11×11 glyph:
-  amber exclamation for waiting, red cross for errors, green check for a recent
-  response, static dim cyan bars for working, a dim dot for idle, and a distinct
-  unknown/disconnected indication. Only waiting pulses. Swift-native rendering
-  retains the earlier official-agent beacon. The BLE packet format is unchanged.
+- **Rendering — agent face**: both daemons render the same native 11×11 robot
+  face: cyan eyes glance/blink while working, amber raised brows and wide eyes ask
+  for attention, a red frown represents errors, green smiling eyes acknowledge
+  explicit responses, and dim neutral eyes blink at idle. Unknown data has closed,
+  broken eyes. A new-session greeting is brief. The face represents aggregate
+  agent activity, not a particular provider. Only amber brightness pulses; eye
+  poses and event motion may change without flashing other status colors.
+- **Priority**: waiting → error → new-session greeting → recent explicit result →
+  working → idle. Results retain their original 90-second window; aborted, denied,
+  pending or future events do not count. The BLE packet format is unchanged.
 - **Heartbeat**: polls the frame endpoint (~1.5s) and sends only changed frames.
 - **Config**: `~/.agentdeck/settings.json` — `{ timeboxDevices: [{ address, name?, brightness? }] }`
 - **Source**: `bridge/src/timebox/` (settings, daemon sync manager, `sync_ble.py`/`scan_ble.py`); App Store: `apple/AgentDeck/Daemon/Modules/Timebox{BLE,Module,DivoomPacket}.swift`

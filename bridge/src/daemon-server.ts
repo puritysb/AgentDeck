@@ -192,7 +192,7 @@ import {
   recordKnock,
   revokePeer,
 } from './pairing-knocks.js';
-import { getLastFrame, renderPreviewFrame, onFrameRendered, offFrameRendered } from './pixoo/pixoo-bridge.js';
+import { broadcastMatrix, getLastFrame, renderPreviewFrame, onFrameRendered, offFrameRendered } from './pixoo/pixoo-bridge.js';
 import { loadIDotMatrixDevices } from './idotmatrix/idotmatrix-settings.js';
 import { handlePixooWake } from './pixoo/pixoo-client.js';
 import { triggerMdnsRecovery } from './mdns.js';
@@ -4178,6 +4178,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     httpServer,
     isDaemon: true,
   });
+  // Matrix state is a daemon display projection, independent of Pixoo64 hardware.
+  broadcastMatrix({ type: 'connection', status: 'disconnected' } as BridgeEvent);
+  core.wsServer.onBroadcast(broadcastMatrix);
   subagentTimeline = new SubagentTimelineTracker((entry, upsert) => {
     // A dispatch row is upserted as its burst grows (one row per fan-out, the
     // `task_start` folding pattern) — emitting a fresh row per child would
@@ -4318,6 +4321,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Enabled AFTER rehydration + reaping so the first write carries the restored
   // history instead of truncating the file to whatever this run has seen.
   core.bridgeTimeline.enablePersistence(getOwnTimelineFile());
+  broadcastMatrix({ type: 'timeline_history', entries: core.bridgeTimeline.getHistory() } as BridgeEvent);
   core.wireDisplayMonitor();
   let lastStateEvent: BridgeEvent | null = null;
   let userFocusedSessionId: string | null = null;

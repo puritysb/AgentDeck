@@ -62,7 +62,8 @@
     "generate-usage-presentation": "node scripts/generate-usage-presentation.mjs",
     "generate-collaboration-presentation": "node scripts/generate-collaboration-presentation.mjs",
     "plugin:deploy": "node plugin/scripts/deploy.mjs",
-    "plugin:check": "node plugin/scripts/deploy.mjs --check"
+    "plugin:check": "node plugin/scripts/deploy.mjs --check",
+    "generate-matrix-expressions": "tsx scripts/generate-matrix-expressions.mts"
   },
   "engines": {
     "node": "22.x || 24.x || 26.x",

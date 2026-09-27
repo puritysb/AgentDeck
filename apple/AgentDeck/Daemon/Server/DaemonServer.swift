@@ -2464,6 +2464,26 @@ final class DaemonServer {
             }
         }
 
+        // Seed the passive BLE projections before their first render. Existing
+        // sessions establish a baseline, and restored results retain their real
+        // timestamps. Do not wait for an unrelated state change to leave SYNC.
+        if idotmatrix != nil || timebox != nil {
+            let history = await timelineStore.getAll() // Store is bounded; projection filters result rows before capping.
+            let rosterSeed = SendableDict(buildSessionsListEvent())
+            let historySeed = SendableDict([
+                "type": "timeline_history",
+                "entries": history.map { Self.daemonTimelineEntryDict($0) },
+            ])
+            if let idotmatrix {
+                await idotmatrix.handleEvent(rosterSeed.value)
+                await idotmatrix.handleEvent(historySeed.value)
+            }
+            if let timebox {
+                await timebox.handleEvent(rosterSeed.value)
+                await timebox.handleEvent(historySeed.value)
+            }
+        }
+
         // Start all
         await moduleManager.startAll()
         DaemonLogger.shared.info("startDeviceModules: moduleManager.startAll done")

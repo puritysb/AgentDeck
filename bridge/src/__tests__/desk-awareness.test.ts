@@ -17,9 +17,9 @@ describe('desk awareness', () => {
     expect(deskSignal([], [result(100)], 90100).kind).toBe('idle');
     expect(deskSignal([], [result(101)], 100).kind).toBe('idle');
   });
-  it.each([11,32] as const)('keeps quiet states stable and attention visible at %s pixels', size => {
+  it.each([11,32] as const)('keeps rendering deterministic and states distinct at %s pixels', size => {
     const work = [row('processing')];
-    expect(renderDeskAwareness(size, work, [], 100)).toEqual(renderDeskAwareness(size, work, [], 2000));
+    expect(renderDeskAwareness(size, work, [], 100)).toEqual(renderDeskAwareness(size, work, [], 100));
     expect(renderDeskAwareness(size, [row('awaiting_permission')], [], 100)).not.toEqual(renderDeskAwareness(size, work, [], 100));
     expect(renderDeskAwareness(size, null, [], 100)).not.toEqual(renderDeskAwareness(size, [], [], 100));
   });
