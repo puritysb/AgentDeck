@@ -65,6 +65,16 @@ These multi-provider changes are next-release candidates ([PR #379](https://gith
 - ESP32: compact horizontal usage gauges on 86 Box, IPS 3.5 and round AMOLED; visible GLM usage on IPS 10 and NM-EPD-420; proportional card fills on TTGO; five-window layouts without clipping or array overflow on T-Display Pro.
 - ESP32 firmware delivery remains deferred while IPS10 work is in progress.
 
+## 2026-09-28 — Android 1.6.0
+
+- E-ink readers (Crema, Pantone) get the Paper Board: sessions ranked by what they ask of you (needs you → working, each with its live activity → one line of idle sessions), usage grouped by provider with the plan beside it (`Codex  Pro · until Oct 10`) and aligned rows of window · bar · used · time left, and finished agent work — judged task summaries and answered turns, each listed once. Automated turns, abandoned tasks and prompts still waiting for an answer are not listed.
+- The terrarium stays as its own zone, never under text: grey gradients on 16-level panels, colour on Kaleido, animating only while a creature is active; it yields about two fifths of its height when there is finished work to show. Colour e-ink adds session hues, usage severity colours and brand-colour marks. Each text zone refreshes on its own (sessions fast, usage and finished work slow).
+- Dashboards and aquariums share one session-state palette (green healthy, cyan working, amber needs you, red failure, grey quiet) and one quota severity scale (green below 70%, amber 70–89%, red from 90%). Aquarium name tags yield instead of covering creatures behind them.
+- 3D aquarium: working agents are easier to spot (WORKING badges, activity bars, stronger motion); Claude Code's arm geometry is repaired.
+- OpenClaw setup guidance appears only for explicit pairing or authentication failures, and the dashboard now receives Gateway authentication status.
+- Under the App Store (Swift) daemon, the Codex plan line reads the same as under the CLI daemon. Paired with the daemon's connect-history change, a tablet shows the same history whichever daemon it is attached to.
+- Existing dashboard choices and the direct-install wireless update path are unchanged; Play installations continue to update through Play.
+
 ## 2026-09-23 — npm 1.4.2
 
 - Fix observed Claude sessions remaining idle during hook-driven work (#367): merge lifecycle state and sanitized current tool into the matching session while preserving passive metadata.
