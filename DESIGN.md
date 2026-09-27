@@ -431,6 +431,7 @@ and each is used where it exists:
 | Tone | Black ink on white; no gradients or scenes. NM-EPD-420's red is spent only on what needs the reader; LilyGo's grey levels only on secondary ink | Terrarium in grey gradients; text zones stay black on white | Session hues (§2.7 paper palette) on the zone heading, the needs-you band and usage severity; brand marks in brand colour; colour terrarium |
 | Refresh | Per panel: TRMNL paints partial windows with a full clean about every fifth; NM-EPD-420 has only ~10 s full tri-colour cycles, so repaints wait for a settled change; LilyGo follows its page refresh policy | Per zone: sessions A2 fast, usage and done DU slow, needs-you one GC16 clean | Same zones; colour layers skip the software layer so the CFA samples colour |
 | Motion | None | Terrarium animates only while a creature is active, at ≤10 partial frames/s, and rests otherwise | Same as grey |
+| Sound | NM-EPD-420 only (ES8311 codec): a two-note chime when a session starts waiting on the reader, since a ~10 s repaint cannot flash; spoken replies route to it as `audio_out` | None | None |
 
 Judge a board by a human glance, not by data completeness: what a reader takes
 in within a second or two must be the few facts they act on.

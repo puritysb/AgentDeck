@@ -1,6 +1,7 @@
 #pragma once
 
-// Short I2S speaker chimes for the T-Embed pager mode. Playback runs in a
+// Short I2S speaker chimes for the T-Embed pager mode and the NM-EPD-420 paper
+// surface. Playback runs in a
 // one-shot FreeRTOS task so the UI loop never blocks on I2S writes.
 
 namespace Chime {

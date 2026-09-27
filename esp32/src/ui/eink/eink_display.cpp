@@ -1579,8 +1579,13 @@ int drawParagraph(int16_t x, int16_t y, int16_t maxW, int16_t lineH,
     const char* p = text;
     int lines = 0;
     while (*p && lines < maxLines) {
-        while (*p == ' ') p++;
-        size_t remain = strlen(p);
+        // A newline in the text is a line break. Left in, the U8g2 (Korean)
+        // path honours it itself — back to x=0 one font-height down — and the
+        // next wrapped line was drawn over it (seen on TRMNL's ANSWER face).
+        while (*p == ' ' || *p == '\n' || *p == '\r') p++;
+        if (!*p) break;
+        const char* nl = strpbrk(p, "\r\n");
+        size_t remain = nl ? (size_t)(nl - p) : strlen(p);
         size_t take = remain < 180 ? remain : utf8Boundary(p, 179);
         char line[184];
         while (take > 1) {
@@ -1593,7 +1598,8 @@ int drawParagraph(int16_t x, int16_t y, int16_t maxW, int16_t lineH,
             while (space > 0 && p[space] != ' ') space--;
             if (space > take / 2) take = space;
         }
-        if (lines == maxLines - 1 && take < remain) {
+        if (lines == maxLines - 1 && (take < remain || nl)) {
+            // Last line with more to say: the rest, flattened, with an ellipsis.
             smartFitText(line, sizeof(line), p, maxW, font);
             smartTextAt(x, y + lines * lineH, line, font);
             return lines + 1;
@@ -1634,6 +1640,14 @@ void drawPaperHeader(const Snap& s, PaperFace face) {
         InkScope ink(accentColor());
         textRight(W - pad, W <= 420 ? 34 : 42, "OFFLINE",
                   W <= 420 ? CLASSIC_FONT : &FreeSansBold9pt7b);
+    } else if (W > 420 && face != PaperFace::Glance && s.totalSessions > 0) {
+        // A held page (ANSWER, DECISION, DIGEST) still says what the other
+        // sessions are doing, so eight minutes of an answer never hides that
+        // someone now needs the reader.
+        char counts[72];
+        boardCountSummary(s, counts, sizeof(counts));
+        InkScope ink(needsUser ? accentColor() : GxEPD_BLACK);
+        textRight(W - pad, 42, counts, &FreeSansBold9pt7b);
     }
     display.drawFastHLine(pad, headerH, W - pad * 2, GxEPD_BLACK);
 }
@@ -1709,9 +1723,16 @@ void drawEp47Chrome(const Snap& s, AgentDeckEpd47::Page selected) {
         display.drawRoundRect(EPD47_TAB_X, 14, EPD47_TAB_W, 48, 4, GxEPD_BLACK);
         textAt(EPD47_TAB_X + 18, 45, "LIMITS", &FreeSansBold12pt7b);
     }
-    // Exception-based, like the paper header: silence means healthy.
+    // Exception-based, like the paper header: silence means healthy. A live
+    // link instead says what the sessions are doing, non-zero counts only.
     if (!s.bridgeConnected) {
         textRight(W - 20, 42, "OFFLINE", &FreeSansBold9pt7b);
+    } else if (s.totalSessions > 0) {
+        char counts[72];
+        boardCountSummary(s, counts, sizeof(counts));
+        if (textWidth(counts, &FreeSansBold9pt7b) > W - 20 - (EPD47_TAB_X + EPD47_TAB_W + 24))
+            boardCountSummary(s, counts, sizeof(counts), true);
+        textRight(W - 20, 42, counts, &FreeSansBold9pt7b);
     }
     display.drawFastHLine(20, headerH, W - 40, EINK_INK_RULE);
 }
@@ -2017,22 +2038,63 @@ void drawEp47Home(const Snap& s) {
         const auto& r = s.rows[i];
         char name[64]; smartFitText(name, sizeof(name), r.name, 480, &FreeSansBold18pt7b);
         smartTextAt(24, 148, name, &FreeSansBold18pt7b);
+        // Real content or nothing: no "Working. Waiting for the next result."
         const char* body = AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Attention && r.question[0] ? r.question :
             AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing && r.activity[0] ? r.activity :
-            r.work[0] ? r.work : r.activity[0] ? r.activity :
-            AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing ? "Working. Waiting for the next result." : "Standing by.";
+            r.work[0] ? r.work : r.activity;
         drawParagraph(24, 181, 500, 26, 3, body, &FreeSansBold12pt7b);
         textAt(24, 268, "Open work >", &FreeSans9pt7b);
     } else {
         textAt(24, 158, "No active work", &FreeSansBold18pt7b);
     }
-    textAt(24, 312, "RECENT RESULTS", &FreeSansBold9pt7b);
-    for (uint8_t ti = 0; ti < min(s.tickerCount, (uint8_t)3); ti++) {
-        char event[116]; smartFitText(event, sizeof(event), s.tickerText[ti], 438, &FreeSans9pt7b);
-        textAt(24, 346 + ti * 38, s.tickerTime[ti], &FreeSans9pt7b);
-        smartTextAt(86, 346 + ti * 38, event, &FreeSans9pt7b);
+    // Usage at glance size (window, bar, used, time left) in the left column's
+    // lower half, then recent results in whatever height remains. Headings
+    // appear only over content. LIMITS keeps the full per-provider detail.
+    int16_t ly = 318;
+    display.drawFastHLine(24, 290, 516, EINK_INK_RULE);
+    int windows = 0;
+    for (uint8_t g = 0; g < s.usageCount; g++) windows += s.usage[g].rowCount;
+    if (windows > 0) {
+        textAt(24, ly, "USAGE", &FreeSansBold9pt7b);
+        ly += 28;
+        uint8_t drawn = 0;
+        for (uint8_t g = 0; g < s.usageCount && drawn < 4; g++) {
+            for (uint8_t r = 0; r < s.usage[g].rowCount && drawn < 4; r++, drawn++) {
+                const auto& row = s.usage[g].rows[r];
+                char label[24]; snprintf(label, sizeof(label), "%s %s", s.usage[g].name(), row.label);
+                textAt(24, ly, label, &FreeSans9pt7b);
+                const float pct = (float)row.shown();
+                display.fillRect(158, ly - 12, 196, 14, EINK_INK_TINT);
+                display.drawRect(156, ly - 14, 200, 18, GxEPD_BLACK);
+                if (pct >= 0) {
+                    const int fill = (int)(196 * min(100.0f, max(0.0f, pct)) / 100.0f);
+                    display.fillRect(158, ly - 12, fill, 14,
+                        UsageSeverity::level(pct) == UsageSeverity::Critical ? accentColor() : GxEPD_BLACK);
+                }
+                char value[10]; snprintf(value, sizeof(value), pct >= 0 ? "%d%%" : "--", (int)pct);
+                textRight(420, ly, value, &FreeSansBold9pt7b);
+                if (row.reset[0]) {
+                    InkScope ink(EINK_INK_BODY);
+                    char reset[28]; snprintf(reset, sizeof(reset), "%s%s", row.left ? "left " : "", row.reset);
+                    textRight(536, ly, reset, &FreeSans9pt7b);
+                }
+                ly += 26;
+            }
+        }
+        ly += 12;
     }
-    if (s.rowCount > 1) textAt(24, 496, "All work >", &FreeSans9pt7b);
+    const uint8_t recentFit = (uint8_t)max(0, (484 - ly - 28) / 30);
+    const uint8_t recentRows = min(min(s.tickerCount, (uint8_t)3), recentFit);
+    if (recentRows > 0) {
+        textAt(24, ly, "RECENT RESULTS", &FreeSansBold9pt7b);
+        ly += 30;
+        for (uint8_t ti = 0; ti < recentRows; ti++, ly += 30) {
+            char event[116]; smartFitText(event, sizeof(event), s.tickerText[ti], 438, &FreeSans9pt7b);
+            textAt(24, ly, s.tickerTime[ti], &FreeSans9pt7b);
+            smartTextAt(86, ly, event, &FreeSans9pt7b);
+        }
+    }
+    // One "All work >" — under the roster it opens — not one per column.
     // Stable roster at glance distance. Detailed quotas stay on LIMITS.
     for (uint8_t row = 0; row < min(s.rowCount, (uint8_t)3); ++row) {
         const auto& r = s.rows[row];
@@ -2045,7 +2107,7 @@ void drawEp47Home(const Snap& s) {
         textAt(right, y + 23, state, &FreeSansBold9pt7b);
         const char* activity = kind == AgentDeckEink::StatusKind::Attention && r.question[0] ? r.question :
             kind == AgentDeckEink::StatusKind::Processing && r.activity[0] ? r.activity :
-            r.work[0] ? r.work : "No activity reported";
+            r.work[0] ? r.work : r.activity;
         drawParagraph(right, y + 46, rightW, 20, 2, activity, &FreeSans9pt7b);
     }
     if (!s.rowCount) textAt(right, 146, "No sessions", &FreeSans9pt7b);
@@ -2071,29 +2133,82 @@ void drawGlanceFace(const Snap& s) {
     drawPaperHeader(s, PaperFace::Glance);
 #if defined(AGENTDECK_NM_UI)
     {
-    uint8_t attention = 0, working = 0;
-    for (uint8_t n = 0; n < s.rowCount; n++) {
-        const auto kind = AgentDeckEink::classifyStatus(s.rows[n].state);
-        if (kind == AgentDeckEink::StatusKind::Attention) attention++;
-        if (kind == AgentDeckEink::StatusKind::Processing) working++;
-    }
-    char summary[48]; snprintf(summary, sizeof(summary), "%u needs you  /  %u working", attention, working);
+    uint8_t attention = 0;
+    for (uint8_t n = 0; n < s.rowCount; n++)
+        if (AgentDeckEink::classifyStatus(s.rows[n].state) == AgentDeckEink::StatusKind::Attention) attention++;
+    // Counts in the reader's words, non-zero only ("1 need you, 3 working");
+    // red is spent only when someone needs the reader.
+    char summary[64];
+    boardCountSummary(s, summary, sizeof(summary));
+    if (!summary[0]) snprintf(summary, sizeof(summary), "%s", "No sessions");
     { InkScope ink(attention ? accentColor() : GxEPD_BLACK);
-      textAt(14, 72, summary, &FreeSansBold9pt7b); }
+      char fitted[64]; smartFitText(fitted, sizeof(fitted), summary, W - 28, &FreeSansBold9pt7b);
+      textAt(14, 72, fitted, &FreeSansBold9pt7b); }
     int windowCount = 0;
     for (uint8_t g = 0; g < s.usageCount; g++) windowCount += s.usage[g].rowCount;
     const int16_t usageTop = windowCount > 2 ? 158 : 192;
-    const int i = primarySession(s);
-    if (i >= 0) {
-        const auto& r = s.rows[i];
-        char name[64]; smartFitText(name, sizeof(name), r.name, W - 28, &FreeSansBold12pt7b);
-        smartTextAt(14, 104, name, &FreeSansBold12pt7b);
-        const char* body = AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Attention && r.question[0] ? r.question :
-            AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing && r.activity[0] ? r.activity :
-            r.work[0] ? r.work : r.activity[0] ? r.activity :
-            AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing ? "Working. Waiting for the next result." : "Standing by.";
-        drawParagraph(14, 128, W - 28, 23, windowCount > 2 ? 1 : 2, body, &FreeSans9pt7b);
-    } else textAt(14, 110, "No active work", &FreeSansBold12pt7b);
+
+    // Ranked list: who needs the reader (name + their question), then who is
+    // working (name + what it is doing). Only with nothing active do quiet
+    // sessions get rows, carrying their last result. No filler: a row with
+    // nothing to say is just the name.
+    {
+        uint8_t order[MAX_ROWS];
+        const uint8_t n = prioritizedSessionOrder(s, order);
+        const bool anyActive = activeSessionCount(s) > 0;
+        const int16_t rowH = 22;
+        const int16_t floorY = usageTop - 16;   // last baseline that clears the rule
+        int16_t y = 96;
+        uint8_t shown = 0, eligible = 0;
+        for (uint8_t k = 0; k < n; k++) if (!anyActive || needsAttention(s.rows[order[k]])) eligible++;
+        for (uint8_t k = 0; k < n; k++) {
+            const RowSnap& r = s.rows[order[k]];
+            if (anyActive && !needsAttention(r)) continue;
+            const bool asks = AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Attention;
+            const bool lastSlot = y + rowH > floorY;
+            if (lastSlot && shown + 1 < eligible) {
+                // Name what did not fit by kind, not as a bare "+N more".
+                uint8_t asksLeft = 0, workLeft = 0, quietLeft = 0;
+                for (uint8_t j = k; j < n; j++) {
+                    const RowSnap& rest = s.rows[order[j]];
+                    if (anyActive && !needsAttention(rest)) continue;
+                    switch (AgentDeckEink::classifyStatus(rest.state)) {
+                        case AgentDeckEink::StatusKind::Attention:  asksLeft++; break;
+                        case AgentDeckEink::StatusKind::Processing: workLeft++; break;
+                        default:                                   quietLeft++; break;
+                    }
+                }
+                char more[64] = "+";
+                auto add = [&](uint8_t c, const char* what) {
+                    if (!c) return;
+                    size_t used = strlen(more);
+                    snprintf(more + used, sizeof(more) - used, "%s%u %s", used > 1 ? ", " : "", (unsigned)c, what);
+                };
+                add(asksLeft, "need you"); add(workLeft, "working"); add(quietLeft, "idle");
+                { InkScope ink(asksLeft ? accentColor() : GxEPD_BLACK); textAt(14, y, more, &FreeSansBold9pt7b); }
+                break;
+            }
+            if (y > floorY) break;
+            char name[48]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "(unnamed)", 150, &FreeSansBold9pt7b);
+            { InkScope ink(asks ? accentColor() : GxEPD_BLACK); smartTextAt(14, y, name, &FreeSansBold9pt7b); }
+            const char* detail = asks ? r.question
+                : (anyActive ? (r.activity[0] ? r.activity : r.tool) : r.work);
+            if (detail && detail[0]) {
+                const int16_t dx = (int16_t)(14 + smartWidth(name, &FreeSansBold9pt7b) + 10);
+                if (asks && y + rowH <= floorY) {
+                    // A question gets the full width of the next line.
+                    char q[140]; smartFitText(q, sizeof(q), detail, W - 28, &FreeSans9pt7b);
+                    smartTextAt(14, (int16_t)(y + rowH), q, &FreeSans9pt7b);
+                    y += rowH;
+                } else {
+                    char d[140]; smartFitText(d, sizeof(d), detail, W - 14 - dx, &FreeSans9pt7b);
+                    smartTextAt(dx, y, d, &FreeSans9pt7b);
+                }
+            }
+            y += rowH;
+            shown++;
+        }
+    }
     display.drawFastHLine(14, usageTop - 10, W - 28, GxEPD_BLACK);
     int16_t y = usageTop;
     auto window = [&](const char* label, float pct, const char* reset) {
@@ -2178,10 +2293,7 @@ void drawGlanceFace(const Snap& s) {
     const int16_t x = sideW + (W <= 420 ? 14 : 24);
     const int16_t maxW = W - x - pad;
     if (i < 0) {
-        textAt(x, top + 44, "Quiet paper.", big);
-        drawParagraph(x, top + 76, maxW, 22, 3,
-                      "No active sessions. The page will wake when AgentDeck has something durable to show.",
-                      &FreeSans9pt7b);
+        textAt(x, top + 44, "No sessions", big);
     } else {
         const RowSnap& r = s.rows[i];
         char name[64]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "AgentDeck", maxW, big);
@@ -2192,8 +2304,6 @@ void drawGlanceFace(const Snap& s) {
             InkScope ink(awaitingRow ? accentColor() : GxEPD_BLACK);
             textAt(x, top + 58, state, &FreeSansBold9pt7b);
         }
-        const bool processingRow =
-            AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing;
         const char* body = awaitingRow
             ? (r.question[0] ? r.question
 #if defined(AGENTDECK_NM_UI)
@@ -2203,10 +2313,7 @@ void drawGlanceFace(const Snap& s) {
 #endif
             : (r.work[0] ? r.work
                          : (r.activity[0] ? r.activity
-                                          : (r.tool[0] ? r.tool
-                                                       : (processingRow
-                                                           ? "Work is in progress. This page waits for a durable result."
-                                                           : "Standing by."))));
+                                          : r.tool));   // real content or nothing
         drawParagraph(x, top + (W <= 420 ? 86 : 98), maxW,
                       W <= 420 ? 20 : 24, W <= 420 ? 4 : 4, body, &FreeSans9pt7b);
     }

@@ -34,6 +34,8 @@
 #include "ui/eink/eink_display.h"
 #if defined(BOARD_HAS_SPEAKER)
 #include "audio/speaker_playback.h"
+#include "ui/knob/attention_tracker.h"
+#include "ui/knob/chime.h"
 #endif
 #elif defined(BOARD_T_EMBED)
 #include "ui/display.h"
@@ -1094,6 +1096,26 @@ static void uiTask(void* param) {
 
         Eink::update(dt);
         Eink::render();
+
+#if defined(BOARD_HAS_SPEAKER)
+        // Paper cannot flash or animate, and this panel's repaint takes ~10 s,
+        // so a session that starts waiting on the reader is announced by ear:
+        // the T-Embed pager's two-note chime, once per session entering an
+        // awaiting state. The tracker's latch survives reconnects and empty
+        // rosters, so a link blip does not re-announce an unresolved question.
+        {
+            static KnobAttention::Tracker attention;
+            bool entered = false;
+            lockState();
+            if (g_state.wsConnected || Net::serialConnected()) {
+                for (uint8_t i = 0; i < g_state.sessionCount; i++) {
+                    if (attention.observe(g_state.sessions[i].id, g_state.sessions[i].state, now)) entered = true;
+                }
+            }
+            unlockState();
+            if (entered) Chime::playAttention();
+        }
+#endif
 
         vTaskDelay(pdMS_TO_TICKS(250));
     }
