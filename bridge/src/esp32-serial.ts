@@ -800,6 +800,15 @@ export function capturePanicLine(conn: SerialConnection, line: string): boolean 
   return true;
 }
 
+// ESP-Hosted may call esp_restart() on a transport error without a panic.
+// Retain only these fixed/numeric messages; never open the broad panic window.
+function hostedDiagnosticLine(line: string): string | undefined {
+  const clean = line.replace(/\x1b\[[0-9;]*m/g, '');
+  if (/^[EWI] \(\d{1,10}\) H_SDIO_DRV: (?:sdio_write_task: \d+: Failed to send data: -?\d+ \d+ \d+|Unrecoverable host sdio state|sdio_is_write_buffer_available: SDIO slave unresponsive|failed to read registers|failed to read interrupt register|Host is resetting itself, to avoid any sdio race condition)$/.test(clean) ||
+      /^\[SdioTx\] staged=\d+ bytes=\d+ result=-?\d+$/.test(clean)) return clean;
+  return undefined;
+}
+
 // Keep only numeric voice milestones, never transcripts, targets, URLs or tokens.
 // These survive under normal serial ownership, unlike a separate UART reader
 // which changes the transport being diagnosed.
@@ -892,6 +901,11 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
   if (!line.startsWith('{')) {
     // Not protocol JSON — usually boot/debug chatter, but crash dumps arrive
     // here too. Capture those instead of dropping them.
+    const hosted = hostedDiagnosticLine(line);
+    if (hosted) {
+      logTagged('esp32-transport', `${conn.port}: ${hosted}`);
+      return;
+    }
     if (capturePanicLine(conn, line)) return;
     if (isVoiceDiagnosticLine(line)) {
       logTagged('esp32-voice', `${conn.port}: ${line}`);

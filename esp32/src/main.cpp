@@ -24,6 +24,9 @@
 #include "net/wifi_manager.h"
 #include "net/mdns_discovery.h"
 #include "net/ws_client.h"
+#if defined(BOARD_IPS10)
+#include "net/ips10_sdio_dma.h"
+#endif
 
 #ifdef BOARD_LED8X32
 #include "ui/matrix/matrix_display.h"
@@ -156,6 +159,9 @@ static void networkTask(void* param) {
     while (true) {
         // === Always poll serial (USB JSON from bridge) ===
         Net::serialLoop();
+#if defined(BOARD_IPS10)
+        Net::logSdioTxStaging();
+#endif
 #if defined(BOARD_EINK_SURFACE)
         Eink::logRefreshCompletions();
 #endif

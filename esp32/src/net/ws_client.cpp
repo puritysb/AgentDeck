@@ -897,7 +897,17 @@ static void pumpVoiceHttp() {
                 // ESP-Hosted can otherwise abort on a failed internal allocation.
                 const size_t available = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
                 if (available < minInternal) minInternal = available;
-                if (available < 60 * 1024) {
+#if defined(BOARD_IPS10)
+                // The PSRAM-backed Hosted pool no longer needs the original
+                // 60 KiB SRAM TX reserve. After TCP connects, healthy uploads
+                // can settle at 57 KiB: pausing there never lets the body finish.
+                // Retain 40 KiB for control/SDK work; initial admission stays
+                // at 60 KiB and all existing write/deadline bounds still apply.
+                constexpr size_t txReserve = 40 * 1024;
+#else
+                constexpr size_t txReserve = 60 * 1024;
+#endif
+                if (available < txReserve) {
                     ++pressureWaits;
                     vTaskDelay(pdMS_TO_TICKS(20));
                     burstBytes = 0;

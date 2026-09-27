@@ -180,6 +180,23 @@ describe('handleSerialLine (source)', () => {
     }
   });
 
+  it('retains hosted software-reset evidence without logging subsequent private lines', () => {
+    const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
+    try {
+      const conn = mockConn();
+      const failure = 'E (354179) H_SDIO_DRV: sdio_write_task: 0: Failed to send data: 258 1502 1502';
+      handleSerialLine(conn, '\x1b[0;31m' + failure + '\x1b[0m');
+      handleSerialLine(conn, 'E (354182) H_SDIO_DRV: Unrecoverable host sdio state');
+      handleSerialLine(conn, '[SdioTx] staged=1 bytes=1536 result=0');
+      handleSerialLine(conn, 'E (43) H_SDIO_DRV: private packet contents');
+      handleSerialLine(conn, '[SdioTx] staged=1 bytes=1536 result=0 token=secret');
+      handleSerialLine(conn, '[Voice] transcript: private speech');
+      expect(log).toHaveBeenCalledTimes(3);
+      expect(log).toHaveBeenCalledWith('esp32-transport', `${conn.port}: ${failure}`);
+      expect(conn.panicLogUntil).toBeUndefined();
+    } finally { log.mockRestore(); }
+  });
+
   it('records allowed voice stages under normal serial ownership', () => {
     const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
     try {
