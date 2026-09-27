@@ -1,3 +1,4 @@
+import { BOARD_TIMELINE_ROWS, shrinkTimelineEntryForBoard } from './board-timeline-entry.js';
 import type { Server } from 'http';
 import type WebSocket from 'ws';
 import { randomUUID } from 'crypto';
@@ -1060,12 +1061,16 @@ export class BridgeCore {
     //    burst that kills it again. It re-syncs on its first stable connect
     //    (or via query_session_timeline).
     if (!this.wsServer.isFlappingClient(ws)) {
-      const historyCap = this.wsServer.isEsp32Client(ws)
-        ? ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES
-        : INITIAL_TIMELINE_HISTORY_MAX_BYTES;
+      const board = this.wsServer.isEsp32Client(ws);
       const readable = (this.connectHistoryFilter ? this.connectHistoryFilter(ws, history) : history)
         .slice(-INITIAL_TIMELINE_HISTORY_ENTRIES);
-      const historyEvent = buildCappedTimelineHistory(readable, historyCap)
+      // A board gets its rows trimmed to firmware size BEFORE the byte budget,
+      // as the Swift daemon does; budgeting full-length entries left a board's
+      // first frame holding a single long reply.
+      const historyEvent = (board
+        ? buildCappedTimelineHistory(readable.slice(-BOARD_TIMELINE_ROWS).map(shrinkTimelineEntryForBoard),
+          ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES)
+        : buildCappedTimelineHistory(readable, INITIAL_TIMELINE_HISTORY_MAX_BYTES))
         ?? ({ type: 'timeline_history', entries: [] } as BridgeEvent);
       this.wsServer.sendTo(ws, historyEvent);
     }

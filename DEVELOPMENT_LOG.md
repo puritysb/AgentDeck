@@ -44,6 +44,18 @@ subscription row, which the App Store Swift daemon deliberately does not send.
 It now falls back to `codexPlanType` / `codexSubscriptionActiveUntil`, which both
 daemons send, so the plan line reads the same under either.
 
+## 2026-09-28 — A board's first frame carries several rows under the Node daemon too
+
+Under the Node daemon an ESP32 board received one timeline row at connect; under
+the Swift daemon, several. Both apply the same 3.5 KB board budget, but Swift
+trims each entry to the firmware's buffers (raw 120 / detail 200 / project 40
+bytes) before budgeting, while Node budgeted full-length entries in the connect
+burst and trimmed only afterwards — so one long agent reply filled the frame.
+The trim now lives in one helper (`bridge/src/board-timeline-entry.ts`) used by
+both the connect burst and serial/WS shaping, and runs before the budget. Found
+by probing both board paths while making the dashboard history match the Swift
+daemon (#402).
+
 ## 2026-09-27 — Identify linked worktrees by their repository
 
 A live Claude Code session in `.claude/worktrees/zai-serial-window-minutes`

@@ -34,6 +34,7 @@ import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import type { AuthProvisionMessage, ESP32ToHostMessage, WifiProvisionMessage } from '@agentdeck/shared/protocol';
 import { formatResetTime, truncateUtf8Bytes } from '@agentdeck/shared';
 import { readLease } from './esp32-flash-lease.js';
+import { BOARD_TIMELINE_ROWS, shrinkTimelineEntryForBoard } from './board-timeline-entry.js';
 import { debug, log, logTagged } from './logger.js';
 
 /** @internal Exported for testing only */
@@ -478,13 +479,9 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
       if (!entry || !Number.isFinite(entry.ts)) return entry;
       const d = new Date(entry.ts);
       return {
-        ...entry,
-        // Bound to the firmware's TimelineEntry buffers (raw[120]/detail[200]/
-        // projectName[40]) so a history seed with long chat bodies can't
-        // balloon the line.
-        raw: limitString(entry.raw, 119) ?? '',
-        detail: limitString(entry.detail, 199),
-        ...(typeof entry.projectName === 'string' ? { projectName: limitString(entry.projectName, 39) } : {}),
+        // Bound to the firmware's TimelineEntry buffers so a history seed with
+        // long chat bodies can't balloon the line.
+        ...shrinkTimelineEntryForBoard(entry),
         localHm: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
       };
     };
@@ -498,7 +495,7 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
     return {
       ...e,
       entries: Array.isArray(e.entries)
-        ? budgetTimelineEntries(e.entries.slice(-64).map(stamp))
+        ? budgetTimelineEntries(e.entries.slice(-BOARD_TIMELINE_ROWS).map(stamp))
         : e.entries,
     };
   }

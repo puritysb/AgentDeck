@@ -450,9 +450,13 @@ describe('BridgeCore Orchestration', () => {
 
       try {
         const historyEvt = await board.waitForType('timeline_history');
+        const entries = (historyEvt as any).entries as Array<{ raw: string }>;
         expect(Buffer.byteLength(JSON.stringify(historyEvt), 'utf8')).toBeLessThanOrEqual(
           ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES,
         );
+        // Trimmed to firmware size before the budget: several rows, newest last.
+        expect(entries.length).toBeGreaterThan(5);
+        expect(entries.at(-1)?.raw).toContain('reply-39-');
       } finally {
         await board.close();
       }
