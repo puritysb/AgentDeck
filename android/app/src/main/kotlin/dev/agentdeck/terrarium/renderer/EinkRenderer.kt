@@ -33,6 +33,12 @@ import dev.agentdeck.terrarium.TerrariumState
 import dev.agentdeck.terrarium.CreatureNameTagStyle
 import dev.agentdeck.terrarium.creatureNameTagMetric
 import dev.agentdeck.terrarium.resolveCreatureNameTagLayout
+import dev.agentdeck.terrarium.labelRankOf
+import dev.agentdeck.terrarium.LABEL_RANK_IDLE
+import dev.agentdeck.terrarium.resolveResidentLabels
+import dev.agentdeck.terrarium.ResidentLabelMode
+import dev.agentdeck.terrarium.ResidentLabelInput
+import dev.agentdeck.terrarium.LabelBox
 import android.util.Log
 import kotlinx.coroutines.isActive
 import kotlin.math.floor
@@ -202,6 +208,8 @@ private fun renderEinkFrame(
     val canvas = android.graphics.Canvas(bitmap)
     val paint = Paint().apply { isAntiAlias = habitat != null }
 
+    einkTagQueue.set(mutableListOf())
+
     if (Log.isLoggable("EinkFrame", Log.VERBOSE)) {
         Log.v("EinkFrame", "agents=${state.agents.size} clouds=${state.cloudCreatures.size} oc=${state.openCodeCreatures.size} cf=${state.crayfish} frame=$animFrame")
     }
@@ -305,6 +313,11 @@ private fun renderEinkFrame(
                 displayName = state.antigravityCreatures[i].displayName)
         }
     }
+
+    // Name tags, resolved together after the last creature (DESIGN.md §6.4).
+    val queuedTags = einkTagQueue.get()
+    einkTagQueue.set(null)
+    if (queuedTags != null) flushEinkNameTags(canvas, paint, queuedTags)
 
     // Front-layer fish (in front of creatures for 3D depth)
     drawEinkDataParticles(canvas, paint, width, height, state.tetra, state.agents.size, state.crayfish, animFrame, layer = 1, fishSchool = fishSchool)
@@ -669,7 +682,7 @@ private fun drawEinkOctopus(
 
     // Name tag FIRST (behind bubble) — multi-session only
     if (displayName != null) {
-        drawEinkNameTag(canvas, paint, cx, startY, scaleFactor, displayName, w)
+        drawEinkNameTag(canvas, paint, cx, startY, scaleFactor, displayName, w, labelRankOf(state))
     }
 
     // ASKING: speech bubble with "?" — beside body center
@@ -695,8 +708,50 @@ private fun drawEinkOctopus(
     }
 }
 
-/** E-ink name tag above octopus — adaptive font with 2-line wrapping, text-fit width. */
+/** A measured e-ink tag waiting for the frame's resolve pass (DESIGN.md §6.4). */
+private class EinkTagRequest(
+    val cx: Float, val bodyTopY: Float, val scaleFactor: Float, val name: String, val w: Int, val rank: Int,
+)
+
+/**
+ * Tags queued during one e-ink frame. Paper has no translucency to spend, so
+ * e-ink takes the ordering half of the rule only: priority tags paint last, and
+ * an idle tag that would collide with one already placed is dropped (the
+ * roster still lists it).
+ */
+private val einkTagQueue = ThreadLocal<MutableList<EinkTagRequest>?>()  // frames may render off the main thread
+
+private fun flushEinkNameTags(canvas: android.graphics.Canvas, paint: Paint, requests: List<EinkTagRequest>) {
+    val inputs = requests.mapIndexed { index, r ->
+        val bodyMetric = creatureNameTagMetric(r.w.toFloat(), r.scaleFactor)
+        val layout = resolveCreatureNameTagLayout(r.name, r.bodyTopY, bodyMetric, paint)
+        val box = LabelBox(r.cx - layout.tagWidth / 2, layout.tagBottomY - layout.tagHeight, r.cx + layout.tagWidth / 2, layout.tagBottomY)
+        val body = LabelBox(r.cx - bodyMetric * 0.7f, r.bodyTopY, r.cx + bodyMetric * 0.7f, r.bodyTopY + bodyMetric * 1.2f)
+        ResidentLabelInput(index.toString(), r.rank, body, box, box)
+    }
+    for (decision in resolveResidentLabels(inputs)) {
+        if (decision.mode == ResidentLabelMode.HIDDEN) continue
+        val r = requests[decision.id.toInt()]
+        paintEinkNameTag(canvas, paint, r.cx, r.bodyTopY, r.scaleFactor, r.name, r.w)
+    }
+}
+
+/** E-ink name tag above a creature; queued when a frame pass is active. */
 private fun drawEinkNameTag(
+    canvas: android.graphics.Canvas, paint: Paint,
+    cx: Float, bodyTopY: Float, scaleFactor: Float,
+    name: String, w: Int, rank: Int = LABEL_RANK_IDLE,
+) {
+    val queue = einkTagQueue.get()
+    if (queue != null) {
+        queue += EinkTagRequest(cx, bodyTopY, scaleFactor, name, w, rank)
+        return
+    }
+    paintEinkNameTag(canvas, paint, cx, bodyTopY, scaleFactor, name, w)
+}
+
+/** E-ink name tag above octopus — adaptive font with 2-line wrapping, text-fit width. */
+private fun paintEinkNameTag(
     canvas: android.graphics.Canvas, paint: Paint,
     cx: Float, bodyTopY: Float, scaleFactor: Float,
     name: String, w: Int,
@@ -828,7 +883,7 @@ private fun drawEinkCloud(
 
     // Name tag above cloud (reuse the shared name tag renderer)
     if (displayName != null) {
-        drawEinkNameTag(canvas, paint, cx, cy - bodyHeight, scaleFactor, displayName, w)
+        drawEinkNameTag(canvas, paint, cx, cy - bodyHeight, scaleFactor, displayName, w, labelRankOf(state))
     }
 
     // ASKING: speech bubble with "?" beside body (same pattern as octopus)
@@ -927,7 +982,7 @@ private fun drawEinkOpenCode(
         canvas.restore()
 
         if (displayName != null) {
-            drawEinkNameTag(canvas, paint, cx, cy - markSize / 2f, scaleFactor, displayName, w)
+            drawEinkNameTag(canvas, paint, cx, cy - markSize / 2f, scaleFactor, displayName, w, labelRankOf(state))
         }
         if (state == OctopusVisualState.ASKING) {
             val bubbleR = markSize * 0.25f * scaleFactor
@@ -993,7 +1048,7 @@ private fun drawEinkOpenCode(
 
     // Name tag (behind bubble)
     if (displayName != null) {
-        drawEinkNameTag(canvas, paint, cx, cy - outerHalf, scaleFactor, displayName, w)
+        drawEinkNameTag(canvas, paint, cx, cy - outerHalf, scaleFactor, displayName, w, labelRankOf(state))
     }
 
     // ASKING: speech bubble with "?" beside body
@@ -1118,7 +1173,7 @@ private fun drawEinkAntigravity(
 
     // Name tag
     if (displayName != null) {
-        drawEinkNameTag(canvas, paint, cx, cy - markHalf, scaleFactor, displayName, w)
+        drawEinkNameTag(canvas, paint, cx, cy - markHalf, scaleFactor, displayName, w, labelRankOf(state))
     }
 
     // ASKING: speech bubble with "?" beside body

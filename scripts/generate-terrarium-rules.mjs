@@ -60,6 +60,8 @@ ${Object.entries(rules.nativeLabel).filter(([key]) => key !== 'denseResidentCoun
     static let crayfishWidthFraction: Float = ${f(c.widthFrac)}
     static let crayfishClearMaxX: Float = ${f(c.clearMaxX)}
     static let floorRestYMin: Float = ${f(rules.floorRestStrip.yMin)}
+    static let floorSpacingMinX: Float = ${f(rules.floorSpacing.minX)}
+    static let floorSpacingMinGapRatio: Float = ${f(rules.floorSpacing.minGapRatio)}
     static let floorRestYMax: Float = ${f(rules.floorRestStrip.yMax)}
     static let antigravityHoverYMin: Float = ${f(rules.antigravityHoverStrip.yMin)}
     static let antigravityHoverYMax: Float = ${f(rules.antigravityHoverStrip.yMax)}
@@ -97,6 +99,8 @@ ${Object.entries(rules.nativeLabel).filter(([key]) => key !== 'denseResidentCoun
     const val CRAYFISH_WIDTH_FRACTION = ${f(c.widthFrac)}f
     const val CRAYFISH_CLEAR_MAX_X = ${f(c.clearMaxX)}f
     const val FLOOR_REST_Y_MIN = ${f(rules.floorRestStrip.yMin)}f
+    const val FLOOR_SPACING_MIN_X = ${f(rules.floorSpacing.minX)}f
+    const val FLOOR_SPACING_MIN_GAP_RATIO = ${f(rules.floorSpacing.minGapRatio)}f
     const val FLOOR_REST_Y_MAX = ${f(rules.floorRestStrip.yMax)}f
     const val ANTIGRAVITY_HOVER_Y_MIN = ${f(rules.antigravityHoverStrip.yMin)}f
     const val ANTIGRAVITY_HOVER_Y_MAX = ${f(rules.antigravityHoverStrip.yMax)}f
@@ -123,6 +127,8 @@ constexpr float FloorRestYMax = ${f(rules.floorRestStrip.yMax)}f;
 constexpr float AntigravityHoverYMin = ${f(rules.antigravityHoverStrip.yMin)}f;
 constexpr float AntigravityHoverYMax = ${f(rules.antigravityHoverStrip.yMax)}f;
 constexpr float ResterMaxWidthFraction = ${f(rules.resterMaxWidthFrac)}f;
+// Name tags (DESIGN.md §6.4): at or above this many residents idle tags collapse.
+constexpr int NativeLabelDenseResidentCount = ${rules.nativeLabel.denseResidentCount};
 }  // namespace TerrariumRules
 `;
 }

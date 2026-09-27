@@ -1,8 +1,14 @@
 package dev.agentdeck.terrarium
 
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import java.io.File
 
+@RunWith(RobolectricTestRunner::class)
 class ResidentLabelLayoutTest {
     private fun input(id: String, rank: Int, x: Float, bodyBottom: Float = 400f) = ResidentLabelInput(
         id, rank,
@@ -59,5 +65,32 @@ class ResidentLabelLayoutTest {
         assertEquals(ResidentLabelMode.FULL, out.of("far").mode)
         assertEquals(TerrariumRules.NATIVE_LABEL_YIELD_BACKING_OPACITY, out.of("far").backingAlpha, 0f)
         assertEquals("near", out.last().id)
+    }
+
+    @Test fun `every shared vector matches (Swift replays the same file)`() {
+        var dir: File? = File(System.getProperty("user.dir")).absoluteFile
+        while (dir != null && !File(dir, "shared/resident-label-vectors.json").exists()) dir = dir.parentFile
+        val vectors = JSONObject(File(requireNotNull(dir), "shared/resident-label-vectors.json").readText()).getJSONArray("vectors")
+        fun box(a: JSONArray) = LabelBox(a.getDouble(0).toFloat(), a.getDouble(1).toFloat(), a.getDouble(2).toFloat(), a.getDouble(3).toFloat())
+        for (i in 0 until vectors.length()) {
+            val v = vectors.getJSONObject(i)
+            val name = v.getString("name")
+            val ins = v.getJSONArray("inputs")
+            val inputs = (0 until ins.length()).map { k ->
+                val o = ins.getJSONObject(k)
+                ResidentLabelInput(o.getString("id"), o.getInt("rank"), box(o.getJSONArray("body")), box(o.getJSONArray("full")), box(o.getJSONArray("compact")))
+            }
+            val out = resolveResidentLabels(inputs)
+            val exp = v.getJSONArray("expected")
+            assertEquals(name, exp.length(), out.size)
+            for (k in 0 until exp.length()) {
+                val e = exp.getJSONObject(k)
+                assertEquals(name, e.getString("id"), out[k].id)
+                assertEquals(name, e.getString("mode"), out[k].mode.name.lowercase())
+                assertEquals(name, e.getDouble("backing").toFloat(), out[k].backingAlpha, 1e-6f)
+                assertEquals(name, e.getDouble("text").toFloat(), out[k].textAlpha, 1e-6f)
+                assertEquals(name, e.getDouble("signal").toFloat(), out[k].signalAlpha, 1e-6f)
+            }
+        }
     }
 }

@@ -122,6 +122,14 @@ export const TERRARIUM_RULES = {
     clearMaxX: 0.62,
   },
   floorRestStrip: { yMin: 0.56, yMax: 0.64 },
+  /**
+   * Floor-resting residents (idle, waiting, asleep) stand on one line, so the
+   * band layout's allowed half-overlap reads as a pile rather than as depth.
+   * On the dashboards they are spread apart to at least `minGapRatio` of their
+   * combined half-widths, inside the band left of the crayfish's clear line
+   * (`crayfish.clearMaxX`). Working residents swim freely and are not moved.
+   */
+  floorSpacing: { minX: 0.20, minGapRatio: 0.95 },
   antigravityHoverStrip: { yMin: 0.48, yMax: 0.54 },
   resterMaxWidthFrac: 0.096,
 } as const;

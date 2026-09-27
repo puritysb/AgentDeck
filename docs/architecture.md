@@ -110,7 +110,7 @@ this table live in CLAUDE.md § Key Conventions ("Cross-platform rules are SSOT-
 | `design/tokens.css` | 7 mirrors | `design/verify-tokens-sync.py` |
 | `esp32/src/ui/eink/eink_dashboard_layout.h` | — (three consumers) | TRMNL 7.5" firmware compiles it directly, `scripts/sync-xteink-eink-dashboard.sh` copies it byte-identically into the XTeink fork, and `apple/AgentDeck/UI/Preview/Devices/Trmnl75Preview.swift` pins it via SYNC-HASH |
 
-Known hand-mirror debt: `shared/src/creature-layout.ts` band layout (3-way comment-discipline mirror, test parity only) — fold it into a generator when next touched. The idle-gap
+Known hand-mirror debt: `shared/src/creature-layout.ts` band layout (3-way comment-discipline mirror, test parity only) — fold it into a generator when next touched; its `spreadFloorResidents` floor-spacing pass is pinned by `shared/floor-spacing-vectors.json` in all three suites. The aquarium name-tag resolver (`resolveResidentLabels` in Kotlin, `ResidentLabelLayout.resolve` in Swift) is a two-way hand mirror of one algorithm; its thresholds and opacities are generated (`TERRARIUM_RULES.nativeLabel`) and its behaviour is pinned by `shared/resident-label-vectors.json`, replayed by both suites. The idle-gap
 constant in `ApmeCollector` stays grep-pinned by `apme-display-rules-sync.test.ts`.
 `shared/src/timeline-icons.ts` is a 3-way hand mirror too (Apple `TimelineStripView.swift`, Android `TimelineIcons.kt`), with per-surface tests rather than a drift gate — and it has
 demonstrably diverged: on 2026-09-12 the Android mirror was found missing `error` from the `isRotatingEntry` completion list (so a failed turn kept spinning next to the error row that

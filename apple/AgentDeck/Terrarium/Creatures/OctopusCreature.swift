@@ -65,6 +65,10 @@ final class OctopusCreature: Creature {
     var displayName: String?
     var visualState: OctopusVisualState = .floating
     var homeX: Float
+    /// Floor position after the shared spacing pass; nil while swimming.
+    var restX: Float?
+    /// Band width the layout reserves for one octopus (creature-layout.ts).
+    static let layoutWidth: Float = 0.11
     var homeY: Float
     var scale: Float
 
@@ -130,6 +134,7 @@ final class OctopusCreature: Creature {
     }
 
     private func updatePosition(dt: Float) {
+        let homeX = restX ?? self.homeX
         let depthOffset = (homeX - 0.4) * 0.15
         let lane = swimLane()
 

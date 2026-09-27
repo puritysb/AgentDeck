@@ -447,16 +447,22 @@ idle name tags collapse; the bounded roster summary carries the omitted count.
 
 **A name tag never hides another resident.** In every aquarium view — the 3D
 aquarium on macOS/iPad and the Android tablet, and the 2D habitat on
-macOS/iPad — tags resolve in priority order (focused, awaiting, working, idle;
+macOS/iPad and Android — tags resolve in priority order (focused, awaiting, working, idle;
 nearer residents first) and the tag that matters most is drawn on top (a
 RealityKit sort group in 3D, a single post-creature pass in 2D). Tag backings are
 translucent water, never opaque cards. A tag lying over another resident's body
 yields: its backing fades so the body shows through, and a WORKING badge fades
 with it — the badge is the state signal, not a card. In a dense tank (five or more residents) an idle tag collapses to a
 title-only chip low on its own body, and an idle chip that would collide with a
-tag already placed drops out — the roster still lists it. The thresholds and
+tag already placed drops out — the roster still lists it. Paper (Android e-ink) has no translucency to spend, so it takes only the
+ordering half: priority tags paint last and a colliding idle tag drops out.
+ESP32 boards draw tags per creature and apply the density half — idle tags
+hide at the same resident count. Floor-standing residents (idle, waiting,
+asleep) are also spread apart before they are drawn, so the band layout's
+allowed half-overlap does not read as a pile (`floorSpacing`,
+`spreadFloorResidents`). The thresholds and
 opacities are `nativeLabel` in `shared/src/terrarium-rules.ts`, generated to
-Swift and Kotlin; both platforms implement the same resolver
+Swift, Kotlin and C++; both platforms implement the same resolver
 (`ResidentLabelLayout`) and pin it with the same five tests.
 
 ---

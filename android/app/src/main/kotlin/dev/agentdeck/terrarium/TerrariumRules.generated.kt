@@ -54,6 +54,8 @@ object TerrariumRules {
     const val CRAYFISH_WIDTH_FRACTION = 0.11f
     const val CRAYFISH_CLEAR_MAX_X = 0.62f
     const val FLOOR_REST_Y_MIN = 0.56f
+    const val FLOOR_SPACING_MIN_X = 0.2f
+    const val FLOOR_SPACING_MIN_GAP_RATIO = 0.95f
     const val FLOOR_REST_Y_MAX = 0.64f
     const val ANTIGRAVITY_HOVER_Y_MIN = 0.48f
     const val ANTIGRAVITY_HOVER_Y_MAX = 0.54f

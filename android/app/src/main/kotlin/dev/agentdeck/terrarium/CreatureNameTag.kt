@@ -1,6 +1,7 @@
 package dev.agentdeck.terrarium
 
 import android.graphics.Paint
+import androidx.compose.ui.graphics.nativeCanvas
 
 object CreatureNameTagStyle {
     // Use the tablet OpenCode creature as the SSOT for name-tag sizing.
@@ -91,4 +92,92 @@ fun wrapCreatureNameTagToTwoLines(text: String, paint: Paint): List<String> {
     }
 
     return listOf(text.substring(0, bestSplit), text.substring(bestSplit + 1))
+}
+
+/**
+ * One 2D creature name tag, measured but not yet painted (DESIGN.md §6.4).
+ *
+ * Each creature used to paint its own tag inside its own `draw`, so a tag's
+ * z-order was the creature order and a front tag could sit over any resident
+ * behind it. While [CreatureNameTagLayer.active] is set, creatures submit their
+ * tags here and the renderer resolves them all with [resolveResidentLabels] —
+ * the rule the 3D aquarium uses — after the last creature.
+ */
+internal class CreatureNameTagRequest(
+    val cx: Float,
+    val tagBottomY: Float,
+    val tagWidth: Float,
+    val tagHeight: Float,
+    val fontSize: Float,
+    val lines: List<String>,
+    val lineHeight: Float,
+    val background: androidx.compose.ui.graphics.Color,
+    val paint: Paint,
+    val rank: Int,
+    val bodyTopY: Float,
+    val bodyMetric: Float,
+) {
+    val box get() = LabelBox(cx - tagWidth / 2, tagBottomY - tagHeight, cx + tagWidth / 2, tagBottomY)
+    val body get() = LabelBox(cx - bodyMetric * 0.7f, bodyTopY, cx + bodyMetric * 0.7f, bodyTopY + bodyMetric * 1.2f)
+}
+
+/** Base alpha of a 2D tag's brand-tinted backing; the resolver scales it. */
+private const val TAG_BACKING_BASE_ALPHA = 0.6f
+
+internal fun labelRankOf(state: OctopusVisualState): Int = when (state) {
+    OctopusVisualState.ASKING -> LABEL_RANK_AWAITING
+    OctopusVisualState.WORKING -> LABEL_RANK_WORKING
+    else -> LABEL_RANK_IDLE
+}
+
+internal object CreatureNameTagLayer {
+    /** Set by the renderer for one frame; Compose draws on a single thread. */
+    var active: MutableList<CreatureNameTagRequest>? = null
+
+    /** Paints every queued tag, lowest priority first, then clears the queue. */
+    fun flush(scope: androidx.compose.ui.graphics.drawscope.DrawScope, requests: MutableList<CreatureNameTagRequest>) {
+        val inputs = requests.mapIndexed { index, r -> ResidentLabelInput(index.toString(), r.rank, r.body, r.box, r.box) }
+        for (decision in resolveResidentLabels(inputs)) {
+            if (decision.mode == ResidentLabelMode.HIDDEN) continue
+            val request = requests[decision.id.toInt()]
+            paintCreatureNameTag(scope, request, TAG_BACKING_BASE_ALPHA * decision.backingAlpha, decision.textAlpha)
+        }
+        requests.clear()
+    }
+}
+
+/** Queue [request] when a frame layer is active; otherwise paint it in place. */
+internal fun submitCreatureNameTag(scope: androidx.compose.ui.graphics.drawscope.DrawScope, request: CreatureNameTagRequest) {
+    val layer = CreatureNameTagLayer.active
+    if (layer != null) layer += request
+    else paintCreatureNameTag(scope, request, TAG_BACKING_BASE_ALPHA, 1f)
+}
+
+internal fun paintCreatureNameTag(
+    scope: androidx.compose.ui.graphics.drawscope.DrawScope,
+    request: CreatureNameTagRequest,
+    backingAlpha: Float,
+    textAlpha: Float,
+) {
+    scope.drawRoundRect(
+        color = request.background,
+        alpha = backingAlpha,
+        topLeft = androidx.compose.ui.geometry.Offset(request.cx - request.tagWidth / 2, request.tagBottomY - request.tagHeight),
+        size = androidx.compose.ui.geometry.Size(request.tagWidth, request.tagHeight),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f),
+    )
+    val canvas = scope.drawContext.canvas.nativeCanvas
+    val paint = request.paint
+    val baseAlpha = paint.alpha
+    paint.textSize = request.fontSize
+    paint.alpha = (baseAlpha * textAlpha).toInt()
+    if (request.lines.size == 1) {
+        canvas.drawText(request.lines[0], request.cx, request.tagBottomY - request.tagHeight * 0.25f, paint)
+    } else {
+        val topY = request.tagBottomY - request.tagHeight + request.fontSize * 0.3f + request.fontSize
+        for (i in request.lines.indices) {
+            canvas.drawText(request.lines[i], request.cx, topY + i * request.lineHeight, paint)
+        }
+    }
+    paint.alpha = baseAlpha
 }

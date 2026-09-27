@@ -184,3 +184,46 @@ function distribute(count: number, rows: number): number[] {
   for (let index = 0; index < count % rows; index++) result[index] += 1;
   return result;
 }
+
+/**
+ * Spreads floor-resting creatures apart (DESIGN.md §6.4, `TERRARIUM_RULES.floorSpacing`).
+ *
+ * `items` are centre X and body width as world fractions. Neighbours end at
+ * least `minGapRatio × (wA + wB) / 2` apart, inside `[minX, maxX]`, moving each
+ * creature as little as a two-sweep pass can: push right, then pull back from
+ * the right edge, then clamp to the left edge. When the band cannot hold them
+ * all, they are spaced evenly across it instead. Returns X in input order.
+ *
+ * Mirrored by hand in CreatureLayout.swift / CreatureLayout.kt and pinned by
+ * `shared/floor-spacing-vectors.json`, which all three suites replay.
+ */
+export function spreadFloorResidents(
+  items: ReadonlyArray<{ x: number; width: number }>,
+  minX: number,
+  maxX: number,
+  minGapRatio: number,
+): number[] {
+  const order = items.map((_, i) => i).sort((a, b) => items[a].x - items[b].x || a - b);
+  const need = (a: number, b: number) => minGapRatio * (items[a].width + items[b].width) / 2;
+  const xs = order.map((i) => items[i].x);
+  const n = xs.length;
+  if (n === 0) return [];
+  let required = 0;
+  for (let k = 1; k < n; k++) required += need(order[k - 1], order[k]);
+  if (required > maxX - minX) {
+    // Not enough room: spread evenly, proportional to each pair's need.
+    const scale = n > 1 ? (maxX - minX) / required : 0;
+    xs[0] = n > 1 ? minX : (minX + maxX) / 2;
+    for (let k = 1; k < n; k++) xs[k] = xs[k - 1] + need(order[k - 1], order[k]) * scale;
+  } else {
+    xs[0] = Math.max(minX, xs[0]);
+    for (let k = 1; k < n; k++) xs[k] = Math.max(xs[k], xs[k - 1] + need(order[k - 1], order[k]));
+    xs[n - 1] = Math.min(maxX, xs[n - 1]);
+    for (let k = n - 2; k >= 0; k--) xs[k] = Math.min(xs[k], xs[k + 1] - need(order[k], order[k + 1]));
+    xs[0] = Math.max(minX, xs[0]);
+    for (let k = 1; k < n; k++) xs[k] = Math.max(xs[k], xs[k - 1] + need(order[k - 1], order[k]));
+  }
+  const out = new Array<number>(n);
+  order.forEach((i, k) => { out[i] = xs[k]; });
+  return out;
+}

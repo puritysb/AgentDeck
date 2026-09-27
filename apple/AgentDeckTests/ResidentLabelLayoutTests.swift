@@ -54,4 +54,34 @@ final class ResidentLabelLayoutTests: XCTestCase {
         XCTAssertEqual(decision(out, "far").backingOpacity, TerrariumRules.nativeLabelYieldBackingOpacity)
         XCTAssertEqual(out.last?.id, "near")
     }
+
+    func testEverySharedVectorMatches() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/resident-label-vectors.json")
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let vectors = try XCTUnwrap(root["vectors"] as? [[String: Any]])
+        func box(_ any: Any?) throws -> L.Box {
+            let a = try XCTUnwrap(any as? [Double]).map(Float.init)
+            return .init(left: a[0], top: a[1], right: a[2], bottom: a[3])
+        }
+        for v in vectors {
+            let name = v["name"] as? String ?? ""
+            let inputs = try XCTUnwrap(v["inputs"] as? [[String: Any]]).map { o in
+                L.Input(id: o["id"] as! String, rank: L.Rank(rawValue: o["rank"] as! Int)!,
+                        body: try box(o["body"]), fullTag: try box(o["full"]), compactTag: try box(o["compact"]))
+            }
+            let out = L.resolve(inputs)
+            let expected = try XCTUnwrap(v["expected"] as? [[String: Any]])
+            XCTAssertEqual(out.count, expected.count, name)
+            for (d, e) in zip(out, expected) {
+                XCTAssertEqual(d.id, e["id"] as? String, name)
+                let mode: String = switch d.mode { case .full: "full"; case .compact: "compact"; case .hidden: "hidden" }
+                XCTAssertEqual(mode, e["mode"] as? String, name)
+                XCTAssertEqual(d.backingOpacity, Float(e["backing"] as! Double), accuracy: 1e-6, name)
+                XCTAssertEqual(d.textOpacity, Float(e["text"] as! Double), accuracy: 1e-6, name)
+                XCTAssertEqual(d.signalOpacity, Float(e["signal"] as! Double), accuracy: 1e-6, name)
+            }
+        }
+    }
 }

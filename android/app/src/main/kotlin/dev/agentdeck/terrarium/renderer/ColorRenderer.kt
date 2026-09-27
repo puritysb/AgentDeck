@@ -1,5 +1,9 @@
 package dev.agentdeck.terrarium.renderer
 
+import dev.agentdeck.terrarium.CreatureNameTagLayer
+import dev.agentdeck.terrarium.CreatureNameTagRequest
+import dev.agentdeck.terrarium.TerrariumRules
+
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
@@ -112,6 +116,15 @@ fun ColorTerrariumCanvas(
             antigravityCreatures = antigravityCreatures,
         )
 
+        // Name tags are collected while creatures draw and painted once, in
+        // priority order, after the last creature (DESIGN.md §6.4).
+        val nameTags = mutableListOf<CreatureNameTagRequest>()
+        CreatureNameTagLayer.active = nameTags
+
+        // Floor residents share one line; spread them with the shared rule
+        // (DESIGN.md §6.4) — applied by each octopus on its next update.
+        spreadFloorOctopuses(octopuses)
+
         // Layer 9: Octopuses (all coding agent avatars)
         for (oct in octopuses) oct.draw(this)
 
@@ -123,6 +136,10 @@ fun ColorTerrariumCanvas(
 
         // Layer 9.4: Antigravity creatures (peak/arc logo)
         for (ag in antigravityCreatures) ag.draw(this)
+
+        // Layer 9.45: name tags, resolved together so none hides a resident.
+        CreatureNameTagLayer.active = null
+        CreatureNameTagLayer.flush(this, nameTags)
 
         // Layer 9.5: Front-layer fish (in front of creatures for 3D depth)
         dataParticles.drawFrontLayer(this)
@@ -291,4 +308,15 @@ private fun DrawScope.drawDeepSeaBackground(w: Float, h: Float, env: Environment
         ),
         size = Size(w, h),
     )
+}
+
+/** Spaces the octopuses standing on the floor; swimmers keep their own lanes. */
+private fun spreadFloorOctopuses(octopuses: List<OctopusCreature>) {
+    val standing = octopuses.mapNotNull { oct -> oct.floorFootprint()?.let { oct to it } }
+    val xs = dev.agentdeck.terrarium.spreadFloorResidents(
+        standing.map { it.second },
+        TerrariumRules.FLOOR_SPACING_MIN_X, TerrariumRules.CRAYFISH_CLEAR_MAX_X, TerrariumRules.FLOOR_SPACING_MIN_GAP_RATIO,
+    )
+    standing.forEachIndexed { i, (oct, _) -> oct.restX = xs[i] }
+    for (oct in octopuses) if (oct.floorFootprint() == null) oct.restX = null
 }

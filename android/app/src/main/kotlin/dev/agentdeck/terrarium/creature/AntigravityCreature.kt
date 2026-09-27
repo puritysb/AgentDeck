@@ -23,6 +23,9 @@ import dev.agentdeck.terrarium.CreatureGeometry
 import dev.agentdeck.terrarium.CreatureNameTagStyle
 import dev.agentdeck.terrarium.creatureNameTagMetric
 import dev.agentdeck.terrarium.resolveCreatureNameTagLayout
+import dev.agentdeck.terrarium.labelRankOf
+import dev.agentdeck.terrarium.CreatureNameTagRequest
+import dev.agentdeck.terrarium.submitCreatureNameTag
 import dev.agentdeck.terrarium.OctopusVisualState
 import dev.agentdeck.terrarium.TerrariumColors
 import dev.agentdeck.terrarium.TerrariumLayout
@@ -435,32 +438,15 @@ class AntigravityCreature(
             )
         }
 
-        val canvas = scope.drawContext.canvas.nativeCanvas
-
-        // Hat background — antigravity brand gray
-        scope.drawRoundRect(
-            color = TerrariumColors.AntigravityBody,
-            alpha = 0.6f,
-            topLeft = Offset(cx - tagWidth / 2, tagBottomY - tagHeight),
-            size = Size(tagWidth, tagHeight),
-            cornerRadius = CornerRadius(4f, 4f),
+        submitCreatureNameTag(
+            scope,
+            CreatureNameTagRequest(
+                cx = cx, tagBottomY = tagBottomY, tagWidth = tagWidth, tagHeight = tagHeight,
+                fontSize = chosenSize, lines = lines, lineHeight = lineHeight,
+                background = TerrariumColors.AntigravityBody, paint = nameTagPaint,
+                rank = labelRankOf(visualState), bodyTopY = bodyTopY, bodyMetric = bodyMetric,
+            ),
         )
-
-        nameTagPaint.textSize = chosenSize
-        if (lines.size == 1) {
-            canvas.drawText(
-                lines[0], cx, tagBottomY - tagHeight * 0.25f,
-                nameTagPaint,
-            )
-        } else {
-            val topY = tagBottomY - tagHeight + chosenSize * 0.3f + chosenSize
-            for (i in lines.indices) {
-                canvas.drawText(
-                    lines[i], cx, topY + i * lineHeight,
-                    nameTagPaint,
-                )
-            }
-        }
     }
 
     private val questionMarkPaint = Paint().apply {

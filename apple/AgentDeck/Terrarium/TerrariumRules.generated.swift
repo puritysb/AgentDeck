@@ -53,6 +53,8 @@ enum TerrariumRules {
     static let crayfishWidthFraction: Float = 0.11
     static let crayfishClearMaxX: Float = 0.62
     static let floorRestYMin: Float = 0.56
+    static let floorSpacingMinX: Float = 0.2
+    static let floorSpacingMinGapRatio: Float = 0.95
     static let floorRestYMax: Float = 0.64
     static let antigravityHoverYMin: Float = 0.48
     static let antigravityHoverYMax: Float = 0.54

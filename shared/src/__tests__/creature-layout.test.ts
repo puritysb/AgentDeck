@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   layoutOctopuses, layoutCloudCreatures, layoutOpenCodeCreatures, layoutAntigravityCreatures,
+  spreadFloorResidents,
   type CreatureSlot,
 } from '../creature-layout.js';
+import { readFileSync } from 'node:fs';
+import { TERRARIUM_RULES } from '../terrarium-rules.js';
 
 /**
  * These lock the band geometry that the Pixoo renderers in BOTH daemons read.
@@ -114,5 +117,25 @@ describe('crowd shrink', () => {
     expect(only.x).toBeGreaterThan(0.20);
     expect(only.x).toBeLessThan(0.50);
     expect(only.y).toBeCloseTo(0.42 - 0.008, 6); // frontY, minus the index-0 jitter
+  });
+});
+
+describe('spreadFloorResidents (shared vectors)', () => {
+  const file = JSON.parse(readFileSync(new URL('../../floor-spacing-vectors.json', import.meta.url), 'utf8'));
+  for (const v of file.vectors as Array<{ name: string; minX: number; maxX: number; minGapRatio: number; items: { x: number; width: number }[]; expected: number[] }>) {
+    it(v.name, () => {
+      const out = spreadFloorResidents(v.items, v.minX, v.maxX, v.minGapRatio);
+      expect(out.length).toBe(v.expected.length);
+      out.forEach((x, i) => expect(x).toBeCloseTo(v.expected[i], 4));
+    });
+  }
+
+  it('keeps floor residents inside the band left of the crayfish clear line', () => {
+    const items = layoutOctopuses(6).map((slot) => ({ x: slot.x, width: 0.11 * slot.scale }));
+    const out = spreadFloorResidents(items, TERRARIUM_RULES.floorSpacing.minX, TERRARIUM_RULES.crayfish.clearMaxX, TERRARIUM_RULES.floorSpacing.minGapRatio);
+    for (const x of out) {
+      expect(x).toBeGreaterThanOrEqual(TERRARIUM_RULES.floorSpacing.minX - 1e-9);
+      expect(x).toBeLessThanOrEqual(TERRARIUM_RULES.crayfish.clearMaxX + 1e-9);
+    }
   });
 });

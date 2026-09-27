@@ -196,6 +196,7 @@ final class TerrariumRenderer {
         for oct in octopuses.values {
             oct.update(dt: dt, state: state)
         }
+        spreadFloorOctopuses()
         for cl in clouds.values {
             cl.update(dt: dt, state: state)
         }
@@ -211,6 +212,19 @@ final class TerrariumRenderer {
         crayfish.update(dt: dt, state: state)
 
         lastState = state
+    }
+
+    /// Octopuses standing on the floor (idle, waiting, asleep) share one line,
+    /// so the band layout's allowed half-overlap would read as a pile. Spread
+    /// them apart with the shared rule (DESIGN.md §6.4); swimmers are untouched.
+    private func spreadFloorOctopuses() {
+        let standing = octopuses.values.filter { $0.visualState != .working }.sorted { $0.sessionId < $1.sessionId }
+        let xs = CreatureLayout.spreadFloorResidents(
+            standing.map { (x: $0.homeX, width: OctopusCreature.layoutWidth * $0.scale) },
+            minX: TerrariumRules.floorSpacingMinX, maxX: TerrariumRules.crayfishClearMaxX,
+            minGapRatio: TerrariumRules.floorSpacingMinGapRatio)
+        for (oct, x) in zip(standing, xs) { oct.restX = x }
+        for oct in octopuses.values where oct.visualState == .working { oct.restX = nil }
     }
 
     // MARK: - Draw (layer order matching Android ColorRenderer)
