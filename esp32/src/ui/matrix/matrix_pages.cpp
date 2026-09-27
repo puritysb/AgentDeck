@@ -715,7 +715,7 @@ void MatrixPages::renderInfo(CRGB* leds, float animTime) {
         if (entryCount > 0 && strcmp(g_state.sessions[i].projectName, entries[0].project) == 0) continue;
 
         strncpy(entries[entryCount].project,
-                g_state.sessions[i].projectName[0] ? g_state.sessions[i].projectName : "---", 39);
+                sessionDisplayName(g_state.sessions[i])[0] ? sessionDisplayName(g_state.sessions[i]) : "---", 39);
         entries[entryCount].project[39] = '\0';
 
         // Model: use session's modelName if available, else agentType fallback

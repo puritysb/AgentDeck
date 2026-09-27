@@ -1,3 +1,4 @@
+#include "../companion/session_glance.h"
 #include "util/usage_severity.generated.h"
 #include "config.h"
 #if defined(BOARD_IPS10)
@@ -32,7 +33,7 @@ LV_FONT_DECLARE(font_studio_16);
 namespace IPS10Workspace {
 namespace {
 // IPS10 layout rhythm: outer 24, inter-panel 16, content inset 16.
-namespace Grid { constexpr int Outer=24, Gap=16, Inset=16, Header=96, AgentRow=120; }
+namespace Grid { constexpr int Outer=24, Gap=16, Inset=16, Header=80, AgentRow=176; }
 // Fixed stores avoid label heap churn while live state changes. LVGL owns the
 // widgets; these stores are reused across orientation rebuilds, never allocated
 // in update(). Only the selected session's eight newest events are copied.
@@ -50,7 +51,7 @@ template<size_t N> struct Text {
     }
 };
 struct Row {
-    char id[32], name[40], agent[16], state[20], tool[40], project[40];
+    char id[32], name[40], agent[16], state[20], tool[40], project[40], projectLabel[40];
     char activity[160], latest[120], hm[6];
     uint16_t children, latestRank; bool childrenKnown;
     uint32_t elapsed;
@@ -90,6 +91,8 @@ static Text<200> podLatest[10], ambientVoice;
 static Text<120> attentionLine;
 static Text<128> pageLabel;
 static Text<160> agentActivity[10];
+// Ten bounded role labels, created once with the existing card pool.
+static Text<64> agentTask[10];
 static Text<40> cohortLabel[10], childLabel[10];
 static bool gatewayReady=false, retainedDetail=false;
 static lv_obj_t* recentCaption;
@@ -412,15 +415,16 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
         label(podStatus[i],pods[i],16,44,sceneW-32,&font_studio_16,Theme::HUDDim);
         label(cohortLabel[i],pods[i],16,72,sceneW-32,&font_studio_16,Theme::HUDDim);
         label(podLatest[i],pods[i],16,480,sceneW-32,&font_workspace_20,Theme::HUDDim);
-        lv_label_set_long_mode(podLatest[i].obj,LV_LABEL_LONG_WRAP);lv_obj_set_height(podLatest[i].obj,72);
+        lv_label_set_long_mode(podLatest[i].obj,LV_LABEL_LONG_DOT);lv_obj_set_height(podLatest[i].obj,72);
         seats[i]=box(overview,0,0,100,126,Theme::DeepSea);lv_obj_set_style_bg_opa(seats[i],LV_OPA_TRANSP,0);
         lv_obj_add_event_cb(seats[i],selectCb,LV_EVENT_CLICKED,reinterpret_cast<void*>(static_cast<intptr_t>(i)));
         creatures[i]=lv_image_create(seats[i]);lv_image_set_pivot(creatures[i],0,0);lv_obj_clear_flag(creatures[i],LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_style_image_recolor_opa(creatures[i],LV_OPA_COVER,0);
         label(seatState[i],seats[i],0,104,100,&font_studio_16,Theme::HUDText);
         label(childLabel[i],seats[i],20,124,90,&font_studio_16,Theme::StatusCyan);
+        label(agentTask[i],overview,0,0,300,&font_studio_16,Theme::HUDDim);
         label(agentActivity[i],overview,0,0,300,&font_workspace_20,Theme::HUDText);
-        lv_label_set_long_mode(agentActivity[i].obj,LV_LABEL_LONG_WRAP);lv_obj_set_height(agentActivity[i].obj,68);
+        lv_label_set_long_mode(agentActivity[i].obj,LV_LABEL_LONG_DOT);lv_obj_set_height(agentActivity[i].obj,68);
     }
     label(overviewEmpty,overview,16,180,sceneW-32,&font_studio_28,Theme::HUDDim);
     attentionPane=box(root,24,76,w-48,48,Theme::DeepSea);lv_obj_set_style_border_width(attentionPane,1,0);lv_obj_set_style_border_color(attentionPane,lv_color_hex(Theme::StatusAmber),0);
@@ -470,11 +474,12 @@ void update() {
     for(int i=0;i<g_state.sessionCount && i<10;++i) {
         const auto& s=g_state.sessions[i]; if(!s.alive || !s.id[0]) continue;
         auto& r=rows[count++];
-        snprintf(r.id,sizeof(r.id),"%s",s.id);snprintf(r.name,sizeof(r.name),"%s",s.lastEventTask[0]?s.lastEventTask:s.projectName[0]?s.projectName:s.agentType);
+        snprintf(r.id,sizeof(r.id),"%s",s.id);snprintf(r.name,sizeof(r.name),"%s",s.lastEventTask[0]?s.lastEventTask:sessionDisplayName(s)[0]?sessionDisplayName(s):s.agentType);
         snprintf(r.project,sizeof(r.project),"%s",s.projectName);
+        snprintf(r.projectLabel,sizeof(r.projectLabel),"%s",sessionDisplayName(s));
         snprintf(r.agent,sizeof(r.agent),"%s",s.agentType);snprintf(r.state,sizeof(r.state),"%s",s.state);
         snprintf(r.tool,sizeof(r.tool),"%s",s.currentTool[0]?s.currentTool:s.activity[0]?s.activity:s.lastEventText);r.elapsed=s.elapsedSec;
-        snprintf(r.activity,sizeof(r.activity),"%s",category(s.state)==1 && s.question[0]?s.question:s.activity[0]?s.activity:s.lastEventTask[0]?s.lastEventTask:s.currentTool);
+        snprintf(r.activity,sizeof(r.activity),"%s",Companion::glanceText(s));
         snprintf(r.latest,sizeof(r.latest),"%s",s.lastEventText);snprintf(r.hm,sizeof(r.hm),"%s",s.lastEventHm);
         r.latestRank=TIMELINE_MAX_ENTRIES;
         // Ring order, not HH:MM string order, remains correct across midnight.
@@ -588,7 +593,7 @@ void update() {
     for(int i=0;i<count;++i)if(podFor[i]>=0)podFor[i]=remap[podFor[i]];
     memset(podMembers,0,sizeof(podMembers));
     for(int i=0;i<count;++i)if(podFor[i]>=0){++podMembers[podFor[i]];memberSlot[i]=0;for(int j=0;j<count;++j)if(podFor[j]==podFor[i] && strcmp(rows[j].id,rows[i].id)<0)++memberSlot[i];}
-    const int capacity=g_screenW>=1100?3:1;
+    const int capacity=g_screenW>=1100?2:1;
     pageCount=(projectCount+capacity-1)/capacity;if(pageCount<1)pageCount=1;
     if(page>=pageCount)page=0;
     if(overviewMode && !pageHeld && now-pageSince>=12000){page=(page+1)%pageCount;pageSince=now;}
@@ -598,8 +603,9 @@ void update() {
     pageLabel.set(text);visible(pageLabel.obj,count>0);
     const int columns=projectCount<capacity?(projectCount?projectCount:1):capacity;
     const int projectWidth=(sceneW-(columns-1)*Grid::Gap)/columns;
+    const int peerLimit=projectWidth>=600?3:2;
     int maxPeers=0;bool pageHasLatest=false;
-    for(int g=page*capacity;g<projectCount && g<(page+1)*capacity;++g){const int peers=podMembers[g]<3?podMembers[g]:3;if(peers>maxPeers)maxPeers=peers;}
+    for(int g=page*capacity;g<projectCount && g<(page+1)*capacity;++g){const int peers=podMembers[g]<peerLimit?podMembers[g]:peerLimit;if(peers>maxPeers)maxPeers=peers;}
     for(int i=0;i<count;++i)if(podFor[i]>=page*capacity && podFor[i]<(page+1)*capacity && rows[i].latest[0])pageHasLatest=true;
     int projectX=0;
     const int peerRows=projectWidth>=600?1:maxPeers;
@@ -614,30 +620,33 @@ void update() {
         int first=-1,working=0,attention=0;
         for(int i=0;i<count;++i)if(podFor[i]==g){if(first<0)first=i;working+=category(rows[i].state)==2;attention+=category(rows[i].state)==1;}
         lv_obj_set_width(podName[g].obj,pw-32);lv_label_set_long_mode(podName[g].obj,LV_LABEL_LONG_DOT);lv_obj_set_height(podName[g].obj,font_studio_20.line_height);lv_obj_set_width(podStatus[g].obj,pw-32);
-        podName[g].set(rows[first].project[0]?rows[first].project:"Unnamed project");
+        podName[g].set(rows[first].projectLabel[0]?rows[first].projectLabel:"Unnamed project");
         snprintf(text,sizeof(text),"%d %s · %d working",podMembers[g],podMembers[g]==1?"agent":"agents",working);podStatus[g].set(text);
         int members[10],nMembers=0;
         for(int i=0;i<count;++i)if(podFor[i]==g)members[nMembers++]=i;
         // Attention stays in view; reserve one slot for fair rotation of others.
         for(int i=1;i<nMembers;++i){int v=members[i],j=i;while(j>0 && (category(rows[members[j-1]].state)>category(rows[v].state) || (category(rows[members[j-1]].state)==category(rows[v].state) && strcmp(rows[members[j-1]].id,rows[v].id)>0))){members[j]=members[j-1];--j;}members[j]=v;}
-        const int pinned=attention<2?attention:2;
-        const int slots=nMembers<3?nMembers:3,rotating=slots-pinned,remaining=nMembers-pinned;
+        const int slots=nMembers<peerLimit?nMembers:peerLimit;
+        const int pinned=attention<slots-1?attention:slots-1;
+        const int rotating=slots-pinned,remaining=nMembers-pinned;
         for(int j=0;j<pinned;++j)displayedSlot[members[j]]=j;
         const int offset=remaining?((now/8000)*rotating)%remaining:0;
         for(int j=0;j<rotating;++j)displayedSlot[members[pinned+(offset+j)%remaining]]=pinned+j;
-        snprintf(text,sizeof(text),"Showing %d of %d · Rotate 8s",slots,nMembers);cohortLabel[g].set(text);visible(cohortLabel[g].obj,nMembers>3);lv_obj_set_width(cohortLabel[g].obj,pw-44);
+        snprintf(text,sizeof(text),"Showing %d of %d · Rotate 8s",slots,nMembers);cohortLabel[g].set(text);visible(cohortLabel[g].obj,nMembers>peerLimit);lv_obj_set_width(cohortLabel[g].obj,pw-44);
         int recent=first;for(int i=0;i<count;++i)if(podFor[i]==g && rows[i].latestRank<rows[recent].latestRank)recent=i;
         visible(podLatest[g].obj,rows[recent].latest[0]);
         lv_obj_set_pos(podLatest[g].obj,16,Grid::Header+peerRows*rowHeight+16);lv_obj_set_width(podLatest[g].obj,pw-32);
+        lv_obj_set_height(podLatest[g].obj,3*font_workspace_20.line_height);
         snprintf(text,sizeof(text),"Latest %s\n%s",rows[recent].hm,rows[recent].latest);podLatest[g].set(text);
     }
     for(int i=0;i<10;++i) {
-        const bool show=i<count && displayedSlot[i]>=0;visible(seats[i],show);visible(agentActivity[i].obj,show);if(!show)continue;
+        const bool show=i<count && displayedSlot[i]>=0;visible(seats[i],show);visible(agentActivity[i].obj,show);visible(agentTask[i].obj,show);if(!show)continue;
         if(lv_obj_get_parent(seats[i])!=pods[podFor[i]])lv_obj_set_parent(seats[i],pods[podFor[i]]);
         if(lv_obj_get_parent(agentActivity[i].obj)!=pods[podFor[i]])lv_obj_set_parent(agentActivity[i].obj,pods[podFor[i]]);
+        if(lv_obj_get_parent(agentTask[i].obj)!=pods[podFor[i]])lv_obj_set_parent(agentTask[i].obj,pods[podFor[i]]);
         const int pw=projectWidth; // LVGL may not have resolved this frame's resized bounds yet.
         const int cat=category(rows[i].state),slot=displayedSlot[i];
-        const int peers=podMembers[podFor[i]]<3?podMembers[podFor[i]]:3;
+        const int peers=podMembers[podFor[i]]<peerLimit?podMembers[podFor[i]]:peerLimit;
         const bool across=pw>=600;
         const int cellW=across?(pw-32-(peers-1)*16)/peers:pw-32;
         const int rowX=16+(across?slot*(cellW+16):0),rowY=Grid::Header+(across?0:slot*rowHeight);
@@ -645,22 +654,29 @@ void update() {
         lv_obj_set_pos(seats[i],rowX,rowY);lv_obj_set_size(seats[i],cellW,rowHeight-8);
         const auto* relief=reliefFor(rows[i].agent);const auto* glyph=relief?relief:glyphFor?glyphFor(rows[i].agent):nullptr;visible(creatures[i],glyph);
         lv_obj_set_style_image_recolor_opa(creatures[i],relief?LV_OPA_TRANSP:LV_OPA_COVER,0);
-        if(glyph){if(lv_image_get_src(creatures[i])!=glyph)lv_image_set_src(creatures[i],glyph);lv_image_set_scale(creatures[i],relief?219:320);lv_obj_set_style_image_opa(creatures[i],cat==3?LV_OPA_60:LV_OPA_COVER,0);lv_obj_set_style_image_recolor(creatures[i],lv_color_hex(brandColor(rows[i].agent)),0);}
+        if(glyph){if(lv_image_get_src(creatures[i])!=glyph)lv_image_set_src(creatures[i],glyph);lv_image_set_scale(creatures[i],relief?128:192);lv_obj_set_style_image_opa(creatures[i],cat==3?LV_OPA_60:LV_OPA_COVER,0);lv_obj_set_style_image_recolor(creatures[i],lv_color_hex(brandColor(rows[i].agent)),0);}
         lv_obj_set_pos(creatures[i],0,cat==1 && overviewMode && connected?((now/300+i)%2?0:4):4);
         snprintf(text,sizeof(text),"#%d %s",memberSlot[i]+1,cat==1?"! Attention":cat==2?"Working":"Idle");seatState[i].set(text);
-        lv_obj_set_pos(seatState[i].obj,96,0);lv_obj_set_width(seatState[i].obj,cellW-96);
-        lv_obj_set_pos(childLabel[i].obj,96,rowHeight-24);lv_obj_set_width(childLabel[i].obj,cellW-96);
+        lv_obj_set_pos(seatState[i].obj,64,4);lv_obj_set_width(seatState[i].obj,cellW-64);
+        lv_obj_set_pos(childLabel[i].obj,64,26);lv_obj_set_width(childLabel[i].obj,cellW-64);
         snprintf(text,sizeof(text),"%u workers",rows[i].children);childLabel[i].set(text);visible(childLabel[i].obj,rows[i].childrenKnown && rows[i].children>0);
         lv_obj_set_style_text_color(seatState[i].obj,lv_color_hex(cat==1?Theme::StatusAmber:Theme::HUDDim),0);
         // The canonical creature is already the graphical anchor; no disconnected icon column.
-        lv_obj_set_pos(agentActivity[i].obj,rowX+96,rowY+24);lv_obj_set_width(agentActivity[i].obj,cellW-96);lv_obj_set_height(agentActivity[i].obj,rows[i].childrenKnown && rows[i].children?rowHeight-50:rowHeight-30);
+        const bool hasRole=rows[i].name[0] && strcmp(rows[i].name,rows[i].projectLabel) && strcmp(rows[i].name,rows[i].activity);
+        agentTask[i].set(rows[i].name);visible(agentTask[i].obj,hasRole);
+        lv_obj_set_pos(agentTask[i].obj,rowX,rowY+62);lv_obj_set_width(agentTask[i].obj,cellW);
+        const int textY=hasRole?86:62;
+        lv_obj_set_pos(agentActivity[i].obj,rowX,rowY+textY);lv_obj_set_width(agentActivity[i].obj,cellW);
+        const int lineH=font_workspace_20.line_height;
+        const int textH=((rowHeight-textY-6)/lineH)*lineH;
+        lv_obj_set_height(agentActivity[i].obj,textH>0?textH:lineH);
         agentActivity[i].set(rows[i].activity);visible(agentActivity[i].obj,rows[i].activity[0]);
         lv_obj_set_style_text_color(agentActivity[i].obj,lv_color_hex(cat==1?Theme::StatusAmber:Theme::HUDText),0);
 
     }
     visible(overviewEmpty.obj,!projectCount);overviewEmpty.set(count?"No sessions match this filter.":"Waiting for agents");
     if(!connected)attentionLine.set("Disconnected · Last received state");
-    else if(totals[1]) {int first=0;while(first<count && category(rows[first].state)!=1)++first;snprintf(text,sizeof(text),"Attention %d · %s · %s",totals[1],rows[first].project,rows[first].activity);attentionLine.set(text);}
+    else if(totals[1]) {int first=0;while(first<count && category(rows[first].state)!=1)++first;snprintf(text,sizeof(text),"Attention %d · %s · %s",totals[1],rows[first].projectLabel,rows[first].activity);attentionLine.set(text);}
     else {snprintf(text,sizeof(text),"%d projects · %d working · %d idle",projectCount,totals[2],totals[3]);attentionLine.set(text);}
     lv_obj_set_style_text_color(attentionLine.obj,lv_color_hex(totals[1]?Theme::StatusAmber:Theme::HUDText),0);
     link.set(connected?"Connected":"Disconnected");

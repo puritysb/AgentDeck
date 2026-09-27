@@ -1359,6 +1359,34 @@ actor ESP32Serial {
         return result
     }
 
+    // BEGIN GENERATED COMPACT SESSION LABELS — bridge/generate-compact-session-labels.mjs
+    // Source SHA256: 1962163d923a24debf9e6bc7b3125909cc4958a3134e700f8d1b1e6ce725a80f
+    nonisolated static func compactSessionLabels(_ rows: [(id: String, name: String)]) -> [String: String] {
+        func compact(_ value: String) -> String {
+            var output = "", used = 0
+            for scalar in value.unicodeScalars {
+                let part = String(scalar), size = String(scalar).utf8.count
+                if used + size > 32 { break }
+                output += part; used += size
+            }
+            return output
+        }
+        var groups: [String: [String]] = [:]
+        for row in rows {
+            let base = compact(row.name.isEmpty ? "Session" : row.name)
+            if !(groups[base] ?? []).contains(row.id) { groups[base, default: []].append(row.id) }
+        }
+        var labels: [String: String] = [:]
+        for (base, members) in groups {
+            let ids = members.sorted { $0.utf16.lexicographicallyPrecedes($1.utf16) }
+            for (index, id) in ids.enumerated() {
+                labels[id] = ids.count > 1 ? "\(base) #\(index + 1)" : base
+            }
+        }
+        return labels
+    }
+    // END GENERATED COMPACT SESSION LABELS
+
     // BEGIN GENERATED IPS10 ROSTER — bridge/generate-ips10-roster.mjs
     // Source SHA256: 2db0d200789870c7b53b86629b27d3702f3025661d590cf7446fe0273c2e8c0c
     nonisolated static func ips10RosterIndices(total: Int, attention: Int, cap: Int, nowMs: Double) -> [Int] {
@@ -1490,6 +1518,25 @@ actor ESP32Serial {
             }
         }
 
+        if type == "sessions_list", let raw = event["sessions"] as? [[String: Any]],
+           var rows = e["sessions"] as? [[String: Any]] {
+            let labels = Self.compactSessionLabels(raw.filter { ($0["alive"] as? Bool) != false }.map { s in
+                (id: s["id"] as? String ?? "", name: ProjectNameResolver.compactProjectName(
+                    s["projectName"] as? String ?? "", cwd: s["cwd"] as? String))
+            })
+            for i in rows.indices {
+                guard let original = raw.first(where: { Self.limitUtf8Bytes($0["id"], 31) == rows[i]["id"] as? String }),
+                      let label = labels[original["id"] as? String ?? ""], label != rows[i]["projectName"] as? String else { continue }
+                rows[i]["displayName"] = Self.limitUtf8Bytes(label, 39)
+                e["sessions"] = rows
+                if !JSONSerialization.isValidJSONObject(e)
+                    || ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget {
+                    rows[i].removeValue(forKey: "displayName")
+                }
+            }
+            e["sessions"] = rows
+        }
+
         // Before the ESP32 has identified itself, keep the first burst lean.
         // CDC devices are the ones that have been stalling on the initial
         // payload, so strip the high-volume fields until device_info lands.
@@ -1581,7 +1628,7 @@ actor ESP32Serial {
     /// Characters, so n=39 한글 graphemes could still be 117 bytes — the board's
     /// strncpy then cut mid-sequence and the panel drew a broken glyph. Mirrors
     /// the Node bridge `limitString` (bridge/src/esp32-serial.ts).
-    static func limitUtf8Bytes(_ v: Any?, _ maxBytes: Int) -> String {
+    nonisolated static func limitUtf8Bytes(_ v: Any?, _ maxBytes: Int) -> String {
         guard let s = v as? String else { return "" }
         if s.utf8.count <= maxBytes { return s }
         var out = ""

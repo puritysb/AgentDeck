@@ -433,6 +433,8 @@ static void handleSessionsList(JsonObject& obj) {
         strncpy(g_state.sessions[i].id, s["id"] | "", sizeof(g_state.sessions[i].id) - 1);
         copyTextU8(g_state.sessions[i].projectName, sizeof(g_state.sessions[i].projectName),
                    s["projectName"] | "");
+        const char* displayName = s["displayName"] | "";
+        copyTextU8(g_state.sessions[i].displayName, sizeof(g_state.sessions[i].displayName), displayName);
         strncpy(g_state.sessions[i].modelName, s["modelName"] | "",
                 sizeof(g_state.sessions[i].modelName) - 1);
         strncpy(g_state.sessions[i].agentType, s["agentType"] | "",
@@ -538,7 +540,7 @@ static void handleSessionsList(JsonObject& obj) {
     for (uint8_t i = 0; i < g_state.sessionCount && nameIdx < MAX_OCTOPUS; i++) {
         if (g_state.sessions[i].alive &&
             strcmp(g_state.sessions[i].agentType, "claude-code") == 0) {
-            const char* name = g_state.sessions[i].projectName;
+            const char* name = sessionDisplayName(g_state.sessions[i]);
             if (name[0]) {
                 strncpy(rawNames[nameIdx], name, sizeof(rawNames[nameIdx]) - 1);
                 rawNames[nameIdx][sizeof(rawNames[nameIdx]) - 1] = '\0';
@@ -578,7 +580,7 @@ static void handleSessionsList(JsonObject& obj) {
     for (uint8_t i = 0; i < g_state.sessionCount && cloudNameIdx < MAX_CLOUD; i++) {
         if (g_state.sessions[i].alive &&
             isCodexAgent(g_state.sessions[i].agentType)) {
-            const char* name = g_state.sessions[i].projectName;
+            const char* name = sessionDisplayName(g_state.sessions[i]);
             if (name[0]) {
                 strncpy(cloudRawNames[cloudNameIdx], name, sizeof(cloudRawNames[cloudNameIdx]) - 1);
                 cloudRawNames[cloudNameIdx][sizeof(cloudRawNames[cloudNameIdx]) - 1] = '\0';
@@ -618,7 +620,7 @@ static void handleSessionsList(JsonObject& obj) {
     for (uint8_t i = 0; i < g_state.sessionCount && opencodeNameIdx < MAX_OPENCODE; i++) {
         if (g_state.sessions[i].alive &&
             strcmp(g_state.sessions[i].agentType, "opencode") == 0) {
-            const char* name = g_state.sessions[i].projectName;
+            const char* name = sessionDisplayName(g_state.sessions[i]);
             if (name[0]) {
                 strncpy(opencodeRawNames[opencodeNameIdx], name, sizeof(opencodeRawNames[opencodeNameIdx]) - 1);
                 opencodeRawNames[opencodeNameIdx][sizeof(opencodeRawNames[opencodeNameIdx]) - 1] = '\0';
@@ -658,7 +660,7 @@ static void handleSessionsList(JsonObject& obj) {
     for (uint8_t i = 0; i < g_state.sessionCount && antigravityNameIdx < MAX_ANTIGRAVITY; i++) {
         if (g_state.sessions[i].alive &&
             strcmp(g_state.sessions[i].agentType, "antigravity") == 0) {
-            const char* name = g_state.sessions[i].projectName;
+            const char* name = sessionDisplayName(g_state.sessions[i]);
             if (name[0]) {
                 strncpy(antigravityRawNames[antigravityNameIdx], name, sizeof(antigravityRawNames[antigravityNameIdx]) - 1);
                 antigravityRawNames[antigravityNameIdx][sizeof(antigravityRawNames[antigravityNameIdx]) - 1] = '\0';
@@ -698,7 +700,7 @@ static void handleSessionsList(JsonObject& obj) {
     for (uint8_t i = 0; i < g_state.sessionCount && kiroNameIdx < MAX_KIRO; i++) {
         if (g_state.sessions[i].alive &&
             strncmp(g_state.sessions[i].agentType, "kiro", 4) == 0) {
-            const char* name = g_state.sessions[i].projectName;
+            const char* name = sessionDisplayName(g_state.sessions[i]);
             if (name[0]) {
                 strncpy(kiroRawNames[kiroNameIdx], name, sizeof(kiroRawNames[kiroNameIdx]) - 1);
                 kiroRawNames[kiroNameIdx][sizeof(kiroRawNames[kiroNameIdx]) - 1] = '\0';

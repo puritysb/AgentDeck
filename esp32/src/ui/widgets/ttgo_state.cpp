@@ -277,6 +277,12 @@ void update() {
     char project[40], model[32];
     strncpy(project, g_state.projectName, sizeof(project) - 1);
     project[sizeof(project) - 1] = '\0';
+    for (uint8_t i = 0; i < g_state.sessionCount; ++i) {
+        if (!strcmp(g_state.sessions[i].id, g_state.focusedSessionId)) {
+            snprintf(project, sizeof(project), "%s", sessionDisplayName(g_state.sessions[i]));
+            break;
+        }
+    }
     strncpy(model, g_state.modelName, sizeof(model) - 1);
     model[sizeof(model) - 1] = '\0';
 

@@ -1,3 +1,5 @@
+import { compactSessionLabels } from './compact-session-labels.js';
+import { compactProjectName } from './utils/project-name.js';
 import { ips10RosterIndices } from './ips10-roster.js';
 /**
  * ESP32 Serial Bridge — bidirectional USB serial communication.
@@ -504,6 +506,9 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
   if (event.type === 'sessions_list') {
     const raw = Array.isArray(e.sessions) ? e.sessions : [];
     const isIps10 = _conn?.deviceInfo?.board === 'ips_10';
+    const labels = compactSessionLabels(raw.filter((s: any) => s?.alive !== false).map((s: any) => ({
+      id: s.id, name: compactProjectName(s.projectName ?? '', s.cwd),
+    })));
     const selected = isIps10 ? stableCardRoster(raw, SERIAL_SESSIONS_CAP) : roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP);
     const prepared = {
       type: 'sessions_list',
@@ -569,6 +574,14 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
       if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) {
         for (const row of rows) { delete row.subagents; delete row.coordination; }
       }
+    }
+    // Additive, optional presentation: preserve raw projectName for details and
+    // old firmware. Never expand a frame past the serial budget for cosmetics.
+    for (const [index, row] of (prepared as any).sessions.entries()) {
+      const label = labels.get(selected[index].id);
+      if (!label || label === row.projectName) continue;
+      row.displayName = limitString(label, 39);
+      if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete row.displayName;
     }
     return prepared;
   }

@@ -54,12 +54,30 @@ WiFi/WebSockets/LovyanGFX never enter the native build. IPS10 renders the real
 Korean fonts. Hardware flush timing and physical touch accuracy are not modeled;
 e-ink is a single full-buffer pass (no partial-refresh ghosting). See [esp32/sim/README.md](../esp32/sim/README.md).
 
+## Compact session labels
+
+Small displays are progress monitors first; the session list is a task picker,
+not a directory browser. Both daemons send an optional `displayName` for ESP32
+frames. A verified auto-generated linked-worktree name becomes the repository
+name; duplicate labels get ID-sorted `#N` suffixes before roster capping or
+paging, so activity reordering cannot renumber them. Membership changes can
+renumber the suffix; it is a display hint, never an identity. Explicit project
+names remain intact. The original `projectName`, session ID and control target
+are preserved. Old firmware ignores the new field; old daemons use the original
+name. Optional labels use only spare serial-frame budget.
+
+Focus Strip and Pocket lists show waiting questions first, live activity/tool
+while processing, and the last reported event while idle. Idle never means
+completed. Fixed-height list captions use ellipses and cannot overlap the next
+row. TTGO and TC001 retain their usage-first roles; this does not turn their
+primary page into a full session list.
+
 ## IPS10 task workspace
 
 IPS10 defaults to an English ambient aquarium: current work, recent received activity, and attention remain visible without touch. Session detail is available on demand. The installed P4 display driver is currently fixed to 1280×800 landscape; `set_orientation` does not rotate this board. The 800×1280 layout is validated in the native simulator, not as a physical rotation feature. The fixed layout is:
 
 - A conditional attention strip names the first waiting project and its question, including when that project is on another page. State filters remain in detail mode.
-- Three equal-width project spaces (one in the portrait preview) per page group canonical creatures by exact reported project name. Project ordering and creature numbers follow identities; attention takes priority when choosing visible creatures. Additional spaces appear automatically every 12 seconds; tapping the page caption pauses/resumes rotation. Each space shows up to three creatures and their activities; additional peers rotate every 8 seconds. Up to two attention agents stay visible within each project; remaining slots rotate fairly and always fill when enough peers exist. Each creature, status and activity forms one aligned 96–120px row; a worker label shows reported active children. The latest attributable ring event appears below them in 20px text. Unknown project names remain separate. Grouping means co-presence, not a measured delegation relationship. Creatures retain state badges, dim idle states, and touch-to-inspect detail.
+- Two equal-width project spaces (one in the portrait preview) per page group canonical creatures by exact reported project name. Short display labels never change this grouping or session control IDs. Project ordering and creature numbers follow identities; attention takes priority when choosing visible creatures. Additional spaces appear every 12 seconds; tapping the page caption pauses/resumes rotation. Narrow spaces show up to two agents, while a single wide space shows three side by side. Extra peers rotate every 8 seconds, reserving a slot for fair access even when many agents need attention. A compact creature/status header is followed by the reported task title (when distinct) and current activity across the full card width. Whole-line heights and ellipses prevent clipped final lines; full received detail remains inspectable. The latest attributable event is a separate, dimmer footer. Unknown project names remain separate. Grouping means co-presence, not a measured delegation relationship.
 - **USAGE** persists in both modes and groups Claude/Codex/z.ai quota windows with confirmed subscription plans and reported dates. Antigravity is plan/date only, never raw credits or a fabricated percentage. Missing windows remain absent, including plans without 5h quotas; zero is valid. Luna uses a crescent and remaining allowance only while a regular Codex limit is exhausted, returning to normal windows after reset. A plan-only row can keep USAGE visible. The rail is content-sized, with bounded scrolling when all providers are present. Unknown/unlinked providers have no placeholder.
 - A scrollable session rail in detail mode, with attention first and selection retained by session ID when the daemon reorders its roster. Task names use reported milestones when available.
 - A detail surface that collapses unknown collaboration cards and sizes the activity/history regions to content with the canonical agent glyph, current activity or permission question, reported child/background counts, and two recent events. **History** expands to the eight newest events retained on the device; it is not a complete archive. Long questions and history rows scroll instead of losing their ending.

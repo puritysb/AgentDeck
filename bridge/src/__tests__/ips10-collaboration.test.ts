@@ -38,7 +38,11 @@ describe('IPS10 additive collaboration census', () => {
     const out = prepareForSerial(input, { deviceInfo: { board: 'ips_10' } }) as any;
     const baseline = prepareForSerial(input) as any;
     expect(Buffer.byteLength(JSON.stringify(baseline))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
-    expect(out).toEqual({ ...baseline, rosterRotating: false });
+    // Optional compact labels spend only spare bytes; IPS10's roster flag can
+    // leave less room than another board. Essential rows remain identical.
+    const essentials = (e: any) => ({ ...e, sessions: e.sessions.map(({ displayName: _label, ...row }: any) => row) });
+    expect(essentials(out)).toEqual({ ...essentials(baseline), rosterRotating: false });
+    expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
     expect(out.sessions.every((s: any) => s.subagents === undefined)).toBe(true);
     expect(out.sessions).toHaveLength(10);
   });

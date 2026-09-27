@@ -282,6 +282,23 @@ bool SimScenes::apply(const char* name) {
     g_state.hostDisplayOn = false;
     return true;
   }
+  if (std::strcmp(name, "worktree-glance") == 0) {
+    base(CreatureState::WORKING);
+    addSession("claude-code", "processing", "AgentDeck - firmware-review-worktree");
+    addSession("codex-cli", "processing", "AgentDeck - dashboard-layout-worktree");
+    addSession("claude-code", "awaiting_permission", "AgentDeck - rollout-verification");
+    for (int i=0;i<3;++i) {
+      auto& s=g_state.sessions[i];
+      std::snprintf(s.displayName,sizeof(s.displayName),"AgentDeck #%d",i+1);
+      setStr(s.lastEventText,sizeof(s.lastEventText),"Previous task finished. This must not replace live progress.");
+    }
+    setStr(g_state.sessions[0].lastEventTask,sizeof(g_state.sessions[0].lastEventTask),"Review firmware memory safety");
+    setStr(g_state.sessions[0].activity,sizeof(g_state.sessions[0].activity),"Checking display buffers and preserving memory for voice responses.");
+    setStr(g_state.sessions[1].lastEventTask,sizeof(g_state.sessions[1].lastEventTask),"Improve dashboard readability");
+    setStr(g_state.sessions[1].activity,sizeof(g_state.sessions[1].activity),"Reflowing long summaries so every agent role stays readable on the dashboard.");
+    setStr(g_state.sessions[2].question,sizeof(g_state.sessions[2].question),"Install the tested firmware on the connected boards?");
+    return true;
+  }
   if (std::strcmp(name, "working") == 0) {
     base(CreatureState::WORKING);
     addSession("claude-code", "processing", "AgentDeck");
@@ -452,6 +469,6 @@ bool SimScenes::apply(const char* name) {
 }
 
 const char* SimScenes::catalog() {
-  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, live-mix, empty, idle, display-off, working, multi, crowd, crowded, dense, permission, attention, "
+  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, live-mix, empty, idle, display-off, worktree-glance, working, multi, crowd, crowded, dense, permission, attention, "
          "demo:<agent>:<state>";
 }

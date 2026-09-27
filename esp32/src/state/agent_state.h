@@ -89,7 +89,8 @@ inline bool isGeneralAssistantSession(const char* agentType, const char* project
 // ===== Session info (multi-agent) =====
 struct SessionInfo {
     char id[32];
-    char projectName[40];
+    char projectName[40]; // original project/worktree label
+    char displayName[40]; // compact label; fixed 400 bytes for the roster
     char modelName[32];
     char agentType[16];  // "claude-code" / "openclaw" / "codex-cli" / "codex-app"
     char state[20];
@@ -127,6 +128,10 @@ struct SessionInfo {
     char lastEventTask[40];  // resolved enclosing-task label ("" when none)
     char lastEventHm[6];     // host-local "HH:MM" of that row ("" when unknown)
 };
+
+inline const char* sessionDisplayName(const SessionInfo& session) {
+    return session.displayName[0] ? session.displayName : session.projectName;
+}
 
 // ===== Timeline entry =====
 struct TimelineEntry {

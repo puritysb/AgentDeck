@@ -51,13 +51,13 @@ enum ProjectNameResolver {
     /// Walk ancestors looking for a `.git` entry (directory OR file — submodule
     /// and worktree layouts store it as a file). Returns the repo root's
     /// basename.
-    static func gitToplevelBasename(startingAt cwd: String) -> String? {
+    static func gitToplevelBasename(startingAt cwd: String, compact: Bool = false) -> String? {
         var dir = (cwd as NSString).standardizingPath
         let fm = FileManager.default
         for _ in 0..<maxWalkDepth {
             let gitPath = (dir as NSString).appendingPathComponent(".git")
             if fm.fileExists(atPath: gitPath) {
-                return gitProjectLabel(root: dir)
+                return gitProjectLabel(root: dir, compact: compact)
             }
             let parent = (dir as NSString).deletingLastPathComponent
             if parent == dir || parent.isEmpty { return nil }
@@ -68,7 +68,7 @@ enum ProjectNameResolver {
 
     /// Mirrors the linked-worktree contract pinned by shared/project-name-vectors.json.
     /// Unreadable metadata, submodules and bare repositories retain the local name.
-    private static func gitProjectLabel(root: String) -> String? {
+    private static func gitProjectLabel(root: String, compact: Bool = false) -> String? {
         let localName = (root as NSString).lastPathComponent
         let fallback = localName.isEmpty ? nil : localName
         func read(_ path: String) -> String? {
@@ -93,7 +93,12 @@ enum ProjectNameResolver {
               FileManager.default.fileExists(atPath: (commonDir as NSString).appendingPathComponent("HEAD"))
         else { return fallback }
         let repositoryName = ((commonDir as NSString).deletingLastPathComponent as NSString).lastPathComponent
-        return repositoryName.isEmpty ? fallback : "\(repositoryName) · \(localName)"
+        return repositoryName.isEmpty ? fallback : (compact ? repositoryName : "\(repositoryName) · \(localName)")
+    }
+
+    static func compactProjectName(_ name: String, cwd: String?) -> String {
+        guard let cwd, resolve(cwd: cwd) == name else { return name }
+        return gitToplevelBasename(startingAt: cwd, compact: true) ?? name
     }
 
     /// Walk ancestors looking for a `package.json` whose `name` field is a

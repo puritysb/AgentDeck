@@ -1,3 +1,4 @@
+#include "../companion/session_glance.h"
 #if defined(BOARD_T_DISPLAY_PRO)
 
 #include "pocket_ui.h"
@@ -74,6 +75,7 @@ static uint32_t agentColor(const char* agentType) {
 static uint32_t stateColorOf(const char* state) {
     if (strstr(state, "awaiting") != nullptr) return Theme::StatusAmber;
     if (strcmp(state, "processing") == 0) return Theme::StatusBlue;
+    if (strcmp(state, "error") == 0) return Theme::StatusRed;
     if (strcmp(state, "idle") == 0) return Theme::StatusGreen;
     return Theme::HUDDim;
 }
@@ -330,15 +332,9 @@ static void renderSessionsTab() {
     for (uint8_t oi = 0; oi < orderCount && n < 10; oi++) {
         const SessionInfo& s = g_state.sessions[order[oi]];
         strncpy(rows[n].agentType, s.agentType, sizeof(rows[n].agentType));
-        strncpy(rows[n].projectName, s.projectName, sizeof(rows[n].projectName));
+        strncpy(rows[n].projectName, sessionDisplayName(s), sizeof(rows[n].projectName));
         strncpy(rows[n].state, s.state, sizeof(rows[n].state));
-        // An awaiting card carries the live question — that is what its two
-        // answer chips refer to; other cards keep the milestone line.
-        bool awaiting = strstr(s.state, "awaiting") != nullptr;
-        strncpy(rows[n].line,
-                (awaiting && s.question[0]) ? s.question
-                : (s.lastEventText[0] ? s.lastEventText : s.activity),
-                sizeof(rows[n].line));
+        strncpy(rows[n].line, Companion::glanceText(s), sizeof(rows[n].line));
         rows[n].line[sizeof(rows[n].line) - 1] = '\0';
         rows[n].focused = sameSessionId(s.id, g_state.focusedSessionId);
         strncpy(s_cardIds[n], s.id, sizeof(s_cardIds[n]) - 1);
@@ -397,7 +393,7 @@ static void renderSessionsTab() {
 
         const char* rowStatus = awaiting ? "INPUT"
                               : strcmp(rows[i].state, "processing") == 0 ? "WORK"
-                              : "READY";
+                              : strcmp(rows[i].state, "error") == 0 ? "ERROR" : "READY";
         lv_obj_t* st = makeLabel(card, &lv_font_montserrat_12,
                                  stateColorOf(rows[i].state), rowStatus);
         lv_obj_align(st, LV_ALIGN_TOP_RIGHT, -8, 5);

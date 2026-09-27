@@ -1,3 +1,4 @@
+#include "../companion/session_glance.h"
 #if defined(BOARD_T_DISPLAY_PRO)
 
 #include "ticker_ui.h"
@@ -272,6 +273,7 @@ static uint32_t agentColor(const char* agentType) {
 static uint32_t stateColorOf(const char* state) {
     if (strstr(state, "awaiting") != nullptr) return Theme::StatusAmber;
     if (strcmp(state, "processing") == 0) return Theme::StatusBlue;
+    if (strcmp(state, "error") == 0) return Theme::StatusRed;
     if (strcmp(state, "idle") == 0) return Theme::StatusGreen;
     return Theme::HUDDim;
 }
@@ -415,11 +417,10 @@ static void renderSessionsPage() {
     for (uint8_t oi = s_sessionOffset; oi < orderCount && n < 3; oi++) {
         const SessionInfo& s = g_state.sessions[order[oi]];
         strncpy(rows[n].agentType, s.agentType, sizeof(rows[n].agentType));
-        strncpy(rows[n].projectName, s.projectName, sizeof(rows[n].projectName));
+        strncpy(rows[n].projectName, sessionDisplayName(s), sizeof(rows[n].projectName));
         strncpy(rows[n].state, s.state, sizeof(rows[n].state));
-        // Glance rule: milestone line, live tool belongs to state surfaces.
-        strncpy(rows[n].line, s.lastEventText[0] ? s.lastEventText : s.activity,
-                sizeof(rows[n].line));
+        strncpy(rows[n].line, Companion::glanceText(s), sizeof(rows[n].line));
+        rows[n].line[sizeof(rows[n].line) - 1] = '\0';
         rows[n].focused = sameSessionId(s.id, s_pinId[0] ? s_pinId : g_state.focusedSessionId);
         strncpy(s_sessionRowIds[n], s.id, sizeof(s_sessionRowIds[n]) - 1);
         n++;
@@ -471,12 +472,12 @@ static void renderSessionsPage() {
 
         // The third row yields space to the category-specific roster summary.
         lv_obj_t* line = makeLabel(s_body, &font_kr_16, Theme::HUDDim, rows[i].line);
-        lv_obj_set_width(line, 430);
+        lv_obj_set_size(line, 430, font_kr_16.line_height);
         lv_label_set_long_mode(line, LV_LABEL_LONG_DOT);
         lv_obj_align(line, LV_ALIGN_TOP_LEFT, 30, y + 24);
 
-        const char* rowStatus = rows[i].focused ? "FOCUS"
-                              : strstr(rows[i].state, "awaiting") ? "INPUT"
+        const char* rowStatus = strstr(rows[i].state, "awaiting") ? "INPUT"
+                              : strcmp(rows[i].state, "error") == 0 ? "ERROR"
                               : strcmp(rows[i].state, "processing") == 0 ? "WORK"
                               : "READY";
         lv_obj_t* st = makeLabel(s_body, &lv_font_montserrat_14,
@@ -896,20 +897,10 @@ void update(float dt) {
             Companion::copy(focus.resultHm, s_completedHm);
             strncpy(focus.id, sess.id, sizeof(focus.id));
             strncpy(focus.agentType, sess.agentType, sizeof(focus.agentType));
-            strncpy(focus.projectName, sess.projectName, sizeof(focus.projectName));
+            strncpy(focus.projectName, sessionDisplayName(sess), sizeof(focus.projectName));
             strncpy(focus.state, sess.state, sizeof(focus.state));
             strncpy(focus.requestId, sess.requestId, sizeof(focus.requestId));
-            // Caption: awaiting question > live activity/tool > last milestone.
-            if (focus.awaiting && sess.question[0])
-                strncpy(focus.caption, sess.question, sizeof(focus.caption));
-            else if (strcmp(sess.state, "processing") == 0 && sess.activity[0])
-                strncpy(focus.caption, sess.activity, sizeof(focus.caption));
-            else if (strcmp(sess.state, "processing") == 0 && sess.currentTool[0])
-                strncpy(focus.caption, sess.currentTool, sizeof(focus.caption));
-            else if (sess.lastEventText[0])
-                strncpy(focus.caption, sess.lastEventText, sizeof(focus.caption));
-            else
-                strncpy(focus.caption, !strcmp(sess.state, "processing") ? "Working - no activity detail reported" : "Ready for the next task", sizeof(focus.caption));
+            strncpy(focus.caption, Companion::glanceText(sess), sizeof(focus.caption));
             focus.caption[sizeof(focus.caption) - 1] = '\0';
         }
         if (s_pinId[0]) {

@@ -346,7 +346,7 @@ void snapshot(Snap& s) {
         const SessionInfo& src = g_state.sessions[i];
         RowSnap& dst = s.rows[i];
         strncpy(dst.id, src.id, sizeof(dst.id) - 1);
-        strncpy(dst.name, src.projectName, sizeof(dst.name) - 1);
+        strncpy(dst.name, sessionDisplayName(src), sizeof(dst.name) - 1);
         strncpy(dst.agentType, src.agentType, sizeof(dst.agentType) - 1);
         strncpy(dst.state, src.state, sizeof(dst.state) - 1);
         strncpy(dst.tool, src.currentTool, sizeof(dst.tool) - 1);

@@ -1232,6 +1232,12 @@ data class SessionInfo (
     val currentTask: String? = null,
     val currentTool: String? = null,
     val cwd: String? = null,
+
+    /**
+     * Optional compact device label; never a session identity or folding key.
+     */
+    val displayName: String? = null,
+
     val effortLevel: String? = null,
 
     @Json(name = "elapsedSec")

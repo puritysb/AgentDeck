@@ -1,3 +1,4 @@
+#include "../companion/session_glance.h"
 #if defined(BOARD_T_EMBED)
 
 #include "knob_ui.h"
@@ -52,6 +53,7 @@ static constexpr uint8_t MENU_VISIBLE = 2;
 struct SessionSnap {
     char id[32];
     char projectName[40];
+    char projectDetail[40];
     char agentType[16];
     char state[20];
     char currentTool[40];
@@ -253,7 +255,8 @@ static bool snapshotSession(int idx, SessionSnap& out) {
     if (idx >= 0 && idx < g_state.sessionCount) {
         const SessionInfo& s = g_state.sessions[idx];
         strncpy(out.id, s.id, sizeof(out.id));
-        strncpy(out.projectName, s.projectName, sizeof(out.projectName));
+        strncpy(out.projectName, sessionDisplayName(s), sizeof(out.projectName));
+        Companion::copy(out.projectDetail, s.projectName);
         strncpy(out.agentType, s.agentType, sizeof(out.agentType));
         strncpy(out.state, s.state, sizeof(out.state));
         strncpy(out.currentTool, s.currentTool, sizeof(out.currentTool));
@@ -273,6 +276,7 @@ static bool snapshotSession(int idx, SessionSnap& out) {
         // Noto KR fallback (U+00B7 " · " above all) — sanitize once at snapshot
         // time so no render path ever draws a tofu box.
         Utf8::sanitizeLvglText(out.projectName);
+        Utf8::sanitizeLvglText(out.projectDetail);
         Utf8::sanitizeLvglText(out.question);
         Utf8::sanitizeLvglText(out.currentTool);
         Utf8::sanitizeLvglText(out.activity);
@@ -304,6 +308,7 @@ static uint32_t agentColor(const char* agentType) {
 static uint32_t stateColorOf(const char* state) {
     if (strstr(state, "awaiting") != nullptr) return Theme::StatusAmber;
     if (strcmp(state, "processing") == 0) return Theme::StatusBlue;
+    if (strcmp(state, "error") == 0) return Theme::StatusRed;
     if (strcmp(state, "idle") == 0) return Theme::StatusGreen;
     return Theme::HUDDim;
 }
@@ -542,10 +547,7 @@ static void renderListBody(bool connected, uint8_t sessionCount) {
                               s.projectName[0] ? s.projectName : "(no project)");
     lv_obj_set_pos(project, 8, 23); lv_obj_set_size(project, 304, 23);
     lv_label_set_long_mode(project, LV_LABEL_LONG_DOT);
-    const char* ctx = strstr(s.state, "awaiting") && s.question[0] ? s.question :
-        !strcmp(s.state, "processing") && s.activity[0] ? s.activity :
-        !strcmp(s.state, "processing") && s.currentTool[0] ? s.currentTool :
-        s.lastEventText[0] ? s.lastEventText : "No activity reported";
+    const char* ctx = Companion::glanceText(s);
     auto* activity = makeLabel(s_body, &font_kr_16, Theme::HUDText, ctx);
     lv_obj_set_pos(activity, 8, 52); lv_obj_set_size(activity, 304, 68);
     lv_label_set_long_mode(activity, LV_LABEL_LONG_DOT);
@@ -675,7 +677,7 @@ static void createQuestionPanel() {
 static void updateQuestionPanel() {
     SessionSnap snap;
     if (!snapshotSession(s_listIdx, snap)) return;
-    Companion::copy(s_projectText, snap.projectName);
+    Companion::copy(s_projectText, s_mode == Mode::DETAIL && snap.projectDetail[0] ? snap.projectDetail : snap.projectName);
     snprintf(s_agentText, sizeof(s_agentText), "%s / NEEDS INPUT", agentShortLabel(snap.agentType));
     Companion::copy(s_questionLabel, snap.question[0] ? snap.question : "Open to review this request");
     lv_label_set_text_static(s_questionProject, s_projectText);
@@ -1079,6 +1081,7 @@ void update(float dt) {
             const auto& shown = g_state.sessions[s_listIdx];
             visibleHash = Companion::textHash(shown.question);
             visibleHash = Companion::textHash(shown.projectName, visibleHash);
+            visibleHash = Companion::textHash(sessionDisplayName(shown), visibleHash);
             visibleHash = Companion::textHash(shown.lastEventText, visibleHash);
         }
         unlockState();
@@ -1130,7 +1133,7 @@ void update(float dt) {
         // the covered separator (see Utf8::sanitizeLvglText).
         snprintf(left, sizeof(left), "%s " LV_SYMBOL_BULLET " %s",
                  agentShortLabel(detail.agentType),
-                 detail.projectName[0] ? detail.projectName : "?");
+                 detail.projectDetail[0] ? detail.projectDetail : detail.projectName[0] ? detail.projectName : "?");
         lv_label_set_text(s_headerLeft, left);
         lv_obj_set_style_text_font(s_headerLeft, &font_kr_12, 0);
         // State already has a larger, colored line in the body. Keeping the

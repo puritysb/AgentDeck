@@ -87,11 +87,11 @@ export function resolveProjectNameFromCwdCached(cwd: string): string {
 }
 
 /** Ancestor walk for a `.git` entry; preserves linked-worktree context. */
-export function gitToplevelBasenameFs(cwd: string): string | null {
+export function gitToplevelBasenameFs(cwd: string, compact = false): string | null {
   let dir = cwd;
   for (let i = 0; i < MAX_WALK_DEPTH; i++) {
     if (existsSync(join(dir, '.git'))) {
-      return gitProjectLabel(dir);
+      return gitProjectLabel(dir, compact);
     }
     const parent = dirname(dir);
     if (parent === dir) return null;
@@ -107,7 +107,7 @@ export function gitToplevelBasenameFs(cwd: string): string | null {
  * the local name. Keep the worktree suffix: display folding must not collapse
  * independently steerable tasks. Shared project-name-vectors.json pins Swift parity.
  */
-function gitProjectLabel(root: string): string | null {
+function gitProjectLabel(root: string, compact = false): string | null {
   const localName = basename(root);
   try {
     const marker = readFileSync(join(root, '.git'), 'utf-8').trim();
@@ -122,7 +122,7 @@ function gitProjectLabel(root: string): string | null {
       return localName || null;
     }
     const repositoryName = basename(dirname(commonDir));
-    if (repositoryName) return `${repositoryName} · ${localName}`;
+    if (repositoryName) return compact ? repositoryName : `${repositoryName} · ${localName}`;
   } catch {
     // Directory marker, submodule, missing metadata, or access denied.
   }
@@ -146,4 +146,18 @@ export function nearestPackageJsonName(cwd: string): string | null {
     dir = parent;
   }
   return null;
+}
+
+const compactNameCache = new Map<string, string>();
+/** Shorten only a verified auto-generated label; explicit names are untouched. */
+export function compactProjectName(projectName: string, cwd?: string): string {
+  if (!cwd || resolveProjectNameFromCwdCached(cwd) !== projectName) return projectName;
+  const key = resolve(cwd);
+  let name = compactNameCache.get(key);
+  if (name === undefined) {
+    name = gitToplevelBasenameFs(key, true) ?? projectName;
+    if (compactNameCache.size >= 256) compactNameCache.clear();
+    compactNameCache.set(key, name);
+  }
+  return name;
 }

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import {
   resolveProjectName,
+  compactProjectName,
   resolveProjectNameFromCwdCached,
   gitToplevelBasename,
   gitToplevelBasenameFs,
@@ -214,7 +215,7 @@ describe('nearestPackageJsonName', () => {
 
 // This fixture is also replayed by ProjectNameResolverTests.swift.
 const projectVectors = JSON.parse(readFileSync(new URL('../../../shared/project-name-vectors.json', import.meta.url), 'utf8')) as {
-  name: string; cwd: string; files: Record<string, string>; expected: string;
+  name: string; cwd: string; files: Record<string, string>; expected: string; compactExpected: string;
 }[];
 describe('shared worktree project-label contract', () => {
   for (const vector of projectVectors) {
@@ -230,6 +231,8 @@ describe('shared worktree project-label contract', () => {
         }
         expect(gitToplevelBasenameFs(cwd)).toBe(vector.expected);
         expect(resolveProjectNameFromCwdCached(cwd)).toBe(vector.expected);
+        expect(compactProjectName(vector.expected, cwd)).toBe(vector.compactExpected);
+        expect(compactProjectName("Explicit · literal", cwd)).toBe("Explicit · literal");
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

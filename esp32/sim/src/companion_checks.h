@@ -30,7 +30,10 @@ static bool verifyCompanionInteractions(const char* outdir) {
     Companion::copy(g_state.sessions[2].requestId, "request-two");
     Companion::copy(g_state.sessions[2].projectName, "Second project");
 #if defined(BOARD_T_EMBED)
-    tick(); assert(Knob::selectedSessionIdx() == 1);
+    tick(); assert(Knob::selectedSessionIdx() == 0); // full roster stays on the current assistant
+    Knob::onRotate(3); tick(); // explicit waiting-requests shortcut
+    Knob::onKey(Input::KeyEvent::SHORT_PRESS); tick();
+    assert(Knob::selectedSessionIdx() == 1);
     assert(visibleText(lv_screen_active(), "NEEDS INPUT"));
     shot("knob-waiting");
     Knob::onRotate(1); tick(); assert(Knob::selectedSessionIdx() == 2);
@@ -65,10 +68,19 @@ static bool verifyCompanionInteractions(const char* outdir) {
     Companion::copy(work.state, "processing"); Companion::copy(work.projectName, "Pinned project");
     Companion::copy(work.activity, "Implementing the next change");
     Companion::copy(work.lastEventText, "The previous result stays readable");
-    tick(); Ticker::primaryAction(); tick(); assert(Ticker::isPinned());
+    auto result = [&](const char* text) {
+        TimelineEntry event{};
+        Companion::copy(event.type, "chat_response");
+        Companion::copy(event.sessionId, work.id);
+        Companion::copy(event.raw, text);
+        g_state.addTimelineEntry(event);
+    };
+    result("The previous result stays readable");
+    tick(); assert(Ticker::isPinned()); // first focus is pinned automatically
     const std::string pinned = Ticker::displayedSessionId();
     g_state.sessionCount = 3;
     Companion::copy(work.lastEventText, "A newer result has arrived");
+    result("A newer result has arrived");
     tick(); assert(pinned == Ticker::displayedSessionId());
     assert(visibleText(lv_screen_active(), "previous result"));
     assert(visibleText(lv_screen_active(), "NEW RESULT")); shot("ticker-pinned");

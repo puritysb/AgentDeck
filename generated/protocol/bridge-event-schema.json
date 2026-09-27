@@ -1291,6 +1291,10 @@
         "cwd": {
           "type": "string"
         },
+        "displayName": {
+          "description": "Optional compact device label; never a session identity or folding key.",
+          "type": "string"
+        },
         "effortLevel": {
           "type": "string"
         },

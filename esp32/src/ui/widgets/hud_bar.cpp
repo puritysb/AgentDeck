@@ -744,6 +744,15 @@ static void detailRefresh() {
     char titleBuf[64];
     strncpy(titleBuf, m.name[0] ? m.name : "Session", sizeof(titleBuf) - 1);
     titleBuf[sizeof(titleBuf) - 1] = '\0';
+    lockState();
+    for (uint8_t i = 0; i < g_state.sessionCount; ++i) {
+        const auto& session = g_state.sessions[i];
+        if (!strcmp(session.id, m.sid) && session.projectName[0]) {
+            snprintf(titleBuf, sizeof(titleBuf), "%s", session.projectName);
+            break;
+        }
+    }
+    unlockState();
     sanitizeIps10Text(titleBuf);
     lv_label_set_text(detailTitle, titleBuf);
 
@@ -1097,7 +1106,7 @@ static bool voiceResolveTarget(char* idOut, size_t idCap, char* labelOut, size_t
             const SessionInfo& si = g_state.sessions[i];
             if (!si.alive || strcmp(si.id, voiceTargetSid) != 0) continue;
             snprintf(idOut, idCap, "%s", si.id);
-            snprintf(labelOut, labelCap, "%s", si.projectName[0] ? si.projectName : si.id);
+            snprintf(labelOut, labelCap, "%s", sessionDisplayName(si)[0] ? sessionDisplayName(si) : si.id);
             found = true;
         }
         if (!found) {
@@ -1112,7 +1121,7 @@ static bool voiceResolveTarget(char* idOut, size_t idCap, char* labelOut, size_t
             if (!si.alive || !si.id[0]) continue;
             if (!isGeneralAssistantSession(si.agentType, si.projectName)) continue;
             snprintf(idOut, idCap, "%s", si.id);
-            snprintf(labelOut, labelCap, "%s", si.projectName[0] ? si.projectName : si.id);
+            snprintf(labelOut, labelCap, "%s", sessionDisplayName(si)[0] ? sessionDisplayName(si) : si.id);
             found = true;
         }
     }
@@ -1127,7 +1136,7 @@ static bool voiceResolveTarget(char* idOut, size_t idCap, char* labelOut, size_t
             const SessionInfo& si = g_state.sessions[i];
             if (!si.alive || !si.id[0]) continue;
             snprintf(idOut, idCap, "%s", si.id);
-            snprintf(labelOut, labelCap, "%s", si.projectName[0] ? si.projectName : si.id);
+            snprintf(labelOut, labelCap, "%s", sessionDisplayName(si)[0] ? sessionDisplayName(si) : si.id);
             found = true;
         }
     }
@@ -1792,8 +1801,18 @@ void update() {
     // Copy session list for the compact legacy HUD. IPS10 renders the D1 mosaic
     // below, so avoid building the legacy text buffer on its UI stack.
     uint8_t sessionCount = hasData ? g_state.sessionCount : (uint8_t)0;
-    SessionInfo sessions[10];
-    memcpy(sessions, g_state.sessions, sizeof(sessions));
+    // This UI-task-only snapshot needs four strings, not ten complete session
+    // records (including question options). Reuse 1,090 bytes off the UI stack.
+    static struct { char id[32], name[40], agentType[16], state[20]; bool alive; } sessions[10];
+    for (uint8_t i = 0; i < sessionCount && i < 10; ++i) {
+        const auto& source = g_state.sessions[i];
+        auto& target = sessions[i];
+        snprintf(target.id, sizeof(target.id), "%s", source.id);
+        snprintf(target.name, sizeof(target.name), "%s", sessionDisplayName(source));
+        snprintf(target.agentType, sizeof(target.agentType), "%s", source.agentType);
+        snprintf(target.state, sizeof(target.state), "%s", source.state);
+        target.alive = source.alive;
+    }
 #endif
 
     // Fallback: if no sessions, use primary state
@@ -1830,7 +1849,7 @@ void update() {
             appendBounded(buf, sizeof(buf), pos,
                 "#%06lX " LV_SYMBOL_BULLET "# %s  #%06lX " LV_SYMBOL_BULLET "#\n",
                 (unsigned long)dotColor,
-                sessions[i].projectName[0] ? sessions[i].projectName : sessions[i].id,
+                sessions[i].name[0] ? sessions[i].name : sessions[i].id,
                 (unsigned long)sColor);
             shown[i] = true;
             visible++;
@@ -1980,7 +1999,7 @@ void update() {
             const SessionInfo& si = g_state.sessions[s];
             mc[n].accent = ips10AgentColor(si.agentType);
             mc[n].stateCol = ips10StateColor(si.state);
-            strncpy(mc[n].name, si.projectName[0] ? si.projectName : si.id, sizeof(mc[n].name) - 1);
+            strncpy(mc[n].name, sessionDisplayName(si)[0] ? sessionDisplayName(si) : si.id, sizeof(mc[n].name) - 1);
             mc[n].name[sizeof(mc[n].name) - 1] = '\0';
             strncpy(mc[n].agent, si.agentType, sizeof(mc[n].agent) - 1); mc[n].agent[sizeof(mc[n].agent) - 1] = '\0';
             strncpy(mc[n].state, si.state, sizeof(mc[n].state) - 1); mc[n].state[sizeof(mc[n].state) - 1] = '\0';

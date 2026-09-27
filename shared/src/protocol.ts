@@ -529,6 +529,8 @@ export interface CoordinationSummary {
 }
 
 export interface SessionInfo {
+  /** Optional compact device label; never a session identity or folding key. */
+  displayName?: string;
   id: string;
   port: number;
   pid?: number;

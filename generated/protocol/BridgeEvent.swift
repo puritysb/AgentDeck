@@ -2427,6 +2427,8 @@ struct ADSessionInfo: Codable, Equatable {
     var currentTask: String?
     var currentTool: String?
     var cwd: String?
+    /// Optional compact device label; never a session identity or folding key.
+    var displayName: String?
     var effortLevel: String?
     var elapsedSec: Double?
     var foldedSessionIds: [String]?
@@ -2501,6 +2503,7 @@ struct ADSessionInfo: Codable, Equatable {
         case currentTask = "currentTask"
         case currentTool = "currentTool"
         case cwd = "cwd"
+        case displayName = "displayName"
         case effortLevel = "effortLevel"
         case elapsedSec = "elapsedSec"
         case foldedSessionIds = "foldedSessionIds"
@@ -2560,6 +2563,7 @@ extension ADSessionInfo {
         currentTask: String?? = nil,
         currentTool: String?? = nil,
         cwd: String?? = nil,
+        displayName: String?? = nil,
         effortLevel: String?? = nil,
         elapsedSec: Double?? = nil,
         foldedSessionIds: [String]?? = nil,
@@ -2599,6 +2603,7 @@ extension ADSessionInfo {
             currentTask: currentTask ?? self.currentTask,
             currentTool: currentTool ?? self.currentTool,
             cwd: cwd ?? self.cwd,
+            displayName: displayName ?? self.displayName,
             effortLevel: effortLevel ?? self.effortLevel,
             elapsedSec: elapsedSec ?? self.elapsedSec,
             foldedSessionIds: foldedSessionIds ?? self.foldedSessionIds,

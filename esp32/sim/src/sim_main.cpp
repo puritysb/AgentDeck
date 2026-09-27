@@ -354,7 +354,7 @@ bool verifyIpsInteractions(const char* outdir) {
   if(IPS10Workspace::diagnostics().projects!=10)return ipsFailure(__LINE__);
   if(!save("ips10-ten-projects"))return ipsFailure(__LINE__);
   SimDisplay::tick(13000);treeUpdate(13);SimDisplay::refresh();
-  if(!ipsLabel(lv_screen_active(),g_screenW>=1100?"shared-prefix-project-4":"shared-prefix-project-1") || ipsLabel(lv_screen_active(),"shared-prefix-project-0"))return ipsFailure(__LINE__);
+  if(!ipsLabel(lv_screen_active(),g_screenW>=1100?"shared-prefix-project-2":"shared-prefix-project-1") || ipsLabel(lv_screen_active(),"shared-prefix-project-0"))return ipsFailure(__LINE__);
   // Attention is visible even when its project is on another page.
   std::snprintf(g_state.sessions[0].state,sizeof(g_state.sessions[0].state),"awaiting_permission");
   std::snprintf(g_state.sessions[0].question,sizeof(g_state.sessions[0].question),"OFF-PAGE-ATTENTION");advance();
@@ -362,7 +362,7 @@ bool verifyIpsInteractions(const char* outdir) {
   auto* pager=ipsLabel(lv_screen_active(),"12s");if(!pager)return ipsFailure(__LINE__);
   lv_obj_send_event(pager,LV_EVENT_CLICKED,nullptr);advance();
   SimDisplay::tick(13000);treeUpdate(13);SimDisplay::refresh();
-  if(!ipsLabel(lv_screen_active(),g_screenW>=1100?"shared-prefix-project-4":"shared-prefix-project-1"))return ipsFailure(__LINE__);
+  if(!ipsLabel(lv_screen_active(),g_screenW>=1100?"shared-prefix-project-2":"shared-prefix-project-1"))return ipsFailure(__LINE__);
   lv_obj_send_event(pager,LV_EVENT_CLICKED,nullptr);advance();
   std::snprintf(g_state.sessions[0].state,sizeof(g_state.sessions[0].state),"processing");
   g_state.usageStale=false;g_state.fiveHourPercent=42;g_state.sevenDayPercent=68;g_state.codexPrimaryPercent=23;g_state.codexSecondaryPercent=44;

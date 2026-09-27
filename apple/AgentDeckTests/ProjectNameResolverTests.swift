@@ -29,6 +29,7 @@ final class ProjectNameResolverTests: XCTestCase {
             let cwd: String
             let files: [String: String]
             let expected: String
+            let compactExpected: String
         }
         let fixture = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -44,6 +45,20 @@ final class ProjectNameResolverTests: XCTestCase {
                 try write(destination, content.replacingOccurrences(of: "$ROOT", with: root.path))
             }
             XCTAssertEqual(ProjectNameResolver.resolve(cwd: cwd.path), vector.expected, vector.name)
+            XCTAssertEqual(ProjectNameResolver.compactProjectName(vector.expected, cwd: cwd.path), vector.compactExpected, vector.name)
+            XCTAssertEqual(ProjectNameResolver.compactProjectName("Explicit · literal", cwd: cwd.path), "Explicit · literal")
+        }
+    }
+
+    func testCompactSessionLabelVectors() throws {
+        struct Row: Decodable { let id: String; let name: String }
+        struct Vector: Decodable { let name: String; let rows: [Row]; let expected: [String: String] }
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/compact-session-label-vectors.json")
+        for vector in try JSONDecoder().decode([Vector].self, from: Data(contentsOf: fixture)) {
+            XCTAssertEqual(ESP32Serial.compactSessionLabels(vector.rows.map { ($0.id, $0.name) }), vector.expected, vector.name)
+            XCTAssertEqual(ESP32Serial.compactSessionLabels(vector.rows.reversed().map { ($0.id, $0.name) }), vector.expected, vector.name)
         }
     }
 
