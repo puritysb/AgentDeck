@@ -52,13 +52,13 @@ final class ProjectNameResolverTests: XCTestCase {
 
     func testCompactSessionLabelVectors() throws {
         struct Row: Decodable { let id: String; let name: String }
-        struct Vector: Decodable { let name: String; let rows: [Row]; let expected: [String: String] }
+        struct Vector: Decodable { let name: String; let rows: [Row]; let board: String?; let expected: [String: String] }
         let fixture = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("shared/compact-session-label-vectors.json")
         for vector in try JSONDecoder().decode([Vector].self, from: Data(contentsOf: fixture)) {
-            XCTAssertEqual(ESP32Serial.compactSessionLabels(vector.rows.map { ($0.id, $0.name) }), vector.expected, vector.name)
-            XCTAssertEqual(ESP32Serial.compactSessionLabels(vector.rows.reversed().map { ($0.id, $0.name) }), vector.expected, vector.name)
+            XCTAssertEqual(ESP32Serial.compactSessionLabels(vector.rows.map { ($0.id, $0.name) }, board: vector.board), vector.expected, vector.name)
+            XCTAssertEqual(ESP32Serial.compactSessionLabels(vector.rows.reversed().map { ($0.id, $0.name) }, board: vector.board), vector.expected, vector.name)
         }
     }
 

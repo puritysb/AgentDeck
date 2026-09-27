@@ -90,7 +90,11 @@ inline bool isGeneralAssistantSession(const char* agentType, const char* project
 struct SessionInfo {
     char id[32];
     char projectName[40]; // original project/worktree label
+#if defined(BOARD_TTGO)
+    char displayName[20]; // host uses a 12-byte base plus ordinal; 200-byte roster
+#else
     char displayName[40]; // compact label; fixed 400 bytes for the roster
+#endif
     char modelName[32];
     char agentType[16];  // "claude-code" / "openclaw" / "codex-cli" / "codex-app"
     char state[20];

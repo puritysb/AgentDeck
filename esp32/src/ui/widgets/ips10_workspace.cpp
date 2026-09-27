@@ -33,7 +33,7 @@ LV_FONT_DECLARE(font_studio_16);
 namespace IPS10Workspace {
 namespace {
 // IPS10 layout rhythm: outer 24, inter-panel 16, content inset 16.
-namespace Grid { constexpr int Outer=24, Gap=16, Inset=16, Header=80, AgentRow=176; }
+namespace Grid { constexpr int Outer=24, Gap=16, Inset=16, Header=96, AgentRow=176; }
 // Fixed stores avoid label heap churn while live state changes. LVGL owns the
 // widgets; these stores are reused across orientation rebuilds, never allocated
 // in update(). Only the selected session's eight newest events are copied.

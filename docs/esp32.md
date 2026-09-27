@@ -64,7 +64,9 @@ paging, so activity reordering cannot renumber them. Membership changes can
 renumber the suffix; it is a display hint, never an identity. Explicit project
 names remain intact. The original `projectName`, session ID and control target
 are preserved. Old firmware ignores the new field; old daemons use the original
-name. Optional labels use only spare serial-frame budget.
+name. Optional labels use only spare serial-frame budget. TTGO uses a 12-byte
+base before numbering to fit its 20-byte field; other boards use a 32-byte base
+in a 40-byte field. Recolor-enabled HUD rows render hash marks as spaces.
 
 Focus Strip and Pocket lists show waiting questions first, live activity/tool
 while processing, and the last reported event while idle. Idle never means

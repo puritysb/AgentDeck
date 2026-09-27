@@ -2,14 +2,16 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 const source = fs.readFileSync(new URL('./src/compact-session-labels.ts', import.meta.url), 'utf8');
 const cap = Number(source.match(/COMPACT_PROJECT_BYTES = (\d+)/)[1]);
+const ttgoCap = Number(source.match(/TTGO_COMPACT_PROJECT_BYTES = (\d+)/)[1]);
 const body = `    // BEGIN GENERATED COMPACT SESSION LABELS — bridge/generate-compact-session-labels.mjs
     // Source SHA256: ${crypto.createHash('sha256').update(source).digest('hex')}
-    nonisolated static func compactSessionLabels(_ rows: [(id: String, name: String)]) -> [String: String] {
+    nonisolated static func compactSessionLabels(_ rows: [(id: String, name: String)], board: String? = nil) -> [String: String] {
+        let cap = board == "ttgo_t_display" ? ${ttgoCap} : ${cap}
         func compact(_ value: String) -> String {
             var output = "", used = 0
             for scalar in value.unicodeScalars {
                 let part = String(scalar), size = String(scalar).utf8.count
-                if used + size > ${cap} { break }
+                if used + size > cap { break }
                 output += part; used += size
             }
             return output

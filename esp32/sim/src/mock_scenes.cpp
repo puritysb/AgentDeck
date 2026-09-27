@@ -292,6 +292,9 @@ bool SimScenes::apply(const char* name) {
       std::snprintf(s.displayName,sizeof(s.displayName),"AgentDeck #%d",i+1);
       setStr(s.lastEventText,sizeof(s.lastEventText),"Previous task finished. This must not replace live progress.");
     }
+    setStr(g_state.sessionNames[0],24,g_state.sessions[0].displayName);
+    setStr(g_state.cloudNames[0],24,g_state.sessions[1].displayName);
+    setStr(g_state.sessionNames[1],24,g_state.sessions[2].displayName);
     setStr(g_state.sessions[0].lastEventTask,sizeof(g_state.sessions[0].lastEventTask),"Review firmware memory safety");
     setStr(g_state.sessions[0].activity,sizeof(g_state.sessions[0].activity),"Checking display buffers and preserving memory for voice responses.");
     setStr(g_state.sessions[1].lastEventTask,sizeof(g_state.sessions[1].lastEventTask),"Improve dashboard readability");

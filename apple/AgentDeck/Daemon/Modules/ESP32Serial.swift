@@ -1360,13 +1360,14 @@ actor ESP32Serial {
     }
 
     // BEGIN GENERATED COMPACT SESSION LABELS — bridge/generate-compact-session-labels.mjs
-    // Source SHA256: 1962163d923a24debf9e6bc7b3125909cc4958a3134e700f8d1b1e6ce725a80f
-    nonisolated static func compactSessionLabels(_ rows: [(id: String, name: String)]) -> [String: String] {
+    // Source SHA256: 8bc55d65347d5d8ead6d5b4b29a5e13af92e4bce56026baf4513ac9b41f1b6cd
+    nonisolated static func compactSessionLabels(_ rows: [(id: String, name: String)], board: String? = nil) -> [String: String] {
+        let cap = board == "ttgo_t_display" ? 12 : 32
         func compact(_ value: String) -> String {
             var output = "", used = 0
             for scalar in value.unicodeScalars {
                 let part = String(scalar), size = String(scalar).utf8.count
-                if used + size > 32 { break }
+                if used + size > cap { break }
                 output += part; used += size
             }
             return output
@@ -1523,7 +1524,7 @@ actor ESP32Serial {
             let labels = Self.compactSessionLabels(raw.filter { ($0["alive"] as? Bool) != false }.map { s in
                 (id: s["id"] as? String ?? "", name: ProjectNameResolver.compactProjectName(
                     s["projectName"] as? String ?? "", cwd: s["cwd"] as? String))
-            })
+            }, board: deviceInfo?.board)
             for i in rows.indices {
                 guard let original = raw.first(where: { Self.limitUtf8Bytes($0["id"], 31) == rows[i]["id"] as? String }),
                       let label = labels[original["id"] as? String ?? ""], label != rows[i]["projectName"] as? String else { continue }

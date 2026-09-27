@@ -397,9 +397,13 @@ bool verifyIpsInteractions(const char* outdir) {
   if(!ipsLabel(lv_screen_active(),"10 agents - 10 working"))return ipsFailure(__LINE__);
   if(!ipsLabel(lv_screen_active(),"Showing 3 of 10"))return ipsFailure(__LINE__);
   if(!save("ips10-ten-peers"))return ipsFailure(__LINE__);
+  lv_area_t cohortBounds;
+  lv_obj_get_coords(ipsLabel(lv_screen_active(),"Showing 3 of 10"),&cohortBounds);
   int peerY=-1,peerSeats=0;
   for(int i=1;i<=10;++i){char keyText[32];std::snprintf(keyText,sizeof(keyText),"#%d Working",i);
     auto* stateLabel=ipsLabel(lv_screen_active(),keyText);if(!stateLabel)continue;
+    lv_area_t stateBounds;lv_obj_get_coords(stateLabel,&stateBounds);
+    if(stateBounds.y1<=cohortBounds.y2)return ipsFailure(__LINE__);
     auto* seat=lv_obj_get_parent(stateLabel);lv_area_t seatBounds,podBounds;
     lv_obj_get_coords(seat,&seatBounds);lv_obj_get_coords(lv_obj_get_parent(seat),&podBounds);
     if(seatBounds.x1<podBounds.x1 || seatBounds.x2>podBounds.x2 || seatBounds.y2>podBounds.y2)return ipsFailure(__LINE__);

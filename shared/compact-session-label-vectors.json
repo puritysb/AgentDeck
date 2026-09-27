@@ -89,5 +89,23 @@
       "a": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP #1",
       "b": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP #2"
     }
+  },
+  {
+    "name": "TTGO bounds names before grouping, retaining distinct ordinals",
+    "board": "ttgo_t_display",
+    "rows": [
+      {
+        "id": "b",
+        "name": "AgentDeck-long-left"
+      },
+      {
+        "id": "a",
+        "name": "AgentDeck-long-right"
+      }
+    ],
+    "expected": {
+      "a": "AgentDeck-lo #1",
+      "b": "AgentDeck-lo #2"
+    }
   }
 ]

@@ -508,7 +508,7 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
     const isIps10 = _conn?.deviceInfo?.board === 'ips_10';
     const labels = compactSessionLabels(raw.filter((s: any) => s?.alive !== false).map((s: any) => ({
       id: s.id, name: compactProjectName(s.projectName ?? '', s.cwd),
-    })));
+    })), _conn?.deviceInfo?.board);
     const selected = isIps10 ? stableCardRoster(raw, SERIAL_SESSIONS_CAP) : roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP);
     const prepared = {
       type: 'sessions_list',

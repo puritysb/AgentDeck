@@ -1801,17 +1801,25 @@ void update() {
     // Copy session list for the compact legacy HUD. IPS10 renders the D1 mosaic
     // below, so avoid building the legacy text buffer on its UI stack.
     uint8_t sessionCount = hasData ? g_state.sessionCount : (uint8_t)0;
-    // This UI-task-only snapshot needs four strings, not ten complete session
-    // records (including question options). Reuse 1,090 bytes off the UI stack.
-    static struct { char id[32], name[40], agentType[16], state[20]; bool alive; } sessions[10];
+    // UI-task-only display snapshot: reuse 520 bytes instead of ten complete
+    // session records on the stack. Compact flags keep no-PSRAM DRAM bounded.
+    static struct { char name[40]; uint32_t dotColor, stateColor; bool alive:1, input:1, working:1, idle:1, openclaw:1; } sessions[10];
+    static_assert(sizeof(sessions) == 520, "Keep the no-PSRAM HUD snapshot bounded");
     for (uint8_t i = 0; i < sessionCount && i < 10; ++i) {
         const auto& source = g_state.sessions[i];
         auto& target = sessions[i];
-        snprintf(target.id, sizeof(target.id), "%s", source.id);
-        snprintf(target.name, sizeof(target.name), "%s", sessionDisplayName(source));
-        snprintf(target.agentType, sizeof(target.agentType), "%s", source.agentType);
-        snprintf(target.state, sizeof(target.state), "%s", source.state);
+        const char* name = sessionDisplayName(source);
+        snprintf(target.name, sizeof(target.name), "%s", name[0] ? name : source.id);
+        // This label parses recolor commands: literal '#' must not consume
+        // the ordinal or the next status dot's color command.
+        for (char* c = target.name; *c; ++c) if (*c == '#' || *c == '\n') *c = ' ';
+        target.dotColor = agentDotColor(source.agentType);
+        target.stateColor = sessionStateColor(source.state);
         target.alive = source.alive;
+        target.input = strstr(source.state, "awaiting") != nullptr;
+        target.working = strcmp(source.state, "processing") == 0;
+        target.idle = strcmp(source.state, "idle") == 0;
+        target.openclaw = strstr(source.agentType, "openclaw") != nullptr;
     }
 #endif
 
@@ -1844,12 +1852,12 @@ void update() {
         bool shown[10] = {};
         uint8_t visible = 0;
         auto appendSession = [&](uint8_t i) {
-            const uint32_t dotColor = agentDotColor(sessions[i].agentType);
-            const uint32_t sColor = sessionStateColor(sessions[i].state);
+            const uint32_t dotColor = sessions[i].dotColor;
+            const uint32_t sColor = sessions[i].stateColor;
             appendBounded(buf, sizeof(buf), pos,
                 "#%06lX " LV_SYMBOL_BULLET "# %s  #%06lX " LV_SYMBOL_BULLET "#\n",
                 (unsigned long)dotColor,
-                sessions[i].name[0] ? sessions[i].name : sessions[i].id,
+                sessions[i].name,
                 (unsigned long)sColor);
             shown[i] = true;
             visible++;
@@ -1863,8 +1871,8 @@ void update() {
             for (uint8_t pass = 0; pass < 3 && visible < 5; pass++) {
                 for (uint8_t i = 0; i < limit && visible < 5; i++) {
                     if (!sessions[i].alive || shown[i]) continue;
-                    const bool input = strstr(sessions[i].state, "awaiting") != nullptr;
-                    const bool working = strcmp(sessions[i].state, "processing") == 0;
+                    const bool input = sessions[i].input;
+                    const bool working = sessions[i].working;
                     if ((pass == 0 && input) || (pass == 1 && working) || pass == 2)
                         appendSession(i);
                 }
@@ -1873,9 +1881,9 @@ void update() {
             uint8_t hiddenInput = 0, hiddenWork = 0, hiddenIdle = 0, hiddenReady = 0;
             for (uint8_t i = 0; i < limit; i++) {
                 if (!sessions[i].alive || shown[i]) continue;
-                if (strstr(sessions[i].state, "awaiting") != nullptr) hiddenInput++;
-                else if (strcmp(sessions[i].state, "processing") == 0) hiddenWork++;
-                else if (strcmp(sessions[i].state, "idle") == 0) hiddenIdle++;
+                if (sessions[i].input) hiddenInput++;
+                else if (sessions[i].working) hiddenWork++;
+                else if (sessions[i].idle) hiddenIdle++;
                 else hiddenReady++;
             }
             char hidden[96] = "";
@@ -1910,7 +1918,7 @@ void update() {
     if (gateway) {
         bool hasOC = false;
         for (uint8_t i = 0; i < sessionCount; i++) {
-            if (sessions[i].alive && strstr(sessions[i].agentType, "openclaw") != nullptr) {
+            if (sessions[i].alive && sessions[i].openclaw) {
                 hasOC = true;
                 break;
             }
