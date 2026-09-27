@@ -17,7 +17,7 @@ export function encodeFrame(frame: Uint8Array): string {
 export function swiftMatrixSource(): string {
   const frames: string[] = [];
   for (const size of [11, 32] as const) for (const kind of MATRIX_KINDS) {
-    const glyphs = size === 11 ? ['neutral'] : kind === 'arrival' || kind === 'done'
+    const glyphs = size === 11 ? ['neutral'] : kind === 'arrival' || kind === 'done' || kind === 'asked' || kind === 'reply'
       ? MATRIX_GLYPHS : ['summary', 'summary-error'];
     for (const glyph of glyphs) for (let frame = 0; frame < MATRIX_RULES.frames; frame++) {
       frames.push(`        "${size}/${kind}/${glyph}/${frame}": "${encodeFrame(renderMatrixBase(size, kind, glyph, frame))}"`);
@@ -34,7 +34,7 @@ ${Object.entries(MATRIX_RULES).map(([k, v]) => `    static let ${k} = ${v}`).joi
 ${Object.entries(MATRIX_LAYOUT).map(([k, v]) => `    static let ${k} = ${v}`).join('\n')}
     static let awaitingPrefix = ${JSON.stringify(MATRIX_POLICY.awaitingPrefix)}
     static let stateKinds: [String: String] = ${map(Object.entries(MATRIX_POLICY.stateKinds))}
-${['resultTypes', 'rejectedStatuses', 'priority', 'urgent', 'summaryKinds'].map(k => `    static let ${k}: [String] = ${JSON.stringify(MATRIX_POLICY[k as keyof typeof MATRIX_POLICY])}`).join('\n')}
+${['resultTypes', 'rejectedStatuses', 'replyTypes', 'askTypes', 'priority', 'urgent', 'summaryKinds'].map(k => `    static let ${k}: [String] = ${JSON.stringify(MATRIX_POLICY[k as keyof typeof MATRIX_POLICY])}`).join('\n')}
     static let agents: [String: String] = ${map(Object.entries(MATRIX_AGENTS))}
     static let colors: [String: [UInt8]] = ${map(Object.entries(MATRIX_COLORS).map(([k, v]) => [k, rgb(v)]))}
     static let overflow: [UInt8] = ${JSON.stringify(rgb(UI.hudText))}

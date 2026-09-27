@@ -3,10 +3,15 @@
 export const MATRIX_RULES = {
   frameMs: 750, frames: 8, arrivalMs: 6000, resultMs: 90000,
   responseMs: 6000, historyLimit: 96, rosterDots: 8, seenLimit: 1024,
+  // A conversation is what the reader came to see: an agent's reply to a turn
+  // holds the stage for 45 s, and an open question keeps its agent listening
+  // until the reply lands (bounded, so a lost reply cannot pin the scene).
+  replyMs: 45000, askMs: 600000,
 } as const;
 export const MATRIX_POLICY = {
   awaitingPrefix: 'awaiting', stateKinds: { error: 'error', processing: 'working' },
   resultTypes: ['chat_response', 'task_end'], rejectedStatuses: ['abandoned', 'denied', 'pending'],
+  replyTypes: ['chat_response'], askTypes: ['chat_start'],
   priority: ['waiting', 'error', 'done', 'working', 'idle'], urgent: ['waiting', 'error'],
   summaryKinds: ['waiting', 'working', 'done', 'idle'],
 } as const;
@@ -15,10 +20,10 @@ export const MATRIX_AGENTS: Record<string, string> = {
   opencode: 'openCode', openclaw: 'openClaw', antigravity: 'antigravity',
   'kiro-cli': 'kiro', 'kiro-ide': 'kiro',
 };
-export const MATRIX_KINDS = ['waiting', 'error', 'done', 'working', 'idle', 'unknown', 'arrival'] as const;
+export const MATRIX_KINDS = ['waiting', 'error', 'done', 'working', 'idle', 'unknown', 'arrival', 'asked', 'reply'] as const;
 export type MatrixKind = typeof MATRIX_KINDS[number];
 export interface MatrixSession { id: string; alive: boolean; state?: string; agentType?: string }
-export interface MatrixResult { ts: number; type: string; status?: string; sessionId?: string }
+export interface MatrixResult { ts: number; type: string; status?: string; sessionId?: string; automated?: boolean }
 export interface MatrixBroadcast {
   type: string; sessions?: MatrixSession[]; entries?: MatrixResult[];
   entry?: MatrixResult; upsert?: boolean; status?: string;
@@ -35,6 +40,29 @@ export function matrixResults(timeline: MatrixResult[], now: number): MatrixResu
     !(MATRIX_POLICY.rejectedStatuses as readonly string[]).includes(e.status ?? '') &&
     Number.isFinite(e.ts) && now >= e.ts && now - e.ts < MATRIX_RULES.resultMs);
 }
+/**
+ * The conversation on stage, if any: an agent's reply to a turn (held
+ * replyMs), else an open user question to a live session (until its reply,
+ * at most askMs). Automated turns are not conversations.
+ */
+export function matrixInteraction(timeline: MatrixResult[], live: MatrixSession[], now: number):
+    { kind: 'asked' | 'reply'; sessionId?: string; ts: number } | null {
+  const conversational = (e: MatrixResult) => e.automated !== true && Number.isFinite(e.ts) && now >= e.ts;
+  const reply = timeline.filter(e => conversational(e) &&
+      (MATRIX_POLICY.replyTypes as readonly string[]).includes(e.type) &&
+      !(MATRIX_POLICY.rejectedStatuses as readonly string[]).includes(e.status ?? '') &&
+      now - e.ts < MATRIX_RULES.replyMs)
+    .sort((a, b) => b.ts - a.ts)[0];
+  if (reply) return { kind: 'reply', sessionId: reply.sessionId, ts: reply.ts };
+  const ask = timeline.filter(e => conversational(e) && e.sessionId != null &&
+      (MATRIX_POLICY.askTypes as readonly string[]).includes(e.type) && now - e.ts < MATRIX_RULES.askMs)
+    .sort((a, b) => b.ts - a.ts)[0];
+  if (!ask || !live.some(s => s.id === ask.sessionId)) return null;
+  const answered = timeline.some(e => e.sessionId === ask.sessionId && e.ts >= ask.ts &&
+    (MATRIX_POLICY.resultTypes as readonly string[]).includes(e.type));
+  return answered ? null : { kind: 'asked', sessionId: ask.sessionId, ts: ask.ts };
+}
+
 export function deskSignal(sessions: MatrixSession[] | null, timeline: MatrixResult[], now: number) {
   if (sessions === null) return { kind: 'unknown' as MatrixKind, count: 0 };
   const live = sessions.filter(s => s.alive);
@@ -71,7 +99,8 @@ export class MatrixExpression {
   updateTimeline(entries: MatrixResult[]): void {
     // Tool-event bursts must not evict a response before its retention window.
     // Keep rejected results too, so an upsert can retract a previous success.
-    this.timeline = entries.filter(e => (MATRIX_POLICY.resultTypes as readonly string[]).includes(e.type))
+    this.timeline = entries.filter(e => (MATRIX_POLICY.resultTypes as readonly string[]).includes(e.type) ||
+        (MATRIX_POLICY.askTypes as readonly string[]).includes(e.type))
       .slice(-MATRIX_RULES.historyLimit);
   }
   ingest(event: MatrixBroadcast, now: number): void {
@@ -94,8 +123,13 @@ export class MatrixExpression {
       ? live.find(s => s.id === this.arrival!.id) : undefined;
     let glyph = 'summary';
     let responseAt: number | undefined;
+    const glyphOf = (sessionId?: string) =>
+      MATRIX_AGENTS[live.find(s => s.id === sessionId)?.agentType ?? ''] ?? 'neutral';
+    const interaction = matrixInteraction(this.timeline, live, now);
     if (!(MATRIX_POLICY.urgent as readonly string[]).includes(kind)) {
-      if (arrival) { kind = 'arrival'; glyph = MATRIX_AGENTS[arrival.agentType ?? ''] ?? 'neutral'; }
+      if (interaction) {
+        kind = interaction.kind; glyph = glyphOf(interaction.sessionId); responseAt = interaction.ts;
+      } else if (arrival) { kind = 'arrival'; glyph = MATRIX_AGENTS[arrival.agentType ?? ''] ?? 'neutral'; }
       else if (kind === 'done') {
         const latest = matrixResults(this.timeline, now).sort((a, b) => b.ts - a.ts)[0];
         if (latest && now - latest.ts < MATRIX_RULES.responseMs) {
@@ -106,7 +140,7 @@ export class MatrixExpression {
       }
     }
     const frameTime = kind === 'arrival' ? now - this.arrival!.ts : responseAt == null ? now : now - responseAt;
-    return { kind, count: kind === 'arrival' ? live.length : signal.count,
+    return { kind, count: kind === 'arrival' || kind === 'asked' || kind === 'reply' ? live.length : signal.count,
       glyph,
       frame: Math.floor(Math.max(0, frameTime) / MATRIX_RULES.frameMs) % MATRIX_RULES.frames,
       roster: live.map(s => matrixState(s.state)),

@@ -41,31 +41,54 @@ describe('expressive BLE matrices', () => {
     expect(engine.scene(100)).toMatchObject({ kind: 'waiting', glyph: 'summary', counts: [1, 0, 1, 1] });
     expect(renderMatrixScene(32, engine.scene(100))).not.toEqual(renderMatrixScene(32, engine.scene(1000)));
   });
-  it('shows an actual response briefly, retains its count for 90s, and distinguishes unknown and idle', () => {
+  it('holds a reply on stage for 45s, retains its count for 90s, and distinguishes unknown and idle', () => {
     const engine = new MatrixExpression();
     expect(engine.scene(0).kind).toBe('unknown');
     engine.updateSessions([row('c'), row('x', 'idle', 'codex-cli')], 0);
     engine.updateTimeline([{ ts: 100, type: 'chat_response', sessionId: 'x' }]);
-    expect(engine.scene(100)).toMatchObject({ kind: 'done', glyph: 'codex', counts: [0, 1, 1, 2] });
+    expect(engine.scene(100)).toMatchObject({ kind: 'reply', glyph: 'codex', counts: [0, 1, 1, 2] });
     for (let i = 0; i < 120; i++) engine.ingest({ type: 'timeline_event', entry: { ts: 101 + i, type: 'tool_exec' } }, 500);
-    expect(engine.scene(500).count).toBe(1);
-    expect(engine.scene(6100)).toMatchObject({ kind: 'done', glyph: 'summary' });
+    expect(engine.scene(30100)).toMatchObject({ kind: 'reply', glyph: 'codex' });
+    expect(engine.scene(45100)).toMatchObject({ kind: 'done', glyph: 'summary', count: 1 });
     expect(engine.scene(90100)).toMatchObject({ kind: 'working', counts: [0, 1, 0, 2] });
     engine.updateSessions([], 90101);
     expect(engine.scene(90101).kind).toBe('idle');
+  });
+  it('keeps the asked agent listening until its reply, and a task close is not a conversation', () => {
+    const engine = new MatrixExpression();
+    engine.updateSessions([row('o', 'processing', 'openclaw'), row('c')], 0);
+    engine.ingest({ type: 'timeline_event', entry: { ts: 1000, type: 'chat_start', sessionId: 'o' } }, 1000);
+    expect(engine.scene(1000)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
+    expect(engine.scene(120000)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
+    engine.ingest({ type: 'timeline_event', entry: { ts: 130000, type: 'chat_response', sessionId: 'o' } }, 130000);
+    expect(engine.scene(130000)).toMatchObject({ kind: 'reply', glyph: 'openClaw' });
+    expect(engine.scene(176000).kind).toBe('done');
+    // An automated turn (a cron) and a bare task close stay off the stage.
+    const quiet = new MatrixExpression();
+    quiet.updateSessions([row('o', 'processing', 'openclaw')], 0);
+    quiet.ingest({ type: 'timeline_event', entry: { ts: 10, type: 'chat_start', sessionId: 'o', automated: true } }, 10);
+    expect(quiet.scene(10).kind).toBe('working');
+    quiet.ingest({ type: 'timeline_event', entry: { ts: 20, type: 'chat_response', sessionId: 'o', automated: true } }, 20);
+    quiet.ingest({ type: 'timeline_event', entry: { ts: 30, type: 'task_end', sessionId: 'o' } }, 30);
+    expect(quiet.scene(7000)).toMatchObject({ kind: 'done', glyph: 'summary' });
+    // A question to a session that is gone is not held open, and needs-you still wins.
+    quiet.ingest({ type: 'timeline_event', entry: { ts: 8000, type: 'chat_start', sessionId: 'gone' } }, 8000);
+    expect(quiet.scene(8000).kind).not.toBe('asked');
+    engine.updateSessions([row('o', 'awaiting_permission', 'openclaw')], 131000);
+    expect(engine.scene(131000).kind).toBe('waiting');
   });
   it('unknown agent identities are neutral, and face expressions survive 4-bit packing', () => {
     const engine = new MatrixExpression(); engine.updateSessions([], 0);
     engine.updateSessions([row('future', 'processing', 'future-agent')], 100);
     expect(engine.scene(100).glyph).toBe('neutral');
     const signatures = new Set<string>();
-    for (const kind of ['working', 'waiting', 'error', 'done', 'idle', 'unknown'] as const) {
+    for (const kind of ['working', 'waiting', 'error', 'done', 'idle', 'unknown', 'asked', 'reply'] as const) {
       const pixels = renderMatrixScene(11, { ...engine.scene(100), kind });
       const packed = pixels.map(n => Math.round(n / 17));
       expect(packed.some(n => n > 0)).toBe(true);
       signatures.add(Buffer.from(packed).toString('base64'));
     }
-    expect(signatures.size).toBe(6);
+    expect(signatures.size).toBe(8);
   });
   it('routes live Node endpoint frames through the same event state (preview does not replay entrances)', () => {
     vi.useFakeTimers(); vi.setSystemTime(10000);
@@ -107,6 +130,13 @@ describe('expressive BLE matrices', () => {
       add(24001, { type: 'usage_update', fiveHourPercent: 100 });
       add(24002, { type: 'timeline_event', upsert: true, entry: { ts: 18000, type: 'chat_response', sessionId: 'x', status: 'abandoned' } });
       add(24003, { type: 'timeline_history', entries: [{ ts: 24000, type: 'task_end' }, { ts: 99000, type: 'chat_response' }] });
+      add(100000, { type: 'sessions_list', sessions: [row('c'), row('o', 'processing', 'openclaw')] });
+      add(100001, { type: 'timeline_event', entry: { ts: 100001, type: 'chat_start', sessionId: 'o' } });
+      for (let frame = 0; frame < 9; frame++) add(100001 + frame * 750);
+      add(110000, { type: 'timeline_event', entry: { ts: 110000, type: 'chat_response', sessionId: 'o' } });
+      for (let frame = 0; frame < 9; frame++) add(110000 + frame * 750);
+      add(110500, { type: 'timeline_event', entry: { ts: 110500, type: 'chat_start', sessionId: 'c', automated: true } });
+      add(119999);
       add(120000); add(120001, { type: 'connection', status: 'disconnected' });
       add(120002, { type: 'sessions_list', sessions: [row('c', 'idle')] });
       add(120003, { type: 'sessions_list', sessions: [row('c', 'idle'), row('f', 'processing', 'future')] });

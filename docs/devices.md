@@ -267,8 +267,15 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
   the last row when any live session is in error, even if waiting has priority.
   Zero rows are dim; values over 99 show `99+`. These are observed counts, not
   progress percentages, attempt counts, or a claim that all work has completed.
-- **Event scenes**: a new live session gets a six-second official-creature entrance;
-  an explicit response gets a six-second result scene. Then the numeric summary
+- **Conversation scenes**: the reader's own turn is what the panel is for. When a
+  user message reaches a live session (`chat_start`, not automated), that agent's
+  official creature appears listening under `ASK` until its reply lands (at most
+  10 minutes). The reply (`chat_response`, not automated) holds the stage for 45
+  seconds under `REPLY` with a speech bubble. Automated turns (crons) and bare task
+  closes are not conversations; a task close still gets the six-second result scene.
+  The Timebox face mirrors both: a listening face, then a talking face.
+- **Event scenes**: a new live session gets a six-second official-creature entrance
+  (a conversation outranks it). Then the numeric summary
   returns. There is no decorative creature carousel. Waiting/errors preempt both
   scenes; quota usage never causes an error. Initial/reconnected rosters establish
   a baseline rather than replaying entrances. A burst coalesces to one entrance.
@@ -279,6 +286,10 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
   bakes Swift RLE frames, and executable Node/Swift tests compare event sequences
   and RGB pixels. Missing roster data shows `SYNC`, separately from an empty
   roster and the existing transport `OFFLINE` badge. Pixoo64 is unchanged.
+- **OFFLINE badge**: the CLI client paints it only after the daemon has been
+  unreachable for 15 seconds (`OFFLINE_GRACE_SEC`). A single missed 3-second frame
+  request is "could not look", not "offline"; painting on it made iDotMatrix alone
+  flicker OFFLINE, since the Timebox client never did.
 - **Output tuning**: conservative 1.22 brightness / 1.08 contrast compensation in both native and CLI paths; the former 1.6 / 1.2 boost washed out defining holes.
 - **Constraint**: one BLE connection per daemon; brightness command range 5–100%.
 

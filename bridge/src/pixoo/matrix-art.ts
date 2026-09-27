@@ -7,6 +7,8 @@ import { drawText } from './pixoo-font.js';
 export const MATRIX_COLORS: Record<MatrixKind, string> = {
   waiting: UI.attn, error: UI.error, done: UI.ok, working: UI.cyan,
   idle: UI.idle, unknown: UI.idleDark, arrival: UI.cyan,
+  // A conversation in flight is activity (cyan); an answer landed is health (green).
+  asked: UI.cyan, reply: UI.ok,
 };
 export const MATRIX_LAYOUT = { countX: 20, countColumns: 3, countY: 1, dotX: 1, dotY: 29, dotStep: 4, summaryStep: 8, zeroRowIntensity: .35, zeroCountIntensity: .4, dotIntensity: .7, digitStep: 4, maxCount: 99 };
 export const MATRIX_GLYPHS = ['summary', 'summary-error', 'neutral', ...Object.keys(OFFICIAL_DOT_GLYPHS)];
@@ -56,6 +58,17 @@ export function renderMatrixBase(size: 11 | 32, kind: MatrixKind, glyph: string,
     } else if (kind === 'arrival') {
       for (const x of [1, 7]) rect(x, frame < 2 ? 4 : 3, 3, frame < 2 ? 1 : 3);
       put(4, 7, color); put(6, 7, color); rect(4, 8, 3, 1);
+    } else if (kind === 'asked') {
+      // Listening: open eyes turned toward the speaker, a small attentive mouth.
+      for (const x of [1, 7]) {
+        rect(x, blink ? 5 : 3, 3, blink ? 1 : 3, .9);
+        if (!blink) rect(x, 4, 1, 2, .12);
+      }
+      put(5, 8, color);
+    } else if (kind === 'reply') {
+      // Talking: warm eyes, a mouth that opens and closes as it speaks.
+      for (const x of [1, 7]) { put(x, 4, color); put(x + 1, 3, color); put(x + 2, 4, color); }
+      if (frame % 2) rect(4, 7, 3, 2); else rect(4, 8, 3, 1);
     } else {
       const dim = kind === 'idle' ? .55 : .85;
       const gaze = kind === 'working' ? (frame < 3 ? 0 : 1) : 0;
@@ -89,7 +102,7 @@ export function renderMatrixBase(size: 11 | 32, kind: MatrixKind, glyph: string,
   // Event-only scene. A real entrance/response earns a short creature appearance;
   // there is no timer-driven species carousel hiding the information dashboard.
   for (let y = 7; y < 27; y++) for (let x = 0; x < 32; x++) put(x, y, UI.waterDeep, .3);
-  const label = { waiting: 'WAIT', error: 'ERR', done: 'DONE', working: 'WORK', idle: 'IDLE', unknown: 'SYNC', arrival: 'NEW' }[kind];
+  const label = { waiting: 'WAIT', error: 'ERR', done: 'DONE', working: 'WORK', idle: 'IDLE', unknown: 'SYNC', arrival: 'NEW', asked: 'ASK', reply: 'REPLY' }[kind];
   const text = new Uint8Array(64 * 64 * 3);
   drawText(text, 0, 0, label, color);
   for (let y = 0; y < 5; y++) for (let x = 0; x < label.length * 4; x++) {
@@ -100,7 +113,7 @@ export function renderMatrixBase(size: 11 | 32, kind: MatrixKind, glyph: string,
     for (const [x, y] of [[12, 15], [19, 15], [14, 20], [17, 20]]) put(x, y, color, .5);
     return out;
   }
-  const bob = kind === 'working' ? [0, 0, -1, -1, 0, 0, 1, 1][frame] : 0;
+  const bob = kind === 'working' || kind === 'asked' ? [0, 0, -1, -1, 0, 0, 1, 1][frame] : 0;
   const rise = kind === 'arrival' ? [8, 5, 2, 0, -1, 0, 0, 0][frame] : 0;
   const x0 = 7, y0 = 8 + bob + rise, side = 18;
   const mask = OFFICIAL_DOT_GLYPHS[glyph as OfficialDotGlyphName];
@@ -124,6 +137,19 @@ export function renderMatrixBase(size: 11 | 32, kind: MatrixKind, glyph: string,
     // Orbiting tool/activity sparks (no fabricated progress percentage).
     const orbit = [[5, 12], [5, 17], [5, 23], [14, 26], [26, 23], [26, 17], [26, 12], [17, 8]];
     for (const offset of [0, 4]) { const [x, y] = orbit[(frame + offset) % 8]; put(x, y, color); }
+  } else if (kind === 'asked') {
+    // The reader's message travels in from the left edge to the agent.
+    for (const offset of [0, 4]) {
+      const x = (frame + offset) % 8 - 1;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) put(x + dx, 16 + dy, color, offset ? .55 : 1);
+    }
+  } else if (kind === 'reply') {
+    // A speech bubble fills out beside the agent: the answer is the event.
+    for (let y = 10; y <= 16; y++) for (let x = 25; x <= 31; x++) {
+      if (y === 10 || y === 16 || x === 25 || x === 31) put(x, y, color, .8);
+    }
+    put(25, 17, color, .8); put(24, 18, color, .8);
+    for (let d = 0; d < Math.min(3, (frame % 4) + 1); d++) put(26 + d * 2, 13, color);
   } else if (kind === 'arrival') {
     const spread = [2, 4, 7, 10, 12, 13, 14, 14][frame];
     for (const x of [16 - spread, 16 + spread]) for (const y of [10, 17, 24]) put(x, y, color, .8);
@@ -169,7 +195,9 @@ export function renderMatrixScene(size: 11 | 32, scene: MatrixScene): Uint8Array
     else scene.counts.forEach((value, row) => number(value, MATRIX_LAYOUT.countY + row * MATRIX_LAYOUT.summaryStep, tones[row]));
     return out;
   }
-  number(scene.count, MATRIX_LAYOUT.countY, scene.kind);
+  // A conversation scene's label carries the meaning; a count there would read
+  // as a count of the conversation.
+  if (scene.kind !== 'asked' && scene.kind !== 'reply') number(scene.count, MATRIX_LAYOUT.countY, scene.kind);
   scene.roster.slice(0, MATRIX_RULES.rosterDots).forEach((kind, i) => {
     const x = MATRIX_LAYOUT.dotX + i * MATRIX_LAYOUT.dotStep;
     for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) put(x + dx, MATRIX_LAYOUT.dotY + dy, MATRIX_COLORS[kind], MATRIX_LAYOUT.dotIntensity);

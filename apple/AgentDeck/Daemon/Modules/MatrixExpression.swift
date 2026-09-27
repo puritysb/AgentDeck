@@ -15,6 +15,7 @@ struct MatrixExpression {
         let type: String
         let status: String
         let sessionId: String?
+        let automated: Bool
     }
     struct Scene {
         let kind: String
@@ -79,8 +80,27 @@ struct MatrixExpression {
     }
     private static func result(_ raw: [String: Any]) -> Result? {
         guard let ts = raw["ts"] as? Double, ts.isFinite, let type = raw["type"] as? String,
-              MatrixFrames.resultTypes.contains(type) else { return nil }
-        return Result(ts: ts, type: type, status: raw["status"] as? String ?? "", sessionId: raw["sessionId"] as? String)
+              MatrixFrames.resultTypes.contains(type) || MatrixFrames.askTypes.contains(type) else { return nil }
+        return Result(ts: ts, type: type, status: raw["status"] as? String ?? "", sessionId: raw["sessionId"] as? String,
+                      automated: raw["automated"] as? Bool ?? false)
+    }
+    /// matrixInteraction (shared/src/matrix-expression.ts): an agent's reply to
+    /// a turn holds the stage for replyMs; else an open user question to a live
+    /// session keeps its agent listening until the reply, at most askMs.
+    private func interaction(_ live: [Resident], _ now: Double) -> (kind: String, sessionId: String?, ts: Double)? {
+        let conversational = { (e: Result) in !e.automated && e.ts.isFinite && now >= e.ts }
+        if let reply = timeline.filter({ conversational($0) && MatrixFrames.replyTypes.contains($0.type) &&
+                !MatrixFrames.rejectedStatuses.contains($0.status) && now - $0.ts < Double(MatrixFrames.replyMs) })
+            .max(by: { $0.ts < $1.ts }) {
+            return ("reply", reply.sessionId, reply.ts)
+        }
+        guard let ask = timeline.filter({ conversational($0) && $0.sessionId != nil &&
+                MatrixFrames.askTypes.contains($0.type) && now - $0.ts < Double(MatrixFrames.askMs) })
+            .max(by: { $0.ts < $1.ts }),
+              live.contains(where: { $0.id == ask.sessionId }) else { return nil }
+        let answered = timeline.contains { $0.sessionId == ask.sessionId && $0.ts >= ask.ts &&
+            MatrixFrames.resultTypes.contains($0.type) }
+        return answered ? nil : ("asked", ask.sessionId, ask.ts)
     }
     func scene(now: Double) -> Scene {
         let live = (sessions ?? []).filter(\.alive).sorted { $0.id < $1.id }
@@ -94,7 +114,11 @@ struct MatrixExpression {
         var glyph = "summary"
         var frameTime = now
         if !MatrixFrames.urgent.contains(kind) {
-            if let arrival, now >= arrival.ts, now - arrival.ts < Double(MatrixFrames.arrivalMs),
+            if let conversation = interaction(live, now) {
+                kind = conversation.kind; count = live.count; frameTime = now - conversation.ts
+                let resident = live.first { $0.id == conversation.sessionId }
+                glyph = MatrixFrames.agents[resident?.agentType ?? ""] ?? "neutral"
+            } else if let arrival, now >= arrival.ts, now - arrival.ts < Double(MatrixFrames.arrivalMs),
                let resident = live.first(where: { $0.id == arrival.id }) {
                 kind = "arrival"; count = live.count; frameTime = now - arrival.ts
                 glyph = MatrixFrames.agents[resident.agentType] ?? "neutral"
@@ -149,7 +173,7 @@ struct MatrixExpression {
                 }
             }
         } else {
-            number(scene.count, MatrixFrames.countY, scene.kind)
+            if scene.kind != "asked" && scene.kind != "reply" { number(scene.count, MatrixFrames.countY, scene.kind) }
             for (i, tone) in scene.roster.prefix(MatrixFrames.rosterDots).enumerated() {
                 let x = MatrixFrames.dotX + i * MatrixFrames.dotStep
                 for dy in 0..<2 { for dx in 0..<2 { put(x + dx, MatrixFrames.dotY + dy, MatrixFrames.colors[tone]!, MatrixFrames.dotIntensity) } }
