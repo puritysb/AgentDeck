@@ -186,8 +186,8 @@ are **shipped and are not re-derived here** — see
 [E-ink Surface Contract §2–4](eink-surface-contract.md#2-face-definitions).
 Board binding for `trmnl_75` specifically
 ([§5](eink-surface-contract.md#5-board-binding-and-invariant-controls)):
-push delivery mode (full `{DECISION, ANSWER, DIGEST, GLANCE, ROSTER}` set
-always eligible), no PTT (no microphone — confirmed again by §2 above),
+push delivery mode (`{DECISION, DIGEST, GLANCE, ROSTER}`; `ANSWER` is
+reserved for a voice turn and retired as an automatic face on 2026-09-28), no PTT (no microphone — confirmed again by §2 above),
 `KEY1` cycles durable pages, `KEY2` returns to `GLANCE`.
 
 What that leaves for *this issue* — the voice-capable interface — is
@@ -196,7 +196,7 @@ everything downstream of "there is no microphone yet":
 | Face | Trigger (as shipped) | Hold / duration (as shipped) |
 |---|---|---|
 | `DECISION` | A session enters `AWAITING_PERMISSION`/`AWAITING_OPTION`/`AWAITING_DIFF` with structured options or a request ID | Preempts an unheld body immediately; held for 8 min once a user acts, then re-arbitrates |
-| `ANSWER` | The primary session's idle-with-result hash changes (a reply landed) | Enters via user action (button/accepted speech, once a mic exists); 8-minute hold like `DECISION` |
+| `ANSWER` | Retired as an automatic face (2026-09-28): switching on every landed reply replaced the board unprompted. Reserved for a user-initiated voice turn | Enters via user action (accepted speech, once a mic exists); 8-minute hold like `DECISION` |
 | `DIGEST` | User-summoned; a producer-sealed, immutable, timestamped document | Paged; a page turn is a full refresh; not time-based |
 | `GLANCE` | Default resting face; hash moves only on session state / milestone / count / integer usage change | No hold — this is what `8 min` holds *return to* |
 | `ROSTER` | No daemon / no content | Static fallback; not the live dashboard |

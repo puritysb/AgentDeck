@@ -40,7 +40,7 @@ does not earn a panel refresh.
 | Face | Admission contract |
 |---|---|
 | `DECISION` | A real actionable request with structured choices or a request ID. It is the only face that may preempt an unheld body. Bare waiting/processing state is not a decision. |
-| `ANSWER` | A durable receipt: the immutable user transcript above the answer, an absolute timestamp, delivery result, and retry affordance. |
+| `ANSWER` | A durable receipt for a user-initiated voice turn: the immutable user transcript above the answer, an absolute timestamp, delivery result, and retry affordance. A reply to a turn the user did not start at this device does not qualify — its result belongs on `GLANCE` (a card's work line and the recent strip). No board admits `ANSWER` until a capture path exists; firmware that switched to it whenever any turn finished replaced the fixed-zone board with a page nobody asked for, and was retired on 2026-09-28. |
 | `DIGEST` | A producer-sealed, immutable, bounded document with an absolute creation time. It is summoned and paged; it never becomes a live scrolling log. |
 | `GLANCE` | The normal resting face: durable state and explicit age only. No activity feed or seconds-level status. |
 | `ROSTER` | Static no-content/no-daemon fallback. It is not the normal dashboard and contains no live session choreography. |
@@ -53,7 +53,7 @@ faces that are eligible in the current delivery mode.
 Push/pull is not a refresh-rate tuning knob. It changes which face states can be
 reached.
 
-- **Push base set:** `{DECISION, ANSWER, DIGEST, GLANCE, ROSTER}`. The device is
+- **Push base set:** `{DECISION, ANSWER, DIGEST, GLANCE, ROSTER}` (`ANSWER` reachable only through a voice turn, see §2). The device is
   continuously reachable and may receive unsolicited durable work.
 - **Pull base set:** `{DIGEST, GLANCE, ROSTER}`. A sleeping device cannot promise
   unsolicited decisions or answers.
@@ -86,7 +86,7 @@ mode.
 
 | Board | Delivery mode | Deep-sleep wake | PTT | Physical controls |
 |---|---|---|---|---|
-| TRMNL 7.5" / Seeed TRMNL 7.5 | **Push**; USB-powered and continuously reachable | Not used by current firmware | None (no microphone) | `KEY1` cycles durable pages; `KEY2` returns to the live AgentDeck board |
+| TRMNL 7.5" / Seeed TRMNL 7.5 | **Push**; USB-powered and continuously reachable | Not used by current firmware | None (no microphone) | `KEY1` cycles board → aquarium → digest → board; `KEY2` returns to the live AgentDeck board. No face replaces the board on its own except `DECISION`. |
 | RockBase NM-EPD-420 | **Pull** by default; explicit tethered configuration may promote it to push | `BOOT` / GPIO0 | `BOOT` hold remains reserved until the ES8311 capture path is enabled. Playback is live: the codec answers at 0x18 (probed 2026-08-30) and the board advertises `audio_out`. | Home: `BOOT` opens/pages, `USER` returns home. Decision: `BOOT` advances the highlighted option; `USER` selects, then confirms it. |
 | LilyGo T5 ePaper S3 / EPD47 | **Pull** | User button / GPIO21; `BOOT` / GPIO0 is recovery fallback. Touch IRQ GPIO47 is not a wake source without a hardware reroute. | None (no onboard microphone) | Detected touch opens work/usage details from the stable home and selects options; the owned unit answers at 0x5D once its P6 FPC is seated. Decision options drop their numeric prefix when a controller is present. Without touch, a short GPIO21 press selects a home target; a hold opens it. In a detail, a short GPIO21 press returns home; holding a focused actionable request opens its decision. Decision input remains tap-next / hold-confirm. |
 
@@ -97,8 +97,9 @@ reserves a fresh `BOOT` hold for PTT but does not yet enable the ES8311 capture
 driver. Until capture lands, the retained footer documents only implemented
 short-press controls and does not advertise a non-working talk action.
 
-EPD47 presents one stable `GLANCE` home: work and recent durable results on
-its left, actual usage windows and subscriptions on its right. Session counts
+EPD47 presents one stable `GLANCE` home: work, actual usage windows with their
+reset times, and recent durable results on its left; the session roster on its
+right; non-zero state counts in the header. Session counts
 never switch pages. Tapping work, all-work, or usage opens a detail for eight
 minutes; explicit Home or hold expiry returns to the same home. Work-list taps
 bind to the session identity painted in that row, not its current sort index.
@@ -106,8 +107,11 @@ Only actual structured options admit an automatic decision face. Option sends
 are rejected if the current decision identity/content differs from the painted
 request. Displayed-page holds retain the existing face priority boundary.
 
-NM uses the full width for one durable summary, with a compact census above it
-and actual usage windows below. Up to four windows reclaim space from the
+NM uses the full width for a ranked list — the session that needs the reader
+with its question, then working sessions with their activity, overflow named by
+kind ("+3 working") — under a census of non-zero counts, with actual usage
+windows below. Its speaker plays a two-note chime when a session starts waiting,
+because a ~10 s repaint cannot flash. Up to four windows reclaim space from the
 summary/recent-result band rather than overprinting it. The standard tri-color
 SKU retains the stock full-color refresh waveform and coalescing policy; it
 never uses the EPD47 touch navigation or experimental BW partial updates.

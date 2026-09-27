@@ -48,9 +48,15 @@ activity down the fit cascade into the CP437 classic font, and the 107 px
 cards of a 2×2 grid have room for three text lines, which left the work summary
 below the card floor.
 
-The ANSWER face picks a session that has an answer, fills the page below it
-with the other recent finished items, and says "Nothing finished yet." rather
-than a placeholder sentence. Geometry is unchanged (`eink_dashboard_layout.h`
+The ANSWER face is retired as an automatic face. On TRMNL the interactive
+lease is always open, so every finished turn replaced the fixed-zone board with
+an ANSWER page for eight minutes — an unprompted screen change in a different
+grammar, repeating what the board already shows (card work line, recent strip).
+The surface contract defines ANSWER as the receipt of a user-initiated voice
+turn, which no board can produce yet, so the trigger was also outside its own
+contract. `KEY1` now cycles board → aquarium → digest; ROSTER left the cycle
+because on TRMNL it draws the same board and a press into it looked dead.
+Geometry is unchanged (`eink_dashboard_layout.h`
 and the XTeink mirror are untouched); the idle line is carved from the card
 band inside `dashboardLayout`. `Trmnl75Preview.swift` mirrors the change and
 is re-pinned.
@@ -61,11 +67,10 @@ while the hardware draws it.
 
 The same pass covered the other two native panels and a bug seen on the TRMNL
 itself. A work summary containing a newline overprinted its own second line on
-the ANSWER face: `drawParagraph` passed the newline to the U8g2 (Korean) path,
+the old ANSWER face: `drawParagraph` passed the newline to the U8g2 (Korean) path,
 which honours it by returning to x=0 one font-height down, under the next
-wrapped line. Newlines are hard breaks now. Held faces (ANSWER, DECISION,
-DIGEST) carry the state counts in their header, so eight minutes of an answer
-never hides that someone needs the reader.
+wrapped line. Newlines are hard breaks now. Held faces (DECISION, DIGEST)
+carry the state counts in their header.
 
 NM-EPD-420 printed zero counts ("0 needs you / 3 working"), filler ("Working.
 Waiting for the next result.", "Standing by.") and one session. Its glance face

@@ -1352,10 +1352,13 @@ void drawSessionGrid(const Snap& s, const AgentDeckEink::Layout& layout) {
 
 // ===== Paper faces =====
 // A face is a different information contract, not a visual theme. The push
-// TRMNL 7.5" exposes the full five-face set. Pull-default readers expose the
+// TRMNL 7.5" exposes DECISION, DIGEST, GLANCE and ROSTER (plus its AQUARIUM
+// page). Pull-default readers expose the
 // durable GLANCE/DIGEST/ROSTER base set. DECISION and ANSWER become eligible
 // only while a physical action has opened an eight-minute interactive lease.
-enum class PaperFace : uint8_t { Glance, Decision, Answer, Digest, Roster, Aquarium };
+// ANSWER stays in the contract (the voice-turn receipt) but no board admits it
+// until a capture path exists, so it has no face value here.
+enum class PaperFace : uint8_t { Glance, Decision, Digest, Roster, Aquarium };
 PaperFace lastPaintedFace = PaperFace::Glance;
 uint8_t lastAquariumAttention = 0;
 
@@ -1415,8 +1418,6 @@ uint32_t faceHoldUntilMs = 0;
 uint32_t interactiveLeaseUntilMs = 0;
 uint32_t suppressedDecisionHash = 0;
 uint32_t lastDecisionHash = 0;
-uint32_t lastAnswerHash = 0;
-bool sawProcessing = false;
 
 constexpr uint32_t FACE_HOLD_MS = 8UL * 60UL * 1000UL;
 
@@ -1452,7 +1453,6 @@ bool interactiveLeaseActive(uint32_t now) {
 const char* faceName(PaperFace face) {
     switch (face) {
         case PaperFace::Decision: return "DECISION";
-        case PaperFace::Answer:   return "ANSWER";
         case PaperFace::Digest:   return "DIGEST";
         case PaperFace::Roster:   return "ROSTER";
         case PaperFace::Aquarium: return "AQUARIUM";
@@ -1514,15 +1514,6 @@ bool sendDecisionSelection(const Snap& s, uint8_t selection) {
     return true;
 }
 
-uint32_t answerHash(const Snap& s) {
-    int i = primarySession(s, AgentDeckEink::StatusKind::Idle);
-    if (i < 0) return 0;
-    uint32_t h = 2166136261u;
-    h = fnvStr(h, s.rows[i].name);
-    h = fnvStr(h, s.rows[i].work);
-    return h;
-}
-
 uint32_t paperHash(const Snap& s, PaperFace face) {
     uint32_t h = 2166136261u;
     h = fnv(h, &face, sizeof(face));
@@ -1551,7 +1542,6 @@ uint32_t paperHash(const Snap& s, PaperFace face) {
         return fnv(h, &s.zaiIsMcp, sizeof(s.zaiIsMcp));
     }
     if (face == PaperFace::Decision) return fnv(h, &lastDecisionHash, sizeof(lastDecisionHash));
-    if (face == PaperFace::Answer) return fnv(h, &lastAnswerHash, sizeof(lastAnswerHash));
     if (face == PaperFace::Roster) return contentHash(s);
     if (face == PaperFace::Digest) {
         for (uint8_t i = 0; i < s.tickerCount; i++) {
@@ -1581,7 +1571,7 @@ int drawParagraph(int16_t x, int16_t y, int16_t maxW, int16_t lineH,
     while (*p && lines < maxLines) {
         // A newline in the text is a line break. Left in, the U8g2 (Korean)
         // path honours it itself — back to x=0 one font-height down — and the
-        // next wrapped line was drawn over it (seen on TRMNL's ANSWER face).
+        // next wrapped line was drawn over it (seen on TRMNL's old ANSWER face).
         while (*p == ' ' || *p == '\n' || *p == '\r') p++;
         if (!*p) break;
         const char* nl = strpbrk(p, "\r\n");
@@ -1641,8 +1631,8 @@ void drawPaperHeader(const Snap& s, PaperFace face) {
         textRight(W - pad, W <= 420 ? 34 : 42, "OFFLINE",
                   W <= 420 ? CLASSIC_FONT : &FreeSansBold9pt7b);
     } else if (W > 420 && face != PaperFace::Glance && s.totalSessions > 0) {
-        // A held page (ANSWER, DECISION, DIGEST) still says what the other
-        // sessions are doing, so eight minutes of an answer never hides that
+        // A held page (DECISION, DIGEST) still says what the other
+        // sessions are doing, so a held page never hides that
         // someone now needs the reader.
         char counts[72];
         boardCountSummary(s, counts, sizeof(counts));
@@ -2501,56 +2491,6 @@ void drawDecisionFace(const Snap& s) {
 #endif
 }
 
-// The answer is the latest thing an agent finished, large enough to read
-// across the room; below it, the other recent finished items, so the page
-// answers "what came back while I was away" rather than one line and blank
-// paper. A session with no work summary is never chosen over one that has one.
-int answerSession(const Snap& s) {
-    for (uint8_t i = 0; i < s.rowCount; i++)
-        if (AgentDeckEink::classifyStatus(s.rows[i].state) == AgentDeckEink::StatusKind::Idle && s.rows[i].work[0])
-            return i;
-    for (uint8_t i = 0; i < s.rowCount; i++) if (s.rows[i].work[0]) return i;
-    int i = primarySession(s, AgentDeckEink::StatusKind::Idle);
-    return i >= 0 ? i : primarySession(s);
-}
-
-void drawAnswerFace(const Snap& s) {
-    drawPaperHeader(s, PaperFace::Answer);
-    const bool narrow = W <= 420;
-    const int16_t pad = narrow ? 16 : 30;
-    const int16_t top = narrow ? 72 : 94;
-    const int i = answerSession(s);
-    if (i < 0) { textAt(pad, top + 40, "No sessions.", &FreeSansBold18pt7b); return; }
-    const RowSnap& r = s.rows[i];
-    drawAgentGlyph(r.agentType, pad, top, narrow ? 44 : 72);
-    smartTextAt(pad + (narrow ? 58 : 92), top + 28, r.name, &FreeSansBold12pt7b);
-    display.drawFastHLine(pad, top + (narrow ? 58 : 82), W - pad * 2, GxEPD_BLACK);
-    const int16_t bodyY = top + (narrow ? 90 : 124);
-    const int16_t lineH = narrow ? 23 : 29;
-    int lines = 0;
-    if (r.work[0]) {
-        lines = drawParagraph(pad, bodyY, W - pad * 2, lineH, narrow ? 4 : 5, r.work,
-                              narrow ? &FreeSans9pt7b : &FreeSansBold12pt7b);
-    } else {
-        textAt(pad, bodyY, "Nothing finished yet.", narrow ? &FreeSans9pt7b : &FreeSansBold12pt7b);
-        lines = 1;
-    }
-
-    // Other recent finished work, newest first, in whatever height remains.
-    if (!s.bridgeConnected || s.tickerCount == 0) return;
-    constexpr int16_t rowH = 26;
-    int16_t y = (int16_t)(bodyY + (lines - 1) * lineH + (narrow ? 34 : 46));
-    if (y + 20 + rowH > H - 6) return;
-    textAt(pad, y, "RECENT", &FreeSansBold9pt7b);
-    y = (int16_t)(y + rowH + 2);
-    for (uint8_t k = 0; k < s.tickerCount && y <= H - 8; k++, y = (int16_t)(y + rowH)) {
-        textAt(pad, y, s.tickerTime[k], &FreeSansBold9pt7b);
-        char tf[108];
-        smartFitText(tf, sizeof(tf), s.tickerText[k], W - pad * 2 - 58, &FreeSans9pt7b);
-        smartTextAt((int16_t)(pad + 58), y, tf, &FreeSans9pt7b);
-    }
-}
-
 void drawDigestFace(const Snap& s) {
     drawPaperHeader(s, PaperFace::Digest);
     const int16_t pad = W <= 420 ? 14 : 24;
@@ -2693,7 +2633,6 @@ void drawDashboard(const Snap& s) {
         case PaperFace::Aquarium: drawAquariumFace(s); break;
 #endif
         case PaperFace::Decision: drawDecisionFace(s); break;
-        case PaperFace::Answer:   drawAnswerFace(s); break;
         case PaperFace::Digest:   drawDigestFace(s); break;
         case PaperFace::Roster: {
             const AgentDeckEink::Layout layout = dashboardLayout(s);
@@ -3071,10 +3010,11 @@ void update(float /*dt*/) {
         } else {
 #if defined(BOARD_TRMNL_75) && !defined(BOARD_SIM_PULL)
             switch (manualFace) {
+                // Board -> aquarium -> digest -> board. ROSTER is the no-daemon
+                // fallback and draws the same board here, so a press into it
+                // looked like a press that did nothing.
                 case PaperFace::Glance: manualFace = PaperFace::Aquarium; break;
                 case PaperFace::Aquarium: manualFace = PaperFace::Digest; break;
-                case PaperFace::Digest: manualFace = PaperFace::Answer; break;
-                case PaperFace::Answer: manualFace = PaperFace::Roster; break;
                 default: manualFace = PaperFace::Glance; break;
             }
 #else
@@ -3231,16 +3171,12 @@ void render() {
     }
 #endif
     const int awaiting = primarySession(s, AgentDeckEink::StatusKind::Attention);
-    const int processing = primarySession(s, AgentDeckEink::StatusKind::Processing);
-    if (processing >= 0) sawProcessing = true;
-    const uint32_t currentAnswer = answerHash(s);
-    if (sawProcessing && processing < 0 && currentAnswer != 0 && !faceHeld &&
-        currentAnswer != lastAnswerHash && leaseActive) {
-        lastAnswerHash = currentAnswer;
-        manualFace = PaperFace::Answer;
-        faceHoldUntilMs = now + FACE_HOLD_MS;
-        sawProcessing = false;
-    }
+    // No automatic ANSWER. A finished turn used to replace the board for eight
+    // minutes (on TRMNL the lease is always open, so after every reply): the
+    // fixed-zone board vanished for a page nobody asked for, and the latest
+    // result is already on the board (card work line + recent strip). ANSWER is
+    // reserved for the voice-turn receipt of the surface contract, which needs
+    // a capture path no board has yet.
     lastDecisionHash = decisionHash(s);
 #if defined(AGENTDECK_EPD47_UI)
     if (lastDecisionHash != epd47SelectionDecisionHash) {
