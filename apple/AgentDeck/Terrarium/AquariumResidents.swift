@@ -77,9 +77,16 @@ final class AquariumResidents {
     var labelsVisible = true {
         didSet {
             guard labelsVisible != oldValue else { return }
-            for entity in residents.values { entity.findEntity(named: "label")?.isEnabled = labelsVisible }
+            for (id, entity) in residents {
+                entity.findEntity(named: "label")?.isEnabled = labelsVisible && labelDecisions[id]?.mode != .hidden
+            }
         }
     }
+    /// The scene camera, so tags can be placed in screen space (DESIGN.md §6.4).
+    weak var camera: PerspectiveCamera?
+    private var aspect: Float = 1.6
+    private var labelDecisions: [String: ResidentLabelLayout.Decision] = [:]
+    private var labelCompact: [String: Bool] = [:]
 
     func loadTemplates(_ library: Entity) {
         if let imported = library.findEntity(named: "aquarium_substrate") {
@@ -102,6 +109,8 @@ final class AquariumResidents {
     var templateCount: Int { substrateTemplate == nil ? 0 : templates.count }
 
     func sync(_ state: TerrariumState, aspect: Float) {
+        self.aspect = aspect
+        focusedID = state.focusedSessionId
         let next = AquariumResident.foreground(AquariumResident.project(state), focusedID: state.focusedSessionId)
         let ids = Set(next.map(\.id))
         for id in Array(residents.keys) where !ids.contains(id) {
@@ -180,14 +189,90 @@ final class AquariumResidents {
             resident.scale = .init(repeating: size)
             if !animate { resident.position = targets[item.id]! }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
-                resident.findEntity(named: "label")?.removeFromParent()
-                let label = makeLabel(String(item.title.prefix(22)), activity: item.activity, helpers: item.helpers)
-                label.isEnabled = labelsVisible
-                resident.addChild(label)
+                rebuildLabel(for: item, on: resident, compact: labelCompact[item.id] ?? false)
             }
             resident.findEntity(named: "focus")?.isEnabled = state.focusedSessionId == item.id || (item.id == "crayfish" && state.focusedSessionId == "openclaw-gateway")
         }
         descriptors = next
+        applyLabelLayout()
+    }
+
+    private var focusedID: String?
+
+    private func rebuildLabel(for item: AquariumResident, on resident: Entity, compact: Bool) {
+        resident.findEntity(named: "label")?.removeFromParent()
+        let label = makeLabel(String(item.title.prefix(22)), activity: item.activity, helpers: item.helpers, compact: compact)
+        label.isEnabled = labelsVisible && labelDecisions[item.id]?.mode != .hidden
+        resident.addChild(label)
+        labelCompact[item.id] = compact
+        labelDecisions[item.id] = nil  // force opacity to be re-applied
+    }
+
+    /// Resident-local tag rects; must match `makeLabel`'s geometry.
+    private static let fullTagCorners: (min: SIMD2<Float>, max: SIMD2<Float>) = ([-1.025, 0.54], [1.025, 1.12])
+    private static let compactTagCorners: (min: SIMD2<Float>, max: SIMD2<Float>) = ([-0.95, 0.56], [0.95, 0.84])
+
+    /// Places every tag so none hides another resident (DESIGN.md §6.4).
+    private func applyLabelLayout() {
+        guard let camera else { return }
+        let fov = camera.camera.fieldOfViewInDegrees * .pi / 180
+        let f = 1 / tan(fov / 2)
+        let near: Float = 0.1, far: Float = 100
+        let projection = simd_float4x4(columns: (
+            [f / max(aspect, 0.1), 0, 0, 0], [0, f, 0, 0],
+            [0, 0, (far + near) / (near - far), -1], [0, 0, 2 * far * near / (near - far), 0]))
+        let viewProjection = projection * camera.transformMatrix(relativeTo: nil).inverse
+        func screenBox(_ points: [SIMD3<Float>]) -> ResidentLabelLayout.Box? {
+            var box = ResidentLabelLayout.Box(left: .infinity, top: .infinity, right: -.infinity, bottom: -.infinity)
+            for point in points {
+                let clip = viewProjection * SIMD4<Float>(point, 1)
+                guard clip.w > 0.0001 else { return nil }
+                let x = clip.x / clip.w, y = -clip.y / clip.w
+                box = .init(left: min(box.left, x), top: min(box.top, y), right: max(box.right, x), bottom: max(box.bottom, y))
+            }
+            return box
+        }
+        func tagBox(_ resident: Entity, _ corners: (min: SIMD2<Float>, max: SIMD2<Float>)) -> ResidentLabelLayout.Box? {
+            let m = resident.transformMatrix(relativeTo: nil)
+            let z: Float = 0.40
+            let local: [SIMD3<Float>] = [[corners.min.x, corners.min.y, z], [corners.max.x, corners.min.y, z],
+                                         [corners.min.x, corners.max.y, z], [corners.max.x, corners.max.y, z]]
+            return screenBox(local.map { point in
+                let p = m * SIMD4<Float>(point, 1)
+                return SIMD3<Float>(p.x, p.y, p.z)
+            })
+        }
+        var inputs: [ResidentLabelLayout.Input] = []
+        for item in descriptors {
+            guard let resident = residents[item.id], let body = resident.findEntity(named: "body") else { continue }
+            let bounds = body.visualBounds(relativeTo: nil)
+            let lo = bounds.min, hi = bounds.max
+            guard let bodyBox = screenBox([[lo.x, lo.y, lo.z], [hi.x, lo.y, lo.z], [lo.x, hi.y, lo.z], [hi.x, hi.y, lo.z],
+                                           [lo.x, lo.y, hi.z], [hi.x, lo.y, hi.z], [lo.x, hi.y, hi.z], [hi.x, hi.y, hi.z]]),
+                  let full = tagBox(resident, Self.fullTagCorners), let compact = tagBox(resident, Self.compactTagCorners) else { continue }
+            let focused = item.id == focusedID || (item.id == "crayfish" && focusedID == "openclaw-gateway")
+            let rank: ResidentLabelLayout.Rank = focused ? .focused
+                : item.activity == .waiting || item.activity == .error ? .awaiting
+                : item.activity == .working ? .working : .idle
+            inputs.append(.init(id: item.id, rank: rank, body: bodyBox, fullTag: full, compactTag: compact))
+        }
+        for decision in ResidentLabelLayout.resolve(inputs) {
+            guard let resident = residents[decision.id],
+                  let item = descriptors.first(where: { $0.id == decision.id }) else { continue }
+            let compact = decision.mode == .compact
+            if labelCompact[decision.id] != compact && decision.mode != .hidden {
+                rebuildLabel(for: item, on: resident, compact: compact)
+            }
+            guard labelDecisions[decision.id] != decision, let label = resident.findEntity(named: "label") else { continue }
+            labelDecisions[decision.id] = decision
+            label.isEnabled = labelsVisible && decision.mode != .hidden
+            label.findEntity(named: "backing")?.components.set(OpacityComponent(opacity: decision.backingOpacity))
+            for name in ["title", "status"] {
+                // The working badge and its ink are the state signal and stay whole.
+                guard let text = label.findEntity(named: name), !(name == "status" && item.activity == .working) else { continue }
+                text.components.set(OpacityComponent(opacity: decision.textOpacity))
+            }
+        }
     }
 
     func step(_ delta: Double) {
@@ -263,6 +348,7 @@ final class AquariumResidents {
             }
         }
         shoal.step(dt, residents: residents.values.map { $0.position }, wakes: wakes)
+        applyLabelLayout()
     }
 
     /// Slots are separated in camera projection, then unprojected to depth tiers.
@@ -341,19 +427,45 @@ final class AquariumResidents {
         return group
     }
 
-    private func makeLabel(_ title: String, activity: AquariumResident.Activity, helpers: Int) -> Entity {
+    private func makeLabel(_ title: String, activity: AquariumResident.Activity, helpers: Int, compact: Bool = false) -> Entity {
         let group = Entity()
         group.name = "label"
         let active = activity == .working
+        // Session state colours (DESIGN.md §2.7), never the marketing Status palette.
         let color: Color = switch activity {
-        case .waiting: DesignTokens.Status.awaiting
-        case .working: DesignTokens.Status.processing
-        case .error: DesignTokens.Status.error
-        case .idle: DesignTokens.Status.idle
+        case .waiting: DesignTokens.Session.awaiting
+        case .working: DesignTokens.Session.working
+        case .error: DesignTokens.Session.error
+        case .idle: DesignTokens.Session.idle
         }
-        let backing = ModelEntity(mesh: .generateBox(size: [2.05, 0.58, 0.008], cornerRadius: 0.06),
+        func text(_ string: String, name: String, bold: Bool, size: Float, ink: Color, y: Float, maxWidth: Float) -> Entity {
+            let mesh = MeshResource.generateText(string, extrusionDepth: 0.002,
+                font: .init(name: bold ? "IBMPlexSans-Bold" : "IBMPlexSans", size: CGFloat(size))
+                    ?? .systemFont(ofSize: CGFloat(size), weight: bold ? .bold : .regular))
+            let entity = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: nativeColor(ink), applyPostProcessToneMap: false)])
+            entity.name = name
+            let bounds = entity.visualBounds(relativeTo: entity)
+            let fit = min(1, maxWidth / max(0.01, bounds.extents.x))
+            entity.scale = .init(repeating: fit)
+            entity.position = [-bounds.center.x * fit, y - bounds.center.y * fit, 0.44]
+            return entity
+        }
+        if compact {
+            // A dense tank's idle tag: title only, low on the body (§6.4).
+            let corners = Self.compactTagCorners
+            let backing = ModelEntity(mesh: .generateBox(size: [corners.max.x - corners.min.x, corners.max.y - corners.min.y, 0.008], cornerRadius: 0.05),
+                materials: [UnlitMaterial(color: nativeColor(TerrariumColors.deepSea), applyPostProcessToneMap: false)])
+            backing.name = "backing"
+            backing.position = [0, (corners.min.y + corners.max.y) / 2, 0.40]
+            group.addChild(backing)
+            group.addChild(text(title, name: "title", bold: false, size: 0.14, ink: DesignTokens.UI.hudSubtext, y: (corners.min.y + corners.max.y) / 2, maxWidth: 1.72))
+            return group
+        }
+        let corners = Self.fullTagCorners
+        let backing = ModelEntity(mesh: .generateBox(size: [corners.max.x - corners.min.x, corners.max.y - corners.min.y, 0.008], cornerRadius: 0.06),
             materials: [UnlitMaterial(color: nativeColor(TerrariumColors.deepSea), applyPostProcessToneMap: false)])
-        backing.position = [0, 0.83, 0.40]
+        backing.name = "backing"
+        backing.position = [0, (corners.min.y + corners.max.y) / 2, 0.40]
         group.addChild(backing)
         if active {
             let badge = ModelEntity(mesh: .generateBox(size: [1.95, 0.26, 0.008], cornerRadius: 0.04),
@@ -362,18 +474,9 @@ final class AquariumResidents {
             badge.position = [0, 0.70, 0.42]
             group.addChild(badge)
         }
-        for (index, text) in [title, activity.rawValue + (helpers > 0 ? " · \(helpers) agents" : "")].enumerated() {
-            let mesh = MeshResource.generateText(text, extrusionDepth: 0.002,
-                font: .init(name: index == 1 && active ? "IBMPlexSans-Bold" : "IBMPlexSans", size: 0.16)
-                    ?? .systemFont(ofSize: 0.16, weight: index == 1 ? .bold : .regular))
-            let ink = index == 0 ? TerrariumColors.hudText : active ? DesignTokens.Ink.s900 : color
-            let label = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: nativeColor(ink), applyPostProcessToneMap: false)])
-            let bounds = label.visualBounds(relativeTo: label)
-            let fit = min(1, 1.82 / max(0.01, bounds.extents.x))
-            label.scale = .init(repeating: fit)
-            label.position = [-bounds.center.x * fit, (index == 0 ? 0.96 : 0.70) - bounds.center.y * fit, 0.44]
-            group.addChild(label)
-        }
+        group.addChild(text(title, name: "title", bold: false, size: 0.16, ink: TerrariumColors.hudText, y: 0.96, maxWidth: 1.82))
+        group.addChild(text(activity.rawValue + (helpers > 0 ? " · \(helpers) agents" : ""), name: "status", bold: active, size: 0.16,
+                            ink: active ? DesignTokens.Ink.s900 : color, y: 0.70, maxWidth: 1.82))
         return group
     }
 

@@ -46,6 +46,7 @@ struct LivingAquariumScene: View {
                 camera.look(at: [0, 1.65, -0.7], from: [0, 4.8, 14], relativeTo: nil)
                 content.add(camera)
                 cameraRig.camera = camera
+                residents.camera = camera
                 cameraRig.viewing = viewingMode
                 cameraRig.reduceMotion = reduceMotion
                 let background = Entity()

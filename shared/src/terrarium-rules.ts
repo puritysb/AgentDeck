@@ -78,6 +78,24 @@ export const TERRARIUM_RULES = {
     selectionWidth: 0.025,
     selectionHeight: 0.72,
   },
+  /**
+   * Resident name tags in the native aquarium (DESIGN.md §6.4). A tag never
+   * hides another resident: backings are translucent, a tag lying over another
+   * resident's body yields to it, and in a dense tank idle tags collapse to a
+   * title chip (or drop out when they would collide — the roster keeps them).
+   * Focused, awaiting and working tags stay whole and draw on top.
+   */
+  nativeLabel: {
+    /** At or above this many foreground residents the tank counts as dense. */
+    denseResidentCount: 5,
+    backingOpacity: 0.72,
+    compactBackingOpacity: 0.5,
+    /** Backing of a tag that lies over another resident's body. */
+    yieldBackingOpacity: 0.24,
+    idleTextOpacity: 0.8,
+    /** Text of an idle tag that lies over another resident's body. */
+    yieldTextOpacity: 0.55,
+  },
   /** Vertical field of view for the same authored habitat across native engines. */
   nativeCameraFov: 38,
   nativeCameraWideFov: 32,

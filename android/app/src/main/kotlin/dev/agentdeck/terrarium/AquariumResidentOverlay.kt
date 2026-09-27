@@ -16,9 +16,11 @@ internal class AquariumResidentOverlay(context: Context) {
     private val bold = Typeface.create(regular, Typeface.BOLD)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    fun draw(canvas: Canvas, item: AquariumResident, x: Float, y: Float,
-        bodyX: Float, bodyY: Float, unit: Float, phase: Float, selected: Boolean, labelsVisible: Boolean) {
+    /** Selection rails and the working bars — body cues, drawn whether or not tags are. */
+    fun drawCues(canvas: Canvas, item: AquariumResident, bodyX: Float, bodyY: Float, unit: Float,
+        phase: Float, selected: Boolean) {
         paint.style = Paint.Style.FILL
+        paint.alpha = 255
         if (selected) {
             paint.color = TerrariumColors.TetraNeon.toArgb()
             for (side in -1..1 step 2) {
@@ -27,8 +29,7 @@ internal class AquariumResidentOverlay(context: Context) {
                     railX + unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_WIDTH / 2f, bodyY + unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_HEIGHT / 2f, paint)
             }
         }
-        val working = item.state == OctopusVisualState.WORKING
-        if (working) {
+        if (item.state == OctopusVisualState.WORKING) {
             // Neutral bars move; the semantic WORKING badge stays steady.
             paint.color = DesignTokens.Tide.s50.toArgb()
             for (index in 0 until TerrariumRules.NATIVE_ACTIVITY_BAR_COUNT.toInt()) {
@@ -41,44 +42,83 @@ internal class AquariumResidentOverlay(context: Context) {
                     barX + unit * TerrariumRules.NATIVE_ACTIVITY_BAR_WIDTH / 2f, centerY + halfHeight, unit * TerrariumRules.NATIVE_ACTIVITY_BAR_RADIUS, unit * TerrariumRules.NATIVE_ACTIVITY_BAR_RADIUS, paint)
             }
         }
-        if (!labelsVisible) return
-        val status = when (item.state) {
-            OctopusVisualState.WORKING -> "WORKING"
-            OctopusVisualState.ASKING -> "WAITING"
-            else -> "IDLE"
-        } + if (item.helpers > 0) " · ${item.helpers} agents" else ""
-        val color = when (item.state) {
-            OctopusVisualState.WORKING -> DesignTokens.Status.processing
-            OctopusVisualState.ASKING -> DesignTokens.Status.awaiting
-            else -> DesignTokens.Status.idle
-        }.toArgb()
-        paint.textAlign = Paint.Align.CENTER
-        paint.typeface = regular
+    }
+
+    private fun title(item: AquariumResident) = item.title.take(22)
+
+    private fun status(item: AquariumResident) = when (item.state) {
+        OctopusVisualState.WORKING -> "WORKING"
+        OctopusVisualState.ASKING -> "WAITING"
+        else -> "IDLE"
+    } + if (item.helpers > 0) " · ${item.helpers} agents" else ""
+
+    /** Session state colour (DESIGN.md §2.7), never the marketing Status palette. */
+    private fun stateColor(item: AquariumResident) = when (item.state) {
+        OctopusVisualState.WORKING -> DesignTokens.Session.working
+        OctopusVisualState.ASKING -> DesignTokens.Session.awaiting
+        else -> DesignTokens.Session.idle
+    }.toArgb()
+
+    /** Full two-line tag, anchored above the body at (x, y). */
+    fun fullTagBox(item: AquariumResident, x: Float, y: Float): LabelBox {
         paint.textSize = 12f * density
-        val title = item.title.take(22)
-        val titleWidth = paint.measureText(title)
+        paint.typeface = regular
+        val titleWidth = paint.measureText(title(item))
         paint.typeface = bold
-        val half = max(titleWidth, paint.measureText(status)) / 2f + 10f * density
-        paint.color = TerrariumColors.DeepSea.toArgb()
-        canvas.drawRoundRect(x-half, y-18f*density, x+half, y+25f*density, 6f*density, 6f*density, paint)
+        val half = max(titleWidth, paint.measureText(status(item))) / 2f + 10f * density
+        return LabelBox(x - half, y - 18f * density, x + half, y + 25f * density)
+    }
+
+    /** Title-only chip, sitting on the same baseline as the full tag's bottom edge. */
+    fun compactTagBox(item: AquariumResident, x: Float, y: Float): LabelBox {
+        paint.textSize = 11f * density
+        paint.typeface = regular
+        val half = paint.measureText(title(item)) / 2f + 7f * density
+        return LabelBox(x - half, y + 6f * density, x + half, y + 25f * density)
+    }
+
+    fun drawTag(canvas: Canvas, item: AquariumResident, x: Float, y: Float, decision: ResidentLabelDecision) {
+        if (decision.mode == ResidentLabelMode.HIDDEN) return
+        paint.style = Paint.Style.FILL
+        paint.textAlign = Paint.Align.CENTER
+        val textAlpha = (decision.textAlpha * 255).toInt()
+        val backingAlpha = (decision.backingAlpha * 255).toInt()
+        if (decision.mode == ResidentLabelMode.COMPACT) {
+            val box = compactTagBox(item, x, y)
+            paint.color = TerrariumColors.DeepSea.toArgb(); paint.alpha = backingAlpha
+            canvas.drawRoundRect(box.left, box.top, box.right, box.bottom, 5f * density, 5f * density, paint)
+            paint.typeface = regular; paint.textSize = 11f * density
+            paint.color = DesignTokens.UI.hudSubtext.toArgb(); paint.alpha = textAlpha
+            canvas.drawText(title(item), x, box.bottom - 6f * density, paint)
+            paint.alpha = 255
+            return
+        }
+        val working = item.state == OctopusVisualState.WORKING
+        val color = stateColor(item)
+        val box = fullTagBox(item, x, y)
+        paint.color = TerrariumColors.DeepSea.toArgb(); paint.alpha = backingAlpha
+        canvas.drawRoundRect(box.left, box.top, box.right, box.bottom, 6f*density, 6f*density, paint)
         if (working) {
+            // The WORKING badge is the state signal itself; it keeps full strength.
             paint.color = color
-            canvas.drawRoundRect(x-half+3f*density, y+3f*density, x+half-3f*density, y+23f*density,
+            canvas.drawRoundRect(box.left+3f*density, y+3f*density, box.right-3f*density, y+23f*density,
                 4f*density, 4f*density, paint)
         }
-        paint.typeface = regular
-        paint.color = DesignTokens.Tide.s50.toArgb()
-        canvas.drawText(title, x, y-3f*density, paint)
+        paint.typeface = regular; paint.textSize = 12f * density
+        paint.color = DesignTokens.UI.hudText.toArgb(); paint.alpha = textAlpha
+        canvas.drawText(title(item), x, y-3f*density, paint)
         paint.typeface = bold
         paint.color = if (working) DesignTokens.Ink.s900.toArgb() else color
-        canvas.drawText(status, x, y+17f*density, paint)
+        paint.alpha = if (working) 255 else textAlpha
+        canvas.drawText(status(item), x, y+17f*density, paint)
+        paint.alpha = 255
     }
 
     fun drawOverflow(canvas: Canvas, count: Int) {
         paint.textAlign = Paint.Align.CENTER
         paint.typeface = regular
         paint.textSize = 12f * density
-        paint.color = DesignTokens.Tide.s50.toArgb()
+        paint.color = DesignTokens.UI.hudText.toArgb()
         canvas.drawText("$count sessions · select a session in the list to bring it into view",
             canvas.width / 2f, 30f * density, paint)
     }

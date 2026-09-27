@@ -20,10 +20,10 @@ class AquariumResidentOverlayTest {
         for (kind in listOf("claudecode", "codex", "openclaw", "opencode", "antigravity", "kiro")) {
             val item = AquariumResident(kind, kind, kind, OctopusVisualState.WORKING)
             val pixels = render(item, labels = true)
-            assertTrue(kind, pixels.count { it == DesignTokens.Status.processing.toArgb() } > 100)
+            assertTrue(kind, pixels.count { it == DesignTokens.Session.working.toArgb() } > 100)
             val viewing = render(item, labels = false)
             assertTrue("Activity survives viewing mode: $kind", viewing.any { it != 0 })
-            assertFalse("Badge is hidden with labels", viewing.any { it == DesignTokens.Status.processing.toArgb() })
+            assertFalse("Badge is hidden with labels", viewing.any { it == DesignTokens.Session.working.toArgb() })
             assertFalse("Bars move with phase", viewing.contentEquals(render(item, labels = false, phase = 1f)))
             assertArrayEquals("Frozen phase is stable", viewing, render(item, labels = false))
         }
@@ -35,13 +35,16 @@ class AquariumResidentOverlayTest {
             val stopped = item.copy(state = state)
             assertTrue(render(stopped, labels = false).all { it == 0 })
             assertTrue("Selection remains independent", render(stopped, labels = false, selected = true).any { it != 0 })
-            assertFalse(render(stopped, labels = true).any { it == DesignTokens.Status.processing.toArgb() })
+            assertFalse(render(stopped, labels = true).any { it == DesignTokens.Session.working.toArgb() })
         }
     }
 
     private fun render(item: AquariumResident, labels: Boolean, phase: Float = 0f, selected: Boolean = false): IntArray {
         val bitmap = Bitmap.createBitmap(600, 500, Bitmap.Config.ARGB_8888)
-        painter.draw(Canvas(bitmap), item, 250f, 100f, 250f, 300f, 100f, phase, selected, labels)
+        val canvas = Canvas(bitmap)
+        val overlay = painter
+        overlay.drawCues(canvas, item, 250f, 300f, 100f, phase, selected)
+        if (labels) overlay.drawTag(canvas, item, 250f, 100f, ResidentLabelDecision(item.id, ResidentLabelMode.FULL, 1f, 1f))
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         bitmap.recycle()

@@ -43,6 +43,8 @@ enum TerrariumRules {
     static let pixooUsageCreatureMargin: Int = ${rules.pixooUsageCreatureMargin}
     static let nativeResidentLimit: Int = ${rules.nativeResidentLimit}
 ${Object.entries(rules.nativeActivity).map(([key, value]) => `    static let nativeActivity${key[0].toUpperCase() + key.slice(1)}: Float = ${f(value)}`).join('\n')}
+    static let nativeLabelDenseResidentCount: Int = ${rules.nativeLabel.denseResidentCount}
+${Object.entries(rules.nativeLabel).filter(([key]) => key !== 'denseResidentCount').map(([key, value]) => `    static let nativeLabel${key[0].toUpperCase() + key.slice(1)}: Float = ${f(value)}`).join('\n')}
     static let nativeCameraFov: Float = ${f(rules.nativeCameraFov)}
     static let nativeCameraWideFov: Float = ${f(rules.nativeCameraWideFov)}
     static let nativeViewingDistance: Float = ${f(rules.nativeViewingDistance)}
@@ -78,6 +80,8 @@ package dev.agentdeck.terrarium
 object TerrariumRules {
     const val NATIVE_RESIDENT_LIMIT = ${rules.nativeResidentLimit}
 ${Object.entries(rules.nativeActivity).map(([key, value]) => `    const val NATIVE_ACTIVITY_${key.replace(/[A-Z]/g, c => '_' + c).toUpperCase()} = ${f(value)}f`).join('\n')}
+    const val NATIVE_LABEL_DENSE_RESIDENT_COUNT = ${rules.nativeLabel.denseResidentCount}
+${Object.entries(rules.nativeLabel).filter(([key]) => key !== 'denseResidentCount').map(([key, value]) => `    const val NATIVE_LABEL_${key.replace(/[A-Z]/g, c => '_' + c).toUpperCase()} = ${f(value)}f`).join('\n')}
     const val NATIVE_CAMERA_FOV = ${f(rules.nativeCameraFov)}f
     const val NATIVE_CAMERA_WIDE_FOV = ${f(rules.nativeCameraWideFov)}f
     const val NATIVE_VIEWING_DISTANCE = ${f(rules.nativeViewingDistance)}f

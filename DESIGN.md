@@ -445,6 +445,18 @@ attention remain distinguishable at a distance and under reduced saturation.
 In dense spatial scenes, working and attention name tags remain explicit while
 idle name tags collapse; the bounded roster summary carries the omitted count.
 
+**A name tag never hides another resident.** In the native aquarium
+(macOS/iPad and Android tablet) tags resolve in priority order — focused,
+awaiting, working, idle; nearer residents first — and the tag that matters most
+is drawn on top. Tag backings are translucent water, never opaque cards. A tag
+lying over another resident's body yields its backing so the body shows
+through. In a dense tank (five or more residents) an idle tag collapses to a
+title-only chip low on its own body, and an idle chip that would collide with a
+tag already placed drops out — the roster still lists it. The thresholds and
+opacities are `nativeLabel` in `shared/src/terrarium-rules.ts`, generated to
+Swift and Kotlin; both platforms implement the same resolver
+(`ResidentLabelLayout`) and pin it with the same five tests.
+
 ---
 
 ## 7. Hardware surfaces

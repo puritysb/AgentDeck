@@ -62,7 +62,9 @@ internal class AquariumResidents(private val context: Context, private val viewe
     private data class Joint(val entity: Int, val name: String, val rest: FloatArray)
     private data class Body(val asset: FilamentAsset, val support: FilamentAsset?, val joints: List<Joint>,
         var item: AquariumResident, var phase: Float, var effort: Float = 0f,
-        var attention: Float = 0f, var size: Float = .78f, val footHeight: Float = 0f, var x: Float = 0f, var y: Float = 0f, var z: Float = 0f)
+        var attention: Float = 0f, var size: Float = .78f, val footHeight: Float = 0f, var x: Float = 0f, var y: Float = 0f, var z: Float = 0f,
+        /** Model-space silhouette bounds, for keeping tags off other residents. */
+        val centerX: Float = 0f, val centerY: Float = 0f, val halfX: Float = .5f, val halfY: Float = .5f)
     private val bodies = linkedMapOf<String, Body>()
     private var all = emptyList<AquariumResident>()
     private var focusedId: String? = null
@@ -165,7 +167,9 @@ internal class AquariumResidents(private val context: Context, private val viewe
             viewer.scene.addEntities(asset.entities)
             asset.releaseSourceData()
             bodies[item.id] = Body(asset, support, joints, item, (item.id.hashCode().toLong() and 65535L) / 65535f * 6.28f,
-                footHeight = asset.boundingBox.halfExtent[1] - asset.boundingBox.center[1])
+                footHeight = asset.boundingBox.halfExtent[1] - asset.boundingBox.center[1],
+                centerX = asset.boundingBox.center[0], centerY = asset.boundingBox.center[1],
+                halfX = asset.boundingBox.halfExtent[0], halfY = asset.boundingBox.halfExtent[1])
         }
     }
 
@@ -239,21 +243,47 @@ internal class AquariumResidents(private val context: Context, private val viewe
         return true
     }
 
+    private class Projected(val body: Body, val bodyX: Float, val bodyY: Float, val unit: Float,
+        val tagX: Float, val tagY: Float, val box: LabelBox)
+
     fun drawLabels(canvas: Canvas, labelsVisible: Boolean = true) {
         viewer.camera.getViewMatrix(cameraView)
         viewer.camera.getProjectionMatrix(cameraProjection)
         for (i in 0..15) floatProjection[i] = cameraProjection[i].toFloat()
         Matrix.multiplyMM(viewProjection, 0, floatProjection, 0, cameraView, 0)
-        for (body in bodies.values) {
-            if (!project(canvas, body.x, body.y, body.z)) continue
+        val onScreen = bodies.values.mapNotNull { body ->
+            if (!project(canvas, body.x, body.y, body.z)) return@mapNotNull null
             val bodyX = screenX; val bodyY = screenY
-            if (!project(canvas, body.x + body.size, body.y, body.z)) continue
+            if (!project(canvas, body.x + body.size, body.y, body.z)) return@mapNotNull null
             val unit = abs(screenX - bodyX)
-            if (!project(canvas, body.x, body.y + .75f, body.z)) continue
-            overlay.draw(canvas, body.item, screenX, screenY, bodyX, bodyY, unit, body.phase,
-                body.item.id == focusedId, labelsVisible)
+            // Silhouette from the model's own bounds, so a tag can keep off it.
+            val cx = body.x + body.centerX * body.size; val cy = body.y + body.centerY * body.size
+            if (!project(canvas, cx - body.halfX * body.size, cy + body.halfY * body.size, body.z)) return@mapNotNull null
+            val left = screenX; val top = screenY
+            if (!project(canvas, cx + body.halfX * body.size, cy - body.halfY * body.size, body.z)) return@mapNotNull null
+            val box = LabelBox(min(left, screenX), min(top, screenY), max(left, screenX), max(top, screenY))
+            if (!project(canvas, body.x, body.y + .75f, body.z)) return@mapNotNull null
+            Projected(body, bodyX, bodyY, unit, screenX, screenY, box)
         }
-        if (labelsVisible && all.size > bodies.size) overlay.drawOverflow(canvas, all.size)
+        for (p in onScreen) {
+            overlay.drawCues(canvas, p.body.item, p.bodyX, p.bodyY, p.unit, p.body.phase, p.body.item.id == focusedId)
+        }
+        if (!labelsVisible) return
+        val byId = onScreen.associateBy { it.body.item.id }
+        val decisions = resolveResidentLabels(onScreen.map { p ->
+            val item = p.body.item
+            ResidentLabelInput(item.id, when {
+                item.id == focusedId -> LABEL_RANK_FOCUSED
+                item.state == OctopusVisualState.ASKING -> LABEL_RANK_AWAITING
+                item.state == OctopusVisualState.WORKING -> LABEL_RANK_WORKING
+                else -> LABEL_RANK_IDLE
+            }, p.box, overlay.fullTagBox(item, p.tagX, p.tagY), overlay.compactTagBox(item, p.tagX, p.tagY))
+        })
+        for (decision in decisions) {
+            val p = byId[decision.id] ?: continue
+            overlay.drawTag(canvas, p.body.item, p.tagX, p.tagY, decision)
+        }
+        if (all.size > bodies.size) overlay.drawOverflow(canvas, all.size)
     }
 
     fun dispose() {
