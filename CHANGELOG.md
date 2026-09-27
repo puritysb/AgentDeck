@@ -49,6 +49,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - CLI: `agentdeck run claude|codex|opencode` launches in the current terminal without a managed PTY, preserving custom shell commands and environment argument defaults. Existing managed commands remain available for remote control and terminal-only features.
 - E-ink diagnostics: record actual refresh completion times and full-refresh counts without mixing render-task logs into serial protocol JSON. The firmware is installed locally on TRMNL, EPD47 and NM-EPD-420; public firmware delivery remains held.
+- Subscription quota colors: use one consumed-capacity scale on every dashboard (green below 70%, amber at 70–89%, red from 90%). Remaining values use the same severity; TTGO gets higher-contrast percentage text and TC001 restores colored numbers/rails. Timebox keeps quota pressure separate from its agent-status beacon.
 
 - Apple and Android: show OpenClaw setup guidance only for explicit pairing or authentication failures. Reachability, reconnecting and unknown status no longer imply missing approval; connection timeouts no longer recommend replacing the token. Android now receives Gateway authentication status and displays actionable guidance.
 

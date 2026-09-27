@@ -891,7 +891,6 @@ function renderMicroFrame(
   animFrame: number,
   stateEvent: StateUpdateEvent | null,
   sessions: SessionInfo[] | null,
-  usagePct: number,
   subagentActivity: SubagentActivityBySession,
   now: number,
 ): void {
@@ -911,7 +910,7 @@ function renderMicroFrame(
   const routing = sessions?.some((s) => s.agentType === 'openclaw' && s.state === 'processing') ?? false;
 
   const aggregate: MicroAggregate =
-    gatewayHasError || usagePct >= 90 ? 'error'
+    gatewayHasError ? 'error'
       : dominant?.state === 'awaiting' ? 'awaiting'
         : (dominant?.state === 'processing' || (!dominant && routing)) ? 'processing'
           : 'idle';
@@ -1304,7 +1303,6 @@ export function renderFrame(
       animFrame,
       stateEvent,
       sessions,
-      usageEvent?.fiveHourPercent ?? 0,
       subagentActivity,
       timeOverrideMs ?? Date.now(),
     );

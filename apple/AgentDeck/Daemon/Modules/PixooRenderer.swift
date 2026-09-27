@@ -550,7 +550,6 @@ final class PixooRenderer {
     /// 9×9 official mark carries identity while the one-pixel perimeter rail
     /// alone carries processing/awaiting/error motion.
     func renderMicro(dashboardState: DashboardState) -> Data {
-        let usagePct = dashboardState.fiveHourPercent ?? 0
         let hasGateway = dashboardState.gatewayConnected || dashboardState.siblingSessions.contains { $0.agentType == "openclaw" }
         let gatewayHasError = dashboardState.gatewayHasError
 
@@ -566,7 +565,7 @@ final class PixooRenderer {
         let routing = dashboardState.siblingSessions.contains { $0.agentType == "openclaw" && $0.state == "processing" }
 
         let aggregate: MicroAggregate
-        if gatewayHasError || usagePct >= 90 {
+        if gatewayHasError {
             aggregate = .error
         } else if dominant?.state == .awaiting {
             aggregate = .awaiting

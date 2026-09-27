@@ -18,6 +18,8 @@ on light backgrounds. Brand identity remains separate from numeric severity.
 Stream Deck, Ulanzi, native Apple/Android dashboards, terminal gauges, Pixoo and
 iDotMatrix now share the policy. Luna percentage text follows used capacity.
 Quota-driven red flashing was removed; actionable agent attention is unchanged.
+The final audit also removed the old 90% shortcut that replaced Timebox Mini's
+agent beacon with an error animation; quota exhaustion no longer hides work state.
 TTGO shows a colored number over a dark card and a separate solid bottom rail,
 with a larger number for medium-height cards. TC001 retains its provider mark,
 uses a neutral window label, and colors the number and rail. `LU` leaves enough
@@ -31,7 +33,7 @@ palette limitations with the same critical boundary.
 - Stream Deck/Ulanzi regression: 82% used and 18% remaining are amber; 90% is red.
 - Native C++, Swift and Kotlin boundary tests; host firmware simulator frames
   for TTGO and TC001, including the remaining-capacity path.
-- TypeScript suite: 4,835 passed, 2 skipped. Protocol generation unchanged.
+- TypeScript suite: 4,836 passed, 2 skipped. Protocol generation unchanged.
 - Android signed sideload build and quota unit test; macOS build and quota test.
 - Runtime rollout receipts are recorded after installation; simulator frames
   prove render output, not physical panel appearance.

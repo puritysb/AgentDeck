@@ -92,9 +92,9 @@ describe('micro layout (Timebox 11×11)', () => {
     expect(pixel(empty, 5, 6)).not.toEqual([2, 6, 10]);
   });
 
-  it('moves critical usage to a red perimeter rail without tinting identity', () => {
+  it('keeps gateway errors on a red perimeter rail without tinting identity', () => {
     const buf = renderFrame(
-      null, { fiveHourPercent: 95 } as never, [], 1000, 11, 'micro',
+      { gatewayHasError: true } as never, null, [], 1000, 11, 'micro',
     );
     expect(pixel(buf, 0, 0)[0]).toBeGreaterThan(pixel(buf, 0, 0)[1]);
     expect(pixel(buf, 0, 0)[0]).toBeGreaterThan(pixel(buf, 0, 0)[2]);

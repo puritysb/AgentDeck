@@ -55,6 +55,16 @@ describe('canonical dot-matrix agent masks', () => {
 });
 
 describe('Timebox Mini Agent Beacon', () => {
+  it('does not replace the agent beacon with an error when quota is exhausted', () => {
+    const state = { type: 'state_update', state: 'idle', permissionMode: 'default', agentType: 'claude-code' } as const;
+    const usage = { type: 'usage_update', sessionDurationSec: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0 } as const;
+    const low = renderFrame(state, { ...usage, fiveHourPercent: 20 }, null, 0, 11, 'micro');
+    const exhausted = renderFrame(state, { ...usage, fiveHourPercent: 100 }, null, 0, 11, 'micro');
+    expect(exhausted).toEqual(low);
+    const error = renderFrame({ ...state, gatewayHasError: true }, { ...usage, fiveHourPercent: 20 }, null, 0, 11, 'micro');
+    expect(error).not.toEqual(low);
+  });
+
   const creatures: MicroCreature[] = ['octopus', 'jellyfish', 'opencode', 'crayfish', 'antigravity', 'kiro'];
   const background = [2, 6, 10];
   const pixel = (frame: Uint8Array, x: number, y: number) =>
