@@ -126,6 +126,20 @@ final class CodexAmbientHookRulesTests: XCTestCase {
         }
     }
 
+    func testEveryBackgroundCwdVectorMatchesTheNodeSSOT() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/codex-ambient-vectors.json")
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let cases = try XCTUnwrap(root["cwdVectors"] as? [[String: Any]])
+        XCTAssertGreaterThan(cases.count, 0)
+        for c in cases {
+            let name = c["name"] as? String ?? ""
+            let expected = try XCTUnwrap(c["background"] as? Bool)
+            XCTAssertEqual(CodexAmbientHookRules.isBackgroundCwd(c["cwd"], codexHome: c["codexHome"] as? String), expected, name)
+        }
+    }
+
     func testPromptTextReadsEveryKeyShapeCodexBuildsHaveSent() {
         let hyper = "Overview\n\nGenerate 0 to 3 hyperpersonalized suggestions for this project"
         XCTAssertEqual(CodexAmbientHookRules.promptText(["prompt": "a", "user_prompt": "b"]), "a")

@@ -5,6 +5,7 @@ import {
   CodexAmbientSessions,
   codexHookPromptText,
   isCodexAmbientPrompt,
+  isCodexBackgroundCwd,
 } from '../codex-ambient-hooks.js';
 
 const VECTORS = JSON.parse(readFileSync(
@@ -22,6 +23,31 @@ describe('isCodexAmbientPrompt (shared vectors)', () => {
   it('non-string prompts are never ambient', () => {
     expect(isCodexAmbientPrompt(undefined)).toBe(false);
     expect(isCodexAmbientPrompt({ text: HYPER })).toBe(false);
+  });
+});
+
+describe('isCodexBackgroundCwd (shared vectors)', () => {
+  for (const v of VECTORS.cwdVectors as Array<{ name: string; cwd: string; codexHome?: string; background: boolean }>) {
+    it(v.name, () => {
+      expect(isCodexBackgroundCwd(v.cwd, v.codexHome)).toBe(v.background);
+    });
+  }
+});
+
+describe('CodexAmbientSessions — memory consolidation agent', () => {
+  it('drops the thread from its very first hook, the session start, and keeps dropping it', () => {
+    const sessions = new CodexAmbientSessions(30 * 60_000, undefined);
+    const sid = '01a0e215-6bdc-7a63-9001-169189760604';
+    const first = sessions.classify('codex_session_start', { session_id: sid, cwd: '/Users/me/.codex/memories' });
+    expect(first).toEqual({ ambient: true, firstSeen: true, sessionId: sid, reason: 'memory-consolidation' });
+    // Tool and stop hooks keep the classification even if their cwd differs.
+    expect(sessions.classify('codex_tool_start', { session_id: sid, cwd: '/tmp' }).ambient).toBe(true);
+    expect(sessions.classify('codex_stop', { session_id: sid }).ambient).toBe(true);
+  });
+
+  it('leaves a real project session alone', () => {
+    const sessions = new CodexAmbientSessions(30 * 60_000, undefined);
+    expect(sessions.classify('codex_session_start', { session_id: 'real', cwd: '/Users/me/github/memories' }).ambient).toBe(false);
   });
 });
 
@@ -43,7 +69,7 @@ describe('CodexAmbientSessions', () => {
     // not yet identifiable — the caller retracts its effects at firstSeen.
     expect(s.classify('codex_session_start', { session_id: 'amb-1', cwd: '/' }, 1000)).toEqual({ ambient: false, firstSeen: false });
     expect(s.classify('codex_user_prompt_submit', prompt('amb-1', SAFETY), 1090))
-      .toEqual({ ambient: true, firstSeen: true, sessionId: 'amb-1' });
+      .toEqual({ ambient: true, firstSeen: true, sessionId: 'amb-1', reason: 'ambient-suggestions' });
     expect(s.classify('codex_tool_start', { session_id: 'amb-1', tool_name: 'shell' }, 1500))
       .toEqual({ ambient: true, firstSeen: false, sessionId: 'amb-1' });
     expect(s.classify('codex_stop', { session_id: 'amb-1' }, 3000))

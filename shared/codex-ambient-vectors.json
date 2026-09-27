@@ -41,5 +41,60 @@
       "prompt": "",
       "ambient": false
     }
+  ],
+  "cwdComment": "Codex background workspaces. A hook whose cwd is Codex's own memory store belongs to the memory-consolidation agent Codex runs by itself (memories_1.sqlite job `memory_consolidate_global`, observed live 2026-09-27 as a WORKING 'memories' creature). `background: true` means the daemon must not record it. `codexHome` stands in for $CODEX_HOME when present.",
+  "cwdVectors": [
+    {
+      "name": "memory consolidation under the default home (live 2026-09-27)",
+      "cwd": "/Users/puritysb/.codex/memories",
+      "background": true
+    },
+    {
+      "name": "trailing slash",
+      "cwd": "/Users/puritysb/.codex/memories/",
+      "background": true
+    },
+    {
+      "name": "a file inside the memory store",
+      "cwd": "/Users/puritysb/.codex/memories/rollout_summaries",
+      "background": true
+    },
+    {
+      "name": "custom CODEX_HOME",
+      "cwd": "/opt/codex-home/memories",
+      "codexHome": "/opt/codex-home",
+      "background": true
+    },
+    {
+      "name": "custom CODEX_HOME still recognises the default suffix",
+      "cwd": "/Users/me/.codex/memories",
+      "codexHome": "/opt/codex-home",
+      "background": true
+    },
+    {
+      "name": "codex home itself is not the memory agent",
+      "cwd": "/Users/puritysb/.codex",
+      "background": false
+    },
+    {
+      "name": "a user project named memories",
+      "cwd": "/Users/puritysb/github/memories",
+      "background": false
+    },
+    {
+      "name": "a project that merely contains .codex in its path",
+      "cwd": "/Users/puritysb/github/app/.codex-memories",
+      "background": false
+    },
+    {
+      "name": "ordinary project",
+      "cwd": "/Users/puritysb/github/AgentDeck",
+      "background": false
+    },
+    {
+      "name": "empty cwd",
+      "cwd": "",
+      "background": false
+    }
   ]
 }

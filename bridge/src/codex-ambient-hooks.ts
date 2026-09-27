@@ -22,6 +22,22 @@
  * Swift `CodexAmbientHookRules` tests.
  */
 
+/**
+ * Codex also runs a memory-consolidation agent on its own
+ * (`memories_1.sqlite` job `memory_consolidate_global`) with its cwd set to its
+ * memory store, `$CODEX_HOME/memories`. It fires the same user-global hooks, so
+ * it surfaced as a WORKING creature named "memories" (2026-09-27). Unlike the
+ * ambient threads its signature is available on the very first hook — the
+ * `codex_session_start` cwd — so nothing needs retracting.
+ */
+export function isCodexBackgroundCwd(cwd: unknown, codexHome: string | undefined = process.env.CODEX_HOME): boolean {
+  if (typeof cwd !== 'string' || !cwd.trim()) return false;
+  const path = cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+  const home = codexHome?.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (home && (path === `${home}/memories` || path.startsWith(`${home}/memories/`))) return true;
+  return /(^|\/)\.codex\/memories(\/|$)/.test(path);
+}
+
 export const CODEX_AMBIENT_PROMPT_PATTERNS: readonly RegExp[] = [
   /^\s*Overview\s+Generate 0 to 3 hyperpersonalized suggestions\b/i,
   /^\s*You are an expert at upholding safety and compliance standards for Codex ambient suggestions\b/i,
@@ -48,6 +64,8 @@ export interface CodexAmbientVerdict {
    *  thread's `codex_session_start` already created. */
   firstSeen: boolean;
   sessionId?: string;
+  /** Which Codex background job the thread belongs to. */
+  reason?: 'ambient-suggestions' | 'memory-consolidation';
 }
 
 const NOT_AMBIENT: CodexAmbientVerdict = { ambient: false, firstSeen: false };
@@ -58,7 +76,10 @@ export const CODEX_AMBIENT_TTL_MS = 30 * 60_000;
 export class CodexAmbientSessions {
   private readonly lastSeenAt = new Map<string, number>();
 
-  constructor(private readonly ttlMs: number = CODEX_AMBIENT_TTL_MS) {}
+  constructor(
+    private readonly ttlMs: number = CODEX_AMBIENT_TTL_MS,
+    private readonly codexHome: string | undefined = process.env.CODEX_HOME,
+  ) {}
 
   classify(eventName: string, json: Record<string, unknown>, now = Date.now()): CodexAmbientVerdict {
     if (!eventName.startsWith('codex_')) return NOT_AMBIENT;
@@ -69,9 +90,13 @@ export class CodexAmbientSessions {
       this.lastSeenAt.set(sessionId, now);
       return { ambient: true, firstSeen: false, sessionId };
     }
+    if (isCodexBackgroundCwd(json.cwd ?? json.project_path, this.codexHome)) {
+      this.lastSeenAt.set(sessionId, now);
+      return { ambient: true, firstSeen: true, sessionId, reason: 'memory-consolidation' };
+    }
     if (eventName === 'codex_user_prompt_submit' && isCodexAmbientPrompt(codexHookPromptText(json))) {
       this.lastSeenAt.set(sessionId, now);
-      return { ambient: true, firstSeen: true, sessionId };
+      return { ambient: true, firstSeen: true, sessionId, reason: 'ambient-suggestions' };
     }
     return NOT_AMBIENT;
   }

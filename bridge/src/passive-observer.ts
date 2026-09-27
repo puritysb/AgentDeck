@@ -22,6 +22,7 @@ import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import type { EnrichedSession } from './session-aggregator.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
+import { isCodexBackgroundCwd } from './codex-ambient-hooks.js';
 import { redactSecrets } from './utils/redact-secrets.js';
 import { stripUnsafeText, rawSessionId } from '@agentdeck/shared';
 // The interrupt marker rule is shared with the turn watchdog / APME collector —
@@ -809,6 +810,8 @@ export async function collectCodexSessionsFromRollouts(
       if (seen.has(sessionId)) continue;
       seen.add(sessionId);
       const cwd = parsed.cwd;
+      // Codex's own memory-consolidation agent is not the user's work.
+      if (isCodexBackgroundCwd(cwd)) continue;
       sessions.push({
         id: desktop ? `observed:codex-app:${sessionId}` : `observed:codex:${sessionId}`,
         port: 0,

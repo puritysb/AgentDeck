@@ -3162,7 +3162,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (ambient.ambient) {
           if (ambient.firstSeen && ambient.sessionId) {
             const sid = ambient.sessionId;
-            log(`[agentdeck] Codex ambient-suggestions thread ${sid.slice(0, 8)}: background prompt, its hooks are not recorded`);
+            log(`[agentdeck] Codex ${ambient.reason ?? 'background'} thread ${sid.slice(0, 8)}: not the user's work, its hooks are not recorded`);
             hookCodexSessions.forget(sid);
             subagentTimeline?.forget(sid);
             coordination.forget(sid);

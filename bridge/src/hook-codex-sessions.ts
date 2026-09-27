@@ -25,6 +25,7 @@ import {
   type ObservedSession,
 } from './passive-observer.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
+import { isCodexBackgroundCwd } from './codex-ambient-hooks.js';
 
 /** Reaped this long after the turn-ending hook — Swift's `codexPostTerminalTTL`. */
 const POST_TERMINAL_TTL_MS = 60_000;
@@ -189,6 +190,8 @@ export class HookCodexSessions {
       const rollout = located?.summary;
       const desktop = rollout?.originator?.toLowerCase().includes('desktop') === true;
       const cwd = rollout?.cwd ?? session.cwd;
+      // Belt and braces for the daemon-level gate: Codex's memory agent never becomes a row.
+      if (isCodexBackgroundCwd(cwd)) continue;
       extra.push({
         id: `observed:${desktop ? 'codex-app' : 'codex'}:${session.sessionId}`,
         port: 0,

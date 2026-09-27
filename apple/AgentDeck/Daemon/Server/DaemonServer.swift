@@ -349,6 +349,26 @@ enum CodexAmbientHookRules {
         let range = NSRange(text.startIndex..., in: text)
         return promptSignatures.contains { $0.firstMatch(in: text, options: [], range: range) != nil }
     }
+
+    /// Codex's own memory-consolidation agent (`memory_consolidate_global`)
+    /// runs with its cwd in `$CODEX_HOME/memories` and fires the user-global
+    /// hooks; it is not the user's work (mirror of Node `isCodexBackgroundCwd`,
+    /// replayed from `shared/codex-ambient-vectors.json`).
+    static func isBackgroundCwd(_ cwd: Any?, codexHome: String? = ProcessInfo.processInfo.environment["CODEX_HOME"]) -> Bool {
+        guard let raw = cwd as? String, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        func trimmed(_ value: String) -> String {
+            var path = value.replacingOccurrences(of: "\\", with: "/")
+            while path.hasSuffix("/") { path.removeLast() }
+            return path
+        }
+        let path = trimmed(raw)
+        if let codexHome, !codexHome.isEmpty {
+            let store = trimmed(codexHome) + "/memories"
+            if path == store || path.hasPrefix(store + "/") { return true }
+        }
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        return zip(components, components.dropFirst()).contains { $0 == ".codex" && $1 == "memories" }
+    }
 }
 
 /// Thread ids identified as ambient-suggestions threads. Every later hook on
@@ -5496,6 +5516,12 @@ final class DaemonServer {
         if isCodexEvent, let sid = sessionId {
             let now = Date()
             if codexAmbientThreads.isAmbient(sid, now: now) { return }
+            // The memory agent is identifiable on its first hook (its cwd), so
+            // nothing has been created yet and nothing needs retracting.
+            if CodexAmbientHookRules.isBackgroundCwd(json["cwd"] ?? json["project_path"]) {
+                codexAmbientThreads.mark(sid, now: now)
+                return
+            }
             if event == "codex_user_prompt_submit",
                CodexAmbientHookRules.isAmbientPrompt(CodexAmbientHookRules.promptText(json)) {
                 codexAmbientThreads.mark(sid, now: now)
