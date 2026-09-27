@@ -47,6 +47,19 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+## 2026-09-28 — npm 1.6.0 · Apple 1.6.0 · ESP32 1.6.0 · Stream Deck 1.6.0 · Ulanzi 1.6.0
+
+- E-ink firmware (TRMNL 7.5", NM-EPD-420, EPD47) follows the Paper Board: only sessions that need you or are working get a card, idle sessions share one line of glyph + name, the masthead counts sessions by state, and filler copy is gone. A line break in an agent's answer no longer overprints Korean text. TRMNL no longer replaces the board with an ANSWER page after every finished turn; KEY1 cycles board → aquarium → digest.
+- NM-EPD-420 lists sessions by priority with the waiting question or live activity, and plays a short two-note chime through its speaker when a session starts waiting for you. EPD47's home shows usage with reset times, and state counts in its header.
+- Timebox Mini gains an animated agent face; iDotMatrix shows waiting / working / result / live counts. Both stage a conversation: your message puts that agent on screen listening (ASK) until it replies, and the reply stays for 45 seconds (REPLY). Automated turns stay brief. The iDotMatrix CLI client no longer paints OFFLINE after a single missed frame request — only after 15 seconds without the daemon.
+- Dashboards receive the same connect-time history from the Node and Swift daemons (the latest 100 readable rows); ESP32 boards receive several trimmed rows instead of one, and older boards are recognised from their first connect.
+- Dashboards and devices share one session-state palette (green healthy, cyan working, amber needs you, red failure, grey quiet); aquarium name tags yield instead of covering creatures.
+- Stream Deck and Ulanzi decks share the weekly usage keys; Stream Deck+ subscription dials are independent.
+- IPS10: a local OpenClaw wake word and a separate, persistent personal voice conversation; warm local Whisper transcription with CLI fallback, speech-onset and endpoint handling, voice-activity gating against noise hallucinations, and bounded upload/reply transfers. Its dashboard becomes an English aquarium with conditional quota rings, a readable project deck and a task inspection workspace. SDIO transmit is protected from unaligned buffers.
+- Sessions in a linked git worktree are labelled `Repository · worktree`; compact devices get shorter task labels; OpenClaw's personal activity appears from dispatch.
+- CLI: launch an observed agent without a managed PTY; privacy-limited daemon connection diagnostics. The Stream Deck plugin keeps reachable daemons and counts pong replies as activity.
+- E-ink refresh diagnostics count completed refreshes and full cycles and no longer interleave with protocol output; voice-stage diagnostics no longer report false I2C panics. Boards label z.ai windows by their length over serial too.
+
 - Subscription quota colors: use one consumed-capacity scale on every dashboard (green below 70%, amber at 70–89%, red from 90%). Remaining values use the same severity; TTGO gets higher-contrast percentage text and TC001 restores colored numbers/rails. Timebox keeps quota pressure separate from its agent-status beacon.
 
 - Apple and Android: show OpenClaw setup guidance only for explicit pairing or authentication failures. Reachability, reconnecting and unknown status no longer imply missing approval; connection timeouts no longer recommend replacing the token. Android now receives Gateway authentication status and displays actionable guidance.
@@ -58,12 +71,9 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - Pixoo64 (Node and Swift daemons): display all three usage providers together, reserve room above their rows, and retain Claude when only its seven-day window is reported.
 - TC001: retain work status while cycling provider usage with official marks, actual window-length labels and MCP quantity labels; omit stale Claude usage and clear retired z.ai readings on disconnect.
 
-These multi-provider changes are next-release candidates ([PR #379](https://github.com/puritysb/AgentDeck/pull/379)). They are installed locally and user-confirmed, but have not been publicly released. Publication remains on hold while more improvements are collected; integrate them with the existing [consolidated candidate #378](https://github.com/puritysb/AgentDeck/pull/378) and reassess channel versions at the eventual release cut.
-
 - CLI daemon startup allows up to 90 seconds on macOS for a silent preferred-port conflict (20 seconds elsewhere), retrying the actual listener and rechecking peers before fallback. This mitigates delayed app-to-CLI handoff without moving already connected fallback clients; hardware validation remains tracked in #370.
 
 - ESP32: compact horizontal usage gauges on 86 Box, IPS 3.5 and round AMOLED; visible GLM usage on IPS 10 and NM-EPD-420; proportional card fills on TTGO; five-window layouts without clipping or array overflow on T-Display Pro.
-- ESP32 firmware delivery remains deferred while IPS10 work is in progress.
 
 ## 2026-09-28 — Android 1.6.1
 

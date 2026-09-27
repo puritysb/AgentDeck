@@ -1,0 +1,13 @@
+{
+  "version": "1.6.0",
+  "platform": "macos",
+  "whatsNew": {
+    "en-US": "Session states now look the same on every dashboard: green for healthy, cyan for working, amber when an agent needs you. Working agents stand out in the 3D aquarium, name tags no longer cover creatures behind them, and Claude Code's arms are repaired. Connected Timebox Mini and iDotMatrix displays show your conversations: the agent you asked appears listening, and its reply stays on screen for 45 seconds. OpenClaw setup guidance appears only when pairing or sign-in actually fails.",
+    "ko": "모든 대시보드에서 세션 상태가 같은 색으로 보입니다. 정상은 초록, 작업 중은 청록, 도움이 필요할 때는 호박색입니다. 3D 수족관에서 작업 중인 에이전트가 더 잘 보이고, 이름표가 뒤쪽 크리처를 가리지 않으며, Claude Code의 팔 모양을 고쳤습니다. 연결된 Timebox Mini와 iDotMatrix는 대화를 보여줍니다. 질문한 에이전트가 듣는 모습으로 나타나고 답변은 45초 동안 표시됩니다. OpenClaw 설정 안내는 페어링이나 로그인이 실제로 실패했을 때만 나타납니다.",
+    "ja": "すべてのダッシュボードでセッション状態が同じ色で表示されます。正常は緑、作業中はシアン、対応が必要なときはアンバーです。3D水族館では作業中のエージェントが目立ち、名札が後ろのクリーチャーを隠さず、Claude Codeの腕の形状を修正しました。接続したTimebox MiniとiDotMatrixは会話を表示します。質問したエージェントが聞いている姿で現れ、返答は45秒間表示されます。OpenClawの設定案内は、ペアリングやサインインが実際に失敗したときだけ表示されます。"
+  },
+  "promotionalText": {
+    "en-US": "See what your AI coding agents are doing—and when one needs you—at a glance, on your Mac and on the displays around it."
+  },
+  "reviewerSupplement": "No new permissions, downloads or entitlements. Changes are visual (state palette, 3D aquarium readability) and to connected Bluetooth displays configured in Settings > Devices. Preview media uses synthetic sessions."
+}
