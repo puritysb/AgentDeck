@@ -395,14 +395,50 @@ simultaneously.
 | Phone portrait | One near-full-width rail at a time, selected by an explicit `Sessions / System` control | Restore the normal body-text step; every rail scrolls inside the water-region budget |
 | Phone landscape | Two compact side rails | Compact type is acceptable because line length grows; both rails remain above Timeline |
 | Tablet / iPad / macOS | Two independent side rails with the terrarium retained as the visual centre | Regular or expanded type step; width grows only within a surface-safe cap |
-| Android E-ink | Static Sessions + terrarium + recent-work projection | Black-on-paper, no animated paging or moving history; padding and type scale with compact/regular/expanded reader size |
-| Native E-ink firmware | Card grid from the short-edge density SSOT | Preserve 1-bit hierarchy and refresh budget; orientation changes geometry, not density identity |
+| Android E-ink | Paper Board (§5.14) | Black-on-paper, no animated paging or moving history; padding and type scale with compact/regular/expanded reader size |
+| Native E-ink firmware | Paper Board (§5.14) on the short-edge density SSOT | Preserve 1-bit hierarchy and refresh budget; orientation changes geometry, not density identity |
 
 On compact portrait, the alternate rail must be named and directly reachable;
 silently hiding topology is not adaptation. On larger screens, do not stretch
 phone cards to fill space: spend extra room on line length, type, and breathing
 room while preserving the terrarium. All rails share the Timeline boundary and
 scroll internally when their content exceeds it.
+
+### 5.14 Paper Board (every e-ink surface)
+
+Paper is a different medium, not a dim tablet: it keeps its image without
+power, has no backlight, and every change costs a refresh. Panels also differ
+from each other, and the board uses what each one has instead of designing for
+the weakest. Every e-ink Dashboard — Android readers (Crema, Pantone) and
+native firmware (TRMNL 7.5", NM-EPD-420, LilyGo EPD47) — uses one board
+grammar, laid out per panel:
+
+| Zone | Content | Rule |
+|---|---|---|
+| Masthead | Mark · session count by state (`2 working · 3 idle`) · **as-of time** | A persisted image must say when it was true. Never a bare `S:5`. |
+| Needs you | Only when a session awaits. **Inverted block**: who, what it asks, the options | Inversion is paper's amber: the one loud thing, and it does not move. |
+| Working | One row per working session: brand mark · project (largest type) · live activity line | Real activity or nothing. No filler (`Working. Waiting for the next update.`). The zone heading names the state once; rows do not repeat it. |
+| Quiet | Idle sessions as one wrapped line of mark + name; offline as a count | Idle rows never take a working row's space. The mark disambiguates same-named sessions. |
+| Usage | Per provider: mark, then chips of `window NN%` · a thick bar · `resets 4h 37m` | Three tiers read in order: the number (largest), a bar of one fixed width on every chip so windows compare by eye, then the time left, which is what the reader plans around. Never a page-wide ruler. `!` at critical, `?` when stale. |
+| Done | Latest finished agent work: time · mark · project · one line | A judged task's summary first, otherwise an answered turn's first sentence. A prompt still waiting for its answer, automated turns, abandoned tasks and tool noise are not "done". |
+| Terrarium | The aquarium, in whatever space the text zones leave | Optional and never over a zone; dropped below a useful height rather than shown as a keyhole. |
+
+**Panel capabilities.** Tone, refresh and motion are properties of the panel,
+and each is used where it exists:
+
+| Capability | 1-bit (TRMNL, NM-EPD-420, LilyGo) | 16-level grey (Crema, Onyx) | Colour Kaleido (Pantone) |
+|---|---|---|---|
+| Tone | Black ink on white only: no grey fills, gradients or scenes | Terrarium in grey gradients; text zones stay black on white | Session hues (§2.7 paper palette) on state words, the needs-you band and usage severity; brand marks in brand colour; colour terrarium |
+| Refresh | Whole-panel partial window per zone change; full refresh on a schedule | Per zone: sessions A2 fast, usage and done DU slow, needs-you one GC16 clean | Same zones; colour layers skip the software layer so the CFA samples colour |
+| Motion | None | Terrarium animates only while a creature is active, at ≤10 partial frames/s, and rests otherwise | Same as grey |
+
+Judge a board by a human glance, not by data completeness: what a reader takes
+in within a second or two must be the few facts they act on.
+
+Layout: portrait stacks Now → terrarium → Usage/Done; landscape reads text
+down one column beside a full-height terrarium window. Fixed zones so a change
+refreshes only its own zone; type sizes step, never shrink to fit. Empty states
+state facts (`No sessions`), never placeholders.
 
 ---
 

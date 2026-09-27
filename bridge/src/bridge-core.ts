@@ -233,6 +233,15 @@ export class BridgeCore {
   /** External client count provider (e.g., ESP32 serial connections) */
   private externalClientCount: () => number = () => 0;
 
+  /**
+   * Optional per-client filter applied to the connect-time timeline history
+   * BEFORE the byte cap. The daemon's event transformer strips entries a
+   * client may not read (tool events) from the finished frame, so without
+   * this the newest tool rows spend the whole budget and are then removed,
+   * leaving a dashboard one or two rows of history.
+   */
+  private connectHistoryFilter?: (ws: WebSocket, entries: TimelineEntry[]) => TimelineEntry[];
+
   /** Optional APME subsystem — set via setApme() after initApme() resolves. */
   private apme: ApmeModule | null = null;
   private apmeAgentType: AgentType | null = null;
@@ -853,6 +862,10 @@ export class BridgeCore {
   }
 
   /** Register daemon module-health provider for dashboard diagnostics. */
+  setConnectHistoryFilter(fn: (ws: WebSocket, entries: TimelineEntry[]) => TimelineEntry[]): void {
+    this.connectHistoryFilter = fn;
+  }
+
   setModuleHealthProvider(fn: () => Record<string, unknown>): void {
     this.moduleHealthProvider = fn;
   }
@@ -1044,7 +1057,8 @@ export class BridgeCore {
       const historyCap = this.wsServer.isEsp32Client(ws)
         ? ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES
         : INITIAL_TIMELINE_HISTORY_MAX_BYTES;
-      const historyEvent = buildCappedTimelineHistory(history, historyCap)
+      const readable = this.connectHistoryFilter ? this.connectHistoryFilter(ws, history) : history;
+      const historyEvent = buildCappedTimelineHistory(readable, historyCap)
         ?? ({ type: 'timeline_history', entries: [] } as BridgeEvent);
       this.wsServer.sendTo(ws, historyEvent);
     }

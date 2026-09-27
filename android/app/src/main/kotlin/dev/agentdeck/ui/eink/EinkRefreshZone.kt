@@ -68,6 +68,8 @@ fun EinkRefreshZone(
     softDebounceMs: Long = 120L,
     sleepSnapshotMode: Boolean = false,
     sleepThrottleMs: Long = 60_000L,
+    /** Size to the content's height instead of filling the offered height. */
+    wrapContentHeight: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     // Keep a snapshot-backed reference to the latest content lambda so
@@ -171,9 +173,12 @@ fun EinkRefreshZone(
     AndroidView(
         factory = { context ->
             FrameLayout(context).apply {
+                // AndroidView turns a MATCH_PARENT height into an exact spec
+                // whenever the height is bounded, so a wrapping zone must say so.
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    if (wrapContentHeight) ViewGroup.LayoutParams.WRAP_CONTENT
+                    else ViewGroup.LayoutParams.MATCH_PARENT,
                 )
                 setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                 // Embed Compose content inside this View

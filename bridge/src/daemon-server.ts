@@ -4204,6 +4204,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     'esp32_ota_abort',
     'device_info_request',
   ]);
+  // The transformer below strips tool rows from a finished history frame; the
+  // connect burst drops them before its byte cap instead, so the budget buys
+  // rows the client can read. Same predicate, one place each side.
+  core.setConnectHistoryFilter((client, entries) =>
+    surfaceHasCapability(surfaceNegotiations.get(client), CLAUDE_TOOL_EVENTS_CAPABILITY)
+      ? entries
+      : entries.filter((entry) => entry.toolEvent !== true));
   core.wsServer.setEventTransformer((event, client) => {
     const surface = surfaceNegotiations.get(client);
     const historyEntries = event.type === 'timeline_history'

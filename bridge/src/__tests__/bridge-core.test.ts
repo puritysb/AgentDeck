@@ -430,6 +430,36 @@ describe('BridgeCore Orchestration', () => {
         await client.close();
       }
     });
+
+    it('filters unreadable rows before the byte cap, not after', async () => {
+      core.wireTimeline();
+      core.bridgeTimeline.addEntry({ ts: 500, type: 'chat_end', raw: 'Finished the migration' });
+      // Newest rows are tool noise big enough to spend the whole budget.
+      for (let i = 0; i < 40; i++) {
+        core.bridgeTimeline.addEntry({
+          ts: 1000 + i,
+          type: 'tool_request',
+          raw: `tool-${i}-${'x'.repeat(900)}`,
+          toolEvent: true,
+        } as any);
+      }
+      core.setConnectHistoryFilter((_ws, entries) =>
+        entries.filter((entry) => entry.toolEvent !== true));
+      core.wsServer.onClientConnect((ws) => {
+        core.sendInitialState(ws, { agentType: 'claude-code', isAlive: true });
+      });
+
+      const client = new WsTestClient();
+      await client.connect(`ws://127.0.0.1:${port}`);
+
+      try {
+        const historyEvt = await client.waitForType('timeline_history');
+        const entries = (historyEvt as any).entries as Array<{ raw: string }>;
+        expect(entries.map((e) => e.raw)).toEqual(['Finished the migration']);
+      } finally {
+        await client.close();
+      }
+    });
   });
 
   // ─── State change → broadcast ─────────────────────────────────────
