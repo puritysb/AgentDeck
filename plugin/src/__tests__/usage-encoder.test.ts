@@ -340,13 +340,13 @@ describe('provider pages and the auto selection', () => {
     expect(usageDialPreferences()).toEqual({ e2: 'auto', e3: 'codex' });
   });
 
-  it('lets either dial claim every provider and swaps a collision without duplication', () => {
+  it('lets either dial claim every provider and allows duplicate providers without moving the peer', () => {
     selectUsageDialProvider('e2', 'claude', DATA);
     selectUsageDialProvider('e3', 'codex', DATA);
     selectUsageDialProvider('e2', 'codex', DATA);
-    expect(getUsageDialSelections()).toEqual({ e2: 'codex', e3: 'claude' });
+    expect(getUsageDialSelections()).toEqual({ e2: 'codex', e3: 'codex' });
     selectUsageDialProvider('e3', 'codex', DATA);
-    expect(getUsageDialSelections()).toEqual({ e2: 'claude', e3: 'codex' });
+    expect(getUsageDialSelections()).toEqual({ e2: 'codex', e3: 'codex' });
     selectUsageDialProvider('e2', 'zai', DATA);
     noteUsageProviderActivity('claude', 20, 999);
     expect(resolveE2UsageProvider(DATA)).toBe('zai');
@@ -355,7 +355,7 @@ describe('provider pages and the auto selection', () => {
     resetE2UsageProvider(DATA);
   });
 
-  it('falls back on data loss and permits one-provider duplication only when unavoidable', () => {
+  it('falls back on data loss and permits one-provider duplication independently', () => {
     selectUsageDialProvider('e2', 'zai', DATA);
     expect(resolveE2UsageProvider({ fiveHourPercent: 0 })).toBe('claude');
     selectUsageDialProvider('e3', 'claude', { fiveHourPercent: 0 });
@@ -370,16 +370,16 @@ describe('provider pages and the auto selection', () => {
     expect(availableUsageProviders({})).toEqual([]);
   });
 
-  it('auto-picks the most-recently-used provider, avoiding E3 when possible', () => {
+  it('auto-picks activity without considering the other dial', () => {
     noteUsageProviderActivity('claude', 0, 100);
     noteUsageProviderActivity('codex', 0, 300);
     noteUsageProviderActivity('zai', 2, 200); // z.ai has live working sessions
     expect(pickAutoUsageProvider(DATA)).toBe('zai');
     // E3 sits on z.ai → E2 falls to the next-best (codex), never the same page.
-    expect(pickAutoUsageProvider(DATA, 'zai')).toBe('codex');
+    expect(pickAutoUsageProvider(DATA)).toBe('zai');
     // Processing outranks recency.
     noteUsageProviderActivity('claude', 1, 50);
-    expect(pickAutoUsageProvider(DATA, 'zai')).toBe('claude');
+    expect(pickAutoUsageProvider(DATA)).toBe('zai');
   });
 
   it('releases finished and removed sessions from auto-provider ranking', () => {

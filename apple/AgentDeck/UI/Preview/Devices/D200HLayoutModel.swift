@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts a160c5305f804c75c07e29517646bbc5f24d90e7
+// SYNC-HASH shared/src/d200h-layout.ts 4ef45eb31899283cce390de3e20b41356ca3084a
 // SYNC-HASH shared/src/session-utils.ts 9b6eebeba19a0bb6ffe7c633d98c83dcee9e55cf
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -196,7 +196,7 @@ public struct D200HUsage: Equatable, Sendable {
     public var sevenDayPercent: Double?
     /// False → suppress the Claude tiles entirely (usage state not trusted).
     public var known: Bool
-    /// Per-model scoped weekly caps, rendered as their own tiles beneath 7D.
+    /// Per-model scoped weekly caps, sharing the 7D tile even with spare capacity.
     public var scopedLimits: [D200HScopedLimit]
     /// Optional Codex primary window used%. Labelled by `codexPrimaryWindowMinutes`,
     /// NOT by slot — Codex now sometimes reports the weekly (10080-min) window as
@@ -854,16 +854,17 @@ public enum D200HLayoutModel {
             let active = luna.available != false && remaining > 0
             return (.lunaReserve(remainingPercent: remaining, active: active), "LUNA", "codex")
         }
+        let pairedWeekly = scopedPair != nil && claudePair.contains { $0.label == "7D" }
         let logicalCount = claudeTiles.count + codexTiles.count + zaiTiles.count
-            + (scopedTile == nil ? 0 : 1) + (lunaTile == nil ? 0 : 1)
+            + (scopedTile == nil ? 0 : 1) - (pairedWeekly ? 1 : 0) + (lunaTile == nil ? 0 : 1)
         let compactCodex = logicalCount > budget && codexPair.count == 2
         let stillOverflows = logicalCount - (compactCodex ? 1 : 0) > budget
-        let pairScopedWith7D = stillOverflows && scopedPair != nil && claudePair.count == 2
+        let pairScopedWith7D = pairedWeekly
         let compactClaude = stillOverflows && !pairScopedWith7D && claudePair.count == 2
         // Third step of the same cascade (TS #348): with all three providers
         // live the strip is six readings on three keys and z.ai compacts to a
         // pair tile too — nothing dropped.
-        let afterClaude = logicalCount - (compactCodex ? 1 : 0) - ((compactClaude || pairScopedWith7D) ? 1 : 0)
+        let afterClaude = logicalCount - (compactCodex ? 1 : 0) - (compactClaude ? 1 : 0)
         let compactZai = afterClaude > budget && zaiPair.count == 2
         let compactAllClaude = scopedPair != nil && !claudePair.isEmpty
             && afterClaude - (compactZai ? 1 : 0) > budget
@@ -876,12 +877,10 @@ public enum D200HLayoutModel {
             let windows = claudePair + [scopedPair]
             tiles = [(.usagePair(agent: "claude", windows: windows), windows.map(\.label).joined(separator: " · "), "claude")]
         } else if pairScopedWith7D, let scopedPair {
-            let paired = [claudePair[1], scopedPair]
-            tiles = [
-                claudeTiles[0],
-                (.usagePair(agent: "claude", windows: paired),
-                 paired.map(\.label).joined(separator: " · "), "claude"),
-            ]
+            let paired = [claudePair.last!, scopedPair]
+            tiles = claudePair.count == 2 ? [claudeTiles[0]] : []
+            tiles.append((.usagePair(agent: "claude", windows: paired),
+                          paired.map(\.label).joined(separator: " · "), "claude"))
         } else {
             tiles = cells("claude", claudeTiles, claudePair, compact: compactClaude)
             if let scopedTile { tiles.append(scopedTile) }

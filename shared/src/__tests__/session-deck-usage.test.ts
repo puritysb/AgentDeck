@@ -45,7 +45,7 @@ const baseState = (sessions: number, over: Record<string, unknown> = {}) => ({
 
 const usageCells = (deck: Map<string, { svg: string; action: unknown }>) =>
   [...deck.values()].filter(
-    (c) => (c.action as { kind?: string } | null)?.kind === 'command'
+    (c) => (c.action as { kind?: string } | null)?.kind === 'weekly-mode' || (c.action as { kind?: string } | null)?.kind === 'command'
       && ((c.action as { command?: { type?: string } }).command?.type === 'query_usage'),
   );
 
@@ -355,12 +355,12 @@ describe('buildSessionDeck scoped cap within the fixed usage strip', () => {
     usageCells(buildSessionDeck(baseState(12, state), { mode: 'list', showUsage: true }, POS))
       .map((c) => c.svg);
 
-  it('gives the key Codex vacated to the scoped cap on a free ChatGPT tier', () => {
+  it('always pairs weekly and scoped readings, even with a spare key', () => {
     const tiles = svgs({ ...codexFree, scopedLimits: [FABLE_IDLE] });
-    expect(tiles).toHaveLength(3);
+    expect(tiles).toHaveLength(2);
     expect(tiles.join('')).not.toContain(CODEX_MARK);
-    expect(tiles[2]).toContain('FABLE');
-    expect(tiles[2]).toContain('>61<');
+    expect(tiles[1]).toContain('FABLE');
+    expect(tiles[1]).toContain('>61<');
   });
 
   it('pairs the cap with 7D and leaves 5H a whole gauge', () => {

@@ -1,7 +1,8 @@
+import { usageDialViews, renderUsageDialView } from '../utility-modes/usage-dial-view.js';
 /**
  * E2 usage dial: tap to select a provider, rotate to select its view, press
  * to refresh. Hold the touchscreen to resume activity-driven selection.
- * Explicit choices take precedence; a collision moves the peer dial.
+ * Provider choices never move the peer dial.
  * The option-dial UUID remains stable for installed profiles.
  */
 import streamDeck, {
@@ -20,30 +21,17 @@ import type { AgentLink } from '../agent-link.js';
 import { encoderRegistry, isDaemonConnected } from '../encoder-registry.js';
 import { svgToDataUrl } from '../renderers/button-renderer.js';
 import {
-  renderUsageEncoderBoth,
-  renderUsageEncoderSingle,
-  renderUsageEncoderTriple,
-  renderUsageEncoderScopedSingle,
-  type UsageEncoderScoped,
-} from '../renderers/usage-gauge.js';
-import { renderUsageSession } from '../renderers/usage-dial-renderer.js';
-import {
   type UsageModeData,
   type UsageProviderId,
   updateUsageModeData,
   getUsageModeData,
   fireUsageRefresh,
-  buildProviderUsageEncoder,
-  availableUsageViews,
-  getUsageDialSelections,
   availableUsageProviders,
   resolveE2UsageProvider,
   selectUsageDialProvider,
   resetE2UsageProvider,
   onUsageDialSelectionChanged,
-  pickWorstScopedLimit,
 } from '../utility-modes/usage.js';
-import type { ScopedUsageLimit } from '@agentdeck/shared';
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
 import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
@@ -63,34 +51,8 @@ interface ClaudeUsageDialSettings {
 /** Per-action Claude usage view. Each physical dial persists independently. */
 const claudeUsageViews = new PerActionViewState('triple');
 
-/** Scoped model limits are hidden while the snapshot is stale — a stale number
- *  reads as live. Mirrors buildClaudeUsageEncoder's staleness gate. */
-function liveScopedLimits(data: UsageModeData, provider: UsageProviderId): ScopedUsageLimit[] {
-  if (provider !== 'claude') return [];
-  return data.usageStale === true ? [] : (data.scopedLimits ?? []);
-}
-
-/** Resolve a user-pinned provider, or follow activity while E2 is automatic. */
-function autoProvider(data: UsageModeData): UsageProviderId {
-  return resolveE2UsageProvider(data);
-}
-
-/** The dial-rotation view list, built dynamically: 'triple' default, the two
- *  single-window zooms, one zoom per live scoped model, then 'session'. */
-function usageViews(data: UsageModeData, provider: UsageProviderId): string[] {
-  const views: string[] = availableUsageViews(buildProviderUsageEncoder(provider, data, hasReceivedData))
-    .filter((view) => view !== 'session').map((view) => view === 'both' ? 'triple' : view);
-  liveScopedLimits(data, provider).forEach((_, i) => views.push(`scoped:${i}`));
-  views.push('session');
-  return views;
-}
-
-function toEncScoped(s?: ScopedUsageLimit): UsageEncoderScoped | undefined {
-  if (!s) return undefined;
-  // A relayed/legacy limit may omit `active`; treat missing as NOT binding so an
-  // inactive cap never latches the critical ramp (CLAUDE.md wire-flag rule).
-  return { label: s.label, usedPercent: s.percent, resetsAt: s.resetsAt, known: true, active: s.active === true };
-}
+const autoProvider = resolveE2UsageProvider;
+const usageViews = usageDialViews;
 
 export function initOptionDial(_b: AgentLink): void {
   onUsageDialSelectionChanged(refreshClaudeUsageDials);
@@ -154,24 +116,7 @@ function refreshClaudeUsageDials(): void {
  *  page). */
 function renderClaudeUsageView(actionId: string, data: UsageModeData = getUsageModeData()): string {
   const provider = autoProvider(data);
-  const views = usageViews(data, provider);
-  // A scoped view can disappear when its limit expires. Render the default until
-  // the user rotates again, without changing any other dial's selection.
-  const view = claudeUsageViews.resolve(actionId, views);
-  // Session view is shared token/cost text — show it regardless of quota note.
-  if (view === 'session') return renderUsageSession(data);
-  const enc = buildProviderUsageEncoder(provider, data, hasReceivedData);
-  if (view === '5h') return renderUsageEncoderSingle(enc, '5h');
-  if (view === '7d') return renderUsageEncoderSingle(enc, '7d');
-  if (view.startsWith('scoped:')) {
-    const i = parseInt(view.slice('scoped:'.length), 10);
-    const s = toEncScoped(liveScopedLimits(data, provider)[i]);
-    return s ? renderUsageEncoderScopedSingle(enc, s) : renderUsageEncoderBoth(enc);
-  }
-  // 'triple' default: 5H + 7D + worst scoped cap (Claude page only). Falls back
-  // to the two-panel 'both' view when there's no scoped model limit to headline.
-  const worst = toEncScoped(pickWorstScopedLimit(data));
-  return worst && provider === 'claude' ? renderUsageEncoderTriple(enc, worst) : renderUsageEncoderBoth(enc);
+  return renderUsageDialView(data, provider, hasReceivedData, claudeUsageViews.resolve(actionId, usageViews(data, provider)));
 }
 
 @action({ UUID: 'bound.serendipity.agentdeck.option-dial' })

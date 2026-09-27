@@ -17,7 +17,7 @@ import { usageColor } from '@agentdeck/shared';
  * 200×100 Stream Deck+ encoder LCD views (`renderUsageEncoderBoth`,
  * `renderUsageEncoderSingle`).
  */
-import { Brand, Tide, UI, CLAUDE_LOGO_PATH, CODEX_LOGO_PATH, ZAI_LOGO_PATHS, ZAI_LOGO_VIEWBOX } from '@agentdeck/shared';
+import { Brand, Tide, UI, CLAUDE_LOGO_PATH, CODEX_LOGO_PATH, ZAI_LOGO_PATHS, ZAI_LOGO_VIEWBOX, ANTIGRAVITY_PATH } from '@agentdeck/shared';
 import type { CodexLunaReserve } from '@agentdeck/shared';
 import { formatResetTime, splitResetTwoLine, formatScopedLabel } from '../utility-modes/usage.js';
 
@@ -33,19 +33,22 @@ const HEADLINE = '#ffffff';
 const COUNTDOWN = '#ffffff';
 
 /** Agent brand colour, used to tint the provider logo (NOT the fill — fill is severity). */
-const BRAND_COLOR: Record<'claude' | 'codex' | 'zai', string> = {
+const BRAND_COLOR: Record<'claude' | 'codex' | 'zai' | 'antigravity', string> = {
+  antigravity: Brand.antigravity,
   claude: Brand.claudeCode, // #C07058
   codex: Brand.codex,       // #6166E0
   zai: Brand.zai,           // #1F63EC
 };
 
 /** Canonical provider brand marks. viewBox is 24 except z.ai's upstream mark. */
-const BRAND_LOGO_PATHS: Record<'claude' | 'codex' | 'zai', string[]> = {
+const BRAND_LOGO_PATHS: Record<'claude' | 'codex' | 'zai' | 'antigravity', string[]> = {
+  antigravity: [ANTIGRAVITY_PATH],
   claude: [CLAUDE_LOGO_PATH],
   codex: [CODEX_LOGO_PATH],
   zai: ZAI_LOGO_PATHS,
 };
-const BRAND_LOGO_VIEWBOX: Record<'claude' | 'codex' | 'zai', number> = {
+const BRAND_LOGO_VIEWBOX: Record<'claude' | 'codex' | 'zai' | 'antigravity', number> = {
+  antigravity: 24,
   claude: 24,
   codex: 24,
   zai: ZAI_LOGO_VIEWBOX,
@@ -58,7 +61,7 @@ const BRAND_LOGO_VIEWBOX: Record<'claude' | 'codex' | 'zai', number> = {
  * legible even when a ~100% fill colours the whole tile. `dim` greys it for the
  * unknown tile.
  */
-function brandLogo(agent: 'claude' | 'codex' | 'zai', cx: number, cy: number, size: number, dim = false): string {
+function brandLogo(agent: 'claude' | 'codex' | 'zai' | 'antigravity', cx: number, cy: number, size: number, dim = false): string {
   const box = BRAND_LOGO_VIEWBOX[agent];
   const s = size / box;
   const color = dim ? LABEL_DIM : BRAND_COLOR[agent];
@@ -93,7 +96,7 @@ function rampColor(used: number, stale = false, inactive = false): { fill: strin
 }
 
 export interface UsageGaugeData {
-  agent: 'claude' | 'codex' | 'zai';
+  agent: 'claude' | 'codex' | 'zai' | 'antigravity';
   /** Which rolling window this tile represents (drives the clip id + fallback). */
   window: '5h' | '7d';
   /** Tile label, e.g. "5H", "7D". Agent identity rides the brand dot, not a prefix. */
@@ -271,7 +274,7 @@ export interface UsageEncoderSideCard {
 }
 
 export interface UsageEncoderData {
-  agent: 'claude' | 'codex' | 'zai';
+  agent: 'claude' | 'codex' | 'zai' | 'antigravity';
   /** Top-left title, e.g. "CLAUDE" / "CODEX". */
   title: string;
   fiveHour: UsageEncoderTank;
@@ -284,6 +287,7 @@ export interface UsageEncoderData {
   note?: string;
   /** Companion readout for the single-window 'both' view (see the interface). */
   sideCard?: UsageEncoderSideCard;
+  subscription?: UsageEncoderSideCard;
   luna?: CodexLunaReserve;
 }
 
@@ -451,6 +455,10 @@ function encSideCard(x: number, y: number, w: number, h: number, card: UsageEnco
  * therefore carries only what no gauge can: the subscription behind the quota.
  */
 export function renderUsageEncoderBoth(data: UsageEncoderData): string {
+  if (data.subscription) return encSvgWrap(
+    `<rect width="${ENC_W}" height="${ENC_H}" fill="${BG}"/>` + encHeader(data) +
+    encSideCard(4, 18, 192, 80, data.subscription),
+  );
   if (data.luna) return renderLunaReserveEncoder(data.luna);
   if (data.note != null) return encNote(data);
   const y = 18, h = 80;

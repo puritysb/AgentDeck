@@ -1,3 +1,4 @@
+import { claudeWeeklyReadings, type ClaudeWeeklyMode } from './claude-weekly-view.js';
 import { usageColor } from './usage-severity.js';
 import { selectedLunaReserve } from './usage-presentation.js';
 /**
@@ -157,9 +158,9 @@ export function parseState(evt: any): DashState {
     navigable: Boolean(evt?.navigable),
     // Prefer an explicit flag; otherwise infer from the presence of a real percent.
     usageKnown:
-      typeof evt?.usageKnown === 'boolean'
+      evt?.usageStale === true ? false : typeof evt?.usageKnown === 'boolean'
         ? evt.usageKnown
-        : evt?.fiveHourPercent != null || evt?.sevenDayPercent != null,
+        : evt?.fiveHourPercent != null || evt?.sevenDayPercent != null || (Array.isArray(evt?.scopedLimits) && evt.scopedLimits.length > 0),
     fiveHourResetsAt: typeof evt?.fiveHourResetsAt === 'string' ? evt.fiveHourResetsAt : undefined,
     sevenDayResetsAt: typeof evt?.sevenDayResetsAt === 'string' ? evt.sevenDayResetsAt : undefined,
     scopedLimits: Array.isArray(evt?.scopedLimits) ? (evt.scopedLimits as ScopedUsageLimit[]) : undefined,
@@ -515,7 +516,7 @@ export function renderCreditsTile(data: { limitId?: string; balance?: string; un
  * button space hosts usage efficiently, one window per key instead of
  * compacted pairs).
  */
-function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.length): SessionDeckCell[] {
+function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.length, weeklyMode: ClaudeWeeklyMode = 'both'): SessionDeckCell[] {
   const action: DeckAction = { kind: 'command', command: { type: 'query_usage' } };
   const known = state.usageKnown !== false;
   const claudeWindows: UsageTankData[] = [];
@@ -525,19 +526,8 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   if (known && state.sevenDayPercent != null) {
     claudeWindows.push({ agent: 'claude', window: '7d', label: '7D', usedPercent: state.sevenDayPercent, resetsAt: state.sevenDayResetsAt, known: true });
   }
-  // At most ONE scoped tile — the worst-sorted cap (active desc, then percent
-  // desc), rendered muted when it isn't the binding one.
-  //
-  // The usage strip is three keys wide (USAGE_PREFERRED_POS), so scoped tiles
-  // never stack: only [0] can reach a key, and building the rest is dead work.
-  // Same-provider rolling windows compact below when the total would overflow;
-  // paging through the remaining scoped caps lives on the SD+ encoder.
-  //
-  // Inclusion comes from `scopedLimitClaimsUsageKey`, and the Codex windows to
-  // retain from `codexWindowsBeside` — both shared with the Stream Deck keypad.
-  // The cap always sits with the Claude readings, ahead of Codex, active or not
-  // (`USAGE_STRIP_ORDER`). Capacity pressure is solved by pairing readings on
-  // one key below, never by deleting a window.
+  // Only the worst scoped cap reaches the keypad. It always shares the weekly
+  // key; the SD+ encoder can zoom into additional scoped caps separately.
   const cx = state.codexRateLimits;
   const luna = selectedLunaReserve(cx);
   const lunaTile: SessionDeckCell | undefined = luna
@@ -547,17 +537,13 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   const worstScoped = known ? state.scopedLimits?.[0] : undefined;
   const scopedClaims = scopedLimitClaimsUsageKey(worstScoped, allCodexWindows.length);
   const codexWindows = luna ? [] : codexWindowsBeside(allCodexWindows, scopedClaims);
-  // Kept as tank DATA, not only as a rendered cell: under strip pressure the cap
-  // pairs with 7D on one key (below), and a pre-rendered cell cannot be paired.
+  // Keep the cap as data so every mode uses the same renderer and severity.
   const scopedTank: UsageTankData | undefined = scopedClaims && worstScoped
     ? {
         agent: 'claude', window: '7d', label: formatScopedLabel(worstScoped.label, 6),
         usedPercent: worstScoped.percent, resetsAt: worstScoped.resetsAt, known: true,
         inactive: worstScoped.active !== true,
       }
-    : undefined;
-  const scopedTile: SessionDeckCell | undefined = scopedTank
-    ? { svg: renderUsageGauge(scopedTank), action }
     : undefined;
   // Codex windows carry the same short "5H"/"7D" labels — the brand dot conveys
   // the agent, not a "CX " prefix. Label each present window by its own length
@@ -599,22 +585,23 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   const creditsTile: SessionDeckCell | undefined = !cx?.primary && !cx?.secondary && (cx?.credits || cx?.limitId)
     ? { svg: renderCreditsTile({ limitId: cx.limitId, balance: cx.credits?.balance, unlimited: cx.credits?.unlimited }), action }
     : undefined;
+  const pairedWeekly = scopedTank != null && claudeWindows.some(w => w.window === '7d');
   const logicalCount = claudeWindows.length + codexWindowData.length + zaiWindowData.length
-    + (scopedTile ? 1 : 0) + (creditsTile ? 1 : 0) + (lunaTile ? 1 : 0);
+    + (scopedTank ? 1 : 0) - (pairedWeekly ? 1 : 0) + (creditsTile ? 1 : 0) + (lunaTile ? 1 : 0);
   const compactCodex = logicalCount > budget && codexWindowData.length === 2;
   const afterCodex = logicalCount - (compactCodex ? 1 : 0);
   const stillOverflows = afterCodex > budget;
-  // WHICH Claude readings share a key when the strip is one short. 5H is the
+  // Weekly readings always share one key. 5H is the
   // window that actually moves during a session — it is the reading a user
   // glances at — while 7D and the per-model weekly cap are both weekly and are
   // read together anyway. So the cap pairs with 7D and 5H keeps its full gauge,
   // rather than 5H+7D pairing and the cap taking a whole key to itself.
-  const pairScopedWith7D = stillOverflows && scopedTank != null && claudeWindows.length === 2;
+  const pairScopedWith7D = pairedWeekly;
   const compactClaude = stillOverflows && !pairScopedWith7D && claudeWindows.length === 2;
   // Third step of the same cascade: with all three providers live the strip is
   // 6 logical readings on 3 keys, and every provider compacts to one pair tile
   // — nothing is dropped, each key keeps one provider's two windows.
-  const afterClaude = afterCodex - ((compactClaude || pairScopedWith7D) ? 1 : 0);
+  const afterClaude = afterCodex - (compactClaude ? 1 : 0);
   const compactZai = afterClaude > budget && zaiWindowData.length === 2;
   // Seven readings (Claude + its scoped cap, Codex, z.ai) need one
   // three-row Claude tile at the tightest budget; never truncate a provider.
@@ -630,16 +617,24 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   // Order is `USAGE_STRIP_ORDER` (Claude → scoped cap → Codex → z.ai →
   // credits) and is the same whether or not the cap is currently binding:
   // `active` drives the ramp, never the seat. See `scopedLimitClaimsUsageKey`.
-  const tiles: SessionDeckCell[] = compactAllClaude && scopedTank
-    ? [{ svg: renderUsagePairGauge('claude', claudeWindows.length === 2
-      ? [claudeWindows[0], claudeWindows[1], scopedTank] : [claudeWindows[0], scopedTank]), action }]
-    : pairScopedWith7D && scopedTank
-    ? [
-        { svg: renderUsageGauge(claudeWindows[0]), action },
-        { svg: renderUsagePairGauge('claude', [claudeWindows[1], scopedTank]), action },
-      ]
-    : cellsFor('claude', claudeWindows, compactClaude);
-  if (scopedTile && !pairScopedWith7D && !compactAllClaude) tiles.push(scopedTile);
+  const weekly = claudeWindows.find(w => w.window === '7d');
+  const selectedWeekly = claudeWeeklyReadings(weekly, scopedTank, weeklyMode);
+  const weeklyAction: DeckAction = scopedTank && weekly ? { kind: 'weekly-mode' } : action;
+  const renderReadings = (windows: UsageTankData[], press: DeckAction): SessionDeckCell => ({
+    svg: windows.length === 3 ? renderUsagePairGauge('claude', [windows[0], windows[1], windows[2]])
+      : windows.length === 2 ? renderUsagePairGauge('claude', [windows[0], windows[1]])
+      : renderUsageGauge(windows[0]),
+    action: press,
+  });
+  const five = claudeWindows.find(w => w.window === '5h');
+  const tiles: SessionDeckCell[] = [];
+  if (compactAllClaude || compactClaude) {
+    const readings = [...(five ? [five] : []), ...selectedWeekly];
+    if (readings.length) tiles.push(renderReadings(readings, weeklyAction));
+  } else {
+    if (five) tiles.push({ svg: renderUsageGauge(five), action });
+    if (selectedWeekly.length) tiles.push(renderReadings(selectedWeekly, weeklyAction));
+  }
   tiles.push(...cellsFor('codex', codexWindowData, compactCodex));
   tiles.push(...cellsFor('zai', zaiWindowData, compactZai));
   if (lunaTile) tiles.push(lunaTile);
@@ -832,6 +827,7 @@ export function buildLayoutMap(stateEvt: any, animFrame = 0, animated = false): 
 export type DeckAction =
   | { kind: 'open'; sessionId: string }   // enter detail (+ focus_session)
   | { kind: 'back' }                      // return to list
+  | { kind: 'weekly-mode' }              // cycle 7D + scoped / 7D / scoped
   | { kind: 'page'; delta: number }       // paginate current view
   | { kind: 'command'; command: ButtonCommand }
   | { kind: 'launch' }                    // daemon down → open the companion app locally
@@ -860,6 +856,7 @@ export interface DeckView {
    * consumers keep the full grid for sessions.
    */
   showUsage?: boolean;
+  claudeWeeklyMode?: ClaudeWeeklyMode;
 }
 
 /** Row-major position order ("0_0","1_0",…,"4_2"). */
@@ -1032,7 +1029,7 @@ function buildList(
     // window per key instead of compacted pairs. The growth never takes a key
     // from a session — `spare` is computed AFTER the roster, and when sessions
     // overflow there is no spare by construction.
-    const stripTiles = buildUsageTiles(state);
+    const stripTiles = buildUsageTiles(state, undefined, view.claudeWeeklyMode);
     const maxReserve = Math.max(0, slots.length - 1);
     const preferred = sortPositions(USAGE_PREFERRED_POS.filter((p) => slots.includes(p)));
     const stripCount = Math.min(stripTiles.length, USAGE_PREFERRED_POS.length, maxReserve);
@@ -1041,7 +1038,7 @@ function buildList(
     const budget = spare > 0
       ? Math.min(stripTiles.length + spare, maxReserve)
       : USAGE_PREFERRED_POS.length;
-    const usageTiles = spare > 0 ? buildUsageTiles(state, budget) : stripTiles;
+    const usageTiles = spare > 0 ? buildUsageTiles(state, budget, view.claudeWeeklyMode) : stripTiles;
     const reserveCount = Math.min(usageTiles.length, budget, maxReserve);
     // Fill the strip from its RIGHT end so a missing tile frees the LEFTMOST key
     // (which flows back to sessions) and the gauges stay flush against the clock

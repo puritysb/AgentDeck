@@ -368,6 +368,7 @@ connMgr.on('usage_update', (ev: UsageEvent) => {
     extraUsageMonthlyLimit: ev.extraUsageMonthlyLimit,
     extraUsageUsedCredits: ev.extraUsageUsedCredits,
     subscriptions: ev.subscriptions,
+    antigravityStatus: ev.antigravityStatus,
     usageStale: ev.usageStale,
   };
   // Codex rate limits (primary≈5h, secondary≈7d) ride alongside the Claude

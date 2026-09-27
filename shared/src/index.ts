@@ -48,3 +48,5 @@ export * from "./usage-presentation.js";
 export * from "./collaboration-presentation.js";
 
 export * from './usage-severity.js';
+
+export * from './claude-weekly-view.js';

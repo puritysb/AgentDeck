@@ -161,6 +161,15 @@ percentage plus rail within the existing 32×8 footprint (`LU` abbreviates
 Luna so even `100%` fits). A remaining-reserve
 rail fills by remaining capacity, while its color follows consumed capacity.
 
+Stream Deck and D200H keep Claude's weekly account quota and worst per-model
+weekly cap (for example Fable) on **one key**, including when spare keys exist.
+Pressing that key cycles **7D + cap → 7D → cap**; the selection persists locally.
+If either reading is absent, show the available one without fabricating zero.
+SD+ rotation offers both **5H + 7D** and **5H + 7D + cap**, plus individual-window
+views. E2/E3 provider selections are independent, so selecting a subscription
+never moves the other dial. Antigravity is selectable when a confirmed plan is
+present, as a subscription card with no percentage or backend credit counter.
+
 Implementation: `shared/src/usage-severity.ts` consumes the color-token bindings
 and owns the boundaries. `pnpm generate-usage-severity` emits the C++, Swift and
 Kotlin mirrors; the shared regression tests gate boundaries, contrast and

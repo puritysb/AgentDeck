@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deckSignature } from '../deck-signature.js';
+import { deckSignature, deckViewSignature } from '../deck-signature.js';
 
 /**
  * The signature exists to skip repaints. Its only failure mode is a
@@ -77,5 +77,23 @@ describe('D200H deckSignature — every render-affecting change must be visible'
     })).not.toBe(deckSignature({
       ...base, codexRateLimits: { lunaReserve: { usedPercent: 12, available: true } },
     }));
+  });
+});
+
+describe('local weekly preference and quota-only repaint', () => {
+  it('invalidates for every weekly view and changed key placement', () => {
+    const modes = ['both', '7d', 'scoped'] as const;
+    const signatures = modes.map(claudeWeeklyMode => deckViewSignature({}, { mode: 'list', claudeWeeklyMode }, ['0_2']));
+    expect(new Set(signatures).size).toBe(3);
+    expect(signatures[0]).not.toBe(deckViewSignature({}, { mode: 'list' }, ['0_2', '1_2']));
+    expect(deckViewSignature({}, { mode: 'list' }, ['0_2', '1_2'])).toBe(deckViewSignature({}, { mode: 'list' }, ['1_2', '0_2']));
+  });
+  it('redraws Fable-only percent, binding and reset changes', () => {
+    const cap = { label: 'Fable', percent: 82, active: false, resetsAt: '2099-01-01' };
+    const initial = deckSignature({ scopedLimits: [cap] });
+    for (const patch of [{ percent: 83 }, { active: true }, { resetsAt: '2099-01-02' }]) {
+      expect(deckSignature({ scopedLimits: [{ ...cap, ...patch }] })).not.toBe(initial);
+    }
+    expect(deckSignature({ scopedLimits: [] })).not.toBe(initial);
   });
 });

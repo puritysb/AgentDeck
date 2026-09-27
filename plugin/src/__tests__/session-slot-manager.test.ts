@@ -952,26 +952,26 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
     expect(manager.getSlotConfig(11, SD_CLASSIC_LAYOUT)).toMatchObject({ type: 'usage', usageAgent: 'claude' });
   });
 
-  it('gives the key Codex vacated to the scoped cap on a free ChatGPT tier', () => {
+  it('shares the weekly key with Fable even when there is spare capacity', () => {
     const tiles = gauges({
       fiveHourPercent: 42, sevenDayPercent: 17,
       codexRateLimits: CODEX_FREE, scopedLimits: [FABLE_IDLE],
     });
-    expect(tiles).toHaveLength(3);
+    expect(tiles).toHaveLength(2);
     expect(tiles.some((t) => t.usageAgent === 'codex')).toBe(false);
-    expect(tiles[2]).toMatchObject({ usageLabel: 'FABLE', usagePercent: 61, usageInactive: true });
+    expect(tiles[1].usageWeekly?.[1]).toMatchObject({ label: 'FABLE', percent: 61, inactive: true });
   });
 
-  it('shows Claude 5H, 7D, active Fable, and Codex weekly together on 4 reserved keys', () => {
+  it('shows Claude 5H, 7D, active Fable, and Codex weekly together on 3 reserved keys', () => {
     const tiles = gauges({
       fiveHourPercent: 42, sevenDayPercent: 17,
       codexRateLimits: CODEX_WEEKLY, scopedLimits: [FABLE],
     });
     // On 15+ key Stream Deck devices, up to 4 keys are reserved.
     // Claude 5H, 7D, Fable, and Codex 7D (weekly) all show together across 4 keys.
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE', '7D']);
-    expect(tiles[2]).toMatchObject({ usageInactive: false, usageAgent: 'claude' });
-    expect(tiles[3]).toMatchObject({ usageAgent: 'codex' });
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', '7D']);
+    expect(tiles[1].usageWeekly?.[1]).toMatchObject({ inactive: false, agent: 'claude' });
+    expect(tiles[2]).toMatchObject({ usageAgent: 'codex' });
   });
 
   it('seats five readings canonically across the whole bottom row', () => {
@@ -992,12 +992,12 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
     const page = () => Array.from({ length: 15 }, (_, i) => manager.getSlotConfig(i, SD_CLASSIC_LAYOUT))
       .filter((c) => c.type === 'usage')
       .map((c) => c.usageLabel);
-    expect(page()).toEqual(['5H', '7D', 'FABLE', '5H', '7D']);
+    expect(page()).toEqual(['5H', '7D', '5H', '7D']);
     manager.cycleUsagePage(SD_CLASSIC_LAYOUT);
-    expect(page()).toEqual(['5H', '7D', 'FABLE', '5H', '7D']);
+    expect(page()).toEqual(['5H', '7D', '5H', '7D']);
   });
 
-  it('keeps both Codex windows beside active Fable across five keys', () => {
+  it('keeps both Codex windows beside active Fable across four keys', () => {
     const tiles = gauges({
       fiveHourPercent: 42, sevenDayPercent: 17,
       codexRateLimits: {
@@ -1006,7 +1006,7 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
       },
       scopedLimits: [FABLE],
     });
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE', '5H', '7D']);
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', '5H', '7D']);
   });
 
   it('seats an inactive cap where the active one sat — ramp changes, position does not', () => {
@@ -1024,12 +1024,12 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
       fiveHourPercent: 42, sevenDayPercent: 17,
       codexRateLimits: CODEX_WEEKLY, scopedLimits: [FABLE],
     });
-    expect(idle.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE', '7D']);
+    expect(idle.map((t) => t.usageLabel)).toEqual(['5H', '7D', '7D']);
     expect(idle.map((t) => t.usageLabel)).toEqual(active.map((t) => t.usageLabel));
     expect(idle.map((t) => t.usageAgent)).toEqual(active.map((t) => t.usageAgent));
-    expect(idle[2]).toMatchObject({ usageLabel: 'FABLE', usageInactive: true });
-    expect(active[2]).toMatchObject({ usageLabel: 'FABLE', usageInactive: false });
-    expect(idle[3]).toMatchObject({ usageAgent: 'codex' });
+    expect(idle[1].usageWeekly?.[1]).toMatchObject({ label: 'FABLE', inactive: true });
+    expect(active[1].usageWeekly?.[1]).toMatchObject({ label: 'FABLE', inactive: false });
+    expect(idle[2]).toMatchObject({ usageAgent: 'codex' });
   });
 
   it('reserves no key for a Claude window the API did not report', () => {
@@ -1059,7 +1059,7 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
     expect(tiles).toHaveLength(0);
   });
 
-  it('shows Claude 5H, 7D, Fable, and a lone 30-day Codex window together across 4 reserved keys', () => {
+  it('shows Claude 5H, 7D, Fable, and a lone 30-day Codex window together across 3 reserved keys', () => {
     const tiles = gauges({
       fiveHourPercent: 45, sevenDayPercent: 65,
       codexRateLimits: {
@@ -1069,11 +1069,11 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
       },
       scopedLimits: [{ label: 'Fable', percent: 76, active: true }],
     });
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE', '30D']);
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', '30D']);
   });
 
   it('shows the scoped cap for a Codex-less, Claude-only user too', () => {
     const tiles = gauges({ fiveHourPercent: 42, sevenDayPercent: 17, scopedLimits: [FABLE] });
-    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D', 'FABLE']);
+    expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D']);
   });
 });

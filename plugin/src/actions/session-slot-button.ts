@@ -1,3 +1,4 @@
+import { renderUsagePairGauge, isClaudeWeeklyMode } from '@agentdeck/shared';
 /**
  * SessionSlotButton — v4 dynamic session-per-button action.
  *
@@ -224,6 +225,7 @@ function layoutForEvent(ev: WillAppearEvent | KeyDownEvent): DeckLayout {
     columns: Number.isFinite(columns) && columns > 0 ? columns : 4,
     rows: Number.isFinite(rows) && rows > 0 ? rows : 2,
     keyCount: Math.max(1, (Number.isFinite(columns) && columns > 0 ? columns : 4) * (Number.isFinite(rows) && rows > 0 ? rows : 2)),
+    deviceId: device?.id,
     family: familyForDeviceType(deviceTypeFromUnknown(device?.type)),
   };
 }
@@ -370,7 +372,10 @@ function renderSlotSvg(config: SessionSlotConfig, _slot: number, layout?: DeckLa
     case 'next-page':
       return renderNextPageButton(config.label ?? '');
 
-    case 'usage':
+    case 'usage': {
+      const rows = config.usageWeekly?.map(g => ({ ...g, usedPercent: g.percent }));
+      if (rows?.length === 2) return renderUsagePairGauge('claude', [rows[0], rows[1]]);
+      if (rows?.length === 1) return renderUsageGauge(rows[0]);
       return renderUsageGauge({
         agent: config.usageAgent ?? 'claude',
         window: config.usageWindow ?? '5h',
@@ -383,6 +388,7 @@ function renderSlotSvg(config: SessionSlotConfig, _slot: number, layout?: DeckLa
         luna: config.usageLuna,
       });
 
+    }
     case 'usage-page':
       return renderNextPageButton(config.label ?? '');
 
@@ -408,6 +414,8 @@ export class SessionSlotButtonAction extends SingletonAction {
     const layout = layoutForEvent(ev);
     const slot = row * layout.columns + col;
     slotMap.set(id, { slot, layout });
+    const saved = ev.payload.settings?.claudeWeeklyMode;
+    if (isClaudeWeeklyMode(saved)) manager.setWeeklyMode(saved, layout);
 
     dlog('SesSlot', `willAppear: id=${id.slice(-6)} slot=${slot} (row=${row} col=${col} grid=${layout.columns}x${layout.rows}) daemon=${daemonConnected}`);
 
@@ -442,6 +450,19 @@ export class SessionSlotButtonAction extends SingletonAction {
     if (result.action === 'next-page') {
       manager.nextPage(layout);
       refreshAll();
+      return;
+    }
+
+    if (result.action === 'cycle-weekly-mode') {
+      const mode = manager.cycleWeeklyMode(layout);
+      refreshAll();
+      // Save on every placed key of this device: a quota can move when the
+      // roster changes, and an old key must not restore an obsolete mode.
+      await Promise.all([...slotMap.entries()].filter(([, entry]) => entry.layout.deviceId === layout.deviceId)
+        .map(async ([id]) => {
+          const key = streamDeck.actions.getActionById(id);
+          if (key) await key.setSettings({ ...await key.getSettings(), claudeWeeklyMode: mode });
+        }));
       return;
     }
 

@@ -38,17 +38,18 @@ export function deckSignature(ev: Record<string, unknown>): string {
   // 5H/7D quota rides usage_update, not state_update — without it here a
   // usage-only change would compare equal and the pinned gauges would never
   // refresh (scheduleRender fires but renderAll early-returns on equal sig).
-  const cx = ev.codexRateLimits as {
-    primary?: { usedPercent?: number };
-    secondary?: { usedPercent?: number };
-    lunaReserve?: { usedPercent?: number; regularResetsAt?: string; resetsAt?: string; available?: boolean };
-  } | undefined;
-  const usage = `${ev.fiveHourPercent ?? ''}:${ev.sevenDayPercent ?? ''}:${ev.usageKnown ?? ''}`
-    + `:${cx?.primary?.usedPercent ?? ''}:${cx?.secondary?.usedPercent ?? ''}`
-    // Luna replaces the Codex gauge on D200H when the reserve is active. It
-    // must invalidate the raster whenever it appears, changes, or disappears.
-    + `:${cx?.lunaReserve?.usedPercent ?? ''}:${cx?.lunaReserve?.regularResetsAt ?? cx?.lunaReserve?.resetsAt ?? ''}:${cx?.lunaReserve?.available ?? ''}`;
+  const usage = JSON.stringify([
+    ev.fiveHourPercent, ev.sevenDayPercent, ev.usageKnown,
+    ev.fiveHourResetsAt, ev.sevenDayResetsAt, ev.scopedLimits,
+    ev.codexRateLimits, ev.zaiRateLimits,
+  ]);
   return [ev.state, ev.mode, ev.focusedSessionId ?? ev.sessionId ?? '', ev.requestId ?? '',
     ev.promptType ?? '', ev.currentTool ?? '', ev.toolInput ?? '', ev.modelName ?? '',
     ev.question ?? '', ev.navigable ?? '', ev.cursorIndex ?? '', opts, usage, sessions].join('|');
+}
+
+/** Local preferences and placed keys change pixels even without a daemon tick. */
+export function deckViewSignature(ev: Record<string, unknown>, view: import('@agentdeck/shared').DeckView, positions: string[]): string {
+  return JSON.stringify([view.mode, view.openSessionId, view.page ?? 0,
+    view.voiceState ?? 'idle', view.claudeWeeklyMode ?? 'both', [...positions].sort()]) + deckSignature(ev);
 }

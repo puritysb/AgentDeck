@@ -1,3 +1,4 @@
+import { formatAntigravityPlanShort, type AntigravityStatusInfo } from '@agentdeck/shared';
 import { selectedLunaReserve } from '@agentdeck/shared';
 /**
  * Usage data types and shared formatting helpers.
@@ -24,6 +25,7 @@ export interface UsageModeData {
   extraUsageUtilization?: number;
   extraUsageMonthlyLimit?: number;
   extraUsageUsedCredits?: number;
+  antigravityStatus?: AntigravityStatusInfo;
   subscriptions?: { name: string; until?: string }[];
   // True when upstream daemon couldn't produce a live usage fetch (App Store
   // sandbox without a CLI relay, OAuth missing, etc.). Plugin treats stale the
@@ -246,12 +248,10 @@ export function buildCodexUsageEncoder(data: UsageModeData, hasReceivedData: boo
 }
 
 // ─── Provider pages (E2 auto / E3 cycle) ────────────────────────────────────
-// Owner direction (#349): E2 shows the most-recently-used upstream
-// automatically, E3 cycles the providers, and the two dials never show the
-// same provider at once when the live set allows otherwise.
+// E2 and E3 select providers independently; duplicate selections are allowed.
 
 /** Usage providers the dials can page through. */
-export type UsageProviderId = 'claude' | 'codex' | 'zai';
+export type UsageProviderId = 'claude' | 'codex' | 'zai' | 'antigravity';
 
 /**
  * Build the z.ai usage encoder (#348). Same tank grammar; the long window
@@ -287,6 +287,24 @@ export function buildZaiUsageEncoder(data: UsageModeData, hasReceivedData: boole
   };
 }
 
+/** Confirmed subscription only; backend credits are deliberately never a quota. */
+function antigravityPlan(data: UsageModeData): { name: string; until?: string } | undefined {
+  if (data.antigravityStatus?.planName?.trim()) return { name: data.antigravityStatus.planName, until: data.antigravityStatus.subscriptionActiveUntil };
+  return data.subscriptions?.find(s => /^(Google AI|Antigravity|AGY)\b/i.test(s.name.trim()) && !!s.name.trim());
+}
+export function buildAntigravityEncoder(data: UsageModeData): UsageEncoderData {
+  const sub = antigravityPlan(data);
+  const plan = formatAntigravityPlanShort(sub?.name)?.replace(/^AGY\s*/, '');
+  return {
+    agent: 'antigravity', title: 'ANTIGRAVITY',
+    fiveHour: { label: '5H', usedPercent: 0, known: false },
+    sevenDay: { label: '7D', usedPercent: 0, known: false },
+    note: sub ? undefined : 'No subscription data',
+    subscription: sub ? { label: 'SUBSCRIPTION', value: plan || 'Plan confirmed',
+      sub: sub.until ? `Until ${formatRenewalDate(sub.until)}` : 'Usage unavailable' } : undefined,
+  };
+}
+
 /** Providers that currently have a page worth showing. Claude needs live
  *  (non-stale) quota numbers; the block providers need their block present. */
 export function availableUsageProviders(data: UsageModeData): UsageProviderId[] {
@@ -295,6 +313,7 @@ export function availableUsageProviders(data: UsageModeData): UsageProviderId[] 
   if (!stale && (data.fiveHourPercent != null || data.sevenDayPercent != null)) out.push('claude');
   if (data.codexRateLimits != null) out.push('codex');
   if (data.zaiRateLimits != null) out.push('zai');
+  if (antigravityPlan(data)) out.push('antigravity');
   return out;
 }
 
@@ -304,6 +323,7 @@ export function buildProviderUsageEncoder(
   data: UsageModeData,
   hasReceivedData: boolean,
 ): UsageEncoderData {
+  if (provider === 'antigravity') return buildAntigravityEncoder(data);
   if (provider === 'codex') return buildCodexUsageEncoder(data, hasReceivedData);
   if (provider === 'zai') return buildZaiUsageEncoder(data, hasReceivedData);
   return buildClaudeUsageEncoder(data, hasReceivedData);
@@ -337,23 +357,8 @@ export function noteUsageProviderActivity(
   providerActivity[provider] = Math.max(0, recencyScore);
 }
 
-/**
- * The auto-selection for E2 — the "what am I using now" dial (#349/#348).
- *
- * E2 follows the user's most-recently-used upstream automatically. E3 is the
- * user's sticky "what do I want to watch" dial (touch-tap to pin). The two
- * roles are deliberately asymmetric:
- *
- * - Unpinned E2 AUTO-adapts: it re-selects on every roster tick and
- *   avoids E3's current page when the ranking allows, so the two dials show
- *   different providers by default — but E2 is the one that yields, not E3.
- * - E3 is STICKY (user-chosen): once the user touch-taps to a provider page,
- *   it stays there through E2 re-selections. Only the user's next tap moves it.
- *
- * When both would land on the same provider and no alternative exists, both
- * show it — better one useful page than one forced-empty.
- */
-export function pickAutoUsageProvider(data: UsageModeData, avoid?: UsageProviderId): UsageProviderId {
+/** Optional activity-driven E2 selection, enabled by a long touch. */
+export function pickAutoUsageProvider(data: UsageModeData): UsageProviderId {
   const available = availableUsageProviders(data);
   if (available.length === 0) return 'claude';
   const ranked = [...available].sort((a, b) => {
@@ -361,14 +366,10 @@ export function pickAutoUsageProvider(data: UsageModeData, avoid?: UsageProvider
     if (proc !== 0) return proc;
     return (providerActivity[b] ?? 0) - (providerActivity[a] ?? 0);
   });
-  // E2 yields to E3: avoid the sticky dial's page when an alternative exists.
-  if (avoid && ranked.length > 1 && ranked[0] === avoid) return ranked[1];
   return ranked[0];
 }
 
-// The two dials' live selections, shared so each can honour the
-// never-same-provider rule. E2 supports automatic or manual choice; E3 owns its entry
-// (touch-tap cycle).
+// Each dial owns its provider selection.
 let e2Provider: UsageProviderId = 'claude';
 let e3Provider: UsageProviderId = 'codex';
 export function getUsageDialSelections(): { e2: UsageProviderId; e3: UsageProviderId } {
@@ -377,7 +378,7 @@ export function getUsageDialSelections(): { e2: UsageProviderId; e3: UsageProvid
 export function setE2UsageProvider(p: UsageProviderId): void { e2Provider = p; }
 export function setE3UsageProvider(p: UsageProviderId): void { e3Provider = p; }
 
-let e2Pinned = false;
+let e2Pinned = true;
 /** Persist explicit provider choices; automatic E2 follows current activity. */
 export function usageDialPreferences(): { e2: UsageProviderId | 'auto'; e3: UsageProviderId } {
   return { e2: e2Pinned ? e2Provider : 'auto', e3: e3Provider };
@@ -386,7 +387,7 @@ export function usageDialPreferences(): { e2: UsageProviderId | 'auto'; e3: Usag
 export function restoreUsageDialPreferences(value: unknown): void {
   if (!value || typeof value !== 'object') return;
   const prefs = value as Record<string, unknown>;
-  const isProvider = (p: unknown): p is UsageProviderId => p === 'claude' || p === 'codex' || p === 'zai';
+  const isProvider = (p: unknown): p is UsageProviderId => p === 'claude' || p === 'codex' || p === 'zai' || p === 'antigravity';
   e2Pinned = isProvider(prefs.e2);
   if (isProvider(prefs.e2)) e2Provider = prefs.e2;
   if (isProvider(prefs.e3)) e3Provider = prefs.e3;
@@ -397,21 +398,12 @@ export function onUsageDialSelectionChanged(listener: () => void): void {
   dialSelectionListeners.add(listener);
 }
 
-/** Explicit choice wins; move the other dial to the vacated provider on collision. */
+/** Each dial owns its choice. Duplicate providers are intentional and allowed. */
 export function selectUsageDialProvider(dial: 'e2' | 'e3', provider: UsageProviderId, data: UsageModeData): void {
   const available = availableUsageProviders(data);
   if (!available.includes(provider)) return;
-  const previous = dial === 'e2' ? e2Provider : e3Provider;
-  const alternative = available.find(p => p === previous && p !== provider)
-    ?? available.find(p => p !== provider) ?? provider;
-  if (dial === 'e2') {
-    e2Pinned = true;
-    e2Provider = provider;
-    if (e3Provider === provider) e3Provider = alternative;
-  } else {
-    e3Provider = provider;
-    if (e2Provider === provider) e2Provider = alternative;
-  }
+  if (dial === 'e2') { e2Pinned = true; e2Provider = provider; }
+  else e3Provider = provider;
   for (const listener of dialSelectionListeners) listener();
 }
 
@@ -419,11 +411,8 @@ export function resolveE2UsageProvider(data: UsageModeData): UsageProviderId {
   const available = availableUsageProviders(data);
   // Startup/disconnect carries no quota yet; retain the saved manual choice.
   if (available.length === 0) return e2Provider;
-  if (e2Pinned && available.includes(e2Provider) && e2Provider === e3Provider && available.length > 1) {
-    e3Provider = available.find(p => p !== e2Provider)!;
-  }
   if (!e2Pinned || !available.includes(e2Provider)) {
-    e2Provider = pickAutoUsageProvider(data, e3Provider);
+    e2Provider = pickAutoUsageProvider(data);
   }
   return e2Provider;
 }
