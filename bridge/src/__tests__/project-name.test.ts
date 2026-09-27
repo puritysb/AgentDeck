@@ -11,6 +11,7 @@ import {
   gitToplevelBasename,
   gitToplevelBasenameFs,
   nearestPackageJsonName,
+  hookPayloadProjectName,
 } from '../utils/project-name.js';
 
 describe('resolveProjectName', () => {
@@ -50,6 +51,12 @@ describe('resolveProjectName', () => {
     expect(resolveProjectNameFromCwdCached(worktree)).toBe('Main Repo · task');
     expect(resolveProjectName({ cwd: worktree, envOverride: 'Explicit' })).toBe('Explicit');
     expect(resolveProjectName({ cwd: repo })).toBe('Main Repo');
+    // Timeline rows built from hooks must name the worktree the way its session
+    // row does — the bare folder ("task") split one session across two labels.
+    expect(hookPayloadProjectName({ cwd: worktree }, worktree)).toBe('Main Repo · task');
+    expect(hookPayloadProjectName({ project_name: 'Explicit' }, worktree)).toBe('Explicit');
+    expect(hookPayloadProjectName({}, '/')).toBeUndefined();
+    expect(hookPayloadProjectName({}, '')).toBeUndefined();
   });
 
   it('falls back to nearest package.json name when no git', () => {

@@ -373,7 +373,8 @@ final class OctopusCreature: Creature {
             cx: cx,
             bodyTopY: cy - bodyRadius * 0.583,
             bodyMetric: terrariumNameTagMetric(canvasWidth: canvasWidth, scale: scale),
-            backgroundColor: TerrariumColors.claudeNameBg
+            backgroundColor: TerrariumColors.claudeNameBg,
+            rank: visualState == .asking ? .awaiting : visualState == .working ? .working : .idle
         )
     }
 }

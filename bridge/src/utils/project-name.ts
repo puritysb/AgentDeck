@@ -86,6 +86,18 @@ export function resolveProjectNameFromCwdCached(cwd: string): string {
   return name;
 }
 
+/**
+ * Project label for a hook payload — the same resolver session rows use, so a
+ * timeline row and its session row name a linked worktree or a subdirectory
+ * identically (`AgentDeck · <worktree>`, never the bare folder). An explicit
+ * `project_name` still wins; the filesystem root has no label.
+ */
+export function hookPayloadProjectName(json: Record<string, unknown>, cwd: string): string | undefined {
+  if (typeof json.project_name === 'string' && json.project_name) return json.project_name;
+  if (!cwd || !cwd.split('/').some(Boolean)) return undefined;
+  return resolveProjectNameFromCwdCached(cwd);
+}
+
 /** Ancestor walk for a `.git` entry; preserves linked-worktree context. */
 export function gitToplevelBasenameFs(cwd: string, compact = false): string | null {
   let dir = cwd;

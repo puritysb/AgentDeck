@@ -37,6 +37,7 @@ enum TerrariumRules {
     static let nativeLabelYieldBackingOpacity: Float = 0.24
     static let nativeLabelIdleTextOpacity: Float = 0.8
     static let nativeLabelYieldTextOpacity: Float = 0.55
+    static let nativeLabelYieldSignalOpacity: Float = 0.5
     static let nativeCameraFov: Float = 38.0
     static let nativeCameraWideFov: Float = 32.0
     static let nativeViewingDistance: Float = 0.82

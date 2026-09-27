@@ -244,7 +244,8 @@ final class CloudCreature: Creature {
             cx: cx,
             bodyTopY: cy - bodyW * 0.6,
             bodyMetric: terrariumNameTagMetric(canvasWidth: canvasWidth, scale: scale),
-            backgroundColor: TerrariumColors.cloudNameBg
+            backgroundColor: TerrariumColors.cloudNameBg,
+            rank: visualState == .waiting ? .awaiting : visualState == .pulsing ? .working : .idle
         )
     }
 }

@@ -142,43 +142,100 @@ func terrariumNameTagMetric(canvasWidth: CGFloat, scale: Float) -> CGFloat {
     canvasWidth * TerrariumNameTagStyle.referenceBodyWidthFraction * CGFloat(scale)
 }
 
+/// Frame-scoped queue for the 2D terrarium's name tags (DESIGN.md §6.4).
+///
+/// Each creature used to paint its tag inside its own `draw`, so a tag's
+/// z-order was the creature order and a front tag could sit over any resident
+/// behind it. While a layer is active, `drawTerrariumNameTag` only records the
+/// request; the renderer resolves every tag with the same `ResidentLabelLayout`
+/// rule the 3D aquarium uses and paints them after all creatures.
+final class TerrariumNameTagLayer {
+    struct Request {
+        let name: String
+        let cx: CGFloat
+        let bodyTopY: CGFloat
+        let bodyMetric: CGFloat
+        let backgroundColor: Color
+        let rank: ResidentLabelLayout.Rank
+    }
+
+    /// Canvas renders synchronously on one thread; the layer lives for one
+    /// `TerrariumRenderer.draw` call and is cleared before it returns.
+    nonisolated(unsafe) static var active: TerrariumNameTagLayer?
+    private(set) var requests: [Request] = []
+
+    func append(_ request: Request) { requests.append(request) }
+
+    /// Resolves and paints every queued tag, lowest priority first.
+    func flush(context: inout GraphicsContext) {
+        guard !requests.isEmpty else { return }
+        var geometry: [(request: Request, full: CGRect, compact: CGRect, body: CGRect)] = []
+        for request in requests {
+            let full = terrariumNameTagRect(context: context, request: request, compact: false)
+            let compact = terrariumNameTagRect(context: context, request: request, compact: true)
+            let body = CGRect(x: request.cx - request.bodyMetric * 0.7, y: request.bodyTopY,
+                              width: request.bodyMetric * 1.4, height: request.bodyMetric * 1.2)
+            geometry.append((request, full, compact, body))
+        }
+        func box(_ r: CGRect) -> ResidentLabelLayout.Box {
+            .init(left: Float(r.minX), top: Float(r.minY), right: Float(r.maxX), bottom: Float(r.maxY))
+        }
+        let inputs = geometry.enumerated().map { index, g in
+            ResidentLabelLayout.Input(id: String(index), rank: g.request.rank, body: box(g.body),
+                                      fullTag: box(g.full), compactTag: box(g.compact))
+        }
+        for decision in ResidentLabelLayout.resolve(inputs) where decision.mode != .hidden {
+            guard let index = Int(decision.id) else { continue }
+            let g = geometry[index]
+            let compact = decision.mode == .compact
+            let rect = compact ? g.compact : g.full
+            context.fill(Path(roundedRect: rect, cornerRadius: TerrariumNameTagStyle.cornerRadius),
+                         with: .color(g.request.backgroundColor.opacity(Double(decision.backingOpacity))))
+            let text = terrariumNameTagText(g.request, compact: compact)
+                .foregroundColor(TerrariumColors.hudText.opacity(0.86 * Double(decision.textOpacity)))
+            context.draw(context.resolve(text), at: CGPoint(x: rect.midX, y: rect.midY))
+        }
+        requests.removeAll()
+    }
+}
+
+private func terrariumNameTagText(_ request: TerrariumNameTagLayer.Request, compact: Bool) -> Text {
+    let fontSize = request.bodyMetric * TerrariumNameTagStyle.fontRatio * (compact ? 0.85 : 1)
+    return Text(request.name).font(.system(size: fontSize, weight: .medium, design: .default))
+}
+
+private func terrariumNameTagRect(context: GraphicsContext, request: TerrariumNameTagLayer.Request, compact: Bool) -> CGRect {
+    let metric = request.bodyMetric
+    let padding = metric * TerrariumNameTagStyle.paddingRatio * (compact ? 0.7 : 1)
+    let textSize = context.resolve(terrariumNameTagText(request, compact: compact)).measure(
+        in: CGSize(width: TerrariumNameTagStyle.textMeasureWidth, height: TerrariumNameTagStyle.textMeasureHeight))
+    let width = max(compact ? 0 : metric * TerrariumNameTagStyle.minWidthRatio, textSize.width + padding * 2)
+    let height = max(compact ? 0 : metric * TerrariumNameTagStyle.minHeightRatio, textSize.height + padding * 0.6)
+    // A compact chip hugs the body; the full tag keeps its gap above it.
+    let bottom = request.bodyTopY - metric * TerrariumNameTagStyle.gapRatio * (compact ? 0.3 : 1)
+    return CGRect(x: request.cx - width / 2, y: bottom - height, width: width, height: height)
+}
+
 func drawTerrariumNameTag(
     context: inout GraphicsContext,
     name: String,
     cx: CGFloat,
     bodyTopY: CGFloat,
     bodyMetric: CGFloat,
-    backgroundColor: Color
+    backgroundColor: Color,
+    rank: ResidentLabelLayout.Rank = .idle
 ) {
-    let tagBottomY = bodyTopY - bodyMetric * TerrariumNameTagStyle.gapRatio
-    let fontSize = bodyMetric * TerrariumNameTagStyle.fontRatio
-    let padding = bodyMetric * TerrariumNameTagStyle.paddingRatio
-
-    let text = Text(name)
-        .font(.system(size: fontSize, weight: .medium, design: .default))
-        .foregroundColor(TerrariumColors.hudText.opacity(0.86))
-    let resolved = context.resolve(text)
-    let textSize = resolved.measure(
-        in: CGSize(
-            width: TerrariumNameTagStyle.textMeasureWidth,
-            height: TerrariumNameTagStyle.textMeasureHeight
-        )
-    )
-    let tagWidth = max(bodyMetric * TerrariumNameTagStyle.minWidthRatio, textSize.width + padding * 2)
-    let tagHeight = max(bodyMetric * TerrariumNameTagStyle.minHeightRatio, textSize.height + padding * 0.6)
-
-    let backgroundRect = CGRect(
-        x: cx - tagWidth / 2,
-        y: tagBottomY - tagHeight,
-        width: tagWidth,
-        height: tagHeight
-    )
-    context.fill(
-        Path(roundedRect: backgroundRect, cornerRadius: TerrariumNameTagStyle.cornerRadius),
-        with: .color(backgroundColor)
-    )
-
-    context.draw(resolved, at: CGPoint(x: cx, y: tagBottomY - tagHeight / 2))
+    let request = TerrariumNameTagLayer.Request(name: name, cx: cx, bodyTopY: bodyTopY, bodyMetric: bodyMetric,
+                                                backgroundColor: backgroundColor, rank: rank)
+    if let layer = TerrariumNameTagLayer.active {
+        layer.append(request)
+        return
+    }
+    // No layer (a single-creature preview): paint in place, as before.
+    let rect = terrariumNameTagRect(context: context, request: request, compact: false)
+    context.fill(Path(roundedRect: rect, cornerRadius: TerrariumNameTagStyle.cornerRadius), with: .color(backgroundColor))
+    let text = terrariumNameTagText(request, compact: false).foregroundColor(TerrariumColors.hudText.opacity(0.86))
+    context.draw(context.resolve(text), at: CGPoint(x: rect.midX, y: rect.midY))
 }
 
 // MARK: - Layout

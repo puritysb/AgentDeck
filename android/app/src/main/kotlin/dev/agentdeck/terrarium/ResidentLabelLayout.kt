@@ -14,7 +14,8 @@ package dev.agentdeck.terrarium
  *    the roster still lists it. Any other colliding tag stays but yields.
  *  - A tag lying over another resident's body yields: its backing drops to
  *    [TerrariumRules.NATIVE_LABEL_YIELD_BACKING_OPACITY] so the body shows
- *    through, and an idle tag's text dims too.
+ *    through, its WORKING badge to [TerrariumRules.NATIVE_LABEL_YIELD_SIGNAL_OPACITY],
+ *    and an idle tag's text dims too.
  *
  * Pure geometry in screen pixels, so the rule is unit-testable off-device.
  */
@@ -40,6 +41,8 @@ internal data class ResidentLabelDecision(
     val mode: ResidentLabelMode,
     val backingAlpha: Float,
     val textAlpha: Float,
+    /** The WORKING badge and its ink — the state signal, faded only when yielding. */
+    val signalAlpha: Float = 1f,
 )
 
 internal const val LABEL_RANK_FOCUSED = 0
@@ -59,7 +62,7 @@ internal fun resolveResidentLabels(inputs: List<ResidentLabelInput>): List<Resid
         val box = if (compact) input.compactTag else input.fullTag
         val collides = placed.any { it.intersects(box) }
         if (collides && idle) {
-            return@map ResidentLabelDecision(input.id, ResidentLabelMode.HIDDEN, 0f, 0f)
+            return@map ResidentLabelDecision(input.id, ResidentLabelMode.HIDDEN, 0f, 0f, 0f)
         }
         placed += box
         val overBody = inputs.any { it.id != input.id && it.body.intersects(box) }
@@ -74,7 +77,8 @@ internal fun resolveResidentLabels(inputs: List<ResidentLabelInput>): List<Resid
             yielding -> TerrariumRules.NATIVE_LABEL_YIELD_TEXT_OPACITY
             else -> TerrariumRules.NATIVE_LABEL_IDLE_TEXT_OPACITY
         }
-        ResidentLabelDecision(input.id, if (compact) ResidentLabelMode.COMPACT else ResidentLabelMode.FULL, backing, text)
+        val signal = if (yielding) TerrariumRules.NATIVE_LABEL_YIELD_SIGNAL_OPACITY else 1f
+        ResidentLabelDecision(input.id, if (compact) ResidentLabelMode.COMPACT else ResidentLabelMode.FULL, backing, text, signal)
     }
     return decisions.asReversed()
 }

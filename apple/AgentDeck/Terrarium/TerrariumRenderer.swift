@@ -256,6 +256,12 @@ final class TerrariumRenderer {
         // hit testing, session selection, approval, or steering paths.
         drawSubagentOrbits(context: &context, size: size)
 
+        // Name tags are collected while creatures draw and painted once, in
+        // priority order, after the last creature (DESIGN.md §6.4).
+        let nameTags = TerrariumNameTagLayer()
+        TerrariumNameTagLayer.active = nameTags
+        defer { TerrariumNameTagLayer.active = nil }
+
         // Layer 7: Crayfish
         crayfish.draw(context: &context, size: size)
 
@@ -283,6 +289,10 @@ final class TerrariumRenderer {
         for k in kiroCreatures.values {
             k.draw(context: &context, size: size)
         }
+
+        // Layer 9.46: name tags, resolved together so none hides a resident.
+        TerrariumNameTagLayer.active = nil
+        nameTags.flush(context: &context)
 
         if includeHabitat {
             // Layer 9.5: Front-layer fish

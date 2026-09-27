@@ -86,6 +86,11 @@ final class AquariumResidents {
     weak var camera: PerspectiveCamera?
     private var aspect: Float = 1.6
     private var labelDecisions: [String: ResidentLabelLayout.Decision] = [:]
+    /// Tags draw in the resolved priority order, not RealityKit's depth order:
+    /// one sort group with a post-pass depth write lets a rear awaiting tag
+    /// paint over a nearer idle one.
+    private let labelSortGroup = ModelSortGroup(depthPass: .postPass)
+    private var labelDrawOrder: [String: Int] = [:]
     private var labelCompact: [String: Bool] = [:]
 
     func loadTemplates(_ library: Entity) {
@@ -256,21 +261,30 @@ final class AquariumResidents {
                 : item.activity == .working ? .working : .idle
             inputs.append(.init(id: item.id, rank: rank, body: bodyBox, fullTag: full, compactTag: compact))
         }
-        for decision in ResidentLabelLayout.resolve(inputs) {
+        for (drawIndex, decision) in ResidentLabelLayout.resolve(inputs).enumerated() {
             guard let resident = residents[decision.id],
                   let item = descriptors.first(where: { $0.id == decision.id }) else { continue }
             let compact = decision.mode == .compact
             if labelCompact[decision.id] != compact && decision.mode != .hidden {
                 rebuildLabel(for: item, on: resident, compact: compact)
             }
-            guard labelDecisions[decision.id] != decision, let label = resident.findEntity(named: "label") else { continue }
+            guard labelDecisions[decision.id] != decision || labelDrawOrder[decision.id] != drawIndex,
+                  let label = resident.findEntity(named: "label") else { continue }
             labelDecisions[decision.id] = decision
+            labelDrawOrder[decision.id] = drawIndex
             label.isEnabled = labelsVisible && decision.mode != .hidden
-            label.findEntity(named: "backing")?.components.set(OpacityComponent(opacity: decision.backingOpacity))
-            for name in ["title", "status"] {
-                // The working badge and its ink are the state signal and stay whole.
-                guard let text = label.findEntity(named: name), !(name == "status" && item.activity == .working) else { continue }
-                text.components.set(OpacityComponent(opacity: decision.textOpacity))
+            let working = item.activity == .working
+            // Each part's opacity and its place in the priority order.
+            let parts: [(name: String, opacity: Float)] = [
+                ("backing", decision.backingOpacity),
+                ("working-badge", decision.signalOpacity),
+                ("title", decision.textOpacity),
+                ("status", working ? decision.signalOpacity : decision.textOpacity),
+            ]
+            for (slot, part) in parts.enumerated() {
+                guard let entity = label.findEntity(named: part.name) else { continue }
+                entity.components.set(OpacityComponent(opacity: part.opacity))
+                entity.components.set(ModelSortGroupComponent(group: labelSortGroup, order: Int32(drawIndex * parts.count + slot)))
             }
         }
     }

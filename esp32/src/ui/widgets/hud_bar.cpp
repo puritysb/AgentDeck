@@ -348,17 +348,19 @@ static uint32_t ips10AgentColor(const char* agentType) {
 }
 // D1 "Tide Bento" semantic state tokens (docs/design/tenin/screen.css :root):
 //   --ok #52D988 (working) · --attn #FFA93D (awaiting) · --error #FF6B6B · --faint #5D7470 (idle)
-// Product-UI bright STATE palette — design tokens (DESIGN.md §2.7, generated).
-static constexpr uint32_t D1_OK    = ProductPalette::SessionWorking;  // processing (cyan)
-static constexpr uint32_t D1_ATTN  = ProductPalette::SessionAwaiting; // awaiting
-static constexpr uint32_t D1_ERROR = ProductPalette::UiError;         // error
-static constexpr uint32_t D1_IDLE  = ProductPalette::UiIdleDark;      // idle cell (faint slate)
+// Product-UI signal palette — design tokens, one meaning per hue (DESIGN.md §2.6/§2.7).
+static constexpr uint32_t D1_WORKING = ProductPalette::SessionWorking;  // an agent is working (cyan)
+static constexpr uint32_t D1_ATTN    = ProductPalette::SessionAwaiting; // needs you
+static constexpr uint32_t D1_ERROR   = ProductPalette::UiError;         // failure
+static constexpr uint32_t D1_OFFLINE = ProductPalette::SessionOffline;  // no live information
+static constexpr uint32_t D1_LINK_UP = ProductPalette::UiOk;            // health: daemon link up
+static constexpr uint32_t D1_FOCUS   = ProductPalette::UiCyan;          // selection chrome
 static constexpr uint32_t D1_CODEX = ProductPalette::BrandCodex;      // Codex brand blue
 static uint32_t ips10StateColor(const char* state) {
-    if (strstr(state, "awaiting") != nullptr) return D1_ATTN;
-    if (strcmp(state, "processing") == 0)     return D1_OK;
+    // Failures are not session states; everything else is the shared mapping,
+    // so idle and offline stay distinct here as on every other surface.
     if (strstr(state, "error") != nullptr || strstr(state, "fail") != nullptr) return D1_ERROR;
-    return D1_IDLE;   // idle / unknown → faint slate (matches D1 idle cells)
+    return SessionState::color(state);
 }
 // Compact elapsed for the cell footer: "45s" / "18m" / "2h" / "3d" (NTP-less device,
 // value arrives pre-derived as seconds from the daemon's startedAt).
@@ -2149,7 +2151,7 @@ void update() {
         if (tbDaemon) {
             char sb[64];
             snprintf(sb, sizeof(sb), "#%06lX " LV_SYMBOL_BULLET "# %d agent%s " LV_SYMBOL_BULLET " %s",
-                     (unsigned long)(linkUp ? D1_OK : D1_IDLE), n, n == 1 ? "" : "s",
+                     (unsigned long)(linkUp ? D1_LINK_UP : D1_OFFLINE), n, n == 1 ? "" : "s",
                      linkUp ? "Connected" : "Offline");
             lv_label_set_text(tbDaemon, sb);
         }
@@ -2179,8 +2181,8 @@ void update() {
         // Top-bar usage gauges. Claude 5h/7d (cyan) always shown; Codex CX 5h/7d
         // (blue) appear only when limits exist; Antigravity credits as a text chip.
         // Percent + reset countdown + stale "!" mirror the plugin water-tank gauge.
-        setTopbarGauge(tb5hFill, tb5hPct, p5h, reset5h, usageStale, D1_OK);
-        setTopbarGauge(tb7dFill, tb7dPct, p7d, reset7d, usageStale, D1_OK);
+        setTopbarGauge(tb5hFill, tb5hPct, p5h, reset5h, usageStale, D1_LINK_UP);
+        setTopbarGauge(tb7dFill, tb7dPct, p7d, reset7d, usageStale, D1_LINK_UP);
 
         // Per-window visibility: after a Codex 5h reset the 5H window vanishes
         // entirely (the 7d window flips to the primary slot) — a "-" gauge next
@@ -2338,7 +2340,7 @@ void update() {
             // colour changes underneath it.
             lv_obj_set_style_outline_width(cell[i], voiceSel ? 3 : 0, 0);
             lv_obj_set_style_outline_pad(cell[i], 2, 0);
-            lv_obj_set_style_outline_color(cell[i], lv_color_hex(D1_OK), 0);
+            lv_obj_set_style_outline_color(cell[i], lv_color_hex(D1_FOCUS), 0);
 
             int innerW = pw - 24; if (innerW < 24) innerW = 24;
 
@@ -2411,7 +2413,7 @@ void update() {
             const bool childBusy = mc[i].childrenKnown && mc[i].childrenActive > 0;
             lv_obj_set_style_text_color(cellCoord[i], lv_color_hex(childBusy || waiting > 0
                 ? Theme::DeepSea : Theme::HUDFaint), 0);
-            lv_obj_set_style_bg_color(cellCoord[i], lv_color_hex(childBusy ? D1_OK : waiting > 0 ? D1_ATTN : Theme::HUDText), 0);
+            lv_obj_set_style_bg_color(cellCoord[i], lv_color_hex(childBusy ? D1_WORKING : waiting > 0 ? D1_ATTN : Theme::HUDText), 0);
             }
 
             // state pill chip — bright states get dark text; the dim idle bg gets light text.

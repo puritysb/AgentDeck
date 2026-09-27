@@ -95,6 +95,9 @@ export const TERRARIUM_RULES = {
     idleTextOpacity: 0.8,
     /** Text of an idle tag that lies over another resident's body. */
     yieldTextOpacity: 0.55,
+    /** The WORKING badge (and its ink) of a tag that lies over another
+     *  resident's body: still readable as the state, no longer a solid card. */
+    yieldSignalOpacity: 0.5,
   },
   /** Vertical field of view for the same authored habitat across native engines. */
   nativeCameraFov: 38,

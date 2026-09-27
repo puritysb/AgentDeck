@@ -38,6 +38,8 @@ final class ResidentLabelLayoutTests: XCTestCase {
         let out = L.resolve([front, rear])
         XCTAssertEqual(decision(out, "front").backingOpacity, TerrariumRules.nativeLabelYieldBackingOpacity)
         XCTAssertEqual(decision(out, "front").textOpacity, TerrariumRules.nativeLabelYieldTextOpacity)
+        XCTAssertEqual(decision(out, "front").signalOpacity, TerrariumRules.nativeLabelYieldSignalOpacity)
+        XCTAssertEqual(decision(out, "rear").signalOpacity, 1, "An unobstructed tag keeps a solid signal")
     }
 
     func testCollidingIdleTagDropsOutAndPriorityDrawsLast() {

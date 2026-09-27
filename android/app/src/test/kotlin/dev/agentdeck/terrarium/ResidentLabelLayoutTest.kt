@@ -40,6 +40,8 @@ class ResidentLabelLayoutTest {
         val out = resolveResidentLabels(listOf(front, rear))
         assertEquals(TerrariumRules.NATIVE_LABEL_YIELD_BACKING_OPACITY, out.of("front").backingAlpha, 0f)
         assertEquals(TerrariumRules.NATIVE_LABEL_YIELD_TEXT_OPACITY, out.of("front").textAlpha, 0f)
+        assertEquals(TerrariumRules.NATIVE_LABEL_YIELD_SIGNAL_OPACITY, out.of("front").signalAlpha, 0f)
+        assertEquals("An unobstructed tag keeps a solid signal", 1f, out.of("rear").signalAlpha, 0f)
     }
 
     @Test fun `an idle tag colliding with a higher-priority tag drops out and priority draws last`() {

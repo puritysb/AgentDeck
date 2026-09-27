@@ -311,6 +311,8 @@ import {
   type ModelCatalogEntry,
 } from './types.js';
 
+import { hookPayloadProjectName, resolveProjectNameFromCwdCached } from './utils/project-name.js';
+
 function exitProcessNow(code = 0): void {
   if (code === 0) {
     try {
@@ -3183,9 +3185,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           ? json.session_id : 'daemon-hook';
         const earlyHookCwd = (typeof json.cwd === 'string' ? json.cwd
           : (typeof json.project_path === 'string' ? json.project_path : '')) || '';
-        const earlyHookProject = (typeof json.project_name === 'string' && json.project_name)
-          ? json.project_name
-          : (earlyHookCwd ? earlyHookCwd.split('/').filter(Boolean).pop() : undefined);
+        const earlyHookProject = hookPayloadProjectName(json, earlyHookCwd);
         const childResult = subagentTimeline?.handle({
           eventName,
           payload: json,
@@ -3416,9 +3416,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // capture it so APME runs are attributable to a specific worktree.
         const hookCwd = (typeof json.cwd === 'string' ? json.cwd
           : (typeof json.project_path === 'string' ? json.project_path : '')) || '';
-        const hookProject = (typeof json.project_name === 'string' && json.project_name)
-          ? json.project_name
-          : (hookCwd ? hookCwd.split('/').filter(Boolean).pop() : undefined);
+        const hookProject = hookPayloadProjectName(json, hookCwd);
         const hookMessage = json.message as Record<string, unknown> | undefined;
         // Prompt shapes: Claude `{prompt}` / `{message:{content}}`; some Codex
         // builds send `{user_prompt}` (same fallback chain as codex-hook.ts).
@@ -5852,7 +5850,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       void runSessionReview({
         sessionId,
         cwd,
-        projectName: target?.projectName ?? cwd?.split('/').filter(Boolean).pop() ?? 'unknown',
+        projectName: target?.projectName ?? (cwd ? resolveProjectNameFromCwdCached(cwd) : 'unknown'),
         recentActivity,
         onEvent: (event) => {
           core.wsServer.broadcast(event as any);

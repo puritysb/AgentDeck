@@ -39,6 +39,27 @@ class AquariumResidentOverlayTest {
         }
     }
 
+    @Test fun `a yielding WORKING tag leaves no opaque badge over the resident behind it`() {
+        val item = AquariumResident("s", "claudecode", "Project", OctopusVisualState.WORKING)
+        val solid = DesignTokens.Session.working.toArgb()
+        val whole = renderTag(item, ResidentLabelDecision("s", ResidentLabelMode.FULL,
+            TerrariumRules.NATIVE_LABEL_BACKING_OPACITY, 1f, 1f))
+        assertTrue("An unobstructed badge is solid", whole.count { it == solid } > 100)
+        val yielding = renderTag(item, ResidentLabelDecision("s", ResidentLabelMode.FULL,
+            TerrariumRules.NATIVE_LABEL_YIELD_BACKING_OPACITY, 1f, TerrariumRules.NATIVE_LABEL_YIELD_SIGNAL_OPACITY))
+        assertEquals("A yielding badge is never opaque", 0, yielding.count { it == solid })
+        assertTrue("…but still drawn", yielding.count { it ushr 24 in 1..254 } > 100)
+    }
+
+    private fun renderTag(item: AquariumResident, decision: ResidentLabelDecision): IntArray {
+        val bitmap = Bitmap.createBitmap(600, 500, Bitmap.Config.ARGB_8888)
+        painter.drawTag(Canvas(bitmap), item, 250f, 100f, decision)
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        bitmap.recycle()
+        return pixels
+    }
+
     private fun render(item: AquariumResident, labels: Boolean, phase: Float = 0f, selected: Boolean = false): IntArray {
         val bitmap = Bitmap.createBitmap(600, 500, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)

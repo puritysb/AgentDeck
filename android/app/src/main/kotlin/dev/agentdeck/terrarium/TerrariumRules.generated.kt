@@ -38,6 +38,7 @@ object TerrariumRules {
     const val NATIVE_LABEL_YIELD_BACKING_OPACITY = 0.24f
     const val NATIVE_LABEL_IDLE_TEXT_OPACITY = 0.8f
     const val NATIVE_LABEL_YIELD_TEXT_OPACITY = 0.55f
+    const val NATIVE_LABEL_YIELD_SIGNAL_OPACITY = 0.5f
     const val NATIVE_CAMERA_FOV = 38.0f
     const val NATIVE_CAMERA_WIDE_FOV = 32.0f
     const val NATIVE_VIEWING_DISTANCE = 0.82f

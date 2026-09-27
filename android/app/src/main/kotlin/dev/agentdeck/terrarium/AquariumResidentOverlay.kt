@@ -98,9 +98,12 @@ internal class AquariumResidentOverlay(context: Context) {
         val box = fullTagBox(item, x, y)
         paint.color = TerrariumColors.DeepSea.toArgb(); paint.alpha = backingAlpha
         canvas.drawRoundRect(box.left, box.top, box.right, box.bottom, 6f*density, 6f*density, paint)
+        val signalAlpha = (decision.signalAlpha * 255).toInt()
         if (working) {
-            // The WORKING badge is the state signal itself; it keeps full strength.
-            paint.color = color
+            // The WORKING badge is the state signal; it fades only when the tag
+            // yields to another resident's body. `setColor` resets alpha, so the
+            // alpha is applied after it.
+            paint.color = color; paint.alpha = signalAlpha
             canvas.drawRoundRect(box.left+3f*density, y+3f*density, box.right-3f*density, y+23f*density,
                 4f*density, 4f*density, paint)
         }
@@ -109,7 +112,7 @@ internal class AquariumResidentOverlay(context: Context) {
         canvas.drawText(title(item), x, y-3f*density, paint)
         paint.typeface = bold
         paint.color = if (working) DesignTokens.Ink.s900.toArgb() else color
-        paint.alpha = if (working) 255 else textAlpha
+        paint.alpha = if (working) signalAlpha else textAlpha
         canvas.drawText(status(item), x, y+17f*density, paint)
         paint.alpha = 255
     }

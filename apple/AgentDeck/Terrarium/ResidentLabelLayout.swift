@@ -34,6 +34,8 @@ enum ResidentLabelLayout {
         let mode: Mode
         let backingOpacity: Float
         let textOpacity: Float
+        /// The WORKING badge and its ink — the state signal, faded only when yielding.
+        var signalOpacity: Float = 1
     }
 
     /// Decisions in draw order: lowest priority first.
@@ -50,7 +52,7 @@ enum ResidentLabelLayout {
             let compact = dense && idle
             let box = compact ? input.compactTag : input.fullTag
             let collides = placed.contains { $0.intersects(box) }
-            if collides && idle { return Decision(id: input.id, mode: .hidden, backingOpacity: 0, textOpacity: 0) }
+            if collides && idle { return Decision(id: input.id, mode: .hidden, backingOpacity: 0, textOpacity: 0, signalOpacity: 0) }
             placed.append(box)
             let overBody = inputs.contains { $0.id != input.id && $0.body.intersects(box) }
             let yielding = collides || overBody
@@ -60,7 +62,8 @@ enum ResidentLabelLayout {
             let text: Float = !idle ? 1
                 : yielding ? TerrariumRules.nativeLabelYieldTextOpacity
                 : TerrariumRules.nativeLabelIdleTextOpacity
-            return Decision(id: input.id, mode: compact ? .compact : .full, backingOpacity: backing, textOpacity: text)
+            return Decision(id: input.id, mode: compact ? .compact : .full, backingOpacity: backing, textOpacity: text,
+                            signalOpacity: yielding ? TerrariumRules.nativeLabelYieldSignalOpacity : 1)
         }
         return decisions.reversed()
     }
