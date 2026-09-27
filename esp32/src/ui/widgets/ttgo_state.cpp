@@ -1,5 +1,6 @@
 #include "ttgo_state.h"
 #include "../theme.h"
+#include "../session_state.generated.h"
 #include "../display.h"
 #include "../../state/agent_state.h"
 #include "../boards/board_config.h"
@@ -46,30 +47,9 @@ static lv_obj_t* createMetricPanel(lv_obj_t* parent, bool portrait, int screenW,
 }
 #endif
 
-// Helper: get state color for agent state
-static uint32_t stateColor(AgentState st) {
-    switch (st) {
-        case AgentState::IDLE:                 return Theme::StatusGreen;
-        case AgentState::PROCESSING:           return Theme::StatusBlue;
-        case AgentState::AWAITING_PERMISSION:
-        case AgentState::AWAITING_OPTION:
-        case AgentState::AWAITING_DIFF:        return Theme::StatusAmber;
-        default:                               return Theme::StatusRed;
-    }
-}
-
-// Helper: get state string
-static const char* stateString(AgentState st) {
-    switch (st) {
-        case AgentState::DISCONNECTED:       return "DISCONN";
-        case AgentState::IDLE:               return "IDLE";
-        case AgentState::PROCESSING:         return "PROCESSING";
-        case AgentState::AWAITING_PERMISSION:return "AWAITING";
-        case AgentState::AWAITING_OPTION:    return "OPTIONS";
-        case AgentState::AWAITING_DIFF:      return "DIFF";
-        default:                             return "UNKNOWN";
-    }
-}
+// Session state colour and words — DESIGN.md §2.7, generated from shared/src.
+static uint32_t stateColor(AgentState st) { return SessionState::color(st); }
+static const char* stateString(AgentState st) { return SessionState::shortLabel(st); }
 
 /** One provider per compact line when both Claude and Codex must share the two
  * usage rows. Absent windows are omitted instead of rendered as a phantom `--`. */

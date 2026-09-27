@@ -10,6 +10,7 @@
 #include "../../camera/photo_capture.h"
 #include "../display.h"
 #include "../theme.h"
+#include "../session_state.generated.h"
 #include "../agent_label.h"
 #include "../../util/utf8.h"
 #include "../../util/usage_rows.h"
@@ -72,12 +73,11 @@ static uint32_t agentColor(const char* agentType) {
     return Theme::HUDDim;
 }
 
+// Session state palette (DESIGN.md §2.7, generated); "error" is not a
+// session state but a failure, so it keeps the failure red.
 static uint32_t stateColorOf(const char* state) {
-    if (strstr(state, "awaiting") != nullptr) return Theme::StatusAmber;
-    if (strcmp(state, "processing") == 0) return Theme::StatusBlue;
     if (strcmp(state, "error") == 0) return Theme::StatusRed;
-    if (strcmp(state, "idle") == 0) return Theme::StatusGreen;
-    return Theme::HUDDim;
+    return SessionState::color(state);
 }
 
 static bool sameSessionId(const char* a, const char* b) {
@@ -706,10 +706,10 @@ void update(float dt) {
         lv_label_set_text(s_statusBatt, batt);
         lv_obj_set_style_text_color(
             s_statusBatt,
-            lv_color_hex(power.charging ? Theme::StatusBlue : Theme::HUDDim), 0);
+            lv_color_hex(power.charging ? Theme::StatusCyan : Theme::HUDDim), 0);
     } else if (power.usbPowered) {
         lv_label_set_text(s_statusBatt, "USB");
-        lv_obj_set_style_text_color(s_statusBatt, lv_color_hex(Theme::StatusBlue), 0);
+        lv_obj_set_style_text_color(s_statusBatt, lv_color_hex(Theme::StatusCyan), 0);
     } else {
         lv_label_set_text(s_statusBatt, "");
     }

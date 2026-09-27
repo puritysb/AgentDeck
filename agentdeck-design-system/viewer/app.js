@@ -542,7 +542,7 @@
       .join('')}</dl>`;
   }
 
-  const COLOR_GROUPS = new Set(['Tide', 'Ink', 'Kelp', 'Coral', 'Amber', 'Brand', 'Status', 'Product UI']);
+  const COLOR_GROUPS = new Set(['Tide', 'Ink', 'Kelp', 'Coral', 'Amber', 'Brand', 'Status', 'Product UI', 'Session state']);
 
   /* A token is only understood by looking at what it does. Each group gets a
    * specimen that exercises the value the way a consumer would apply it. */

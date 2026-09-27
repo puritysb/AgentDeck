@@ -112,6 +112,7 @@ import dev.agentdeck.terrarium.renderer.ColorTerrariumCanvas
 import dev.agentdeck.terrarium.toTerrariumState
 import dev.agentdeck.ui.theme.AgentDeckColors
 import kotlinx.coroutines.launch
+import dev.agentdeck.ui.theme.DesignTokens
 
 private const val TABLET_CRAYFISH_CENTER_X_FRACTION = 0.70f
 private const val TABLET_CRAYFISH_CENTER_Y_FRACTION = 0.575f
@@ -419,14 +420,14 @@ private fun ConnectionOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xCC0F172A)),
+            .background(DesignTokens.UI.waterDeep.copy(alpha = 0.8f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .widthIn(max = 360.dp)
                 .background(
-                    color = Color(0xE61E293B),
+                    color = DesignTokens.UI.waterMid.copy(alpha = 0.9f),
                     shape = RoundedCornerShape(16.dp),
                 )
                 .padding(24.dp),

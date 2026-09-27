@@ -488,7 +488,7 @@ const colors=${STATE_COLORS_JS};
 es.addEventListener('state_update',e=>{
   const d=JSON.parse(e.data);
   const s=d.state||'DISCONNECTED';
-  $('state').innerHTML='<span class="dot" style="background:'+( colors[s]||'#64748b')+'"></span>'+s;
+  $('state').innerHTML='<span class="dot" style="background:'+( colors[s]||colors.disconnected)+'"></span>'+s;
   if(d.modelName)$('model').textContent=d.modelName;
   $('tool').textContent=d.currentTool||'—';
 });
@@ -672,7 +672,7 @@ es.addEventListener('state_update',e=>{
   const d=JSON.parse(e.data);
   const s=d.state||'IDLE';
   $state.textContent=s;
-  dot.style.background=stateColors[s]||'#64748b';
+  dot.style.background=stateColors[s]||stateColors.disconnected;
 });
 
 // SSE frame stream

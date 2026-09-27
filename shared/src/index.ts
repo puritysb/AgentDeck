@@ -28,6 +28,8 @@ export * from './session-utils.js';
 export * from './creature-layout.js';
 export * from './terrarium-rules.js';
 export * from './state-colors.js';
+export * from './session-state-presentation.js';
+export * from './paper-palette.js';
 export * from './connection-status.js';
 export * from './design-tokens.js';
 export * from './svg-renderers/index.js';

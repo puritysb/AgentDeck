@@ -4,6 +4,7 @@
 #include "../../../boards/board_config.h"
 #include "../../state/agent_state.h"
 #include "../theme.h"
+#include "../session_state.generated.h"
 
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
@@ -24,12 +25,10 @@ static uint32_t scaleColor(uint32_t rgb, uint8_t scale) {
     return Adafruit_NeoPixel::Color(r, g, b);
 }
 
+// Session state palette (DESIGN.md §2.7, generated); "error" keeps failure red.
 static uint32_t stateColor(const char* state) {
-    if (strstr(state, "awaiting") != nullptr) return Theme::StatusAmber;
-    if (strcmp(state, "processing") == 0) return Theme::StatusBlue;
-    if (strcmp(state, "idle") == 0) return Theme::KelpGreen;
     if (strcmp(state, "error") == 0) return Theme::StatusRed;
-    return Theme::HUDFaint;
+    return SessionState::color(state);
 }
 
 namespace Ring {
@@ -65,7 +64,7 @@ void update(uint32_t nowMs, int selectedIdx, bool connected, bool dark) {
     if (!connected) {
         // Connectivity is informational, not attention: keep it static so
         // amber response-waits remain the ring's only animation.
-        s_ring.setPixelColor(0, scaleColor(Theme::StatusBlue, DIMMED_SCALE));
+        s_ring.setPixelColor(0, scaleColor(Theme::SessionOffline, DIMMED_SCALE));
     } else {
         for (uint8_t i = 0; i < count; i++) {
             uint32_t rgb = stateColor(states[i]);

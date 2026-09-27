@@ -39,7 +39,7 @@
 // fails CI when the firmware drifts ahead of this mirror. Update this view and
 // re-pin whenever the firmware layout changes.
 //
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp db3fcc28a0c4743004ade60d1220c805d55aafda
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp cf5bba00d16f412ec6d376840855401a8a72eae0
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI
@@ -387,16 +387,17 @@ struct Trmnl75Preview: View {
         }
     }
 
-    /// Firmware card state labels (eink_display.cpp stateLabel): the panel
-    /// prints PERMISSION / CHOOSE / REVIEW for the awaiting states — never
-    /// "AWAITING" — and OFFLINE for anything unknown. The preview's coarse
-    /// state model maps awaitingPrompt to the permission variant.
+    /// Firmware card state labels (eink_display.cpp stateLabel): the shared
+    /// short vocabulary (DESIGN.md §2.7) — APPROVE / CHOOSE / REVIEW for the
+    /// awaiting states, never "AWAITING", and OFFLINE for anything unknown.
+    /// The preview's coarse state model maps awaitingPrompt to the permission
+    /// variant.
     static func firmwareStateLabel(for state: PixooPreviewState) -> String {
         switch state {
-        case .processing:     return "PROCESSING"
-        case .awaitingPrompt: return "PERMISSION"
-        case .idle:           return "IDLE"
-        case .disconnected:   return "OFFLINE"
+        case .processing:     return AgentConnectionState.processing.sessionWords.short
+        case .awaitingPrompt: return AgentConnectionState.awaitingPermission.sessionWords.short
+        case .idle:           return AgentConnectionState.idle.sessionWords.short
+        case .disconnected:   return AgentConnectionState.disconnected.sessionWords.short
         }
     }
 

@@ -449,14 +449,14 @@ private struct DashboardWeatherPill: View {
                     if let tempC = weather.tempC { Text("\(tempC)°") }
                     if let summary = weather.summary { Text(summary) }
                 }
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold))
                 HStack(spacing: 5) {
                     if let low = weather.todayMinC, let high = weather.todayMaxC {
                         Text("L \(low)°  H \(high)°")
                     }
                     if let place = weather.place { Text(place) }
                 }
-                .font(.system(size: 9, design: .rounded))
+                .font(.system(size: 9))
                 .foregroundStyle(TerrariumHUD.subtext)
             }
             if let source = weather.source,

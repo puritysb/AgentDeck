@@ -98,13 +98,17 @@ Inside the product itself — menubar popup, e‑ink panels, terminal/CLI surfac
 
 | Role            | Marketing token   | Product UI hex  | Why it changes               |
 |-----------------|-------------------|-----------------|------------------------------|
-| OK / running    | `--kelp-500` `#2f8a7c` | `#52D988`  | Saturated to read at 6px dot |
+| OK / healthy    | `--kelp-500` `#2f8a7c` | `#52D988`  | Saturated to read at 6px dot |
 | Awaiting        | `--amber-500` `#c8923a` | `#FFA93D` | Hotter for menubar pulse     |
 | Error           | `--coral-500` `#c0573a` | `#FF6B6B` | Brighter on near‑black       |
-| Hub / link      | `--kelp-700` `#1f6157`  | `#3ED6E8` | Electric cyan = product chrome |
+| Activity / hub / link | `--kelp-700` `#1f6157`  | `#3ED6E8` | Electric cyan = product chrome and "an agent is working" |
 | Idle text       | `--ink-300` `#7c9694`   | `#7a8a9c` / `#9a9aa2` | Cooler grey on neutral OS chrome |
 | Dark surface    | `--ink-900` `#0e1f1f`   | `#0a1a2a` (popup) / `#0c0d10` (terminal) | Native macOS / TTY feel |
+| Aquarium water  | `--ink-900` `#0e1f1f`   | `#0A1628` / `#0F2744` / `#163B5C` (`--ui-water-*`) | The terrarium ground every Dashboard shares |
+| HUD text        | `--tide-50` / `--ink-300` | `#E2E8F0` / `#94A3B8` / `#64748B` (`--ui-hud-*`) | Cool greys that sit on blue water |
 | Light surface   | `--tide-50` `#f5f3ec`   | `#f6f3ee` (popup-light) | Closer to macOS Big Sur cream |
+
+**One meaning per hue.** Inside the product each bright has exactly one job: green is health (link up, quota normal, a passing check), cyan is activity and the product chrome (an agent is working, the AgentDeck mark, focus), amber is "needs you" and the only hue that pulses, red is failure, grey is quiet or unknown. A surface that paints work green makes health and activity indistinguishable; one that paints it blue makes it read as the Codex brand beside a Codex mark.
 
 Rule: **product UI may borrow marketing tokens, but marketing surfaces must never use product brights.** A press shot or hero illustration that mixes `#FFA93D` against `#f5f3ec` will look like a different brand.
 
@@ -112,12 +116,37 @@ The product brights are exposed in `design/tokens.css` under the `--ui-*` namesp
 
 ### 2.7 Status semantics
 
+Marketing and editorial surfaces (`--status-*`):
+
 | State        | Color    | Animation        | Meaning                          |
 |--------------|----------|------------------|----------------------------------|
 | `idle`       | ink‑300  | none             | Session exists, nothing happening |
 | `processing` | kelp‑500 | none (steady)    | Agent is actively working        |
 | `awaiting`   | amber‑500 | pulse 1.1s       | Agent needs YES/NO from you      |
 | `error`      | coral‑500 | none             | Failed run, attention required   |
+
+Product surfaces — every Dashboard, the menubar, the TUI, hardware — use the
+`--session-*` tokens, and every one of them shows a given session state the same
+way. The mapping, the paper variant and the words live in one place,
+`shared/src/session-state-presentation.ts`, and `pnpm generate-session-state`
+emits the Swift, Kotlin and ESP32 mirrors; no surface keeps its own
+state→colour switch.
+
+| Wire state | Tone | Dark screen | Paper | Label | Short (≤7) | Tiny (≤4) |
+|---|---|---|---|---|---|---|
+| `idle` | idle | `--session-idle` → `--ui-idle` | ×0.5 | Idle | `IDLE` | `IDLE` |
+| `processing` | working | `--session-working` → `--ui-cyan` | ×0.5 | Working | `WORKING` | `WORK` |
+| `awaiting_permission` | awaiting | `--session-awaiting` → `--ui-attn`, pulses | ×0.5 | Needs approval | `APPROVE` | `PERM` |
+| `awaiting_option` | awaiting | same | ×0.5 | Needs a choice | `CHOOSE` | `OPT` |
+| `awaiting_diff` | awaiting | same | ×0.5 | Review diff | `REVIEW` | `DIFF` |
+| `disconnected` | offline | `--session-offline` → `--ui-idle-dark` | ×0.5 | Offline | `OFFLINE` | `OFF` |
+
+A missing state is offline; an unknown state from a newer peer is a live, quiet
+session (idle), never an error. The three awaiting states share one tone because
+they are equally urgent; the words say what the person must do. Paper colours
+use the same ×0.5 rule as quota severity (§2.8), so small text keeps 4.5:1 on
+`--ui-popup-bg-light`. Shape stays redundant with colour (§6.4): rows prefix the
+short label with ● ◉ ⚠ ◇ □ ○ so the states survive a monochrome panel.
 
 ---
 
@@ -206,7 +235,16 @@ font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
 | **Kicker**    | 12px                | 600    | 0.18em UPPER | **Mono.** Section header tag.   |
 | **Mono badge**| 11–12px             | 700    | 0.16em UPPER | **Mono.** Tier badges, command.|
 
-### 3.3 Rules
+### 3.3 Native product surfaces
+
+Native apps and firmware keep the two *roles*, not necessarily the bundled files:
+the sans role may resolve to the stack's system fallback (SF Pro on Apple,
+the platform sans on Android) and the mono role to the platform monospace. They
+never add a third design — no SF Rounded, no serif, no LVGL Montserrat where a
+Plex font is already built for that board. ESP32 boards that render Korean use
+the Plex-derived bitmap fonts in `esp32/src/ui/fonts/`.
+
+### 3.4 Rules
 - Use `font-feature-settings: "ss01", "cv11"` on sans body — Plex's stylistic alternates make Korean and Latin sit at consistent x‑height.
 - Use `font-feature-settings: "zero", "ss01"` on mono — slashed zero, single‑story `a`.
 - Italics: only on the **one** phrase of the hero that you want emphasized (in `--kelp-700`).
@@ -489,6 +527,11 @@ docs/design-mockups/
 shared/src/design-tokens.ts              ← TS binding (mirror of tokens.css)
 apple/AgentDeck/UI/Common/DesignTokens.swift   ← Swift binding
 android/app/.../ui/theme/DesignTokens.kt       ← Compose binding
+shared/src/session-state-presentation.ts ← session state → tone / colour / words (§2.7)
+esp32/src/ui/product_palette.generated.h ← generated C++ token mirror (ESP32 has no hand binding)
+esp32/src/ui/session_state.generated.h, apple/.../SessionStatePresentation.generated.swift,
+android/.../util/SessionStatePresentation.kt   ← generated session-state mirrors
+design/native-palette-baseline.json      ← ratchet: raw colours in native Dashboard code may only go down
 ```
 
 `design/tokens.css` is the **single source of truth.** Every other token file

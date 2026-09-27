@@ -1,8 +1,9 @@
 import { UI } from './design-tokens.js';
+import { PAPER_SCALE, toPaperColor } from './paper-palette.js';
 
 /** Display severity always consumes USED percent, even for a "% left" label.
  * Missing/non-finite/negative readings are unknown, never healthy zero. */
-export const USAGE_SEVERITY = { warning: 70, critical: 90, paperScale: 0.5 } as const;
+export const USAGE_SEVERITY = { warning: 70, critical: 90, paperScale: PAPER_SCALE } as const;
 export type UsageSeverity = 'unknown' | 'normal' | 'warning' | 'critical';
 export function usageSeverity(used: number | null | undefined): UsageSeverity {
   if (used == null || !Number.isFinite(used) || used < 0) return 'unknown';
@@ -10,8 +11,7 @@ export function usageSeverity(used: number | null | undefined): UsageSeverity {
   if (used >= USAGE_SEVERITY.warning) return 'warning';
   return 'normal';
 }
-const darken = (hex: string) => '#' + hex.slice(1).match(/../g)!
-  .map(v => Math.floor(parseInt(v, 16) * USAGE_SEVERITY.paperScale).toString(16).padStart(2, '0')).join('');
+const darken = toPaperColor;
 export const USAGE_COLORS = { normal: UI.ok, warning: UI.attn, critical: UI.error, unknown: UI.idleDark } as const;
 export const USAGE_PAPER_COLORS = Object.fromEntries(Object.entries(USAGE_COLORS).map(([k, v]) => [k, darken(v)])) as Record<UsageSeverity, string>;
 export const USAGE_INACTIVE_COLORS = { bright: UI.cyan, paper: darken(UI.cyan) } as const;

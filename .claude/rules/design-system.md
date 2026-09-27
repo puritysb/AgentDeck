@@ -42,7 +42,22 @@ Aquarium-tide design system. Spec: [DESIGN.md](../../DESIGN.md). Source of truth
 - TS — `shared/src/design-tokens.ts` (re-exported via `@agentdeck/shared`). Use for plugin renderers, bridge, hooks
 - Swift — `apple/AgentDeck/UI/Common/DesignTokens.swift` (`DesignTokens.Tide.s50` etc.). Existing `StateColors` stays as legacy
 - Kotlin — `android/app/src/main/kotlin/dev/agentdeck/ui/theme/DesignTokens.kt` (`DesignTokens.Tide.s50` etc.). Existing `AgentDeckColors` stays as legacy
+- C++ (ESP32) — `esp32/src/ui/product_palette.generated.h`, **generated** (`pnpm generate-session-state`), never hand-edited; `esp32/src/ui/theme.h` binds its names to it
 - Sync verification: `python3 design/verify-tokens-sync.py` — diffs all seven mirrors against tokens.css and exits non-zero on drift
+
+## Session state and native Dashboards
+
+**A session state looks the same on every product surface, and no surface owns a state→colour switch.** The
+`--session-*` tokens (DESIGN.md §2.7) are bound by `shared/src/session-state-presentation.ts`, which also owns
+the words (`Working`/`WORKING`/`WORK`); `pnpm generate-session-state` emits the Swift, Kotlin and C++ mirrors.
+Before this, one working session was green on the Mac Dashboard, blue on the Android tablet, TUI and ESP32, and
+teal on a Stream Deck key, because every platform carried its own Tailwind-derived table. One meaning per hue:
+green health, cyan activity, amber needs-you (the only pulse), red failure, grey quiet.
+
+**`design/lint.sh` does not read Swift, Kotlin or C++**, so native Dashboard code is ratcheted separately:
+`scripts/__tests__/native-palette.test.ts` fails when any native Dashboard file gains a raw colour literal
+(baseline `design/native-palette-baseline.json`; lower it with `node scripts/check-native-palette.mjs --write`
+after removing literals). Colour belongs in `design/tokens.css`, then a mirror.
 
 ## Rules (DESIGN.md §10)
 

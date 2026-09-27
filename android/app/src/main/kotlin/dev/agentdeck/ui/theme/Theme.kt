@@ -15,36 +15,42 @@ import dev.agentdeck.util.DeviceProfile
 import dev.agentdeck.util.DeviceProfileHolder
 import dev.agentdeck.util.PanelKind
 
-// Brand colors
+/**
+ * Legacy colour names, now bindings to the design tokens (DESIGN.md §2.6).
+ * New code reaches for [DesignTokens] directly; these names stay so existing
+ * call sites keep compiling while they migrate.
+ */
 object AgentDeckColors {
-    val DeepCharcoal = Color(0xFF0F172A)
-    val Surface = Color(0xFF1E293B)
-    val SurfaceVariant = Color(0xFF334155)
-    val Green = Color(0xFF22C55E)
-    val Blue = Color(0xFF3B82F6)
-    val Amber = Color(0xFFF59E0B)
-    val Red = Color(0xFFEF4444)
-    val Cyan = Color(0xFF06B6D4)
+    val DeepCharcoal = DesignTokens.UI.popupBgDark
+    val Surface = DesignTokens.Ink.s800
+    val SurfaceVariant = DesignTokens.Ink.s700
+    val Green = DesignTokens.UI.ok
+    /** Product accent (link, primary action, activity) — the cyan chrome, not a blue. */
+    val Blue = DesignTokens.UI.cyan
+    val Amber = DesignTokens.UI.attn
+    val Red = DesignTokens.UI.error
+    val Cyan = DesignTokens.UI.cyan
+    /** Timeline "memory" accent — a category hue, not a state; no token yet. */
     val Purple = Color(0xFFA855F7)
-    val SlateText = Color(0xFF94A3B8)
-    val WhiteText = Color(0xFFF8FAFC)
+    val SlateText = DesignTokens.UI.hudSubtext
+    val WhiteText = DesignTokens.UI.hudText
 }
 
 private val DarkColorScheme = darkColorScheme(
-    primary = AgentDeckColors.Blue,
-    secondary = AgentDeckColors.Green,
-    tertiary = AgentDeckColors.Amber,
-    background = AgentDeckColors.DeepCharcoal,
-    surface = AgentDeckColors.Surface,
-    surfaceVariant = AgentDeckColors.SurfaceVariant,
-    onBackground = AgentDeckColors.WhiteText,
-    onSurface = AgentDeckColors.WhiteText,
-    onSurfaceVariant = AgentDeckColors.SlateText,
-    error = AgentDeckColors.Red,
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.Black,
-    onError = Color.White,
+    primary = DesignTokens.UI.cyan,
+    secondary = DesignTokens.UI.ok,
+    tertiary = DesignTokens.UI.attn,
+    background = DesignTokens.UI.popupBgDark,
+    surface = DesignTokens.Ink.s800,
+    surfaceVariant = DesignTokens.Ink.s700,
+    onBackground = DesignTokens.UI.hudText,
+    onSurface = DesignTokens.UI.hudText,
+    onSurfaceVariant = DesignTokens.UI.hudSubtext,
+    error = DesignTokens.UI.error,
+    onPrimary = DesignTokens.Ink.s900,
+    onSecondary = DesignTokens.Ink.s900,
+    onTertiary = DesignTokens.Ink.s900,
+    onError = DesignTokens.Ink.s900,
 )
 
 private val AppTypography = Typography(

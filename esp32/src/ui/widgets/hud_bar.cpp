@@ -5,6 +5,7 @@
 #include "ips10_workspace.h"
 #endif
 #include "../theme.h"
+#include "../session_state.generated.h"
 #include "../display.h"
 #include "../assets/logo.h"
 #include "../../state/agent_state.h"
@@ -347,12 +348,12 @@ static uint32_t ips10AgentColor(const char* agentType) {
 }
 // D1 "Tide Bento" semantic state tokens (docs/design/tenin/screen.css :root):
 //   --ok #52D988 (working) · --attn #FFA93D (awaiting) · --error #FF6B6B · --faint #5D7470 (idle)
-// Product-UI bright STATE palette — data.js SSOT (tenin/data.js STATE.*.color).
-static constexpr uint32_t D1_OK    = 0x3ED6E8;  // processing (cyan)
-static constexpr uint32_t D1_ATTN  = 0xFFA93D;  // awaiting
-static constexpr uint32_t D1_ERROR = 0xFF6B6B;  // error
-static constexpr uint32_t D1_IDLE  = 0x7A8A9C;  // idle
-static constexpr uint32_t D1_CODEX = 0x6166E0;  // Codex brand blue (Brand.codex)
+// Product-UI bright STATE palette — design tokens (DESIGN.md §2.7, generated).
+static constexpr uint32_t D1_OK    = ProductPalette::SessionWorking;  // processing (cyan)
+static constexpr uint32_t D1_ATTN  = ProductPalette::SessionAwaiting; // awaiting
+static constexpr uint32_t D1_ERROR = ProductPalette::UiError;         // error
+static constexpr uint32_t D1_IDLE  = ProductPalette::UiIdleDark;      // idle cell (faint slate)
+static constexpr uint32_t D1_CODEX = ProductPalette::BrandCodex;      // Codex brand blue
 static uint32_t ips10StateColor(const char* state) {
     if (strstr(state, "awaiting") != nullptr) return D1_ATTN;
     if (strcmp(state, "processing") == 0)     return D1_OK;
@@ -379,12 +380,7 @@ static const char* ips10AgentLabel(const char* agentType) {
 }
 // Short uppercase pill text (D1 state pill).
 static const char* ips10StatePill(const char* state) {
-    if (strcmp(state, "processing") == 0)      return "WORKING";
-    if (strcmp(state, "awaiting_option") == 0) return "CHOOSE";
-    if (strcmp(state, "awaiting_diff") == 0)   return "DIFF";
-    if (strstr(state, "awaiting") != nullptr)  return "AWAITING";
-    if (strcmp(state, "idle") == 0)            return "IDLE";
-    return state;
+    return SessionState::shortLabel(state);
 }
 #endif
 
@@ -1486,7 +1482,7 @@ void init(lv_obj_t* parent) {
     // Accent underline
     logoLine = lv_obj_create(panelLeft);
     lv_obj_set_size(logoLine, 100, 2);
-    lv_obj_set_style_bg_color(logoLine, lv_color_hex(Theme::StatusBlue), 0);
+    lv_obj_set_style_bg_color(logoLine, lv_color_hex(Theme::StatusCyan), 0);
     lv_obj_set_style_bg_opa(logoLine, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(logoLine, 0, 0);
     lv_obj_set_style_radius(logoLine, 1, 0);
@@ -1574,7 +1570,7 @@ void init(lv_obj_t* parent) {
 #else
     lv_obj_set_size(logoLine, 130, 2);
 #endif
-    lv_obj_set_style_bg_color(logoLine, lv_color_hex(Theme::StatusBlue), 0);
+    lv_obj_set_style_bg_color(logoLine, lv_color_hex(Theme::StatusCyan), 0);
     lv_obj_set_style_bg_opa(logoLine, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(logoLine, 0, 0);
     lv_obj_set_style_radius(logoLine, 1, 0);
@@ -1657,25 +1653,9 @@ void init(lv_obj_t* parent) {
 #endif // !BOARD_IPS10
 }
 
-// Helper: status color for AgentState
-static uint32_t stateColor(AgentState st) {
-    switch (st) {
-        case AgentState::IDLE:                 return Theme::StatusGreen;
-        case AgentState::PROCESSING:           return Theme::StatusBlue;
-        case AgentState::AWAITING_PERMISSION:
-        case AgentState::AWAITING_OPTION:
-        case AgentState::AWAITING_DIFF:        return Theme::StatusAmber;
-        default:                               return Theme::StatusRed;
-    }
-}
-
-// Map session state string to color
-static uint32_t sessionStateColor(const char* state) {
-    if (strcmp(state, "idle") == 0)       return Theme::StatusGreen;
-    if (strcmp(state, "processing") == 0) return Theme::StatusBlue;
-    if (strstr(state, "awaiting") != nullptr) return Theme::StatusAmber;
-    return Theme::HUDDim;
-}
+// Session state palette (DESIGN.md §2.7, generated from shared/src).
+static uint32_t stateColor(AgentState st) { return SessionState::color(st); }
+static uint32_t sessionStateColor(const char* state) { return SessionState::color(state); }
 
 // Gauge color based on usage %
 static uint32_t gaugeColor(float pct) {

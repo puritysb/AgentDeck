@@ -2,28 +2,29 @@ package dev.agentdeck.terrarium
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import dev.agentdeck.ui.theme.DesignTokens
 
 /** Color palette and timing constants for the terrarium scene. */
 object TerrariumColors {
     // Background layers
-    val DeepSea = Color(0xFF0A1628)
-    val MidWater = Color(0xFF0F2744)
-    val ShallowWater = Color(0xFF163B5C)
+    val DeepSea = DesignTokens.UI.waterDeep
+    val MidWater = DesignTokens.UI.waterMid
+    val ShallowWater = DesignTokens.UI.waterShallow
 
     // Claude Code mascot (pixel art — matching official terracotta)
-    val ClaudeBody = Color(0xFFC07058)       // muted terracotta/copper
+    val ClaudeBody = DesignTokens.Brand.claudeCode // muted terracotta/copper
     val ClaudeBodyLight = Color(0xFFD08870)  // THINKING pulse bright
     val ClaudeBodyDark = Color(0xFFA05840)   // shadow
     val ClaudeEye = Color(0xFF2D1F16)        // dark brown
 
     // Cloud (Codex CLI brand: indigo-violet)
-    val CloudBody = Color(0xFF5561E0)        // primary indigo
+    val CloudBody = DesignTokens.Brand.codex // primary indigo (same as Apple/ESP32)
     val CloudDeep = Color(0xFF3342C7)        // dark shadow
     val CloudHighlight = Color(0xFFB394E5)   // light violet highlight
     val CloudGlow = Color(0xFF8F94F2)        // processing pulse glow
 
     // OpenCode (nested-square logo: warm gray outer, dark inner)
-    val OpenCodeOuter = Color(0xFFF1ECEC)    // light warm gray outer frame
+    val OpenCodeOuter = DesignTokens.Brand.opencodeOnDark // light warm gray outer frame
     val OpenCodeInner = Color(0xFF4B4646)    // dark brown-gray inner square
 
     // Antigravity (peak/arc mark — rainbow reference, with gray fallback for text chips)
@@ -42,7 +43,7 @@ object TerrariumColors {
     val AntigravityDim = Color(0xFF3C4043)
 
     // Crayfish (OpenClaw brand: #FF4D4D→#991B1B gradient, #00E5CC teal eyes)
-    val CrayfishShell = Color(0xFFFF4D4D)
+    val CrayfishShell = DesignTokens.Brand.openclaw
     val CrayfishDark = Color(0xFF991B1B)
     val CrayfishClaw = Color(0xFFFF4D4D)
     val CrayfishEye = Color(0xFF00E5CC)
@@ -67,9 +68,9 @@ object TerrariumColors {
     val KelpDark = Color(0xFF166534)
 
     // LED cables
-    val LEDGreen = Color(0xFF22C55E)
-    val LEDAmber = Color(0xFFFBBF24)
-    val LEDRed = Color(0xFFEF4444)
+    val LEDGreen = DesignTokens.UI.ok
+    val LEDAmber = DesignTokens.UI.attn
+    val LEDRed = DesignTokens.UI.error
 
     // Holographic UI
     val HoloBlue = Color(0x6000E5FF)
@@ -78,10 +79,10 @@ object TerrariumColors {
     // Error state
     val ErrorTint = Color(0x40EF4444)
 
-    // HUD overlay
-    val HUDBg = Color(0x80000000)
-    val HUDText = Color(0xFFE2E8F0)
-    val HUDSubtext = Color(0xFF94A3B8)
+    // HUD overlay — design tokens shared with the Apple and ESP32 HUDs
+    val HUDBg = DesignTokens.UI.popupBgDeep.copy(alpha = 0.5f)
+    val HUDText = DesignTokens.UI.hudText
+    val HUDSubtext = DesignTokens.UI.hudSubtext
 }
 
 /** Layout and sizing constants. */

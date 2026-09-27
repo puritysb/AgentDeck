@@ -1,4 +1,5 @@
 #include "util/usage_severity.generated.h"
+#include "ui/session_state.generated.h"
 #ifdef BOARD_EINK_SURFACE
 
 #include "eink_display.h"
@@ -844,13 +845,13 @@ bool isAwaiting(const char* state) {
     return AgentDeckEink::classifyStatus(state) == AgentDeckEink::StatusKind::Attention;
 }
 
+// Shared session-state vocabulary (DESIGN.md §2.7, generated). An unknown
+// state reads OFFLINE here, as it always has on paper.
 void stateLabel(const char* state, char* out, size_t outLen) {
-    if (strcmp(state, "processing") == 0) strncpy(out, "PROCESSING", outLen - 1);
-    else if (strcmp(state, "awaiting_permission") == 0) strncpy(out, "PERMISSION", outLen - 1);
-    else if (strcmp(state, "awaiting_option") == 0) strncpy(out, "CHOOSE", outLen - 1);
-    else if (strcmp(state, "awaiting_diff") == 0) strncpy(out, "REVIEW", outLen - 1);
-    else if (strcmp(state, "idle") == 0) strncpy(out, "IDLE", outLen - 1);
-    else strncpy(out, "OFFLINE", outLen - 1);
+    AgentState known;
+    const char* label = (state != nullptr && SessionState::fromWire(state, known))
+        ? SessionState::shortLabel(known) : SessionState::shortLabel(AgentState::DISCONNECTED);
+    strncpy(out, label, outLen - 1);
     out[outLen - 1] = '\0';
 }
 
@@ -1899,7 +1900,8 @@ void drawEp47Queue(const Snap& s) {
             ? r.question : (r.work[0] ? r.work : (r.activity[0] ? r.activity : r.tool));
         if (detail && detail[0]) {
             // Ends at 786; the state column owns 800..922. The widest state word
-            // ("PERMISSION") is ~112px, so this gap is the elision budget, not
+            // (7 characters, e.g. "OFFLINE"; SessionState::shortLabel caps it) fits
+            // well inside the old ~112px "PERMISSION" budget, so this gap is the elision budget, not
             // slack — a wider detail overruns it and the two texts overprint.
             char fitted[116];
             smartFitText(fitted, sizeof(fitted), detail, 440, &FreeSans9pt7b);

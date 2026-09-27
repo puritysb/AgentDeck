@@ -19,7 +19,7 @@ import type { DashboardState, LayoutMode } from './dashboard.js';
 import type { CodexRateLimitWindow, ModelCatalogEntry, OllamaStatus, SessionInfo, TimelineEntry, TimelineEntryType } from '@agentdeck/shared';
 import {
   stateRank, sortSessions, assignDisplayNames,
-  timelineShouldRenderTaskRow, timelineTaskHeaderDisplay,
+  timelineShouldRenderTaskRow, timelineTaskHeaderDisplay, sessionStateWords,
 } from '@agentdeck/shared';
 
 // ===== Layout Breakpoints =====
@@ -185,16 +185,7 @@ function creatureBrandColor(agentType?: string): string {
 }
 
 function compactStateLabel(state: string): string {
-  switch (state) {
-    case 'processing': return 'PROC';
-    case 'awaiting_permission': return 'PERM';
-    case 'awaiting_option': return 'OPT';
-    case 'awaiting_diff': return 'DIFF';
-    case 'disconnected': return 'DISC';
-    case 'idle':
-    default:
-      return 'IDLE';
-  }
+  return sessionStateWords(state).tiny;
 }
 
 function currentSessionSummary(state: DashboardState, width: number): string {

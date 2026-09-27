@@ -25,6 +25,8 @@ index. If a location or gate changes, update this file in the same commit.
 |---|---|---|
 | Visual language spec | `DESIGN.md` | `design/lint.sh` (R1–R8, CI baseline in `docs/design-lint-baseline.md`) |
 | Quota severity and display palette | `shared/src/usage-severity.ts`, bound to `design/tokens.css` | `pnpm generate-usage-severity`; shared boundary/contrast/mirror tests |
+| Session state colour and words (every product surface) | `shared/src/session-state-presentation.ts`, bound to the `--session-*` tokens | `pnpm generate-session-state` (Swift, Kotlin, ESP32 C++ + the C++ token mirror); `session-state-presentation.test.ts` |
+| Raw colours in native Dashboard code | `design/native-palette-baseline.json` | `node scripts/check-native-palette.mjs` / `scripts/__tests__/native-palette.test.ts` — the count may only go down |
 | Color/type/spacing tokens | `design/tokens.css` | `design/verify-tokens-sync.py` (7 mirrors) |
 | Component & pattern CSS | `design/components.css`, `design/patterns.css` | consumed verbatim by generators |
 | Icons | `design/icons.jsx` | `scripts/design-sync-gen.mjs` transform |
@@ -49,6 +51,9 @@ index. If a location or gate changes, update this file in the same commit.
 embedded copies in the APME dashboard HTML, the Stream Deck PI CSS, and the
 Build Health generator's `:root` (`scripts/generate-html-report.py`).
 `python3 design/verify-tokens-sync.py` diffs all seven against `tokens.css`.
+ESP32 has no hand binding: `esp32/src/ui/product_palette.generated.h` is
+generated from the TS mirror by `pnpm generate-session-state`, and its drift is
+gated by that generator's test instead.
 
 ## Third-party brand provenance
 

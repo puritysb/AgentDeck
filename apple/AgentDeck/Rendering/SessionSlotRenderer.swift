@@ -33,7 +33,7 @@
 // and taught `renderDetailInfo` to draw the pending prompt, and both live
 // outside this mirror's declared scope below. Recorded so the next reader does
 // not hunt for a missing port — the pin tracks the whole file, not the subset.
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 15e72f1c9790d8d98ac7a01e49f21a06e2bbcb3e
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 295bdd4d805932d0b151704602371cb5dbfba4b2
 //
 // Scope for this first pass:
 //   - renderSessionSlot (primary session button)
@@ -158,7 +158,7 @@ struct SessionSlotView: View {
     private var signalColor: Color {
         switch mode {
         case .working: return Color(hex: "#2DD4BF")
-        case .asking:  return Color(hex: "#F59E0B")
+        case .asking:  return DesignTokens.Session.awaiting
         case .idle:    return palette.primary
         }
     }

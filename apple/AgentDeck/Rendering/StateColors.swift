@@ -1,86 +1,41 @@
-// StateColors.swift — Canonical state / agent-brand palette.
-// Swift port of shared/src/state-colors.ts (single source of truth across platforms).
+// StateColors.swift — SwiftUI lookups for session-state and agent-brand colours.
 //
-// New callers should use `StateColors.color(for:)` / `StateColors.brand(agent:)`.
-// Existing callers with inline palettes (StatusBadge, ControlTowerPanel, SessionListPanel,
-// TerrariumConfig) can migrate incrementally — this file does not
-// modify them.
+// Both are bindings, not palettes. State colours come from the generated
+// SessionStatePresentation (shared/src/session-state-presentation.ts, the
+// `Session` token group — DESIGN.md §2.7); brand colours come from
+// DesignTokens.Brand (design/brand/*.svg). Never add a state or brand literal
+// here — change design/tokens.css and regenerate.
 
 import SwiftUI
 
-#if canImport(CoreGraphics)
-import CoreGraphics
-#endif
-
 enum StateColors {
 
-    // MARK: - Hex constants (authoritative)
+    // MARK: - Session state
 
-    enum Hex {
-        // State
-        static let idle          = "#22c55e"  // green-500
-        static let processing    = "#3b82f6"  // blue-500
-        static let awaiting      = "#f59e0b"  // amber-500  (permission / option / diff)
-        static let disconnected  = "#6b7280"  // gray-500
-
-        // Agent brand
-        static let claudeCode = "#C07058"  // terracotta
-        static let openclaw   = "#ff4d4d"  // red
-        static let codexCli   = "#6366f1"  // indigo-500
-        static let opencode   = "#F1ECEC"  // cream
-        static let antigravity = "#5F6368"  // Google gray
-        static let kiro       = "#7C3AED"  // Kiro violet
-        static let monitor    = "#94a3b8"  // slate-400
+    static func color(for state: AgentConnectionState, onPaper: Bool = false) -> Color {
+        Color(rgb: state.sessionTone.colorHex(onPaper: onPaper))
     }
 
-    // MARK: - RGB triples (0–255) for Core Graphics callers
-
-    enum RGB255 {
-        static let idle:         (UInt8, UInt8, UInt8) = (34, 197, 94)
-        static let processing:   (UInt8, UInt8, UInt8) = (59, 130, 246)
-        static let awaiting:     (UInt8, UInt8, UInt8) = (245, 158, 11)
-        static let disconnected: (UInt8, UInt8, UInt8) = (107, 114, 128)
-
-        static let claudeCode:   (UInt8, UInt8, UInt8) = (192, 112, 88)
-        static let openclaw:     (UInt8, UInt8, UInt8) = (255, 77, 77)
-        static let codexCli:     (UInt8, UInt8, UInt8) = (99, 102, 241)
-        static let opencode:     (UInt8, UInt8, UInt8) = (241, 236, 236)
-        static let antigravity:  (UInt8, UInt8, UInt8) = (95, 99, 104)
-        static let monitor:      (UInt8, UInt8, UInt8) = (148, 163, 184)
+    /// Accepts raw wire state strings — mirrors stateColor() in TS: missing →
+    /// offline, unknown → idle.
+    static func color(for stateKey: String?, onPaper: Bool = false) -> Color {
+        Color(rgb: SessionTone(wire: stateKey).colorHex(onPaper: onPaper))
     }
 
-    // MARK: - SwiftUI Color lookups
+    // MARK: - Agent brand
 
-    static func color(for state: AgentConnectionState) -> Color {
-        switch state {
-        case .disconnected:       return Color(hex: Hex.disconnected)
-        case .idle:               return Color(hex: Hex.idle)
-        case .processing:         return Color(hex: Hex.processing)
-        case .awaitingPermission,
-             .awaitingOption,
-             .awaitingDiff:       return Color(hex: Hex.awaiting)
-        }
-    }
-
-    /// Accepts raw state strings (e.g., from JSON payloads) — mirrors stateColor() in TS.
-    static func color(for stateKey: String?) -> Color {
-        guard let stateKey, let state = AgentConnectionState(rawValue: stateKey) else {
-            return Color(hex: Hex.idle)  // TS fallback is IDLE, not disconnected
-        }
-        return color(for: state)
-    }
-
+    /// Brand hue as legible on dark product screens (mirrors agentBrandColor()
+    /// in TS). OpenCode's upstream mark is near-black, so dark screens use its
+    /// light variant; `monitor` and unknown agents are the neutral HUD grey.
     static func brand(agent agentType: String?) -> Color {
         switch agentType {
-        case "claude-code": return Color(hex: Hex.claudeCode)
-        case "openclaw":    return Color(hex: Hex.openclaw)
-        case "codex-cli":   return Color(hex: Hex.codexCli)
-        case "codex-app":   return Color(hex: Hex.codexCli)
-        case "opencode":    return Color(hex: Hex.opencode)
-        case "antigravity": return Color(hex: Hex.antigravity)
-        case "kiro-cli", "kiro-ide": return Color(hex: Hex.kiro)
-        case "monitor":     return Color(hex: Hex.monitor)
-        default:            return Color(hex: Hex.monitor)  // slate fallback
+        case "claude-code": return DesignTokens.Brand.claudeCode
+        case "openclaw":    return DesignTokens.Brand.openclaw
+        case "codex-cli", "codex-app": return DesignTokens.Brand.codex
+        case "opencode":    return DesignTokens.Brand.opencodeOnDark
+        case "antigravity": return DesignTokens.Brand.antigravity
+        case "kiro-cli", "kiro-ide": return DesignTokens.Brand.kiro
+        default:            return DesignTokens.UI.hudSubtext
         }
     }
 
@@ -104,7 +59,7 @@ enum StateColors {
     }
 }
 
-// MARK: - Color(hex:) convenience
+// MARK: - Color conveniences
 
 extension Color {
     /// Initialize from "#rrggbb" or "rrggbb". Invalid input returns opaque magenta (fails loud in dev).
@@ -114,5 +69,12 @@ extension Color {
             return
         }
         self = Color(red: Double(r) / 255.0, green: Double(g) / 255.0, blue: Double(b) / 255.0)
+    }
+
+    /// Initialize from a generated RGB888 value (`0xRRGGBB`).
+    init(rgb: UInt32) {
+        self = Color(red: Double((rgb >> 16) & 0xff) / 255.0,
+                     green: Double((rgb >> 8) & 0xff) / 255.0,
+                     blue: Double(rgb & 0xff) / 255.0)
     }
 }

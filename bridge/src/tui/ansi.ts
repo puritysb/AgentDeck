@@ -2,7 +2,7 @@
  * ANSI escape code helpers for TUI dashboard rendering.
  * Raw terminal control — no external dependencies beyond the shared palette.
  */
-import { State, STATE_COLORS } from '@agentdeck/shared';
+import { Session, State, STATE_COLORS } from '@agentdeck/shared';
 
 // ===== Cursor & Screen Control =====
 
@@ -85,12 +85,13 @@ function hexFg(hex: string, fallback: number): string {
 // ===== Named Colors =====
 
 export const colors = {
-  // State colors — derived from shared/state-colors.ts canonical palette
-  idle: hexFg(STATE_COLORS[State.IDLE], 32),                        // green
-  processing: hexFg(STATE_COLORS[State.PROCESSING], 34),            // blue
+  // State colors — the shared session-state palette (DESIGN.md §2.7); the
+  // numbers are the 16-colour fallbacks for terminals without truecolor.
+  idle: hexFg(STATE_COLORS[State.IDLE], 37),                        // neutral
+  processing: hexFg(STATE_COLORS[State.PROCESSING], 36),            // working cyan
   awaiting: hexFg(STATE_COLORS[State.AWAITING_PERMISSION], 33),     // amber
-  disconnected: hexFg(STATE_COLORS[State.DISCONNECTED], 90),        // gray
-  error: sgr(31),                                                    // red — no canonical error state color
+  disconnected: hexFg(STATE_COLORS[State.DISCONNECTED], 90),        // offline grey
+  error: hexFg(Session.error, 31),                                   // red
 
   // UI colors
   header: `${BOLD}${sgr(36)}`,   // bold cyan

@@ -4,10 +4,7 @@ import SwiftUI
 
 extension UsageSeverity {
     static func color(_ used: Double, onPaper: Bool = false) -> Color {
-        let rgb = colorHex(used, onPaper: onPaper)
-        return Color(red: Double((rgb >> 16) & 255) / 255,
-                     green: Double((rgb >> 8) & 255) / 255,
-                     blue: Double(rgb & 255) / 255)
+        Color(rgb: colorHex(used, onPaper: onPaper))
     }
 }
 

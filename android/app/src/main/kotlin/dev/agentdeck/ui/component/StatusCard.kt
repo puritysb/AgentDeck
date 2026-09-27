@@ -21,6 +21,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.ui.theme.AgentDeckColors
+import androidx.compose.ui.graphics.Color
+import dev.agentdeck.util.sessionTone
+import dev.agentdeck.util.sessionWords
 
 @Composable
 fun StatusCard(
@@ -98,18 +101,8 @@ fun StatusCard(
     }
 }
 
-fun stateColor(state: AgentState) = when (state) {
-    AgentState.IDLE -> AgentDeckColors.Green
-    AgentState.PROCESSING -> AgentDeckColors.Blue
-    AgentState.AWAITING_PERMISSION, AgentState.AWAITING_OPTION, AgentState.AWAITING_DIFF -> AgentDeckColors.Amber
-    AgentState.DISCONNECTED -> AgentDeckColors.SlateText
-}
+/** Session state colour on dark screens — DESIGN.md §2.7, generated from shared/src. */
+fun stateColor(state: AgentState) = Color(state.sessionTone.bright)
 
-fun stateLabel(state: AgentState) = when (state) {
-    AgentState.DISCONNECTED -> "Disconnected"
-    AgentState.IDLE -> "Idle"
-    AgentState.PROCESSING -> "Processing"
-    AgentState.AWAITING_PERMISSION -> "Permission Required"
-    AgentState.AWAITING_OPTION -> "Awaiting Selection"
-    AgentState.AWAITING_DIFF -> "Diff Review"
-}
+/** Sentence-case state label from the shared session-state vocabulary. */
+fun stateLabel(state: AgentState) = state.sessionWords.label

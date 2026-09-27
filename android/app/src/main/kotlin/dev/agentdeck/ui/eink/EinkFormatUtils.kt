@@ -17,6 +17,8 @@ import dev.agentdeck.net.SessionWeightRules
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.terrarium.renderer.einkColorEnabled
 import dev.agentdeck.ui.component.BrandIcon
+import dev.agentdeck.util.sessionTone
+import dev.agentdeck.util.sessionWords
 
 /**
  * Total monospace columns one LIMITS row may occupy on the e-ink corner card.
@@ -79,35 +81,23 @@ fun formatDurationLong(millis: Long): String {
     return "%d:%02d:%02d".format(h, m, s)
 }
 
-fun stateMarker(state: AgentState): String = when (state) {
-    AgentState.IDLE -> "\u25CF IDLE"                          // ●
-    AgentState.PROCESSING -> "\u25C9 PROCESSING"              // ◉
-    AgentState.AWAITING_PERMISSION -> "\u26A0 PERMISSION"     // ⚠
-    AgentState.AWAITING_OPTION -> "\u25C7 SELECT"             // ◇
-    AgentState.AWAITING_DIFF -> "\u25A1 DIFF REVIEW"          // □
-    AgentState.DISCONNECTED -> "\u25CB DISCONNECTED"          // ○
+/** Shape glyph per state: colour is redundant with shape (DESIGN.md §6.4). */
+private fun stateGlyph(state: AgentState): String = when (state) {
+    AgentState.IDLE -> "\u25CF"                 // ●
+    AgentState.PROCESSING -> "\u25C9"           // ◉
+    AgentState.AWAITING_PERMISSION -> "\u26A0"  // ⚠
+    AgentState.AWAITING_OPTION -> "\u25C7"      // ◇
+    AgentState.AWAITING_DIFF -> "\u25A1"        // □
+    AgentState.DISCONNECTED -> "\u25CB"         // ○
 }
 
-fun compactStateMarker(state: AgentState): String = when (state) {
-    AgentState.IDLE -> "\u25CF IDLE"
-    AgentState.PROCESSING -> "\u25C9 PROC"
-    AgentState.AWAITING_PERMISSION -> "\u26A0 PERM"
-    AgentState.AWAITING_OPTION -> "\u25C7 SEL"
-    AgentState.AWAITING_DIFF -> "\u25A1 DIFF"
-    AgentState.DISCONNECTED -> "\u25CB OFF"
-}
+/** Glyph + the shared short label, e.g. "◉ WORKING". */
+fun compactStateMarker(state: AgentState): String = "${stateGlyph(state)} ${state.sessionWords.short}"
 
-/** Color-coded state indicator for color e-ink. Returns null for B&W e-ink. */
+/** Session state colour on colour e-ink: the shared paper palette (DESIGN.md §2.7). Null on B&W e-ink. */
 fun stateColor(state: AgentState): Color? {
     if (!einkColorEnabled) return null
-    return when (state) {
-        AgentState.IDLE -> Color(0xFF227733)               // green
-        AgentState.PROCESSING -> Color(0xFF335588)         // blue
-        AgentState.AWAITING_PERMISSION -> Color(0xFFBB7700) // amber
-        AgentState.AWAITING_OPTION -> Color(0xFFBB7700)    // amber
-        AgentState.AWAITING_DIFF -> Color(0xFF775599)      // purple
-        AgentState.DISCONNECTED -> Color(0xFFCC2222)       // red
-    }
+    return Color(state.sessionTone.paper)
 }
 
 /** State priority for sorting: busiest first */

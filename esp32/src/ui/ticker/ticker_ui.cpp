@@ -11,6 +11,7 @@
 #include "../../camera/photo_capture.h"
 #include "../display.h"
 #include "../theme.h"
+#include "../session_state.generated.h"
 #include "../widgets/connection_card.h"
 #include "../agent_label.h"
 #include "../../util/utf8.h"
@@ -270,12 +271,11 @@ static uint32_t agentColor(const char* agentType) {
     return Theme::HUDDim;
 }
 
+// Session state palette (DESIGN.md §2.7, generated); "error" is not a
+// session state but a failure, so it keeps the failure red.
 static uint32_t stateColorOf(const char* state) {
-    if (strstr(state, "awaiting") != nullptr) return Theme::StatusAmber;
-    if (strcmp(state, "processing") == 0) return Theme::StatusBlue;
     if (strcmp(state, "error") == 0) return Theme::StatusRed;
-    if (strcmp(state, "idle") == 0) return Theme::StatusGreen;
-    return Theme::HUDDim;
+    return SessionState::color(state);
 }
 
 static void renderFocusPage(const FocusSnap& f, bool connected) {
@@ -1032,10 +1032,10 @@ void update(float dt) {
                  LV_SYMBOL_BATTERY_FULL, power.voltageMv / 1000.0f);
         lv_label_set_text(s_hdrBattery, battery);
         lv_obj_set_style_text_color(s_hdrBattery,
-            lv_color_hex(power.charging ? Theme::StatusBlue : Theme::HUDDim), 0);
+            lv_color_hex(power.charging ? Theme::StatusCyan : Theme::HUDDim), 0);
     } else if (power.usbPowered) {
         lv_label_set_text(s_hdrBattery, "USB");
-        lv_obj_set_style_text_color(s_hdrBattery, lv_color_hex(Theme::StatusBlue), 0);
+        lv_obj_set_style_text_color(s_hdrBattery, lv_color_hex(Theme::StatusCyan), 0);
     } else {
         lv_label_set_text(s_hdrBattery, "");
     }

@@ -12,7 +12,7 @@ const checkOnly = process.argv.includes('--check');
 
 /* Exact pin, not a floor: a silently dropped token is as much a regression as a
  * silently added one. Bump this deliberately when design/tokens.css changes. */
-const EXPECTED_TOKEN_COUNT = 100;
+const EXPECTED_TOKEN_COUNT = 112;
 const requiredFields = [
   'id',
   'title',
@@ -155,6 +155,7 @@ function tokenGroup(name) {
   if (name.startsWith('brand-')) return 'Brand';
   if (name.startsWith('status-')) return 'Status';
   if (name.startsWith('ui-')) return 'Product UI';
+  if (name.startsWith('session-')) return 'Session state';
   if (name.startsWith('font-') || name.startsWith('t-') || name.startsWith('tr-')) return 'Type';
   if (name.startsWith('s-') || name.startsWith('container-') || name === 'section-y') return 'Layout';
   if (name.startsWith('r-')) return 'Radius';

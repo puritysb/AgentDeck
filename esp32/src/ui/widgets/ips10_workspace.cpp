@@ -212,7 +212,7 @@ static int category(const char* s) {
     if(!strcmp(s,"processing")) return 2;
     return 3;
 }
-static uint32_t colorFor(int c) { return c==1?Theme::StatusAmber:c==2?Theme::StatusBlue:Theme::HUDDim; }
+static uint32_t colorFor(int c) { return c==1?Theme::SessionAwaiting:c==2?Theme::SessionWorking:Theme::SessionIdle; }
 static const char* nameFor(int c) { return c==1?"Attention":c==2?"Working":"Idle"; }
 static bool matches(const Row& r) { return !filter || category(r.state)==filter; }
 static void selectCb(lv_event_t* e) {

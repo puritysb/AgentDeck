@@ -382,9 +382,11 @@ final class PixooRenderer {
         let dataParticle: RGB = (0x70, 0xB0, 0xFF)
         let dataParticleGreen: RGB = (0x50, 0xF0, 0x90)
         let tankWall: RGB = (0x06, 0x0A, 0x10)
-        let stateIdle: RGB = (0x22, 0xC5, 0x5E)
-        let stateProcessing: RGB = (0x3B, 0x82, 0xF6)
-        let stateAwaiting: RGB = (0xF5, 0x9E, 0x0B)
+        // Session state palette (DESIGN.md §2.7) — same source as the Node
+        // renderer's STATE_COLORS, so both daemons paint one Pixoo.
+        let stateIdle: RGB = SessionTone.idle.rgb()
+        let stateProcessing: RGB = SessionTone.working.rgb()
+        let stateAwaiting: RGB = SessionTone.awaiting.rgb()
         let stateError: RGB = (0xEF, 0x44, 0x44)
         let white: RGB = (0xFF, 0xFF, 0xFF)
         let black: RGB = (0x00, 0x00, 0x00)

@@ -4,15 +4,17 @@ import SwiftUI
 
 // MARK: - Terrarium HUD Colors (matching Android TerrariumColors)
 
+/// Dashboard HUD palette — every entry is a design token (DESIGN.md §2.6/§2.7),
+/// shared with the Android LCD and ESP32 HUDs.
 enum TerrariumHUD {
-    static let bg = Color.black.opacity(0.5)                       // 0x80000000
-    static let text = Color(red: 0.886, green: 0.91, blue: 0.941) // #E2E8F0
-    static let subtext = Color(red: 0.58, green: 0.64, blue: 0.72) // #94A3B8
-    static let ledGreen = Color(red: 0.133, green: 0.773, blue: 0.369)  // #22C55E
-    static let ledAmber = Color(red: 0.984, green: 0.749, blue: 0.141)  // #FBBF24
-    static let ledRed = Color(red: 0.937, green: 0.267, blue: 0.267)    // #EF4444
-    static let tetraNeon = Color(red: 0, green: 0.898, blue: 1)         // #00E5FF
-    static let claudeBody = Color(red: 0.753, green: 0.439, blue: 0.345) // #C07058
+    static let bg = DesignTokens.UI.popupBgDeep.opacity(0.5)
+    static let text = DesignTokens.UI.hudText
+    static let subtext = DesignTokens.UI.hudSubtext
+    static let ledGreen = DesignTokens.UI.ok
+    static let ledAmber = DesignTokens.UI.attn
+    static let ledRed = DesignTokens.UI.error
+    static let tetraNeon = DesignTokens.UI.cyan
+    static let claudeBody = DesignTokens.Brand.claudeCode
 }
 
 struct SessionListPanel: View {
@@ -590,24 +592,22 @@ private extension SessionListPanel {
         }
     }
 
+    /// Shape glyph + the shared short label: colour is redundant with shape
+    /// (DESIGN.md §6.4), and the words come from the one vocabulary.
     func compactStateMarker(_ state: AgentConnectionState) -> String {
-        switch state {
-        case .idle: "● IDLE"
-        case .processing: "◉ WORKING"
-        case .awaitingPermission: "⚠ PERM"
-        case .awaitingOption: "◇ SEL"
-        case .awaitingDiff: "□ DIFF"
-        case .disconnected: "○ OFF"
+        let glyph = switch state {
+        case .idle: "●"
+        case .processing: "◉"
+        case .awaitingPermission: "⚠"
+        case .awaitingOption: "◇"
+        case .awaitingDiff: "□"
+        case .disconnected: "○"
         }
+        return "\(glyph) \(state.sessionWords.short)"
     }
 
     private func stateColor(_ state: AgentConnectionState) -> Color {
-        switch state {
-        case .idle: DesignTokens.UI.idle
-        case .processing: DesignTokens.UI.ok
-        case .awaitingPermission, .awaitingOption, .awaitingDiff: TerrariumHUD.ledAmber
-        case .disconnected: TerrariumHUD.subtext
-        }
+        StateColors.color(for: state)
     }
 }
 

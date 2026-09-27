@@ -24,16 +24,8 @@ enum AgentConnectionState: String, Codable, Sendable, CaseIterable {
         self == .processing
     }
 
-    var displayLabel: String {
-        switch self {
-        case .disconnected: "DISCONNECTED"
-        case .idle: "IDLE"
-        case .processing: "PROCESSING"
-        case .awaitingPermission: "PERMISSION"
-        case .awaitingOption: "SELECT"
-        case .awaitingDiff: "DIFF REVIEW"
-        }
-    }
+    /// Uppercase pill text from the shared session-state vocabulary.
+    var displayLabel: String { sessionWords.short }
 }
 
 // MARK: - Permission Mode

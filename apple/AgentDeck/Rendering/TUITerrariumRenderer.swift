@@ -159,9 +159,9 @@ private enum TerrariumPalette {
         let s = normalizeState(state)
         switch s {
         case "disconnected":
-            return Color(red: 0.42, green: 0.45, blue: 0.50)
+            return DesignTokens.Session.offline
         case "awaiting":
-            return Color(hex: StateColors.Hex.awaiting)
+            return DesignTokens.Session.awaiting
         case "processing":
             return StateColors.brand(agent: agent)
         default: // idle

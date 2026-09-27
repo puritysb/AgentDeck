@@ -47,6 +47,7 @@ import dev.agentdeck.terrarium.renderer.einkColorEnabled
 import dev.agentdeck.ui.component.AgentDeckLogo
 import dev.agentdeck.ui.component.BrandIcon
 import kotlinx.coroutines.launch
+import dev.agentdeck.util.SessionTone
 
 /**
  * LEFT zone (22%) — Agent panel for e-ink 3-zone layout.
@@ -360,7 +361,7 @@ internal fun EinkAgentBlock(
     val paperColor = MaterialTheme.colorScheme.background
     val inkColor = MaterialTheme.colorScheme.onSurface
     val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val accentColor = if (einkColorEnabled) Color(0xFFBB7700) else Color.Black
+    val accentColor = if (einkColorEnabled) Color(SessionTone.AWAITING.paper) else Color.Black
 
     val containerModifier = modifier
         .fillMaxWidth()

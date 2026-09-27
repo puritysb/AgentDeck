@@ -67,7 +67,7 @@ private struct EinkScreenLayout: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("AgentDeck")
-                        .font(.system(size: 11, weight: .semibold, design: .serif))
+                        .font(.system(size: 11, weight: .semibold))
                     Spacer()
                     Text(isColor ? "PANTONE6" : "CREMAS")
                         .font(.system(size: 8, weight: .medium, design: .monospaced))
@@ -89,7 +89,7 @@ private struct EinkScreenLayout: View {
                             )
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(focusSession?.projectName ?? focusAgent.displayName)
-                                    .font(.system(size: 13, weight: .bold, design: .serif))
+                                    .font(.system(size: 13, weight: .bold))
                                     .foregroundStyle(creatureTint)
                                     .lineLimit(1)
                                 Text("STATE \(focusState.displayName.uppercased())")

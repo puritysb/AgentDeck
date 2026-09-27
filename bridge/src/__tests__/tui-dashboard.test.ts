@@ -261,7 +261,7 @@ describe('TUI dashboard models', () => {
       0,
     ));
 
-    expect(output).toContain('my-project · sonnet-4 · PROC');
+    expect(output).toContain('my-project · sonnet-4 · WORK');
     expect(output).toContain('q quit  ↑↓/j k scroll  1-9 switch session');
   });
 
@@ -279,7 +279,7 @@ describe('TUI dashboard models', () => {
       0,
     ));
 
-    expect(output).toContain('sonnet-4 - PROC');
+    expect(output).toContain('sonnet-4 - WORK');
   });
 
   it('renders sibling models in session bridge mode and omits uptime label', () => {
@@ -306,7 +306,7 @@ describe('TUI dashboard models', () => {
       0,
     ));
 
-    expect(output).toContain('codex-mini - PROC');
+    expect(output).toContain('codex-mini - WORK');
     expect(output).not.toContain('Up:');
   });
 

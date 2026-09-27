@@ -309,7 +309,7 @@ struct ControlTowerPanel: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("\(glance.completedCount) completed")
-                            .font(.system(size: 23, weight: .semibold, design: .rounded))
+                            .font(.system(size: 23, weight: .semibold))
                             .foregroundStyle(TerrariumHUD.text)
                         Text(activityScopeLabel(glance))
                             .font(.system(size: 10))
@@ -818,25 +818,25 @@ struct ControlTowerPanel: View {
                     openStreamDeckDownloadPage()
                 } label: {
                     HStack(spacing: 4) {
-                        Circle().fill(Color.orange).frame(width: 5, height: 5)
+                        Circle().fill(DesignTokens.UI.attn).frame(width: 5, height: 5)
                         Text("Stream Deck+ setup")
                             .font(.system(size: 10, weight: .medium))
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.orange)
+                .foregroundStyle(DesignTokens.UI.attn)
             } else if !streamDeckDetection.pluginInstalled {
                 Button {
                     openStreamDeckPluginInstaller()
                 } label: {
                     HStack(spacing: 4) {
-                        Circle().fill(Color.orange).frame(width: 5, height: 5)
+                        Circle().fill(DesignTokens.UI.attn).frame(width: 5, height: 5)
                         Text("Install SD plugin")
                             .font(.system(size: 10, weight: .medium))
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.orange)
+                .foregroundStyle(DesignTokens.UI.attn)
             }
         }
     }
@@ -1188,7 +1188,7 @@ struct ControlTowerPanel: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(rateLimitsEmptyMessage)
                 .font(.system(size: 10))
-                .foregroundColor(connected ? TerrariumHUD.subtext : .orange)
+                .foregroundColor(connected ? TerrariumHUD.subtext : DesignTokens.UI.attn)
                 .fixedSize(horizontal: false, vertical: true)
             if !connected {
                 Button {
@@ -1252,7 +1252,7 @@ struct ControlTowerPanel: View {
                     if stateHolder.state.adminApiStale == true {
                         Text("stale")
                             .font(.system(size: 9))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(DesignTokens.UI.idleDark)
                     }
                     Spacer()
                 }
@@ -1367,12 +1367,12 @@ struct ControlTowerPanel: View {
                 if let note = footnote, !note.isEmpty {
                     Text(note)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.orange)
+                        .foregroundColor(DesignTokens.UI.idleDark)
                         .frame(width: 48, alignment: .trailing)
                 } else if stale {
                     Text("stale")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.orange)
+                        .foregroundColor(DesignTokens.UI.idleDark)
                         .frame(width: 48, alignment: .trailing)
                 } else if let reset = resetTime, let formatted = formatResetTime(reset) {
                     Text(formatted)
@@ -1483,7 +1483,7 @@ struct ControlTowerPanel: View {
         HStack(spacing: 8) {
             Image(systemName: "bolt.slash.fill")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(DesignTokens.UI.attn)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Daemon offline")
                     .font(.system(size: 11, weight: .semibold))
@@ -1499,21 +1499,21 @@ struct ControlTowerPanel: View {
             } label: {
                 Text("Restart")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(DesignTokens.Ink.s900)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(
-                        Capsule().fill(Color.orange)
+                        Capsule().fill(DesignTokens.UI.attn)
                     )
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(Color.orange.opacity(0.18))
+        .background(DesignTokens.UI.attn.opacity(0.18))
         .overlay(
             Rectangle()
-                .fill(Color.orange.opacity(0.45))
+                .fill(DesignTokens.UI.attn.opacity(0.45))
                 .frame(height: 0.5),
             alignment: .bottom
         )
@@ -1571,12 +1571,7 @@ struct ControlTowerPanel: View {
     }
 
     private func stateColor(_ state: AgentConnectionState) -> Color {
-        switch state {
-        case .processing: .cyan
-        case .awaitingPermission, .awaitingOption, .awaitingDiff: .orange
-        case .idle: .green
-        case .disconnected: .gray
-        }
+        StateColors.color(for: state)
     }
 
     private func rateLimitGauge(label: String, percent: Double, previousPercent: Double?, resetTime: String?) -> some View {
@@ -1593,7 +1588,7 @@ struct ControlTowerPanel: View {
             if !arrow.isEmpty {
                 Text(arrow)
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(arrow == "↑" ? .red : .green)
+                    .foregroundStyle(arrow == "↑" ? DesignTokens.UI.error : DesignTokens.UI.ok)
             }
             if let reset = resetTime, let formatted = formatResetTime(reset) {
                 Text(formatted)

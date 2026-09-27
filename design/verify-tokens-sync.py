@@ -147,6 +147,7 @@ GROUP_MAP = {
     "brand": "Brand",
     "status": "Status",
     "ui": "UI",
+    "session": "Session",
     "font": "Font",
     "t": "Type",
     "tr": "Tracking",

@@ -16,18 +16,18 @@ enum EnvironmentVisualState {
 
 enum TerrariumColors {
     // Background layers
-    static let deepSea = Color(red: 0.039, green: 0.086, blue: 0.157)         // #0A1628
-    static let midWater = Color(red: 0.059, green: 0.153, blue: 0.267)        // #0F2744
-    static let shallowWater = Color(red: 0.086, green: 0.231, blue: 0.361)    // #163B5C
+    static let deepSea = DesignTokens.UI.waterDeep
+    static let midWater = DesignTokens.UI.waterMid
+    static let shallowWater = DesignTokens.UI.waterShallow
 
     // Claude Code (Octopus)
-    static let claudeBody = Color(red: 0.753, green: 0.439, blue: 0.345)      // #C07058
+    static let claudeBody = DesignTokens.Brand.claudeCode
     static let claudeBodyLight = Color(red: 0.816, green: 0.533, blue: 0.439) // #D08870
     static let claudeBodyDark = Color(red: 0.627, green: 0.345, blue: 0.251)  // #A05840
     static let claudeEye = Color(red: 0.176, green: 0.122, blue: 0.086)       // #2D1F16
 
     // Crayfish
-    static let crayfishShell = Color(red: 1.0, green: 0.302, blue: 0.302)     // #FF4D4D
+    static let crayfishShell = DesignTokens.Brand.openclaw
     static let crayfishDark = Color(red: 0.6, green: 0.106, blue: 0.106)      // #991B1B
     static let crayfishClaw = Color(red: 1.0, green: 0.302, blue: 0.302)      // #FF4D4D
     static let crayfishEye = Color(red: 0.0, green: 0.898, blue: 0.8)         // #00E5CC
@@ -40,7 +40,7 @@ enum TerrariumColors {
     static let tetraStripe = Color(red: 0.0, green: 0.898, blue: 1.0)         // #00E5FF
 
     // Cloud (Codex CLI) — matches icon gradient: lavender/pink top → vivid blue bottom
-    static let cloudBell = Color(red: 0.380, green: 0.400, blue: 0.880)      // #6166E0 mid blue-indigo
+    static let cloudBell = DesignTokens.Brand.codex                          // mid blue-indigo
     static let cloudDeep = Color(red: 0.200, green: 0.260, blue: 0.780)      // #3342C7 vivid deep blue
     static let cloudHighlight = Color(red: 0.700, green: 0.580, blue: 0.900) // #B394E5 lavender-pink (top glow)
     static let cloudGlow = Color(red: 0.560, green: 0.580, blue: 0.950)      // #8F94F2 periwinkle
@@ -93,9 +93,9 @@ enum TerrariumColors {
     static let errorTint = Color(red: 0.937, green: 0.267, blue: 0.267).opacity(0.25)
 
     // HUD overlay
-    static let hudBg = Color.black.opacity(0.5)
-    static let hudText = Color(red: 0.886, green: 0.910, blue: 0.878)         // #E2E8F0
-    static let hudSubtext = Color(red: 0.580, green: 0.639, blue: 0.722)      // #94A3B8
+    static let hudBg = TerrariumHUD.bg
+    static let hudText = DesignTokens.UI.hudText
+    static let hudSubtext = DesignTokens.UI.hudSubtext
 
     // Sick/desaturated crayfish
     static let crayfishSick = Color(red: 0.545, green: 0.482, blue: 0.482) // #8B7B7B

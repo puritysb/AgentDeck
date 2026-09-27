@@ -54,6 +54,7 @@ import dev.agentdeck.ui.screen.DisplaySettingsCard
 import dev.agentdeck.ui.theme.LocalDeviceProfile
 import dev.agentdeck.util.PanelOverride
 import kotlinx.coroutines.launch
+import dev.agentdeck.ui.theme.DesignTokens
 
 @Composable
 fun TabletSettingsDialog(
@@ -108,7 +109,7 @@ fun TabletSettingsDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.85f),
-            color = Color(0xE61E293B),
+            color = DesignTokens.UI.waterMid.copy(alpha = 0.9f),
             shape = RoundedCornerShape(16.dp),
         ) {
             Column(
@@ -120,7 +121,7 @@ fun TabletSettingsDialog(
                 Text(
                     text = "Settings",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
+                    color = DesignTokens.UI.hudText,
                 )
 
                 // Connection section. Subtitle mirrors the iOS
@@ -129,18 +130,18 @@ fun TabletSettingsDialog(
                 // with your Mac" framing they'd see on iPad.
                 Card(
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF334155)),
+                    colors = CardDefaults.cardColors(containerColor = DesignTokens.UI.waterShallow),
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Connection",
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color(0xFF94A3B8),
+                            color = DesignTokens.UI.hudSubtext,
                         )
                         Text(
                             text = "How this device pairs with your Mac. mDNS auto-discovery + manual URL.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8).copy(alpha = 0.75f),
+                            color = DesignTokens.UI.hudSubtext.copy(alpha = 0.75f),
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         ConnectionPanel(
@@ -217,10 +218,10 @@ fun TabletSettingsDialog(
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569)),
+                    colors = ButtonDefaults.buttonColors(containerColor = DesignTokens.UI.hudFaint),
                     shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text("Close", color = Color.White)
+                    Text("Close", color = DesignTokens.UI.hudText)
                 }
             }
         }
@@ -235,7 +236,7 @@ private fun DashboardOrientationCard(
 ) {
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF334155)),
+        colors = CardDefaults.cardColors(containerColor = DesignTokens.UI.waterShallow),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -244,12 +245,12 @@ private fun DashboardOrientationCard(
             Text(
                 text = "Orientation",
                 style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFF94A3B8),
+                color = DesignTokens.UI.hudSubtext,
             )
             Text(
                 text = "Use Auto for normal tablet rotation, or pin the dashboard when the device rotation lock is on.",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF94A3B8).copy(alpha = 0.75f),
+                color = DesignTokens.UI.hudSubtext.copy(alpha = 0.75f),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -294,16 +295,16 @@ private fun DashboardOrientationOption(
     Surface(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
-        color = if (selected) Color(0xFF64748B) else Color(0xFF1E293B),
+        color = if (selected) DesignTokens.UI.hudFaint else DesignTokens.UI.waterMid,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (selected) Color(0xFFCBD5E1) else Color(0xFF475569),
+            if (selected) DesignTokens.UI.hudText else DesignTokens.UI.hudFaint,
         ),
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = Color.White,
+            color = DesignTokens.UI.hudText,
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
@@ -316,7 +317,7 @@ private fun DashboardOrientationOption(
 private fun MacIntegrationsReadOnlyCard(dashState: DashboardState) {
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF334155)),
+        colors = CardDefaults.cardColors(containerColor = DesignTokens.UI.waterShallow),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -325,12 +326,12 @@ private fun MacIntegrationsReadOnlyCard(dashState: DashboardState) {
             Text(
                 text = "Mac integrations",
                 style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFF94A3B8),
+                color = DesignTokens.UI.hudSubtext,
             )
             Text(
                 text = "Status only. Set these up in AgentDeck on your Mac.",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF94A3B8).copy(alpha = 0.75f),
+                color = DesignTokens.UI.hudSubtext.copy(alpha = 0.75f),
             )
             IntegrationStatusRow(
                 label = "Claude",
@@ -382,7 +383,7 @@ private fun DashboardPanelsCard(
 ) {
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF334155)),
+        colors = CardDefaults.cardColors(containerColor = DesignTokens.UI.waterShallow),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -391,12 +392,12 @@ private fun DashboardPanelsCard(
             Text(
                 text = "Display panels",
                 style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFF94A3B8),
+                color = DesignTokens.UI.hudSubtext,
             )
             Text(
                 text = "Choose which sections of the dashboard appear.",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF94A3B8).copy(alpha = 0.75f),
+                color = DesignTokens.UI.hudSubtext.copy(alpha = 0.75f),
             )
             DashboardPanelToggle("Session list", showSessionList) {
                 coroutineScope.launch { displayPrefs.setShowSessionList(it) }
@@ -431,7 +432,7 @@ private fun DashboardPanelToggle(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
+            color = DesignTokens.UI.hudText,
         )
         Switch(
             checked = checked,
@@ -454,12 +455,12 @@ private fun IntegrationStatusRow(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = Color.White,
+            color = DesignTokens.UI.hudText,
         )
         Text(
             text = status,
             style = MaterialTheme.typography.bodySmall,
-            color = if (ok) Color(0xFF22C55E) else Color(0xFF94A3B8),
+            color = if (ok) DesignTokens.UI.ok else DesignTokens.UI.hudSubtext,
         )
     }
 }
