@@ -51,11 +51,17 @@ import {
 // - logError(): always shown (critical errors requiring user action)
 // - debug(): file-only (when --debug enabled)
 
-// links2004/WebSockets, used by the ESP32-C3 e-ink firmware, closes inbound
-// frames above 15KB with 1009 before the firmware parser can see them. Keep the
-// initial replay comfortably below that library cap; Detail views can request a
-// scoped session replay later via query_session_timeline.
-export const INITIAL_TIMELINE_HISTORY_MAX_BYTES = 12 * 1024;
+// Dashboards get the latest INITIAL_TIMELINE_HISTORY_ENTRIES readable rows —
+// the same replay the Swift daemon sends (`getRecent(100)`), so one tablet shows
+// one history whichever daemon it is attached to. The byte ceiling is a guard,
+// not the working limit: it used to be 12 KB for every client because an
+// untagged links2004 board (15 KB inbound frame limit) could look like a
+// dashboard on its first connect. Boards are now identified from byte one (the
+// `?clientType=esp32` tag, the links2004 User-Agent, or a known board IP) and
+// get ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES instead; at 12 KB a dashboard
+// received about a dozen rows, since agent replies carry their full text.
+export const INITIAL_TIMELINE_HISTORY_ENTRIES = 100;
+export const INITIAL_TIMELINE_HISTORY_MAX_BYTES = 256 * 1024;
 /** Board-class WS clients (`?clientType=esp32`) get the serial-path frame
  *  invariant applied to the initial burst too: any frame bound for a board
  *  must stay under 4096 bytes — a no-PSRAM board handed a 12KB frame right
@@ -1057,7 +1063,8 @@ export class BridgeCore {
       const historyCap = this.wsServer.isEsp32Client(ws)
         ? ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES
         : INITIAL_TIMELINE_HISTORY_MAX_BYTES;
-      const readable = this.connectHistoryFilter ? this.connectHistoryFilter(ws, history) : history;
+      const readable = (this.connectHistoryFilter ? this.connectHistoryFilter(ws, history) : history)
+        .slice(-INITIAL_TIMELINE_HISTORY_ENTRIES);
       const historyEvent = buildCappedTimelineHistory(readable, historyCap)
         ?? ({ type: 'timeline_history', entries: [] } as BridgeEvent);
       this.wsServer.sendTo(ws, historyEvent);

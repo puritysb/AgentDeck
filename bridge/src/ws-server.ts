@@ -40,6 +40,12 @@ export function broadcastActionability(event: BridgeEvent): 'actionable' | 'cosm
   return 'n/a';
 }
 
+/** The User-Agent links2004/WebSockets (the ESP32 firmware client) sends on every upgrade. */
+export function isBoardWebSocketLibrary(userAgent: string | string[] | undefined): boolean {
+  const ua = Array.isArray(userAgent) ? userAgent.join(' ') : userAgent ?? '';
+  return /arduino-WebSocket-Client/i.test(ua);
+}
+
 export class WsServer {
   private wss: WebSocketServer;
   // Server-wide broadcast attempts, not deliveries or panel repaints. Bounded
@@ -264,6 +270,13 @@ export class WsServer {
       if (url.searchParams.get('clientType') === 'esp32' || url.searchParams.get('esp32') === '1') {
         this.esp32Clients.add(ws);
         debug('WS', 'ESP32 WiFi client tagged from query');
+      } else if (isBoardWebSocketLibrary(req.headers['user-agent'])) {
+        // links2004/WebSockets announces itself on every upgrade. An untagged
+        // board (firmware older than the `?clientType=esp32` tag) is thereby
+        // board-class from byte one — not one connect too late — so dashboards
+        // no longer need the board frame limit applied to them just in case.
+        this.esp32Clients.add(ws);
+        debug('WS', 'ESP32 WiFi client tagged from its WebSocket library');
       } else if (this.knownBoardIps.has(remoteIp)) {
         this.esp32Clients.add(ws);
         debug('WS', `ESP32 WiFi client tagged from known board IP ${remoteIp}`);

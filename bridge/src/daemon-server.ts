@@ -17,7 +17,7 @@ import { createServer, type Server, type ServerResponse } from 'http';
 import { createHash, randomUUID } from 'crypto';
 import WebSocket from 'ws';
 import { trackDaemonSockets } from './daemon-socket-drain.js';
-import { BridgeCore, buildCappedTimelineHistory } from './bridge-core.js';
+import { BridgeCore, buildCappedTimelineHistory, ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES } from './bridge-core.js';
 import { buildDisplayStateEvent } from './display-dim.js';
 import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import { prepareForSerial } from './esp32-serial.js';
@@ -5613,7 +5613,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (!surfaceHasCapability(surfaceNegotiations.get(sender), CLAUDE_TOOL_EVENTS_CAPABILITY)) {
           entries = entries.filter((entry) => entry.toolEvent !== true);
         }
-        const historyEvent = buildCappedTimelineHistory(entries, undefined, { sessionId });
+        // Boards keep their ≤4096 B frame rule here too; dashboards get the
+        // dashboard ceiling (a Detail view asking for a session's rows).
+        const historyEvent = buildCappedTimelineHistory(entries,
+          core.wsServer.isEsp32Client(sender) ? ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES : undefined, { sessionId });
         if (historyEvent) {
           try {
             sender.send(JSON.stringify(historyEvent));

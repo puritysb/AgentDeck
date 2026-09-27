@@ -67,6 +67,7 @@ import dev.agentdeck.state.TimelineStore
 import dev.agentdeck.ui.component.AgentDeckMark
 import dev.agentdeck.ui.component.BrandIcon
 import dev.agentdeck.ui.monitor.subscriptionTrailing
+import dev.agentdeck.util.ChatGPTPlan
 import dev.agentdeck.util.formatResetTime
 import dev.agentdeck.util.providerLimitRows
 import java.time.Instant
@@ -397,6 +398,15 @@ internal fun buildEinkUsageGroups(state: DashboardState, now: Instant = Instant.
                 plans["zai"] = planLine(sub.name.substringAfter(" · ", "").ifEmpty { null }, sub.until)
             sub.name.equals("Claude", ignoreCase = true) ->
                 plans["claude-code"] = planLine(null, sub.until)
+        }
+    }
+    // The Swift (App Store) daemon sends no ChatGPT subscription row, only the
+    // plan fields on the usage event; both daemons send those, so the Codex
+    // plan reads the same whichever daemon this device is attached to.
+    if ("codex" !in plans) {
+        state.usage.codexPlanType?.takeIf { it.isNotBlank() }?.let { raw ->
+            val tier = ChatGPTPlan.displayName(raw).removePrefix("ChatGPT").trim()
+            plans["codex"] = planLine(tier, state.usage.codexSubscriptionActiveUntil)
         }
     }
     state.antigravityStatus?.let { status ->

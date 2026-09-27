@@ -8,7 +8,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer } from 'http';
 import { resolveRelayedUsageEvent } from '../relayed-usage.js';
-import { BridgeCore, INITIAL_TIMELINE_HISTORY_MAX_BYTES } from '../bridge-core.js';
+import {
+  BridgeCore,
+  ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES,
+  INITIAL_TIMELINE_HISTORY_ENTRIES,
+  INITIAL_TIMELINE_HISTORY_MAX_BYTES,
+} from '../bridge-core.js';
 import { WsTestClient } from './helpers/ws-test-client.js';
 import { createTempDataDir, type TempDataDir } from './helpers/temp-data-dir.js';
 import { State, PermissionMode, CLAUDE_CODE_CAPABILITIES } from '@agentdeck/shared';
@@ -398,13 +403,13 @@ describe('BridgeCore Orchestration', () => {
       }
     });
 
-    it('caps initial timeline_history below the ESP32 WebSocket frame limit', async () => {
+    it('gives a dashboard the latest readable rows, as the Swift daemon does', async () => {
       core.wireTimeline();
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 140; i++) {
         core.bridgeTimeline.addEntry({
           ts: 1000 + i,
-          type: 'tool_request',
-          raw: `entry-${i}-${'x'.repeat(900)}`,
+          type: 'chat_response',
+          raw: `reply-${i}-${'x'.repeat(900)}`,
         });
       }
 
@@ -424,10 +429,32 @@ describe('BridgeCore Orchestration', () => {
         expect(Buffer.byteLength(JSON.stringify(historyEvt), 'utf8')).toBeLessThanOrEqual(
           INITIAL_TIMELINE_HISTORY_MAX_BYTES,
         );
-        expect(entries.length).toBeLessThan(40);
-        expect(entries.at(-1)?.raw).toContain('entry-39-');
+        expect(entries.length).toBe(INITIAL_TIMELINE_HISTORY_ENTRIES);
+        expect(entries.at(-1)?.raw).toContain('reply-139-');
       } finally {
         await client.close();
+      }
+    });
+
+    it('keeps an untagged board on the board frame limit from its first connect', async () => {
+      core.wireTimeline();
+      for (let i = 0; i < 40; i++) {
+        core.bridgeTimeline.addEntry({ ts: 1000 + i, type: 'chat_response', raw: `reply-${i}-${'x'.repeat(900)}` });
+      }
+      core.wsServer.onClientConnect((ws) => {
+        core.sendInitialState(ws, { agentType: 'claude-code', isAlive: true });
+      });
+
+      const board = new WsTestClient();
+      await board.connect(`ws://127.0.0.1:${port}`, { 'User-Agent': 'arduino-WebSocket-Client' });
+
+      try {
+        const historyEvt = await board.waitForType('timeline_history');
+        expect(Buffer.byteLength(JSON.stringify(historyEvt), 'utf8')).toBeLessThanOrEqual(
+          ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES,
+        );
+      } finally {
+        await board.close();
       }
     });
 

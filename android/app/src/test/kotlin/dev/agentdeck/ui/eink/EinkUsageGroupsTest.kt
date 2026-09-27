@@ -45,6 +45,27 @@ class EinkUsageGroupsTest {
     }
 
     @Test
+    fun `the Swift daemon's plan fields give the same plan line as a subscription row`() {
+        // The App Store daemon sends no ChatGPT subscription row, only these.
+        val swift = buildEinkUsageGroups(
+            DashboardState(
+                codexRateLimits = codex,
+                usage = UsageUpdate(codexPlanType = "pro", codexSubscriptionActiveUntil = "2026-10-10T00:00:00Z"),
+            ),
+            now,
+        )
+        val node = buildEinkUsageGroups(
+            DashboardState(
+                codexRateLimits = codex,
+                subscriptions = listOf(SubscriptionInfo("ChatGPT Pro", "2026-10-10T00:00:00Z")),
+            ),
+            now,
+        )
+        assertEquals(node.single().plan, swift.single().plan)
+        assertEquals("Pro · until Oct 10", swift.single().plan)
+    }
+
+    @Test
     fun `a lapsed plan asks for renewal`() {
         val groups = buildEinkUsageGroups(
             DashboardState(
