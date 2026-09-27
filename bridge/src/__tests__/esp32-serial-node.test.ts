@@ -574,6 +574,23 @@ describe('prepareForSerial (source)', () => {
     expect(prepared.codexRateLimits.secondary).toMatchObject({ usedPercent: 31, stale: false });
   });
 
+  it('forwards z.ai windowMinutes so serial boards label windows by length, not "P"/"S"', () => {
+    // The firmware's windowLabel prints the reported length ("5H"/"7D") and
+    // falls back to the generic "P"/"S" when windowMinutes is absent — the
+    // serial whitelist once dropped it and a TC001 read "P 1%" instead of
+    // "5H 1%" while the WiFi (unshrunk) path was fine.
+    const event: UsageEvent = {
+      type: 'usage_update', sessionDurationSec: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0,
+      zaiRateLimits: {
+        primary: { usedPercent: 1, windowMinutes: 300 },
+        secondary: { usedPercent: 43, windowMinutes: 10080, quantity: 'tokens' },
+      },
+    };
+    const prepared = prepareForSerial(event) as any;
+    expect(prepared.zaiRateLimits.primary).toMatchObject({ usedPercent: 1, windowMinutes: 300 });
+    expect(prepared.zaiRateLimits.secondary).toMatchObject({ usedPercent: 43, windowMinutes: 10080, quantity: 'tokens' });
+  });
+
   it('passes through other events unchanged', () => {
     const event: BridgeEvent = {
       type: 'connection',

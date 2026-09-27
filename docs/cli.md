@@ -232,6 +232,7 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 | `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
 | `agentdeck diag` | Daemon diagnostic dump (`-a` for AI analysis) |
 | `agentdeck diag agents [--json]` | Privacy-safe installed-version and compatibility report for normal Claude/Codex/OpenCode launches; no daemon required |
+| `agentdeck diag connection [--json] [-p <port>]` | Read-only registry, PID, HTTP health and WebSocket ping/pong checks; allowlisted report excludes tokens, paths and session content |
 | `agentdeck diag kiro [--json]` | Privacy-safe Kiro passive-observation diagnostic; no daemon required |
 | `agentdeck diag native [--json]` | Open an in-memory APME database under the current Node executable and report its version, ABI, native-binding status, and recovery; no daemon required |
 | `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
@@ -378,3 +379,23 @@ not the same act as finding one you never asked for.
 | `agentdeck esp32-ota <target>` | Push ESP32 firmware over WiFi OTA (`--build` or `--firmware <path>`). Pull staging uses `--stage`; X3/X4 additionally require `--manifest <agentdeck-surface.json>` or both `--product-id` and `--update-channel`. |
 
 ---
+
+## Local connection diagnostics
+
+For a Stream Deck OFFLINE report, run `agentdeck diag connection --json` from
+the same account as Stream Deck, alongside `agentdeck --version`,
+`agentdeck diag native --json`, and the installed plugin version. The report
+checks the registry without pruning it, distinguishes a dead PID from an
+inconclusive permission check, then probes HTTP health and a WebSocket pong
+with a three-second deadline. It never sends an agent command or uses a token.
+Only selected identity/status fields are emitted; remote errors and close
+reasons, full health frames, file paths and session content are omitted.
+
+Without `-p`, the target comes from the CLI's ordered registry candidates;
+it does not silently scan ports or assume 9120. An explicit `-p` probes that
+loopback port for both HTTP and WebSocket, independently of stale registry
+entries. A registry PID mismatch is reported even if both protocols answer.
+The command exits 0 when both protocols work without a known PID mismatch,
+and 1 otherwise. A CLI success does not prove the plugin's account, elevation,
+environment or macOS sandbox discovery path is identical, nor does it say an
+agent session is active.

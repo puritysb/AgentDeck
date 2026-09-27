@@ -3172,21 +3172,34 @@ program
 
 program
   .command('diag [target]')
-  .description('Generate a diagnostic dump, or a focused agent/native-runtime diagnostic')
+  .description('Generate a diagnostic dump, or focused agent/native/connection diagnostics')
   .option('-p, --port <port>', 'Bridge server port', String(BRIDGE_WS_PORT))
   .option('-a, --analyze', 'Run AI analysis on the dump')
   .option('-t, --tail <lines>', 'Number of journal entries', '200')
   .option('--json', 'Print target diagnostics as machine-readable JSON')
-  .action(async (target, opts) => {
+  .action(async (target, opts, command) => {
     if (target) {
-      if (target !== 'kiro' && target !== 'agents' && target !== 'native') {
-        log(`Unknown diagnostic target: ${target}. Supported targets: agents, kiro, native`);
+      if (target !== 'kiro' && target !== 'agents' && target !== 'native' && target !== 'connection') {
+        log(`Unknown diagnostic target: ${target}. Supported targets: agents, kiro, native, connection`);
         process.exitCode = 1;
         return;
       }
       if (opts.analyze) {
         log('`--analyze` is only available for the general daemon diagnostic dump.');
         process.exitCode = 1;
+        return;
+      }
+      if (target === 'connection') {
+        const { collectConnectionDiagnostic, formatConnectionDiagnostic } = await import('./connection-diagnostics.js');
+        const port = command.getOptionValueSource('port') === 'cli' ? Number(opts.port) : undefined;
+        if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+          log('Port must be an integer from 1 to 65535');
+          process.exitCode = 1;
+          return;
+        }
+        const report = await collectConnectionDiagnostic({ port });
+        process.stdout.write(`${opts.json ? JSON.stringify(report, null, 2) : formatConnectionDiagnostic(report)}\n`);
+        if (!report.ok) process.exitCode = 1;
         return;
       }
       if (target === 'agents') {

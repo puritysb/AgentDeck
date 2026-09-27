@@ -402,14 +402,17 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
         }
       : undefined;
     // z.ai GLM Coding Plan (#348) — same compact shape; `quantity` rides the
-    // secondary so the firmware can label the MCP window by its quantity.
+    // secondary so the firmware can label the MCP window by its quantity, and
+    // `windowMinutes` is load-bearing for labels (without it the firmware's
+    // windowLabel falls back to "P"/"S" instead of "5H"/"7D" — the Codex block
+    // above has always forwarded it).
     const zr = e.zaiRateLimits
       ? {
           primary: e.zaiRateLimits.primary
-            ? { usedPercent: e.zaiRateLimits.primary.usedPercent, resetsAt: formatResetTime(e.zaiRateLimits.primary.resetsAt), stale: e.zaiRateLimits.primary.stale }
+            ? { usedPercent: e.zaiRateLimits.primary.usedPercent, windowMinutes: e.zaiRateLimits.primary.windowMinutes, resetsAt: formatResetTime(e.zaiRateLimits.primary.resetsAt), stale: e.zaiRateLimits.primary.stale }
             : undefined,
           secondary: e.zaiRateLimits.secondary
-            ? { usedPercent: e.zaiRateLimits.secondary.usedPercent, resetsAt: formatResetTime(e.zaiRateLimits.secondary.resetsAt), stale: e.zaiRateLimits.secondary.stale, quantity: e.zaiRateLimits.secondary.quantity }
+            ? { usedPercent: e.zaiRateLimits.secondary.usedPercent, windowMinutes: e.zaiRateLimits.secondary.windowMinutes, resetsAt: formatResetTime(e.zaiRateLimits.secondary.resetsAt), stale: e.zaiRateLimits.secondary.stale, quantity: e.zaiRateLimits.secondary.quantity }
             : undefined,
         }
       : undefined;
