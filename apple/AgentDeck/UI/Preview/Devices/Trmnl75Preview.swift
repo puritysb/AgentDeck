@@ -6,24 +6,25 @@
 // the firmware now uses lives in esp32/src/ui/eink/eink_dashboard_layout.h
 // (AgentDeckEink::makeLayout) — a print-style 1-bit 800×480 page with
 //   - brand header: dome-over-deck mark + "AgentDeck" wordmark, a link
-//     chip (filled when connected), session count, double rule at y≈62. When
-//     the fixed paper grid is full the count says what it collapsed —
-//     "10 sessions | hidden: 2 input / 3 working" — because a session that
-//     vanished behind a full page was indistinguishable from one that ended;
-//   - session card grid: double-outline rounded cards with the agent
-//     creature glyph + project name + state line + a TIMELINE-grade work
-//     summary; a card whose session has active subagents reserves a right
-//     strip for a static miniature orbit + child count (static by design —
-//     e-ink pays for animation in ghosting); every awaiting card inverts to
-//     solid black with white ink (drawSessionCard branches on `awaiting`, not
-//     on `firstAwaiting` — that flag gates only the option list on a tall
-//     card, and this line used to say "the first" because manual mode never
-//     produces a second awaiting session to contradict it).
-//     Columns are chosen by makeLayout: 1 for a lone session, 2 landscape,
-//     3 once five+ sessions share the 800px panel (rows capped at 2). Cards
-//     are filled in the firmware's glance order — user input first, then live
-//     work, then quiet context, daemon order preserved within each tier — so
-//     what survives a full grid is what needs a human;
+//     chip (filled when connected), and the session counts by state in the
+//     reader's words ("1 need you, 2 working, 3 idle"), double rule at y≈62.
+//     On a narrow panel the quiet categories drop first, then the font —
+//     never an overprint of the wordmark;
+//   - Paper Board roster (DESIGN.md §5.14): only sessions that need the reader
+//     or are working get a card; quiet sessions collapse into one IDLE line of
+//     glyph + name at the foot of the card band ("+N ACTIVE" first when active
+//     cards overflow, "+N" when names run out of width). With nothing active,
+//     the quiet sessions get the cards back. Cards are double-outline rounded
+//     boxes with the agent creature glyph + project name, then the state
+//     marker with the live activity (the state word only when there is no
+//     activity, or the session waits on the reader), then the TIMELINE-grade
+//     work summary or the awaiting question. No filler copy when a session
+//     has no summary yet. A card whose session has active subagents reserves
+//     a right strip for a static miniature orbit + child count (e-ink pays for
+//     animation in ghosting); every awaiting card inverts to solid black.
+//     Columns are chosen by makeLayout: 1 for a lone card, 2 landscape, 3 once
+//     five+ cards share the 800px panel (rows capped at 2), in glance order —
+//     user input first, then live work, daemon order within each tier;
 //   - adaptive usage band (usageRowCount 0/1/2): provider rows (CLAUDE /
 //     CODEX, 5H/7D bar gauges) draw only for providers that actually report
 //     usage, and a missing window is dropped (present ones pack left) rather
@@ -39,7 +40,7 @@
 // fails CI when the firmware drifts ahead of this mirror. Update this view and
 // re-pin whenever the firmware layout changes.
 //
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp cf5bba00d16f412ec6d376840855401a8a72eae0
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 1f5f2a079578b34197f04f18810680a3f95417cb
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI
@@ -158,38 +159,24 @@ struct Trmnl75Preview: View {
         return columns * min(2, (count + columns - 1) / columns)
     }
 
-    /// "2 input / 3 working" — what the fixed paper grid collapsed, by state.
-    /// Empty when everything fits, which is what keeps the plain
-    /// "N sessions" wording for the ordinary case.
-    private func hiddenSummary(_ sessions: [PreviewDisplaySession]) -> String {
-        let columns = columnCount(for: sessions.count)
-        let dropped = prioritized(sessions)
-            .dropFirst(cardCapacity(for: sessions.count, columns: columns))
-        var input = 0, working = 0, idle = 0, offline = 0
-        for session in dropped {
-            switch session.state {
-            case .awaitingPrompt: input += 1
-            case .processing:     working += 1
-            case .idle:           idle += 1
-            case .disconnected:   offline += 1
-            }
-        }
-        return [(input, "input"), (working, "working"), (idle, "idle"), (offline, "offline")]
+    /// boardCountSummary: counts by state in the reader's words. Sessions
+    /// beyond the rows on hand count as idle, like the firmware's
+    /// `totalSessions - rowCount`.
+    private var sessionCountLabel: String {
+        let sessions = selection.displaySessions
+        let input = sessions.filter { $0.state == .awaitingPrompt }.count
+        let working = sessions.filter { $0.state == .processing }.count
+        let idle = sessions.filter { $0.state == .idle }.count
+            + max(0, selection.sessionCount - sessions.count)
+        let offline = sessions.filter { $0.state == .disconnected }.count
+        return [(input, "need you"), (working, "working"), (idle, "idle"), (offline, "offline")]
             .filter { $0.0 > 0 }
             .map { "\($0.0) \($0.1)" }
-            .joined(separator: " / ")
+            .joined(separator: ", ")
     }
 
-    /// Firmware header count. The total stays `totalSessions` while the hidden
-    /// tally is computed over the rows actually on hand — the same split the
-    /// firmware makes between `s.totalSessions` and `s.rows`.
-    private var sessionCountLabel: String {
-        let total = selection.sessionCount
-        let hidden = hiddenSummary(selection.displaySessions)
-        if hidden.isEmpty {
-            return "\(total) session\(total == 1 ? "" : "s")"
-        }
-        return "\(total) sessions | hidden: \(hidden)"
+    private func isActive(_ session: PreviewDisplaySession) -> Bool {
+        session.state == .awaitingPrompt || session.state == .processing
     }
 
     // MARK: Session grid — drawSessionGrid / drawSessionCard
@@ -200,11 +187,17 @@ struct Trmnl75Preview: View {
         // `layout.capacity`, so what a full page drops is always the quietest
         // thing, never whatever happened to sort last.
         let ordered = prioritized(selection.displaySessions)
+        // usesIdleLine: cards for the active sessions only, quiet ones on one
+        // line below; with nothing active (or nothing quiet) every row is a card.
+        let active = ordered.filter(isActive)
+        let idleLine = !active.isEmpty && active.count < ordered.count
+        let carded = idleLine ? active : ordered
         // Column count mirrors AgentDeckEink::makeLayout for the 800×480
-        // landscape panel: 1 for a lone session, 3 once five+ sessions pack the
+        // landscape panel: 1 for a lone card, 3 once five+ cards pack the
         // panel, else 2. (Portrait X3/X4 use a single wide column — N/A here.)
-        let columns = columnCount(for: ordered.count)
-        let sessions = Array(ordered.prefix(cardCapacity(for: ordered.count, columns: columns)))
+        let columns = columnCount(for: carded.count)
+        let sessions = Array(carded.prefix(cardCapacity(for: carded.count, columns: columns)))
+        let quiet = ordered.filter { !isActive($0) }
         return Group {
             if sessions.isEmpty {
                 // Two distinct empty states, like the firmware: disconnected →
@@ -246,8 +239,41 @@ struct Trmnl75Preview: View {
                     }
                 }
                 .padding(.vertical, 6)
+                if idleLine {
+                    idleLineView(quiet: quiet, activeHidden: active.count - sessions.count)
+                }
             }
         }
+    }
+
+    /// drawIdleLine: "+N ACTIVE" when active cards overflowed, then IDLE and
+    /// each quiet session as glyph + name.
+    private func idleLineView(quiet: [PreviewDisplaySession], activeHidden: Int) -> some View {
+        VStack(spacing: 3) {
+            Rectangle().fill(ink).frame(height: 0.8)
+            HStack(spacing: 10) {
+                if activeHidden > 0 {
+                    Text("+\(activeHidden) ACTIVE")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(ink)
+                }
+                Text("IDLE")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(ink)
+                ForEach(quiet) { session in
+                    HStack(spacing: 3) {
+                        PreviewCreatureGlyph(agent: session.agent, state: session.state,
+                                             size: 12, tintOverride: ink)
+                        Text(session.projectName)
+                            .font(.system(size: 9))
+                            .foregroundStyle(ink)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.bottom, 4)
     }
 
     private func sessionCard(session: PreviewDisplaySession) -> some View {
@@ -266,12 +292,12 @@ struct Trmnl75Preview: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(cardInk)
                     .lineLimit(1)
-                // State line: "<LABEL>: <live activity>" (colon, not the old
-                // " · " — the firmware moved to an ASCII colon so the CP437
-                // fallback font can't mangle a UTF-8 middot). Awaiting cards
-                // show the label alone.
+                // Line 2: the live activity at full body size (the firmware no
+                // longer shares it with the state word, which pushed long text
+                // into the CP437 fallback font); the state word only when there
+                // is no activity or the session waits on the reader.
                 Text(stateLine(for: state))
-                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 8, weight: state == .processing ? .regular : .semibold))
                     .foregroundStyle(cardInk.opacity(0.72))
                     .lineLimit(1)
                 // Detail line: the awaiting question, else the TIMELINE-grade
@@ -357,13 +383,12 @@ struct Trmnl75Preview: View {
 
     /// State line text — "<LABEL>: <activity>" for a busy session (firmware
     /// `"%s: %s"`), just the label for awaiting/idle-with-no-activity.
+    /// Line 2 of a card: the live activity when there is one, else the state
+    /// word (always the word while the session waits on the reader).
     private func stateLine(for state: PixooPreviewState) -> String {
-        let label = Self.firmwareStateLabel(for: state)
         switch state {
-        case .awaitingPrompt, .disconnected:
-            return label
-        case .processing, .idle:
-            return "\(label): \(activityLine(for: state))"
+        case .processing: return activityLine(for: state)
+        case .awaitingPrompt, .idle, .disconnected: return Self.firmwareStateLabel(for: state)
         }
     }
 

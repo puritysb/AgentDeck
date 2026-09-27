@@ -426,10 +426,10 @@ grammar, laid out per panel:
 **Panel capabilities.** Tone, refresh and motion are properties of the panel,
 and each is used where it exists:
 
-| Capability | 1-bit (TRMNL, NM-EPD-420, LilyGo) | 16-level grey (Crema, Onyx) | Colour Kaleido (Pantone) |
+| Capability | Native firmware (TRMNL 1-bit, NM-EPD-420 tri-colour, LilyGo EPD47 grey) | 16-level grey (Crema, Onyx) | Colour Kaleido (Pantone) |
 |---|---|---|---|
-| Tone | Black ink on white only: no grey fills, gradients or scenes | Terrarium in grey gradients; text zones stay black on white | Session hues (§2.7 paper palette) on state words, the needs-you band and usage severity; brand marks in brand colour; colour terrarium |
-| Refresh | Whole-panel partial window per zone change; full refresh on a schedule | Per zone: sessions A2 fast, usage and done DU slow, needs-you one GC16 clean | Same zones; colour layers skip the software layer so the CFA samples colour |
+| Tone | Black ink on white; no gradients or scenes. NM-EPD-420's red is spent only on what needs the reader; LilyGo's grey levels only on secondary ink | Terrarium in grey gradients; text zones stay black on white | Session hues (§2.7 paper palette) on the zone heading, the needs-you band and usage severity; brand marks in brand colour; colour terrarium |
+| Refresh | Per panel: TRMNL paints partial windows with a full clean about every fifth; NM-EPD-420 has only ~10 s full tri-colour cycles, so repaints wait for a settled change; LilyGo follows its page refresh policy | Per zone: sessions A2 fast, usage and done DU slow, needs-you one GC16 clean | Same zones; colour layers skip the software layer so the CFA samples colour |
 | Motion | None | Terrarium animates only while a creature is active, at ≤10 partial frames/s, and rests otherwise | Same as grey |
 
 Judge a board by a human glance, not by data completeness: what a reader takes

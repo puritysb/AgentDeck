@@ -893,32 +893,52 @@ uint8_t prioritizedSessionOrder(const Snap& s, uint8_t* order) {
     return n;
 }
 
-void hiddenSessionSummary(const Snap& s, const AgentDeckEink::Layout& layout,
-                          char* out, size_t outLen) {
+// Paper Board (DESIGN.md §5.14): only sessions that ask something of the
+// reader — input or live work — earn a card. Quiet sessions collapse into one
+// line of glyph + name at the foot of the card band, so an idle session never
+// takes a working session's space. With nothing active, the quiet sessions get
+// the cards back (their last finished work is then the news).
+uint8_t activeSessionCount(const Snap& s) {
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < s.rowCount; i++) if (needsAttention(s.rows[i])) n++;
+    return n;
+}
+
+bool usesIdleLine(const Snap& s) {
+    const uint8_t active = activeSessionCount(s);
+    return active > 0 && active < s.rowCount;
+}
+
+// "1 need you, 2 working, 3 idle" — counts by state in the reader's words.
+// ASCII separators: this line may fall back to the CP437 classic font.
+// `activeOnly` drops the quiet categories for panels too narrow for the full line.
+void boardCountSummary(const Snap& s, char* out, size_t outLen, bool activeOnly = false) {
     out[0] = '\0';
-    uint8_t order[MAX_ROWS];
-    const uint8_t n = prioritizedSessionOrder(s, order);
     uint8_t input = 0, working = 0, idle = 0, offline = 0;
-    for (uint8_t k = layout.capacity; k < n; k++) {
-        switch (AgentDeckEink::classifyStatus(s.rows[order[k]].state)) {
+    for (uint8_t i = 0; i < s.rowCount; i++) {
+        switch (AgentDeckEink::classifyStatus(s.rows[i].state)) {
             case AgentDeckEink::StatusKind::Attention:  input++; break;
             case AgentDeckEink::StatusKind::Processing: working++; break;
             case AgentDeckEink::StatusKind::Idle:       idle++; break;
             default:                                   offline++; break;
         }
     }
+    // Sessions beyond the snapshot's rows are still sessions: count them quiet.
+    if (s.totalSessions > s.rowCount) idle += (uint8_t)(s.totalSessions - s.rowCount);
     auto append = [&](uint8_t count, const char* label) {
         if (!count) return;
         size_t used = strlen(out);
-        snprintf(out + used, outLen - used, "%s%d %s", used ? " / " : "", count, label);
+        snprintf(out + used, outLen - used, "%s%d %s", used ? ", " : "", count, label);
     };
-    append(input, "input");
+    append(input, "need you");
     append(working, "working");
-    append(idle, "idle");
-    append(offline, "offline");
+    if (!activeOnly) {
+        append(idle, "idle");
+        append(offline, "offline");
+    }
 }
 
-void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& layout) {
+void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& /*layout*/) {
     // Dome-over-deck product mark + wordmark — the same lockup as the
     // menubar icon and app icon silhouette.
     drawAgentDeckMark(12, 4, 56);
@@ -938,22 +958,20 @@ void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& layout) {
         textAt(chipX + 12, 38, link, &FreeSansBold9pt7b);
     }
 
-    // Session count, left of the chip. When the fixed paper grid is full, say
-    // exactly which passive/active categories were collapsed.
+    // Session counts by state, left of the chip.
     if (s.totalSessions > 0) {
-        char hidden[72];
-        hiddenSessionSummary(s, layout, hidden, sizeof(hidden));
+        // Degrade by dropping the quiet categories, then the font — never by
+        // printing over the wordmark on a narrow panel.
         char cnt[112];
-        if (hidden[0]) {
-            snprintf(cnt, sizeof(cnt), "%d sessions | hidden: %s", s.totalSessions, hidden);
-        } else {
-            snprintf(cnt, sizeof(cnt), "%d session%s", s.totalSessions,
-                     s.totalSessions == 1 ? "" : "s");
-        }
         const int16_t available = chipX - 14 - 270;
-        const GFXfont* countFont = textWidth(cnt, &FreeSans9pt7b) <= available
-            ? &FreeSans9pt7b : CLASSIC_FONT;
-        textRight(chipX - 14, 38, cnt, countFont);
+        const GFXfont* countFont = nullptr;
+        for (uint8_t pass = 0; pass < 2 && !countFont; pass++) {
+            boardCountSummary(s, cnt, sizeof(cnt), pass == 1);
+            if (!cnt[0]) break;
+            if (textWidth(cnt, &FreeSans9pt7b) <= available) countFont = &FreeSans9pt7b;
+            else if (textWidth(cnt, CLASSIC_FONT) <= available) countFont = CLASSIC_FONT;
+        }
+        if (countFont) textRight(chipX - 14, 38, cnt, countFont);
     }
 
     // Double rule (print-style)
@@ -1036,16 +1054,25 @@ static uint8_t dashboardActivityRows(const Snap& s) {
     return min(s.tickerCount, (uint8_t)(s.rowCount > 2 ? 2 : Snap::TICKER_ROWS));
 }
 
+constexpr int16_t IDLE_LINE_H = 36;
+
 AgentDeckEink::Layout dashboardLayout(const Snap& s) {
     uint8_t activityRows = dashboardActivityRows(s);
-    return AgentDeckEink::makeLayout(AgentDeckEink::LayoutInput{
+    const bool idleLine = usesIdleLine(s);
+    AgentDeckEink::Layout layout = AgentDeckEink::makeLayout(AgentDeckEink::LayoutInput{
         W, H,
         68,  // product header + double rule
         0,   // TRMNL 7.5" has no persistent button-hint bar
         36, 28,
         (uint8_t)usageRowCount(s), (uint8_t)(activityRows > 0 ? activityRows + 1 : 0),
-        s.rowCount, 2,
+        idleLine ? activeSessionCount(s) : s.rowCount, 2,
     });
+    if (idleLine && layout.cards.h > IDLE_LINE_H + 96) {
+        // The quiet line takes the foot of the card band; cards share the rest.
+        layout.cards.h = (int16_t)(layout.cards.h - IDLE_LINE_H);
+        layout.cardHeight = (int16_t)((layout.cards.h - (layout.rows - 1) * layout.cardGap) / layout.rows);
+    }
+    return layout;
 }
 
 // Usage + recent-work components are ANCHORED by the shared responsive layout
@@ -1160,31 +1187,24 @@ void drawSessionCard(const Snap& s, const RowSnap& r, bool firstAwaiting,
     char label[16]; stateLabel(r.state, label, sizeof(label));
     int16_t sy = ny + (tall ? 36 : 26);
     drawStateMarker(tx, sy - 11, 12, r.state);
-    char stateLine[64];
-    // The state line carries the LIVE "right now" one-liner (activity summary,
-    // falling back to the raw tool) — mid-turn churn belongs here, next to the
-    // state marker. The detail lines below are reserved for the TIMELINE-grade
-    // work summary, so "Running cd …" never displaces what the agent actually
-    // asked/answered.
-    // ASCII-only separator: this line rides the fitCascade → CLASSIC_FONT
-    // fallback, and the built-in CP437 font renders the UTF-8 " · " pair as
-    // "Â·" garbage (FreeFonts silently skip it — either way it's wrong).
-    if (!awaiting && r.activity[0]) {
-        char t[48]; ascii(t, sizeof(t), r.activity);
-        snprintf(stateLine, sizeof(stateLine), "%s: %s", label, t);
-    } else if (!awaiting && r.tool[0]) {
-        char t[40]; ascii(t, sizeof(t), r.tool);
-        snprintf(stateLine, sizeof(stateLine), "%s: %s", label, t);
+    // Line 2 is the marker plus what the session is doing right now; the
+    // marker already says "working" and the header counts states, so the word
+    // appears only when there is no live activity (or the session waits on
+    // the reader). A 2x2 card on the 480px panel holds three text lines, and
+    // this keeps the third for the work summary. Live text stays on the
+    // full-size font: sharing a line with the state word pushed long activity
+    // down the fit cascade into the unreadable CP437 classic font.
+    const char* live = (!awaiting && r.activity[0]) ? r.activity
+        : ((!awaiting && r.tool[0]) ? r.tool : nullptr);
+    if (live) {
+        char lf[156];
+        smartFitText(lf, sizeof(lf), live, maxTextW - 20, &FreeSans9pt7b);
+        smartTextAt(tx + 20, sy, lf, &FreeSans9pt7b);
     } else {
-        strncpy(stateLine, label, sizeof(stateLine) - 1); stateLine[sizeof(stateLine) - 1] = '\0';
+        textAt(tx + 20, sy, label, &FreeSansBold9pt7b);
     }
-    char stateFitted[68];
-    const GFXfont* stateFont = fitCascade(stateFitted, sizeof(stateFitted), stateLine,
-                                          maxTextW - 20, &FreeSansBold9pt7b, CLASSIC_FONT);
-    textAt(tx + 20, sy, stateFitted, stateFont);
 
-    // Detail: awaiting question (wrapped) or the activity one-liner —
-    // "what did/is this agent actually doing", far more glanceable than a timer.
+    // Detail: awaiting question (wrapped) or the TIMELINE-grade work summary.
     int16_t dy = sy + 24;
     if (awaiting && r.question[0]) {
         // wrap up to 2 lines (3 on tall cards) — UTF-8/한글 safe
@@ -1233,15 +1253,10 @@ void drawSessionCard(const Snap& s, const RowSnap& r, bool firstAwaiting,
             smartFitText(af, sizeof(af), r.work, maxTextW, &FreeSans9pt7b);
             smartTextAt(tx, dy, af, &FreeSans9pt7b);
         }
-    } else if (dy < y + h - 8) {
-        const auto kind = AgentDeckEink::classifyStatus(r.state);
-        const char* fallback = kind == AgentDeckEink::StatusKind::Processing
-            ? "Working. Waiting for the next update."
-            : (kind == AgentDeckEink::StatusKind::Idle
-                ? "Ready for the next request."
-                : "Session is currently unavailable.");
-        drawWrapped2(tx, dy, dy + 20, maxTextW, fallback, &FreeSans9pt7b);
     }
+    // No work summary yet: the card says nothing rather than filler copy
+    // ("Working. Waiting for the next update.") — the state line already
+    // carries the state, and paper keeps whatever it prints (DESIGN.md §5.14).
 
     // Model tag bottom-right on every card — narrow cards drop to the
     // classic font instead of losing the model entirely.
@@ -1255,6 +1270,47 @@ void drawSessionCard(const Snap& s, const RowSnap& r, bool firstAwaiting,
     }
 
     setInk(false);
+}
+
+// One line at the foot of the card band: active sessions that did not fit a
+// card (named as a count), then each quiet session as glyph + name until the
+// width runs out, then "+N".
+void drawIdleLine(const Snap& s, const AgentDeckEink::Layout& layout,
+                  const uint8_t* order, uint8_t nOrder, uint8_t activeHidden) {
+    const int16_t top = (int16_t)(layout.cards.bottom() + layout.gap / 2);
+    const int16_t baseline = (int16_t)(top + 25);
+    const int16_t right = (int16_t)(layout.cards.x + layout.cards.w);
+    int16_t x = layout.cards.x;
+    display.drawFastHLine(layout.cards.x, top + 2, layout.cards.w, GxEPD_BLACK);
+    if (activeHidden > 0) {
+        char more[24];
+        snprintf(more, sizeof(more), "+%u ACTIVE", (unsigned)activeHidden);
+        textAt(x, baseline, more, &FreeSansBold9pt7b);
+        x = (int16_t)(x + textWidth(more, &FreeSansBold9pt7b) + 18);
+    }
+    textAt(x, baseline, "IDLE", &FreeSansBold9pt7b);
+    x = (int16_t)(x + textWidth("IDLE", &FreeSansBold9pt7b) + 14);
+    uint8_t drawn = 0, quiet = 0;
+    for (uint8_t k = 0; k < nOrder; k++) if (!needsAttention(s.rows[order[k]])) quiet++;
+    for (uint8_t k = 0; k < nOrder; k++) {
+        const RowSnap& r = s.rows[order[k]];
+        if (needsAttention(r)) continue;
+        const char* name = r.name[0] ? r.name : "(unnamed)";
+        char fitted[48];
+        smartFitText(fitted, sizeof(fitted), name, 170, &FreeSans9pt7b);
+        const int16_t itemW = (int16_t)(22 + 6 + smartWidth(fitted, &FreeSans9pt7b));
+        const bool last = drawn + 1 == quiet;
+        if (x + itemW > right - (last ? 0 : 44)) break;
+        drawAgentGlyph(r.agentType, x, baseline - 18, 22);
+        smartTextAt((int16_t)(x + 28), baseline, fitted, &FreeSans9pt7b);
+        x = (int16_t)(x + itemW + 18);
+        drawn++;
+    }
+    if (drawn < quiet) {
+        char rest[12];
+        snprintf(rest, sizeof(rest), "+%u", (unsigned)(quiet - drawn));
+        textAt(x, baseline, rest, &FreeSansBold9pt7b);
+    }
 }
 
 void drawSessionGrid(const Snap& s, const AgentDeckEink::Layout& layout) {
@@ -1282,11 +1338,16 @@ void drawSessionGrid(const Snap& s, const AgentDeckEink::Layout& layout) {
         if (isAwaiting(s.rows[order[k]].state)) { firstAwaitingIdx = order[k]; break; }
     }
 
+    const bool idleLine = usesIdleLine(s);
+    const uint8_t active = activeSessionCount(s);
+    if (idleLine && nCards > active) nCards = active;
+
     for (uint8_t k = 0; k < nCards; k++) {
         AgentDeckEink::Rect card = layout.card(k);
         drawSessionCard(s, s.rows[order[k]], (int)order[k] == firstAwaitingIdx,
                         card.x, card.y, card.w, card.h);
     }
+    if (idleLine) drawIdleLine(s, layout, order, nOrder, (uint8_t)(active - nCards));
 }
 
 // ===== Paper faces =====
@@ -2333,22 +2394,54 @@ void drawDecisionFace(const Snap& s) {
 #endif
 }
 
+// The answer is the latest thing an agent finished, large enough to read
+// across the room; below it, the other recent finished items, so the page
+// answers "what came back while I was away" rather than one line and blank
+// paper. A session with no work summary is never chosen over one that has one.
+int answerSession(const Snap& s) {
+    for (uint8_t i = 0; i < s.rowCount; i++)
+        if (AgentDeckEink::classifyStatus(s.rows[i].state) == AgentDeckEink::StatusKind::Idle && s.rows[i].work[0])
+            return i;
+    for (uint8_t i = 0; i < s.rowCount; i++) if (s.rows[i].work[0]) return i;
+    int i = primarySession(s, AgentDeckEink::StatusKind::Idle);
+    return i >= 0 ? i : primarySession(s);
+}
+
 void drawAnswerFace(const Snap& s) {
     drawPaperHeader(s, PaperFace::Answer);
-    int i = primarySession(s, AgentDeckEink::StatusKind::Idle);
-    if (i < 0) i = primarySession(s);
-    const int16_t pad = W <= 420 ? 16 : 30;
-    const int16_t top = W <= 420 ? 72 : 94;
-    if (i < 0) { textAt(pad, top + 40, "No answer yet.", &FreeSansBold18pt7b); return; }
+    const bool narrow = W <= 420;
+    const int16_t pad = narrow ? 16 : 30;
+    const int16_t top = narrow ? 72 : 94;
+    const int i = answerSession(s);
+    if (i < 0) { textAt(pad, top + 40, "No sessions.", &FreeSansBold18pt7b); return; }
     const RowSnap& r = s.rows[i];
-    drawAgentGlyph(r.agentType, pad, top, W <= 420 ? 44 : 72);
-    smartTextAt(pad + (W <= 420 ? 58 : 92), top + 28, r.name, &FreeSansBold12pt7b);
-    display.drawFastHLine(pad, top + (W <= 420 ? 58 : 82), W - pad * 2, GxEPD_BLACK);
-    const char* body = r.work[0] ? r.work : "The session is quiet. Its next durable result will appear here.";
-    drawParagraph(pad, top + (W <= 420 ? 90 : 124), W - pad * 2,
-                  W <= 420 ? 23 : 29, W <= 420 ? 5 : 9, body,
-                  W <= 420 ? &FreeSans9pt7b : &FreeSansBold12pt7b);
-    if (r.model[0]) textRight(W - pad, H - 15, r.model, CLASSIC_FONT);
+    drawAgentGlyph(r.agentType, pad, top, narrow ? 44 : 72);
+    smartTextAt(pad + (narrow ? 58 : 92), top + 28, r.name, &FreeSansBold12pt7b);
+    display.drawFastHLine(pad, top + (narrow ? 58 : 82), W - pad * 2, GxEPD_BLACK);
+    const int16_t bodyY = top + (narrow ? 90 : 124);
+    const int16_t lineH = narrow ? 23 : 29;
+    int lines = 0;
+    if (r.work[0]) {
+        lines = drawParagraph(pad, bodyY, W - pad * 2, lineH, narrow ? 4 : 5, r.work,
+                              narrow ? &FreeSans9pt7b : &FreeSansBold12pt7b);
+    } else {
+        textAt(pad, bodyY, "Nothing finished yet.", narrow ? &FreeSans9pt7b : &FreeSansBold12pt7b);
+        lines = 1;
+    }
+
+    // Other recent finished work, newest first, in whatever height remains.
+    if (!s.bridgeConnected || s.tickerCount == 0) return;
+    constexpr int16_t rowH = 26;
+    int16_t y = (int16_t)(bodyY + (lines - 1) * lineH + (narrow ? 34 : 46));
+    if (y + 20 + rowH > H - 6) return;
+    textAt(pad, y, "RECENT", &FreeSansBold9pt7b);
+    y = (int16_t)(y + rowH + 2);
+    for (uint8_t k = 0; k < s.tickerCount && y <= H - 8; k++, y = (int16_t)(y + rowH)) {
+        textAt(pad, y, s.tickerTime[k], &FreeSansBold9pt7b);
+        char tf[108];
+        smartFitText(tf, sizeof(tf), s.tickerText[k], W - pad * 2 - 58, &FreeSans9pt7b);
+        smartTextAt((int16_t)(pad + 58), y, tf, &FreeSans9pt7b);
+    }
 }
 
 void drawDigestFace(const Snap& s) {
