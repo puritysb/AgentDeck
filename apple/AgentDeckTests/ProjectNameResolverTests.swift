@@ -23,6 +23,30 @@ final class ProjectNameResolverTests: XCTestCase {
         unsetenv("AGENTDECK_PROJECT_NAME")
     }
 
+    func testSharedWorktreeProjectLabelVectors() throws {
+        struct Vector: Decodable {
+            let name: String
+            let cwd: String
+            let files: [String: String]
+            let expected: String
+        }
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/project-name-vectors.json")
+        let vectors = try JSONDecoder().decode([Vector].self, from: Data(contentsOf: fixture))
+        for vector in vectors {
+            let root = tmpRoot.appendingPathComponent(UUID().uuidString)
+            let cwd = root.appendingPathComponent(vector.cwd)
+            try mkdir(cwd)
+            for (path, content) in vector.files {
+                let destination = root.appendingPathComponent(path)
+                try mkdir(destination.deletingLastPathComponent())
+                try write(destination, content.replacingOccurrences(of: "$ROOT", with: root.path))
+            }
+            XCTAssertEqual(ProjectNameResolver.resolve(cwd: cwd.path), vector.expected, vector.name)
+        }
+    }
+
     // MARK: - Helpers
 
     private func mkdir(_ path: URL) throws {

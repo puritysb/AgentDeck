@@ -3,7 +3,7 @@
  *
  * Order:
  *   1. AGENTDECK_PROJECT_NAME env var (explicit opt-out)
- *   2. `git rev-parse --show-toplevel` → basename (handles monorepo subdirs)
+ *   2. Git root → repository label (linked worktrees include their folder name)
  *   3. Nearest ancestor `package.json` with a non-empty `name` field
  *   4. basename(cwd)
  *   5. 'unknown'
@@ -51,8 +51,7 @@ export function gitToplevelBasename(cwd: string): string | null {
       windowsHide: true,
     }).trim();
     if (!out) return null;
-    const name = basename(out);
-    return name || null;
+    return gitProjectLabel(out);
   } catch {
     return null;
   }
@@ -87,19 +86,47 @@ export function resolveProjectNameFromCwdCached(cwd: string): string {
   return name;
 }
 
-/** Ancestor walk for a `.git` entry; returns that directory's basename. */
+/** Ancestor walk for a `.git` entry; preserves linked-worktree context. */
 export function gitToplevelBasenameFs(cwd: string): string | null {
   let dir = cwd;
   for (let i = 0; i < MAX_WALK_DEPTH; i++) {
     if (existsSync(join(dir, '.git'))) {
-      const name = basename(dir);
-      return name || null;
+      return gitProjectLabel(dir);
     }
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
   return null;
+}
+
+/**
+ * A linked worktree points to an admin directory containing `commondir`.
+ * Only a readable common .git directory proves the original checkout name.
+ * Submodules (no commondir), bare repos and broken/sandbox-denied metadata keep
+ * the local name. Keep the worktree suffix: display folding must not collapse
+ * independently steerable tasks. Shared project-name-vectors.json pins Swift parity.
+ */
+function gitProjectLabel(root: string): string | null {
+  const localName = basename(root);
+  try {
+    const marker = readFileSync(join(root, '.git'), 'utf-8').trim();
+    if (!marker.startsWith('gitdir:')) return localName || null;
+    const pointer = marker.slice('gitdir:'.length).trim();
+    if (!pointer) return localName || null;
+    const gitDir = resolve(root, pointer);
+    const commonPointer = readFileSync(join(gitDir, 'commondir'), 'utf-8').trim();
+    if (!commonPointer) return localName || null;
+    const commonDir = resolve(gitDir, commonPointer);
+    if (basename(commonDir) !== '.git' || !existsSync(join(commonDir, 'HEAD'))) {
+      return localName || null;
+    }
+    const repositoryName = basename(dirname(commonDir));
+    if (repositoryName) return `${repositoryName} · ${localName}`;
+  } catch {
+    // Directory marker, submodule, missing metadata, or access denied.
+  }
+  return localName || null;
 }
 
 export function nearestPackageJsonName(cwd: string): string | null {

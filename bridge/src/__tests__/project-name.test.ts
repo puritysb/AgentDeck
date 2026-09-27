@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync, execSync } from 'node:child_process';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import {
@@ -35,6 +35,20 @@ describe('resolveProjectName', () => {
     mkdirSync(sub, { recursive: true });
     execSync('git init -q', { cwd: repo });
     expect(resolveProjectName({ cwd: sub })).toBe('MyRepo');
+  });
+
+  it('labels real linked worktrees consistently without reading or changing their branch', () => {
+    const repo = join(tmpRoot, 'Main Repo');
+    const worktree = join(tmpRoot, 'task');
+    mkdirSync(repo);
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
+    git('init', '-q');
+    git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'init');
+    git('worktree', 'add', '-qb', 'different-branch-name', worktree);
+    expect(resolveProjectName({ cwd: worktree })).toBe('Main Repo · task');
+    expect(resolveProjectNameFromCwdCached(worktree)).toBe('Main Repo · task');
+    expect(resolveProjectName({ cwd: worktree, envOverride: 'Explicit' })).toBe('Explicit');
+    expect(resolveProjectName({ cwd: repo })).toBe('Main Repo');
   });
 
   it('falls back to nearest package.json name when no git', () => {
@@ -196,4 +210,29 @@ describe('nearestPackageJsonName', () => {
     writeFileSync(join(inner, 'package.json'), JSON.stringify({ name: 'inner' }));
     expect(nearestPackageJsonName(leaf)).toBe('inner');
   });
+});
+
+// This fixture is also replayed by ProjectNameResolverTests.swift.
+const projectVectors = JSON.parse(readFileSync(new URL('../../../shared/project-name-vectors.json', import.meta.url), 'utf8')) as {
+  name: string; cwd: string; files: Record<string, string>; expected: string;
+}[];
+describe('shared worktree project-label contract', () => {
+  for (const vector of projectVectors) {
+    it(vector.name, () => {
+      const root = join(tmpdir(), `agentdeck-project-vector-${randomUUID()}`);
+      try {
+        const cwd = join(root, vector.cwd);
+        mkdirSync(cwd, { recursive: true });
+        for (const [path, content] of Object.entries(vector.files)) {
+          const destination = join(root, path);
+          mkdirSync(dirname(destination), { recursive: true });
+          writeFileSync(destination, content.replaceAll('$ROOT', root));
+        }
+        expect(gitToplevelBasenameFs(cwd)).toBe(vector.expected);
+        expect(resolveProjectNameFromCwdCached(cwd)).toBe(vector.expected);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
 });
