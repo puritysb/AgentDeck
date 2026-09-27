@@ -1,5 +1,6 @@
 package dev.agentdeck.ui.monitor
 
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -704,11 +705,7 @@ private fun ProviderRow(
 private fun RateChipView(chip: RateChip) {
     val pct = chip.percent.coerceIn(0.0, 100.0)
     val used = if (chip.remaining) 100.0 - pct else pct
-    val fillColor = when {
-        used >= 90 -> TerrariumColors.LEDRed
-        used >= 70 -> TerrariumColors.LEDAmber
-        else -> TerrariumColors.LEDGreen
-    }
+    val fillColor = Color(UsageSeverity.color(if (chip.stale) -1.0 else used))
     val fillFraction = (pct / 100.0).toFloat()
     // Dim the bar when the underlying value is stale — the user should
     // read it as "cached / don't trust" at a glance, same visual pattern

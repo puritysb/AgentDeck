@@ -425,7 +425,7 @@ private struct D200HSlotTile: View {
                 .frame(maxHeight: .infinity)
                 Text(active ? "\(Int(remainingPercent))% LEFT" : "EMPTY")
                     .font(.system(size: size * 0.15, weight: .heavy))
-                    .foregroundStyle(active ? .white : .white.opacity(0.45))
+                    .foregroundStyle(UsageSeverity.color(100 - remainingPercent))
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
             }
@@ -500,17 +500,11 @@ private struct D200HSlotTile: View {
         }
     }
 
-    /// Severity ramp — port of `usageRampColor` (d200h-layout.ts): >80 red,
-    /// >50 amber, else green; stale desaturates to slate.
+    /// Shared used-percent severity, including unknown and non-binding caps.
     private func gaugeColor(percent: Double, known: Bool, stale: Bool = false, inactive: Bool = false) -> Color {
-        guard known else { return .white.opacity(0.4) }
-        if stale { return Color(red: 0x64 / 255.0, green: 0x74 / 255.0, blue: 0x8B / 255.0) }
-        // Inactive per-model scoped cap: informational cyan (UI.cyan #3ED6E8),
-        // never the critical ramp regardless of percent (issue #99).
-        if inactive { return Color(red: 0x3E / 255.0, green: 0xD6 / 255.0, blue: 0xE8 / 255.0) }
-        if percent > 80 { return Color(red: 0xEF / 255.0, green: 0x44 / 255.0, blue: 0x44 / 255.0) }
-        if percent > 50 { return Color(red: 0xEA / 255.0, green: 0xB3 / 255.0, blue: 0x08 / 255.0) }
-        return Color(red: 0x22 / 255.0, green: 0xC5 / 255.0, blue: 0x5E / 255.0)
+        if !known || stale { return UsageSeverity.color(-1) }
+        if inactive { return DesignTokens.UI.cyan }
+        return UsageSeverity.color(percent)
     }
 }
 

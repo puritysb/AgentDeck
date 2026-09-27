@@ -358,9 +358,7 @@ private struct Esp32HudBar: View {
     /// percentage in the center.
     private func waterGauge(period: String, percent: CGFloat, single: Bool) -> some View {
         let size: CGFloat = isRound ? 30 : 36
-        let color = percent >= 0.9 ? TerrariumHUD.ledRed
-            : percent >= 0.7 ? TerrariumHUD.ledAmber
-            : TerrariumHUD.ledGreen
+        let color = UsageSeverity.color(Double(percent) * 100)
         return ZStack(alignment: .bottom) {
             RoundedRectangle(cornerRadius: 5)
                 .fill(Color.white.opacity(0.12))
@@ -369,7 +367,7 @@ private struct Esp32HudBar: View {
                         .stroke(Color.white.opacity(0.22), lineWidth: 0.5)
                 )
             RoundedRectangle(cornerRadius: 5)
-                .fill(color.opacity(0.55))
+                .fill(color.opacity(0.20))
                 .frame(height: size * percent)
             VStack(spacing: 0) {
                 Text(period)
@@ -379,7 +377,7 @@ private struct Esp32HudBar: View {
                 Spacer(minLength: 0)
                 Text("\(Int(percent * 100))%")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(TerrariumHUD.text)
+                    .foregroundStyle(color)
                     .padding(.bottom, 3)
             }
         }

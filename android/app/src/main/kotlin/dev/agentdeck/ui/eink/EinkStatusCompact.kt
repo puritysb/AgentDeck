@@ -1,5 +1,6 @@
 package dev.agentdeck.ui.eink
 
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -181,14 +182,10 @@ private fun CodexGaugeRow(row: ProviderLimitRow) {
     }
 }
 
-/** Color-code gauge by usage level on color e-ink: green < 60%, amber 60-85%, red > 85%. */
+/** Color-code gauge by usage level on color e-ink: canonical used-percent severity with a dark paper palette. */
 private fun gaugeColor(percent: Double): Color {
     if (!einkColorEnabled) return Color.Black
-    return when {
-        percent >= 85.0 -> Color(0xFFCC2222) // red — critical
-        percent >= 60.0 -> Color(0xFFBB7700) // amber — warning
-        else -> Color(0xFF227733)             // green — ok
-    }
+    return Color(UsageSeverity.color(percent, onPaper = true))
 }
 
 @Composable

@@ -404,7 +404,6 @@ final class PixooRenderer {
 
     func renderSequence(dashboardState: DashboardState, frameCount: Int, intervalMs: Int = 100) -> [Data] {
         let state = dashboardState.state
-        let usagePct = dashboardState.fiveHourPercent ?? 0
         // Crayfish is drawn only when the OpenClaw Gateway is authenticated.
         // Reachability alone (`gatewayAvailable`) was misleading — an OpenClaw
         // process on localhost with no shared token would still light up the
@@ -515,14 +514,6 @@ final class PixooRenderer {
                 drawOfficialDotGlyph(&output, glyph: .openClaw, worldX: Self.cfDefaultX, worldY: crayfishY, state: crayfishRouting ? .processing : .idle, animFrame: animFrame, camera: camera, sessionToneIndex: 0, sick: dashboardState.gatewayHasError)
             }
 
-            if usagePct >= 90 {
-                let flashIntensity = (sin(Double(animFrame) * 0.2) + 1) * 0.08
-                for y in 0..<Self.height {
-                    for x in 0..<Self.width {
-                        glowPixel(&output, x, y, Self.colors.stateError, flashIntensity)
-                    }
-                }
-            }
 
             let sessionCount = creatureInstances.count
             if sessionCount >= 2 {
@@ -772,8 +763,8 @@ final class PixooRenderer {
             ? nil : dashboardState.codexRateLimits?.secondary?.usedPercent
         var telemetry: [(Double, RGB)] = []
         for candidate: (Double?, RGB) in [
-            (dashboardState.fiveHourPercent, (42, 220, 154)),
-            (dashboardState.sevenDayPercent, (54, 154, 255)),
+            (dashboardState.usageStale == true ? nil : dashboardState.fiveHourPercent, (42, 220, 154)),
+            (dashboardState.usageStale == true ? nil : dashboardState.sevenDayPercent, (54, 154, 255)),
             (codexPrimary, (185, 86, 255)),
             (codexSecondary, (104, 116, 255)),
             (dashboardState.zaiRateLimits?.primary?.stale == true ? nil : dashboardState.zaiRateLimits?.primary?.usedPercent, (31, 99, 236)),
@@ -785,7 +776,7 @@ final class PixooRenderer {
             let y = firstRailY + row
             for x in 0..<n { set(x, y, (5, 8, 14)) }
             let pct = max(0, min(100, item.0))
-            let color: RGB = pct >= 90 ? (255, 58, 72) : pct >= 70 ? (255, 183, 38) : item.1
+            let color: RGB = gaugeColor(pct, animFrame: animFrame, brand: item.1)
             set(0, y, item.1); set(1, y, item.1)
             let width = Int(round(pct / 100 * 29))
             if width > 0 { for x in 3..<(3 + width) { set(x, y, color) } }
@@ -2062,12 +2053,8 @@ final class PixooRenderer {
     }
 
     private func gaugeColor(_ pct: Double, animFrame: Int, brand: RGB) -> RGB {
-        if pct >= 90 {
-            let pulse = (sin(Double(animFrame) * 0.2) + 1) * 0.3
-            return lerpColor(Self.colors.stateError, Self.colors.white, pulse)
-        }
-        if pct >= 70 { return Self.colors.stateAwaiting }
-        return brand
+        let rgb = UsageSeverity.colorHex(pct)
+        return (UInt8((rgb >> 16) & 255), UInt8((rgb >> 8) & 255), UInt8(rgb & 255))
     }
 
     func formatResetDetailed(_ resetsAt: String?) -> String {

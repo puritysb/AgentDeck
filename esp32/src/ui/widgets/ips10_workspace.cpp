@@ -1,3 +1,4 @@
+#include "util/usage_severity.generated.h"
 #include "config.h"
 #if defined(BOARD_IPS10)
 #include "ips10_workspace.h"
@@ -554,8 +555,9 @@ void update() {
             const int valueW=textWidth(text,&font_studio_20);
             lv_obj_set_y(sl.label.obj,y+1);lv_obj_set_y(sl.value.obj,y-2);lv_obj_set_y(sl.track,y+24);
             lv_obj_set_width(sl.fill,r.shown()*BarW/100);
-            // Same meaning, same colour across providers; amber only near the limit.
-            lv_obj_set_style_bg_color(sl.fill,lv_color_hex(r.critical()?Theme::StatusAmber:Theme::StatusCyan),0);
+            // Percent and rail share severity, always based on USED even for reserves.
+            lv_obj_set_style_bg_color(sl.fill,lv_color_hex(UsageSeverity::color(r.used)),0);
+            lv_obj_set_style_text_color(sl.value.obj,lv_color_hex(UsageSeverity::color(r.used)),0);
             // The faint reset countdown sits between label and percent,
             // right-aligned — one line per window, same form on every row.
             const int resetW=BarW-labelW-valueW-24;

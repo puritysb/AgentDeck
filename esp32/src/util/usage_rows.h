@@ -1,4 +1,5 @@
 #pragma once
+#include "util/usage_severity.generated.h"
 // One provider-grouped usage model for every ESP32 USAGE surface.
 //
 // Surfaces used to read g_state's quota fields directly, and drifted: some
@@ -42,9 +43,8 @@ struct Row {
         const float v = left ? 100.0f - used : used;
         return v < 0 ? 0 : v > 100 ? 100 : static_cast<int>(v + 0.5f);
     }
-    // Near or at the limit (a reserve nearly spent reads the same) — the only
-    // amber cue, matching the other surfaces' 90% threshold.
-    bool critical() const { return used >= 90.0f; }
+    // Near or at the limit; a remaining reserve uses the same consumed basis.
+    bool critical() const { return UsageSeverity::level(used) == UsageSeverity::Critical; }
 };
 
 struct Group {

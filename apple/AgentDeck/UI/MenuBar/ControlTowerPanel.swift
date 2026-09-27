@@ -1376,8 +1376,8 @@ struct ControlTowerPanel: View {
                         .frame(width: 48, alignment: .trailing)
                 } else if let reset = resetTime, let formatted = formatResetTime(reset) {
                     Text(formatted)
-                        .font(.system(size: 10, weight: used >= 70 ? .semibold : .regular))
-                        .foregroundColor(used >= 70 ? .orange : TerrariumHUD.subtext)
+                        .font(.system(size: 10))
+                        .foregroundColor(TerrariumHUD.subtext)
                         .frame(width: 48, alignment: .trailing)
                 }
             }
@@ -1597,8 +1597,8 @@ struct ControlTowerPanel: View {
             }
             if let reset = resetTime, let formatted = formatResetTime(reset) {
                 Text(formatted)
-                    .font(.system(size: 10, weight: percent >= 70 ? .semibold : .regular))
-                    .foregroundColor(percent >= 70 ? .orange : TerrariumHUD.subtext)
+                    .font(.system(size: 10))
+                    .foregroundColor(TerrariumHUD.subtext)
             }
         }
     }
@@ -1708,9 +1708,7 @@ struct ControlTowerPanel: View {
     }
 
     private func gaugeColor(_ percent: Double) -> Color {
-        if percent >= 90 { return .red }
-        if percent >= 70 { return .orange }
-        return .green
+        return UsageSeverity.color(percent)
     }
 
     /// Returns "↑" if usage increased, "↓" if decreased, "" if no significant change

@@ -1,5 +1,8 @@
 package dev.agentdeck.ui.component
 
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -202,12 +205,9 @@ private fun CompactGauge(
 ) {
     val fraction = (percent / 100.0).coerceIn(0.0, 1.0).toFloat()
     val used = if (remaining) 100.0 - percent else percent
-    val color = when {
-        muted -> MaterialTheme.colorScheme.onSurfaceVariant
-        used >= 90 -> AgentDeckColors.Red
-        used >= 70 -> AgentDeckColors.Amber
-        else -> AgentDeckColors.Green
-    }
+    val onPaper = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    val color = Color(if (muted) UsageSeverity.inactiveColor(onPaper)
+        else UsageSeverity.color(used, onPaper = onPaper))
 
     Column(modifier = modifier) {
         Row(

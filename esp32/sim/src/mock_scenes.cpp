@@ -173,6 +173,15 @@ bool SimScenes::apply(const char* name) {
       return false;
     return applyDemoScene(agent, state);
   }
+  if (std::strcmp(name, "quota-colors") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.fiveHourPercent = 82;
+    g_state.sevenDayPercent = 90;
+    g_state.codexPrimaryPercent = 100;
+    g_state.codexSecondaryPercent = -1;
+    g_state.codexLunaPercent = 82;
+    return true;
+  }
   if (std::strcmp(name, "empty") == 0) {
     g_state.reset();
     g_state.fiveHourPercent = g_state.sevenDayPercent = -1;
@@ -443,6 +452,6 @@ bool SimScenes::apply(const char* name) {
 }
 
 const char* SimScenes::catalog() {
-  return "usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, live-mix, empty, idle, display-off, working, multi, crowd, crowded, dense, permission, attention, "
+  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, live-mix, empty, idle, display-off, working, multi, crowd, crowded, dense, permission, attention, "
          "demo:<agent>:<state>";
 }

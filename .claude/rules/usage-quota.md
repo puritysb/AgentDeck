@@ -91,3 +91,5 @@ When a small panel must drop windows, later providers give up their second windo
 first, so every provider keeps its primary row. Apple and Android select Luna with the
 same predicate (`CodexRateLimits.activeLunaReserve` / `activeLunaReserve`), and colour
 a remaining-reading row by its used complement.
+
+Quota color policy: [DESIGN.md §2.8](../../DESIGN.md#28-subscription-quota-severity). Use `shared/src/usage-severity.ts` and its generated native mirrors; color is based on consumed capacity even when the label shows remaining capacity.

@@ -1,3 +1,4 @@
+import { usageColor as quotaColor } from '@agentdeck/shared';
 /**
  * AgentDeck Bridge — session entry point.
  *
@@ -1150,7 +1151,7 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     const pct5 = core.cachedApiUsage?.fiveHourPercent ?? null;
     const pct7 = core.cachedApiUsage?.sevenDayPercent ?? null;
     const worstPct = Math.max(pct5 ?? 0, pct7 ?? 0);
-    const usageColor = worstPct > 80 ? '#ef4444' : worstPct > 50 ? '#eab308' : '#22c55e';
+    const usageColor = quotaColor(worstPct);
     const e3: EncoderSlotState = {
       slot: 2, encoderType: 'usage',
       header: 'USAGE',
@@ -1273,7 +1274,7 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     // Slot 2: Usage
     const pct = core.cachedApiUsage?.fiveHourPercent ?? null;
     const usageText = pct != null ? `${Math.round(pct)}%` : '\u2014';
-    const usageBg = pct == null ? '#1e293b' : pct >= 90 ? '#991b1b' : pct >= 70 ? '#92400e' : '#166534';
+    const usageBg = quotaColor(pct, { paper: true });
     buttons.push({ slot: 2, title: usageText, subtitle: '5h', bgColor: usageBg, textColor: '#ffffff', enabled: false });
 
     // Slots 3-6: Response buttons

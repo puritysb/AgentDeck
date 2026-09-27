@@ -1,5 +1,6 @@
 package dev.agentdeck.ui.monitor
 
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -163,11 +164,7 @@ private fun WaterGauge(
 ) {
     val pct = percent.coerceIn(0.0, 100.0)
     val fillFraction = (pct / 100.0).toFloat()
-    val fillColor = when {
-        pct >= 90 -> TerrariumColors.LEDRed
-        pct >= 70 -> TerrariumColors.LEDAmber
-        else -> TerrariumColors.LEDGreen
-    }
+    val fillColor = Color(UsageSeverity.color(pct))
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -246,11 +243,7 @@ private fun ApiCostSection(
         if (costLimit != null && costLimit > 0) {
             val pct = (costSpent / costLimit * 100.0).coerceIn(0.0, 100.0)
             val fillFraction = (pct / 100.0).toFloat()
-            val fillColor = when {
-                pct >= 90 -> TerrariumColors.LEDRed
-                pct >= 70 -> TerrariumColors.LEDAmber
-                else -> TerrariumColors.LEDGreen
-            }
+            val fillColor = Color(UsageSeverity.color(pct))
 
             // Horizontal bar gauge
             Box(

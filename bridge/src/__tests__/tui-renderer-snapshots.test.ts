@@ -51,7 +51,7 @@ describe('blockGauge snapshots', () => {
     expect(blockGauge(100, 10)).toMatchSnapshot();
   });
 
-  it('clamps negative to 0', () => {
+  it('renders negative as unknown with an empty neutral gauge', () => {
     expect(blockGauge(-10, 6)).toMatchSnapshot();
   });
 

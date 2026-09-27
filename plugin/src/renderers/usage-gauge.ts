@@ -1,3 +1,4 @@
+import { usageColor } from '@agentdeck/shared';
 /**
  * Full-bleed level-fill usage gauge.
  *
@@ -69,9 +70,6 @@ function brandLogo(agent: 'claude' | 'codex' | 'zai', cx: number, cy: number, si
   );
 }
 
-/** Desaturated fill for an expired (stale) window — last-known %, dimmed. */
-const STALE_FILL = '#64748b';
-
 /** Informational fill for an INACTIVE per-model scoped cap: a high but non-binding
  *  cap must stay visible yet never wear the critical (red) ramp. The product-UI
  *  cyan reads as "info, not alarm" and is deliberately distinct from the stale
@@ -79,22 +77,19 @@ const STALE_FILL = '#64748b';
  *  so it stays out of the design-lint R2 count. Exported for the scoped-gauge test. */
 export const INACTIVE_FILL = UI.cyan;
 
-/** The >80% critical (alarm) fill. Named + exported so the scoped-gauge test can
+/** The ≥90% critical (alarm) fill. Named + exported so the scoped-gauge test can
  *  assert "active cap wears critical, inactive does not" without re-hardcoding the
  *  hex (which would add to the R2 baseline). */
-export const CRITICAL_FILL = '#ef4444';
+export const CRITICAL_FILL = UI.error;
 
-/** Severity ramp by USED percent: <=50 green, 50–80 amber, >80 red. A stale
+/** Severity ramp by USED percent: <70 green, 70–<90 amber, ≥90 red. A stale
  *  window drops to a muted grey so it reads as "not current"; an inactive scoped
  *  cap drops to the informational cyan so a high-but-non-binding cap never reads
  *  as a critical alarm (puritysb #99: inactive ≠ same critical treatment). Stale
  *  wins over inactive — "not current" is the stronger caveat. */
 function rampColor(used: number, stale = false, inactive = false): { fill: string; hi: string } {
-  if (stale) return { fill: STALE_FILL, hi: STALE_FILL };
-  if (inactive) return { fill: INACTIVE_FILL, hi: INACTIVE_FILL };
-  if (used > 80) return { fill: CRITICAL_FILL, hi: '#fca5a5' };
-  if (used > 50) return { fill: '#eab308', hi: '#fde047' };
-  return { fill: '#22c55e', hi: '#86efac' };
+  const fill = usageColor(used, { muted: stale, inactive });
+  return { fill, hi: fill };
 }
 
 export interface UsageGaugeData {
@@ -134,7 +129,7 @@ export function renderLunaReserveGauge(reserve: CodexLunaReserve): string {
     `<rect width="${W}" height="${H}" rx="${RX}" fill="${bg}"/>` +
     lunaGaugeHeader() +
     lunaMark(72, 58, 29, moon, bg) +
-    `<text x="72" y="103" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="${active ? HEADLINE : LABEL_DIM}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>` +
+    `<text x="72" y="103" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="${usageColor(reserve.usedPercent)}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>` +
     `<text x="72" y="121" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" font-weight="bold" fill="${active ? Tide.s50 : LABEL_DIM}">LUNA RESERVE</text>` +
     (reset ? `<text x="72" y="138" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="${LABEL_DIM}">RESET IN ${esc(formatResetTime(reset))}</text>` : ''),
   );
@@ -304,7 +299,7 @@ function renderLunaReserveEncoder(reserve: CodexLunaReserve): string {
     encHeader({ agent: 'codex', title: 'CODEX' } as UsageEncoderData, false) +
     lunaMark(34, 56, 27, moon, bg) +
     `<text x="72" y="40" font-family="JetBrains Mono, monospace" font-size="13" font-weight="bold" fill="${active ? Tide.s50 : LABEL_DIM}">LUNA RESERVE</text>` +
-    `<text x="72" y="69" font-family="Arial,sans-serif" font-size="25" font-weight="bold" fill="${active ? HEADLINE : LABEL_DIM}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>` +
+    `<text x="72" y="69" font-family="Arial,sans-serif" font-size="25" font-weight="bold" fill="${usageColor(reserve.usedPercent)}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>` +
     (reset ? `<text x="72" y="88" font-family="JetBrains Mono, monospace" font-size="11" fill="${LABEL_DIM}">RESET IN ${esc(formatResetTime(reset))}</text>` : ''),
   );
 }

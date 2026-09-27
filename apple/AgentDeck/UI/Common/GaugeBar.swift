@@ -2,15 +2,24 @@
 
 import SwiftUI
 
+extension UsageSeverity {
+    static func color(_ used: Double, onPaper: Bool = false) -> Color {
+        let rgb = colorHex(used, onPaper: onPaper)
+        return Color(red: Double((rgb >> 16) & 255) / 255,
+                     green: Double((rgb >> 8) & 255) / 255,
+                     blue: Double(rgb & 255) / 255)
+    }
+}
+
 struct GaugeBar: View {
     let label: String
     let percent: Double
     var resetTime: String? = nil
 
+    @Environment(\.colorScheme) private var colorScheme
+
     private var barColor: Color {
-        if percent >= 90 { return .red }
-        if percent >= 70 { return .orange }
-        return .cyan
+        UsageSeverity.color(percent, onPaper: colorScheme == .light)
     }
 
     var body: some View {

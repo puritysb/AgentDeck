@@ -1,3 +1,4 @@
+#include "util/usage_severity.generated.h"
 #include "../../audio/wake_word.h"
 #include "hud_bar.h"
 #if defined(BOARD_IPS10)
@@ -492,7 +493,7 @@ static lv_obj_t* createGauge(lv_obj_t* parent,
     lv_obj_set_size(fill, 0, GAUGE_HEIGHT - 2 * GAUGE_BORDER);
     lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_set_style_bg_color(fill, lv_color_hex(Theme::StatusGreen), 0);
-    lv_obj_set_style_bg_opa(fill, LV_OPA_50, 0);
+    lv_obj_set_style_bg_opa(fill, LV_OPA_20, 0);
     lv_obj_set_style_border_width(fill, 0, 0);
     lv_obj_set_style_radius(fill, 0, 0);
     lv_obj_set_style_pad_all(fill, 0, 0);
@@ -511,9 +512,11 @@ static lv_obj_t* createGauge(lv_obj_t* parent,
     lv_obj_set_style_text_font(pctLabel, &lv_font_montserrat_14, 0);
     lv_obj_align(pctLabel, LV_ALIGN_RIGHT_MID, -4, 0);
 #if defined(BOARD_TTGO)
-    lv_obj_set_style_text_font(pctLabel, &lv_font_montserrat_10, 0);
-    lv_obj_align(periodLabel, LV_ALIGN_LEFT_MID, 2, 0);
-    lv_obj_align(pctLabel, LV_ALIGN_RIGHT_MID, -2, 0);
+    lv_obj_set_style_bg_color(box, lv_color_hex(Theme::DeepSea), 0);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_font(pctLabel, &lv_font_montserrat_14, 0);
+    lv_obj_align(periodLabel, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(pctLabel, LV_ALIGN_BOTTOM_MID, 0, 0);
 #endif
     lv_label_set_text(pctLabel, "0%");
 
@@ -1667,9 +1670,7 @@ static uint32_t sessionStateColor(const char* state) {
 
 // Gauge color based on usage %
 static uint32_t gaugeColor(float pct) {
-    if (pct >= 90.0f) return Theme::StatusRed;
-    if (pct >= 70.0f) return Theme::StatusAmber;
-    return Theme::StatusGreen;
+    return UsageSeverity::color(pct);
 }
 
 // Update a water-fill gauge. pct < 0 means "no data" (sentinel).
@@ -1681,6 +1682,7 @@ static void updateGauge(lv_obj_t* fill, lv_obj_t* pctLabel, lv_obj_t* resetLabel
         lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
         lv_obj_set_style_bg_color(fill, lv_color_hex(Theme::HUDDim), 0);
         lv_label_set_text(pctLabel, "--");
+        lv_obj_set_style_text_color(pctLabel, lv_color_hex(Theme::HUDDim), 0);
         lv_label_set_text(resetLabel, "");
         return;
     }
@@ -1721,7 +1723,7 @@ static void setTopbarGauge(lv_obj_t* fill, lv_obj_t* pct, float v,
     if (fill) {
         int w = v >= 0.0f ? (int)(v / 100.0f * TB_BAR_W + 0.5f) : 0; if (w > TB_BAR_W) w = TB_BAR_W;
         lv_obj_set_width(fill, w);
-        lv_obj_set_style_bg_color(fill, lv_color_hex(v >= 85.0f ? D1_ATTN : baseColor), 0);
+        lv_obj_set_style_bg_color(fill, lv_color_hex(UsageSeverity::color(stale ? -1.0f : v)), 0);
     }
     if (!pct) return;
     char pb[28];
@@ -1939,11 +1941,13 @@ void update() {
                 // A reserve fills by what is LEFT; colour still follows use.
                 updateGauge(t.fill, t.pct, t.reset, (float)row.shown(), row.reset, false);
                 lv_obj_set_style_bg_color(t.fill, lv_color_hex(gaugeColor(row.used)), 0);
+                lv_obj_set_style_text_color(t.pct, lv_color_hex(gaugeColor(row.used)), 0);
             } else if (s == grp.rowCount && planSlot) {
                 lv_obj_clear_flag(t.col, LV_OBJ_FLAG_HIDDEN);
                 lv_label_set_text(t.period, "Plan");
                 lv_obj_set_width(t.fill, 0);
                 lv_label_set_text(t.pct, grp.tier);
+                lv_obj_set_style_text_color(t.pct, lv_color_hex(Theme::HUDText), 0);
                 lv_label_set_text(t.reset, grp.until);
             } else {
                 lv_obj_add_flag(t.col, LV_OBJ_FLAG_HIDDEN);

@@ -622,7 +622,7 @@ function renderAgentLines(state: DashboardState, maxWidth: number, useLogo: bool
  * Per-model scoped weekly caps (e.g. the "Fable" cap) shown beneath the 5h/7d
  * gauges wherever both windows render. The account-wide 5h/7d can read low while
  * a scoped cap is the ACTIVE binding constraint — so surface each one. An inactive
- * cap stays visible but muted (dim gauge), only an active cap gets the percent
+ * cap stays visible in informational cyan; only an active cap gets the percent
  * ramp, mirroring the deck's treatment. `inlineReset` matches the host block's
  * layout (reset on the same line vs a dim line beneath).
  */
@@ -631,7 +631,7 @@ function renderScopedLimitLines(u: NonNullable<DashboardState['usage']>, gaugeW:
   for (const s of u.scopedLimits ?? []) {
     const pct = Math.round(s.percent);
     const label = truncText((s.label || 'model').replace(/\s+/g, ' ').trim(), 7);
-    const gauge = blockGauge(pct, gaugeW, !s.active);
+    const gauge = blockGauge(pct, gaugeW, u.usageStale === true, !s.active);
     const reset = resetTimeStr(s.resetsAt);
     if (inlineReset) {
       lines.push(` ${label} [${gauge}] ${pct}% ${colors.dim}${reset}${RESET}`);

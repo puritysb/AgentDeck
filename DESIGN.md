@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-08-20
-revision: 2026-08-20
+reviewed: 2026-09-27
+revision: 2026-09-27
 source_of_truth: DESIGN.md
 validators: [python3 design/verify-tokens-sync.py, bash design/lint.sh]
 ---
@@ -118,6 +118,53 @@ The product brights are exposed in `design/tokens.css` under the `--ui-*` namesp
 | `processing` | kelp‑500 | none (steady)    | Agent is actively working        |
 | `awaiting`   | amber‑500 | pulse 1.1s       | Agent needs YES/NO from you      |
 | `error`      | coral‑500 | none             | Failed run, attention required   |
+
+---
+
+### 2.8 Subscription quota severity
+
+Every dashboard classifies the **consumed percentage of the same quota window**.
+The printed quantity may be “used” or “left”; color always follows **used**.
+For example, **82% used = 18% left = warning**, for every provider and device.
+
+| Used | Remaining equivalent | Meaning | Dark-screen token |
+|---|---|---|---|
+| below 70% | above 30% | Normal | `--ui-ok` (green) |
+| 70% to below 90% | above 10% through 30% | Warning | `--ui-attn` (amber) |
+| 90% or more | 10% or less | Critical | `--ui-error` (red) |
+| missing, invalid, stale or aged | unknown / last known | Not current | `--ui-idle-dark` (grey) |
+| known, non-binding model cap | informational | Inactive cap | `--ui-cyan` |
+
+Unknown/stale takes precedence over inactive. A quota is not a session state:
+all quota colors are **steady**, including exhausted quotas. Do not pulse red
+or wash the whole dashboard red because a window is near its limit.
+
+Provider identity stays on its logo/header. Put severity on the percentage and
+its gauge; keep the window label and reset time neutral. Full-bleed encoder
+tiles may retain a high-contrast neutral number over a severity-tinted fill.
+Always show the quantity/window and the number: color is supplemental. A
+monochrome panel keeps that text and proportional fill; a black/white/red panel
+uses red only for critical. Do not invent a different threshold for its palette.
+
+On paper/light backgrounds, use the shared paper palette (each RGB channel of
+the corresponding product token scaled by 0.5, rounded down). It preserves the
+semantic hue while meeting 4.5:1 text contrast against `--ui-popup-bg-light`.
+Bright values are for dark screens, not colored body text on white. Device
+brightness settings remain independent of severity.
+
+TTGO's usage-first view places a fully opaque severity-colored percentage
+on the dark card and a separate 3px bottom rail. A full-card tint must not
+reduce the number's contrast. Its optional terrarium gauges separate period
+and percentage into two rows.
+TC001 keeps its brand mark, a neutral window label, and a severity-colored
+percentage plus rail within the existing 32×8 footprint (`LU` abbreviates
+Luna so even `100%` fits). A remaining-reserve
+rail fills by remaining capacity, while its color follows consumed capacity.
+
+Implementation: `shared/src/usage-severity.ts` consumes the color-token bindings
+and owns the boundaries. `pnpm generate-usage-severity` emits the C++, Swift and
+Kotlin mirrors; the shared regression tests gate boundaries, contrast and
+mirror drift. No dashboard should maintain its own threshold or RGB ramp.
 
 ---
 

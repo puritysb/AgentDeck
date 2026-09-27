@@ -1,3 +1,4 @@
+#include "util/usage_severity.generated.h"
 #ifdef BOARD_EINK_SURFACE
 
 #include "eink_display.h"
@@ -1595,7 +1596,7 @@ void drawMiniUsage(int16_t x, int16_t y, int16_t w, const char* label, float pct
         // on, so it takes the semantic accent (red on the tri-color glass;
         // collapses to black everywhere else — DESIGN.md rule 4).
         display.fillRect(bx + 2, y + 2, fill, 7,
-                         pct >= 90.0f ? accentColor() : GxEPD_BLACK);
+                         UsageSeverity::level(pct) == UsageSeverity::Critical ? accentColor() : GxEPD_BLACK);
     }
     char value[10]; snprintf(value, sizeof(value), pct >= 0 ? "%d%%" : "--", (int)pct);
     textRight(x + w, y + 10, value, CLASSIC_FONT);

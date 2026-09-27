@@ -10,6 +10,7 @@
 #include <cstring>
 
 LV_FONT_DECLARE(font_ttgo_plex_12);
+LV_FONT_DECLARE(font_ttgo_plex_16);
 LV_FONT_DECLARE(font_ttgo_plex_28);
 
 namespace TTGO { namespace Usage {
@@ -81,7 +82,7 @@ void create(lv_obj_t* parent) {
         lv_bar_set_range(c.bar, 0, 100);
         lv_obj_set_style_bg_color(c.bar, lv_color_hex(Theme::ShallowWater), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(c.bar, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(c.bar, LV_OPA_30, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(c.bar, LV_OPA_COVER, LV_PART_INDICATOR);
         // Square-ended fill inside the card's own radius — the default pill
         // radius turned a partial fill into a floating blob.
         lv_obj_set_style_radius(c.bar, 4, LV_PART_MAIN);
@@ -123,15 +124,15 @@ void update() {
         if (shape != previousShape) {
             const auto r = cardRect(g_screenW, g_screenH, count, slot);
             lv_obj_set_pos(c.panel, r.x, r.y); lv_obj_set_size(c.panel, r.w, r.h);
-            const bool compact = r.h < 66;
+            const bool compact = r.h < 42;
             // The 28px face carries digits and % only; a plan tier uses 12px.
-            lv_obj_set_style_text_font(c.value, compact || tile.isPlan() ? &font_ttgo_plex_12 : &font_ttgo_plex_28, 0);
+            lv_obj_set_style_text_font(c.value, compact || tile.isPlan() ? &font_ttgo_plex_12 : r.h < 66 ? &font_ttgo_plex_16 : &font_ttgo_plex_28, 0);
             lv_obj_align(c.title, LV_ALIGN_TOP_LEFT, 5, 3);
             lv_obj_align(c.value, compact ? LV_ALIGN_TOP_RIGHT : LV_ALIGN_CENTER, compact ? -5 : 0, compact ? 3 : -2);
             lv_obj_set_width(c.reset, r.w - 10);
             lv_obj_align(c.reset, LV_ALIGN_BOTTOM_LEFT, 5, -3);
-            lv_obj_set_size(c.bar, r.w, r.h);
-            lv_obj_align(c.bar, LV_ALIGN_CENTER, 0, 0);
+            lv_obj_set_size(c.bar, r.w - 10, 3);
+            lv_obj_align(c.bar, LV_ALIGN_BOTTOM_MID, 0, 0);
             lv_obj_clear_flag(c.panel, LV_OBJ_FLAG_HIDDEN);
         }
         char buf[28];
@@ -141,6 +142,7 @@ void update() {
             snprintf(buf + n, sizeof(buf) - n, "PLAN");
             text(c.title, buf);
             text(c.value, g.tier[0] ? g.tier : "Active");
+            lv_obj_set_style_text_color(c.value, lv_color_hex(Theme::HUDText), 0);
             if (g.until[0]) snprintf(buf, sizeof(buf), "Until %s", g.until); else buf[0] = '\0';
             text(c.reset, buf);
             lv_bar_set_value(c.bar, 0, LV_ANIM_OFF);
@@ -154,7 +156,8 @@ void update() {
             if (row.reset[0]) snprintf(buf, sizeof(buf), "%s %s", row.left ? "Left, reset" : "Reset", row.reset);
             else snprintf(buf, sizeof(buf), "%s", row.left ? "Left" : "");
             text(c.reset, buf);
-            lv_obj_set_style_bg_color(c.bar, lv_color_hex(row.critical() ? Theme::StatusAmber : providerColor(g.provider)), LV_PART_INDICATOR);
+            lv_obj_set_style_bg_color(c.bar, lv_color_hex(UsageSeverity::color(row.used)), LV_PART_INDICATOR);
+            lv_obj_set_style_text_color(c.value, lv_color_hex(UsageSeverity::color(row.used)), 0);
             lv_bar_set_value(c.bar, row.shown(), LV_ANIM_OFF);
         }
     }

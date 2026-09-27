@@ -18,4 +18,4 @@ exports[`blockGauge snapshots > 100% — all filled, red 1`] = `"[31m███�
 
 exports[`blockGauge snapshots > clamps above 100 1`] = `"[31m██████[90m[0m"`;
 
-exports[`blockGauge snapshots > clamps negative to 0 1`] = `"[32m[90m░░░░░░[0m"`;
+exports[`blockGauge snapshots > renders negative as unknown with an empty neutral gauge 1`] = `"[90m[90m░░░░░░[0m"`;

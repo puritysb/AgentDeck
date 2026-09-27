@@ -197,8 +197,8 @@ final class IDotMatrixProtocolTests: XCTestCase {
         )
         let frame = PixooRenderer().renderCompact32(dashboardState: state)
         XCTAssertEqual(compactPixel(frame, 0, 30), [185, 86, 255])
-        XCTAssertEqual(compactPixel(frame, 3, 30), [185, 86, 255])
-        XCTAssertEqual(compactPixel(frame, 3, 31), [255, 183, 38])
+        XCTAssertEqual(compactPixel(frame, 3, 30), [82, 217, 136]) // 50% used: normal
+        XCTAssertEqual(compactPixel(frame, 3, 31), [255, 169, 61]) // 75% used: warning
     }
 
     func testDotMatrixCodexPayloadDecodePreservesFreshness() {

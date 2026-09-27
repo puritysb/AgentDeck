@@ -1,3 +1,4 @@
+import { usageColor } from './usage-severity.js';
 import { selectedLunaReserve } from './usage-presentation.js';
 /**
  * D200H / deck layout engine used by the Ulanzi Studio plugin
@@ -186,7 +187,7 @@ function gaugeBar(pct: number, width = 8): string {
 }
 
 function gaugeColor(pct: number): string {
-  return pct > 80 ? '#ef4444' : pct > 50 ? '#eab308' : '#22c55e';
+  return usageColor(pct);
 }
 
 export function renderUsageButton(label: string, percent: number | undefined, color: string, known = true): string {
@@ -284,7 +285,7 @@ export function renderLunaReserveTile(reserve: CodexLunaReserve): string {
     + `<g transform="translate(117,4) scale(0.75) translate(0,0)"><path d="${CODEX_LOGO_PATH}" fill="${Brand.codex}" fill-rule="evenodd"/></g>`
     + `<circle cx="72" cy="57" r="29" fill="${moon}"/>`
     + `<circle cx="60" cy="51" r="29" fill="${BG}"/>`
-    + `<text x="72" y="103" text-anchor="middle" font-family="Arial,sans-serif" font-size="27" font-weight="bold" fill="${active ? Tide.s50 : DIM}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>`
+    + `<text x="72" y="103" text-anchor="middle" font-family="Arial,sans-serif" font-size="27" font-weight="bold" fill="${usageColor(used)}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>`
     + `<text x="72" y="121" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" font-weight="bold" fill="${DIM}">LUNA RESERVE</text>`
     + (reset ? `<text x="72" y="138" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="${DIM}">RESET IN ${escXml(reset)}</text>` : '')
     + `</svg>`;
@@ -330,15 +331,10 @@ function usageBrandLogo(agent: 'claude' | 'codex' | 'zai', cx: number, cy: numbe
     + `</g>`;
 }
 
-/** Severity ramp by USED percent: <=50 green, 50–80 amber, >80 red. */
+/** Severity ramp by USED percent: <70 green, 70–<90 amber, ≥90 red. */
 function usageRampColor(used: number, stale = false, inactive = false): { fill: string; hi: string } {
-  if (stale) return { fill: '#64748b', hi: '#64748b' };
-  // Inactive per-model scoped cap: informational cyan (distinct from stale slate),
-  // never the critical ramp regardless of percent (issue #99).
-  if (inactive) return { fill: UI.cyan, hi: UI.cyan };
-  if (used > 80) return { fill: '#ef4444', hi: '#fca5a5' };
-  if (used > 50) return { fill: '#eab308', hi: '#fde047' };
-  return { fill: '#22c55e', hi: '#86efac' };
+  const fill = usageColor(used, { muted: stale, inactive });
+  return { fill, hi: fill };
 }
 
 /**

@@ -1,3 +1,4 @@
+import { usageRgb } from '@agentdeck/shared';
 import { describe, expect, it } from 'vitest';
 import {
   OFFICIAL_DOT_GLYPHS,
@@ -125,8 +126,8 @@ describe('iDotMatrix native 32×32 stage', () => {
     const pixel32 = (x: number, y: number) => [...frame.slice((y * 32 + x) * 3, (y * 32 + x) * 3 + 3)];
     expect(Math.max(...frame.slice(0, 28 * 32 * 3))).toBeGreaterThan(240);
     expect(pixel32(0, 30)).toEqual([185, 86, 255]);
-    expect(pixel32(3, 30)).toEqual([185, 86, 255]);
-    expect(pixel32(3, 31)).toEqual([255, 183, 38]);
+    expect(pixel32(3, 30)).toEqual(usageRgb(50));
+    expect(pixel32(3, 31)).toEqual(usageRgb(75));
   });
 });
 

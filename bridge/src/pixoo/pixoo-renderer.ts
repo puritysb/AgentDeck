@@ -1,3 +1,4 @@
+import { usageRgb } from '@agentdeck/shared';
 import { TERRARIUM_RULES } from '@agentdeck/shared';
 /**
  * Pixoo64 Frame Renderer — camera-based animated terrarium.
@@ -699,13 +700,7 @@ function simplifiedState(state: State): 'idle' | 'processing' | 'awaiting' {
 
 /** Gauge bar color based on usage percentage. */
 function gaugeColor(pct: number, animFrame: number, brand: RGB): RGB {
-  if (pct >= 90) {
-    // Red with pulse
-    const pulse = (Math.sin(animFrame * 0.2) + 1) * 0.3;
-    return lerpColor(COLORS.stateError, COLORS.white, pulse) as RGB;
-  }
-  if (pct >= 70) return COLORS.stateAwaiting;  // amber
-  return brand;
+  return usageRgb(pct);
 }
 
 /** Pixoo HUD reset time: "1h23", "4d6", "59m". */
@@ -1124,8 +1119,8 @@ function renderCompact32Frame(
   const rail = (raw: number | undefined, brand: RGB): void => {
     if (raw != null) telemetry.push([raw, brand]);
   };
-  rail(usageEvent?.fiveHourPercent, [42, 220, 154]);
-  rail(usageEvent?.sevenDayPercent, [54, 154, 255]);
+  rail(usageEvent?.usageStale === true ? undefined : usageEvent?.fiveHourPercent, [42, 220, 154]);
+  rail(usageEvent?.usageStale === true ? undefined : usageEvent?.sevenDayPercent, [54, 154, 255]);
   rail(primary, [185, 86, 255]);
   rail(secondary, [104, 116, 255]);
   rail(usageEvent?.zaiRateLimits?.primary?.stale === true
@@ -1135,7 +1130,7 @@ function renderCompact32Frame(
     const y = firstRailY + row;
     for (let x = 0; x < 32; x++) set(x, y, [5, 8, 14]);
     const pct = Math.max(0, Math.min(100, raw));
-    const color: RGB = pct >= 90 ? [255, 58, 72] : pct >= 70 ? [255, 183, 38] : brand;
+    const color: RGB = usageRgb(pct);
     set(0, y, brand); set(1, y, brand);
     const width = Math.round(pct / 100 * 29);
     for (let x = 3; x < 3 + width; x++) set(x, y, color);
@@ -1515,16 +1510,6 @@ export function renderFrame(
   // ========================================
   // Phase 4: Screen-space overlays
   // ========================================
-
-  // Danger flash (>90% usage)
-  if (usagePct >= 90) {
-    const flashIntensity = (Math.sin(animFrame * 0.2) + 1) * 0.08;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        glowPixel(outputBuf, x, y, COLORS.stateError, flashIntensity);
-      }
-    }
-  }
 
   // Session count indicator (top-left, screen-space) — colored dots when 2+ sessions
   const sessionCount = creatureInstances.size;

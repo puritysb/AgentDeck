@@ -179,7 +179,7 @@ describe('buildSessionDeck — per-model scoped caps', () => {
     );
     const svg = [...deck.values()].map((cell) => cell.svg).join('\n');
     expect(svg).toContain('FABLE');       // label uppercased + capped
-    expect(svg).toContain('#ef4444');     // 98% active → red ramp (5h/7d are green)
+    expect(svg).toContain('#FF6B6B');     // 98% active → red ramp (5h/7d are green)
     expect(svg).not.toContain('#3ED6E8'); // not the inactive/informational cyan
   });
 
@@ -195,7 +195,7 @@ describe('buildSessionDeck — per-model scoped caps', () => {
     const svg = [...deck.values()].map((cell) => cell.svg).join('\n');
     expect(svg).toContain('OPUS');
     expect(svg).toContain('#3ED6E8');     // inactive 90% → cyan, not critical
-    expect(svg).not.toContain('#ef4444'); // never the red ramp
+    expect(svg).not.toContain('#FF6B6B'); // never the red ramp
   });
 
   it('parseState carries scopedLimits through', () => {

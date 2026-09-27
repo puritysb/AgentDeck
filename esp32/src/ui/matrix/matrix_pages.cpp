@@ -1,3 +1,4 @@
+#include "util/usage_severity.generated.h"
 #ifdef BOARD_LED8X32
 #include "../../util/usage_presentation.generated.h"
 #include "matrix_pages.h"
@@ -118,10 +119,7 @@ static void drawBatteryGauge(CRGB* leds, int x0, int y0, int w, int h, float per
     int innerW = w - 2;
     int fillPx = (int)(remaining / 100.0f * innerW);
 
-    CRGB fillColor;
-    if (remaining > 40)      fillColor = CRGB(0, 180, 0);
-    else if (remaining > 20) fillColor = CRGB(180, 150, 0);
-    else                     fillColor = CRGB(200, 0, 0);
+    const CRGB fillColor(UsageSeverity::color(percent));
 
     for (int x = 0; x < innerW; x++) {
         CRGB c = (x < fillPx) ? fillColor : CRGB(12, 12, 12);
@@ -272,13 +270,7 @@ static int formatResetCompact(const char* reset, char* out, int maxLen) {
 
 // Gauge color matching Pixoo palette
 static CRGB gaugeColor(float percent, float animTime) {
-    if (percent >= 90) {
-        float pulse = 0.7f + 0.3f * sinf(animTime * 6.0f);
-        return CRGB((uint8_t)(239 * pulse), (uint8_t)(68 * pulse), (uint8_t)(68 * pulse));
-    }
-    if (percent >= 70) return CRGB(245, 158, 11);   // Amber
-    if (percent >= 50) return CRGB(0, 200, 180);     // Teal
-    return CRGB(59, 130, 246);                        // Blue
+    return CRGB(UsageSeverity::color(percent));
 }
 
 // Window labels follow the reported length, never the primary/secondary slot.
@@ -296,12 +288,13 @@ static void windowLabel(int minutes, const char* fallback, char (&out)[5]) {
 static void renderGaugePair(CRGB* leds, float animTime,
                             float first, const char* firstLabel,
                             float second, const char* secondLabel,
-                            const uint8_t* glyph, CRGB brand) {
+                            const uint8_t* glyph, CRGB brand, bool remaining = false) {
     const bool useSecond = second >= 0 && (first < 0 || fmodf(animTime, 8.0f) >= 4.0f);
     float percent = useSecond ? second : first;
-    if (percent < 0) return;
+    if (!std::isfinite(percent) || percent < 0) return;
     percent = fminf(100.0f, fmaxf(0.0f, percent));
-    const char* label = useSecond ? secondLabel : firstLabel;
+    // LU leaves room for 100% within the 23-pixel text area.
+    const char* label = remaining ? "LU" : (useSecond ? secondLabel : firstLabel);
     drawOfficialMatrixGlyph(leds, 0, glyph, brand);
     char reading[12];
     snprintf(reading, sizeof(reading), "%s%d%%", label, (int)(percent + 0.5f));
@@ -309,10 +302,13 @@ static void renderGaugePair(CRGB* leds, float animTime,
     // conveys a percentage; keep MCP's quantity label intact.
     if (MatrixFont::textWidth(reading) > MATRIX_W - 9)
         snprintf(reading, sizeof(reading), "%s%d", label, (int)(percent + 0.5f));
-    MatrixFont::drawScrollText(leds, reading, 9, 1, brand, MATRIX_W, MATRIX_H);
+    const CRGB severity(UsageSeverity::color(remaining ? 100.0f - percent : percent));
+    const int numberX = 9 + MatrixFont::textWidth(label) + 1;
+    MatrixFont::drawScrollText(leds, label, 9, 1, CRGB(160, 170, 180), MATRIX_W, MATRIX_H);
+    MatrixFont::drawScrollText(leds, reading + strlen(label), numberX, 1, severity, MATRIX_W, MATRIX_H);
     const int fill = (int)(percent * 21.0f / 100.0f + 0.5f);
     for (int x = 0; x < 21; ++x)
-        setPixel(leds, 9 + x, 7, x < fill ? brand : CRGB(4, 4, 6));
+        setPixel(leds, 9 + x, 7, x < fill ? severity : CRGB(4, 4, 6));
 }
 
 // ================================================================
@@ -355,7 +351,8 @@ void MatrixPages::renderCodex(CRGB* leds, float animTime) {
     windowLabel(g_state.codexSecondaryMinutes, "S", secondaryLabel);
     // An exhausted account window hands the page to the Luna reserve, read as
     // what is LEFT (the shared UsagePresentation rule every surface uses).
-    if (UsagePresentation::lunaActive(primary, secondary, g_state.codexLunaPercent)) {
+    const bool remaining = UsagePresentation::lunaActive(primary, secondary, g_state.codexLunaPercent);
+    if (remaining) {
         primary = 100.0f - g_state.codexLunaPercent;
         secondary = -1.0f;
         snprintf(primaryLabel, sizeof(primaryLabel), "LUNA");
@@ -366,7 +363,7 @@ void MatrixPages::renderCodex(CRGB* leds, float animTime) {
         renderDisconnectStatus(leds, animTime);
         return;
     }
-    renderGaugePair(leds, animTime, primary, primaryLabel, secondary, secondaryLabel, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224));
+    renderGaugePair(leds, animTime, primary, primaryLabel, secondary, secondaryLabel, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224), remaining);
     drawStateDot(leds, animTime);
 }
 

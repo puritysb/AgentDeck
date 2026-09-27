@@ -1379,12 +1379,10 @@ private struct RateChipView: View {
     let chip: RateChip
 
     private var fillColor: Color {
-        // Inactive scoped cap: neutral, never the critical ramp regardless of %.
-        if chip.inactive { return TerrariumHUD.subtext }
+        if chip.stale || chip.footnote?.isEmpty == false { return UsageSeverity.color(-1) }
+        if chip.inactive { return DesignTokens.UI.cyan }
         let used = chip.remaining ? 100 - chip.percent : chip.percent
-        if used >= 90 { return TerrariumHUD.ledRed }
-        if used >= 70 { return TerrariumHUD.ledAmber }
-        return TerrariumHUD.ledGreen
+        return UsageSeverity.color(used)
     }
 
     /// Visual opacity — dimmed when the underlying data is marked stale
