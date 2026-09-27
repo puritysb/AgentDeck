@@ -65,6 +65,10 @@ These multi-provider changes are next-release candidates ([PR #379](https://gith
 - ESP32: compact horizontal usage gauges on 86 Box, IPS 3.5 and round AMOLED; visible GLM usage on IPS 10 and NM-EPD-420; proportional card fills on TTGO; five-window layouts without clipping or array overflow on T-Display Pro.
 - ESP32 firmware delivery remains deferred while IPS10 work is in progress.
 
+## 2026-09-28 — Android 1.6.1
+
+- Fix in-app updates on Android 10 (e.g. Crema): the downloaded update was refused as "signing certificate does not match" even when it was signed by the same key, because Android 9–10 report no signer for a downloaded package unless asked for its legacy signatures too. Devices on Android 11 and later were unaffected. A device still on 1.6.0 or earlier needs this update installed once by USB or Play; later updates work in the app.
+
 ## 2026-09-28 — Android 1.6.0
 
 - E-ink readers (Crema, Pantone) get the Paper Board: sessions ranked by what they ask of you (needs you → working, each with its live activity → one line of idle sessions), usage grouped by provider with the plan beside it (`Codex  Pro · until Oct 10`) and aligned rows of window · bar · used · time left, and finished agent work — judged task summaries and answered turns, each listed once. Automated turns, abandoned tasks and prompts still waiting for an answer are not listed.

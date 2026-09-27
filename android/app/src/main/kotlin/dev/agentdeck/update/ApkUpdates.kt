@@ -110,15 +110,21 @@ internal object ApkUpdates {
                 check(hash == release.sha256) { "Update integrity check failed" }
             }
             val pm = context.packageManager
-            val apk = pm.getPackageArchiveInfo(file.path, PackageManager.GET_SIGNING_CERTIFICATES)
-                ?: error("Invalid Android package")
-            val installed = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            // API 28–29 leave `signingInfo` null for an ARCHIVE read with
+            // GET_SIGNING_CERTIFICATES alone (a v2-only APK, as ours is), so a
+            // Crema on Android 10 compared an empty signer set against the
+            // installed one and refused every genuine update. Asking for the
+            // legacy signatures too populates them; signerSet() uses whichever
+            // the platform filled.
+            @Suppress("DEPRECATION")
+            val flags = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+            val apk = pm.getPackageArchiveInfo(file.path, flags) ?: error("Invalid Android package")
+            val installed = pm.getPackageInfo(context.packageName, flags)
             check(apk.packageName == context.packageName && apk.longVersionCode > installed.longVersionCode) {
                 "This package is not a newer AgentDeck update"
             }
-            fun signatures(info: android.content.pm.PackageInfo) = info.signingInfo?.apkContentsSigners
-                ?.map { it.toCharsString() }?.toSet().orEmpty()
-            check(signatures(installed).isNotEmpty() && signatures(apk) == signatures(installed)) {
+            val installedSigners = signerSet(installed)
+            check(installedSigners.isNotEmpty() && signerSet(apk) == installedSigners) {
                 "Update signing certificate does not match this installation"
             }
             file
@@ -127,6 +133,12 @@ internal object ApkUpdates {
             throw e
         }
     }
+
+    /** The package's signing certificates, from `signingInfo` or, where the platform left it empty, the legacy `signatures`. */
+    @Suppress("DEPRECATION")
+    internal fun signerSet(info: android.content.pm.PackageInfo): Set<String> =
+        (info.signingInfo?.apkContentsSigners?.takeIf { it.isNotEmpty() } ?: info.signatures)
+            ?.map { it.toCharsString() }?.toSet().orEmpty()
 
     fun install(context: Context, file: File): Boolean {
         check(BuildConfig.APK_UPDATES)

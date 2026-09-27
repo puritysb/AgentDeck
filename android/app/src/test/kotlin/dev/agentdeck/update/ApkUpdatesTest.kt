@@ -4,7 +4,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class ApkUpdatesTest {
     @Test fun versionsAreNumericAndStableOnly() {
         assertTrue(ApkUpdates.newer("1.10.0", "1.9.9"))
@@ -24,5 +27,14 @@ class ApkUpdatesTest {
         assertNull(ApkUpdates.parseRelease(release(size = 0)))
         assertNull(ApkUpdates.parseRelease(release(size = 100_000_000)))
         assertNull(ApkUpdates.parseRelease(release(prerelease = true)))
+    }
+
+    @Test
+    fun `signer set falls back to legacy signatures when signingInfo is empty`() {
+        // What API 28-29 return for a v2-only archive read with GET_SIGNING_CERTIFICATES.
+        val signature = android.content.pm.Signature("3082010a")
+        val archive = android.content.pm.PackageInfo().apply { signatures = arrayOf(signature) }
+        assertEquals(setOf(signature.toCharsString()), ApkUpdates.signerSet(archive))
+        assertTrue(ApkUpdates.signerSet(android.content.pm.PackageInfo()).isEmpty())
     }
 }
