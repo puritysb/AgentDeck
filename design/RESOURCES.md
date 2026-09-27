@@ -101,7 +101,7 @@ diff package/icons/<name>.svg design/brand/<name>.svg   # path data must match
 | `.design-sync/` + `_ds_gen/` | `design/*.css`, `design/icons.jsx` | `scripts/design-sync-gen.mjs`, `design-sync-previews.mjs` (see `.design-sync/NOTES.md`) |
 | App Store screenshots `apple/appstore-submission/screenshots/{en,ko,ja}/` | `screenshots-raw/` captures + captions | `scripts/compose-appstore-screenshots.py` |
 | App Store previews | demo feed (`scripts/appstore-demo-orchestrator.mjs`) | `scripts/record-appstore-previews.sh` |
-| Marketplace listing assets | app captures | `scripts/generate-elgato-marketplace-assets.mjs` |
+| Marketplace listing assets | plugin renderers (`SessionSlotManager` → `renderSlotConfig`, dial renderers) | `pnpm exec tsx scripts/generate-elgato-marketplace-assets.mts` |
 | GitHub Pages **`/flash/`** (browser ESP32 flasher) | `tools/web-flasher/` (Vite app) + the release's `manifest.json` and merged images | `pnpm flash:build`, then the Pages workflow's *Fetch firmware for the flasher* step (`scripts/fetch-flash-firmware.mjs`) |
 | `dist/flash/THIRD-PARTY.txt` | the installed `esptool-js` / `pako` / `atob-lite` / `tslib` licence + NOTICE files | `scripts/generate-flash-third-party.mjs` |
 
