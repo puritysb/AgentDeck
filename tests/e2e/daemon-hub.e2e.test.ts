@@ -19,7 +19,7 @@
  * - `--port-window` puts it outside 9120-9139, so the singleton guard never
  *   asks a live daemon on this machine to stand down.
  *
- * It runs on Linux CI (`pnpm test:e2e`, the `daemon-e2e` job). On macOS it is
+ * It runs on Linux CI (`pnpm test:e2e`, a step in ci.yml's `test` job). On macOS it is
  * opt-in (`AGENTDECK_E2E_ALLOW_DARWIN=1`): the darwin usage poller reads the
  * login Keychain through `security`, which can raise a Keychain dialog.
  */

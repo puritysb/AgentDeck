@@ -4,6 +4,7 @@ import { scheduleDeferredReplyRead, DEFERRED_REPLY_DELAYS_MS } from '../deferred
 describe('scheduleDeferredReplyRead', () => {
   // Restore even when an assertion fails mid-test, so fake timers never leak.
   afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('retries on the bounded schedule and applies the first non-empty read', () => {
