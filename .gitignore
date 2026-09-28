@@ -28,6 +28,8 @@ __worktrees/
 
 # Local diagnostic captures from development workflows
 diagnostics/
+# Playwright MCP browser-session logs and page snapshots (may include logged-in console pages)
+.playwright-mcp/
 
 # Local generation output (image/UI exploration runs); artifacts stay on disk
 output/
