@@ -57,3 +57,20 @@ Crema's initial 1.6.1 update is pending USB/ADB connection (only the Lenovo was
 available). The official APK was downloaded and its SHA-256 verified:
 `db2696016ab622b1ff3980c5a5cf1db849123b5a5ac676c9269420301ecc65b9`.
 Preserve app data with an in-place update when the device is available.
+
+## Follow-up: physical confirmation and Crema captures
+
+The user subsequently confirmed Elgato works correctly. The physical validation
+gate is therefore satisfied by user observation; 1.6 still awaits Elgato review.
+The follow-up automation may publish 1.6 on approval, without publishing 1.4.
+
+Crema then connected over USB. The official APK installed successfully with
+`adb install -r`, preserving data; package readback is 1.6.1/code 23. The app
+launched and logged native Onyx regional refresh. After capture, its normal
+port-9120 daemon route and live dashboard were restored (PID 10529).
+
+Two unmodified 1072×1448 screenshots were captured on the physical device with
+fictional sessions supplied by the existing demo orchestrator. The working and
+attention captures and provenance are in `marketplace/play/1.6.1/crema-*`.
+These replace the two August 7-inch Play screenshots; the new 10-inch assets and
+phone assets are retained. No private conversation screenshots are published.
