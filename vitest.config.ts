@@ -31,12 +31,15 @@ export default defineConfig({
         '**/dist/**',
       ],
       thresholds: {
-        // Regression guard — set slightly below current levels.
-        // Raise these as coverage improves.
-        lines: 17,
-        functions: 15,
-        branches: 14,
-        statements: 16,
+        // Regression guard, ~3 points below measured coverage (2026-09-28:
+        // lines 59.6, functions 60.0, branches 55.3, statements 58.6). The old
+        // 17/15/14/16 sat ~40 points under reality and could not catch a real
+        // regression. Raise these as coverage improves; never lower them to
+        // land a change.
+        lines: 56,
+        functions: 57,
+        branches: 52,
+        statements: 55,
       },
     },
   },

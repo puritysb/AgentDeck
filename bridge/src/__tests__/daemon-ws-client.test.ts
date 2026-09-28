@@ -173,18 +173,30 @@ describe('DaemonWsClient target re-resolution (real socket, short backoff)', () 
 
 describe('DaemonWsClient shutdown', () => {
   it('does not leak an asynchronous error when closed while CONNECTING', async () => {
+    let upgrades = 0;
     const http = createServer(() => {
       // Leave the upgrade unanswered so the client remains CONNECTING.
+      upgrades++;
     });
     await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve));
     const port = (http.address() as { port: number }).port;
-    const client = new DaemonWsClient('sess-closing', 4324);
+    const client = new DaemonWsClient('sess-closing', 4324, 'claude-code', 'demo',
+      undefined, undefined, undefined, false, /* reconnectBaseMs */ 5);
+    // The leak surfaces as an uncaught exception on a later tick; observe it
+    // directly instead of relying on the runner's unhandled-error report.
+    const uncaught = vi.fn();
+    process.on('uncaughtException', uncaught);
 
     try {
       client.connect({ host: '127.0.0.1', port });
       client.close();
       await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      expect(uncaught).not.toHaveBeenCalled();
+      expect(client.isConnected).toBe(false);
+      // Closed means closed: no reconnect was scheduled despite the 5ms base.
+      expect(upgrades).toBeLessThanOrEqual(1);
     } finally {
+      process.off('uncaughtException', uncaught);
       client.close();
       http.close();
     }

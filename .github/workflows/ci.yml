@@ -34,16 +34,21 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      # One run, not two: `--coverage` executes the same suite as `pnpm test`
+      # and additionally enforces the thresholds in vitest.config.ts. Running
+      # both cost a full extra pass (~60 s) for no additional signal.
+      - name: Test + coverage thresholds
+        run: npx vitest run --coverage
         env:
           COLORTERM: truecolor
           TZ: Asia/Seoul
 
-      - name: Coverage check
-        run: npx vitest run --coverage
+      # The real `agentdeck daemon start` process in a temp HOME, loopback-only,
+      # every device module off (tests/e2e/daemon-hub.e2e.test.ts). Needs the
+      # build above; takes a few seconds.
+      - name: Daemon hub end-to-end
+        run: pnpm test:e2e
         env:
-          COLORTERM: truecolor
           TZ: Asia/Seoul
 
       - name: Preview mirror sync check

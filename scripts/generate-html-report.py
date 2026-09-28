@@ -29,6 +29,9 @@ VITEST_JSON = REPORT_DIR / "vitest.json"
 COVERAGE_JSON = ROOT / "coverage" / "coverage-summary.json"
 ANDROID_XML_DIR = ROOT / "android" / "app" / "build" / "test-results" / "testDebugUnitTest"
 SCENARIO_JSON = ROOT / "scripts" / "scenario-matrix.json"
+CATALOG_JSON = ROOT / "scripts" / "verification-catalog.json"
+VITEST_CONFIG = ROOT / "vitest.config.ts"
+E2E_JSON = REPORT_DIR / "e2e.json"
 ROBOT_XML = REPORT_DIR / "robot" / "output.xml"
 HISTORY_JSON = REPORT_DIR / "history.json"
 METADATA_JSON = REPORT_DIR / "run-metadata.json"
@@ -42,6 +45,28 @@ def load_vitest():
         return None
     with open(VITEST_JSON) as f:
         return json.load(f)
+
+def load_e2e():
+    """`pnpm test:e2e` JSON (vitest reporter format), when the run produced one."""
+    if not E2E_JSON.exists():
+        return None
+    try:
+        with open(E2E_JSON) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+def merge_e2e(vitest, e2e):
+    """Fold the E2E files into the per-file views (their own domain tab), keeping totals honest."""
+    if not e2e:
+        return vitest
+    if not vitest:
+        return e2e
+    merged = dict(vitest)
+    merged["testResults"] = list(vitest.get("testResults", [])) + list(e2e.get("testResults", []))
+    for key in ("numPassedTests", "numFailedTests", "numTotalTests", "numPendingTests", "numTodoTests"):
+        merged[key] = vitest.get(key, 0) + e2e.get(key, 0)
+    return merged
 
 def load_coverage():
     if not COVERAGE_JSON.exists():
@@ -400,144 +425,52 @@ def extract_package_coverage(cov_data):
 
 # ===== Test categorization =====
 
-# Test layers: purpose-driven grouping of test files
+# Test layers: purpose-driven grouping of test files. The SSOT is the
+# `domains` list of scripts/verification-catalog.json (glob patterns, ordered,
+# first match wins); scripts/__tests__/verification-catalog.test.ts fails when a
+# tracked test file matches no domain, so "Other Tests" stays empty.
+def load_catalog():
+    if not CATALOG_JSON.exists():
+        return {"gates": [], "domains": [], "levels": {}, "not_verified": []}
+    with open(CATALOG_JSON) as f:
+        return json.load(f)
+
+CATALOG = load_catalog()
+
+def _glob_re(glob):
+    """`*` matches within one path segment — same rule as the catalog test."""
+    return re.compile("^" + "[^/]*".join(re.escape(part) for part in glob.split("*")) + "$")
+
 TEST_LAYERS = [
-    {
-        "id": "terminal-parsing",
-        "name": "Terminal Output Parsing",
-        "question": "Does the bridge interpret Claude Code and Codex terminal output correctly?",
-        "icon": "◈",
-        "color": "#22d3ee",
-        "files": [
-            "bridge/src/__tests__/output-parser.test.ts",
-            "bridge/src/__tests__/codex-output-parser.test.ts",
-            "bridge/src/__tests__/cursor-sync.test.ts",
-        ],
-    },
-    {
-        "id": "state-adapter",
-        "name": "State Machine & Adapters",
-        "question": "Are agent state transitions and type-specific command routes correct?",
-        "icon": "◇",
-        "color": "#a78bfa",
-        "files": [
-            "bridge/src/__tests__/state-machine.test.ts",
-            "bridge/src/__tests__/adapter.test.ts",
-            "shared/src/__tests__/protocol-contract.test.ts",
-        ],
-    },
-    {
-        "id": "timeline",
-        "name": "Timeline Pipeline",
-        "question": "Are timeline storage, deduplication, and cross-session relays correct?",
-        "icon": "◆",
-        "color": "#f472b6",
-        "files": [
-            "shared/src/__tests__/timeline.test.ts",
-            "bridge/src/__tests__/timeline-integration.test.ts",
-            "bridge/src/__tests__/session-timeline-relay.test.ts",
-        ],
-    },
-    {
-        "id": "daemon-infra",
-        "name": "Daemon & Infrastructure",
-        "question": "Are the daemon singleton, session registry, and usage relay stable?",
-        "icon": "◉",
-        "color": "#fb923c",
-        "files": [
-            "bridge/src/__tests__/daemon-lifecycle.test.ts",
-            "bridge/src/__tests__/session-registry.test.ts",
-            "bridge/src/__tests__/usage-relay.test.ts",
-            "bridge/src/__tests__/bridge-core.test.ts",
-        ],
-    },
-    {
-        "id": "integration",
-        "name": "Integration Tests",
-        "question": "Does the end-to-end pipeline work in a real server environment?",
-        "icon": "◎",
-        "color": "#34d399",
-        "files": [
-            "bridge/src/__tests__/server-integration.test.ts",
-            "bridge/src/__tests__/tier3-integration.test.ts",
-        ],
-    },
-    {
-        "id": "plugin-ui",
-        "name": "Stream Deck Plugin UI",
-        "question": "Are plugin connections, option layouts, and renderers correct?",
-        "icon": "▣",
-        "color": "#38bdf8",
-        "files": [
-            "plugin/src/__tests__/connection-manager.test.ts",
-            "plugin/src/__tests__/connection-integration.test.ts",
-            "plugin/src/__tests__/option-scenario.test.ts",
-            "plugin/src/__tests__/renderer-snapshots.test.ts",
-            "plugin/src/__tests__/text-utils-and-labels.test.ts",
-        ],
-    },
-    {
-        "id": "tui-dashboard",
-        "name": "TUI Dashboard",
-        "question": "Does the terminal dashboard render state and terrarium motion correctly?",
-        "icon": "▤",
-        "color": "#c084fc",
-        "files": [
-            "bridge/src/__tests__/tui-dashboard.test.ts",
-            "bridge/src/__tests__/tui-renderer-snapshots.test.ts",
-            "bridge/src/__tests__/tui-terrarium-snapshots.test.ts",
-        ],
-    },
-    {
-        "id": "serial-protocol",
-        "name": "Serial Protocol",
-        "question": "Is the ESP32 serial byte stream framed correctly?",
-        "icon": "▥",
-        "color": "#fbbf24",
-        "files": [
-            "bridge/src/__tests__/esp32-serial-node.test.ts",
-        ],
-    },
-    {
-        "id": "display-render",
-        "name": "Display Rendering",
-        "question": "Is image data for external displays rendered correctly?",
-        "icon": "▦",
-        "color": "#f87171",
-        "files": [
-            "bridge/src/__tests__/pixoo-sprites.test.ts",
-        ],
-    },
-    {
-        "id": "hook-install",
-        "name": "Hook Installation",
-        "question": "Are Claude Code hook installation, removal, and migration safe?",
-        "icon": "▧",
-        "color": "#4ade80",
-        "files": [
-            "hooks/src/__tests__/install.test.ts",
-        ],
-    },
+    {**d, "_res": [_glob_re(g) for g in d.get("match", [])]}
+    for d in CATALOG.get("domains", [])
 ]
 
-# Build reverse lookup: file path -> layer id
-_FILE_TO_LAYER = {}
-for _layer in TEST_LAYERS:
-    for _f in _layer["files"]:
-        _FILE_TO_LAYER[_f] = _layer["id"]
-
 def classify_test_file(filepath):
-    """Classify test file by layer, with fallback to name pattern."""
-    return _FILE_TO_LAYER.get(filepath, "other")
+    """Domain id for a test file (first matching domain), or "other"."""
+    for layer in TEST_LAYERS:
+        if any(r.match(filepath) for r in layer["_res"]):
+            return layer["id"]
+    return "other"
 
 def get_layer_for_file(filepath):
     """Return the layer dict for a file, or None."""
-    lid = _FILE_TO_LAYER.get(filepath)
-    if lid:
-        for layer in TEST_LAYERS:
-            if layer["id"] == lid:
-                return layer
+    lid = classify_test_file(filepath)
+    for layer in TEST_LAYERS:
+        if layer["id"] == lid:
+            return layer
     return None
+
+def read_coverage_thresholds():
+    """The enforced floor, read from vitest.config.ts so the page never quotes a stale number."""
+    try:
+        text = VITEST_CONFIG.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    block = re.search(r"thresholds:\s*\{([^}]*)\}", text)
+    if not block:
+        return {}
+    return {k: float(v) for k, v in re.findall(r"(lines|functions|branches|statements):\s*(\d+(?:\.\d+)?)", block.group(1))}
 
 def category_badge_html(category):
     """Badge for legacy unit/integration/snapshot or layer-based category."""
@@ -565,11 +498,12 @@ def suite_meta(metadata, name):
         "note": meta.get("note", ""),
     }
 
-def build_default_metadata(vitest, android, robot):
+def build_default_metadata(vitest, android, robot, e2e=None):
     return {
         "run_profile": "ad-hoc",
         "suites": {
             "vitest": {"status": "pass" if vitest else "not-run", "executed": bool(vitest), "note": ""},
+            "e2e": {"status": ("pass" if e2e.get("numFailedTests", 0) == 0 else "fail") if e2e else "not-run", "executed": bool(e2e), "note": ""},
             "android": {"status": "pass" if android else "not-run", "executed": bool(android), "note": ""},
             "apple": {"status": "not-run", "executed": False, "note": "No Apple result parser input"},
             "robot": {"status": "pass" if robot else "not-run", "executed": bool(robot), "note": ""},
@@ -694,6 +628,92 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
 
         results.append(sc_result)
     return results
+
+
+
+# ===== "What we verify" tab =====
+
+def _esc(text):
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+def build_verification_html(catalog, metadata, vt_file_data):
+    """Every verification gate the project runs, where and when, what it proves and
+    what it does not — rendered from scripts/verification-catalog.json."""
+    repo = os.environ.get("GITHUB_REPOSITORY", "puritysb/AgentDeck")
+    levels = catalog.get("levels", {})
+
+    def run_cell(gate):
+        suite = gate.get("report_suite")
+        if suite:
+            meta = suite_meta(metadata, suite)
+            if meta["executed"]:
+                ok = meta["status"] == "pass"
+                colour = "var(--kelp-500)" if ok else "var(--coral-500)"
+                label = "passed in this run" if ok else f'{meta["status"]} in this run'
+                return f'<span style="color:{colour};font-weight:600">{label}</span>'
+        wf = gate.get("workflow")
+        if wf:
+            name = wf.rsplit("/", 1)[-1]
+            return f'<a href="https://github.com/{repo}/actions/workflows/{name}">{_esc(name)} runs &rarr;</a>'
+        return '<span style="color:var(--dim)">lab only &mdash; not recorded here</span>'
+
+    gate_rows = ""
+    for gate in catalog.get("gates", []):
+        lv = " ".join(f'<span class="vlevel" title="{_esc(levels.get(l, ""))}">{_esc(l)}</span>' for l in gate.get("level", []))
+        proves = "".join(f"<li>{_esc(x)}</li>" for x in gate.get("proves", []))
+        not_proves = "".join(f"<li>{_esc(x)}</li>" for x in gate.get("does_not_prove", []))
+        blocking = "blocks merge/release" if gate.get("blocking") else "informational"
+        gate_rows += f"""<tr>
+          <td><strong>{_esc(gate["name"])}</strong><div class="vmeta">{lv}</div>
+              <div class="vmeta"><code>{_esc(gate.get("command", ""))}</code></div></td>
+          <td>{_esc(gate.get("trigger", ""))}<div class="vmeta">{_esc(gate.get("where", ""))} &middot; {blocking}</div></td>
+          <td><ul class="vlist">{proves}</ul></td>
+          <td><ul class="vlist vneg">{not_proves}</ul></td>
+          <td>{run_cell(gate)}</td>
+        </tr>"""
+
+    domain_rows = ""
+    for layer in TEST_LAYERS:
+        files = [f for f in vt_file_data if classify_test_file(f) == layer["id"]]
+        passed = sum(vt_file_data[f]["passed"] for f in files)
+        failed = sum(vt_file_data[f]["failed"] for f in files)
+        state = f'<span style="color:var(--coral-500);font-weight:600">{failed} failing</span>' if failed else f"{passed} passing"
+        domain_rows += f"""<tr onclick="document.querySelector('[data-tab=layer-{layer["id"]}]')?.click()" style="cursor:pointer">
+          <td><span style="color:{layer.get("color", "var(--accent)")}">{layer.get("icon", "")}</span> {_esc(layer["name"])}</td>
+          <td style="color:var(--dim)">{_esc(layer.get("question", ""))}</td>
+          <td style="text-align:right">{len(files)}</td>
+          <td style="text-align:right">{state}</td>
+        </tr>"""
+
+    gaps = "".join(
+        f"""<tr><td><strong>{_esc(g["what"])}</strong></td><td>{_esc(g["why"])}</td><td>{_esc(g["instead"])}</td></tr>"""
+        for g in catalog.get("not_verified", []))
+
+    legend = "".join(f"<li><strong>{_esc(k)}</strong> &mdash; {_esc(v)}</li>" for k, v in levels.items())
+
+    return f"""<div class="verify">
+      <p class="vintro">Every check AgentDeck runs, where it runs, and &mdash; just as important &mdash; what it does
+      <em>not</em> prove. Generated from <code>scripts/verification-catalog.json</code>; a test fails CI if that file
+      stops matching the repository (a workflow missing, a path gone, a test file with no domain).</p>
+      <h3>Gates</h3>
+      <div class="vscroll"><table class="vtable">
+        <thead><tr><th>Gate</th><th>When</th><th>Proves</th><th>Does not prove</th><th>This page</th></tr></thead>
+        <tbody>{gate_rows}</tbody>
+      </table></div>
+      <h3>Test domains</h3>
+      <p class="vintro">Every TypeScript and E2E test file, grouped by the question it answers. Select a row for its tests.</p>
+      <div class="vscroll"><table class="vtable">
+        <thead><tr><th>Domain</th><th>Question</th><th style="text-align:right">Files</th><th style="text-align:right">Tests</th></tr></thead>
+        <tbody>{domain_rows}</tbody>
+      </table></div>
+      <h3>Not verified automatically</h3>
+      <div class="vscroll"><table class="vtable">
+        <thead><tr><th>What</th><th>Why not</th><th>What we do instead</th></tr></thead>
+        <tbody>{gaps}</tbody>
+      </table></div>
+      <h3>Evidence levels</h3>
+      <ul class="vlegend">{legend}</ul>
+    </div>"""
 
 
 # ===== HTML generation =====
@@ -993,7 +1013,7 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
     assigned_files = set()
     layer_stats = {}
     for layer in TEST_LAYERS:
-        layer_files = [f for f in layer["files"] if f in vt_file_data]
+        layer_files = sorted(f for f in vt_file_data if classify_test_file(f) == layer["id"])
         if layer_files:
             assigned_files.update(layer_files)
             lp = sum(vt_file_data[f]["passed"] for f in layer_files)
@@ -1408,15 +1428,19 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
                     <td style="width:100px"><div class="cov-bar"><div class="cov-fill" style="width:{bar_w}%;background:{bar_color}"></div></div></td>
                 </tr>'''
 
-        lines_thresh_color = "#22c55e" if lines_pct >= 17 else "#ef4444"
-        funcs_thresh_color = "#22c55e" if funcs_pct >= 15 else "#ef4444"
-        branch_thresh_color = "#22c55e" if branch_pct >= 14 else "#ef4444"
-        stmts_thresh_color = "#22c55e" if stmts_pct >= 16 else "#ef4444"
+        thresholds = read_coverage_thresholds()
+        threshold_rows = ""
+        for label, key, pct in (("Lines", "lines", lines_pct), ("Functions", "functions", funcs_pct),
+                                ("Branches", "branches", branch_pct), ("Statements", "statements", stmts_pct)):
+            floor = thresholds.get(key)
+            if floor is None:
+                threshold_rows += f'<div class="threshold"><div class="dot" style="background:var(--dim)"></div>{label}: {pct:.1f}% (no floor configured)</div>'
+                continue
+            dot = "#22c55e" if pct >= floor else "#ef4444"
+            threshold_rows += f'<div class="threshold"><div class="dot" style="background:{dot}"></div>{label} &ge;{floor:g}%: {pct:.1f}%</div>'
         coverage_tab_html = f'''<div style="margin-bottom:1rem">
-          <div class="threshold"><div class="dot" style="background:{lines_thresh_color}"></div>Lines &ge;17%: {lines_pct:.1f}%</div>
-          <div class="threshold"><div class="dot" style="background:{funcs_thresh_color}"></div>Functions &ge;15%: {funcs_pct:.1f}%</div>
-          <div class="threshold"><div class="dot" style="background:{branch_thresh_color}"></div>Branches &ge;14%: {branch_pct:.1f}%</div>
-          <div class="threshold"><div class="dot" style="background:{stmts_thresh_color}"></div>Statements &ge;16%: {stmts_pct:.1f}%</div>
+          {threshold_rows}
+          <div class="threshold" style="color:var(--dim)">Floors are read from vitest.config.ts and enforced on every PR.</div>
         </div>
         <div class="cov-cards">{pkg_cards}</div>
         <div class="cov-filter">
@@ -1449,6 +1473,16 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
         <span>Overview</span>
       </div>
       <span class="nav-badge" style="color:{overall_color}">{overall_status}</span>
+    </div>'''
+
+    # What we verify
+    sidebar_items += f'''<div class="nav-item" data-tab="verify" onclick="switchTab('verify',this)">
+      <div class="nav-indicator" style="background:var(--kelp-700)"></div>
+      <div class="nav-label">
+        <span class="nav-icon">&#9745;</span>
+        <span>What we verify</span>
+      </div>
+      <span class="nav-badge" style="color:var(--dim)">{len(CATALOG.get("gates", []))}</span>
     </div>'''
 
     # Layer tabs
@@ -1527,6 +1561,8 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
     tab_panels = ""
 
     # Overview panel
+    tab_panels += f'''<div class="tab-panel" id="tab-verify">{build_verification_html(CATALOG, metadata, vt_file_data)}</div>'''
+
     tab_panels += f'''<div class="tab-panel active" id="tab-overview">
       <div class="summary">
         <div class="card">
@@ -1856,6 +1892,18 @@ body {{ --sidebar-w: 240px; background: var(--bg); color: var(--text); font-fami
 
 /* Threshold indicators */
 .threshold {{ display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; background: var(--surface); padding: 4px 12px; border-radius: 6px; margin-right: 0.5rem; margin-bottom: 0.5rem; }}
+.verify h3 {{ margin: 1.75rem 0 .5rem; font-size: 1.05rem; }}
+.verify .vintro {{ color: var(--dim); font-size: .9rem; max-width: 80ch; margin-bottom: .75rem; }}
+.vscroll {{ overflow-x: auto; }}
+.vtable td {{ vertical-align: top; font-size: .8rem; padding: .6rem .75rem; border-bottom: 1px solid var(--surface2); }}
+.vtable code {{ font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--ink-700); }}
+.verify a {{ color: var(--kelp-700); }}
+.vmeta {{ color: var(--dim); font-size: .72rem; margin-top: .25rem; }}
+.vlevel {{ display: inline-block; font: 600 .65rem/1.4 'JetBrains Mono', monospace; padding: 0 6px; margin-right: 4px; border-radius: 4px; background: var(--surface2); color: var(--ink-700); }}
+.vlist {{ margin: 0; padding-left: 1rem; }}
+.vlist li {{ margin-bottom: .2rem; }}
+.vneg li {{ color: var(--dim); }}
+.vlegend {{ padding-left: 1rem; font-size: .8rem; color: var(--dim); }}
 .threshold .dot {{ width: 8px; height: 8px; border-radius: 50%; }}
 
 /* Tables */
@@ -1915,7 +1963,7 @@ td {{ padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e293b; font-size: 0.85
     <header class="report-intro">
       <p class="kicker">AgentDeck · Continuous integration</p>
       <h2>Test Report</h2>
-      <p>The most recent CI run, in full: which tests passed, which user scenarios are covered, how the numbers are trending, and where the gaps are. This is the maintainer's evidence that the build works — not a product analytics dashboard.</p>
+      <p>The most recent CI run, in full: which tests passed, which user scenarios are covered, how the numbers are trending, and where the gaps are. This is the maintainer's evidence that the build works — not a product analytics dashboard. <a href="#verify" onclick="document.querySelector('[data-tab=verify]').click();return false">What we verify, and what we don't &rarr;</a></p>
       <p class="freshness">LATEST RUN · {overall_status} · GENERATED {now}</p>
     </header>
     {tab_panels}
@@ -1980,7 +2028,8 @@ function toggleScenario(id) {{
 def main():
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-    vitest = load_vitest()
+    e2e = load_e2e()
+    vitest = merge_e2e(load_vitest(), e2e)
     android = load_android_xml()
     cov = load_coverage()
     robot = load_robot_xml()
@@ -1988,13 +2037,15 @@ def main():
     history = load_history()
     metadata = load_metadata()
     if not metadata:
-        metadata = build_default_metadata(vitest, android, robot)
+        metadata = build_default_metadata(vitest, android, robot, e2e)
         METADATA_JSON.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     else:
         # Reconcile metadata with actual data presence — override stale not-run flags
         suites = metadata.setdefault("suites", {})
         if vitest and not suites.get("vitest", {}).get("executed"):
             suites["vitest"] = {"status": "pass" if vitest.get("numFailedTests", 0) == 0 else "fail", "executed": True, "note": ""}
+        if e2e and not suites.get("e2e", {}).get("executed"):
+            suites["e2e"] = {"status": "pass" if e2e.get("numFailedTests", 0) == 0 else "fail", "executed": True, "note": ""}
         if android and not suites.get("android", {}).get("executed"):
             af = sum(s["failures"] + s["errors"] for s in android)
             suites["android"] = {"status": "pass" if af == 0 else "fail", "executed": True, "note": ""}

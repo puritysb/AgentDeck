@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { scheduleDeferredReplyRead, DEFERRED_REPLY_DELAYS_MS } from '../deferred-reply-read.js';
 
 describe('scheduleDeferredReplyRead', () => {
+  // Restore even when an assertion fails mid-test, so fake timers never leak.
+  afterEach(() => {
+  });
+
   it('retries on the bounded schedule and applies the first non-empty read', () => {
     vi.useFakeTimers();
     const reads = ['', 'the reply'];
@@ -16,7 +20,6 @@ describe('scheduleDeferredReplyRead', () => {
     expect(apply).toHaveBeenCalledWith('the reply');
     vi.advanceTimersByTime(60_000);
     expect(read).toHaveBeenCalledTimes(2); // no further attempts
-    vi.useRealTimers();
   });
 
   it('gives up silently after the last delay, and a throwing reader counts as empty', () => {
@@ -27,7 +30,6 @@ describe('scheduleDeferredReplyRead', () => {
     vi.advanceTimersByTime(100);
     expect(read).toHaveBeenCalledTimes(2);
     expect(apply).not.toHaveBeenCalled();
-    vi.useRealTimers();
   });
 
   it('never holds the process open for the retry timer', () => {

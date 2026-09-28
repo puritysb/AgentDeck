@@ -20,9 +20,11 @@
           {"file": "android/app/src/test/kotlin/dev/agentdeck/net/ProtocolTest.kt", "patterns": ["state_update"]},
           {"file": "apple/AgentDeckTests/ProtocolTests.swift", "patterns": ["*"]}
         ],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["state stream"]}
+        ]
       },
-      "gaps": ["No end-to-end test with real Claude PTY process", "No Android UI test for state transitions"]
+      "gaps": ["No end-to-end test with a real Claude process (the daemon E2E posts documented hook payloads)", "No Android UI test for state transitions"]
     },
     {
       "id": "permission-flow",
@@ -32,7 +34,8 @@
       "tests": {
         "unit": [
           {"file": "bridge/src/__tests__/state-machine.test.ts", "patterns": ["permission", "AWAITING_PERMISSION", "AWAITING_OPTION"]},
-          {"file": "plugin/src/__tests__/option-scenario.test.ts", "patterns": ["*"]}
+          {"file": "bridge/src/__tests__/permission-resolver.test.ts", "patterns": ["*"]},
+          {"file": "bridge/src/__tests__/ask-gate-decisions.test.ts", "patterns": ["*"]}
         ],
         "integration": [
           {"file": "bridge/src/__tests__/server-integration.test.ts", "patterns": ["permission"]},
@@ -41,7 +44,9 @@
         "platform": [
           {"file": "android/app/src/test/kotlin/dev/agentdeck/net/ProtocolTest.kt", "patterns": ["permission", "option"]}
         ],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["PreToolUse"]}
+        ]
       },
       "gaps": ["No multi-option navigation end-to-end test", "No encoder dial interaction test for option scrolling"]
     },
@@ -107,7 +112,9 @@
           {"file": "android/app/src/test/kotlin/dev/agentdeck/state/TimelineStoreTest.kt", "patterns": ["*"]},
           {"file": "apple/AgentDeckTests/TimelineTests.swift", "patterns": ["*"]}
         ],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["timeline"]}
+        ]
       },
       "gaps": ["No daemon-to-client relay end-to-end test", "No LLM summary enrichment test"]
     },
@@ -133,8 +140,9 @@
       "priority": "medium",
       "tests": {
         "unit": [
-          {"file": "plugin/src/__tests__/option-scenario.test.ts", "patterns": ["layout", "button", "slot"]},
-          {"file": "plugin/src/__tests__/text-utils-and-labels.test.ts", "patterns": ["*"]},
+          {"file": "plugin/src/__tests__/session-slot-manager.test.ts", "patterns": ["*"]},
+          {"file": "plugin/src/__tests__/encoder-offline-policy.test.ts", "patterns": ["*"]},
+          {"file": "plugin/src/__tests__/per-action-view-state.test.ts", "patterns": ["*"]},
           {"file": "plugin/src/__tests__/renderer-snapshots.test.ts", "patterns": ["*"]}
         ],
         "integration": [],
@@ -177,7 +185,9 @@
           {"file": "bridge/src/__tests__/daemon-lifecycle.test.ts", "patterns": ["*"]}
         ],
         "platform": [],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["shuts down cleanly"]}
+        ]
       },
       "gaps": ["No port conflict auto-fallback test", "No LaunchAgent KeepAlive loop prevention test"]
     },
@@ -192,7 +202,9 @@
         ],
         "integration": [],
         "platform": [],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["hook snippet"]}
+        ]
       },
       "gaps": ["No real settings.local.json file test", "No hook execution verification test"]
     }

@@ -226,8 +226,7 @@ describe('describeSupervisor', () => {
 });
 
 describe('supervisorJobRunning / supervisorLivenessProbe', () => {
-  it('answers for the real launchd job on this machine', () => {
-    if (process.platform !== 'darwin') return;
+  it.runIf(process.platform === 'darwin')('answers for the real launchd job on this machine', () => {
     // A job that does not exist is a definite "not running" — the one answer
     // that is allowed to end a wait. (The label is deliberately fictional; the
     // real one may or may not be installed on the machine running this suite.)
@@ -235,7 +234,7 @@ describe('supervisorJobRunning / supervisorLivenessProbe', () => {
       .toBe(false);
   });
 
-  it('an unknown answer keeps the wait alive rather than ending it', () => {
+  it.skipIf(process.platform === 'win32')('an unknown answer keeps the wait alive rather than ending it', () => {
     // schtasks does not exist off Windows, so the lookup throws and returns
     // undefined — which must read as "keep waiting", not "it died". Absence of
     // an answer is not an answer.
@@ -244,7 +243,6 @@ describe('supervisorJobRunning / supervisorLivenessProbe', () => {
     // launch record, so the answer depends on whether a daemon is up right now
     // — a fact no assertion here may depend on. The composed reading is pinned
     // purely by `composeSchtasksRunning` below instead.
-    if (process.platform === 'win32') return;
     const probe = supervisorLivenessProbe({ kind: 'schtasks', label: 'AgentDeckDaemon' });
     expect(probe()).toBe(true);
   });
@@ -345,8 +343,7 @@ describe('supervisorJobRunning / supervisorLivenessProbe', () => {
     expect(route.via).toBe('supervisor');
   });
 
-  it('caches within the throttle window', () => {
-    if (process.platform !== 'darwin') return;
+  it.runIf(process.platform === 'darwin')('caches within the throttle window', () => {
     const probe = supervisorLivenessProbe({ kind: 'launchd', label: 'dev.agentdeck.no-such-job', uid: 501 }, 60_000);
     expect(probe()).toBe(false);
     // Second call must not re-exec; it can only return the cached answer.

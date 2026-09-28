@@ -44,6 +44,8 @@ BEAT_TIME=21.5
 
 command -v ffmpeg >/dev/null || { echo "ffmpeg is required" >&2; exit 1; }
 [ -d "$MACOS_APP" ] || { echo "build the macOS Debug app first: xcodebuild -project apple/AgentDeck.xcodeproj -scheme AgentDeck_macOS -configuration Debug -derivedDataPath apple/DerivedData build" >&2; exit 1; }
+# Fail before quitting/relaunching anything if a TCC grant would stall the capture.
+bash "$ROOT/scripts/macos-preflight.sh" --automation --accessibility --screen-recording || exit
 
 now_ms() { python3 -c "import time;print(int(time.time()*1000))"; }
 

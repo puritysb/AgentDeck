@@ -156,8 +156,9 @@ Run the checks for every applicable row. A docs-only local exception does not wa
 | **JUnit + Robolectric** | Android (`android/app/src/test/`) | `build.gradle.kts` — `testDebugUnitTest` |
 | **XCTest** | Apple (`apple/AgentDeckTests/`) | Xcode scheme |
 | **Robot Framework** | ESP32 (`esp32/robot/`) | `run.sh {build\|hw\|protocol\|perf\|all}` — `perf` requires hardware |
+| **Vitest E2E** | real `agentdeck daemon start` process (`tests/e2e/`) | `vitest.e2e.config.ts` — `pnpm test:e2e` after `pnpm build`; loopback, temp HOME, no device modules |
 
-Coverage thresholds (regression guard, enforced by `vitest.config.ts`): lines ≥17%, functions ≥15%, branches ≥14%, statements ≥16%. CI runs `npx vitest run --coverage`.
+Coverage thresholds are a regression guard ~3 points under measured coverage, enforced by `vitest.config.ts` (read the numbers there). CI runs `npx vitest run --coverage` once, then `pnpm test:e2e`. **What each gate proves and does not prove is catalogued in `scripts/verification-catalog.json`** and published on the Pages report's "What we verify" tab; add a gate, workflow or test area there in the same commit (`scripts/__tests__/verification-catalog.test.ts` fails otherwise). Before an agent-driven macOS device run, `bash scripts/macos-preflight.sh` checks the privacy grants and stops with the System Settings path instead of hanging on a dialog.
 
 ### GitHub Pages and Build Health
 
