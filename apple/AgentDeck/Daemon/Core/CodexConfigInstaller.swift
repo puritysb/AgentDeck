@@ -134,9 +134,9 @@ enum CodexConfigInstaller {
         let hasFeatures = MiniToml.hasTableOutsideFence(in: outside, table: "features")
 
         if hasFeatures && !existingFeaturesEnableHooks(original) { throw InstallError.features }
-        if MiniToml.hasIncompatibleHookTableOutsideFence(in: original) { throw InstallError.hooks }
-        let includeNotify = !MiniToml.hasTopLevelKeyOutsideFence(in: original, key: "notify")
-        let includeOtel = !MiniToml.hasTableOutsideFence(in: original, table: "otel")
+        if MiniToml.hasIncompatibleHookTableOutsideFence(in: outside) { throw InstallError.hooks }
+        let includeNotify = !MiniToml.hasTopLevelKeyOutsideFence(in: outside, key: "notify")
+        let includeOtel = !MiniToml.hasTableOutsideFence(in: outside, table: "otel")
         let body = managedBlockBody(
             includeNotify: includeNotify, includeOtel: includeOtel,
             otelEndpoint: includeOtel ? buildOtelEndpoint(daemonHttpPort: daemonHttpPort) : nil,

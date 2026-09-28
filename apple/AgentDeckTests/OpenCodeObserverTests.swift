@@ -46,6 +46,8 @@ final class OpenCodeObserverTests: XCTestCase {
         XCTAssertEqual(permission.kind, .awaitingPermission)
         XCTAssertEqual(permission.waitID, "p")
         XCTAssertEqual(classify("permission.replied", ["sessionID": "s", "requestID": "p"])?.waitID, "p")
+        XCTAssertEqual(classify("permission.replied", ["sessionID": "s", "permissionID": "legacy"])?.waitID, "legacy")
+        XCTAssertEqual(classify("question.asked", ["sessionID": "s", "id": "q", "questions": [["question": "", "header": "Target"]]])?.question, "Target")
         let question = classify("question.asked", ["sessionID": "s", "id": "q", "questions": [["question": "Which target?"]]])
         XCTAssertEqual(question?.kind, .awaitingQuestion)
         XCTAssertEqual(question?.question, "Which target?")

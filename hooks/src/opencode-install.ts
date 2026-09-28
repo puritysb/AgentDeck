@@ -304,7 +304,7 @@ export const AgentDeckObserver = async ({ directory, client }) => {
           if (psid) {
             post("opencode_permission_replied", {
               session_id: psid,
-              permission_id: perm.requestID || perm.id || "",
+              permission_id: perm.requestID || perm.permissionID || perm.id || "",
               cwd,
             });
           }

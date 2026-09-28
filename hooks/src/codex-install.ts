@@ -334,6 +334,13 @@ function readText(path: string): string | null {
   }
 }
 
+function unreadableReason(path: string): string {
+  try {
+    if (lstatSync(path).isSymbolicLink()) return 'config.toml is a symbolic link; kept unchanged. Manage its target through your dotfile manager';
+  } catch { /* report the read failure below */ }
+  return 'config.toml unreadable; kept unchanged';
+}
+
 /** Write the notify sidecar only when its content changed, so repeated
  *  installs stay idempotent (no mtime churn). Returns false when the
  *  script cannot be guaranteed on disk. */
@@ -375,26 +382,27 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
 
   const path = opts.configPath ?? DEFAULT_CODEX_CONFIG_PATH;
   const original = readText(path);
-  if (original === null) return { installed: false, reason: 'config.toml unreadable; kept unchanged' };
+  if (original === null) return { installed: false, reason: unreadableReason(path) };
   const editIssue = configEditIssue(original);
   if (editIssue) return { installed: false, reason: editIssue };
 
   // A user `[features]` table would duplicate ours. Official lifecycle
   // arrays, however, are intentionally additive in Codex and can safely
   // coexist with the AgentDeck arrays. Refuse only non-array hook tables.
-  const hasFeatures = hasTableOutsideFence(original, 'features');
+  const outside = removeManagedBlock(original);
+  const hasFeatures = hasTableOutsideFence(outside, 'features');
   if (hasFeatures && !existingFeaturesEnableHooks(original)) {
     return { installed: false, reason: 'user-authored [features] present' };
   }
-  if (hasIncompatibleHookTableOutsideFence(original)) {
+  if (hasIncompatibleHookTableOutsideFence(outside)) {
     return { installed: false, reason: 'incompatible user-authored [hooks] table present' };
   }
 
   const platform = opts.platform ?? process.platform;
-  let includeNotify = !hasTopLevelKeyOutsideFence(original, 'notify');
+  let includeNotify = !hasTopLevelKeyOutsideFence(outside, 'notify');
   // OTel exporter stays POSIX-only for now — deliberately omitted on
   // win32 (unverified there); lifecycle hooks + notify carry the signal.
-  const includeOtel = platform !== 'win32' && !hasTableOutsideFence(original, 'otel');
+  const includeOtel = platform !== 'win32' && !hasTableOutsideFence(outside, 'otel');
 
   let warning: string | undefined;
   const notifyScriptPath = opts.notifyScriptPath ?? DEFAULT_WINDOWS_NOTIFY_SCRIPT_PATH;
@@ -436,9 +444,14 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
 export function uninstallCodexHooks(opts: { configPath?: string; notifyScriptPath?: string } = {}): void {
   const path = opts.configPath ?? DEFAULT_CODEX_CONFIG_PATH;
   const original = readText(path);
-  if (original === null || configEditIssue(original)) return;
+  if (original === null) throw new Error(unreadableReason(path));
+  const issue = configEditIssue(original);
+  if (issue) throw new Error(`Codex hooks were not removed: ${issue}`);
   const stripped = removeManagedBlock(original);
-  if (stripped !== original && (readText(path) !== original || !writeTextAtomic(stripped, path))) return;
+  if (stripped !== original) {
+    if (readText(path) !== original) throw new Error('config.toml changed during removal; retry');
+    if (!writeTextAtomic(stripped, path)) throw new Error('Could not save config.toml; Codex hooks were not removed');
+  }
   try {
     unlinkSync(opts.notifyScriptPath ?? DEFAULT_WINDOWS_NOTIFY_SCRIPT_PATH);
   } catch { /* absent on POSIX installs */ }

@@ -55,7 +55,7 @@ final class LocalKiroObserverTests: XCTestCase {
         let session = dir.appendingPathComponent("sessions/workspace/stable-id")
         try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
         let transcript = session.appendingPathComponent("messages.jsonl")
-        try #"{"cwd":"/tmp/project"}"#.write(to: session.appendingPathComponent("session.json"), atomically: true, encoding: .utf8)
+        try #"{"workspacePaths":["/tmp/project"]}"#.write(to: session.appendingPathComponent("session.json"), atomically: true, encoding: .utf8)
         try lines.dropLast().joined(separator: "\n").write(to: transcript, atomically: true, encoding: .utf8)
         XCTAssertEqual(LocalKiroObserver.readSnapshot(transcript).state, "processing")
         try (lines.joined(separator: "\n") + "\n{\"payload\":").write(to: transcript, atomically: true, encoding: .utf8)

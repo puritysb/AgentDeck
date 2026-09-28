@@ -9,7 +9,7 @@ import XCTest
 final class CodexConfigInstallerTests: XCTestCase {
 
     func testTruncatedFenceHelperDoesNotTrap() {
-        XCTAssertEqual(MiniToml.removeManagedBlock(in: MiniToml.openFence), "")
+        XCTAssertEqual(MiniToml.removeManagedBlock(in: MiniToml.openFence), MiniToml.openFence)
         XCTAssertNotNil(MiniToml.configEditIssue(MiniToml.openFence))
     }
 
@@ -23,7 +23,7 @@ final class CodexConfigInstallerTests: XCTestCase {
             if allowed {
                 let updated = try CodexConfigInstaller.preparedConfig(input, daemonHttpPort: 9120)
                 XCTAssertEqual(try CodexConfigInstaller.preparedConfig(updated, daemonHttpPort: 9120), updated)
-                XCTAssertEqual(MiniToml.removeManagedBlock(in: updated), input)
+                XCTAssertEqual(MiniToml.removeManagedBlock(in: updated), (row["stripped"] as? String) ?? input)
             } else { XCTAssertThrowsError(try CodexConfigInstaller.preparedConfig(input, daemonHttpPort: 9120), "\(row["name"] ?? "")") }
         }
     }

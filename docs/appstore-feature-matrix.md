@@ -85,7 +85,7 @@ All surfaces follow the same rule:
 | Agent / path | Initial setup | Reliable evidence and limits |
 |---|---|---|
 | Claude Code local | CLI daemon setup, or app file consent | Hook lifecycle; permission and held-decision paths remain distinct. |
-| Codex CLI / local Desktop | CLI setup, or app config/folder consent; Codex hook trust remains user-owned | New SessionStart is idle; prompt/tool events prove work. Written TOML alone does not prove trust or event delivery. Existing hooks=false is preserved. |
+| Codex CLI / local Desktop | CLI setup, or app config/folder consent; Codex hook trust remains user-owned | New SessionStart is idle; prompt/tool events prove work. Written TOML alone does not prove trust or event delivery. Existing hooks=false is preserved. Later Codex settings inside the managed fence are retained; an extended features table becomes user-owned, including its hooks flag. |
 | OpenCode ordinary TUI | CLI setup installs observer plugin | Current permission IDs and question IDs are tracked separately; questions are answered in OpenCode. No special launch command after setup. |
 | OpenCode standalone app path | Enable monitoring and provide a reachable server | SSE is read-only. A bare TUI's random port is not automatically discoverable. Pending requests are seeded after SSE attaches; connection loss is not completion. |
 | Kiro CLI | Node store access, or explicit app folder consent | Passive polling; Swift supports flat and nested JSONL, Node additionally supports v2 SQLite. No permission signal. |

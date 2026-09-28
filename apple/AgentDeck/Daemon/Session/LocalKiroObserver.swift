@@ -132,6 +132,10 @@ enum LocalKiroObserver {
                attrs.isSymbolicLink != true, (attrs.fileSize ?? Int.max) <= maxTranscriptBytes,
                let data = boundedMetadata(meta),
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let workspacePaths = obj["workspacePaths"] as? [String] ?? []
+                if let path = workspacePaths.first(where: { !$0.isEmpty }) {
+                    project = URL(fileURLWithPath: path).lastPathComponent
+                }
                 for key in ["cwd", "workspace", "working_directory", "workingDirectory"] {
                     if let path = obj[key] as? String, !path.isEmpty {
                         project = URL(fileURLWithPath: path).lastPathComponent

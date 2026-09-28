@@ -131,13 +131,13 @@ enum OpenCodeEventClassifier {
             )
 
         case "permission.replied", "question.replied", "question.rejected":
-            guard let id = props["sessionID"] as? String, let request = props["requestID"] as? String else { return nil }
+            guard let id = props["sessionID"] as? String, let request = (props["requestID"] as? String) ?? (props["permissionID"] as? String) ?? (props["id"] as? String) else { return nil }
             return OpenCodeSessionUpdate(sessionID: id,
                 kind: type == "permission.replied" ? .permissionReplied : .questionReplied, waitID: request)
         case "question.asked":
             guard let id = props["sessionID"] as? String, let request = props["id"] as? String else { return nil }
             let questions = props["questions"] as? [[String: Any]] ?? []
-            let text = questions.compactMap { $0["question"] as? String }.joined(separator: " / ")
+            let text = questions.compactMap { ($0["question"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? ($0["header"] as? String) }.joined(separator: " / ")
             return OpenCodeSessionUpdate(sessionID: id, kind: .awaitingQuestion,
                 question: text.isEmpty ? "Answer in OpenCode" : text, waitID: request)
 

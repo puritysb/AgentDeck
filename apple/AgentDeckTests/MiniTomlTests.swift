@@ -29,7 +29,7 @@ final class MiniTomlTests: XCTestCase {
         model = "gpt-5"
 
         \(MiniToml.openFence)
-        notify = ["old", "snippet"]
+        notify = ["old", "agentdeck-notify"]
         \(MiniToml.closeFence)
 
         [profiles.work]
@@ -37,7 +37,7 @@ final class MiniTomlTests: XCTestCase {
         """
         let updated = MiniToml.applyManagedBlock(in: original, body: "notify = [\"new\", \"snippet\"]")
 
-        XCTAssertFalse(updated.contains("\"old\", \"snippet\""))
+        XCTAssertFalse(updated.contains("\"old\", \"agentdeck-notify\""))
         XCTAssertTrue(updated.contains("notify = [\"new\", \"snippet\"]"))
         // User content outside the fence still intact.
         XCTAssertTrue(updated.contains("model = \"gpt-5\""))
@@ -47,8 +47,8 @@ final class MiniTomlTests: XCTestCase {
 
     func testApplyTwiceIsIdempotent() {
         let original = "model = \"gpt-5\"\n"
-        let once = MiniToml.applyManagedBlock(in: original, body: "key = 1")
-        let twice = MiniToml.applyManagedBlock(in: once, body: "key = 1")
+        let once = MiniToml.applyManagedBlock(in: original, body: "[features]\nhooks = true")
+        let twice = MiniToml.applyManagedBlock(in: once, body: "[features]\nhooks = true")
         XCTAssertEqual(once, twice)
     }
 
@@ -61,7 +61,7 @@ final class MiniTomlTests: XCTestCase {
         [profiles.work]
         provider = "openai"
         """
-        let withFence = MiniToml.applyManagedBlock(in: original, body: "notify = []")
+        let withFence = MiniToml.applyManagedBlock(in: original, body: "notify = [\"agentdeck-notify\"]")
         let stripped = MiniToml.removeManagedBlock(in: withFence)
 
         XCTAssertFalse(stripped.contains("notify"))
@@ -204,7 +204,7 @@ final class MiniTomlTests: XCTestCase {
         [history]
         max_bytes = 10485760
         """
-        let body = "[otel]\nexporter = \"otlp-http\""
+        let body = "[features]\nhooks = true"
         let withFence = MiniToml.applyManagedBlock(in: original, body: body)
         let stripped = MiniToml.removeManagedBlock(in: withFence)
         // After apply+remove the file should be byte-identical to the original.

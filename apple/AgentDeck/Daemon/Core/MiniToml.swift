@@ -12,7 +12,7 @@
 //     # <<< AgentDeck managed (do not edit) >>>
 //
 // applyManagedBlock replaces (or appends) the fence; removeManagedBlock
-// strips it. Everything outside the fence is preserved byte-for-byte.
+// removes owned entries and retains later user additions. Outside text is preserved.
 // hasTopLevel{Key,Table}OutsideFence detects user-authored conflicts so
 // CodexConfigInstaller can abort cleanly instead of producing a TOML
 // duplicate-key error.
@@ -26,32 +26,20 @@ enum MiniToml {
     /// Matches the lossless editor policy in hooks/src/codex-mini-toml.ts.
     /// Shared config fixtures gate both runtimes; unsupported syntax is kept intact.
     static func configEditIssue(_ text: String) -> String? {
-        if text.contains(String(repeating: "\"", count: 3)) || text.contains(String(repeating: "'", count: 3)) {
-            return "multiline TOML requires manual configuration"
-        }
-        let lines = splitLines(text)
+        guard scanStatements(text) != nil else { return "incomplete TOML string or collection; kept unchanged" }
+        let lines = statements(text)
         let opens = lines.filter { $0 == openFence }.count
         let closes = lines.filter { $0 == closeFence }.count
         if opens != closes || opens > 1 || (opens == 1 && lines.firstIndex(of: openFence)! > lines.firstIndex(of: closeFence)!) {
             return "incomplete or duplicate AgentDeck fence"
         }
+        if let fence = locateFence(in: lines),
+           retainedFenceContent(from: Array(lines[(fence.lowerBound + 1)..<(fence.upperBound - 1)])).contains(where: isOwnedCommand) {
+            return "modified AgentDeck hook table requires manual configuration; kept unchanged"
+        }
         var inTable = false
-        for line in splitLines(removeManagedBlock(in: text)) {
+        for line in statements(removeManagedBlock(in: text)) {
             let code = withoutComment(line).trimmingCharacters(in: .whitespaces)
-            if !code.hasPrefix("["), let equals = code.firstIndex(of: "=") {
-                var quote: Character?
-                var escaped = false
-                var balance = 0
-                for c in code[code.index(after: equals)...] {
-                    if escaped { escaped = false; continue }
-                    if quote == "\"", c == "\\" { escaped = true; continue }
-                    if let q = quote { if c == q { quote = nil } }
-                    else if c == "\"" || c == "'" { quote = c }
-                    else if c == "[" || c == "{" { balance += 1 }
-                    else if c == "]" || c == "}" { balance -= 1 }
-                }
-                if balance != 0 || quote != nil { return "multiline or incomplete TOML value requires manual configuration" }
-            }
             if code.range(of: #"^\[\[?\s*["'](?:features|hooks|otel)["']"#, options: .regularExpression) != nil
                 || (!inTable && code.range(of: #"^(?:["'](?:features|hooks|otel|notify)["']\s*[.=]|(?:features|hooks|otel)\s*[.=])"#, options: .regularExpression) != nil) {
                 return "quoted, inline or dotted integration keys require manual configuration"
@@ -65,7 +53,7 @@ enum MiniToml {
         var inFeatures = false
         var values = 0
         var enabled = false
-        for line in splitLines(removeManagedBlock(in: text)) {
+        for line in statements(removeManagedBlock(in: text)) {
             let code = withoutComment(line).trimmingCharacters(in: .whitespaces)
             if code.hasPrefix("[") {
                 inFeatures = code.range(of: #"^\[\s*features\s*\]$"#, options: .regularExpression) != nil
@@ -96,25 +84,21 @@ enum MiniToml {
     /// `removeManagedBlock` can strip it cleanly later. Returns the full
     /// updated TOML text.
     static func applyManagedBlock(in text: String, body: String) -> String {
-        var lines = splitLines(text)
-        let replacement = [openFence] + (body.isEmpty ? [] : splitLines(body)) + [closeFence]
-        if let range = locateFence(in: lines) {
-            let trust = range.count > 1 ? extractCodexHookState(from: Array(lines[(range.lowerBound + 1)..<(range.upperBound - 1)])) : []
-            lines.replaceSubrange(range, with: trust)
-        }
+        var lines = statements(removeManagedBlock(in: text))
+        let replacement = [openFence] + (body.isEmpty ? [] : statements(body)) + [closeFence]
         // Root notify must precede every table, after the user's root keys.
         let firstTable = lines.firstIndex(where: isTableHeader) ?? lines.count
         lines.insert(contentsOf: replacement, at: firstTable)
         return lines.joined(separator: text.contains("\r\n") ? "\r\n" : "\n")
     }
 
-    /// Strip the AgentDeck-managed block entirely. Idempotent — no-op when
+    /// Remove generated entries and preserve foreign data inside the fence. Idempotent — no-op when
     /// the fence is absent.
     static func removeManagedBlock(in text: String) -> String {
-        var lines = splitLines(text)
-        guard let range = locateFence(in: lines) else { return text }
-        let trust = range.count > 1 ? extractCodexHookState(from: Array(lines[(range.lowerBound + 1)..<(range.upperBound - 1)])) : []
-        lines.replaceSubrange(range, with: trust)
+        var lines = statements(text)
+        guard let range = locateFence(in: lines), lines[range.upperBound - 1] == closeFence else { return text }
+        let retained = range.count > 1 ? retainedFenceContent(from: Array(lines[(range.lowerBound + 1)..<(range.upperBound - 1)])) : []
+        lines.replaceSubrange(range, with: retained)
         return lines.joined(separator: text.contains("\r\n") ? "\r\n" : "\n")
     }
 
@@ -128,7 +112,7 @@ enum MiniToml {
         }
         var insideFence = false
         var insideTable = false
-        for line in splitLines(text) {
+        for line in statements(text) {
             if line == openFence { insideFence = true; continue }
             if line == closeFence { insideFence = false; continue }
             if insideFence { continue }
@@ -160,7 +144,7 @@ enum MiniToml {
             return false
         }
         var insideFence = false
-        for line in splitLines(text) {
+        for line in statements(text) {
             if line == openFence { insideFence = true; continue }
             if line == closeFence { insideFence = false; continue }
             if insideFence { continue }
@@ -185,7 +169,7 @@ enum MiniToml {
             return false
         }
         var insideFence = false
-        for line in splitLines(text) {
+        for line in statements(text) {
             if line == openFence { insideFence = true; continue }
             if line == closeFence { insideFence = false; continue }
             if insideFence || isCodexHookStateHeader(line) { continue }
@@ -226,10 +210,46 @@ enum MiniToml {
 
     // MARK: - Internals
 
-    private static func splitLines(_ text: String) -> [String] {
-        // `String.components(separatedBy: "\n")` keeps trailing-empty so an
-        // input ending in "\n" round-trips cleanly when we re-join with "\n".
-        return text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+    /// Logical statements preserve multiline values without treating their
+    /// contents as headers or fence comments. Mirrored by the Node editor.
+    private static func scanStatements(_ text: String) -> [String]? {
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var out: [String] = [], pending: [String] = []
+        var quote: Character?
+        var multiline = false
+        var depth = 0
+        for line in lines {
+            pending.append(line)
+            let chars = Array(line)
+            var i = 0
+            while i < chars.count {
+                let c = chars[i]
+                if let q = quote {
+                    if q == "\"", c == "\\" { i += 2; continue }
+                    if c == q {
+                        if !multiline { quote = nil }
+                        else if i + 2 < chars.count, chars[i + 1] == q, chars[i + 2] == q {
+                            while i + 1 < chars.count, chars[i + 1] == q { i += 1 }
+                            quote = nil; multiline = false
+                        }
+                    }
+                } else if c == "#" { break }
+                else if c == "\"" || c == "'" {
+                    quote = c
+                    multiline = i + 2 < chars.count && chars[i + 1] == c && chars[i + 2] == c
+                    if multiline { i += 2 }
+                } else if c == "[" || c == "{" { depth += 1 }
+                else if c == "]" || c == "}" { depth -= 1; if depth < 0 { return nil } }
+                i += 1
+            }
+            if quote != nil && !multiline { return nil }
+            if quote == nil && depth == 0 { out.append(pending.joined(separator: text.contains("\r\n") ? "\r\n" : "\n")); pending = [] }
+        }
+        return pending.isEmpty ? out : nil
+    }
+
+    private static func statements(_ text: String) -> [String] {
+        scanStatements(text) ?? [text]
     }
 
     private static func locateFence(in lines: [String]) -> Range<Int>? {
@@ -241,25 +261,51 @@ enum MiniToml {
         return start..<(end + 1)
     }
 
-    private static func extractCodexHookState(from lines: [String]) -> [String] {
-        var out: [String] = []
-        var capturing = false
-        for line in lines {
-            let tableHeader = isTableHeader(line)
-            if isCodexHookStateHeader(line) {
-                capturing = true
-                out.append(line)
-                continue
-            }
-            if capturing, tableHeader {
-                break
-            }
-            if capturing {
-                out.append(line)
-            }
+    private static func isOwnedCommand(_ line: String) -> Bool {
+        guard line.trimmingCharacters(in: .whitespaces).range(of: #"^command\s*="#, options: .regularExpression) != nil else { return false }
+        if line.contains("/hooks/codex_") { return true }
+        guard let range = line.range(of: #"-EncodedCommand\s+[A-Za-z0-9+/=]+"#, options: .regularExpression),
+              let encoded = line[range].split(whereSeparator: { $0.isWhitespace }).last,
+              let bytes = Data(base64Encoded: String(encoded)),
+              let command = String(data: bytes, encoding: .utf16LittleEndian) else { return false }
+        return command.contains("/hooks/codex_")
+    }
+
+    private static func generatedComment(_ line: String) -> Bool {
+        line.trimmingCharacters(in: .whitespaces).range(of: #"^# (?:Codex lifecycle hooks\.|each snippet forwards|Optional turn-complete notification|Codex appends the JSON payload|so the 4th array element|powershell -File binds|it concatenates trailing argv|OTel trace exporter|Schema: \[otel\.)"#, options: .regularExpression) != nil
+    }
+
+    /// toml_edit can add user keys inside our fence. Preserve foreign data
+    /// with its table context; an extended features table becomes user-owned.
+    private static func retainedFenceContent(from lines: [String]) -> [String] {
+        func matches(_ text: String, _ pattern: String) -> Bool {
+            text.range(of: pattern, options: .regularExpression) != nil
         }
-        while let last = out.last, isTrailingNonDataLine(last) {
-            out.removeLast()
+        func code(_ line: String) -> String { withoutComment(line).trimmingCharacters(in: .whitespacesAndNewlines) }
+        var groups: [[String]] = [[]]
+        for line in lines {
+            if isTableHeader(line) && !matches(code(line), #"^\[\[hooks\.[^.]+\.hooks\]\]$"#) { groups.append([]) }
+            groups[groups.count - 1].append(line)
+        }
+        var out: [String] = []
+        for group in groups {
+            let kept = group.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !generatedComment($0) }
+            let data = kept.filter { !code($0).isEmpty }
+            guard let first = data.first else { out += kept; continue }
+            let header = code(first)
+            if !isTableHeader(first) {
+                out += kept.filter { !(matches(code($0), #"^notify\s*="#) && ($0.contains("agentdeck-notify") || $0.contains("codex-notify.ps1"))) }
+            } else if matches(header, #"^\[\s*features\s*\]$"#) {
+                if data.dropFirst().contains(where: { !matches(code($0), #"^hooks\s*=\s*true$"#) }) { out += kept }
+                else { out += kept.filter { code($0).isEmpty } }
+            } else if matches(header, #"^\[\[hooks\.[^.]+\]\]$"#) {
+                let commands = data.filter { matches(code($0), #"^command\s*="#) }
+                let owned = !commands.isEmpty && commands.allSatisfy(isOwnedCommand)
+                if !owned || data.dropFirst().contains(where: { !matches(code($0), #"^(?:\[\[hooks\.|(?:matcher|type|command|timeout|notify)\s*=)"#) }) { out += kept }
+            } else if header == "[otel.trace_exporter.otlp-http]" {
+                let owned = data.contains { matches(code($0), #"^endpoint\s*=\s*"http://127\.0\.0\.1:\d+/otel/v1/traces"$"#) }
+                if !owned || data.dropFirst().contains(where: { !matches(code($0), #"^(?:endpoint|protocol)\s*="#) }) { out += kept }
+            } else { out += kept }
         }
         return out
     }
@@ -275,9 +321,5 @@ enum MiniToml {
         return trimmed.hasPrefix("[") && trimmed.hasSuffix("]")
     }
 
-    private static func isTrailingNonDataLine(_ line: String) -> Bool {
-        let trimmed = withoutComment(line).trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty || trimmed.hasPrefix("#")
-    }
 }
 #endif

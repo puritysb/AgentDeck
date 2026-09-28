@@ -127,6 +127,15 @@ describe('AgentDeckObserver event sequencing', () => {
     expect(posts.find(p => p.event === 'opencode_question_rejected')?.body).toMatchObject({ question_id: 'q1' });
   });
 
+  it('forwards legacy permission replies and header-only questions', async () => {
+    const { event } = await observer();
+    await event({ event: { type: 'permission.replied', properties: { sessionID: 's1', permissionID: 'legacy', response: 'once' } } });
+    await event({ event: { type: 'question.asked', properties: { sessionID: 's1', id: 'q', questions: [{ header: 'Target' }] } } });
+    await flush();
+    expect(posts.find(p => p.event === 'opencode_permission_replied')?.body.permission_id).toBe('legacy');
+    expect(posts.find(p => p.event === 'opencode_question_asked')?.body.title).toBe('Target');
+  });
+
   it('keeps posting when every registry read is stuck awaiting OS access', async () => {
     dir = mkdtempSync(join(tmpdir(), 'agentdeck-oc-blocked-'));
     const file = join(dir, 'agentdeck.mjs');
