@@ -371,6 +371,16 @@ export class CodexOtelTracker {
    */
   isBackgroundThread: ((threadId: string) => boolean) | undefined;
 
+  /**
+   * A thread the Codex hooks already know (a live hook row or a terminal
+   * tombstone). Hooks own that session's row: they carry its cwd and project,
+   * and they saw it end. `codex exec` exports its spans in one batch as the
+   * process exits, after the hook row closed, and without this the fallback
+   * below re-labelled the finished CLI session as a cwd-less `Codex` app row
+   * for up to a minute (live 2026-09-29, Codex 0.156).
+   */
+  isHookOwnedThread: ((threadId: string) => boolean) | undefined;
+
   /** Ingest one OTLP body. Returns the number of recognized events. */
   ingest(json: unknown, now = Date.now()): number {
     const events = parseCodexSpans(json);
@@ -507,6 +517,7 @@ export class CodexOtelTracker {
     for (const thread of this.threads.values()) {
       if (matched.has(thread.threadId)) continue;
       if (this.isBackgroundThread?.(thread.threadId)) continue;
+      if (this.isHookOwnedThread?.(thread.threadId)) continue;
       const cwd = thread.cwd;
       synthesized.push({
         id: `observed:codex-app:${thread.threadId}`,

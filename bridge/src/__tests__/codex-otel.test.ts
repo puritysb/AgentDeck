@@ -7,6 +7,7 @@ import {
 } from '../codex-otel.js';
 import type { ObservedSession } from '../passive-observer.js';
 import { CodexAmbientSessions } from '../codex-ambient-hooks.js';
+import { HookCodexSessions } from '../hook-codex-sessions.js';
 
 type AttrValue = string | number | boolean;
 
@@ -224,6 +225,44 @@ describe('CodexOtelTracker', () => {
       controlMode: 'observed',
       cwd: '/repo/app',
       projectName: 'app',
+    });
+  });
+
+  // Live 2026-09-29, Codex 0.156 `codex exec`: the hook row went idle on Stop,
+  // then the process exported its spans in one batch on exit and the fallback
+  // re-labelled the finished CLI session `observed:codex-app:<id>` / `Codex`.
+  describe('hook-owned Codex threads', () => {
+    function wired(): { tracker: CodexOtelTracker; hooks: HookCodexSessions; rows: (now: number) => ObservedSession[] } {
+      const hooks = new HookCodexSessions(() => null);
+      const tracker = new CodexOtelTracker();
+      tracker.isHookOwnedThread = (threadId) => hooks.knows(threadId);
+      // The daemon's composition order (daemon-server.ts).
+      return { tracker, hooks, rows: (now) => hooks.applyTo(tracker.applyTo([], now), now) };
+    }
+
+    it('keeps the hook row when a finished exec session\'s spans arrive late', () => {
+      const { tracker, hooks, rows } = wired();
+      const payload = { sessionId: THREAD, cwd: '/repo/app' };
+      hooks.note('codex_session_start', payload, 1_000);
+      hooks.note('codex_user_prompt_submit', payload, 1_100);
+      hooks.note('codex_stop', payload, 5_000);
+      tracker.ingest(envelope([
+        { name: 'codex.turn.start', attributes: { 'thread.id': THREAD, 'turn.id': 't1' } },
+        { name: 'codex.turn.end', attributes: { 'thread.id': THREAD, 'turn.id': 't1' } },
+      ]), 7_000);
+
+      expect(rows(7_100)).toEqual([expect.objectContaining({
+        id: `observed:codex:${THREAD}`, agentType: 'codex-cli', projectName: 'app', state: 'idle',
+      })]);
+      // After the hook row is reaped, the tombstone still keeps the OTel
+      // fallback from resurrecting the session as an app row.
+      expect(rows(5_000 + 61_000)).toEqual([]);
+    });
+
+    it('still synthesizes a row for a thread no hook has reported', () => {
+      const { tracker, rows } = wired();
+      tracker.ingest(turn('turnStart', 't1', { cwd: '/repo/app' }), 1_000);
+      expect(rows(1_100)).toEqual([expect.objectContaining({ id: `observed:codex-app:${THREAD}` })]);
     });
   });
 

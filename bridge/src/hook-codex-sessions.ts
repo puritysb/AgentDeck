@@ -150,6 +150,11 @@ export class HookCodexSessions {
     return changed;
   }
 
+  /** Whether hooks own this session: a live hook row, or a terminal tombstone. */
+  knows(sessionId: string): boolean {
+    return this.sessions.has(sessionId) || this.terminated.has(sessionId);
+  }
+
   /** Drop a session immediately (explicit end, not a timeout). */
   forget(sessionId: string): void {
     if (this.sessions.delete(sessionId)) this.onChanged?.();

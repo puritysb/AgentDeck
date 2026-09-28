@@ -4929,6 +4929,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // worth a broadcast of its own.
   codexOtel.onChanged = () => core.maybeBroadcastSessionsList();
   codexOtel.isBackgroundThread = (threadId) => codexAmbientSessions.isAmbient(threadId);
+  codexOtel.isHookOwnedThread = (threadId) => hookCodexSessions.knows(threadId);
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
 
