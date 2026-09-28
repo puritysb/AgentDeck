@@ -7,7 +7,7 @@ terminal-managed daemon is tracked in
 Monitor and control your AI agents from iPhone, iPad, or Mac — a native SwiftUI experience.
 
 <p align="center">
-  <img src="media/ipad-iphone-closeup.jpg" width="720" alt="Apple dashboard — iPad and iPhone showing terrarium with pixel art creatures and HUD overlay">
+  <img src="media/ipad.jpg" width="720" alt="iPad photographed running AgentDeck with the native 3D aquarium, session roster, and usage rail on September 28, 2026">
 </p>
 
 The Apple app is a SwiftUI multiplatform app that connects to the dashboard hub on iOS/iPadOS, and **on macOS ships with a standalone in-process Swift daemon** — mDNS, device modules (serial/Pixoo/Timebox/iDotMatrix), Gateway proxy, hook ingestion, and WebSocket server — so the macOS build monitors sessions without Node.js. You can still use the `agentdeck` CLI alongside it for Claude Code / Codex / OpenCode PTY sessions and CLI-only integrations; the app's daemon auto-detects and defers to a running CLI daemon on the same port.
@@ -36,6 +36,10 @@ One window holds the whole desk: the session roster, the habitat, the timeline, 
 
 <p align="center">
   <img src="media/macos-dashboard.png" width="880" alt="AgentDeck macOS Dashboard — session roster, habitat with per-project creatures, UPSTREAM provider rail with Claude and Codex usage gauges, DOWNSTREAM surface list, and the timeline">
+</p>
+
+<p align="center">
+  <a href="media/macos-desk.jpg"><img src="media/macos-desk.jpg" width="720" alt="AgentDeck macOS dashboard photographed on a desktop monitor on September 28, 2026"></a>
 </p>
 
 ## Collaboration (Beta)

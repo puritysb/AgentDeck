@@ -23,8 +23,10 @@ keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
 <p align="center">
-  <a href="docs/media/setup-full.jpg"><img src="docs/media/setup-full.jpg" width="900" alt="AgentDeck running across a real desk: terminal and desktop dashboards, tablets, Stream Deck and Ulanzi controls, e-ink readers, ESP32 panels, and LED matrices"></a>
+  <a href="docs/media/desk-overview.jpg"><img src="docs/media/setup-full.jpg" width="900" alt="AgentDeck on a real desk, photographed September 28, 2026: iPad and Android dashboards, Stream Deck and Ulanzi controls, e-ink readers, ESP32 panels, and LED matrices"></a>
 </p>
+
+*Photographed on September 28, 2026. [See the full desk](docs/media/desk-overview.jpg).*
 
 **Start with what you already have. No extra hardware required.**
 Use your Mac or terminal on its own, then add the displays that fit your desk.
@@ -129,15 +131,15 @@ A small touch display for sessions and usage.<br>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="docs/media/epd47.jpg"><img src="docs/media/epd47.jpg" width="440" alt="LilyGo EPD47 running AgentDeck — A grayscale e-ink panel showing your session queue."></a><br>
+<a href="docs/media/epd47.jpg"><img src="docs/media/epd47.jpg" width="440" alt="LilyGo EPD47 running AgentDeck — A grayscale e-ink panel showing focused work and usage."></a><br>
 <b>LilyGo EPD47</b><br>
-A grayscale e-ink panel showing your session queue.<br>
+A grayscale e-ink panel showing focused work and usage.<br>
 <a href="docs/esp32.md">Setup guide →</a>
 </td>
 <td width="50%" valign="top">
-<a href="docs/media/ips35.jpg"><img src="docs/media/ips35.jpg" width="440" alt="ESP32 IPS 3.5-inch running AgentDeck — A portrait aquarium for a narrow space on your desk."></a><br>
+<a href="docs/media/ips35.jpg"><img src="docs/media/ips35.jpg" width="440" alt="ESP32 IPS 3.5-inch running AgentDeck — A compact aquarium with session and usage panels."></a><br>
 <b>ESP32 IPS 3.5-inch</b><br>
-A portrait aquarium for a narrow space on your desk.<br>
+A compact aquarium with session and usage panels.<br>
 <a href="docs/esp32.md">Setup guide →</a>
 </td>
 </tr>
