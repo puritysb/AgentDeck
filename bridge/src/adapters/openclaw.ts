@@ -2479,10 +2479,11 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   private extractMessageText(payload: Record<string, unknown>): string | undefined {
     const msg = payload.message as Record<string, unknown> | undefined;
     if (!msg) return undefined;
+    if (typeof msg.content === 'string') return msg.content || undefined;
     const content = msg.content as Array<{ type: string; text: string }> | undefined;
     if (!content || !Array.isArray(content)) return undefined;
     const texts = content
-      .filter(c => c.type === 'text' && c.text)
+      .filter(c => c && c.type === 'text' && typeof c.text === 'string' && c.text)
       .map(c => c.text);
     return texts.length > 0 ? texts.join('') : undefined;
   }

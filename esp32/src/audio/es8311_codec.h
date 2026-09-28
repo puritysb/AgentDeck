@@ -60,6 +60,10 @@ void stop();
  */
 void setVolume(int percent);
 
+/** Apply a user-selected level and persist it across reboots. False on save failure.
+ * Codec reinitialization and diagnostic setVolume() calls never write flash. */
+bool setUserVolume(int percent);
+
 /** The level begin() will apply, without touching the codec now. */
 int volume();
 

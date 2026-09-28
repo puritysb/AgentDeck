@@ -10,6 +10,28 @@ The catalog now separates the two facts: `blocking` means a failure turns its wo
 
 Making more checks required is a separate repository-settings decision: `apple-test.yml` and `android-test.yml` are path-filtered, so requiring them as they are would leave unrelated pull requests waiting on a check that never runs (see the note in `esp32-sim.yml`).
 
+## 2026-09-29 — Personal voice summary delivery and speech worker isolation
+
+The IPS10 personal voice route waited for the entire OpenClaw final before synthesizing its spoken digest. September 27–28 logs contained 22 completed agent stages (median 5.295 s, maximum 94.672 s, eight over ten seconds), three empty responses skipped without speech, and occasional multi-second synthesis delays for very short text. These are mixed live requests, not a controlled latency benchmark.
+
+Personal voice now adds a turn-local response-format instruction: put the confirmed result first as a short `요약:` / `Summary:` paragraph, and include details only when requested or necessary. A completed, explicitly labelled opening paragraph can resolve the speech promise before the full response completes. Partial paragraphs, unlabelled acknowledgements, unrelated runs and code fences cannot trigger it. Full-reply opt-in continues to wait for the final. Speech is dispatched once; later detail completion cannot replay it. The existing shared digest caps spoken output without a second model invocation.
+
+An empty final retains its exact session/run listener for up to 1.5 seconds to recover a late text snapshot. If no text arrives, it fails explicitly and the daemon speaks a short failure notice instead of silently skipping. This is bounded same-run stream recovery, not a query for the latest answer in a shared conversation. String assistant content is also accepted by the adapter; malformed blocks cannot crash text extraction. The original three empty responses were not captured at the raw-frame level, so their upstream cause remains unproven.
+
+The Node helper now runs speech in a separate process from Foundation Models work. WAV synthesis has a ten-second deadline; a stalled speech process is killed and replaced on the next request without interrupting model work. Late exit/stdout events from the old process cannot clear the replacement. Host playback retains its longer deadline. No Swift app or firmware change is involved.
+
+New logs split transcription, speech readiness, full agent completion, synthesis, notification-to-download delay and HTTP transfer. Unfetched audio expiry and disconnected downloads are logged. HTTP completion is not a physical playback acknowledgement.
+
+Validation: build/typecheck passed; 4,923 tests passed, two skipped, including queue isolation, timeout recovery, late process events, early summary delivery and empty-final recovery. Protocol generation produced no drift; token mirrors match. Built-checkout design lint reports 92 existing findings in untouched HTML/JS. Initial test failures were incompatible Intel tools earlier in PATH; rerunning with the native Homebrew/system tools passed.
+
+Native helper measurement: a model request took 3.522 s; speech completed while it was still running (7 chars in 1.196 s, then 40 chars in 0.492 s). A live Gateway diagnostic on `agent:main:voice` with per-turn `thinking=low` delivered an 871-character answer's completed summary at 5.153 s and final at 15.096 s, allowing synthesis roughly 9.94 s earlier. Another inherited-thinking request delivered its summary only 39 ms before the final, so early speech savings depend on upstream streaming. These probes synthesized locally or observed text; they do not measure acoustic wake-to-speaker latency.
+
+The installed Gateway's normal default was `thinkingDefault: high`. The operator's AgentDeck settings were backed up and only `voice.openclawThinking: low` was enabled, using the already-supported per-turn override. This favors voice responsiveness over the default deliberation depth. The production route remains `agent:main:main`, with its existing model/history; global OpenClaw settings were not changed.
+
+The stable checkout was rebuilt and its supervised Node daemon restarted. A synthesized Korean request was submitted to the production IPS10 voice upload route: transcription took 1.409 s, the agent/speech-ready stage 9.108 s, synthesis 1.002 s, fetch delay 100 ms, and playback started about 12.6 s after upload acceptance. This bypassed acoustic wake detection and microphone capture. The IPS10 reported all 483,622 bytes played (15.1 s of audio). Its 1,740 `frames dropped` count includes ring-full retries: the HTTP path advances its feed offset only when accepted, so this count alone does not establish lost audio.
+
+The physical check also exposed a misleading HTTP disconnect log: the board closes after reading Content-Length while the server previously waited one more pacing tick before ending the response. The final paced chunk now ends the response immediately. No extra burst is introduced. At the user's request, IPS10 speaker volume was reduced from its 70% default to 40% through the existing diagnostic command; the board confirmed 40%, codec register 0x32=0x77, and complete 100 ms playback. This is a runtime setting and returns to the firmware default after a reboot. Serial ownership was returned to the daemon after verification.
+
 ## 2026-09-29 — Preserve Codex settings added inside the integration fence
 
 ## Review and fixes
@@ -29,6 +51,18 @@ In isolated temporary configuration directories, Codex 0.156.0 `features enable 
 Full repository build/typecheck/Vitest and targeted native XCTest results are recorded on the PR. Native tests use ad-hoc signing without entitlements; sandbox consent and live approval/coexistence checks remain on [#411](https://github.com/puritysb/AgentDeck/issues/411).
 
 The minor Kiro stale-turn concern is retained on #411: an unmatched turn_start can currently show processing until the 30-minute roster window expires. A shorter arbitrary timer would turn silence into an unsupported idle/completion claim. Follow-up should define how stale observation is represented across Node/Swift and devices, then test interrupted sessions and long silent tools together. This revision does not silently introduce such a state policy.
+
+## 2026-09-29 — IPS10 speaker volume defaults and device controls
+
+IPS10 now declares its own 40% speaker default (-36 dB), replacing the codec's inherited 70%. Other boards retain their own defaults. The voice drawer shows the current percentage above large minus/plus targets, adjusts in ten-point steps from 10–100%, disables each endpoint, and saves explicit user choices to the existing `ad-voice` NVS namespace. The drawer entry target is now 48 px high. Changing volume no longer plays a test tone, which could interrupt a spoken reply.
+
+The codec loads the saved choice during its initial probe. Codec restarts and diagnostic `setVolume` calls never write flash; repeated selections of an already-saved value also avoid writes. Save failures leave the immediate volume change in effect but display a failure notice. NVS access occurs only at boot and explicit user taps, with no render-loop allocation. The drawer reuses one fixed label buffer and its screen-owned controls.
+
+Regression coverage compiles the production codec against NVS/I2C doubles to check default level/register mapping, restore, invalid stored values, failed saves/retry and diagnostic isolation. The real LVGL drawer interaction checks exercise both buttons, limits, visible percentage and screen bounds.
+
+Validation: IPS10 firmware build, native host tests, workspace build/typecheck and 4,923 tests (two skipped) passed. Protocol generation left no drift; token, native palette, documentation and catalog checks passed. Design lint still reports 92 findings in untouched HTML/JS. Landscape simulator interactions passed in full; portrait volume interactions and screenshots passed before an unrelated existing peer-layout assertion (`Showing 3 of 10`) failed: the production layout uses two peers in narrow project columns. Both volume drawers were visually inspected. Persistence is covered by the production-code host test; physical touchscreen/save/reboot interaction is not yet measured.
+
+Installed clean firmware `71469ab4` on the identified IPS10 (ESP32-P4 rev 1.3). Slow WiFi OTA was aborted, then USB full flash at 460800 baud verified all image hashes and reset the board. Direct serial read-back confirmed the new build and `[ES8311] speaker volume 40% (board default)` at boot. A subsequent read at uptime 43 s confirmed WiFi connected, wake detection ready/enabled and voice state `wake`. Serial ownership was returned to the daemon. The native palette baseline was reduced from 159 to 157 after replacing the two edited button color literals with existing tokens.
 
 ## 2026-09-29 — The e-ink usage table fits its zone (#415)
 

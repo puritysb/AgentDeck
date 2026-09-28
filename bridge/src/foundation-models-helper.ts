@@ -18,17 +18,25 @@ type Pending = {
 };
 
 let helperPathCache: FoundationModelsHelperStatus | null = null;
-let helperProcess: ChildProcessWithoutNullStreams | null = null;
-let helperStdout = '';
+type HelperWorker = {
+  process: ChildProcessWithoutNullStreams | null;
+  stdout: string;
+  pending: Map<number, Pending>;
+};
+const modelWorker: HelperWorker = { process: null, stdout: '', pending: new Map() };
+// A separate process keeps the Swift helper's FIFO speech jobs out of the
+// potentially slow Foundation Models queue. Its deadline can restart just
+// this worker, including a stuck AVSpeech callback, without cancelling a judge.
+const speechWorker: HelperWorker = { process: null, stdout: '', pending: new Map() };
 let nextRequestId = 1;
-const pending = new Map<number, Pending>();
 
 const HELPER_REQUEST_TIMEOUT_MS = 60_000;
 // Short-command transcription is sub-second once the model is warm; the
 // generous ceiling covers the OS finishing its one-time dictation download.
 const TRANSCRIBE_TIMEOUT_MS = 45_000;
-// Synthesis blocks until playback finishes, so this bounds an actual spoken reply.
+// Host playback lasts as long as the utterance. WAV synthesis should not.
 const SPEAK_TIMEOUT_MS = 120_000;
+const SYNTHESIZE_TIMEOUT_MS = 10_000;
 
 function dataDir(): string {
   return process.env.AGENTDECK_DATA_DIR || join(homedir(), '.agentdeck');
@@ -225,56 +233,60 @@ export function resolveFoundationModelsHelper(): FoundationModelsHelperStatus {
   return helperPathCache;
 }
 
-function rejectAllPending(reason: string): void {
-  for (const [id, item] of pending.entries()) {
+function rejectAllPending(worker: HelperWorker, reason: string): void {
+  for (const [id, item] of worker.pending.entries()) {
     clearTimeout(item.timer);
     item.reject(new Error(reason));
-    pending.delete(id);
+    worker.pending.delete(id);
   }
 }
 
-function ensureHelperProcess(): ChildProcessWithoutNullStreams {
+function ensureHelperProcess(worker: HelperWorker): ChildProcessWithoutNullStreams {
   const resolved = resolveFoundationModelsHelper();
   if (!resolved.available || !resolved.path) {
     throw new Error(resolved.reason ?? 'Foundation Models helper unavailable');
   }
-  if (helperProcess && !helperProcess.killed) return helperProcess;
+  if (worker.process && !worker.process.killed) return worker.process;
 
-  helperStdout = '';
+  worker.stdout = '';
   // windows-hide-exempt: the helper is a Swift binary for macOS 26+ Foundation
   // Models; `foundationModelsSupported()` gates every path here on darwin.
-  helperProcess = spawn(resolved.path, [], {
+  const proc = spawn(resolved.path, [], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: process.env,
   });
-  helperProcess.stdout.setEncoding('utf8');
-  helperProcess.stdout.on('data', (chunk: string) => {
-    helperStdout += chunk;
-    let newline = helperStdout.indexOf('\n');
+  worker.process = proc;
+  proc.stdout.setEncoding('utf8');
+  proc.stdout.on('data', (chunk: string) => {
+    if (worker.process !== proc) return;
+    worker.stdout += chunk;
+    let newline = worker.stdout.indexOf('\n');
     while (newline >= 0) {
-      const line = helperStdout.slice(0, newline).trim();
-      helperStdout = helperStdout.slice(newline + 1);
-      if (line) handleHelperLine(line);
-      newline = helperStdout.indexOf('\n');
+      const line = worker.stdout.slice(0, newline).trim();
+      worker.stdout = worker.stdout.slice(newline + 1);
+      if (line) handleHelperLine(worker, line);
+      newline = worker.stdout.indexOf('\n');
     }
   });
-  helperProcess.stderr.setEncoding('utf8');
-  helperProcess.stderr.on('data', (chunk: string) => {
+  proc.stderr.setEncoding('utf8');
+  proc.stderr.on('data', (chunk: string) => {
     const text = chunk.trim();
     if (text) debug('APME', `Foundation Models helper stderr: ${text.slice(0, 300)}`);
   });
-  helperProcess.on('exit', (code, signal) => {
-    helperProcess = null;
-    rejectAllPending(`Foundation Models helper exited (${code ?? signal ?? 'unknown'})`);
+  proc.on('exit', (code, signal) => {
+    if (worker.process !== proc) return;
+    worker.process = null;
+    rejectAllPending(worker, `Foundation Models helper exited (${code ?? signal ?? 'unknown'})`);
   });
-  helperProcess.on('error', (err) => {
-    helperProcess = null;
-    rejectAllPending(`Foundation Models helper error: ${String(err)}`);
+  proc.on('error', (err) => {
+    if (worker.process !== proc) return;
+    worker.process = null;
+    rejectAllPending(worker, `Foundation Models helper error: ${String(err)}`);
   });
-  return helperProcess;
+  return proc;
 }
 
-function handleHelperLine(line: string): void {
+function handleHelperLine(worker: HelperWorker, line: string): void {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(line) as Record<string, unknown>;
@@ -284,27 +296,33 @@ function handleHelperLine(line: string): void {
   }
   const id = typeof parsed.id === 'number' ? parsed.id : null;
   if (id == null) return;
-  const item = pending.get(id);
+  const item = worker.pending.get(id);
   if (!item) return;
   clearTimeout(item.timer);
-  pending.delete(id);
+  worker.pending.delete(id);
   item.resolve(parsed);
 }
 
 function requestHelper(payload: Record<string, unknown>, timeoutMs = HELPER_REQUEST_TIMEOUT_MS): Promise<Record<string, unknown>> {
-  const proc = ensureHelperProcess();
+  const worker = payload.type === 'synthesize' || payload.type === 'speak' ? speechWorker : modelWorker;
+  const proc = ensureHelperProcess(worker);
   const id = nextRequestId++;
   const message = { id, ...payload };
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      pending.delete(id);
+      worker.pending.delete(id);
       reject(new Error('Foundation Models helper request timed out'));
+      if (worker === speechWorker && worker.process === proc) {
+        worker.process = null;
+        rejectAllPending(worker, 'Speech helper restarted after timeout');
+        proc.kill('SIGKILL');
+      }
     }, timeoutMs);
-    pending.set(id, { resolve, reject, timer });
+    worker.pending.set(id, { resolve, reject, timer });
     proc.stdin.write(`${JSON.stringify(message)}\n`, (err) => {
       if (err) {
         clearTimeout(timer);
-        pending.delete(id);
+        worker.pending.delete(id);
         reject(err);
       }
     });
@@ -349,11 +367,12 @@ export async function callFoundationModelsHelper(
 }
 
 export function stopFoundationModelsHelper(): void {
-  if (helperProcess) {
-    try { helperProcess.kill('SIGTERM'); } catch { /* ignore */ }
-    helperProcess = null;
+  for (const worker of [modelWorker, speechWorker]) {
+    const proc = worker.process;
+    worker.process = null;
+    if (proc) { try { proc.kill('SIGTERM'); } catch { /* ignore */ } }
+    rejectAllPending(worker, 'Foundation Models helper stopped');
   }
-  rejectAllPending('Foundation Models helper stopped');
 }
 
 /**
@@ -456,7 +475,7 @@ export async function synthesizeWavWithHelper(
 ): Promise<{ wav: string; sampleRate: number; durationMs: number }> {
   const response = await requestHelper(
     { type: 'synthesize', text, wav: outPath, ...opts },
-    SPEAK_TIMEOUT_MS,
+    SYNTHESIZE_TIMEOUT_MS,
   );
   if (typeof response.error === 'string') {
     throw new Error(`${response.error}: ${String(response.reason ?? '')}`.trim());

@@ -979,6 +979,10 @@ static lv_obj_t* makeUsageBlock(lv_obj_t* parent, const lv_image_dsc_t* icon, ui
 // names the session the next hold will speak to, because a mic whose target is
 // discovered only after release is a mic nobody trusts twice.
 static lv_obj_t* wakeLabel = nullptr;
+static lv_obj_t* volumeLabel = nullptr;
+static lv_obj_t* volumeDown = nullptr;
+static lv_obj_t* volumeUp = nullptr;
+static char volumeText[24]; // reused by the drawer's single label
 static lv_obj_t* voiceBtn = nullptr;
 static lv_obj_t* voiceBtnLabel = nullptr;
 static lv_obj_t* voiceBtnTarget = nullptr;   // sub-label: who hears the next hold
@@ -1195,8 +1199,36 @@ static void voiceReleaseCb(lv_event_t* e) {
     lv_label_set_text(voiceBtnLabel, "Hold to talk");
 }
 
-// Called from update(): a transient notice has to clear itself, and update() is
-// the only thing already ticking on the LVGL thread.
+static void refreshVolume() {
+#if defined(BOARD_SPK_CODEC_ES8311)
+    if (!volumeLabel) return;
+    const int v = Es8311::volume();
+    char text[24];
+    snprintf(text, sizeof(text), "Volume %d%%", v);
+    if (strcmp(text, volumeText) != 0) {
+        snprintf(volumeText, sizeof(volumeText), "%s", text);
+        lv_label_set_text_static(volumeLabel, volumeText);
+    }
+    if (v <= 10) lv_obj_add_state(volumeDown, LV_STATE_DISABLED);
+    else lv_obj_remove_state(volumeDown, LV_STATE_DISABLED);
+    if (v >= 100) lv_obj_add_state(volumeUp, LV_STATE_DISABLED);
+    else lv_obj_remove_state(volumeUp, LV_STATE_DISABLED);
+#endif
+}
+
+static void adjustVolume(int delta) {
+#if defined(BOARD_SPK_CODEC_ES8311)
+    int v = Es8311::volume() + delta;
+    if (v < 10) v = 10;
+    if (v > 100) v = 100;
+    const bool saved = Es8311::setUserVolume(v);
+    refreshVolume();
+    if (!saved) HUD::notify("Volume changed; save failed");
+    // No test tone: adjusting volume must not interrupt an ongoing reply.
+#endif
+}
+
+// Called from update(): notices and controls tick only on the LVGL thread.
 static void voiceTick() {
     static uint32_t lastWakeUpdate = 0;
     if (wakeLabel && millis() - lastWakeUpdate >= 250) {
@@ -1206,6 +1238,7 @@ static void voiceTick() {
                  !WakeWord::ready() ? "unavailable" : WakeWord::enabled() ? "ON" : "OFF",
                  Audio::voiceState());
         if (strcmp(lv_label_get_text(wakeLabel), text) != 0) lv_label_set_text(wakeLabel, text);
+        refreshVolume();
     }
 
     VoiceUiCommand command = {VoiceUiOp::NONE, {0}};
@@ -1367,17 +1400,28 @@ static void voiceCreate(lv_obj_t* pane) {
     // and the button would slide left every time the banner appears.
     lv_obj_set_style_opa(voiceBanner, LV_OPA_TRANSP, 0);
 
-    // Speaker volume — two compact steppers between the transcript and the
-    // talk button. Direct Es8311 writes on the UI thread (same bus discipline
-    // as the touch reads that share it), toast for feedback.
+    // Fixed-size controls owned by the drawer, reused until its screen rebuild.
+    // A persistent numeric label makes the two directions unambiguous.
+    lv_obj_t* volumeGroup = lv_obj_create(row);
+    lv_obj_set_size(volumeGroup, 152, 76);
+    lv_obj_set_style_pad_all(volumeGroup, 0, 0);
+    lv_obj_set_style_border_width(volumeGroup, 0, 0);
+    lv_obj_set_style_bg_opa(volumeGroup, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(volumeGroup, LV_OBJ_FLAG_SCROLLABLE);
+    volumeLabel = lv_label_create(volumeGroup);
+    lv_obj_set_style_text_font(volumeLabel, &font_kr_16, 0);
+    lv_obj_set_style_text_color(volumeLabel, lv_color_hex(Theme::HUDText), 0);
+    lv_obj_align(volumeLabel, LV_ALIGN_TOP_MID, 0, 0);
+    volumeText[0] = '\0';
     auto mkVolBtn = [&](const char* txt, lv_event_cb_t cb) {
-        lv_obj_t* b = lv_button_create(row);
-        lv_obj_set_size(b, 48, 76);
+        lv_obj_t* b = lv_button_create(volumeGroup);
+        lv_obj_set_size(b, 70, 48);
         lv_obj_set_style_radius(b, 12, 0);
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x123B35), 0);
+        lv_obj_set_style_bg_color(b, lv_color_hex(Theme::MidWater), 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_color(b, lv_color_hex(0x1B3F39), 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(Theme::ShallowWater), 0);
         lv_obj_set_style_border_width(b, 1, 0);
+        lv_obj_set_style_opa(b, LV_OPA_40, LV_STATE_DISABLED);
         lv_obj_t* l = lv_label_create(b);
         lv_obj_set_style_text_font(l, &font_kr_20, 0);
         lv_obj_set_style_text_color(l, lv_color_hex(Theme::HUDText), 0);
@@ -1386,28 +1430,11 @@ static void voiceCreate(lv_obj_t* pane) {
         lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
         return b;
     };
-    mkVolBtn(LV_SYMBOL_VOLUME_MID, [](lv_event_t*) {
-#if defined(BOARD_SPK_CODEC_ES8311)
-        int v = Es8311::volume() - 10;
-        if (v < 20) v = 20;
-        Es8311::setVolume(v);
-        char msg[40];
-        snprintf(msg, sizeof(msg), "Volume %d%%", v);
-        HUD::notify(msg);
-        Audio::playTone(880, 40, 0.2f);
-#endif
-    });
-    mkVolBtn(LV_SYMBOL_VOLUME_MAX, [](lv_event_t*) {
-#if defined(BOARD_SPK_CODEC_ES8311)
-        int v = Es8311::volume() + 10;
-        if (v > 100) v = 100;
-        Es8311::setVolume(v);
-        char msg[40];
-        snprintf(msg, sizeof(msg), "Volume %d%%", v);
-        HUD::notify(msg);
-        Audio::playTone(880, 40, 0.2f);
-#endif
-    });
+    volumeDown = mkVolBtn("-", [](lv_event_t*) { adjustVolume(-10); });
+    lv_obj_align(volumeDown, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    volumeUp = mkVolBtn("+", [](lv_event_t*) { adjustVolume(10); });
+    lv_obj_align(volumeUp, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    refreshVolume();
 
     voiceBtn = lv_button_create(row);
     lv_obj_set_size(voiceBtn, 168, 76);

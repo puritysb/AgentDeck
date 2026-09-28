@@ -18,6 +18,9 @@ extern const char* g_simVoiceState;
 #include "sim.h"
 #include "config.h"
 #include "state/agent_state.h"
+#if defined(BOARD_IPS10)
+#include "audio/es8311_codec.h"
+#endif
 
 #include <Arduino.h>
 #include <cstdio>
@@ -321,10 +324,27 @@ bool verifyIpsInteractions(const char* outdir) {
   if(IPS10Workspace::selectedSession()[0] || !ipsLabel(lv_screen_active(),"No matching sessions")) return ipsFailure(__LINE__);
   if(!click("All")) return ipsFailure(__LINE__);
   if(!click("Voice controls")) return ipsFailure(__LINE__);
+  // Exercise the real drawer callbacks, including bounds and current level.
+  if(!ipsLabel(lv_screen_active(),"Volume 40%"))return ipsFailure(__LINE__);
+  auto* volume=ipsLabel(lv_screen_active(),"Volume 40%");
+  auto* group=lv_obj_get_parent(volume);
+  auto* down=lv_obj_get_child(group,1);auto* up=lv_obj_get_child(group,2);
+  auto adjust=[&](lv_obj_t* button) {lv_obj_send_event(button,LV_EVENT_CLICKED,nullptr);advance();};
+  adjust(down);
+  if(Es8311::volume()!=30 || !ipsLabel(group,"Volume 30%"))return ipsFailure(__LINE__);
+  for(int i=0;i<5;++i)adjust(down);
+  if(Es8311::volume()!=10 || !lv_obj_has_state(down,LV_STATE_DISABLED))return ipsFailure(__LINE__);
+  for(int i=0;i<12;++i)adjust(up);
+  if(Es8311::volume()!=100 || !lv_obj_has_state(up,LV_STATE_DISABLED))return ipsFailure(__LINE__);
+  for(int i=0;i<6;++i)adjust(down);
+  if(Es8311::volume()!=40 || !ipsLabel(group,"Volume 40%"))return ipsFailure(__LINE__);
+  lv_area_t volumeBounds;lv_obj_get_coords(group,&volumeBounds);
+  if(volumeBounds.x1<0 || volumeBounds.x2>=g_screenW || volumeBounds.y1<0 || volumeBounds.y2>=g_screenH)return ipsFailure(__LINE__);
   auto* talk=ipsLabel(lv_screen_active(),"Hold to talk");if(!talk)return ipsFailure(__LINE__);
   lv_area_t bounds;lv_obj_get_coords(lv_obj_get_parent(talk),&bounds);
   if(bounds.x1<0 || bounds.x2>=g_screenW || bounds.y1<0 || bounds.y2>=g_screenH)return ipsFailure(__LINE__);
   if(!save("ips10-voice-controls") || !click("Voice controls"))return ipsFailure(__LINE__);
+  std::fprintf(stderr,"[sim] IPS10 volume controls and bounds: ok (%dx%d)\n",g_screenW,g_screenH);
   g_state.wsConnected=false;g_simSerialConnected=false;advance();
   if(!ipsLabel(lv_screen_active(),"Disconnected"))return ipsFailure(__LINE__);
   if(!save("ips10-offline"))return ipsFailure(__LINE__);

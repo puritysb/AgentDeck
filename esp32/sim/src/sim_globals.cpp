@@ -183,11 +183,12 @@ void setEnabled(bool value) { wakeEnabled = value; }
 #include "../../boards/board_config.h"   // defines BOARD_SPK_CODEC_ES8311
 #if defined(BOARD_SPK_CODEC_ES8311)
 namespace Es8311 {
-static int s_volume = 70;
+static int s_volume = BOARD_SPK_DEFAULT_VOLUME;
 int volume() { return s_volume; }
 void setVolume(int percent) {
   s_volume = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
 }
+bool setUserVolume(int percent) { setVolume(percent); return true; }
 }  // namespace Es8311
 #endif
 

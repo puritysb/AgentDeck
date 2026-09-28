@@ -2406,6 +2406,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         res.end(JSON.stringify({ error: 'no_staged_reply' }));
         return;
       }
+      staged.fetched = true;
+      const fetchStarted = performance.now();
+      log(`[agentdeck] voice latency: replyFetchDelayMs=${Date.now() - staged.ts}`
+        + ` requestId=${staged.requestId ?? 'none'} board=${board}`);
+      res.once('finish', () => log(`[agentdeck] voice latency: replyTransferMs=${Math.round(performance.now() - fetchStarted)}`
+        + ` bytes=${staged.pcm.length} requestId=${staged.requestId ?? 'none'} board=${board}`));
+      res.once('close', () => {
+        if (!res.writableFinished) log(`[agentdeck] voice: reply download disconnected board=${board} requestId=${staged.requestId ?? 'none'}`);
+      });
       // Kept until TTL rather than deleted here: an aborted download may retry.
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
@@ -2431,6 +2440,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           if (res.destroyed) return;
           if (off >= staged.pcm.length) { res.end(); return; }
           const end = Math.min(off + CHUNK, staged.pcm.length);
+          // End with the final paced chunk: the board closes as soon as it
+          // receives Content-Length bytes, before another timer could fire.
+          if (end === staged.pcm.length) { res.end(staged.pcm.subarray(off, end)); return; }
           res.write(staged.pcm.subarray(off, end));
           off = end;
           setTimeout(writeNext, GAP_MS).unref?.();
@@ -6060,12 +6072,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    * TTL: a board that reboots before fetching must not hear a stale answer
    * minutes later.
    */
-  const stagedVoiceReplies = new Map<string, { pcm: Buffer; sampleRate: number; ts: number }>();
+  const stagedVoiceReplies = new Map<string, { pcm: Buffer; sampleRate: number; ts: number; requestId?: number; fetched?: boolean }>();
   const STAGED_REPLY_TTL_MS = 2 * 60_000;
   const stagedReplySweep = setInterval(() => {
     const cutoff = Date.now() - STAGED_REPLY_TTL_MS;
     for (const [key, entry] of stagedVoiceReplies) {
-      if (entry.ts < cutoff) stagedVoiceReplies.delete(key);
+      if (entry.ts < cutoff) {
+        if (!entry.fetched) log(`[agentdeck] voice: reply expired without download board=${key} requestId=${entry.requestId ?? 'none'}`);
+        stagedVoiceReplies.delete(key);
+      }
     }
   }, 30_000);
   stagedReplySweep.unref?.();
@@ -6203,10 +6218,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     if (boardTargets.length === 0) return;
     void (async () => {
       const out = join(tmpdir(), `agentdeck-reply-${process.pid}-${Date.now()}.wav`);
+      const synthesisStarted = performance.now();
       try {
         await synthesizeWavWithHelper(spoken, out, locale ? { locale } : {});
         const wav = await readFile(out);
         if (!isCurrent()) return;
+        log(`[agentdeck] voice latency: synthesisMs=${Math.round(performance.now() - synthesisStarted)}`
+          + ` chars=${spoken.length} requestId=${requestId ?? 'none'} session=${sessionId}`);
         for (const armedSink of boardTargets) {
           const sink = voiceReply.resolveTarget(armedSink);
           if (!sink.isOpen()) throw new Error("reply_transport_unavailable");
@@ -6218,7 +6236,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             const parsed = pcmFromWav(wav);
             if (parsed) {
               stagedVoiceReplies.set(sink.deviceKey(), {
-                pcm: parsed.pcm, sampleRate: parsed.sampleRate, ts: Date.now(),
+                pcm: parsed.pcm, sampleRate: parsed.sampleRate, ts: Date.now(), requestId,
               });
               try {
                 sink.send(JSON.stringify({
@@ -6522,37 +6540,53 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           if (captured.integrityError) {
             throw new Error(captured.integrityError);
           }
+          const transcriptionStarted = performance.now();
           const text = await transcribeDeviceAudio(captured.wavPath, loadDaemonSettings().voice as VoiceTranscriptionSettings | undefined);
+          log(`[agentdeck] voice latency: transcriptionMs=${Math.round(performance.now() - transcriptionStarted)}`
+            + ` requestId=${captured.requestId ?? 'none'} board=${device}`);
           if (!isCurrent()) return;
           if (personal) {
             if (!gatewayAdapter?.isAlive()) throw new Error('openclaw_unavailable');
-            const settings = loadDaemonSettings().voice as { openclawSessionKey?: unknown; openclawThinking?: unknown } | undefined;
+            const settings = loadDaemonSettings().voice as { openclawSessionKey?: unknown; openclawThinking?: unknown; speakFullReply?: unknown; locale?: unknown } | undefined;
             const key = typeof settings?.openclawSessionKey === 'string'
               ? settings.openclawSessionKey : 'agent:main:main';
             const thinking = settings?.openclawThinking === 'off' || settings?.openclawThinking === 'low'
               ? settings.openclawThinking : undefined;
             const started = performance.now();
-            const turn = await startPersonalVoiceTurn(gatewayAdapter, text, key, undefined, thinking);
+            const turn = await startPersonalVoiceTurn(gatewayAdapter, text, key, undefined, thinking,
+              { earlySummary: settings?.speakFullReply !== true });
             if (!isCurrent()) { void turn.completion.catch(() => {}); return; }
             const voiceId = `openclaw-voice:${turn.runId}`;
             const armSink = audioArmSinkFor(sink, captured.board);
             // This ID is never used by generic timeline completions. Only the
             // session+run matched response below can cause personal speech.
             voiceReply.disarm(armSink);
-            voiceReply.arm(armSink, voiceId);
+            if (!voiceReply.arm(armSink, voiceId)) throw new Error('reply_audio_unavailable');
             sink.send(JSON.stringify({ type: 'voice_result', requestId: captured.requestId, text, sessionId: captured.sessionId,
               delivered: true, via: 'gateway-personal', runId: turn.runId }));
             log(`[agentdeck] personal voice accepted: ${key} run=${turn.runId} board=${device}`);
-            void turn.completion.then((answer) => {
+            let speechDispatched = false;
+            void turn.speech.then((answer) => {
               if (personalVoiceActive.get(device) !== generation) return;
-              log(`[agentdeck] voice latency: agentMs=${Math.round(performance.now() - started)} thinking=${thinking ?? 'inherit'} run=${turn.runId}`);
+              speechDispatched = true;
+              log(`[agentdeck] voice latency: speechReadyMs=${Math.round(performance.now() - started)} run=${turn.runId}`);
               speakReplyTo(voiceId, answer, captured.requestId, isCurrent);
             }).catch((error) => {
-              if (personalVoiceActive.get(device) !== generation) return;
-              personalVoiceActive.delete(device);
-              voiceReply.disarm(armSink);
-              if (sink.isOpen()) sink.send(JSON.stringify({ type: 'voice_result', requestId: captured.requestId, text: '',
-                delivered: false, error: 'openclaw_reply_failed', detail: String(error).slice(0, 160) }));
+              if (!isCurrent()) return;
+              log(`[agentdeck] personal voice reply failed: run=${turn.runId} ${String(error).slice(0, 160)}`);
+              const korean = typeof settings?.locale === 'string' && settings.locale.startsWith('ko');
+              const empty = error instanceof Error && error.message === 'openclaw_empty_reply';
+              const notice = korean
+                ? (empty ? '답변 내용을 받지 못했습니다. 다시 말씀해 주세요.' : '응답을 완료하지 못했습니다. 잠시 후 다시 말씀해 주세요.')
+                : (empty ? 'No answer text was received. Please try again.' : 'The response could not be completed. Please try again shortly.');
+              speakReplyTo(voiceId, notice, captured.requestId, isCurrent);
+            });
+            void turn.completion.then(() => {
+              if (isCurrent()) log(`[agentdeck] voice latency: agentMs=${Math.round(performance.now() - started)} thinking=${thinking ?? 'inherit'} run=${turn.runId}`);
+            }).catch((error) => {
+              // An early spoken summary must not play twice or be cut off by
+              // failure in the optional details that follow it.
+              if (isCurrent() && speechDispatched) log(`[agentdeck] voice: details failed after summary run=${turn.runId}: ${String(error).slice(0, 120)}`);
             });
             return;
           }

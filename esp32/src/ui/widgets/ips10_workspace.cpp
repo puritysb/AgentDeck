@@ -447,8 +447,8 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
     label(empty,rail,12,12,railW-24,&font_studio_20,Theme::HUDDim);
     lv_label_set_long_mode(empty.obj,LV_LABEL_LONG_WRAP);
 
-    auto* voice=box(root,w-192,h-104,152,32,Theme::ShallowWater);voiceButton=voice;
-    label(voiceControlLabel,voice,8,5,140,&font_studio_20,Theme::HUDText);voiceControlLabel.set("Voice controls");
+    auto* voice=box(root,w-192,h-104,152,48,Theme::ShallowWater);voiceButton=voice;
+    label(voiceControlLabel,voice,8,13,140,&font_studio_20,Theme::HUDText);voiceControlLabel.set("Voice controls");
     lv_obj_add_event_cb(voice,voiceCb,LV_EVENT_CLICKED,nullptr);
     // A separate drawer preserves direct voice controls without consuming the
     // working surface while closed. Width is always the full screen minus 48.

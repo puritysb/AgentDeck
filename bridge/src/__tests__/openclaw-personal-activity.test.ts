@@ -22,6 +22,17 @@ function setup() {
 afterEach(() => vi.useRealTimers());
 
 describe('personal voice activity on the real adapter', () => {
+  it('accepts a string assistant body and ignores malformed blocks without losing the answer', async () => {
+    const { adapter, internal } = setup();
+    const turn = await startPersonalVoiceTurn(adapter, 'hello', 'agent:main:voice');
+    internal.handleGatewayEvent('chat', { runId: 'voice', sessionKey: 'agent:main:voice', state: 'delta',
+      message: { role: 'assistant', content: [null, { type: 'text', text: 12 }, { type: 'text', text: 'partial' }] } });
+    internal.handleGatewayEvent('chat', { runId: 'voice', sessionKey: 'agent:main:voice', state: 'final',
+      message: { role: 'assistant', content: '실제 답변입니다.' } });
+    await expect(turn.completion).resolves.toBe('실제 답변입니다.');
+    await expect(turn.speech).resolves.toBe('실제 답변입니다.');
+  });
+
   it('shows work before any delta and closes a final-only response', async () => {
     const { adapter, states, chat } = setup();
     const turn = await startPersonalVoiceTurn(adapter, 'hello', 'agent:main:voice');
