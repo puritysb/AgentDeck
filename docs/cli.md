@@ -231,7 +231,7 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 | `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |
 | `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
 | `agentdeck diag` | Daemon diagnostic dump (`-a` for AI analysis) |
-| `agentdeck diag agents [--json]` | Privacy-safe installed-version and compatibility report for normal Claude/Codex/OpenCode launches; no daemon required |
+| `agentdeck diag agents [--json]` | Privacy-safe version, compatibility and registration-file evidence for normal Claude/Codex/OpenCode launches; activation and event reception are explicitly unverified; no daemon or paid probe required |
 | `agentdeck diag connection [--json] [-p <port>]` | Read-only registry, PID, HTTP health and WebSocket ping/pong checks; allowlisted report excludes tokens, paths and session content |
 | `agentdeck diag kiro [--json]` | Privacy-safe Kiro passive-observation diagnostic; no daemon required |
 | `agentdeck diag native [--json]` | Open an in-memory APME database under the current Node executable and report its version, ABI, native-binding status, and recovery; no daemon required |

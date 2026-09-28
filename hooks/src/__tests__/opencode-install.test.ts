@@ -112,6 +112,30 @@ describe('AgentDeckObserver event sequencing', () => {
     properties: { info: { id: 'm1', sessionID: 's1', role: 'user', text: 'hi' } },
   };
 
+  it('forwards current permission and question request identities', async () => {
+    const { event } = await observer();
+    for (const wire of [
+      { type: 'permission.asked', properties: { sessionID: 's1', id: 'p1', permission: 'bash' } },
+      { type: 'permission.replied', properties: { sessionID: 's1', requestID: 'p1', reply: 'once' } },
+      { type: 'question.asked', properties: { sessionID: 's1', id: 'q1', questions: [{ question: 'Which target?' }] } },
+      { type: 'question.rejected', properties: { sessionID: 's1', requestID: 'q1' } },
+    ]) await event({ event: wire });
+    await flush();
+    expect(posts.find(p => p.event === 'opencode_permission_asked')?.body).toMatchObject({ permission_id: 'p1', title: 'bash' });
+    expect(posts.find(p => p.event === 'opencode_permission_replied')?.body).toMatchObject({ permission_id: 'p1' });
+    expect(posts.find(p => p.event === 'opencode_question_asked')?.body).toMatchObject({ question_id: 'q1', title: 'Which target?' });
+    expect(posts.find(p => p.event === 'opencode_question_rejected')?.body).toMatchObject({ question_id: 'q1' });
+  });
+
+  it('forwards legacy permission replies and header-only questions', async () => {
+    const { event } = await observer();
+    await event({ event: { type: 'permission.replied', properties: { sessionID: 's1', permissionID: 'legacy', response: 'once' } } });
+    await event({ event: { type: 'question.asked', properties: { sessionID: 's1', id: 'q', questions: [{ header: 'Target' }] } } });
+    await flush();
+    expect(posts.find(p => p.event === 'opencode_permission_replied')?.body.permission_id).toBe('legacy');
+    expect(posts.find(p => p.event === 'opencode_question_asked')?.body.title).toBe('Target');
+  });
+
   it('keeps posting when every registry read is stuck awaiting OS access', async () => {
     dir = mkdtempSync(join(tmpdir(), 'agentdeck-oc-blocked-'));
     const file = join(dir, 'agentdeck.mjs');

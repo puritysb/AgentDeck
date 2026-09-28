@@ -29,6 +29,11 @@ export class BridgeClient extends EventEmitter implements AgentLink {
   private _portProvider: PortProvider | null = null;
   private _backoffIdx = 0;
 
+  /** `handshakeTimeoutMs` is injectable so tests need not wait out the production bound. */
+  constructor(private readonly handshakeTimeoutMs = BRIDGE_HANDSHAKE_TIMEOUT_MS) {
+    super();
+  }
+
   /**
    * Install a port provider. Called before each (re)connect attempt.
    * Returning null skips that attempt — used when daemon.json is missing or
@@ -173,7 +178,7 @@ export class BridgeClient extends EventEmitter implements AgentLink {
       // runtime's IPv6-fallback behavior.
       dlog('Bridge', `attemptConnect ws://127.0.0.1:${this._port} (gen=${gen})`);
       this.ws = new WebSocket(`ws://127.0.0.1:${this._port}`, {
-        handshakeTimeout: BRIDGE_HANDSHAKE_TIMEOUT_MS,
+        handshakeTimeout: this.handshakeTimeoutMs,
       });
 
       this.ws.on('open', () => {

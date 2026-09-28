@@ -34,8 +34,17 @@ DISPLAY_ID=${AGENTDECK_CAPTURE_DISPLAY:-1}
 DOC_WIDTH=2560
 
 command -v ffmpeg >/dev/null || { echo "ffmpeg is required" >&2; exit 1; }
-osascript -e 'tell application "System Events" to get name of process "AgentDeck"' >/dev/null 2>&1 \
-  || { echo "AgentDeck is not running" >&2; exit 1; }
+bash "$ROOT/scripts/macos-preflight.sh" --automation --accessibility --screen-recording || exit
+# Tell "not running" apart from "not allowed to look": a denied Automation
+# grant (-1743) used to be reported as "AgentDeck is not running".
+if ! probe_err="$(osascript -e 'tell application "System Events" to get name of process "AgentDeck"' 2>&1 >/dev/null)"; then
+  case "$probe_err" in
+    *-1743*) echo "Automation to System Events is denied for this terminal: System Settings › Privacy & Security › Automation" >&2 ;;
+    *-1728*) echo "AgentDeck is not running" >&2 ;;
+    *) echo "could not check whether AgentDeck is running: $probe_err" >&2 ;;
+  esac
+  exit 1
+fi
 
 HIDDEN_APPS=""
 isolate_dashboard() {

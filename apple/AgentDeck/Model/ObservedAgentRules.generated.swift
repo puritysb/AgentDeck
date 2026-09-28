@@ -9,6 +9,8 @@ import Foundation
 /// out of the timeline. See the TypeScript sources for why these are generated
 /// rather than written twice.
 enum ObservedAgentRules {
+    static let openCodePendingRequestLimit = 64
+
     /// A passively-observed session is keyed `observed:<agent>:<uuid>` in
     /// `sessions_list` and on devices, while timeline rows, hook payloads and
     /// transcripts use the bare uuid — so anything comparing one against the

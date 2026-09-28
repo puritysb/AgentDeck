@@ -48,6 +48,7 @@
     "package": "bash scripts/package-plugin.sh",
     "setup": "bash scripts/install.sh",
     "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:report": "bash scripts/test-report.sh",
     "test:android": "bash scripts/test-report.sh --android",
     "test:html": "pnpm vitest run --coverage && python3 scripts/generate-html-report.py && open coverage/test-report/index.html",

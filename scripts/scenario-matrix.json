@@ -14,15 +14,17 @@
         ],
         "integration": [
           {"file": "bridge/src/__tests__/server-integration.test.ts", "patterns": ["hook event", "state transition", "WS broadcast"]},
-          {"file": "bridge/src/__tests__/bridge-core.test.ts", "patterns": ["state event", "initialization"]}
+          {"file": "bridge/src/__tests__/bridge-core.test.ts", "patterns": ["buildStateEvent", "sendInitialState", "state change broadcast"]}
         ],
         "platform": [
           {"file": "android/app/src/test/kotlin/dev/agentdeck/net/ProtocolTest.kt", "patterns": ["state_update"]},
           {"file": "apple/AgentDeckTests/ProtocolTests.swift", "patterns": ["*"]}
         ],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["state stream"]}
+        ]
       },
-      "gaps": ["No end-to-end test with real Claude PTY process", "No Android UI test for state transitions"]
+      "gaps": ["No end-to-end test with a real Claude process (the daemon E2E posts documented hook payloads)", "No Android UI test for state transitions"]
     },
     {
       "id": "permission-flow",
@@ -32,16 +34,19 @@
       "tests": {
         "unit": [
           {"file": "bridge/src/__tests__/state-machine.test.ts", "patterns": ["permission", "AWAITING_PERMISSION", "AWAITING_OPTION"]},
-          {"file": "plugin/src/__tests__/option-scenario.test.ts", "patterns": ["*"]}
+          {"file": "bridge/src/__tests__/permission-resolver.test.ts", "patterns": ["*"]},
+          {"file": "bridge/src/__tests__/ask-gate-decisions.test.ts", "patterns": ["*"]}
         ],
         "integration": [
-          {"file": "bridge/src/__tests__/server-integration.test.ts", "patterns": ["permission"]},
-          {"file": "bridge/src/__tests__/tier3-integration.test.ts", "patterns": ["option", "permission", "selection"]}
+          {"file": "bridge/src/__tests__/server-integration.test.ts", "patterns": ["PreToolUse"]},
+          {"file": "bridge/src/__tests__/session-deck-awaiting.test.ts", "patterns": ["*"]}
         ],
         "platform": [
           {"file": "android/app/src/test/kotlin/dev/agentdeck/net/ProtocolTest.kt", "patterns": ["permission", "option"]}
         ],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["PreToolUse"]}
+        ]
       },
       "gaps": ["No multi-option navigation end-to-end test", "No encoder dial interaction test for option scrolling"]
     },
@@ -53,12 +58,12 @@
       "tests": {
         "unit": [
           {"file": "bridge/src/__tests__/adapter.test.ts", "patterns": ["*"]},
-          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["session", "register", "deregister"]},
+          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["pruneDeadSessions", "port allocation"]},
           {"file": "bridge/src/__tests__/tui-dashboard.test.ts", "patterns": ["*"]}
         ],
         "integration": [
           {"file": "bridge/src/__tests__/daemon-lifecycle.test.ts", "patterns": ["*"]},
-          {"file": "bridge/src/__tests__/bridge-core.test.ts", "patterns": ["sessions_list", "client"]},
+          {"file": "bridge/src/__tests__/bridge-core.test.ts", "patterns": ["session registry", "hasClients guard"]},
           {"file": "bridge/src/__tests__/tui-renderer-snapshots.test.ts", "patterns": ["*"]},
           {"file": "bridge/src/__tests__/tui-terrarium-snapshots.test.ts", "patterns": ["*"]}
         ],
@@ -107,7 +112,9 @@
           {"file": "android/app/src/test/kotlin/dev/agentdeck/state/TimelineStoreTest.kt", "patterns": ["*"]},
           {"file": "apple/AgentDeckTests/TimelineTests.swift", "patterns": ["*"]}
         ],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["timeline"]}
+        ]
       },
       "gaps": ["No daemon-to-client relay end-to-end test", "No LLM summary enrichment test"]
     },
@@ -133,8 +140,9 @@
       "priority": "medium",
       "tests": {
         "unit": [
-          {"file": "plugin/src/__tests__/option-scenario.test.ts", "patterns": ["layout", "button", "slot"]},
-          {"file": "plugin/src/__tests__/text-utils-and-labels.test.ts", "patterns": ["*"]},
+          {"file": "plugin/src/__tests__/session-slot-manager.test.ts", "patterns": ["*"]},
+          {"file": "plugin/src/__tests__/encoder-offline-policy.test.ts", "patterns": ["*"]},
+          {"file": "plugin/src/__tests__/per-action-view-state.test.ts", "patterns": ["*"]},
           {"file": "plugin/src/__tests__/renderer-snapshots.test.ts", "patterns": ["*"]}
         ],
         "integration": [],
@@ -150,7 +158,7 @@
       "priority": "medium",
       "tests": {
         "unit": [
-          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["usage", "metric"]}
+          {"file": "bridge/src/__tests__/usage-api.test.ts", "patterns": ["*"]}
         ],
         "integration": [
           {"file": "bridge/src/__tests__/usage-relay.test.ts", "patterns": ["*"]},
@@ -171,13 +179,15 @@
       "priority": "medium",
       "tests": {
         "unit": [
-          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["daemon", "PID", "readDaemonInfo", "writeDaemonInfo", "findDaemonPort"]}
+          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["shouldConcedePortToOccupant", "scanDaemonPortWindow", "daemon port window"]}
         ],
         "integration": [
           {"file": "bridge/src/__tests__/daemon-lifecycle.test.ts", "patterns": ["*"]}
         ],
         "platform": [],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["shuts down cleanly"]}
+        ]
       },
       "gaps": ["No port conflict auto-fallback test", "No LaunchAgent KeepAlive loop prevention test"]
     },
@@ -192,7 +202,9 @@
         ],
         "integration": [],
         "platform": [],
-        "e2e": []
+        "e2e": [
+          {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["hook snippet"]}
+        ]
       },
       "gaps": ["No real settings.local.json file test", "No hook execution verification test"]
     }

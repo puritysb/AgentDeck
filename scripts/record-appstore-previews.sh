@@ -162,6 +162,8 @@ force_window_geometry() {
 }
 
 record_macos() {
+  # Fail before quitting/relaunching anything if a TCC grant would stall the capture.
+  bash "$ROOT/scripts/macos-preflight.sh" --automation --accessibility --screen-recording || exit
   osascript -e 'quit app "AgentDeck"' >/dev/null 2>&1 || true
   sleep 2
 

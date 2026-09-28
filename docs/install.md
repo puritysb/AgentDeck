@@ -105,6 +105,6 @@ All audio stays on-device (`requiresOnDeviceRecognition = true`), so the capture
 bash scripts/uninstall.sh
 ```
 
-Removes Claude Code hooks, unlinks `agentdeck` CLI, and removes the Stream Deck plugin symlink. **Restart the Stream Deck app** afterward.
+Removes the Claude Code hooks, the AgentDeck block in `~/.codex/config.toml` (settings Codex or you added inside it are kept; a config it cannot edit safely is left unchanged and reported), the OpenCode and Kiro hook files, unlinks the `agentdeck` CLI, and removes the Stream Deck plugin symlink. **Restart the Stream Deck app** afterward.
 
 ---

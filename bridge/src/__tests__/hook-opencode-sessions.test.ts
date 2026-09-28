@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // Hook-derived OpenCode rows: the Node daemon's parity with the Swift daemon's
 // `opencode:<id>` rows. Before this module the Node daemon classified
 // `opencode_*` hooks for the timeline and dropped them for session state, so
@@ -66,12 +67,12 @@ describe('HookOpenCodeSessions', () => {
     expect(hooks.applyTo([], 1_200)[0].state).toBe('idle');
   });
 
-  it('any later lifecycle hook ends the wait (approval runs the tool, stop ends the turn)', () => {
+  it('unrelated tool traffic preserves a wait; terminal stop clears it', () => {
     const hooks = new HookOpenCodeSessions();
     hooks.note('opencode_session_start', { sessionId: SID, cwd: CWD }, 1_000);
     hooks.note('opencode_permission_asked', { sessionId: SID, permissionId: 'p', title: 't' }, 1_100);
     hooks.note('opencode_tool_start', { sessionId: SID, toolName: 'bash' }, 1_200);
-    expect(hooks.applyTo([], 1_300)[0].state).toBe('processing');
+    expect(hooks.applyTo([], 1_300)[0].state).toBe('awaiting_permission');
     hooks.note('opencode_permission_asked', { sessionId: SID, permissionId: 'p2', title: 't' }, 1_400);
     hooks.note('opencode_stop', { sessionId: SID }, 1_500);
     const [row] = hooks.applyTo([], 1_600);
@@ -110,4 +111,18 @@ describe('HookOpenCodeSessions', () => {
     hooks.note('opencode_session_start', { sessionId: SID, cwd: CWD }, 2_000);
     expect(hooks.applyTo([], 2_000 + 31 * 60_000)).toHaveLength(0);
   });
+});
+
+it('replays the shared identity-scoped wait contract', () => {
+  const rows = JSON.parse(readFileSync(new URL('../../../shared/opencode-wait-vectors.json', import.meta.url), 'utf8'));
+  const hooks = new HookOpenCodeSessions();
+  for (const [index, row] of rows.entries()) {
+    hooks.note(`opencode_${row.event}`, { sessionId: SID, title: row.title,
+      permissionId: row.event.startsWith('permission') ? row.id : undefined,
+      questionId: row.event.startsWith('question') ? row.id : undefined }, index);
+    const [session] = hooks.snapshot();
+    expect(session.state, row.event).toBe(row.state);
+    expect(session.requestId).toBe(row.state === 'awaiting_permission' ? `ocperm:${SID}:${row.pending}` : undefined);
+    if (row.state === 'awaiting_option') expect(hooks.applyTo([], index)[0].options).toBeUndefined();
+  }
 });

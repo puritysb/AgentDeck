@@ -1,0 +1,149 @@
+[
+  {
+    "name": "fresh",
+    "input": "",
+    "allowed": true
+  },
+  {
+    "name": "enabled",
+    "input": "[features]\nhooks = true\n",
+    "allowed": true
+  },
+  {
+    "name": "commented",
+    "input": "[ features ] # flags\nhooks = true # consent\n",
+    "allowed": true
+  },
+  {
+    "name": "disabled",
+    "input": "[features]\nhooks = false\n",
+    "allowed": false
+  },
+  {
+    "name": "missing",
+    "input": "[features]\nother = true\n",
+    "allowed": false
+  },
+  {
+    "name": "inline",
+    "input": "features = { hooks = true }\n",
+    "allowed": false
+  },
+  {
+    "name": "quoted",
+    "input": "[\"features\"]\nhooks = true\n",
+    "allowed": false
+  },
+  {
+    "name": "dotted",
+    "input": "features.hooks = true\n",
+    "allowed": false
+  },
+  {
+    "name": "truncated",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\nmodel=\"keep\"",
+    "allowed": false
+  },
+  {
+    "name": "multiline",
+    "input": "developer_instructions = \"\"\"hello\n[features]\n\"\"\"\n",
+    "allowed": true
+  },
+  {
+    "name": "crlf",
+    "input": "[features] # flags\r\nhooks = true\r\n",
+    "allowed": true
+  },
+  {
+    "name": "multiline-array",
+    "input": "notify = [\n  [\"user-script\"]\n]\n",
+    "allowed": true
+  },
+  {
+    "name": "user-notify-otel",
+    "input": "notify = [\"mine\"]\n[otel . \"trace_exporter\"] # custom\nprotocol = \"mine\"\n",
+    "allowed": true
+  },
+  {
+    "name": "root-and-profile",
+    "input": "model=\"root\"\n[profiles.work]\nmodel=\"profile\"\n",
+    "allowed": true
+  },
+  {
+    "name": "later-root-key",
+    "input": "model = \"keep\"\n# >>> AgentDeck managed (do not edit) <<<\nnotify = [\"agentdeck-notify\"]\nmodel_reasoning_effort = \"high\"\n[features]\nhooks = true\n# <<< AgentDeck managed (do not edit) >>>\n[profiles.work]\nmodel = \"profile\"\n",
+    "allowed": true,
+    "stripped": "model = \"keep\"\nmodel_reasoning_effort = \"high\"\n[profiles.work]\nmodel = \"profile\"\n"
+  },
+  {
+    "name": "later-enabled-feature",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\n[features]\nhooks = true\nunified_exec = true\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": true,
+    "stripped": "[features]\nhooks = true\nunified_exec = true\n"
+  },
+  {
+    "name": "later-disabled-hooks",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\n[features]\nhooks = false\nunified_exec = true\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": false
+  },
+  {
+    "name": "triple-quotes-comment",
+    "input": "# examples: \"\"\" and '''\nmodel = \"keep\"\n",
+    "allowed": true
+  },
+  {
+    "name": "literal-fake-fence",
+    "input": "developer_instructions = '''\n# >>> AgentDeck managed (do not edit) <<<\n[features]\nhooks = false\n# <<< AgentDeck managed (do not edit) >>>\n'''\n[profiles.work]\nmodel = 'keep'\n",
+    "allowed": true
+  },
+  {
+    "name": "unterminated-multiline",
+    "input": "developer_instructions = \"\"\"never closed\n",
+    "allowed": false
+  },
+  {
+    "name": "later-multiline-root",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\nnotify = [\"agentdeck-notify\"]\ndeveloper_instructions = \"\"\"hello\n[features]\nhooks = false\n\"\"\"\n[features]\nhooks = true\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": true,
+    "stripped": "developer_instructions = \"\"\"hello\n[features]\nhooks = false\n\"\"\"\n"
+  },
+  {
+    "name": "multiline-crlf",
+    "input": "developer_instructions = \"\"\"hello\r\n[features]\r\n\"\"\"\r\n[profiles.work]\r\nmodel=\"keep\"\r\n",
+    "allowed": true
+  },
+  {
+    "name": "extended-managed-hook",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ncommand = \"curl /hooks/codex_stop\"\ncustom = \"keep\"\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": false
+  },
+  {
+    "name": "user-hook-in-managed-group",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ncommand = \"curl /hooks/codex_stop\"\n[[hooks.Stop.hooks]]\ncommand = \"my-notifier\"\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": false
+  },
+  {
+    "name": "foreign-notify-in-fence",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\nnotify = [\"my-script\"]\n[features]\nhooks = true\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": true,
+    "stripped": "notify = [\"my-script\"]\n"
+  },
+  {
+    "name": "foreign-table-in-fence",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\n[features]\nhooks = true\n[mcp_servers.foo]\n# Keep my server\ncommand = \"server\"\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": true,
+    "stripped": "[mcp_servers.foo]\n# Keep my server\ncommand = \"server\"\n"
+  },
+  {
+    "name": "owned-windows-hook",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ncommand = \"powershell.exe -EncodedCommand YwB1AHIAbAAgAGgAdAB0AHAAOgAvAC8AbABvAGMAYQBsAGgAbwBzAHQALwBoAG8AbwBrAHMALwBjAG8AZABlAHgAXwBzAHQAbwBwAA==\"\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": true,
+    "stripped": ""
+  },
+  {
+    "name": "foreign-windows-hook",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ncommand = \"powershell.exe -EncodedCommand VwByAGkAdABlAC0ASABvAHMAdAAgAGgAZQBsAGwAbwA=\"\n# <<< AgentDeck managed (do not edit) >>>\n",
+    "allowed": true,
+    "stripped": "[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ncommand = \"powershell.exe -EncodedCommand VwByAGkAdABlAC0ASABvAHMAdAAgAGgAZQBsAGwAbwA=\"\n"
+  }
+]

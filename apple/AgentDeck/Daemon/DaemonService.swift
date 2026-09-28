@@ -219,6 +219,10 @@ final class DaemonService: ObservableObject {
     }
 
     init() {
+        // Hosted XCTest launches the app too. Tests must not acquire the live
+        // daemon, rewrite integrations or probe connected devices at startup.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+              ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil else { return }
         start()
         setupSignalHandler()
     }

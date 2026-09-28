@@ -80,6 +80,13 @@ jobs:
           COLORTERM: truecolor
           TZ: Asia/Seoul
 
+      - name: Run daemon hub end-to-end
+        id: e2e
+        continue-on-error: true
+        run: npx vitest run --config vitest.e2e.config.ts --reporter=json --reporter=default --outputFile=coverage/test-report/e2e.json
+        env:
+          TZ: Asia/Seoul
+
       - name: Run Android tests
         id: android
         continue-on-error: true
@@ -111,9 +118,10 @@ jobs:
               "run_profile": "github-pages",
               "suites": {
                   "vitest": suite(os.environ["VITEST_OUTCOME"], True, "Coverage + JSON report"),
+                  "e2e": suite(os.environ["E2E_OUTCOME"], True, "Real daemon process, loopback, temp HOME"),
                   "android": suite(os.environ["ANDROID_OUTCOME"], True, "JUnit + Robolectric on ubuntu"),
-                  "apple": suite("not-run", False, "Not executed in Pages workflow (requires macOS runner)"),
-                  "robot": suite("not-run", False, "Physical hardware suite; not executed on GitHub-hosted runners"),
+                  "apple": suite("not-run", False, "Runs in the Apple Tests workflow (macos-26) on apple/** changes; not re-run here"),
+                  "robot": suite("not-run", False, "Physical hardware suite; run in the maintainer's lab, not on GitHub-hosted runners"),
               },
           }
           (report_dir / "run-metadata.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -121,6 +129,7 @@ jobs:
           python3 scripts/generate-html-report.py
         env:
           VITEST_OUTCOME: ${{ steps.vitest.outcome }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
           ANDROID_OUTCOME: ${{ steps.android.outcome }}
           GITHUB_SHA: ${{ github.sha }}
 
@@ -197,6 +206,7 @@ jobs:
           cp coverage/test-report/history.json _site/reports/history.json 2>/dev/null || true
           cp coverage/test-report/summary.json _site/reports/summary.json 2>/dev/null || true
           cp coverage/test-report/run-metadata.json _site/reports/run-metadata.json 2>/dev/null || true
+          cp scripts/verification-catalog.json _site/reports/verification-catalog.json
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

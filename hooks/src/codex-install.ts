@@ -16,7 +16,8 @@
 // MUST stay in sync with apple/AgentDeck/Daemon/Core/CodexConfigInstaller.swift
 // (managedBlockBody schema + lifecycle hook table layout).
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync, lstatSync, statSync } from 'fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'path';
 import { homedir } from 'os';
 import {
@@ -26,6 +27,8 @@ import {
   hasTableOutsideFence,
   hasIncompatibleHookTableOutsideFence,
   quoted,
+  configEditIssue,
+  existingFeaturesEnableHooks,
 } from './codex-mini-toml.js';
 
 export const DEFAULT_CODEX_CONFIG_PATH = join(homedir(), '.codex', 'config.toml');
@@ -100,6 +103,7 @@ function buildOtelEndpoint(daemonHttpPort?: number): string {
 // ─── Body assembly ──────────────────────────────────────────────────────
 
 interface ManagedBlockOptions {
+  includeFeatures?: boolean;
   includeNotify?: boolean;
   includeOtel?: boolean;
   otelEndpoint?: string;
@@ -119,12 +123,7 @@ export function managedBlockBody(opts: ManagedBlockOptions = {}): string {
   const lines: string[] = [
     '# Codex lifecycle hooks. Command hooks receive JSON on stdin;',
     '# each snippet forwards that stdin body unchanged to AgentDeck.',
-    '[features]',
-    'hooks = true',
   ];
-
-  lines.push('');
-  lines.push(...buildLifecycleHookTables(platform));
 
   if (includeNotify) {
     lines.push('');
@@ -139,6 +138,11 @@ export function managedBlockBody(opts: ManagedBlockOptions = {}): string {
     }
     lines.push(buildNotifyAssignment('codex_turn_complete', platform, opts.notifyScriptPath));
   }
+
+  if (opts.includeFeatures !== false) lines.push('[features]', 'hooks = true');
+
+  lines.push('');
+  lines.push(...buildLifecycleHookTables(platform));
 
   if (includeOtel) {
     lines.push('');
@@ -319,13 +323,22 @@ function windowsEncodedCommand(s: string): string {
 
 // ─── File I/O ───────────────────────────────────────────────────────────
 
-function readText(path: string): string {
-  if (!existsSync(path)) return '';
+function readText(path: string): string | null {
   try {
-    return readFileSync(path, 'utf-8');
-  } catch {
-    return '';
+    // A symlink belongs to the user's dotfile manager. Never replace it with
+    // a regular file via atomic rename.
+    if (!lstatSync(path).isFile()) return null;
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(readFileSync(path));
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? '' : null;
   }
+}
+
+function unreadableReason(path: string): string {
+  try {
+    if (lstatSync(path).isSymbolicLink()) return 'config.toml is a symbolic link; kept unchanged. Manage its target through your dotfile manager';
+  } catch { /* report the read failure below */ }
+  return 'config.toml unreadable; kept unchanged';
 }
 
 /** Write the notify sidecar only when its content changed, so repeated
@@ -340,14 +353,17 @@ function writeScriptIfChanged(content: string, path: string): boolean {
 
 function writeTextAtomic(text: string, path: string): boolean {
   const dir = dirname(path);
+  const tmp = `${path}.agentdeck.${randomUUID()}.tmp`;
   try {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const tmp = `${path}.agentdeck.tmp`;
-    writeFileSync(tmp, text, 'utf-8');
+    const mode = existsSync(path) ? statSync(path).mode & 0o777 : 0o600;
+    writeFileSync(tmp, text, { encoding: 'utf-8', mode, flag: 'wx' });
     renameSync(tmp, path);
     return true;
   } catch {
     return false;
+  } finally {
+    try { unlinkSync(tmp); } catch { /* renamed or never created */ }
   }
 }
 
@@ -366,22 +382,27 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
 
   const path = opts.configPath ?? DEFAULT_CODEX_CONFIG_PATH;
   const original = readText(path);
+  if (original === null) return { installed: false, reason: unreadableReason(path) };
+  const editIssue = configEditIssue(original);
+  if (editIssue) return { installed: false, reason: editIssue };
 
   // A user `[features]` table would duplicate ours. Official lifecycle
   // arrays, however, are intentionally additive in Codex and can safely
   // coexist with the AgentDeck arrays. Refuse only non-array hook tables.
-  if (hasTableOutsideFence(original, 'features')) {
+  const outside = removeManagedBlock(original);
+  const hasFeatures = hasTableOutsideFence(outside, 'features');
+  if (hasFeatures && !existingFeaturesEnableHooks(original)) {
     return { installed: false, reason: 'user-authored [features] present' };
   }
-  if (hasIncompatibleHookTableOutsideFence(original)) {
+  if (hasIncompatibleHookTableOutsideFence(outside)) {
     return { installed: false, reason: 'incompatible user-authored [hooks] table present' };
   }
 
   const platform = opts.platform ?? process.platform;
-  let includeNotify = !hasTopLevelKeyOutsideFence(original, 'notify');
+  let includeNotify = !hasTopLevelKeyOutsideFence(outside, 'notify');
   // OTel exporter stays POSIX-only for now — deliberately omitted on
   // win32 (unverified there); lifecycle hooks + notify carry the signal.
-  const includeOtel = platform !== 'win32' && !hasTableOutsideFence(original, 'otel');
+  const includeOtel = platform !== 'win32' && !hasTableOutsideFence(outside, 'otel');
 
   let warning: string | undefined;
   const notifyScriptPath = opts.notifyScriptPath ?? DEFAULT_WINDOWS_NOTIFY_SCRIPT_PATH;
@@ -396,6 +417,7 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
 
   const otelEndpoint = includeOtel ? buildOtelEndpoint(opts.daemonHttpPort) : undefined;
   const body = managedBlockBody({
+    includeFeatures: !hasFeatures,
     includeNotify,
     includeOtel,
     otelEndpoint,
@@ -409,6 +431,7 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
     return { installed: true, warning };
   }
 
+  if (readText(path) !== original) return { installed: false, reason: 'config.toml changed during setup; retry' };
   if (writeTextAtomic(updated, path)) {
     return { installed: true, warning };
   }
@@ -419,14 +442,19 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
  *  is absent. Does not delete the config file even if it becomes empty
  *  (Codex may rely on its existence). */
 export function uninstallCodexHooks(opts: { configPath?: string; notifyScriptPath?: string } = {}): void {
+  const path = opts.configPath ?? DEFAULT_CODEX_CONFIG_PATH;
+  const original = readText(path);
+  if (original === null) throw new Error(unreadableReason(path));
+  const issue = configEditIssue(original);
+  if (issue) throw new Error(`Codex hooks were not removed: ${issue}`);
+  const stripped = removeManagedBlock(original);
+  if (stripped !== original) {
+    if (readText(path) !== original) throw new Error('config.toml changed during removal; retry');
+    if (!writeTextAtomic(stripped, path)) throw new Error('Could not save config.toml; Codex hooks were not removed');
+  }
   try {
     unlinkSync(opts.notifyScriptPath ?? DEFAULT_WINDOWS_NOTIFY_SCRIPT_PATH);
-  } catch { /* absent on POSIX installs — nothing to remove */ }
-  const path = opts.configPath ?? DEFAULT_CODEX_CONFIG_PATH;
-  if (!existsSync(path)) return;
-  const original = readText(path);
-  const stripped = removeManagedBlock(original);
-  if (stripped !== original) writeTextAtomic(stripped, path);
+  } catch { /* absent on POSIX installs */ }
 }
 
 /** Re-apply the managed block when the daemon port (or any other resolved

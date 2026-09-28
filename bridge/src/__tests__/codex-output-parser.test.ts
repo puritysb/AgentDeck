@@ -372,17 +372,30 @@ describe('CodexOutputParser', () => {
   });
 
   describe('buffer management', () => {
+    // `buffer` is private; read it directly to pin the bound and the clean text.
+    const bufferOf = (p: CodexOutputParser) => (p as unknown as { buffer: string }).buffer;
+
     it('truncates buffer at 8192 chars', () => {
-      const longData = 'x'.repeat(9000);
-      parser.feed(longData);
-      // Should not throw — internal buffer is managed
+      const handler = vi.fn();
+      parser.on('model_info', handler);
+
+      parser.feed('x'.repeat(9000));
+      // Past 8192 the buffer keeps only its last 4096 chars.
+      expect(bufferOf(parser)).toHaveLength(4096);
+
+      // Later input is still parsed after the truncation.
+      parser.feed('model: o3');
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ model: 'o3' }));
+      expect(bufferOf(parser).endsWith('model: o3')).toBe(true);
     });
 
     it('handles incomplete ANSI sequences', () => {
-      // Incomplete CSI sequence
+      // Incomplete CSI sequence is held back until its tail arrives, so the
+      // `32m` parameter bytes never leak into the clean text.
       parser.feed('some text \x1b[');
+      expect(bufferOf(parser)).toBe('some text ');
       parser.feed('32m green \x1b[0m');
-      // Should not throw
+      expect(bufferOf(parser)).toBe('some text  green ');
     });
   });
 

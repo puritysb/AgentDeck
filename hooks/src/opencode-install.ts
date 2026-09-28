@@ -287,25 +287,40 @@ export const AgentDeckObserver = async ({ directory, client }) => {
           // no prediction needed, zero false-positive risk. Forward it so
           // devices can render Allow/Deny; the daemon replies through the
           // steering queue as a permission_respond command.
-          const perm = props.permission || props.info || props || {};
+          const perm = (props.permission && typeof props.permission === "object") ? props.permission : (props.info || props);
           const psid = perm.sessionID;
           if (psid && perm.id) {
             announce(psid);
             post("opencode_permission_asked", {
               session_id: psid,
               permission_id: perm.id,
-              title: typeof perm.title === "string" ? perm.title : "",
+              title: typeof perm.title === "string" ? perm.title : (typeof perm.permission === "string" ? perm.permission : "Permission requested"),
               cwd,
             });
           }
         } else if (type === "permission.replied") {
-          const perm = props.permission || props.info || props || {};
+          const perm = (props.permission && typeof props.permission === "object") ? props.permission : (props.info || props);
           const psid = perm.sessionID;
           if (psid) {
             post("opencode_permission_replied", {
               session_id: psid,
-              permission_id: perm.id || "",
+              permission_id: perm.requestID || perm.permissionID || perm.id || "",
               cwd,
+            });
+          }
+        } else if (type === "question.asked") {
+          if (props.sessionID && props.id) {
+            announce(props.sessionID);
+            post("opencode_question_asked", {
+              session_id: props.sessionID, question_id: props.id,
+              title: (Array.isArray(props.questions) ? props.questions : []).map(q => q.question || q.header || "").filter(Boolean).join(" / "),
+              cwd,
+            });
+          }
+        } else if (type === "question.replied" || type === "question.rejected") {
+          if (props.sessionID && props.requestID) {
+            post(type === "question.replied" ? "opencode_question_replied" : "opencode_question_rejected", {
+              session_id: props.sessionID, question_id: props.requestID, cwd,
             });
           }
         } else if (type === "session.idle") {

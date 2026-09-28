@@ -13,6 +13,47 @@ import XCTest
 
 final class OpenCodeObserverTests: XCTestCase {
 
+    func testOwnershipKeepsHooksOutsideStreamLifecycle() {
+        var owner = OpenCodeObservationOwnership()
+        XCTAssertTrue(owner.acceptSSE("sse", rowExists: false))
+        XCTAssertTrue(owner.acceptSSE("both", rowExists: false))
+        XCTAssertTrue(owner.claimHook("both"))
+        XCTAssertFalse(owner.acceptSSE("both", rowExists: true))
+        XCTAssertFalse(owner.acceptSSE("hook", rowExists: true))
+        XCTAssertEqual(owner.disconnect(), ["sse"])
+        XCTAssertTrue(owner.sse.isEmpty)
+    }
+
+    func testSharedWaitIdentityVectors() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("shared/opencode-wait-vectors.json"))
+        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: String]])
+        var waits = OpenCodeWaitState()
+        for row in rows {
+            _ = waits.consume(event: "opencode_" + row["event"]!, id: row["id"], title: row["title"])
+            XCTAssertEqual(waits.first?.id, row["pending"], row["event"]!)
+            if let first = waits.first {
+                XCTAssertEqual(first.kind == "permission" ? "awaiting_permission" : "awaiting_option", row["state"])
+            }
+        }
+    }
+
+    func testCurrentWirePermissionAndQuestionIdentities() throws {
+        func classify(_ type: String, _ props: [String: Any]) -> OpenCodeSessionUpdate? {
+            OpenCodeEventClassifier.classify(envelope: ["payload": ["type": type, "properties": props]])
+        }
+        let permission = try XCTUnwrap(classify("permission.asked", ["sessionID": "s", "id": "p", "permission": "bash"]))
+        XCTAssertEqual(permission.kind, .awaitingPermission)
+        XCTAssertEqual(permission.waitID, "p")
+        XCTAssertEqual(classify("permission.replied", ["sessionID": "s", "requestID": "p"])?.waitID, "p")
+        XCTAssertEqual(classify("permission.replied", ["sessionID": "s", "permissionID": "legacy"])?.waitID, "legacy")
+        XCTAssertEqual(classify("question.asked", ["sessionID": "s", "id": "q", "questions": [["question": "", "header": "Target"]]])?.question, "Target")
+        let question = classify("question.asked", ["sessionID": "s", "id": "q", "questions": [["question": "Which target?"]]])
+        XCTAssertEqual(question?.kind, .awaitingQuestion)
+        XCTAssertEqual(question?.question, "Which target?")
+        XCTAssertEqual(classify("question.rejected", ["sessionID": "s", "requestID": "q"])?.kind, .questionReplied)
+    }
+
     // MARK: - SSE data-line parsing
 
     func testParsesDataLine() {
@@ -116,13 +157,13 @@ final class OpenCodeObserverTests: XCTestCase {
             "description": "Allow running npm test?",
         ])
         XCTAssertEqual(update, OpenCodeSessionUpdate(
-            sessionID: "s1", kind: .awaitingPermission, question: "Allow running npm test?"
+            sessionID: "s1", kind: .awaitingPermission, question: "Allow running npm test?", waitID: "p1"
         ))
         // No description → synthesized question from the tool name. Never
         // any options/requestId — respond-in-terminal on every surface.
         XCTAssertEqual(
             classify("permission.requested", ["sessionID": "s1", "permissionID": "p1", "tool": "bash"]),
-            OpenCodeSessionUpdate(sessionID: "s1", kind: .awaitingPermission, question: "Allow bash?")
+            OpenCodeSessionUpdate(sessionID: "s1", kind: .awaitingPermission, question: "Allow bash?", waitID: "p1")
         )
     }
 

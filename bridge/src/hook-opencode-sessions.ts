@@ -20,6 +20,7 @@
  * never two creatures.
  */
 
+import { OPENCODE_PENDING_REQUEST_LIMIT } from '@agentdeck/shared';
 import type { ObservedSession } from './passive-observer.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
 
@@ -27,7 +28,7 @@ import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
  *  turn edge and tool, so an attended session refreshes constantly). */
 const SILENT_TTL_MS = 30 * 60_000;
 
-export type HookOpenCodeState = 'idle' | 'processing' | 'awaiting_permission';
+export type HookOpenCodeState = 'idle' | 'processing' | 'awaiting_permission' | 'awaiting_option';
 
 export interface HookOpenCodeSession {
   sessionId: string;
@@ -50,12 +51,13 @@ export interface HookOpenCodePayload {
   projectName?: string;
   toolName?: string;
   permissionId?: string;
+  questionId?: string;
   title?: string;
 }
 
 const OPENING_EVENTS = new Set([
   'opencode_session_start', 'opencode_user_prompt_submit', 'opencode_tool_start',
-  'opencode_permission_asked',
+  'opencode_permission_asked', 'opencode_question_asked',
 ]);
 
 export function openCodePermissionRequestId(sessionId: string, permissionId: string): string {
@@ -63,6 +65,7 @@ export function openCodePermissionRequestId(sessionId: string, permissionId: str
 }
 
 export class HookOpenCodeSessions {
+  private readonly waits = new Map<string, Map<string, { kind: string; id: string; title: string }>>();
   private readonly sessions = new Map<string, HookOpenCodeSession>();
 
   /** Fired when a hook changed something worth broadcasting. */
@@ -73,6 +76,7 @@ export class HookOpenCodeSessions {
     if (!sessionId || !event.startsWith('opencode_')) return false;
 
     if (event === 'opencode_session_end') {
+      this.waits.delete(sessionId);
       const removed = this.sessions.delete(sessionId);
       if (removed) this.onChanged?.();
       return removed;
@@ -101,45 +105,57 @@ export class HookOpenCodeSessions {
       case 'opencode_user_prompt_submit':
         session.state = 'processing';
         session.currentTool = undefined;
+        this.waits.delete(sessionId);
         this.clearPermission(session);
         break;
       case 'opencode_tool_start':
         session.state = 'processing';
         session.currentTool = payload.toolName || undefined;
-        this.clearPermission(session);
         break;
       case 'opencode_tool_end':
         session.state = 'processing';
         session.currentTool = undefined;
-        this.clearPermission(session);
         break;
       case 'opencode_stop':
+        this.waits.delete(sessionId);
         session.state = 'idle';
         session.currentTool = undefined;
         this.clearPermission(session);
         break;
-      case 'opencode_permission_asked': {
-        // OpenCode fires this only when it is genuinely asking — a
-        // zero-false-positive gate signal, no prediction needed.
-        const permissionId = payload.permissionId?.trim();
-        if (permissionId) {
-          const title = (payload.title ?? '').replace(/\s+/g, ' ').trim();
-          session.state = 'awaiting_permission';
-          session.question = (title || 'Permission requested').slice(0, 120);
-          session.requestId = openCodePermissionRequestId(sessionId, permissionId);
+      case 'opencode_permission_asked':
+      case 'opencode_question_asked': {
+        const kind = event === 'opencode_permission_asked' ? 'permission' : 'question';
+        const id = (kind === 'permission' ? payload.permissionId : payload.questionId)?.trim();
+        if (!id) break;
+        const waits = this.waits.get(sessionId) ?? new Map();
+        const key = `${kind}:${id}`;
+        if (waits.size < OPENCODE_PENDING_REQUEST_LIMIT || waits.has(key)) {
+          waits.set(key, { kind, id, title: (payload.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || (kind === 'permission' ? 'Permission requested' : 'Answer in OpenCode') });
         }
+        this.waits.set(sessionId, waits);
         break;
       }
       case 'opencode_permission_replied':
-        // Answered in the TUI or from a device — the tool now runs (or the
-        // turn ends); either way the wait is over.
-        if (session.state === 'awaiting_permission') session.state = 'processing';
-        this.clearPermission(session);
+      case 'opencode_question_replied':
+      case 'opencode_question_rejected': {
+        const kind = event === 'opencode_permission_replied' ? 'permission' : 'question';
+        const id = kind === 'permission' ? payload.permissionId : payload.questionId;
+        if (id && this.waits.get(sessionId)?.delete(`${kind}:${id}`)) {
+          session.state = 'processing';
+          this.clearPermission(session);
+        }
         break;
+      }
       default:
         break;
     }
 
+    const pending = this.waits.get(sessionId)?.values().next().value;
+    if (pending) {
+      session.state = pending.kind === 'permission' ? 'awaiting_permission' : 'awaiting_option';
+      session.question = pending.title;
+      session.requestId = pending.kind === 'permission' ? openCodePermissionRequestId(sessionId, pending.id) : undefined;
+    }
     this.sessions.set(sessionId, session);
     this.reap(now);
     const changed = JSON.stringify(session) !== before || !existing;
@@ -158,7 +174,10 @@ export class HookOpenCodeSessions {
 
   private reap(now: number): void {
     for (const [sessionId, session] of this.sessions) {
-      if (now - session.lastHookAt > SILENT_TTL_MS) this.sessions.delete(sessionId);
+      if (now - session.lastHookAt > SILENT_TTL_MS) {
+        this.sessions.delete(sessionId);
+        this.waits.delete(sessionId);
+      }
     }
   }
 

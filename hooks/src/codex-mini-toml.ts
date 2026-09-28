@@ -15,57 +15,90 @@
 //     # <<< AgentDeck managed (do not edit) >>>
 //
 // applyManagedBlock replaces (or appends) the fence; removeManagedBlock
-// strips it. Everything outside the fence is preserved byte-for-byte.
+// removes owned entries and retains later user additions. Outside text is preserved.
 
 export const OPEN_FENCE = '# >>> AgentDeck managed (do not edit) <<<';
 export const CLOSE_FENCE = '# <<< AgentDeck managed (do not edit) >>>';
+
+/** Lossless editing is intentionally conservative: never guess the scope of
+ * multiline strings, damaged fences, or quoted/dotted integration keys. */
+export function configEditIssue(text: string): string | undefined {
+  if (!scanStatements(text)) return 'incomplete TOML string or collection; kept unchanged';
+  const lines = statements(text);
+  const opens = lines.filter(l => l === OPEN_FENCE).length;
+  const closes = lines.filter(l => l === CLOSE_FENCE).length;
+  if (opens !== closes || opens > 1 || (opens === 1 && lines.indexOf(OPEN_FENCE) > lines.indexOf(CLOSE_FENCE))) {
+    return 'incomplete or duplicate AgentDeck fence';
+  }
+  const fence = locateFence(lines);
+  if (fence && retainedFenceContent(lines.slice(fence.start + 1, fence.end - 1)).some(isOwnedCommand)) {
+    return 'modified AgentDeck hook table requires manual configuration; kept unchanged';
+  }
+  const outside = removeManagedBlock(text);
+  let inTable = false;
+  for (const line of statements(outside)) {
+    const code = withoutComment(line).trim();
+    if (/^\[\[?\s*["'](?:features|hooks|otel)["']/.test(code)
+      || (!inTable && /^(?:["'](?:features|hooks|otel|notify)["']\s*[.=]|(?:features|hooks|otel)\s*[.=])/.test(code))) {
+      return 'quoted, inline or dotted integration keys require manual configuration';
+    }
+    if (code.startsWith('[')) inTable = true;
+  }
+  return undefined;
+}
+
+export function existingFeaturesEnableHooks(text: string): boolean {
+  let inFeatures = false;
+  let values = 0;
+  let enabled = false;
+  for (const line of statements(removeManagedBlock(text))) {
+    const code = withoutComment(line).trim();
+    if (code.startsWith('[')) inFeatures = /^\[\s*features\s*\]$/.test(code);
+    else if (inFeatures && /^hooks\s*=/.test(code)) {
+      values++;
+      enabled = /^hooks\s*=\s*true$/.test(code);
+    }
+  }
+  return values === 1 && enabled;
+}
+
+function withoutComment(line: string): string {
+  let quote = '';
+  let escaped = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (escaped) { escaped = false; continue; }
+    if (quote === '"' && c === '\\') { escaped = true; continue; }
+    if (quote) { if (c === quote) quote = ''; }
+    else if (c === '"' || c === "'") quote = c;
+    else if (c === '#') return line.slice(0, i);
+  }
+  return line;
+}
 
 /** Replace the AgentDeck-managed fenced block (or append one when none
  *  exists). The body is wrapped between OPEN_FENCE / CLOSE_FENCE so
  *  removeManagedBlock can strip it cleanly later. Returns the full
  *  updated TOML text. */
 export function applyManagedBlock(text: string, body: string): string {
-  const lines = splitLines(text);
-  const fenceRange = locateFence(lines);
-
-  const bodyLines = body.length === 0 ? [] : splitLines(body);
-  let replacement = [OPEN_FENCE, ...bodyLines, CLOSE_FENCE];
-
-  if (fenceRange) {
-    const preservedHookState = extractCodexHookState(
-      lines.slice(fenceRange.start + 1, fenceRange.end - 1)
-    );
-    if (preservedHookState.length > 0) {
-      replacement = [...replacement, '', ...preservedHookState];
-    }
-    lines.splice(fenceRange.start, fenceRange.end - fenceRange.start, ...replacement);
-  } else {
-    // Pad with a blank line for readability when appending to a non-empty
-    // file. Avoids glueing our fence onto the user's last key.
-    if (lines.length > 0 && lines[lines.length - 1] !== '') {
-      lines.push('');
-    }
-    lines.push(...replacement);
-  }
-  return lines.join('\n');
+  const lines = statements(removeManagedBlock(text));
+  const replacement = [OPEN_FENCE, ...(body.length ? statements(body) : []), CLOSE_FENCE];
+  // notify is a ROOT key. Put the block after user root keys but before
+  // their first table; an appended block silently scopes notify to a table.
+  const firstTable = lines.findIndex(isTableHeader);
+  lines.splice(firstTable < 0 ? lines.length : firstTable, 0, ...replacement);
+  return lines.join(text.includes('\r\n') ? '\r\n' : '\n');
 }
 
-/** Strip the AgentDeck-managed block entirely. Idempotent — no-op when
+/** Remove generated entries and preserve foreign data inside the fence. Idempotent — no-op when
  *  the fence is absent. */
 export function removeManagedBlock(text: string): string {
-  const lines = splitLines(text);
+  const lines = statements(text);
   const fenceRange = locateFence(lines);
-  if (!fenceRange) return text;
-  lines.splice(fenceRange.start, fenceRange.end - fenceRange.start);
-  // Collapse a trailing blank line that we may have inserted in
-  // applyManagedBlock so removeManagedBlock truly returns the file to
-  // its pre-apply shape.
-  while (lines.length > 0 && lines[lines.length - 1] === '') {
-    lines.pop();
-  }
-  // Restore a single trailing newline if the original ended with one.
-  if (text.endsWith('\n')) lines.push('');
-  return lines.join('\n');
+  if (!fenceRange || lines[fenceRange.end - 1] !== CLOSE_FENCE) return text;
+  const retained = retainedFenceContent(lines.slice(fenceRange.start + 1, fenceRange.end - 1));
+  lines.splice(fenceRange.start, fenceRange.end - fenceRange.start, ...retained);
+  return lines.join(text.includes('\r\n') ? '\r\n' : '\n');
 }
 
 /** Detect a top-level `<key> = ...` definition outside the fence. Codex
@@ -76,17 +109,17 @@ export function hasTopLevelKeyOutsideFence(text: string, key: string): boolean {
   const regex = new RegExp(`^\\s*${escaped}\\s*=`);
   let insideFence = false;
   let insideTable = false;
-  for (const line of splitLines(text)) {
+  for (const line of statements(text)) {
     if (line === OPEN_FENCE) { insideFence = true; continue; }
     if (line === CLOSE_FENCE) { insideFence = false; continue; }
     if (insideFence) continue;
-    const trimmed = line.trim();
+    const trimmed = withoutComment(line).trim();
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       insideTable = true;
       continue;
     }
     if (insideTable) continue;
-    if (regex.test(line)) return true;
+    if (regex.test(withoutComment(line))) return true;
   }
   return false;
 }
@@ -99,14 +132,14 @@ export function hasTableOutsideFence(text: string, table: string): boolean {
   const escaped = escapeRegex(table);
   // Match exactly `[otel]`, `[otel.something]`, `[[otel.something]]`,
   // but not `[otelfoo]`. Whitespace inside brackets is permissive.
-  const regex = new RegExp(`^\\s*\\[\\[?\\s*${escaped}(\\.[A-Za-z0-9_\\-]+)*\\s*\\]\\]?\\s*$`);
+  const regex = new RegExp(`^\\s*\\[\\[?\\s*${escaped}(?=\\s*[.\\]])`);
   let insideFence = false;
-  for (const line of splitLines(text)) {
+  for (const line of statements(text)) {
     if (line === OPEN_FENCE) { insideFence = true; continue; }
     if (line === CLOSE_FENCE) { insideFence = false; continue; }
     if (insideFence) continue;
     if (table === 'hooks' && isCodexHookStateHeader(line)) continue;
-    if (regex.test(line)) return true;
+    if (regex.test(withoutComment(line))) return true;
   }
   return false;
 }
@@ -121,12 +154,12 @@ export function hasIncompatibleHookTableOutsideFence(text: string): boolean {
   const mergeableLifecycleArray =
     /^\s*\[\[\s*hooks\.[A-Za-z0-9_-]+(?:\.hooks)?\s*\]\]\s*$/;
   let insideFence = false;
-  for (const line of splitLines(text)) {
+  for (const line of statements(text)) {
     if (line === OPEN_FENCE) { insideFence = true; continue; }
     if (line === CLOSE_FENCE) { insideFence = false; continue; }
     if (insideFence || isCodexHookStateHeader(line)) continue;
-    if (!anyHookHeader.test(line)) continue;
-    if (mergeableLifecycleArray.test(line)) continue;
+    if (!anyHookHeader.test(withoutComment(line))) continue;
+    if (mergeableLifecycleArray.test(withoutComment(line))) continue;
     return true;
   }
   return false;
@@ -152,10 +185,41 @@ export function quoted(s: string): string {
 
 // ─── internals ──────────────────────────────────────────────────────────
 
-function splitLines(text: string): string[] {
-  // String.split('\n') keeps trailing-empty so an input ending in "\n"
-  // round-trips cleanly when re-joined with "\n".
-  return text.split('\n');
+/** Logical TOML statements with their original spelling. Headers/fences inside
+ * strings or collections are data, never insertion/removal boundaries. */
+function scanStatements(text: string): string[] | undefined {
+  const lines = text.split(/\r?\n/);
+  const out: string[] = [];
+  let pending: string[] = [], quote = '', multiline = false, depth = 0;
+  for (const line of lines) {
+    pending.push(line);
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (quote) {
+        if (quote === '"' && c === '\\') { i++; continue; }
+        if (c === quote) {
+          if (!multiline) quote = '';
+          else if (line.slice(i, i + 3) === quote.repeat(3)) {
+            // TOML allows one or two quotes immediately before the closing triple.
+            while (line[i + 1] === c) i++;
+            quote = ''; multiline = false;
+          }
+        }
+      } else if (c === '#') break;
+      else if (c === '"' || c === "'") {
+        quote = c; multiline = line.slice(i, i + 3) === c.repeat(3);
+        if (multiline) i += 2;
+      } else if (c === '[' || c === '{') depth++;
+      else if (c === ']' || c === '}') { if (--depth < 0) return undefined; }
+    }
+    if (quote && !multiline) return undefined;
+    if (!quote && depth === 0) { out.push(pending.join(text.includes('\r\n') ? '\r\n' : '\n')); pending = []; }
+  }
+  return pending.length ? undefined : out;
+}
+
+function statements(text: string): string[] {
+  return scanStatements(text) ?? [text];
 }
 
 interface FenceRange { start: number; end: number; }
@@ -178,40 +242,57 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function extractCodexHookState(lines: string[]): string[] {
-  const out: string[] = [];
-  let capturing = false;
+function isOwnedCommand(line: string): boolean {
+  if (!/^command\s*=/.test(line.trim())) return false;
+  if (line.includes('/hooks/codex_')) return true;
+  const encoded = line.match(/-EncodedCommand\s+([A-Za-z0-9+/=]+)/)?.[1];
+  return !!encoded && Buffer.from(encoded, 'base64').toString('utf16le').includes('/hooks/codex_');
+}
+
+function generatedComment(line: string): boolean {
+  return /^# (?:Codex lifecycle hooks\.|each snippet forwards|Optional turn-complete notification|Codex appends the JSON payload|so the 4th array element|powershell -File binds|it concatenates trailing argv|OTel trace exporter|Schema: \[otel\.)/.test(line.trim());
+}
+
+/** A fence is a location, not ownership: toml_edit inserts later user keys
+ * into it. Remove only the generated keys; keep foreign sections in scope.
+ * A features table extended by Codex becomes user-owned, including hooks=true. */
+function retainedFenceContent(lines: string[]): string[] {
+  const groups: string[][] = [[]];
   for (const line of lines) {
-    const tableHeader = isTableHeader(line);
-    if (isCodexHookStateHeader(line)) {
-      capturing = true;
-      out.push(line);
-      continue;
-    }
-    if (capturing && tableHeader) {
-      break;
-    }
-    if (capturing) {
-      out.push(line);
-    }
+    if (isTableHeader(line) && !/^\[\[hooks\.[^.]+\.hooks\]\]$/.test(withoutComment(line).trim())) groups.push([]);
+    groups[groups.length - 1].push(line);
   }
-  while (out.length > 0 && isTrailingNonDataLine(out[out.length - 1])) {
-    out.pop();
+  const out: string[] = [];
+  for (const group of groups) {
+    const kept = group.filter(l => l.trim() && !generatedComment(l));
+    const data = kept.filter(l => withoutComment(l).trim());
+    if (!data.length) { out.push(...kept); continue; }
+    const header = withoutComment(data[0]).trim();
+    if (!isTableHeader(data[0])) {
+      out.push(...kept.filter(l => !(/^notify\s*=/.test(withoutComment(l).trim()) && (l.includes('agentdeck-notify') || l.includes('codex-notify.ps1')))));
+    } else if (/^\[\s*features\s*\]$/.test(header)) {
+      if (data.slice(1).some(l => !/^hooks\s*=\s*true$/.test(withoutComment(l).trim()))) out.push(...kept);
+      else out.push(...kept.filter(l => !withoutComment(l).trim()));
+    } else if (/^\[\[hooks\.[^.]+\]\]$/.test(header)) {
+      // Generated lifecycle entries contain only these fields. Any extension
+      // belongs to the user and keeps the complete table context.
+      const commands = data.filter(l => /^command\s*=/.test(l.trim()));
+      const owned = commands.length > 0 && commands.every(isOwnedCommand);
+      if (!owned || data.slice(1).some(l => !/^(?:\[\[hooks\.|(?:matcher|type|command|timeout|notify)\s*=)/.test(withoutComment(l).trim()))) out.push(...kept);
+    } else if (header === '[otel.trace_exporter.otlp-http]') {
+      const owned = data.some(l => /^endpoint\s*=\s*"http:\/\/127\.0\.0\.1:\d+\/otel\/v1\/traces"$/.test(withoutComment(l).trim()));
+      if (!owned || data.slice(1).some(l => !/^(?:endpoint|protocol)\s*=/.test(withoutComment(l).trim()))) out.push(...kept);
+    } else out.push(...kept);
   }
   return out;
 }
 
 function isCodexHookStateHeader(line: string): boolean {
-  const trimmed = line.trim();
+  const trimmed = withoutComment(line).trim();
   return trimmed === '[hooks.state]' || (trimmed.startsWith('[hooks.state.') && trimmed.endsWith(']'));
 }
 
 function isTableHeader(line: string): boolean {
-  const trimmed = line.trim();
+  const trimmed = withoutComment(line).trim();
   return trimmed.startsWith('[') && trimmed.endsWith(']');
-}
-
-function isTrailingNonDataLine(line: string): boolean {
-  const trimmed = line.trim();
-  return trimmed.length === 0 || trimmed.startsWith('#');
 }

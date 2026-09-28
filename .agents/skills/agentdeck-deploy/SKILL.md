@@ -74,12 +74,14 @@ only when the user explicitly requests that device.
 
 ## Execution Steps
 
+**Output discipline.** Every step below runs from the repository root (`cd "$(git rev-parse --show-toplevel)"`). Send long build output to a log under `diagnostics/logs/` (gitignored) and show only the tail or the errors, e.g. `mkdir -p diagnostics/logs; <build> >diagnostics/logs/<target>.log 2>&1 || { tail -40 diagnostics/logs/<target>.log; exit 1; }`, then `grep -nE 'error|FAILED' diagnostics/logs/<target>.log | head -20` if the tail is not enough. Use each tool's quiet mode: xcodebuild `-quiet`, gradle `-q`, `pio run -s`.
+
 ### Step 0: Pre-flight — Detect Connected Devices
 
 Run before any deploy to know what's available:
 
 ```bash
-cd /Users/puritysb/github/AgentDeck
+cd "$(git rev-parse --show-toplevel)"
 
 echo "=== ADB Devices ==="
 adb devices -l 2>/dev/null | grep -w device | grep -v "List"
@@ -97,18 +99,20 @@ echo "=== Daemon ==="
 cat ~/.agentdeck/daemon.json 2>/dev/null || echo "not running"
 ```
 
+For macOS targets (`macos`, `apple`, `all`, or any run that ends in screenshots/E2E driven through System Events), also run `bash scripts/macos-preflight.sh --automation --accessibility --screen-recording --json` (add `--firewall apple/DerivedData/Build/Products/Debug/AgentDeck.app` once that app is built). Exit 2 means a grant is denied: relay each `fix` path to the user and stop the E2E part instead of letting a consent sheet stall it; exit 3 means it could not confirm — say so, never assume granted.
+
 Only deploy to devices that are actually connected. Skip missing devices with a warning, don't fail. If preflight access fails, follow `CLAUDE.md` Agent working agreements for execution-policy failures; retry only the affected command after resolving access, and do not infer device absence from an unreadable probe.
 
 ### Step 1: Build (always first, unless target is bridge-only or esp32-only)
 
 ```bash
-cd /Users/puritysb/github/AgentDeck
-pnpm build
+mkdir -p diagnostics/logs
+pnpm build >diagnostics/logs/pnpm-build.log 2>&1 || { tail -40 diagnostics/logs/pnpm-build.log; exit 1; }
 ```
 
 For Android targets, also build APK:
 ```bash
-bash scripts/build-android-release.sh
+bash scripts/build-android-release.sh >diagnostics/logs/android.log 2>&1 || { tail -40 diagnostics/logs/android.log; exit 1; }
 ```
 This produces `dist/agentdeck-v{VERSION}.apk`.
 
@@ -156,14 +160,16 @@ adb -s AA007422R24C1300039 shell settings put system user_rotation 1  # 1=landsc
 Build once, install on multiple devices:
 
 ```bash
-cd /Users/puritysb/github/AgentDeck/apple
+cd "$(git rev-parse --show-toplevel)"
 
-# Build (one build serves both devices)
-xcodebuild build -project AgentDeck.xcodeproj -scheme AgentDeck_iOS \
+# Build (one build serves both devices); a fixed derived-data path, never a DerivedData hash
+xcodebuild build -project apple/AgentDeck.xcodeproj -scheme AgentDeck_iOS \
   -destination 'platform=iOS,id=00008112-001608A02ED2601E' \
-  CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=QF36NDHYHD -quiet
+  -derivedDataPath apple/DerivedData \
+  CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=QF36NDHYHD -quiet \
+  >diagnostics/logs/xcodebuild-ios.log 2>&1 || { tail -40 diagnostics/logs/xcodebuild-ios.log; exit 1; }
 
-APP=~/Library/Developer/Xcode/DerivedData/AgentDeck-dqyrhbwpqboxgiabhllzxkkjxqzy/Build/Products/Debug-iphoneos/AgentDeck.app
+APP=apple/DerivedData/Build/Products/Debug-iphoneos/AgentDeck.app
 ```
 
 For EACH iOS device in the target set:
@@ -181,26 +187,34 @@ xcrun devicectl device process launch --device $DEVICE_ID bound.serendipity.agen
 ### Step 4: macOS Deploy
 
 ```bash
-cd /Users/puritysb/github/AgentDeck/apple
-xcodebuild build -project AgentDeck.xcodeproj -scheme AgentDeck_macOS \
-  -destination 'platform=macOS' -quiet
+cd "$(git rev-parse --show-toplevel)"
+xcodebuild build -project apple/AgentDeck.xcodeproj -scheme AgentDeck_macOS \
+  -destination 'platform=macOS' -derivedDataPath apple/DerivedData -quiet \
+  >diagnostics/logs/xcodebuild-macos.log 2>&1 || { tail -40 diagnostics/logs/xcodebuild-macos.log; exit 1; }
 
 # Kill existing → relaunch
 killall AgentDeck 2>/dev/null; sleep 0.5
-open -a "/Users/puritysb/Library/Developer/Xcode/DerivedData/AgentDeck-dqyrhbwpqboxgiabhllzxkkjxqzy/Build/Products/Debug/AgentDeck.app"
+open -a "$PWD/apple/DerivedData/Build/Products/Debug/AgentDeck.app"
 ```
 
 Do not add or alter App Store UI text that asks users to install or launch external tools (App Review 4.2.3 — see `CLAUDE.md` "App Store build invariants").
 
 ### Step 5: Bridge/Daemon Restart
 
+Use the supervisor-routed lifecycle command (`.claude/rules/daemon-lifecycle.md`): `daemon restart` rebuilds stale packages on a checkout, restarts through the LaunchAgent/systemd/Scheduled Task that owns the daemon, and verifies the daemon that came up by pid and build — never background `daemon start &` with a fixed sleep.
+
 ```bash
-agentdeck daemon stop 2>/dev/null
-sleep 1
-agentdeck daemon start &
-sleep 2
+agentdeck daemon restart
+# Bounded health wait on the registry-resolved port (never a blind 9120 probe)
+PORT=$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' ~/.agentdeck/daemon.json 2>/dev/null | head -n 1)
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  curl -fsS --max-time 2 "http://127.0.0.1:${PORT:-9120}/health" >/dev/null && break
+  sleep 1
+done
 agentdeck daemon status
 ```
+
+If the health wait never answers, report the daemon as unverified (not stopped) and show `agentdeck daemon status`.
 
 ### Step 6: Plugin
 
@@ -230,14 +244,14 @@ failed switch restores the prior installation; do not delete its backup.
 **CRITICAL: Identify boards by `device_info` BEFORE flashing.** Port numbers change when USB hub positions change — never assume a port number means a specific board.
 
 ```bash
-cd /Users/puritysb/github/AgentDeck/esp32
+cd "$(git rev-parse --show-toplevel)/esp32"
 
 # Step 1: Detect and IDENTIFY each board
 for port in /dev/cu.usb*; do
   echo "=== $port ==="
-  # Send device_info_request, read 1 line with timeout
+  # Send device_info_request, read 1 line bounded by a perl alarm (stock macOS has no `timeout`)
   (echo '{"type":"device_info_request"}' > "$port" &) 2>/dev/null
-  timeout 2 head -1 < "$port" 2>/dev/null | grep -o '"board":"[^"]*"' || echo "no response"
+  perl -e 'alarm shift; exec @ARGV' 2 head -n 1 < "$port" 2>/dev/null | grep -o '"board":"[^"]*"' || echo "no response"
 done
 # Match each port to its board name before flashing!
 ```
@@ -249,12 +263,14 @@ If the daemon is holding a serial port, stop the daemon (or use the flash helper
 Flash each detected display board:
 ```bash
 # Match port to environment and flash
-pio run -e <environment> -t upload --upload-port <port>
+# run from esp32/, so the repo log dir is ../diagnostics/logs
+pio run -s -e <environment> -t upload --upload-port <port> >../diagnostics/logs/pio-<environment>.log 2>&1 \
+  || tail -40 ../diagnostics/logs/pio-<environment>.log
 ```
 
 **86 Box CH340 fallback**: If PIO upload fails at high baud (chip stops responding), build separately then flash with esptool at 115200:
 ```bash
-pio run -e box_86  # build only
+pio run -s -e box_86  # build only
 BOOT_APP0=~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
 ~/.platformio/penv/bin/esptool --chip esp32s3 --port <port> --baud 115200 \
   --before default-reset --after hard-reset write-flash -z \
@@ -310,13 +326,13 @@ upload speed.
 
 Use the helper script or the equivalent `esptool` command at `115200`:
 ```bash
-cd /Users/puritysb/github/AgentDeck/esp32
+cd "$(git rev-parse --show-toplevel)/esp32"
 ./scripts/flash.sh led_8x32 /dev/cu.usbserial-211110
 ```
 
 Equivalent manual fallback:
 ```bash
-cd /Users/puritysb/github/AgentDeck/esp32
+cd "$(git rev-parse --show-toplevel)/esp32"
 ~/.platformio/penv/bin/esptool --chip esp32 --port /dev/cu.usbserial-211110 --baud 115200 \
   --before default-reset --after hard-reset write-flash -z \
   --flash-mode dio --flash-freq 40m --flash-size 8MB \
@@ -342,7 +358,7 @@ for d in AA007422R24C1300039 CREMAA21W09235 HVA095B4; do
 done
 
 # Daemon
-curl -s http://localhost:9120/health | head -1
+curl -s --max-time 2 "http://127.0.0.1:${PORT:-9120}/health" | head -c 300
 
 # Plugin / Devices
 agentdeck devices 2>/dev/null

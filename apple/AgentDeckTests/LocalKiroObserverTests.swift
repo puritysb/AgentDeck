@@ -46,6 +46,53 @@ final class LocalKiroObserverTests: XCTestCase {
         """
     }
 
+    func testSharedNestedV3Snapshot() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("shared/kiro-observation-vectors.json"))
+        let vector = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let records = try XCTUnwrap(vector["records"] as? [[String: Any]])
+        let lines = try records.map { String(data: try JSONSerialization.data(withJSONObject: $0), encoding: .utf8)! }
+        let session = dir.appendingPathComponent("sessions/workspace/stable-id")
+        try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        let transcript = session.appendingPathComponent("messages.jsonl")
+        try #"{"workspacePaths":["/tmp/project"]}"#.write(to: session.appendingPathComponent("session.json"), atomically: true, encoding: .utf8)
+        try lines.dropLast().joined(separator: "\n").write(to: transcript, atomically: true, encoding: .utf8)
+        XCTAssertEqual(LocalKiroObserver.readSnapshot(transcript).state, "processing")
+        try (lines.joined(separator: "\n") + "\n{\"payload\":").write(to: transcript, atomically: true, encoding: .utf8)
+        let snapshot = LocalKiroObserver.scanSessions(root: dir, now: Date())
+        XCTAssertEqual(snapshot.count, 1)
+        let observed = try XCTUnwrap(snapshot.first)
+        XCTAssertEqual(observed.sessionId, "stable-id")
+        XCTAssertEqual(observed.projectName, "project")
+        XCTAssertEqual(observed.state, "idle")
+        XCTAssertEqual(observed.turns.map(\.text), vector["texts"] as? [String])
+        XCTAssertEqual(observed.turns.map(\.ts), vector["timestamps"] as? [Double])
+        XCTAssertEqual(LocalKiroObserver.collect(observed: snapshot).first?.id, "observed:kiro:stable-id")
+    }
+
+    func testTimelineConsumesSnapshotWithoutReopeningGrantedFiles() async throws {
+        let file = try write([prompt("old", 1786933400), assistant("old reply"), prompt("latest", 1786933404), assistant("latest reply")])
+        let snapshot = LocalKiroObserver.readSnapshot(file)
+        let observed = LocalKiroObserver.Observed(sessionId: "s", transcript: file, modifiedAt: Date(),
+            projectName: "project", lastPrompt: "latest", lastResponse: "latest reply", turns: snapshot.turns, state: snapshot.state)
+        try FileManager.default.removeItem(at: file)
+        let result = await Task { @DaemonActor in
+            let feed = KiroTimelineFeed()
+            let first = feed.pump(["observed:kiro:s"], observed: [observed])
+            let repeated = feed.pump(["observed:kiro:s"], observed: [observed])
+            _ = feed.pump([], observed: [])
+            return (first.map(\.detail), repeated.count, feed.trackedCount)
+        }.value
+        XCTAssertEqual(result.0, ["latest", "latest reply"])
+        XCTAssertEqual(result.1, 0)
+        XCTAssertEqual(result.2, 0)
+    }
+
+    func testBoundedTailSkipsPartialLeadingRecord() throws {
+        let file = try write([String(repeating: "한", count: 300_000), prompt("hi", 1786933404), assistant("reply")])
+        XCTAssertEqual(LocalKiroObserver.readTurns(file).map(\.text), ["hi", "reply"])
+    }
+
     func testPairsPromptsAndRepliesIntoTurns() throws {
         let url = try write([
             prompt("hello", 1786897401),

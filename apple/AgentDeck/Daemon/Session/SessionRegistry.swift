@@ -83,7 +83,7 @@ struct DaemonSessionEntry: Codable, Sendable, Identifiable {
     let id: String
     let port: Int
     let pid: Int
-    let projectName: String
+    var projectName: String
     var agentType: String?
     var tmuxSession: String?
     var tty: String?

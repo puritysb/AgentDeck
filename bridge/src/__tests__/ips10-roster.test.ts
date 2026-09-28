@@ -27,9 +27,10 @@ describe('IPS10 rotating roster', () => {
     const seen=new Set(Array.from({length:4},(_,p)=>stableCardRoster(rows,10,p*60000)).flat().map(s=>s.id));
     expect(seen.size).toBe(24);expect(seen.has('024')).toBe(false);
   });
-  it('keeps the generated Swift kernel synchronized and behaviorally equivalent', () => {
-    execFileSync(process.execPath,['bridge/generate-ips10-roster.mjs','--check']);
-    if(process.platform!=='darwin')return;
+  it('keeps the generated Swift kernel synchronized', () => {
+    expect(()=>execFileSync(process.execPath,['bridge/generate-ips10-roster.mjs','--check'],{stdio:'pipe'})).not.toThrow();
+  });
+  it.runIf(process.platform==='darwin')('keeps the generated Swift kernel behaviorally equivalent', () => {
     const swift=readFileSync('apple/AgentDeck/Daemon/Modules/ESP32Serial.swift','utf8').match(/    \/\/ BEGIN GENERATED IPS10 ROSTER[\s\S]*?    \/\/ END GENERATED IPS10 ROSTER/)![0];
     const cases=[[1000,20,10,0],[1000,20,10,60000],[12,0,10,120000],[2,1,10,0],[10,10,1,180000]];
     const dir=mkdtempSync(join(tmpdir(),'ips10-roster-'));

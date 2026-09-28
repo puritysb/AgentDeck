@@ -21,6 +21,15 @@ function observedCodex(id = `observed:codex:${SID}`): ObservedSession {
 }
 
 describe('HookCodexSessions', () => {
+  it('registers idle without resetting a turn on duplicate SessionStart', () => {
+    const hooks = new HookCodexSessions();
+    hooks.note('codex_session_start', { sessionId: SID }, 1000);
+    expect(hooks.applyTo([], 1001)[0].state).toBe('idle');
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1002);
+    hooks.note('codex_session_start', { sessionId: SID }, 1003);
+    expect(hooks.applyTo([], 1004)[0].state).toBe('processing');
+  });
+
   it('surfaces a Codex the process scan never found', () => {
     const hooks = new HookCodexSessions();
     hooks.note('codex_session_start', { sessionId: SID, cwd: CWD }, 1_000);
@@ -193,4 +202,12 @@ describe('Codex PermissionRequest / Interrupt hooks', () => {
       .toBe('Approve network: registry.npmjs.org');
     expect(buildCodexPermissionQuestion({})).toBe('Approve tool?');
   });
+});
+
+it('a resumed idle session is not reaped by its previous terminal timestamp', () => {
+  const hooks = new HookCodexSessions();
+  hooks.note('codex_session_start', { sessionId: 'resume' }, 1000);
+  hooks.note('codex_stop', { sessionId: 'resume' }, 2000);
+  hooks.note('codex_session_start', { sessionId: 'resume' }, 3000);
+  expect(hooks.applyTo([], 180000)).toMatchObject([{ state: 'idle' }]);
 });

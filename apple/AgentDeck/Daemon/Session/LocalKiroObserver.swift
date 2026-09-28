@@ -35,7 +35,7 @@ enum LocalKiroObserver {
     /// A transcript untouched for longer than this is history, not a session.
     /// Deliberately generous: a user reading a long reply can leave a live
     /// session idle for minutes, and showing a stale row costs less than
-    /// dropping a live one — the row carries its own idle state either way.
+    /// dropping a live one. Turn state comes from explicit records below.
     static let liveWindow: TimeInterval = 30 * 60
 
     /// Transcript bytes read for the tail scan. Kiro records are large (a
@@ -45,20 +45,26 @@ enum LocalKiroObserver {
     /// Directories scanned under `<kiro>/sessions`, newest first.
     private static let maxSessionDirs = 64
 
-    struct Observed {
+    struct Observed: Sendable {
         let sessionId: String
         let transcript: URL
         let modifiedAt: Date
         let projectName: String
         let lastPrompt: String?
         let lastResponse: String?
+        let turns: [Turn]
+        let state: String
     }
 
     // MARK: - Session rows
 
     /// Observed Kiro sessions, or `[]` when no `~/.kiro` bookmark is granted.
     static func collect(now: Date = Date()) -> [DaemonSessionEntry] {
-        observe(now: now).map { observed in
+        collect(observed: observe(now: now))
+    }
+
+    static func collect(observed: [Observed]) -> [DaemonSessionEntry] {
+        observed.map { observed in
             var entry = DaemonSessionEntry(
                 id: "observed:kiro:\(observed.sessionId)",
                 port: 0,
@@ -70,12 +76,8 @@ enum LocalKiroObserver {
                 parentTty: nil,
                 startedAt: ISO8601DateFormatter().string(from: observed.modifiedAt)
             )
-            // Passive observation cannot see a turn in flight: the transcript
-            // gains its assistant record only once the reply lands. Claiming
-            // `processing` would be inventing a state, so an observed Kiro
-            // session is always reported idle — the same answer the Node
-            // observer gives when its store read finds a completed turn.
-            entry.state = "idle"
+            entry.state = observed.state
+            entry.controlMode = "observed"
             return entry
         }
     }
@@ -90,64 +92,75 @@ enum LocalKiroObserver {
 
     // MARK: - Scanning
 
-    private static func scanSessions(root: URL, now: Date) -> [Observed] {
+    static func scanSessions(root: URL, now: Date) -> [Observed] {
         let fm = FileManager.default
-        let sessionsRoot = root.appendingPathComponent("sessions", isDirectory: true)
-        guard let dirs = try? fm.contentsOfDirectory(
-            at: sessionsRoot,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
-
-        var out: [Observed] = []
-        for dir in dirs.prefix(maxSessionDirs) {
-            guard (try? dir.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
-            guard let files = try? fm.contentsOfDirectory(
-                at: dir,
-                includingPropertiesForKeys: [.contentModificationDateKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-            for file in files where file.pathExtension == "jsonl" {
-                guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?
-                    .contentModificationDate else { continue }
-                guard now.timeIntervalSince(modified) <= liveWindow else { continue }
-                let sessionId = file.deletingPathExtension().lastPathComponent
-                guard !sessionId.isEmpty else { continue }
-                let turns = readTurns(file)
-                out.append(Observed(
-                    sessionId: sessionId,
-                    transcript: file,
-                    modifiedAt: modified,
-                    projectName: projectName(for: sessionId, in: dir, root: root),
-                    lastPrompt: turns.last(where: { $0.isPrompt })?.text,
-                    lastResponse: turns.last(where: { !$0.isPrompt })?.text
-                ))
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .contentModificationDateKey]
+        func children(_ dir: URL) -> [URL] {
+            let files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])) ?? []
+            return files.filter { (try? $0.resourceValues(forKeys: keys))?.isSymbolicLink != true }
+                .sorted { lhs, rhs in
+                    let a = (try? lhs.resourceValues(forKeys: keys))?.contentModificationDate ?? .distantPast
+                    let b = (try? rhs.resourceValues(forKeys: keys))?.contentModificationDate ?? .distantPast
+                    return a > b
+                }
+        }
+        var candidates: [(id: String, file: URL, modified: Date, meta: URL)] = []
+        for workspace in children(root.appendingPathComponent("sessions")).prefix(maxSessionDirs) {
+            for item in children(workspace).prefix(maxSessionDirs) {
+                let nested = (try? item.resourceValues(forKeys: keys))?.isDirectory == true
+                guard nested || item.pathExtension == "jsonl" else { continue }
+                let file = nested ? item.appendingPathComponent("messages.jsonl") : item
+                guard let attrs = try? file.resourceValues(forKeys: keys), attrs.isSymbolicLink != true,
+                      let modified = attrs.contentModificationDate,
+                      now.timeIntervalSince(modified) <= liveWindow else { continue }
+                let id = nested ? item.lastPathComponent : item.deletingPathExtension().lastPathComponent
+                guard !id.isEmpty else { continue }
+                let meta = nested ? item.appendingPathComponent("session.json") : item.deletingPathExtension().appendingPathExtension("json")
+                candidates.append((id, file, modified, meta))
             }
         }
-        // Newest first, so a device showing one row shows the live one.
-        return out.sorted { $0.modifiedAt > $1.modifiedAt }
-    }
-
-    /// Session metadata sits beside the transcript as `<uuid>.json`; its `cwd`
-    /// is what names the project. Falls back to the agent's name rather than
-    /// to a directory hash, which would read as gibberish on a deck key.
-    private static func projectName(for sessionId: String, in dir: URL, root: URL) -> String {
-        let metaURL = dir.appendingPathComponent("\(sessionId).json")
-        if let data = try? Data(contentsOf: metaURL),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            for key in ["cwd", "workspace", "working_directory", "workingDirectory"] {
-                if let path = obj[key] as? String, !path.isEmpty {
-                    let name = URL(fileURLWithPath: path).lastPathComponent
-                    if !name.isEmpty { return name }
+        var out: [Observed] = []
+        var seen = Set<String>()
+        // Parse at most the retained roster, not every candidate on every tick.
+        for candidate in candidates.sorted(by: { $0.modified > $1.modified }) {
+            guard out.count < maxSessionDirs else { break }
+            let (id, file, modified, meta) = candidate
+            guard seen.insert(id).inserted else { continue }
+            let snapshot = readSnapshot(file)
+            var project = "Kiro"
+            if let attrs = try? meta.resourceValues(forKeys: [.fileSizeKey, .isSymbolicLinkKey]),
+               attrs.isSymbolicLink != true, (attrs.fileSize ?? Int.max) <= maxTranscriptBytes,
+               let data = boundedMetadata(meta),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let workspacePaths = obj["workspacePaths"] as? [String] ?? []
+                if let path = workspacePaths.first(where: { !$0.isEmpty }) {
+                    project = URL(fileURLWithPath: path).lastPathComponent
+                }
+                for key in ["cwd", "workspace", "working_directory", "workingDirectory"] {
+                    if let path = obj[key] as? String, !path.isEmpty {
+                        project = URL(fileURLWithPath: path).lastPathComponent
+                        break
+                    }
                 }
             }
+            out.append(Observed(sessionId: id, transcript: file, modifiedAt: modified,
+                projectName: project, lastPrompt: snapshot.turns.last(where: { $0.isPrompt })?.text,
+                lastResponse: snapshot.turns.last(where: { !$0.isPrompt })?.text,
+                turns: snapshot.turns, state: snapshot.state))
         }
-        return "Kiro"
+        return out
+    }
+
+    private static func boundedMetadata(_ url: URL) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: maxTranscriptBytes + 1), data.count <= maxTranscriptBytes else { return nil }
+        return data
     }
 
     // MARK: - Transcript parsing
 
-    struct Turn {
+    struct Turn: Sendable {
         let isPrompt: Bool
         let text: String
         /// Epoch ms. Only `Prompt` records carry a time; an `AssistantMessage`
@@ -164,12 +177,31 @@ enum LocalKiroObserver {
     ///   - `data.meta.timestamp` is in SECONDS
     ///   - a `thinking` block's `data` is an OBJECT, not a string
     static func readTurns(_ url: URL) -> [Turn] {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return [] }
+        readSnapshot(url).turns
+    }
+
+    struct Snapshot {
+        var turns: [Turn] = []
+        var state = "idle"
+    }
+
+    static func readSnapshot(_ url: URL) -> Snapshot {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return Snapshot() }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         let start = size > UInt64(maxTranscriptBytes) ? size - UInt64(maxTranscriptBytes) : 0
         try? handle.seek(toOffset: start)
-        guard let data = try? handle.readToEnd(), let raw = String(data: data, encoding: .utf8) else { return [] }
+        guard var data = try? handle.read(upToCount: maxTranscriptBytes) else { return Snapshot() }
+        // A bounded tail may start inside a UTF-8 sequence or JSON record.
+        if start > 0 {
+            guard let newline = data.firstIndex(of: 10) else { return Snapshot() }
+            data = data.suffix(from: data.index(after: newline))
+        }
+        guard let raw = String(data: data, encoding: .utf8) else { return Snapshot() }
+        var state = "idle"
+        let iso = ISO8601DateFormatter()
+        let fractionalISO = ISO8601DateFormatter()
+        fractionalISO.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         var turns: [Turn] = []
         var turnTs: Double = 0
@@ -182,8 +214,20 @@ enum LocalKiroObserver {
         var replyIndex: Double = 0
         for line in raw.split(separator: "\n", omittingEmptySubsequences: true) {
             guard let lineData = line.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  let kind = obj["kind"] as? String,
+                  let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { continue }
+            if let envelope = obj["payload"] as? [String: Any], let kind = envelope["type"] as? String {
+                if kind == "turn_start" { state = "processing" }
+                if kind == "turn_end" { state = "idle" }
+                guard kind == "user" || kind == "assistant",
+                      envelope["operationType"] as? String != "Reasoning",
+                      let stamp = obj["timestamp"] as? String,
+                      let date = fractionalISO.date(from: stamp) ?? iso.date(from: stamp) else { continue }
+                let text = self.text(from: envelope["content"])
+                guard !text.isEmpty else { continue }
+                turns.append(Turn(isPrompt: kind == "user", text: text, ts: date.timeIntervalSince1970 * 1000))
+                continue
+            }
+            guard let kind = obj["kind"] as? String,
                   let payload = obj["data"] as? [String: Any] else { continue }
             let text = self.text(from: payload["content"])
             if kind == "Prompt" {
@@ -200,7 +244,7 @@ enum LocalKiroObserver {
                 turns.append(Turn(isPrompt: false, text: text, ts: turnTs + replyIndex))
             }
         }
-        return turns
+        return Snapshot(turns: turns, state: state)
     }
 
     /// User-facing text from a Kiro content array. `thinking` blocks carry an

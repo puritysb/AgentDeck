@@ -14,6 +14,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
+  OPENCODE_PENDING_REQUEST_LIMIT,
   OBSERVED_SESSION_AGENT_KEYS,
   OBSERVED_SESSION_PREFIXES,
   OBSERVED_SESSION_PREFIX_RE,
@@ -77,6 +78,7 @@ describe('generated mirrors', () => {
   it('match this source', () => {
     const rules = {
       prefixes: [...OBSERVED_SESSION_PREFIXES],
+      openCodePendingLimit: OPENCODE_PENDING_REQUEST_LIMIT,
       suppressed: [...TOOL_EXEC_SUPPRESSED_AGENTS],
     };
     for (const [rel, emit] of OUTPUTS as Array<[string, (r: unknown) => string]>) {
