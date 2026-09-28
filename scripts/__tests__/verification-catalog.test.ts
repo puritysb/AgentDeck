@@ -22,6 +22,8 @@ interface Gate {
   level: string[];
   workflow: string | null;
   report_suite?: string;
+  blocking: boolean;
+  required?: boolean;
   evidence?: string[];
   proves: string[];
   does_not_prove: string[];
@@ -29,6 +31,7 @@ interface Gate {
 }
 interface Domain { id: string; match: string[] }
 interface Catalog {
+  merge_policy: { as_of: string; summary: string };
   levels: Record<string, string>;
   gates: Gate[];
   not_a_gate: Record<string, string>;
@@ -70,6 +73,19 @@ describe('verification catalog', () => {
       expect(gate.level.filter((l) => !levels.has(l)), gate.id).toEqual([]);
     }
     expect(new Set(catalog.gates.map((g) => g.id)).size).toBe(catalog.gates.length);
+  });
+
+  it('calls a gate required only when it is a failing-CI check, and dates that claim', () => {
+    // `required` mirrors master branch protection, which CI cannot read; the
+    // date says when it was last compared by hand.
+    const required = catalog.gates.filter((g) => g.required);
+    expect(required.length).toBeGreaterThan(0);
+    for (const gate of required) {
+      expect(gate.blocking, gate.id).toBe(true);
+      expect(gate.workflow, gate.id).toBeTruthy();
+    }
+    expect(catalog.merge_policy.as_of).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(catalog.merge_policy.summary.length).toBeGreaterThan(0);
   });
 
   it('refers only to package scripts that exist', () => {

@@ -830,7 +830,12 @@ def _render_verify(catalog, metadata):
         if meta and meta["executed"]:
             badge = status_badge(meta["status"], "Passed here" if _state(meta["status"]) == "pass" else "Failed here")
         else:
-            badge = f'<span class="badge {"gate" if gate.get("blocking") else "off"}">{"Blocking" if gate.get("blocking") else "Informational"}</span>'
+            # Only a check branch protection requires stops a merge; a red
+            # workflow alone does not (catalog `required` vs `blocking`).
+            if gate.get("required"):
+                badge = '<span class="badge gate">Required to merge</span>'
+            else:
+                badge = f'<span class="badge off">{"Fails CI" if gate.get("blocking") else "Informational"}</span>'
         tags = "".join(f'<span class="tag" title="{_esc(levels.get(l, ""))}">{_esc(l)}</span>' for l in gate.get("level", []))
         proves = "".join(f"<li>{_esc(x)}</li>" for x in gate.get("proves", []))
         not_proves = "".join(f"<li>{_esc(x)}</li>" for x in gate.get("does_not_prove", []))
@@ -854,7 +859,10 @@ def _render_verify(catalog, metadata):
         <p class="label">What we do instead</p><p>{_esc(g["instead"])}</p>
       </article>''' for g in catalog.get("not_verified", []))
     legend = "".join(f"<div><dt>{_esc(k)}</dt><dd>{_esc(v)}</dd></div>" for k, v in levels.items())
-    return f'''<div class="grid gates">{cards}</div>
+    policy = catalog.get("merge_policy") or {}
+    merge_note = (f'<div class="card legend"><p class="kicker">Merge policy · checked {_esc(policy.get("as_of", ""))}</p>'
+                  f'<p>{_esc(policy["summary"])}</p></div>' if policy.get("summary") else "")
+    return f'''{merge_note}<div class="grid gates">{cards}</div>
       <h3 class="sub-head">Not verified automatically</h3>
       <div class="grid gaps">{gaps}</div>
       <div class="card legend"><p class="kicker">Evidence levels</p><dl>{legend}</dl></div>'''
@@ -1224,6 +1232,7 @@ h2 {{ font-size:clamp(30px,4vw,var(--t-h2)); letter-spacing:var(--tr-h2); line-h
 .cmd code {{ display:block; font-size:11.5px; color:var(--tide-50); background:var(--ink-900); padding:var(--s-2) var(--s-3); border-radius:var(--r-md); overflow-x:auto; white-space:pre-wrap; word-break:break-word; }}
 .gap p:not(.label) {{ margin:0; color:var(--ink-700); font-size:var(--t-caption); }}
 .legend {{ margin-top:var(--s-6); }}
+.legend + .grid {{ margin-top:var(--s-6); }}
 .legend dl {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--s-3) var(--s-6); margin:0; }}
 .legend dt {{ font-family:var(--font-mono); font-size:var(--t-kicker); font-weight:600; }}
 .legend dd {{ margin:2px 0 0; color:var(--ink-500); font-size:var(--t-caption); }}
