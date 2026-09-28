@@ -5522,6 +5522,15 @@ final class DaemonServer {
                 ?? CodexHookIdentity.threadIdSessionKey(from: json)
         }()
 
+        if isOpenCodeEvent, let sessionId {
+            // Hooks own control and state once seen. SSE cannot refresh or
+            // overwrite that row, including on disconnect.
+            _ = openCodeOwnership.claimHook(sessionId)
+            if event == "opencode_stop" || event == "opencode_user_prompt_submit" || event == "opencode_session_end" {
+                openCodeWaits.removeValue(forKey: sessionId)
+            }
+        }
+
         // Child lifecycle is telemetry-only. Consume it before resurrection,
         // state, APME, and steering bookkeeping so a child's tool hooks can
         // never alter or request approval through the parent session.
@@ -5648,19 +5657,8 @@ final class DaemonServer {
                 let codexAgentType = codexObservedAgentType(sessionId: sessionId)
                 var entry: DaemonSessionEntry
                 if let existing = pushedSessionsById[sessionId] {
-                    entry = existing.projectName.isEmpty && !projectName.isEmpty
-                        ? DaemonSessionEntry(
-                            id: existing.id,
-                            port: existing.port,
-                            pid: existing.pid,
-                            projectName: projectName,
-                            agentType: codexAgentType,
-                            tmuxSession: existing.tmuxSession,
-                            tty: existing.tty,
-                            parentTty: existing.parentTty,
-                            startedAt: existing.startedAt
-                        )
-                        : existing
+                    entry = existing
+                    if entry.projectName.isEmpty && !projectName.isEmpty { entry.projectName = projectName }
                 } else {
                     entry = DaemonSessionEntry(
                         id: sessionId,
@@ -5675,7 +5673,7 @@ final class DaemonServer {
                     )
                 }
                 entry.agentType = codexAgentType
-                entry.state = "idle"
+                entry.state = entry.state ?? "idle"
                 entry.controlMode = "observed"
                 pushedSessionsById[sessionId] = entry
                 upsertIntoCachedSessions(entry)
@@ -5874,38 +5872,6 @@ final class DaemonServer {
                     broadcastSessionsList()
                 }
             }
-        case "opencode_permission_asked":
-            // OpenCode fires this only when it is GENUINELY asking the user —
-            // a zero-false-positive gate signal (no prediction needed, unlike
-            // the Claude PreToolUse gate). requestId encodes the raw session
-            // id + permission id so permission_decision can route the answer
-            // back through the observer-plugin queue.
-            if let sessionId, var entry = pushedSessionsById[sessionId],
-               let permId = json["permission_id"] as? String, !permId.isEmpty {
-                let rawSid = sessionId.hasPrefix(Self.openCodeSessionPrefix)
-                    ? String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
-                    : sessionId
-                let title = (json["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                entry.state = "awaiting_permission"
-                entry.question = String((title.isEmpty ? "Permission requested" : title).prefix(120))
-                entry.requestId = "ocperm:\(rawSid):\(permId)"
-                pushedSessionsById[sessionId] = entry
-                upsertIntoCachedSessions(entry)
-                broadcastSessionsList()
-            }
-        case "opencode_permission_replied":
-            // Answered (in the TUI or from a device) — drop the gate overlay.
-            if let sessionId, var entry = pushedSessionsById[sessionId],
-               entry.requestId?.hasPrefix("ocperm:") == true {
-                entry.requestId = nil
-                if entry.state == "awaiting_permission" {
-                    entry.state = "processing"
-                    entry.question = nil
-                }
-                pushedSessionsById[sessionId] = entry
-                upsertIntoCachedSessions(entry)
-                broadcastSessionsList()
-            }
         case "codex_user_prompt_submit":
             _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
             updateSessionHookState(sessionId: sessionId, state: "processing")
@@ -5994,21 +5960,11 @@ final class DaemonServer {
                     .flatMap { $0 == Self.openCodeFallbackProjectName ? nil : $0 }
                     ?? resolved
                     ?? Self.openCodeFallbackProjectName
-                var entry = DaemonSessionEntry(
-                    id: sessionId,
-                    port: existing?.port ?? Int(port),
-                    pid: existing?.pid ?? 0,
-                    projectName: projectName,
-                    agentType: "opencode",
-                    tmuxSession: existing?.tmuxSession,
-                    tty: existing?.tty,
-                    parentTty: existing?.parentTty,
-                    startedAt: existing?.startedAt ?? ISO8601DateFormatter().string(from: Date())
-                )
-                entry.state = existing?.state ?? "idle"
-                entry.currentTool = existing?.currentTool
-                entry.question = existing?.question
-                entry.modelName = existing?.modelName
+                var entry = existing ?? DaemonSessionEntry(id: sessionId, port: Int(port), pid: 0,
+                    projectName: projectName, agentType: "opencode", tmuxSession: nil, tty: nil,
+                    parentTty: nil, startedAt: ISO8601DateFormatter().string(from: Date()))
+                entry.projectName = projectName
+                entry.state = entry.state ?? "idle"
                 entry.controlMode = "observed"
                 pushedSessionsById[sessionId] = entry
                 upsertIntoCachedSessions(entry)
@@ -6053,6 +6009,12 @@ final class DaemonServer {
             }
         default: break
         }
+        if isOpenCodeEvent, let sessionId {
+            applyOpenCodeWait(sessionId: sessionId, event: event,
+                id: (json["permission_id"] as? String) ?? (json["question_id"] as? String),
+                title: json["title"] as? String, answerable: true)
+        }
+
 
         // APME: Claude, Codex and OpenCode all cross one agent-neutral
         // lifecycle boundary. The source-specific switch above still owns
@@ -6611,6 +6573,33 @@ final class DaemonServer {
 
     // MARK: - OpenCode observer integration
 
+    private var openCodeOwnership = OpenCodeObservationOwnership()
+    private var openCodeWaits: [String: OpenCodeWaitState] = [:]
+
+    private func applyOpenCodeWait(sessionId: String, event: String, id: String?, title: String?, answerable: Bool, broadcast: Bool = true) {
+        guard var entry = pushedSessionsById[sessionId] else { return }
+        let before = entry
+        openCodeWaits = openCodeWaits.filter { pushedSessionsById[$0.key] != nil }
+        var waits = openCodeWaits[sessionId] ?? OpenCodeWaitState()
+        let resolved = waits.consume(event: event, id: id, title: title)
+        openCodeWaits[sessionId] = waits
+        if let wait = waits.first {
+            entry.state = wait.kind == "permission" ? "awaiting_permission" : "awaiting_option"
+            entry.question = wait.title
+            let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
+            entry.requestId = answerable && wait.kind == "permission" ? "ocperm:\(raw):\(wait.id)" : nil
+        } else if resolved {
+            if event.hasSuffix("_replied") || event.hasSuffix("_rejected") { entry.state = "processing" }
+            entry.question = nil
+            entry.requestId = nil
+        }
+        pushedSessionsById[sessionId] = entry
+        upsertIntoCachedSessions(entry)
+        if broadcast && (before.state != entry.state || before.question != entry.question || before.requestId != entry.requestId) {
+            broadcastSessionsList()
+        }
+    }
+
     private nonisolated static let openCodeSessionPrefix = "opencode:"
     private static let openCodeFallbackProjectName = "OpenCode"
 
@@ -6621,6 +6610,7 @@ final class DaemonServer {
     /// respond-in-terminal path on every surface.
     private func handleOpenCodeObserverUpdate(_ update: OpenCodeSessionUpdate) {
         let sid = Self.openCodeSessionPrefix + update.sessionID
+        guard openCodeOwnership.acceptSSE(sid, rowExists: pushedSessionsById[sid] != nil) else { return }
         let existing = pushedSessionsById[sid]
 
         // Project name: session title beats directory basename beats fallback.
@@ -6630,22 +6620,12 @@ final class DaemonServer {
             ?? existing.flatMap { Self.nonEmptyString($0.projectName) }
             ?? Self.openCodeFallbackProjectName
 
-        // `projectName` is immutable on DaemonSessionEntry — rebuild.
-        var entry = DaemonSessionEntry(
-            id: sid,
-            port: existing?.port ?? Int(port),
-            pid: existing?.pid ?? 0,
-            projectName: projectName,
-            agentType: "opencode",
-            tmuxSession: existing?.tmuxSession,
-            tty: existing?.tty,
-            parentTty: existing?.parentTty,
-            startedAt: existing?.startedAt ?? ISO8601DateFormatter().string(from: Date())
-        )
-        entry.state = existing?.state ?? "idle"
-        entry.modelName = update.modelName ?? existing?.modelName
-        entry.currentTool = existing?.currentTool
-        entry.question = existing?.question
+        var entry = existing ?? DaemonSessionEntry(id: sid, port: Int(port), pid: 0,
+            projectName: projectName, agentType: "opencode", tmuxSession: nil, tty: nil,
+            parentTty: nil, startedAt: ISO8601DateFormatter().string(from: Date()))
+        entry.projectName = projectName
+        entry.state = entry.state ?? "idle"
+        entry.modelName = update.modelName ?? entry.modelName
         entry.controlMode = "observed"
 
         switch update.kind {
@@ -6659,49 +6639,50 @@ final class DaemonServer {
             entry.state = "idle"
             entry.currentTool = nil
             entry.question = nil
-        case .awaitingPermission:
-            entry.state = "awaiting_permission"
-            entry.question = update.question.map { String($0.prefix(120)) }
+        case .awaitingPermission, .awaitingQuestion, .permissionReplied, .questionReplied:
+            break
         }
 
         lastHookAtByPushedSession[sid] = Date()
-        let changed = existing == nil
-            || existing?.state != entry.state
-            || existing?.question != entry.question
-            || existing?.currentTool != entry.currentTool
-            || existing?.projectName != entry.projectName
-            || existing?.modelName != entry.modelName
         pushedSessionsById[sid] = entry
         upsertIntoCachedSessions(entry)
-        if changed { broadcastSessionsList() }
+        let event: String
+        switch update.kind {
+        case .awaitingPermission: event = "opencode_permission_asked"
+        case .awaitingQuestion: event = "opencode_question_asked"
+        case .permissionReplied: event = "opencode_permission_replied"
+        case .questionReplied: event = "opencode_question_replied"
+        case .idle: event = "opencode_stop"
+        default: event = "opencode_activity"
+        }
+        applyOpenCodeWait(sessionId: sid, event: event, id: update.waitID, title: update.question, answerable: false, broadcast: false)
+        if let final = pushedSessionsById[sid], existing == nil || existing?.state != final.state
+            || existing?.question != final.question || existing?.currentTool != final.currentTool
+            || existing?.projectName != final.projectName || existing?.modelName != final.modelName {
+            broadcastSessionsList()
+        }
+
     }
 
-    /// SSE stream dropped (server quit / network) — flip tracked OpenCode
-    /// sessions idle immediately; TTL eviction removes them once keepalive
-    /// stamps stop.
+    /// SSE stream loss removes only its own rows, without fabricating idle.
     private func handleOpenCodeObserverDisconnect() {
-        var changed = false
-        for (sid, var entry) in pushedSessionsById where sid.hasPrefix(Self.openCodeSessionPrefix) {
-            if entry.state != "idle" || entry.question != nil || entry.currentTool != nil {
-                entry.state = "idle"
-                entry.question = nil
-                entry.currentTool = nil
-                pushedSessionsById[sid] = entry
-                upsertIntoCachedSessions(entry)
-                changed = true
-            }
+        // Loss of observation is not a completed turn. Remove only rows owned
+        // by this stream; hook-owned rows and their approval routes survive.
+        let owned = openCodeOwnership.disconnect()
+        for sid in owned {
+            pushedSessionsById.removeValue(forKey: sid)
+            lastHookAtByPushedSession.removeValue(forKey: sid)
+            openCodeWaits.removeValue(forKey: sid)
+            cachedSessions.removeAll { $0.id == sid }
         }
+        let changed = !owned.isEmpty
         if changed { broadcastSessionsList() }
     }
 
-    /// Connection-healthy tick: refresh eviction timestamps so idle-but-alive
-    /// OpenCode sessions aren't reaped between SSE events (the 180s
-    /// `evictStaleHookSessions` sweep only sees hook/SSE activity).
     private func touchOpenCodeSessions() {
+        openCodeOwnership.prune(live: Set(pushedSessionsById.keys))
         let now = Date()
-        for sid in pushedSessionsById.keys where sid.hasPrefix(Self.openCodeSessionPrefix) {
-            lastHookAtByPushedSession[sid] = now
-        }
+        for sid in openCodeOwnership.sse { lastHookAtByPushedSession[sid] = now }
     }
 
     /// Translate a batch of Codex OTLP/HTTP spans into per-session state
@@ -7265,6 +7246,7 @@ final class DaemonServer {
         // resolves (≤ hold timeout) — parallel tool hooks must not strip the
         // Allow/Deny overlay out from under the open device request.
         if heldGateSessionIds.contains(sessionId) { return }
+        if newState == "processing", openCodeWaits[sessionId]?.first != nil { return }
         let oldState = entry.state
         let oldTool = entry.currentTool
         let oldQuestion = entry.question
@@ -8913,7 +8895,9 @@ final class DaemonServer {
         // hooks at all, so without this it is invisible to an App-Store-only
         // install. A hook-pushed Kiro row (Kiro IDE does fire the standalone
         // hooks; CLI chat does not) still wins — observation only fills gaps.
-        let observedKiroSessions = LocalKiroObserver.collect()
+        let kiroSnapshot = LocalKiroObserver.observe()
+        let observedKiroSessions = LocalKiroObserver.collect(observed: kiroSnapshot)
+        if observedKiroSessions.isEmpty { kiroTimelineFeed.pump([], observed: []) }
         let currentKiroIds = Set(observedKiroSessions.map { ObservedAgentRules.rawSessionId($0.id) })
         for sessionId in kiroApmeSessions.subtracting(currentKiroIds) {
             apmeCollectorKiro?.handleHook(event: "session_end", data: [
@@ -8927,11 +8911,11 @@ final class DaemonServer {
             let projectBySession = Dictionary(uniqueKeysWithValues: observedKiroSessions.map {
                 (ObservedAgentRules.rawSessionId($0.id), $0.projectName)
             })
-            let idsAfterCodex = Set(merged.map(\.id))
-            for observed in observedKiroSessions where !idsAfterCodex.contains(observed.id) {
+            let idsAfterCodex = Set(merged.filter { $0.agentType == "kiro-cli" }.map { ObservedAgentRules.rawSessionId($0.id) })
+            for observed in observedKiroSessions where !idsAfterCodex.contains(ObservedAgentRules.rawSessionId(observed.id)) {
                 merged.append(observed)
             }
-            for row in kiroTimelineFeed.pump(observedKiroSessions.map(\.id)) {
+            for row in kiroTimelineFeed.pump(observedKiroSessions.map(\.id), observed: kiroSnapshot) {
                 ingestObservedKiroActivity(row, projectName: row.sessionId.flatMap { projectBySession[$0] })
                 await timelineStore.add(row)
                 // Storing is not showing. Every other producer here pairs the

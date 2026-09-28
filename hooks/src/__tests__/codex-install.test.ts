@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, symlinkSync, lstatSync, chmodSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -391,6 +391,40 @@ describe('codex-install: install / uninstall (file I/O)', () => {
     delete process.env.AGENTDECK_NO_CODEX_HOOKS;
   });
 
+  it('preserves permissions and refuses dotfile-manager symlinks', () => {
+    writeFileSync(configPath, 'model = "keep"\n');
+    chmodSync(configPath, 0o600);
+    expect(installCodexHooksIfNeeded({ configPath }).installed).toBe(true);
+    if (process.platform !== 'win32') expect(statSync(configPath).mode & 0o777).toBe(0o600);
+    if (process.platform === 'win32') return; // symlink creation needs an OS privilege on Windows
+    const link = join(tmp, 'linked.toml');
+    symlinkSync(configPath, link);
+    const original = readFileSync(configPath);
+    expect(installCodexHooksIfNeeded({ configPath: link }).installed).toBe(false);
+    uninstallCodexHooks({ configPath: link, notifyScriptPath });
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readFileSync(configPath)).toEqual(original);
+  });
+
+  it('refuses invalid UTF-8 without rewriting bytes', () => {
+    const bytes = Buffer.from([0xff, 0xfe, 0x80]);
+    writeFileSync(configPath, bytes);
+    expect(installCodexHooksIfNeeded({ configPath }).installed).toBe(false);
+    expect(readFileSync(configPath)).toEqual(bytes);
+  });
+
+  it('keeps notify in root scope when migrating an appended fence', () => {
+    const original = 'model = "keep"\n[profiles.work]\nmodel = "custom"\n' + OPEN_FENCE + '\n' + managedBlockBody() + '\n' + CLOSE_FENCE;
+    writeFileSync(configPath, original);
+    expect(installCodexHooksIfNeeded({ configPath, platform: 'linux' }).installed).toBe(true);
+    const updated = readFileSync(configPath, 'utf8');
+    const notify = updated.split('\n').findIndex(line => line.startsWith('notify ='));
+    const firstTable = updated.split('\n').findIndex(line => line.startsWith('['));
+    expect(notify).toBeGreaterThan(0);
+    expect(notify).toBeLessThan(firstTable);
+    expect(updated).toContain('[profiles.work]\nmodel = "custom"');
+  });
+
   it('creates config with fence when file is absent', () => {
     const result = installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120, platform: 'linux' });
     expect(result.installed).toBe(true);
@@ -411,8 +445,8 @@ describe('codex-install: install / uninstall (file I/O)', () => {
     expect(text).toContain(OPEN_FENCE);
   });
 
-  it('skips when user already has [features] table outside fence', () => {
-    writeFileSync(configPath, `[features]\nhooks = true\n`, 'utf-8');
+  it('preserves a user disabling hooks in [features]', () => {
+    writeFileSync(configPath, `[features]\nhooks = false\n`, 'utf-8');
     const result = installCodexHooksIfNeeded({ configPath, notifyScriptPath });
     expect(result.installed).toBe(false);
     expect(result.reason).toContain('[features]');
@@ -576,5 +610,26 @@ describe('codex-install: install / uninstall (file I/O)', () => {
 
     installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120, notifyScriptPath });
     expect(readFileSync(configPath, 'utf-8')).toBe(text);
+  });
+});
+
+
+describe('shared lossless config cases', () => {
+  const cases = JSON.parse(readFileSync(new URL('../../../shared/codex-config-edit-vectors.json', import.meta.url), 'utf8')) as Array<{name: string; input: string; allowed: boolean}>;
+  it.each(cases)('$name', ({ input, allowed }) => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentdeck-config-vector-'));
+    const path = join(dir, 'config.toml');
+    try {
+      writeFileSync(path, input);
+      expect(installCodexHooksIfNeeded({ configPath: path, daemonHttpPort: 9120 }).installed).toBe(allowed);
+      const updated = readFileSync(path, 'utf8');
+      if (!allowed) expect(updated).toBe(input);
+      else {
+        expect(installCodexHooksIfNeeded({ configPath: path, daemonHttpPort: 9120 }).installed).toBe(true);
+        expect(readFileSync(path, 'utf8')).toBe(updated);
+        uninstallCodexHooks({ configPath: path, notifyScriptPath: join(dir, 'absent') });
+        expect(readFileSync(path, 'utf8')).toBe(input);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

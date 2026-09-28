@@ -8,6 +8,26 @@ import XCTest
 /// is the entire on-disk effect, and that pipeline is testable.
 final class CodexConfigInstallerTests: XCTestCase {
 
+    func testTruncatedFenceHelperDoesNotTrap() {
+        XCTAssertEqual(MiniToml.removeManagedBlock(in: MiniToml.openFence), "")
+        XCTAssertNotNil(MiniToml.configEditIssue(MiniToml.openFence))
+    }
+
+    func testSharedConfigEditVectors() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("shared/codex-config-edit-vectors.json"))
+        let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        for row in cases {
+            let input = try XCTUnwrap(row["input"] as? String)
+            let allowed = try XCTUnwrap(row["allowed"] as? Bool)
+            if allowed {
+                let updated = try CodexConfigInstaller.preparedConfig(input, daemonHttpPort: 9120)
+                XCTAssertEqual(try CodexConfigInstaller.preparedConfig(updated, daemonHttpPort: 9120), updated)
+                XCTAssertEqual(MiniToml.removeManagedBlock(in: updated), input)
+            } else { XCTAssertThrowsError(try CodexConfigInstaller.preparedConfig(input, daemonHttpPort: 9120), "\(row["name"] ?? "")") }
+        }
+    }
+
     func testExistingEnabledFeaturesCoexistsWithoutDuplicateTable() throws {
         let original = "model = \"gpt-5\"\n[features]\nhooks = true # user opt-in\nother = true\n[profiles.work]\nmodel = \"gpt-5\""
         let updated = try CodexConfigInstaller.preparedConfig(original, daemonHttpPort: 9120)
@@ -23,6 +43,19 @@ final class CodexConfigInstallerTests: XCTestCase {
         XCTAssertFalse(updated.contains("[features]"))
         XCTAssertEqual(MiniToml.removeManagedBlock(in: updated), original)
         XCTAssertThrowsError(try CodexConfigInstaller.preparedConfig("[features] # custom\nhooks = false"))
+    }
+
+    func testSymlinkConfigIsKeptIntact() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("target.toml")
+        let link = root.appendingPathComponent("config.toml")
+        try "model = \"keep\"".write(to: target, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        XCTAssertThrowsError(try CodexConfigInstaller.updateConfig(at: link) { _ in "changed" })
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "model = \"keep\"")
+        XCTAssertTrue(try link.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true)
     }
 
     func testMissingConfigDoesNotCreateAReplacementFile() {

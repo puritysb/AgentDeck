@@ -96,3 +96,7 @@ describe('classifyObservedHookEvent — Codex PermissionRequest / Interrupt', ()
       .toEqual({ boundary: 'stop', agentType: 'opencode' });
   });
 });
+
+it.each(['question_asked', 'question_replied', 'question_rejected'])('keeps OpenCode %s attributed to its harness', event => {
+  expect(classifyObservedHookEvent(`opencode_${event}`, `opencode_${event}`)).toEqual({ boundary: event, agentType: 'opencode' });
+});

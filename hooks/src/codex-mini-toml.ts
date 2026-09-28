@@ -20,6 +20,72 @@
 export const OPEN_FENCE = '# >>> AgentDeck managed (do not edit) <<<';
 export const CLOSE_FENCE = '# <<< AgentDeck managed (do not edit) >>>';
 
+/** Lossless editing is intentionally conservative: never guess the scope of
+ * multiline strings, damaged fences, or quoted/dotted integration keys. */
+export function configEditIssue(text: string): string | undefined {
+  if (text.includes('"""') || text.includes("'''")) return 'multiline TOML requires manual configuration';
+  const lines = splitLines(text);
+  const opens = lines.filter(l => l === OPEN_FENCE).length;
+  const closes = lines.filter(l => l === CLOSE_FENCE).length;
+  if (opens !== closes || opens > 1 || (opens === 1 && lines.indexOf(OPEN_FENCE) > lines.indexOf(CLOSE_FENCE))) {
+    return 'incomplete or duplicate AgentDeck fence';
+  }
+  const outside = removeManagedBlock(text);
+  let inTable = false;
+  for (const line of splitLines(outside)) {
+    const code = withoutComment(line).trim();
+    // A multiline array/inline table can contain lines resembling headers.
+    // Refuse it rather than relocating a root assignment into that value.
+    if (!code.startsWith('[') && code.includes('=')) {
+      let quote = '', escaped = false, balance = 0;
+      for (const c of code.slice(code.indexOf('=') + 1)) {
+        if (escaped) { escaped = false; continue; }
+        if (quote === '"' && c === '\\') { escaped = true; continue; }
+        if (quote) { if (c === quote) quote = ''; }
+        else if (c === '"' || c === "'") quote = c;
+        else if (c === '[' || c === '{') balance++;
+        else if (c === ']' || c === '}') balance--;
+      }
+      if (balance !== 0 || quote) return 'multiline or incomplete TOML value requires manual configuration';
+    }
+    if (/^\[\[?\s*["'](?:features|hooks|otel)["']/.test(code)
+      || (!inTable && /^(?:["'](?:features|hooks|otel|notify)["']\s*[.=]|(?:features|hooks|otel)\s*[.=])/.test(code))) {
+      return 'quoted, inline or dotted integration keys require manual configuration';
+    }
+    if (code.startsWith('[')) inTable = true;
+  }
+  return undefined;
+}
+
+export function existingFeaturesEnableHooks(text: string): boolean {
+  let inFeatures = false;
+  let values = 0;
+  let enabled = false;
+  for (const line of splitLines(removeManagedBlock(text))) {
+    const code = withoutComment(line).trim();
+    if (code.startsWith('[')) inFeatures = /^\[\s*features\s*\]$/.test(code);
+    else if (inFeatures && /^hooks\s*=/.test(code)) {
+      values++;
+      enabled = /^hooks\s*=\s*true$/.test(code);
+    }
+  }
+  return values === 1 && enabled;
+}
+
+function withoutComment(line: string): string {
+  let quote = '';
+  let escaped = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (escaped) { escaped = false; continue; }
+    if (quote === '"' && c === '\\') { escaped = true; continue; }
+    if (quote) { if (c === quote) quote = ''; }
+    else if (c === '"' || c === "'") quote = c;
+    else if (c === '#') return line.slice(0, i);
+  }
+  return line;
+}
+
 /** Replace the AgentDeck-managed fenced block (or append one when none
  *  exists). The body is wrapped between OPEN_FENCE / CLOSE_FENCE so
  *  removeManagedBlock can strip it cleanly later. Returns the full
@@ -27,27 +93,16 @@ export const CLOSE_FENCE = '# <<< AgentDeck managed (do not edit) >>>';
 export function applyManagedBlock(text: string, body: string): string {
   const lines = splitLines(text);
   const fenceRange = locateFence(lines);
-
-  const bodyLines = body.length === 0 ? [] : splitLines(body);
-  let replacement = [OPEN_FENCE, ...bodyLines, CLOSE_FENCE];
-
+  const replacement = [OPEN_FENCE, ...(body.length ? splitLines(body) : []), CLOSE_FENCE];
   if (fenceRange) {
-    const preservedHookState = extractCodexHookState(
-      lines.slice(fenceRange.start + 1, fenceRange.end - 1)
-    );
-    if (preservedHookState.length > 0) {
-      replacement = [...replacement, '', ...preservedHookState];
-    }
-    lines.splice(fenceRange.start, fenceRange.end - fenceRange.start, ...replacement);
-  } else {
-    // Pad with a blank line for readability when appending to a non-empty
-    // file. Avoids glueing our fence onto the user's last key.
-    if (lines.length > 0 && lines[lines.length - 1] !== '') {
-      lines.push('');
-    }
-    lines.push(...replacement);
+    const trust = extractCodexHookState(lines.slice(fenceRange.start + 1, fenceRange.end - 1));
+    lines.splice(fenceRange.start, fenceRange.end - fenceRange.start, ...trust);
   }
-  return lines.join('\n');
+  // notify is a ROOT key. Put the block after user root keys but before
+  // their first table; an appended block silently scopes notify to a table.
+  const firstTable = lines.findIndex(isTableHeader);
+  lines.splice(firstTable < 0 ? lines.length : firstTable, 0, ...replacement);
+  return lines.join(text.includes('\r\n') ? '\r\n' : '\n');
 }
 
 /** Strip the AgentDeck-managed block entirely. Idempotent — no-op when
@@ -56,16 +111,9 @@ export function removeManagedBlock(text: string): string {
   const lines = splitLines(text);
   const fenceRange = locateFence(lines);
   if (!fenceRange) return text;
-  lines.splice(fenceRange.start, fenceRange.end - fenceRange.start);
-  // Collapse a trailing blank line that we may have inserted in
-  // applyManagedBlock so removeManagedBlock truly returns the file to
-  // its pre-apply shape.
-  while (lines.length > 0 && lines[lines.length - 1] === '') {
-    lines.pop();
-  }
-  // Restore a single trailing newline if the original ended with one.
-  if (text.endsWith('\n')) lines.push('');
-  return lines.join('\n');
+  const trust = extractCodexHookState(lines.slice(fenceRange.start + 1, fenceRange.end - 1));
+  lines.splice(fenceRange.start, fenceRange.end - fenceRange.start, ...trust);
+  return lines.join(text.includes('\r\n') ? '\r\n' : '\n');
 }
 
 /** Detect a top-level `<key> = ...` definition outside the fence. Codex
@@ -80,13 +128,13 @@ export function hasTopLevelKeyOutsideFence(text: string, key: string): boolean {
     if (line === OPEN_FENCE) { insideFence = true; continue; }
     if (line === CLOSE_FENCE) { insideFence = false; continue; }
     if (insideFence) continue;
-    const trimmed = line.trim();
+    const trimmed = withoutComment(line).trim();
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       insideTable = true;
       continue;
     }
     if (insideTable) continue;
-    if (regex.test(line)) return true;
+    if (regex.test(withoutComment(line))) return true;
   }
   return false;
 }
@@ -99,14 +147,14 @@ export function hasTableOutsideFence(text: string, table: string): boolean {
   const escaped = escapeRegex(table);
   // Match exactly `[otel]`, `[otel.something]`, `[[otel.something]]`,
   // but not `[otelfoo]`. Whitespace inside brackets is permissive.
-  const regex = new RegExp(`^\\s*\\[\\[?\\s*${escaped}(\\.[A-Za-z0-9_\\-]+)*\\s*\\]\\]?\\s*$`);
+  const regex = new RegExp(`^\\s*\\[\\[?\\s*${escaped}(?=\\s*[.\\]])`);
   let insideFence = false;
   for (const line of splitLines(text)) {
     if (line === OPEN_FENCE) { insideFence = true; continue; }
     if (line === CLOSE_FENCE) { insideFence = false; continue; }
     if (insideFence) continue;
     if (table === 'hooks' && isCodexHookStateHeader(line)) continue;
-    if (regex.test(line)) return true;
+    if (regex.test(withoutComment(line))) return true;
   }
   return false;
 }
@@ -125,8 +173,8 @@ export function hasIncompatibleHookTableOutsideFence(text: string): boolean {
     if (line === OPEN_FENCE) { insideFence = true; continue; }
     if (line === CLOSE_FENCE) { insideFence = false; continue; }
     if (insideFence || isCodexHookStateHeader(line)) continue;
-    if (!anyHookHeader.test(line)) continue;
-    if (mergeableLifecycleArray.test(line)) continue;
+    if (!anyHookHeader.test(withoutComment(line))) continue;
+    if (mergeableLifecycleArray.test(withoutComment(line))) continue;
     return true;
   }
   return false;
@@ -155,7 +203,7 @@ export function quoted(s: string): string {
 function splitLines(text: string): string[] {
   // String.split('\n') keeps trailing-empty so an input ending in "\n"
   // round-trips cleanly when re-joined with "\n".
-  return text.split('\n');
+  return text.split(/\r?\n/);
 }
 
 interface FenceRange { start: number; end: number; }
@@ -202,12 +250,12 @@ function extractCodexHookState(lines: string[]): string[] {
 }
 
 function isCodexHookStateHeader(line: string): boolean {
-  const trimmed = line.trim();
+  const trimmed = withoutComment(line).trim();
   return trimmed === '[hooks.state]' || (trimmed.startsWith('[hooks.state.') && trimmed.endsWith(']'));
 }
 
 function isTableHeader(line: string): boolean {
-  const trimmed = line.trim();
+  const trimmed = withoutComment(line).trim();
   return trimmed.startsWith('[') && trimmed.endsWith(']');
 }
 

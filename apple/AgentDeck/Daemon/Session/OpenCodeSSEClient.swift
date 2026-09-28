@@ -34,6 +34,9 @@ struct OpenCodeSessionUpdate: Equatable {
         case idle
         /// permission.requested — display-only awaiting + question.
         case awaitingPermission
+        case awaitingQuestion
+        case permissionReplied
+        case questionReplied
         /// Field-only refresh (e.g. modelID on a completed assistant message)
         /// with no state transition.
         case metadata
@@ -46,6 +49,7 @@ struct OpenCodeSessionUpdate: Equatable {
     var currentTool: String?
     var modelName: String?
     var question: String?
+    var waitID: String?
 }
 
 enum OpenCodeEventClassifier {
@@ -115,19 +119,83 @@ enum OpenCodeEventClassifier {
             guard let id = props["sessionID"] as? String else { return nil }
             return OpenCodeSessionUpdate(sessionID: id, kind: .processing)
 
-        case "permission.requested":
+        case "permission.requested", "permission.asked", "permission.updated":
             guard let id = props["sessionID"] as? String else { return nil }
-            let tool = (props["tool"] as? String) ?? "tool"
-            let question = (props["description"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tool = (props["permission"] as? String) ?? (props["tool"] as? String) ?? "tool"
+            let question = ((props["title"] as? String) ?? (props["description"] as? String))?.trimmingCharacters(in: .whitespacesAndNewlines)
             return OpenCodeSessionUpdate(
                 sessionID: id,
                 kind: .awaitingPermission,
-                question: (question?.isEmpty == false ? question : nil) ?? "Allow \(tool)?"
+                question: (question?.isEmpty == false ? question : nil) ?? "Allow \(tool)?",
+                waitID: (props["id"] as? String) ?? (props["permissionID"] as? String)
             )
+
+        case "permission.replied", "question.replied", "question.rejected":
+            guard let id = props["sessionID"] as? String, let request = props["requestID"] as? String else { return nil }
+            return OpenCodeSessionUpdate(sessionID: id,
+                kind: type == "permission.replied" ? .permissionReplied : .questionReplied, waitID: request)
+        case "question.asked":
+            guard let id = props["sessionID"] as? String, let request = props["id"] as? String else { return nil }
+            let questions = props["questions"] as? [[String: Any]] ?? []
+            let text = questions.compactMap { $0["question"] as? String }.joined(separator: " / ")
+            return OpenCodeSessionUpdate(sessionID: id, kind: .awaitingQuestion,
+                question: text.isEmpty ? "Answer in OpenCode" : text, waitID: request)
 
         default:
             return nil
         }
+    }
+}
+
+/// A hook-owned row cannot be mutated or kept alive by the optional SSE source.
+struct OpenCodeObservationOwnership {
+    private(set) var sse = Set<String>()
+    mutating func acceptSSE(_ id: String, rowExists: Bool) -> Bool {
+        guard !rowExists || sse.contains(id) else { return false }
+        sse.insert(id)
+        return true
+    }
+    mutating func claimHook(_ id: String) -> Bool { sse.remove(id) != nil }
+    mutating func prune(live: Set<String>) { sse.formIntersection(live) }
+    mutating func disconnect() -> Set<String> {
+        let owned = sse
+        sse.removeAll()
+        return owned
+    }
+}
+
+/// Identity-scoped waits shared by the Swift hook and SSE projections.
+/// Mirrors HookOpenCodeSessions; shared/opencode-wait-vectors.json gates transitions.
+struct OpenCodeWaitState {
+    struct Pending {
+        var kind: String
+        var id: String
+        var title: String
+    }
+    private(set) var pending: [Pending] = []
+    var first: Pending? { pending.first }
+
+    @discardableResult
+    mutating func consume(event: String, id: String?, title: String?) -> Bool {
+        if event == "opencode_stop" || event == "opencode_user_prompt_submit" || event == "opencode_session_end" {
+            pending.removeAll()
+            return true
+        }
+        guard let id, !id.isEmpty else { return false }
+        let kind = event.contains("permission") ? "permission" : "question"
+        if event.hasSuffix("_asked") {
+            let flat = (title ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            let value = Pending(kind: kind, id: id, title: String((flat.isEmpty ? (kind == "permission" ? "Permission requested" : "Answer in OpenCode") : flat).prefix(120)))
+            if let index = pending.firstIndex(where: { $0.kind == kind && $0.id == id }) { pending[index] = value }
+            else if pending.count < ObservedAgentRules.openCodePendingRequestLimit { pending.append(value) }
+            return false
+        }
+        if event.hasSuffix("_replied") || event.hasSuffix("_rejected"),
+           let index = pending.firstIndex(where: { $0.kind == kind && $0.id == id }) {
+            pending.remove(at: index)
+            return true
+        }
+        return false
     }
 }
 
@@ -192,6 +260,24 @@ struct OpenCodeSSEClient {
         return out
     }
 
+    /// Pending requests at attachment time. A failed read supplies no evidence
+    /// and never resolves a wait. Stream frames are buffered while this runs.
+    func pendingRequests() async -> [OpenCodeSessionUpdate] {
+        var out: [OpenCodeSessionUpdate] = []
+        for kind in ["permission", "question"] {
+            guard let url = URL(string: "/\(kind)", relativeTo: baseURL) else { continue }
+            let session = restSession()
+            defer { session.finishTasksAndInvalidate() }
+            guard let (data, response) = try? await session.data(from: url),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  let requests = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { continue }
+            for request in requests {
+                if let update = OpenCodeEventClassifier.classify(envelope: ["payload": ["type": "\(kind).asked", "properties": request]]) { out.append(update) }
+            }
+        }
+        return out
+    }
+
     func session(id: String) async -> SessionSummary? {
         guard let url = URL(string: "/session/\(id)", relativeTo: baseURL) else { return nil }
         let session = restSession()
@@ -211,7 +297,7 @@ struct OpenCodeSSEClient {
     /// Long-lived SSE read loop over `GET /global/event`. Delivers each
     /// classified update via `onUpdate`; returns when the stream ends or the
     /// surrounding task is cancelled. The caller owns reconnect policy.
-    func streamEvents(onUpdate: @Sendable (OpenCodeSessionUpdate) async -> Void) async throws {
+    func streamEvents(onConnected: @Sendable () async -> Void, onUpdate: @Sendable (OpenCodeSessionUpdate) async -> Void) async throws {
         guard let url = URL(string: "/global/event", relativeTo: baseURL) else { return }
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -227,6 +313,7 @@ struct OpenCodeSSEClient {
             throw URLError(.badServerResponse)
         }
 
+        await onConnected()
         for try await line in bytes.lines {
             try Task.checkCancellation()
             guard let envelope = OpenCodeEventClassifier.parseSSEDataLine(line),

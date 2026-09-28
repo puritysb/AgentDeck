@@ -3,6 +3,10 @@
  * Single source of truth used by: TUI renderer, Plugin, Android, Apple, MenuBarExtra.
  */
 
+/** Bound pending OpenCode request identities per session in both daemons.
+ * The Swift value is emitted by generate-observed-agent-rules.mjs. */
+export const OPENCODE_PENDING_REQUEST_LIMIT = 64;
+
 // ===== State Ranking =====
 
 /**

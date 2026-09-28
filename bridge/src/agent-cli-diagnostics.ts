@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { DEFAULT_CODEX_CONFIG_PATH, opencodePluginPath } from '@agentdeck/hooks';
 import { execSync } from 'child_process';
 import { createRequire } from 'module';
 import { satisfiesRange } from './version-check.js';
@@ -49,6 +53,11 @@ export interface AgentCliDiagnosticEntry {
   compatibleRange: string | null;
   compatible: boolean | null;
   installHint?: string;
+  observation: {
+    registration: RegistrationEvidence;
+    availability: 'not_verified';
+    eventReception: 'not_checked';
+  };
 }
 
 export interface AgentCliDiagnosticReport {
@@ -56,6 +65,27 @@ export interface AgentCliDiagnosticReport {
   migration: string;
   trackingIssue: string;
   agents: AgentCliDiagnosticEntry[];
+}
+
+export type RegistrationEvidence = 'detected' | 'absent' | 'unreadable';
+export type RegistrationReader = (agent: DiagnosedAgent) => RegistrationEvidence;
+
+/** Presence evidence only: trust, running-agent activation and live reception
+ * cannot be inferred from written config or an installed CLI version. */
+export function readAgentRegistration(agent: DiagnosedAgent): RegistrationEvidence {
+  const path = agent === 'claude' ? join(homedir(), '.claude', 'settings.json')
+    : agent === 'codex' ? DEFAULT_CODEX_CONFIG_PATH : opencodePluginPath();
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(path));
+    if (agent === 'claude') {
+      const hooks = JSON.parse(text)?.hooks;
+      return hooks && JSON.stringify(hooks).includes('agentdeck') ? 'detected' : 'absent';
+    }
+    return text.includes(agent === 'codex' ? '# >>> AgentDeck managed (do not edit) <<<' : 'AgentDeckObserver')
+      ? 'detected' : 'absent';
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'absent' : 'unreadable';
+  }
 }
 
 export type VersionCommandRunner = (command: string) => string;
@@ -71,6 +101,7 @@ function runVersionCommand(command: string): string {
 
 export function collectAgentCliDiagnosticReport(
   run: VersionCommandRunner = runVersionCommand,
+  registration: RegistrationReader = readAgentRegistration,
 ): AgentCliDiagnosticReport {
   return {
     kind: 'agent-cli-compatibility',
@@ -78,10 +109,12 @@ export function collectAgentCliDiagnosticReport(
     trackingIssue: 'https://github.com/puritysb/AgentDeck/issues/273',
     agents: AGENTS.map((agent) => {
       const compatibleRange = agent.compatibleRange?.trim() || null;
+      const observation = { registration: registration(agent.id), availability: 'not_verified' as const, eventReception: 'not_checked' as const };
       try {
         const output = run(agent.versionCommand);
         const version = output.match(/\b(\d+\.\d+\.\d+)\b/)?.[1] ?? null;
         return {
+          observation,
           id: agent.id,
           label: agent.label,
           installed: true,
@@ -93,6 +126,7 @@ export function collectAgentCliDiagnosticReport(
         };
       } catch {
         return {
+          observation,
           id: agent.id,
           label: agent.label,
           installed: false,
@@ -113,7 +147,9 @@ export function formatAgentCliDiagnosticReport(report: AgentCliDiagnosticReport)
     report.migration,
     '',
   ];
+  lines.push('Registration is file evidence only; activation/trust and event reception are not verified.', '');
   for (const agent of report.agents) {
+    lines.push(`  ${agent.label} integration: registration ${agent.observation.registration}; availability not verified; events not checked`);
     if (!agent.installed) {
       lines.push(`- ${agent.label}: not found — install: ${agent.installHint}`);
       continue;

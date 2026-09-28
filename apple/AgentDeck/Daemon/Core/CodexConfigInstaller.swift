@@ -35,9 +35,11 @@ enum CodexConfigInstaller {
 
     enum InstallError: LocalizedError {
         case access, features, hooks, unreadable, write, changed, wrongFile
+        case unsupported(String)
 
         var errorDescription: String? {
             switch self {
+            case .unsupported(let reason): return "Config kept unchanged: \(reason)."
             case .access: return "File access is unavailable. Choose config.toml again to renew access."
             case .features: return "Existing [features] settings do not explicitly enable hooks. Add hooks = true in that section, then retry. Your settings have not been changed."
             case .hooks: return "An existing [hooks] table conflicts with observation. AgentDeck has kept it unchanged. Use Codex lifecycle hook arrays before retrying."
@@ -127,11 +129,10 @@ enum CodexConfigInstaller {
 
     /// Refuse conflicting user-owned settings instead of silently aborting.
     static func preparedConfig(_ original: String, daemonHttpPort: Int? = nil) throws -> String {
+        if let issue = MiniToml.configEditIssue(original) { throw InstallError.unsupported(issue) }
         let outside = MiniToml.removeManagedBlock(in: original)
         let hasFeatures = MiniToml.hasTableOutsideFence(in: outside, table: "features")
-            || outside.components(separatedBy: "\n").contains {
-                $0.range(of: #"^\s*\[\s*features\s*\]\s*(?:#.*)?$"#, options: .regularExpression) != nil
-            }
+
         if hasFeatures && !existingFeaturesEnableHooks(original) { throw InstallError.features }
         if MiniToml.hasIncompatibleHookTableOutsideFence(in: original) { throw InstallError.hooks }
         let includeNotify = !MiniToml.hasTopLevelKeyOutsideFence(in: original, key: "notify")
@@ -147,18 +148,7 @@ enum CodexConfigInstaller {
     /// Accept only an unambiguous existing opt-in. Never change a user-owned
     /// false value or rewrite the table with a lossy TOML serializer.
     static func existingFeaturesEnableHooks(_ text: String) -> Bool {
-        let outside = MiniToml.removeManagedBlock(in: text)
-        guard !outside.contains(String(repeating: "\"", count: 3)),
-              !outside.contains(String(repeating: "'", count: 3)) else { return false }
-        var inFeatures = false
-        for line in outside.components(separatedBy: "\n") {
-            let code = line.components(separatedBy: "#")[0].trimmingCharacters(in: .whitespaces)
-            if code.hasPrefix("[") { inFeatures = code.range(of: #"^\[\s*features\s*\]$"#, options: .regularExpression) != nil }
-            else if inFeatures, code.range(of: #"^hooks\s*=\s*true$"#, options: .regularExpression) != nil {
-                return true
-            }
-        }
-        return false
+        MiniToml.existingFeaturesEnableHooks(text)
     }
 
     @MainActor
@@ -180,7 +170,10 @@ enum CodexConfigInstaller {
         defer { url.stopAccessingSecurityScopedResource() }
 
         do {
-            try updateConfig(at: url) { MiniToml.removeManagedBlock(in: $0) }
+            try updateConfig(at: url) {
+                if let issue = MiniToml.configEditIssue($0) { throw InstallError.unsupported(issue) }
+                return MiniToml.removeManagedBlock(in: $0)
+            }
             AppPreferences.shared.codexConfigInstalled = false
             AppPreferences.shared.codexConfigError = nil
             DaemonLogger.shared.info("Codex observation removed")
@@ -288,10 +281,6 @@ enum CodexConfigInstaller {
             "# each snippet forwards that stdin body unchanged to AgentDeck.",
         ]
 
-        if includeFeatures { lines.append(contentsOf: ["[features]", "hooks = true"]) }
-        lines.append("")
-        lines.append(contentsOf: buildLifecycleHookTables())
-
         if includeNotify {
             lines.append("")
             lines.append("# Optional turn-complete notification fallback.")
@@ -299,6 +288,10 @@ enum CodexConfigInstaller {
             lines.append("# so the 4th array element acts as $0 and payload lands at $1.")
             lines.append(buildNotifyAssignment(event: "codex_turn_complete"))
         }
+
+        if includeFeatures { lines.append(contentsOf: ["[features]", "hooks = true"]) }
+        lines.append("")
+        lines.append(contentsOf: buildLifecycleHookTables())
 
         if includeOtel {
             lines.append("")
@@ -410,6 +403,9 @@ enum CodexConfigInstaller {
 
     /// Failed reads must never become empty configurations and overwrite data.
     static func updateConfig(at url: URL, transform: (String) throws -> String) throws {
+        guard (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink != true else {
+            throw InstallError.unsupported("symbolic links are managed by their owner")
+        }
         let data: Data
         do { data = try Data(contentsOf: url) } catch { throw InstallError.unreadable }
         guard let original = String(data: data, encoding: .utf8) else { throw InstallError.unreadable }

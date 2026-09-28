@@ -128,6 +128,11 @@ export class HookCodexSessions {
       session.currentTool = undefined;
       session.terminalAt = now;
       this.terminated.set(sessionId, now);
+    } else if (event === 'codex_session_start') {
+      // Registration proves existence, not work. A duplicate/resume must
+      // not erase work already established by a prompt or tool event.
+      if (!existing) session.state = 'idle';
+      session.terminalAt = undefined;
     } else {
       // Any non-terminal hook means the turn is live again — including a
       // follow-up prompt on a session whose previous turn ended.

@@ -1239,7 +1239,7 @@ export function classifyObservedHookEvent(
   if (eventName === 'codex_subagent_start' || eventName === 'codex_subagent_stop') {
     return { boundary: eventName, agentType: 'codex-cli' };
   }
-  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied)$/
+  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied|question_asked|question_replied|question_rejected)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
   return {
@@ -3261,6 +3261,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             projectName: earlyHookProject,
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
             permissionId: typeof json.permission_id === 'string' ? json.permission_id : undefined,
+            questionId: typeof json.question_id === 'string' ? json.question_id : undefined,
             title: typeof json.title === 'string' ? json.title : undefined,
           });
         }

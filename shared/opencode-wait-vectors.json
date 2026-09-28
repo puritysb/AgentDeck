@@ -1,0 +1,76 @@
+[
+  {
+    "event": "session_start",
+    "state": "idle"
+  },
+  {
+    "event": "permission_asked",
+    "id": "p1",
+    "title": "Run command",
+    "state": "awaiting_permission",
+    "pending": "p1"
+  },
+  {
+    "event": "permission_asked",
+    "id": "p2",
+    "title": "Write file",
+    "state": "awaiting_permission",
+    "pending": "p1"
+  },
+  {
+    "event": "tool_start",
+    "state": "awaiting_permission",
+    "pending": "p1"
+  },
+  {
+    "event": "permission_replied",
+    "id": "old",
+    "state": "awaiting_permission",
+    "pending": "p1"
+  },
+  {
+    "event": "permission_replied",
+    "id": "p1",
+    "state": "awaiting_permission",
+    "pending": "p2"
+  },
+  {
+    "event": "question_asked",
+    "id": "q1",
+    "title": "Choose a target",
+    "state": "awaiting_permission",
+    "pending": "p2"
+  },
+  {
+    "event": "permission_replied",
+    "id": "p2",
+    "state": "awaiting_option",
+    "pending": "q1"
+  },
+  {
+    "event": "tool_end",
+    "state": "awaiting_option",
+    "pending": "q1"
+  },
+  {
+    "event": "question_replied",
+    "id": "old",
+    "state": "awaiting_option",
+    "pending": "q1"
+  },
+  {
+    "event": "question_rejected",
+    "id": "q1",
+    "state": "processing"
+  },
+  {
+    "event": "question_asked",
+    "id": "q2",
+    "state": "awaiting_option",
+    "pending": "q2"
+  },
+  {
+    "event": "stop",
+    "state": "idle"
+  }
+]

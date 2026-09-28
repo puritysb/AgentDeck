@@ -1,0 +1,72 @@
+[
+  {
+    "name": "fresh",
+    "input": "",
+    "allowed": true
+  },
+  {
+    "name": "enabled",
+    "input": "[features]\nhooks = true\n",
+    "allowed": true
+  },
+  {
+    "name": "commented",
+    "input": "[ features ] # flags\nhooks = true # consent\n",
+    "allowed": true
+  },
+  {
+    "name": "disabled",
+    "input": "[features]\nhooks = false\n",
+    "allowed": false
+  },
+  {
+    "name": "missing",
+    "input": "[features]\nother = true\n",
+    "allowed": false
+  },
+  {
+    "name": "inline",
+    "input": "features = { hooks = true }\n",
+    "allowed": false
+  },
+  {
+    "name": "quoted",
+    "input": "[\"features\"]\nhooks = true\n",
+    "allowed": false
+  },
+  {
+    "name": "dotted",
+    "input": "features.hooks = true\n",
+    "allowed": false
+  },
+  {
+    "name": "truncated",
+    "input": "# >>> AgentDeck managed (do not edit) <<<\nmodel=\"keep\"",
+    "allowed": false
+  },
+  {
+    "name": "multiline",
+    "input": "developer_instructions = \"\"\"hello\n[features]\n\"\"\"\n",
+    "allowed": false
+  },
+  {
+    "name": "crlf",
+    "input": "[features] # flags\r\nhooks = true\r\n",
+    "allowed": true
+  },
+  {
+    "name": "multiline-array",
+    "input": "notify = [\n  [\"user-script\"]\n]\n",
+    "allowed": false
+  },
+  {
+    "name": "user-notify-otel",
+    "input": "notify = [\"mine\"]\n[otel . \"trace_exporter\"] # custom\nprotocol = \"mine\"\n",
+    "allowed": true
+  },
+  {
+    "name": "root-and-profile",
+    "input": "model=\"root\"\n[profiles.work]\nmodel=\"profile\"\n",
+    "allowed": true
+  }
+]

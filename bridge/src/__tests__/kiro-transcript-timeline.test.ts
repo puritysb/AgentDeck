@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { kiroTimelineForSession } from '../kiro-transcript-timeline.js';
@@ -64,6 +64,16 @@ describe('kiroTimelineForSession', () => {
     mkdirSync(join(root, dir), { recursive: true });
     writeFileSync(join(root, dir, `${UUID}.jsonl`), lines.join('\n') + '\n');
   }
+
+  it('reads the shared nested-v3 fixture and excludes reasoning', () => {
+    const vector = JSON.parse(readFileSync(new URL('../../../shared/kiro-observation-vectors.json', import.meta.url), 'utf8'));
+    const dir = join(root, 'workspace', UUID);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'messages.jsonl'), vector.records.map((r: unknown) => JSON.stringify(r)).join('\n') + '\n{"payload":');
+    const rows = kiroTimelineForSession(UUID, { sessionsRoot: root });
+    expect(rows.map(r => r.detail)).toEqual(vector.texts);
+    expect(rows.map(r => r.ts)).toEqual(vector.timestamps);
+  });
 
   it('turns a real transcript into paired chat rows', () => {
     writeTranscript([
@@ -148,7 +158,7 @@ describe('kiroTimelineForSession', () => {
     // unknown session, and a half-written tail line all resolve to "no rows",
     // which the caller renders as "no recent activity".
     expect(kiroTimelineForSession(`observed:kiro:${UUID}`, { sessionsRoot: root })).toEqual([]);
-    writeTranscript([PROMPT('hi', 1786933404), '{"kind":"AssistantMessage","data":{"con']);
+    writeTranscript(['null', '[]', '42', PROMPT('hi', 1786933404), '{"kind":"AssistantMessage","data":{"con']);
     expect(kiroTimelineForSession(`observed:kiro:${UUID}`, { sessionsRoot: root })
       .map((r) => r.raw)).toEqual(['hi']);
     expect(kiroTimelineForSession('observed:kiro:', { sessionsRoot: root })).toEqual([]);
