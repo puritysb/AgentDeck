@@ -1317,6 +1317,7 @@ final class DaemonServer {
     /// finished, so #2's real answer was discarded as a late event (Stop
     /// drift / lost turn anchor). See the `.turnEnd` OTel case for the guard.
     private var codexOtelTurnIdBySession: [String: String] = [:]
+    private var codexObservationOwnership = CodexObservationOwnership()
 
     /// Open-turn chat_start anchor per Claude Code session: noted on every
     /// UserPromptSubmit, claimed by the turn's Stop hook so chat_response /
@@ -5567,6 +5568,10 @@ final class DaemonServer {
             }
         }
 
+        if isCodexEvent, let sessionId {
+            codexObservationOwnership.receiveHook(event: event, sessionId: sessionId, now: Date())
+        }
+
         // Resurrection: Claude Code only fires `session_start` once per
         // claude process lifetime. If the AgentDeck daemon restarts mid-
         // session, the next event from that ongoing process (tool_start,
@@ -6474,6 +6479,7 @@ final class DaemonServer {
 
     private func evictStaleHookSessions() async {
         let now = Date()
+        defer { pruneCodexObservationOwnership(now: now) }
         let codexTerminalCutoff = now.addingTimeInterval(-Self.codexPostTerminalTTL)
 
         // Expire terminal tombstones so a thread id reused hours later isn't
@@ -6693,6 +6699,14 @@ final class DaemonServer {
         for sid in openCodeOwnership.sse { lastHookAtByPushedSession[sid] = now }
     }
 
+    private func pruneCodexObservationOwnership(now: Date) {
+        let cutoff = now.addingTimeInterval(-Self.codexTerminalTombstoneTTL)
+        let retained = Set(pushedSessionsById.keys)
+            .union(lastTerminalCodexEventBySession.filter { $0.value >= cutoff }.keys)
+            .union(codexTerminalTombstoneBySession.filter { $0.value >= cutoff }.keys)
+        codexObservationOwnership.prune(before: cutoff, retaining: retained)
+    }
+
     /// Translate a batch of Codex OTLP/HTTP spans into per-session state
     /// transitions. Shares `pushedSessionsById` and `lastHookAtByPushedSession`
     /// with the /hooks/* path so notify and OTel converge on a single
@@ -6737,6 +6751,13 @@ final class DaemonServer {
             )
             return
         }
+
+        // Hooks are the lifecycle authority. In particular, an exit-time
+        // OTel batch must not clear a hook Stop's tombstone or promote a
+        // finished one-turn CLI session to an interactive conversation.
+        pruneCodexObservationOwnership(now: Date())
+        let admittedEvents = codexObservationOwnership.admittingOtel(events)
+        guard !admittedEvents.isEmpty else { return }
 
         var didTouchSessionsList = false
         func codexProjectName(from cwd: String?, sessionId: String) -> String {
@@ -6832,7 +6853,7 @@ final class DaemonServer {
             return (sid, nil)
         }
 
-        for event in events {
+        for event in admittedEvents {
             switch event {
             case .turnStart(let threadId, let turnId, let cwd):
                 guard let resolved = sessionIdForCodexOtelThread(threadId) else {

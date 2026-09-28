@@ -247,6 +247,7 @@
 		5FBCFE8F4EBDCB7937FECA50 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D2F35C5E4DF5DAE1C93F54B /* Assets.xcassets */; };
 		604472724296A989DD86DEDE /* ApmeActivityHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD17B846036A2F78B153024 /* ApmeActivityHistory.swift */; };
 		61B7229DFE7E8267CCFC5A8A /* ResidentLabelLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA30C4FE1630E93CEEAF4B1D /* ResidentLabelLayoutTests.swift */; };
+		6251CC9D4270E9F29E867B59 /* CodexObservationOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */; };
 		62713ABC87653D9FE99C3830 /* DockVisibilityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D66C7EEA9726686205AF8EC /* DockVisibilityController.swift */; };
 		62D5FBB2899D2690B43FF0C5 /* DemoPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8A40550B31856011EBBCB7 /* DemoPlayback.swift */; };
 		62F20845F1953514EFB1C11B /* SingletonGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B5C866AF54937CD8E433F49 /* SingletonGuard.swift */; };
@@ -357,6 +358,7 @@
 		93AB7595B2EC62D78A09A58F /* DeskPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83D5CE0F7637C0913938BA6B /* DeskPreviews.swift */; };
 		942417AA37DAD475B023BED1 /* PairingWindowStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F0B91327EB48703713A68C /* PairingWindowStore.swift */; };
 		942DEF7F0BE77DF0FA264AF8 /* StateTimelineGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */; };
+		9557B1E24F9A22C339934981 /* CodexObservationOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */; };
 		955B482B990E5FB3C933144A /* UsagePresentation.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6326E2C31C37BF2D87D5F8C5 /* UsagePresentation.generated.swift */; };
 		97549061F4CF4DE01270245E /* CodexOtelRoutes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB6B378D92D82E58DA5E925 /* CodexOtelRoutes.swift */; };
 		981C289DD626CAD0B9900C39 /* SandDisturbance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F9B51FC480E3419A6334A20 /* SandDisturbance.swift */; };
@@ -635,6 +637,7 @@
 
 /* Begin PBXFileReference section */
 		004AFFB1B0E061D54CDCDED0 /* UsageRelayFreshnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRelayFreshnessTests.swift; sourceTree = "<group>"; };
+		009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexObservationOwnership.swift; sourceTree = "<group>"; };
 		01B7BAB1080F7958F74A1B74 /* IntegrationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationsView.swift; sourceTree = "<group>"; };
 		0392D39F45022F762AFE6BE0 /* CodexConfigInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexConfigInstallerTests.swift; sourceTree = "<group>"; };
 		03941C6DD60609AB9D1E12C1 /* SessionWeightRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionWeightRules.generated.swift; sourceTree = "<group>"; };
@@ -1379,6 +1382,7 @@
 			isa = PBXGroup;
 			children = (
 				408F05BE863985A2E157A5AD /* ClaudePermissionRules.generated.swift */,
+				009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */,
 				603AE403ECE592BCF9FAD994 /* KiroTimelineFeed.swift */,
 				D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */,
 				BB4AC33AE24184BF90D4CAFE /* ObservedSteering.swift */,
@@ -1681,10 +1685,10 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				CAB442A856E23517772A7850 /* AgentDeckTests_iOS */,
-				3BF710A3BC80FD9626668CA0 /* AgentDeckTests_macOS */,
 				1B95C9515EBB97FD5022C08C /* AgentDeck_iOS */,
 				E4D80DB9ABDABC379778AF7C /* AgentDeck_macOS */,
+				CAB442A856E23517772A7850 /* AgentDeckTests_iOS */,
+				3BF710A3BC80FD9626668CA0 /* AgentDeckTests_macOS */,
 			);
 		};
 /* End PBXProject section */
@@ -1966,6 +1970,7 @@
 				08B47BC18D206538B33DD3B9 /* CloudCreature.swift in Sources */,
 				EDB44E89F700BC28A7AB9A83 /* CodexConfigInstaller.swift in Sources */,
 				5DDA6F733312F1A880DE38C9 /* CodexFreshnessRules.generated.swift in Sources */,
+				6251CC9D4270E9F29E867B59 /* CodexObservationOwnership.swift in Sources */,
 				97549061F4CF4DE01270245E /* CodexOtelRoutes.swift in Sources */,
 				015A03710C2A81307EDC2159 /* CodexTelemetryModule.swift in Sources */,
 				F4A65D852B783D1D78C7F1A4 /* CollaborationModel.swift in Sources */,
@@ -2192,6 +2197,7 @@
 				469316CAE1172CC311AD34F0 /* CloudCreature.swift in Sources */,
 				36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */,
 				D7E95F09BC44D47D05B4EC06 /* CodexFreshnessRules.generated.swift in Sources */,
+				9557B1E24F9A22C339934981 /* CodexObservationOwnership.swift in Sources */,
 				A1D061096206EB863B801727 /* CodexOtelRoutes.swift in Sources */,
 				896B4B7AD5A5DA6FB6B4B7D4 /* CodexTelemetryModule.swift in Sources */,
 				244C343C9D7A724CBC70AD9F /* CollaborationModel.swift in Sources */,
