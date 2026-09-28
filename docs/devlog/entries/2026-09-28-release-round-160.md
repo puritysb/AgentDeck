@@ -1,6 +1,7 @@
 # 2026-09-28 — Release round 1.6.0: two publish steps that failed after succeeding
 
-Every channel shipped at 1.6.0 (Android at 1.6.1). Two workflows reported
+Every channel's GitHub Release shipped at 1.6.0 (Android at 1.6.1); store
+submission and approval were still separate pending steps. Two workflows reported
 failure after their real work had finished, and both were completed by hand
 rather than re-run, because a re-run would repeat an irreversible or duplicating
 step.
