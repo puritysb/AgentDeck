@@ -1,5 +1,9 @@
 {
-  "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area.",
+  "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
+  "merge_policy": {
+    "as_of": "2026-09-29",
+    "summary": "Branch protection on master requires one status check, ESP32 Sim Compile. Every other gate turns a pull request red when it fails but does not stop GitHub from merging it."
+  },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
     "contract": "A wire format, generated mirror or SSOT table compared against its canonical source. Catches drift, not behaviour.",
@@ -175,6 +179,7 @@
       "job": "compile",
       "trigger": "PRs touching esp32/**",
       "blocking": true,
+      "required": true,
       "command": "pio run (every esp32/sim env)",
       "proves": ["the real esp32/src render trees compile for the native simulator"],
       "does_not_prove": ["the Xtensa build, flashing, or behaviour on a board"]

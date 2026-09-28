@@ -162,6 +162,18 @@ describe('Build Health page — what it states', () => {
     for (const d of catalog.domains) expect(text, d.name).toContain(`<h3>${d.name}</h3>`);
   });
 
+  it('calls only a branch-protection-required gate a merge blocker', () => {
+    const catalog = JSON.parse(readFileSync(join(ROOT, 'scripts/verification-catalog.json'), 'utf8')) as {
+      gates: Array<{ required?: boolean; report_suite?: string }>;
+    };
+    // A required gate with its own suite in this run shows that result instead.
+    const shown = catalog.gates.filter((g) => g.required && !g.report_suite).length;
+    expect(shown).toBeGreaterThan(0);
+    expect(html.match(/>Required to merge</g)?.length).toBe(shown);
+    expect(html).not.toContain('>Blocking<');
+    expect(html).toContain('Merge policy · checked');
+  });
+
   it('quotes the coverage floor from vitest.config.ts and flags a metric under it', () => {
     const floor = /branches:\s*(\d+)/.exec(readFileSync(join(ROOT, 'vitest.config.ts'), 'utf8'))?.[1];
     expect(html).toContain(`floor ${floor}% · BELOW`);
