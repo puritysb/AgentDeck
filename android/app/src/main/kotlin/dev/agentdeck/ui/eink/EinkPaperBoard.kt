@@ -25,10 +25,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -332,25 +336,43 @@ private fun BoardDivider() {
  * (Antigravity) is its line alone; absent providers are absent, and with no
  * provider at all the zone is not drawn. The bar has one width within the
  * zone: a comparison cue, never a ruler across the page.
+ *
+ * The used and time-left columns are as wide as the text they hold in its real
+ * style (device font, system font scale), so the table fits the zone instead
+ * of assuming a font: a fixed-dp table overflowed Crema's half-width zone and
+ * ran `78%` into `3d 9h` (#415).
  */
 @Composable
 private fun UsageZone(groups: List<EinkUsageGroup>, scale: EinkLayoutScale) {
     if (groups.isEmpty()) return
     val caption = scale.sessionMetaFont
     val body = (scale.sessionMetaFont.value + 2).sp
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val (pctW, timeW) = remember(groups, body, caption, density) {
+        fun width(text: String, size: TextUnit, bold: Boolean = false): Dp = with(density) {
+            measurer.measure(
+                text,
+                TextStyle(fontSize = size, fontFamily = FontFamily.Monospace,
+                    fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal),
+                maxLines = 1, softWrap = false,
+            ).size.width.toDp()
+        }
+        val resets = groups.flatMap { g -> g.windows.mapNotNull { it.reset } } + UsageWidestReset
+        maxOf(width(UsageWidestPct, usagePctFont(body), bold = true), width("used", caption)) to
+            maxOf(resets.maxOf { width(it, body) }, width("resets in", caption)) + UsageColumnGap
+    }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val fixed = UsageIndentW + UsageLabelW + UsagePctW + UsageTimeW
-        val barW = (maxWidth - fixed).coerceIn(72.dp, 150.dp)
-        val tableW = fixed + barW
-        Column(Modifier.width(tableW), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val cols = usageColumns(maxWidth, pctW, timeW)
+        Column(Modifier.width(cols.total), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text("USAGE", fontSize = scale.sectionFont, fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
                 if (groups.any { it.windows.isNotEmpty() }) {
                     Text("used", fontSize = caption, fontFamily = FontFamily.Monospace, color = Ink,
-                        textAlign = TextAlign.End, modifier = Modifier.width(UsagePctW))
+                        textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(cols.pct))
                     Text("resets in", fontSize = caption, fontFamily = FontFamily.Monospace, color = Ink,
-                        textAlign = TextAlign.End, modifier = Modifier.width(UsageTimeW))
+                        textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(cols.time))
                 }
             }
             groups.forEach { group ->
@@ -364,7 +386,7 @@ private fun UsageZone(groups: List<EinkUsageGroup>, scale: EinkLayoutScale) {
                             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp))
                     }
                 }
-                group.windows.forEach { UsageRow(it, barW, body) }
+                group.windows.forEach { UsageRow(it, cols, body) }
             }
         }
     }
@@ -372,34 +394,62 @@ private fun UsageZone(groups: List<EinkUsageGroup>, scale: EinkLayoutScale) {
 
 private val UsageIndentW = 24.dp
 private val UsageLabelW = 50.dp
-private val UsagePctW = 58.dp
-private val UsageTimeW = 74.dp
+private val UsageLabelMinW = 32.dp
+/** Below this the bar stops reading as a comparison; the label column gives way first. */
+private val UsageBarMinW = 32.dp
+private val UsageBarMaxW = 150.dp
+/** Space between the right-aligned used and time-left figures. */
+internal val UsageColumnGap = 10.dp
+/** The widest figure each column must hold, whatever the current data. */
+private const val UsageWidestPct = "100%!"
+private const val UsageWidestReset = "23h 59m"
+
+private fun usagePctFont(body: TextUnit) = (body.value + 2).sp
+
+/** Column widths of the usage table. [total] never exceeds the zone unless even a zero-width bar cannot fit. */
+internal data class UsageColumns(val label: Dp, val bar: Dp, val pct: Dp, val time: Dp) {
+    val total: Dp get() = UsageIndentW + label + bar + pct + time
+}
+
+/**
+ * Fit the table into [available]: the figure columns keep their measured
+ * widths, the bar takes what remains up to its maximum, and when the zone is
+ * too narrow the label column shrinks to keep a readable bar. Nothing forces
+ * the bar wider than what is left, so it cannot push the figures off the zone
+ * (#415).
+ */
+internal fun usageColumns(available: Dp, pct: Dp, time: Dp): UsageColumns {
+    val figures = UsageIndentW + pct + time
+    val label = (available - figures - UsageBarMinW).coerceIn(UsageLabelMinW, UsageLabelW)
+    val bar = (available - figures - label).coerceIn(0.dp, UsageBarMaxW)
+    return UsageColumns(label = label, bar = bar, pct = pct, time = time)
+}
 
 @Composable
-private fun UsageRow(row: EinkLimitLine, barW: androidx.compose.ui.unit.Dp, body: TextUnit) {
+private fun UsageRow(row: EinkLimitLine, cols: UsageColumns, body: TextUnit) {
     val pct = (row.percent ?: 0.0).coerceIn(0.0, 100.0)
     val critical = pct >= 90
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(UsageIndentW))
         Text(row.label, fontSize = body, lineHeight = body * 1.15f, fontFamily = FontFamily.Monospace, color = Ink,
-            maxLines = 1, modifier = Modifier.width(UsageLabelW))
-        Box(Modifier.width(barW).height(12.dp).border(1.5.dp, Ink)) {
+            maxLines = 1, modifier = Modifier.width(cols.label))
+        Box(Modifier.width(cols.bar).height(12.dp).border(1.5.dp, Ink)) {
             val fill = if (einkColorEnabled && !row.stale) Color(UsageSeverity.color(pct, onPaper = true)) else Ink
             Box(Modifier.fillMaxHeight().fillMaxWidth((pct / 100.0).toFloat()).background(fill))
         }
         Text(
             text = "${pct.toInt()}%" + if (row.stale) "?" else if (critical) "!" else "",
-            fontSize = (body.value + 2).sp,
-            lineHeight = (body.value + 2).sp * 1.15f,
+            fontSize = usagePctFont(body),
+            lineHeight = usagePctFont(body) * 1.15f,
             fontFamily = FontFamily.Monospace,
             fontWeight = if (critical) FontWeight.Bold else FontWeight.Medium,
             color = Ink,
             textAlign = TextAlign.End,
             maxLines = 1,
-            modifier = Modifier.width(UsagePctW),
+            modifier = Modifier.width(cols.pct),
         )
         Text(row.reset ?: "", fontSize = body, lineHeight = body * 1.15f, fontFamily = FontFamily.Monospace, color = Ink,
-            textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(UsageTimeW))
+            textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(cols.time))
     }
 }
 

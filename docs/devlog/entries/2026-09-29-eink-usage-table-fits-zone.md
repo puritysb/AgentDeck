@@ -1,0 +1,7 @@
+# 2026-09-29 — The e-ink usage table fits its zone (#415)
+
+The Crema S Play capture (`marketplace/play/1.6.1/crema-01-working.png`) showed the usage row as `7d ▇▇▇▇▇▇▇□ 78%3d 9h`. Measured from that capture (density ≈1.875), the usage zone is about 239 dp wide. The row's fixed columns (indent 24 + label 50 + percent 58 + reset 74 dp) left 33 dp for the bar, and the bar's 72 dp floor pushed the table about 39 dp past the zone. The reset column, laid out last, kept only what remained, so `3d 9h` filled it edge to edge. The header row used `weight(1f)` inside the real width, so `used` also sat about 74 px left of the percentages.
+
+`UsageZone` now measures the percent and reset columns from their widest text (`100%!`, `23h 59m`, the current reset strings and the captions) in their real monospace style, so device font and system font scale are accounted for. It adds a 10 dp gap between them and derives the bar from what is left via `usageColumns`: at most 150 dp, and the label column shrinks toward 32 dp to keep a 32 dp bar before the bar gives way. The header and rows share those widths. `EinkUsageColumnsTest` pins the Crema width, a wide zone and a narrow zone.
+
+Reproduced and checked on an emulator set to Crema's geometry (`wm size 1072x1448`, `wm density 300`) with the demo feed. The previous build rendered `79%3d 9h`; the fixed build renders `78%   3d 9h` with both headers above their columns. The Play screenshot already in review still shows the old rendering; replace it when this ships.
