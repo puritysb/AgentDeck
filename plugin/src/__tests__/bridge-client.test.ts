@@ -17,7 +17,7 @@ vi.mock('../log.js', () => ({
   dtrace: vi.fn(),
 }));
 
-import { BridgeClient, BRIDGE_HANDSHAKE_TIMEOUT_MS } from '../bridge-client.js';
+import { BridgeClient } from '../bridge-client.js';
 
 interface TestServer {
   port: number;
@@ -120,8 +120,11 @@ describe('BridgeClient — port provider', () => {
     await new Promise<void>(resolve => silent.listen(0, '127.0.0.1', resolve));
     const port = (silent.address() as import('net').AddressInfo).port;
     const healthy = await createTestServer();
+    // Exercise the bound with a short injected timeout; the production value
+    // is the constructor default and would cost 5s of real time here.
+    const handshakeTimeoutMs = 300;
     try {
-      client = new BridgeClient();
+      client = new BridgeClient(handshakeTimeoutMs);
       let failed = false;
       const failures: number[] = [];
       client.on('connection-attempt-failed', failedPort => {
@@ -131,7 +134,7 @@ describe('BridgeClient — port provider', () => {
       client.setPortProvider(() => failed ? healthy.port : port);
       client.connect();
       await vi.waitFor(() => expect(client.isConnected()).toBe(true), {
-        timeout: BRIDGE_HANDSHAKE_TIMEOUT_MS + 3000,
+        timeout: handshakeTimeoutMs + 3000,
       });
       expect(failures).toEqual([port]);
       expect(client.getPort()).toBe(healthy.port);
@@ -141,7 +144,7 @@ describe('BridgeClient — port provider', () => {
       await new Promise<void>(resolve => silent.close(() => resolve()));
       await healthy.close();
     }
-  }, 12_000);
+  });
 
   it('skips connect when provider returns null', async () => {
     client = new BridgeClient();

@@ -5,8 +5,8 @@
   the visual index: every card carries a photograph of the actual device running
   a session (DESIGN.md R7 — real assets, never hand-drawn). Pixel-exact firmware
   frames are the Live Preview's job, not this page's. Photos are cropped by
-  scripts/crop-hardware-images.mjs to match the card frames exactly (349x200
-  standard, 747x200 wide) so object-fit never re-crops the framing. Media is
+  scripts/crop-hardware-images.mjs into standard and wide frames. Contain-fit
+  keeps the complete framing visible even when a card narrows on mobile. Media is
   referenced relatively (../media/) and every card degrades to the hatch
   placeholder when a file is missing, so the page stays a self-contained single
   file that renders from file:// (minus the images).
@@ -168,10 +168,11 @@
   .device { display:flex; flex-direction:column; background:var(--tide-100); border:1px solid var(--tide-200); border-radius:var(--r-2xl); padding:var(--s-4); box-shadow:var(--sh-card); }
   .device.wide { grid-column:span 2; }
 
-  /* Card preview: canonical render (contain, dark stage) or real photo (cover).
+  /* Card preview: preserve the generated framing at every breakpoint.
      A missing file flips to the diagonal-hatch placeholder — DESIGN.md R7. */
   .shot { position:relative; height:200px; border-radius:var(--r-xl); overflow:hidden; background:var(--ink-900); margin:0 0 var(--s-4); flex:0 0 auto; }
-  .shot img { width:100%; height:100%; object-fit:cover; display:block; }
+  .shot img { width:100%; height:100%; object-fit:contain; display:block; }
+  .device.wide .shot { height:auto; aspect-ratio:56/15; }
   .shot.render img { object-fit:contain; padding:var(--s-2); }
   .shot.pixel img { image-rendering:pixelated; }
   .shot.missing img { display:none; }
@@ -260,7 +261,7 @@
       <a class="btn secondary" href="../design-system/#hardware.compatibility" data-i18n="hero.matrix">Read the full spec matrix</a>
     </div>
       </div>
-      <figure class="hero-shot"><img src="../media/setup-full.jpg" alt="A desk running AgentDeck on every surface at once — monitors, TRMNL 7.5&quot; e-ink, XTeink readers, Timebox Mini, Pixoo64, TC001, Stream Deck+, Ulanzi D200H, iPad, and phone" loading="eager" onerror="this.parentNode.style.display='none'"></figure>
+      <figure class="hero-shot"><a href="../media/desk-overview.jpg"><img src="../media/setup-full.jpg" alt="AgentDeck on the desk, September 28, 2026 — iPad and Android dashboards, e-ink readers, Stream Deck controls, Ulanzi D200H, ESP32 panels, and LED displays" loading="eager" onerror="this.parentNode.style.display='none'"></a></figure>
     </div>
     <nav class="jump" aria-label="Device categories">
       <a href="#controls" data-i18n="jump.controls">Control decks</a><a href="#apps" data-i18n="jump.apps">Apps &amp; terminal</a><a href="#esp32" data-i18n="jump.esp32">ESP32 displays</a><a href="#pixel" data-i18n="jump.pixel">Pixel displays</a><a href="#specs" data-i18n="jump.specs">Board spec sheet</a>
@@ -317,9 +318,10 @@
         <div class="specs"><div class="spec"><span>Canvas</span><strong>Color LCD</strong></div><div class="spec"><span>Discovery</span><strong>mDNS · Wi-Fi WS</strong></div><div class="spec"><span>Install</span><strong><a href="https://play.google.com/store/apps/details?id=dev.agentdeck">Google Play</a></strong></div><div class="spec"><span>Needs</span><strong>Computer daemon</strong></div></div>
       </article>
       <article class="device">
-        <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/android-eink.jpg" alt="AgentDeck Android e-ink reader photography" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
+        <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/android-eink.jpg" alt="Moaan Pantone color e-ink reader photographed running AgentDeck in landscape" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
         <div class="device-top"><h3>Android E-ink</h3><span class="badge native" data-i18n="b.native">Native</span></div>
         <p class="sub" data-i18n="d.android.eink">Reader-tuned Compose layouts for Crema, Onyx, Kobo, and Bigme — B&amp;W and Kaleido 3 color.</p>
+        <a href="../media/crema-eink.jpg" data-i18n="photo.crema">Crema S · portrait photo</a>
         <div class="specs"><div class="spec"><span>Refresh</span><strong>GC16 · DU · A2</strong></div><div class="spec"><span>Color</span><strong>B&amp;W + Kaleido 3</strong></div><div class="spec"><span>Install</span><strong><a href="https://play.google.com/store/apps/details?id=dev.agentdeck">Google Play</a></strong></div><div class="spec"><span>Needs</span><strong>Computer daemon</strong></div></div>
       </article>
       <article class="device">
@@ -389,7 +391,7 @@
         <div class="specs"><div class="spec"><span>Canvas</span><strong>800×480 e-ink</strong></div><div class="spec"><span>Transport</span><strong>Serial · Wi-Fi</strong></div></div>
       </article>
       <article class="device">
-        <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/epd47.jpg" alt="LilyGo EPD47 4.7-inch grayscale e-ink panel showing the AgentDeck queue roster" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
+        <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/epd47.jpg" alt="LilyGo EPD47 4.7-inch grayscale e-ink panel showing AgentDeck focused work, sessions, and usage" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
         <div class="device-top"><h3>EPD47</h3><span class="badge native">ESP32-S3</span></div>
         <p class="sub" data-i18n="d.epd47">4.7-inch 960×540 grayscale e-ink with two-point touch — LilyGo T5 ePaper S3, quiet differential repaints, WiFi OTA.</p>
         <div class="specs"><div class="spec"><span>Canvas</span><strong>960×540 e-ink</strong></div><div class="spec"><span>Transport</span><strong>Serial · Wi-Fi</strong></div></div>
@@ -425,16 +427,17 @@
         <div class="specs"><div class="spec"><span>Grid</span><strong>32×32 RGB</strong></div><div class="spec"><span>Role</span><strong>Compact terrarium</strong></div></div>
       </article>
       <article class="device">
-        <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/timebox.jpg" alt="Divoom Timebox Mini showing an AgentDeck micro glyph" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
+        <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/timebox.jpg" alt="Divoom Timebox Mini showing an AgentDeck expressive pixel face" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
         <div class="device-top"><h3>Timebox Mini</h3><span class="badge bridge">BLE</span></div>
         <p class="sub" data-i18n="d.timebox">11×11 BLE micro glyph — one dominant creature on a status field.</p>
         <div class="specs"><div class="spec"><span>Grid</span><strong>11×11 RGB</strong></div><div class="spec"><span>Role</span><strong>Micro glyph</strong></div></div>
       </article>
       <article class="device">
-        <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/tc001.jpg" alt="Ulanzi TC001 8 by 32 matrix photography" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
+        <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/tc001.jpg" alt="Ulanzi TC001 showing agent creatures on its 8 by 32 LED matrix" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
         <div class="device-top"><h3>Ulanzi TC001</h3><span class="badge native">ESP32</span></div>
         <p class="sub" data-i18n="d.tc001">8×32 LED matrix running AgentDeck firmware — usage + agent pages.</p>
         <div class="specs"><div class="spec"><span>Grid</span><strong>32×8 RGB</strong></div><div class="spec"><span>Role</span><strong>Usage + agents</strong></div></div>
+        <a href="../media/tc001-usage.jpg" data-i18n="photo.usage">Usage display · photo</a>
       </article>
     </div>
   </section>
@@ -578,6 +581,8 @@
         'd.macos': 'in-process 데몬 허브를 품은 SwiftUI 데스크톱 대시보드 — App Store 앱.',
         'd.ios': '동일 LAN SwiftUI 컴패니언 — iPhone은 모니터링, iPad는 테라리움 세컨드 스크린.',
         'd.android.tablet': 'Compose 컬러 대시보드 — 60fps 테라리움 + HUD 오버레이.',
+        'photo.crema': 'Crema S · 세로 사진',
+        'photo.usage': '사용량 화면 · 사진',
         'd.android.eink': 'Crema·Onyx·Kobo·Bigme에 맞춘 리더 전용 Compose 레이아웃 — 흑백과 Kaleido 3 컬러.',
         'd.tui': '<code>agentdeck dashboard</code> — 같은 세션을 truecolor ANSI로, 원하면 SSH 너머에서도.',
         'd.ips35': '480×320 IPS 패널의 가로형 LVGL 테라리움 + HUD (JC3248W535).',
@@ -632,6 +637,8 @@
         'd.macos': 'in-process daemonハブを内蔵したSwiftUIデスクトップダッシュボード — App Storeアプリ。',
         'd.ios': '同一LANのSwiftUIコンパニオン — iPhoneはモニタリング、iPadはテラリウムのセカンドスクリーン。',
         'd.android.tablet': 'Composeカラーダッシュボード — 60fpsテラリウム + HUDオーバーレイ。',
+        'photo.crema': 'Crema S · 縦向き写真',
+        'photo.usage': '使用量画面 · 写真',
         'd.android.eink': 'Crema・Onyx・Kobo・Bigme向けのリーダー専用Composeレイアウト — 白黒とKaleido 3カラー。',
         'd.tui': '<code>agentdeck dashboard</code> — 同じセッションをtruecolor ANSIで、SSH越しでも。',
         'd.ips35': '480×320 IPSパネルの横型LVGLテラリウム + HUD (JC3248W535)。',

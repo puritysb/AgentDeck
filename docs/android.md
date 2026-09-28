@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Android maintainers
-reviewed: 2026-09-23
-revision: 2026-09-23
+reviewed: 2026-09-28
+revision: 2026-09-28
 source_of_truth: docs/android.md
 validators: [pnpm test:android]
 ---
@@ -18,7 +18,16 @@ Detailed reference for the AgentDeck Android app — build, device support, and 
 
 ---
 
-![AgentDeck native 3D aquarium on an Android tablet with sample agent sessions](https://puritysb.github.io/AgentDeck/media/aquarium-dashboard.jpg)
+![AgentDeck native 3D aquarium photographed on an Android tablet](https://puritysb.github.io/AgentDeck/media/android-tablet.jpg)
+
+Real devices photographed on September 28, 2026: the tablet above, Crema S in
+portrait, and Moaan Pantone in landscape below. The e-ink layouts keep session
+state and usage readable on paper-like displays.
+
+<p align="center">
+  <a href="https://puritysb.github.io/AgentDeck/media/crema-eink.jpg"><img src="https://puritysb.github.io/AgentDeck/media/crema-eink.jpg" height="320" alt="Crema S e-ink reader running AgentDeck in portrait"></a>
+  <a href="https://puritysb.github.io/AgentDeck/media/android-eink.jpg"><img src="https://puritysb.github.io/AgentDeck/media/android-eink.jpg" width="440" alt="Moaan Pantone color e-ink reader running AgentDeck in landscape"></a>
+</p>
 
 ## Quick Start (Google Play or GitHub APK)
 

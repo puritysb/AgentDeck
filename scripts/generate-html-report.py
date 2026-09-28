@@ -2,13 +2,13 @@
 """
 AgentDeck Build Health — HTML Generator
 
-Reads vitest JSON, Android JUnit XML, coverage-summary.json, scenario-matrix.json,
-and produces a single self-contained HTML dashboard with:
-  - Summary cards + history trend sparklines
-  - Suite progress bars (Vitest, Android, Apple, Robot)
-  - Scenario coverage matrix (user scenarios → test mapping)
-  - Expandable test file tables with category tags
-  - Coverage per-package gauges + file-level coverage table
+Reads Vitest + E2E JSON, Android JUnit XML, Robot output.xml, coverage-summary.json,
+scripts/scenario-matrix.json and scripts/verification-catalog.json, and writes one
+self-contained page in the Pages design language (aquarium-tide tokens only):
+  - Latest run: result tiles + one card per suite (run here, or linked)
+  - What we verify: every gate, what it proves and does not prove, known gaps
+  - Test domains: every test file grouped by the question it answers
+  - Platforms (Android / Apple / ESP32 Robot), scenario matrix, coverage, history
 
 Usage:
     python3 scripts/generate-html-report.py
@@ -24,11 +24,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-REPORT_DIR = ROOT / "coverage" / "test-report"
+# The BUILD_HEALTH_* overrides exist for scripts/__tests__/build-health-report.test.ts,
+# which renders the page from fixtures into a temp directory and lints the output.
+REPORT_DIR = Path(os.environ.get("BUILD_HEALTH_REPORT_DIR") or ROOT / "coverage" / "test-report")
 VITEST_JSON = REPORT_DIR / "vitest.json"
-COVERAGE_JSON = ROOT / "coverage" / "coverage-summary.json"
-ANDROID_XML_DIR = ROOT / "android" / "app" / "build" / "test-results" / "testDebugUnitTest"
+COVERAGE_JSON = Path(os.environ.get("BUILD_HEALTH_COVERAGE_JSON") or ROOT / "coverage" / "coverage-summary.json")
+ANDROID_XML_DIR = Path(os.environ.get("BUILD_HEALTH_ANDROID_DIR") or ROOT / "android" / "app" / "build" / "test-results" / "testDebugUnitTest")
 SCENARIO_JSON = ROOT / "scripts" / "scenario-matrix.json"
+CATALOG_JSON = ROOT / "scripts" / "verification-catalog.json"
+VITEST_CONFIG = ROOT / "vitest.config.ts"
+E2E_JSON = REPORT_DIR / "e2e.json"
 ROBOT_XML = REPORT_DIR / "robot" / "output.xml"
 HISTORY_JSON = REPORT_DIR / "history.json"
 METADATA_JSON = REPORT_DIR / "run-metadata.json"
@@ -42,6 +47,28 @@ def load_vitest():
         return None
     with open(VITEST_JSON) as f:
         return json.load(f)
+
+def load_e2e():
+    """`pnpm test:e2e` JSON (vitest reporter format), when the run produced one."""
+    if not E2E_JSON.exists():
+        return None
+    try:
+        with open(E2E_JSON) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+def merge_e2e(vitest, e2e):
+    """Fold the E2E files into the per-file views (their own domain tab), keeping totals honest."""
+    if not e2e:
+        return vitest
+    if not vitest:
+        return e2e
+    merged = dict(vitest)
+    merged["testResults"] = list(vitest.get("testResults", [])) + list(e2e.get("testResults", []))
+    for key in ("numPassedTests", "numFailedTests", "numTotalTests", "numPendingTests", "numTodoTests"):
+        merged[key] = vitest.get(key, 0) + e2e.get(key, 0)
+    return merged
 
 def load_coverage():
     if not COVERAGE_JSON.exists():
@@ -366,7 +393,7 @@ def extract_package_coverage(cov_data):
             continue
         rel = filepath.replace(str(ROOT) + "/", "")
         parts = rel.split("/")
-        if len(parts) >= 2 and parts[0] in ("bridge", "plugin", "shared", "hooks"):
+        if len(parts) >= 2 and parts[0] in ("bridge", "plugin", "plugin-ulanzi", "shared", "hooks"):
             pkg = parts[0]
         else:
             pkg = "other"
@@ -400,159 +427,52 @@ def extract_package_coverage(cov_data):
 
 # ===== Test categorization =====
 
-# Test layers: purpose-driven grouping of test files
+# Test layers: purpose-driven grouping of test files. The SSOT is the
+# `domains` list of scripts/verification-catalog.json (glob patterns, ordered,
+# first match wins); scripts/__tests__/verification-catalog.test.ts fails when a
+# tracked test file matches no domain, so "Other Tests" stays empty.
+def load_catalog():
+    if not CATALOG_JSON.exists():
+        return {"gates": [], "domains": [], "levels": {}, "not_verified": []}
+    with open(CATALOG_JSON) as f:
+        return json.load(f)
+
+CATALOG = load_catalog()
+
+def _glob_re(glob):
+    """`*` matches within one path segment — same rule as the catalog test."""
+    return re.compile("^" + "[^/]*".join(re.escape(part) for part in glob.split("*")) + "$")
+
 TEST_LAYERS = [
-    {
-        "id": "terminal-parsing",
-        "name": "Terminal Output Parsing",
-        "question": "Does the bridge interpret Claude Code and Codex terminal output correctly?",
-        "icon": "◈",
-        "color": "#22d3ee",
-        "files": [
-            "bridge/src/__tests__/output-parser.test.ts",
-            "bridge/src/__tests__/codex-output-parser.test.ts",
-            "bridge/src/__tests__/cursor-sync.test.ts",
-        ],
-    },
-    {
-        "id": "state-adapter",
-        "name": "State Machine & Adapters",
-        "question": "Are agent state transitions and type-specific command routes correct?",
-        "icon": "◇",
-        "color": "#a78bfa",
-        "files": [
-            "bridge/src/__tests__/state-machine.test.ts",
-            "bridge/src/__tests__/adapter.test.ts",
-            "shared/src/__tests__/protocol-contract.test.ts",
-        ],
-    },
-    {
-        "id": "timeline",
-        "name": "Timeline Pipeline",
-        "question": "Are timeline storage, deduplication, and cross-session relays correct?",
-        "icon": "◆",
-        "color": "#f472b6",
-        "files": [
-            "shared/src/__tests__/timeline.test.ts",
-            "bridge/src/__tests__/timeline-integration.test.ts",
-            "bridge/src/__tests__/session-timeline-relay.test.ts",
-        ],
-    },
-    {
-        "id": "daemon-infra",
-        "name": "Daemon & Infrastructure",
-        "question": "Are the daemon singleton, session registry, and usage relay stable?",
-        "icon": "◉",
-        "color": "#fb923c",
-        "files": [
-            "bridge/src/__tests__/daemon-lifecycle.test.ts",
-            "bridge/src/__tests__/session-registry.test.ts",
-            "bridge/src/__tests__/usage-relay.test.ts",
-            "bridge/src/__tests__/bridge-core.test.ts",
-        ],
-    },
-    {
-        "id": "integration",
-        "name": "Integration Tests",
-        "question": "Does the end-to-end pipeline work in a real server environment?",
-        "icon": "◎",
-        "color": "#34d399",
-        "files": [
-            "bridge/src/__tests__/server-integration.test.ts",
-            "bridge/src/__tests__/tier3-integration.test.ts",
-        ],
-    },
-    {
-        "id": "plugin-ui",
-        "name": "Stream Deck Plugin UI",
-        "question": "Are plugin connections, option layouts, and renderers correct?",
-        "icon": "▣",
-        "color": "#38bdf8",
-        "files": [
-            "plugin/src/__tests__/connection-manager.test.ts",
-            "plugin/src/__tests__/connection-integration.test.ts",
-            "plugin/src/__tests__/option-scenario.test.ts",
-            "plugin/src/__tests__/renderer-snapshots.test.ts",
-            "plugin/src/__tests__/text-utils-and-labels.test.ts",
-        ],
-    },
-    {
-        "id": "tui-dashboard",
-        "name": "TUI Dashboard",
-        "question": "Does the terminal dashboard render state and terrarium motion correctly?",
-        "icon": "▤",
-        "color": "#c084fc",
-        "files": [
-            "bridge/src/__tests__/tui-dashboard.test.ts",
-            "bridge/src/__tests__/tui-renderer-snapshots.test.ts",
-            "bridge/src/__tests__/tui-terrarium-snapshots.test.ts",
-        ],
-    },
-    {
-        "id": "serial-protocol",
-        "name": "Serial Protocol",
-        "question": "Is the ESP32 serial byte stream framed correctly?",
-        "icon": "▥",
-        "color": "#fbbf24",
-        "files": [
-            "bridge/src/__tests__/esp32-serial-node.test.ts",
-        ],
-    },
-    {
-        "id": "display-render",
-        "name": "Display Rendering",
-        "question": "Is image data for external displays rendered correctly?",
-        "icon": "▦",
-        "color": "#f87171",
-        "files": [
-            "bridge/src/__tests__/pixoo-sprites.test.ts",
-        ],
-    },
-    {
-        "id": "hook-install",
-        "name": "Hook Installation",
-        "question": "Are Claude Code hook installation, removal, and migration safe?",
-        "icon": "▧",
-        "color": "#4ade80",
-        "files": [
-            "hooks/src/__tests__/install.test.ts",
-        ],
-    },
+    {**d, "_res": [_glob_re(g) for g in d.get("match", [])]}
+    for d in CATALOG.get("domains", [])
 ]
 
-# Build reverse lookup: file path -> layer id
-_FILE_TO_LAYER = {}
-for _layer in TEST_LAYERS:
-    for _f in _layer["files"]:
-        _FILE_TO_LAYER[_f] = _layer["id"]
-
 def classify_test_file(filepath):
-    """Classify test file by layer, with fallback to name pattern."""
-    return _FILE_TO_LAYER.get(filepath, "other")
+    """Domain id for a test file (first matching domain), or "other"."""
+    for layer in TEST_LAYERS:
+        if any(r.match(filepath) for r in layer["_res"]):
+            return layer["id"]
+    return "other"
 
 def get_layer_for_file(filepath):
     """Return the layer dict for a file, or None."""
-    lid = _FILE_TO_LAYER.get(filepath)
-    if lid:
-        for layer in TEST_LAYERS:
-            if layer["id"] == lid:
-                return layer
+    lid = classify_test_file(filepath)
+    for layer in TEST_LAYERS:
+        if layer["id"] == lid:
+            return layer
     return None
 
-def category_badge_html(category):
-    """Badge for legacy unit/integration/snapshot or layer-based category."""
-    for layer in TEST_LAYERS:
-        if layer["id"] == category:
-            fg = layer["color"]
-            bg = fg + "22"
-            return f'<span style="font-size:0.65rem;font-weight:600;padding:1px 6px;border-radius:3px;background:{bg};color:{fg};margin-left:0.5rem">{layer["name"]}</span>'
-    colors = {
-        "unit": ("#38bdf8", "#38bdf822"),
-        "integration": ("#a78bfa", "#a78bfa22"),
-        "snapshot": ("#f472b6", "#f472b622"),
-    }
-    fg, bg = colors.get(category, ("#64748b", "#64748b22"))
-    return f'<span style="font-size:0.65rem;font-weight:600;padding:1px 6px;border-radius:3px;background:{bg};color:{fg};margin-left:0.5rem">{category}</span>'
+def read_coverage_thresholds():
+    """The enforced floor, read from vitest.config.ts so the page never quotes a stale number."""
+    try:
+        text = VITEST_CONFIG.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    block = re.search(r"thresholds:\s*\{([^}]*)\}", text)
+    if not block:
+        return {}
+    return {k: float(v) for k, v in re.findall(r"(lines|functions|branches|statements):\s*(\d+(?:\.\d+)?)", block.group(1))}
 
 def suite_meta(metadata, name):
     suites = metadata.get("suites", {}) if metadata else {}
@@ -565,11 +485,12 @@ def suite_meta(metadata, name):
         "note": meta.get("note", ""),
     }
 
-def build_default_metadata(vitest, android, robot):
+def build_default_metadata(vitest, android, robot, e2e=None):
     return {
         "run_profile": "ad-hoc",
         "suites": {
             "vitest": {"status": "pass" if vitest else "not-run", "executed": bool(vitest), "note": ""},
+            "e2e": {"status": ("pass" if e2e.get("numFailedTests", 0) == 0 else "fail") if e2e else "not-run", "executed": bool(e2e), "note": ""},
             "android": {"status": "pass" if android else "not-run", "executed": bool(android), "note": ""},
             "apple": {"status": "not-run", "executed": False, "note": "No Apple result parser input"},
             "robot": {"status": "pass" if robot else "not-run", "executed": bool(robot), "note": ""},
@@ -696,81 +617,62 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
     return results
 
 
-# ===== HTML generation =====
 
-def pct_color(pct):
-    if pct >= 80: return "#22c55e"
-    if pct >= 50: return "#eab308"
-    if pct >= 20: return "#f97316"
-    return "#ef4444"
+# ===== Presentation =====
+#
+# The page follows the same grammar as the other Pages surfaces (Devices,
+# Overview): the shared GNB, a hero with kicker + page title + lede, a jump bar,
+# then sections opened by a `.section-head`, holding bordered `--tide-100` cards.
+# Every colour is a token reference — the :root block below is gated by
+# design/verify-tokens-sync.py, which also sweeps this file for stray hex — and
+# status hues follow DESIGN.md §2.7: kelp = passing/healthy, coral = failure,
+# ink-300 = not run / unknown. Amber is reserved for "needs you" and unused here.
+# scripts/__tests__/build-health-report.test.ts renders the page from fixtures
+# and lints the OUTPUT, because design/lint.sh never sees a generated file.
 
-def gauge_svg(pct, size=48):
-    color = pct_color(pct)
-    r = size / 2 - 4
-    circ = 2 * 3.14159 * r
-    offset = circ * (1 - pct / 100)
-    return f'''<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
-      <circle cx="{size/2}" cy="{size/2}" r="{r}" fill="none" stroke="#1e293b" stroke-width="5"/>
-      <circle cx="{size/2}" cy="{size/2}" r="{r}" fill="none" stroke="{color}" stroke-width="5"
-        stroke-dasharray="{circ}" stroke-dashoffset="{offset}"
-        transform="rotate(-90 {size/2} {size/2})" stroke-linecap="round"/>
-      <text x="{size/2}" y="{size/2 + 4}" text-anchor="middle" fill="{color}" font-size="11" font-weight="700">{pct:.0f}%</text>
-    </svg>'''
+def _esc(text):
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
 
-def status_badge(status):
-    if status in ("passed", "pass"):
-        return '<span class="badge pass">PASS</span>'
-    elif status in ("failed", "fail", "error"):
-        return '<span class="badge fail">FAIL</span>'
-    elif status == "not-run":
-        return '<span class="badge skip">NOT RUN</span>'
-    return '<span class="badge skip">SKIP</span>'
+def _state(status):
+    """Normalize a suite/test status to one of pass / fail / off."""
+    if status in ("passed", "pass", "PASS"):
+        return "pass"
+    if status in ("failed", "fail", "error", "FAIL"):
+        return "fail"
+    return "off"
 
-def suite_progress_color(status):
-    if status in ("failed", "fail", "error"):
-        return "#ef4444"
-    if status in ("passed", "pass"):
-        return "#22c55e"
-    return "#64748b"
+_STATE_LABEL = {"pass": "Pass", "fail": "Fail", "off": "Not run"}
+
+def status_badge(status, label=None):
+    st = _state(status)
+    return f'<span class="badge {st}">{_esc(label or _STATE_LABEL[st])}</span>'
+
+def _n(count, noun):
+    return f"{count:,} {noun}" + ("" if count == 1 else "s")
 
 def duration_fmt(ms):
     if ms < 1000:
-        return f"{ms:.0f}ms"
+        return f"{ms:.0f} ms"
     s = ms / 1000
     if s < 60:
-        return f"{s:.1f}s"
+        return f"{s:.1f} s"
     m = int(s // 60)
-    return f"{m}m {s % 60:.0f}s"
+    return f"{m} min {s % 60:.0f} s"
 
-def scenario_cell_html(cat_data):
-    """Generate a colored cell for a scenario category."""
-    t = cat_data["total"]
-    if t == 0:
-        return '<td class="sc-cell sc-none" title="No tests">—</td>'
-    p = cat_data["passed"]
-    f = cat_data["failed"]
-    m = cat_data["missing"]
-    nr = cat_data.get("not_run", 0)
-    if f > 0:
-        cls = "sc-fail"
-        label = f"{p}/{t}"
-    elif m > 0 or nr > 0:
-        cls = "sc-warn"
-        label = f"{p}/{t}"
-    else:
-        cls = "sc-pass"
-        label = f"{p}/{t}"
-    title_parts = []
-    if p: title_parts.append(f"{p} passed")
-    if f: title_parts.append(f"{f} failed")
-    if m: title_parts.append(f"{m} not found in CI")
-    if nr: title_parts.append(f"{nr} not executed in this report")
-    return f'<td class="sc-cell {cls}" title="{", ".join(title_parts)}">{label}</td>'
+def _bar(passed, failed, total):
+    """Proportional pass/fail rail. Total 0 renders an empty track."""
+    if total <= 0:
+        return '<div class="rail"></div>'
+    p = passed / total * 100
+    f = failed / total * 100
+    return (f'<div class="rail" role="img" aria-label="{passed} of {total} passed">'
+            f'<span class="ok" style="width:{p:.2f}%"></span>'
+            f'<span class="bad" style="width:{f:.2f}%"></span></div>')
 
 def write_summary(metadata, total_passed, total_failed, total_all):
     suites_meta = metadata.get("suites", {}) if metadata else {}
     suites = []
-    for name in ("vitest", "android", "apple", "robot"):
+    for name in ("vitest", "e2e", "android", "apple", "robot"):
         meta = suites_meta.get(name, {})
         suites.append({
             "name": name,
@@ -790,111 +692,75 @@ def write_summary(metadata, total_passed, total_failed, total_all):
     }
     SUMMARY_JSON.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-def sparkline_svg(history, key, color, label, w=200, h=40):
-    """Generate an SVG sparkline for a history metric."""
+def sparkline_svg(history, key, label):
+    """A small trend line for one history metric. Needs two or more runs."""
     values = [entry.get(key, 0) for entry in history]
-    if not values or len(values) < 2:
+    if len(values) < 2:
         return ""
-    max_v = max(values) if max(values) > 0 else 1
-    min_v = min(values)
-    range_v = max_v - min_v if max_v != min_v else 1
+    w, h = 240, 48
+    max_v, min_v = max(values), min(values)
+    span = (max_v - min_v) or 1
     n = len(values)
-    points = []
-    for i, v in enumerate(values):
-        x = (i / (n - 1)) * (w - 8) + 4
-        y = h - 6 - ((v - min_v) / range_v) * (h - 12)
-        points.append(f"{x:.1f},{y:.1f}")
-    polyline = " ".join(points)
-    last_v = values[-1]
-    # Format display value
+    pts = [((i / (n - 1)) * (w - 8) + 4, h - 6 - ((v - min_v) / span) * (h - 12)) for i, v in enumerate(values)]
+    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    last = values[-1]
     if key == "coverage":
-        display = f"{last_v:.1f}%"
-    elif key == "total":
-        display = str(last_v)
+        display = f"{last:.1f}%"
+    elif key == "passed":
+        total = history[-1].get("total", 0)
+        display = f"{last / total * 100:.1f}%" if total else "—"
     else:
-        display = f"{last_v / values[-1] * 100 if values[-1] else 0:.0f}%" if key == "passed" else str(last_v)
-    # For pass rate, compute percentage
-    if key == "passed":
-        totals = [entry.get("total", 1) for entry in history]
-        rate = last_v / totals[-1] * 100 if totals[-1] else 0
-        display = f"{rate:.1f}%"
-
-    return f'''<div class="sparkline-card">
-      <div class="sparkline-label">{label}</div>
-      <svg width="{w}" height="{h}" viewBox="0 0 {w} {h}">
-        <polyline points="{polyline}" fill="none" stroke="{color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="{points[-1].split(',')[0]}" cy="{points[-1].split(',')[1]}" r="3" fill="{color}"/>
+        display = f"{last:,}"
+    lx, ly = pts[-1]
+    return f'''<div class="card spark">
+      <p class="kicker">{_esc(label)}</p>
+      <p class="spark-value">{display}</p>
+      <svg viewBox="0 0 {w} {h}" preserveAspectRatio="none" aria-hidden="true">
+        <polyline points="{poly}" style="fill:none;stroke:var(--kelp-500);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round"/>
+        <circle cx="{lx:.1f}" cy="{ly:.1f}" r="3" style="fill:var(--kelp-700)"/>
       </svg>
-      <div class="sparkline-value" style="color:{color}">{display}</div>
+      <p class="fine">last {n} runs on master</p>
     </div>'''
-
 
 def _fmt_perf(val, unit="", decimals=1):
     """Format a perf value for table display."""
     if val is None:
-        return '<span style="color:var(--dim)">—</span>'
+        return '<span class="quiet">—</span>'
     if unit == "ms":
         return f"{val:,.{decimals}f} ms"
     if unit == "s":
-        return f"{val:,.{decimals}f}s"
+        return f"{val:,.{decimals}f} s"
     if unit == "KB":
         return f"{val / 1024:,.0f} KB"
     if unit == "msg/s":
         return f"{val:,.0f} msg/s"
     return f"{val:,.{decimals}f}{unit}"
 
-
 def _build_robot_perf_table(robot):
-    """Build a board × metric performance comparison table."""
+    """Board × metric performance comparison table."""
     perf = robot.get("perf_summary", {})
-    if not perf:
-        return ""
     boards = robot.get("boards", sorted(perf.keys()))
-    if not boards:
-        return ""
-
-    # Define metrics to display
     metrics = [
         ("build_s", "Build", "s"),
-        ("flash_boot_s", "Flash+Boot", "s"),
-        ("boot_time_ms", "Boot Time", "ms"),
-        ("firmware_size_bytes", "FW Size", "KB"),
-        ("boot_heap_bytes", "Boot Heap", "KB"),
+        ("flash_boot_s", "Flash + boot", "s"),
+        ("boot_time_ms", "Boot time", "ms"),
+        ("firmware_size_bytes", "Firmware", "KB"),
+        ("boot_heap_bytes", "Boot heap", "KB"),
         ("response_latency_ms", "Latency", "ms"),
     ]
-
-    # Check if any metric has data
-    has_data = any(perf.get(b, {}).get(m[0]) for b in boards for m in metrics)
-    if not has_data:
+    if not perf or not boards or not any(perf.get(b, {}).get(m[0]) for b in boards for m in metrics):
         return ""
-
-    header = "<tr><th>Board</th>"
-    for _, label, _ in metrics:
-        header += f"<th>{label}</th>"
-    header += "</tr>"
-
+    head = "".join(f"<th>{label}</th>" for _, label, _ in metrics)
     rows = ""
     for bid in boards:
         bdata = perf.get(bid, {})
-        label = BOARD_LABELS.get(bid, bid)
-        rows += f"<tr><td style=\"font-weight:600\">{label}</td>"
-        for key, _, unit in metrics:
-            val = bdata.get(key)
-            rows += f"<td>{_fmt_perf(val, unit)}</td>"
-        rows += "</tr>"
-
-    return f'''<div class="perf-table-wrap">
-      <table class="perf-table">
-        <thead>{header}</thead>
-        <tbody>{rows}</tbody>
-      </table>
-    </div>'''
-
-
+        cells = "".join(f"<td class='num'>{_fmt_perf(bdata.get(key), unit)}</td>" for key, _, unit in metrics)
+        rows += f"<tr><th scope='row'>{_esc(BOARD_LABELS.get(bid, bid))}</th>{cells}</tr>"
+    return f'<div class="scroll"><table class="data"><thead><tr><th>Board</th>{head}</tr></thead><tbody>{rows}</tbody></table></div>'
 
 def render_gnb():
     """Render the shared Pages GNB from the canonical partial so Build Health
-    can never drift from the other four surfaces (scripts/pages-nav.html)."""
+    can never drift from the other surfaces (scripts/pages-nav.html)."""
     partial_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pages-nav.html")
     with open(partial_path, encoding="utf-8") as fh:
         partial = fh.read()
@@ -909,1078 +775,548 @@ def render_gnb():
 
 def render_gnb_css():
     """Return the canonical GNB CSS (scripts/pages-nav.css) so Build Health's nav
-    styling stays byte-identical to the four committed surfaces. The braces in
-    this string are inserted into the stylesheet f-string as a *substituted*
-    value, so its `{ }` are never re-parsed as f-string fields."""
+    styling stays byte-identical to the committed surfaces. The braces in this
+    string are inserted into the stylesheet f-string as a *substituted* value,
+    so its `{ }` are never re-parsed as f-string fields."""
     css_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pages-nav.css")
     with open(css_path, encoding="utf-8") as fh:
         css = fh.read()
     return re.sub(r"/\*[\s\S]*?\*/\s*", "", css, count=1).rstrip()
 
+def _section_head(sid, kicker, title, lede):
+    return f'''<div class="section-head" id="{sid}">
+      <div><p class="kicker">{_esc(kicker)}</p><h2>{_esc(title)}</h2></div>
+      <p>{lede}</p>
+    </div>'''
+
+# --- Latest run --------------------------------------------------------------
+
+def _render_run(stats, suites):
+    tiles = "".join(f'''<div class="card tile">
+        <p class="kicker">{_esc(label)}</p>
+        <p class="tile-value {cls}">{value}</p>
+        <p class="fine">{note}</p>
+      </div>''' for label, value, cls, note in stats)
+    cards = ""
+    for s in suites:
+        meta = s["meta"]
+        st = _state(meta["status"]) if meta["executed"] else "off"
+        figures = ""
+        if meta["executed"]:
+            figures = f'''<dl class="specs">
+              <div><dt>Passed</dt><dd>{s["passed"]:,}</dd></div>
+              <div><dt>Failed</dt><dd class="{"bad-text" if s["failed"] else ""}">{s["failed"]:,}</dd></div>
+              <div><dt>{_esc(s["unit"])}</dt><dd>{s["files"]:,}</dd></div>
+              <div><dt>Time</dt><dd>{duration_fmt(s["ms"]) if s["ms"] else "—"}</dd></div>
+            </dl>'''
+        note = f'<p class="fine">{_esc(meta["note"])}</p>' if meta.get("note") else ""
+        cards += f'''<article class="card suite">
+          <div class="card-top"><h3>{_esc(s["name"])}</h3>{status_badge(st)}</div>
+          <p class="sub">{_esc(s["what"])}</p>
+          {_bar(s["passed"], s["failed"], s["passed"] + s["failed"]) if meta["executed"] else ""}
+          {figures}{note}
+        </article>'''
+    return f'<div class="grid tiles">{tiles}</div><div class="grid suites">{cards}</div>'
+
+# --- What we verify ----------------------------------------------------------
+
+def _render_verify(catalog, metadata):
+    repo = os.environ.get("GITHUB_REPOSITORY", "puritysb/AgentDeck")
+    levels = catalog.get("levels", {})
+    cards = ""
+    for gate in catalog.get("gates", []):
+        suite = gate.get("report_suite")
+        meta = suite_meta(metadata, suite) if suite else None
+        if meta and meta["executed"]:
+            badge = status_badge(meta["status"], "Passed here" if _state(meta["status"]) == "pass" else "Failed here")
+        else:
+            badge = f'<span class="badge {"gate" if gate.get("blocking") else "off"}">{"Blocking" if gate.get("blocking") else "Informational"}</span>'
+        tags = "".join(f'<span class="tag" title="{_esc(levels.get(l, ""))}">{_esc(l)}</span>' for l in gate.get("level", []))
+        proves = "".join(f"<li>{_esc(x)}</li>" for x in gate.get("proves", []))
+        not_proves = "".join(f"<li>{_esc(x)}</li>" for x in gate.get("does_not_prove", []))
+        wf = gate.get("workflow")
+        link = (f'<a href="https://github.com/{repo}/actions/workflows/{_esc(wf.rsplit("/", 1)[-1])}">{_esc(wf.rsplit("/", 1)[-1])} runs</a>'
+                if wf else '<span class="quiet">Lab only — results are not recorded here</span>')
+        cards += f'''<article class="card gate">
+          <div class="card-top"><div class="tags">{tags}</div>{badge}</div>
+          <h3>{_esc(gate["name"])}</h3>
+          <p class="sub">{_esc(gate.get("trigger", ""))} · {_esc(gate.get("where", ""))}</p>
+          <div class="two">
+            <div><p class="label">Proves</p><ul class="ticks">{proves}</ul></div>
+            <div><p class="label">Does not prove</p><ul class="ticks no">{not_proves}</ul></div>
+          </div>
+          <p class="cmd"><code>{_esc(gate.get("command", ""))}</code></p>
+          <p class="card-foot">{link}</p>
+        </article>'''
+    gaps = "".join(f'''<article class="card gap">
+        <h3>{_esc(g["what"])}</h3>
+        <p class="label">Why not</p><p>{_esc(g["why"])}</p>
+        <p class="label">What we do instead</p><p>{_esc(g["instead"])}</p>
+      </article>''' for g in catalog.get("not_verified", []))
+    legend = "".join(f"<div><dt>{_esc(k)}</dt><dd>{_esc(v)}</dd></div>" for k, v in levels.items())
+    return f'''<div class="grid gates">{cards}</div>
+      <h3 class="sub-head">Not verified automatically</h3>
+      <div class="grid gaps">{gaps}</div>
+      <div class="card legend"><p class="kicker">Evidence levels</p><dl>{legend}</dl></div>'''
+
+# --- Test domains ------------------------------------------------------------
+
+def _test_rows(assertions):
+    rows = ""
+    for a in assertions:
+        st = {"passed": "pass", "failed": "fail"}.get(a.get("status"), "off")
+        mark = {"pass": "✓", "fail": "×", "off": "○"}[st]
+        name = " › ".join([*a.get("ancestorTitles", []), a.get("title", "")])
+        detail = ""
+        if st == "fail" and a.get("failureMessages"):
+            detail = f'<pre class="failure">{_esc(a["failureMessages"][0][:2000])}</pre>'
+        dur = a.get("duration")
+        rows += (f'<li class="t {st}"><span class="mark" aria-label="{_STATE_LABEL[st]}">{mark}</span>'
+                 f'<span class="tname">{_esc(name)}</span>'
+                 f'<span class="tdur">{duration_fmt(dur) if dur else ""}</span>{detail}</li>')
+    return rows
+
+def _render_domains(vt_file_data):
+    cards = ""
+    for layer in TEST_LAYERS:
+        files = sorted(f for f in vt_file_data if classify_test_file(f) == layer["id"])
+        passed = sum(vt_file_data[f]["passed"] for f in files)
+        failed = sum(vt_file_data[f]["failed"] for f in files)
+        skipped = sum(vt_file_data[f]["skipped"] for f in files)
+        dur = sum(vt_file_data[f]["dur"] for f in files)
+        items = ""
+        for f in files:
+            d = vt_file_data[f]
+            items += f'''<details class="file"{" open" if d["failed"] else ""}>
+              <summary><span class="fpath">{_esc(f)}</span><span class="fcount {"bad-text" if d["failed"] else ""}">{d["passed"]}/{d["passed"] + d["failed"]}</span></summary>
+              <ul class="tests">{_test_rows(d["assertions"])}</ul>
+            </details>'''
+        st = "fail" if failed else ("pass" if files else "off")
+        cards += f'''<article class="card domain" id="domain-{_esc(layer["id"])}">
+          <div class="card-top"><p class="kicker"><span aria-hidden="true">{_esc(layer.get("icon", ""))}</span> {_n(len(files), "file")}</p>{status_badge(st, f"{failed} failing" if failed else None)}</div>
+          <h3>{_esc(layer["name"])}</h3>
+          <p class="sub">{_esc(layer.get("question", ""))}</p>
+          {_bar(passed, failed, passed + failed)}
+          <dl class="specs">
+            <div><dt>Passed</dt><dd>{passed:,}</dd></div>
+            <div><dt>Failed</dt><dd class="{"bad-text" if failed else ""}">{failed:,}</dd></div>
+            <div><dt>Skipped</dt><dd>{skipped:,}</dd></div>
+            <div><dt>Time</dt><dd>{duration_fmt(dur)}</dd></div>
+          </dl>
+          <details class="files"{" open" if failed else ""}><summary>{_n(len(files), "test file")}</summary>{items}</details>
+        </article>'''
+    other = sorted(f for f in vt_file_data if classify_test_file(f) == "other")
+    if other:
+        cards += f'''<article class="card domain"><div class="card-top"><p class="kicker">{_n(len(other), "file")}</p>{status_badge("fail", "Unclassified")}</div>
+          <h3>No domain</h3><p class="sub">These files match no domain in scripts/verification-catalog.json — the catalog test should have failed.</p>
+          <ul class="plain">{"".join(f"<li><code>{_esc(f)}</code></li>" for f in other)}</ul></article>'''
+    return f'<div class="grid domains">{cards}</div>'
+
+# --- Platform suites ---------------------------------------------------------
+
+def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_meta):
+    # Android
+    if android_suites:
+        rows = ""
+        for s in android_suites:
+            failed = s["failures"] + s["errors"]
+            short = s["name"].replace("dev.agentdeck.", "")
+            rows += f'''<details class="file"{" open" if failed else ""}>
+              <summary><span class="fpath">{_esc(short)}</span><span class="fcount {"bad-text" if failed else ""}">{s["passed"]}/{s["tests"]}</span></summary>
+              <ul class="tests">{_test_rows([{"title": c["name"], "status": c["status"], "duration": c["time"] * 1000,
+                                               "failureMessages": [c["failure"]] if c.get("failure") else []} for c in s["cases"]])}</ul>
+            </details>'''
+        a_p = sum(s["passed"] for s in android_suites)
+        a_f = sum(s["failures"] + s["errors"] for s in android_suites)
+        android = f'''<article class="card platform">
+          <div class="card-top"><h3>Android</h3>{status_badge("fail" if a_f else "pass")}</div>
+          <p class="sub">JUnit + Robolectric on the JVM (ubuntu), {_n(len(android_suites), "suite")}.</p>
+          {_bar(a_p, a_f, a_p + a_f)}
+          <details class="files"{" open" if a_f else ""}><summary>{_n(len(android_suites), "suite")}</summary>{rows}</details>
+        </article>'''
+    else:
+        android = f'''<article class="card platform">
+          <div class="card-top"><h3>Android</h3>{status_badge("off")}</div>
+          <p class="sub">{_esc(android_meta.get("note") or "No JUnit results in this run.")}</p></article>'''
+    # Apple
+    apple = f'''<article class="card platform">
+      <div class="card-top"><h3>Apple (XCTest)</h3>{status_badge("pass" if apple_meta["executed"] and apple_meta["status"] == "pass" else "off")}</div>
+      <p class="sub">{_esc(apple_meta.get("note") or "Runs in the Apple Tests workflow on a macOS runner.")}</p></article>'''
+    # Robot
+    if robot:
+        suites = ""
+        for s in robot["suites"]:
+            cases = [c for sc in s["scenarios"] for c in sc["cases"]]
+            suites += f'''<details class="file"{" open" if s["failed"] else ""}>
+              <summary><span class="fpath">{_esc(s["source"])}</span><span class="fcount {"bad-text" if s["failed"] else ""}">{s["passed"]}/{s["total"]}</span></summary>
+              <ul class="tests">{_test_rows([{"title": c["name"], "status": c["status"], "duration": c["elapsed_s"] * 1000,
+                                               "failureMessages": [c["message"]] if c["status"] == "failed" and c.get("message") else []} for c in cases])}</ul>
+            </details>'''
+        robot_card = f'''<article class="card platform wide">
+          <div class="card-top"><h3>ESP32 Robot Framework</h3>{status_badge("fail" if robot["failed"] else "pass")}</div>
+          <p class="sub">Physical boards in the maintainer's lab: {", ".join(_esc(BOARD_LABELS.get(b, b)) for b in robot["boards"]) or "no board tags"}.</p>
+          {_bar(robot["passed"], robot["failed"], robot["passed"] + robot["failed"])}
+          {_build_robot_perf_table(robot)}
+          <details class="files"{" open" if robot["failed"] else ""}><summary>{_n(len(robot["suites"]), "suite")}</summary>{suites}</details>
+        </article>'''
+    else:
+        robot_card = f'''<article class="card platform">
+          <div class="card-top"><h3>ESP32 Robot Framework</h3>{status_badge("off")}</div>
+          <p class="sub">{_esc(robot_meta.get("note") or "Physical hardware suite; not run on GitHub-hosted runners.")}</p></article>'''
+    return f'<div class="grid platforms">{android}{apple}{robot_card}</div>'
+
+# --- Scenarios ---------------------------------------------------------------
+
+def _scenario_cell(cat):
+    t = cat["total"]
+    if t == 0:
+        return '<td class="num quiet" title="No tests mapped">—</td>'
+    p, f, m, nr = cat["passed"], cat["failed"], cat["missing"], cat.get("not_run", 0)
+    st = "fail" if f else ("pass" if p == t else "off")
+    parts = [x for x in (f"{p} passed" if p else "", f"{f} failed" if f else "",
+                         f"{m} not found in this run" if m else "", f"{nr} not executed here" if nr else "") if x]
+    return f'<td class="num"><span class="dot {st}"></span>{p}/{t}<span class="sr"> — {", ".join(parts)}</span></td>'
+
+def _render_scenarios(scenario_results):
+    rows = ""
+    for sc in scenario_results:
+        cats = sc["categories"]
+        gaps = "".join(f"<li>{_esc(g)}</li>" for g in sc.get("gaps", []))
+        rows += f'''<tr>
+          <th scope="row"><strong>{_esc(sc["name"])}</strong><span class="fine">{_esc(sc["description"])}</span></th>
+          <td><span class="tag">{_esc(sc["priority"])}</span></td>
+          {_scenario_cell(cats["unit"])}{_scenario_cell(cats["integration"])}{_scenario_cell(cats["platform"])}{_scenario_cell(cats["e2e"])}
+          <td><ul class="ticks no">{gaps}</ul></td>
+        </tr>'''
+    return f'''<div class="card flush"><div class="scroll"><table class="data">
+      <thead><tr><th>Scenario</th><th>Priority</th><th class="num">Unit</th><th class="num">Integration</th><th class="num">Platform</th><th class="num">E2E</th><th>Known gaps</th></tr></thead>
+      <tbody>{rows}</tbody></table></div></div>'''
+
+# --- Coverage ----------------------------------------------------------------
+
+def _render_coverage(cov_total, pkg_cov):
+    thresholds = read_coverage_thresholds()
+    floors = ""
+    for label, key in (("Lines", "lines"), ("Statements", "statements"), ("Functions", "functions"), ("Branches", "branches")):
+        pct = cov_total.get(key, {}).get("pct", 0)
+        floor = thresholds.get(key)
+        ok = floor is None or pct >= floor
+        floors += f'''<div class="card tile">
+          <p class="kicker">{label}</p>
+          <p class="tile-value {"" if ok else "bad-text"}">{pct:.1f}%</p>
+          <div class="meter"><span class="{"ok" if ok else "bad"}" style="width:{min(pct, 100):.1f}%"></span>{f'<i style="left:{floor:.1f}%" title="floor {floor:g}%"></i>' if floor is not None else ""}</div>
+          <p class="fine">{f"floor {floor:g}% · {'above' if ok else 'BELOW'}" if floor is not None else "no floor configured"}</p>
+        </div>'''
+    pkgs = ""
+    for name in sorted(pkg_cov):
+        data = pkg_cov[name]
+        lp = data["lines"]["pct"]
+        pkgs += f'''<div class="card tile">
+          <p class="kicker">{_esc(name)}</p>
+          <p class="tile-value">{lp:.1f}%</p>
+          <div class="meter"><span class="ok" style="width:{min(lp, 100):.1f}%"></span></div>
+          <p class="fine">{data["lines"]["covered"]:,} / {data["lines"]["total"]:,} lines · {_n(len(data["files"]), "file")}</p>
+        </div>'''
+    files = sorted((f for d in pkg_cov.values() for f in d["files"]), key=lambda f: (f["lines_pct"], f["path"]))
+    rows = "".join(f'''<tr><td><code>{_esc(f["path"])}</code></td>
+        <td class="num">{f["lines_pct"]:.0f}%</td><td class="num">{f["stmts_pct"]:.0f}%</td>
+        <td class="num">{f["funcs_pct"]:.0f}%</td><td class="num">{f["branch_pct"]:.0f}%</td></tr>''' for f in files)
+    return f'''<div class="grid tiles four">{floors}</div>
+      <h3 class="sub-head">By package</h3>
+      <div class="grid tiles four">{pkgs}</div>
+      <details class="card files"><summary>{len(files)} source files, least covered first</summary>
+        <div class="scroll"><table class="data"><thead><tr><th>File</th><th class="num">Lines</th><th class="num">Stmts</th><th class="num">Funcs</th><th class="num">Branch</th></tr></thead>
+        <tbody>{rows}</tbody></table></div></details>'''
+
+# --- Page --------------------------------------------------------------------
+
 def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results, history, metadata, robot=None):
-    """Generate tab-based SPA test report."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    commit = os.environ.get("GITHUB_SHA", "")[:7]
     vitest_meta = suite_meta(metadata, "vitest")
+    e2e_meta = suite_meta(metadata, "e2e")
     android_meta = suite_meta(metadata, "android")
     apple_meta = suite_meta(metadata, "apple")
     robot_meta = suite_meta(metadata, "robot")
 
-    # --- Aggregate stats ---
-    vt_passed = vitest["numPassedTests"] if vitest else 0
-    vt_failed = vitest["numFailedTests"] if vitest else 0
-    vt_total = vitest["numTotalTests"] if vitest else 0
-    vt_suites = len(vitest.get("testResults", [])) if vitest else 0
-    vt_duration = (vitest["testResults"][-1]["endTime"] - vitest["startTime"]) if vitest and vitest.get("testResults") else 0
+    # Per-file data (Vitest + E2E share the reporter format).
+    vt_file_data = {}
+    for result in (vitest or {}).get("testResults", []):
+        name = result["name"].replace(str(ROOT) + "/", "")
+        assertions = result.get("assertionResults", [])
+        vt_file_data[name] = {
+            "passed": sum(1 for a in assertions if a["status"] == "passed"),
+            "failed": sum(1 for a in assertions if a["status"] == "failed"),
+            "skipped": sum(1 for a in assertions if a["status"] not in ("passed", "failed")),
+            "dur": max(0, result.get("endTime", 0) - result.get("startTime", 0)),
+            "assertions": assertions,
+        }
+    is_e2e = lambda f: f.startswith("tests/e2e/")
+    def agg(pred):
+        files = [f for f in vt_file_data if pred(f)]
+        return (sum(vt_file_data[f]["passed"] for f in files), sum(vt_file_data[f]["failed"] for f in files),
+                len(files), sum(vt_file_data[f]["dur"] for f in files))
+    vt_p, vt_f, vt_n, vt_ms = agg(lambda f: not is_e2e(f))
+    e2_p, e2_f, e2_n, e2_ms = agg(is_e2e)
+    an_p = sum(s["passed"] for s in android_suites)
+    an_f = sum(s["failures"] + s["errors"] for s in android_suites)
+    an_ms = sum(s["time"] for s in android_suites) * 1000
+    rb_p = robot["passed"] if robot else 0
+    rb_f = robot["failed"] if robot else 0
 
-    and_passed = sum(s["passed"] for s in android_suites)
-    and_failed = sum(s["failures"] + s["errors"] for s in android_suites)
-    and_total = sum(s["tests"] for s in android_suites)
-    and_duration = sum(s["time"] for s in android_suites) * 1000
+    total_passed = vt_p + e2_p + an_p + rb_p
+    total_failed = vt_f + e2_f + an_f + rb_f
+    total_all = total_passed + total_failed
+    overall = "fail" if total_failed else "pass"
 
-    rob_passed = robot["passed"] if robot else 0
-    rob_failed = robot["failed"] if robot else 0
-    rob_skipped = robot["skipped"] if robot else 0
-    rob_total = robot["total"] if robot else 0
-
-    total_passed = vt_passed + and_passed + rob_passed
-    total_failed = vt_failed + and_failed + rob_failed
-    total_all = vt_total + and_total + rob_total
-    total_duration = vt_duration + and_duration
-
-    # Coverage
     cov_total = cov_data.get("total", {}) if cov_data else {}
     lines_pct = cov_total.get("lines", {}).get("pct", 0)
-    stmts_pct = cov_total.get("statements", {}).get("pct", 0)
-    funcs_pct = cov_total.get("functions", {}).get("pct", 0)
-    branch_pct = cov_total.get("branches", {}).get("pct", 0)
-
     pkg_cov = extract_package_coverage(cov_data) if cov_data else {}
 
-    lines_covered = cov_total.get("lines", {}).get("covered", 0) if cov_total else 0
-    lines_total_n = cov_total.get("lines", {}).get("total", 0) if cov_total else 0
+    stats = [
+        ("Result", "Pass" if overall == "pass" else "Fail", "ok-text" if overall == "pass" else "bad-text",
+         f"{total_all:,} tests executed"),
+        ("Passed", f"{total_passed:,}", "", f"{(total_passed / total_all * 100) if total_all else 0:.2f}% of executed"),
+        ("Failed", f"{total_failed:,}", "bad-text" if total_failed else "", "across every suite run here"),
+        ("Wall time", duration_fmt(vt_ms + e2_ms + an_ms), "", "summed per-file test time"),
+        ("Line coverage", f"{lines_pct:.1f}%" if cov_data else "—", "", "TypeScript packages"),
+    ]
+    suites = [
+        {"name": "Vitest", "what": "TypeScript unit, contract and integration tests.", "meta": vitest_meta,
+         "passed": vt_p, "failed": vt_f, "files": vt_n, "unit": "Files", "ms": vt_ms},
+        {"name": "Daemon E2E", "what": "The real daemon process, driven from outside.", "meta": e2e_meta,
+         "passed": e2_p, "failed": e2_f, "files": e2_n, "unit": "Files", "ms": e2_ms},
+        {"name": "Android", "what": "JUnit + Robolectric.", "meta": android_meta,
+         "passed": an_p, "failed": an_f, "files": len(android_suites), "unit": "Suites", "ms": an_ms},
+        {"name": "Apple (XCTest)", "what": "macOS app and in-process Swift daemon.", "meta": apple_meta,
+         "passed": 0, "failed": 0, "files": 0, "unit": "Suites", "ms": 0},
+        {"name": "ESP32 Robot", "what": "Flash, boot and serial protocol on real boards.", "meta": robot_meta,
+         "passed": rb_p, "failed": rb_f, "files": len(robot["suites"]) if robot else 0, "unit": "Suites", "ms": 0},
+    ]
 
-    # --- Build vitest file data ---
-    vt_file_data = {}
-    if vitest:
-        for result in vitest["testResults"]:
-            name = result["name"].replace(str(ROOT) + "/", "")
-            st = result["status"]
-            assertions = result.get("assertionResults", [])
-            passed = sum(1 for a in assertions if a["status"] == "passed")
-            failed = sum(1 for a in assertions if a["status"] == "failed")
-            dur = result["endTime"] - result["startTime"]
-            vt_file_data[name] = {
-                "status": st, "passed": passed, "failed": failed,
-                "dur": dur, "assertions": assertions,
-            }
+    sparks = "".join(x for x in (sparkline_svg(history, "total", "Tests"),
+                                 sparkline_svg(history, "passed", "Pass rate"),
+                                 sparkline_svg(history, "coverage", "Line coverage")) if x)
+    history_html = (f'<div class="grid tiles three">{sparks}</div>' if sparks
+                    else '<p class="quiet">Trends appear once two or more master runs are recorded.</p>')
 
-    # --- Overall status ---
-    overall_status = "PASS" if total_failed == 0 else "FAIL"
-    overall_color = "#22c55e" if total_failed == 0 else "#ef4444"
+    sections = [
+        ("run", "Latest run", "Every suite this page executed, and the ones it only links to."),
+        ("verify", "What we verify", "Each gate, where it runs, and what it does not prove."),
+        ("domains", "Test domains", "Every test file, grouped by the question it answers."),
+        ("platforms", "Platforms", "Android, Apple and hardware suites."),
+        ("scenarios", "Scenarios", "User flows mapped to the tests that cover them."),
+        ("coverage", "Coverage", "TypeScript coverage against the enforced floor."),
+        ("history", "History", "Trends across recent master runs."),
+    ]
+    if not scenario_results:
+        sections = [s for s in sections if s[0] != "scenarios"]
+    jump = "".join(f'<a href="#{sid}">{_esc(title)}</a>' for sid, title, _ in sections)
 
-    # --- History sparklines ---
-    sparklines_html = ""
-    if len(history) >= 2:
-        sparklines_html = f'''<div class="sparkline-row">
-            {sparkline_svg(history, "total", "#38bdf8", "Total Tests")}
-            {sparkline_svg(history, "passed", "#22c55e", "Pass Rate")}
-            {sparkline_svg(history, "coverage", "#a78bfa", "Line Coverage")}
-        </div>'''
-
-    # --- Build layer tab contents ---
-    # Compute which layers have data
-    active_layers = []
-    assigned_files = set()
-    layer_stats = {}
-    for layer in TEST_LAYERS:
-        layer_files = [f for f in layer["files"] if f in vt_file_data]
-        if layer_files:
-            assigned_files.update(layer_files)
-            lp = sum(vt_file_data[f]["passed"] for f in layer_files)
-            lf = sum(vt_file_data[f]["failed"] for f in layer_files)
-            ld = sum(vt_file_data[f]["dur"] for f in layer_files)
-            layer_stats[layer["id"]] = {"passed": lp, "failed": lf, "total": lp + lf, "dur": ld, "files": layer_files}
-            active_layers.append(layer)
-
-    # Helper: build test cases HTML for a file (grouped by top-level describe)
-    def build_file_tests_html(name, data):
-        """Build HTML for one file with tests grouped by describe blocks."""
-        assertions = data["assertions"]
-        st = data["status"]
-        passed = data["passed"]
-        failed = data["failed"]
-        dur = data["dur"]
-        color = "#22c55e" if st == "passed" else "#ef4444"
-        icon = "&#10003;" if st == "passed" else "&#10007;"
-        short_name = name.split("__tests__/")[-1] if "__tests__/" in name else name
-
-        # Group assertions by top-level describe (ancestorTitles[0])
-        describe_groups = {}
-        for a in assertions:
-            ancestors = a.get("ancestorTitles", [])
-            group_name = ancestors[0] if ancestors else "(top-level)"
-            if group_name not in describe_groups:
-                describe_groups[group_name] = []
-            describe_groups[group_name].append(a)
-
-        groups_html = ""
-        for group_name, group_assertions in describe_groups.items():
-            g_passed = sum(1 for a in group_assertions if a["status"] == "passed")
-            g_failed = sum(1 for a in group_assertions if a["status"] == "failed")
-            g_color = "#ef4444" if g_failed else "#22c55e"
-            g_icon = "&#10007;" if g_failed else "&#10003;"
-
-            cases_html = ""
-            for a in group_assertions:
-                a_icon = "&#10003;" if a["status"] == "passed" else "&#10007;"
-                a_color = "#22c55e" if a["status"] == "passed" else "#ef4444"
-                ancestors = a.get("ancestorTitles", [])
-                # Build full path from ancestors (skip first which is the group)
-                sub_path = " &#8250; ".join(ancestors[1:]) if len(ancestors) > 1 else ""
-                prefix = f'<span class="test-ancestors">{sub_path} &#8250; </span>' if sub_path else ""
-                a_dur = f'{a.get("duration", 0)}ms' if a.get("duration") else ""
-                fail_msg = ""
-                if a.get("failureMessages"):
-                    escaped = a["failureMessages"][0][:300].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                    fail_msg = f'<div class="fail-msg">{escaped}</div>'
-                cases_html += f'''<div class="test-case">
-                  <span class="test-icon" style="color:{a_color}">{a_icon}</span>
-                  <div class="test-body">
-                    <div class="test-title">{prefix}{a["title"]}</div>
-                    {fail_msg}
-                  </div>
-                  <span class="test-dur">{a_dur}</span>
-                </div>'''
-
-            groups_html += f'''<div class="describe-group">
-              <div class="describe-header">
-                <span class="describe-icon" style="color:{g_color}">{g_icon}</span>
-                <span class="describe-name">{group_name}</span>
-                <span class="describe-stats"><span style="color:#22c55e">{g_passed}</span> / <span style="color:{"#ef4444" if g_failed else "var(--dim)"}">{g_passed + g_failed}</span></span>
-              </div>
-              <div class="describe-cases">{cases_html}</div>
-            </div>'''
-
-        return f'''<div class="file-block">
-          <div class="file-header">
-            <span class="file-icon" style="color:{color}">{icon}</span>
-            <span class="file-name">{short_name}</span>
-            <div class="file-stats">
-              <span style="color:#22c55e">{passed}</span>
-              <span class="file-sep">/</span>
-              <span style="color:{"#ef4444" if failed else "var(--dim)"}">{passed + failed}</span>
-              <span class="file-dur">{duration_fmt(dur)}</span>
-            </div>
-          </div>
-          {groups_html}
-        </div>'''
-
-    # Build each layer tab content
-    layer_tab_contents = {}
-    for layer in active_layers:
-        files_html = ""
-        for f in layer_stats[layer["id"]]["files"]:
-            files_html += build_file_tests_html(f, vt_file_data[f])
-        layer_tab_contents[layer["id"]] = files_html
-
-    # Unassigned files
-    unassigned = [f for f in vt_file_data if f not in assigned_files]
-    unassigned_html = ""
-    if unassigned:
-        for f in sorted(unassigned):
-            unassigned_html += build_file_tests_html(f, vt_file_data[f])
-
-    # --- Build android tab content ---
-    android_tab_html = ""
-    for suite in android_suites:
-        short_name = suite["name"].replace("dev.agentdeck.", "")
-        color = "#22c55e" if suite["failures"] == 0 else "#ef4444"
-        icon = "&#10003;" if suite["failures"] == 0 else "&#10007;"
-
-        cases_html = ""
-        for c in suite["cases"]:
-            c_icon = "&#10003;" if c["status"] == "passed" else "&#10007;"
-            c_color = "#22c55e" if c["status"] == "passed" else "#ef4444"
-            c_dur = f'{c["time"]*1000:.0f}ms' if c["time"] > 0 else ""
-            fail_msg = ""
-            if c.get("failure"):
-                escaped = c["failure"][:300].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                fail_msg = f'<div class="fail-msg">{escaped}</div>'
-            cases_html += f'''<div class="test-case">
-              <span class="test-icon" style="color:{c_color}">{c_icon}</span>
-              <div class="test-body">
-                <div class="test-title">{c["name"]}</div>
-                {fail_msg}
-              </div>
-              <span class="test-dur">{c_dur}</span>
-            </div>'''
-
-        android_tab_html += f'''<div class="file-block">
-          <div class="file-header">
-            <span class="file-icon" style="color:{color}">{icon}</span>
-            <span class="file-name">{short_name}</span>
-            <div class="file-stats">
-              <span style="color:#22c55e">{suite["passed"]}</span>
-              <span class="file-sep">/</span>
-              <span style="color:{"#ef4444" if suite["failures"] else "var(--dim)"}">{suite["tests"]}</span>
-              <span class="file-dur">{duration_fmt(suite["time"]*1000)}</span>
-            </div>
-          </div>
-          <div class="describe-group">
-            <div class="describe-cases">{cases_html}</div>
-          </div>
-        </div>'''
-
-    # --- Build robot tab content ---
-    robot_tab_html = ""
-    if robot and robot.get("suites"):
-        for suite in robot["suites"]:
-            s_color = "#22c55e" if suite["failed"] == 0 else "#ef4444"
-            s_icon = "&#10003;" if suite["failed"] == 0 else "&#10007;"
-            tags_html = "".join(
-                f'<span class="robot-tag">{t}</span>' for t in suite["tags"]
-            )
-
-            scenarios_html = ""
-            for scenario in suite["scenarios"]:
-                is_standalone = scenario.get("standalone", False)
-                sc_cases = scenario["cases"]
-                sc_passed = sum(1 for c in sc_cases if c["status"] == "passed")
-                sc_failed = sum(1 for c in sc_cases if c["status"] == "failed")
-                sc_skipped = sum(1 for c in sc_cases if c["status"] == "skipped")
-                sc_color = "#22c55e" if sc_failed == 0 else "#ef4444"
-                sc_icon = "&#10003;" if sc_failed == 0 else ("&#9675;" if sc_passed == 0 and sc_skipped > 0 else "&#10007;")
-
-                if is_standalone:
-                    # Render as simple test case
-                    c = sc_cases[0]
-                    c_icon = "&#10003;" if c["status"] == "passed" else ("&#9675;" if c["status"] == "skipped" else "&#10007;")
-                    c_color = "#22c55e" if c["status"] == "passed" else ("#64748b" if c["status"] == "skipped" else "#ef4444")
-                    fail_msg = ""
-                    if c.get("message") and c["status"] == "failed":
-                        escaped = c["message"][:300].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                        fail_msg = f'<div class="fail-msg">{escaped}</div>'
-                    sc_elapsed = duration_fmt(c.get("elapsed_s", 0) * 1000) if c.get("elapsed_s", 0) >= 0.1 else ""
-                    scenarios_html += f'''<div class="test-case">
-                      <span class="test-icon" style="color:{c_color}">{c_icon}</span>
-                      <div class="test-body">
-                        <div class="test-title">{c["name"]}</div>
-                        {fail_msg}
-                      </div>
-                      <span class="test-dur">{sc_elapsed}</span>
-                    </div>'''
-                    continue
-
-                # Multi-board scenario
-                boards = scenario.get("boards", [])
-                board_count = len(boards)
-
-                # BDD steps
-                steps_html = ""
-                if scenario.get("steps"):
-                    step_lines = ""
-                    for step in scenario["steps"]:
-                        # Color-code BDD keywords
-                        if step.startswith("Given "):
-                            kw, rest = "Given", step[6:]
-                            kw_color = "#60a5fa"
-                        elif step.startswith("When "):
-                            kw, rest = "When", step[5:]
-                            kw_color = "#fbbf24"
-                        elif step.startswith("Then "):
-                            kw, rest = "Then", step[5:]
-                            kw_color = "#34d399"
-                        elif step.startswith("And "):
-                            kw, rest = "And", step[4:]
-                            kw_color = "#94a3b8"
-                        elif step.startswith("But "):
-                            kw, rest = "But", step[4:]
-                            kw_color = "#f87171"
-                        else:
-                            kw, rest = "", step
-                            kw_color = "#94a3b8"
-                        escaped_rest = rest.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                        if kw:
-                            step_lines += f'<div class="bdd-step"><span class="bdd-kw" style="color:{kw_color}">{kw}</span> <span class="bdd-text">{escaped_rest}</span></div>'
-                        else:
-                            step_lines += f'<div class="bdd-step"><span class="bdd-text">{escaped_rest}</span></div>'
-                    steps_html = f'<div class="bdd-steps">{step_lines}</div>'
-
-                # Board matrix
-                board_chips = ""
-                for board_id in ["box_86", "ips35", "amoled", "led8x32"]:
-                    label = BOARD_LABELS.get(board_id, board_id)
-                    case_for_board = next((c for c in sc_cases if c.get("board") == board_id), None)
-                    if case_for_board:
-                        if case_for_board["status"] == "passed":
-                            chip_style = "background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3)"
-                            chip_icon = "&#10003;"
-                        elif case_for_board["status"] == "skipped":
-                            chip_style = "background:rgba(100,116,139,0.15);color:#64748b;border-color:rgba(100,116,139,0.3)"
-                            chip_icon = "&#9675;"
-                        else:
-                            chip_style = "background:rgba(239,68,68,0.15);color:#ef4444;border-color:rgba(239,68,68,0.3)"
-                            chip_icon = "&#10007;"
-                        board_chips += f'<span class="board-chip" style="{chip_style}">{chip_icon} {label}</span>'
-                    else:
-                        board_chips += f'<span class="board-chip board-chip-na">— {label}</span>'
-                board_matrix_html = f'<div class="board-matrix">{board_chips}</div>'
-
-                # Individual test cases per board
-                board_cases_html = ""
-                for case in sc_cases:
-                    c_icon = "&#10003;" if case["status"] == "passed" else ("&#9675;" if case["status"] == "skipped" else "&#10007;")
-                    c_color = "#22c55e" if case["status"] == "passed" else ("#64748b" if case["status"] == "skipped" else "#ef4444")
-                    fail_msg = ""
-                    if case.get("message") and case["status"] == "failed":
-                        escaped = case["message"][:500].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                        fail_msg = f'<div class="fail-msg">{escaped}</div>'
-                    c_elapsed = duration_fmt(case.get("elapsed_s", 0) * 1000) if case.get("elapsed_s", 0) >= 0.1 else ""
-                    board_cases_html += f'''<div class="test-case">
-                      <span class="test-icon" style="color:{c_color}">{c_icon}</span>
-                      <div class="test-body">
-                        <div class="test-title">{case["name"]}</div>
-                        {fail_msg}
-                      </div>
-                      <span class="test-dur">{c_elapsed}</span>
-                    </div>'''
-
-                # Scenario block
-                scenarios_html += f'''<div class="describe-group">
-                  <div class="describe-header">
-                    <span class="describe-icon" style="color:{sc_color}">{sc_icon}</span>
-                    <span class="describe-name">{scenario["name"]}</span>
-                    <span class="robot-board-badge">{board_count} board{"s" if board_count != 1 else ""}</span>
-                    <span class="describe-stats"><span style="color:#22c55e">{sc_passed}</span> / <span style="color:{"#ef4444" if sc_failed else "var(--dim)"}">{len(sc_cases)}</span></span>
-                  </div>
-                  {steps_html}
-                  {board_matrix_html}
-                  <div class="describe-cases">{board_cases_html}</div>
-                </div>'''
-
-            robot_tab_html += f'''<div class="file-block">
-              <div class="file-header">
-                <span class="file-icon" style="color:{s_color}">{s_icon}</span>
-                <span class="file-name">{suite["source"]}</span>
-                <span class="robot-tags">{tags_html}</span>
-                <div class="file-stats">
-                  <span style="color:#22c55e">{suite["passed"]}</span>
-                  <span class="file-sep">/</span>
-                  <span style="color:{"#ef4444" if suite["failed"] else "var(--dim)"}">{suite["total"]}</span>
-                </div>
-              </div>
-              {scenarios_html}
-            </div>'''
-    elif robot:
-        # Fallback: flat list (no suite structure available)
-        for c in robot["cases"]:
-            c_icon = "&#10003;" if c["status"] == "passed" else ("&#9675;" if c["status"] == "skipped" else "&#10007;")
-            c_color = "#22c55e" if c["status"] == "passed" else ("#64748b" if c["status"] == "skipped" else "#ef4444")
-            fail_msg = ""
-            if c.get("message") and c["status"] == "failed":
-                escaped = c["message"][:300].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                fail_msg = f'<div class="fail-msg">{escaped}</div>'
-            fb_elapsed = duration_fmt(c.get("elapsed_s", 0) * 1000) if c.get("elapsed_s", 0) >= 0.1 else ""
-            robot_tab_html += f'''<div class="test-case">
-              <span class="test-icon" style="color:{c_color}">{c_icon}</span>
-              <div class="test-body">
-                <div class="test-title">{c["name"]}</div>
-                {fail_msg}
-              </div>
-              <span class="test-dur">{fb_elapsed}</span>
-            </div>'''
-
-    # --- Build scenario tab content ---
-    scenario_tab_html = ""
+    body = ""
+    body += f'<section>{_section_head("run", "Build health", "Latest run", "What this page ran on the merged master commit. Suites that need a macOS runner or physical boards run elsewhere and are marked as not run here — never counted as passing.")}{_render_run(stats, suites)}</section>'
+    body += f'<section>{_section_head("verify", "Transparency", "What we verify", "Every check the project runs, where it runs, and what it does <em>not</em> prove. Generated from <code>scripts/verification-catalog.json</code>; CI fails if that file stops matching the repository.")}{_render_verify(CATALOG, metadata)}</section>'
+    body += f'<section>{_section_head("domains", "Vitest + E2E", "Test domains", "Every TypeScript and end-to-end test file, grouped by the question it answers. Open a domain for its files and each test.")}{_render_domains(vt_file_data)}</section>'
+    body += f'<section>{_section_head("platforms", "Native and hardware", "Platforms", "Suites outside the TypeScript toolchain. Apple and hardware results are recorded by their own workflows and the lab.")}{_render_platforms(android_suites, android_meta, apple_meta, robot, robot_meta)}</section>'
     if scenario_results:
-        sc_total = len(scenario_results)
-        sc_full = sum(1 for s in scenario_results
-                      if all(s["categories"][c]["total"] == 0 or (s["categories"][c]["failed"] == 0 and s["categories"][c]["missing"] == 0 and s["categories"][c].get("not_run", 0) == 0)
-                             for c in ("unit", "integration", "platform", "e2e"))
-                      and any(s["categories"][c]["total"] > 0 for c in ("unit", "integration", "platform", "e2e")))
-        sc_gaps = sum(1 for s in scenario_results if s["gaps"])
-
-        scenario_rows = ""
-        for sc in scenario_results:
-            priority_colors = {"critical": "#ef4444", "high": "#f97316", "medium": "#eab308", "low": "#64748b"}
-            p_color = priority_colors.get(sc["priority"], "#64748b")
-            unit_cell = scenario_cell_html(sc["categories"]["unit"])
-            integ_cell = scenario_cell_html(sc["categories"]["integration"])
-            plat_cell = scenario_cell_html(sc["categories"]["platform"])
-            e2e_cell = scenario_cell_html(sc["categories"]["e2e"])
-
-            all_passed_sc = sum(sc["categories"][c]["passed"] for c in ("unit", "integration", "platform", "e2e"))
-            all_total_sc = sum(sc["categories"][c]["total"] for c in ("unit", "integration", "platform", "e2e"))
-            all_failed_sc = sum(sc["categories"][c]["failed"] for c in ("unit", "integration", "platform", "e2e"))
-            all_missing_sc = sum(sc["categories"][c]["missing"] for c in ("unit", "integration", "platform", "e2e"))
-            all_not_run_sc = sum(sc["categories"][c].get("not_run", 0) for c in ("unit", "integration", "platform", "e2e"))
-
-            if all_total_sc == 0:
-                score_cls = "sc-none"
-            elif all_failed_sc > 0:
-                score_cls = "sc-fail"
-            elif all_missing_sc > 0 or all_not_run_sc > 0:
-                score_cls = "sc-warn"
-            else:
-                score_cls = "sc-pass"
-
-            gaps_html = ""
-            if sc["gaps"]:
-                gaps_items = "".join(f"<li>{g}</li>" for g in sc["gaps"])
-                gaps_html = f'<ul class="sc-gaps">{gaps_items}</ul>'
-
-            detail_html = ""
-            for cat in ("unit", "integration", "platform", "e2e"):
-                for t in sc["categories"][cat]["tests"]:
-                    t_icon = "&#10003;" if t["status"] == "pass" else ("&#10007;" if t["status"] == "fail" else "&#9675;" if t["status"] == "not-run" else "?")
-                    t_color = "#22c55e" if t["status"] == "pass" else ("#ef4444" if t["status"] == "fail" else "#94a3b8" if t["status"] == "not-run" else "#64748b")
-                    t_fail_color = "#ef4444" if t["failed"] else "#64748b"
-                    detail_html += f'''<tr class="sc-detail-row" data-scenario="{sc["id"]}" style="display:none">
-                        <td style="padding-left:2rem;color:{t_color}">{t_icon}</td>
-                        <td class="file-path" style="font-size:0.75rem">{t["file"]}</td>
-                        <td>{category_badge_html(cat)}</td>
-                        <td style="text-align:right;color:#22c55e;font-size:0.8rem">{t["passed"]}</td>
-                        <td style="text-align:right;color:{t_fail_color};font-size:0.8rem">{t["failed"]}</td>
-                        <td></td>
-                    </tr>'''
-
-            scenario_rows += f'''<tr class="sc-row" onclick="toggleScenario('{sc["id"]}')" style="cursor:pointer">
-                <td class="{score_cls}" style="font-weight:600;text-align:center">{all_passed_sc}/{all_total_sc}</td>
-                <td>
-                    <div style="font-weight:500">{sc["name"]}</div>
-                    <div style="font-size:0.75rem;color:var(--dim)">{sc["description"]}</div>
-                    {gaps_html}
-                </td>
-                <td style="text-align:center"><span style="color:{p_color};font-size:0.75rem;font-weight:600;text-transform:uppercase">{sc["priority"]}</span></td>
-                {unit_cell}{integ_cell}{plat_cell}{e2e_cell}
-            </tr>{detail_html}'''
-
-        scenario_tab_html = f'''<div class="sc-summary-bar">
-          <span class="sc-summary-item"><span style="color:#22c55e;font-weight:600">{sc_full}</span> covered</span>
-          <span class="sc-summary-item"><span style="color:#eab308;font-weight:600">{sc_total - sc_full}</span> partial/missing</span>
-          <span class="sc-summary-item"><span style="color:#f97316;font-weight:600">{sc_gaps}</span> with identified gaps</span>
-        </div>
-        <table class="scenario-table">
-          <thead><tr>
-            <th style="width:60px;text-align:center">Score</th>
-            <th>Scenario</th>
-            <th style="width:70px;text-align:center">Priority</th>
-            <th style="width:70px;text-align:center">Unit</th>
-            <th style="width:70px;text-align:center">Integ.</th>
-            <th style="width:70px;text-align:center">Platform</th>
-            <th style="width:70px;text-align:center">E2E</th>
-          </tr></thead>
-          <tbody>{scenario_rows}</tbody>
-        </table>'''
-
-    # --- Build coverage tab content ---
-    coverage_tab_html = ""
+        body += f'<section>{_section_head("scenarios", "User flows", "Scenarios", "Each flow maps to specific tests by file and case name (<code>scripts/scenario-matrix.json</code>). A dash means no test at that level — listed with the known gaps.")}{_render_scenarios(scenario_results)}</section>'
     if cov_data:
-        pkg_cards = ""
-        for pkg_name in ("bridge", "plugin", "shared", "hooks"):
-            if pkg_name not in pkg_cov:
-                continue
-            pkg = pkg_cov[pkg_name]
-            pkg_cards += f'''<div class="cov-card">
-                <div class="cov-card-header">{pkg_name}</div>
-                <div class="cov-card-gauges">
-                    <div class="gauge-item">{gauge_svg(pkg["lines"]["pct"])}<span>Lines</span></div>
-                    <div class="gauge-item">{gauge_svg(pkg["statements"]["pct"])}<span>Stmts</span></div>
-                    <div class="gauge-item">{gauge_svg(pkg["functions"]["pct"])}<span>Funcs</span></div>
-                    <div class="gauge-item">{gauge_svg(pkg["branches"]["pct"])}<span>Branch</span></div>
-                </div>
-                <div class="cov-card-detail">{pkg["lines"]["covered"]}/{pkg["lines"]["total"]} lines covered</div>
-            </div>'''
+        body += f'<section>{_section_head("coverage", "Vitest --coverage", "Coverage", "Line, statement, function and branch coverage of bridge, shared, plugin and hooks. The floors are read from <code>vitest.config.ts</code> and enforced on every pull request.")}{_render_coverage(cov_total, pkg_cov)}</section>'
+    body += f'<section>{_section_head("history", "Trend", "History", "Totals from the last runs of this page on master.")}{history_html}</section>'
 
-        cov_file_rows = ""
-        for pkg_name in sorted(pkg_cov.keys()):
-            pkg = pkg_cov[pkg_name]
-            for fi in sorted(pkg["files"], key=lambda x: x["lines_pct"]):
-                bar_w = min(fi["lines_pct"], 100)
-                bar_color = pct_color(fi["lines_pct"])
-                fi_pkg = fi["path"].split("/")[0] if "/" in fi["path"] else "other"
-                cov_file_rows += f'''<tr data-pkg="{fi_pkg}">
-                    <td class="file-path">{fi["path"]}</td>
-                    <td style="text-align:right;color:{pct_color(fi["stmts_pct"])}">{fi["stmts_pct"]:.0f}%</td>
-                    <td style="text-align:right;color:{pct_color(fi["branch_pct"])}">{fi["branch_pct"]:.0f}%</td>
-                    <td style="text-align:right;color:{pct_color(fi["funcs_pct"])}">{fi["funcs_pct"]:.0f}%</td>
-                    <td style="text-align:right;color:{pct_color(fi["lines_pct"])}">{fi["lines_pct"]:.0f}%</td>
-                    <td style="width:100px"><div class="cov-bar"><div class="cov-fill" style="width:{bar_w}%;background:{bar_color}"></div></div></td>
-                </tr>'''
-
-        lines_thresh_color = "#22c55e" if lines_pct >= 17 else "#ef4444"
-        funcs_thresh_color = "#22c55e" if funcs_pct >= 15 else "#ef4444"
-        branch_thresh_color = "#22c55e" if branch_pct >= 14 else "#ef4444"
-        stmts_thresh_color = "#22c55e" if stmts_pct >= 16 else "#ef4444"
-        coverage_tab_html = f'''<div style="margin-bottom:1rem">
-          <div class="threshold"><div class="dot" style="background:{lines_thresh_color}"></div>Lines &ge;17%: {lines_pct:.1f}%</div>
-          <div class="threshold"><div class="dot" style="background:{funcs_thresh_color}"></div>Functions &ge;15%: {funcs_pct:.1f}%</div>
-          <div class="threshold"><div class="dot" style="background:{branch_thresh_color}"></div>Branches &ge;14%: {branch_pct:.1f}%</div>
-          <div class="threshold"><div class="dot" style="background:{stmts_thresh_color}"></div>Statements &ge;16%: {stmts_pct:.1f}%</div>
-        </div>
-        <div class="cov-cards">{pkg_cards}</div>
-        <div class="cov-filter">
-          <button class="active" onclick="filterCov('all',this)">All</button>
-          <button onclick="filterCov('bridge',this)">bridge</button>
-          <button onclick="filterCov('plugin',this)">plugin</button>
-          <button onclick="filterCov('shared',this)">shared</button>
-          <button onclick="filterCov('uncovered',this)">0% only</button>
-        </div>
-        <table id="cov-table">
-          <thead><tr>
-            <th>File</th>
-            <th style="text-align:right;width:70px">Stmts</th>
-            <th style="text-align:right;width:70px">Branch</th>
-            <th style="text-align:right;width:70px">Funcs</th>
-            <th style="text-align:right;width:70px">Lines</th>
-            <th style="width:110px"></th>
-          </tr></thead>
-          <tbody>{cov_file_rows}</tbody>
-        </table>'''
-
-    # --- Build sidebar nav items ---
-    sidebar_items = ""
-
-    # Overview tab
-    sidebar_items += f'''<div class="nav-item active" data-tab="overview" onclick="switchTab('overview',this)">
-      <div class="nav-indicator" style="background:var(--accent)"></div>
-      <div class="nav-label">
-        <span class="nav-icon">&#9670;</span>
-        <span>Overview</span>
-      </div>
-      <span class="nav-badge" style="color:{overall_color}">{overall_status}</span>
-    </div>'''
-
-    # Layer tabs
-    for layer in active_layers:
-        ls = layer_stats[layer["id"]]
-        l_status_color = "#22c55e" if ls["failed"] == 0 else "#ef4444"
-        l_badge = f'{ls["passed"]}/{ls["total"]}'
-        sidebar_items += f'''<div class="nav-item" data-tab="layer-{layer["id"]}" onclick="switchTab('layer-{layer["id"]}',this)">
-          <div class="nav-indicator" style="background:{layer["color"]}"></div>
-          <div class="nav-label">
-            <span class="nav-icon">{layer["icon"]}</span>
-            <span>{layer["name"]}</span>
-          </div>
-          <span class="nav-badge" style="color:{l_status_color}">{l_badge}</span>
-        </div>'''
-
-    # Unassigned vitest files tab
-    if unassigned:
-        ua_p = sum(vt_file_data[f]["passed"] for f in unassigned)
-        ua_f = sum(vt_file_data[f]["failed"] for f in unassigned)
-        ua_color = "#22c55e" if ua_f == 0 else "#ef4444"
-        sidebar_items += f'''<div class="nav-item" data-tab="layer-other" onclick="switchTab('layer-other',this)">
-          <div class="nav-indicator" style="background:var(--dim)"></div>
-          <div class="nav-label">
-            <span class="nav-icon">&#9675;</span>
-            <span>Other Tests</span>
-          </div>
-          <span class="nav-badge" style="color:{ua_color}">{ua_p}/{ua_p + ua_f}</span>
-        </div>'''
-
-    # Android tab
-    and_badge_color = "#22c55e" if and_failed == 0 and and_total > 0 else ("#ef4444" if and_failed > 0 else "var(--dim)")
-    sidebar_items += f'''<div class="nav-item nav-separator" data-tab="android" onclick="switchTab('android',this)">
-      <div class="nav-indicator" style="background:#a3e635"></div>
-      <div class="nav-label">
-        <span class="nav-icon">&#9635;</span>
-        <span>Android</span>
-      </div>
-      <span class="nav-badge" style="color:{and_badge_color}">{and_passed}/{and_total if and_total else "—"}</span>
-    </div>'''
-
-    # Robot tab
-    rob_badge_color = "#22c55e" if rob_failed == 0 and rob_total > 0 else ("#ef4444" if rob_failed > 0 else "var(--dim)")
-    sidebar_items += f'''<div class="nav-item" data-tab="robot" onclick="switchTab('robot',this)">
-      <div class="nav-indicator" style="background:#fb923c"></div>
-      <div class="nav-label">
-        <span class="nav-icon">&#9641;</span>
-        <span>Robot</span>
-      </div>
-      <span class="nav-badge" style="color:{rob_badge_color}">{rob_passed}/{rob_total if rob_total else "—"}</span>
-    </div>'''
-
-    # Scenarios tab
-    if scenario_results:
-        sidebar_items += f'''<div class="nav-item nav-separator" data-tab="scenarios" onclick="switchTab('scenarios',this)">
-          <div class="nav-indicator" style="background:#f472b6"></div>
-          <div class="nav-label">
-            <span class="nav-icon">&#9638;</span>
-            <span>Scenarios</span>
-          </div>
-          <span class="nav-badge" style="color:var(--dim)">{len(scenario_results)}</span>
-        </div>'''
-
-    # Coverage tab
-    if cov_data:
-        sidebar_items += f'''<div class="nav-item" data-tab="coverage" onclick="switchTab('coverage',this)">
-          <div class="nav-indicator" style="background:#a78bfa"></div>
-          <div class="nav-label">
-            <span class="nav-icon">&#9636;</span>
-            <span>Coverage</span>
-          </div>
-          <span class="nav-badge" style="color:{pct_color(lines_pct)}">{lines_pct:.0f}%</span>
-        </div>'''
-
-    # --- Build tab panels ---
-    tab_panels = ""
-
-    # Overview panel
-    tab_panels += f'''<div class="tab-panel active" id="tab-overview">
-      <div class="summary">
-        <div class="card">
-          <div class="card-label">Status</div>
-          <div class="card-value" style="color:{overall_color}">{overall_status}</div>
-          <div class="card-sub">{total_all} executed tests</div>
-        </div>
-        <div class="card">
-          <div class="card-label">Passed</div>
-          <div class="card-value" style="color:#22c55e">{total_passed}</div>
-          <div class="card-sub">{total_passed/total_all*100 if total_all else 0:.1f}% pass rate</div>
-        </div>
-        <div class="card">
-          <div class="card-label">Failed</div>
-          <div class="card-value" style="color:{"#ef4444" if total_failed else "#64748b"}">{total_failed}</div>
-          <div class="card-sub">&nbsp;</div>
-        </div>
-        <div class="card">
-          <div class="card-label">Duration</div>
-          <div class="card-value" style="color:var(--accent)">{duration_fmt(total_duration)}</div>
-          <div class="card-sub">{duration_fmt(vt_duration)} vitest + {duration_fmt(and_duration)} android</div>
-        </div>
-        <div class="card">
-          <div class="card-label">TS Line Coverage</div>
-          <div class="card-value" style="color:{pct_color(lines_pct)}">{lines_pct:.1f}%</div>
-          <div class="card-sub">{lines_covered:,}/{lines_total_n:,} TypeScript lines</div>
-        </div>
-      </div>
-
-      {sparklines_html}
-
-      <div class="suite-bars">
-        <div class="suite-bar">
-          <div class="suite-bar-header">
-            <h3>Vitest</h3>
-            {status_badge(vitest_meta["status"])}
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill" style="width:{vt_passed/vt_total*100 if vt_total else 0:.1f}%;background:{suite_progress_color(vitest_meta["status"])}"></div>
-          </div>
-          <div class="suite-stats">
-            <span>Pass {vt_passed}</span>
-            <span>Fail {vt_failed}</span>
-            <span>{vt_suites} files</span>
-            <span>{vitest_meta["note"] or duration_fmt(vt_duration)}</span>
-          </div>
-        </div>
-        <div class="suite-bar">
-          <div class="suite-bar-header">
-            <h3>Android</h3>
-            {status_badge(android_meta["status"])}
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill" style="width:{and_passed/and_total*100 if and_total else 0:.1f}%;background:{suite_progress_color(android_meta["status"])}"></div>
-          </div>
-          <div class="suite-stats">
-            <span>Pass {and_passed}</span>
-            <span>Fail {and_failed}</span>
-            <span>{len(android_suites)} files</span>
-            <span>{android_meta["note"] or duration_fmt(and_duration)}</span>
-          </div>
-        </div>
-        <div class="suite-bar">
-          <div class="suite-bar-header">
-            <h3>Apple (XCTest)</h3>
-            {status_badge(apple_meta["status"])}
-          </div>
-          <div class="progress-bar"><div class="progress-fill" style="width:0;background:{suite_progress_color(apple_meta["status"])}"></div></div>
-          <div class="suite-stats"><span style="color:var(--dim)">{apple_meta["note"] or "Requires macOS runner"}</span></div>
-        </div>
-        <div class="suite-bar">
-          <div class="suite-bar-header">
-            <h3>Robot Framework</h3>
-            {status_badge(robot_meta["status"])}
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill" style="width:{rob_passed/rob_total*100 if rob_total else 0:.1f}%;background:{suite_progress_color(robot_meta["status"])}"></div>
-          </div>
-          <div class="suite-stats">
-            {f"<span>Pass {rob_passed}</span><span>Fail {rob_failed}</span><span>Skip {rob_skipped}</span>" if robot else f'<span style="color:var(--dim)">{robot_meta["note"] or "Not available"}</span>'}
-          </div>
-        </div>
-      </div>
-    </div>'''
-
-    # Layer panels
-    for layer in active_layers:
-        ls = layer_stats[layer["id"]]
-        l_status = "PASS" if ls["failed"] == 0 else "FAIL"
-        l_status_color = "#22c55e" if ls["failed"] == 0 else "#ef4444"
-        content = layer_tab_contents.get(layer["id"], "")
-        tab_panels += f'''<div class="tab-panel" id="tab-layer-{layer["id"]}">
-          <div class="layer-tab-header" style="border-left:4px solid {layer["color"]}">
-            <div class="layer-tab-title">
-              <span style="color:{layer["color"]};font-size:1.25rem;margin-right:0.5rem">{layer["icon"]}</span>
-              <span style="font-size:1.1rem;font-weight:600">{layer["name"]}</span>
-              <span class="layer-tab-badge" style="color:{l_status_color}">{l_status}</span>
-            </div>
-            <div class="layer-tab-question">{layer["question"]}</div>
-            <div class="layer-tab-stats">
-              <span style="color:#22c55e">{ls["passed"]} passed</span>
-              <span style="color:{"#ef4444" if ls["failed"] else "var(--dim)"}">{ls["failed"]} failed</span>
-              <span style="color:var(--dim)">{len(ls["files"])} files</span>
-              <span style="color:var(--dim)">{duration_fmt(ls["dur"])}</span>
-            </div>
-          </div>
-          {content}
-        </div>'''
-
-    # Unassigned panel
-    if unassigned:
-        ua_p = sum(vt_file_data[f]["passed"] for f in unassigned)
-        ua_f = sum(vt_file_data[f]["failed"] for f in unassigned)
-        tab_panels += f'''<div class="tab-panel" id="tab-layer-other">
-          <div class="layer-tab-header" style="border-left:4px solid var(--dim)">
-            <div class="layer-tab-title">
-              <span style="color:var(--dim);font-size:1.25rem;margin-right:0.5rem">&#9675;</span>
-              <span style="font-size:1.1rem;font-weight:600">Other Tests</span>
-            </div>
-            <div class="layer-tab-question">Uncategorized test files</div>
-            <div class="layer-tab-stats">
-              <span style="color:#22c55e">{ua_p} passed</span>
-              <span style="color:{"#ef4444" if ua_f else "var(--dim)"}">{ua_f} failed</span>
-              <span style="color:var(--dim)">{len(unassigned)} files</span>
-            </div>
-          </div>
-          {unassigned_html}
-        </div>'''
-
-    # Android panel
-    tab_panels += f'''<div class="tab-panel" id="tab-android">
-      <div class="layer-tab-header" style="border-left:4px solid #a3e635">
-        <div class="layer-tab-title">
-          <span style="color:#a3e635;font-size:1.25rem;margin-right:0.5rem">&#9635;</span>
-          <span style="font-size:1.1rem;font-weight:600">Android</span>
-          <span class="layer-tab-badge" style="color:{and_badge_color}">{status_badge(android_meta["status"])}</span>
-        </div>
-        <div class="layer-tab-question">JUnit + Robolectric &middot; {len(android_suites)} files &middot; {and_total} tests</div>
-      </div>
-      {android_tab_html if android_suites else '<div class="empty-state">No Android test results available.</div>'}
-    </div>'''
-
-    # Robot panel
-    tab_panels += f'''<div class="tab-panel" id="tab-robot">
-      <div class="layer-tab-header" style="border-left:4px solid #fb923c">
-        <div class="layer-tab-title">
-          <span style="color:#fb923c;font-size:1.25rem;margin-right:0.5rem">&#9641;</span>
-          <span style="font-size:1.1rem;font-weight:600">ESP32 Firmware Verification</span>
-          <span class="layer-tab-badge">{status_badge(robot_meta["status"])}</span>
-        </div>
-      <div class="layer-tab-question">Robot Framework &middot; physical hardware behavior when an HW-tagged run is supplied &middot; {len(robot.get("suites", [])) if robot else 0} suites &middot; {robot.get("scenario_count", 0) if robot else 0} scenarios &middot; {rob_total} tests &middot; {len(robot.get("boards", [])) if robot else 0} boards</div>
-      </div>
-      {_build_robot_perf_table(robot) if robot and robot.get("perf_summary") else ""}
-      {robot_tab_html if robot else '<div class="empty-state">No Robot Framework test results available.</div>'}
-    </div>'''
-
-    # Scenario panel
-    if scenario_results:
-        tab_panels += f'''<div class="tab-panel" id="tab-scenarios">
-          <div class="layer-tab-header" style="border-left:4px solid #f472b6">
-            <div class="layer-tab-title">
-              <span style="color:#f472b6;font-size:1.25rem;margin-right:0.5rem">&#9638;</span>
-              <span style="font-size:1.1rem;font-weight:600">Scenario Coverage</span>
-            </div>
-            <div class="layer-tab-question">User scenario mapping against actual test results</div>
-          </div>
-          {scenario_tab_html}
-        </div>'''
-
-    # Coverage panel
-    if cov_data:
-        tab_panels += f'''<div class="tab-panel" id="tab-coverage">
-          <div class="layer-tab-header" style="border-left:4px solid #a78bfa">
-            <div class="layer-tab-title">
-              <span style="color:#a78bfa;font-size:1.25rem;margin-right:0.5rem">&#9636;</span>
-              <span style="font-size:1.1rem;font-weight:600">Coverage</span>
-            </div>
-            <div class="layer-tab-question">v8 provider &middot; {lines_total_n:,} lines tracked</div>
-          </div>
-          {coverage_tab_html}
-        </div>'''
-
+    commit_bit = f" · commit {_esc(commit)}" if commit else ""
     gnb = render_gnb()
     gnb_css = render_gnb_css()
-    html = f'''<!DOCTYPE html>
+    return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentDeck — Test Report</title>
-<meta name="description" content="Latest AgentDeck automated checks, scenario coverage, test history, and known quality gaps.">
+<meta name="description" content="AgentDeck build health: every test suite run on master, what each verification gate proves, and what is not verified automatically.">
 <link rel="icon" type="image/png" href="../icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
 <style>
-:root {{ --tide-50:#f5f3ec; --tide-100:#ebe6d6; --tide-200:#d8cfb6; --ink-900:#0e1f1f; --ink-700:#1f4544; --ink-500:#426664; --kelp-500:#2f8a7c; --ink-800:#15302f; --kelp-700:#1f6157; --tide-300:#a8b09a; --coral-500:#c0573a; --bg:var(--tide-50); --surface:var(--tide-100); --surface2:var(--tide-200); --text:var(--ink-900); --dim:var(--ink-500); --accent:var(--kelp-500); }} /* canonical names mirror design/tokens.css — gated by verify-tokens-sync.py */
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ --sidebar-w: 240px; background: var(--bg); color: var(--text); font-family:'IBM Plex Sans','IBM Plex Sans KR',-apple-system,BlinkMacSystemFont,system-ui,sans-serif; line-height: 1.5; }}
-
-/* Layout */
-.app {{ display: flex; min-height: 100vh; max-width: 1240px; margin: 0 auto; padding: 0 32px; gap: 0; }}
-.sidebar {{ width: var(--sidebar-w); flex: 0 0 var(--sidebar-w); position: sticky; top: 55px; align-self: flex-start; max-height: calc(100vh - 55px); background: var(--surface); border-right: 1px solid var(--surface2); overflow-y: auto; z-index: 10; display: flex; flex-direction: column; }}
-.sidebar-header {{ padding: 1.25rem 1rem 1rem; border-bottom: 1px solid var(--surface2); }}
-.sidebar-header h1 {{ font-size: 1rem; font-weight: 700; }}
-.sidebar-header .subtitle {{ color: var(--dim); font-size: 0.7rem; margin-top: 0.25rem; }}
-.sidebar-nav {{ flex: 1; padding: 0.5rem 0; overflow-y: auto; }}
-.content {{ flex: 1; padding: 2rem; min-width: 0; }}
-
-/* Public Pages shell — GNB styling injected from scripts/pages-nav.css so it
-   cannot drift from the other four surfaces. */
+:root {{
+  --tide-50:#f5f3ec; --tide-100:#ebe6d6; --tide-200:#d8cfb6; --tide-300:#a8b09a;
+  --ink-900:#0e1f1f; --ink-800:#15302f; --ink-700:#1f4544; --ink-500:#426664; --ink-300:#7c9694;
+  --kelp-700:#1f6157; --kelp-500:#2f8a7c; --kelp-300:#6fb6a8;
+  --coral-500:#c0573a; --coral-700:#8c3a23; --amber-500:#c8923a;
+  --status-idle:var(--ink-300); --status-processing:var(--kelp-500); --status-error:var(--coral-500);
+  --font-sans:"IBM Plex Sans","IBM Plex Sans KR","IBM Plex Sans JP",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","IBM Plex Mono",ui-monospace,monospace;
+  --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:20px; --s-6:24px; --s-8:32px; --s-10:40px; --s-12:48px; --s-16:64px; --s-20:80px;
+  --t-page-title:clamp(38px, 5vw, 64px); --tr-hero:-0.035em; --t-h2:44px; --tr-h2:-0.02em; --t-lede:18px;
+  --t-card-title:19px; --t-small:14.5px; --t-caption:13px; --t-kicker:12px; --tr-kicker:0.18em; --tr-chip:0.08em;
+  --container-max:1240px; --container-pad:32px;
+  --r-sm:4px; --r-md:8px; --r-xl:12px; --r-2xl:14px; --r-pill:999px;
+  --sh-card:0 6px 20px -8px rgba(14, 31, 31, 0.45);
+}} /* canonical names mirror design/tokens.css — gated by verify-tokens-sync.py */
+* {{ box-sizing:border-box; }}
+html {{ -webkit-text-size-adjust:100%; scroll-behavior:smooth; }}
+body {{ margin:0; font-family:var(--font-sans); font-feature-settings:"ss01","cv11"; color:var(--ink-900); background:var(--tide-50); line-height:1.55; -webkit-font-smoothing:antialiased; }}
+a {{ color:var(--kelp-700); }}
+code, pre, .mono {{ font-family:var(--font-mono); font-feature-settings:"zero","ss01"; }}
 {gnb_css}
-.report-intro {{ max-width:850px; margin:0 0 2rem; padding-bottom:1.5rem; border-bottom:2px solid var(--surface2); }}
-.report-intro .kicker {{ color:var(--kelp-700); font:600 12px/1.4 'JetBrains Mono',monospace; letter-spacing:.18em; text-transform:uppercase; }}
-.report-intro h2 {{ margin:.5rem 0; font-size:clamp(2rem,5vw,3.5rem); letter-spacing:-.035em; line-height:1.03; }}
-.report-intro p {{ color:var(--dim); font-size:1.05rem; max-width:64ch; }}
-.report-intro .freshness {{ margin-top:.75rem; font:500 .75rem/1.4 'JetBrains Mono',monospace; color:var(--kelp-700); }}
-
-/* Nav items */
-.nav-item {{ display: flex; align-items: center; padding: 0.5rem 0.75rem; cursor: pointer; transition: background 0.15s; position: relative; gap: 0.5rem; }}
-.nav-item:hover {{ background: var(--surface2); }}
-.nav-item.active {{ background: rgba(47, 138, 124, 0.12); }}
-.nav-item.active .nav-indicator {{ opacity: 1; }}
-.nav-indicator {{ width: 3px; border-radius: 2px; align-self: stretch; opacity: 0.3; transition: opacity 0.15s; flex-shrink: 0; }}
-.nav-label {{ display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; }}
-.nav-label span:last-child {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; }}
-.nav-icon {{ font-size: 0.9rem; flex-shrink: 0; width: 1.2rem; text-align: center; }}
-.nav-badge {{ font-size: 0.7rem; font-weight: 600; flex-shrink: 0; }}
-.nav-separator {{ margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--surface2); }}
-
-/* Tab panels */
-.tab-panel {{ display: none; animation: fadeIn 0.2s ease; }}
-.tab-panel.active {{ display: block; }}
-@keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-
-/* Layer tab header */
-.layer-tab-header {{ padding: 1.25rem; background: var(--surface); border-radius: 12px; margin-bottom: 1.5rem; }}
-.layer-tab-title {{ display: flex; align-items: center; gap: 0.25rem; }}
-.layer-tab-badge {{ font-size: 0.8rem; font-weight: 700; margin-left: 0.75rem; }}
-.layer-tab-question {{ color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }}
-.layer-tab-stats {{ display: flex; gap: 1.25rem; margin-top: 0.75rem; font-size: 0.8rem; }}
-
-/* File blocks */
-.file-block {{ background: var(--surface); border-radius: 10px; margin-bottom: 0.75rem; overflow: hidden; }}
-.file-header {{ display: flex; align-items: center; padding: 0.75rem 1rem; gap: 0.5rem; }}
-.file-icon {{ font-size: 0.9rem; font-weight: 600; flex-shrink: 0; }}
-.file-name {{ font-family:'JetBrains Mono','IBM Plex Mono',monospace; font-size: 0.8rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-.file-stats {{ display: flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; flex-shrink: 0; }}
-.file-sep {{ color: var(--dim); }}
-.file-dur {{ color: var(--dim); font-size: 0.75rem; margin-left: 0.5rem; }}
-
-/* Describe groups */
-.describe-group {{ border-top: 1px solid var(--surface2); }}
-.describe-header {{ display: flex; align-items: center; padding: 0.5rem 1rem; gap: 0.5rem; background: rgba(14,31,31,0.04); }}
-.describe-icon {{ font-size: 0.8rem; flex-shrink: 0; }}
-.describe-name {{ font-size: 0.8rem; font-weight: 600; flex: 1; }}
-.describe-stats {{ font-size: 0.75rem; color: var(--dim); }}
-.describe-cases {{ padding: 0 0 0.25rem; }}
-
-/* Robot BDD & Board matrix */
-.robot-tags {{ display: flex; gap: 0.25rem; margin-left: 0.5rem; }}
-.robot-tag {{ font-size: 0.65rem; padding: 1px 6px; border-radius: 3px; background: rgba(251,146,60,0.15); color: #fb923c; border: 1px solid rgba(251,146,60,0.25); }}
-.robot-board-badge {{ font-size: 0.7rem; padding: 1px 6px; border-radius: 3px; background: rgba(96,165,250,0.12); color: #60a5fa; }}
-.bdd-steps {{ padding: 0.4rem 1rem 0.25rem 2.5rem; }}
-.bdd-step {{ font-size: 0.78rem; line-height: 1.6; font-family: 'SF Mono', 'Fira Code', monospace; }}
-.bdd-kw {{ font-weight: 700; display: inline-block; min-width: 3.5em; }}
-.bdd-text {{ color: var(--text); }}
-.board-matrix {{ display: flex; gap: 0.35rem; padding: 0.35rem 1rem 0.5rem 2.5rem; flex-wrap: wrap; }}
-.board-chip {{ font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; border: 1px solid; white-space: nowrap; }}
-.board-chip-na {{ background: rgba(51,65,85,0.3); color: #475569; border-color: rgba(51,65,85,0.4); }}
-.perf-table-wrap {{ margin: 0 0 1rem; }}
-.perf-table {{ width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; }}
-.perf-table th {{ text-align: left; padding: 0.6rem 0.75rem; color: var(--dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--surface2); }}
-.perf-table td {{ padding: 0.5rem 0.75rem; font-size: 0.8rem; font-family:'JetBrains Mono','IBM Plex Mono',monospace; border-bottom: 1px solid var(--surface2); }}
-.perf-table tr:last-child td {{ border-bottom: none; }}
-
-/* Test cases */
-.test-case {{ display: flex; align-items: flex-start; padding: 0.3rem 1rem 0.3rem 2rem; gap: 0.5rem; }}
-.test-icon {{ font-size: 0.75rem; flex-shrink: 0; margin-top: 2px; }}
-.test-body {{ flex: 1; min-width: 0; }}
-.test-title {{ font-size: 0.8rem; }}
-.test-ancestors {{ color: var(--dim); font-size: 0.75rem; }}
-.test-dur {{ font-size: 0.7rem; color: var(--dim); flex-shrink: 0; }}
-
-/* Summary cards */
-.summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }}
-.card {{ background: var(--surface); border-radius: 12px; padding: 1.25rem; }}
-.card-label {{ color: var(--dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }}
-.card-value {{ font-size: 2rem; font-weight: 700; }}
-.card-sub {{ color: var(--dim); font-size: 0.8rem; margin-top: 0.25rem; }}
-
-/* Sparkline row */
-.sparkline-row {{ display: flex; gap: 1.5rem; margin-bottom: 2rem; padding: 0.75rem 1rem; background: var(--surface); border-radius: 12px; }}
-.sparkline-card {{ flex: 1; text-align: center; }}
-.sparkline-label {{ font-size: 0.7rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }}
-.sparkline-value {{ font-size: 0.85rem; font-weight: 600; margin-top: 0.25rem; }}
-
-/* Suite bars */
-.suite-bars {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
-.suite-bar {{ background: var(--surface); border-radius: 12px; padding: 1rem 1.25rem; }}
-.suite-bar-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }}
-.suite-bar-header h3 {{ font-size: 0.95rem; font-weight: 600; }}
-.badge {{ font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-block; }}
-.badge.pass {{ background: #16a34a22; color: #22c55e; }}
-.badge.fail {{ background: #dc262622; color: #ef4444; }}
-.badge.skip {{ background: #ca8a0422; color: #eab308; }}
-.progress-bar {{ height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }}
-.progress-fill {{ height: 100%; border-radius: 3px; transition: width 0.5s; }}
-.suite-stats {{ display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.8rem; color: var(--dim); }}
-
-/* Fail messages */
-.fail-msg {{ color: #ef4444; font-size: 0.75rem; margin-top: 0.25rem; font-family: monospace; white-space: pre-wrap; max-height: 100px; overflow: auto; }}
-
-/* Coverage cards */
-.cov-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }}
-.cov-card {{ background: var(--surface); border-radius: 12px; padding: 1rem; }}
-.cov-card-header {{ font-weight: 600; font-size: 0.95rem; margin-bottom: 0.75rem; }}
-.cov-card-gauges {{ display: flex; justify-content: space-around; }}
-.gauge-item {{ text-align: center; }}
-.gauge-item span {{ display: block; font-size: 0.7rem; color: var(--dim); margin-top: 2px; }}
-.cov-card-detail {{ text-align: center; color: var(--dim); font-size: 0.75rem; margin-top: 0.75rem; }}
-.cov-bar {{ height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }}
-.cov-fill {{ height: 100%; border-radius: 3px; }}
-.cov-filter {{ margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }}
-.cov-filter button {{ background: var(--surface); color: var(--text); border: 1px solid var(--surface2); padding: 4px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; }}
-.cov-filter button.active {{ background: var(--accent); color: var(--bg); border-color: var(--accent); }}
-
-/* Threshold indicators */
-.threshold {{ display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; background: var(--surface); padding: 4px 12px; border-radius: 6px; margin-right: 0.5rem; margin-bottom: 0.5rem; }}
-.threshold .dot {{ width: 8px; height: 8px; border-radius: 50%; }}
-
-/* Tables */
-table {{ width: 100%; border-collapse: collapse; }}
-th {{ text-align: left; color: var(--dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--surface2); }}
-td {{ padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e293b; font-size: 0.85rem; }}
-.file-path {{ font-family:'JetBrains Mono','IBM Plex Mono',monospace; font-size: 0.8rem; }}
-
-/* Scenario matrix */
-.scenario-table {{ margin-top: 1rem; }}
-.sc-row:hover {{ background: var(--surface); cursor: pointer; }}
-.sc-cell {{ text-align: center; font-size: 0.85rem; font-weight: 600; border-radius: 4px; }}
-.sc-pass {{ color: #22c55e; }}
-.sc-fail {{ color: #ef4444; }}
-.sc-warn {{ color: #eab308; }}
-.sc-none {{ color: var(--dim); }}
-.sc-gaps {{ list-style: none; margin-top: 0.25rem; }}
-.sc-gaps li {{ font-size: 0.7rem; color: #f97316; padding-left: 0.75rem; position: relative; }}
-.sc-gaps li::before {{ content: "!"; position: absolute; left: 0; font-weight: 700; }}
-.sc-detail-row {{ background: rgba(14,31,31,.035); }}
-.sc-detail-row td {{ border-bottom: 1px solid var(--surface2); }}
-.sc-summary-bar {{ display: flex; gap: 1.5rem; margin-bottom: 1rem; margin-top: 1rem; }}
-.sc-summary-item {{ font-size: 0.85rem; }}
-
-/* Empty state */
-.empty-state {{ color: var(--dim); font-size: 0.9rem; padding: 2rem; text-align: center; }}
-
-/* Responsive: collapse sidebar on small screens */
-@media (max-width: 768px) {{
-  /* GNB responsive rules come from the injected canonical GNB-CSS block. */
-  .app {{ flex-direction: column; padding: 0; }}
-  .sidebar {{ width: 100%; flex: none; position: relative; top:0; max-height: none; border-right: none; border-bottom: 1px solid var(--surface2); }}
-  .sidebar-nav {{ display: flex; flex-wrap: wrap; padding: 0.5rem; gap: 0.25rem; }}
-  .nav-item {{ padding: 0.35rem 0.6rem; border-radius: 6px; }}
-  .nav-indicator {{ display: none; }}
-  .nav-separator {{ margin-top: 0; padding-top: 0; border-top: none; }}
-  .app {{ flex-direction: column; padding: 0; }}
-  .content {{ margin-left: 0; padding: 1rem; }}
-  .summary {{ grid-template-columns: repeat(2, 1fr); }}
-  .sparkline-row {{ flex-direction: column; }}
+.wrap {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var(--container-pad) var(--s-20); }}
+.kicker {{ font-family:var(--font-mono); font-size:var(--t-kicker); font-weight:600; letter-spacing:var(--tr-kicker); text-transform:uppercase; color:var(--kelp-700); margin:0 0 var(--s-3); }}
+h1 {{ font-size:var(--t-page-title); letter-spacing:var(--tr-hero); line-height:1.02; margin:0 0 var(--s-4); }}
+.lede {{ font-size:var(--t-lede); color:var(--ink-700); max-width:68ch; margin:0; }}
+.run-chip {{ display:inline-flex; align-items:center; gap:var(--s-2); margin:var(--s-6) 0 0; padding:6px 14px; background:var(--tide-100); border-radius:var(--r-pill); font-family:var(--font-mono); font-size:12.5px; letter-spacing:var(--tr-chip); color:var(--ink-700); }}
+.jump {{ display:flex; gap:var(--s-2); flex-wrap:wrap; margin:var(--s-10) 0 0; padding:var(--s-3); background:var(--tide-100); border:1px solid var(--tide-200); border-radius:var(--r-xl); }}
+.jump a {{ text-decoration:none; font-family:var(--font-mono); font-size:var(--t-kicker); padding:6px 10px; border-radius:var(--r-pill); }}
+.jump a:hover {{ background:var(--tide-200); }}
+.section-head {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,44%); gap:var(--s-8); align-items:end; margin:var(--s-20) 0 var(--s-6); padding-bottom:var(--s-4); border-bottom:2px solid var(--tide-200); scroll-margin-top:var(--s-16); }}
+.section-head .kicker {{ margin-bottom:var(--s-2); }}
+h2 {{ font-size:clamp(30px,4vw,var(--t-h2)); letter-spacing:var(--tr-h2); line-height:1.08; margin:0; }}
+.section-head p:last-child {{ color:var(--ink-500); margin:0; }}
+.sub-head {{ font-size:var(--t-card-title); letter-spacing:-0.01em; margin:var(--s-10) 0 var(--s-4); }}
+.grid {{ display:grid; gap:var(--s-4); }}
+.tiles {{ grid-template-columns:repeat(5,minmax(0,1fr)); }}
+.tiles.four {{ grid-template-columns:repeat(4,minmax(0,1fr)); }}
+.tiles.three {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+.suites {{ grid-template-columns:repeat(5,minmax(0,1fr)); margin-top:var(--s-4); }}
+.gates, .domains, .platforms {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+.gaps {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+.card {{ display:flex; flex-direction:column; background:var(--tide-100); border:1px solid var(--tide-200); border-radius:var(--r-2xl); padding:var(--s-4); box-shadow:var(--sh-card); min-width:0; }}
+.card.flush {{ padding:0; overflow:hidden; }}
+.card h3 {{ font-size:var(--t-card-title); letter-spacing:-0.01em; line-height:1.25; margin:0; }}
+.card .sub {{ color:var(--ink-500); font-size:var(--t-caption); margin:4px 0 var(--s-4); }}
+.card-top {{ display:flex; align-items:flex-start; justify-content:space-between; gap:var(--s-3); margin-bottom:var(--s-2); }}
+.card-top .kicker {{ margin:0; }}
+.card-foot {{ margin:auto 0 0; padding-top:var(--s-3); font-size:var(--t-caption); }}
+.tile .kicker {{ margin-bottom:var(--s-2); }}
+.tile-value {{ font-size:34px; font-weight:600; letter-spacing:-0.02em; line-height:1.1; margin:0 0 var(--s-2); font-variant-numeric:tabular-nums; }}
+.fine {{ color:var(--ink-500); font-size:var(--t-caption); margin:0; }}
+.quiet {{ color:var(--ink-500); }}
+.ok-text {{ color:var(--kelp-700); }}
+.bad-text {{ color:var(--coral-700); }}
+.badge {{ flex:0 0 auto; font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:var(--tr-chip); text-transform:uppercase; padding:3px 8px; border-radius:var(--r-pill); white-space:nowrap; }}
+.badge.pass {{ background:var(--kelp-700); color:var(--tide-50); }}
+.badge.fail {{ background:var(--coral-500); color:var(--tide-50); }}
+.badge.off {{ background:var(--tide-200); color:var(--ink-700); }}
+.badge.gate {{ background:var(--ink-800); color:var(--tide-50); }}
+.tags {{ display:flex; flex-wrap:wrap; gap:4px; }}
+.tag {{ font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:var(--tr-chip); text-transform:uppercase; padding:2px 6px; border-radius:var(--r-sm); background:var(--tide-200); color:var(--ink-700); }}
+.dot {{ display:inline-block; width:6px; height:6px; border-radius:var(--r-pill); margin-right:6px; vertical-align:middle; }}
+.dot.pass {{ background:var(--status-processing); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-processing) 33%, transparent); }}
+.dot.fail {{ background:var(--status-error); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-error) 33%, transparent); }}
+.dot.off {{ background:var(--status-idle); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-idle) 33%, transparent); }}
+.rail, .meter {{ position:relative; display:flex; height:6px; border-radius:var(--r-pill); background:var(--tide-200); overflow:hidden; margin:0 0 var(--s-3); }}
+.rail .ok, .meter .ok {{ background:var(--kelp-500); }}
+.rail .bad, .meter .bad {{ background:var(--coral-500); }}
+.meter i {{ position:absolute; top:0; bottom:0; width:2px; background:var(--ink-900); }}
+.specs {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--s-3); margin:0; }}
+.suite .specs {{ grid-template-columns:1fr 1fr; }}
+.specs div {{ padding-top:var(--s-2); border-top:1px solid var(--tide-200); min-width:0; }}
+.specs dt {{ font-family:var(--font-mono); font-size:10px; letter-spacing:var(--tr-chip); text-transform:uppercase; color:var(--ink-500); }}
+.specs dd {{ margin:2px 0 0; font-size:var(--t-caption); font-weight:600; font-variant-numeric:tabular-nums; }}
+.label {{ font-family:var(--font-mono); font-size:10px; letter-spacing:var(--tr-chip); text-transform:uppercase; color:var(--ink-500); margin:var(--s-3) 0 4px; }}
+.two {{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-4); }}
+.ticks {{ margin:0; padding:0; list-style:none; font-size:var(--t-caption); }}
+.ticks li {{ position:relative; padding-left:16px; margin-bottom:6px; }}
+.ticks li::before {{ content:"✓"; position:absolute; left:0; color:var(--kelp-700); }}
+.ticks.no li {{ color:var(--ink-500); }}
+.ticks.no li::before {{ content:"–"; color:var(--ink-500); }}
+.cmd {{ margin:var(--s-3) 0 0; }}
+.cmd code {{ display:block; font-size:11.5px; color:var(--tide-50); background:var(--ink-900); padding:var(--s-2) var(--s-3); border-radius:var(--r-md); overflow-x:auto; white-space:pre-wrap; word-break:break-word; }}
+.gap p:not(.label) {{ margin:0; color:var(--ink-700); font-size:var(--t-caption); }}
+.legend {{ margin-top:var(--s-6); }}
+.legend dl {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--s-3) var(--s-6); margin:0; }}
+.legend dt {{ font-family:var(--font-mono); font-size:var(--t-kicker); font-weight:600; }}
+.legend dd {{ margin:2px 0 0; color:var(--ink-500); font-size:var(--t-caption); }}
+details summary {{ cursor:pointer; }}
+details.files {{ margin-top:var(--s-4); }}
+details.files > summary {{ font-family:var(--font-mono); font-size:var(--t-kicker); color:var(--kelp-700); padding:var(--s-2) 0; }}
+details.card.files > summary {{ padding:0; }}
+details.file {{ border-top:1px solid var(--tide-200); }}
+details.file > summary {{ display:flex; justify-content:space-between; gap:var(--s-3); padding:var(--s-2) 0; font-size:var(--t-caption); list-style-position:inside; }}
+.fpath {{ font-family:var(--font-mono); font-size:11.5px; overflow-wrap:anywhere; }}
+.fcount {{ font-family:var(--font-mono); font-size:11.5px; color:var(--ink-500); flex:0 0 auto; }}
+.fcount.bad-text {{ color:var(--coral-700); }}
+.tests {{ list-style:none; margin:0 0 var(--s-3); padding:0; }}
+.t {{ display:grid; grid-template-columns:16px minmax(0,1fr) auto; gap:var(--s-2); padding:3px 0; font-size:12.5px; color:var(--ink-700); }}
+.t .mark {{ font-family:var(--font-mono); }}
+.t.pass .mark {{ color:var(--kelp-700); }}
+.t.fail .mark, .t.fail .tname {{ color:var(--coral-700); }}
+.t.off .mark, .t.off .tname {{ color:var(--ink-500); }}
+.tdur {{ font-family:var(--font-mono); font-size:11px; color:var(--ink-500); }}
+.failure {{ grid-column:2 / -1; margin:4px 0; padding:var(--s-2) var(--s-3); background:var(--tide-50); border:1px solid var(--coral-500); border-radius:var(--r-md); font-size:11px; white-space:pre-wrap; overflow-x:auto; color:var(--ink-900); }}
+.scroll {{ position:relative; overflow-x:auto; min-width:0; max-width:100%; }}
+table.data {{ width:100%; border-collapse:collapse; font-size:var(--t-caption); }}
+table.data th, table.data td {{ text-align:left; vertical-align:top; padding:var(--s-3) var(--s-4); border-bottom:1px solid var(--tide-200); }}
+table.data thead th {{ font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:var(--tr-chip); text-transform:uppercase; color:var(--ink-500); background:var(--tide-100); }}
+table.data tbody th {{ font-weight:400; min-width:220px; }}
+table.data tbody th strong {{ display:block; font-weight:600; }}
+table.data tbody tr:last-child > * {{ border-bottom:0; }}
+table.data .num {{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }}
+table.data code {{ font-size:11.5px; }}
+.card table.data {{ background:var(--tide-50); }}
+.sr {{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }}
+.plain {{ margin:0; padding-left:var(--s-4); font-size:var(--t-caption); }}
+.spark svg {{ width:100%; height:48px; display:block; margin:var(--s-2) 0; }}
+.spark-value {{ font-size:28px; font-weight:600; letter-spacing:-0.02em; margin:0; font-variant-numeric:tabular-nums; }}
+footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var(--container-pad) var(--s-16); border-top:2px solid var(--tide-200); color:var(--ink-500); font-size:var(--t-caption); }}
+@media (max-width:1100px) {{
+  .tiles, .suites {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+  .legend dl {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+}}
+@media (max-width:900px) {{
+  .gates, .domains, .platforms, .gaps, .tiles.four, .tiles.three {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+  .section-head {{ grid-template-columns:1fr; gap:var(--s-2); }}
+}}
+@media (max-width:640px) {{
+  /* Tokens stay canonical (this :root is a gated mirror); narrow gutters
+     are applied to the elements with the 16px spacing token instead. */
+  .wrap {{ padding:var(--s-12) var(--s-4) var(--s-16); }}
+  footer {{ padding-left:var(--s-4); padding-right:var(--s-4); }}
+  .tiles, .suites, .gates, .domains, .platforms, .gaps, .tiles.four, .tiles.three, .two, .legend dl {{ grid-template-columns:1fr; }}
+  .specs {{ grid-template-columns:1fr 1fr; }}
 }}
 </style>
 </head>
 <body>
 {gnb}
-<div class="app">
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <h1>Test Report</h1>
-      <div class="subtitle">{overall_status} · generated {now}<br>profile {metadata.get("run_profile", "unknown") if metadata else "unknown"}</div>
-    </div>
-    <nav class="sidebar-nav">
-      {sidebar_items}
-    </nav>
-  </aside>
-  <main class="content">
-    <header class="report-intro">
-      <p class="kicker">AgentDeck · Continuous integration</p>
-      <h2>Test Report</h2>
-      <p>The most recent CI run, in full: which tests passed, which user scenarios are covered, how the numbers are trending, and where the gaps are. This is the maintainer's evidence that the build works — not a product analytics dashboard.</p>
-      <p class="freshness">LATEST RUN · {overall_status} · GENERATED {now}</p>
-    </header>
-    {tab_panels}
-  </main>
-</div>
-
+<main class="wrap">
+  <header>
+    <p class="kicker">AgentDeck · Build health</p>
+    <h1>Test Report</h1>
+    <p class="lede">The latest master run, in full: what passed, what each check proves and does not prove, and where the gaps are. This is the maintainer's evidence that the build works — not a product analytics dashboard.</p>
+    <p class="run-chip"><span class="dot {overall}"></span>{"Pass" if overall == "pass" else "Fail"} · {total_all:,} tests{commit_bit} · generated {now}</p>
+  </header>
+  <nav class="jump" aria-label="Sections">{jump}</nav>
+  {body}
+</main>
+<footer>
+  Generated by <code>scripts/generate-html-report.py</code> from this run's Vitest, E2E, JUnit and Robot results.
+  Machine-readable: <a href="summary.json">summary.json</a> · <a href="run-metadata.json">run-metadata.json</a> · <a href="history.json">history.json</a> · <a href="verification-catalog.json">verification-catalog.json</a>.
+</footer>
 <script>
-function switchTab(tabId, navEl) {{
-  // Deactivate all
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  // Activate selected
-  navEl.classList.add('active');
-  const panel = document.getElementById('tab-' + tabId);
-  if (panel) panel.classList.add('active');
-  // Update URL hash
-  history.replaceState(null, '', '#' + tabId);
-}}
-
-function filterCov(pkg, btn) {{
-  document.querySelectorAll('.cov-filter button').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  const rows = document.querySelectorAll('#cov-table tbody tr');
-  rows.forEach(r => {{
-    const path = r.querySelector('.file-path')?.textContent || '';
-    const linesPct = parseFloat(r.querySelectorAll('td')[4]?.textContent) || 0;
-    if (pkg === 'all') {{ r.style.display = ''; }}
-    else if (pkg === 'uncovered') {{ r.style.display = linesPct === 0 ? '' : 'none'; }}
-    else {{ r.style.display = path.startsWith(pkg + '/') ? '' : 'none'; }}
-  }});
-}}
-
-function toggleScenario(id) {{
-  const rows = document.querySelectorAll('.sc-detail-row[data-scenario="' + id + '"]');
-  const anyHidden = Array.from(rows).some(r => r.style.display === 'none');
-  rows.forEach(r => r.style.display = anyHidden ? '' : 'none');
-}}
-
-// Restore tab from URL hash on load
-(function() {{
-  const hash = location.hash.slice(1);
-  if (hash) {{
-    const langEl = document.getElementById('lang');
-    if (langEl) {{
-      const KEY = 'agentdeck-design-locale';
-      const saved = localStorage.getItem(KEY) || 'en';
-      if (['en', 'ko', 'ja'].indexOf(saved) >= 0) langEl.value = saved;
-      langEl.addEventListener('change', function () {{
-        localStorage.setItem(KEY, langEl.value);
-      }});
-    }}
-    const navEl = document.querySelector('.nav-item[data-tab="' + hash + '"]');
-    if (navEl) switchTab(hash, navEl);
-  }}
+// Site-wide language choice (Build Health's body stays English — CI evidence,
+// not authored copy); the selector only persists the choice for other routes.
+(function () {{
+  var el = document.getElementById('lang');
+  if (!el) return;
+  var KEY = 'agentdeck-design-locale';
+  try {{
+    var saved = localStorage.getItem(KEY) || 'en';
+    if (['en', 'ko', 'ja'].indexOf(saved) >= 0) el.value = saved;
+  }} catch (e) {{}}
+  el.addEventListener('change', function () {{ try {{ localStorage.setItem(KEY, el.value); }} catch (e) {{}} }});
 }})();
 </script>
 </body>
-</html>'''
-    return html
+</html>
+'''
 
 
 def main():
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-    vitest = load_vitest()
+    e2e = load_e2e()
+    vitest = merge_e2e(load_vitest(), e2e)
     android = load_android_xml()
     cov = load_coverage()
     robot = load_robot_xml()
@@ -1988,13 +1324,15 @@ def main():
     history = load_history()
     metadata = load_metadata()
     if not metadata:
-        metadata = build_default_metadata(vitest, android, robot)
+        metadata = build_default_metadata(vitest, android, robot, e2e)
         METADATA_JSON.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     else:
         # Reconcile metadata with actual data presence — override stale not-run flags
         suites = metadata.setdefault("suites", {})
         if vitest and not suites.get("vitest", {}).get("executed"):
             suites["vitest"] = {"status": "pass" if vitest.get("numFailedTests", 0) == 0 else "fail", "executed": True, "note": ""}
+        if e2e and not suites.get("e2e", {}).get("executed"):
+            suites["e2e"] = {"status": "pass" if e2e.get("numFailedTests", 0) == 0 else "fail", "executed": True, "note": ""}
         if android and not suites.get("android", {}).get("executed"):
             af = sum(s["failures"] + s["errors"] for s in android)
             suites["android"] = {"status": "pass" if af == 0 else "fail", "executed": True, "note": ""}

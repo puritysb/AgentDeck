@@ -15,5 +15,7 @@ describe('preview mirror pins', () => {
     expect(() =>
       execFileSync(process.execPath, [script], { stdio: 'pipe' }),
     ).not.toThrow();
-  });
+    // A fresh `node` process on a cold runner, not a unit test: 10 s was
+    // exceeded once on a freshly booted container.
+  }, 30_000);
 });
