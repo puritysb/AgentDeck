@@ -14,7 +14,7 @@
         ],
         "integration": [
           {"file": "bridge/src/__tests__/server-integration.test.ts", "patterns": ["hook event", "state transition", "WS broadcast"]},
-          {"file": "bridge/src/__tests__/bridge-core.test.ts", "patterns": ["state event", "initialization"]}
+          {"file": "bridge/src/__tests__/bridge-core.test.ts", "patterns": ["buildStateEvent", "sendInitialState", "state change broadcast"]}
         ],
         "platform": [
           {"file": "android/app/src/test/kotlin/dev/agentdeck/net/ProtocolTest.kt", "patterns": ["state_update"]},
@@ -38,8 +38,8 @@
           {"file": "bridge/src/__tests__/ask-gate-decisions.test.ts", "patterns": ["*"]}
         ],
         "integration": [
-          {"file": "bridge/src/__tests__/server-integration.test.ts", "patterns": ["permission"]},
-          {"file": "bridge/src/__tests__/tier3-integration.test.ts", "patterns": ["option", "permission", "selection"]}
+          {"file": "bridge/src/__tests__/server-integration.test.ts", "patterns": ["PreToolUse"]},
+          {"file": "bridge/src/__tests__/session-deck-awaiting.test.ts", "patterns": ["*"]}
         ],
         "platform": [
           {"file": "android/app/src/test/kotlin/dev/agentdeck/net/ProtocolTest.kt", "patterns": ["permission", "option"]}
@@ -58,12 +58,12 @@
       "tests": {
         "unit": [
           {"file": "bridge/src/__tests__/adapter.test.ts", "patterns": ["*"]},
-          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["session", "register", "deregister"]},
+          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["pruneDeadSessions", "port allocation"]},
           {"file": "bridge/src/__tests__/tui-dashboard.test.ts", "patterns": ["*"]}
         ],
         "integration": [
           {"file": "bridge/src/__tests__/daemon-lifecycle.test.ts", "patterns": ["*"]},
-          {"file": "bridge/src/__tests__/bridge-core.test.ts", "patterns": ["sessions_list", "client"]},
+          {"file": "bridge/src/__tests__/bridge-core.test.ts", "patterns": ["session registry", "hasClients guard"]},
           {"file": "bridge/src/__tests__/tui-renderer-snapshots.test.ts", "patterns": ["*"]},
           {"file": "bridge/src/__tests__/tui-terrarium-snapshots.test.ts", "patterns": ["*"]}
         ],
@@ -158,7 +158,7 @@
       "priority": "medium",
       "tests": {
         "unit": [
-          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["usage", "metric"]}
+          {"file": "bridge/src/__tests__/usage-api.test.ts", "patterns": ["*"]}
         ],
         "integration": [
           {"file": "bridge/src/__tests__/usage-relay.test.ts", "patterns": ["*"]},
@@ -179,7 +179,7 @@
       "priority": "medium",
       "tests": {
         "unit": [
-          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["daemon", "PID", "readDaemonInfo", "writeDaemonInfo", "findDaemonPort"]}
+          {"file": "bridge/src/__tests__/session-registry.test.ts", "patterns": ["shouldConcedePortToOccupant", "scanDaemonPortWindow", "daemon port window"]}
         ],
         "integration": [
           {"file": "bridge/src/__tests__/daemon-lifecycle.test.ts", "patterns": ["*"]}

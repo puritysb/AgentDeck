@@ -350,7 +350,6 @@
       "name": "LAN security & pairing",
       "question": "Is the LAN surface default-deny, and does pairing hand out credentials only with the operator's consent?",
       "icon": "▣",
-      "color": "#c0573a",
       "match": [
         "bridge/src/__tests__/http-auth-gate.test.ts",
         "bridge/src/__tests__/auth-token-adoption.test.ts",
@@ -366,7 +365,6 @@
       "name": "End-to-end (real processes)",
       "question": "Does the shipped daemon work when started and driven from outside?",
       "icon": "◉",
-      "color": "#2f8a7c",
       "match": ["tests/e2e/*.e2e.test.ts"]
     },
     {
@@ -374,7 +372,6 @@
       "name": "Timeline",
       "question": "Is every turn, task and approval recorded once, attributed to the right session, and kept across restarts?",
       "icon": "▥",
-      "color": "#a8b09a",
       "match": [
         "bridge/src/__tests__/*timeline*.test.ts",
         "bridge/src/__tests__/*orphan*.test.ts",
@@ -387,7 +384,6 @@
       "name": "Usage & quota",
       "question": "Are Claude, Codex and Z.ai quota windows read, relayed and aged correctly?",
       "icon": "◔",
-      "color": "#2f8a7c",
       "match": [
         "bridge/src/__tests__/usage-*.test.ts",
         "bridge/src/__tests__/relayed-usage.test.ts",
@@ -404,7 +400,6 @@
       "name": "Daemon lifecycle & CLI",
       "question": "Does exactly one daemon own the port, start, upgrade, restart and hand over cleanly on every OS?",
       "icon": "◎",
-      "color": "#1f6157",
       "match": [
         "bridge/src/__tests__/daemon-*.test.ts",
         "bridge/src/__tests__/session-registry.test.ts",
@@ -424,7 +419,6 @@
       "name": "Agent observation & hooks",
       "question": "Are Claude, Codex, OpenCode, Kiro and Antigravity sessions seen, attributed and gated correctly from their hooks and transcripts?",
       "icon": "◈",
-      "color": "#426664",
       "match": [
         "hooks/src/__tests__/*.test.ts",
         "bridge/src/__tests__/hook-*.test.ts",
@@ -458,7 +452,6 @@
       "name": "Managed sessions & terminal parsing",
       "question": "Does agentdeck claude|codex read the terminal correctly and route commands to the right PTY?",
       "icon": "▤",
-      "color": "#15302f",
       "match": [
         "bridge/src/__tests__/output-parser.test.ts",
         "bridge/src/__tests__/codex-output-parser.test.ts",
@@ -476,7 +469,6 @@
       "name": "State machine & hub protocol",
       "question": "Do agent states transition correctly and reach every client in the documented wire shape?",
       "icon": "◆",
-      "color": "#2f8a7c",
       "match": [
         "bridge/src/__tests__/state-machine.test.ts",
         "bridge/src/__tests__/bridge-core*.test.ts",
@@ -505,7 +497,6 @@
       "name": "APME evaluation",
       "question": "Are turns and tasks segmented, judged and scored correctly, and does the recommender rank models honestly?",
       "icon": "◇",
-      "color": "#1f4544",
       "match": [
         "bridge/src/__tests__/apme-*.test.ts",
         "bridge/src/__tests__/review-runner.test.ts",
@@ -524,7 +515,6 @@
       "name": "OpenClaw Gateway",
       "question": "Does the Gateway proxy stay subscribed, attribute runs and approvals, and report its health truthfully?",
       "icon": "◬",
-      "color": "#426664",
       "match": [
         "bridge/src/__tests__/openclaw-*.test.ts",
         "bridge/src/__tests__/gateway-*.test.ts",
@@ -537,7 +527,6 @@
       "name": "Devices & display surfaces",
       "question": "Do ESP32, Pixoo, Timebox, iDotMatrix, ADB and mDNS paths discover, flash and render correctly?",
       "icon": "▦",
-      "color": "#c0573a",
       "match": [
         "bridge/src/__tests__/esp32-*.test.ts",
         "bridge/src/__tests__/pixoo-*.test.ts",
@@ -582,7 +571,6 @@
       "name": "Voice",
       "question": "Are push-to-talk, transcription and spoken replies routed to the right session and device?",
       "icon": "◐",
-      "color": "#1f6157",
       "match": [
         "bridge/src/__tests__/device-voice*.test.ts",
         "bridge/src/__tests__/device-transcription.test.ts",
@@ -595,7 +583,6 @@
       "name": "Stream Deck & Ulanzi plugins",
       "question": "Do the deck plugins connect, recover, lay out keys and encoders, and dispatch host controls per platform?",
       "icon": "▧",
-      "color": "#15302f",
       "match": [
         "plugin/src/__tests__/*.test.ts",
         "plugin-ulanzi/src/__tests__/*.test.ts",
@@ -609,7 +596,6 @@
       "name": "Terminal dashboard",
       "question": "Does the TUI dashboard render sessions and the terrarium stably?",
       "icon": "▨",
-      "color": "#a8b09a",
       "match": ["bridge/src/__tests__/tui-*.test.ts"]
     },
     {
@@ -617,14 +603,14 @@
       "name": "Release & repository policy",
       "question": "Do versions, release notes, runtime support and palette ratchets hold?",
       "icon": "◻",
-      "color": "#426664",
       "match": [
         "scripts/__tests__/version-policy.test.ts",
         "scripts/__tests__/release-notes.test.ts",
         "scripts/__tests__/node-runtime-support.test.ts",
         "scripts/__tests__/npm-registry-visibility.test.ts",
         "scripts/__tests__/native-palette.test.ts",
-        "scripts/__tests__/verification-catalog.test.ts"
+        "scripts/__tests__/verification-catalog.test.ts",
+        "scripts/__tests__/build-health-report.test.ts"
       ]
     }
   ]

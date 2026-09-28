@@ -53,6 +53,33 @@ ports), but the evidence around it was not:
   `diagnostics/logs/` and show only the tail, and drop the macOS-incompatible
   `timeout` in the board-identification loop.
 
+Follow-up the same day, from running everything again on a freshly started
+container:
+
+- **Cold-start timeouts.** The first full `vitest --coverage` after boot failed
+  three tests at the 10 s limit (import phase 45 s; a warm re-run passed all
+  327 files). 27 files open an `ApmeStore` — the first `better-sqlite3` load —
+  inside `beforeEach`, and `preview-mirror-sync` spawns a cold `node`. CI
+  runners start cold too, so `hookTimeout` is now 30 s and that one test has a
+  30 s budget; a genuine hang still fails.
+- **The report page now follows the design system.** It had drifted because it
+  is generated: `design/lint.sh` walks committed files and never saw it, and the
+  token verifier deliberately skipped its body. It used Tailwind greens and
+  yellows for pass/coverage (painting 59.6 % coverage as a warning while it was
+  above the floor) and a sidebar-app layout unlike every sibling. It is now
+  rebuilt in the Devices page grammar with tokens only, and status hues follow
+  §2.7. It also had a mobile overflow (visually hidden spans escaping the table
+  scroller, page 644 px wide at 390 px), and its language selector was wired
+  only when the URL had a hash. New `scripts/__tests__/build-health-report.test.ts`
+  renders it from fixtures and lints the output. The verifier's body sweep is on
+  for the generator. Fixing that exposed a verifier bug: a css-root mirror's
+  non-colour values were compared un-normalised (`16px` against `16`), so any
+  mirror declaring spacing or type tokens drifted.
+- **Scenario matrix, again.** Ten name patterns matched no test (for example
+  "permission" in `tier3-integration`, which has no permission test), so the
+  page showed "not found". They now name real tests, and the catalog test
+  fails when a pattern disappears from its file.
+
 Not done, recorded as follow-ups: the XCTest host still starts the in-process
 daemon (firewall / Local Network / Bluetooth prompts during a local `xcodebuild
 test`); the darwin usage poller has no switch to skip the Keychain, which is why

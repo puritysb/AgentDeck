@@ -13,6 +13,12 @@ export default defineConfig({
       'setup/src/__tests__/**/*.test.ts',
     ],
     testTimeout: 10_000,
+    // Setup hooks carry the first-use cost of native modules (27 files open an
+    // ApmeStore, i.e. load better-sqlite3, inside beforeEach). On a cold
+    // 4-core container that first load pushed three hooks past 10 s
+    // (2026-09-28, import phase 45 s); the warm re-run took under 1 s. A
+    // bounded 30 s keeps a genuine hang failing without flaking a cold runner.
+    hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],

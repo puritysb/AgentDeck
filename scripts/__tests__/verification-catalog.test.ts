@@ -97,4 +97,25 @@ describe('verification catalog', () => {
       Object.values(s.tests).flat().map((t) => t.file).filter((f) => !existsSync(join(ROOT, f))).map((f) => `${s.id}: ${f}`));
     expect(missing).toEqual([]);
   });
+
+  it('keeps every scenario name pattern present in its TypeScript test file', () => {
+    // The report matches these patterns against test names; one that no longer
+    // appears in the file renders as "not found" on the public page (four did,
+    // e.g. "permission" in tier3-integration, which has no permission test).
+    // A substring of the source is a static stand-in for the runtime name.
+    const matrix = JSON.parse(readFileSync(join(ROOT, 'scripts/scenario-matrix.json'), 'utf8')) as {
+      scenarios: Array<{ id: string; tests: Record<string, Array<{ file: string; patterns?: string[] }>> }>;
+    };
+    const stale: string[] = [];
+    for (const s of matrix.scenarios) {
+      for (const t of Object.values(s.tests).flat()) {
+        if (!t.file.endsWith('.ts') || !existsSync(join(ROOT, t.file))) continue;
+        const source = readFileSync(join(ROOT, t.file), 'utf8').toLowerCase();
+        for (const p of t.patterns ?? ['*']) {
+          if (p !== '*' && !source.includes(p.toLowerCase())) stale.push(`${s.id}: "${p}" not in ${t.file}`);
+        }
+      }
+    }
+    expect(stale).toEqual([]);
+  });
 });
