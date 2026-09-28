@@ -664,16 +664,24 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
 // matches on POSIX, which is why the installer used to be a silent no-op on
 // Windows.
 import { pathToFileURL } from 'url';
+import { uninstallCodexHooks } from './codex-install.js';
 const isMainModule = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
 
 if (isMainModule) {
   const action = process.argv[2] || 'install';
   if (action === 'uninstall') {
     uninstallHooks();
+    // Only the fenced block of ~/.codex/config.toml is AgentDeck's. The
+    // lossless editor removes the generated entries and keeps anything Codex
+    // or the user added there; a file it cannot edit safely is kept and
+    // reported. stdout, because scripts/uninstall.sh discards stderr.
+    try {
+      uninstallCodexHooks();
+    } catch (e) {
+      console.log(`Codex hooks kept: ${(e as Error).message}`);
+    }
     // The OpenCode observer plugin is AgentDeck-owned in its entirety, so
-    // uninstall removes the file (unlike ~/.codex/config.toml, where only
-    // the fenced block is AgentDeck's and removal has its own dedicated
-    // flow to avoid touching user TOML).
+    // uninstall removes the file.
     import('./opencode-install.js').then((m) => m.uninstallOpenCodeHooks()).catch(() => {});
     // `~/.kiro/hooks/agentdeck-lifecycle.json` is AgentDeck-owned in its
     // entirety like the OpenCode plugin, so uninstall removes the file.
