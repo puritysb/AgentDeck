@@ -3178,6 +3178,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             const sid = ambient.sessionId;
             log(`[agentdeck] Codex ${ambient.reason ?? 'background'} thread ${sid.slice(0, 8)}: not the user's work, its hooks are not recorded`);
             hookCodexSessions.forget(sid);
+            codexOtel.forget(sid);
             subagentTimeline?.forget(sid);
             coordination.forget(sid);
             hookSessionsSeen.delete(sid);
@@ -4927,6 +4928,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // the rollout tail every scan interval, so a span that changed thread state is
   // worth a broadcast of its own.
   codexOtel.onChanged = () => core.maybeBroadcastSessionsList();
+  codexOtel.isBackgroundThread = (threadId) => codexAmbientSessions.isAmbient(threadId);
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
 

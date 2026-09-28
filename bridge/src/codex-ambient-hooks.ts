@@ -5,18 +5,24 @@
  * ambient-suggestions.json` it runs two internal prompts ("Generate 0 to 3
  * hyperpersonalized suggestions…" and a "safety and compliance" review of the
  * result) on throw-away threads: no rollout file, no row in Codex's own
- * `threads` table, hook `cwd` of `/`. The user-global lifecycle hooks still fire
+ * `threads` table. The hook `cwd` was `/` on 2026-09-11 and is the project
+ * itself since at least 2026-09-29. The user-global lifecycle hooks still fire
  * for them, so the daemon minted a `codex-cli` session row, a `chat_start` /
  * `chat_response` timeline pair and a two-second APME turn for every refresh —
  * 27 such turns between 2026-07-06 and 2026-09-11, 10 of them in one night.
  *
  * The prompt text is the only durable signature: the hook payload carries no
- * "background" flag and `cwd: "/"` alone would also match a user who really
- * opened Codex at the filesystem root. A thread is classified on its
+ * "background" flag, and the cwd is either `/` (which a user can open too) or
+ * the user's own project. A thread is classified on its
  * `codex_user_prompt_submit`, then every later hook on that thread id is
  * treated as background too (the tool/stop hooks carry no prompt). The
  * `codex_session_start` that precedes the prompt by ~90 ms has already opened
  * an APME run and a hook-derived session row — the caller retracts both.
+ *
+ * The same threads also export OTel spans. Their hooks are dropped here, so no
+ * hook row claims them and `CodexOtelTracker` would synthesize a cwd-less
+ * `Codex` row for each; the tracker consults `isAmbient` and is told to
+ * `forget` a thread the moment it is identified (2026-09-29).
  *
  * Vectors: `shared/codex-ambient-vectors.json`, replayed by this suite and the
  * Swift `CodexAmbientHookRules` tests.
@@ -39,7 +45,9 @@ export function isCodexBackgroundCwd(cwd: unknown, codexHome: string | undefined
 }
 
 export const CODEX_AMBIENT_PROMPT_PATTERNS: readonly RegExp[] = [
-  /^\s*Overview\s+Generate 0 to 3 hyperpersonalized suggestions\b/i,
+  // The live prompt opens with a Markdown heading (`# Overview`); the heading
+  // marker is optional so a stripped copy still matches.
+  /^\s*(?:#+\s*)?Overview\s+Generate 0 to 3 hyperpersonalized suggestions\b/i,
   /^\s*You are an expert at upholding safety and compliance standards for Codex ambient suggestions\b/i,
 ];
 

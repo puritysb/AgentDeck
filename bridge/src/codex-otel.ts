@@ -362,6 +362,15 @@ export class CodexOtelTracker {
   /** Fired when ingestion changed something worth broadcasting. */
   onChanged: (() => void) | undefined;
 
+  /**
+   * Codex Desktop background threads (memory consolidation, ambient
+   * suggestions) export the same spans as the user's work, but their hooks
+   * are dropped (`codex-ambient-hooks.ts`), so no hook row ever claims them and
+   * the fallback below would synthesize a cwd-less `Codex` row for each. The
+   * hook classifier owns that verdict; OTel only consults it.
+   */
+  isBackgroundThread: ((threadId: string) => boolean) | undefined;
+
   /** Ingest one OTLP body. Returns the number of recognized events. */
   ingest(json: unknown, now = Date.now()): number {
     const events = parseCodexSpans(json);
@@ -371,6 +380,10 @@ export class CodexOtelTracker {
       // must never synthesize or drive a session row (Swift parity —
       // `shouldUseCodexOtelThreadForSessionState`).
       if (event.threadId === ANONYMOUS_OTEL_THREAD_ID) continue;
+      if (this.isBackgroundThread?.(event.threadId)) {
+        changed = this.threads.delete(event.threadId) || changed;
+        continue;
+      }
       changed = this.apply(event, now) || changed;
     }
     this.sweep(now);
@@ -451,6 +464,15 @@ export class CodexOtelTracker {
     }
   }
 
+  /**
+   * Drop a thread the hook classifier just identified as background. Its spans
+   * can land before the identifying hook, so ingestion-time filtering alone
+   * would leave the row already created.
+   */
+  forget(threadId: string): void {
+    if (this.threads.delete(threadId)) this.onChanged?.();
+  }
+
   /** Live thread snapshot (diagnostics / tests). */
   snapshot(): CodexOtelThread[] {
     return [...this.threads.values()];
@@ -484,6 +506,7 @@ export class CodexOtelTracker {
     const synthesized: ObservedSession[] = [];
     for (const thread of this.threads.values()) {
       if (matched.has(thread.threadId)) continue;
+      if (this.isBackgroundThread?.(thread.threadId)) continue;
       const cwd = thread.cwd;
       synthesized.push({
         id: `observed:codex-app:${thread.threadId}`,

@@ -7,6 +7,16 @@
       "ambient": true
     },
     {
+      "name": "generator prompt with its Markdown heading, verbatim from the hook (live 2026-09-29)",
+      "prompt": "# Overview\n\nGenerate 0 to 3 hyperpersonalized suggestions for what this user can do with Codex in this local project: /Users/puritysb/github/ViewTrans\n\nGet an",
+      "ambient": true
+    },
+    {
+      "name": "a user prompt headed Overview is not ambient",
+      "prompt": "# Overview\n\nRefactor the session list so rows sort by project",
+      "ambient": false
+    },
+    {
       "name": "safety and compliance review of ambient suggestions (live 2026-09-11)",
       "prompt": "You are an expert at upholding safety and compliance standards for Codex ambient suggestions.\n\nI will present a list of suggestions",
       "ambient": true

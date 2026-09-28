@@ -323,14 +323,18 @@ enum CodexHookIdentity {
 ///
 /// When the desktop app refreshes `~/.codex/ambient-suggestions/<hash>/
 /// ambient-suggestions.json` it runs two internal prompts on throw-away
-/// threads — no rollout, no row in Codex's own `threads` table, hook `cwd` `/`
-/// — and the user-global lifecycle hooks still fire for them. The prompt text
-/// is the only durable signature (`cwd: "/"` alone also matches a user who
-/// opened Codex at the root). Mirror of bridge/src/codex-ambient-hooks.ts;
-/// both suites replay shared/codex-ambient-vectors.json.
+/// threads — no rollout, no row in Codex's own `threads` table; hook `cwd` `/`
+/// (2026-09-11) or the user's own project (2026-09-29) — and the user-global
+/// lifecycle hooks still fire for them. The prompt text is the only durable
+/// signature. The same threads export OTel spans too, so the OTel path
+/// consults `codexAmbientThreads` before it opens a row. Mirror of
+/// bridge/src/codex-ambient-hooks.ts; both suites replay
+/// shared/codex-ambient-vectors.json.
 enum CodexAmbientHookRules {
     static let promptSignatures: [NSRegularExpression] = [
-        "^\\s*Overview\\s+Generate 0 to 3 hyperpersonalized suggestions\\b",
+        // The live prompt opens with a Markdown heading (`# Overview`); the
+        // heading marker is optional so a stripped copy still matches.
+        "^\\s*(?:#+\\s*)?Overview\\s+Generate 0 to 3 hyperpersonalized suggestions\\b",
         "^\\s*You are an expert at upholding safety and compliance standards for Codex ambient suggestions\\b",
     ].map { try! NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
 
@@ -5124,8 +5128,11 @@ final class DaemonServer {
 
     /// Undo the session row and APME run a background Codex thread's
     /// `codex_session_start` created before its prompt identified it.
-    private func retractCodexAmbientThread(sessionId sid: String, json: [String: Any]) {
-        DaemonLogger.shared.info("Codex ambient-suggestions thread \(sid.prefix(14)): background prompt, its hooks are not recorded")
+    /// Also undoes a row the thread's OTel spans opened first — those can land
+    /// before the identifying hook.
+    private func retractCodexAmbientThread(sessionId sid: String, json: [String: Any], reason: String = "ambient-suggestions") {
+        DaemonLogger.shared.info("Codex \(reason) thread \(sid.prefix(14)): not the user's work, its hooks are not recorded")
+        codexOtelTurnIdBySession.removeValue(forKey: sid)
         if pushedSessionsById.removeValue(forKey: sid) != nil {
             cachedSessions.removeAll { $0.id == sid }
             lastHookAtByPushedSession.removeValue(forKey: sid)
@@ -5546,9 +5553,10 @@ final class DaemonServer {
             let now = Date()
             if codexAmbientThreads.isAmbient(sid, now: now) { return }
             // The memory agent is identifiable on its first hook (its cwd), so
-            // nothing has been created yet and nothing needs retracting.
+            // no hook has created anything yet — but its OTel spans may have.
             if CodexAmbientHookRules.isBackgroundCwd(json["cwd"] ?? json["project_path"]) {
                 codexAmbientThreads.mark(sid, now: now)
+                retractCodexAmbientThread(sessionId: sid, json: json, reason: "memory-consolidation")
                 return
             }
             if event == "codex_user_prompt_submit",
@@ -6816,7 +6824,12 @@ final class DaemonServer {
             if !Self.shouldUseCodexOtelThreadForSessionState(threadId: threadId) {
                 return nil
             }
-            return ("codex:\(threadId)", nil)
+            let sid = "codex:\(threadId)"
+            // Codex's own background threads (memory consolidation, ambient
+            // suggestions) export spans like the user's work; their hooks are
+            // dropped, so without this a cwd-less "Codex" row would open.
+            if codexAmbientThreads.isAmbient(sid) { return nil }
+            return (sid, nil)
         }
 
         for event in events {
