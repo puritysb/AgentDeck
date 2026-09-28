@@ -44,6 +44,14 @@ removed. The uploaded source ZIP SHA-256 is
 The local daemon was rebuilt and restarted through the supported lifecycle
 command, verified healthy with build digest `414fd1850945`. The development
 Stream Deck deployment passed with digest `c567fd57f78c` before DRM validation.
+After the DRM smoke test, `pnpm plugin:deploy` restored the development link and
+`pnpm plugin:check` verified that same digest (PID 86493). The encrypted package
+installation was preserved by the deployment tool. Reinstall the downloaded
+processed package for the pending physical test, then restore development again.
+
+A four-hour heartbeat named **AgentDeck 1.6 스토어 릴리스 완료** follows review
+results and remaining device gates. It reports meaningful changes only and must
+not publish Elgato before physical validation or publish its older review entry.
 
 Crema's initial 1.6.1 update is pending USB/ADB connection (only the Lenovo was
 available). The official APK was downloaded and its SHA-256 verified:
