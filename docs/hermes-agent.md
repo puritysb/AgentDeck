@@ -62,6 +62,73 @@ removed with the session. `preview-hermes-motion.swift` samples the real motion
 controller; `render-hermes-preview.py` renders that trajectory with Blender for
 visual review (outputs under ignored `diagnostics/hermes-mermaid/`).
 
+### Production modeling research and replacement gate
+
+Tracked separately in [#428](https://github.com/puritysb/AgentDeck/issues/428).
+The target is a convincing stylized 3D Nous girl mermaid: preserve the original
+face/accessory while making anatomy, surface volume and deformation credible.
+Photographic human skin is not an accepted change in art direction.
+
+The replacement sequence is **reference alignment → head sculpt → deformation
+topology → body/arm sculpt → rig and corrective shapes → export/reimport →
+actual aquarium review**. Finish and compare the neutral head before adding more
+animation. A dense mesh, named bones, a beautiful generated illustration or a
+successful export does not establish visual quality.
+
+| Primary source / tool | What it contributes | Decision for this character |
+|---|---|---|
+| [Blender Human Base Meshes](https://www.blender.org/download/demo-files/) (v1.4.1, CC0) | Connected stylized head, eye and body topology; suitable sculpt starting point | Tested locally. Generic anatomy does not preserve Nous girl's identity without deliberate sculpting. |
+| [Blender retopology](https://docs.blender.org/manual/id/4.0/modeling/meshes/retopology.html), [shape keys](https://docs.blender.org/manual/id/dev/animation/shape_keys/introduction.html) | Deliberate deformation edge flow; relative vertex shapes for expressions/corrections | Author eye/mouth loops and joint deformation, then validate combined expressions. Automatic quad conversion alone is insufficient. |
+| [Blender USD export](https://docs.blender.org/manual/id/5.2/files/import_export/usd.html) | Armatures and relative shape keys; approximate preview materials | Skinned export does not apply arbitrary modifiers. Bake applicable surface work before shape keys, and prove skin/blendshape behavior in RealityKit. Blender's Preserve Volume preview is not portable runtime evidence. |
+| [Meshy multi-image API](https://docs.meshy.ai/en/api/multi-image-to-3d), [rigging API](https://docs.meshy.ai/en/api/rigging) | Image-conditioned sculpt starting point; standard humanoid skeleton service | Account/API access is not configured in this session. Its documented biped restriction means mermaid tail/facial rigging remains custom work. No paid generation requested. |
+| [TripoSG](https://github.com/VAST-AI-Research/TripoSG) | Image-conditioned shape generation | Official installation requires CUDA GPU with at least 8 GB VRAM; this Mac has Apple M4 / 16 GB unified memory. Not run. |
+| [Stable Fast 3D](https://github.com/Stability-AI/stable-fast-3d) | UV/material reconstruction; experimental MPS support | Gated model access required. Official guidance recommends CPU below 32 GB unified memory. Not run. |
+| [Hunyuan3D 2.0 license](https://github.com/Tencent-Hunyuan/Hunyuan3D-2/blob/main/LICENSE) | Local shape/texturing pipeline | License explicitly excludes South Korea; not adopted or executed. No model weights downloaded. |
+| [TripoSR](https://github.com/VAST-AI-Research/TripoSR) | MIT image-to-mesh baseline | Actually run on this Mac, with neural inference on MPS and marching cubes on CPU. Useful method comparison, rejected as production geometry. |
+
+Two local experiments were evaluated rather than promoted:
+
+- **CC0 topology + procedural sculpt:** actual connected face and 13-bone body,
+  five relative facial shapes, and editable Blender source. Rejected: generic
+  doll face, folded headband, jagged neckline and collapsing forearms. Explicit
+  zero-valued, independent shape keys fixed an accidental combined-expression
+  default, but did not solve identity or deformation. Preserved under ignored
+  `diagnostics/hermes-mermaid/sculpt-source/`, not bundled in either app.
+- **TripoSR reconstruction:** 37,036 vertices / 73,960 triangles; 24.69 seconds
+  in the initial measured run on M4 MPS. Actual imported GLB views at 0/45/90/180
+  degrees and 640/96 px show a closer overall silhouette but blurred facial
+  features, an accessory fused into hair, lumpy hair surfaces and weak hands.
+  The mesh is not watertight and has no skeleton or facial shapes. These are
+  measured/observed limitations, not a quantitative aesthetic score. Rejected.
+
+The source image `hermes-mermaid-reconstruction-v5.png` is a generated, neutral
+arm-pose input derived from v4, not a new approved design or a mesh render. Its
+alpha cutout is normalized by the upstream model preprocessing; image pixels are
+not substituted for geometry during evaluation. Its head remains subordinate to
+the official portrait. The local comparison is
+`diagnostics/hermes-mermaid/modeling-method-review.html`.
+
+#### Reproduce the image-to-mesh comparison
+
+Use an isolated Python 3.11 environment with the pinned TripoSR checkout
+`107cefdc244c39106fa830359024f6a2f1c78871`. The tested environment uses PyTorch
+2.10.0, NumPy 1.26.4, Transformers 4.35.0, OmegaConf 2.3.0, Einops 0.7.0,
+Trimesh 4.0.5, Pillow, rembg/onnxruntime, imageio, huggingface-hub 0.17.3,
+and torchmcubes `879926d0ef58e6ce0ac2630fdecb5e53af7ed3ff` compiled for CPU.
+The runner pins the TripoSR model snapshot, retains prior outputs, and writes
+input hash, mesh counts, runtime, coordinate convention and absent rig features.
+Model weights and isolated environments stay outside tracked assets.
+
+```sh
+PYTORCH_ENABLE_MPS_FALLBACK=1 <isolated-python> assets/terrarium/reconstruct-hermes.py --source <TripoSR-checkout>
+blender --background --python assets/terrarium/evaluate-hermes-reconstruction.py -- --directory diagnostics/hermes-mermaid/reconstruction
+```
+
+The renderer corrects TripoSR's Z-up coordinates for Blender review only. Its
+GLB is not a normalized, rigged runtime replacement. The existing app resource
+is unchanged. Next production work starts with the original-matching neutral
+head and separate head accessory; neither rejected experiment closes #428.
+
 ### Visual evaluation, 2026-09-30
 
 `evaluate-hermes-model.py` renders the actual saved Blender model from fixed

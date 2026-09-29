@@ -39,3 +39,25 @@ Plain muted dark teal background, soft even light, no scenery, no other characte
 
 Use case: precise-object-edit. Image 1 is the EXACT official reference. Image 2 is the edit target. Change ONLY the white head accessory in BOTH depictions of the head in image 2. Keep every other element, face, hairstyle, expression, pose, mermaid body, framing and background unchanged.
 Critical correction: the white accessory in image 2 wrongly ends in TWO symmetric forked ribbon tails around a big black keyhole. Delete that entire bow/keyhole ending. The original reference has a narrow white band and ONE tiny asymmetric curved hook near the temple. Trace the actual contour from image 1: a slim curved white strip lies flush along the crown, narrows near the temple, makes one small irregular loop/curled hook only at its very tip; the little tip curves inward like a tiny comma. NO symmetric tails, NO bow, NO omega symbol, NO keyhole, NO badge, NO earpad. Make the white band roughly 30% narrower than in image 2 and place its end at the same proportional location as image 1. This is an exact identity-preserving accessory correction, not a redesign. Ensure the two shown heads have the same corrected accessory. Do not change the girl's face or body.
+
+## Reconstruction input, v5 (not an approved design)
+
+Built-in image generation, 2026-09-30. Inputs: v4 arm reference and the official
+Nous girl portrait. Saved as `hermes-mermaid-reconstruction-v5.png`. This single
+RGBA A-pose input is for comparing actual image-to-mesh methods. It retains the
+concept's remaining deviations from the original portrait; do not promote it to
+the head identity source. The resulting TripoSR mesh failed visual acceptance.
+
+### Single-character edit prompt
+
+Create a clean single-character reconstruction input by editing reference 1: isolate ONLY the full-body mermaid on the LEFT, remove the enlarged portrait on the right and all background. Preserve the left mermaid's identity, original dark bob with blunt fringe and outward curved tips, narrow single white curved hairband with only one small curled terminal, pale tapered face, composed almond eyes, tiny quiet mouth, teal modest one-piece bodice flowing into a thick mermaid tail and split broad fins. Reference 2 is authoritative for the Nous girl facial identity and head accessory: do not add headphones, earcups, horns or new ornament. Show one character, entirely visible including all fin tips, centered with ample transparent margin. Adjust ONLY arms into a neutral gentle A pose: both upper arms hang naturally outward about 25 degrees, anatomically continuous narrow shoulders, elbows slightly bent, small relaxed hands clearly separated from body, fingers together. Avoid overlap between either arm and the body so a 3D reconstruction model can understand limbs. Maintain this exact character's proportions and three-quarter view. Smooth sculpted stylized volume, consistent soft studio light, do not make realistic human skin. No text, no multiple views, no duplicate face, no cast shadow floor. Transparent background.
+
+### Cutout correction prompt
+
+Precise background removal edit only. Keep the exact single mermaid character's existing pixels/appearance, face, pose, body, tail, hair and accessory. Remove ALL the black/gray backdrop and ALL the outer white/turquoise glow/halo/shadow around the character; output a clean hard-edged transparent cutout of the character only. Every pixel outside the actual opaque character silhouette must have zero alpha, including between arms and torso. No halo, no bloom, no outer glow, no shadows, no feathering. Do not redesign or draw anything new. Preserve the actual hair curls and fin silhouette.
+
+The saved file has real alpha (0–254), including fully transparent background.
+The image-generation preview's dark/glowing RGB backdrop is not by itself proof
+of missing transparency. Standard alpha compositing into the model's neutral
+input background is performed in tensor preprocessing, not painted into the
+review renders.

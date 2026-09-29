@@ -233,3 +233,14 @@ The cropped-scene color/geometry correction measured 30.142 fps at the 1200-pixe
 thermal budget, versus 30.161 fps at 960 pixels on the same tablet (thermal
 status 3). The subsequent full-canvas composition uses the 960-pixel thermal limit again
 to account for its larger render area.
+
+## Hermes replacement method study
+
+`reconstruct-hermes.py` and `evaluate-hermes-reconstruction.py` reproduce an
+image-to-mesh comparison with TripoSR. They write ignored diagnostic outputs,
+not app resources. The study was visually rejected; facial/accessory fidelity,
+surface quality and animation topology remain open in #428. See
+[the Hermes research](../../docs/hermes-agent.md#production-modeling-research-and-replacement-gate)
+for pinned dependencies, sources, measured results and the production sequence.
+The original Nous girl outranks `references/hermes-mermaid-reconstruction-v5.png`,
+which is an experimental input, not an approved replacement design.

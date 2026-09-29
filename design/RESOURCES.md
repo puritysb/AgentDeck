@@ -40,6 +40,7 @@ index. If a location or gate changes, update this file in the same commit.
 | Native 3D aquarium study / TRMNL plate | `assets/terrarium/living-aquarium.blend` | `export-living-aquarium.py` / `export-paper-aquarium.py` in the same directory; native preview and panel review |
 | Native 3D agent residents | `assets/terrarium/3d-residents.blend`, built from `design/brand/*.svg` | `build-3d-residents.py` + `export-android-residents.py`; Apple import and Android asset tests |
 | Hermes mermaid adaptation | `assets/terrarium/hermes-mermaid.blend` + `build-hermes-mermaid.py` | USDZ for Apple; GLB alongside source. `HermesAquariumTests` verifies import, articulation and lifecycle. Original Nous girl brand geometry stays in `design/brand/hermes.svg`. |
+| Hermes reconstruction study | `assets/terrarium/reconstruct-hermes.py` + `evaluate-hermes-reconstruction.py` | Pinned TripoSR method comparison only; ignored diagnostic GLB/renders. No app asset replacement. Research and rejection criteria: `docs/hermes-agent.md`, #428. |
 | Published image crops | `docs/media/` | regenerated from `assets/`, never hand-edited |
 | Doc-to-viewer binding | `agentdeck-design-system/catalog.json` | `pnpm design-system:check` |
 | Documentation coverage | `catalog.json` → `coverage.scan` / `coverage.exclusions` | `pnpm design-system:check` — a `docs/*.md` that is neither cataloged nor excluded-with-a-reason fails the build |
