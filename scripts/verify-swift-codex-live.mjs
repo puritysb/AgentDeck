@@ -228,7 +228,9 @@ try {
       expired = true;
       break;
     }
-    assert.equal(row?.state, 'idle', 'Late OTel revived terminal state');
+    // HTTP and WS snapshots can observe the same eviction at different times.
+    // An absent HTTP row is not a revival; wait for WS to catch up as well.
+    if (row) assert.equal(row.state, 'idle', 'Late OTel revived terminal state');
     await delay(1000);
   }
   assert(expired, 'Hook row did not expire; late OTel may have promoted it to interactive');
