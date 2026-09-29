@@ -48,6 +48,8 @@ final class OpenCodeObserver {
     private var connectionEpoch: UInt64 = 0
     private var streamTask: Task<Void, Never>?
     private(set) var connectedURL: URL?
+    private var rememberedURL: URL?
+    private var rememberedDirectories: [String] = []
 
     func start(callbacks: Callbacks) {
         guard loopTask == nil else { return }
@@ -155,17 +157,15 @@ final class OpenCodeObserver {
         connectionEpoch &+= 1
         let epoch = connectionEpoch
         connectedURL = url
+        if rememberedURL != url {
+            rememberedURL = url
+            rememberedDirectories.removeAll()
+        }
+        let directories = rememberedDirectories
         streamTask = Task { [weak self] in
             do {
                 try await client.streamEvents(onConnected: { [weak self] in
-                    let busy = await client.sessionStatus().filter { $0.value == "busy" }.map(\.key)
-                    for sid in busy {
-                        guard !Task.isCancelled else { return }
-                        let summary = await client.session(id: sid)
-                        await self?.deliver(OpenCodeSessionUpdate(sessionID: sid, kind: .processing,
-                            title: summary?.title, directory: summary?.directory), epoch: epoch)
-                    }
-                    for update in await client.pendingRequests() {
+                    for update in await client.reconnectSnapshot(knownDirectories: directories) {
                         await self?.deliver(update, epoch: epoch)
                     }
                 }, onUpdate: { [weak self] update in
@@ -186,6 +186,11 @@ final class OpenCodeObserver {
     /// closure from having to touch actor state directly.
     private func deliver(_ update: OpenCodeSessionUpdate, epoch: UInt64) {
         guard epoch == connectionEpoch, streamTask != nil else { return }
+        if let directory = update.directory, !directory.isEmpty {
+            rememberedDirectories.removeAll { $0 == directory }
+            rememberedDirectories.insert(directory, at: 0)
+            rememberedDirectories = Array(rememberedDirectories.prefix(OpenCodeSSEClient.reconnectDirectoryLimit))
+        }
         callbacks?.onUpdate(update)
     }
 

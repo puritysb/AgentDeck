@@ -13,6 +13,54 @@ import XCTest
 
 final class OpenCodeObserverTests: XCTestCase {
 
+    func testGlobalEnvelopeKeepsDirectoryOnStatusAndQuestion() throws {
+        let directory = "/tmp/space # & 한글"
+        for event in ["session.status", "question.asked"] {
+            let update = try XCTUnwrap(OpenCodeEventClassifier.classify(envelope: [
+                "directory": directory,
+                "payload": ["type": event, "properties": [
+                    "sessionID": "ses_b", "id": "que_b", "status": ["type": "busy"],
+                ] as [String: Any]],
+            ]))
+            XCTAssertEqual(update.directory, directory)
+        }
+    }
+
+    func testColdAttachmentFindsOtherDirectoryAndPendingQuestion() async throws {
+        let client = makeSnapshotClient(host: "inventory.test")
+        let updates = await client.reconnectSnapshot()
+        XCTAssertEqual(updates.map(\.kind), [.processing, .awaitingQuestion])
+        XCTAssertEqual(updates.map(\.sessionID), ["ses_b", "ses_b"])
+        XCTAssertEqual(updates.first?.title, "Other workspace")
+        XCTAssertEqual(updates.last?.directory, SnapshotProtocol.directory)
+        XCTAssertEqual(updates.last?.waitID, "que_b")
+    }
+
+    func testRememberedDirectoryRecoversWhenInventoryUnavailable() async {
+        let client = makeSnapshotClient(host: "legacy.test")
+        let withoutLocation = await client.reconnectSnapshot()
+        XCTAssertTrue(withoutLocation.isEmpty)
+        let recovered = await client.reconnectSnapshot(knownDirectories: [SnapshotProtocol.directory])
+        XCTAssertEqual(recovered.map(\.kind), [.processing, .awaitingQuestion])
+    }
+
+    func testFailedPendingReadDoesNotInventResolution() async {
+        let updates = await makeSnapshotClient(host: "failed-pending.test").reconnectSnapshot()
+        XCTAssertEqual(updates.map(\.kind), [.processing])
+        XCTAssertFalse(updates.contains { $0.kind == .idle || $0.kind == .questionReplied })
+    }
+
+    func testDuplicateDefaultAndExplicitScopeSeedsWaitOnlyOnce() async {
+        let updates = await makeSnapshotClient(host: "duplicate.test").reconnectSnapshot()
+        XCTAssertEqual(updates.map(\.kind), [.processing, .awaitingQuestion])
+    }
+
+    private func makeSnapshotClient(host: String) -> OpenCodeSSEClient {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SnapshotProtocol.self]
+        return OpenCodeSSEClient(baseURL: URL(string: "https://\(host)")!, transport: URLSession(configuration: config))
+    }
+
     func testOwnershipKeepsHooksOutsideStreamLifecycle() {
         var owner = OpenCodeObservationOwnership()
         XCTAssertTrue(owner.acceptSSE("sse", rowExists: false))
@@ -215,5 +263,37 @@ final class OpenCodeObserverTests: XCTestCase {
         let urls = OpenCodeObserver.candidateURLs(userConfigured: "ftp://example.com", processArgs: [])
         XCTAssertEqual(urls.map(\.absoluteString), [OpenCodeObserver.defaultServerURL])
     }
+}
+/// Exercise the real HTTP decoding and URL query construction, including
+/// percent-encoding, default-scope duplicates and an unavailable inventory.
+private final class SnapshotProtocol: URLProtocol, @unchecked Sendable {
+    static let directory = "/tmp/space # & 한글"
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let url = request.url!
+        let directory = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+            .first { $0.name == "directory" }?.value
+        let inScope = directory == Self.directory || url.host == "duplicate.test"
+        var status = 200
+        let body: Any
+        switch url.path {
+        case "/experimental/session":
+            if url.host == "legacy.test" { status = 404; body = [:] }
+            else { body = [["id": "ses_b", "title": "Other workspace", "directory": Self.directory]] }
+        case "/session/status":
+            body = inScope ? ["ses_b": ["type": "busy"]] : [:]
+        case "/question":
+            if url.host == "failed-pending.test" { status = 503; body = [:] }
+            else { body = inScope ? [["id": "que_b", "sessionID": "ses_b", "questions": [["question": "Continue?"]]]] : [] }
+        case "/permission": body = []
+        default: status = 404; body = [:]
+        }
+        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }
 #endif
