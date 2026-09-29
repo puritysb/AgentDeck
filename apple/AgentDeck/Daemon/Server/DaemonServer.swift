@@ -4697,14 +4697,6 @@ final class DaemonServer {
         return false
     }
 
-    nonisolated private static func hasRealCodexAppSession(in entries: [String: DaemonSessionEntry]) -> Bool {
-        for (sid, entry) in entries {
-            if sid == codexAnonymousOtelSessionId { continue }
-            if entry.agentType == codexAppAgentType { return true }
-        }
-        return false
-    }
-
     /// Drop the OTel anonymous placeholder (`codex:otel-active`) only when a
     /// real-thread-id Codex App entry is about to be inserted. CLI hook
     /// sessions are a different source and must coexist with the Codex App
@@ -6760,7 +6752,7 @@ final class DaemonServer {
         guard !admittedEvents.isEmpty else { return }
 
         var didTouchSessionsList = false
-        func codexProjectName(from cwd: String?, sessionId: String) -> String {
+        func codexProjectName(from cwd: String?) -> String {
             if let cwd, let projectName = Self.nonEmptyString(ProjectNameResolver.resolve(cwd: cwd)) {
                 return projectName
             }
@@ -6771,21 +6763,13 @@ final class DaemonServer {
             // codex tagged "AgentDeck" even when running elsewhere, or worse
             // the other way around). `ensureCodexSession`'s upgrade path
             // fills the entry when a later hook event arrives with cwd.
-            _ = sessionId
             return ""
         }
 
-        func ensureCodexSession(_ sid: String, projectName: String = "") {
-            // Anonymous OTel placeholder (`codex:otel-active`) is only useful
-            // when no real Codex App session is tracked yet — its job is to
-            // keep the dashboard creature alive while OTel emits progress
-            // spans without a durable thread id. CLI hook sessions are a
-            // separate source and must coexist with Codex App observation.
-            if sid == Self.codexAnonymousOtelSessionId {
-                if Self.hasRealCodexAppSession(in: pushedSessionsById) {
-                    return
-                }
-            } else if pushedSessionsById[Self.codexAnonymousOtelSessionId] != nil {
+        func ensureCodexSession(_ sid: String, projectName: String) {
+            // The caller rejects anonymous thread ids before reaching here.
+            // Still remove an older placeholder when a real thread arrives.
+            if pushedSessionsById[Self.codexAnonymousOtelSessionId] != nil {
                 purgeCodexSessionState(Self.codexAnonymousOtelSessionId)
                 didTouchSessionsList = true
             }
@@ -6841,7 +6825,7 @@ final class DaemonServer {
             DaemonLogger.shared.debug("CodexOTel", "Opened \(sid) project=\(displayProjectName)")
         }
 
-        func sessionIdForCodexOtelThread(_ threadId: String) -> (sid: String, observedProjectName: String?)? {
+        func sessionIdForCodexOtelThread(_ threadId: String) -> String? {
             if !Self.shouldUseCodexOtelThreadForSessionState(threadId: threadId) {
                 return nil
             }
@@ -6850,23 +6834,22 @@ final class DaemonServer {
             // suggestions) export spans like the user's work; their hooks are
             // dropped, so without this a cwd-less "Codex" row would open.
             if codexAmbientThreads.isAmbient(sid) { return nil }
-            return (sid, nil)
+            return sid
         }
 
         for event in admittedEvents {
             switch event {
             case .turnStart(let threadId, let turnId, let cwd):
-                guard let resolved = sessionIdForCodexOtelThread(threadId) else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous turnStart without durable thread id")
                     continue
                 }
-                let sid = resolved.sid
                 // Record the turn OTel is now servicing so its eventual
                 // `turnEnd` can be matched to it — and a stale prior-turn
                 // `turnEnd` rejected — instead of closing whatever turn is
                 // currently open (Stop-drift guard).
                 codexOtelTurnIdBySession[sid] = turnId
-                let projectName = resolved.observedProjectName ?? codexProjectName(from: cwd, sessionId: sid)
+                let projectName = codexProjectName(from: cwd)
                 if pushedSessionsById[sid] == nil {
                     ensureCodexSession(sid, projectName: projectName)
                 } else {
@@ -6879,22 +6862,21 @@ final class DaemonServer {
                 codexRegisterNewTurnSignal(sessionId: sid)
 
             case .toolCall(let threadId, _, let tool, let cwd):
-                guard let resolved = sessionIdForCodexOtelThread(threadId) else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous toolCall without durable thread id")
                     continue
                 }
-                let sid = resolved.sid
                 guard lastTerminalCodexEventBySession[sid] == nil else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored late toolCall for finished session \(sid)")
                     continue
                 }
-                ensureCodexSession(sid, projectName: resolved.observedProjectName ?? codexProjectName(from: cwd, sessionId: sid))
+                ensureCodexSession(sid, projectName: codexProjectName(from: cwd))
                 let usefulTool = Self.usefulCodexToolName(tool)
                 updateSessionHookState(sessionId: sid, state: "processing", currentTool: usefulTool)
                 lastHookAtByPushedSession[sid] = Date()
 
             case .toolResult(let threadId, _):
-                guard let sid = sessionIdForCodexOtelThread(threadId)?.sid else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous toolResult without durable thread id")
                     continue
                 }
@@ -6906,7 +6888,7 @@ final class DaemonServer {
                 lastHookAtByPushedSession[sid] = Date()
 
             case .turnEnd(let threadId, let turnId):
-                guard let sid = sessionIdForCodexOtelThread(threadId)?.sid else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous turnEnd without durable thread id")
                     continue
                 }
@@ -6941,11 +6923,10 @@ final class DaemonServer {
                 lastTerminalCodexEventBySession[sid] = Date()
 
             case .activity(let threadId, _, let name, let cwd):
-                guard let resolved = sessionIdForCodexOtelThread(threadId) else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous activity \(name) without durable thread id")
                     continue
                 }
-                let sid = resolved.sid
                 guard lastTerminalCodexEventBySession[sid] == nil else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored late activity \(name) for finished session \(sid)")
                     continue
@@ -6954,7 +6935,7 @@ final class DaemonServer {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored activity \(name) without active turn for \(sid)")
                     continue
                 }
-                ensureCodexSession(sid, projectName: resolved.observedProjectName ?? codexProjectName(from: cwd, sessionId: sid))
+                ensureCodexSession(sid, projectName: codexProjectName(from: cwd))
                 guard Self.shouldUseCodexOtelActivityForState(existingState: existing.state) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored activity \(name) for idle session \(sid)")
                     continue
