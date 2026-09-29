@@ -75,6 +75,7 @@ final class AquariumResidents {
         guard let imported = library.findEntity(named: "resident_hermes") else { return }
         let template = imported.clone(recursive: true)
         template.transform = Transform(matrix: imported.transformMatrix(relativeTo: nil))
+        guard HermesMermaid.Rig(template).isComplete else { return }
         templates["hermes"] = template
     }
     private struct Joint {

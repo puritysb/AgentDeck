@@ -44,3 +44,21 @@ generic round baby eyes, broad smile and blush with the original's elongated
 almond eyes, eyeliner, composed sideways gaze, delicate closed mouth, tapered
 lower face, uneven fringe and precise hooked headband. Keep tiny expressions
 restrained. This is the latest facial direction, not an accepted runtime mesh.
+
+## 2026-09-30 — Preserve head identity, not just a cute interpretation
+
+`hermes-mermaid-identity-v3.png` is a further **concept-only** correction. The
+user requires maximum retention of the official head accessory, bob silhouette,
+fringe, facial shape and expression. These take precedence over generic chibi
+cuteness. Only the below-neck mermaid body should be freely adapted.
+
+The first generated pass still replaced the accessory tip with a forked bow;
+that output was rejected. A targeted second pass narrowed the band and removed
+the symmetric fork. The result is closer, but the small terminal contour and
+placement are still a source-comparison item, not declared exact. The original
+portrait remains authoritative over every generated sheet. No new earcups,
+microphone, ribbon, jewelry or symbol should be inferred from the accessory.
+
+Built-in image generation was used; both exact prompts and evaluation are in
+[hermes-identity-prompts.md](hermes-identity-prompts.md). This reference is not
+implemented faithfully in the current USDZ and has not received user approval.

@@ -15,6 +15,7 @@ struct HermesSwim {
     private(set) var celebration: Float = 0
     private(set) var greeting: Float = 0
     private(set) var elapsed: Float = 0
+    private(set) var gaze = SIMD2<Float>.zero
     private var previous: Activity?
     private let offset: Float
 
@@ -30,10 +31,19 @@ struct HermesSwim {
         velocity = .zero
     }
 
-    var blink: Float {
-        let t = (elapsed + offset).truncatingRemainder(dividingBy: 4.7)
-        return t < 0.18 ? max(0.08, abs(t - 0.09) / 0.09) : 1
+    private func eyelid(_ lag: Float) -> Float {
+        let period: Float = 5.3
+        let time = elapsed + offset + lag
+        let t = time.truncatingRemainder(dividingBy: period)
+        func closure(_ t: Float) -> Float {
+            guard t >= 0 && t < 0.22 else { return 1 }
+            // Fast closure, slower opening; occasional double blink.
+            return t < 0.075 ? max(0, 1 - t / 0.075) : min(1, (t - 0.075) / 0.145)
+        }
+        let first = closure(t)
+        return Int(time / period) % 3 == 2 ? min(first, closure(t - 0.36)) : first
     }
+    var blink: Float { eyelid(0) }
     var tail: Float { sin(phase) * (0.10 + min(1, simd_length(velocity) * 2) * 0.38 + effort * 0.10) }
     var fin: Float { sin(phase - 1.0) * (0.15 + min(1, simd_length(velocity) * 2) * 0.45 + effort * 0.12) }
     var yaw: Float { max(-1.15, min(1.15, atan2(velocity.x, 0.22 + abs(velocity.z)))) }
@@ -48,6 +58,73 @@ struct HermesSwim {
     var eyeWidth: Float { 1 + attention * 0.15 }
     var smileHeight: Float { 1 + attention * 1.5 + celebration * 0.4 }
     var tailBank: Float { velocity.x * 0.25 }
+
+
+    /// One numeric pose contract for the native rig and the Blender review.
+    /// Euler axes are model-local X/Y/Z, composed X then Y then Z.
+    struct Pose: Codable {
+        var spine, tailBase, tailMid, tailTip, fin, finLeft, finRight: SIMD3<Float>
+        var armLeft, elbowLeft, wristLeft, armRight, elbowRight, wristRight: SIMD3<Float>
+        var head: SIMD3<Float>
+        var hairLeft, hairRight: Float
+        var eyeLeft, eyeRight: Float
+        var pupil: SIMD2<Float>
+        var browLeft, browRight, browLift, mouthOpen, mouthCurve: Float
+
+        func rotation(for bone: String) -> SIMD3<Float> {
+            switch bone {
+            case "spine": spine
+            case "tail_base": tailBase
+            case "tail_mid": tailMid
+            case "tail_tip": tailTip
+            case "fin": fin
+            case "fin_left": finLeft
+            case "fin_right": finRight
+            case "arm_left": armLeft
+            case "elbow_left": elbowLeft
+            case "wrist_left": wristLeft
+            case "arm_right": armRight
+            case "elbow_right": elbowRight
+            case "wrist_right": wristRight
+            default: .zero
+            }
+        }
+    }
+
+    var pose: Pose {
+        let speed = min(1, simd_length(velocity) * 2)
+        let stroke = 0.12 + speed * 0.15 + effort * 0.04
+        let tap = sin(elapsed * 3.5 + offset) * effort
+        let wave = sin(elapsed * 4.5 + offset) * greeting
+        let tension = sadness * 0.8 + effort * 0.25
+        return Pose(
+            spine: [sin(phase - 0.15) * 0.025 + effort * 0.025, 0, -roll * 0.10],
+            tailBase: [sin(phase) * stroke, tailBank * 0.25, 0],
+            tailMid: [sin(phase - 0.65) * stroke * 1.3, tailBank * 0.35, 0],
+            tailTip: [sin(phase - 1.3) * stroke * 1.5, tailBank * 0.4, 0],
+            fin: [sin(phase - 1.9) * stroke, 0, 0],
+            finLeft: [sin(phase - 2.1) * 0.09, -0.04 - speed * 0.09, -0.05 - effort * 0.08],
+            finRight: [sin(phase - 2.25) * 0.09, 0.04 + speed * 0.09, 0.05 + effort * 0.08],
+            armLeft: [-effort * 0.55, attention * 1.15 + greeting * 0.95 + effort * 0.45,
+                      -(0.04 + attention * 0.9 + greeting * 0.65 + effort * 0.28 + celebration * 0.14)],
+            elbowLeft: [-effort * 0.28, 0, -(0.08 + effort * (0.38 + tap * 0.08) + attention * 0.35 + greeting * 0.55)],
+            wristLeft: [effort * tap * 0.16, wave * 0.35, wave * 0.15],
+            armRight: [-effort * 0.55 - sadness * 0.10, -effort * 0.45, 0.04 + effort * 0.28 + attention * 0.1],
+            elbowRight: [-effort * 0.28, 0, 0.08 + effort * (0.38 - tap * 0.08) + sadness * 0.15],
+            wristRight: [-effort * tap * 0.16, 0, 0],
+            head: [effort * 0.09 + sadness * 0.10 - gaze.y * 0.12,
+                   gaze.x * 0.25, headRoll + sin(elapsed * 0.8 + offset) * 0.018],
+            hairLeft: sin(phase - 1.6) * (0.018 + speed * 0.025) + roll * 0.06,
+            hairRight: sin(phase - 1.9) * (0.015 + speed * 0.025) + roll * 0.06,
+            eyeLeft: eyelid(0) * (1 - tension * 0.30),
+            eyeRight: eyelid(0.014) * (1 - tension * 0.30),
+            pupil: [gaze.x * 0.006, gaze.y * 0.004],
+            browLeft: -sadness * 0.18 + effort * 0.07 - attention * 0.09,
+            browRight: sadness * 0.18 - effort * 0.07 + attention * 0.09,
+            browLift: attention * 0.006 - effort * 0.002,
+            mouthOpen: attention * 0.35,
+            mouthCurve: greeting * 0.3 + celebration * 0.18 - sadness * 0.4)
+    }
 
     mutating func step(_ delta: Float, home: SIMD3<Float>, size: Float,
                        activity: Activity, neighbours: [SIMD3<Float>], aspect: Float) {
@@ -90,6 +167,15 @@ struct HermesSwim {
             destination += (home + excursion - destination) * greeting * 0.65
             destination += SIMD3<Float>(direction.z, 0, -direction.x) * greeting * size * 0.10
         }
+        let lookTarget: SIMD2<Float>
+        if let peer = nearest, greeting > 0.12 {
+            let direction = peer - position
+            lookTarget = [max(-1, min(1, direction.x)), max(-0.5, min(0.5, direction.y))]
+        } else {
+            lookTarget = [velocity.x * 1.2 + sin(elapsed * 0.43 + offset) * 0.13,
+                          -effort * 0.22 + attention * 0.12]
+        }
+        gaze += (lookTarget - gaze) * (1 - exp(-dt * 4))
         // Separation is computed from one scene snapshot, never iteration order.
         for peer in neighbours {
             let difference = position - peer

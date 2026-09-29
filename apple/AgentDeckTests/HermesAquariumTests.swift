@@ -91,6 +91,62 @@ final class HermesAquariumTests: XCTestCase {
         XCTAssertNotEqual(HermesSwim(id: "a", position: .zero).phase, HermesSwim(id: "b", position: .zero).phase)
     }
 
+
+    func testExpressivePoseHasDelayedTailIndependentLimbsAndBoundedGaze() throws {
+        var swim = HermesSwim(id: "portrait", position: [0,3,0])
+        var blinkCount = 0
+        var lastOpen: Float = 1
+        for i in 0..<1800 {
+            let activity: HermesSwim.Activity = i < 600 ? .working : i < 1200 ? .waiting : .error
+            swim.step(1/60, home: [0,3,0], size: 0.8, activity: activity,
+                      neighbours: [[0.9,3.2,0]], aspect: 1.6)
+            let pose = swim.pose
+            if lastOpen > 0.12 && pose.eyeLeft <= 0.12 { blinkCount += 1 }
+            lastOpen = pose.eyeLeft
+            XCTAssertTrue(pose.pupil.x.isFinite)
+            XCTAssertLessThanOrEqual(abs(pose.pupil.x), 0.0061)
+            XCTAssertGreaterThanOrEqual(pose.eyeLeft, 0)
+            XCTAssertLessThanOrEqual(pose.eyeRight, 1)
+            // Every pose must remain serializable: the review uses this exact contract.
+            if i % 300 == 0 { XCTAssertNoThrow(try JSONEncoder().encode(pose)) }
+        }
+        XCTAssertGreaterThan(blinkCount, 3)
+        XCTAssertGreaterThan(swim.pose.browRight, 0.1)
+        XCTAssertLessThan(swim.pose.mouthCurve, 0)
+        for _ in 0..<120 { swim.step(1/60, home: [0,3,0], size: 0.8, activity: .working, neighbours: [], aspect: 1.6) }
+        let pose = swim.pose
+        XCTAssertNotEqual(pose.tailBase.x, pose.tailMid.x)
+        XCTAssertNotEqual(pose.tailMid.x, pose.tailTip.x)
+        XCTAssertNotEqual(pose.wristLeft.x, pose.wristRight.x)
+        for _ in 0..<180 { swim.step(1/60, home: [0,3,0], size: 0.8, activity: .waiting, neighbours: [], aspect: 1.6) }
+        XCTAssertGreaterThan(abs(swim.pose.armLeft.z), abs(swim.pose.armRight.z) + 0.5)
+    }
+
+    @MainActor
+    func testSkinAndFaceControlsAreIndependentAndPoseApplicationDoesNotAccumulate() async throws {
+        let root = try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz")))
+        let copy = root.clone(recursive: true)
+        let rig = HermesMermaid.Rig(root), other = HermesMermaid.Rig(copy)
+        XCTAssertTrue(rig.isComplete)
+        let originalOther = try XCTUnwrap(other.skins.first).entity.jointTransforms
+        var swim = HermesSwim(id: "rig", position: [0,3,0])
+        for _ in 0..<120 { swim.step(1/60, home: [0,3,0], size: 1, activity: .waiting, neighbours: [], aspect: 1.6) }
+        var pose = swim.pose
+        pose.eyeLeft = 0; pose.eyeRight = 1
+        pose.pupil = [0.004, -0.001]
+        rig.apply(pose)
+        let first = try XCTUnwrap(rig.skins.first).entity.jointTransforms
+        for _ in 0..<20 { rig.apply(pose) }
+        XCTAssertEqual(try XCTUnwrap(rig.skins.first).entity.jointTransforms, first)
+        XCTAssertEqual(try XCTUnwrap(other.skins.first).entity.jointTransforms, originalOther)
+        XCTAssertFalse(try XCTUnwrap(root.findEntity(named: "hermes_eye_left")).isEnabled)
+        XCTAssertTrue(try XCTUnwrap(root.findEntity(named: "hermes_lid_left")).isEnabled)
+        XCTAssertTrue(try XCTUnwrap(root.findEntity(named: "closed_lid_left")).isEnabled)
+        XCTAssertTrue(try XCTUnwrap(root.findEntity(named: "hermes_eye_right")).isEnabled)
+        XCTAssertFalse(try XCTUnwrap(root.findEntity(named: "hermes_lid_right")).isEnabled)
+        XCTAssertEqual(try XCTUnwrap(root.findEntity(named: "hermes_pupil_right")).position.x, 0.004, accuracy: 0.0001)
+    }
+
     @MainActor
     func testBundledModelArticulatesInRealScenePausesAndRemovesCleanly() async throws {
         let library = try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz")))
@@ -100,22 +156,26 @@ final class HermesAquariumTests: XCTestCase {
         state.hermesCreatures = [.init(id: "h", projectName: "Hermes", activity: .working)]
         scene.sync(state, aspect: 1.6)
         let resident = try XCTUnwrap(scene.residents["h"])
-        let tail = try XCTUnwrap(resident.findEntity(named: "hermes_tail"))
+        let rig = HermesMermaid.Rig(resident)
+        XCTAssertTrue(rig.isComplete)
+        let skin = try XCTUnwrap(rig.skins.first)
+        let tailIndex = try XCTUnwrap(skin.names.firstIndex(of: "tail_mid"))
         let face = try XCTUnwrap(resident.findEntity(named: "face"))
         XCTAssertEqual(AquariumResidents.sessionID(for: face), "h")
         let body = try XCTUnwrap(resident.findEntity(named: "body"))
         let bounds = body.visualBounds(relativeTo: resident)
         XCTAssertGreaterThan(bounds.extents.y, 0.8)
-        XCTAssertLessThan(bounds.extents.y, 1.2)
-        XCTAssertLessThan(bounds.extents.z, bounds.extents.y * 0.6)
-        let rest = tail.transform
+        XCTAssertLessThan(bounds.extents.y, 1.3)
+        // The swept-back tail now occupies real depth; still bound its footprint.
+        XCTAssertLessThan(bounds.extents.z, bounds.extents.y * 0.75)
+        let rest = skin.entity.jointTransforms[tailIndex]
         for _ in 0..<120 { scene.step(1/60) }
-        XCTAssertNotEqual(tail.transform, rest)
+        XCTAssertNotEqual(skin.entity.jointTransforms[tailIndex], rest)
         let position = resident.position
         scene.animate = false
-        let frozen = tail.transform
+        let frozen = skin.entity.jointTransforms[tailIndex]
         scene.step(600)
-        XCTAssertEqual(tail.transform, frozen)
+        XCTAssertEqual(skin.entity.jointTransforms[tailIndex], frozen)
         XCTAssertEqual(resident.position, position)
         state.hermesCreatures = [.init(id: "h", projectName: "Hermes", activity: .waiting)]
         scene.sync(state, aspect: 1.6)

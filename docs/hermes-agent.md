@@ -33,14 +33,20 @@ unaltered Nous girl geometry.
 **Visual review remains open:** the user rejected the current USDZ after the
 iPad Simulator app capture. New concept references under
 `assets/terrarium/references/` move the face closer to the original Nous girl.
-They have not yet replaced the runtime mesh; passing tests is not visual
-acceptance.
+The runtime mesh now has a skinned body and independent face controls, but
+fixed-view comparison still fails visual acceptance. The concept sheet is not
+a screenshot of the implemented model; passing tests is not visual acceptance.
 
 
 The Blender source is `assets/terrarium/hermes-mermaid.blend`, reproducibly
 built by `build-hermes-mermaid.py`. Apple bundles its USDZ; a portable GLB is
 kept beside the authoring source for the later Android renderer. The model has
-separate head, eye, arm, tail and fin pivots. The app's `HermesSwim` controller
+13 deformation bones across spine, continuous tail, split fins, shoulders,
+elbows and wrists, plus independent head, gaze, lid, brow, lip and hair controls.
+Seven source meshes are skinned; RealityKit imports them as one skeleton.
+Rest-relative poses prevent accumulation and shared-instance mutation. Closed
+lids and mouth geometry must be exported visibly, then hidden by the controller;
+Blender omits render-hidden meshes from USD export. The app's `HermesSwim` controller
 owns bounded three-dimensional travel, damped velocity, banking, delayed tail
 and fin strokes, blinking, neighbour greetings and state transitions. Nearby
 idle residents can turn or wave back; these are cosmetic social behaviours,
@@ -55,6 +61,36 @@ state labels still update. Meshes and rig handles are cached per resident and
 removed with the session. `preview-hermes-motion.swift` samples the real motion
 controller; `render-hermes-preview.py` renders that trajectory with Blender for
 visual review (outputs under ignored `diagnostics/hermes-mermaid/`).
+
+### Visual evaluation, 2026-09-30
+
+`evaluate-hermes-model.py` renders the actual saved Blender model from fixed
+front, three-quarter and profile cameras at 640 px and 96 px. The local review
+compares the official Nous girl, the selected concept and actual before/after
+renders. Baseline and revised **front** views share camera, scale and light;
+the revised portrait/profile views face the source portrait's direction.
+There is no automated aesthetic score or claim of user approval.
+
+The latest user constraint is stricter than the initial cute concept: preserve
+the original head accessory, bob/fringe, expression and facial proportions as
+closely as possible. `hermes-mermaid-identity-v3.png` corrects the concept in two
+image-generation passes, including removing a wrongly forked accessory tip.
+The original portrait remains authoritative; this new reference is not yet
+faithfully implemented in the USDZ or approved by the user.
+
+| Criterion | Observed result | Status |
+|---|---|---|
+| Original face | Eye scale, dark iris, liner and nose contour improved; the overall face still reads as a doll rather than the composed original portrait | Fail |
+| Bob, fringe and band | Band width increased and fringe brought closer to scalp; large helmet-like masses, seams and lock tips remain | Fail |
+| Mermaid silhouette | Torso shortened and tail swept back with matching bind joint positions; side-on fin volume still weak | Fail |
+| Small appearance | Band and tail read at 96 px; expression differences remain weak | Fail |
+| Waiting gesture | Initial raised hand was hidden behind the head; forward shoulder placement and yaw now bring it beside the cheek in the sampled close-up. All-angle clearance remains unverified | Partial |
+
+The Blender preview sampler covers 33 seconds using the same numeric poses as Swift (idle, work,
+waiting, error and transitions). Close-up travel is scaled to 20% and yaw to
+65% for framing; it is not an app recording or an exact world-space trajectory.
+Actual simulator composition must be assessed separately. Keep #427 Draft;
+#425 remains open for visual redesign as well as device/native intake work.
 
 ## OpenClaw and Hermes have different observation contracts
 

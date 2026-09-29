@@ -1,0 +1,44 @@
+{
+  "schema": 2,
+  "boneNames": [
+    "spine",
+    "tail_base",
+    "tail_mid",
+    "tail_tip",
+    "fin",
+    "fin_left",
+    "fin_right",
+    "arm_left",
+    "elbow_left",
+    "wrist_left",
+    "arm_right",
+    "elbow_right",
+    "wrist_right"
+  ],
+  "controls": [
+    "hermes_spine",
+    "hermes_head",
+    "hermes_brow_left",
+    "hermes_brow_right",
+    "hermes_eye_left",
+    "hermes_pupil_left",
+    "hermes_eye_right",
+    "hermes_pupil_right",
+    "hermes_hair_left",
+    "hermes_hair_right",
+    "hermes_lid_left",
+    "hermes_lid_right",
+    "hermes_mouth",
+    "hermes_lip_lower",
+    "hermes_lip_upper"
+  ],
+  "skinnedMeshes": [
+    "arm_skin_left",
+    "arm_skin_right",
+    "fin_surface_left",
+    "fin_surface_right",
+    "hand_skin_left",
+    "hand_skin_right",
+    "hermes_body_skin"
+  ]
+}
