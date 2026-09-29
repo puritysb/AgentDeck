@@ -32,6 +32,34 @@ The root `pnpm test` command runs only the Vitest suite configured in the reposi
 
 It is safe beside a live daemon (outside 9120–9139, so the singleton guard never asks the real one to stand down) and raises no OS prompts on Linux: loopback bind, every device module off, no LAN emission. On macOS it is opt-in (`AGENTDECK_E2E_ALLOW_DARWIN=1`) because the darwin usage poller reads the login Keychain. CI runs it on every PR (`ci.yml`) and the Pages report re-runs it on master.
 
+## Swift Codex live acceptance on a Mac
+
+After building and launching the signed, sandboxed macOS app, run:
+
+```bash
+node scripts/verify-swift-codex-live.mjs --port PORT --pid PID --app /path/AgentDeck.app
+```
+
+Use the registry-resolved serving port and the PID of that exact app. The runner
+refuses Node daemons, PID changes, a different app path, and unsigned or
+unsandboxed builds. It drives the real HTTP routes and checks both `/status`
+and the WebSocket roster: idle start, prompt, repeated start, hook ownership,
+late OTel, OTel-only/notify fallback, old-turn rejection, actual terminal expiry,
+post-expiry suppression, and hook re-engagement. Allow about two minutes.
+
+The runner does not start agents, call a model, edit configuration or trust,
+or switch daemon ownership. If Node owns the port, use the supported daemon
+lifecycle commands to stop it for the test and restore it afterwards. A JSON
+receipt under `diagnostics/swift-codex-live/` records the app binary hashes,
+PID, sandbox check, assertions and cleanup; `--output` selects another path.
+Only this run's synthetic roster rows are removed. Labeled synthetic timeline
+entries remain as evidence; real session content and pairing tokens are omitted
+from the receipt. A failed cleanup fails the run.
+
+This is live sandboxed transport evidence using synthetic events. It does not
+prove actual CLI emission, first-run trust, Kiro folder consent/revocation,
+OpenCode SSE reconnect, App Store distribution, or physical display rendering.
+
 ## macOS device runs: preflight before you deploy
 
 Agent-driven build → deploy → check runs on a Mac used to stall on privacy dialogs (Automation, Accessibility, Screen Recording, firewall). `bash scripts/macos-preflight.sh --automation --accessibility --screen-recording [--firewall <app>] --json` checks each grant with a bounded, non-interactive probe and reports `granted` / `denied` / `unknown` per check (exit 2 = something denied, with the exact System Settings path; exit 3 = could not tell). The `agentdeck-deploy` skill and the screenshot/recording scripts run it first.

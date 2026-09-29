@@ -68,6 +68,32 @@
       ]
     },
     {
+      "id": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "level": [
+        "e2e",
+        "hardware"
+      ],
+      "where": "Maintainer Mac running the signed sandboxed app",
+      "workflow": null,
+      "trigger": "Opt-in after deploying the Swift app",
+      "blocking": false,
+      "command": "node scripts/verify-swift-codex-live.mjs --port PORT --pid PID --app /path/AgentDeck.app",
+      "evidence": [
+        "scripts/verify-swift-codex-live.mjs"
+      ],
+      "proves": [
+        "A verified sandboxed Swift process accepts Codex lifecycle HTTP events and broadcasts matching WebSocket roster states",
+        "Late OTel cannot override hook ownership, prevent real-time terminal expiry, or resurrect an expired hook row",
+        "OTel-only and notify-plus-OTel fallback and turn-ID guards remain functional"
+      ],
+      "does_not_prove": [
+        "Real Codex CLI emission, interactive trust, or installer configuration preservation (events are synthetic)",
+        "App Store distribution, Kiro folder consent/revocation, OpenCode SSE reconnect, or physical display pixels",
+        "Unattended hosted CI: requires an explicitly selected running Mac app and leaves labeled synthetic timeline entries"
+      ]
+    },
+    {
       "id": "typecheck",
       "name": "Build + type check + version and protocol drift",
       "level": [
