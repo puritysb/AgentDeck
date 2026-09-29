@@ -112,6 +112,12 @@ class ObserverTests(unittest.TestCase):
         self.assertEqual(self.module._QUEUE.qsize(), 128)
         self.patch.start()
 
+    def test_explicit_data_directory_never_falls_back_to_default(self):
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"AGENTDECK_DATA_DIR": home}):
+            with patch.object(self.module.Path, "home", side_effect=AssertionError("must not discover default daemon")):
+                with self.assertRaises(FileNotFoundError):
+                    self.module._deliver("hermes_session_start", {"session_id": "opaque"})
+
     def test_real_loopback_export_requires_receiver_capability(self):
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -128,7 +134,7 @@ class ObserverTests(unittest.TestCase):
         server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
         try:
-            with tempfile.TemporaryDirectory() as home, patch.object(self.module.Path, 'home', return_value=Path(home)):
+            with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {'AGENTDECK_DATA_DIR': ''}), patch.object(self.module.Path, 'home', return_value=Path(home)):
                 registry = Path(home) / '.agentdeck'; registry.mkdir()
                 (registry / 'daemon.json').write_text(json.dumps({'port': server.server_port}))
                 self.module._deliver('hermes_session_start', {'session_id': 'opaque'})
@@ -136,6 +142,10 @@ class ObserverTests(unittest.TestCase):
                 supported[0] = True
                 self.module._deliver('hermes_session_start', {'session_id': 'opaque'})
                 self.assertEqual(received, [('/hooks/hermes_session_start', {'session_id': 'opaque'})])
+                with patch.dict(os.environ, {'AGENTDECK_DATA_DIR': str(registry)}):
+                    with patch.object(self.module.Path, 'home', side_effect=AssertionError('explicit directory wins')):
+                        self.module._deliver('hermes_stop', {'session_id': 'opaque'})
+                self.assertEqual(received[-1][0], '/hooks/hermes_stop')
         finally:
             server.shutdown(); server.server_close(); worker.join(timeout=2)
 

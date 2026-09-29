@@ -66,7 +66,8 @@ def _payload(kwargs, sid=None):
 
 def _deliver(event, payload):
     # Resolve every delivery: a daemon restart can move the port.
-    registry = Path.home() / ".agentdeck" / "daemon.json"
+    data_dir = os.environ.get("AGENTDECK_DATA_DIR")
+    registry = (Path(data_dir).expanduser() if data_dir else Path.home() / ".agentdeck") / "daemon.json"
     info = json.loads(registry.read_text())
     port = info.get("httpPort") or info.get("port")
     if type(port) is not int or not 1 <= port <= 65535:

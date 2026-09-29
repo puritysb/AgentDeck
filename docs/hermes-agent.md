@@ -30,6 +30,13 @@ unaltered Nous girl geometry.
 
 ## Native aquarium motion
 
+**Visual review remains open:** the user rejected the current USDZ after the
+iPad Simulator app capture. New concept references under
+`assets/terrarium/references/` move the face closer to the original Nous girl.
+They have not yet replaced the runtime mesh; passing tests is not visual
+acceptance.
+
+
 The Blender source is `assets/terrarium/hermes-mermaid.blend`, reproducibly
 built by `build-hermes-mermaid.py`. Apple bundles its USDZ; a portable GLB is
 kept beside the authoring source for the later Android renderer. The model has
@@ -98,7 +105,8 @@ for identity; CLI cwd is intentionally visible as project context.
 
 One daemon worker serializes sends, with a 128-item queue, a five-second queue
 age limit and bounded HTTP timeouts. Proxy settings and redirects are disabled.
-Discovery reads the user's `.agentdeck/daemon.json`; it does not scan ports or
+Discovery reads `AGENTDECK_DATA_DIR/daemon.json` when explicitly configured,
+otherwise the user's `.agentdeck/daemon.json`; it does not scan ports or
 fallback to an old/native receiver that would misclassify Hermes hooks. Callback
 failures are ignored; callbacks always return `None`. CLI exit allows up to one
 second for queued events to drain. Transport is best effort, without retries or
@@ -125,6 +133,21 @@ projection remain a rollout gate. Session/child caches are bounded.
   context-local profile overrides. Doctor runs under a temporary home
   with sockets blocked during registration. This is runtime registration
   evidence, not a completed live model conversation.
+
+A real CLI single-query run against that same installed commit used the
+configured `zai` / `glm-5.3` provider in a temporary profile and empty workspace.
+Its real plugin exported start, prompt, two terminal start/end pairs, one
+successful Stop and finalization through loopback HTTP to an isolated Node
+daemon. Hermes's approval policy declined `python3 -c`; it retried using shell
+arithmetic and returned `323 OBSERVER_OK`. The daemon published the processing
+row and removed it on finalization; APME stored the response, two tool calls,
+`provider=zai`, `model_id=glm-5.3`, and `end_source=stop`. The scrubbed hook
+sequence is checked in as
+`bridge/src/__tests__/fixtures/hermes-cli-observer.json` and replayed by tests.
+This proves one CLI turn, not multi-turn/reset/cancel or gateway coverage.
+The isolated run disabled Hermes lazy installs after the first launch tried
+automatic source completion; that automatic build was stopped. No tracked
+upstream source or user profile configuration was changed.
 
 Follow-up tickets: [native/device coverage #425](https://github.com/puritysb/AgentDeck/issues/425)
 and [live compatibility verification #426](https://github.com/puritysb/AgentDeck/issues/426).
