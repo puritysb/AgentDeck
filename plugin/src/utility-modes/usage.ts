@@ -408,12 +408,13 @@ export function selectUsageDialProvider(dial: 'e2' | 'e3', provider: UsageProvid
 }
 
 export function resolveE2UsageProvider(data: UsageModeData): UsageProviderId {
+  // A manual choice is the provider to display, even while its quota is
+  // temporarily unavailable. The renderer can show that provider's empty state.
+  if (e2Pinned) return e2Provider;
   const available = availableUsageProviders(data);
-  // Startup/disconnect carries no quota yet; retain the saved manual choice.
+  // Startup/disconnect carries no quota yet; retain the last automatic page.
   if (available.length === 0) return e2Provider;
-  if (!e2Pinned || !available.includes(e2Provider)) {
-    e2Provider = pickAutoUsageProvider(data);
-  }
+  e2Provider = pickAutoUsageProvider(data);
   return e2Provider;
 }
 

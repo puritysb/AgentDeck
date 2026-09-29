@@ -87,11 +87,12 @@ No session while daemon is connected: healthy idle dashboard, not recovery UI. S
 | E3 | Codex Usage | Cycle view (both/5h/7d/session) | Refresh usage data |
 | E4 | Launcher | Select agent | Open agent |
 
-E2 and E3 LCD touch-taps cycle through every available provider (Claude, Codex, z.ai).
-An explicit selection wins: when it collides with the other dial, the other dial moves
-to the vacated provider or another available provider. With only one provider, both
-may show it. Choices persist across plugin restarts. E2 starts in automatic mode,
-following current activity while avoiding E3; hold its LCD to resume automatic mode.
+E2 and E3 LCD touch-taps cycle through every available provider (Claude, Codex, z.ai,
+Antigravity). The dials select independently, so both may show the same provider.
+An explicit choice stays on that provider across plugin restarts and temporary usage-data
+gaps; its page shows an empty state until data returns. E2 defaults to Claude and a
+long touch switches it to automatic mode, which follows current activity and may
+select E3's provider. A tap pins E2 to the selected provider again.
 Rotation chooses a view within the selected provider; pressing refreshes usage.
 
 **Usage encoders rotate only through the windows the provider actually reports.**

@@ -28,7 +28,7 @@ import {
   type UsageModeData, type UsageProviderId,
   updateUsageModeData, getUsageModeData, fireUsageRefresh,
   availableUsageProviders,
-  getUsageDialSelections, setE3UsageProvider, selectUsageDialProvider, onUsageDialSelectionChanged,
+  getUsageDialSelections, selectUsageDialProvider, onUsageDialSelectionChanged,
 } from '../utility-modes/usage.js';
 import type { ConnectionManager } from '../connection-manager.js';
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
@@ -48,20 +48,10 @@ const usageViews = new PerActionViewState('both');
 /**
  * E3's provider page (#349) — the user's STICKY "what do I want to watch" dial.
  * Touch-tap cycles through all available providers; rotation cycles the views
- * of the current page; press refreshes. The page only re-anchors when the
- * current provider no longer has available data.
+ * of the current page; press refreshes. A saved choice remains visible while
+ * its usage data is unavailable, so a temporary fetch gap cannot replace it.
  */
-function anchoredProvider(): UsageProviderId {
-  const data = getUsageModeData();
-  const available = availableUsageProviders(data);
-  const current = getUsageDialSelections().e3;
-  if (available.length === 0 || available.includes(current)) return current;
-  // Data loss: re-anchor to the first live page.
-  const next = available[0];
-  const anchored = next ?? 'codex';
-  setE3UsageProvider(anchored);
-  return anchored;
-}
+function selectedProvider(): UsageProviderId { return getUsageDialSelections().e3; }
 
 export function initUsageDial(_bridge: ConnectionManager): void {
   dinfo('CodexUsageDial', 'initUsageDial called');
@@ -119,7 +109,7 @@ function refreshUsageDials(): void {
 /** Render the current dial-cycled view for the current provider page. */
 function renderCodexUsageView(id: string): string {
   const data = getUsageModeData();
-  const provider = anchoredProvider();
+  const provider = selectedProvider();
   return renderUsageDialView(data, provider, hasReceivedData, usageViews.resolve(id, usageDialViews(data, provider)));
 }
 
@@ -151,10 +141,11 @@ export class UsageDialAction extends SingletonAction {
     }
     // Each tap changes only this dial.
     const available = availableUsageProviders(getUsageModeData());
-    if (available.length < 2) return;
+    if (available.length === 0) return;
     const current = getUsageDialSelections().e3;
     const at = available.indexOf(current);
-    const next = available[((at < 0 ? 0 : at) + 1) % available.length];
+    if (available.length === 1 && at === 0) return;
+    const next = available[(at + 1) % available.length];
     selectUsageDialProvider('e3', next, getUsageModeData());
     dlog('UsageDial', `touch-tap → provider=${next}`);
     refreshUsageDials();
@@ -164,7 +155,7 @@ export class UsageDialAction extends SingletonAction {
     if (!isDaemonConnected()) return;
     // Rotation cycles the views the current payload actually has — with only a
     // weekly window that is both → 7d → session, no dead 5h stop.
-    const views = usageDialViews(getUsageModeData(), anchoredProvider());
+    const views = usageDialViews(getUsageModeData(), selectedProvider());
     const next = usageViews.rotate(ev.action.id, views, ev.payload.ticks);
     await ev.action.setSettings({ ...ev.payload.settings, usageView: next });
     refreshUsageDials();
