@@ -20,13 +20,34 @@ in [the resource map](../design/RESOURCES.md). It is a third-party identity mark
 not an AgentDeck mascot or a claim of endorsement. Invented shell/crab/animal
 characters are explicitly excluded by the user's direction.
 
-For the later aquarium creature, the user's intended concept is a mermaid
+The Apple aquarium creature implements the user's requested mermaid
 derived from the Nous girl portrait: preserve her dark bob, bangs, pale face,
 and recognizable silhouette while adding an underwater body and motion. This
-would be an AgentDeck-original adaptation, not an official Hermes mascot. The
+is an AgentDeck-original adaptation, not an official Hermes mascot. The
 winged messenger remains a separate upstream illustration reference, not the
 chosen aquarium creature. The compact brand mark in this preview remains the
 unaltered Nous girl geometry.
+
+## Native aquarium motion
+
+The Blender source is `assets/terrarium/hermes-mermaid.blend`, reproducibly
+built by `build-hermes-mermaid.py`. Apple bundles its USDZ; a portable GLB is
+kept beside the authoring source for the later Android renderer. The model has
+separate head, eye, arm, tail and fin pivots. The app's `HermesSwim` controller
+owns bounded three-dimensional travel, damped velocity, banking, delayed tail
+and fin strokes, blinking, neighbour greetings and state transitions. Nearby
+idle residents can turn or wave back; these are cosmetic social behaviours,
+not evidence of collaboration. Work only accelerates from observed processing;
+waiting raises a hand, and working-to-idle triggers one short settling gesture.
+Actual active-child counts remain explicitly labelled. No peer task assignment
+is invented from proximity, project names or model providers.
+
+The same observed Hermes identity is rendered in Apple's Canvas fallback,
+with selection and name tags. Reduced Motion stops swimming and articulation;
+state labels still update. Meshes and rig handles are cached per resident and
+removed with the session. `preview-hermes-motion.swift` samples the real motion
+controller; `render-hermes-preview.py` renders that trajectory with Blender for
+visual review (outputs under ignored `diagnostics/hermes-mermaid/`).
 
 ## OpenClaw and Hermes have different observation contracts
 
@@ -108,7 +129,7 @@ projection remain a rollout gate. Session/child caches are bounded.
 Follow-up tickets: [native/device coverage #425](https://github.com/puritysb/AgentDeck/issues/425)
 and [live compatibility verification #426](https://github.com/puritysb/AgentDeck/issues/426).
 
-Before whole-product support: native Swift ingestion, Apple/Android terrarium
+Before whole-product support: native Swift ingestion, Android terrarium
 renderers, ESP32/matrix glyphs, profile/channel labels, approval observation and
 explicit capability checks across voice/control surfaces need implementation
 and review. Older firmware can select a project named Hermes as a voice target;

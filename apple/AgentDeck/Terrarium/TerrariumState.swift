@@ -105,6 +105,13 @@ struct KiroCreatureState: Identifiable {
     var subagentActivity: SubagentVisualActivity = .none
 }
 
+struct HermesCreatureState: Identifiable {
+    let id: String
+    let projectName: String?
+    let activity: HermesSwim.Activity
+    var subagentActivity: SubagentVisualActivity = .none
+}
+
 // MARK: - Terrarium State (aggregate)
 
 struct TerrariumState {
@@ -113,6 +120,7 @@ struct TerrariumState {
     var opencodeCreatures: [OpenCodeCreatureState] = []
     var antigravityCreatures: [AntigravityCreatureState] = []
     var kiroCreatures: [KiroCreatureState] = []
+    var hermesCreatures: [HermesCreatureState] = []
     var crayfishState: CrayfishVisualState = .dormant
     var crayfishVisible: Bool = false
     var tetraState: TetraVisualState = .circling
@@ -440,6 +448,7 @@ extension DashboardState {
         let kiroSlots = CreatureLayout.layoutKiroCreatures(count: kiroCount)
 
         var kiroCreatures: [KiroCreatureState] = []
+    var hermesCreatures: [HermesCreatureState] = []
         var kiroSlotIdx = 0
         if primaryIsKiro {
             let s = kiroSlots.first ?? CreatureSlot(x: 0.18, y: 0.24, scale: 1.0)
@@ -467,6 +476,31 @@ extension DashboardState {
             ))
         }
         result.kiroCreatures = kiroCreatures
+
+        // Hermes is a distinct observed harness. Never infer it from provider/model.
+        func hermesActivity(_ raw: String?) -> HermesSwim.Activity {
+            switch raw {
+            case "processing": return .working
+            case "awaiting_option", "awaiting_diff", "awaiting_permission": return .waiting
+            case "error": return .error
+            default: return .idle
+            }
+        }
+        let primaryHermes = agentType == "hermes" && state != .disconnected
+        if primaryHermes {
+            let activity: HermesSwim.Activity = state == .processing ? .working
+                : state.isAwaiting ? .waiting : .idle
+            result.hermesCreatures.append(.init(id: sessionId ?? "hermes-primary",
+                projectName: projectName, activity: activity,
+                subagentActivity: subagentActivityBySession[sessionId ?? "hermes-primary"] ?? .none))
+        }
+        for sibling in siblingSessions.sorted(by: { $0.id < $1.id })
+            where sibling.agentType == "hermes" && sibling.alive && sibling.state != "disconnected"
+                && !(primaryHermes && sibling.id == sessionId) {
+            result.hermesCreatures.append(.init(id: sibling.id, projectName: sibling.projectName,
+                activity: hermesActivity(sibling.state),
+                subagentActivity: subagentActivityBySession[sibling.id] ?? .none))
+        }
 
         // Environment state — in daemon mode, derive from most active sibling
         // Narrowed to the aggregate rows the comment above names. The previous

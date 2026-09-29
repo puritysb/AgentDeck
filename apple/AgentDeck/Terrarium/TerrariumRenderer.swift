@@ -11,6 +11,8 @@ final class TerrariumRenderer {
     private var opencodeCreatures: [String: OpenCodeCreature] = [:]
     private var antigravityCreatures: [String: AntigravityCreature] = [:]
     private var kiroCreatures: [String: KiroCreature] = [:]
+    private var hermesCreatures: [String: HermesCreature] = [:]
+    var animateHermes = true
     private let crayfish = CrayfishCreature()
     private let tetra = DataParticleSystem()
     private let bubbles = BubbleSystem()
@@ -81,6 +83,16 @@ final class TerrariumRenderer {
         syncOpenCode(state: state)
         syncAntigravity(state: state)
         syncKiro(state: state)
+        let hermesIDs = Set(state.hermesCreatures.map(\.id))
+        hermesCreatures = hermesCreatures.filter { hermesIDs.contains($0.key) }
+        for (index, item) in state.hermesCreatures.enumerated() {
+            if hermesCreatures[item.id] == nil {
+                hermesCreatures[item.id] = HermesCreature(id: item.id, index: index, count: hermesIDs.count)
+            }
+            hermesCreatures[item.id]?.home = [Float(index - hermesIDs.count / 2) * 0.9, 2.5, 0]
+            hermesCreatures[item.id]?.scale = min(1, 3 / Float(max(1, hermesIDs.count)))
+            hermesCreatures[item.id]?.update(dt: animateHermes ? dt : 0, state: state)
+        }
 
         // Focus halo state
         focusedSessionId = state.focusedSessionId
@@ -94,6 +106,7 @@ final class TerrariumRenderer {
                 opencodeCreatures[id] != nil ||
                 antigravityCreatures[id] != nil ||
                 kiroCreatures[id] != nil ||
+                hermesCreatures[id] != nil ||
                 (isCrayfishFocusId(id) && crayfish.visible)
         }()
         let presenceTarget: Float = hasVisibleFocus ? 1.0 : 0.0
@@ -304,6 +317,8 @@ final class TerrariumRenderer {
             k.draw(context: &context, size: size)
         }
 
+        for hermes in hermesCreatures.values { hermes.draw(context: &context, size: size) }
+
         // Layer 9.46: name tags, resolved together so none hides a resident.
         TerrariumNameTagLayer.active = nil
         nameTags.flush(context: &context)
@@ -351,6 +366,8 @@ final class TerrariumRenderer {
             pos = (ag.currentX, ag.currentY, ag.scale)
         } else if let k = kiroCreatures[id] {
             pos = (k.currentX, k.currentY, k.scale)
+        } else if let hermes = hermesCreatures[id] {
+            pos = (hermes.currentX, hermes.currentY, hermes.scale)
         } else if isCrayfishFocusId(id), crayfish.visible {
             let cp = crayfish.currentPosition()
             pos = (cp.x, cp.y, 1.1)
@@ -780,6 +797,11 @@ final class TerrariumRenderer {
                 bestDist = dist
                 bestId = "crayfish"  // sentinel — crayfish is gateway, not a session
             }
+        }
+
+        for (id, hermes) in hermesCreatures {
+            let distance = hypot(hermes.currentX - nx, hermes.currentY - ny)
+            if distance < bestDist { bestId = id; bestDist = distance }
         }
 
         return bestId

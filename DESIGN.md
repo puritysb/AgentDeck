@@ -471,6 +471,14 @@ The menu bar uses the small-size aquarium-deck symbol, not the full app icon ill
 22px stroke icons, 1.6px stroke, square caps. Drawn from a 24px viewbox. Build new icons in this system; never grab from a generic icon font.
 
 ### 6.4 Creature marks
+Hermes's aquarium resident is the user-directed exception: an AgentDeck-original
+Nous girl mermaid adaptation, preserving the portrait's black bob, bangs and
+pale face while adding a small articulated tail. Its compact brand icon remains
+the exact upstream mark. Gentle native-aquarium swimming and cosmetic greetings
+are permitted at idle; only observed processing drives working gestures, and
+proximity must never be presented as task delegation. Reduced Motion freezes
+these movements while keeping explicit status cues visible.
+
 Each agent (Claude Code, Codex, OpenClaw, OpenCode, Antigravity) has a creature avatar derived from its canonical mark. Motion and state effects may surround or transform the mark, but must not replace its identifying geometry.
 
 Creature status is a shape-and-contrast grammar, never a set of tiny letter

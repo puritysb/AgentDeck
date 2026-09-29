@@ -39,6 +39,11 @@ struct AquariumResident: Equatable {
         items += state.kiroCreatures.map {
             Self(id: $0.id, kind: "kiro", title: $0.projectName ?? "Kiro", activity: $0.state == .asking ? .waiting : $0.state == .working ? .working : .idle, helpers: $0.subagentActivity.activeCount)
         }
+        items += state.hermesCreatures.map {
+            Self(id: $0.id, kind: "hermes", title: $0.projectName ?? "Hermes",
+                 activity: Activity(rawValue: $0.activity.rawValue.uppercased()) ?? .idle,
+                 helpers: $0.subagentActivity.activeCount)
+        }
         if state.crayfishVisible {
             items.append(Self(id: "crayfish", kind: "openclaw", title: "OpenClaw", activity: state.crayfishState == .sick ? .error : state.crayfishState == .waiting ? .waiting : state.crayfishState == .routing ? .working : .idle))
         }
@@ -63,6 +68,15 @@ final class AquariumResidents {
         var fatigue: Float = 0
     }
     private var motions: [String: Motion] = [:]
+    private var hermesSwims: [String: HermesSwim] = [:]
+    private var hermesRigs: [String: HermesMermaid.Rig] = [:]
+
+    func loadHermesTemplate(_ library: Entity) {
+        guard let imported = library.findEntity(named: "resident_hermes") else { return }
+        let template = imported.clone(recursive: true)
+        template.transform = Transform(matrix: imported.transformMatrix(relativeTo: nil))
+        templates["hermes"] = template
+    }
     private struct Joint {
         let entity: Entity
         let rest: Transform
@@ -94,6 +108,9 @@ final class AquariumResidents {
     private var labelCompact: [String: Bool] = [:]
 
     func loadTemplates(_ library: Entity) {
+        templates.removeAll()
+        footHeights.removeAll()
+        substrateTemplate = nil
         if let imported = library.findEntity(named: "aquarium_substrate") {
             let template = imported.clone(recursive: true)
             template.transform = Transform(matrix: imported.transformMatrix(relativeTo: nil))
@@ -121,7 +138,12 @@ final class AquariumResidents {
         for id in Array(residents.keys) where !ids.contains(id) {
             residents.removeValue(forKey: id)?.removeFromParent()
             targets.removeValue(forKey: id)
+            labelDecisions.removeValue(forKey: id)
+            labelDrawOrder.removeValue(forKey: id)
+            labelCompact.removeValue(forKey: id)
             motions.removeValue(forKey: id)
+            hermesSwims.removeValue(forKey: id)
+            hermesRigs.removeValue(forKey: id)
             joints.removeValue(forKey: id)
             supports.removeValue(forKey: id)?.removeFromParent()
         }
@@ -187,12 +209,19 @@ final class AquariumResidents {
                     (node.name.hasPrefix("joint_") ? [Joint(entity: node, rest: node.transform)] : []) + node.children.flatMap { collect($0) }
                 }
                 joints[item.id] = collect(body)
+                if item.kind == "hermes" {
+                    hermesSwims[item.id] = HermesSwim(id: item.id, position: resident.position)
+                    hermesRigs[item.id] = HermesMermaid.Rig(body)
+                }
             }
             guard let resident = residents[item.id] else { continue }
             // Canonical state controls visibility immediately, even while paused.
             resident.findEntity(named: "activity")?.isEnabled = item.activity == .working
             resident.scale = .init(repeating: size)
-            if !animate { resident.position = targets[item.id]! }
+            if !animate {
+                resident.position = targets[item.id]!
+                hermesSwims[item.id]?.relocate(resident.position)
+            }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
                 rebuildLabel(for: item, on: resident, compact: labelCompact[item.id] ?? false)
             }
@@ -296,6 +325,8 @@ final class AquariumResidents {
         time += dt
         let blend = Float(1 - exp(-dt * 3))
         var wakes: [AquariumShoal.WorkWake] = []
+        let snapshot = residents.keys.sorted().compactMap { id in residents[id].map { (id, $0.position) } }
+        let greetings = hermesSwims.keys.sorted().compactMap { id in hermesSwims[id].map { ($0.position, $0.greeting) } }
         for item in descriptors {
             guard let entity = residents[item.id], var target = targets[item.id], var motion = motions[item.id] else { continue }
             motion.effort += ((item.activity == .working ? 1 : 0) - motion.effort) * blend
@@ -310,6 +341,16 @@ final class AquariumResidents {
             // drives the pose and water disturbance, so fish react to visible action.
             let stroke = pow(max(0, sin(phase)), 6) * motion.effort
             let workSwing = sin(phase) * motion.effort
+            var socialTurn: Float = 0
+            var socialWave: Float = 0
+            if item.activity == .idle && item.kind != "hermes" {
+                for (position, greeting) in greetings {
+                    let distance = simd_distance(position, entity.position)
+                    let influence = greeting * max(0, 1 - distance / 2.5)
+                    socialTurn += max(-1, min(1, position.x - entity.position.x)) * influence * 0.18
+                    socialWave = max(socialWave, influence * 0.22)
+                }
+            }
             let grounded = Self.isGrounded(item.kind)
             let residentSize = entity.scale.x
             // Bottom dwellers pace horizontally with planted feet. No vertical
@@ -319,35 +360,53 @@ final class AquariumResidents {
                 target.x += workSwing * residentSize * TerrariumRules.nativeActivityWaterTravel
                 target.z += sin(phase * 0.5) * 0.12 + stroke * residentSize * 0.24
             }
-            if stroke > 0.001 {
+            if stroke > 0.001 && item.kind != "hermes" {
                 wakes.append(.init(position: entity.position, strength: stroke, radius: max(1.2, residentSize * 2.8)))
             }
-            entity.position += (target - entity.position) * blend
-            if grounded { entity.position.y = target.y }
-            if let body = entity.findEntity(named: "body") {
-                let yaw = sin(phase * 0.5) * (grounded ? motion.effort * TerrariumRules.nativeActivityGroundYaw : 0.20 + motion.effort * TerrariumRules.nativeActivityWorkYaw)
-                let orientation = simd_quatf(angle: yaw, axis: [0,1,0])
-                    * simd_quatf(angle: grounded ? 0 : motion.fatigue * 0.16 + workSwing * TerrariumRules.nativeActivityWorkYaw, axis: [1,0,0])
-                    * simd_quatf(angle: grounded ? 0 : -workSwing * TerrariumRules.nativeActivityWorkRoll, axis: [0,0,1])
-                body.orientation = simd_slerp(body.orientation, orientation, blend)
-                let breath = grounded ? Float(0) : sin(phase * 1.3) * 0.009 + workSwing * TerrariumRules.nativeActivityWorkBreath
-                body.scale = [1 + breath, 1 - breath * 0.6, 1 + breath]
-            }
-            for (index, pose) in (joints[item.id] ?? []).enumerated() {
-                let joint = pose.entity
-                let name = joint.name
-                let side: Float = name.hasSuffix("_0") ? -1 : 1
-                let wave = sin(phase * 2 + Float(index) * 1.8)
-                joint.transform = pose.rest
-                if name.hasPrefix("joint_foot") {
-                    // Alternate original-foot steps; swing feet only rise above rest.
-                    let number = Int(name.split(separator: "_").last ?? "0") ?? 0
-                    let stride = sin(phase * 2 + Float(number % 2) * .pi)
-                    joint.position.y += max(0, stride) * TerrariumRules.nativeActivityFootLift * motion.effort
-                    joint.orientation = pose.rest.rotation * simd_quatf(angle: stride * 0.12 * motion.effort, axis: [0,1,0])
-                } else {
-                    let lift = motion.attention * 0.40 - motion.fatigue * 0.25
-                    joint.orientation = pose.rest.rotation * simd_quatf(angle: side * (lift + wave * 0.025 + motion.effort * (0.20 + sin(phase) * 0.58)), axis: [0,0,1])
+            if item.kind == "hermes", var swim = hermesSwims[item.id] {
+                swim.step(Float(dt), home: targets[item.id]!, size: residentSize,
+                    activity: HermesSwim.Activity(rawValue: item.activity.rawValue.lowercased()) ?? .idle,
+                    neighbours: snapshot.filter { $0.0 != item.id }.map { $0.1 }, aspect: aspect)
+                hermesSwims[item.id] = swim
+                entity.position = swim.position
+                if let body = entity.findEntity(named: "body") {
+                    let orientation = simd_quatf(angle: swim.yaw, axis: [0,1,0])
+                        * simd_quatf(angle: swim.pitch, axis: [1,0,0])
+                        * simd_quatf(angle: swim.roll, axis: [0,0,1])
+                    body.orientation = simd_slerp(body.orientation, orientation, blend)
+                }
+                hermesRigs[item.id]?.pose(swim)
+                if swim.effort > 0.01 {
+                    wakes.append(.init(position: swim.position, strength: swim.effort * abs(swim.tail), radius: residentSize * 2))
+                }
+            } else {
+                entity.position += (target - entity.position) * blend
+                if grounded { entity.position.y = target.y }
+                if let body = entity.findEntity(named: "body") {
+                    let yaw = sin(phase * 0.5) * (grounded ? motion.effort * TerrariumRules.nativeActivityGroundYaw : 0.20 + motion.effort * TerrariumRules.nativeActivityWorkYaw)
+                    let orientation = simd_quatf(angle: yaw + socialTurn, axis: [0,1,0])
+                        * simd_quatf(angle: grounded ? 0 : motion.fatigue * 0.16 + workSwing * TerrariumRules.nativeActivityWorkYaw, axis: [1,0,0])
+                        * simd_quatf(angle: grounded ? 0 : -workSwing * TerrariumRules.nativeActivityWorkRoll, axis: [0,0,1])
+                    body.orientation = simd_slerp(body.orientation, orientation, blend)
+                    let breath = grounded ? Float(0) : sin(phase * 1.3) * 0.009 + workSwing * TerrariumRules.nativeActivityWorkBreath
+                    body.scale = [1 + breath, 1 - breath * 0.6, 1 + breath]
+                }
+                for (index, pose) in (joints[item.id] ?? []).enumerated() {
+                    let joint = pose.entity
+                    let name = joint.name
+                    let side: Float = name.hasSuffix("_0") ? -1 : 1
+                    let wave = sin(phase * 2 + Float(index) * 1.8)
+                    joint.transform = pose.rest
+                    if name.hasPrefix("joint_foot") {
+                        // Alternate original-foot steps; swing feet only rise above rest.
+                        let number = Int(name.split(separator: "_").last ?? "0") ?? 0
+                        let stride = sin(phase * 2 + Float(number % 2) * .pi)
+                        joint.position.y += max(0, stride) * TerrariumRules.nativeActivityFootLift * motion.effort
+                        joint.orientation = pose.rest.rotation * simd_quatf(angle: stride * 0.12 * motion.effort, axis: [0,1,0])
+                    } else {
+                        let lift = motion.attention * 0.40 - motion.fatigue * 0.25 + socialWave
+                        joint.orientation = pose.rest.rotation * simd_quatf(angle: side * (lift + wave * 0.025 + motion.effort * (0.20 + sin(phase) * 0.58)), axis: [0,0,1])
+                    }
                 }
             }
             if item.activity == .working, let indicator = entity.findEntity(named: "activity") {

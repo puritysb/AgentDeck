@@ -19,6 +19,7 @@ struct TerrariumView: View {
     /// Cross-platform safe; the call site decides whether to wire it up.
     var onBackgroundTapped: (() -> Void)?
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var renderer = TerrariumRenderer()
 
     var body: some View {
@@ -26,6 +27,7 @@ struct TerrariumView: View {
             Canvas { context, size in
                 let dt = renderer.deltaTime(now: timeline.date)
 
+                renderer.animateHermes = !reduceMotion
                 renderer.update(dt: dt, state: terrariumState)
                 renderer.draw(context: &context, size: size, includeHabitat: includeHabitat)
             }
