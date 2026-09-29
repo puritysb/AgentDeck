@@ -1,3 +1,4 @@
+import { withMlxResident } from './mlx-test-server.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -109,6 +110,55 @@ describe('parseJudgeJson', () => {
     const p = parseJudgeJson(txt);
     expect(p?.scores.overall).toBeCloseTo(0.4);
     expect(p?.reasoning).toBe('keep {evidence": text');
+  });
+
+  // The greedy first-{-to-last-} match spanned into trailing prose and failed,
+  // while Swift's balanced scanner stopped at the verdict's own closing brace
+  // and scored it. That divergence became load-bearing once a cut body may be
+  // accepted, because text after the closing brace is exactly what such a body
+  // has. Both scan for a balanced block now.
+  it('reads the verdict when the model keeps talking past it, braces included', () => {
+    const txt = '{"overall":0.8,"summary":"done"}\n\nFor example {"x":1} and then it was cu';
+    expect(parseJudgeJson(txt)?.scores.overall).toBeCloseTo(0.8);
+    expect(parseJudgeJson(txt)?.summary).toBe('done');
+  });
+
+  it('does not let a brace inside a string close the object early', () => {
+    const txt = '{"overall":0.6,"summary":"renders a } and a { literally"}';
+    expect(parseJudgeJson(txt)?.summary).toBe('renders a } and a { literally');
+  });
+
+  // Scanning balanced blocks makes MORE spans parseable, so "the first one that
+  // parses" stops being a safe rule: a local reasoning model emits a scratchpad
+  // object before the real verdict, and taking the first turns a loud failure
+  // into a silently persisted wrong score. Two spans both carrying `overall`
+  // are ambiguous and resolve to null — which is what the old greedy match did
+  // here, and the right answer, because a wrong score in `evals` is strictly
+  // worse than a skip.
+  it.each([
+    ['an unstripped thinking block', '<think>Let me score: {"overall":0.5,"summary":"draft"}</think>\n{"overall":0.9,"summary":"final"}'],
+    ['a draft above the final answer', 'Draft: {"overall":0.3}\nFinal: {"overall":0.9,"summary":"x"}'],
+  ])('refuses to guess which verdict is the verdict: %s', (_name, txt) => {
+    expect(parseJudgeJson(txt)).toBeNull();
+  });
+
+  // …but a single verdict beside a non-verdict object is not ambiguous.
+  it('ignores a non-verdict object beside the verdict', () => {
+    const txt = '{"overall":0.8,"summary":"done"}\n\nFor example {"x":1} and then it was cu';
+    expect(parseJudgeJson(txt)?.scores.overall).toBeCloseTo(0.8);
+    const other = 'Context {"note":"ignore me"} then {"overall":0.2,"summary":"real"}';
+    expect(parseJudgeJson(other)?.summary).toBe('real');
+  });
+
+  // `effectiveJudgeModelTag` is the provenance stamped onto stored eval rows.
+  // The API leg does not necessarily call `cfg.model` — `apiJudgeModel` falls
+  // back when the configured id belongs to another backend — so stamping the
+  // configured value recorded a verdict as produced by a model that never ran.
+  it('stamps the API judge with the model it will actually call', () => {
+    const api = (model: string) => effectiveJudgeModelTag({ ...DEFAULT_APME_CONFIG.judge, backend: 'api', model });
+    expect(api('mlx-community/gemma-4-26b-a4b-it-4bit')).toBe('api:claude-opus-5');
+    expect(api('')).toBe('api:claude-opus-5');
+    expect(api('claude-haiku-4-5')).toBe('api:claude-haiku-4-5');
   });
 
   it('returns null when there is no JSON at all', () => {
@@ -307,7 +357,7 @@ describe('callJudge foundationModels routing', () => {
 
   it('compacts and retries once when MLX reports an exact context overflow', async () => {
     const sentPrompts: string[] = [];
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = withMlxResident((async (_url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
       sentPrompts.push(body.messages[1].content);
       if (sentPrompts.length === 1) {
@@ -319,7 +369,7 @@ describe('callJudge foundationModels routing', () => {
         JSON.stringify({ choices: [{ message: { content: '{"overall":0.6}' } }] }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
-    }) as typeof fetch;
+    }) as typeof fetch, 'gemma-test');
 
     const mod = await import('../apme/runner.js');
     const prompt = `rubric-start\n${'x'.repeat(40_000)}\nlatest-result`;

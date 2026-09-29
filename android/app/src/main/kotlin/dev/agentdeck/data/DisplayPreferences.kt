@@ -15,12 +15,26 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private val Context.dataStore by preferencesDataStore("display_prefs")
 
+enum class DashboardType(val storageId: String, val title: String, val description: String) {
+    Default("standard", "Default", "Live agents, usage and activity in the familiar dashboard."),
+    Paper("paper", "Paper", "A quiet, high-contrast dashboard with the same live information."),
+    Aquarium3D("aquarium3d", "3D aquarium · Preview", "A dimensional habitat with live information panels. Fish are decorative."),
+    ;
+    companion object {
+        fun fromStored(value: String?) = entries.firstOrNull { it.storageId == value } ?: Default
+        fun available(isEink: Boolean) = if (isEink) listOf(Default) else entries.toList()
+        fun resolve(type: DashboardType, isEink: Boolean) =
+            if (type in available(isEink)) type else Default
+    }
+}
+
 class DisplayPreferences(
     private val context: Context,
     private val isEink: Boolean = false,
 ) {
 
     companion object {
+        private val DASHBOARD_TYPE_KEY = stringPreferencesKey("dashboard_type")
         private val ORIENTATION_KEY = intPreferencesKey("orientation")
         private val KEEP_AWAKE_KEY = booleanPreferencesKey("keep_awake")
         private val LAST_BRIDGE_URL_KEY = stringPreferencesKey("last_bridge_url")
@@ -35,6 +49,14 @@ class DisplayPreferences(
         private val ALLOW_UNSUPPORTED_KEY = booleanPreferencesKey("allow_unsupported_device")
 
         private const val STARTUP_READ_TIMEOUT_MS = 500L
+    }
+
+    val dashboardTypeFlow: Flow<DashboardType> = context.dataStore.data.map {
+        DashboardType.fromStored(it[DASHBOARD_TYPE_KEY])
+    }
+
+    suspend fun setDashboardType(type: DashboardType) {
+        context.dataStore.edit { it[DASHBOARD_TYPE_KEY] = type.storageId }
     }
 
     val orientationFlow: Flow<Int> = context.dataStore.data.map { prefs ->

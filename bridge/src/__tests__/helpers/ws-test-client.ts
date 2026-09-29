@@ -14,9 +14,9 @@ export class WsTestClient {
     timer: ReturnType<typeof setTimeout>;
   }> = [];
 
-  async connect(url: string): Promise<void> {
+  async connect(url: string, headers?: Record<string, string>): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(url);
+      this.ws = headers ? new WebSocket(url, { headers }) : new WebSocket(url);
       this.ws.on('open', () => resolve());
       this.ws.on('error', reject);
       this.ws.on('message', (data) => {

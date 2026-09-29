@@ -1,5 +1,11 @@
 package dev.agentdeck.ui.screen
 
+import dev.agentdeck.ui.eink.paperMastheadSummary
+
+import dev.agentdeck.ui.eink.buildPaperBoard
+
+import dev.agentdeck.ui.eink.EinkPaperBoard
+
 import android.content.res.Configuration
 import dev.agentdeck.ui.common.ConnectionLexicon
 import dev.agentdeck.ui.common.ConnectionSetupGuide
@@ -61,13 +67,14 @@ import dev.agentdeck.state.TimelineStore
 import dev.agentdeck.ui.component.AgentDeckMark
 import dev.agentdeck.ui.component.BrandIcon
 import dev.agentdeck.ui.monitor.subscriptionTrailing
-import dev.agentdeck.util.codexLimitRows
+import dev.agentdeck.util.ChatGPTPlan
+import dev.agentdeck.util.formatResetTime
+import dev.agentdeck.util.providerLimitRows
 import java.time.Instant
 import dev.agentdeck.ui.eink.EinkAgentPanel
 import dev.agentdeck.ui.eink.EinkAttentionPanel
 import dev.agentdeck.ui.eink.EinkAquariumFrame
 import dev.agentdeck.ui.eink.EinkSettingsOverlay
-import dev.agentdeck.ui.eink.einkLimitRowText
 import dev.agentdeck.ui.eink.EinkTimelinePanel
 import dev.agentdeck.ui.eink.rememberEinkLayoutScale
 import dev.agentdeck.ui.eink.buildEinkAttentionFeatured
@@ -126,7 +133,9 @@ fun EinkMonitorScreen(
     val reconnectAttempt by connection.reconnectAttempt.collectAsState()
     val showSessionList by displayPrefs.showSessionListFlow.collectAsState(initial = true)
     val showTimeline by displayPrefs.showTimelineFlow.collectAsState(initial = true)
-    val showSettingsButton by displayPrefs.showSettingsButtonFlow.collectAsState(initial = true)
+    val storedSettingsButton by displayPrefs.showSettingsButtonFlow.collectAsState(initial = true)
+    val dashboardType by displayPrefs.dashboardTypeFlow.collectAsState(initial = dev.agentdeck.data.DashboardType.Default)
+    val showSettingsButton = storedSettingsButton || dashboardType == dev.agentdeck.data.DashboardType.Paper
     val displaySyncEnabled by displayPrefs.displaySyncEnabledFlow.collectAsState(initial = true)
     val featuredAttention = remember(state) { buildEinkAttentionFeatured(state) }
     val sleepSnapshotMode = displaySyncEnabled && !state.hostDisplayOn && state.hostDim?.enabled != false
@@ -233,70 +242,26 @@ fun EinkMonitorScreen(
                     }
                 }
 
-                Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .weight(if (showTimeline) 0.64f else 1f)
-                            .fillMaxWidth(),
-                    ) {
-                        if (showSessionList) {
-                            EinkRefreshZone(
-                                mode = Zone.CHROME.mode,
-                                debounceMs = Zone.CHROME.debounceMs,
-                                triggerKey = Triple(state.agentState, sessionsKey, state.workerSessionCount),
-                                sleepSnapshotMode = sleepSnapshotMode,
-                                modifier = Modifier.weight(0.36f).fillMaxHeight(),
-                            ) {
-                                EinkAgentPanel(
-                                    state = state,
-                                    onSettingsClick = { showSettings = true },
-                                    onFocusSession = { connection.sendFocusSession(it) },
-                                    showSettingsButton = showSettingsButton,
-                                    displayPrefs = displayPrefs,
-                                    showBrandHeader = false,
-                                    showFooterControls = false,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-
-                            VerticalDivider(thickness = 2.dp, color = Color.Black)
-                        }
-
-                        Box(modifier = Modifier.weight(if (showSessionList) 0.64f else 1f).fillMaxHeight()) {
-                            EinkAnimatedRefreshZone(
-                                stateKey = terrariumRefreshKey,
-                                sleepSnapshotMode = sleepSnapshotMode,
-                                modifier = Modifier.fillMaxSize(),
-                            ) { onFrameRendered ->
-                                EinkAquariumFrame(
-                                    state = terrariumState,
-                                    snapshotMode = sleepSnapshotMode,
-                                    onFrameRendered = onFrameRendered,
-                                )
-                            }
-                            if (hasEinkLimitData(state)) {
-                                EinkLimitsCornerCard(
-                                    state = state,
-                                    compact = true,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomStart)
-                                        .padding(start = 12.dp, bottom = 12.dp),
-                                )
-                            }
-                        }
-                    }
-
-                    if (showTimeline) {
-                        HorizontalDivider(thickness = 2.dp, color = Color.Black)
-                        EinkRefreshZone(
-                            mode = Zone.TIMELINE.mode,
-                            debounceMs = Zone.TIMELINE.debounceMs,
-                            triggerKey = timelineEntries.size,
-                            sleepSnapshotMode = sleepSnapshotMode,
-                            modifier = Modifier.weight(0.36f).fillMaxWidth(),
-                        ) {
-                            EinkTimelinePanel(entries = timelineEntries, modifier = Modifier.fillMaxSize())
-                        }
+                HorizontalDivider(thickness = 2.dp, color = Color.Black)
+                EinkPaperBoard(
+                    state = state,
+                    timelineEntries = if (showTimeline) timelineEntries else emptyList(),
+                    landscape = true,
+                    onFocusSession = { connection.sendFocusSession(it) },
+                    usage = buildEinkUsageGroups(state),
+                    sleepSnapshotMode = sleepSnapshotMode,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                ) { tankModifier ->
+                    EinkAnimatedRefreshZone(
+                        stateKey = terrariumRefreshKey,
+                        sleepSnapshotMode = sleepSnapshotMode,
+                        modifier = tankModifier,
+                    ) { onFrameRendered ->
+                        EinkAquariumFrame(
+                            state = terrariumState,
+                            snapshotMode = sleepSnapshotMode,
+                            onFrameRendered = onFrameRendered,
+                        )
                     }
                 }
             }
@@ -341,6 +306,11 @@ private fun buildEinkTerrariumRefreshKey(
         sessionProjection,
         state.usage.fiveHourPercent,
         state.usage.sevenDayPercent,
+        state.usage.usageStale,
+        state.usage.scopedLimits,
+        state.codexRateLimits,
+        state.zaiRateLimits,
+        state.subscriptions,
         state.antigravityStatus?.planName,
         state.antigravityStatus?.availableCredits,
         state.antigravityStatus?.minimumCreditAmountForUsage,
@@ -351,92 +321,31 @@ private fun buildEinkTerrariumRefreshKey(
     )
 }
 
-private fun hasEinkLimitData(state: DashboardState): Boolean {
-    return buildEinkLimitRows(state).isNotEmpty()
-}
-
-@Composable
-private fun EinkLimitsCornerCard(
-    state: DashboardState,
-    modifier: Modifier = Modifier,
-    compact: Boolean = false,
-) {
-    val rows = buildEinkLimitRows(state)
-    val width = if (compact) 164.dp else 190.dp
-    // Corner source tag: derive from the providers actually feeding this card
-    // rather than a hardcoded "node" (the daemon may be the Swift in-process one,
-    // and a Codex-only card mislabeled as "node" reads as the wrong provider).
-    // One provider → its name; two → "a+b"; three+ → "mix". The per-row brand
-    // marks already disambiguate, so this only needs to stay honest and short.
-    val sourceTag = einkLimitsSourceTag(rows, state)
-    // Height is MEASURED from the content, not predicted from the row count. It
-    // used to be `base + perRow * rows.size` with per-row steps in dp, which is
-    // a bet that a row never renders taller than the constant — and it loses
-    // whenever it is wrong in the direction that hides data. It lost twice: once
-    // on the bottom-most gauge (the comment that used to live here), and again
-    // once a per-model scoped cap added a row, which clipped the trailing
-    // subscription line. Row height depends on the device's font scale and the
-    // brand icon, neither of which this call site knows; wrapping the content
-    // cannot under-provision, and the width stays fixed so the card's footprint
-    // over the aquarium is still stable.
-    Surface(
-        modifier = modifier.width(width),
-        shape = RoundedCornerShape(3.dp),
-        border = BorderStroke(1.dp, Color.Black),
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "LIMITS",
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = sourceTag,
-                    fontSize = 9.sp,
-                    lineHeight = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            rows.forEach { row ->
-                if (row.percent != null) {
-                    EinkLimitGaugeRow(label = row.label, percent = row.percent, agentType = row.agentType, stale = row.stale)
-                } else {
-                    EinkLimitTextRow(label = row.label, value = row.value.orEmpty())
-                }
-            }
-        }
-    }
-}
-
-private data class EinkLimitLine(
+internal data class EinkLimitLine(
     val label: String,
     val percent: Double? = null,
     val value: String? = null,
     val agentType: String? = null,
     val stale: Boolean = false,
+    /** Time left until the window resets ("2h 15m"), or a freshness note when stale. */
+    val reset: String? = null,
 )
 
-private fun buildEinkLimitRows(state: DashboardState, now: Instant = Instant.now()): List<EinkLimitLine> {
+internal fun buildEinkLimitRows(state: DashboardState, now: Instant = Instant.now()): List<EinkLimitLine> {
     val rows = mutableListOf<EinkLimitLine>()
     if (state.usage.usageStale != true) {
-        state.usage.fiveHourPercent?.let { rows.add(EinkLimitLine(label = "5h", percent = it, agentType = "claude-code")) }
-        state.usage.sevenDayPercent?.let { rows.add(EinkLimitLine(label = "7d", percent = it, agentType = "claude-code")) }
+        state.usage.fiveHourPercent?.let {
+            rows.add(EinkLimitLine(label = "5h", percent = it, agentType = "claude-code",
+                reset = state.usage.fiveHourResetsAt?.let(::formatResetTime)))
+        }
+        state.usage.sevenDayPercent?.let {
+            rows.add(EinkLimitLine(label = "7d", percent = it, agentType = "claude-code",
+                reset = state.usage.sevenDayResetsAt?.let(::formatResetTime)))
+        }
         // Per-model scoped weekly caps (e.g. "Fable") beneath the account-wide windows.
         state.usage.scopedLimits?.forEach { s ->
-            rows.add(EinkLimitLine(label = s.label.trim().take(8), percent = s.percent, agentType = "claude-code"))
+            rows.add(EinkLimitLine(label = s.label.trim().take(8), percent = s.percent, agentType = "claude-code",
+                reset = s.resetsAt?.let(::formatResetTime)))
         }
     }
     // Codex (ChatGPT) rolling windows — independent of Claude's usageStale, each
@@ -446,58 +355,72 @@ private fun buildEinkLimitRows(state: DashboardState, now: Instant = Instant.now
     // stale window keeps its last-known percent and is flagged with a trailing
     // "!" instead of disappearing. The leading brand mark identifies the provider,
     // so labels stay plain 5h/7d.
-    codexLimitRows(state.codexRateLimits).forEach {
-        rows.add(EinkLimitLine(label = it.label, percent = it.percent, agentType = it.agentType, stale = it.stale))
+    providerLimitRows(state.codexRateLimits, state.zaiRateLimits).forEach {
+        // The provider line above the windows names GLM; the row names only
+        // the window, and the MCP quota by its quantity.
+        val label = if (it.label.equals("mcp", ignoreCase = true)) "MCP" else it.label
+        rows.add(EinkLimitLine(label = label, percent = it.percent, agentType = it.agentType, stale = it.stale,
+            reset = it.footnote ?: it.resetIso?.let(::formatResetTime)))
     }
-    // Subscription expiry rows — show "<provider> → M D" when the plan carries an
-    // expiry (Antigravity has its own chip below, so skip it here). When the
-    // daemon can't supply an expiry (e.g. the App Store Swift daemon exposes no
-    // subscription `until`), subscriptionTrailing returns null and the row is
-    // simply omitted — the card stays honest rather than showing a blank date.
-    state.subscriptions.forEach { sub ->
-        // The daemon stores the Antigravity subscription under its raw plan name
-        // ("Google AI Pro"), so skip it here — it's rendered by the AGY chip below.
-        if (isAntigravityPlanName(sub.name)) return@forEach
-        val trailing = subscriptionTrailing(sub.until, now) ?: return@forEach
-        val expiry = if (trailing.expired) "→ renew" else formatEinkExpiry(sub.until) ?: return@forEach
-        rows.add(EinkLimitLine(label = "", value = "${sub.name.substringBefore(' ')} $expiry"))
-    }
-    buildAntigravityLimitValue(state)?.let { rows.add(EinkLimitLine(label = "", value = it)) }
     return rows
 }
 
 /**
- * Short provider tag for the LIMITS card corner. Derives from the providers
- * that actually contribute gauge rows (plus the native Antigravity chip), so a
- * Codex-only card reads "codex" instead of the stale hardcoded "node" source
- * badge — which was both wrong (the source may be the Swift daemon) and read as
- * the row's provider. One provider → its name; two → "a+b"; three+ → "mix".
+ * One provider on the e-ink usage zone: its name, its plan when the daemon
+ * knows one ("Plus · until Oct 10"), and its usage windows. A provider with a
+ * plan but no metered windows (Antigravity) is a group with no rows; a
+ * provider with neither is absent, so one subscription shows one group and
+ * none shows no zone at all.
  */
-private fun einkLimitsSourceTag(rows: List<EinkLimitLine>, state: DashboardState): String {
-    val providers = LinkedHashSet<String>()
-    rows.forEach { row ->
-        when (row.agentType) {
-            "claude-code" -> providers.add("claude")
-            "codex" -> providers.add("codex")
+internal data class EinkUsageGroup(
+    val agentType: String,
+    val provider: String,
+    val plan: String?,
+    val windows: List<EinkLimitLine>,
+)
+
+private val USAGE_PROVIDER_ORDER = listOf("claude-code", "codex", "zai", "antigravity")
+
+internal fun buildEinkUsageGroups(state: DashboardState, now: Instant = Instant.now()): List<EinkUsageGroup> {
+    val windows = buildEinkLimitRows(state, now).groupBy { it.agentType }
+    val plans = mutableMapOf<String, String?>()
+    fun untilText(until: String?): String? {
+        val trailing = subscriptionTrailing(until, now) ?: return null
+        return if (trailing.expired) "renew" else formatEinkExpiry(until)?.let { "until ${it.removePrefix("→ ")}" }
+    }
+    fun planLine(tier: String?, until: String?): String? =
+        listOfNotNull(tier?.takeIf { it.isNotBlank() }, untilText(until)).joinToString(" · ").ifEmpty { null }
+    state.subscriptions.forEach { sub ->
+        when {
+            sub.name.startsWith("ChatGPT", ignoreCase = true) ->
+                plans["codex"] = planLine(sub.name.removePrefix("ChatGPT").trim(), sub.until)
+            sub.name.startsWith("GLM Coding Plan", ignoreCase = true) ->
+                plans["zai"] = planLine(sub.name.substringAfter(" · ", "").ifEmpty { null }, sub.until)
+            sub.name.equals("Claude", ignoreCase = true) ->
+                plans["claude-code"] = planLine(null, sub.until)
         }
     }
-    if (state.antigravityStatus != null) providers.add("agy")
-    return when {
-        providers.isEmpty() -> "node"
-        providers.size <= 2 -> providers.joinToString("+")
-        else -> "mix"
+    // The Swift (App Store) daemon sends no ChatGPT subscription row, only the
+    // plan fields on the usage event; both daemons send those, so the Codex
+    // plan reads the same whichever daemon this device is attached to.
+    if ("codex" !in plans) {
+        state.usage.codexPlanType?.takeIf { it.isNotBlank() }?.let { raw ->
+            val tier = ChatGPTPlan.displayName(raw).removePrefix("ChatGPT").trim()
+            plans["codex"] = planLine(tier, state.usage.codexSubscriptionActiveUntil)
+        }
+    }
+    state.antigravityStatus?.let { status ->
+        val tier = status.planName?.replace("Google AI ", "")?.replace("Antigravity ", "")
+            ?.takeIf { it.isNotBlank() } ?: "Pro"
+        plans["antigravity"] = planLine(tier, status.subscriptionActiveUntil)
+    }
+    val names = mapOf("claude-code" to "Claude", "codex" to "Codex", "zai" to "GLM", "antigravity" to "Antigravity")
+    return USAGE_PROVIDER_ORDER.mapNotNull { type ->
+        val rows = windows[type].orEmpty()
+        if (rows.isEmpty() && type !in plans) return@mapNotNull null
+        EinkUsageGroup(type, names.getValue(type), plans[type], rows)
     }
 }
-
-/**
- * True when a subscription entry's name is really the Antigravity plan. The
- * daemon stores it as the raw plan name (e.g. "Google AI Pro"), not a literal
- * "Antigravity …" string. Mirrors ESP32 `UsageFormat::isAntigravityPlanName`.
- */
-private fun isAntigravityPlanName(name: String): Boolean =
-    name.startsWith("Google AI", ignoreCase = true) ||
-        name.startsWith("Antigravity", ignoreCase = true) ||
-        name.startsWith("AGY", ignoreCase = true)
 
 /** ISO date → "→ Mon D" for the clock-less e-ink chips; null when absent/unparseable. */
 private fun formatEinkExpiry(iso: String?): String? {
@@ -517,64 +440,6 @@ private fun formatEinkExpiry(iso: String?): String? {
     } catch (e: Exception) {
         null
     }
-}
-
-private fun buildAntigravityLimitValue(state: DashboardState): String? {
-    val status = state.antigravityStatus ?: return null
-    // Shorten the plan to "AGY <tier>" (e.g. "Google AI Pro" → "AGY Pro"). The raw
-    // availableCredits count is deliberately NOT surfaced — it's a backend metering
-    // number that means nothing at a glance.
-    val tier = status.planName
-        ?.replace("Google AI ", "")
-        ?.replace("Antigravity ", "")
-        ?.takeIf { it.isNotBlank() } ?: "Pro"
-    val plan = "AGY $tier"
-    val until = formatEinkExpiry(status.subscriptionActiveUntil)
-    return if (until != null) "$plan $until" else plan
-}
-
-@Composable
-private fun EinkLimitGaugeRow(label: String, percent: Double, agentType: String? = null, stale: Boolean = false) {
-    val pct = percent.coerceIn(0.0, 100.0).toInt()
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        if (agentType != null) {
-            BrandIcon(agentType = agentType, isEink = true, size = 11.dp)
-        }
-        Text(
-            // Constant-width row — see einkLimitRowText. Ellipsis rather than the
-            // default Clip so that if the budget is ever exceeded the row says so
-            // instead of quietly serving a truncated number.
-            text = einkLimitRowText(label = label, percent = pct, stale = stale),
-            fontSize = 11.sp,
-            lineHeight = 13.sp,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun EinkLimitTextRow(label: String, value: String) {
-    Text(
-        text = if (label.isBlank()) value else "$label $value",
-        fontSize = 11.sp,
-        lineHeight = 13.sp,
-        fontFamily = FontFamily.Monospace,
-        color = MaterialTheme.colorScheme.onSurface,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
-
-private fun einkBlockGauge(percent: Int): String {
-    val cells = 8
-    val filled = ((percent.coerceIn(0, 100) / 100.0) * cells).toInt()
-    return "\u2588".repeat(filled) + "\u2591".repeat(cells - filled)
 }
 
 @Composable
@@ -610,13 +475,6 @@ private fun EinkDashboardChromeBar(
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Text(
-            text = "· :9120",
-            fontSize = 12.sp,
-            lineHeight = 15.sp,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         Spacer(modifier = Modifier.weight(1f))
         state.workerSessionCount?.takeIf { state.gatewayConnected == true && it > 0 }?.let {
             Text(
@@ -627,13 +485,16 @@ private fun EinkDashboardChromeBar(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // Paper keeps its image without power: say what is true and as of when.
         Text(
-            text = "S:${einkSessionCount(state)}",
-            fontSize = 12.sp,
-            lineHeight = 15.sp,
+            text = paperMastheadSummary(buildPaperBoard(state)) + "  ·  " +
+                java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date()),
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
         )
         EinkChromeIconButton(
             onClick = {
@@ -686,15 +547,6 @@ private fun EinkChromeIconButton(
         }
     }
 }
-
-private fun einkSessionCount(state: dev.agentdeck.state.DashboardState): Int {
-    val primaryIsAggregate = state.agentType == "daemon" ||
-        state.agentType == "openclaw" ||
-        state.siblingSessions.any { it.agentType == state.agentType }
-    val primaryCount = if (!primaryIsAggregate && state.agentType != null) 1 else 0
-    return primaryCount + state.siblingSessions.count { it.agentType != "daemon" }
-}
-
 
 @Composable
 private fun EinkNotConnectedScreen(
@@ -1062,33 +914,20 @@ private fun EinkPortraitLayout(
             }
         }
 
-        if (showSessionList) {
-            EinkRefreshZone(
-                mode = Zone.CHROME.mode,
-                debounceMs = Zone.CHROME.debounceMs,
-                triggerKey = Triple(state.agentState, sessionsKey, state.workerSessionCount),
-                sleepSnapshotMode = sleepSnapshotMode,
-                modifier = Modifier.weight(if (showTimeline) 0.26f else 0.34f).fillMaxWidth(),
-            ) {
-                EinkAgentPanel(
-                    state = state,
-                    onSettingsClick = onSettingsClick,
-                    onFocusSession = { connection.sendFocusSession(it) },
-                    showSettingsButton = showSettingsButton,
-                    displayPrefs = displayPrefs,
-                    showBrandHeader = false,
-                    showFooterControls = false,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            HorizontalDivider(thickness = 2.dp, color = Color.Black)
-        }
-
-        Box(modifier = Modifier.weight(if (showTimeline) 0.32f else 0.66f).fillMaxWidth()) {
+        HorizontalDivider(thickness = 2.dp, color = Color.Black)
+        EinkPaperBoard(
+            state = state,
+            timelineEntries = if (showTimeline) timelineEntries else emptyList(),
+            landscape = false,
+            onFocusSession = { connection.sendFocusSession(it) },
+            usage = buildEinkUsageGroups(state),
+            sleepSnapshotMode = sleepSnapshotMode,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { tankModifier ->
             EinkAnimatedRefreshZone(
                 stateKey = terrariumRefreshKey,
                 sleepSnapshotMode = sleepSnapshotMode,
-                modifier = Modifier.fillMaxSize(),
+                modifier = tankModifier,
             ) { onFrameRendered ->
                 EinkAquariumFrame(
                     state = terrariumState,
@@ -1096,28 +935,8 @@ private fun EinkPortraitLayout(
                     onFrameRendered = onFrameRendered,
                 )
             }
-            if (hasEinkLimitData(state)) {
-                EinkLimitsCornerCard(
-                    state = state,
-                    compact = true,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 10.dp, bottom = 10.dp),
-                )
-            }
-        }
-
-        if (showTimeline) {
-            HorizontalDivider(thickness = 2.dp, color = Color.Black)
-            EinkRefreshZone(
-                mode = Zone.TIMELINE.mode,
-                debounceMs = Zone.TIMELINE.debounceMs,
-                triggerKey = timelineEntries.size,
-                sleepSnapshotMode = sleepSnapshotMode,
-                modifier = Modifier.weight(0.42f).fillMaxWidth(),
-            ) {
-                EinkTimelinePanel(entries = timelineEntries, modifier = Modifier.fillMaxSize())
-            }
         }
     }
 }
+
+

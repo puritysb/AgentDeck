@@ -8,6 +8,62 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## 1.5.0 live — console verification (2026-09-24)
+
+Signed-in Play Console confirms production **active**, latest release **21
+(1.5.0)**, available on Google Play in **177 countries/regions**. The release
+row shows publication on September 23 at 11:27 (console display time); the
+publishing overview has no pending unpublished changes. This completes the
+Play delivery gate in [#314](https://github.com/puritysb/AgentDeck/issues/314).
+The signed GitHub APK is also available independently.
+
+## 1.5.0 submitted (2026-09-23)
+
+The signed production AAB is **1.5.0 (21)**, built from commit
+`4c8a5d2cfe17921171a0abd36e0ced8b70acf237`. Local `bundleRelease` and signature
+verification passed. SHA-256:
+`05b5ecddca0daaab25282355c4ef82b46c0875ff112106b7d1479053548803bd`.
+Copy-ready English, Korean and Japanese updates are in
+[release-notes.json](1.5.0/release-notes.json).
+
+Uploaded **21**, replacing the unsubmitted **20** production draft, and confirmed
+the final send-for-review action. The publishing overview now lists **Changes in
+review**: production 21, the English full description, and two new 10-inch tablet
+screenshots. Automatic checks for the added listing content were still running
+at receipt time; Play says review forwarding follows successful completion.
+The existing 177-country coverage, full rollout and automatic publishing remain.
+Version 21 is submitted, not yet verified live.
+
+New actual-device captures show the [3D aquarium](1.5.0/tablet10-01-aquarium.png)
+and [input request](1.5.0/tablet10-02-attention.png), using synthetic sessions on
+the Lenovo tablet. The English description explains layout choice and tap-to-view
+mode. The [public aquarium video](../../docs/media/aquarium-demo.mp4) remains on
+GitHub Pages; no new YouTube promotional-video URL was added to Play.
+
+The console also verified **1.4.0 (18)** as available on Google Play, published
+2026-09-21 at 22:16 KST. Older status entries below are historical observations.
+
+## 1.4.0 submitted (2026-09-21)
+
+Version **1.4.0 (18)** is submitted for a full production rollout. Console
+publishing overview was rechecked on 2026-09-21: **changes under review**, with
+managed publishing disabled. English, Korean and Japanese release notes and
+177-country coverage were retained. No further submission is pending locally;
+approval will release automatically. Version 1.3.1 remains the last verified
+live Play release. The [1.4.0 APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.4.0)
+is already available on GitHub.
+
+## 1.3.1 published (2026-09-13)
+
+Version **1.3.1 (17)** was uploaded as a signed production AAB, with English,
+Korean and Japanese release notes. Saving the release was followed by sending
+changes for review and confirming the final submission. Automatic checks passed;
+review then completed and the release list reports **Available on Google Play**,
+published **2026-09-13 at 21:08 KST**. Managed publishing is disabled, with a
+100% rollout and the existing 177-country coverage retained. The GitHub APK is
+available at [android-v1.3.1](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.3.1).
+The connected Lenovo tablet was upgraded in place and verified as versionCode 17.
+
 ## Account state — 1.2.0 live (2026-09-02)
 
 Both account verification steps are **done**, and AgentDeck **1.2.0

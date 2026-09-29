@@ -1,0 +1,115 @@
+[
+  {
+    "note": "complete",
+    "response": {
+      "stop_reason": "end_turn",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"completion\":0.8,\"coherence\":0.8,\"efficiency\":0.7,\"overall\":0.8,\"summary\":\"Regression covered.\"}"
+        }
+      ]
+    },
+    "accepted": true
+  },
+  {
+    "note": "thinking block before the verdict is not text",
+    "why": "Adaptive thinking is on for this leg; only `type: \"text\"` blocks are the answer.",
+    "response": {
+      "stop_reason": "end_turn",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": ""
+        },
+        {
+          "type": "text",
+          "text": "{\"overall\":0.8,\"summary\":\"Regression covered.\"}"
+        }
+      ]
+    },
+    "accepted": true
+  },
+  {
+    "note": "cut after the object closed",
+    "why": "The `finish_reason: length` exemption for \"its object closed\" was tried and removed: brace topology cannot tell whether the model finished (it admitted a scratchpad when the verdict was cut, and refused complete verdicts whose trailing prose held an unmatched brace), and it had no measured beneficiary \u2014 the one cut mode observed on this fleet is a repetition loop INSIDE the summary string, where depth never returns to zero.",
+    "response": {
+      "stop_reason": "max_tokens",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"overall\":0.8,\"summary\":\"Regression covered.\"}"
+        },
+        {
+          "type": "text",
+          "text": "and then it kept going until it was cu"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "cut mid-object",
+    "response": {
+      "stop_reason": "max_tokens",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"overall\":0."
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "refusal",
+    "why": "A refusal is never a verdict, whatever the body looks like.",
+    "response": {
+      "stop_reason": "refusal",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"overall\":0.8}"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "no text blocks",
+    "response": {
+      "stop_reason": "end_turn",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": ""
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "note": "empty content array",
+    "response": {
+      "stop_reason": "end_turn",
+      "content": []
+    },
+    "accepted": false
+  },
+  {
+    "note": "content is not an array",
+    "why": "The same shape `choices` is guarded against on the chat-completions leg.",
+    "response": {
+      "stop_reason": "end_turn",
+      "content": "{\"overall\":0.8}"
+    },
+    "accepted": false
+  },
+  {
+    "note": "content missing entirely",
+    "response": {
+      "stop_reason": "end_turn"
+    },
+    "accepted": false
+  }
+]

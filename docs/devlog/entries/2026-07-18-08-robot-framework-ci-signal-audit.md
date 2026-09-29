@@ -1,0 +1,5 @@
+# 2026-07-18 — Robot Framework CI signal audit
+
+- Audited the ESP32 Robot suites by assertion type. The physical `hw`, `protocol`, and `perf` suites exercise real boot, serial recovery, protocol framing, latency, throughput, and heap behavior and remain valuable lab validation. The GitHub `no-hw` subset only repeated PlatformIO builds already performed in the same job, then asserted generated-file existence, source-file existence, and config parsing; it did not execute firmware behavior.
+- Removed the duplicate no-hardware Robot job and its second PlatformIO cache/build pass from GitHub Pages. Build Health now marks Robot as not run with the honest reason that physical hardware is unavailable on hosted runners, rather than presenting compilation wrappers as hardware-test evidence.
+- Kept `01_build.robot` as an explicit local pre-flash smoke path with firmware size and partition artifact gates, but removed the meaningless source-file-presence and redundant `pio project config` cases and their dead keywords. Updated the public report label and testing/Pages SSOT accordingly.

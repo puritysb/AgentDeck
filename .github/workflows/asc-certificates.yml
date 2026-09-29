@@ -17,11 +17,11 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "list or revoke"
+        description: "Certificate maintenance or read-only AgentDeck store status"
         required: true
         default: list
         type: choice
-        options: [list, revoke]
+        options: [list, revoke, store-status]
       certificate_ids:
         description: "Comma-separated certificate ids (revoke only)"
         required: false
@@ -45,6 +45,8 @@ jobs:
         run: |
           if [ "${{ inputs.action }}" = "revoke" ]; then
             node scripts/asc-certificates.mjs revoke "${{ inputs.certificate_ids }}"
+          elif [ "${{ inputs.action }}" = "store-status" ]; then
+            node scripts/asc-certificates.mjs store-status
           else
             node scripts/asc-certificates.mjs list
           fi

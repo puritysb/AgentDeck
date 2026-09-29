@@ -87,7 +87,7 @@ lv_obj_t* settingsCreate() {
     lv_slider_set_range(slider, 10, 255);
     lv_slider_set_value(slider, 255, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(slider, lv_color_hex(0x1E293B), 0);
-    lv_obj_set_style_bg_color(slider, lv_color_hex(Theme::StatusBlue), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider, lv_color_hex(Theme::StatusCyan), LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(slider, lv_color_hex(Theme::HUDText), LV_PART_KNOB);
     lv_obj_add_event_cb(slider, onBrightnessChange, LV_EVENT_VALUE_CHANGED, NULL);
 

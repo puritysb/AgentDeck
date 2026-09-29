@@ -2,7 +2,7 @@
  * Timeline summarizer — uses local LLM to create concise 1-line summaries
  * of OpenClaw chat responses for timeline display.
  *
- * Tries: on-device Foundation Models → local mlx-serve qwen (port 8800) →
+ * Tries: on-device Foundation Models → the configured resident MLX model →
  * heuristic fallback. Non-blocking — caller should fire-and-forget,
  * update entry when ready.
  *
@@ -20,32 +20,10 @@
  */
 
 import { debug, log } from './logger.js';
-import { SUMMARY_SYSTEM_PROMPT, cleanLLMOutput, mlxChatUrl, resolveMlxModel } from '@agentdeck/shared';
-import { fetchMlxModels } from './mlx-probe.js';
+import { SUMMARY_SYSTEM_PROMPT, cleanLLMOutput, mlxChatUrl, loadMlxSettings, guardedMlxFetch } from '@agentdeck/shared';
 import { callFoundationModelsHelper, probeFoundationModelsHelper } from './foundation-models-helper.js';
 export { extractTopicHint } from '@agentdeck/shared';
 
-const MLX_URL = mlxChatUrl();
-
-// In-memory cache of the probe's first result, so summarizers don't hit
-// /v1/models on every call. Refreshed lazily when the model call fails.
-let probedFirstModel: string | null = null;
-let probedAt = 0;
-const PROBE_CACHE_TTL_MS = 60_000;
-
-async function resolveModelForCall(): Promise<string> {
-  const now = Date.now();
-  if (!probedFirstModel || now - probedAt > PROBE_CACHE_TTL_MS) {
-    try {
-      const models = await fetchMlxModels();
-      probedFirstModel = models && models.length > 0 ? models[0] : null;
-      probedAt = now;
-    } catch {
-      probedFirstModel = null;
-    }
-  }
-  return resolveMlxModel(probedFirstModel);
-}
 const TIMEOUT_MS = 30_000; // 30s — first inference needs model load time
 const MAX_INPUT_CHARS = 2000;
 
@@ -61,8 +39,6 @@ export function clearSummarizerProviderCacheForTests(): void {
   mlxAvailable = null;
   fmFailedAt = 0;
   mlxFailedAt = 0;
-  probedFirstModel = null;
-  probedAt = 0;
 }
 
 /**
@@ -99,7 +75,7 @@ export async function summarizeResponse(text: string): Promise<string | null> {
     }
   }
 
-  // Try MLX qwen next (retry after RETRY_INTERVAL_MS)
+  // Try the resident MLX model next (retry after RETRY_INTERVAL_MS)
   if (mlxAvailable !== false || (Date.now() - mlxFailedAt > RETRY_INTERVAL_MS)) {
     try {
       const result = await callMLX(input);
@@ -161,10 +137,10 @@ async function callFoundationModels(input: string): Promise<string | null> {
 async function callMLX(input: string): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const model = await resolveModelForCall();
+  const model = loadMlxSettings().model;
 
   try {
-    const resp = await fetch(MLX_URL, {
+    const resp = await guardedMlxFetch(mlxChatUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

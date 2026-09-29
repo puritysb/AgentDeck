@@ -21,5 +21,10 @@ void onTouch(const Input::TouchEvent& event);
 
 /** Daemon's photo_result for a snap sent from the CAM page. */
 void onPhotoResult(bool delivered, const char* detail);
+#if defined(SIM_HOST)
+const char* displayedSessionId();
+bool isPinned();
+unsigned currentPage();
+#endif
 
 }  // namespace Ticker

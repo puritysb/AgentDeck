@@ -25,6 +25,19 @@ import XCTest
 @MainActor
 final class OpenClawToolNoiseTests: XCTestCase {
 
+    func testClaudeInternalSuggestionStopIsNotAWorkerCompletion() {
+        XCTAssertTrue(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "subagent_stop", agentType: "", hasActiveChild: false))
+        XCTAssertFalse(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "subagent_stop", agentType: "", hasActiveChild: true))
+        XCTAssertFalse(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "subagent_stop", agentType: "Explore", hasActiveChild: false))
+        XCTAssertFalse(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "subagent_stop", agentType: nil, hasActiveChild: false))
+        XCTAssertFalse(DaemonServer.isUnstartedClaudeInternalStop(
+            event: "codex_subagent_stop", agentType: "", hasActiveChild: false))
+    }
+
     func testMainSessionModelUsesProviderQualifiedIdentifier() {
         let sessions: [[String: Any]] = [
             ["key": "agent:other:main", "model": "qwen-local"],
@@ -867,6 +880,38 @@ final class OpenClawToolNoiseTests: XCTestCase {
         XCTAssertEqual(
             store.subagentActivityBySession(now: 150)["parent-1"],
             SubagentVisualActivity(activeCount: 1, lastCompletedAt: 120)
+        )
+    }
+
+    func testSubagentActivityTreatsDispatchOlderThanTurnCloseAsDrained() {
+        // Mirrors shared/src/__tests__/subagent-activity.test.ts: the buffer
+        // keeps dispatch rows but sheds the children's stop rows, so the
+        // parent's own chat_end after the dispatch is what says it finished.
+        let store = TimelineStore()
+        store.addEntry(TimelineEntry(
+            ts: 100,
+            type: .toolExec,
+            raw: "Subagent ×8 dispatched · General",
+            sessionId: "parent-1",
+            startedAt: 100
+        ))
+        store.addEntry(TimelineEntry(
+            ts: 900,
+            type: .chatEnd,
+            raw: "turn closed",
+            sessionId: "parent-1"
+        ))
+        store.addEntry(TimelineEntry(
+            ts: 1000,
+            type: .toolExec,
+            raw: "Subagent ×2 dispatched · General",
+            sessionId: "parent-1",
+            startedAt: 1000
+        ))
+
+        XCTAssertEqual(
+            store.subagentActivityBySession(now: 1100)["parent-1"],
+            SubagentVisualActivity(activeCount: 2, lastCompletedAt: nil)
         )
     }
 

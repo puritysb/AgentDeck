@@ -1,8 +1,10 @@
+import { formatAntigravityPlanShort, type AntigravityStatusInfo } from '@agentdeck/shared';
+import { selectedLunaReserve } from '@agentdeck/shared';
 /**
  * Usage data types and shared formatting helpers.
  * Used by the dedicated Usage Dial (E3) renderer.
  */
-import type { CodexRateLimits, ScopedUsageLimit } from '@agentdeck/shared';
+import type { CodexLunaReserve, CodexRateLimits, ScopedUsageLimit, ZaiRateLimits } from '@agentdeck/shared';
 // Codex freshness footnote (SSOT `shared/format-utils`): "stale" for an ended
 // window, "3h ago" for a still-live window whose snapshot has gone cold.
 import { codexUsageFootnote, isCodexFreePlan } from '@agentdeck/shared';
@@ -23,6 +25,7 @@ export interface UsageModeData {
   extraUsageUtilization?: number;
   extraUsageMonthlyLimit?: number;
   extraUsageUsedCredits?: number;
+  antigravityStatus?: AntigravityStatusInfo;
   subscriptions?: { name: string; until?: string }[];
   // True when upstream daemon couldn't produce a live usage fetch (App Store
   // sandbox without a CLI relay, OAuth missing, etc.). Plugin treats stale the
@@ -32,6 +35,9 @@ export interface UsageModeData {
   // Codex rolling-window quota (primary ≈ 5h, secondary ≈ 7d). Rides alongside
   // the Claude 5h/7d fields so the SD+ Codex usage encoder (E3) can render.
   codexRateLimits?: CodexRateLimits;
+  // z.ai GLM Coding Plan quota (#348) — same grammar; the secondary window is
+  // the MCP tool quota when `quantity === 'mcp'`.
+  zaiRateLimits?: ZaiRateLimits;
 }
 
 let sharedData: UsageModeData = {};
@@ -237,8 +243,187 @@ export function buildCodexUsageEncoder(data: UsageModeData, hasReceivedData: boo
     sevenDay: { label: '7D', usedPercent: secondary?.usedPercent ?? 0, resetsAt: secondary?.resetsAt, known: secondary != null, stale: secondary?.stale === true, footnote: codexUsageFootnote(secondary, cx?.capturedAt)?.text },
     note,
     sideCard: solo ? buildCodexSideCard(data, cx, solo) : undefined,
+    luna: selectedLunaReserve(cx),
   };
 }
+
+// ─── Provider pages (E2 auto / E3 cycle) ────────────────────────────────────
+// E2 and E3 select providers independently; duplicate selections are allowed.
+
+/** Usage providers the dials can page through. */
+export type UsageProviderId = 'claude' | 'codex' | 'zai' | 'antigravity';
+
+/**
+ * Build the z.ai usage encoder (#348). Same tank grammar; the long window
+ * labels by its QUANTITY — "MCP" — never its length, so tool-call quota can
+ * never read as token usage. A windowless block (PAYG key, display
+ * retirement) renders as a note, not as gauges.
+ */
+export function buildZaiUsageEncoder(data: UsageModeData, hasReceivedData: boolean): UsageEncoderData {
+  const zr = data.zaiRateLimits;
+  const primary = zr?.primary;
+  const secondary = zr?.secondary;
+  let note: string | undefined;
+  if (!hasReceivedData) note = 'Waiting…';
+  else if (zr == null) note = 'No z.ai data';
+  else if (primary == null && secondary == null) {
+    note = zr.limitId === 'payg' ? 'Pay-as-you-go key' : 'No plan windows';
+  }
+  const plan = zr?.planType ? zr.planType.toUpperCase() : undefined;
+  return {
+    agent: 'zai',
+    title: 'Z.AI',
+    fiveHour: { label: '5H', usedPercent: primary?.usedPercent ?? 0, resetsAt: primary?.resetsAt, known: primary != null, stale: primary?.stale === true, footnote: codexUsageFootnote(primary, zr?.capturedAt)?.text },
+    sevenDay: {
+      label: secondary?.quantity === 'mcp' ? 'MCP' : '7D',
+      usedPercent: secondary?.usedPercent ?? 0,
+      resetsAt: secondary?.resetsAt,
+      known: secondary != null,
+      stale: secondary?.stale === true,
+      footnote: codexUsageFootnote(secondary, zr?.capturedAt)?.text,
+    },
+    note,
+    sideCard: plan ? { label: 'PLAN', value: plan.slice(0, 10) } : undefined,
+  };
+}
+
+/** Confirmed subscription only; backend credits are deliberately never a quota. */
+function antigravityPlan(data: UsageModeData): { name: string; until?: string } | undefined {
+  if (data.antigravityStatus?.planName?.trim()) return { name: data.antigravityStatus.planName, until: data.antigravityStatus.subscriptionActiveUntil };
+  return data.subscriptions?.find(s => /^(Google AI|Antigravity|AGY)\b/i.test(s.name.trim()) && !!s.name.trim());
+}
+export function buildAntigravityEncoder(data: UsageModeData): UsageEncoderData {
+  const sub = antigravityPlan(data);
+  const plan = formatAntigravityPlanShort(sub?.name)?.replace(/^AGY\s*/, '');
+  return {
+    agent: 'antigravity', title: 'ANTIGRAVITY',
+    fiveHour: { label: '5H', usedPercent: 0, known: false },
+    sevenDay: { label: '7D', usedPercent: 0, known: false },
+    note: sub ? undefined : 'No subscription data',
+    subscription: sub ? { label: 'SUBSCRIPTION', value: plan || 'Plan confirmed',
+      sub: sub.until ? `Until ${formatRenewalDate(sub.until)}` : 'Usage unavailable' } : undefined,
+  };
+}
+
+/** Providers that currently have a page worth showing. Claude needs live
+ *  (non-stale) quota numbers; the block providers need their block present. */
+export function availableUsageProviders(data: UsageModeData): UsageProviderId[] {
+  const out: UsageProviderId[] = [];
+  const stale = data.usageStale === true;
+  if (!stale && (data.fiveHourPercent != null || data.sevenDayPercent != null)) out.push('claude');
+  if (data.codexRateLimits != null) out.push('codex');
+  if (data.zaiRateLimits != null) out.push('zai');
+  if (antigravityPlan(data)) out.push('antigravity');
+  return out;
+}
+
+/** Build the encoder payload for a provider page. */
+export function buildProviderUsageEncoder(
+  provider: UsageProviderId,
+  data: UsageModeData,
+  hasReceivedData: boolean,
+): UsageEncoderData {
+  if (provider === 'antigravity') return buildAntigravityEncoder(data);
+  if (provider === 'codex') return buildCodexUsageEncoder(data, hasReceivedData);
+  if (provider === 'zai') return buildZaiUsageEncoder(data, hasReceivedData);
+  return buildClaudeUsageEncoder(data, hasReceivedData);
+}
+
+// Per-provider "last heavy use" signal, fed from the session roster by the
+// plugin (sessions carry no per-row activity timestamp on the wire — the
+// honest proxy is: providers with PROCESSING sessions outrank the rest, then
+// the provider of the most recently started session).
+const providerActivity: Partial<Record<UsageProviderId, number>> = {};
+const providerProcessing: Partial<Record<UsageProviderId, number>> = {};
+
+/** Map a wire model provider (the third identity axis) onto a usage dial page.
+ *  Only the three providers with usage pages map; everything else is null —
+ *  an unknown provider makes no recency claim. */
+export function modelProviderToUsageProvider(p: string | null | undefined): UsageProviderId | null {
+  if (p === 'anthropic') return 'claude';
+  if (p === 'openai') return 'codex';
+  if (p === 'zai') return 'zai';
+  return null;
+}
+
+/** Record a roster observation. `processing` counts live working sessions for
+ *  the provider; `recencyScore` is the newest session-start epoch-ms. */
+export function noteUsageProviderActivity(
+  provider: UsageProviderId,
+  processing: number,
+  recencyScore: number,
+): void {
+  providerProcessing[provider] = Math.max(0, processing);
+  providerActivity[provider] = Math.max(0, recencyScore);
+}
+
+/** Optional activity-driven E2 selection, enabled by a long touch. */
+export function pickAutoUsageProvider(data: UsageModeData): UsageProviderId {
+  const available = availableUsageProviders(data);
+  if (available.length === 0) return 'claude';
+  const ranked = [...available].sort((a, b) => {
+    const proc = (providerProcessing[b] ?? 0) - (providerProcessing[a] ?? 0);
+    if (proc !== 0) return proc;
+    return (providerActivity[b] ?? 0) - (providerActivity[a] ?? 0);
+  });
+  return ranked[0];
+}
+
+// Each dial owns its provider selection.
+let e2Provider: UsageProviderId = 'claude';
+let e3Provider: UsageProviderId = 'codex';
+export function getUsageDialSelections(): { e2: UsageProviderId; e3: UsageProviderId } {
+  return { e2: e2Provider, e3: e3Provider };
+}
+export function setE2UsageProvider(p: UsageProviderId): void { e2Provider = p; }
+export function setE3UsageProvider(p: UsageProviderId): void { e3Provider = p; }
+
+let e2Pinned = true;
+/** Persist explicit provider choices; automatic E2 follows current activity. */
+export function usageDialPreferences(): { e2: UsageProviderId | 'auto'; e3: UsageProviderId } {
+  return { e2: e2Pinned ? e2Provider : 'auto', e3: e3Provider };
+}
+
+export function restoreUsageDialPreferences(value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  const prefs = value as Record<string, unknown>;
+  const isProvider = (p: unknown): p is UsageProviderId => p === 'claude' || p === 'codex' || p === 'zai' || p === 'antigravity';
+  e2Pinned = isProvider(prefs.e2);
+  if (isProvider(prefs.e2)) e2Provider = prefs.e2;
+  if (isProvider(prefs.e3)) e3Provider = prefs.e3;
+}
+
+const dialSelectionListeners = new Set<() => void>();
+export function onUsageDialSelectionChanged(listener: () => void): void {
+  dialSelectionListeners.add(listener);
+}
+
+/** Each dial owns its choice. Duplicate providers are intentional and allowed. */
+export function selectUsageDialProvider(dial: 'e2' | 'e3', provider: UsageProviderId, data: UsageModeData): void {
+  const available = availableUsageProviders(data);
+  if (!available.includes(provider)) return;
+  if (dial === 'e2') { e2Pinned = true; e2Provider = provider; }
+  else e3Provider = provider;
+  for (const listener of dialSelectionListeners) listener();
+}
+
+export function resolveE2UsageProvider(data: UsageModeData): UsageProviderId {
+  const available = availableUsageProviders(data);
+  // Startup/disconnect carries no quota yet; retain the saved manual choice.
+  if (available.length === 0) return e2Provider;
+  if (!e2Pinned || !available.includes(e2Provider)) {
+    e2Provider = pickAutoUsageProvider(data);
+  }
+  return e2Provider;
+}
+
+/** Long touch returns the adaptive dial to automatic selection. */
+export function resetE2UsageProvider(data: UsageModeData): void {
+  e2Pinned = false;
+  resolveE2UsageProvider(data);
+  for (const listener of dialSelectionListeners) listener();
+}
+
 
 /**
  * The companion card beside a lone Codex gauge, best-available first:

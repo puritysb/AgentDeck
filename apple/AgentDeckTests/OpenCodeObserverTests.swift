@@ -13,6 +13,95 @@ import XCTest
 
 final class OpenCodeObserverTests: XCTestCase {
 
+    func testGlobalEnvelopeKeepsDirectoryOnStatusAndQuestion() throws {
+        let directory = "/tmp/space # & 한글"
+        for event in ["session.status", "question.asked"] {
+            let update = try XCTUnwrap(OpenCodeEventClassifier.classify(envelope: [
+                "directory": directory,
+                "payload": ["type": event, "properties": [
+                    "sessionID": "ses_b", "id": "que_b", "status": ["type": "busy"],
+                ] as [String: Any]],
+            ]))
+            XCTAssertEqual(update.directory, directory)
+        }
+    }
+
+    func testColdAttachmentFindsOtherDirectoryAndPendingQuestion() async throws {
+        let client = makeSnapshotClient(host: "inventory.test")
+        let updates = await client.reconnectSnapshot()
+        XCTAssertEqual(updates.map(\.kind), [.processing, .awaitingQuestion])
+        XCTAssertEqual(updates.map(\.sessionID), ["ses_b", "ses_b"])
+        XCTAssertEqual(updates.first?.title, "Other workspace")
+        XCTAssertEqual(updates.last?.directory, SnapshotProtocol.directory)
+        XCTAssertEqual(updates.last?.waitID, "que_b")
+    }
+
+    func testRememberedDirectoryRecoversWhenInventoryUnavailable() async {
+        let client = makeSnapshotClient(host: "legacy.test")
+        let withoutLocation = await client.reconnectSnapshot()
+        XCTAssertTrue(withoutLocation.isEmpty)
+        let recovered = await client.reconnectSnapshot(knownDirectories: [SnapshotProtocol.directory])
+        XCTAssertEqual(recovered.map(\.kind), [.processing, .awaitingQuestion])
+    }
+
+    func testFailedPendingReadDoesNotInventResolution() async {
+        let updates = await makeSnapshotClient(host: "failed-pending.test").reconnectSnapshot()
+        XCTAssertEqual(updates.map(\.kind), [.processing])
+        XCTAssertFalse(updates.contains { $0.kind == .idle || $0.kind == .questionReplied })
+    }
+
+    func testDuplicateDefaultAndExplicitScopeSeedsWaitOnlyOnce() async {
+        let updates = await makeSnapshotClient(host: "duplicate.test").reconnectSnapshot()
+        XCTAssertEqual(updates.map(\.kind), [.processing, .awaitingQuestion])
+    }
+
+    private func makeSnapshotClient(host: String) -> OpenCodeSSEClient {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SnapshotProtocol.self]
+        return OpenCodeSSEClient(baseURL: URL(string: "https://\(host)")!, transport: URLSession(configuration: config))
+    }
+
+    func testOwnershipKeepsHooksOutsideStreamLifecycle() {
+        var owner = OpenCodeObservationOwnership()
+        XCTAssertTrue(owner.acceptSSE("sse", rowExists: false))
+        XCTAssertTrue(owner.acceptSSE("both", rowExists: false))
+        XCTAssertTrue(owner.claimHook("both"))
+        XCTAssertFalse(owner.acceptSSE("both", rowExists: true))
+        XCTAssertFalse(owner.acceptSSE("hook", rowExists: true))
+        XCTAssertEqual(owner.disconnect(), ["sse"])
+        XCTAssertTrue(owner.sse.isEmpty)
+    }
+
+    func testSharedWaitIdentityVectors() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("shared/opencode-wait-vectors.json"))
+        let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: String]])
+        var waits = OpenCodeWaitState()
+        for row in rows {
+            _ = waits.consume(event: "opencode_" + row["event"]!, id: row["id"], title: row["title"])
+            XCTAssertEqual(waits.first?.id, row["pending"], row["event"]!)
+            if let first = waits.first {
+                XCTAssertEqual(first.kind == "permission" ? "awaiting_permission" : "awaiting_option", row["state"])
+            }
+        }
+    }
+
+    func testCurrentWirePermissionAndQuestionIdentities() throws {
+        func classify(_ type: String, _ props: [String: Any]) -> OpenCodeSessionUpdate? {
+            OpenCodeEventClassifier.classify(envelope: ["payload": ["type": type, "properties": props]])
+        }
+        let permission = try XCTUnwrap(classify("permission.asked", ["sessionID": "s", "id": "p", "permission": "bash"]))
+        XCTAssertEqual(permission.kind, .awaitingPermission)
+        XCTAssertEqual(permission.waitID, "p")
+        XCTAssertEqual(classify("permission.replied", ["sessionID": "s", "requestID": "p"])?.waitID, "p")
+        XCTAssertEqual(classify("permission.replied", ["sessionID": "s", "permissionID": "legacy"])?.waitID, "legacy")
+        XCTAssertEqual(classify("question.asked", ["sessionID": "s", "id": "q", "questions": [["question": "", "header": "Target"]]])?.question, "Target")
+        let question = classify("question.asked", ["sessionID": "s", "id": "q", "questions": [["question": "Which target?"]]])
+        XCTAssertEqual(question?.kind, .awaitingQuestion)
+        XCTAssertEqual(question?.question, "Which target?")
+        XCTAssertEqual(classify("question.rejected", ["sessionID": "s", "requestID": "q"])?.kind, .questionReplied)
+    }
+
     // MARK: - SSE data-line parsing
 
     func testParsesDataLine() {
@@ -116,13 +205,13 @@ final class OpenCodeObserverTests: XCTestCase {
             "description": "Allow running npm test?",
         ])
         XCTAssertEqual(update, OpenCodeSessionUpdate(
-            sessionID: "s1", kind: .awaitingPermission, question: "Allow running npm test?"
+            sessionID: "s1", kind: .awaitingPermission, question: "Allow running npm test?", waitID: "p1"
         ))
         // No description → synthesized question from the tool name. Never
         // any options/requestId — respond-in-terminal on every surface.
         XCTAssertEqual(
             classify("permission.requested", ["sessionID": "s1", "permissionID": "p1", "tool": "bash"]),
-            OpenCodeSessionUpdate(sessionID: "s1", kind: .awaitingPermission, question: "Allow bash?")
+            OpenCodeSessionUpdate(sessionID: "s1", kind: .awaitingPermission, question: "Allow bash?", waitID: "p1")
         )
     }
 
@@ -174,5 +263,37 @@ final class OpenCodeObserverTests: XCTestCase {
         let urls = OpenCodeObserver.candidateURLs(userConfigured: "ftp://example.com", processArgs: [])
         XCTAssertEqual(urls.map(\.absoluteString), [OpenCodeObserver.defaultServerURL])
     }
+}
+/// Exercise the real HTTP decoding and URL query construction, including
+/// percent-encoding, default-scope duplicates and an unavailable inventory.
+private final class SnapshotProtocol: URLProtocol, @unchecked Sendable {
+    static let directory = "/tmp/space # & 한글"
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let url = request.url!
+        let directory = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+            .first { $0.name == "directory" }?.value
+        let inScope = directory == Self.directory || url.host == "duplicate.test"
+        var status = 200
+        let body: Any
+        switch url.path {
+        case "/experimental/session":
+            if url.host == "legacy.test" { status = 404; body = [:] }
+            else { body = [["id": "ses_b", "title": "Other workspace", "directory": Self.directory]] }
+        case "/session/status":
+            body = inScope ? ["ses_b": ["type": "busy"]] : [:]
+        case "/question":
+            if url.host == "failed-pending.test" { status = 503; body = [:] }
+            else { body = inScope ? [["id": "que_b", "sessionID": "ses_b", "questions": [["question": "Continue?"]]]] : [] }
+        case "/permission": body = []
+        default: status = 404; body = [:]
+        }
+        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }
 #endif

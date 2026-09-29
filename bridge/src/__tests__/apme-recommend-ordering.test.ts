@@ -20,7 +20,7 @@ describe('cost-per-quality ordering', () => {
     // Every unpriced key maps to Infinity, so subtraction gives
     // `Infinity - Infinity` = NaN. A NaN comparator makes the sort order
     // implementation-defined — with enough unpriced candidates the top-3 is an
-    // arbitrary permutation rather than a ranking. CLAUDE.md: comparators are
+    // arbitrary permutation rather than a ranking. AGENTS.md: comparators are
     // three-way, never subtraction.
     expect(byCostPerQuality(null, undefined)).toBe(0);
     expect(Number.isNaN(unpricedLast(null) - unpricedLast(undefined))).toBe(true);

@@ -15,7 +15,7 @@
 // The marker tables are ALLOW-lists by construction. A model nobody predates
 // resolves to `unknown`, which renders as no badge — never as some other
 // company's name. That polarity is the point; see the unknown-agent rule in
-// CLAUDE.md for the same lesson learned the expensive way.
+// AGENTS.md for the same lesson learned the expensive way.
 
 import fs from 'node:fs';
 import path from 'node:path';

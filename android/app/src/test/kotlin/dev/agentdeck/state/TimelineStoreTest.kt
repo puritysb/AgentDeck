@@ -848,6 +848,40 @@ class TimelineStoreTest {
     }
 
     @Test
+    fun `deriveSubagentActivity treats a dispatch older than the parent turn close as drained`() {
+        // Mirrors shared/src/__tests__/subagent-activity.test.ts: the buffer
+        // keeps dispatch rows but sheds the children's stop rows, so the
+        // parent's own chat_end after the dispatch is what says it finished.
+        val activity = deriveSubagentActivity(
+            entries = listOf(
+                TimelineEntry(
+                    timestamp = 100,
+                    type = "tool_exec",
+                    summary = "Subagent ×8 dispatched · General",
+                    sessionId = "parent-1",
+                    startedAt = 100,
+                ),
+                TimelineEntry(
+                    timestamp = 900,
+                    type = "chat_end",
+                    summary = "turn closed",
+                    sessionId = "parent-1",
+                ),
+                TimelineEntry(
+                    timestamp = 1000,
+                    type = "tool_exec",
+                    summary = "Subagent ×2 dispatched · General",
+                    sessionId = "parent-1",
+                    startedAt = 1000,
+                ),
+            ),
+            now = 1100,
+        )
+
+        assertEquals(SubagentVisualActivity(activeCount = 2, lastCompletedAt = null), activity["parent-1"])
+    }
+
+    @Test
     fun `deriveSubagentActivity ignores ordinary tools and expires orphaned starts`() {
         val activity = deriveSubagentActivity(
             entries = listOf(

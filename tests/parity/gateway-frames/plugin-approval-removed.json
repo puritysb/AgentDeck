@@ -1,0 +1,7 @@
+{
+  "type": "event",
+  "event": "plugin.approval.removed",
+  "payload": {
+    "id": "plugin:c1a9d3e2-7b44-4b0a-9e6f-2f5c8a1d0e7b"
+  }
+}

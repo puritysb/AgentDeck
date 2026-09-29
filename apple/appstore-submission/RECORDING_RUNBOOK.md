@@ -57,6 +57,87 @@ gate because the Swift daemon reads `~/.codex` directly. A preview showing a
 populated Claude quota row would depict a capability the shipped app does not
 have without the separately-installed Node daemon.
 
+## Marketing captures are a different path on purpose
+
+`scripts/capture-marketing-screenshots.sh` writes `docs/media/` for the README
+and the project site. It runs the same deterministic feed but passes
+`--relay-usage`, which adds Claude's subscription gauges — legitimate there,
+because those surfaces describe the daemon product where a Node daemon relays
+that quota, and forbidden here, because the sandboxed App Store build cannot
+produce them alone (`UsageAPIClient.directOAuthUsageSupported == false`). The
+App Store scripts never pass the flag and the marketing script never writes
+into `apple/appstore-submission/`; keep it that way.
+
+It exists because the screenshots it replaced were real captures of a
+developer's desk — real project names, real task text in the operator's own
+language — in an English-language README. The Collaboration panel is the one
+surface that does not read the feed: it fetches its task history over HTTP, so
+the orchestrator answers `/apme/tasks` on the same port, and a pinned capture
+feed now also supplies the port the panel asks (`AgentStateHolder.captureFeedPort`).
+Without that the panel queried the developer daemon on :9120 and put this
+machine's real sessions into an otherwise synthetic frame.
+
+The APME boards and the menu bar popup's activity summary read a much wider
+API surface than the two endpoints stubbed here, so they only have anything to
+show against a daemon that has really been measuring work.
+`scripts/capture-live-screenshots.sh` handles those: same window-capture rule
+and the same 1440x900 density, real data by necessity. Real project names and
+whatever language the operator writes in are an accepted trade for those three
+images, and never for an App Store asset.
+
+It does not click the tab for you. SwiftUI's tab bar ignores a System Events
+synthetic click, so the script pins the window and captures whatever tab is
+selected rather than pretending it can drive one. Worth scrolling the Work
+board a row or two first: it opens on the newest task, which on a machine that
+is taking the screenshot is the screenshot.
+
+## What a capture must not inherit
+
+A capture takes whatever the machine is in the mood for unless the harness pins
+it down. Three things reached submission assets before they were pinned, all of
+them invisible until someone looked at the pixels:
+
+- **The operator's UI state.** The dashboard's Habitat/Collaboration toggle is
+  persisted (`dashboardCollaborationEnabled`), and the Debug build shares the
+  shipping bundle id, so a panel left open on this desk lands in the capture —
+  covering the topology rail the `05-devices` crop is taken from.
+  `reset_capture_defaults` writes the deterministic value before every launch.
+- **The system language.** WeatherKit's attribution is localized, so a Korean
+  system put a Korean word in an otherwise English capture. The app is launched
+  with `-AppleLanguages '("en")'`; the raw captures are locale-independent, and
+  only `compose-appstore-screenshots.py`'s captions are per-locale.
+- **Z-order.** `screencapture -D` records the display as composited, so any
+  window above the dashboard is inside the crop rect. On a desk where other
+  agent sessions run GUI apps this is not hypothetical: a game engine's splash
+  window put a third party's UI into a take. `isolate_dashboard` hides every
+  other regular app and restores them afterwards.
+
+Window geometry is now **set, read back, and retried** (`force_window_geometry`)
+rather than set once: the window is restored to its remembered size shortly
+after launch, so the early `set size` was silently reverted and the fixed crop
+rect then framed desktop instead of dashboard. A run that cannot reach the
+geometry fails loudly, because a capture whose frame does not match the crop is
+worse than no capture.
+
+**`screencapture -V` does not record at the backing resolution.** A still grab
+of this 5120x2880 panel comes out at 5120x2880; a video of the same display
+comes out at 4096x2304. The window-to-frame ratio is therefore the recorder's
+own, not the 2 a Retina display implies, and a hardcoded doubling framed 80%
+dashboard and 20% wallpaper while every geometry assertion passed — the numbers
+all agreed with each other and disagreed with the file. The macOS crop is now
+measured from the raw's real dimensions against the display's logical size
+after each recording, and printed, so a wrong frame is visible in the log rather
+than only in the pixels. `AGENTDECK_CAPTURE_DISPLAY`, `AGENTDECK_CAPTURE_WIN_X`
+and `AGENTDECK_CAPTURE_CROP_X` move a take to another screen — the window
+position is a global coordinate while the crop offset is display-local, so a
+secondary-screen capture needs both.
+
+**Stills survive a busy desk; video does not.** Each screenshot beat is an
+instantaneous grab, so a moment of quiet is enough. A preview needs ~48 seconds
+of uninterrupted, unobstructed screen, and another session launching a window
+during it ruins the take with nothing to salvage. Record previews when nothing
+else on this machine is driving a GUI.
+
 ## Producing the submission assets
 
 Both scripts start the feed with an epoch in the **future** and launch the app
@@ -155,6 +236,16 @@ Launch an iOS Debug Simulator build with these arguments:
 ```text
 -AgentDeckScreenshotURL ws://127.0.0.1:9220
 ```
+
+For a fresh simulator, complete the first-run onboarding before capturing;
+otherwise the onboarding screen covers the dashboard even though the feed is
+connected. The `prefs.hasSeenOnboarding` preference is read as a Boolean, so
+a string-valued launch argument does not replace completing onboarding.
+`AGENTDECK_CAPTURE_IOS_UDID` selects an explicit simulator for either capture
+script. If the Debug trampoline stalls in `simctl launch`, rebuild the Debug
+simulator target with `ENABLE_DEBUG_DYLIB=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES`
+and ad-hoc simulator signing (`CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES`).
+This does not alter the Release archive settings.
 
 Record at least one complete 60-second cycle, then trim in the editor. The
 existing `apple/appstore-submission/previews/` files remain the current

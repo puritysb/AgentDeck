@@ -62,6 +62,7 @@ fun EinkSettingsOverlay(
     val currentOrientation by displayPrefs.orientationFlow.collectAsState(
         initial = DashboardOrientation.defaultFor(isEink = true)
     )
+    val dashboardType by displayPrefs.dashboardTypeFlow.collectAsState(initial = dev.agentdeck.data.DashboardType.Default)
     val panelOverride by displayPrefs.panelOverrideFlow.collectAsState(initial = PanelOverride.Auto)
     val deviceProfile = LocalDeviceProfile.current
     val keepAwake by displayPrefs.keepAwakeFlow.collectAsState(initial = true)
@@ -100,6 +101,15 @@ fun EinkSettingsOverlay(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
 
+                SectionTitle(title = "Dashboard type")
+                for (type in dev.agentdeck.data.DashboardType.available(deviceProfile.isEink)) {
+                    SegmentOption(
+                        label = type.title,
+                        selected = dev.agentdeck.data.DashboardType.resolve(dashboardType, deviceProfile.isEink) == type,
+                        onClick = { scope.launch { displayPrefs.setDashboardType(type) } },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 HorizontalDivider(thickness = 1.dp, color = Color.Black)
 
                 SectionTitle(
@@ -145,15 +155,12 @@ fun EinkSettingsOverlay(
                     },
                     ok = dashState.usage.codexWebAuthConnected == true,
                 )
+                val gatewaySetup = dev.agentdeck.net.GatewaySetupStatus.evaluate(
+                    dashState.gatewayAuthStatus, dashState.gatewayConnected, dashState.gatewayAvailable)
                 IntegrationStatusRow(
                     label = "OpenClaw",
-                    status = when {
-                        dashState.gatewayHasError == true -> "Error"
-                        dashState.gatewayConnected == true -> "Connected"
-                        dashState.gatewayAvailable == true -> "Available"
-                        else -> "Not available"
-                    },
-                    ok = dashState.gatewayConnected == true,
+                    status = if (dashState.gatewayHasError == true) "Gateway error" else gatewaySetup.detail,
+                    ok = dashState.gatewayConnected == true && !gatewaySetup.needsAttention,
                 )
                 IntegrationStatusRow(
                     label = "Ollama",
@@ -290,6 +297,7 @@ fun EinkSettingsOverlay(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
+                dev.agentdeck.update.AppUpdateCard()
                 Text(
                     text = "AgentDeck Android - Monitoring dashboard for AI coding agents",
                     style = MaterialTheme.typography.bodySmall,

@@ -134,7 +134,7 @@ extension DevicePreviewSelection {
 
 // MARK: - Live-aware display accessors
 //
-// Schematic previews (InkDeck, ESP32 boards, tablets) render a list of sessions
+// Schematic previews (TRMNL 7.5", ESP32 boards, tablets) render a list of sessions
 // and a usage band. In live-follow mode these accessors return the daemon's
 // REAL sessions/usage — actual project names, models, states, and usage % — so
 // the preview becomes an emulator; in manual mode they synthesize the exact same
@@ -155,13 +155,29 @@ struct PreviewDisplaySession: Identifiable {
     var subagentCount: Int = 0
 }
 
+/// Providers without a session creature use their official brand mark.
+struct PreviewUsageMark: View {
+    let agentType: String
+    let size: CGFloat
+    let color: Color
+
+    var body: some View {
+        if agentType == "zai" {
+            AgentBrandIcon(agentType: agentType, tint: color, size: size)
+        } else {
+            CanonicalCreatureView(agentType: agentType, size: size, color: color)
+        }
+    }
+}
+
 /// One usage provider row (0…1 fractions) for the usage band.
 struct PreviewDisplayUsageRow: Identifiable {
-    var agent: PixooPreviewAgent
+    var agentType: String
     var label: String   // "CLAUDE" / "CODEX"
     var plan: String    // "Max 20x" / "Plus"
-    var p5: Double       // 5h window, 0…1
-    var p7: Double       // 7d window, 0…1
+    var p5: Double       // 5h window, 0…1; -1 means absent
+    var p7: Double       // 7d window, 0…1; -1 means absent
+    var secondaryLabel: String = "7D"
     var id: String { label }
 }
 
@@ -234,16 +250,28 @@ extension DevicePreviewSelection {
     var displayUsageRows: [PreviewDisplayUsageRow] {
         if let live {
             guard live.topLevelState != "disconnected" else { return [] }
+            func plan(_ prefixes: [String]) -> String {
+                guard let sub = live.source.subscriptions.first(where: { item in prefixes.contains(where: item.name.hasPrefix) }) else { return "" }
+                return [sub.name, sub.until ?? ""].filter { !$0.isEmpty }.joined(separator: " ")
+            }
             var rows: [PreviewDisplayUsageRow] = []
             if live.usageKnown, live.fiveHourPercent != nil || live.sevenDayPercent != nil {
                 rows.append(PreviewDisplayUsageRow(
-                    agent: .claudeCode, label: "CLAUDE", plan: "Max 20x",
-                    p5: (live.fiveHourPercent ?? 0) / 100, p7: (live.sevenDayPercent ?? 0) / 100))
+                    agentType: "claude-code", label: "CLAUDE", plan: plan(["Claude"]),
+                    p5: (live.fiveHourPercent ?? -100) / 100, p7: (live.sevenDayPercent ?? -100) / 100))
             }
             if live.codexPrimaryPercent != nil || live.codexSecondaryPercent != nil {
                 rows.append(PreviewDisplayUsageRow(
-                    agent: .codex, label: "CODEX", plan: "Plus",
-                    p5: (live.codexPrimaryPercent ?? 0) / 100, p7: (live.codexSecondaryPercent ?? 0) / 100))
+                    agentType: "codex-cli", label: "CODEX", plan: plan(["ChatGPT", "Codex"]),
+                    p5: (live.codexPrimaryPercent ?? -100) / 100, p7: (live.codexSecondaryPercent ?? -100) / 100))
+            }
+            if let zai = live.source.zaiRateLimits,
+               zai.primary?.usedPercent != nil || zai.secondary?.usedPercent != nil {
+                rows.append(PreviewDisplayUsageRow(
+                    agentType: "zai", label: "Z.AI", plan: plan(["GLM Coding Plan"]),
+                    p5: (zai.primary?.usedPercent ?? -100) / 100,
+                    p7: (zai.secondary?.usedPercent ?? -100) / 100,
+                    secondaryLabel: zai.secondary?.quantity == "mcp" ? "MCP" : "7D"))
             }
             return rows
         }
@@ -251,10 +279,10 @@ extension DevicePreviewSelection {
         let agents = previewAgents
         var rows: [PreviewDisplayUsageRow] = []
         if agents.isEmpty || agents.contains(.claudeCode) {
-            rows.append(PreviewDisplayUsageRow(agent: .claudeCode, label: "CLAUDE", plan: "Max 20x", p5: 0.42, p7: 0.68))
+            rows.append(PreviewDisplayUsageRow(agentType: "claude-code", label: "CLAUDE", plan: "Max 20x", p5: 0.42, p7: 0.68))
         }
         if agents.contains(.codex) {
-            rows.append(PreviewDisplayUsageRow(agent: .codex, label: "CODEX", plan: "Plus", p5: 0.23, p7: 0.51))
+            rows.append(PreviewDisplayUsageRow(agentType: "codex-cli", label: "CODEX", plan: "Plus", p5: 0.23, p7: 0.51))
         }
         return rows
     }
@@ -343,7 +371,7 @@ struct PreviewMiniSessionList: View {
     var body: some View {
         // Live-follow → real sessions (project name + model state); manual → the
         // synthesized `<agent>-project` palette. Project-name primary matches
-        // the real device (and InkDeck / D200H).
+        // the real device (and TRMNL 7.5" / D200H).
         let sessions = selection.displaySessions
         return VStack(alignment: .leading, spacing: compact ? 3 : 4) {
             Text("SESSIONS")

@@ -5,7 +5,7 @@
  * Two device classes, two vocabularies:
  *
  * 1. Self-connecting clients (Apple app, Android app, ESP32 WiFi panels —
- *    including InkDeck — and TUI)
+ *    including TRMNL 7.5" — and TUI)
  *    own their link to the daemon: they discover via mDNS, connect, and
  *    auto-reconnect. They surface the *phase* they are actually in:
  *      - SEARCHING     "Searching for AgentDeck..."  (mDNS discovery, no target yet)

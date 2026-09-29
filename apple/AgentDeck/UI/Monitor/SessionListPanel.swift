@@ -4,15 +4,17 @@ import SwiftUI
 
 // MARK: - Terrarium HUD Colors (matching Android TerrariumColors)
 
+/// Dashboard HUD palette — every entry is a design token (DESIGN.md §2.6/§2.7),
+/// shared with the Android LCD and ESP32 HUDs.
 enum TerrariumHUD {
-    static let bg = Color.black.opacity(0.5)                       // 0x80000000
-    static let text = Color(red: 0.886, green: 0.91, blue: 0.941) // #E2E8F0
-    static let subtext = Color(red: 0.58, green: 0.64, blue: 0.72) // #94A3B8
-    static let ledGreen = Color(red: 0.133, green: 0.773, blue: 0.369)  // #22C55E
-    static let ledAmber = Color(red: 0.984, green: 0.749, blue: 0.141)  // #FBBF24
-    static let ledRed = Color(red: 0.937, green: 0.267, blue: 0.267)    // #EF4444
-    static let tetraNeon = Color(red: 0, green: 0.898, blue: 1)         // #00E5FF
-    static let claudeBody = Color(red: 0.753, green: 0.439, blue: 0.345) // #C07058
+    static let bg = DesignTokens.UI.popupBgDeep.opacity(0.5)
+    static let text = DesignTokens.UI.hudText
+    static let subtext = DesignTokens.UI.hudSubtext
+    static let ledGreen = DesignTokens.UI.ok
+    static let ledAmber = DesignTokens.UI.attn
+    static let ledRed = DesignTokens.UI.error
+    static let tetraNeon = DesignTokens.UI.cyan
+    static let claudeBody = DesignTokens.Brand.claudeCode
 }
 
 struct SessionListPanel: View {
@@ -134,12 +136,17 @@ struct SessionListPanel: View {
         /// the focus target.
         let sessionId: String?
         /// Shared activity one-liner (bridge SSOT) — same summary the
-        /// InkDeck cards and Android rows show, so surfaces don't drift.
+        /// TRMNL 7.5" cards and Android rows show, so surfaces don't drift.
         var activity: String?
         /// Live child-agent census. A SECOND axis to `state`: a parent whose
         /// turn closed is genuinely idle while its subagents keep working, and
         /// this row said "IDLE" through a half-hour eight-wide fan-out.
         var subagents: SubagentSummary?
+        /// Cross-session coordination census — the other way a parent is busy
+        /// while `state` says idle: `claude -p` workers it spawned, a
+        /// background job it is waiting on. Measured 2026-09-06: six spawned
+        /// workers and a 22-minute matrix job, and the row read IDLE.
+        var coordination: CoordinationSummary?
     }
 
     private func buildEntries() -> [SessionEntry] {
@@ -185,7 +192,8 @@ struct SessionListPanel: View {
                 isFocused: focusedSessionId != nil && stateHolder.state.sessionId == focusedSessionId,
                 sessionId: stateHolder.state.sessionId,
                 activity: primaryAnchorSibling?.activity,
-                subagents: primaryAnchorSibling?.subagents
+                subagents: primaryAnchorSibling?.subagents,
+                coordination: primaryAnchorSibling?.coordination
             ))
         }
 
@@ -225,7 +233,8 @@ struct SessionListPanel: View {
                 isFocused: sibling.id == focusedSessionId,
                 sessionId: sibling.id,
                 activity: sibling.activity,
-                subagents: sibling.subagents
+                subagents: sibling.subagents,
+                coordination: sibling.coordination
             ))
         }
 
@@ -344,9 +353,16 @@ struct SessionListPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .background(
-                    entry.isFocused ? TerrariumHUD.tetraNeon.opacity(0.14) : Color.clear,
+                    entry.state == .processing ? DesignTokens.Kelp.s500.opacity(0.24)
+                        : entry.isFocused ? TerrariumHUD.tetraNeon.opacity(0.14) : Color.clear,
                     in: RoundedRectangle(cornerRadius: 5)
                 )
+                .overlay {
+                    if entry.state == .processing {
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(DesignTokens.UI.ok.opacity(0.65), lineWidth: 1)
+                    }
+                }
                 .overlay(alignment: .leading) {
                     if entry.isFocused {
                         RoundedRectangle(cornerRadius: 1)
@@ -367,7 +383,7 @@ struct SessionListPanel: View {
                 Text(label)
                     .font(.system(
                         size: compact ? 11 : 12,
-                        weight: entry.isFocused || entry.isPrimary ? .bold : .regular
+                        weight: entry.state == .processing || entry.isFocused || entry.isPrimary ? .bold : .regular
                     ))
                     .foregroundStyle(TerrariumHUD.text)
                     .lineLimit(compact ? 1 : 2)
@@ -377,7 +393,7 @@ struct SessionListPanel: View {
             sessionMetaRow(entry: entry, compact: compact)
 
             // Shared activity one-liner (bridge SSOT) — same summary the
-            // InkDeck cards and Android rows show, so surfaces don't drift.
+            // TRMNL 7.5" cards and Android rows show, so surfaces don't drift.
             if let activity = entry.activity, !activity.isEmpty {
                 Text(activity)
                     .font(.system(size: compact ? 9.5 : 10))
@@ -388,9 +404,20 @@ struct SessionListPanel: View {
         }
     }
 
+    private func coordinationHelp(_ c: CoordinationSummary?) -> String {
+        guard let c else { return "" }
+        var parts: [String] = []
+        if c.spawnedActive > 0 { parts.append("\(c.spawnedActive) spawned session\(c.spawnedActive == 1 ? "" : "s") still running") }
+        if c.backgroundJobs > 0 { parts.append("waiting on \(c.backgroundJobs) background job\(c.backgroundJobs == 1 ? "" : "s")") }
+        return parts.joined(separator: " · ")
+    }
+
     private func sessionMetaRow(entry: SessionEntry, compact: Bool) -> some View {
         let detailText = buildDetailText(entry: entry)
         let running = entry.subagents?.active ?? 0
+        // Work in flight that is not a subagent: spawned peer sessions still
+        // alive plus background jobs this session will be re-invoked by.
+        let waiting = (entry.coordination?.spawnedActive ?? 0) + (entry.coordination?.backgroundJobs ?? 0)
         return HStack(spacing: 4) {
             Text(compactStateMarker(entry.state))
                 .font(.system(size: compact ? 9.5 : 10, design: .monospaced))
@@ -411,6 +438,14 @@ struct SessionListPanel: View {
             // fact losing to the transient one. `+N` is also what the terrarium
             // already uses for the children it cannot draw individually, and it
             // does not collide with the group header's `×N` (sessions).
+            if waiting > 0 {
+                Text("⧗\(waiting)")
+                    .font(.system(size: compact ? 9.5 : 10, design: .monospaced))
+                    .foregroundStyle(DesignTokens.Amber.s500)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .help(coordinationHelp(entry.coordination))
+            }
             if running > 0 {
                 Text("+\(running)")
                     .font(.system(size: compact ? 9.5 : 10, design: .monospaced))
@@ -557,24 +592,22 @@ private extension SessionListPanel {
         }
     }
 
+    /// Shape glyph + the shared short label: colour is redundant with shape
+    /// (DESIGN.md §6.4), and the words come from the one vocabulary.
     func compactStateMarker(_ state: AgentConnectionState) -> String {
-        switch state {
-        case .idle: "● IDLE"
-        case .processing: "◉ PROC"
-        case .awaitingPermission: "⚠ PERM"
-        case .awaitingOption: "◇ SEL"
-        case .awaitingDiff: "□ DIFF"
-        case .disconnected: "○ OFF"
+        let glyph = switch state {
+        case .idle: "●"
+        case .processing: "◉"
+        case .awaitingPermission: "⚠"
+        case .awaitingOption: "◇"
+        case .awaitingDiff: "□"
+        case .disconnected: "○"
         }
+        return "\(glyph) \(state.sessionWords.short)"
     }
 
     private func stateColor(_ state: AgentConnectionState) -> Color {
-        switch state {
-        case .idle: TerrariumHUD.ledGreen
-        case .processing: Color(red: 0.231, green: 0.51, blue: 0.965) // #3B82F6
-        case .awaitingPermission, .awaitingOption, .awaitingDiff: TerrariumHUD.ledAmber
-        case .disconnected: TerrariumHUD.subtext
-        }
+        StateColors.color(for: state)
     }
 }
 

@@ -15,6 +15,7 @@
         "Keypad"
       ],
       "SupportedInMultiActions": true,
+      "PropertyInspectorPath": "ui/connection-status-pi.html",
       "UUID": "bound.serendipity.agentdeck.session-slot"
     },
     {
@@ -31,6 +32,7 @@
         "Keypad"
       ],
       "SupportedInMultiActions": true,
+      "PropertyInspectorPath": "ui/connection-status-pi.html",
       "UUID": "bound.serendipity.agentdeck.limit-key"
     },
     {
@@ -53,6 +55,7 @@
           "Push": "Refresh usage data"
         }
       },
+      "PropertyInspectorPath": "ui/connection-status-pi.html",
       "UUID": "bound.serendipity.agentdeck.option-dial"
     },
     {
@@ -75,6 +78,7 @@
           "Push": "Toggle mute"
         }
       },
+      "PropertyInspectorPath": "ui/connection-status-pi.html",
       "UUID": "bound.serendipity.agentdeck.utility-dial"
     },
     {
@@ -97,6 +101,7 @@
           "Push": "Refresh usage data"
         }
       },
+      "PropertyInspectorPath": "ui/connection-status-pi.html",
       "UUID": "bound.serendipity.agentdeck.iterm-dial"
     },
     {
@@ -187,5 +192,5 @@
       "Readonly": false
     }
   ],
-  "Version": "1.2.0.0"
+  "Version": "1.6.0.0"
 }

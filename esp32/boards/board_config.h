@@ -21,8 +21,8 @@
     #include "board_nm_epd_420.h"
 #elif defined(BOARD_LILYGO_EPD47)
     #include "board_lilygo_epd47.h"
-#elif defined(BOARD_INKDECK)
-    #include "board_inkdeck.h"
+#elif defined(BOARD_TRMNL_75)
+    #include "board_trmnl_75.h"
 #elif defined(BOARD_T_EMBED)
     #include "board_t_embed.h"
 #elif defined(BOARD_T_DISPLAY_PRO)
@@ -50,8 +50,8 @@ inline const char* agentdeckBoardName() {
         return "nm_epd_420";
     #elif defined(BOARD_LILYGO_EPD47)
         return "lilygo_epd47";
-    #elif defined(BOARD_INKDECK)
-        return "inkdeck";
+    #elif defined(BOARD_TRMNL_75)
+        return "trmnl_75";
     #elif defined(BOARD_TTGO) || defined(BOARD_TTGO_T_DISPLAY)
         return "ttgo_t_display";
     #elif defined(BOARD_T_EMBED)

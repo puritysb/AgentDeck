@@ -13,6 +13,8 @@ import {
   ESP32_BOARDS,
   ESP32_BOOTLOADER_OFFSET,
   ESP32_BOARD_BY_TARGET,
+  LEGACY_BOARD_IDS,
+  canonicalBoardId,
   esp32ChipFamilyOf,
   esp32FlashIdIsUsable,
   esp32FlashSizeIsSafe,
@@ -125,11 +127,30 @@ describe('flash guards', () => {
   });
 
   it('is directional: under-declaring flash is safe, over-declaring is not', () => {
-    // InkDeck is the real case for the safe direction — a physically 16MB part
+    // TRMNL 7.5" is the real case for the safe direction — a physically 16MB part
     // whose BSP requires an 8MB flash-size field.
     expect(esp32FlashSizeIsSafe('8MB', '16MB')).toBe(true);
     expect(esp32FlashSizeIsSafe('16MB', '16MB')).toBe(true);
     expect(esp32FlashSizeIsSafe('16MB', '4MB')).toBe(false);
+  });
+
+  it('resolves a legacy wire id a deployed board still reports', () => {
+    // A flashed board keeps saying what it was BUILT as until it takes an OTA,
+    // so a rename that moved only the canonical id would drop every deployed
+    // unit off every surface that matches on the string — including the OTA
+    // that would have renamed it. `inkdeck` is the 1.2.1 name of `trmnl_75`.
+    expect(canonicalBoardId('inkdeck')).toBe('trmnl_75');
+    expect(canonicalBoardId('trmnl_75')).toBe('trmnl_75');
+    // An id nobody renamed passes through — this is a translation table, not a
+    // filter, and an unknown board must stay itself rather than become null.
+    expect(canonicalBoardId('xteink_x3')).toBe('xteink_x3');
+    for (const [legacy, canonical] of Object.entries(LEGACY_BOARD_IDS)) {
+      expect(ESP32_BOARD_BY_TARGET[canonical]?.id, canonical).toBe(canonical);
+      // The CLI must accept the old spelling too, or `esp32-ota inkdeck` — the
+      // command a user with that board already has in their shell history —
+      // resolves to nothing.
+      expect(ESP32_BOARD_BY_TARGET[legacy]?.id, legacy).toBe(canonical);
+    }
   });
 
   it('returns unknown rather than a verdict when the size could not be read', () => {

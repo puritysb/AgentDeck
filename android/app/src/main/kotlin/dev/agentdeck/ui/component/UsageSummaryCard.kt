@@ -1,5 +1,8 @@
 package dev.agentdeck.ui.component
 
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +27,7 @@ import dev.agentdeck.ui.eink.formatDuration
 import dev.agentdeck.ui.eink.formatDurationLong
 import dev.agentdeck.ui.theme.AgentDeckColors
 import dev.agentdeck.util.codexLimitRows
+import dev.agentdeck.util.zaiLimitRows
 
 /**
  * Compact usage summary card for DashboardScreen.
@@ -110,6 +114,30 @@ fun UsageSummaryCard(
                             label = row.label,
                             percent = row.percent,
                             resetAt = if (row.stale || row.footnote != null) null else row.resetIso,
+                            // The Luna reserve reads as what is LEFT.
+                            suffix = row.footnote ?: if (row.stale) "stale" else if (row.remaining) "${row.percent.toInt()}% left" else null,
+                            agentType = row.agentType,
+                            remaining = row.remaining,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+
+            // z.ai GLM Coding Plan (#348) — same neutral-row grammar; renders
+            // only when the provider reports windows, so an absent plan leaves
+            // no reserved space.
+            val zaiRows = zaiLimitRows(usage.zaiRateLimits)
+            if (zaiRows.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    zaiRows.forEach { row ->
+                        CompactGauge(
+                            label = row.label,
+                            percent = row.percent,
+                            resetAt = if (row.stale || row.footnote != null) null else row.resetIso,
                             suffix = row.footnote ?: if (row.stale) "stale" else null,
                             agentType = row.agentType,
                             modifier = Modifier.weight(1f),
@@ -171,14 +199,15 @@ private fun CompactGauge(
     // A non-binding per-model scoped cap: render neutral, never the critical ramp,
     // regardless of percent (issue #99 — inactive ≠ same critical treatment).
     muted: Boolean = false,
+    // `percent` is what remains (the Codex Luna reserve): the bar fills by it,
+    // the colour ramp reads the used complement.
+    remaining: Boolean = false,
 ) {
     val fraction = (percent / 100.0).coerceIn(0.0, 1.0).toFloat()
-    val color = when {
-        muted -> MaterialTheme.colorScheme.onSurfaceVariant
-        percent >= 90 -> AgentDeckColors.Red
-        percent >= 70 -> AgentDeckColors.Amber
-        else -> AgentDeckColors.Green
-    }
+    val used = if (remaining) 100.0 - percent else percent
+    val onPaper = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    val color = Color(if (muted) UsageSeverity.inactiveColor(onPaper)
+        else UsageSeverity.color(used, onPaper = onPaper))
 
     Column(modifier = modifier) {
         Row(

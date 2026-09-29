@@ -11,7 +11,7 @@ vi.mock('../label-summarizer.js', () => ({
   requestAbbreviation: vi.fn(),
 }));
 
-import { State, type PromptOption, type SessionInfo } from '@agentdeck/shared';
+import { UI, State, type PromptOption, type SessionInfo } from '@agentdeck/shared';
 
 // ===== utility-renderer =====
 import {
@@ -205,9 +205,9 @@ describe('usage-gauge snapshots', () => {
     expect(svg).toContain('>5H<');
     // Headline = USED percent (fill rises with usage).
     expect(svg).toContain('>30<');
-    // 30% used ≤ 50 → green severity ramp; fill is a subtle level tint (no chip).
-    expect(svg).toContain('#22c55e');
-    expect(svg).toContain('fill="#22c55e" opacity="0.38"');
+    // 30% used < 70 → green severity ramp; fill is a subtle level tint (no chip).
+    expect(svg).toContain(UI.ok);
+    expect(svg).toContain(`fill="${UI.ok}" opacity="0.38"`);
     // No dark overlay chip — legibility from the toned fill + halo'd text.
     expect(svg).not.toContain('opacity="0.72"');
     expect(svg).toMatchSnapshot();
@@ -217,14 +217,14 @@ describe('usage-gauge snapshots', () => {
     expect(renderUsageGauge({ agent: 'claude', window: '7d', label: '7D', usedPercent: 12, resetsAt: reset7d })).toMatchSnapshot();
   });
 
-  it('renderUsageGauge Codex 5h uses the blue brand logo + amber ramp', () => {
+  it('renderUsageGauge Codex 5h uses the blue brand logo + green ramp', () => {
     const svg = renderUsageGauge({ agent: 'codex', window: '5h', label: '5H', usedPercent: 55, resetsAt: reset5h });
     expect(svg).toContain('#6166E0');     // Codex brand colour (logo tint)
     expect(svg).toContain('M8.086.457');  // Codex provider logo path
     expect(svg).toContain('>5H<');        // short label — no "CX" prefix
     expect(svg).toContain('>55<');        // used %
-    expect(svg).toContain('#eab308');     // 55% used → amber ramp
-    expect(svg).toContain('fill="#eab308" opacity="0.38"'); // toned amber level tint
+    expect(svg).toContain(UI.ok);     // 55% used → green ramp
+    expect(svg).toContain(`fill="${UI.ok}" opacity="0.38"`); // toned green level tint
     expect(svg).not.toContain('opacity="0.72"');            // no dark overlay chip
     expect(svg).toMatchSnapshot();
   });
@@ -233,9 +233,9 @@ describe('usage-gauge snapshots', () => {
     expect(renderUsageGauge({ agent: 'codex', window: '7d', label: '7D', usedPercent: 88, resetsAt: reset7d })).toMatchSnapshot();
   });
 
-  it('renderUsageGauge critical (>80 used → red ramp)', () => {
+  it('renderUsageGauge critical (>=90 used → red ramp)', () => {
     const svg = renderUsageGauge({ agent: 'claude', window: '5h', label: '5H', usedPercent: 92, resetsAt: reset5h });
-    expect(svg).toContain('#ef4444'); // red severity fill
+    expect(svg).toContain(UI.error); // red severity fill
     expect(svg).toContain('>92<');    // used %
     expect(svg).toMatchSnapshot();
   });
@@ -251,9 +251,9 @@ describe('usage-gauge snapshots', () => {
     const svg = renderUsageGauge({ agent: 'codex', window: '5h', label: '5H', usedPercent: 0, known: false });
     expect(svg).toContain('>—<');
     // No severity fill on an unknown tile.
-    expect(svg).not.toContain('#22c55e');
-    expect(svg).not.toContain('#eab308');
-    expect(svg).not.toContain('#ef4444');
+    expect(svg).not.toContain(UI.ok);
+    expect(svg).not.toContain(UI.attn);
+    expect(svg).not.toContain(UI.error);
     expect(svg).toMatchSnapshot();
   });
 });
@@ -299,11 +299,11 @@ describe('usage-encoder level-fill (SD+ 200x100) snapshots', () => {
     expect(svg).toContain('#6166E0');     // Codex brand colour (logo tint)
     expect(svg).toContain('M8.086.457');  // Codex provider logo path
     expect(svg).toContain('>CODEX<');     // explicit identity prevents provider confusion
-    expect(svg).toContain('>55<');        // 5h used (amber)
-    expect(svg).toContain('>88<');        // 7d used (red)
-    expect(svg).toContain('#eab308');
-    expect(svg).toContain('#ef4444');
-    expect(svg).toContain('fill="#eab308" opacity="0.38"'); // toned level tint (no chip)
+    expect(svg).toContain('>55<');        // 5h used (green)
+    expect(svg).toContain('>88<');        // 7d used (amber)
+    expect(svg).toContain(UI.ok);
+    expect(svg).toContain(UI.attn);
+    expect(svg).toContain(`fill="${UI.attn}" opacity="0.38"`); // toned level tint (no chip)
     expect(svg).toMatchSnapshot();
   });
 

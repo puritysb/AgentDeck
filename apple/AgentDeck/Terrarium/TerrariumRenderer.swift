@@ -196,6 +196,7 @@ final class TerrariumRenderer {
         for oct in octopuses.values {
             oct.update(dt: dt, state: state)
         }
+        spreadFloorOctopuses()
         for cl in clouds.values {
             cl.update(dt: dt, state: state)
         }
@@ -213,35 +214,50 @@ final class TerrariumRenderer {
         lastState = state
     }
 
+    /// Octopuses standing on the floor (idle, waiting, asleep) share one line,
+    /// so the band layout's allowed half-overlap would read as a pile. Spread
+    /// them apart with the shared rule (DESIGN.md §6.4); swimmers are untouched.
+    private func spreadFloorOctopuses() {
+        let standing = octopuses.values.filter { $0.visualState != .working }.sorted { $0.sessionId < $1.sessionId }
+        let xs = CreatureLayout.spreadFloorResidents(
+            standing.map { (x: $0.homeX, width: OctopusCreature.layoutWidth * $0.scale) },
+            minX: TerrariumRules.floorSpacingMinX, maxX: TerrariumRules.crayfishClearMaxX,
+            minGapRatio: TerrariumRules.floorSpacingMinGapRatio)
+        for (oct, x) in zip(standing, xs) { oct.restX = x }
+        for oct in octopuses.values where oct.visualState == .working { oct.restX = nil }
+    }
+
     // MARK: - Draw (layer order matching Android ColorRenderer)
 
-    func draw(context: inout GraphicsContext, size: CGSize) {
-        // Layer 1: Deep-sea 3-color gradient background
-        drawBackground(context: &context, size: size)
+    func draw(context: inout GraphicsContext, size: CGSize, includeHabitat: Bool = true) {
+        if includeHabitat {
+            // Layer 1: Deep-sea 3-color gradient background
+            drawBackground(context: &context, size: size)
 
-        // Layer 2: Caustics overlay
-        waterEffect.draw(context: &context, size: size)
+            // Layer 2: Caustics overlay
+            waterEffect.draw(context: &context, size: size)
 
-        // Layer 2.5: God rays (light shafts)
-        lightRays.draw(context: &context, size: size)
+            // Layer 2.5: God rays (light shafts)
+            lightRays.draw(context: &context, size: size)
 
-        // Layer 2.7: Back-layer plankton
-        plankton.drawBackLayer(context: &context, size: size)
+            // Layer 2.7: Back-layer plankton
+            plankton.drawBackLayer(context: &context, size: size)
 
-        // Layer 4: Rocks + sand
-        rocks.draw(context: &context, size: size)
+            // Layer 4: Rocks + sand
+            rocks.draw(context: &context, size: size)
 
-        // Layer 4.5: Sand disturbance particles
-        sand.draw(context: &context, size: size)
+            // Layer 4.5: Sand disturbance particles
+            sand.draw(context: &context, size: size)
 
-        // Layer 5: Kelp + grass
-        kelp.draw(context: &context, size: size)
+            // Layer 5: Kelp + grass
+            kelp.draw(context: &context, size: size)
 
-        // Layer 6: LED cables on rocks
-        rocks.drawLEDs(context: &context, size: size, envState: envState)
+            // Layer 6: LED cables on rocks
+            rocks.drawLEDs(context: &context, size: size, envState: envState)
 
-        // Layer 6.5: Back-layer fish (behind creatures for 3D depth)
-        tetra.drawBackLayer(context: &context, size: size)
+            // Layer 6.5: Back-layer fish (behind creatures for 3D depth)
+            tetra.drawBackLayer(context: &context, size: size)
+        }
 
         // Layer 6.7: Focus halo (drawn behind every creature so the sprite
         // sits cleanly inside the glow). Driven by stateHolder's focused
@@ -253,6 +269,12 @@ final class TerrariumRenderer {
         // and wired satellites belong to the parent creature and never enter
         // hit testing, session selection, approval, or steering paths.
         drawSubagentOrbits(context: &context, size: size)
+
+        // Name tags are collected while creatures draw and painted once, in
+        // priority order, after the last creature (DESIGN.md §6.4).
+        let nameTags = TerrariumNameTagLayer()
+        TerrariumNameTagLayer.active = nameTags
+        defer { TerrariumNameTagLayer.active = nil }
 
         // Layer 7: Crayfish
         crayfish.draw(context: &context, size: size)
@@ -282,17 +304,23 @@ final class TerrariumRenderer {
             k.draw(context: &context, size: size)
         }
 
-        // Layer 9.5: Front-layer fish
-        tetra.drawFrontLayer(context: &context, size: size)
+        // Layer 9.46: name tags, resolved together so none hides a resident.
+        TerrariumNameTagLayer.active = nil
+        nameTags.flush(context: &context)
 
-        // Layer 9.7: Front-layer plankton
-        plankton.drawFrontLayer(context: &context, size: size)
+        if includeHabitat {
+            // Layer 9.5: Front-layer fish
+            tetra.drawFrontLayer(context: &context, size: size)
 
-        // Layer 10: Bubbles
-        bubbles.draw(context: &context, size: size)
+            // Layer 9.7: Front-layer plankton
+            plankton.drawFrontLayer(context: &context, size: size)
 
-        // Layer 10.5: Water surface line
-        waterSurface.draw(context: &context, size: size)
+            // Layer 10: Bubbles
+            bubbles.draw(context: &context, size: size)
+
+            // Layer 10.5: Water surface line
+            waterSurface.draw(context: &context, size: size)
+        }
 
         // Layer 11: Error tint overlay
         if lastState?.hasError == true {

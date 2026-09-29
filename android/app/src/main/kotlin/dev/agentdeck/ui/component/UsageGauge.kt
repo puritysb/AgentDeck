@@ -1,5 +1,8 @@
 package dev.agentdeck.ui.component
 
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,11 +28,7 @@ fun UsageGauge(
     if (percent == null) return
 
     val fraction = (percent / 100.0).coerceIn(0.0, 1.0).toFloat()
-    val color = when {
-        percent >= 90 -> AgentDeckColors.Red
-        percent >= 70 -> AgentDeckColors.Amber
-        else -> AgentDeckColors.Green
-    }
+    val color = Color(UsageSeverity.color(percent, onPaper = MaterialTheme.colorScheme.surface.luminance() > 0.5f))
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(

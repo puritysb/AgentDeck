@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-08-15
-revision: 2026-08-15
+reviewed: 2026-09-23
+revision: 2026-09-23
 source_of_truth: design/RESOURCES.md
 validators: [node scripts/build-design-system-viewer.mjs --check, python3 design/verify-tokens-sync.py]
 ---
@@ -24,13 +24,21 @@ index. If a location or gate changes, update this file in the same commit.
 | Resource | Canonical location | Enforced by |
 |---|---|---|
 | Visual language spec | `DESIGN.md` | `design/lint.sh` (R1–R8, CI baseline in `docs/design-lint-baseline.md`) |
+| Quota severity and display palette | `shared/src/usage-severity.ts`, bound to `design/tokens.css` | `pnpm generate-usage-severity`; shared boundary/contrast/mirror tests |
+| Session state colour and words (every product surface) | `shared/src/session-state-presentation.ts`, bound to the `--session-*` tokens | `pnpm generate-session-state` (Swift, Kotlin, ESP32 C++ + the C++ token mirror); `session-state-presentation.test.ts` |
+| Raw colours in native Dashboard code | `design/native-palette-baseline.json` | `node scripts/check-native-palette.mjs` / `scripts/__tests__/native-palette.test.ts` — the count may only go down |
 | Color/type/spacing tokens | `design/tokens.css` | `design/verify-tokens-sync.py` (7 mirrors) |
 | Component & pattern CSS | `design/components.css`, `design/patterns.css` | consumed verbatim by generators |
 | Icons | `design/icons.jsx` | `scripts/design-sync-gen.mjs` transform |
 | Brand marks (agents) | `design/brand/*.svg` | `pnpm generate-creature-glyphs` / `generate-micro-glyphs` regression tests |
 | Brand type (Latin) | `bridge/assets/fonts/` (IBM Plex Sans, JetBrains Mono) | first consumer: bridge renderers |
 | Brand type (CJK) | `design/fonts/` (IBM Plex Sans KR/JP, OFL) | `design/fonts/README.md` records origin |
+| IPS10 underwater background | `design/ips10/ocean.png` (image generation; prompt in adjacent README) | `python3 design/ips10/encode_ocean.py --check` verifies the RGB565 flash consumer; native IPS10 previews verify live overlays |
+| IPS10 creature reliefs | `design/ips10/creatures.py` → three `*-relief.png` images, derived from canonical creature masks | `python3 design/ips10/encode_creatures.py --check`; native geometry and interaction checks |
 | Real photography / captures | `assets/` (sources: `assets/hardware-photos/`) | `scripts/crop-hardware-images.mjs` crop table |
+| Android LCD aquarium habitat | `assets/terrarium/aquarium-habitat.blend` | `assets/terrarium/export-habitat.py`; manual Blender export and on-device visual review |
+| Native 3D aquarium study / TRMNL plate | `assets/terrarium/living-aquarium.blend` | `export-living-aquarium.py` / `export-paper-aquarium.py` in the same directory; native preview and panel review |
+| Native 3D agent residents | `assets/terrarium/3d-residents.blend`, built from `design/brand/*.svg` | `build-3d-residents.py` + `export-android-residents.py`; Apple import and Android asset tests |
 | Published image crops | `docs/media/` | regenerated from `assets/`, never hand-edited |
 | Doc-to-viewer binding | `agentdeck-design-system/catalog.json` | `pnpm design-system:check` |
 | Documentation coverage | `catalog.json` → `coverage.scan` / `coverage.exclusions` | `pnpm design-system:check` — a `docs/*.md` that is neither cataloged nor excluded-with-a-reason fails the build |
@@ -43,6 +51,9 @@ index. If a location or gate changes, update this file in the same commit.
 embedded copies in the APME dashboard HTML, the Stream Deck PI CSS, and the
 Build Health generator's `:root` (`scripts/generate-html-report.py`).
 `python3 design/verify-tokens-sync.py` diffs all seven against `tokens.css`.
+ESP32 has no hand binding: `esp32/src/ui/product_palette.generated.h` is
+generated from the TS mirror by `pnpm generate-session-state`, and its drift is
+gated by that generator's test instead.
 
 ## Third-party brand provenance
 
@@ -50,7 +61,7 @@ Agent marks identify compatible third-party tools; they do not imply sponsorship
 or endorsement. Preserve the exact upstream geometry and the source record below
 when regenerating constrained-device masks.
 
-**Every** mark in `design/brand/` comes from one upstream package —
+The original six monochrome SVG marks in `design/brand/` come from one upstream package —
 `@lobehub/icons-static-svg@1.94.0` (MIT), npm integrity
 `sha512-Inx1TYkjLH6YeHOIHeVW9+OM/xxRnk8TmcQVKquFUDBmE3X9sUuRGt7kALrrDBNNAbrWz7Qq6fAiFj9E9Mmw9Q==`.
 This table used to hold Kiro alone, which read as though Kiro were the one mark
@@ -69,9 +80,11 @@ asked for anything beyond that.
 | Claude Code | `icons/claudecode.svg` | Anthropic |
 | Codex | `icons/codex.svg` | OpenAI |
 | Antigravity | `icons/antigravity.svg` | Google |
+| Antigravity full-color texture | [Official press PNG](https://antigravity.google/assets/image/brand/antigravity-icon__full-color.png), captured 2026-09-23; `antigravity-color.png` is byte-identical | Google |
 | Kiro ghost | `icons/kiro.svg` | Amazon.com, Inc. or its affiliates |
 | opencode | `icons/opencode.svg` | the opencode project |
 | OpenClaw | `icons/openclaw.svg` | the OpenClaw project |
+| z.ai | `https://z-cdn.chatglm.cn/z-ai/static/logo.svg` (captured 2026-09-20; `zai.svg` stores the Z strokes verbatim, mark without the upstream app-icon plate) | Z.ai / Zhipu AI |
 | Hermes Agent / Nous girl | `icons/hermesagent.svg` | Nous Research |
 
 Hermes was verified against the same pinned tarball on 2026-09-30. The
@@ -98,7 +111,7 @@ diff package/icons/<name>.svg design/brand/<name>.svg   # path data must match
 | `.design-sync/` + `_ds_gen/` | `design/*.css`, `design/icons.jsx` | `scripts/design-sync-gen.mjs`, `design-sync-previews.mjs` (see `.design-sync/NOTES.md`) |
 | App Store screenshots `apple/appstore-submission/screenshots/{en,ko,ja}/` | `screenshots-raw/` captures + captions | `scripts/compose-appstore-screenshots.py` |
 | App Store previews | demo feed (`scripts/appstore-demo-orchestrator.mjs`) | `scripts/record-appstore-previews.sh` |
-| Marketplace listing assets | app captures | `scripts/generate-elgato-marketplace-assets.mjs` |
+| Marketplace listing assets | plugin renderers (`SessionSlotManager` → `renderSlotConfig`, dial renderers) | `pnpm exec tsx scripts/generate-elgato-marketplace-assets.mts` |
 | GitHub Pages **`/flash/`** (browser ESP32 flasher) | `tools/web-flasher/` (Vite app) + the release's `manifest.json` and merged images | `pnpm flash:build`, then the Pages workflow's *Fetch firmware for the flasher* step (`scripts/fetch-flash-firmware.mjs`) |
 | `dist/flash/THIRD-PARTY.txt` | the installed `esptool-js` / `pako` / `atob-lite` / `tslib` licence + NOTICE files | `scripts/generate-flash-third-party.mjs` |
 
@@ -148,7 +161,7 @@ coverage decision. `docs/esp32.md` (already cataloged) carries its documentation
 ## Rules of thumb
 
 1. New numeric/visual truth starts in a canonical file above, then mirrors
-   outward behind a gate — never as a per-surface literal (CLAUDE.md
+   outward behind a gate — never as a per-surface literal (AGENTS.md
    "Cross-platform rules are SSOT-first").
 2. New design documentation gets YAML frontmatter and a `catalog.json` entry so
    the viewer publishes it; `docs/design/` HTML is frozen.

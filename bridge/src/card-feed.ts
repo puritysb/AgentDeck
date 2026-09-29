@@ -87,8 +87,10 @@ const pct = (n?: number): number | undefined =>
   typeof n === 'number' && Number.isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : undefined;
 
 /** Provider quota rows from the daemon's aggregate usage event. Claude first
- *  (the primary subscription on this product), then Codex. A provider with no
- *  numbers at all gets no row — the glance never renders an empty gauge. */
+ *  (the primary subscription on this product), then Codex, then z.ai. A
+ *  provider with no numbers at all gets no row — the glance never renders an
+ *  empty gauge, so the list flows compactly over however many providers are
+ *  live (one, two or all three) instead of reserving a slot per name. */
 export function buildGlanceUsage(usage: UsageEvent | undefined): GlanceUsageRow[] {
   if (!usage) return [];
   const rows: GlanceUsageRow[] = [];
@@ -115,6 +117,19 @@ export function buildGlanceUsage(usage: UsageEvent | undefined): GlanceUsageRow[
       ...(hmFromIso(rl?.primary?.resetsAt) ? { primaryResetHm: hmFromIso(rl?.primary?.resetsAt) } : {}),
       ...(codex7d !== undefined ? { secondaryPercent: codex7d } : {}),
       stale: rl?.primary?.stale === true && (codex7d === undefined || rl?.secondary?.stale === true),
+    });
+  }
+  const zr = usage.zaiRateLimits;
+  const zai5h = pct(zr?.primary?.usedPercent);
+  const zaiLong = pct(zr?.secondary?.usedPercent);
+  if (zai5h !== undefined || zaiLong !== undefined) {
+    rows.push({
+      provider: 'zai',
+      label: 'z.ai',
+      ...(zai5h !== undefined ? { primaryPercent: zai5h } : {}),
+      ...(hmFromIso(zr?.primary?.resetsAt) ? { primaryResetHm: hmFromIso(zr?.primary?.resetsAt) } : {}),
+      ...(zaiLong !== undefined ? { secondaryPercent: zaiLong } : {}),
+      stale: zr?.primary?.stale === true && (zaiLong === undefined || zr?.secondary?.stale === true),
     });
   }
   return rows.slice(0, GLANCE_MAX_USAGE_ROWS);

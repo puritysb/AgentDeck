@@ -170,6 +170,18 @@ actor OpenClawAdapter {
     private let gatewayUrl: String
     private var isConnected = false
     private var isStopping = false
+    /// Catalog retry — see `emitModelCatalog`. Cancelled on stop and on every
+    /// fresh fetch so a reconnect never races a sleeping retry.
+    private var catalogRetryTask: Task<Void, Never>?
+    private var catalogAttempt = 0
+    /// Bumped on every connect and disconnect: a fetch that started under an
+    /// older generation belongs to a link that is gone and must not emit
+    /// (actor reentrancy lets it resume after a fresh fetch already did).
+    private var catalogGeneration = 0
+    /// Quick at first (the Gateway is usually just busy right after connect),
+    /// then every five minutes for as long as the adapter lives. Mirror of Node
+    /// `CATALOG_RETRY_LADDER_MS` (bridge/src/openclaw-model-catalog.ts).
+    static let catalogRetryLadderSeconds: [Double] = [10, 30, 60, 120, 300]
     private var pairingRequired = false
     /// Set after a `DEVICE_AUTH_INVALID` response with a shared token configured.
     /// Suppresses device-auth on the next connect so a Gateway running in
@@ -223,6 +235,59 @@ actor OpenClawAdapter {
     /// every surface with nothing to show but "PERMIT?".
     private var pendingApproval: OpenClawApprovalPrompt?
     private var pendingApprovalId: String? { pendingApproval?.id }
+    /// Polls `exec.approval.list` (and the record's own expiry) while a prompt
+    /// is up. An approval carries TWO lifetimes and this daemon only ever saw
+    /// the resolved event: the record's `expiresAtMs` is 30 minutes by default,
+    /// while the agent run waiting on it gives up far sooner — measured
+    /// 2026-09-09 at 15m 9s — after which the Gateway drops the record and
+    /// emits NOTHING. Until this existed a dropped approval was a PERM the deck
+    /// showed forever: nothing here cleared `pendingApproval` except a resolved
+    /// event that, on that path, never comes.
+    private var pendingApprovalWatch: Task<Void, Never>?
+    /// The plugin approval (`plugin.approval.*`, issue #309) the Gateway is
+    /// blocked on, when there is one — the parallel surface to `pendingApproval`
+    /// above for a request that is not a shell command. Its own slot: an exec
+    /// approval and a plugin approval can be pending at once, and only one is
+    /// ever the ACTIVE prompt (`activeApproval()` below picks the older by
+    /// `requestedAtMs`, mirroring the Node adapter). The other stays here with
+    /// its own watch task still running and surfaces automatically once the
+    /// shown one clears — never silently dropped.
+    private var pendingPluginApproval: OpenClawPluginApprovalPrompt?
+    private var pendingPluginApprovalWatch: Task<Void, Never>?
+    private static let approvalReconcileNanoseconds: UInt64 = 30_000_000_000
+
+    /// Which pending approval (if any) is the one every surface renders.
+    private enum ActiveApproval {
+        case exec(OpenClawApprovalPrompt)
+        case plugin(OpenClawPluginApprovalPrompt)
+    }
+
+    /// The prompt still waiting after the one being closed, in the shape the
+    /// daemon already renders (`gateway_approval`'s `prompt`).
+    ///
+    /// The two approval queues are independent and the deck shows one question
+    /// at a time, so closing the shown one can leave a live, answerable prompt
+    /// behind. Without this, `gateway_approval_resolved` / `_abandoned` set the
+    /// row to processing/idle AND cleared `gatewayPendingApproval`, so the
+    /// survivor lost both its state and its row — the user saw an idle deck
+    /// while the Gateway stayed blocked. Mirrors Node's
+    /// `settleApprovalActivity`.
+    private func survivingApprovalPrompt() -> [String: Any]? {
+        switch activeApproval() {
+        case .exec(let prompt): return Self.promptDict(prompt)
+        case .plugin(let prompt): return Self.pluginPromptDict(prompt)
+        case nil: return nil
+        }
+    }
+
+    private func activeApproval() -> ActiveApproval? {
+        if let exec = pendingApproval, let plugin = pendingPluginApproval {
+            return exec.requestedAtMs <= plugin.requestedAtMs ? .exec(exec) : .plugin(plugin)
+        }
+        if let exec = pendingApproval { return .exec(exec) }
+        if let plugin = pendingPluginApproval { return .plugin(plugin) }
+        return nil
+    }
     private struct RPCResponse: @unchecked Sendable {
         let ok: Bool
         let payload: [String: Any]?
@@ -288,10 +353,17 @@ actor OpenClawAdapter {
 
     func stop() {
         isStopping = true
+        catalogGeneration += 1
+        catalogRetryTask?.cancel()
+        catalogRetryTask = nil
         reconnectTask?.cancel()
         reconnectTask = nil
         sessionsPollTask?.cancel()
         sessionsPollTask = nil
+        pendingApprovalWatch?.cancel()
+        pendingApprovalWatch = nil
+        pendingPluginApprovalWatch?.cancel()
+        pendingPluginApprovalWatch = nil
         if let task = wsTask {
             task.cancel(with: .goingAway, reason: nil)
             // Resolve any RPC continuations bound to this task before nil-ing.
@@ -331,6 +403,10 @@ actor OpenClawAdapter {
             // RPC that the old socket would never get to answer.
             clearPendingRPCs(for: existing, reason: "Socket replaced before response")
             wsTask = nil
+            // The replaced socket's catalog fetch (if any) belongs to it.
+            catalogGeneration += 1
+            catalogRetryTask?.cancel()
+            catalogRetryTask = nil
         }
         let task = URLSession.shared.webSocketTask(with: url)
         self.wsTask = task
@@ -554,7 +630,8 @@ actor OpenClawAdapter {
             // here: everything the user needs to see lives under `request`, and
             // reading it flat (`payload["tool"]`, which never exists) is what
             // shipped an approval with no command on it.
-            pendingApproval = OpenClawApprovalRules.parse(payload, nowMs: Date().timeIntervalSince1970 * 1000)
+            setPendingApproval(
+                OpenClawApprovalRules.parse(payload, nowMs: Date().timeIntervalSince1970 * 1000))
             var approvalEvent: [String: Any] = ["type": "gateway_approval", "payload": payload]
             if let prompt = pendingApproval {
                 approvalEvent["prompt"] = Self.promptDict(prompt)
@@ -567,9 +644,47 @@ actor OpenClawAdapter {
             if let resolvedId = payload["id"] as? String, resolvedId != pendingApproval?.id {
                 // Not ours — leave the pending prompt alone.
             } else {
-                pendingApproval = nil
+                setPendingApproval(nil)
             }
-            self._onEvent?(["type": "gateway_approval_resolved", "payload": payload])
+            var resolved: [String: Any] = ["type": "gateway_approval_resolved", "payload": payload]
+            if let survivor = survivingApprovalPrompt() { resolved["survivor"] = survivor }
+            self._onEvent?(resolved)
+        case ADGatewayEventName.pluginApprovalRequested.rawValue:
+            // Same three-event surface as exec, mirrored field-for-field — the
+            // Gateway nests everything under `request` here too
+            // (`buildRequestedApprovalEvent(record, 'plugin')`).
+            guard let prompt = OpenClawPluginApprovalRules.parse(
+                payload, nowMs: Date().timeIntervalSince1970 * 1000)
+            else { break }
+            setPendingPluginApproval(prompt)
+            // Only broadcast when this plugin approval is actually the ACTIVE
+            // one — an exec approval already on screen must not be silently
+            // replaced by a plugin one that arrived later.
+            if case .plugin(let active) = activeApproval(), active.id == prompt.id {
+                self._onEvent?([
+                    "type": "gateway_approval", "payload": payload,
+                    "prompt": Self.pluginPromptDict(prompt),
+                ])
+            }
+        case ADGatewayEventName.pluginApprovalResolved.rawValue:
+            if let resolvedId = payload["id"] as? String, resolvedId != pendingPluginApproval?.id {
+                // Not ours — leave the pending prompt alone.
+            } else {
+                setPendingPluginApproval(nil)
+            }
+            var resolved: [String: Any] = ["type": "gateway_approval_resolved", "payload": payload]
+            if let survivor = survivingApprovalPrompt() { resolved["survivor"] = survivor }
+            self._onEvent?(resolved)
+        case ADGatewayEventName.pluginApprovalRemoved.rawValue:
+            // NOT declared in any `.d.ts` the installed package ships — real
+            // wire protocol confirmed only at the embedded/TUI-local approval
+            // broker's string literal, a different runtime from the persisted
+            // Gateway approval manager this adapter connects through. Payload
+            // is just `{id}` — no decision, so this can only ABANDON, never
+            // resolve.
+            if let removedId = payload["id"] as? String, removedId == pendingPluginApproval?.id {
+                abandonPendingPluginApproval(reason: "Removed by Gateway")
+            }
         case ADGatewayEventName.presence.rawValue, ADGatewayEventName.systemPresence.rawValue:
             self._onEvent?(["type": "gateway_presence", "payload": payload])
         case ADGatewayEventName.health.rawValue:
@@ -713,6 +828,7 @@ actor OpenClawAdapter {
             emitAuthStatus("connected", requestId: nil, message: nil)
             requestBaselineState()
             requestSessionsList()
+            catalogGeneration += 1
             Task { await self.emitModelCatalog() }
             // Catch up on approvals already waiting. `exec.approval.requested`
             // is a broadcast and is never replayed, so without this a daemon
@@ -781,9 +897,21 @@ actor OpenClawAdapter {
         }
         isConnected = false
         wsTask = nil
+        catalogGeneration += 1
+        catalogRetryTask?.cancel()
+        catalogRetryTask = nil
         sessionsSubscribed = false
         sessionsPollTask?.cancel()
         sessionsPollTask = nil
+        // Pending approvals are Gateway-process state: a reconnect issues new
+        // ids, so holding the old one offers buttons that resolve to "unknown
+        // or expired approval id". The Node adapter has always done this; here
+        // the prompt used to survive every reconnect. Unlike a chat turn ending
+        // (which does NOT abandon a plugin approval — nothing guarantees one is
+        // scoped to the turn that happens to be closing), a dropped link
+        // invalidates every id regardless of kind.
+        abandonPendingApproval(reason: "Gateway disconnected")
+        abandonPendingPluginApproval(reason: "Gateway disconnected")
 
         if wasConnected {
             self._onConnectionChanged?(false)
@@ -996,43 +1124,194 @@ actor OpenClawAdapter {
     /// The approval the Gateway is blocked on, for the virtual
     /// `openclaw-gateway` session row. Without the question and options on that
     /// row, every deck falls back to "PERMIT? / answer in terminal" — and the
-    /// Gateway session has no terminal to answer in.
+    /// Gateway session has no terminal to answer in. Whichever kind is ACTIVE
+    /// (`activeApproval()` — the older of exec/plugin when both are pending).
     func currentPendingApproval() -> [String: Any]? {
-        pendingApproval.map(Self.promptDict)
+        switch activeApproval() {
+        case .exec(let prompt): return Self.promptDict(prompt)
+        case .plugin(let prompt): return Self.pluginPromptDict(prompt)
+        case nil: return nil
+        }
     }
 
-    /// Read the approvals the Gateway is already blocked on and surface the
-    /// oldest one. Called once per handshake.
+    /// Read the approvals the Gateway is already blocked on (both kinds) and
+    /// surface the oldest of each. Called once per handshake.
     ///
-    /// Only one is adopted: the deck renders a single question at a time, and
-    /// the Gateway blocks the agent on each in turn, so the oldest is the one
-    /// actually holding work up.
+    /// Only one of each kind is adopted: the Gateway blocks the agent (or the
+    /// plugin caller) on each in turn, so the oldest is the one actually
+    /// holding work up.
     private func adoptPendingApprovals() async {
         let response = await rpcRequest(method: "exec.approval.list", params: [:])
-        guard response.ok else { return }
-        // The result is a bare array, which some transports box under a key.
-        let rows: [[String: Any]] = {
-            if let list = response.payload as? [[String: Any]] { return list }
-            if let dict = response.payload as? [String: Any],
-               let list = dict["approvals"] as? [[String: Any]] { return list }
-            return []
-        }()
-        guard !rows.isEmpty else { return }
-        let sorted = rows.sorted {
-            (($0["createdAtMs"] as? Double) ?? 0) < (($1["createdAtMs"] as? Double) ?? 0)
-        }
-        guard let oldest = sorted.first,
-              let prompt = OpenClawApprovalRules.parse(
+        if response.ok {
+            let rows = Self.approvalListRows(response.payload) ?? []
+            let sorted = rows.sorted {
+                (($0["createdAtMs"] as? Double) ?? 0) < (($1["createdAtMs"] as? Double) ?? 0)
+            }
+            if let oldest = sorted.first,
+               let prompt = OpenClawApprovalRules.parse(
                 oldest, nowMs: Date().timeIntervalSince1970 * 1000),
-              prompt.id != pendingApproval?.id
-        else { return }
+               prompt.id != pendingApproval?.id {
+                setPendingApproval(prompt)
+                DaemonLogger.shared.debug("OpenClaw", "adopted pending approval \(prompt.id) on connect")
+                self._onEvent?([
+                    "type": "gateway_approval",
+                    "payload": oldest,
+                    "prompt": Self.promptDict(prompt),
+                ])
+            }
+        }
+
+        let pluginResponse = await rpcRequest(method: "plugin.approval.list", params: [:])
+        if pluginResponse.ok {
+            let rows = Self.approvalListRows(pluginResponse.payload) ?? []
+            let sorted = rows.sorted {
+                (($0["createdAtMs"] as? Double) ?? 0) < (($1["createdAtMs"] as? Double) ?? 0)
+            }
+            if let oldest = sorted.first,
+               let prompt = OpenClawPluginApprovalRules.parse(
+                oldest, nowMs: Date().timeIntervalSince1970 * 1000),
+               prompt.id != pendingPluginApproval?.id {
+                setPendingPluginApproval(prompt)
+                DaemonLogger.shared.debug(
+                    "OpenClaw", "adopted pending plugin approval \(prompt.id) on connect")
+                self._onEvent?([
+                    "type": "gateway_approval",
+                    "payload": oldest,
+                    "prompt": Self.pluginPromptDict(prompt),
+                ])
+            }
+        }
+    }
+
+    /// Install (or clear) the prompt every surface renders, and arm the watch
+    /// that is the only thing able to close it when the Gateway says nothing.
+    private func setPendingApproval(_ prompt: OpenClawApprovalPrompt?) {
         pendingApproval = prompt
-        DaemonLogger.shared.debug("OpenClaw", "adopted pending approval \(prompt.id) on connect")
-        self._onEvent?([
-            "type": "gateway_approval",
-            "payload": oldest,
-            "prompt": Self.promptDict(prompt),
-        ])
+        pendingApprovalWatch?.cancel()
+        pendingApprovalWatch = nil
+        guard prompt != nil else { return }
+        pendingApprovalWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.approvalReconcileNanoseconds)
+                if Task.isCancelled { return }
+                await self?.reconcilePendingApproval()
+            }
+        }
+    }
+
+    /// The approval went away without a decision — it expired, its run was
+    /// cancelled, or the link dropped. The Gateway emits no
+    /// `exec.approval.resolved` for any of those, so this is the only path that
+    /// takes the prompt off the deck.
+    private func abandonPendingApproval(reason: String) {
+        guard let prompt = pendingApproval else { return }
+        setPendingApproval(nil)
+        DaemonLogger.shared.info(
+            "OpenClaw: pending approval \(prompt.id) abandoned — \(reason)")
+        var abandoned: [String: Any] = [
+            "type": "gateway_approval_abandoned",
+            "id": prompt.id,
+            "reason": reason,
+        ]
+        if let survivor = survivingApprovalPrompt() { abandoned["survivor"] = survivor }
+        _onEvent?(abandoned)
+    }
+
+    /// Ask the Gateway whether the displayed approval still exists.
+    ///
+    /// Only a READABLE answer that does not contain our id closes the prompt. A
+    /// transport failure, a socket that is down, or a payload this cannot parse
+    /// are all "no information" and leave it exactly where it is — a wrong
+    /// "gone" discards a live approval the agent is still blocked on.
+    ///
+    /// The record's own expiry is checked on the same tick, because it is the
+    /// one bound that still applies while the link is down.
+    private func reconcilePendingApproval() async {
+        guard let prompt = pendingApproval else { return }
+        if let expiresAtMs = prompt.expiresAtMs,
+           expiresAtMs <= Date().timeIntervalSince1970 * 1000 {
+            abandonPendingApproval(reason: "Expired")
+            return
+        }
+        guard isConnected, wsTask != nil else { return }
+        let response = await rpcRequest(method: "exec.approval.list", params: [:])
+        guard response.ok else { return }
+        guard let rows = Self.approvalListRows(response.payload) else { return }
+        if rows.contains(where: { ($0["id"] as? String) == prompt.id }) { return }
+        // It may have been answered or replaced while we were asking.
+        guard pendingApproval?.id == prompt.id else { return }
+        abandonPendingApproval(reason: "No longer pending")
+    }
+
+    /// Rows of an `exec.approval.list` (or `plugin.approval.list`) answer, or
+    /// nil when the payload cannot be read as one. Nil is not an empty list:
+    /// "I could not read the answer" must never close a prompt.
+    private static func approvalListRows(_ payload: Any?) -> [[String: Any]]? {
+        if let list = payload as? [[String: Any]] { return list }
+        if let dict = payload as? [String: Any], let list = dict["approvals"] as? [[String: Any]] {
+            return list
+        }
+        return nil
+    }
+
+    // MARK: - Pending plugin approval (plugin.approval.*, issue #309)
+    //
+    // Mirrors the exec block above field-for-field. One deliberate divergence:
+    // exec approvals are abandoned on turn-end paths (search this file for
+    // `abandonPendingApprovalForTurnEnd` — Node has an explicit turn-end call;
+    // this Swift adapter's exec approval is only ever abandoned by expiry,
+    // reconcile-miss, resolve, or disconnect, so plugin mirrors exactly that
+    // same set with no turn-end wiring to omit).
+
+    /// Install (or clear) the plugin prompt every surface renders, and arm the
+    /// watch that is the only thing able to close it when the Gateway says
+    /// nothing.
+    private func setPendingPluginApproval(_ prompt: OpenClawPluginApprovalPrompt?) {
+        pendingPluginApproval = prompt
+        pendingPluginApprovalWatch?.cancel()
+        pendingPluginApprovalWatch = nil
+        guard prompt != nil else { return }
+        pendingPluginApprovalWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.approvalReconcileNanoseconds)
+                if Task.isCancelled { return }
+                await self?.reconcilePendingPluginApproval()
+            }
+        }
+    }
+
+    /// The plugin approval went away without a decision. The Gateway emits no
+    /// `plugin.approval.resolved` for expiry/reconcile-miss, so this is the
+    /// only path that takes the prompt off the deck for those.
+    private func abandonPendingPluginApproval(reason: String) {
+        guard let prompt = pendingPluginApproval else { return }
+        setPendingPluginApproval(nil)
+        DaemonLogger.shared.info(
+            "OpenClaw: pending plugin approval \(prompt.id) abandoned — \(reason)")
+        var abandoned: [String: Any] = [
+            "type": "gateway_approval_abandoned",
+            "id": prompt.id,
+            "reason": reason,
+        ]
+        if let survivor = survivingApprovalPrompt() { abandoned["survivor"] = survivor }
+        _onEvent?(abandoned)
+    }
+
+    /// Ask the Gateway whether the displayed plugin approval still exists.
+    private func reconcilePendingPluginApproval() async {
+        guard let prompt = pendingPluginApproval else { return }
+        if let expiresAtMs = prompt.expiresAtMs,
+           expiresAtMs <= Date().timeIntervalSince1970 * 1000 {
+            abandonPendingPluginApproval(reason: "Expired")
+            return
+        }
+        guard isConnected, wsTask != nil else { return }
+        let response = await rpcRequest(method: "plugin.approval.list", params: [:])
+        guard response.ok else { return }
+        guard let rows = Self.approvalListRows(response.payload) else { return }
+        if rows.contains(where: { ($0["id"] as? String) == prompt.id }) { return }
+        guard pendingPluginApproval?.id == prompt.id else { return }
+        abandonPendingPluginApproval(reason: "No longer pending")
     }
 
     /// Answer the pending approval from a device command (`select_option` /
@@ -1049,7 +1328,20 @@ actor OpenClawAdapter {
     /// guessed into an approval.
     @discardableResult
     func resolvePendingApproval(command: [String: Any]) -> Bool {
-        guard let prompt = pendingApproval else { return false }
+        // Route to whichever kind is ACTIVE — an exec approval and a plugin
+        // approval can both be pending, and a press must land on the one the
+        // device was actually DISPLAYING, never guessed at.
+        switch activeApproval() {
+        case .plugin(let prompt):
+            return resolvePendingPluginApproval(prompt, command: command)
+        case .exec(let prompt):
+            return resolvePendingExecApproval(prompt, command: command)
+        case nil:
+            return false
+        }
+    }
+
+    private func resolvePendingExecApproval(_ prompt: OpenClawApprovalPrompt, command: [String: Any]) -> Bool {
         let type = command["type"] as? String ?? ""
         let decision: ExecApprovalDecision?
         switch type {
@@ -1075,8 +1367,75 @@ actor OpenClawAdapter {
                 "OpenClaw", "approval \(type) named no allowed decision — ignored")
             return false
         }
-        sendRPC(method: "exec.approval.resolve", params: ["id": prompt.id, "decision": decision.rawValue])
+        // Await the answer rather than firing and forgetting. Two failures, two
+        // outcomes: the Gateway naming this approval as unknown, expired or
+        // already resolved IS the answer — the prompt is not answerable by
+        // anyone and must come off the deck — while a transport failure tells us
+        // nothing and leaves it up to press again.
+        Task { [weak self] in
+            guard let self else { return }
+            let response = await self.rpcRequest(
+                method: "exec.approval.resolve",
+                params: ["id": prompt.id, "decision": decision.rawValue])
+            await self.handleApprovalResolveResponse(response, promptId: prompt.id)
+        }
         return true
+    }
+
+    private func resolvePendingPluginApproval(
+        _ prompt: OpenClawPluginApprovalPrompt, command: [String: Any]
+    ) -> Bool {
+        let type = command["type"] as? String ?? ""
+        let decision: ExecApprovalDecision?
+        switch type {
+        case "select_option":
+            if let echo = command["question"] as? String, !Self.pluginApprovalEchoMatches(prompt, echo) {
+                DaemonLogger.shared.debug(
+                    "OpenClaw",
+                    "select_option dropped: question echo does not match pending plugin approval")
+                return false
+            }
+            let index = command["index"] as? Int ?? -1
+            decision = OpenClawPluginApprovalRules.decision(forOptionIndex: index, in: prompt)
+        case "respond":
+            decision = OpenClawPluginApprovalRules.decision(
+                forRespondValue: command["value"] as? String ?? "", in: prompt)
+        default:
+            decision = nil
+        }
+        guard let decision else {
+            DaemonLogger.shared.debug(
+                "OpenClaw", "plugin approval \(type) named no allowed decision — ignored")
+            return false
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            let response = await self.rpcRequest(
+                method: "plugin.approval.resolve",
+                params: ["id": prompt.id, "decision": decision.rawValue])
+            await self.handlePluginApprovalResolveResponse(response, promptId: prompt.id)
+        }
+        return true
+    }
+
+    private func handleApprovalResolveResponse(_ response: RPCResponse, promptId: String) {
+        guard !response.ok else { return }
+        DaemonLogger.shared.error(
+            "OpenClaw: exec.approval.resolve failed: "
+            + "\(response.error?["message"] as? String ?? "unknown")")
+        guard pendingApproval?.id == promptId else { return }
+        guard OpenClawApprovalRules.isApprovalGoneError(response.error) else { return }
+        abandonPendingApproval(reason: "No longer pending")
+    }
+
+    private func handlePluginApprovalResolveResponse(_ response: RPCResponse, promptId: String) {
+        guard !response.ok else { return }
+        DaemonLogger.shared.error(
+            "OpenClaw: plugin.approval.resolve failed: "
+            + "\(response.error?["message"] as? String ?? "unknown")")
+        guard pendingPluginApproval?.id == promptId else { return }
+        guard OpenClawApprovalRules.isApprovalGoneError(response.error) else { return }
+        abandonPendingPluginApproval(reason: "No longer pending")
     }
 
     /// Truncation-tolerant echo compare. Devices cap the question they display,
@@ -1084,6 +1443,18 @@ actor OpenClawAdapter {
     /// Compares `.utf16` so the Swift and TS daemons cut at the same units.
     private static func approvalEchoMatches(_ prompt: OpenClawApprovalPrompt, _ echo: String) -> Bool {
         let a = Array(prompt.question.trimmingCharacters(in: .whitespacesAndNewlines).utf16)
+        let b = Array(echo.trimmingCharacters(in: .whitespacesAndNewlines).utf16)
+        if b.isEmpty { return true }
+        let n = min(a.count, b.count)
+        return Array(a.prefix(n)) == Array(b.prefix(n))
+    }
+
+    /// Compares against what was actually DISPLAYED (`[Plugin] <title>`), not
+    /// the raw title — mirror of the Node adapter's fix for the same trap.
+    private static func pluginApprovalEchoMatches(
+        _ prompt: OpenClawPluginApprovalPrompt, _ echo: String
+    ) -> Bool {
+        let a = Array("[Plugin] \(prompt.question)".trimmingCharacters(in: .whitespacesAndNewlines).utf16)
         let b = Array(echo.trimmingCharacters(in: .whitespacesAndNewlines).utf16)
         if b.isEmpty { return true }
         let n = min(a.count, b.count)
@@ -1107,6 +1478,25 @@ actor OpenClawAdapter {
         // `agent:main:cron:<id>` and `agent:main:eval-…__r2` are wildly
         // different things to approve, and the row is pinned to the literal
         // "OpenClaw" for all three.
+        if let sessionKey = prompt.sessionKey { dict["sessionKey"] = sessionKey }
+        return dict
+    }
+
+    /// Wire form of a plugin prompt — same shape as `promptDict` (question /
+    /// options / detail / sessionKey) so `DaemonServer`'s generic session-row
+    /// builder needs no plugin-specific branch, but no `command` key (plugin
+    /// approvals do not have one). The `[Plugin] ` prefix on `question` is
+    /// what lets a user pressing Allow know WHICH kind of thing they are
+    /// allowing — mirror of `bridge/src/openclaw-session.ts`'s label rule.
+    private static func pluginPromptDict(_ prompt: OpenClawPluginApprovalPrompt) -> [String: Any] {
+        var dict: [String: Any] = [
+            "id": prompt.id,
+            "question": "[Plugin] \(prompt.question)",
+            "options": prompt.options.map {
+                ["index": $0.index, "label": $0.label, "shortcut": $0.shortcut]
+            },
+        ]
+        if let detail = prompt.detail { dict["detail"] = detail }
         if let sessionKey = prompt.sessionKey { dict["sessionKey"] = sessionKey }
         return dict
     }
@@ -1325,7 +1715,17 @@ actor OpenClawAdapter {
             ],
             "role": defaultRole,
             "scopes": scopes,
-            "caps": ["tool-events"],
+            // `approvals` is not decorative: since openclaw 2026.9.x the
+            // Gateway delivers `exec.approval.requested`/`resolved` (and the
+            // plugin equivalents) only to connections whose handshake
+            // advertises an approvals cap or a known approval-client id
+            // (canDeliverApprovals). Without it the scopes above grant the
+            // RPCs while the push events go only to the TUI/mobile apps, and
+            // the daemon learns an approval exists solely through the
+            // handshake catch-up — a PERM raised while the link stayed up
+            // never reached any deck (measured 2026-09-19 against openclaw
+            // 2026.9.4; mirrors the Node adapter).
+            "caps": ["tool-events", "approvals"],
         ]
 
         // Pull in a rotated token from the bookmarked openclaw.json (if the
@@ -1532,16 +1932,38 @@ actor OpenClawAdapter {
         _onEvent?(event)
     }
 
-    private func emitModelCatalog(retry: Bool = true) async {
+    /// Fetch the model catalog and emit it. A failure is never final while the
+    /// adapter is alive: one retry ten seconds after connect (the previous
+    /// shape) left the Gateway row without a model and every surface without a
+    /// catalog for the connection's whole lifetime whenever both attempts
+    /// landed under load (2026-09-11, Node daemon; same shape here).
+    private func emitModelCatalog() async {
+        catalogRetryTask?.cancel()
+        catalogRetryTask = nil
+        guard !isStopping else { return }
+        let generation = catalogGeneration
         guard let (entries, defaultModel) = await fetchModelCatalog() else {
-            if retry && !isStopping {
-                DaemonLogger.shared.debug("OpenClaw", "Model catalog empty — retrying in 10s")
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled, !isStopping else { return }
-                await emitModelCatalog(retry: false)
+            guard !isStopping, generation == catalogGeneration else { return }
+            let rung = min(catalogAttempt, Self.catalogRetryLadderSeconds.count - 1)
+            let delay = Self.catalogRetryLadderSeconds[rung]
+            catalogAttempt += 1
+            // The first miss is routine; from the second on it earns a log line,
+            // because until it succeeds no surface shows a model or a catalog.
+            let line = "OpenClaw model catalog unavailable (models.list, attempt \(catalogAttempt)) — retrying in \(Int(delay))s"
+            if catalogAttempt >= 2 { DaemonLogger.shared.info(line) } else { DaemonLogger.shared.debug("OpenClaw", line) }
+            catalogRetryTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                // `emitModelCatalog` re-checks `isStopping` on entry.
+                guard !Task.isCancelled, let self else { return }
+                await self.emitModelCatalog()
             }
             return
         }
+        guard generation == catalogGeneration else { return }
+        if catalogAttempt > 0 {
+            DaemonLogger.shared.info("OpenClaw model catalog recovered after \(catalogAttempt) failed attempt(s): \(entries.count) models")
+        }
+        catalogAttempt = 0
         _onEvent?([
             "type": "model_catalog",
             "models": entries,
@@ -1564,8 +1986,15 @@ actor OpenClawAdapter {
             return nil
         }
         let entries = models.compactMap { model -> [String: Any]? in
+            // Live Gateway shape: bare `id` + `provider`. Join them the way the
+            // CLI `key` was (`zai/glm-5.3`, provider prefixed even when the id
+            // carries a slash) — the form `mainSessionModelKey` is built in, so
+            // the display-name lookup below actually matches. Node mirror:
+            // bridge/src/openclaw-model-catalog.ts.
+            let provider = Self.stringValue(model["provider"])
+            let id = Self.stringValue(model["id"])
             let key = model["key"] as? String
-                ?? model["id"] as? String
+                ?? (id.flatMap { id in provider.map { "\($0)/\(id)" } ?? id })
                 ?? [model["provider"] as? String, model["name"] as? String].compactMap { $0 }.joined(separator: "/")
             let name = model["name"] as? String
                 ?? model["title"] as? String

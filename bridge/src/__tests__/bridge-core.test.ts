@@ -7,7 +7,13 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer } from 'http';
-import { BridgeCore, INITIAL_TIMELINE_HISTORY_MAX_BYTES } from '../bridge-core.js';
+import { resolveRelayedUsageEvent } from '../relayed-usage.js';
+import {
+  BridgeCore,
+  ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES,
+  INITIAL_TIMELINE_HISTORY_ENTRIES,
+  INITIAL_TIMELINE_HISTORY_MAX_BYTES,
+} from '../bridge-core.js';
 import { WsTestClient } from './helpers/ws-test-client.js';
 import { createTempDataDir, type TempDataDir } from './helpers/temp-data-dir.js';
 import { State, PermissionMode, CLAUDE_CODE_CAPABILITIES } from '@agentdeck/shared';
@@ -62,6 +68,66 @@ describe('BridgeCore Orchestration', () => {
       setTimeout(resolve, 500);
     });
     tempDir.cleanup();
+  });
+
+  it('retires old disk quota after a failed first poll and never restamps cache hits', () => {
+    const capturedAt = new Date(Date.now() - 11 * 60_000).toISOString();
+    core.applyZaiUsageResult({ fresh: false, data: {
+      primary: { usedPercent: 92, windowMinutes: 300 }, capturedAt, planType: 'max',
+    } });
+    expect((core.buildUsage() as UsageEvent).zaiRateLimits?.primary).toBeUndefined();
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    core.applyZaiUsageResult({ fresh: true, data: {
+      primary: { usedPercent: 12, windowMinutes: 300 }, capturedAt: recent,
+    } });
+    expect(core.lastZaiFetchTime).toBe(Date.parse(recent));
+    expect((core.buildUsage() as UsageEvent).zaiRateLimits?.primary?.usedPercent).toBe(12);
+    core.applyZaiUsageResult({ data: null, fresh: false });
+    expect(JSON.parse(JSON.stringify(core.buildUsage())).zaiRateLimits).toEqual({});
+  });
+
+  it('expires z.ai on a focused relay without rebuilding usage or extending capture time', () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const capturedAt = new Date(now).toISOString();
+      core.applyZaiUsageResult({ fresh: true, data: {
+        capturedAt, planType: 'max', limitId: 'standard',
+        primary: { usedPercent: 92, windowMinutes: 300 },
+        secondary: { usedPercent: 100, windowMinutes: 43200, quantity: 'mcp' },
+      } });
+      const buildOwnUsage = vi.spyOn(core, 'buildUsage');
+      const relay = () => JSON.parse(JSON.stringify(resolveRelayedUsageEvent({
+        relayed: { type: 'usage_update', fiveHourPercent: 63, inputTokens: 42,
+          subscriptions: [{ name: 'Claude' }] },
+        ownCodexRateLimits: null,
+        ownZaiRateLimits: core.zaiQuotaForWire(),
+        buildOwnUsage: () => core.buildUsage() as UsageEvent,
+      })));
+      clock.mockReturnValue(now + 10 * 60_000);
+      expect(relay().zaiRateLimits.capturedAt).toBe(capturedAt);
+      expect(relay().subscriptions).toContainEqual({ name: 'GLM Coding Plan · Max' });
+      clock.mockReturnValue(now + 10 * 60_000 + 1);
+      const expired = relay();
+      expect(expired.zaiRateLimits).toEqual({ planType: 'max', limitId: 'standard' });
+      expect(expired.subscriptions).toEqual([{ name: 'Claude' }]);
+      expect(expired.inputTokens).toBe(42);
+      expect(expired.fiveHourPercent).toBe(63);
+      expect(buildOwnUsage).not.toHaveBeenCalled();
+      buildOwnUsage.mockRestore();
+
+      // Replacement/removal must be visible on the next relay too.
+      core.applyZaiUsageResult({ fresh: true, data: {
+        capturedAt: new Date(Date.now()).toISOString(), planType: 'lite',
+        primary: { usedPercent: 3, windowMinutes: 300 },
+      } });
+      expect(relay().subscriptions).toContainEqual({ name: 'GLM Coding Plan · Lite' });
+      core.applyZaiUsageResult({ fresh: false, data: null });
+      expect(relay().zaiRateLimits).toEqual({});
+      expect(relay().subscriptions).toEqual([{ name: 'Claude' }]);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   // ─── State event building ─────────────────────────────────────────
@@ -229,6 +295,40 @@ describe('BridgeCore Orchestration', () => {
         expect(core.apiUsageStale).toBe(true);
       });
 
+      it('retires quota and the subscription in both frame types before a timer runs, then recovers', () => {
+        core.stateMachine.handleHookEvent('SessionStart', {});
+        core.stateMachine.handleParserEvent('model_info', { model: 'claude-fable-5' });
+        core.updateApiUsage(sampleApiUsage());
+        const state = () => core.buildStateEvent({ agentType: 'claude-code' }) as StateUpdateEvent;
+        const usage = () => core.buildUsage() as UsageEvent;
+        expect(state().subscriptions).toContainEqual({ name: 'Claude' });
+        expect(usage().fiveHourPercent).toBe(35);
+        core.cachedAntigravityStatus = { planName: 'Antigravity Pro' };
+        core.lastApiFetchTime = Date.now() - 600_001;
+        expect(state().subscriptions).not.toContainEqual({ name: 'Claude' });
+        expect(state().subscriptions).toContainEqual({ name: 'Antigravity Pro' });
+        expect(usage().usageStale).toBe(true);
+        expect(usage().fiveHourPercent).toBeUndefined();
+        expect(core.cachedApiUsage?.fiveHourPercent).toBe(35);
+        core.updateApiUsage(sampleApiUsage({ fiveHourPercent: 8 }));
+        expect(usage().fiveHourPercent).toBe(8);
+        expect(usage().usageStale).toBe(false);
+        expect(state().subscriptions).toContainEqual({ name: 'Claude' });
+        core.applyUsageResult(null);
+        expect(usage().fiveHourPercent).toBeUndefined();
+        expect(state().subscriptions).not.toContainEqual({ name: 'Claude' });
+      });
+
+      it('keeps API cost usage live without a subscription cache', () => {
+        vi.spyOn(core.stateMachine, 'getSnapshot').mockReturnValue({
+          ...core.stateMachine.getSnapshot(), billingType: 'api', costSpent: 5, costLimit: 20,
+        });
+        const event = core.buildUsage() as UsageEvent;
+        expect(event.fiveHourPercent).toBe(25);
+        expect(event.usageStale).toBe(false);
+        expect(event.subscriptions).not.toContainEqual({ name: 'Claude' });
+      });
+
       it('reports freshness back to the caller', () => {
         expect(core.applyUsageResult({ data: sampleApiUsage(), fresh: true })).toBe(true);
         expect(core.applyUsageResult({ data: sampleApiUsage(), fresh: false })).toBe(false);
@@ -303,13 +403,13 @@ describe('BridgeCore Orchestration', () => {
       }
     });
 
-    it('caps initial timeline_history below the ESP32 WebSocket frame limit', async () => {
+    it('gives a dashboard the latest readable rows, as the Swift daemon does', async () => {
       core.wireTimeline();
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 140; i++) {
         core.bridgeTimeline.addEntry({
           ts: 1000 + i,
-          type: 'tool_request',
-          raw: `entry-${i}-${'x'.repeat(900)}`,
+          type: 'chat_response',
+          raw: `reply-${i}-${'x'.repeat(900)}`,
         });
       }
 
@@ -329,8 +429,64 @@ describe('BridgeCore Orchestration', () => {
         expect(Buffer.byteLength(JSON.stringify(historyEvt), 'utf8')).toBeLessThanOrEqual(
           INITIAL_TIMELINE_HISTORY_MAX_BYTES,
         );
-        expect(entries.length).toBeLessThan(40);
-        expect(entries.at(-1)?.raw).toContain('entry-39-');
+        expect(entries.length).toBe(INITIAL_TIMELINE_HISTORY_ENTRIES);
+        expect(entries.at(-1)?.raw).toContain('reply-139-');
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('keeps an untagged board on the board frame limit from its first connect', async () => {
+      core.wireTimeline();
+      for (let i = 0; i < 40; i++) {
+        core.bridgeTimeline.addEntry({ ts: 1000 + i, type: 'chat_response', raw: `reply-${i}-${'x'.repeat(900)}` });
+      }
+      core.wsServer.onClientConnect((ws) => {
+        core.sendInitialState(ws, { agentType: 'claude-code', isAlive: true });
+      });
+
+      const board = new WsTestClient();
+      await board.connect(`ws://127.0.0.1:${port}`, { 'User-Agent': 'arduino-WebSocket-Client' });
+
+      try {
+        const historyEvt = await board.waitForType('timeline_history');
+        const entries = (historyEvt as any).entries as Array<{ raw: string }>;
+        expect(Buffer.byteLength(JSON.stringify(historyEvt), 'utf8')).toBeLessThanOrEqual(
+          ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES,
+        );
+        // Trimmed to firmware size before the budget: several rows, newest last.
+        expect(entries.length).toBeGreaterThan(5);
+        expect(entries.at(-1)?.raw).toContain('reply-39-');
+      } finally {
+        await board.close();
+      }
+    });
+
+    it('filters unreadable rows before the byte cap, not after', async () => {
+      core.wireTimeline();
+      core.bridgeTimeline.addEntry({ ts: 500, type: 'chat_end', raw: 'Finished the migration' });
+      // Newest rows are tool noise big enough to spend the whole budget.
+      for (let i = 0; i < 40; i++) {
+        core.bridgeTimeline.addEntry({
+          ts: 1000 + i,
+          type: 'tool_request',
+          raw: `tool-${i}-${'x'.repeat(900)}`,
+          toolEvent: true,
+        } as any);
+      }
+      core.setConnectHistoryFilter((_ws, entries) =>
+        entries.filter((entry) => entry.toolEvent !== true));
+      core.wsServer.onClientConnect((ws) => {
+        core.sendInitialState(ws, { agentType: 'claude-code', isAlive: true });
+      });
+
+      const client = new WsTestClient();
+      await client.connect(`ws://127.0.0.1:${port}`);
+
+      try {
+        const historyEvt = await client.waitForType('timeline_history');
+        const entries = (historyEvt as any).entries as Array<{ raw: string }>;
+        expect(entries.map((e) => e.raw)).toEqual(['Finished the migration']);
       } finally {
         await client.close();
       }

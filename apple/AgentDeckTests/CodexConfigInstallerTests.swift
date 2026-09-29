@@ -8,6 +8,106 @@ import XCTest
 /// is the entire on-disk effect, and that pipeline is testable.
 final class CodexConfigInstallerTests: XCTestCase {
 
+    func testTruncatedFenceHelperDoesNotTrap() {
+        XCTAssertEqual(MiniToml.removeManagedBlock(in: MiniToml.openFence), MiniToml.openFence)
+        XCTAssertNotNil(MiniToml.configEditIssue(MiniToml.openFence))
+    }
+
+    func testSharedConfigEditVectors() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("shared/codex-config-edit-vectors.json"))
+        let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        for row in cases {
+            let input = try XCTUnwrap(row["input"] as? String)
+            let allowed = try XCTUnwrap(row["allowed"] as? Bool)
+            if allowed {
+                let updated = try CodexConfigInstaller.preparedConfig(input, daemonHttpPort: 9120)
+                XCTAssertEqual(try CodexConfigInstaller.preparedConfig(updated, daemonHttpPort: 9120), updated)
+                XCTAssertEqual(MiniToml.removeManagedBlock(in: updated), (row["stripped"] as? String) ?? input)
+            } else { XCTAssertThrowsError(try CodexConfigInstaller.preparedConfig(input, daemonHttpPort: 9120), "\(row["name"] ?? "")") }
+        }
+    }
+
+    func testExistingEnabledFeaturesCoexistsWithoutDuplicateTable() throws {
+        let original = "model = \"gpt-5\"\n[features]\nhooks = true # user opt-in\nother = true\n[profiles.work]\nmodel = \"gpt-5\""
+        let updated = try CodexConfigInstaller.preparedConfig(original, daemonHttpPort: 9120)
+        XCTAssertEqual(updated.components(separatedBy: "[features]").count - 1, 1)
+        XCTAssertTrue(updated.contains("[[hooks.Stop]]"))
+        XCTAssertEqual(MiniToml.removeManagedBlock(in: updated), original)
+        XCTAssertEqual(try CodexConfigInstaller.preparedConfig(updated, daemonHttpPort: 9120), updated)
+    }
+
+    func testCommentedFeaturesHeaderDoesNotCreateDuplicateTable() throws {
+        let original = "[ features ] # custom flags\nhooks = true\nother = true"
+        let updated = try CodexConfigInstaller.preparedConfig(original, daemonHttpPort: 9120)
+        XCTAssertFalse(updated.contains("[features]"))
+        XCTAssertEqual(MiniToml.removeManagedBlock(in: updated), original)
+        XCTAssertThrowsError(try CodexConfigInstaller.preparedConfig("[features] # custom\nhooks = false"))
+    }
+
+    func testSymlinkConfigIsKeptIntact() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("target.toml")
+        let link = root.appendingPathComponent("config.toml")
+        try "model = \"keep\"".write(to: target, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        XCTAssertThrowsError(try CodexConfigInstaller.updateConfig(at: link) { _ in "changed" })
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "model = \"keep\"")
+        XCTAssertTrue(try link.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true)
+    }
+
+    func testMissingConfigDoesNotCreateAReplacementFile() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        XCTAssertThrowsError(try CodexConfigInstaller.updateConfig(at: url) { _ in
+            XCTFail("Missing files need renewed access, not replacement")
+            return "replacement"
+        })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func testDisabledOrMissingFeatureOptInIsAnActionableConflict() {
+        for original in ["[features]\nhooks = false", "[features]\nother = true",
+                         "[features]\nother = true\n[profiles.work]\nhooks = true"] {
+            XCTAssertThrowsError(try CodexConfigInstaller.preparedConfig(original)) { error in
+                XCTAssertTrue(error.localizedDescription.contains("[features]"))
+                XCTAssertTrue(error.localizedDescription.contains("retry"))
+            }
+        }
+        XCTAssertThrowsError(try CodexConfigInstaller.preparedConfig("[hooks]\nmanaged_dir = \"x\"")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("[hooks]"))
+        }
+    }
+
+    func testUnreadableConfigNeverCallsTransformOrOverwritesBytes() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let bytes = Data([0xff, 0xfe, 0x80])
+        try bytes.write(to: url)
+        XCTAssertThrowsError(try CodexConfigInstaller.updateConfig(at: url) { _ in
+            XCTFail("Unreadable files must not be treated as empty configs")
+            return "replacement"
+        })
+        XCTAssertEqual(try Data(contentsOf: url), bytes)
+    }
+
+    func testConflictAndConcurrentChangeDoNotOverwriteConfig() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let original = "[features]\nhooks = false"
+        try Data(original.utf8).write(to: url)
+        XCTAssertThrowsError(try CodexConfigInstaller.updateConfig(at: url) {
+            try CodexConfigInstaller.preparedConfig($0)
+        })
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), original)
+        XCTAssertThrowsError(try CodexConfigInstaller.updateConfig(at: url) { _ in
+            try Data("model = \"new\"".utf8).write(to: url)
+            return "stale replacement"
+        })
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "model = \"new\"")
+    }
+
     /// Apply + remove must restore the user's original handcrafted file
     /// byte-for-byte. This is the load-bearing invariant — a regression
     /// here means we ate a user's `[profiles.work]` table or shuffled
@@ -61,6 +161,13 @@ final class CodexConfigInstallerTests: XCTestCase {
         XCTAssertTrue(withFence.contains("/hooks/codex_tool_start"))
         XCTAssertTrue(withFence.contains("/hooks/codex_tool_end"))
         XCTAssertTrue(withFence.contains("/hooks/codex_stop"))
+        XCTAssertTrue(withFence.contains("[[hooks.PermissionRequest]]"))
+        XCTAssertTrue(withFence.contains("/hooks/codex_permission_request"))
+        XCTAssertTrue(withFence.contains("[[hooks.Interrupt]]"))
+        XCTAssertTrue(withFence.contains("/hooks/codex_interrupt"))
+        let interrupt = withFence.components(separatedBy: "[[hooks.Interrupt]]").last!
+        XCTAssertTrue(interrupt.contains("timeout = 3"))
+        XCTAssertFalse(interrupt.contains("timeout = 5"))
         XCTAssertTrue(withFence.contains("--connect-timeout 0.2 --max-time 0.8"))
         XCTAssertTrue(withFence.contains("*[!0-9]*"))
         XCTAssertTrue(withFence.contains("type(p) is int and 1 <= p <= 65535"))

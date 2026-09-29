@@ -34,8 +34,16 @@ agentdeck claude                    # legacy managed PTY compatibility path
 `npx @agentdeck/setup` also works on Linux — it checks for the build toolchain
 instead of Xcode CLT and skips the Stream Deck app/CLI steps.
 
+> `pnpm link --global` is undocumented on pnpm 11 — `pnpm link --help` lists only
+> `pnpm link <dir>` — and at least one user's pnpm rejects it outright with
+> `unexpected argument '--global'` ([#303](https://github.com/puritysb/AgentDeck/issues/303),
+> [#304](https://github.com/puritysb/AgentDeck/pull/304)). If it fails, nothing else here
+> depends on it: every `agentdeck <args>` above also works as
+> `node bridge/dist/cli.js <args>`.
+
 ## Linux differences (intentional)
 
+- **No Stream Deck host** — the Stream Deck desktop app is unavailable, so the plugin host and its setup/CLI steps are skipped (device control is via the daemon + Apple/Android companions). Normal `claude`/`codex`/`opencode` observation, mDNS (pure-JS `bonjour-service`), and hook HTTP all work; the legacy `agentdeck <agent>` managed path remains functional for compatibility while replacements are validated. `npx @agentdeck/setup` checks for a C toolchain (`node-pty` still builds from source for the managed PTY path) instead of Xcode CLT and skips Stream Deck checks.
 - **`agentdeck daemon install` / `uninstall`** — registers a per-user **systemd `--user` unit** `agentdeck-daemon.service` (`~/.config/systemd/user/`), the Linux analog of the macOS LaunchAgent. `install` writes + enables + starts it and installs Codex/OpenCode hooks; `uninstall` gracefully shuts down the daemon then `disable --now` + removes the unit. Without systemd it degrades to a "run `agentdeck daemon start` manually" hint. For boot-without-login on a headless host, run `loginctl enable-linger $USER` once. See [docs/daemon.md → Autostart](daemon.md#autostart-loginlogon).
 - **PTY** — `$SHELL -l -c` (fallback `/bin/bash`); `node-pty` is built from source (needs the toolchain above).
 

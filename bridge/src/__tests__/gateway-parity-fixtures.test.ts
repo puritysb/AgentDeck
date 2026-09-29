@@ -31,6 +31,11 @@ import { join } from 'path';
 import type { GatewayFrame, AdapterContext } from '@agentdeck/shared';
 import { parseExecApprovalRequest } from '@agentdeck/shared';
 import {
+  parsePluginApprovalRequest,
+  parsePluginApprovalRemoved,
+  pluginApprovalAllows,
+} from '@agentdeck/shared';
+import {
   openclawSessionMessageToSpans,
   openclawSessionToolToSpans,
   openclawChatEventToSpans,
@@ -217,5 +222,39 @@ describe('Gateway parity fixtures', () => {
     }
     // The session key is what tells a user WHICH conversation is blocked.
     expect(prompt!.sessionKey).toBe('agent:main:eval-a03');
+  });
+
+  // ─── plugin.approval.* (issue #309) — fixtures are SDK-derived, see README ───
+
+  it('plugin.approval.requested parses into an answerable prompt, title as the headline', () => {
+    const p = payloadOf('plugin-approval-requested.json');
+    expect(p).toHaveProperty('request');
+    expect(p).not.toHaveProperty('command'); // never the exec shape
+    const prompt = parsePluginApprovalRequest(p, 0);
+    expect(prompt).not.toBeNull();
+    expect(prompt!.question).toBe('Send message to #ops');
+    expect(prompt!.title).toBe('Send message to #ops');
+    expect(prompt!.severity).toBe('warning');
+    expect(prompt!.detail).toContain('Post a status update to the #ops channel.');
+    expect(prompt!.detail).toContain('scope: message-send (#ops)');
+    for (const opt of prompt!.options) {
+      expect(['allow-once', 'allow-always', 'deny']).toContain(opt.decision);
+    }
+    expect(prompt!.sessionKey).toBe('agent:main:main');
+  });
+
+  it('plugin.approval.resolved reports the decision, sharing execApprovalAllows\'s polarity', () => {
+    const p = payloadOf('plugin-approval-resolved.json');
+    expect(p.decision).toBe('allow-once');
+    expect(pluginApprovalAllows(p.decision as string)).toBe(true);
+    expect(pluginApprovalAllows('deny')).toBe(false);
+  });
+
+  it('plugin.approval.removed carries only an id — no decision, never a resolve', () => {
+    const p = payloadOf('plugin-approval-removed.json');
+    expect(p).not.toHaveProperty('decision');
+    expect(parsePluginApprovalRemoved(p)).toBe(
+      'plugin:c1a9d3e2-7b44-4b0a-9e6f-2f5c8a1d0e7b',
+    );
   });
 });

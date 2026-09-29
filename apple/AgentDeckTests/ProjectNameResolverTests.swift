@@ -23,6 +23,45 @@ final class ProjectNameResolverTests: XCTestCase {
         unsetenv("AGENTDECK_PROJECT_NAME")
     }
 
+    func testSharedWorktreeProjectLabelVectors() throws {
+        struct Vector: Decodable {
+            let name: String
+            let cwd: String
+            let files: [String: String]
+            let expected: String
+            let compactExpected: String
+        }
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/project-name-vectors.json")
+        let vectors = try JSONDecoder().decode([Vector].self, from: Data(contentsOf: fixture))
+        for vector in vectors {
+            let root = tmpRoot.appendingPathComponent(UUID().uuidString)
+            let cwd = root.appendingPathComponent(vector.cwd)
+            try mkdir(cwd)
+            for (path, content) in vector.files {
+                let destination = root.appendingPathComponent(path)
+                try mkdir(destination.deletingLastPathComponent())
+                try write(destination, content.replacingOccurrences(of: "$ROOT", with: root.path))
+            }
+            XCTAssertEqual(ProjectNameResolver.resolve(cwd: cwd.path), vector.expected, vector.name)
+            XCTAssertEqual(ProjectNameResolver.compactProjectName(vector.expected, cwd: cwd.path), vector.compactExpected, vector.name)
+            XCTAssertEqual(ProjectNameResolver.compactProjectName("Explicit · literal", cwd: cwd.path), "Explicit · literal")
+        }
+    }
+
+    func testCompactSessionLabelVectors() throws {
+        struct Row: Decodable { let id: String; let name: String }
+        struct Vector: Decodable { let name: String; let rows: [Row]; let board: String?; let expected: [String: String] }
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/compact-session-label-vectors.json")
+        for vector in try JSONDecoder().decode([Vector].self, from: Data(contentsOf: fixture)) {
+            XCTAssertEqual(ESP32Serial.compactSessionLabels(vector.rows.map { ($0.id, $0.name) }, board: vector.board), vector.expected, vector.name)
+            XCTAssertEqual(ESP32Serial.compactSessionLabels(vector.rows.reversed().map { ($0.id, $0.name) }, board: vector.board), vector.expected, vector.name)
+        }
+    }
+
     // MARK: - Helpers
 
     private func mkdir(_ path: URL) throws {

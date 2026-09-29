@@ -1,48 +1,48 @@
 /**
- * Canonical state color palette — single source of truth for all platforms.
+ * State and agent-brand colours for TypeScript renderers.
  *
- * TypeScript consumers import directly.
- * Native platforms (Android/Apple/ESP32) reference these hex values in comments.
+ * Both tables are bindings, not palettes: session-state colours come from
+ * `session-state-presentation.ts` (the `Session` token group, DESIGN.md §2.7)
+ * and brand colours from the `Brand` token group (design/brand/*.svg). Native
+ * platforms consume the generated mirrors of the same source.
  */
-import { Tide } from './design-tokens.js';
 import { State } from './states.js';
-import type { AgentType } from './adapter.js';
+import { Brand, UI, Tide } from './design-tokens.js';
+import { SESSION_STATE_TONES, SESSION_TONE_COLORS, sessionToneColor } from './session-state-presentation.js';
 
 // ===== State Colors =====
 
-export const STATE_COLORS: Record<State, string> = {
-  [State.IDLE]:                '#22c55e',  // green
-  [State.PROCESSING]:          '#3b82f6',  // blue
-  [State.AWAITING_PERMISSION]: '#f59e0b',  // amber
-  [State.AWAITING_OPTION]:     '#f59e0b',  // amber
-  [State.AWAITING_DIFF]:       '#f59e0b',  // amber
-  [State.DISCONNECTED]:        '#6b7280',  // gray
-};
+export const STATE_COLORS: Record<State, string> = Object.fromEntries(
+  Object.entries(SESSION_STATE_TONES).map(([state, tone]) => [state, SESSION_TONE_COLORS[tone]]),
+) as Record<State, string>;
 
-/** Look up state color by string key. No agent-type overrides — purely semantic. */
+/** Look up state color by string key. No agent-type overrides — purely semantic.
+ * Missing → offline grey; unknown → idle (see `sessionTone`). */
 export function stateColor(state: string | undefined): string {
-  if (!state) return STATE_COLORS[State.DISCONNECTED];
-  return (STATE_COLORS as Record<string, string>)[state] ?? STATE_COLORS[State.IDLE];
+  return sessionToneColor(state);
 }
 
 // ===== Agent Brand Colors (for icons, not states) =====
 
+/** Brand hue per agent, as legible on the dark product screens these
+ * renderers draw. OpenCode's upstream mark is near-black, so dark screens use
+ * its light variant. `monitor` and unknown agents are a neutral HUD grey. */
 export const AGENT_BRAND_COLORS: Record<string, string> = {
-  'claude-code': '#C07058',  // terracotta
-  'hermes':      Tide.s100, // monochrome upstream mark on dark product surfaces
-  'openclaw':    '#ff4d4d',  // red
-  'codex-cli':   '#6366f1',  // indigo
-  'codex-app':   '#6366f1',  // indigo
-  'opencode':    '#F1ECEC',  // cream
-  'antigravity': '#5F6368',  // Google gray
-  'kiro-cli':    '#7C3AED',  // Kiro purple
-  'kiro-ide':    '#7C3AED',  // Kiro purple
-  'monitor':     '#94a3b8',  // slate
+  'claude-code': Brand.claudeCode,
+  'openclaw':    Brand.openclaw,
+  'codex-cli':   Brand.codex,
+  'codex-app':   Brand.codex,
+  'opencode':    Brand.opencodeOnDark,
+  'antigravity': Brand.antigravity,
+  'kiro-cli':    Brand.kiro,
+  'kiro-ide':    Brand.kiro,
+  'monitor':     UI.hudSubtext,
+  'hermes': Tide.s100, // monochrome upstream mark on dark product surfaces
 };
 
-/** Get agent brand color. Falls back to slate for unknown types. */
+/** Get agent brand color. Falls back to the neutral HUD grey for unknown types. */
 export function agentBrandColor(agentType: string | undefined): string {
-  return AGENT_BRAND_COLORS[agentType ?? ''] ?? '#94a3b8';
+  return AGENT_BRAND_COLORS[agentType ?? ''] ?? UI.hudSubtext;
 }
 
 // ===== Color Utilities =====

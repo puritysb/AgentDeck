@@ -1,0 +1,13 @@
+{
+  "version": "1.5.0",
+  "platform": "ios",
+  "whatsNew": {
+    "en-US": "Explore an optional 3D aquarium on iOS 18 and later. Familiar agent characters, reactive fish and a wandering snail bring your sessions to life. Tap empty water to hide the panels and move closer; tap again to return. Selected sessions and input requests stay prioritized in crowded scenes, with the full session list available. Your existing dashboard choice is preserved.",
+    "ko": "iOS 18 이상에서 선택형 3D 수족관을 만나보세요. 익숙한 에이전트 캐릭터와 반응하는 물고기 떼, 작은 달팽이가 세션에 생동감을 더합니다. 빈 수면을 탭하면 패널이 숨겨지고 화면이 자연스럽게 가까워집니다. 다시 탭하면 돌아옵니다. 세션이 많아도 선택한 세션과 입력 요청을 우선 표시하며 전체 목록은 유지합니다. 기존 대시보드 선택은 변경하지 않습니다.",
+    "ja": "iOS 18以降で選べる3D水族館が登場。おなじみのキャラクター、反応する魚、小さなカタツムリがセッションに動きを添えます。水面の空いた場所をタップするとパネルが消え、視点が近づきます。もう一度タップすると元に戻ります。混雑時も選択中のセッションと入力待ちを優先し、全セッション一覧を保持します。既存のダッシュボード設定は変更しません。"
+  },
+  "promotionalText": {
+    "en-US": "Keep an eye on your AI coding sessions in an optional 3D aquarium, with familiar characters and reactive schools of fish. Your dashboard, your choice."
+  },
+  "reviewerSupplement": "Optional 3D aquarium: Settings > Dashboard > Dashboard type on Mac; Settings > Display panels > Dashboard type on iOS. All assets are bundled. No new permissions or downloads. Existing dashboard choices are preserved. Preview media uses synthetic sessions."
+}

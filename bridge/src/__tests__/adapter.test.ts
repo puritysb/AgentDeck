@@ -396,6 +396,12 @@ describe('OpenClawAdapter gateway protocol', () => {
     expect(sent.params.client.deviceFamily).toBe('mac');
     expect(sent.params.role).toBe('operator');
     expect(sent.params.caps).toContain('tool-events');
+    // The Gateway (openclaw 2026.9.x canDeliverApprovals) pushes
+    // `exec.approval.requested`/`resolved` only to connections advertising an
+    // approvals cap. Without it the daemon's approval handlers sit wired and
+    // unreachable, and a PERM raised while the link stayed up never reached
+    // any deck (2026-09-19 live measurement against openclaw 2026.9.4).
+    expect(sent.params.caps).toContain('approvals');
   });
 
   it('becomes alive after hello-ok response', () => {

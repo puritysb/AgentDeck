@@ -288,3 +288,58 @@ describe('resolveRelayedUsageEvent — Codex block reconciliation (#253)', () =>
     expect(out.codexRateLimits.primary.usedPercent).toBe(42);
   });
 });
+
+describe('resolveRelayedUsageEvent — z.ai provider block', () => {
+  const zaiBlock = {
+    planType: 'max',
+    capturedAt: '2099-01-01T00:00:00Z',
+    primary: { usedPercent: 3, windowMinutes: 300 },
+  } as import('../types.js').ZaiRateLimits;
+
+  it('re-attaches the daemon\'s remembered z.ai block onto a Claude-bearing relay', () => {
+    const relayed = { type: 'usage_update', fiveHourPercent: 63 };
+    const out = resolveRelayedUsageEvent({
+      relayed,
+      ownCodexRateLimits: null,
+      ownZaiRateLimits: zaiBlock,
+      buildOwnUsage: () => { throw new Error('must not build'); },
+    }) as any;
+    expect(out.zaiRateLimits).toBe(zaiBlock);
+    expect('subscriptions' in out).toBe(false);
+    // The relayed object itself is not mutated.
+    expect('zaiRateLimits' in relayed).toBe(false);
+  });
+
+  it.each([[], [{ name: 'Claude' }, { name: 'ChatGPT Plus', until: '2099-01-01' }]].map(subscriptions => ({ subscriptions })))(
+    'retains the daemon z.ai plan alongside a session subscription snapshot $subscriptions', ({ subscriptions }) => {
+      const relayed = { type: 'usage_update', fiveHourPercent: 63, subscriptions };
+      const out = resolveRelayedUsageEvent({ relayed, ownCodexRateLimits: null,
+        ownZaiRateLimits: zaiBlock, buildOwnUsage: () => { throw new Error('must not build'); } });
+      expect(out.subscriptions).toEqual([...(subscriptions ?? []), { name: 'GLM Coding Plan · Max' }]);
+      expect(relayed.subscriptions).toBe(subscriptions);
+    },
+  );
+
+  it('replaces an old z.ai plan once and removes it on explicit retirement', () => {
+    const relayed = { type: 'usage_update', fiveHourPercent: 63,
+      subscriptions: [{ name: 'Claude' }, { name: 'GLM Coding Plan · Pro' }, { name: 'GLM Coding Plan' }] };
+    const resolve = (quota: import('../types.js').ZaiRateLimits) => resolveRelayedUsageEvent({
+      relayed, ownCodexRateLimits: null, ownZaiRateLimits: quota,
+      buildOwnUsage: () => { throw new Error('must not build'); },
+    });
+    expect(resolve(zaiBlock).subscriptions).toEqual([{ name: 'Claude' }, { name: 'GLM Coding Plan · Max' }]);
+    expect(resolve({ limitId: 'payg' }).subscriptions).toEqual([{ name: 'Claude' }]);
+    expect(resolve({}).subscriptions).toEqual([{ name: 'Claude' }]);
+    expect(relayed.subscriptions).toHaveLength(3);
+  });
+
+  it('keeps the identity return when there is no z.ai block to attach', () => {
+    const relayed = { type: 'usage_update', fiveHourPercent: 63, codexRateLimits: stamped('2026-08-23T00:00:00Z') };
+    const out = resolveRelayedUsageEvent({
+      relayed,
+      ownCodexRateLimits: stamped('2026-08-23T00:00:00Z'),
+      buildOwnUsage: () => { throw new Error('must not build'); },
+    });
+    expect(out).toBe(relayed as unknown as UsageEvent);
+  });
+});

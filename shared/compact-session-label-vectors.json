@@ -1,0 +1,111 @@
+[
+  {
+    "name": "activity reordering",
+    "rows": [
+      {
+        "id": "b",
+        "name": "AgentDeck"
+      },
+      {
+        "id": "a",
+        "name": "AgentDeck"
+      },
+      {
+        "id": "c",
+        "name": "Other"
+      }
+    ],
+    "expected": {
+      "a": "AgentDeck #1",
+      "b": "AgentDeck #2",
+      "c": "Other"
+    }
+  },
+  {
+    "name": "single",
+    "rows": [
+      {
+        "id": "x",
+        "name": "AgentDeck"
+      }
+    ],
+    "expected": {
+      "x": "AgentDeck"
+    }
+  },
+  {
+    "name": "empty fallback",
+    "rows": [
+      {
+        "id": "x",
+        "name": ""
+      }
+    ],
+    "expected": {
+      "x": "Session"
+    }
+  },
+  {
+    "name": "UTF8 bound",
+    "rows": [
+      {
+        "id": "a",
+        "name": "한글프로젝트한글프로젝트한글프로젝트한글프로젝트한글프로젝트한글프로젝트"
+      }
+    ],
+    "expected": {
+      "a": "한글프로젝트한글프로"
+    }
+  },
+  {
+    "name": "duplicate IDs",
+    "rows": [
+      {
+        "id": "a",
+        "name": "Project"
+      },
+      {
+        "id": "a",
+        "name": "Project"
+      }
+    ],
+    "expected": {
+      "a": "Project"
+    }
+  },
+  {
+    "name": "truncated name collisions",
+    "rows": [
+      {
+        "id": "a",
+        "name": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPfirst"
+      },
+      {
+        "id": "b",
+        "name": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPsecond"
+      }
+    ],
+    "expected": {
+      "a": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP #1",
+      "b": "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP #2"
+    }
+  },
+  {
+    "name": "TTGO bounds names before grouping, retaining distinct ordinals",
+    "board": "ttgo_t_display",
+    "rows": [
+      {
+        "id": "b",
+        "name": "AgentDeck-long-left"
+      },
+      {
+        "id": "a",
+        "name": "AgentDeck-long-right"
+      }
+    ],
+    "expected": {
+      "a": "AgentDeck-lo #1",
+      "b": "AgentDeck-lo #2"
+    }
+  }
+]

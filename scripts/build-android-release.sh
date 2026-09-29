@@ -40,11 +40,11 @@ fi
 
 # Build release APK
 cd "$ANDROID_DIR"
-./gradlew assembleRelease
+./gradlew assembleSideload
 
 # Copy to dist/
 mkdir -p "$OUTPUT_DIR"
-cp "$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk" "$OUTPUT_DIR/$APK_NAME"
+cp "$ANDROID_DIR/app/build/outputs/apk/sideload/app-sideload.apk" "$OUTPUT_DIR/$APK_NAME"
 
 echo ""
 echo "APK created: dist/$APK_NAME"

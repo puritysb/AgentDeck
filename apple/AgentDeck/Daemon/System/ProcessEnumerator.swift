@@ -51,6 +51,36 @@ enum ProcessEnumerator {
         }
     }
 
+    /// One row per process the kernel will describe: pid, parent pid and the
+    /// argv joined into a command line. The coordination tracker walks the
+    /// parent chain (a `claude -p` worker's ancestry reaches the session that
+    /// launched it) and scans argv (a background job names the session's
+    /// scratchpad). `sysctl(KERN_PROC_ALL)` + `KERN_PROCARGS2`, no `ps`.
+    struct ProcessRow: Sendable, Equatable {
+        let pid: Int
+        let ppid: Int
+        let command: String
+    }
+
+    static func processTable() -> [ProcessRow] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
+        var size = 0
+        guard sysctl(&mib, u_int(mib.count), nil, &size, nil, 0) == 0, size > 0 else { return [] }
+        let count = size / MemoryLayout<kinfo_proc>.stride
+        var processes = [kinfo_proc](repeating: kinfo_proc(), count: count)
+        let ok = processes.withUnsafeMutableBytes { ptr in
+            sysctl(&mib, u_int(mib.count), ptr.baseAddress, &size, nil, 0)
+        }
+        guard ok == 0 else { return [] }
+        return processes.compactMap { info in
+            let pid = Int(info.kp_proc.p_pid)
+            guard pid > 0 else { return nil }
+            let args = processArguments(pid: pid_t(pid))
+            guard !args.isEmpty else { return nil }
+            return ProcessRow(pid: pid, ppid: Int(info.kp_eproc.e_ppid), command: args.joined(separator: " "))
+        }
+    }
+
     static func processArguments(pid: pid_t) -> [String] {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0

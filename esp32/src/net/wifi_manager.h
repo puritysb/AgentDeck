@@ -91,6 +91,11 @@ void wifiReset();
 const char* wifiLocalIP();
 
 /**
+ * Current WiFi RSSI in dBm; meaningful only while wifiConnected().
+ */
+int wifiRssiDbm();
+
+/**
  * Park (true) or restore (false) WiFi while USB serial is primary. Most boards
  * power the radio off (WIFI_OFF). ESP32-P4/C6 IPS10 keeps ESP-Hosted initialized
  * and only disassociates STA, because deinitializing the hosted SDIO transport

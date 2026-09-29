@@ -54,6 +54,12 @@ export const TrajectoryQualityScorer: Scorer = {
     const tools = toolEvents(s);
     let dupes = 0;
     for (let i = 1; i < tools.length; i++) {
+      // A pruned tool call (#302) has no retained `input`, so two pruned
+      // calls to the same tool name would otherwise key-match and count as
+      // a detected repeat — a wrong verdict about churn built from absence,
+      // not evidence. Only two calls that both still carry their real input
+      // can be compared.
+      if (tools[i].pruned || tools[i - 1].pruned) continue;
       if (toolKey(tools[i]) === toolKey(tools[i - 1])) dupes++;
     }
     const errors = tools.filter((t) => t.status === 'error').length;

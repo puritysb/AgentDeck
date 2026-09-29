@@ -41,7 +41,7 @@ AgentDeck 대시보드 표면의 호환성을 한눈에 보기 위한 독자용 
 | T-Embed 컴패니언 노브 | ESP32 노브         | ESP32-S3              | ST7789 · 320×170 + 8-LED 링    | Wi-Fi WS · USB serial |   지원    |
 | T-Display-S3-Pro 포커스 스트립 | ESP32 스트립 | ESP32-S3           | ST7796U · 480×222 + 터치       | Wi-Fi WS · USB serial |   지원    |
 | Ulanzi TC001        | ESP32 LED            | ESP32 classic         | WS2812B · 32×8                 | USB serial · Wi-Fi WS |   일부    |
-| InkDeck             | ESP32 e-ink          | XIAO ESP32-S3 Plus    | UC8179 · 800×480               | USB serial · Wi-Fi WS |   지원    |
+| TRMNL 7.5"             | ESP32 e-ink          | XIAO ESP32-S3 Plus    | UC8179 · 800×480               | USB serial · Wi-Fi WS |   지원    |
 | XTeink X3           | e-ink 리더           | ESP32-C3              | 3.7-inch · 528×792             | Wi-Fi WS              |   일부    |
 | XTeink X4           | e-ink 리더           | ESP32-C3              | 800×480                        | Wi-Fi WS              |   일부    |
 | Divoom Pixoo64      | 상용 LED             | Divoom controller     | RGB LED · 64×64                | HTTP REST             |   지원    |

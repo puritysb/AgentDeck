@@ -1,0 +1,336 @@
+{
+  "cases": [
+    {
+      "note": "legacy save (no seen key) + z.ai confirmed → z.ai joins exactly once",
+      "state": {
+        "providers": [
+          "codex",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity"
+        ],
+        "seen": null
+      },
+      "input": {
+        "confirmed": [
+          "codex",
+          "zai"
+        ]
+      },
+      "expected": {
+        "providers": [
+          "codex",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity",
+          "zai"
+        ],
+        "seen": [
+          "claude",
+          "codex",
+          "zai",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity"
+        ]
+      }
+    },
+    {
+      "note": "the join is once — a second read with z.ai still confirmed adds nothing",
+      "state": {
+        "providers": [
+          "codex",
+          "zai"
+        ],
+        "seen": [
+          "claude",
+          "codex",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity",
+          "zai"
+        ]
+      },
+      "input": {
+        "confirmed": [
+          "codex",
+          "zai"
+        ]
+      },
+      "expected": {
+        "providers": [
+          "codex",
+          "zai"
+        ],
+        "seen": [
+          "claude",
+          "codex",
+          "zai",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity"
+        ]
+      }
+    },
+    {
+      "note": "a deliberate later hide wins — z.ai stays hidden despite being confirmed",
+      "state": {
+        "providers": [
+          "codex"
+        ],
+        "seen": [
+          "codex",
+          "zai"
+        ]
+      },
+      "input": {
+        "confirmed": [
+          "codex",
+          "zai"
+        ]
+      },
+      "expected": {
+        "providers": [
+          "codex"
+        ],
+        "seen": [
+          "codex",
+          "zai"
+        ]
+      }
+    },
+    {
+      "note": "pre-mechanism absence is a deliberate choice: legacy save without claude never auto-adds claude",
+      "state": {
+        "providers": [
+          "codex",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity"
+        ],
+        "seen": null
+      },
+      "input": {
+        "confirmed": [
+          "claude",
+          "codex"
+        ]
+      },
+      "expected": {
+        "providers": [
+          "codex",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity"
+        ],
+        "seen": [
+          "claude",
+          "codex",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity"
+        ]
+      }
+    },
+    {
+      "note": "unconfirmed providers never join — confirmation is the gate, not vocabulary membership",
+      "state": {
+        "providers": [
+          "codex"
+        ],
+        "seen": [
+          "codex"
+        ]
+      },
+      "input": {
+        "confirmed": []
+      },
+      "expected": {
+        "providers": [
+          "codex"
+        ],
+        "seen": [
+          "codex"
+        ]
+      }
+    },
+    {
+      "note": "initialize seeds the discovered set; a later-confirmed z.ai joins",
+      "state": {
+        "providers": null,
+        "seen": null
+      },
+      "input": {
+        "update": {
+          "providers": [
+            "codex"
+          ],
+          "initialize": true
+        },
+        "confirmed": []
+      },
+      "expected": {
+        "providers": [
+          "codex"
+        ],
+        "seen": [
+          "codex"
+        ]
+      }
+    },
+    {
+      "note": "initialize cannot overwrite a saved choice (initialize-once unchanged)",
+      "state": {
+        "providers": [
+          "codex",
+          "zai"
+        ],
+        "seen": [
+          "codex",
+          "zai"
+        ]
+      },
+      "input": {
+        "update": {
+          "providers": [
+            "claude"
+          ],
+          "initialize": true
+        },
+        "confirmed": []
+      },
+      "expected": {
+        "providers": [
+          "codex",
+          "zai"
+        ],
+        "seen": [
+          "claude",
+          "codex",
+          "zai"
+        ]
+      }
+    },
+    {
+      "note": "after initialize, a confirmed z.ai joins the saved list once",
+      "state": {
+        "providers": [
+          "codex"
+        ],
+        "seen": [
+          "codex"
+        ]
+      },
+      "input": {
+        "confirmed": [
+          "codex",
+          "zai"
+        ]
+      },
+      "expected": {
+        "providers": [
+          "codex",
+          "zai"
+        ],
+        "seen": [
+          "codex",
+          "zai"
+        ]
+      }
+    },
+    {
+      "note": "a MANUAL save saw the full menu — nothing auto-joins afterwards, not even a newly confirmed provider",
+      "state": {
+        "providers": [
+          "codex"
+        ],
+        "seen": null
+      },
+      "input": {
+        "update": {
+          "providers": [
+            "codex"
+          ]
+        },
+        "confirmed": []
+      },
+      "expected": {
+        "providers": [
+          "codex"
+        ],
+        "seen": [
+          "claude",
+          "codex",
+          "zai",
+          "openclaw",
+          "mlx",
+          "ollama",
+          "antigravity"
+        ]
+      }
+    },
+    {
+      "note": "an explicit empty list is a saved choice, not uninitialized",
+      "state": {
+        "providers": [],
+        "seen": null
+      },
+      "input": {
+        "update": {
+          "providers": [],
+          "initialize": true
+        },
+        "confirmed": []
+      },
+      "expected": {
+        "providers": [],
+        "seen": []
+      }
+    },
+    {
+      "note": "the empty saved choice still admits a never-offered confirmed provider",
+      "state": {
+        "providers": [],
+        "seen": []
+      },
+      "input": {
+        "confirmed": [
+          "zai"
+        ]
+      },
+      "expected": {
+        "providers": [
+          "zai"
+        ],
+        "seen": [
+          "zai"
+        ]
+      }
+    },
+    {
+      "note": "null providers with no update stays null — initialize-once waits for a client",
+      "state": {
+        "providers": null,
+        "seen": null
+      },
+      "input": {
+        "confirmed": [
+          "codex",
+          "zai"
+        ]
+      },
+      "expected": {
+        "providers": null,
+        "seen": null
+      }
+    }
+  ]
+}

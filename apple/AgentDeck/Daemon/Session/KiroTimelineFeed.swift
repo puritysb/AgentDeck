@@ -33,19 +33,22 @@ final class KiroTimelineFeed {
     /// does not outlive it.
     @discardableResult
     func pump(_ sessionIds: [String], now: Date = Date()) -> [DaemonTimelineEntry] {
+        pump(sessionIds, observed: LocalKiroObserver.observe(now: now))
+    }
+
+    func pump(_ sessionIds: [String], observed: [LocalKiroObserver.Observed]) -> [DaemonTimelineEntry] {
         let live = Set(sessionIds)
         for id in watermark.keys where !live.contains(id) {
             watermark.removeValue(forKey: id)
         }
 
-        let observed = LocalKiroObserver.observe(now: now)
         var byId: [String: LocalKiroObserver.Observed] = [:]
         for item in observed { byId["observed:kiro:\(item.sessionId)"] = item }
 
         var out: [DaemonTimelineEntry] = []
         for id in sessionIds {
             guard let session = byId[id] else { continue }
-            let turns = LocalKiroObserver.readTurns(session.transcript)
+            let turns = session.turns
             guard let newest = turns.last?.ts else {
                 // Seed an empty session at 0 so its first real row is emitted
                 // rather than swallowed as "history".

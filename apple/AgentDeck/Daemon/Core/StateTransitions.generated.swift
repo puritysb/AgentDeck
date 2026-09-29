@@ -77,6 +77,13 @@ let stateTransitions: [StateTransition] = [
     // Hook-miss recovery: tool activity arriving while IDLE proves a turn is
     // running even when its user_prompt_submit was dropped.
     .init(from: .idle, to: .processing, trigger: "tool_activity", source: .hook),
+    // The wildcard session_end row below drops the machine to DISCONNECTED when
+    // ANY session ends, which on the daemon hub — one machine multiplexing every
+    // observed session — stranded every session still running: session_start was
+    // the only edge out, and that hook never fires again for a session already
+    // underway. Tool activity proves some session is alive, so it reopens the hub
+    // the same way it recovers a dropped user_prompt_submit from IDLE.
+    .init(from: .disconnected, to: .processing, trigger: "tool_activity", source: .hook),
     // stuck_timeout: only PROCESSING recovers after STUCK_TIMEOUT_MS (Claude hung).
     // AWAITING_* intentionally have NO wall-clock backstop — an unanswered prompt
     // is a genuine, indefinitely-valid wait (the user may be away); it only leaves

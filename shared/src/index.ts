@@ -1,6 +1,7 @@
 export * from './states.js';
 export * from './protocol.js';
 export * from './openclaw-approval.js';
+export * from './openclaw-plugin-approval.js';
 export * from './gateway-protocol.js';
 export * from './command-builders.js';
 export * from './adapter.js';
@@ -14,6 +15,7 @@ export * from './timeline.js';
 export * from './subagent-activity.js';
 export * from './esp32-boards.js';
 export * from './model-provider.js';
+export * from './zai-quota.js';
 export * from './timeline-icons.js';
 export * from './timeline-label.js';
 export * from './timeline-task-display.js';
@@ -26,14 +28,28 @@ export * from './session-utils.js';
 export * from './creature-layout.js';
 export * from './terrarium-rules.js';
 export * from './state-colors.js';
+export * from './session-state-presentation.js';
+export * from './paper-palette.js';
 export * from './connection-status.js';
 export * from './design-tokens.js';
 export * from './svg-renderers/index.js';
 export * from './d200h-layout.js';
 export * from './idotmatrix-identity.js';
 export * from './llm-settings.js';
+export * from './mlx-safety.js';
 export * from './eval-schema.js';
 export * from './sample.js';
 export * from './apme-graph.js';
 export * from './pricing.js';
 export * from './telemetry-envelope.js';
+export * from './claude-permission-rules.js';
+export * from './apme-classifier-rules.js';
+export * from './gateway-health.js';
+
+export * from "./usage-presentation.js";
+export * from "./collaboration-presentation.js";
+
+export * from './usage-severity.js';
+
+export * from './claude-weekly-view.js';
+export * from './matrix-expression.js';

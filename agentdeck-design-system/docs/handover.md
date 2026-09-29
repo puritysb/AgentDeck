@@ -27,11 +27,11 @@ Use this contract whenever an agent changes a visual rule, device specification,
 | Device panel, chip, transport, support state | `docs/hardware-compatibility.md`                  | Domain operations guide and public Devices summary       |
 | App Store capability or copy boundary        | `docs/appstore-feature-matrix.md`                 | `apple/APP_REVIEW_NOTES.md`, metadata, archive verifier  |
 | Test claim                                   | `docs/testing.md`                                 | Test implementation, scenario mapping, Build Health note |
-| Agent workflow                               | `AGENTS.md` / `CLAUDE.md` and the repo skill SSOT | This handover only when ownership changes                |
+| Agent workflow                               | `AGENTS.md` and the repo skill SSOT | This handover only when ownership changes                |
 
 ## Change sequence
 
-1. Read `CLAUDE.md`, then the owner named in the table.
+1. Read `AGENTS.md`, then the owner named in the table.
 2. Update the canonical specification before its mirrors or presentation.
 3. Implement the smallest runtime change that satisfies the specification.
 4. Run the named validator and a runtime-level check that can actually fail on the behavior.

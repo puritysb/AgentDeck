@@ -39,11 +39,29 @@ export function emitSwift(rules) {
 /// Cross-platform terrarium rules. See shared/src/terrarium-rules.ts for
 /// what each value means and the clearance invariant they encode.
 enum TerrariumRules {
+    static let pixooUsageRowHeight: Int = ${rules.pixooUsageRowHeight}
+    static let pixooUsageCreatureMargin: Int = ${rules.pixooUsageCreatureMargin}
+    static let nativeResidentLimit: Int = ${rules.nativeResidentLimit}
+${Object.entries(rules.nativeActivity).map(([key, value]) => `    static let nativeActivity${key[0].toUpperCase() + key.slice(1)}: Float = ${f(value)}`).join('\n')}
+    static let nativeLabelDenseResidentCount: Int = ${rules.nativeLabel.denseResidentCount}
+${Object.entries(rules.nativeLabel).filter(([key]) => key !== 'denseResidentCount').map(([key, value]) => `    static let nativeLabel${key[0].toUpperCase() + key.slice(1)}: Float = ${f(value)}`).join('\n')}
+    static let nativeCameraFov: Float = ${f(rules.nativeCameraFov)}
+    static let nativeCameraWideFov: Float = ${f(rules.nativeCameraWideFov)}
+    static let nativeViewingDistance: Float = ${f(rules.nativeViewingDistance)}
+    static let nativeViewingResponseSeconds: Float = ${f(rules.nativeViewingResponseSeconds)}
+    static let nativeWaterTint: Float = ${f(rules.nativeWaterTint)}
+    static let nativeDepthFadeStart: Float = ${f(rules.nativeDepthFadeStart)}
+    static let nativeDepthFadeShoulder: Float = ${f(rules.nativeDepthFadeShoulder)}
+    static let nativeDepthFadeShoulderOpacity: Float = ${f(rules.nativeDepthFadeShoulderOpacity)}
+    static let nativeDepthFadeEndOpacity: Float = ${f(rules.nativeDepthFadeEndOpacity)}
+    static let nativeCameraWideAspect: Float = ${f(rules.nativeCameraWideAspect)}
     static let crayfishHomeX: Float = ${f(c.homeX)}
     static let crayfishSittingY: Float = ${f(c.sittingY)}
     static let crayfishWidthFraction: Float = ${f(c.widthFrac)}
     static let crayfishClearMaxX: Float = ${f(c.clearMaxX)}
     static let floorRestYMin: Float = ${f(rules.floorRestStrip.yMin)}
+    static let floorSpacingMinX: Float = ${f(rules.floorSpacing.minX)}
+    static let floorSpacingMinGapRatio: Float = ${f(rules.floorSpacing.minGapRatio)}
     static let floorRestYMax: Float = ${f(rules.floorRestStrip.yMax)}
     static let antigravityHoverYMin: Float = ${f(rules.antigravityHoverStrip.yMin)}
     static let antigravityHoverYMax: Float = ${f(rules.antigravityHoverStrip.yMax)}
@@ -62,11 +80,27 @@ package dev.agentdeck.terrarium
  * what each value means and the clearance invariant they encode.
  */
 object TerrariumRules {
+    const val NATIVE_RESIDENT_LIMIT = ${rules.nativeResidentLimit}
+${Object.entries(rules.nativeActivity).map(([key, value]) => `    const val NATIVE_ACTIVITY_${key.replace(/[A-Z]/g, c => '_' + c).toUpperCase()} = ${f(value)}f`).join('\n')}
+    const val NATIVE_LABEL_DENSE_RESIDENT_COUNT = ${rules.nativeLabel.denseResidentCount}
+${Object.entries(rules.nativeLabel).filter(([key]) => key !== 'denseResidentCount').map(([key, value]) => `    const val NATIVE_LABEL_${key.replace(/[A-Z]/g, c => '_' + c).toUpperCase()} = ${f(value)}f`).join('\n')}
+    const val NATIVE_CAMERA_FOV = ${f(rules.nativeCameraFov)}f
+    const val NATIVE_CAMERA_WIDE_FOV = ${f(rules.nativeCameraWideFov)}f
+    const val NATIVE_VIEWING_DISTANCE = ${f(rules.nativeViewingDistance)}f
+    const val NATIVE_VIEWING_RESPONSE_SECONDS = ${f(rules.nativeViewingResponseSeconds)}f
+    const val NATIVE_WATER_TINT = ${f(rules.nativeWaterTint)}f
+    const val NATIVE_DEPTH_FADE_START = ${f(rules.nativeDepthFadeStart)}f
+    const val NATIVE_DEPTH_FADE_SHOULDER = ${f(rules.nativeDepthFadeShoulder)}f
+    const val NATIVE_DEPTH_FADE_SHOULDER_OPACITY = ${f(rules.nativeDepthFadeShoulderOpacity)}f
+    const val NATIVE_DEPTH_FADE_END_OPACITY = ${f(rules.nativeDepthFadeEndOpacity)}f
+    const val NATIVE_CAMERA_WIDE_ASPECT = ${f(rules.nativeCameraWideAspect)}f
     const val CRAYFISH_HOME_X = ${f(c.homeX)}f
     const val CRAYFISH_SITTING_Y = ${f(c.sittingY)}f
     const val CRAYFISH_WIDTH_FRACTION = ${f(c.widthFrac)}f
     const val CRAYFISH_CLEAR_MAX_X = ${f(c.clearMaxX)}f
     const val FLOOR_REST_Y_MIN = ${f(rules.floorRestStrip.yMin)}f
+    const val FLOOR_SPACING_MIN_X = ${f(rules.floorSpacing.minX)}f
+    const val FLOOR_SPACING_MIN_GAP_RATIO = ${f(rules.floorSpacing.minGapRatio)}f
     const val FLOOR_REST_Y_MAX = ${f(rules.floorRestStrip.yMax)}f
     const val ANTIGRAVITY_HOVER_Y_MIN = ${f(rules.antigravityHoverStrip.yMin)}f
     const val ANTIGRAVITY_HOVER_Y_MAX = ${f(rules.antigravityHoverStrip.yMax)}f
@@ -93,6 +127,8 @@ constexpr float FloorRestYMax = ${f(rules.floorRestStrip.yMax)}f;
 constexpr float AntigravityHoverYMin = ${f(rules.antigravityHoverStrip.yMin)}f;
 constexpr float AntigravityHoverYMax = ${f(rules.antigravityHoverStrip.yMax)}f;
 constexpr float ResterMaxWidthFraction = ${f(rules.resterMaxWidthFrac)}f;
+// Name tags (DESIGN.md §6.4): at or above this many residents idle tags collapse.
+constexpr int NativeLabelDenseResidentCount = ${rules.nativeLabel.denseResidentCount};
 }  // namespace TerrariumRules
 `;
 }

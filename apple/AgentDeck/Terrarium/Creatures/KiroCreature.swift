@@ -297,7 +297,8 @@ final class KiroCreature: Creature {
             cx: cx,
             bodyTopY: cy - bodyW * 0.8,
             bodyMetric: terrariumNameTagMetric(canvasWidth: canvasWidth, scale: scale),
-            backgroundColor: Self.nameBg
+            backgroundColor: Self.nameBg,
+            rank: visualState == .asking ? .awaiting : visualState == .working ? .working : .idle
         )
     }
 }

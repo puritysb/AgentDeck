@@ -5,26 +5,28 @@ description: Diagnose AgentDeck Stream Deck/PTY option synchronization, cursor s
 
 # AgentDeck Diagnostic Skill
 
-Canonical diagnostic procedure for AgentDeck bridge synchronization issues between device displays and agent terminals (cursor desync, false idle, stale options, action dispatch races, hook ingestion gaps, state-machine regressions). This file is the single source of truth — `.claude/skills/sdc-diagnose.md` is a thin pointer to it.
+Canonical diagnostic procedure for AgentDeck bridge synchronization issues between device displays and agent terminals (cursor desync, false idle, stale options, action dispatch races, hook ingestion gaps, state-machine regressions). This file is the single source of truth — `.claude/skills/sdc-diagnose` is a tracked directory symlink to this skill.
 
 ## Step 1: Collect Diagnostic Data
 
-From the repo root, try the live bridge first:
+From the repo root, try the live bridge first. Start narrow: ~100 journal entries, filtered to the event types the Step 2 patterns use. Widen (`--tail 300`, then drop the filter) only when the window does not contain the failure.
 
 ```bash
-cd /Users/puritysb/github/AgentDeck
-agentdeck diag --tail 500 2>/dev/null || echo "Bridge not running — using journal files directly"
+cd "$(git rev-parse --show-toplevel)"
+EVENTS='state_change|hook|error|option_prompt|navigate_option|cursor_update|select_option|idle|codex_'
+agentdeck diag --tail 100 2>/dev/null | grep -E "$EVENTS" | tail -100 \
+  || echo "Bridge not running (or no matching events) — using journal files directly"
 ```
 
-If the bridge isn't running, read journal/log files directly:
+If the bridge isn't running, read journal/log files directly, with the same filter:
 
 ```bash
-ls -la ~/.agentdeck/journal/ 2>/dev/null
-ls -t ~/.agentdeck/journal/*.jsonl 2>/dev/null | head -1 | xargs tail -500
-tail -200 /tmp/sdc-debug.log 2>/dev/null || echo "No debug log found"
+ls -t ~/.agentdeck/journal/*.jsonl 2>/dev/null | head -3
+ls -t ~/.agentdeck/journal/*.jsonl 2>/dev/null | head -1 | xargs tail -n 400 | grep -E "$EVENTS" | tail -100
+grep -E "$EVENTS" /tmp/sdc-debug.log 2>/dev/null | tail -100 || echo "No debug log found"
 ```
 
-If these commands fail because of sandboxing or access to user-local files, request scoped approval before relying on guesses.
+If access fails, follow `AGENTS.md` Agent working agreements for execution-policy failures. Treat unreadable diagnostics as unknown, not proof that the bridge is stopped.
 
 ## Step 2: Analyze for Known Failure Patterns
 
@@ -107,7 +109,7 @@ it('reproduces cursor desync from journal entry', () => {
 Run the narrowest useful tests first, then broaden when shared behavior changed:
 
 ```bash
-cd /Users/puritysb/github/AgentDeck
+cd "$(git rev-parse --show-toplevel)"
 pnpm test
 pnpm -r exec tsc --noEmit
 ```

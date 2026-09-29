@@ -28,6 +28,9 @@ namespace Es8311 {
 /** Probe + full DAC init. Safe to call repeatedly; re-inits each time. */
 bool begin(uint32_t sampleRate);
 
+/** Reuse a live codec at this rate; avoids resetting ADC/DAC and toggling PA. */
+bool ensure(uint32_t sampleRate);
+
 // Is the codec physically answering on I2C? A cached chip-ID read, safe to call
 // before any I2S clock exists (begin() cannot be: the ES8311 locks its clock
 // manager to MCLK, so the full init only runs once playback has started).
@@ -56,6 +59,10 @@ void stop();
  * Storing the level removes the race instead of timing around it.
  */
 void setVolume(int percent);
+
+/** Apply a user-selected level and persist it across reboots. False on save failure.
+ * Codec reinitialization and diagnostic setVolume() calls never write flash. */
+bool setUserVolume(int percent);
 
 /** The level begin() will apply, without touching the codec now. */
 int volume();

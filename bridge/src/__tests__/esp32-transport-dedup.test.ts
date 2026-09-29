@@ -17,8 +17,8 @@ describe('isWifiTransportRedundant', () => {
 
   it('dedups by board id alone when serial reports no IP (radio parked / pre-DHCP)', () => {
     expect(isWifiTransportRedundant(
-      { board: 'inkdeck', ip: '192.168.68.64' },
-      [{ board: 'inkdeck' }],
+      { board: 'trmnl_75', ip: '192.168.68.64' },
+      [{ board: 'trmnl_75' }],
     )).toBe(true);
   });
 
@@ -32,7 +32,7 @@ describe('isWifiTransportRedundant', () => {
   it('does NOT dedup a WiFi-only board with no serial presence (86box: USB power-only)', () => {
     expect(isWifiTransportRedundant(
       { board: '86box', ip: '192.168.68.71' },
-      [{ board: 'inkdeck', ip: '192.168.68.64' }, { board: 'ttgo_t_display', ip: '192.168.68.61' }],
+      [{ board: 'trmnl_75', ip: '192.168.68.64' }, { board: 'ttgo_t_display', ip: '192.168.68.61' }],
     )).toBe(false);
   });
 
@@ -50,6 +50,6 @@ describe('isWifiTransportRedundant', () => {
   });
 
   it('returns false when nothing is live on serial (WiFi is the only path)', () => {
-    expect(isWifiTransportRedundant({ board: 'inkdeck', ip: '192.168.68.64' }, [])).toBe(false);
+    expect(isWifiTransportRedundant({ board: 'trmnl_75', ip: '192.168.68.64' }, [])).toBe(false);
   });
 });

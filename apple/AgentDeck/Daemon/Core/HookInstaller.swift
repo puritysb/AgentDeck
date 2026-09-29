@@ -297,7 +297,7 @@ enum HookInstaller {
             #"if [ -z "$PORT" ]; then"#,
             #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do"#,
             #"    [ -f "$F" ] || continue"#,
-            #"    P=$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
+            #"    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
             #"    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }"#,
             #"  done"#,
             #"fi"#,
@@ -308,7 +308,7 @@ enum HookInstaller {
         // See canonical commentary in hooks/src/install.ts.
         if event == "PreToolUse" {
             let lines = preamble + [
-                #"RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' --max-time 60 -d @- 2>/dev/null)"#,
+                #"RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 60 -d @- 2>/dev/null)"#,
                 #"printf '%s' "${RESP:-}""#,
             ]
             return lines.joined(separator: "\n")
@@ -319,7 +319,7 @@ enum HookInstaller {
         // EVERY turn end. See canonical commentary in hooks/src/install.ts.
         if event == "Stop" {
             let lines = preamble + [
-                #"RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' --max-time 10 -d @- 2>/dev/null)"#,
+                #"RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 10 -d @- 2>/dev/null)"#,
                 #"printf '%s' "${RESP:-}""#,
             ]
             return lines.joined(separator: "\n")
@@ -331,7 +331,7 @@ enum HookInstaller {
         // there gets killed and Claude prints
         // `SessionEnd hook [...] failed: Hook cancelled` on exit.
         let lines = preamble + [
-            "curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST \"http://127.0.0.1:$PORT/hooks/\(event)\" -H 'Content-Type: application/json' -d @- >/dev/null 2>&1 || true",
+            "curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST \"http://127.0.0.1:$PORT/hooks/\(event)\" -H 'Content-Type: application/json' -H \"X-AgentDeck-Pid: $PPID\" -d @- >/dev/null 2>&1 || true",
         ]
         return lines.joined(separator: "\n")
     }

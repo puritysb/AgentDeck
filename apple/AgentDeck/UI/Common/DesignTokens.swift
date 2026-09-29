@@ -86,6 +86,23 @@ enum DesignTokens {
         static let ttyText      = tokenColor("#c8d0d8")
         static let ttyDim       = tokenColor("#7a8493")
         static let ttyFaint     = tokenColor("#4a5060")
+        static let hudText      = tokenColor("#E2E8F0")
+        static let hudSubtext   = tokenColor("#94A3B8")
+        static let hudFaint     = tokenColor("#64748B")
+        static let waterDeep    = tokenColor("#0A1628")
+        static let waterMid     = tokenColor("#0F2744")
+        static let waterShallow = tokenColor("#163B5C")
+    }
+
+    // MARK: - Session state (product UI) — DESIGN.md §2.7
+    // One meaning per state on every product surface. Only `awaiting` may pulse.
+
+    enum Session {
+        static let idle     = UI.idle
+        static let working  = UI.cyan
+        static let awaiting = UI.attn
+        static let offline  = UI.idleDark
+        static let error    = UI.error
     }
 
     // MARK: - Agent brand marks
@@ -99,6 +116,8 @@ enum DesignTokens {
         static let opencode   = tokenColor("#3a3a3a")
         static let antigravity = tokenColor("#5F6368")
         static let kiro       = tokenColor("#7C3AED")
+        static let zai        = tokenColor("#1F63EC")
+        static let opencodeOnDark = tokenColor("#F1ECEC")
     }
 
     // MARK: - Type stack

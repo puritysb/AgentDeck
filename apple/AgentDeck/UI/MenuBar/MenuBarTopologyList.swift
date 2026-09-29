@@ -147,27 +147,19 @@ struct MenuBarTopologyList: View {
 
     @ViewBuilder
     private var mlxRow: some View {
-        if !stateHolder.state.mlxModels.isEmpty {
-            let primary = stateHolder.state.mlxModels.first ?? ""
-            let count = stateHolder.state.mlxModels.count
-            let subtitle = count > 1 ? "\(primary) · \(count) models" : primary
-            RailRow(status: .ok, name: "MLX", subtitle: subtitle)
+        if !stateHolder.state.mlxModels.isEmpty || stateHolder.state.mlxResidency?.known == true {
+            let subtitle = LocalModelPresentation.mlx(models: stateHolder.state.mlxModels, residency: stateHolder.state.mlxResidency)
+            RailRow(status: .ok, name: "MLX", subtitle: subtitle.replacingOccurrences(of: "\n", with: " · "))
+                .help(subtitle)
         }
     }
 
     @ViewBuilder
     private var ollamaRow: some View {
         if let ollama = stateHolder.state.ollamaStatus {
-            let status: LEDStatus = ollama.available ? .ok : .dim
-            let subtitle: String = {
-                if !ollama.available { return "stopped" }
-                let running = ollama.models.filter { $0.sizeVram > 0 }
-                let source = running.isEmpty ? ollama.models : running
-                if source.isEmpty { return "idle" }
-                return source.prefix(1).map(\.name).joined() +
-                    (source.count > 1 ? " · \(source.count) models" : "")
-            }()
-            RailRow(status: status, name: "Ollama", subtitle: subtitle)
+            RailRow(status: ollama.available ? .ok : .dim, name: "Ollama",
+                    subtitle: LocalModelPresentation.ollama(ollama, compact: true))
+                .help(LocalModelPresentation.ollama(ollama))
         }
     }
 

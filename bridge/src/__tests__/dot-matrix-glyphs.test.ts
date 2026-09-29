@@ -1,3 +1,4 @@
+import { usageRgb } from '@agentdeck/shared';
 import { describe, expect, it } from 'vitest';
 import {
   OFFICIAL_DOT_GLYPHS,
@@ -18,7 +19,7 @@ import {
 describe('canonical dot-matrix agent masks', () => {
   it('ships every official agent mark at Pixoo/iDotMatrix and TC001 resolutions', () => {
     expect(Object.keys(OFFICIAL_DOT_GLYPHS).sort()).toEqual([
-      'antigravity', 'claudeCode', 'codex', 'kiro', 'openClaw', 'openCode',
+      'antigravity', 'claudeCode', 'codex', 'kiro', 'openClaw', 'openCode', 'zai',
     ]);
     for (const mask of Object.values(OFFICIAL_DOT_GLYPHS)) {
       expect(mask).toHaveLength(OFFICIAL_DOT_GLYPH_SIZE ** 2);
@@ -54,6 +55,16 @@ describe('canonical dot-matrix agent masks', () => {
 });
 
 describe('Timebox Mini Agent Beacon', () => {
+  it('does not replace the agent beacon with an error when quota is exhausted', () => {
+    const state = { type: 'state_update', state: 'idle', permissionMode: 'default', agentType: 'claude-code' } as const;
+    const usage = { type: 'usage_update', sessionDurationSec: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0 } as const;
+    const low = renderFrame(state, { ...usage, fiveHourPercent: 20 }, null, 0, 11, 'micro');
+    const exhausted = renderFrame(state, { ...usage, fiveHourPercent: 100 }, null, 0, 11, 'micro');
+    expect(exhausted).toEqual(low);
+    const error = renderFrame({ ...state, gatewayHasError: true }, { ...usage, fiveHourPercent: 20 }, null, 0, 11, 'micro');
+    expect(error).not.toEqual(low);
+  });
+
   const creatures: MicroCreature[] = ['octopus', 'jellyfish', 'opencode', 'crayfish', 'antigravity', 'kiro'];
   const background = [2, 6, 10];
   const pixel = (frame: Uint8Array, x: number, y: number) =>
@@ -125,8 +136,8 @@ describe('iDotMatrix native 32×32 stage', () => {
     const pixel32 = (x: number, y: number) => [...frame.slice((y * 32 + x) * 3, (y * 32 + x) * 3 + 3)];
     expect(Math.max(...frame.slice(0, 28 * 32 * 3))).toBeGreaterThan(240);
     expect(pixel32(0, 30)).toEqual([185, 86, 255]);
-    expect(pixel32(3, 30)).toEqual([185, 86, 255]);
-    expect(pixel32(3, 31)).toEqual([255, 183, 38]);
+    expect(pixel32(3, 30)).toEqual(usageRgb(50));
+    expect(pixel32(3, 31)).toEqual(usageRgb(75));
   });
 });
 

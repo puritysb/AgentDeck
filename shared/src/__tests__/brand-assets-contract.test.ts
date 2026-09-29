@@ -9,6 +9,7 @@ import {
   OPENCODE_RING_PATH,
   OPENCLAW_LOGO_PATHS,
   ROBOT_CREATURE_PATH,
+  ZAI_LOGO_PATHS,
 } from '../svg-renderers/agent-logos.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -35,6 +36,8 @@ describe('canonical agent brand assets', () => {
     ['opencode.svg', canonicalPaths.openCode],
     ['antigravity.svg', canonicalPaths.antigravity],
     ['kiro.svg', canonicalPaths.kiro],
+    // A provider mark, not an agent creature — see the zai-specific checks below.
+    ['zai.svg', ZAI_LOGO_PATHS],
   ])('%s is the geometry used by shared renderers', (filename, paths) => {
     const svg = read(`design/brand/${filename}`);
     for (const path of paths) expect(svg).toContain(`d="${path}"`);
@@ -54,14 +57,29 @@ describe('canonical agent brand assets', () => {
     }
   });
 
-  it('generates constrained-device masks directly from canonical SVG files', () => {
-    const generators = [
-      read('scripts/generate-creature-glyphs.mjs'),
-      read('scripts/generate-micro-glyphs.mjs'),
+  it('mirrors the z.ai provider mark on its two vector consumers', () => {
+    // z.ai is a usage PROVIDER (#348), not a session agent: it has no creature
+    // geometry and no session-row surface, so the every-surface loop above does
+    // not apply — but the mark itself stays pinned to the same two registries
+    // that render it (the Android usage-card BrandIcon and the Apple brand
+    // registry).
+    const surfaces = [
+      read('android/app/src/main/kotlin/dev/agentdeck/ui/component/BrandIcon.kt'),
+      read('apple/AgentDeck/UI/Common/SessionBrand.swift'),
     ];
-    for (const stem of ['claudecode', 'codex', 'openclaw', 'opencode', 'antigravity', 'kiro']) {
-      for (const generator of generators) expect(generator).toContain(stem);
+    for (const path of ZAI_LOGO_PATHS) {
+      for (const surface of surfaces) expect(surface).toContain(path);
     }
+  });
+
+  it('generates constrained-device masks directly from canonical SVG files', () => {
+    const creatureStems = ['claudecode', 'codex', 'openclaw', 'opencode', 'antigravity', 'kiro'];
+    const creatureGlyphs = read('scripts/generate-creature-glyphs.mjs');
+    for (const stem of creatureStems) expect(creatureGlyphs).toContain(stem);
+    // Every mark — agents and the z.ai provider — reaches the dot-matrix
+    // pipeline, which rasterizes design/brand/*.svg directly.
+    const microGlyphs = read('scripts/generate-micro-glyphs.mjs');
+    for (const stem of [...creatureStems, 'zai']) expect(microGlyphs).toContain(stem);
   });
 
   // Pinned per mark rather than for Kiro alone. The table used to carry one row

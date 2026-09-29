@@ -13,6 +13,7 @@
  * 11434 now means the chain grew a tier the Swift mirror doesn't have.
  */
 
+import { clearMlxSafetyForTests, loadMlxSettings } from '@agentdeck/shared';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const fm = vi.hoisted(() => ({
@@ -36,13 +37,16 @@ function stubHttp(routes: Record<string, unknown | null>): void {
     const key = Object.keys(routes).find((k) => url.includes(k));
     const body = key ? routes[key] : null;
     if (body == null) throw new Error(`connection refused: ${url}`);
-    return { ok: true, status: 200, json: async () => body } as unknown as Response;
+    if (url.endsWith('/health')) return Response.json({ loaded_model: loadMlxSettings().model ?? 'gemma-test' });
+    if (url.endsWith('/metrics')) return Response.json({ summary: { in_flight: 0 } });
+    return Response.json(body);
   }));
 }
 
 const MLX_REPLY = { choices: [{ message: { content: 'mlx summary' } }] };
 
 beforeEach(() => {
+  clearMlxSafetyForTests();
   clearSummarizerProviderCacheForTests();
   fm.probe.mockReset();
   fm.call.mockReset();

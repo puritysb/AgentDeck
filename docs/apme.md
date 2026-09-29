@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: APME maintainers
-reviewed: 2026-07-21
-revision: 2026-07-21
+reviewed: 2026-09-10
+revision: 2026-09-10
 source_of_truth: docs/apme.md
 validators: [pnpm test]
 ---
@@ -19,6 +19,17 @@ validators: [pnpm test]
 평가는 **카테고리별로 방법이 다르다** — 코딩 태스크는 run-level + git diff + 결정론 레이어, 비코딩 태스크는 turn-level + judge only. 모든 데이터는 `~/.agentdeck/apme.sqlite`에 저장되고, daemon HTTP API + WS 프로토콜로 Apple/Android/Stream Deck/ESP32 UI에 실시간 노출된다.
 
 **비용 정책**: 기본 judge 체인은 **로컬 MLX 서버 → 온디바이스 Apple Intelligence Foundation Models** 다. 둘 다 무료·로컬이고, 순서는 **실측한 판정 품질 순서**다 — 아래 [기본 judge 백엔드](#기본-judge-백엔드는-왜-mlx-foundation-models-순서인가) 참고. 유료 백엔드(`api`, OpenRouter 계열 `openai`)는 사용자가 명시할 때만 선택된다. 모든 run 을 평가해도 비용이 0 이 되도록 설계.
+
+APME 는 데몬 안에서만 도는 모듈이 아니라 **볼 수 있는 표면**이다. Activity 탭은 에이전트별
+누적 작업 시간과 태스크 수를, Work 판은 태스크 하나하나의 판정·점수·턴 수를 보여준다.
+
+<p align="center">
+  <img src="media/apme-activity.png" width="880" alt="APME Activity tab — per-agent totals for claude-code, codex-cli, openclaw and kiro-cli, with a table of tasks by agent, project, time and duration">
+</p>
+
+<p align="center">
+  <img src="media/apme-work.png" width="880" alt="APME Work board — tasks with verdict, score, agent, project and turn count, filtered by attention, judged, reported, in-progress and orphaned">
+</p>
 
 ### 기본 judge 백엔드는 왜 MLX → Foundation Models 순서인가
 
@@ -240,12 +251,224 @@ agentdeck apme stop-health --since 7d [--agent claude-code]
 
 분모는 **판정 가능한 턴만** — `stop + synthetic_stop + next_prompt`. 열린 턴·취소된 턴·중단된 턴·밀려난 턴·세션 종료로 닫힌 턴·reaper 가 닫은 턴(`Reaped`)·도입 이전 행은 Stop 도착 여부의 증거가 아니므로 비율에서 제외한다. 어느 버킷이 분자·분모에 들어가는지는 `stopDeliveryLoss()`(`@agentdeck/shared`) 한 곳에만 있다 — 소비자가 그 규칙을 다시 적으면 범례가 주장하는 것과 다른 값을 재게 된다. 다만 `total` 에는 열린 턴이 포함되는데, 열린 턴이야말로 "아직 안 온 Stop" 이라 분모에서 빼면 측정하려는 실패를 숨기게 되기 때문이다.
 
+### 판정 반복 루프와 repetition penalty
+
+`mlx` 레그는 `repetition_penalty` 를 함께 보낸다(기본 1.05, `apme.judge.repetitionPenalty`
+로 재정의, **정확히 1** 이면 해제 — [1,2] 밖은 폐기되고 기본값이 적용되므로 `0` 은 해제가
+아니다). 취향 손잡이가 아니라 **측정된 잘림 비율**이 근거다.
+
+**실측(2026-09-07/08)**: gemma-4-26b 는 일부 프롬프트에서 `summary` 문자열 **안쪽**의 반복
+루프에 빠져 800토큰 상한까지 가고 객체를 끝내 닫지 않는다. 설계 두 가지로 쟀다 — 연속 3회
+반복, 그리고 각 반복 사이에 다른 5개 프롬프트를 끼워 **서버 프롬프트 캐시를 비운** 3회 반복.
+두 설계가 **같은 총계**를 냈고 task 별로도 같았다: **6건 중 4건 잘림 → 6건 중 1건**, 나빠진
+task 없음, 모든 셀이 자기 반복과 일치(설계별 조건당 18관측 = 12/18 → 3/18).
+
+**분모는 task 수로 적는다.** 반복은 표본 크기가 아니라 안정성 결과다 — 바로 아래에서 이 문서
+스스로 "temperature 0 greedy 디코딩은 명세상 반복하면 같은 값을 낸다"고 적는다. 즉 한 프롬프트의
+3회 반복은 한 측정을 세 번 본 것이다. 독립 단위는 task 이고 n=6 이다. 헤드라인엔 12/18 을 쓰면서
+몇 줄 아래 **같은 6건 그룹**을 "반복 검증되지 않은 n=6"이라 부르는 것은(이 문서가 그랬다) 근거를
+한 방향으로만 부풀린다 — 주장에는 n=18, 반대 근거에는 n=6.
+
+연속 반복 로그는 **재실행분**이다(2026-09-08, `repeat.log`). 원 실행의 출력을 저장하지 않아서
+한동안 이 문서는 **artifact 가 없는 설계의 숫자**를 인용하고 있었다. 재실행은 같은 6개 task id
+로 고정했고(라이브 백로그 질의는 task 가 닫힐 때마다 계속 밀린다 — 칸 수는 적지 않는다. 다음 task 가 닫히는 순간 낡는 숫자다) 인터리브 결과를 그대로 재현했다. 대신
+독립성 측면의 한계는 아래 caveat 에 적었다 — 기록된 모든 실행은 **같은 `mlx_vlm.server` 프로세스**
+(2026-09-06 03:58 기동)가 답했다.
+
+품질 축은 이 "두 설계"에 포함되지 않는다 — 아래 참조.
+
+**이 숫자가 보여주지 않는 것을 분명히 해둔다.** 각 task 는 자기 반복과 일치했지만, 그건
+temperature 0 greedy 디코딩이 **서버 상태가 같을 때** 명세상 하는 일이라 발견이 아니다. 그리고
+이 논리는 양쪽으로 작동한다 — 명세가 말하는 건 "고정된 서버"이므로, 재시작을 건넌 뒤집힘은
+명세로 예측되지도 배제되지도 않는다. 인터리브는 캐시를 원인에서 배제할 뿐이다. **서버 재시작·
+모델 재적재를 건너서도 같은 결과가 나오는지는 검증되지 않았다** — 그리고 이제 그건 측정된
+사실이다: 기록된 모든 실행을 같은 서버 프로세스가 답했으므로(2026-09-06 03:58 기동, 09-08 확인)
+재시작을 가로지르는 실행이 아예 없다. 같은 프로세스 안에서의 모델 재적재도 배제되지 않는다. (이전 판은 "몇 시간 간격의 두 실행이 같은 프롬프트에서 갈렸다"고 적었으나
+기록은 반대다: 같은 **프로덕션 프롬프트**로 14시간 떨어진 유일한 쌍은 5/5 일치하고(probe 프롬프트 쌍도 15.8시간 간격 4/4 일치), 그때 갈린 건
+production 대 probe — **프롬프트가 다른** 경우이고, 이건 "3번 중 2번 풀린다"를 철회시킨 바로 그
+교란이다. 철회한다.) 따라서 이 변경은 "영구 실패를 막는다"고 주장하지 않고, "park 후 재시도로는
+절대 못 푼다"고도 하지 않는다 (배출기는 그것 말고도 멈출 이유가 있다 — tick 당 1건, 전부 park 된
+창은 배출기를 놀린다, 30분당 2회 시도). 주장하는 것은 **비율뿐이다**.
+
+**품질 축은 약하고, 읽히는 것보다 더 약하다**: 대조로 쓴 5건은 **단발 실행에서 한 번만** 쟀다 —
+어느 반복 설계도 대조군을 포함하지 않았고 점수를 기록하지도 않았으므로, 반복으로 뒷받침되는
+품질 결과는 하나도 없다. 5건 모두 1.0 만점이라 위로 여유가 없다. 다만 여유가 있는 관측이 실패
+그룹에 하나 있다 — f8ee310b 이 0.95 → 1.0 으로 **올라갔다**. 그러니 검증되지 않은 것은 중간대
+점수의 **하락**이지, 중간대 점수 전체가 아니다. JSON 유효성은 덮인다(`unparseable` 은 어느
+설계에서도 한 번도 안 나왔다).
+
+**1.1 이 기본값이 아닌 근거는 "높을수록 나쁘다"보다 얇다.** 같은 6건 단발에서 1.1 은 1.05 가
+통과시킨 두 건(ba27d31a, bbb519fe)을 잘랐다 — **1.05 대비** 두 건 악화이고, 아무것도 안 보낸
+경우 대비로는 한 건이다(ba27d31a 는 원래 잘렸다). 하지만 1.1 은 **1.05 가 어느 관측에서도 풀지 못한
+d9f2d409 을 풀었다** — 1.05 잔여 잘림의 전부다. 즉 차이는 반복 검증되지 않은 n=6 에서 5 ok 대
+4 ok 이고, 추세가 아니라 **근소하게 갈린 두 후보 중 나은 쪽**이다.
+
+**서버는 모르는 필드를 조용히 무시한다** — 지어낸 파라미터도 HTTP 200 을 돌려준다. 따라서
+"서버가 받아들이는가"는 아무것도 증명하지 않는다. 반영 여부는 **기록된 실행의 결과로**
+확인된다: temperature 0 에서 디코딩은 서버 상태가 같으면 고정인데, 같은 프롬프트가 penalty
+조건에 따라 다른 결과를 냈다(`ba27d31a`: none=cut, 1.05=ok, 1.1=cut). 서버가 무시한 필드는
+그렇게 할 수 없다. (이전 판은 "대조군 필드를 넣으면 바이트 동일"이라는 실험을 근거로 적었으나,
+기록된 실행 중 응답 **텍스트**를 저장한 것이 하나도 없어 그 계측은 기록에 없다. 근거를 실제로
+남아 있는 것으로 바꿨다.)
+
+**`mlx` 레그에만 보낸다 — 이건 명시된 범위지 누락이 아니다.** `callOpenAICompatible` 의
+주석은 자기 대상으로 OpenRouter 와 "그 밖의 모든 OpenAI 호환 엔드포인트"를 꼽는다. 거기에
+보내면 **호스팅 제공자에 닿는다**. 그중 여럿이 이 필드를 실제로 반영하므로(OpenRouter 는
+문서에 있다), 로컬 gemma-4-26b 하나로 잰 근거로 **사용자가 호출당 돈을 내는 판정자의 샘플링을
+조용히 바꾸게 된다**. 같은 로컬 서버를 `backend:"openai"` 로 부르는 사용자는 이 값을 못 받는데,
+그건 문서로 밝힌 범위다.
+
+`repetition_penalty` 는 OpenAI 표준 필드가 **아니다**. 엄격한 서버가 400/422 를 내면
+`isJsonModeRejection` 이 그걸 필드 거부로 읽는다 — 그런데 어느 필드인지는 그 한 응답만으로는
+모호하다(penalty 인지 `response_format` 인지, 아니면 컨텍스트 초과인지). 그래서 이 필드는
+`response_format` **보다 먼저** 버려진다(비표준 쪽이 범인일 확률이 높고, JSON 모드를 잃는 비용이
+더 크다).
+
+**소유자 결정(#299 item 1, 2026-09-10): 엔드포인트별 "이 필드는 안 통한다" 기억을 아예 없앤다.**
+요청마다 새로 판단하고, 거부되면 그 요청 안에서만 한 번 더 시도하고, 아무것도 남기지 않는다 —
+다음 호출은 penalty 와 `response_format` 둘 다 다시 들고 시작한다. 이전 버전은 정반대였다: 프로세스
+수명 동안 살아남는 `Set<url>` 에 "이 엔드포인트는 penalty 를 거부했다"를 적어 두고 그 뒤로는
+아예 보내지 않았다. 그 기억이 4번 연속 적대적 리뷰 라운드에서 HIGH/MEDIUM 결함을 냈다 — 처음엔
+필드를 버리는 순간 기록해 무관한 400 하나가 양쪽 다 마킹했고, 다음엔 그 수정이 "언제 기록해도
+되는가"를 놓쳐 프롬프트 압축과 겹친 성공을 필드 탓으로 돌렸다(바로 아래 옛 문단들이 그 규칙이었다).
+그리고 그 방어가 지키려던 서버는 이 저장소의 어떤 실측에서도 한 번도 나타나지 않았다 — 이 문서의
+모든 측정이 의존하는 `mlx_vlm.server` 는 **모르는 필드를 조용히 무시한다**(위 참고), 즉 정의상
+`repetition_penalty` 를 거부할 수 없는 서버다. #286 item 3 이 이미 한 번 같은 모양의 교훈을 남겼다 —
+"본문이 아니라 상태만으로 판단하자"는 예외가 세 라운드 연속 결함을 내고 실측 수혜자가 0 이어서
+삭제됐다. 여기서도 같다: 기억이 지키는 대상이 실재하지 않는데 대가(결함 4연속)만 실재했다.
+
+남는 비용은 명확하다 — 엄격한 서버 하나를 상대로는 **매 호출마다** 추가 요청이 1~2개 더 나간다.
+그 서버가 있다면 계속 나가고, 없다면(실측상 이게 이 코드베이스가 본 유일한 경우) 비용도 없다.
+영구히 잘못 마킹된 엔드포인트가 주는 손해보다 이쪽이 싸다.
+
+기본값 1.05 는 **생성기 없는 손 미러**다(`MLX_JUDGE_REPETITION_PENALTY` ↔
+`ApmeJudgeMlx.defaultRepetitionPenalty`). 양쪽이 각자의 스위트에서 리터럴을 고정하고 있으며,
+다음에 손댈 때 생성기로 접어야 할 부채로 남긴다.
+
+### 같은 설정 파일, 같은 판정 — 두 데몬 사이의 갈라짐
+
+두 데몬 모두 9120 을 잡을 수 있고 같은 `~/.agentdeck/settings.json` 을 읽는다. 그래서 여기서
+갈라지면 **같은 사용자 설정이 어느 데몬이 응답했느냐에 따라 다른 점수를 낸다** — 그리고 어느 쪽
+로그에도 그 사실이 남지 않는다. #299 에서 정리한 것들:
+
+- **MLX 판정 URL은 `apme.judge.endpoint` → `llm.mlx.endpoint` 순으로 푼다.** Swift 는 모델
+  핀만 `llm.mlx` 에서 읽고 URL 은 루프백으로 고정돼 있었다. `{"llm":{"mlx":{"endpoint":
+  "http://192.168.1.5:8800"}}}` 만 설정한 사용자는 Node 에서는 LAN 서버가 판정하고 Swift 에서는
+  루프백에 붙었다 실패해 FM 바닥(0.580 대 0.86–1.00)으로 조용히 내려갔다.
+- **MLX 판정 타임아웃은 양쪽 90 s.** Swift 만 60 s 였는데, 이 문서가 근거로 삼는 `task_rollup`
+  프롬프트에서 로컬 부하 시 68.7 s 가 실측된 적이 있다 — 같은 프롬프트가 한쪽에서는 판정이고
+  한쪽에서는 타임아웃이었다.
+- **MLX → FM 폴백은 평범한 로그에 남긴다.** Swift 는 `debug` 였다. 이 전환은 측정 가능한 더 약한
+  판정자로 내려가는 사건이고, 위의 `repetition_penalty` 기본값이 바로 그 빈도(잘림률)에 맞춰
+  고른 값이다. 디버그 플래그 뒤에 있으면 그 데몬에서는 비율 자체를 잴 수 없다.
+- **OpenAI 호환 레그의 성공 상태는 200–299.** Node 의 `resp.ok` 와 같다. `== 200` 이면 201/202 로
+  답하는 프록시가 한쪽에서는 판정, 한쪽에서는 실패였다. 상태 게이트를 넓히는 것은 **본문 게이트와
+  무관하다** — 201 이어도 잘린 본문은 여전히 판정이 아니다.
+
+아직 갈라진 채로 남은 것은 없다: JSON 모드 사다리 격차는 #299 item 1 로(위), 분류기
+(`task_category`)의 백엔드·프롬프트·`max_tokens`·타임아웃·폴백은 `shared/src/apme-classifier-rules.ts`
+로 합쳤다 — 아래 "LLM fallback" 절.
+
+### judge-health — 닫힌 작업이 실제로 판정을 받았는가
+
+```bash
+agentdeck apme judge-health --since 14d [--json]
+```
+
+`stop-health` 가 "턴이 어떻게 닫혔는가" 를 묻는다면 이쪽은 그 **다음** 질문이다 — 닫힌
+작업이 판정을 받았는가. 날짜는 판정된 날이 아니라 **작업이 닫힌 날**로 묶는다. 묻는 게
+"그날 한 일이 평가됐는가" 이므로, 사흘 늦게 판정된 작업도 그 일이 일어난 날의 것이다.
+
+| 열 | 뜻 |
+|---|---|
+| `Declined` | task-gradeability 가 거부 — 응답 없음·중단만 있음·사소함. **실패가 아니다**: 에이전트의 작업에 대한 판정은 에이전트의 작업을 필요로 한다 |
+| `Waiting` | 미판정이지만 아직 배출기의 조회 창 **안**. 판정이 도달할 수 있다 |
+| `AgedOut` | 미판정이고 창 **밖**. 배출기가 더는 이 행을 판정자에게 내놓을 수 없다 — 아무것도 이걸 판정하지 않는다 |
+
+`Coverage` 분모는 `judged + waiting + agedOut` 이다. `Declined` 는 빼는데, 빈 작업을
+채점하지 않는 것은 판정자가 **제대로 동작한 것**이지 놓친 게 아니기 때문이다. 어느 버킷이
+분자·분모에 들어가는지는 `judgeCoverage()`(`@agentdeck/shared`) 한 곳에만 있다 —
+`stopDeliveryLoss` 와 같은 이유로, 소비자가 그 규칙을 다시 적으면 범례가 주장하는 것과
+다른 값을 재게 된다.
+
+**`AgedOut` 이 따로 있는 이유.** 배출기는 30일 창으로 제한돼 있고(`TASK_JUDGE_DRAIN_WINDOW_MS`,
+CLI 와 데몬이 같은 상수를 쓴다 — 배출기가 쓰지 않는 창을 보고하는 계기는 아무것도 재지
+않는다), 그 근거는 "더 오래된 행은 대부분 응답 캡처 이전이라 어차피 declined 된다" 이다.
+실측(2026-09-07): 창 밖 미판정 762건 중 **536건이 `no_reply`** 로 근거는 대체로 맞다.
+그런데 **226건은 판정 가능한 작업**이고 그냥 창 밖으로 밀려난 것이다. 게다가 park 된 채로도
+밀려난다 — 실패를 반복하던 작업이 어느 날 조용히 영영 사라진다. 그래서 총계에 섞지 않고
+자기 열로 센다. 이 열이 없던 동안 그 숫자는 그냥 "오래된 백로그 얼마" 로만 보였다.
+
+전체 합계는 **창과 무관하게 따로 한 줄로** 찍는다. 일별 `AgedOut` 열은 그 날짜 자체가
+배출 창보다 오래됐을 때만 0 이 아니므로, `--since` 가 창 안쪽이면(기본 14d) 열 전체가
+구조적으로 0 이다 — 이 명령이 드러내려던 누수가 "창을 넓혀야 한다는 걸 이미 아는 사람"
+에게만 보이게 된다. 그 줄은 "판정 안 됨"만 주장하고 "판정 가능했는데 잃었다"고는 하지
+않는다: 이 행들은 gradeability 검사에도 올라간 적이 없고, 실측상 그 검사가 70% 를 거부한다.
+
+`Coverage` 는 **내림**한다. `toFixed(0)` 은 469/471 을 `100%` 로 찍는데, 같은 줄
+`Waiting` 열이 2 라고 말하는 중이다. 누수를 드러내는 게 유일한 일인 계기가 완벽 쪽으로
+반올림하면 안 된다. `Math.floor` 만으로 충분하고(비율이 정확히 1 일 때만 100 이 된다),
+그래서 옆에서 낡아갈 `>99%` 같은 특례는 두지 않는다.
+
+**"judged" 의 정의는 배출기와 계기가 공유한다**(`JUDGED_SQL`). `summary IS NOT NULL` 이
+아니다 — task_rollup 외의 루브릭은 summary 를 요구하지 않으므로, 카테고리·general 루브릭
+으로 판정된 작업은 composite score 와 eval 행을 갖고 summary 는 NULL 이다. 배출기가
+summary 만 보고 고르던 동안 그런 작업은 **매 tick 다시 판정 대상**이 됐고, 판정이
+**성공**하므로 park 되지 않아 `pickBacklogTasks` 도 건너뛸 수 없었다 — 실패가 없어서
+감지되지 않는 #289 형태의 기아 상태다. 계기와 배출기가 "판정됨"을 다르게 답하면 둘은
+서로 다른 시스템을 설명하는 것이다.
+
+지연은 **nearest-rank** 백분위다(`ceil(q·n)`). `floor(q·n)` 은 한 순위 높게 집어서
+`q·n` 이 정수인 모든 n 에서 p90 이 최댓값과 같아진다 — n=10 일 때 backfill 된 이상치
+하나가 그대로 p90 이 됐고, 그건 백분위를 쓰는 이유 자체다.
+
+`Close → verdict` 는 평균이 아니라 백분위다. 몇 주 뒤에 backfill 된 작업 하나가 평균을
+실제 값 전부보다 위로 끌어올린다.
+
 ### steps — 훅 이벤트 + tool 호출 기록
 
 ```
 id, run_id, ts, kind (UserPromptSubmit|PreToolUse|PostToolUse|Stop|...),
 tool_name, payload (JSON)
 ```
+
+### 보존(retention) — `agentdeck apme prune` (#302)
+
+실측(2026-09-09, 실사용 데스크 1대): `apme.sqlite` 2.33 GB 중 **71%가
+`steps.payload`**(225,256행, 1,661 MB, 행당 ~7.7 KB). `sample_events` 는
+102,295행/213 MB — 거의 전부 `kind='tool'`. 삭제 경로는 `ApmeStore.deleteRun`
+(run 통째 삭제) 하나뿐이었고 보존 정책도 VACUUM 도 없었다.
+
+`steps`/`sample_events`(tool)는 죽은 데이터가 아니다 — `getSteps`/`listSteps`
+와 scorers/outcome/classifier 가 여전히 그 행에서 신호를 뽑는다. 그래서
+`agentdeck apme prune`은 **행을 지우지 않는다**: `--older-than <days>`(기본
+30일 — judge backlog drain 이 이미 쓰는 30일 창을 그대로 앵커로 씀)보다 오래된
+행의 `payload` 만 작은 마커(`{"pruned":true,"prunedAt":…,"bytes":…}`)로
+교체한다. `runs`/`tasks`/`turns`/`evals` 는 절대 건드리지 않고(영구 보존),
+`ts=0`(나이를 알 수 없는 행)은 절대 대상이 아니다 — 추측으로 지우지 않는다는
+원칙. `sample_events` 는 `kind='tool'` 인 행만 대상(실측상 그 테이블 payload
+바이트의 ~98%) — `user_message`/`assistant_message`/`model`/`subagent`/
+`state`/`info`/`relation` 은 작고 의미가 있는 텍스트(작업 제목, judge 컨텍스트
+등)라 건드릴 이유가 없다.
+
+마커도 유효한 JSON 이라 `JSON.parse` 후 익숙한 키(`command`, `file_path`,
+`input`…)를 찾는 리더는 자연히 "내용 없음"으로 처리되지만, 그 구분을 명시로
+만든 곳이 `bridge/src/apme/payload-prune.ts` 의 `isPrunedPayload` — 이걸 쓰는
+곳: `classifier.ts`(Bash 커맨드/plan 모드/OpenClaw 시그널 추출 건너뜀,
+`kind` 기반 카운터는 영향 없음), `graph.ts`(`filePathFromToolPayload` 가 pruned
+행에서 file 노드를 만들지 않음), `sample-to-timeline.ts`, 그리고
+`store.ts`의 `sampleEventRowToTrajectory` 가 `ToolEvent.pruned` 플래그를 세팅해
+`scorers/index.ts`(pruned 쌍은 "연속 중복 호출"로 세지 않음)와
+`runner.ts`의 `buildTrajectoryLines`(judge 프롬프트에 `[payload pruned]` 라고
+명시, 빈 입력을 지어내지 않음)가 잘못 채점하지 않도록 한다.
+
+기본은 **dry-run** — 테이블별 행 수/MB 만 보고하고 아무것도 바꾸지 않는다.
+`--apply` 는 하나의 트랜잭션 안에서 실행한다. `--vacuum` 은 `--apply` 뒤에만
+동작하며, DB 볼륨의 여유 공간이 현재 파일 크기의 1.1배 이상일 때만 실제로
+`VACUUM` 을 돌린다(부족하면 왜 건너뛰었는지 출력) — `UPDATE` 만으로는 SQLite
+파일이 디스크에서 줄어들지 않기 때문. **자동/백그라운드 실행은 없다** — 이
+커맨드는 사람이 직접(또는 본인의 cron/launchd 에서) 돌려야 한다. 전체 CLI
+계약은 [cli.md § Evaluation (APME)](cli.md#evaluation-apme) 참고.
 
 ### evals — 평가 결과 (결정론 + judge + turn-level + vibe)
 
@@ -365,9 +588,40 @@ ocToolNames
 | 10 | `ops` | >50% Bash |
 | — | `unknown` | 위 어디에도 해당 없음 |
 
-### LLM fallback
+### LLM fallback (#299 — 양 데몬 공유 SSOT)
 
-`unknown`이면 `classifyWithLlm(prompt, signals)` — 로컬 MLX에 task prompt + tool 요약을 보내 분류 요청. 비용 0.
+`unknown`이면 `classifyWithLlm(prompt, signals)` — 프롬프트/레이블 목록/`max_tokens`/타임아웃/백엔드
+순서는 `shared/src/apme-classifier-rules.ts` 가 SSOT 이고, `pnpm generate-apme-classifier-rules` 가
+Swift 미러(`ApmeClassifierRules.generated.swift`)를 찍는다 (드리프트 게이트:
+`apme-classifier-rules-sync.test.ts`). `task_category` 가 루브릭을 고르므로, 분류 결과가 두 데몬에서
+다르면 그 자체로 점수 차이다.
+
+이전에는 Node 는 로컬 MLX(`http://127.0.0.1:8800`, ~20 토큰, 15초)만 시도했고, Swift 는
+`callConfiguredJudge` 를 통해 **사용자가 설정한 judge 백엔드를 그대로** 탔다 — `api`/`openai` 포함,
+judge 자신의 800 토큰/60초 예산으로. `judge.backend: "api"` 를 설정한 사용자는 Swift 에서만 분류
+1건당 과금됐다.
+
+**백엔드 순서: `mlx → foundationModels → rules`, `api`/`openai` 는 절대 없음.** 2026-09-10 유지보수자의
+실제 `apme.sqlite` 40개 실제 task 프롬프트(룰이 배정한 카테고리 전역에 분산, 스크립트
+`scripts/measure-apme-classifier-backends.mjs`)로 측정:
+
+| 백엔드 | 완료율(15초 예산 내) | 룰과 일치율 | 잘못된 레이블 |
+|---|---|---|---|
+| Foundation Models | 16/40 (40%) | 5/15 = 33% | 1/16 |
+| MLX (측정 당시 로드된 모델: `Qwen3.8-27B-4bit`) | 7/40 (18%) | 1/7 = 14% | 0/7 |
+
+**이 측정은 순위를 정하기엔 불충분하다고 기록한다.** 세 가지 이유: MLX 서버에 그날 27B 모델이
+올라가 있어 15초 예산은 백엔드의 적성이 아니라 그 서버의 부하를 쟀고, 살아남은 표본(15 대 7)은
+순위를 매길 크기가 아니며, "룰과 일치"는 정확도가 아니다 — 룰은 LLM 이 프롬프트를 읽어 **개선해야
+할 대상**이지 정답이 아니다. 그래서 위 순서는 "어느 쪽이 더 잘 분류한다"는 주장이 아니라 **기존
+결과를 가장 적게 바꾸면서 Apple Intelligence 를 받아들이는 순서**다: `mlx` 가 첫째인 건 분류의
+대부분을 돌리는 Node 의 유일한 LLM 레그가 원래 MLX 였고 프롬프트도 거기에 맞춰져 있어서,
+`foundationModels` 가 둘째인 건 MLX 서버가 없는 Mac — 대부분의 Mac 이 그렇고 Apple Intelligence 는
+기본으로 있다 — 에서도 룰로 떨어지지 않고 LLM 답을 받게 하려고. 순서를 바꾸려면 다시 재야 한다:
+평소 로드되는 MLX 모델, 두 레그가 모두 맞출 수 있는 예산, 룰 일치가 아닌 오너 라벨 정답. 두 데몬
+모두 이 순서를 `shared/src/apme-classifier-rules.ts` 에서 읽으며(Swift 는 생성 미러), `api`/`openai`
+는 배열의 원소가 아니라 **구조적으로 도달 불가**다 — 분류는 매 task 마다 조용히 도는 호출이라 유료
+백엔드로 보내는 것 자체가 금지.
 
 ### `classifyRunSmart(store, runId)`
 
@@ -424,6 +678,109 @@ APME의 핵심 결정: **카테고리마다 평가 방법이 다르다.**
 5. 결과 → `evals` 테이블에 `layer='llm_judge'`, 카테고리별 axis metrics (예: debugging → `diagnosis/fix_quality/verification/overall`)
 
 게이팅 기본값: `sampleRate: 1.0` (모든 run 평가), `onlyWhenDisagreement: false`. 로컬 MLX라 비용이 0이므로 전수 평가가 기본. 필요 시 축소 가능.
+
+### 판정 응답 유효성과 서빙 재현
+
+MLX와 OpenAI 호환 응답은 **양 데몬 모두** `choices`가 비어 있지 않은 **배열**이어야 하고,
+content 는 비어 있지 않은 문자열이어야 한다. 빈 문자열·공백·content 누락·`choices` 부재는
+실패다. `finish_reason=length` 는 본문이 **닫힌 JSON 객체를 하나도 담고 있지 않거나, 마지막으로
+닫힌 객체 뒤에 닫히지 않은 `{` 가 남아 있을 때** 거부한다 — 두 번째 조건은 아래의 모호성
+규칙이 볼 수 없는 경우다. 추론 모델이 `<think>{"overall":0.5}</think>` 를 닫고 나서 진짜
+`{"overall":0.9…` 를 쓰다 잘리면 닫힌 구간이 **하나뿐**이라 모호해 보이지 않고 초안이 점수가
+된다
+(순수하게 **구조적** 질문이다 — "파싱되는가"가 아니다. 두 데몬의 JSON 파서는 관대함이
+다르다: 실측상 Swift `JSONSerialization` 은 Gemma 4 가 뱉는 trailing comma 를 받아들이고
+Node `JSON.parse` 는 거부한다. 그렇게 물으면 데몬마다 답이 갈리는데, 균형 스캐너는 양쪽이
+동일하므로 이 질문은 갈리지 않는다)
+— 객체가 닫혔다면 그것이 완성된 판정이고 닫는 중괄호 뒤에 모델이 더 쓴 것은 판정의 일부가
+아니다. 반대로 객체 도중에 잘린 본문은 애초에 파싱되지 않으므로 `parseJudgeJson` 이 같은
+케이스를 이미 거부한다. 잘림 검사는 실패 사유를 "잘렸다"고 말할 수 있게 하려고 남아 있다
+(#286). 실측: gemma-4-26b 는 일부 프롬프트에서 `summary` 문자열 안에서 같은 문장을 반복하다
+800토큰 상한에 닿고 객체를 끝내 닫지 않는다 — 이것이 이 규칙이 거부해야 하는 본문이다.
+
+본문에서 객체를 꺼내는 방식도 양 데몬이 같아야 한다. Node 는 첫 `{`부터 **마지막** `}`까지
+집는 greedy 정규식이었고 Swift 는 균형 스캐너였다 — 판정 뒤에 중괄호가 든 산문이 붙으면
+한쪽만 거부한다. 잘린 본문을 받아들이기 시작하면 "닫는 중괄호 뒤의 텍스트"가 바로 그
+경로이므로 Node 도 균형 스캔을 먼저 쓴다. 다만 키의 여는 따옴표가 빠진 본문은 문자열
+추적 자체가 어긋나므로(그래서 `repairJudgeJson` 이 있다) greedy 구간을 두 번째 후보로
+남긴다. 응답 게이트는 `shared/apme-judge-response-vectors.json`을, Anthropic `api` 레그는
+`shared/apme-judge-api-response-vectors.json`을 Vitest와 macOS XCTest 에서 함께 재생한다
+(`api` 레그는 SDK 를 통해서만 도달하므로 자기 벡터 파일이 없으면 규칙을 지워도 양쪽
+스위트가 초록이었다). JSON 파싱·루브릭 검증은 그 다음 단계다.
+
+여러 객체 중 **무엇이 판정인지는 위치가 아니라 `overall` 필드로 정한다.** 균형 스캔은
+파싱 가능한 구간을 늘리므로 "먼저 파싱되는 것"은 안전한 규칙이 아니다 — 로컬 추론 모델이
+답 앞에 스크래치패드 객체를 뱉으면 그걸 점수로 저장한다. `overall` 을 가진 구간이 둘 이상이면
+**모호**로 보고 null(=시끄러운 실패)로 떨어뜨린다. eval 에 들어간 틀린 점수는 건너뛴 것보다
+확실히 나쁘다. 벡터 파일의 `accepted` 는 전송 게이트, `verdict`(생략 시 `accepted` 와 동일)는
+그 뒤 파서가 판정을 내야 하는지를 뜻한다 — 게이트는 통과시키고 파서는 거부해야 하는 본문은
+이 두 축이 없으면 고정할 수 없다.
+
+판정 요청은 **`response_format: {"type":"json_object"}`를 보낸다**. 프롬프트가 JSON을
+요구하고 러너가 JSON으로 파싱하는데 서버에는 아무것도 요구하지 않던 상태였고, 모델이
+객체를 산문으로 감싸면 판정 불가 → 재시도 → 30분 park 가 반복된다(실측: 한 task 가
+3시간에 6회, 9/3 이후 17회 park 되고 끝내 판정되지 않았다). 이 필드는 보편적이지 않아
+일부 OpenAI 호환 서버는 400/422로 거부하는데, 그런 서버가 판정 자체를 잃으면 안 되므로
+**거부 시 필드 없이 그 요청 안에서 1회 재시도**한다 — 그리고 아무것도 기억하지 않는다
+(#299 item 1, 2026-09-10). 401·429·5xx는 필드 거부가 아니므로 그대로 올린다(재시도하면
+인증 실패가 같은 실패 뒤에 숨는다). MLX의 context overflow 400은 기존대로 프롬프트를
+압축해 재시도하며 JSON 모드를 유지한다.
+
+이전 판은 엔드포인트별로 "이 서버는 `response_format` 을 거부한다"를 기억해 프로세스 수명 동안
+다시 보내지 않았다. 그 기억을 지운 이유는 `repetition_penalty` 절(위)과 같다 — 어느 필드가
+원인인지 한 번의 400/422 만으로는 모호한 채 기록이 남았고, 그 모호함이 4번 연속 적대적 리뷰
+라운드에서 결함을 냈으며, 지키려던 서버(정말로 `response_format` 을 거부하는 서버)는 이
+저장소의 실측에 한 번도 나타나지 않았다. 남는 비용은 엄격한 서버 하나당 매 호출 1회 추가
+요청뿐이고, 그런 서버가 없으면(실측상 유일한 경우) 비용도 없다.
+
+**이 JSON 모드 사다리는 이제 두 데몬 모두에 있다(#299 item 1로 해소).** `apple/` 은
+`response_format` 을 아예 보내지 않던 쪽이었지만, 지금은 `ApmeJudgeMlx.judge`(penalty →
+JSON 모드 순으로 버림)와 `ApmeJudgeOpenAI.judgeThrowing`(JSON 모드만 버림) 양쪽에 같은
+per-request 재시도가 있다 — 기억이 없으니 이식할 상태도 없다: Node 의 `Set<url>` 을 그대로
+옮기는 대신, Swift 도 처음부터 "요청마다 새로 판단"으로 맞췄다.
+
+`apme.judge.reasoningEffort`는 **OpenAI 호환 백엔드 전용 선택 옵션**이다.
+`none | low | medium | high | max`를 `reasoning_effort`로 전달하며 생략하면 서버 기본값을
+유지한다. 지원 여부는 서버·모델에 달려 있다. #286 이후 두 데몬 모두 이 값을 전달한다 — 같은
+설정 파일을 읽는 이상 한쪽만 무시하면 사용자가 `none` 으로 막으려던 thinking 토큰이 1,024 캡을
+먹고 `finish_reason: "length"` 로 돌아온다. 공통 응답 유효성 규칙과 백엔드별 조절 옵션은
+계속 구분한다.
+
+개발용 재생 도구는 데몬을 시작하지 않고, 사용자가 준비한 일관된 SQLite 스냅샷의
+**사본에만** 판정을 저장한다. WAL 사용 중인 DB 파일만 복사하지 말고 SQLite backup으로
+`fixture.sqlite`를 준비한다. `selection.json` 형식은
+`[{"case":"AD01","taskId":"<snapshot task id>"}]`이며, 원문·DB·응답은 저장소 밖에 둔다.
+`boundaries.json`은 `[{"case":"INPUT12K","prompt":"<synthetic prompt>"}]` 형식이다.
+
+```bash
+pnpm build
+BENCH_PROFILE=mlx-baseline-01 BENCH_SERVER_REVISION='<server commit + model digest + context/cache settings>' \
+  node scripts/apme-serving-normalized.mjs /absolute/private/fixtures mlx
+# 비정규화 요청/프롬프트 캡처: apme-serving-replay.mjs PRIVATE_DIR capture|mlx|ollama
+# 입력 경계: apme-serving-boundary.mjs PRIVATE_DIR mlx|ollama
+```
+
+정규화는 출력 800·온도 0·top_p 1·seed 42·추론 끔을 요청하고, 최초/즉시 반복/전체 재방문을
+기록한다. 서버가 요청 옵션을 실제로 적용했는지는 서버 계측으로 별도 확인해야 한다.
+`manifest.json`에는 소스 커밋과 작업 트리 상태, 실제 bridge/shared 빌드 해시, 스크립트·입력
+해시, Node 버전, 서버 식별 설명이 들어간다. 조건이 달라지면 새 프로필을 요구하고 기존
+성공·실패·중단 결과를 덮어쓰지 않는다. 결과 없는 `.started.json`은 중단 시도다. 모델 이름은 과거 실험의 명시적 고정값이다.
+다른 모델로 실험하면 스크립트 변경과 서버 모델 digest를 함께 기록해야 한다.
+
+2026-09-06 기록상 기본 MLX와 추론을 끈 Ollama는 각각 30/30 저장에 성공했다.
+APC 기본과 APC 24개+JSON object는 각각 27/30이었고, 초기 중단 19회도 보존했다.
+이는 **서빙 완료율**이다. 판정 정확도·동등성의 근거로 사용하지 않는다. 운영 MLX 선택과
+실패 사례의 상세 근거는 DEVELOPMENT_LOG의 같은 날짜 두 실험 항목에 유지한다.
+
+다음 품질 비교는 고정 입력·루브릭 버전과 사람이 확인한 기준 판정을 먼저 준비한다.
+완료율/형식 유효성, 사람과의 축별 일치·오판, 반복 편차, 지연·토큰·비용을 각각 보고한다.
+과거 자동 점수는 정답으로 취급하지 않고, 누락·변경된 응답이 있는 작업은 기준셋에서
+구분한다. 이 기준셋과 품질 비교는 아직 완료되지 않았다.
+
+관측 검증도 평가의 선행 조건이다. SubagentStart와 PERM의 라이브 근거는
+DEVELOPMENT_LOG의 `2026-09-06 — PERM 후속 라이브 감사`에 있다. 내부 Claude fork의 Stop을
+Agent 실행으로 세지 않으며, 사용량 복구용 CLI 호출은 도구·훅·세션 저장을 비활성화해
+사용자 작업의 관측과 평가에 섞이지 않게 한다.
 
 ### Turn-level judge (`runner.enqueueTurn`)
 
@@ -731,7 +1088,7 @@ start/completion·duration·summary 를 읽고, 양 데몬의 `/apme/graph` 는 
 | `deterministic.timeoutSec` | `180` | 단계별 하드 타임아웃 (초) |
 | `deterministic.commands` | `{}` | 언어별 명령 override |
 | `judge.backend` | `"mlx"` | `"mlx"` \| `"foundationModels"` \| `"openai"` \| `"openclaw"` \| `"api"` |
-| `judge.model` | `"qwen3-30b"` | 백엔드에서 사용할 모델 id. `qwen3-30b`는 legacy placeholder 로 취급되고, 실제 MLX fallback 은 `mlx-community/Qwen3-1.7B-4bit` |
+| `judge.model` | `"qwen3-30b"` | 백엔드에서 사용할 모델 id. `qwen3-30b`는 legacy placeholder 로 취급되고, 실제 모델은 서버 상주 모델로 검증하며 임의 fallback 모델을 로드하지 않음 |
 | `judge.sampleRate` | `1.0` | judge 호출 비율 (0..1) — 로컬 backend는 비용 0이므로 전수 평가 기본 |
 | `judge.onlyWhenDisagreement` | `false` | `true`면 결정론 clear pass는 judge skip |
 | `judge.fallbackToMlx` | `true` | `backend:"foundationModels"` 일 때 FM 경로가 없으면 MLX 로 재시도 |
@@ -837,3 +1194,56 @@ axes 이름은 rubric 별로 다르다 (general / conversation / planning / rese
 ### OTel / 외부 표준화 정책
 
 이 schema 는 **OTel 호환이 목표가 아니다.** judge axes / vibe / composite_score 는 OpenTelemetry GenAI semantic conventions 에 1급 시민으로 매핑되지 않는다. lifecycle 정렬은 별도의 internal envelope (`shared/src/telemetry-envelope.ts`) 가 담당한다 — 자세한 근거: [otel-standardization-study.md](otel-standardization-study.md).
+
+
+## MLX 운영 안전성 (2026-09-11)
+
+`/v1/models`는 MLX-VLM에서 **다운로드 목록**이다. 첫 항목은 현재 상주 모델이 아니다.
+운영 서버에 다른 모델을 요청하면 이전 생성 스레드의 종료와 GPU 메모리 해제가 끝나기
+전에 교체 모델을 로드할 수 있다. 0.6.15의 10초 join 제한, HTTP 취소 뒤 계속되는
+non-stream 추론, 살아 있는 오류 프로세스를 재시작하지 않는 supervisor가 사고를 확대했다.
+
+AgentDeck의 Node·Swift MLX judge, classifier, summarizer, 모델 탐색은 다음 정책을 공유한다.
+
+- `/health.loaded_model`을 사용하고 명시된 pin과 다르면 추론 없이 거부한다. pin은
+  운영 중 모델 교체 권한이 아니다. 해당 기능이 없는 서버는 모델 목록이 단 하나일 때만
+  호환 경로를 허용한다. 서버가 실제 상주 상태를 제공하지 않으면 singleton도 최초 로드를
+  유발할 수 있으므로, 운영자는 모델을 미리 로드하고 서버 측 정책도 적용해야 한다.
+- 매 요청 전에 `/metrics`의 진행 중 요청·큐·마지막 OOM을 확인한다. `healthy` 문자열만으로
+  GPU 상태가 복구됐다고 판단하지 않는다. metrics 미지원(404/405)은 구형 서버 호환 경로다.
+- 같은 프로세스의 동일 endpoint에 대한 추론은 응답 본문 완료까지 한 건만 허용한다.
+  대기 큐는 만들지 않는다. POST 이후 timeout·전송 실패·5xx·429는 5분 동안 재시도를 막는다.
+  다른 프로그램이나 별도 daemon과의 원자적 동시 실행 제어는 서버 책임이다.
+- 모델을 추측하는 fallback을 제거한다. `apme.judge`의 legacy 설정은 backend가 MLX이거나
+  생략됐을 때만 상속한다. API·Ollama 등 다른 backend의 주소와 모델을 MLX에 섞지 않는다.
+- 초기 설정의 MLX 탐색도 상주 모델만 제시하고 MLX backend를 선택한다. 일반 OpenAI 호환
+  backend는 자동 선택 시 singleton만 허용한다. 명시적으로 선택한 일반 OpenAI 모델은
+  해당 서버의 정책을 따르므로 MLX 사용자는 MLX backend를 선택해야 한다.
+
+### 운영자용 서버 보호
+
+`scripts/mlx-server-guard.py`는 **검증된 mlx-vlm 0.6.15 전용** 실행 어댑터다.
+App Store 앱에 포함되거나 앱에서 실행되지 않으며 Python·MLX·supervisor를 설치하지 않는다.
+기존 서버의 Python으로 기존 서버 인자를 그대로 전달하되 `--model`과 메모리 예산을 명시한다.
+
+```sh
+AGENTDECK_MLX_MEMORY_GIB=32 /path/to/mlx/python scripts/mlx-server-guard.py \
+  --model mlx-community/gemma-4-26b-a4b-it-4bit [기존 서버 인자]
+```
+
+32GiB는 64GiB Studio에서 선택한 운영 예산이며 제품 기본값이 아니다. 각 장비에 맞춰
+모델·context·동시성을 포함한 예산을 정해야 한다. 어댑터는 모델/adapter/kind 교체를
+loader 진입 전 HTTP 409로 거부하고, allocator OOM이나 GPU high-water 예산 초과 시
+종료 코드 70으로 끝내 supervisor의 재시작을 유도한다. `set_memory_limit`는 swap 환경의
+강제 상한이 아니므로 별도 0.5초 감시를 둔다. 감시 주기 내 초과나 GPU 호출이 멈추는
+상황까지 완벽한 하드 상한을 보장하지 않는다. supervisor에는 restart throttle을 유지한다.
+버전이 달라지면 검증 없이 실행하지 않도록 차단한다. 업그레이드 시 adapter를 재검증한다.
+
+`scripts/measure-apme-classifier-backends.mjs`는 **실제 추론을 하는** 측정 도구다.
+DB read-only는 GPU 부하가 없다는 뜻이 아니다. 실험은 별도 endpoint에서 수행한다.
+`--endpoint`/`--model`을 지정할 수 있지만 운영 pin 교체는 허용하지 않으며 첫 MLX 실패에서
+중단한다. 기본값은 사용자 MLX 설정이다.
+
+회귀 검증: `pnpm build && pnpm typecheck && pnpm test`, `pnpm generate-mlx-safety --check`,
+macOS `MlxSafetyTests`와 `ApmeJudgeCrossDaemonTests`. 서버 어댑터의 교체 거부·OOM 종료·
+메모리 예산 테스트는 fake loader/allocator로 검증하며 CI에서 대형 모델을 로드하지 않는다.

@@ -8,6 +8,39 @@
  * task runs in the interactive user session, needs no admin elevation, and uses
  * only the built-in schtasks.exe (no npm dependency).
  *
+ * ## Why the action is a launcher and not the daemon itself
+ *
+ * Task Scheduler starts an interactive-token action with a console ATTACHED and
+ * gives no way to suppress it: node.exe is a console-subsystem binary, so the
+ * logon start handed the daemon to the default terminal application and left a
+ * window — and a taskbar button — on the desktop for as long as the daemon
+ * lived. Measured on a Windows 11 26200 machine 2026-09-14 with Windows
+ * Terminal as the default terminal app: a long-lived `node.exe` action produced
+ * a visible `WindowsTerminal` window titled with the action's command line, and
+ * `<Hidden>true</Hidden>` did NOT suppress it — that setting hides the task in
+ * the Task Scheduler UI and nothing else. The two alternatives do not exist
+ * here either: `conhost --headless` did not run the action at all, and
+ * registering an `S4U` principal fails with "Access is denied" without
+ * elevation this installer does not have — and S4U would put the daemon back
+ * in a non-interactive session, which is what a Windows Service was rejected
+ * for above.
+ *
+ * So the action is `daemon autostart`: a launcher that spawns the real daemon
+ * DETACHED with no console (`detached` + `windowsHide` → DETACHED_PROCESS |
+ * CREATE_NO_WINDOW) and exits in a few hundred ms, before the terminal handoff
+ * paints anything. Same machine, same method: no visible window at 0.7s or at
+ * 5s after `schtasks /Run`, and the detached daemon kept running.
+ *
+ * The cost is that the task's own `Status` stops describing the daemon — it
+ * describes a launcher that is SUPPOSED to be gone. So the launcher passes
+ * `AGENTDECK_SUPERVISOR=schtasks` to the daemon, the daemon stamps it into
+ * `daemon.json` once it has WON the port, and `supervisorJobRunning` reads that
+ * stamp when the status says `Ready` (`startedBySupervisor` /
+ * `composeSchtasksRunning` in daemon-supervisor.ts). `RestartOnFailure`
+ * likewise now only covers a launcher that cannot spawn; a crashed daemon comes
+ * back at the next logon or by hand, the same as a `schtasks /End`ed one always
+ * did.
+ *
  * The pure XML/args builder is unit-tested (cross-platform); the schtasks
  * /Create|/Run|/Query|/Delete calls are integration-only (real Windows host +
  * side effects) and are exercised manually per docs/daemon.md.
@@ -48,12 +81,14 @@ export function buildScheduledTaskXml(opts?: { node?: string; cliJs?: string; us
   const user = opts?.user ?? getCurrentTaskUser();
   const workingDir = join(homedir(), '.agentdeck');
   const command = xmlEscape(node);
-  // cli.js wrapped in quotes to survive paths with spaces; --foreground so the
-  // task process IS the daemon (lets RestartOnFailure track the real process).
-  // extraArgs carries the network posture (`--local` / `--loopback`): Task
-  // Scheduler has no environment element, so argv is the only channel.
+  // cli.js wrapped in quotes to survive paths with spaces; `daemon autostart`
+  // rather than `daemon start --foreground` because an action that IS the
+  // daemon keeps a console window on the desktop for the daemon's whole life
+  // (see the header). extraArgs carries the network posture (`--local` /
+  // `--loopback`): Task Scheduler has no environment element, so argv is the
+  // only channel, and the launcher forwards it to the daemon it spawns.
   const extra = (opts?.extraArgs ?? []).map((a) => ` ${a}`).join('');
-  const args = xmlEscape(`"${cliJs}" daemon start --foreground${extra}`);
+  const args = xmlEscape(`"${cliJs}" daemon autostart${extra}`);
   const userEsc = xmlEscape(user);
   // schtasks /XML requires UTF-16 with a BOM (see installWindowsTask); declaring
   // UTF-8 triggers "unable to switch the encoding". The bytes are written as
@@ -90,6 +125,8 @@ export function buildScheduledTaskXml(opts?: { node?: string; cliJs?: string; us
     </IdleSettings>
     <AllowStartOnDemand>true</AllowStartOnDemand>
     <Enabled>true</Enabled>
+    <!-- Hides the task in the Task Scheduler UI, NOT the action's console
+         window (measured 2026-09-14). Kept false so the task stays findable. -->
     <Hidden>false</Hidden>
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
@@ -150,3 +187,4 @@ export function endWindowsTask(): void {
 export function deleteWindowsTask(): void {
   execSync(`schtasks /Delete /TN "${TASK_NAME}" /F`, { stdio: 'pipe', windowsHide: true });
 }
+

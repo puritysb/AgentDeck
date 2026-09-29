@@ -65,7 +65,7 @@ void addTimeline(const char* type, const char* sid, const char* raw, const char*
 }
 
 void base(CreatureState cs) {
-  std::memset(&g_state, 0, sizeof(g_state));
+  g_state.reset();
   g_state.dataReceived = true;
   g_state.wsConnected = true;
   g_state.state = AgentState::IDLE;
@@ -85,8 +85,13 @@ void base(CreatureState cs) {
   g_state.inputTokens = 128000; g_state.outputTokens = 41000;
   g_state.toolCalls = 87; g_state.sessionDurationSec = 5400;
   g_state.estimatedCostUsd = 3.42f;
+  g_state.codexPrimaryMinutes = 300;
+  g_state.codexSecondaryMinutes = 10080;
+  g_state.zaiPrimaryMinutes = 300;
+  g_state.zaiSecondaryMinutes = 10080;
   g_state.codexPrimaryPercent = -1.0f;   // no Codex-window data by default
   g_state.codexSecondaryPercent = -1.0f;
+  g_state.zaiPrimaryPercent = g_state.zaiSecondaryPercent = -1.0f;
   g_state.antigravityCredits = -1.0f;
   setStr(g_state.subscriptions[0].name, sizeof(g_state.subscriptions[0].name), "Claude Max");
   setStr(g_state.subscriptions[0].until, sizeof(g_state.subscriptions[0].until), "~7/28");
@@ -168,9 +173,21 @@ bool SimScenes::apply(const char* name) {
       return false;
     return applyDemoScene(agent, state);
   }
+  if (std::strcmp(name, "quota-colors") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.fiveHourPercent = 82;
+    g_state.sevenDayPercent = 90;
+    g_state.codexPrimaryPercent = 100;
+    g_state.codexSecondaryPercent = -1;
+    g_state.codexLunaPercent = 82;
+    return true;
+  }
   if (std::strcmp(name, "empty") == 0) {
-    std::memset(&g_state, 0, sizeof(g_state));
-    g_state.dataReceived = false;   // pre-connection: idle aquarium, no creatures
+    g_state.reset();
+    g_state.fiveHourPercent = g_state.sevenDayPercent = -1;
+    g_state.codexPrimaryPercent = g_state.codexSecondaryPercent = -1;
+    g_state.zaiPrimaryPercent = g_state.zaiSecondaryPercent = -1;
+    g_state.dataReceived = false;   // pre-connection: no quota data or creatures
     return true;
   }
   if (std::strcmp(name, "offline") == 0) {
@@ -179,6 +196,79 @@ bool SimScenes::apply(const char* name) {
     g_state.dataReceived = true;  // previously connected, daemon now absent
     g_state.lastMessageMs = 1;
     g_state.sessionCount = 0;
+    return true;
+  }
+  if (std::strcmp(name, "usage-none") == 0 ||
+      std::strcmp(name, "usage-zero") == 0 ||
+      std::strcmp(name, "usage-stale") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.fiveHourPercent = g_state.sevenDayPercent = -1;
+    if (std::strcmp(name, "usage-zero") == 0) g_state.codexPrimaryPercent = 0;
+    if (std::strcmp(name, "usage-stale") == 0) {
+      g_state.fiveHourPercent = 82;
+      g_state.usageStale = true;
+      g_state.codexSecondaryPercent = 37;
+    }
+    return true;
+  }
+  if (std::strcmp(name, "usage-all") == 0 || std::strcmp(name, "zai-only") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.zaiPrimaryPercent = 36;
+    setStr(g_state.zaiPrimaryReset, sizeof(g_state.zaiPrimaryReset), "2h 15m");
+    g_state.zaiSecondaryPercent = 100;
+    g_state.zaiSecondaryIsMcp = true;
+    if (std::strcmp(name, "zai-only") == 0) {
+      g_state.fiveHourPercent = g_state.sevenDayPercent = -1;
+      g_state.subscriptionCount = 0;
+    } else {
+      g_state.codexPrimaryPercent = 15;
+      g_state.codexSecondaryPercent = 30;
+      setStr(g_state.codexSecondaryReset, sizeof(g_state.codexSecondaryReset), "6d 1h");
+    }
+    return true;
+  }
+  if (std::strcmp(name, "codex-only") == 0) {
+    base(CreatureState::FLOATING);
+    addSession("openclaw", "idle", "OpenClaw");
+    g_state.fiveHourPercent = g_state.sevenDayPercent = -1;
+    g_state.codexSecondaryPercent = 37;
+    setStr(g_state.codexSecondaryReset, sizeof(g_state.codexSecondaryReset), "6d 1h");
+    setStr(g_state.subscriptions[0].name, sizeof(g_state.subscriptions[0].name), "ChatGPT Pro");
+    addTimeline("chat_response", "s0-OpenClaw", "Long first line\nSecond line must stay within its row", nullptr);
+    addTimeline("chat_response", "s0-OpenClaw", "사용량 표시를 개선했습니다.\n다음 줄도 같은 행에 표시합니다.", nullptr);
+    return true;
+  }
+  // Codex account window exhausted with a Luna reserve reported: every
+  // USAGE surface swaps the Codex windows for the reserve ("% left"), and the
+  // plan fills the slot the second window leaves.
+  if (std::strcmp(name, "codex-luna") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.codexPrimaryPercent = 100;
+    setStr(g_state.codexPrimaryReset, sizeof(g_state.codexPrimaryReset), "1h 10m");
+    g_state.codexSecondaryPercent = 62;
+    g_state.codexLunaPercent = 32;
+    setStr(g_state.codexLunaReset, sizeof(g_state.codexLunaReset), "4h 50m");
+    setStr(g_state.subscriptions[1].name, sizeof(g_state.subscriptions[1].name), "ChatGPT Pro");
+    setStr(g_state.subscriptions[1].until, sizeof(g_state.subscriptions[1].until), "~8/14");
+    g_state.subscriptionCount = 2;
+    return true;
+  }
+  // The live daemon mix measured 2026-09-26: Claude reported as a bare
+  // "Claude" subscription (no tier), Codex Pro with no 5h window, z.ai MCP
+  // exhausted, Antigravity plan-only.
+  if (std::strcmp(name, "live-mix") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.fiveHourPercent = 12; g_state.sevenDayPercent = 87;
+    g_state.codexPrimaryPercent = -1; g_state.codexSecondaryPercent = 83;
+    setStr(g_state.codexSecondaryReset, sizeof(g_state.codexSecondaryReset), "4d 2h");
+    g_state.zaiPrimaryPercent = 7; g_state.zaiSecondaryPercent = 100; g_state.zaiSecondaryIsMcp = true;
+    const char* subs[][2] = {{"ChatGPT Pro", "~10/10"}, {"Claude", ""}, {"GLM Coding Plan \xC2\xB7 Max", ""}, {"Google AI Pro", ""}};
+    for (int i = 0; i < 4; ++i) {
+      setStr(g_state.subscriptions[i].name, sizeof(g_state.subscriptions[i].name), subs[i][0]);
+      setStr(g_state.subscriptions[i].until, sizeof(g_state.subscriptions[i].until), subs[i][1]);
+    }
+    g_state.subscriptionCount = 4;
+    setStr(g_state.antigravityPlan, sizeof(g_state.antigravityPlan), "Google AI Pro");
     return true;
   }
   if (std::strcmp(name, "idle") == 0) {
@@ -190,6 +280,26 @@ bool SimScenes::apply(const char* name) {
     base(CreatureState::FLOATING);
     addSession("claude-code", "idle", "AgentDeck");
     g_state.hostDisplayOn = false;
+    return true;
+  }
+  if (std::strcmp(name, "worktree-glance") == 0) {
+    base(CreatureState::WORKING);
+    addSession("claude-code", "processing", "AgentDeck - firmware-review-worktree");
+    addSession("codex-cli", "processing", "AgentDeck - dashboard-layout-worktree");
+    addSession("claude-code", "awaiting_permission", "AgentDeck - rollout-verification");
+    for (int i=0;i<3;++i) {
+      auto& s=g_state.sessions[i];
+      std::snprintf(s.displayName,sizeof(s.displayName),"AgentDeck #%d",i+1);
+      setStr(s.lastEventText,sizeof(s.lastEventText),"Previous task finished. This must not replace live progress.");
+    }
+    setStr(g_state.sessionNames[0],24,g_state.sessions[0].displayName);
+    setStr(g_state.cloudNames[0],24,g_state.sessions[1].displayName);
+    setStr(g_state.sessionNames[1],24,g_state.sessions[2].displayName);
+    setStr(g_state.sessions[0].lastEventTask,sizeof(g_state.sessions[0].lastEventTask),"Review firmware memory safety");
+    setStr(g_state.sessions[0].activity,sizeof(g_state.sessions[0].activity),"Checking display buffers and preserving memory for voice responses.");
+    setStr(g_state.sessions[1].lastEventTask,sizeof(g_state.sessions[1].lastEventTask),"Improve dashboard readability");
+    setStr(g_state.sessions[1].activity,sizeof(g_state.sessions[1].activity),"Reflowing long summaries so every agent role stays readable on the dashboard.");
+    setStr(g_state.sessions[2].question,sizeof(g_state.sessions[2].question),"Install the tested firmware on the connected boards?");
     return true;
   }
   if (std::strcmp(name, "working") == 0) {
@@ -232,6 +342,28 @@ bool SimScenes::apply(const char* name) {
     g_state.subscriptionCount = 2;
     return true;
   }
+  if (std::strcmp(name, "aquarium") == 0) {
+    base(CreatureState::WORKING);
+    addSession("claude-code", "processing", "AgentDeck");
+    addSession("codex-cli", "processing", "AgentDeck");
+    addSession("claude-code", "awaiting_permission", "Website");
+    addSession("openclaw", "idle", "OpenClaw");
+#if defined(BOARD_IPS10)
+    g_state.sessions[0].childrenKnown=true;g_state.sessions[0].childrenActive=2;
+#endif
+    g_state.gatewayConnected=true;
+    setStr(g_state.sessions[0].currentTool,sizeof(g_state.sessions[0].currentTool),"Edit");
+    setStr(g_state.sessions[1].currentTool,sizeof(g_state.sessions[1].currentTool),"Bash");
+    setStr(g_state.sessions[0].activity,sizeof(g_state.sessions[0].activity),"Refining dashboard layout");
+    setStr(g_state.sessions[1].activity,sizeof(g_state.sessions[1].activity),"Checking mobile build");
+    setStr(g_state.sessions[2].question,sizeof(g_state.sessions[2].question),"Run the build command?");
+    setStr(g_state.sessions[2].activity,sizeof(g_state.sessions[2].activity),"Updating landing page");
+    addTimeline("tool_result","s1-AgentDeck","12 checks passed",nullptr);
+    g_state.codexPrimaryPercent=23;g_state.codexSecondaryPercent=44;
+    setStr(g_state.codexPrimaryReset,sizeof(g_state.codexPrimaryReset),"1h 42m");
+    setStr(g_state.codexSecondaryReset,sizeof(g_state.codexSecondaryReset),"5d 9h");
+    return true;
+  }
   if (std::strcmp(name, "crowd") == 0) {
     // Real-world shape: many concurrent sessions in the SAME project (one big
     // huddle) plus a couple of stragglers — exercises pod grouping + seating.
@@ -248,7 +380,7 @@ bool SimScenes::apply(const char* name) {
     setStr(g_state.sessions[1].lastEventText, sizeof(g_state.sessions[1].lastEventText),
            "Wired the daemon milestone line into the session cards");
     setStr(g_state.sessions[1].lastEventTask, sizeof(g_state.sessions[1].lastEventTask),
-           "InkDeck timeline");
+           "TRMNL timeline");
     setStr(g_state.sessions[1].lastEventHm, sizeof(g_state.sessions[1].lastEventHm), "14:21");
     setStr(g_state.sessions[4].question, sizeof(g_state.sessions[4].question),
            "Bash 명령 실행을 허용할까요? rm -rf build/");
@@ -340,6 +472,6 @@ bool SimScenes::apply(const char* name) {
 }
 
 const char* SimScenes::catalog() {
-  return "empty, idle, display-off, working, multi, crowd, crowded, dense, permission, attention, "
+  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, live-mix, empty, idle, display-off, worktree-glance, working, multi, crowd, crowded, dense, permission, attention, "
          "demo:<agent>:<state>";
 }

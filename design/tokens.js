@@ -42,6 +42,21 @@
     ttyText: '#c8d0d8',
     ttyDim: '#7a8493',
     ttyFaint: '#4a5060',
+    hudText: '#E2E8F0',
+    hudSubtext: '#94A3B8',
+    hudFaint: '#64748B',
+    waterDeep: '#0A1628',
+    waterMid: '#0F2744',
+    waterShallow: '#163B5C',
+  };
+
+  // Session state (product UI) — DESIGN.md §2.7. Only awaiting may pulse.
+  const Session = {
+    idle: UI.idle,
+    working: UI.cyan,
+    awaiting: UI.attn,
+    offline: UI.idleDark,
+    error: UI.error,
   };
 
   // Agent brand marks — only saturated reds/blues allowed in the system.
@@ -53,7 +68,9 @@
     opencode: '#3a3a3a',
     antigravity: '#5F6368',
     kiro: '#7C3AED',
+    zai: '#1F63EC',
+    opencodeOnDark: '#F1ECEC',
   };
 
-  window.DT = { Tide, Ink, Kelp, Coral, Amber, Status, UI, Brand };
+  window.DT = { Tide, Ink, Kelp, Coral, Amber, Status, UI, Session, Brand };
 })();

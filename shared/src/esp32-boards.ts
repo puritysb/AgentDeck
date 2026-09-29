@@ -171,15 +171,16 @@ export const ESP32_BOARDS: Esp32BoardSpec[] = [
     id: 'ips_10', env: 'ips10', name: 'IPS 10.1"', display: '10.1" 800x1280 JD9365',
     aliases: ['ips10', 'ips_101'],
     chipFamily: 'ESP32-P4', flashSize: '16MB', flashMode: 'dio', flashFreq: '40m',
-    bootloaderOffset: 0x2000, uploadBaud: 115200,
-    esptoolFlags: ['--before', 'no_reset', '--after', 'no_reset', '--no-stub'],
+    bootloaderOffset: 0x2000, uploadBaud: 460800,
+    esptoolFlags: [],
     before: 'no_reset', after: 'no_reset', stub: false, nativeUsb: false,
     ota: true,
     webFlash: false, webFlashStatus: 'blocked',
     webFlashVerified:
       '2026-08-23 · reaches download mode and then never answers SYNC. NOT a stub problem: SYNC precedes stub loading in both tools, so `stub: true` cannot reach this failure. Both serial directions are proven up (see notes); what does not answer is the ROM loader itself.',
     notes: [
-      'ESP32-P4: the bootloader lives at 0x2000, not 0x0.',
+      '2026-09-26: Python esptool 5.3 default-reset + stub at 460800 successfully wrote and hash-verified all four regions over CH340 (P4 rev1.3, MAC 80:f1:b2:d0:b4:bb). The August USB failure below is historical; browser esptool-js remains unverified since then.',
+      'ESP32-P4: the bootloader lives at 0x2000, not 0x0. Write boot_app0.bin at 0xe000 to reset the OTA slot when recovering.',
       'Download mode IS reached: `boot:0x307 (DOWNLOAD(USB/UART0/SPI))` followed by `waiting for download`, read over this same CH340 UART. So chip->host is UP in download mode — the banner arrived on it. esptool.py says "The serial TX path seems to be down"; that sentence is esptool guessing from a failed round trip, and it is wrong here. It was carried in this field as a finding until 2026-08-23; do not carry it again.',
       'host->chip is up too: the identical open-and-write path gets 1403 bytes back from the running app. That contrast is the measurement, not the write itself — `drain()` times out on this adapter in BOTH states, so the timeout is a node-serialport/CH340 artifact and is evidence of nothing. Reading it as "the bytes never left" is a wrong answer this board hands out for free.',
       'Yet SYNC returns ZERO bytes: 5 tries from esptool.py 5.2.0, 3 more from a hand-built SYNC frame on a port already proven to be in download mode. The remaining suspect is the ROM download channel itself. The banner lists USB first, and this board has no cable on the P4 native USB port — that is where the next attempt goes.',
@@ -187,8 +188,8 @@ export const ESP32_BOARDS: Esp32BoardSpec[] = [
     ],
   },
   {
-    id: 'inkdeck', env: 'inkdeck', name: 'InkDeck', display: '7.5" 800x480 e-ink UC8179',
-    aliases: [],
+    id: 'trmnl_75', env: 'trmnl_75', name: 'Seeed TRMNL 7.5"', display: '7.5" 800x480 e-ink UC8179',
+    aliases: ['inkdeck'],
     chipFamily: 'ESP32-S3', flashSize: '8MB', flashMode: 'dio', flashFreq: '80m',
     bootloaderOffset: 0x0, uploadBaud: 460800, esptoolFlags: [],
     before: 'default_reset', after: 'hard_reset', stub: true, nativeUsb: true,
@@ -200,6 +201,7 @@ export const ESP32_BOARDS: Esp32BoardSpec[] = [
     notes: [
       'The XIAO ESP32-S3 Plus is physically 16MB, but its BSP bakes an 8MB flash-size field — 8MB is the correct declaration, not a mistake.',
       'Pick the download-mode port, not the running one.',
+      'Shipped as "InkDeck" through 1.2.1 — an invented name for the Seeed kit. `inkdeck` stays an accepted alias so a board flashed before the rename still identifies itself.',
     ],
   },
   {
@@ -343,6 +345,24 @@ export const ESP32_BOARD_BY_TARGET: Record<string, Esp32BoardSpec> = Object.from
 );
 
 /**
+ * Wire board ids that firmware ALREADY IN THE FIELD reports for a board whose
+ * canonical id has since changed. A flashed board keeps saying what it was
+ * built as until it takes an OTA, so a rename that moves only the canonical id
+ * drops every deployed unit off the surfaces that match on the string —
+ * silently, because an unknown board is indistinguishable from an absent one.
+ * Legacy id → canonical id.
+ */
+export const LEGACY_BOARD_IDS: Record<string, string> = {
+  // Shipped as "InkDeck" through 1.2.1 (an invented name for the Seeed kit).
+  inkdeck: 'trmnl_75',
+};
+
+/** Resolve a board string off the wire to its canonical id. */
+export function canonicalBoardId(board: string): string {
+  return LEGACY_BOARD_IDS[board] ?? board;
+}
+
+/**
  * esptool reports a chip DESCRIPTION, not a family: "ESP32-D0WD (revision 1)",
  * "ESP32-S3 (QFN56) (revision v0.2)". Order matters — every variant string also
  * contains the substring "ESP32", so the classic case has to be the fallback or
@@ -384,7 +404,7 @@ export function esp32FlashIdIsUsable(flashIdHex: string | undefined): boolean {
  *
  * Declaring MORE flash than the part has is the brick: the bootloader header
  * claims a geometry the chip cannot serve and the partition table is rejected.
- * Declaring LESS is merely conservative — and on InkDeck it is mandatory, since
+ * Declaring LESS is merely conservative — and on TRMNL 7.5" it is mandatory, since
  * the XIAO ESP32-S3 Plus is physically 16MB but its BSP bakes an 8MB field. An
  * equality test fails that board for doing the correct thing.
  *

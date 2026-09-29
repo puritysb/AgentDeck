@@ -1,3 +1,5 @@
+import { startPersonalVoiceTurn } from './personal-voice-turn.js';
+import { transcribeDeviceAudio, type VoiceTranscriptionSettings } from './device-transcription.js';
 /**
  * AgentDeck Daemon — lightweight monitoring server.
  *
@@ -14,7 +16,8 @@
 import { createServer, type Server, type ServerResponse } from 'http';
 import { createHash, randomUUID } from 'crypto';
 import WebSocket from 'ws';
-import { BridgeCore, buildCappedTimelineHistory } from './bridge-core.js';
+import { trackDaemonSockets } from './daemon-socket-drain.js';
+import { BridgeCore, buildCappedTimelineHistory, ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES } from './bridge-core.js';
 import { buildDisplayStateEvent } from './display-dim.js';
 import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import { prepareForSerial } from './esp32-serial.js';
@@ -22,9 +25,12 @@ import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
 import { PassiveSessionObserver } from './passive-observer.js';
+import { HookClaudeSessions } from './hook-claude-sessions.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
 import { SubagentTimelineTracker } from './subagent-timeline.js';
+import { CoordinationTracker, type RelationObservation } from './coordination-evidence.js';
+import { HookOpenCodeSessions } from './hook-opencode-sessions.js';
 import {
   getRemoteSession,
   getRemoteSender,
@@ -57,6 +63,9 @@ import {
   notePermissionPromptShown, noteToolEnd, steeringSnapshot,
 } from './observed-steering.js';
 import { resolveSessionIdPrefix } from './session-id-resolve.js';
+import {
+  SessionOrderStore, resolveSessionOrderTarget, parseSessionOrderWeight,
+} from './session-order-store.js';
 import { injectObservedSelection, injectObservedText } from './observed-inject.js';
 import {
   setSerialCommandSink, setSerialVoiceSink, setSerialQuiesceCheck, sendSerialJson,
@@ -67,7 +76,7 @@ import { parsePeripheralMappings, resolvePeripheralAction, commandForAction } fr
 import { DeviceVoiceCollector } from './device-voice.js';
 import { DevicePhotoCollector } from './device-photo.js';
 import {
-  transcribeWithHelper, synthesizeWavWithHelper,
+  synthesizeWavWithHelper,
   recordWithHelper, stopHelperRecording, speakWithHelper,
 } from './foundation-models-helper.js';
 import { enqueueOpenCodeCommand, pollOpenCodeCommands } from './opencode-steering.js';
@@ -116,6 +125,12 @@ const APME_ABANDONED_RUN_STALE_SEC = Math.max(
 );
 /** Backlog tasks handed to the judge per eval tick when it is idle — see the drain. */
 const APME_TASK_JUDGE_DRAIN_PER_TICK = 1;
+/** How many backlog candidates the drain looks at to find one it may feed.
+ *  Much larger than the per-tick budget on purpose — see the drain for why.
+ *  Reading rows is free (one indexed SELECT); only the judge call is serial.
+ *  Sized so a run of consecutive poison tasks at the head cannot fill the whole
+ *  window and starve the older backlog behind them the way one task did. */
+const APME_TASK_JUDGE_DRAIN_WINDOW = 200;
 /** How often a judge backend that last probed unavailable is probed again.
  *  The probe used to run once, at startup; a local MLX server busy with
  *  someone else's inference at that moment answered nothing inside the
@@ -130,6 +145,7 @@ import {
   findExistingDaemon,
   probeDaemonHealth,
   requestDaemonShutdown,
+  requestDaemonStandDown,
   scanDaemonPortWindow,
   shouldConcedePortToOccupant,
   waitForDaemonExit,
@@ -143,15 +159,21 @@ import {
   getDataDir,
   getOwnTimelineFile,
 } from './session-registry.js';
+import { startedBySupervisor } from './daemon-supervisor.js';
 import { isForeignDaemon } from './daemon-takeover.js';
 import { loadDaemonSettings } from './daemon-settings.js';
+import { dashboardProviders } from './dashboard-providers.js';
+import { listenOnce, listenWithReclaim } from './daemon-listen.js';
 import {
   resolveDaemonPort,
   describeDaemonPortSource,
-  PREFERRED_PORT_RECLAIM_MS,
+  preferredPortReclaimBudgetMs,
   type DaemonPortSource,
 } from './daemon-port.js';
-import { fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
+import { enableClaudeUsageRecovery, fetchUsageFromApi, hasOAuthToken, resetConsecutiveFailures, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
+import { TASK_JUDGE_DRAIN_WINDOW_MS } from './apme/runner.js';
+import { stopClaudeUsageRecoveryChildren } from './claude-usage-recovery.js';
+import { AGENT_IDLE_GAP_MS, canonicalBoardId, resolveGatewayHealth } from '@agentdeck/shared';
 import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
 import {
@@ -170,7 +192,7 @@ import {
   recordKnock,
   revokePeer,
 } from './pairing-knocks.js';
-import { getLastFrame, renderPreviewFrame, onFrameRendered, offFrameRendered } from './pixoo/pixoo-bridge.js';
+import { broadcastMatrix, getLastFrame, renderPreviewFrame, onFrameRendered, offFrameRendered } from './pixoo/pixoo-bridge.js';
 import { loadIDotMatrixDevices } from './idotmatrix/idotmatrix-settings.js';
 import { handlePixooWake } from './pixoo/pixoo-client.js';
 import { triggerMdnsRecovery } from './mdns.js';
@@ -178,7 +200,9 @@ import { rgbToBmp, pixooLiveHtml } from './hook-server.js';
 import { enableDebugLog, debug, debugThrottled } from './logger.js';
 import { LegacyRearmLedger } from './legacy-rearm-ledger.js';
 import { CodexOtelTracker, CODEX_OTEL_TRACES_PATH, spanNameSummary } from './codex-otel.js';
-import { HookCodexSessions } from './hook-codex-sessions.js';
+import { HookCodexSessions, buildCodexPermissionQuestion } from './hook-codex-sessions.js';
+import { HubStateDriverTracker, resolveHubFrameIdentity, shapeHubFrame } from './hub-state-identity.js';
+import { CodexAmbientSessions } from './codex-ambient-hooks.js';
 import { HermesSessions } from './hermes-sessions.js';
 import { ObservedTurnWatchdogs } from './observed-turn-watchdogs.js';
 import {
@@ -204,7 +228,7 @@ import { OpenClawTimelineFeed, OPENCLAW_FEED_INTERVAL_MS } from './openclaw-time
 import {
   DeviceVoiceReplyRouter, speakableReply, spokenDigest, pcmFromWav, type ReplySink,
 } from './device-voice-reply.js';
-import { rawSessionId, type StateSnapshot } from '@agentdeck/shared';
+import { rawSessionId, type AgentType, type StateSnapshot } from '@agentdeck/shared';
 import { codexTurnOutcomeFromRollout, codexTurnOutcomeFromRolloutPath, lastAgentMessageFromCodexRollout } from './codex-rollout-response.js';
 import { callFoundationModelsHelper } from './foundation-models-helper.js';
 import {
@@ -220,10 +244,10 @@ import {
   describeDaemonPosture,
   resolveDaemonPosture,
 } from './network-posture.js';
-import { esp32ConnectionCount, getESP32DeviceInfo, onESP32Message, sendAuthProvisionToAll, sendWifiProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards, releaseESP32SerialPorts } from './esp32-serial.js';
+import { esp32ConnectionCount, getESP32DeviceInfo, onESP32Message, sendAuthProvisionToAll, sendWifiProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards, releaseESP32SerialPorts, sanitizeRssiDbm } from './esp32-serial.js';
 import { clampLeaseSeconds, clearLease, readLease, writeLease } from './esp32-flash-lease.js';
 import { loadWifiConfig } from './wifi-config.js';
-import { getConnectedAdbDevices, hasAdb, getAdbDeviceCount } from './adb-reverse.js';
+import { getAdbDeviceCountCached, getCachedAdbDevices } from './adb-reverse.js';
 import { getPixooDeviceDetails, pixooDeviceCount } from './pixoo/pixoo-bridge.js';
 import { loadTimeboxDevices } from './timebox/timebox-settings.js';
 import { getLanIp, stripUnsafeText, cleanRawText, prepareMarkdownDetail, normalizeCommandPrompt, formatDurationSec, type TimelineEntry, PluginCommand } from '@agentdeck/shared';
@@ -260,6 +284,8 @@ import {
   pullOtaResponseStatus,
   surfaceErrorBody,
   surfaceAllowsEvent,
+  surfaceHasCapability,
+  CLAUDE_TOOL_EVENTS_CAPABILITY,
   SurfaceProtocolError,
   validateSurfaceOtaIdentity,
   validateSurfaceQueryTuple,
@@ -267,11 +293,13 @@ import {
   type SurfaceNegotiation,
   type SurfaceOtaIdentity,
 } from './surface-protocol.js';
+import { claudeHookTimelineEntry } from './claude-hook-timeline.js';
 import type { UsageEvent } from './types.js';
 import { resolveRelayedUsageEvent } from './relayed-usage.js';
 import { CARD_FEED_PATH, CARD_OUTBOX_PATH, FONT_PACK_PATH, GLANCE_FRAME_PATH, LEARNING_PACK_PATH, type CardFeedResponse, type SessionInfo, type OutboxPushRequest } from '@agentdeck/shared';
 import { readFileSync, statSync, writeFileSync, appendFileSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
+import { sampleEventLoopDelay } from './event-loop-telemetry.js';
 import { tmpdir, networkInterfaces, type NetworkInterfaceInfo } from 'os';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -283,6 +311,8 @@ import {
   type AdapterEvent,
   type ModelCatalogEntry,
 } from './types.js';
+
+import { hookPayloadProjectName, resolveProjectNameFromCwdCached } from './utils/project-name.js';
 
 function exitProcessNow(code = 0): void {
   if (code === 0) {
@@ -296,7 +326,7 @@ function exitProcessNow(code = 0): void {
   process.exit(code);
 }
 
-// WiFi ESP32 boards (InkDeck) that announced device_info over the plugin WS.
+// WiFi ESP32 boards (TRMNL 7.5") that announced device_info over the plugin WS.
 // Keyed board:ip; entries age out after an hour so a re-IP'd board doesn't
 // leave ghosts in `agentdeck devices`.
 interface WifiEsp32Device {
@@ -332,6 +362,9 @@ interface WifiEsp32Device {
   alsReady?: boolean;
   repaintCount?: number;
   fullRefreshCount?: number;
+  usageCodex5H?: number;
+  usageCodex7D?: number;
+  rssiDbm?: number;
   lastSeenMs: number;
 }
 const wifiEsp32Devices = new Map<string, WifiEsp32Device>();
@@ -571,7 +604,7 @@ function saveStagedFw(): void {
  *  board this daemon has not met yet is legitimate. */
 function resolveStagedFwBoard(target: string): string {
   for (const [key, device] of wifiEsp32Devices) {
-    if (key === target || device.board === target || device.ip === target) return device.board;
+    if (key === target || canonicalBoardId(device.board) === canonicalBoardId(target) || device.ip === target) return device.board;
   }
   // A pull-sync client ages out of the WS roster between wakes; the feed
   // tracker keeps its IP→board memory precisely for that gap.
@@ -678,7 +711,7 @@ function wifiEsp32Key(d: { board?: unknown; ip?: unknown }): string {
 
 /**
  * Single-path transport dedup. A physical ESP32 can be reachable over BOTH a
- * USB serial connection and a WiFi WebSocket at once (e.g. inkdeck/ttgo/tc001
+ * USB serial connection and a WiFi WebSocket at once (e.g. trmnl_75/ttgo/tc001
  * plugged in for flashing while still joined to the AP). Serial is the more
  * reliable, lower-latency path, so when a board is live on serial we drive it
  * over serial only and suppress the redundant WiFi copy — no board receives the
@@ -757,8 +790,11 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
     touchDownSamples: typeof d.touchDownSamples === 'number' ? d.touchDownSamples : undefined,
     touchGestures: typeof d.touchGestures === 'number' ? d.touchGestures : undefined,
     alsReady: typeof d.alsReady === 'boolean' ? d.alsReady : undefined,
+    usageCodex5H: typeof d.usageCodex5H === 'number' ? d.usageCodex5H : undefined,
+    usageCodex7D: typeof d.usageCodex7D === 'number' ? d.usageCodex7D : undefined,
     repaintCount: typeof d.repaintCount === 'number' ? d.repaintCount : undefined,
     fullRefreshCount: typeof d.fullRefreshCount === 'number' ? d.fullRefreshCount : undefined,
+    rssiDbm: sanitizeRssiDbm(d.rssiDbm),
     lastSeenMs: Date.now(),
   });
   wifiEsp32Sockets.set(key, ws);
@@ -831,10 +867,14 @@ function waitForOtaAck(otaId: string, stage: string, seq: number | undefined, ti
 
 function findWifiOtaTarget(target: string): { key: string; device: WifiEsp32Device; ws: WebSocket } {
   const matches: Array<{ key: string; device: WifiEsp32Device; ws: WebSocket }> = [];
+  // A board renamed in the SSOT keeps reporting its OLD id until it takes the
+  // very OTA being targeted here, so both sides are compared canonically —
+  // otherwise the deployed unit is the one board the rename can never reach.
+  const canonicalTarget = canonicalBoardId(target);
   for (const [key, device] of wifiEsp32Devices) {
     const ws = wifiEsp32Sockets.get(key);
     if (!ws || ws.readyState !== WebSocket.OPEN) continue;
-    if (key === target || device.board === target || device.ip === target) {
+    if (key === target || canonicalBoardId(device.board) === canonicalTarget || device.ip === target) {
       matches.push({ key, device, ws });
     }
   }
@@ -1200,11 +1240,14 @@ export function classifyObservedHookEvent(
   if (eventName === 'codex_subagent_start' || eventName === 'codex_subagent_stop') {
     return { boundary: eventName, agentType: 'codex-cli' };
   }
-  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|notification|permission_asked|permission_replied)$/
+  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied|question_asked|question_replied|question_rejected)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
   return {
-    boundary: prefixed[2] === 'turn_complete' ? 'stop'
+    // `interrupt` (Codex Ctrl+C) is a turn END with no Stop coming, so it
+    // rides the stop boundary; the caller stamps `interrupted` on the payload
+    // so the collector records `end_source='interrupted'`.
+    boundary: prefixed[2] === 'turn_complete' || prefixed[2] === 'interrupt' ? 'stop'
       : prefixed[2] === 'agent_spawn' ? 'session_start'
       : prefixed[2],
     agentType: prefixed[1] === 'codex' ? 'codex-cli'
@@ -1241,14 +1284,19 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
   const modules: Record<string, unknown> = {};
 
   if (started.has('adb')) {
-    const adbAvailable = hasAdb();
-    const devices = adbAvailable ? getConnectedAdbDevices() : [];
+    // Cache, never a live spawn: this feeds /health itself, and a synchronous
+    // `adb devices` here (the pre-#327 shape) put a 5 s event-loop block on
+    // every health poll — under host load that is 5–15 s, exactly the latency
+    // the macOS app reads as "daemon gone" before promoting a fallback on
+    // 9121 and opening the same serial devices twice. The 30 s adb poll keeps
+    // the cache warm.
+    const { devices } = getCachedAdbDevices();
     modules.adb = {
-      available: adbAvailable,
+      available: true,
       devices,
       classifiedDevices: [],
       reverseReadyCount: devices.length,
-      lastError: adbAvailable ? null : 'adb not found',
+      lastError: null,
     };
   }
 
@@ -1341,9 +1389,12 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
         timelineCount: status.timelineCount,
         sessionCount: status.sessionCount,
         usageFiveH: status.usageFiveH,
+        usageCodex5H: status.usageCodex5H,
+        usageCodex7D: status.usageCodex7D,
         processingCount: status.processingCount,
         repaintCount: status.repaintCount,
         fullRefreshCount: status.fullRefreshCount,
+        rssiDbm: status.rssiDbm,
         deviceInfoFresh: status.deviceInfoFresh,
       } : null,
       lastReadAt: status.lastReadAt,
@@ -1389,6 +1440,31 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // what this daemon is allowed to do.
   const posture = resolveDaemonPosture({ local: opts.local, loopback: opts.loopback });
 
+  // Evict an app-owned Swift in-process daemon so this CLI daemon can take over.
+  //
+  // `/stand-down` first, `/shutdown` only as the fallback for app builds that
+  // predate the endpoint — and the difference is not politeness. `/stand-down`
+  // TELLS the app which port to become a client of (its canonical one, the one
+  // we are about to bind); `/shutdown` leaves the app resolving that port from
+  // a registry that is empty at exactly this moment — our daemon.json row is
+  // being torn down and the incoming daemon has not bound yet. That resolution
+  // failing is what left the macOS app daemonless and clientless for 23 hours
+  // (#305, measured 2026-09-09; same signature 09-07 and 09-10). The app side
+  // is fixed too, but this path was ALSO asking the wrong question of it.
+  //
+  // One helper rather than the four copies this rule used to have here: the
+  // CLI's own takeover (`negotiateIncumbentDaemon`) has preferred stand-down
+  // since it was written, and these four sites — the ones that actually run
+  // inside `daemon start --foreground` — never learned it.
+  const evictSwiftDaemon = async (port: number, where: string): Promise<void> => {
+    log(`[agentdeck] Swift daemon detected ${where}. Requesting stand-down to take over...`);
+    if (!(await requestDaemonStandDown(port))) {
+      log(`[agentdeck] Stand-down was not acknowledged — falling back to /shutdown.`);
+      await requestDaemonShutdown(port);
+    }
+    await waitForDaemonExit(port);
+  };
+
   // ===== Singleton guard + port allocation =====
   // 1. Check daemon.json and sessions.json for existing daemon
   const existingInfo = readDaemonInfo();
@@ -1397,9 +1473,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     const health = await probeDaemonHealth(probePort);
     if (health?.mode === 'daemon') {
       if (health.isSwift) {
-        log(`[agentdeck] Swift daemon detected on port ${probePort}. Requesting shutdown to take over...`);
-        await requestDaemonShutdown(probePort);
-        await waitForDaemonExit(probePort);
+        await evictSwiftDaemon(probePort, `on port ${probePort}`);
         // …and until the socket is actually released. NWListener.cancel()
         // returns before the port is free, so "stopped answering" alone would
         // let the bind below land on a fallback port.
@@ -1419,9 +1493,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     const health = await probeDaemonHealth(existingSession.port);
     if (health?.mode === 'daemon') {
       if (health.isSwift) {
-        log(`[agentdeck] Swift daemon detected on port ${existingSession.port}. Requesting shutdown to take over...`);
-        await requestDaemonShutdown(existingSession.port);
-        await waitForDaemonExit(existingSession.port);
+        await evictSwiftDaemon(existingSession.port, `on port ${existingSession.port}`);
         removeDaemonSession(existingSession);
       } else {
         log(`[agentdeck] Daemon already running on port ${existingSession.port} (PID ${existingSession.pid}).`);
@@ -1457,9 +1529,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       port = await findAvailablePort();
     } else if (preferredOccupant.mode === 'daemon') {
       if (preferredOccupant.isSwift) {
-        log(`[agentdeck] Swift daemon detected on port ${requestedPort} via /health. Requesting shutdown to take over...`);
-        await requestDaemonShutdown(requestedPort);
-        await waitForDaemonExit(requestedPort);
+        await evictSwiftDaemon(requestedPort, `on port ${requestedPort} via /health`);
         await waitForPortBindable(requestedPort);
       } else {
         // Daemon alive but not in our registry — race condition or stale state
@@ -1492,9 +1562,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       continue;
     }
     if (stray.health.isSwift) {
-      log(`[agentdeck] Swift daemon detected on fallback port ${stray.port}. Requesting shutdown to take over...`);
-      await requestDaemonShutdown(stray.port);
-      await waitForDaemonExit(stray.port);
+      await evictSwiftDaemon(stray.port, `on fallback port ${stray.port}`);
     } else if (shouldConcedePortToOccupant(stray.health, process.pid)) {
       log(`[agentdeck] Daemon already running on port ${stray.port} (detected via port scan).`);
       process.exit(0);
@@ -1581,12 +1649,27 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // process scan can't see one (lsof timeout, no rollout held open).
   const hookCodexSessions = new HookCodexSessions();
   const hermesSessions = new HermesSessions();
+  const hookClaudeSessions = new HookClaudeSessions();
+  // Who last moved the hub's global state machine — see hub-state-identity.ts.
+  const hubDriver = new HubStateDriverTracker();
+  // Codex Desktop ambient-suggestions threads — see codex-ambient-hooks.ts.
+  const codexAmbientSessions = new CodexAmbientSessions();
+  const hookOpenCodeSessions = new HookOpenCodeSessions();
   // Declared before the HTTP server: the PreToolUse route reads it to decide
   // whether this daemon can type into a session's terminal, and hooks start
   // arriving the moment the port binds — several hundred milliseconds before
   // the rest of startup finishes. A later `const` would leave that window
   // throwing on the temporal dead zone.
   const passiveSessionObserver = new PassiveSessionObserver();
+  // Daemon-persisted sort pins for observed sessions (#273 session-ordering
+  // gate — the daemon-first replacement for launch-time `--weight`). Declared
+  // before the HTTP server for the same TDZ reason as the observer: the
+  // /sessions/order route and the sessions enricher both close over it.
+  const sessionOrder = new SessionOrderStore().load();
+  /** Observed-session ids from the last enricher pass — the id set the deck
+   *  actually rendered, kept so the /sessions/order route can resolve a
+   *  user-supplied prefix/uuid against exactly what sessions_list shows. */
+  let lastObservedRosterIds: string[] = [];
   /** Produces live timeline rows for observed Kiro sessions — see the class
    *  doc for why Kiro needs a producer when hook agents do not. */
   const kiroTimelineFeed = new KiroTimelineFeed();
@@ -1623,6 +1706,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // when the first /health request arrives.
   let gatewayAdapter: OpenClawAdapter | null = null;
   let gatewayConnecting = false;
+  // Backoff for adapters that die before their handshake completes (Gateway
+  // still booting, auth refused). The probe retries on every tick while the
+  // port is open, so without this a refusing Gateway is dialled every 5 s.
+  let gatewayFailedAttempts = 0;
+  let gatewayRetryAtMs = 0;
   let moduleHealthProvider: () => Record<string, unknown> = () => ({});
 
   // Gateway-local activity state for the virtual `openclaw-gateway` session row.
@@ -1695,11 +1783,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    * session on both decks. Keeping the model out of the shared slot means the
    * Gateway's own events have to carry it explicitly, which is what this does.
    */
-  const gatewaySnapshot = (base?: StateSnapshot): StateSnapshot => ({
-    ...(base ?? core.stateMachine.getSnapshot()),
-    modelName: gatewayModelName ?? null,
-  });
-
   // Wi-Fi WebSocket e-ink panels (XTeink X3/X4 CrossPoint fork) self-register
   // their device roster via `client_register{clientType:"eink-device"}` — the
   // same volunteer model as the Stream Deck plugin. This handler lived ONLY in
@@ -1759,6 +1842,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Assigned after BridgeCore exists. The HTTP handler reads it only after
   // startup; nullable keeps the tiny listen→core initialization window safe.
   let subagentTimeline: SubagentTimelineTracker | null = null;
+  // Cross-session coordination (spawned workers, peer messages, background
+  // jobs) — the second census axis beside `subagents`. See coordination-evidence.ts.
+  const coordination = new CoordinationTracker();
 
   // The learning pack is immutable for one daemon lifetime. Package upgrades
   // arrive with a new AgentDeck build; validating once keeps every sleeping
@@ -1886,18 +1972,30 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // This is the field that says the samples were lying (null = stable).
         gatewayInstability,
         uptime: process.uptime(), port, pid: process.pid,
+        // Loop-blocked vs process-gone, on the route that decides it (#327):
+        // a 5–15 s /health with a live listener was only attributable after
+        // the fact, by native sampling. Rolling window, reset per read.
+        eventLoopDelayMs: sampleEventLoopDelay(),
         // Which build is SERVING this port. Captured when this process started
         // (see daemon-build-identity.ts) and never recomputed, so a rebuild
         // underneath a running daemon reads as a mismatch instead of being
         // absorbed — `dist/cli.js` is overwritten in place, and nothing else
         // here distinguishes the code on disk from the code in memory.
         build: startupBuildId,
+        broadcastMetrics: core.wsServer.getBroadcastMetrics(),
         pairingToken: core.authToken,
         // Capability: this daemon drives remote sessions down their own push
         // socket (session_focus_down / session_command_down / session_event_up).
         // Workers require this flag before remote-attaching; the Swift daemon
         // does not advertise it and is therefore never selected as a remote hub.
         sameSocketControl: true,
+        // Report the configured recognition path, not inferred engine readiness.
+        // This lets device diagnostics detect a runtime that predates the local backend.
+        voice: {
+          transcriber: (loadDaemonSettings().voice as VoiceTranscriptionSettings | undefined)?.transcriber ?? 'apple',
+          locale: (loadDaemonSettings().voice as VoiceTranscriptionSettings | undefined)?.locale ?? 'auto',
+          personalRoute: 'openclaw-personal',
+        },
         // Network posture, so `agentdeck daemon restart` can carry the running
         // daemon's posture across the restart instead of silently downgrading
         // an enterprise install back to "advertise everything". Local-only
@@ -2052,6 +2150,35 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       });
       return;
     }
+    // Display preference only: never changes provider observation or credentials.
+    if (pathname === '/dashboard/providers' && (req.method === 'GET' || req.method === 'POST')) {
+      void (async () => {
+        try {
+          // The additive join (#351) is gated on CONFIRMED providers — ids the
+          // daemon can currently see live — so a never-offered id joins the
+          // saved list only when it actually has something to show.
+          const confirmed = [
+            ...(core.oauthConnected ? ['claude'] : []),
+            ...(core.lastBuiltCodexRateLimits ? ['codex'] : []),
+            ...(core.cachedZaiQuota?.primary || core.cachedZaiQuota?.secondary ? ['zai'] : []),
+            ...(core.cachedGatewayConnected ? ['openclaw'] : []),
+            ...((core.cachedMlxModels?.length ?? 0) > 0 ? ['mlx'] : []),
+            ...(core.cachedOllamaStatus ? ['ollama'] : []),
+            ...(core.cachedAntigravityStatus?.planName ? ['antigravity'] : []),
+          ];
+          const providers = dashboardProviders(
+            req.method === 'POST' ? await readJsonBody(req, 4096) : undefined,
+            confirmed,
+          );
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ providers: Array.isArray(providers) ? providers : null }));
+        } catch (error) {
+          res.writeHead(error instanceof TypeError ? 400 : 500); res.end('Unable to save provider display preferences');
+        }
+      })();
+      return;
+    }
+
     if (req.method === 'GET' && pathname === '/status') {
       const snap = core.stateMachine.getSnapshot();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2068,6 +2195,74 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         clients: core.wsServer.getClientCount(),
         modules: moduleHealthProvider(),
       }));
+      return;
+    }
+
+    // Daemon-persisted sort pins for observed sessions (#273 session-ordering
+    // gate). GET lists every pin; POST { sessionId, weight } sets one and POST
+    // { sessionId, clear: true } (or weight 0/null) removes it. Authenticated
+    // by the LAN gate above like every other route — the CLI (`agentdeck
+    // order …`) is the intended same-machine client, a remote peer needs the
+    // pairing token. `sessionId` accepts the exact sessions_list id, a device
+    // truncated echo, or the bare uuid; a prefix must match exactly one live
+    // observed session. After a mutation the sessions list is rebroadcast so
+    // every surface re-sorts within one frame.
+    if (pathname === '/sessions/order' && (req.method === 'GET' || req.method === 'POST')) {
+      void (async () => {
+        try {
+          if (req.method === 'GET') {
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+            res.end(JSON.stringify({ pins: sessionOrder.list() }));
+            return;
+          }
+          const body = await readJsonBody(req, 4096);
+          const rawId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+          if (!rawId) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'sessionId required' }));
+            return;
+          }
+          // Byte-compatible with the Swift route: any valid zero spelling
+          // (number or numeric string) means "remove the pin" — 0 is the
+          // default sort band, so pinning it is a no-op spelled as a clear.
+          const wantsClear = body.clear === true || body.weight === null
+            || parseSessionOrderWeight(body.weight) === 0;
+          let weight: number | undefined;
+          if (!wantsClear) {
+            weight = parseSessionOrderWeight(body.weight);
+            if (weight === undefined) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                error: 'weight must be an integer between -9999 and 9999 (or clear it with weight 0)',
+              }));
+              return;
+            }
+          }
+          const target = resolveSessionOrderTarget(rawId, lastObservedRosterIds);
+          if (target.status === 'ambiguous') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: `session id prefix is ambiguous — it matches ${target.candidates.length} live sessions`,
+              matches: target.candidates,
+            }));
+            return;
+          }
+          if (wantsClear) {
+            const had = sessionOrder.clear(target.id);
+            core.maybeBroadcastSessionsList();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ cleared: true, hadPin: had, sessionId: target.id }));
+            return;
+          }
+          const applied = sessionOrder.set(target.id, weight ?? 0);
+          core.maybeBroadcastSessionsList();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ sessionId: target.id, weight: applied }));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `bad body: ${String(err)}` }));
+        }
+      })();
       return;
     }
     if (req.method === 'GET' && pathname === '/devices') {
@@ -2089,7 +2284,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           { type: 'pixoo', details: getPixooDeviceDetails() },
           { type: 'timebox', devices: loadTimeboxDevices() },
           { type: 'idotmatrix', devices: loadIDotMatrixDevices() },
-          { type: 'adb', count: getAdbDeviceCount() },
+          { type: 'adb', count: getAdbDeviceCountCached() },
           {
             type: 'd200h',
             connected: ulanziPluginConnected,
@@ -2183,7 +2378,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         });
         // The HTTP response only confirms receipt of the bytes; the
         // transcript/outcome goes to the board as a voice_result frame.
-        await finishVoiceCapture(saved, boardResultSinkFor(board));
+        const id = Number(parsedUrl.searchParams.get('requestId'));
+        void finishVoiceCapture({ ...saved, requestId: Number.isInteger(id) && id > 0 && id <= 0xffffffff ? id : undefined }, boardResultSinkFor(board));
         return { ok: true, bytes: total };
       })().then((result) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2214,6 +2410,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         res.end(JSON.stringify({ error: 'no_staged_reply' }));
         return;
       }
+      staged.fetched = true;
+      const fetchStarted = performance.now();
+      log(`[agentdeck] voice latency: replyFetchDelayMs=${Date.now() - staged.ts}`
+        + ` requestId=${staged.requestId ?? 'none'} board=${board}`);
+      res.once('finish', () => log(`[agentdeck] voice latency: replyTransferMs=${Math.round(performance.now() - fetchStarted)}`
+        + ` bytes=${staged.pcm.length} requestId=${staged.requestId ?? 'none'} board=${board}`));
+      res.once('close', () => {
+        if (!res.writableFinished) log(`[agentdeck] voice: reply download disconnected board=${board} requestId=${staged.requestId ?? 'none'}`);
+      });
       // Kept until TTL rather than deleted here: an aborted download may retry.
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
@@ -2228,18 +2433,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // 2026-07-31 12:06). 2 KB per 15 ms ≈ 133 KB/s keeps at most a couple
       // of segments in flight while still beating playback rate 4x.
       {
-        // 8 KB / 10 ms ≈ 800 KB/s — a 2 MB answer lands in ~2.5 s. The
-        // original 2 KB / 15 ms (~133 KB/s) predated the PSRAM-mempool core
-        // fix and made long replies take 15+ s to start, which read as "no
-        // playback"; with the hosted mempool in PSRAM the burst constraint is
-        // gone and only gentle pacing is kept as hygiene.
-        const CHUNK = 8192;
-        const GAP_MS = 10;
+        // IPS10 still has internal lwIP/SDIO pressure despite the PSRAM pool:
+        // an 8 KB burst drove its minimum heap to 2 KB in repeated voice tests.
+        // 1 KB / 20 ms stays ahead of 16 kHz PCM playback (32 KB/s). Firmware
+        // streams after a short prebuffer, so it need not wait for a full reply.
+        const CHUNK = board === 'ips_10' ? 1024 : 8192;
+        const GAP_MS = board === 'ips_10' ? 20 : 10;
         let off = 0;
         const writeNext = (): void => {
           if (res.destroyed) return;
           if (off >= staged.pcm.length) { res.end(); return; }
           const end = Math.min(off + CHUNK, staged.pcm.length);
+          // End with the final paced chunk: the board closes as soon as it
+          // receives Content-Length bytes, before another timer could fire.
+          if (end === staged.pcm.length) { res.end(staged.pcm.subarray(off, end)); return; }
           res.write(staged.pcm.subarray(off, end));
           off = end;
           setTimeout(writeNext, GAP_MS).unref?.();
@@ -2268,10 +2475,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           pid: typeof body.pid === 'number' ? body.pid : undefined,
           board: typeof body.board === 'string' ? body.board : undefined,
         });
-        // Refusing to OPEN is only half of it — a port this daemon already
-        // holds still blocks the flasher, and two readers on one TTY steal
-        // each other's bytes instead of failing cleanly.
-        const released = releaseESP32SerialPorts(`flash lease (${lease.board ?? 'usb flash'})`);
+        // The lease file is the authority and it is already on disk, so the
+        // ack does NOT wait for the release: every poll cycle checks the
+        // lease before opening, so no port can be re-opened in the gap. The
+        // #327 phase-4 run measured a suspend call starved past its whole
+        // 10 s budget under host load ~400 with the ack queued BEHIND the
+        // release work — the flasher timed out, the release landed anyway,
+        // and the ports sat released with nobody tracking a resume. Ack
+        // first, release on the next tick.
+        const released = esp32ConnectionCount();
+        setImmediate(() => {
+          releaseESP32SerialPorts(`flash lease (${lease.board ?? 'usb flash'})`);
+        });
         return { ok: true, until: lease.until, seconds, released };
       })().then((result) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2623,7 +2838,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       }
       (async () => {
         const board = surfaceIdentity?.board ?? parsedUrl.searchParams.get('board') ?? 'xteink_x3';
-        const preset = GLANCE_FRAME_BOARDS[board];
+        const preset = GLANCE_FRAME_BOARDS[canonicalBoardId(board)];
         const w = Number(parsedUrl.searchParams.get('w'));
         const h = Number(parsedUrl.searchParams.get('h'));
         const geometry = Number.isFinite(w) && Number.isFinite(h) && w >= 128 && h >= 128 && w <= 1600 && h <= 1600
@@ -2929,6 +3144,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       req.on('end', () => {
         let json: Record<string, unknown> = {};
         try { json = body ? JSON.parse(body) : {}; } catch { /* ignore */ }
+        // The hook shell's parent pid (`X-AgentDeck-Pid: $PPID` in the
+        // installed snippet) — the only consent-free session→process link.
+        // Carried inside the payload as `agentdeck_pid` so every consumer
+        // downstream sees one shape; a payload that already names one wins.
+        const pidHeader = req.headers['x-agentdeck-pid'];
+        const headerPid = Number(Array.isArray(pidHeader) ? pidHeader[0] : pidHeader);
+        if (Number.isInteger(headerPid) && headerPid > 1 && json.agentdeck_pid == null) {
+          json.agentdeck_pid = headerPid;
+        }
         // Map PascalCase event names to snake_case for state machine + APME
         const eventMap: Record<string, string> = {
           SessionStart: 'session_start', SessionEnd: 'session_end',
@@ -2952,13 +3176,40 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           return;
         }
         const { boundary, agentType: hookAgentType } = classifyObservedHookEvent(eventName, mapped);
+        // A Codex/OpenCode Interrupt is the user's Ctrl+C: the turn ended with
+        // no Stop, and the collector must not read it as a normal stop.
+        if (/_interrupt$/.test(eventName)) json.interrupted = true;
+        // Codex Desktop ambient-suggestions threads fire the user-global hooks
+        // for prompts the user never typed. Drop them before any pipeline sees
+        // them, and retract what the thread's `codex_session_start` (~90 ms
+        // earlier, not yet identifiable) already created.
+        const ambient = codexAmbientSessions.classify(eventName, json);
+        if (ambient.ambient) {
+          if (ambient.firstSeen && ambient.sessionId) {
+            const sid = ambient.sessionId;
+            log(`[agentdeck] Codex ${ambient.reason ?? 'background'} thread ${sid.slice(0, 8)}: not the user's work, its hooks are not recorded`);
+            hookCodexSessions.forget(sid);
+            codexOtel.forget(sid);
+            subagentTimeline?.forget(sid);
+            coordination.forget(sid);
+            hookSessionsSeen.delete(sid);
+            hookSessionLastSeenAt.delete(sid);
+            const runId = apme?.collector.getRunId(sid);
+            if (apme && runId) {
+              apme.collector.releaseRun(runId);
+              try { apme.store.deleteRun(runId); }
+              catch (err) { debug('APME', `deleteRun for ambient thread ${sid.slice(0, 8)} failed: ${String(err)}`); }
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ received: true, background: true }));
+          return;
+        }
         const earlyHookSid = typeof json.session_id === 'string' && json.session_id
           ? json.session_id : 'daemon-hook';
         const earlyHookCwd = (typeof json.cwd === 'string' ? json.cwd
           : (typeof json.project_path === 'string' ? json.project_path : '')) || '';
-        const earlyHookProject = (typeof json.project_name === 'string' && json.project_name)
-          ? json.project_name
-          : (earlyHookCwd ? earlyHookCwd.split('/').filter(Boolean).pop() : undefined);
+        const earlyHookProject = hookPayloadProjectName(json, earlyHookCwd);
         const childResult = subagentTimeline?.handle({
           eventName,
           payload: json,
@@ -2977,6 +3228,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (childResult?.sampleEvent) {
           apme?.collector.noteSubagentLifecycle(earlyHookSid, childResult.sampleEvent);
         }
+        if (childResult?.infoEvent) {
+          apme?.collector.noteInfo(earlyHookSid, childResult.infoEvent);
+        }
         const childHook = childResult?.childOnly === true;
         if (childHook) {
           // Child activity is observation-only. Never let child PreToolUse
@@ -2987,6 +3241,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             : JSON.stringify({ received: true }));
           return;
         }
+        // After child-only filtering and before any state-machine broadcast.
+        if (hookClaudeSessions.note(eventName, json)) core.maybeBroadcastSessionsList();
+        const hookTimelineEntry = claudeHookTimelineEntry(eventName, json);
+        if (hookTimelineEntry) core.bridgeTimeline.addEntry(hookTimelineEntry);
         // Hook-derived Codex session rows. Placed after the child-hook return so
         // subagent lifecycle never drives the parent row, and kept independent
         // of the state machine: this only decides whether a Codex the process
@@ -2998,8 +3256,52 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             projectName: earlyHookProject,
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
           });
+          // Codex PERM: `PermissionRequest` fires only when Codex is about to
+          // ask the user (approval_policy on-request), so it is a genuine
+          // awaiting signal with no prediction — display-only, respond in the
+          // terminal. Any later lifecycle hook on the session ends the wait:
+          // an approval runs the tool (tool_start/tool_end), a denial or
+          // Ctrl+C ends the turn (stop/interrupt), a new prompt supersedes it.
+          const codexSid = typeof json.session_id === 'string' ? json.session_id : '';
+          if (codexSid) {
+            if (eventName === 'codex_permission_request') {
+              // `sticky`: the transcript-recency drop is a Claude ESC heuristic;
+              // a Codex rollout may be appended while the approval waits, and
+              // the explicit hook clears below already end this wait.
+              setAwaitingOverlay(codexSid, buildCodexPermissionQuestion(json), undefined, { sticky: true });
+              core.broadcastSessionsList().catch(() => {});
+            } else if (getAwaitingOverlay(codexSid)?.kind === 'permission') {
+              if (clearAwaitingOverlay(codexSid)) core.broadcastSessionsList().catch(() => {});
+            }
+          }
         }
-        // State machine
+        // OpenCode observed rows: the process scan keys them by PID and knows
+        // nothing about turns or permissions; the observer plugin's hooks key
+        // by OpenCode session id and carry both. See hook-opencode-sessions.ts.
+        if (eventName.startsWith('opencode_')) {
+          hookOpenCodeSessions.note(eventName, {
+            sessionId: typeof json.session_id === 'string' ? json.session_id : undefined,
+            cwd: earlyHookCwd || undefined,
+            projectName: earlyHookProject,
+            toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
+            permissionId: typeof json.permission_id === 'string' ? json.permission_id : undefined,
+            questionId: typeof json.question_id === 'string' ? json.question_id : undefined,
+            title: typeof json.title === 'string' ? json.title : undefined,
+          });
+        }
+        // State machine. The hub's global frame is stamped by whoever moved the
+        // machine (hub-state-identity.ts): an observed session's hook labels
+        // the broadcasts it causes with that session, never with the Gateway.
+        const drivesMachine = mapped === 'session_start' || mapped === 'session_end'
+          || mapped === 'user_prompt_submit' || mapped === 'stop'
+          || mapped === 'tool_start' || mapped === 'tool_end';
+        if (drivesMachine) {
+          hubDriver.noteHook({
+            sessionId: earlyHookSid === 'daemon-hook' ? undefined : earlyHookSid,
+            agentType: hookAgentType,
+            projectName: earlyHookProject,
+          });
+        }
         if (mapped === 'session_start') core.stateMachine.handleHookEvent('SessionStart', json);
         else if (mapped === 'session_end') core.stateMachine.handleHookEvent('SessionEnd', json);
         else if (mapped === 'user_prompt_submit') core.stateMachine.handleHookEvent('UserPromptSubmit', json);
@@ -3009,6 +3311,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         } else if (mapped === 'tool_end') {
           core.stateMachine.handleHookEvent('PostToolUse', json);
         }
+        // The ended session's identity must not ride on later broadcasts.
+        if (mapped === 'session_end' && earlyHookSid !== 'daemon-hook') hubDriver.noteSessionEnd(earlyHookSid);
         // Per-session awaiting overlay for observed/direct-`claude` sessions.
         // Permission prompts stay Notification-driven and display-only unless
         // the precision PreToolUse gate below owns a real requestId.
@@ -3058,7 +3362,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // never held again this session. User prompt / session end clear
             // pending STOP + queued directives (the user took over).
             if (mapped === 'tool_end') {
-              noteToolEnd(claudeSid, toolName || undefined);
+              noteToolEnd(claudeSid, toolName || undefined, toolUseId);
             } else if (mapped === 'user_prompt_submit') {
               if (clearOnUserPrompt(claudeSid)) core.broadcastSessionsList().catch(() => {});
             } else if (mapped === 'session_end') {
@@ -3137,9 +3441,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // capture it so APME runs are attributable to a specific worktree.
         const hookCwd = (typeof json.cwd === 'string' ? json.cwd
           : (typeof json.project_path === 'string' ? json.project_path : '')) || '';
-        const hookProject = (typeof json.project_name === 'string' && json.project_name)
-          ? json.project_name
-          : (hookCwd ? hookCwd.split('/').filter(Boolean).pop() : undefined);
+        const hookProject = hookPayloadProjectName(json, hookCwd);
         const hookMessage = json.message as Record<string, unknown> | undefined;
         // Prompt shapes: Claude `{prompt}` / `{message:{content}}`; some Codex
         // builds send `{user_prompt}` (same fallback chain as codex-hook.ts).
@@ -3160,6 +3462,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // Mirrors the Swift daemon's session_end force-close (`hasOpenTurn`
         // → interrupted chat_end).
         if (boundary === 'session_end') {
+          // Every child the session had ends with it — a lost SubagentStop
+          // must not pin "+N" on a row that no longer exists.
+          subagentTimeline?.forget(hookSid);
+          coordination.forget(hookSid);
           const rows = core.bridgeTimeline.getHistoryForSession(hookSid, undefined, 24);
           let lastStart: TimelineEntry | undefined;
           let lastCompletionTs = 0;
@@ -3217,6 +3523,19 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // vocabulary (user_prompt_submit / tool_start / …), so raw
             // codex_* / opencode_* names would silently skip turn management.
             apme.collector.ingestHook(hookSid, boundary, json);
+          }
+          // Coordination evidence carried BY the hook itself: a received
+          // cross-session envelope, a SendMessage call, a `claude -p` launch.
+          // After ingestHook so a prompt's turn is open before the relation
+          // is attached to it. Process-table evidence (ancestry, background
+          // jobs) arrives on the observer tick instead.
+          if (typeof json.agentdeck_pid === 'number') {
+            coordination.registerPid(hookSid, json.agentdeck_pid, passiveSessionObserver.processes());
+          }
+          if (boundary === 'user_prompt_submit' && hookPromptText) {
+            persistRelation(coordination.noteMessageIn(hookSid, hookPromptText));
+          } else if (eventName === 'PostToolUse' || boundary === 'tool_end') {
+            persistRelation(coordination.noteToolCall(hookSid, json.tool_name, json.tool_input));
           }
           // Direct `claude` runs reach the daemon only via these hooks, which
           // never carry the model — so every such run persisted model_id=NULL.
@@ -3554,6 +3873,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
                   // the signature is suppressed for this session.
                   gateReleased(claudeSid, requestId, {
                     undecided: decision === 'pass', tool: toolName, toolInput,
+                    toolUseId: typeof json.tool_use_id === 'string' ? json.tool_use_id : undefined,
                   });
                   clearAwaitingOverlay(claudeSid);
                   core.broadcastSessionsList().catch(() => {});
@@ -3653,12 +3973,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
     if (req.method === 'POST' && pathname === '/shutdown') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'shutting_down' }));
+      res.end(JSON.stringify({ status: 'shutting_down' }), () => { void core.shutdown(); });
       const hardExitTimer = setTimeout(() => {
         log('[agentdeck] Shutdown route timeout — forcing exit.');
         exitProcessNow(0);
       }, 5000);
-      core.shutdown();
       return;
     }
 
@@ -3799,6 +4118,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     res.end(JSON.stringify({ error: 'Not found' }));
   });
 
+  const drainDaemonSockets = trackDaemonSockets(httpServer);
+
   // Catch HTTP-level client errors (malformed requests, abrupt disconnects during upgrade)
   httpServer.on('clientError', (err, socket) => {
     debug('daemon', `HTTP client error: ${(err as Error).message}`);
@@ -3812,90 +4133,41 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // with no LAN devices can opt into a loopback-only posture (issue #145),
   // which also silences everything the daemon emits (see network-posture.ts).
   const bindHost = bindHostFor(posture);
-  await new Promise<void>((resolve, reject) => {
-    httpServer.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EADDRINUSE') {
-        // Port was grabbed between our check and bind — find alternative
-        reject(new Error(`EADDRINUSE:${port}`));
-      } else {
-        reject(err);
-      }
-    });
-    httpServer.listen(port, bindHost, () => resolve());
-  }).catch(async (err: Error) => {
-    // Handle race condition: port became unavailable after our pre-bind probe.
-    // This is the concurrent-start case (e.g. two logon-trigger fires landing
-    // within ~1s): both processes pass the singleton guard because neither has
-    // bound yet, then exactly one wins the OS bind and the rest get EADDRINUSE.
-    if (err.message.startsWith('EADDRINUSE:') && port === requestedPort) {
-      // Re-probe the occupant. If ANOTHER daemon grabbed the port, we lost the
-      // race — exit instead of falling back to a new port, or we'd leave two
-      // daemons running (and clobber daemon.json to point at the wrong one).
-      // Only fall back when a *non-daemon* (e.g. a session bridge) holds it.
-      const occupant = await probeDaemonHealth(requestedPort);
-      // Harden against a forged/stale `mode:'daemon'` response squatting the
-      // port: concede (exit) only to a verified live distinct daemon. A claim
-      // backed by a dead/own PID is treated as stale → fall through to a fresh
-      // port and keep running. See `shouldConcedePortToOccupant`.
-      if (shouldConcedePortToOccupant(occupant, process.pid)) {
-        const who = typeof occupant?.pid === 'number' ? `PID ${occupant.pid}` : 'a daemon';
-        log(`[agentdeck] Lost startup race for port ${requestedPort} (${who} already serving). Exiting.`);
-        process.exit(0);
-      }
-      if (occupant?.mode === 'daemon') {
-        log(`[agentdeck] Port ${requestedPort} reports a daemon but PID ${occupant.pid} is not a live distinct process; treating as stale and falling back.`);
-      }
-
-      // Nobody answered on the preferred port, yet it refuses to bind. That is
-      // not a peer to yield to — it is the kernel still holding a port whose
-      // owner has already gone: macOS keeps a NECP reservation for ~14s after
-      // an `NWListener.cancel()` (measured 2026-08-06: bindable at ~17s, with
-      // `lsof` showing zero sockets throughout), and a half-closed socket in
-      // TIME_WAIT/LAST_ACK looks the same from here.
-      //
-      // Without this wait the daemon conceded instantly and moved to 9121 —
-      // permanently, because nothing ever moved it back. Seconds after that
-      // decision the canonical port was free and owned by nobody. Waiting is
-      // the whole recovery: `waitForPortBindable` polls, so a kernel-held port
-      // costs the ~14s it is actually held, and only a genuinely occupied port
-      // pays the full budget before falling back.
-      if (!occupant) {
-        log(`[agentdeck] Port ${requestedPort} is held but nothing answers /health — usually the kernel still `
-          + `releasing it after the previous owner exited. Waiting up to ${Math.round(PREFERRED_PORT_RECLAIM_MS / 1000)}s…`);
-        if (await waitForPortBindable(requestedPort, PREFERRED_PORT_RECLAIM_MS)) {
-          const bound = await new Promise<boolean>((resolve) => {
-            const onError = () => resolve(false);
-            httpServer.once('error', onError);
-            httpServer.listen(requestedPort, bindHost, () => {
-              httpServer.removeListener('error', onError);
-              resolve(true);
-            });
-          });
-          if (bound) {
-            log(`[agentdeck] Port ${requestedPort} came free — bound it instead of falling back.`);
-            return;
-          }
-          // Lost it again between the probe bind and ours. Rare, and the
-          // fallback below is exactly the right answer for it.
-          log(`[agentdeck] Port ${requestedPort} was taken again before this daemon could bind it.`);
-        } else {
-          log(`[agentdeck] Port ${requestedPort} is still held after ${Math.round(PREFERRED_PORT_RECLAIM_MS / 1000)}s — `
-            + `something outside AgentDeck is listening on it, or a sleeping device is holding a half-closed socket.`);
+  if (port === requestedPort) {
+    const budgetMs = preferredPortReclaimBudgetMs();
+    const result = await listenWithReclaim(httpServer, {
+      port, host: bindHost, budgetMs,
+      onConflict: async () => {
+        const occupant = await probeDaemonHealth(requestedPort);
+        // Ownership is checked on every discovery, including a peer that
+        // appears while startup is waiting. Never evict a peer here.
+        if (occupant?.mode === 'daemon' && isForeignDaemon(occupant)) {
+          log(`[agentdeck] Port ${requestedPort} is held by another user's daemon — leaving it alone.`);
+          return 'fallback';
         }
-      }
-
-      port = await findAvailablePort();
-      log(`[agentdeck] Port ${requestedPort} grabbed by ${occupant?.mode ?? 'a non-daemon'}, retrying on ${port}...`);
-      log(`[agentdeck] This daemon prefers port ${requestedPort} (${describeDaemonPortSource(preferred.source)}). `
-        + `Clients resolve the actual port from daemon.json; 'agentdeck daemon restart' aims at the preferred port again.`);
-      await new Promise<void>((resolve, reject) => {
-        httpServer.on('error', (e: NodeJS.ErrnoException) => reject(e));
-        httpServer.listen(port, bindHost, () => resolve());
-      });
-    } else {
-      throw err;
+        if (shouldConcedePortToOccupant(occupant, process.pid)) {
+          log(`[agentdeck] Lost startup race for port ${requestedPort}; another daemon is serving. Exiting.`);
+          return 'concede';
+        }
+        // An answering non-daemon or stale daemon is not a silent handoff.
+        return occupant ? 'fallback' : 'retry';
+      },
+      onWaiting: () => log(`[agentdeck] Port ${requestedPort} cannot bind and /health did not respond. `
+        + `Retrying the listener for up to ${Math.round(budgetMs / 1000)}s; the cause is unknown.`),
+    });
+    if (result === 'concede') {
+      process.exit(0);
     }
-  });
+    if (result === 'fallback') {
+      port = await findAvailablePort();
+      log(`[agentdeck] Preferred port ${requestedPort} (${describeDaemonPortSource(preferred.source)}) `
+        + `remains unavailable; binding fallback ${port}. `
+        + `Clients resolve daemon.json; 'agentdeck daemon restart' retries the preferred port.`);
+      await listenOnce(httpServer, port, bindHost);
+    }
+  } else {
+    await listenOnce(httpServer, port, bindHost);
+  }
 
   log(describeDaemonPosture(posture, port));
   if (preferred.source === 'settings' || preferred.source === 'env') {
@@ -3906,8 +4178,23 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // Write daemon.json for client discovery (must be after successful bind).
   // Keep the original startedAt stable when the self-heal timer rewrites it.
-  const daemonInfo = { port, pid: process.pid, startedAt: new Date().toISOString() };
+  //
+  // `startedBy` is recorded HERE, past the bind, deliberately: it answers "does
+  // the autostart unit own the daemon SERVING this port", and only a daemon
+  // that won the port may claim it. One that loses the bind race to an
+  // incumbent exits above this line and claims nothing — which is exactly why
+  // the Windows launcher does not write the marker itself, since a conceding
+  // daemon is alive for a second or two while it stands down (see
+  // `startedBySupervisor` in daemon-supervisor.ts).
+  const startedBy = startedBySupervisor();
+  const daemonInfo = {
+    port,
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    ...(startedBy ? { startedBy } : {}),
+  };
   writeDaemonInfo(daemonInfo);
+  enableClaudeUsageRecovery();
 
   // ===== BridgeCore =====
   const core = new BridgeCore({
@@ -3916,6 +4203,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     httpServer,
     isDaemon: true,
   });
+  // Matrix state is a daemon display projection, independent of Pixoo64 hardware.
+  broadcastMatrix({ type: 'connection', status: 'disconnected' } as BridgeEvent);
+  core.wsServer.onBroadcast(broadcastMatrix);
   subagentTimeline = new SubagentTimelineTracker((entry, upsert) => {
     // A dispatch row is upserted as its burst grows (one row per fan-out, the
     // `task_start` folding pattern) — emitting a fresh row per child would
@@ -3942,8 +4232,27 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     'esp32_ota_abort',
     'device_info_request',
   ]);
+  // The transformer below strips tool rows from a finished history frame; the
+  // connect burst drops them before its byte cap instead, so the budget buys
+  // rows the client can read. Same predicate, one place each side.
+  core.setConnectHistoryFilter((client, entries) =>
+    surfaceHasCapability(surfaceNegotiations.get(client), CLAUDE_TOOL_EVENTS_CAPABILITY)
+      ? entries
+      : entries.filter((entry) => entry.toolEvent !== true));
   core.wsServer.setEventTransformer((event, client) => {
     const surface = surfaceNegotiations.get(client);
+    const historyEntries = event.type === 'timeline_history'
+      ? (event as { entries?: Array<{ toolEvent?: boolean }> }).entries ?? []
+      : [];
+    const detailedTimeline = (event.type === 'timeline_event'
+      && (event as { entry?: { toolEvent?: boolean } }).entry?.toolEvent === true)
+      || (event.type === 'timeline_history' && historyEntries.some((entry) => entry.toolEvent === true));
+    if (detailedTimeline && !surfaceHasCapability(surface, CLAUDE_TOOL_EVENTS_CAPABILITY)) {
+      if (event.type === 'timeline_history') {
+        return { ...event, entries: historyEntries.filter((entry) => entry.toolEvent !== true) } as BridgeEvent;
+      }
+      return null;
+    }
     if (surface && isPortableReaderProfile(surface.profile)) {
       // portable-reader/v1 is pull-first. A negotiated socket gets only its
       // acknowledgement and bounded liveness/device probes; it never inherits
@@ -3960,7 +4269,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // its lastSeen fresh. When serial disconnects, this flips false on the next
     // event and WiFi resumes automatically — no state migration needed.
     if (SERIAL_FORWARDED_EVENTS.has(event.type) && isWifiEsp32RedundantWithSerial(client)) return null;
-    return prepareForSerial(event);
+    const identity = wifiEsp32IdentityForSocket(client);
+    return prepareForSerial(event, identity?.board ? { deviceInfo: { board: identity.board } } : undefined);
   });
 
   // Timeline
@@ -4016,6 +4326,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const active = new Set<string>();
       for (const [sid, at] of hookSessionLastSeenAt) {
         if (now - at <= TURN_WATCHDOG_SILENCE_MS) active.add(sid);
+        // A session that went silent this long is gone (SessionEnd has a
+        // 1.5 s budget and is routinely lost) — its identity must not keep
+        // labelling the hub frame. Unless it is the driver of a turn the
+        // machine still holds open: a tool or think longer than three minutes
+        // sends no hooks in between, and that open turn is proof of life.
+        // Only PROCESSING counts — it is bounded (the machine's stuck timer
+        // and the observed-stop watchdog both end it), whereas AWAITING_* has
+        // no wall-clock backstop by design and would pin a dead session's
+        // identity for as long as the desk stayed quiet.
+        else {
+          const driverSid = sid === 'daemon-hook' ? undefined : sid;
+          const driver = hubDriver.current();
+          const liveTurn = driver?.kind === 'hook' && driver.sessionId === driverSid
+            && core.stateMachine.getSnapshot().state === State.PROCESSING;
+          if (!liveTurn) hubDriver.noteSessionEnd(driverSid);
+        }
       }
       const closed = core.bridgeTimeline.reapOrphanChatStarts(
         TURN_WATCHDOG_SILENCE_MS, now, active,
@@ -4027,6 +4353,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Enabled AFTER rehydration + reaping so the first write carries the restored
   // history instead of truncating the file to whatever this run has seen.
   core.bridgeTimeline.enablePersistence(getOwnTimelineFile());
+  broadcastMatrix({ type: 'timeline_history', entries: core.bridgeTimeline.getHistory() } as BridgeEvent);
   core.wireDisplayMonitor();
   let lastStateEvent: BridgeEvent | null = null;
   let userFocusedSessionId: string | null = null;
@@ -4057,33 +4384,30 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   };
 
   /**
-   * Stamp a *Gateway-specific* state event — one whose payload really is the
-   * Gateway's (its parser events, its connection transitions), as opposed to the
-   * hub broadcasts above that merely get labelled `openclaw` while the Gateway is
-   * alive.
-   *
-   * These name their own row (`sessionId`), which is the honest attribution and
-   * the reason a client never has to guess: an event carrying the Gateway's model
-   * now says so. The focus ack rides only when the Gateway IS the focused row —
-   * otherwise this event would claim to describe a Claude session, which is
-   * precisely how `GLM-5.2 (1M)` became that session's model on both decks. The
-   * ack still reaches the Apple app through every hub broadcast.
+   * The hub's own `state_update`: the global machine labelled by its DRIVER
+   * (hub-state-identity.ts), not by whether the Gateway happens to be alive.
+   * While the Gateway sat idle this frame used to read "OpenClaw · processing ·
+   * Bash `cd …`" for every observed Claude turn, on every surface.
    */
-  const attachGatewayEvent = <T extends BridgeEvent>(event: T): T => {
-    if ((event as any).type !== 'state_update') return event;
-    return {
-      ...(event as any),
-      sessionId: OPENCLAW_SESSION_ID,
-      focusedSessionId: userFocusedSessionId === OPENCLAW_SESSION_ID ? OPENCLAW_SESSION_ID : '',
-    } as T;
+  const buildHubStateEvent = (snapshot?: StateSnapshot): BridgeEvent => {
+    const gwAlive = gatewayAdapter?.isAlive() ?? false;
+    // A deck that focused the Gateway row reads this frame as that row's live
+    // state (observed-sessions rule), so while OpenClaw is focused the frame
+    // is Gateway-owned regardless of which hook session last moved the machine.
+    const driver = gwAlive && userFocusedSessionId === OPENCLAW_SESSION_ID
+      ? { kind: 'gateway' as const }
+      : hubDriver.current();
+    const identity = resolveHubFrameIdentity(driver, gwAlive, OPENCLAW_CAPABILITIES);
+    const raw = core.buildStateEvent({
+      agentType: identity.agentType as AgentType,
+      agentCapabilities: identity.agentCapabilities,
+      snapshot: snapshot ?? core.stateMachine.getSnapshot(),
+    }) as unknown as Record<string, unknown>;
+    const event = shapeHubFrame(raw, identity, { state: gatewaySessionState, modelName: gatewayModelName });
+    return attachFocusedSessionId(event as unknown as BridgeEvent);
   };
   const broadcastFocusedState = () => {
-    const gwAlive = gatewayAdapter?.isAlive() ?? false;
-    const stateEvent = attachFocusedSessionId(core.buildStateEvent({
-      agentType: gwAlive ? 'openclaw' : 'daemon' as any,
-      agentCapabilities: gwAlive ? OPENCLAW_CAPABILITIES : undefined,
-      snapshot: core.stateMachine.getSnapshot(),
-    }));
+    const stateEvent = buildHubStateEvent();
     lastStateEvent = stateEvent;
     core.wsServer.broadcast(stateEvent);
   };
@@ -4119,11 +4443,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       core.cachedModelCatalog = merged;
       debug('daemon', `Model catalog merged from sibling: ${merged.length} models total`);
       const snap = core.stateMachine.getSnapshot();
-      const stateEvent = attachFocusedSessionId(core.buildStateEvent({
-        agentType: gatewayAdapter?.isAlive() ? 'openclaw' : 'daemon' as any,
-        agentCapabilities: gatewayAdapter?.isAlive() ? OPENCLAW_CAPABILITIES : undefined,
-        snapshot: snap,
-      }));
+      const stateEvent = buildHubStateEvent(snap);
       lastStateEvent = stateEvent;
       core.broadcast(stateEvent);
       core.broadcastUsage();
@@ -4153,6 +4473,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         gatewayConnected: core.cachedGatewayConnected,
         gatewayAuthStatus: core.cachedGatewayAuthStatus,
         ollamaStatus: core.cachedOllamaStatus,
+        mlxModels: core.cachedMlxModels ?? [],
+        mlxResidency: core.cachedMlxResidency,
         gatewayHasError: (evt as any).gatewayHasError ?? core.cachedGatewayHasError,
         moduleHealth: moduleHealthProvider(),
       };
@@ -4177,12 +4499,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // `resolveRelayedUsageEvent`. It was inlined here until issue #253: this is
       // the daemon's most flicker-sensitive path, its whole history is about not
       // clobbering the dashboard, and an inline branch had no test seam.
-      core.wsServer.broadcast(resolveRelayedUsageEvent({
+      core.wsServer.broadcast({ ...resolveRelayedUsageEvent({
         relayed: u,
         ownCodexRateLimits: core.lastBuiltCodexRateLimits,
         ownLiveFamilyAuthorityExpiresAtMs: core.lastBuiltCodexLiveFamilyAuthorityExpiresAtMs,
+        ownZaiRateLimits: core.zaiQuotaForWire() ?? undefined,
         buildOwnUsage: () => core.buildUsage() as UsageEvent,
-      }));
+      }), ollamaStatus: core.cachedOllamaStatus ?? undefined,
+      mlxModels: core.cachedMlxModels ?? [], mlxResidency: core.cachedMlxResidency });
     } else {
       // prompt_options — relay as-is
       core.wsServer.broadcast(evt);
@@ -4239,8 +4563,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           version: d.version ?? null,
           stale: d.stale,
           serialActive: d.serialActive,
+          usageCodex5H: d.usageCodex5H ?? null,
+          usageCodex7D: d.usageCodex7D ?? null,
           repaintCount: d.repaintCount ?? null,
           fullRefreshCount: d.fullRefreshCount ?? null,
+          rssiDbm: d.rssiDbm ?? null,
         })),
       };
     }
@@ -4281,7 +4608,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // Seed the last few timeline entries so a freshly (re)connected board's
       // ticker shows the real latest event instead of whatever its ring last
       // held. Kept to 6 entries — the whole line must stay well under the
-      // small (4KB) serial RX buffers on non-InkDeck boards; prepareForSerial
+      // small (4KB) serial RX buffers on non-TRMNL 7.5" boards; prepareForSerial
       // byte-caps each entry's raw/detail at send time.
       const recent = core.bridgeTimeline.getHistory().slice(-6);
       if (recent.length > 0) {
@@ -4323,7 +4650,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   });
 
   // WS-path display_state re-sync: the 5s serial heartbeat above only covers
-  // USB-attached boards. WiFi boards (InkDeck) receive display_state edge-
+  // USB-attached boards. WiFi boards (TRMNL 7.5") receive display_state edge-
   // triggered over the plugin WS — a missed wake edge would leave an e-ink
   // panel showing the sleep card forever. Re-broadcast at a slow cadence so
   // any board that missed the edge self-heals within 15s.
@@ -4479,7 +4806,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // stop ranking real work. Bounded to the same 30-day window the backlog
     // drain reads; idempotent after the first pass.
     try {
-      const r = retractUngradeableVerdicts(apme.store, Date.now() - 30 * 86_400_000);
+      // The drain's bound, not a second copy of it — an SSOT, not a fix. The
+      // residual is real and stays: retraction runs once at daemon start
+      // against its own clock, while the drain and `judge-health` evaluate the
+      // boundary later against theirs, so a task readmitted at day 29.9 is past
+      // the cutoff within hours. `readmitTask` clears its notGradeable stamp,
+      // moving it out of `declined` (explicitly not a miss) into `agedOut`
+      // (permanent). Narrowing the readmission window would trade that for
+      // never readmitting a class of task at all, which is the worse loss.
+      const r = retractUngradeableVerdicts(apme.store, Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS);
       const n = r.no_reply + r.aborted_only + r.trivial;
       if (n > 0) log(`[agentdeck] APME withdrew ${n} verdict(s) reached without the agent's work — no reply ${r.no_reply}, client-ended ${r.aborted_only}, trivial ${r.trivial}`);
       if (r.readmitted > 0) log(`[agentdeck] APME re-admitted ${r.readmitted} declined task(s) to the judge backlog — their tool trajectory is the agent's work`);
@@ -4524,6 +4859,30 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // The observer scans in the background now (collect() returns the cache
   // immediately). When a scan lands fresh observations, push them out via
   // the debounced broadcast so clients don't wait for the next 10 s poll.
+  // A relation lands on the session's active APME task; a change to any
+  // census rebroadcasts the roster, because a background job starting or a
+  // spawned worker exiting moves nothing else a client could notice.
+  const persistRelation = (rel: RelationObservation | null): boolean => {
+    if (!rel) return false;
+    apme?.collector.noteRelation(rel.sessionId, rel);
+    return true;
+  };
+  // Driven by its own timer, not by `onRefreshed`: that edge fires only when
+  // the observed PROCESS SET changes, and a background job appearing or a
+  // worker finishing changes the process table without changing that set —
+  // the same trap the OpenClaw transcript feed fell into.
+  const coordinationTick = () => {
+    const peers = coordination.mergePeers(passiveSessionObserver.collect([])
+      .filter((s) => typeof s.pid === 'number' && s.pid > 0)
+      .map((s) => ({ sessionId: rawSessionId(s.id), pid: s.pid })));
+    let changed = false;
+    for (const rel of coordination.observe(passiveSessionObserver.processes(), peers)) {
+      if (persistRelation(rel)) changed = true;
+    }
+    if (changed) core.broadcastSessionsList().catch(() => {});
+  };
+  const coordinationTimer = setInterval(coordinationTick, 5_000);
+  coordinationTimer.unref?.();
   passiveSessionObserver.onRefreshed = () => {
     // Kiro pushes nothing: no `kiro_*` hook has ever reached this daemon, so
     // without a producer here its session shows in the HUD while the timeline
@@ -4580,8 +4939,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // the rollout tail every scan interval, so a span that changed thread state is
   // worth a broadcast of its own.
   codexOtel.onChanged = () => core.maybeBroadcastSessionsList();
+  codexOtel.isBackgroundThread = (threadId) => codexAmbientSessions.isAmbient(threadId);
+  codexOtel.isHookOwnedThread = (threadId) => hookCodexSessions.knows(threadId);
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hermesSessions.onChanged = () => core.maybeBroadcastSessionsList();
+  hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
 
   // ===== Gateway adapter lifecycle =====
   // (gatewayAdapter + gatewayConnecting declared earlier, before HTTP server)
@@ -4599,8 +4961,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // synthesize a `codex-app` row for any thread the process scan missed —
     // Swift's only Codex-app source, here a second opinion on top of the
     // observer. See bridge/src/codex-otel.ts.
+    // Claude hooks correct only existing row state/tool before awaiting wins.
+    const passive = hookClaudeSessions.applyTo(passiveSessionObserver.collect(sessions));
     const observed = applyAwaitingOverlayToObserved(
-      hermesSessions.applyTo(hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions)))),
+      hermesSessions.applyTo(hookOpenCodeSessions.applyTo(
+        hookCodexSessions.applyTo(codexOtel.applyTo(passive)),
+      )),
     )
       .map((s) => {
         // Steering feedback for observed Claude sessions: devices render
@@ -4634,20 +5000,34 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // while these rows are `observed:<agent>:<uuid>`, so normalize before the
     // lookup — the two id forms are the standing trap here.
     const subagentCensus = subagentTimeline?.summaries() ?? new Map();
+    const coordinationCensus = coordination.summaries();
     const enrichedSessions = [...sessions, ...observed, ...remote].map((s) => {
+      // Daemon-persisted sort pin (#273): observed rows without their own
+      // weight pick up the stored pin here, one pass before fold+sort, so a
+      // pinned observed session lands in its slot on every surface and two
+      // same-project Codex pins never fold together (the fold key carries the
+      // weight band). Managed/remote rows keep their launch-time --weight.
+      const withOrder = sessionOrder.applyTo(s);
       // On-demand review badge (REVIEW tile verdict / REVIEWING state) —
       // applies to every session type, managed included.
-      const review = reviewSnapshot(s.id);
-      const withReview = Object.keys(review).length > 0 ? { ...s, ...review } : s;
+      const review = reviewSnapshot(withOrder.id);
+      const withReview = Object.keys(review).length > 0 ? { ...withOrder, ...review } : withOrder;
       // Emitted whenever this session has EVER had a child, zeros included: a
       // field that disappears when the last child exits latches "8 running" on
       // every client that merges retain-on-absent.
       const census = subagentCensus.get(rawSessionId(withReview.id));
-      const withCensus = census ? { ...withReview, subagents: census } : withReview;
+      const withSubagents = census ? { ...withReview, subagents: census } : withReview;
+      // Same emission rule for the coordination census: zeros once observed.
+      const coord = coordinationCensus.get(rawSessionId(withReview.id));
+      const withCensus = coord ? { ...withSubagents, coordination: coord } : withSubagents;
       if (withCensus.elapsedSec != null || !withCensus.startedAt) return withCensus;
       const sec = Math.round((now - Date.parse(withCensus.startedAt)) / 1000);
       return Number.isFinite(sec) && sec >= 0 ? { ...withCensus, elapsedSec: sec } : withCensus;
     });
+    // Feed the pin store's liveness tracking (lastSeenAt → TTL GC) and the
+    // /sessions/order prefix resolver with the observed ids this pass produced.
+    lastObservedRosterIds = observed.map((s) => s.id);
+    sessionOrder.noteSeen(lastObservedRosterIds);
     // SSOT: inject iff Gateway is authenticated (gatewayConnected). Reachability
     // / adapter-liveness alone must not materialize a session — that kept a
     // phantom OpenClaw alive on devices after it was effectively off. Shared
@@ -4719,6 +5099,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   function connectGatewayAdapter(): void {
     if (gatewayAdapter || gatewayConnecting) return;
+    if (Date.now() < gatewayRetryAtMs) return;
     gatewayConnecting = true;
     log('[agentdeck] OpenClaw Gateway detected, connecting...');
 
@@ -4728,24 +5109,44 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // adapter's idle-gap timer + chat.send/final ingestion needs an active
     // run to attach turns and task boundaries to.
     if (apme) {
+      // The id is minted here (so `hasDirectApmeIngestion` answers from the
+      // moment the adapter is wired), but the RUN ROW is opened on first use.
+      // Opened eagerly, it was almost always empty: a Gateway restart mints a
+      // new one, and 57 such rows over the week to 2026-09-09 held zero turns,
+      // zero steps and zero events, each held to the 30-minute orphan reaper.
+      // Frames carrying no session key are the only thing that lands in it,
+      // and most connections never see one.
       openclawApmeSessionId = `openclaw-${randomUUID()}`;
-      try {
-        apme.collector.openRun({
-          sessionId: openclawApmeSessionId,
-          agentType: 'openclaw',
-          projectName: 'openclaw',
-        });
-        adapter.setApmeSession(openclawApmeSessionId, process.cwd());
-        adapter.setApmeRunResolver(openclawRunForSessionKey);
-      } catch (err) {
-        debug('APME', `openRun for OpenClaw failed: ${String(err)}`);
-        openclawApmeSessionId = null;
-      }
+      const fallbackSessionId = openclawApmeSessionId;
+      let fallbackOpened = false;
+      adapter.setApmeSession(fallbackSessionId, process.cwd(), () => {
+        if (fallbackOpened) return fallbackSessionId;
+        try {
+          apme.collector.openRun({
+            sessionId: fallbackSessionId,
+            agentType: 'openclaw',
+            projectName: 'openclaw',
+            // Seeded for the same reason `openclawRunForSessionKey` seeds it:
+            // a run opened AFTER `model_info` fired misses the `updateModel`
+            // broadcast that names the catalog default, and persists
+            // `model_id=NULL`. Read at OPEN time, so it carries whatever the
+            // catalog last reported rather than what it said at connect.
+            ...(gatewayModelName ? { modelId: gatewayModelName } : {}),
+          });
+        } catch (err) {
+          debug('APME', `openRun for OpenClaw failed: ${String(err)}`);
+          return null;
+        }
+        fallbackOpened = true;
+        return fallbackSessionId;
+      });
+      adapter.setApmeRunResolver(openclawRunForSessionKey);
     }
 
     adapter.on('event', (evt: AdapterEvent) => {
       switch (evt.source) {
         case 'hook':
+          hubDriver.noteGateway();
           if (evt.event === 'SessionStart') core.stateMachine.handleHookEvent('SessionStart', {});
           else if (evt.event === 'SessionEnd') core.stateMachine.handleHookEvent('SessionEnd', {});
           break;
@@ -4756,7 +5157,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // model written here by the Gateway is read as that session's own
           // (GLM on a Claude row). It lives in `gatewayModelName` instead, and
           // `gatewaySnapshot()` puts it back on the Gateway's own events.
-          if (evt.event !== 'model_info') core.stateMachine.handleParserEvent(evt.event, evt.data);
+          if (evt.event !== 'model_info') {
+            hubDriver.noteGateway();
+            core.stateMachine.handleParserEvent(evt.event, evt.data);
+          }
           // Gateway-local activity state for the virtual session row (mirror of
           // Swift `gatewaySessionState`). Kept separate from the global
           // `core.stateMachine` above so the OpenClaw row reflects only the
@@ -4799,23 +5203,38 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             const models = evt.data?.models as ModelCatalogEntry[] | undefined;
             if (models) {
               core.cachedModelCatalog = models;
-              const snap = core.stateMachine.getSnapshot();
-              const stateEvent = attachGatewayEvent(core.buildStateEvent({
-                agentType: 'openclaw',
-                agentCapabilities: OPENCLAW_CAPABILITIES,
-                snapshot: gatewaySnapshot(snap),
-              }));
+              // Catalog metadata is not Gateway activity: the frame keeps its
+              // current driver, and the catalog rides it either way.
+              const stateEvent = buildHubStateEvent();
               lastStateEvent = stateEvent;
               core.broadcast(stateEvent);
               core.broadcastUsage();
             }
           } else if (evt.event === 'gateway_health') {
-            // Use real-time health event from Gateway WS instead of polling `openclaw doctor`
-            const hasError = !(evt.data?.ok as boolean);
-            const changed = hasError !== core.cachedGatewayHasError;
-            core.cachedGatewayHasError = hasError;
-            if (changed) {
-              core.stateMachine.emit('state_changed', core.stateMachine.getSnapshot());
+            // Real-time health from the Gateway WS instead of polling
+            // `openclaw doctor`. THREE answers, not two: this flag is what
+            // turns the OpenClaw creature SICK and the topology LED red on
+            // every surface, and `!(evt.data?.ok)` made a frame that simply
+            // carried no `ok` indistinguishable from a failing one — the
+            // creature then stayed sick until the next frame happened to
+            // carry one, up to OpenClaw's 300 s health-monitor interval.
+            // `resolveGatewayHealth` is the SSOT both daemons read (shared
+            // vectors: shared/gateway-health-vectors.json); an unreadable
+            // frame RETAINS the previous value rather than inventing one.
+            const verdict = resolveGatewayHealth(evt.data?.payload ?? evt.data);
+            if (verdict.known) {
+              const changed = verdict.hasError !== core.cachedGatewayHasError;
+              core.cachedGatewayHasError = verdict.hasError;
+              if (changed) {
+                // The one transition that makes a creature look broken was
+                // unlogged, so a momentary sick crayfish left no trace and the
+                // next report could only be guessed at. Say what decided it.
+                log(`[agentdeck] OpenClaw gateway health: ${verdict.hasError ? 'ERROR' : 'ok'}`
+                  + ` (via ${verdict.reason}${verdict.detail ? `: ${verdict.detail}` : ''})`);
+                core.stateMachine.emit('state_changed', core.stateMachine.getSnapshot());
+              }
+            } else {
+              debug('Gateway', `health frame carried no usable verdict (${verdict.reason}) — keeping hasError=${core.cachedGatewayHasError}`);
             }
           }
           break;
@@ -4864,18 +5283,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             core.cachedGatewayAuthStatus = 'connected';
             gatewaySessionState = 'idle';
             bridgeLogStream.start();
+            gatewayFailedAttempts = 0;
+            gatewayRetryAtMs = 0;
             log('[agentdeck] OpenClaw Gateway connected');
             settleGatewayInstability(Date.now());
             if (core.stateMachine.getSnapshot().state === 'disconnected') {
               core.stateMachine.handleHookEvent('SessionStart', {});
             }
-            // Force full state broadcast
-            const snap = core.stateMachine.getSnapshot();
-            const gwStateEvent = attachGatewayEvent(core.buildStateEvent({
-              agentType: 'openclaw',
-              agentCapabilities: OPENCLAW_CAPABILITIES,
-              snapshot: gatewaySnapshot(snap),
-            }));
+            // Force full state broadcast — through the hub builder, so a
+            // reconnect mid-Claude-turn announces the Gateway's own (idle)
+            // state rather than the machine's `processing` + foreign tool.
+            hubDriver.noteGateway();
+            const gwStateEvent = buildHubStateEvent();
             lastStateEvent = gwStateEvent;
             core.wsServer.broadcast(gwStateEvent);
             core.broadcastUsage();
@@ -4886,6 +5305,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // Reset activity to idle; gatewayModelName is preserved across brief
             // disconnects (Swift parity) so a flap doesn't blank the model chip.
             gatewaySessionState = 'idle';
+            hubDriver.noteGatewayGone();
             bridgeLogStream.stop();
             log('[agentdeck] OpenClaw Gateway disconnected');
             core.stateMachine.emit('state_changed', core.stateMachine.getSnapshot());
@@ -4901,7 +5321,23 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       }
     });
 
-    adapter.on('exit', () => disconnectGatewayAdapter());
+    // The adapter runs without autoReconnect, so 'exit' (its socket closed) is
+    // final: drop it so the next probe tick can dial a fresh one. Guarded by
+    // identity — a late exit from a replaced adapter must not tear down its
+    // successor.
+    let everConnected = false;
+    adapter.on('event', (evt: AdapterEvent) => {
+      if (evt.source === 'connection' && evt.status === 'connected') everConnected = true;
+    });
+    adapter.on('exit', () => {
+      if (!everConnected) {
+        gatewayFailedAttempts += 1;
+        const delayMs = Math.min(5000 * 2 ** (gatewayFailedAttempts - 1), 300_000);
+        gatewayRetryAtMs = Date.now() + delayMs;
+        log(`[agentdeck] OpenClaw Gateway handshake did not complete; retrying in ${Math.round(delayMs / 1000)}s`);
+      }
+      if (gatewayAdapter === adapter) disconnectGatewayAdapter();
+    });
 
     adapter.start({ port, externalServer: httpServer } as any).then(() => {
       gatewayAdapter = adapter;
@@ -4944,6 +5380,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     core.cachedGatewayAuthStatus = 'gateway_not_found';
     core.cachedModelCatalog = null;
     gatewaySessionState = 'idle';
+    hubDriver.noteGatewayGone();
     if (wasAlive) core.stateMachine.handleHookEvent('SessionEnd', {});
     else core.stateMachine.emit('state_changed', core.stateMachine.getSnapshot());
     // Do NOT broadcast connection:disconnected — that would make WS clients
@@ -5009,12 +5446,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // ===== State changed → broadcast =====
   core.stateMachine.on('state_changed', (snapshot) => {
-    const gwAlive = gatewayAdapter?.isAlive() ?? false;
-    const stateEvent = attachFocusedSessionId(core.buildStateEvent({
-      agentType: gwAlive ? 'openclaw' : 'daemon' as any,
-      agentCapabilities: gwAlive ? OPENCLAW_CAPABILITIES : undefined,
-      snapshot,
-    }));
+    const stateEvent = buildHubStateEvent(snapshot);
     lastStateEvent = stateEvent;
     core.wsServer.broadcast(stateEvent);
     core.maybeBroadcastSessionsList();
@@ -5206,7 +5638,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             entries = kiroTimelineForSession(sessionId, { since: sinceMs });
           } catch { /* read-only best effort */ }
         }
-        const historyEvent = buildCappedTimelineHistory(entries, undefined, { sessionId });
+        if (!surfaceHasCapability(surfaceNegotiations.get(sender), CLAUDE_TOOL_EVENTS_CAPABILITY)) {
+          entries = entries.filter((entry) => entry.toolEvent !== true);
+        }
+        // Boards keep their ≤4096 B frame rule here too; dashboards get the
+        // dashboard ceiling (a Detail view asking for a session's rows).
+        const historyEvent = buildCappedTimelineHistory(entries,
+          core.wsServer.isEsp32Client(sender) ? ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES : undefined, { sessionId });
         if (historyEvent) {
           try {
             sender.send(JSON.stringify(historyEvent));
@@ -5391,13 +5829,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       focusRelay.unfocus(); // Clear session focus on agent switch
       const target = (cmd as any).agent as string;
       if (target === 'openclaw' && gatewayAdapter?.isAlive()) {
-        // Force broadcast OpenClaw state to all clients
-        const snap = core.stateMachine.getSnapshot();
-        const gwStateEvent = attachGatewayEvent(core.buildStateEvent({
-          agentType: 'openclaw',
-          agentCapabilities: OPENCLAW_CAPABILITIES,
-          snapshot: gatewaySnapshot(snap),
-        }));
+        // Force broadcast OpenClaw state to all clients — the Gateway's own,
+        // not whatever a Claude session left in the shared machine.
+        hubDriver.noteGateway();
+        const gwStateEvent = buildHubStateEvent();
         lastStateEvent = gwStateEvent;
         core.wsServer.broadcast(gwStateEvent);
       } else if (target === 'claude-code') {
@@ -5457,7 +5892,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       void runSessionReview({
         sessionId,
         cwd,
-        projectName: target?.projectName ?? cwd?.split('/').filter(Boolean).pop() ?? 'unknown',
+        projectName: target?.projectName ?? (cwd ? resolveProjectNameFromCwdCached(cwd) : 'unknown'),
         recentActivity,
         onEvent: (event) => {
           core.wsServer.broadcast(event as any);
@@ -5628,6 +6063,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       return;
     }
     if (cmd.type === 'query_usage') {
+      void core.refreshZaiUsage().catch(() => {});
       fetchUsageRelayed(port).then((result) => core.applyUsageResult(result));
     }
   };
@@ -5651,12 +6087,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    * TTL: a board that reboots before fetching must not hear a stale answer
    * minutes later.
    */
-  const stagedVoiceReplies = new Map<string, { pcm: Buffer; sampleRate: number; ts: number }>();
+  const stagedVoiceReplies = new Map<string, { pcm: Buffer; sampleRate: number; ts: number; requestId?: number; fetched?: boolean }>();
   const STAGED_REPLY_TTL_MS = 2 * 60_000;
   const stagedReplySweep = setInterval(() => {
     const cutoff = Date.now() - STAGED_REPLY_TTL_MS;
     for (const [key, entry] of stagedVoiceReplies) {
-      if (entry.ts < cutoff) stagedVoiceReplies.delete(key);
+      if (entry.ts < cutoff) {
+        if (!entry.fetched) log(`[agentdeck] voice: reply expired without download board=${key} requestId=${entry.requestId ?? 'none'}`);
+        stagedVoiceReplies.delete(key);
+      }
     }
   }, 30_000);
   stagedReplySweep.unref?.();
@@ -5733,14 +6172,21 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    */
   /** Speak `text` to every board waiting on `sessionId`, or tell them there was
    *  nothing to read. Shared by both completion shapes below. */
-  const speakReplyTo = (sessionId: string, text: string): void => {
+  const speakReplyTo = (sessionId: string, text: string, requestId?: number, isCurrent: () => boolean = () => true): void => {
+    if (!isCurrent()) return;
     const targets = voiceReply.targetsFor(sessionId);
     if (targets.length === 0) return;
     log(`[agentdeck] voice: reply ready for ${sessionId.slice(0, 32)}`
       + ` -> ${targets.length} board(s)`);
     const voiceCfg = loadDaemonSettings().voice as
       { locale?: unknown; speakReplies?: unknown; speakFullReply?: unknown } | undefined;
-    if (voiceCfg?.speakReplies === false) return;  // opt-out, default on
+    if (voiceCfg?.speakReplies === false) {
+      for (const sink of targets) {
+        sink.send(JSON.stringify({ type: 'voice_reply_skipped', requestId }));
+        voiceReply.disarm(sink);
+      }
+      return;
+    }
     // Speech gets the lead, not the transcript: an explicit summary line if the
     // answer has one, else its first sentence. The full answer is already on the
     // screen the user is sitting at, where it can be skimmed — read aloud it is
@@ -5758,7 +6204,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // spelling out punctuation, so the user still knows the turn finished.
       log('[agentdeck] voice: reply held nothing speakable — skipped');
       for (const sink of targets) {
-        try { sink.send(JSON.stringify({ type: 'voice_reply_skipped' })); } catch { /* closing */ }
+        try { sink.send(JSON.stringify({ type: 'voice_reply_skipped', requestId })); } catch { /* closing */ }
         // Consume the arming either way: the dictation was answered, and
         // leaving it armed would read out the session's *next* turn instead.
         voiceReply.disarm(sink);
@@ -5787,10 +6233,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     if (boardTargets.length === 0) return;
     void (async () => {
       const out = join(tmpdir(), `agentdeck-reply-${process.pid}-${Date.now()}.wav`);
+      const synthesisStarted = performance.now();
       try {
         await synthesizeWavWithHelper(spoken, out, locale ? { locale } : {});
         const wav = await readFile(out);
-        for (const sink of boardTargets) {
+        if (!isCurrent()) return;
+        log(`[agentdeck] voice latency: synthesisMs=${Math.round(performance.now() - synthesisStarted)}`
+          + ` chars=${spoken.length} requestId=${requestId ?? 'none'} session=${sessionId}`);
+        for (const armedSink of boardTargets) {
+          const sink = voiceReply.resolveTarget(armedSink);
+          if (!sink.isOpen()) throw new Error("reply_transport_unavailable");
           // Pull-capable boards fetch the audio themselves over HTTP — the WS
           // push stream both stuttered and could crash the hosted-link RX
           // path (pkt_rxbuff assert). Stage the PCM, send a tiny notify
@@ -5799,11 +6251,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             const parsed = pcmFromWav(wav);
             if (parsed) {
               stagedVoiceReplies.set(sink.deviceKey(), {
-                pcm: parsed.pcm, sampleRate: parsed.sampleRate, ts: Date.now(),
+                pcm: parsed.pcm, sampleRate: parsed.sampleRate, ts: Date.now(), requestId,
               });
               try {
                 sink.send(JSON.stringify({
-                  type: 'audio_reply_ready',
+                  type: 'audio_reply_ready', requestId,
                   bytes: parsed.pcm.length,
                   sampleRate: parsed.sampleRate,
                   durationMs: Math.round((parsed.pcm.length / 2) / parsed.sampleRate * 1000),
@@ -5812,16 +6264,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
                 log(`[agentdeck] voice: staged reply for ${sink.deviceKey()}`
                   + ` (${parsed.pcm.length}B pull, ${spoken.length} chars)`);
               } catch { /* sink closing — TTL sweep reclaims the staging */ }
-              voiceReply.disarm(sink);
+              voiceReply.disarm(armedSink);
               continue;
             }
           }
-          const ok = await voiceReply.stream(sink, wav, spoken);
+          const ok = await voiceReply.stream(armedSink, wav, spoken);
           log(`[agentdeck] voice: ${ok ? 'spoke' : 'FAILED to speak'} reply`
             + ` (${wav.length}B, ${spoken.length} chars)`);
         }
       } catch (err) {
         log(`[agentdeck] voice: reply synthesis failed: ${String(err).slice(0, 140)}`);
+        if (isCurrent()) for (const sink of boardTargets) {
+          try { sink.send(JSON.stringify({ type: 'voice_result', requestId, delivered: false, error: 'reply_synthesis_failed' })); } catch { /* disconnected */ }
+          voiceReply.disarm(sink);
+        }
       } finally {
         await rm(out, { force: true }).catch(() => {});
       }
@@ -6077,27 +6533,78 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     return sink;
   };
 
+  const personalVoiceActive = new Map<string, string>();
+
   const finishVoiceCapture = async (
     captured: {
       wavPath: string;
       sessionId: string;
       board: string;
       integrityError?: string;
+      requestId?: number;
       cleanup: () => void;
     },
     sink: ReplySink,
   ): Promise<void> => {
+        const device = sink.deviceKey();
+        const generation = randomUUID();
+        const personal = captured.sessionId === 'openclaw-personal';
+        if (personal) personalVoiceActive.set(device, generation);
+        const isCurrent = () => !personal || personalVoiceActive.get(device) === generation;
         try {
           if (captured.integrityError) {
             throw new Error(captured.integrityError);
           }
-          // Locale matters: the recognizer falls back to the system locale,
-          // which mangles speech in another language. settings.json
-          // `voice.locale` (BCP-47, e.g. "en-US") overrides it.
-          const voiceCfg = loadDaemonSettings().voice as { locale?: unknown } | undefined;
-          const locale = typeof voiceCfg?.locale === 'string' && voiceCfg.locale
-            ? voiceCfg.locale : undefined;
-          const text = await transcribeWithHelper(captured.wavPath, locale);
+          const transcriptionStarted = performance.now();
+          const text = await transcribeDeviceAudio(captured.wavPath, loadDaemonSettings().voice as VoiceTranscriptionSettings | undefined);
+          log(`[agentdeck] voice latency: transcriptionMs=${Math.round(performance.now() - transcriptionStarted)}`
+            + ` requestId=${captured.requestId ?? 'none'} board=${device}`);
+          if (!isCurrent()) return;
+          if (personal) {
+            if (!gatewayAdapter?.isAlive()) throw new Error('openclaw_unavailable');
+            const settings = loadDaemonSettings().voice as { openclawSessionKey?: unknown; openclawThinking?: unknown; speakFullReply?: unknown; locale?: unknown } | undefined;
+            const key = typeof settings?.openclawSessionKey === 'string'
+              ? settings.openclawSessionKey : 'agent:main:main';
+            const thinking = settings?.openclawThinking === 'off' || settings?.openclawThinking === 'low'
+              ? settings.openclawThinking : undefined;
+            const started = performance.now();
+            const turn = await startPersonalVoiceTurn(gatewayAdapter, text, key, undefined, thinking,
+              { earlySummary: settings?.speakFullReply !== true });
+            if (!isCurrent()) { void turn.completion.catch(() => {}); return; }
+            const voiceId = `openclaw-voice:${turn.runId}`;
+            const armSink = audioArmSinkFor(sink, captured.board);
+            // This ID is never used by generic timeline completions. Only the
+            // session+run matched response below can cause personal speech.
+            voiceReply.disarm(armSink);
+            if (!voiceReply.arm(armSink, voiceId)) throw new Error('reply_audio_unavailable');
+            sink.send(JSON.stringify({ type: 'voice_result', requestId: captured.requestId, text, sessionId: captured.sessionId,
+              delivered: true, via: 'gateway-personal', runId: turn.runId }));
+            log(`[agentdeck] personal voice accepted: ${key} run=${turn.runId} board=${device}`);
+            let speechDispatched = false;
+            void turn.speech.then((answer) => {
+              if (personalVoiceActive.get(device) !== generation) return;
+              speechDispatched = true;
+              log(`[agentdeck] voice latency: speechReadyMs=${Math.round(performance.now() - started)} run=${turn.runId}`);
+              speakReplyTo(voiceId, answer, captured.requestId, isCurrent);
+            }).catch((error) => {
+              if (!isCurrent()) return;
+              log(`[agentdeck] personal voice reply failed: run=${turn.runId} ${String(error).slice(0, 160)}`);
+              const korean = typeof settings?.locale === 'string' && settings.locale.startsWith('ko');
+              const empty = error instanceof Error && error.message === 'openclaw_empty_reply';
+              const notice = korean
+                ? (empty ? '답변 내용을 받지 못했습니다. 다시 말씀해 주세요.' : '응답을 완료하지 못했습니다. 잠시 후 다시 말씀해 주세요.')
+                : (empty ? 'No answer text was received. Please try again.' : 'The response could not be completed. Please try again shortly.');
+              speakReplyTo(voiceId, notice, captured.requestId, isCurrent);
+            });
+            void turn.completion.then(() => {
+              if (isCurrent()) log(`[agentdeck] voice latency: agentMs=${Math.round(performance.now() - started)} thinking=${thinking ?? 'inherit'} run=${turn.runId}`);
+            }).catch((error) => {
+              // An early spoken summary must not play twice or be cut off by
+              // failure in the optional details that follow it.
+              if (isCurrent() && speechDispatched) log(`[agentdeck] voice: details failed after summary run=${turn.runId}: ${String(error).slice(0, 120)}`);
+            });
+            return;
+          }
           const sessionId = resolveDeviceSessionId(captured.sessionId);
           debug('voice', `transcript "${text.slice(0, 60)}" → ${sessionId.slice(0, 20) || '(no session)'}`);
           // Always tell the board what was heard, even when it is empty or
@@ -6169,12 +6676,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           }
           try {
             sink.send(JSON.stringify({
-              type: 'voice_result', text, sessionId, delivered,
+              type: 'voice_result', requestId: captured.requestId, text, sessionId, delivered,
               ...(via ? { via } : {}),
               ...(deliverReason ? { deliverReason } : {}),
             }));
           } catch { /* client disconnecting */ }
         } catch (err) {
+          if (!isCurrent()) return;
           const reason = String(err).slice(0, 300);
           // Voice turns are rare and user-initiated. Keep failures at info
           // level so a board's short "Voice error" banner can always be
@@ -6191,7 +6699,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             : 'voice_failed';
           try {
             sink.send(JSON.stringify({
-              type: 'voice_result', text: '', error: code, detail: reason.slice(0, 160),
+              type: 'voice_result', requestId: captured.requestId, text: '', error: code, detail: reason.slice(0, 160),
             }));
           } catch { /* client disconnecting */ }
         } finally {
@@ -6430,6 +6938,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         agentType: gwAlive ? 'openclaw' : 'daemon' as any,
         agentCapabilities: gwAlive ? OPENCLAW_CAPABILITIES : undefined,
         isAlive: true,
+        // The first frame a client sees obeys the same driver rule as every
+        // broadcast — otherwise a reconnecting deck re-learns the stale label.
+        stateEvent: buildHubStateEvent(),
       });
 
       // Fetch usage on connect if stale
@@ -6450,6 +6961,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   core.startOllamaProbe();
   core.startMlxProbe();
   core.startAntigravityProbe();
+  // Level-triggered: `onAvailable` runs on every tick the port is open, and
+  // connectGatewayAdapter's own guards make it a no-op while an adapter lives.
   core.startGatewayProbe(5000,
     () => connectGatewayAdapter(),
     () => { if (gatewayAdapter && !gatewayAdapter.isAlive()) disconnectGatewayAdapter(); },
@@ -6457,6 +6970,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   core.startGatewayHealthCheck();
   core.startUsageTick();
   core.startApiUsagePolling(60_000, () => fetchUsageRelayed(port));
+  // z.ai GLM Coding Plan — an independent provider-account poll; no-ops as a
+  // no-op when no key is configured (#348).
+  core.startZaiUsagePolling(60_000);
   core.startSessionsListPolling();
 
   // APME: periodically pick up runs that session bridges closed but couldn't
@@ -6592,8 +7108,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }).catch(() => {}).finally(() => { judgeReprobeInFlight = false; });
       }
       if (probe?.status === 'ready' && apme!.runner.inFlightTaskEvals === 0) {
-        const backlog = apme!.store.listTasksNeedingSummary(APME_TASK_JUDGE_DRAIN_PER_TICK, Date.now() - 30 * 86_400_000);
-        for (const t of backlog) {
+        // The backlog query cannot see a park, so ask for a WINDOW and let
+        // `pickBacklogTasks` choose. Asking for one row fed the head of
+        // `ended_at DESC` and nothing else: a task whose judge call fails
+        // every attempt owns that head, and `enqueueTask` drops a parked task
+        // silently, so every tick spent its one slot on it and the backlog
+        // behind it starved (156 tasks, 2026-08-07..23, measured 2026-09-06).
+        // Still one task per tick — the window only decides WHICH one.
+        const backlog = apme!.store.listTasksNeedingSummary(APME_TASK_JUDGE_DRAIN_WINDOW, Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS);
+        for (const t of apme!.runner.pickBacklogTasks(backlog, APME_TASK_JUDGE_DRAIN_PER_TICK)) {
           apme!.runner.enqueueTask({ runId: t.runId, taskId: t.id, ...(t.taskCategory ? { category: t.taskCategory } : {}) });
         }
       }
@@ -6661,6 +7184,40 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       //    this path — the new daemon adopts the open runs — so what reaches
       //    it is a run nobody resumed: a session bridge that died, or a
       //    daemon that was down for longer than the stale window.
+      // 5b. OpenClaw per-key runs have no close signal of their own.
+      //     Every other agent's run ends on `session_end`; an OpenClaw run is
+      //     opened lazily per session KEY and only ever closed when the Gateway
+      //     disconnects. A key that did one turn and went quiet — a cron job, a
+      //     model-eval run, the nightly `dreaming-narrative` pair OpenClaw
+      //     itself prunes as orphans — therefore kept its run open for as long
+      //     as the Gateway stayed up, and step 5 cannot reach it either: the
+      //     run is still in the collector's in-memory map, so `isLiveRun`
+      //     protects it. Measured 2026-09-07: two runs open 16 h, tasks long
+      //     since closed as `idle_gap`, while every other OpenClaw run in the
+      //     store had closed at ~1800 s.
+      //
+      //     The bound is the key's own idleness — what AGENTS.md already says
+      //     each key owns. Dropping the key is not a loss:
+      //     `openclawRunForSessionKey` re-opens lazily on that key's next
+      //     event, which is the documented behaviour.
+      for (const [sessionKey, sessionId] of [...openclawRunsBySessionKey]) {
+        const runId = apme!.collector.getRunId(sessionId);
+        if (!runId) { openclawRunsBySessionKey.delete(sessionKey); continue; }
+        const run = apme!.store.getRun(runId);
+        if (!run || run.endedAt != null) { openclawRunsBySessionKey.delete(sessionKey); continue; }
+        const tasks = apme!.store.listTasksForRun(runId);
+        // An open task means the turn machinery still owns this run.
+        if (tasks.some((t) => t.endedAt == null)) continue;
+        // No task at all is a fresh open, not an abandoned one — leave it to
+        // step 4's empty-shell sweep.
+        if (tasks.length === 0) continue;
+        const lastActivity = Math.max(run.startedAt, ...tasks.map((t) => t.endedAt ?? t.startedAt));
+        if (Date.now() - lastActivity < AGENT_IDLE_GAP_MS) continue;
+        try { apme!.collector.closeRun(sessionId); }
+        catch (err) { debug('APME', `closeRun for idle OpenClaw key ${sessionKey} failed: ${String(err)}`); }
+        openclawRunsBySessionKey.delete(sessionKey);
+        debug('APME', `closed idle OpenClaw run for key ${sessionKey}`);
+      }
       const abandoned = apme!.store.listAbandonedRuns(APME_ABANDONED_RUN_STALE_SEC, 5);
       for (const run of abandoned) {
         if (apme!.collector.isLiveRun(run.id)) continue; // still owned by us
@@ -6751,6 +7308,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // ===== Shutdown =====
   core.onShutdown(async () => {
+    drainDaemonSockets();
     clearInterval(permissionSweepTimer);
     clearInterval(daemonInfoHealTimer);
     clearInterval(openclawFeedTimer);
@@ -6762,10 +7320,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // would keep firing self-POSTs at a port this daemon no longer owns.
     observedStopWatchdogs.stop();
     voiceAssistant?.stop();
+    // A recovery turn in flight is a `claude` child whose own timeout dies with
+    // this process; ending it here is the difference between a bounded 25s
+    // request and an orphan.
+    stopClaudeUsageRecoveryChildren();
     bridgeLogStream.stop();
     // Flush synchronously — the process exits a few lines below and a pending
     // debounce timer would take the last turn's entries with it.
     core.bridgeTimeline.stopPersistence();
+    // Same for any pending lastSeenAt write in the session-order pin store.
+    sessionOrder.flush();
     // iDotMatrix BLE sync is stopped by IDotMatrixModule.stop() via stopModules below.
     await Promise.all([
       gatewayAdapter ? gatewayAdapter.shutdown().catch(() => {}) : Promise.resolve(),

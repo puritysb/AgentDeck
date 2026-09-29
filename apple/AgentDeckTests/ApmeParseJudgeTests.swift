@@ -12,6 +12,401 @@ import XCTest
 
 final class ApmeParseJudgeTests: XCTestCase {
 
+    func testChatResponseMatchesSharedVectors() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/apme-judge-response-vectors.json")
+        let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        XCTAssertGreaterThanOrEqual(vectors.count, 16)
+        for vector in vectors {
+            let note = try XCTUnwrap(vector["note"] as? String)
+            let response = try XCTUnwrap(vector["response"] as? [String: Any])
+            let data = try JSONSerialization.data(withJSONObject: response)
+            if vector["accepted"] as? Bool == true {
+                let content = try ApmeJudgeChatResponse.content(data)
+                // `accepted` is the transport gate; `verdict` (defaulting to it)
+                // is whether the parser must then produce one, so the vectors
+                // pin both daemons end to end rather than one at each layer.
+                if vector["verdict"] as? Bool ?? true {
+                    XCTAssertNotNil(ApmeRunner.parseJudgeJson(content), note)
+                } else {
+                    XCTAssertNil(ApmeRunner.parseJudgeJson(content), note)
+                }
+            } else {
+                XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data), note)
+            }
+        }
+    }
+
+    /// A cut response is not a verdict, whatever the body looks like. An
+    /// exemption for "its object closed" was tried and removed — brace topology
+    /// cannot tell whether the model finished, and it had no measured
+    /// beneficiary on this fleet.
+    func testOutputLimitRejectsWhateverTheBodyLooksLike() {
+        for content in [#"{\"overall\":0."#, #"{\"overall\":0.8} and then some prose"#] {
+            let data = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"\#(content)"}}]}"#.utf8)
+            XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data)) { error in
+                guard case ApmeJudgeOpenAI.JudgeError.outputLimit = error else {
+                    return XCTFail("Expected output limit, got \(error)")
+                }
+            }
+        }
+    }
+
+    /// `JSONSerialization` bridges JSON booleans to NSNumber, so `as? Double`
+    /// read `{"overall":true}` as a perfect 1.0 score here while Node refused
+    /// the body, and turned `{"passed":true}` into a numeric axis row in
+    /// `evals` on one daemon only.
+    func testBooleansAreNotScores() {
+        XCTAssertNil(ApmeRunner.parseJudgeJson(#"{"overall":true}"#))
+        XCTAssertNil(ApmeRunner.parseJudgeJson(#"{"overall":false,"summary":"x"}"#))
+        let parsed = ApmeRunner.parseJudgeJson(#"{"overall":0.8,"passed":true,"flag":false}"#)
+        XCTAssertEqual(parsed?.scores, ["overall": 0.8])
+    }
+
+    /// `choices` must be an ARRAY. Swift rejected an object map all along and
+    /// Node did not; the vector file now pins it for both (#286 item 4).
+    func testChoicesMustBeAnArray() {
+        let data = Data(#"{"choices":{"0":{"message":{"content":"{\"overall\":0.8}"}}}}"#.utf8)
+        XCTAssertThrowsError(try ApmeJudgeChatResponse.content(data))
+    }
+
+    /// The label is the provenance stamped onto stored eval rows, so it must
+    /// name the model that RAN. As a hardcoded constant it went on claiming
+    /// `claude-opus-4-6` after the default moved — the same cross-daemon
+    /// attribution error #286 set out to remove. And a configured id that is
+    /// not an Anthropic model is not forwarded: there is no
+    /// `resetBackendCoupledFields` on this side to wipe a leftover MLX id on a
+    /// backend switch, and this leg reports a 400 as `nil`, which is
+    /// byte-identical to "no API key found".
+    func testApiJudgeResolvesTheModelItWillActuallyCall() {
+        XCTAssertEqual(ApmeJudgeApi.resolveModel("default"), ApmeJudgeApi.defaultModel)
+        XCTAssertEqual(ApmeJudgeApi.resolveModel(""), ApmeJudgeApi.defaultModel)
+        XCTAssertEqual(ApmeJudgeApi.resolveModel("mlx-community/gemma-4-26b-a4b-it-4bit"),
+                       ApmeJudgeApi.defaultModel)
+        XCTAssertEqual(ApmeJudgeApi.resolveModel("claude-haiku-4-5"), "claude-haiku-4-5")
+        // Against a custom endpoint the substitution is off: this daemon (unlike
+        // Node) honours `endpoint`, so the leg may be pointed at an
+        // Anthropic-compatible gateway whose ids are legitimately not
+        // `claude…`-prefixed, and swapping one would bill the user for a model
+        // they did not name.
+        XCTAssertEqual(
+            ApmeJudgeApi.resolveModel("anthropic.claude-opus-4-6-v1:0", endpoint: "https://gateway.invalid/v1/messages"),
+            "anthropic.claude-opus-4-6-v1:0")
+        XCTAssertEqual(
+            ApmeJudgeApi.resolveModel("gemma-3-27b", endpoint: ApmeJudgeApi.defaultEndpoint),
+            ApmeJudgeApi.defaultModel)
+    }
+
+    /// The label is the provenance stamped onto stored eval rows, so it must
+    /// name the model that RAN — as a hardcoded constant it went on claiming
+    /// `claude-opus-4-6` after the default moved. Driven through the same
+    /// function `judge()` uses, so the assertion is on the real path rather
+    /// than on the fallback branch.
+    func testApiJudgeLabelNamesTheModelThatRan() {
+        var config = ApmeJudgeConfig()
+        config.backend = .api
+        config.model = "claude-haiku-4-5"
+        XCTAssertEqual(ApmeJudgeApi.resolvedModelForRequest(config), "claude-haiku-4-5")
+        XCTAssertEqual(ApmeJudgeApi.judgeModelLabel, "api:claude-haiku-4-5")
+
+        config.model = "mlx-community/gemma-4-26b-a4b-it-4bit"
+        XCTAssertEqual(ApmeJudgeApi.resolvedModelForRequest(config), ApmeJudgeApi.defaultModel)
+        XCTAssertEqual(ApmeJudgeApi.judgeModelLabel, "api:\(ApmeJudgeApi.defaultModel)")
+    }
+
+    /// The Anthropic leg's completion rule, replayed from the same file Vitest
+    /// replays. It is reached only through an SDK/network call, so without this
+    /// the rule had no gate on either daemon and reverting it stayed green.
+    func testApiResponseMatchesSharedVectors() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/apme-judge-api-response-vectors.json")
+        let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        XCTAssertGreaterThanOrEqual(vectors.count, 9)
+        for vector in vectors {
+            let note = try XCTUnwrap(vector["note"] as? String)
+            let response = try XCTUnwrap(vector["response"] as? [String: Any])
+            if vector["accepted"] as? Bool == true {
+                let text = try ApmeJudgeApi.content(response)
+                XCTAssertNotNil(ApmeRunner.parseJudgeJson(text), note)
+            } else {
+                XCTAssertThrowsError(try ApmeJudgeApi.content(response), note)
+            }
+        }
+    }
+
+    /// The 1.05 default is a HAND MIRROR of `MLX_JUDGE_REPETITION_PENALTY` in
+    /// bridge/src/apme/runner.ts with no generator between them, and both
+    /// daemons read the same settings.json while either may hold the port — so
+    /// a drift means the same user config judges differently depending on which
+    /// answered. Each side pins the literal in its own suite; the Node twin is
+    /// in apme-judge-repetition-penalty.test.ts.
+    func testRepetitionPenaltyDefaultMatchesTheNodeMirror() {
+        XCTAssertEqual(ApmeJudgeMlx.defaultRepetitionPenalty, 1.05)
+    }
+
+    /// Out of range is not a choice: below 1 rewards repetition, which is the
+    /// opposite of the point, so an unusable value is discarded and the default
+    /// applies rather than reaching the server.
+    func testRepetitionPenaltyRangeMatchesTheNodeValidation() {
+        for (value, expected) in [("1", 1.0), ("1.05", 1.05), ("2", 2.0)] as [(String, Double)] {
+            let json = "{\"apme\":{\"judge\":{\"backend\":\"mlx\",\"repetitionPenalty\":\(value)}}}"
+            XCTAssertEqual(ApmeSettings.parse(Data(json.utf8)).judge.repetitionPenalty, expected, "kept \(value)")
+        }
+        // `true` is the case that exercises the boolean guard: it bridges to
+        // NSNumber and `as? Double` is 1.0, so without `CFGetTypeID` it would
+        // enable the penalty on Swift while Node rejects it — one
+        // settings.json, two verdicts. `false` bridges to 0.0 and is caught by
+        // the range check whether or not the guard exists, so it is included
+        // for symmetry only and proves nothing about the guard.
+        for value in ["0", "0.5", "-1", "3", "\"high\"", "true", "false"] {
+            let json = "{\"apme\":{\"judge\":{\"backend\":\"mlx\",\"repetitionPenalty\":\(value)}}}"
+            XCTAssertNil(ApmeSettings.parse(Data(json.utf8)).judge.repetitionPenalty, "dropped \(value)")
+        }
+    }
+
+    /// A cut body is `noVerdict`, never `clientError` — this is the
+    /// classification that was wrong, and it is what keeps the penalty alive
+    /// through the exact failure it exists to reduce. A repetition cut is an
+    /// HTTP 200 whose body `content` rejects; reading that as a refused field
+    /// disabled the penalty for every later verdict on the endpoint.
+    func testResponseKindsThePenaltyDecisionDependsOn() {
+        let cut = Data(#"{"choices":[{"finish_reason":"length","message":{"content":"{\"overall\":0."}}]}"#.utf8)
+        if case .noVerdict = ApmeJudgeMlx.classify(status: 200, data: cut) {} else {
+            XCTFail("a cut body must be noVerdict, not a refused field")
+        }
+        let empty = Data(#"{"choices":[{"message":{"content":""}}]}"#.utf8)
+        if case .noVerdict = ApmeJudgeMlx.classify(status: 200, data: empty) {} else {
+            XCTFail("an empty body must be noVerdict")
+        }
+        let good = Data(#"{"choices":[{"message":{"content":"{\"overall\":0.8}"}}]}"#.utf8)
+        if case .ok = ApmeJudgeMlx.classify(status: 200, data: good) {} else { XCTFail("expected ok") }
+        // Only a 4xx is a refused field.
+        if case .clientError(400) = ApmeJudgeMlx.classify(status: 400, data: Data()) {} else {
+            XCTFail("400 must be clientError")
+        }
+        // A 5xx says nothing about the field — suppressing on it would disable
+        // the penalty for the life of the process after one server hiccup.
+        if case .transportFailure = ApmeJudgeMlx.classify(status: 503, data: Data()) {} else {
+            XCTFail("503 must not be a refused field")
+        }
+        // 422 is the other status Node's `isJsonModeRejection` treats as a
+        // rejected request.
+        if case .clientError(422) = ApmeJudgeMlx.classify(status: 422, data: Data()) {} else {
+            XCTFail("422 must be clientError")
+        }
+        // The REST of the 4xx range is not a refused field. A 404 is a wrong
+        // endpoint path and a 429 is an auth proxy; reading either as "this
+        // server refuses repetition_penalty" marks the endpoint on evidence
+        // about a field nobody looked at, and logs a refusal that never
+        // happened.
+        for status in [401, 403, 404, 408, 429] {
+            if case .transportFailure = ApmeJudgeMlx.classify(status: status, data: Data()) {} else {
+                XCTFail("\(status) must not be read as a refused field")
+            }
+        }
+        // `resp.ok` is 200–299 on the Node side, so a proxy answering 201 must
+        // not be a verdict on one daemon and a failure on the other.
+        if case .ok = ApmeJudgeMlx.classify(status: 201, data: good) {} else {
+            XCTFail("201 must be ok, matching Node's resp.ok")
+        }
+    }
+
+    /// The value that actually reaches the wire — the half of the decision
+    /// `classify` does not own, and the half that had NO test at all: the Swift
+    /// suite pinned two constants and a pure classifier while every behaviour
+    /// this change was written to produce went unasserted, so deleting the line
+    /// that sends the field left the suite green.
+    ///
+    /// `1` means OFF and off means the field is absent, which is the promise
+    /// made in docs/apme.md, settings.ts and AGENTS.md. It held on Node alone
+    /// until this test existed: Swift POSTed `repetition_penalty: 1.0` and the
+    /// user who "disabled" it still paid the 400 + retry probe on a strict
+    /// server, and still got their endpoint marked.
+    func testResolvedPenaltyMatchesTheNodeSendGate() {
+        // Default when the user set nothing.
+        XCTAssertEqual(ApmeJudgeMlx.resolvedPenalty(configured: nil), 1.05)
+        // The user's value is used, not the constant.
+        XCTAssertEqual(ApmeJudgeMlx.resolvedPenalty(configured: 1.5), 1.5)
+        // EXACTLY 1 omits the field — the Node twin is `omits the field
+        // entirely when set to 1`.
+        XCTAssertNil(ApmeJudgeMlx.resolvedPenalty(configured: 1.0))
+    }
+
+    /// An unknown backend name must reject the fields COUPLED to it, not just
+    /// itself. Swift used to keep `endpoint` and `model` from a config line the
+    /// loader had refused, so a typo'd backend beside a remote URL sent the
+    /// judge prompt — the user's code and trajectory — to that third party.
+    /// Node has always wiped them (`resetBackendCoupledFields`).
+    func testAnUnknownBackendDoesNotKeepItsRemoteEndpoint() {
+        let json = #"{"apme":{"judge":{"backend":"grok","endpoint":"https://api.example.com/v1/chat/completions","model":"grok-4","reasoningEffort":"high"}}}"#
+        let cfg = ApmeSettings.parse(Data(json.utf8)).judge
+        XCTAssertNil(cfg.endpoint, "a refused backend must not keep a remote endpoint")
+        XCTAssertNotEqual(cfg.model, "grok-4", "nor the model coupled to it")
+        XCTAssertNil(cfg.reasoningEffort)
+
+        // A KNOWN backend still keeps its own fields — this is a rejection
+        // rule, not a blanket ignore.
+        let good = #"{"apme":{"judge":{"backend":"openai","endpoint":"https://api.example.com/v1/chat/completions","model":"gpt-x"}}}"#
+        let ok = ApmeSettings.parse(Data(good.utf8)).judge
+        XCTAssertEqual(ok.endpoint, "https://api.example.com/v1/chat/completions")
+        XCTAssertEqual(ok.model, "gpt-x")
+    }
+
+    // MARK: - judge(), driven through an injected transport
+    //
+    // Everything below reaches `ApmeJudgeMlx.judge(...)` itself. That matters
+    // more than it sounds: rounds 3, 4 and 5 each found a defect in this
+    // function, and until the transport became injectable NONE of them could
+    // be pinned — the suite tested `classify` and `resolvedPenalty` twice over
+    // while the caller composing them had zero coverage. Four separate
+    // mutations of `judge()` left the whole suite green.
+
+    /// A transport that replays a scripted sequence and records what was sent.
+    /// Internal (not `private`) so `ApmeJudgeCrossDaemonTests` can drive the
+    /// same `judge()` ladder without a second hand-rolled stub.
+    final class ScriptedTransport: @unchecked Sendable {
+        private let replies: [ApmeJudgeMlx.JudgeAttempt]
+        private(set) var sent: [[String: Any]] = []
+        private let lock = NSLock()
+        init(_ replies: [ApmeJudgeMlx.JudgeAttempt]) { self.replies = replies }
+        func handle(_ body: [String: Any], _ url: URL) -> ApmeJudgeMlx.JudgeAttempt {
+            lock.lock(); defer { lock.unlock() }
+            let i = sent.count
+            sent.append(body)
+            return i < replies.count ? replies[i] : .transportFailure
+        }
+        var penaltiesSent: [Double?] { sent.map { $0["repetition_penalty"] as? Double } }
+        var jsonModeSent: [Bool] { sent.map { $0["response_format"] != nil } }
+    }
+
+    private func judgeConfig(endpoint: String, penalty: Double? = nil) -> ApmeJudgeConfig {
+        var cfg = ApmeJudgeConfig()
+        cfg.endpoint = endpoint
+        cfg.model = "test-model"          // skips the /v1/models auto-detect
+        cfg.repetitionPenalty = penalty
+        return cfg
+    }
+
+    private static let verdict = #"{"choices":[{"message":{"content":"{\"overall\":0.8}"}}]}"#
+
+    /// The value `resolvedPenalty` computes must actually REACH the wire.
+    /// Deleting the line that writes it into the body left the suite green
+    /// through two review rounds, because the only tests were of the pure
+    /// function that computes it.
+    func testJudgeSendsTheResolvedPenaltyOnTheWire() async {
+        let t = ScriptedTransport([.ok(Self.verdict)])
+        _ = await ApmeJudgeMlx.withTransportForTests({ b, u in t.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: judgeConfig(endpoint: "http://127.0.0.1:65990/v1/chat/completions"))
+        }
+        XCTAssertEqual(t.penaltiesSent, [1.05], "the default must reach the request body")
+
+        let explicit = ScriptedTransport([.ok(Self.verdict)])
+        _ = await ApmeJudgeMlx.withTransportForTests({ b, u in explicit.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: judgeConfig(endpoint: "http://127.0.0.1:65991/v1/chat/completions", penalty: 1.5))
+        }
+        XCTAssertEqual(explicit.penaltiesSent, [1.5], "the user's value must reach the request body")
+
+        // Exactly 1 disables, and disabling means the key is ABSENT.
+        let off = ScriptedTransport([.ok(Self.verdict)])
+        _ = await ApmeJudgeMlx.withTransportForTests({ b, u in off.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: judgeConfig(endpoint: "http://127.0.0.1:65992/v1/chat/completions", penalty: 1))
+        }
+        XCTAssertNil(off.penaltiesSent.first ?? nil)
+        XCTAssertFalse(off.sent[0].keys.contains("repetition_penalty"), "1 must omit the key, not send 1.0")
+    }
+
+    /// Owner decision (#299 item 1, 2026-09-10): the per-endpoint suppression
+    /// memory this test used to pin (`testOnlyAProvenRefusalIsRemembered`) is
+    /// DELETED. `judge()` now retries once per request and remembers nothing —
+    /// a call to the SAME endpoint that refused the field before pays the
+    /// identical retry cost again, every time.
+    func testNothingIsRememberedBetweenCalls() async {
+        let url = URL(string: "http://127.0.0.1:65993/v1/chat/completions")!
+        let t1 = ScriptedTransport([.clientError(400), .ok(Self.verdict)])
+        let text = await ApmeJudgeMlx.withTransportForTests({ b, u in t1.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: judgeConfig(endpoint: url.absoluteString))
+        }
+        XCTAssertNotNil(text, "the retry's verdict must be returned")
+        XCTAssertEqual(t1.penaltiesSent, [1.05, nil], "retry must drop the field")
+
+        // A second call to the SAME endpoint must probe again — two more
+        // requests, not zero. A memory would have made this a single request.
+        let t2 = ScriptedTransport([.clientError(400), .ok(Self.verdict)])
+        let text2 = await ApmeJudgeMlx.withTransportForTests({ b, u in t2.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: judgeConfig(endpoint: url.absoluteString))
+        }
+        XCTAssertNotNil(text2)
+        XCTAssertEqual(t2.penaltiesSent, [1.05, nil], "the second call must offer the field again")
+    }
+
+    /// A retry the server ACCEPTED is proof, even when the reply is not a
+    /// usable verdict — the ladder must return `nil` rather than trying a
+    /// THIRD field-drop that does not exist. Requiring a verdict to count as
+    /// "the field was refused" would disagree with Node, whose ladder exits on
+    /// `resp.ok` before the body is judged.
+    func testAnAcceptedRetryReturnsNilWithoutAVerdictRatherThanRetryingAgain() async {
+        let url = URL(string: "http://127.0.0.1:65995/v1/chat/completions")!
+        let t = ScriptedTransport([.clientError(400), .noVerdict])
+        let text = await ApmeJudgeMlx.withTransportForTests({ b, u in t.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: judgeConfig(endpoint: url.absoluteString))
+        }
+        XCTAssertNil(text, "a cut reply is not a verdict, whatever was dropped to get it")
+        XCTAssertEqual(t.sent.count, 2, "the ladder must stop at a noVerdict, not keep retrying")
+    }
+
+    /// A repetition cut (HTTP 200 whose body is not a verdict) and a
+    /// transport failure say nothing about either field and must NOT trigger
+    /// the field-drop retry — only `.clientError` (400/422) may.
+    func testARepetitionCutOrTransportFailureNeverTriggersARetry() async {
+        let url = URL(string: "http://127.0.0.1:65996/v1/chat/completions")!
+        let t = ScriptedTransport([.noVerdict])
+        _ = await ApmeJudgeMlx.withTransportForTests({ b, u in t.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: judgeConfig(endpoint: url.absoluteString))
+        }
+        XCTAssertEqual(t.sent.count, 1, "a cut must not trigger the refusal retry")
+
+        // Same for a server that is simply not up yet.
+        let down = URL(string: "http://127.0.0.1:65997/v1/chat/completions")!
+        let t2 = ScriptedTransport([.transportFailure])
+        _ = await ApmeJudgeMlx.withTransportForTests({ b, u in t2.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: judgeConfig(endpoint: down.absoluteString))
+        }
+        XCTAssertEqual(t2.sent.count, 1, "a transport failure must not trigger the refusal retry")
+    }
+
+    /// The classifier shares this transport but not the measurement — the cut
+    /// rate was measured on judge prompts, and Node's classifier has its own
+    /// `fetch` that never carried the field. That exclusion was a single
+    /// literal no test read: flipping it back to `true` left the suite green.
+    func testTheClassifierPathSendsNoPenalty() async {
+        // Drive the REAL classifier dispatch, not `judge()` with the flag
+        // typed by hand: the thing that can regress is the argument at that
+        // call site, and a test passing its own `false` cannot see it change.
+        var config = ApmeConfig()
+        config.judge.backend = .mlx
+        config.judge.endpoint = "http://127.0.0.1:65998/v1/chat/completions"
+        config.judge.model = "test-model"
+        config.judge.fallbackToFoundationModels = false
+
+        let t = ScriptedTransport([.ok(Self.verdict)])
+        _ = await ApmeJudgeMlx.withTransportForTests({ b, u in t.handle(b, u) }) {
+            await ApmeClassifier.classifyWithBackend("mlx", prompt: "p", config: config)
+        }
+        XCTAssertEqual(t.sent.count, 1, "the classifier must reach the MLX leg")
+        XCTAssertFalse(t.sent[0].keys.contains("repetition_penalty"),
+                       "the classifier must not carry the judge measurement's field")
+
+        // And the judge path through the same transport MUST carry it, so this
+        // is asserting an exclusion rather than a broken wire.
+        let j = ScriptedTransport([.ok(Self.verdict)])
+        _ = await ApmeJudgeMlx.withTransportForTests({ b, u in j.handle(b, u) }) {
+            await ApmeJudgeMlx.judge(prompt: "p", config: config.judge)
+        }
+        XCTAssertEqual(j.penaltiesSent, [1.05])
+    }
+
     // MARK: - Happy path
 
     func testValidCodeAxes() {

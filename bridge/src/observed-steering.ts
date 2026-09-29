@@ -26,12 +26,14 @@
 
 import { randomUUID } from 'crypto';
 import {
-  evaluatePermissionRules,
-  isNeverPromptTool,
-  isPromptProneTool,
-} from './claude-permission-rules.js';
-import { shouldGatePreToolUse } from './awaiting-overlay.js';
+  GATE_LEARN_WINDOW_MS,
+  gateSignature,
+  predictPreToolUseHold,
+} from '@agentdeck/shared';
+import { loadMergedPermissionRules } from './claude-permission-rules.js';
 import { debug } from './logger.js';
+
+export { gateSignature };
 
 const STOP_FLAG_TTL_MS = 10 * 60_000;      // stale STOP must not deny a tool an hour later
 const DIRECTIVE_TTL_MS = 60 * 60_000;
@@ -39,11 +41,13 @@ const DIRECTIVE_QUEUE_CAP = 3;
 /** After a hold releases undecided, how long we correlate PostToolUse-without-
  *  Notification to learn "this signature was auto-approved" (session
  *  "always allow" answers live only in Claude's memory — this is the only way
- *  to see them). */
-const ASK_RELEASE_LEARN_WINDOW_MS = 8_000;
+ *  to see them). SSOT in @agentdeck/shared: a `permission_prompt`
+ *  Notification clears the pending release, so this bounds only how slow the
+ *  TOOL may be — and 8 s was shorter than a routine `curl`. */
+const ASK_RELEASE_LEARN_WINDOW_MS = GATE_LEARN_WINDOW_MS;
 
 interface DirectiveEntry { text: string; ts: number; }
-interface AskRelease { tool: string; signature: string; ts: number; }
+interface AskRelease { tool: string; signature: string; ts: number; toolUseId?: string; }
 
 interface SteeringSession {
   stopRequestedAt?: number;
@@ -64,16 +68,6 @@ function ses(sid: string): SteeringSession {
     sessions.set(sid, s);
   }
   return s;
-}
-
-/** Bash signature = first two command tokens (the granularity of Claude's own
- *  "always allow `git push`"-style session approvals); other tools = tool name. */
-export function gateSignature(tool: string, toolInput: Record<string, unknown> | undefined): string {
-  if (tool === 'Bash' && typeof toolInput?.command === 'string') {
-    const head = toolInput.command.trim().split(/\s+/).slice(0, 2).join(' ');
-    return `Bash|${head}`;
-  }
-  return tool;
 }
 
 /** Human-readable question for the gate's awaiting overlay — device-native
@@ -250,23 +244,23 @@ export function shouldHoldPreToolUse(ctx: HoldContext): HoldDecision {
   if (!ctx.enabled) return { hold: false, reason: 'disabled' };
   if (ctx.clientCount < 1) return { hold: false, reason: 'no clients' };
   if (!ctx.tool) return { hold: false, reason: 'no tool name' };
-  if (ctx.tool.startsWith('mcp__')) return { hold: false, reason: 'mcp tool (trust state unknown)' };
-  if (isNeverPromptTool(ctx.tool)) return { hold: false, reason: 'never-prompt tool' };
-  if (!isPromptProneTool(ctx.tool)) return { hold: false, reason: 'not prompt-prone' };
-  if (!shouldGatePreToolUse(ctx.permissionMode, ctx.tool)) {
-    return { hold: false, reason: `permission_mode=${ctx.permissionMode ?? 'default'} auto-approves` };
-  }
   const s = ses(ctx.sessionId);
   const signature = gateSignature(ctx.tool, ctx.toolInput);
   if (s.suppressed.has(signature)) return { hold: false, reason: 'signature learned auto-approved' };
   if (s.heldRequestId) return { hold: false, reason: 'another gate already held' };
-  const verdict = evaluatePermissionRules(ctx.tool, ctx.toolInput, ctx.cwd);
-  if (verdict === 'unknown') return { hold: false, reason: 'settings unreadable' };
-  if (verdict === 'deny') return { hold: false, reason: 'deny rule may match' };
-  if (verdict === 'allow') return { hold: false, reason: 'allow rule may match' };
+  // The stateless prediction (tool sets, mode gate, allow/deny/ask rules,
+  // built-in read-only and acceptEdits auto-approvals) is the shared SSOT the
+  // Swift daemon runs as generated code — one decision, two daemons.
+  const prediction = predictPreToolUseHold({
+    tool: ctx.tool,
+    toolInput: ctx.toolInput,
+    permissionMode: ctx.permissionMode,
+    rules: loadMergedPermissionRules(ctx.cwd),
+  });
+  if (!prediction.hold) return { hold: false, reason: prediction.reason };
   const requestId = randomUUID();
   s.heldRequestId = requestId;
-  return { hold: true, requestId, reason: verdict === 'ask' ? 'ask rule matches' : 'prompt-prone, no rule match' };
+  return { hold: true, requestId, reason: prediction.reason };
 }
 
 /**
@@ -305,7 +299,7 @@ export function beginAskGate(ctx: {
 export function gateReleased(
   sid: string,
   requestId: string,
-  opts: { undecided: boolean; tool: string; toolInput?: Record<string, unknown> },
+  opts: { undecided: boolean; tool: string; toolInput?: Record<string, unknown>; toolUseId?: string },
 ): void {
   const s = sessions.get(sid);
   if (!s) return;
@@ -315,6 +309,7 @@ export function gateReleased(
       tool: opts.tool,
       signature: gateSignature(opts.tool, opts.toolInput),
       ts: Date.now(),
+      toolUseId: opts.toolUseId,
     });
     if (s.recentAskReleases.length > 8) s.recentAskReleases.shift();
   }
@@ -333,14 +328,20 @@ export function notePermissionPromptShown(sid: string): void {
  * (session-scoped "always allow" we cannot read) — suppress the signature so
  * it is never held again this session.
  */
-export function noteToolEnd(sid: string, tool: string | undefined): void {
+export function noteToolEnd(sid: string, tool: string | undefined, toolUseId?: string): void {
   const s = sessions.get(sid);
   if (!s || !tool || s.recentAskReleases.length === 0) return;
   const now = Date.now();
   const kept: AskRelease[] = [];
   for (const r of s.recentAskReleases) {
     if (now - r.ts > ASK_RELEASE_LEARN_WINDOW_MS) continue; // expired
-    if (r.tool === tool) {
+    // The held call and its PostToolUse share a `tool_use_id`, so a release
+    // that recorded one learns ONLY from its own completion — a parallel
+    // allowlisted Bash finishing inside the window must not teach the held
+    // signature (the window is 15 min now, wide enough for that to happen).
+    // Releases without an id (older Claude) fall back to the tool name.
+    const matches = r.toolUseId ? r.toolUseId === toolUseId : r.tool === tool;
+    if (matches) {
       s.suppressed.add(r.signature);
       debug('steering', `learned auto-approved signature for ${sid}: ${r.signature}`);
     } else {

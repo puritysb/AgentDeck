@@ -1,3 +1,6 @@
+import { claudeWeeklyReadings, type ClaudeWeeklyMode } from './claude-weekly-view.js';
+import { usageColor } from './usage-severity.js';
+import { selectedLunaReserve } from './usage-presentation.js';
 /**
  * D200H / deck layout engine used by the Ulanzi Studio plugin
  * (plugin-ulanzi) and Apple device previews. Given the current agent state it
@@ -25,10 +28,10 @@ import {
 } from './svg-renderers/index.js';
 import { State, type PromptOption } from './states.js';
 import { sortSessions, foldCodexSessionsForDisplay } from './session-utils.js';
-import type { SessionInfo, SubscriptionInfo, CodexRateLimits, CodexRateLimitWindow, ScopedUsageLimit } from './protocol.js';
+import type { SessionInfo, SubscriptionInfo, CodexRateLimits, CodexRateLimitWindow, CodexLunaReserve, ScopedUsageLimit, ZaiRateLimits, ZaiWindow } from './protocol.js';
 import { Brand, Tide, UI } from './design-tokens.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from './connection-status.js';
-import { CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from './svg-renderers/agent-logos.js';
+import { CLAUDE_LOGO_PATH, CODEX_LOGO_PATH, ZAI_LOGO_PATHS, ZAI_LOGO_VIEWBOX } from './svg-renderers/agent-logos.js';
 import { formatScopedLabel, codexUsageFootnote, scopedLimitClaimsUsageKey, codexWindowsBeside } from './format-utils.js';
 
 /** Command dispatched when a key is pressed. `null` = inert tile (info/empty). */
@@ -58,10 +61,11 @@ export const GRID_COLS = 5;
  * key falls out of the strip and flows back to sessions instead of leaving a
  * hole in the middle of the row.
  *
- * Its length caps usage at three physical keys. When four or five windows are
- * present, `buildUsageTiles` compacts same-provider 5H+7D windows into a dual
- * readout so no real limit is dropped. Scoped per-model caps still contribute
- * at most one tile.
+ * Its length caps usage at three physical keys. When four or five readings are
+ * present, `buildUsageTiles` pairs two of them onto one key as a dual readout so
+ * no real limit is dropped — the Codex 5H+7D pair first, then the two WEEKLY
+ * Claude readings (7D + the per-model cap), which leaves the fast-moving 5H
+ * gauge whole. Scoped per-model caps still contribute at most one tile.
  */
 const USAGE_PREFERRED_POS = ['0_2', '1_2', '2_2'];
 
@@ -75,8 +79,13 @@ export interface DashState {
   modelName: string;
   mode: string;
   agentType: string;
-  fiveHourPercent: number;
-  sevenDayPercent: number;
+  /** Claude 5h window used%. **Absent means the window was not reported**, which
+   *  is not the same as 0% — the API can carry one window and not the other, and
+   *  folding that into a number draws a confident empty gauge for a quota that
+   *  does not exist. Every consumer is hide-if-absent. */
+  fiveHourPercent?: number;
+  /** Claude 7d window used%. Absent = not reported (see `fiveHourPercent`). */
+  sevenDayPercent?: number;
   totalTokens: number;
   totalCost: number;
   options: PromptOption[];
@@ -112,6 +121,13 @@ export interface DashState {
    * Claude 5H/7D gauges. Absent when the user runs no Codex session.
    */
   codexRateLimits?: CodexRateLimits;
+  /**
+   * z.ai GLM Coding Plan usage, fetched directly from the provider account.
+   * Same slot grammar as `codexRateLimits`; the long window is whatever the
+   * plan reports (weekly credits or the monthly MCP quota — labeled by its own
+   * length, e.g. "30D"). Absent when no z.ai key is configured.
+   */
+  zaiRateLimits?: ZaiRateLimits;
 }
 
 export function parseState(evt: any): DashState {
@@ -122,8 +138,11 @@ export function parseState(evt: any): DashState {
     modelName: evt?.modelName ?? '',
     mode: evt?.mode ?? 'default',
     agentType: evt?.agentType ?? 'claude-code',
-    fiveHourPercent: evt?.fiveHourPercent ?? 0,
-    sevenDayPercent: evt?.sevenDayPercent ?? 0,
+    // NOT `?? 0`: an absent window is unknown, and a zero here is indistinguishable
+    // from "0% used" to every reader downstream — which is how a subscription that
+    // reports only the weekly window drew a phantom "5H 0%" tile on the strip.
+    fiveHourPercent: typeof evt?.fiveHourPercent === 'number' && Number.isFinite(evt.fiveHourPercent) ? evt.fiveHourPercent : undefined,
+    sevenDayPercent: typeof evt?.sevenDayPercent === 'number' && Number.isFinite(evt.sevenDayPercent) ? evt.sevenDayPercent : undefined,
     totalTokens: evt?.totalTokens ?? 0,
     totalCost: evt?.totalCost ?? 0,
     // Keep the server-assigned `index`: it is what a press must send back, and
@@ -139,9 +158,9 @@ export function parseState(evt: any): DashState {
     navigable: Boolean(evt?.navigable),
     // Prefer an explicit flag; otherwise infer from the presence of a real percent.
     usageKnown:
-      typeof evt?.usageKnown === 'boolean'
+      evt?.usageStale === true ? false : typeof evt?.usageKnown === 'boolean'
         ? evt.usageKnown
-        : evt?.fiveHourPercent != null || evt?.sevenDayPercent != null,
+        : evt?.fiveHourPercent != null || evt?.sevenDayPercent != null || (Array.isArray(evt?.scopedLimits) && evt.scopedLimits.length > 0),
     fiveHourResetsAt: typeof evt?.fiveHourResetsAt === 'string' ? evt.fiveHourResetsAt : undefined,
     sevenDayResetsAt: typeof evt?.sevenDayResetsAt === 'string' ? evt.sevenDayResetsAt : undefined,
     scopedLimits: Array.isArray(evt?.scopedLimits) ? (evt.scopedLimits as ScopedUsageLimit[]) : undefined,
@@ -149,6 +168,10 @@ export function parseState(evt: any): DashState {
     codexRateLimits:
       evt?.codexRateLimits && typeof evt.codexRateLimits === 'object'
         ? (evt.codexRateLimits as CodexRateLimits)
+        : undefined,
+    zaiRateLimits:
+      evt?.zaiRateLimits && typeof evt.zaiRateLimits === 'object'
+        ? (evt.zaiRateLimits as ZaiRateLimits)
         : undefined,
   };
 }
@@ -165,13 +188,15 @@ function gaugeBar(pct: number, width = 8): string {
 }
 
 function gaugeColor(pct: number): string {
-  return pct > 80 ? '#ef4444' : pct > 50 ? '#eab308' : '#22c55e';
+  return usageColor(pct);
 }
 
-export function renderUsageButton(label: string, percent: number, color: string, known = true): string {
-  // When the subscription quota is unknown (no OAuth data / stale hub), draw a
-  // muted "—" instead of a confident 0% that would read as "fully available".
-  if (!known) {
+export function renderUsageButton(label: string, percent: number | undefined, color: string, known = true): string {
+  // When the subscription quota is unknown (no OAuth data / stale hub / a window
+  // the API did not report at all), draw a muted "—" instead of a confident 0%
+  // that would read as "fully available". An absent percent IS unknown, whatever
+  // the caller passed for `known` — the two can only disagree by mistake.
+  if (!known || percent == null) {
     const dim = '#475569';
     const elements = [
       `<text x="72" y="36" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" fill="#94a3b8">${escXml(label)}</text>`,
@@ -246,40 +271,71 @@ function formatResetCountdown(iso?: string): string {
   return totalH > 0 ? `${totalH}h${m}m` : `${m}m`;
 }
 
+/** Large, unmistakable Luna state tile used in place of the Codex gauge. */
+export function renderLunaReserveTile(reserve: CodexLunaReserve): string {
+  const W = 144, H = 144, BG = UI.popupBgDeep, MOON = UI.attn, DIM = UI.idleDark;
+  const used = Math.max(0, Math.min(100, reserve.usedPercent));
+  const remaining = Math.round(100 - used);
+  const active = reserve.available !== false && remaining > 0;
+  const moon = active ? MOON : DIM;
+  const reset = formatResetCountdown(reserve.regularResetsAt ?? reserve.resetsAt);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
+    + `<rect width="${W}" height="${H}" rx="12" fill="${BG}"/>`
+    + `<text x="12" y="17" font-family="JetBrains Mono, monospace" font-size="11" font-weight="bold" fill="${Tide.s50}">CODEX</text>`
+    + `<circle cx="126" cy="13" r="9" fill="${UI.popupBgMid}" opacity="0.8"/>`
+    + `<g transform="translate(117,4) scale(0.75) translate(0,0)"><path d="${CODEX_LOGO_PATH}" fill="${Brand.codex}" fill-rule="evenodd"/></g>`
+    + `<circle cx="72" cy="57" r="29" fill="${moon}"/>`
+    + `<circle cx="60" cy="51" r="29" fill="${BG}"/>`
+    + `<text x="72" y="103" text-anchor="middle" font-family="Arial,sans-serif" font-size="27" font-weight="bold" fill="${usageColor(used)}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>`
+    + `<text x="72" y="121" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" font-weight="bold" fill="${DIM}">LUNA RESERVE</text>`
+    + (reset ? `<text x="72" y="138" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="${DIM}">RESET IN ${escXml(reset)}</text>` : '')
+    + `</svg>`;
+}
+
 /** Agent brand colours (Brand tokens) used to tint the provider logo. */
-const USAGE_BRAND_COLOR: Record<'claude' | 'codex', string> = {
+const USAGE_BRAND_COLOR: Partial<Record<'claude' | 'codex' | 'zai', string>> = {
   claude: Brand.claudeCode,
   codex: Brand.codex,
+  zai: Brand.zai,
 };
 
-/** Canonical provider brand mark (viewBox 0 0 24 24) per agent. */
-const USAGE_BRAND_LOGO: Record<'claude' | 'codex', string> = {
-  claude: CLAUDE_LOGO_PATH,
-  codex: CODEX_LOGO_PATH,
+/** Canonical provider brand mark paths per agent. viewBox is 24 except z.ai,
+ *  whose upstream mark (design/brand/zai.svg) carries its own 30-unit box. */
+const USAGE_BRAND_LOGO: Partial<Record<'claude' | 'codex' | 'zai', string[]>> = {
+  claude: [CLAUDE_LOGO_PATH],
+  codex: [CODEX_LOGO_PATH],
+  zai: ZAI_LOGO_PATHS,
+};
+
+const USAGE_BRAND_VIEWBOX: Record<'claude' | 'codex' | 'zai', number> = {
+  claude: 24,
+  codex: 24,
+  zai: ZAI_LOGO_VIEWBOX,
 };
 
 /**
- * Provider brand mark for the top-right corner (the agent identity). 24-unit
- * path scaled to `size`, centred on (cx,cy), filled with the brand colour, over
+ * Provider brand mark for the top-right corner (the agent identity). Path set
+ * scaled to `size`, centred on (cx,cy), filled with the brand colour, over
  * a subtle dark scrim circle so it survives a ~100% fill. `dim` greys it.
+ * Every mark is the upstream geometry (design/brand/*.svg) — never redrawn.
  */
-function usageBrandLogo(agent: 'claude' | 'codex', cx: number, cy: number, size: number, dim: boolean): string {
-  const s = size / 24;
-  const color = dim ? '#64748b' : USAGE_BRAND_COLOR[agent];
+function usageBrandLogo(agent: 'claude' | 'codex' | 'zai', cx: number, cy: number, size: number, dim: boolean): string {
+  const logoPaths = USAGE_BRAND_LOGO[agent];
+  const brandColor = USAGE_BRAND_COLOR[agent];
+  if (!logoPaths || !brandColor) return '';
+  const box = USAGE_BRAND_VIEWBOX[agent];
+  const s = size / box;
+  const color = dim ? '#64748b' : brandColor;
   return `<circle cx="${cx}" cy="${cy}" r="${(size / 2 + 3).toFixed(1)}" fill="#0b1220" opacity="0.55"/>`
-    + `<g transform="translate(${cx},${cy}) scale(${s.toFixed(3)}) translate(-12,-12)">`
-    + `<path d="${USAGE_BRAND_LOGO[agent]}" fill="${color}" fill-rule="evenodd"/></g>`;
+    + `<g transform="translate(${cx},${cy}) scale(${s.toFixed(3)}) translate(${-box / 2},${-box / 2})">`
+    + logoPaths.map((p) => `<path d="${p}" fill="${color}"/>`).join('')
+    + `</g>`;
 }
 
-/** Severity ramp by USED percent: <=50 green, 50–80 amber, >80 red. */
+/** Severity ramp by USED percent: <70 green, 70–<90 amber, ≥90 red. */
 function usageRampColor(used: number, stale = false, inactive = false): { fill: string; hi: string } {
-  if (stale) return { fill: '#64748b', hi: '#64748b' };
-  // Inactive per-model scoped cap: informational cyan (distinct from stale slate),
-  // never the critical ramp regardless of percent (issue #99).
-  if (inactive) return { fill: UI.cyan, hi: UI.cyan };
-  if (used > 80) return { fill: '#ef4444', hi: '#fca5a5' };
-  if (used > 50) return { fill: '#eab308', hi: '#fde047' };
-  return { fill: '#22c55e', hi: '#86efac' };
+  const fill = usageColor(used, { muted: stale, inactive });
+  return { fill, hi: fill };
 }
 
 /**
@@ -307,7 +363,7 @@ export function usageWindowKind(windowMinutes: number | undefined): '5h' | '7d' 
 }
 
 export interface UsageTankData {
-  agent: 'claude' | 'codex';
+  agent: 'claude' | 'codex' | 'zai';
   /** Rolling window this tile represents (drives the clip id + label fallback). */
   window: '5h' | '7d';
   /** Tile label, e.g. "5H", "7D". Agent identity rides the brand dot, not a prefix. */
@@ -333,7 +389,7 @@ export interface UsageTankData {
 export function renderUsageGauge(data: UsageTankData): string {
   const W = 144, H = 144, RX = 12;
   const known = data.known !== false;
-  const agent = data.agent === 'codex' ? 'codex' : 'claude';
+  const agent = data.agent;
   const label = data.label || data.window.toUpperCase();
   const BG = '#0f172a', LABEL_DIM = '#64748b', TEXT_DIM = '#475569';
   const HEADLINE = '#ffffff', COUNTDOWN = '#ffffff';
@@ -389,7 +445,7 @@ export function renderUsageGauge(data: UsageTankData): string {
  * be represented as four independent tiles. Compacting a provider pair keeps
  * every real window visible without stealing the clock or dropping a limit.
  */
-export function renderUsagePairGauge(agent: 'claude' | 'codex', windows: [UsageTankData, UsageTankData]): string {
+export function renderUsagePairGauge(agent: 'claude' | 'codex' | 'zai', windows: [UsageTankData, UsageTankData] | [UsageTankData, UsageTankData, UsageTankData]): string {
   const W = 144, H = 144, RX = 12;
   const bg = `<rect width="${W}" height="${H}" rx="${RX}" fill="${UI.popupBgMid}"/>`;
   const logo = usageBrandLogo(agent, 128, 16, 16, false);
@@ -397,19 +453,29 @@ export function renderUsagePairGauge(agent: 'claude' | 'codex', windows: [UsageT
     const used = Math.max(0, Math.min(100, window.usedPercent));
     const dim = window.stale === true || Boolean(window.footnote);
     const ramp = usageRampColor(used, dim, window.inactive === true);
-    const y = index === 0 ? 0 : 72;
+    const dense = windows.length === 3;
+    const y = index * (H / windows.length);
+    const headlineY = dense ? 20 : 29;
+    const resetY = dense ? 34 : 51;
+    const barY = dense ? 41 : 62;
     const reset = window.footnote || (window.stale ? 'stale' : formatResetCountdown(window.resetsAt));
     const textColor = dim ? UI.ttyDim : Tide.s50;
     const barW = Math.round(120 * used / 100);
-    return `<text x="12" y="${y + 29}" font-family="JetBrains Mono, monospace" font-size="18" font-weight="bold" fill="${textColor}">${escXml(window.label)}</text>`
-      + `<text x="100" y="${y + 29}" text-anchor="end" font-family="IBM Plex Sans, sans-serif" font-size="20" font-weight="bold" fill="${textColor}">${Math.round(used)}</text>`
-      + `<text x="102" y="${y + 29}" font-family="IBM Plex Sans, sans-serif" font-size="12" font-weight="bold" fill="${textColor}">%</text>`
-      + (reset ? `<text x="12" y="${y + 51}" font-family="JetBrains Mono, monospace" font-size="11" font-weight="bold" fill="${textColor}">${escXml(reset)}</text>` : '')
-      + `<rect x="12" y="${y + 62}" width="120" height="3" rx="1.5" fill="${UI.ttyFaint}"/>`
-      + (barW > 0 ? `<rect x="12" y="${y + 62}" width="${barW}" height="3" rx="1.5" fill="${ramp.fill}" opacity="${dim ? 0.55 : 1}"/>` : '');
+    // The label and the right-aligned value share one 144px row, so a long label
+    // beside a 3-digit percent collides ("FABLE100%"). Window labels are 2 chars
+    // ("5H"/"7D") and never hit this; a scoped cap's name (up to 6) does, and it
+    // is exactly the pairing this renderer now carries. Shrink the label rather
+    // than truncate a name the user has to recognise.
+    const labelSize = window.label.length >= 5 ? 14 : (dense ? 16 : 18);
+    return `<text x="12" y="${y + headlineY}" font-family="JetBrains Mono, monospace" font-size="${labelSize}" font-weight="bold" fill="${textColor}">${escXml(window.label)}</text>`
+      + `<text x="100" y="${y + headlineY}" text-anchor="end" font-family="IBM Plex Sans, sans-serif" font-size="20" font-weight="bold" fill="${textColor}">${Math.round(used)}</text>`
+      + `<text x="102" y="${y + headlineY}" font-family="IBM Plex Sans, sans-serif" font-size="12" font-weight="bold" fill="${textColor}">%</text>`
+      + (reset ? `<text x="12" y="${y + resetY}" font-family="JetBrains Mono, monospace" font-size="11" font-weight="bold" fill="${textColor}">${escXml(reset)}</text>` : '')
+      + `<rect x="12" y="${y + barY}" width="120" height="3" rx="1.5" fill="${UI.ttyFaint}"/>`
+      + (barW > 0 ? `<rect x="12" y="${y + barY}" width="${barW}" height="3" rx="1.5" fill="${ramp.fill}" opacity="${dim ? 0.55 : 1}"/>` : '');
   }).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
-    + bg + `<rect x="8" y="71" width="128" height="1" fill="${UI.ttyFaint}"/>` + rows + logo + `</svg>`;
+    + bg + windows.slice(1).map((_, i) => `<rect x="8" y="${(i + 1) * H / windows.length - 1}" width="128" height="1" fill="${UI.ttyFaint}"/>`).join('') + rows + logo + `</svg>`;
 }
 
 /**
@@ -444,8 +510,13 @@ export function renderCreditsTile(data: { limitId?: string; balance?: string; un
  * to session tiles instead of leaving reserved "—" ghost gauges behind.
  * Credit-based plans (null windows) get a single credits readout tile instead.
  * Each tile re-fetches quota on press.
+ *
+ * `budget` is how many keys usage may occupy: the strip's three, plus — when
+ * the session roster leaves keys free — the leftover keys (#349: remaining
+ * button space hosts usage efficiently, one window per key instead of
+ * compacted pairs).
  */
-function buildUsageTiles(state: DashState): SessionDeckCell[] {
+function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.length, weeklyMode: ClaudeWeeklyMode = 'both'): SessionDeckCell[] {
   const action: DeckAction = { kind: 'command', command: { type: 'query_usage' } };
   const known = state.usageKnown !== false;
   const claudeWindows: UsageTankData[] = [];
@@ -455,25 +526,24 @@ function buildUsageTiles(state: DashState): SessionDeckCell[] {
   if (known && state.sevenDayPercent != null) {
     claudeWindows.push({ agent: 'claude', window: '7d', label: '7D', usedPercent: state.sevenDayPercent, resetsAt: state.sevenDayResetsAt, known: true });
   }
-  // At most ONE scoped tile — the worst-sorted cap (active desc, then percent
-  // desc), rendered muted when it isn't the binding one.
-  //
-  // The usage strip is three keys wide (USAGE_PREFERRED_POS), so scoped tiles
-  // never stack: only [0] can reach a key, and building the rest is dead work.
-  // Same-provider rolling windows compact below when the total would overflow;
-  // paging through the remaining scoped caps lives on the SD+ encoder.
-  //
-  // Inclusion comes from `scopedLimitClaimsUsageKey`, and the Codex windows to
-  // retain from `codexWindowsBeside` — both shared with the Stream Deck keypad.
-  // Active caps sort ahead of Codex; inactive caps follow it. Capacity pressure
-  // is solved by compacting provider pairs below, never by deleting a window.
+  // Only the worst scoped cap reaches the keypad. It always shares the weekly
+  // key; the SD+ encoder can zoom into additional scoped caps separately.
   const cx = state.codexRateLimits;
+  const luna = selectedLunaReserve(cx);
+  const lunaTile: SessionDeckCell | undefined = luna
+    ? { svg: renderLunaReserveTile(luna), action }
+    : undefined;
   const allCodexWindows = [cx?.primary, cx?.secondary].filter((w): w is CodexRateLimitWindow => w != null);
   const worstScoped = known ? state.scopedLimits?.[0] : undefined;
   const scopedClaims = scopedLimitClaimsUsageKey(worstScoped, allCodexWindows.length);
-  const codexWindows = codexWindowsBeside(allCodexWindows, scopedClaims);
-  const scopedTile: SessionDeckCell | undefined = scopedClaims && worstScoped
-    ? { svg: renderUsageGauge({ agent: 'claude' as const, window: '7d' as const, label: formatScopedLabel(worstScoped.label, 6), usedPercent: worstScoped.percent, resetsAt: worstScoped.resetsAt, known: true, inactive: worstScoped.active !== true }), action }
+  const codexWindows = luna ? [] : codexWindowsBeside(allCodexWindows, scopedClaims);
+  // Keep the cap as data so every mode uses the same renderer and severity.
+  const scopedTank: UsageTankData | undefined = scopedClaims && worstScoped
+    ? {
+        agent: 'claude', window: '7d', label: formatScopedLabel(worstScoped.label, 6),
+        usedPercent: worstScoped.percent, resetsAt: worstScoped.resetsAt, known: true,
+        inactive: worstScoped.active !== true,
+      }
     : undefined;
   // Codex windows carry the same short "5H"/"7D" labels — the brand dot conveys
   // the agent, not a "CX " prefix. Label each present window by its own length
@@ -491,6 +561,23 @@ function buildUsageTiles(state: DashState): SessionDeckCell[] {
     footnote: codexUsageFootnote(w, cx?.capturedAt)?.text,
   }));
 
+  // z.ai windows ride the same tank grammar — the MCP tool-call quota is
+  // labeled by its QUANTITY ("MCP"), never by its length, so it can never
+  // read as token usage; token windows label by their own length ("5H"/"7D").
+  const zr = state.zaiRateLimits;
+  const zaiWindowData: UsageTankData[] = [zr?.primary, zr?.secondary]
+    .filter((w): w is ZaiWindow => w != null)
+    .map((w) => ({
+      agent: 'zai' as const,
+      window: usageWindowKind(w.windowMinutes),
+      label: w.quantity === 'mcp' ? 'MCP' : (usageWindowLabel(w.windowMinutes) || '5H'),
+      usedPercent: w.usedPercent,
+      resetsAt: w.resetsAt,
+      known: true,
+      stale: w.stale === true,
+      footnote: codexUsageFootnote(w, zr?.capturedAt)?.text,
+    }));
+
   // Compact only as much as the fixed three-key strip requires. In the common
   // Plus shape, Claude keeps its two familiar tiles and Codex 5H+7D share one.
   // If a binding scoped cap also exists, Claude compacts too, preserving all
@@ -498,22 +585,60 @@ function buildUsageTiles(state: DashState): SessionDeckCell[] {
   const creditsTile: SessionDeckCell | undefined = !cx?.primary && !cx?.secondary && (cx?.credits || cx?.limitId)
     ? { svg: renderCreditsTile({ limitId: cx.limitId, balance: cx.credits?.balance, unlimited: cx.credits?.unlimited }), action }
     : undefined;
-  const logicalCount = claudeWindows.length + codexWindowData.length + (scopedTile ? 1 : 0) + (creditsTile ? 1 : 0);
-  const compactCodex = logicalCount > USAGE_PREFERRED_POS.length && codexWindowData.length === 2;
+  const pairedWeekly = scopedTank != null && claudeWindows.some(w => w.window === '7d');
+  const logicalCount = claudeWindows.length + codexWindowData.length + zaiWindowData.length
+    + (scopedTank ? 1 : 0) - (pairedWeekly ? 1 : 0) + (creditsTile ? 1 : 0) + (lunaTile ? 1 : 0);
+  const compactCodex = logicalCount > budget && codexWindowData.length === 2;
   const afterCodex = logicalCount - (compactCodex ? 1 : 0);
-  const compactClaude = afterCodex > USAGE_PREFERRED_POS.length && claudeWindows.length === 2;
-  const cellsFor = (agent: 'claude' | 'codex', windows: UsageTankData[], compact: boolean): SessionDeckCell[] => {
+  const stillOverflows = afterCodex > budget;
+  // Weekly readings always share one key. 5H is the
+  // window that actually moves during a session — it is the reading a user
+  // glances at — while 7D and the per-model weekly cap are both weekly and are
+  // read together anyway. So the cap pairs with 7D and 5H keeps its full gauge,
+  // rather than 5H+7D pairing and the cap taking a whole key to itself.
+  const pairScopedWith7D = pairedWeekly;
+  const compactClaude = stillOverflows && !pairScopedWith7D && claudeWindows.length === 2;
+  // Third step of the same cascade: with all three providers live the strip is
+  // 6 logical readings on 3 keys, and every provider compacts to one pair tile
+  // — nothing is dropped, each key keeps one provider's two windows.
+  const afterClaude = afterCodex - (compactClaude ? 1 : 0);
+  const compactZai = afterClaude > budget && zaiWindowData.length === 2;
+  // Seven readings (Claude + its scoped cap, Codex, z.ai) need one
+  // three-row Claude tile at the tightest budget; never truncate a provider.
+  const compactAllClaude = scopedTank != null && claudeWindows.length > 0
+    && afterClaude - (compactZai ? 1 : 0) > budget;
+  const cellsFor = (agent: 'claude' | 'codex' | 'zai', windows: UsageTankData[], compact: boolean): SessionDeckCell[] => {
     if (compact && windows.length === 2) {
       return [{ svg: renderUsagePairGauge(agent, [windows[0], windows[1]]), action }];
     }
     return windows.map((window) => ({ svg: renderUsageGauge(window), action }));
   };
 
-  const tiles: SessionDeckCell[] = cellsFor('claude', claudeWindows, compactClaude);
-  if (scopedTile && worstScoped?.active === true) tiles.push(scopedTile);
+  // Order is `USAGE_STRIP_ORDER` (Claude → scoped cap → Codex → z.ai →
+  // credits) and is the same whether or not the cap is currently binding:
+  // `active` drives the ramp, never the seat. See `scopedLimitClaimsUsageKey`.
+  const weekly = claudeWindows.find(w => w.window === '7d');
+  const selectedWeekly = claudeWeeklyReadings(weekly, scopedTank, weeklyMode);
+  const weeklyAction: DeckAction = scopedTank && weekly ? { kind: 'weekly-mode' } : action;
+  const renderReadings = (windows: UsageTankData[], press: DeckAction): SessionDeckCell => ({
+    svg: windows.length === 3 ? renderUsagePairGauge('claude', [windows[0], windows[1], windows[2]])
+      : windows.length === 2 ? renderUsagePairGauge('claude', [windows[0], windows[1]])
+      : renderUsageGauge(windows[0]),
+    action: press,
+  });
+  const five = claudeWindows.find(w => w.window === '5h');
+  const tiles: SessionDeckCell[] = [];
+  if (compactAllClaude || compactClaude) {
+    const readings = [...(five ? [five] : []), ...selectedWeekly];
+    if (readings.length) tiles.push(renderReadings(readings, weeklyAction));
+  } else {
+    if (five) tiles.push({ svg: renderUsageGauge(five), action });
+    if (selectedWeekly.length) tiles.push(renderReadings(selectedWeekly, weeklyAction));
+  }
   tiles.push(...cellsFor('codex', codexWindowData, compactCodex));
+  tiles.push(...cellsFor('zai', zaiWindowData, compactZai));
+  if (lunaTile) tiles.push(lunaTile);
   if (creditsTile) tiles.push(creditsTile);
-  if (scopedTile && worstScoped?.active !== true) tiles.push(scopedTile);
   return tiles;
 }
 
@@ -635,8 +760,8 @@ export function computeLayout(state: DashState, animFrame = 0, animated = false)
       slots.push(awaitingActionSlot(state, isAwaiting, i, col, row));
     }
     slots.push({ col: 2, row: 1, svg: renderInfoButton('MODEL', state.modelName.slice(0, 12) || 'N/A'), label: '', command: null });
-    slots.push({ col: 3, row: 1, svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4', state.usageKnown !== false), label: '', command: { type: 'usage_toggle' } });
-    slots.push({ col: 4, row: 1, svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0', state.usageKnown !== false), label: '', command: { type: 'usage_toggle' } });
+    slots.push({ col: 3, row: 1, svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4', state.usageKnown !== false && state.fiveHourPercent != null), label: '', command: { type: 'usage_toggle' } });
+    slots.push({ col: 4, row: 1, svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0', state.usageKnown !== false && state.sevenDayPercent != null), label: '', command: { type: 'usage_toggle' } });
   }
 
   // Row 2 shared actions: STOP/ESC, TOKENS, COST
@@ -682,10 +807,10 @@ export function buildLayoutMap(stateEvt: any, animFrame = 0, animated = false): 
   }
   // Per-key usage tiles for the right side of row 2 (direct-HID merges these).
   if (!map.has('3_2')) {
-    map.set('3_2', { svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4', state.usageKnown !== false), command: { type: 'usage_toggle' } });
+    map.set('3_2', { svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4', state.usageKnown !== false && state.fiveHourPercent != null), command: { type: 'usage_toggle' } });
   }
   if (!map.has('4_2')) {
-    map.set('4_2', { svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0', state.usageKnown !== false), command: { type: 'usage_toggle' } });
+    map.set('4_2', { svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0', state.usageKnown !== false && state.sevenDayPercent != null), command: { type: 'usage_toggle' } });
   }
   return map;
 }
@@ -702,6 +827,7 @@ export function buildLayoutMap(stateEvt: any, animFrame = 0, animated = false): 
 export type DeckAction =
   | { kind: 'open'; sessionId: string }   // enter detail (+ focus_session)
   | { kind: 'back' }                      // return to list
+  | { kind: 'weekly-mode' }              // cycle 7D + scoped / 7D / scoped
   | { kind: 'page'; delta: number }       // paginate current view
   | { kind: 'command'; command: ButtonCommand }
   | { kind: 'launch' }                    // daemon down → open the companion app locally
@@ -730,6 +856,7 @@ export interface DeckView {
    * consumers keep the full grid for sessions.
    */
   showUsage?: boolean;
+  claudeWeeklyMode?: ClaudeWeeklyMode;
 }
 
 /** Row-major position order ("0_0","1_0",…,"4_2"). */
@@ -897,17 +1024,41 @@ function buildList(
   // unavailable for sessions.
   const usageHere = new Map<string, SessionDeckCell>();
   if (view.showUsage) {
-    const usageTiles = buildUsageTiles(state);
+    // Stage 1 — the compacted strip tiles, to learn how many keys the roster
+    // leaves free. Stage 2 (#349) grows the budget into those free keys: one
+    // window per key instead of compacted pairs. The growth never takes a key
+    // from a session — `spare` is computed AFTER the roster, and when sessions
+    // overflow there is no spare by construction.
+    const stripTiles = buildUsageTiles(state, undefined, view.claudeWeeklyMode);
     const maxReserve = Math.max(0, slots.length - 1);
     const preferred = sortPositions(USAGE_PREFERRED_POS.filter((p) => slots.includes(p)));
-    const reserveCount = Math.min(usageTiles.length, USAGE_PREFERRED_POS.length, maxReserve);
+    const stripCount = Math.min(stripTiles.length, USAGE_PREFERRED_POS.length, maxReserve);
+    const afterStrip = slots.length - stripCount;
+    const spare = sessions.length > afterStrip ? 0 : afterStrip - sessions.length;
+    const budget = spare > 0
+      ? Math.min(stripTiles.length + spare, maxReserve)
+      : USAGE_PREFERRED_POS.length;
+    const usageTiles = spare > 0 ? buildUsageTiles(state, budget, view.claudeWeeklyMode) : stripTiles;
+    const reserveCount = Math.min(usageTiles.length, budget, maxReserve);
     // Fill the strip from its RIGHT end so a missing tile frees the LEFTMOST key
     // (which flows back to sessions) and the gauges stay flush against the clock
-    // — never a hole mid-strip.
-    const pinned = preferred.slice(Math.max(0, preferred.length - reserveCount));
-    // Tiles whose strip key the user didn't place fall back to trailing keys.
+    // — never a hole mid-strip. Expansion keys prefer positions CONTIGUOUS with
+    // the strip (the key right of its end), so the gauges read as one row —
+    // a tile at the far end with a session sandwiched between is the
+    // "strange" layout the D200H showed when the fallback took trailing keys.
+    const pinned = preferred.slice(Math.max(0, preferred.length - Math.min(reserveCount, preferred.length)));
     const rest = slots.filter((p) => !pinned.includes(p));
-    const fallback = rest.slice(rest.length - Math.max(0, reserveCount - pinned.length));
+    const need = Math.max(0, reserveCount - pinned.length);
+    // Adjacent expansion: from the strip's right edge, claim the next key in
+    // the same row if it exists in `rest`; only then fall back to trailing.
+    const fallback: string[] = [];
+    if (need > 0 && pinned.length > 0) {
+      const lastPinned = sortPositions(pinned)[pinned.length - 1];
+      const [lc, lr] = lastPinned.split('_').map(Number);
+      const adjacent = `${lc + 1}_${lr}`;
+      if (rest.includes(adjacent)) { fallback.push(adjacent); rest.splice(rest.indexOf(adjacent), 1); }
+    }
+    for (const p of rest.slice(rest.length - Math.max(0, need - fallback.length))) fallback.push(p);
     const reserved = sortPositions([...pinned, ...fallback]).slice(0, reserveCount);
     reserved.forEach((pos, i) => usageHere.set(pos, usageTiles[i]));
   }

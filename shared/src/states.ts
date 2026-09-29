@@ -84,6 +84,15 @@ export const transitions: StateTransition[] = [
       + 'running even when its user_prompt_submit was dropped.',
   },
   {
+    from: State.DISCONNECTED, to: State.PROCESSING, trigger: 'tool_activity', source: 'hook',
+    note: 'The wildcard session_end row below drops the machine to DISCONNECTED when\n'
+      + 'ANY session ends, which on the daemon hub — one machine multiplexing every\n'
+      + 'observed session — stranded every session still running: session_start was\n'
+      + 'the only edge out, and that hook never fires again for a session already\n'
+      + 'underway. Tool activity proves some session is alive, so it reopens the hub\n'
+      + 'the same way it recovers a dropped user_prompt_submit from IDLE.',
+  },
+  {
     from: State.PROCESSING, to: State.IDLE, trigger: 'stuck_timeout', source: 'internal',
     note: 'stuck_timeout: only PROCESSING recovers after STUCK_TIMEOUT_MS (Claude hung).\n'
       + 'AWAITING_* intentionally have NO wall-clock backstop — an unanswered prompt\n'

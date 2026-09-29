@@ -43,6 +43,24 @@ describe('generated mirror in sync', () => {
     expect(emitSwift(rules)).not.toMatch(/= "allow"$/m);
   });
 
+  it('both suites replay the same "is this approval gone?" vectors', () => {
+    // The predicate decides whether a prompt comes OFF a deck. If only one
+    // daemon replays the vectors, the other can quietly keep offering an
+    // approval the Gateway dropped — which is the defect, not a regression of
+    // it. Pins the wiring, not the membership, so a new vector needs no edit.
+    const swiftTest = readFileSync(
+      `${repoRoot}apple/AgentDeckTests/OpenClawApprovalErrorTests.swift`, 'utf8');
+    expect(swiftTest).toContain('openclaw-approval-error-vectors.json');
+    expect(swiftTest).toContain('OpenClawApprovalRules.isApprovalGoneError');
+    const tsTest = readFileSync(
+      `${repoRoot}shared/src/__tests__/openclaw-approval.test.ts`, 'utf8');
+    // The TS side builds the path from parts, so match the file, not a literal
+    // path string.
+    expect(tsTest).toContain('openclaw-approval-error-vectors.json');
+    // And the mirror must actually carry the predicate.
+    expect(emitSwift(rules)).toContain('static func isApprovalGoneError');
+  });
+
   it('the Swift mirror reads the nested request, not flat fields', () => {
     // `payload["tool"]` / a flat `payload["command"]` are the invented shapes
     // that rendered every approval as a bare "Approve tool execution?".

@@ -1,0 +1,65 @@
+{
+  "_comment": "Replayed by shared/src/__tests__/openclaw-approval.test.ts and apple/AgentDeckTests/OpenClawApprovalErrorTests.swift. `gone` means the Gateway told us the approval no longer exists, so the prompt must be abandoned rather than re-offered. Strings are the Gateway's own (src/infra/approval-errors.ts + approval-shared), read from the installed openclaw package, not invented here.",
+  "vectors": [
+    {
+      "name": "legacy message — the one this fleet actually produced (2026-09-09 23:40:37)",
+      "error": { "message": "unknown or expired approval id" },
+      "gone": true
+    },
+    {
+      "name": "legacy message — older gateway spelling",
+      "error": { "message": "approval expired or not found" },
+      "gone": true
+    },
+    {
+      "name": "structured reason under INVALID_REQUEST",
+      "error": { "code": "INVALID_REQUEST", "message": "unknown or expired approval id", "details": { "reason": "APPROVAL_NOT_FOUND" } },
+      "gone": true
+    },
+    {
+      "name": "structured code on its own",
+      "error": { "code": "APPROVAL_NOT_FOUND", "message": "" },
+      "gone": true
+    },
+    {
+      "name": "already resolved — another operator answered first",
+      "error": { "code": "INVALID_REQUEST", "message": "approval already resolved", "details": { "reason": "APPROVAL_ALREADY_RESOLVED" } },
+      "gone": true
+    },
+    {
+      "name": "already resolved by message alone",
+      "error": { "message": "Approval already resolved" },
+      "gone": true
+    },
+    {
+      "name": "ambiguous id prefix — the approval EXISTS, the id was short",
+      "error": { "code": "INVALID_REQUEST", "message": "ambiguous approval id prefix; use the full id" },
+      "gone": false
+    },
+    {
+      "name": "transport failure — we do not know anything about the approval",
+      "error": { "message": "Gateway disconnected" },
+      "gone": false
+    },
+    {
+      "name": "RPC timeout — silence is not an answer",
+      "error": { "message": "RPC timeout: exec.approval.resolve (id=r4)" },
+      "gone": false
+    },
+    {
+      "name": "a decision the request forbids — the approval is still pending",
+      "error": { "code": "INVALID_REQUEST", "message": "invalid decision" },
+      "gone": false
+    },
+    {
+      "name": "empty error object claims nothing",
+      "error": {},
+      "gone": false
+    },
+    {
+      "name": "details that is not an object cannot carry a reason",
+      "error": { "code": "INVALID_REQUEST", "message": "nope", "details": "APPROVAL_NOT_FOUND" },
+      "gone": false
+    }
+  ]
+}

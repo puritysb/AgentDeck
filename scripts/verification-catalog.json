@@ -1,0 +1,651 @@
+{
+  "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
+  "merge_policy": {
+    "as_of": "2026-09-29",
+    "summary": "Branch protection on master requires one status check, ESP32 Sim Compile. Every other gate turns a pull request red when it fails but does not stop GitHub from merging it."
+  },
+  "levels": {
+    "unit": "One module in isolation; collaborators faked.",
+    "contract": "A wire format, generated mirror or SSOT table compared against its canonical source. Catches drift, not behaviour.",
+    "integration": "Several real modules together in one process (real sockets on ephemeral loopback ports, real files in a temp dir).",
+    "e2e": "The shipped entry point started as a separate process and driven only through its public interfaces.",
+    "compile": "Source builds for the target; nothing executes.",
+    "static": "Lint, type check, link or token checks over source text.",
+    "hardware": "Runs against a connected physical device.",
+    "release": "Packaging, signing and store-submission checks on a release tag."
+  },
+  "gates": [
+    {
+      "id": "vitest",
+      "name": "TypeScript suite (Vitest) + coverage floor",
+      "level": [
+        "unit",
+        "contract",
+        "integration"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "test",
+      "trigger": "Every PR and push to master",
+      "blocking": true,
+      "command": "npx vitest run --coverage",
+      "report_suite": "vitest",
+      "proves": [
+        "bridge, shared, hooks, plugin, plugin-ulanzi, setup and scripts behave as their tests specify (the domain table below counts them)",
+        "line/function/branch/statement coverage of bridge, shared, plugin and hooks stays above the floor in vitest.config.ts",
+        "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)"
+      ],
+      "does_not_prove": [
+        "anything about native apps, firmware or real devices",
+        "macOS-only halves (Swift toolchain, launchd) — those cases are marked skipped on Linux and appear as skipped in this report"
+      ]
+    },
+    {
+      "id": "daemon-e2e",
+      "name": "Daemon hub end-to-end",
+      "level": ["e2e"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "test",
+      "trigger": "Every PR and push to master",
+      "blocking": true,
+      "command": "pnpm test:e2e",
+      "report_suite": "e2e",
+      "evidence": ["tests/e2e/daemon-hub.e2e.test.ts"],
+      "proves": [
+        "the real agentdeck daemon start process boots in an empty HOME and answers /health",
+        "Claude hook events posted to /hooks/* drive the WebSocket state stream (idle → processing → idle)",
+        "the exact hook shell snippet the installer writes finds the daemon through daemon.json and delivers events",
+        "PreToolUse and Stop hooks answer immediately when no device can approve, so Claude never stalls",
+        "the timeline is persisted to timeline.json and replayed to a new client after a restart",
+        "SIGTERM shuts the daemon down on its own and withdraws daemon.json",
+        "loopback posture: the port is closed on the host's LAN address"
+      ],
+      "does_not_prove": [
+        "a real Claude/Codex process (events are posted with the documented payload shape)",
+        "LAN pairing and default-deny from another machine (every same-host address is trusted by design; the gate itself is unit-tested in http-auth-gate.test.ts)",
+        "device modules (all disabled with --local)"
+      ]
+    },
+    {
+      "id": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "level": [
+        "e2e",
+        "hardware"
+      ],
+      "where": "Maintainer Mac running the signed sandboxed app",
+      "workflow": null,
+      "trigger": "Opt-in after deploying the Swift app",
+      "blocking": false,
+      "command": "node scripts/verify-swift-codex-live.mjs --port PORT --pid PID --app /path/AgentDeck.app",
+      "evidence": [
+        "scripts/verify-swift-codex-live.mjs"
+      ],
+      "proves": [
+        "A verified sandboxed Swift process accepts Codex lifecycle HTTP events and broadcasts matching WebSocket roster states",
+        "Late OTel cannot override hook ownership, prevent real-time terminal expiry, or resurrect an expired hook row",
+        "OTel-only and notify-plus-OTel fallback and turn-ID guards remain functional"
+      ],
+      "does_not_prove": [
+        "Real Codex CLI emission, interactive trust, or installer configuration preservation (events are synthetic)",
+        "App Store distribution, Kiro folder consent/revocation, OpenCode SSE reconnect, or physical display pixels",
+        "Unattended hosted CI: requires an explicitly selected running Mac app and leaves labeled synthetic timeline entries"
+      ]
+    },
+    {
+      "id": "typecheck",
+      "name": "Build + type check + version and protocol drift",
+      "level": [
+        "static",
+        "contract"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "test",
+      "trigger": "Every PR and push to master",
+      "blocking": true,
+      "command": "pnpm verify-version && pnpm build && pnpm typecheck && pnpm generate-protocol (no diff)",
+      "proves": [
+        "every workspace package compiles under strict TypeScript",
+        "target versions agree with the repository compatibility major",
+        "generated protocol types (Swift, Kotlin, JSON Schema) are committed in sync with shared/src/protocol.ts"
+      ],
+      "does_not_prove": ["runtime behaviour"]
+    },
+    {
+      "id": "windows-runtime",
+      "name": "Windows native runtime (Node 22 / 24 / 26)",
+      "level": ["integration"],
+      "where": "windows-latest",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "windows-native-runtime",
+      "trigger": "Every PR and push to master",
+      "blocking": true,
+      "command": "node bridge/dist/cli.js diag native --json && vitest run <8 Windows-sensitive files>",
+      "proves": [
+        "better-sqlite3 opens under each supported Node ABI on Windows",
+        "hook installer, observer, state machine and daemon launcher/supervisor tests pass on Windows paths and shells"
+      ],
+      "does_not_prove": [
+        "the Scheduled Task autostart on a real login session",
+        "the Stream Deck app on Windows"
+      ]
+    },
+    {
+      "id": "design-docs",
+      "name": "Design system, docs and mirror gates",
+      "level": [
+        "static",
+        "contract"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/design-system.yml",
+      "job": "verify",
+      "trigger": "Every PR and push to master",
+      "blocking": true,
+      "command": "verify-tokens-sync.py, design-system:check, docs:check, devlog:check, surface/GNB/spec-card parity, design/lint.sh",
+      "proves": [
+        "colour/type tokens are identical across CSS, JS, TS, Swift, Kotlin and C++ mirrors",
+        "every Markdown link and anchor resolves; every docs/ file is cataloged or excluded with a reason",
+        "the AGENTS.md chain (root + nested) stays under Codex's 32 KiB project_doc_max_bytes and no CLAUDE.md-family file shadows it inside the checkout",
+        "the development log aggregates match their entries"
+      ],
+      "does_not_prove": ["how anything looks on a device"]
+    },
+    {
+      "id": "android-unit",
+      "name": "Android JUnit + Robolectric",
+      "level": [
+        "unit",
+        "integration"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/android-test.yml",
+      "job": "unit-test",
+      "trigger": "PRs and pushes touching android/**",
+      "blocking": true,
+      "command": "./gradlew :app:testDebugUnitTest",
+      "report_suite": "android",
+      "proves": [
+        "the Android app compiles",
+        "protocol parsing, timeline store and state logic behave as specified on the JVM"
+      ],
+      "does_not_prove": ["Compose UI on a device or e-ink panel (there are no instrumented tests)"]
+    },
+    {
+      "id": "apple-unit",
+      "name": "Apple XCTest (macOS) + iOS build",
+      "level": [
+        "unit",
+        "integration",
+        "compile"
+      ],
+      "where": "macos-26",
+      "workflow": ".github/workflows/apple-test.yml",
+      "job": "test-macos, build-ios, validate-submission",
+      "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
+      "blocking": true,
+      "command": "xcodebuild test -scheme AgentDeck_macOS; xcodebuild build -scheme AgentDeck_iOS; validate-appstore-submission.sh",
+      "proves": [
+        "the macOS app and its in-process Swift daemon build and pass XCTest",
+        "the iOS app builds unsigned",
+        "App Store metadata, screenshots and privacy manifest are within submission limits"
+      ],
+      "does_not_prove": [
+        "UI flows (there is no UI-test target)",
+        "behaviour on a signed build with real TCC grants"
+      ]
+    },
+    {
+      "id": "esp32-sim",
+      "name": "ESP32 firmware host build",
+      "level": ["compile"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/esp32-sim.yml",
+      "job": "compile",
+      "trigger": "PRs touching esp32/**",
+      "blocking": true,
+      "required": true,
+      "command": "pio run (every esp32/sim env)",
+      "proves": ["the real esp32/src render trees compile for the native simulator"],
+      "does_not_prove": ["the Xtensa build, flashing, or behaviour on a board"]
+    },
+    {
+      "id": "pages-report",
+      "name": "This report",
+      "level": [
+        "unit",
+        "integration",
+        "e2e"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/test-report.yml",
+      "job": "report",
+      "trigger": "Every push to master",
+      "blocking": false,
+      "command": "vitest --coverage, pnpm test:e2e, gradlew testDebugUnitTest, then generate-html-report.py",
+      "proves": [
+        "re-runs the Vitest, E2E and Android suites on the merged master commit and publishes every result"
+      ],
+      "does_not_prove": [
+        "Apple, hardware or release gates — those run in their own workflows and are linked, not re-run here"
+      ]
+    },
+    {
+      "id": "esp32-robot",
+      "name": "ESP32 Robot Framework (flash, boot, serial protocol, performance)",
+      "level": ["hardware"],
+      "where": "maintainer lab (boards on USB)",
+      "workflow": null,
+      "trigger": "Manually before an ESP32 firmware release",
+      "blocking": false,
+      "command": "bash esp32/robot/run.sh hw|protocol|perf",
+      "report_suite": "robot",
+      "evidence": ["esp32/robot/run.sh"],
+      "proves": [
+        "the firmware flashes, boots, parses the serial JSON protocol and meets heap/latency budgets on real boards"
+      ],
+      "does_not_prove": ["anything in GitHub CI — no hosted runner has the boards, so this page shows it as not run"]
+    },
+    {
+      "id": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "level": ["hardware"],
+      "where": "maintainer lab (Mac, phones, e-ink readers, Stream Deck, ESP32)",
+      "workflow": null,
+      "trigger": "Manually, agent-driven, before releases",
+      "blocking": false,
+      "command": "agentdeck-deploy skill (preflight: bash scripts/macos-preflight.sh)",
+      "evidence": [
+        ".agents/skills/agentdeck-deploy/SKILL.md",
+        "scripts/macos-preflight.sh"
+      ],
+      "proves": ["the built artifacts install and connect to a daemon on the maintainer's hardware"],
+      "does_not_prove": ["repeatability — results are not recorded here"]
+    },
+    {
+      "id": "npm-release",
+      "name": "npm publish",
+      "level": ["release"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/npm-release.yml",
+      "job": "release",
+      "trigger": "Tag npm-v*",
+      "blocking": true,
+      "command": "build, pnpm test, publish, verify packages visible on the registry",
+      "proves": ["the published packages were built from a green test run and are visible on npm"],
+      "does_not_prove": ["a fresh npx @agentdeck/setup install on a clean machine"]
+    },
+    {
+      "id": "apple-release",
+      "name": "App Store / TestFlight upload",
+      "level": ["release"],
+      "where": "macos",
+      "workflow": ".github/workflows/apple-release.yml",
+      "job": "validate-submission, build-ios, build-macos, release",
+      "trigger": "Tag apple-v* or manual dispatch",
+      "blocking": true,
+      "command": "archive, export, verify-appstore-archive.sh, upload",
+      "proves": ["the signed archive satisfies the App Store self-containment invariants before upload"],
+      "does_not_prove": ["runs no XCTest itself — relies on apple-test.yml having passed on master"]
+    },
+    {
+      "id": "android-release",
+      "name": "Android APK / Play upload",
+      "level": ["release"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/android-release.yml",
+      "job": "build",
+      "trigger": "Tag android-v*",
+      "blocking": true,
+      "command": "assembleSideload, apksigner verify, bundle, Play internal track",
+      "proves": ["the release APK is signed with the release key"],
+      "does_not_prove": ["runs no tests itself — relies on android-test.yml having passed on master"]
+    },
+    {
+      "id": "esp32-release",
+      "name": "ESP32 firmware release",
+      "level": [
+        "release",
+        "compile"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/esp32-release.yml",
+      "job": "build, release",
+      "trigger": "Tag esp32-v*",
+      "blocking": true,
+      "command": "pio run per board, merge factory image, checksums, manifest",
+      "proves": ["every supported board's firmware builds and ships with a checksummed manifest"],
+      "does_not_prove": ["boot on hardware (see the Robot suites)"]
+    },
+    {
+      "id": "streamdeck-release",
+      "name": "Stream Deck plugin package",
+      "level": ["release"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/streamdeck-release.yml",
+      "job": "build",
+      "trigger": "Tag streamdeck-v*",
+      "blocking": true,
+      "command": "package-plugin.sh",
+      "proves": ["the .streamDeckPlugin bundle packages"],
+      "does_not_prove": ["the DRM-processed Marketplace build (verified manually through Elgato's review loop)"]
+    },
+    {
+      "id": "ulanzi-release",
+      "name": "Ulanzi plugin package",
+      "level": ["release"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/ulanzi-release.yml",
+      "job": "build",
+      "trigger": "Tag ulanzi-v*",
+      "blocking": true,
+      "command": "package-ulanzi-plugin.sh",
+      "proves": ["the Ulanzi plugin bundle packages with its WASM renderer and fonts"],
+      "does_not_prove": ["behaviour inside Ulanzi Studio (manual, plugin-ulanzi/VERIFY.md)"]
+    }
+  ],
+  "not_a_gate": {
+    ".github/workflows/asc-certificates.yml": "Manual App Store Connect certificate maintenance; verifies nothing about the product."
+  },
+  "not_verified": [
+    {
+      "what": "A real Claude Code / Codex / OpenCode process driving the daemon",
+      "why": "Needs an authenticated agent CLI and spends model tokens on every run.",
+      "instead": "The daemon E2E posts the documented hook payloads through the installed snippet; parsers are covered by recorded-output unit tests."
+    },
+    {
+      "what": "LAN default-deny against a second machine",
+      "why": "Every address of the host itself is trusted by design, so a single CI runner cannot be a LAN peer.",
+      "instead": "The access gate is a pure function with a full truth-table test (http-auth-gate.test.ts); the E2E checks the loopback bind."
+    },
+    {
+      "what": "Stream Deck, Ulanzi, Android, iOS and macOS user interfaces",
+      "why": "No UI-test or instrumented-test targets exist; the host apps (Stream Deck, Ulanzi Studio) cannot run in CI.",
+      "instead": "Renderer snapshot tests, layout-engine tests and manual device deploys."
+    },
+    {
+      "what": "Firmware behaviour on ESP32 boards, Pixoo, Timebox, iDotMatrix, TC001",
+      "why": "Physical hardware.",
+      "instead": "Host-simulator compile gate, protocol unit tests, and the lab Robot suites before firmware releases."
+    },
+    {
+      "what": "macOS privacy prompts (Automation, Accessibility, Screen Recording, Local Network, Bluetooth, firewall)",
+      "why": "They belong to a signed app on a real user session.",
+      "instead": "scripts/macos-preflight.sh checks the grants before a lab run and stops with the exact System Settings path instead of hanging on a dialog."
+    }
+  ],
+  "domains": [
+    {
+      "id": "security",
+      "name": "LAN security & pairing",
+      "question": "Is the LAN surface default-deny, and does pairing hand out credentials only with the operator's consent?",
+      "icon": "▣",
+      "match": [
+        "bridge/src/__tests__/http-auth-gate.test.ts",
+        "bridge/src/__tests__/auth-token-adoption.test.ts",
+        "bridge/src/__tests__/pairing-*.test.ts",
+        "bridge/src/__tests__/network-posture.test.ts",
+        "bridge/src/__tests__/discovery-security.test.ts",
+        "bridge/src/__tests__/ws-server-auth.test.ts",
+        "shared/src/__tests__/pairing-code*.test.ts"
+      ]
+    },
+    {
+      "id": "e2e",
+      "name": "End-to-end (real processes)",
+      "question": "Does the shipped daemon work when started and driven from outside?",
+      "icon": "◉",
+      "match": ["tests/e2e/*.e2e.test.ts"]
+    },
+    {
+      "id": "timeline",
+      "name": "Timeline",
+      "question": "Is every turn, task and approval recorded once, attributed to the right session, and kept across restarts?",
+      "icon": "▥",
+      "match": [
+        "bridge/src/__tests__/*timeline*.test.ts",
+        "bridge/src/__tests__/*orphan*.test.ts",
+        "shared/src/__tests__/timeline*.test.ts",
+        "shared/src/__tests__/task-title.test.ts"
+      ]
+    },
+    {
+      "id": "usage",
+      "name": "Usage & quota",
+      "question": "Are Claude, Codex and Z.ai quota windows read, relayed and aged correctly?",
+      "icon": "◔",
+      "match": [
+        "bridge/src/__tests__/usage-*.test.ts",
+        "bridge/src/__tests__/relayed-usage.test.ts",
+        "bridge/src/__tests__/codex-rate-limits*.test.ts",
+        "bridge/src/__tests__/zai-usage.test.ts",
+        "bridge/src/__tests__/hook-server-usage-relay.test.ts",
+        "shared/src/__tests__/usage-*.test.ts",
+        "shared/src/__tests__/codex-freshness-rules.test.ts",
+        "shared/src/__tests__/zai-quota.test.ts"
+      ]
+    },
+    {
+      "id": "daemon",
+      "name": "Daemon lifecycle & CLI",
+      "question": "Does exactly one daemon own the port, start, upgrade, restart and hand over cleanly on every OS?",
+      "icon": "◎",
+      "match": [
+        "bridge/src/__tests__/daemon-*.test.ts",
+        "bridge/src/__tests__/session-registry.test.ts",
+        "bridge/src/__tests__/linux-service.test.ts",
+        "bridge/src/__tests__/windows-*.test.ts",
+        "bridge/src/__tests__/wake-detector.test.ts",
+        "bridge/src/__tests__/event-loop-telemetry.test.ts",
+        "bridge/src/__tests__/*-diagnostics.test.ts",
+        "bridge/src/__tests__/cli.test.ts",
+        "bridge/src/__tests__/legacy-rearm-ledger.test.ts",
+        "bridge/src/__tests__/hub-state-identity.test.ts",
+        "setup/src/__tests__/*.test.ts"
+      ]
+    },
+    {
+      "id": "observed",
+      "name": "Agent observation & hooks",
+      "question": "Are Claude, Codex, OpenCode, Kiro, Antigravity and Hermes sessions seen, attributed and gated correctly from their hooks and transcripts?",
+      "icon": "◈",
+      "match": [
+        "hooks/src/__tests__/*.test.ts",
+        "bridge/src/__tests__/hook-*.test.ts",
+        "bridge/src/__tests__/claude-*.test.ts",
+        "bridge/src/__tests__/codex-ambient-hooks.test.ts",
+        "bridge/src/__tests__/codex-auth.test.ts",
+        "bridge/src/__tests__/codex-hook-silence.test.ts",
+        "bridge/src/__tests__/codex-otel.test.ts",
+        "bridge/src/__tests__/codex-rollout-response.test.ts",
+        "bridge/src/__tests__/codex-turn-manager.test.ts",
+        "bridge/src/__tests__/kiro-*.test.ts",
+        "bridge/src/__tests__/hermes-sessions.test.ts",
+        "bridge/src/__tests__/opencode-*.test.ts",
+        "bridge/src/__tests__/observed-*.test.ts",
+        "bridge/src/__tests__/passive-observer.test.ts",
+        "bridge/src/__tests__/antigravity-*.test.ts",
+        "bridge/src/__tests__/subagent-*.test.ts",
+        "bridge/src/__tests__/coordination-evidence.test.ts",
+        "bridge/src/__tests__/session-id-resolve.test.ts",
+        "bridge/src/__tests__/permission-resolver.test.ts",
+        "bridge/src/__tests__/ask-gate*.test.ts",
+        "bridge/src/__tests__/deferred-reply-read.test.ts",
+        "bridge/src/__tests__/project-name.test.ts",
+        "bridge/src/__tests__/remote-sessions.test.ts",
+        "shared/src/__tests__/claude-permission-rules*.test.ts",
+        "shared/src/__tests__/observed-agent-rules.test.ts",
+        "shared/src/__tests__/subagent-activity.test.ts"
+      ]
+    },
+    {
+      "id": "managed",
+      "name": "Managed sessions & terminal parsing",
+      "question": "Does agentdeck claude|codex read the terminal correctly and route commands to the right PTY?",
+      "icon": "▤",
+      "match": [
+        "bridge/src/__tests__/output-parser.test.ts",
+        "bridge/src/__tests__/codex-output-parser.test.ts",
+        "bridge/src/__tests__/cursor-sync.test.ts",
+        "bridge/src/__tests__/pty-manager-*.test.ts",
+        "bridge/src/__tests__/adapter.test.ts",
+        "bridge/src/__tests__/remote-reverse-e2e.test.ts",
+        "bridge/src/__tests__/focus-relay-samesocket.test.ts",
+        "bridge/src/__tests__/session-push-channel.test.ts",
+        "bridge/src/__tests__/compact-session-labels.test.ts"
+      ]
+    },
+    {
+      "id": "state",
+      "name": "State machine & hub protocol",
+      "question": "Do agent states transition correctly and reach every client in the documented wire shape?",
+      "icon": "◆",
+      "match": [
+        "bridge/src/__tests__/state-machine.test.ts",
+        "bridge/src/__tests__/bridge-core*.test.ts",
+        "bridge/src/__tests__/server-integration.test.ts",
+        "bridge/src/__tests__/tier3-integration.test.ts",
+        "bridge/src/__tests__/ws-server-broadcast-actionability.test.ts",
+        "bridge/src/__tests__/session-aggregator.test.ts",
+        "bridge/src/__tests__/session-deck-awaiting.test.ts",
+        "bridge/src/__tests__/session-order-store.test.ts",
+        "bridge/src/__tests__/awaiting-overlay.test.ts",
+        "bridge/src/__tests__/surface-protocol-runtime.test.ts",
+        "bridge/src/__tests__/docs-wire-contract.test.ts",
+        "bridge/src/__tests__/default-settings-drift.test.ts",
+        "shared/src/__tests__/protocol-*.test.ts",
+        "shared/src/__tests__/state-transitions.test.ts",
+        "shared/src/__tests__/session-*.test.ts",
+        "shared/src/__tests__/no-side-effects.test.ts",
+        "shared/src/__tests__/action-fold.test.ts",
+        "shared/src/__tests__/question-summary.test.ts",
+        "shared/src/__tests__/text-sanitize.test.ts",
+        "shared/src/__tests__/format-utils.test.ts"
+      ]
+    },
+    {
+      "id": "apme",
+      "name": "APME evaluation",
+      "question": "Are turns and tasks segmented, judged and scored correctly, and does the recommender rank models honestly?",
+      "icon": "◇",
+      "match": [
+        "bridge/src/__tests__/apme-*.test.ts",
+        "bridge/src/__tests__/review-runner.test.ts",
+        "bridge/src/__tests__/ollama-residency.test.ts",
+        "bridge/src/__tests__/fm-helper-*.test.ts",
+        "shared/src/__tests__/apme-*.test.ts",
+        "shared/src/__tests__/llm-settings.test.ts",
+        "shared/src/__tests__/mlx-*.test.ts",
+        "shared/src/__tests__/model-*.test.ts",
+        "shared/src/__tests__/pricing.test.ts",
+        "scripts/__tests__/apme-*.test.ts"
+      ]
+    },
+    {
+      "id": "gateway",
+      "name": "OpenClaw Gateway",
+      "question": "Does the Gateway proxy stay subscribed, attribute runs and approvals, and report its health truthfully?",
+      "icon": "◬",
+      "match": [
+        "bridge/src/__tests__/openclaw-*.test.ts",
+        "bridge/src/__tests__/gateway-*.test.ts",
+        "shared/src/__tests__/openclaw-*.test.ts",
+        "scripts/__tests__/gateway-*.test.ts"
+      ]
+    },
+    {
+      "id": "devices",
+      "name": "Devices & display surfaces",
+      "question": "Do ESP32, Pixoo, Timebox, iDotMatrix, ADB and mDNS paths discover, flash and render correctly?",
+      "icon": "▦",
+      "match": [
+        "bridge/src/__tests__/esp32-*.test.ts",
+        "bridge/src/__tests__/pixoo-*.test.ts",
+        "bridge/src/__tests__/timebox-*.test.ts",
+        "bridge/src/__tests__/idotmatrix-*.test.ts",
+        "bridge/src/__tests__/ble-*.test.ts",
+        "bridge/src/__tests__/python-ble-runtime.test.ts",
+        "bridge/src/__tests__/mdns-*.test.ts",
+        "bridge/src/__tests__/adb-*.test.ts",
+        "bridge/src/__tests__/device-discovery.test.ts",
+        "bridge/src/__tests__/device-photo.test.ts",
+        "bridge/src/__tests__/dot-matrix-glyphs.test.ts",
+        "bridge/src/__tests__/matrix-expression.test.ts",
+        "bridge/src/__tests__/peripheral-mapping.test.ts",
+        "bridge/src/__tests__/display-dim.test.ts",
+        "bridge/src/__tests__/ips10-*.test.ts",
+        "bridge/src/__tests__/glance-frame.test.ts",
+        "bridge/src/__tests__/card-*.test.ts",
+        "bridge/src/__tests__/pocket-autonomy.test.ts",
+        "bridge/src/__tests__/learning-pack.test.ts",
+        "bridge/src/__tests__/font-pack.test.ts",
+        "bridge/src/__tests__/dashboard-provider*.test.ts",
+        "bridge/src/__tests__/weather*.test.ts",
+        "bridge/src/__tests__/calendar.test.ts",
+        "bridge/src/__tests__/desk-awareness.test.ts",
+        "shared/src/__tests__/esp32-boards.test.ts",
+        "shared/src/__tests__/idotmatrix-identity.test.ts",
+        "shared/src/__tests__/mdns-identity.test.ts",
+        "shared/src/__tests__/d200h-*.test.ts",
+        "shared/src/__tests__/creature-layout.test.ts",
+        "shared/src/__tests__/terrarium-rules.test.ts",
+        "shared/src/__tests__/collaboration-presentation.test.ts",
+        "scripts/__tests__/*firmware*.test.ts",
+        "scripts/__tests__/web-flasher-*.test.ts",
+        "scripts/__tests__/dashboard-providers-sync.test.ts",
+        "scripts/__tests__/surface-protocol-*.test.ts",
+        "scripts/__tests__/preview-mirror-sync.test.ts"
+      ]
+    },
+    {
+      "id": "voice",
+      "name": "Voice",
+      "question": "Are push-to-talk, transcription and spoken replies routed to the right session and device?",
+      "icon": "◐",
+      "match": [
+        "bridge/src/__tests__/device-voice*.test.ts",
+        "bridge/src/__tests__/device-transcription.test.ts",
+        "bridge/src/__tests__/personal-voice-turn.test.ts",
+        "shared/src/__tests__/voice-*.test.ts"
+      ]
+    },
+    {
+      "id": "plugins",
+      "name": "Stream Deck & Ulanzi plugins",
+      "question": "Do the deck plugins connect, recover, lay out keys and encoders, and dispatch host controls per platform?",
+      "icon": "▧",
+      "match": [
+        "plugin/src/__tests__/*.test.ts",
+        "plugin-ulanzi/src/__tests__/*.test.ts",
+        "shared/src/__tests__/svg-renderers/*.test.ts",
+        "shared/src/__tests__/brand-assets-contract.test.ts",
+        "shared/src/__tests__/hermes-brand.test.ts",
+        "scripts/__tests__/plugin-deployment.test.ts"
+      ]
+    },
+    {
+      "id": "tui",
+      "name": "Terminal dashboard",
+      "question": "Does the TUI dashboard render sessions and the terrarium stably?",
+      "icon": "▨",
+      "match": ["bridge/src/__tests__/tui-*.test.ts"]
+    },
+    {
+      "id": "release",
+      "name": "Release & repository policy",
+      "question": "Do versions, release notes, runtime support and palette ratchets hold?",
+      "icon": "◻",
+      "match": [
+        "scripts/__tests__/version-policy.test.ts",
+        "scripts/__tests__/release-notes.test.ts",
+        "scripts/__tests__/node-runtime-support.test.ts",
+        "scripts/__tests__/npm-registry-visibility.test.ts",
+        "scripts/__tests__/native-palette.test.ts",
+        "scripts/__tests__/verification-catalog.test.ts",
+        "scripts/__tests__/build-health-report.test.ts"
+      ]
+    }
+  ]
+}

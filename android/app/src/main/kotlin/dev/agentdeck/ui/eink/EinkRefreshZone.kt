@@ -68,6 +68,8 @@ fun EinkRefreshZone(
     softDebounceMs: Long = 120L,
     sleepSnapshotMode: Boolean = false,
     sleepThrottleMs: Long = 60_000L,
+    /** Size to the content's height instead of filling the offered height. */
+    wrapContentHeight: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     // Keep a snapshot-backed reference to the latest content lambda so
@@ -171,9 +173,12 @@ fun EinkRefreshZone(
     AndroidView(
         factory = { context ->
             FrameLayout(context).apply {
+                // AndroidView turns a MATCH_PARENT height into an exact spec
+                // whenever the height is bounded, so a wrapping zone must say so.
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    if (wrapContentHeight) ViewGroup.LayoutParams.WRAP_CONTENT
+                    else ViewGroup.LayoutParams.MATCH_PARENT,
                 )
                 setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                 // Embed Compose content inside this View
@@ -194,8 +199,8 @@ fun EinkRefreshZone(
  * Unlike [EinkRefreshZone] which only refreshes on [stateKey] changes,
  * this zone receives per-frame callbacks from the animation loop and
  * triggers appropriate EPD refreshes:
- * - Animation frames → GC16 partial (no flash, 16-level grayscale)
- * - State transitions → Full GC16 with flash (ghosting clear)
+ * - Animation frames → fast partial update
+ * - State transitions → debounced regional grayscale cleanup, without a full flash
  *
  * The [content] lambda receives an `onFrameRendered` callback that the
  * child composable (e.g. [EinkAquariumFrame]) should invoke after each render.
@@ -212,7 +217,8 @@ fun EinkAnimatedRefreshZone(
     var viewRef by remember { mutableStateOf<View?>(null) }
     var lastSleepFireMs by remember { mutableLongStateOf(0L) }
 
-    // State transition → full GC16 refresh (debounced to avoid rapid flashes)
+    // Only the debounced state path requests grayscale cleanup. Frame callbacks
+    // must not request another full flash for the same transition.
     LaunchedEffect(stateKey, sleepSnapshotMode) {
         delay(500)
         viewRef?.let { view ->
@@ -223,7 +229,7 @@ fun EinkAnimatedRefreshZone(
                     lastSleepFireMs = now
                 }
             } else {
-                EinkRefreshHelper.requestFullRefresh(view)
+                EinkRefreshHelper.requestQualityRefresh(view)
                 lastSleepFireMs = 0L
             }
         }
@@ -238,7 +244,7 @@ fun EinkAnimatedRefreshZone(
                 )
                 // B&W e-ink: software layer for EPD grayscale path.
                 // Color e-ink keeps a GPU layer so RKCFA can sample the color framebuffer.
-                if (!einkColorEnabled) {
+                if (!einkColorEnabled && EinkRefreshHelper.isPhysicalEink(this)) {
                     setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                 }
                 val composeView = ComposeView(context).apply {
@@ -255,9 +261,8 @@ fun EinkAnimatedRefreshZone(
                                 }
                             } else if (isAnimationFrame) {
                                 EinkRefreshHelper.requestAnimationRefresh(view)
-                            } else {
-                                EinkRefreshHelper.requestFullRefresh(view)
                             }
+                            // State frames are handled once by the debounced effect above.
                         }
                     }
                 }

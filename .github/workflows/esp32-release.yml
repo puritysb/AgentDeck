@@ -35,7 +35,7 @@ jobs:
           - { env: ips35, board: ips_35, name: 'IPS 3.5"', display: '3.5" 480x320 AXS15231B', ota: 'yes' }
           - { env: amoled, board: round_amoled, name: 'Round AMOLED', display: '1.8" 360x360 ST77916', ota: 'yes' }
           - { env: ips10, board: ips_10, name: 'IPS 10.1"', display: '10.1" 800x1280 JD9365', ota: 'yes' }
-          - { env: inkdeck, board: inkdeck, name: 'InkDeck', display: '7.5" 800x480 e-ink UC8179', ota: 'yes' }
+          - { env: trmnl_75, board: trmnl_75, name: 'Seeed TRMNL 7.5"', display: '7.5" 800x480 e-ink UC8179', ota: 'yes' }
           - { env: nm_epd_420, board: nm_epd_420, name: 'RockBase NM-EPD-420', display: '4.2" 400x300 tri-color e-ink GDEY042Z98', ota: 'no' }
           - { env: lilygo_epd47, board: lilygo_epd47, name: 'LilyGo T5 ePaper S3', display: '4.7" 960x540 grayscale e-ink ED047TC2', ota: 'yes' }
           - { env: ttgo, board: ttgo_t_display, name: 'TTGO T-Display', display: '1.14" 240x135 ST7789', ota: 'yes' }
@@ -74,8 +74,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      # The platform bootstraps ~/.platformio/penv and its ESP32-P4 hybrid
+      # build launches that environment's pio for the second Arduino stage.
+      # Pin the pioarduino distribution there before the first build; pinning
+      # only system PlatformIO still lets the child resolve pioarduino 6.2.0,
+      # whose SCons 4.11.1 conflicts with platform 55.03.311's SCons 4.8.1.
       - name: Install PlatformIO
-        run: pip install platformio
+        run: |
+          python -m venv "$HOME/.platformio/penv"
+          "$HOME/.platformio/penv/bin/python" -m pip install "pioarduino==6.1.19"
+          echo "$HOME/.platformio/penv/bin" >> "$GITHUB_PATH"
+          "$HOME/.platformio/penv/bin/pio" --version
 
       # Pinned deliberately. esptool renamed its subcommands between v4 and v5
       # (`merge_bin`/`--flash_size` -> `merge-bin`/`--flash-size`); un-pinned, a
@@ -93,7 +102,7 @@ jobs:
       #
       # 5.2.0 is measured, not remembered: on 2026-08-22 it merged and passed
       # esp32-merge-firmware.mjs's header read-back for all four chip families
-      # in this fleet and all three bootloader offsets — 86box/inkdeck/
+      # in this fleet and all three bootloader offsets — 86box/trmnl_75/
       # t_display_pro (S3, 0x0), ttgo_t_display/ulanzi_tc001 (ESP32, 0x1000),
       # ips_10 (P4, 0x2000), esp32_c6_147 (C6, 0x0).
       - name: Install esptool

@@ -6,6 +6,8 @@ import {
   spanNameSummary,
 } from '../codex-otel.js';
 import type { ObservedSession } from '../passive-observer.js';
+import { CodexAmbientSessions } from '../codex-ambient-hooks.js';
+import { HookCodexSessions } from '../hook-codex-sessions.js';
 
 type AttrValue = string | number | boolean;
 
@@ -223,6 +225,90 @@ describe('CodexOtelTracker', () => {
       controlMode: 'observed',
       cwd: '/repo/app',
       projectName: 'app',
+    });
+  });
+
+  // Live 2026-09-29, Codex 0.156 `codex exec`: the hook row went idle on Stop,
+  // then the process exported its spans in one batch on exit and the fallback
+  // re-labelled the finished CLI session `observed:codex-app:<id>` / `Codex`.
+  describe('hook-owned Codex threads', () => {
+    function wired(): { tracker: CodexOtelTracker; hooks: HookCodexSessions; rows: (now: number) => ObservedSession[] } {
+      const hooks = new HookCodexSessions(() => null);
+      const tracker = new CodexOtelTracker();
+      tracker.isHookOwnedThread = (threadId) => hooks.knows(threadId);
+      // The daemon's composition order (daemon-server.ts).
+      return { tracker, hooks, rows: (now) => hooks.applyTo(tracker.applyTo([], now), now) };
+    }
+
+    it('keeps the hook row when a finished exec session\'s spans arrive late', () => {
+      const { tracker, hooks, rows } = wired();
+      const payload = { sessionId: THREAD, cwd: '/repo/app' };
+      hooks.note('codex_session_start', payload, 1_000);
+      hooks.note('codex_user_prompt_submit', payload, 1_100);
+      hooks.note('codex_stop', payload, 5_000);
+      tracker.ingest(envelope([
+        { name: 'codex.turn.start', attributes: { 'thread.id': THREAD, 'turn.id': 't1' } },
+        { name: 'codex.turn.end', attributes: { 'thread.id': THREAD, 'turn.id': 't1' } },
+      ]), 7_000);
+
+      expect(rows(7_100)).toEqual([expect.objectContaining({
+        id: `observed:codex:${THREAD}`, agentType: 'codex-cli', projectName: 'app', state: 'idle',
+      })]);
+      // After the hook row is reaped, the tombstone still keeps the OTel
+      // fallback from resurrecting the session as an app row.
+      expect(rows(5_000 + 61_000)).toEqual([]);
+    });
+
+    it('still synthesizes a row for a thread no hook has reported', () => {
+      const { tracker, rows } = wired();
+      tracker.ingest(turn('turnStart', 't1', { cwd: '/repo/app' }), 1_000);
+      expect(rows(1_100)).toEqual([expect.objectContaining({ id: `observed:codex-app:${THREAD}` })]);
+    });
+  });
+
+  // Live 2026-09-29: Codex Desktop's memory-consolidation and ambient-suggestion
+  // safety threads had their hooks dropped, yet their spans synthesized a
+  // cwd-less `Codex` row next to the user's real session.
+  describe('Codex background threads', () => {
+    function wired(): { tracker: CodexOtelTracker; ambient: CodexAmbientSessions } {
+      const ambient = new CodexAmbientSessions(30 * 60_000, undefined);
+      const tracker = new CodexOtelTracker();
+      tracker.isBackgroundThread = (threadId) => ambient.isAmbient(threadId);
+      return { tracker, ambient };
+    }
+
+    it('never synthesizes a row for a thread the hook classifier already dropped', () => {
+      const { tracker, ambient } = wired();
+      ambient.classify('codex_session_start', { session_id: THREAD, cwd: '/Users/me/.codex/memories' }, 1_000);
+      tracker.ingest(turn('turnStart', 't1'), 1_100);
+      expect(tracker.applyTo([], 1_200)).toEqual([]);
+      expect(tracker.snapshot()).toEqual([]);
+    });
+
+    it('retracts a row its spans opened before the identifying hook arrived', () => {
+      const { tracker, ambient } = wired();
+      let changes = 0;
+      tracker.onChanged = () => { changes += 1; };
+      tracker.ingest(turn('turnStart', 't1'), 1_000);
+      expect(tracker.applyTo([], 1_050)).toHaveLength(1);
+
+      const verdict = ambient.classify('codex_user_prompt_submit', {
+        session_id: THREAD,
+        prompt: 'You are an expert at upholding safety and compliance standards for Codex ambient suggestions.',
+      }, 1_100);
+      expect(verdict.firstSeen).toBe(true);
+      tracker.forget(THREAD);
+      expect(changes).toBe(2);
+
+      tracker.ingest(turn('turnEnd', 't1'), 1_200);
+      expect(tracker.applyTo([], 1_300)).toEqual([]);
+    });
+
+    it('leaves the user\'s own thread alone', () => {
+      const { tracker, ambient } = wired();
+      ambient.classify('codex_session_start', { session_id: THREAD, cwd: '/repo/app' }, 1_000);
+      tracker.ingest(turn('turnStart', 't1', { cwd: '/repo/app' }), 1_100);
+      expect(tracker.applyTo([], 1_200)).toHaveLength(1);
     });
   });
 

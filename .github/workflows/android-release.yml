@@ -34,24 +34,24 @@ jobs:
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.jks
 
-      - name: Build release APK
+      - name: Build sideload APK (wireless updates enabled)
         working-directory: android
         env:
           ANDROID_KEYSTORE_PATH: /tmp/release.jks
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleSideload
 
       - name: Verify APK signature
         run: |
-          APK="android/app/build/outputs/apk/release/app-release.apk"
+          APK="android/app/build/outputs/apk/sideload/app-sideload.apk"
           $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools/ | tail -1)/apksigner verify --print-certs "$APK"
 
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/release/app-release.apk "dist/agentdeck-v${{ steps.version.outputs.VERSION }}.apk"
+          cp android/app/build/outputs/apk/sideload/app-sideload.apk "dist/agentdeck-v${{ steps.version.outputs.VERSION }}.apk"
 
       - name: Render release notes
         run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > notes.md

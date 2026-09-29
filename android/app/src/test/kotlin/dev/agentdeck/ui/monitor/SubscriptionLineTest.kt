@@ -20,6 +20,25 @@ class SubscriptionLineTest {
     private val now = Instant.parse("2026-05-06T00:00:00Z")
 
     @Test
+    fun `inline plan preserves credits and absent date`() {
+        assertEquals("ChatGPT Pro · Premium · 20 credits", withSubscriptionDate("ChatGPT Pro · Premium · 20 credits", null, now))
+        assertEquals("Google AI Pro", withSubscriptionDate("Google AI Pro", null, now))
+    }
+
+    @Test
+    fun `inline date is distinct from quota reset`() {
+        val result = withSubscriptionDate("ChatGPT Pro", "2099-01-01", now)!!
+        org.junit.Assert.assertTrue(result.startsWith("ChatGPT Pro · subscription "))
+        org.junit.Assert.assertFalse(result.contains("reset"))
+    }
+
+    @Test
+    fun `past subscription date does not claim cancellation`() {
+        assertEquals("ChatGPT Pro · subscription date unconfirmed", withSubscriptionDate("ChatGPT Pro", "2020-01-01", now))
+    }
+
+
+    @Test
     fun `future ISO8601 with offset renders date suffix`() {
         val sub = SubscriptionInfo(name = "ChatGPT Plus", until = "2026-12-31T00:00:00Z")
         assertEquals("ChatGPT Plus · 2026-12-31", formatSubscriptionLine(sub, now))

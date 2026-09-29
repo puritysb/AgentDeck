@@ -10,7 +10,7 @@ mkdir -p .pio/test
 fail=0
 for t in tests/*_test.cpp; do
   name=$(basename "$t" .cpp)
-  "$CXX" -std=c++17 -I ../src -I .. -o ".pio/test/$name" "$t"
+  "$CXX" -std=c++17 -I ../src -I .. -I shims -o ".pio/test/$name" "$t"
   if ".pio/test/$name"; then echo "  ok   $name"; else echo "  FAIL $name"; fail=1; fi
 done
 exit $fail

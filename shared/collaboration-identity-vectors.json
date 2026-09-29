@@ -1,0 +1,42 @@
+{
+  "description": "Task-scoped producer identities survive persistence. Equal job labels are not identity; closing one must leave the other open.",
+  "observations": [
+    {
+      "relation": "waiting_on",
+      "direction": "out",
+      "phase": "open",
+      "peerName": "build.sh",
+      "evidence": "background_process",
+      "ts": 100,
+      "key": "job-a"
+    },
+    {
+      "relation": "waiting_on",
+      "direction": "out",
+      "phase": "open",
+      "peerName": "build.sh",
+      "evidence": "background_process",
+      "ts": 101,
+      "key": "job-b"
+    },
+    {
+      "relation": "waiting_on",
+      "direction": "out",
+      "phase": "closed",
+      "peerName": "build.sh",
+      "evidence": "background_process",
+      "ts": 102,
+      "key": "job-a"
+    }
+  ],
+  "expected": [
+    {
+      "id": "waiting_on:out:job-a",
+      "phase": "closed"
+    },
+    {
+      "id": "waiting_on:out:job-b",
+      "phase": "open"
+    }
+  ]
+}

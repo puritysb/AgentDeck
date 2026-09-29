@@ -150,6 +150,9 @@ enum ADGatewayEventName: String, Codable {
     case execApprovalRequested = "exec.approval.requested"
     case execApprovalResolved = "exec.approval.resolved"
     case health = "health"
+    case pluginApprovalRemoved = "plugin.approval.removed"
+    case pluginApprovalRequested = "plugin.approval.requested"
+    case pluginApprovalResolved = "plugin.approval.resolved"
     case presence = "presence"
     case sessionMessage = "session.message"
     case sessionTool = "session.tool"
@@ -168,6 +171,8 @@ enum ADGatewayMethodName: String, Codable {
     case health = "health"
     case logsTail = "logs.tail"
     case modelsList = "models.list"
+    case pluginApprovalList = "plugin.approval.list"
+    case pluginApprovalResolve = "plugin.approval.resolve"
     case sessionsList = "sessions.list"
     case sessionsMessagesSubscribe = "sessions.messages.subscribe"
     case sessionsSubscribe = "sessions.subscribe"
@@ -200,6 +205,8 @@ struct ADGatewayMethodParams: Codable {
     var idempotencyKey: String?
     var message: String?
     var sessionKey: String?
+    /// Per-turn override supported by the Gateway; does not patch session defaults.
+    var thinking: String?
     var runId: String?
     var decision: ADExecApprovalDecision?
     var id: String?
@@ -226,6 +233,7 @@ struct ADGatewayMethodParams: Codable {
         case idempotencyKey = "idempotencyKey"
         case message = "message"
         case sessionKey = "sessionKey"
+        case thinking = "thinking"
         case runId = "runId"
         case decision = "decision"
         case id = "id"
@@ -272,6 +280,7 @@ extension ADGatewayMethodParams {
         idempotencyKey: String?? = nil,
         message: String?? = nil,
         sessionKey: String?? = nil,
+        thinking: String?? = nil,
         runId: String?? = nil,
         decision: ADExecApprovalDecision?? = nil,
         id: String?? = nil,
@@ -298,6 +307,7 @@ extension ADGatewayMethodParams {
             idempotencyKey: idempotencyKey ?? self.idempotencyKey,
             message: message ?? self.message,
             sessionKey: sessionKey ?? self.sessionKey,
+            thinking: thinking ?? self.thinking,
             runId: runId ?? self.runId,
             decision: decision ?? self.decision,
             id: id ?? self.id,
@@ -450,6 +460,11 @@ enum ADMode: String, Codable {
 /// The decisions the Gateway will accept for an exec approval. Mirror of OpenClaw's
 /// `isApprovalDecision` / `DEFAULT_EXEC_APPROVAL_DECISIONS`. `'allow'` is NOT a member —
 /// sending it is rejected as an invalid decision.
+///
+/// The decisions the Gateway will accept for a plugin approval. Same union as exec
+/// (`ApprovalDecisionSchema` in `approvals-CiGTrkJW.d.ts` is shared by every approval kind)
+/// — re-typed under this module's own name so callers that only touch plugin approvals do
+/// not have to import the exec module for a type alias.
 enum ADExecApprovalDecision: String, Codable {
     case allowAlways = "allow-always"
     case allowOnce = "allow-once"
@@ -519,13 +534,13 @@ extension ADDeviceAuth {
 }
 
 enum ADGatewayMethodResult: Codable {
+    case adApprovalRequestedPayloadArray([ADApprovalRequestedPayload])
     case adConnectResult(ADConnectResult)
-    case adExecApprovalRequestedPayloadArray([ADExecApprovalRequestedPayload])
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let x = try? container.decode([ADExecApprovalRequestedPayload].self) {
-            self = .adExecApprovalRequestedPayloadArray(x)
+        if let x = try? container.decode([ADApprovalRequestedPayload].self) {
+            self = .adApprovalRequestedPayloadArray(x)
             return
         }
         if let x = try? container.decode(ADConnectResult.self) {
@@ -538,9 +553,9 @@ enum ADGatewayMethodResult: Codable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
-        case .adConnectResult(let x):
+        case .adApprovalRequestedPayloadArray(let x):
             try container.encode(x)
-        case .adExecApprovalRequestedPayloadArray(let x):
+        case .adConnectResult(let x):
             try container.encode(x)
         }
     }
@@ -551,10 +566,22 @@ enum ADGatewayMethodResult: Codable {
 /// `exec.approval.requested` payload. The nested `request` is the real shape; the flat
 /// fields are tolerated so a future/legacy Gateway that inlines them still parses instead of
 /// silently producing an empty prompt.
-// MARK: - ADExecApprovalRequestedPayload
-struct ADExecApprovalRequestedPayload: Codable {
+///
+/// `plugin.approval.requested` payload (`PluginApprovalRequest` in
+/// `approval-types-CQ_BKP9V.d.ts`, confirmed on the wire by
+/// `buildRequestedApprovalEvent(record, 'plugin')` in `approval-shared- 1gFEjucV.mjs`):
+/// `{approvalKind?: 'plugin', id, request, createdAtMs, expiresAtMs}`. Unlike exec's
+/// compatibility fallback, the Gateway's OWN `PluginApprovalRequest` type declares `request`
+/// as required, never optional or flattened — but the flat-field merge below is kept anyway,
+/// at zero cost, so a future Gateway that inlines a field degrades instead of blanking the
+/// prompt (the same defensive posture the exec module documents its own reasoning for).
+// MARK: - ADApprovalRequestedPayload
+struct ADApprovalRequestedPayload: Codable {
     var agentId: String?
     /// Decisions this specific request permits (policy may drop allow-always).
+    ///
+    /// Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
+    /// the plugin surface — unlike exec, there is no subtraction step.
     var allowedDecisions: [String]?
     /// Approval POLICY ("on-miss" | "always" | …), never a question.
     var ask: String?
@@ -570,13 +597,25 @@ struct ADExecApprovalRequestedPayload: Codable {
     var expiresAtMs: Double?
     var host: String?
     var id: String
-    var request: ADExecApprovalRequestBody?
+    var request: ADExecApprovalListResultRequest?
     var resolvedPath: String?
     var security: String?
     var sessionKey: String?
     var unavailableDecisions: [String]?
     /// Human-readable risk note, when the Gateway produced one.
     var warningText: String?
+    var approvalKind: ADApprovalKind?
+    var description: String?
+    var detail: String?
+    var externalResolution: ADExecApprovalListResultExternalResolution?
+    var mcpTool: ADExecApprovalListResultMcpTool?
+    var pluginId: String?
+    var runId: String?
+    var scope: ADPluginApprovalScopeLike?
+    var severity: ADPluginApprovalSeverity?
+    var title: String?
+    var toolCallId: String?
+    var toolName: String?
 
     enum CodingKeys: String, CodingKey {
         case agentId = "agentId"
@@ -597,14 +636,26 @@ struct ADExecApprovalRequestedPayload: Codable {
         case sessionKey = "sessionKey"
         case unavailableDecisions = "unavailableDecisions"
         case warningText = "warningText"
+        case approvalKind = "approvalKind"
+        case description = "description"
+        case detail = "detail"
+        case externalResolution = "externalResolution"
+        case mcpTool = "mcpTool"
+        case pluginId = "pluginId"
+        case runId = "runId"
+        case scope = "scope"
+        case severity = "severity"
+        case title = "title"
+        case toolCallId = "toolCallId"
+        case toolName = "toolName"
     }
 }
 
-// MARK: ADExecApprovalRequestedPayload convenience initializers and mutators
+// MARK: ADApprovalRequestedPayload convenience initializers and mutators
 
-extension ADExecApprovalRequestedPayload {
+extension ADApprovalRequestedPayload {
     init(data: Data) throws {
-        self = try newJSONDecoder().decode(ADExecApprovalRequestedPayload.self, from: data)
+        self = try newJSONDecoder().decode(ADApprovalRequestedPayload.self, from: data)
     }
 
     init(_ json: String, using encoding: String.Encoding = .utf8) throws {
@@ -631,14 +682,26 @@ extension ADExecApprovalRequestedPayload {
         expiresAtMs: Double?? = nil,
         host: String?? = nil,
         id: String? = nil,
-        request: ADExecApprovalRequestBody?? = nil,
+        request: ADExecApprovalListResultRequest?? = nil,
         resolvedPath: String?? = nil,
         security: String?? = nil,
         sessionKey: String?? = nil,
         unavailableDecisions: [String]?? = nil,
-        warningText: String?? = nil
-    ) -> ADExecApprovalRequestedPayload {
-        return ADExecApprovalRequestedPayload(
+        warningText: String?? = nil,
+        approvalKind: ADApprovalKind?? = nil,
+        description: String?? = nil,
+        detail: String?? = nil,
+        externalResolution: ADExecApprovalListResultExternalResolution?? = nil,
+        mcpTool: ADExecApprovalListResultMcpTool?? = nil,
+        pluginId: String?? = nil,
+        runId: String?? = nil,
+        scope: ADPluginApprovalScopeLike?? = nil,
+        severity: ADPluginApprovalSeverity?? = nil,
+        title: String?? = nil,
+        toolCallId: String?? = nil,
+        toolName: String?? = nil
+    ) -> ADApprovalRequestedPayload {
+        return ADApprovalRequestedPayload(
             agentId: agentId ?? self.agentId,
             allowedDecisions: allowedDecisions ?? self.allowedDecisions,
             ask: ask ?? self.ask,
@@ -656,7 +719,119 @@ extension ADExecApprovalRequestedPayload {
             security: security ?? self.security,
             sessionKey: sessionKey ?? self.sessionKey,
             unavailableDecisions: unavailableDecisions ?? self.unavailableDecisions,
-            warningText: warningText ?? self.warningText
+            warningText: warningText ?? self.warningText,
+            approvalKind: approvalKind ?? self.approvalKind,
+            description: description ?? self.description,
+            detail: detail ?? self.detail,
+            externalResolution: externalResolution ?? self.externalResolution,
+            mcpTool: mcpTool ?? self.mcpTool,
+            pluginId: pluginId ?? self.pluginId,
+            runId: runId ?? self.runId,
+            scope: scope ?? self.scope,
+            severity: severity ?? self.severity,
+            title: title ?? self.title,
+            toolCallId: toolCallId ?? self.toolCallId,
+            toolName: toolName ?? self.toolName
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+enum ADApprovalKind: String, Codable {
+    case plugin = "plugin"
+}
+
+// MARK: - ADExecApprovalListResultExternalResolution
+struct ADExecApprovalListResultExternalResolution: Codable {
+    var decisions: [String]?
+    var label: String
+
+    enum CodingKeys: String, CodingKey {
+        case decisions = "decisions"
+        case label = "label"
+    }
+}
+
+// MARK: ADExecApprovalListResultExternalResolution convenience initializers and mutators
+
+extension ADExecApprovalListResultExternalResolution {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADExecApprovalListResultExternalResolution.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        decisions: [String]?? = nil,
+        label: String? = nil
+    ) -> ADExecApprovalListResultExternalResolution {
+        return ADExecApprovalListResultExternalResolution(
+            decisions: decisions ?? self.decisions,
+            label: label ?? self.label
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+// MARK: - ADExecApprovalListResultMcpTool
+struct ADExecApprovalListResultMcpTool: Codable {
+    var server: String
+    var tool: String
+
+    enum CodingKeys: String, CodingKey {
+        case server = "server"
+        case tool = "tool"
+    }
+}
+
+// MARK: ADExecApprovalListResultMcpTool convenience initializers and mutators
+
+extension ADExecApprovalListResultMcpTool {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADExecApprovalListResultMcpTool.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        server: String? = nil,
+        tool: String? = nil
+    ) -> ADExecApprovalListResultMcpTool {
+        return ADExecApprovalListResultMcpTool(
+            server: server ?? self.server,
+            tool: tool ?? self.tool
         )
     }
 
@@ -670,10 +845,16 @@ extension ADExecApprovalRequestedPayload {
 }
 
 /// The `request` body OpenClaw nests inside the requested event.
-// MARK: - ADExecApprovalRequestBody
-struct ADExecApprovalRequestBody: Codable {
+///
+/// The `request` body OpenClaw nests inside the requested/resolved event —
+/// `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.
+// MARK: - ADExecApprovalListResultRequest
+struct ADExecApprovalListResultRequest: Codable {
     var agentId: String?
     /// Decisions this specific request permits (policy may drop allow-always).
+    ///
+    /// Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
+    /// the plugin surface — unlike exec, there is no subtraction step.
     var allowedDecisions: [String]?
     /// Approval POLICY ("on-miss" | "always" | …), never a question.
     var ask: String?
@@ -692,6 +873,17 @@ struct ADExecApprovalRequestBody: Codable {
     var unavailableDecisions: [String]?
     /// Human-readable risk note, when the Gateway produced one.
     var warningText: String?
+    var description: String?
+    var detail: String?
+    var externalResolution: ADRequestExternalResolution?
+    var mcpTool: ADRequestMcpTool?
+    var pluginId: String?
+    var runId: String?
+    var scope: ADPluginApprovalScopeLike?
+    var severity: ADPluginApprovalSeverity?
+    var title: String?
+    var toolCallId: String?
+    var toolName: String?
 
     enum CodingKeys: String, CodingKey {
         case agentId = "agentId"
@@ -708,14 +900,25 @@ struct ADExecApprovalRequestBody: Codable {
         case sessionKey = "sessionKey"
         case unavailableDecisions = "unavailableDecisions"
         case warningText = "warningText"
+        case description = "description"
+        case detail = "detail"
+        case externalResolution = "externalResolution"
+        case mcpTool = "mcpTool"
+        case pluginId = "pluginId"
+        case runId = "runId"
+        case scope = "scope"
+        case severity = "severity"
+        case title = "title"
+        case toolCallId = "toolCallId"
+        case toolName = "toolName"
     }
 }
 
-// MARK: ADExecApprovalRequestBody convenience initializers and mutators
+// MARK: ADExecApprovalListResultRequest convenience initializers and mutators
 
-extension ADExecApprovalRequestBody {
+extension ADExecApprovalListResultRequest {
     init(data: Data) throws {
-        self = try newJSONDecoder().decode(ADExecApprovalRequestBody.self, from: data)
+        self = try newJSONDecoder().decode(ADExecApprovalListResultRequest.self, from: data)
     }
 
     init(_ json: String, using encoding: String.Encoding = .utf8) throws {
@@ -743,9 +946,20 @@ extension ADExecApprovalRequestBody {
         security: String?? = nil,
         sessionKey: String?? = nil,
         unavailableDecisions: [String]?? = nil,
-        warningText: String?? = nil
-    ) -> ADExecApprovalRequestBody {
-        return ADExecApprovalRequestBody(
+        warningText: String?? = nil,
+        description: String?? = nil,
+        detail: String?? = nil,
+        externalResolution: ADRequestExternalResolution?? = nil,
+        mcpTool: ADRequestMcpTool?? = nil,
+        pluginId: String?? = nil,
+        runId: String?? = nil,
+        scope: ADPluginApprovalScopeLike?? = nil,
+        severity: ADPluginApprovalSeverity?? = nil,
+        title: String?? = nil,
+        toolCallId: String?? = nil,
+        toolName: String?? = nil
+    ) -> ADExecApprovalListResultRequest {
+        return ADExecApprovalListResultRequest(
             agentId: agentId ?? self.agentId,
             allowedDecisions: allowedDecisions ?? self.allowedDecisions,
             ask: ask ?? self.ask,
@@ -759,7 +973,18 @@ extension ADExecApprovalRequestBody {
             security: security ?? self.security,
             sessionKey: sessionKey ?? self.sessionKey,
             unavailableDecisions: unavailableDecisions ?? self.unavailableDecisions,
-            warningText: warningText ?? self.warningText
+            warningText: warningText ?? self.warningText,
+            description: description ?? self.description,
+            detail: detail ?? self.detail,
+            externalResolution: externalResolution ?? self.externalResolution,
+            mcpTool: mcpTool ?? self.mcpTool,
+            pluginId: pluginId ?? self.pluginId,
+            runId: runId ?? self.runId,
+            scope: scope ?? self.scope,
+            severity: severity ?? self.severity,
+            title: title ?? self.title,
+            toolCallId: toolCallId ?? self.toolCallId,
+            toolName: toolName ?? self.toolName
         )
     }
 
@@ -770,6 +995,180 @@ extension ADExecApprovalRequestBody {
     func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
         return String(data: try self.jsonData(), encoding: encoding)
     }
+}
+
+// MARK: - ADRequestExternalResolution
+struct ADRequestExternalResolution: Codable {
+    var decisions: [String]?
+    var label: String
+
+    enum CodingKeys: String, CodingKey {
+        case decisions = "decisions"
+        case label = "label"
+    }
+}
+
+// MARK: ADRequestExternalResolution convenience initializers and mutators
+
+extension ADRequestExternalResolution {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADRequestExternalResolution.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        decisions: [String]?? = nil,
+        label: String? = nil
+    ) -> ADRequestExternalResolution {
+        return ADRequestExternalResolution(
+            decisions: decisions ?? self.decisions,
+            label: label ?? self.label
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+// MARK: - ADRequestMcpTool
+struct ADRequestMcpTool: Codable {
+    var server: String
+    var tool: String
+
+    enum CodingKeys: String, CodingKey {
+        case server = "server"
+        case tool = "tool"
+    }
+}
+
+// MARK: ADRequestMcpTool convenience initializers and mutators
+
+extension ADRequestMcpTool {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADRequestMcpTool.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        server: String? = nil,
+        tool: String? = nil
+    ) -> ADRequestMcpTool {
+        return ADRequestMcpTool(
+            server: server ?? self.server,
+            tool: tool ?? self.tool
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+/// Loosely-typed mirror of `ApprovalScopeSchema` (`approvals-CiGTrkJW.d.ts`) — a
+/// discriminated union of owner-declared blast-radius facts. Display-only, never
+/// authorization; AgentDeck only needs enough of it to summarize one supporting line, so
+/// this is intentionally not the full 4-variant union.
+// MARK: - ADPluginApprovalScopeLike
+struct ADPluginApprovalScopeLike: Codable {
+    var amount: String?
+    var automation: String?
+    var command: String?
+    var currency: String?
+    var kind: String?
+    var target: String?
+
+    enum CodingKeys: String, CodingKey {
+        case amount = "amount"
+        case automation = "automation"
+        case command = "command"
+        case currency = "currency"
+        case kind = "kind"
+        case target = "target"
+    }
+}
+
+// MARK: ADPluginApprovalScopeLike convenience initializers and mutators
+
+extension ADPluginApprovalScopeLike {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADPluginApprovalScopeLike.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        amount: String?? = nil,
+        automation: String?? = nil,
+        command: String?? = nil,
+        currency: String?? = nil,
+        kind: String?? = nil,
+        target: String?? = nil
+    ) -> ADPluginApprovalScopeLike {
+        return ADPluginApprovalScopeLike(
+            amount: amount ?? self.amount,
+            automation: automation ?? self.automation,
+            command: command ?? self.command,
+            currency: currency ?? self.currency,
+            kind: kind ?? self.kind,
+            target: target ?? self.target
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+/// `severity?: "info" | "warning" | "critical" | null` (`PluginApprovalRequestPayload`).
+/// Absent → `"warning"`, matching OpenClaw's own `buildPluginApprovalRequestMessage`
+/// fallback (`request.request.severity ?? "warning"`) — NOT `"info"`, which would understate
+/// a request the Gateway itself treats as needing the 🛡️ icon.
+enum ADPluginApprovalSeverity: String, Codable {
+    case critical = "critical"
+    case info = "info"
+    case warning = "warning"
 }
 
 /// The Gateway answers `{ ok: true }`; `resolved` is kept for older builds.
@@ -814,6 +1213,27 @@ extension ADExecApprovalRequestBody {
 /// silently producing an empty prompt.
 ///
 /// `exec.approval.resolved` payload (`buildResolvedEvent` in exec-approval).
+///
+/// `plugin.approval.requested` payload (`PluginApprovalRequest` in
+/// `approval-types-CQ_BKP9V.d.ts`, confirmed on the wire by
+/// `buildRequestedApprovalEvent(record, 'plugin')` in `approval-shared- 1gFEjucV.mjs`):
+/// `{approvalKind?: 'plugin', id, request, createdAtMs, expiresAtMs}`. Unlike exec's
+/// compatibility fallback, the Gateway's OWN `PluginApprovalRequest` type declares `request`
+/// as required, never optional or flattened — but the flat-field merge below is kept anyway,
+/// at zero cost, so a future Gateway that inlines a field degrades instead of blanking the
+/// prompt (the same defensive posture the exec module documents its own reasoning for).
+///
+/// `plugin.approval.resolved` payload (`PluginApprovalResolved`).
+///
+/// `plugin.approval.removed` payload. NOT declared in any `.d.ts` shipped with the installed
+/// package — it is real wire protocol (confirmed at the string literal `event:
+/// "plugin.approval.removed"` in `agent-tools.before-tool- call-CHXgDzUI.mjs`, the
+/// embedded/TUI-local approval broker) but has no typed declaration because that broker is a
+/// runtime helper, not part of the generated `packages/gateway-protocol` schema surface the
+/// persisted-manager RPC path (the one AgentDeck's Gateway connection actually uses) ships
+/// types for. The payload shape read directly from that emitter is `{id}` — no decision, no
+/// reason. Documented here as best-effort/lightly-typed rather than SDK-confirmed for the
+/// persisted-manager path specifically.
 // MARK: - ADConnectResult
 struct ADConnectResult: Codable {
     var accepted: Bool?
@@ -887,6 +1307,9 @@ struct ADConnectResult: Codable {
     var stream: String?
     var reason: String?
     /// Decisions this specific request permits (policy may drop allow-always).
+    ///
+    /// Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
+    /// the plugin surface — unlike exec, there is no subtraction step.
     var allowedDecisions: [String]?
     /// Approval POLICY ("on-miss" | "always" | …), never a question.
     var ask: String?
@@ -902,7 +1325,7 @@ struct ADConnectResult: Codable {
     var expiresAtMs: Double?
     var host: String?
     var id: String?
-    var request: ADExecApprovalRequestBody?
+    var request: ADConnectResultRequest?
     var resolvedPath: String?
     var security: String?
     var unavailableDecisions: [String]?
@@ -910,6 +1333,17 @@ struct ADConnectResult: Codable {
     var warningText: String?
     var decision: String?
     var resolvedBy: String?
+    var approvalKind: ADApprovalKind?
+    var description: String?
+    var detail: String?
+    var externalResolution: ADExecApprovalListResultExternalResolution?
+    var mcpTool: ADExecApprovalListResultMcpTool?
+    var pluginId: String?
+    var scope: ADPluginApprovalScopeLike?
+    var severity: ADPluginApprovalSeverity?
+    var title: String?
+    var toolCallId: String?
+    var toolName: String?
     var clientId: String?
     var connected: Bool?
     var deviceId: String?
@@ -986,6 +1420,17 @@ struct ADConnectResult: Codable {
         case warningText = "warningText"
         case decision = "decision"
         case resolvedBy = "resolvedBy"
+        case approvalKind = "approvalKind"
+        case description = "description"
+        case detail = "detail"
+        case externalResolution = "externalResolution"
+        case mcpTool = "mcpTool"
+        case pluginId = "pluginId"
+        case scope = "scope"
+        case severity = "severity"
+        case title = "title"
+        case toolCallId = "toolCallId"
+        case toolName = "toolName"
         case clientId = "clientId"
         case connected = "connected"
         case deviceId = "deviceId"
@@ -1075,13 +1520,24 @@ extension ADConnectResult {
         expiresAtMs: Double?? = nil,
         host: String?? = nil,
         id: String?? = nil,
-        request: ADExecApprovalRequestBody?? = nil,
+        request: ADConnectResultRequest?? = nil,
         resolvedPath: String?? = nil,
         security: String?? = nil,
         unavailableDecisions: [String]?? = nil,
         warningText: String?? = nil,
         decision: String?? = nil,
         resolvedBy: String?? = nil,
+        approvalKind: ADApprovalKind?? = nil,
+        description: String?? = nil,
+        detail: String?? = nil,
+        externalResolution: ADExecApprovalListResultExternalResolution?? = nil,
+        mcpTool: ADExecApprovalListResultMcpTool?? = nil,
+        pluginId: String?? = nil,
+        scope: ADPluginApprovalScopeLike?? = nil,
+        severity: ADPluginApprovalSeverity?? = nil,
+        title: String?? = nil,
+        toolCallId: String?? = nil,
+        toolName: String?? = nil,
         clientId: String?? = nil,
         connected: Bool?? = nil,
         deviceId: String?? = nil,
@@ -1158,6 +1614,17 @@ extension ADConnectResult {
             warningText: warningText ?? self.warningText,
             decision: decision ?? self.decision,
             resolvedBy: resolvedBy ?? self.resolvedBy,
+            approvalKind: approvalKind ?? self.approvalKind,
+            description: description ?? self.description,
+            detail: detail ?? self.detail,
+            externalResolution: externalResolution ?? self.externalResolution,
+            mcpTool: mcpTool ?? self.mcpTool,
+            pluginId: pluginId ?? self.pluginId,
+            scope: scope ?? self.scope,
+            severity: severity ?? self.severity,
+            title: title ?? self.title,
+            toolCallId: toolCallId ?? self.toolCallId,
+            toolName: toolName ?? self.toolName,
             clientId: clientId ?? self.clientId,
             connected: connected ?? self.connected,
             deviceId: deviceId ?? self.deviceId,
@@ -1753,6 +2220,159 @@ extension ADPolicy {
         return ADPolicy(
             maxPayload: maxPayload ?? self.maxPayload,
             tickIntervalMs: tickIntervalMs ?? self.tickIntervalMs
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+/// The `request` body OpenClaw nests inside the requested event.
+///
+/// The `request` body OpenClaw nests inside the requested/resolved event —
+/// `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.
+// MARK: - ADConnectResultRequest
+struct ADConnectResultRequest: Codable {
+    var agentId: String?
+    /// Decisions this specific request permits (policy may drop allow-always).
+    ///
+    /// Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
+    /// the plugin surface — unlike exec, there is no subtraction step.
+    var allowedDecisions: [String]?
+    /// Approval POLICY ("on-miss" | "always" | …), never a question.
+    var ask: String?
+    /// Sanitized command display text — the thing the user is approving.
+    var command: String?
+    /// Gateway-side static analysis summary of the command.
+    var commandAnalysis: String?
+    var commandArgv: [String]?
+    /// Non-node hosts send a preview instead of the full command.
+    var commandPreview: String?
+    var cwd: String?
+    var host: String?
+    var resolvedPath: String?
+    var security: String?
+    var sessionKey: String?
+    var unavailableDecisions: [String]?
+    /// Human-readable risk note, when the Gateway produced one.
+    var warningText: String?
+    var description: String?
+    var detail: String?
+    var externalResolution: ADRequestExternalResolution?
+    var mcpTool: ADRequestMcpTool?
+    var pluginId: String?
+    var runId: String?
+    var scope: ADPluginApprovalScopeLike?
+    var severity: ADPluginApprovalSeverity?
+    var title: String?
+    var toolCallId: String?
+    var toolName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case agentId = "agentId"
+        case allowedDecisions = "allowedDecisions"
+        case ask = "ask"
+        case command = "command"
+        case commandAnalysis = "commandAnalysis"
+        case commandArgv = "commandArgv"
+        case commandPreview = "commandPreview"
+        case cwd = "cwd"
+        case host = "host"
+        case resolvedPath = "resolvedPath"
+        case security = "security"
+        case sessionKey = "sessionKey"
+        case unavailableDecisions = "unavailableDecisions"
+        case warningText = "warningText"
+        case description = "description"
+        case detail = "detail"
+        case externalResolution = "externalResolution"
+        case mcpTool = "mcpTool"
+        case pluginId = "pluginId"
+        case runId = "runId"
+        case scope = "scope"
+        case severity = "severity"
+        case title = "title"
+        case toolCallId = "toolCallId"
+        case toolName = "toolName"
+    }
+}
+
+// MARK: ADConnectResultRequest convenience initializers and mutators
+
+extension ADConnectResultRequest {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADConnectResultRequest.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        agentId: String?? = nil,
+        allowedDecisions: [String]?? = nil,
+        ask: String?? = nil,
+        command: String?? = nil,
+        commandAnalysis: String?? = nil,
+        commandArgv: [String]?? = nil,
+        commandPreview: String?? = nil,
+        cwd: String?? = nil,
+        host: String?? = nil,
+        resolvedPath: String?? = nil,
+        security: String?? = nil,
+        sessionKey: String?? = nil,
+        unavailableDecisions: [String]?? = nil,
+        warningText: String?? = nil,
+        description: String?? = nil,
+        detail: String?? = nil,
+        externalResolution: ADRequestExternalResolution?? = nil,
+        mcpTool: ADRequestMcpTool?? = nil,
+        pluginId: String?? = nil,
+        runId: String?? = nil,
+        scope: ADPluginApprovalScopeLike?? = nil,
+        severity: ADPluginApprovalSeverity?? = nil,
+        title: String?? = nil,
+        toolCallId: String?? = nil,
+        toolName: String?? = nil
+    ) -> ADConnectResultRequest {
+        return ADConnectResultRequest(
+            agentId: agentId ?? self.agentId,
+            allowedDecisions: allowedDecisions ?? self.allowedDecisions,
+            ask: ask ?? self.ask,
+            command: command ?? self.command,
+            commandAnalysis: commandAnalysis ?? self.commandAnalysis,
+            commandArgv: commandArgv ?? self.commandArgv,
+            commandPreview: commandPreview ?? self.commandPreview,
+            cwd: cwd ?? self.cwd,
+            host: host ?? self.host,
+            resolvedPath: resolvedPath ?? self.resolvedPath,
+            security: security ?? self.security,
+            sessionKey: sessionKey ?? self.sessionKey,
+            unavailableDecisions: unavailableDecisions ?? self.unavailableDecisions,
+            warningText: warningText ?? self.warningText,
+            description: description ?? self.description,
+            detail: detail ?? self.detail,
+            externalResolution: externalResolution ?? self.externalResolution,
+            mcpTool: mcpTool ?? self.mcpTool,
+            pluginId: pluginId ?? self.pluginId,
+            runId: runId ?? self.runId,
+            scope: scope ?? self.scope,
+            severity: severity ?? self.severity,
+            title: title ?? self.title,
+            toolCallId: toolCallId ?? self.toolCallId,
+            toolName: toolName ?? self.toolName
         )
     }
 

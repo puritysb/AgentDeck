@@ -72,13 +72,30 @@ export function opencodePluginSource(): string {
 // timeline with the same prompt → response turn shape. Every POST is
 // fire-and-forget with a hard timeout; OpenCode never blocks on AgentDeck.
 
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 const PORT_TTL_MS = 60000;
 let cachedPort = null;
 let cachedAt = 0;
+
+// Keep at most one OS read per known registry path in flight. An OS consent
+// decision can outlive AbortSignal, so the race also bounds the caller while
+// the map prevents retries from exhausting the filesystem worker pool.
+const registryReads = new Map();
+function readRegistry(path) {
+  if (registryReads.has(path)) return registryReads.get(path);
+  let timer;
+  const io = readFile(path, { encoding: "utf-8", signal: AbortSignal.timeout(200) });
+  const bounded = Promise.race([io, new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("registry read timed out")), 200);
+  })]);
+  registryReads.set(path, bounded);
+  const settled = () => { clearTimeout(timer); registryReads.delete(path); };
+  io.then(settled, settled);
+  return bounded;
+}
 
 async function resolvePort() {
   const now = Date.now();
@@ -91,7 +108,7 @@ async function resolvePort() {
     join(home, "Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"),
   ]) {
     try {
-      const d = JSON.parse(readFileSync(f, "utf-8"));
+      const d = JSON.parse(await readRegistry(f));
       const p = d.httpPort || d.port;
       if (typeof p === "number" && p > 0 && !candidates.includes(p)) candidates.push(p);
     } catch { /* missing/malformed — try next */ }
@@ -270,25 +287,40 @@ export const AgentDeckObserver = async ({ directory, client }) => {
           // no prediction needed, zero false-positive risk. Forward it so
           // devices can render Allow/Deny; the daemon replies through the
           // steering queue as a permission_respond command.
-          const perm = props.permission || props.info || props || {};
+          const perm = (props.permission && typeof props.permission === "object") ? props.permission : (props.info || props);
           const psid = perm.sessionID;
           if (psid && perm.id) {
             announce(psid);
             post("opencode_permission_asked", {
               session_id: psid,
               permission_id: perm.id,
-              title: typeof perm.title === "string" ? perm.title : "",
+              title: typeof perm.title === "string" ? perm.title : (typeof perm.permission === "string" ? perm.permission : "Permission requested"),
               cwd,
             });
           }
         } else if (type === "permission.replied") {
-          const perm = props.permission || props.info || props || {};
+          const perm = (props.permission && typeof props.permission === "object") ? props.permission : (props.info || props);
           const psid = perm.sessionID;
           if (psid) {
             post("opencode_permission_replied", {
               session_id: psid,
-              permission_id: perm.id || "",
+              permission_id: perm.requestID || perm.permissionID || perm.id || "",
               cwd,
+            });
+          }
+        } else if (type === "question.asked") {
+          if (props.sessionID && props.id) {
+            announce(props.sessionID);
+            post("opencode_question_asked", {
+              session_id: props.sessionID, question_id: props.id,
+              title: (Array.isArray(props.questions) ? props.questions : []).map(q => q.question || q.header || "").filter(Boolean).join(" / "),
+              cwd,
+            });
+          }
+        } else if (type === "question.replied" || type === "question.rejected") {
+          if (props.sessionID && props.requestID) {
+            post(type === "question.replied" ? "opencode_question_replied" : "opencode_question_rejected", {
+              session_id: props.sessionID, question_id: props.requestID, cwd,
             });
           }
         } else if (type === "session.idle") {

@@ -70,4 +70,78 @@ final class UsageAPIClientThreadingTests: XCTestCase {
         XCTAssertTrue(text.hasPrefix("{\"a\":1}"))
     }
 }
+
+private actor CodexUsageTestTransport {
+    var replies: [(Data, Int)]
+    var calls = 0
+    init(_ replies: [(Data, Int)]) { self.replies = replies }
+    func fetch(_ request: URLRequest) -> (Data, Int) {
+        calls += 1
+        return replies.removeFirst()
+    }
+}
+
+@DaemonActor
+final class CodexAccountUsageTests: XCTestCase {
+    private let credential = CodexUsageCredential(accessToken: "test-only", accountId: "account-a")
+    private let start = Date(timeIntervalSince1970: 1_800_000_000)
+    private func payload(_ used: Int) -> Data {
+        Data("""
+        {"account_id":"account-a","plan_type":"pro","rate_limit":{"primary_window":{
+        "used_percent":\(used),"limit_window_seconds":604800,"reset_at":1800604800},"secondary_window":null},
+        "additional_rate_limits":[{"limit_name":"model pool","rate_limit":{"primary_window":{"used_percent":86}}}]}
+        """.utf8)
+    }
+
+    func testCouponResetRefreshesWithoutAnyRolloutAndBeatsNewerOldSession() async {
+        let transport = CodexUsageTestTransport([(payload(100), 200), (payload(0), 200)])
+        let client = CodexAccountUsageClient(fetch: { await transport.fetch($0) })
+        await client.refresh(credential: credential, now: start)
+        XCTAssertEqual(client.snapshot(passive: nil, credential: credential, now: start)?.primary?.usedPercent, 100)
+        await client.refresh(credential: credential, now: start.addingTimeInterval(29))
+        let before = await transport.calls
+        XCTAssertEqual(before, 1)
+        await client.refresh(credential: credential, now: start.addingTimeInterval(30))
+        var old = CodexAccountUsageClient.parse(payload(100), accountId: "account-a", now: start.addingTimeInterval(31))
+        old?.limitId = "codex"
+        let reset = client.snapshot(passive: old, credential: credential, now: start.addingTimeInterval(31))
+        XCTAssertEqual(reset?.primary?.usedPercent, 0)
+        XCTAssertNil(reset?.secondary)
+    }
+
+    func testFailureRetainsOriginalTimestampAndBacksOff() async {
+        let transport = CodexUsageTestTransport([(payload(100), 200), (Data(), 503)])
+        let client = CodexAccountUsageClient(fetch: { await transport.fetch($0) })
+        await client.refresh(credential: credential, now: start)
+        let stamp = client.snapshot(passive: nil, credential: credential, now: start)?.capturedAt
+        await client.refresh(credential: credential, now: start.addingTimeInterval(30))
+        await client.refresh(credential: credential, now: start.addingTimeInterval(60))
+        let calls = await transport.calls
+        XCTAssertEqual(calls, 2)
+        let retained = client.snapshot(passive: nil, credential: credential, now: start.addingTimeInterval(60))
+        XCTAssertEqual(retained?.primary?.usedPercent, 100)
+        XCTAssertEqual(retained?.capturedAt, stamp)
+    }
+
+    func testCredentialRemovalAndAccountChangeDoNotReuseSnapshot() async {
+        let transport = CodexUsageTestTransport([(payload(100), 200)])
+        let client = CodexAccountUsageClient(fetch: { await transport.fetch($0) })
+        await client.refresh(credential: credential, now: start)
+        let other = CodexUsageCredential(accessToken: "other-test", accountId: "account-b")
+        XCTAssertNil(client.snapshot(passive: nil, credential: other, now: start))
+        await client.refresh(credential: nil, now: start)
+        XCTAssertNil(client.snapshot(passive: nil, credential: credential, now: start))
+    }
+
+    func testMalformedAndWrongAccountResponsesAreNotZero() async {
+        XCTAssertNil(CodexAccountUsageClient.parse(payload(0), accountId: "account-b", now: start))
+        XCTAssertNil(CodexAccountUsageClient.parse(Data("{}".utf8), accountId: "account-a", now: start))
+        let malformed = Data("""
+        {"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":0}},
+        "credits":{"has_credits":false,"unlimited":false,"balance":"0"}}
+        """.utf8)
+        XCTAssertNil(CodexAccountUsageClient.parse(malformed, accountId: "account-a", now: start))
+    }
+}
+
 #endif

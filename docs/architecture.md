@@ -69,9 +69,75 @@ A *global* actor rather than making `DaemonServer` an `actor`: the daemon is not
 
 Regression tests: `HTTPServerMainThreadStallTests` (transport must accept while main is blocked) and `DaemonActorIndependenceTests` (daemon work must progress while main is blocked).
 
+## Cross-platform SSOT catalogue
+
+Every row is defined in its canonical source first and generated or mirrored outward behind a drift gate — never introduced as a per-platform literal. The headline rule lives in
+AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is the index, and four rules govern every row (moved here verbatim from the root map on 2026-09-29):
+
+- **A comment-only edit still drifts** — JSDoc is carried into the Swift/Kotlin mirrors, and it also moves a `SYNC-HASH` blob hash, so grep `SYNC-HASH <path>` for every pin before editing any pinned origin.
+- **A generated or derived value is never a merge side**: when a `SYNC-HASH` pin or any generated mirror conflicts during a rebase/cherry-pick, neither branch's value is authoritative — both are stale the moment the pinned origin is resolved. Recompute from the resolved file (`git hash-object <pinned-path>`) and only then stage it; picking `--ours`/`--theirs` lands a pin that matches no file on disk and the gate goes green on a lie only if you are unlucky.
+- **Two SSOTs may split one table only over disjoint column sets bound by one gate**, never as a second copy (`shared/src/esp32-boards.ts` machine columns vs `docs/hardware-compatibility.md` human columns).
+- **Never add a new hand mirror** — the remaining debt is listed below.
+
+| Canonical source | Generator | Gate / note |
+|---|---|---|
+| `bridge/src/compact-session-labels.ts` | `node bridge/generate-compact-session-labels.mjs` → Swift serial projection | Generator drift check and `shared/compact-session-label-vectors.json` replayed by Node/Swift; names are presentation only, IDs and folding keys unchanged. Firmware `ui/companion/session_glance.h` is consumed directly by the small-screen renderers and host-tested. |
+| `shared/src/matrix-expression.ts` + `bridge/src/pixoo/matrix-art.ts` | `pnpm generate-matrix-expressions` | BLE robot-face/agent-world policy and RLE Swift frames. `matrix-expression.test.ts` gates generated drift and executes Swift and Node against identical wire-event sequences, comparing every RGB pixel. |
+| `shared/project-name-vectors.json` | Existing Node `project-name.ts` / Swift `ProjectNameResolver` filesystem resolvers | Both suites replay the same linked-worktree, relative/absolute pointer, submodule and unreadable-metadata fixtures. Worktrees display `Repository · worktree-folder`; the suffix preserves independent session folding. |
+| `bridge/src/ips10-roster.ts` | `node bridge/generate-ips10-roster.mjs` | `ips10-roster.test.ts`: generated Swift kernel drift and executable Node/Swift parity; bounded attention pinning and fair roster paging. |
+| `shared/src/sample.ts` (`RelationEvent.relationId`) | Existing Node/Swift sample serializers | `shared/collaboration-identity-vectors.json` replayed through both collectors and stores (`apme-collector.test.ts`, `CollaborationIdentityPersistenceTests`); Swift projection checks that closing one of two identically named jobs leaves the other open. |
+| `bridge/src/dashboard-providers.ts` provider vocabulary | `node scripts/generate-dashboard-providers.mjs` | `dashboard-providers-sync.test.ts` checks native validators/order and complete menu coverage; persistence tests keep explicit empty membership across initialization. |
+| `shared/src/protocol.ts` | `pnpm generate-protocol` | vitest drift gate; Swift + Kotlin types |
+| `shared/src/terrarium-rules.ts` | `pnpm generate-terrarium-rules` | vitest drift gate; see below |
+| `shared/src/states.ts` (state-machine transition table) | `pnpm generate-state-transitions` | vitest drift gate. A row present in one daemon and absent in the other is a session that wedges in `AWAITING_*` on one platform and recovers on the other, with nothing in either log saying why. A transition's rationale rides the SSOT as its `note` field so the mirror cannot restate and then contradict it; the generated file carries `#if os(macOS)` because it lives under `Daemon/` |
+| `shared/src/esp32-boards.ts` (machine half of the board table: chip family, flash size/mode/freq, bootloader offset, upload baud, esptool flags, OTA capability, CLI aliases, `webFlash` evidence) | `pnpm generate-esp32-board-matrix` | GENERATES the `esp32-v*` release matrix; `--check` cross-checks `esp32/platformio.ini`, the spec sheet, `bridge/src/cli.ts` and the alias table in `docs/esp32.md`; gated in `design-system.yml`. The board set used to be hand-written in four places with a gate on one edge, and a board missing from the release matrix ships no firmware while nothing fails — how `t_embed`, `t_display_pro` and `esp32_c6_147` had no binaries at 1.0.1 |
+| `docs/hardware-compatibility.md` board table (human columns) | `scripts/sync-hardware-spec-cards.mjs` | gated in `design-system.yml`. Two SSOTs over disjoint column sets bound by one gate, never a second copy |
+| `shared/src/idotmatrix-identity.ts` (BLE discovery predicate) | `pnpm generate-idotmatrix-identity` | vitest drift gate; emits the Swift CoreBluetooth mirror and the Python/bleak one, and the generated `bridge/src/idotmatrix/identity_generated.py` ships in the npm package |
+| `shared/src/mdns-identity.ts` (`_agentdeck._tcp` instance name + TXT keys) | `pnpm generate-mdns-identity` | vitest drift gate. A name whose only job is to be unique per segment is worthless unless both daemons compute it identically |
+| `shared/src/model-provider.ts` (which company's endpoint answered) | `pnpm generate-model-provider` | vitest drift gate; Swift + Kotlin mirrors. A Claude Code session pointed at z.ai must read the same on every surface or the badge means nothing |
+| `shared/src/task-title.ts` + `shared/src/action-fold.ts` (Work-board display projections) | `pnpm generate-apme-display-rules` (emits the Swift `TaskTitleRules` / `ActionFoldRules`) | `apme-display-rules-sync.test.ts`; behavior additionally pinned by `shared/task-title-vectors.json` / `shared/action-fold-vectors.json`, replayed by both suites, since both daemons NAME tasks and serve the same Work board |
+| `shared/src/claude-permission-rules.ts` (PreToolUse hold predictor) | `pnpm generate-claude-permission-rules` (emits `ClaudePermissionRules.generated.swift`) | vitest byte gate + `shared/claude-permission-vectors.json` |
+| `shared/src/mlx-safety.ts` (resident-model selection, admission and failure cooldown) | `pnpm generate-mlx-safety` (emits `MlxSafetyRules.generated.swift`) | byte-for-byte generator drift gate plus `shared/mlx-safety-vectors.json` replayed by Vitest and XCTest. Node and Swift route MLX inference through one per-process endpoint gate. Server enforcement remains required across processes. |
+| `shared/src/apme-classifier-rules.ts` (LLM-assist `task_category` classifier: prompt, label vocabulary, output cap, timeout, backend try-order) | `pnpm generate-apme-classifier-rules` (emits `ApmeClassifierRules.generated.swift`) | `shared/src/__tests__/apme-classifier-rules-sync.test.ts`. `task_category` selects the judge rubric, so the two daemons disagreeing is a score difference — Swift's classifier used to route through `callConfiguredJudge`, i.e. whatever eval judge backend the user configured, including the paid `api`/`openai` legs (#299). The backend order is local-only by construction: `api`/`openai` are not members of the SSOT array |
+| `shared/src/pairing-code.ts` | `pnpm generate-pairing-code-rules` | vitest drift gate; Swift carries the whole evaluator, Kotlin a client mirror |
+| `shared/gateway-setup-status.json` | `node scripts/generate-gateway-setup-status.mjs` | Vitest drift gate (`scripts/__tests__/gateway-setup-status.test.ts`); Apple integration/setup status and Android Gateway guidance. Only explicit actionable authentication states request setup; transport progress and unknown states remain neutral. |
+| `shared/src/session-utils.ts` (`SESSION_WEIGHT_MIN/MAX`; `SESSION_ORDER_TTL_MS`/`MAX_SESSION_ORDER_PINS`) | `pnpm generate-session-weight-rules` | vitest drift gate (`session-weight-rules.test.ts`); Swift + Kotlin mirrors, D200H hand-port literals grep-gated. The weight range is a wire contract; the order-pin TTL/cap are a cross-daemon FILE contract — both daemons read and write one `session-order.json` (#273), so a pin must not live 30 days under one daemon and 7 under the other |
+| `shared/src/openclaw-approval.ts` (exec-approval parser/decision vocabulary) | `pnpm generate-openclaw-approval-rules` | `openclaw-approval-rules-sync.test.ts`; behavior additionally pinned by `shared/openclaw-approval-error-vectors.json`, replayed by both suites |
+| `shared/src/openclaw-plugin-approval.ts` (plugin-approval parser/decision vocabulary, issue #309) | `pnpm generate-openclaw-plugin-approval-rules` | `openclaw-plugin-approval-rules-sync.test.ts`. Reuses the exec mirror's `ExecApprovalDecision` Swift type rather than redeclaring the (identical) vocabulary — two independently-typed enums for one Gateway-validated union is exactly how one kind could silently accept the plain `"allow"` the other already excludes |
+| `shared/src/claude-weekly-view.ts` | Direct TS import in Stream Deck and Ulanzi | `deck-usage-modes.test.ts` exercises the three-mode cycle, fixed key allocation, unavailable readings and device isolation. Apple D200H preview mirrors the default combined layout behind its existing `SYNC-HASH` gate. |
+| `shared/src/usage-severity.ts` | `pnpm generate-usage-severity` | Quota severity and token-derived bright/paper colors, consumed by TS and generated C++/Swift/Kotlin; boundary, contrast and mirror-drift tests |
+| `shared/src/session-state-presentation.ts` (colours from the `Session` group of `design/tokens.css`) | `pnpm generate-session-state` | Session state → tone, dark/paper colour and label/short/tiny words for every product surface; also emits `esp32/src/ui/product_palette.generated.h`, the C++ mirror of the `--ui-*`/`--brand-*`/`--session-*` tokens that ESP32 never had. `shared/src/__tests__/session-state-presentation.test.ts` gates tones, contrast, vocabulary budgets and mirror drift; `scripts/__tests__/native-palette.test.ts` ratchets raw colour literals in native Dashboard code |
+| `shared/src/usage-presentation.ts` | `pnpm generate-usage-presentation` | Generated C++/Swift/Kotlin heading and Luna selection predicate, plus the C++ plan-tier stripper (`subscriptionTier`); TS shared by Stream Deck and Ulanzi, C++ consumed by every ESP32 USAGE surface through `esp32/src/util/usage_rows.h`. Provider attribution table binds subscription metadata to usage rows. `usage-presentation.test.ts` gates drift and exhaustion/reset/unknown/tier cases. |
+| `shared/src/collaboration-presentation.ts` | `pnpm generate-collaboration-presentation` | Generated Swift/C++ live-census labels and parent waiting-on-work predicate, consumed by macOS Collaboration and IPS10 Details. Task-scoped sample observations remain separate from live counts. `collaboration-presentation.test.ts` gates drift and phase precedence. |
+| `shared/src/format-utils.ts` Codex snapshot freshness (`CODEX_SNAPSHOT_STALE_MS` + age-label bands) | `pnpm generate-codex-freshness-rules` | vitest drift gate; also emits Swift-only `CodexPlanRules` from `codexSnapshotMatchesAccountPlan`, since both daemons PRODUCE the wire snapshot but Android only consumes it |
+| `shared/src/zai-quota.ts` (z.ai GLM Coding Plan monitor-response → wire windows: schema family, unit classification, window minutes, plan names, PAYG key shape) | `pnpm generate-zai-quota-rules` | vitest drift gate + `shared/zai-quota-vectors.json` replayed by both suites (`zai-quota.test.ts`, `ZaiQuotaRulesVectorsTests`); Swift-only mirror — both daemons produce the `zaiRateLimits` block, Android consumes the wire (#348) |
+| `apmeDashboardHtml()` → `apple/AgentDeck/Resources/apme-dashboard.html` | `pnpm generate-apme-dashboard` | byte-gated in `apme-dashboard-html.test.ts`. As a hand copy it silently shipped App Store builds a whole feature behind |
+| creature / brand SVGs | `pnpm generate-creature-glyphs`, `pnpm generate-micro-glyphs` | ESP32 alpha-mask headers, Pixoo/Timebox/TC001 masks |
+| `design/tokens.css` | 7 mirrors | `design/verify-tokens-sync.py` |
+| `esp32/src/ui/eink/eink_dashboard_layout.h` | — (three consumers) | TRMNL 7.5" firmware compiles it directly, `scripts/sync-xteink-eink-dashboard.sh` copies it byte-identically into the XTeink fork, and `apple/AgentDeck/UI/Preview/Devices/Trmnl75Preview.swift` pins it via SYNC-HASH |
+
+The existing Codex lossless editors and OpenCode hook-state projections remain
+native mirrors, now exercised by `shared/codex-config-edit-vectors.json` and
+`shared/opencode-wait-vectors.json` in Vitest and XCTest. Kiro's measured nested
+record shape and public-text/timestamp projection are pinned by
+`shared/kiro-observation-vectors.json`; it includes a Reasoning exclusion.
+These fixtures cover existing integration contracts without introducing an
+all-agent abstraction. OpenCode Swift hooks and SSE reuse one wait reducer;
+SSE owns only rows not claimed by hooks, and disconnect removes only its rows.
+The pending-request cap is `OPENCODE_PENDING_REQUEST_LIMIT` in
+`shared/src/session-utils.ts`, generated by `generate-observed-agent-rules.mjs`
+and covered by its existing byte-drift gate.
+
+Known hand-mirror debt: `shared/src/creature-layout.ts` band layout (3-way comment-discipline mirror, test parity only) — fold it into a generator when next touched; its `spreadFloorResidents` floor-spacing pass is pinned by `shared/floor-spacing-vectors.json` in all three suites. The aquarium name-tag resolver (`resolveResidentLabels` in Kotlin, `ResidentLabelLayout.resolve` in Swift) is a two-way hand mirror of one algorithm; its thresholds and opacities are generated (`TERRARIUM_RULES.nativeLabel`) and its behaviour is pinned by `shared/resident-label-vectors.json`, replayed by both suites. The idle-gap
+constant in `ApmeCollector` stays grep-pinned by `apme-display-rules-sync.test.ts`.
+`shared/src/timeline-icons.ts` is a 3-way hand mirror too (Apple `TimelineStripView.swift`, Android `TimelineIcons.kt`), with per-surface tests rather than a drift gate — and it has
+demonstrably diverged: on 2026-09-12 the Android mirror was found missing `error` from the `isRotatingEntry` completion list (so a failed turn kept spinning next to the error row that
+explained it) and missing the rotating-glyph swap entirely (so `task_start` rotated the static checklist). Both had been correct in TS and Swift for some time. Parallel tests do not
+catch an omission that exists in every surface's test alike; fold this into a generator when next touched.
+
 ## Terrarium rules SSOT (cross-platform behavior invariants)
 
-`shared/src/terrarium-rules.ts` is the single source of truth for terrarium **rules** — numeric invariants every rendering surface must agree on regardless of its own world model: the OpenClaw crayfish's unified dashboard home (0.78, 0.64), the idle floor-rester clear anchor (`clearMaxX` 0.62), the dashboard floor-rest strip, and the Antigravity idle-hover strip. Surface-specific *tuning* (per-board Y offsets, swim lanes, sprite sizes, TUI/Pixoo local homes) stays local to each platform.
+`shared/src/terrarium-rules.ts` is the single source of truth for terrarium **rules** — numeric invariants every rendering surface must agree on regardless of its own world model: the OpenClaw crayfish's unified dashboard home (0.78, 0.64), the idle floor-rester clear anchor (`clearMaxX` 0.62), the dashboard floor-rest strip, the Antigravity idle-hover strip, and the native Apple/Android camera field of view, viewing-mode distance/response, underwater depth fade, and native working-motion/activity-bar rhythm. Surface-specific *tuning* (per-board Y offsets, swim lanes, sprite sizes, TUI/Pixoo local homes) stays local to each platform.
 
 `pnpm generate-terrarium-rules` emits three mirrors — `apple/AgentDeck/Terrarium/TerrariumRules.generated.swift`, `android/.../terrarium/TerrariumRules.generated.kt`, `esp32/src/ui/terrarium/terrarium_rules_generated.h` — and TypeScript surfaces (TUI, Pixoo) import `TERRARIUM_RULES` from `@agentdeck/shared` directly. A vitest gate (`shared/src/__tests__/terrarium-rules.test.ts`) re-emits from source and diffs against the files on disk, so hand edits or a skipped regeneration fail `pnpm test`; the same file asserts the clearance invariant itself (`clearMaxX + widest-rester/2 < crayfish claw left edge`, the 610fe15c bug class).
 
@@ -139,9 +205,12 @@ That surface belongs to the Kiro IDE agent.
 
 Two properties follow from polling rather than being pushed, and both are
 intended behaviour that surfaces must not paper over: a Kiro session **appears
-seconds late** (`SCAN_INTERVAL_MS`), and it is **always reported `idle`**,
-because a transcript gains its assistant record only once the reply has landed
-and reporting `processing` would be inventing a state.
+seconds late** (`SCAN_INTERVAL_MS`), and state detail depends on the store.
+Nested v3 transcripts carry explicit `turn_start` / `turn_end` records, which
+Swift uses for processing/idle. Legacy Swift transcripts remain idle when no
+explicit boundary exists. Node retains its existing store-specific inference.
+File recency never proves a completed turn. Swift shares one bounded snapshot
+between session rows and timeline while the granted-folder scope is open.
 
 **Rendering rule for any agent a surface predates.** Every surface's agent
 handling is an allow-list, never a deny-list. A bucket spelled as "not these

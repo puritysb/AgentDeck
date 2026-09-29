@@ -1,3 +1,5 @@
+import { claudeWeeklyReadings, nextClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
+import { selectedLunaReserve } from '@agentdeck/shared';
 /**
  * SessionSlotManager — central state machine for v4 dynamic session-per-button layout.
  *
@@ -5,8 +7,8 @@
  * - List View: each button shows one session (OC first, then CC by startedAt)
  * - Detail View: button 1=BACK, button 2=session info, buttons 3-7=options, button 8=ESC/STOP
  */
-import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits, ScopedUsageLimit } from '@agentdeck/shared';
-import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, formatScopedLabel, scopedLimitClaimsUsageKey, codexWindowsBeside, usageWindowKind, usageWindowLabel, codexUsageFootnote, summarizeQuestionForKey, approvalReasonHead, UI } from '@agentdeck/shared';
+import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits, CodexLunaReserve, ScopedUsageLimit } from '@agentdeck/shared';
+import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, formatScopedLabel, scopedLimitClaimsUsageKey, codexWindowsBeside, usageStripRank, usageWindowKind, usageWindowLabel, codexUsageFootnote, summarizeQuestionForKey, approvalReasonHead, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
 import { stateFromSession } from './focused-detail-state.js';
@@ -24,7 +26,7 @@ interface CodexWindowSnapshot {
 
 /** Per-agent water-tank usage gauge spec for the pinned bottom-row tiles. */
 export interface UsageGauge {
-  agent: 'claude' | 'codex';
+  agent: 'claude' | 'codex' | 'zai';
   window: '5h' | '7d';
   label: string;
   percent: number;
@@ -37,14 +39,17 @@ export interface UsageGauge {
   /** Scoped per-model cap that isn't the binding one — drawn muted rather than
    *  on the critical ramp (mirrors the D200H scoped tile and the E2 encoder). */
   inactive?: boolean;
+  /** True for the per-model scoped cap. It renders as a Claude gauge, so this is
+   *  the only thing that tells it apart from a 5H/7D window when seating the
+   *  strip in `USAGE_STRIP_ORDER`. */
+  scoped?: boolean;
+  luna?: CodexLunaReserve;
+  weeklyPair?: [UsageGauge, UsageGauge];
 }
-
-/** Max bottom-row keys usage may claim: Claude 5h/7d + Codex 5h/7d (or, when
- *  Codex reports nothing, the scoped cap standing in for it). */
-const MAX_USAGE_RESERVE = 4;
 
 const CLAUDE_USAGE_COLOR = Brand.claudeCode;
 const CODEX_USAGE_COLOR = Brand.codex;
+const ZAI_USAGE_COLOR = Brand.zai;
 
 export interface PresetAction {
   label: string;
@@ -74,10 +79,13 @@ export interface SessionSlotConfig {
   usagePercent?: number;
   usageColor?: string;
   usageKnown?: boolean;
-  usageAgent?: 'claude' | 'codex';
+  usageAgent?: 'claude' | 'codex' | 'zai';
   usageWindow?: '5h' | '7d';
   usageResetsAt?: string;
   usageFootnote?: string;
+  usageLuna?: CodexLunaReserve;
+  usageWeekly?: UsageGauge[];
+  usageWeeklyCycle?: boolean;
   /** Scoped cap that isn't the binding one — muted ramp, never critical. */
   usageInactive?: boolean;
 }
@@ -87,6 +95,7 @@ export interface DeckLayout {
   rows: number;
   keyCount: number;
   family?: string;
+  deviceId?: string;
 }
 
 // ---- OpenClaw preset SVG icons (144x144 button canvas) ----
@@ -248,7 +257,7 @@ function normalizeLayout(layout?: Partial<DeckLayout>): DeckLayout {
   const columns = Math.max(1, Math.floor(layout?.columns ?? DEFAULT_LAYOUT.columns));
   const rows = Math.max(1, Math.floor(layout?.rows ?? DEFAULT_LAYOUT.rows));
   const keyCount = Math.max(1, Math.floor(layout?.keyCount ?? columns * rows));
-  return { columns, rows, keyCount, family: layout?.family ?? DEFAULT_LAYOUT.family };
+  return { columns, rows, keyCount, deviceId: layout?.deviceId, family: layout?.family ?? DEFAULT_LAYOUT.family };
 }
 
 export class SessionSlotManager {
@@ -273,17 +282,34 @@ export class SessionSlotManager {
   private _sevenDayKnown = false;
   private _codexPrimary: CodexWindowSnapshot | null = null;
   private _codexSecondary: CodexWindowSnapshot | null = null;
+  // z.ai GLM Coding Plan windows (#348) — same snapshot grammar as Codex.
+  private _zaiPrimary: CodexWindowSnapshot | null = null;
+  private _zaiSecondary: CodexWindowSnapshot | null = null;
+  private _zaiSecondaryIsMcp = false;
+  private _codexLunaReserve: CodexLunaReserve | undefined;
   /** When the Codex snapshot behind both windows was written (see
    *  `CodexRateLimits.capturedAt`). Freshness is derived per repaint from this,
    *  never stored as a boolean — a stored flag would freeze exactly like the
    *  percent it is meant to qualify. */
   private _codexCapturedAt: string | undefined;
-  /** Worst per-model scoped cap (e.g. the weekly "Fable" limit). Competes with
-   *  Codex for a reserved key rather than adding one — see `usageGauges`. */
+  /** Worst per-model scoped cap, sharing the Claude weekly key. */
   private _worstScoped: ScopedUsageLimit | undefined;
   // Page cursor for the (Phase-1-dormant) gauge paging when present gauges
-  // exceed MAX_USAGE_RESERVE. Never advances with ≤4 gauges.
-  private _usagePage = 0;
+  // exceed the current device bottom-row capacity.
+  private readonly weeklyModes = new Map<string, ClaudeWeeklyMode>();
+  setWeeklyMode(mode: ClaudeWeeklyMode, layout: DeckLayout = DEFAULT_LAYOUT): void {
+    this.weeklyModes.set(this.usagePageKey(layout), mode);
+  }
+  cycleWeeklyMode(layout: DeckLayout = DEFAULT_LAYOUT): ClaudeWeeklyMode {
+    const mode = nextClaudeWeeklyMode(this.weeklyModes.get(this.usagePageKey(layout)));
+    this.setWeeklyMode(mode, layout);
+    return mode;
+  }
+  private readonly usagePages = new Map<string, number>();
+
+  private usagePageKey(layout: DeckLayout): string {
+    return `${layout.deviceId ?? layout.family}:${layout.columns}:${layout.rows}`;
+  }
 
   // Detail view state (from the focused session's bridge)
   private _detailState = State.DISCONNECTED;
@@ -397,6 +423,7 @@ export class SessionSlotManager {
     sevenDayResetsAt?: string;
     usageStale?: boolean;
     codexRateLimits?: CodexRateLimits;
+    zaiRateLimits?: import('@agentdeck/shared').ZaiRateLimits;
     scopedLimits?: ScopedUsageLimit[];
   }): void {
     const stale = usage.usageStale === true;
@@ -410,6 +437,15 @@ export class SessionSlotManager {
     this._fiveHourKnown = !stale && usage.fiveHourPercent != null;
     this._sevenDayKnown = !stale && usage.sevenDayPercent != null;
 
+    const zr = usage.zaiRateLimits;
+    this._zaiPrimary = zr?.primary
+      ? { percent: zr.primary.usedPercent, resetsAt: zr.primary.resetsAt, windowMinutes: zr.primary.windowMinutes, stale: zr.primary.stale === true }
+      : null;
+    this._zaiSecondary = zr?.secondary
+      ? { percent: zr.secondary.usedPercent, resetsAt: zr.secondary.resetsAt, windowMinutes: zr.secondary.windowMinutes, stale: zr.secondary.stale === true }
+      : null;
+    this._zaiSecondaryIsMcp = zr?.secondary?.quantity === 'mcp';
+
     const cx = usage.codexRateLimits;
     this._codexPrimary = cx?.primary
       ? { percent: cx.primary.usedPercent, resetsAt: cx.primary.resetsAt, windowMinutes: cx.primary.windowMinutes, stale: cx.primary.stale === true }
@@ -417,6 +453,7 @@ export class SessionSlotManager {
     this._codexSecondary = cx?.secondary
       ? { percent: cx.secondary.usedPercent, resetsAt: cx.secondary.resetsAt, windowMinutes: cx.secondary.windowMinutes, stale: cx.secondary.stale === true }
       : null;
+    this._codexLunaReserve = selectedLunaReserve(cx);
     this._codexCapturedAt = cx?.capturedAt;
     // Worst-first already (active desc, then percent desc) — only [0] can ever
     // reach a key, so the rest is dead work here. Paging through them lives on
@@ -424,36 +461,30 @@ export class SessionSlotManager {
     this._worstScoped = stale ? undefined : usage.scopedLimits?.[0];
   }
 
-  /**
-   * Present water-tank gauges in left-to-right (then bottom-row) display order:
-   * Claude 5h, Claude 7d, then Codex — with the worst per-model scoped cap
-   * competing for one of Codex's keys (see below). Hide-if-absent throughout: an
-   * agent with no live quota contributes nothing, so it claims no keys.
-   */
+  /** Known windows in strip order. Claude 7D and its worst scoped cap share
+   * one logical key even when the bottom row has spare capacity. */
   private usageGauges(): UsageGauge[] {
     const gauges: UsageGauge[] = [];
-    if (this._fiveHourKnown || this._sevenDayKnown) {
+    // Per WINDOW, not per account. The API reports 5h and 7d independently, so a
+    // subscription can carry one and not the other; pushing the pair whenever
+    // EITHER was known reserved a key for a window that does not exist and drew
+    // it as "—", which is the same "reserve no key" rule `updateUsage` states.
+    if (this._fiveHourKnown) {
       gauges.push({
         agent: 'claude', window: '5h', label: '5H',
         percent: this._fiveHourPercent, resetsAt: this._fiveHourResetsAt,
-        known: this._fiveHourKnown, color: CLAUDE_USAGE_COLOR,
+        known: true, color: CLAUDE_USAGE_COLOR,
       });
+    }
+    if (this._sevenDayKnown) {
       gauges.push({
         agent: 'claude', window: '7d', label: '7D',
         percent: this._sevenDayPercent, resetsAt: this._sevenDayResetsAt,
-        known: this._sevenDayKnown, color: CLAUDE_USAGE_COLOR,
+        known: true, color: CLAUDE_USAGE_COLOR,
       });
     }
-    // The worst per-model scoped cap (e.g. the weekly "Fable" limit) is otherwise
-    // keypad-invisible: it rides the E2 encoder and the opt-in `limit-key`,
-    // neither of which a classic Stream Deck / XL user necessarily has. Whether it
-    // earns one of the reserved keys is `scopedLimitClaimsUsageKey`, and what Codex
-    // keeps once it has is `codexWindowsBeside` — both shared with the D200H strip
-    // so the two decks can't disagree about which limit the user is looking at. An
-    // ACTIVE cap is the binding one, goes ahead of Codex and TAKES one of its keys
-    // (the reserve is carved out of session keys, so a replacement must not
-    // quietly become an addition); an inactive one only lands on a key Codex left
-    // spare, which is the ordinary state of a free ChatGPT tier.
+    // Retain both weekly readings as data, then select the per-device view
+    // when rendering. The selected mode never changes strip capacity.
     const allCodexWindows = [this._codexPrimary, this._codexSecondary]
       .filter((w): w is CodexWindowSnapshot => w != null);
     const scoped = this._worstScoped;
@@ -466,17 +497,30 @@ export class SessionSlotManager {
             percent: scoped.percent, resetsAt: scoped.resetsAt,
             known: true, color: CLAUDE_USAGE_COLOR,
             // Missing `active` (relayed/legacy) → NOT binding, so an inactive cap
-            // renders muted rather than latching the critical ramp (CLAUDE.md).
+            // renders muted rather than latching the critical ramp (AGENTS.md).
             inactive: scoped.active !== true,
+            scoped: true,
           }
         : undefined;
-    if (scopedGauge && scoped?.active === true) gauges.push(scopedGauge);
+    if (scopedGauge) {
+      const weekly = gauges.find(g => g.agent === 'claude' && g.window === '7d');
+      if (weekly) weekly.weeklyPair = [{ ...weekly }, scopedGauge];
+      else gauges.push(scopedGauge);
+    }
     // Codex windows carry the same short "5H"/"7D" labels as Claude — the agent
     // is conveyed by the gauge's brand dot, not a "CX " prefix. Label each
     // present window by its own length (windowMinutes), never by slot: Codex now
     // sometimes reports the weekly (10080-min) window as `primary` with
     // `secondary` null, so a slot-based "7D = secondary" would drop the gauge.
-    for (const w of codexWindows) {
+    if (this._codexLunaReserve) {
+      gauges.push({
+        agent: 'codex', window: '5h', label: 'LUNA',
+        percent: this._codexLunaReserve.usedPercent,
+        resetsAt: this._codexLunaReserve.regularResetsAt ?? this._codexLunaReserve.resetsAt,
+        known: true, color: CODEX_USAGE_COLOR, luna: this._codexLunaReserve,
+      });
+    }
+    for (const w of this._codexLunaReserve ? [] : codexWindows) {
       gauges.push({
         agent: 'codex', window: usageWindowKind(w.windowMinutes), label: usageWindowLabel(w.windowMinutes) || '5H',
         percent: w.percent, resetsAt: w.resetsAt,
@@ -484,8 +528,33 @@ export class SessionSlotManager {
         footnote: codexUsageFootnote(w, this._codexCapturedAt)?.text,
       });
     }
-    if (scopedGauge && scoped?.active !== true) gauges.push(scopedGauge);
+
+    // z.ai GLM Coding Plan (#348) — same per-window grammar. The secondary
+    // window is labeled by its QUANTITY ("MCP" for tool calls), never a length,
+    // so it can never read as token usage. Agent identity is 'zai' — the
+    // renderer keys the brand mark off this field, and 'codex' dressed the
+    // z.ai gauges in Codex branding (the SD+ encoder got it right; the keypad
+    // didn't).
+    for (const w of [this._zaiPrimary, this._zaiSecondary]) {
+      if (!w) continue;
+      gauges.push({
+        agent: 'zai', window: usageWindowKind(w.windowMinutes),
+        label: w === this._zaiSecondary && this._zaiSecondaryIsMcp ? 'MCP' : (usageWindowLabel(w.windowMinutes) || '5H'),
+        percent: w.percent, resetsAt: w.resetsAt,
+        known: true, color: ZAI_USAGE_COLOR,
+      });
+    }
     return gauges;
+  }
+
+  /** Stable provider order; an inactive cap never moves the weekly key. */
+  private usageGaugesForDisplay(gauges: UsageGauge[]): UsageGauge[] {
+    const seat = (g: UsageGauge): number =>
+      usageStripRank(g.scoped === true ? 'scoped' : g.agent === 'codex' ? 'codex' : g.agent === 'zai' ? 'zai' : 'claude');
+    return gauges
+      .map((g, i) => ({ g, i }))
+      .sort((a, b) => seat(a.g) - seat(b.g) || a.i - b.i)
+      .map(({ g }) => g);
   }
 
   /**
@@ -493,20 +562,22 @@ export class SessionSlotManager {
    * Deck (15 keys) and XL (32) carry usage here (no encoder LCD); the Plus
    * family (Stream Deck+ 4-dial and Stream Deck + XL 6-dial, see isPlusFamily)
    * shows usage on its dials instead, and the Mini (<6 keys) is too small to
-   * spare any. Capped at MAX_USAGE_RESERVE.
+   * spare any. Use the full physical bottom row.
    */
   private usageReserve(layout: DeckLayout): number {
     if (isPlusFamily(layout.family) || layout.keyCount < 6) return 0;
-    return Math.min(this.usageGauges().length, MAX_USAGE_RESERVE);
+    return Math.min(this.usageGauges().length, layout.columns, layout.keyCount - 1);
   }
 
-  /** Cycle the gauge page (only meaningful when gauges overflow MAX_USAGE_RESERVE). */
-  cycleUsagePage(): void {
+  /** Cycle the usage strip for this deck layout when its bottom row overflows. */
+  cycleUsagePage(layout: DeckLayout = DEFAULT_LAYOUT): void {
     const gauges = this.usageGauges();
-    if (gauges.length <= MAX_USAGE_RESERVE) { this._usagePage = 0; return; }
-    const perPage = MAX_USAGE_RESERVE - 1;
+    const capacity = this.usageReserve(layout);
+    const key = this.usagePageKey(layout);
+    if (capacity < 2 || gauges.length <= capacity) { this.usagePages.delete(key); return; }
+    const perPage = capacity - 1;
     const pages = Math.max(1, Math.ceil(gauges.length / perPage));
-    this._usagePage = (this._usagePage + 1) % pages;
+    this.usagePages.set(key, ((this.usagePages.get(key) ?? 0) + 1) % pages);
   }
 
   // ---- Detail view state updates ----
@@ -621,7 +692,7 @@ export class SessionSlotManager {
 
   /** Handle button press. Returns action to take. */
   handleSlotPress(slot: number, layout?: DeckLayout): {
-    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'none';
+    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'cycle-weekly-mode' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'none';
     sessionId?: string;
     sessionPort?: number;
     optionIndex?: number;
@@ -685,7 +756,7 @@ export class SessionSlotManager {
         return { action: 'next-page' };
 
       case 'usage':
-        return { action: 'refresh-usage' };
+        return { action: config.usageWeeklyCycle ? 'cycle-weekly-mode' : 'refresh-usage' };
 
       case 'usage-page':
         return { action: 'cycle-usage-page' };
@@ -758,22 +829,27 @@ export class SessionSlotManager {
 
     // Pin water-tank quota gauges to the last keys (every page; usage is global).
     // The reserved block is contiguous at the bottom-right; present gauges fill
-    // it left→right in display order (Claude 5h/7d, then Codex 5h/7d).
+    // it left→right in `USAGE_STRIP_ORDER` (Claude 5h/7d, the scoped per-model
+    // cap, then Codex).
     if (usageReserve > 0) {
       const blockStart = layout.keyCount - usageReserve;
       if (slot >= blockStart) {
         const gauges = this.usageGauges();
         const idx = slot - blockStart;
         const overflow = gauges.length > usageReserve;
-        // Dormant in Phase 1 (≤4 gauges never overflow 4 reserved keys): when a
-        // future 5th gauge appears, the last reserved key becomes a page toggle.
-        if (overflow && idx === usageReserve - 1) {
-          const perPage = usageReserve - 1;
-          const pages = Math.max(1, Math.ceil(gauges.length / perPage));
-          return { type: 'usage-page', label: `${(this._usagePage % pages) + 1}/${pages}` };
-        }
         const perPage = overflow ? usageReserve - 1 : usageReserve;
-        const g = gauges[this._usagePage * perPage + idx];
+        const pages = Math.max(1, Math.ceil(gauges.length / perPage));
+        const pageIndex = overflow ? (this.usagePages.get(this.usagePageKey(layout)) ?? 0) % pages : 0;
+        // Reserve a page control only when the actual bottom row overflows.
+        if (overflow && idx === usageReserve - 1) {
+          return { type: 'usage-page', label: `${pageIndex + 1}/${pages}` };
+        }
+        // Page by RANK, seat by `USAGE_STRIP_ORDER`: the page is chosen from the
+        // ranked list, then reordered so the tiles never move between renders.
+        const page = this.usageGaugesForDisplay(
+          gauges.slice(pageIndex * perPage, (pageIndex + 1) * perPage),
+        );
+        const g = page[idx];
         if (g) {
           return {
             type: 'usage',
@@ -786,6 +862,9 @@ export class SessionSlotManager {
             usageResetsAt: g.resetsAt,
             usageFootnote: g.footnote,
             usageInactive: g.inactive === true,
+            usageLuna: g.luna,
+            usageWeeklyCycle: g.weeklyPair != null,
+            usageWeekly: g.weeklyPair ? claudeWeeklyReadings(g.weeklyPair[0], g.weeklyPair[1], this.weeklyModes.get(this.usagePageKey(layout))) : undefined,
           };
         }
         return { type: 'empty' };

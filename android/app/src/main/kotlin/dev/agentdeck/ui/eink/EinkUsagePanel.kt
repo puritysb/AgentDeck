@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.agentdeck.net.UsageUpdate
-import dev.agentdeck.util.codexLimitRows
+import dev.agentdeck.util.providerLimitRows
 
 @Composable
 fun EinkUsagePanel(
@@ -46,7 +46,7 @@ fun EinkUsagePanel(
         // Codex (ChatGPT) rolling-window usage — own per-window stale flag. Keep
         // stale windows (marked "*") so an idle Codex 7d row doesn't vanish; the
         // brand mark identifies the provider (labels stay 5h/7d).
-        codexLimitRows(usage.codexRateLimits).forEach { row ->
+        providerLimitRows(usage.codexRateLimits, usage.zaiRateLimits).forEach { row ->
             EinkTextGauge(label = row.label, percent = row.percent, agentType = row.agentType, stale = row.stale || row.footnote != null)
         }
 

@@ -20,7 +20,7 @@
 // string algorithms (code-point index math, fence state, tie ordering) that
 // two hand-written copies drift on in exactly the places a constants gate
 // cannot see. This replaces the recorded hand-mirror debt for
-// ApmeCollector.deriveTaskTitle (CLAUDE.md: "fold into a generator when next
+// ApmeCollector.deriveTaskTitle (AGENTS.md: "fold into a generator when next
 // touched"). Behavior stays pinned by the shared vector files
 // (shared/task-title-vectors.json, shared/action-fold-vectors.json,
 // shared/task-gradeability-vectors.json), which both test suites replay.

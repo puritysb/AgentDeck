@@ -1,9 +1,12 @@
 package dev.agentdeck
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -71,6 +74,13 @@ class MainActivity : ComponentActivity() {
         appliedAllowUnsupported = startup.allowUnsupportedDevice
         deviceProfile = DeviceProfile.detect(this, startup.panelOverride)
         DeviceProfileHolder.install(deviceProfile)
+        if (!deviceProfile.isEink) {
+            // LCD dashboards use dark water even when the system theme is light.
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = false
+                isAppearanceLightNavigationBars = false
+            }
+        }
 
         // Unsupported devices get guidance instead of a broken layout, unless
         // the user has explicitly overruled that.
@@ -168,6 +178,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            val dashboardType by displayPrefs.dashboardTypeFlow.collectAsState(initial = dev.agentdeck.data.DashboardType.Default)
             AgentDeckTheme(profile = deviceProfile) {
                 when {
                     !showDashboard -> UnsupportedDeviceScreen(
@@ -182,6 +193,9 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                     deviceProfile.isEink -> EinkMonitorScreen(stateHolder, connection, displayPrefs)
+                    dashboardType == dev.agentdeck.data.DashboardType.Paper -> Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                        EinkMonitorScreen(stateHolder, connection, displayPrefs)
+                    }
                     else -> TabletDashboard(stateHolder, connection, displayPrefs)
                 }
             }

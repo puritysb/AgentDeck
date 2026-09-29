@@ -59,6 +59,93 @@ describe('BridgeClient — port provider', () => {
     if (client) client.disconnect();
   });
 
+  it('counts a real pong as activity and clears a stale connection', async () => {
+    const server = await createTestServer();
+    try {
+      client = new BridgeClient();
+      client.connect(server.port);
+      await vi.waitFor(() => expect(client.isConnected()).toBe(true));
+      const internal = client as any;
+      internal._lastActivityAt = 0;
+      internal.setStale(true);
+      internal.ws.ping(); // the real ws server replies automatically
+      await vi.waitFor(() => expect(client.isStale()).toBe(false));
+      expect(internal._lastActivityAt).toBeGreaterThan(0);
+      expect(client.isConnected()).toBe(true);
+    } finally {
+      client.disconnect();
+      await server.close();
+    }
+  });
+
+  it('retries an in-flight connection without leaving the old generation stuck', async () => {
+    const server = await createTestServer();
+    try {
+      client = new BridgeClient();
+      client.connect(server.port);
+      client.connect(server.port); // first socket is still CONNECTING
+      await vi.waitFor(() => expect(client.isConnected()).toBe(true));
+      expect(client.getPort()).toBe(server.port);
+    } finally {
+      client.disconnect();
+      await server.close();
+    }
+  });
+
+  it('does not reconnect after an explicit disconnect', async () => {
+    const server = await createTestServer();
+    try {
+      client = new BridgeClient();
+      const connected = vi.fn();
+      client.on('connected', connected);
+      client.connect(server.port);
+      await vi.waitFor(() => expect(client.isConnected()).toBe(true));
+      client.disconnect();
+      await wait(1200); // crosses the first reconnect interval
+      expect(client.isConnected()).toBe(false);
+      expect(connected).toHaveBeenCalledTimes(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('bounds a silent handshake and advances to another daemon candidate', async () => {
+    const silent = createServer();
+    const sockets = new Set<import('net').Socket>();
+    silent.on('connection', socket => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+    });
+    silent.on('upgrade', () => {}); // accept TCP but never complete WebSocket
+    await new Promise<void>(resolve => silent.listen(0, '127.0.0.1', resolve));
+    const port = (silent.address() as import('net').AddressInfo).port;
+    const healthy = await createTestServer();
+    // Exercise the bound with a short injected timeout; the production value
+    // is the constructor default and would cost 5s of real time here.
+    const handshakeTimeoutMs = 300;
+    try {
+      client = new BridgeClient(handshakeTimeoutMs);
+      let failed = false;
+      const failures: number[] = [];
+      client.on('connection-attempt-failed', failedPort => {
+        failures.push(failedPort);
+        failed = true;
+      });
+      client.setPortProvider(() => failed ? healthy.port : port);
+      client.connect();
+      await vi.waitFor(() => expect(client.isConnected()).toBe(true), {
+        timeout: handshakeTimeoutMs + 3000,
+      });
+      expect(failures).toEqual([port]);
+      expect(client.getPort()).toBe(healthy.port);
+    } finally {
+      client.disconnect();
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>(resolve => silent.close(() => resolve()));
+      await healthy.close();
+    }
+  });
+
   it('skips connect when provider returns null', async () => {
     client = new BridgeClient();
     const provider = vi.fn().mockReturnValue(null);

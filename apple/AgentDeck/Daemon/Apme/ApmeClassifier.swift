@@ -130,39 +130,37 @@ enum ApmeClassifier {
         return (signals, category)
     }
 
-    // MARK: - LLM-assisted classification (Phase 2)
+    // MARK: - LLM-assisted classification (#299)
     //
-    // Mirrors bridge/src/apme/classifier.ts `classifyWithLlm` + `classifyRunSmart`.
-    // Rule-based runs first (cheap + deterministic). If rules give .unknown
-    // AND the run has a prompt, we fall back to the configured judge backend
-    // for a single-shot category classification.
+    // Mirrors bridge/src/apme/classifier.ts `classifyWithLlm`. Rule-based
+    // runs first (cheap + deterministic). If rules give .unknown AND the run
+    // has a prompt, we walk `ApmeClassifierRules.backendOrder` — the
+    // generated mirror of shared/src/apme-classifier-rules.ts — for a
+    // single-shot category classification.
     //
-    // Cost posture per feedback_cost_sensitive_defaults memory: the default
-    // backend is Foundation Models, so fallback is on-device and free. MLX
-    // or API backends only fire when the user explicitly picks them.
+    // This used to route through `callConfiguredJudge`, i.e. WHATEVER judge
+    // backend the user configured for eval scoring — including the paid
+    // `api`/`openai` legs, with the judge's own 800-token/60s budget. A user
+    // who set `judge.backend: "api"` was billed per classification, for a
+    // call that decides nothing more than which of ten labels a task gets,
+    // on Swift only (Node's classifier always called MLX-or-rules). The
+    // backend order below is local-only and shared byte-for-byte with Node.
 
-    private static let llmClassifyPrompt = """
-        You are a task classifier for coding agent sessions.
-        Given the user's prompt and tool usage summary, classify this task into exactly ONE category.
-
-        Categories:
-        - planning: architecture design, plan mode, thinking about approach
-        - research: searching code, reading docs, web search, investigating
-        - coding: writing/editing code, creating files, implementing features
-        - debugging: fixing bugs, running tests, investigating failures
-        - refactoring: restructuring existing code without changing behavior
-        - review: reading code for understanding, code review
-        - ops: git operations, deployments, config changes, CI/CD
-        - conversation: quick question, chat, no tools used
-        - multi_agent: delegating to sub-agents
-
-        Respond with ONLY the category name, nothing else.
-        """
-
-    /// Classify a run using the LLM judge backend. Returns rule-based
-    /// fallback when the prompt is too short or the judge is unavailable.
-    /// Cost: $0 on the default (Foundation Models) backend.
-    static func classifyWithLlm(taskPrompt: String, signals: TaskSignals) async -> TaskCategory {
+    /// Classify a run using the LLM-assist backend order. Returns the
+    /// rule-based fallback when the prompt is too short or every backend in
+    /// `ApmeClassifierRules.backendOrder` is unavailable, unreachable, or
+    /// answers outside the label vocabulary.
+    ///
+    /// `config` is a parameter (not a bare `ApmeSettings.load()` inside the
+    /// body) for the same reason `classifyWithBackend`'s is: a test must be
+    /// able to pin the MLX model/endpoint without depending on this
+    /// machine's real settings.json or its real local MLX server — without
+    /// this seam, a test exercising the MLX leg with no explicit model
+    /// silently round-trips a real `/v1/models` probe against whatever
+    /// happens to be listening on the default endpoint.
+    static func classifyWithLlm(
+        taskPrompt: String, signals: TaskSignals, config: ApmeConfig = ApmeSettings.load()
+    ) async -> TaskCategory {
         let trimmed = taskPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.count < 5 { return classify(signals) }
 
@@ -172,70 +170,73 @@ enum ApmeClassifier {
             .map { "\($0.key)×\($0.value)" }
             .joined(separator: ", ")
 
-        let promptSlice = String(taskPrompt.prefix(500))
-        let userMsg = """
-            Prompt: "\(promptSlice)"
-            Tools used: \(toolSummary.isEmpty ? "none" : toolSummary) (\(signals.totalToolCalls) total)
-            Files modified: \(signals.filesModified), created: \(signals.filesCreated)
-            Duration: \(signals.sessionDurationSec)s, turns: \(signals.turnCount)
-            """
+        let userMsg = ApmeClassifierRules.buildUserMessage(
+            taskPrompt: String(taskPrompt.prefix(500)),
+            toolSummary: toolSummary,
+            totalToolCalls: signals.totalToolCalls,
+            filesModified: signals.filesModified,
+            filesCreated: signals.filesCreated,
+            sessionDurationSec: signals.sessionDurationSec,
+            turnCount: signals.turnCount
+        )
 
-        // Use whatever judge backend the user configured. The judge module's
-        // interface is "pass a full prompt, get a text response" — we wrap
-        // the system prompt + user message into one text blob to stay compatible
-        // with all backends without a chat-completions abstraction.
-        let fullPrompt = llmClassifyPrompt + "\n\n" + userMsg
-        guard let response = await callConfiguredJudge(prompt: fullPrompt) else {
-            return classify(signals)
-        }
-
-        // Accept either the bare category name or any response containing it.
-        // Normalize: lowercase, strip non-alpha-underscore.
-        let normalized = response
-            .lowercased()
-            .components(separatedBy: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz_").inverted)
-            .joined()
-
-        let allCategories = TaskCategory.allCases.map { $0.rawValue }
-        if let exact = allCategories.first(where: { $0 == normalized }),
-           let cat = TaskCategory(rawValue: exact) {
-            return cat
-        }
-        // Partial match — models often wrap the answer in prose even
-        // when told not to.
-        if let partial = allCategories.first(where: { normalized.contains($0) }),
-           let cat = TaskCategory(rawValue: partial) {
-            return cat
+        for backend in ApmeClassifierRules.backendOrder {
+            if backend == "rules" { break }
+            if let raw = await classifyWithBackend(backend, prompt: userMsg, config: config),
+               let label = ApmeClassifierRules.normalizeLabel(raw),
+               let category = TaskCategory(rawValue: label) {
+                return category
+            }
         }
         return classify(signals)
     }
 
-    /// Invoke the configured judge backend for a one-shot classification.
-    /// Routes through ApmeJudgeFoundationModels by default; other backends
-    /// (MLX, API) are reached via the same dispatch path ApmeRunner uses
-    /// for eval scoring, keeping the classifier/eval backend choice in sync.
-    private static func callConfiguredJudge(prompt: String) async -> String? {
-        let config = ApmeSettings.load()
-        switch config.judge.backend {
-        case .foundationModels:
+    /// Dispatch ONE entry of `ApmeClassifierRules.backendOrder`. Deliberately
+    /// a closed switch over that SSOT's own vocabulary — `"api"`/`"openai"`
+    /// are not members of `backendOrder` and therefore cannot be reached
+    /// from here, unlike the `callConfiguredJudge` dispatch this replaces,
+    /// which read whatever judge backend the user configured.
+    ///
+    /// `config` is a parameter (not a `load()` inside the body) so the
+    /// dispatch can be driven in a test without depending on the machine's
+    /// real settings.json.
+    static func classifyWithBackend(_ backend: String, prompt: String, config: ApmeConfig) async -> String? {
+        switch backend {
+        case "foundationModels":
+            if let injected = currentFoundationModelsTransport() { return await injected(prompt) }
             return await ApmeJudgeFoundationModels.judge(prompt: prompt)
-        case .mlx:
-            if let text = await ApmeJudgeMlx.judge(prompt: prompt, config: config.judge) {
-                return text
-            }
-            // Default chain (mlx → on-device FM). Cleared by the loader when
-            // the user named the backend, so an explicit MLX still fails
-            // visibly into the rule-based classifier.
-            guard config.judge.fallbackToFoundationModels else { return nil }
-            return await ApmeJudgeFoundationModels.judge(prompt: prompt)
-        case .openai:
-            return await ApmeJudgeOpenAI.judge(prompt: prompt, config: config.judge)
-        case .api:
-            return await ApmeJudgeApi.judge(prompt: prompt, config: config.judge)
-        case .openclaw:
-            // Not wired in Phase 2 — degrade to Foundation Models.
-            return await ApmeJudgeFoundationModels.judge(prompt: prompt)
+        case "mlx":
+            return await ApmeJudgeMlx.classifyTaskCategory(prompt: prompt, config: config.judge)
+        default:
+            return nil
         }
+    }
+
+    /// Injectable ONLY so the Foundation Models leg of the classifier
+    /// dispatch can be driven in tests, without depending on real on-device
+    /// Apple Intelligence availability (which CI cannot guarantee). Mirrors
+    /// `ApmeJudgeMlx.withTransportForTests`'s closure-restore pattern.
+    typealias FoundationModelsClassifyTransport = @Sendable (String) async -> String?
+    nonisolated(unsafe) private static var injectedFoundationModelsTransport: FoundationModelsClassifyTransport?
+    private static let fmTransportLock = NSLock()
+
+    static func withFoundationModelsTransportForTests<T>(
+        _ transport: @escaping FoundationModelsClassifyTransport,
+        _ body: () async throws -> T
+    ) async rethrows -> T {
+        setFoundationModelsTransport(transport)
+        defer { setFoundationModelsTransport(nil) }
+        return try await body()
+    }
+
+    private static func setFoundationModelsTransport(_ t: FoundationModelsClassifyTransport?) {
+        fmTransportLock.lock(); defer { fmTransportLock.unlock() }
+        injectedFoundationModelsTransport = t
+    }
+
+    private static func currentFoundationModelsTransport() -> FoundationModelsClassifyTransport? {
+        fmTransportLock.lock(); defer { fmTransportLock.unlock() }
+        return injectedFoundationModelsTransport
     }
 
     /// Smart classification: rule-based first, LLM fallback on .unknown.

@@ -19,7 +19,7 @@ import { debug, log } from '../logger.js';
 import type { ApmeStore } from './store.js';
 import type { ApmeConfig, ApmeJudgeConfig, ApmeJudgeBackend } from './settings.js';
 import { loadApmeConfig, shouldJudge, judgeBackendSupported, DEFAULT_APME_CONFIG } from './settings.js';
-import { loadMlxSettings, mlxChatUrl } from '@agentdeck/shared';
+import { loadMlxSettings, mlxChatUrl, mlxBaseUrl, mlxModelPin, resolveSafeMlxModel, guardedMlxFetch } from '@agentdeck/shared';
 import { callFoundationModelsHelper, probeFoundationModelsHelper } from '../foundation-models-helper.js';
 import type { SessionSample, TrajectoryEvent } from '@agentdeck/shared';
 import { runSampleScorers } from './scorers/index.js';
@@ -35,6 +35,17 @@ const TASK_EVAL_MAX_ATTEMPTS = 2;
  *  two attempts, and the drain went from 140 tasks/hour to zero with 289
  *  still pending and not one line in the log (2026-09-03). */
 export const TASK_EVAL_PARK_MS = 30 * 60_000;
+
+/** How far back the backlog drain will look for unjudged tasks.
+ *
+ *  Older rows mostly predate response capture and would be declined anyway —
+ *  measured 2026-09-07, 536 of the 762 unjudged tasks outside this window are
+ *  `no_reply`. The other 226 are gradeable and simply age out, which is why
+ *  `agentdeck apme judge-health` reports them in their own column instead of
+ *  letting the leak stay invisible. Exported because the drain and that
+ *  instrument must use the SAME number: an instrument reporting a window the
+ *  drain does not use measures nothing. */
+export const TASK_JUDGE_DRAIN_WINDOW_MS = 30 * 86_400_000;
 
 export interface EvalJob {
   runId: string;
@@ -286,6 +297,51 @@ export class ApmeRunner {
    *  answering — the local backends answer one prompt at a time. */
   get inFlightTaskEvals(): number {
     return this.runningTaskIds.size;
+  }
+
+  /** The backlog candidates this tick may actually feed, newest first and at
+   *  most `limit` of them.
+   *
+   *  The drain feeds exactly one task per tick, taken from the head of a query
+   *  ordered by `ended_at DESC`, and `enqueueTask` drops a parked task
+   *  silently — so a task that fails every attempt owns that head and every
+   *  tick spends its one slot on it while everything behind it starves.
+   *  Measured 2026-09-06: 156 closed tasks from 2026-08-07..23 unjudged for
+   *  two weeks, while the day's own tasks (83 of 95) were judged normally by
+   *  the live close path. The count is the tell — 217 -> 156 while the head
+   *  was still judgeable, then flat.
+   *
+   *  A truth table over `isTaskParked` rather than a loop at the call site,
+   *  because a call site that forgets the check leaves every test green while
+   *  the backlog stops moving. */
+  pickBacklogTasks<T extends { id: string }>(candidates: readonly T[], limit: number): T[] {
+    const picked: T[] = [];
+    for (const candidate of candidates) {
+      if (picked.length >= limit) break;
+      if (this.isTaskParked(candidate.id)) continue;
+      picked.push(candidate);
+    }
+    // A window in which EVERY candidate is parked is the stall this function
+    // exists to prevent, one level up: the drain silently does nothing again,
+    // and silence is what let the original bug run for two weeks. Say it, at
+    // most once per park period so a wide outage is one line, not one a tick.
+    if (picked.length === 0 && candidates.length > 0) {
+      const now = Date.now();
+      if (now - this.lastAllParkedLogAt >= TASK_EVAL_PARK_MS) {
+        this.lastAllParkedLogAt = now;
+        log(`APME task judge: all ${candidates.length} backlog candidate(s) in the window are parked — the drain is idle until a park expires (latest failure: ${this.lastTaskEvalFailure || 'unknown'})`);
+      }
+    }
+    return picked;
+  }
+
+  private lastAllParkedLogAt = 0;
+
+  /** Whether this task is parked right now, i.e. `enqueueTask` would drop it. */
+  isTaskParked(taskId: string): boolean {
+    const failed = this.taskEvalFailures.get(taskId);
+    if (!failed || failed.attempts < TASK_EVAL_MAX_ATTEMPTS) return false;
+    return Date.now() - failed.lastAt < TASK_EVAL_PARK_MS;
   }
 
   /** One visible line per decade of parks (the 1st, 10th, 100th…): enough to
@@ -868,6 +924,14 @@ export function buildTrajectoryLines(sample: SessionSample, cap = 30): string[] 
   for (const e of events) {
     switch (e.kind) {
       case 'tool': {
+        // A pruned tool call (#302, retention >30 days) has no `input` to
+        // show — say so explicitly rather than rendering `tool X()`, which
+        // reads to a judge as "called with no arguments" and is not what
+        // happened.
+        if (e.pruned) {
+          lines.push(`  tool ${e.name}(…) [payload pruned]${e.status ? ` → ${e.status}` : ''}${e.error ? ` [err: ${String(e.error).slice(0, 80)}]` : ''}`);
+          break;
+        }
         let input = '';
         try { input = e.input == null ? '' : JSON.stringify(e.input).slice(0, 120); } catch { input = ''; }
         lines.push(`  tool ${e.name}(${input})${e.status ? ` → ${e.status}` : ''}${e.error ? ` [err: ${String(e.error).slice(0, 80)}]` : ''}`);
@@ -996,6 +1060,11 @@ export function effectiveJudgeModelTag(cfg: ApmeJudgeConfig): string {
   // Must stay byte-identical with Swift's `ApmeJudgeFoundationModels.judgeModelLabel`
   // so analytics queries aggregate FM evals across the Node and Swift stacks.
   if (cfg.backend === 'foundationModels') return 'foundationModels:apple-intelligence';
+  // The API leg does not necessarily call `cfg.model` — `apiJudgeModel` falls
+  // back when the configured id belongs to another backend. Stamping the
+  // configured value recorded a verdict as produced by a model that never ran.
+  // Mirrored by `ApmeJudgeApi.judgeModelLabel`.
+  if (cfg.backend === 'api') return `api:${apiJudgeModel(cfg)}`;
   return `${cfg.backend}:${cfg.model}`;
 }
 
@@ -1129,7 +1198,12 @@ export async function callJudgeWithMeta(prompt: string, judgeCfg: ApmeJudgeConfi
       const text = await callMlx(prompt, judgeCfg);
       return { text, effectiveBackend: 'mlx', effectiveLabel: effectiveJudgeModelTag(judgeCfg) };
     } catch (err) {
-      debug('APME', `mlx unavailable, fallback to foundationModels: ${String(err)}`);
+      // "unavailable" used to cover truncation too, and those are different
+      // facts: the server answered, its answer was cut at `max_tokens`, and the
+      // verdict is discarded. Both fall through to the FM floor — which is a
+      // measurably weaker judge — so the switch has to be visible in the normal
+      // log, not only under DEBUG, or its rate is unmeasurable.
+      log(`APME judge: mlx produced no verdict (${String(err)}) — falling back to foundationModels`);
       const fmCfg = sanitizeForFoundationModels(judgeCfg);
       const text = await callFoundationModels(prompt, fmCfg);
       return { text, effectiveBackend: 'foundationModels', effectiveLabel: effectiveJudgeModelTag(fmCfg) };
@@ -1201,39 +1275,12 @@ export async function probeJudgeBackend(cfg: ApmeJudgeConfig): Promise<JudgeBack
     if (cfg.backend === 'mlx') {
       const mlx = loadMlxSettings();
       const url = cfg.endpoint ?? mlx.endpoint;
-      const base = url.replace(/\/v1\/chat\/completions$/, '').replace(/\/chat\/completions$/, '');
-      let model: string | undefined;
-      let modelsReachable = false;
-      for (const path of ['/v1/models', '/models']) {
-        const resp = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(5000) }).catch(() => null);
-        if (resp?.ok) {
-          modelsReachable = true;
-          const json = await resp.json().catch(() => ({})) as { data?: Array<{ id?: string }> };
-          model = json.data?.find(m => m.id && !m.id.toLowerCase().includes('nanollava'))?.id;
-          break;
-        }
-      }
-      if (!modelsReachable) {
-        return {
-          backend: 'mlx', status: 'unavailable',
-          reason: `MLX server unreachable at ${base}. Start with \`mlx_lm.server\` or set apme.judge.endpoint.`,
-          endpoint: base, checkedAt,
-        };
-      }
-      // Pinned/configured model overrides catalog discovery — the real call uses
-      // the same fallback chain as callMlx().
-      const pickedModel = mlx.model ?? cfg.model ?? model;
-      if (!pickedModel) {
-        return {
-          backend: 'mlx', status: 'unavailable',
-          reason: `MLX server reachable at ${base} but advertises no chat-capable model (only nanollava-class found). Load a chat model with \`mlx_lm.server --model …\`.`,
-          endpoint: base, checkedAt,
-        };
-      }
+      const base = mlxBaseUrl(url);
+      const pickedModel = await resolveSafeMlxModel(base, mlx.model ?? mlxModelPin(cfg.model));
       // Cheapest possible inference probe: max_tokens=1, temperature=0. The
-      // server is shared with other local agents, so allow one normal request
-      // ahead of the ping instead of marking a healthy serial backend down.
-      const ping = await fetch(`${base}/v1/chat/completions`, {
+      // server is shared with other local agents: the gate skips a busy server
+      // instead of adding another request to its GPU queue.
+      const ping = await guardedMlxFetch(`${base}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1444,29 +1491,153 @@ export async function probeJudgeBackend(cfg: ApmeJudgeConfig): Promise<JudgeBack
   }
 }
 
+/**
+ * OpenAI JSON mode for the local judge legs.
+ *
+ * The judge prompt asks for strict JSON and the runner parses the reply as
+ * JSON, but nothing ever ASKED the server to constrain its output — so a model
+ * that decides to wrap the object in prose produces an unparseable verdict, the
+ * task is retried, fails again, and parks for 30 minutes. Measured on the
+ * author's store: one task (`de9afcc5`) parked six times in three hours and 17
+ * times since 2026-09-03, never judged. `response_format: { type: 'json_object' }`
+ * turns that from a hope into a request the server can honour.
+ *
+ * It is not universal: `apme.judge.endpoint` may be any OpenAI-compatible
+ * server, and some answer 400/422 to the field itself. Such a server must not
+ * lose its judge entirely, so a rejection retries once WITHOUT the field — PER
+ * REQUEST, remembering nothing (owner decision, #299 item 1, 2026-09-10). An
+ * earlier version remembered the refusal per endpoint for the life of the
+ * process; that memory produced a HIGH/MEDIUM defect in four consecutive
+ * adversarial review rounds (#286, #298) and defended against a server never
+ * once observed on this fleet — the MLX server every measurement here was
+ * taken against silently ACCEPTS unknown fields, so the one endpoint the
+ * memory was built to protect was never the one that tripped it. What it cost
+ * instead: a wrong guess about WHICH field caused an ambiguous 400 marked an
+ * endpoint permanently, and a field dropped only because the prompt was
+ * compacted in the same retry marked an endpoint for a request that was simply
+ * too long once (see #299's discussion of the `compactedAfterDrop` case, now
+ * moot — nothing is ever recorded). The remaining cost of removing the memory
+ * is one extra request, on every call, to a genuinely strict server — cheap
+ * next to a permanently mis-marked one.
+ */
+
+/** A 400/422 to a request carrying `response_format` is the server refusing the
+ *  FIELD. Every other status is about the request or the account (401, 429,
+ *  5xx) and must surface unchanged — retrying those without JSON mode would
+ *  hide an auth failure behind a second identical failure. */
+function isJsonModeRejection(status: number): boolean {
+  return status === 400 || status === 422;
+}
+
+/** `{ repetition_penalty: … }` or nothing, so a call site can spread it. */
+function penaltyField(penalty: number | null): Record<string, unknown> {
+  return penalty === null ? {} : { repetition_penalty: penalty };
+}
+
+/** `{ response_format: … }` or nothing, so a call site can spread it. */
+function jsonModeField(enabled: boolean): Record<string, unknown> {
+  return enabled ? { response_format: { type: 'json_object' } } : {};
+}
+
+/** Repetition penalty for the MLX judge leg, unless the user overrides.
+ *
+ *  WHY A DEFAULT AT ALL. gemma-4-26b enters a repetition loop inside the
+ *  `summary` string on some judge prompts and runs to the token cap without
+ *  ever closing the object, so the verdict is lost. Measured 2026-09-07/08
+ *  under two designs — three back-to-back repeats, then three repeats
+ *  INTERLEAVED so each is separated by five other prompts, which evicts the
+ *  server's prompt cache between measurements. Both produced identical totals,
+ *  and identical task by task: **4 of 6 tasks cut without the penalty, 1 of 6
+ *  with it at 1.05**, no task worse, and every cell stable across its own
+ *  repeats (18 observations per condition under each design — 12/18 → 3/18).
+ *
+ *  LEAD WITH THE TASK COUNT, not the observation count. The repeats are the
+ *  stability result, not the sample size: this same comment argues below that
+ *  greedy decoding at temperature 0 is SPECIFIED to repeat itself, so the
+ *  three repeats of one prompt are one measurement observed three times. The
+ *  independent unit is the task, n = 6. Writing 12/18 in the headline while
+ *  calling the identical six-task group "an unreplicated n=6" a few lines
+ *  down — which this comment did — inflates the evidence in exactly one
+ *  direction: n=18 for the claim, n=6 for the counter-evidence against it.
+ *
+ *  The back-to-back log is a RE-RUN (2026-09-08, scratchpad `repeat.log`): the
+ *  original run's output was never saved, so for a while this comment cited a
+ *  number from a design whose artifact did not exist. The re-run is pinned to
+ *  the same six task ids because the live backlog query keeps shifting as
+ *  tasks close, and it reproduced the interleaved result exactly, task by
+ *  task. (No row count is given: that number is stale the moment the next
+ *  task closes — the same reason the pass counts are not quoted either.) What that costs
+ *  in independence is stated in the caveat below: every run in the record was
+ *  served by ONE `mlx_vlm.server` process, up since 2026-09-06 03:58.
+ *  (The package name matters: `mlx_lm` and `mlx_vlm` are different
+ *  distributions with different sampler code, and whether
+ *  `repetition_penalty` is honoured is a sampler-level fact — so this
+ *  measurement does not transfer to `mlx_lm.server` unchecked.)
+ *
+ *  The quality arm is NOT part of "both designs" — see KNOWN GAP.
+ *
+ *  WHAT THE REPEATS DO NOT SHOW. Every task agreed with itself across its
+ *  repeats — but that is what greedy decoding at `temperature: 0` is SPECIFIED
+ *  to do given identical server state, so agreement within a run is not a
+ *  discovery. That cuts BOTH ways and the caveat below is the other half of
+ *  the same fact: the spec covers a fixed server, so a cross-restart flip is
+ *  neither predicted nor excluded by it. The interleave rules out only the
+ *  prompt cache. Whether an outcome flips across a server restart or model
+ *  reload is therefore UNTESTED, and now measurably so: every run in the
+ *  record was answered by the same server process (pid alive since 2026-09-06
+ *  03:58, checked 2026-09-08), so no run spans a restart at all. A model
+ *  reload inside that process is not excluded either — the server holds
+ *  several and loads on demand.
+ *  (An earlier version of this note claimed a pair of runs hours apart had
+ *  disagreed. The record says otherwise: the only PRODUCTION-prompt pair 14 h apart agrees
+ *  5/5 (and a probe-prompt pair 15.8 h apart agrees 4/4), and the disagreement it was remembering is production-vs-probe
+ *  — a different PROMPT, which is the confound that retired the "clears two
+ *  times in three" figure. Withdrawn.) So this claims no permanent failure,
+ *  and it does not claim park-and-retry could never clear it — the drain has
+ *  its own reasons to stall (one task per tick, an all-parked window idling
+ *  it, two attempts per 30 min). The claim the default rests on is the rate.
+ *
+ *  1.1 IS NOT THE DEFAULT, and the case is thinner than "higher is worse".
+ *  Single-shot on the same six tasks it cut two that 1.05 passed (ba27d31a,
+ *  bbb519fe) — that is two worse THAN 1.05, one worse than sending nothing,
+ *  since ba27d31a was already cut. But it also cleared d9f2d409, the one task 1.05
+ *  did not clear in any observed run and the whole of its residual cut rate. So the margin is
+ *  5 ok vs 4 ok on an unreplicated n=6, not a trend, and this default is the
+ *  better of two thinly separated candidates rather than a located optimum.
+ *
+ *  KNOWN GAP. The quality arm is weak, and weaker than it reads. The five
+ *  already-passing control tasks were measured ONCE, in the single-shot run;
+ *  neither repeat design included them or recorded a score at all, so no
+ *  quality result is backed by repeats. All five scored 1.0, which has no
+ *  headroom upward. One observation with headroom does exist, in the failing
+ *  group — f8ee310b went 0.95 → 1.0, i.e. upward — so it is DOWNWARD movement
+ *  in a nuanced score that is untested, not nuanced scores altogether. JSON
+ *  validity is covered: `ok` means `parseJudgeJson` succeeded, and no run in
+ *  any design produced `unparseable`. */
+export const MLX_JUDGE_REPETITION_PENALTY = 1.05;
+
 async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
   // MLX server speaks OpenAI chat-completions. The llm.mlx pin (shared with
   // timeline/label summarizers) is the source of truth; cfg.endpoint/model
   // override only when the user explicitly set apme.judge.* in settings.json.
   const mlx = loadMlxSettings();
   const url = cfg.endpoint ?? mlxChatUrl();
-  // Pin > cfg.model > probe auto-detect > cfg.model (final fallback).
-  let model = mlx.model ?? cfg.model;
-  if (!model || model === 'qwen3-30b') {
-    try {
-      const base = (cfg.endpoint ?? mlx.endpoint).replace(/\/chat\/completions$/, '').replace(/\/v1\/chat\/completions$/, '');
-      for (const path of ['/v1/models', '/models']) {
-        const mResp = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(3000) }).catch(() => null);
-        if (mResp?.ok) {
-          const mJson = await mResp.json() as { data?: Array<{ id?: string }> };
-          const first = mJson.data?.find(m => m.id && !m.id.toLowerCase().includes('nanollava'))?.id;
-          if (first) { model = first; break; }
-        }
-      }
-    } catch { /* use configured model */ }
-  }
+  const model = mlx.model ?? mlxModelPin(cfg.model);
 
-  const request = (userPrompt: string) => fetch(url, {
+  // `apme.judge.endpoint` may point at any OpenAI-shaped server, and
+  // `repetition_penalty` is NOT an OpenAI-standard field. A strict server
+  // answers 400/422, which is ambiguous with a `response_format` refusal or a
+  // context overflow — the loop below re-diagnoses on EVERY retry and gives
+  // the field up for THIS REQUEST ONLY. Nothing is written anywhere: the next
+  // call starts fresh with both fields, at the cost of one extra request if
+  // the endpoint is still strict (#299 item 1).
+  // `1` means OFF, and off means the field is not sent at all. Sending
+  // `repetition_penalty: 1` is a no-op for the model but still costs a user on
+  // a strict server the 400 + retry probe — i.e. "disabling" it would have had
+  // a price.
+  const configured = cfg.repetitionPenalty ?? MLX_JUDGE_REPETITION_PENALTY;
+  let penalty: number | null = configured > 1 ? configured : null;
+  const request = (userPrompt: string, jsonMode: boolean) => guardedMlxFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1477,6 +1648,18 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
       ],
       temperature: 0.0,
       max_tokens: 800,
+      // The server silently IGNORES unknown fields — a made-up parameter
+      // returns HTTP 200 exactly like a real one — so acceptance proves
+      // nothing. That this one is honoured is established by the OUTCOMES in
+      // the logged runs: at temperature 0 the decode is fixed given identical
+      // server state, yet the same prompt yields different results across the
+      // penalty conditions (ba27d31a: none=cut, 1.05=ok, 1.1=cut) — and the same task reads none[cut,cut,cut] / rp1.05[ok,ok,ok] in BOTH repeat designs, i.e. 12 observations spanning a warm and an evicted prompt cache, so the split is not a cache artifact. A field the
+      // server ignored could not do that. (An earlier note here cited a
+      // control-field byte-comparison instead; no logged run captured response
+      // TEXT at all, so that instrument is not in the record and the claim now
+      // rests on the evidence that is.)
+      ...penaltyField(penalty),
+      ...jsonModeField(jsonMode),
     }),
     // Long task_rollup prompts can cross 60s at the tail under sustained
     // local load (68.7s observed with Gemma 4). Keep the timeout bounded but
@@ -1484,8 +1667,20 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
     signal: AbortSignal.timeout(90_000),
   });
 
-  let resp = await request(prompt);
-  if (!resp.ok && resp.status === 400) {
+  let jsonMode = true;
+  let body = prompt;
+  let resp = await request(body, jsonMode);
+  // A 400 here is ambiguous: it may be the context budget, or either of two
+  // fields the server may not know. Re-diagnose after EVERY retry rather than
+  // nesting, because a nested ladder made the overflow branch unreachable once
+  // the penalty branch had been taken — a server that refuses the penalty AND
+  // is then handed an oversized prompt lost its verdict entirely, with JSON
+  // mode switched off for the process on the way out (the old, removed
+  // failure mode — see the memory-removal comment above `isJsonModeRejection`).
+  // Every drop below is scoped to THIS request only: nothing is written
+  // anywhere, so a call that never reaches `resp.ok` costs nothing beyond its
+  // own attempts, and the next call starts over with both fields.
+  for (let attempt = 0; attempt < 3 && !resp.ok && isJsonModeRejection(resp.status); attempt++) {
     const detail = await resp.text();
     const overflow = detail.match(/Request needs \d+ context tokens \((\d+) prompt \+ (\d+) max generation\), but MAX_KV_SIZE is (\d+)/);
     if (overflow) {
@@ -1497,18 +1692,30 @@ async function callMlx(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
       // and the latest turns/trajectory/instruction at the end.
       const targetPromptTokens = Math.max(256, maxKv - maxGeneration - 128);
       const ratio = Math.min(0.95, (targetPromptTokens / promptTokens) * 0.98);
-      const compacted = compactPromptForMlxContext(prompt, Math.max(1000, Math.floor(prompt.length * ratio)));
-      debug('APME', `MLX context overflow (${promptTokens}+${maxGeneration}>${maxKv}); retrying with ${compacted.length}/${prompt.length} prompt chars`);
-      resp = await request(compacted);
+      const compacted = compactPromptForMlxContext(body, Math.max(1000, Math.floor(body.length * ratio)));
+      // Already at or under the target: compacting again would resend the
+      // identical body and spend the remaining attempts on a request that
+      // cannot change. The ladder has nothing left for this diagnosis.
+      if (compacted === body) break;
+      debug('APME', `MLX context overflow (${promptTokens}+${maxGeneration}>${maxKv}); retrying with ${compacted.length}/${body.length} prompt chars`);
+      body = compacted;
+    } else if (penalty !== null) {
+      // Not the overflow shape, so a FIELD is being refused. Give up
+      // `repetition_penalty` before `response_format`: it is the non-standard
+      // one, so it is the likelier culprit, and losing it only raises the cut
+      // rate while losing JSON mode costs the strict-JSON request entirely.
+      penalty = null;
+    } else if (jsonMode) {
+      // Retry once without it; a genuinely bad request fails again below with
+      // its own status.
+      jsonMode = false;
+    } else {
+      break;                                    // nothing left to give up
     }
+    resp = await request(body, jsonMode);
   }
   if (!resp.ok) throw new Error(`MLX judge HTTP ${resp.status}`);
-  const json = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
-  const text = json.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || text.length === 0) {
-    throw new Error('MLX judge returned empty content');
-  }
-  return text;
+  return judgeChatContent(await resp.json(), 'MLX');
 }
 
 function compactPromptForMlxContext(text: string, maxChars: number): string {
@@ -1546,8 +1753,8 @@ async function resolveOpenAIModel(base: string, apiKey: string | undefined, conf
     const r = await fetch(`${base}/api/tags`, { headers, signal: AbortSignal.timeout(3000) }).catch(() => null);
     if (r?.ok) {
       const j = await r.json() as { models?: Array<{ name?: string }> };
-      const first = j.models?.find((m) => m.name)?.name;
-      if (first) return first;
+      const names = [...new Set((j.models ?? []).map(m => m.name).filter((n): n is string => !!n))];
+      if (names.length === 1) return names[0];
     }
   } catch { /* try openai path */ }
   for (const path of ['/v1/models', '/models']) {
@@ -1555,12 +1762,12 @@ async function resolveOpenAIModel(base: string, apiKey: string | undefined, conf
       const r = await fetch(`${base}${path}`, { headers, signal: AbortSignal.timeout(3000) }).catch(() => null);
       if (r?.ok) {
         const j = await r.json() as { data?: Array<{ id?: string }> };
-        const first = j.data?.find((m) => m.id && !m.id.toLowerCase().includes('nanollava'))?.id;
-        if (first) return first;
+        const names = [...new Set((j.data ?? []).map(m => m.id).filter((n): n is string => !!n))];
+        if (names.length === 1 && !names[0].toLowerCase().includes('nanollava')) return names[0];
       }
     } catch { /* next */ }
   }
-  return configured || 'default';
+  throw new Error('OpenAI-compatible judge needs an explicit model or a singleton catalog');
 }
 
 /**
@@ -1582,7 +1789,7 @@ async function callOpenAICompatible(prompt: string, cfg: ApmeJudgeConfig): Promi
   const model = await resolveOpenAIModel(base, cfg.apiKey, cfg.model);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
-  const resp = await fetch(url, {
+  const send = (jsonMode: boolean) => fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -1593,14 +1800,26 @@ async function callOpenAICompatible(prompt: string, cfg: ApmeJudgeConfig): Promi
       ],
       temperature: 0,
       max_tokens: 1024,
+      ...(cfg.reasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
+      // Deliberately NO `repetition_penalty` here. This adapter's own doc lists
+      // OpenRouter and "any other OpenAI-compatible endpoint" among its
+      // targets, so sending it would reach hosted providers — several of which
+      // DO honour the field, silently changing sampling for a judge the user
+      // pays per call, on evidence measured only against a local gemma-4-26b.
+      // The setting is documented as MLX-leg only; a local server reached
+      // through this backend does not get it, which is a stated scope rather
+      // than a silent discard.
+      ...jsonModeField(jsonMode),
     }),
     signal: AbortSignal.timeout(90_000),
   });
+  let resp = await send(true);
+  // Retry once without the field, per request — remember nothing (#299 item 1).
+  if (!resp.ok && isJsonModeRejection(resp.status)) {
+    resp = await send(false);
+  }
   if (!resp.ok) throw new Error(`openai judge HTTP ${resp.status} (${url})`);
-  const json = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
-  const text = json.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || text.trim().length === 0) throw new Error('openai judge returned empty content');
-  return text;
+  return judgeChatContent(await resp.json(), 'openai');
 }
 
 async function callOpenClaw(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
@@ -1715,8 +1934,20 @@ async function resolveFoundationModelsUrl(): Promise<string | null> {
 
 /** Default model for the opt-in Anthropic API judge when the configured
  *  `model` belongs to another backend (e.g. an MLX id left over from a
- *  backend switch). */
-const API_JUDGE_DEFAULT_MODEL = 'claude-opus-4-8';
+ *  backend switch). Mirrored by `ApmeJudgeApi.swift`: the two daemons read the
+ *  same `settings.json` and are the same judge, so a user who opted into the
+ *  API leg without naming a model must not get a different model depending on
+ *  which daemon happens to hold the port (Node said `claude-opus-4-8`, Swift
+ *  `claude-opus-4-6`, until #286). */
+const API_JUDGE_DEFAULT_MODEL = 'claude-opus-5';
+
+/** Output cap for the API leg, mirrored by `ApmeJudgeApi.swift`. Verdict
+ *  bodies measure p99 ~1,025 chars (~335 tokens), so this is headroom rather
+ *  than a budget — but adaptive thinking spends against the same cap, and
+ *  `max_tokens` is a ceiling, not a charge: only tokens actually produced are
+ *  billed. Swift sent 1,024, so the same task judged on the same settings was
+ *  cut 8x earlier there. */
+const API_JUDGE_MAX_TOKENS = 8192;
 
 function apiJudgeModel(cfg: ApmeJudgeConfig): string {
   return cfg.model && cfg.model.startsWith('claude') ? cfg.model : API_JUDGE_DEFAULT_MODEL;
@@ -1735,37 +1966,204 @@ async function callApi(prompt: string, cfg: ApmeJudgeConfig): Promise<string> {
   });
   const response = await client.messages.create({
     model: apiJudgeModel(cfg),
-    max_tokens: 8192,
+    max_tokens: API_JUDGE_MAX_TOKENS,
     thinking: { type: 'adaptive' },
     messages: [{ role: 'user', content: prompt }],
   });
+  return apiJudgeText(response);
+}
+
+/** The Anthropic-shaped counterpart of `judgeChatContent`, and the same rule
+ *  under Anthropic's spelling: a refusal is not a verdict, and a body cut at
+ *  `max_tokens` is one only when its JSON object closed. The text blocks are
+ *  joined first because the object can close in one block and the cut land in
+ *  the next.
+ *
+ *  Pure and exported so the rule has a gate: it is reached only through the
+ *  Anthropic SDK, so nothing exercised it and reverting either line left both
+ *  suites green. Mirrored by `ApmeJudgeApi.content`; behavior is pinned by
+ *  `shared/apme-judge-api-response-vectors.json`, which both suites replay. */
+export function apiJudgeText(response: {
+  stop_reason?: string | null;
+  content?: Array<{ type?: string; text?: string }>;
+}): string {
+  // `content` must be an ARRAY — the same hole just closed for `choices` in
+  // `judgeChatContent`. Without the guard a string or object map throws a
+  // TypeError instead of a judge error, while Swift's `as? [[String: Any]] ?? []`
+  // degrades to empty and raises a proper one.
+  const blocks = Array.isArray(response.content) ? response.content : [];
+  const text = blocks
+    .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text as string)
+    .join('\n')
+    .trim();
   if (response.stop_reason === 'refusal') {
     throw new Error('API judge refused the request (stop_reason=refusal)');
   }
-  const text = response.content
-    .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
-    .map((b) => b.text)
-    .join('\n')
-    .trim();
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error('API judge reached output limit before completion (stop_reason=max_tokens)');
+  }
   if (!text) throw new Error(`API judge returned no text (stop_reason=${response.stop_reason})`);
   return text;
 }
 
-export function parseJudgeJson(text: string): ParsedJudge | null {
-  // Models often wrap JSON in prose or code fences — grab the first {...} block.
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  let obj: Record<string, unknown>;
-  try { obj = JSON.parse(match[0]); }
-  catch {
-    // Local judges occasionally emit otherwise-valid JSON with a comma before
-    // `}`/`]`, or omit the opening quote of an auxiliary object key while
-    // retaining its closing quote (both observed with Gemma 4 on long
-    // task_rollup prompts). Repair only structural text outside strings so
-    // evidence content remains byte-for-byte intact.
-    try { obj = JSON.parse(repairJudgeJson(match[0])); }
-    catch { return null; }
+/**
+ * Shared MLX / OpenAI-compatible chat response gate.
+ *
+ * Mirrored by Swift `ApmeJudgeChatResponse`; the cases both daemons must agree
+ * on live in `shared/apme-judge-response-vectors.json`, which both suites
+ * replay. Three rules, and the ORDER of the first two matters because a
+ * truncated body is still a non-empty one:
+ *
+ *  - `choices` must be a non-empty ARRAY. Indexing `json.choices?.[0]` happily
+ *    reads `{"choices":{"0":{…}}}`, which Swift's `as? [[String: Any]]` cast
+ *    rejects — the two daemons disagreed on that shape until #286.
+ *  - Content must be a non-empty string.
+ *  - `finish_reason: "length"` is rejected, full stop. #285's rule, restored
+ *    after an exemption for "the object closed, so the verdict finished" was
+ *    tried and removed. It produced a defect in three consecutive review
+ *    rounds — first admitting a reasoning model's scratchpad when the real
+ *    verdict was cut, then refusing complete verdicts whose trailing prose
+ *    held an unmatched brace — because brace topology cannot actually tell
+ *    whether the model finished. It also had no measured beneficiary: the one
+ *    cut mode observed on this fleet is a repetition loop INSIDE the `summary`
+ *    string, where depth can never return to zero, so the exemption and this
+ *    rule agree on every real body seen. #286 item 3 lists "keep rejecting and
+ *    alert on the rate" among its options; the park log names this failure.
+ *    (An earlier note put the re-attempt success at two in three. That figure
+ *    came from a probe whose prompt differed from production in TWO ways: it
+ *    wrote `task_category: unknown` where `runTaskEval` resolves the category
+ *    from the run, and it omitted the cost line. So it described a request the
+ *    daemon never sends, and the figure is WITHDRAWN. `ab.log` isolates the
+ *    category token alone and still flips 4 of 10 tasks, so that difference is
+ *    sufficient on its own — which is not the same as it being the only one.
+ *    See MLX_JUDGE_REPETITION_PENALTY for what replaced it.)
+ */
+export function judgeChatContent(payload: unknown, label: string): string {
+  const choices = (payload as { choices?: unknown } | null)?.choices;
+  if (!Array.isArray(choices) || choices.length === 0) {
+    throw new Error(`${label} judge returned no choices`);
   }
+  const first = choices[0] as { message?: { content?: unknown } | null; finish_reason?: unknown } | null;
+  const content = first?.message?.content;
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    throw new Error(`${label} judge returned empty content`);
+  }
+  if (first?.finish_reason === 'length') {
+    throw new Error(`${label} judge reached output limit before completion`);
+  }
+  return content;
+}
+
+/** Every top-level balanced `{…}` span in `text`, then the greedy
+ *  first-`{`-to-last-`}` span when it differs from all of them.
+ *
+ *  Balanced first, so a verdict followed by prose containing a brace reads the
+ *  same on both daemons. ALL of them, not just the first, because the first is
+ *  not necessarily the verdict — a local reasoning model emits a scratchpad
+ *  object before the real one. The greedy span last, because the balanced
+ *  scanner is string-aware and `repairJudgeJson` exists for bodies whose
+ *  quoting is itself broken: a key that lost its opening quote desyncs any such
+ *  scanner, and that body used to parse. */
+function jsonBlockSpans(text: string): string[] {
+  const out: string[] = [];
+  let from = 0;
+  for (;;) {
+    const block = extractFirstJsonBlock(text, from);
+    if (block === null) break;
+    out.push(block.text);
+    from = block.end;
+  }
+  const greedy = text.match(/\{[\s\S]*\}/);
+  if (greedy && !out.includes(greedy[0])) out.push(greedy[0]);
+  return out;
+}
+
+function strictParseObject(block: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(block) as unknown;
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch { return null; }
+}
+
+function parseOrRepairObject(block: string): Record<string, unknown> | null {
+  return strictParseObject(block) ?? strictParseObject(repairJudgeJson(block));
+}
+
+/** The judge's verdict object, chosen by the one field that identifies a
+ *  verdict rather than by position.
+ *
+ *  Taking the first span that merely PARSES is how the balanced scan turned a
+ *  loud failure into a silently wrong score: `<think>{"overall":0.5}</think>`
+ *  followed by the real `{"overall":0.9}` scored the scratchpad. An unstripped
+ *  thinking block is the exact shape `reasoningEffort: "none"` exists to
+ *  suppress, i.e. the local models this judge chain targets.
+ *
+ *  Two spans both carrying `overall` are AMBIGUOUS and resolve to null — the
+ *  loud "unparseable verdict" the greedy match produced before, and the right
+ *  answer, because a wrong score written to `evals` is strictly worse than a
+ *  skip. */
+function parseJudgeObject(text: string): Record<string, unknown> | null {
+  const parsed: Record<string, unknown>[] = [];
+  for (const block of jsonBlockSpans(text)) {
+    const obj = parseOrRepairObject(block);
+    if (obj) parsed.push(obj);
+  }
+  const verdicts = parsed.filter((o) => typeof o.overall === 'number' && isFinite(o.overall as number));
+  if (verdicts.length === 1) return verdicts[0];
+  if (verdicts.length > 1) return null;
+  return null;
+}
+
+/** The first BALANCED `{…}` block, mirroring Swift `extractFirstJsonBlock`.
+ *
+ *  This used to be a greedy `/\{[\s\S]*\}/`, which spans the first `{` to the
+ *  LAST `}` in the body — so a verdict followed by any prose containing a brace
+ *  parsed here and not on the other daemon, whose scanner stops at the object's
+ *  own closing brace. That divergence became load-bearing once a cut body is
+ *  accepted when its object closed: text after the closing brace is exactly
+ *  what a `finish_reason: "length"` body has, and a model that keeps talking
+ *  past the verdict mentioning a brace is routine. Node rejected it as cut
+ *  while Swift accepted and scored it.
+ *
+ *  Braces inside strings do not count, so an escaped brace in a `summary`
+ *  cannot end the block early. */
+function extractFirstJsonBlock(text: string, from = 0): { text: string; end: number } | null {
+  const start = text.indexOf('{', from);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (escaped) { escaped = false; continue; }
+    if (inString) {
+      if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === '{') depth++;
+    else if (char === '}') {
+      depth--;
+      if (depth === 0) return { text: text.slice(start, i + 1), end: i + 1 };
+    }
+  }
+  return null;
+}
+
+export function parseJudgeJson(text: string): ParsedJudge | null {
+  // Models often wrap JSON in prose or code fences, emit a comma before `}`/`]`,
+  // or omit the opening quote of an auxiliary object key while retaining its
+  // closing quote (both observed with Gemma 4 on long task_rollup prompts).
+  // `parseJudgeObject` handles the extraction and the repair — and is shared
+  // with the transport gate so the two cannot disagree about whether this body
+  // holds a verdict. Repair only touches structural text outside strings, so
+  // evidence content stays byte-for-byte intact.
+  const obj = parseJudgeObject(text);
+  if (obj === null) return null;
 
   // Accept any numeric axis — category-specific rubrics define their own
   // (conversation: accuracy/helpfulness/conciseness; research: thoroughness/…;

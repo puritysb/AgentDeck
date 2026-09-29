@@ -37,8 +37,9 @@ android {
         applicationId = "dev.agentdeck"
         minSdk = 29
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.2.0"
+        versionCode = 23
+        versionName = "1.6.1"
+        buildConfigField("boolean", "APK_UPDATES", "false")
     }
 
     buildTypes {
@@ -50,6 +51,12 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
         }
+    }
+
+    buildTypes.create("sideload") {
+        initWith(buildTypes.getByName("release"))
+        matchingFallbacks += listOf("release")
+        buildConfigField("boolean", "APK_UPDATES", "true")
     }
 
     compileOptions {
@@ -97,6 +104,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
+    // Native 3D aquarium preview; pin all Filament components to one ABI.
+    implementation("com.google.android.filament:filament-android:1.75.1")
+    implementation("com.google.android.filament:gltfio-android:1.75.1")
+    implementation("com.google.android.filament:filament-utils-android:1.75.1")
+
     // Networking
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
@@ -111,3 +123,13 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
+
+// Package the canonical typeface directly; no manually maintained font mirror.
+val aquariumFonts by tasks.registering(Copy::class) {
+    from(rootProject.file("../bridge/assets/fonts")) {
+        include("IBMPlexSans-Regular.ttf", "LICENSES.md")
+    }
+    into(layout.buildDirectory.dir("generated/aquariumAssets/fonts"))
+}
+android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/aquariumAssets"))
+tasks.named("preBuild").configure { dependsOn(aquariumFonts) }

@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TerrariumView: View {
     let terrariumState: TerrariumState
+    var includeHabitat: Bool = true
 
     /// Optional tap handler: receives the session ID of the tapped creature.
     /// Works on macOS (click) and iOS/iPadOS (touch) — both use the same
@@ -26,7 +27,7 @@ struct TerrariumView: View {
                 let dt = renderer.deltaTime(now: timeline.date)
 
                 renderer.update(dt: dt, state: terrariumState)
-                renderer.draw(context: &context, size: size)
+                renderer.draw(context: &context, size: size, includeHabitat: includeHabitat)
             }
         }
         .overlay {

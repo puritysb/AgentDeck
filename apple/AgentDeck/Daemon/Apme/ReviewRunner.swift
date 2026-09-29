@@ -481,7 +481,7 @@ struct ReviewGuidancePanelView: View {
     private struct Tier: Identifiable { let id = UUID(); let rank: Int; let name: String; let note: String; let detail: String }
     private let tiers: [Tier] = [
         .init(rank: 1, name: "Anthropic API", note: "best review quality (usage-billed, opt-in)",
-              detail: "Settings → APME judge → backend \"api\", model claude-opus-4-8. Credential: ANTHROPIC_API_KEY, an `ant auth login` profile, or an apiKey in settings."),
+              detail: "Settings → APME judge → backend \"api\", model claude-opus-5. Credential: ANTHROPIC_API_KEY, an `ant auth login` profile, or an apiKey in settings."),
         .init(rank: 2, name: "OpenRouter / any OpenAI-compatible cloud", note: "one key, hundreds of models",
               detail: "backend \"openai\", endpoint https://openrouter.ai/api/v1, apiKey sk-or-…, model of your choice. Together/Groq/Fireworks work the same way."),
         .init(rank: 3, name: "OpenClaw gateway", note: "strong quality via your subscription models",

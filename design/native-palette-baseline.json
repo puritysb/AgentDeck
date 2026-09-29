@@ -1,0 +1,26 @@
+{
+  "note": "Raw colour literals per native Dashboard file. May only go down. Regenerate with `node scripts/check-native-palette.mjs --write` after removing literals.",
+  "total": 157,
+  "files": {
+    "android/app/src/main/kotlin/dev/agentdeck/ui/component/AgentDeckLogo.kt": 1,
+    "android/app/src/main/kotlin/dev/agentdeck/ui/component/BrandIcon.kt": 33,
+    "android/app/src/main/kotlin/dev/agentdeck/ui/eink/EinkEventLog.kt": 12,
+    "android/app/src/main/kotlin/dev/agentdeck/ui/eink/EinkStatusCompact.kt": 4,
+    "android/app/src/main/kotlin/dev/agentdeck/ui/monitor/EnginePanel.kt": 2,
+    "android/app/src/main/kotlin/dev/agentdeck/ui/monitor/TimelineStrip.kt": 3,
+    "android/app/src/main/kotlin/dev/agentdeck/ui/theme/EinkTheme.kt": 6,
+    "android/app/src/main/kotlin/dev/agentdeck/ui/theme/Theme.kt": 1,
+    "apple/AgentDeck/UI/MenuBar/AttentionTheaterView.swift": 16,
+    "apple/AgentDeck/UI/Monitor/TimelineStripView.swift": 1,
+    "apple/AgentDeck/UI/Shared/DaemonOfflineAffordance.swift": 1,
+    "esp32/src/ui/pocket/pocket_ui.cpp": 2,
+    "esp32/src/ui/screens/aquarium.cpp": 6,
+    "esp32/src/ui/screens/settings.cpp": 5,
+    "esp32/src/ui/screens/splash.cpp": 1,
+    "esp32/src/ui/theme.h": 32,
+    "esp32/src/ui/ticker/ticker_ui.cpp": 2,
+    "esp32/src/ui/widgets/hud_bar.cpp": 25,
+    "esp32/src/ui/widgets/ttgo_activity.cpp": 2,
+    "esp32/src/ui/widgets/ttgo_state.cpp": 2
+  }
+}

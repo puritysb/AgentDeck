@@ -86,10 +86,8 @@ struct CodexCreditsLocal: Sendable {
     }
 }
 
-/// Codex usage limits parsed from the user's own local Codex session rollout
-/// files (`~/.codex/sessions/.../rollout-*.jsonl`). Same posture as
-/// `readRawCodexAuthStatus` reading `~/.codex/auth.json` — local files only,
-/// no Codex/OpenAI API is contacted.
+/// Codex usage snapshot, shared by local rollout and native account readers.
+/// capturedAt retains the source measurement time across fallback/cache reads.
 struct CodexRateLimitsLocal: Sendable {
     var primary: CodexRateLimitWindowLocal?
     var secondary: CodexRateLimitWindowLocal?
@@ -157,6 +155,7 @@ final class UsageAPIClient: Sendable {
     /// every call.
     nonisolated(unsafe) private var codexAuthCacheEntry: (timestamp: Date, value: CodexAuthStatus?)?
     private static let codexAuthCacheTTL: TimeInterval = 5
+    nonisolated(unsafe) private var codexUsageCredentialCache: (timestamp: Date, value: CodexUsageCredential?)?
 
     /// Serializes the Codex rate-limit read path (file tail + JSON parse).
     private let codexRateLimitsQueue = DispatchQueue(
@@ -388,6 +387,25 @@ final class UsageAPIClient: Sendable {
                 return nil
             }
             return self.parseCodexAuthJSON(json)
+        }
+    }
+
+    /// Credentials stay in memory and within the existing user-granted folder.
+    func codexUsageCredential() -> CodexUsageCredential? {
+        codexAuthQueue.sync {
+            if let cache = codexUsageCredentialCache,
+               Date().timeIntervalSince(cache.timestamp) < Self.codexAuthCacheTTL { return cache.value }
+            let credential: CodexUsageCredential? = withCodexBase { base in
+                guard let data = try? Data(contentsOf: base.appendingPathComponent("auth.json")),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let tokens = json["tokens"] as? [String: Any],
+                      let token = self.string(tokens, key: "access_token"),
+                      let account = self.string(tokens, key: "account_id") ?? self.parseCodexAuthJSON(json).accountId
+                else { return nil }
+                return CodexUsageCredential(accessToken: token, accountId: account)
+            }
+            codexUsageCredentialCache = (Date(), credential)
+            return credential
         }
     }
 
@@ -1196,4 +1214,149 @@ final class UsageAPIClient: Sendable {
         return max(0, backoff - elapsed)
     }
 }
+
+struct CodexUsageCredential: Sendable, Equatable {
+    let accessToken: String
+    let accountId: String
+}
+
+private struct CodexUsageRetryAfter: Error { let seconds: TimeInterval }
+
+/// Never forward a user's bearer token through redirects from the fixed endpoint.
+private final class CodexUsageRedirectPolicy: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
+/// Native account reader. The account endpoint, unlike rollouts, observes coupon
+/// resets without a successful turn. Source: openai/codex backend-client's
+/// client/rate_limit_resets.rs (GET /wham/usage); additional pools are excluded.
+@DaemonActor
+final class CodexAccountUsageClient {
+    typealias Fetch = @Sendable (URLRequest) async throws -> (Data, Int)
+    private let fetch: Fetch
+    private var credential: CodexUsageCredential?
+    private var reading: CodexRateLimitsLocal?
+    private var lastSuccess: Date?
+    private var nextAttempt = Date.distantPast
+    private var lastAttempt = Date.distantPast
+    private var inFlight = false
+    private var failures = 0
+
+    init(fetch: @escaping Fetch = CodexAccountUsageClient.fetchNative) { self.fetch = fetch }
+
+    nonisolated private static func fetchNative(_ request: URLRequest) async throws -> (Data, Int) {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 10
+        config.urlCache = nil
+        config.httpCookieStorage = nil
+        let session = URLSession(configuration: config, delegate: CodexUsageRedirectPolicy(), delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let (data, response) = try await session.data(for: request)
+        let http = response as? HTTPURLResponse
+        if let http, http.statusCode == 429 || http.statusCode == 503,
+           let raw = http.value(forHTTPHeaderField: "Retry-After") {
+            let format = DateFormatter()
+            format.locale = Locale(identifier: "en_US_POSIX")
+            format.timeZone = TimeZone(secondsFromGMT: 0)
+            format.dateFormat = "EEE, dd MMM yyyy HH:mm:ss z"
+            if let delay = Double(raw) ?? format.date(from: raw)?.timeIntervalSinceNow,
+               delay.isFinite, delay > 0 { throw CodexUsageRetryAfter(seconds: delay) }
+        }
+        return (data, http?.statusCode ?? 0)
+    }
+
+    func refresh(credential current: CodexUsageCredential?, now: Date = Date(), force: Bool = false) async {
+        if credential != current {
+            credential = current
+            reading = nil
+            lastSuccess = nil
+            nextAttempt = .distantPast
+            lastAttempt = .distantPast
+            failures = 0
+        }
+        guard let current, !inFlight,
+              now >= nextAttempt || (force && failures == 0 && now.timeIntervalSince(lastAttempt) >= 5)
+        else { return }
+        lastAttempt = now
+        inFlight = true
+        nextAttempt = now.addingTimeInterval(30)
+        defer { inFlight = false }
+        var request = URLRequest(url: URL(string: "https://chatgpt.com/backend-api/wham/usage")!)
+        request.timeoutInterval = 8
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Bearer \(current.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(current.accountId, forHTTPHeaderField: "ChatGPT-Account-Id")
+        request.setValue("AgentDeck", forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, status) = try await fetch(request)
+            guard credential == current else { return }
+            guard status == 200, let parsed = Self.parse(data, accountId: current.accountId, now: now) else {
+                throw URLError(.badServerResponse)
+            }
+            reading = parsed
+            lastSuccess = now
+            failures = 0
+        } catch {
+            guard credential == current else { return }
+            failures += 1
+            let delay = max(min(300, 30 * pow(2, Double(min(failures, 4)))),
+                            (error as? CodexUsageRetryAfter)?.seconds ?? 0)
+            nextAttempt = now.addingTimeInterval(delay)
+            // Never log credentials, response bodies or a failed reading as zero.
+            DaemonLogger.shared.debug("CodexUsage", "Account usage unavailable; retaining timestamped snapshot")
+        }
+    }
+
+    func snapshot(passive: CodexRateLimitsLocal?, credential current: CodexUsageCredential?,
+                  now: Date = Date()) -> CodexRateLimitsLocal? {
+        guard current == credential, current != nil, let reading else { return passive }
+        // A fresh account reading owns the quantity, even when an old session
+        // appends a newer timestamp with pre-reset or per-model pool numbers.
+        if let lastSuccess, now.timeIntervalSince(lastSuccess) <= 120 { return reading }
+        let stamp = { (s: String?) -> Date in
+            guard let s else { return .distantPast }
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return f.date(from: s) ?? ISO8601DateFormatter().date(from: s) ?? .distantPast
+        }
+        return stamp(passive?.capturedAt) > stamp(reading.capturedAt) ? passive : reading
+    }
+
+    nonisolated static func parse(_ data: Data, accountId: String, now: Date) -> CodexRateLimitsLocal? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let plan = root["plan_type"] as? String else { return nil }
+        if let reported = root["account_id"] as? String, reported != accountId { return nil }
+        func window(_ value: Any?) -> CodexRateLimitWindowLocal? {
+            guard let w = value as? [String: Any],
+                  let used = w["used_percent"] as? Double, used.isFinite,
+                  let seconds = w["limit_window_seconds"] as? Int, seconds >= 60,
+                  let reset = w["reset_at"] as? Double, reset.isFinite, reset > 0 else { return nil }
+            return CodexRateLimitWindowLocal(usedPercent: min(100, max(0, used)),
+                windowMinutes: seconds / 60,
+                resetsAt: ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: reset)))
+        }
+        let limits = root["rate_limit"] as? [String: Any]
+        let primary = window(limits?["primary_window"])
+        let secondary = window(limits?["secondary_window"])
+        var credits: CodexCreditsLocal?
+        if let c = root["credits"] as? [String: Any],
+           let has = c["has_credits"] as? Bool, let unlimited = c["unlimited"] as? Bool {
+            credits = CodexCreditsLocal(hasCredits: has, unlimited: unlimited, balance: c["balance"] as? String)
+        }
+        // A malformed window must not masquerade as a valid windowless credit plan.
+        for key in ["primary_window", "secondary_window"] {
+            if let raw = limits?[key], !(raw is NSNull), window(raw) == nil { return nil }
+        }
+        guard primary != nil || secondary != nil || credits != nil else { return nil }
+        return CodexRateLimitsLocal(primary: primary, secondary: secondary, planType: plan,
+            limitId: "codex", credits: credits, capturedAt: ISO8601DateFormatter().string(from: now))
+    }
+}
+
 #endif

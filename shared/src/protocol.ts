@@ -92,9 +92,18 @@ export interface OllamaModel {
   sizeVram: number;
 }
 
+/** A completed residency observation. Unknown is explicit; [] with known=true means none. */
+export interface ModelResidency {
+  known: boolean;
+  models: string[];
+}
+
 export interface OllamaStatus {
   available: boolean;
   models: OllamaModel[];
+  /** Optional additive metadata; old producers cannot prove non-residency. */
+  residency?: ModelResidency;
+  installedModelsKnown?: boolean;
 }
 
 export interface SubscriptionInfo {
@@ -143,6 +152,18 @@ export interface CodexCredits {
   balance?: string;
 }
 
+/** Luna-only reserve window returned as an additional Codex rate-limit pool. */
+export interface CodexLunaReserve {
+  /** Percent of the reserve already consumed (0–100). */
+  usedPercent: number;
+  /** The reserve's own reset, when supplied. */
+  resetsAt?: string;
+  /** When the regular advanced-model allowance becomes available again. */
+  regularResetsAt?: string;
+  /** Whether the reserve is currently usable. */
+  available?: boolean;
+}
+
 /** Codex usage limits parsed from local rollout files. `primary` is the short
  *  (5h-style) window, `secondary` the long (weekly) window — same idea as the
  *  Claude 5h/7d gauges. Credit-based plans report `primary`/`secondary` as null
@@ -156,6 +177,8 @@ export interface CodexRateLimits {
   limitId?: string;
   /** Credit balance for credit-based plans (present when windows are null). */
   credits?: CodexCredits;
+  /** Additional Luna-only pool, separate from the account 5h/7d windows. */
+  lunaReserve?: CodexLunaReserve;
   /** ISO-8601 instant this snapshot was WRITTEN by Codex (the rate-limit line's
    *  own timestamp, falling back to the rollout file's mtime).
    *
@@ -168,6 +191,38 @@ export interface CodexRateLimits {
    *  computed boolean, which would itself freeze between pushes. Distinct from
    *  the per-window `stale` flag, which means the window has ENDED. */
   capturedAt?: string;
+}
+
+/** Z.ai (GLM Coding Plan) usage limits, fetched directly from the provider's
+ *  monitor endpoint with the account's coding-plan key — an active account
+ *  query like the Claude OAuth usage read, not a passive local-file snapshot.
+ *  Same slot grammar as `CodexRateLimits`: `primary` is the 5-hour credits
+ *  window, `secondary` the long window when the plan reports one (weekly
+ *  credits on the credit schema, or the monthly MCP tool quota on the standard
+ *  schema — `limitId` says which quantity the number belongs to, the same
+ *  "which limit" axis Codex carries). */
+export interface ZaiRateLimits {
+  primary?: ZaiWindow;
+  secondary?: ZaiWindow;
+  /** Plan tier stamped into every snapshot ("lite" | "pro" | "max"). */
+  planType?: string;
+  /** Schema family the windows were read from: "standard" (TOKENS_LIMIT +
+   *  TIME_LIMIT items) or "credit" (credit-only schema, lite-tier plans). */
+  limitId?: string;
+  /** ISO-8601 instant this reading was fetched. Consumers derive age from it
+   *  against their own clock — same contract as `CodexRateLimits.capturedAt`:
+   *  an active poll re-fetches regularly, so an aged stamp means the poll is
+   *  failing, and the reading dims rather than reading as live. */
+  capturedAt?: string;
+}
+
+/** A z.ai quota window — the shared window shape plus WHICH QUANTITY it
+ *  meters: token/credits windows (`tokens`) or the MCP tool-call quota
+ *  (`mcp`). They are different kinds of usage rendered side by side, and a
+ *  surface must never present an MCP gauge as token usage (or vice versa);
+ *  the label follows the quantity ("5h" vs "MCP"). */
+export interface ZaiWindow extends CodexRateLimitWindow {
+  quantity?: 'tokens' | 'mcp';
 }
 
 // ===== Bridge → Plugin (State Updates) =====
@@ -210,6 +265,7 @@ export interface StateUpdateEvent {
   ollamaStatus?: OllamaStatus;
   /** MLX local server model list */
   mlxModels?: string[];
+  mlxResidency?: ModelResidency;
   /** Subscription-backed authenticated services */
   subscriptions?: SubscriptionInfo[];
   /** Local Antigravity IDE quota summary, when available */
@@ -312,9 +368,14 @@ export interface UsageEvent {
   codexLastRefreshAt?: string;
   // Codex usage limits (5h/7d-style) parsed from local rollout files
   codexRateLimits?: CodexRateLimits;
+  // Z.ai GLM Coding Plan usage limits, fetched directly from the provider
+  // account (monitor endpoint). Independent of any harness: the plan serves
+  // Claude Code, Codex and other CLIs from one shared quota.
+  zaiRateLimits?: ZaiRateLimits;
   // Local model/runtime summaries
   modelCatalog?: ModelCatalogEntry[];
   mlxModels?: string[];
+  mlxResidency?: ModelResidency;
   subscriptions?: SubscriptionInfo[];
   antigravityStatus?: AntigravityStatusInfo;
 }
@@ -440,7 +501,36 @@ export interface SubagentSummary {
   lastCompletedAt?: number;
 }
 
+/**
+ * Live cross-session coordination census for one session — the second axis
+ * beside `subagents`, for work divided WITHOUT a SubagentStart: `claude -p`
+ * workers spawned from a background Bash, peer sessions messaged over
+ * SendMessage, and background processes the session is waiting on. Measured
+ * 2026-09-06: a parent whose turn had closed read `idle` on every surface
+ * while six spawned workers ran and a 22-minute background job it would be
+ * re-invoked by was still going. Observed only — never inferred from shared
+ * project membership. Emitted with explicit zeros once a session has ever had
+ * a relation (retain-on-absent clients would otherwise latch the last count).
+ */
+export interface CoordinationSummary {
+  /** Background processes started by this session still running (argv names its scratchpad). */
+  backgroundJobs: number;
+  /** Peer sessions spawned by this session whose process is still alive. */
+  spawnedActive: number;
+  /** Peer sessions spawned by this session that have ended. */
+  spawnedCompleted: number;
+  /** Cross-session messages received / sent in this session. */
+  messagesIn: number;
+  messagesOut: number;
+  /** Name of the most recent peer messaged with, if the evidence carried one. */
+  lastPeerName?: string;
+  /** Epoch ms of the most recent relation observation. */
+  lastRelationAt?: number;
+}
+
 export interface SessionInfo {
+  /** Optional compact device label; never a session identity or folding key. */
+  displayName?: string;
   id: string;
   port: number;
   pid?: number;
@@ -522,6 +612,10 @@ export interface SessionInfo {
    *  when the last child exits would pin `8 running` on the row forever — the
    *  same one-way latch that `usageStale` hit twice. */
   subagents?: SubagentSummary;
+  /** Cross-session coordination census — see CoordinationSummary. Same
+   *  emission rule as `subagents`: present with zeros once observed, absent
+   *  only when this session has never had a relation. */
+  coordination?: CoordinationSummary;
 }
 
 export interface SessionsListEvent {
@@ -665,7 +759,7 @@ export interface DeviceInfoMessage {
   updateChannel?: string;
   sourceProvider?: string;
   // "86box" | "round_amoled" | "ips_35" | "ips_10" | "ttgo_t_display"
-  // | "ulanzi_tc001" | "inkdeck" | "t_embed" (wire strings — see esp32/src/net/protocol.cpp)
+  // | "ulanzi_tc001" | "trmnl_75" | "t_embed" (wire strings — see esp32/src/net/protocol.cpp)
   // | "xteink_x3" | "xteink_x4" (external CrossPoint fork; see docs/esp32-client-contract.md)
   board: string;
   version: string;       // firmware version (FIRMWARE_VERSION — bumped rarely)
@@ -694,11 +788,21 @@ export interface DeviceInfoMessage {
    * this value collapsing while freeHeapKb stays comfortable.
    */
   largestFreeBlockKb?: number;
+  /** Board-held Codex window percentages; -1 means no window is displayed. */
+  usageCodex5H?: number;
+  usageCodex7D?: number;
   /** ESP-IDF reset reason as a stable diagnostic string, e.g. "brownout" or "panic". */
   resetReason?: string;
   /** Raw esp_reset_reason_t numeric code for cases not covered by resetReason. */
   resetReasonCode?: number;
   ip?: string;
+  /**
+   * WiFi signal strength in dBm (WiFi.RSSI()), emitted only while associated.
+   * The one link-quality number a board can report about itself: without it a
+   * weak radio is indistinguishable from a daemon-side fault (2026-09-26 round
+   * AMOLED: 80% ping loss vs 0-15% on its neighbours). Absent on older firmware.
+   */
+  rssiDbm?: number;
   otaSupported?: boolean;
   otaSlotCount?: number;
   otaSlotSize?: number;
@@ -1152,7 +1256,9 @@ export interface CardFeedGlance {
 }
 
 export const GLANCE_MAX_WRAPUP_LINES = 4;
-export const GLANCE_MAX_USAGE_ROWS = 3;
+/** Claude, Codex and z.ai — a provider with no numbers gets no row, so the cap
+ *  only bites when all three are live at once. */
+export const GLANCE_MAX_USAGE_ROWS = 4;
 export const GLANCE_MAX_EVENTS = 3;
 /** Per-line UTF-8 byte budget (fits a 528px 1-bit panel row in KR16). */
 export const GLANCE_LINE_MAX_BYTES = 64;

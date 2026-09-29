@@ -51,20 +51,54 @@ enum ProjectNameResolver {
     /// Walk ancestors looking for a `.git` entry (directory OR file — submodule
     /// and worktree layouts store it as a file). Returns the repo root's
     /// basename.
-    static func gitToplevelBasename(startingAt cwd: String) -> String? {
+    static func gitToplevelBasename(startingAt cwd: String, compact: Bool = false) -> String? {
         var dir = (cwd as NSString).standardizingPath
         let fm = FileManager.default
         for _ in 0..<maxWalkDepth {
             let gitPath = (dir as NSString).appendingPathComponent(".git")
             if fm.fileExists(atPath: gitPath) {
-                let base = (dir as NSString).lastPathComponent
-                return base.isEmpty ? nil : base
+                return gitProjectLabel(root: dir, compact: compact)
             }
             let parent = (dir as NSString).deletingLastPathComponent
             if parent == dir || parent.isEmpty { return nil }
             dir = parent
         }
         return nil
+    }
+
+    /// Mirrors the linked-worktree contract pinned by shared/project-name-vectors.json.
+    /// Unreadable metadata, submodules and bare repositories retain the local name.
+    private static func gitProjectLabel(root: String, compact: Bool = false) -> String? {
+        let localName = (root as NSString).lastPathComponent
+        let fallback = localName.isEmpty ? nil : localName
+        func read(_ path: String) -> String? {
+            (try? String(contentsOfFile: path, encoding: .utf8))?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        func resolve(_ path: String, from base: String) -> String {
+            let absolute = (path as NSString).isAbsolutePath
+                ? path : (base as NSString).appendingPathComponent(path)
+            return (absolute as NSString).standardizingPath
+        }
+        guard let marker = read((root as NSString).appendingPathComponent(".git")),
+              marker.hasPrefix("gitdir:") else { return fallback }
+        let pointer = String(marker.dropFirst("gitdir:".count))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pointer.isEmpty else { return fallback }
+        let gitDir = resolve(pointer, from: root)
+        guard let commonPointer = read((gitDir as NSString).appendingPathComponent("commondir")),
+              !commonPointer.isEmpty else { return fallback }
+        let commonDir = resolve(commonPointer, from: gitDir)
+        guard (commonDir as NSString).lastPathComponent == ".git",
+              FileManager.default.fileExists(atPath: (commonDir as NSString).appendingPathComponent("HEAD"))
+        else { return fallback }
+        let repositoryName = ((commonDir as NSString).deletingLastPathComponent as NSString).lastPathComponent
+        return repositoryName.isEmpty ? fallback : (compact ? repositoryName : "\(repositoryName) · \(localName)")
+    }
+
+    static func compactProjectName(_ name: String, cwd: String?) -> String {
+        guard let cwd, resolve(cwd: cwd) == name else { return name }
+        return gitToplevelBasename(startingAt: cwd, compact: true) ?? name
     }
 
     /// Walk ancestors looking for a `package.json` whose `name` field is a

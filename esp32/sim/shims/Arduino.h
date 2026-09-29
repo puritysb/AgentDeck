@@ -13,7 +13,7 @@
 #include <cstddef>
 #include <string>
 // Pre-load the libstdc++ headers whose inline min()/max() members would
-// otherwise be macro-expanded after the BOARD_INKDECK min/max macros below
+// otherwise be macro-expanded after the BOARD_TRMNL_75 min/max macros below
 // (gcc/libstdc++ builds; libc++ never trips this). Include guards make any
 // later transitive include a no-op, so the macros never see these bodies.
 // <cmath> matters too: on gcc it drags in bits/specfun.h + tr1 internals
@@ -44,7 +44,7 @@ public:
 #define ARDUINO 10819
 #endif
 
-#if defined(BOARD_INKDECK)
+#if defined(BOARD_TRMNL_75)
 // The e-ink render tree + Adafruit_GFX use Arduino's min()/max() macros. Safe to
 // define here: this env never compiles the terrarium (which relies on the real
 // std::min/max, which these macros would shadow).

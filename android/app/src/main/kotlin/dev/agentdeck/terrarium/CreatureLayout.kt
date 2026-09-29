@@ -263,3 +263,33 @@ internal fun vectorMarkSlots(creatures: List<AgentCreatureState>): List<Creature
         }
     }
 }
+
+/**
+ * Spreads floor-resting creatures apart — hand mirror of `spreadFloorResidents`
+ * in shared/src/creature-layout.ts, pinned by shared/floor-spacing-vectors.json
+ * (DESIGN.md §6.4). Returns X in input order.
+ */
+fun spreadFloorResidents(items: List<Pair<Float, Float>>, minX: Float, maxX: Float, minGapRatio: Float): List<Float> {
+    val n = items.size
+    if (n == 0) return emptyList()
+    val order = items.indices.sortedWith(compareBy<Int> { items[it].first }.thenBy { it })
+    fun need(a: Int, b: Int) = minGapRatio * (items[a].second + items[b].second) / 2f
+    val xs = FloatArray(n) { items[order[it]].first }
+    var required = 0f
+    for (k in 1 until n) required += need(order[k - 1], order[k])
+    if (required > maxX - minX) {
+        val scale = if (n > 1) (maxX - minX) / required else 0f
+        xs[0] = if (n > 1) minX else (minX + maxX) / 2f
+        for (k in 1 until n) xs[k] = xs[k - 1] + need(order[k - 1], order[k]) * scale
+    } else {
+        xs[0] = maxOf(minX, xs[0])
+        for (k in 1 until n) xs[k] = maxOf(xs[k], xs[k - 1] + need(order[k - 1], order[k]))
+        xs[n - 1] = minOf(maxX, xs[n - 1])
+        for (k in n - 2 downTo 0) xs[k] = minOf(xs[k], xs[k + 1] - need(order[k], order[k + 1]))
+        xs[0] = maxOf(minX, xs[0])
+        for (k in 1 until n) xs[k] = maxOf(xs[k], xs[k - 1] + need(order[k - 1], order[k]))
+    }
+    val out = FloatArray(n)
+    order.forEachIndexed { k, i -> out[i] = xs[k] }
+    return out.toList()
+}

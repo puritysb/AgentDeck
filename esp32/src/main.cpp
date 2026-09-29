@@ -1,3 +1,6 @@
+#if defined(BOARD_TTGO)
+#include "ui/widgets/ttgo_usage.h"
+#endif
 /**
  * AgentDeck ESP32 Display Client
  *
@@ -21,6 +24,9 @@
 #include "net/wifi_manager.h"
 #include "net/mdns_discovery.h"
 #include "net/ws_client.h"
+#if defined(BOARD_IPS10)
+#include "net/ips10_sdio_dma.h"
+#endif
 
 #ifdef BOARD_LED8X32
 #include "ui/matrix/matrix_display.h"
@@ -28,6 +34,8 @@
 #include "ui/eink/eink_display.h"
 #if defined(BOARD_HAS_SPEAKER)
 #include "audio/speaker_playback.h"
+#include "ui/knob/attention_tracker.h"
+#include "ui/knob/chime.h"
 #endif
 #elif defined(BOARD_T_EMBED)
 #include "ui/display.h"
@@ -153,6 +161,12 @@ static void networkTask(void* param) {
     while (true) {
         // === Always poll serial (USB JSON from bridge) ===
         Net::serialLoop();
+#if defined(BOARD_IPS10)
+        Net::logSdioTxStaging();
+#endif
+#if defined(BOARD_EINK_SURFACE)
+        Eink::logRefreshCompletions();
+#endif
 
         // === WiFi portal (non-blocking, processes captive portal if active) ===
         Net::wifiLoop();
@@ -331,7 +345,7 @@ static void networkTask(void* param) {
             }
         }
 #elif !defined(BOARD_IPS10)
-        // Serial-primary WiFi radio parking (TTGO, InkDeck, and every other board
+        // Serial-primary WiFi radio parking (TTGO, TRMNL 7.5", and every other board
         // except TC001/LED8X32 above and IPS10 which parks via its own block).
         // When the daemon is actively driving this board over USB serial, serial
         // IS the transport and the 2.4GHz radio is dead weight:
@@ -402,12 +416,11 @@ static void tickerApplyBrightness(uint32_t now) {
 static void uiTask(void* param) {
     Serial.printf("[UI] Ticker task started on core %d\n", xPortGetCoreID());
 
-    // The camera probe decides the unit's role BEFORE the display comes up:
-    // a shield present means this is the handheld Pocket unit (portrait
-    // phone UI); absent means the desk-mounted landscape Focus Strip. The
-    // probe manages Wire itself and deinits straight after (power fence).
-    bool pocket = Camera::init();
-    if (pocket) UI::requestPortrait();
+    // Desk awareness is the default on either unit. A camera shield remains
+    // available in the strip's explicit CAM page; it no longer selects a
+    // different portrait UI before the user can see their pinned task.
+    Camera::init();
+    const bool pocket = false;
     UI::displayInit();
     Input::lightInit();
     Input::touchInit();
@@ -734,6 +747,7 @@ static void uiTask(void* param) {
     // Swipe on settings → back
     lv_obj_add_event_cb(scrSettings, settingsGesture, LV_EVENT_GESTURE, NULL);
 
+    logHeap("ui-ready");
     Serial.println("[UI] Screens created, entering main loop");
 
     uint32_t lastFrameMs = millis();
@@ -758,6 +772,9 @@ static void uiTask(void* param) {
     uint32_t btnLastMs = 0;
 #endif
 #if defined(BOARD_TTGO)
+    pinMode(BOARD_PIN_BTN2, INPUT_PULLUP);
+    bool modeBtnPrev = digitalRead(BOARD_PIN_BTN2);
+    uint32_t modeBtnLastMs = 0;
     uint32_t lastReassertMs = 0;   // 10s panel/backlight self-heal timer
 #endif
 
@@ -795,6 +812,17 @@ static void uiTask(void* param) {
             }
             btnPrev = btnNow;
         }
+#endif
+
+#if defined(BOARD_TTGO)
+        // The other (GPIO0) button toggles usage/terrarium, once per press.
+        const bool modeBtnNow = digitalRead(BOARD_PIN_BTN2);
+        if (modeBtnPrev && !modeBtnNow && now - modeBtnLastMs > 250) {
+            modeBtnLastMs = now;
+            TTGO::Usage::toggle();
+            Serial.printf("[Button] Display mode: %s\n", TTGO::Usage::active() ? "usage" : "terrarium");
+        }
+        modeBtnPrev = modeBtnNow;
 #endif
 
         // LVGL tick
@@ -947,6 +975,9 @@ static void uiTask(void* param) {
 #endif
         // LVGL timer handler
         lv_timer_handler();
+#if defined(BOARD_IPS10)
+        UI::recordFrameTiming(tView1-tView0, micros()-tView1);
+#endif
 
 #if defined(IPS10_PERF_HUD)
         // On-screen perf overlay source: track the WORST single frame over a rolling ~1.5s window.
@@ -1044,7 +1075,7 @@ static void uiTask(void* param) {
 // Slow tick: render() is content-hash gated internally and a panel refresh
 // blocks 0.3-3s, so there is nothing to gain from the 30fps LCD cadence.
 static void uiTask(void* param) {
-    Serial.println("[UI] InkDeck e-ink task started on core 1");
+    Serial.println("[UI] TRMNL 7.5\" e-ink task started on core 1");
     Eink::init();
 #if defined(BOARD_HAS_SPEAKER)
     // Runs on the UI task, after the first panel cycle, for the same reason the
@@ -1065,6 +1096,26 @@ static void uiTask(void* param) {
 
         Eink::update(dt);
         Eink::render();
+
+#if defined(BOARD_HAS_SPEAKER)
+        // Paper cannot flash or animate, and this panel's repaint takes ~10 s,
+        // so a session that starts waiting on the reader is announced by ear:
+        // the T-Embed pager's two-note chime, once per session entering an
+        // awaiting state. The tracker's latch survives reconnects and empty
+        // rosters, so a link blip does not re-announce an unresolved question.
+        {
+            static KnobAttention::Tracker attention;
+            bool entered = false;
+            lockState();
+            if (g_state.wsConnected || Net::serialConnected()) {
+                for (uint8_t i = 0; i < g_state.sessionCount; i++) {
+                    if (attention.observe(g_state.sessions[i].id, g_state.sessions[i].state, now)) entered = true;
+                }
+            }
+            unlockState();
+            if (entered) Chime::playAttention();
+        }
+#endif
 
         vTaskDelay(pdMS_TO_TICKS(250));
     }
@@ -1098,7 +1149,7 @@ void setup() {
 #if ARDUINO_USB_MODE == 1
     // HWCDC-only knobs (TinyUSB's USBCDC has neither): grow the 256-byte TX
     // ring and widen the give-up timeout — HWCDC drops whole 64-byte FIFO
-    // blocks mid-line otherwise. InkDeck now ships TinyUSB (USB_MODE=0), so
+    // blocks mid-line otherwise. TRMNL 7.5" now ships TinyUSB (USB_MODE=0), so
     // this branch only matters if someone flips the mode back.
     Serial.setTxBufferSize(4096);
     Serial.setTxTimeoutMs(300);
@@ -1135,11 +1186,11 @@ void setup() {
     for (int i = 0; i < 30 && !Serial; i++) delay(100);
     delay(200);
     Serial.println("\n=== AgentDeck LilyGo T5 4.7\" e-ink ===");
-#elif defined(BOARD_INKDECK)
+#elif defined(BOARD_TRMNL_75)
     // Native USB CDC: wait for host connection (up to 3 seconds)
     for (int i = 0; i < 30 && !Serial; i++) delay(100);
     delay(200);
-    Serial.println("\n=== AgentDeck InkDeck 7.5\" e-ink ===");
+    Serial.println("\n=== AgentDeck TRMNL 7.5\" e-ink ===");
 #elif defined(BOARD_T_EMBED)
     // Native USB CDC: wait for host connection (up to 3 seconds)
     for (int i = 0; i < 30 && !Serial; i++) delay(100);
@@ -1168,8 +1219,8 @@ void setup() {
         "NM-EPD-420 4.2\" e-ink",
 #elif defined(BOARD_LILYGO_EPD47)
         "LilyGo T5 4.7\" e-ink",
-#elif defined(BOARD_INKDECK)
-        "InkDeck 7.5\" e-ink",
+#elif defined(BOARD_TRMNL_75)
+        "TRMNL 7.5\" e-ink",
 #elif defined(BOARD_T_EMBED)
         "T-Embed Knob",
 #elif defined(BOARD_T_DISPLAY_PRO)

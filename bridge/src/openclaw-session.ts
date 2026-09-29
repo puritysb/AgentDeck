@@ -5,8 +5,21 @@
  * drift. Mirror of Swift `buildSessionsListEvent`.
  */
 import { isOpenClawSessionActive, hasOpenClawSession } from '@agentdeck/shared';
-import type { OpenClawApprovalPrompt } from '@agentdeck/shared';
+import type { OpenClawApprovalPrompt, OpenClawPluginApprovalPrompt } from '@agentdeck/shared';
 import type { EnrichedSession } from './session-aggregator.js';
+
+/**
+ * `OpenClawApprovalPrompt` (exec) always carries `command` — even an empty
+ * string, never `undefined` (`parseExecApprovalRequest` always sets it).
+ * `OpenClawPluginApprovalPrompt` has no `command` field at all. This is the
+ * one field-shape difference cheap enough to branch on without a `kind` tag
+ * threading through the wire type.
+ */
+function isPluginApprovalPrompt(
+  approval: OpenClawApprovalPrompt | OpenClawPluginApprovalPrompt,
+): approval is OpenClawPluginApprovalPrompt {
+  return !('command' in approval);
+}
 
 /**
  * Id of the virtual Gateway session row. Defined here because this injector is
@@ -24,14 +37,16 @@ export interface InjectOpenClawOptions {
   modelName?: string;
   controlMode?: 'managed';
   /**
-   * The exec approval the Gateway is blocked on, when there is one. Every deck
+   * The approval the Gateway is blocked on, when there is one — exec
+   * (`exec.approval.*`) or plugin (`plugin.approval.*`, issue #309), whichever
+   * the adapter's `activePendingApproval()` currently presents. Every deck
    * surface already renders `question`/`options` off the session row and only
    * falls back to the dead-end "PERMIT? / answer in terminal" tile when they are
    * absent — which they always were, because this row never carried them. The
    * Gateway session has no terminal to answer in, so that fallback left the user
    * with no route at all.
    */
-  approval?: OpenClawApprovalPrompt | null;
+  approval?: OpenClawApprovalPrompt | OpenClawPluginApprovalPrompt | null;
 }
 
 /**
@@ -57,14 +72,21 @@ export function injectOpenClawSession(
   if (opts.modelName !== undefined) injected.modelName = opts.modelName;
   if (opts.controlMode !== undefined) injected.controlMode = opts.controlMode;
   if (opts.approval) {
-    injected.question = opts.approval.question;
-    // The question is the command; `questionDetail` is everything that makes it
-    // a decision — the policy reason approval was demanded, the cwd, and WHICH
-    // OpenClaw session asked. All three were parsed and then dropped here, so a
-    // deck asked the user to approve a bare `sed -n` with no reason and no way
-    // to tell a cron heartbeat apart from a model-eval run (measured
-    // 2026-08-23: every approval came from `agent:main:eval-…__r2`, while the
-    // row said only "OpenClaw").
+    // A user pressing Allow must know WHICH kind of thing they are allowing —
+    // an exec approval is a shell command; a plugin approval is whatever a
+    // plugin (or a trusted in-process agent runtime) asked for, which reads
+    // very differently ("Send message to #ops" is not a command line). The
+    // `[Plugin]` prefix rides the one field every surface already renders
+    // (`question`), so no wire-shape change is needed on any device.
+    const isPlugin = isPluginApprovalPrompt(opts.approval);
+    injected.question = isPlugin ? `[Plugin] ${opts.approval.question}` : opts.approval.question;
+    // The question is the command (or plugin title); `questionDetail` is
+    // everything that makes it a decision — the policy reason approval was
+    // demanded, the cwd, and WHICH OpenClaw session asked. All three were
+    // parsed and then dropped here, so a deck asked the user to approve a bare
+    // `sed -n` with no reason and no way to tell a cron heartbeat apart from a
+    // model-eval run (measured 2026-08-23: every approval came from
+    // `agent:main:eval-…__r2`, while the row said only "OpenClaw").
     const detailLines = [
       ...(opts.approval.detail ? opts.approval.detail.split('\n') : []),
       ...(opts.approval.sessionKey ? [`session: ${opts.approval.sessionKey}`] : []),

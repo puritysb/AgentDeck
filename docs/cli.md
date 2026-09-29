@@ -19,9 +19,10 @@ default) aggregates all sessions for external clients.
 > **Legacy compatibility notice:** `agentdeck claude`, `agentdeck codex`,
 > `agentdeck opencode`, and `agentdeck monitor` still work, and no removal date
 > is set. The daemon-first default is `agentdeck daemon install` followed by a
-> normal agent launch. Remote attach, `--weight`, `AGENTDECK_<AGENT>_ARGS`,
-> terminal steering, and terminal telemetry do not have daemon-first
-> equivalents yet. Replacement design is discussed in
+> normal agent launch. Custom launch arguments can also use `agentdeck run`
+> without a PTY (below). Remote attach, terminal steering, and terminal-only
+> telemetry still require the managed path; observed ordering uses `agentdeck order`.
+> Replacement design is discussed in
 > [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
 > implementation remains tracked in
 > [#273](https://github.com/puritysb/AgentDeck/issues/273).
@@ -37,6 +38,34 @@ monitoring is not guaranteed.
 
 The CLI command is `agentdeck`.
 
+### Observed launch without a PTY
+
+`agentdeck run claude`, `agentdeck run codex`, or `agentdeck run opencode` launches
+in the current terminal without a managed bridge or PTY. Install the daemon and
+hooks first with the ordinary setup flow. Hooks/transcripts own observation, just
+as when running the agent directly. The launcher does not auto-start a daemon,
+rewrite hook settings or capture terminal output.
+
+```bash
+agentdeck run claude -c 'claude --resume my-session'
+agentdeck run codex --no-env-args
+```
+
+`-c` and the agent-specific `AGENTDECK_*_ARGS` append retain their shell grammar:
+POSIX uses the configured login shell (`SHELL`, default `/bin/bash`); Windows uses
+`COMSPEC` (default `cmd.exe`) with `/d /s /c`. `AGENTDECK_COMMANDER_ARGS` is inserted
+after `run`, before typed options; typed `-c` wins. `--no-env-args` disables
+both layers. Exit status and terminal streams are inherited. Commands remain
+user-authored shell text, including pipes and redirects.
+
+Managed-only flags such as `--remote-daemon`, `--weight`, wake word and terminal
+controls are rejected by `run`, including when supplied through environment
+defaults. Use the existing managed command for those workflows, or
+`agentdeck order` for observed ordering. Launching inside an existing managed
+session is rejected to avoid routing hooks to its `AGENTDECK_PORT`. This is an
+additive local launcher; remote relay and managed terminal-control parity remain
+open in #273. Existing managed commands have no removal date.
+
 ### Sessions
 
 | Command | Description |
@@ -45,6 +74,9 @@ The CLI command is `agentdeck`.
 | `agentdeck codex` | **Legacy compatibility:** start Codex in the managed PTY session bridge |
 | `agentdeck opencode` | **Legacy compatibility:** start OpenCode in the managed PTY/SSE session bridge |
 | `agentdeck monitor` | **Legacy compatibility:** start the managed hook-only per-session bridge |
+| `agentdeck order set <id> <n>` | Pin an observed session's deck/tab sort slot (daemon-persisted; `0` clears) |
+| `agentdeck order clear <id>` | Remove an observed session order pin |
+| `agentdeck order list` | List stored order pins |
 
 The following flags document the managed compatibility path. New ordinary local
 sessions should use the normal agent commands; keep this path when one of these
@@ -127,6 +159,37 @@ Negative weights sort ahead of unweighted sessions (e.g. `--weight -5` to always
 float a session to the top). The value is a pure sort key — it never changes how
 a session behaves.
 
+#### Pinning observed session order with `agentdeck order`
+
+`--weight` is a launch-time flag of the managed PTY commands. A normally
+launched observed session (run `claude`/`codex`/`opencode` directly with the
+daemon installed) has no launch line to hang a flag on, so ordering it is
+daemon-first instead: `agentdeck order` pins the weight on the daemon, and the
+daemon applies it every time it builds `sessions_list` — same comparator, same
+surfaces, and the same fold behaviour (two same-project Codex tabs pinned to
+different weights never collapse into one row).
+
+```bash
+agentdeck order set observed:claude:1a2b… 1   # pin (id, unique prefix, or bare uuid)
+agentdeck order set observed:claude:1a2b… 0   # weight 0 clears the pin
+agentdeck order clear observed:claude:1a2b…
+agentdeck order list
+```
+
+Lifecycle: pins live in `~/.agentdeck/session-order.json`, survive daemon
+restarts, and re-apply automatically when the same session id reappears
+(`claude --resume <uuid>` keeps its pin). A pin whose session has been absent
+from the roster for 30 days is garbage-collected; at most 256 pins are kept
+(least-recently-seen evicted first). Precedence: the store pins **observed**
+rows only — a managed session's launch-time `--weight` (and a remote-attached
+session's pushed weight) always wins.
+
+Both daemons implement it: the Node daemon and the in-process Swift daemon
+read and write the same pin file and serve the same `agentdeck order` routes
+with identical behaviour, so pins survive a daemon handover in either
+direction. Only a daemon build older than the feature answers 404 — update
+and restart it.
+
 ### Daemon
 
 | Command | Description |
@@ -168,7 +231,8 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 | `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |
 | `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
 | `agentdeck diag` | Daemon diagnostic dump (`-a` for AI analysis) |
-| `agentdeck diag agents [--json]` | Privacy-safe installed-version and compatibility report for normal Claude/Codex/OpenCode launches; no daemon required |
+| `agentdeck diag agents [--json]` | Privacy-safe version, compatibility and registration-file evidence for normal Claude/Codex/OpenCode launches; activation and event reception are explicitly unverified; no daemon or paid probe required |
+| `agentdeck diag connection [--json] [-p <port>]` | Read-only registry, PID, HTTP health and WebSocket ping/pong checks; allowlisted report excludes tokens, paths and session content |
 | `agentdeck diag kiro [--json]` | Privacy-safe Kiro passive-observation diagnostic; no daemon required |
 | `agentdeck diag native [--json]` | Open an in-memory APME database under the current Node executable and report its version, ABI, native-binding status, and recovery; no daemon required |
 | `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
@@ -258,12 +322,35 @@ no subprocesses.
 | `agentdeck apme judge` | Evaluate pending runs manually (no daemon required) |
 | `agentdeck apme scorecard` | Model scorecard by category and overall |
 | `agentdeck apme stop-health` | Stop-hook delivery rate — how turns actually closed (`--since 7d`, `--agent`) |
+| `agentdeck apme judge-health` | Judge coverage — whether closed work actually got a verdict (`--since 14d`, `--json`) |
+| `agentdeck apme prune` | Reclaim `apme.sqlite` disk space by clearing old tool payloads (`--older-than 30`, `--apply`, `--vacuum`) |
 | `agentdeck apme tune` | Trigger rubric auto-tuner (OPRO loop) |
 | `agentdeck apme vibe <runId> <verdict>` | Label a run (`approve`/`reject`/`neutral`) |
 | `agentdeck apme tag <runId> <category>` | Manually set task category |
 | `agentdeck apme reclassify` | Re-run classifier on unclassified runs |
 | `agentdeck apme rubric` | Inspect current rubrics |
 | `agentdeck apme export` | Export dataset to JSON |
+
+`apme prune` addresses #302: `steps.payload` and tool-kind `sample_events.payload`
+were measured at 71% of a 2.33 GB `apme.sqlite` on one desk (~7.7 KB/row), with
+no retention. Default is a **dry run** — it reports how many rows and MB per
+table would be reclaimed and changes nothing; pass `--older-than <days>`
+(default 30, the same window the judge backlog drain uses) to change the age
+cutoff. `--apply` performs the prune inside one transaction: the row is
+**kept** (never deleted — every reader that counts or keys off row existence
+keeps working) and only its `payload` is replaced with a small JSON marker
+(`{"pruned":true,"prunedAt":…,"bytes":…}`) so the row still shows up and says
+why it has no content. `runs`/`tasks`/`turns`/`evals` are never touched, a
+row whose age is unknown (`ts=0`) is never a candidate, and `sample_events` is
+pruned only where `kind='tool'` — every other kind (user/assistant messages,
+model usage, subagent lifecycle, state/info/relation) is left alone since
+those are the small, semantically load-bearing rows. `--vacuum` reclaims the
+freed bytes on disk (SQLite does not shrink the file on `UPDATE` alone) but
+only runs after `--apply`, and only when free disk space on the DB's volume
+is at least 1.1x the file's current size — otherwise it explains why it
+skipped and leaves the file as `--apply` left it. There is no automatic or
+background pruning; run this by hand (or from your own cron/launchd) when you
+want the space back.
 
 ### Device Setup
 
@@ -292,3 +379,23 @@ not the same act as finding one you never asked for.
 | `agentdeck esp32-ota <target>` | Push ESP32 firmware over WiFi OTA (`--build` or `--firmware <path>`). Pull staging uses `--stage`; X3/X4 additionally require `--manifest <agentdeck-surface.json>` or both `--product-id` and `--update-channel`. |
 
 ---
+
+## Local connection diagnostics
+
+For a Stream Deck OFFLINE report, run `agentdeck diag connection --json` from
+the same account as Stream Deck, alongside `agentdeck --version`,
+`agentdeck diag native --json`, and the installed plugin version. The report
+checks the registry without pruning it, distinguishes a dead PID from an
+inconclusive permission check, then probes HTTP health and a WebSocket pong
+with a three-second deadline. It never sends an agent command or uses a token.
+Only selected identity/status fields are emitted; remote errors and close
+reasons, full health frames, file paths and session content are omitted.
+
+Without `-p`, the target comes from the CLI's ordered registry candidates;
+it does not silently scan ports or assume 9120. An explicit `-p` probes that
+loopback port for both HTTP and WebSocket, independently of stale registry
+entries. A registry PID mismatch is reported even if both protocols answer.
+The command exits 0 when both protocols work without a known PID mismatch,
+and 1 otherwise. A CLI success does not prove the plugin's account, elevation,
+environment or macOS sandbox discovery path is identical, nor does it say an
+agent session is active.

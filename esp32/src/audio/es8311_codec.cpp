@@ -6,6 +6,7 @@
 #include "i2c_reg.h"                 // UI::hwI2cReadReg8 / hwI2cWriteReg8
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include <driver/gpio.h>
 
 namespace Es8311 {
@@ -65,21 +66,31 @@ constexpr uint8_t REGFF_VERSION     = 0xFF;
 constexpr uint8_t ADDR = BOARD_ES8311_I2C_ADDR;
 
 bool s_ready = false;
+uint32_t s_readyRate = 0;
 // Survives begin(): the playback task re-inits the codec, and without a stored
 // level that init would silently undo whatever the caller just set.
-// -18 dB. Picked by ear on the ips10 amplifier (2026-07-28): 0 dB and above
-// were reported painfully loud twice, while -18 dB was still clearly audible
-// as the quietest of three verified steps.
 // Default output level, as a percent of the -60..0 dB scale setVolume() maps.
-// This is an AMPLIFIER property, not a codec one: 70 was picked by ear on the
-// ips10 Class-D stage, and the RockBase NM's own vendor test runs its DAC at
-// 0x32=0xD3 (+10 dB) — 28 dB above what 70 produces here — so the same number
-// is inaudible on that board. Boards override it rather than sharing a guess.
+// This is an amplifier property: IPS10 defaults to 40 (-36 dB), whereas the
+// RockBase NM needs 100 (0 dB). Each board owns its comfortable default.
 #if defined(BOARD_SPK_DEFAULT_VOLUME)
 int  s_volume = BOARD_SPK_DEFAULT_VOLUME;
 #else
 int  s_volume = 70;
 #endif
+int s_savedVolume = -1;
+
+// Read once during the boot-time codec probe, before audio/UI tasks use it.
+// Preferences owns a bounded NVS handle only on this cold path and user taps.
+void loadVolume() {
+    Preferences prefs;
+    if (prefs.begin("ad-voice", true)) {
+        const int saved = prefs.getUChar("volume", 255);
+        if (saved <= 100) s_volume = s_savedVolume = saved;
+        prefs.end();
+    }
+    Serial.printf("[ES8311] speaker volume %d%% (%s)\n", s_volume,
+                  s_savedVolume < 0 ? "board default" : "saved");
+}
 // REG16 takes a gain *enum*, 0..7 == 0/6/12/18/24/30/36/42 dB (upstream
 // es8311_set_mic_gain writes the enum straight into the register). Note the
 // open sequence above writes 0x24 into the same register — that is a clock/ramp
@@ -194,6 +205,7 @@ bool present() {
     // bus collision.
     static int8_t s_present = -1;
     if (s_present >= 0) return s_present == 1;
+    loadVolume();
     codecRailEnable();
     uint8_t id1 = 0, id2 = 0;
     const bool ok = rd(REGFD_CHIP_ID1, &id1) && rd(REGFE_CHIP_ID2, &id2) &&
@@ -229,6 +241,11 @@ void dumpRegs(const char* tag) {
                   gpio_get_level((gpio_num_t)BOARD_PIN_CODEC_EN));
 #endif
     Serial.println();
+}
+
+bool ensure(uint32_t sampleRate) {
+    if (s_ready && s_readyRate == sampleRate) return true;
+    return begin(sampleRate);
 }
 
 bool begin(uint32_t sampleRate) {
@@ -322,6 +339,7 @@ bool begin(uint32_t sampleRate) {
     setMicGain(s_micGain);
     paEnable(true);
 
+    s_readyRate = sampleRate;
     s_ready = true;
     Serial.printf("[ES8311] ready — 0x%02X ver 0x%02X, %lu Hz, MCLK %lu Hz "
                   "(pins MCLK %d / BCLK %d / LRCK %d / DOUT %d / PA %d)\n",
@@ -347,6 +365,19 @@ void setVolume(int percent) {
 }
 
 int volume() { return s_volume; }
+
+bool setUserVolume(int percent) {
+    setVolume(percent);
+    if (s_savedVolume == s_volume) return true;
+    Preferences prefs;
+    if (!prefs.begin("ad-voice", false)) return false;
+    const bool saved = prefs.putUChar("volume", (uint8_t)s_volume) == 1;
+    prefs.end();
+    if (saved) s_savedVolume = s_volume;
+    Serial.printf("[ES8311] speaker volume %d%% %s\n", s_volume,
+                  saved ? "saved" : "save failed");
+    return saved;
+}
 
 void setMicGain(int step) {
     if (step < 0) step = 0;

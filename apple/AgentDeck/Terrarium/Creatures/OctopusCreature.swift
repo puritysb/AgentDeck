@@ -65,6 +65,10 @@ final class OctopusCreature: Creature {
     var displayName: String?
     var visualState: OctopusVisualState = .floating
     var homeX: Float
+    /// Floor position after the shared spacing pass; nil while swimming.
+    var restX: Float?
+    /// Band width the layout reserves for one octopus (creature-layout.ts).
+    static let layoutWidth: Float = 0.11
     var homeY: Float
     var scale: Float
 
@@ -130,6 +134,7 @@ final class OctopusCreature: Creature {
     }
 
     private func updatePosition(dt: Float) {
+        let homeX = restX ?? self.homeX
         let depthOffset = (homeX - 0.4) * 0.15
         let lane = swimLane()
 
@@ -272,7 +277,14 @@ final class OctopusCreature: Creature {
 
         if let transformed = Self.robotPath.copy(using: &t) {
             context.fill(Path(transformed),
-                         with: .color(bodyColor.opacity(Double(alpha))),
+                         with: .linearGradient(
+                            Gradient(colors: [
+                                TerrariumColors.lerpColor(bodyColor, TerrariumColors.hudText, 0.18).opacity(Double(alpha)),
+                                bodyColor.opacity(Double(alpha)),
+                                TerrariumColors.lerpColor(bodyColor, TerrariumColors.deepSea, 0.30).opacity(Double(alpha)),
+                            ]),
+                            startPoint: CGPoint(x: offsetX, y: offsetY),
+                            endPoint: CGPoint(x: offsetX + 24 * s, y: offsetY + 24 * s)),
                          style: FillStyle(eoFill: true))
         }
 
@@ -366,7 +378,8 @@ final class OctopusCreature: Creature {
             cx: cx,
             bodyTopY: cy - bodyRadius * 0.583,
             bodyMetric: terrariumNameTagMetric(canvasWidth: canvasWidth, scale: scale),
-            backgroundColor: TerrariumColors.claudeNameBg
+            backgroundColor: TerrariumColors.claudeNameBg,
+            rank: visualState == .asking ? .awaiting : visualState == .working ? .working : .idle
         )
     }
 }

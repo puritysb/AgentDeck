@@ -35,6 +35,9 @@ export interface UlanziApi {
   setGifDataIcon(context: string, base64Gif: string, text?: string): void;
   setStateIcon(context: string, state: number, text?: string): void;
   setPathIcon(context: string, path: string, text?: string): void;
+  onDidReceiveGlobalSettings(fn: (m: UlanziMessage) => void): UlanziApi;
+  getGlobalSettings(): void;
+  setGlobalSettings(settings: unknown): void;
   setSettings(settings: unknown, context?: string): void;
   getSettings(context?: string): void;
   /** Raw protocol send — used to batch many key images in one `state` message. */

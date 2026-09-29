@@ -365,7 +365,7 @@ export function renderJudgeGuidanceHtml(opts: {
 ${detectedBlock}
   <h2>All options <span class="tier">— ranked by review quality</span></h2>
   <h2><span class="rank">1</span>Anthropic API <span class="tier">— best review quality (usage-billed, opt-in)</span></h2>
-  <pre>{ "apme": { "judge": { "backend": "api", "model": "claude-opus-4-8" } } }</pre>
+  <pre>{ "apme": { "judge": { "backend": "api", "model": "claude-opus-5" } } }</pre>
   <p style="font-size:13px">Credential: <code>export ANTHROPIC_API_KEY=…</code>, or <code>ant auth login</code>, or add <code>"apiKey"</code> next to the model. <code>claude-haiku-4-5</code> is the budget option if review volume is high.</p>
 
   <h2><span class="rank">2</span>OpenRouter <span class="tier">— one key, hundreds of models (usage-billed)</span></h2>

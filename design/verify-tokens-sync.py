@@ -115,11 +115,11 @@ MIRRORS = {
         "type": "css-root",
         "path": ROOT / "scripts" / "generate-html-report.py",
         "unescape_braces": True,
-        # :root declarations only. The generator's BODY also carries chart /
-        # badge hex (sparklines, category colors) that predate the token
-        # system; sweeping them is a separate normalization, tracked in the
-        # design-lint baseline, not a sync gate.
-        "body_sweep": False,
+        # Body swept too (2026-09-28): the report was rebuilt on tokens, so a
+        # hex literal anywhere outside :root — CSS, inline style, SVG — is a
+        # regression. Its generated OUTPUT is linted separately by
+        # scripts/__tests__/build-health-report.test.ts.
+        "body_sweep": True,
     },
 }
 
@@ -147,6 +147,7 @@ GROUP_MAP = {
     "brand": "Brand",
     "status": "Status",
     "ui": "UI",
+    "session": "Session",
     "font": "Font",
     "t": "Type",
     "tr": "Tracking",
@@ -783,8 +784,12 @@ def verify_css_root_mirror(
                     )
                 continue
 
-            # Numeric / string: exact whitespace-normalised match.
-            normalised = re.sub(r"\s+", " ", value)
+            # Numeric / font stack / string: normalise the mirror value exactly
+            # as parse_css normalised the canonical one (`16px` → `16`, a font
+            # stack → its quoted families), then compare. Comparing the raw
+            # text made every non-colour declaration in a css-root mirror drift.
+            classified = _classify_value(value, canonical.group)
+            normalised = classified[1] if classified else re.sub(r"\s+", " ", value)
             if normalised != canonical.value:
                 drift.append(
                     f"{name} = {value!r} — canonical is {canonical.value!r}"

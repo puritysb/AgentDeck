@@ -35,6 +35,8 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".AquariumPreviewActivity" android:exported="true" />
+
         <service
             android:name=".service.MonitorService"
             android:foregroundServiceType="connectedDevice"

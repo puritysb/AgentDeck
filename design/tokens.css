@@ -38,6 +38,10 @@
   --brand-opencode:    #3a3a3a;
   --brand-antigravity: #5F6368;
   --brand-kiro:        #7C3AED;
+  --brand-zai:         #1F63EC;
+  /* OpenCode's upstream mark is near-black; its light variant is the one
+   * that stays legible on dark product screens (aquarium, LCD, LED). */
+  --brand-opencode-on-dark: #F1ECEC;
 
   /* === Semantic status (marketing / editorial surfaces) === */
   --status-idle:       var(--ink-300);
@@ -66,6 +70,31 @@
   --ui-tty-text:       #c8d0d8;
   --ui-tty-dim:        #7a8493;
   --ui-tty-faint:      #4a5060;
+
+  /* Dashboard HUD — text laid over the aquarium water on every dark
+   * Dashboard (Apple Monitor, Android LCD, ESP32 LCD). Cool greys on purpose:
+   * they sit on blue water, not on warm sand (DESIGN.md §2.6). */
+  --ui-hud-text:       #E2E8F0;
+  --ui-hud-subtext:    #94A3B8;
+  --ui-hud-faint:      #64748B;
+
+  /* Aquarium water — the terrarium ground shared by every Dashboard. */
+  --ui-water-deep:     #0A1628;
+  --ui-water-mid:      #0F2744;
+  --ui-water-shallow:  #163B5C;
+
+  /* === Session state (product UI) — DESIGN.md §2.7 ===
+   * One meaning per hue on every product surface: green is health (link up,
+   * quota normal), cyan is activity (an agent working — the creature spark),
+   * amber is "needs you" and the only hue that pulses, red is failure, grey is
+   * quiet. A live idle session is neutral; offline shares the "no live
+   * information" grey that quota readings use when they are not current.
+   */
+  --session-idle:     var(--ui-idle);
+  --session-working:  var(--ui-cyan);
+  --session-awaiting: var(--ui-attn);
+  --session-offline:  var(--ui-idle-dark);
+  --session-error:    var(--ui-error);
 
   /* === Type === */
   --font-sans: "IBM Plex Sans", "IBM Plex Sans KR", "IBM Plex Sans JP",

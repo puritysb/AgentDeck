@@ -81,7 +81,7 @@ export function agentCoordinationSummary(
  *
  * Determinism: ties sort by name so the same task always folds to the same
  * line (renderer output is used as identity in dedup paths — see the
- * session-slot renderer rule in CLAUDE.md). The tie-break is a plain
+ * session-slot renderer rule in AGENTS.md). The tie-break is a plain
  * code-unit compare, NOT localeCompare: localeCompare's order depends on the
  * host locale (and case-folds, so `Bash` vs `apply` flips), which both breaks
  * determinism across machines and cannot be mirrored by Swift's `<`.

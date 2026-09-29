@@ -31,7 +31,7 @@ validators: [node scripts/build-design-system-viewer.mjs --check]
 
 ## 변경 순서
 
-1. `CLAUDE.md`와 소유 문서를 읽는다.
+1. `AGENTS.md`와 소유 문서를 읽는다.
 2. 미러나 화면보다 정본 스펙을 먼저 수정한다.
 3. 스펙을 만족하는 최소 런타임 변경을 구현한다.
 4. 명시된 검증기와 실제 동작을 실패시킬 수 있는 런타임 검증을 실행한다.

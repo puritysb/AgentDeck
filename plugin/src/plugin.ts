@@ -1,3 +1,4 @@
+import { captureRuntimeIdentity, writeRuntimeIdentity } from './runtime-identity.js';
 import streamDeck from '@elgato/streamdeck';
 import {
   StateUpdateEvent,
@@ -12,10 +13,23 @@ import {
   type DeckSlotConfig,
   type DeckSlotMapEvent,
   type SessionInfo,
+  modelProvider,
 } from '@agentdeck/shared';
 
 import { ConnectionManager } from './connection-manager.js';
-import { updateUsageModeData, setUsageRefreshCallback } from './utility-modes/usage.js';
+import {
+  buildConnectionStatusPayload,
+  isRetryNowMessage,
+  isRequestConnectionStatusMessage,
+} from './connection-status-pi.js';
+import {
+  type UsageProviderId,
+  modelProviderToUsageProvider,
+  noteUsageProviderActivity,
+  updateUsageModeData,
+  setUsageRefreshCallback,
+  restoreUsageDialPreferences, usageDialPreferences, onUsageDialSelectionChanged,
+} from './utility-modes/usage.js';
 import { setEncoderDaemonConnected } from './encoder-registry.js';
 import { dlog, dinfo } from './log.js';
 import { deviceTypeFromUnknown, familyForDeviceType } from './device-profile.js';
@@ -67,6 +81,10 @@ import {
 import { isDisplayDimmed, setDisplayDimmed, dimActionIfNeeded } from './display-dim.js';
 import { FocusedDetailState, type FocusedDetailSnapshot } from './focused-detail-state.js';
 import { voiceCommandForAction } from '@agentdeck/shared';
+
+let runtimeIdentity: ReturnType<typeof captureRuntimeIdentity> | undefined;
+try { runtimeIdentity = captureRuntimeIdentity(import.meta.url); }
+catch (error) { console.warn('Plugin build identity unavailable', error); }
 
 // ---- Shared state ----
 let currentState = State.DISCONNECTED;
@@ -237,6 +255,34 @@ initSessionSlots((result) => {
   }
 });
 
+// ---- Connection status → Property Inspector (#307) ----
+//
+// `sendToPropertyInspector` only delivers when a PI for one of this plugin's
+// actions is actually open, so pushing on every connect/disconnect/retry is
+// cheap even though most of the time nothing is listening. The mapping from
+// snapshot to wire payload lives in connection-status-pi.ts — this is just
+// the plumbing that calls it.
+function pushConnectionStatusToPi(): void {
+  void streamDeck.ui
+    .sendToPropertyInspector(buildConnectionStatusPayload(connMgr.getConnectionSnapshot()))
+    .catch(() => {});
+}
+
+streamDeck.ui.onDidAppear(() => pushConnectionStatusToPi());
+
+streamDeck.ui.onSendToPlugin((ev) => {
+  const payload = ev.payload;
+  if (isRetryNowMessage(payload)) {
+    dinfo('Plugin', 'PI: retryNow()');
+    connMgr.retryNow();
+    pushConnectionStatusToPi();
+    return;
+  }
+  if (isRequestConnectionStatusMessage(payload)) {
+    pushConnectionStatusToPi();
+  }
+});
+
 // ---- Bridge event handlers ----
 
 connMgr.on('state_update', (ev: StateUpdateEvent) => {
@@ -322,11 +368,12 @@ connMgr.on('usage_update', (ev: UsageEvent) => {
     extraUsageMonthlyLimit: ev.extraUsageMonthlyLimit,
     extraUsageUsedCredits: ev.extraUsageUsedCredits,
     subscriptions: ev.subscriptions,
+    antigravityStatus: ev.antigravityStatus,
     usageStale: ev.usageStale,
   };
   // Codex rate limits (primary≈5h, secondary≈7d) ride alongside the Claude
-  // 5h/7d quota so every usage surface can draw both agents.
-  const merged = { ...usageData, codexRateLimits: ev.codexRateLimits };
+  // 5h/7d quota so every usage surface can draw both agents; z.ai the same (#348).
+  const merged = { ...usageData, codexRateLimits: ev.codexRateLimits, zaiRateLimits: ev.zaiRateLimits };
   updateUsageModeData(merged);
   // SD+ encoders: E2 = Claude usage water-tank, E3 = Codex usage water-tank.
   updateClaudeUsageDial(merged);
@@ -354,6 +401,23 @@ connMgr.on('connection', (ev: ConnectionEvent) => {
 connMgr.on('sessions_list', (ev: { type: 'sessions_list'; sessions: SessionInfo[] }) => {
   dlog('Plugin', `sessions_list: ${ev.sessions.length} sessions`);
   updateSessionSlotSessions(ev.sessions);
+  // Provider "last heavy use" signal for the auto usage dial (#349): the wire
+  // carries no per-row activity stamp, so the honest proxy is PROCESSING
+  // counts first, then the newest session-start per provider.
+  {
+    const processing: Partial<Record<UsageProviderId, number>> = {};
+    const recency: Partial<Record<UsageProviderId, number>> = {};
+    for (const s of ev.sessions) {
+      const p = modelProviderToUsageProvider(modelProvider(s.modelName));
+      if (!p) continue;
+      processing[p] = (processing[p] ?? 0) + (s.state === 'processing' ? 1 : 0);
+      const started = s.startedAt ? Date.parse(s.startedAt) : NaN;
+      if (Number.isFinite(started)) recency[p] = Math.max(recency[p] ?? 0, started);
+    }
+    for (const p of ['claude', 'codex', 'zai'] as const) {
+      noteUsageProviderActivity(p, processing[p] ?? 0, recency[p] ?? 0);
+    }
+  }
   if (isInDetailView()) {
     const focused = getFocusedSession();
     const snapshot = focusedDetailState.snapshot;
@@ -474,6 +538,7 @@ connMgr.on('connected', () => {
   // Request fresh usage data immediately on connect (covers sleep/wake recovery)
   connMgr.send({ type: 'query_usage' });
   broadcastStateUpdate();
+  pushConnectionStatusToPi();
 });
 
 connMgr.on('stale-changed', (stale: boolean) => {
@@ -489,6 +554,7 @@ connMgr.on('disconnected', () => {
   currentState = State.DISCONNECTED;
   currentOptions = [];
   broadcastStateUpdate();
+  pushConnectionStatusToPi();
 });
 
 function broadcastStateUpdate(): void {
@@ -605,6 +671,20 @@ function sendSlotMap(): void {
 // ---- Connect ----
 
 streamDeck.connect().then(async () => {
+  try { if (runtimeIdentity) writeRuntimeIdentity(runtimeIdentity); }
+  catch (error) { console.warn('Plugin runtime receipt unavailable', error); }
+  // Bound host settings retrieval so a silent host cannot block daemon startup.
+  try {
+    const settings = await Promise.race([
+      streamDeck.settings.getGlobalSettings(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('settings timeout')), 2000)),
+    ]);
+    restoreUsageDialPreferences(settings.usageDialProviders);
+    onUsageDialSelectionChanged(() => {
+      settings.usageDialProviders = usageDialPreferences();
+      void streamDeck.settings.setGlobalSettings(settings).catch(error => console.warn('Usage selection save failed', error));
+    });
+  } catch (error) { console.warn('Usage selection restore unavailable', error); }
   dinfo('Plugin', 'Stream Deck connected, starting daemon-only connection');
   connMgr.start();
 

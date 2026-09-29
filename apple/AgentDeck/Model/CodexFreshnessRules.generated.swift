@@ -157,7 +157,7 @@ enum CodexPlanRules {
     /// different quantity, and rendering it as the account's reports 0% while
     /// the account sits at 13%.
     ///
-    /// An allow-list of the UNNAMED on purpose (CLAUDE.md unknown-value rule): a
+    /// An allow-list of the UNNAMED on purpose (AGENTS.md unknown-value rule): a
     /// scoped family this build predates is excluded automatically, whereas a
     /// deny-list of known ids would render it AS the account's number — a wrong
     /// reading rather than a missing one.

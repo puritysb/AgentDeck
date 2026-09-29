@@ -2,10 +2,25 @@
 
 What you can change, and where the file lives.
 
+## Dashboard appearance
+
+The native apps store appearance choices on each device, independently of the
+daemon settings below. Use **Settings → Dashboard** on Apple, or
+**Settings → Display → Dashboard type** on Android LCD devices, and choose
+**Default** or **3D aquarium · Preview**. Existing
+choices survive updates; changing one device does not change another.
+
+On mobile, tap empty water to hide the information panels and smoothly move
+closer to the aquarium. Tap again to return. The full session roster remains
+available in normal mode, even when the scene limits foreground residents.
+E-ink and compact hardware keep their own display-specific layouts.
+See the [Apple](apple-app.md#choose-your-dashboard) and
+[Android](android.md#choose-a-view-for-your-screen) guides.
+
 ## Settings
 
 Settings live in `~/.agentdeck/settings.json` (the App Store macOS app uses its
-container path — see CLAUDE.md → User data dir). **The file is optional**: every
+container path — see AGENTS.md → User data dir). **The file is optional**: every
 loader merges its own built-in defaults, so a missing file is the normal case.
 Commands such as `agentdeck weather set` and `agentdeck daemon port` create it
 only when the user explicitly saves a setting. `config/default-settings.json` is

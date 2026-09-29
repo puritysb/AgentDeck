@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, symlinkSync, lstatSync, chmodSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -39,7 +39,7 @@ describe('codex-mini-toml: applyManagedBlock', () => {
       'model = "gpt-5"',
       '',
       OPEN_FENCE,
-      'notify = ["old", "snippet"]',
+      'notify = ["old", "agentdeck-notify"]',
       CLOSE_FENCE,
       '',
       '[profiles.work]',
@@ -47,7 +47,7 @@ describe('codex-mini-toml: applyManagedBlock', () => {
     ].join('\n');
 
     const updated = applyManagedBlock(original, 'notify = ["new", "snippet"]');
-    expect(updated).not.toContain('"old", "snippet"');
+    expect(updated).not.toContain('"old", "agentdeck-notify"');
     expect(updated).toContain('notify = ["new", "snippet"]');
     expect(updated).toContain('model = "gpt-5"');
     expect(updated).toContain('[profiles.work]');
@@ -56,8 +56,8 @@ describe('codex-mini-toml: applyManagedBlock', () => {
 
   it('apply twice is idempotent', () => {
     const original = 'model = "gpt-5"\n';
-    const once = applyManagedBlock(original, 'key = 1');
-    const twice = applyManagedBlock(once, 'key = 1');
+    const once = applyManagedBlock(original, '[features]\nhooks = true');
+    const twice = applyManagedBlock(once, '[features]\nhooks = true');
     expect(once).toBe(twice);
   });
 
@@ -100,7 +100,7 @@ describe('codex-mini-toml: applyManagedBlock', () => {
 describe('codex-mini-toml: removeManagedBlock', () => {
   it('leaves user content', () => {
     const original = `model = "gpt-5"\n\n[profiles.work]\nprovider = "openai"`;
-    const withFence = applyManagedBlock(original, 'notify = []');
+    const withFence = applyManagedBlock(original, 'notify = ["agentdeck-notify"]');
     const stripped = removeManagedBlock(withFence);
 
     expect(stripped).not.toContain('notify');
@@ -263,6 +263,15 @@ describe('codex-install: managedBlockBody', () => {
     expect(withFence).toContain('/hooks/codex_tool_start');
     expect(withFence).toContain('/hooks/codex_tool_end');
     expect(withFence).toContain('/hooks/codex_stop');
+    // Codex's own approval prompt and Ctrl+C are lifecycle hooks too; both
+    // daemons read them as PERM and an interrupted turn.
+    expect(withFence).toContain('[[hooks.PermissionRequest]]');
+    expect(withFence).toContain('/hooks/codex_permission_request');
+    expect(withFence).toContain('[[hooks.Interrupt]]');
+    expect(withFence).toContain('/hooks/codex_interrupt');
+    const interrupt = withFence.split('[[hooks.Interrupt]]')[1];
+    expect(interrupt).toContain('timeout = 3');
+    expect(interrupt).not.toContain('timeout = 5');
     expect(withFence).toContain('--connect-timeout 0.2 --max-time 0.8');
     expect(withFence).toContain('*[!0-9]*');
     expect(withFence).toContain('type(p) is int and 1 <= p <= 65535');
@@ -292,7 +301,7 @@ describe('codex-install: managedBlockBody', () => {
 
     const decodedLifecycleCommands = [...withFence.matchAll(/-EncodedCommand ([A-Za-z0-9+/=]+)"/g)]
       .map((match) => Buffer.from(match[1], 'base64').toString('utf16le'));
-    expect(decodedLifecycleCommands).toHaveLength(7);
+    expect(decodedLifecycleCommands).toHaveLength(9);
     const decoded = decodedLifecycleCommands.join('\n');
     expect(decoded).toContain('/hooks/codex_user_prompt_submit');
     expect(decoded).toContain('/hooks/codex_subagent_start');
@@ -300,6 +309,8 @@ describe('codex-install: managedBlockBody', () => {
     expect(decoded).toContain('/hooks/codex_tool_start');
     expect(decoded).toContain('/hooks/codex_tool_end');
     expect(decoded).toContain('/hooks/codex_stop');
+    expect(decoded).toContain('/hooks/codex_permission_request');
+    expect(decoded).toContain('/hooks/codex_interrupt');
     expect(decoded).toContain("$ProgressPreference = 'SilentlyContinue'");
     expect(decoded).toContain('exit 0');
     // Stdin must be read as UTF-8 ([Console]::In decodes with the OEM
@@ -380,6 +391,69 @@ describe('codex-install: install / uninstall (file I/O)', () => {
     delete process.env.AGENTDECK_NO_CODEX_HOOKS;
   });
 
+  it('preserves permissions and refuses dotfile-manager symlinks', () => {
+    writeFileSync(configPath, 'model = "keep"\n');
+    chmodSync(configPath, 0o600);
+    expect(installCodexHooksIfNeeded({ configPath }).installed).toBe(true);
+    if (process.platform !== 'win32') expect(statSync(configPath).mode & 0o777).toBe(0o600);
+    if (process.platform === 'win32') return; // symlink creation needs an OS privilege on Windows
+    const link = join(tmp, 'linked.toml');
+    symlinkSync(configPath, link);
+    const original = readFileSync(configPath);
+    expect(installCodexHooksIfNeeded({ configPath: link }).installed).toBe(false);
+    expect(installCodexHooksIfNeeded({ configPath: link }).reason).toContain('symbolic link');
+    expect(() => uninstallCodexHooks({ configPath: link, notifyScriptPath })).toThrow('symbolic link');
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readFileSync(configPath)).toEqual(original);
+  });
+
+  it('reports refused removal and retains both config and sidecar', () => {
+    const damaged = `${OPEN_FENCE}\nnotify = ["agentdeck-notify"]\n`;
+    writeFileSync(configPath, damaged);
+    writeFileSync(notifyScriptPath, 'keep');
+    expect(() => uninstallCodexHooks({ configPath, notifyScriptPath })).toThrow('not removed');
+    expect(readFileSync(configPath, 'utf8')).toBe(damaged);
+    expect(readFileSync(notifyScriptPath, 'utf8')).toBe('keep');
+  });
+
+  it('preserves settings inserted by Codex between installs and on removal', () => {
+    writeFileSync(configPath, 'model = "keep"\n[profiles.work]\nmodel = "profile"\n');
+    expect(installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120 }).installed).toBe(true);
+    const installed = readFileSync(configPath, 'utf8');
+    const edited = installed.replace('\n[features]', '\nmodel_reasoning_effort = "high"\n[features]')
+      .replace('hooks = true', 'hooks = true\nunified_exec = true');
+    writeFileSync(configPath, edited);
+    expect(installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9122 }).installed).toBe(true);
+    const refreshed = readFileSync(configPath, 'utf8');
+    expect(refreshed).toContain('model_reasoning_effort = "high"');
+    expect(refreshed).toContain('unified_exec = true');
+    expect(refreshed).toContain(':9122/otel/v1/traces');
+    uninstallCodexHooks({ configPath, notifyScriptPath });
+    const removed = readFileSync(configPath, 'utf8');
+    expect(removed).toContain('model_reasoning_effort = "high"');
+    expect(removed).toContain('unified_exec = true');
+    expect(removed).not.toContain('/hooks/codex_');
+  });
+
+  it('refuses invalid UTF-8 without rewriting bytes', () => {
+    const bytes = Buffer.from([0xff, 0xfe, 0x80]);
+    writeFileSync(configPath, bytes);
+    expect(installCodexHooksIfNeeded({ configPath }).installed).toBe(false);
+    expect(readFileSync(configPath)).toEqual(bytes);
+  });
+
+  it('keeps notify in root scope when migrating an appended fence', () => {
+    const original = 'model = "keep"\n[profiles.work]\nmodel = "custom"\n' + OPEN_FENCE + '\n' + managedBlockBody() + '\n' + CLOSE_FENCE;
+    writeFileSync(configPath, original);
+    expect(installCodexHooksIfNeeded({ configPath, platform: 'linux' }).installed).toBe(true);
+    const updated = readFileSync(configPath, 'utf8');
+    const notify = updated.split('\n').findIndex(line => line.startsWith('notify ='));
+    const firstTable = updated.split('\n').findIndex(line => line.startsWith('['));
+    expect(notify).toBeGreaterThan(0);
+    expect(notify).toBeLessThan(firstTable);
+    expect(updated).toContain('[profiles.work]\nmodel = "custom"');
+  });
+
   it('creates config with fence when file is absent', () => {
     const result = installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120, platform: 'linux' });
     expect(result.installed).toBe(true);
@@ -400,8 +474,8 @@ describe('codex-install: install / uninstall (file I/O)', () => {
     expect(text).toContain(OPEN_FENCE);
   });
 
-  it('skips when user already has [features] table outside fence', () => {
-    writeFileSync(configPath, `[features]\nhooks = true\n`, 'utf-8');
+  it('preserves a user disabling hooks in [features]', () => {
+    writeFileSync(configPath, `[features]\nhooks = false\n`, 'utf-8');
     const result = installCodexHooksIfNeeded({ configPath, notifyScriptPath });
     expect(result.installed).toBe(false);
     expect(result.reason).toContain('[features]');
@@ -565,5 +639,26 @@ describe('codex-install: install / uninstall (file I/O)', () => {
 
     installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120, notifyScriptPath });
     expect(readFileSync(configPath, 'utf-8')).toBe(text);
+  });
+});
+
+
+describe('shared lossless config cases', () => {
+  const cases = JSON.parse(readFileSync(new URL('../../../shared/codex-config-edit-vectors.json', import.meta.url), 'utf8')) as Array<{name: string; input: string; allowed: boolean; stripped?: string}>;
+  it.each(cases)('$name', ({ input, allowed, stripped }) => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentdeck-config-vector-'));
+    const path = join(dir, 'config.toml');
+    try {
+      writeFileSync(path, input);
+      expect(installCodexHooksIfNeeded({ configPath: path, daemonHttpPort: 9120 }).installed).toBe(allowed);
+      const updated = readFileSync(path, 'utf8');
+      if (!allowed) expect(updated).toBe(input);
+      else {
+        expect(installCodexHooksIfNeeded({ configPath: path, daemonHttpPort: 9120 }).installed).toBe(true);
+        expect(readFileSync(path, 'utf8')).toBe(updated);
+        uninstallCodexHooks({ configPath: path, notifyScriptPath: join(dir, 'absent') });
+        expect(readFileSync(path, 'utf8')).toBe(stripped ?? input);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

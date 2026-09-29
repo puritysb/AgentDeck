@@ -47,6 +47,20 @@ describe('deriveSubagentActivity', () => {
     expect(activity).toEqual({});
   });
 
+  it('treats a dispatch older than the parent\'s own turn close as drained (lost stop rows)', () => {
+    // The buffer keeps the dispatch row (it carries a subagentId) but sheds
+    // the children's stop rows under the FIFO, so after a daemon restart the
+    // fallback read "+8 running" for hours. The parent's chat_end after the
+    // dispatch says the fan-out finished.
+    const activity = deriveSubagentActivity([
+      row(100, 'tool_exec', 'Subagent ×8 dispatched · General', 'parent-1', 100),
+      row(900, 'chat_end', 'turn closed', 'parent-1'),
+      row(1000, 'tool_exec', 'Subagent ×2 dispatched · General', 'parent-1', 1000),
+    ], { now: 1100 });
+
+    expect(activity['parent-1']).toEqual({ activeCount: 2 });
+  });
+
   it('sorts history rows before pairing them', () => {
     const activity = deriveSubagentActivity([
       row(400, 'tool_resolved', 'Subagent tester · Done', 'parent-1', 300),

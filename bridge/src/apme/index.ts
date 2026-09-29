@@ -98,6 +98,14 @@ export async function initApme(
 
   const emitTimeline = opts.emitTimeline;
 
+  // An OpenClaw run's projectName is its Gateway session key
+  // (`agent:main:main`) so the store can tell a model-eval run from a chat —
+  // but on the timeline every OpenClaw row is labelled "OpenClaw" (the key
+  // rides in `detail`; see openclaw-timeline-feed.ts). Task headers used the
+  // raw key, so one conversation showed under two project labels.
+  const timelineProjectName = (agentType: string | null | undefined, projectName: string | null | undefined): string | undefined =>
+    agentType === 'openclaw' ? 'OpenClaw' : (projectName ?? undefined);
+
   // Task headers are DEFERRED (collector emits `task_start` only once a task
   // proves itself multi-turn). Track which task ids actually reached the
   // timeline so the async judge re-emit (`onTaskEvaluated`, below) can skip
@@ -135,7 +143,7 @@ export async function initApme(
         type: 'task_end',
         raw: taskEndRowText(signalLabel, turns, durationSec),
         agentType: agentType ?? undefined,
-        projectName: projectName ?? undefined,
+        projectName: timelineProjectName(agentType, projectName),
         sessionId,
         runId,
         taskId,
@@ -173,7 +181,7 @@ export async function initApme(
         // judge-summary-as-title behavior downstream.
         raw: title ?? `Task ${taskIndex + 1}`,
         agentType: agentType ?? undefined,
-        projectName: projectName ?? undefined,
+        projectName: timelineProjectName(agentType, projectName),
         sessionId,
         runId,
         taskId,
@@ -196,7 +204,7 @@ export async function initApme(
         type: 'task_milestone',
         raw: todoCount ? `Todos done (${todoCount})` : 'Todos done',
         agentType: agentType ?? undefined,
-        projectName: projectName ?? undefined,
+        projectName: timelineProjectName(agentType, projectName),
         sessionId,
         runId,
         taskId,
@@ -230,7 +238,7 @@ export async function initApme(
         type: 'task_end',
         raw: taskEndRowText(signalLabel, e.turns, durationSec),
         agentType: e.agentType,
-        projectName: e.projectName,
+        projectName: timelineProjectName(e.agentType, e.projectName),
         sessionId: e.sessionId,
         runId: e.runId,
         taskId: e.taskId,

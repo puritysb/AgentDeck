@@ -37,7 +37,7 @@ const events = [
       pixoo: { available: true, configuredDeviceCount: 1, connectedDeviceCount: 1 },
       esp32Wifi: {
         available: true,
-        devices: [{ board: 'inkdeck', version: productVersion, stale: false, serialActive: false }],
+        devices: [{ board: 'trmnl_75', version: productVersion, stale: false, serialActive: false }],
       },
     },
   },

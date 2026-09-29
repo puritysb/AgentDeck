@@ -45,7 +45,7 @@ const baseState = (sessions: number, over: Record<string, unknown> = {}) => ({
 
 const usageCells = (deck: Map<string, { svg: string; action: unknown }>) =>
   [...deck.values()].filter(
-    (c) => (c.action as { kind?: string } | null)?.kind === 'command'
+    (c) => (c.action as { kind?: string } | null)?.kind === 'weekly-mode' || (c.action as { kind?: string } | null)?.kind === 'command'
       && ((c.action as { command?: { type?: string } }).command?.type === 'query_usage'),
   );
 
@@ -180,7 +180,7 @@ describe('buildSessionDeck list-view usage tiles', () => {
         planType: 'plus',
       },
     };
-    const deck = buildSessionDeck(baseState(2, codex), { mode: 'list', showUsage: true }, POS);
+    const deck = buildSessionDeck(baseState(12, codex), { mode: 'list', showUsage: true }, POS);
     expect(usageCells(deck)).toHaveLength(3);
     // Labels are short ("5H"/"7D") on both agents; the agent is conveyed by the
     // provider LOGO — terracotta-tinted Claude mark, blue Codex mark.
@@ -207,7 +207,7 @@ describe('buildSessionDeck list-view usage tiles', () => {
     const onlyPrimary = {
       codexRateLimits: { primary: { usedPercent: 25, windowMinutes: 300 } },
     };
-    const deck = buildSessionDeck(baseState(2, onlyPrimary), { mode: 'list', showUsage: true }, POS);
+    const deck = buildSessionDeck(baseState(12, onlyPrimary), { mode: 'list', showUsage: true }, POS);
     // 3 tiles (Claude 5H/7D + Codex 5H) → the strip fills exactly.
     expect(deck.get(STRIP_R)!.svg).toContain(CODEX_MARK);
     expect(deck.get(STRIP_R)!.svg).toContain('>25<');
@@ -224,7 +224,7 @@ describe('buildSessionDeck list-view usage tiles', () => {
     const weeklyOnly = {
       codexRateLimits: { primary: { usedPercent: 4, windowMinutes: 10080 }, planType: 'plus' },
     };
-    const deck = buildSessionDeck(baseState(2, weeklyOnly), { mode: 'list', showUsage: true }, POS);
+    const deck = buildSessionDeck(baseState(12, weeklyOnly), { mode: 'list', showUsage: true }, POS);
     expect(usageCells(deck)).toHaveLength(3);
     expect(deck.get(STRIP_L)!.svg).toContain('5H');   // Claude 5H
     expect(deck.get(STRIP_L)!.svg).toContain(CLAUDE_MARK);
@@ -246,7 +246,7 @@ describe('buildSessionDeck list-view usage tiles', () => {
         credits: { hasCredits: false, unlimited: false, balance: '0' },
       },
     };
-    const deck = buildSessionDeck(baseState(2, credits), { mode: 'list', showUsage: true }, POS);
+    const deck = buildSessionDeck(baseState(12, credits), { mode: 'list', showUsage: true }, POS);
     // No Codex windows → a single credits readout takes the strip's right key,
     // carrying the limit label + balance + Codex logo.
     const tile = deck.get(STRIP_R)!.svg;
@@ -261,8 +261,53 @@ describe('buildSessionDeck list-view usage tiles', () => {
     const credits = {
       codexRateLimits: { limitId: 'premium', credits: { hasCredits: true, unlimited: true } },
     };
-    const deck = buildSessionDeck(baseState(2, credits), { mode: 'list', showUsage: true }, POS);
+    const deck = buildSessionDeck(baseState(12, credits), { mode: 'list', showUsage: true }, POS);
     expect(deck.get(STRIP_R)!.svg).toContain('∞');
+  });
+
+  it('replaces the Codex windows with one LUNA tile while account quota is exhausted', () => {
+    // Same full Codex report as the compaction case, plus a reserve: the two
+    // account windows stand down — the reserve is the quota that binds — and
+    // exactly one LUNA tile takes their place. Claude readings are untouched.
+    const withLuna = {
+      codexRateLimits: {
+        primary: { usedPercent: 30, windowMinutes: 300, resetsAt: undefined },
+        secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: undefined },
+        planType: 'plus',
+        lunaReserve: { usedPercent: 32, regularResetsAt: '2099-01-01T00:00:00Z', available: true },
+      },
+    };
+    const deck = buildSessionDeck(baseState(12, withLuna), { mode: 'list', showUsage: true }, POS);
+    // 3 tiles: Claude 5H/7D + LUNA — no Codex pair, no fourth reading.
+    expect(usageCells(deck)).toHaveLength(3);
+    expect(deck.get(STRIP_L)!.svg).toContain('5H');
+    expect(deck.get(STRIP_L)!.svg).toContain(CLAUDE_MARK);
+    expect(deck.get(STRIP_M)!.svg).toContain('7D');
+    expect(deck.get(STRIP_M)!.svg).toContain(CLAUDE_MARK);
+    const luna = deck.get(STRIP_R)!.svg;
+    expect(luna).toContain('LUNA RESERVE');
+    expect(luna).toContain('68% LEFT');   // remaining, not used
+    expect(luna).toContain(CODEX_MARK);   // identity stays Codex
+    // The displaced windows' percents render nowhere on the strip.
+    const all = usageCells(deck).map((c) => c.svg).join('');
+    expect(all).not.toContain('>30<');
+    expect(all).not.toContain('>100<');
+    // An exhausted reserve reads EMPTY, not a zero gauge.
+    const empty = buildSessionDeck(baseState(12, {
+      codexRateLimits: { ...withLuna.codexRateLimits, lunaReserve: { usedPercent: 100, available: true } },
+    }), { mode: 'list', showUsage: true }, POS);
+    expect(usageCells(empty)).toHaveLength(3);
+    expect(usageCells(empty)[2].svg).toContain('EMPTY');
+
+    // Without the reserve the very same report seats both Codex windows again
+    // (4 logical readings → the pair compacts onto the clock-side key).
+    const withoutLuna = {
+      codexRateLimits: { ...withLuna.codexRateLimits, lunaReserve: undefined },
+    };
+    const restored = buildSessionDeck(baseState(12, withoutLuna), { mode: 'list', showUsage: true }, POS);
+    expect(usageCells(restored)).toHaveLength(3);
+    expect(usageCells(restored)[2].svg).toContain('>30<');
+    expect(usageCells(restored)[2].svg).toContain('>100<');
   });
 
   it('falls back to trailing keys on a tiny deck where the strip is not placed', () => {
@@ -286,8 +331,13 @@ describe('buildSessionDeck list-view usage tiles', () => {
 });
 
 // The scoped per-model cap (e.g. the weekly "Fable" limit) shares the fixed
-// usage strip with Codex. The Stream Deck keypad applies the shared inclusion
-// and ordering rules, then compacts provider windows rather than dropping them.
+// three-key usage strip with Codex. Two rules are pinned here. SEAT: the cap is
+// a Claude limit and always sits with the Claude readings, ahead of Codex —
+// `active` changes its ramp, never its position (it used to swap seats with
+// Codex as it went active, so the same strip read differently hour to hour with
+// nothing on screen saying why). PACKING: when the readings outnumber the keys,
+// the two WEEKLY Claude readings (7D + the cap) share one key so the
+// fast-moving 5H gauge stays whole — nothing is ever dropped.
 describe('buildSessionDeck scoped cap within the fixed usage strip', () => {
   const FABLE = { label: 'Fable', percent: 98, active: true };
   const FABLE_IDLE = { label: 'Fable', percent: 61, active: false };
@@ -302,54 +352,109 @@ describe('buildSessionDeck scoped cap within the fixed usage strip', () => {
   const codexFree = { codexRateLimits: { planType: 'free' } };
 
   const svgs = (state: Record<string, unknown>) =>
-    usageCells(buildSessionDeck(baseState(2, state), { mode: 'list', showUsage: true }, POS))
+    usageCells(buildSessionDeck(baseState(12, state), { mode: 'list', showUsage: true }, POS))
       .map((c) => c.svg);
 
-  it('gives the key Codex vacated to the scoped cap on a free ChatGPT tier', () => {
+  it('always pairs weekly and scoped readings, even with a spare key', () => {
     const tiles = svgs({ ...codexFree, scopedLimits: [FABLE_IDLE] });
-    expect(tiles).toHaveLength(3);
+    expect(tiles).toHaveLength(2);
     expect(tiles.join('')).not.toContain(CODEX_MARK);
-    expect(tiles[2]).toContain('FABLE');
-    expect(tiles[2]).toContain('>61<');
+    expect(tiles[1]).toContain('FABLE');
+    expect(tiles[1]).toContain('>61<');
   });
 
-  it('keeps an ACTIVE cap and the live Codex window by compacting Claude', () => {
+  it('pairs the cap with 7D and leaves 5H a whole gauge', () => {
     const tiles = svgs({ ...codexWeekly, scopedLimits: [FABLE] });
     expect(tiles).toHaveLength(3);
+    // 5H alone — the window that actually moves during a session.
     expect(tiles[0]).toContain(CLAUDE_MARK);
     expect(tiles[0]).toContain('>42<');
-    expect(tiles[0]).toContain('>17<');
+    expect(tiles[0]).not.toContain('FABLE');
+    // 7D + the weekly per-model cap share the second key.
+    expect(tiles[1]).toContain(CLAUDE_MARK);
+    expect(tiles[1]).toContain('>17<');
     expect(tiles[1]).toContain('FABLE');
     expect(tiles[1]).toContain('>98<');
     expect(tiles[2]).toContain(CODEX_MARK);
     expect(tiles[2]).toContain('>10<');
   });
 
-  it('compacts both providers when an active scoped cap would otherwise overflow', () => {
-    const bothWindows = {
-      codexRateLimits: {
-        primary: { usedPercent: 30, windowMinutes: 300 },
-        secondary: { usedPercent: 10, windowMinutes: 10080 },
-        planType: 'plus',
-      },
-    };
+  const bothWindows = {
+    codexRateLimits: {
+      primary: { usedPercent: 30, windowMinutes: 300 },
+      secondary: { usedPercent: 10, windowMinutes: 10080 },
+      planType: 'plus',
+    },
+  };
+
+  it('fits five readings in three keys: 5H | 7D+cap | Codex pair', () => {
     const tiles = svgs({ ...bothWindows, scopedLimits: [FABLE] });
-    // Claude pair, FABLE, Codex pair: five logical readings in three keys.
     expect(tiles).toHaveLength(3);
-    expect(tiles[0]).toContain(CLAUDE_MARK);
     expect(tiles[0]).toContain('>42<');
-    expect(tiles[0]).toContain('>17<');
+    expect(tiles[0]).not.toContain('>17<');
+    expect(tiles[1]).toContain('>17<');
     expect(tiles[1]).toContain('FABLE');
+    expect(tiles[1]).toContain('>98<');
     expect(tiles[2]).toContain(CODEX_MARK);
     expect(tiles[2]).toContain('>30<');
     expect(tiles[2]).toContain('>10<');
   });
 
+  it('seats the cap identically whether or not it is binding', () => {
+    // The regression this exists for: the strip read `5H 7D FABLE CODEX` while
+    // the cap was active and `5H 7D CODEX FABLE` once it was not. Only the ramp
+    // may depend on `active` — never the seat — so the two layouts differ in
+    // nothing but the cap's own percent.
+    const active = svgs({ ...bothWindows, scopedLimits: [FABLE] });
+    const idle = svgs({ ...bothWindows, scopedLimits: [FABLE_IDLE] });
+    expect(idle).toHaveLength(active.length);
+    expect(active.map((t) => t.indexOf('FABLE') >= 0))
+      .toEqual(idle.map((t) => t.indexOf('FABLE') >= 0));
+    expect(active.map((t) => t.includes(CODEX_MARK)))
+      .toEqual(idle.map((t) => t.includes(CODEX_MARK)));
+    expect(active[1]).toContain('>98<');
+    expect(idle[1]).toContain('>61<');
+  });
+
   it('keeps an INACTIVE cap without displacing a live Codex window', () => {
+    // Still the point of the rule — nothing is dropped — but the cap now rides
+    // the 7D key instead of taking Codex's seat at the end of the strip.
     const tiles = svgs({ ...codexWeekly, scopedLimits: [FABLE_IDLE] });
     expect(tiles).toHaveLength(3);
-    expect(tiles[1]).toContain(CODEX_MARK);
-    expect(tiles[2]).toContain('FABLE');
+    expect(tiles[1]).toContain('FABLE');
+    expect(tiles[1]).toContain('>17<');
+    expect(tiles[2]).toContain(CODEX_MARK);
+    expect(tiles[2]).toContain('>10<');
+  });
+
+  it('draws no tile for a window the API did not report — but still draws a real 0%', () => {
+    // The two Claude windows are reported INDEPENDENTLY, so a subscription can
+    // carry 7D and no 5H. `parseState` used to fill the missing one with `?? 0`,
+    // which is indistinguishable from "0% used" to every reader downstream: the
+    // strip spent a whole key on a phantom `5H 0%` gauge for a window that does
+    // not exist, and the Swift preview (optional-typed) disagreed with it.
+    // Read the rendered TEXT, never the raw SVG: an `H` path command after a
+    // digit puts the literal "5H" inside the Claude brand mark, so a substring
+    // assertion on the markup passes for a tile that draws no such label.
+    const strip = (over: Record<string, unknown>) => usageCells(buildSessionDeck(
+      { ...baseState(12), ...over }, { mode: 'list', showUsage: true }, POS,
+    )).map((c) => [...c.svg.matchAll(/<text[^>]*>([^<]*)</g)].map((m) => m[1]).join(' '));
+
+    const sevenOnly = strip({ fiveHourPercent: undefined, sevenDayPercent: 17 });
+    expect(sevenOnly).toHaveLength(1);
+    expect(sevenOnly[0]).toContain('7D');
+    expect(sevenOnly[0]).not.toContain('5H');
+
+    const fiveOnly = strip({ fiveHourPercent: 42, sevenDayPercent: undefined });
+    expect(fiveOnly).toHaveLength(1);
+    expect(fiveOnly[0]).toContain('5H');
+    expect(fiveOnly[0]).not.toContain('7D');
+
+    // A measured zero is a reading, not an absence — it must still render.
+    const bothZero = strip({ fiveHourPercent: 0, sevenDayPercent: 0 });
+    expect(bothZero).toHaveLength(2);
+    expect(bothZero[0]).toContain('0');
+    expect(bothZero[1]).toContain('0');
   });
 
   it('shows nothing but Claude when neither Codex nor a scoped cap exists', () => {

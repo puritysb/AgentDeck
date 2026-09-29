@@ -165,7 +165,7 @@ The 7.5" e-ink panel was first driven as a commercial TRMNL device over its
 BYOS HTTP pull protocol. That integration was removed (Node commit `c71044bd`)
 in favour of custom AgentDeck firmware on the same hardware, which gave a push
 WebSocket path like every other board. The device is now
-[InkDeck](esp32.md); only the panel is shared with its origin.
+[TRMNL 7.5"](esp32.md); only the panel is shared with its origin.
 
 ## macOS app
 

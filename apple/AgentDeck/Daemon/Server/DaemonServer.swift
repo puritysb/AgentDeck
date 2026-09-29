@@ -319,6 +319,83 @@ enum CodexHookIdentity {
     }
 }
 
+/// Codex Desktop's ambient-suggestions threads are not the user's work.
+///
+/// When the desktop app refreshes `~/.codex/ambient-suggestions/<hash>/
+/// ambient-suggestions.json` it runs two internal prompts on throw-away
+/// threads — no rollout, no row in Codex's own `threads` table; hook `cwd` `/`
+/// (2026-09-11) or the user's own project (2026-09-29) — and the user-global
+/// lifecycle hooks still fire for them. The prompt text is the only durable
+/// signature. The same threads export OTel spans too, so the OTel path
+/// consults `codexAmbientThreads` before it opens a row. Mirror of
+/// bridge/src/codex-ambient-hooks.ts; both suites replay
+/// shared/codex-ambient-vectors.json.
+enum CodexAmbientHookRules {
+    static let promptSignatures: [NSRegularExpression] = [
+        // The live prompt opens with a Markdown heading (`# Overview`); the
+        // heading marker is optional so a stripped copy still matches.
+        "^\\s*(?:#+\\s*)?Overview\\s+Generate 0 to 3 hyperpersonalized suggestions\\b",
+        "^\\s*You are an expert at upholding safety and compliance standards for Codex ambient suggestions\\b",
+    ].map { try! NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+
+    /// Prompt text as Codex hooks carry it: `prompt`, some builds
+    /// `user_prompt`, else `message.content` (mirror of Node `codexHookPromptText`).
+    static func promptText(_ json: [String: Any]) -> String {
+        if let s = json["prompt"] as? String { return s }
+        if let s = json["user_prompt"] as? String { return s }
+        if let m = json["message"] as? [String: Any], let s = m["content"] as? String { return s }
+        return ""
+    }
+
+    static func isAmbientPrompt(_ prompt: Any?) -> Bool {
+        guard let text = prompt as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let range = NSRange(text.startIndex..., in: text)
+        return promptSignatures.contains { $0.firstMatch(in: text, options: [], range: range) != nil }
+    }
+
+    /// Codex's own memory-consolidation agent (`memory_consolidate_global`)
+    /// runs with its cwd in `$CODEX_HOME/memories` and fires the user-global
+    /// hooks; it is not the user's work (mirror of Node `isCodexBackgroundCwd`,
+    /// replayed from `shared/codex-ambient-vectors.json`).
+    static func isBackgroundCwd(_ cwd: Any?, codexHome: String? = ProcessInfo.processInfo.environment["CODEX_HOME"]) -> Bool {
+        guard let raw = cwd as? String, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        func trimmed(_ value: String) -> String {
+            var path = value.replacingOccurrences(of: "\\", with: "/")
+            while path.hasSuffix("/") { path.removeLast() }
+            return path
+        }
+        let path = trimmed(raw)
+        if let codexHome, !codexHome.isEmpty {
+            let store = trimmed(codexHome) + "/memories"
+            if path == store || path.hasPrefix(store + "/") { return true }
+        }
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        return zip(components, components.dropFirst()).contains { $0 == ".codex" && $1 == "memories" }
+    }
+}
+
+/// Thread ids identified as ambient-suggestions threads. Every later hook on
+/// such an id (tool/stop hooks carry no prompt) is background too; an id that
+/// falls silent for `ttl` is forgotten.
+struct CodexAmbientThreads {
+    static let ttl: TimeInterval = 30 * 60
+    private var lastSeenAt: [String: Date] = [:]
+
+    mutating func isAmbient(_ sessionId: String, now: Date = Date()) -> Bool {
+        lastSeenAt = lastSeenAt.filter { now.timeIntervalSince($0.value) <= Self.ttl }
+        guard lastSeenAt[sessionId] != nil else { return false }
+        lastSeenAt[sessionId] = now
+        return true
+    }
+
+    mutating func mark(_ sessionId: String, now: Date = Date()) {
+        lastSeenAt[sessionId] = now
+    }
+
+    var count: Int { lastSeenAt.count }
+}
+
 enum CodexRolloutResponseReader {
     private static let maxDayDirs = 30
     private static let tailBytes = 128 * 1024
@@ -591,7 +668,7 @@ private final class SerialEventSnapshot: @unchecked Sendable {
         // ticker/cards show the real latest milestones instead of an empty
         // ring (Node parity: daemon-server.ts serial initial set). Kept small —
         // the single line must stay well under the 4KB serial RX buffer on
-        // non-InkDeck boards; per-entry raw/detail caps are applied by
+        // non-TRMNL 7.5" boards; per-entry raw/detail caps are applied by
         // prepareForSerial at send time.
         lock.lock()
         let seed = timelineSeedEntries.suffix(6)
@@ -686,11 +763,18 @@ final class DaemonServer {
     // TypeScript workspace module, so this exact product allow-list is a
     // generated-mirror boundary, never an independently edited board catalog.
     nonisolated static let surfaceFirmwareBoards: Set<String> = [
-        "86box", "ips_35", "round_amoled", "ips_10", "inkdeck", "nm_epd_420",
+        "86box", "ips_35", "round_amoled", "ips_10", "trmnl_75", "nm_epd_420",
         "lilygo_epd47", "ttgo_t_display", "ulanzi_tc001", "t_embed", "t_display_pro",
         "esp32_c6_147",
     ]
     // END GENERATED-SSOT-MIRROR: shared/src/esp32-boards.ts
+
+    /// Wire board ids that firmware already in the field still reports. Mirrors
+    /// `LEGACY_BOARD_IDS` in shared/src/esp32-boards.ts, and sits OUTSIDE the
+    /// generated block because it is not part of the board catalog: a flashed
+    /// board keeps saying what it was built as until it takes an OTA, so a
+    /// rename that moved only the canonical id would refuse every deployed unit.
+    nonisolated static let legacySurfaceFirmwareBoards: Set<String> = ["inkdeck"]
 
     /// Shared bounded-body contract for SD-backed reader assets. The firmware
     /// asks for 64 KiB so its main input loop runs between responses; clamps
@@ -714,7 +798,7 @@ final class DaemonServer {
         case "io.pocketdaily.reader":
             allowedBoards = ["xteink_x3", "xteink_x4"]
         case "dev.agentdeck.dashboard-firmware":
-            allowedBoards = surfaceFirmwareBoards
+            allowedBoards = surfaceFirmwareBoards.union(legacySurfaceFirmwareBoards)
         default:
             return .init(status: 422, code: "surface_product_unsupported",
                          message: "Surface product is not registered")
@@ -990,6 +1074,7 @@ final class DaemonServer {
     private var kiroApmeResponseBySession: [String: String] = [:]
     private let logStream = BridgeLogStream()
     private let usageAPI = UsageAPIClient.shared
+    private let codexAccountUsage = CodexAccountUsageClient()
     private var serialModule: SerialModule?
     private var pixooModule: PixooModule?
     private var pixooSettingsObserver: NSObjectProtocol?
@@ -1038,7 +1123,15 @@ final class DaemonServer {
     // Gateway session state — updated ONLY from OpenClaw adapter events.
     // Never written by Claude Code hook events so the two don't cross-contaminate.
     // The shared `stateMachine` tracks Claude Code / hook-driven sessions only.
-    private var gatewaySessionState: String = "idle"
+    private var gatewaySessionState: String = "idle" {
+        // A change here is the Gateway acting: it becomes the hub frame's
+        // driver (mirror of the Node hub's `noteGateway`). Disconnect resets
+        // the value AND clears the driver right after (see onConnectionChanged).
+        didSet { if oldValue != gatewaySessionState { hubDriver = .gateway } }
+    }
+    /// Who last moved the hub's global frame — see `hubFrameAgentType`.
+    private enum HubStateDriver { case none, hook, gateway }
+    private var hubDriver: HubStateDriver = .none
     private var gatewayCurrentTool: String? = nil
     private var gatewayModelName: String? = nil
     /// Wire form of the exec approval the Gateway is blocked on, mirrored here
@@ -1066,6 +1159,11 @@ final class DaemonServer {
     /// which shows up as empty `sessions_list` broadcasts and blank
     /// terrariums on every surface.
     private var pushedSessionsById: [String: DaemonSessionEntry] = [:]
+    /// Daemon-persisted sort pins for observed sessions (#273). Loaded once
+    /// here; every mutation persists synchronously (see SessionOrderStore —
+    /// the Swift store reads/writes the same session-order.json as the Node
+    /// daemon, so pins survive a handover in either direction).
+    private let sessionOrderStore = SessionOrderStore().load()
     /// Sessions with a held PreToolUse gate: updateSessionHookState must not
     /// overwrite their awaiting_permission overlay from parallel tool hooks
     /// while the device decision is pending (≤ hold timeout).
@@ -1128,6 +1226,11 @@ final class DaemonServer {
         var burstLabels: [String] = []
     }
     private var subagentCensus: [String: SubagentCensus] = [:]
+    /// Cross-session coordination (spawned workers, peer messages, background
+    /// jobs) — the second census axis beside `subagentCensus`. Fed by the hook
+    /// pid header + hook payloads, reconciled against `sysctl` every 5 s.
+    private let coordinationTracker = CoordinationTracker()
+    private var coordinationTickTask: Task<Void, Never>?
     private var subagentBurstSeq = 0
     /// Children starting within this window fold into ONE dispatch row. Per
     /// child would be honest and unreadable: a buffer shared by every session
@@ -1214,6 +1317,7 @@ final class DaemonServer {
     /// finished, so #2's real answer was discarded as a late event (Stop
     /// drift / lost turn anchor). See the `.turnEnd` OTel case for the guard.
     private var codexOtelTurnIdBySession: [String: String] = [:]
+    private var codexObservationOwnership = CodexObservationOwnership()
 
     /// Open-turn chat_start anchor per Claude Code session: noted on every
     /// UserPromptSubmit, claimed by the turn's Stop hook so chat_response /
@@ -1456,6 +1560,8 @@ final class DaemonServer {
     /// timeline entries + primary-creature state to the right session
     /// when multiple claude sessions are running concurrently.
     private var currentHookSessionId: String?
+    /// Codex Desktop ambient-suggestions thread ids — see CodexAmbientHookRules.
+    private var codexAmbientThreads = CodexAmbientThreads()
     /// Session explicitly focused by the user. Kept separate from
     /// `currentHookSessionId` so a new hook from another session does not
     /// move the dashboard's visual selection halo.
@@ -1523,10 +1629,10 @@ final class DaemonServer {
     private var ulanziPluginConnectionIds = Set<UUID>()
     private var activeWSConnectionIds = Set<UUID>()
     private static let streamDeckStaleTTL: TimeInterval = 120
+    private var cachedMlxResidency: [String: Any] = ["known": false, "models": [] as [String]]
     private var cachedMlxModels: [String] = []
     private var cachedMlxModelCatalog: [String] = []
     private var cachedJudgeBackendStatus: JudgeBackendStatus?
-    private var preferredMlxModelsEndpoint: String?
 
     // Backoff state for local LLM discovery. Probe functions read/update these;
     // the polling task reads `nextInterval` on every iteration so the sleep
@@ -1567,6 +1673,8 @@ final class DaemonServer {
     private var lastAdminApiFetchTime: Date = .distantPast
     private var adminApiPollTask: Task<Void, Never>?
     private static let adminApiPollInterval: TimeInterval = 600  // 10 minutes
+    private var zaiUsagePollTask: Task<Void, Never>?
+    private static let zaiUsagePollInterval: TimeInterval = 60  // 1 minute
     /// True when cachedApiUsage was synced from relay's already-adjusted values
     private var apiUsagePreAdjusted = false
     private var oauthConnected = false
@@ -1986,6 +2094,13 @@ final class DaemonServer {
             Task { @DaemonActor in
                 guard let self else { return }
                 var event = box.value
+                // Host probes are authoritative even when a focused session bridge
+                // runs an older version. Its model catalog cannot replace residency.
+                if ["state_update", "usage_update"].contains(event["type"] as? String ?? "") {
+                    event["mlxModels"] = self.cachedMlxModels
+                    event["mlxResidency"] = self.cachedMlxResidency
+                    event["ollamaStatus"] = self.cachedOllamaStatus
+                }
                 if (event["type"] as? String) == "state_update" {
                     // Preserve daemon-level metadata that session bridges don't have
                     if event["modelCatalog"] == nil, !self.cachedModelCatalog.isEmpty {
@@ -2007,13 +2122,15 @@ final class DaemonServer {
                         event["focusedSessionId"] = self.userFocusedSessionId == fid ? fid : ""
                     }
 
+                    event["mlxResidency"] = self.cachedMlxResidency
+                    event["mlxModels"] = self.cachedMlxModels
                     // Always override mlxModels with daemon's filtered cache — sibling bridges may
                     // run older/unfiltered code that leaks nanoLLaVA into the list, causing flicker.
                     if !self.cachedMlxModels.isEmpty {
                         event["mlxModels"] = self.cachedMlxModels
                         event["mlxModelCatalog"] = self.cachedMlxModelCatalog
                     } else {
-                        event.removeValue(forKey: "mlxModels")
+                        event["mlxModels"] = [] as [String]
                         event.removeValue(forKey: "mlxModelCatalog")
                     }
                 }
@@ -2264,7 +2381,7 @@ final class DaemonServer {
         }
 
         // Serial (ESP32)
-        let serial: SerialModule? = posture.allowsModule("serial") ? SerialModule() : nil
+        let serial: SerialModule? = posture.allowsModule("serial") ? SerialModule(daemonPort: portInt) : nil
         if let serial {
             self.serialModule = serial
             moduleManager.register(serial)
@@ -2352,14 +2469,33 @@ final class DaemonServer {
             }
         }
 
+        // Seed the passive BLE projections before their first render. Existing
+        // sessions establish a baseline, and restored results retain their real
+        // timestamps. Do not wait for an unrelated state change to leave SYNC.
+        if idotmatrix != nil || timebox != nil {
+            let history = await timelineStore.getAll() // Store is bounded; projection filters result rows before capping.
+            let rosterSeed = SendableDict(buildSessionsListEvent())
+            let historySeed = SendableDict([
+                "type": "timeline_history",
+                "entries": history.map { Self.daemonTimelineEntryDict($0) },
+            ])
+            if let idotmatrix {
+                await idotmatrix.handleEvent(rosterSeed.value)
+                await idotmatrix.handleEvent(historySeed.value)
+            }
+            if let timebox {
+                await timebox.handleEvent(rosterSeed.value)
+                await timebox.handleEvent(historySeed.value)
+            }
+        }
+
         // Start all
         await moduleManager.startAll()
         DaemonLogger.shared.info("startDeviceModules: moduleManager.startAll done")
 
         // Seed initial state so serial heartbeat has data from the start
         // (without this, lastStateEvent is nil until first WS client or hook event)
-        let gwAlive = cachedGatewayConnected
-        lastStateEvent = buildFullStateEvent(agentType: gwAlive ? "openclaw" : "daemon")
+        lastStateEvent = buildFullStateEvent(agentType: hubFrameAgentType())
         DaemonLogger.shared.info("startDeviceModules: seed state done")
 
         // Wire serial broadcast hook
@@ -3050,6 +3186,29 @@ final class DaemonServer {
             ] as [String: Any])
         }
 
+        await httpServer.get("/dashboard/providers") { [weak self] _ in
+            guard let self else { return .json(["error": "unavailable"], status: 503) }
+            return await self.providerDisplayResponse(nil)
+        }
+        await httpServer.post("/dashboard/providers") { [weak self] request in
+            guard let self else { return .json(["error": "unavailable"], status: 503) }
+            return await self.providerDisplayResponse(Self.jsonBody(request.body))
+        }
+
+        // Normal authenticated HTTP gate applies; returns only request status.
+        // Fresh firmware values and their capture time are exposed in /health.
+        await httpServer.get("/esp32/serial/telemetry") { [weak self] request in
+            guard let self, let board = request.queryParams["board"], !board.isEmpty else {
+                return .json(["error": "board required"], status: 400)
+            }
+            // Serial writes may be busy with another board; the HTTP request
+            // must not inherit that device's I/O wait. Read capture time to
+            // verify completion instead of treating enqueue as a board reply.
+            let serial = await self.serialModule?.serial
+            serial?.requestDeviceTelemetry(board: board)
+            return .json(["queued": true], status: 202)
+        }
+
         await httpServer.get("/status") { [weak self] _ in
             let payload = await self?.buildStatusPayload().value
                 ?? ["status": "error", "error": "daemon unavailable"]
@@ -3239,6 +3398,52 @@ final class DaemonServer {
         await httpServer.post("/stand-down") { [weak self] _ in
             Task { @DaemonActor in self?.onStandDownRequested?() }
             return .json(["status": "standing_down"])
+        }
+
+        // Serial suspend / resume (USB flashing) — Node parity with
+        // daemon-server.ts. The sandboxed Swift daemon cannot read
+        // `~/.agentdeck`'s flash-lease file, so this HTTP pair is the only
+        // channel a flashing CLI has to stop THIS daemon opening or
+        // DTR-resetting boards mid-write (#327: a Swift fallback holding
+        // serial while the Node lease only binds Node is what corrupted two
+        // flashes at load 600–800). The lease lives in memory with expiry
+        // enforced on read, so a CLI killed mid-flash recovers with nothing
+        // running. Same-machine callers pass the normal auth gate.
+        await httpServer.post("/esp32/serial/suspend") { [weak self] request in
+            guard let self else {
+                return .json(["ok": false, "error": "daemon unavailable"], status: 500)
+            }
+            var seconds = 120
+            var reason = "usb flash"
+            if let body = request.body,
+               let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] {
+                if let s = json["seconds"] as? Int { seconds = s }
+                if let r = json["reason"] as? String, !r.isEmpty { reason = r }
+            }
+            let moduleHolder: SerialModule? = await DaemonActor.run { [weak self] in self?.serialModule }
+            guard let serial = moduleHolder else {
+                // No module → no ports to release; answer ok so a caller's
+                // sweep does not treat an inactive serial layer as a refusal.
+                return .json([
+                    "ok": true, "seconds": seconds, "released": 0,
+                    "note": "serial module inactive",
+                ] as [String: Any])
+            }
+            let (until, released) = await serial.suspend(seconds: seconds, reason: reason)
+            return .json([
+                "ok": true,
+                "until": until.timeIntervalSince1970 * 1000,
+                "seconds": seconds,
+                "released": released,
+            ] as [String: Any])
+        }
+        await httpServer.post("/esp32/serial/resume") { [weak self] _ in
+            guard let self else {
+                return .json(["ok": false, "error": "daemon unavailable"], status: 500)
+            }
+            let resumeModule: SerialModule? = await DaemonActor.run { [weak self] in self?.serialModule }
+            let was = await resumeModule?.resume() ?? false
+            return .json(["ok": true, "wasSuspended": was])
         }
 
         // WiFi OTA push to a connected ESP32 board (Node parity:
@@ -3434,6 +3639,32 @@ final class DaemonServer {
             return .json(responseBody, status: result.closed ? 200 : 404)
         }
 
+        // Daemon-persisted sort pins for observed sessions (#273) — mirror of
+        // the Node daemon's GET/POST /sessions/order. `agentdeck order
+        // set|clear|list` posts here when the Swift daemon owns the port;
+        // response shapes are byte-compatible with the Node route so the CLI
+        // never branches on which daemon answered. Behind the normal LAN gate
+        // like every route above (same-machine CLI needs no token).
+        await httpServer.get("/sessions/order") { [weak self] _ in
+            let payload = await self?.sessionOrderListPayload()
+            return .json(payload?.value ?? ["pins": []])
+        }
+        await httpServer.post("/sessions/order") { [weak self] request in
+            guard let self else { return .json(["error": "daemon offline"], status: 503) }
+            var sessionId: String? = nil
+            var weight: Any? = nil
+            var clear = false
+            if let body = request.body,
+               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+                if let s = json["sessionId"] as? String { sessionId = s }
+                weight = json["weight"]
+                clear = json["clear"] as? Bool == true
+            }
+            let result = await self.handleSessionOrderMutation(
+                sessionId: sessionId, weight: weight, clear: clear)
+            return .json(result.body.value, status: result.status)
+        }
+
         await httpServer.post("/hook") { [weak self] request in
             guard let body = request.body,
                   let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
@@ -3452,6 +3683,9 @@ final class DaemonServer {
             // sending check). See `daemon-entry-dict-roundtrip` memory.
             let rawName = String(request.path.dropFirst("/hooks/".count))
             let bodyData = request.body ?? Data()
+            // `X-AgentDeck-Pid: $PPID` — the posting shell's parent, i.e. the
+            // agent process. The only session→process link this daemon has.
+            let hookPid = Int(request.headers["x-agentdeck-pid"] ?? "")
             guard let self else { return .json(["received": true]) }
             if rawName == "PreToolUse" {
                 // Steering channel (mirror of the Node daemon): the response may
@@ -3465,19 +3699,20 @@ final class DaemonServer {
                 // (removed 2026-05 for false attention) must never come back.
                 // handleHookPost runs inline (not fire-and-forget) so the gate's
                 // awaiting overlay writes AFTER the tool_start state update.
-                await self.handleHookPost(rawName: rawName, body: bodyData)
+                await self.handleHookPost(rawName: rawName, body: bodyData, pid: hookPid)
                 return await self.steerPreToolUse(body: bodyData)
             }
             if rawName == "Stop" {
                 // Turn-end directive queue: empty body ends the turn normally;
                 // a queued deck command returns {decision:"block", reason} so
                 // Claude continues with it. Ordered inline like PreToolUse.
-                await self.handleHookPost(rawName: rawName, body: bodyData)
+                await self.handleHookPost(rawName: rawName, body: bodyData, pid: hookPid)
                 return await self.steerStop(body: bodyData)
             }
-            Task { [weak self] in await self?.handleHookPost(rawName: rawName, body: bodyData) }
+            Task { [weak self] in await self?.handleHookPost(rawName: rawName, body: bodyData, pid: hookPid) }
             return .json(["received": true])
         }
+        startCoordinationTick()
 
         // OpenCode observer-plugin steering: the plugin long-polls here and
         // executes returned commands via its in-process SDK client (abort /
@@ -4099,8 +4334,7 @@ final class DaemonServer {
                 return
             }
 
-            let gwAlive = self.cachedGatewayConnected
-            let stateEvent = self.buildFullStateEvent(agentType: gwAlive ? "openclaw" : "daemon")
+            let stateEvent = self.buildFullStateEvent(agentType: self.hubFrameAgentType())
             self.lastStateEvent = stateEvent
             if surfaceAllows(stateEvent), let data = esp32Shaped(stateEvent) { conn.send(data) }
 
@@ -4319,9 +4553,68 @@ final class DaemonServer {
     /// Insert-or-update a session entry in `cachedSessions`, preserving sort
     /// order. Used by both `handleSessionPushRegister` and `handleSessionPushState`.
     private func upsertIntoCachedSessions(_ entry: DaemonSessionEntry) {
-        cachedSessions.removeAll { $0.id == entry.id }
-        cachedSessions.append(entry)
+        // Order-pin overlay (#273) lands here so a hook-minted observed row
+        // (session_start → this path) carries its pin immediately instead of
+        // waiting for the next refreshSessions pass. Precedence per the store:
+        // observed rows without their own weight only.
+        let pinned = sessionOrderStore.apply(to: entry)
+        cachedSessions.removeAll { $0.id == pinned.id }
+        cachedSessions.append(pinned)
         cachedSessions = DashboardDataRules.sortSessions(cachedSessions)
+    }
+
+    // MARK: - Session order pins (#273)
+
+    /// `GET /sessions/order` payload — identical shape to the Node daemon.
+    /// Boxed in `SendableDict` to cross the actor boundary into the
+    /// @concurrent route closure (Swift 6: `[String: Any]` is not Sendable).
+    private func sessionOrderListPayload() -> SendableDict {
+        SendableDict(["pins": sessionOrderStore.list()])
+    }
+
+    /// `POST /sessions/order` mutation. Response bodies mirror the Node
+    /// daemon exactly — the `agentdeck order` CLI posts to whichever daemon
+    /// owns the port and must not care which implementation answered.
+    /// The body is `SendableDict`-boxed for the same actor-crossing reason.
+    private func handleSessionOrderMutation(
+        sessionId: String?, weight: Any?, clear: Bool
+    ) -> (body: SendableDict, status: Int) {
+        guard let rawId = sessionId?.trimmingCharacters(in: .whitespaces), !rawId.isEmpty else {
+            return (SendableDict(["error": "sessionId required"]), 400)
+        }
+        // Same semantics as the Node route: explicit clear, JSON null, or a
+        // (valid) weight of 0 all mean "remove the pin" — 0 is the default
+        // sort band, so pinning it is a no-op spelled as a clear.
+        let wantsClear = clear || weight is NSNull || SessionOrderRules.parseWeight(weight) == 0
+        var parsedWeight: Int? = nil
+        if !wantsClear {
+            parsedWeight = SessionOrderRules.parseWeight(weight)
+            if parsedWeight == nil {
+                return (SendableDict([
+                    "error": "weight must be an integer between \(SessionWeightRules.min) and \(SessionWeightRules.max) (or clear it with weight 0)",
+                ]), 400)
+            }
+        }
+        // Resolve against the observed rows the dashboards actually show.
+        let observedIds = cachedSessions.filter { $0.controlMode == "observed" }.map(\.id)
+        switch SessionOrderRules.resolveTarget(rawId, knownIds: observedIds) {
+        case .ambiguous(let candidates):
+            return (SendableDict([
+                "error": "session id prefix is ambiguous — it matches \(candidates.count) live sessions",
+                "matches": candidates,
+            ]), 400)
+        case .resolved(let id):
+            if wantsClear {
+                let had = sessionOrderStore.clear(id)
+                broadcastSessionsList()
+                return (SendableDict(["cleared": true, "hadPin": had, "sessionId": id]), 200)
+            }
+            // parsedWeight is non-nil here: the !wantsClear branch above
+            // already rejected everything parseWeight could not handle.
+            let applied = sessionOrderStore.set(id, weight: parsedWeight ?? 0)
+            broadcastSessionsList()
+            return (SendableDict(["sessionId": id, "weight": applied ?? 0]), 200)
+        }
     }
 
     /// Drop every per-session map entry keyed on `sessionId`. Mirrors the
@@ -4400,14 +4693,6 @@ final class DaemonServer {
         for (sid, entry) in entries {
             if sid == codexAnonymousOtelSessionId { continue }
             if entry.agentType == codexCliAgentType || entry.agentType == codexAppAgentType { return true }
-        }
-        return false
-    }
-
-    nonisolated private static func hasRealCodexAppSession(in entries: [String: DaemonSessionEntry]) -> Bool {
-        for (sid, entry) in entries {
-            if sid == codexAnonymousOtelSessionId { continue }
-            if entry.agentType == codexAppAgentType { return true }
         }
         return false
     }
@@ -4750,7 +5035,9 @@ final class DaemonServer {
             }
             return
         case "query_usage":
+            Task { await self.refreshZaiUsage() }
             Task {
+                await codexAccountUsage.refresh(credential: usageAPI.codexUsageCredential(), force: true)
                 await fetchUsageRelayed()
                 await DaemonActor.run { self.broadcastUsage() }
             }
@@ -4832,6 +5119,27 @@ final class DaemonServer {
         session.port == Int(port) || session.pid == 0
     }
 
+    /// Undo the session row and APME run a background Codex thread's
+    /// `codex_session_start` created before its prompt identified it.
+    /// Also undoes a row the thread's OTel spans opened first — those can land
+    /// before the identifying hook.
+    private func retractCodexAmbientThread(sessionId sid: String, json: [String: Any], reason: String = "ambient-suggestions") {
+        DaemonLogger.shared.info("Codex \(reason) thread \(sid.prefix(14)): not the user's work, its hooks are not recorded")
+        codexOtelTurnIdBySession.removeValue(forKey: sid)
+        if pushedSessionsById.removeValue(forKey: sid) != nil {
+            cachedSessions.removeAll { $0.id == sid }
+            lastHookAtByPushedSession.removeValue(forKey: sid)
+            broadcastSessionsList()
+        }
+        if currentHookSessionId == sid { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
+        // The collector keys Codex runs by the enriched payload's session id;
+        // try the hook's key and the bare id so neither form leaves a run behind.
+        let bare = (json["session_id"] as? String) ?? ""
+        for key in Set([sid, bare]) where !key.isEmpty {
+            apmeCollector?.discardRun(sessionId: key)
+        }
+    }
+
     private func handleSwitchAgent(_ target: String) {
         if target == "openclaw", cachedGatewayConnected {
             let event = buildFullStateEvent(agentType: "openclaw")
@@ -4847,6 +5155,66 @@ final class DaemonServer {
     // MARK: - Hook Events
 
     /// Collapse child/team lifecycle into existing Timeline row types.
+    /// Cross-session coordination evidence a hook carries on its own. Mirrors
+    /// the hook half of bridge/src/coordination-evidence.ts: the receiver's
+    /// `<cross-session-message>` envelope (sender pid → session through the
+    /// pushed-session table) and the sender's `SendMessage` tool input.
+    private func noteCoordinationEvidence(event: String, json: [String: Any], sessionId: String?) {
+        guard let sid = sessionId else { return }
+        if event == "session_end" { coordinationTracker.forget(sessionId: sid); return }
+        if let pid = json["agentdeck_pid"] as? Int {
+            coordinationTracker.registerPid(sessionId: sid, pid: pid, processes: lastProcessTable)
+        }
+        // Raw hook names: Claude posts `UserPromptSubmit` / `PostToolUse`, the
+        // agent-neutral observers post `*_user_prompt_submit` / `*_tool_end`.
+        let isPrompt = event == "UserPromptSubmit" || event.hasSuffix("user_prompt_submit")
+        let isToolEnd = event == "PostToolUse" || event.hasSuffix("tool_end")
+        var relation: CoordinationRelation?
+        if isPrompt, let prompt = json["prompt"] as? String {
+            relation = coordinationTracker.noteMessageIn(sessionId: sid, prompt: prompt)
+        } else if isToolEnd {
+            relation = coordinationTracker.noteToolCall(
+                sessionId: sid, toolName: json["tool_name"] as? String, toolInput: json["tool_input"] as? [String: Any])
+        }
+        if let relation {
+            persistRelation(relation)
+            broadcastSessionsList()
+        }
+    }
+
+    private func persistRelation(_ r: CoordinationRelation) {
+        apmeCollector?.noteRelation(
+            sessionId: r.sessionId, relation: r.relation, direction: r.direction, phase: r.phase,
+            peerSessionId: r.peerSessionId, peerName: r.peerName, evidence: r.evidence, detail: r.detail,
+            ts: r.ts, key: r.key)
+    }
+
+    /// The process table the last tick read; reused by `registerPid` so a hook
+    /// arriving between ticks can still walk a wrapper shell up to its agent.
+    private var lastProcessTable: [ProcessEnumerator.ProcessRow] = []
+
+    /// Driven by its own timer, never by an observer edge: a background job
+    /// appearing or a spawned worker exiting changes the process table
+    /// without changing anything a session observer would notice. `sysctl`
+    /// runs off the actor; the reconcile runs on it.
+    private func startCoordinationTick() {
+        coordinationTickTask?.cancel()
+        coordinationTickTask = Task { @DaemonActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard let self else { return }
+                let table = await Task.detached(priority: .utility) { ProcessEnumerator.processTable() }.value
+                self.lastProcessTable = table
+                let peers = self.coordinationTracker.mergePeers([])
+                guard !peers.isEmpty else { continue }
+                let rels = self.coordinationTracker.observe(table, peers: peers)
+                guard !rels.isEmpty else { continue }
+                for r in rels { self.persistRelation(r) }
+                self.broadcastSessionsList()
+            }
+        }
+    }
+
     /// Returning true means the caller must stop: child hooks are never parent
     /// session state, approval, command, or APME input.
     private func handleSubagentTimelineHook(
@@ -4959,10 +5327,16 @@ final class DaemonServer {
         if event == "task_completed" {
             let subject = clean(json["task_subject"]) ?? clean(json["task_description"])
             let summary = subject.flatMap(TimelineSummarizer.extractTopicHint) ?? subject ?? "Completed"
+            // A teammate name is the one thing that makes this a TEAM event;
+            // the ordinary TaskCreate/TaskUpdate checklist carries none, and
+            // calling that "Team Subagent" invented a worker (2026-09-06: six
+            // finished "Subagent" branches on a session that ran no children).
+            let teammate = clean(json["teammate_name"]).map { String($0.prefix(28)) }
+            let taskLabel = teammate.map { "Team \($0)" } ?? "Task done"
             var entry = DaemonTimelineEntry(
                 ts: now,
                 type: "tool_resolved",
-                raw: "Team \(label) · \(String(summary.prefix(96)))",
+                raw: "\(taskLabel) · \(String(summary.prefix(96)))",
                 detail: nil,
                 approvalId: nil,
                 status: nil,
@@ -4975,18 +5349,28 @@ final class DaemonServer {
             entry.endedAt = now
             entry.summaryKind = subject == nil ? "none" : "heuristic"
             await timelineStore.add(entry, bypassSuppression: true)
-            apmeCollector?.noteSubagentLifecycle(
+            // Observation-only, as an `info` annotation — never a `subagent`
+            // completion the collaboration lens would draw as a child branch.
+            apmeCollector?.noteInfo(
                 sessionId: sid,
-                id: clean(json["task_id"]) ?? "team:\(label):\(Int(now))",
-                name: label,
-                phase: "completed",
-                ts: Int(now),
-                summary: summary
+                label: teammate == nil ? "task_completed" : "team_task_completed",
+                detail: summary,
+                ts: Int(now)
             )
             broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
             return true
         }
 
+        // Claude's internal fork queries (e.g. prompt suggestions) emit a
+        // stop with an explicitly empty type, but never a start. They must
+        // not inflate the worker census or the parent's APME trajectory.
+        // Preserve typed orphan stops, legacy absent types, and known children.
+        if Self.isUnstartedClaudeInternalStop(
+            event: event, agentType: json["agent_type"],
+            hasActiveChild: subagentCensus[sid]?.active[identity] != nil
+        ) {
+            return true
+        }
         var census = subagentCensus[sid] ?? SubagentCensus()
         let active = census.active.removeValue(forKey: identity)
         census.completed += 1
@@ -5041,6 +5425,12 @@ final class DaemonServer {
         broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
         broadcastSessionsList()
         return true
+    }
+
+    nonisolated static func isUnstartedClaudeInternalStop(
+        event: String, agentType: Any?, hasActiveChild: Bool
+    ) -> Bool {
+        event == "subagent_stop" && agentType as? String == "" && !hasActiveChild
     }
 
     /// Expire children whose stop never arrived, so a lost hook cannot pin a
@@ -5132,11 +5522,46 @@ final class DaemonServer {
                 ?? CodexHookIdentity.threadIdSessionKey(from: json)
         }()
 
+        if isOpenCodeEvent, let sessionId {
+            // Hooks own control and state once seen. SSE cannot refresh or
+            // overwrite that row, including on disconnect.
+            _ = openCodeOwnership.claimHook(sessionId)
+            if event == "opencode_stop" || event == "opencode_user_prompt_submit" || event == "opencode_session_end" {
+                openCodeWaits.removeValue(forKey: sessionId)
+            }
+        }
+
         // Child lifecycle is telemetry-only. Consume it before resurrection,
         // state, APME, and steering bookkeeping so a child's tool hooks can
         // never alter or request approval through the parent session.
         if await handleSubagentTimelineHook(event: event, json: json, sessionId: sessionId) {
             return
+        }
+
+        // Codex Desktop ambient-suggestions threads fire the user-global hooks
+        // for prompts the user never typed. Drop them before session, state,
+        // timeline and APME bookkeeping see them, and retract what the thread's
+        // `codex_session_start` (~90 ms earlier, not yet identifiable) created.
+        if isCodexEvent, let sid = sessionId {
+            let now = Date()
+            if codexAmbientThreads.isAmbient(sid, now: now) { return }
+            // The memory agent is identifiable on its first hook (its cwd), so
+            // no hook has created anything yet — but its OTel spans may have.
+            if CodexAmbientHookRules.isBackgroundCwd(json["cwd"] ?? json["project_path"]) {
+                codexAmbientThreads.mark(sid, now: now)
+                retractCodexAmbientThread(sessionId: sid, json: json, reason: "memory-consolidation")
+                return
+            }
+            if event == "codex_user_prompt_submit",
+               CodexAmbientHookRules.isAmbientPrompt(CodexAmbientHookRules.promptText(json)) {
+                codexAmbientThreads.mark(sid, now: now)
+                retractCodexAmbientThread(sessionId: sid, json: json)
+                return
+            }
+        }
+
+        if isCodexEvent, let sessionId {
+            codexObservationOwnership.receiveHook(event: event, sessionId: sessionId, now: Date())
         }
 
         // Resurrection: Claude Code only fires `session_start` once per
@@ -5156,7 +5581,7 @@ final class DaemonServer {
         // gate an actively-working `codex` CLI session stayed invisible from
         // the moment of eviction until the user's NEXT prompt.
         let codexMidTurnResurrection = isCodexEvent
-            && (event == "codex_tool_start" || event == "codex_tool_end")
+            && Self.shouldIgnorePostTerminalCodexProgressEvent(event)
             && sessionId.map {
                 codexTerminalTombstoneBySession[$0] == nil
                     && lastTerminalCodexEventBySession[$0] == nil
@@ -5237,19 +5662,8 @@ final class DaemonServer {
                 let codexAgentType = codexObservedAgentType(sessionId: sessionId)
                 var entry: DaemonSessionEntry
                 if let existing = pushedSessionsById[sessionId] {
-                    entry = existing.projectName.isEmpty && !projectName.isEmpty
-                        ? DaemonSessionEntry(
-                            id: existing.id,
-                            port: existing.port,
-                            pid: existing.pid,
-                            projectName: projectName,
-                            agentType: codexAgentType,
-                            tmuxSession: existing.tmuxSession,
-                            tty: existing.tty,
-                            parentTty: existing.parentTty,
-                            startedAt: existing.startedAt
-                        )
-                        : existing
+                    entry = existing
+                    if entry.projectName.isEmpty && !projectName.isEmpty { entry.projectName = projectName }
                 } else {
                     entry = DaemonSessionEntry(
                         id: sessionId,
@@ -5264,7 +5678,7 @@ final class DaemonServer {
                     )
                 }
                 entry.agentType = codexAgentType
-                entry.state = "idle"
+                entry.state = entry.state ?? "idle"
                 entry.controlMode = "observed"
                 pushedSessionsById[sessionId] = entry
                 upsertIntoCachedSessions(entry)
@@ -5415,7 +5829,8 @@ final class DaemonServer {
             // Claude auto-approved the call — never hold that signature again.
             if event == "tool_end", let sessionId {
                 let tool = json["tool_name"] as? String
-                Task { await ObservedSteering.shared.noteToolEnd(sessionId: sessionId, tool: tool) }
+                let toolUseId = json["tool_use_id"] as? String
+                Task { await ObservedSteering.shared.noteToolEnd(sessionId: sessionId, tool: tool, toolUseId: toolUseId) }
             }
             if let sessionId,
                json["tool_name"] as? String == "AskUserQuestion",
@@ -5462,38 +5877,6 @@ final class DaemonServer {
                     broadcastSessionsList()
                 }
             }
-        case "opencode_permission_asked":
-            // OpenCode fires this only when it is GENUINELY asking the user —
-            // a zero-false-positive gate signal (no prediction needed, unlike
-            // the Claude PreToolUse gate). requestId encodes the raw session
-            // id + permission id so permission_decision can route the answer
-            // back through the observer-plugin queue.
-            if let sessionId, var entry = pushedSessionsById[sessionId],
-               let permId = json["permission_id"] as? String, !permId.isEmpty {
-                let rawSid = sessionId.hasPrefix(Self.openCodeSessionPrefix)
-                    ? String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
-                    : sessionId
-                let title = (json["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                entry.state = "awaiting_permission"
-                entry.question = String((title.isEmpty ? "Permission requested" : title).prefix(120))
-                entry.requestId = "ocperm:\(rawSid):\(permId)"
-                pushedSessionsById[sessionId] = entry
-                upsertIntoCachedSessions(entry)
-                broadcastSessionsList()
-            }
-        case "opencode_permission_replied":
-            // Answered (in the TUI or from a device) — drop the gate overlay.
-            if let sessionId, var entry = pushedSessionsById[sessionId],
-               entry.requestId?.hasPrefix("ocperm:") == true {
-                entry.requestId = nil
-                if entry.state == "awaiting_permission" {
-                    entry.state = "processing"
-                    entry.question = nil
-                }
-                pushedSessionsById[sessionId] = entry
-                upsertIntoCachedSessions(entry)
-                broadcastSessionsList()
-            }
         case "codex_user_prompt_submit":
             _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
             updateSessionHookState(sessionId: sessionId, state: "processing")
@@ -5523,6 +5906,30 @@ final class DaemonServer {
             appendCodexChatEnd(json: json, sessionId: sessionId)
             // Stamp terminal time so codexPostTerminalTTL can reap the
             // ephemeral companion-task entry well before pushedSessionStaleTTL.
+            if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
+        case "codex_permission_request":
+            // Codex PERM: `PermissionRequest` fires only when Codex is ABOUT TO
+            // ASK the user (approval_policy on-request) — a genuine awaiting
+            // signal with no prediction, display-only (respond in the
+            // terminal). The next lifecycle hook on the session ends the wait:
+            // an approval runs the tool, a denial or Ctrl+C ends the turn, a
+            // new prompt supersedes it — all of which pass through
+            // updateSessionHookState and overwrite the state.
+            if let sessionId, var entry = pushedSessionsById[sessionId] {
+                entry.state = "awaiting_permission"
+                entry.question = Self.codexPermissionQuestion(json)
+                entry.requestId = nil
+                pushedSessionsById[sessionId] = entry
+                upsertIntoCachedSessions(entry)
+                broadcastSessionsList()
+            }
+        case "codex_interrupt":
+            // The user's Ctrl+C on an active turn: no Stop follows, so close
+            // the turn here as interrupted (the APME normalization above
+            // stamps `interrupted` for the collector).
+            _ = stateMachine.transition(trigger: "stop", source: .hook)
+            updateSessionHookState(sessionId: sessionId, state: "idle", clearTool: true)
+            appendCodexChatEnd(json: json, sessionId: sessionId, interrupted: true)
             if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
         case "codex_turn_complete":
             // Codex notify currently emits exactly one event per turn:
@@ -5558,21 +5965,11 @@ final class DaemonServer {
                     .flatMap { $0 == Self.openCodeFallbackProjectName ? nil : $0 }
                     ?? resolved
                     ?? Self.openCodeFallbackProjectName
-                var entry = DaemonSessionEntry(
-                    id: sessionId,
-                    port: existing?.port ?? Int(port),
-                    pid: existing?.pid ?? 0,
-                    projectName: projectName,
-                    agentType: "opencode",
-                    tmuxSession: existing?.tmuxSession,
-                    tty: existing?.tty,
-                    parentTty: existing?.parentTty,
-                    startedAt: existing?.startedAt ?? ISO8601DateFormatter().string(from: Date())
-                )
-                entry.state = existing?.state ?? "idle"
-                entry.currentTool = existing?.currentTool
-                entry.question = existing?.question
-                entry.modelName = existing?.modelName
+                var entry = existing ?? DaemonSessionEntry(id: sessionId, port: Int(port), pid: 0,
+                    projectName: projectName, agentType: "opencode", tmuxSession: nil, tty: nil,
+                    parentTty: nil, startedAt: ISO8601DateFormatter().string(from: Date()))
+                entry.projectName = projectName
+                entry.state = entry.state ?? "idle"
                 entry.controlMode = "observed"
                 pushedSessionsById[sessionId] = entry
                 upsertIntoCachedSessions(entry)
@@ -5617,6 +6014,12 @@ final class DaemonServer {
             }
         default: break
         }
+        if isOpenCodeEvent, let sessionId {
+            applyOpenCodeWait(sessionId: sessionId, event: event,
+                id: (json["permission_id"] as? String) ?? (json["question_id"] as? String),
+                title: json["title"] as? String, answerable: true)
+        }
+
 
         // APME: Claude, Codex and OpenCode all cross one agent-neutral
         // lifecycle boundary. The source-specific switch above still owns
@@ -5628,6 +6031,11 @@ final class DaemonServer {
         if !apmeHandledEarly, let hook = normalizedApmeHook {
             apmeCollector?.handleHook(event: hook.event, data: hook.payload)
         }
+        // Coordination evidence carried BY the hook itself (the Node daemon's
+        // `CoordinationTracker` hook half): a received cross-session envelope
+        // and a SendMessage call. Process-table evidence (spawned workers,
+        // background jobs) is Node-only — the sandboxed daemon has no ps.
+        noteCoordinationEvidence(event: event, json: json, sessionId: sessionId)
 
         // Attribute the next state_update + timeline entries to the session
         // that fired this hook: remember the sessionId, and mirror the
@@ -5639,6 +6047,7 @@ final class DaemonServer {
         if let sessionId {
             lastHookAtByPushedSession[sessionId] = Date()
             currentHookSessionId = sessionId
+            hubDriver = .hook
             if let proj = pushedSessionsById[sessionId]?.projectName, !proj.isEmpty {
                 stateMachine.projectName = proj
             }
@@ -5646,7 +6055,13 @@ final class DaemonServer {
         if event == "session_end", let sessionId {
             lastHookAtByPushedSession.removeValue(forKey: sessionId)
             codexProcessingTouchedAtBySession.removeValue(forKey: sessionId)
-            if currentHookSessionId == sessionId { currentHookSessionId = nil }
+            if currentHookSessionId == sessionId { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
+            // Every child the session had ends with it — a lost SubagentStop
+            // must not pin "+N" on a row that no longer exists. Children are
+            // keyed by the BARE session uuid; codex/opencode rows carry a
+            // prefix, so drop both spellings.
+            subagentCensus.removeValue(forKey: sessionId)
+            subagentCensus.removeValue(forKey: ObservedAgentRules.rawSessionId(sessionId))
         }
 
         broadcastStateUpdate()
@@ -6056,6 +6471,7 @@ final class DaemonServer {
 
     private func evictStaleHookSessions() async {
         let now = Date()
+        defer { pruneCodexObservationOwnership(now: now) }
         let codexTerminalCutoff = now.addingTimeInterval(-Self.codexPostTerminalTTL)
 
         // Expire terminal tombstones so a thread id reused hours later isn't
@@ -6134,7 +6550,7 @@ final class DaemonServer {
             claudeTranscriptPathBySession.removeValue(forKey: sid)
             openCodeTurnAnchors.clear(sid: sid)
             openCodeLastPromptTopicBySession.removeValue(forKey: sid)
-            if currentHookSessionId == sid { currentHookSessionId = nil }
+            if currentHookSessionId == sid { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
             if userFocusedSessionId == sid { userFocusedSessionId = nil }
             if isPostTerminal {
                 DaemonLogger.shared.debug("Hook", "Evicted finished codex session \(sid) (post-terminal \(Int(Self.codexPostTerminalTTL))s)")
@@ -6163,6 +6579,33 @@ final class DaemonServer {
 
     // MARK: - OpenCode observer integration
 
+    private var openCodeOwnership = OpenCodeObservationOwnership()
+    private var openCodeWaits: [String: OpenCodeWaitState] = [:]
+
+    private func applyOpenCodeWait(sessionId: String, event: String, id: String?, title: String?, answerable: Bool, broadcast: Bool = true) {
+        guard var entry = pushedSessionsById[sessionId] else { return }
+        let before = entry
+        openCodeWaits = openCodeWaits.filter { pushedSessionsById[$0.key] != nil }
+        var waits = openCodeWaits[sessionId] ?? OpenCodeWaitState()
+        let resolved = waits.consume(event: event, id: id, title: title)
+        openCodeWaits[sessionId] = waits
+        if let wait = waits.first {
+            entry.state = wait.kind == "permission" ? "awaiting_permission" : "awaiting_option"
+            entry.question = wait.title
+            let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
+            entry.requestId = answerable && wait.kind == "permission" ? "ocperm:\(raw):\(wait.id)" : nil
+        } else if resolved {
+            if event.hasSuffix("_replied") || event.hasSuffix("_rejected") { entry.state = "processing" }
+            entry.question = nil
+            entry.requestId = nil
+        }
+        pushedSessionsById[sessionId] = entry
+        upsertIntoCachedSessions(entry)
+        if broadcast && (before.state != entry.state || before.question != entry.question || before.requestId != entry.requestId) {
+            broadcastSessionsList()
+        }
+    }
+
     private nonisolated static let openCodeSessionPrefix = "opencode:"
     private static let openCodeFallbackProjectName = "OpenCode"
 
@@ -6173,6 +6616,7 @@ final class DaemonServer {
     /// respond-in-terminal path on every surface.
     private func handleOpenCodeObserverUpdate(_ update: OpenCodeSessionUpdate) {
         let sid = Self.openCodeSessionPrefix + update.sessionID
+        guard openCodeOwnership.acceptSSE(sid, rowExists: pushedSessionsById[sid] != nil) else { return }
         let existing = pushedSessionsById[sid]
 
         // Project name: session title beats directory basename beats fallback.
@@ -6182,22 +6626,12 @@ final class DaemonServer {
             ?? existing.flatMap { Self.nonEmptyString($0.projectName) }
             ?? Self.openCodeFallbackProjectName
 
-        // `projectName` is immutable on DaemonSessionEntry — rebuild.
-        var entry = DaemonSessionEntry(
-            id: sid,
-            port: existing?.port ?? Int(port),
-            pid: existing?.pid ?? 0,
-            projectName: projectName,
-            agentType: "opencode",
-            tmuxSession: existing?.tmuxSession,
-            tty: existing?.tty,
-            parentTty: existing?.parentTty,
-            startedAt: existing?.startedAt ?? ISO8601DateFormatter().string(from: Date())
-        )
-        entry.state = existing?.state ?? "idle"
-        entry.modelName = update.modelName ?? existing?.modelName
-        entry.currentTool = existing?.currentTool
-        entry.question = existing?.question
+        var entry = existing ?? DaemonSessionEntry(id: sid, port: Int(port), pid: 0,
+            projectName: projectName, agentType: "opencode", tmuxSession: nil, tty: nil,
+            parentTty: nil, startedAt: ISO8601DateFormatter().string(from: Date()))
+        entry.projectName = projectName
+        entry.state = entry.state ?? "idle"
+        entry.modelName = update.modelName ?? entry.modelName
         entry.controlMode = "observed"
 
         switch update.kind {
@@ -6211,49 +6645,58 @@ final class DaemonServer {
             entry.state = "idle"
             entry.currentTool = nil
             entry.question = nil
-        case .awaitingPermission:
-            entry.state = "awaiting_permission"
-            entry.question = update.question.map { String($0.prefix(120)) }
+        case .awaitingPermission, .awaitingQuestion, .permissionReplied, .questionReplied:
+            break
         }
 
         lastHookAtByPushedSession[sid] = Date()
-        let changed = existing == nil
-            || existing?.state != entry.state
-            || existing?.question != entry.question
-            || existing?.currentTool != entry.currentTool
-            || existing?.projectName != entry.projectName
-            || existing?.modelName != entry.modelName
         pushedSessionsById[sid] = entry
         upsertIntoCachedSessions(entry)
-        if changed { broadcastSessionsList() }
+        let event: String
+        switch update.kind {
+        case .awaitingPermission: event = "opencode_permission_asked"
+        case .awaitingQuestion: event = "opencode_question_asked"
+        case .permissionReplied: event = "opencode_permission_replied"
+        case .questionReplied: event = "opencode_question_replied"
+        case .idle: event = "opencode_stop"
+        default: event = "opencode_activity"
+        }
+        applyOpenCodeWait(sessionId: sid, event: event, id: update.waitID, title: update.question, answerable: false, broadcast: false)
+        if let final = pushedSessionsById[sid], existing == nil || existing?.state != final.state
+            || existing?.question != final.question || existing?.currentTool != final.currentTool
+            || existing?.projectName != final.projectName || existing?.modelName != final.modelName {
+            broadcastSessionsList()
+        }
+
     }
 
-    /// SSE stream dropped (server quit / network) — flip tracked OpenCode
-    /// sessions idle immediately; TTL eviction removes them once keepalive
-    /// stamps stop.
+    /// SSE stream loss removes only its own rows, without fabricating idle.
     private func handleOpenCodeObserverDisconnect() {
-        var changed = false
-        for (sid, var entry) in pushedSessionsById where sid.hasPrefix(Self.openCodeSessionPrefix) {
-            if entry.state != "idle" || entry.question != nil || entry.currentTool != nil {
-                entry.state = "idle"
-                entry.question = nil
-                entry.currentTool = nil
-                pushedSessionsById[sid] = entry
-                upsertIntoCachedSessions(entry)
-                changed = true
-            }
+        // Loss of observation is not a completed turn. Remove only rows owned
+        // by this stream; hook-owned rows and their approval routes survive.
+        let owned = openCodeOwnership.disconnect()
+        for sid in owned {
+            pushedSessionsById.removeValue(forKey: sid)
+            lastHookAtByPushedSession.removeValue(forKey: sid)
+            openCodeWaits.removeValue(forKey: sid)
+            cachedSessions.removeAll { $0.id == sid }
         }
+        let changed = !owned.isEmpty
         if changed { broadcastSessionsList() }
     }
 
-    /// Connection-healthy tick: refresh eviction timestamps so idle-but-alive
-    /// OpenCode sessions aren't reaped between SSE events (the 180s
-    /// `evictStaleHookSessions` sweep only sees hook/SSE activity).
     private func touchOpenCodeSessions() {
+        openCodeOwnership.prune(live: Set(pushedSessionsById.keys))
         let now = Date()
-        for sid in pushedSessionsById.keys where sid.hasPrefix(Self.openCodeSessionPrefix) {
-            lastHookAtByPushedSession[sid] = now
-        }
+        for sid in openCodeOwnership.sse { lastHookAtByPushedSession[sid] = now }
+    }
+
+    private func pruneCodexObservationOwnership(now: Date) {
+        let cutoff = now.addingTimeInterval(-Self.codexTerminalTombstoneTTL)
+        let retained = Set(pushedSessionsById.keys)
+            .union(lastTerminalCodexEventBySession.filter { $0.value >= cutoff }.keys)
+            .union(codexTerminalTombstoneBySession.filter { $0.value >= cutoff }.keys)
+        codexObservationOwnership.prune(before: cutoff, retaining: retained)
     }
 
     /// Translate a batch of Codex OTLP/HTTP spans into per-session state
@@ -6301,8 +6744,15 @@ final class DaemonServer {
             return
         }
 
+        // Hooks are the lifecycle authority. In particular, an exit-time
+        // OTel batch must not clear a hook Stop's tombstone or promote a
+        // finished one-turn CLI session to an interactive conversation.
+        pruneCodexObservationOwnership(now: Date())
+        let admittedEvents = codexObservationOwnership.admittingOtel(events)
+        guard !admittedEvents.isEmpty else { return }
+
         var didTouchSessionsList = false
-        func codexProjectName(from cwd: String?, sessionId: String) -> String {
+        func codexProjectName(from cwd: String?) -> String {
             if let cwd, let projectName = Self.nonEmptyString(ProjectNameResolver.resolve(cwd: cwd)) {
                 return projectName
             }
@@ -6313,21 +6763,13 @@ final class DaemonServer {
             // codex tagged "AgentDeck" even when running elsewhere, or worse
             // the other way around). `ensureCodexSession`'s upgrade path
             // fills the entry when a later hook event arrives with cwd.
-            _ = sessionId
             return ""
         }
 
-        func ensureCodexSession(_ sid: String, projectName: String = "") {
-            // Anonymous OTel placeholder (`codex:otel-active`) is only useful
-            // when no real Codex App session is tracked yet — its job is to
-            // keep the dashboard creature alive while OTel emits progress
-            // spans without a durable thread id. CLI hook sessions are a
-            // separate source and must coexist with Codex App observation.
-            if sid == Self.codexAnonymousOtelSessionId {
-                if Self.hasRealCodexAppSession(in: pushedSessionsById) {
-                    return
-                }
-            } else if pushedSessionsById[Self.codexAnonymousOtelSessionId] != nil {
+        func ensureCodexSession(_ sid: String, projectName: String) {
+            // The caller rejects anonymous thread ids before reaching here.
+            // Still remove an older placeholder when a real thread arrives.
+            if pushedSessionsById[Self.codexAnonymousOtelSessionId] != nil {
                 purgeCodexSessionState(Self.codexAnonymousOtelSessionId)
                 didTouchSessionsList = true
             }
@@ -6383,27 +6825,31 @@ final class DaemonServer {
             DaemonLogger.shared.debug("CodexOTel", "Opened \(sid) project=\(displayProjectName)")
         }
 
-        func sessionIdForCodexOtelThread(_ threadId: String) -> (sid: String, observedProjectName: String?)? {
+        func sessionIdForCodexOtelThread(_ threadId: String) -> String? {
             if !Self.shouldUseCodexOtelThreadForSessionState(threadId: threadId) {
                 return nil
             }
-            return ("codex:\(threadId)", nil)
+            let sid = "codex:\(threadId)"
+            // Codex's own background threads (memory consolidation, ambient
+            // suggestions) export spans like the user's work; their hooks are
+            // dropped, so without this a cwd-less "Codex" row would open.
+            if codexAmbientThreads.isAmbient(sid) { return nil }
+            return sid
         }
 
-        for event in events {
+        for event in admittedEvents {
             switch event {
             case .turnStart(let threadId, let turnId, let cwd):
-                guard let resolved = sessionIdForCodexOtelThread(threadId) else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous turnStart without durable thread id")
                     continue
                 }
-                let sid = resolved.sid
                 // Record the turn OTel is now servicing so its eventual
                 // `turnEnd` can be matched to it — and a stale prior-turn
                 // `turnEnd` rejected — instead of closing whatever turn is
                 // currently open (Stop-drift guard).
                 codexOtelTurnIdBySession[sid] = turnId
-                let projectName = resolved.observedProjectName ?? codexProjectName(from: cwd, sessionId: sid)
+                let projectName = codexProjectName(from: cwd)
                 if pushedSessionsById[sid] == nil {
                     ensureCodexSession(sid, projectName: projectName)
                 } else {
@@ -6416,22 +6862,21 @@ final class DaemonServer {
                 codexRegisterNewTurnSignal(sessionId: sid)
 
             case .toolCall(let threadId, _, let tool, let cwd):
-                guard let resolved = sessionIdForCodexOtelThread(threadId) else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous toolCall without durable thread id")
                     continue
                 }
-                let sid = resolved.sid
                 guard lastTerminalCodexEventBySession[sid] == nil else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored late toolCall for finished session \(sid)")
                     continue
                 }
-                ensureCodexSession(sid, projectName: resolved.observedProjectName ?? codexProjectName(from: cwd, sessionId: sid))
+                ensureCodexSession(sid, projectName: codexProjectName(from: cwd))
                 let usefulTool = Self.usefulCodexToolName(tool)
                 updateSessionHookState(sessionId: sid, state: "processing", currentTool: usefulTool)
                 lastHookAtByPushedSession[sid] = Date()
 
             case .toolResult(let threadId, _):
-                guard let sid = sessionIdForCodexOtelThread(threadId)?.sid else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous toolResult without durable thread id")
                     continue
                 }
@@ -6443,7 +6888,7 @@ final class DaemonServer {
                 lastHookAtByPushedSession[sid] = Date()
 
             case .turnEnd(let threadId, let turnId):
-                guard let sid = sessionIdForCodexOtelThread(threadId)?.sid else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous turnEnd without durable thread id")
                     continue
                 }
@@ -6478,11 +6923,10 @@ final class DaemonServer {
                 lastTerminalCodexEventBySession[sid] = Date()
 
             case .activity(let threadId, _, let name, let cwd):
-                guard let resolved = sessionIdForCodexOtelThread(threadId) else {
+                guard let sid = sessionIdForCodexOtelThread(threadId) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored anonymous activity \(name) without durable thread id")
                     continue
                 }
-                let sid = resolved.sid
                 guard lastTerminalCodexEventBySession[sid] == nil else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored late activity \(name) for finished session \(sid)")
                     continue
@@ -6491,7 +6935,7 @@ final class DaemonServer {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored activity \(name) without active turn for \(sid)")
                     continue
                 }
-                ensureCodexSession(sid, projectName: resolved.observedProjectName ?? codexProjectName(from: cwd, sessionId: sid))
+                ensureCodexSession(sid, projectName: codexProjectName(from: cwd))
                 guard Self.shouldUseCodexOtelActivityForState(existingState: existing.state) else {
                     DaemonLogger.shared.debug("CodexOTel", "Ignored activity \(name) for idle session \(sid)")
                     continue
@@ -6546,7 +6990,7 @@ final class DaemonServer {
             // creature vanish during a "long thinking" pause and never come
             // back even though the codex process is alive.
             //
-            // `codex_tool_start`/`codex_tool_end` stay excluded from THIS
+            // Tool progress and `codex_permission_request` stay excluded from THIS
             // predicate because they are mid-turn — but the hook call site
             // layers a tombstone-gated bypass on top: when the thread has no
             // recorded terminal event, a tool event is a live turn whose row
@@ -6572,7 +7016,7 @@ final class DaemonServer {
     }
 
     nonisolated private static func shouldIgnorePostTerminalCodexProgressEvent(_ event: String) -> Bool {
-        event == "codex_tool_start" || event == "codex_tool_end"
+        event == "codex_tool_start" || event == "codex_tool_end" || event == "codex_permission_request"
     }
 
     /// Stop-drift guard predicate for an OTel `turnEnd` span: should it close
@@ -6641,35 +7085,43 @@ final class DaemonServer {
         return looksLikePermissionMessage(message)
     }
 
-    /// Edit-family tools that Claude auto-approves in `acceptEdits` mode.
-    nonisolated static let editFamilyTools: Set<String> = ["Write", "Edit", "MultiEdit", "NotebookEdit"]
+    /// Device-native question for a Codex `PermissionRequest` — "Approve Bash:
+    /// <command>" when the payload names a command, the tool name otherwise.
+    /// Mirrors the Node `buildCodexPermissionQuestion`. `tool_input` is a free
+    /// JSON value (string or argv array `command`, `url`/`host`, `path`);
+    /// never quote the whole input — a patch would land on a 120-char line.
+    nonisolated static func codexPermissionQuestion(_ json: [String: Any]) -> String {
+        let rawTool = (json["tool_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let tool = rawTool.isEmpty ? "tool" : rawTool
+        var preview = ""
+        if let input = json["tool_input"] as? [String: Any] {
+            let command = input["command"] ?? input["cmd"]
+            if let s = command as? String {
+                preview = s
+            } else if let parts = command as? [Any] {
+                preview = parts.compactMap { $0 as? String }.joined(separator: " ")
+            } else if let url = input["url"] as? String {
+                preview = url
+            } else if let host = input["host"] as? String {
+                preview = host
+            } else if let path = input["path"] as? String {
+                preview = path
+            }
+        } else if let s = json["tool_input"] as? String {
+            preview = s
+        }
+        preview = preview.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
+        let question = preview.isEmpty ? "Approve \(tool)?" : "Approve \(tool): \(preview)"
+        return String(question.prefix(120))
+    }
 
     /// Should the daemon HOLD a gated PreToolUse for device approval, given the
-    /// session's `permission_mode`? Claude's PreToolUse hook fires for EVERY tool
-    /// call regardless of mode or allowlist — even when Claude will auto-approve
-    /// and never prompt the user. Gate only in modes where Claude could still
-    /// surface its own prompt; otherwise the device nags for a decision the agent
-    /// never asked for (the reported false-attention bug). Mirrors the Node
-    /// `shouldGatePreToolUse`.
-    ///
-    ///  - `bypassPermissions` / `dontAsk` → never prompts            → don't gate
-    ///  - `auto`                          → policy engine auto-approves; its
-    ///    decisions live outside the settings allowlist files, so the rule
-    ///    predictor can't see them and every unlisted call would false-hold.
-    ///    The rare genuine prompt still surfaces via the Notification
-    ///    `permission_prompt` overlay                                 → don't gate
-    ///  - `plan`                          → tools don't execute       → don't gate
-    ///  - `acceptEdits`                   → edits auto-approved, Bash still prompts
-    ///  - `default` / unknown             → Claude may prompt         → gate
+    /// session's `permission_mode`? SSOT in the generated
+    /// `ClaudePermissionRules` (shared/src/claude-permission-rules.ts); kept
+    /// here as the historical call-site name.
     nonisolated static func shouldGate(permissionMode: String?, tool: String) -> Bool {
-        switch (permissionMode ?? "default").trimmingCharacters(in: .whitespaces) {
-        case "bypassPermissions", "dontAsk", "auto", "plan":
-            return false
-        case "acceptEdits":
-            return !editFamilyTools.contains(tool)
-        default:
-            return true
-        }
+        ClaudePermissionRules.shouldGatePreToolUse(permissionMode: permissionMode, tool: tool)
     }
 
     private func shouldIgnorePostTerminalCodexProgress(sessionId: String?, event: String) -> Bool {
@@ -6809,6 +7261,7 @@ final class DaemonServer {
         // resolves (≤ hold timeout) — parallel tool hooks must not strip the
         // Allow/Deny overlay out from under the open device request.
         if heldGateSessionIds.contains(sessionId) { return }
+        if newState == "processing", openCodeWaits[sessionId]?.first != nil { return }
         let oldState = entry.state
         let oldTool = entry.currentTool
         let oldQuestion = entry.question
@@ -6887,7 +7340,8 @@ final class DaemonServer {
             commandText: commandText,
             permissionMode: json["permission_mode"] as? String,
             cwd: json["cwd"] as? String,
-            clientCount: activeWSConnectionIds.count
+            clientCount: activeWSConnectionIds.count,
+            toolUseId: json["tool_use_id"] as? String
         ) else {
             return .text("")
         }
@@ -7649,9 +8103,10 @@ final class DaemonServer {
     /// Generic hook entry: deserialize the body and dispatch. All events
     /// (including PreToolUse) route here; the daemon no longer holds PreToolUse
     /// for a device gate.
-    private func handleHookPost(rawName: String, body: Data) async {
+    private func handleHookPost(rawName: String, body: Data, pid: Int? = nil) async {
         var json = (try? JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:]
         json["event"] = Self.mapHookEventName(rawName)
+        if let pid, pid > 1, json["agentdeck_pid"] == nil { json["agentdeck_pid"] = pid }
         await handleHookEvent(json)
     }
 
@@ -7727,8 +8182,7 @@ final class DaemonServer {
 
     private func handleStateChanged() {
         let currentState = stateMachine.state
-        let gwAlive = cachedGatewayConnected
-        let event = buildFullStateEvent(agentType: gwAlive ? "openclaw" : "daemon")
+        let event = buildFullStateEvent(agentType: hubFrameAgentType())
         lastStateEvent = event
         broadcastRaw(event)
         broadcastSessionsList()
@@ -7817,6 +8271,7 @@ final class DaemonServer {
                         self?.cachedGatewayAuthRequestId = nil
                         self?.cachedGatewayAuthMessage = nil
                         DaemonLogger.shared.info("OpenClaw Gateway connected")
+                        self?.hubDriver = .gateway
                         if self?.stateMachine.state == .disconnected {
                             _ = self?.stateMachine.transition(trigger: "session_start", source: .hook)
                         }
@@ -7841,6 +8296,7 @@ final class DaemonServer {
                         await self?.logStream.stop()
                         _ = self?.stateMachine.transition(trigger: "session_end", source: .hook)
                         self?.gatewaySessionState = "idle"
+                        if self?.hubDriver == .gateway { self?.hubDriver = .none }
                         self?.gatewayCurrentTool = nil
                         // Pending approvals are Gateway-process state: a
                         // reconnect issues new ids, so a retained prompt would
@@ -7897,6 +8353,7 @@ final class DaemonServer {
         cachedGatewayAuthRequestId = nil
         cachedGatewayAuthMessage = nil
         gatewaySessionState = "idle"
+        if hubDriver == .gateway { hubDriver = .none }
         gatewayCurrentTool = nil
         gatewayPendingApproval = nil
         // Note: gatewayModelName is intentionally preserved across brief disconnects
@@ -7974,6 +8431,25 @@ final class DaemonServer {
                 .flatMap { $0.split(separator: " ").first.map(String.init) }
             broadcastStateUpdate()
             broadcastSessionsList()
+        case "gateway_approval_abandoned":
+            // The approval went away without a decision — expired, its run was
+            // cancelled, or the link dropped. The Gateway emits no
+            // `exec.approval.resolved` for those, and this daemon caches the
+            // prompt (the Node one reads it live off the adapter), so without
+            // this case the row keeps offering a PERM nobody can answer.
+            // `idle`, never `processing`: nothing was allowed to run — unless
+            // the other queue still holds one, in which case the row must stay
+            // in attention and show it (`survivor`).
+            if let survivor = event["survivor"] as? [String: Any] {
+                gatewaySessionState = "awaiting_permission"
+                gatewayPendingApproval = survivor
+            } else {
+                gatewaySessionState = "idle"
+                gatewayPendingApproval = nil
+            }
+            gatewayCurrentTool = nil
+            broadcastStateUpdate()
+            broadcastSessionsList()
         case "gateway_approval_resolved":
             let resolvedPayload = event["payload"] as? [String: Any]
             let decision = resolvedPayload?["decision"] as? String
@@ -7981,8 +8457,17 @@ final class DaemonServer {
             // allow-always / deny — testing for the string "deny" was right by
             // accident, but testing for allow (as the Node side did) was not.
             let allowed = ExecApprovalDecision(rawValue: decision ?? "")?.allowsExecution ?? false
-            gatewaySessionState = allowed ? "processing" : "idle"
-            gatewayPendingApproval = nil
+            // A resolution closes ONE queue. If the other still holds an
+            // approval the adapter passes it as `survivor`, and the row has to
+            // stay in attention showing it rather than reporting the turn
+            // resumed — see `survivingApprovalPrompt`.
+            if let survivor = event["survivor"] as? [String: Any] {
+                gatewaySessionState = "awaiting_permission"
+                gatewayPendingApproval = survivor
+            } else {
+                gatewaySessionState = allowed ? "processing" : "idle"
+                gatewayPendingApproval = nil
+            }
             gatewayCurrentTool = nil
             broadcastStateUpdate()
             broadcastSessionsList()
@@ -8030,12 +8515,28 @@ final class DaemonServer {
                 }
             }
         case "gateway_health":
-            let payload = event["payload"] as? [String: Any]
-            let hasError = !((payload?["ok"] as? Bool) ?? false)
-            let changed = hasError != cachedGatewayHasError
-            cachedGatewayHasError = hasError
-            if changed {
-                handleStateChanged()
+            // THREE answers, not two. This flag turns the OpenClaw creature
+            // SICK and the topology LED red on every surface, and
+            // `!(ok ?? false)` made a frame carrying no usable `ok`
+            // indistinguishable from a failing one. `GatewayHealthRules` is
+            // the Node SSOT's mirror (shared/gateway-health-vectors.json);
+            // an unreadable frame RETAINS the previous value.
+            let verdict = GatewayHealthRules.resolve(event["payload"] as? [String: Any])
+            if verdict.known {
+                let changed = verdict.hasError != cachedGatewayHasError
+                cachedGatewayHasError = verdict.hasError
+                if changed {
+                    // Previously unlogged: a momentary sick crayfish left no
+                    // trace, so the next report could only be guessed at.
+                    DaemonLogger.shared.info(
+                        "OpenClaw gateway health: \(verdict.hasError ? "ERROR" : "ok")"
+                        + " (via \(verdict.reason)\(verdict.detail.map { ": \($0)" } ?? ""))")
+                    handleStateChanged()
+                }
+            } else {
+                DaemonLogger.shared.debug(
+                    "Gateway",
+                    "health frame carried no usable verdict (\(verdict.reason)) — keeping hasError=\(cachedGatewayHasError)")
             }
         case "model_catalog":
             // Gateway sends full model catalog — replace entirely (same as Node.js)
@@ -8182,6 +8683,21 @@ final class DaemonServer {
                 guard AnthropicAdminApiClient.shared.hasKey() else { continue }
                 guard await self.wsServer.hasClients() else { continue }
                 await self.refreshAdminApiUsage()
+            }
+        }
+
+        // z.ai GLM Coding Plan — provider-account poll (#348). No-ops with no
+        // key pasted; independent of every harness that might use the plan.
+        // Key availability is read OFF the actor: a Keychain ACL prompt must
+        // never gate daemon startup (it wedged /health on the first signed
+        // relaunch — the SettingsScreen Keychain trap, daemon-side).
+        zaiUsagePollTask = Task { [weak self] in
+            await self?.refreshZaiUsage()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.zaiUsagePollInterval))
+                guard !Task.isCancelled, let self else { break }
+                guard await self.wsServer.hasClients() else { continue }
+                await self.refreshZaiUsage()
             }
         }
 
@@ -8336,9 +8852,10 @@ final class DaemonServer {
         usageTickTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
-                guard let self, await self.wsServer.hasClients() else { continue }
+                // USB displays also consume this snapshot when no WS client exists.
+                guard let self else { return }
                 // TTL: keep last good cache, but mark it stale after 10 minutes.
-                // Clearing to nil makes the HUD look like usage disappeared entirely.
+                // Retain diagnostic data; stale quota is omitted from display frames.
                 if self.cachedApiUsage != nil,
                    self.lastApiFetchTime != .distantPast,
                    Date().timeIntervalSince(self.lastApiFetchTime) > Self.usageStaleTTL {
@@ -8347,6 +8864,7 @@ final class DaemonServer {
                         self.apiUsageStale = true
                     }
                 }
+                await self.codexAccountUsage.refresh(credential: self.usageAPI.codexUsageCredential())
                 self.broadcastUsage()
             }
         }
@@ -8392,7 +8910,9 @@ final class DaemonServer {
         // hooks at all, so without this it is invisible to an App-Store-only
         // install. A hook-pushed Kiro row (Kiro IDE does fire the standalone
         // hooks; CLI chat does not) still wins — observation only fills gaps.
-        let observedKiroSessions = LocalKiroObserver.collect()
+        let kiroSnapshot = LocalKiroObserver.observe()
+        let observedKiroSessions = LocalKiroObserver.collect(observed: kiroSnapshot)
+        if observedKiroSessions.isEmpty { kiroTimelineFeed.pump([], observed: []) }
         let currentKiroIds = Set(observedKiroSessions.map { ObservedAgentRules.rawSessionId($0.id) })
         for sessionId in kiroApmeSessions.subtracting(currentKiroIds) {
             apmeCollectorKiro?.handleHook(event: "session_end", data: [
@@ -8406,11 +8926,11 @@ final class DaemonServer {
             let projectBySession = Dictionary(uniqueKeysWithValues: observedKiroSessions.map {
                 (ObservedAgentRules.rawSessionId($0.id), $0.projectName)
             })
-            let idsAfterCodex = Set(merged.map(\.id))
-            for observed in observedKiroSessions where !idsAfterCodex.contains(observed.id) {
+            let idsAfterCodex = Set(merged.filter { $0.agentType == "kiro-cli" }.map { ObservedAgentRules.rawSessionId($0.id) })
+            for observed in observedKiroSessions where !idsAfterCodex.contains(ObservedAgentRules.rawSessionId(observed.id)) {
                 merged.append(observed)
             }
-            for row in kiroTimelineFeed.pump(observedKiroSessions.map(\.id)) {
+            for row in kiroTimelineFeed.pump(observedKiroSessions.map(\.id), observed: kiroSnapshot) {
                 ingestObservedKiroActivity(row, projectName: row.sessionId.flatMap { projectBySession[$0] })
                 await timelineStore.add(row)
                 // Storing is not showing. Every other producer here pairs the
@@ -8425,10 +8945,17 @@ final class DaemonServer {
 
         let enriched = await enrichSessionsWithState(merged)
 
+        // Order-pin overlay (#273), applied before fold+sort like the Node
+        // enricher: observed rows without their own weight pick up the stored
+        // pin, and the ids seen this pass advance the pins' liveness clock
+        // (lastSeenAt → TTL GC). Managed/remote rows keep their pushed weight.
+        let pinnedEnriched = enriched.map { sessionOrderStore.apply(to: $0) }
+        sessionOrderStore.noteSeen(ids: pinnedEnriched.filter { $0.controlMode == "observed" }.map(\.id))
+
         // Prune pushed sessions whose /health probe failed repeatedly — the
         // bridge is gone. `enrichSessionsWithState` leaves `state = nil` when
         // the probe errors; we catch those and drop the local push entry.
-        let livePushedIds = Set(enriched.filter { $0.state != nil }.map { $0.id })
+        let livePushedIds = Set(pinnedEnriched.filter { $0.state != nil }.map { $0.id })
         let stalePushed = pushedSessionsById.keys.filter { id in
             registryEntries.contains(where: { $0.id == id }) == false
                 && livePushedIds.contains(id) == false
@@ -8439,7 +8966,7 @@ final class DaemonServer {
             codexProcessingTouchedAtBySession.removeValue(forKey: id)
         }
 
-        cachedSessions = DashboardDataRules.sortSessions(enriched.filter { entry in
+        cachedSessions = DashboardDataRules.sortSessions(pinnedEnriched.filter { entry in
             // Keep filesystem entries unconditionally; drop pushed entries
             // whose probe failed (already pruned above, double-gate for safety).
             if registryEntries.contains(where: { $0.id == entry.id }) { return true }
@@ -8813,7 +9340,7 @@ final class DaemonServer {
     /// Decode relayed per-model scoped-limit dicts, preserving the Node daemon's
     /// worst-first order. A missing `active` is treated as INACTIVE (false): the
     /// wire producers only ever emit the positive signal, and an omitted flag must
-    /// never latch "binding"/critical treatment (CLAUDE.md wire-flag rule). This is
+    /// never latch "binding"/critical treatment (AGENTS.md wire-flag rule). This is
     /// pure relay consumption — the Swift daemon never parses raw OAuth `limits[]`.
     private func decodeScopedLimits(_ dict: [String: Any]) -> [ScopedUsageLimit] {
         guard let raw = dict["scopedLimits"] as? [[String: Any]] else { return [] }
@@ -8915,8 +9442,7 @@ final class DaemonServer {
         lastStateBroadcastAt = Date()
         pendingStateBroadcastTask?.cancel()
         pendingStateBroadcastTask = nil
-        let gwAlive = cachedGatewayConnected
-        let event = buildFullStateEvent(agentType: gwAlive ? "openclaw" : "daemon")
+        let event = buildFullStateEvent(agentType: hubFrameAgentType())
         lastStateEvent = event
         serialEventSnapshot.setStateEvent(event)
         broadcastRaw(event)
@@ -9019,6 +9545,63 @@ final class DaemonServer {
                 data, esp32Payloads: esp32Payloads, esp32ConnIds: esp32ConnIds,
                 blockedConnIds: blockedSurfaceConnIds)
         }
+    }
+
+    /// Persist the shared display list without altering provider observation.
+    /// The decision itself is the cross-daemon mirror `DashboardProviders.resolve`
+    /// (#351): a never-offered CONFIRMED provider joins the saved list once, a
+    /// deliberate later hide always wins.
+    private func providerDisplayResponse(_ update: [String: Any]?) -> HTTPServer.HTTPResponse {
+        let url = AgentDeckPaths.settingsJson
+        var root = ((try? Data(contentsOf: url)).flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        }) ?? [:]
+        let before = DashboardProviders.Prefs(
+            providers: root["dashboardProviders"] as? [String],
+            seen: root["dashboardProvidersSeen"] as? [String]
+        )
+        // The additive join is gated on CONFIRMED providers — ids this daemon
+        // can currently see live — so a never-offered id joins only when it
+        // actually has something to show.
+        var confirmed: [String] = []
+        if effectiveOauthConnected() { confirmed.append("claude") }
+        if usageAPI.codexRateLimits(accountPlan: codexAuthStatusSnapshot()?.planType) != nil ||
+            codexAuthStatusSnapshot()?.planType != nil { confirmed.append("codex") }
+        if let zai = ZaiUsageClient.shared.cached(),
+           zai.data.primary != nil || zai.data.secondary != nil { confirmed.append("zai") }
+        if cachedGatewayConnected { confirmed.append("openclaw") }
+        if !cachedMlxModels.isEmpty { confirmed.append("mlx") }
+        if cachedOllamaStatus != nil { confirmed.append("ollama") }
+        if cachedAntigravityStatus?.planName != nil { confirmed.append("antigravity") }
+
+        let parsedUpdate: DashboardProviders.Update?
+        if let update {
+            guard let values = update["providers"] as? [Any] else {
+                return .json(["error": "Invalid providers"], status: 400)
+            }
+            parsedUpdate = DashboardProviders.Update(
+                providers: values,
+                initialize: update["initialize"] as? Bool == true
+            )
+        } else {
+            parsedUpdate = nil
+        }
+
+        let after: DashboardProviders.Prefs
+        do {
+            after = try DashboardProviders.resolve(before, update: parsedUpdate, confirmed: confirmed)
+        } catch {
+            return .json(["error": "Invalid providers"], status: 400)
+        }
+        if after != before {
+            root["dashboardProviders"] = after.providers
+            root["dashboardProvidersSeen"] = after.seen
+            do {
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try JSONSerialization.data(withJSONObject: root).write(to: url, options: .atomic)
+            } catch { return .json(["error": "Unable to save providers"], status: 500) }
+        }
+        return .json(["providers": after.providers as Any? ?? NSNull()])
     }
 
     /// Read the `displaySleepDim` object from settings.json into
@@ -9179,6 +9762,21 @@ final class DaemonServer {
 
     // MARK: - Event Builders
 
+    /// Who the hub's global `state_update` is about. The global state machine
+    /// is moved by observed-session hooks; labelling that frame `openclaw`
+    /// whenever the Gateway was merely alive made every surface read
+    /// "OpenClaw · processing · <a Claude session's tool>" while the Gateway
+    /// sat idle (2026-09-11). A hook-driven frame is the aggregate `daemon`;
+    /// `openclaw` is reserved for frames no hook session owns. Both are
+    /// aggregate types on every consumer, so creatures still come from
+    /// `sessions_list`. Mirror of Node `resolveHubFrameIdentity`.
+    private func hubFrameAgentType() -> String {
+        switch hubDriver {
+        case .hook: return "daemon"
+        case .gateway, .none: return cachedGatewayConnected ? "openclaw" : "daemon"
+        }
+    }
+
     private func buildFullStateEvent(agentType: String) -> [String: Any] {
         var e: [String: Any] = [
             "type": "state_update",
@@ -9204,13 +9802,31 @@ final class DaemonServer {
         if stateMachine.navigable { e["navigable"] = true }
         e["cursorIndex"] = stateMachine.cursorIndex
         if let sp = stateMachine.suggestedPrompt { e["suggestedPrompt"] = sp }
+        if agentType == "openclaw" {
+            // Gateway-owned frame: the Gateway's OWN activity, never the
+            // hook-driven machine's turn (mirror of Node `shapeHubFrame`).
+            e["state"] = gatewaySessionState
+            e["sessionId"] = "openclaw-gateway"
+            e["projectName"] = "OpenClaw"
+            // The machine's turn fields are never the Gateway's — its prompt
+            // lives in `gatewayPendingApproval` and rides the sessions_list
+            // row, not this frame. Drop them unconditionally and name the
+            // Gateway's own tool explicitly (an absent key is retained by the
+            // Apple holder, which would keep a Claude tool under this label).
+            for key in ["currentTool", "toolInput", "toolProgress", "options", "question",
+                        "promptType", "navigable", "cursorIndex", "suggestedPrompt"] {
+                e.removeValue(forKey: key)
+            }
+            if let tool = gatewayCurrentTool, !tool.isEmpty { e["currentTool"] = tool }
+        }
         // Per-session awaiting overlay. The aggregate state machine can't
         // attribute a pushed (PTY-managed) session's awaiting state to a specific
         // session, so when the FOCUSED session carries an awaiting state in
         // pushedSessionsById, surface its state/question/promptType here so the
         // encoder/HUD reflect it. Options arrive via the focus relay's real
         // state_update for that session.
-        if let fid = userFocusedSessionId, let entry = pushedSessionsById[fid],
+        if agentType != "openclaw",
+           let fid = userFocusedSessionId, let entry = pushedSessionsById[fid],
            let st = entry.state, st.hasPrefix("awaiting") {
             e["state"] = st
             if let q = entry.question { e["question"] = q }
@@ -9259,6 +9875,22 @@ final class DaemonServer {
             cachedAdminApiUsage = stale
         }
         broadcastUsage()
+    }
+
+    /// Refresh the z.ai GLM Coding Plan reading (#348). The client owns the
+    /// cache and freshness semantics (key reads stay off this actor); the
+    /// daemon just triggers it and broadcasts. A not-fresh result keeps the
+    /// aged reading — read-time retirement handles the display bound.
+    @discardableResult
+    func refreshZaiUsage(configurationChanged: Bool = false) async -> Bool {
+        if configurationChanged {
+            ZaiUsageClient.shared.invalidate()
+            broadcastUsage()
+        }
+        let result = await ZaiUsageClient.shared.fetch()
+        guard !Task.isCancelled else { return false }
+        broadcastUsage()
+        return result.fresh
     }
 
     /// In App Store sandbox, `usageAPI.hasOAuthToken()` always returns
@@ -9343,7 +9975,7 @@ final class DaemonServer {
         // callers that want to distinguish "never fetched" from "had data, now
         // stale" can, but no numbers ride along with it.
         if let u = cachedApiUsage {
-            let usageIsStale = apiUsageStale || u.stale
+            let usageIsStale = claudeUsageStale
             if !usageIsStale {
                 if apiUsagePreAdjusted {
                     e["fiveHourPercent"] = u.fiveHourPercent as Any
@@ -9363,16 +9995,16 @@ final class DaemonServer {
                         if let sev = s.severity { d["severity"] = sev }
                         if let r = s.resetsAt { d["resetsAt"] = r }
                         // Emit the explicit boolean (never omit the falsy case) so a
-                        // downstream merge can't retain a stale "active" (CLAUDE.md).
+                        // downstream merge can't retain a stale "active" (AGENTS.md).
                         d["active"] = s.active ?? false
                         return d
                     }
                 }
+                e["extraUsageEnabled"] = u.extraUsageEnabled
+                if let v = u.extraUsageMonthlyLimit { e["extraUsageMonthlyLimit"] = v }
+                if let v = u.extraUsageUsedCredits { e["extraUsageUsedCredits"] = v }
+                if let v = u.extraUsageUtilization { e["extraUsageUtilization"] = v }
             }
-            e["extraUsageEnabled"] = u.extraUsageEnabled
-            if let v = u.extraUsageMonthlyLimit { e["extraUsageMonthlyLimit"] = v }
-            if let v = u.extraUsageUsedCredits { e["extraUsageUsedCredits"] = v }
-            if let v = u.extraUsageUtilization { e["extraUsageUtilization"] = v }
         }
 
         e["oauthConnected"] = effectiveOauthConnected()
@@ -9382,10 +10014,9 @@ final class DaemonServer {
         // as "keep previous value". Without this a dashboard that roamed
         // from a Node daemon keeps rendering the other host's quota forever
         // (iOS stale-usage bug, 2026-07-17).
-        e["usageStale"] = apiUsageStale || (cachedApiUsage?.stale ?? true)
+        e["usageStale"] = claudeUsageStale
         mergeEngineSnapshot(into: &e)
-        let ts = usageAPI.tokenStatus
-        if ts != .unknown { e["tokenStatus"] = ts.rawValue }
+        e["tokenStatus"] = usageAPI.tokenStatus.rawValue
         let codexAuth = codexAuthStatusSnapshot()
         if let codex = codexAuth {
             Self.writeCodexAuthStatus(codex, into: &e)
@@ -9396,9 +10027,14 @@ final class DaemonServer {
         // against another.
         let codexAccountPlan = codexAuth?.planType
         if let payload = Self.codexRateLimitsPayload(
-            usageAPI.codexRateLimits(accountPlan: codexAccountPlan), accountPlan: codexAccountPlan
+            codexAccountUsage.snapshot(
+                passive: usageAPI.codexRateLimits(accountPlan: codexAccountPlan),
+                credential: usageAPI.codexUsageCredential()), accountPlan: codexAccountPlan
         ) {
             e["codexRateLimits"] = payload
+        }
+        if let payload = Self.zaiRateLimitsPayload(ZaiUsageClient.shared.cached()) {
+            e["zaiRateLimits"] = payload
         }
         if let antigravity = cachedAntigravityStatus {
             e["antigravityStatus"] = antigravityPayload(antigravity)
@@ -9428,12 +10064,19 @@ final class DaemonServer {
     private func mergeEngineSnapshot(into event: inout [String: Any]) {
         if !cachedModelCatalog.isEmpty { event["modelCatalog"] = cachedModelCatalog }
         if let ollama = cachedOllamaStatus { event["ollamaStatus"] = ollama }
-        if !cachedMlxModels.isEmpty { event["mlxModels"] = cachedMlxModels }
+        event["mlxModels"] = cachedMlxModels
+        event["mlxResidency"] = cachedMlxResidency
         if !cachedMlxModelCatalog.isEmpty { event["mlxModelCatalog"] = cachedMlxModelCatalog }
         event["subscriptions"] = buildSubscriptions()
         if let antigravity = cachedAntigravityStatus {
             event["antigravityStatus"] = antigravityPayload(antigravity)
         }
+    }
+
+    /// Read-time expiry covers initial/state frames as well as the usage tick.
+    private var claudeUsageStale: Bool {
+        apiUsageStale || (cachedApiUsage?.stale ?? true) ||
+            (lastApiFetchTime != .distantPast && Date().timeIntervalSince(lastApiFetchTime) > Self.usageStaleTTL)
     }
 
     private func buildSubscriptions() -> [[String: Any]] {
@@ -9442,8 +10085,25 @@ final class DaemonServer {
         // is not a live subscription source for the App Store daemon. Keep it
         // out of the subscription footer; the external CLI daemon may still
         // relay this row when it owns the full developer bridge.
-        if cachedApiUsage?.inferredBillingType == "subscription" || stateMachine.billingType == "subscription" {
+        if !claudeUsageStale, let usage = cachedApiUsage,
+           usage.fiveHourPercent != nil || usage.sevenDayPercent != nil,
+           usage.inferredBillingType == "subscription" ||
+            (usage.inferredBillingType == nil && stateMachine.billingType == "subscription") {
             subscriptions.append(["name": "Claude"])
+        }
+        // z.ai GLM Coding Plan: an ended window is routine life for a rolling
+        // plan, not a lapsed subscription — the row needs windows, and only
+        // the display retirement (windowless) removes it.
+        if let zai = ZaiUsageClient.shared.cached(),
+           zai.data.primary != nil || zai.data.secondary != nil,
+           Date().timeIntervalSince(zai.fetchedAt) <= Self.usageStaleTTL {
+            let name: String
+            if let plan = ZaiQuotaRules.formatPlanName(zai.data.planType) {
+                name = "GLM Coding Plan · \(plan)"
+            } else {
+                name = "GLM Coding Plan"
+            }
+            subscriptions.append(["name": name])
         }
         return subscriptions
     }
@@ -9462,8 +10122,14 @@ final class DaemonServer {
     /// `isCodexWindowStale` — Codex usage is read passively from local rollout
     /// files, so once Codex stops being used the snapshot freezes and a "now"
     /// countdown would mislead. Grace keeps a just-reset window briefly showing "now".
+    /// Parses both ISO-8601 spellings the producers emit (with and without
+    /// fractional seconds — the z.ai windows carry epoch-ms instants).
     private static func isCodexWindowStale(_ resetsAt: String?, graceSeconds: Double = 300) -> Bool {
-        guard let resetsAt, let date = ISO8601DateFormatter().date(from: resetsAt) else { return false }
+        guard let resetsAt else { return false }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        guard let date = fractional.date(from: resetsAt) ?? plain.date(from: resetsAt) else { return false }
         return -date.timeIntervalSinceNow > graceSeconds
     }
 
@@ -9475,7 +10141,7 @@ final class DaemonServer {
     /// with no windows — because every client merges usage fields
     /// RETAIN-ON-ABSENT: omitting the key means "no information" and would pin a
     /// retired plan's gauge on the dashboard forever (the `usageStale` latch
-    /// shape, CLAUDE.md). Voiding has to ride the wire explicitly. Mirrors
+    /// shape, AGENTS.md). Voiding has to ride the wire explicitly. Mirrors
     /// `normalizeCodexRateLimits` in bridge/src/usage-event.ts.
     private static func codexRateLimitsPayload(
         _ limits: CodexRateLimitsLocal?,
@@ -9508,7 +10174,7 @@ final class DaemonServer {
         // slot Codex happened to use: short (< 1 day → the 5h window) → `primary`,
         // long (≥ 1 day → the weekly window) → `secondary`. Codex now reports the
         // weekly (10080-min) window in its own `primary` slot with `secondary` null
-        // once the 5h window resets; slot-based downstream clients (ESP32/InkDeck
+        // once the 5h window resets; slot-based downstream clients (ESP32/TRMNL 7.5"
         // firmware label primary=5H, secondary=7D and never read windowMinutes)
         // would otherwise mislabel the weekly "5H" and drop the 7D gauge. Length-
         // based consumers still get windowMinutes and are unaffected.
@@ -9558,6 +10224,40 @@ final class DaemonServer {
         // consumer derives freshness from this against its own clock
         // (`isCodexSnapshotAged` / `codexUsageFootnote`, shared/format-utils).
         if let capturedAt = limits.capturedAt { payload["capturedAt"] = capturedAt }
+        return payload
+    }
+
+    /// Wire payload for the z.ai provider-account reading. Mirrors the Node
+    /// producer's `normalizeZaiRateLimits` + read-time retirement: nil when the
+    /// provider was never fetched (no key — no information), a windowless
+    /// dictionary when the reading is past the 10-minute display bound (the
+    /// Claude-quota retirement rule, block-scoped — plan/family axes survive so
+    /// surfaces can still name the row), and per-window `stale` marking
+    /// identical to the Codex windows.
+    private static func zaiRateLimitsPayload(
+        _ cached: (data: ZaiRateLimits, fetchedAt: Date)?,
+        now: Date = Date()
+    ) -> [String: Any]? {
+        guard let cached else { return nil }
+        func window(_ w: ZaiWindow?) -> [String: Any]? {
+            guard let w else { return nil }
+            var d: [String: Any] = ["usedPercent": w.usedPercent ?? 0, "windowMinutes": w.windowMinutes ?? 0]
+            if let quantity = w.quantity { d["quantity"] = quantity }
+            if isCodexWindowStale(w.resetsAt) {
+                d["stale"] = true
+            } else if let resetsAt = w.resetsAt {
+                d["resetsAt"] = resetsAt
+            }
+            return d
+        }
+        var payload: [String: Any] = [:]
+        if now.timeIntervalSince(cached.fetchedAt) <= usageStaleTTL {
+            if let p = window(cached.data.primary) { payload["primary"] = p }
+            if let s = window(cached.data.secondary) { payload["secondary"] = s }
+        }
+        if let plan = cached.data.planType { payload["planType"] = plan }
+        if let limitId = cached.data.limitId { payload["limitId"] = limitId }
+        if let capturedAt = cached.data.capturedAt { payload["capturedAt"] = capturedAt }
         return payload
     }
 
@@ -9658,14 +10358,8 @@ final class DaemonServer {
         let previous = cachedOllamaStatus as NSDictionary?
         var success = false
 
-        // `/api/tags` returns every installed model with details (family,
-        // parameter_size); `/api/ps` returns only models currently resident
-        // in VRAM. We need both: tags is the source of truth for "what's
-        // available", ps overlays runtime VRAM usage. Embedding models
-        // (bert family, bge-*/e5-*/gte-* names, etc.) never sit in VRAM
-        // between requests — surfacing them as "not loaded" is misleading,
-        // so we classify each row as "chat" vs "embed" so the UI can
-        // group them without the loaded/not-loaded framing.
+        // Catalog and residency are independent. /api/ps also includes CPU-only
+        // and embedding models; zero GPU bytes does not imply unloaded.
         async let tagsData = fetchOllamaData(path: "/api/tags")
         async let psData = fetchOllamaData(path: "/api/ps")
         let tags = (await tagsData).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
@@ -9713,6 +10407,15 @@ final class DaemonServer {
             success = true
         }
 
+        if var status = cachedOllamaStatus {
+            let rows = ps?["models"] as? [[String: Any]]
+            let names = rows?.compactMap { $0["name"] as? String }.filter { !$0.isEmpty }
+            let known = rows != nil && names?.count == rows?.count
+            status["residency"] = ["known": known, "models": known ? (names ?? []) : []]
+            status["installedModelsKnown"] = tags?["models"] is [[String: Any]]
+            cachedOllamaStatus = status
+        }
+
         if success {
             ollamaFailureCount = 0
             ollamaNextInterval = Self.probeBaseInterval
@@ -9741,7 +10444,8 @@ final class DaemonServer {
         guard let url = URL(string: "http://127.0.0.1:11434\(path)") else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 2
-        guard let (data, _) = try? await LocalProbeSession.shared.data(for: request) else {
+        guard let (data, response) = try? await LocalProbeSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else {
             return nil
         }
         return data
@@ -9770,20 +10474,10 @@ final class DaemonServer {
     private func probeMLX() async {
         let previous = cachedMlxModels
         let previousCatalog = cachedMlxModelCatalog
-        let fallbackCandidates = [
-            "http://127.0.0.1:8800/v1/models",
-            "http://127.0.0.1:8800/models",
-        ]
-        // Once an endpoint has been resolved, prefer it exclusively. Only when
-        // discovery keeps failing do we broaden the search back to all
-        // fallbacks — this avoids burning 2 × N seconds on every poll cycle
-        // while the service is absent.
-        let candidates: [String]
-        if let preferred = preferredMlxModelsEndpoint, mlxFailureCount < Self.probeStaleThreshold {
-            candidates = [preferred]
-        } else {
-            candidates = Array(Set(([preferredMlxModelsEndpoint].compactMap { $0 }) + fallbackCandidates))
-        }
+        let previousResidency = cachedMlxResidency as NSDictionary
+        cachedMlxResidency = await probeMlxResidency()
+        let base = try? MlxInference.base(ApmeSettings.loadMlxConfig().endpoint)
+        let candidates = base.map { [$0 + "/v1/models", $0 + "/models"] } ?? []
         var resolved: [String] = []
         var success = false
 
@@ -9805,7 +10499,6 @@ final class DaemonServer {
                     return nil
                 }.filter { !$0.lowercased().contains("nanollava") })).sorted()
                 if !resolved.isEmpty {
-                    preferredMlxModelsEndpoint = endpoint
                     success = true
                     break
                 }
@@ -9819,7 +10512,10 @@ final class DaemonServer {
             mlxNextInterval = Self.probeBaseInterval
             let pin = ApmeSettings.loadMlxConfig().model
             cachedMlxModelCatalog = resolved
-            cachedMlxModels = Self.pickMlxModels(catalog: resolved, pin: pin)
+            let config = ApmeSettings.loadMlxConfig()
+            if let resident = try? await MlxInference.shared.resolve(endpoint: config.endpoint, pin: pin) {
+                cachedMlxModels = [resident]
+            } else { cachedMlxModels = [] }
         } else {
             mlxFailureCount += 1
             mlxNextInterval = min(mlxNextInterval * 2, Self.probeMaxInterval)
@@ -9831,24 +10527,30 @@ final class DaemonServer {
             }
         }
 
-        if previous != cachedMlxModels || previousCatalog != cachedMlxModelCatalog {
+        if previous != cachedMlxModels || previousCatalog != cachedMlxModelCatalog || !previousResidency.isEqual(to: cachedMlxResidency) {
             broadcastStateUpdate()
             broadcastUsage()
         }
     }
 
+    private func probeMlxResidency() async -> [String: Any] {
+        let unknown: [String: Any] = ["known": false, "models": [] as [String]]
+        guard let base = try? MlxInference.base(ApmeSettings.loadMlxConfig().endpoint),
+              let url = URL(string: base + "/health") else { return unknown }
+        var request = URLRequest(url: url); request.timeoutInterval = 2
+        guard let (data, response) = try? await LocalProbeSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return unknown }
+        if body["loaded_model"] is NSNull { return ["known": true, "models": [] as [String]] }
+        if let model = body["loaded_model"] as? String, !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return ["known": true, "models": [model]]
+        }
+        return unknown
+    }
+
     private static func pickMlxModels(catalog: [String], pin: String?) -> [String] {
-        if let pin, catalog.contains(pin) {
-            return [pin]
-        }
-        let fallback = "mlx-community/Qwen3-1.7B-4bit"
-        if catalog.contains(fallback) {
-            return [fallback]
-        }
-        if let first = catalog.first {
-            return [first]
-        }
-        return []
+        guard let model = try? MlxSafetyRules.select(loadedKnown: false, loaded: nil, catalog: catalog, requested: pin) else { return [] }
+        return [model]
     }
 
     /// Probe the APME judge backend status. Returns a Sendable snapshot
@@ -9917,7 +10619,14 @@ final class DaemonServer {
                 return JudgeBackendStatus(
                     backend: backend.rawValue,
                     status: "ready",
-                    model: ApmeJudgeApi.judgeModelLabel,
+                    // Resolved from the config, NOT `judgeModelLabel`. That
+                    // label is eval-row provenance — it names the model that
+                    // RAN, so before the first call it can only report the
+                    // default, and a user who configured `claude-haiku-4-5`
+                    // saw `claude-opus-5` in the judge status until an eval
+                    // happened to run. Node's probe reports the resolved
+                    // config value here too, unprefixed.
+                    model: ApmeJudgeApi.resolveModel(config.judge.model, endpoint: config.judge.endpoint),
                     endpoint: nil,
                     checkedAt: checkedAt,
                     reason: nil
@@ -9968,6 +10677,7 @@ final class DaemonServer {
         networkMonitor = nil
         networkDebounceTask?.cancel()
         sessionPollTask?.cancel(); usagePollTask?.cancel(); adminApiPollTask?.cancel()
+        zaiUsagePollTask?.cancel(); zaiUsagePollTask = nil
         ollamaPollTask?.cancel(); mlxPollTask?.cancel(); gatewayPollTask?.cancel()
         gatewayHealthTask?.cancel(); usageTickTask?.cancel()
         antigravityPollTask?.cancel()
@@ -10185,6 +10895,9 @@ final class DaemonServer {
         // client that merges retain-on-absent.
         if let census = subagentSummary(for: ObservedAgentRules.rawSessionId(s.id)) {
             d["subagents"] = census
+        }
+        if let coord = coordinationTracker.summary(sessionId: ObservedAgentRules.rawSessionId(s.id)) {
+            d["coordination"] = coord.dictionary
         }
         if let cm = s.controlMode {
             d["controlMode"] = cm
@@ -10553,6 +11266,13 @@ final class DaemonServer {
             guard let sessionId, !sessionId.isEmpty else { return nil }
             normalizedEvent = String(event.dropFirst(source.prefix.count)).lowercased()
             if normalizedEvent == "turn_complete" { normalizedEvent = "stop" }
+            // A Codex/OpenCode Interrupt is the user's Ctrl+C: the turn ended
+            // with no Stop coming, and the collector must record it as
+            // `interrupted`, never as a normal stop.
+            if normalizedEvent == "interrupt" {
+                normalizedEvent = "stop"
+                payload["interrupted"] = true
+            }
             payload["session_id"] = sessionId
             payload["agent_type"] = source.agentType
         } else {
@@ -11337,7 +12057,7 @@ final class DaemonServer {
         ]
         // Host-local "HH:MM" stamped at the source. ESP32 devices run NTP in UTC
         // and have no timezone, so rendering `ts` directly shows a clock hours off
-        // (e.g. 9h in KST); the InkDeck ticker reads `localHm` for the wall time.
+        // (e.g. 9h in KST); the TRMNL 7.5" ticker reads `localHm` for the wall time.
         // Mirrors the Node bridge `stampLocalHm` (bridge/src/bridge-core.ts); native
         // apps that derive HH:mm themselves simply ignore the extra field.
         if e.ts > 0 { dict["localHm"] = Self.localHmString(e.ts) }

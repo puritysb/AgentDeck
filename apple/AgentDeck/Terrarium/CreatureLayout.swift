@@ -172,3 +172,34 @@ enum CreatureLayout {
         return result
     }
 }
+
+extension CreatureLayout {
+    /// Spreads floor-resting creatures apart — hand mirror of
+    /// `spreadFloorResidents` in shared/src/creature-layout.ts, pinned by
+    /// shared/floor-spacing-vectors.json (DESIGN.md §6.4).
+    static func spreadFloorResidents(_ items: [(x: Float, width: Float)], minX: Float, maxX: Float, minGapRatio: Float) -> [Float] {
+        let n = items.count
+        guard n > 0 else { return [] }
+        let order = items.indices.sorted { items[$0].x == items[$1].x ? $0 < $1 : items[$0].x < items[$1].x }
+        func need(_ k: Int) -> Float { minGapRatio * (items[order[k - 1]].width + items[order[k]].width) / 2 }
+        var xs = order.map { items[$0].x }
+        let pairs = Array(1..<n)
+        let required = pairs.reduce(Float(0)) { $0 + need($1) }
+        if required > maxX - minX {
+            // Not enough room: spread evenly, proportional to each pair's need.
+            let scale = n > 1 ? (maxX - minX) / required : 0
+            xs[0] = n > 1 ? minX : (minX + maxX) / 2
+            for k in pairs { xs[k] = xs[k - 1] + need(k) * scale }
+        } else {
+            xs[0] = max(minX, xs[0])
+            for k in pairs { xs[k] = max(xs[k], xs[k - 1] + need(k)) }
+            xs[n - 1] = min(maxX, xs[n - 1])
+            for k in pairs.reversed() { xs[k - 1] = min(xs[k - 1], xs[k] - need(k)) }
+            xs[0] = max(minX, xs[0])
+            for k in pairs { xs[k] = max(xs[k], xs[k - 1] + need(k)) }
+        }
+        var out = [Float](repeating: 0, count: n)
+        for (k, i) in order.enumerated() { out[i] = xs[k] }
+        return out
+    }
+}

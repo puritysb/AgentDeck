@@ -3,11 +3,17 @@ import { chmodSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync,
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { execFileSync } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
+import { createServer } from 'node:http';
+import { promisify } from 'node:util';
 import {
   HOOK_EVENTS,
   buildHookCommand,
   buildHookCommandWin,
+  WINDOWS_HOOK_SCRIPT,
+  windowsHookScriptPath,
+  ensureWindowsHookScript,
+  isAgentDeckHookCommand,
   buildHookEntry,
   applyHooks,
   removeHooks,
@@ -24,19 +30,30 @@ import {
   uninstallKiroHooks,
 } from '../install.js';
 
+/**
+ * The substring that identifies an AgentDeck hook command on this platform.
+ * POSIX carries the port-discovery shell inline; Windows carries only the path
+ * of the script that holds it (see WINDOWS_HOOK_SCRIPT for why it cannot be
+ * inlined there).
+ */
+const HOOK_MARKER = process.platform === 'win32' ? 'agentdeck-hook.ps1' : 'AGENTDECK_PORT';
+
 describe('Hook Installer', () => {
   describe('buildHookEntry', () => {
-    it('creates matcher-group format with AGENTDECK_PORT env var', () => {
+    it('creates matcher-group format naming the event', () => {
       const entry = buildHookEntry('SessionStart');
       expect(entry.matcher).toBe('');
       expect(entry.hooks).toHaveLength(1);
       expect(entry.hooks[0].type).toBe('command');
-      // Both POSIX and Windows commands reference AGENTDECK_PORT and the event name.
-      // POSIX inlines the full `/hooks/<event>` path; Windows builds it via `/hooks/`+$ev,
-      // so assert both substrings without assuming a single concatenated form.
-      expect(entry.hooks[0].command).toContain('AGENTDECK_PORT');
+      expect(entry.hooks[0].command).toContain(HOOK_MARKER);
       expect(entry.hooks[0].command).toContain('SessionStart');
-      expect(entry.hooks[0].command).toContain('/hooks/');
+      // POSIX inlines the full `/hooks/<event>` URL; Windows passes the event
+      // as -HookEvent and the script builds the URL at runtime.
+      if (process.platform === 'win32') {
+        expect(entry.hooks[0].command).toContain('-HookEvent SessionStart');
+      } else {
+        expect(entry.hooks[0].command).toContain('/hooks/');
+      }
     });
 
     it('uses `*` matcher for tool events and empty matcher for lifecycle events', () => {
@@ -143,6 +160,25 @@ describe('Hook Installer', () => {
       rmSync(home, { recursive: true, force: true });
     });
 
+    it.skipIf(process.platform === 'win32')('bounds a blocked daemon-file read before the hook can stall', () => {
+      const cmd = buildHookCommand('SessionStart');
+      const python = cmd.match(/python3 -c "([^"]+)"/)?.[1];
+      expect(python).toBeTruthy();
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck-blocked-read-'));
+      const fifo = join(home, 'blocked.json');
+      try {
+        execFileSync('mkfifo', [fifo]);
+        // No writer: open() really blocks. Exercise the emitted Python itself,
+        // not a mock timeout or an assertion about the command's spelling.
+        const result = execFileSync('python3', ['-c', python!, fifo], {timeout: 2000, encoding: 'utf8'});
+        expect(result).toBe('');
+      } finally { rmSync(home, {recursive: true, force: true}); }
+      for (const file of ['setup/src/setup.ts', 'hooks/src/codex-install.ts',
+        'apple/AgentDeck/Daemon/Core/HookInstaller.swift', 'apple/AgentDeck/Daemon/Core/CodexConfigInstaller.swift']) {
+        expect(readFileSync(join(process.cwd(), file), 'utf8'), file).toContain(python!);
+      }
+    });
+
     it('bounds the fire-and-forget POST so a wedged daemon cannot stall session exit', () => {
       // SessionEnd hooks share one ~1.5s abort budget in Claude Code, and a
       // restarting daemon holds the socket open without replying. Without both
@@ -168,45 +204,134 @@ describe('Hook Installer', () => {
   });
 
   describe('buildHookCommandWin (Windows)', () => {
-    it('wraps a PowerShell one-liner that targets the event endpoint', () => {
+    it.skipIf(process.platform !== 'win32')('delivers UTF-8 stdin through Git Bash and Windows PowerShell', async () => {
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck hook 한글-'));
+      const payload = JSON.stringify({ session_id: 'review', prompt: '안녕하세요 café' });
+      let received: { url: string | undefined; body: string } | undefined;
+      const server = createServer((request, response) => {
+        const chunks: Buffer[] = [];
+        request.on('data', (chunk: Buffer) => chunks.push(chunk));
+        request.on('end', () => {
+          received = { url: request.url, body: Buffer.concat(chunks).toString('utf8') };
+          response.writeHead(200, { 'Content-Type': 'application/json' });
+          response.end('{}');
+        });
+      });
+      try {
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as { port: number }).port;
+        ensureWindowsHookScript(home);
+        // Select Git's shell explicitly: a Windows host can also have WSL's
+        // bash.exe on PATH, which is not the hook execution environment.
+        const gitBash = join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe');
+        const started = performance.now();
+        const execution = promisify(execFile)(gitBash, ['-c', buildHookCommandWin('Stop', home)], {
+          env: { ...process.env, AGENTDECK_PORT: String(port) },
+          // This tests encoding, not startup latency. Budget for cold Git Bash
+          // and PowerShell on hosted runners; the hook HTTP budget is unchanged.
+          timeout: 30_000,
+          windowsHide: true,
+        });
+        execution.child.stdin?.end(payload);
+        const result = await execution.catch((error) => {
+          throw new Error(`Windows hook execution failed after ${Math.round(performance.now() - started)}ms; `
+            + `code=${error.code}, signal=${error.signal}, killed=${error.killed}, `
+            + `receivedRequest=${received !== undefined}, stderr=${JSON.stringify(error.stderr)}`, { cause: error });
+        });
+        expect(result.stderr).toBe('');
+        expect(received).toEqual({ url: '/hooks/Stop', body: payload });
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        rmSync(home, { recursive: true, force: true });
+      }
+    }, 40_000);
+
+    it('invokes the hook script by path and passes the event as a parameter', () => {
       const cmd = buildHookCommandWin('SessionStart');
-      expect(cmd.startsWith('powershell -NoProfile -ExecutionPolicy Bypass -Command "')).toBe(true);
-      expect(cmd).toContain("$ev='SessionStart'");
-      expect(cmd).toContain('$env:AGENTDECK_PORT');
-      expect(cmd).toContain(".agentdeck\\daemon.json");
-      expect(cmd).toContain("/hooks/'+$ev");
-      expect(cmd).toContain('Invoke-RestMethod');
-      expect(cmd).toContain('$port=9120');
-      expect(cmd).toContain('[int]::TryParse');
-      expect(cmd).toContain('$candidate -gt 65535');
+      expect(cmd.startsWith('powershell -NoProfile -ExecutionPolicy Bypass -File "')).toBe(true);
+      expect(cmd).toContain('agentdeck-hook.ps1');
+      expect(cmd).toContain('-HookEvent SessionStart');
     });
 
-    it('uses single-line PowerShell so cmd.exe can pass it as one -Command argument', () => {
+    it('puts no "$" on the command line, because a POSIX shell parses it first', () => {
+      // Claude Code spawns hook commands through Git Bash (sh -c) on Windows.
+      // An inlined -Command reached powershell.exe as
+      //   ='Stop'; [int]=0; ... [string]:AGENTDECK_PORT,[ref]
+      // because sh expanded $ev, $port, $candidate and $env away first, and
+      // died with "Missing ')' in method call" on every hook of every turn.
+      for (const event of HOOK_EVENTS) {
+        expect(buildHookCommandWin(event)).not.toContain('$');
+      }
+      // The Kiro variant passes prefixed daemon events through the same builder.
+      expect(buildHookCommandWin('kiro_tool_start')).not.toContain('$');
+    });
+
+    it('stays a single ASCII line', () => {
       const cmd = buildHookCommandWin('Stop');
       expect(cmd).not.toContain('\n');
+      expect(/^[\x00-\x7F]*$/.test(cmd)).toBe(true);
+    });
+  });
+
+  describe('WINDOWS_HOOK_SCRIPT', () => {
+    it('keeps the port discovery, validation and UTF-8 handling of the old one-liner', () => {
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$env:AGENTDECK_PORT');
+      expect(WINDOWS_HOOK_SCRIPT).toContain(".agentdeck\\daemon.json");
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$port = 9120');
+      // Strict 1..65535 parsing: an unvalidated value containing '@' can make a
+      // URL parser read 127.0.0.1:<value> as userinfo and post elsewhere.
+      expect(WINDOWS_HOOK_SCRIPT).toContain('[int]::TryParse');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$candidate -gt 65535');
+      // Read stdin as UTF-8 — [Console]::In uses the OEM codepage (e.g. CP949).
+      expect(WINDOWS_HOOK_SCRIPT).toContain('StreamReader([Console]::OpenStandardInput()');
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('[Console]::In.ReadToEnd()');
+      // POST UTF-8 bytes with a charset — a string body without one is encoded
+      // as ISO-8859-1 and non-ASCII becomes '?'.
+      expect(WINDOWS_HOOK_SCRIPT).toContain('[System.Text.Encoding]::UTF8.GetBytes');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('application/json; charset=utf-8');
+      // Bounded, and never fails the host session.
+      expect(WINDOWS_HOOK_SCRIPT).toContain('-TimeoutSec 2');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('exit 0');
     });
 
     it('omits the macOS App Store sandbox-container fallback paths', () => {
-      const cmd = buildHookCommandWin('SessionStart');
-      expect(cmd).not.toContain('Library/Containers/bound.serendipity');
-      expect(cmd).not.toContain('group.bound.serendipity');
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('Library/Containers/bound.serendipity');
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('group.bound.serendipity');
     });
 
-    it('reads stdin as UTF-8 and posts UTF-8 bytes with charset (#46)', () => {
-      const cmd = buildHookCommandWin('SessionStart');
-      // Read stdin through a UTF-8 StreamReader — [Console]::In decodes piped
-      // stdin with the OEM codepage (e.g. CP949) and garbles non-ASCII payloads.
-      expect(cmd).toContain('StreamReader([Console]::OpenStandardInput()');
-      expect(cmd).toContain('[System.Text.Encoding]::UTF8');
-      expect(cmd).not.toContain('[Console]::In.ReadToEnd()');
-      // POST UTF-8 bytes with a charset — Invoke-RestMethod encodes a string body
-      // as ISO-8859-1 when the content type carries no charset, mangling non-ASCII.
-      expect(cmd).toContain('[System.Text.Encoding]::UTF8.GetBytes');
-      expect(cmd).toContain('application/json; charset=utf-8');
-      // Still a single -Command line (cmd.exe passes it as one arg) and ASCII-only
-      // (the non-ASCII payload arrives at runtime via stdin, never embedded here).
-      expect(cmd).not.toContain('\n');
-      expect(/^[\x00-\x7F]*$/.test(cmd)).toBe(true);
+    it('accepts the underscored daemon events the Kiro hook file uses', () => {
+      const pattern = WINDOWS_HOOK_SCRIPT.match(/ValidatePattern\('([^']+)'\)/)?.[1];
+      expect(pattern).toBeDefined();
+      const re = new RegExp(pattern as string);
+      expect(re.test('SessionStart')).toBe(true);
+      expect(re.test('kiro_tool_start')).toBe(true);
+      // Still refuses anything that could break out of the URL path segment.
+      expect(re.test('Stop; rm -rf /')).toBe(false);
+      expect(re.test('../health')).toBe(false);
+    });
+
+    it('writes the script idempotently and repairs a tampered copy', () => {
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck-hook-script-'));
+      const path = ensureWindowsHookScript(home);
+      expect(path).toBe(windowsHookScriptPath(home));
+      expect(readFileSync(path, 'utf-8')).toBe(WINDOWS_HOOK_SCRIPT);
+
+      writeFileSync(path, 'corrupted');
+      ensureWindowsHookScript(home);
+      expect(readFileSync(path, 'utf-8')).toBe(WINDOWS_HOOK_SCRIPT);
+      rmSync(home, { recursive: true, force: true });
+    });
+  });
+
+  describe('isAgentDeckHookCommand', () => {
+    it('recognises the Windows -File form, which carries neither legacy marker', () => {
+      // Miss this and every reinstall leaves the previous hook in place and
+      // appends a new one, so each event fires as many times as it was installed.
+      expect(isAgentDeckHookCommand(buildHookCommandWin('Stop'))).toBe(true);
+      expect(isAgentDeckHookCommand(buildHookCommand('Stop'))).toBe(true);
+      expect(isAgentDeckHookCommand('echo "my own hook"')).toBe(false);
+      expect(isAgentDeckHookCommand(undefined)).toBe(false);
     });
   });
 
@@ -222,7 +347,11 @@ describe('Hook Installer', () => {
         const expectStar = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(event);
         expect(group.matcher).toBe(expectStar ? '*' : '');
         expect(group.hooks).toHaveLength(1);
-        expect(group.hooks[0].command).toContain('AGENTDECK_PORT');
+        // The Windows form carries the port logic in the script file, not the
+        // command line — see WINDOWS_HOOK_SCRIPT.
+        expect(group.hooks[0].command).toContain(
+          process.platform === 'win32' ? 'agentdeck-hook.ps1' : 'AGENTDECK_PORT',
+        );
         expect(group.hooks[0].command).toContain(event);
       }
     });
@@ -253,7 +382,7 @@ describe('Hook Installer', () => {
       };
       const result = applyHooks(settings);
       expect(result.hooks.SessionStart).toHaveLength(1);
-      expect(result.hooks.SessionStart[0].hooks[0].command).toContain('AGENTDECK_PORT');
+      expect(result.hooks.SessionStart[0].hooks[0].command).toContain(HOOK_MARKER);
     });
 
     it('replaces old matcher-format hooks', () => {
@@ -269,7 +398,7 @@ describe('Hook Installer', () => {
       };
       const result = applyHooks(settings);
       expect(result.hooks.SessionStart).toHaveLength(1);
-      expect(result.hooks.SessionStart[0].hooks[0].command).toContain('AGENTDECK_PORT');
+      expect(result.hooks.SessionStart[0].hooks[0].command).toContain(HOOK_MARKER);
     });
 
     it('is idempotent — running twice produces same result', () => {
@@ -448,7 +577,7 @@ describe('Hook Installer', () => {
 
       migrateHooksIfNeeded(home);
       const repaired = readFileSync(settingsPath, 'utf-8');
-      const marker = process.platform === 'win32' ? '[int]::TryParse' : '*[!0-9]*';
+      const marker = process.platform === 'win32' ? 'agentdeck-hook.ps1' : '*[!0-9]*';
       expect(repaired).toContain(marker);
 
       migrateHooksIfNeeded(home);
@@ -457,6 +586,97 @@ describe('Hook Installer', () => {
     });
   });
 });
+
+describe('migration 12 (Windows inline -Command → script file)', () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    beforeEach(() => Object.defineProperty(process, 'platform', { value: 'win32', configurable: true }));
+    afterEach(() => Object.defineProperty(process, 'platform', platform));
+
+    it('rewrites hooks whose $variables a POSIX shell would eat', () => {
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck-hooks-winfile-'));
+      mkdirSync(join(home, '.claude'), { recursive: true });
+      const settingsPath = join(home, '.claude', 'settings.json');
+
+      // Exactly what installers before this fix wrote.
+      const inline = (event: string) =>
+        `powershell -NoProfile -ExecutionPolicy Bypass -Command "$ev='${event}'; [int]$port=0; `
+        + `if(!([int]::TryParse([string]$env:AGENTDECK_PORT,[ref]$port))){$port=9120}; `
+        + `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -TimeoutSec 2}catch{}"`;
+      const settings: any = { hooks: {} };
+      for (const event of HOOK_EVENTS) {
+        settings.hooks[event] = [{ matcher: '', hooks: [{ type: 'command', command: inline(event) }] }];
+      }
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+
+      migrateHooksIfNeeded(home);
+
+      const repaired = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+      for (const event of HOOK_EVENTS) {
+        // One hook per event — the old entry is replaced, not accumulated.
+        const commands = repaired.hooks[event].flatMap((g: any) => g.hooks.map((h: any) => h.command));
+        expect(commands).toHaveLength(1);
+        expect(commands[0]).not.toContain('$');
+        expect(commands[0]).toContain('agentdeck-hook.ps1');
+      }
+      expect(existsSync(windowsHookScriptPath(home))).toBe(true);
+
+      // Idempotent: a second pass is a no-op.
+      const after = readFileSync(settingsPath, 'utf-8');
+      migrateHooksIfNeeded(home);
+      expect(readFileSync(settingsPath, 'utf-8')).toBe(after);
+      rmSync(home, { recursive: true, force: true });
+    });
+
+    it('does not duplicate hooks across repeated installs', () => {
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck-hooks-reinstall-'));
+      mkdirSync(join(home, '.claude'), { recursive: true });
+      installHooks(home);
+      installHooks(home);
+      const settings = JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf-8'));
+      for (const event of HOOK_EVENTS) {
+        const commands = settings.hooks[event].flatMap((g: any) => g.hooks.map((h: any) => h.command));
+        expect(commands).toHaveLength(1);
+      }
+      rmSync(home, { recursive: true, force: true });
+    });
+
+    it('removes the script on uninstall', () => {
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck-hooks-uninstall-'));
+      mkdirSync(join(home, '.claude'), { recursive: true });
+      installHooks(home);
+      expect(existsSync(windowsHookScriptPath(home))).toBe(true);
+      uninstallHooks(home);
+      expect(existsSync(windowsHookScriptPath(home))).toBe(false);
+      rmSync(home, { recursive: true, force: true });
+    });
+
+    it('repairs the script without rewriting current settings', () => {
+      const home = mkdtempSync(join(tmpdir(), 'agentdeck-hooks-winrepair-'));
+      try {
+        installHooks(home);
+        const settingsPath = join(home, '.claude', 'settings.json');
+        // Distinct formatting makes even a byte-equivalent semantic rewrite
+        // observable without relying on filesystem timestamp resolution.
+        const before = JSON.stringify(JSON.parse(readFileSync(settingsPath, 'utf8')), null, 4);
+        writeFileSync(settingsPath, before);
+        for (const missing of [false, true]) {
+          if (missing) rmSync(windowsHookScriptPath(home));
+          else writeFileSync(windowsHookScriptPath(home), 'broken');
+          migrateHooksIfNeeded(home);
+          expect(readFileSync(windowsHookScriptPath(home), 'utf8')).toBe(WINDOWS_HOOK_SCRIPT);
+          expect(readFileSync(settingsPath, 'utf8')).toBe(before);
+        }
+      } finally { rmSync(home, { recursive: true, force: true }); }
+    });
+
+    it('keeps the bootstrap script byte-identical to the hooks script', () => {
+      const literal = /const WINDOWS_HOOK_SCRIPT = (`[\s\S]*?`);/;
+      const source = readFileSync(join(process.cwd(), 'hooks/src/install.ts'), 'utf8');
+      const bootstrap = readFileSync(join(process.cwd(), 'setup/src/setup.ts'), 'utf8');
+      expect(source.match(literal)?.[1]).toBeDefined();
+      expect(bootstrap.match(literal)?.[1]).toBe(source.match(literal)?.[1]);
+    });
+  });
 
 describe('steering hook channels (request-response)', () => {
   it('PreToolUse and Stop echo the daemon response to stdout; others stay fire-and-forget', () => {
@@ -498,8 +718,8 @@ describe('steering hook channels (request-response)', () => {
     // variant; win32 emits its fire-and-forget PowerShell form (which builds the
     // URI as '/hooks/'+$ev, so the literal '/hooks/Stop' never appears in it).
     if (process.platform === 'win32') {
-      expect(stopCmd).toContain('Invoke-RestMethod');
-      expect(stopCmd).toContain("$ev='Stop'");
+      expect(stopCmd).toContain('agentdeck-hook.ps1');
+      expect(stopCmd).toContain('-HookEvent Stop');
     } else {
       expect(stopCmd).toContain('RESP=$(curl');
       expect(stopCmd).toContain('/hooks/Stop');
@@ -574,7 +794,7 @@ describe('install target (~/.claude/settings.json)', () => {
     // Relocation rebuilds from the current builder, so the bounded form lands
     // even though the legacy entry was unbounded.
     const sessionEnd = relocated.hooks.SessionEnd[0].hooks[0].command;
-    expect(sessionEnd).toContain('daemon.json');
+    expect(sessionEnd).toContain(process.platform === 'win32' ? 'agentdeck-hook.ps1' : 'daemon.json');
     if (process.platform !== 'win32') {
       expect(sessionEnd).toContain('--max-time 0.8');
     }
@@ -626,7 +846,7 @@ describe('Kiro v3 global hook installer', () => {
     mkdirSync(join(home, '.kiro'), { recursive: true });
     expect(installKiroHooksIfNeeded(home).installed).toBe(true);
     const written = JSON.parse(readFileSync(kiroHookPath(home), 'utf8'));
-    expect(written).toEqual(buildKiroHookFile());
+    expect(written).toEqual(buildKiroHookFile(home));
     expect(written.hooks.map((hook: { trigger: string }) => hook.trigger)).toEqual([
       'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop',
     ]);
@@ -634,7 +854,7 @@ describe('Kiro v3 global hook installer', () => {
     for (const event of ['kiro_session_start', 'kiro_user_prompt_submit', 'kiro_tool_start', 'kiro_tool_end', 'kiro_stop']) {
       expect(serialized).toContain(event);
     }
-    expect(serialized).toContain('AGENTDECK_PORT');
+    expect(serialized).toContain(HOOK_MARKER);
   });
 
   it('is idempotent, preserves an occupied path, and only removes its own file', () => {
@@ -647,6 +867,25 @@ describe('Kiro v3 global hook installer', () => {
     expect(installKiroHooksIfNeeded(home).reason).toContain('occupied');
     expect(uninstallKiroHooks(home)).toBe(false);
     expect(existsSync(kiroHookPath(home))).toBe(true);
+  });
+
+  it('provisions and repairs the Windows script without a Claude installation', () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      mkdirSync(join(home, '.kiro'));
+      expect(installKiroHooksIfNeeded(home).installed).toBe(true);
+      const script = windowsHookScriptPath(home);
+      expect(readFileSync(script, 'utf8')).toBe(WINDOWS_HOOK_SCRIPT);
+      const hooks = JSON.parse(readFileSync(kiroHookPath(home), 'utf8'));
+      for (const hook of hooks.hooks) expect(hook.action.command).toContain(script);
+      writeFileSync(script, 'broken');
+      expect(installKiroHooksIfNeeded(home).reason).toBe('already current');
+      expect(readFileSync(script, 'utf8')).toBe(WINDOWS_HOOK_SCRIPT);
+      rmSync(script);
+      installKiroHooksIfNeeded(home);
+      expect(readFileSync(script, 'utf8')).toBe(WINDOWS_HOOK_SCRIPT);
+    } finally { Object.defineProperty(process, 'platform', platform); }
   });
 });
 

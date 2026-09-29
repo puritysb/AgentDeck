@@ -22,7 +22,7 @@
 #        `/usr/bin/security`, `/usr/bin/sqlite3`) in the main binary.
 #     5. No companion-install prompt strings (`npm i @agentdeck/...`,
 #        `npx @agentdeck/...`, `brew install agentdeck`) in the main
-#        binary — CLAUDE.md invariant "App-Store-reachable UI ... must
+#        binary — AGENTS.md invariant "App-Store-reachable UI ... must
 #        not tell the user to install, register, or launch a companion
 #        binary" applies to embedded log/alert strings too, since `strings`
 #        on the Mach-O reveals them during review.

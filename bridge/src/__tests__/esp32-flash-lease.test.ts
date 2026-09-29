@@ -104,9 +104,9 @@ describe('lease persistence', () => {
   it('is a FILE, so it outlives the process that wrote it', () => {
     // This is the whole reason it is not a variable: the daemon that stole the
     // port was the respawned one, and an in-process pause cannot span a respawn.
-    writeLease({ until: Date.now() + 60_000, reason: 'usb flash', pid: 4242, board: 'inkdeck' });
+    writeLease({ until: Date.now() + 60_000, reason: 'usb flash', pid: 4242, board: 'trmnl_75' });
     const onDisk = JSON.parse(readFileSync(leaseFile(), 'utf8'));
-    expect(onDisk).toMatchObject({ reason: 'usb flash', pid: 4242, board: 'inkdeck' });
+    expect(onDisk).toMatchObject({ reason: 'usb flash', pid: 4242, board: 'trmnl_75' });
   });
 
   it('clearLease is idempotent', () => {

@@ -1,0 +1,25 @@
+{
+  "$comment": "Replayed by bridge/src/__tests__/gateway-health.test.ts and apple/AgentDeckTests/GatewayHealthRulesTests.swift. The flag these produce turns the OpenClaw creature SICK and the topology LED red on every surface, so both daemons must read one payload the same way. `known: false` means the frame said nothing usable — the caller retains its previous value and must NOT invent an error.",
+  "cases": [
+    { "name": "explicit ok true", "payload": { "ok": true }, "expect": { "known": true, "hasError": false, "reason": "ok_field" } },
+    { "name": "explicit ok false", "payload": { "ok": false }, "expect": { "known": true, "hasError": true, "reason": "ok_field" } },
+    { "name": "ok wins over a failing check", "payload": { "ok": true, "checks": [{ "name": "memory", "status": "error" }] }, "expect": { "known": true, "hasError": false, "reason": "ok_field" } },
+
+    { "name": "no ok field at all — the regression this file exists for", "payload": { "uptime": 1234 }, "expect": { "known": false, "hasError": false, "reason": "unreadable" } },
+    { "name": "ok present but not a boolean", "payload": { "ok": "yes" }, "expect": { "known": false, "hasError": false, "reason": "unreadable" } },
+    { "name": "ok null", "payload": { "ok": null }, "expect": { "known": false, "hasError": false, "reason": "unreadable" } },
+    { "name": "empty object", "payload": {}, "expect": { "known": false, "hasError": false, "reason": "unreadable" } },
+    { "name": "null payload", "payload": null, "expect": { "known": false, "hasError": false, "reason": "unreadable" } },
+
+    { "name": "checks all passing", "payload": { "checks": [{ "name": "memory", "status": "ok" }, { "name": "channels", "status": "ok" }] }, "expect": { "known": true, "hasError": false, "reason": "checks" } },
+    { "name": "checks with one error", "payload": { "checks": [{ "name": "memory", "status": "ok" }, { "name": "channels", "status": "error" }] }, "expect": { "known": true, "hasError": true, "reason": "checks", "detail": "channels" } },
+    { "name": "checks status is case-insensitive", "payload": { "checks": [{ "name": "memory", "status": "DEGRADED" }] }, "expect": { "known": true, "hasError": true, "reason": "checks", "detail": "memory" } },
+    { "name": "checks warn counts as unhealthy (Swift adapter parity)", "payload": { "checks": [{ "status": "warn" }] }, "expect": { "known": true, "hasError": true, "reason": "checks", "detail": "warn" } },
+    { "name": "empty checks array ran nothing — not a pass", "payload": { "checks": [] }, "expect": { "known": false, "hasError": false, "reason": "unreadable" } },
+    { "name": "checks entries without a status are skipped, not failed", "payload": { "checks": [{ "name": "memory" }, { "name": "channels", "status": "ok" }] }, "expect": { "known": true, "hasError": false, "reason": "checks" } },
+
+    { "name": "top-level status healthy", "payload": { "status": "ok" }, "expect": { "known": true, "hasError": false, "reason": "status_field", "detail": "ok" } },
+    { "name": "top-level status unhealthy", "payload": { "status": "unhealthy" }, "expect": { "known": true, "hasError": true, "reason": "status_field", "detail": "unhealthy" } },
+    { "name": "blank status is no answer", "payload": { "status": "   " }, "expect": { "known": false, "hasError": false, "reason": "unreadable" } }
+  ]
+}

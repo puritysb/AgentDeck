@@ -11,7 +11,8 @@ import {
   resolveAgentCommand,
   daemonPostureArgs,
   buildPlist,
-  waitForDaemonPid,
+  isWorktreeCheckoutPath,
+  waitForRestartedDaemon,
   managedPtyCompatibilityNotice,
 } from '../cli.js';
 import { allModulesOff } from '../modules/types.js';
@@ -105,7 +106,7 @@ describe('esp32-ota target resolution', () => {
 
   it('leaves a canonical board string unchanged', () => {
     expect(resolveEsp32OtaDaemonTarget('ttgo_t_display')).toBe('ttgo_t_display');
-    expect(resolveEsp32OtaDaemonTarget('inkdeck')).toBe('inkdeck');
+    expect(resolveEsp32OtaDaemonTarget('trmnl_75')).toBe('trmnl_75');
     expect(resolveEsp32OtaDaemonTarget('86box')).toBe('86box');
   });
 
@@ -156,8 +157,8 @@ describe('esp32-ota sandbox retry payload', () => {
   });
 
   it('keeps the live retry a live OTA request', () => {
-    expect(inlineOtaPayload('inkdeck', 'AA==')).toEqual({
-      target: 'inkdeck', firmwareB64: 'AA==',
+    expect(inlineOtaPayload('trmnl_75', 'AA==')).toEqual({
+      target: 'trmnl_75', firmwareB64: 'AA==',
     });
   });
 });
@@ -276,6 +277,44 @@ describe('weaveAgentCommand', () => {
     expect(weaveAgentCommand('claude-code', 'claude', {})).toBe('claude');
     expect(weaveAgentCommand('claude-code', 'claude', { AGENTDECK_CLAUDE_ARGS: '   ' })).toBe('claude');
   });
+
+  // #273 "Custom launch arguments": the woven string is re-parsed by the
+  // platform shell at spawn (PtyManager uses `$SHELL -l -c` / `cmd.exe /d /s
+  // /c`), so the weave's contract is that it appends and otherwise keeps its
+  // hands off. Quoting or escaping here would corrupt a command the user wrote
+  // for their own shell, and the damage would only appear at spawn time.
+  it('leaves the user\'s shell quoting and metacharacters untouched', () => {
+    expect(
+      weaveAgentCommand('claude-code', 'claude --resume "my session"', {
+        AGENTDECK_CLAUDE_ARGS: '--remote-control',
+      }),
+    ).toBe('claude --resume "my session" --remote-control');
+
+    expect(
+      weaveAgentCommand('codex-cli', 'cd $HOME/work && codex', {
+        AGENTDECK_CODEX_ARGS: '--full-auto',
+      }),
+    ).toBe('cd $HOME/work && codex --full-auto');
+  });
+
+  it('does not re-quote a Windows-style command', () => {
+    expect(
+      weaveAgentCommand('claude-code', 'C:\\Program Files\\claude\\claude.exe', {
+        AGENTDECK_CLAUDE_ARGS: '--remote-control',
+      }),
+    ).toBe('C:\\Program Files\\claude\\claude.exe --remote-control');
+  });
+
+  // The env value itself is appended raw — it is NOT tokenized (that is
+  // AGENTDECK_COMMANDER_ARGS' job). A quoted value must therefore survive with
+  // its quotes intact for the shell to group it.
+  it('appends a quoted env value verbatim rather than tokenizing it', () => {
+    expect(
+      weaveAgentCommand('claude-code', 'claude', {
+        AGENTDECK_CLAUDE_ARGS: '--append-system-prompt "be terse"',
+      }),
+    ).toBe('claude --append-system-prompt "be terse"');
+  });
 });
 
 describe('resolveAgentCommand (per-agent half of the --no-env-args hatch)', () => {
@@ -388,6 +427,31 @@ describe('daemon autostart posture', () => {
   });
 });
 
+describe('worktree checkout guard (autostart/plugin installs)', () => {
+  // 2026-09-19 incident: `streamdeck link` + CLI link + daemon install ran from
+  // the luna-reserve worktree; merging it removed the directory and the plugin
+  // symlink dangled, silently killing every Stream Deck status key.
+  it('classifies a worktree path by path segment', () => {
+    expect(
+      isWorktreeCheckoutPath('/Users/x/github/AgentDeck/__worktrees/luna-reserve/bridge/dist/cli.js'),
+    ).toBe(true);
+  });
+
+  it('accepts the main checkout and npm-global install paths', () => {
+    expect(isWorktreeCheckoutPath('/Users/x/github/AgentDeck/bridge/dist/cli.js')).toBe(false);
+    expect(isWorktreeCheckoutPath('/opt/homebrew/bin/agentdeck')).toBe(false);
+  });
+
+  it('matches only the whole path segment, not a substring of another name', () => {
+    expect(isWorktreeCheckoutPath('/Users/x/__worktrees_archive/bridge/dist/cli.js')).toBe(false);
+  });
+
+  it('classifies Windows-style paths on any platform', () => {
+    expect(isWorktreeCheckoutPath('C:\\repo\\AgentDeck\\__worktrees\\task-1\\bridge\\dist\\cli.js')).toBe(true);
+    expect(isWorktreeCheckoutPath('C:\\Users\\x\\AppData\\Roaming\\npm\\agentdeck')).toBe(false);
+  });
+});
+
 describe('claude action wiring (parseAsync end-to-end)', () => {
   const base = ['node', 'agentdeck'];
 
@@ -449,70 +513,163 @@ describe('claude action wiring (parseAsync end-to-end)', () => {
   });
 });
 
-describe('waitForDaemonPid — `daemon restart` reports what it measured', () => {
+describe('waitForRestartedDaemon — `daemon restart` reports what it measured', () => {
   const noInfo = () => null;
   const noPort = () => null;
+  /** The daemon this command stopped. Every case has one; a restart implies it. */
+  const STOPPED = 36318;
 
-  it('returns null when nothing ever answers', async () => {
+  const wait = (over: Partial<Parameters<typeof waitForRestartedDaemon>[0]> = {}) =>
+    waitForRestartedDaemon({
+      spawnedPid: 4242,
+      stoppedPid: STOPPED,
+      preferredPort: 9120,
+      probeHealth: async () => null,
+      readDaemonInfo: noInfo,
+      findDaemonPort: noPort,
+      timeoutMs: 400,
+      ...over,
+    });
+
+  it('returns no-daemon when nothing ever answers', async () => {
     // The defect this replaced: `spawn()` resolving a pid was treated as proof
     // the daemon started, so a child that died on EADDRINUSE was still
     // announced as `Daemon restarted (PID …)` and the real reason sat unread
     // in the daemon log.
-    const probe = vi.fn(async () => null);
-    const got = await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 400);
-    expect(got).toBeNull();
-    expect(probe).toHaveBeenCalled();
+    const probeHealth = vi.fn(async () => null);
+    expect(await wait({ probeHealth })).toEqual({ ok: false, reason: 'no-daemon' });
+    expect(probeHealth).toHaveBeenCalled();
   });
 
   it('does NOT accept the daemon it was trying to replace', async () => {
     // A port probe alone is satisfied by the OLD daemon when the stop silently
-    // failed — which would report a restart that never happened. The pid
-    // comparison is the whole point.
-    const probe = vi.fn(async () => ({ pid: 36318 }));
-    expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 400)).toBeNull();
+    // failed — which would report a restart that never happened. Rejecting the
+    // stopped pid is the whole reason a pid is compared at all.
+    const probeHealth = vi.fn(async () => ({ pid: STOPPED }));
+    expect(await wait({ probeHealth }))
+      .toEqual({ ok: false, reason: 'stop-failed', pid: STOPPED, port: 9120 });
+  });
+
+  it('accepts the spawned pid on the preferred port', async () => {
+    const probeHealth = vi.fn(async (port: number) => (port === 9120 ? { pid: 4242 } : null));
+    expect(await wait({ probeHealth, timeoutMs: 2000 })).toEqual({
+      ok: true, daemon: { pid: 4242, port: 9120, build: null, ours: true },
+    });
+  });
+
+  // ── the 2026-09-08 defect ────────────────────────────────────────────
+  //
+  // On any machine that ran `agentdeck daemon install`, the pid that ends up
+  // serving the port is routinely NOT the child this command forked. The
+  // daemon SIGKILLs itself on /shutdown, every supervisor reads a signalled
+  // death as a failure, and launchd/systemd respawn it in a few seconds — the
+  // respawn takes the port, our own child hits `daemon start`'s incumbent
+  // guard and exits 0, and a wait keyed on the child's pid can only time out.
+  // Measured twice: `restart FAILED — no daemon with PID <n> is answering`
+  // while PID 13155 served the new build on 9120 the entire time.
+  it('accepts a supervisor respawn on the same build and flags it as not ours', async () => {
+    const probeHealth = vi.fn(async (port: number) =>
+      (port === 9120 ? { pid: 13155, mode: 'daemon', build: '86d87e1745db' } : null));
+    expect(await wait({ probeHealth, expectedBuild: '86d87e1745db', timeoutMs: 2000 })).toEqual({
+      ok: true,
+      daemon: { pid: 13155, port: 9120, build: '86d87e1745db', ours: false },
+    });
+  });
+
+  it('survives the child exiting deliberately before the supervisor binds', async () => {
+    // The full shape of the incident: our child loses the race and exits
+    // ("already running") while the supervisor's daemon is still coming up.
+    // The child's exit is no longer evidence of anything, so the floor has to
+    // outlast a respawn — giving up at the child's exit is the false failure.
+    let up = false;
+    setTimeout(() => { up = true; }, 500);
+    const childAlive = { v: true };
+    setTimeout(() => { childAlive.v = false; }, 50);
+    const probeHealth = vi.fn(async (port: number) =>
+      (port === 9120 && up ? { pid: 13155, mode: 'daemon', build: 'b1' } : null));
+    expect(await wait({
+      probeHealth, expectedBuild: 'b1', timeoutMs: 2000, isChildAlive: () => childAlive.v,
+    })).toEqual({ ok: true, daemon: { pid: 13155, port: 9120, build: 'b1', ours: false } });
+  });
+
+  it('refuses a respawn serving a DIFFERENT build than the one on disk', async () => {
+    // The supervisor launches whatever `agentdeck` resolves to at ITS path,
+    // which may be another install. "A daemon restarted" and "your code is
+    // live" are different claims, and this is the one place they come apart.
+    const probeHealth = vi.fn(async (port: number) =>
+      (port === 9120 ? { pid: 13155, mode: 'daemon', build: 'old0build00' } : null));
+    expect(await wait({ probeHealth, expectedBuild: 'new0build00' })).toEqual({
+      ok: false, reason: 'stale-build', pid: 13155, port: 9120,
+      build: 'old0build00', expected: 'new0build00',
+    });
+  });
+
+  it('does not call an unknown build a mismatch', async () => {
+    // Absence is not information. Refusing here would reintroduce exactly the
+    // false failure this function exists to remove — an installed copy has no
+    // dist identity to compare, and a daemon predating the field sends none.
+    const probeHealth = vi.fn(async () => ({ pid: 13155, mode: 'daemon' }));
+    expect(await wait({ probeHealth, expectedBuild: 'new0build00', timeoutMs: 2000 })).toEqual({
+      ok: true, daemon: { pid: 13155, port: 9120, build: null, ours: false },
+    });
+    const noExpectation = vi.fn(async () => ({ pid: 13155, mode: 'daemon', build: 'whatever' }));
+    expect(await wait({ probeHealth: noExpectation, expectedBuild: null, timeoutMs: 2000 }))
+      .toMatchObject({ ok: true });
+  });
+
+  it('ignores an answer that is explicitly not a daemon', async () => {
+    // A session bridge's hook server answers /health on 9121+ with its own pid.
+    const probeHealth = vi.fn(async () => ({ pid: 777, mode: 'session' }));
+    expect(await wait({ probeHealth })).toEqual({ ok: false, reason: 'no-daemon' });
   });
 
   it('keeps waiting past the floor while the child is still alive', async () => {
     // The budget used to be a derived constant, and it was wrong twice: the
     // child can spend `EXIT_WAIT_MS + BINDABLE_WAIT_MS` negotiating a Swift
     // incumbent's stand-down BEFORE it even reaches its own port-reclaim wait,
-    // so the whole worst case runs past a minute. Giving up early prints
-    // "restart FAILED" while the daemon is coming up, and the natural retry
-    // kills it. Liveness is a real condition; the timeout is only a floor.
+    // so the whole worst case runs past a minute. Liveness is a real
+    // condition; the timeout is only a floor.
     let answers = false;
     setTimeout(() => { answers = true; }, 600);
-    const probe = vi.fn(async (port: number) => (port === 9120 && answers ? { pid: 4242 } : null));
-    const got = await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 200, () => true);
-    expect(got).toEqual({ pid: 4242, port: 9120 });
+    const probeHealth = vi.fn(async (port: number) => (port === 9120 && answers ? { pid: 4242 } : null));
+    expect(await wait({ probeHealth, timeoutMs: 200, isChildAlive: () => true }))
+      .toEqual({ ok: true, daemon: { pid: 4242, port: 9120, build: null, ours: true } });
   });
 
-  it('gives up once the child has EXITED without ever answering', async () => {
+  it('gives up once the child has EXITED without anything answering', async () => {
     // The other half of the same rule: a floor that never expires would hang
-    // on a child that died on startup, which is the failure this whole
-    // verification exists to surface.
-    const probe = vi.fn(async () => null);
-    expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 200, () => false)).toBeNull();
-  });
-
-  it('accepts the spawned pid on the preferred port', async () => {
-    const probe = vi.fn(async (port: number) => (port === 9120 ? { pid: 4242 } : null));
-    expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 2000))
-      .toEqual({ pid: 4242, port: 9120 });
+    // on a child that died on startup.
+    const probeHealth = vi.fn(async () => null);
+    expect(await wait({ probeHealth, timeoutMs: 200, isChildAlive: () => false }))
+      .toEqual({ ok: false, reason: 'no-daemon' });
   });
 
   it('finds the daemon on a fallback port and reports THAT port', async () => {
     // Landing elsewhere is a different outcome from not starting, and the
     // caller says which one happened instead of calling both a failure.
-    const probe = vi.fn(async (port: number) => (port === 9121 ? { pid: 4242 } : null));
-    expect(await waitForDaemonPid(4242, 9120, probe, () => ({ httpPort: 9121 }), noPort, 2000))
-      .toEqual({ pid: 4242, port: 9121 });
+    const probeHealth = vi.fn(async (port: number) => (port === 9121 ? { pid: 4242 } : null));
+    expect(await wait({
+      probeHealth, readDaemonInfo: () => ({ httpPort: 9121 }), timeoutMs: 2000,
+    })).toEqual({ ok: true, daemon: { pid: 4242, port: 9121, build: null, ours: true } });
   });
 
   it('waits rather than giving up on the first miss', async () => {
     let calls = 0;
-    const probe = vi.fn(async () => (++calls < 3 ? null : { pid: 4242 }));
-    expect(await waitForDaemonPid(4242, 9120, probe, noInfo, noPort, 5000))
-      .toEqual({ pid: 4242, port: 9120 });
+    const probeHealth = vi.fn(async () => (++calls < 3 ? null : { pid: 4242 }));
+    expect(await wait({ probeHealth, timeoutMs: 5000 })).toMatchObject({ ok: true });
     expect(calls).toBeGreaterThanOrEqual(3);
+  });
+});
+
+
+describe('observed run environment arguments', () => {
+  it('inserts defaults before typed run options', () => {
+    expect(applyGlobalEnvArgs(['node', 'ad', 'run', 'codex', '-c', 'codex --resume typed'], {
+      AGENTDECK_COMMANDER_ARGS: '-c "codex --resume default"',
+    })).toEqual(['node', 'ad', 'run', '-c', 'codex --resume default', 'codex', '-c', 'codex --resume typed']);
+  });
+  it('keeps the typed both-layer escape hatch for run', () => {
+    const argv = ['node', 'ad', 'run', 'claude', '--no-env-args'];
+    expect(applyGlobalEnvArgs(argv, { AGENTDECK_COMMANDER_ARGS: '--remote-daemon' })).toBe(argv);
   });
 });

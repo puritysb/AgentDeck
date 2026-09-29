@@ -101,4 +101,72 @@ final class CodexOriginatorTests: XCTestCase {
             false)
     }
 }
+
+/// Replays shared/codex-ambient-vectors.json — the same file the Node suite
+/// replays — so one Codex prompt cannot be background on one daemon and a
+/// user task on the other.
+final class CodexAmbientHookRulesTests: XCTestCase {
+    private func vectors() throws -> [[String: Any]] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/codex-ambient-vectors.json")
+        let data = try Data(contentsOf: url)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try XCTUnwrap(root["vectors"] as? [[String: Any]])
+    }
+
+    func testEveryVectorMatchesTheNodeSSOT() throws {
+        let cases = try vectors()
+        XCTAssertGreaterThan(cases.count, 0)
+        for c in cases {
+            let name = c["name"] as? String ?? ""
+            let prompt = try XCTUnwrap(c["prompt"] as? String)
+            let expected = try XCTUnwrap(c["ambient"] as? Bool)
+            XCTAssertEqual(CodexAmbientHookRules.isAmbientPrompt(prompt), expected, name)
+        }
+    }
+
+    func testEveryBackgroundCwdVectorMatchesTheNodeSSOT() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/codex-ambient-vectors.json")
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let cases = try XCTUnwrap(root["cwdVectors"] as? [[String: Any]])
+        XCTAssertGreaterThan(cases.count, 0)
+        for c in cases {
+            let name = c["name"] as? String ?? ""
+            let expected = try XCTUnwrap(c["background"] as? Bool)
+            XCTAssertEqual(CodexAmbientHookRules.isBackgroundCwd(c["cwd"], codexHome: c["codexHome"] as? String), expected, name)
+        }
+    }
+
+    func testPromptTextReadsEveryKeyShapeCodexBuildsHaveSent() {
+        let hyper = "Overview\n\nGenerate 0 to 3 hyperpersonalized suggestions for this project"
+        XCTAssertEqual(CodexAmbientHookRules.promptText(["prompt": "a", "user_prompt": "b"]), "a")
+        XCTAssertEqual(CodexAmbientHookRules.promptText(["user_prompt": "b"]), "b")
+        XCTAssertEqual(CodexAmbientHookRules.promptText(["message": ["content": "c"]]), "c")
+        XCTAssertEqual(CodexAmbientHookRules.promptText([:]), "")
+        // A build that sends `user_prompt` must still be classified — the
+        // Node classifier reads the same fallback chain.
+        XCTAssertTrue(CodexAmbientHookRules.isAmbientPrompt(CodexAmbientHookRules.promptText(["user_prompt": hyper])))
+    }
+
+    func testNonStringPromptsAreNeverAmbient() {
+        XCTAssertFalse(CodexAmbientHookRules.isAmbientPrompt(nil))
+        XCTAssertFalse(CodexAmbientHookRules.isAmbientPrompt(["text": "Overview Generate 0 to 3 hyperpersonalized suggestions"]))
+    }
+
+    func testThreadsAreRememberedUntilSilentPastTheTTL() {
+        var threads = CodexAmbientThreads()
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(threads.isAmbient("codex:amb", now: t0))
+        threads.mark("codex:amb", now: t0)
+        XCTAssertTrue(threads.isAmbient("codex:amb", now: t0.addingTimeInterval(CodexAmbientThreads.ttl - 1)))
+        // The hook above refreshed the id; silence is measured from it.
+        XCTAssertTrue(threads.isAmbient("codex:amb", now: t0.addingTimeInterval(CodexAmbientThreads.ttl + 60)))
+        XCTAssertFalse(threads.isAmbient("codex:amb", now: t0.addingTimeInterval(3 * CodexAmbientThreads.ttl)))
+        XCTAssertEqual(threads.count, 0)
+        XCTAssertFalse(threads.isAmbient("codex:other", now: t0))
+    }
+}
 #endif

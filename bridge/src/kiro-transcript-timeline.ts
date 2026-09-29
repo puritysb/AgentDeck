@@ -18,7 +18,8 @@
  * ids matched afterwards, and there was still nothing to match them against.
  *
  * Scope: Kiro CLI **v3**, whose sessions are JSONL under
- * `KIRO_HOME/sessions/**\/<uuid>.jsonl`. v2 keeps its conversations in
+ * `KIRO_HOME/sessions/**\/<uuid>.jsonl` or `<workspace>/<uuid>/messages.jsonl`.
+ * The nested format carries timestamped payload records. v2 keeps its conversations in
  * `kiro-cli/data.sqlite3` and is NOT read here — a v2 session returns nothing,
  * exactly as before, rather than a guess.
  *
@@ -40,7 +41,7 @@
  *    only defensible reading — plus a 1 ms nudge so it sorts after it.
  */
 
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { openSync, closeSync, readSync, readdirSync, lstatSync } from 'fs';
 import { join } from 'path';
 import type { TimelineEntry } from '@agentdeck/shared';
 import { rawSessionId } from '@agentdeck/shared';
@@ -61,7 +62,7 @@ export interface KiroTimelineOptions {
   sessionsRoot?: string;
 }
 
-/** Locate `<uuid>.jsonl` under the v3 sessions root. */
+/** Locate legacy flat or nested messages under the v3 sessions root. */
 function locateKiroTranscript(uuid: string, root: string): string | null {
   let entries: Array<{ name: string; isDirectory(): boolean; isSymbolicLink(): boolean }>;
   try {
@@ -71,12 +72,14 @@ function locateKiroTranscript(uuid: string, root: string): string | null {
   }
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-    const candidate = join(root, entry.name, `${uuid}.jsonl`);
-    try {
-      const st = statSync(candidate);
-      if (st.isFile() && st.size <= MAX_TRANSCRIPT_BYTES) return candidate;
-    } catch {
-      // not in this directory
+    for (const candidate of [join(root, entry.name, `${uuid}.jsonl`), join(root, entry.name, uuid, 'messages.jsonl')]) {
+      try {
+        const parent = lstatSync(join(root, entry.name, uuid));
+        if (candidate.endsWith('/messages.jsonl') && parent.isSymbolicLink()) continue;
+      } catch { /* legacy flat transcript needs no session directory */ }
+      try {
+        if (lstatSync(candidate).isFile()) return candidate;
+      } catch { /* not in this directory */ }
     }
   }
   return null;
@@ -111,7 +114,7 @@ export function kiroTimelineForSession(
   opts: KiroTimelineOptions = {},
 ): TimelineEntry[] {
   const uuid = rawSessionId(sessionId);
-  if (!uuid) return [];
+  if (!uuid || !/^[A-Za-z0-9_-]{1,256}$/.test(uuid)) return [];
   const root = opts.sessionsRoot ?? kiroV3SessionsRoot();
   const path = locateKiroTranscript(uuid, root);
   if (!path) {
@@ -121,7 +124,16 @@ export function kiroTimelineForSession(
 
   let raw: string;
   try {
-    raw = readFileSync(path, 'utf-8');
+    const fd = openSync(path, 'r');
+    try {
+      const size = lstatSync(path).size;
+      const start = Math.max(0, size - MAX_TRANSCRIPT_BYTES);
+      const buffer = Buffer.alloc(Math.min(size, MAX_TRANSCRIPT_BYTES));
+      const count = readSync(fd, buffer, 0, buffer.length, start);
+      const bytes = buffer.subarray(0, count);
+      const newline = start > 0 ? bytes.indexOf(10) : -1;
+      raw = start > 0 && newline < 0 ? '' : bytes.subarray(start > 0 ? newline + 1 : 0).toString('utf8');
+    } finally { closeSync(fd); }
   } catch (err) {
     debug('daemon', `kiro-timeline read failed: ${String(err)}`);
     return [];
@@ -140,11 +152,21 @@ export function kiroTimelineForSession(
   let replyIndex = 0;
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
-    let rec: { kind?: string; data?: { content?: unknown; meta?: { timestamp?: unknown } } };
+    let rec: { timestamp?: string; payload?: { type?: string; operationType?: string; content?: unknown }; kind?: string; data?: { content?: unknown; meta?: { timestamp?: unknown } } };
     try {
       rec = JSON.parse(line);
     } catch {
       continue; // a truncated tail line is normal on a live session
+    }
+    if (!rec || typeof rec !== 'object' || Array.isArray(rec)) continue;
+    if (rec.payload) {
+      const { type, operationType, content } = rec.payload;
+      const ts = typeof rec.timestamp === 'string' ? Date.parse(rec.timestamp) : NaN;
+      const text = textOf(content);
+      if ((type === 'user' || type === 'assistant') && operationType !== 'Reasoning' && Number.isFinite(ts) && text) {
+        rows.push({ ts, type: type === 'user' ? 'chat_start' : 'chat_response', raw: firstLine(text), detail: text.slice(0, 4000), agentType: 'kiro-cli', sessionId: uuid });
+      }
+      continue;
     }
     const content = rec.data?.content;
     if (rec.kind === 'Prompt') {

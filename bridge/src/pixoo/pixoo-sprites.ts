@@ -1277,6 +1277,11 @@ export function drawOfficialDotGlyph(
         return COLORS.white;
       case 'kiro':
         return state === 'sleeping' ? [0x4f, 0x2b, 0x7a] : state === 'working' ? [0xa7, 0x78, 0xff] : [0x7c, 0x3a, 0xed];
+      // The z.ai provider mark is only reached from the usage HUD, which never
+      // routes through this creature-state sprite — but the switch must stay
+      // total over the glyph union. Brand.zai (#1F63EC).
+      case 'zai':
+        return [31, 99, 236];
     }
   };
   const base = solidColor();

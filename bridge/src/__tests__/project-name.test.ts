@@ -1,15 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync, execSync } from 'node:child_process';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import {
   resolveProjectName,
+  compactProjectName,
   resolveProjectNameFromCwdCached,
   gitToplevelBasename,
   gitToplevelBasenameFs,
   nearestPackageJsonName,
+  hookPayloadProjectName,
 } from '../utils/project-name.js';
 
 describe('resolveProjectName', () => {
@@ -35,6 +37,26 @@ describe('resolveProjectName', () => {
     mkdirSync(sub, { recursive: true });
     execSync('git init -q', { cwd: repo });
     expect(resolveProjectName({ cwd: sub })).toBe('MyRepo');
+  });
+
+  it('labels real linked worktrees consistently without reading or changing their branch', () => {
+    const repo = join(tmpRoot, 'Main Repo');
+    const worktree = join(tmpRoot, 'task');
+    mkdirSync(repo);
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
+    git('init', '-q');
+    git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'init');
+    git('worktree', 'add', '-qb', 'different-branch-name', worktree);
+    expect(resolveProjectName({ cwd: worktree })).toBe('Main Repo · task');
+    expect(resolveProjectNameFromCwdCached(worktree)).toBe('Main Repo · task');
+    expect(resolveProjectName({ cwd: worktree, envOverride: 'Explicit' })).toBe('Explicit');
+    expect(resolveProjectName({ cwd: repo })).toBe('Main Repo');
+    // Timeline rows built from hooks must name the worktree the way its session
+    // row does — the bare folder ("task") split one session across two labels.
+    expect(hookPayloadProjectName({ cwd: worktree }, worktree)).toBe('Main Repo · task');
+    expect(hookPayloadProjectName({ project_name: 'Explicit' }, worktree)).toBe('Explicit');
+    expect(hookPayloadProjectName({}, '/')).toBeUndefined();
+    expect(hookPayloadProjectName({}, '')).toBeUndefined();
   });
 
   it('falls back to nearest package.json name when no git', () => {
@@ -196,4 +218,31 @@ describe('nearestPackageJsonName', () => {
     writeFileSync(join(inner, 'package.json'), JSON.stringify({ name: 'inner' }));
     expect(nearestPackageJsonName(leaf)).toBe('inner');
   });
+});
+
+// This fixture is also replayed by ProjectNameResolverTests.swift.
+const projectVectors = JSON.parse(readFileSync(new URL('../../../shared/project-name-vectors.json', import.meta.url), 'utf8')) as {
+  name: string; cwd: string; files: Record<string, string>; expected: string; compactExpected: string;
+}[];
+describe('shared worktree project-label contract', () => {
+  for (const vector of projectVectors) {
+    it(vector.name, () => {
+      const root = join(tmpdir(), `agentdeck-project-vector-${randomUUID()}`);
+      try {
+        const cwd = join(root, vector.cwd);
+        mkdirSync(cwd, { recursive: true });
+        for (const [path, content] of Object.entries(vector.files)) {
+          const destination = join(root, path);
+          mkdirSync(dirname(destination), { recursive: true });
+          writeFileSync(destination, content.replaceAll('$ROOT', root));
+        }
+        expect(gitToplevelBasenameFs(cwd)).toBe(vector.expected);
+        expect(resolveProjectNameFromCwdCached(cwd)).toBe(vector.expected);
+        expect(compactProjectName(vector.expected, cwd)).toBe(vector.compactExpected);
+        expect(compactProjectName("Explicit · literal", cwd)).toBe("Explicit · literal");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
 });

@@ -1,3 +1,4 @@
+import { isClaudeWeeklyMode } from '@agentdeck/shared';
 /**
  * SessionSlotButton — v4 dynamic session-per-button action.
  *
@@ -17,25 +18,16 @@ import { State, PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from '@agentdeck/s
 import type { SessionInfo, PromptOption, CodexRateLimits, ScopedUsageLimit } from '@agentdeck/shared';
 import { SessionSlotManager, type DeckLayout, type SessionSlotConfig } from '../session-slot-manager.js';
 import {
-  renderSessionSlot,
-  renderEmptySlot,
   renderDisconnectedSlot,
-  renderBackButton,
-  renderNextPageButton,
-  renderEscButton,
-  renderStopButton,
-  renderOptionButton,
-  renderPresetButton,
   type DisconnectedSlotConfig,
 } from '../renderers/session-slot-renderer.js';
 import { svgToDataUrl } from '../renderers/button-renderer.js';
-import { renderUsageGauge } from '../renderers/usage-gauge.js';
-import { renderStatusReadout, renderSessionReadout } from '../renderers/display-tile.js';
+import { renderSlotConfig } from '../renderers/slot-svg.js';
 import { dlog } from '../log.js';
 import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
 import { openAgentDeckAppOrGitHub } from '../system/index.js';
 import { VoicePttHold } from '@agentdeck/shared';
-import { deviceTypeFromUnknown, familyForDeviceType, usesLowResolutionKeyProfile } from '../device-profile.js';
+import { deviceTypeFromUnknown, familyForDeviceType } from '../device-profile.js';
 
 // ---- Module state ----
 
@@ -100,6 +92,7 @@ export function updateSlotUsage(usage: {
   sevenDayResetsAt?: string;
   usageStale?: boolean;
   codexRateLimits?: CodexRateLimits;
+  zaiRateLimits?: import('@agentdeck/shared').ZaiRateLimits;
   scopedLimits?: ScopedUsageLimit[];
 }): void {
   manager.updateUsage(usage);
@@ -223,6 +216,7 @@ function layoutForEvent(ev: WillAppearEvent | KeyDownEvent): DeckLayout {
     columns: Number.isFinite(columns) && columns > 0 ? columns : 4,
     rows: Number.isFinite(rows) && rows > 0 ? rows : 2,
     keyCount: Math.max(1, (Number.isFinite(columns) && columns > 0 ? columns : 4) * (Number.isFinite(rows) && rows > 0 ? rows : 2)),
+    deviceId: device?.id,
     family: familyForDeviceType(deviceTypeFromUnknown(device?.type)),
   };
 }
@@ -295,99 +289,35 @@ function stableSessionPhaseFrames(session: SessionInfo): number {
 }
 
 function renderSlotSvg(config: SessionSlotConfig, _slot: number, layout?: DeckLayout): string {
-  switch (config.type) {
-    case 'session': {
-      const sess = config.session!;
-      const animatedState = sess.state === 'processing' || (sess.state?.startsWith('awaiting') ?? false);
-      const phaseState = animatedState ? sess.state ?? 'processing' : '';
-      if (animatedState) {
-        const existing = processingStartFrame.get(sess.id);
-        if (!existing || existing.state !== phaseState) {
-          processingStartFrame.set(sess.id, {
-            state: phaseState,
-            frame: animFrame - stableSessionPhaseFrames(sess),
-          });
-        }
-      } else {
-        processingStartFrame.delete(sess.id);
+  // The per-session animation phase is this action's bookkeeping; the drawing
+  // itself is the pure renderSlotConfig, shared with the marketplace generator.
+  if (config.type === 'session' && config.session) {
+    const sess = config.session;
+    const animatedState = sess.state === 'processing' || (sess.state?.startsWith('awaiting') ?? false);
+    const phaseState = animatedState ? sess.state ?? 'processing' : '';
+    if (animatedState) {
+      const existing = processingStartFrame.get(sess.id);
+      if (!existing || existing.state !== phaseState) {
+        processingStartFrame.set(sess.id, {
+          state: phaseState,
+          frame: animFrame - stableSessionPhaseFrames(sess),
+        });
       }
-      return renderSessionSlot(sess, false, animFrame, undefined, {
-        processingStartFrame: processingStartFrame.get(sess.id)?.frame,
-        isStale: daemonStale,
-        lowResolutionKey: layout != null
-          && usesLowResolutionKeyProfile(layout.family, layout.columns, layout.rows),
-      });
+    } else {
+      processingStartFrame.delete(sess.id);
     }
-
-    case 'back':
-      return renderBackButton();
-
-    // INFO is a pure readout (which session am I steering) — render it flat and
-    // non-interactive so it doesn't masquerade as a pressable control.
-    case 'info':
-      if (config.session) {
-        return renderSessionReadout(
-          config.session,
-          manager.detailState,
-          manager.detailModelName ?? config.session.modelName,
-          config.label,
-          manager.detailEffortLevel ?? config.session.effortLevel,
-        );
-      }
-      return renderStatusReadout({
-        label: config.label ?? '---',
-        subtitle: config.subtitle,
-        detail: config.detail,
-        tone: config.tone,
-      });
-
-    // STATUS cards (MODEL / MODE / READY·STANDBY / AWAITING / TOOL / IDLE /
-    // HUB READY / NO SESSION) are readouts, not controls — flat, non-interactive.
-    case 'status':
-      return renderStatusReadout({
-        label: config.label ?? '---',
-        subtitle: config.subtitle,
-        detail: config.detail,
-        tone: config.tone,
-      });
-
-    case 'option':
-      return renderOptionButton(config.option!, config.optionIndex ?? 0);
-
-    case 'preset':
-      if (config.preset) {
-        return renderPresetButton(config.preset.label, config.preset.iconSvg, config.preset.color, config.preset.textColor, config.preset.subtitle, config.preset.loading);
-      }
-      return renderEmptySlot();
-
-    case 'esc':
-      return renderEscButton(config.label === 'active');
-
-    case 'stop':
-      return renderStopButton(config.label === 'active');
-
-    case 'next-page':
-      return renderNextPageButton(config.label ?? '');
-
-    case 'usage':
-      return renderUsageGauge({
-        agent: config.usageAgent ?? 'claude',
-        window: config.usageWindow ?? '5h',
-        label: config.usageLabel ?? '',
-        usedPercent: config.usagePercent ?? 0,
-        resetsAt: config.usageResetsAt,
-        known: config.usageKnown !== false,
-        footnote: config.usageFootnote,
-        inactive: config.usageInactive === true,
-      });
-
-    case 'usage-page':
-      return renderNextPageButton(config.label ?? '');
-
-    case 'empty':
-    default:
-      return renderEmptySlot();
   }
+  return renderSlotConfig(config, {
+    animFrame,
+    processingStartFrame: (id) => processingStartFrame.get(id)?.frame,
+    isStale: daemonStale,
+    layout,
+    detail: {
+      state: manager.detailState,
+      modelName: manager.detailModelName,
+      effortLevel: manager.detailEffortLevel,
+    },
+  });
 }
 
 // ---- Action class ----
@@ -406,6 +336,8 @@ export class SessionSlotButtonAction extends SingletonAction {
     const layout = layoutForEvent(ev);
     const slot = row * layout.columns + col;
     slotMap.set(id, { slot, layout });
+    const saved = ev.payload.settings?.claudeWeeklyMode;
+    if (isClaudeWeeklyMode(saved)) manager.setWeeklyMode(saved, layout);
 
     dlog('SesSlot', `willAppear: id=${id.slice(-6)} slot=${slot} (row=${row} col=${col} grid=${layout.columns}x${layout.rows}) daemon=${daemonConnected}`);
 
@@ -443,8 +375,21 @@ export class SessionSlotButtonAction extends SingletonAction {
       return;
     }
 
+    if (result.action === 'cycle-weekly-mode') {
+      const mode = manager.cycleWeeklyMode(layout);
+      refreshAll();
+      // Save on every placed key of this device: a quota can move when the
+      // roster changes, and an old key must not restore an obsolete mode.
+      await Promise.all([...slotMap.entries()].filter(([, entry]) => entry.layout.deviceId === layout.deviceId)
+        .map(async ([id]) => {
+          const key = streamDeck.actions.getActionById(id);
+          if (key) await key.setSettings({ ...await key.getSettings(), claudeWeeklyMode: mode });
+        }));
+      return;
+    }
+
     if (result.action === 'cycle-usage-page') {
-      manager.cycleUsagePage();
+      manager.cycleUsagePage(layout);
       refreshAll();
       return;
     }

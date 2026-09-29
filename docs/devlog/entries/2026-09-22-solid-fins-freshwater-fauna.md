@@ -1,0 +1,7 @@
+# 2026-09-22 — Solid fish fins and freshwater inhabitants
+
+- Blender MCP inspection found the caudal fin was four coplanar vertices/two triangles with no thickness, rotating around the body origin. Rebased the hinge to the peduncle and applied thin closed solidification to all fish fins in the deterministic garden builder. Closed caudal boundaries and 0.045-unit thickness verified in Blender; exported RealityKit bounds and relative hinge location are regression-tested.
+- Added one spiral-shell snail with moving eyestalks and two segmented shrimp with antennae, tail fans and alternating walking legs. These are decorative freshwater inhabitants, separate from original agent characters. Existing design tokens supply their materials.
+- Added a reproducible fauna authoring helper invoked by the garden builder. Small foraging paths follow the fixed habitat rocks to avoid being hidden behind variable session platforms; transform tracks loop with the existing habitat clip and inherit its pause/Reduce Motion handling. Placement was revised after the actual macOS preview exposed occlusion.
+- Relevant native suite: 34 tests pass. Workspace build/typecheck and serial full Vitest: 4,671 pass, 2 skip. macOS/iOS asset builds pass; macOS installed for visual inspection. iOS was not physically deployed. Android/e-ink assets and original agent models remain unchanged.
+- Structural volume/pivot checks and sampled native frames do not prove every angle or sustained frame pacing; edge-on fins naturally remain thin. No photorealism or fluid-simulation claim.

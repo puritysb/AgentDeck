@@ -1,0 +1,12 @@
+[
+  {"name":"download catalog cannot pick a model","known":false,"catalog":["qwen","gemma"],"pin":null,"expected":null},
+  {"name":"pin does not establish residency in a multi-model catalog","known":false,"catalog":["qwen","gemma"],"pin":"gemma","expected":null},
+  {"name":"resident model outranks catalog order","known":true,"loaded":"gemma","catalog":["qwen","gemma"],"expected":"gemma"},
+  {"name":"pin cannot switch resident model","known":true,"loaded":"qwen","catalog":["gemma"],"pin":"gemma","expected":null},
+  {"name":"explicitly unloaded is not catalog-only","known":true,"loaded":null,"catalog":["gemma"],"expected":null},
+  {"name":"legacy single-model server","known":false,"catalog":["gemma"],"expected":"gemma"},
+  {"name":"legacy mismatch","known":false,"catalog":["gemma"],"pin":"qwen","expected":null},
+  {"name":"no hardcoded model fallback","known":false,"catalog":[],"expected":null},
+  {"name":"duplicate names are one model","known":false,"catalog":[" gemma ","gemma"],"pin":"default","expected":"gemma"},
+  {"name":"vision-only model is not silently replaced","known":true,"loaded":"nanollava","catalog":["gemma"],"expected":null}
+]

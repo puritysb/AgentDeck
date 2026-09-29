@@ -292,6 +292,9 @@ export function buildPackages(root: string, pkgs: readonly DaemonBuildPackage[],
   const ordered = DAEMON_BUILD_PACKAGES.filter((p) => pkgs.includes(p));
   if (ordered.length === 0) return { ok: true };
   for (const pkg of ordered) {
+    // windows-hide-exempt: a build runs only from a CLI invocation with a
+    // terminal attached — never on the autostart path, which passes
+    // `--no-build` — and the inherited stdio below is that terminal.
     const res = spawnSync(pnpmBin, ['--filter', `@agentdeck/${pkg}`, 'build'], {
       cwd: root,
       stdio: 'inherit',

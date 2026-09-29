@@ -58,6 +58,8 @@ export function checkDependencies(agentType?: AgentType): { ok: boolean; warning
   const shellExec = (cmd: string, opts?: Parameters<typeof execSync>[1]) =>
     isWin
       ? execSync(cmd, { ...opts, windowsHide: true })
+      // windows-hide-exempt: the `isWin` branch above is the Windows one; this
+      // arm runs a POSIX login shell and is never reached there.
       : execSync(`${loginShell} -l -c '${cmd}'`, opts);
 
   // Check agent-specific binary

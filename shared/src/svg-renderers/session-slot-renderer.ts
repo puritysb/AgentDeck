@@ -502,7 +502,7 @@ export function renderSessionSlot(
   const p1 = agentSlotAccent(agent);
   const sColor = stateColor(session.state);
   // RUNNING reads as a COOL teal (calm "in progress"); PERM keeps the semantic
-  // amber (stateColor → #f59e0b). Previously RUNNING used a gold #F5B942 that
+  // amber (stateColor → Session.awaiting). Previously RUNNING used a gold #F5B942 that
   // collided with awaiting's amber, so the two states looked near-identical.
   const WORKING_COLOR = '#2DD4BF';   // teal — cool, clearly not amber
   const signalColor = isWorking ? WORKING_COLOR : sColor;
@@ -558,7 +558,7 @@ export function renderSessionSlot(
     // marching dashes) — a deliberately different motion + hue from RUNNING so
     // "needs you" is unmistakable at a glance. Plus a bold amber PERM badge.
     defs += blurDef;
-    const amber = sColor; // #f59e0b
+    const amber = sColor; // Session.awaiting (DESIGN.md §2.7)
     const breathe = animated ? 0.45 + 0.55 * Math.abs(Math.sin(animFrame * PULSE_OMEGA)) : 1;
     stateBorder = [
       `<rect x="8" y="8" width="128" height="128" rx="12" fill="none" stroke="${amber}" stroke-width="7" opacity="${(breathe * 0.6).toFixed(2)}" filter="url(#${filterId})"/>`,

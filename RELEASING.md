@@ -8,7 +8,7 @@ canonical: true
 status: required
 owner: Release maintainers
 reviewed: 2026-08-26
-revision: 2026-08-26
+revision: 2026-09-13
 source_of_truth: RELEASING.md
 validators: [node scripts/build-design-system-viewer.mjs --check, pnpm verify-version]
 ---
@@ -130,8 +130,8 @@ So when a channel first goes live, sweep the surfaces that state its status: the
 | Surface                                                   | Target version                               | Independent monotonic value                                                | Tag / delivery                             |
 | --------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------ |
 | **Apple** (iOS+macOS)                                     | `apple/project.yml` `MARKETING_VERSION`      | `CURRENT_PROJECT_VERSION` (CI-owned)                                       | `apple-v*` → TestFlight / App Store        |
-| **Android**                                               | `android/app/build.gradle.kts` `versionName` | `versionCode` (currently 11)                                               | `android-v*` → APK Release / optional Play |
-| **npm** (`@agentdeck/hooks`, `shared`, `bridge`, `setup`) | public `package.json` files                  | npm registry version floor                                                 | `npm-v*` → manual publish                  |
+| **Android**                                               | `android/app/build.gradle.kts` `versionName` | `versionCode` (currently 17)                                               | `android-v*` → APK Release / optional Play |
+| **npm** (`@agentdeck/hooks`, `shared`, `bridge`, `setup`) | public `package.json` files                  | npm registry version floor                                                 | `npm-v*` → OIDC publish                  |
 | **ESP32**                                                 | `esp32/src/config.h` `FIRMWARE_VERSION`      | build hash / epoch in firmware metadata                                    | `esp32-v*` → firmware Release              |
 | **Stream Deck**                                           | plugin manifest `Version` as `X.Y.Z.0`       | fourth component if a same-product-version plugin rebuild is ever required | `streamdeck-v*` → Elgato Maker portal      |
 | **Ulanzi**                                                | Ulanzi manifest `Version`                    | marketplace submission record                                              | `ulanzi-v*` → Ulanzi Studio Marketplace    |
@@ -203,6 +203,20 @@ when editing a published body.
    ownership, or the macOS app's hand-off behavior.
 4. Tag the exact release commit as `npm-v<TARGET_VERSION>` and push it. CI runs `node scripts/publish-npm.mjs`, which enforces the dependency order (`shared`+`hooks` → `bridge` → `setup`) and rewrites `workspace:*` around each publish. Do **not** substitute `pnpm publish`: pnpm (verified 11.5.2) uploads README.md inside the tarball but never attaches the readme to the registry packument, and npmjs.com renders the package page from the packument — that is why every @agentdeck page was blank through 1.0.14.
 5. Confirm the workflow read all four exact versions back from npm, each package's `latest` dist-tag matches the target, and `npm view @agentdeck/setup readme` is non-empty.
+   **If the run is red at `Publish packages` with `registry verification failed`, read the log before touching the tag.** The read-back after publishing is bounded (12 × 5 s); on 1.3.1 every package had been published within 25 s and `@agentdeck/shared@1.3.1` was still not visible to `npm view` 84 s after its publish started, so the first attempt exited 1 with nothing left to publish. The fix is **re-run the failed job**: `publish-npm.mjs` skips versions already on the registry, so the rerun only verifies, renders notes, and creates the GitHub Release. Do not delete and re-push the tag and do not bump the version — the version is already immutable on npm and a re-tag is a publish attempt that fails its first gate (see *A release has five states* above).
+
+**A successful upload can remain unavailable while npm scans it.** On 2026-09-21,
+all four 1.4.0 uploads were accepted, but a retry while `bridge` was still being
+processed returned `E409 Cannot publish over previously staged version`.
+That response is not permission to replace the tag, unpublish, or bump versions.
+Wait for each exact version to become readable before rerunning the failed job;
+already visible packages are skipped. `npm stage list <package> --json` can
+distinguish an explicit maintainer-approval queue from an empty queue, but an
+empty queue does not prove public availability. npm's [publish-time scanning
+notice](https://github.blog/changelog/2026-07-28-npm-publish-time-malware-scanning-and-dual-use-metadata/)
+describes typical delays around five minutes, sometimes 15 minutes or longer.
+Record a held/blocked notification separately if one appears; do not label a
+package live just because `npm publish` returned success.
 
 #### Pre-tag three-mode daemon soak
 
@@ -236,7 +250,7 @@ either fixed or explicitly waived in the release issue.
 
 `npm-release.yml` runs on the tag: it re-verifies the version, builds, tests, publishes in dependency order, reads all four exact versions back from the npm registry, and only then creates the GitHub Release. npmjs.com must configure a GitHub Actions **Trusted Publisher** for each public package with owner `puritysb`, repository `AgentDeck`, and workflow `npm-release.yml` (`npm publish` allowed). The workflow uses OIDC (`id-token: write`) and intentionally has no long-lived `NPM_TOKEN` or opt-in variable. Missing or drifted trust fails the release instead of producing a green no-op.
 
-`scripts/publish-npm.mjs` is retry-safe across a partial four-package delivery: an exact immutable version already visible on npm is skipped, the missing packages continue in dependency order, and every package is verified again at the end. This does not make the registry optional — a tag is complete only when all four exact versions are readable there.
+`scripts/publish-npm.mjs` is retry-safe across a partial four-package delivery: an exact immutable version already visible on npm is skipped, the missing packages continue in dependency order, and every package is verified again at the end. This does not make the registry optional — a tag is complete only when all four exact versions are readable there. The same skip path is what makes a rerun after a registry-propagation timeout safe (1.3.1, 2026-09-12); the visibility window lives in `scripts/npm-registry-visibility.mjs` and is deliberately short so a genuine auth or trust failure still turns red quickly — widen it only if the propagation timeout recurs or a rerun also misses the window.
 
 ### Apple (TestFlight / App Store)
 
@@ -298,8 +312,8 @@ Then reload and re-read every locale: a save that failed this way leaves the for
 looking correct while the server still holds the previous text.
 
 1. Confirm Apple `MARKETING_VERSION` matches between `apple/project.yml` and the Xcode project mirror (`pnpm verify-version` checks this).
-2. Run the Release build and App Store archive verifier described in `CLAUDE.md`.
-3. Tag and push `apple-v<APPLE_VERSION>`; CI archives and uploads to TestFlight.
+2. Run the Release build and App Store archive verifier described in `AGENTS.md`.
+3. For a coordinated iOS + macOS delivery, tag and push `apple-v<APPLE_VERSION>`; CI archives and uploads both to TestFlight. For a macOS-only delivery, dispatch `apple-release.yml` on the reviewed commit with `release_version=<APPLE_VERSION>`, `platform=macos`, and `upload=false` to prepare the signed candidate. Use `upload=true` only for the authorized App Store Connect delivery. A manual run does not publish a GitHub Release; do not push an Apple tag for a single-platform delivery because tags still build and upload both platforms.
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
 
@@ -383,6 +397,12 @@ The live version is verifiable without signing in to the Maker Console: the prod
 3. Upload to the Elgato Maker portal and tag `streamdeck-v<STREAMDECK_VERSION>` when actually submitted/released.
 
 `streamdeck-release.yml` runs on the tag: it validates, packs, attaches the `.streamDeckPlugin` to a GitHub Release, and uploads it as a build artifact. The Maker-portal upload itself stays manual — Elgato has no submission API.
+
+**2026-09-15 follow-up:** Maker Console approved 1.3 and the authorized Release
+action changed its row to Published. Public-page propagation was not immediate;
+see [the current listing receipt](marketplace/elgato/LISTING.md). Apple 1.3.2
+is independently READY_FOR_SALE on both platforms in
+[ASC status run 34909305043](https://github.com/puritysb/AgentDeck/actions/runs/34909305043).
 
 ### Ulanzi plugin
 

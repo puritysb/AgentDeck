@@ -9,6 +9,8 @@
  * unchanged in the signed App Store daemon. Mirror: apple ApmeJudgeDetect.swift.
  */
 
+import { resolveSafeMlxModel } from '@agentdeck/shared';
+
 export interface DetectedProvider {
   /** Stable key: 'ollama' | 'lmstudio' | 'mlx' | 'openai-generic'. */
   provider: string;
@@ -54,6 +56,9 @@ function ollamaChatCapable(m: { capabilities?: unknown }): boolean {
 }
 
 async function modelsFor(c: Candidate, timeoutMs: number): Promise<string[] | null> {
+  if (c.provider === 'mlx') {
+    try { return [await resolveSafeMlxModel(c.base)]; } catch { return null; }
+  }
   // Ollama's canonical list is /api/tags; every OpenAI-compatible server
   // (LM Studio, MLX, vLLM, Ollama's compat shim) exposes /v1/models.
   if (c.tags) {

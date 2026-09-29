@@ -50,7 +50,7 @@ port-sync discipline is.
   discovery-only (`v`, `ip`, `port`, `project`, `agent`, `authRequired`) and never contains a pairing token;
   the client must already hold one from an explicit provisioning flow.
 - **USB Serial JSON** (115200, newline-framed) is the other first-party transport. A
-  WiFi-only client (X3/X4, InkDeck) can skip serial, but then it is only registrable once it
+  WiFi-only client (X3/X4, TRMNL 7.5") can skip serial, but then it is only registrable once it
   emits `device_info` over WS (see below).
 - Frames are single-line JSON. Reject anything larger than `PROTOCOL_MAX_MSG_BYTES` before
   feeding an elastic JSON document — an unbounded `sessions_list`/`timeline_history` will
@@ -100,7 +100,7 @@ route to a board; a client that never emits it never appears on the dashboard. F
 
 | Field | Notes |
 |---|---|
-| `board` | Canonical wire string, underscore convention. First-party: `ulanzi_tc001`, `inkdeck`, `ttgo_t_display`, `esp32_c6_147`, `round_amoled`, `86box`, `ips_10`, `ips_35`, `t_embed`, `t_display_pro`. External CrossPoint fork: `xteink_x3`, `xteink_x4` (one firmware, runtime-detected). Registration accepts **any** board string (the Node daemon coerces only a *missing* field to `unknown`); a board needs an `ESP32_OTA_BOARDS` entry **only** to be OTA-targetable by a short *alias* — canonical board strings and IPs pass through unchanged, which is how the fork boards are targeted (`agentdeck esp32-ota xteink_x4 --firmware <bin>`; no `esp32/` pio env, so `--build` does not apply). |
+| `board` | Canonical wire string, underscore convention. First-party: `ulanzi_tc001`, `trmnl_75`, `ttgo_t_display`, `esp32_c6_147`, `round_amoled`, `86box`, `ips_10`, `ips_35`, `t_embed`, `t_display_pro`. External CrossPoint fork: `xteink_x3`, `xteink_x4` (one firmware, runtime-detected). Registration accepts **any** board string (the Node daemon coerces only a *missing* field to `unknown`); a board needs an `ESP32_OTA_BOARDS` entry **only** to be OTA-targetable by a short *alias* — canonical board strings and IPs pass through unchanged, which is how the fork boards are targeted (`agentdeck esp32-ota xteink_x4 --firmware <bin>`; no `esp32/` pio env, so `--build` does not apply). |
 | `version` | `FIRMWARE_VERSION`. |
 | `buildHash` | `GIT_SHA` — the authoritative deploy-verification field (`version` alone can't distinguish a stale flash). |
 | `buildEpoch` | Build timestamp (uint32). |
@@ -322,7 +322,7 @@ Card Feed implementation.
   sig — deterministic). `?sig=` echo → `304` with no body; `?format=png` →
   the SAME dithered pixels as a PNG, so a browser preview is byte-for-byte
   what the panel will hold. Presets: `xteink_x3` 528×792 portrait,
-  `xteink_x4`/`inkdeck` 800×480 landscape; `?w=&h=` overrides. The
+  `xteink_x4`/`trmnl_75` 800×480 landscape; `?w=&h=` overrides. The
   device-side glance renderer stays as the offline fallback. Renderer:
   `bridge/src/glance-frame.ts` (Node daemon only).
 - **Auth**: same as `/apme` — local connections free, LAN needs the pairing

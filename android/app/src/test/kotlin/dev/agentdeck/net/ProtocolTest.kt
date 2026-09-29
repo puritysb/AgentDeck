@@ -8,6 +8,39 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ProtocolTest {
 
+    @Test
+    fun `released model fields decode when additive residency metadata is present`() {
+        // Production Protocol.kt is unchanged; released readers ignore the additions.
+        val json = """{"type":"state_update","state":"idle","mlxModels":["gemma"],"mlxResidency":{"known":true,"models":["gemma"]},"ollamaStatus":{"available":true,"models":[{"name":"gemma","size":42,"sizeVram":0}],"installedModelsKnown":true,"residency":{"known":true,"models":[]}}}"""
+        val event = parseBridgeMessage(json) as BridgeEvent.State
+        assertEquals(listOf("gemma"), event.data.mlxModels)
+        assertEquals(true, event.data.ollamaStatus?.available)
+        assertEquals("gemma", event.data.ollamaStatus?.models?.first()?.name)
+        assertEquals(0L, event.data.ollamaStatus?.models?.first()?.sizeVram)
+    }
+
+    @Test
+    fun `stale Claude quota retires scopes and subscriptions while Codex survives`() {
+        val holder = dev.agentdeck.state.AgentStateHolder.instance
+        fun deliver(json: String) {
+            BridgeConnection.instance.onEvent?.invoke(requireNotNull(parseBridgeMessage(json)))
+        }
+        val fresh = """{"type":"usage_update","usageStale":false,"fiveHourPercent":42,"scopedLimits":[{"label":"model","percent":80}],"extraUsageEnabled":true,"subscriptions":[{"name":"Claude"}],"codexRateLimits":{"primary":{"usedPercent":25}}}"""
+        deliver(fresh)
+        assertEquals(42.0, holder.state.value.usage.fiveHourPercent)
+        deliver("""{"type":"usage_update","usageStale":true,"fiveHourPercent":42,"scopedLimits":[{"label":"model","percent":80}],"extraUsageEnabled":true,"subscriptions":[]}""")
+        assertNull(holder.state.value.usage.fiveHourPercent)
+        assertNull(holder.state.value.usage.scopedLimits)
+        assertNull(holder.state.value.usage.extraUsageEnabled)
+        assertTrue(holder.state.value.subscriptions.isEmpty())
+        assertEquals(25.0, holder.state.value.codexRateLimits?.primary?.usedPercent)
+        deliver(fresh)
+        assertEquals(false, holder.state.value.usage.usageStale)
+        assertEquals(42.0, holder.state.value.usage.fiveHourPercent)
+        deliver("""{"type":"state_update","state":"idle","subscriptions":[]}""")
+        assertTrue(holder.state.value.subscriptions.isEmpty())
+    }
+
     // --- parseBridgeMessage: state_update ---
 
     @Test

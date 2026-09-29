@@ -195,7 +195,8 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         strncpy(name, g_state.projectName, sizeof(name) - 1);
     }
     name[sizeof(name) - 1] = '\0';
-    const bool showName = g_state.sessionCount <= 4 ||
+    // Dense tank: idle tags collapse (shared rule, DESIGN.md §6.4).
+    const bool showName = g_state.sessionCount < TerrariumRules::NativeLabelDenseResidentCount ||
                           state == CreatureState::WORKING || state == CreatureState::ASKING;
     unlockState();
 

@@ -15,6 +15,7 @@
  */
 
 import type { TimelineEntry, ApmeSampleEventRow, AgentType } from '@agentdeck/shared';
+import { isPrunedPayload } from './payload-prune.js';
 
 export interface SampleTimelineHeader {
   sessionId: string;
@@ -70,7 +71,11 @@ export function sampleEventToTimeline(
     }
     case 'tool': {
       const name = row.toolName ?? 'tool';
-      const inputSummary = summarizeToolInput(p.input);
+      // A pruned row's payload (#302) already parses to `{pruned, prunedAt,
+      // bytes}`, so `p.input` is naturally undefined here — this call is
+      // called out explicitly so a reused/replayed sample never reads the
+      // marker's own keys as tool input by accident.
+      const inputSummary = isPrunedPayload(row.payload) ? '' : summarizeToolInput(p.input);
       const raw = inputSummary ? `${name} · ${inputSummary}` : name;
       const status = row.toolStatus === 'error' ? 'denied'
         : row.toolStatus === 'success' ? 'approved'

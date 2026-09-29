@@ -24,12 +24,53 @@ AgentDeck currently uses 4 test frameworks across the monorepo:
 
 The root `pnpm test` command runs only the Vitest suite configured in the repository root. Platform-specific suites are executed separately or through `scripts/test-report.sh`.
 
+**What each gate proves — and does not prove — is catalogued in [`scripts/verification-catalog.json`](../scripts/verification-catalog.json)** and published on the GitHub Pages report's "What we verify" tab. The catalog also assigns every test file to a domain (ordered glob patterns, first match wins). `scripts/__tests__/verification-catalog.test.ts` fails when a workflow is missing from it, a path it names is gone, or a test file matches no domain, so the public page cannot silently drift from the repository. The per-file lists below are illustrative; the catalog is the complete map.
+
+## End-to-end: the real daemon process
+
+`tests/e2e/daemon-hub.e2e.test.ts` (`pnpm test:e2e`, own config `vitest.e2e.config.ts`) starts `bridge/dist/cli.js daemon start --foreground --local --loopback` as a child process in a fresh temp `HOME`, on a free port inside a private `--port-window`, and drives it only from outside: `/health`, `POST /hooks/*`, a WebSocket dashboard client, the exact hook shell snippet the installer writes, SIGTERM and a restart. It needs `pnpm build` first and takes a few seconds.
+
+It is safe beside a live daemon (outside 9120–9139, so the singleton guard never asks the real one to stand down) and raises no OS prompts on Linux: loopback bind, every device module off, no LAN emission. On macOS it is opt-in (`AGENTDECK_E2E_ALLOW_DARWIN=1`) because the darwin usage poller reads the login Keychain. CI runs it on every PR (`ci.yml`) and the Pages report re-runs it on master.
+
+## Swift Codex live acceptance on a Mac
+
+After building and launching the signed, sandboxed macOS app, run:
+
+```bash
+node scripts/verify-swift-codex-live.mjs --port PORT --pid PID --app /path/AgentDeck.app
+```
+
+Use the registry-resolved serving port and the PID of that exact app. The runner
+refuses Node daemons, PID changes, a different app path, and unsigned or
+unsandboxed builds. It drives the real HTTP routes and checks both `/status`
+and the WebSocket roster: idle start, prompt, repeated start, hook ownership,
+late OTel, OTel-only/notify fallback, old-turn rejection, actual terminal expiry,
+post-expiry suppression, and hook re-engagement. Allow about two minutes.
+
+The runner does not start agents, call a model, edit configuration or trust,
+or switch daemon ownership. If Node owns the port, use the supported daemon
+lifecycle commands to stop it for the test and restore it afterwards. A JSON
+receipt under `diagnostics/swift-codex-live/` records the app binary hashes,
+PID, sandbox check, assertions and cleanup; `--output` selects another path.
+Only this run's synthetic roster rows are removed. Labeled synthetic timeline
+entries remain as evidence; real session content and pairing tokens are omitted
+from the receipt. A failed cleanup fails the run.
+
+This is live sandboxed transport evidence using synthetic events. It does not
+prove actual CLI emission, first-run trust, Kiro folder consent/revocation,
+OpenCode SSE reconnect, App Store distribution, or physical display rendering.
+
+## macOS device runs: preflight before you deploy
+
+Agent-driven build → deploy → check runs on a Mac used to stall on privacy dialogs (Automation, Accessibility, Screen Recording, firewall). `bash scripts/macos-preflight.sh --automation --accessibility --screen-recording [--firewall <app>] --json` checks each grant with a bounded, non-interactive probe and reports `granted` / `denied` / `unknown` per check (exit 2 = something denied, with the exact System Settings path; exit 3 = could not tell). The `agentdeck-deploy` skill and the screenshot/recording scripts run it first.
+
 ## Quick Start
 
 ```bash
 pnpm test                        # Run root Vitest suite
 pnpm test -- --watch             # Watch mode
 pnpm vitest run --coverage       # Coverage report + threshold check
+pnpm build && pnpm test:e2e      # Real daemon process end-to-end (tests/e2e/)
 pnpm test:report                 # Unified report across all configured frameworks
 pnpm test:android                # Android suite via unified report script
 bash scripts/test-report.sh --report   # Report from existing results (no execution)
@@ -117,16 +158,7 @@ The `no-hw` build suite is intentionally local-only validation before flashing. 
 
 ### Thresholds
 
-Coverage thresholds are configured in `vitest.config.ts` and enforced in CI:
-
-| Metric | Threshold |
-|--------|-----------|
-| Lines | ≥ 17% |
-| Functions | ≥ 15% |
-| Branches | ≥ 14% |
-| Statements | ≥ 16% |
-
-These are regression guards set below current levels. Raise them as coverage improves.
+Coverage thresholds are configured in `vitest.config.ts` and enforced in CI. They sit about three points under measured coverage (2026-09-28: lines 59.6%, functions 60.0%, branches 55.3%, statements 58.6%), so a change that deletes tests or lands a large untested module fails. The previous floor (17/15/14/16) was ~40 points below reality and could not catch a regression. Raise them as coverage improves; do not lower them to land a change. The Pages report reads the numbers from the config rather than quoting them.
 
 ### Coverage Scope
 
@@ -205,16 +237,16 @@ GitHub Actions currently runs on every push and PR to `master`:
 - pnpm install --frozen-lockfile
 - pnpm build
 - pnpm typecheck
-- pnpm test                    # root Vitest suite
-- npx vitest run --coverage    # coverage threshold check
+- npx vitest run --coverage    # the whole Vitest suite once, plus the coverage floor
+- pnpm test:e2e                # real daemon process (tests/e2e/)
 ```
 
 Current CI details:
 
-- Runner: `ubuntu-latest`
-- Node version: 20
-- Included: build, typecheck, Vitest, Vitest coverage
-- Not included: Apple XCTest and physical-hardware ESP32 Robot Framework
+- Runner: `ubuntu-latest`, Node 22 (a separate `windows-latest` job covers Node 22/24/26 native runtime)
+- Included: version sync, build, typecheck, Vitest with coverage floor, daemon E2E, preview-mirror and protocol drift
+- Vitest runs once: `--coverage` executes the same suite as `pnpm test`, so running both only doubled the time
+- Not included: Apple XCTest (own workflow) and physical-hardware ESP32 Robot Framework (lab only)
 
 Android compilation and its JUnit + Robolectric suite are a **separate, path-scoped check** — `.github/workflows/android-test.yml` runs `./gradlew :app:testDebugUnitTest` on pushes and PRs that touch `android/**`, and uploads the HTML/XML reports as an artifact. It exists because `ci.yml` never reads the Android sources: before it, a PR changing only `android/**` could go all-green without anything having compiled its Kotlin, since the Android run inside `test-report.yml` fires only on push to `master`. The debug variant needs no release signing secrets, and the GitHub-hosted runners ship the Android SDK, so the job is just JDK 17 + Gradle.
 

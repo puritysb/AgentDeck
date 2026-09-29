@@ -16,4 +16,6 @@ constexpr float FloorRestYMax = 0.64f;
 constexpr float AntigravityHoverYMin = 0.48f;
 constexpr float AntigravityHoverYMax = 0.54f;
 constexpr float ResterMaxWidthFraction = 0.096f;
+// Name tags (DESIGN.md §6.4): at or above this many residents idle tags collapse.
+constexpr int NativeLabelDenseResidentCount = 5;
 }  // namespace TerrariumRules

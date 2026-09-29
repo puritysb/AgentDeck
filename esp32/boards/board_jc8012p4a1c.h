@@ -50,6 +50,7 @@
 // board.
 #define BOARD_HAS_SPEAKER        1
 #define BOARD_SPK_CODEC_ES8311   1
+#define BOARD_SPK_DEFAULT_VOLUME 40    // comfortable IPS10 amplifier level (-36 dB)
 #define BOARD_ES8311_I2C_ADDR    0x18   // measured 2026-07-27 (0x19 was absent)
 #define BOARD_PIN_SPK_MCLK       13
 #define BOARD_PIN_SPK_BCLK       12

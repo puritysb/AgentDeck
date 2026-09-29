@@ -11,6 +11,15 @@ on:
         required: true
         default: '1.0.5'
         type: string
+      platform:
+        description: 'Platform to build for a manual delivery; tags still build both'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - macos
+          - ios
       upload:
         description: 'Upload the exported artifacts to App Store Connect'
         required: true
@@ -37,6 +46,7 @@ jobs:
         run: bash apple/scripts/validate-appstore-submission.sh
 
   build-ios:
+    if: github.event_name == 'push' || inputs.platform != 'macos'
     needs: validate-submission
     runs-on: macos-15
     timeout-minutes: 30
@@ -134,6 +144,14 @@ jobs:
           bash apple/scripts/verify-appstore-archive.sh \
             "$RUNNER_TEMP/ipa_unpacked/Payload/AgentDeck.app"
 
+      - name: Retain verified iOS candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-ios-${{ steps.version.outputs.VERSION }}-${{ github.run_number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/export_ios/AgentDeck.ipa
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload iOS to TestFlight
         if: ${{ github.event_name == 'push' || inputs.upload }}
         run: |
@@ -153,6 +171,7 @@ jobs:
           rm -rf ~/private_keys
 
   build-macos:
+    if: github.event_name == 'push' || inputs.platform != 'ios'
     needs: validate-submission
     runs-on: macos-15
     timeout-minutes: 30
@@ -244,6 +263,14 @@ jobs:
           APP=$(find "$RUNNER_TEMP/pkg_expanded" -type d -name 'AgentDeck.app' | head -1)
           test -n "$APP"
           bash apple/scripts/verify-appstore-archive.sh "$APP"
+
+      - name: Retain verified macOS candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-macos-${{ steps.version.outputs.VERSION }}-${{ github.run_number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/export_macos/AgentDeck.pkg
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Upload macOS to App Store Connect
         if: ${{ github.event_name == 'push' || inputs.upload }}

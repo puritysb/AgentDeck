@@ -172,6 +172,45 @@ enum OpenClawApprovalRules {
         return kept.isEmpty ? [.deny] : kept
     }
 
+    /// Did the Gateway say this approval no longer exists?
+    ///
+    /// A resolve can fail for two unrelated reasons and the difference is the
+    /// whole decision: a transport failure (socket down, RPC timeout) means "we
+    /// do not know" and the prompt must stay up so the user can press again; an
+    /// answer from the Gateway naming the approval as unknown, expired or
+    /// already resolved means the prompt is not answerable by anyone, ever, and
+    /// leaving it up re-arms a button that can only fail the same way.
+    ///
+    /// Mirror of the Gateway's OWN classifier (`isApprovalStaleError`): the
+    /// structured code / `details.reason` are the durable channel, the message
+    /// regexes are the legacy path it still keeps for older gateways.
+    ///
+    /// Unknown shapes are false — the safe direction. A wrong "gone" discards a
+    /// live approval the agent is still blocked on; a wrong "not gone" costs one
+    /// more press.
+    static func isApprovalGoneError(_ error: [String: Any]?) -> Bool {
+        guard let error else { return false }
+        let code = ((error["gatewayCode"] as? String) ?? (error["code"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if code == "APPROVAL_NOT_FOUND" { return true }
+        let reason = ((error["details"] as? [String: Any])?["reason"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if code == "INVALID_REQUEST"
+            && (reason == "APPROVAL_NOT_FOUND" || reason == "APPROVAL_ALREADY_RESOLVED") {
+            return true
+        }
+        return isApprovalGoneMessage(error["message"] as? String ?? "")
+    }
+
+    /// The legacy half, also reachable on its own for a transport that carries
+    /// nothing but a sentence.
+    static func isApprovalGoneMessage(_ message: String) -> Bool {
+        let m = message.lowercased()
+        return m.contains("unknown or expired approval id")
+            || m.contains("approval expired or not found")
+            || m.contains("approval already resolved")
+    }
+
     private static func firstNonEmpty(_ values: [String?]) -> String? {
         for value in values {
             if let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty {

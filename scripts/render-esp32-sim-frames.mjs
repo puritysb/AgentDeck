@@ -56,7 +56,7 @@ const STATES = ['idle', 'working', 'asking', 'sleeping'];
 // env name → demo board slug. LCD envs render the composed LVGL screen (the
 // terrarium boards plus the two companion render trees — t_embed's knob and
 // t_display_pro's focus strip); the led8x32 env renders the TC001 pages at
-// native 32×8 (the demo draws its own LED dots from the pixels); inkdeck
+// native 32×8 (the demo draws its own LED dots from the pixels); trmnl_75
 // renders the 1-bit e-ink dashboard.
 const BOARDS = [
   { env: 'box_86', slug: 'box86' },
@@ -66,7 +66,7 @@ const BOARDS = [
   { env: 'ips10', slug: 'ips10' },
   { env: 't_embed', slug: 'tembed' },
   { env: 't_display_pro', slug: 'tdisplaypro' },
-  { env: 'inkdeck', slug: 'inkdeck' },
+  { env: 'trmnl_75', slug: 'trmnl_75' },
   { env: 'led8x32', slug: 'tc001', pages: ['usage', 'agents'], extraArgs: ['--scale', '1'] },
 ];
 

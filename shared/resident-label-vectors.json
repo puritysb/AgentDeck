@@ -1,0 +1,56 @@
+{
+  "$comment": "Aquarium name-tag resolution (DESIGN.md §6.4). The Kotlin resolveResidentLabels and Swift ResidentLabelLayout.resolve are hand mirrors of one rule; both suites replay this file. Boxes are [left, top, right, bottom] in screen space (y down). Ranks: 0 focused, 1 awaiting, 2 working, 3 idle. `expected` is in DRAW order (lowest priority first). Opacities are the TERRARIUM_RULES.nativeLabel values.",
+  "vectors": [
+    { "name": "a sparse tank keeps every tag whole and translucent",
+      "inputs": [
+        { "id": "a", "rank": 3, "body": [60, 320, 140, 400], "full": [40, 260, 160, 310], "compact": [55, 290, 145, 310] },
+        { "id": "b", "rank": 2, "body": [360, 320, 440, 400], "full": [340, 260, 460, 310], "compact": [355, 290, 445, 310] }
+      ],
+      "expected": [
+        { "id": "a", "mode": "full", "backing": 0.72, "text": 0.8, "signal": 1 },
+        { "id": "b", "mode": "full", "backing": 0.72, "text": 1, "signal": 1 }
+      ] },
+    { "name": "a dense tank collapses only idle tags",
+      "inputs": [
+        { "id": "r0", "rank": 0, "body": [110, 320, 190, 400], "full": [90, 260, 210, 310], "compact": [105, 290, 195, 310] },
+        { "id": "r1", "rank": 1, "body": [410, 320, 490, 400], "full": [390, 260, 510, 310], "compact": [405, 290, 495, 310] },
+        { "id": "r2", "rank": 2, "body": [710, 320, 790, 400], "full": [690, 260, 810, 310], "compact": [705, 290, 795, 310] },
+        { "id": "r3", "rank": 3, "body": [1010, 320, 1090, 400], "full": [990, 260, 1110, 310], "compact": [1005, 290, 1095, 310] },
+        { "id": "r4", "rank": 3, "body": [1310, 320, 1390, 400], "full": [1290, 260, 1410, 310], "compact": [1305, 290, 1395, 310] }
+      ],
+      "expected": [
+        { "id": "r4", "mode": "compact", "backing": 0.5, "text": 0.8, "signal": 1 },
+        { "id": "r3", "mode": "compact", "backing": 0.5, "text": 0.8, "signal": 1 },
+        { "id": "r2", "mode": "full", "backing": 0.72, "text": 1, "signal": 1 },
+        { "id": "r1", "mode": "full", "backing": 0.72, "text": 1, "signal": 1 },
+        { "id": "r0", "mode": "full", "backing": 0.72, "text": 1, "signal": 1 }
+      ] },
+    { "name": "a tag over another resident's body yields, badge included",
+      "inputs": [
+        { "id": "front", "rank": 3, "body": [260, 420, 340, 500], "full": [240, 360, 360, 410], "compact": [255, 390, 345, 410] },
+        { "id": "rear", "rank": 2, "body": [240, 360, 360, 410], "full": [740, 260, 860, 310], "compact": [755, 290, 845, 310] }
+      ],
+      "expected": [
+        { "id": "front", "mode": "full", "backing": 0.24, "text": 0.55, "signal": 0.5 },
+        { "id": "rear", "mode": "full", "backing": 0.72, "text": 1, "signal": 1 }
+      ] },
+    { "name": "an idle tag colliding with a placed tag drops out; priority draws last",
+      "inputs": [
+        { "id": "idle", "rank": 3, "body": [280, 310, 360, 390], "full": [260, 250, 380, 300], "compact": [275, 280, 365, 300] },
+        { "id": "working", "rank": 2, "body": [260, 320, 340, 400], "full": [240, 260, 360, 310], "compact": [255, 290, 345, 310] }
+      ],
+      "expected": [
+        { "id": "idle", "mode": "hidden", "backing": 0, "text": 0, "signal": 0 },
+        { "id": "working", "mode": "full", "backing": 0.72, "text": 1, "signal": 1 }
+      ] },
+    { "name": "two colliding working tags both stay; nearer first, both yield",
+      "inputs": [
+        { "id": "far", "rank": 2, "body": [280, 320, 360, 400], "full": [260, 260, 380, 310], "compact": [275, 290, 365, 310] },
+        { "id": "near", "rank": 2, "body": [260, 340, 340, 420], "full": [240, 280, 360, 330], "compact": [255, 310, 345, 330] }
+      ],
+      "expected": [
+        { "id": "far", "mode": "full", "backing": 0.24, "text": 1, "signal": 0.5 },
+        { "id": "near", "mode": "full", "backing": 0.24, "text": 1, "signal": 0.5 }
+      ] }
+  ]
+}

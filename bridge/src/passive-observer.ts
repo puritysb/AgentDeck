@@ -22,6 +22,7 @@ import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import type { EnrichedSession } from './session-aggregator.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
+import { isCodexBackgroundCwd } from './codex-ambient-hooks.js';
 import { redactSecrets } from './utils/redact-secrets.js';
 import { stripUnsafeText, rawSessionId } from '@agentdeck/shared';
 // The interrupt marker rule is shared with the turn watchdog / APME collector —
@@ -134,8 +135,28 @@ export interface ObservedSession extends EnrichedSession {
 }
 
 const SCAN_INTERVAL_MS = 5_000;
+/**
+ * Upper bound for the adaptive cooldown below. A host whose process table is
+ * pathologically slow waits no longer than this after its scan completes.
+ */
+const MAX_SCAN_INTERVAL_MS = 60_000;
+
 const MAX_TAIL_BYTES = 512 * 1024;
 const MAX_SAMPLE_BYTES = 1024 * 1024;
+/**
+ * SCAN_INTERVAL_MS is the floor, not the cadence. Where a scan costs more than
+ * the interval the daemon starts the next one the instant the last finished and
+ * pins the machine at 100% of whatever the process table costs — measured at
+ * ~11s per `Get-CimInstance Win32_Process` on a Windows 11 host with a slow WMI
+ * provider, against a 5s interval. Backing off to the last scan's own duration
+ * keeps that host at a ~50% duty cycle while leaving the common case (a few
+ * hundred ms on macOS/Linux) at the 5s floor.
+ */
+export function nextScanIntervalMs(lastScanMs: number): number {
+  if (!Number.isFinite(lastScanMs) || lastScanMs <= 0) return SCAN_INTERVAL_MS;
+  return Math.min(Math.max(SCAN_INTERVAL_MS, lastScanMs), MAX_SCAN_INTERVAL_MS);
+}
+
 /** Transcript/rollout silence after which an end-event-less turn is presumed dead. */
 const STALE_TURN_MS = 10 * 60 * 1000;
 /**
@@ -224,7 +245,7 @@ export class CodexRolloutCache {
 }
 
 export class PassiveSessionObserver {
-  private lastScanAt = 0;
+  private nextScanAt = 0;
   private cached: ObservedSession[] = [];
   private scanInFlight = false;
   private codexRolloutCache = new CodexRolloutCache();
@@ -234,6 +255,16 @@ export class PassiveSessionObserver {
    *  debounced sessions broadcast so fresh observations reach clients
    *  without the enricher ever blocking on the scan. */
   onRefreshed: (() => void) | undefined;
+
+  /** The process table the last scan read. Exposed so a producer that needs
+   *  ancestry or argv (the coordination tracker) can reuse the `ps` this
+   *  observer already pays for instead of running a second one per tick. */
+  private lastProcesses: ProcInfo[] = [];
+  processes(): ProcInfo[] { return this.lastProcesses; }
+
+  /** `collectProcesses` is injectable so the scan-failure paths (a rejection,
+   *  an empty table) can be exercised without a real process table. */
+  constructor(private readonly collectProcesses: () => Promise<ProcInfo[]> = collectProcessInfo) {}
 
   /**
    * Returns the cached observed sessions immediately and, when the cache is
@@ -246,18 +277,38 @@ export class PassiveSessionObserver {
    */
   collect(managedSessions: EnrichedSession[]): ObservedSession[] {
     const now = Date.now();
-    if (now - this.lastScanAt >= SCAN_INTERVAL_MS && !this.scanInFlight) {
-      this.lastScanAt = now;
+    if (now >= this.nextScanAt && !this.scanInFlight) {
       this.scanInFlight = true;
+      const startedAt = now;
       void this.scan(managedSessions)
-        .catch(() => { this.cached = []; })
-        .finally(() => { this.scanInFlight = false; });
+        // A rejected scan is "I could not look", not "every session ended".
+        // Blanking the cache here published an empty roster to every client
+        // until a scan happened to succeed — on a host where the scan fails
+        // repeatedly, that is a roster that flashes in and vanishes.
+        .catch(() => { /* keep the last known roster */ })
+        .finally(() => {
+          const finishedAt = Date.now();
+          const durationMs = finishedAt - startedAt;
+          // Fast hosts keep the original start-to-start 5s cadence. Slow
+          // scans cool down AFTER completion, including failed attempts.
+          this.nextScanAt = durationMs <= SCAN_INTERVAL_MS
+            ? startedAt + SCAN_INTERVAL_MS
+            : finishedAt + nextScanIntervalMs(durationMs);
+          this.scanInFlight = false;
+        });
     }
     return this.cached;
   }
 
   private async scan(managedSessions: EnrichedSession[]): Promise<void> {
-    const processes = await collectProcessInfo();
+    const processes = await this.collectProcesses();
+    // collectProcessInfo() reports a timeout, a spawn failure or unparseable
+    // output as [] rather than throwing, so the .catch() above never sees it —
+    // and no running machine truly has zero processes. Treat an empty table as
+    // the third answer ("could not look") and retain the previous roster; the
+    // alternative is concluding that every observed session ended at once.
+    if (processes.length === 0) return;
+    this.lastProcesses = processes;
     const observed = [
       ...collectClaudeSessions(processes),
       ...(await collectCodexSessions(processes, this.codexRolloutCache)),
@@ -598,7 +649,12 @@ async function collectProcessInfoWin32(): Promise<ProcInfo[]> {
         ' | Select-Object ProcessId,ParentProcessId,WorkingSetSize,CommandLine | ConvertTo-Json -Compress',
     ], {
       encoding: 'utf8',
-      timeout: 10_000,
+      // Measured at ~10.4s on a Windows 11 host whose Win32_Process provider is
+      // slow (bare PowerShell startup there is 0.55s, and narrowing the query
+      // does not help), so a 10s budget timed out on every single scan and the
+      // observer was permanently blind. The cost is bounded by the adaptive
+      // cooldown in nextScanIntervalMs(), not by this timeout.
+      timeout: 30_000,
       maxBuffer: 8 * 1024 * 1024,
       windowsHide: true,
     });
@@ -754,6 +810,8 @@ export async function collectCodexSessionsFromRollouts(
       if (seen.has(sessionId)) continue;
       seen.add(sessionId);
       const cwd = parsed.cwd;
+      // Codex's own memory-consolidation agent is not the user's work.
+      if (isCodexBackgroundCwd(cwd)) continue;
       sessions.push({
         id: desktop ? `observed:codex-app:${sessionId}` : `observed:codex:${sessionId}`,
         port: 0,

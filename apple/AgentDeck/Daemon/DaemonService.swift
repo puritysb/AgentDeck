@@ -219,6 +219,10 @@ final class DaemonService: ObservableObject {
     }
 
     init() {
+        // Hosted XCTest launches the app too. Tests must not acquire the live
+        // daemon, rewrite integrations or probe connected devices at startup.
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+              ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil else { return }
         start()
         setupSignalHandler()
     }
@@ -263,6 +267,7 @@ final class DaemonService: ObservableObject {
                     Task { @MainActor in self?.standDownForTakeover() }
                 }
                 self.server = daemon
+                self.inProcessDaemonEpoch += 1
                 self.port = daemon.port
                 self.isRunning = true
                 self.changeOwnership(.tookOwnership)
@@ -356,21 +361,124 @@ final class DaemonService: ObservableObject {
         readyUrl = nil
     }
 
+    /// Which port to look for an external daemon on.
+    ///
+    /// Split out as a pure function because the registry answer is EMPTY at
+    /// exactly the moment this matters. The in-process server's `onShutdown`
+    /// handler calls `connectToExternalDaemon()` with no port, and it runs
+    /// while our own `daemon.json` row is being torn down and the incoming CLI
+    /// daemon has not bound yet — it is still waiting out our teardown and the
+    /// ~14s NECP hold. All three registry lookups return nil there.
+    ///
+    /// Resolving that to nil was a terminal dead end: the caller set `port = 0`
+    /// and returned with no rescheduled `start()`, unlike every other failure
+    /// branch in that function — and `port = 0` also neuters
+    /// `checkDaemonHealth`'s `guard currentPort > 0`, so the health monitor
+    /// that exists to catch this could never fire either. Measured on this desk
+    /// 2026-09-09: `ERROR External daemon detected, but port lookup failed` is
+    /// the last connection line the app ever logged, and it then sat daemonless
+    /// and clientless for 23 hours with its terrarium canvas still animating —
+    /// the reason it looks alive. Same signature on 09-07 and 09-10 (#305).
+    ///
+    /// The canonical port is the honest last resort: probing it either finds
+    /// the incoming daemon or falls through to the stale-registry branch, which
+    /// DOES reschedule `start()`. A wrong guess self-heals; nil could not.
+    nonisolated static func resolveExternalDaemonPort(
+        knownPort: Int?,
+        registryPort: Int?,
+        canonicalPort: Int
+    ) -> Int? {
+        if let knownPort, knownPort > 0 { return knownPort }
+        if let registryPort, registryPort > 0 { return registryPort }
+        return canonicalPort > 0 ? canonicalPort : nil
+    }
+
+    /// Incremented every time `start()` hands ownership to a NEW in-process
+    /// daemon. Read by `connectToExternalDaemon`, which must not write state
+    /// about a daemon that replaced the one it was called for.
+    private var inProcessDaemonEpoch: UInt64 = 0
+
+    /// Has a newer in-process daemon taken ownership since this transition
+    /// began? Pure, so the decision can be driven without binding a port.
+    ///
+    /// `connectToExternalDaemon` probes over the network with timeouts —
+    /// `probeDaemonHealth(patient:)` waits out the ~14 s NECP hold — and it is
+    /// reached from inside `start()`'s own Task. So `start()` can complete a
+    /// bind, assign `self.server`, and wire every module while this function is
+    /// still suspended, and then this function writes the state of a daemon
+    /// that no longer exists. Measured 2026-09-09 22:52 (#306), from the app's
+    /// own log:
+    ///
+    /// ```
+    /// 22:52:22  Server listening on port 9121                            ← A ready
+    /// 22:52:22  External daemon on port 9120 is stale — starting local…   ← clobbers A
+    /// 22:52:22  Daemon running on port 9121 — all modules wired          ← A finishes wiring
+    /// 22:52:25  Server listener failed: Address already in use           ← B lands on A's port
+    /// ```
+    ///
+    /// A was dropped, not stopped. A started `NWListener` is retained by the
+    /// framework until it is cancelled, and its `newConnectionHandler` holds
+    /// the server weakly — so the orphan kept `*:9121 (LISTEN)` for the life of
+    /// the process, accepting connections it answered for nobody (six
+    /// `CLOSE_WAIT` sockets by the next morning) on a port inside the
+    /// session-bridge range 9121-9139.
+    nonisolated static func externalTransitionIsStale(entryEpoch: UInt64, currentEpoch: UInt64) -> Bool {
+        currentEpoch != entryEpoch
+    }
+
+    /// Stop the in-process daemon before clearing the state that refers to it.
+    ///
+    /// Every caller of `connectToExternalDaemon` currently stands its server
+    /// down first, so `server` is nil here — but a branch that leaves the app
+    /// with no daemon has to be correct on its own terms, and the cost of being
+    /// wrong is a port held until the app quits. `server = nil` alone is not a
+    /// teardown; only `shutdown()` cancels the listener.
+    private func releaseInProcessDaemon() async {
+        guard let current = server else { return }
+        DaemonLogger.shared.info("Releasing in-process daemon on port \(port) before becoming a client")
+        server = nil
+        await withBudget(seconds: 8, "daemon release") { await current.shutdown() }
+    }
+
     private func connectToExternalDaemon(port knownPort: Int? = nil) async {
+        let entryEpoch = inProcessDaemonEpoch
+        /// Abandon this transition when `start()` has since taken ownership.
+        /// Returns true when the caller must return without writing anything.
+        func abandonIfStale(_ stage: String) -> Bool {
+            guard Self.externalTransitionIsStale(entryEpoch: entryEpoch,
+                                                 currentEpoch: inProcessDaemonEpoch) else { return false }
+            DaemonLogger.shared.info(
+                "Abandoning client transition at \(stage) — a newer in-process daemon owns port \(port)")
+            return true
+        }
         let registry = SessionRegistry.shared
-        let resolvedPort = knownPort
-            ?? registry.findDaemonPort()
-            ?? registry.readDaemonInfo()?.port
-            ?? registry.findExistingDaemon()?.port
+        let resolvedPort = Self.resolveExternalDaemonPort(
+            knownPort: knownPort,
+            registryPort: registry.findDaemonPort()
+                ?? registry.readDaemonInfo()?.port
+                ?? registry.findExistingDaemon()?.port,
+            canonicalPort: AppPreferences.shared.daemonPort
+        )
 
         guard let resolvedPort else {
-            self.server = nil
+            if abandonIfStale("port lookup") { return }
+            await self.releaseInProcessDaemon()
             self.isRunning = false
             self.changeOwnership(.toreDown)
             self.port = 0
             self.readyUrl = nil
             self.errorMessage = "External daemon detected, but port lookup failed"
             DaemonLogger.shared.error(self.errorMessage!)
+            // Unreachable while the canonical port is valid, and still wired:
+            // a branch that leaves the app with no daemon and no client must be
+            // correct on its own terms, because THIS is the branch that wedged
+            // the app for 23 hours. Same scheduled-retry idiom as the
+            // stale-registry and foreign-daemon exits below — never inline,
+            // since `start()`'s `isStarting` guard is still held here.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.start()
+            }
             return
         }
 
@@ -406,8 +514,9 @@ final class DaemonService: ObservableObject {
 
         guard let health, health["mode"] as? String == "daemon" else {
             // External daemon never responded — stale registry. Clean up and start our own.
+            if abandonIfStale("stale-registry check") { return }
             DaemonLogger.shared.info("External daemon on port \(resolvedPort) is stale — starting local daemon instead")
-            self.server = nil
+            await self.releaseInProcessDaemon()
             self.isRunning = false
             self.changeOwnership(.toreDown)
             self.port = 0
@@ -441,8 +550,9 @@ final class DaemonService: ObservableObject {
             // here at all. If a race gets one through, the retry below is what
             // resolves it — and it must be slow enough not to spin, since the
             // path that sent us here would send us here again.
+            if abandonIfStale("ownership check") { return }
             DaemonLogger.shared.info("Daemon on port \(resolvedPort) belongs to another user — not attaching to it; starting our own daemon instead")
-            self.server = nil
+            await self.releaseInProcessDaemon()
             self.isRunning = false
             self.changeOwnership(.toreDown)
             self.port = 0
@@ -467,8 +577,9 @@ final class DaemonService: ObservableObject {
         // the fleet must not have to be re-provisioned to keep talking to us.
         AuthManager.shared.adoptPeerToken(health["pairingToken"] as? String)
 
+        if abandonIfStale("client handover") { return }
         let wsUrl = "ws://127.0.0.1:\(resolvedPort)"
-        self.server = nil
+        await self.releaseInProcessDaemon()
         self.port = UInt16(resolvedPort)
         self.isRunning = false
         self.changeOwnership(.becameClient)
@@ -963,6 +1074,12 @@ final class DaemonService: ObservableObject {
     }
 
     // MARK: - Device Summary Refresh
+
+    /// Refresh only the edited provider; keep sessions and devices connected.
+    func refreshZaiUsage() async -> Bool {
+        guard let server, !isUsingExternalDaemon else { return false }
+        return await server.refreshZaiUsage(configurationChanged: true)
+    }
 
     /// Refresh the published `deviceSummary` from the running daemon's
     /// in-process module snapshots. Called on each health-monitor tick.

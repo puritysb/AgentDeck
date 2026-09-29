@@ -67,6 +67,7 @@ import dev.agentdeck.ui.component.BrandIcon
 import dev.agentdeck.ui.component.agentDisplayLabel
 import dev.agentdeck.ui.timeline.TimelineIconKey
 import dev.agentdeck.ui.timeline.TimelineMarkdownView
+import dev.agentdeck.ui.timeline.ROTATING_ICON_KEY
 import dev.agentdeck.ui.timeline.isRotatingEntry
 import dev.agentdeck.ui.timeline.rowSummary
 import dev.agentdeck.ui.timeline.stripMarkdownForSummary
@@ -544,11 +545,19 @@ private fun TurnRow(
         // key, or an open task_start whose task_end hasn't arrived). Non-
         // rotating rows get angle=0 from the helper and skip the infinite
         // transition entirely. Mirrors `isRotatingEntry` in shared.
-        val rowAngle = rememberRunningRotation(
-            active = !isFolded && !isCompletedTurn && isRotatingEntry(entry, siblings),
-        )
+        // A rotating row draws the Running circular arrow whatever its own key
+        // is, and returns to its semantic glyph when it stops — same rule as
+        // the TASK marker below. For a `running` row this is already its own
+        // glyph; it matters when a task hierarchy row reaches this path.
+        // contentDescription stays semantic: the rotation is decorative.
+        val rowRotating = !isFolded && !isCompletedTurn && isRotatingEntry(entry, siblings)
+        val rowAngle = rememberRunningRotation(active = rowRotating)
         Icon(
-            imageVector = if (isFolded) Icons.Filled.SubdirectoryArrowRight else iconKey.materialIcon,
+            imageVector = when {
+                isFolded -> Icons.Filled.SubdirectoryArrowRight
+                rowRotating -> ROTATING_ICON_KEY.materialIcon
+                else -> iconKey.materialIcon
+            },
             contentDescription = if (isFolded) "answered with next turn" else iconKey.name,
             tint = iconColor.copy(alpha = if (isChatEnd) 0.6f else 1f),
             modifier = Modifier
@@ -748,12 +757,16 @@ private fun TaskHeaderRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Spin the TASK marker while task_start has no matching task_end yet
-        // — at-a-glance "this task is still running" signal.
-        val taskAngle = rememberRunningRotation(
-            active = isRotatingEntry(entry, siblings),
-        )
+        // — at-a-glance "this task is still running" signal. While it spins the
+        // glyph swaps to the Running circular arrow and returns to the static
+        // Task checklist when it stops: a square checklist rotating on its
+        // centre reads as a glitch, not a spinner. `timelineDisplayIconKey`
+        // owns that rule (shared/src/timeline-icons.ts); Apple does the same
+        // through RotatingTimelineIcon(rotatingSymbolName:).
+        val rotating = isRotatingEntry(entry, siblings)
+        val taskAngle = rememberRunningRotation(active = rotating)
         Icon(
-            imageVector = TimelineIconKey.Task.materialIcon,
+            imageVector = (if (rotating) ROTATING_ICON_KEY else TimelineIconKey.Task).materialIcon,
             contentDescription = "Task",
             tint = accent,
             modifier = Modifier.width(14.dp).height(14.dp).rotate(taskAngle),

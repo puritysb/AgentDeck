@@ -77,6 +77,13 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
         var bursts: [String: [Burst]] = [:]
         var completed: [String: Double] = [:]
         var drained: [String: Int] = [:]
+        // Latest turn close per session. A dispatch older than the parent's
+        // own chat_end/chat_response is finished work: this is a FALLBACK read
+        // of a lossy buffer that keeps dispatch rows but sheds the children's
+        // stop rows, so without the bound a fan-out read "+8 running" for the
+        // whole TTL after every daemon restart. Mirrors
+        // shared/src/subagent-activity.ts.
+        var turnClosed: [String: Double] = [:]
         let ordered = entries.enumerated().sorted {
             $0.element.ts == $1.element.ts
                 ? $0.offset < $1.offset
@@ -88,6 +95,12 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
                   !sessionId.isEmpty else { continue }
             let isSubagent = entry.raw.hasPrefix("Subagent ")
             let isTeamCompletion = entry.raw.hasPrefix("Team ")
+
+            if entry.type == .chatEnd || entry.type == .chatResponse {
+                let closedAt = entry.endedAt ?? entry.ts
+                turnClosed[sessionId] = max(turnClosed[sessionId] ?? 0, closedAt)
+                continue
+            }
 
             if entry.type == .toolExec && isSubagent {
                 let anchor = entry.startedAt ?? entry.ts
@@ -113,8 +126,9 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
         var result: [String: SubagentVisualActivity] = [:]
         let sessionIds = Set(bursts.keys).union(completed.keys)
         for sessionId in sessionIds {
+            let turnClosedAt = turnClosed[sessionId] ?? 0
             let dispatched = bursts[sessionId, default: []]
-                .filter { now - $0.ts <= activeTtlMs }
+                .filter { now - $0.ts <= activeTtlMs && $0.ts >= turnClosedAt }
                 .reduce(0) { $0 + $1.count }
             let activeCount = max(0, dispatched - (drained[sessionId] ?? 0))
             let lastCompletedAt = completed[sessionId]

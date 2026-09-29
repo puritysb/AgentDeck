@@ -1,13 +1,72 @@
 import { WebSocketServer, WebSocket } from 'ws';
+import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import type { Server, IncomingMessage } from 'http';
 import type { BridgeEvent, PluginCommand } from './types.js';
 import { isLocalConnection, validateToken } from './auth.js';
 import { mayAdoptEsp32, noteEsp32Adopted } from './pairing-window.js';
 import { debug, log } from './logger.js';
-import { DEVICE_ID_HEADER, normalizeDeviceId, WS_PING_INTERVAL_MS } from '@agentdeck/shared';
+import { DEVICE_ID_HEADER, normalizeDeviceId, WS_PING_INTERVAL_MS, State } from '@agentdeck/shared';
+
+const AWAITING_STATES: readonly string[] = [
+  State.AWAITING_PERMISSION,
+  State.AWAITING_OPTION,
+  State.AWAITING_DIFF,
+];
+
+/**
+ * Issue #272 step 1 instrumentation: classifies whether a broadcast event
+ * carries a field a human could act on (a session in an AWAITING_* state) vs
+ * one that is cosmetic, at the ONE place the daemon decides to push a frame
+ * to every WS client — trmnl_75 (push panel) included. This is deliberately
+ * NOT per-board: broadcast() sends the same event to every WS client, and
+ * only the pushed board's own on-device contentHash decides whether it
+ * repaints (see esp32/src/ui/eink/eink_display.cpp). The daemon has no
+ * per-field diff of what changed, so "actionable" here means only "this
+ * event carries an awaiting session somewhere in it" — the same Tier-A
+ * signal used in #272's own reproduction script, not a claim about ghosting.
+ */
+export function broadcastActionability(event: BridgeEvent): 'actionable' | 'cosmetic' | 'n/a' {
+  if (event.type === 'state_update') {
+    const state = (event as { state?: unknown }).state;
+    return typeof state === 'string' && AWAITING_STATES.includes(state) ? 'actionable' : 'cosmetic';
+  }
+  if (event.type === 'sessions_list') {
+    const sessions = (event as { sessions?: Array<{ state?: unknown }> }).sessions ?? [];
+    return sessions.some((s) => typeof s.state === 'string' && AWAITING_STATES.includes(s.state))
+      ? 'actionable'
+      : 'cosmetic';
+  }
+  return 'n/a';
+}
+
+/** The User-Agent links2004/WebSockets (the ESP32 firmware client) sends on every upgrade. */
+export function isBoardWebSocketLibrary(userAgent: string | string[] | undefined): boolean {
+  const ua = Array.isArray(userAgent) ? userAgent.join(' ') : userAgent ?? '';
+  return /arduino-WebSocket-Client/i.test(ua);
+}
 
 export class WsServer {
   private wss: WebSocketServer;
+  // Server-wide broadcast attempts, not deliveries or panel repaints. Bounded
+  // storage, independent of debug logging and the number of connected clients.
+  private readonly broadcastInstanceId = randomUUID();
+  private readonly broadcastStartedAt = Date.now();
+  private readonly broadcastStartedMono = performance.now();
+  private readonly broadcastCounts = { actionable: 0, cosmetic: 0, unclassified: 0 };
+
+  getBroadcastMetrics() {
+    const { actionable, cosmetic, unclassified } = this.broadcastCounts;
+    return {
+      instanceId: this.broadcastInstanceId,
+      startedAt: this.broadcastStartedAt,
+      capturedAt: Date.now(),
+      elapsedMs: Math.floor(performance.now() - this.broadcastStartedMono),
+      total: actionable + cosmetic + unclassified,
+      actionable, cosmetic, unclassified,
+    };
+  }
+
   private commandCallback: ((cmd: PluginCommand) => void) | null = null;
   private rawMessageCallback: ((msg: Record<string, unknown>, sender: WebSocket) => boolean) | null = null;
   private binaryCallback: ((data: Buffer, sender: WebSocket) => void) | null = null;
@@ -211,6 +270,13 @@ export class WsServer {
       if (url.searchParams.get('clientType') === 'esp32' || url.searchParams.get('esp32') === '1') {
         this.esp32Clients.add(ws);
         debug('WS', 'ESP32 WiFi client tagged from query');
+      } else if (isBoardWebSocketLibrary(req.headers['user-agent'])) {
+        // links2004/WebSockets announces itself on every upgrade. An untagged
+        // board (firmware older than the `?clientType=esp32` tag) is thereby
+        // board-class from byte one — not one connect too late — so dashboards
+        // no longer need the board frame limit applied to them just in case.
+        this.esp32Clients.add(ws);
+        debug('WS', 'ESP32 WiFi client tagged from its WebSocket library');
       } else if (this.knownBoardIps.has(remoteIp)) {
         this.esp32Clients.add(ws);
         debug('WS', `ESP32 WiFi client tagged from known board IP ${remoteIp}`);
@@ -351,7 +417,9 @@ export class WsServer {
   broadcast(event: BridgeEvent): void {
     const payload = JSON.stringify(event);
     const clientCount = this.wss.clients.size;
-    debug('WS', `broadcast(${event.type}) to ${clientCount} clients`);
+    const actionability = broadcastActionability(event);
+    this.broadcastCounts[actionability === 'n/a' ? 'unclassified' : actionability]++;
+    debug('WS', `broadcast(${event.type}) to ${clientCount} clients actionability=${actionability}`);
     for (const client of this.wss.clients) {
       if (client.readyState === WebSocket.OPEN) {
         const clientPayload = this.payloadFor(event, client, payload);

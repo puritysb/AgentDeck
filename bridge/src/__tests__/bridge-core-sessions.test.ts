@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer } from 'http';
 import { BridgeCore } from '../bridge-core.js';
+import { HookClaudeSessions } from '../hook-claude-sessions.js';
 import { createTempDataDir, type TempDataDir } from './helpers/temp-data-dir.js';
 
 vi.mock('../session-aggregator.js', () => ({
@@ -33,6 +34,7 @@ describe('BridgeCore sessions_list', () => {
     httpServer.close();
     tempDir.cleanup();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('broadcastSessionsList enriches sessions before broadcast', async () => {
@@ -71,6 +73,40 @@ describe('BridgeCore sessions_list', () => {
         }),
       ],
     });
+  });
+
+  it('delivers the final hook state within a broadcast window and shares it with feed snapshots', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    vi.spyOn(core, 'hasClients').mockReturnValue(true);
+    const tracker = new HookClaudeSessions();
+    mockBuildEnrichedSessionsList.mockResolvedValue([{
+      id: 'observed:claude:a', port: 0, projectName: 'P', alive: true,
+      state: 'idle', agentType: 'claude-code',
+    }]);
+    core.setSessionsEnricher((sessions) => tracker.applyTo(sessions));
+    const broadcast = vi.spyOn(core.wsServer, 'broadcast').mockImplementation(() => {});
+    tracker.note('UserPromptSubmit', { session_id: 'a' });
+    core.maybeBroadcastSessionsList();
+    await vi.advanceTimersByTimeAsync(100);
+    tracker.note('PreToolUse', { session_id: 'a', tool_use_id: 't', tool_name: 'Bash' });
+    core.maybeBroadcastSessionsList();
+    expect((await core.buildSessionsSnapshot())[0].currentTool).toBe('Bash');
+    tracker.note('Stop', { session_id: 'a' });
+    core.maybeBroadcastSessionsList();
+    expect(broadcast).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1900);
+    expect(broadcast).toHaveBeenCalledTimes(2);
+    expect(broadcast.mock.lastCall?.[0]).toEqual({
+      type: 'sessions_list', sessions: await core.buildSessionsSnapshot(),
+    });
+    expect((await core.buildSessionsSnapshot())[0]).toMatchObject({ state: 'idle', currentTool: undefined });
+    tracker.note('SessionEnd', { session_id: 'a' });
+    core.maybeBroadcastSessionsList();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(broadcast.mock.lastCall?.[0]).toEqual({ type: 'sessions_list', sessions: [] });
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(broadcast).toHaveBeenCalledTimes(3);
   });
 
   it('folds same-project Codex App chats in the canonical snapshot', async () => {

@@ -1,3 +1,5 @@
+import { usageRgb } from '@agentdeck/shared';
+import { TERRARIUM_RULES } from '@agentdeck/shared';
 /**
  * Pixoo64 Frame Renderer — camera-based animated terrarium.
  *
@@ -112,7 +114,7 @@ function clamp(value: number, min: number, max: number): number {
 export function getUsageProviderCount(usageEvent: UsageEvent | null): number {
   if (!usageEvent) return 0;
   let count = 0;
-  if (usageEvent.usageStale !== true && usageEvent.fiveHourPercent != null) {
+  if (usageEvent.usageStale !== true && (usageEvent.fiveHourPercent != null || usageEvent.sevenDayPercent != null)) {
     count++;
   }
   const freshCodexWindow = (w: { stale?: boolean; usedPercent?: number; resetsAt?: string } | undefined) =>
@@ -120,6 +122,11 @@ export function getUsageProviderCount(usageEvent: UsageEvent | null): number {
   const codexPrimaryWindow = freshCodexWindow(usageEvent.codexRateLimits?.primary);
   const codexSecondaryWindow = freshCodexWindow(usageEvent.codexRateLimits?.secondary);
   if (codexPrimaryWindow || codexSecondaryWindow) {
+    count++;
+  }
+  const zaiPrimaryWindow = freshCodexWindow(usageEvent.zaiRateLimits?.primary);
+  const zaiSecondaryWindow = freshCodexWindow(usageEvent.zaiRateLimits?.secondary);
+  if (zaiPrimaryWindow || zaiSecondaryWindow) {
     count++;
   }
   return count;
@@ -170,10 +177,9 @@ function stateYForType(
       else y = clamp(baseY + 0.26, 0.60, 0.70);
       break;
   }
-  if (hudProviderCount >= 2) {
-    return Math.min(y, 0.65);
-  } else if (hudProviderCount === 1) {
-    return Math.min(y, 0.72);
+  if (hudProviderCount > 0) {
+    return Math.min(y, (64 - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight
+      - TERRARIUM_RULES.pixooUsageCreatureMargin) / 64);
   }
   return y;
 }
@@ -694,13 +700,7 @@ function simplifiedState(state: State): 'idle' | 'processing' | 'awaiting' {
 
 /** Gauge bar color based on usage percentage. */
 function gaugeColor(pct: number, animFrame: number, brand: RGB): RGB {
-  if (pct >= 90) {
-    // Red with pulse
-    const pulse = (Math.sin(animFrame * 0.2) + 1) * 0.3;
-    return lerpColor(COLORS.stateError, COLORS.white, pulse) as RGB;
-  }
-  if (pct >= 70) return COLORS.stateAwaiting;  // amber
-  return brand;
+  return usageRgb(pct);
 }
 
 /** Pixoo HUD reset time: "1h23", "4d6", "59m". */
@@ -734,16 +734,17 @@ function drawUsageHUD(
   if (!usageEvent) return;
   type Window = { percent: number; resetsAt?: string };
   type Provider = {
+    /** Official mark from design/brand/*.svg (upstream SVGs, never redrawn). */
     glyph: OfficialDotGlyphName; brand: RGB;
     primary?: Window; secondary?: Window;
     subscriptionUntil?: string;
   };
 
   const providers: Provider[] = [];
-  if (usageEvent.usageStale !== true && usageEvent.fiveHourPercent != null) {
+  if (usageEvent.usageStale !== true && (usageEvent.fiveHourPercent != null || usageEvent.sevenDayPercent != null)) {
     providers.push({
       glyph: 'claudeCode', brand: [255, 112, 76],
-      primary: { percent: usageEvent.fiveHourPercent, resetsAt: usageEvent.fiveHourResetsAt },
+      primary: usageEvent.fiveHourPercent == null ? undefined : { percent: usageEvent.fiveHourPercent, resetsAt: usageEvent.fiveHourResetsAt },
       secondary: usageEvent.sevenDayPercent == null ? undefined : {
         percent: usageEvent.sevenDayPercent, resetsAt: usageEvent.sevenDayResetsAt,
       },
@@ -767,10 +768,19 @@ function drawUsageHUD(
       subscriptionUntil: usageEvent.codexSubscriptionActiveUntil,
     });
   }
+  const zaiPrimaryWindow = freshCodexWindow(usageEvent.zaiRateLimits?.primary);
+  const zaiSecondaryWindow = freshCodexWindow(usageEvent.zaiRateLimits?.secondary);
+  if (zaiPrimaryWindow || zaiSecondaryWindow) {
+    providers.push({
+      glyph: 'zai', brand: [31, 99, 236],  // Brand.zai (#1F63EC), measured from the upstream mark
+      primary: zaiPrimaryWindow,
+      secondary: zaiSecondaryWindow,
+    });
+  }
   if (providers.length === 0) return;
-
+  const seatedProviders = providers;
   const timeColor: RGB = [0x60, 0x70, 0x80];
-  const firstY = providers.length > 1 ? 50 : 57;
+  const firstY = 64 - seatedProviders.length * TERRARIUM_RULES.pixooUsageRowHeight;
 
   function drawCreatureMarker(provider: Provider, rowY: number): void {
     const mask = OFFICIAL_DOT_GLYPHS[provider.glyph];
@@ -840,7 +850,7 @@ function drawUsageHUD(
     }
   }
 
-  providers.forEach((provider, index) => {
+  seatedProviders.forEach((provider, index) => {
     const rowY = firstY + index * 7;
     for (let y = rowY; y < rowY + 7; y++) {
       for (let x = 0; x < 64; x++) {
@@ -881,7 +891,6 @@ function renderMicroFrame(
   animFrame: number,
   stateEvent: StateUpdateEvent | null,
   sessions: SessionInfo[] | null,
-  usagePct: number,
   subagentActivity: SubagentActivityBySession,
   now: number,
 ): void {
@@ -901,7 +910,7 @@ function renderMicroFrame(
   const routing = sessions?.some((s) => s.agentType === 'openclaw' && s.state === 'processing') ?? false;
 
   const aggregate: MicroAggregate =
-    gatewayHasError || usagePct >= 90 ? 'error'
+    gatewayHasError ? 'error'
       : dominant?.state === 'awaiting' ? 'awaiting'
         : (dominant?.state === 'processing' || (!dominant && routing)) ? 'processing'
           : 'idle';
@@ -1109,16 +1118,18 @@ function renderCompact32Frame(
   const rail = (raw: number | undefined, brand: RGB): void => {
     if (raw != null) telemetry.push([raw, brand]);
   };
-  rail(usageEvent?.fiveHourPercent, [42, 220, 154]);
-  rail(usageEvent?.sevenDayPercent, [54, 154, 255]);
+  rail(usageEvent?.usageStale === true ? undefined : usageEvent?.fiveHourPercent, [42, 220, 154]);
+  rail(usageEvent?.usageStale === true ? undefined : usageEvent?.sevenDayPercent, [54, 154, 255]);
   rail(primary, [185, 86, 255]);
   rail(secondary, [104, 116, 255]);
+  rail(usageEvent?.zaiRateLimits?.primary?.stale === true
+    ? undefined : usageEvent?.zaiRateLimits?.primary?.usedPercent, [31, 99, 236]);
   const firstRailY = 32 - telemetry.length;
   telemetry.forEach(([raw, brand], row) => {
     const y = firstRailY + row;
     for (let x = 0; x < 32; x++) set(x, y, [5, 8, 14]);
     const pct = Math.max(0, Math.min(100, raw));
-    const color: RGB = pct >= 90 ? [255, 58, 72] : pct >= 70 ? [255, 183, 38] : brand;
+    const color: RGB = usageRgb(pct);
     set(0, y, brand); set(1, y, brand);
     const width = Math.round(pct / 100 * 29);
     for (let x = 3; x < 3 + width; x++) set(x, y, color);
@@ -1292,7 +1303,6 @@ export function renderFrame(
       animFrame,
       stateEvent,
       sessions,
-      usageEvent?.fiveHourPercent ?? 0,
       subagentActivity,
       timeOverrideMs ?? Date.now(),
     );
@@ -1339,7 +1349,7 @@ export function renderFrame(
 
   // Crayfish routing — clamp Y when Usage HUD is active so sitting position stays visible
   const cfX = CF_DEFAULT_X;
-  const cfY = hudProviderCount >= 2 ? 0.65 : hudProviderCount === 1 ? 0.72 : CF_DEFAULT_Y;
+  const cfY = hudProviderCount > 0 ? (64 - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight - TERRARIUM_RULES.pixooUsageCreatureMargin) / 64 : CF_DEFAULT_Y;
   const crayfishRouting = hasGateway && (sessions?.some(s =>
     s.agentType === 'openclaw' && s.state === 'processing'
   ) ?? false);
@@ -1421,7 +1431,7 @@ export function renderFrame(
   }
 
   // Tetras — update always, clamped above HUD when present
-  const tetraMaxY = hudProviderCount >= 2 ? 46 : hudProviderCount === 1 ? 52 : (SAND_TOP - 3);
+  const tetraMaxY = hudProviderCount > 0 ? 64 - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight - 4 : (SAND_TOP - 3);
   updateTetras(animFrame, surfaceY, tetraMaxY);
 
   // Surface waves — use effectiveState so daemon doesn't suppress wave animation
@@ -1498,16 +1508,6 @@ export function renderFrame(
   // ========================================
   // Phase 4: Screen-space overlays
   // ========================================
-
-  // Danger flash (>90% usage)
-  if (usagePct >= 90) {
-    const flashIntensity = (Math.sin(animFrame * 0.2) + 1) * 0.08;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        glowPixel(outputBuf, x, y, COLORS.stateError, flashIntensity);
-      }
-    }
-  }
 
   // Session count indicator (top-left, screen-space) — colored dots when 2+ sessions
   const sessionCount = creatureInstances.size;

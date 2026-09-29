@@ -45,8 +45,11 @@ final class OpenCodeObserver {
 
     private var callbacks: Callbacks?
     private var loopTask: Task<Void, Never>?
+    private var connectionEpoch: UInt64 = 0
     private var streamTask: Task<Void, Never>?
     private(set) var connectedURL: URL?
+    private var rememberedURL: URL?
+    private var rememberedDirectories: [String] = []
 
     func start(callbacks: Callbacks) {
         guard loopTask == nil else { return }
@@ -75,10 +78,12 @@ final class OpenCodeObserver {
             return
         }
 
-        if streamTask != nil {
-            // Connected — refresh eviction timestamps so idle-but-alive
-            // sessions aren't reaped between SSE events.
-            callbacks?.onKeepalive()
+        if streamTask != nil, let url = connectedURL {
+            let epoch = connectionEpoch
+            let health = await OpenCodeSSEClient(baseURL: url).health()
+            guard epoch == connectionEpoch, !Task.isCancelled else { return }
+            if health?.healthy == true { callbacks?.onKeepalive() }
+            else { disconnect(notify: true) }
             return
         }
 
@@ -91,6 +96,7 @@ final class OpenCodeObserver {
         for url in candidates {
             let client = OpenCodeSSEClient(baseURL: url)
             guard let health = await client.health(), health.healthy else { continue }
+            guard !Task.isCancelled, AppPreferences.shared.openCodeMonitoringEnabled else { return }
             DaemonLogger.shared.info("OpenCode server found at \(url.absoluteString)")
             connect(client: client, url: url)
             return
@@ -148,26 +154,23 @@ final class OpenCodeObserver {
     // MARK: - Connection
 
     private func connect(client: OpenCodeSSEClient, url: URL) {
+        connectionEpoch &+= 1
+        let epoch = connectionEpoch
         connectedURL = url
+        if rememberedURL != url {
+            rememberedURL = url
+            rememberedDirectories.removeAll()
+        }
+        let directories = rememberedDirectories
         streamTask = Task { [weak self] in
-            // Seed sessions already mid-turn: their SSE work signals fired
-            // before we attached, so without this they'd stay invisible
-            // until the next event.
-            let busy = await client.sessionStatus().filter { $0.value == "busy" }.map(\.key)
-            for sid in busy {
-                let summary = await client.session(id: sid)
-                await self?.deliver(OpenCodeSessionUpdate(
-                    sessionID: sid,
-                    kind: .processing,
-                    title: summary?.title,
-                    directory: summary?.directory
-                ))
-            }
-
             do {
-                try await client.streamEvents { [weak self] update in
-                    await self?.deliver(update)
-                }
+                try await client.streamEvents(onConnected: { [weak self] in
+                    for update in await client.reconnectSnapshot(knownDirectories: directories) {
+                        await self?.deliver(update, epoch: epoch)
+                    }
+                }, onUpdate: { [weak self] update in
+                    await self?.deliver(update, epoch: epoch)
+                })
                 DaemonLogger.shared.info("OpenCode SSE stream ended (\(url.absoluteString))")
             } catch is CancellationError {
                 return
@@ -175,18 +178,24 @@ final class OpenCodeObserver {
                 DaemonLogger.shared.debug("OpenCode", "SSE stream error: \(error.localizedDescription)")
             }
 
-            await self?.handleStreamDropped()
+            await self?.handleStreamDropped(epoch: epoch)
         }
     }
 
     /// Single delivery seam for SSE updates — keeps the `@Sendable` stream
     /// closure from having to touch actor state directly.
-    private func deliver(_ update: OpenCodeSessionUpdate) {
+    private func deliver(_ update: OpenCodeSessionUpdate, epoch: UInt64) {
+        guard epoch == connectionEpoch, streamTask != nil else { return }
+        if let directory = update.directory, !directory.isEmpty {
+            rememberedDirectories.removeAll { $0 == directory }
+            rememberedDirectories.insert(directory, at: 0)
+            rememberedDirectories = Array(rememberedDirectories.prefix(OpenCodeSSEClient.reconnectDirectoryLimit))
+        }
         callbacks?.onUpdate(update)
     }
 
-    private func handleStreamDropped() {
-        guard streamTask != nil else { return }
+    private func handleStreamDropped(epoch: UInt64) {
+        guard epoch == connectionEpoch, streamTask != nil else { return }
         streamTask = nil
         connectedURL = nil
         // The 5s tick loop is the reconnect backoff — next tick re-probes.
@@ -194,6 +203,7 @@ final class OpenCodeObserver {
     }
 
     private func disconnect(notify: Bool) {
+        connectionEpoch &+= 1
         streamTask?.cancel()
         streamTask = nil
         connectedURL = nil

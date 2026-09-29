@@ -37,6 +37,7 @@ private val klaxon = Klaxon()
     .convert(TokenStatus::class,         { TokenStatus.fromValue(it.string!!) },         { "\"${it.value}\"" })
     .convert(Type::class,                { Type.fromValue(it.string!!) },                { "\"${it.value}\"" })
     .convert(VoiceAssistantState::class, { VoiceAssistantState.fromValue(it.string!!) }, { "\"${it.value}\"" })
+    .convert(Quantity::class,            { Quantity.fromValue(it.string!!) },            { "\"${it.value}\"" })
 
 /**
  * Bridge → clients — fires when a run completes evaluation (layer 1 or 2).
@@ -111,6 +112,7 @@ data class BridgeEvent (
      */
     val mlxModels: List<String>? = null,
 
+    val mlxResidency: ModelResidency? = null,
     val modelCatalog: List<ModelCatalogEntry>? = null,
     val modelName: String? = null,
 
@@ -232,6 +234,7 @@ data class BridgeEvent (
     val tokenStatus: TokenStatus? = null,
     val toolCalls: Double? = null,
     val usageStale: Boolean? = null,
+    val zaiRateLimits: ZaiRateLimits? = null,
     val status: BridgeEventStatus? = null,
 
     /**
@@ -476,6 +479,11 @@ data class CodexRateLimits (
     val limitID: String? = null,
 
     /**
+     * Additional Luna-only pool, separate from the account 5h/7d windows.
+     */
+    val lunaReserve: CodexLunaReserve? = null,
+
+    /**
      * Plan tier reported alongside the limits (e.g. "plus", "pro").
      */
     val planType: String? = null,
@@ -506,6 +514,33 @@ data class CodexCredits (
      * Unlimited credits (no balance ceiling).
      */
     val unlimited: Boolean
+)
+
+/**
+ * Additional Luna-only pool, separate from the account 5h/7d windows.
+ *
+ * Luna-only reserve window returned as an additional Codex rate-limit pool.
+ */
+data class CodexLunaReserve (
+    /**
+     * Whether the reserve is currently usable.
+     */
+    val available: Boolean? = null,
+
+    /**
+     * When the regular advanced-model allowance becomes available again.
+     */
+    val regularResetsAt: String? = null,
+
+    /**
+     * The reserve's own reset, when supplied.
+     */
+    val resetsAt: String? = null,
+
+    /**
+     * Percent of the reserve already consumed (0–100).
+     */
+    val usedPercent: Double
 )
 
 /**
@@ -745,6 +780,18 @@ data class TimelineEntry (
     val taskScore: Double? = null,
 
     val taskSummary: String? = null,
+
+    /**
+     * True for bounded per-tool rows produced from Claude Code hooks.
+     */
+    val toolEvent: Boolean? = null,
+
+    /**
+     * Claude hook tool invocation identity (distinct from an approval id).
+     */
+    @Json(name = "toolUseId")
+    val toolUseID: String? = null,
+
     val ts: Double,
     val type: TimelineEntryType
 )
@@ -879,6 +926,16 @@ enum class GatewayAuthStatus(val value: String) {
     }
 }
 
+/**
+ * A completed residency observation. Unknown is explicit; [] with known=true means none.
+ *
+ * Optional additive metadata; old producers cannot prove non-residency.
+ */
+data class ModelResidency (
+    val known: Boolean,
+    val models: List<String>
+)
+
 data class ModelCatalogEntry (
     val available: Boolean,
     val key: String,
@@ -891,7 +948,13 @@ data class ModelCatalogEntry (
  */
 data class OllamaStatus (
     val available: Boolean,
-    val models: List<OllamaModel>
+    val installedModelsKnown: Boolean? = null,
+    val models: List<OllamaModel>,
+
+    /**
+     * Optional additive metadata; old producers cannot prove non-residency.
+     */
+    val residency: ModelResidency? = null
 )
 
 data class OllamaModel (
@@ -1160,9 +1223,23 @@ data class SessionInfo (
 
     val contextPercent: Double? = null,
     val controlMode: ControlMode? = null,
+
+    /**
+     * Cross-session coordination census — see CoordinationSummary. Same emission rule as
+     * `subagents`: present with zeros once observed, absent only when this session has never
+     * had a relation.
+     */
+    val coordination: CoordinationSummary? = null,
+
     val currentTask: String? = null,
     val currentTool: String? = null,
     val cwd: String? = null,
+
+    /**
+     * Optional compact device label; never a session identity or folding key.
+     */
+    val displayName: String? = null,
+
     val effortLevel: String? = null,
 
     @Json(name = "elapsedSec")
@@ -1270,6 +1347,54 @@ enum class ControlMode(val value: String) {
         }
     }
 }
+
+/**
+ * Cross-session coordination census — see CoordinationSummary. Same emission rule as
+ * `subagents`: present with zeros once observed, absent only when this session has never
+ * had a relation.
+ *
+ * Live cross-session coordination census for one session — the second axis beside
+ * `subagents`, for work divided WITHOUT a SubagentStart: `claude -p` workers spawned from a
+ * background Bash, peer sessions messaged over SendMessage, and background processes the
+ * session is waiting on. Measured 2026-09-06: a parent whose turn had closed read `idle` on
+ * every surface while six spawned workers ran and a 22-minute background job it would be
+ * re-invoked by was still going. Observed only — never inferred from shared project
+ * membership. Emitted with explicit zeros once a session has ever had a relation
+ * (retain-on-absent clients would otherwise latch the last count).
+ */
+data class CoordinationSummary (
+    /**
+     * Background processes started by this session still running (argv names its scratchpad).
+     */
+    val backgroundJobs: Double,
+
+    /**
+     * Name of the most recent peer messaged with, if the evidence carried one.
+     */
+    val lastPeerName: String? = null,
+
+    /**
+     * Epoch ms of the most recent relation observation.
+     */
+    val lastRelationAt: Double? = null,
+
+    /**
+     * Cross-session messages received / sent in this session.
+     */
+    val messagesIn: Double,
+
+    val messagesOut: Double,
+
+    /**
+     * Peer sessions spawned by this session whose process is still alive.
+     */
+    val spawnedActive: Double,
+
+    /**
+     * Peer sessions spawned by this session that have ended.
+     */
+    val spawnedCompleted: Double
+)
 
 /**
  * On-demand review lifecycle for the REVIEW badge tile ('running' while the judge works).
@@ -1490,6 +1615,88 @@ enum class VoiceAssistantState(val value: String) {
             "processing" -> Processing
             "speaking"   -> Speaking
             else         -> throw IllegalArgumentException()
+        }
+    }
+}
+
+/**
+ * Z.ai (GLM Coding Plan) usage limits, fetched directly from the provider's monitor
+ * endpoint with the account's coding-plan key — an active account query like the Claude
+ * OAuth usage read, not a passive local-file snapshot. Same slot grammar as
+ * `CodexRateLimits`: `primary` is the 5-hour credits window, `secondary` the long window
+ * when the plan reports one (weekly credits on the credit schema, or the monthly MCP tool
+ * quota on the standard schema — `limitId` says which quantity the number belongs to, the
+ * same "which limit" axis Codex carries).
+ */
+data class ZaiRateLimits (
+    /**
+     * ISO-8601 instant this reading was fetched. Consumers derive age from it against their own
+     * clock — same contract as `CodexRateLimits.capturedAt`: an active poll re-fetches
+     * regularly, so an aged stamp means the poll is failing, and the reading dims rather than
+     * reading as live.
+     */
+    val capturedAt: String? = null,
+
+    /**
+     * Schema family the windows were read from: "standard" (TOKENS_LIMIT + TIME_LIMIT items) or
+     * "credit" (credit-only schema, lite-tier plans).
+     */
+    @Json(name = "limitId")
+    val limitID: String? = null,
+
+    /**
+     * Plan tier stamped into every snapshot ("lite" | "pro" | "max").
+     */
+    val planType: String? = null,
+
+    val primary: ZaiWindow? = null,
+    val secondary: ZaiWindow? = null
+)
+
+/**
+ * A z.ai quota window — the shared window shape plus WHICH QUANTITY it meters:
+ * token/credits windows (`tokens`) or the MCP tool-call quota (`mcp`). They are different
+ * kinds of usage rendered side by side, and a surface must never present an MCP gauge as
+ * token usage (or vice versa); the label follows the quantity ("5h" vs "MCP").
+ */
+data class ZaiWindow (
+    val quantity: Quantity? = null,
+
+    /**
+     * ISO-8601 reset instant (converted from the rollout's unix `resets_at`).
+     */
+    val resetsAt: String? = null,
+
+    /**
+     * True when this window's snapshot has expired (its `resets_at` slid into the past with no
+     * fresher Codex activity). The passive rollout read is frozen, so the percent is
+     * last-known-only — renderers should dim the gauge and show a "stale" marker instead of a
+     * misleading "now" countdown. Set centrally in `buildUsageEvent`; `resetsAt` is cleared at
+     * the same time so no formatter prints "now".
+     *
+     * This is the HARD signal — slot-based consumers (Pixoo renderers, ESP32 firmware) drop the
+     * gauge entirely on it. A merely OLD snapshot of a still- live window must therefore never
+     * set it; that rides `capturedAt` instead.
+     */
+    val stale: Boolean? = null,
+
+    val usedPercent: Double,
+
+    /**
+     * Rolling window length in minutes (primary ≈ 300 = 5h, secondary ≈ 10080 = 7d).
+     */
+    val windowMinutes: Double
+)
+
+enum class Quantity(val value: String) {
+    MCP("mcp"),
+    Tokens("tokens");
+
+    companion object {
+        public fun fromValue(value: String): Quantity = when (value) {
+            "mcp"    -> MCP
+            "tokens" -> Tokens
+            else     -> throw IllegalArgumentException()
         }
     }
 }

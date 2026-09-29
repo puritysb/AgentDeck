@@ -26,7 +26,7 @@ generated-mirror / release boundary).
 ## 0. The assumption that breaks
 
 AgentDeck's security and discovery model rests on one sentence, written down in
-`CLAUDE.md`:
+`.claude/rules/daemon-lifecycle.md` (§ Pairing and credentials):
 
 > **One machine has one pairing token, and the daemon currently serving the port is its
 > custodian.**
@@ -588,7 +588,7 @@ Rough totals: **P0 ≈ 9 days**, **P1 ≈ 7.5 days**, **P2 ≈ 2.5 days**.
   said no" and every same-user handover would read as foreign.
 - **`unknown` must stay permissive, and must never be silent.** A refusal on
   unproven ownership breaks the one-machine-one-token convergence, which is the
-  failure that locks an entire paired fleet out (CLAUDE.md, 2026-08-08). Every
+  failure that locks an entire paired fleet out (`.claude/rules/daemon-lifecycle.md`, 2026-08-08). Every
   branch that proceeds without proof logs that it did.
 - **Test the state machine, not the predicate.** A truth table over
   `isSameUserDaemon()` stays green while the call site forgets to call it. Drive

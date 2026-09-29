@@ -203,10 +203,10 @@ final class MenuBarDensityPolicyTests: XCTestCase {
             EinkDeviceInfo(id: "e-\($0)", name: "Panel \($0)", family: "eink", columns: 800, rows: 480)
         })
         health.serial = SerialHealth(connectedBoards: [
-            SerialPortInfo(port: "/dev/cu.usbmodem1", board: "inkdeck", firmwareVersion: nil, wifiConnected: true),
+            SerialPortInfo(port: "/dev/cu.usbmodem1", board: "trmnl_75", firmwareVersion: nil, wifiConnected: true),
         ])
         health.esp32Wifi = Esp32WifiHealth(devices: [
-            WifiEsp32DeviceInfo(board: "inkdeck", ip: "10.0.0.2", version: nil, serialActive: true),
+            WifiEsp32DeviceInfo(board: "trmnl_75", ip: "10.0.0.2", version: nil, serialActive: true),
             WifiEsp32DeviceInfo(board: "ips10", ip: "10.0.0.3", version: nil, serialActive: false),
         ])
 

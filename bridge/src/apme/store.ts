@@ -28,6 +28,7 @@ import type {
   ApmeTaskRow,
   ApmeTaskListRow,
   ApmeStopDeliveryRow,
+  ApmeJudgeHealthRow,
 } from './types.js';
 import type {
   ApmeSampleEventRow,
@@ -38,6 +39,10 @@ import type {
   TrajectoryEvent,
 } from '@agentdeck/shared';
 import { TASK_ATTENTION_WINDOW_MS, TASK_ATTENTION_RED_SCORE } from '@agentdeck/shared';
+import {
+  buildPrunedPayload, isPrunedPayload, PRUNED_PAYLOAD_LIKE,
+  emptyPruneEstimate, type PruneEstimate,
+} from './payload-prune.js';
 
 // ─── Schema ────────────────────────────────────────────────────────────────────
 
@@ -342,6 +347,20 @@ CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at);
 CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id);
 CREATE INDEX IF NOT EXISTS idx_evals_run ON evals(run_id);
 CREATE INDEX IF NOT EXISTS idx_steps_run ON steps(run_id);
+-- Retention (#302): 'apme prune' scans steps by age alone and sample_events
+-- by (kind='tool', age) — neither is covered by the existing (run_id, ts)
+-- pair indexes, so a store with hundreds of thousands of rows would full-scan
+-- on every dry-run.
+CREATE INDEX IF NOT EXISTS idx_steps_ts ON steps(ts);
+CREATE INDEX IF NOT EXISTS idx_sevents_kind_ts ON sample_events(kind, ts);
+-- (task_id, kind): the Work board's per-task tool_count subquery. Without it
+-- the planner probed idx_sevents_kind_ts (added just above for prune), i.e.
+-- walked every tool row in the table (94,386 on the maintainer's store) once
+-- PER TASK (2,130): ~200M row visits, each a multi-KB payload row, 137.8 s on
+-- the daemon's main thread for one page, measured 2026-09-10 — on a page the
+-- macOS app polls every 15 s. With it the same query is a covering probe:
+-- 257 ms. (This comment sits inside a JS template literal: no backticks.)
+CREATE INDEX IF NOT EXISTS idx_sevents_task_kind ON sample_events(task_id, kind);
 
 ${SCORECARD_DDL}
 `;
@@ -577,6 +596,45 @@ type BetterSqliteDb = {
   /** better-sqlite3 wraps `fn` in BEGIN/COMMIT and rolls back if it throws. */
   transaction: <T>(fn: () => T) => () => T;
 };
+
+/** Replace `payload` with a pruned marker for rows in `table` older than
+ *  `cutoffMs` (plus `extraWhere`, e.g. `AND kind = 'tool'`). Batched (SELECT
+ *  a page, UPDATE it, repeat) so a store with hundreds of thousands of
+ *  matching rows never holds every payload string in memory at once — each
+ *  already-pruned row drops out of the WHERE clause (`payload NOT LIKE`), so
+ *  the same query re-run is itself the next page, no OFFSET needed. Callers
+ *  wrap this in their own transaction; this function does not open one. */
+function prunePayloadColumn(
+  db: BetterSqliteDb,
+  table: 'steps' | 'sample_events',
+  extraWhere: string,
+  cutoffMs: number,
+  prunedAt: number,
+  batchSize = 2000,
+): PruneEstimate {
+  const select = db.prepare(
+    `SELECT id, payload FROM ${table}
+     WHERE ts > 0 AND ts < ? ${extraWhere} AND payload IS NOT NULL AND payload NOT LIKE ?
+     LIMIT ?`,
+  );
+  const update = db.prepare(`UPDATE ${table} SET payload = ? WHERE id = ?`);
+  let rows = 0;
+  let bytesBefore = 0;
+  let bytesAfter = 0;
+  for (;;) {
+    const batch = select.all(cutoffMs, PRUNED_PAYLOAD_LIKE, batchSize) as { id: number; payload: string }[];
+    if (batch.length === 0) break;
+    for (const r of batch) {
+      const marker = buildPrunedPayload(r.payload.length, prunedAt);
+      bytesBefore += r.payload.length;
+      bytesAfter += marker.length;
+      update.run(marker, r.id);
+    }
+    rows += batch.length;
+    if (batch.length < batchSize) break;
+  }
+  return { rows, bytesBefore, bytesAfter };
+}
 
 /** The latest overall judge score for a task, else its composite. Inlined into
  *  several `TASK_VIEW_SQL` buckets so "judged" means one thing everywhere. */
@@ -822,6 +880,12 @@ export class ApmeStore {
       // list both look up by task_id.
       'CREATE INDEX IF NOT EXISTS idx_evals_task ON evals(task_id)',
       'CREATE INDEX IF NOT EXISTS idx_tasks_started ON tasks(started_at)',
+      // The 30s background tick must not scan prompt/response-bearing rows.
+      // The release soak measured 4.4s for the closed-run queue and 2.1s for
+      // the outcome queue on 3,351 runs. Keep ordering and predicates in the
+      // index, including the empty-response exclusion for pending outcomes.
+      'CREATE INDEX IF NOT EXISTS idx_runs_closed_queue ON runs(ended_at DESC, task_category, id, project_path) WHERE ended_at IS NOT NULL',
+      "CREATE INDEX IF NOT EXISTS idx_turns_pending_outcome ON turns(started_at DESC, id, run_id) WHERE response IS NOT NULL AND response != '' AND outcome IS NULL",
     ]) {
       try { this.db.exec(sql); } catch { /* ignore */ }
     }
@@ -1061,6 +1125,98 @@ export class ApmeStore {
    *  per prompt as infrastructure loss. `stopDeliveryLoss` in
    *  `@agentdeck/shared` owns which buckets the ratio may read.
    */
+  /** What "judged" means, in one place.
+   *
+   *  NOT `summary IS NOT NULL`: only the `task_rollup` rubric asks for a
+   *  summary, so a task judged under a category or `general` rubric carries a
+   *  composite score and eval rows with a NULL summary. Reading that as
+   *  unjudged told the operator "nothing will judge this" about a task that
+   *  already had a verdict, while `judgeLatency` counted the same row — two
+   *  numbers on one screen contradicting each other. `listJudgedTasks` had it
+   *  right first; this is that predicate, shared rather than restated. */
+  private static readonly JUDGED_SQL = '(t.composite_score IS NOT NULL OR t.summary IS NOT NULL)';
+  /** The gradeability stamp, likewise once. */
+  private static readonly DECLINED_SQL = `(t.notes_json IS NOT NULL AND t.notes_json LIKE '%"notGradeable"%')`;
+
+  /** Per-day judge outcomes for tasks that CLOSED in the window.
+   *
+   *  `agedCutoffMs` is the drain's own lookback boundary, passed in rather than
+   *  recomputed so the instrument cannot report a window the drain does not
+   *  use. Rows older than it are counted as aged out: still unjudged, and no
+   *  longer reachable. */
+  judgeHealth(opts: { sinceMs: number; agedCutoffMs: number }): ApmeJudgeHealthRow[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      `SELECT date(t.ended_at / 1000, 'unixepoch', 'localtime') AS day,
+              COUNT(*) AS closed,
+              SUM(${ApmeStore.JUDGED_SQL}) AS judged,
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND ${ApmeStore.DECLINED_SQL}) AS declined,
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND NOT ${ApmeStore.DECLINED_SQL}
+                  AND t.ended_at >= ?) AS waiting,
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND NOT ${ApmeStore.DECLINED_SQL}
+                  AND t.ended_at < ?) AS agedOut
+         FROM tasks t
+        WHERE t.ended_at IS NOT NULL AND t.ended_at >= ?
+        GROUP BY day
+        ORDER BY day DESC`,
+    ).all(opts.agedCutoffMs, opts.agedCutoffMs, opts.sinceMs) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      day: String(r.day),
+      closed: Number(r.closed ?? 0),
+      judged: Number(r.judged ?? 0),
+      declined: Number(r.declined ?? 0),
+      waiting: Number(r.waiting ?? 0),
+      agedOut: Number(r.agedOut ?? 0),
+    }));
+  }
+
+  /** Every unjudged, undeclined task older than the drain's lookback.
+   *
+   *  A WHOLE-STORE fact, reported separately for a structural reason: the
+   *  per-day `agedOut` column can only be non-zero on days that are themselves
+   *  older than the drain window, so at any `--since` inside that window the
+   *  column is all zeros by construction — the leak this command exists to
+   *  surface would be invisible unless the reader already knew to widen it. */
+  judgeAgedOutTotal(opts: { agedCutoffMs: number }): number {
+    if (!this.db) return 0;
+    const row = this.db.prepare(
+      `SELECT COUNT(*) AS n FROM tasks t
+        WHERE t.ended_at IS NOT NULL AND t.ended_at < ?
+          AND NOT ${ApmeStore.JUDGED_SQL} AND NOT ${ApmeStore.DECLINED_SQL}`,
+    ).get(opts.agedCutoffMs) as { n?: number } | undefined;
+    return Number(row?.n ?? 0);
+  }
+
+  /** Close→verdict latency for tasks that closed in the window, in ms.
+   *  Percentiles rather than a mean: one backfilled task judged weeks late
+   *  drags a mean past every real number. */
+  judgeLatency(opts: { sinceMs: number }): {
+    n: number; p50Ms: number | null; p90Ms: number | null; maxMs: number | null; excluded: number;
+  } {
+    if (!this.db) return { n: 0, p50Ms: null, p90Ms: null, maxMs: null, excluded: 0 };
+    const rows = this.db.prepare(
+      `SELECT MIN(e.created_at) - t.ended_at AS ms
+         FROM tasks t JOIN evals e ON e.task_id = t.id AND e.layer = 'task_judge'
+        WHERE t.ended_at IS NOT NULL AND t.ended_at >= ?
+        GROUP BY t.id
+        ORDER BY ms`,
+    ).all(opts.sinceMs) as Array<{ ms: number }>;
+    const finite = rows.map((r) => Number(r.ms)).filter((n) => Number.isFinite(n));
+    const vals = finite.filter((n) => n >= 0);
+    // A close backdated past its own verdict (a reaped task closed at its last
+    // activity time after a manual judge) yields a negative span. It cannot be
+    // a latency, but dropping it silently leaves `n` disagreeing with the
+    // Judged column beside it by a number nothing reports.
+    const excluded = finite.length - vals.length;
+    if (vals.length === 0) return { n: 0, p50Ms: null, p90Ms: null, maxMs: null, excluded };
+    // NEAREST-RANK. `floor(q·n)` selects one rank too high, so p90 equalled the
+    // maximum for every n where q·n is an integer — at n=10 it reported the one
+    // backfilled outlier as the p90, which is exactly what a percentile is
+    // chosen to resist.
+    const at = (q: number) => vals[Math.min(vals.length - 1, Math.max(0, Math.ceil(q * vals.length) - 1))];
+    return { n: vals.length, p50Ms: at(0.5), p90Ms: at(0.9), maxMs: vals[vals.length - 1], excluded };
+  }
+
   stopDelivery(opts: { sinceMs: number; agentType?: string } = { sinceMs: 0 }): ApmeStopDeliveryRow[] {
     if (!this.db) return [];
     const params: unknown[] = [opts.sinceMs];
@@ -1343,10 +1499,20 @@ export class ApmeStore {
       `SELECT t.id, t.run_id, t.task_category FROM tasks t
        WHERE t.ended_at IS NOT NULL
          AND t.ended_at >= ?
-         AND t.summary IS NULL
+         -- NOT summary IS NULL. Only the task_rollup rubric asks for a
+         -- summary, so a task judged under a category or general rubric has a
+         -- composite score and eval rows with a NULL summary. Selecting on the
+         -- summary alone re-offered such a task every tick forever - and
+         -- because the judge SUCCEEDS on it, enqueueTask never parks it, so
+         -- pickBacklogTasks cannot skip it either and it owns the head of this
+         -- ended_at DESC query permanently. That is the #289 starvation in the
+         -- one shape the park-aware drain is blind to. JUDGED_SQL is the same
+         -- test judge-health reports with: an instrument and a drain that
+         -- disagree about "judged" describe different systems.
+         AND NOT ${ApmeStore.JUDGED_SQL}
          -- A task the judge already declined (task-gradeability.ts) is not a
          -- backlog; re-offering it every sweep re-declines it forever.
-         AND (t.notes_json IS NULL OR t.notes_json NOT LIKE '%"notGradeable"%')
+         AND NOT ${ApmeStore.DECLINED_SQL}
        ORDER BY t.ended_at DESC
        LIMIT ?`,
     ).all(sinceMs, limit) as Array<{ id: string; run_id: string; task_category: string | null }>;
@@ -1429,6 +1595,78 @@ export class ApmeStore {
       toolName: (r.tool_name as string | null) ?? null,
       payload: (r.payload as string | null) ?? '{}',
     }));
+  }
+
+  // ─── Retention / prune (#302) ─────────────────────────────────────────────
+  // `steps` and `sample_events` are the two payload-heavy tables (measured
+  // 2026-09-09: 71% of a 2.33 GB apme.sqlite, ~7.7 KB/row). `runs`/`tasks`/
+  // `turns`/`evals` are never touched by any of this — they are kept forever
+  // per the owner's decision. Rows are never DELETEd either: only the
+  // payload TEXT is replaced by a small marker (`buildPrunedPayload`), so
+  // every reader that counts/keys off row existence (scorers, classifier,
+  // outcome, the graph, the dashboard, the judge) keeps working. `steps` is
+  // pruned by age alone regardless of hook kind (`PreToolUse`/`PostToolUse`/
+  // `tool_end`/… — there is no literal `kind='tool'` there); `sample_events`
+  // is pruned ONLY where `kind='tool'`, since that one kind is ~98% of that
+  // table's payload bytes on a live store and the other kinds
+  // (user_message/assistant_message/model/subagent/state/info/relation) hold
+  // small, semantically load-bearing text (task titles, judge context) that
+  // this command has no reason to touch. A `ts=0` row's age is unknown (pre-
+  // instrumentation or a clock fault) and is never a candidate — pruning it
+  // would be a guess, not a measurement.
+
+  /** Preview: rows and payload bytes an `apme prune --older-than <days>`
+   *  would touch, without writing anything. */
+  previewPrune(cutoffMs: number): { steps: PruneEstimate; sampleEvents: PruneEstimate } {
+    if (!this.db) return { steps: emptyPruneEstimate(), sampleEvents: emptyPruneEstimate() };
+    const steps = this.db.prepare(
+      `SELECT COUNT(*) AS rows, COALESCE(SUM(LENGTH(payload)),0) AS bytes
+       FROM steps WHERE ts > 0 AND ts < ? AND payload IS NOT NULL AND payload NOT LIKE ?`,
+    ).get(cutoffMs, PRUNED_PAYLOAD_LIKE) as { rows: number; bytes: number };
+    const sampleEvents = this.db.prepare(
+      `SELECT COUNT(*) AS rows, COALESCE(SUM(LENGTH(payload)),0) AS bytes
+       FROM sample_events WHERE kind = 'tool' AND ts > 0 AND ts < ? AND payload IS NOT NULL AND payload NOT LIKE ?`,
+    ).get(cutoffMs, PRUNED_PAYLOAD_LIKE) as { rows: number; bytes: number };
+    return {
+      steps: { rows: steps.rows, bytesBefore: steps.bytes, bytesAfter: null },
+      sampleEvents: { rows: sampleEvents.rows, bytesBefore: sampleEvents.bytes, bytesAfter: null },
+    };
+  }
+
+  /** Apply: replace payloads older than `cutoffMs` with a pruned marker, for
+   *  `steps` (all kinds) and `sample_events` (kind='tool' only). Batched
+   *  SELECT+UPDATE so a very large store never holds every touched payload
+   *  in memory at once, all wrapped in ONE transaction so the pair of tables
+   *  commits or rolls back together. */
+  applyPrune(cutoffMs: number, prunedAt: number = Date.now()): { steps: PruneEstimate; sampleEvents: PruneEstimate } {
+    if (!this.db) return { steps: emptyPruneEstimate(), sampleEvents: emptyPruneEstimate() };
+    const db = this.db;
+    let steps = emptyPruneEstimate();
+    let sampleEvents = emptyPruneEstimate();
+    const run = db.transaction(() => {
+      steps = prunePayloadColumn(db, 'steps', '', cutoffMs, prunedAt);
+      sampleEvents = prunePayloadColumn(db, 'sample_events', "AND kind = 'tool'", cutoffMs, prunedAt);
+    });
+    run();
+    return { steps, sampleEvents };
+  }
+
+  /** Run SQLite VACUUM — rewrites the whole file, so this reclaims the disk
+   *  space `applyPrune` freed within pages. Callers gate this on
+   *  `checkVacuumSpace` (payload-prune.ts) first; this method does not.
+   *
+   *  In `journal_mode = WAL` (this store's mode), VACUUM's own rewrite
+   *  lands in the WAL, not the main file — measured: the on-disk
+   *  `apme.sqlite` stayed at its pre-VACUUM size until `close()` forced a
+   *  checkpoint, so a caller that stats the file right after `vacuum()`
+   *  (to report before/after size, as the CLI does) would print an
+   *  unchanged size despite VACUUM having genuinely run. `wal_checkpoint
+   *  (TRUNCATE)` forces that merge-and-shrink immediately, without closing
+   *  the connection. */
+  vacuum(): void {
+    if (!this.db) return;
+    this.db.exec('VACUUM');
+    try { this.db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* best-effort */ }
   }
 
   insertArtifact(row: ApmeArtifactRow): void {
@@ -2109,8 +2347,22 @@ function sampleEventRowToTrajectory(r: ApmeSampleEventRow): TrajectoryEvent | nu
       return { ...base, kind: 'assistant_message', text: (p.text as string) ?? '', responseKind: ((p.responseKind as string) ?? 'text') as 'text' | 'tool_only' | 'empty' };
     case 'model':
       return { ...base, kind: 'model', model: r.model ?? 'unknown', inputTokens: r.inputTokens ?? 0, outputTokens: r.outputTokens ?? 0, costUsd: r.costUsd ?? 0, latencyMs: r.latencyMs ?? 0 };
-    case 'tool':
-      return { ...base, kind: 'tool', name: r.toolName ?? 'tool', input: p.input, output: p.output, error: r.toolError ?? null, status: (r.toolStatus as 'pending' | 'success' | 'error' | undefined) ?? undefined };
+    case 'tool': {
+      // A pruned row (#302) is still valid JSON with none of `input`/`output`,
+      // so this already degrades to "no content" — `pruned: true` makes that
+      // an explicit fact instead of an accident, for consumers that must not
+      // read "no input recorded" as "called with no arguments" (churn/dedup
+      // scoring, the judge's trajectory summary).
+      const pruned = isPrunedPayload(r.payload);
+      return {
+        ...base, kind: 'tool', name: r.toolName ?? 'tool',
+        input: pruned ? undefined : p.input,
+        output: pruned ? undefined : p.output,
+        error: r.toolError ?? null,
+        status: (r.toolStatus as 'pending' | 'success' | 'error' | undefined) ?? undefined,
+        ...(pruned ? { pruned: true } : {}),
+      };
+    }
     case 'subagent':
       return {
         ...base,
@@ -2125,6 +2377,19 @@ function sampleEventRowToTrajectory(r: ApmeSampleEventRow): TrajectoryEvent | nu
       return { ...base, kind: 'state', from: (p.from as string | null) ?? null, to: (p.to as string) ?? 'unknown' };
     case 'info':
       return { ...base, kind: 'info', label: (p.label as string) ?? 'info', detail: (p.detail as string | null) ?? null };
+    case 'relation':
+      return {
+        ...base,
+        kind: 'relation',
+        relationId: (p.relationId as string | null) ?? null,
+        relation: p.relation === 'spawned' || p.relation === 'messaged' ? p.relation : 'waiting_on',
+        direction: p.direction === 'in' ? 'in' : 'out',
+        phase: p.phase === 'closed' ? 'closed' : 'open',
+        peerSessionId: (p.peerSessionId as string | null) ?? null,
+        peerName: (p.peerName as string | null) ?? null,
+        evidence: (p.evidence as string) ?? 'unknown',
+        detail: (p.detail as string | null) ?? null,
+      };
     default:
       return null;
   }

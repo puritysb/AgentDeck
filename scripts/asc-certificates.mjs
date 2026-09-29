@@ -53,6 +53,7 @@ function token() {
 async function api(path, method = 'GET') {
   const res = await fetch(`https://api.appstoreconnect.apple.com${path}`, {
     method,
+    signal: AbortSignal.timeout(30000),
     headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
   });
   if (method === 'DELETE') {
@@ -99,8 +100,23 @@ async function revoke(ids) {
   }
 }
 
+// Fixed app scope; credentials and contact/review notes never enter the log.
+async function storeStatus() {
+  const root = '/v1/apps/6784822497';
+  const paths = [
+    `${root}/appStoreVersions?limit=50&fields[appStoreVersions]=platform,versionString,appStoreState,releaseType`,
+    `${root}/reviewSubmissions?limit=50&fields[reviewSubmissions]=platform,state,submittedDate`,
+    `/v1/builds?filter[app]=6784822497&limit=20&sort=-uploadedDate&fields[builds]=version,processingState,uploadedDate,expired,preReleaseVersion&include=preReleaseVersion&fields[preReleaseVersions]=version,platform`,
+  ];
+  for (const path of paths) {
+    const response = await api(path);
+    console.log(JSON.stringify({resource: path.split('?')[0].split('/').at(-1), data: response.data, included: response.included ?? []}));
+  }
+}
+
 const [cmd, arg] = process.argv.slice(2);
-if (cmd === 'list') await list();
+if (cmd === 'store-status') await storeStatus();
+else if (cmd === 'list') await list();
 else if (cmd === 'revoke') {
   const ids = (arg || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!ids.length) { console.error('revoke needs comma-separated certificate ids'); process.exit(2); }
@@ -108,6 +124,6 @@ else if (cmd === 'revoke') {
   console.log('\nRemaining:\n');
   await list();
 } else {
-  console.error('usage: asc-certificates.mjs (list | revoke <id>[,<id>...])');
+  console.error('usage: asc-certificates.mjs (list | store-status | revoke <id>[,<id>...])');
   process.exit(2);
 }

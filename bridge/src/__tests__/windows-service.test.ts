@@ -45,7 +45,16 @@ describe('buildScheduledTaskXml', () => {
     const xml = buildScheduledTaskXml({ node, cliJs });
     expect(xml).toContain(`<Command>${node}</Command>`);
     // cli.js path has a space — must be wrapped in quotes inside Arguments.
-    expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon start --foreground</Arguments>`);
+    expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon autostart</Arguments>`);
+  });
+
+  it('runs the detached launcher, never the daemon itself', () => {
+    // An action that IS the daemon gets a console attached by Task Scheduler
+    // and leaves a terminal window on the desktop for the daemon's whole life,
+    // which no task setting suppresses (measured 2026-09-14).
+    const xml = buildScheduledTaskXml({ node, cliJs });
+    expect(xml).toContain('daemon autostart');
+    expect(xml).not.toContain('--foreground');
   });
 
   it('carries the network posture in Arguments — Task Scheduler has no env element', () => {
@@ -53,12 +62,12 @@ describe('buildScheduledTaskXml', () => {
     // applies when the flag is typed by hand never reaches the logon-started
     // daemon, which is the only one that ever runs.
     const xml = buildScheduledTaskXml({ node, cliJs, extraArgs: ['--loopback'] });
-    expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon start --foreground --loopback</Arguments>`);
+    expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon autostart --loopback</Arguments>`);
   });
 
   it('emits no trailing space when there is no posture to carry', () => {
     const xml = buildScheduledTaskXml({ node, cliJs, extraArgs: [] });
-    expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon start --foreground</Arguments>`);
+    expect(xml).toContain(`<Arguments>&quot;${cliJs}&quot; daemon autostart</Arguments>`);
   });
 
   it('XML-escapes special characters in the user id and paths', () => {

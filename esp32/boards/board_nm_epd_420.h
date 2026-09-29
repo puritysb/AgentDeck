@@ -28,7 +28,7 @@
 // board is the only e-ink surface in the fleet with a codec, and its audio was
 // dark until 2026-08-30 for a reason that had nothing to do with the hardware:
 // every e-ink env carried `-<audio/*>` in its build_src_filter, keyed on the
-// DISPLAY technology while audio is an orthogonal axis. InkDeck and EPD47 have
+// DISPLAY technology while audio is an orthogonal axis. TRMNL 7.5" and EPD47 have
 // no codec and keep the exclusion; this board does, so it does not.
 //
 // UNVERIFIED ON HARDWARE. The I2C address below is the ES8311 default and has

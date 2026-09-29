@@ -206,7 +206,7 @@ final class ProtocolTests: XCTestCase {
                 "esp32Wifi": {
                     "available": true,
                     "devices": [
-                        {"board": "inkdeck", "ip": "192.168.68.64", "version": "0.1.2", "stale": false, "serialActive": false},
+                        {"board": "trmnl_75", "ip": "192.168.68.64", "version": "0.1.2", "stale": false, "serialActive": false},
                         {"board": "ulanzi_tc001", "ip": "192.168.68.57", "stale": false, "serialActive": true}
                     ]
                 },
@@ -231,7 +231,7 @@ final class ProtocolTests: XCTestCase {
 
         let wifi = try XCTUnwrap(e.moduleHealth?.esp32Wifi)
         XCTAssertEqual(wifi.devices.count, 2)
-        XCTAssertEqual(wifi.devices[0].board, "inkdeck")
+        XCTAssertEqual(wifi.devices[0].board, "trmnl_75")
         XCTAssertEqual(wifi.devices[0].ip, "192.168.68.64")
         XCTAssertFalse(wifi.devices[0].serialActive)
         // Dual-homed board carries serialActive so the rail can suppress it.
@@ -365,6 +365,35 @@ final class ProtocolTests: XCTestCase {
             AgentStateHolder.mergedUsageStale(incoming: false, frameHasQuota: false, previous: true),
             false
         )
+    }
+
+    @MainActor
+    func testStaleClaudeQuotaClearsAllDisplayFieldsAndEmptySubscriptionsReplace() {
+        let holder = AgentStateHolder()
+        defer { holder.prepareForTermination() }
+        func deliver(_ json: String) {
+            guard let event = BridgeEventParser.parse(json) else { XCTFail("decode failed"); return }
+            holder.handleEvent(event)
+        }
+        let fresh = #"{"type":"usage_update","usageStale":false,"fiveHourPercent":42,"sevenDayPercent":12,"scopedLimits":[{"label":"model","percent":80}],"extraUsageEnabled":true,"extraUsageMonthlyLimit":100,"extraUsageUsedCredits":10,"extraUsageUtilization":10,"subscriptions":[{"name":"Claude"}],"codexRateLimits":{"primary":{"usedPercent":25}}}"#
+        deliver(fresh)
+        XCTAssertEqual(holder.state.fiveHourPercent, 42)
+        XCTAssertEqual(holder.state.subscriptions.count, 1)
+        deliver(#"{"type":"usage_update","usageStale":true,"fiveHourPercent":42,"extraUsageEnabled":true,"extraUsageMonthlyLimit":100,"subscriptions":[]}"#)
+        XCTAssertNil(holder.state.fiveHourPercent)
+        XCTAssertNil(holder.state.sevenDayPercent)
+        XCTAssertNil(holder.state.scopedLimits)
+        XCTAssertNil(holder.state.extraUsageEnabled)
+        XCTAssertNil(holder.state.extraUsageMonthlyLimit)
+        XCTAssertNil(holder.state.extraUsageUsedCredits)
+        XCTAssertNil(holder.state.extraUsageUtilization)
+        XCTAssertTrue(holder.state.subscriptions.isEmpty)
+        XCTAssertEqual(holder.state.codexRateLimits?.primary?.usedPercent, 25)
+        deliver(fresh)
+        XCTAssertEqual(holder.state.fiveHourPercent, 42)
+        XCTAssertEqual(holder.state.usageStale, false)
+        deliver(#"{"type":"state_update","state":"idle","subscriptions":[]}"#)
+        XCTAssertTrue(holder.state.subscriptions.isEmpty)
     }
 
     // MARK: - Connection Event
@@ -1148,6 +1177,24 @@ final class ProtocolTests: XCTestCase {
         // the latter two, asserting an order neither the SSOT nor the Swift
         // mirror produces.
         XCTAssertEqual(DashboardDataRules.sortSessions(sessions).map(\.id), ["4", "2", "1"])
+    }
+
+    func testFoldCodexKeepsAwaitingMemberAndItsOwnControls() {
+        for state in ["awaiting_permission", "awaiting_option", "awaiting_diff"] {
+            let waiting: [String: Any] = ["id": "waiting", "agentType": "codex-cli", "projectName": "Audit",
+                "state": state, "question": "Approve Bash: printf audit", "requestId": "approval",
+                "currentTool": "Bash", "startedAt": "2026-09-05T10:00:00Z"]
+            let working: [String: Any] = ["id": "working", "agentType": "codex-cli", "projectName": "Audit",
+                "state": "processing", "currentTool": "other-tool", "startedAt": "2026-09-05T11:00:00Z"]
+            for rows in [[waiting, working], [working, waiting]] {
+                let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay(rows)[0]
+                XCTAssertEqual(folded["id"] as? String, "waiting")
+                XCTAssertEqual(folded["state"] as? String, state)
+                XCTAssertEqual(folded["question"] as? String, "Approve Bash: printf audit")
+                XCTAssertEqual(folded["requestId"] as? String, "approval")
+                XCTAssertEqual(folded["currentTool"] as? String, "Bash")
+            }
+        }
     }
 
     func testFoldCodexSessionPayloadsForDisplayCollapsesSameProject() {

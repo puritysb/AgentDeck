@@ -11,7 +11,7 @@ describe('agent CLI compatibility diagnostics', () => {
       'codex --version': 'codex-cli 0.141.0',
       'opencode --version': '1.0.200',
     };
-    const report = collectAgentCliDiagnosticReport((command) => outputs[command]);
+    const report = collectAgentCliDiagnosticReport((command) => outputs[command], () => 'detected');
 
     expect(report.agents).toEqual([
       expect.objectContaining({ id: 'claude', installed: true, version: '2.1.50', compatible: true }),
@@ -24,7 +24,7 @@ describe('agent CLI compatibility diagnostics', () => {
     const report = collectAgentCliDiagnosticReport((command) => {
       if (command.startsWith('codex ')) throw new Error('private shell detail');
       return command.startsWith('claude ') ? '2.1.50' : '1.0.200';
-    });
+    }, () => 'absent');
     const codex = report.agents.find((agent) => agent.id === 'codex');
 
     expect(codex).toMatchObject({ installed: false, version: null, compatible: null });
@@ -36,6 +36,7 @@ describe('agent CLI compatibility diagnostics', () => {
       command.startsWith('claude ') ? '2.1.50'
         : command.startsWith('codex ') ? '0.1.0'
           : '1.0.200',
+      () => 'absent',
     );
     const text = formatAgentCliDiagnosticReport(report);
 
@@ -43,4 +44,14 @@ describe('agent CLI compatibility diagnostics', () => {
     expect(text).toContain('Codex CLI: 0.1.0 — OUTSIDE supported range');
     expect(text).toContain('issues/273');
   });
+});
+
+it('does not confuse written configuration with active observation', () => {
+  const report = collectAgentCliDiagnosticReport(() => '1.0.0', agent => agent === 'codex' ? 'unreadable' : 'detected');
+  expect(report.agents.find(a => a.id === 'codex')?.observation.registration).toBe('unreadable');
+  for (const agent of report.agents) {
+    expect(agent.observation.availability).toBe('not_verified');
+    expect(agent.observation.eventReception).toBe('not_checked');
+  }
+  expect(formatAgentCliDiagnosticReport(report)).toContain('Registration is file evidence only');
 });

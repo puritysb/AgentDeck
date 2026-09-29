@@ -116,8 +116,38 @@ For any diff touching `shared/src/protocol.ts` or a payload builder:
 - [ ] Does it add a **row kind** or an **id namespace** to an existing collection? → §6 first.
 - [ ] Does any new boolean have an explicit `false` path? → §4.
 - [ ] Does a removed or renamed field have a consumer sweep, including code that *stores* it? → §3.
-- [ ] Is a new cross-surface constant defined once with a drift gate, rather than mirrored by hand? → CLAUDE.md, "Cross-platform rules are SSOT-first".
+- [ ] Is a new cross-surface constant defined once with a drift gate, rather than mirrored by hand? → AGENTS.md, "Cross-platform rules are SSOT-first".
 - [ ] Were the generated mirrors regenerated (`pnpm generate-protocol`) — remembering that a comment-only edit still drifts them?
 - [ ] Would a 1.0.x client that has never heard of this change render something wrong, or merely render nothing?
 
 The last question is the one that matters. "Renders nothing" is a safe change. "Renders something wrong" is not.
+
+
+## Local model residency (additive, 2026-09-11)
+
+`mlxModels` and `ollamaStatus.models` keep their released names, types and legacy
+catalog/report semantics. Neither catalog presence nor `sizeVram == 0` proves a
+model is resident or unloaded. Ollama `/api/ps` may include CPU-only and embedding
+models, and an unsuccessful probe must not be presented as zero resident models.
+
+New producers add optional `mlxResidency` and `ollamaStatus.residency` objects:
+`{ "known": true, "models": [] }` means the query succeeded and no models are
+resident. `known: false` means the current query could not establish residency;
+the `models` list is empty in that case. Omission identifies a legacy producer.
+`ollamaStatus.installedModelsKnown` distinguishes a complete `/api/tags` result
+from the `/api/ps` fallback. These are observations, not proof of active generation.
+
+| Combination | Behavior |
+|---|---|
+| New daemon → released Apple/Android client | Unknown optional keys are ignored; legacy fields and decoding remain intact. The old UI wording stays until that client updates. |
+| Released daemon → new Apple client | Catalog is labeled as reported; residency is unverified. Positive legacy VRAM can be labeled as GPU residency reported, never as a complete resident census. |
+| New daemon → new Apple client | Dashboard and menu bar separate server availability, resident models and installed catalog. |
+| New → old daemon across reconnect | Disconnect invalidates residency verification. A legacy model snapshot also clears prior verification; unrelated quota-only frames retain it. |
+| New hub with an old focused session bridge | The hub's local model observations override relayed model fields in both state and usage frames. |
+| Probe succeeds, then fails | Explicit unknown replaces verification immediately, even when the server's display cache is temporarily retained. |
+
+No coordinated firmware/app update, capability negotiation, or compatibility-major
+change is required. The changed UI is in Apple Dashboard/menu bar; released device
+renderers continue to use their original fields. Regression tests cover released
+Apple Codable field shapes, Android's unchanged production parser, whole legacy/new
+frames, CPU-only residency, query failure, and new/legacy/reconnect transitions.

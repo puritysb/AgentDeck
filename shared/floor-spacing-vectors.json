@@ -1,0 +1,18 @@
+{
+  "$comment": "Floor-resting creature spacing (shared/src/creature-layout.ts spreadFloorResidents). Replayed by shared/src/__tests__/creature-layout.test.ts, apple/AgentDeckTests/CreatureFloorSpacingTests.swift and android CreatureFloorSpacingTest. minX/maxX/minGapRatio are the call arguments; `expected` is X in input order, compared to 1e-4.",
+  "vectors": [
+    { "name": "already apart: nobody moves", "minX": 0.2, "maxX": 0.62, "minGapRatio": 0.95,
+      "items": [{"x": 0.25, "width": 0.08}, {"x": 0.40, "width": 0.08}], "expected": [0.25, 0.40] },
+    { "name": "two overlapping idle octopuses (live 2026-09-27) push apart, the left one stays", "minX": 0.2, "maxX": 0.62, "minGapRatio": 0.95,
+      "items": [{"x": 0.31, "width": 0.088}, {"x": 0.37, "width": 0.088}], "expected": [0.31, 0.3936] },
+    { "name": "input order is preserved in the output", "minX": 0.2, "maxX": 0.62, "minGapRatio": 0.95,
+      "items": [{"x": 0.37, "width": 0.088}, {"x": 0.31, "width": 0.088}], "expected": [0.3936, 0.31] },
+    { "name": "a crowd at the right edge is pulled back left of the crayfish line", "minX": 0.2, "maxX": 0.62, "minGapRatio": 1.0,
+      "items": [{"x": 0.60, "width": 0.1}, {"x": 0.61, "width": 0.1}, {"x": 0.62, "width": 0.1}], "expected": [0.42, 0.52, 0.62] },
+    { "name": "a band too small spaces them evenly", "minX": 0.2, "maxX": 0.3, "minGapRatio": 1.0,
+      "items": [{"x": 0.25, "width": 0.1}, {"x": 0.25, "width": 0.1}, {"x": 0.25, "width": 0.1}], "expected": [0.2, 0.25, 0.3] },
+    { "name": "left edge clamp", "minX": 0.2, "maxX": 0.62, "minGapRatio": 1.0,
+      "items": [{"x": 0.10, "width": 0.1}], "expected": [0.2] },
+    { "name": "empty", "minX": 0.2, "maxX": 0.62, "minGapRatio": 1.0, "items": [], "expected": [] }
+  ]
+}

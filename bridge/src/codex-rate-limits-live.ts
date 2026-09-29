@@ -83,6 +83,22 @@ interface RawLiveRateLimits {
   /** Set only on a limit scoped to one model/feature — see `isModelScopedCodexLimit`. */
   limitName?: string | null;
   credits?: RawLiveCredits | null;
+  additionalRateLimits?: RawLiveAdditionalLimit[] | null;
+}
+
+interface RawLiveAdditionalLimit {
+  meteredFeature?: string;
+  limitName?: string | null;
+  rateLimit?: RawLiveRateLimits | null;
+}
+
+function isLunaAdditionalLimit(limit: RawLiveAdditionalLimit): boolean {
+  return `${limit.meteredFeature ?? ''} ${limit.limitName ?? ''}`.toLowerCase().includes('luna');
+}
+
+function isLunaRateLimitBlock(id: string, limit: RawLiveRateLimits): boolean {
+  return `${id} ${limit.limitName ?? ''}`.toLowerCase().includes('reserve')
+    || id.toLowerCase() === 'base_model_inference';
 }
 
 function toWindow(raw?: RawLiveWindow | null): CodexRateLimitWindow | undefined {
@@ -138,6 +154,11 @@ export function parseLiveCodexRateLimits(result: unknown, capturedAt: string): C
   const primary = toWindow(rl.primary);
   const secondary = toWindow(rl.secondary);
   const credits = toCredits(rl.credits);
+  const luna = (rl.additionalRateLimits ?? []).find(isLunaAdditionalLimit)?.rateLimit
+    ?? Object.entries(res?.rateLimitsByLimitId ?? {})
+      .find(([id, limit]) => isLunaRateLimitBlock(id, limit))?.[1];
+  const lunaPrimary = toWindow(luna?.primary);
+  const lunaSecondary = toWindow(luna?.secondary);
   // The map key rides out with the block. Without it a value that carries no
   // `limitId` produces a snapshot with none, and `codexSnapshotsShareLimitFamily`
   // then short-circuits on the missing id and answers "same family" for every
@@ -151,6 +172,14 @@ export function parseLiveCodexRateLimits(result: unknown, capturedAt: string): C
     planType: typeof rl.planType === 'string' ? rl.planType : undefined,
     limitId,
     credits,
+    lunaReserve: [primary, secondary].some((w) => w && w.usedPercent >= 100) && (lunaPrimary || lunaSecondary)
+      ? {
+          usedPercent: (lunaPrimary ?? lunaSecondary)!.usedPercent,
+          resetsAt: (lunaPrimary ?? lunaSecondary)!.resetsAt,
+          regularResetsAt: [primary, secondary].find((w) => w?.resetsAt)?.resetsAt,
+          available: (lunaPrimary ?? lunaSecondary)!.usedPercent < 100,
+        }
+      : undefined,
     capturedAt,
   };
 }
@@ -292,7 +321,15 @@ export async function queryCodexRateLimitsLive(
   return new Promise<CodexRateLimits | null>((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(plan.command, args, { stdio: ['pipe', 'pipe', 'ignore'], shell: plan.shell });
+      // windowsHide because the daemon has no console of its own: its autostart
+      // launcher spawns it DETACHED (windows-service.ts), so any console child
+      // that does not suppress its window gets a brand new one — on the
+      // desktop, every probe cycle. Under `shell` this child is cmd.exe.
+      child = spawn(plan.command, args, {
+        stdio: ['pipe', 'pipe', 'ignore'],
+        shell: plan.shell,
+        windowsHide: true,
+      });
     } catch {
       resolve(null);
       return;
@@ -308,7 +345,13 @@ export async function queryCodexRateLimitsLive(
         // Under a shell the child is cmd.exe and the real server is its grandchild;
         // terminating the shell alone would orphan a Codex process every 5 minutes.
         if (plan.shell && child.pid) {
-          spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).on('error', () => {});
+          // This is the spawn a user actually SAW: an empty
+          // `C:\Windows\system32\taskkill.exe` window appearing every five
+          // minutes once the daemon stopped having a console to lend it.
+          spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+            stdio: 'ignore',
+            windowsHide: true,
+          }).on('error', () => {});
         }
       } catch { /* already gone */ }
       resolve(value);
@@ -624,6 +667,11 @@ export function pickBestCodexRateLimits(
   nowMs: number = Date.now(),
   opts: { liveOwnsFamilyAuthority?: boolean } = {},
 ): CodexRateLimits | null {
+  const keepLuna = (chosen: CodexRateLimits, other: CodexRateLimits): CodexRateLimits =>
+    chosen === live || chosen.lunaReserve || !other.lunaReserve
+      || ![chosen.primary, chosen.secondary].some((w) => w && w.usedPercent >= 100)
+      ? chosen
+      : { ...chosen, lunaReserve: other.lunaReserve };
   if (!live) return passive;
   if (!passive) return live;
   const livePlanMatches = codexSnapshotMatchesAccountPlan(live.planType, accountPlan);
@@ -640,15 +688,25 @@ export function pickBestCodexRateLimits(
   // relayed rollout is seconds old — and the result is every slot-based Codex
   // surface going empty.
   if (hasRenderableContent(passive) !== hasRenderableContent(live)) {
-    return hasRenderableContent(passive) ? passive : live;
+    return hasRenderableContent(passive)
+      ? keepLuna(passive, live)
+      : keepLuna(live, passive);
   }
-  return codexSnapshotOutranks(
+  const chosen = codexSnapshotOutranks(
     { planType: live.planType, capturedAtMs: capturedAtMs(live) },
     { planType: passive.planType, capturedAtMs: capturedAtMs(passive) },
     accountPlan,
   )
     ? live
     : passive;
+  // The passive rollout is normally newer and wins the account-window race,
+  // but it cannot carry additional pools. Preserve Luna metadata from the live
+  // account read only while ordinary quota remains exhausted. A selected live
+  // answer without Luna is authoritative absence, never filled from old passive
+  // metadata. Both snapshots describe the same account, so no family
+  // gate is needed here; a plan-mismatched snapshot (its own Luna included)
+  // is voided later by normalizeCodexRateLimits.
+  return keepLuna(chosen, chosen === live ? passive : live);
 }
 
 /** Throttle policy, kept pure so the cadence is testable without spawning. */

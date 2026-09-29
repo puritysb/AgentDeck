@@ -29,7 +29,7 @@ import Speech
  recording started and took the whole app down with SIGTRAP in
  `dispatch_assert_queue`. Hopping to the actor *inside* the block does not help —
  the check runs before the first statement. Same family as the
- `@convention(c)` rule in CLAUDE.md: a callback that a foreign thread invokes
+ `@convention(c)` rule in AGENTS.md: a callback that a foreign thread invokes
  must be built where no isolation can attach to it.
  */
 private final class PttFileSink: @unchecked Sendable {

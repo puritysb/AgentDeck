@@ -21,7 +21,7 @@ import dev.agentdeck.state.SessionMetrics
 import dev.agentdeck.ui.component.BrandIcon
 import dev.agentdeck.ui.monitor.rememberCurrentInstant
 import dev.agentdeck.ui.monitor.subscriptionTrailing
-import dev.agentdeck.util.codexLimitRows
+import dev.agentdeck.util.providerLimitRows
 import dev.agentdeck.util.formatCount
 import dev.agentdeck.util.formatResetTime
 import dev.agentdeck.util.formatUptime
@@ -70,7 +70,7 @@ fun EinkStatusPanel(
         // Codex (ChatGPT) rolling-window usage — own per-window stale flag, not
         // gated by Claude's usageStale. Brand mark identifies the provider so
         // the 5h/7d labels stay shared with the Claude rows above.
-        codexLimitRows(state.codexRateLimits).forEach { row ->
+        providerLimitRows(state.codexRateLimits, state.zaiRateLimits).forEach { row ->
             val bar = gaugeBar(row.percent)
             val reset = row.footnote ?: if (row.stale) "stale" else row.resetIso?.let { formatResetTime(it) } ?: ""
             Row(
@@ -91,7 +91,8 @@ fun EinkStatusPanel(
         // OpenClaw — strict primary-only filter (matches HUD rail). If no
         // model is tagged default the row collapses; promoting a non-default
         // entry would silently override the explicit rule.
-        val openClawPrimary = if (state.gatewayConnected == true && state.agentType == "openclaw") {
+        val openClawPrimary = if (state.gatewayConnected == true &&
+            (state.agentType == "openclaw" || state.agentType == "daemon")) {
             state.modelCatalog.orEmpty()
                 .firstOrNull { it.available && it.role == "default" }
                 ?.let { abbreviateModelName(it.name) }

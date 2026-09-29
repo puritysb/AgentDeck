@@ -19,7 +19,7 @@ enum PreviewDevice: String, CaseIterable, Identifiable {
     case androidTablet
     case einkMono
     case einkColor
-    case inkDeck
+    case trmnl75
     case esp32_86box
     case esp32_35Landscape
     case esp32_35Portrait
@@ -37,7 +37,7 @@ enum PreviewDevice: String, CaseIterable, Identifiable {
     // Categories follow how the UIs actually differ, not form factor alone:
     // the Android tablet and Android e-ink apps are entirely different
     // Compose layouts (grouped under one Android platform header), while
-    // InkDeck is AgentDeck ESP32 firmware and sits with the other boards.
+    // TRMNL 7.5" is AgentDeck ESP32 firmware and sits with the other boards.
     enum Category: String, CaseIterable, Identifiable {
         case desk, apple, android, esp32, matrix, terminal
 
@@ -62,7 +62,7 @@ enum PreviewDevice: String, CaseIterable, Identifiable {
         case .androidTablet, .einkMono, .einkColor:              return .android
         case .esp32_86box, .esp32_35Landscape,
              .esp32_35Portrait, .esp32Round,
-             .esp32Ttgo, .esp32Ips10, .inkDeck:                  return .esp32
+             .esp32Ttgo, .esp32Ips10, .trmnl75:                  return .esp32
         case .ulanziMatrix, .pixoo64,
              .timeboxMini, .iDotMatrix:                          return .matrix
         case .terminalTerrarium:                                 return .terminal
@@ -79,7 +79,7 @@ enum PreviewDevice: String, CaseIterable, Identifiable {
         case .androidTablet:      return "Android Tablet"
         case .einkMono:           return "Android E-ink Mono (CremaS)"
         case .einkColor:          return "Android E-ink Color (Pantone6)"
-        case .inkDeck:            return "InkDeck 7.5\" E-ink"
+        case .trmnl75:            return "TRMNL 7.5\" E-ink"
         case .esp32_86box:        return "ESP32 86Box 4\""
         case .esp32_35Landscape:  return "ESP32 IPS 3.5\" Landscape"
         case .esp32_35Portrait:   return "ESP32 IPS 3.5\" Portrait"
@@ -119,7 +119,7 @@ enum PreviewDevice: String, CaseIterable, Identifiable {
         case .androidTablet:      return "Compose canvas (Lenovo / generic tablet)."
         case .einkMono:           return "Dithered silhouette + name tag. Kobo / CremaS."
         case .einkColor:          return "Pantone6 colour e-ink — brand-tinted creature."
-        case .inkDeck:            return "800×480 1-bit e-ink — session cards + usage footer."
+        case .trmnl75:            return "800×480 1-bit e-ink — session cards + usage footer."
         case .esp32_86box:        return "4\" 480×480 wall-box IPS — terrarium + HUD."
         case .esp32_35Landscape:  return "3.5\" IPS landscape — wide canvas, LVGL."
         case .esp32_35Portrait:   return "3.5\" IPS portrait — split HUD + creature."
@@ -166,7 +166,7 @@ struct LivePreviewData {
     /// (Pixoo 64 / Timebox / iDotMatrix) feed this straight into the real
     /// `PixooRenderer`, so they become pixel-exact emulators with no separate
     /// synthesis. The fields below are pre-extracted conveniences for the
-    /// schematic previews (D200H, ESP32, InkDeck, …). Defaulted only so the
+    /// schematic previews (D200H, ESP32, TRMNL 7.5", …). Defaulted only so the
     /// snapshot tests can build a synthetic snapshot without a full state;
     /// the production path (`from`) always sets the real state.
     var source: DashboardState = DashboardState()

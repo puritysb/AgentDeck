@@ -17,46 +17,8 @@ import dev.agentdeck.net.SessionWeightRules
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.terrarium.renderer.einkColorEnabled
 import dev.agentdeck.ui.component.BrandIcon
-
-/**
- * Total monospace columns one LIMITS row may occupy on the e-ink corner card.
- * The card is a fixed-width overlay, so this is a hard budget, not a target.
- */
-const val EINK_LIMIT_ROW_COLUMNS = 15
-private const val EINK_LIMIT_MIN_GAUGE_CELLS = 3
-
-/**
- * Render one LIMITS row at a CONSTANT width: `label ████░░░░ 84%`.
- *
- * The corner card is fixed-width and the row is a single monospace string with
- * `maxLines = 1`, so anything past the edge is silently clipped — and the part
- * that overflows is the tail, which is where the number lives. That made the
- * worst row the unreadable one: a per-model cap at 100% is both the widest
- * (three digits, and a label like "Fable" instead of "5h") and the one whose
- * severity is `critical`. A partial cut is worse than a missing one, since
- * "100%" clipped mid-string can read as a plausible "10%".
- *
- * So the row is budgeted in characters. The percentage is allocated first and
- * never truncated, the label is bounded by what remains, and the GAUGE absorbs
- * the difference — a 2-char label keeps the full 8 cells exactly as before,
- * while "Fable" at 100% trades four cells for the digits it needs.
- */
-fun einkLimitRowText(
-    label: String,
-    percent: Int,
-    stale: Boolean = false,
-    gaugeCells: Int = 8,
-): String {
-    val pctText = "${percent.coerceIn(0, 100)}%" + if (stale) "!" else ""
-    // Two separators (label␣gauge␣pct) come out of the budget before anything else.
-    val forLabelAndGauge = EINK_LIMIT_ROW_COLUMNS - pctText.length - 2
-    val boundedLabel = label.take((forLabelAndGauge - EINK_LIMIT_MIN_GAUGE_CELLS).coerceAtLeast(1))
-    val cells = (forLabelAndGauge - boundedLabel.length)
-        .coerceIn(EINK_LIMIT_MIN_GAUGE_CELLS, gaugeCells)
-    val filled = ((percent.coerceIn(0, 100) / 100.0) * cells).toInt()
-    val gauge = "█".repeat(filled) + "░".repeat(cells - filled)
-    return "$boundedLabel $gauge $pctText"
-}
+import dev.agentdeck.util.sessionTone
+import dev.agentdeck.util.sessionWords
 
 fun formatCount(n: Int): String = when {
     n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
@@ -79,35 +41,23 @@ fun formatDurationLong(millis: Long): String {
     return "%d:%02d:%02d".format(h, m, s)
 }
 
-fun stateMarker(state: AgentState): String = when (state) {
-    AgentState.IDLE -> "\u25CF IDLE"                          // ●
-    AgentState.PROCESSING -> "\u25C9 PROCESSING"              // ◉
-    AgentState.AWAITING_PERMISSION -> "\u26A0 PERMISSION"     // ⚠
-    AgentState.AWAITING_OPTION -> "\u25C7 SELECT"             // ◇
-    AgentState.AWAITING_DIFF -> "\u25A1 DIFF REVIEW"          // □
-    AgentState.DISCONNECTED -> "\u25CB DISCONNECTED"          // ○
+/** Shape glyph per state: colour is redundant with shape (DESIGN.md §6.4). */
+private fun stateGlyph(state: AgentState): String = when (state) {
+    AgentState.IDLE -> "\u25CF"                 // ●
+    AgentState.PROCESSING -> "\u25C9"           // ◉
+    AgentState.AWAITING_PERMISSION -> "\u26A0"  // ⚠
+    AgentState.AWAITING_OPTION -> "\u25C7"      // ◇
+    AgentState.AWAITING_DIFF -> "\u25A1"        // □
+    AgentState.DISCONNECTED -> "\u25CB"         // ○
 }
 
-fun compactStateMarker(state: AgentState): String = when (state) {
-    AgentState.IDLE -> "\u25CF IDLE"
-    AgentState.PROCESSING -> "\u25C9 PROC"
-    AgentState.AWAITING_PERMISSION -> "\u26A0 PERM"
-    AgentState.AWAITING_OPTION -> "\u25C7 SEL"
-    AgentState.AWAITING_DIFF -> "\u25A1 DIFF"
-    AgentState.DISCONNECTED -> "\u25CB OFF"
-}
+/** Glyph + the shared short label, e.g. "◉ WORKING". */
+fun compactStateMarker(state: AgentState): String = "${stateGlyph(state)} ${state.sessionWords.short}"
 
-/** Color-coded state indicator for color e-ink. Returns null for B&W e-ink. */
+/** Session state colour on colour e-ink: the shared paper palette (DESIGN.md §2.7). Null on B&W e-ink. */
 fun stateColor(state: AgentState): Color? {
     if (!einkColorEnabled) return null
-    return when (state) {
-        AgentState.IDLE -> Color(0xFF227733)               // green
-        AgentState.PROCESSING -> Color(0xFF335588)         // blue
-        AgentState.AWAITING_PERMISSION -> Color(0xFFBB7700) // amber
-        AgentState.AWAITING_OPTION -> Color(0xFFBB7700)    // amber
-        AgentState.AWAITING_DIFF -> Color(0xFF775599)      // purple
-        AgentState.DISCONNECTED -> Color(0xFFCC2222)       // red
-    }
+    return Color(state.sessionTone.paper)
 }
 
 /** State priority for sorting: busiest first */

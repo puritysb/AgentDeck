@@ -1,0 +1,10 @@
+# 2026-09-22 — Integrate Blender habitat into the LCD e-ink projection
+
+The user approved a 2.5D trial with real agent creatures and dashboard information after reviewing Blender concepts. This iteration targets the e-ink layout on an LCD tablet; physical EPDs and other dashboards retain their existing renderers.
+
+- Authored the habitat through Blender MCP: curved substrate removes the horizon seam, asymmetrical stones and layered plants provide depth, and baked lighting leaves the central area quiet. The editable source and export script live in `assets/terrarium/`; no user information, fixed fish or agent labels are baked into the image.
+- Live canonical creature paths receive restrained top-left shading and antialiasing on LCD, preserving silhouettes and cutouts. Fish motion and state semantics remain live. The monochrome background is converted once and reused; aspect-preserving crop avoids stretched rocks on rotation.
+- First installed trial copied the habitat into each frame and measured about 52 FPS. Split the static habitat into a separate GPU-composited layer behind the transparent resident bitmap. Final non-recording measurement on Lenovo HVA095B4: 1391 frames in 23.34 seconds, about 59.6 FPS; median 10 ms, 95th percentile 11 ms, 1.22% Android-reported janky frames. This is a local observation, not a guarantee on other hardware.
+- Android 402 tests passed and the signed 1.4.1 (19) candidate was installed. Six live sessions, agent name tags, GLM usage and the timeline were reviewed in landscape and portrait; landscape was restored. Workspace build/typecheck and 4671 tests passed (2 skipped); protocol generation left no drift, token/docs/catalog gates passed, and design lint remained at 89 source findings plus 3 ignored build-output findings. Background art is not a new wire contract or a store release. Physical e-ink throughput/ghosting remains unverified.
+
+See [Android UI](docs/android-ui.md) and [resource ownership](design/RESOURCES.md). Local review captures stay under ignored `dist/eink-review/`.

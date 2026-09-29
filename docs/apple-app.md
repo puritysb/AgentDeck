@@ -7,10 +7,52 @@ terminal-managed daemon is tracked in
 Monitor and control your AI agents from iPhone, iPad, or Mac — a native SwiftUI experience.
 
 <p align="center">
-  <img src="media/ipad-iphone-closeup.jpg" width="720" alt="Apple dashboard — iPad and iPhone showing terrarium with pixel art creatures and HUD overlay">
+  <img src="media/ipad.jpg" width="720" alt="iPad photographed running AgentDeck with the native 3D aquarium, session roster, and usage rail on September 28, 2026">
 </p>
 
 The Apple app is a SwiftUI multiplatform app that connects to the dashboard hub on iOS/iPadOS, and **on macOS ships with a standalone in-process Swift daemon** — mDNS, device modules (serial/Pixoo/Timebox/iDotMatrix), Gateway proxy, hook ingestion, and WebSocket server — so the macOS build monitors sessions without Node.js. You can still use the `agentdeck` CLI alongside it for Claude Code / Codex / OpenCode PTY sessions and CLI-only integrations; the app's daemon auto-detects and defers to a running CLI daemon on the same port.
+
+## Choose your dashboard
+
+In **Settings → Dashboard**, choose **Default** or **3D aquarium · Preview**.
+Your saved choice is preserved across updates. The native 3D view uses the same
+session data, usage information, and activity panels as the standard dashboard.
+It requires iOS/iPadOS 18 or later; the standard view remains available on iOS 17.
+
+On iPhone and iPad, tap empty water to enter viewing mode: panels and labels fade
+away while the camera moves closer. Tap again to return. Reduce Motion removes
+the camera transition. Up to eight foreground residents keep crowded scenes
+readable; every session remains accessible in the roster. Decorative fish are
+not additional agent sessions.
+
+<p align="center">
+  <img src="media/aquarium-ipad.jpg" width="880" alt="Native 3D aquarium on iPad, showing sample agent sessions and the activity panels">
+</p>
+
+## macOS Dashboard Window
+
+One window holds the whole desk: the session roster, the habitat, the timeline, and the
+`UPSTREAM` / `DOWNSTREAM` rail that names every provider and every connected surface.
+
+<p align="center">
+  <img src="media/macos-dashboard.png" width="880" alt="AgentDeck macOS Dashboard — session roster, habitat with per-project creatures, UPSTREAM provider rail with Claude and Codex usage gauges, DOWNSTREAM surface list, and the timeline">
+</p>
+
+<p align="center">
+  <a href="media/macos-desk.jpg"><img src="media/macos-desk.jpg" width="720" alt="AgentDeck macOS dashboard photographed on a desktop monitor on September 28, 2026"></a>
+</p>
+
+## Collaboration (Beta)
+
+The Collaboration panel shows the selected session’s task, recent task history,
+reported running subagents, and jobs being waited on. Use it to follow delegation
+and handoffs without searching a transcript. These task records come from typed
+coordination events; live session counts are shown separately because a running
+session is not the same thing as a task or a completed handoff.
+
+<p align="center">
+  <img src="media/collaboration-panel.png" width="880" alt="AgentDeck Collaboration panel — selected session with its latest task, spawned-running and jobs-waited-on counts, and the live-census caveat, beside the habitat">
+</p>
 
 ## Three-Tab Navigation
 
@@ -53,7 +95,7 @@ The upgrade story lives here and in [appstore-feature-matrix.md](appstore-featur
 
 ## App Store Distribution
 
-[AgentDeck Dashboard is live on the Mac App Store](https://apps.apple.com/app/id6784822497) — first published `1.0.0` on 2026-07-21, updated to `1.0.2` on 2026-07-24. The iPhone/iPad companion's own first release (also `1.0.2`) is still queued for review, so the two platforms' public state differs. The repository may also advance past the store version between channel releases.
+Install [AgentDeck Dashboard from the App Store](https://apps.apple.com/app/id6784822497) on Mac, iPhone, or iPad. The Mac app runs the local hub; iPhone and iPad connect as companion dashboards. Updates are delivered through the App Store.
 
 The macOS build ships as a **self-contained Swift daemon** gated by the `AGENTDECK_APP_STORE` compile flag — no bundled Node.js, no bundled `adb`, no subprocess spawn, no AppleScript. User data lives in the app sandbox container (`~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/`, not `~/.agentdeck/`) per Apple Review Guideline 2.5.2. D200H is reached only through the Ulanzi Studio WebSocket plugin, so AgentDeck requests no USB HID entitlement. The first-launch onboarding asks for Claude Code hook access via explicit NSOpenPanel consent. OpenClaw integration uses the Gateway-native WebSocket path (see §OpenClaw Gateway below), not a file-based identity. The app uses bundle ID `bound.serendipity.agent.deck`; see [RELEASING.md](../RELEASING.md) for independent channel delivery and build numbering.
 

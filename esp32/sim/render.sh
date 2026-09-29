@@ -18,7 +18,7 @@ command -v "$PIO" >/dev/null 2>&1 || PIO="$HOME/.platformio/penv/bin/pio"
 # AgentDeck e-ink tree at the community fork's panel sizes (a layout diagnostic
 # for the shared geometry SSOT), and their output is not that fork's firmware
 # output. Ask for them by name.
-BOARDS_DEFAULT="box_86 ips35 amoled ttgo ips10 t_embed t_display_pro led8x32 inkdeck nm_epd_420_preview lilygo_epd47_preview lilygo_epd47_notouch_preview"
+BOARDS_DEFAULT="box_86 ips35 amoled ttgo ips10 t_embed t_display_pro led8x32 trmnl_75 nm_epd_420_preview lilygo_epd47_preview lilygo_epd47_notouch_preview"
 BOARD="${1:-}"
 SCENE="${2:-}"
 OUTDIR="${OUTDIR:-sim-out}"

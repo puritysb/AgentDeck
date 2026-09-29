@@ -20,6 +20,13 @@ list every channel in the heading when one round is cut across several.
 Entries below `## 2026-08-07 — npm 1.0.8` predate that rule and are kept as
 written, under the shared numbering of the time. They are not looked up by tag.
 
+Work that has landed but not shipped goes under `## Unreleased`, which no tag can
+match (the lookup needs a channel label and a version in the heading) and which
+the release cut renames to the real heading. It exists because the alternative
+that kept happening is worse: entries written only at cut time meant the round
+that shipped Kiro observation across five channels announced it nowhere, and the
+1.2.1 cut had to reconstruct #282–#289 from a commit log first.
+
 ### Known gaps
 
 These versions shipped without an entry and are not reconstructed here, because
@@ -37,6 +44,625 @@ would fire the release workflow against a version npm already holds, and this
 file's own rule forbids reconstructing its notes. The commit above is the
 record. `npm 1.0.16` (`37c674b8`) is a different case and needs nothing — it was
 bumped, superseded by 1.0.17, and never published, so it exists only in git.
+
+## Unreleased
+
+## 2026-09-28 — npm 1.6.0 · Apple 1.6.0 · ESP32 1.6.0 · Stream Deck 1.6.0 · Ulanzi 1.6.0
+
+- E-ink firmware (TRMNL 7.5", NM-EPD-420, EPD47) follows the Paper Board: only sessions that need you or are working get a card, idle sessions share one line of glyph + name, the masthead counts sessions by state, and filler copy is gone. A line break in an agent's answer no longer overprints Korean text. TRMNL no longer replaces the board with an ANSWER page after every finished turn; KEY1 cycles board → aquarium → digest.
+- NM-EPD-420 lists sessions by priority with the waiting question or live activity, and plays a short two-note chime through its speaker when a session starts waiting for you. EPD47's home shows usage with reset times, and state counts in its header.
+- Timebox Mini gains an animated agent face; iDotMatrix shows waiting / working / result / live counts. Both stage a conversation: your message puts that agent on screen listening (ASK) until it replies, and the reply stays for 45 seconds (REPLY). Automated turns stay brief. The iDotMatrix CLI client no longer paints OFFLINE after a single missed frame request — only after 15 seconds without the daemon.
+- Dashboards receive the same connect-time history from the Node and Swift daemons (the latest 100 readable rows); ESP32 boards receive several trimmed rows instead of one, and older boards are recognised from their first connect.
+- Dashboards and devices share one session-state palette (green healthy, cyan working, amber needs you, red failure, grey quiet); aquarium name tags yield instead of covering creatures.
+- Stream Deck and Ulanzi decks share the weekly usage keys; Stream Deck+ subscription dials are independent.
+- IPS10: a local OpenClaw wake word and a separate, persistent personal voice conversation; warm local Whisper transcription with CLI fallback, speech-onset and endpoint handling, voice-activity gating against noise hallucinations, and bounded upload/reply transfers. Its dashboard becomes an English aquarium with conditional quota rings, a readable project deck and a task inspection workspace. SDIO transmit is protected from unaligned buffers.
+- Sessions in a linked git worktree are labelled `Repository · worktree`; compact devices get shorter task labels; OpenClaw's personal activity appears from dispatch.
+- CLI: launch an observed agent without a managed PTY; privacy-limited daemon connection diagnostics. The Stream Deck plugin keeps reachable daemons and counts pong replies as activity.
+- E-ink refresh diagnostics count completed refreshes and full cycles and no longer interleave with protocol output; voice-stage diagnostics no longer report false I2C panics. Boards label z.ai windows by their length over serial too.
+
+- Subscription quota colors: use one consumed-capacity scale on every dashboard (green below 70%, amber at 70–89%, red from 90%). Remaining values use the same severity; TTGO gets higher-contrast percentage text and TC001 restores colored numbers/rails. Timebox keeps quota pressure separate from its agent-status beacon.
+
+- Apple and Android: show OpenClaw setup guidance only for explicit pairing or authentication failures. Reachability, reconnecting and unknown status no longer imply missing approval; connection timeouts no longer recommend replacing the token. Android now receives Gateway authentication status and displays actionable guidance.
+
+- Apple and Android 3D dashboards: emphasize working agents with high-contrast WORKING badges, visible activity bars and stronger motion across all six creature types. Keep activity cues visible in viewing mode, respect reduced motion, and separate selection from the creature silhouette. Repair Claude Code's arm geometry, including leftover bevel fragments and overlapping cut surfaces that appeared broken during movement. Native activity tuning is generated from a shared definition.
+
+- Stream Deck Classic/XL: use the full bottom row for subscription usage. Claude 5H/7D, one Codex window and two z.ai windows fit together on Classic without MORE; page only when the physical row overflows.
+- Stream Deck+: select Claude, Codex or z.ai on either usage LCD. Explicit selections adjust the other dial to avoid duplication and survive plugin restart; hold E2 to resume automatic selection.
+- Pixoo64 (Node and Swift daemons): display all three usage providers together, reserve room above their rows, and retain Claude when only its seven-day window is reported.
+- TC001: retain work status while cycling provider usage with official marks, actual window-length labels and MCP quantity labels; omit stale Claude usage and clear retired z.ai readings on disconnect.
+
+- CLI daemon startup allows up to 90 seconds on macOS for a silent preferred-port conflict (20 seconds elsewhere), retrying the actual listener and rechecking peers before fallback. This mitigates delayed app-to-CLI handoff without moving already connected fallback clients; hardware validation remains tracked in #370.
+
+- ESP32: compact horizontal usage gauges on 86 Box, IPS 3.5 and round AMOLED; visible GLM usage on IPS 10 and NM-EPD-420; proportional card fills on TTGO; five-window layouts without clipping or array overflow on T-Display Pro.
+
+## 2026-09-28 — Android 1.6.1
+
+- Fix in-app updates on Android 10 (e.g. Crema): the downloaded update was refused as "signing certificate does not match" even when it was signed by the same key, because Android 9–10 report no signer for a downloaded package unless asked for its legacy signatures too. Devices on Android 11 and later were unaffected. A device still on 1.6.0 or earlier needs this update installed once by USB or Play; later updates work in the app.
+
+## 2026-09-28 — Android 1.6.0
+
+- E-ink readers (Crema, Pantone) get the Paper Board: sessions ranked by what they ask of you (needs you → working, each with its live activity → one line of idle sessions), usage grouped by provider with the plan beside it (`Codex  Pro · until Oct 10`) and aligned rows of window · bar · used · time left, and finished agent work — judged task summaries and answered turns, each listed once. Automated turns, abandoned tasks and prompts still waiting for an answer are not listed.
+- The terrarium stays as its own zone, never under text: grey gradients on 16-level panels, colour on Kaleido, animating only while a creature is active; it yields about two fifths of its height when there is finished work to show. Colour e-ink adds session hues, usage severity colours and brand-colour marks. Each text zone refreshes on its own (sessions fast, usage and finished work slow).
+- Dashboards and aquariums share one session-state palette (green healthy, cyan working, amber needs you, red failure, grey quiet) and one quota severity scale (green below 70%, amber 70–89%, red from 90%). Aquarium name tags yield instead of covering creatures behind them.
+- 3D aquarium: working agents are easier to spot (WORKING badges, activity bars, stronger motion); Claude Code's arm geometry is repaired.
+- OpenClaw setup guidance appears only for explicit pairing or authentication failures, and the dashboard now receives Gateway authentication status.
+- Under the App Store (Swift) daemon, the Codex plan line reads the same as under the CLI daemon. Paired with the daemon's connect-history change, a tablet shows the same history whichever daemon it is attached to.
+- Existing dashboard choices and the direct-install wireless update path are unchanged; Play installations continue to update through Play.
+
+## 2026-09-23 — npm 1.4.2
+
+- Fix observed Claude sessions remaining idle during hook-driven work (#367): merge lifecycle state and sanitized current tool into the matching session while preserving passive metadata.
+- Track parallel tool calls separately, suppress ended sessions until SessionStart, and deliver the final roster update after rapid changes. Feed and WebSocket clients share the same snapshot.
+- Publish hooks, shared, bridge and setup together. No wire-format, device firmware or deck-plugin update is required. Windows live-session validation remains pending reporter confirmation.
+
+## 2026-09-23 — npm 1.4.1
+
+- Recover Claude usage authorization more promptly: retry the first recovery after one minute, retain bounded backoff, and record the outcome of each attempt.
+- Honor the configured `AGENTDECK_CLAUDE_CLI` executable during recovery, resolve relative paths, and reject unsupported Windows shell shims safely.
+- Show fresh GLM credit-quota usage on compact iDotMatrix displays connected to the Node daemon; stale readings remain hidden.
+- Publish hooks, shared, bridge and setup together at 1.4.1. Existing 1.x apps and device firmware remain compatible; no ESP32 firmware or deck-plugin update is included.
+
+## 2026-09-23 — Android 1.5.0
+
+- The optional 3D aquarium now uses the approved original agent models, including closed backs and animated limbs, instead of showing only a decorative habitat. Working sessions disturb nearby fish; the small snail travels behind the planted islands.
+- Keep the foreground readable with up to eight residents, prioritizing the selected session and requests for input. The complete session list remains accessible; unrelated sessions are not merged merely because their project names match.
+- Reduce tablet GPU load with bounded render resolution and shadow quality, keeping labels at display resolution and adapting animation cadence to thermal and power conditions.
+- Refresh the planted habitat and solid fish fins. Reserve space for the timeline, hide it during aquarium viewing, and retain the standard dashboard if native model loading fails.
+- Existing dashboard choices and the e-ink rendering/refresh path are preserved. Includes the previously prepared GLM display and wireless APK update improvements; Play installations continue to update through Play.
+
+## 2026-09-23 — Apple 1.5.0
+
+- macOS/iOS: choose the familiar dashboard or an optional 3D aquarium from Dashboard settings; preserve the selected layout across launches.
+- Show live agent sessions as their original characters in a planted 3D habitat, with clearer working and attention states and readable information panels.
+- Add reactive schooling fish with solid hinged fins and a smaller ground-roaming snail that passes behind rocks and plants.
+- Preserve session selection, accessibility through the session roster, Reduce Motion and inactive-scene pausing, with a standard-dashboard fallback when 3D content cannot load.
+- Improve fresh GLM credit-quota display on connected iDotMatrix devices.
+- Make Collaboration easier to enter and navigate: surface confirmed related sessions with their current state and input requests first, while keeping task history separate from live activity. Revisit the latest eight tasks, retain a historical selection during refresh, and inspect task summaries with compact live-activity details.
+- Bound the native foreground to eight residents, preserve the full session roster, and reserve scene space for attention and timeline panels on macOS and iOS.
+
+## 2026-09-21 — Android 1.4.1
+
+- E-ink usage rows explicitly identify GLM and include it in the provider summary.
+- Direct-install APKs offer wireless update checks, verified downloads and Android's installation confirmation in tablet and e-ink settings. Google Play builds continue to update through Play.
+- Update downloads verify the release checksum, package identity, newer version code and installed signing certificate before opening the installer.
+
+
+## 2026-09-21 — npm 1.4.0 · Stream Deck 1.4.0 · Android 1.4.0 · ESP32 1.4.0 · Ulanzi 1.4.0
+
+- Add optional z.ai Coding Plan usage across the Node daemon, Stream Deck keys and dials, Ulanzi keys, Android dashboards and ESP32 displays, including reset countdowns and MCP tool-call usage where space permits.
+- Keep z.ai readings tied to the configured account; retire removed credentials and expired readings, and preserve consistent quota and subscription rows across session relays.
+- Improve Stream Deck connection recovery by bounding initial handshakes, quarantining failed endpoints, retiring pending sockets before retry and cancelling retries on explicit disconnect.
+- Improve compact three-provider layouts and provider selection while preserving existing action identifiers and profiles.
+- Include Node daemon session ordering, asynchronous device probes and serial handover/flash preflight improvements accumulated since npm 1.3.5.
+- npm: retire stale Codex Luna reserve status when fresh account limits recover after a reset.
+- npm: reset accepted HTTP/SSE/WebSocket sockets before daemon teardown and wait for launchd job removal before restarting, improving Mac app/CLI handover and supervised restarts. Normal TCP expiry and the app’s existing retry cooldown can still delay canonical-port recovery.
+- Apple 1.4.0 remains a separate submission. Ulanzi 1.4.0 replaces the pending review version; marketplace approval and public availability are tracked separately from these artifacts.
+
+## 2026-09-21 — Apple 1.4.0
+
+- Adds optional z.ai GLM Coding Plan usage on Mac and paired iPhone/iPad.
+  Plan credit usage and MCP tool-call usage are labeled separately; macOS
+  stores the optional key in Keychain. Replacing or removing a key retires
+  the old account's readings without restarting the dashboard service.
+- Makes macOS Codex observation setup recoverable: configuration conflicts
+  and file-access failures now explain what happened, with retry and file
+  reselection. An existing `[features]` section with `hooks = true` can
+  coexist with observation. Unreadable files are never treated as empty;
+  existing disabled hooks remain unchanged and require explicit correction.
+- Refreshes Codex account quota independently of new rollout activity,
+  including USB updates when Claude quota is absent.
+- Preserves daemon-persisted observed-session ordering across the Swift and
+  Node paths, including references expressed in either observed-session ID form.
+- Improves live device previews with z.ai readings, MCP labels, provider marks,
+  Claude scoped limits, and compact layouts that keep all three providers
+  visible. Round-screen usage groups stay inside the screen boundary.
+- Improves local device coordination with lowest-port serial ownership and
+  flash-lease handling in the built-in macOS service.
+
+The Codex support report led to reproducible setup and recovery fixes, but the
+reporter's specific cause has not been confirmed. Account usage being connected
+does not imply observation hooks are installed. This Apple release does not
+publish a new daemon package, deck plugin, or firmware; those channels remain
+independent. Cross-daemon z.ai sibling relay remains a follow-up.
+
+## 2026-09-15 — npm 1.3.5
+
+- Windows autostart launches the daemon without a persistent console window;
+  Codex probe cleanup and ADB reverse polling also hide their child windows
+  (#336, fixes #339). Thanks to @dudziakl for the fix and Windows reboot testing.
+- Missing daemon registration preserves unknown supervision instead of stopping
+  an answering daemon. The launcher waits for OS process creation before reporting
+  success, and reports creation failures to Task Scheduler for retry.
+- Protected Node health responses expose bounded broadcast-attempt counters for
+  e-ink interval research (#338). These are server-wide attempts, not per-panel
+  delivery or repaint counts; actual field measurement remains in #272.
+- Windows Node 22/24/26 CI covers launcher and supervision regressions. The UTF-8
+  hook test retains Korean path/payload assertions with a cold-start budget and
+  detailed process-failure diagnostics.
+
+Upgrade with `npx @agentdeck/setup@1.3.5 --yes` so the installed CLI re-registers
+Windows autostart. Task Scheduler retries launcher failures; a later detached
+Windows daemon crash requires a manual start or the next logon. No companion app,
+deck plugin, or firmware update is required. High-load ownership issue #327
+remains open.
+
+## 2026-09-15 — npm 1.3.4
+
+- Windows hooks run PowerShell from a managed script file, preserving stdin and
+  literal variables when Claude launches hooks through Git Bash. Standalone Kiro
+  installation creates the same dependency; migration repairs missing or changed
+  scripts without rewriting already-current user settings (#329, fixes #331).
+- Failed or slow process scans preserve the observed session roster and back off
+  from scan completion. New tool activity recovers disconnected sessions and
+  refreshes processing timeouts without dismissing hub permission prompts
+  (#330, fixes #332).
+- Windows source-checkout instructions invoke the built CLI directly and explain
+  the difference between daemon autostart and a globally available command (#304).
+- Thanks to @dudziakl and @jurri for the original fixes and documentation.
+
+Upgrade with `npx @agentdeck/setup@1.3.4 --yes` to update the daemon and hooks.
+No companion app, deck plugin, or ESP32 firmware upgrade is required for these
+fixes. High-load daemon/serial ownership issue #327 remains open.
+
+## 2026-09-13 — Apple 1.3.2
+
+Bounds Claude and Codex hook port-file discovery to 200 ms per read. A protected
+macOS app-container file can wait indefinitely for an OS access decision; hook
+startup now continues to the existing healthy-port/fallback path instead of
+blocking a real agent turn. Includes the provider-layout and approval-recovery
+improvements from Apple 1.3.1.
+
+## 2026-09-13 — ESP32 1.3.0, Apple 1.3.1, Android 1.3.1, npm 1.3.3
+
+### Small displays have distinct everyday roles
+
+- **TTGO T-Display:** starts as a usage meter. The left button (GPIO0) toggles
+  Usage and Terrarium; GPIO35 rotates the current mode. Missing quota windows
+  stay absent instead of appearing as empty gauges.
+- **T-Embed CC1101:** opens an arrival-ordered waiting queue with the actual
+  project and question. Turn to choose a request, press to open, then deliberately
+  select an action. All sessions, history, and voice remain available.
+- **T-Display-S3-Pro, landscape:** pin a project by ID, retain its last result
+  until tapped, and browse every waiting request through a persistent count and
+  paginated list. New activity does not steal the current page or result.
+  The camera model keeps its portrait Pocket interface.
+- Both interactive boards reject stale or disconnected replies and distinguish
+  a sent command from an observed state update. Changed requests clear the
+  selection; unconfirmed sends time out visibly.
+
+### Hook discovery cannot block an agent indefinitely (npm)
+
+Claude and Codex hook port-file reads have a 200 ms deadline, including protected
+macOS container files. Existing Claude commands migrate automatically; all
+co-owned installers emit the same bounded lookup. OpenCode uses bounded async
+reads with at most one pending read per registry path, so an OS access prompt
+cannot stall its event loop or accumulate filesystem workers.
+
+### Provider usage follows the available data
+
+Node and Swift retire stale Claude quota/subscription displays when no current
+provider data supports them. Apple, Android, and ESP32 layouts adapt to the
+available providers and windows. Compact subscription plan/date details live in
+provider rows; upstream provider choices persist rather than changing underneath
+an active dashboard.
+
+### E-ink and diagnostics
+
+ESP32 e-ink layouts retain session rows when recent work expands. ESP32 device
+readback includes the Codex window percentages actually held by the board, making
+missing-window diagnosis possible across serial and WiFi. Preview fixtures
+preserve absent usage windows too.
+
+### Apple approval queue recovery
+
+The Swift daemon now preserves a surviving exec/plugin approval after another
+approval resolves or expires, so a still-blocked request remains actionable.
+The Node equivalent already shipped in npm 1.3.2.
+
+Stream Deck and Ulanzi remain at 1.3.0: their only shared-source delta is optional
+ESP32 diagnostic type metadata, with no plugin runtime behavior change.
+
+## 2026-09-13 — npm 1.3.2
+
+Three fixes from an adversarial review of the 1.3.0 delta, merged minutes after
+1.3.1 was tagged and therefore not in it. Nothing else moves: Apple, Android,
+Stream Deck, Ulanzi and ESP32 stay at their current versions.
+
+### The daemon supervisor's probes could answer "dead" without having looked
+
+`supervisorJobRunning`'s own contract is that `undefined` means "the supervisor
+did not answer", which is not "it died" — the caller keeps waiting, bounded by
+its ceiling. All three probes had a way to break it. `schtasks` localizes its
+status **values**, not only its headers, so `/^Status:\s+Running/` failed to
+match a running job on a non-English Windows and answered false: that made
+`convergeInstalledSupervision` stop a healthy supervised daemon to "hand it
+over", and collapsed `waitForRestartedDaemon`'s 180 s ceiling to its 20 s floor
+for a false "daemon did not come back". The launchd `catch` returned false for
+any `execFileSync` failure, a 5 s timeout under restart load included; only a
+command that ran and exited non-zero carries a numeric `status`. systemd read
+anything but `active` as dead, `activating` — restart backoff, seconds before
+the daemon returns — included.
+
+`supervisorPosture` answered `[]` when it could not read the unit, which reads
+as "the unit bakes the default posture". A Windows scheduled task has no unit
+file at all (the XML is deleted after `schtasks /Create`), so every `daemon
+restart` on a `--local` machine compared its inherited `--local` against a
+fabricated default, printed a claim about the task that was not true, and forked
+an unsupervised daemon. It now answers `undefined`, which `routeDaemonLifecycle`
+already treats as "no comparison to make".
+
+### Closing one OpenClaw approval stopped showing the other
+
+An exec approval and a plugin approval can be pending at once, and the deck
+shows one at a time. Every close path emitted `spinner_start`/`idle`
+unconditionally, and the daemon maps those straight onto the Gateway row's
+state, so the row left `awaiting_permission` while a live approval was still
+waiting: no surface rendered PERM, the user saw an idle deck, and the agent
+stayed blocked. The survivor is now re-broadcast instead, which restores the
+state and swaps the rendered question in one step. Two more in the same area: a
+second plugin approval silently discarded the first, leaving it pending on the
+Gateway with its timeline row stuck; and a failing `exec.approval.list` skipped
+the plugin catch-up entirely because the two shared one `await` chain.
+
+The Swift daemon had the same bug and also dropped the survivor from the row.
+That fix is on `master` and ships with the next Apple build.
+
+## 2026-09-12 — npm 1.3.1
+
+### The OpenClaw health check answered wrong in both directions, and ran far too often
+
+`checkGatewayHealth` is the only input that turns the OpenClaw row red from the
+Node daemon, and it returned a bare boolean tilted both ways at once. `ENOENT`
+— no `openclaw` on `PATH` — resolved **false**, so a surface whose process never
+inherited the CLI's directory reported a Gateway it had not once contacted as
+healthy. A timeout resolved **true**, so a doctor run that was merely slow was
+reported as a failing Gateway. Both are "I could not look", and both now return
+`known: false`, leaving the caller on its previous value exactly as
+`resolveGatewayHealth` already did for the health-frame path. Only a run that
+completed sets `hasError`, from its exit code, and the transition is logged so a
+row that goes red leaves a trace.
+
+The cadence was the other half of it. Measured against a live Gateway on
+2026-09-12, `openclaw doctor` takes 8-9 s; on a 30 s interval that left the CLI
+running about 30% of the time, and every run opened its own Gateway connection.
+Over four days that one check accounted for 9,958 `channels.status` calls on
+9,958 distinct connections — **99.5% of all Gateway RPC traffic** — at a mean of
+441 ms and p99 740 ms, against 50-200 ms for calls that share a socket. The
+default cadence is now 300 s, matching OpenClaw's own health monitor, and the
+timeout moves from 15 s to 30 s so the measured 8-9 s command has real headroom.
+
+## 2026-09-12 — ESP32 1.2.3
+
+The TRMNL 7.5-inch firmware now reports its canonical `trmnl_75` board identity,
+and release assets use that name. The daemons retain the legacy `inkdeck` alias
+for existing firmware. Display behavior and protocol compatibility are unchanged.
+
+## 2026-09-12 — npm 1.3.0, Apple 1.3.0, Android 1.3.0, Stream Deck 1.3.0, Ulanzi 1.3.0
+
+### The daemon handover stops wedging the macOS app
+
+Whenever the CLI daemon evicted the in-process Swift daemon, the macOS app could
+be left with neither a daemon nor a client — permanently. Reproduced on
+2026-09-07, 09-09 and 09-10, and caught in the wedged state the last time, so
+this is a line and not a theory: `connectToExternalDaemon` had one failure exit
+with no rescheduled `start()` while every other exit had one, and that same exit
+set `port = 0`, which neutered the health check's own guard. The code that gives
+up and the code that clears state shared a failure mode. The port is now
+resolved known › registry › canonical port (zero is not an answer on any input),
+the dead-end branch schedules a retry anyway because it is the branch that wedged
+the app for 23 hours, and the four Node sites that evict a Swift daemon go
+through one path that prefers `/stand-down` over `/shutdown` — a stand-down names
+the port the app must become a client of. A handover stop names it too; a plain
+`daemon stop` deliberately keeps `/shutdown`, because there "become a client" is
+a lie and the app would re-promote after its yield window.
+
+The app could also hold a listener it had no business holding: it sat in client
+mode with three connections to the hub while owning `*:9121` and answering
+nothing on it. A patient health probe had suspended while `start()` completed a
+bind, and on waking it dropped a server it had not created by assigning `nil` —
+but a started `NWListener` is retained until it is cancelled and holds the server
+weakly, so the orphan outlived its owner, kept a session-bridge port for the life
+of the process, and sent every connection it accepted to a nil receiver.
+Ownership transitions are now epoch-guarded at all four exits.
+
+### `agentdeck daemon restart` reports what actually came up
+
+On any machine with daemon autostart installed, the supervisor's respawn
+routinely wins the port back before the restart command's own child does. The
+command was checking for the process id it had forked, so it printed a failure
+over a daemon that was serving correctly — and the natural retry then stopped a
+healthy daemon. It now verifies the daemon that answered: that one is running,
+that it is not the one just stopped, and that it is serving the build on disk.
+
+### Every surface could be told the wrong agent was working
+
+The hub's global `state_update` was labelled `openclaw` whenever the Gateway
+adapter was alive, while the global state machine underneath it is moved by every
+observed Claude hook. With the Gateway idle, surfaces showed "OpenClaw ·
+processing · Bash `cd …`" carrying a Claude session's command, and it healed
+itself whenever the other sessions went quiet — which is what made it read as
+intermittent. The frame is now stamped by whoever moved it: a hook session
+produces an aggregate `daemon` frame with that session's id and project, the
+Gateway produces an `openclaw` frame with its own state, model and tool, and
+nobody-yet keeps `openclaw` while the link is alive. Consumers that gated the
+OpenClaw model catalog on the old label accept both.
+
+### Collaboration: readable history and reliable relation identity
+
+The Dashboard's Collaboration panel keeps refresh status and retry above the
+history, distinguishes missing records from failed or unsupported reads, and
+lets you open a confirmed peer session and return. Ended observations fold away;
+every capped list can expand. Relation rows show what was last observed rather
+than presenting historical starts as current activity.
+
+Both daemons now preserve relation identity, so two background jobs with the
+same name remain separate when one ends. Unlinked launch requests are kept in a
+separate section instead of vanishing when an unrelated child is resolved.
+Older records without identity stay separate observations.
+
+### The daemon's own health signals stop lying quietly
+
+An OpenClaw Gateway health frame that carried no readable verdict was counted as
+a failing one, so the crayfish went sick and the topology light went red for up
+to five minutes at a time — the gap between health checks — with nothing on any
+surface saying why. An unreadable frame is now no answer at all: the previous
+verdict is kept, and every real transition is logged, on both daemons. A Gateway
+that keeps restarting also says so now, naming the reason from OpenClaw's own
+log rather than reporting eleven healthy reconnections.
+
+Two long-running reapers that could never finish were closed off in the same
+pass, and `agentdeck apme judge-health` reports whether the work that closed
+actually received a verdict, rather than leaving that to be inferred from an
+empty scorecard.
+
+### A wake is a clock jump, not a late timer
+
+Under load the five-second wake tick landed more than fifteen seconds late
+routinely, and the detector read every such gap as a system wake: 123 firings on
+2026-09-10 against zero sleep events in `pmset`'s log, one every one to four
+minutes at the peak. Each firing ran the full device-recovery storm — mDNS
+republish, pairing re-arm on every board, BLE workers restarted, usage refetch —
+which starved the next tick, so the detector fed itself, and left `/health`
+unanswered long enough for the macOS app to promote to a fallback port and stand
+down three times in five minutes. Across a real suspend the wall clock jumps
+while the monotonic clock does not; under load both advance together, and that
+difference is now what a wake is read from. Windows' monotonic clock counts
+through sleep, so there the gap rule stays, documented as the weaker instrument.
+
+### The Work board no longer stalls the daemon for two minutes
+
+An index added for the prune command became the best index SQLite could see for
+the Work board's per-task tool count, so the planner walked every `kind='tool'`
+row once per task — roughly 200 million row visits over multi-kilobyte payloads,
+137,802 ms for one page on a live store, on a page the macOS app polls every
+fifteen seconds. The database driver is synchronous on the daemon's main thread,
+so for that whole time there was no event loop: `/health` went unanswered, the
+macOS app promoted and stood down three times in five minutes, and the OpenClaw
+link dropped on a ping timeout. A covering index brings the same page to 257 ms.
+The regression test pins the query plan rather than a timing, because a timing
+test passes on a small fixture whatever the plan.
+
+Worth noting how it reached a daemon that had not changed: the index arrived
+through the shared database file, from a CLI dry-run that ran the schema.
+
+The npm release soak also found full-table scans in the 30-second evaluation
+tick's closed-run and pending-turn queues. Two additional indexes keep queue
+selection and ordering away from historical prompt/response payloads. Query-plan
+tests cover the actual store methods and preserve their filtering and ordering.
+
+### `agentdeck apme prune` reclaims evaluation-store disk space
+
+Step and tool payloads were measured at 71% of a 2.33 GB `apme.sqlite` on one
+desk, with no retention path and no way to reclaim the bytes.
+`agentdeck apme prune [--older-than 30] [--apply] [--vacuum]` replaces payloads
+older than the cutoff with a small marker instead of deleting rows, so every
+reader keeps working. Runs, tasks, turns and evaluations are kept forever, rows
+whose age is unknown are never candidates, and only tool events are pruned — the
+other kinds hold small, load-bearing text. It is a dry run by default; `--apply`
+runs in one transaction; `--vacuum` reclaims disk only when there is room to do
+it safely. Nothing prunes in the background.
+
+### Evaluation: the same settings file now produces the same verdict
+
+Either daemon may hold the port, and both read one `settings.json`, so a
+difference between them means the same configuration scores differently
+depending on which one answered — with nothing in either log saying so. The
+macOS daemon now resolves the local judge server's address from the same
+`llm.mlx` setting the Node daemon uses (it previously read that setting for the
+model but posted to loopback regardless, then dropped silently to the weaker
+on-device judge), waits the same 90 seconds for a verdict, accepts the same
+range of HTTP success codes, and records a fallback to the on-device judge in
+its normal log instead of behind a debug flag — the last one is what made that
+fallback's rate unmeasurable on that daemon at all.
+
+The local judge also stops writing off a server capability on ambiguous
+evidence: when a request succeeded after both a field was dropped **and** the
+prompt was shortened, neither is now blamed, because the shortened prompt
+explains the success by itself. The judge ladder retries per request and keeps
+no memory of what an endpoint refused last time.
+
+The task classifier runs one preference order on both daemons — `mlx`, then
+Apple's on-device models, then the deterministic rules — and never reaches for a
+paid backend. That order is deliberately not presented as a ranking: the
+measurement that suggested otherwise ran 40 tasks against a server that had a
+27B model loaded under a 15-second budget, which measures that afternoon's load
+rather than the backends, so the order chosen is the one that changes the fewest
+existing results while letting a Mac with no MLX server still get an LLM answer.
+
+### The local judge scores only a model that is actually resident
+
+A measurement script hot-swapped the operational model and drove GPU peak to
+78.55 GB while `/health` still answered healthy. Residency, server availability
+and the installed catalog are now three separate facts on the wire rather than
+one blurred one, a per-endpoint admission gate holds a GPU failure in cooldown
+instead of retrying into it, unknown stays explicitly unknown, and a legacy
+`VRAM=0` never reads as "not loaded". The policy is shared between the two
+daemons behind a byte-for-byte generator gate, with the same vectors replayed by
+both test suites.
+
+### OpenClaw runs are only opened when there is something to record
+
+Over one measured week, 87 of 113 OpenClaw evaluation runs held nothing at all
+and were closed half an hour later by the abandoned-run reaper. An assistant
+message always produces telemetry to hand over, so "is there anything to
+ingest?" was answered yes and the run was opened — and then everything in it was
+discarded for want of an open turn. A run is now opened by the first event that
+can actually be recorded, which also covers the connection-wide run that was
+being opened at connect and usually stayed empty.
+
+### OpenClaw: plugin approvals reach the deck, and the model catalog survives a busy restart
+
+AgentDeck answered `exec.approval.*` — the Gateway blocking a tool-execution
+call — but never rendered `plugin.approval.*`, the parallel surface a plugin or a
+trusted agent runtime uses to ask a human something that is not a shell command.
+A pending plugin approval sat on the Gateway with no PERM on any surface. Both
+daemons now render it alongside exec approvals, from the installed OpenClaw
+package's own type declarations rather than from an inferred shape.
+
+The Node adapter also learned the model catalog only by spawning a CLI at
+connect, on a five-second budget with one retry. On 2026-09-11 a daemon restart
+landed as an Xcode build and a Gradle build started, both attempts timed out
+although the command takes about 1.6 seconds idle, and every surface ran without
+a catalog or a Gateway model name until the daemon was restarted again. The
+catalog is now read over the socket the adapter already holds — the way the macOS
+daemon has always read it — with the CLI kept as a fallback for a Gateway that
+does not advertise the method, and both adapters retry on one ladder for as long
+as the link lives.
+
+### The macOS daemon log is capped
+
+The Swift daemon's log was measured at 518 MB with no cap, 98% of it debug lines
+that were being written whether or not debug logging was enabled. The logger now
+rotates at 32 MB on its own write queue, keeping exactly one previous generation,
+and the diagnostics view reads into that generation when the live file is short
+right after a rotation.
+
+### Usage gauges
+
+A Codex usage window the API did not report is no longer drawn as a window at
+0%, a gauge's position on the deck no longer depends on whether it happens to be
+the binding limit, and a scoped limit's name no longer collides with a
+three-digit percentage on the D200H's shared row.
+
+### Stream Deck: the OFFLINE key can say why
+
+A user saw the single word OFFLINE with no way to tell "no daemon registered
+anywhere" from "found one but its process is gone" from "a live daemon is on a
+fallback port we have not reached" — even though the plugin already held every
+fact needed to separate them. Every action's Property Inspector now carries the
+same status line: a plain-words daemon status, the resolved `daemon.json` path,
+the port, how long ago it was probed, and a Retry that round-trips. The widget
+also now uses the Property Inspector's own font instead of the webview's
+defaults, which rendered it in Times New Roman.
+
+### Android: whatever rotates draws the running glyph
+
+Two timeline mirror bugs that the TypeScript and Swift surfaces had already
+fixed. A starting task rotated the static checklist glyph instead of swapping in
+the circular arrow, and a failed turn kept spinning next to the row explaining
+the failure, because `error` was missing from Kotlin's completion list. The swap
+rule now lives in shared code and is applied at both Android render sites.
+
+### ESP32: InkDeck is now `trmnl_75`
+
+The board is named after the kit it actually is — a Seeed TRMNL 7.5" OG DIY Kit
+running AgentDeck firmware. `inkdeck` remains an accepted alias, because a board
+already in the field reports the name it was flashed with and must stay
+reachable by the update that renames it.
+
+### Installing: the CLI link is reported honestly
+
+`scripts/install.sh` swallowed `pnpm link --global`'s stderr, warned, and then
+printed `agentdeck CLI linked` unconditionally — so on a pnpm that rejects the
+command the installer reported a link it had not made, and the next `agentdeck`
+either failed or silently resolved to an unrelated global install. It now
+reports the real outcome, prints what pnpm actually said, and names the two
+paths that do not depend on the link (`node bridge/dist/cli.js` and
+`npx @agentdeck/setup`). The flag turns out to be undocumented and
+version-dependent rather than simply gone, which is enough to stop depending on
+it silently but not enough to name a replacement. Reported by @jurri.
+
+## 2026-09-06 — npm 1.2.1, Apple 1.2.1, ESP32 1.2.2
+
+### Collaboration view (Beta): who is doing what, and what is being waited on
+
+A session whose turn has closed reads `idle` on every surface, and until now
+that was the whole story even while six headless workers it had launched were
+still running, a sibling session was exchanging messages with it, and a
+20-minute background job it would be re-invoked by kept going. The daemon now
+records those three shapes of divided work from evidence it can actually see —
+a worker whose process descends from the session's process, a cross-session
+message on the sender's tool call and the receiver's envelope, and a background
+process whose command line names the session's scratchpad — and never from
+shared project membership. The macOS Dashboard gains an opt-in **Collaboration · Beta**
+switch in the title bar (the default **Habitat** view is unchanged): pick a session and the right rail shows its
+latest task, confirmed child agents, spawned sessions, peer messages and the
+jobs it is waiting on, with "turn closed · waiting on N" replacing a bare
+`idle`. The roster row shows `⧗N` beside the subagent `+N`. The original view is
+unchanged and remains the default.
+
+Both daemons produce the evidence. The App Store daemon reads the process table
+with `sysctl` and needs no subprocess; the session-to-process link on either
+daemon is a new `X-AgentDeck-Pid` header the Claude hooks send, so rerun
+`agentdeck daemon install` (npm) once after upgrading — the app refreshes its own
+hooks on launch.
+
+### A checklist item is not a child agent
+
+A `TaskCompleted` hook (a TaskCreate/TaskUpdate item checked off) used to be
+recorded as a finished subagent named "Subagent", so a session that ran no
+children could show six completed branches. It is an annotation now, on both
+daemons.
+
+### Attention only when a human is really being waited for
+
+A Claude session in `acceptEdits` or `default` mode showed PERM — "waiting for
+you" — for tool calls its own terminal never asked about, then sat there for the
+full 25-second hold before continuing on its own. The hold predictor understood
+only the legacy `Bash(cmd:*)` spelling of a permission rule, while the
+permission dialog writes `Bash(cmd *)`: on one measured machine that was 67 of
+73 rules, so nearly every allowlisted call raised a false alert. The rule
+matcher is now generated from one source for both daemons and follows the
+documented syntax, including compound commands, the built-in read-only set, and
+wrapper stripping. Every remaining uncertainty resolves to "do not hold": a
+missed hold costs nothing, a false one costs a lie and a stall.
+
+Claude's internal fork queries — the prompt suggestions and agent summaries it
+runs for itself — emit a stop event with no matching start and no agent type.
+Those were being counted as finished workers, so `wait for it…` and
+`<no suggestion>` appeared as completed subagents. They are consumed silently
+now. A folded Codex project row also keeps the member that is actually waiting
+on you visible instead of hiding it behind a busy sibling.
+
+### The usage panel says why a quota is missing
+
+When Claude credentials expired, the subscription gauges went blank or stale
+with no reason given, which is indistinguishable from a network blip. The
+provider row now names the cause — authorization expired, unavailable, or a
+temporary failure — and retracts it automatically once a reading succeeds. The
+status is relayed to the app; the Node daemon can additionally ask your own
+Claude CLI to renew the credential with one small, tool-free turn, throttled
+across restarts.
+
+### Evaluation only scores work that exists
+
+A task with no captured agent reply, one that was only aborted, or a trivial
+exchange is now retained as explicitly not graded rather than scored against
+silence — on one week's data that was 69 of 182 judged tasks, including a
+usage-limit abort that scored 0% on its own error notice. Judge replies that
+were cut off by a token limit, or that came back empty, are rejected instead of
+parsed. A single unparseable task can no longer stall the queue behind it, and
+the daemon keeps its evaluation state across a restart instead of stranding
+every open task for the reaper.
+
+### IPS10: stable cards that keep their information
+
+The IPS10 tablet keeps the equal-size project-room cards but restores the tool,
+model and elapsed lines the previous layout dropped, shows the child and
+coordination censuses in amber when the session is waiting, and picks its ten
+cards deterministically — every session waiting on a human is kept, the newest
+fill the rest, ordered by id — with `+N` in the header for the ones beyond the
+cards. A state change never moves a card any more.
 
 ## 2026-09-04 — ESP32 1.2.1
 

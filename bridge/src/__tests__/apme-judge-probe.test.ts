@@ -1,3 +1,4 @@
+import { clearMlxSafetyForTests, clearMlxSettingsCache } from '@agentdeck/shared';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -38,6 +39,8 @@ function makeFetchMock(routes: Record<string, { ok: boolean; status?: number; bo
 }
 
 beforeEach(() => {
+  clearMlxSafetyForTests();
+  clearMlxSettingsCache();
   dataDir = mkdtempSync(join(tmpdir(), 'apme-judge-probe-'));
   process.env.AGENTDECK_DATA_DIR = dataDir;
   process.env.AGENTDECK_FM_HELPER = join(dataDir, 'missing-fm-helper');
@@ -79,7 +82,7 @@ describe('probeJudgeBackend — MLX', () => {
     });
     const r = await probeJudgeBackend(MLX_CFG);
     expect(r.status).toBe('unavailable');
-    expect(r.reason).toMatch(/MLX server unreachable/i);
+    expect(r.reason).toMatch(/ECONNREFUSED/i);
   });
 
   it('returns unavailable when /v1/models advertises no chat-capable model', async () => {
@@ -88,13 +91,13 @@ describe('probeJudgeBackend — MLX', () => {
     });
     const r = await probeJudgeBackend({ ...MLX_CFG, model: '' as string });
     expect(r.status).toBe('unavailable');
-    expect(r.reason).toMatch(/no chat-capable model/i);
+    expect(r.reason).toMatch(/no unambiguous resident chat model/i);
   });
 
   it('returns unavailable when chat ping fails (model not loaded)', async () => {
     globalThis.fetch = makeFetchMock({
       '/v1/models': { ok: true, body: { data: [{ id: 'qwen3-30b' }] } },
-      '/v1/chat/completions': { ok: false, status: 400, body: { error: 'model not loaded' } },
+      '/chat/completions': { ok: false, status: 400, body: { error: 'model not loaded' } },
     });
     const r = await probeJudgeBackend(MLX_CFG);
     expect(r.status).toBe('unavailable');
@@ -104,7 +107,7 @@ describe('probeJudgeBackend — MLX', () => {
   it('returns ready when catalog AND chat ping both succeed', async () => {
     globalThis.fetch = makeFetchMock({
       '/v1/models': { ok: true, body: { data: [{ id: 'qwen3-30b' }] } },
-      '/v1/chat/completions': { ok: true, body: { choices: [{ message: { content: 'ok' } }] } },
+      '/chat/completions': { ok: true, body: { choices: [{ message: { content: 'ok' } }] } },
     });
     const r = await probeJudgeBackend(MLX_CFG);
     expect(r.status).toBe('ready');

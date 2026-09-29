@@ -81,10 +81,10 @@ final class DevicePreviewSnapshotTests: XCTestCase {
         try snapshot(Esp32RoundPreview(selection: selection(.esp32Round, sessions: 1)), name: "round-amoled")
         try snapshot(Esp3235LandscapePreview(selection: selection(.esp32_35Landscape, sessions: 1)), name: "ips35-landscape")
 
-        // InkDeck — adaptive usage band (0/1/2 provider rows).
-        try snapshot(InkDeckPreview(selection: selection(.inkDeck, sessions: 2)), name: "inkdeck-2sess")
-        try snapshot(InkDeckPreview(selection: selection(.inkDeck, agent: .codex, sessions: 1)), name: "inkdeck-codex-only")
-        try snapshot(InkDeckPreview(selection: selection(.inkDeck, state: .disconnected, sessions: 0)), name: "inkdeck-offline")
+        // TRMNL 7.5" — adaptive usage band (0/1/2 provider rows).
+        try snapshot(Trmnl75Preview(selection: selection(.trmnl75, sessions: 2)), name: "trmnl_75-2sess")
+        try snapshot(Trmnl75Preview(selection: selection(.trmnl75, agent: .codex, sessions: 1)), name: "trmnl_75-codex-only")
+        try snapshot(Trmnl75Preview(selection: selection(.trmnl75, state: .disconnected, sessions: 0)), name: "trmnl_75-offline")
 
         // Stream Deck slot — RUNNING teal vs PERM amber split.
         try snapshot(StreamDeckPlusPreview(selection: selection(.streamDeckPlus, state: .processing, sessions: 1)), name: "sdplus-running")
@@ -115,17 +115,17 @@ final class DevicePreviewSnapshotTests: XCTestCase {
         try snapshot(IDotMatrixPreview(selection: livePixooSelection(.iDotMatrix)), name: "idotmatrix-live-emulator")
         try snapshot(TimeboxMiniPreview(selection: livePixooSelection(.timeboxMini)), name: "timebox-live-emulator")
 
-        // Schematic-preview live emulators — InkDeck + the ESP32 boards consume
+        // Schematic-preview live emulators — TRMNL 7.5" + the ESP32 boards consume
         // the shared displaySessions/displayUsageRows accessors: real project
         // cards + real Claude & Codex usage. (86Box uses PreviewMiniSessionList,
         // Round uses the tank-group HUD, IPS10 has its own office + cards pane,
         // TTGO the focused-session metric panel — all now live-aware.)
-        try snapshot(InkDeckPreview(selection: livePixooSelection(.inkDeck)), name: "inkdeck-live-emulator")
+        try snapshot(Trmnl75Preview(selection: livePixooSelection(.trmnl75)), name: "trmnl_75-live-emulator")
         // Dense page — more sessions than the fixed paper grid can hold. This
         // is the case the glance order exists for: every awaiting card must
         // survive and the header must name what was collapsed. The firmware
         // keeps an equivalent 10-session `dense` simulator scene.
-        try snapshot(InkDeckPreview(selection: denseInkDeckSelection()), name: "inkdeck-dense-hidden")
+        try snapshot(Trmnl75Preview(selection: denseTrmnl75Selection()), name: "trmnl_75-dense-hidden")
         try snapshot(Esp32Ips10Preview(selection: livePixooSelection(.esp32Ips10)), name: "ips10-live-emulator")
         try snapshot(Esp3286BoxPreview(selection: livePixooSelection(.esp32_86box)), name: "86box-live-emulator")
         try snapshot(Esp32RoundPreview(selection: livePixooSelection(.esp32Round)), name: "round-live-emulator")
@@ -169,7 +169,7 @@ final class DevicePreviewSnapshotTests: XCTestCase {
     /// drawSessionGrid that only appear over capacity: every awaiting card
     /// survives the trim, and the header reports "hidden: 2 working / 2 idle"
     /// instead of letting four sessions disappear silently.
-    private func denseInkDeckSelection() -> DevicePreviewSelection {
+    private func denseTrmnl75Selection() -> DevicePreviewSelection {
         var state = DashboardState()
         state.bridgeConnected = true
         state.state = .awaitingPermission
@@ -180,7 +180,7 @@ final class DevicePreviewSnapshotTests: XCTestCase {
             ("AgentDeck", "claude-code", "awaiting_permission"),
             ("BabelForge", "codex-cli", "awaiting_permission"),
             ("Terrarium", "opencode", "awaiting_permission"),
-            ("InkDeck", "kiro", "awaiting_permission"),
+            ("TRMNL", "kiro", "awaiting_permission"),
             ("Pixoo", "claude-code", "processing"),
             ("Bridge", "codex-cli", "processing"),
             ("Flasher", "antigravity", "processing"),
@@ -192,7 +192,7 @@ final class DevicePreviewSnapshotTests: XCTestCase {
             SessionInfo(id: "d\(index)", port: 9121 + index, projectName: row.0, agentType: row.1,
                         alive: true, state: row.2, modelName: nil, startedAt: nil)
         }
-        var sel = selection(.inkDeck, state: .awaitingPrompt, sessions: plan.count)
+        var sel = selection(.trmnl75, state: .awaitingPrompt, sessions: plan.count)
         sel.live = LivePreviewData.from(state)
         return sel
     }
@@ -312,11 +312,198 @@ final class DevicePreviewSnapshotTests: XCTestCase {
         // A pinned usage gauge tile is present (real 42% Claude 5H).
         let hasUsageGauge = slots.contains { if case .usageGauge = $0.kind { return true } else { return false } }
         XCTAssertTrue(hasUsageGauge, "expected pinned usage gauge tiles")
-        let codexPair = slots.compactMap { slot -> [D200HUsagePairWindow]? in
-            if case .usagePair(let agent, let windows) = slot.kind, agent == "codex" { return windows }
+        // Three sessions leave room for individual windows after #349.
+        let codexWindows = slots.compactMap { slot -> Double? in
+            if case .usageGauge(let agent, _, let percent, _, _, _, _) = slot.kind, agent == "codex" { return percent }
             return nil
-        }.first
-        XCTAssertEqual(codexPair?.map(\.label), ["5H", "7D"])
-        XCTAssertEqual(codexPair?.map(\.percent), [23, 51])
+        }
+        XCTAssertEqual(codexWindows, [23, 51])
+    }
+
+    /// The three-key usage strip: how five readings are packed, and where the
+    /// per-model cap sits. Mirrors `buildUsageTiles` in shared/src/d200h-layout.ts
+    /// (`session-deck-usage.test.ts` pins the same two facts on the TS side).
+    func testUsageStripPacksWeeklyReadingsAndSeatsTheCapWithClaude() throws {
+        func strip(capActive: Bool) -> [(kind: D200HSlotKind, label: String)] {
+            let usage = D200HUsage(
+                fiveHourPercent: 42,
+                sevenDayPercent: 17,
+                known: true,
+                scopedLimits: [D200HScopedLimit(label: "Fable", percent: 98, active: capActive)],
+                codexPrimaryPercent: 30,
+                codexPrimaryWindowMinutes: 300,
+                codexSecondaryPercent: 10,
+                codexSecondaryWindowMinutes: 10080
+            )
+            let input = D200HDeckInput(
+                state: "IDLE",
+                sessions: (0..<12).map {
+                    D200HSession(id: "s\($0)", agentType: "claude-code", state: "idle", projectName: "p\($0)")
+                },
+                usage: usage
+            )
+            return D200HLayoutModel.buildSessionDeck(input, view: D200HDeckView(mode: .list))
+                .compactMap { slot in
+                    switch slot.kind {
+                    case .usageGauge, .usagePair: return (slot.kind, slot.label)
+                    default: return nil
+                    }
+                }
+        }
+
+        // 5H alone (it is the window that moves), 7D + the weekly cap paired,
+        // Codex 5H+7D paired: five readings, three keys, nothing dropped.
+        let active = strip(capActive: true)
+        XCTAssertEqual(active.map(\.label), ["5H", "7D · FABLE", "5H · 7D"])
+
+        // `active` may change the ramp, never the seat.
+        let idle = strip(capActive: false)
+        XCTAssertEqual(idle.map(\.label), active.map(\.label))
+        if case .usagePair(let agent, let windows) = idle[1].kind {
+            XCTAssertEqual(agent, "claude")
+            XCTAssertEqual(windows.map(\.inactive), [false, true])
+        } else {
+            XCTFail("expected 7D + cap to share one key, got \(idle[1].kind)")
+        }
+    }
+
+    /// The two Claude windows are reported independently, so one can be absent.
+    /// This mirror has always modelled them as optionals; the TS engine filled a
+    /// missing one with `?? 0` until 2026-09-08 and drew a phantom `5H 0%`, so
+    /// this case is where the two used to disagree.
+    func testAWindowTheApiDidNotReportDrawsNoTile() throws {
+        func labels(_ usage: D200HUsage) -> [String] {
+            let input = D200HDeckInput(
+                state: "IDLE",
+                sessions: [D200HSession(id: "s0", agentType: "claude-code", state: "idle", projectName: "p0")],
+                usage: usage
+            )
+            return D200HLayoutModel.buildSessionDeck(input, view: D200HDeckView(mode: .list))
+                .compactMap { slot in
+                    switch slot.kind {
+                    case .usageGauge, .usagePair: return slot.label
+                    default: return nil
+                    }
+                }
+        }
+        XCTAssertEqual(labels(D200HUsage(sevenDayPercent: 17, known: true)), ["7D"])
+        XCTAssertEqual(labels(D200HUsage(fiveHourPercent: 42, known: true)), ["5H"])
+        // A measured zero is a reading, not an absence.
+        XCTAssertEqual(labels(D200HUsage(fiveHourPercent: 0, sevenDayPercent: 0, known: true)), ["5H", "7D"])
+    }
+
+    func testLiveZaiUsageAndCrowdedThreeProviderStrip() throws {
+        var state = DashboardState()
+        state.bridgeConnected = true
+        state.state = .idle
+        state.fiveHourPercent = 42
+        state.sevenDayPercent = 17
+        state.scopedLimits = [ScopedUsageLimit(label: "Fable", percent: 98, active: true)]
+        state.codexRateLimits = CodexRateLimits(
+            primary: CodexRateLimitWindow(usedPercent: 30, windowMinutes: 300),
+            secondary: CodexRateLimitWindow(usedPercent: 10, windowMinutes: 10080))
+        state.zaiRateLimits = ZaiRateLimits(
+            primary: ZaiWindow(usedPercent: 3, windowMinutes: 300, quantity: "tokens"),
+            secondary: ZaiWindow(usedPercent: 100, windowMinutes: 43200, quantity: "mcp"))
+        state.siblingSessions = (0..<12).map {
+            SessionInfo(id: "s\($0)", port: 9121 + $0, projectName: "p\($0)", agentType: "claude-code", alive: true, state: "idle")
+        }
+        var selected = selection(.d200hDeck, sessions: 4)
+        selected.live = LivePreviewData.from(state)
+        let usageRow = try XCTUnwrap(selected.displayUsageRows.last)
+        XCTAssertEqual(usageRow.agentType, "zai")
+        XCTAssertEqual(usageRow.secondaryLabel, "MCP")
+        XCTAssertEqual(usageRow.p7, 1)
+        let input = try XCTUnwrap(liveD200HInput(for: selected))
+        XCTAssertEqual(input.usage?.zaiSecondaryPercent, 100)
+        XCTAssertEqual(input.usage?.zaiSecondaryIsMcp, true)
+        let slots = D200HLayoutModel.buildSessionDeck(input, view: D200HDeckView(mode: .list))
+        let pairs = slots.compactMap { slot -> (String, [String])? in
+            if case .usagePair(let agent, let windows) = slot.kind { return (agent, windows.map(\.label)) }
+            return nil
+        }
+        XCTAssertEqual(pairs.map { $0.0 }, ["claude", "codex", "zai"])
+        XCTAssertEqual(pairs.first?.1, ["5H", "7D", "FABLE"])
+        XCTAssertEqual(pairs.last?.1, ["5H", "MCP"])
+        if outputDir != nil {
+            try snapshot(D200HDeckPreview(selection: selected), name: "zai-crowded-d200h")
+            let previewSessions = Array(selected.live?.sessions.prefix(3) ?? [])
+            selected.live?.sessions = previewSessions
+            selected.sessionCount = previewSessions.count
+            try snapshot(Trmnl75Preview(selection: selected), name: "zai-trmnl")
+            try snapshot(Esp32Ips10Preview(selection: selected), name: "zai-ips10")
+            try snapshot(Esp32RoundPreview(selection: selected), name: "zai-round")
+        }
+    }
+
+    /// A reported Luna reserve replaces BOTH Codex windows only while a live
+    /// account window is exhausted (shared UsagePresentation.lunaActive).
+    /// Claude readings are untouched. Mirrors `session-deck-usage.test.ts` /
+    /// `d200h-layout.test.ts` on the TS side.
+    func testLunaReserveReplacesCodexWindowsWithOneTile() throws {
+        func usageKinds(_ usage: D200HUsage) -> [D200HSlotKind] {
+            let input = D200HDeckInput(
+                state: "IDLE",
+                sessions: [D200HSession(id: "s0", agentType: "claude-code", state: "idle", projectName: "p0")],
+                usage: usage
+            )
+            return D200HLayoutModel.buildSessionDeck(input, view: D200HDeckView(mode: .list))
+                .map(\.kind)
+        }
+        func isCodexWindow(_ kind: D200HSlotKind) -> Bool {
+            if case .usageGauge(agent: "codex", _, _, _, _, _, _) = kind { return true }
+            if case .usagePair("codex", _) = kind { return true }
+            return false
+        }
+        func isLuna(_ kind: D200HSlotKind) -> Bool {
+            if case .lunaReserve = kind { return true }
+            return false
+        }
+        func isClaudeWindow(_ kind: D200HSlotKind) -> Bool {
+            if case .usageGauge(agent: "claude", _, _, _, _, _, _) = kind { return true }
+            return false
+        }
+
+        // Exhausted account with Luna: one LUNA tile showing what is LEFT.
+        let withLuna = usageKinds(D200HUsage(
+            fiveHourPercent: 42, sevenDayPercent: 17, known: true,
+            codexPrimaryPercent: 30, codexPrimaryWindowMinutes: 300,
+            codexSecondaryPercent: 100, codexSecondaryWindowMinutes: 10080,
+            lunaReserve: D200HLunaReserve(usedPercent: 32, available: true)
+        ))
+        XCTAssertFalse(withLuna.contains(where: isCodexWindow), "An exhausted account window must select the reported Luna reserve")
+        guard case .some(.lunaReserve(let remaining, let active)) = withLuna.first(where: isLuna)
+        else { return XCTFail("expected a LUNA tile, got \(withLuna)") }
+        XCTAssertEqual(remaining, 68)
+        XCTAssertTrue(active)
+        // Claude 5H/7D survive alongside Luna.
+        XCTAssertTrue(withLuna.contains(where: isClaudeWindow))
+
+        // An exhausted reserve (100% used) renders EMPTY, not a zero gauge.
+        let exhausted = usageKinds(D200HUsage(
+            codexPrimaryPercent: 100, codexPrimaryWindowMinutes: 300,
+            lunaReserve: D200HLunaReserve(usedPercent: 100, available: true)
+        ))
+        guard case .some(.lunaReserve(let remaining, let active)) = exhausted.first(where: isLuna)
+        else { return XCTFail("expected a LUNA tile, got \(exhausted)") }
+        XCTAssertEqual(remaining, 0)
+        XCTAssertFalse(active)
+
+        // After an account reset, a retained reserve must not hide normal windows.
+        let resetAccount = usageKinds(D200HUsage(
+            codexPrimaryPercent: 30, codexPrimaryWindowMinutes: 300,
+            codexSecondaryPercent: 10, codexSecondaryWindowMinutes: 10080,
+            lunaReserve: D200HLunaReserve(usedPercent: 32, available: true)
+        ))
+        XCTAssertTrue(resetAccount.contains(where: isCodexWindow))
+        XCTAssertFalse(resetAccount.contains(where: isLuna))
+
+        // Without Luna the Codex windows return.
+        let withoutLuna = usageKinds(D200HUsage(
+            codexPrimaryPercent: 30, codexPrimaryWindowMinutes: 300,
+            codexSecondaryPercent: 10, codexSecondaryWindowMinutes: 10080
+        ))
+        XCTAssertTrue(withoutLuna.contains(where: isCodexWindow))
+        XCTAssertFalse(withoutLuna.contains(where: isLuna))
     }
 }

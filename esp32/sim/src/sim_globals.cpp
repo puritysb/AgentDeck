@@ -6,16 +6,17 @@
 #include <FastLED.h>
 #include <WiFi.h>
 #include "config.h"
+#include "audio/mic_capture.h"
 #include "state/agent_state.h"
 
 // Korean-fallback label font. On-device (display.cpp) this is a RAM copy of
 // lv_font_montserrat_12 with a Noto Sans KR fallback pointer; the sim bundles
 // the same Noto KR faces (fonts/font_noto_kr_*.c) so 한글 labels render exactly
 // as the panel does instead of degrading to .notdef boxes.
-// Guarded out for the non-LVGL boards (inkdeck = Adafruit GFX direct-draw,
+// Guarded out for the non-LVGL boards (trmnl_75 = Adafruit GFX direct-draw,
 // led8x32 = raw matrix): their build filters exclude fonts/, so referencing the
 // Noto face here is an undefined symbol at link.
-#if !defined(BOARD_INKDECK) && !defined(BOARD_LED8X32)
+#if !defined(BOARD_TRMNL_75) && !defined(BOARD_LED8X32)
 extern "C" const lv_font_t font_noto_kr_12;
 lv_font_t font_kr_12 = lv_font_montserrat_12;
 // Which larger Korean-safe faces exist is a per-board contract declared in
@@ -75,13 +76,25 @@ long arduino_random(long howsmall, long howbig) {
 // ── Net / device-status shims ────────────────────────────────────────────────
 // Scenes render as an online device (serial + WiFi connected). Definitions back
 // the sim/shims/net/*.h declarations.
+bool g_simSerialConnected = true;
 namespace Net {
-bool serialConnected() { return true; }
+bool serialConnected() { return g_simSerialConnected; }
 void serialWriteJsonLine(const char*) {}
 bool wifiConnected() { return true; }
 const char* wifiLocalIP() { return "192.168.1.42"; }
-void queueOutbound(const char*) {}
+static unsigned commandCount = 0;
+static char lastCommand[1536]{};
+void queueOutbound(const char* json) {
+    ++commandCount; std::strncpy(lastCommand, json, sizeof(lastCommand) - 1);
+    lastCommand[sizeof(lastCommand) - 1] = 0;
+}
 }  // namespace Net
+namespace SimCommands {
+void reset() { Net::commandCount = 0; Net::lastCommand[0] = 0; }
+unsigned count() { return Net::commandCount; }
+const char* last() { return Net::lastCommand; }
+}
+
 
 // ── Companion-board device state (T-Embed knob, T-Display-Pro strip) ─────────
 // Those two UIs draw a live link chip and a battery cluster, so the sim has to
@@ -132,6 +145,10 @@ bool queuePhotoHttpUpload(uint8_t*, size_t, const char*, int, int) { return fals
 
 // ── Audio shims (defined in audio/mic_capture.cpp on-device) ────────────────
 // Mic-ready but never capturing: the PTT control renders in its resting state.
+const char* g_simVoiceState="wake";
+#if defined(BOARD_IPS10)
+Audio::MicFeedback g_simMicFeedback{0,80,196,0,false,false};
+#endif
 namespace Audio {
 bool micInit() { return true; }
 bool micReady() { return true; }
@@ -140,11 +157,24 @@ uint32_t micElapsedMs(uint32_t) { return 0; }
 void micStart(const char*) {}
 void micPump() {}
 void micStop(bool) {}
+const char* voiceState() { return g_simVoiceState; }
+uint16_t micLevel() { return 0; }
+#if defined(BOARD_IPS10)
+MicFeedback micFeedback() { return g_simMicFeedback; }
+#endif
+void micVoiceResult(bool) {}
+void playbackStop() {}
 // Press/sent feedback tone (audio/speaker_playback.cpp on-device). Silent here;
 // it is referenced from the voice control's event callbacks, which the sim
 // still has to link even though it never dispatches an input event.
 void playTone(uint32_t, uint32_t, float) {}
 }  // namespace Audio
+namespace WakeWord {
+static bool wakeEnabled = true;
+bool ready() { return true; }
+bool enabled() { return wakeEnabled; }
+void setEnabled(bool value) { wakeEnabled = value; }
+}
 
 // ── ES8311 codec shims (audio/es8311_codec.cpp on-device) ───────────────────
 // The IPS10 voice banner's volume steppers read and write the codec level. The
@@ -153,11 +183,12 @@ void playTone(uint32_t, uint32_t, float) {}
 #include "../../boards/board_config.h"   // defines BOARD_SPK_CODEC_ES8311
 #if defined(BOARD_SPK_CODEC_ES8311)
 namespace Es8311 {
-static int s_volume = 70;
+static int s_volume = BOARD_SPK_DEFAULT_VOLUME;
 int volume() { return s_volume; }
 void setVolume(int percent) {
   s_volume = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
 }
+bool setUserVolume(int percent) { setVolume(percent); return true; }
 }  // namespace Es8311
 #endif
 

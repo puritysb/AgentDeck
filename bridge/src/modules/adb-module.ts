@@ -1,6 +1,9 @@
 import type { DeviceModule, BridgeContext } from './types.js';
 import { setupAdbReverse, cleanupAdbReverse, startAdbReversePolling } from '../adb-reverse.js';
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * ADB reverse tunnel module for Android dashboard clients.
@@ -15,9 +18,10 @@ export class AdbModule implements DeviceModule {
     if (config === false) return false;
     if (config === true) return true;
     // auto: check if adb is available. Use `adb version` instead of `which`
-    // so detection works on Windows too (which lacks `which`).
+    // so detection works on Windows too (which lacks `which`). Async — the
+    // synchronous spelling blocked the event loop at startup (#327).
     try {
-      execSync('adb version', { stdio: 'pipe', timeout: 2000, windowsHide: true });
+      await execFileAsync('adb', ['version'], { timeout: 2000, windowsHide: true });
       return true;
     } catch {
       return false;
@@ -29,13 +33,13 @@ export class AdbModule implements DeviceModule {
     // Loopback posture: USB-transport devices only. A TCP/mDNS adb device
     // (`adb connect`, wireless debugging) would carry the tunnel over the LAN.
     const opts = { usbOnly: ctx.loopbackOnly === true };
-    setupAdbReverse(ctx.port, opts);
+    await setupAdbReverse(ctx.port, opts);
     this.stopPolling = startAdbReversePolling(ctx.port, opts);
   }
 
   async stop(): Promise<void> {
     this.stopPolling?.();
     this.stopPolling = null;
-    cleanupAdbReverse(this.port);
+    await cleanupAdbReverse(this.port);
   }
 }

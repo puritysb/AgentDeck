@@ -533,6 +533,32 @@
       ],
       "type": "object"
     },
+    "CodexLunaReserve": {
+      "additionalProperties": false,
+      "description": "Luna-only reserve window returned as an additional Codex rate-limit pool.",
+      "properties": {
+        "available": {
+          "description": "Whether the reserve is currently usable.",
+          "type": "boolean"
+        },
+        "regularResetsAt": {
+          "description": "When the regular advanced-model allowance becomes available again.",
+          "type": "string"
+        },
+        "resetsAt": {
+          "description": "The reserve's own reset, when supplied.",
+          "type": "string"
+        },
+        "usedPercent": {
+          "description": "Percent of the reserve already consumed (0–100).",
+          "type": "number"
+        }
+      },
+      "required": [
+        "usedPercent"
+      ],
+      "type": "object"
+    },
     "CodexRateLimitWindow": {
       "additionalProperties": false,
       "description": "One Codex (ChatGPT) rate-limit window, mirroring the Claude 5h/7d shape. Sourced from the user's own local Codex session rollout files — Codex CLI writes these snapshots itself, so this is local-file data, not an API call.",
@@ -575,6 +601,10 @@
           "description": "Limit identifier reported by Codex (e.g. \"premium\" for credit-based plans).",
           "type": "string"
         },
+        "lunaReserve": {
+          "$ref": "#/definitions/CodexLunaReserve",
+          "description": "Additional Luna-only pool, separate from the account 5h/7d windows."
+        },
         "planType": {
           "description": "Plan tier reported alongside the limits (e.g. \"plus\", \"pro\").",
           "type": "string"
@@ -610,6 +640,47 @@
       "required": [
         "type",
         "status"
+      ],
+      "type": "object"
+    },
+    "CoordinationSummary": {
+      "additionalProperties": false,
+      "description": "Live cross-session coordination census for one session — the second axis beside `subagents`, for work divided WITHOUT a SubagentStart: `claude -p` workers spawned from a background Bash, peer sessions messaged over SendMessage, and background processes the session is waiting on. Measured 2026-09-06: a parent whose turn had closed read `idle` on every surface while six spawned workers ran and a 22-minute background job it would be re-invoked by was still going. Observed only — never inferred from shared project membership. Emitted with explicit zeros once a session has ever had a relation (retain-on-absent clients would otherwise latch the last count).",
+      "properties": {
+        "backgroundJobs": {
+          "description": "Background processes started by this session still running (argv names its scratchpad).",
+          "type": "number"
+        },
+        "lastPeerName": {
+          "description": "Name of the most recent peer messaged with, if the evidence carried one.",
+          "type": "string"
+        },
+        "lastRelationAt": {
+          "description": "Epoch ms of the most recent relation observation.",
+          "type": "number"
+        },
+        "messagesIn": {
+          "description": "Cross-session messages received / sent in this session.",
+          "type": "number"
+        },
+        "messagesOut": {
+          "type": "number"
+        },
+        "spawnedActive": {
+          "description": "Peer sessions spawned by this session whose process is still alive.",
+          "type": "number"
+        },
+        "spawnedCompleted": {
+          "description": "Peer sessions spawned by this session that have ended.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "backgroundJobs",
+        "spawnedActive",
+        "spawnedCompleted",
+        "messagesIn",
+        "messagesOut"
       ],
       "type": "object"
     },
@@ -906,6 +977,26 @@
       ],
       "type": "object"
     },
+    "ModelResidency": {
+      "additionalProperties": false,
+      "description": "A completed residency observation. Unknown is explicit; [] with known=true means none.",
+      "properties": {
+        "known": {
+          "type": "boolean"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "known",
+        "models"
+      ],
+      "type": "object"
+    },
     "OcSessionStatus": {
       "additionalProperties": {},
       "properties": {
@@ -953,11 +1044,18 @@
         "available": {
           "type": "boolean"
         },
+        "installedModelsKnown": {
+          "type": "boolean"
+        },
         "models": {
           "items": {
             "$ref": "#/definitions/OllamaModel"
           },
           "type": "array"
+        },
+        "residency": {
+          "$ref": "#/definitions/ModelResidency",
+          "description": "Optional additive metadata; old producers cannot prove non-residency."
         }
       },
       "required": [
@@ -1181,6 +1279,10 @@
           ],
           "type": "string"
         },
+        "coordination": {
+          "$ref": "#/definitions/CoordinationSummary",
+          "description": "Cross-session coordination census — see CoordinationSummary. Same emission rule as `subagents`: present with zeros once observed, absent only when this session has never had a relation."
+        },
         "currentTask": {
           "type": "string"
         },
@@ -1188,6 +1290,10 @@
           "type": "string"
         },
         "cwd": {
+          "type": "string"
+        },
+        "displayName": {
+          "description": "Optional compact device label; never a session identity or folding key.",
           "type": "string"
         },
         "effortLevel": {
@@ -1408,6 +1514,9 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "mlxResidency": {
+          "$ref": "#/definitions/ModelResidency"
         },
         "modelCatalog": {
           "items": {
@@ -1681,6 +1790,14 @@
         "taskSummary": {
           "type": "string"
         },
+        "toolEvent": {
+          "description": "True for bounded per-tool rows produced from Claude Code hooks.",
+          "type": "boolean"
+        },
+        "toolUseId": {
+          "description": "Claude hook tool invocation identity (distinct from an approval id).",
+          "type": "string"
+        },
         "ts": {
           "type": "number"
         },
@@ -1824,6 +1941,9 @@
           },
           "type": "array"
         },
+        "mlxResidency": {
+          "$ref": "#/definitions/ModelResidency"
+        },
         "modelCatalog": {
           "items": {
             "$ref": "#/definitions/ModelCatalogEntry"
@@ -1887,6 +2007,9 @@
         },
         "usageStale": {
           "type": "boolean"
+        },
+        "zaiRateLimits": {
+          "$ref": "#/definitions/ZaiRateLimits"
         }
       },
       "required": [
@@ -2004,6 +2127,64 @@
         "type",
         "deviceId",
         "timestamp"
+      ],
+      "type": "object"
+    },
+    "ZaiRateLimits": {
+      "additionalProperties": false,
+      "description": "Z.ai (GLM Coding Plan) usage limits, fetched directly from the provider's monitor endpoint with the account's coding-plan key — an active account query like the Claude OAuth usage read, not a passive local-file snapshot. Same slot grammar as `CodexRateLimits`: `primary` is the 5-hour credits window, `secondary` the long window when the plan reports one (weekly credits on the credit schema, or the monthly MCP tool quota on the standard schema — `limitId` says which quantity the number belongs to, the same \"which limit\" axis Codex carries).",
+      "properties": {
+        "capturedAt": {
+          "description": "ISO-8601 instant this reading was fetched. Consumers derive age from it against their own clock — same contract as `CodexRateLimits.capturedAt`: an active poll re-fetches regularly, so an aged stamp means the poll is failing, and the reading dims rather than reading as live.",
+          "type": "string"
+        },
+        "limitId": {
+          "description": "Schema family the windows were read from: \"standard\" (TOKENS_LIMIT + TIME_LIMIT items) or \"credit\" (credit-only schema, lite-tier plans).",
+          "type": "string"
+        },
+        "planType": {
+          "description": "Plan tier stamped into every snapshot (\"lite\" | \"pro\" | \"max\").",
+          "type": "string"
+        },
+        "primary": {
+          "$ref": "#/definitions/ZaiWindow"
+        },
+        "secondary": {
+          "$ref": "#/definitions/ZaiWindow"
+        }
+      },
+      "type": "object"
+    },
+    "ZaiWindow": {
+      "additionalProperties": false,
+      "description": "A z.ai quota window — the shared window shape plus WHICH QUANTITY it meters: token/credits windows (`tokens`) or the MCP tool-call quota (`mcp`). They are different kinds of usage rendered side by side, and a surface must never present an MCP gauge as token usage (or vice versa); the label follows the quantity (\"5h\" vs \"MCP\").",
+      "properties": {
+        "quantity": {
+          "enum": [
+            "tokens",
+            "mcp"
+          ],
+          "type": "string"
+        },
+        "resetsAt": {
+          "description": "ISO-8601 reset instant (converted from the rollout's unix `resets_at`).",
+          "type": "string"
+        },
+        "stale": {
+          "description": "True when this window's snapshot has expired (its `resets_at` slid into the past with no fresher Codex activity). The passive rollout read is frozen, so the percent is last-known-only — renderers should dim the gauge and show a \"stale\" marker instead of a misleading \"now\" countdown. Set centrally in `buildUsageEvent`; `resetsAt` is cleared at the same time so no formatter prints \"now\".\n\nThis is the HARD signal — slot-based consumers (Pixoo renderers, ESP32 firmware) drop the gauge entirely on it. A merely OLD snapshot of a still- live window must therefore never set it; that rides `capturedAt` instead.",
+          "type": "boolean"
+        },
+        "usedPercent": {
+          "type": "number"
+        },
+        "windowMinutes": {
+          "description": "Rolling window length in minutes (primary ≈ 300 = 5h, secondary ≈ 10080 = 7d).",
+          "type": "number"
+        }
+      },
+      "required": [
+        "usedPercent",
+        "windowMinutes"
       ],
       "type": "object"
     }

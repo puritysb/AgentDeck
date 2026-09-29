@@ -71,7 +71,10 @@ export async function fetchModelCatalog(): Promise<{ entries: ModelCatalogEntry[
 
   fetchPromise = new Promise((resolve) => {
     execFile('openclaw', ['models', 'list', '--json'], {
-      timeout: 5000,
+      // 15 s: the CLI takes ~1.6 s idle but was measured past 5 s while an
+      // Xcode and a Gradle build started (2026-09-11). This is the FALLBACK
+      // path now — the Gateway's `models.list` RPC is tried first.
+      timeout: 15_000,
       encoding: 'utf-8',
       env: { ...process.env, PATH: augmentedPath() },
       windowsHide: true,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseExecApprovalRequest } from '@agentdeck/shared';
+import { parseExecApprovalRequest, parsePluginApprovalRequest } from '@agentdeck/shared';
 import { injectOpenClawSession } from '../openclaw-session.js';
 import type { EnrichedSession } from '../session-aggregator.js';
 
@@ -138,5 +138,45 @@ describe('injectOpenClawSession — the approval carries its context', () => {
       .find((s) => s.agentType === 'openclaw')!;
     expect(out.questionDetail).toBeUndefined();
     expect(out.question).toBeUndefined();
+  });
+});
+
+// A user pressing Allow must know WHICH kind of thing they are allowing (issue
+// #309) — an exec approval is a shell command, a plugin approval is whatever a
+// plugin asked for, and the two read very differently.
+describe('injectOpenClawSession — plugin approvals are labeled distinctly from exec', () => {
+  const pluginPrompt = parsePluginApprovalRequest({
+    id: 'plugin:x1',
+    request: {
+      title: 'Send message to #ops',
+      description: 'Post a status update.',
+      allowedDecisions: ['allow-once', 'deny'],
+    },
+  }, 0)!;
+
+  it('prefixes the plugin question with [Plugin], never the exec one', () => {
+    const pluginRow = injectOpenClawSession([], { gatewayConnected: true, approval: pluginPrompt })
+      .find((s) => s.agentType === 'openclaw')!;
+    expect(pluginRow.question).toBe('[Plugin] Send message to #ops');
+
+    const execPrompt = parseExecApprovalRequest({ id: 'x9', request: { command: 'ls' } }, 0)!;
+    const execRow = injectOpenClawSession([], { gatewayConnected: true, approval: execPrompt })
+      .find((s) => s.agentType === 'openclaw')!;
+    expect(execRow.question).toBe('ls');
+    expect(execRow.question).not.toContain('[Plugin]');
+  });
+
+  it('still carries options and liveAnswerable for a plugin approval', () => {
+    const row = injectOpenClawSession([], { gatewayConnected: true, approval: pluginPrompt })
+      .find((s) => s.agentType === 'openclaw')!;
+    expect(row.options?.map((o) => o.label)).toEqual(['Allow once', 'Deny']);
+    expect(row.liveAnswerable).toBe(true);
+    expect(row.promptType).toBe('yes_no_always');
+  });
+
+  it('carries the plugin approval detail too', () => {
+    const row = injectOpenClawSession([], { gatewayConnected: true, approval: pluginPrompt })
+      .find((s) => s.agentType === 'openclaw')!;
+    expect(row.questionDetail).toContain('Post a status update.');
   });
 });

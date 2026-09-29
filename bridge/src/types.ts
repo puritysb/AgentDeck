@@ -47,6 +47,7 @@ export {
   type AntigravityStatusInfo,
   type CodexRateLimits,
   type CodexRateLimitWindow,
+  type ZaiRateLimits,
   type SubscriptionInfo,
   type EncoderSlotState,
   type EncoderStateEvent,

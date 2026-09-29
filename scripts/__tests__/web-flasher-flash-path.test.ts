@@ -85,11 +85,11 @@ describe('esp32PreflightVerdict', () => {
     expect(v.mayWrite).toBe(false);
   });
 
-  it('ALLOWS a smaller declaration than the part reports — InkDeck is 16MB physical, 8MB declared', () => {
+  it('ALLOWS a smaller declaration than the part reports — TRMNL 7.5" is 16MB physical, 8MB declared', () => {
     // An equality test here would fail the one board doing the correct thing:
     // the XIAO ESP32-S3 Plus bakes an 8MB flash-size field in its BSP.
     const v = esp32PreflightVerdict({
-      board: board('inkdeck'),
+      board: board('trmnl_75'),
       surface: 'browser',
       detectedChip: 'ESP32-S3 (QFN56) (revision v0.2)',
       detectedFlashSize: '16MB',

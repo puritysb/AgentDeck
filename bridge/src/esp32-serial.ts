@@ -1,3 +1,6 @@
+import { compactSessionLabels } from './compact-session-labels.js';
+import { compactProjectName } from './utils/project-name.js';
+import { ips10RosterIndices } from './ips10-roster.js';
 /**
  * ESP32 Serial Bridge — bidirectional USB serial communication.
  *
@@ -31,7 +34,8 @@ import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import type { AuthProvisionMessage, ESP32ToHostMessage, WifiProvisionMessage } from '@agentdeck/shared/protocol';
 import { formatResetTime, truncateUtf8Bytes } from '@agentdeck/shared';
 import { readLease } from './esp32-flash-lease.js';
-import { debug, logTagged } from './logger.js';
+import { BOARD_TIMELINE_ROWS, shrinkTimelineEntryForBoard } from './board-timeline-entry.js';
+import { debug, log, logTagged } from './logger.js';
 
 /** @internal Exported for testing only */
 export const ESP32_PORT_PATTERNS = [
@@ -167,9 +171,12 @@ export interface SerialConnection {
     timelineCount?: number;
     sessionCount?: number;
     usageFiveH?: number;
+    usageCodex5H?: number;
+    usageCodex7D?: number;
     processingCount?: number;
     repaintCount?: number;
     fullRefreshCount?: number;
+    rssiDbm?: number;
     /** Peripheral telemetry/diag (capability-advertising boards). */
     capabilities?: string[];
     batteryPercent?: number;
@@ -298,7 +305,7 @@ export const SERIAL_SESSIONS_CAP = 10;
  * favour of an idle sibling. Order within a type is otherwise preserved (stable).
  */
 /** Total byte budget for a shipped timeline_history frame. The smallest board
- * line buffer is 4096 (InkDeck is 8192) — a larger line is discarded whole
+ * line buffer is 4096 (TRMNL 7.5" is 8192) — a larger line is discarded whole
  * on-device, so shipping it is pure waste at best and a WS-client killer at
  * worst. Mirrors ESP32Serial.timelineHistoryByteBudget (Swift daemon). */
 export const TIMELINE_HISTORY_BYTE_BUDGET = 3500;
@@ -356,6 +363,21 @@ export function roundRobinByAgentType(sessions: any[], cap: number): any[] {
   return result;
 }
 
+/** IPS10 keeps a bounded page stable for a minute, pins up to three attention
+ * rows and fairly visits every other alive session. The pure selection policy
+ * is shared with the generated Swift kernel; result ordering follows identity. */
+export function stableCardRoster(sessions: any[], cap: number, nowMs = Date.now()): any[] {
+  if (cap <= 0) return [];
+  const alive = sessions.filter((s) => s?.alive !== false);
+  if (alive.length <= cap) return alive;
+  const awaiting = alive.filter((s) => typeof s?.state === 'string' && s.state.startsWith('awaiting'));
+  const rest = alive.filter((s) => !awaiting.includes(s))
+    .sort((a, b) => (Date.parse(b?.startedAt ?? '') || 0) - (Date.parse(a?.startedAt ?? '') || 0));
+  const ordered = [...awaiting.sort((a, b) => String(a.id).localeCompare(String(b.id))), ...rest];
+  const picked = ips10RosterIndices(ordered.length, awaiting.length, cap, nowMs).map(i => ordered[i]);
+  return picked.sort((a, b) => String(a?.id ?? '').localeCompare(String(b?.id ?? '')));
+}
+
 export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnection, 'deviceInfo'>): BridgeEvent {
   const e = event as any;
 
@@ -367,11 +389,33 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
     // EVERY usage_update and their gauges froze on stale values.
     const cx = e.codexRateLimits
       ? {
+          // Every board renders the Luna reserve once an account window is
+          // exhausted (UsagePresentation.lunaActive); ~90 bytes of headroom.
+          ...(e.codexRateLimits.lunaReserve ? {
+            lunaReserve: { usedPercent: e.codexRateLimits.lunaReserve.usedPercent,
+              resetsAt: formatResetTime(e.codexRateLimits.lunaReserve.resetsAt),
+              stale: e.codexRateLimits.lunaReserve.resetsAt ? Date.parse(e.codexRateLimits.lunaReserve.resetsAt) <= Date.now() : false },
+          } : {}),
           primary: e.codexRateLimits.primary
-            ? { usedPercent: e.codexRateLimits.primary.usedPercent, resetsAt: formatResetTime(e.codexRateLimits.primary.resetsAt), stale: e.codexRateLimits.primary.stale }
+            ? { usedPercent: e.codexRateLimits.primary.usedPercent, windowMinutes: e.codexRateLimits.primary.windowMinutes, resetsAt: formatResetTime(e.codexRateLimits.primary.resetsAt), stale: e.codexRateLimits.primary.stale }
             : undefined,
           secondary: e.codexRateLimits.secondary
-            ? { usedPercent: e.codexRateLimits.secondary.usedPercent, resetsAt: formatResetTime(e.codexRateLimits.secondary.resetsAt), stale: e.codexRateLimits.secondary.stale }
+            ? { usedPercent: e.codexRateLimits.secondary.usedPercent, windowMinutes: e.codexRateLimits.secondary.windowMinutes, resetsAt: formatResetTime(e.codexRateLimits.secondary.resetsAt), stale: e.codexRateLimits.secondary.stale }
+            : undefined,
+        }
+      : undefined;
+    // z.ai GLM Coding Plan (#348) — same compact shape; `quantity` rides the
+    // secondary so the firmware can label the MCP window by its quantity, and
+    // `windowMinutes` is load-bearing for labels (without it the firmware's
+    // windowLabel falls back to "P"/"S" instead of "5H"/"7D" — the Codex block
+    // above has always forwarded it).
+    const zr = e.zaiRateLimits
+      ? {
+          primary: e.zaiRateLimits.primary
+            ? { usedPercent: e.zaiRateLimits.primary.usedPercent, windowMinutes: e.zaiRateLimits.primary.windowMinutes, resetsAt: formatResetTime(e.zaiRateLimits.primary.resetsAt), stale: e.zaiRateLimits.primary.stale }
+            : undefined,
+          secondary: e.zaiRateLimits.secondary
+            ? { usedPercent: e.zaiRateLimits.secondary.usedPercent, windowMinutes: e.zaiRateLimits.secondary.windowMinutes, resetsAt: formatResetTime(e.zaiRateLimits.secondary.resetsAt), stale: e.zaiRateLimits.secondary.stale, quantity: e.zaiRateLimits.secondary.quantity }
             : undefined,
         }
       : undefined;
@@ -399,6 +443,7 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
       estimatedCostUsd: e.estimatedCostUsd,
       usageStale: e.usageStale,
       ...(cx ? { codexRateLimits: cx } : {}),
+      ...(zr ? { zaiRateLimits: zr } : {}),
       ...(subs ? { subscriptions: subs } : {}),
       ...(ag ? { antigravityStatus: ag } : {}),
     } as BridgeEvent;
@@ -429,18 +474,14 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
 
   if (event.type === 'timeline_event' || event.type === 'timeline_history') {
     // Panels have no local timezone — attach host-local "HH:MM" so the
-    // InkDeck ticker (and future e-ink timelines) shows wall-clock time.
+    // TRMNL 7.5" ticker (and future e-ink timelines) shows wall-clock time.
     const stamp = (entry: any) => {
       if (!entry || !Number.isFinite(entry.ts)) return entry;
       const d = new Date(entry.ts);
       return {
-        ...entry,
-        // Bound to the firmware's TimelineEntry buffers (raw[120]/detail[200]/
-        // projectName[40]) so a history seed with long chat bodies can't
-        // balloon the line.
-        raw: limitString(entry.raw, 119) ?? '',
-        detail: limitString(entry.detail, 199),
-        ...(typeof entry.projectName === 'string' ? { projectName: limitString(entry.projectName, 39) } : {}),
+        // Bound to the firmware's TimelineEntry buffers so a history seed with
+        // long chat bodies can't balloon the line.
+        ...shrinkTimelineEntryForBoard(entry),
         localHm: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
       };
     };
@@ -454,16 +495,21 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
     return {
       ...e,
       entries: Array.isArray(e.entries)
-        ? budgetTimelineEntries(e.entries.slice(-64).map(stamp))
+        ? budgetTimelineEntries(e.entries.slice(-BOARD_TIMELINE_ROWS).map(stamp))
         : e.entries,
     };
   }
 
   if (event.type === 'sessions_list') {
     const raw = Array.isArray(e.sessions) ? e.sessions : [];
-    return {
+    const isIps10 = _conn?.deviceInfo?.board === 'ips_10';
+    const labels = compactSessionLabels(raw.filter((s: any) => s?.alive !== false).map((s: any) => ({
+      id: s.id, name: compactProjectName(s.projectName ?? '', s.cwd),
+    })), _conn?.deviceInfo?.board);
+    const selected = isIps10 ? stableCardRoster(raw, SERIAL_SESSIONS_CAP) : roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP);
+    const prepared = {
       type: 'sessions_list',
-      sessions: roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP).map((s: any) => ({
+      sessions: selected.map((s: any) => ({
         id: limitString(s.id, 31),
         projectName: limitString(s.projectName, 39),
         modelName: limitString(s.modelName, 31),
@@ -478,7 +524,7 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
         question: limitString(s.question, 159),
         elapsedSec: Number.isFinite(s.elapsedSec) ? Math.round(s.elapsedSec) : undefined,
         // Shared activity one-liner — the glanceable "what is it doing" line
-        // (InkDeck session cards render it; other boards ignore it).
+        // (TRMNL 7.5" session cards render it; other boards ignore it).
         activity: limitString(s.activity, 79),
         // Daemon-computed latest milestone (TIMELINE parity for the IPS10
         // cards). Omitted when absent to spare the 4KB serial line budget.
@@ -497,6 +543,44 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
         options: sanitizeOptions(s.options),
       })),
     } as BridgeEvent;
+    // Optional read-only census on IPS10 only. Every older/smaller board gets
+    // exactly the baseline projection. Preserve the conservative frame budget;
+    // omission is explicitly "unknown" on the new firmware, never zero.
+    if (isIps10) {
+      const rows = (prepared as any).sessions;
+      for (let i = 0; i < rows.length; i++) {
+        const c = selected[i].subagents;
+        if (c && [c.active, c.peak, c.completed].every(v => Number.isInteger(v) && v >= 0 && v <= 65535)) {
+          rows[i].subagents = { active: c.active, peak: c.peak, completed: c.completed };
+        }
+        // Coordination census: the two counts a card can act on — workers this
+        // session spawned that are still running, and background jobs it is
+        // waiting on. Messages stay on the macOS lens.
+        const k = selected[i].coordination;
+        if (k && [k.backgroundJobs, k.spawnedActive].every(v => Number.isInteger(v) && v >= 0 && v <= 65535)) {
+          rows[i].coordination = { backgroundJobs: k.backgroundJobs, spawnedActive: k.spawnedActive };
+        }
+      }
+      // How many sessions the roster holds beyond the cards: the firmware
+      // renders "+N" so a capped roster never reads as the whole machine.
+      // Counted over ALIVE rows only — `stableCardRoster` drops dead sessions,
+      // so counting `raw` would advertise a `+N` for rows nothing can show.
+      const aliveCount = raw.filter((s: any) => s?.alive !== false).length;
+      if (aliveCount > rows.length) (prepared as any).total = aliveCount;
+      (prepared as any).rosterRotating = aliveCount > rows.length;
+      if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) {
+        for (const row of rows) { delete row.subagents; delete row.coordination; }
+      }
+    }
+    // Additive, optional presentation: preserve raw projectName for details and
+    // old firmware. Never expand a frame past the serial budget for cosmetics.
+    for (const [index, row] of (prepared as any).sessions.entries()) {
+      const label = labels.get(selected[index].id);
+      if (!label || label === row.projectName) continue;
+      row.displayName = limitString(label, 39);
+      if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete row.displayName;
+    }
+    return prepared;
   }
 
   return event;
@@ -706,7 +790,7 @@ function hasLiveDeviceInfo(conn: Pick<SerialConnection, 'deviceInfo' | 'lastRead
 // ESP32 crash output is plain text on the same UART/CDC stream as the JSON
 // protocol. These markers open a capture window so the whole dump (register
 // dump lines don't individually match) is logged before the board reboots.
-const PANIC_MARKER_RE = /Guru Meditation|Backtrace:|register dump|abort\(\) was called|assert failed|Stack smashing|Stack canary|Debug exception reason|ELF file SHA256|Rebooting\.\.\./i;
+const PANIC_MARKER_RE = /Guru Meditation|Backtrace:|Core\s+\d+ register dump:|abort\(\) was called|assert failed|Stack smashing|Stack canary|Debug exception reason|ELF file SHA256|Rebooting\.\.\./i;
 const PANIC_CAPTURE_WINDOW_MS = 10_000;
 const PANIC_CAPTURE_MAX_LINES = 200;
 
@@ -727,6 +811,34 @@ export function capturePanicLine(conn: SerialConnection, line: string): boolean 
   conn.panicLogLines = count + 1;
   logTagged('esp32-panic', `${conn.port}: ${line}`);
   return true;
+}
+
+// ESP-Hosted may call esp_restart() on a transport error without a panic.
+// Retain only these fixed/numeric messages; never open the broad panic window.
+function hostedDiagnosticLine(line: string): string | undefined {
+  const clean = line.replace(/\x1b\[[0-9;]*m/g, '');
+  if (/^[EWI] \(\d{1,10}\) H_SDIO_DRV: (?:sdio_write_task: \d+: Failed to send data: -?\d+ \d+ \d+|Unrecoverable host sdio state|sdio_is_write_buffer_available: SDIO slave unresponsive|failed to read registers|failed to read interrupt register|Host is resetting itself, to avoid any sdio race condition)$/.test(clean) ||
+      /^\[SdioTx\] staged=\d+ bytes=\d+ result=-?\d+$/.test(clean)) return clean;
+  return undefined;
+}
+
+// Keep only numeric voice milestones, never transcripts, targets, URLs or tokens.
+// These survive under normal serial ownership, unlike a separate UART reader
+// which changes the transport being diagnosed.
+const VOICE_DIAGNOSTIC_PATTERNS = [
+  /^\[WakeVoice\] detected score=\d+$/,
+  /^\[WakeVoice\] capture end samples=\d+ queued=[01]$/,
+  /^\[VoiceEndpoint\] complete elapsedMs=\d+ quietMs=\d+ rms=\d+ threshold=\d+$/,
+  /^\[Voice\] HTTP upload attempt \d+: \d+ bytes, internal heap \d+ KB$/,
+  /^\[Voice\] HTTP upload \d+ bytes -> -?\d+ \(attempt \d+\)$/,
+  /^\[VoicePerf\] uploadMs=\d+ minInternalKB=\d+ pressureWaits=\d+$/,
+  /^\[Speaker\] played \d+\/\d+ bytes \(\d+(?:\.\d+)?s\), \d+ frames dropped$/,
+  /^\[VoiceFeedback\] state=(?:wake|listening|sending|transcribing|waiting|speaking|error) captureElapsedMs=\d+$/,
+];
+
+/** @internal Exported for testing only */
+export function isVoiceDiagnosticLine(line: string): boolean {
+  return line.length <= 200 && VOICE_DIAGNOSTIC_PATTERNS.some(pattern => pattern.test(line));
 }
 
 // Daemon-installed sink for device-originated commands arriving over serial.
@@ -802,7 +914,17 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
   if (!line.startsWith('{')) {
     // Not protocol JSON — usually boot/debug chatter, but crash dumps arrive
     // here too. Capture those instead of dropping them.
-    capturePanicLine(conn, line);
+    const hosted = hostedDiagnosticLine(line);
+    if (hosted) {
+      logTagged('esp32-transport', `${conn.port}: ${hosted}`);
+      return;
+    }
+    if (capturePanicLine(conn, line)) return;
+    if (isVoiceDiagnosticLine(line)) {
+      logTagged('esp32-voice', `${conn.port}: ${line}`);
+    } else if (/^\[EinkRefresh\] count=\d{1,10} full=[01] startedMs=\d{1,10} durationMs=\d{1,10}$/.test(line)) {
+      logTagged('esp32-eink', `${conn.port}: ${line}`);
+    }
     return;
   }
 
@@ -838,9 +960,12 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
           timelineCount: (msg as any).timelineCount,
           sessionCount: (msg as any).sessionCount,
           usageFiveH: (msg as any).usageFiveH,
+          usageCodex5H: (msg as any).usageCodex5H,
+          usageCodex7D: (msg as any).usageCodex7D,
           processingCount: (msg as any).processingCount,
           repaintCount: (msg as any).repaintCount,
           fullRefreshCount: (msg as any).fullRefreshCount,
+          rssiDbm: sanitizeRssiDbm(msg.rssiDbm),
           capabilities: (msg as any).capabilities,
           batteryPercent: (msg as any).batteryPercent,
           batteryVoltageMv: (msg as any).batteryVoltageMv,
@@ -986,8 +1111,6 @@ async function openPort(port: string): Promise<SerialConnection | null> {
       const events = initialStateProvider();
       for (const event of events) {
         if (!FORWARDED_EVENTS.has(event.type)) continue;
-        // Skip usage_update without API data — would reset ESP32 to "no data"
-        if (event.type === 'usage_update' && (event as any).fiveHourPercent == null) continue;
         if ((event.type === 'usage_update' || event.type === 'sessions_list') && !hasLiveDeviceInfo(conn)) continue;
         sendToConnection(conn, JSON.stringify(prepareForSerial(event, conn)));
       }
@@ -1198,23 +1321,11 @@ function sendHeartbeat(): void {
     }
   }
 
-  // Send usage_update (so ESP32 always has fresh usage/reset times)
-  // Only send once SOME usage signal is present — Claude 5h/7d, Codex limits,
-  // or Antigravity credits — otherwise the ESP32 would reset its cached values
-  // to the "no data" sentinel before any provider has populated them.
+  // Usage snapshots are authoritative, including an empty snapshot that
+  // retracts retired limits. Presence of Claude 5H is not a delivery gate.
   if (usageProvider) {
     const event = usageProvider();
-    const u = event as any;
-    // "Has usage" means a real NUMBER exists somewhere, not that the Codex block
-    // is present: the daemon also emits a windowless `codexRateLimits` carrying
-    // only the account tier (a free ChatGPT plan has no rolling windows, and the
-    // block still has to ride the wire so clients can RETRACT a retired plan's
-    // gauge). Treating that as usage would let the first frame reach the board
-    // before any provider populated, wiping its cached values to the -1 sentinel.
-    const cx = u?.codexRateLimits;
-    const hasCodexWindow = cx != null && (cx.primary != null || cx.secondary != null);
-    const hasUsage = u && (u.fiveHourPercent != null || hasCodexWindow || u.antigravityStatus != null);
-    if (hasUsage && event) {
+    if (event) {
       for (const conn of connections) {
         if (!hasLiveDeviceInfo(conn)) continue;
         sendToConnection(conn, JSON.stringify(prepareForSerial(event, conn)));
@@ -1229,7 +1340,7 @@ function sendHeartbeat(): void {
   // Gate on deviceInfoFresh, NOT conn.deviceInfo: a cache-seeded connection has
   // a non-null (stale) deviceInfo but deviceInfoFresh=false. Keying off
   // conn.deviceInfo froze such a connection at the cache seed forever — a board
-  // reflashed/OTA-updated on the same port (e.g. inkdeck round8→round9) would
+  // reflashed/OTA-updated on the same port (e.g. trmnl_75 round8→round9) would
   // keep reporting its old buildHash/no-OTA because no path ever re-requested.
   // deviceInfoFresh only flips true once a LIVE device_info lands on THIS
   // connection, so a fresh board stops the retries (capped at MAX) as before.
@@ -1316,10 +1427,23 @@ export function shouldRetryDeviceInfoIdentify(
   return true;
 }
 
+/** A board-reported RSSI in dBm, or undefined when absent or implausible. */
+export function sanitizeRssiDbm(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < -120 || value >= 0) return undefined;
+  const rounded = Math.round(value);
+  return rounded < 0 ? rounded : undefined;
+}
+
 function denylistForeignPort(port: string, reason: string): void {
   foreignDenylistUntil.set(port, Date.now() + FOREIGN_DENYLIST_COOLDOWN_MS);
   foreignProbeFailures.delete(port);
-  debug('ESP32', `Denylisting non-AgentDeck port ${port} for ${Math.round(FOREIGN_DENYLIST_COOLDOWN_MS / 60000)}min (${reason})`);
+  const minutes = Math.round(FOREIGN_DENYLIST_COOLDOWN_MS / 60000);
+  // An identified AgentDeck board reaching the denylist means its USB link is
+  // dead in one direction; that is a user-visible outage, not probe noise
+  // (2026-09-26: a round AMOLED sat here silently for hours on debug-only logs).
+  const board = lastKnownDeviceInfoByPort.get(port)?.board;
+  if (board) log(`ESP32 serial ${port} (${board}) sends nothing back — skipping it for ${minutes}min (${reason})`);
+  else debug('ESP32', `Denylisting non-AgentDeck port ${port} for ${minutes}min (${reason})`);
 }
 
 /** @internal Exported for testing only. True if the port is in active cooldown. */
@@ -1376,7 +1500,7 @@ function checkStaleConnections(): void {
       // probe-failure counter so a permanently-dead board denylists after a few
       // strikes instead of getting DTR/RTS-reset every grace window.
       if (isHalfOpenIdentifiedCdc(conn, now)) {
-        debug('ESP32', `Half-open CDC (identified, no read since connect): ${conn.port} — recycling`);
+        log(`ESP32 serial ${conn.port} (${conn.deviceInfo?.board ?? lastKnownDeviceInfoByPort.get(conn.port)?.board ?? 'unknown'}) read nothing for ${Math.round(CDC_SILENT_READ_TIMEOUT_MS / 1000)}s after connect — recycling`);
         recordForeignProbeFailure(conn.port);
         closeConnection(conn);
         staleCount++;
@@ -1694,6 +1818,7 @@ export function getESP32DeviceInfo(): Array<{
   otaSlotSize?: number;
   otaFreeSketchSpace?: number;
   otaReason?: string;
+  rssiDbm?: number;
 }> {
   const now = Date.now();
   return connections
@@ -1879,9 +2004,12 @@ export function getSerialConnectionStatus(): Array<{
   timelineCount?: number;
   sessionCount?: number;
   usageFiveH?: number;
+  usageCodex5H?: number;
+  usageCodex7D?: number;
   processingCount?: number;
   repaintCount?: number;
   fullRefreshCount?: number;
+  rssiDbm?: number;
   deviceInfoFresh: boolean;
   transportOpen: boolean;
   lastReadAt: number;
@@ -1913,9 +2041,12 @@ export function getSerialConnectionStatus(): Array<{
     timelineCount: c.deviceInfo?.timelineCount,
     sessionCount: c.deviceInfo?.sessionCount,
     usageFiveH: c.deviceInfo?.usageFiveH,
+    usageCodex5H: c.deviceInfo?.usageCodex5H,
+    usageCodex7D: c.deviceInfo?.usageCodex7D,
     processingCount: c.deviceInfo?.processingCount,
     repaintCount: c.deviceInfo?.repaintCount,
     fullRefreshCount: c.deviceInfo?.fullRefreshCount,
+    rssiDbm: c.deviceInfo?.rssiDbm,
     deviceInfoFresh: c.deviceInfoFresh,
     lastReadAt: c.lastReadAt,
     lastWriteAt: c.lastWriteAt,

@@ -1,5 +1,6 @@
 package dev.agentdeck.ui.monitor
 
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,8 +62,12 @@ fun TankStatusPanel(
     // state.modelCatalog belongs to the focused/primary agent, so only render it
     // under the OpenClaw header when OpenClaw IS that agent — otherwise Claude's
     // catalog would show under "OpenClaw" whenever an OpenClaw sibling exists.
-    // The raw `gatewayConnected` flag is intentionally dropped; ownership implies it.
-    val openClawLines = if (state.agentType == "openclaw") {
+    // The daemon hub labels its aggregate frame `daemon` while an observed
+    // session drives it (2026-09-11); that frame's catalog is still the
+    // Gateway's whenever the Gateway is connected.
+    val openClawOwnsCatalog = state.agentType == "openclaw" ||
+        (state.agentType == "daemon" && state.gatewayConnected == true)
+    val openClawLines = if (openClawOwnsCatalog) {
         openClawDisplayLines(modelCatalog)
     } else {
         emptyList()
@@ -159,11 +164,7 @@ private fun WaterGauge(
 ) {
     val pct = percent.coerceIn(0.0, 100.0)
     val fillFraction = (pct / 100.0).toFloat()
-    val fillColor = when {
-        pct >= 90 -> TerrariumColors.LEDRed
-        pct >= 70 -> TerrariumColors.LEDAmber
-        else -> TerrariumColors.LEDGreen
-    }
+    val fillColor = Color(UsageSeverity.color(pct))
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -242,11 +243,7 @@ private fun ApiCostSection(
         if (costLimit != null && costLimit > 0) {
             val pct = (costSpent / costLimit * 100.0).coerceIn(0.0, 100.0)
             val fillFraction = (pct / 100.0).toFloat()
-            val fillColor = when {
-                pct >= 90 -> TerrariumColors.LEDRed
-                pct >= 70 -> TerrariumColors.LEDAmber
-                else -> TerrariumColors.LEDGreen
-            }
+            val fillColor = Color(UsageSeverity.color(pct))
 
             // Horizontal bar gauge
             Box(

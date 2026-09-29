@@ -273,3 +273,108 @@ describe('a non-decision is not a denial', () => {
     expect(adapter.getPendingApproval()!.sessionKey).toBe('agent:main:cron:abc');
   });
 });
+
+// The 2026-09-09 stuck state, measured end to end against both logs.
+//
+// An approval created at 23:14:25 was dropped by the Gateway at 23:29:33: its
+// `exec.approval.waitDecision` returned after 908,788 ms and the run that asked
+// for it was gone ("agent runtime authority is no longer active"). No
+// `exec.approval.resolved` is emitted on that path, and the record's OWN expiry
+// is `DEFAULT_EXEC_APPROVAL_TIMEOUT_MS` — 30 minutes — so the only self-close
+// the adapter had was 15 minutes late. The press at 23:40:37 came back
+// `unknown or expired approval id`, which the catch branch treated as
+// retryable and re-broadcast, re-arming a button that could only fail again.
+describe('an approval the Gateway has already dropped comes off the deck', () => {
+  /** Pretend the socket is up — the reconcile refuses to ask a closed one. */
+  const withOpenSocket = (adapter: OpenClawAdapter) => {
+    (adapter as unknown as { ws: unknown }).ws = { readyState: 1 };
+  };
+  const reconcile = (adapter: OpenClawAdapter) =>
+    (adapter as unknown as { reconcilePendingApproval(): Promise<void> })
+      .reconcilePendingApproval();
+
+  it('abandons the prompt when the resolve says the approval is gone', async () => {
+    const { adapter, gw, rows, parser } = harness(
+      Promise.reject(Object.assign(new Error('unknown or expired approval id'), {
+        gatewayCode: 'INVALID_REQUEST', details: { reason: 'APPROVAL_NOT_FOUND' },
+      })),
+    );
+    gw('exec.approval.requested', REQUESTED);
+    adapter.handleCommand({ type: 'select_option', index: 0 });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(adapter.getPendingApproval()).toBeNull();
+    const closed = rows.filter((r) => r.type === 'tool_resolved').at(-1)!;
+    expect(closed.status).toBe('abandoned');
+    expect(closed.approvalId).toBe(REQUESTED.id);
+    // Exactly one prompt broadcast — the failure must NOT re-offer it.
+    expect(parser.filter((e) => e.event === 'permission_prompt')).toHaveLength(1);
+    expect(parser.at(-1)?.event).toBe('idle');
+  });
+
+  it('keeps the prompt when the resolve merely failed to get through', async () => {
+    // The other half of the same branch: silence is not an answer, and the user
+    // must be able to press again.
+    const { adapter, gw, parser } = harness(Promise.reject(new Error('Gateway disconnected')));
+    gw('exec.approval.requested', REQUESTED);
+    adapter.handleCommand({ type: 'select_option', index: 0 });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(adapter.getPendingApproval()?.id).toBe(REQUESTED.id);
+    expect(parser.filter((e) => e.event === 'permission_prompt')).toHaveLength(2);
+  });
+
+  it('abandons a prompt the Gateway no longer lists', async () => {
+    // The 15-minute gap: nothing is coming, so the only honest close is to ask.
+    const { adapter, gw, rows } = harness(Promise.resolve([]));
+    gw('exec.approval.requested', REQUESTED);
+    withOpenSocket(adapter);
+    await reconcile(adapter);
+
+    expect(adapter.getPendingApproval()).toBeNull();
+    expect(rows.filter((r) => r.type === 'tool_resolved').at(-1)?.status).toBe('abandoned');
+  });
+
+  it('keeps a prompt that is still pending', async () => {
+    const { adapter, gw } = harness(Promise.resolve([REQUESTED]));
+    gw('exec.approval.requested', REQUESTED);
+    withOpenSocket(adapter);
+    await reconcile(adapter);
+    expect(adapter.getPendingApproval()?.id).toBe(REQUESTED.id);
+  });
+
+  it('reads a boxed { approvals: [...] } answer too', async () => {
+    // The Swift adapter already accepts this shape. One daemon deciding an
+    // approval is gone while the other cannot parse the reply is the drift.
+    const { adapter, gw } = harness(Promise.resolve({ approvals: [REQUESTED] }));
+    gw('exec.approval.requested', REQUESTED);
+    withOpenSocket(adapter);
+    await reconcile(adapter);
+    expect(adapter.getPendingApproval()?.id).toBe(REQUESTED.id);
+  });
+
+  it('a failed or unreadable list answer changes nothing', async () => {
+    // "I could not look" must never close a prompt — the polarity that keeps a
+    // live approval the agent is still blocked on from being discarded.
+    for (const answer of [
+      Promise.reject(new Error('RPC timeout: exec.approval.list (id=r9)')),
+      Promise.resolve(null),
+      Promise.resolve({ unexpected: true }),
+      Promise.resolve('nope'),
+    ]) {
+      const { adapter, gw } = harness(answer);
+      gw('exec.approval.requested', REQUESTED);
+      withOpenSocket(adapter);
+      await reconcile(adapter);
+      expect(adapter.getPendingApproval()?.id).toBe(REQUESTED.id);
+    }
+  });
+
+  it('does not ask a socket that is not open', async () => {
+    const { adapter, gw, rpcs } = harness(Promise.resolve([]));
+    gw('exec.approval.requested', REQUESTED);
+    await reconcile(adapter); // ws is null in the harness
+    expect(rpcs.filter((c) => c.method === 'exec.approval.list')).toHaveLength(0);
+    expect(adapter.getPendingApproval()?.id).toBe(REQUESTED.id);
+  });
+});

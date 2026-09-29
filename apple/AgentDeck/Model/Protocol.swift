@@ -319,11 +319,18 @@ enum DashboardDataRules {
         return trimmed.isEmpty ? nil : string
     }
 
+    // Mirrors shared/session-utils: folding must not hide an awaiting member
+    // behind a processing sibling. General session ordering remains unchanged.
+    static func codexFoldStateRank(_ state: String?) -> Int {
+        let rank = stateRank(state)
+        return rank == 1 ? -1 : rank
+    }
+
     private static func foldCodexProjectGroup(_ group: [[String: Any]]) -> [String: Any] {
         guard group.count > 1 else { return group[0] }
 
         let ranked = group.sorted { lhs, rhs in
-            let rankDiff = stateRank(lhs["state"] as? String) - stateRank(rhs["state"] as? String)
+            let rankDiff = codexFoldStateRank(lhs["state"] as? String) - codexFoldStateRank(rhs["state"] as? String)
             if rankDiff != 0 { return rankDiff < 0 }
 
             let lhsStarted = startedAtTime(lhs["startedAt"] as? String)
@@ -350,7 +357,9 @@ enum DashboardDataRules {
         }
 
         folded["state"] = ranked.first?["state"] as? String
-        if let tool = ranked.compactMap({ session -> String? in
+        if stateRank(folded["state"] as? String) == 1 {
+            // Keep the waiting member's own tool, never a sibling's.
+        } else if let tool = ranked.compactMap({ session -> String? in
             guard stateRank(session["state"] as? String) == 0 else { return nil }
             return nonEmptyString(session["currentTool"])
         }).first {
@@ -398,19 +407,20 @@ struct OllamaModel: Codable, Sendable {
     let name: String
     let size: Int
     let sizeVram: Int
-    /// "chat" for generation models, "embed" for embedding models. Drives
-    /// per-category grouping in the topology rail so embedding models
-    /// (which never "sit loaded" in the generation sense — Ollama pulls
-    /// them per-request and unloads via keep_alive) don't get surfaced
-    /// as "not loaded" in UIs that only understand VRAM residency.
-    /// Defaults to "chat" for backward compatibility with state_update
-    /// events produced by pre-2026-04-21 daemons.
+    /// Optional catalog classification; independent of runtime residency.
     var kind: String? = nil
+}
+
+struct ModelResidency: Codable, Sendable, Equatable {
+    var known: Bool
+    var models: [String]
 }
 
 struct OllamaStatus: Codable, Sendable {
     let available: Bool
     let models: [OllamaModel]
+    var residency: ModelResidency? = nil
+    var installedModelsKnown: Bool? = nil
 }
 
 struct SubscriptionInfo: Codable, Sendable {
@@ -464,6 +474,68 @@ struct CodexRateLimits: Codable, Sendable {
     /// Codex usage is read passively from rollout files, so the numbers freeze
     /// when Codex stops being used, and `stale` cannot expose that — it fires only
     /// once the window has ENDED, which for the weekly window is up to 7 days out.
+    var capturedAt: String?
+    /// Additional Luna-only pool, separate from the account 5h/7d windows.
+    /// Reported by the Node daemon's live Codex reading.
+    var lunaReserve: CodexLunaReserve?
+}
+
+/// Luna-only reserve returned as an additional Codex rate-limit pool.
+struct CodexLunaReserve: Codable, Sendable {
+    var usedPercent: Double
+    var resetsAt: String?
+    var regularResetsAt: String?
+    var available: Bool?
+}
+
+extension CodexRateLimits {
+    /// The Luna reserve while it replaces the account windows — mirror of
+    /// `selectedLunaReserve` in shared/src/usage-presentation.ts, with the
+    /// numeric predicate from the generated `UsagePresentation.lunaActive`.
+    /// A reported reserve alone is not exhaustion: only a live account window
+    /// at 100% hands the Codex gauges to the reserve, and the next snapshot
+    /// with no exhausted window restores them.
+    func activeLunaReserve(now: Date = Date()) -> CodexLunaReserve? {
+        guard let reserve = lunaReserve else { return nil }
+        func instant(_ iso: String?) -> Date? {
+            guard let iso else { return nil }
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        }
+        if let reset = instant(reserve.resetsAt), reset <= now { return nil }
+        func live(_ window: CodexRateLimitWindow?) -> Double {
+            guard let window, window.stale != true, let used = window.usedPercent else { return -1 }
+            if let reset = instant(window.resetsAt), reset <= now { return -1 }
+            return used
+        }
+        return UsagePresentation.lunaActive(live(primary), live(secondary), reserve.usedPercent) ? reserve : nil
+    }
+}
+
+/// A z.ai quota window — the shared window shape plus WHICH QUANTITY it
+/// meters: token/credits windows (`tokens`) or the MCP tool-call quota
+/// (`mcp`). A surface must never present one as the other; the label follows
+/// the quantity ("5h" vs "MCP").
+struct ZaiWindow: Codable, Sendable {
+    var usedPercent: Double? = nil
+    var windowMinutes: Int? = nil
+    var resetsAt: String? = nil
+    var stale: Bool? = nil
+    var quantity: String? = nil
+}
+
+/// Z.ai (GLM Coding Plan) usage limits — a direct provider-account reading,
+/// not a passive local snapshot. Same slot grammar as `CodexRateLimits`;
+/// `limitId` carries which quantity the secondary window is (weekly credits
+/// vs the monthly MCP quota). Parsed by the generated `ZaiQuotaRules`.
+struct ZaiRateLimits: Codable, Sendable {
+    var primary: ZaiWindow?
+    var secondary: ZaiWindow?
+    var planType: String?
+    var limitId: String?
+    /// ISO-8601 instant this reading was fetched. Consumers derive age from it
+    /// against their own clock — same contract as `CodexRateLimits.capturedAt`.
     var capturedAt: String?
 }
 
@@ -572,7 +644,7 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     /// Shared per-session "what is this agent doing" one-liner, computed by the
     /// bridge (session-activity.ts heuristic → Foundation Models upgrade).
     /// SSOT for the session summary line — render this instead of hand-rolling
-    /// model/state strings so all surfaces (InkDeck/Android/Apple) agree.
+    /// model/state strings so all surfaces (TRMNL 7.5"/Android/Apple) agree.
     var activity: String?
     /// Live child-agent census. A SECOND axis to `state`, not a correction to
     /// it: a parent whose turn closed is genuinely `idle` while its subagents
@@ -583,6 +655,10 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     /// because a field that vanishes when the last child exits latches its last
     /// count forever under retain-on-absent merging.
     var subagents: SubagentSummary?
+    /// Cross-session coordination census — see `CoordinationSummary`. Same
+    /// emission rule as `subagents`: zeros once observed, absent only when the
+    /// session has never had a relation.
+    var coordination: CoordinationSummary?
 }
 
 /// Live child-agent census for one session. See `SessionInfo.subagents`.
@@ -599,6 +675,27 @@ struct SubagentSummary: Codable, Sendable, Equatable {
     var completed: Int
     /// Epoch ms of the most recent child stop.
     var lastCompletedAt: Double?
+}
+
+/// Live cross-session coordination census — the second axis beside
+/// `subagents`, for work divided WITHOUT a SubagentStart: `claude -p` workers
+/// spawned from a background Bash, peer sessions messaged over SendMessage,
+/// and background processes the session is waiting on. Observed only, never
+/// inferred from shared project membership. Mirrors shared CoordinationSummary.
+struct CoordinationSummary: Codable, Sendable, Equatable {
+    /// Background processes started by this session still running.
+    var backgroundJobs: Int
+    /// Peer sessions spawned by this session whose process is still alive.
+    var spawnedActive: Int
+    /// Peer sessions spawned by this session that have ended.
+    var spawnedCompleted: Int
+    /// Cross-session messages received / sent in this session.
+    var messagesIn: Int
+    var messagesOut: Int
+    /// Name of the most recent peer messaged with, if the evidence carried one.
+    var lastPeerName: String?
+    /// Epoch ms of the most recent relation observation.
+    var lastRelationAt: Double?
 }
 
 // MARK: - Bridge Events (Bridge → Client)
@@ -618,7 +715,7 @@ struct StateUpdateEvent: Codable, Sendable {
         case codexAccountId, codexSubscriptionActiveUntil, codexLastRefreshAt
         case antigravityStatus, gatewayAvailable, gatewayConnected, gatewayHasError
         case gatewayAuthStatus, gatewayAuthRequestId, gatewayAuthMessage, gatewayDeviceId
-        case daemonPort, mlxModelCatalog
+        case daemonPort, mlxModelCatalog, mlxResidency
         case voiceAssistantState, voiceAssistantText, voiceAssistantResponseText
     }
     var permissionMode: String?
@@ -649,6 +746,7 @@ struct StateUpdateEvent: Codable, Sendable {
     var pairingUrl: String?
     var workerSessionCount: Int?
     var ollamaStatus: OllamaStatus?
+    var mlxResidency: ModelResidency?
     var mlxModels: [String]?
     var subscriptions: [SubscriptionInfo]?
     var codexAuthMode: String?
@@ -738,7 +836,9 @@ struct UsageEvent: Codable, Sendable {
     var codexSubscriptionActiveUntil: String?
     var codexLastRefreshAt: String?
     var codexRateLimits: CodexRateLimits?
+    var zaiRateLimits: ZaiRateLimits?
     var modelCatalog: [ModelCatalogEntry]?
+    var mlxResidency: ModelResidency?
     var mlxModels: [String]?
     var mlxModelCatalog: [String]?
     var subscriptions: [SubscriptionInfo]?

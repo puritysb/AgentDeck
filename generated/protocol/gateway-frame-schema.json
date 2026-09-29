@@ -126,6 +126,10 @@
         },
         "sessionKey": {
           "type": "string"
+        },
+        "thinking": {
+          "description": "Per-turn override supported by the Gateway; does not patch session defaults.",
+          "type": "string"
         }
       },
       "required": [
@@ -799,6 +803,9 @@
         "sessions.changed",
         "exec.approval.requested",
         "exec.approval.resolved",
+        "plugin.approval.requested",
+        "plugin.approval.resolved",
+        "plugin.approval.removed",
         "presence",
         "system-presence",
         "tick",
@@ -831,6 +838,15 @@
         },
         {
           "$ref": "#/definitions/ExecApprovalResolvedPayload"
+        },
+        {
+          "$ref": "#/definitions/PluginApprovalRequestedPayload"
+        },
+        {
+          "$ref": "#/definitions/PluginApprovalResolvedPayload"
+        },
+        {
+          "$ref": "#/definitions/PluginApprovalRemovedPayload"
         },
         {
           "$ref": "#/definitions/PresencePayload"
@@ -869,6 +885,8 @@
         "chat.abort",
         "exec.approval.resolve",
         "exec.approval.list",
+        "plugin.approval.resolve",
+        "plugin.approval.list",
         "sessions.list",
         "sessions.subscribe",
         "sessions.messages.subscribe",
@@ -901,6 +919,12 @@
         },
         {
           "$ref": "#/definitions/ExecApprovalListParams"
+        },
+        {
+          "$ref": "#/definitions/PluginApprovalResolveParams"
+        },
+        {
+          "$ref": "#/definitions/PluginApprovalListParams"
         },
         {
           "$ref": "#/definitions/SessionsListParams"
@@ -941,6 +965,12 @@
         },
         {
           "$ref": "#/definitions/ExecApprovalListResult"
+        },
+        {
+          "$ref": "#/definitions/PluginApprovalResolveResult"
+        },
+        {
+          "$ref": "#/definitions/PluginApprovalListResult"
         },
         {
           "$ref": "#/definitions/SessionsListResult"
@@ -1214,6 +1244,416 @@
         }
       },
       "type": "object"
+    },
+    "PluginApprovalDecision": {
+      "$ref": "#/definitions/ExecApprovalDecision",
+      "description": "The decisions the Gateway will accept for a plugin approval. Same union as exec (`ApprovalDecisionSchema` in `approvals-CiGTrkJW.d.ts` is shared by every approval kind) — re-typed under this module's own name so callers that only touch plugin approvals do not have to import the exec module for a type alias."
+    },
+    "PluginApprovalListParams": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "PluginApprovalListResult": {
+      "description": "Same element shape as the requested event, minus the envelope.",
+      "items": {
+        "$ref": "#/definitions/PluginApprovalRequestedPayload"
+      },
+      "type": "array"
+    },
+    "PluginApprovalRemovedPayload": {
+      "additionalProperties": false,
+      "description": "`plugin.approval.removed` payload. NOT declared in any `.d.ts` shipped with the installed package — it is real wire protocol (confirmed at the string literal `event: \"plugin.approval.removed\"` in `agent-tools.before-tool- call-CHXgDzUI.mjs`, the embedded/TUI-local approval broker) but has no typed declaration because that broker is a runtime helper, not part of the generated `packages/gateway-protocol` schema surface the persisted-manager RPC path (the one AgentDeck's Gateway connection actually uses) ships types for. The payload shape read directly from that emitter is `{id}` — no decision, no reason. Documented here as best-effort/lightly-typed rather than SDK-confirmed for the persisted-manager path specifically.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "PluginApprovalRequestBody": {
+      "additionalProperties": false,
+      "description": "The `request` body OpenClaw nests inside the requested/resolved event — `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.",
+      "properties": {
+        "agentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "allowedDecisions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on the plugin surface — unlike exec, there is no subtraction step."
+        },
+        "description": {
+          "type": "string"
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "externalResolution": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "decisions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mcpTool": {
+          "additionalProperties": false,
+          "properties": {
+            "server": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "server",
+            "tool"
+          ],
+          "type": "object"
+        },
+        "pluginId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PluginApprovalScopeLike"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessionKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PluginApprovalSeverity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "toolName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "description"
+      ],
+      "type": "object"
+    },
+    "PluginApprovalRequestedPayload": {
+      "additionalProperties": false,
+      "description": "`plugin.approval.requested` payload (`PluginApprovalRequest` in `approval-types-CQ_BKP9V.d.ts`, confirmed on the wire by `buildRequestedApprovalEvent(record, 'plugin')` in `approval-shared- 1gFEjucV.mjs`): `{approvalKind?: 'plugin', id, request, createdAtMs, expiresAtMs}`. Unlike exec's compatibility fallback, the Gateway's OWN `PluginApprovalRequest` type declares `request` as required, never optional or flattened — but the flat-field merge below is kept anyway, at zero cost, so a future Gateway that inlines a field degrades instead of blanking the prompt (the same defensive posture the exec module documents its own reasoning for).",
+      "properties": {
+        "agentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "allowedDecisions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on the plugin surface — unlike exec, there is no subtraction step."
+        },
+        "approvalKind": {
+          "const": "plugin",
+          "type": "string"
+        },
+        "createdAtMs": {
+          "type": "number"
+        },
+        "description": {
+          "type": "string"
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expiresAtMs": {
+          "type": "number"
+        },
+        "externalResolution": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "decisions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "mcpTool": {
+          "additionalProperties": false,
+          "properties": {
+            "server": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "server",
+            "tool"
+          ],
+          "type": "object"
+        },
+        "pluginId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "request": {
+          "$ref": "#/definitions/PluginApprovalRequestBody"
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PluginApprovalScopeLike"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessionKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PluginApprovalSeverity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "toolName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "PluginApprovalResolveParams": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "$ref": "#/definitions/PluginApprovalDecision"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "PluginApprovalResolveResult": {
+      "additionalProperties": false,
+      "description": "The Gateway answers `{ ok: true }`; `resolved` is kept for older builds.",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "resolved": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "PluginApprovalResolvedPayload": {
+      "additionalProperties": false,
+      "description": "`plugin.approval.resolved` payload (`PluginApprovalResolved`).",
+      "properties": {
+        "decision": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PluginApprovalDecision"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/definitions/PluginApprovalRequestBody"
+        },
+        "resolvedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ts": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "PluginApprovalScopeLike": {
+      "additionalProperties": {},
+      "description": "Loosely-typed mirror of `ApprovalScopeSchema` (`approvals-CiGTrkJW.d.ts`) — a discriminated union of owner-declared blast-radius facts. Display-only, never authorization; AgentDeck only needs enough of it to summarize one supporting line, so this is intentionally not the full 4-variant union.",
+      "properties": {
+        "amount": {
+          "type": "string"
+        },
+        "automation": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PluginApprovalSeverity": {
+      "description": "`severity?: \"info\" | \"warning\" | \"critical\" | null` (`PluginApprovalRequestPayload`). Absent → `\"warning\"`, matching OpenClaw's own `buildPluginApprovalRequestMessage` fallback (`request.request.severity ?? \"warning\"`) — NOT `\"info\"`, which would understate a request the Gateway itself treats as needing the 🛡️ icon.",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "type": "string"
     },
     "PresencePayload": {
       "additionalProperties": {},

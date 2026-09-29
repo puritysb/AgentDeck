@@ -30,6 +30,7 @@ final class CloudCreature: Creature {
     private(set) var currentY: Float
     private var phaseOffset: Float
     private var driftPhase: Float
+    private var stateNeighborGap: Float = 1
 
     private var previousState: CloudVisualState?
     private var transitionProgress: Float = 1.0
@@ -68,6 +69,9 @@ final class CloudCreature: Creature {
             transitionProgress = min(1.0, transitionProgress + dt * 2.5)
         }
 
+        stateNeighborGap = state.cloudCreatures
+            .filter { $0.id != sessionId && abs($0.homeY - homeY) < 0.08 }
+            .map { abs($0.homeX - homeX) }.min() ?? 1
         updatePosition(dt: dt)
     }
 
@@ -89,7 +93,9 @@ final class CloudCreature: Creature {
         currentY += (targetY + pulseBob - currentY) * dt * lerpRate
 
         // Processing: wider horizontal drift (floating near surface, drifting side to side)
-        let driftAmp: Float = visualState == .pulsing ? min(0.05, 0.02 + scale * 0.03) : 0.006
+        let neighborGap = stateNeighborGap
+        let driftLimit = max(0, (neighborGap - 0.085 * scale) / 2)
+        let driftAmp: Float = min(visualState == .pulsing ? 0.025 : 0.006, driftLimit)
         let driftSpeed: Float = visualState == .pulsing ? 0.15 : 0.3
         let driftX = sin((time + driftPhase) * driftSpeed) * driftAmp
         currentX += (homeX + driftX - currentX) * dt * lerpRate
@@ -238,7 +244,8 @@ final class CloudCreature: Creature {
             cx: cx,
             bodyTopY: cy - bodyW * 0.6,
             bodyMetric: terrariumNameTagMetric(canvasWidth: canvasWidth, scale: scale),
-            backgroundColor: TerrariumColors.cloudNameBg
+            backgroundColor: TerrariumColors.cloudNameBg,
+            rank: visualState == .waiting ? .awaiting : visualState == .pulsing ? .working : .idle
         )
     }
 }

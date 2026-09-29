@@ -2,7 +2,7 @@
 
 Initial image-first direction for the AgentDeck e-ink surfaces (2026-08-30).
 
-- `first-party-surfaces.png`: InkDeck as an always-on live board, EPD47 as a focused work sheet, and NM-EPD-420 as a slow-refresh decision station.
+- `first-party-surfaces.png`: TRMNL 7.5" as an always-on live board, EPD47 as a focused work sheet, and NM-EPD-420 as a slow-refresh decision station.
 - `xteink-pocket-daily.png`: XTeink X3/X4 as an offline-first Pocket Daily companion rather than a scaled AgentDeck dashboard.
 - `first-party-interaction-limits-v2.png`: revised first-party surfaces with explicit touch/button capability and a shared Claude/Codex limit language.
 - `xteink-interaction-limits-v2.png`: revised non-touch X3/X4 interaction, cached limit cards, absolute reset times, and stale-snapshot treatment.
@@ -12,7 +12,7 @@ XTeink X3/X4 concepts are parked after v2. Their AgentDeck surface is expected t
 
 ## Interaction assumptions in v2
 
-- InkDeck is non-touch: `KEY1` pages and `KEY2` returns to the live AgentDeck board. `GLANCE` is an internal policy name and is never used as the product title.
+- TRMNL 7.5" is non-touch: `KEY1` pages and `KEY2` returns to the live AgentDeck board. `GLANCE` is an internal policy name and is never used as the product title.
 - NM-EPD-420 is non-touch: on the home view `BOOT` pages/opens and `USER` returns home; on a decision `BOOT` advances and `USER` selects then confirms. The unfinished microphone path is not advertised on-screen.
 - EPD47 exposes touch hardware only when detected. The firmware probes current GT911 (0x14/0x5D) and legacy 0x5A controllers and reports diagnostics in `device_info`; when no controller answers, the User button cycles the three tabs so the surface remains operable.
 - XTeink X3/X4 are non-touch readers. X3 maps four logical actions onto two front rockers; X4 has four independent front keys.

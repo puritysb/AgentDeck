@@ -346,7 +346,7 @@ describe('isModelScopedCodexLimit', () => {
   it('is an allow-list of the unnamed, so a future scoped family is excluded by default', () => {
     // Polarity, not membership — the point of the rule. A deny-list of known ids
     // would render a model family this build predates AS the account's number,
-    // which is a wrong reading rather than a missing one (CLAUDE.md).
+    // which is a wrong reading rather than a missing one (AGENTS.md).
     expect(isModelScopedCodexLimit('GPT-6-Codex-Whatever')).toBe(true);
   });
 });

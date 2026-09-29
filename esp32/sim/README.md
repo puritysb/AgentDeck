@@ -50,14 +50,14 @@ pio run -e box_86                                       # build the host binary
 | `t_embed` | `BOARD_T_EMBED` | 320×170    | T-Embed CC1101 — encoder "Companion Knob" (`ui/knob/`) |
 | `t_display_pro` | `BOARD_T_DISPLAY_PRO` | 480×222 | T-Display-S3-Pro — "Focus Strip" (`ui/ticker/`), camera-less unit |
 | `led8x32` | `BOARD_LED8X32` | 8×32 (×16) | Ulanzi TC001 WS2812B matrix — usage/agents pages   |
-| `inkdeck` | `BOARD_INKDECK` | 800×480    | Seeed InkDeck 1-bit e-ink dashboard (UC8179)       |
+| `trmnl_75` | `BOARD_TRMNL_75` | 800×480    | Seeed TRMNL 7.5" 1-bit e-ink dashboard (UC8179)       |
 | `nm_epd_420_preview` | `BOARD_SIM_PULL` | 400×300 | RockBase pull-face UI at physical panel size |
 | `lilygo_epd47_preview` | `BOARD_SIM_PULL` | 960×540 | LilyGo EPD47 pull-face UI at physical panel size |
 
 The LCD boards render the **real composed screen** via each board's own render
 tree — `Screens::aquariumCreate()` (Terrarium+HUD / Office / TTGO overlay),
 `Knob::create()` or `Ticker::create()` — not a hand-assembled approximation. The
-matrix (`--page usage|agents`, upscaled ×16) and e-ink are LVGL-free and use
+matrix (`--page usage|codex|zai|agents`, upscaled ×16) and e-ink are LVGL-free and use
 their own render paths.
 
 The two `_preview` envs compile the exact shared face renderer and responsive
@@ -81,7 +81,7 @@ default set and from the Pages demo for that reason; ask for them by name.
 non-overlapping at 800×480, 528×792 and 480×800 — the geometry SSOT is sound at
 all three. What looks broken in those two renders (a squashed header on the X4,
 a missing second gauge on both) is `eink_display.cpp` composing band *contents*
-with absolute x constants tuned for InkDeck's 800px width: the wordmark starts
+with absolute x constants tuned for TRMNL 7.5"'s 800px width: the wordmark starts
 at x=78 in 18pt, and the second gauge slot sits at x=490 with a ~288px block, so
 it does not fit a 480px or 528px panel at all. That renderer never runs on those
 readers — the fork draws with its own `GfxRenderer` — so it is neither a fork
@@ -100,7 +100,7 @@ Mac display asleep), `working`, `multi` (Claude + Codex + OpenCode + Antigravity
 + OpenClaw gateway crayfish), `crowd`/`dense` (7/10-session bounded-roster
 stress), `permission` (awaiting → solid attention badge). Scenes
 populate the same `g_state` the firmware fills from the daemon's `state_update`,
-so they exercise the real session → creature/card derivation. On InkDeck,
+so they exercise the real session → creature/card derivation. On TRMNL 7.5",
 `display-off` intentionally renders byte-identically to `idle`; the e-ink panel
 keeps useful status visible when the host monitors are off.
 
@@ -140,7 +140,7 @@ sim/
     sim_globals.cpp     # host defs of firmware globals (g_state, g_screenW/H, fonts, Net::, UI::)
     fw/*.cpp            # LCD unity-include wrappers → ../../src/ui/{screens,terrarium,widgets}/*
     mtx/*.cpp           # TC001 matrix wrapper + render (CRGB → upscaled PNG)
-    eink/*.cpp          # InkDeck wrapper (+ SimEink render) + vendored Adafruit_GFX compile
+    eink/*.cpp          # TRMNL 7.5" wrapper (+ SimEink render) + vendored Adafruit_GFX compile
 ```
 
 The firmware sources are **never copied**: each wrapper (`fw/`, `mtx/`, `eink/`)
@@ -164,3 +164,13 @@ matrix → `mtx/`, e-ink → `eink/`).
 - The vendored `vendor/adafruit_gfx/` is the upstream Adafruit GFX core + four
   FreeFont headers (BSD/MIT, license headers retained), used only so the e-ink
   text renders with the exact production glyphs on the host.
+
+### TTGO usage meter
+
+TTGO defaults to usage-only, matching the firmware boot mode. Render the optional
+terrarium with `--page terrarium`, or swap the physical panel axes with
+`--landscape` when running `.pio/build/ttgo/program` directly. Quota edge scenes
+are `usage-none`, `usage-zero`, `usage-stale`, and `codex-only`; `multi` exercises
+all four windows. `--verify-mode` checks the default, repeated mode toggles, and
+mode retention across twelve screen rebuilds. Hardware GPIO debounce and panel
+rotation still require a physical button check.

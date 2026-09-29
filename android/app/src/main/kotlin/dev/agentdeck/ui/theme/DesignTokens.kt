@@ -74,6 +74,22 @@ object DesignTokens {
         val ttyText = Color(0xFFC8D0D8)
         val ttyDim = Color(0xFF7A8493)
         val ttyFaint = Color(0xFF4A5060)
+        val hudText = Color(0xFFE2E8F0)
+        val hudSubtext = Color(0xFF94A3B8)
+        val hudFaint = Color(0xFF64748B)
+        val waterDeep = Color(0xFF0A1628)
+        val waterMid = Color(0xFF0F2744)
+        val waterShallow = Color(0xFF163B5C)
+    }
+
+    // === Session state (product UI) — DESIGN.md §2.7 ===
+    // One meaning per state on every product surface. Only `awaiting` may pulse.
+    object Session {
+        val idle = UI.idle
+        val working = UI.cyan
+        val awaiting = UI.attn
+        val offline = UI.idleDark
+        val error = UI.error
     }
 
     // === Agent brand marks ===
@@ -86,6 +102,8 @@ object DesignTokens {
         val opencode = Color(0xFF3A3A3A)
         val antigravity = Color(0xFF5F6368)
         val kiro = Color(0xFF7C3AED)
+        val zai = Color(0xFF1F63EC)
+        val opencodeOnDark = Color(0xFFF1ECEC)
     }
 
     // === Type stack ===

@@ -36,6 +36,8 @@ const AGENT_COLORS: Record<Exclude<OfficialDotGlyphName, 'antigravity'>, RGB> = 
   openCode: [238, 238, 238],
   openClaw: [255, 92, 92],
   kiro: [124, 58, 237],
+  // Brand.zai (#1F63EC), measured from the upstream z.ai mark.
+  zai: [31, 99, 236],
 };
 
 const PERIMETER: ReadonlyArray<readonly [number, number]> = [

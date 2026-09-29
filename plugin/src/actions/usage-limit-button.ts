@@ -31,7 +31,7 @@ const actionIds: string[] = [];
 function worstScoped(data: UsageModeData): UsageEncoderScoped | undefined {
   const s = pickWorstScopedLimit(data);
   // Missing `active` (relayed/legacy) → NOT binding, so an inactive cap renders
-  // muted rather than latching the critical ramp (CLAUDE.md wire-flag rule).
+  // muted rather than latching the critical ramp (AGENTS.md wire-flag rule).
   return s ? { label: s.label, usedPercent: s.percent, resetsAt: s.resetsAt, known: true, active: s.active === true } : undefined;
 }
 

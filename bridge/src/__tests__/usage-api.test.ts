@@ -220,6 +220,18 @@ describe('fileCacheExpired — TTL slack', () => {
     expect(fileCacheExpired(NOW, NOW)).toBe(false);
   });
 
+  // The OLD 429 path stamped `fetchedAt` in the FUTURE to stretch the TTL over
+  // Retry-After — the on-disk state this change exists to retire. Every
+  // upgrading daemon can find such a file on its first boot, so a future or
+  // unusable stamp has to read as expired; read as fresh, it would be the
+  // longest-lived cache the process ever sees and the numbers never move.
+  it('treats a future or unusable stamp as expired, never as the freshest cache', () => {
+    expect(fileCacheExpired(NOW + 600_000, NOW)).toBe(true);
+    expect(fileCacheExpired(NOW + 1, NOW)).toBe(true);
+    expect(fileCacheExpired(NaN, NOW)).toBe(true);
+    expect(fileCacheExpired(undefined as unknown as number, NOW)).toBe(true);
+  });
+
   it('slack stays well inside the poll interval', () => {
     // The effective TTL must remain above the 60s this started at, so the slack
     // can never be widened into "fetch on every tick".

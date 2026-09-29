@@ -191,13 +191,25 @@ func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
             fiveHourPercent: live.fiveHourPercent,
             sevenDayPercent: live.sevenDayPercent,
             known: live.usageKnown,
+            scopedLimits: (live.source.scopedLimits ?? []).map {
+                D200HScopedLimit(label: $0.label, percent: $0.percent, active: $0.active == true)
+            },
             codexPrimaryPercent: live.codexPrimaryPercent,
             codexPrimaryWindowMinutes: live.codexPrimaryWindowMinutes,
             codexPrimaryStale: live.codexPrimaryStale,
             codexSecondaryPercent: live.codexSecondaryPercent,
             codexSecondaryWindowMinutes: live.codexSecondaryWindowMinutes,
             codexSecondaryStale: live.codexSecondaryStale,
-            codexCapturedAt: live.codexCapturedAt
+            codexCapturedAt: live.codexCapturedAt,
+            zaiPrimaryPercent: live.source.zaiRateLimits?.primary?.usedPercent,
+            zaiPrimaryWindowMinutes: live.source.zaiRateLimits?.primary?.windowMinutes,
+            zaiPrimaryStale: live.source.zaiRateLimits?.primary?.stale == true,
+            zaiPrimaryIsMcp: live.source.zaiRateLimits?.primary?.quantity == "mcp",
+            zaiSecondaryPercent: live.source.zaiRateLimits?.secondary?.usedPercent,
+            zaiSecondaryWindowMinutes: live.source.zaiRateLimits?.secondary?.windowMinutes,
+            zaiSecondaryStale: live.source.zaiRateLimits?.secondary?.stale == true,
+            zaiSecondaryIsMcp: live.source.zaiRateLimits?.secondary?.quantity == "mcp",
+            zaiCapturedAt: live.source.zaiRateLimits?.capturedAt
         ),
         focusedSessionId: live.focusedSessionId,
         navigable: live.navigable
@@ -290,7 +302,7 @@ private struct D200HSlotTile: View {
             return StateColors.color(for: state).opacity(0.16)
         case .offlineGrid(_, _, _, _), .info:
             return Color.black.opacity(0.5)
-        case .usageGauge:
+        case .usageGauge, .lunaReserve:
             return Color.black.opacity(0.42)
         case .empty:
             return Color.white.opacity(0.04)
@@ -362,10 +374,10 @@ private struct D200HSlotTile: View {
                             .font(.system(size: size * 0.15, weight: .bold, design: .monospaced))
                             .foregroundStyle(known && !stale && footnote == nil ? .white : .white.opacity(0.45))
                         Spacer(minLength: 0)
-                        CanonicalCreatureView(
-                            agentType: agent == "codex" ? "codex-cli" : "claude-code",
+                        PreviewUsageMark(
+                            agentType: agent == "codex" ? "codex-cli" : (agent == "claude" ? "claude-code" : agent),
                             size: size * 0.18,
-                            color: StateColors.brand(agent: agent == "codex" ? "codex-cli" : "claude-code")
+                            color: SessionBrand.color(for: agent == "codex" ? "codex-cli" : (agent == "claude" ? "claude-code" : agent))
                                 .opacity(known ? 1 : 0.45)
                         )
                     }
@@ -382,6 +394,42 @@ private struct D200HSlotTile: View {
                 }
                 .padding(size * 0.08)
             }
+        case .lunaReserve(let remainingPercent, let active):
+            // Mirrors renderLunaReserveTile (d200h-layout.ts): the moon is the
+            // focal mark — a right-open crescent with the lit mass lower-right —
+            // beneath it the remaining percent ("N% LEFT") or EMPTY. Identity
+            // stays Codex: brand mark top-right, "LUNA" as the window label.
+            VStack(spacing: size * 0.02) {
+                HStack(alignment: .top) {
+                    Text("LUNA")
+                        .font(.system(size: size * 0.15, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(active ? 1 : 0.45))
+                    Spacer(minLength: 0)
+                    CanonicalCreatureView(
+                        agentType: "codex-cli",
+                        size: size * 0.18,
+                        color: StateColors.brand(agent: "codex-cli")
+                    )
+                }
+                ZStack {
+                    Circle()
+                        .fill(active ? Color(red: 0xEA / 255.0, green: 0xB3 / 255.0, blue: 0x08 / 255.0) : .white.opacity(0.30))
+                        .frame(width: size * 0.42, height: size * 0.42)
+                    // Shadow disk offset up-left, matching the TS mark
+                    // (cx − ⌈r·0.42⌉, cy − ⌈r·0.20⌉).
+                    Circle()
+                        .fill(Color.black.opacity(0.42))
+                        .frame(width: size * 0.42, height: size * 0.42)
+                        .offset(x: -size * 0.09, y: -size * 0.04)
+                }
+                .frame(maxHeight: .infinity)
+                Text(active ? "\(Int(remainingPercent))% LEFT" : "EMPTY")
+                    .font(.system(size: size * 0.15, weight: .heavy))
+                    .foregroundStyle(UsageSeverity.color(100 - remainingPercent))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+            }
+            .padding(size * 0.08)
         case .usagePair(let agent, let windows):
             // Mirrors renderUsagePairGauge: two real windows share one physical
             // key only when the fixed three-key strip would otherwise drop one.
@@ -391,8 +439,11 @@ private struct D200HSlotTile: View {
                         let dim = window.stale || (window.footnote?.isEmpty == false)
                         VStack(spacing: size * 0.015) {
                             HStack(alignment: .firstTextBaseline) {
+                                // Mirrors renderUsagePairGauge: a scoped cap's name
+                                // (up to 6 chars) beside a 3-digit percent needs the
+                                // smaller label, or the row reads "FABLE100%".
                                 Text(window.label)
-                                    .font(.system(size: size * 0.13, weight: .bold, design: .monospaced))
+                                    .font(.system(size: size * (window.label.count >= 5 ? 0.10 : 0.13), weight: .bold, design: .monospaced))
                                 Spacer(minLength: 0)
                                 Text("\(Int(window.percent))%")
                                     .font(.system(size: size * 0.14, weight: .heavy))
@@ -409,7 +460,7 @@ private struct D200HSlotTile: View {
                                 ZStack(alignment: .leading) {
                                     Rectangle().fill(.white.opacity(0.12))
                                     Rectangle()
-                                        .fill(gaugeColor(percent: window.percent, known: true, stale: dim))
+                                        .fill(gaugeColor(percent: window.percent, known: true, stale: dim, inactive: window.inactive))
                                         .frame(width: geo.size.width * min(1, max(0, window.percent / 100)))
                                 }
                             }
@@ -418,10 +469,10 @@ private struct D200HSlotTile: View {
                     }
                 }
                 .padding(size * 0.08)
-                CanonicalCreatureView(
-                    agentType: agent == "codex" ? "codex-cli" : "claude-code",
+                PreviewUsageMark(
+                    agentType: agent == "codex" ? "codex-cli" : (agent == "claude" ? "claude-code" : agent),
                     size: size * 0.14,
-                    color: StateColors.brand(agent: agent == "codex" ? "codex-cli" : "claude-code")
+                    color: SessionBrand.color(for: agent == "codex" ? "codex-cli" : (agent == "claude" ? "claude-code" : agent))
                 )
                 .padding(size * 0.055)
             }
@@ -449,17 +500,11 @@ private struct D200HSlotTile: View {
         }
     }
 
-    /// Severity ramp — port of `usageRampColor` (d200h-layout.ts): >80 red,
-    /// >50 amber, else green; stale desaturates to slate.
+    /// Shared used-percent severity, including unknown and non-binding caps.
     private func gaugeColor(percent: Double, known: Bool, stale: Bool = false, inactive: Bool = false) -> Color {
-        guard known else { return .white.opacity(0.4) }
-        if stale { return Color(red: 0x64 / 255.0, green: 0x74 / 255.0, blue: 0x8B / 255.0) }
-        // Inactive per-model scoped cap: informational cyan (UI.cyan #3ED6E8),
-        // never the critical ramp regardless of percent (issue #99).
-        if inactive { return Color(red: 0x3E / 255.0, green: 0xD6 / 255.0, blue: 0xE8 / 255.0) }
-        if percent > 80 { return Color(red: 0xEF / 255.0, green: 0x44 / 255.0, blue: 0x44 / 255.0) }
-        if percent > 50 { return Color(red: 0xEA / 255.0, green: 0xB3 / 255.0, blue: 0x08 / 255.0) }
-        return Color(red: 0x22 / 255.0, green: 0xC5 / 255.0, blue: 0x5E / 255.0)
+        if !known || stale { return UsageSeverity.color(-1) }
+        if inactive { return DesignTokens.UI.cyan }
+        return UsageSeverity.color(percent)
     }
 }
 

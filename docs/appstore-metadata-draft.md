@@ -155,6 +155,25 @@ AgentDeck은 독립적인 프로젝트이며 Anthropic, OpenAI, Google, SST, Cor
 claude code,ai,agent,dashboard,stream deck,monitoring,apme,openclaw,codex,ipad,companion,developer
 ```
 
+### What's New (v1.4.0)
+
+**macOS App**
+
+```
+• z.ai GLM Coding Plan 사용량을 추가했습니다. 크레딧 사용량과 MCP 도구 호출량을 구분해 표시합니다.
+• Codex 관찰 설정에 오류 원인 안내, 재시도, 파일 재선택을 추가했습니다. 기존에 활성화된 훅 설정과 함께 사용할 수 있으며, 충돌하는 설정은 이유를 안내합니다.
+• 계정 사용량 갱신을 개선했습니다. z.ai 키를 바꾸면 대시보드 서비스를 재시작하지 않고 이전 계정의 표시를 지웁니다.
+• 세션 순서, 기기 연결 조정, 실시간 미리보기의 사용량 표시와 배치를 개선했습니다.
+```
+
+**iOS App**
+
+```
+• 연결된 Mac에서 받은 z.ai GLM Coding Plan 사용량을 표시합니다. 크레딧 사용량과 MCP 도구 호출량을 구분합니다.
+• 기기 미리보기의 공급자 로고, 사용량 항목, 여러 공급자가 함께 있는 덱 화면과 원형 화면 배치를 개선했습니다.
+• 연결된 Mac의 사용량 갱신과 세션 순서를 더 일관되게 표시합니다.
+```
+
 ### What's New (v1.2.0, macOS — 심사 수정 문구)
 
 ```
@@ -487,6 +506,25 @@ AgentDeckは独立したプロジェクトであり、Anthropic、OpenAI、Googl
 claude code,ai,エージェント,ダッシュボード,stream deck,monitoring,apme,openclaw,codex,ipad,developer
 ```
 
+### What's New (v1.4.0)
+
+**macOS App**
+
+```
+• z.ai GLM Coding Planの使用量を追加しました。クレジット使用量とMCPツール呼び出し数を区別して表示します。
+• Codexの監視設定に、エラー理由の表示、再試行、ファイルの再選択を追加しました。有効な既存のフック設定と共存し、設定の競合時には理由を表示します。
+• アカウント使用量の更新を改善しました。z.aiのキーを変更すると、ダッシュボードサービスを再起動せずに以前のアカウントの表示を消去します。
+• セッション順序、デバイス接続の調整、ライブプレビューの使用量表示とレイアウトを改善しました。
+```
+
+**iOS App**
+
+```
+• ペアリングしたMacから受信したz.ai GLM Coding Planの使用量を表示します。クレジット使用量とMCPツール呼び出し数を区別します。
+• デバイスプレビューのプロバイダーマーク、使用量ラベル、複数プロバイダーのデッキ配置、円形画面のレイアウトを改善しました。
+• ペアリングしたMacの使用量更新とセッション順序を、より一貫して表示します。
+```
+
 ### What's New (v1.2.0, macOS — 審査修正文言)
 
 ```
@@ -815,6 +853,25 @@ AgentDeck is independent and is not affiliated with or endorsed by Anthropic, Op
 
 ```
 claude code,ai,agent,dashboard,monitoring,apme,openclaw,codex,ipad,stream deck,developer
+```
+
+### What's New (v1.4.0)
+
+**macOS App**
+
+```
+• Adds optional z.ai GLM Coding Plan usage, with separate credit and MCP tool-call readings.
+• Improves Codex observation setup with clear error explanations, retry, and file re-selection. Existing enabled hooks are preserved; incompatible settings are explained instead of silently stopping.
+• Keeps account usage current and clears old z.ai readings when a key changes, without restarting the dashboard service.
+• Improves session ordering, device coordination, and live previews with more complete usage labels and layouts.
+```
+
+**iOS App**
+
+```
+• Shows z.ai GLM Coding Plan usage received from your paired Mac, with distinct credit and MCP tool-call readings.
+• Improves live device previews, including provider marks, usage labels, crowded deck layouts, and round-screen placement.
+• Displays updated usage and session ordering from the paired Mac more consistently.
 ```
 
 ### What's New (v1.2.0, macOS — review-corrected copy)

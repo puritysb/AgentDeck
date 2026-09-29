@@ -84,7 +84,7 @@ describe('llm-settings', () => {
     expect(loadMlxSettings().model).toBe('A');
   });
 
-  it('resolveMlxModel: pin > probe > fallback', () => {
+  it('resolveMlxModel: refuses to invent a model', () => {
     writeSettings(dir, { llm: { mlx: { model: 'pinned' } } });
     expect(resolveMlxModel('probed')).toBe('pinned');
 
@@ -92,33 +92,35 @@ describe('llm-settings', () => {
     expect(resolveMlxModel('probed')).toBe('probed');
 
     writeSettings(dir, {});
-    expect(resolveMlxModel()).toBe(MLX_FALLBACK_MODEL);
-    expect(resolveMlxModel(null)).toBe(MLX_FALLBACK_MODEL);
-    expect(resolveMlxModel('')).toBe(MLX_FALLBACK_MODEL);
+    expect(() => resolveMlxModel()).toThrow(/not configured or verified/);
+    expect(() => resolveMlxModel(null)).toThrow(/not configured or verified/);
+    expect(() => resolveMlxModel('')).toThrow(/not configured or verified/);
   });
 
-  it('pickMlxModel: 4-layer priority (pin > fallback > first > null)', () => {
-    const OTHER = 'mlx-community/Qwen3.5-30B-A3B-4bit';
-
-    // Layer 4: null catalog → null (Not detected)
+  it('pickMlxModel requires a singleton catalog and matching pin', () => {
     expect(pickMlxModel(null)).toBeNull();
     expect(pickMlxModel([])).toBeNull();
-    expect(pickMlxModel(undefined)).toBeNull();
+    expect(pickMlxModel(['a', 'b'], 'a')).toBeNull();
+    expect(pickMlxModel(['a', 'b'])).toBeNull();
+    expect(pickMlxModel(['a'], 'b')).toBeNull();
+    expect(pickMlxModel(['a'], 'a')).toBe('a');
+    expect(pickMlxModel(['a', 'a'])).toBe('a');
+  });
 
-    // Layer 1: explicit pin wins when present in catalog
-    expect(pickMlxModel([OTHER, MLX_FALLBACK_MODEL], OTHER)).toBe(OTHER);
-    // Pin missing from catalog → falls through to fallback/first
-    expect(pickMlxModel([OTHER, MLX_FALLBACK_MODEL], 'not-on-disk'))
-      .toBe(MLX_FALLBACK_MODEL);
+  it.each(['openai', 'api', 'foundationModels', 'openclaw'])('never inherits %s credentials routing into MLX', (backend) => {
+    writeSettings(dir, { apme: { judge: { backend, model: 'other', endpoint: 'https://other.invalid/v1' } } });
+    expect(loadMlxSettings()).toEqual({ endpoint: 'http://127.0.0.1:8800', model: null });
+  });
 
-    // Layer 2: fallback model preferred when available and no pin
-    expect(pickMlxModel([OTHER, MLX_FALLBACK_MODEL])).toBe(MLX_FALLBACK_MODEL);
+  it('an explicit default MLX endpoint is not overridden by a legacy custom endpoint', () => {
+    writeSettings(dir, { llm: { mlx: { endpoint: 'http://127.0.0.1:8800' } },
+      apme: { judge: { backend: 'mlx', endpoint: 'http://other.invalid:8800' } } });
+    expect(loadMlxSettings().endpoint).toBe('http://127.0.0.1:8800');
+  });
 
-    // Layer 3: first entry when fallback absent (preserves 2b7b38b3 behavior)
-    expect(pickMlxModel([OTHER, 'foo/bar'])).toBe(OTHER);
-
-    // Empty-string pin is ignored (treated as unset)
-    expect(pickMlxModel([OTHER, MLX_FALLBACK_MODEL], '')).toBe(MLX_FALLBACK_MODEL);
+  it('does not redirect an invalid explicit endpoint to a running loopback server', () => {
+    writeSettings(dir, { llm: { mlx: { endpoint: 'not-a-url', model: 'chosen' } } });
+    expect(loadMlxSettings()).toEqual({ endpoint: 'not-a-url', model: 'chosen' });
   });
 
   it('mlxChatUrl reflects endpoint setting', () => {

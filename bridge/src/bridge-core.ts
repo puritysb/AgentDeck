@@ -1,3 +1,4 @@
+import { BOARD_TIMELINE_ROWS, shrinkTimelineEntryForBoard } from './board-timeline-entry.js';
 import type { Server } from 'http';
 import type WebSocket from 'ws';
 import { randomUUID } from 'crypto';
@@ -9,7 +10,7 @@ import { DisplayMonitor } from './display-monitor.js';
 import { BridgeTimelineStore } from './timeline-store.js';
 import type { BridgeLogStream } from './log-stream.js';
 import { readAntigravityLocalStatus } from './antigravity-local.js';
-import { buildSubscriptions, buildUsageEvent } from './usage-event.js';
+import { buildSubscriptions, buildUsageEvent, normalizeZaiRateLimits } from './usage-event.js';
 import { readCodexAuthStatus } from './codex-auth.js';
 import { readCodexRateLimits } from './codex-rate-limits.js';
 import {
@@ -17,11 +18,12 @@ import {
   codexRateLimitsWithLiveRefresh,
   getLiveCodexRateLimits,
 } from './codex-rate-limits-live.js';
-import { fetchMlxModels } from './mlx-probe.js';
+import { fetchMlxModels, fetchMlxResidency } from './mlx-probe.js';
 import { buildDisplayStateEvent } from './display-dim.js';
 import { foldCodexSessionsForDisplay, loadMlxSettings, sortSessions } from '@agentdeck/shared';
 import { probeGateway, checkGatewayHealth } from './gateway-probe.js';
 import { fetchUsageFromApi, hasOAuthToken, getTokenStatus, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
+import { fetchZaiQuota, type ZaiUsageFetchResult } from './zai-usage.js';
 import { buildEnrichedSessionsList } from './session-aggregator.js';
 import { activityFor } from './session-activity.js';
 import {
@@ -50,11 +52,17 @@ import {
 // - logError(): always shown (critical errors requiring user action)
 // - debug(): file-only (when --debug enabled)
 
-// links2004/WebSockets, used by the ESP32-C3 e-ink firmware, closes inbound
-// frames above 15KB with 1009 before the firmware parser can see them. Keep the
-// initial replay comfortably below that library cap; Detail views can request a
-// scoped session replay later via query_session_timeline.
-export const INITIAL_TIMELINE_HISTORY_MAX_BYTES = 12 * 1024;
+// Dashboards get the latest INITIAL_TIMELINE_HISTORY_ENTRIES readable rows —
+// the same replay the Swift daemon sends (`getRecent(100)`), so one tablet shows
+// one history whichever daemon it is attached to. The byte ceiling is a guard,
+// not the working limit: it used to be 12 KB for every client because an
+// untagged links2004 board (15 KB inbound frame limit) could look like a
+// dashboard on its first connect. Boards are now identified from byte one (the
+// `?clientType=esp32` tag, the links2004 User-Agent, or a known board IP) and
+// get ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES instead; at 12 KB a dashboard
+// received about a dozen rows, since agent replies carry their full text.
+export const INITIAL_TIMELINE_HISTORY_ENTRIES = 100;
+export const INITIAL_TIMELINE_HISTORY_MAX_BYTES = 256 * 1024;
 /** Board-class WS clients (`?clientType=esp32`) get the serial-path frame
  *  invariant applied to the initial burst too: any frame bound for a board
  *  must stay under 4096 bytes — a no-PSRAM board handed a 12KB frame right
@@ -138,6 +146,37 @@ export interface BridgeCoreOptions {
  *
  * Callers (startSession / startDaemon) wire adapters, voice, utility, etc.
  */
+/** Interval of the wake-detector tick. */
+export const WAKE_TICK_MS = 5_000;
+/** A tick this much later than scheduled is a discontinuity worth classifying. */
+export const WAKE_GAP_MS = 15_000;
+
+/** Monotonic milliseconds — excludes suspend on Darwin/Linux, which is the
+ *  property the wake detector depends on. */
+export function monotonicNowMs(): number {
+  return Number(process.hrtime.bigint() / 1_000_000n);
+}
+
+/** Classify one wake-detector tick.
+ *
+ *  `wake`  — the wall clock advanced far more than the monotonic clock: the
+ *            machine was suspended (or, on win32 where the monotonic clock
+ *            keeps counting through sleep, a large gap on either clock).
+ *  `lag`   — both clocks advanced together past the gap: the event loop was
+ *            starved. Not a wake, and running the wake recovery here is what
+ *            starves the NEXT tick.
+ *  `normal` — on schedule.
+ *
+ *  Pure, so the two cases that look identical to a gap-only rule can be
+ *  driven side by side. */
+export function classifyClockTick(t: { wallDeltaMs: number; monoDeltaMs: number; platform: NodeJS.Platform }): 'wake' | 'lag' | 'normal' {
+  const gap = t.wallDeltaMs > WAKE_GAP_MS;
+  if (!gap) return 'normal';
+  if (t.platform === 'win32') return 'wake';
+  const drift = t.wallDeltaMs - t.monoDeltaMs;
+  return drift > WAKE_GAP_MS ? 'wake' : 'lag';
+}
+
 export class BridgeCore {
   // Core components
   readonly port: number;
@@ -157,12 +196,19 @@ export class BridgeCore {
   // State caches (public for caller access)
   cachedApiUsage: ApiUsageData | null = null;
   lastApiFetchTime = 0;
+
+  /** z.ai GLM Coding Plan quota — an independent provider-account reading
+   *  (never gated on Claude/Codex state). Null until the first fetch, so a
+   *  machine with no key configured omits the wire block entirely. */
+  cachedZaiQuota: import('./types.js').ZaiRateLimits | null = null;
+  lastZaiFetchTime = 0;
   oauthConnected: boolean;
   apiUsageStale = false;
   /** True when cachedApiUsage was synced from relay's already-adjusted values */
   apiUsagePreAdjusted = false;
   cachedOllamaStatus: OllamaStatus | null = null;
   cachedMlxModels: string[] | null = null;
+  cachedMlxResidency = { known: false, models: [] as string[] };
   cachedAntigravityStatus = readAntigravityLocalStatus() ?? null;
   cachedGatewayAvailable = false;
   cachedGatewayConnected = false;
@@ -179,6 +225,7 @@ export class BridgeCore {
   private intervals: ReturnType<typeof setInterval>[] = [];
   private timeouts: ReturnType<typeof setTimeout>[] = [];
   private lastSessionsListBroadcast = 0;
+  private sessionsListTrailingTimer: ReturnType<typeof setTimeout> | undefined;
   private lastSessionsListEvent: BridgeEvent | null = null;
   private shutdownInProgress = false;
   private shutdownCallbacks: (() => void | Promise<void>)[] = [];
@@ -192,6 +239,15 @@ export class BridgeCore {
 
   /** External client count provider (e.g., ESP32 serial connections) */
   private externalClientCount: () => number = () => 0;
+
+  /**
+   * Optional per-client filter applied to the connect-time timeline history
+   * BEFORE the byte cap. The daemon's event transformer strips entries a
+   * client may not read (tool events) from the finished frame, so without
+   * this the newest tool rows spend the whole budget and are then removed,
+   * leaving a dashboard one or two rows of history.
+   */
+  private connectHistoryFilter?: (ws: WebSocket, entries: TimelineEntry[]) => TimelineEntry[];
 
   /** Optional APME subsystem — set via setApme() after initApme() resolves. */
   private apme: ApmeModule | null = null;
@@ -311,16 +367,41 @@ export class BridgeCore {
     });
     this.displayMonitor.start();
 
-    // Time-discontinuity safety net (python3 process may die during deep sleep)
-    let lastTick = Date.now();
+    // Time-discontinuity safety net (python3 process may die during deep sleep).
+    //
+    // A late timer is NOT a wake. This used to fire the wake handler whenever
+    // a 5 s tick landed more than 15 s after the previous one — which is what
+    // an event loop starved by load does routinely, sleep or no sleep. On
+    // 2026-09-10 (load average 13–17, `pmset -g log` showing ZERO sleep events
+    // all day) it fired 123 times, every one to four minutes, and each firing
+    // ran the whole device-recovery storm: mDNS republish, pairing re-arm on
+    // every ESP32 board, BLE workers restarted, a usage refetch. That work is
+    // what blocked the loop for the NEXT tick, so the detector fed itself —
+    // and each storm left `/health` unanswered long enough for the macOS app
+    // to read the daemon as gone, promote to a fallback port, and stand down
+    // again a minute later, three times in five minutes.
+    //
+    // The distinction that separates the two is which clocks advanced. Across
+    // a real sleep the wall clock jumps while the monotonic clock does not
+    // (Darwin and Linux CLOCK_MONOTONIC exclude suspend); under load both
+    // advance together. So the wake signal is the DRIFT between them, never
+    // the gap alone. Windows' monotonic clock keeps counting through sleep, so
+    // there the gap rule stays, documented as the weaker instrument it is.
+    let lastWall = Date.now();
+    let lastMono = monotonicNowMs();
     setInterval(() => {
-      const now = Date.now();
-      if (now - lastTick > 15_000) {
-        debug('core', `Time discontinuity (${now - lastTick}ms) — likely system wake`);
+      const wall = Date.now();
+      const mono = monotonicNowMs();
+      const verdict = classifyClockTick({ wallDeltaMs: wall - lastWall, monoDeltaMs: mono - lastMono, platform: process.platform });
+      if (verdict === 'wake') {
+        debug('core', `Time discontinuity (wall +${wall - lastWall}ms, monotonic +${Math.round(mono - lastMono)}ms) — system wake`);
         this._wakeHandler?.();
+      } else if (verdict === 'lag') {
+        debug('core', `Timer lag (${wall - lastWall}ms for a ${WAKE_TICK_MS}ms tick) — the loop is starved, not a wake`);
       }
-      lastTick = now;
-    }, 5000);
+      lastWall = wall;
+      lastMono = mono;
+    }, WAKE_TICK_MS);
   }
 
   /** Register a callback for system wake recovery. */
@@ -341,7 +422,7 @@ export class BridgeCore {
   }): BridgeEvent {
     const snapshot = opts.snapshot ?? this.stateMachine.getSnapshot();
     const codexAuth = readCodexAuthStatus();
-    const subscriptions = buildSubscriptions(codexAuth, this.cachedApiUsage, snapshot.billingType);
+    const subscriptions = buildSubscriptions(codexAuth, this.cachedApiUsage, snapshot.billingType, this.cachedAntigravityStatus, this.claudeUsageStale, this.zaiQuotaForWire());
 
     // Compute promptType
     let promptType: 'yes_no' | 'yes_no_always' | 'multi_select' | 'diff_review' | undefined;
@@ -380,7 +461,8 @@ export class BridgeCore {
       remoteUrl: snapshot.remoteUrl ?? undefined,
       pairingUrl: this.wsUrl,
       ollamaStatus: this.cachedOllamaStatus ?? undefined,
-      mlxModels: this.cachedMlxModels ?? undefined,
+      mlxModels: this.cachedMlxModels ?? [],
+      mlxResidency: this.cachedMlxResidency,
       subscriptions: subscriptions ?? undefined,
       antigravityStatus: this.cachedAntigravityStatus ?? undefined,
       gatewayAvailable: this.cachedGatewayAvailable,
@@ -433,6 +515,25 @@ export class BridgeCore {
    */
   lastBuiltCodexLiveFamilyAuthorityExpiresAtMs: number | null = null;
 
+  /** Read-time expiry also covers reconnects before the next usage tick. */
+  private get claudeUsageStale(): boolean {
+    return this.apiUsageStale ||
+      (this.lastApiFetchTime > 0 && Date.now() - this.lastApiFetchTime > BridgeCore.USAGE_STALE_TTL);
+  }
+
+  /** The z.ai block for the wire, with display retirement applied at read time
+   *  (the Claude-quota rule, scoped to this block: an expired reading hides
+   *  its windows rather than reading as live — the plan/family axes survive so
+   *  surfaces can still name the provider row). Null means "never fetched /
+   *  not configured" and omits the block: no information. */
+  zaiQuotaForWire(): import('./types.js').ZaiRateLimits | null {
+    if (!this.cachedZaiQuota) return null;
+    if (this.lastZaiFetchTime <= 0 || Date.now() - this.lastZaiFetchTime > BridgeCore.USAGE_STALE_TTL) {
+      return { planType: this.cachedZaiQuota.planType, limitId: this.cachedZaiQuota.limitId };
+    }
+    return normalizeZaiRateLimits(this.cachedZaiQuota) ?? null;
+  }
+
   /** Build and return a usage event */
   buildUsage(): BridgeEvent {
     const snapshot = this.stateMachine.getSnapshot();
@@ -454,7 +555,7 @@ export class BridgeCore {
       this.oauthConnected,
       this.cachedOllamaStatus,
       this.cachedMlxModels,
-      this.apiUsageStale,
+      this.claudeUsageStale,
       codexAuth,
       snapshot.billingType,
       this.cachedModelCatalog,
@@ -471,7 +572,10 @@ export class BridgeCore {
       // keeps minting exactly such snapshots), and its freshness must not
       // suppress the live query that carries the only usable number.
       codexRateLimits,
+      this.zaiQuotaForWire(),
     );
+    event.mlxModels = this.cachedMlxModels ?? [];
+    event.mlxResidency = this.cachedMlxResidency;
     this.lastBuiltCodexRateLimits = event.codexRateLimits ?? null;
     // "Is this block backed by a live answer", not "did the live answer win the
     // pick" — when the two agree on family the picker keeps the fresher rollout,
@@ -501,7 +605,7 @@ export class BridgeCore {
    * Handles billingType inference.
    *
    * `fresh` decides whether this counts as a LIVE reading. A false value still
-   * updates the numbers shown (they are the best available) but must NOT push
+   * retains the cache for diagnostics, but must NOT push
    * `lastApiFetchTime` forward or clear `apiUsageStale` — doing so is what made
    * a failed fetch indistinguishable from a successful one, disarming both the
    * `usageStale` wire flag and the `USAGE_STALE_TTL` backstop that exists to
@@ -554,6 +658,42 @@ export class BridgeCore {
     return this.applyUsageResult(await fetchUsageFromApi());
   }
 
+  /**
+   * Apply a z.ai quota fetch — the provider-account counterpart of
+   * `applyUsageResult`. The reading's original capture time owns display
+   * validity, including disk-cache hits and failed-poll fallbacks; applying
+   * a result never restamps a frozen reading as live. Credential removal clears the old
+   * account explicitly so retain-on-absent consumers retire their gauges.
+   */
+  applyZaiUsageResult(result: ZaiUsageFetchResult): boolean {
+    if (result.data) {
+      this.cachedZaiQuota = result.data;
+      const capturedAt = Date.parse(result.data.capturedAt ?? '');
+      this.lastZaiFetchTime = Number.isFinite(capturedAt) && capturedAt <= Date.now() ? capturedAt : 0;
+    } else if (this.cachedZaiQuota) {
+      this.cachedZaiQuota = {};
+      this.lastZaiFetchTime = 0;
+    }
+    this.broadcastUsage();
+    return result.fresh;
+  }
+
+  async refreshZaiUsage(): Promise<void> {
+    this.applyZaiUsageResult(await fetchZaiQuota());
+  }
+
+  /** Start the z.ai provider-account poll. Daemon-side only — a session bridge
+   *  has no reason to hold a second provider credential. */
+  startZaiUsagePolling(intervalMs = 60_000): void {
+    // One immediate fetch so a freshly started daemon paints the provider row
+    // without waiting a full interval; subsequent ticks share the file cache.
+    void this.refreshZaiUsage().catch(() => {});
+    this.addInterval(setInterval(() => {
+      if (!this.hasClients()) return;
+      void this.refreshZaiUsage().catch(() => {});
+    }, intervalMs));
+  }
+
   /** Fetch usage if cache is stale or empty (best-effort, no throw) */
   async fetchUsageIfStale(): Promise<void> {
     const cacheAge = Date.now() - this.lastApiFetchTime;
@@ -588,7 +728,7 @@ export class BridgeCore {
 
     const probe = (): void => {
       const pin = loadMlxSettings().model;
-      fetchMlxModels(pin).then((models) => {
+      Promise.all([fetchMlxModels(pin), fetchMlxResidency()]).then(([models, residency]) => {
         const success = Array.isArray(models) && models.length > 0;
         if (success) {
           failureCount = 0;
@@ -598,7 +738,8 @@ export class BridgeCore {
           const wait = Math.min(intervalMs * 2 ** failureCount, MAX_INTERVAL);
           nextFireAt = Date.now() + wait;
         }
-        const changed = JSON.stringify(this.cachedMlxModels) !== JSON.stringify(models);
+        const changed = JSON.stringify(this.cachedMlxModels) !== JSON.stringify(models) || JSON.stringify(this.cachedMlxResidency) !== JSON.stringify(residency);
+        this.cachedMlxResidency = residency;
         this.cachedMlxModels = models;
         if (changed) this.stateMachine.emit('state_changed', this.stateMachine.getSnapshot());
       }).catch(() => {
@@ -625,9 +766,16 @@ export class BridgeCore {
     }, intervalMs));
   }
 
+  /**
+   * `onAvailable` fires on EVERY tick the Gateway port answers, not only on the
+   * rising edge: the port stays open while a Gateway WS dies (a restart racing
+   * its own boot, a dropped link), and an edge-only callback never fired again —
+   * the daemon sat on a dead adapter for 16 h (2026-09-16) and again 2026-09-26.
+   * The callee must be idempotent. `onDisappeared` stays falling-edge.
+   */
   startGatewayProbe(
     intervalMs: number,
-    onAppeared?: () => void,
+    onAvailable?: () => void,
     onDisappeared?: () => void,
   ): void {
     const poll = async () => {
@@ -635,9 +783,9 @@ export class BridgeCore {
       const wasAvailable = this.cachedGatewayAvailable;
       this.cachedGatewayAvailable = status.available;
 
-      if (status.available && !wasAvailable) {
-        onAppeared?.();
-      } else if (!status.available && wasAvailable) {
+      if (status.available) {
+        onAvailable?.();
+      } else if (wasAvailable) {
         this.cachedGatewayConnected = false;
         this.cachedGatewayAuthStatus = 'gateway_not_found';
         this.cachedGatewayHasError = false;
@@ -652,13 +800,23 @@ export class BridgeCore {
     this.addInterval(setInterval(() => { poll().catch(() => {}); }, intervalMs));
   }
 
-  startGatewayHealthCheck(intervalMs = 30_000, delayMs = 5000): void {
+  /**
+   * `openclaw doctor` costs 8-9 s per run and opens its own Gateway connection,
+   * so the old 30 s cadence left the CLI running ~30% of the time and made this
+   * one check 99.5% of all Gateway RPC traffic (measured 2026-09-12: 9,958
+   * `channels.status` calls over four days, each on a fresh connection).
+   * OpenClaw's own health monitor runs on 300 s; match it.
+   */
+  startGatewayHealthCheck(intervalMs = 300_000, delayMs = 5000): void {
     const check = () => {
       if (!this.cachedGatewayAvailable) return;
-      checkGatewayHealth().then((hasError) => {
-        const changed = hasError !== this.cachedGatewayHasError;
-        this.cachedGatewayHasError = hasError;
+      checkGatewayHealth().then((verdict) => {
+        // "I could not look" is neither healthy nor broken — retain.
+        if (!verdict.known) return;
+        const changed = verdict.hasError !== this.cachedGatewayHasError;
+        this.cachedGatewayHasError = verdict.hasError;
         if (changed) {
+          debug('BridgeCore', `gatewayHasError -> ${verdict.hasError} (${verdict.reason}${verdict.detail ? `: ${verdict.detail}` : ''})`);
           this.stateMachine.emit('state_changed', this.stateMachine.getSnapshot());
         }
       }).catch(() => {});
@@ -671,7 +829,7 @@ export class BridgeCore {
 
   /**
    * Start periodic usage tick (session timer on displays).
-   * Also clears stale cache after USAGE_STALE_TTL.
+   * Also retires displayed quota after USAGE_STALE_TTL.
    */
   startUsageTick(intervalMs = 5000): void {
     this.addInterval(setInterval(() => {
@@ -711,6 +869,10 @@ export class BridgeCore {
   }
 
   /** Register daemon module-health provider for dashboard diagnostics. */
+  setConnectHistoryFilter(fn: (ws: WebSocket, entries: TimelineEntry[]) => TimelineEntry[]): void {
+    this.connectHistoryFilter = fn;
+  }
+
   setModuleHealthProvider(fn: () => Record<string, unknown>): void {
     this.moduleHealthProvider = fn;
   }
@@ -819,10 +981,20 @@ export class BridgeCore {
 
   /** Debounced sessions list broadcast (for state_changed handler) */
   maybeBroadcastSessionsList(): void {
+    if (this.shutdownInProgress || !this.hasClients()) return;
     const now = Date.now();
-    if (now - this.lastSessionsListBroadcast > 2000 && this.hasClients()) {
+    const remaining = 2000 - (now - this.lastSessionsListBroadcast);
+    if (remaining <= 0) {
+      clearTimeout(this.sessionsListTrailingTimer);
+      this.sessionsListTrailingTimer = undefined;
       this.lastSessionsListBroadcast = now;
       this.broadcastSessionsList().catch(() => {});
+    } else if (!this.sessionsListTrailingTimer) {
+      this.sessionsListTrailingTimer = setTimeout(() => {
+        this.sessionsListTrailingTimer = undefined;
+        this.maybeBroadcastSessionsList();
+      }, remaining);
+      this.sessionsListTrailingTimer.unref?.();
     }
   }
 
@@ -839,12 +1011,14 @@ export class BridgeCore {
       agentCapabilities?: AgentCapabilities;
       isAlive: boolean;
       extraEvents?: BridgeEvent[];
+      /** A caller-built first frame (the daemon hub stamps its own identity). */
+      stateEvent?: BridgeEvent;
     },
   ): void {
     const snapshot = this.stateMachine.getSnapshot();
 
     // State update (with capabilities for initial connect)
-    const stateEvent = this.buildStateEvent({
+    const stateEvent = opts.stateEvent ?? this.buildStateEvent({
       agentType: opts.agentType,
       agentCapabilities: opts.agentCapabilities,
       snapshot,
@@ -887,10 +1061,16 @@ export class BridgeCore {
     //    burst that kills it again. It re-syncs on its first stable connect
     //    (or via query_session_timeline).
     if (!this.wsServer.isFlappingClient(ws)) {
-      const historyCap = this.wsServer.isEsp32Client(ws)
-        ? ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES
-        : INITIAL_TIMELINE_HISTORY_MAX_BYTES;
-      const historyEvent = buildCappedTimelineHistory(history, historyCap)
+      const board = this.wsServer.isEsp32Client(ws);
+      const readable = (this.connectHistoryFilter ? this.connectHistoryFilter(ws, history) : history)
+        .slice(-INITIAL_TIMELINE_HISTORY_ENTRIES);
+      // A board gets its rows trimmed to firmware size BEFORE the byte budget,
+      // as the Swift daemon does; budgeting full-length entries left a board's
+      // first frame holding a single long reply.
+      const historyEvent = (board
+        ? buildCappedTimelineHistory(readable.slice(-BOARD_TIMELINE_ROWS).map(shrinkTimelineEntryForBoard),
+          ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES)
+        : buildCappedTimelineHistory(readable, INITIAL_TIMELINE_HISTORY_MAX_BYTES))
         ?? ({ type: 'timeline_history', entries: [] } as BridgeEvent);
       this.wsServer.sendTo(ws, historyEvent);
     }
@@ -1053,6 +1233,8 @@ export class BridgeCore {
       return;
     }
     this.shutdownInProgress = true;
+    clearTimeout(this.sessionsListTrailingTimer);
+    this.sessionsListTrailingTimer = undefined;
 
     log('Shutting down...');
     const hardExitTimer = setTimeout(() => {

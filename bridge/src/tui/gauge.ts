@@ -1,3 +1,4 @@
+import { usageSeverity } from '@agentdeck/shared';
 /**
  * Unicode block gauge and density bar rendering.
  * Ports the E-ink blockGauge pattern to terminal.
@@ -6,18 +7,18 @@
 import { sgr, RESET } from './ansi.js';
 
 /** Render a block gauge: [████░░░░░░] 62%. `muted` forces the dim (grey) fill
- *  regardless of percent — used for an INACTIVE per-model scoped cap, which must
- *  stay visible but never wear the critical (red) ramp of a binding limit. */
-export function blockGauge(percent: number, width: number, muted = false): string {
-  const clamped = Math.max(0, Math.min(100, percent));
+ *  regardless of percent for stale readings. An inactive model cap is cyan. */
+export function blockGauge(percent: number, width: number, muted = false, inactive = false): string {
+  const clamped = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
   const filled = Math.round((clamped / 100) * width);
   const empty = width - filled;
 
-  // Color by threshold (an inactive scoped cap is muted, not ramped).
+  // Freshness outranks an inactive scoped cap; otherwise use shared severity.
   let color: string;
-  if (muted) color = sgr(90);               // dim grey — non-binding cap
-  else if (clamped >= 90) color = sgr(31);  // red
-  else if (clamped >= 70) color = sgr(33);  // yellow
+  if (muted || usageSeverity(percent) === 'unknown') color = sgr(90);               // unknown / stale
+  else if (inactive) color = sgr(36);
+  else if (usageSeverity(percent) === 'critical') color = sgr(31);  // red
+  else if (usageSeverity(percent) === 'warning') color = sgr(33);  // yellow
   else color = sgr(32);                      // green
 
   return `${color}${'█'.repeat(filled)}${sgr(90)}${'░'.repeat(empty)}${RESET}`;

@@ -2,7 +2,7 @@
 
 // AgentDeck ESP32 e-ink dashboard geometry SSOT.
 //
-// This header intentionally depends only on <stdint.h>. InkDeck (GxEPD2) and
+// This header intentionally depends only on <stdint.h>. TRMNL 7.5" (GxEPD2) and
 // the downstream XTeink X3/X4 CrossPoint fork (GfxRenderer) consume the exact
 // same file, while keeping their panel drivers and text engines independent.
 // The mirror is updated by scripts/sync-xteink-eink-dashboard.sh.
@@ -30,7 +30,7 @@ struct Rect {
 // `Layout::portrait` field, so a panel can be Compact in either orientation —
 // do not read these bands as landscape/portrait classes.
 enum class Density : uint8_t {
-    Compact,   // short edge < 520px  — InkDeck 800x480, XTeink X4 480x800
+    Compact,   // short edge < 520px  — TRMNL 7.5" 800x480, XTeink X4 480x800
     Regular,   // short edge 520..759 — XTeink X3 528x792
     Spacious,  // short edge >= 760px — future large e-ink panels
 };
@@ -54,7 +54,7 @@ struct LayoutInput {
     int16_t width;
     int16_t height;
     int16_t headerHeight;       // includes the header divider
-    int16_t controlsHeight;     // physical-button hint bar; 0 on InkDeck
+    int16_t controlsHeight;     // physical-button hint bar; 0 on TRMNL 7.5"
     int16_t usageRowHeight;
     int16_t activityRowHeight;
     uint8_t usageRows;

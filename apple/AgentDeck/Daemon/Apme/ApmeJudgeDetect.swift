@@ -48,6 +48,10 @@ enum ApmeJudgeDetect {
     }
 
     private static func models(for c: Candidate, timeout: TimeInterval) async -> [String]? {
+        if c.provider == "mlx" {
+            guard let model = try? await MlxInference.shared.resolve(endpoint: c.base, pin: nil) else { return nil }
+            return [model]
+        }
         if c.tags, let url = URL(string: c.base + "/api/tags") {
             var r = URLRequest(url: url); r.timeoutInterval = timeout
             if let (data, resp) = try? await URLSession.shared.data(for: r),

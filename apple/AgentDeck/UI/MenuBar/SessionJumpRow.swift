@@ -18,14 +18,7 @@ struct SessionJumpRow: View {
         AgentConnectionState(rawValue: session.state ?? "idle") ?? .idle
     }
 
-    private var stateDotColor: Color {
-        switch state {
-        case .processing: DesignTokens.UI.cyan
-        case .awaitingPermission, .awaitingOption, .awaitingDiff: DesignTokens.UI.attn
-        case .idle: DesignTokens.UI.idle
-        case .disconnected: DesignTokens.UI.idleDark
-        }
-    }
+    private var stateDotColor: Color { StateColors.color(for: state) }
 
     private var brandColor: Color { SessionBrand.color(for: session.agentType) }
 

@@ -11,6 +11,21 @@ import XCTest
 
 @MainActor
 final class TopologyRailHelpersTests: XCTestCase {
+    func testInlineSubscriptionPreservesPlanAndCreditsWithoutDate() {
+        XCTAssertEqual(TopologyRail.withSubscriptionDate("ChatGPT Pro · Premium · 20 credits", until: nil, now: Date()), "ChatGPT Pro · Premium · 20 credits")
+        XCTAssertEqual(TopologyRail.withSubscriptionDate("Google AI Pro", until: nil, now: Date()), "Google AI Pro")
+    }
+
+    func testInlineSubscriptionDistinguishesDateFromQuotaReset() {
+        let result = TopologyRail.withSubscriptionDate("ChatGPT Pro", until: "2099-12-31", now: Date())!
+        XCTAssertTrue(result.hasPrefix("ChatGPT Pro · subscription "))
+        XCTAssertFalse(result.contains("reset"))
+    }
+
+    func testInlinePastDateDoesNotClaimCancellationOrRenewalRequired() {
+        XCTAssertEqual(TopologyRail.withSubscriptionDate("ChatGPT Pro", until: "2020-01-01", now: Date()), "ChatGPT Pro · subscription date unconfirmed")
+    }
+
     func testParseFutureISO8601WithFractionalSeconds() {
         let parsed = TopologyRail.parseUntilDate("2099-12-31T23:59:59.999Z")
         XCTAssertNotNil(parsed)

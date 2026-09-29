@@ -27,7 +27,7 @@ pnpm docs:check
 
 Platform-specific prerequisites and validation commands live in
 [the testing guide](docs/testing.md). Architecture and generated-mirror rules
-live in [CLAUDE.md](CLAUDE.md); contributors using any coding agent should read
+live in [AGENTS.md](AGENTS.md); contributors using any coding agent should read
 that file before editing the repository.
 
 ## Pull requests
@@ -43,7 +43,7 @@ A pull request should:
 5. Call out hardware-only validation that maintainers still need to perform.
 
 For Apple changes, preserve the App Store invariants in
-[CLAUDE.md](CLAUDE.md#app-store-build-invariants) and update the feature matrix
+[AGENTS.md](AGENTS.md#app-store-build-invariants) and update the feature matrix
 before moving or adding functionality. For protocol changes, follow
 [the compatibility policy](docs/wire-compatibility.md).
 

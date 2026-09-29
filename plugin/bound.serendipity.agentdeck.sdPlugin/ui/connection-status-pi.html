@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <script src="sdpi-components.js"></script>
+  <link rel="stylesheet" href="design-tokens.css" />
+  <link rel="stylesheet" href="connection-status-pi.css" />
+</head>
+<body>
+  <div class="ad-conn">
+    <div class="ad-conn-row">
+      <span id="adConnDot" class="ad-conn-dot"></span>
+      <span id="adConnLine" class="ad-conn-line">Checking…</span>
+    </div>
+    <div id="adConnPath" class="ad-conn-path">—</div>
+    <div id="adConnMeta" class="ad-conn-meta"></div>
+    <button id="adConnRetry" class="ad-conn-retry" type="button">Retry now</button>
+  </div>
+  <script src="connection-status-pi.js"></script>
+</body>
+</html>

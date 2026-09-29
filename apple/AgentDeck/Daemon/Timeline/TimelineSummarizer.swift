@@ -42,17 +42,6 @@ enum TimelineSummarizer {
 
     private static let maxChars = 80
 
-    /// Preferred MLX model when the live catalog advertises it. Mirrors
-    /// shared/src/llm-settings.ts MLX_FALLBACK_MODEL. Used only for catalog
-    /// matching — never returned when the server is down.
-    private static let mlxFallbackModel = "mlx-community/Qwen3-1.7B-4bit"
-
-    /// Cached picked model id from /v1/models, refreshed on staleness.
-    /// `nil` means "server probed, nothing usable" and summarize must skip.
-    nonisolated(unsafe) private static var probedModel: String?
-    nonisolated(unsafe) private static var probedAt: Date = .distantPast
-    private static let probeCacheTTL: TimeInterval = 60
-
     static func isAssistantProgressUpdate(_ text: String?) -> Bool {
         guard let text else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -88,44 +77,8 @@ enum TimelineSummarizer {
     /// `mlx_vlm.server` installed would otherwise see a silent 100% failure
     /// rate and blocking network timeouts).
     private static func resolveMlxModel() async -> String? {
-        if let pin = ApmeSettings.loadMlxConfig().model {
-            return pin
-        }
-        if probedModel == nil || Date().timeIntervalSince(probedAt) > probeCacheTTL {
-            probedModel = await pickFromCatalog()
-            probedAt = Date()
-        }
-        return probedModel
-    }
-
-    /// Fetch /v1/models catalog and apply the 4-layer policy mirrored from
-    /// shared `pickMlxModel`: pin → MLX_FALLBACK_MODEL if present → first
-    /// entry → nil. The pin branch is handled by the caller (settings take
-    /// precedence over probe). `nanollava` variants are always filtered.
-    private static func pickFromCatalog() async -> String? {
-        let base = ApmeSettings.loadMlxConfig().endpoint
-        for path in ["/v1/models", "/models"] {
-            guard let url = URL(string: base + path) else { continue }
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 2
-            guard let (data, response) = try? await URLSession.shared.data(for: req),
-                  let http = response as? HTTPURLResponse,
-                  http.statusCode == 200,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let rows = json["data"] as? [[String: Any]]
-            else { continue }
-            let catalog: [String] = rows.compactMap { row in
-                guard let id = row["id"] as? String,
-                      !id.isEmpty,
-                      !id.lowercased().contains("nanollava")
-                else { return nil }
-                return id
-            }
-            if catalog.isEmpty { return nil }
-            if catalog.contains(mlxFallbackModel) { return mlxFallbackModel }
-            return catalog.first
-        }
-        return nil
+        let config = ApmeSettings.loadMlxConfig()
+        return try? await MlxInference.shared.resolve(endpoint: config.endpoint, pin: config.model)
     }
 
     /// Summarize a response text using the requested provider chain.
@@ -245,7 +198,7 @@ enum TimelineSummarizer {
         request.timeoutInterval = 10
 
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await MlxInference.shared.send(request)
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                let choices = json["choices"] as? [[String: Any]],
                let message = choices.first?["message"] as? [String: Any],

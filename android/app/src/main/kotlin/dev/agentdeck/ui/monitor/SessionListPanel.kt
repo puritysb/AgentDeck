@@ -278,7 +278,7 @@ fun SessionListPanel(
                     overflow = TextOverflow.Ellipsis,
                 )
                 // Shared activity one-liner (bridge SSOT) — same summary the
-                // InkDeck e-ink cards show, so surfaces don't drift.
+                // TRMNL 7.5" e-ink cards show, so surfaces don't drift.
                 if (entry.activity != null) {
                     Text(
                         text = entry.activity,

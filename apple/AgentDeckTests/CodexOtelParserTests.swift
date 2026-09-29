@@ -509,6 +509,96 @@ final class CodexOtelParserTests: XCTestCase {
         )
     }
 
+    // MARK: - Hook/OTel ownership (issue #411)
+
+    private func ownershipBatch(_ thread: String, turn: String = "turn-1") -> [CodexSpanEvent] {
+        CodexTelemetryModule.parse(otlp(spans: [
+            ["name": "turn/start", "attributes": attr(["thread.id": thread, "turn.id": turn])],
+            ["name": "codex.tool.call", "attributes": attr(["thread.id": thread, "turn.id": turn, "tool.name": "Read"])],
+            ["name": "codex.tool.result", "attributes": attr(["thread.id": thread, "turn.id": turn])],
+            ["name": "receiving", "attributes": attr(["thread.id": thread, "turn.id": turn])],
+            ["name": "session_task.turn", "attributes": attr(["thread.id": thread, "turn.id": turn])],
+        ]))
+    }
+
+    func testHookStopRejectsExitTimeOtelBatchBeforeAndAfterRowEviction() {
+        var owner = CodexObservationOwnership()
+        let start = Date(timeIntervalSince1970: 100)
+        let sid = "codex:" + tidCurrent
+        for event in ["codex_session_start", "codex_user_prompt_submit", "codex_stop"] {
+            owner.receiveHook(event: event, sessionId: sid, now: start)
+        }
+        let batch = ownershipBatch(tidCurrent)
+        XCTAssertEqual(batch.count, 5)
+        XCTAssertTrue(owner.admittingOtel(batch).isEmpty)
+        // The roster's short post-terminal window expires before the
+        // ownership/tombstone window. A late batch must still stay dead.
+        owner.prune(before: start.addingTimeInterval(-1), retaining: [])
+        XCTAssertTrue(owner.admittingOtel(batch).isEmpty)
+        // Even past the ownership cutoff, a retained terminal record wins.
+        owner.prune(before: start.addingTimeInterval(1), retaining: [sid])
+        XCTAssertTrue(owner.admittingOtel(batch).isEmpty)
+    }
+
+    func testOtelCannotOverrideHookPermissionOrCloseNextHookTurn() {
+        var owner = CodexObservationOwnership()
+        let now = Date(timeIntervalSince1970: 100)
+        let sid = "codex:" + tidCurrent
+        owner.receiveHook(event: "codex_permission_request", sessionId: sid, now: now)
+        XCTAssertTrue(owner.admittingOtel(ownershipBatch(tidCurrent)).isEmpty)
+        owner.receiveHook(event: "codex_stop", sessionId: sid, now: now)
+        owner.receiveHook(event: "codex_user_prompt_submit", sessionId: sid, now: now)
+        XCTAssertTrue(owner.admittingOtel(ownershipBatch(tidCurrent, turn: "prior-turn")).isEmpty)
+    }
+
+    func testOtelOnlyAndNotifyOnlyThreadsRetainAllEvents() {
+        var owner = CodexObservationOwnership()
+        let batch = ownershipBatch(tidCurrent)
+        XCTAssertEqual(owner.admittingOtel(batch), batch)
+        // Notify has no start signal; claiming ownership here would make
+        // every subsequent OTel-only turn invisible.
+        owner.receiveHook(event: "codex_turn_complete", sessionId: "codex:" + tidCurrent,
+                          now: Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(owner.admittingOtel(batch), batch)
+    }
+
+    func testHookTakeoverIsPerThreadAndPreservesOtherBatchOrder() {
+        var owner = CodexObservationOwnership()
+        let first = ownershipBatch(tid1)
+        let second = ownershipBatch(tid2)
+        XCTAssertEqual(owner.admittingOtel(first), first)
+        owner.receiveHook(event: "codex_tool_start", sessionId: "codex:" + tid1,
+                          now: Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(owner.admittingOtel(first + second), second)
+    }
+
+    func testOwnershipExpiresWithoutRowOrTombstoneAndOtelDoesNotRenewIt() {
+        var owner = CodexObservationOwnership()
+        let now = Date(timeIntervalSince1970: 100)
+        let sid = "codex:" + tidCurrent
+        owner.receiveHook(event: "codex_stop", sessionId: sid, now: now)
+        let batch = ownershipBatch(tidCurrent)
+        XCTAssertTrue(owner.admittingOtel(batch).isEmpty)
+        owner.prune(before: now, retaining: [])
+        XCTAssertTrue(owner.admittingOtel(batch).isEmpty)
+        owner.prune(before: now.addingTimeInterval(1), retaining: [])
+        XCTAssertEqual(owner.admittingOtel(batch), batch)
+    }
+
+    func testLiveHookOwnershipSurvivesCutoffAndNewHookRenewsIt() {
+        var owner = CodexObservationOwnership()
+        let now = Date(timeIntervalSince1970: 100)
+        let sid = "codex:" + tidCurrent
+        let batch = ownershipBatch(tidCurrent)
+        owner.receiveHook(event: "codex_session_start", sessionId: sid, now: now)
+        owner.prune(before: now.addingTimeInterval(1), retaining: [sid])
+        XCTAssertTrue(owner.admittingOtel(batch).isEmpty)
+        owner.receiveHook(event: "codex_user_prompt_submit", sessionId: sid,
+                          now: now.addingTimeInterval(2))
+        owner.prune(before: now.addingTimeInterval(1), retaining: [])
+        XCTAssertTrue(owner.admittingOtel(batch).isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func makeTempSessionsRoot() throws -> URL {

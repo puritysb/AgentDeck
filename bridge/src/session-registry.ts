@@ -125,6 +125,19 @@ export interface DaemonInfo {
   pid: number;
   startedAt: string;
   httpPort?: number;  // Swift daemon: HTTP server port (may differ from WS port)
+  /**
+   * The autostart supervisor that started this daemon, when one did
+   * (`launchd` / `systemd` / `schtasks`, taken from `AGENTDECK_SUPERVISOR`).
+   *
+   * Stamped only past a successful bind, so it means "the unit owns the daemon
+   * SERVING this port" rather than "the unit launched something". Windows needs
+   * it because its task action is a launcher that exits, which leaves the
+   * task's own status unable to answer that question (see
+   * `daemon-supervisor.ts`). Absent for a hand-started daemon, for the Swift
+   * daemon, and for any build predating the stamp — each of which reads as
+   * "not supervised", never as unknown.
+   */
+  startedBy?: string;
 }
 
 export interface SessionEntry {

@@ -14,13 +14,14 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { mlxBaseUrl, selectMlxModel } from './mlx-safety.js';
 
 /** Base URL used when settings.json pins no `llm.mlx.endpoint`. Exported so
  *  docs/config mirrors can be gated against it instead of restating it. */
 export const DEFAULT_MLX_ENDPOINT = 'http://127.0.0.1:8800';
 const DEFAULT_ENDPOINT = DEFAULT_MLX_ENDPOINT;
 
-/** Final fallback when neither settings nor probe yield a model id. */
+/** Historical pricing/catalog identifier. Never an inference fallback. */
 export const MLX_FALLBACK_MODEL = 'mlx-community/Qwen3-1.7B-4bit';
 
 const PLACEHOLDER_MODEL_IDS = new Set(['', 'default', 'qwen3-30b']);
@@ -45,10 +46,9 @@ function isPlaceholder(m: unknown): boolean {
   return PLACEHOLDER_MODEL_IDS.has(m.trim());
 }
 
-function stripChatSuffix(url: string): string {
-  return url
-    .replace(/\/v1\/chat\/completions$/, '')
-    .replace(/\/chat\/completions$/, '');
+function configuredEndpoint(value: string): string {
+  // Keep invalid explicit settings invalid: never redirect them to loopback.
+  try { return mlxBaseUrl(value); } catch { return value; }
 }
 
 export function loadMlxSettings(): MlxSettings {
@@ -57,6 +57,7 @@ export function loadMlxSettings(): MlxSettings {
   }
   let endpoint = DEFAULT_ENDPOINT;
   let model: string | null = null;
+  let explicitEndpoint = false;
   try {
     const raw = JSON.parse(readFileSync(settingsPath(), 'utf-8')) as Record<string, unknown>;
 
@@ -64,22 +65,24 @@ export function loadMlxSettings(): MlxSettings {
       endpoint?: unknown; model?: unknown;
     };
     if (typeof llmMlx.endpoint === 'string' && llmMlx.endpoint.length > 0) {
-      endpoint = stripChatSuffix(llmMlx.endpoint);
+      endpoint = configuredEndpoint(llmMlx.endpoint);
+      explicitEndpoint = true;
     }
     if (!isPlaceholder(llmMlx.model)) {
       model = (llmMlx.model as string).trim();
     }
 
     // Legacy fallback: apme.judge.{endpoint,model}
-    if (model === null || endpoint === DEFAULT_ENDPOINT) {
+    if (model === null || !explicitEndpoint) {
       const judge = ((raw.apme as { judge?: unknown } | undefined)?.judge ?? {}) as {
-        endpoint?: unknown; model?: unknown;
+        endpoint?: unknown; model?: unknown; backend?: unknown;
       };
-      if (model === null && !isPlaceholder(judge.model)) {
+      const legacyMlx = judge.backend === undefined || judge.backend === 'mlx';
+      if (legacyMlx && model === null && !isPlaceholder(judge.model)) {
         model = (judge.model as string).trim();
       }
-      if (endpoint === DEFAULT_ENDPOINT && typeof judge.endpoint === 'string' && judge.endpoint.length > 0) {
-        endpoint = stripChatSuffix(judge.endpoint);
+      if (legacyMlx && !explicitEndpoint && typeof judge.endpoint === 'string' && judge.endpoint.length > 0) {
+        endpoint = configuredEndpoint(judge.endpoint);
       }
     }
   } catch {
@@ -97,38 +100,22 @@ export function clearMlxSettingsCache(): void {
 
 /**
  * Resolve the MLX model id for an actual inference call.
- * Priority: pinned settings → caller-supplied probe result → hardcoded fallback.
+ * Returns an explicit pin or a verified probe result; never guesses a model.
  */
 export function resolveMlxModel(probeFirst?: string | null): string {
   const { model } = loadMlxSettings();
   if (model) return model;
   if (probeFirst && probeFirst.length > 0) return probeFirst;
-  return MLX_FALLBACK_MODEL;
+  throw new Error('MLX model is not configured or verified');
 }
 
-/**
- * Pick one model id from a live probe catalog. Returns `null` when the
- * server is unreachable or advertises no usable model — UI should render
- * "MLX · Not detected" rather than silently masquerading the fallback as
- * active (the fallback id won't exist on the user's disk and every
- * summarize call would fail).
- *
- * Priority — mirrors the 4-layer policy documented in CLAUDE.md:
- *   1. caller-supplied pin if present in catalog
- *   2. `MLX_FALLBACK_MODEL` if present in catalog — keeps the codebase's
- *      chosen lightweight default in sync with what the dashboard advertises
- *   3. first catalog entry (preserves the `auto-pick first` behavior added
- *      in commit 2b7b38b3 for the many-models case)
- *   4. null — no catalog
- */
+/** Legacy catalog-only compatibility: exactly one model, constrained by pin.
+ * Use resolveSafeMlxModel for real inference; downloads are not residency. */
 export function pickMlxModel(
   catalog: string[] | null | undefined,
   pin?: string | null,
 ): string | null {
-  if (!catalog || catalog.length === 0) return null;
-  if (pin && pin.length > 0 && catalog.includes(pin)) return pin;
-  if (catalog.includes(MLX_FALLBACK_MODEL)) return MLX_FALLBACK_MODEL;
-  return catalog[0];
+  try { return selectMlxModel(false, null, catalog ?? [], pin); } catch { return null; }
 }
 
 /**

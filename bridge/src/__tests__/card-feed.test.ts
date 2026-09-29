@@ -454,6 +454,43 @@ describe('glance builders', () => {
     expect(buildGlanceUsage({ type: 'usage_update', usageStale: true } as never)).toEqual([]);
   });
 
+  it('buildGlanceUsage adds the z.ai row after Codex and fits all three providers', () => {
+    const rows = buildGlanceUsage({
+      type: 'usage_update',
+      fiveHourPercent: 42,
+      usageStale: false,
+      codexRateLimits: {
+        primary: { usedPercent: 88, windowMinutes: 300 },
+      },
+      zaiRateLimits: {
+        planType: 'max',
+        limitId: 'standard',
+        primary: { usedPercent: 1, windowMinutes: 300, resetsAt: new Date(NOW + 3600_000).toISOString() },
+        secondary: { usedPercent: 100, windowMinutes: 43200 },
+      },
+    } as never);
+    expect(rows.map((r) => r.provider)).toEqual(['claude', 'codex', 'zai']);
+    expect(rows[2]).toMatchObject({
+      label: 'z.ai', primaryPercent: 1, secondaryPercent: 100, stale: false,
+    });
+    expect(rows[2]!.primaryResetHm).toMatch(/^\d{2}:\d{2}$/);
+    // GLANCE_MAX_USAGE_ROWS was raised 3 → 4 for exactly this shape.
+    expect(rows).toHaveLength(3);
+  });
+
+  it('buildGlanceUsage keeps the list compact when only z.ai is live', () => {
+    const rows = buildGlanceUsage({
+      type: 'usage_update',
+      usageStale: true,
+      zaiRateLimits: {
+        primary: { usedPercent: 7, windowMinutes: 300 },
+      },
+    } as never);
+    expect(rows).toEqual([{
+      provider: 'zai', label: 'z.ai', primaryPercent: 7, stale: false,
+    }]);
+  });
+
   it('buildGlanceWrapup ranks attention first and folds overflow', () => {
     const roster = [
       session({ id: 'i1', projectName: 'idle-1', state: 'idle' }),

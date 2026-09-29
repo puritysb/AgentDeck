@@ -7,14 +7,14 @@ locale: en
 canonical: true
 status: stable
 owner: Firmware maintainers
-reviewed: 2026-07-22
-revision: 2026-07-22
+reviewed: 2026-09-23
+revision: 2026-09-23
 source_of_truth: docs/esp32.md
 validators: [bash esp32/robot/run.sh build]
 ---
 # ESP32 Firmware
 
-PlatformIO Arduino firmware for LVGL touch displays (ESP32-S3: 86Box 480×480, IPS 3.5" 480×320 landscape / 320×480 portrait, Round AMOLED 360×360; ESP32-P4: Guition JC8012P4A1C 10.1" IPS 800×1280 portrait native + ESP32-C6 co-processor), three e-ink surfaces (InkDeck 800×480, RockBase NM-EPD-420 400×300 tri-color, LilyGo EPD47 960×540 grayscale), SPI TFT displays (ESP32 classic: LilyGO TTGO T-Display 1.14" 135×240 with a 160px terrarium viewport + 80px metric strip), and a WS2812B LED matrix (ESP32 classic: Ulanzi TC001 8×32). Board-specific `#ifdef`, per-board partition tables, FastLED matrix renderer bypasses LVGL entirely. IPS 3.5" supports runtime portrait↔landscape switching via `set_orientation` protocol command or Settings toggle (NVS persistent, `g_screenW`/`g_screenH` runtime globals).
+PlatformIO Arduino firmware for LVGL touch displays (ESP32-S3: 86Box 480×480, IPS 3.5" 480×320 landscape / 320×480 portrait, Round AMOLED 360×360; ESP32-P4: Guition JC8012P4A1C 10.1" IPS 800×1280 portrait native + ESP32-C6 co-processor), three e-ink surfaces (TRMNL 7.5" 800×480, RockBase NM-EPD-420 400×300 tri-color, LilyGo EPD47 960×540 grayscale), SPI TFT displays (ESP32 classic: LilyGO TTGO T-Display 1.14" 135×240 with a 160px terrarium viewport + 80px metric strip), and a WS2812B LED matrix (ESP32 classic: Ulanzi TC001 8×32). Board-specific `#ifdef`, per-board partition tables, FastLED matrix renderer bypasses LVGL entirely. IPS 3.5" supports runtime portrait↔landscape switching via `set_orientation` protocol command or Settings toggle (NVS persistent, `g_screenW`/`g_screenH` runtime globals).
 
 ## Host simulator (no-hardware preview)
 
@@ -32,11 +32,10 @@ pnpm esp32:sim box_86 working  # one board, one scene
 ```
 
 Covers all board classes: LCD terrarium + HUD (`box_86` 480×480, `ips35` 480×320,
-`amoled` 360×360 round, `ttgo` 135×240 compact overlay), the IPS10 tablet "pixel
-office" + sidebar mosaic (`ips10` 1280×800), the two companion render trees
+`amoled` 360×360 round, `ttgo` 135×240 compact overlay), the IPS10 task workspace (`ips10` 1280×800, also tested at 800×1280), the two companion render trees
 (`t_embed` 320×170 encoder knob, `t_display_pro` 480×222 focus strip), the TC001
 8×32 LED matrix (`led8x32`, usage/agents pages), and the three paper-face layouts
-(`inkdeck` 800×480, `nm_epd_420_preview` 400×300, and
+(`trmnl_75` 800×480, `nm_epd_420_preview` 400×300, and
 `lilygo_epd47_preview` 960×540). LCD boards render the **real** composed screen via
 the board's own builder — `Screens::aquariumCreate()`, `Knob::create()` or
 `Ticker::create()`. Two further envs (`xteink_x3`, `xteink_x4`) are layout
@@ -51,9 +50,51 @@ firmware fills from the daemon's `state_update`, exercising the real session →
 creature/card derivation. Frames are deterministic (virtual clock + re-seeded
 PRNG) for golden tests. Adding a board = one `platformio.ini` env block.
 Standalone PlatformIO project (does not inherit `esp32/platformio.ini`), so
-WiFi/WebSockets/LovyanGFX never enter the native build. Limitations: Latin labels
-only (CJK stubbed); e-ink is a single full-buffer pass (no partial-refresh
-ghosting). See [esp32/sim/README.md](../esp32/sim/README.md).
+WiFi/WebSockets/LovyanGFX never enter the native build. IPS10 renders the real
+Korean fonts. Hardware flush timing and physical touch accuracy are not modeled;
+e-ink is a single full-buffer pass (no partial-refresh ghosting). See [esp32/sim/README.md](../esp32/sim/README.md).
+
+## Compact session labels
+
+Small displays are progress monitors first; the session list is a task picker,
+not a directory browser. Both daemons send an optional `displayName` for ESP32
+frames. A verified auto-generated linked-worktree name becomes the repository
+name; duplicate labels get ID-sorted `#N` suffixes before roster capping or
+paging, so activity reordering cannot renumber them. Membership changes can
+renumber the suffix; it is a display hint, never an identity. Explicit project
+names remain intact. The original `projectName`, session ID and control target
+are preserved. Old firmware ignores the new field; old daemons use the original
+name. Optional labels use only spare serial-frame budget. TTGO uses a 12-byte
+base before numbering to fit its 20-byte field; other boards use a 32-byte base
+in a 40-byte field. Recolor-enabled HUD rows render hash marks as spaces.
+
+Focus Strip and Pocket lists show waiting questions first, live activity/tool
+while processing, and the last reported event while idle. Idle never means
+completed. Fixed-height list captions use ellipses and cannot overlap the next
+row. TTGO and TC001 retain their usage-first roles; this does not turn their
+primary page into a full session list.
+
+## IPS10 task workspace
+
+IPS10 defaults to an English ambient aquarium: current work, recent received activity, and attention remain visible without touch. Session detail is available on demand. The installed P4 display driver is currently fixed to 1280×800 landscape; `set_orientation` does not rotate this board. The 800×1280 layout is validated in the native simulator, not as a physical rotation feature. The fixed layout is:
+
+- A conditional attention strip names the first waiting project and its question, including when that project is on another page. State filters remain in detail mode.
+- Two equal-width project spaces (one in the portrait preview) per page group canonical creatures by exact reported project name. Short display labels never change this grouping or session control IDs. Project ordering and creature numbers follow identities; attention takes priority when choosing visible creatures. Additional spaces appear every 12 seconds; tapping the page caption pauses/resumes rotation. Narrow spaces show up to two agents, while a single wide space shows three side by side. Extra peers rotate every 8 seconds, reserving a slot for fair access even when many agents need attention. A compact creature/status header is followed by the reported task title (when distinct) and current activity across the full card width. Whole-line heights and ellipses prevent clipped final lines; full received detail remains inspectable. The latest attributable event is a separate, dimmer footer. Unknown project names remain separate. Grouping means co-presence, not a measured delegation relationship.
+- **USAGE** persists in both modes and groups Claude/Codex/z.ai quota windows with confirmed subscription plans and reported dates. Antigravity is plan/date only, never raw credits or a fabricated percentage. Missing windows remain absent, including plans without 5h quotas; zero is valid. Luna uses a crescent and remaining allowance only while a regular Codex limit is exhausted, returning to normal windows after reset. A plan-only row can keep USAGE visible. The rail is content-sized, with bounded scrolling when all providers are present. Unknown/unlinked providers have no placeholder.
+- A scrollable session rail in detail mode, with attention first and selection retained by session ID when the daemon reorders its roster. Task names use reported milestones when available.
+- A detail surface that collapses unknown collaboration cards and sizes the activity/history regions to content with the canonical agent glyph, current activity or permission question, reported child/background counts, and two recent events. **History** expands to the eight newest events retained on the device; it is not a complete archive. Long questions and history rows scroll instead of losing their ending.
+- A bottom voice dock replaces token/tool/cost counters and the old top ready label. It shows wake availability, muted/listening/recognizing/processing/speaking/error states, the recognized sentence, processing owner and reply. The header contains only the product mark and a graphical two-segment Aquarium/Details switch. A separate voice drawer retains hold-to-talk, wake toggle, stop and volume controls.
+- A connection banner retains inspectable last-known data during reconnects. Unknown usage is omitted in the aquarium and remains explicit in on-demand details; idle never claims that a task completed. Permission prompts direct the user to the agent terminal, preserving the existing attention-only policy.
+
+Dashboard labels are English: IBM Plex Sans KR Bold 20px headings and 28px wordmark and 20px quota values, Regular 20px activity text and Regular 16px metadata, with Korean fallback for received content. User and agent text retain their original language; large detail counts use a compact 36px digit subset. The generated fonts are IPS10-only and the full Hangul face uses uncompressed 2bpp to bound flash and avoid decompression during drawing.
+
+The former full-frame pixel-office/mosaic renderer remains unused. Project decks now use reusable LVGL widgets, existing creature masks, and fixed text/session/event stores. Three Blender-baked canonical creature reliefs add depth without a live 3D renderer (110.25 KiB shared RGB565+A8 flash data). Equal project columns use 16px gutters/insets and share heading baselines with the quota rail. A subdued generated underwater background adds spatial context with a single 500 KiB RGB565 flash image; `design/ips10/ocean.png` and `encode_ocean.py` are its source and conversion gate. Live canonical glyphs and text remain independent of that static image. Ten project containers and ten creature seats are allocated at initialization and reused; no canvas allocation or per-frame growing container is needed. Other boards retain their existing render trees. `workspace_diag` is a read-only firmware-local serial command returning a UI-core snapshot (layout, session counts, update count and processing time); it does not access LVGL from the network task and its timings exclude the later display flush.
+
+Both daemons send at most ten detailed sessions per frame. For larger rosters, up to three attention sessions stay pinned while every remaining alive session rotates through the other slots every 60 seconds. Even excess attention sessions eventually appear; no unbounded firmware roster is allocated. `bridge/src/ips10-roster.ts` owns the selection policy and generates the Swift kernel via `node bridge/generate-ips10-roster.mjs`; parity and full-coverage tests gate both. The additive IPS10-local `rosterRotating` Boolean distinguishes new paging hosts from legacy priority-only hosts (missing means false), and `total` reports the alive roster size. Project pages rotate every 12 seconds; peers every 8 seconds. A selected detail that leaves the received page remains explicitly marked as a saved detail, rather than switching silently to another agent. Deleted selections disappear when the host is no longer oversubscribed. Empty activity, event and reset fields do not reserve placeholder rows.
+
+The voice dock distinguishes local wake readiness from gateway availability. `Say OpenClaw` requires a ready/enabled detector, daemon connection and healthy gateway; muted/unavailable/offline states remain explicit. `shared/src/collaboration-presentation.ts` generates the live-census vocabulary and waiting-on-work predicate used by both IPS10 Details and macOS Collaboration. Task-scoped history remains separate from these live counts; no relationship is inferred from shared projects.
+
+The native simulator's `ips10 --verify-interactions` covers closed-drawer voice states, identity-stable placement, automatic project paging, provider units and reset sentinels, pointer press/release, creature-seat navigation, project grouping (including ten peers, ten distinct projects, and unnamed projects), zero/missing/stale quota handling, priority selection, same-project session attribution, ring wrap, roster reorder/removal, empty filters, voice drawer bounds, offline state, and empty state. Run it in both default landscape and `--portrait` modes. These previews validate actual firmware widgets; they do not establish physical touch accuracy or microphone recognition quality. Speech recognition revalidation and front-camera vision remain separate work.
 
 ## Flash over USB
 
@@ -70,7 +111,7 @@ the commands are the first two blocks.
 
 ```bash
 agentdeck esp32 flash 86box            # release image, auto-detected port
-agentdeck esp32 flash inkdeck -p /dev/cu.usbmodem3111101
+agentdeck esp32 flash trmnl_75 -p /dev/cu.usbmodem3111101
 agentdeck esp32 flash ttgo --tag esp32-v1.0.7   # pin a release
 agentdeck esp32 flash 86box -f .pio/build/box_86/firmware.bin   # local build
 ```
@@ -99,7 +140,7 @@ Both tools identify the chip **before** writing and refuse on a mismatch:
 | Chip family | the chip on the wire is not the board's family | an S3 image on a classic ESP32 bricks it |
 | Flash size | the image declares **more** flash than the part reports | the header claims a geometry the chip cannot serve |
 
-The size check is **directional** — declaring *less* is fine, and on InkDeck it is
+The size check is **directional** — declaring *less* is fine, and on TRMNL 7.5" it is
 mandatory (the XIAO ESP32-S3 Plus is physically 16MB but its BSP bakes an 8MB
 field). An unreadable flash id stays **unknown**: `detectFlashSize()` silently
 answers `"4MB"` when it cannot decode the id, so trusting it would turn "no
@@ -132,7 +173,7 @@ Every serial open toggles DTR/RTS and **resets the board**, so a daemon holding
 ### Native-USB boards re-enumerate
 
 Entering download mode gives a native-USB board a **different device node** from
-the one it runs on (measured: InkDeck failed on its original node and connected
+the one it runs on (measured: TRMNL 7.5" failed on its original node and connected
 on `usbmodem3111101`). Hold BOOT, tap RST, release BOOT — then pick the port that
 *appears*, not the one you saw before.
 
@@ -206,7 +247,7 @@ WiFi OTA는 **우리가 직접 AgentDeck 펌웨어를 플래싱하는 ESP32 계�
 
 ```bash
 agentdeck devices                         # WiFi ESP32 연결 및 board 이름 확인
-agentdeck esp32-ota inkdeck --build       # 해당 env 빌드 후 OTA 전송
+agentdeck esp32-ota trmnl_75 --build       # 해당 env 빌드 후 OTA 전송
 agentdeck esp32-ota ips_10 --firmware esp32/.pio/build/ips10/firmware.bin
 ```
 
@@ -220,13 +261,15 @@ agentdeck esp32-ota ips_10 --firmware agentdeck-ips_10.bin
 
 Daemon API는 `POST /esp32/ota` 이며 CLI는 이 엔드포인트를 호출한다. OTA 프로토콜은 daemon→firmware `esp32_ota_begin`, `esp32_ota_chunk`, `esp32_ota_end`, `esp32_ota_abort`, firmware→daemon `esp32_ota_ack`, `esp32_ota_error` 로 구성된다. Firmware는 `device_info`에 OTA capability(지원 여부, OTA 슬롯 수, 최소 슬롯 크기, free sketch space, 미지원 사유)를 실어 serial/WebSocket 양쪽에 보고한다. 전송은 WiFi WS socket에서 1KB base64 chunk 단위로 진행하고, `Update` + MD5 검증 성공 후 재부팅한다.
 
+WiFi OTA v1 (device_info capability flags, `esp32_ota_begin/chunk/end/abort` over the board's WiFi WS socket, `POST /esp32/ota`) targets directly flashed AgentDeck ESP32 boards with WiFi connectivity and dual-OTA partition tables: `trmnl_75`, `ulanzi_tc001`, `ttgo`, `ips35`, `round_amoled`, `86box`, `ips10`, `t_embed`, `t_display_pro`. `86box` and `ips10` require a one-time USB full flash to migrate existing factory/NO_OTA layouts to their 16MB dual-OTA partition tables before subsequent WiFi OTA works; the current lab units were migrated and daemon-verified on 2026-07-05 (`86box` OTA 7.8MB, `ips_10` OTA 6.0MB). Non-AgentDeck or non-direct-flashed devices are out of OTA scope. **Both daemons implement OTA** — the Swift one since 2026-07-17 (`apple/AgentDeck/Daemon/Server/ESP32WifiOta.swift`, Node-parity), so OTA no longer requires swapping daemons. The sandboxed (App Store) daemon cannot read a `firmwarePath` outside its container, so `/esp32/ota` also accepts a base64-inlined `firmwareB64` and the CLI resends that way automatically on `firmware_unreadable`. Building firmware (`--build`, PlatformIO) stays CLI-only.
+
 OTA 대상 SSOT. **`agentdeck esp32-ota <target>`의 `<target>`은 로컬 PlatformIO env뿐 아니라 daemon이 연결된 기기를 매칭하는 키(firmware의 `device_info.board` 문자열)로도 그대로 쓰인다 — 아래 굵게 표시한 별칭만 둘 다 만족한다.** 다른 별칭은 `--build`까지는 되어도 실제 보드가 그 이름으로 자신을 보고하지 않아 업로드 단계에서 `No online WiFi ESP32 target matches …`로 실패한다:
 
 > 이 표의 **별칭과 env는 `shared/src/esp32-boards.ts`가 정본**이고, 운영 메모(오른쪽 열)만 사람이 쓴다. `node scripts/generate-esp32-board-matrix.mjs --check` 가 양쪽을 대조해 **문서에만 있고 CLI가 받지 않는 별칭**을 실패로 잡는다 — 실제로 `amoled_18` 이 그 상태였고(문서에는 있는데 CLI에는 없어 `No online WiFi ESP32 target matches` 로 실패), 이 게이트가 처음 잡아냈다.
 
 | Target aliases | PlatformIO env | OTA slot size | 운영 메모 |
 |---|---|---:|---|
-| `inkdeck` | `inkdeck` | ~3.3MB | Seeed XIAO ESP32-S3 Plus BSP와 일치하도록 8MB layout 유지 |
+| **`trmnl_75`**, `inkdeck` | `trmnl_75` | ~3.3MB | Seeed XIAO ESP32-S3 Plus BSP와 일치하도록 8MB layout 유지. `inkdeck` 은 1.2.1 이전 이름 — 그 펌웨어로 남아 있는 보드가 자신을 그렇게 보고하므로 계속 받는다 |
 | **`lilygo_epd47`**, `epd47` | `lilygo_epd47` | ~6.25MB | T5 ePaper S3 N16R8; 4-bit 프레임버퍼는 PSRAM에 1회 할당 |
 | `ulanzi_tc001`, `led8x32` | `led8x32` | ~3.0MB | FastLED matrix, LVGL 미사용 |
 | **`ttgo_t_display`**, `ttgo` | `ttgo` | ~6.0MB | PSRAM 없는 classic ESP32, 작은 렌더 버퍼 유지 |
@@ -295,6 +338,6 @@ AgentDeck esp32/src/net/protocol"*). C3(no-PSRAM/ArduinoJson)에는 C++ 코드�
 | LilyGO T-Embed CC1101 (Companion Knob) | `t_embed` | 320×170 + 8-LED ring | ESP32-S3 | `/dev/cu.usbmodem2101` (Native USB) | ✅ 연결됨 |
 | LilyGO T-Display-S3-Pro (Focus Strip, 무카메라) | `t_display_pro` | 480×222 가로 (Ticker UI) | ESP32-S3 | `/dev/cu.usbmodem3111201` (Native USB) | ✅ 연결됨 |
 | LilyGO T-Display-S3-Pro (Pocket, GC0308 카메라) | `t_display_pro` | 222×480 세로 (Pocket UI) | ESP32-S3 | WiFi 상주 (부팅 시 카메라 감지 → 세로 전환) | ✅ 연결됨 |
-| Seeed TRMNL / InkDeck | `inkdeck` | 800×480 가로 | XIAO ESP32-S3 Plus | `/dev/cu.usbmodem1CDBD474F4D81` (runtime; download node 재열거) | ✅ 2026-08-30 확인 |
+| Seeed TRMNL / TRMNL 7.5" | `trmnl_75` | 800×480 가로 | XIAO ESP32-S3 Plus | `/dev/cu.usbmodem1CDBD474F4D81` (runtime; download node 재열거) | ✅ 2026-08-30 확인 |
 | RockBase NM-EPD-420 | `nm_epd_420` | 400×300 가로 | ESP32-S3 N16R8 | `/dev/cu.usbmodem83201` (Native USB) | ✅ 2026-08-30 확인 |
 | LilyGo T5 ePaper S3 V2.4 | `lilygo_epd47` | 960×540 가로 | ESP32-S3 N16R8 | `/dev/cu.usbmodem21401` (Native USB) | ✅ 2026-08-30 확인 |

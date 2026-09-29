@@ -115,6 +115,7 @@ data class StateUpdate(
     val antigravityStatus: AntigravityStatusInfo? = null,
     val gatewayAvailable: Boolean? = null,
     val gatewayConnected: Boolean? = null,
+    val gatewayAuthStatus: String? = null,
     val gatewayHasError: Boolean? = null,
     val moduleHealth: ModuleHealthState? = null,
     val voiceAssistantState: String? = null,
@@ -175,6 +176,7 @@ data class UsageUpdate(
     // 5h window, secondary ≈ weekly. Mirrors Claude's fiveHourPercent/
     // sevenDayPercent shape. Only rides on usage_update, not state_update.
     val codexRateLimits: CodexRateLimits? = null,
+    val zaiRateLimits: ZaiRateLimits? = null,
     val modelCatalog: List<ModelCatalogEntry>? = null,
     val mlxModels: List<String>? = null,
     val subscriptions: List<SubscriptionInfo>? = null,
@@ -244,6 +246,48 @@ data class CodexRateLimits(
      *  when Codex stops being used, and [CodexRateLimitWindow.stale] cannot expose
      *  that — it fires only once the window has ENDED, which for the weekly window
      *  is up to 7 days out. */
+    val capturedAt: String? = null,
+    /** Additional Luna-only pool, separate from the account 5h/7d windows. */
+    val lunaReserve: CodexLunaReserve? = null,
+)
+
+/** Luna-only reserve returned as an additional Codex rate-limit pool. */
+@Serializable
+data class CodexLunaReserve(
+    val usedPercent: Double,
+    val resetsAt: String? = null,
+    val regularResetsAt: String? = null,
+    val available: Boolean? = null,
+)
+
+/** A z.ai quota window — the shared window shape plus WHICH QUANTITY it
+ *  meters: token/credits windows ("tokens") or the MCP tool-call quota
+ *  ("mcp"). A surface must never present one as the other; the label follows
+ *  the quantity ("5h" vs "MCP"). */
+@Serializable
+data class ZaiWindow(
+    val usedPercent: Double? = null,
+    val windowMinutes: Int? = null,
+    val resetsAt: String? = null,
+    val stale: Boolean? = null,
+    val quantity: String? = null,
+)
+
+/** z.ai (GLM Coding Plan) usage limits — a direct provider-account reading
+ *  (#348), independent of every harness that may use the plan. Same slot
+ *  grammar as [CodexRateLimits]: `primary` = 5-hour credits window,
+ *  `secondary` = the long window when the plan reports one (weekly credits or
+ *  the monthly MCP quota — [limitId] says which quantity). */
+@Serializable
+data class ZaiRateLimits(
+    val primary: ZaiWindow? = null,
+    val secondary: ZaiWindow? = null,
+    /** Plan tier stamped into every snapshot ("lite" | "pro" | "max"). */
+    val planType: String? = null,
+    /** Schema family the windows were read from: "standard" | "credit" | "payg". */
+    val limitId: String? = null,
+    /** ISO-8601 instant this reading was fetched (age derived at the consumer,
+     *  same contract as [CodexRateLimits.capturedAt]). */
     val capturedAt: String? = null,
 )
 
@@ -357,7 +401,7 @@ data class SessionInfo(
     // Shared per-session "what is this agent doing" one-liner, computed by the
     // bridge (session-activity.ts heuristic → Foundation Models upgrade).
     // SSOT for the session summary line — render this instead of hand-rolling
-    // model/state strings so all surfaces (InkDeck/Android/Apple) agree.
+    // model/state strings so all surfaces (TRMNL 7.5"/Android/Apple) agree.
     val activity: String? = null,
     // Live child-agent census. A SECOND axis to [state], not a correction to
     // it: a parent whose turn closed is genuinely idle while its subagents keep
@@ -368,6 +412,37 @@ data class SessionInfo(
     // because a field that vanishes when the last child exits latches its last
     // count forever under retain-on-absent merging.
     val subagents: SubagentSummary? = null,
+    /** Cross-session coordination census — see [CoordinationSummary]. Same
+     *  emission rule as [subagents]: zeros once observed, absent only when the
+     *  session has never had a relation. */
+    val coordination: CoordinationSummary? = null,
+)
+
+/**
+ * Live cross-session coordination census — the second axis beside
+ * [SessionInfo.subagents], for work divided WITHOUT a SubagentStart:
+ * `claude -p` workers spawned from a background Bash, peer sessions messaged
+ * over SendMessage, and background processes the session is waiting on.
+ * Observed only, never inferred from shared project membership. Mirrors
+ * shared CoordinationSummary.
+ */
+@Serializable
+data class CoordinationSummary(
+    /** Background processes started by this session still running. */
+    val backgroundJobs: Int = 0,
+    /** Peer sessions spawned by this session whose process is still alive. */
+    val spawnedActive: Int = 0,
+    /** Peer sessions spawned by this session that have ended. */
+    val spawnedCompleted: Int = 0,
+    /** Cross-session messages received / sent in this session. */
+    val messagesIn: Int = 0,
+    val messagesOut: Int = 0,
+    /** Name of the most recent peer messaged with, if the evidence carried one. */
+    val lastPeerName: String? = null,
+    /** Epoch ms of the most recent relation observation (flexible: the Swift
+     *  daemon may write a fractional Double — see [SubagentSummary.lastCompletedAt]). */
+    @Serializable(with = FlexibleLongSerializer::class)
+    val lastRelationAt: Long? = null,
 )
 
 /**

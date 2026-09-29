@@ -1,0 +1,8 @@
+# 2026-07-18 — AgentDeck design-system viewer and documentation contract
+
+- Replaced the Korean, narrative-heavy hardware compatibility document with a concise English canonical matrix. Added the previously omitted Waveshare ESP32-C6-LCD-1.47 surface, separated specifications from operational ownership, and added revision-linked Korean/Japanese reader translations.
+- Added `agentdeck-design-system/` as an integration layer rather than a second source of truth: cataloged canonical design, hardware, product-tier, App Review, testing, and handover Markdown; required structured frontmatter; and added translation revision drift checks.
+- Built a GitHub Pages design-system viewer with localized EN/KR/JP shell, explicit English fallback, full rendered Markdown / source / metadata modes, catalog search, live token swatches, reviewed component specimens, and canonical brand-asset previews. The viewer consumes `design/tokens.css` directly and follows the aquarium-tide rules it documents.
+- Replaced the GitHub-link documentation hub with the viewer, routed Devices hardware-spec links into the rendered compatibility document, added the Design System surface to Pages navigation, and removed hard-coded public surface counts that drift from the matrix.
+- Converted the App Store/CLI feature matrix to concise canonical English and retained its hard invariants: policy row first, no subprocess or companion-install copy in the App Store app, real options only for steering, and signed Release archive verification.
+- Verification: design-system catalog checked 7 documents, 96 tokens, and 6 canonical assets; viewer build completed; token mirror sync and all 14 verifier self-tests passed; source diff whitespace check passed.

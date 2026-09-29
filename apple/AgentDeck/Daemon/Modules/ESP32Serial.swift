@@ -55,6 +55,7 @@ actor ESP32Serial {
         var connected = true
         var readBuffer = ""
         var deviceInfo: DeviceInfo?
+        var deviceInfoCapturedAt: Date?
         var provisionSent = false
         /// Pairing token most recently pushed over THIS connection, so a re-arm
         /// costs one write per board per token rather than one per device_info
@@ -87,6 +88,8 @@ actor ESP32Serial {
         var wifiConnected: Bool?
         var repaintCount: Int?
         var fullRefreshCount: Int?
+        var usageCodex5H: Int?
+        var usageCodex7D: Int?
     }
 
     private struct PortFailure {
@@ -111,6 +114,103 @@ actor ESP32Serial {
     /// a dead module that nobody will ever stop again (each daemon restart cycle
     /// stranded another generation of readers holding the port's FD).
     private var isStopped = false
+
+    // MARK: - Sibling ownership guard (#327)
+    //
+    // The 2026-09-13 incident: the Node daemon went latency-silent under host
+    // load 600–800, the macOS app promoted a fallback daemon on 9121 and opened
+    // the same USB boards — two readers on one TTY steal each other's bytes
+    // instead of failing cleanly, and two flashes corrupted. Two gates below,
+    // re-checked on every 10 s poll cycle so ownership self-heals in both
+    // directions without coordination:
+    //
+    //   1. suspension — the Swift twin of bridge/src/esp32-flash-lease.ts. The
+    //      sandboxed daemon cannot read `~/.agentdeck`, so the lease arrives
+    //      over HTTP (`/esp32/serial/suspend`) and lives in memory. Expiry is
+    //      enforced on read, never by a timer (same rule as the Node lease
+    //      file: a timer on a sleeping laptop fires late and extends the
+    //      suspension past what was promised).
+    //   2. sibling deferral — the LOWEST live daemon port in the window owns
+    //      serial. A fallback daemon (this app on 9121 while a Node daemon
+    //      answers on 9120) keeps its hub but never touches a serial port the
+    //      incumbent may hold, and releases its own if the incumbent returned
+    //      while we held ports. Symmetric on both daemons, no handshake.
+
+    /// In-memory lease: serial stays closed until this instant.
+    private var suspendedUntil: Date?
+    /// This daemon's HTTP port; 0 = unknown → the sibling gate is skipped.
+    private var ownDaemonPort = 0
+
+    enum SerialOwnershipDecision: Equatable {
+        /// Lease active — ports stay closed.
+        case suspended
+        /// A live sibling daemon on a lower port owns serial.
+        case deferToSibling
+        /// Open/poll as usual.
+        case own
+    }
+
+    /// The truth table as a pure function so the policy is unit-testable
+    /// without ports, probes or actors.
+    static func ownershipDecision(
+        ownPort: Int,
+        siblingPort: Int?,
+        suspendedUntil: Date?,
+        now: Date = Date()
+    ) -> SerialOwnershipDecision {
+        if let until = suspendedUntil, now < until { return .suspended }
+        if let siblingPort, ownPort > 0, siblingPort < ownPort { return .deferToSibling }
+        return .own
+    }
+
+    func setOwnDaemonPort(_ port: Int) {
+        ownDaemonPort = port
+    }
+
+    private func currentOwnershipDecision() async -> SerialOwnershipDecision {
+        // Expired-on-read: a stale lease stops being true without anything
+        // running to end it (a CLI killed mid-flash recovers on its own).
+        if let until = suspendedUntil, Date() >= until { suspendedUntil = nil }
+        var siblingPort: Int?
+        if ownDaemonPort > 0 {
+            siblingPort = await SessionRegistry.shared.scanForDaemonPort(excluding: [ownDaemonPort])
+        }
+        return Self.ownershipDecision(
+            ownPort: ownDaemonPort,
+            siblingPort: siblingPort,
+            suspendedUntil: suspendedUntil
+        )
+    }
+
+    /// Suspend serial ownership: close every port NOW and keep them closed
+    /// until `seconds` elapse. Ports this daemon already holds still block a
+    /// flasher, so refusing to OPEN is only half of it (the Node lease
+    /// releases its ports for the same reason). A second suspension never
+    /// shortens a live one.
+    func suspendSerial(seconds: Int, reason: String) -> (until: Date, released: Int) {
+        let clamped = max(1, min(900, seconds))
+        let until = Date().addingTimeInterval(TimeInterval(clamped))
+        let effective = max(suspendedUntil ?? .distantPast, until)
+        suspendedUntil = effective
+        let released = connections.count
+        if released > 0 {
+            DaemonLogger.shared.info("ESP32 serial suspended (\(reason)) — released \(released) port(s) until \(effective)")
+        } else {
+            DaemonLogger.shared.info("ESP32 serial suspended (\(reason)) until \(effective)")
+        }
+        closeAllConnections()
+        return (effective, released)
+    }
+
+    /// Idempotent by contract: resuming when nothing is suspended is a
+    /// success (the CLI calls this from a `finally`).
+    func resumeSerial() -> Bool {
+        let was = suspendedUntil != nil
+        suspendedUntil = nil
+        if was { DaemonLogger.shared.info("ESP32 serial resumed — ownership re-check on next poll") }
+        return was
+    }
+
     private var provisionFingerprintsByPort: [String: String] = [:]
     private let statusShadow = SerialStatusShadow()
     private static let permanentBlockDuration: TimeInterval = 300  // 5 minutes
@@ -144,6 +244,7 @@ actor ESP32Serial {
     }
     private let pendingReadsLock = NSLock()
     nonisolated(unsafe) private var pendingReads: [PendingRead] = []
+    nonisolated(unsafe) private var pendingTelemetryBoards: Set<String> = []
 
     private nonisolated func enqueuePendingRead(port: String, data: String) {
         pendingReadsLock.lock()
@@ -244,6 +345,7 @@ actor ESP32Serial {
                     "lastReadAt": conn.lastReadAt.map { Int($0.timeIntervalSince1970 * 1000) } as Any,
                     "lastWriteAt": conn.lastWriteAt.map { Int($0.timeIntervalSince1970 * 1000) } as Any,
                     "deviceInfoRequestsSent": conn.deviceInfoRequestsSent,
+                    "deviceInfoCapturedAt": conn.deviceInfoCapturedAt.map { Int($0.timeIntervalSince1970 * 1000) } as Any,
                     "writeBackpressureCount": conn.writeBackpressureCount,
                     "deviceInfo": [
                         "board": conn.deviceInfo?.board as Any,
@@ -253,6 +355,8 @@ actor ESP32Serial {
                         "wifiConnected": conn.deviceInfo?.wifiConnected as Any,
                         "repaintCount": conn.deviceInfo?.repaintCount as Any,
                         "fullRefreshCount": conn.deviceInfo?.fullRefreshCount as Any,
+                        "usageCodex5H": conn.deviceInfo?.usageCodex5H as Any,
+                        "usageCodex7D": conn.deviceInfo?.usageCodex7D as Any,
                     ] as [String: Any],
                 ] as [String: Any]
             },
@@ -481,7 +585,23 @@ actor ESP32Serial {
         return 2
     }
 
-    private func pollForDevices() {
+    private func pollForDevices() async {
+        // Ownership gate (#327) — decided BEFORE any port is touched. When a
+        // sibling daemon on a lower port is alive, or a suspension is in
+        // force, ports we already hold are also released: the incumbent
+        // (lower port) owns the boards, and a lease means a flasher does.
+        switch await currentOwnershipDecision() {
+        case .suspended, .deferToSibling:
+            if !connections.isEmpty || !openingPorts.isEmpty {
+                DaemonLogger.shared.info("ESP32 releasing serial ports — another daemon owns them or a flash lease is active")
+                closeAllConnections()
+            }
+            publishStatusShadow()
+            return
+        case .own:
+            break
+        }
+
         // Prune disconnected. Retire each one explicitly rather than just
         // dropping the struct: the read loop holds the FileHandle strongly for
         // its whole lifetime, so `closeOnDealloc` cannot fire while the loop
@@ -842,8 +962,11 @@ actor ESP32Serial {
                     wifiConfigured: msg["wifiConfigured"] as? Bool,
                     wifiConnected: msg["wifiConnected"] as? Bool,
                     repaintCount: msg["repaintCount"] as? Int,
-                    fullRefreshCount: msg["fullRefreshCount"] as? Int
+                    fullRefreshCount: msg["fullRefreshCount"] as? Int,
+                    usageCodex5H: msg["usageCodex5H"] as? Int,
+                    usageCodex7D: msg["usageCodex7D"] as? Int
                 )
+                connections[idx].deviceInfoCapturedAt = Date()
                 failedPorts.removeValue(forKey: port)
                 if !hadDeviceInfo {
                     sendInitialState(to: &connections[idx])
@@ -861,6 +984,15 @@ actor ESP32Serial {
     }
 
     // MARK: - Heartbeat
+
+    /// Missing providers supply no snapshot; a present empty usage snapshot
+    /// still retires old values. Provider-specific quota fields never gate it.
+    nonisolated static func heartbeatEvents(
+        state: [String: Any]?, usage: [String: Any]?,
+        sessions: [String: Any]?, display: [String: Any]?
+    ) -> [[String: Any]] {
+        [state, usage, sessions, display].compactMap { $0 }
+    }
 
     private func sendHeartbeat() {
         drainPendingReads()
@@ -905,38 +1037,27 @@ actor ESP32Serial {
             }
         }
 
-        if let event = stateProvider?() {
+        // Re-send complete snapshots even when Claude quota is absent. A
+        // USB-only board receives usage here, independently of WS broadcasts.
+        for event in Self.heartbeatEvents(
+            state: stateProvider?(), usage: usageProvider?(),
+            sessions: sessionsListProvider?(), display: displayStateProvider?()
+        ) {
             for i in connections.indices where connections[i].connected {
                 sendEvent(event, to: &connections[i])
             }
         }
 
-        if let event = usageProvider?(),
-           event["fiveHourPercent"] != nil {
-            for i in connections.indices where connections[i].connected {
-                sendEvent(event, to: &connections[i])
-            }
+        // Sample after state/usage delivery so device telemetry can confirm
+        // the newly-sent values. Coalesce requests while the serial actor is busy.
+        let requestedBoards = pendingReadsLock.withLock {
+            let pending = pendingTelemetryBoards
+            pendingTelemetryBoards.removeAll()
+            return pending
         }
-
-        // Re-sync sessions_list every cycle for the same reason as display_state
-        // below: it is otherwise edge-triggered (on change + on connect), so a
-        // board that (re)connects during a quiet window — daemon handoff,
-        // half-open serial — sits on an empty roster ("no active sessions")
-        // until the next unrelated session change happens to broadcast. The
-        // firmware upserts idempotently.
-        if let event = sessionsListProvider?() {
-            for i in connections.indices where connections[i].connected {
-                sendEvent(event, to: &connections[i])
-            }
-        }
-
-        // Re-sync display_state every cycle. It is otherwise edge-triggered
-        // (on change + on connect); a board that misses the wake edge — half-
-        // open serial, daemon handoff — stays blacked out until power-cycled.
-        // The payload is tiny and the firmware handler is idempotent.
-        if let event = displayStateProvider?() {
-            for i in connections.indices where connections[i].connected {
-                sendEvent(event, to: &connections[i])
+        for i in connections.indices where connections[i].connected {
+            if let board = connections[i].deviceInfo?.board, requestedBoards.contains(board) {
+                sendDeviceInfoRequest(to: &connections[i])
             }
         }
 
@@ -960,6 +1081,15 @@ actor ESP32Serial {
         case backpressure(String, partial: Bool)
         case hardFailure(String)
     }
+
+    /// Read existing firmware telemetry through the owning serial connection.
+    /// No second reader, port open, reset or arbitrary device command is needed.
+    nonisolated func requestDeviceTelemetry(board: String) {
+        pendingReadsLock.withLock {
+            if pendingTelemetryBoards.count < 16 { pendingTelemetryBoards.insert(board) }
+        }
+    }
+
 
     private func sendDeviceInfoRequest(to conn: inout SerialConnection) {
         conn.deviceInfoRequestsSent += 1
@@ -1162,7 +1292,7 @@ actor ESP32Serial {
     static let serialSessionsCap = 10
 
     /// Total byte budget for a shipped timeline_history frame. The smallest
-    /// board line buffer is 4096 (util/line_buffer defaults; InkDeck is 8192)
+    /// board line buffer is 4096 (util/line_buffer defaults; TRMNL 7.5" is 8192)
     /// — anything larger is discarded whole on-device, so shipping it is pure
     /// waste at best and a WS-client killer at worst.
     static let timelineHistoryByteBudget = 3500
@@ -1229,6 +1359,71 @@ actor ESP32Serial {
         return result
     }
 
+    // BEGIN GENERATED COMPACT SESSION LABELS — bridge/generate-compact-session-labels.mjs
+    // Source SHA256: 8bc55d65347d5d8ead6d5b4b29a5e13af92e4bce56026baf4513ac9b41f1b6cd
+    nonisolated static func compactSessionLabels(_ rows: [(id: String, name: String)], board: String? = nil) -> [String: String] {
+        let cap = board == "ttgo_t_display" ? 12 : 32
+        func compact(_ value: String) -> String {
+            var output = "", used = 0
+            for scalar in value.unicodeScalars {
+                let part = String(scalar), size = String(scalar).utf8.count
+                if used + size > cap { break }
+                output += part; used += size
+            }
+            return output
+        }
+        var groups: [String: [String]] = [:]
+        for row in rows {
+            let base = compact(row.name.isEmpty ? "Session" : row.name)
+            if !(groups[base] ?? []).contains(row.id) { groups[base, default: []].append(row.id) }
+        }
+        var labels: [String: String] = [:]
+        for (base, members) in groups {
+            let ids = members.sorted { $0.utf16.lexicographicallyPrecedes($1.utf16) }
+            for (index, id) in ids.enumerated() {
+                labels[id] = ids.count > 1 ? "\(base) #\(index + 1)" : base
+            }
+        }
+        return labels
+    }
+    // END GENERATED COMPACT SESSION LABELS
+
+    // BEGIN GENERATED IPS10 ROSTER — bridge/generate-ips10-roster.mjs
+    // Source SHA256: 2db0d200789870c7b53b86629b27d3702f3025661d590cf7446fe0273c2e8c0c
+    nonisolated static func ips10RosterIndices(total: Int, attention: Int, cap: Int, nowMs: Double) -> [Int] {
+        guard cap > 0, total > 0 else { return [] }
+        if total <= cap { return Array(0..<total) }
+        let pinned = min(attention, 3, cap - 1)
+        let slots = cap - pinned, remaining = total - pinned
+        let phase = Int(max(0, nowMs) / 60000)
+        let offset = (phase * slots) % remaining
+        return Array(0..<pinned) + (0..<slots).map { pinned + (offset + $0) % remaining }
+    }
+    // END GENERATED IPS10 ROSTER
+
+    /// IPS10 roster: generated bounded selection kernel, stable within each
+    /// minute. Up to three attention rows stay pinned; every other row rotates.
+    static func stableCardRoster(_ sessions: [[String: Any]], cap: Int, nowMs: Double = Date().timeIntervalSince1970 * 1000) -> [[String: Any]] {
+        let alive = sessions.filter { ($0["alive"] as? Bool) ?? true }
+        guard alive.count > cap else { return alive }
+        let isAwaiting: ([String: Any]) -> Bool = { ($0["state"] as? String)?.hasPrefix("awaiting") == true }
+        let awaiting = alive.filter(isAwaiting)
+        let formatter = ISO8601DateFormatter()
+        func started(_ s: [String: Any]) -> Double {
+            guard let raw = s["startedAt"] as? String, let d = formatter.date(from: raw) else { return 0 }
+            return d.timeIntervalSince1970
+        }
+        let rest = alive.filter { !isAwaiting($0) }.enumerated()
+            .sorted { a, b in
+                let sa = started(a.element), sb = started(b.element)
+                return sa != sb ? sa > sb : a.offset < b.offset
+            }
+            .map(\.element)
+        let ordered = awaiting.sorted { (($0["id"] as? String) ?? "") < (($1["id"] as? String) ?? "") } + rest
+        let picked = ips10RosterIndices(total: ordered.count, attention: awaiting.count, cap: cap, nowMs: nowMs).map { ordered[$0] }
+        return picked.sorted { (($0["id"] as? String) ?? "") < (($1["id"] as? String) ?? "") }
+    }
+
     private static func shapeSessionsList(_ event: [String: Any], type: String?, deviceInfo: DeviceInfo?) -> [String: Any] {
         var e = event
         if type == "sessions_list" {
@@ -1245,9 +1440,16 @@ actor ESP32Serial {
                 // line (stale cards), but the WiFi WS client CLOSES on it —
                 // the chronic connect→choke→reconnect flap of every
                 // WiFi-only board whenever session count was high.
-                e["sessions"] = Self.roundRobinByAgentType(
-                    sessions.filter { s in (s["alive"] as? Bool) ?? true },
-                    cap: Self.serialSessionsCap)
+                let aliveSessions = sessions.filter { s in (s["alive"] as? Bool) ?? true }
+                let isIps10 = deviceInfo?.board == "ips_10"
+                // IPS10 pages stay stable for a minute, then visit the next cohort.
+                if isIps10 {
+                    e["rosterRotating"] = aliveSessions.count > Self.serialSessionsCap
+                    if aliveSessions.count > Self.serialSessionsCap { e["total"] = aliveSessions.count }
+                }
+                e["sessions"] = (isIps10
+                    ? Self.stableCardRoster(aliveSessions, cap: Self.serialSessionsCap)
+                    : Self.roundRobinByAgentType(aliveSessions, cap: Self.serialSessionsCap))
                     .map { s -> [String: Any] in
                         var o: [String: Any] = [
                             "id": lim(s["id"], 31),
@@ -1258,7 +1460,7 @@ actor ESP32Serial {
                             "alive": s["alive"] ?? true,
                             "currentTool": lim(s["currentTool"], 39),
                             // Clean per-session one-liner ("Editing auth.ts") from the
-                            // shared activity pipeline — glance surfaces (InkDeck cards,
+                            // shared activity pipeline — glance surfaces (TRMNL 7.5" cards,
                             // XTeink X3/X4 rows) render this instead of the raw tool name.
                             // Without it the device falls back to "Bash". Mirrors the Node
                             // bridge serial map (bridge/src/esp32-serial.ts activity cap 79).
@@ -1273,6 +1475,21 @@ actor ESP32Serial {
                         if let p = s["port"] { o["port"] = p }
                         if let es = s["elapsedSec"] { o["elapsedSec"] = es }
                         if let op = s["options"] { o["options"] = op }
+                        // IPS10-only additive census. Old firmware ignores it;
+                        // other boards keep their byte-for-byte baseline fields.
+                        if deviceInfo?.board == "ips_10", let c = s["subagents"] as? [String: Any],
+                           let active = c["active"] as? Int, let peak = c["peak"] as? Int,
+                           let completed = c["completed"] as? Int,
+                           (0...65535).contains(active), (0...65535).contains(peak), (0...65535).contains(completed) {
+                            o["subagents"] = ["active": active, "peak": peak, "completed": completed]
+                        }
+                        // Coordination census: workers spawned that still run +
+                        // background jobs the session waits on (Node parity).
+                        if deviceInfo?.board == "ips_10", let k = s["coordination"] as? [String: Any],
+                           let jobs = k["backgroundJobs"] as? Int, let spawned = k["spawnedActive"] as? Int,
+                           (0...65535).contains(jobs), (0...65535).contains(spawned) {
+                            o["coordination"] = ["backgroundJobs": jobs, "spawnedActive": spawned]
+                        }
                         // Daemon-computed latest milestone (TIMELINE parity for the
                         // IPS10 cards). Omitted when absent — empty strings would
                         // cost ~50 bytes/session on the 4KB serial line budget.
@@ -1287,6 +1504,38 @@ actor ESP32Serial {
                         return o
                     }
             }
+        }
+
+        if type == "sessions_list", deviceInfo?.board == "ips_10",
+           JSONSerialization.isValidJSONObject(e),
+           let bytes = try? JSONSerialization.data(withJSONObject: e),
+           bytes.count > Self.timelineHistoryByteBudget,
+           let rows = e["sessions"] as? [[String: Any]] {
+            e["sessions"] = rows.map { row in
+                var baseline = row
+                baseline.removeValue(forKey: "subagents")
+                baseline.removeValue(forKey: "coordination")
+                return baseline
+            }
+        }
+
+        if type == "sessions_list", let raw = event["sessions"] as? [[String: Any]],
+           var rows = e["sessions"] as? [[String: Any]] {
+            let labels = Self.compactSessionLabels(raw.filter { ($0["alive"] as? Bool) != false }.map { s in
+                (id: s["id"] as? String ?? "", name: ProjectNameResolver.compactProjectName(
+                    s["projectName"] as? String ?? "", cwd: s["cwd"] as? String))
+            }, board: deviceInfo?.board)
+            for i in rows.indices {
+                guard let original = raw.first(where: { Self.limitUtf8Bytes($0["id"], 31) == rows[i]["id"] as? String }),
+                      let label = labels[original["id"] as? String ?? ""], label != rows[i]["projectName"] as? String else { continue }
+                rows[i]["displayName"] = Self.limitUtf8Bytes(label, 39)
+                e["sessions"] = rows
+                if !JSONSerialization.isValidJSONObject(e)
+                    || ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget {
+                    rows[i].removeValue(forKey: "displayName")
+                }
+            }
+            e["sessions"] = rows
         }
 
         // Before the ESP32 has identified itself, keep the first burst lean.
@@ -1327,7 +1576,9 @@ actor ESP32Serial {
                 wifiConfigured: msg["wifiConfigured"] as? Bool,
                 wifiConnected: msg["wifiConnected"] as? Bool,
                 repaintCount: msg["repaintCount"] as? Int,
-                fullRefreshCount: msg["fullRefreshCount"] as? Int
+                fullRefreshCount: msg["fullRefreshCount"] as? Int,
+                usageCodex5H: msg["usageCodex5H"] as? Int,
+                usageCodex7D: msg["usageCodex7D"] as? Int
             )
         }
         return nil
@@ -1378,7 +1629,7 @@ actor ESP32Serial {
     /// Characters, so n=39 한글 graphemes could still be 117 bytes — the board's
     /// strncpy then cut mid-sequence and the panel drew a broken glyph. Mirrors
     /// the Node bridge `limitString` (bridge/src/esp32-serial.ts).
-    static func limitUtf8Bytes(_ v: Any?, _ maxBytes: Int) -> String {
+    nonisolated static func limitUtf8Bytes(_ v: Any?, _ maxBytes: Int) -> String {
         guard let s = v as? String else { return "" }
         if s.utf8.count <= maxBytes { return s }
         var out = ""

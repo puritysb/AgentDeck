@@ -11,10 +11,8 @@
 // drives the first entry that has an `address`. (The legacy Bluetooth Classic SPP variant
 // was removed — poor macOS compatibility and no App Store path.)
 //
-// Frames come from the same in-process PixooRenderer as Pixoo/iDotMatrix, but via the
-// dedicated 11×11 Agent Beacon layout: a generated 9×9 official mark inside an
-// animated one-pixel status rail. Identity stays fixed; only the rail communicates
-// state. prepareFrame applies the software brightness dim before packet encoding.
+// The panel is an expressive robot face. MatrixExpression shares policy and
+// generated pixel frames with Node; brightness and BLE transport remain native.
 
 import Foundation
 import AppKit
@@ -77,7 +75,7 @@ actor TimeboxModule: DeviceModule {
     private var onStateChanged: (@Sendable () -> Void)?
     private var lastBroadcastDigest: String?
 
-    private let renderer = PixooRenderer()
+    private var expression = MatrixExpression()
     private var lastPushedRGB: [UInt8]?
     private var lastPushAtMs: Int64?
 
@@ -115,6 +113,7 @@ actor TimeboxModule: DeviceModule {
     }
 
     func stop() async {
+        expression.reset()
         renderTask?.cancel(); await renderTask?.value; renderTask = nil
         settingsReloadTask?.cancel(); await settingsReloadTask?.value; settingsReloadTask = nil
 
@@ -232,10 +231,7 @@ actor TimeboxModule: DeviceModule {
             guard await ensureConnected(device) else { return }
         }
 
-        // renderMicro returns the native 11×11 Agent Beacon frame, so no separate
-        // disconnected placeholder is needed.
-        let state = currentDashboardState()
-        let rgb11Data = renderer.renderMicro(dashboardState: state)
+        let rgb11Data = expression.render(size: 11, now: Date().timeIntervalSince1970 * 1000)
 
         // Software brightness: device brightness, or the dim override while the host
         // display is asleep (0 = panel goes black for dim mode "off").
@@ -303,49 +299,10 @@ actor TimeboxModule: DeviceModule {
 
     // MARK: - Broadcast events (cache for next render) — mirrors IDotMatrixModule
 
-    private var cachedState = "disconnected"
-    private var cachedProject: String?
-    private var cachedModel: String?
-    private var cachedTool: String?
-    private var cachedAgentType: String?
-    private var cachedSessions: [[String: Any]] = []
-    private var cached5h: Double?
-    private var cached7d: Double?
-    private var cached5hResetsAt: String?
-    private var cached7dResetsAt: String?
-    private var cachedGatewayAvailable = false
-    private var cachedGatewayConnected = false
-    private var cachedGatewayHasError = false
-
     func handleEvent(_ event: [String: Any]) {
+        expression.ingest(event, now: Date().timeIntervalSince1970 * 1000)
         guard let type = event["type"] as? String else { return }
         switch type {
-        case "state_update":
-            let eventAgentType = event["agentType"] as? String
-            // Kiro included: MicroGlyphs already carries its official 24/9/8px
-            // masks and violet, so leaving it out of this gate was the only thing
-            // keeping the ghost off the dot-matrix devices.
-            let creatureAgents: Set<String> = ["claude-code", "codex-cli", "codex-app", "opencode", "antigravity", "kiro-cli", "kiro-ide"]
-            if let at = eventAgentType, creatureAgents.contains(at) {
-                cachedState = event["state"] as? String ?? "disconnected"
-                cachedProject = event["projectName"] as? String
-                cachedModel = event["modelName"] as? String
-                cachedTool = event["currentTool"] as? String
-                cachedAgentType = eventAgentType
-            } else if cachedAgentType == nil {
-                cachedState = event["state"] as? String ?? "disconnected"
-                cachedAgentType = eventAgentType
-            }
-            cachedGatewayAvailable = event["gatewayAvailable"] as? Bool ?? cachedGatewayAvailable
-            cachedGatewayConnected = event["gatewayConnected"] as? Bool ?? cachedGatewayConnected
-            cachedGatewayHasError = event["gatewayHasError"] as? Bool ?? cachedGatewayHasError
-        case "usage_update":
-            cached5h = event["fiveHourPercent"] as? Double
-            cached7d = event["sevenDayPercent"] as? Double
-            cached5hResetsAt = event["fiveHourResetsAt"] as? String
-            cached7dResetsAt = event["sevenDayResetsAt"] as? String
-        case "sessions_list":
-            cachedSessions = event["sessions"] as? [[String: Any]] ?? []
         case "display_state":
             let displayOn = event["displayOn"] as? Bool ?? true
             let dim = event["dim"] as? [String: Any]
@@ -367,47 +324,6 @@ actor TimeboxModule: DeviceModule {
             }
         default: break
         }
-    }
-
-    // MARK: - DashboardState assembly (mirrors IDotMatrixModule)
-
-    private func currentDashboardState() -> DashboardState {
-        var state = DashboardState()
-        state.bridgeConnected = cachedState != "disconnected"
-        state.sessionId = firstAliveSession(in: cachedSessions)?["id"] as? String
-        state.state = AgentConnectionState(rawValue: cachedState) ?? .idle
-        state.agentType = cachedAgentType ?? firstAliveSession(in: cachedSessions)?["agentType"] as? String
-        state.projectName = cachedProject ?? firstAliveSession(in: cachedSessions)?["projectName"] as? String
-        state.modelName = cachedModel
-        state.currentTool = cachedTool
-        state.fiveHourPercent = cached5h
-        state.sevenDayPercent = cached7d
-        state.fiveHourResetsAt = cached5hResetsAt
-        state.sevenDayResetsAt = cached7dResetsAt
-        state.gatewayAvailable = cachedGatewayAvailable
-        state.gatewayConnected = cachedGatewayConnected
-        state.gatewayHasError = cachedGatewayHasError
-        state.siblingSessions = cachedSessions.compactMap(Self.makeSessionInfo)
-        return state
-    }
-
-    private func firstAliveSession(in sessions: [[String: Any]]) -> [String: Any]? {
-        sessions.first { ($0["alive"] as? Bool) ?? true }
-    }
-
-    private static func makeSessionInfo(from raw: [String: Any]) -> SessionInfo? {
-        guard let id = raw["id"] as? String else { return nil }
-        let port: Int
-        if let p = raw["port"] as? Int { port = p }
-        else if let n = raw["port"] as? NSNumber { port = n.intValue }
-        else { port = 0 }
-        return SessionInfo(
-            id: id, port: port,
-            projectName: raw["projectName"] as? String,
-            agentType: raw["agentType"] as? String,
-            alive: (raw["alive"] as? Bool) ?? true,
-            state: raw["state"] as? String
-        )
     }
 
     // MARK: - Shadow / broadcast

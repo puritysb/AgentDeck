@@ -1,0 +1,15 @@
+# ESP32 firmware — provisioning, OTA, and client contract
+
+Nested instruction file for work under `esp32/`. Claude Code loads it on the first file read here; Codex appends it to the root [../AGENTS.md](../AGENTS.md) when its working directory is under `esp32/` (both must fit Codex's 32 KiB cap or this file is skipped). Read [../.claude/rules/esp32-flash.md](../.claude/rules/esp32-flash.md) (board map, merged factory image, flash preflight refusal, post-write reset, serial-suspend lease) before flashing, and the `esp32-heap-discipline` skill (`.agents/skills/esp32-heap-discipline/SKILL.md`) before writing anything that allocates. Board list, flash safety, and WiFi recovery details live in [../docs/esp32.md](../docs/esp32.md). Do not restate rules here; add them to the files above.
+
+## WiFi provisioning and OTA
+
+ESP32 WiFi provisioning + disconnect recovery details: see [../docs/esp32.md](../docs/esp32.md). WiFi OTA v1 (`esp32_ota_begin/chunk/end/abort` over the board's WiFi WS socket, `POST /esp32/ota`) targets directly flashed AgentDeck ESP32 boards with WiFi connectivity and dual-OTA partition tables; non-AgentDeck or non-direct-flashed devices are out of scope, and `86box`/`ips10` units on the old factory/NO_OTA layout need a one-time USB full flash first. **Both daemons implement OTA** (the Swift one since 2026-07-17); the sandboxed daemon accepts a base64-inlined `firmwareB64` and the CLI resends that way on `firmware_unreadable`, while building firmware (`--build`, PlatformIO) stays CLI-only. Target aliases, migration state and verification: [../docs/esp32.md § WiFi OTA v1](../docs/esp32.md#wifi-ota-v1).
+
+## Client contract (external/forked clients)
+
+The AgentDeck wire contract a display-only client must honour (inbound events, `device_info`/command frames) is documented in [../docs/esp32-client-contract.md](../docs/esp32-client-contract.md). It has no C/C++ codegen, so drift is managed by discipline: when `DISPLAY_FORWARDED_EVENTS`/`SERIAL_FORWARDED_EVENTS` in `shared/src/protocol.ts` or the `device_info` field list change, re-port the **XTeink X3/X4** fork's hand-ported client (`crosspoint-agentdeck` `src/agentdeck/protocol.*`); e-ink layout drift is checked with `scripts/sync-xteink-eink-dashboard.sh --check`. See [../docs/esp32.md § Downstream client port sync](../docs/esp32.md).
+
+## Autonomous Pocket (Node daemon + XTeink pull client)
+
+`bridge/src/pocket-autonomy.ts` authors a small changing set of offline-carryable `pulse`/`nudge`/`quest` cards from the same resolved session + `CardFeedGlance` snapshot already used by `/feed`; producers never fetch independently, the engine persists only bounded aggregate counters and opaque IDs in `pocket-autonomy.json` (never card copy, names or provider text), adaptive authoring is Node-daemon-only (the Swift daemon serves a deterministic THREAD digest plus weather), and the no-PSRAM XTeink hand-port keeps a fixed three-card pool with stable offline choice IDs. Contract and settings: [../docs/esp32-client-contract.md § Autonomous Pocket](../docs/esp32-client-contract.md#autonomous-pocket-node-daemon).

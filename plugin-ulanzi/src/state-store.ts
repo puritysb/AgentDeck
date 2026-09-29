@@ -161,8 +161,14 @@ export class StateStore {
     totalTokens ??= (this.lastState.totalTokens as number) ?? 0;
     // Subscription quota rides usage_update. Distinguish "0% used" from "no data"
     // so the deck draws a "—" instead of a confident 0% when the hub has no
-    // OAuth source or the cache went stale. The numeric is still coerced to 0
-    // (the gauge bar needs a number); display is gated by usageKnown.
+    // OAuth source or the cache went stale.
+    //
+    // `usageKnown` is an ACCOUNT-level flag (is there a quota source at all) and
+    // cannot answer the per-window question: the API reports the two windows
+    // independently, so a subscription can carry 7D and no 5H. Each percent is
+    // therefore passed through as `undefined` rather than coerced to 0 — a zero
+    // here is indistinguishable from "0% used" downstream, which is exactly how
+    // a phantom "5H 0%" tile reached the strip for a window that did not exist.
     const stale = this.usage.usageStale === true;
     const usageKnown = !stale && (this.usage.fiveHourPercent != null || this.usage.sevenDayPercent != null);
     // In detail mode, use only the selected session's row/snapshot. Never fall
@@ -187,14 +193,19 @@ export class StateStore {
       allSessions: this.sessionsWithPendingReview(),
       totalTokens,
       totalCost: (this.usage.totalCost as number) ?? (selected.totalCost as number) ?? 0,
-      fiveHourPercent: (this.usage.fiveHourPercent as number) ?? (selected.fiveHourPercent as number) ?? 0,
-      sevenDayPercent: (this.usage.sevenDayPercent as number) ?? (selected.sevenDayPercent as number) ?? 0,
+      fiveHourPercent: (this.usage.fiveHourPercent as number | undefined) ?? (selected.fiveHourPercent as number | undefined),
+      sevenDayPercent: (this.usage.sevenDayPercent as number | undefined) ?? (selected.sevenDayPercent as number | undefined),
       fiveHourResetsAt: this.usage.fiveHourResetsAt as string | undefined,
       sevenDayResetsAt: this.usage.sevenDayResetsAt as string | undefined,
       // Codex (ChatGPT) rolling-window quota rides the same usage_update event.
       // Pass it straight through so the layout engine can draw CX 5H/7D tiles
       // alongside Claude's, mirroring how fiveHourPercent is surfaced.
       codexRateLimits: this.usage.codexRateLimits,
+      // z.ai GLM Coding Plan quota rides the same event (#348). Without this
+      // the D200H deck's z.ai tiles never receive data, no matter what the
+      // shared layout engine supports — the exact defect that hid Codex tiles
+      // before this field was first forwarded.
+      zaiRateLimits: this.usage.zaiRateLimits,
       // Per-model scoped caps (e.g. the weekly "Fable" limit) ride the same
       // event. `buildUsageTiles` needs them to draw the scoped tile at all —
       // without this the D200H never showed one, so a free-tier Codex account

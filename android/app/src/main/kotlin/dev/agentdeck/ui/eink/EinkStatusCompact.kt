@@ -1,5 +1,6 @@
 package dev.agentdeck.ui.eink
 
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -31,7 +32,7 @@ import dev.agentdeck.ui.component.BrandIcon
 import dev.agentdeck.ui.monitor.rememberCurrentInstant
 import dev.agentdeck.ui.monitor.subscriptionTrailing
 import dev.agentdeck.util.ProviderLimitRow
-import dev.agentdeck.util.codexLimitRows
+import dev.agentdeck.util.providerLimitRows
 import dev.agentdeck.util.formatBytes
 import dev.agentdeck.util.formatResetTime
 import kotlin.math.roundToInt
@@ -109,9 +110,9 @@ private fun LimitsColumn(state: DashboardState) {
     val stale = if (usage.usageStale == true) "!" else ""
     // Codex (ChatGPT) rolling-window usage — independent of Claude billing/limits
     // (a user may run only Codex). Each window carries its own stale flag.
-    val codexRows = codexLimitRows(state.codexRateLimits)
+    val limitRows = providerLimitRows(state.codexRateLimits, state.zaiRateLimits)
 
-    SectionLabel("LIMITS")
+    SectionLabel(dev.agentdeck.util.UsagePresentation.heading)
 
     if (hasLimits) {
         if (has5h) {
@@ -143,10 +144,10 @@ private fun LimitsColumn(state: DashboardState) {
 
     // Codex rows render after the Claude/API block; the brand mark distinguishes
     // them (labels stay 5h/7d).
-    codexRows.forEach { CodexGaugeRow(it) }
+    limitRows.forEach { CodexGaugeRow(it) }
 
     // Only collapse to the em-dash placeholder when no provider has anything.
-    if (!hasLimits && state.billingType != "api" && codexRows.isEmpty()) {
+    if (!hasLimits && state.billingType != "api" && limitRows.isEmpty()) {
         DataLine("—")
     }
 }
@@ -164,7 +165,7 @@ private fun CodexGaugeRow(row: ProviderLimitRow) {
             fontSize = 13.sp,
             lineHeight = 17.sp,
             fontFamily = FontFamily.Monospace,
-            color = gaugeColor(row.percent),
+            color = gaugeColor(row.usedPercent),
             maxLines = 1,
         )
     }
@@ -181,14 +182,10 @@ private fun CodexGaugeRow(row: ProviderLimitRow) {
     }
 }
 
-/** Color-code gauge by usage level on color e-ink: green < 60%, amber 60-85%, red > 85%. */
+/** Color-code gauge by usage level on color e-ink: canonical used-percent severity with a dark paper palette. */
 private fun gaugeColor(percent: Double): Color {
     if (!einkColorEnabled) return Color.Black
-    return when {
-        percent >= 85.0 -> Color(0xFFCC2222) // red — critical
-        percent >= 60.0 -> Color(0xFFBB7700) // amber — warning
-        else -> Color(0xFF227733)             // green — ok
-    }
+    return Color(UsageSeverity.color(percent, onPaper = true))
 }
 
 @Composable
@@ -223,7 +220,8 @@ private fun ModelsColumn(state: DashboardState, showDeviceDiagnostic: Boolean) {
     // OpenClaw — strict primary-only filter (matches HUD rail). If the user
     // hasn't tagged any model as default, the row collapses; promoting a
     // non-default entry would silently override the explicit rule.
-    val openClawPrimary = if (state.gatewayConnected == true && state.agentType == "openclaw") {
+    val openClawPrimary = if (state.gatewayConnected == true &&
+        (state.agentType == "openclaw" || state.agentType == "daemon")) {
         state.modelCatalog.orEmpty()
             .firstOrNull { it.available && it.role == "default" }
             ?.let { abbreviateModelName(it.name) }

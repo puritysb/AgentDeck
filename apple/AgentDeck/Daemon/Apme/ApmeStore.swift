@@ -916,6 +916,32 @@ final class ApmeStore: @unchecked Sendable {
         sqlite3_step(stmt)
     }
 
+    /// Drop a run and everything under it. Used to retract a run that was
+    /// opened for a thread later identified as background noise (Codex
+    /// Desktop ambient-suggestions), so no row of it reaches the dashboard.
+    /// The child tables declare ON DELETE CASCADE, but foreign keys are only
+    /// enforced when the connection opted in — delete explicitly, mirroring
+    /// `deleteRun` in bridge/src/apme/store.ts.
+    func deleteRun(id: String) {
+        guard let db else { return }
+        for sql in [
+            "DELETE FROM steps WHERE run_id = ?",
+            "DELETE FROM turns WHERE run_id = ?",
+            "DELETE FROM tasks WHERE run_id = ?",
+            "DELETE FROM sample_events WHERE run_id = ?",
+            "DELETE FROM evals WHERE run_id = ?",
+            "DELETE FROM artifacts WHERE run_id = ?",
+            "DELETE FROM vibe_feedback WHERE run_id = ?",
+            "DELETE FROM runs WHERE id = ?",
+        ] {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { continue }
+            bindText(stmt, 1, id)
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+    }
+
     func insertEvalForTask(_ eval: ApmeEval, taskId: String) {
         guard let db else { return }
         var stmt: OpaquePointer?
@@ -1193,6 +1219,14 @@ final class ApmeStore: @unchecked Sendable {
             out["latencyMs"] = r["latency_ms"] as? Int ?? 0
         case "tool":
             out["name"] = r["tool_name"] as? String ?? "tool"
+            // A row pruned by `agentdeck apme prune` (#302, retention >30
+            // days — Node-only writer, this daemon only reads the shared
+            // file) already parses to `{pruned, prunedAt, bytes}`, so
+            // `input`/`output` are naturally absent — mirrors
+            // `sampleEventRowToTrajectory` in bridge/src/apme/store.ts.
+            // The explicit flag lets ApmeScorers/ApmeRunner tell "no input
+            // recorded" apart from "arguments not retained".
+            if p["pruned"] as? Bool == true { out["pruned"] = true }
             if let input = p["input"] { out["input"] = input }
             if let output = p["output"] { out["output"] = output }
             if let status = r["tool_status"] as? String { out["status"] = status }
@@ -1206,6 +1240,17 @@ final class ApmeStore: @unchecked Sendable {
         case "state":
             out["from"] = p["from"]
             out["to"] = p["to"] as? String ?? "unknown"
+        case "relation":
+            // Mirrors bridge/src/apme/store.ts sampleEventRowToTrajectory.
+            out["relationId"] = p["relationId"]
+            let relation = p["relation"] as? String
+            out["relation"] = (relation == "spawned" || relation == "messaged") ? relation! : "waiting_on"
+            out["direction"] = (p["direction"] as? String) == "in" ? "in" : "out"
+            out["phase"] = (p["phase"] as? String) == "closed" ? "closed" : "open"
+            out["peerSessionId"] = p["peerSessionId"]
+            out["peerName"] = p["peerName"]
+            out["evidence"] = p["evidence"] as? String ?? "unknown"
+            out["detail"] = p["detail"]
         default:
             out["label"] = p["label"] as? String ?? "info"
             out["detail"] = p["detail"]

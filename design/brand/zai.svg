@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30">
+  <!-- z.ai mark — upstream geometry verbatim from the official logo.svg served by
+       z-cdn.chatglm.cn/z-ai/static/logo.svg (captured 2026-09-20). The upstream
+       app-icon carries a #2D2D2D rounded plate behind a white "Z"; this file
+       stores the Z's three strokes only (the two st23 paths and the st23
+       polygon, re-expressed as a path with identical coordinates), the same
+       mark-without-background convention as every other file in design/brand/.
+       The brand accent colour used for tinting (#1F63EC) is measured from the
+       same upstream asset. Trademark: Z.ai / Zhipu AI. -->
+  <path fill="#FFFFFF" d="M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z"/>
+  <path fill="#FFFFFF" d="M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z"/>
+  <path fill="#FFFFFF" d="M24.3,7.1L13.14,22.91L5.7,22.91L16.86,7.1Z"/>
+</svg>

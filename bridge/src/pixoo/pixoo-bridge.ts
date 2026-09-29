@@ -7,6 +7,8 @@
  * State latency is controlled separately from the motion cadence.
  */
 
+import { MatrixExpression, type MatrixBroadcast } from '@agentdeck/shared';
+import { renderMatrixScene } from './matrix-art.js';
 import { State } from '../types.js';
 import type { BridgeEvent, StateUpdateEvent, UsageEvent } from '../types.js';
 import type { SessionInfo, SessionsListEvent } from '@agentdeck/shared/protocol';
@@ -42,6 +44,7 @@ const deviceLastPushTime = new Map<string, number>();
 // Cached latest events
 let lastStateEvent: StateUpdateEvent | null = null;
 let lastUsageEvent: UsageEvent | null = null;
+const matrixExpression = new MatrixExpression();
 let lastSessions: SessionInfo[] | null = null;
 let lastTimelineEntries: TimelineEntry[] = [];
 
@@ -132,6 +135,12 @@ export function startPixooBridge(pixooDevices?: PixooDevice[]): void {
   debug(TAG, 'Bridge started (safe 2.5s active single-frame motion)');
 }
 
+/** The daemon owns this subscription independently of the optional Pixoo LAN
+ * module. BLE panels must work when there is no Pixoo64 or discovery is off. */
+export function broadcastMatrix(event: BridgeEvent): void {
+  matrixExpression.ingest(event as MatrixBroadcast, Date.now());
+}
+
 export function broadcastPixoo(event: BridgeEvent): void {
   if (!FORWARDED_EVENTS.has(event.type)) return;
 
@@ -171,6 +180,7 @@ export function broadcastPixoo(event: BridgeEvent): void {
     case 'connection':
       if ((event as any).status === 'disconnected') {
         lastStateEvent = null;
+        lastSessions = null;
         lastUsageEvent = null;
         lastTimelineEntries = [];
       }
@@ -265,6 +275,7 @@ export async function stopPixooBridge(): Promise<void> {
   lastStateEvent = null;
   lastUsageEvent = null;
   lastSessions = null;
+  matrixExpression.reset();
   lastTimelineEntries = [];
   displayDimmed = false;
   lastDisplayDimSignature = '';
@@ -441,6 +452,7 @@ function doStateCheckAndPush(): void {
  * Used by the live preview endpoint when no Pixoo device is connected.
  */
 export function renderPreviewFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array {
+  if (size === 11 || size === 32) return renderMatrixScene(size, matrixExpression.scene(Date.now()));
   return renderFrame(
     lastStateEvent,
     lastUsageEvent,
@@ -456,6 +468,7 @@ export function renderPreviewFrame(size?: 11 | 32 | 64, layout: 'standard' | 'mi
  * Get the last calculated frame.
  */
 export function getLastFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array | null {
+  if (size === 11 || size === 32) return renderMatrixScene(size, matrixExpression.scene(Date.now()));
   return renderFrame(
     lastStateEvent,
     lastUsageEvent,

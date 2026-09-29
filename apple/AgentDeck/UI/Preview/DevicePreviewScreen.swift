@@ -530,7 +530,7 @@ struct DevicePreviewScreen: View {
         case .androidTablet:     AndroidTabletPreview(selection: live)
         case .einkMono:          EinkMonoPreview(selection: live)
         case .einkColor:         EinkColorPreview(selection: live)
-        case .inkDeck:           InkDeckPreview(selection: live)
+        case .trmnl75:           Trmnl75Preview(selection: live)
         case .esp32_86box:       Esp3286BoxPreview(selection: live)
         case .esp32_35Landscape: Esp3235LandscapePreview(selection: live)
         case .esp32_35Portrait:  Esp3235PortraitPreview(selection: live)

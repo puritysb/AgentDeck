@@ -590,7 +590,15 @@ actor ApmeRunner {
             // visible skip rather than a silent downgrade. The loader clears
             // this flag whenever the user named the backend.
             guard config.judge.fallbackToFoundationModels else { return nil }
-            DaemonLogger.shared.debug("APME", "mlx unavailable, falling back to foundationModels")
+            // `info`, not `debug`: this is the switch to a measurably weaker
+            // judge (0.580 against 0.86–1.00 on the judge-fidelity rubric), and
+            // the MLX repetition-penalty default is calibrated against how
+            // often it happens. Behind the debug flag its rate cannot be
+            // measured on this daemon at all. Node states the same requirement
+            // in `runner.ts` and uses `log()`. "No verdict" covers both an
+            // unreachable server and an answer that was cut — different facts,
+            // same consequence, so neither may be asserted here.
+            DaemonLogger.shared.info("APME judge: mlx produced no verdict — falling back to foundationModels")
             return await ApmeJudgeFoundationModels.judge(prompt: prompt)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeFoundationModels.judgeModelLabel) }
         case .openai:
@@ -600,7 +608,7 @@ actor ApmeRunner {
             return await ApmeJudgeApi.judge(prompt: prompt, config: config.judge)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeApi.judgeModelLabel) }
         case .openclaw:
-            DaemonLogger.shared.debug("APME", "openclaw backend not wired, degrading to foundationModels")
+            DaemonLogger.shared.info("APME judge: openclaw backend not wired — degrading to foundationModels")
             return await ApmeJudgeFoundationModels.judge(prompt: prompt)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeFoundationModels.judgeModelLabel) }
         }
@@ -699,6 +707,16 @@ actor ApmeRunner {
             switch event["kind"] as? String {
             case "tool":
                 let name = event["name"] as? String ?? "tool"
+                let status = (event["status"] as? String).map { " → \($0)" } ?? ""
+                let error = (event["error"] as? String).map { " [err: \(String($0.prefix(80)))]" } ?? ""
+                // A pruned tool call (#302, retention >30 days) has no
+                // `input` to show — say so explicitly rather than rendering
+                // `tool X()`, which reads to a judge as "called with no
+                // arguments" and is not what happened.
+                if event["pruned"] as? Bool == true {
+                    lines.append("  tool \(name)(…) [payload pruned]\(status)\(error)")
+                    continue
+                }
                 var input = ""
                 if let value = event["input"],
                    let data = try? JSONSerialization.data(
@@ -706,8 +724,6 @@ actor ApmeRunner {
                    let string = String(data: data, encoding: .utf8) {
                     input = String(string.prefix(120))
                 }
-                let status = (event["status"] as? String).map { " → \($0)" } ?? ""
-                let error = (event["error"] as? String).map { " [err: \(String($0.prefix(80)))]" } ?? ""
                 lines.append("  tool \(name)(\(input))\(status)\(error)")
             case "model":
                 let model = event["model"] as? String ?? "unknown"
@@ -829,21 +845,13 @@ actor ApmeRunner {
     ///     ignore the "float in [0,1]" instruction).
     ///   - Requires an `overall` score — returns nil otherwise.
     static func parseJudgeJson(_ text: String) -> ApmeParsedJudge? {
-        // Grab first {...} block via a regex that matches the outermost braces.
-        guard let jsonBlock = extractFirstJsonBlock(text) else { return nil }
-        guard let data = jsonBlock.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
+        guard let obj = selectVerdictObject(text) else { return nil }
 
         var scores: [String: Double] = [:]
         for (key, value) in obj {
             if reservedFields.contains(key) { continue }
-            if let num = value as? Double {
-                scores[key] = Self.clamp01(num)
-            } else if let num = value as? Int {
-                scores[key] = Self.clamp01(Double(num))
-            }
-            // Non-numeric fields (strings, arrays, objects) are ignored.
+            // Non-numeric fields (strings, booleans, arrays, objects) are ignored.
+            if let num = Self.jsonNumber(value) { scores[key] = Self.clamp01(num) }
         }
         guard scores["overall"] != nil else { return nil }
 
@@ -864,11 +872,52 @@ actor ApmeRunner {
         )
     }
 
+    /// Numeric value of a JSON field, mirroring TS `typeof v === 'number'`.
+    /// NOT `as? Double`: `JSONSerialization` bridges JSON booleans to NSNumber,
+    /// so `{"overall":true}` read as a perfect 1.0 score on this daemon while
+    /// Node refused the body — and `{"passed":true}` became a numeric axis row
+    /// in `evals` on one daemon only.
+    private static func jsonNumber(_ value: Any?) -> Double? {
+        guard let number = value as? NSNumber else { return nil }
+        if CFGetTypeID(number) == CFBooleanGetTypeID() { return nil }
+        let d = number.doubleValue
+        return d.isFinite ? d : nil
+    }
+
+    /// The judge's verdict object, chosen by the one field that identifies a
+    /// verdict rather than by position. Mirrors `parseJudgeObject` in
+    /// bridge/src/apme/runner.ts.
+    ///
+    /// Taking the FIRST balanced block is how a local reasoning model's
+    /// scratchpad got scored instead of its answer:
+    /// `<think>{"overall":0.5}</think>` followed by the real `{"overall":0.9}`.
+    /// An unstripped thinking block is the exact shape `reasoningEffort: "none"`
+    /// exists to suppress, i.e. the models this judge chain targets. Two spans
+    /// both carrying `overall` are AMBIGUOUS and resolve to nil — a wrong score
+    /// written to `evals` is strictly worse than a skip.
+    static func selectVerdictObject(_ text: String) -> [String: Any]? {
+        var verdicts: [[String: Any]] = []
+        var from = text.startIndex
+        while let block = extractFirstJsonBlock(text, from: from) {
+            from = block.end
+            if let data = block.text.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               Self.jsonNumber(obj["overall"]) != nil {
+                verdicts.append(obj)
+            }
+        }
+        return verdicts.count == 1 ? verdicts[0] : nil
+    }
+
     /// Extract the first balanced `{...}` block from arbitrary text.
     /// Handles the common case of models wrapping JSON in ```json fences
     /// or adding "Here is the JSON:" prefixes.
-    private static func extractFirstJsonBlock(_ text: String) -> String? {
-        guard let firstBrace = text.firstIndex(of: "{") else { return nil }
+    private static func extractFirstJsonBlock(
+        _ text: String,
+        from: String.Index? = nil
+    ) -> (text: String, end: String.Index)? {
+        let start = from ?? text.startIndex
+        guard start < text.endIndex, let firstBrace = text[start...].firstIndex(of: "{") else { return nil }
         var depth = 0
         var i = firstBrace
         var inString = false
@@ -886,7 +935,8 @@ actor ApmeRunner {
                 else if c == "}" {
                     depth -= 1
                     if depth == 0 {
-                        return String(text[firstBrace...i])
+                        let end = text.index(after: i)
+                        return (String(text[firstBrace...i]), end)
                     }
                 }
             }

@@ -275,10 +275,17 @@ export function codexUsageFootnote(
  * decides what happens to the remainder. Shared so the two decks cannot disagree
  * about which limit a user is looking at.
  *
- * Any surfaced cap claims one logical usage tile. An ACTIVE cap outranks Codex
- * and is placed ahead of it because a per-model weekly cap can be binding while
- * the aggregate 5H/7D windows still read low (issue #99). An inactive cap is
- * informational and is placed after live Codex windows.
+ * Any surfaced cap claims one logical usage tile.
+ *
+ * **Placement is `USAGE_STRIP_ORDER`, and it never depends on `active`.** An
+ * active cap DOES outrank Codex for a scarce key (issue #99 — a per-model weekly
+ * cap can bind while the aggregate 5H/7D windows still read low), but ranking
+ * a reading and positioning it are different questions, and answering both with
+ * one list made the cap change SEATS as it went active: the same strip read
+ * `5H 7D FABLE CODEX` at 09:00 and `5H 7D CODEX FABLE` an hour later, with
+ * nothing on screen saying why. Position is what a user builds muscle memory
+ * on, so it is fixed; `active` decides the RAMP (critical vs muted) and, on a
+ * surface that pages, which reading pages last.
  *
  * Physical surfaces enforce their own budgets by pairing or paging readings;
  * this shared arbiter never authorizes silently dropping a known quota.
@@ -302,6 +309,24 @@ export function codexWindowsBeside<T>(
   _scopedClaimsKey?: boolean,
 ): T[] {
   return codexWindows;
+}
+
+/**
+ * Canonical left-to-right order of the readings on a fixed usage strip, shared
+ * by the D200H/Ulanzi strip (`buildUsageTiles`), the Stream Deck keypad reserve
+ * (`SessionSlotManager.usageGauges`) and the Swift preview mirror.
+ *
+ * The scoped per-model cap is a CLAUDE limit, so it sits with the Claude
+ * windows, ahead of Codex — always, whether or not it is currently binding.
+ * See `scopedLimitClaimsUsageKey` for why placement and rank are separate.
+ */
+export const USAGE_STRIP_ORDER = ['claude', 'scoped', 'codex', 'zai', 'credits'] as const;
+export type UsageStripSlot = typeof USAGE_STRIP_ORDER[number];
+
+/** Display rank of a usage-strip reading. Lower sorts left. */
+export function usageStripRank(slot: UsageStripSlot): number {
+  const i = USAGE_STRIP_ORDER.indexOf(slot);
+  return i < 0 ? USAGE_STRIP_ORDER.length : i;
 }
 
 /**
@@ -432,7 +457,7 @@ export function codexSnapshotMatchesAccountPlan(
  * alternates hour to hour, so "newest line wins" silently switches quantities
  * mid-stream.
  *
- * Polarity is deliberate and follows the unknown-agent rule (CLAUDE.md): this is
+ * Polarity is deliberate and follows the unknown-agent rule (AGENTS.md): this is
  * an allow-list of the UNNAMED, never a deny-list of known scoped ids. A new
  * scoped family — OpenAI ships models on its own schedule — is excluded
  * automatically; the failure mode of a deny-list is that the new family renders

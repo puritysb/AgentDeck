@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { StateMachine } from '../state-machine.js';
 import { UsageTracker } from '../usage-tracker.js';
 import { State, PermissionMode } from '../types.js';
+import { STUCK_TIMEOUT_MS } from '@agentdeck/shared';
 
 function createSM() {
   const tracker = new UsageTracker();
@@ -473,14 +474,13 @@ describe('StateMachine', () => {
       expect(sm.getSnapshot().question).toBe('Second?');
     });
 
-    it('the daemon hub machine never dismisses prompts or reopens IDLE on tool activity', () => {
+    it('the daemon hub machine never dismisses a held prompt on tool activity', () => {
       const tracker = new UsageTracker();
       const sm = new StateMachine(tracker, { toolActivityRecovery: false });
       sm.handleHookEvent('SessionStart', {});
-      // An unrelated observed session's tool hook must not reopen IDLE…
-      sm.handleHookEvent('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } });
-      expect(sm.getState()).toBe(State.IDLE);
-      // …nor dismiss a held prompt (e.g. an OpenClaw approval).
+      // An unrelated observed session's tool hook must not dismiss a held
+      // prompt (e.g. an OpenClaw approval) — "some session used a tool" says
+      // nothing about the prompt this machine is displaying.
       sm.handleHookEvent('UserPromptSubmit', {});
       sm.handleParserEvent('permission_prompt', {
         options: [{ index: 0, label: 'Allow' }],
@@ -491,6 +491,60 @@ describe('StateMachine', () => {
       sm.handleHookEvent('PreToolUse', { tool_name: 'Read', tool_input: { file_path: '/y' } });
       expect(sm.getState()).toBe(State.AWAITING_PERMISSION);
       expect(sm.getSnapshot().question).toBe('OpenClaw approval');
+    });
+
+    it('the daemon hub machine reopens from IDLE and DISCONNECTED on a tool start', () => {
+      const tracker = new UsageTracker();
+      const sm = new StateMachine(tracker, { toolActivityRecovery: false });
+      sm.handleHookEvent('SessionStart', {});
+      expect(sm.getState()).toBe(State.IDLE);
+
+      // The hub multiplexes every observed session, so a tool start while it
+      // shows IDLE means some session is working — the only truthful aggregate
+      // is PROCESSING. Refusing this left the hub latched at idle.
+      sm.handleHookEvent('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } });
+      expect(sm.getState()).toBe(State.PROCESSING);
+
+      // One session ending fires the wildcard session_end → DISCONNECTED row
+      // for the whole hub. session_start never fires again for the sessions
+      // still running, so tool activity has to be the way back out.
+      sm.handleHookEvent('SessionEnd', {});
+      expect(sm.getState()).toBe(State.DISCONNECTED);
+      sm.handleHookEvent('PreToolUse', { tool_name: 'Read', tool_input: { file_path: '/x' } });
+      expect(sm.getState()).toBe(State.PROCESSING);
+    });
+
+    it('a straggler tool END does not reopen a finished hub session', () => {
+      const tracker = new UsageTracker();
+      const sm = new StateMachine(tracker, { toolActivityRecovery: false });
+      sm.handleHookEvent('SessionStart', {});
+      sm.handleHookEvent('PostToolUse', { tool_name: 'Bash' });
+      expect(sm.getState()).toBe(State.IDLE);
+      sm.handleHookEvent('SessionEnd', {});
+      sm.handleHookEvent('PostToolUse', { tool_name: 'Bash' });
+      expect(sm.getState()).toBe(State.DISCONNECTED);
+    });
+
+    it.each([true, false])('tool activity re-arms the PROCESSING backstop (toolActivityRecovery=%s)', (toolActivityRecovery) => {
+      const tracker = new UsageTracker();
+      const sm = new StateMachine(tracker, { toolActivityRecovery });
+      sm.handleHookEvent('SessionStart', {});
+      sm.handleHookEvent('UserPromptSubmit', {});
+      expect(sm.getState()).toBe(State.PROCESSING);
+
+      // A hook-only (observed) session produces no PTY bytes, so onPtyActivity()
+      // never runs and tool hooks were the only liveness signal the stuck timer
+      // could have used — but they were dropped as an invalid
+      // PROCESSING → PROCESSING transition, so a long turn decayed to IDLE.
+      for (let elapsed = 0; elapsed < 12 * 60_000; elapsed += 60_000) {
+        vi.advanceTimersByTime(60_000);
+        sm.handleHookEvent('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'sleep 60' } });
+        expect(sm.getState()).toBe(State.PROCESSING);
+      }
+
+      // Silence still recovers: the backstop is re-armed, not disarmed.
+      vi.advanceTimersByTime(STUCK_TIMEOUT_MS + 1_000);
+      expect(sm.getState()).toBe(State.IDLE);
     });
   });
 

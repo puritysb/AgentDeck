@@ -542,7 +542,7 @@
       .join('')}</dl>`;
   }
 
-  const COLOR_GROUPS = new Set(['Tide', 'Ink', 'Kelp', 'Coral', 'Amber', 'Brand', 'Status', 'Product UI']);
+  const COLOR_GROUPS = new Set(['Tide', 'Ink', 'Kelp', 'Coral', 'Amber', 'Brand', 'Status', 'Product UI', 'Session state']);
 
   /* A token is only understood by looking at what it does. Each group gets a
    * specimen that exercises the value the way a consumer would apply it. */
@@ -733,7 +733,7 @@
       note: 'DESIGN.md §5.8. Tier badge top-left, device name pinned to the bottom in 13px sans 500, 96px min-height.',
       html: `<div class="specimen-devices">
           <div class="ad-device"><span class="ad-tier ad-tier--store">App Store</span><span class="ad-device-name">macOS menubar</span></div>
-          <div class="ad-device"><span class="ad-tier ad-tier--dev">Dev</span><span class="ad-device-name">InkDeck 7.5" e-ink</span></div>
+          <div class="ad-device"><span class="ad-tier ad-tier--dev">Dev</span><span class="ad-device-name">TRMNL 7.5" e-ink</span></div>
           <div class="ad-device"><span class="ad-tier ad-tier--dev">Dev</span><span class="ad-device-name">TC001 LED 32×8</span></div>
         </div>`,
     },

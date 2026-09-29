@@ -44,7 +44,14 @@ enum ApmeScorers {
         // trajectory_quality — penalize consecutive identical tool calls + errors.
         if tools.count >= 2 {
             var dupes = 0
-            for i in 1..<tools.count where toolKey(tools[i]) == toolKey(tools[i - 1]) { dupes += 1 }
+            for i in 1..<tools.count {
+                // A row pruned by `agentdeck apme prune` (#302) has no
+                // retained `input`, so two pruned calls to the same tool
+                // name would otherwise key-match and count as a detected
+                // repeat — a verdict built from absence, not evidence.
+                if (tools[i]["pruned"] as? Bool == true) || (tools[i - 1]["pruned"] as? Bool == true) { continue }
+                if toolKey(tools[i]) == toolKey(tools[i - 1]) { dupes += 1 }
+            }
             let errors = tools.filter { ($0["status"] as? String) == "error" }.count
             let redundancy = Double(dupes) / Double(tools.count)
             let errorRate = Double(errors) / Double(tools.count)

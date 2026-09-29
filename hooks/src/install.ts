@@ -60,13 +60,21 @@ export const HOOK_EVENTS = [
  * crashed daemon doesn't swallow the hook.
  */
 export function buildHookCommand(eventName: string): string {
+  // `X-AgentDeck-Pid: $PPID` — the hook shell's parent is the agent process
+  // that spawned it, and the hook payload carries no pid of its own. It is the
+  // only consent-free way either daemon can tie a session id to a process:
+  // the CLI daemon can also read `~/.claude/sessions/<pid>.json`, but the
+  // sandboxed daemon cannot, and the transcript is not held open. The daemon
+  // walks up from this pid to the nearest agent process, so a wrapper shell
+  // in between does not break it. This is what lets a `claude -p` worker be
+  // attributed to the session whose Bash launched it (process ancestry).
   const preamble = [
     `PORT="\${AGENTDECK_PORT:-}"`,
     `case "$PORT" in ''|*[!0-9]*) PORT="" ;; *) [ "$PORT" -ge 1 ] 2>/dev/null && [ "$PORT" -le 65535 ] 2>/dev/null || PORT="" ;; esac`,
     `if [ -z "$PORT" ]; then`,
     `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
     `    [ -f "$F" ] || continue`,
-    `    P=$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
+    `    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
     `    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
     `  done`,
     `fi`,
@@ -80,7 +88,7 @@ export function buildHookCommand(eventName: string): string {
   // reaches Claude before curl quits.
   if (eventName === 'PreToolUse') {
     return preamble.concat([
-      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' --max-time 60 -d @- 2>/dev/null)`,
+      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 60 -d @- 2>/dev/null)`,
       `printf '%s' "\${RESP:-}"`,
     ]).join('\n');
   }
@@ -90,7 +98,7 @@ export function buildHookCommand(eventName: string): string {
   // this runs on EVERY turn end, so a wedged daemon must never stall the TUI.
   if (eventName === 'Stop') {
     return preamble.concat([
-      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' --max-time 10 -d @- 2>/dev/null)`,
+      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 10 -d @- 2>/dev/null)`,
       `printf '%s' "\${RESP:-}"`,
     ]).join('\n');
   }
@@ -103,42 +111,106 @@ export function buildHookCommand(eventName: string): string {
   // gets killed mid-flight and Claude prints `SessionEnd hook [...] failed:
   // Hook cancelled` on exit.
   return preamble.concat([
-    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -d @- >/dev/null 2>&1 || true`,
+    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
   ]).join('\n');
 }
 
 /**
- * Windows variant of `buildHookCommand`. Claude Code v2.1+ executes hook
- * commands through `cmd.exe` on Windows, so we shell out to PowerShell for
- * the JSON read + HTTP POST. Discovery is narrower than POSIX since the
- * macOS App Store sandbox paths don't exist on Windows:
+ * The Windows hook body, shipped as a script file rather than inlined into the
+ * hook command.
  *
+ * It MUST stay a file. Claude Code runs hook commands through a POSIX shell on
+ * Windows (Git Bash, `sh -c`), which expands every `$name` before
+ * `powershell.exe` ever parses the line: an inlined `-Command` arrived as
+ * `='Stop'; [int]=0; ... [string]:AGENTDECK_PORT,[ref]` and died with
+ * `Missing ')' in method call`, on every hook, on every turn. Double-quoting
+ * inside the JSON does not help — the shell sees the whole command string. A
+ * `-File` invocation keeps `$` off the command line entirely.
+ *
+ * Port discovery matches the POSIX snippet, minus the macOS App Store sandbox
+ * containers which do not exist on Windows:
  *   1. `$env:AGENTDECK_PORT`
- *   2. `%USERPROFILE%\.agentdeck\daemon.json` (verified with `/health` probe)
+ *   2. `%USERPROFILE%\.agentdeck\daemon.json` (verified with a `/health` probe)
  *   3. `9120` fallback
  *
- * Single quotes are used inside the PowerShell script so the entire `-Command`
- * argument can stay double-quoted under cmd.exe. Errors are swallowed so a
- * dead daemon never blocks the host session.
+ * Errors are swallowed and the exit code is always 0 so a dead daemon never
+ * blocks or fails the host session.
  */
-export function buildHookCommandWin(eventName: string): string {
-  const ps = [
-    `$ev='${eventName}'`,
-    `[int]$port=0`,
-    `[int]$candidate=0`,
-    `if(!([int]::TryParse([string]$env:AGENTDECK_PORT,[ref]$candidate)) -or $candidate -lt 1 -or $candidate -gt 65535){$candidate=0}`,
-    `$port=$candidate`,
-    `if(-not $port){$f=Join-Path $env:USERPROFILE '.agentdeck\\daemon.json'; if(Test-Path $f){try{$d=Get-Content -Raw $f|ConvertFrom-Json; $raw=if($d.httpPort){$d.httpPort}else{$d.port}; $candidate=0; if([int]::TryParse([string]$raw,[ref]$candidate) -and $candidate -ge 1 -and $candidate -le 65535){try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$candidate+'/health') -TimeoutSec 1 -ErrorAction Stop|Out-Null; $port=$candidate}catch{}}}catch{}}}`,
-    `if(-not $port){$port=9120}`,
-    // Read stdin as UTF-8: [Console]::In decodes piped stdin with the console OEM
-    // codepage (e.g. CP949), garbling non-ASCII payload text.
-    `$body=(New-Object System.IO.StreamReader([Console]::OpenStandardInput(),[System.Text.Encoding]::UTF8)).ReadToEnd()`,
-    // Post UTF-8 bytes: Invoke-RestMethod encodes a string body as ISO-8859-1 when
-    // the content type carries no charset, replacing non-ASCII characters with '?'.
-    `$bytes=[System.Text.Encoding]::UTF8.GetBytes([string]$body)`,
-    `try{Invoke-RestMethod -Uri ('http://127.0.0.1:'+$port+'/hooks/'+$ev) -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop|Out-Null}catch{}`,
-  ].join('; ');
-  return `powershell -NoProfile -ExecutionPolicy Bypass -Command "${ps}"`;
+export const WINDOWS_HOOK_SCRIPT = `# AgentDeck -> Claude Code hook bridge. Generated by @agentdeck/hooks; edits are overwritten.
+# Invoked as: powershell -NoProfile -ExecutionPolicy Bypass -File "<this file>" -HookEvent <EventName>
+#
+# Must be a script file, NOT an inline -Command: Claude Code runs hook commands
+# through Git Bash (sh -c) on Windows, which expands \$var references away before
+# PowerShell sees them.
+param([Parameter(Mandatory = \$true)][ValidatePattern('^[A-Za-z_]+\$')][string]\$HookEvent)
+
+\$ErrorActionPreference = 'SilentlyContinue'
+
+\$port = 0
+\$candidate = 0
+if (-not ([int]::TryParse([string]\$env:AGENTDECK_PORT, [ref]\$candidate)) -or \$candidate -lt 1 -or \$candidate -gt 65535) { \$candidate = 0 }
+\$port = \$candidate
+
+if (-not \$port) {
+  \$f = Join-Path \$env:USERPROFILE '.agentdeck\\daemon.json'
+  if (Test-Path \$f) {
+    try {
+      \$d = Get-Content -Raw \$f | ConvertFrom-Json
+      \$raw = if (\$d.httpPort) { \$d.httpPort } else { \$d.port }
+      \$candidate = 0
+      if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
+        try {
+          Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$candidate + '/health') -TimeoutSec 1 -ErrorAction Stop | Out-Null
+          \$port = \$candidate
+        } catch {}
+      }
+    } catch {}
+  }
+}
+if (-not \$port) { \$port = 9120 }
+
+# Read stdin as UTF-8: [Console]::In decodes piped stdin with the console OEM
+# codepage (e.g. CP949), garbling non-ASCII payload text.
+\$body = (New-Object System.IO.StreamReader([Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8)).ReadToEnd()
+# Post UTF-8 bytes: Invoke-RestMethod encodes a string body as ISO-8859-1 when
+# the content type carries no charset, replacing non-ASCII characters with '?'.
+\$bytes = [System.Text.Encoding]::UTF8.GetBytes([string]\$body)
+
+try {
+  Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$port + '/hooks/' + \$HookEvent) -Method Post -Body \$bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop | Out-Null
+} catch {}
+
+# Never block or fail the tool call.
+exit 0
+`;
+
+/** Where the Windows hook script is installed. */
+export function windowsHookScriptPath(home: string = homedir()): string {
+  return join(home, '.agentdeck', 'agentdeck-hook.ps1');
+}
+
+/**
+ * Write the Windows hook script, creating `~/.agentdeck` if needed. Idempotent:
+ * rewrites only when the content differs, so a session-start migration does not
+ * touch the file on every launch. Returns the path it points hooks at.
+ */
+export function ensureWindowsHookScript(home: string = homedir()): string {
+  const path = windowsHookScriptPath(home);
+  mkdirSync(join(home, '.agentdeck'), { recursive: true });
+  if (!existsSync(path) || readFileSync(path, 'utf-8') !== WINDOWS_HOOK_SCRIPT) {
+    writeFileSync(path, WINDOWS_HOOK_SCRIPT);
+  }
+  return path;
+}
+
+/**
+ * Windows variant: invoke `agentdeck-hook.ps1` by path. The command line
+ * carries no `$`, so the POSIX shell Claude Code spawns hooks through has
+ * nothing to expand. See WINDOWS_HOOK_SCRIPT for why that matters.
+ */
+export function buildHookCommandWin(eventName: string, home: string = homedir()): string {
+  const script = windowsHookScriptPath(home);
+  return `powershell -NoProfile -ExecutionPolicy Bypass -File "${script}" -HookEvent ${eventName}`;
 }
 
 export const KIRO_HOOK_EVENTS = [
@@ -160,7 +232,7 @@ export function kiroHookPath(home: string = homedir()): string {
 }
 
 /** Kiro v3 hooks are telemetry-only: never echo daemon steering into Kiro. */
-export function buildKiroHookFile(): Record<string, unknown> {
+export function buildKiroHookFile(home: string = homedir()): Record<string, unknown> {
   return {
     version: 'v1',
     hooks: KIRO_HOOK_EVENTS.map(([trigger, daemonEvent]) => ({
@@ -171,7 +243,7 @@ export function buildKiroHookFile(): Record<string, unknown> {
         // A prefixed event bypasses Claude's request-response branches in
         // buildHookCommand and reaches the agent-neutral observed pipeline.
         command: process.platform === 'win32'
-          ? buildHookCommandWin(daemonEvent)
+          ? buildHookCommandWin(daemonEvent, home)
           : buildHookCommand(daemonEvent),
       },
       timeout: 2,
@@ -193,7 +265,10 @@ export function installKiroHooksIfNeeded(home: string = homedir()): KiroHookInst
     }
   }
   mkdirSync(join(kiroRoot, 'hooks'), { recursive: true });
-  const content = `${JSON.stringify(buildKiroHookFile(), null, 2)}\n`;
+  // Kiro may be installed without Claude. Repair the shared script even when
+  // the JSON below is already current.
+  if (process.platform === 'win32') ensureWindowsHookScript(home);
+  const content = `${JSON.stringify(buildKiroHookFile(home), null, 2)}\n`;
   if (existsSync(path) && readFileSync(path, 'utf8') === content) {
     return { installed: true, path, reason: 'already current' };
   }
@@ -210,10 +285,30 @@ export function uninstallKiroHooks(home: string = homedir()): boolean {
   return true;
 }
 
+/**
+ * Does this command belong to AgentDeck? Every writer/remover funnels through
+ * here so a new hook shape cannot be added on one side and missed on the other
+ * — the `-File` Windows form carries neither `AGENTDECK_PORT` nor
+ * `localhost:9120`, so the older two-marker test left it behind on reinstall
+ * and the settings file accumulated one live hook per install.
+ */
+export function isAgentDeckHookCommand(command: unknown): boolean {
+  if (typeof command !== 'string') return false;
+  return command.includes('AGENTDECK_PORT')
+    || command.includes('localhost:9120')
+    || command.includes('agentdeck-hook.ps1');
+}
+
+/** The same test for a settings entry in either the flat or matcher-group shape. */
+function isAgentDeckHookEntry(entry: any): boolean {
+  if (isAgentDeckHookCommand(entry?.command)) return true;
+  return Array.isArray(entry?.hooks) && entry.hooks.some((h: any) => isAgentDeckHookCommand(h?.command));
+}
+
 // Claude Code v2.1+ requires 3-level nesting: event → matcher group → hook handler.
-export function buildHookEntry(eventName: string) {
+export function buildHookEntry(eventName: string, home: string = homedir()) {
   const command = process.platform === 'win32'
-    ? buildHookCommandWin(eventName)
+    ? buildHookCommandWin(eventName, home)
     : buildHookCommand(eventName);
   const handler: any = {
     type: 'command',
@@ -229,8 +324,14 @@ export function buildHookEntry(eventName: string) {
   };
 }
 
-/** Pure logic: apply AgentDeck hooks to a settings object (no file I/O). */
-export function applyHooks(settings: any): any {
+/**
+ * Pure logic: apply AgentDeck hooks to a settings object (no file I/O).
+ *
+ * On Windows the hook body lives in a script file, so callers that persist the
+ * result must also call `ensureWindowsHookScript()` — every file-system wrapper
+ * in this module does.
+ */
+export function applyHooks(settings: any, home: string = homedir()): any {
   if (!settings.hooks) {
     settings.hooks = {};
   }
@@ -239,18 +340,8 @@ export function applyHooks(settings: any): any {
       settings.hooks[event] = [];
     }
     // Remove both old flat format and new matcher format
-    settings.hooks[event] = settings.hooks[event].filter((h: any) => {
-      if (h.command?.includes('AGENTDECK_PORT') || h.command?.includes('localhost:9120')) {
-        return false;
-      }
-      if (Array.isArray(h.hooks) && h.hooks.some((hh: any) =>
-        hh.command?.includes('AGENTDECK_PORT') || hh.command?.includes('localhost:9120')
-      )) {
-        return false;
-      }
-      return true;
-    });
-    settings.hooks[event].push(buildHookEntry(event));
+    settings.hooks[event] = settings.hooks[event].filter((h: any) => !isAgentDeckHookEntry(h));
+    settings.hooks[event].push(buildHookEntry(event, home));
   }
   return settings;
 }
@@ -260,17 +351,7 @@ export function removeHooks(settings: any): any {
   if (!settings.hooks) return settings;
   for (const event of HOOK_EVENTS) {
     if (settings.hooks[event]) {
-      settings.hooks[event] = settings.hooks[event].filter((h: any) => {
-        if (h.command?.includes('AGENTDECK_PORT') || h.command?.includes('localhost:9120')) {
-          return false;
-        }
-        if (Array.isArray(h.hooks) && h.hooks.some((hh: any) =>
-          hh.command?.includes('AGENTDECK_PORT') || hh.command?.includes('localhost:9120')
-        )) {
-          return false;
-        }
-        return true;
-      });
+      settings.hooks[event] = settings.hooks[event].filter((h: any) => !isAgentDeckHookEntry(h));
       if (settings.hooks[event].length === 0) {
         delete settings.hooks[event];
       }
@@ -409,7 +490,8 @@ export function sweepLegacyHooks(home: string = homedir()): boolean {
   if (!existsSync(legacy)) return false;
 
   const raw = readFileSync(legacy, 'utf-8');
-  if (!raw.includes('AGENTDECK_PORT') && !raw.includes('localhost:9120')) return false;
+  if (!raw.includes('AGENTDECK_PORT') && !raw.includes('localhost:9120')
+    && !raw.includes('agentdeck-hook.ps1')) return false;
 
   const settings = removeHooks(JSON.parse(raw));
   writeSettings(legacy, settings);
@@ -428,8 +510,12 @@ export function installHooks(home: string = homedir()): void {
     console.log('Removed stale hooks from ~/.claude/settings.local.json (never read by Claude Code)');
   }
 
+  if (process.platform === 'win32') {
+    console.log(`Hook script written to ${ensureWindowsHookScript(home)}`);
+  }
+
   const settings = readSettings(settingsPath);
-  applyHooks(settings);
+  applyHooks(settings, home);
 
   writeSettings(settingsPath, settings);
   console.log(`Hooks installed to ${settingsPath}`);
@@ -445,6 +531,9 @@ export function uninstallHooks(home: string = homedir()): void {
   const settings = removeHooks(readSettings(settingsPath));
 
   writeSettings(settingsPath, settings);
+  // The script is AgentDeck-owned in its entirety, like the OpenCode plugin.
+  const script = windowsHookScriptPath(home);
+  if (existsSync(script)) unlinkSync(script);
   console.log('Hooks uninstalled');
 }
 
@@ -460,8 +549,9 @@ function relocateLegacyHooks(home: string = homedir()): boolean {
 
   const settings = readSettings(settingsPath);
   const before = JSON.stringify(settings);
-  applyHooks(settings);
+  applyHooks(settings, home);
   const after = JSON.stringify(settings);
+  if (process.platform === 'win32') ensureWindowsHookScript(home);
   if (before !== after) {
     writeSettings(settingsPath, settings);
   }
@@ -477,22 +567,34 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
     if (!existsSync(settingsPath)) return;
 
     const raw = readFileSync(settingsPath, 'utf-8');
-    if (!raw.includes('AGENTDECK_PORT') && !raw.includes('localhost:9120')) return;
+    if (!raw.includes('AGENTDECK_PORT') && !raw.includes('localhost:9120')
+      && !raw.includes('agentdeck-hook.ps1')) return;
 
     const settings = JSON.parse(raw);
+    // Windows settings now contain a file path, not the inline validation
+    // markers used by the POSIX migrations below. Converge the command set
+    // by value and repair its script independently; current settings must
+    // not be rewritten every time a session starts.
+    if (process.platform === 'win32') {
+      ensureWindowsHookScript(home);
+      const before = JSON.stringify(settings);
+      applyHooks(settings, home);
+      if (JSON.stringify(settings) !== before) writeSettings(settingsPath, settings);
+      return;
+    }
     let { migrated } = migrateHooks(settings);
 
     // Migration 4: upgrade hooks using simple :-9120 fallback to daemon.json-reading format.
     // This handles existing users from before daemon.json runtime lookup was added.
     if (raw.includes('AGENTDECK_PORT') && !raw.includes('daemon.json')) {
-      applyHooks(settings);
+      applyHooks(settings, home);
       migrated = true;
     }
 
     // Migration 5: upgrade fire-and-forget Stop hooks to the request-response
     // form (turn-end directive queue needs the response echoed to Claude).
     if (raw.includes('/hooks/Stop') && !/RESP=\$\(curl[^\n]*\/hooks\/Stop/.test(raw)) {
-      applyHooks(settings);
+      applyHooks(settings, home);
       migrated = true;
     }
 
@@ -500,7 +602,7 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
     // overlays on ESC/tool failure. Existing installs predate this lifecycle
     // event, so refresh the AgentDeck-owned hook set once when it is absent.
     if (!settings.hooks?.PostToolUseFailure) {
-      applyHooks(settings);
+      applyHooks(settings, home);
       migrated = true;
     }
 
@@ -510,7 +612,7 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
     // is the self-heal path for a machine where an older App Store build keeps
     // rewriting the same settings.json the CLI installs into.
     if (hasUnboundedHookCurl(settings)) {
-      applyHooks(settings);
+      applyHooks(settings, home);
       migrated = true;
     }
 
@@ -520,7 +622,7 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
       !settings.hooks?.SubagentStart || !settings.hooks?.SubagentStop
       || !settings.hooks?.TaskCompleted || !settings.hooks?.TeammateIdle
     ) {
-      applyHooks(settings);
+      applyHooks(settings, home);
       migrated = true;
     }
 
@@ -528,11 +630,23 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
     // daemon.json values directly into a loopback URL. Values containing `@`
     // can make URL parsers treat `127.0.0.1:<value>` as userinfo and send hook
     // payloads to a different host. Rebuild once with strict 1..65535 parsing.
-    const hasValidatedPort = process.platform === 'win32'
-      ? raw.includes('[int]::TryParse')
-      : raw.includes('*[!0-9]*');
+    const hasValidatedPort = raw.includes('*[!0-9]*');
     if (!hasValidatedPort) {
-      applyHooks(settings);
+      applyHooks(settings, home);
+      migrated = true;
+    }
+
+    // Migration 10: hooks predating the pid header cannot tell the daemon
+    // which process posted them, so spawned-worker ancestry never resolves.
+    if (!raw.includes('X-AgentDeck-Pid')) {
+      applyHooks(settings, home);
+      migrated = true;
+    }
+
+    // Migration 11: protected container reads can await an OS decision forever.
+    // The Python timer bounds lookup before the existing healthy-port fallback.
+    if (!raw.includes('signal.setitimer')) {
+      applyHooks(settings, home);
       migrated = true;
     }
 
@@ -551,16 +665,24 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
 // matches on POSIX, which is why the installer used to be a silent no-op on
 // Windows.
 import { pathToFileURL } from 'url';
+import { uninstallCodexHooks } from './codex-install.js';
 const isMainModule = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
 
 if (isMainModule) {
   const action = process.argv[2] || 'install';
   if (action === 'uninstall') {
     uninstallHooks();
+    // Only the fenced block of ~/.codex/config.toml is AgentDeck's. The
+    // lossless editor removes the generated entries and keeps anything Codex
+    // or the user added there; a file it cannot edit safely is kept and
+    // reported. stdout, because scripts/uninstall.sh discards stderr.
+    try {
+      uninstallCodexHooks();
+    } catch (e) {
+      console.log(`Codex hooks kept: ${(e as Error).message}`);
+    }
     // The OpenCode observer plugin is AgentDeck-owned in its entirety, so
-    // uninstall removes the file (unlike ~/.codex/config.toml, where only
-    // the fenced block is AgentDeck's and removal has its own dedicated
-    // flow to avoid touching user TOML).
+    // uninstall removes the file.
     import('./opencode-install.js').then((m) => m.uninstallOpenCodeHooks()).catch(() => {});
     // `~/.kiro/hooks/agentdeck-lifecycle.json` is AgentDeck-owned in its
     // entirety like the OpenCode plugin, so uninstall removes the file.

@@ -281,3 +281,61 @@ export function decisionForRespondValue(
   // "always" must not silently become a one-shot allow either — refuse.
   return prompt.options.some((o) => o.decision === mapped) ? mapped : null;
 }
+
+// ===== "This approval is gone" =====
+
+/**
+ * Did the Gateway say this approval no longer exists?
+ *
+ * A resolve can fail for two unrelated reasons and the difference is the whole
+ * decision: a transport failure (socket down, RPC timeout) means "we do not
+ * know", and the prompt must stay up so the user can press again; an answer
+ * from the Gateway naming the approval as unknown, expired or already resolved
+ * means the prompt is **not answerable by anyone, ever**, and leaving it up
+ * re-arms a button that can only fail the same way.
+ *
+ * Measured 2026-09-09: an approval created 23:14:25 was dropped by the Gateway
+ * at 23:29:33 when the agent run that asked for it ended (`exec.approval.
+ * waitDecision` returned after 15m 9s, and the follow-up request was refused
+ * with `agent runtime authority is no longer active`). No `exec.approval.
+ * resolved` is emitted for that path, so the deck kept offering the prompt; the
+ * press at 23:40:37 came back `unknown or expired approval id` and the failure
+ * was treated as retryable, which put the same dead prompt straight back on
+ * every surface.
+ *
+ * The predicate is a mirror of the Gateway's OWN classifier (`isApprovalStale
+ * Error` in `src/infra/approval-errors.ts`, read from the installed package):
+ * the structured `code` / `details.reason` are the durable channel and the
+ * message regexes are the legacy path it still keeps for older gateways. Both
+ * are kept for the same reason.
+ *
+ * Unknown shapes are **false** — the safe direction. A wrong "gone" silently
+ * discards a live approval the agent is still blocked on; a wrong "not gone"
+ * costs one more press.
+ */
+const APPROVAL_NOT_FOUND_RE = /\b(?:unknown or expired approval id|approval expired or not found)\b/i;
+const APPROVAL_ALREADY_RESOLVED_RE = /approval already resolved/i;
+
+export function isApprovalGoneError(err: unknown): boolean {
+  if (!err || (typeof err !== 'object' && typeof err !== 'string')) return false;
+  if (typeof err === 'string') {
+    return APPROVAL_NOT_FOUND_RE.test(err) || APPROVAL_ALREADY_RESOLVED_RE.test(err);
+  }
+  const box = err as Record<string, unknown>;
+  // `gatewayCode` is what the Node adapter attaches to the rejection; `code` is
+  // the raw frame's own spelling. Reading both means the same function serves
+  // an Error and a decoded `{ code, message, details }` frame.
+  const codeRaw = typeof box.gatewayCode === 'string' ? box.gatewayCode
+    : (typeof box.code === 'string' ? box.code : '');
+  const code = codeRaw.trim();
+  const details = box.details;
+  const reason = details && typeof details === 'object' && !Array.isArray(details)
+    && typeof (details as Record<string, unknown>).reason === 'string'
+    ? ((details as Record<string, unknown>).reason as string).trim()
+    : '';
+  if (code === 'APPROVAL_NOT_FOUND') return true;
+  if (code === 'INVALID_REQUEST'
+    && (reason === 'APPROVAL_NOT_FOUND' || reason === 'APPROVAL_ALREADY_RESOLVED')) return true;
+  const message = typeof box.message === 'string' ? box.message : '';
+  return APPROVAL_NOT_FOUND_RE.test(message) || APPROVAL_ALREADY_RESOLVED_RE.test(message);
+}

@@ -2,7 +2,7 @@
 
 These files are copied **unmodified** from the [Adafruit GFX Library]
 (https://github.com/adafruit/Adafruit-GFX-Library), used by the ESP32 host
-simulator so the InkDeck e-ink text renders with the exact production glyphs.
+simulator so the TRMNL 7.5" e-ink text renders with the exact production glyphs.
 
 - `Adafruit_GFX.{h,cpp}`, `gfxfont.h`, `glcdfont.c` — the GFX drawing core.
 - `Fonts/FreeSans9pt7b.h`, `FreeSansBold{9,12,18}pt7b.h` — the FreeFonts the

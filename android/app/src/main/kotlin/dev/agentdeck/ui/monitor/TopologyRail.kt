@@ -1,5 +1,6 @@
 package dev.agentdeck.ui.monitor
 
+import dev.agentdeck.util.UsageSeverity
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -51,7 +52,7 @@ import dev.agentdeck.net.AgentState
 import dev.agentdeck.net.CodexRateLimits
 import dev.agentdeck.net.ModelCatalogEntry
 import dev.agentdeck.net.OllamaStatus
-import dev.agentdeck.net.SubscriptionInfo
+import dev.agentdeck.net.ZaiRateLimits
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.terrarium.TerrariumColors
 import dev.agentdeck.ui.component.AgentDeckMark
@@ -60,7 +61,37 @@ import dev.agentdeck.util.ChatGPTPlan
 import dev.agentdeck.util.DeviceProfileHolder
 import dev.agentdeck.util.codexLimitRows
 import dev.agentdeck.util.formatResetTime
+import dev.agentdeck.util.ZaiQuotaRules
+import dev.agentdeck.util.zaiLimitRows
 import java.time.Instant
+
+import androidx.compose.runtime.*
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
+import dev.agentdeck.net.BridgeConnection
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import org.json.JSONArray
+
+private val providerNames = linkedMapOf("claude" to "Claude", "codex" to "Codex", "zai" to "z.ai", "openclaw" to "OpenClaw", "mlx" to "MLX", "ollama" to "Ollama", "antigravity" to "Antigravity")
+private val providerClient = okhttp3.OkHttpClient.Builder().callTimeout(5, java.util.concurrent.TimeUnit.SECONDS).build()
+private suspend fun syncProviders(raw: String, save: List<String>? = null, initialize: Boolean = false): List<String>? = withContext(Dispatchers.IO) {
+    val url = raw.replaceFirst("wss://", "https://").replaceFirst("ws://", "http://").toHttpUrl().newBuilder().encodedPath("/dashboard/providers").build()
+    val request = okhttp3.Request.Builder().url(url)
+    if (save != null) request.post(JSONObject().put("providers", JSONArray(save)).put("initialize", initialize).toString().toRequestBody("application/json".toMediaType()))
+    providerClient.newCall(request.build()).execute().use { response ->
+        check(response.isSuccessful)
+        val json = JSONObject(response.body?.string() ?: "{}")
+        if (json.isNull("providers")) null else json.getJSONArray("providers").let { a -> (0 until a.length()).map { a.getString(it) } }
+    }
+}
 
 /**
  * Relationship-centric rail that replaces the former `TankStatusPanel`.
@@ -89,6 +120,32 @@ fun TopologyRail(
     modifier: Modifier = Modifier,
     scale: MonitorLayoutScale = MonitorLayoutScale.phone,
 ) {
+    val connectionUrl by BridgeConnection.instance.url.collectAsState()
+    var displayed by remember(connectionUrl) { mutableStateOf<List<String>?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val discovered = buildList {
+        if (state.oauthConnected == true || consumersFor(ProviderKey.CLAUDE, state).isNotEmpty()) add("claude")
+        if (state.codexRateLimits != null || state.usage.codexPlanType != null) add("codex")
+        if (state.zaiRateLimits != null) add("zai")
+        if (state.gatewayConnected == true) add("openclaw")
+        if (state.mlxModels.isNotEmpty()) add("mlx")
+        if (state.ollamaStatus != null) add("ollama")
+        if (state.antigravityStatus?.planName != null) add("antigravity")
+    }
+    val latestDiscovered by rememberUpdatedState(discovered)
+    LaunchedEffect(connectionUrl) {
+        val url = connectionUrl ?: return@LaunchedEffect
+        while (true) {
+            try {
+                val saved = syncProviders(url)
+                if (saved != null) displayed = saved
+                else if (latestDiscovered.isNotEmpty()) displayed = syncProviders(url, latestDiscovered, true)
+            } catch (_: Exception) { /* Retain the last successful list during reconnects. */ }
+            delay(5000)
+        }
+    }
     Column(
         modifier = modifier
             .background(TerrariumColors.HUDBg, RoundedCornerShape(8.dp))
@@ -96,8 +153,28 @@ fun TopologyRail(
             .padding(scale.panelPadding),
         verticalArrangement = Arrangement.spacedBy(scale.topologyRowSpacing),
     ) {
-        SectionHeader("UPSTREAM", scale)
-        UpstreamRows(state = state, scale = scale)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { SectionHeader("UPSTREAM", scale) }
+            TextButton(onClick = { menu = true }) { Text("Edit", color = TerrariumColors.HUDSubtext) }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                providerNames.forEach { (id, name) ->
+                    DropdownMenuItem(text = { Text((if ((displayed ?: discovered).contains(id)) "✓ " else "") + name) }, onClick = {
+                        menu = false
+                        val url = connectionUrl
+                        if (url != null) {
+                            val next = (displayed ?: discovered).toMutableList()
+                            if (id in next) next.remove(id) else next.add(id)
+                            scope.launch {
+                                try { displayed = syncProviders(url, next); saveError = false }
+                                catch (_: Exception) { saveError = true }
+                            }
+                        }
+                    })
+                }
+            }
+        }
+        if (saveError) Text("Could not save provider display settings.", color = TerrariumColors.HUDSubtext)
+        UpstreamRows(state = state, scale = scale, visible = displayed ?: discovered)
         HubZone(state = state, scale = scale)
         SectionHeader("DOWNSTREAM", scale)
         DownstreamRows(scale = scale)
@@ -240,7 +317,8 @@ private fun daemonPortText(state: DashboardState): String =
 // MARK: - Upstream rows
 
 @Composable
-private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale) {
+private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale, visible: List<String>) {
+    val now by rememberCurrentInstant()
     val usage = state.usage
     val ollama = state.ollamaStatus
     val modelCatalog = state.modelCatalog ?: emptyList()
@@ -296,16 +374,13 @@ private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale) {
                 )
             }
         }
-        val showClaudeRow = state.oauthConnected == true ||
-            claudeModels.isNotEmpty() ||
-            claudeConsumers.isNotEmpty() ||
-            claudeRateLimits.isNotEmpty()
+        val showClaudeRow = "claude" in visible
         if (showClaudeRow) {
             ProviderRow(
                 name = "Claude",
                 status = when (state.oauthConnected) {
                     true -> LEDStatus.OK
-                    false -> LEDStatus.WARN
+                    false -> LEDStatus.DIM
                     null -> LEDStatus.DIM
                 },
                 subtitle = when {
@@ -325,17 +400,34 @@ private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale) {
         // plan label. Hidden when neither a plan nor limit data is present.
         val codexPlan = usage.codexPlanType?.takeIf { it.isNotBlank() }
         val codexRateLimits = buildCodexRateChips(state.codexRateLimits)
-        if (state.codexRateLimits != null || codexPlan != null) {
+        if ("codex" in visible) {
             ProviderRow(
                 name = "Codex",
-                status = LEDStatus.OK,
-                subtitle = codexSubtitle(codexPlan, state.codexRateLimits),
+                status = if (state.codexRateLimits != null || codexPlan != null) LEDStatus.OK else LEDStatus.DIM,
+                subtitle = withSubscriptionDate(codexSubtitle(codexPlan, state.codexRateLimits),
+                    state.subscriptions.firstOrNull { it.name == chatGptPlanLabel(codexPlan) }?.until, now),
                 consumers = consumersFor(ProviderKey.CODEX, state),
                 rateLimits = codexRateLimits,
             )
         }
 
-        val openClawVisible = (state.gatewayAvailable == true || state.gatewayConnected == true)
+        // z.ai GLM Coding Plan — a direct provider-account reading, independent
+        // of every harness that may use the plan (#348). A windowless block
+        // (PAYG key, display retirement) keeps the row but drops the chips.
+        if ("zai" in visible) {
+            val zai = state.zaiRateLimits
+            ProviderRow(
+                name = "z.ai",
+                status = if (zai?.primary != null || zai?.secondary != null) LEDStatus.OK else LEDStatus.DIM,
+                subtitle = zaiSubtitle(zai),
+                consumers = emptyList(),
+                rateLimits = buildZaiRateChips(zai),
+            )
+        }
+
+        val gatewaySetup = dev.agentdeck.net.GatewaySetupStatus.evaluate(
+            state.gatewayAuthStatus, state.gatewayConnected, state.gatewayAvailable)
+        val openClawVisible = "openclaw" in visible || (state.bridgeConnected && gatewaySetup.needsAttention)
         if (openClawVisible) {
             // Only surface the catalog under OpenClaw when it actually
             // belongs to OpenClaw — same gate we apply to the Claude row.
@@ -345,6 +437,7 @@ private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale) {
                 emptyList()
             }
             val subtitle = when {
+                gatewaySetup.needsAttention -> gatewaySetup.detail
                 openClawLines.isNotEmpty() -> openClawLines.joinToString(", ")
                 state.gatewayConnected != true -> "Not connected"
                 else -> null
@@ -353,29 +446,28 @@ private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale) {
                 name = "OpenClaw",
                 status = when {
                     state.gatewayHasError == true -> LEDStatus.ERROR
-                    // OK only when the Gateway is authenticated — reachability
-                    // alone keeps the row amber so users know setup isn't
-                    // finished (matches iOS topology semantics).
+                    gatewaySetup.needsAttention -> LEDStatus.WARN
                     state.gatewayConnected == true -> LEDStatus.OK
-                    else -> LEDStatus.WARN
+                    else -> LEDStatus.DIM
                 },
                 subtitle = subtitle,
+                subtitleMaxLines = if (gatewaySetup.needsAttention) 4 else 1,
                 consumers = consumersFor(ProviderKey.OPENCLAW, state),
                 rateLimits = emptyList(),
             )
         }
 
-        if (state.mlxModels.isNotEmpty()) {
+        if ("mlx" in visible) {
             ProviderRow(
                 name = "MLX",
-                status = LEDStatus.OK,
+                status = if (state.mlxModels.isNotEmpty()) LEDStatus.OK else LEDStatus.DIM,
                 subtitle = state.mlxModels.joinToString(", "),
                 consumers = consumersFor(ProviderKey.MLX, state),
                 rateLimits = emptyList(),
             )
         }
 
-        if (ollama != null) {
+        if ("ollama" in visible && ollama != null) {
             // Prefer "running" models (VRAM-loaded) but fall back to the
             // full installed list so the row is never empty when Ollama is
             // installed but idle. Mirrors the iOS TopologyRail behavior.
@@ -395,27 +487,29 @@ private fun UpstreamRows(state: DashboardState, scale: MonitorLayoutScale) {
             )
         }
 
+        if ("ollama" in visible && ollama == null) {
+            ProviderRow(name = "Ollama", status = LEDStatus.DIM, subtitle = null, consumers = emptyList(), rateLimits = emptyList())
+        }
+
         // Antigravity — surfaced whenever the bridge reports an active
         // plan. Hidden otherwise so the rail doesn't grow a pointless row
         // for users not on Google's product.
         val antiPlan = state.antigravityStatus?.planName?.takeIf { it.isNotBlank() }
-        if (antiPlan != null) {
+        if ("antigravity" in visible) {
             // Plan name ONLY. Antigravity's real usage view (two per-group
             // 5h/weekly quotas) is fetched live from Google's backend and not
             // persisted locally; the local `availableCredits` value doesn't
             // match it, so we intentionally don't show a credit number. Mirrors iOS.
             ProviderRow(
                 name = "Antigravity",
-                status = LEDStatus.OK,
-                subtitle = antiPlan,
+                status = if (antiPlan != null) LEDStatus.OK else LEDStatus.DIM,
+                subtitle = withSubscriptionDate(antiPlan,
+                    state.subscriptions.firstOrNull { it.name == antiPlan }?.until, now),
                 consumers = consumersFor(ProviderKey.ANTIGRAVITY, state),
                 rateLimits = emptyList(),
             )
         }
 
-        if (state.subscriptions.isNotEmpty()) {
-            SubscriptionsFooter(state.subscriptions)
-        }
     }
 }
 
@@ -459,7 +553,7 @@ internal fun normalizeOpenClawName(name: String): String =
 /**
  * Snapshot of the wall clock that re-emits every `periodMillis` so views
  * keyed on time invalidate without depending on incidental state changes.
- * Used by the SUBSCRIPTIONS footer (HUD rail) and the e-ink TANK STATUS
+ * Used by upstream subscription dates (HUD rail) and the e-ink TANK STATUS
  * subscription line so a row can flip from a future date to
  * "renewal needed" the moment the underlying timestamp becomes past — a
  * dashboard left open across an expiry would otherwise hold the stale
@@ -478,48 +572,10 @@ internal fun rememberCurrentInstant(periodMillis: Long = 60_000L): State<Instant
         }
     }
 
-@Composable
-private fun SubscriptionsFooter(subs: List<SubscriptionInfo>) {
-    // `rememberCurrentInstant` re-emits `now` every 60s and invalidates this
-    // composable, so a subscription that expires while the dashboard is
-    // open flips from its date suffix to "renewal needed" without needing
-    // unrelated state to change first. Reading `Instant.now()` inline
-    // would only refresh on incidental recomposition, which can be rare
-    // when the daemon is idle.
-    val now by rememberCurrentInstant()
-    Column(
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-        modifier = Modifier.padding(top = 4.dp),
-    ) {
-        Text(
-            text = "SUBSCRIPTIONS",
-            color = TerrariumColors.HUDSubtext.copy(alpha = 0.8f),
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            letterSpacing = 0.8.sp,
-        )
-        subs.forEach { sub ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = sub.name,
-                    color = TerrariumColors.HUDText,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-                val trailing = subscriptionTrailing(sub.until, now)
-                if (trailing != null) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = trailing.text,
-                        color = if (trailing.expired) TerrariumColors.LEDAmber else TerrariumColors.HUDSubtext,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
-            }
-        }
-    }
+internal fun withSubscriptionDate(subtitle: String?, until: String?, now: Instant): String? {
+    val trailing = subscriptionTrailing(until, now) ?: return subtitle
+    val date = if (trailing.expired) "subscription date unconfirmed" else "subscription ${trailing.text}"
+    return listOfNotNull(subtitle, date).joinToString(" · ")
 }
 
 // MARK: - Downstream rows
@@ -563,6 +619,8 @@ private data class RateChip(
     /// for > 10min the chip dims and shows `stale` in the reset slot so
     /// the cached value can't be mistaken for current data.
     val stale: Boolean = false,
+    /** `percent` is what remains (the Codex Luna reserve); colour reads the used complement. */
+    val remaining: Boolean = false,
 )
 
 @Composable
@@ -572,6 +630,7 @@ private fun ProviderRow(
     subtitle: String?,
     consumers: List<Color>,
     rateLimits: List<RateChip>,
+    subtitleMaxLines: Int = 1,
 ) {
     val tight = PlatformTextStyle(includeFontPadding = false)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -625,7 +684,7 @@ private fun ProviderRow(
                 color = TerrariumColors.HUDSubtext,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
-                maxLines = 1,
+                maxLines = subtitleMaxLines,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 14.dp),
                 style = TextStyle(platformStyle = tight),
@@ -645,11 +704,8 @@ private fun ProviderRow(
 @Composable
 private fun RateChipView(chip: RateChip) {
     val pct = chip.percent.coerceIn(0.0, 100.0)
-    val fillColor = when {
-        pct >= 90 -> TerrariumColors.LEDRed
-        pct >= 70 -> TerrariumColors.LEDAmber
-        else -> TerrariumColors.LEDGreen
-    }
+    val used = if (chip.remaining) 100.0 - pct else pct
+    val fillColor = Color(UsageSeverity.color(if (chip.stale) -1.0 else used))
     val fillFraction = (pct / 100.0).toFloat()
     // Dim the bar when the underlying value is stale — the user should
     // read it as "cached / don't trust" at a glance, same visual pattern
@@ -813,6 +869,7 @@ private fun buildCodexRateChips(limits: CodexRateLimits?): List<RateChip> =
             percent = row.percent,
             reset = row.footnote ?: row.resetIso?.let { formatResetTime(it) },
             stale = row.stale || row.footnote != null,
+            remaining = row.remaining,
         )
     }
 
@@ -830,6 +887,31 @@ private fun buildCodexRateChips(limits: CodexRateLimits?): List<RateChip> =
 private fun chatGptPlanLabel(raw: String?): String? {
     val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     return ChatGPTPlan.displayName(trimmed)
+}
+
+/**
+ * z.ai usage chips, mirroring the Codex chip grammar. The MCP tool-call quota
+ * labels by its QUANTITY ("mcp") — the shared zaiLimitRows owns that mapping
+ * so the rail and the e-ink surfaces cannot drift (#348).
+ */
+private fun buildZaiRateChips(limits: ZaiRateLimits?): List<RateChip> =
+    zaiLimitRows(limits).map { row ->
+        RateChip(
+            label = row.label,
+            percent = row.percent,
+            reset = row.footnote ?: row.resetIso?.let { formatResetTime(it) },
+            stale = row.stale || row.footnote != null,
+        )
+    }
+
+/**
+ * z.ai row subtitle: the plan tier from the raw `level` (unknown tiers render
+ * capitalized, never dropped — same polarity as the ChatGPT plan label).
+ * Mirrors iOS `zaiSubtitle`.
+ */
+private fun zaiSubtitle(limits: ZaiRateLimits?): String? {
+    val plan = ZaiQuotaRules.formatPlanName(limits?.planType) ?: return null
+    return "GLM Coding Plan $plan"
 }
 
 /**

@@ -22,6 +22,9 @@ import dev.agentdeck.terrarium.CreatureGeometry
 import dev.agentdeck.terrarium.CreatureNameTagStyle
 import dev.agentdeck.terrarium.creatureNameTagMetric
 import dev.agentdeck.terrarium.resolveCreatureNameTagLayout
+import dev.agentdeck.terrarium.labelRankOf
+import dev.agentdeck.terrarium.CreatureNameTagRequest
+import dev.agentdeck.terrarium.submitCreatureNameTag
 import dev.agentdeck.terrarium.OctopusVisualState
 import dev.agentdeck.terrarium.TerrariumColors
 import dev.agentdeck.terrarium.TerrariumLayout
@@ -94,6 +97,13 @@ class OctopusCreature(
     /** Current live position for tetra attractor tracking. */
     fun currentPosition(): Pair<Float, Float> = currentX to currentY
 
+    /** Floor position after the shared spacing pass; null while swimming. */
+    var restX: Float? = null
+
+    /** (home X, layout width) while standing on the floor, null while swimming. */
+    fun floorFootprint(): Pair<Float, Float>? =
+        if (visualState == OctopusVisualState.WORKING) null else homeX to LAYOUT_WIDTH * scaleFactor
+
     /** Whether this octopus is currently working (swimming, scattering data). */
     fun isWorking(): Boolean = visualState == OctopusVisualState.WORKING
 
@@ -103,7 +113,9 @@ class OctopusCreature(
             transitionProgress = (transitionProgress + dt * 3f).coerceAtMost(1f)
         }
 
-        // Movement: only WORKING swims freely; FLOATING/ASKING stand on bottom
+        // Movement: only WORKING swims freely; FLOATING/ASKING stand on bottom,
+        // at the spaced floor position when the renderer has assigned one.
+        val homeX = restX ?: this.homeX
         when (visualState) {
             OctopusVisualState.SLEEPING -> {
                 // Sleeping: settle to deep bottom, dim — per-instance variation
@@ -407,33 +419,15 @@ class OctopusCreature(
             )
         }
 
-        val canvas = scope.drawContext.canvas.nativeCanvas
-
-        // Hat background
-        scope.drawRoundRect(
-            color = TerrariumColors.ClaudeBody,
-            alpha = 0.6f,
-            topLeft = Offset(cx - tagWidth / 2, tagBottomY - tagHeight),
-            size = Size(tagWidth, tagHeight),
-            cornerRadius = CornerRadius(4f, 4f),
+        submitCreatureNameTag(
+            scope,
+            CreatureNameTagRequest(
+                cx = cx, tagBottomY = tagBottomY, tagWidth = tagWidth, tagHeight = tagHeight,
+                fontSize = chosenSize, lines = lines, lineHeight = lineHeight,
+                background = TerrariumColors.ClaudeBody, paint = nameTagPaint,
+                rank = labelRankOf(visualState), bodyTopY = bodyTopY, bodyMetric = bodyMetric,
+            ),
         )
-
-        // Name text
-        nameTagPaint.textSize = chosenSize
-        if (lines.size == 1) {
-            canvas.drawText(
-                lines[0], cx, tagBottomY - tagHeight * 0.25f,
-                nameTagPaint,
-            )
-        } else {
-            val topY = tagBottomY - tagHeight + chosenSize * 0.3f + chosenSize
-            for (i in lines.indices) {
-                canvas.drawText(
-                    lines[i], cx, topY + i * lineHeight,
-                    nameTagPaint,
-                )
-            }
-        }
     }
 
     private fun lerpColor(a: Color, b: Color, t: Float): Color {
@@ -460,6 +454,8 @@ class OctopusCreature(
     }
 
     companion object {
+        /** Band width the layout reserves for one octopus (creature-layout.ts). */
+        const val LAYOUT_WIDTH = 0.11f
         /** Standing position Y — just above the sand line (0.65). */
         private const val STANDING_Y = 0.635f
         /** Deep sleeping position Y — lower, partially hidden. */

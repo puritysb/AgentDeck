@@ -333,6 +333,6 @@ AgentDeck/
 ├── config/                       # Prompt templates + default settings
 ├── scripts/                      # Install, uninstall, package, icon generation
 ├── package.json                  # pnpm workspaces root
-├── CLAUDE.md                     # Developer reference
+├── AGENTS.md                     # Developer reference
 └── README.md
 ```

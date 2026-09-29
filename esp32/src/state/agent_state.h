@@ -89,7 +89,12 @@ inline bool isGeneralAssistantSession(const char* agentType, const char* project
 // ===== Session info (multi-agent) =====
 struct SessionInfo {
     char id[32];
-    char projectName[40];
+    char projectName[40]; // original project/worktree label
+#if defined(BOARD_TTGO)
+    char displayName[20]; // host uses a 12-byte base plus ordinal; 200-byte roster
+#else
+    char displayName[40]; // compact label; fixed 400 bytes for the roster
+#endif
     char modelName[32];
     char agentType[16];  // "claude-code" / "openclaw" / "codex-cli" / "codex-app"
     char state[20];
@@ -108,6 +113,17 @@ struct SessionInfo {
     SessionOption options[SESSION_OPTIONS_CAP];
     uint8_t optionCount;
     char activity[80];      // shared one-liner summary of recent work ("" when none)
+#if defined(BOARD_IPS10)
+    // Optional existing wire census. Six bytes per session, IPS10 only; no heap.
+    bool childrenKnown;
+    uint16_t childrenActive;
+    uint16_t childrenCompleted;
+    // Optional coordination census (workers spawned + background jobs this
+    // session is waiting on). Unknown when absent, never a stale count.
+    bool coordinationKnown;
+    uint16_t backgroundJobs;
+    uint16_t spawnedActive;
+#endif
     // Daemon-computed "latest milestone" for this session (TIMELINE parity):
     // the newest chat/task row from the daemon's authoritative timeline store.
     // The on-device ring is tiny and empty after every (re)boot, so cards that
@@ -116,6 +132,10 @@ struct SessionInfo {
     char lastEventTask[40];  // resolved enclosing-task label ("" when none)
     char lastEventHm[6];     // host-local "HH:MM" of that row ("" when unknown)
 };
+
+inline const char* sessionDisplayName(const SessionInfo& session) {
+    return session.displayName[0] ? session.displayName : session.projectName;
+}
 
 // ===== Timeline entry =====
 struct TimelineEntry {
@@ -175,8 +195,27 @@ struct DashboardState {
     // -1.0f sentinel = "no data" (window absent / not a Codex user).
     float codexPrimaryPercent;     // ≈5h window usedPercent (0-100)
     float codexSecondaryPercent;   // ≈7d window usedPercent (0-100)
+    int codexPrimaryMinutes;
+    int codexSecondaryMinutes;
     char codexPrimaryReset[20];    // "1h 23m" relative (needs NTP) or ""
     char codexSecondaryReset[20];
+    // Luna-only reserve pool (usage_update codexRateLimits.lunaReserve). It
+    // replaces the Codex windows only while an account window is exhausted —
+    // UsagePresentation::lunaActive owns that rule. -1 = absent.
+    float codexLunaPercent = -1;
+    char codexLunaReset[20] = {};
+    // z.ai GLM Coding Plan limits (#350) — a direct provider-account reading,
+    // same slot grammar. The secondary window may meter MCP TOOL CALLS, not
+    // tokens: `zaiSecondaryIsMcp` rides the wire `quantity` and renderers must
+    // label that gauge "MCP", never a window length — it can never read as
+    // token usage. -1.0f sentinel as above.
+    float zaiPrimaryPercent;       // 5h credits window usedPercent (0-100)
+    float zaiSecondaryPercent;     // long window (weekly credits OR monthly MCP)
+    int zaiPrimaryMinutes;
+    int zaiSecondaryMinutes;
+    char zaiPrimaryReset[20];
+    char zaiSecondaryReset[20];
+    bool zaiSecondaryIsMcp;
     // Antigravity local IDE quota. availableCredits is a raw count (no max),
     // so it renders as a text chip, not a gauge. -1.0f = "no data".
     float antigravityCredits;
@@ -184,7 +223,7 @@ struct DashboardState {
     // Account subscriptions from usage_update `subscriptions[]` — plan name +
     // (serial-preformatted) expiry like "~7/12". Empty when the daemon can't
     // resolve them; surfaces hide the line in that case.
-    struct SubscriptionSlot { char name[28]; char until[12]; } subscriptions[3];
+    struct SubscriptionSlot { char name[28]; char until[12]; } subscriptions[4];
     uint8_t subscriptionCount;
 
     // Permission/Options
@@ -197,6 +236,11 @@ struct DashboardState {
     // bridge/src/esp32-serial.ts and the daemon WS sessions_list. Keep in sync.
     SessionInfo sessions[10];
     uint8_t sessionCount;
+#if defined(BOARD_IPS10)
+    // Roster size on the daemon when it exceeds the cards (0 = not sent).
+    uint16_t sessionsTotal;
+    bool sessionsRotating = false;
+#endif
     // Session explicitly selected by a steering surface. The daemon includes
     // it on state_update so companion devices can behave as one desk set.
     char focusedSessionId[32];
@@ -285,10 +329,21 @@ struct DashboardState {
         fiveHourPercent = -1.0f;
         sevenDayPercent = -1.0f;
         estimatedCostUsd = -1.0f;
+        codexPrimaryMinutes = codexSecondaryMinutes = 0;
+        zaiPrimaryMinutes = zaiSecondaryMinutes = 0;
+        zaiPrimaryPercent = zaiSecondaryPercent = -1.0f;
+        zaiPrimaryReset[0] = zaiSecondaryReset[0] = '\0';
+        zaiSecondaryIsMcp = false;
         codexPrimaryPercent = -1.0f;
         codexSecondaryPercent = -1.0f;
         codexPrimaryReset[0] = '\0';
         codexSecondaryReset[0] = '\0';
+        codexLunaPercent = -1; codexLunaReset[0] = '\0';
+        zaiPrimaryPercent = -1.0f;
+        zaiSecondaryPercent = -1.0f;
+        zaiPrimaryReset[0] = '\0';
+        zaiSecondaryReset[0] = '\0';
+        zaiSecondaryIsMcp = false;
         antigravityCredits = -1.0f;
         antigravityPlan[0] = '\0';
     }
@@ -318,12 +373,24 @@ struct DashboardState {
         sevenDayPercent = -1.0f;
         fiveHourReset[0] = '\0';
         sevenDayReset[0] = '\0';
+        codexPrimaryMinutes = codexSecondaryMinutes = 0;
+        zaiPrimaryMinutes = zaiSecondaryMinutes = 0;
+        zaiPrimaryPercent = zaiSecondaryPercent = -1.0f;
+        zaiPrimaryReset[0] = zaiSecondaryReset[0] = '\0';
+        zaiSecondaryIsMcp = false;
         codexPrimaryPercent = -1.0f;
         codexSecondaryPercent = -1.0f;
         codexPrimaryReset[0] = '\0';
         codexSecondaryReset[0] = '\0';
+        codexLunaPercent = -1; codexLunaReset[0] = '\0';
+        zaiPrimaryPercent = -1.0f;
+        zaiSecondaryPercent = -1.0f;
+        zaiPrimaryReset[0] = '\0';
+        zaiSecondaryReset[0] = '\0';
+        zaiSecondaryIsMcp = false;
         antigravityCredits = -1.0f;
         antigravityPlan[0] = '\0';
+        subscriptionCount = 0;
         usageStale = true;
         updateCreatureStates();
     }
@@ -332,6 +399,10 @@ struct DashboardState {
         sessionClearPending = false;
         sessionClearPendingMs = 0;
         sessionCount = 0;
+#if defined(BOARD_IPS10)
+        sessionsTotal = 0;
+        sessionsRotating = false;
+#endif
         focusedSessionId[0] = '\0';
         octopusCount = 0;
         cloudCount = 0;

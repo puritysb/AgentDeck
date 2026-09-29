@@ -21,6 +21,7 @@ const OFFICIAL_GLYPHS = [
   ['openClaw', 'openclaw'],
   ['antigravity', 'antigravity'],
   ['kiro', 'kiro'],
+  ['zai', 'zai'],
 ];
 const STANDARD_MASK_SIZE = 24;
 const TIMEBOX_MASK_SIZE = 9;

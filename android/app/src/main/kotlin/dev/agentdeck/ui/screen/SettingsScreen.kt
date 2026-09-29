@@ -207,6 +207,19 @@ internal fun DisplaySettingsCard(
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            val chosenType by displayPrefs.dashboardTypeFlow.collectAsState(initial = dev.agentdeck.data.DashboardType.Default)
+            val effectiveType = dev.agentdeck.data.DashboardType.resolve(chosenType, DeviceProfileHolder.current.isEink)
+            Text("Dashboard type", style = MaterialTheme.typography.titleSmall)
+            for (type in dev.agentdeck.data.DashboardType.available(DeviceProfileHolder.current.isEink)) {
+                androidx.compose.material3.TextButton(onClick = {
+                    coroutineScope.launch { displayPrefs.setDashboardType(type) }
+                }) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text((if (effectiveType == type) "✓ " else "") + type.title)
+                        Text(type.description, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -311,6 +324,7 @@ internal fun DisplaySettingsCard(
 
 @Composable
 internal fun AboutFooter() {
+    dev.agentdeck.update.AppUpdateCard()
     Text(
         text = "AgentDeck Android \u00B7 v${BuildConfig.VERSION_NAME} \u00B7 Monitoring dashboard for AI coding agents",
         style = MaterialTheme.typography.bodySmall,

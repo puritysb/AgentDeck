@@ -1,6 +1,6 @@
 // agent_label.h — on-device mirror of shared/src/timeline-label.ts
 // `agentDisplayLabel`. The ONE place ESP32 turns an agentType id into a
-// human-readable brand name, so the InkDeck ticker, IPS10 mosaic card, and any
+// human-readable brand name, so the TRMNL 7.5" ticker, IPS10 mosaic card, and any
 // future timeline surface stop hand-rolling the same map. Keep in lockstep with
 // the TS SSOT (shared/src/timeline-label.ts) and the Swift/Kotlin mirrors.
 //

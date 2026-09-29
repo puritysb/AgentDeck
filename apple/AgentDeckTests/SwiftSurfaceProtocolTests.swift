@@ -149,8 +149,8 @@ final class SwiftSurfaceProtocolTests: XCTestCase {
     func testAgentDeckFirmwareProductTupleUsesShippingBoardSet() throws {
         var values = headers([
             "agentdeck-product-id": "dev.agentdeck.dashboard-firmware",
-            "agentdeck-client-id": "agentdeck.inkdeck",
-            "agentdeck-board": "inkdeck",
+            "agentdeck-client-id": "agentdeck.trmnl_75",
+            "agentdeck-board": "trmnl_75",
         ])
         XCTAssertNotNil(try DaemonServer.parseSurfaceHTTPIdentity(
             headers: values, requiredCapability: "ota.feed").get())
@@ -205,21 +205,21 @@ final class SwiftSurfaceProtocolTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = SwiftSurfaceFirmwareStore(baseDirectory: root)
         let firmware = Data(repeating: 0x41, count: 40 * 1024)
-        _ = try await store.stage(firmware: firmware, target: "inkdeck", identity: nil)
+        _ = try await store.stage(firmware: firmware, target: "trmnl_75", identity: nil)
         let productIdentity = SwiftSurfaceFirmwareStore.Identity(
-            productId: "dev.agentdeck.dashboard-firmware", board: "inkdeck", updateChannel: "stable")
+            productId: "dev.agentdeck.dashboard-firmware", board: "trmnl_75", updateChannel: "stable")
 
         let productAdvert = await store.advert(
-            identity: productIdentity, board: "inkdeck", clientVersion: "1.0.0")
+            identity: productIdentity, board: "trmnl_75", clientVersion: "1.0.0")
         XCTAssertNil(productAdvert)
         do {
             _ = try await store.segment(
-                identity: productIdentity, board: "inkdeck", requestedFrom: 0, requestedLimit: nil)
+                identity: productIdentity, board: "trmnl_75", requestedFrom: 0, requestedLimit: nil)
             XCTFail("product-aware request must not consume a legacy board-only stage")
         } catch SwiftSurfaceFirmwareStore.StoreError.notStaged {
             // expected
         }
-        let legacyAdvert = await store.advert(identity: nil, board: "inkdeck", clientVersion: nil)
+        let legacyAdvert = await store.advert(identity: nil, board: "trmnl_75", clientVersion: nil)
         XCTAssertNotNil(legacyAdvert)
     }
 

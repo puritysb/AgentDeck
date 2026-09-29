@@ -15,6 +15,12 @@ import type {
   ExecApprovalRequestedPayload,
   ExecApprovalResolvedPayload,
 } from './openclaw-approval.js';
+import type {
+  PluginApprovalDecision,
+  PluginApprovalRequestedPayload,
+  PluginApprovalResolvedPayload,
+  PluginApprovalRemovedPayload,
+} from './openclaw-plugin-approval.js';
 
 // ===== Protocol version =====
 
@@ -76,6 +82,8 @@ export type GatewayMethodName =
   | 'chat.abort'
   | 'exec.approval.resolve'
   | 'exec.approval.list'
+  | 'plugin.approval.resolve'
+  | 'plugin.approval.list'
   | 'sessions.list'
   | 'sessions.subscribe'
   | 'sessions.messages.subscribe'
@@ -90,6 +98,8 @@ export type GatewayMethodParams =
   | ChatAbortParams
   | ExecApprovalResolveParams
   | ExecApprovalListParams
+  | PluginApprovalResolveParams
+  | PluginApprovalListParams
   | SessionsListParams
   | SessionsSubscribeParams
   | SessionsMessagesSubscribeParams
@@ -104,6 +114,8 @@ export type GatewayMethodResult =
   | ChatAbortResult
   | ExecApprovalResolveResult
   | ExecApprovalListResult
+  | PluginApprovalResolveResult
+  | PluginApprovalListResult
   | SessionsListResult
   | SessionsSubscribeResult
   | SessionsMessagesSubscribeResult
@@ -234,6 +246,8 @@ export interface LogsTailResult {
 
 // chat.send — dispatch user message to active session
 export interface ChatSendParams {
+  /** Per-turn override supported by the Gateway; does not patch session defaults. */
+  thinking?: string;
   sessionKey: string;
   message: string;
   idempotencyKey: string;
@@ -282,6 +296,30 @@ export interface ExecApprovalListParams {}
 
 /** Same element shape as the requested event, minus the envelope. */
 export type ExecApprovalListResult = ExecApprovalRequestedPayload[];
+
+// plugin.approval.resolve — resolve a pending plugin approval. Same
+// vocabulary and same fail-before-lookup validation order as exec (the
+// Gateway's `isApprovalDecision` is shared code), read from
+// `openclaw-plugin-approval.ts`.
+export interface PluginApprovalResolveParams {
+  id: string;
+  decision: PluginApprovalDecision;
+}
+
+/** The Gateway answers `{ ok: true }`; `resolved` is kept for older builds. */
+export interface PluginApprovalResolveResult {
+  ok?: boolean;
+  resolved?: boolean;
+}
+
+// plugin.approval.list — the plugin approvals currently waiting for a
+// decision. Same catch-up role as exec.approval.list: `plugin.approval.
+// requested` is a broadcast, never replayed, so a client that connects while
+// one is already outstanding hears nothing about it without this read.
+export interface PluginApprovalListParams {}
+
+/** Same element shape as the requested event, minus the envelope. */
+export type PluginApprovalListResult = PluginApprovalRequestedPayload[];
 
 // sessions.list — enumerate active Gateway sessions
 export interface SessionsListParams {
@@ -342,6 +380,8 @@ export interface GatewayMethodMap {
   'chat.abort': { params: ChatAbortParams; result: ChatAbortResult };
   'exec.approval.resolve': { params: ExecApprovalResolveParams; result: ExecApprovalResolveResult };
   'exec.approval.list': { params: ExecApprovalListParams; result: ExecApprovalListResult };
+  'plugin.approval.resolve': { params: PluginApprovalResolveParams; result: PluginApprovalResolveResult };
+  'plugin.approval.list': { params: PluginApprovalListParams; result: PluginApprovalListResult };
   'sessions.list': { params: SessionsListParams; result: SessionsListResult };
   'sessions.subscribe': { params: SessionsSubscribeParams; result: SessionsSubscribeResult };
   'sessions.messages.subscribe': { params: SessionsMessagesSubscribeParams; result: SessionsMessagesSubscribeResult };
@@ -359,6 +399,9 @@ export type GatewayEventName =
   | 'sessions.changed'
   | 'exec.approval.requested'
   | 'exec.approval.resolved'
+  | 'plugin.approval.requested'
+  | 'plugin.approval.resolved'
+  | 'plugin.approval.removed'
   | 'presence'
   | 'system-presence'
   | 'tick'
@@ -373,6 +416,9 @@ export type GatewayEventPayload =
   | SessionsChangedPayload
   | ExecApprovalRequestedPayload
   | ExecApprovalResolvedPayload
+  | PluginApprovalRequestedPayload
+  | PluginApprovalResolvedPayload
+  | PluginApprovalRemovedPayload
   | PresencePayload
   | SystemPresenceResult
   | TickPayload

@@ -14,6 +14,7 @@ import type {
 } from '@agentdeck/shared';
 import { apmeGraphNodeId as nid } from '@agentdeck/shared';
 import type { ApmeStore } from './store.js';
+import { isPrunedPayload } from './payload-prune.js';
 
 export interface ApmeGraphOptions {
   /** Task units to include, newest first. The graph is anchored on tasks
@@ -40,6 +41,10 @@ const PATH_KEYS = ['file_path', 'filePath', 'path', 'notebook_path', 'file'] as 
  *  slice reports it rather than implying every tool touched a file. */
 export function filePathFromToolPayload(payload: string | null | undefined): string | null {
   if (!payload) return null;
+  // A pruned row (#302) carries no file path — reporting a "touched" edge
+  // for it would be inventing evidence the payload was reclaimed precisely
+  // to stop holding.
+  if (isPrunedPayload(payload)) return null;
   let parsed: unknown;
   try { parsed = JSON.parse(payload); } catch { return null; }
   if (!parsed || typeof parsed !== 'object') return null;

@@ -1,3 +1,5 @@
+import { usageDialViews, renderUsageDialView } from '../utility-modes/usage-dial-view.js';
+import { PerActionViewState } from './per-action-view-state.js';
 /**
  * E3 — Codex usage dial (Stream Deck+).
  *
@@ -17,13 +19,17 @@ import streamDeck, {
   DialUpEvent,
   WillAppearEvent,
   WillDisappearEvent,
+  DidReceiveSettingsEvent,
   TouchTapEvent,
 } from '@elgato/streamdeck';
 import { encoderRegistry, isDaemonConnected } from '../encoder-registry.js';
 import { svgToDataUrl } from '../renderers/button-renderer.js';
-import { renderUsageEncoderBoth, renderUsageEncoderSingle } from '../renderers/usage-gauge.js';
-import { renderUsageSession } from '../renderers/usage-dial-renderer.js';
-import { type UsageModeData, type UsageView, updateUsageModeData, getUsageModeData, fireUsageRefresh, buildCodexUsageEncoder, availableUsageViews } from '../utility-modes/usage.js';
+import {
+  type UsageModeData, type UsageProviderId,
+  updateUsageModeData, getUsageModeData, fireUsageRefresh,
+  availableUsageProviders,
+  getUsageDialSelections, setE3UsageProvider, selectUsageDialProvider, onUsageDialSelectionChanged,
+} from '../utility-modes/usage.js';
 import type { ConnectionManager } from '../connection-manager.js';
 import { renderOfflineTouchStrip } from '../renderers/session-slot-renderer.js';
 import { dlog, dinfo } from '../log.js';
@@ -34,13 +40,32 @@ const PIXMAP_LAYOUT = 'layouts/encoder-layout.json';
 
 let currentLayout = '';
 let hasReceivedData = false;
-/** Dial-cycled view for the Codex usage encoder (E3). Held as the view ITSELF,
+/** Dial-cycled view for the current provider page (E3). Held as the view ITSELF,
  *  not an index — the reachable list resizes as windows appear/disappear, and a
  *  retained index would silently land on a different view. */
-let currentView: UsageView = 'both';
+const usageViews = new PerActionViewState('both');
+
+/**
+ * E3's provider page (#349) — the user's STICKY "what do I want to watch" dial.
+ * Touch-tap cycles through all available providers; rotation cycles the views
+ * of the current page; press refreshes. The page only re-anchors when the
+ * current provider no longer has available data.
+ */
+function anchoredProvider(): UsageProviderId {
+  const data = getUsageModeData();
+  const available = availableUsageProviders(data);
+  const current = getUsageDialSelections().e3;
+  if (available.length === 0 || available.includes(current)) return current;
+  // Data loss: re-anchor to the first live page.
+  const next = available[0];
+  const anchored = next ?? 'codex';
+  setE3UsageProvider(anchored);
+  return anchored;
+}
 
 export function initUsageDial(_bridge: ConnectionManager): void {
   dinfo('CodexUsageDial', 'initUsageDial called');
+  onUsageDialSelectionChanged(refreshUsageDials);
 }
 
 /** Called from plugin.ts when usage_update arrives. */
@@ -85,28 +110,17 @@ function refreshUsageDials(): void {
     return;
   }
 
-  setCanvasFeedback(renderCodexUsageView());
+  for (const id of encoderRegistry.usageIds) {
+    const dial = streamDeck.actions.getActionById(id) as any;
+    if (dial) void dial.setFeedback({ canvas: svgToDataUrl(renderCodexUsageView(id)) }).catch(() => {});
+  }
 }
 
-/** Render the current dial-cycled view for the Codex usage encoder. */
-function renderCodexUsageView(): string {
+/** Render the current dial-cycled view for the current provider page. */
+function renderCodexUsageView(id: string): string {
   const data = getUsageModeData();
-  const enc = buildCodexUsageEncoder(data, hasReceivedData);
-  // A window can vanish between rotations (or never arrive), so re-anchor to a
-  // reachable view instead of rendering a stop that no longer exists.
-  const views = availableUsageViews(enc);
-  const view: UsageView = views.includes(currentView) ? currentView : 'both';
-  if (view === 'session') {
-    // Session tokens/cost are shared (not Codex-specific). When none exist, fall
-    // back to the windows rather than an empty text card.
-    const hasSession =
-      (data.inputTokens ?? 0) > 0 || (data.outputTokens ?? 0) > 0 || data.estimatedCostUsd != null;
-    if (hasSession) return renderUsageSession(data);
-    return renderUsageEncoderBoth(enc);
-  }
-  if (view === '5h') return renderUsageEncoderSingle(enc, '5h');
-  if (view === '7d') return renderUsageEncoderSingle(enc, '7d');
-  return renderUsageEncoderBoth(enc);
+  const provider = anchoredProvider();
+  return renderUsageDialView(data, provider, hasReceivedData, usageViews.resolve(id, usageDialViews(data, provider)));
 }
 
 @action({ UUID: 'bound.serendipity.agentdeck.iterm-dial' })
@@ -118,9 +132,15 @@ export class UsageDialAction extends SingletonAction {
     if (!encoderRegistry.usageIds.includes(ev.action.id)) {
       encoderRegistry.usageIds.push(ev.action.id);
     }
+    usageViews.load(ev.action.id, ev.payload.settings?.usageView);
     currentLayout = PIXMAP_LAYOUT;
     if (dimActionIfNeeded(ev.action, 'Encoder')) return;
     fireUsageRefresh();
+    refreshUsageDials();
+  }
+
+  override onDidReceiveSettings(ev: DidReceiveSettingsEvent): void {
+    usageViews.load(ev.action.id, ev.payload.settings?.usageView);
     refreshUsageDials();
   }
 
@@ -129,17 +149,24 @@ export class UsageDialAction extends SingletonAction {
       void openAgentDeckAppOrGitHub().catch(() => {});
       return;
     }
+    // Each tap changes only this dial.
+    const available = availableUsageProviders(getUsageModeData());
+    if (available.length < 2) return;
+    const current = getUsageDialSelections().e3;
+    const at = available.indexOf(current);
+    const next = available[((at < 0 ? 0 : at) + 1) % available.length];
+    selectUsageDialProvider('e3', next, getUsageModeData());
+    dlog('UsageDial', `touch-tap → provider=${next}`);
+    refreshUsageDials();
   }
 
   override async onDialRotate(ev: DialRotateEvent): Promise<void> {
     if (!isDaemonConnected()) return;
     // Rotation cycles the views the current payload actually has — with only a
     // weekly window that is both → 7d → session, no dead 5h stop.
-    const dir = ev.payload.ticks >= 0 ? 1 : -1;
-    const views = availableUsageViews(buildCodexUsageEncoder(getUsageModeData(), hasReceivedData));
-    const at = views.indexOf(currentView);
-    currentView = views[((at < 0 ? 0 : at) + dir + views.length) % views.length];
-    dlog('CodexUsageDial', `rotate → view=${currentView}`);
+    const views = usageDialViews(getUsageModeData(), anchoredProvider());
+    const next = usageViews.rotate(ev.action.id, views, ev.payload.ticks);
+    await ev.action.setSettings({ ...ev.payload.settings, usageView: next });
     refreshUsageDials();
   }
 
@@ -158,6 +185,7 @@ export class UsageDialAction extends SingletonAction {
 
   override onWillDisappear(ev: WillDisappearEvent): void {
     dinfo('CodexUsageDial', `onWillDisappear: id=${ev.action.id}`);
+    usageViews.remove(ev.action.id);
     const idx = encoderRegistry.usageIds.indexOf(ev.action.id);
     if (idx !== -1) {
       encoderRegistry.usageIds.splice(idx, 1);

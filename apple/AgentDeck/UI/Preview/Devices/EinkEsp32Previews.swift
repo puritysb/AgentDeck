@@ -67,7 +67,7 @@ private struct EinkScreenLayout: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("AgentDeck")
-                        .font(.system(size: 11, weight: .semibold, design: .serif))
+                        .font(.system(size: 11, weight: .semibold))
                     Spacer()
                     Text(isColor ? "PANTONE6" : "CREMAS")
                         .font(.system(size: 8, weight: .medium, design: .monospaced))
@@ -89,7 +89,7 @@ private struct EinkScreenLayout: View {
                             )
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(focusSession?.projectName ?? focusAgent.displayName)
-                                    .font(.system(size: 13, weight: .bold, design: .serif))
+                                    .font(.system(size: 13, weight: .bold))
                                     .foregroundStyle(creatureTint)
                                     .lineLimit(1)
                                 Text("STATE \(focusState.displayName.uppercased())")
@@ -146,8 +146,8 @@ private struct EinkScreenLayout: View {
         // Real Claude window in live-follow mode, else the placeholder gauge.
         let usage = selection.displayUsageRows.first
         return HStack(spacing: 4) {
-            einkGauge("5h", fill: CGFloat(usage?.p5 ?? 0.42))
-            einkGauge("7d", fill: CGFloat(usage?.p7 ?? 0.68))
+            if (usage?.p5 ?? 0.42) >= 0 { einkGauge("5h", fill: CGFloat(usage?.p5 ?? 0.42)) }
+            if usage?.secondaryLabel != "MCP", (usage?.p7 ?? 0.68) >= 0 { einkGauge("7d", fill: CGFloat(usage?.p7 ?? 0.68)) }
         }
     }
 
@@ -237,7 +237,7 @@ private struct Esp32TerrariumScene<Content: View>: View {
                     )
                     .position(
                         x: geo.size.width * (0.30 + 0.45 * fraction),
-                        y: geo.size.height * ((isRound ? 0.42 : 0.36) + 0.14 * CGFloat(index % 2))
+                        y: geo.size.height * ((isRound ? 0.30 : 0.36) + (isRound ? 0.10 : 0.14) * CGFloat(index % 2))
                     )
                 }
             }
@@ -271,6 +271,19 @@ private struct Esp32HudBar: View {
     let isRound: Bool
 
     var body: some View {
+        if isRound {
+            // Keep the bottom panel inside the circle's safe chord. Three
+            // providers use two rows, matching the firmware's compact groups.
+            let rows = selection.displayUsageRows
+            VStack(spacing: 4) {
+                if rows.count > 2, let first = rows.first { providerTanks(first) }
+                HStack(alignment: .bottom, spacing: 6) {
+                    ForEach(rows.count > 2 ? Array(rows.dropFirst()) : rows) { providerTanks($0) }
+                }
+            }
+            .frame(width: 150)
+            .padding(.bottom, 22)
+        } else {
         HStack(alignment: .bottom, spacing: 10) {
             // Left panel: logo + underline + session list (lblSessions)
             VStack(alignment: .leading, spacing: 2) {
@@ -304,8 +317,8 @@ private struct Esp32HudBar: View {
             // real usage windows in live-follow mode, else the placeholders.
             HStack(alignment: .bottom, spacing: 10) {
                 ForEach(selection.displayUsageRows) { row in
-                    tankGroup(name: row.label, brand: StateColors.brand(agent: row.agent.rawValue),
-                              p5: CGFloat(row.p5), p7: CGFloat(row.p7))
+                    tankGroup(name: row.label, brand: SessionBrand.color(for: row.agentType),
+                              p5: CGFloat(row.p5), p7: row.secondaryLabel == "MCP" ? -1 : CGFloat(row.p7))
                 }
             }
         }
@@ -315,6 +328,12 @@ private struct Esp32HudBar: View {
             Rectangle()
                 .fill(Color.black.opacity(isRound ? 0.0 : 0.35))
         )
+        }
+    }
+
+    private func providerTanks(_ row: PreviewDisplayUsageRow) -> some View {
+        tankGroup(name: row.label, brand: SessionBrand.color(for: row.agentType),
+                  p5: CGFloat(row.p5), p7: row.secondaryLabel == "MCP" ? -1 : CGFloat(row.p7))
     }
 
     /// Provider tank group — port of makeTankGroup: "● NAME" brand header
@@ -328,8 +347,8 @@ private struct Esp32HudBar: View {
                     .foregroundStyle(brand)
             }
             HStack(spacing: 6) {
-                waterGauge(period: "5h", percent: p5)
-                waterGauge(period: "7d", percent: p7)
+                if p5 >= 0 { waterGauge(period: "5h", percent: p5, single: p7 < 0) }
+                if p7 >= 0 { waterGauge(period: "7d", percent: p7, single: p5 < 0) }
             }
         }
     }
@@ -337,11 +356,9 @@ private struct Esp32HudBar: View {
     /// Water-fill gauge — mirrors the firmware's `createGauge`: glass
     /// background, bottom-aligned tinted fill, period label at top,
     /// percentage in the center.
-    private func waterGauge(period: String, percent: CGFloat) -> some View {
-        let size: CGFloat = 36
-        let color = percent >= 0.9 ? TerrariumHUD.ledRed
-            : percent >= 0.7 ? TerrariumHUD.ledAmber
-            : TerrariumHUD.ledGreen
+    private func waterGauge(period: String, percent: CGFloat, single: Bool) -> some View {
+        let size: CGFloat = isRound ? 30 : 36
+        let color = UsageSeverity.color(Double(percent) * 100)
         return ZStack(alignment: .bottom) {
             RoundedRectangle(cornerRadius: 5)
                 .fill(Color.white.opacity(0.12))
@@ -350,7 +367,7 @@ private struct Esp32HudBar: View {
                         .stroke(Color.white.opacity(0.22), lineWidth: 0.5)
                 )
             RoundedRectangle(cornerRadius: 5)
-                .fill(color.opacity(0.55))
+                .fill(color.opacity(0.20))
                 .frame(height: size * percent)
             VStack(spacing: 0) {
                 Text(period)
@@ -360,7 +377,7 @@ private struct Esp32HudBar: View {
                 Spacer(minLength: 0)
                 Text("\(Int(percent * 100))%")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(TerrariumHUD.text)
+                    .foregroundStyle(color)
                     .padding(.bottom, 3)
             }
         }
@@ -433,7 +450,7 @@ struct Esp32RoundPreview: View {
             Esp32TerrariumScene(
                 selection: selection,
                 isRound: true,
-                hudHeight: 44
+                hudHeight: 106
             )
             .frame(width: 230, height: 230)
             .clipShape(Circle())
@@ -504,7 +521,8 @@ struct Esp32TtgoPreview: View {
                 .foregroundStyle(Color(red: 0x94 / 255.0, green: 0xA3 / 255.0, blue: 0xB8 / 255.0))
             Spacer(minLength: 0)
             if let usage {
-                Text("5h \(Int(usage.p5 * 100))% · 7d \(Int(usage.p7 * 100))%")
+                Text([usage.p5 >= 0 ? "5h \(Int(usage.p5 * 100))%" : nil,
+                      usage.secondaryLabel != "MCP" && usage.p7 >= 0 ? "7d \(Int(usage.p7 * 100))%" : nil].compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(Color(red: 0x94 / 255.0, green: 0xA3 / 255.0, blue: 0xB8 / 255.0))
             }
@@ -582,7 +600,7 @@ struct Esp32Ips10Preview: View {
             Spacer(minLength: 4)
             // Real usage windows in live-follow mode, else the placeholders.
             ForEach(selection.displayUsageRows) { row in
-                usageBlock(glyph: row.agent, p5: CGFloat(row.p5), p7: CGFloat(row.p7))
+                usageBlock(agentType: row.agentType, p5: CGFloat(row.p5), p7: CGFloat(row.p7), secondaryLabel: row.secondaryLabel)
             }
         }
         .padding(.horizontal, 10)
@@ -595,12 +613,12 @@ struct Esp32Ips10Preview: View {
     }
 
     /// Compact per-agent usage block: brand glyph beside a 5H-over-7D column.
-    private func usageBlock(glyph: PixooPreviewAgent, p5: CGFloat, p7: CGFloat) -> some View {
+    private func usageBlock(agentType: String, p5: CGFloat, p7: CGFloat, secondaryLabel: String) -> some View {
         HStack(spacing: 4) {
-            PreviewCreatureGlyph(agent: glyph, state: .idle, size: 11)
+            PreviewUsageMark(agentType: agentType, size: 11, color: SessionBrand.color(for: agentType))
             VStack(alignment: .leading, spacing: 1.5) {
-                usageFill(label: "5H", pct: p5)
-                usageFill(label: "7D", pct: p7)
+                if p5 >= 0 { usageFill(label: "5H", pct: p5) }
+                if p7 >= 0 { usageFill(label: secondaryLabel, pct: p7) }
             }
         }
     }

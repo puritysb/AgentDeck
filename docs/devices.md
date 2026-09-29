@@ -28,16 +28,28 @@ validators: [pnpm design-system:check]
 | **T-Display-S3-Pro Focus Strip** | USB Serial JSON + WiFi WebSocket | CDC 230400 / Daemon (9120) | Token (serial-provisioned for WiFi) | Port scan 10s / mDNS | Bidirectional (touch steering) | 6 + OTA ack/error + steering uplink |
 | **Pixoo64** | HTTP REST (Divoom) | LAN:80 | None | Cloud API / manual | Push only | 4 |
 | **Timebox Mini** | BLE GATT (ISSC transparent-UART) | `49535343-…` | Bluetooth pairing | `TimeBox-mini-light` BLE scan | Push only | 4 |
-| **InkDeck e-ink** | WebSocket JSON (WiFi) | Daemon (9120) | Token (serial-provisioned) | mDNS / port scan | Push + OTA control | dashboard frame + OTA ack/error |
+| **TRMNL 7.5" e-ink** | WebSocket JSON (WiFi) | Daemon (9120) | Token (serial-provisioned) | mDNS / port scan | Push + OTA control | dashboard frame + OTA ack/error |
 | **XTeink X3 / X4** (community fork) | WiFi WebSocket (+ UDP 9121 fallback) | Daemon (9120) | Token (explicitly provisioned) | mDNS / UDP broadcast | Push + steering (M2) | state/sessions/usage subset; registers via `client_register`(eink-device, macOS) + `device_info`(esp32-wifi, Node) |
 | **SSE** | HTTP SSE | Daemon (9120) | Token | Manual URL | Push only | All 13 |
 | **Gateway** | WebSocket Custom | 18789 | Ed25519 | Hardcoded | Bidirectional | N/A (adapter) |
 
 > **Daemon hub**: All dashboard clients connect exclusively to the daemon. Session bridges handle PTY + hooks only and do not serve external devices. Daemon port defaults to 9120; if occupied by non-daemon process, daemon falls back to next available port and records actual port in `~/.agentdeck/daemon.json`. Local clients read `daemon.json`; remote clients discover via mDNS (daemon only advertises `_agentdeck._tcp`).
 
+## TTGO T-Display (Usage Meter)
+
+The 135×240 panel boots into **usage-only** mode. The previously unused
+**GPIO0 / BTN2** button toggles Usage ↔ Terrarium; **GPIO35 / BTN1** keeps its
+90° rotation behavior. Mode survives a rotation but resets to Usage on reboot.
+Available Claude and Codex quota windows stay visible together, with used
+percentages and reset countdowns. Missing windows are omitted (real 0% remains
+visible); stale Claude usage never masks valid Codex data. One or two windows
+get larger figures, while denser layouts fit all four windows in either axis.
+Activity never temporarily replaces the usage screen. Terrarium animation is
+paused while Usage is selected. The host display-sleep policy still applies.
+
 ## T-Embed CC1101 (Companion Knob)
 
-**Shipping since 2026-07-25.** The LilyGO T-Embed CC1101 is the fleet's only board with a **rotary encoder**, and the only one you steer with rather than only read from — every other Shipping board is output-only apart from touch. Its UI (`esp32/src/ui/knob/`) is the Stream Deck's session-centric two-level grammar translated to an encoder: at list level rotate cycles sessions and press enters; at detail level rotate moves the option/command cursor, press commits (`select_option` / state command), and long-press backs out (`session_command{escape}`). Holding the encoder is push-to-talk — the board captures voice, the host transcribes, and the reply is spoken back through the board speaker.
+**Shipping since 2026-07-25.** The LilyGO T-Embed CC1101 is the fleet's only board with a **rotary encoder**, and the only one you steer with rather than only read from — every other Shipping board is output-only apart from touch. Its UI (`esp32/src/ui/knob/`) starts with the full session roster showing the project and activity or question. Rotate to inspect another session, then press to enter local detail. A waiting-only queue remains available. Opening detail keeps selection local and does not change desktop focus. Detail requires a deliberate turn to select before pressing; changed questions or choices clear the selection. A pending reply stays unconfirmed until a state update is observed; disconnected or stale requests cannot be sent. Holding the encoder is push-to-talk — the board captures voice, the host transcribes, and the reply is spoken back through the board speaker.
 
 It is a **dual-mode companion**: USB-powered on the desk it is a steering knob; on its 1300 mAh cell it becomes a carry-around pager that chimes when a session starts waiting. The 8× WS2812 ring is a session-status ring (one LED per session, up to eight). The BQ27220 fuel gauge gives it a real state-of-charge readout rather than an inferred one.
 
@@ -45,28 +57,39 @@ Peripheral breadth is the widest in the fleet — CC1101 sub-GHz, PN532 NFC, IR 
 
 ## T-Display-S3-Pro (Focus Strip / Pocket)
 
-**Shipping since 2026-07-26.** The LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. **One firmware serves two physically different units**, and it picks its own personality at boot: `Camera::init()` probes the rear POGO camera shield, and a unit that has one comes up **portrait** in the Pocket UI while a unit that does not comes up **landscape** in the Ticker UI (`esp32/src/main.cpp`). The camera is a purchase option on a shield header — not a board revision — so both units report the same `device_info.board` of `t_display_pro` and take the same OTA image.
+**Shipping since 2026-07-26; desk-awareness default since 2026-09-26.** The
+LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. Both camera and
+camera-less units now boot into landscape Focus. A camera shield is still
+probed and adds an explicit CAM page rather than automatically selecting the
+portrait Pocket UI.
 
-- **Landscape (Ticker, no camera)** — three pages: **Focus** (one prioritized session and one readable thought; an awaiting session owns the page and renders separate labelled Deny/Approve targets, so a generic tap can never answer a gate), **Usage** (Claude and Codex quota windows as full-height gauges with reset countdowns — the permanent large-format version of the Stream Deck E2/E3 dials), and **Sessions** (the three highest-value rows). The split rocker moves between pages, `BOOT` returns to Focus, and touch mirrors both with header tabs and swipes.
-- **Portrait (Pocket, camera unit)** — a phone-shaped stack of **SESSIONS** (momentum-scrolled cards, tap to focus), **CAM** (upright viewfinder with SNAP and LED; tapping the target line cycles which session receives the photo), and **USAGE**. The whole hardware stack is portrait-native — panel GRAM, CST226SE touch reporting, and camera mounting — so this orientation needs no rotation fights and LVGL's pointer indev drives real widgets instead of hand-rolled gestures.
+Focus pins the initial task and retains it when the session ends. It shows the
+latest observed activity with a local observation age (not proof of a stalled
+agent), and keeps actual response events separately from asks and tool activity.
+The first response appears automatically; later replacements are offered with
+NEW RESULT. Waiting updates the rail without stealing the page. Usage and
+Sessions remain available through the rocker/tabs; explicit actions keep their
+request guards. BOOT returns to Focus or toggles the local pin.
 
 The **LTR-553 ambient light sensor** makes this the first board where the display-sleep contract takes a sensor input: brightness follows room light and the strip dims itself at night, decided locally. The SY6970 charger has no coulomb-counting register, so the header reports sampled **cell voltage** and charge state rather than an invented percentage.
 
 Two operational constraints are load-bearing and documented in [hardware-compatibility.md](hardware-compatibility.md#esp32-board-specification-sheet): its USB CDC corrupts esptool streams above 230400 baud, and a WiFi join concurrent with display bring-up browns out the camera unit's 3.3 V rail — so the firmware never joins at boot and defers the join by ~25 s.
 
-## InkDeck e-ink (custom firmware)
+## TRMNL 7.5" e-ink (custom firmware)
 
-**InkDeck** is AgentDeck's wired 7.5" e-ink status panel. The hardware is a **Seeed TRMNL 7.5" OG DIY Kit** — a **XIAO ESP32-S3 Plus** wired to an 800×480 monochrome ePaper panel (GDEY075T7 / UC8179 controller), always **USB-powered** (no battery / deep-sleep).
+AgentDeck's wired e-ink status panel. The hardware is a **Seeed TRMNL 7.5" OG DIY Kit** — a **XIAO ESP32-S3 Plus** wired to an 800×480 monochrome ePaper panel (GDEY075T7 / UC8179 controller), always **USB-powered** (no battery / deep-sleep). The board id is `trmnl_75`; it shipped as **InkDeck** through 1.2.1, an invented name that told nobody which kit to buy, and `inkdeck` stays an accepted alias because a board flashed before the rename still reports itself that way until it takes an OTA.
 
-**Status: hardware-verified, shipping via WiFi OTA.** InkDeck is driven by custom AgentDeck ESP32 firmware under `esp32/` (PlatformIO env `inkdeck`). Both transports are implemented and verified on hardware: **USB serial** (TinyUSB CDC) and **WiFi WebSocket** (`device_info` on connect, daemon state push, OTA capability like the other directly flashed boards). Node and Swift daemons both register it, and routine updates deploy over WiFi OTA (`agentdeck esp32-ota inkdeck`). The dashboard UI — session cards, usage footer, timeline strip, partial/full refresh policy — has been through repeated on-device validation rounds. Residual operational caveats: serial reflashing must use the download-mode port with `boot_app0.bin` included (native-CDC re-enumeration breaks plain `pio -t upload`), and a crash in the prebuilt Espressif mDNS component is under observation (does not affect rendering or OTA).
+**Status: hardware-verified, shipping via WiFi OTA.** TRMNL 7.5" is driven by custom AgentDeck ESP32 firmware under `esp32/` (PlatformIO env `trmnl_75`). Both transports are implemented and verified on hardware: **USB serial** (TinyUSB CDC) and **WiFi WebSocket** (`device_info` on connect, daemon state push, OTA capability like the other directly flashed boards). Node and Swift daemons both register it, and routine updates deploy over WiFi OTA (`agentdeck esp32-ota trmnl_75`). The dashboard UI — session cards, usage footer, timeline strip, partial/full refresh policy — has been through repeated on-device validation rounds. Residual operational caveats: serial reflashing must use the download-mode port with `boot_app0.bin` included (native-CDC re-enumeration breaks plain `pio -t upload`), and a crash in the prebuilt Espressif mDNS component is under observation (does not affect rendering or OTA).
 
-**Display-sleep policy:** InkDeck keeps its dashboard visible when the host Mac's displays sleep or are turned off with a keyboard shortcut. Unlike LCD/OLED/LED devices, its e-ink image needs no panel refresh power to remain visible, and InkDeck is already continuously USB-powered. The firmware therefore ignores `display_state.displayOn` for rendering while continuing to receive and draw meaningful dashboard changes whenever the Mac itself remains awake.
+**Display-sleep policy:** TRMNL 7.5" keeps its dashboard visible when the host Mac's displays sleep or are turned off with a keyboard shortcut. Unlike LCD/OLED/LED devices, its e-ink image needs no panel refresh power to remain visible, and the panel is already continuously USB-powered. The firmware therefore ignores `display_state.displayOn` for rendering while continuing to receive and draw meaningful dashboard changes whenever the Mac itself remains awake.
+
+**Voice-capable-panel research:** the face set this panel renders is specified in [E-ink Surface Contract](eink-surface-contract.md); [E-ink Face Research](eink-face-research.md) is issue [#272](https://github.com/puritysb/AgentDeck/issues/272)'s live-measurement + vendor hardware-table snapshot (repaint-rate counters, mic/speaker/deep-sleep-wake facts) toward the still-open voice interface.
 
 **Connection surface:** a missing daemon link is a retained `OFFLINE` sheet with a quiet search/transport hint. `no active sessions` is reserved for the distinct case where the daemon link is live and its roster is empty; a later timed repaint must not collapse those states.
 
 **Responsive dashboard:** the direct GxEPD2 renderer consumes the allocation-free layout model in `esp32/src/ui/eink/eink_dashboard_layout.h`. It derives header, card grid, usage, recent-activity, and control bands from the panel dimensions instead of 800×480 constants; the hardware-specific font/glyph/panel refresh code stays in `eink_display.cpp`.
 
-**Formerly "TRMNL" (BYOS pull) — removed.** AgentDeck previously drove this same physical panel through TRMNL's commercial **BYOS** (Bring Your Own Server) pull contract, where the panel polled `/api/setup` + `/api/display` and downloaded a server-rendered PNG. That integration was **removed** (Node commit `c71044bd`; the App Store Swift `Trmnl*` modules removed alongside). Stock / commercial TRMNL panels running the upstream `usetrmnl/firmware` are **no longer supported** — InkDeck reflashes the same hardware with AgentDeck firmware and treats it as a first-class ESP32 board.
+**The commercial BYOS pull integration — removed.** AgentDeck previously drove this same physical panel through TRMNL's own **BYOS** (Bring Your Own Server) pull contract, where the panel polled `/api/setup` + `/api/display` and downloaded a server-rendered PNG. That integration was **removed** (Node commit `c71044bd`; the App Store Swift `Trmnl*` modules removed alongside). Stock / commercial TRMNL panels running the upstream `usetrmnl/firmware` are **no longer supported**: AgentDeck reflashes the same hardware with its own firmware and treats it as a first-class ESP32 board. The name is shared with the kit, the protocol is not.
 
 ## XTeink X3 / X4 (external-fork client)
 
@@ -80,7 +103,7 @@ With the fork firmware SD-flashed, X3/X4 operate normally and register on both d
 
 The contract the fork ports from is [esp32-client-contract.md](esp32-client-contract.md); the port-sync discipline that keeps it from drifting is in [esp32.md § Downstream client port sync](esp32.md#downstream-client-port-sync). Spec/experimental-status detail: the X3/X4 rows and operational exceptions in [hardware-compatibility.md](hardware-compatibility.md).
 
-**Dashboard layout parity:** X3/X4 use the same mirrored `eink_dashboard_layout.h` geometry as InkDeck while retaining CrossPoint's GfxRenderer, CJK font loader, button hints, and detail/decision interaction. Column count follows orientation, not the model: `columns = portrait ? 1 : (width ≥ 1180 || (width ≥ 720 && sessions ≥ 5) ? 3 : 2)`. Both readers are portrait by default — X3 at 528×792 and X4 at 480×800 (the X4 datasheet quotes 800×480 long-axis-first, but the firmware declares 480×800 and CrossPoint boots `PORTRAIT`) — so both render a one-column paged card stack, and rotating a reader is what selects two columns. InkDeck's fixed 800×480 landscape surface always takes two, or three when five or more sessions need to fit. Density is separate and keys off the short edge, so X4 and InkDeck are both `Compact` while X3 is `Regular`. Attention sessions stay first and use a solid state chip; selection uses a double outline + rail, avoiding gray dither on partial refreshes.
+**Dashboard layout parity:** X3/X4 use the same mirrored `eink_dashboard_layout.h` geometry as TRMNL 7.5" while retaining CrossPoint's GfxRenderer, CJK font loader, button hints, and detail/decision interaction. Column count follows orientation, not the model: `columns = portrait ? 1 : (width ≥ 1180 || (width ≥ 720 && sessions ≥ 5) ? 3 : 2)`. Both readers are portrait by default — X3 at 528×792 and X4 at 480×800 (the X4 datasheet quotes 800×480 long-axis-first, but the firmware declares 480×800 and CrossPoint boots `PORTRAIT`) — so both render a one-column paged card stack, and rotating a reader is what selects two columns. the TRMNL's fixed 800×480 landscape surface always takes two, or three when five or more sessions need to fit. Density is separate and keys off the short edge, so X4 and TRMNL 7.5" are both `Compact` while X3 is `Regular`. Attention sessions stay first and use a solid state chip; selection uses a double outline + rail, avoiding gray dither on partial refreshes.
 
 ## Broadcast Architecture
 
@@ -121,7 +144,7 @@ WebSocket and SSE forward all 13 `BridgeEvent` types without filtering.
 ## Codex usage is a passive read of your own rollout files
 
 Every device that draws a Codex gauge — the Pixoo64 provider row, the iDotMatrix
-rails, the InkDeck `CODEX` row, the TC001/knob/pocket readouts, both deck strips —
+rails, the TRMNL 7.5" `CODEX` row, the TC001/knob/pocket readouts, both deck strips —
 consumes the same `codexRateLimits` block, and none of them can improve on it.
 Codex writes a `rate_limits` snapshot into `~/.codex/sessions/**/rollout-*.jsonl`
 on every completed turn; AgentDeck reads that file. No OpenAI API is contacted.
@@ -209,12 +232,12 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
 - **Heartbeat**: Full state re-push every 5s via `setESP32StateProvider()`
 - **Events**: 6 types (`SERIAL_FORWARDED_EVENTS`)
 - **Direction**: Dashboard state push plus OTA control/ack messages on OTA-capable WiFi boards
-- **Boards**: IPS 3.5" (480×320), 86 Box 4" (480×480), Round AMOLED (360×360), TTGO T-Display, Ulanzi TC001, IPS 10.1", InkDeck
+- **Boards**: IPS 3.5" (480×320), 86 Box 4" (480×480), Round AMOLED (360×360), TTGO T-Display, Ulanzi TC001, IPS 10.1", TRMNL 7.5"
 
 ### ESP32 WiFi OTA
 
 - **Scope**: Only directly flashed AgentDeck ESP32 firmware targets with WiFi connectivity and a dual-OTA partition table. Non-AgentDeck firmware and devices we do not flash directly are excluded.
-- **Targets**: `inkdeck`, `ulanzi_tc001`/`led8x32`, `ttgo`, `ips35`, `round_amoled`/`amoled`, `86box`/`box_86`, `ips10`/`ips_10`. Any board on a single-app (non-dual-OTA) partition layout is out of scope and rejected before upload.
+- **Targets**: `trmnl_75`, `ulanzi_tc001`/`led8x32`, `ttgo`, `ips35`, `round_amoled`/`amoled`, `86box`/`box_86`, `ips10`/`ips_10`. Any board on a single-app (non-dual-OTA) partition layout is out of scope and rejected before upload.
 - **Control path**: CLI `agentdeck esp32-ota <target> [--build|--firmware <path>]` → daemon `POST /esp32/ota` → board WiFi WebSocket.
 - **Protocol**: daemon sends `esp32_ota_begin/chunk/end/abort`; firmware returns `esp32_ota_ack/error`. Firmware reports capability in `device_info` so the daemon can reject unsupported boards before upload.
 - **Migration**: `86box` and `ips10` became OTA-capable after 2026-07-05 16MB dual-OTA partition changes. Existing devices on older NO_OTA/factory layouts need one USB full flash first; future updates can use WiFi OTA.
@@ -237,7 +260,36 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
 - **Transport**: BLE GATT transparent-UART. The App Store daemon uses native CoreBluetooth; the CLI daemon uses `bridge/src/idotmatrix/sync.py`.
 - **Discovery**: brand-independent. A peripheral counts as a panel when it advertises service `000000fa-…`, or when its advertised name matches a known family (`IDM-` iDotMatrix, `iPixel-`). The same 32×32 hardware ships under several brand names, so a vendor prefix alone is not the filter. Both scanners — Swift CoreBluetooth and `scan.py` (bleak) — apply the identical predicate from `shared/src/idotmatrix-identity.ts` via generated mirrors (`pnpm generate-idotmatrix-identity`). For a panel that neither advertises the service nor uses a known name, add `idotmatrixNamePrefixes: ["myprefix-"]` to `settings.json`; adding the BLE address to `idotmatrixDevices` by hand still bypasses discovery entirely.
 - **CLI runtime**: `@agentdeck/bridge` ships the Python clients. The first explicit BLE command prepares `bleak`, Pillow, and `idotmatrix` in `~/.agentdeck/python-ble`; use `agentdeck ble status` or `agentdeck ble setup` to inspect or prepare it directly. npm installation itself does not contact PyPI.
-- **Rendering**: Node and Swift compose the same native 32×32 identity stage. Up to three generated official marks are placed directly at 18/13/10 physical pixels on a blue-black field using a high-saturation device palette. One-pixel telemetry rails carry Claude 5h/7d and Codex primary/secondary limits, **present ones only, anchored to the bottom edge** — each rail is 3% of the whole display, so a reserved-but-empty row was a dead black stripe rather than a placeholder. A Claude-only account draws two rails; an account with no quota path at all (App Store daemon, free ChatGPT tier) draws none and gives the rows back to the tank. Note that a free tier is not automatically empty — it reports real windows; what disappears is a snapshot voided by a plan change (see [§ Codex usage](#codex-usage-is-a-passive-read-of-your-own-rollout-files)). It does not shrink the finished Pixoo64 scene, so hollow centers, eyes, and negative space survive the diffuser.
+- **Rendering — agent world**: Node and native Swift share the same policy and pixel
+  art. The default is a simultaneous numeric summary: `WAIT` (live awaiting
+  sessions), `WORK` (live processing sessions), `RSLT` (explicit response/task-end
+  events in the last 90 seconds), and `LIVE` (all live sessions). `ERR` replaces
+  the last row when any live session is in error, even if waiting has priority.
+  Zero rows are dim; values over 99 show `99+`. These are observed counts, not
+  progress percentages, attempt counts, or a claim that all work has completed.
+- **Conversation scenes**: the reader's own turn is what the panel is for. When a
+  user message reaches a live session (`chat_start`, not automated), that agent's
+  official creature appears listening under `ASK` until its reply lands (at most
+  10 minutes). The reply (`chat_response`, not automated) holds the stage for 45
+  seconds under `REPLY` with a speech bubble. Automated turns (crons) and bare task
+  closes are not conversations; a task close still gets the six-second result scene.
+  The Timebox face mirrors both: a listening face, then a talking face.
+- **Event scenes**: a new live session gets a six-second official-creature entrance
+  (a conversation outranks it). Then the numeric summary
+  returns. There is no decorative creature carousel. Waiting/errors preempt both
+  scenes; quota usage never causes an error. Initial/reconnected rosters establish
+  a baseline rather than replaying entrances. A burst coalesces to one entrance.
+  The bottom event-scene dots show up to eight live session states (overflow is
+  marked); unknown agents use a neutral resident, never another agent's logo.
+- **Parity**: `shared/src/matrix-expression.ts` owns state/timing policy;
+  `bridge/src/pixoo/matrix-art.ts` owns the art. `pnpm generate-matrix-expressions`
+  bakes Swift RLE frames, and executable Node/Swift tests compare event sequences
+  and RGB pixels. Missing roster data shows `SYNC`, separately from an empty
+  roster and the existing transport `OFFLINE` badge. Pixoo64 is unchanged.
+- **OFFLINE badge**: the CLI client paints it only after the daemon has been
+  unreachable for 15 seconds (`OFFLINE_GRACE_SEC`). A single missed 3-second frame
+  request is "could not look", not "offline"; painting on it made iDotMatrix alone
+  flicker OFFLINE, since the Timebox client never did.
 - **Output tuning**: conservative 1.22 brightness / 1.08 contrast compensation in both native and CLI paths; the former 1.6 / 1.2 boost washed out defining holes.
 - **Constraint**: one BLE connection per daemon; brightness command range 5–100%.
 
@@ -247,7 +299,16 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
 
 - **BLE** — BLE GATT over the ISSC transparent-UART service `49535343-fe7d-…` (write char `49535343-8841-…`, write-without-response, 20-byte chunks). Advertises as `TimeBox-mini-light` (sharing its BD_ADDR with the Classic audio endpoint `TimeBox-mini-audio`). Driven by `sync_ble.py` (bleak) on the CLI daemon **and natively by the App Store Swift daemon over CoreBluetooth** (no subprocess). (The legacy Bluetooth Classic SPP variant was removed — poor macOS compatibility, no App Store path.)
 
-- **Rendering — Agent Beacon**: the panel is intentionally not a miniature aquarium. A generated 9×9 official agent mark occupies the stable center with four deliberate 4-bit-safe shading levels, while a continuous dim perimeter frame carries brighter status motion: cyan chase for processing, alternating amber corners for awaiting, red dashed pulse for error, and calm green corners for idle. Identity geometry never animates or deforms. The 9×9 masks come directly from `design/brand/*.svg` through `pnpm generate-micro-glyphs`; `bridge/src/pixoo/micro-glyphs.ts` and `apple/.../Modules/MicroGlyphs.swift` own only device-specific color, shading, and motion. Usage rails are intentionally omitted because they would consume the identity pixels. The 11×11 RGB → Divoom static-image packet uses 4-bit nibbles, `0x44`, and escaped `0x01…0x02` framing; `TimeboxDivoomPacket` is byte-verified against `sync_ble.py`.
+- **Rendering — agent face**: both daemons render the same native 11×11 robot
+  face: cyan eyes glance/blink while working, amber raised brows and wide eyes ask
+  for attention, a red frown represents errors, green smiling eyes acknowledge
+  explicit responses, and dim neutral eyes blink at idle. Unknown data has closed,
+  broken eyes. A new-session greeting is brief. The face represents aggregate
+  agent activity, not a particular provider. Only amber brightness pulses; eye
+  poses and event motion may change without flashing other status colors.
+- **Priority**: waiting → error → new-session greeting → recent explicit result →
+  working → idle. Results retain their original 90-second window; aborted, denied,
+  pending or future events do not count. The BLE packet format is unchanged.
 - **Heartbeat**: polls the frame endpoint (~1.5s) and sends only changed frames.
 - **Config**: `~/.agentdeck/settings.json` — `{ timeboxDevices: [{ address, name?, brightness? }] }`
 - **Source**: `bridge/src/timebox/` (settings, daemon sync manager, `sync_ble.py`/`scan_ble.py`); App Store: `apple/AgentDeck/Daemon/Modules/Timebox{BLE,Module,DivoomPacket}.swift`

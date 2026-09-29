@@ -494,7 +494,7 @@ export function setOctopi(
   // agent added after it was written swam as Claude: antigravity and both Kiro
   // types were drawn with Claude's creature in the TUI aquarium. A wrong
   // identity is worse than a missing one — an unknown agent renders as nothing
-  // here, which is the documented polarity (CLAUDE.md, "An unknown agentType
+  // here, which is the documented polarity (AGENTS.md, "An unknown agentType
   // renders as nothing or as a neutral default — never as another agent").
   // Mirrors `isOctopusAgent` (Swift) / `isOctopusAgentType` (Kotlin) and
   // `CODING_AGENTS` in bridge/src/pixoo/pixoo-renderer.ts.

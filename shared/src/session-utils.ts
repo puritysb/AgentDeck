@@ -3,6 +3,10 @@
  * Single source of truth used by: TUI renderer, Plugin, Android, Apple, MenuBarExtra.
  */
 
+/** Bound pending OpenCode request identities per session in both daemons.
+ * The Swift value is emitted by generate-observed-agent-rules.mjs. */
+export const OPENCODE_PENDING_REQUEST_LIMIT = 64;
+
 // ===== State Ranking =====
 
 /**
@@ -161,6 +165,18 @@ export const SESSION_WEIGHT_MIN = -9999;
 export const SESSION_WEIGHT_MAX = 9999;
 
 /**
+ * Lifecycle constants of the daemon-persisted observed-session order pins
+ * (#273). Both daemon implementations (Node bridge and Swift) read and write
+ * the SAME `session-order.json`, so these values are a file contract between
+ * the two daemons, not an implementation detail — a pin must not live 30 days
+ * under one daemon and 7 under the other. Emitted to Swift/Kotlin by
+ * `scripts/generate-session-weight-rules.mjs` (drift-gated in vitest).
+ */
+export const SESSION_ORDER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** Upper bound on persisted pins; past it the least-recently-seen go first. */
+export const MAX_SESSION_ORDER_PINS = 256;
+
+/**
  * Normalize a session weight to a finite integer inside the documented range.
  * A missing / null / non-finite weight collapses to 0, so unweighted sessions
  * all share the same "neutral" band and sort among themselves exactly as they
@@ -293,11 +309,19 @@ function codexDisplayKind(session: FoldableSession): 'codex-cli' | 'codex-app' {
   return session.agentType === 'codex-app' ? 'codex-app' : 'codex-cli';
 }
 
+// A folded row must expose the member waiting on the user. The general
+// activity rank favors processing; using it here hid live Codex approvals
+// whenever another task in the same project was still working.
+function codexFoldStateRank(state: string | undefined): number {
+  const rank = stateRank(state);
+  return rank === 1 ? -1 : rank;
+}
+
 function foldCodexProjectGroup<T extends FoldableSession>(group: T[]): T {
   if (group.length <= 1) return group[0];
 
   const ranked = [...group].sort((a, b) => {
-    const rankDiff = stateRank(a.state) - stateRank(b.state);
+    const rankDiff = codexFoldStateRank(a.state) - codexFoldStateRank(b.state);
     if (rankDiff !== 0) return rankDiff;
 
     const aStarted = a.startedAt ? new Date(a.startedAt).getTime() : Number.NEGATIVE_INFINITY;
@@ -310,7 +334,9 @@ function foldCodexProjectGroup<T extends FoldableSession>(group: T[]): T {
   const representative = ranked[0];
   const foldedIds = group.flatMap(s => s.foldedSessionIds ?? [s.id]);
   const groupSize = group.reduce((total, s) => total + (s.groupSize ?? 1), 0);
-  const currentTool = ranked.find(s => stateRank(s.state) === 0 && s.currentTool?.trim())?.currentTool;
+  const currentTool = stateRank(representative.state) === 1
+    ? representative.currentTool
+    : ranked.find(s => stateRank(s.state) === 0 && s.currentTool?.trim())?.currentTool;
 
   const folded = {
     ...representative,

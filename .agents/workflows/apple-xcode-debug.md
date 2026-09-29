@@ -26,7 +26,7 @@ Use `--no-sample` when a short process sample would be too intrusive. Use `--por
 - `oslog-AgentDeck.log`
 - `process/pgrep-agentdeck.txt`
 
-If `oslog-AgentDeck.log`, `process/pgrep-agentdeck.txt`, or `process/sample-*.txt` says `Operation not permitted`, `Cannot get process list`, or similar sandbox failure, rerun the same capture command with the required local approval/escalation before making hang, threading, startup, or process-lifecycle changes.
+If `oslog-AgentDeck.log`, `process/pgrep-agentdeck.txt`, or `process/sample-*.txt` says `Operation not permitted`, `Cannot get process list`, or similar sandbox failure, follow `AGENTS.md` Agent working agreements for execution-policy failures. Retry the capture after access is resolved; unreadable evidence cannot establish a hang, threading, startup, or process-lifecycle diagnosis.
 
 4. Correlate the evidence before editing code:
 
@@ -34,6 +34,6 @@ If `oslog-AgentDeck.log`, `process/pgrep-agentdeck.txt`, or `process/sample-*.tx
 - Confirm the actual daemon port and whether `/status` and `/diag` agree.
 - Compare Xcode-era OSLog lines with `DaemonLogger` file lines.
 - For hangs, inspect `process/sample-*.txt` before changing threading or I/O code.
-- For App Store-sensitive areas, re-check the `CLAUDE.md` App Store build invariants before proposing or making changes.
+- For App Store-sensitive areas, re-check the `AGENTS.md` App Store build invariants before proposing or making changes.
 
 5. Keep diagnostic captures local. The root `diagnostics/` directory is gitignored and should not be committed.

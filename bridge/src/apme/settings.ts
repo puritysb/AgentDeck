@@ -48,6 +48,27 @@ export interface ApmeJudgeConfig {
    *  login` profile) when unset. Mirrors the Swift ApmeJudgeApi loader, which
    *  reads the same settings.json field. */
   apiKey?: string;
+  /** Optional OpenAI-compatible reasoning control. `none` disables Ollama thinking;
+   * omission retains the provider default. Read by BOTH daemons — the Swift
+   * mirror is `ApmeJudgeConfig.reasoningEffort` in ApmeSettings.swift. It was
+   * Node-only until #286, and since both read this same file and call the same
+   * user-configured endpoint, a user who set `none` had it obeyed on one daemon
+   * and ignored on the other, whose request then came back
+   * `finish_reason: "length"`. */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'max';
+  /** Repetition penalty for the MLX judge leg (that leg only — see
+   *  `callOpenAICompatible`, which deliberately does not send it because the
+   *  same adapter reaches hosted providers). Read by both daemons; the Swift
+   *  mirror is `ApmeJudgeConfig.repetitionPenalty` in ApmeSettings.swift.
+   *
+   *  Defaults to `MLX_JUDGE_REPETITION_PENALTY`, whose doc carries the full
+   *  measurement and — importantly — what it does NOT establish. In short:
+   *  cuts fell from 4 of 6 tasks to 1 of 6 (12/18 → 3/18 observations) under
+   *  two designs, and no stronger claim than
+   *  that rate is made here. Set EXACTLY 1 to disable — anything outside [1,2]
+   *  is discarded and the default applies, so `0` (the conventional "off")
+   *  gets you the default, not nothing. */
+  repetitionPenalty?: number;
   /** When `foundationModels` is unavailable, retry via local MLX instead of
    *  skipping the eval. Default `true` on the Node bridge so CLI-only setups
    *  still get zero-cost local evals when the Swift daemon is not running. */
@@ -93,7 +114,7 @@ export const DEFAULT_APME_CONFIG: ApmeConfig = {
   judge: {
     backend: 'mlx',
     // Legacy MLX placeholder retained so sanitizeForMlx() and older settings
-    // loaders still resolve through llm.mlx / probe / MLX_FALLBACK_MODEL.
+    // loaders still resolve through llm.mlx and verified server residency.
     model: 'qwen3-30b',
     sampleRate: 1.0,
     onlyWhenDisagreement: false,
@@ -139,6 +160,18 @@ export function loadApmeConfig(): ApmeConfig {
   }
   // Clamp pathological values.
   judge.sampleRate = Math.max(0, Math.min(1, Number(judge.sampleRate) || 0));
+  if (judge.repetitionPenalty !== undefined
+      && (typeof judge.repetitionPenalty !== 'number'
+          || !Number.isFinite(judge.repetitionPenalty)
+          || judge.repetitionPenalty < 1 || judge.repetitionPenalty > 2)) {
+    // Out of range is not a choice. Below 1 rewards repetition (the opposite of
+    // the point) and far above it degrades the verdict into paraphrase; an
+    // unusable value falls back to the measured default rather than being sent.
+    judge.repetitionPenalty = undefined;
+  }
+  if (judge.reasoningEffort !== undefined && !['none','low','medium','high','max'].includes(judge.reasoningEffort)) {
+    judge.reasoningEffort = undefined;
+  }
 
   // Any forced backend change MUST also wipe backend-specific endpoint/model
   // so we don't end up calling, e.g., callMlx() against an Anthropic URL or
@@ -149,6 +182,7 @@ export function loadApmeConfig(): ApmeConfig {
     debug('APME', `${reason} — also resetting judge.endpoint and judge.model to mlx defaults to avoid cross-backend leakage.`);
     judge.endpoint = undefined;
     judge.model = DEFAULT_APME_CONFIG.judge.model;
+    judge.reasoningEffort = undefined;
   };
 
   if (!['mlx', 'api', 'openclaw', 'foundationModels', 'openai'].includes(judge.backend)) {

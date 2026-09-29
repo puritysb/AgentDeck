@@ -133,7 +133,10 @@ actor ObservedSteering {
     private let directiveTTL: TimeInterval = 3600
     private let directiveCap = 3
     /// Window for the auto-approval learner after an undecided gate release.
-    private let learnWindow: TimeInterval = 8
+    /// SSOT in the generated ClaudePermissionRules: a permission_prompt
+    /// Notification clears the pending release, so this bounds only how slow
+    /// the TOOL may be — and 8 s was shorter than a routine `curl`.
+    private let learnWindow: TimeInterval = TimeInterval(ClaudePermissionRules.gateLearnWindowMs) / 1000
     private let rulesCacheTTL: TimeInterval = 10
 
     // MARK: - State (keyed by Claude session UUID)
@@ -143,7 +146,7 @@ actor ObservedSteering {
     /// Signatures learned to be auto-approved (session "always allow" lives
     /// only in Claude's memory — this is the only way to see it).
     private var suppressed: [String: Set<String>] = [:]
-    private var recentAskReleases: [String: [(tool: String, signature: String, ts: Date)]] = [:]
+    private var recentAskReleases: [String: [(tool: String, signature: String, ts: Date, toolUseId: String?)]] = [:]
 
     /// Which kind of hook hold this is. They resolve differently: a permission
     /// gate carries a device's allow/deny, while an ask-gate carries the user's
@@ -159,13 +162,16 @@ actor ObservedSteering {
         let kind: GateKind
         let tool: String
         let signature: String
+        /// The held call's `tool_use_id`, shared with its PostToolUse — the
+        /// learner matches on it so a parallel tool cannot teach this gate.
+        var toolUseId: String? = nil
         var continuation: CheckedContinuation<String, Never>?
     }
     private var heldGates: [String: HeldGate] = [:]
     /// At most one held gate per session — parallel tool calls pass through.
     private var heldBySession: Set<String> = []
 
-    private struct MergedRules { var allow: [String]; var deny: [String]; var ask: [String] }
+    private typealias MergedRules = ClaudePermissionRules.MergedRules
     private var rulesCache: [String: (rules: MergedRules?, loadedAt: Date)] = [:]
 
     // MARK: - Soft STOP
@@ -256,13 +262,16 @@ actor ObservedSteering {
     /// PostToolUse arrived. A recent undecided release for the same tool with
     /// no permission_prompt Notification in between means Claude auto-approved
     /// (session "always allow") — suppress the signature for this session.
-    func noteToolEnd(sessionId: String, tool: String?) {
+    func noteToolEnd(sessionId: String, tool: String?, toolUseId: String? = nil) {
         guard let tool, var recents = recentAskReleases[sessionId], !recents.isEmpty else { return }
         let now = Date()
-        var kept: [(tool: String, signature: String, ts: Date)] = []
+        var kept: [(tool: String, signature: String, ts: Date, toolUseId: String?)] = []
         for r in recents {
             if now.timeIntervalSince(r.ts) > learnWindow { continue }
-            if r.tool == tool {
+            // A release that recorded its tool_use_id learns ONLY from its own
+            // completion; releases without one (older Claude) match the tool.
+            let matches = r.toolUseId != nil ? r.toolUseId == toolUseId : r.tool == tool
+            if matches {
                 suppressed[sessionId, default: []].insert(r.signature)
                 DaemonLogger.shared.debug("Steering", "learned auto-approved signature for \(sessionId): \(r.signature)")
             } else {
@@ -275,55 +284,45 @@ actor ObservedSteering {
 
     // MARK: - PreToolUse gate
 
-    /// Bash signature = first two command tokens (the granularity of Claude's
-    /// own "always allow `git push`" session approvals); others = tool name.
+    /// Bash signature = first two command tokens; others = tool name. SSOT in
+    /// the generated ClaudePermissionRules (kept here as the call site name).
     static func gateSignature(tool: String, commandText: String?) -> String {
-        if tool == "Bash", let commandText {
-            let head = commandText
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .split(separator: " ", omittingEmptySubsequences: true)
-                .prefix(2).joined(separator: " ")
-            return "Bash|\(head)"
-        }
-        return tool
+        ClaudePermissionRules.gateSignature(tool: tool, commandText: commandText)
     }
 
-    private static let neverPromptTools: Set<String> = [
-        "Read", "Glob", "Grep", "LS",
-        "TodoWrite", "TodoRead", "NotebookRead",
-        "Task", "TaskOutput", "BashOutput",
-    ]
-    private static let promptProneTools: Set<String> = [
-        "Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch",
-    ]
-
     /// Decide + register a hold atomically. Returns the requestId to await, or
-    /// nil when this call must pass through untouched. Mirrors the Node
-    /// `shouldHoldPreToolUse` — every check biased toward "don't hold".
+    /// nil when this call must pass through untouched. The stateless
+    /// prediction (tool sets, mode gate, allow/deny/ask rules, built-in
+    /// read-only and acceptEdits auto-approvals) is the generated
+    /// `ClaudePermissionRules.predictPreToolUseHold` — the same decision the
+    /// Node daemon makes, pinned by shared/claude-permission-vectors.json.
+    /// Every check is biased toward "don't hold".
     func beginGate(
         sessionId: String,
         tool: String,
         commandText: String?,
         permissionMode: String?,
         cwd: String?,
-        clientCount: Int
+        clientCount: Int,
+        toolUseId: String? = nil
     ) -> String? {
         guard Self.gateEnabled else { return nil }
         guard clientCount > 0 else { return nil }
-        guard !tool.isEmpty, !tool.hasPrefix("mcp__") else { return nil }
-        guard !Self.neverPromptTools.contains(tool) else { return nil }
-        guard Self.promptProneTools.contains(tool) else { return nil }
-        guard DaemonServer.shouldGate(permissionMode: permissionMode, tool: tool) else { return nil }
+        guard !tool.isEmpty else { return nil }
         guard !heldBySession.contains(sessionId) else { return nil }
         let signature = Self.gateSignature(tool: tool, commandText: commandText)
         if suppressed[sessionId]?.contains(signature) == true { return nil }
-        switch evaluateRules(tool: tool, commandText: commandText, cwd: cwd) {
-        case .deny, .allow, .unknown: return nil
-        case .ask, .none: break
-        }
+        let prediction = ClaudePermissionRules.predictPreToolUseHold(
+            tool: tool,
+            command: commandText,
+            permissionMode: permissionMode,
+            rules: loadMergedRules(cwd: cwd)
+        )
+        guard prediction.hold else { return nil }
         let requestId = UUID().uuidString.lowercased()
         heldGates[requestId] = HeldGate(
-            sessionId: sessionId, kind: .permission, tool: tool, signature: signature, continuation: nil)
+            sessionId: sessionId, kind: .permission, tool: tool, signature: signature,
+            toolUseId: toolUseId, continuation: nil)
         heldBySession.insert(sessionId)
         return requestId
     }
@@ -384,7 +383,7 @@ actor ObservedSteering {
         // Claude auto-approves, so learning from it would suppress real gates.
         if gate.kind == .permission {
             recentAskReleases[gate.sessionId, default: []].append(
-                (tool: gate.tool, signature: gate.signature, ts: Date()))
+                (tool: gate.tool, signature: gate.signature, ts: Date(), toolUseId: gate.toolUseId))
             if recentAskReleases[gate.sessionId]!.count > 8 {
                 recentAskReleases[gate.sessionId]!.removeFirst()
             }
@@ -408,8 +407,6 @@ actor ObservedSteering {
     }
 
     // MARK: - Permission-rule predictor (mirror of claude-permission-rules.ts)
-
-    private enum RuleVerdict { case allow, deny, ask, none, unknown }
 
     private static func realHome() -> String {
         String(cString: getpwuid(getuid()).pointee.pw_dir)
@@ -469,66 +466,6 @@ actor ObservedSteering {
             merged.ask += (perms["ask"] as? [String] ?? []).compactMap { $0 }
         }
         return merged
-    }
-
-    private static func parseRule(_ rule: String) -> (tool: String, spec: String?)? {
-        let trimmed = rule.trimmingCharacters(in: .whitespaces)
-        guard let parenIdx = trimmed.firstIndex(of: "(") else {
-            guard !trimmed.isEmpty, trimmed.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { return nil }
-            return (trimmed, nil)
-        }
-        guard trimmed.hasSuffix(")") else { return nil }
-        let tool = String(trimmed[trimmed.startIndex..<parenIdx])
-        guard !tool.isEmpty else { return nil }
-        let spec = String(trimmed[trimmed.index(after: parenIdx)..<trimmed.index(before: trimmed.endIndex)])
-        return (tool, spec)
-    }
-
-    private static func bashSpecMatches(_ spec: String, command: String) -> Bool {
-        if spec == "*" { return true }
-        if spec.hasSuffix(":*") { return command.hasPrefix(String(spec.dropLast(2))) }
-        return command == spec
-    }
-
-    /// Loose match (allow/deny direction): tool-name match with ANY spec
-    /// counts — a loose match only suppresses a hold (safe direction).
-    private static func matchesLoose(rule: (tool: String, spec: String?), tool: String, command: String?) -> Bool {
-        guard rule.tool == tool else { return false }
-        guard let spec = rule.spec else { return true }
-        if tool == "Bash" {
-            guard let command else { return true }
-            if bashSpecMatches(spec, command: command) { return true }
-            // Compound commands: prefix match on the first segment is enough
-            // to suppress the hold.
-            let first = command.components(separatedBy: CharacterSet(charactersIn: ";|&"))
-                .first?.trimmingCharacters(in: .whitespaces) ?? command
-            return bashSpecMatches(spec, command: first)
-        }
-        // Non-Bash specs (paths, domains, globs): any spec MIGHT match.
-        return true
-    }
-
-    /// Strict match (ask direction): only patterns we can evaluate exactly —
-    /// an ask match CAUSES a hold and must not fire on a spec we can't parse.
-    private static func matchesStrict(rule: (tool: String, spec: String?), tool: String, command: String?) -> Bool {
-        guard rule.tool == tool else { return false }
-        guard let spec = rule.spec else { return true }
-        if tool == "Bash", let command { return bashSpecMatches(spec, command: command) }
-        return false
-    }
-
-    private func evaluateRules(tool: String, commandText: String?, cwd: String?) -> RuleVerdict {
-        guard let rules = loadMergedRules(cwd: cwd) else { return .unknown }
-        for r in rules.deny {
-            if let p = Self.parseRule(r), Self.matchesLoose(rule: p, tool: tool, command: commandText) { return .deny }
-        }
-        for r in rules.allow {
-            if let p = Self.parseRule(r), Self.matchesLoose(rule: p, tool: tool, command: commandText) { return .allow }
-        }
-        for r in rules.ask {
-            if let p = Self.parseRule(r), Self.matchesStrict(rule: p, tool: tool, command: commandText) { return .ask }
-        }
-        return .none
     }
 }
 

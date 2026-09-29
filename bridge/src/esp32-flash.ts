@@ -305,6 +305,125 @@ export async function resolveFirmware(
 
 export interface PortHolder { command: string; pid: number }
 
+/* ------------------------------------------------- daemon suspend sweep (#327)
+ * The 2026-09-13 incident, in one line each: the Node daemon went
+ * latency-silent at host load 600–800; the macOS app promoted a fallback
+ * daemon on 9121 whose serial poll DTR-reset the board mid-write; and the
+ * flash CLI's single suspend call timed out against the blocked Node daemon
+ * and was read as "no daemon", so it never reached the daemon that actually
+ * held the port. The sweep asks EVERY daemon in the port window and refuses
+ * to distinguish "nothing there" from "there and silent" — the listener's
+ * identity, not its silence, decides.
+ */
+
+export type SuspendSweepOutcome =
+  | { kind: 'suspended'; port: number }
+  | { kind: 'nothing'; port: number }
+  | { kind: 'foreign-listener'; port: number }
+  | { kind: 'not-a-daemon'; port: number }
+  | { kind: 'unreachable'; port: number; listener: string }
+  | { kind: 'refused'; port: number; detail: string };
+
+export interface SuspendSweepDeps {
+  /** POST /esp32/serial/suspend — the transport wrapper, injectable for tests. */
+  postSuspend: (port: number) => Promise<{ ok: boolean; statusCode: number | null; errCode: string | null }>;
+  /** GET /health, already resolved by the caller (session-registry). */
+  probeDaemonHealth: (port: number) => Promise<{ mode?: string } | null>;
+  scanTcpListener: (port: number) => Promise<PortHolderScan>;
+}
+
+export interface SuspendSweepResult {
+  /** Ports whose daemons acknowledged the suspension (and must be resumed). */
+  suspendedPorts: number[];
+  /** Human lines for the command's log — the caller owns printing. */
+  notices: string[];
+  /** Set when the flash must not proceed; the message is user-ready. */
+  refuse?: string;
+}
+
+/**
+ * Suspend every AgentDeck daemon in `ports` (the port window) and classify
+ * each answer. Pure policy over injectable probes, so the #327 truth table —
+ * silence from an AgentDeck listener refuses, silence from anyone else does
+ * not, a daemon that answers-but-declines refuses, a session bridge's 404 is
+ * not a serial holder — is unit-pinnable without hardware.
+ */
+export async function sweepAndSuspendDaemons(
+  ports: number[],
+  leaseSeconds: number,
+  deps: SuspendSweepDeps,
+): Promise<SuspendSweepResult> {
+  const outcomes: SuspendSweepOutcome[] = await Promise.all(ports.map(async (port): Promise<SuspendSweepOutcome> => {
+    const call = await deps.postSuspend(port);
+    if (call.ok) return { kind: 'suspended', port };
+    if (call.statusCode !== null) {
+      // Answered, but not a suspend success (404 from a session bridge or a
+      // pre-parity Swift daemon, 401 auth refusal…). Which one decides
+      // danger: an AgentDeck DAEMON answering anything is a serial owner that
+      // would not stand down; a session bridge holds no serial.
+      const health = await deps.probeDaemonHealth(port);
+      if (health?.mode === 'daemon') {
+        return { kind: 'refused', port, detail: `daemon on :${port} answered HTTP ${call.statusCode} to suspend` };
+      }
+      return { kind: 'not-a-daemon', port };
+    }
+    // No answer at all. ECONNREFUSED is the one transport error that means
+    // "no listener" — a timeout or a reset means something is there, and WHO
+    // is listening decides: an AgentDeck process that cannot be reached
+    // cannot be asked to let go, and its 10 s serial poll may still fire
+    // mid-write. Anything else squatting a TCP port is not a serial threat.
+    if (call.errCode === 'ECONNREFUSED') return { kind: 'nothing', port };
+    const listenerScan = await deps.scanTcpListener(port);
+    if (listenerScan.known && listenerScan.holders.length > 0) {
+      if (classifyHolders(listenerScan.holders).ours.length > 0) {
+        return {
+          kind: 'unreachable', port,
+          listener: listenerScan.holders.map((h) => `${h.command}(${h.pid})`).join(', '),
+        };
+      }
+      // Silent, but not ours — a foreign process squatting a TCP port is not
+      // a serial threat, and must not launder into "no daemon is listening".
+      return { kind: 'foreign-listener', port };
+    }
+    return { kind: 'nothing', port };
+  }));
+
+  const suspendedPorts = outcomes.filter((o) => o.kind === 'suspended').map((o) => o.port);
+  const refused = outcomes.filter((o) => o.kind === 'refused') as Extract<SuspendSweepOutcome, { kind: 'refused' }>[];
+  const unreachable = outcomes.filter((o) => o.kind === 'unreachable') as Extract<SuspendSweepOutcome, { kind: 'unreachable' }>[];
+
+  const notices: string[] = [];
+  if (suspendedPorts.length > 0) {
+    notices.push(`Daemon serial suspended on :${suspendedPorts.join(', :')} for ${leaseSeconds}s (survives a daemon respawn).`);
+  }
+  if (outcomes.every((o) => o.kind === 'nothing')) {
+    notices.push('No daemon is listening — nothing to suspend.');
+  }
+
+  if (refused.length > 0) {
+    // It is there and said no. Refusing here beats flashing against a daemon
+    // that is still holding the port.
+    return {
+      suspendedPorts, notices,
+      refuse:
+        `${refused.map((r) => r.detail).join('; ')}.\n`
+        + '  Refusing to flash while a daemon that will not stand down holds the port.\n'
+        + '  Stop it with `agentdeck daemon stop`, or pass --no-suspend if you have freed the port yourself.',
+    };
+  }
+  if (unreachable.length > 0) {
+    return {
+      suspendedPorts, notices,
+      refuse:
+        `AgentDeck did not answer within 10s on ${unreachable.map((u) => `:${u.port} (${u.listener})`).join(', ')}.\n`
+        + '  A daemon this silent may have a blocked event loop and can still poll the serial port open mid-write.\n'
+        + '  Stop it (`agentdeck daemon stop`, or quit the AgentDeck app) and retry.',
+    };
+  }
+  return { suspendedPorts, notices };
+}
+
+
 /**
  * Three answers, not two — because this is the ONLY guard against the holder
  * the lease provably cannot reach (the sandboxed Swift daemon cannot read
@@ -358,6 +477,34 @@ export async function scanPortHolders(port: string): Promise<PortHolderScan> {
 export async function whoHoldsPort(port: string): Promise<PortHolder[]> {
   const scan = await scanPortHolders(port);
   return scan.known ? scan.holders : [];
+}
+
+/**
+ * Who LISTENS on a local TCP port — the companion of `scanPortHolders` for the
+ * #327 suspend sweep. When a daemon's HTTP port answers nothing for the whole
+ * suspend budget, the listener's identity is the difference between "an
+ * AgentDeck process whose event loop is blocked and may still poll the serial
+ * port open mid-write" (refuse the flash) and "some unrelated process
+ * squatting a TCP port" (not a serial threat). Same failure taxonomy as
+ * `scanPortHolders`: a clean "lsof found nothing" is `known: true, holders: []`,
+ * everything else is stated as unknown, never laundered into empty.
+ */
+export async function scanTcpListener(port: number): Promise<PortHolderScan> {
+  if (process.platform === 'win32') {
+    return { known: false, reason: 'lsof is not available on Windows' };
+  }
+  try {
+    const { stdout } = await execFileAsync('lsof', ['-F', 'cp', `-iTCP:${port}`, '-sTCP:LISTEN'], { timeout: 5000 });
+    return { known: true, holders: parseLsofHolders(stdout) };
+  } catch (e) {
+    const err = e as { code?: unknown; killed?: boolean; stdout?: string };
+    if (err.code === 1 && !err.killed && !String(err.stdout ?? '').trim()) {
+      return { known: true, holders: [] };
+    }
+    if (err.killed) return { known: false, reason: 'lsof timed out after 5s' };
+    if (err.code === 'ENOENT') return { known: false, reason: 'lsof is not installed' };
+    return { known: false, reason: `lsof failed (${String(err.code ?? 'unknown error')})` };
+  }
 }
 
 /** Processes AgentDeck itself is responsible for, and can therefore ask to let go. */

@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 
 import { Command, InvalidArgumentError } from 'commander';
-import { writeFileSync, unlinkSync, existsSync, realpathSync, readFileSync } from 'fs';
+import { writeFileSync, unlinkSync, existsSync, realpathSync, readFileSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { execFileSync, execSync, spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { request } from 'http';
+import { waitForDaemonSpawn } from './daemon-launcher.js';
 import { BRIDGE_WS_PORT } from './types.js';
-import { SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX, stopDeliveryLoss, ESP32_BOARDS } from '@agentdeck/shared';
+import { SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX, stopDeliveryLoss, judgeCoverage, ESP32_BOARDS,
+  type ApmeJudgeHealthRow } from '@agentdeck/shared';
 import { ensureBleRuntime, getBleRuntimeStatus } from './python-ble-runtime.js';
 import {
   TASK_NAME,
@@ -28,6 +30,25 @@ import {
 // From modules/types.js, not modules/index.js: the latter pulls the whole
 // device stack (serial, Pixoo, BLE) into `agentdeck --help`.
 import { allModulesOff } from './modules/types.js';
+import {
+  PLIST_LABEL,
+  launchAgentPlistPath,
+  detectSupervisor,
+  describeSupervisor,
+  supervisorStopPlan,
+  supervisorStartPlan,
+  supervisorPosture,
+  runSupervisorPlan,
+  waitForSupervisorUnload,
+  supervisorLivenessProbe,
+  oneOffFlagsBlockingSupervisor,
+  routeDaemonLifecycle,
+  supervisorJobRunning,
+  schtasksStatus,
+  SUPERVISOR_ENV,
+  classifySupervision,
+  type SupervisorFacts,
+} from './daemon-supervisor.js';
 import {
   SERVICE_NAME,
   hasSystemctl,
@@ -67,7 +88,7 @@ export function managedPtyCompatibilityNotice(command: LegacySessionCommand): st
   return [
     `[agentdeck] LEGACY COMPATIBILITY MODE: \`agentdeck ${command}\` uses the managed per-session bridge; daemon-first launch is the recommended default.`,
     `[agentdeck] For ordinary local sessions, run \`agentdeck daemon install\`, then ${directLaunch}.`,
-    '[agentdeck] --remote-daemon, --weight, AGENTDECK_<AGENT>_ARGS, and terminal-only controls do not yet have daemon-first equivalents. No removal date is set. Design: https://github.com/puritysb/AgentDeck/discussions/278 Tracking: https://github.com/puritysb/AgentDeck/issues/273',
+    '[agentdeck] --remote-daemon, AGENTDECK_<AGENT>_ARGS, and terminal-only controls do not yet have daemon-first equivalents; for session ordering use `agentdeck order` on the observed session. No removal date is set. Design: https://github.com/puritysb/AgentDeck/discussions/278 Tracking: https://github.com/puritysb/AgentDeck/issues/273',
   ];
 }
 
@@ -183,8 +204,10 @@ function postJsonWithTimeout<T>(urlString: string, body: unknown, timeoutMs: num
 
 // ===== LaunchAgent plist =====
 
-const PLIST_LABEL = 'dev.agentdeck.daemon';
-const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${PLIST_LABEL}.plist`);
+// The label and its plist path are the supervisor module's — `daemon
+// stop`/`start`/`restart` drive that same unit, and a second spelling of its
+// name here is a second thing to keep in step.
+const PLIST_PATH = launchAgentPlistPath();
 
 function getAgentdeckBin(): string {
   try {
@@ -192,6 +215,29 @@ function getAgentdeckBin(): string {
   } catch {
     const distDir = new URL('.', import.meta.url).pathname;
     return join(distDir, 'cli.js');
+  }
+}
+
+/**
+ * A worktree checkout (`__worktrees/<name>`, the workmux collaboration
+ * surfaces) is temporary: merging one removes its directory while everything
+ * installed from it — the Stream Deck plugin symlink, the global CLI link, an
+ * autostart unit — keeps pointing at the removed files. Observed 2026-09-19:
+ * the luna-reserve worktree was pruned after merge and every Stream Deck
+ * status key went dark because the plugin symlink still pointed into it.
+ *
+ * Splits on both separators so a Windows path is classified on any platform.
+ */
+export function isWorktreeCheckoutPath(path: string): boolean {
+  return path.split(/[\\/]/).includes('__worktrees');
+}
+
+/** realpath of `p`, or the literal path when resolution fails. */
+function realPathOrLiteral(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
   }
 }
 
@@ -276,18 +322,76 @@ export function buildPlist(extraArgs: string[] = []): string {
 
 // ===== Helpers =====
 
-async function stopDaemon(port: number): Promise<void> {
-  const { readDaemonInfo, findDaemonPort, probeDaemonHealth } = await import('./session-registry.js');
+/**
+ * Stop this user's daemon — and, when a supervisor owns it, stop it in a way
+ * that keeps it stopped.
+ *
+ * `/shutdown` alone cannot do that. The daemon ends it by SIGKILLing itself,
+ * launchd's `KeepAlive{SuccessfulExit:false}`, systemd's `Restart=on-failure`
+ * and the Scheduled Task's RestartOnFailure all read a signalled death as a
+ * crash, and the unit brings the daemon back within seconds — so `agentdeck
+ * daemon stop` on any machine that ran `daemon install` did not stay stopped.
+ * The exit status has no room for "the user asked for this" (see
+ * daemon-supervisor.ts), so the request goes to the supervisor instead.
+ *
+ * This is a stop, not an uninstall: the unit stays installed and starts again
+ * at the next login, or at the next `agentdeck daemon start`.
+ */
+async function stopDaemon(
+  port: number,
+  opts: { supervisor?: SupervisorFacts | null; handover?: boolean } = {},
+): Promise<void> {
+  const {
+    readDaemonInfo, findDaemonPort, probeDaemonHealth, requestDaemonStandDown,
+  } = await import('./session-registry.js');
   const { isForeignDaemon } = await import('./daemon-takeover.js');
+
+  // First, because the alternative is a race with the daemon's own parent: a
+  // `/shutdown` that lands while the unit is still armed is answered by a
+  // respawn a few seconds later.
+  const supervisor = opts.supervisor !== undefined ? opts.supervisor : detectSupervisor();
+  if (supervisor) {
+    const result = runSupervisorPlan(supervisorStopPlan(supervisor));
+    if (!await waitForSupervisorUnload(supervisor)) {
+      throw new Error(`The ${describeSupervisor(supervisor)} has not finished unloading; refusing to race its replacement. Retry after it stops.`);
+    }
+    const stopped = result.ran.some((r) => r.ok);
+    if (stopped) {
+      log(`Stopped the ${describeSupervisor(supervisor)} (it will start again at the next login, `
+        + `or on 'agentdeck daemon start').`);
+    } else if (!result.ok) {
+      const detail = result.ran.find((r) => !r.ok)?.detail;
+      log(`Warning: could not stop the ${describeSupervisor(supervisor)}`
+        + `${detail ? ` — ${detail.split('\n')[0]}` : ''}.`);
+      log(`It may restart the daemon a few seconds after this stop.`);
+    }
+  }
+
   const info = readDaemonInfo();
   const targetPort = info?.httpPort ?? info?.port ?? findDaemonPort() ?? port;
   // The registry resolves to this user's own daemon, but the `-p` fallback
   // resolves to whatever is on that port — which on a shared host is somebody
   // else's daemon, and `/shutdown` is trusted purely for being local.
-  if (isForeignDaemon(await probeDaemonHealth(targetPort))) {
+  const incumbent = await probeDaemonHealth(targetPort);
+  if (isForeignDaemon(incumbent)) {
     log(`Port ${targetPort} is held by another user's daemon — refusing to stop it.`);
     log(`You have no daemon of your own running.`);
     return;
+  }
+  // `handover` says a daemon is coming BACK on this port, which changes what an
+  // app-owned Swift incumbent should be told. `/stand-down` names the port it
+  // must become a client of; `/shutdown` leaves it resolving that from a
+  // registry that is empty at exactly this moment, which is what left the app
+  // daemonless and clientless for 23 hours (#305). Plain `daemon stop` keeps
+  // `/shutdown` on purpose: there, "become a client" is a lie — nothing is
+  // coming, and the app would re-promote after its yield window, so the stop
+  // would have stopped nothing.
+  if (opts.handover && incumbent?.isSwift) {
+    if (await requestDaemonStandDown(targetPort)) {
+      log(`Asked the AgentDeck app to stand down from port ${targetPort} (it stays running as a client).`);
+      return;
+    }
+    log(`Stand-down was not acknowledged — falling back to /shutdown.`);
   }
   try {
     await fetch(`http://127.0.0.1:${targetPort}/shutdown`, {
@@ -298,6 +402,123 @@ async function stopDaemon(port: number): Promise<void> {
   } catch {
     log('Daemon is not running');
   }
+}
+
+/**
+ * Leave `daemon install` with the machine in the state it just promised.
+ *
+ * Registering the unit is not the same as the unit owning the daemon. The
+ * job ends in `daemon start --foreground` (directly on macOS and Linux, through
+ * the `daemon autostart` launcher on Windows), so when an unsupervised daemon
+ * already holds the port the job exits 0 against the incumbent guard and the
+ * install reports success over `state = not running` — the daemon on this
+ * machine has no parent, and nothing brings it back until the next login.
+ * That is the same hole `daemon stop` and `daemon restart` already had, from a
+ * third side, and it gets the same answer: hand the daemon to the unit.
+ *
+ * Only one of the five states is acted on. `foreign` and `unknown` act on
+ * nothing by rule; `supervised` and `no-daemon` are reported, because an
+ * install that changed nothing and an install that could not start a daemon
+ * are different outcomes and the user cannot tell them apart from silence.
+ *
+ * The settle window exists because the job was started milliseconds ago: right
+ * after a load its state is `running` whether it is about to serve the port or
+ * about to exit 0 against an incumbent, so a single reading taken now answers
+ * the wrong question. `unsupervised` is the one verdict that cannot un-happen
+ * on its own, so it short-circuits; everything else is read at the end.
+ */
+async function convergeInstalledSupervision(
+  supervisor: SupervisorFacts | null,
+  unitPosture: string[],
+): Promise<void> {
+  if (!supervisor) return;
+  const {
+    probeDaemonHealth, readDaemonInfo, findDaemonPort, waitForDaemonExit,
+  } = await import('./session-registry.js');
+  const { isForeignDaemon } = await import('./daemon-takeover.js');
+  const { resolveDaemonPort } = await import('./daemon-port.js');
+  const { distBuildId } = await import('./daemon-build-identity.js');
+  const preferred = resolveDaemonPort({});
+
+  const settleUntil = Date.now() + 8_000;
+  let health: Awaited<ReturnType<typeof probeDaemonHealth>> = null;
+  let port = preferred.port;
+  let state = classifySupervision({ daemonAnswering: false, daemonIsForeign: false, jobRunning: undefined });
+  for (;;) {
+    const info = readDaemonInfo();
+    port = info?.httpPort ?? info?.port ?? findDaemonPort() ?? preferred.port;
+    health = await probeDaemonHealth(port);
+    state = classifySupervision({
+      daemonAnswering: health?.mode === 'daemon',
+      daemonIsForeign: isForeignDaemon(health),
+      jobRunning: supervisorJobRunning(supervisor),
+    });
+    if (state === 'unsupervised' || state === 'foreign' || Date.now() >= settleUntil) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  const who = describeSupervisor(supervisor);
+  if (state === 'foreign') {
+    log(`Port ${port} is held by another user's daemon — leaving it alone. The ${who} is registered and `
+      + `will start your own daemon on a free port.`);
+    return;
+  }
+  if (state === 'unknown') {
+    log(`Could not read the ${who}'s state, so this install did not check whether it owns the daemon. `
+      + `'agentdeck daemon status' shows what is serving.`);
+    return;
+  }
+  if (state === 'no-daemon') {
+    log(`The ${who} is registered, but no daemon answered within 8s. Run 'agentdeck daemon start' — `
+      + `and 'agentdeck daemon status' if it still does not come up.`);
+    return;
+  }
+  if (state === 'supervised') {
+    if (health?.mode === 'daemon') {
+      log(`Daemon running under the ${who} (PID ${health.pid ?? 'unknown'}, port ${port}).`);
+    } else {
+      log(`The ${who}'s job is running — the daemon will bind shortly.`);
+    }
+    return;
+  }
+
+  // state === 'unsupervised'
+  const stoppedPid = typeof health?.pid === 'number' ? health.pid : undefined;
+  log(`A daemon is already running outside the ${who} (PID ${stoppedPid ?? 'unknown'}, port ${port}). `
+    + `The unit's job exits immediately against it, so the machine would stay unsupervised — handing it over.`);
+  const runningPosture = daemonPostureArgs({
+    local: health?.posture?.noDeviceModules === true,
+    loopback: health?.posture?.loopbackOnly === true,
+  });
+  if (runningPosture.join(' ') !== unitPosture.join(' ')) {
+    log(`Note: the running daemon's posture (${runningPosture.join(' ') || 'default'}) is replaced by the `
+      + `one you just installed (${unitPosture.join(' ') || 'default'}).`);
+  }
+  await stopDaemon(port, { supervisor, handover: true });
+  if (!(await waitForDaemonExit(port, 8000))) {
+    log(`Warning: the daemon on port ${port} was still answering when the stop budget ran out.`);
+  }
+  const started = runSupervisorPlan(supervisorStartPlan(supervisor));
+  if (!started.ok) {
+    const detail = started.ran.find((r) => !r.ok)?.detail;
+    log(`Could not start the ${who}${detail ? ` — ${detail.split('\n')[0]}` : ''}.`);
+    log(`Run 'agentdeck daemon start' to bring a daemon back.`);
+    return;
+  }
+  const verdict = await waitForRestartedDaemon({
+    stoppedPid,
+    preferredPort: preferred.port,
+    probeHealth: probeDaemonHealth,
+    readDaemonInfo, findDaemonPort,
+    expectedBuild: distBuildId(),
+    isChildAlive: supervisorLivenessProbe(supervisor),
+    onStillWaiting: () => log(`Still starting — waiting for the supervised daemon to bind.`),
+  });
+  if (verdict.ok) {
+    log(`Daemon now running under the ${who} (PID ${verdict.daemon.pid}, port ${verdict.daemon.port}).`);
+    return;
+  }
+  reportDaemonWaitFailure(verdict, 'start');
 }
 
 async function isDaemonPort(port: number): Promise<boolean> {
@@ -529,7 +750,8 @@ export function applyGlobalEnvArgs(
   // token scan) keeps non-session commands a true no-op even when a
   // positional VALUE equals a session command name (`agentdeck speak b claude`).
   const sub = argv[2];
-  if (sub === undefined || !(SESSION_COMMANDS as readonly string[]).includes(sub)) return argv;
+  const launch = sub === 'run';
+  if (!launch && (sub === undefined || !(SESSION_COMMANDS as readonly string[]).includes(sub))) return argv;
   // Typed escape hatch — checked on the RAW argv before splicing, because
   // post-parse is too late (env tokens would already have parsed into opts).
   // Exact-token match: a flag VALUE lexically equal to --no-env-args would
@@ -658,6 +880,29 @@ weatherCommand
     log(`Weather location cleared from ${ownSettingsPath()}.`);
     log(`Persisted forecast cache removed from ${cachePath}.`);
     log('The running daemon stops adding weather on the next feed pull; no restart is required.');
+  });
+
+// ===== Observed launch (no managed PTY) =====
+
+program
+  .command('run <agent>')
+  .description('Launch claude, codex or opencode in this terminal without a managed PTY; uses installed daemon hooks')
+  .option('-c, --command <cmd>', 'Shell command; defaults to the selected agent')
+  .option('--no-env-args', 'Ignore both AGENTDECK_COMMANDER_ARGS and agent-specific defaults')
+  .action(async (agent: string, opts: { command?: string; envArgs?: boolean }) => {
+    const agentTypes = { claude: 'claude-code', codex: 'codex-cli', opencode: 'opencode' } as const;
+    if (!Object.hasOwn(agentTypes, agent)) {
+      program.error('run supports claude, codex or opencode');
+    }
+    const agentType = agentTypes[agent as keyof typeof agentTypes];
+    try {
+      const { launchObservedCommand } = await import('./observed-launch.js');
+      process.exitCode = launchObservedCommand(
+        resolveAgentCommand(agentType, opts.command ?? agent, opts.envArgs !== false),
+      );
+    } catch (error) {
+      program.error(`Could not launch agent: ${error instanceof Error ? error.message : String(error)}`);
+    }
   });
 
 // ===== Agent session commands =====
@@ -992,11 +1237,74 @@ async function ensureLatestBuild(mode: BuildMode): Promise<void> {
   // dynamically import the NEW `daemon-server.js` a moment later. Start over.
   const scriptPath = fileURLToPath(import.meta.url);
   log(`Rebuilt (${before ?? 'unknown'} → ${after ?? 'unknown'}). Re-running with the new build…`);
+  // windows-hide-exempt: only a build-eligible run reaches this (a human at a
+  // terminal — the autostart launcher passes `--no-build`), so there is already
+  // a console to inherit, and stdio must stay attached to it.
   const rerun = spawnSync(process.execPath, [scriptPath, ...process.argv.slice(2), '--no-build'], {
     stdio: 'inherit',
   });
   process.exit(rerun.status ?? 1);
 }
+
+/**
+ * The Windows Scheduled Task's action: start the daemon with no console, ever.
+ *
+ * Task Scheduler attaches a console to an interactive-token action and offers
+ * no way to suppress it, so a task whose action IS the daemon left a terminal
+ * window and a taskbar button on the desktop for the daemon's whole life. This
+ * command exists to be that action instead: it spawns the daemon DETACHED with
+ * `windowsHide` (DETACHED_PROCESS | CREATE_NO_WINDOW — no console at all, not a
+ * hidden one) and exits within a few hundred ms, before the terminal handoff
+ * paints anything. The measurements and the two rejected alternatives (`Hidden`
+ * in the task XML, an `S4U` principal) are in windows-service.ts.
+ *
+ * It is not `daemon start`'s background fork: that path routes through the
+ * supervisor, and the supervisor's job is this command — it would ask the task
+ * to start the task. This one only ever forks, which is also why it carries no
+ * `-p`/`--debug`: the unit has one fixed argv, and the posture flags baked into
+ * it are the only thing there is to forward.
+ *
+ * Hidden from `--help` because nobody should type it: a human wants `daemon
+ * start`, which already backgrounds itself.
+ */
+daemon
+  .command('autostart', { hidden: true })
+  .description('Internal: launch the daemon detached with no console (Windows scheduled task action)')
+  .option('--local', 'Disable all device modules (forwarded to the daemon)')
+  .option('--loopback', 'Bind 127.0.0.1 only (forwarded to the daemon)')
+  .option('--enterprise', 'Alias for --loopback')
+  .action(async (opts) => {
+    const logDir = join(homedir(), '.agentdeck');
+    const scriptPath = fileURLToPath(import.meta.url);
+    // `--no-build`: no human is attached to a logon start, so a stale checkout
+    // must not put a 30s tsc — or a broken build — in front of the daemon.
+    const args = [
+      scriptPath, 'daemon', 'start', '--foreground',
+      ...daemonPostureArgs(opts),
+      '--no-build',
+    ];
+    const [out, err] = await openDaemonLogs(logDir);
+    const child = spawn(process.execPath, args, {
+      detached: true,
+      stdio: ['ignore', out, err],
+      windowsHide: true,
+      // The task's own Status describes this launcher, which is about to exit,
+      // so it can no longer answer "does the unit own the daemon?". The daemon
+      // answers it instead: it stamps this into `daemon.json` once it has won
+      // the port (`startedBySupervisor`, daemon-supervisor.ts). Passing the
+      // claim rather than making it here is deliberate — a daemon that loses
+      // the bind race must not be able to claim ownership while it concedes.
+      env: { ...process.env, [SUPERVISOR_ENV]: 'schtasks' },
+    });
+    try {
+      await waitForDaemonSpawn(child);
+    } catch (error) {
+      console.error('Daemon launch failed:', error);
+      process.exit(1);
+    }
+    log(`Daemon launched detached (PID ${child.pid ?? 'unknown'}); logs in ${logDir}.`);
+    process.exit(0);
+  });
 
 daemon
   .command('start')
@@ -1024,7 +1332,7 @@ daemon
     // Re-executes and never returns when it rebuilds.
     await ensureLatestBuild(buildModeFrom(cmd, opts));
 
-    const { findExistingDaemon, probeDaemonHealth, readDaemonInfo, removeDaemonInfo, removeDaemonSession, requestDaemonStandDown, requestDaemonShutdown, waitForDaemonExit, waitForPortBindable } = await import('./session-registry.js');
+    const { findExistingDaemon, probeDaemonHealth, readDaemonInfo, findDaemonPort, removeDaemonInfo, removeDaemonSession, requestDaemonStandDown, requestDaemonShutdown, waitForDaemonExit, waitForPortBindable } = await import('./session-registry.js');
     const { adoptPeerToken } = await import('./auth.js');
     const { distBuildId } = await import('./daemon-build-identity.js');
     const localBuild = distBuildId();
@@ -1145,8 +1453,60 @@ daemon
       );
     }
 
-    // Background fork unless --foreground
+    // Background start unless --foreground.
     if (!opts.foreground) {
+      // On a machine that ran `agentdeck daemon install`, the daemon has a
+      // parent — and a child forked here is a daemon that parent does not
+      // supervise. It also wins the port, so the unit's own job exits 0
+      // ("already running") and stays down until the next login: the machine
+      // silently loses its autostart for the rest of the session. This is the
+      // same hole `daemon stop` had, from the other side, so it has the same
+      // answer — ask the supervisor to start it.
+      //
+      // `--foreground` is deliberately NOT routed: that spelling IS the unit's
+      // own ExecStart, and routing it would make the unit ask itself to start.
+      const supervisor = detectSupervisor();
+      // No posture pair here on purpose: `daemon start` has no running daemon
+      // to inherit from, so the unit's own posture is the right answer.
+      const route = routeDaemonLifecycle({
+        supervisor, oneOffFlags: oneOffFlagsBlockingSupervisor(opts),
+      });
+      if (supervisor && route.via === 'supervisor') {
+        const result = runSupervisorPlan(supervisorStartPlan(supervisor));
+        if (result.ok) {
+          const verdict = await waitForRestartedDaemon({
+            preferredPort: preferredPort.port,
+            probeHealth: probeDaemonHealth,
+            readDaemonInfo, findDaemonPort,
+            expectedBuild: localBuild,
+            // The supervised analog of "is my child still alive?" — without it
+            // the floor below becomes a hard deadline, and a start that is
+            // still negotiating a stand-down reports as a failure.
+            isChildAlive: supervisorLivenessProbe(supervisor),
+            onStillWaiting: () => log(`Still starting — waiting for a daemon to bind.`),
+          });
+          if (verdict.ok) {
+            log(`Daemon started (PID ${verdict.daemon.pid}, build ${verdict.daemon.build ?? 'unknown'}) `
+              + `under the ${describeSupervisor(supervisor)}`
+              + `${verdict.daemon.port === preferredPort.port ? '' : ` on port ${verdict.daemon.port}`}.`);
+            process.exit(0);
+          }
+          reportDaemonWaitFailure(verdict, 'start');
+          process.exit(1);
+        }
+        const detail = result.ran.find((r) => !r.ok)?.detail;
+        log(`Could not start the ${describeSupervisor(supervisor)}`
+          + `${detail ? ` — ${detail.split('\n')[0]}` : ''}.`);
+        log(`Starting an unsupervised daemon instead; 'agentdeck daemon install' re-registers the unit.`);
+      } else if (supervisor && route.via === 'self' && route.reason === 'one-off-flags') {
+        // A one-off posture/port/debug daemon is not the one the unit can
+        // produce, so it is started here — and it is NOT the supervised one.
+        // Saying so is the point: this is exactly how a machine ends up
+        // running a daemon nothing will bring back.
+        log(`${route.flags.join(' ')} cannot be carried by the ${describeSupervisor(supervisor)} — `
+          + `starting a daemon outside it. It will not be restarted automatically.`);
+      }
+
       const logDir = join(homedir(), '.agentdeck');
       const scriptPath = fileURLToPath(import.meta.url);
       const args = [scriptPath, 'daemon', 'start', '--foreground'];
@@ -1248,7 +1608,43 @@ daemon
       log(`Daemon is on port ${runningPort} but prefers ${preferredPort.port} — restarting there.`);
     }
 
-    await stopDaemon(runningPort);
+    // Who restarts it: the supervisor that owns it, or this command.
+    //
+    // Forking here on a supervised machine is a race with the daemon's own
+    // parent, and both outcomes are wrong. If the unit's respawn wins, this
+    // command's child exits 0 against the incumbent guard and the verdict below
+    // has to untangle whose daemon is serving; if the child wins, the unit's job
+    // has already exited cleanly and nothing will restart the daemon until the
+    // next login — measured on this machine 2026-09-09, `runs = 7,
+    // last exit code = 0, state = not running` while an unsupervised daemon
+    // served 9120. So when a unit can carry this restart, it performs it.
+    //
+    // Two things take it back: flags the unit's fixed argv cannot express, and
+    // a posture the unit does not carry. The second is the enterprise downgrade
+    // the inheritance above exists to prevent — handing the restart to a
+    // default-posture unit would rewrite a loopback-only daemon into an
+    // advertising one, silently.
+    const supervisor = detectSupervisor();
+    const route = routeDaemonLifecycle({
+      supervisor,
+      oneOffFlags: oneOffFlagsBlockingSupervisor(opts),
+      unitPosture: supervisor ? supervisorPosture(supervisor) : undefined,
+      wantedPosture: daemonPostureArgs({ local: useLocal, loopback: useLoopback }),
+    });
+    const useSupervisor = route.via === 'supervisor';
+    if (supervisor && route.via === 'self' && route.reason === 'posture-mismatch') {
+      log(`The daemon's posture (${route.wantedPosture.join(' ') || 'default'}) is not the one baked into the `
+        + `${describeSupervisor(supervisor)} (${route.unitPosture.join(' ') || 'default'}) — restarting outside `
+        + `the unit so the posture is not silently rewritten.`);
+    } else if (supervisor && route.via === 'self' && route.reason === 'one-off-flags') {
+      log(`${route.flags.join(' ')} cannot be carried by the ${describeSupervisor(supervisor)} — `
+        + `restarting outside it.`);
+    }
+
+    // Stops the unit too (see stopDaemon): whether or not the supervisor
+    // performs the restart, it must not respawn the old daemon into the middle
+    // of this one.
+    await stopDaemon(runningPort, { supervisor, handover: true });
     // Wait for the old daemon to stop ANSWERING — a real condition, not the
     // 1500ms guess that used to sit here and merely outlasted the common case.
     //
@@ -1265,17 +1661,6 @@ daemon
       log(`Warning: the daemon on port ${runningPort} was still answering when the stop budget ran out.`);
     }
 
-    const scriptPath = fileURLToPath(import.meta.url);
-    const args = [scriptPath, 'daemon', 'start', '--foreground'];
-    // Same rule as `daemon start`: forward `-p` only when it was typed, so the
-    // child keeps the real provenance of its port.
-    if (preferredPort.source === 'flag') args.push('-p', String(preferredPort.port));
-    if (opts.debug) args.push('-d');
-    if (useLocal) args.push('--local');
-    if (useLoopback) args.push('--loopback');
-    // Same as the `start` fork: freshness is this process's job, and the child
-    // has log files rather than a terminal.
-    args.push('--no-build');
     if ((inheritedLocal && !opts.local) || (inheritedLoopback && !opts.loopback)) {
       log(`Carrying over the running daemon's posture (${[
         inheritedLoopback ? 'loopback-only' : null,
@@ -1283,88 +1668,245 @@ daemon
       ].filter(Boolean).join(', ')}).`);
     }
 
-    const [rOut, rErr] = await openDaemonLogs(join(homedir(), '.agentdeck'));
-    const child = spawn(process.execPath, args, {
-      detached: true,
-      stdio: ['ignore', rOut, rErr],
-      windowsHide: true,
-    });
-    // Liveness is what the wait below actually keys on. `detached` + `unref`
-    // still delivers 'exit' to this process for as long as it is running.
-    let childAlive = true;
-    child.once('exit', () => { childAlive = false; });
-    child.unref();
+    let child: ReturnType<typeof spawn> | null = null;
+    let childAlive = false;
+    /** Which of the two started it — the message at the end differs. */
+    let startedBySupervisor = false;
+
+    if (useSupervisor && supervisor) {
+      const result = runSupervisorPlan(supervisorStartPlan(supervisor));
+      if (result.ok) {
+        startedBySupervisor = true;
+        log(`Restarting through the ${describeSupervisor(supervisor)}.`);
+      } else {
+        const detail = result.ran.find((r) => !r.ok)?.detail;
+        log(`Could not start the ${describeSupervisor(supervisor)}`
+          + `${detail ? ` — ${detail.split('\n')[0]}` : ''}.`);
+        log(`Restarting an unsupervised daemon instead.`);
+      }
+    }
+
+    if (!startedBySupervisor) {
+      const scriptPath = fileURLToPath(import.meta.url);
+      const args = [scriptPath, 'daemon', 'start', '--foreground'];
+      // Same rule as `daemon start`: forward `-p` only when it was typed, so the
+      // child keeps the real provenance of its port.
+      if (preferredPort.source === 'flag') args.push('-p', String(preferredPort.port));
+      if (opts.debug) args.push('-d');
+      if (useLocal) args.push('--local');
+      if (useLoopback) args.push('--loopback');
+      // Same as the `start` fork: freshness is this process's job, and the child
+      // has log files rather than a terminal.
+      args.push('--no-build');
+
+      const [rOut, rErr] = await openDaemonLogs(join(homedir(), '.agentdeck'));
+      child = spawn(process.execPath, args, {
+        detached: true,
+        stdio: ['ignore', rOut, rErr],
+        windowsHide: true,
+      });
+      // Liveness is what the wait below actually keys on. `detached` + `unref`
+      // still delivers 'exit' to this process for as long as it is running.
+      childAlive = true;
+      child.once('exit', () => { childAlive = false; });
+      child.unref();
+    }
 
     // `spawn` resolving a pid means the OS forked a process — it is not
     // evidence that a daemon is running. A child that dies on EADDRINUSE (the
     // old port still held) exits within a second, and this command used to
     // announce `Daemon restarted (PID …)` regardless, so a failed restart was
     // indistinguishable from a good one and the real reason sat unread in the
-    // daemon log. Verify by asking the daemon who it is.
-    const spawnedPid = child.pid;
-    const started = spawnedPid !== undefined
-      ? await waitForDaemonPid(spawnedPid, preferredPort.port, probeHealth, readDaemonInfo, findDaemonPort,
-          PREFERRED_PORT_RECLAIM_MS, () => childAlive, undefined,
-          (p) => log(`Still starting — child PID ${p} is alive; waiting for it to bind.`))
-      : null;
+    // daemon log. Verify by asking the daemon that came up who it is — but ask
+    // it for its IDENTITY, not for this command's own child pid: on a
+    // supervised machine the winner is routinely a process this command never
+    // forked (see `waitForRestartedDaemon`).
+    const spawnedPid = child?.pid;
+    const { distBuildId } = await import('./daemon-build-identity.js');
+    const onDiskBuild = distBuildId();
+    const verdict = await waitForRestartedDaemon({
+      spawnedPid,
+      // The one answer that is NOT a restart. Read before the stop, so it is
+      // the pid of the daemon this command actually asked to go away.
+      stoppedPid: running?.pid,
+      preferredPort: preferredPort.port,
+      probeHealth,
+      readDaemonInfo,
+      findDaemonPort,
+      expectedBuild: onDiskBuild,
+      timeoutMs: PREFERRED_PORT_RECLAIM_MS,
+      // Whichever of the two started it: our own child, or the supervisor's job.
+      isChildAlive: child ? () => childAlive
+        : (startedBySupervisor && supervisor ? supervisorLivenessProbe(supervisor) : undefined),
+      onStillWaiting: () => log(`Still starting — waiting for a daemon to bind.`),
+    });
 
-    if (!started) {
-      log(`Daemon restart FAILED — no daemon with PID ${spawnedPid ?? '?'} is answering.`);
-      // Both streams, not just stderr: the likeliest failure is the child
-      // hitting `daemon start`'s incumbent guard, which reports through `log()`
-      // — i.e. stdout. Naming only stderr pointed at the empty file.
-      log(`The reason is in ${join(homedir(), '.agentdeck', 'daemon-stdout.log')}`
-        + ` or ${join(homedir(), '.agentdeck', 'daemon-stderr.log')}.`);
+    if (!verdict.ok) {
+      reportDaemonWaitFailure(verdict, 'restart');
       process.exit(1);
     }
+
+    const started = verdict.daemon;
     if (started.port !== preferredPort.port) {
       log(`Daemon restarted (PID ${started.pid}) on port ${started.port} — it could not take ${preferredPort.port}.`);
     } else {
       log(`Daemon restarted (PID ${started.pid}) on port ${started.port}`);
     }
+    if (startedBySupervisor) {
+      // On Windows the unit's action is a launcher that exits, so the daemon is
+      // its detached child rather than the task's own process — claiming
+      // otherwise would send the next reader looking for a pid the Task
+      // Scheduler does not have.
+      const who = describeSupervisor(supervisor as SupervisorFacts);
+      log(supervisor?.kind === 'schtasks'
+        ? `(PID ${started.pid} was launched by the ${who} and stays supervised — the task's action is a `
+          + `launcher, so this pid is its detached child and not the task's own process.)`
+        : `(PID ${started.pid} is the ${who}'s own process — it stays supervised.)`);
+    } else if (!started.ours) {
+      // Not a warning — a fact the user would otherwise have to reconstruct
+      // from `ps`. The daemon SIGKILLs itself on /shutdown, every supervisor
+      // reads that as a failure, and a respawn that beat the stop can still win
+      // the port. Naming it here is what stops the next reader from diagnosing
+      // a restart that worked.
+      log(`(PID ${started.pid} is not the process this command forked (PID ${spawnedPid ?? '?'}) — `
+        + `an autostart supervisor respawned the daemon first and won the port. It is serving `
+        + `build ${started.build ?? 'unknown'}.)`);
+    } else if (supervisor) {
+      // The daemon that came up is this command's child, so the unit is not
+      // supervising it — that is a fact about the machine's next hour, not a
+      // detail of this command.
+      log(`(PID ${started.pid} is this command's own process, outside the ${describeSupervisor(supervisor)} — `
+        + `run 'agentdeck daemon restart' with no flags to hand it back.)`);
+    }
     process.exit(0);
   });
 
 /**
- * Poll until a daemon reporting `pid` answers `/health`, or give up.
- *
- * The pid comparison is the load-bearing part: probing the port alone can be
- * satisfied by the daemon we were trying to REPLACE (a stop that silently
- * failed), which would report a restart that never happened. The fallback-port
- * sweep exists because the daemon is allowed to land elsewhere when it cannot
- * win its preferred port — that is a different outcome from "did not start",
- * and the caller says so rather than calling it a failure.
+ * Why no daemon (or the wrong one) came up. Shared by `daemon start` and
+ * `daemon restart`, which ask the same question of the same function and must
+ * not answer it in two different vocabularies.
  */
-export async function waitForDaemonPid(
-  pid: number,
-  preferredPort: number,
-  probeHealth: (port: number) => Promise<{ pid?: number } | null>,
-  readDaemonInfo: () => { httpPort?: number; port?: number } | null,
-  findDaemonPort: () => number | null,
-  timeoutMs = 20_000,
-  /**
-   * Is the spawned child still running?
-   *
-   * A derived timeout is still a guess, and this one was wrong twice: the
-   * budget has to cover not just the child's port-reclaim wait but its
-   * incumbent negotiation first — a Swift daemon standing down costs up to
-   * `EXIT_WAIT_MS + BINDABLE_WAIT_MS` before `startDaemon` is even reached, so
-   * the whole worst case runs past a minute. Giving up early prints
-   * "restart FAILED" while the daemon is coming up, and the user's natural
-   * retry then kills it.
-   *
-   * "The child is still running" is a real condition rather than a derived one,
-   * so `timeoutMs` becomes a floor: while the child is alive we keep waiting,
-   * and only a child that EXITED without a matching pid is a failure. The
-   * ceiling still bounds a child that hangs forever.
-   */
-  isChildAlive?: () => boolean,
-  ceilingMs = 180_000,
-  onStillWaiting?: (pid: number) => void,
-): Promise<{ pid: number; port: number } | null> {
+function reportDaemonWaitFailure(verdict: RestartVerdict, action: 'start' | 'restart'): void {
+  const what = action === 'start' ? 'Daemon start' : 'Daemon restart';
+  if (verdict.ok) return;
+  if (verdict.reason === 'stop-failed') {
+    log(`${what} FAILED — the daemon you asked to restart (PID ${verdict.pid}) `
+      + `is still answering on port ${verdict.port}. The stop did not take.`);
+  } else if (verdict.reason === 'stale-build') {
+    // A daemon IS serving, so say that first — the remedy for this is not
+    // "try again", it is "the process that won the port is a different
+    // install of AgentDeck". Reporting it as "no daemon" would send the
+    // user looking for a crash that never happened.
+    log(`${what} FAILED to put this build live — PID ${verdict.pid} is serving port `
+      + `${verdict.port} on build ${verdict.build}, but the build on disk is ${verdict.expected}.`);
+    log(`Something other than this command owns that port — most likely an autostart unit `
+      + `pointed at a different install (macOS: ~/Library/LaunchAgents/${PLIST_LABEL}.plist). `
+      + `Check the 'agentdeck' it launches, then 'agentdeck daemon restart' again.`);
+  } else {
+    log(`${what} FAILED — no daemon is answering.`);
+  }
+  // Both streams, not just stderr: the likeliest failure is the child
+  // hitting `daemon start`'s incumbent guard, which reports through `log()`
+  // — i.e. stdout. Naming only stderr pointed at the empty file.
+  log(`The reason is in ${join(homedir(), '.agentdeck', 'daemon-stdout.log')}`
+    + ` or ${join(homedir(), '.agentdeck', 'daemon-stderr.log')}.`);
+}
+
+/**
+ * The identity of the daemon this restart produced — or why there isn't one.
+ *
+ * `ours` says whether it is the process `daemon restart` forked. On a
+ * supervised machine it very often is not, and that is a successful restart.
+ */
+export interface RestartedDaemon {
+  pid: number;
+  port: number;
+  build: string | null;
+  ours: boolean;
+}
+
+export type RestartVerdict =
+  | { ok: true; daemon: RestartedDaemon }
+  /** The daemon we asked to go away is still on the port — the stop failed. */
+  | { ok: false; reason: 'stop-failed'; pid: number; port: number }
+  /** A daemon came up, on code other than the build on this disk. */
+  | { ok: false; reason: 'stale-build'; pid: number; port: number; build: string; expected: string }
+  /** Nothing answered within the budget. */
+  | { ok: false; reason: 'no-daemon' };
+
+export interface RestartedDaemonQuery {
+  /** The process this command forked, when `spawn` gave it a pid. */
+  spawnedPid?: number;
+  /** The daemon that was stopped. The one `/health` answer that proves nothing. */
+  stoppedPid?: number;
+  preferredPort: number;
+  probeHealth: (port: number) => Promise<{ pid?: number; mode?: string; build?: string } | null>;
+  readDaemonInfo: () => { httpPort?: number; port?: number } | null;
+  findDaemonPort: () => number | null;
+  /** The build id on this disk, when it can be computed. */
+  expectedBuild?: string | null;
+  timeoutMs?: number;
+  isChildAlive?: () => boolean;
+  ceilingMs?: number;
+  onStillWaiting?: () => void;
+}
+
+/**
+ * Poll until a RESTARTED daemon answers `/health`, or give up.
+ *
+ * This used to wait for the pid of the child it forked, and that is the wrong
+ * question on any machine with an autostart unit — which is every machine that
+ * ran `agentdeck daemon install`. The daemon ends `/shutdown` by SIGKILLing
+ * itself (`exitProcessNow`), and a self-signalled death is not a successful
+ * exit: launchd's `KeepAlive{SuccessfulExit:false}`, systemd's
+ * `Restart=on-failure` and the Scheduled Task's RestartOnFailure all respawn it
+ * within a few seconds. That respawn wins the port, this command's own child
+ * then hits `daemon start`'s incumbent guard and exits 0 ("already running"),
+ * and a wait keyed on the child's pid can only ever time out. Measured twice on
+ * 2026-09-08: `restart FAILED — no daemon with PID <n> is answering` printed
+ * while PID 13155 served the new build on 9120 the whole time, 3.8s after the
+ * stop. The user's natural response to that message is to retry, which stops a
+ * healthy daemon again.
+ *
+ * So the question is identity, not parentage: a daemon on one of the candidate
+ * ports whose pid is NOT the pid we stopped. Three things follow.
+ *
+ * - Rejecting the stopped pid is what the old pid comparison was really for,
+ *   and it is kept exactly: a port probe alone is satisfied by the daemon we
+ *   were trying to replace, which would report a restart that never happened.
+ * - The build is checked because "a daemon restarted" and "your code is live"
+ *   are different claims, and only on a supervised machine can they come apart:
+ *   the unit launches whatever `agentdeck` resolves to at ITS path, which may
+ *   be another install entirely. A mismatch is reported as a failure, loudly,
+ *   because "Daemon restarted" over stale code is the silent substitution this
+ *   whole verification exists to prevent. An unknown build on either side is
+ *   NOT a mismatch — absence is not information, and refusing there would
+ *   reintroduce the false failure this function was written to remove.
+ * - The fallback-port sweep stays: landing elsewhere is a different outcome
+ *   from not starting, and the caller says which one happened.
+ *
+ * `timeoutMs` is a floor, not a budget. A derived timeout was wrong twice: the
+ * child can spend `EXIT_WAIT_MS + BINDABLE_WAIT_MS` negotiating a Swift
+ * incumbent's stand-down before it even reaches its own port-reclaim wait, so
+ * the worst case runs past a minute. While the child is alive we keep waiting;
+ * only a child that EXITED without a daemon appearing is a failure, and
+ * `ceilingMs` bounds a child that hangs forever. Note the child exiting is no
+ * longer evidence of anything on its own — in the supervised case it exits
+ * deliberately — so the floor must be long enough for a supervisor respawn.
+ */
+export async function waitForRestartedDaemon(q: RestartedDaemonQuery): Promise<RestartVerdict> {
+  const {
+    spawnedPid, stoppedPid, preferredPort, probeHealth, readDaemonInfo, findDaemonPort,
+    expectedBuild, timeoutMs = 20_000, isChildAlive, ceilingMs = 180_000, onStillWaiting,
+  } = q;
+
   let announcedWait = false;
+  /** Remembered so a timeout can say WHICH failure it was. */
+  let sawStopped: { pid: number; port: number } | null = null;
+  let sawStale: { pid: number; port: number; build: string } | null = null;
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
+
   for (;;) {
     const candidates = new Set<number>([preferredPort]);
     const info = readDaemonInfo();
@@ -1372,20 +1914,49 @@ export async function waitForDaemonPid(
     if (info?.port) candidates.add(info.port);
     const found = findDaemonPort();
     if (found) candidates.add(found);
+
     for (const port of candidates) {
       const health = await probeHealth(port);
-      if (health?.pid === pid) return { pid, port };
+      const pid = health?.pid;
+      if (typeof pid !== 'number') continue;
+      // An explicit non-daemon mode (a session bridge's hook server) is not a
+      // restarted daemon. An ABSENT mode says nothing and is not held against it.
+      if (health?.mode !== undefined && health.mode !== 'daemon') continue;
+      if (stoppedPid !== undefined && pid === stoppedPid) {
+        sawStopped = { pid, port };
+        continue;
+      }
+      const build = typeof health?.build === 'string' ? health.build : null;
+      if (expectedBuild && build && build !== expectedBuild) {
+        sawStale = { pid, port, build };
+        continue;
+      }
+      return { ok: true, daemon: { pid, port, build, ours: pid === spawnedPid } };
     }
+
     const now = Date.now();
-    if (now >= startedAt + ceilingMs) return null;
-    if (now >= deadline && !(isChildAlive?.() ?? false)) return null;
+    const expired = now >= startedAt + ceilingMs
+      || (now >= deadline && !(isChildAlive?.() ?? false));
+    if (expired) {
+      // Ranked by how much each one explains. A daemon serving the wrong build
+      // is a live, specific fault; the stopped daemon still answering is the
+      // next; "nothing answered" is what is left when we learned nothing.
+      if (sawStale) {
+        return {
+          ok: false, reason: 'stale-build', pid: sawStale.pid, port: sawStale.port,
+          build: sawStale.build, expected: expectedBuild as string,
+        };
+      }
+      if (sawStopped) return { ok: false, reason: 'stop-failed', ...sawStopped };
+      return { ok: false, reason: 'no-daemon' };
+    }
     // Past the floor with the child still alive, this can legitimately run for
     // another couple of minutes (a Swift incumbent standing down, then a port
     // reclaim). Say so once, or a correct wait is indistinguishable from a hung
     // terminal.
     if (now >= deadline && !announcedWait) {
       announcedWait = true;
-      onStillWaiting?.(pid);
+      onStillWaiting?.();
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
@@ -1552,6 +2123,22 @@ daemon
     if (postureArgs.length > 0) {
       log(`Autostart posture: ${postureArgs.join(' ')} (baked into the autostart unit's arguments).`);
     }
+    // The autostart unit outlives the checkout it was installed from, so it
+    // must not be baked with a worktree path: `daemon install` from inside
+    // `__worktrees/<name>` writes a unit that launches deleted files the
+    // moment the worktree is merged and removed (see
+    // isWorktreeCheckoutPath). Both spellings matter — the plist/task
+    // ExecStart bakes `which agentdeck`, while the systemd unit resolves
+    // cli.js next to this module.
+    const unitTargets = [getAgentdeckBin(), fileURLToPath(import.meta.url)];
+    const worktreeTarget = unitTargets.find((t) => isWorktreeCheckoutPath(realPathOrLiteral(t)));
+    if (worktreeTarget) {
+      log('Refusing to install the daemon autostart unit from a worktree checkout:');
+      log(`  ${realPathOrLiteral(worktreeTarget)}`);
+      log('Worktrees are removed after merge, and the unit would then launch deleted files.');
+      log('Run this from the main checkout, or install via: npx @agentdeck/setup');
+      process.exit(1);
+    }
     if (process.platform === 'win32') {
       try {
         installWindowsTask(postureArgs);
@@ -1564,6 +2151,31 @@ daemon
         log('(or add a shortcut to shell:startup to autostart it yourself).');
         process.exit(1);
       }
+      // An instance of the PREVIOUS action may still be running, and
+      // `MultipleInstancesPolicy=IgnoreNew` means `/Run` against it is ignored
+      // — silently, with rc 0 — so the action just registered would never
+      // execute. Measured 2026-09-14 installing over a task from a build whose
+      // action was the daemon itself: `Status: Running` (that daemon, from the
+      // previous logon), no launch record written, and the console-window
+      // daemon still serving after an install that reported success.
+      //
+      // Under the launcher action there is nothing to end — it exits in
+      // milliseconds — so this is a no-op in the steady state and a migration
+      // step exactly once. The daemon's own files are tmp+rename, so losing
+      // the instance without a graceful `/shutdown` is safe; `daemon stop`
+      // already ends the task the same way before it asks nicely.
+      // The RAW task status, not `supervisorJobRunning`: the composed answer is
+      // about the daemon (a `Ready` task with a stamped daemon reads `true`),
+      // and what has to be ended here is a task INSTANCE.
+      const hadRunningInstance = schtasksStatus({ kind: 'schtasks', label: TASK_NAME }) === true;
+      if (hadRunningInstance) {
+        try {
+          endWindowsTask();
+          log(`Ended the previous '${TASK_NAME}' instance so the newly registered action can start.`);
+        } catch {
+          log(`Warning: could not end the running '${TASK_NAME}' instance — the start below may be ignored.`);
+        }
+      }
       // Start it now so the user does not have to log out/in (the singleton
       // guard makes a double-start a safe no-op).
       try {
@@ -1572,6 +2184,7 @@ daemon
       } catch {
         log('Task registered; immediate start failed — it will start on next logon.');
       }
+      await convergeInstalledSupervision(detectSupervisor(), postureArgs);
       await refreshClaudeHooks();
       await refreshKiroHooks();
       // Install Codex lifecycle hooks for parity with the macOS install path.
@@ -1608,6 +2221,7 @@ daemon
           installUnit(postureArgs);
           startUnit();
           log(`systemd user unit '${SERVICE_NAME}' installed and started.`);
+          await convergeInstalledSupervision(detectSupervisor(), postureArgs);
           log(`Unit file: ${getUnitPath()}`);
           if (process.env.AGENTDECK_DATA_DIR) {
             log(`Data dir: ${getDataDir()} (AGENTDECK_DATA_DIR persisted into the unit — re-run 'agentdeck daemon install' to change it)`);
@@ -1657,6 +2271,7 @@ daemon
     try { execSync(`launchctl unload "${PLIST_PATH}" 2>/dev/null`); } catch {}
     execSync(`launchctl load "${PLIST_PATH}"`);
     log('LaunchAgent loaded. Daemon will auto-start on login.');
+    await convergeInstalledSupervision(detectSupervisor(), postureArgs);
     await refreshClaudeHooks();
     await refreshKiroHooks();
     // Install Codex lifecycle hooks parallel to the LaunchAgent install
@@ -1862,7 +2477,8 @@ program
                 const ota = dev.otaSupported === true
                   ? ` OTA ${formatBytes(dev.otaSlotSize)}`
                   : dev.otaReason ? ` OTA no:${dev.otaReason}` : '';
-                lines.push(`                 ${board}${ver}${hash}${ota} @ ${dev.port}`);
+                const rssi = typeof dev.rssiDbm === 'number' ? ` rssi ${dev.rssiDbm}dBm` : '';
+                lines.push(`                 ${board}${ver}${hash}${ota}${rssi} @ ${dev.port}`);
               }
             } else {
               const portInfo = ports.length ? ` (${ports.join(', ')})` : '';
@@ -1886,7 +2502,8 @@ program
               // Single-path: a board also live on USB serial is driven over
               // serial; its WiFi link is a hot standby (no duplicate traffic).
               const transport = dev.serialActive ? ' [serial-active · wifi standby]' : '';
-              lines.push(`                 ${board}${ver}${hash}${product}${ota}${stale}${transport} @ ${dev.ip ?? 'wifi'}`);
+              const rssi = typeof dev.rssiDbm === 'number' ? ` rssi ${dev.rssiDbm}dBm` : '';
+              lines.push(`                 ${board}${ver}${hash}${product}${ota}${rssi}${stale}${transport} @ ${dev.ip ?? 'wifi'}`);
             }
             total += devices.length;
           }
@@ -2151,7 +2768,8 @@ esp32Cmd
 
 async function runEsp32Flash(target: string, opts: Record<string, any>): Promise<void> {
     const {
-      resolveFlashBoard, resolveFirmware, flashBoard, scanPortHolders, classifyHolders,
+      resolveFlashBoard, resolveFirmware, flashBoard, scanPortHolders, classifyHolders, scanTcpListener,
+      sweepAndSuspendDaemons,
       readDeviceIdentity, SERIAL_PROBE_UNAVAILABLE,
     } = await import('./esp32-flash.js');
     const { listCandidatePorts, loadSerialPort } = await import('./esp32-flash-transport.js');
@@ -2253,41 +2871,43 @@ async function runEsp32Flash(target: string, opts: Record<string, any>): Promise
     // A generous lease: a 16MB erase plus a 2MB write at 115200 is minutes, and
     // the lease expiring mid-write would hand the port back to the daemon.
     const leaseSeconds = opts.erase ? 900 : 420;
-    let suspended = false;
-    // Three outcomes, not two. A daemon that ANSWERS and refuses is not the same
-    // as no daemon: reporting a 401 as "nothing to suspend" would send the user
-    // into a flash with the daemon still holding the port, having just told them
-    // it was not.
-    const callDaemon = async (path: string, body: unknown): Promise<'ok' | 'absent' | string> => {
+
+    // Suspend EVERY AgentDeck daemon in the port window via the shared sweep —
+    // policy and the #327 truth table live in esp32-flash.ts (unit-pinned
+    // there): silence from an AgentDeck listener refuses the flash, a session
+    // bridge's 404 does not.
+    const callDaemonOn = async (
+      port: number, path: string, body: unknown,
+    ): Promise<{ ok: boolean; statusCode: number | null; errCode: string | null }> => {
       try {
         const { statusCode } = await postJsonWithTimeout<Record<string, unknown>>(
-          `http://127.0.0.1:${resolvedDaemonPort}${path}`, body, 10_000,
+          `http://127.0.0.1:${port}${path}`, body, 10_000,
         );
-        if (statusCode >= 200 && statusCode < 300) return 'ok';
-        return `daemon on :${resolvedDaemonPort} answered HTTP ${statusCode}`;
-      } catch {
-        return 'absent'; // nothing listening — the easy case, not an error
+        return { ok: statusCode >= 200 && statusCode < 300, statusCode, errCode: null };
+      } catch (err) {
+        return { ok: false, statusCode: null, errCode: (err as { code?: string }).code ?? null };
       }
     };
 
+    const sweepPorts = [...new Set<number>([
+      resolvedDaemonPort,
+      ...Array.from({ length: 20 }, (_, i) => 9120 + i),
+    ])];
+
+    let suspendedPorts: number[] = [];
     if (opts.suspend !== false) {
-      const result = await callDaemon('/esp32/serial/suspend', {
-        seconds: leaseSeconds, reason: 'agentdeck esp32 flash', pid: process.pid, board: board.id,
+      const { probeDaemonHealth } = await import('./session-registry.js');
+      const sweep = await sweepAndSuspendDaemons(sweepPorts, leaseSeconds, {
+        postSuspend: (port) => callDaemonOn(port, '/esp32/serial/suspend', {
+          seconds: leaseSeconds, reason: 'agentdeck esp32 flash', pid: process.pid, board: board.id,
+        }),
+        probeDaemonHealth,
+        scanTcpListener,
       });
-      suspended = result === 'ok';
-      if (suspended) {
-        log(`Daemon serial suspended for ${leaseSeconds}s (survives a daemon respawn).`);
-      } else if (result === 'absent') {
-        log('No daemon is listening — nothing to suspend.');
-      } else {
-        // It is there and said no. Refusing here beats flashing against a
-        // daemon that is still holding the port.
-        throw new Error(
-          `${result}. Refusing to flash while a daemon that will not stand down holds the port.\n`
-          + '  Stop it with `agentdeck daemon stop`, or pass --no-suspend if you have freed the port yourself.',
-        );
-      }
-      if (ours.length > 0 && !suspended) {
+      suspendedPorts = sweep.suspendedPorts;
+      for (const notice of sweep.notices) log(notice);
+      if (sweep.refuse) throw new Error(sweep.refuse);
+      if (ours.length > 0 && suspendedPorts.length === 0) {
         log(`WARNING: ${portPath} is held by ${ours.map((h) => `${h.command}(${h.pid})`).join(', ')}`
           + ' and no daemon answered the suspend call. If this is the macOS app, quit it.');
       }
@@ -2348,12 +2968,19 @@ async function runEsp32Flash(target: string, opts: Record<string, any>): Promise
     } finally {
       // ALWAYS, including on a thrown preflight refusal or a killed write. The
       // lease also expires on its own, so this is the fast path, not the only
-      // one.
-      if (suspended) {
-        const ok = await callDaemon('/esp32/serial/resume', {});
-        log(ok === 'ok'
-          ? 'Daemon serial resumed.'
-          : `Daemon did not resume (${ok}); the lease expires on its own in ≤${leaseSeconds}s.`);
+      // one — and every daemon the sweep suspended gets its resume, not just
+      // the registry's.
+      if (suspendedPorts.length > 0) {
+        const resumed: number[] = [];
+        const failed: number[] = [];
+        for (const port of suspendedPorts) {
+          const r = await callDaemonOn(port, '/esp32/serial/resume', {});
+          (r.ok ? resumed : failed).push(port);
+        }
+        if (resumed.length > 0) log(`Daemon serial resumed on :${resumed.join(', :')}.`);
+        if (failed.length > 0) {
+          log(`Daemon on :${failed.join(', :')} did not resume; the lease expires on its own in ≤${leaseSeconds}s.`);
+        }
       }
     }
 }
@@ -2562,21 +3189,34 @@ program
 
 program
   .command('diag [target]')
-  .description('Generate a diagnostic dump, or a focused agent/native-runtime diagnostic')
+  .description('Generate a diagnostic dump, or focused agent/native/connection diagnostics')
   .option('-p, --port <port>', 'Bridge server port', String(BRIDGE_WS_PORT))
   .option('-a, --analyze', 'Run AI analysis on the dump')
   .option('-t, --tail <lines>', 'Number of journal entries', '200')
   .option('--json', 'Print target diagnostics as machine-readable JSON')
-  .action(async (target, opts) => {
+  .action(async (target, opts, command) => {
     if (target) {
-      if (target !== 'kiro' && target !== 'agents' && target !== 'native') {
-        log(`Unknown diagnostic target: ${target}. Supported targets: agents, kiro, native`);
+      if (target !== 'kiro' && target !== 'agents' && target !== 'native' && target !== 'connection') {
+        log(`Unknown diagnostic target: ${target}. Supported targets: agents, kiro, native, connection`);
         process.exitCode = 1;
         return;
       }
       if (opts.analyze) {
         log('`--analyze` is only available for the general daemon diagnostic dump.');
         process.exitCode = 1;
+        return;
+      }
+      if (target === 'connection') {
+        const { collectConnectionDiagnostic, formatConnectionDiagnostic } = await import('./connection-diagnostics.js');
+        const port = command.getOptionValueSource('port') === 'cli' ? Number(opts.port) : undefined;
+        if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+          log('Port must be an integer from 1 to 65535');
+          process.exitCode = 1;
+          return;
+        }
+        const report = await collectConnectionDiagnostic({ port });
+        process.stdout.write(`${opts.json ? JSON.stringify(report, null, 2) : formatConnectionDiagnostic(report)}\n`);
+        if (!report.ok) process.exitCode = 1;
         return;
       }
       if (target === 'agents') {
@@ -2696,6 +3336,109 @@ task
   .option('-s, --session <id>', 'Target session id (defaults to active OpenClaw session)')
   .action(async (opts: { session?: string }) => {
     await postTaskClose({ signal: 'manual', outcome: 'abandoned', sessionId: opts.session });
+  });
+
+// ===== Daemon-persisted observed session order (#273 session-ordering gate) =====
+
+const order = program.command('order')
+  .description('Pin observed session order on the daemon (deck/tab sort; the daemon-first successor of managed `--weight`)');
+
+async function postSessionOrder(body: Record<string, unknown>, portOpt?: string): Promise<Record<string, any> | null> {
+  const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+  const info = readDaemonInfo();
+  const port = portOpt != null
+    ? parseInt(portOpt, 10)
+    : (info?.httpPort ?? info?.port ?? findDaemonPort());
+  if (!port) {
+    log('Daemon not running. Start it with `agentdeck daemon start`.');
+    process.exit(1);
+  }
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/sessions/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.status === 404) {
+      log(`The daemon on port ${port} does not support session-order pins (its build predates them). Update AgentDeck and restart the daemon.`);
+      process.exit(1);
+    }
+    const json = await res.json().catch(() => ({})) as Record<string, any>;
+    if (!res.ok) {
+      const matches = Array.isArray(json.matches) ? `\n  matches: ${json.matches.join('\n          ')}` : '';
+      log(`Failed (${res.status}): ${json.error ?? JSON.stringify(json)}${matches}`);
+      process.exit(1);
+    }
+    return json;
+  } catch (err) {
+    log(`Request failed: ${String(err)}`);
+    process.exit(1);
+  }
+}
+
+order
+  .command('set')
+  .description('Pin an observed session to a deck/tab sort slot (weight 0 clears the pin)')
+  .argument('<sessionId>', 'Observed session id — exact sessions_list id, unique prefix, or bare uuid')
+  .argument('<weight>', 'Integer -9999..9999; lower sorts first', parseWeight)
+  .option('-p, --port <port>', 'Daemon port')
+  .action(async (sessionId: string, weight: number, opts: { port?: string }) => {
+    const json = await postSessionOrder({ sessionId, weight }, opts.port);
+    if (!json) return;
+    if (json.weight === undefined) {
+      log(`Cleared order pin for ${json.sessionId}.`);
+    } else {
+      log(`Pinned ${json.sessionId} to weight ${json.weight} — every surface re-sorts on the next sessions_list.`);
+    }
+  });
+
+order
+  .command('clear')
+  .description('Remove an observed session order pin')
+  .argument('<sessionId>', 'Observed session id — exact sessions_list id, unique prefix, or bare uuid')
+  .option('-p, --port <port>', 'Daemon port')
+  .action(async (sessionId: string, opts: { port?: string }) => {
+    const json = await postSessionOrder({ sessionId, clear: true }, opts.port);
+    if (!json) return;
+    log(json.hadPin ? `Cleared order pin for ${json.sessionId}.` : `No pin was set for ${json.sessionId}.`);
+  });
+
+order
+  .command('list')
+  .description('List stored observed-session order pins')
+  .option('-p, --port <port>', 'Daemon port')
+  .action(async (opts: { port?: string }) => {
+    const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+    const info = readDaemonInfo();
+    const port = opts.port != null
+      ? parseInt(opts.port, 10)
+      : (info?.httpPort ?? info?.port ?? findDaemonPort());
+    if (!port) {
+      log('Daemon not running. Start it with `agentdeck daemon start`.');
+      process.exit(1);
+    }
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/sessions/order`, { signal: AbortSignal.timeout(5000) });
+      if (res.status === 404) {
+        log(`The daemon on port ${port} does not support session-order pins (its build predates them). Update AgentDeck and restart the daemon.`);
+        process.exit(1);
+      }
+      const json = await res.json().catch(() => ({})) as { pins?: Array<{ id: string; weight: number; lastSeenAt: number }> };
+      const pins = json.pins ?? [];
+      if (pins.length === 0) {
+        log('No session order pins stored.');
+        return;
+      }
+      log('Stored order pins (lower weight sorts first):');
+      for (const pin of pins) {
+        const seenMin = Math.max(1, Math.round((Date.now() - pin.lastSeenAt) / 60_000));
+        log(`  ${String(pin.weight).padStart(5)}  ${pin.id}  (seen ${seenMin}m ago)`);
+      }
+    } catch (err) {
+      log(`Request failed: ${String(err)}`);
+      process.exit(1);
+    }
   });
 
 // ===== Optional Python BLE runtime =====
@@ -3617,6 +4360,164 @@ apme
     log('');
   });
 
+/** Where a judge-health window starts, as an instant.
+ *
+ *  Day-or-longer windows snap back to a LOCAL midnight: `sinceMs` is an instant
+ *  while the buckets are local dates, so an unsnapped 14d makes the oldest row
+ *  a partial day that renders identically to a full one, with coverage computed
+ *  over a partial denominator. Sub-day windows are NOT snapped — that would
+ *  move `--since 6h` to yesterday's midnight and report 25 hours under a header
+ *  saying 6h; there the single partial day is exactly what was asked for.
+ *
+ *  Snapping can only move the start EARLIER, never past `now - windowMs`, so a
+ *  23-hour or 25-hour local day (a DST transition) cannot shorten the window. */
+export function judgeHealthWindowStart(windowMs: number, now: number = Date.now()): number {
+  const raw = now - windowMs;
+  if (windowMs < 86_400_000) return raw;
+  const start = new Date(raw);
+  start.setHours(0, 0, 0, 0);
+  return start.getTime();
+}
+
+/** A local YYYY-MM-DD, matching the day buckets the store groups by. */
+export function localDay(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Coverage as text, rounded DOWN.
+ *
+ *  `toFixed(0)` rounded 469/471 to `100%` while the Waiting column on the same
+ *  line said 2. An instrument whose only job is surfacing loss must never round
+ *  toward perfection. `Math.floor` alone is sufficient — it can only reach 100
+ *  at a true ratio of 1 — so there is deliberately no `>99%` special case to go
+ *  stale beside it. */
+export function coverageText(c: { adjudicable: number; ratio: number | null }): string {
+  if (c.ratio == null) return '—';
+  return `${Math.floor(c.ratio * 100)}% of ${c.adjudicable}`;
+}
+
+/** A span in the largest unit that keeps it readable. Seconds alone printed a
+ *  real p90 as `369266s`, which is the multi-day case this command exists to
+ *  surface. */
+export function duration(ms: number | null): string {
+  if (ms == null) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  // FLOOR the demoted unit. Rounding it inflated every seam by up to a third —
+  // 90s printed `2m`, 90m printed `2h` — and the 1m and 1h bands did not exist
+  // at all. An instrument for surfacing loss must not overstate its own spans.
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+apme
+  .command('judge-health')
+  .description('Judge coverage — whether closed work actually got a verdict')
+  .option('--since <window>', 'Lookback window, e.g. 6h / 3d / 2w (default 14d)', '14d')
+  .option('--json', 'Emit JSON instead of the table')
+  .action(async (opts) => {
+    const { initApme } = await import('./apme/index.js');
+    const { TASK_JUDGE_DRAIN_WINDOW_MS } = await import('./apme/runner.js');
+    const apme = await initApme();
+    if (!apme) { log('APME not available'); process.exit(1); }
+
+    const windowMs = parseLookbackWindow(opts.since);
+    if (windowMs == null) { log(`Unrecognized --since value: ${opts.since}`); process.exit(1); }
+    // One `now` for both, or the label compares against a later instant and
+    // reports every window as snapped.
+    const nowMs = Date.now();
+    const sinceMs = judgeHealthWindowStart(windowMs, nowMs);
+    const snapped = sinceMs !== nowMs - windowMs;
+    // The drain's own boundary, not a second copy of it — see
+    // TASK_JUDGE_DRAIN_WINDOW_MS.
+    const agedCutoffMs = nowMs - TASK_JUDGE_DRAIN_WINDOW_MS;
+    const rows = apme.store.judgeHealth({ sinceMs, agedCutoffMs });
+    const latency = apme.store.judgeLatency({ sinceMs });
+    // Whole-store, not windowed — see judgeAgedOutTotal.
+    const agedOutTotal = apme.store.judgeAgedOutTotal({ agedCutoffMs });
+    // Not all of them are lost verdicts, and saying so is the difference
+    // between a number and a claim: these were never offered to
+    // task-gradeability either, and measured on one store it refuses 70% of
+    // them for having no agent reply. Computing that here would mean loading
+    // every turn of every aged-out task.
+    const logLegend = () => {
+      log('  Declined = the judge correctly refused: no reply, aborted-only, or trivial. Not a miss.');
+      log('  Waiting  = unjudged but still inside the drain\'s lookback — the judge may yet reach it.');
+      log(`  AgedOut  = unjudged and older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback. Nothing will judge these.`);
+      log('  Coverage = judged / (judged + waiting + aged out). Declined rows are not in the denominator.');
+      log('');
+    };
+    const logAgedOutTotal = () => {
+      log(`  Aged out, whole store: ${agedOutTotal} task(s) older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback and never judged.`);
+      log(`  ${' '.repeat(21)} Not all are gradeable — they were never offered to the gradeability check either.`);
+    };
+
+    if (opts.json) {
+      log(JSON.stringify({
+        since: opts.since,
+        sinceMs,
+        drainWindowDays: TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000,
+        agedOutTotal,
+        // Coverage travels with the counts: a consumer left to recompute it is
+        // a consumer restating the denominator rule, which is what
+        // `judgeCoverage` exists to prevent.
+        days: rows.map((r) => ({ ...r, coverage: judgeCoverage(r) })),
+        latency,
+      }, null, 2));
+      return;
+    }
+    // The aged-out total and the legend print even with no rows. A machine idle
+    // for a fortnight with hundreds of aged-out tasks is exactly the state this
+    // command exists for, and returning early there showed only "nothing
+    // closed" — while --json still carried the number, so the two output modes
+    // disagreed about whether it exists.
+    if (rows.length === 0) {
+      log(`\n  No tasks closed since ${localDay(sinceMs)} (--since ${opts.since}).`);
+      logAgedOutTotal();
+      // The legend too: a reader looking at a store with nothing recent and
+      // hundreds of aged-out rows is exactly the reader who needs the one
+      // sentence defining what "aged out" means.
+      logLegend();
+      return;
+    }
+
+    // The RANGE actually rendered, not the flag. Snapping to a day boundary
+    // means `--since 1d` covers two local dates and `14d` fifteen of them; a
+    // header echoing the flag claims a span the table does not show.
+    log(`\n  Tasks closed since ${localDay(sinceMs)} (--since ${opts.since}${snapped ? ', snapped to a local day' : ''}) — whether each day's work got a verdict`);
+    log(`  ${'Day'.padEnd(12)} ${'Closed'.padEnd(7)} ${'Judged'.padEnd(7)} ${'Declined'.padEnd(9)} ${'Waiting'.padEnd(8)} ${'AgedOut'.padEnd(8)} Coverage`);
+    log(`  ${'─'.repeat(12)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(9)} ${'─'.repeat(8)} ${'─'.repeat(8)} ${'─'.repeat(9)}`);
+    const totals: ApmeJudgeHealthRow = { day: 'total', closed: 0, judged: 0, declined: 0, waiting: 0, agedOut: 0 };
+    for (const r of rows) {
+      totals.closed += r.closed; totals.judged += r.judged; totals.declined += r.declined;
+      totals.waiting += r.waiting; totals.agedOut += r.agedOut;
+      const cov = coverageText(judgeCoverage(r));
+      log(`  ${r.day.padEnd(12)} ${String(r.closed).padEnd(7)} ${String(r.judged).padEnd(7)} ${String(r.declined).padEnd(9)} ${String(r.waiting).padEnd(8)} ${String(r.agedOut).padEnd(8)} ${cov}`);
+    }
+    const t = judgeCoverage(totals);
+    log(`  ${'─'.repeat(12)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(9)} ${'─'.repeat(8)} ${'─'.repeat(8)} ${'─'.repeat(9)}`);
+    log(`  ${'all'.padEnd(12)} ${String(totals.closed).padEnd(7)} ${String(totals.judged).padEnd(7)} ${String(totals.declined).padEnd(9)} ${String(totals.waiting).padEnd(8)} ${String(totals.agedOut).padEnd(8)} ${coverageText(t)}`);
+    log('');
+    // `n > 0 || excluded > 0`: when EVERY judged task in the window has a
+    // backdated close the counts are n=0, excluded>0 — the reaper case the
+    // store comment describes — and gating on `n` alone printed nothing while
+    // --json still carried the number, which is the very silence `excluded`
+    // was added to end.
+    if (latency.n > 0 || latency.excluded > 0) {
+      const excl = latency.excluded > 0 ? `, ${latency.excluded} excluded (verdict predates the close)` : '';
+      log(`  Close → verdict: p50 ${duration(latency.p50Ms)}  p90 ${duration(latency.p90Ms)}  max ${duration(latency.maxMs)}  (n=${latency.n}${excl})`);
+    }
+    // Unconditional: the per-day column can only be non-zero for days older
+    // than the drain window, so at any --since inside it the column is all
+    // zeros and this line is the only place the leak shows.
+    logAgedOutTotal();
+    logLegend();
+  });
+
 apme
   .command('judge')
   .description('Run evaluation on unevaluated runs')
@@ -3673,6 +4574,88 @@ apme
       ts: Date.now(),
     });
     log(`Vibe ${verdict} recorded for run ${run.id.slice(0, 10)}.`);
+  });
+
+apme
+  .command('prune')
+  .description(
+    'Reclaim apme.sqlite disk space by clearing old tool payloads (#302). ' +
+    'Rows are KEPT — only steps.payload and tool sample_events.payload are ' +
+    'replaced with a small marker; runs/tasks/turns/evals are never touched. ' +
+    'Default is a DRY RUN (reports what would be reclaimed and changes nothing); ' +
+    'pass --apply to actually prune. There is no automatic or background ' +
+    'pruning — this command must be run by hand (or from your own cron/launchd).',
+  )
+  .option('--older-than <days>', 'Age cutoff in days', '30')
+  .option('--apply', 'Actually prune (default is dry-run)')
+  .option('--vacuum', 'Run VACUUM after --apply, only if free disk space is >= 1.1x the file size')
+  .action(async (opts) => {
+    const { initApme } = await import('./apme/index.js');
+    const { checkVacuumSpace } = await import('./apme/payload-prune.js');
+    const apme = await initApme();
+    if (!apme) { log('APME not available (better-sqlite3 missing)'); process.exit(1); }
+
+    const days = Number(opts.olderThan);
+    if (!Number.isFinite(days) || days <= 0) {
+      log(`Invalid --older-than value: ${opts.olderThan} (must be a positive number of days)`);
+      process.exit(1);
+    }
+    const cutoffMs = Date.now() - days * 86_400_000;
+    const fileSizeOf = (p: string): number => { try { return statSync(p).size; } catch { return 0; } };
+    const sizeBefore = fileSizeOf(apme.store.dbPath);
+
+    log('');
+    log(`  ${apme.store.dbPath}`);
+    log(`  Current file size: ${formatBytes(sizeBefore)}`);
+    log(`  Pruning payloads older than ${days}d (before ${new Date(cutoffMs).toISOString()})`);
+    log('  Kept forever, never touched: runs / tasks / turns / evals.');
+    log('  Rows are never deleted — only payload content is replaced with a pruned marker.');
+    log("  A row whose age is unknown (ts=0) is never a candidate — that would be a guess, not a measurement.");
+
+    if (!opts.apply) {
+      const preview = apme.store.previewPrune(cutoffMs);
+      log('');
+      log(`  ${'Table'.padEnd(24)} ${'Rows'.padEnd(10)} Payload bytes`);
+      log(`  ${'steps'.padEnd(24)} ${String(preview.steps.rows).padEnd(10)} ${formatBytes(preview.steps.bytesBefore)}`);
+      log(`  ${"sample_events (kind='tool')".padEnd(24)} ${String(preview.sampleEvents.rows).padEnd(10)} ${formatBytes(preview.sampleEvents.bytesBefore)}`);
+      const totalRows = preview.steps.rows + preview.sampleEvents.rows;
+      const totalBytes = preview.steps.bytesBefore + preview.sampleEvents.bytesBefore;
+      log('');
+      log(`  ${totalRows} rows, ~${formatBytes(totalBytes)} of payload would be reclaimed (marker overhead is negligible).`);
+      log('  This was a DRY RUN — nothing changed. Re-run with --apply to prune for real.');
+      log('  (Reclaiming the bytes on disk also needs --vacuum, or run `agentdeck apme prune --apply --vacuum`.)');
+      log('');
+      return;
+    }
+
+    const result = apme.store.applyPrune(cutoffMs);
+    log('');
+    log(`  Pruned ${result.steps.rows} steps rows: ${formatBytes(result.steps.bytesBefore)} -> ${formatBytes(result.steps.bytesAfter ?? 0)} of payload`);
+    log(`  Pruned ${result.sampleEvents.rows} sample_events (kind='tool') rows: ${formatBytes(result.sampleEvents.bytesBefore)} -> ${formatBytes(result.sampleEvents.bytesAfter ?? 0)} of payload`);
+
+    if (opts.vacuum) {
+      const check = checkVacuumSpace(apme.store.dbPath);
+      if (!check.ok) {
+        log('');
+        log(
+          `  Skipping VACUUM: free disk space (${formatBytes(check.freeBytes)}) is below ` +
+          `1.1x the current file size (${formatBytes(check.requiredBytes)} required). ` +
+          'Free up space and re-run `agentdeck apme prune --vacuum` (with nothing new to ' +
+          'prune, --apply is a no-op) to reclaim the bytes on disk.',
+        );
+      } else {
+        log('  Running VACUUM (this rewrites the whole file; may take a while on a large store)...');
+        apme.store.vacuum();
+        log('  VACUUM complete.');
+      }
+    } else {
+      log('  Skipped VACUUM (pass --vacuum to reclaim the freed bytes on disk — SQLite does not shrink the file on its own).');
+    }
+
+    const sizeAfter = fileSizeOf(apme.store.dbPath);
+    log('');
+    log(`  File size: ${formatBytes(sizeBefore)} -> ${formatBytes(sizeAfter)}`);
+    log('');
   });
 
 apme

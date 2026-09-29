@@ -1,0 +1,19 @@
+# 2026-09-22 — Native aquarium preview and quiet TRMNL gallery
+
+## Implementation
+
+- Added an optional TRMNL Aquarium page selected with KEY1, with KEY2 returning home. A fixed Blender-derived 800×384 monochrome plate occupies the upper 80%; connection, session counts and Claude/Codex/GLM gauges occupy the footer. Routine updates coalesce for 60 seconds and use only the lower 96-pixel partial window. Tool text/ticker churn cannot refresh the gallery. New attention bypasses the interval; decisions can interrupt it. Existing five-partial/ten-minute cleanup and full page-transition clears remain. This is quiet retained art, not continuous e-paper animation or a guarantee of zero flashing.
+- Created a separate Blender source, reproducible GLB/USDZ/1-bit exporters and optional native preview entry points. Android LCD uses Filament 1.75.1, a 24-second scene clip, 52 morph channels and a 60/30 cadence target; physical readers keep their existing renderer. Apple uses RealityKit with a single global scene clip. Native study residents are not yet live session entities, and current rock/plant art remains a prototype.
+- Visual review caught bright monochrome fish, poor portrait framing, incorrect botanical colors, malformed RealityKit polygons, overlapping USDZ animation tracks and a stale scene-phase capture during async loading. Fixed the paper material pass, Android landscape preview, palette, triangulated Apple export, single scene playback and post-load reconciliation with current scene phase. Apple currently omits shape deformation; Android retains it.
+
+## Verification and deployment
+
+- TRMNL native firmware and host simulator built. Simulator assertions exercise the actual gallery hash: ticker/work changes do not refresh it, GLM changes do, and stale usage ignores changing percentages. Online/offline previews render. Supported daemon OTA completed (1.5 MB / 1534 chunks); device reconnected as `trmnl_75`, version 1.4.0, build `90f00fa9-dirty`. Optical feedback requested; panel flashing cannot be established from a host PNG.
+- Lenovo installed with the optional native preview; model animation loads, landscape framing inspected, Back/reopen and background/return checked without a native crash. Android JUnit: 404 passed. Universal APK is about 33 MB versus about 5 MB before Filament; sustained GPU frame times/power are not yet measured. A SurfaceFlinger latency query returned no frame samples, so it is not evidence of 60 FPS.
+- Apple macOS app and standalone preview harness compiled. On-screen review verified corrected geometry and moving fish after the async playback fix. Physical iPad accepted and launched the preview build; the final animation fix was rebuilt, installed and launched on the same device. Other Apple devices and disconnected readers were not updated.
+- Workspace build/typecheck passed. Full Vitest initially passed 4670 tests and failed only the TRMNL preview origin pin; the default mirrored layout is unchanged, and the corrected pin test passed. Protocol generation left no drift. Design lint remains the existing 92 findings (89 tracked + 3 ignored artifacts), and all seven token mirrors pass.
+- Native model validation: one GLB scene animation with 52 weight channels, embedded buffers, about 1.2 MB; valid triangulated USDZ about 2.7 MB. All assets are locally authored. Existing dashboards and the shared daemon remain in place; no store release is claimed.
+
+## Remaining release gates
+
+Refine fish anatomy, plant silhouettes, lighting and framing before calling this a finished high-quality aquarium. Integrate actual agent identities/status without obscuring the scene; profile sustained frame time/thermal behavior and APK delivery size; test reduced-motion behavior and physical panel feedback. Keep the native viewer explicitly optional during this review.

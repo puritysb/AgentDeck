@@ -4,8 +4,8 @@
 // Native CoreBluetooth replacement for the Node CLI's Python `idotmatrix/sync.py`,
 // so the App Store macOS build can drive an iDotMatrix with no subprocess. Mirrors
 // PixooModule's lifecycle/Shadow/circuit-breaker/offline-frame patterns; the transport
-// is IDotMatrixBLE (GATT) instead of HTTP. Frames come from the same in-process
-// PixooRenderer (64×64 RGB), box-downscaled to 32×32 and PNG-encoded for the device.
+// is IDotMatrixBLE (GATT) instead of HTTP. Frames come from the in-process
+// MatrixExpression (native 32×32 RGB), then PNG-encoded for the device.
 //
 // Coexistence: unlike Pixoo/D200H/ESP32 (which the Node CLI daemon drives natively, so
 // the Swift app must not double-drive them), no external daemon can drive iDotMatrix's
@@ -85,7 +85,8 @@ actor IDotMatrixModule: DeviceModule {
     private var onStateChanged: (@Sendable () -> Void)?
     private var lastBroadcastDigest: String?
 
-    private let renderer = PixooRenderer()
+    private let renderer = PixooRenderer() // Static offline badge only.
+    private var expression = MatrixExpression()
     private var lastPushedRGB: [UInt8]?
     private var lastPushAtMs: Int64?
 
@@ -123,6 +124,7 @@ actor IDotMatrixModule: DeviceModule {
     }
 
     func stop() async {
+        expression.reset()
         renderTask?.cancel(); await renderTask?.value; renderTask = nil
         settingsReloadTask?.cancel(); await settingsReloadTask?.value; settingsReloadTask = nil
 
@@ -237,10 +239,7 @@ actor IDotMatrixModule: DeviceModule {
             guard await ensureConnected(device) else { return }
         }
 
-        // Render the native 32×32 compact terrarium. The old completed-scene
-        // 64→32 reduction shrank official marks to 5–6 physical LEDs and merged
-        // their negative space. Render EVERY tick; pixel dedup below prevents a
-        // static frame from costing a BLE write.
+        // Native event scenes and fleet summary, generated from the Node renderer.
         var rgb32: [UInt8]
         if dimIsOff {
             // Dim mode "off" means the panel should read as dark, matching Timebox.
@@ -250,11 +249,7 @@ actor IDotMatrixModule: DeviceModule {
             // the black frame is pushed once, then costs nothing until wake.
             rgb32 = [UInt8](repeating: 0, count: 32 * 32 * 3)
         } else {
-            let state = currentDashboardState()
-            let isDisconnectedPlaceholder = state.state == .disconnected && cachedAgentType == nil && cachedSessions.isEmpty
-            rgb32 = isDisconnectedPlaceholder
-                ? Self.downscale64to32([UInt8](renderer.renderDisconnectedFrame()))
-                : [UInt8](renderer.renderCompact32(dashboardState: state))
+            rgb32 = [UInt8](expression.render(size: 32, now: Date().timeIntervalSince1970 * 1000))
             // A restrained panel compensation keeps dark water visible without
             // clipping the mark's edge coverage and hollow features.
             rgb32 = Self.boostBrightnessContrast(rgb32, brightness: 1.22, contrast: 1.08)
@@ -337,51 +332,10 @@ actor IDotMatrixModule: DeviceModule {
 
     // MARK: - Broadcast events (cache for next render) — mirrors PixooModule
 
-    private var cachedState = "disconnected"
-    private var cachedProject: String?
-    private var cachedModel: String?
-    private var cachedTool: String?
-    private var cachedAgentType: String?
-    private var cachedSessions: [[String: Any]] = []
-    private var cached5h: Double?
-    private var cached7d: Double?
-    private var cached5hResetsAt: String?
-    private var cached7dResetsAt: String?
-    private var cachedCodexRateLimits: CodexRateLimits?
-    private var cachedGatewayAvailable = false
-    private var cachedGatewayConnected = false
-    private var cachedGatewayHasError = false
-
     func handleEvent(_ event: [String: Any]) {
+        expression.ingest(event, now: Date().timeIntervalSince1970 * 1000)
         guard let type = event["type"] as? String else { return }
         switch type {
-        case "state_update":
-            let eventAgentType = event["agentType"] as? String
-            // Kiro included: MicroGlyphs already carries its official 24/9/8px
-            // masks and violet, so leaving it out of this gate was the only thing
-            // keeping the ghost off the dot-matrix devices.
-            let creatureAgents: Set<String> = ["claude-code", "codex-cli", "codex-app", "opencode", "antigravity", "kiro-cli", "kiro-ide"]
-            if let at = eventAgentType, creatureAgents.contains(at) {
-                cachedState = event["state"] as? String ?? "disconnected"
-                cachedProject = event["projectName"] as? String
-                cachedModel = event["modelName"] as? String
-                cachedTool = event["currentTool"] as? String
-                cachedAgentType = eventAgentType
-            } else if cachedAgentType == nil {
-                cachedState = event["state"] as? String ?? "disconnected"
-                cachedAgentType = eventAgentType
-            }
-            cachedGatewayAvailable = event["gatewayAvailable"] as? Bool ?? cachedGatewayAvailable
-            cachedGatewayConnected = event["gatewayConnected"] as? Bool ?? cachedGatewayConnected
-            cachedGatewayHasError = event["gatewayHasError"] as? Bool ?? cachedGatewayHasError
-        case "usage_update":
-            cached5h = event["fiveHourPercent"] as? Double
-            cached7d = event["sevenDayPercent"] as? Double
-            cached5hResetsAt = event["fiveHourResetsAt"] as? String
-            cached7dResetsAt = event["sevenDayResetsAt"] as? String
-            cachedCodexRateLimits = dotMatrixCodexRateLimits(from: event["codexRateLimits"])
-        case "sessions_list":
-            cachedSessions = event["sessions"] as? [[String: Any]] ?? []
         case "display_state":
             let displayOn = event["displayOn"] as? Bool ?? true
             let dim = event["dim"] as? [String: Any]
@@ -415,48 +369,6 @@ actor IDotMatrixModule: DeviceModule {
 
     private func restoreBrightness() async {
         await setBrightness(devices.first?.brightness ?? 100)
-    }
-
-    // MARK: - DashboardState assembly (mirrors PixooModule)
-
-    private func currentDashboardState() -> DashboardState {
-        var state = DashboardState()
-        state.bridgeConnected = cachedState != "disconnected"
-        state.sessionId = firstAliveSession(in: cachedSessions)?["id"] as? String
-        state.state = AgentConnectionState(rawValue: cachedState) ?? .idle
-        state.agentType = cachedAgentType ?? firstAliveSession(in: cachedSessions)?["agentType"] as? String
-        state.projectName = cachedProject ?? firstAliveSession(in: cachedSessions)?["projectName"] as? String
-        state.modelName = cachedModel
-        state.currentTool = cachedTool
-        state.fiveHourPercent = cached5h
-        state.sevenDayPercent = cached7d
-        state.fiveHourResetsAt = cached5hResetsAt
-        state.sevenDayResetsAt = cached7dResetsAt
-        state.codexRateLimits = cachedCodexRateLimits
-        state.gatewayAvailable = cachedGatewayAvailable
-        state.gatewayConnected = cachedGatewayConnected
-        state.gatewayHasError = cachedGatewayHasError
-        state.siblingSessions = cachedSessions.compactMap(Self.makeSessionInfo)
-        return state
-    }
-
-    private func firstAliveSession(in sessions: [[String: Any]]) -> [String: Any]? {
-        sessions.first { ($0["alive"] as? Bool) ?? true }
-    }
-
-    private static func makeSessionInfo(from raw: [String: Any]) -> SessionInfo? {
-        guard let id = raw["id"] as? String else { return nil }
-        let port: Int
-        if let p = raw["port"] as? Int { port = p }
-        else if let n = raw["port"] as? NSNumber { port = n.intValue }
-        else { port = 0 }
-        return SessionInfo(
-            id: id, port: port,
-            projectName: raw["projectName"] as? String,
-            agentType: raw["agentType"] as? String,
-            alive: (raw["alive"] as? Bool) ?? true,
-            state: raw["state"] as? String
-        )
     }
 
     // MARK: - Shadow / broadcast

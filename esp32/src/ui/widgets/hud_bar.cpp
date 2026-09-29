@@ -1,9 +1,16 @@
+#include "util/usage_severity.generated.h"
+#include "../../audio/wake_word.h"
 #include "hud_bar.h"
+#if defined(BOARD_IPS10)
+#include "ips10_workspace.h"
+#endif
 #include "../theme.h"
+#include "../session_state.generated.h"
 #include "../display.h"
 #include "../assets/logo.h"
 #include "../../state/agent_state.h"
 #include "../../util/usage_format.h"
+#include "../../util/usage_rows.h"
 #include "../../util/utf8.h"
 #include "../agent_label.h"
 #include "config.h"
@@ -19,6 +26,7 @@
 #include "../../audio/es8311_codec.h"       // volume steppers
 #endif
 #include <Arduino.h>
+#include <cctype>
 #include <cstdarg>
 
 #if defined(IPS10_PERF_HUD)
@@ -61,6 +69,7 @@ static void appendBounded(char* buf, size_t len, size_t& pos, const char* fmt, .
 #endif
 
 #if defined(BOARD_IPS10)
+#include "collaboration_layout.h"
 // === IPS10 (800×1280) tablet sidebar: a LIVING AGENT MOSAIC ===
 // One cell per active agent; each cell's height fluidly grows when the agent is working
 // and shrinks when idle, and shows inline what that agent is doing. Replaces the static
@@ -83,6 +92,7 @@ static lv_obj_t* tb5hPct   = nullptr;    // "62% 2h13m"
 static lv_obj_t* tb7dPct   = nullptr;
 // Codex (ChatGPT) usage gauges — mirror the Claude 5h/7d pair, blue-tinted.
 // The whole group hides when no Codex limits are present (common case).
+static lv_obj_t *tbClaudeBlock, *tbZaiBlock, *tbZa5hFill, *tbZa5hPct;
 static lv_obj_t* tbCodexBlock = nullptr; // whole Codex block (hide when no data at all)
 static lv_obj_t* tbCx5hGrp = nullptr;    // per-window ROW (hide when that window is absent)
 static lv_obj_t* tbCx7dGrp = nullptr;
@@ -112,6 +122,12 @@ static lv_obj_t* cellProj[MOSAIC_MAX] = {nullptr};   // project name (dim)
 static lv_obj_t* cellTool[MOSAIC_MAX] = {nullptr};   // "▸ tool" in a bordered box
 static lv_obj_t* cellBody[MOSAIC_MAX] = {nullptr};   // think / awaiting question (single line, dotted)
 static lv_obj_t* cellMeta[MOSAIC_MAX] = {nullptr};   // model · elapsed footer (hidden on short cells)
+// Allocated by LVGL once at init, one short census label per existing card.
+// No per-frame heap object creation; values are bounded in the session snapshot.
+static lv_obj_t* cellCoord[MOSAIC_MAX] = {nullptr};
+// 960 bytes of IPS10-only static text, reused instead of lv_label_set_text's
+// heap copy on every census change. The ten label widgets live with the HUD.
+static char cellCoordText[MOSAIC_MAX][96] = {};
 // Animated current rect per cell (lerped toward the treemap target) — fluid boundaries.
 static float cellCurX[MOSAIC_MAX] = {0};
 static float cellCurY[MOSAIC_MAX] = {0};
@@ -136,6 +152,7 @@ static lv_image_dsc_t glyphCrayfish;   // OpenClaw
 static lv_image_dsc_t glyphOpencode;   // OpenCode
 static lv_image_dsc_t glyphAntigravityColor; // Antigravity full-color mark
 static lv_image_dsc_t glyphCodex;      // Codex (cloud + >_ mark)
+static lv_image_dsc_t glyphZai;
 static lv_image_dsc_t glyphKiro;       // Kiro (ghost mark, design/brand/kiro.svg)
 static uint8_t glyphAntigravityColorData[64 * 64 * 3]; // RGB565 plane + A8 plane, IPS10-only static reuse.
 static bool glyphsReady = false;
@@ -197,6 +214,7 @@ static void ips10InitGlyphs() {
     ips10BuildGlyph(glyphOpencode, OPENCODE_A8,      OPENCODE_W,      OPENCODE_H);
     ips10BuildAntigravityColorGlyph();
     ips10BuildGlyph(glyphCodex,    CODEX_A8,         CODEX_W,         CODEX_H);
+    ips10BuildGlyph(glyphZai, ZAI_A8, ZAI_W, ZAI_H);
     ips10BuildGlyph(glyphKiro,     KIRO_A8,          KIRO_W,          KIRO_H);
     glyphsReady = true;
 }
@@ -212,6 +230,7 @@ static const lv_image_dsc_t* ips10AgentGlyph(const char* agentType) {
     if (strstr(agentType, "codex"))     return &glyphCodex;
     if (strstr(agentType, "claude"))    return &glyphOctopus;
     if (strstr(agentType, "kiro"))      return &glyphKiro;
+    if (!strcmp(agentType, "zai"))      return &glyphZai;   // USAGE provider mark only
     return nullptr;   // unknown agent → dot fallback in the name line
 }
 
@@ -329,17 +348,19 @@ static uint32_t ips10AgentColor(const char* agentType) {
 }
 // D1 "Tide Bento" semantic state tokens (docs/design/tenin/screen.css :root):
 //   --ok #52D988 (working) · --attn #FFA93D (awaiting) · --error #FF6B6B · --faint #5D7470 (idle)
-// Product-UI bright STATE palette — data.js SSOT (tenin/data.js STATE.*.color).
-static constexpr uint32_t D1_OK    = 0x3ED6E8;  // processing (cyan)
-static constexpr uint32_t D1_ATTN  = 0xFFA93D;  // awaiting
-static constexpr uint32_t D1_ERROR = 0xFF6B6B;  // error
-static constexpr uint32_t D1_IDLE  = 0x7A8A9C;  // idle
-static constexpr uint32_t D1_CODEX = 0x6166E0;  // Codex brand blue (Brand.codex)
+// Product-UI signal palette — design tokens, one meaning per hue (DESIGN.md §2.6/§2.7).
+static constexpr uint32_t D1_WORKING = ProductPalette::SessionWorking;  // an agent is working (cyan)
+static constexpr uint32_t D1_ATTN    = ProductPalette::SessionAwaiting; // needs you
+static constexpr uint32_t D1_ERROR   = ProductPalette::UiError;         // failure
+static constexpr uint32_t D1_OFFLINE = ProductPalette::SessionOffline;  // no live information
+static constexpr uint32_t D1_LINK_UP = ProductPalette::UiOk;            // health: daemon link up
+static constexpr uint32_t D1_FOCUS   = ProductPalette::UiCyan;          // selection chrome
+static constexpr uint32_t D1_CODEX = ProductPalette::BrandCodex;      // Codex brand blue
 static uint32_t ips10StateColor(const char* state) {
-    if (strstr(state, "awaiting") != nullptr) return D1_ATTN;
-    if (strcmp(state, "processing") == 0)     return D1_OK;
+    // Failures are not session states; everything else is the shared mapping,
+    // so idle and offline stay distinct here as on every other surface.
     if (strstr(state, "error") != nullptr || strstr(state, "fail") != nullptr) return D1_ERROR;
-    return D1_IDLE;   // idle / unknown → faint slate (matches D1 idle cells)
+    return SessionState::color(state);
 }
 // Compact elapsed for the cell footer: "45s" / "18m" / "2h" / "3d" (NTP-less device,
 // value arrives pre-derived as seconds from the daemon's startedAt).
@@ -361,12 +382,7 @@ static const char* ips10AgentLabel(const char* agentType) {
 }
 // Short uppercase pill text (D1 state pill).
 static const char* ips10StatePill(const char* state) {
-    if (strcmp(state, "processing") == 0)      return "WORKING";
-    if (strcmp(state, "awaiting_option") == 0) return "CHOOSE";
-    if (strcmp(state, "awaiting_diff") == 0)   return "DIFF";
-    if (strstr(state, "awaiting") != nullptr)  return "AWAITING";
-    if (strcmp(state, "idle") == 0)            return "IDLE";
-    return state;
+    return SessionState::shortLabel(state);
 }
 #endif
 
@@ -374,49 +390,22 @@ static const char* ips10StatePill(const char* state) {
 static lv_obj_t* panelRight = nullptr;
 static lv_obj_t* lblTankHeader = nullptr;
 
-// Per-provider tank groups: each = a brand-coloured header ("● CLAUDE" / "● CODEX")
-// over its 5h/7d water tanks. The group is the hide unit, so 1 or 2 providers lay
-// out cohesively and the panel simply grows a second block when Codex data arrives.
-// IPS10 renders usage in its D1 topbar instead — the whole tank panel is
-// !BOARD_IPS10 only.
-static lv_obj_t* claudeGroup = nullptr;
-static lv_obj_t* codexGroup  = nullptr;
-
-// Claude 5h / 7d tanks
-static lv_obj_t* gauge5hBox = nullptr;
-static lv_obj_t* gauge5hFill = nullptr;
-static lv_obj_t* gauge5hPct = nullptr;
-static lv_obj_t* gauge5hPeriod = nullptr;
-static lv_obj_t* gauge5hReset = nullptr;
-static lv_obj_t* gauge7dBox = nullptr;
-static lv_obj_t* gauge7dFill = nullptr;
-static lv_obj_t* gauge7dPct = nullptr;
-static lv_obj_t* gauge7dPeriod = nullptr;
-static lv_obj_t* gauge7dReset = nullptr;
-
-// Codex 5h / 7d tanks (same water-tank widget, blue-headed group)
-static lv_obj_t* gaugeCx5hBox = nullptr;
-static lv_obj_t* gaugeCx5hFill = nullptr;
-static lv_obj_t* gaugeCx5hPct = nullptr;
-static lv_obj_t* gaugeCx5hPeriod = nullptr;
-static lv_obj_t* gaugeCx5hReset = nullptr;
-static lv_obj_t* gaugeCx7dBox = nullptr;
-static lv_obj_t* gaugeCx7dFill = nullptr;
-static lv_obj_t* gaugeCx7dPct = nullptr;
-static lv_obj_t* gaugeCx7dPeriod = nullptr;
-static lv_obj_t* gaugeCx7dReset = nullptr;
-
-// Stale indicator
-static lv_obj_t* lblStale = nullptr;
-
-#if !defined(BOARD_IPS10)
-// Account chip (styled pill) — shortened Antigravity plan ("AGY Pro") + any
-// subscription expiries. Hidden when the daemon supplies none (e.g. the App Store
-// Swift daemon exposes no subscription/Antigravity data). The raw Antigravity
-// credit count is never shown (meaningless at a glance).
-static lv_obj_t* acctChip = nullptr;
-static lv_obj_t* acctChipLabel = nullptr;
+// Per-provider tank groups (UsageRows order: Claude, Codex, z.ai, Antigravity):
+// a brand-coloured header ("● CODEX  Pro") over up to two tanks. A tank shows a
+// window — or the provider's plan in the slot a missing window leaves (e.g. a
+// Codex plan with no 5h limit). The group is the hide unit, so providers lay
+// out cohesively. IPS10 renders usage in its workspace — !BOARD_IPS10 only.
+// Slots are indexed by display position (the header names the provider), so
+// narrow panels hold only the three columns they can show — DRAM is tight on
+// the no-PSRAM TTGO.
+#if IS_ROUND || defined(BOARD_TTGO)
+static constexpr uint8_t TANK_SLOTS = 3;
+#else
+static constexpr uint8_t TANK_SLOTS = UsageRows::MAX_GROUPS;
 #endif
+struct Tank { lv_obj_t *col, *fill, *pct, *period, *reset; };
+static lv_obj_t* tankGroup[TANK_SLOTS] = {};
+static Tank tanks[TANK_SLOTS][2] = {};
 
 static bool visible = true;
 static bool lastShowTankStatus = true;
@@ -429,12 +418,13 @@ static constexpr int PANEL_TOP_Y = 28;
 #if defined(BOARD_TTGO)
 static constexpr int GAUGE_SIZE = 40;
 #elif IS_ROUND
-static constexpr int GAUGE_SIZE = 44;
+static constexpr int GAUGE_SIZE = 72;
 #else
-static constexpr int GAUGE_SIZE = 58;
+static constexpr int GAUGE_SIZE = 94;
 #endif
 static constexpr int GAUGE_BORDER = 1;
 static constexpr int GAUGE_INNER = GAUGE_SIZE - GAUGE_BORDER * 2;
+static constexpr int GAUGE_HEIGHT = 28;
 static constexpr int GAUGE_GAP = 8;
 static constexpr int GAUGE_RADIUS = 6;
 
@@ -485,7 +475,7 @@ static lv_obj_t* createGauge(lv_obj_t* parent,
 
     // Gauge box (glass background)
     box = lv_obj_create(col);
-    lv_obj_set_size(box, GAUGE_SIZE, GAUGE_SIZE);
+    lv_obj_set_size(box, GAUGE_SIZE, GAUGE_HEIGHT);
     lv_obj_set_style_bg_color(box, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_bg_opa(box, (lv_opa_t)32, 0);  // 12.5% white glass
     lv_obj_set_style_border_width(box, GAUGE_BORDER, 0);
@@ -498,10 +488,10 @@ static lv_obj_t* createGauge(lv_obj_t* parent,
 
     // Water fill bar (bottom-aligned, inside border)
     fill = lv_obj_create(box);
-    lv_obj_set_size(fill, GAUGE_INNER, 0);
-    lv_obj_align(fill, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_size(fill, 0, GAUGE_HEIGHT - 2 * GAUGE_BORDER);
+    lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_set_style_bg_color(fill, lv_color_hex(Theme::StatusGreen), 0);
-    lv_obj_set_style_bg_opa(fill, LV_OPA_50, 0);
+    lv_obj_set_style_bg_opa(fill, LV_OPA_20, 0);
     lv_obj_set_style_border_width(fill, 0, 0);
     lv_obj_set_style_radius(fill, 0, 0);
     lv_obj_set_style_pad_all(fill, 0, 0);
@@ -511,14 +501,21 @@ static lv_obj_t* createGauge(lv_obj_t* parent,
     periodLabel = lv_label_create(box);
     lv_obj_set_style_text_color(periodLabel, lv_color_hex(Theme::HUDDim), 0);
     lv_obj_set_style_text_font(periodLabel, &lv_font_montserrat_10, 0);
-    lv_obj_align(periodLabel, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_align(periodLabel, LV_ALIGN_LEFT_MID, 4, 0);
     lv_label_set_text(periodLabel, period);
 
     // Percentage text (centered in gauge)
     pctLabel = lv_label_create(box);
     lv_obj_set_style_text_color(pctLabel, lv_color_hex(Theme::HUDText), 0);
-    lv_obj_set_style_text_font(pctLabel, &lv_font_montserrat_16, 0);
-    lv_obj_align(pctLabel, LV_ALIGN_CENTER, 0, 2);
+    lv_obj_set_style_text_font(pctLabel, &lv_font_montserrat_14, 0);
+    lv_obj_align(pctLabel, LV_ALIGN_RIGHT_MID, -4, 0);
+#if defined(BOARD_TTGO)
+    lv_obj_set_style_bg_color(box, lv_color_hex(Theme::DeepSea), 0);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_font(pctLabel, &lv_font_montserrat_14, 0);
+    lv_obj_align(periodLabel, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(pctLabel, LV_ALIGN_BOTTOM_MID, 0, 0);
+#endif
     lv_label_set_text(pctLabel, "0%");
 
     // Reset time BELOW gauge box (e.g. "1h 55m")
@@ -530,13 +527,10 @@ static lv_obj_t* createGauge(lv_obj_t* parent,
     return col;
 }
 
-// Provider tank group: a brand-coloured header ("● CLAUDE") stacked over a row of
-// the provider's 5h/7d water tanks. Returned container is the hide unit. Keeps the
-// existing tank aesthetic while making the provider unambiguous (matches the IPS10
-// "brand mark conveys the provider, labels stay 5h/7d" convention).
-static lv_obj_t* makeTankGroup(lv_obj_t* parent, const char* name, uint32_t brandColor,
-                               lv_obj_t*& b5, lv_obj_t*& f5, lv_obj_t*& p5, lv_obj_t*& pe5, lv_obj_t*& r5,
-                               lv_obj_t*& b7, lv_obj_t*& f7, lv_obj_t*& p7, lv_obj_t*& pe7, lv_obj_t*& r7) {
+// Provider tank group: a brand-coloured header stacked over the provider's two
+// tanks. Returned container is the hide unit. Keeps the tank aesthetic while
+// the brand colour names the provider (labels stay 5h/7d).
+static lv_obj_t* makeTankGroup(lv_obj_t* parent, Tank (&slots)[2]) {
     lv_obj_t* grp = lv_obj_create(parent);
     lv_obj_set_size(grp, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(grp, LV_OPA_TRANSP, 0);
@@ -545,29 +539,31 @@ static lv_obj_t* makeTankGroup(lv_obj_t* parent, const char* name, uint32_t bran
     lv_obj_set_style_pad_row(grp, 2, 0);
     lv_obj_clear_flag(grp, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(grp, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(grp, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(grp, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    // Brand header: coloured dot + provider name
-    lv_obj_t* hdr = lv_label_create(grp);
-    lv_obj_set_style_text_font(hdr, &lv_font_montserrat_10, 0);
-    lv_label_set_recolor(hdr, true);
-    char h[48];
-    snprintf(h, sizeof(h), "#%06lX " LV_SYMBOL_BULLET "# #%06lX %s#",
-             (unsigned long)brandColor, (unsigned long)brandColor, name);
-    lv_label_set_text(hdr, h);
+    lv_obj_t* header = lv_label_create(grp);   // child 0: provider header
+    lv_obj_set_style_text_font(header, &lv_font_montserrat_10, 0);
+    lv_label_set_recolor(header, true);
+    lv_label_set_long_mode(header, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(header, GAUGE_SIZE);
+    lv_obj_set_style_text_align(header, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(header, "");
 
-    // Tanks row (5h + 7d side by side)
-    lv_obj_t* row = lv_obj_create(grp);
-    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(row, 0, 0);
-    lv_obj_set_style_pad_all(row, 0, 0);
-    lv_obj_set_style_pad_column(row, GAUGE_GAP, 0);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    createGauge(row, b5, f5, p5, pe5, r5, "5h");
-    createGauge(row, b7, f7, p7, pe7, r7, "7d");
+    for (auto& t : slots) {
+        lv_obj_t* box = nullptr;
+        t.col = createGauge(grp, box, t.fill, t.pct, t.period, t.reset, "");
+    }
+    lv_obj_add_flag(grp, LV_OBJ_FLAG_HIDDEN);
     return grp;
+}
+
+static uint32_t tankBrand(UsageRows::Provider p) {
+    switch (p) {
+        case UsageRows::CLAUDE: return Theme::ClaudeBody;
+        case UsageRows::CODEX:  return Theme::CloudBodyLight;
+        case UsageRows::ZAI:    return Theme::ZaiBlue;
+        default:                return Theme::AntigravityYellow;
+    }
 }
 
 #if defined(BOARD_IPS10)
@@ -640,7 +636,8 @@ static void detailEnsure() {
     // Floating modal card: wide-but-short on the 1280×800 panel so there are clear
     // margins on every side (≈300px L/R, ≈120px T/B). The old 560×720 was 90% of the
     // screen height → read as a full-screen cover rather than a modal layer.
-    lv_obj_set_size(detailPanel, 680, 560);
+    const int detailWidth = g_screenW - IPS10_TERRARIUM_W - 40;
+    lv_obj_set_size(detailPanel, detailWidth < 680 ? detailWidth : 680, 560);
     lv_obj_center(detailPanel);
     // Soft drop shadow lifts the card off the dimmed backdrop (modal depth cue).
     lv_obj_set_style_shadow_width(detailPanel, 48, 0);
@@ -690,7 +687,7 @@ static void detailEnsure() {
 
     detailAction = lv_label_create(detailPanel);
     lv_obj_set_style_text_color(detailAction, lv_color_hex(Theme::HUDText), 0);
-    lv_obj_set_style_text_font(detailAction, &font_kr_12, 0);
+    lv_obj_set_style_text_font(detailAction, &font_kr_16, 0);
     lv_label_set_long_mode(detailAction, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(detailAction, LV_PCT(100));
 
@@ -707,7 +704,7 @@ static void detailEnsure() {
 
     detailLog = lv_label_create(logScroll);
     lv_obj_set_style_text_color(detailLog, lv_color_hex(Theme::HUDDim), 0);
-    lv_obj_set_style_text_font(detailLog, &font_kr_12, 0);
+    lv_obj_set_style_text_font(detailLog, &font_kr_16, 0);
     lv_label_set_recolor(detailLog, true);
     lv_label_set_long_mode(detailLog, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(detailLog, LV_PCT(100));
@@ -745,6 +742,15 @@ static void detailRefresh() {
     char titleBuf[64];
     strncpy(titleBuf, m.name[0] ? m.name : "Session", sizeof(titleBuf) - 1);
     titleBuf[sizeof(titleBuf) - 1] = '\0';
+    lockState();
+    for (uint8_t i = 0; i < g_state.sessionCount; ++i) {
+        const auto& session = g_state.sessions[i];
+        if (!strcmp(session.id, m.sid) && session.projectName[0]) {
+            snprintf(titleBuf, sizeof(titleBuf), "%s", session.projectName);
+            break;
+        }
+    }
+    unlockState();
     sanitizeIps10Text(titleBuf);
     lv_label_set_text(detailTitle, titleBuf);
 
@@ -830,8 +836,8 @@ static void detailOpen(int idx) {
     detailRefresh();
 }
 #if defined(BOARD_IPS10) && defined(BOARD_HAS_VOICE_CAPTURE)
-// Short tap: toggle this session as the hold-to-talk target. Long press (the
-// separate callback below) opens the detail overlay, so the two never collide:
+// Long press selects the hold-to-talk target; a short tap opens details.
+// The gestures never collide:
 // LVGL only fires SHORT_CLICKED when the press ended before the long-press
 // threshold.
 static void cellTapCb(lv_event_t* e) {
@@ -972,6 +978,11 @@ static lv_obj_t* makeUsageBlock(lv_obj_t* parent, const lv_image_dsc_t* icon, ui
 // board-local by design (see voiceTargetSid); the button's sub-label always
 // names the session the next hold will speak to, because a mic whose target is
 // discovered only after release is a mic nobody trusts twice.
+static lv_obj_t* wakeLabel = nullptr;
+static lv_obj_t* volumeLabel = nullptr;
+static lv_obj_t* volumeDown = nullptr;
+static lv_obj_t* volumeUp = nullptr;
+static char volumeText[24]; // reused by the drawer's single label
 static lv_obj_t* voiceBtn = nullptr;
 static lv_obj_t* voiceBtnLabel = nullptr;
 static lv_obj_t* voiceBtnTarget = nullptr;   // sub-label: who hears the next hold
@@ -1097,7 +1108,7 @@ static bool voiceResolveTarget(char* idOut, size_t idCap, char* labelOut, size_t
             const SessionInfo& si = g_state.sessions[i];
             if (!si.alive || strcmp(si.id, voiceTargetSid) != 0) continue;
             snprintf(idOut, idCap, "%s", si.id);
-            snprintf(labelOut, labelCap, "%s", si.projectName[0] ? si.projectName : si.id);
+            snprintf(labelOut, labelCap, "%s", sessionDisplayName(si)[0] ? sessionDisplayName(si) : si.id);
             found = true;
         }
         if (!found) {
@@ -1112,7 +1123,7 @@ static bool voiceResolveTarget(char* idOut, size_t idCap, char* labelOut, size_t
             if (!si.alive || !si.id[0]) continue;
             if (!isGeneralAssistantSession(si.agentType, si.projectName)) continue;
             snprintf(idOut, idCap, "%s", si.id);
-            snprintf(labelOut, labelCap, "%s", si.projectName[0] ? si.projectName : si.id);
+            snprintf(labelOut, labelCap, "%s", sessionDisplayName(si)[0] ? sessionDisplayName(si) : si.id);
             found = true;
         }
     }
@@ -1127,7 +1138,7 @@ static bool voiceResolveTarget(char* idOut, size_t idCap, char* labelOut, size_t
             const SessionInfo& si = g_state.sessions[i];
             if (!si.alive || !si.id[0]) continue;
             snprintf(idOut, idCap, "%s", si.id);
-            snprintf(labelOut, labelCap, "%s", si.projectName[0] ? si.projectName : si.id);
+            snprintf(labelOut, labelCap, "%s", sessionDisplayName(si)[0] ? sessionDisplayName(si) : si.id);
             found = true;
         }
     }
@@ -1159,7 +1170,9 @@ static void voicePressCb(lv_event_t* e) {
     // micStart on purpose: micStart's codec-ensure runs synchronously on this
     // thread, so the tone's playback task never races those ~40 I2C writes.
     // The mic picks up the tick's tail; the recognizer shrugs it off.
+#if !defined(BOARD_IPS10)
     Audio::playTone(1200, 25, 0.18f);
+#endif // IPS10's audio owner plays its cue after capture is ready.
     HUD::setListening(label);
     lv_obj_set_style_bg_color(voiceBtn, lv_color_hex(Theme::StatusAmber), 0);
     lv_obj_set_style_text_color(voiceBtnLabel, lv_color_hex(0x0B1D1A), 0);
@@ -1186,9 +1199,48 @@ static void voiceReleaseCb(lv_event_t* e) {
     lv_label_set_text(voiceBtnLabel, "Hold to talk");
 }
 
-// Called from update(): a transient notice has to clear itself, and update() is
-// the only thing already ticking on the LVGL thread.
+static void refreshVolume() {
+#if defined(BOARD_SPK_CODEC_ES8311)
+    if (!volumeLabel) return;
+    const int v = Es8311::volume();
+    char text[24];
+    snprintf(text, sizeof(text), "Volume %d%%", v);
+    if (strcmp(text, volumeText) != 0) {
+        snprintf(volumeText, sizeof(volumeText), "%s", text);
+        lv_label_set_text_static(volumeLabel, volumeText);
+    }
+    if (v <= 10) lv_obj_add_state(volumeDown, LV_STATE_DISABLED);
+    else lv_obj_remove_state(volumeDown, LV_STATE_DISABLED);
+    if (v >= 100) lv_obj_add_state(volumeUp, LV_STATE_DISABLED);
+    else lv_obj_remove_state(volumeUp, LV_STATE_DISABLED);
+#endif
+}
+
+static void adjustVolume(int delta) {
+#if defined(BOARD_SPK_CODEC_ES8311)
+    int v = Es8311::volume() + delta;
+    if (v < 10) v = 10;
+    if (v > 100) v = 100;
+    const bool saved = Es8311::setUserVolume(v);
+    refreshVolume();
+    if (!saved) HUD::notify("Volume changed; save failed");
+    // No test tone: adjusting volume must not interrupt an ongoing reply.
+#endif
+}
+
+// Called from update(): notices and controls tick only on the LVGL thread.
 static void voiceTick() {
+    static uint32_t lastWakeUpdate = 0;
+    if (wakeLabel && millis() - lastWakeUpdate >= 250) {
+        lastWakeUpdate = millis();
+        char text[96];
+        snprintf(text, sizeof(text), "OpenClaw %s " LV_SYMBOL_BULLET " %s",
+                 !WakeWord::ready() ? "unavailable" : WakeWord::enabled() ? "ON" : "OFF",
+                 Audio::voiceState());
+        if (strcmp(lv_label_get_text(wakeLabel), text) != 0) lv_label_set_text(wakeLabel, text);
+        refreshVolume();
+    }
+
     VoiceUiCommand command = {VoiceUiOp::NONE, {0}};
     portENTER_CRITICAL(&voiceUiMux);
     command = pendingVoiceUi;
@@ -1284,8 +1336,41 @@ static void voiceTick() {
 // up the space rather than sit underneath: floating it absolutely put the button
 // on top of a live card, which the host simulator caught before any hardware did.
 static void voiceCreate(lv_obj_t* pane) {
+    lv_obj_t* wakeRow = lv_obj_create(pane);
+    lv_obj_set_size(wakeRow, LV_PCT(100), 52);
+    lv_obj_set_style_pad_all(wakeRow, 4, 0);
+    lv_obj_set_style_bg_opa(wakeRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(wakeRow, 0, 0);
+    lv_obj_set_flex_flow(wakeRow, LV_FLEX_FLOW_ROW);
+    lv_obj_clear_flag(wakeRow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* wakeButton = lv_button_create(wakeRow);
+    lv_obj_set_height(wakeButton, 44);
+    lv_obj_set_flex_grow(wakeButton, 1);
+    lv_obj_set_style_bg_color(wakeButton, lv_color_hex(Theme::MidWater), 0);
+    lv_obj_set_style_text_color(wakeButton, lv_color_hex(Theme::HUDText), 0);
+    wakeLabel = lv_label_create(wakeButton);
+    lv_obj_set_style_text_font(wakeLabel, &font_kr_12, 0);
+    lv_obj_center(wakeLabel);
+    lv_label_set_text(wakeLabel, "OpenClaw - starting");
+    lv_obj_add_event_cb(wakeButton, [](lv_event_t*) {
+        if (!WakeWord::ready()) return;
+        WakeWord::setEnabled(!WakeWord::enabled());
+        if (!WakeWord::enabled()) Audio::micStop(true);
+        HUD::notify(WakeWord::enabled() ? "Say OpenClaw" : "Wake word off");
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* stop = lv_button_create(wakeRow);
+    lv_obj_set_size(stop, 64, 44);
+    lv_obj_set_style_bg_color(stop, lv_color_hex(Theme::MidWater), 0);
+    lv_obj_t* stopLabel = lv_label_create(stop);
+    lv_label_set_text(stopLabel, LV_SYMBOL_STOP);
+    lv_obj_center(stopLabel);
+    lv_obj_add_event_cb(stop, [](lv_event_t*) {
+        Audio::playbackStop();
+        Audio::micStop(true);
+    }, LV_EVENT_CLICKED, nullptr);
+
     lv_obj_t* row = lv_obj_create(pane);
-    lv_obj_set_size(row, ips10SidebarW - 28, 96);
+    lv_obj_set_size(row, LV_PCT(100), 96);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_pad_all(row, 0, 0);
@@ -1315,17 +1400,28 @@ static void voiceCreate(lv_obj_t* pane) {
     // and the button would slide left every time the banner appears.
     lv_obj_set_style_opa(voiceBanner, LV_OPA_TRANSP, 0);
 
-    // Speaker volume — two compact steppers between the transcript and the
-    // talk button. Direct Es8311 writes on the UI thread (same bus discipline
-    // as the touch reads that share it), toast for feedback.
+    // Fixed-size controls owned by the drawer, reused until its screen rebuild.
+    // A persistent numeric label makes the two directions unambiguous.
+    lv_obj_t* volumeGroup = lv_obj_create(row);
+    lv_obj_set_size(volumeGroup, 152, 76);
+    lv_obj_set_style_pad_all(volumeGroup, 0, 0);
+    lv_obj_set_style_border_width(volumeGroup, 0, 0);
+    lv_obj_set_style_bg_opa(volumeGroup, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(volumeGroup, LV_OBJ_FLAG_SCROLLABLE);
+    volumeLabel = lv_label_create(volumeGroup);
+    lv_obj_set_style_text_font(volumeLabel, &font_kr_16, 0);
+    lv_obj_set_style_text_color(volumeLabel, lv_color_hex(Theme::HUDText), 0);
+    lv_obj_align(volumeLabel, LV_ALIGN_TOP_MID, 0, 0);
+    volumeText[0] = '\0';
     auto mkVolBtn = [&](const char* txt, lv_event_cb_t cb) {
-        lv_obj_t* b = lv_button_create(row);
-        lv_obj_set_size(b, 48, 76);
+        lv_obj_t* b = lv_button_create(volumeGroup);
+        lv_obj_set_size(b, 70, 48);
         lv_obj_set_style_radius(b, 12, 0);
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x123B35), 0);
+        lv_obj_set_style_bg_color(b, lv_color_hex(Theme::MidWater), 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_color(b, lv_color_hex(0x1B3F39), 0);
+        lv_obj_set_style_border_color(b, lv_color_hex(Theme::ShallowWater), 0);
         lv_obj_set_style_border_width(b, 1, 0);
+        lv_obj_set_style_opa(b, LV_OPA_40, LV_STATE_DISABLED);
         lv_obj_t* l = lv_label_create(b);
         lv_obj_set_style_text_font(l, &font_kr_20, 0);
         lv_obj_set_style_text_color(l, lv_color_hex(Theme::HUDText), 0);
@@ -1334,28 +1430,11 @@ static void voiceCreate(lv_obj_t* pane) {
         lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
         return b;
     };
-    mkVolBtn(LV_SYMBOL_VOLUME_MID, [](lv_event_t*) {
-#if defined(BOARD_SPK_CODEC_ES8311)
-        int v = Es8311::volume() - 10;
-        if (v < 20) v = 20;
-        Es8311::setVolume(v);
-        char msg[40];
-        snprintf(msg, sizeof(msg), "Volume %d%%", v);
-        HUD::notify(msg);
-        Audio::playTone(880, 40, 0.2f);
-#endif
-    });
-    mkVolBtn(LV_SYMBOL_VOLUME_MAX, [](lv_event_t*) {
-#if defined(BOARD_SPK_CODEC_ES8311)
-        int v = Es8311::volume() + 10;
-        if (v > 100) v = 100;
-        Es8311::setVolume(v);
-        char msg[40];
-        snprintf(msg, sizeof(msg), "Volume %d%%", v);
-        HUD::notify(msg);
-        Audio::playTone(880, 40, 0.2f);
-#endif
-    });
+    volumeDown = mkVolBtn("-", [](lv_event_t*) { adjustVolume(-10); });
+    lv_obj_align(volumeDown, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    volumeUp = mkVolBtn("+", [](lv_event_t*) { adjustVolume(10); });
+    lv_obj_align(volumeUp, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    refreshVolume();
 
     voiceBtn = lv_button_create(row);
     lv_obj_set_size(voiceBtn, 168, 76);
@@ -1393,357 +1472,17 @@ static void voiceCreate(lv_obj_t* pane) {
 
 void init(lv_obj_t* parent) {
 #if defined(BOARD_IPS10)
-    // === IPS10 tablet layout: terrarium on the left, treemap pane fills the rest ===
-    // The terrarium renders in the left ~408px (creatures biased left); the treemap
-    // pane takes everything to its right so the 1280-wide landscape panel has no dead
-    // middle band. Recomputed here each init (orientation changes rebuild the UI).
-    // Anchor the cards region's LEFT edge at the terrarium boundary and let it run to
-    // the right screen edge (explicit pos, not right-align — which was making it look
-    // centered). Left-aligned children so cards start at the terrarium boundary.
-    const int cardsX = IPS10_TERRARIUM_W + 8;
-    ips10SidebarW = (g_screenW > 0 ? g_screenW : 800) - cardsX - 8;
-    if (ips10SidebarW < IPS10_SIDEBAR_W_MIN) ips10SidebarW = IPS10_SIDEBAR_W_MIN;
-    // === Full-width top bar (D1 topbar): brand · daemon status · 5h/7d usage gauges. ===
-    {
-        lv_obj_t* tb = lv_obj_create(parent);
-        lv_obj_set_size(tb, g_screenW, IPS10_TOPBAR_H);
-        lv_obj_set_pos(tb, 0, 0);
-        lv_obj_set_style_bg_color(tb, lv_color_hex(0x07140F), 0);
-        lv_obj_set_style_bg_opa(tb, (lv_opa_t)190, 0);
-        lv_obj_set_style_border_side(tb, LV_BORDER_SIDE_BOTTOM, 0);
-        lv_obj_set_style_border_width(tb, 1, 0);
-        lv_obj_set_style_border_color(tb, lv_color_hex(0x1B3F39), 0);
-        lv_obj_set_style_radius(tb, 0, 0);
-        lv_obj_set_style_pad_left(tb, 22, 0); lv_obj_set_style_pad_right(tb, 26, 0);
-        lv_obj_set_style_pad_top(tb, 0, 0); lv_obj_set_style_pad_bottom(tb, 0, 0);
-        lv_obj_set_style_pad_column(tb, 20, 0);   // generous gaps between brand · daemon · usage
-        lv_obj_clear_flag(tb, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(tb, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_flex_flow(tb, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(tb, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-        // Brand: logo mark + wordmark kept tight together in their own container
-        // (small gap), held apart from the daemon/usage groups by the top-level
-        // pad_column. The mark's layout box is pinned to 30px — otherwise the flex
-        // row reserves the full 64px source width, leaving a gap before the wordmark.
-        lv_obj_t* brand = lv_obj_create(tb);
-        lv_obj_set_size(brand, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-        lv_obj_set_style_bg_opa(brand, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(brand, 0, 0);
-        lv_obj_set_style_pad_all(brand, 0, 0);
-        lv_obj_set_style_pad_column(brand, 9, 0);
-        lv_obj_clear_flag(brand, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_flex_flow(brand, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(brand, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-        lv_obj_t* mk = lv_image_create(brand);
-        lv_image_set_src(mk, &img_logo_64);
-        lv_image_set_scale(mk, 256 * 30 / 64);   // 64→30px
-        lv_obj_set_size(mk, 30, 30);
-        lv_image_set_inner_align(mk, LV_IMAGE_ALIGN_CENTER);
-        lblLogo = lv_label_create(brand);
-        lv_obj_set_style_text_font(lblLogo, &lv_font_montserrat_16, 0);
-        lv_label_set_recolor(lblLogo, true);
-        lv_label_set_text(lblLogo, "#E7EFE8 Agent##3ED6E8 Deck#");   // Deck in cyan
-
-        tbDaemon = lv_label_create(tb);
-        lv_obj_set_style_text_font(tbDaemon, &font_kr_12, 0);
-        lv_label_set_recolor(tbDaemon, true);
-        lv_obj_set_style_text_color(tbDaemon, lv_color_hex(0x8FA6A2), 0);
-        lv_label_set_text(tbDaemon, "");
-
-#if defined(IPS10_PERF_HUD)
-        tbPerf = lv_label_create(tb);
-        lv_obj_set_style_text_font(tbPerf, &font_kr_12, 0);
-        lv_obj_set_style_text_color(tbPerf, lv_color_hex(0xFFA93D), 0);
-        lv_label_set_text(tbPerf, "perf");
-#endif
-
-        lv_obj_t* sp = lv_obj_create(tb);   // flex spacer → pushes gauges right
-        lv_obj_set_style_bg_opa(sp, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(sp, 0, 0);
-        lv_obj_set_height(sp, 1);
-        lv_obj_set_flex_grow(sp, 1);
-        lv_obj_clear_flag(sp, LV_OBJ_FLAG_SCROLLABLE);
-
-        // Claude (cyan) + Codex (blue) usage as compact per-agent blocks: a brand
-        // icon beside a 2-row column (5H over 7D). The Codex block hides when no
-        // Codex limits are present. Glyphs must be built first.
-        ips10InitGlyphs();
-        makeUsageBlock(tb, &glyphOctopus, Theme::ClaudeBody, 0x5D7470, D1_OK,
-                       nullptr, &tb5hFill, &tb5hPct, &tb7dFill, &tb7dPct);
-        // The block hides as a whole when Codex reports nothing; each usage ROW
-        // also hides individually so a post-5h-reset 7D-only state renders one
-        // clean gauge instead of a dead "-" 5H row.
-        tbCodexBlock = makeUsageBlock(tb, &glyphCodex, Theme::CloudBody, 0x7A80E8, D1_CODEX,
-                                   &tbCodexIcon, &tbCx5hFill, &tbCx5hPct, &tbCx7dFill, &tbCx7dPct,
-                                   &tbCx5hGrp, &tbCx7dGrp);
-        lv_obj_add_flag(tbCodexBlock, LV_OBJ_FLAG_HIDDEN);
-
-        // Antigravity chip — brand mark + plan name (no credit count: it's a raw
-        // backend metering number). Hidden until usage_update carries a status.
-        tbAgIcon = lv_image_create(tb);
-        lv_image_set_src(tbAgIcon, &glyphAntigravityColor);
-        lv_image_set_scale(tbAgIcon, 256 * 22 / 64);
-        lv_obj_set_size(tbAgIcon, 22, 22);
-        lv_image_set_inner_align(tbAgIcon, LV_IMAGE_ALIGN_CENTER);
-        lv_obj_add_flag(tbAgIcon, LV_OBJ_FLAG_HIDDEN);
-
-        tbAg = lv_label_create(tb);
-        lv_obj_set_style_text_font(tbAg, &font_kr_12, 0);
-        lv_obj_set_style_text_color(tbAg, lv_color_hex(Theme::AntigravityCyan), 0);
-        lv_label_set_recolor(tbAg, true);
-        lv_label_set_text(tbAg, "");
-        lv_obj_add_flag(tbAg, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    // Cards panel — sits BELOW the top bar (no in-panel header anymore; brand moved to the bar).
-    panelLeft = lv_obj_create(parent);
-    lv_obj_set_size(panelLeft, ips10SidebarW, g_screenH - IPS10_TOPBAR_H - 12);
-    lv_obj_align(panelLeft, LV_ALIGN_TOP_LEFT, cardsX, IPS10_TOPBAR_H + 6);
-    lv_obj_set_style_bg_opa(panelLeft, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(panelLeft, 0, 0);
-    lv_obj_set_style_radius(panelLeft, 14, 0);
-    lv_obj_set_style_pad_top(panelLeft, 8, 0);
-    lv_obj_set_style_pad_bottom(panelLeft, 12, 0);
-    lv_obj_set_style_pad_left(panelLeft, 14, 0);
-    lv_obj_set_style_pad_right(panelLeft, 14, 0);
-    lv_obj_set_style_pad_row(panelLeft, 8, 0);
-    lv_obj_clear_flag(panelLeft, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(panelLeft, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(panelLeft, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-
-    // === Office caption (top-left) + state legend (bottom-left) — HUD overlays on the screen
-    //     above the office canvas (office.js: caption top, legend bottom). Each sits in a dark
-    //     translucent chip so the text reads cleanly over the busy pixel scene. ===
-    {
-        // (No "THE BULLPEN / N LIVE" caption — the top bar already shows the agent count, and
-        //  the team-room rugs + clustered workers carry the spatial identity. terrCount stays
-        //  null so the shared update() path skips it.)
-        terrCount = nullptr;
-
-        // legend chip: round colour swatches (state colours), bottom-left per office.js.
-        lv_obj_t* terrLegend = lv_obj_create(parent);
-        lv_obj_add_flag(terrLegend, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_set_size(terrLegend, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-        lv_obj_align(terrLegend, LV_ALIGN_BOTTOM_LEFT, 12, -10);
-        lv_obj_set_style_bg_color(terrLegend, lv_color_hex(0x07140F), 0);
-        lv_obj_set_style_bg_opa(terrLegend, (lv_opa_t)160, 0);
-        lv_obj_set_style_radius(terrLegend, 7, 0);
-        lv_obj_set_style_pad_left(terrLegend, 9, 0); lv_obj_set_style_pad_right(terrLegend, 9, 0);
-        lv_obj_set_style_pad_top(terrLegend, 5, 0); lv_obj_set_style_pad_bottom(terrLegend, 5, 0);
-        lv_obj_set_style_pad_column(terrLegend, 12, 0);
-        lv_obj_set_style_border_width(terrLegend, 0, 0);
-        lv_obj_clear_flag(terrLegend, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_clear_flag(terrLegend, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_flex_flow(terrLegend, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(terrLegend, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        const uint32_t legC[3] = { D1_ATTN, D1_OK, D1_IDLE };
-        const char*    legT[3] = { "Awaiting", "Working", "Idle" };
-        for (int li = 0; li < 3; li++) {
-            lv_obj_t* item = lv_obj_create(terrLegend);
-            lv_obj_set_size(item, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-            lv_obj_set_style_bg_opa(item, LV_OPA_TRANSP, 0);
-            lv_obj_set_style_border_width(item, 0, 0);
-            lv_obj_set_style_pad_all(item, 0, 0);
-            lv_obj_set_style_pad_column(item, 6, 0);
-            lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_clear_flag(item, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_set_flex_flow(item, LV_FLEX_FLOW_ROW);
-            lv_obj_set_flex_align(item, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-            lv_obj_t* sw = lv_obj_create(item);
-            lv_obj_set_size(sw, 11, 11);
-            lv_obj_set_style_radius(sw, 6, 0);
-            lv_obj_set_style_bg_color(sw, lv_color_hex(legC[li]), 0);
-            lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
-            lv_obj_set_style_border_width(sw, 0, 0);
-            lv_obj_clear_flag(sw, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_t* lt = lv_label_create(item);
-            lv_obj_set_style_text_color(lt, lv_color_hex(0x8FA6A2), 0);  // D1 --dim
-            lv_obj_set_style_text_font(lt, &font_kr_12, 0);
-            lv_label_set_text(lt, legT[li]);
-        }
-    }
-
-    // Not used on IPS10 (the mosaic replaces the flat session list); keep null so
-    // the shared update() path guards them out.
-    lblSessions = nullptr;
-
-    // === Agent treemap — absolute-positioned cells tile the whole region in 2D ===
-    cellsBox = lv_obj_create(panelLeft);
-    lv_obj_set_width(cellsBox, ips10SidebarW - 28);
-    lv_obj_set_flex_grow(cellsBox, 1);          // eat all leftover vertical space
-    // Solid "deck" backdrop (NOT transparent). The cells tile this region with a 6px
-    // GAP and lerp toward new sizes when the live session count changes — during that
-    // settle (and on any transient empty list) the un-tiled area would otherwise show
-    // the screen's pure-black root (0x000000), reading as "the right side flickers to
-    // black". A solid deep ink-green deck makes the inter-cell gutters and transition
-    // gaps an intentional surface instead of black, and reads as cards-on-a-deck (D1).
-    lv_obj_set_style_bg_color(cellsBox, lv_color_hex(0x0B1D1A), 0);   // D1 --ink-1 deck
-    lv_obj_set_style_bg_opa(cellsBox, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(cellsBox, 12, 0);
-    lv_obj_set_style_border_width(cellsBox, 0, 0);
-    lv_obj_set_style_pad_all(cellsBox, 0, 0);
-    lv_obj_clear_flag(cellsBox, LV_OBJ_FLAG_SCROLLABLE);
-    // No flex layout → children are placed by absolute lv_obj_set_pos (the treemap).
-
-    ips10InitGlyphs();   // build the A8 creature-mark descriptors once before the cells use them
-
-    for (int i = 0; i < MOSAIC_MAX; i++) {
-        cell[i] = lv_obj_create(cellsBox);
-        lv_obj_set_size(cell[i], 80, 60);
-        lv_obj_set_pos(cell[i], 0, 0);
-        // D1 card: light card background for maximum readability (cards on a dark green deck)
-        lv_obj_set_style_bg_color(cell[i], lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_bg_grad_color(cell[i], lv_color_hex(0xF1F5F9), 0); // slate-100 gradient
-        lv_obj_set_style_bg_grad_dir(cell[i], LV_GRAD_DIR_VER, 0);
-        lv_obj_set_style_bg_opa(cell[i], LV_OPA_COVER, 0);   // opaque (no per-pixel blend)
-        lv_obj_set_style_radius(cell[i], 12, 0);
-        lv_obj_set_style_border_side(cell[i], LV_BORDER_SIDE_LEFT, 0);
-        lv_obj_set_style_border_width(cell[i], 3, 0);
-        lv_obj_set_style_border_color(cell[i], lv_color_hex(Theme::HUDDim), 0);
-        lv_obj_set_style_pad_left(cell[i], 11, 0);
-        lv_obj_set_style_pad_right(cell[i], 10, 0);
-        lv_obj_set_style_pad_top(cell[i], 9, 0);
-        lv_obj_set_style_pad_bottom(cell[i], 9, 0);
-        lv_obj_set_style_pad_row(cell[i], 5, 0);
-        lv_obj_clear_flag(cell[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_flex_flow(cell[i], LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(cell[i], LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-#if defined(BOARD_IPS10) && defined(BOARD_HAS_VOICE_CAPTURE)
-        // Voice builds: a short tap picks this session as the hold-to-talk
-        // target (cyan outline + button sub-label), a long press opens the
-        // detail overlay. This replaces the earlier "passive status tiles"
-        // stance, which dated from when this panel's touch controller had
-        // never reported a point — the mic gave the cards their first real
-        // reason to be pressable. Approve/Deny stay separate child buttons and
-        // do not bubble up here.
-        lv_obj_add_flag(cell[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(cell[i], cellTapCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
-        lv_obj_add_event_cb(cell[i], cellLongPressCb, LV_EVENT_LONG_PRESSED, (void*)(intptr_t)i);
-#else
-        // Cells are PASSIVE status tiles: everything the user needs is shown inline as text
-        // (name · state · tool · activity · meta) and awaiting cells expose explicit Approve/Deny
-        // buttons. No tap-to-open detail overlay. Non-clickable so a phantom press does nothing.
-        lv_obj_clear_flag(cell[i], LV_OBJ_FLAG_CLICKABLE);
-        (void)cellTapCb;
-#endif
-
-        // Creature mark — top-right overlay, OUTSIDE the flex flow (IGNORE_LAYOUT)
-        cellGlyph[i] = lv_image_create(cell[i]);
-        lv_obj_add_flag(cellGlyph[i], LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_add_flag(cellGlyph[i], LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_image_recolor_opa(cellGlyph[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_image_opa(cellGlyph[i], (lv_opa_t)235, 0);
-        lv_obj_clear_flag(cellGlyph[i], LV_OBJ_FLAG_CLICKABLE);
-
-        // Name line: ●agent-name (bold) + colored [STATE]
-        cellName[i] = lv_label_create(cell[i]);
-        lv_obj_set_style_text_color(cellName[i], lv_color_hex(0x0F172A), 0); // slate-900 (very dark)
-        lv_obj_set_style_text_font(cellName[i], &font_kr_20, 0);
-        lv_label_set_recolor(cellName[i], true);
-        lv_label_set_long_mode(cellName[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_width(cellName[i], 60);
-        lv_label_set_text(cellName[i], "");
-
-        // State pill chip — short content-sized rounded label (NOT a nested flex row, so it
-        // stays layout-cheap). bg/text colored per state at render time.
-        cellPill[i] = lv_label_create(cell[i]);
-        lv_obj_set_style_text_font(cellPill[i], &font_kr_16, 0);
-        lv_obj_set_style_text_color(cellPill[i], lv_color_hex(0x05140F), 0);
-        lv_obj_set_style_bg_opa(cellPill[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(cellPill[i], 8, 0);
-        lv_obj_set_style_pad_left(cellPill[i], 8, 0);
-        lv_obj_set_style_pad_right(cellPill[i], 8, 0);
-        lv_obj_set_style_pad_top(cellPill[i], 2, 0);
-        lv_obj_set_style_pad_bottom(cellPill[i], 2, 0);
-        lv_label_set_long_mode(cellPill[i], LV_LABEL_LONG_CLIP);
-        lv_label_set_text(cellPill[i], "");
-
-        cellProj[i] = lv_label_create(cell[i]);
-        lv_obj_set_style_text_color(cellProj[i], lv_color_hex(0x475569), 0); // slate-600 (medium-dark)
-        lv_obj_set_style_text_font(cellProj[i], &font_kr_16, 0);
-        lv_label_set_long_mode(cellProj[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_width(cellProj[i], 60);
-        lv_label_set_text(cellProj[i], "");
-
-        // Tool box: "▸ tool" in a bordered/filled box.
-        cellTool[i] = lv_label_create(cell[i]);
-        lv_obj_set_style_text_color(cellTool[i], lv_color_hex(Theme::HUDText), 0);
-        lv_obj_set_style_text_font(cellTool[i], &font_kr_16, 0);
-        lv_obj_set_style_bg_color(cellTool[i], lv_color_hex(0x07140F), 0);
-        lv_obj_set_style_bg_opa(cellTool[i], (lv_opa_t)150, 0);
-        lv_obj_set_style_border_width(cellTool[i], 1, 0);
-        lv_obj_set_style_border_color(cellTool[i], lv_color_hex(Theme::HUDDim), 0);
-        lv_obj_set_style_border_opa(cellTool[i], (lv_opa_t)90, 0);
-        lv_obj_set_style_radius(cellTool[i], 6, 0);
-        lv_obj_set_style_pad_left(cellTool[i], 7, 0);
-        lv_obj_set_style_pad_right(cellTool[i], 7, 0);
-        lv_obj_set_style_pad_top(cellTool[i], 4, 0);
-        lv_obj_set_style_pad_bottom(cellTool[i], 4, 0);
-        lv_label_set_long_mode(cellTool[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_width(cellTool[i], 60);
-        lv_label_set_text(cellTool[i], "");
-
-        // Body: the TIMELINE feed — newest milestone bright, older rows dimmed via recolor markup.
-        cellBody[i] = lv_label_create(cell[i]);
-        lv_obj_set_style_text_color(cellBody[i], lv_color_hex(0x1E293B), 0); // slate-800
-        lv_obj_set_style_text_font(cellBody[i], &font_kr_16, 0);
-        lv_obj_set_style_text_line_space(cellBody[i], 6, 0);
-        lv_label_set_recolor(cellBody[i], true);
-        lv_label_set_long_mode(cellBody[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_width(cellBody[i], 60);
-        lv_label_set_text(cellBody[i], "");
-
-        // Footer: model · elapsed (faint).
-        cellMeta[i] = lv_label_create(cell[i]);
-        lv_obj_set_width(cellMeta[i], 60);
-        lv_obj_set_style_text_color(cellMeta[i], lv_color_hex(0x64748B), 0); // slate-500
-        lv_obj_set_style_text_font(cellMeta[i], &lv_font_montserrat_12, 0);
-        lv_obj_set_style_text_opa(cellMeta[i], (lv_opa_t)180, 0);
-        lv_label_set_long_mode(cellMeta[i], LV_LABEL_LONG_DOT);
-        lv_label_set_text(cellMeta[i], "");
-
-        // Inline Approve/Deny — shown only on awaiting cells that are tall enough.
-        cellYes[i] = lv_button_create(cell[i]);
-        lv_obj_set_height(cellYes[i], 32);
-        lv_obj_set_width(cellYes[i], LV_PCT(100));
-        lv_obj_set_style_bg_color(cellYes[i], lv_color_hex(Theme::StatusAmber), 0);
-        lv_obj_set_style_radius(cellYes[i], 7, 0);
-        lv_obj_add_event_cb(cellYes[i], cellYesCb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
-        lv_obj_t* yesLbl = lv_label_create(cellYes[i]);
-        lv_label_set_text(yesLbl, "Approve");
-        lv_obj_set_style_text_color(yesLbl, lv_color_hex(0x1A1205), 0);
-        lv_obj_center(yesLbl);
-        lv_obj_add_flag(cellYes[i], LV_OBJ_FLAG_HIDDEN);
-
-        cellNo[i] = lv_button_create(cell[i]);
-        lv_obj_set_height(cellNo[i], 32);
-        lv_obj_set_width(cellNo[i], LV_PCT(100));
-        lv_obj_set_style_bg_color(cellNo[i], lv_color_hex(0x16413C), 0);
-        lv_obj_set_style_radius(cellNo[i], 7, 0);
-        lv_obj_add_event_cb(cellNo[i], cellNoCb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
-        lv_obj_t* noLbl = lv_label_create(cellNo[i]);
-        lv_label_set_text(noLbl, "Deny");
-        lv_obj_set_style_text_color(noLbl, lv_color_hex(0xFFFFFF), 0); // white text on dark green button
-        lv_obj_center(noLbl);
-        lv_obj_add_flag(cellNo[i], LV_OBJ_FLAG_HIDDEN);
-
-        lv_obj_add_flag(cell[i], LV_OBJ_FLAG_HIDDEN);
-    }
-
-    // Usage lives solely in the full-width top bar (5H/7D gauges) on the D1 layout.
-    // The old bottom "CLAUDE USAGE" panel was redundant with it, so it is not created
-    // here. Leaving these null makes every `if (panelRight)` visibility guard below a
-    // no-op, so nothing re-shows it at runtime.
-    panelRight = nullptr;
-    lblTankHeader = nullptr;
-
+    ips10InitGlyphs();
+    ips10SidebarW = g_screenW - 40;
+    panelLeft = parent;
+    lv_obj_t* voicePane = IPS10Workspace::init(parent, ips10AgentGlyph);
 #if defined(BOARD_HAS_VOICE_CAPTURE)
-    voiceCreate(panelLeft);
+    voiceCreate(voicePane);
 #endif
-
-#elif IS_ROUND
+    return;
+#endif
+#if !defined(BOARD_IPS10)
+#if IS_ROUND
     // === Round AMOLED layout: top status bar + bottom gauges ===
 
     // Top status bar — centered, narrow
@@ -1772,7 +1511,7 @@ void init(lv_obj_t* parent) {
     // Accent underline
     logoLine = lv_obj_create(panelLeft);
     lv_obj_set_size(logoLine, 100, 2);
-    lv_obj_set_style_bg_color(logoLine, lv_color_hex(Theme::StatusBlue), 0);
+    lv_obj_set_style_bg_color(logoLine, lv_color_hex(Theme::StatusCyan), 0);
     lv_obj_set_style_bg_opa(logoLine, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(logoLine, 0, 0);
     lv_obj_set_style_radius(logoLine, 1, 0);
@@ -1804,6 +1543,7 @@ void init(lv_obj_t* parent) {
     lv_obj_set_style_pad_column(panelRight, GAUGE_GAP, 0);
     lv_obj_clear_flag(panelRight, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(panelRight, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(panelRight, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_flex_align(panelRight, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     // No header for round — save space
@@ -1859,7 +1599,7 @@ void init(lv_obj_t* parent) {
 #else
     lv_obj_set_size(logoLine, 130, 2);
 #endif
-    lv_obj_set_style_bg_color(logoLine, lv_color_hex(Theme::StatusBlue), 0);
+    lv_obj_set_style_bg_color(logoLine, lv_color_hex(Theme::StatusCyan), 0);
     lv_obj_set_style_bg_opa(logoLine, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(logoLine, 0, 0);
     lv_obj_set_style_radius(logoLine, 1, 0);
@@ -1903,6 +1643,7 @@ void init(lv_obj_t* parent) {
     lv_obj_set_style_pad_column(panelRight, GAUGE_GAP, 0);
     lv_obj_clear_flag(panelRight, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(panelRight, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(panelRight, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     // Header (hidden per user request)
     lblTankHeader = lv_label_create(panelRight);
@@ -1913,74 +1654,41 @@ void init(lv_obj_t* parent) {
 #endif
 
 #if !defined(BOARD_IPS10)
-    // Provider tank groups stack vertically in panelRight: Claude first, then Codex
-    // (hidden until Codex data arrives), then the account chip. Each group is a
-    // brand-labelled header over its 5h/7d water tanks, so multiple providers read
-    // as one cohesive panel instead of tanks + loose text. Width is unchanged
-    // (2 tanks wide); the panel just grows a block when a second provider is live.
+    // Provider blocks share a horizontal rail, with compact windows beneath
+    // each header. Missing windows take no space; the account chip stays below.
     // IPS10 renders usage in its D1 topbar, so it builds none of this.
-    claudeGroup = makeTankGroup(panelRight, "CLAUDE", Theme::ClaudeBody,
-        gauge5hBox, gauge5hFill, gauge5hPct, gauge5hPeriod, gauge5hReset,
-        gauge7dBox, gauge7dFill, gauge7dPct, gauge7dPeriod, gauge7dReset);
-    codexGroup = makeTankGroup(panelRight, "CODEX", Theme::CloudBodyLight,
-        gaugeCx5hBox, gaugeCx5hFill, gaugeCx5hPct, gaugeCx5hPeriod, gaugeCx5hReset,
-        gaugeCx7dBox, gaugeCx7dFill, gaugeCx7dPct, gaugeCx7dPeriod, gaugeCx7dReset);
-    lv_obj_add_flag(codexGroup, LV_OBJ_FLAG_HIDDEN);
-
-    // Stale indicator (only shown when data is stale, hidden by default)
-    lblStale = lv_label_create(panelRight);
-    lv_obj_set_style_text_color(lblStale, lv_color_hex(Theme::StatusAmber), 0);
-    lv_obj_set_style_text_font(lblStale, &lv_font_montserrat_10, 0);
-    lv_label_set_text(lblStale, "");
-    lv_obj_add_flag(lblStale, LV_OBJ_FLAG_HIDDEN);
-
-    // Account chip: a subtle glass pill holding "AGY Pro ~8/1" + subscription
-    // expiries. Hidden until data (so a Claude-only / Swift-daemon setup shows no
-    // empty chip). Raw Antigravity credit count is never shown.
-    acctChip = lv_obj_create(panelRight);
-    lv_obj_set_size(acctChip, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(acctChip, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_bg_opa(acctChip, (lv_opa_t)18, 0);
-    lv_obj_set_style_border_width(acctChip, 0, 0);
-    lv_obj_set_style_radius(acctChip, 7, 0);
-    lv_obj_set_style_pad_left(acctChip, 6, 0);
-    lv_obj_set_style_pad_right(acctChip, 6, 0);
-    lv_obj_set_style_pad_top(acctChip, 2, 0);
-    lv_obj_set_style_pad_bottom(acctChip, 2, 0);
-    lv_obj_clear_flag(acctChip, LV_OBJ_FLAG_SCROLLABLE);
-    acctChipLabel = lv_label_create(acctChip);
-    lv_obj_set_style_text_font(acctChipLabel, &lv_font_montserrat_10, 0);
-    lv_label_set_recolor(acctChipLabel, true);
-    lv_label_set_text(acctChipLabel, "");
-    lv_obj_add_flag(acctChip, LV_OBJ_FLAG_HIDDEN);
+    // Providers share one bounded horizontal rail; windows stack inside each
+    // provider, so a single GLM window never reserves an entire empty row.
+    lv_obj_t* providerRail = lv_obj_create(panelRight);
+    lv_obj_remove_style_all(providerRail);
+    lv_obj_set_size(providerRail, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_column(providerRail, 8, 0);
+    lv_obj_set_flex_flow(providerRail, LV_FLEX_FLOW_ROW);
+#if defined(BOARD_TTGO)
+    // The secondary terrarium view still fits its narrow portrait display.
+    lv_obj_set_width(providerRail, g_screenW - 32);
+    lv_obj_set_flex_flow(providerRail, LV_FLEX_FLOW_ROW_WRAP);
 #endif
+    lv_obj_set_flex_align(providerRail, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(providerRail, LV_OBJ_FLAG_SCROLLABLE);
+#if IS_ROUND
+    lv_obj_align(panelRight, LV_ALIGN_BOTTOM_MID, 0, -52);
+#else
+    lv_obj_align(panelRight, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
+#endif
+    for (uint8_t g = 0; g < TANK_SLOTS; ++g)
+        tankGroup[g] = makeTankGroup(providerRail, tanks[g]);
+#endif
+#endif // !BOARD_IPS10
 }
 
-// Helper: status color for AgentState
-static uint32_t stateColor(AgentState st) {
-    switch (st) {
-        case AgentState::IDLE:                 return Theme::StatusGreen;
-        case AgentState::PROCESSING:           return Theme::StatusBlue;
-        case AgentState::AWAITING_PERMISSION:
-        case AgentState::AWAITING_OPTION:
-        case AgentState::AWAITING_DIFF:        return Theme::StatusAmber;
-        default:                               return Theme::StatusRed;
-    }
-}
-
-// Map session state string to color
-static uint32_t sessionStateColor(const char* state) {
-    if (strcmp(state, "idle") == 0)       return Theme::StatusGreen;
-    if (strcmp(state, "processing") == 0) return Theme::StatusBlue;
-    if (strstr(state, "awaiting") != nullptr) return Theme::StatusAmber;
-    return Theme::HUDDim;
-}
+// Session state palette (DESIGN.md §2.7, generated from shared/src).
+static uint32_t stateColor(AgentState st) { return SessionState::color(st); }
+static uint32_t sessionStateColor(const char* state) { return SessionState::color(state); }
 
 // Gauge color based on usage %
 static uint32_t gaugeColor(float pct) {
-    if (pct >= 90.0f) return Theme::StatusRed;
-    if (pct >= 70.0f) return Theme::StatusAmber;
-    return Theme::StatusGreen;
+    return UsageSeverity::color(pct);
 }
 
 // Update a water-fill gauge. pct < 0 means "no data" (sentinel).
@@ -1988,20 +1696,21 @@ static void updateGauge(lv_obj_t* fill, lv_obj_t* pctLabel, lv_obj_t* resetLabel
                         float pct, const char* resetStr, bool stale) {
     if (pct < 0.0f) {
         // No data — empty gauge, "--" text
-        lv_obj_set_height(fill, 0);
-        lv_obj_align(fill, LV_ALIGN_BOTTOM_MID, 0, 0);
+        lv_obj_set_width(fill, 0);
+        lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
         lv_obj_set_style_bg_color(fill, lv_color_hex(Theme::HUDDim), 0);
         lv_label_set_text(pctLabel, "--");
+        lv_obj_set_style_text_color(pctLabel, lv_color_hex(Theme::HUDDim), 0);
         lv_label_set_text(resetLabel, "");
         return;
     }
 
-    // Fill height proportional to percentage (inside border)
+    // Horizontal fill proportional to percentage (inside border)
     int fillH = (int)(GAUGE_INNER * pct / 100.0f);
     if (fillH < 0) fillH = 0;
     if (fillH > GAUGE_INNER) fillH = GAUGE_INNER;
-    lv_obj_set_height(fill, fillH);
-    lv_obj_align(fill, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_width(fill, fillH);
+    lv_obj_align(fill, LV_ALIGN_LEFT_MID, 0, 0);
 
     // Fill color
     uint32_t color = gaugeColor(pct);
@@ -2032,7 +1741,7 @@ static void setTopbarGauge(lv_obj_t* fill, lv_obj_t* pct, float v,
     if (fill) {
         int w = v >= 0.0f ? (int)(v / 100.0f * TB_BAR_W + 0.5f) : 0; if (w > TB_BAR_W) w = TB_BAR_W;
         lv_obj_set_width(fill, w);
-        lv_obj_set_style_bg_color(fill, lv_color_hex(v >= 85.0f ? D1_ATTN : baseColor), 0);
+        lv_obj_set_style_bg_color(fill, lv_color_hex(UsageSeverity::color(stale ? -1.0f : v)), 0);
     }
     if (!pct) return;
     char pb[28];
@@ -2044,6 +1753,14 @@ static void setTopbarGauge(lv_obj_t* fill, lv_obj_t* pct, float v,
 #endif
 
 void update() {
+#if defined(BOARD_IPS10)
+    IPS10Workspace::update();
+#if defined(BOARD_HAS_VOICE_CAPTURE)
+    snprintf(voiceTargetSid, sizeof(voiceTargetSid), "%s", IPS10Workspace::selectedSession());
+    voiceTick();
+#endif
+    return;
+#endif
 #if defined(BOARD_IPS10) && defined(BOARD_HAS_VOICE_CAPTURE)
     voiceTick();
 #endif
@@ -2074,51 +1791,45 @@ void update() {
 #endif
 
 #if !defined(BOARD_IPS10)
-    // Codex windows + account-chip string for the TANK STATUS panel. Read straight
-    // from g_state (all fields exist on every board). Built here under the lock;
-    // rendered after unlockState() below.
-    float cxP5h = g_state.codexPrimaryPercent;
-    float cxP7d = g_state.codexSecondaryPercent;
-    char cxReset5h[20], cxReset7d[20];
-    strncpy(cxReset5h, g_state.codexPrimaryReset, sizeof(cxReset5h) - 1);   cxReset5h[sizeof(cxReset5h) - 1] = '\0';
-    strncpy(cxReset7d, g_state.codexSecondaryReset, sizeof(cxReset7d) - 1); cxReset7d[sizeof(cxReset7d) - 1] = '\0';
-    // Account chip: shortened Antigravity plan (gold) + subscription expiries (dim).
-    char agyBuf[28]; agyBuf[0] = '\0';
-    char subsBuf[96]; subsBuf[0] = '\0'; size_t subsPos = 0;
-    for (uint8_t i = 0; i < g_state.subscriptionCount; i++) {
-        const auto& sub = g_state.subscriptions[i];
-        if (UsageFormat::isAntigravityPlanName(sub.name)) {
-            UsageFormat::formatAgyPlan(sub.name, agyBuf, sizeof(agyBuf));
-            if (sub.until[0]) {
-                size_t l = strlen(agyBuf);
-                snprintf(agyBuf + l, sizeof(agyBuf) - l, " %s", sub.until);
-            }
-        } else if (sub.until[0]) {
-            // Non-Antigravity plan with an expiry → "<provider> ~M/D" (provider =
-            // the first word of the plan name, e.g. "ChatGPT Plus" → "ChatGPT").
-            char nm[16]; size_t k = 0;
-            for (; sub.name[k] && sub.name[k] != ' ' && k < sizeof(nm) - 1; k++) nm[k] = sub.name[k];
-            nm[k] = '\0';
-            int w = snprintf(subsBuf + subsPos, sizeof(subsBuf) - subsPos, "%s%s %s",
-                             subsPos ? "  " : "", nm, sub.until);
-            if (w > 0) subsPos += (size_t)w;
-        }
+    // Provider-grouped usage for the tank panel (shared UsageRows rules:
+    // z.ai MCP, the Codex Luna reserve, plans in free slots). Built under the
+    // lock; rendered after unlockState() below.
+    UsageRows::Group usageGroups[UsageRows::MAX_GROUPS];
+    uint8_t usageGroupCount = UsageRows::build(g_state, usageGroups);
+    // Narrow panels hold three provider columns; a plan-only provider yields.
+    while (usageGroupCount > TANK_SLOTS) {
+        int drop = -1;
+        for (int k = usageGroupCount - 1; k >= 0 && drop < 0; --k) if (!usageGroups[k].rowCount) drop = k;
+        if (drop < 0) drop = usageGroupCount - 1;
+        for (int k = drop; k + 1 < usageGroupCount; ++k) usageGroups[k] = usageGroups[k + 1];
+        --usageGroupCount;
     }
-    if (!agyBuf[0] && g_state.antigravityPlan[0]) {
-        UsageFormat::formatAgyPlan(g_state.antigravityPlan, agyBuf, sizeof(agyBuf));
-    }
-    // Compose the recolored chip: Antigravity gold, subscription expiries dim.
-    char chipBuf[160]; chipBuf[0] = '\0'; size_t cp = 0;
-    if (agyBuf[0])  cp += (size_t)snprintf(chipBuf + cp, sizeof(chipBuf) - cp, "#F3D233 %s#", agyBuf);
-    if (subsBuf[0]) cp += (size_t)snprintf(chipBuf + cp, sizeof(chipBuf) - cp, "%s#94A3B8 %s#", cp ? "  " : "", subsBuf);
 #endif
 
 #if !defined(BOARD_IPS10)
     // Copy session list for the compact legacy HUD. IPS10 renders the D1 mosaic
     // below, so avoid building the legacy text buffer on its UI stack.
     uint8_t sessionCount = hasData ? g_state.sessionCount : (uint8_t)0;
-    SessionInfo sessions[10];
-    memcpy(sessions, g_state.sessions, sizeof(sessions));
+    // UI-task-only display snapshot: reuse 520 bytes instead of ten complete
+    // session records on the stack. Compact flags keep no-PSRAM DRAM bounded.
+    static struct { char name[40]; uint32_t dotColor, stateColor; bool alive:1, input:1, working:1, idle:1, openclaw:1; } sessions[10];
+    static_assert(sizeof(sessions) == 520, "Keep the no-PSRAM HUD snapshot bounded");
+    for (uint8_t i = 0; i < sessionCount && i < 10; ++i) {
+        const auto& source = g_state.sessions[i];
+        auto& target = sessions[i];
+        const char* name = sessionDisplayName(source);
+        snprintf(target.name, sizeof(target.name), "%s", name[0] ? name : source.id);
+        // This label parses recolor commands: literal '#' must not consume
+        // the ordinal or the next status dot's color command.
+        for (char* c = target.name; *c; ++c) if (*c == '#' || *c == '\n') *c = ' ';
+        target.dotColor = agentDotColor(source.agentType);
+        target.stateColor = sessionStateColor(source.state);
+        target.alive = source.alive;
+        target.input = strstr(source.state, "awaiting") != nullptr;
+        target.working = strcmp(source.state, "processing") == 0;
+        target.idle = strcmp(source.state, "idle") == 0;
+        target.openclaw = strstr(source.agentType, "openclaw") != nullptr;
+    }
 #endif
 
     // Fallback: if no sessions, use primary state
@@ -2150,12 +1861,12 @@ void update() {
         bool shown[10] = {};
         uint8_t visible = 0;
         auto appendSession = [&](uint8_t i) {
-            const uint32_t dotColor = agentDotColor(sessions[i].agentType);
-            const uint32_t sColor = sessionStateColor(sessions[i].state);
+            const uint32_t dotColor = sessions[i].dotColor;
+            const uint32_t sColor = sessions[i].stateColor;
             appendBounded(buf, sizeof(buf), pos,
                 "#%06lX " LV_SYMBOL_BULLET "# %s  #%06lX " LV_SYMBOL_BULLET "#\n",
                 (unsigned long)dotColor,
-                sessions[i].projectName[0] ? sessions[i].projectName : sessions[i].id,
+                sessions[i].name,
                 (unsigned long)sColor);
             shown[i] = true;
             visible++;
@@ -2169,8 +1880,8 @@ void update() {
             for (uint8_t pass = 0; pass < 3 && visible < 5; pass++) {
                 for (uint8_t i = 0; i < limit && visible < 5; i++) {
                     if (!sessions[i].alive || shown[i]) continue;
-                    const bool input = strstr(sessions[i].state, "awaiting") != nullptr;
-                    const bool working = strcmp(sessions[i].state, "processing") == 0;
+                    const bool input = sessions[i].input;
+                    const bool working = sessions[i].working;
                     if ((pass == 0 && input) || (pass == 1 && working) || pass == 2)
                         appendSession(i);
                 }
@@ -2179,9 +1890,9 @@ void update() {
             uint8_t hiddenInput = 0, hiddenWork = 0, hiddenIdle = 0, hiddenReady = 0;
             for (uint8_t i = 0; i < limit; i++) {
                 if (!sessions[i].alive || shown[i]) continue;
-                if (strstr(sessions[i].state, "awaiting") != nullptr) hiddenInput++;
-                else if (strcmp(sessions[i].state, "processing") == 0) hiddenWork++;
-                else if (strcmp(sessions[i].state, "idle") == 0) hiddenIdle++;
+                if (sessions[i].input) hiddenInput++;
+                else if (sessions[i].working) hiddenWork++;
+                else if (sessions[i].idle) hiddenIdle++;
                 else hiddenReady++;
             }
             char hidden[96] = "";
@@ -2216,7 +1927,7 @@ void update() {
     if (gateway) {
         bool hasOC = false;
         for (uint8_t i = 0; i < sessionCount; i++) {
-            if (sessions[i].alive && strstr(sessions[i].agentType, "openclaw") != nullptr) {
+            if (sessions[i].alive && sessions[i].openclaw) {
                 hasOC = true;
                 break;
             }
@@ -2237,72 +1948,46 @@ void update() {
 
 #if !defined(BOARD_IPS10)
     // === Right panel: per-provider water-tank groups ===
-    // Claude group — updated + hidden as a unit when there's no Claude quota data
-    // (a Codex-only user, or the App Store Swift daemon which can't read Claude
-    // OAuth usage). Showing empty "--" tanks would read as broken.
-    updateGauge(gauge5hFill, gauge5hPct, gauge5hReset, p5h, reset5h, usageStale);
-    updateGauge(gauge7dFill, gauge7dPct, gauge7dReset, p7d, reset7d, usageStale);
-    if (gauge5hBox) {
-        if (p5h >= 0.0f) {
-            lv_obj_clear_flag(lv_obj_get_parent(gauge5hBox), LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(lv_obj_get_parent(gauge5hBox), LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    if (gauge7dBox) {
-        if (p7d >= 0.0f) {
-            lv_obj_clear_flag(lv_obj_get_parent(gauge7dBox), LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(lv_obj_get_parent(gauge7dBox), LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    {
-        bool showClaude = (p5h >= 0.0f || p7d >= 0.0f);
-        if (claudeGroup) { showClaude ? lv_obj_clear_flag(claudeGroup, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(claudeGroup, LV_OBJ_FLAG_HIDDEN); }
-    }
-
-    // Codex group — same water-tank widget under a blue "● CODEX" header. Shown
-    // whenever a Codex window is present, independent of Claude data.
-    updateGauge(gaugeCx5hFill, gaugeCx5hPct, gaugeCx5hReset, cxP5h, cxReset5h, false);
-    updateGauge(gaugeCx7dFill, gaugeCx7dPct, gaugeCx7dReset, cxP7d, cxReset7d, false);
-    if (gaugeCx5hBox) {
-        if (cxP5h >= 0.0f) {
-            lv_obj_clear_flag(lv_obj_get_parent(gaugeCx5hBox), LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(lv_obj_get_parent(gaugeCx5hBox), LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    if (gaugeCx7dBox) {
-        if (cxP7d >= 0.0f) {
-            lv_obj_clear_flag(lv_obj_get_parent(gaugeCx7dBox), LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(lv_obj_get_parent(gaugeCx7dBox), LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    {
-        bool showCodex = (cxP5h >= 0.0f || cxP7d >= 0.0f);
-        if (codexGroup) { showCodex ? lv_obj_clear_flag(codexGroup, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(codexGroup, LV_OBJ_FLAG_HIDDEN); }
-    }
-
-    // Stale indicator (shown only when we have Claude data but it's stale)
-    if (lblStale) {
-        bool showStale = usageStale && (p5h >= 0.0f || p7d >= 0.0f);
-        if (showStale) {
-            lv_label_set_text(lblStale, "! stale");
-            lv_obj_clear_flag(lblStale, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(lblStale, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-
-    // Account chip (AGY plan + subscription expiries). Hidden when the daemon
-    // supplies none (e.g. the App Store Swift daemon with no subscription data).
-    if (acctChip) {
-        if (chipBuf[0]) {
-            lv_label_set_text(acctChipLabel, chipBuf);
-            lv_obj_clear_flag(acctChip, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(acctChip, LV_OBJ_FLAG_HIDDEN);
+    // Hide-if-absent: a provider with no window and no plan leaves no ghost
+    // "--" tanks (a Codex-only user, or the App Store Swift daemon without
+    // Claude OAuth usage).
+    for (uint8_t i = 0; i < TANK_SLOTS; ++i) {
+        if (!tankGroup[i]) continue;
+        if (i >= usageGroupCount) { lv_obj_add_flag(tankGroup[i], LV_OBJ_FLAG_HIDDEN); continue; }
+        const auto& grp = usageGroups[i];
+        const uint8_t p = i;   // display slot
+        lv_obj_clear_flag(tankGroup[p], LV_OBJ_FLAG_HIDDEN);
+        const bool planSlot = grp.hasPlan() && grp.rowCount < 2;
+        char upper[16]; size_t k = 0;
+        for (const char* c = grp.name(); *c && k < sizeof(upper) - 1; ++c) upper[k++] = (char)toupper((unsigned char)*c);
+        upper[k] = '\0';
+        char hdr[80];
+        const unsigned long brand = (unsigned long)tankBrand(grp.provider);
+        if (!planSlot && grp.hasPlan())
+            snprintf(hdr, sizeof(hdr), "#%06lX " LV_SYMBOL_BULLET " %s# #94A3B8 %s#", brand, upper, grp.tier);
+        else
+            snprintf(hdr, sizeof(hdr), "#%06lX " LV_SYMBOL_BULLET " %s#", brand, upper);
+        lv_label_set_text(lv_obj_get_child(tankGroup[p], 0), hdr);
+        for (uint8_t s = 0; s < 2; ++s) {
+            Tank& t = tanks[p][s];
+            if (s < grp.rowCount) {
+                const auto& row = grp.rows[s];
+                lv_obj_clear_flag(t.col, LV_OBJ_FLAG_HIDDEN);
+                lv_label_set_text(t.period, row.label);
+                // A reserve fills by what is LEFT; colour still follows use.
+                updateGauge(t.fill, t.pct, t.reset, (float)row.shown(), row.reset, false);
+                lv_obj_set_style_bg_color(t.fill, lv_color_hex(gaugeColor(row.used)), 0);
+                lv_obj_set_style_text_color(t.pct, lv_color_hex(gaugeColor(row.used)), 0);
+            } else if (s == grp.rowCount && planSlot) {
+                lv_obj_clear_flag(t.col, LV_OBJ_FLAG_HIDDEN);
+                lv_label_set_text(t.period, "Plan");
+                lv_obj_set_width(t.fill, 0);
+                lv_label_set_text(t.pct, grp.tier);
+                lv_obj_set_style_text_color(t.pct, lv_color_hex(Theme::HUDText), 0);
+                lv_label_set_text(t.reset, grp.until);
+            } else {
+                lv_obj_add_flag(t.col, LV_OBJ_FLAG_HIDDEN);
+            }
         }
     }
 #endif
@@ -2318,7 +2003,8 @@ void update() {
                        // card's TIMELINE feed — rendered dimmed under `body`,
                        // count gated by the cell height at label-set time.
                        char feed[3][120]; uint8_t feedCount;
-                       char activity[80]; };
+                       char activity[80]; bool childrenKnown; uint16_t childrenActive; uint16_t childrenCompleted;
+                       bool coordinationKnown; uint16_t backgroundJobs; uint16_t spawnedActive; };
         // static: ~10 × 1.2KB no longer fits comfortably on the LVGL task
         // stack; update() is only ever entered from the single UI task.
         static MCell mc[MOSAIC_MAX];
@@ -2330,13 +2016,19 @@ void update() {
             const SessionInfo& si = g_state.sessions[s];
             mc[n].accent = ips10AgentColor(si.agentType);
             mc[n].stateCol = ips10StateColor(si.state);
-            strncpy(mc[n].name, si.projectName[0] ? si.projectName : si.id, sizeof(mc[n].name) - 1);
+            strncpy(mc[n].name, sessionDisplayName(si)[0] ? sessionDisplayName(si) : si.id, sizeof(mc[n].name) - 1);
             mc[n].name[sizeof(mc[n].name) - 1] = '\0';
             strncpy(mc[n].agent, si.agentType, sizeof(mc[n].agent) - 1); mc[n].agent[sizeof(mc[n].agent) - 1] = '\0';
             strncpy(mc[n].state, si.state, sizeof(mc[n].state) - 1); mc[n].state[sizeof(mc[n].state) - 1] = '\0';
             strncpy(mc[n].model, si.modelName, sizeof(mc[n].model) - 1); mc[n].model[sizeof(mc[n].model) - 1] = '\0';
             strncpy(mc[n].tool, si.currentTool, sizeof(mc[n].tool) - 1); mc[n].tool[sizeof(mc[n].tool) - 1] = '\0';
             mc[n].elapsed = si.elapsedSec;
+            mc[n].childrenKnown = si.childrenKnown;
+            mc[n].childrenActive = si.childrenActive;
+            mc[n].childrenCompleted = si.childrenCompleted;
+            mc[n].coordinationKnown = si.coordinationKnown;
+            mc[n].backgroundJobs = si.backgroundJobs;
+            mc[n].spawnedActive = si.spawnedActive;
             strncpy(mc[n].sid, si.id, sizeof(mc[n].sid) - 1); mc[n].sid[sizeof(mc[n].sid) - 1] = '\0';
             strncpy(mc[n].requestId, si.requestId, sizeof(mc[n].requestId) - 1); mc[n].requestId[sizeof(mc[n].requestId) - 1] = '\0';
             strncpy(mc[n].question, si.question, sizeof(mc[n].question) - 1); mc[n].question[sizeof(mc[n].question) - 1] = '\0';
@@ -2447,7 +2139,9 @@ void update() {
             strcpy(mc[n].name, "OpenClaw"); strcpy(mc[n].agent, "openclaw");
             strcpy(mc[n].state, "idle"); mc[n].model[0] = '\0'; mc[n].tool[0] = '\0'; mc[n].elapsed = 0;
             mc[n].sid[0] = '\0'; mc[n].requestId[0] = '\0'; mc[n].question[0] = '\0'; mc[n].body[0] = '\0';
-            mc[n].feedCount = 0; mc[n].activity[0] = '\0'; n++;
+            mc[n].feedCount = 0; mc[n].activity[0] = '\0';
+            mc[n].childrenKnown = false; mc[n].childrenActive = 0; mc[n].childrenCompleted = 0;
+            mc[n].coordinationKnown = false; mc[n].backgroundJobs = 0; mc[n].spawnedActive = 0; n++;
         }
         if (n == 0 && hasData) {  // single-session fallback (no sessions_list yet)
             mc[0].accent = ips10AgentColor(g_state.agentType);
@@ -2483,9 +2177,9 @@ void update() {
         bool linkUp = g_state.wsConnected || Net::serialConnected();
         if (tbDaemon) {
             char sb[64];
-            snprintf(sb, sizeof(sb), "#%06lX " LV_SYMBOL_BULLET "# daemon " LV_SYMBOL_BULLET " %d agent%s " LV_SYMBOL_BULLET " %s",
-                     (unsigned long)(linkUp ? D1_OK : D1_IDLE), n, n == 1 ? "" : "s",
-                     g_state.wsConnected ? "ws" : (Net::serialConnected() ? "serial" : "offline"));
+            snprintf(sb, sizeof(sb), "#%06lX " LV_SYMBOL_BULLET "# %d agent%s " LV_SYMBOL_BULLET " %s",
+                     (unsigned long)(linkUp ? D1_LINK_UP : D1_OFFLINE), n, n == 1 ? "" : "s",
+                     linkUp ? "Connected" : "Offline");
             lv_label_set_text(tbDaemon, sb);
         }
 #if defined(IPS10_PERF_HUD)
@@ -2500,11 +2194,22 @@ void update() {
             lv_label_set_text(tbPerf, pb);
         }
 #endif
+        if (tbClaudeBlock) {
+            if (p5h >= 0 || p7d >= 0) lv_obj_clear_flag(tbClaudeBlock, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(tbClaudeBlock, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (tbZaiBlock) {
+            if (g_state.zaiPrimaryPercent >= 0) {
+                lv_obj_clear_flag(tbZaiBlock, LV_OBJ_FLAG_HIDDEN);
+                setTopbarGauge(tbZa5hFill, tbZa5hPct, g_state.zaiPrimaryPercent,
+                    g_state.zaiPrimaryReset, false, Theme::ZaiBlue);
+            } else lv_obj_add_flag(tbZaiBlock, LV_OBJ_FLAG_HIDDEN);
+        }
         // Top-bar usage gauges. Claude 5h/7d (cyan) always shown; Codex CX 5h/7d
         // (blue) appear only when limits exist; Antigravity credits as a text chip.
         // Percent + reset countdown + stale "!" mirror the plugin water-tank gauge.
-        setTopbarGauge(tb5hFill, tb5hPct, p5h, reset5h, usageStale, D1_OK);
-        setTopbarGauge(tb7dFill, tb7dPct, p7d, reset7d, usageStale, D1_OK);
+        setTopbarGauge(tb5hFill, tb5hPct, p5h, reset5h, usageStale, D1_LINK_UP);
+        setTopbarGauge(tb7dFill, tb7dPct, p7d, reset7d, usageStale, D1_LINK_UP);
 
         // Per-window visibility: after a Codex 5h reset the 5H window vanishes
         // entirely (the 7d window flips to the primary slot) — a "-" gauge next
@@ -2514,6 +2219,7 @@ void update() {
         if (tbCodexBlock) {
             if (hasCodex) lv_obj_clear_flag(tbCodexBlock, LV_OBJ_FLAG_HIDDEN);
             else          lv_obj_add_flag(tbCodexBlock, LV_OBJ_FLAG_HIDDEN);
+
         }
         if (tbCx5hGrp) {
             if (pcx5h >= 0.0f) lv_obj_clear_flag(tbCx5hGrp, LV_OBJ_FLAG_HIDDEN);
@@ -2550,7 +2256,11 @@ void update() {
             }
         }
         if (terrCount) {
-            char tc[40]; snprintf(tc, sizeof(tc), "THE BULLPEN " LV_SYMBOL_BULLET " %d LIVE", n);
+            char tc[64];
+            if (g_state.sessionsTotal > n)
+                snprintf(tc, sizeof(tc), "PROJECT ROOMS " LV_SYMBOL_BULLET " %d SESSIONS " LV_SYMBOL_BULLET " +%d", n, (int)g_state.sessionsTotal - n);
+            else
+                snprintf(tc, sizeof(tc), "PROJECT ROOMS " LV_SYMBOL_BULLET " %d SESSIONS", n);
             lv_label_set_text(terrCount, tc);
         }
 
@@ -2561,58 +2271,22 @@ void update() {
         int availH = lv_obj_get_content_height(cellsBox);
         if (availH < 320) availH = (g_screenH - 16) - 150;  // robust fallback (logo + usage bands)
 
-        // Activity weights + descending order (bigger weight → placed first / larger tile).
-        float weights[MOSAIC_MAX]; int order[MOSAIC_MAX]; float wsum = 0;
-        for (int i = 0; i < n; i++) { weights[i] = ips10StateWeight(mc[i].state); wsum += weights[i]; order[i] = i; }
-        if (wsum <= 0) wsum = 1;
+        // Identity-sorted, equal-sized work cards. State changes never move a
+        // session or imply work percentage. Overflow scrolls rather than shrinking
+        // labels; the terrarium remains visible beside the bounded card region.
+        int order[MOSAIC_MAX];
+        for (int i = 0; i < n; i++) order[i] = i;
         for (int a = 0; a < n; a++)
             for (int b = a + 1; b < n; b++)
-                if (weights[order[b]] > weights[order[a]]) { int tmp = order[a]; order[a] = order[b]; order[b] = tmp; }
-
-        // Squarified treemap (matches the D1 mockup): pack tiles so each stays as
-        // close to square as possible — far better for the in-cell text than the old
-        // slice-and-dice, which made full-height slivers in a wide pane.
+                if (strcmp(mc[order[b]].sid, mc[order[a]].sid) < 0) {
+                    int tmp = order[a]; order[a] = order[b]; order[b] = tmp;
+                }
         float tgtX[MOSAIC_MAX], tgtY[MOSAIC_MAX], tgtW[MOSAIC_MAX], tgtH[MOSAIC_MAX];
-        float area[MOSAIC_MAX];
-        for (int i = 0; i < n; i++) area[i] = (weights[i] / wsum) * (float)availW * (float)availH;
-
-        float rx = 0, ry = 0, rw = (float)availW, rh = (float)availH;
-        int rowStart = 0, k = 0;
-        // Lay out order[a..b-1] as one row along the shorter side of the remaining rect.
-        auto layoutRow = [&](int a, int b) {
-            float s = 0; for (int j = a; j < b; j++) s += area[order[j]];
-            if (s <= 0) return;
-            if (rw >= rh) {                    // remaining rect is wide → stack row vertically in a left column
-                float cw = s / (rh > 0 ? rh : 1); float cy = ry;
-                for (int j = a; j < b; j++) { int gi = order[j]; float ch = area[gi] / (cw > 0 ? cw : 1);
-                    tgtX[gi] = rx; tgtY[gi] = cy; tgtW[gi] = cw; tgtH[gi] = ch; cy += ch; }
-                rx += cw; rw -= cw;
-            } else {                           // remaining rect is tall → lay row horizontally along the top
-                float ch = s / (rw > 0 ? rw : 1); float cx = rx;
-                for (int j = a; j < b; j++) { int gi = order[j]; float cw = area[gi] / (ch > 0 ? ch : 1);
-                    tgtX[gi] = cx; tgtY[gi] = ry; tgtW[gi] = cw; tgtH[gi] = ch; cx += cw; }
-                ry += ch; rh -= ch;
-            }
-        };
-        // Worst (largest) aspect ratio of order[a..b-1] laid along `side`.
-        auto rowWorst = [&](int a, int b, float side) -> float {
-            float s = 0, mn = 1e30f, mx = 0;
-            for (int j = a; j < b; j++) { float v = area[order[j]]; s += v; if (v < mn) mn = v; if (v > mx) mx = v; }
-            if (s <= 0 || side <= 0) return 1e30f;
-            float s2 = s * s, sd2 = side * side;
-            float r1 = sd2 * mx / s2, r2 = s2 / (sd2 * mn);
-            return r1 > r2 ? r1 : r2;
-        };
-        while (k < n) {
-            float side = (rw < rh) ? rw : rh;
-            if (k > rowStart && rowWorst(rowStart, k, side) < rowWorst(rowStart, k + 1, side)) {
-                layoutRow(rowStart, k);        // adding order[k] would worsen aspect → close row
-                rowStart = k;
-            } else {
-                k++;                           // keep growing the row
-            }
+        for (int rank = 0; rank < n; rank++) {
+            const auto rect = CollaborationLayout::cell(rank, n, availW, availH);
+            const int i = order[rank];
+            tgtX[i] = rect.x; tgtY[i] = rect.y; tgtW[i] = rect.width; tgtH[i] = rect.height;
         }
-        if (rowStart < n) layoutRow(rowStart, n);
 
         const float GAP = 6.0f;
         // Per-cell change signature: when a settled cell's content is unchanged we
@@ -2636,6 +2310,7 @@ void update() {
 
             // Persist cell data for the tap handler / detail overlay.
             CellMeta& cm = cellMetaData[i];
+            if (detailCellIdx == i && strcmp(cm.sid, mc[i].sid) != 0) detailClose();
             strncpy(cm.sid, mc[i].sid, sizeof(cm.sid) - 1); cm.sid[sizeof(cm.sid) - 1] = '\0';
             strncpy(cm.requestId, mc[i].requestId, sizeof(cm.requestId) - 1); cm.requestId[sizeof(cm.requestId) - 1] = '\0';
             strncpy(cm.state, mc[i].state, sizeof(cm.state) - 1); cm.state[sizeof(cm.state) - 1] = '\0';
@@ -2663,6 +2338,11 @@ void update() {
 
             // Change signature (content + size + focus). Skip label churn when unchanged.
             uint32_t sig = 2166136261u;
+            sig ^= (uint32_t)mc[i].childrenActive * 131u + (uint32_t)mc[i].childrenCompleted * 17u
+                + (mc[i].childrenKnown ? 97u : 0u)
+                + (uint32_t)mc[i].backgroundJobs * 1031u + (uint32_t)mc[i].spawnedActive * 4099u
+                + (mc[i].coordinationKnown ? 61u : 0u);
+            for (const char* s = mc[i].sid; *s; s++) sig = sig * 31u + (uint8_t)*s;
             for (const char* s = mc[i].state;    *s; s++) sig = sig * 31u + (uint8_t)*s;
             for (const char* s = mc[i].name;     *s; s++) sig = sig * 31u + (uint8_t)*s;
             for (const char* s = mc[i].tool;     *s; s++) sig = sig * 31u + (uint8_t)*s;
@@ -2687,7 +2367,7 @@ void update() {
             // colour changes underneath it.
             lv_obj_set_style_outline_width(cell[i], voiceSel ? 3 : 0, 0);
             lv_obj_set_style_outline_pad(cell[i], 2, 0);
-            lv_obj_set_style_outline_color(cell[i], lv_color_hex(D1_OK), 0);
+            lv_obj_set_style_outline_color(cell[i], lv_color_hex(D1_FOCUS), 0);
 
             int innerW = pw - 24; if (innerW < 24) innerW = 24;
 
@@ -2734,13 +2414,43 @@ void update() {
             snprintf(nb, sizeof(nb), "#%06lX " LV_SYMBOL_BULLET "# %s",
                      (unsigned long)mc[i].accent, ips10AgentLabel(mc[i].agent));
             lv_label_set_text(cellName[i], nb);
+            if (cellCoord[i]) {
+            lv_obj_set_width(cellCoord[i], innerW);
+            lv_obj_set_height(cellCoord[i], 24);
+            char* coord = cellCoordText[i];
+            // Two censuses on one line, each only when the daemon sent it:
+            // child agents (SubagentStart) and coordination (spawned workers
+            // still running + background jobs the session is waiting on).
+            // A parent whose turn closed while either count is non-zero is
+            // waiting, not resting — the amber pill says so.
+            const uint16_t waiting = mc[i].coordinationKnown ? (uint16_t)(mc[i].backgroundJobs + mc[i].spawnedActive) : 0;
+            if (mc[i].childrenKnown && mc[i].coordinationKnown)
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " %u active / %u done " LV_SYMBOL_BULLET " waiting on %u",
+                         mc[i].childrenActive, mc[i].childrenCompleted, waiting);
+            else if (mc[i].childrenKnown)
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_SHUFFLE " %u active / %u done", mc[i].childrenActive, mc[i].childrenCompleted);
+            else if (mc[i].coordinationKnown)
+                snprintf(coord, sizeof(cellCoordText[i]), LV_SYMBOL_LOOP " %u spawned " LV_SYMBOL_BULLET " waiting on %u",
+                         mc[i].spawnedActive, mc[i].backgroundJobs);
+            else
+                coord[0] = '\0';
+            if (coord[0]) lv_obj_clear_flag(cellCoord[i], LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(cellCoord[i], LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text_static(cellCoord[i], coord);
+            const bool childBusy = mc[i].childrenKnown && mc[i].childrenActive > 0;
+            lv_obj_set_style_text_color(cellCoord[i], lv_color_hex(childBusy || waiting > 0
+                ? Theme::DeepSea : Theme::HUDFaint), 0);
+            lv_obj_set_style_bg_color(cellCoord[i], lv_color_hex(childBusy ? D1_WORKING : waiting > 0 ? D1_ATTN : Theme::HUDText), 0);
+            }
 
             // state pill chip — bright states get dark text; the dim idle bg gets light text.
             if (ph >= 44) {
-                lv_label_set_text(cellPill[i], ips10StatePill(mc[i].state));
+                char parentState[64];
+                snprintf(parentState, sizeof(parentState), "%s", ips10StatePill(mc[i].state));
+                lv_label_set_text(cellPill[i], parentState);
                 lv_obj_set_style_bg_color(cellPill[i], lv_color_hex(mc[i].stateCol), 0);
                 lv_obj_set_style_text_color(cellPill[i],
-                    lv_color_hex(idle ? 0x1E293B : 0x05140F), 0);
+                    lv_color_hex(idle ? Theme::HUDText : Theme::DeepSea), 0);
                 lv_obj_set_style_bg_opa(cellPill[i], idle ? (lv_opa_t)90 : LV_OPA_COVER, 0);
                 lv_obj_clear_flag(cellPill[i], LV_OBJ_FLAG_HIDDEN);
             } else {
@@ -2774,40 +2484,21 @@ void update() {
             // one-liner. STRICTLY per-session — the old global latest-action
             // fallback painted some OTHER session's row onto whichever working
             // card rendered first, which read as wrong/meaningless info.
-            // Idle cards keep their milestone too (InkDeck parity: an idle
+            // Idle cards keep their milestone too (TRMNL 7.5" parity: an idle
             // session showing "what it last did" beats a blank card).
             const char* body = "";
             if (awaiting && mc[i].question[0]) body = mc[i].question;
-            else if (mc[i].body[0]) body = mc[i].body;
             else if (!idle && mc[i].activity[0]) body = mc[i].activity;
+            else if (mc[i].body[0]) body = mc[i].body;
             if (body[0] && ph >= 104) {
-                // TIMELINE feed: the newest line renders bright; up to
-                // `feedCount` older rows follow dimmed (recolor markup), the
-                // count gated by cell height so tall treemap cells spend their
-                // former empty deck on per-session history.
-                char full[900];
-                size_t off = (size_t)snprintf(full, sizeof(full), "%s", body);
-                if (off >= sizeof(full)) off = sizeof(full) - 1;
-                int extraRows = ph >= 380 ? 3 : (ph >= 280 ? 2 : (ph >= 190 ? 1 : 0));
-                // An awaiting card leads with the question — its milestone line
-                // (mc.body) joins the dimmed history instead of vanishing, so
-                // the tall amber tile still tells what the agent was doing.
-                if (awaiting && body == mc[i].question && mc[i].body[0] && extraRows > 0
-                    && off < sizeof(full) - 16) {
-                    int nn = snprintf(full + off, sizeof(full) - off, "\n#64748b %s#", mc[i].body);
-                    if (nn > 0) off += (size_t)nn;
-                    if (off >= sizeof(full)) off = sizeof(full) - 1;
-                    extraRows--;
-                }
-                if (extraRows > mc[i].feedCount) extraRows = mc[i].feedCount;
-                for (int r = 0; r < extraRows && off < sizeof(full) - 16; r++) {
-                    int nn = snprintf(full + off, sizeof(full) - off, "\n#64748b %s#", mc[i].feed[r]);
-                    if (nn > 0) off += (size_t)nn;
-                    if (off >= sizeof(full)) off = sizeof(full) - 1;
-                }
+                // At-a-glance cards show the current action or last outcome.
+                // Full event history remains in the long-press detail view.
+                char full[320];
+                snprintf(full, sizeof(full), "%s", body);
                 Utf8::utf8TrimEnd(full);   // byte cap can split a 한글 glyph
                 sanitizeIps10Text(full);
                 lv_label_set_text(cellBody[i], full);
+                lv_obj_set_height(cellBody[i], ph >= 216 ? 54 : 40);
                 lv_obj_clear_flag(cellBody[i], LV_OBJ_FLAG_HIDDEN);
             } else {
                 lv_obj_add_flag(cellBody[i], LV_OBJ_FLAG_HIDDEN);
@@ -2855,8 +2546,8 @@ void update() {
     bool showTankStatus = connected && (p5h >= 0.0f || p7d >= 0.0f
 #if !defined(BOARD_IPS10)
         // A Codex-only user (or the Swift daemon, which has no Claude quota) still
-        // gets the panel so its Codex tanks / account chip are visible.
-        || cxP5h >= 0.0f || cxP7d >= 0.0f || chipBuf[0]
+        // gets the panel so its provider tanks / plan tiles are visible.
+        || usageGroupCount > 0
 #endif
     );
     if (firstUpdate || showTankStatus != lastShowTankStatus) {
@@ -2915,6 +2606,7 @@ void clearSpeaking() {
 }
 
 void notify(const char* text) {
+    IPS10Workspace::voiceNotice(text);
     voiceUiPost(VoiceUiOp::NOTICE, text);
 }
 
@@ -2934,6 +2626,7 @@ void pushVoiceQuestion(const char* q) {
 }
 
 void setVoiceAnswer(const char* a) {
+    IPS10Workspace::voiceAnswer(a);
     if (!a || !a[0]) return;
     char safe[96];
     snprintf(safe, sizeof(safe), "%s", a);

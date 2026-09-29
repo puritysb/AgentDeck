@@ -16,7 +16,7 @@ Usage:
   $0 <environment> [port]
 
 Environments (canonical friendly name — panel/form + inches):
-  ips_35 | amoled_18 | box_40 | tft_114 | ips_101 | inkdeck
+  ips_35 | amoled_18 | box_40 | tft_114 | ips_101 | trmnl_75
   nm_epd_420 | lilygo_epd47
   t_embed | t_display_pro | led_8x32
   (legacy aliases still accepted: round_amoled, box_86, knob, ticker, ...)
@@ -90,7 +90,7 @@ map_env_to_pio() {
         led_8x32|ulanzi_tc001|led8x32) echo "led8x32" ;;
         tft_114|ttgo_t_display|ttgo) echo "ttgo" ;;
         ips_101|ips_10|ips10) echo "ips10" ;;
-        inkdeck) echo "inkdeck" ;;
+        trmnl_75) echo "trmnl_75" ;;
         nm_epd_420) echo "nm_epd_420" ;;
         lilygo_epd47|epd47) echo "lilygo_epd47" ;;
         t_embed|tembed|knob) echo "t_embed" ;;
@@ -107,7 +107,7 @@ validate_env() {
         led_8x32|ulanzi_tc001|led8x32|\
         tft_114|ttgo_t_display|ttgo|\
         ips_101|ips_10|ips10|\
-        inkdeck|nm_epd_420|lilygo_epd47|epd47|\
+        trmnl_75|nm_epd_420|lilygo_epd47|epd47|\
         t_embed|tembed|knob|\
         t_display_pro|tdisplaypro|ticker|s3pro|focus_strip) ;;
         *)

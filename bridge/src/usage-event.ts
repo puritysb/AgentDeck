@@ -6,19 +6,45 @@ import {
   adjustUsagePercent,
   codexSnapshotMatchesAccountPlan,
   formatChatGptPlanName,
+  formatZaiPlanName,
   isCodexWindowStale,
 } from '@agentdeck/shared';
 import type { CodexAuthStatus } from './codex-auth.js';
-import type { AntigravityStatusInfo, BillingType, CodexRateLimits, CodexRateLimitWindow, ModelCatalogEntry, SubscriptionInfo } from './types.js';
+import type { AntigravityStatusInfo, BillingType, CodexRateLimits, CodexRateLimitWindow, ModelCatalogEntry, SubscriptionInfo, ZaiRateLimits } from './types.js';
 
 function formatClaudeSubscription(
   apiUsage?: ApiUsageData | null,
   billingType?: BillingType,
+  stale = false,
 ): SubscriptionInfo | undefined {
-  if (apiUsage?.inferredBillingType === 'subscription' || billingType === 'subscription') {
+  // A session's billing mode and a retained cache do not prove a current plan.
+  if (!stale && apiUsage &&
+      (apiUsage.fiveHourPercent != null || apiUsage.sevenDayPercent != null) &&
+      (apiUsage.inferredBillingType === 'subscription' ||
+       (apiUsage.inferredBillingType == null && billingType === 'subscription'))) {
     return { name: 'Claude' };
   }
   return undefined;
+}
+
+const ZAI_SUBSCRIPTION_NAME = 'GLM Coding Plan';
+
+function buildZaiSubscription(quota?: ZaiRateLimits | null): SubscriptionInfo | undefined {
+  if (!quota?.primary && !quota?.secondary) return undefined;
+  const plan = formatZaiPlanName(quota.planType);
+  return { name: plan ? `${ZAI_SUBSCRIPTION_NAME} · ${plan}` : ZAI_SUBSCRIPTION_NAME };
+}
+
+/** Session bridges cannot author the daemon-owned z.ai account. Keep its row
+ * and quota together even when their replacement subscription list is empty. */
+export function mergeZaiSubscription(
+  subscriptions: SubscriptionInfo[], quota: ZaiRateLimits,
+): SubscriptionInfo[] {
+  const rows = subscriptions.filter(({ name }) =>
+    name !== ZAI_SUBSCRIPTION_NAME && !name.startsWith(`${ZAI_SUBSCRIPTION_NAME} · `));
+  const zai = buildZaiSubscription(quota);
+  if (zai) rows.push(zai);
+  return rows;
 }
 
 export function buildSubscriptions(
@@ -26,7 +52,9 @@ export function buildSubscriptions(
   apiUsage?: ApiUsageData | null,
   billingType?: BillingType,
   antigravityStatus?: AntigravityStatusInfo | null,
-): SubscriptionInfo[] | undefined {
+  claudeStale = false,
+  zaiQuota?: ZaiRateLimits | null,
+): SubscriptionInfo[] {
   const items: SubscriptionInfo[] = [];
   const chatgptName = formatChatGptPlanName(codexAuth?.planType);
   if (chatgptName) {
@@ -36,10 +64,16 @@ export function buildSubscriptions(
     });
   }
 
-  const claude = formatClaudeSubscription(apiUsage, billingType);
+  const claude = formatClaudeSubscription(apiUsage, billingType, claudeStale);
   if (claude) {
     items.push(claude);
   }
+
+  // A subscription row needs live windows — a plan level alone (or a windowless
+  // retirement block) is quota-status metadata, not proof of an active plan.
+  // Same polarity as the Claude row above.
+  const zai = buildZaiSubscription(zaiQuota);
+  if (zai) items.push(zai);
 
   if (antigravityStatus?.planName) {
     items.push({
@@ -48,7 +82,7 @@ export function buildSubscriptions(
     });
   }
 
-  return items.length > 0 ? items : undefined;
+  return items;
 }
 
 /**
@@ -73,7 +107,7 @@ function normalizeCodexWindow(w?: CodexRateLimitWindow): CodexRateLimitWindow | 
  * the account tier is known the result is always an object — possibly one with
  * no windows — because every client merges usage fields RETAIN-ON-ABSENT: an
  * omitted `codexRateLimits` means "no information" and would pin a retired
- * plan's gauge on the dashboard forever (CLAUDE.md wire-boolean rule, same shape
+ * plan's gauge on the dashboard forever (AGENTS.md wire-boolean rule, same shape
  * as the `usageStale` latch). Voiding has to ride the wire as an explicit
  * windowless snapshot.
  */
@@ -93,7 +127,7 @@ function normalizeCodexRateLimits(
   // short (< 1 day → the 5h window) → primary, long (≥ 1 day → weekly) →
   // secondary. Codex now reports the weekly (10080-min) window in its own
   // `primary` slot with `secondary` null once the 5h window resets; slot-based
-  // downstream clients (ESP32/InkDeck firmware label primary=5H, secondary=7D and
+  // downstream clients (ESP32/TRMNL 7.5" firmware label primary=5H, secondary=7D and
   // never read windowMinutes) would otherwise mislabel the weekly "5H" and drop
   // the 7D gauge. Length-based consumers still get windowMinutes, unaffected.
   let shortWindow: CodexRateLimitWindow | undefined;
@@ -122,7 +156,29 @@ function normalizeCodexRateLimits(
       shortWindow = { usedPercent: 100, windowMinutes: 0 };
     }
   }
-  return { ...rl, primary: normalizeCodexWindow(shortWindow), secondary: normalizeCodexWindow(longWindow) };
+  const primary = normalizeCodexWindow(shortWindow);
+  const secondary = normalizeCodexWindow(longWindow);
+  // Reserve metadata can survive in cached/relayed readings after a reset.
+  // It may replace the ordinary gauges only while a live ordinary window is
+  // exhausted. Send the full Codex block so clients retire the old reserve.
+  const exhausted = [primary, secondary].some((w) => w && !w.stale && w.usedPercent >= 100);
+  return { ...rl, primary, secondary, lunaReserve: exhausted && !(rl.lunaReserve?.resetsAt && Date.parse(rl.lunaReserve.resetsAt) <= Date.now()) ? rl.lunaReserve : undefined };
+}
+
+/**
+ * Normalize a z.ai quota block for the wire. The slot assignment itself is the
+ * SSOT's (`zaiQuotaFromLimits`); this applies the same per-window ended-window
+ * treatment Codex windows get — a `resetsAt` slid into the past drops the reset
+ * and flags `stale` — so every consumer shares one staleness grammar across
+ * providers.
+ */
+export function normalizeZaiRateLimits(zai?: ZaiRateLimits | null): ZaiRateLimits | undefined {
+  if (!zai) return undefined;
+  return {
+    ...zai,
+    primary: normalizeCodexWindow(zai.primary),
+    secondary: normalizeCodexWindow(zai.secondary),
+  };
 }
 
 function isClaudeSubscriptionModel(modelName?: string | null): boolean {
@@ -190,8 +246,9 @@ export function buildUsageEvent(
   preAdjusted?: boolean,
   aggregateSubscriptionQuota?: boolean,
   codexRateLimits?: CodexRateLimits | null,
+  zaiQuota?: ZaiRateLimits | null,
 ): UsageEvent {
-  const subscriptionQuotaApplies = (
+  const subscriptionQuotaApplies = !stale && (
     apiUsage?.inferredBillingType === 'subscription'
       || billingType === 'subscription'
   ) && (aggregateSubscriptionQuota || isClaudeSubscriptionModel(snapshot.modelName));
@@ -255,7 +312,8 @@ export function buildUsageEvent(
     // The cost-based API-billing percent path keeps usageStale honest too
     // (defined percent → not forced stale).
     usageStale: stale || (fiveHourPercent === undefined && sevenDayPercent === undefined),
-    tokenStatus: getTokenStatus() !== 'unknown' ? getTokenStatus() : undefined,
+    // Unknown must retract a prior expired status after renewal or host changes.
+    tokenStatus: getTokenStatus(),
     codexAuthMode: codexAuth?.authMode,
     codexWebAuthConnected: codexAuth?.webAuthConnected,
     codexPlanType: codexAuth?.planType,
@@ -263,9 +321,13 @@ export function buildUsageEvent(
     codexSubscriptionActiveUntil: codexAuth?.subscriptionActiveUntil,
     codexLastRefreshAt: codexAuth?.lastRefreshAt,
     codexRateLimits: normalizeCodexRateLimits(codexRateLimits, codexAuth?.planType),
+    // A null/undefined zaiQuota omits the block (no provider configured — no
+    // information); a configured provider ALWAYS gets an object so retirement
+    // rides explicitly, never as an absent key (retain-on-absent rule).
+    zaiRateLimits: normalizeZaiRateLimits(zaiQuota),
     modelCatalog: modelCatalog && modelCatalog.length > 0 ? modelCatalog : undefined,
     mlxModels: mlxModels && mlxModels.length > 0 ? mlxModels : undefined,
-    subscriptions: buildSubscriptions(codexAuth, apiUsage, billingType, antigravityStatus),
+    subscriptions: buildSubscriptions(codexAuth, apiUsage, billingType, antigravityStatus, stale, zaiQuota),
     antigravityStatus: antigravityStatus ?? undefined,
   };
   return event;

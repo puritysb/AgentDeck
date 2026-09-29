@@ -8,11 +8,19 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX, sessionWeight } from '../session-utils.js';
+import {
+  SESSION_WEIGHT_MIN, SESSION_WEIGHT_MAX, SESSION_ORDER_TTL_MS, MAX_SESSION_ORDER_PINS,
+  sessionWeight,
+} from '../session-utils.js';
 import { OUTPUTS, emitSwift, emitKotlin } from '../../../scripts/generate-session-weight-rules.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
-const rules = { min: SESSION_WEIGHT_MIN, max: SESSION_WEIGHT_MAX };
+const rules = {
+  min: SESSION_WEIGHT_MIN,
+  max: SESSION_WEIGHT_MAX,
+  orderTtlMs: SESSION_ORDER_TTL_MS,
+  maxOrderPins: MAX_SESSION_ORDER_PINS,
+};
 
 describe('session weight range invariants', () => {
   it('range is symmetric around the neutral band and fits every platform integer', () => {
@@ -42,6 +50,13 @@ describe('generated mirrors in sync', () => {
     expect(emitSwift(rules)).toContain(`max = ${SESSION_WEIGHT_MAX}`);
     expect(emitKotlin(rules)).toContain(`MIN = ${SESSION_WEIGHT_MIN}`);
     expect(emitKotlin(rules)).toContain(`MAX = ${SESSION_WEIGHT_MAX}`);
+    // The order-pin lifecycle constants are a cross-daemon file contract —
+    // both daemons read/write one session-order.json, so the TTL and the pin
+    // cap must be identical in every mirror.
+    expect(emitSwift(rules)).toContain(`sessionOrderTtlMs = ${SESSION_ORDER_TTL_MS}`);
+    expect(emitSwift(rules)).toContain(`maxSessionOrderPins = ${MAX_SESSION_ORDER_PINS}`);
+    expect(emitKotlin(rules)).toContain(`SESSION_ORDER_TTL_MS = ${SESSION_ORDER_TTL_MS}`);
+    expect(emitKotlin(rules)).toContain(`MAX_SESSION_ORDER_PINS = ${MAX_SESSION_ORDER_PINS}`);
   });
 });
 

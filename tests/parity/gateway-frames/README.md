@@ -17,6 +17,29 @@ That rule exists because the previous fixtures were composed from an assumption 
 
 So a fixture earns its place by driving the real parser to the right output, never by restating its own fields.
 
+## `plugin-approval-*.json` are the one exception: SDK-derived, not live-captured
+
+`plugin-approval-requested.json`, `plugin-approval-resolved.json` and
+`plugin-approval-removed.json` (issue #309) were never observed on a live
+Gateway — plugin approvals require an actual OpenClaw plugin call, which
+nothing in this repo's dev setup triggers. They are instead built field-for-
+field from the installed `openclaw` package's own `.d.ts` declarations
+(`PluginApprovalRequest` / `PluginApprovalRequestPayload` /
+`PluginApprovalResolved` in `approval-types-CQ_BKP9V.d.ts`, cross-checked
+against the `kind: "plugin"` variant of `ApprovalPresentationSchema` in
+`approvals-CiGTrkJW.d.ts`) and against the RPC handlers that actually build
+these payloads (`plugin-approval-_zEt9gGf.mjs`,
+`buildRequestedApprovalEvent(record, 'plugin')` in
+`approval-shared-1gFEjucV.mjs`). `plugin-approval-removed.json` is the one
+field even lighter than that: its shape (`{id}`) is confirmed only at the
+string literal `event: "plugin.approval.removed"` in OpenClaw's embedded/
+TUI-local approval broker (`agent-tools.before-tool-call-*.mjs`) — a
+different runtime from the persisted Gateway approval manager this repo's
+Gateway connection actually talks to, which never emits this event on the
+paths reachable through `plugin.approval.request`/`.resolve`. Treat these
+three as best-effort until replaced with a real capture; do not delete the
+"SDK-derived" label when regenerating this file.
+
 ## Coverage
 
 | Fixture                                    | Frame                    | Scenario |
@@ -33,6 +56,9 @@ So a fixture earns its place by driving the real parser to the right output, nev
 | `session-tool-start.json`                   | event (session.tool)     | tool invoked, with its arguments |
 | `session-tool-result.json`                  | event (session.tool)     | tool finished, with its result |
 | `exec-approval-requested.json`              | event                    | bash approval, everything nested under `request` |
+| `plugin-approval-requested.json` *(SDK-derived)* | event               | plugin approval — title/description/severity/scope under `request` |
+| `plugin-approval-resolved.json` *(SDK-derived)*  | event               | plugin approval resolved by a device |
+| `plugin-approval-removed.json` *(SDK-derived)*   | event               | plugin approval dropped — `{id}` only, no decision |
 | `sessions-changed.json`                     | event                    | session list invalidated |
 | `health-event.json`                         | event                    | gateway health report |
 | `models-list-response.json`                 | res                      | model catalog |

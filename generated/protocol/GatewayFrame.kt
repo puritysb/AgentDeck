@@ -15,15 +15,17 @@ private fun <T> Klaxon.convert(k: kotlin.reflect.KClass<*>, fromJson: (JsonValue
     })
 
 private val klaxon = Klaxon()
-    .convert(GatewayEventName::class,     { GatewayEventName.fromValue(it.string!!) },     { "\"${it.value}\"" })
-    .convert(GatewayMethodName::class,    { GatewayMethodName.fromValue(it.string!!) },    { "\"${it.value}\"" })
-    .convert(Mode::class,                 { Mode.fromValue(it.string!!) },                 { "\"${it.value}\"" })
-    .convert(ExecApprovalDecision::class, { ExecApprovalDecision.fromValue(it.string!!) }, { "\"${it.value}\"" })
-    .convert(State::class,                { State.fromValue(it.string!!) },                { "\"${it.value}\"" })
-    .convert(Status::class,               { Status.fromValue(it.string!!) },               { "\"${it.value}\"" })
-    .convert(ConnectResultType::class,    { ConnectResultType.fromValue(it.string!!) },    { "\"${it.value}\"" })
-    .convert(GatewayFrameType::class,     { GatewayFrameType.fromValue(it.string!!) },     { "\"${it.value}\"" })
-    .convert(GatewayMethodResult::class,  { GatewayMethodResult.fromJson(it) },            { it.toJson() }, true)
+    .convert(GatewayEventName::class,       { GatewayEventName.fromValue(it.string!!) },       { "\"${it.value}\"" })
+    .convert(GatewayMethodName::class,      { GatewayMethodName.fromValue(it.string!!) },      { "\"${it.value}\"" })
+    .convert(Mode::class,                   { Mode.fromValue(it.string!!) },                   { "\"${it.value}\"" })
+    .convert(ExecApprovalDecision::class,   { ExecApprovalDecision.fromValue(it.string!!) },   { "\"${it.value}\"" })
+    .convert(ApprovalKind::class,           { ApprovalKind.fromValue(it.string!!) },           { "\"${it.value}\"" })
+    .convert(PluginApprovalSeverity::class, { PluginApprovalSeverity.fromValue(it.string!!) }, { "\"${it.value}\"" })
+    .convert(State::class,                  { State.fromValue(it.string!!) },                  { "\"${it.value}\"" })
+    .convert(Status::class,                 { Status.fromValue(it.string!!) },                 { "\"${it.value}\"" })
+    .convert(ConnectResultType::class,      { ConnectResultType.fromValue(it.string!!) },      { "\"${it.value}\"" })
+    .convert(GatewayFrameType::class,       { GatewayFrameType.fromValue(it.string!!) },       { "\"${it.value}\"" })
+    .convert(GatewayMethodResult::class,    { GatewayMethodResult.fromJson(it) },              { it.toJson() }, true)
 
 /**
  * Client → Gateway: RPC request.
@@ -71,6 +73,9 @@ enum class GatewayEventName(val value: String) {
     ExecApprovalRequested("exec.approval.requested"),
     ExecApprovalResolved("exec.approval.resolved"),
     Health("health"),
+    PluginApprovalRemoved("plugin.approval.removed"),
+    PluginApprovalRequested("plugin.approval.requested"),
+    PluginApprovalResolved("plugin.approval.resolved"),
     Presence("presence"),
     SessionMessage("session.message"),
     SessionTool("session.tool"),
@@ -81,19 +86,22 @@ enum class GatewayEventName(val value: String) {
 
     companion object {
         public fun fromValue(value: String): GatewayEventName = when (value) {
-            "chat"                    -> Chat
-            "connect.challenge"       -> ConnectChallenge
-            "exec.approval.requested" -> ExecApprovalRequested
-            "exec.approval.resolved"  -> ExecApprovalResolved
-            "health"                  -> Health
-            "presence"                -> Presence
-            "session.message"         -> SessionMessage
-            "session.tool"            -> SessionTool
-            "sessions.changed"        -> SessionsChanged
-            "shutdown"                -> Shutdown
-            "system-presence"         -> SystemPresence
-            "tick"                    -> Tick
-            else                      -> throw IllegalArgumentException()
+            "chat"                      -> Chat
+            "connect.challenge"         -> ConnectChallenge
+            "exec.approval.requested"   -> ExecApprovalRequested
+            "exec.approval.resolved"    -> ExecApprovalResolved
+            "health"                    -> Health
+            "plugin.approval.removed"   -> PluginApprovalRemoved
+            "plugin.approval.requested" -> PluginApprovalRequested
+            "plugin.approval.resolved"  -> PluginApprovalResolved
+            "presence"                  -> Presence
+            "session.message"           -> SessionMessage
+            "session.tool"              -> SessionTool
+            "sessions.changed"          -> SessionsChanged
+            "shutdown"                  -> Shutdown
+            "system-presence"           -> SystemPresence
+            "tick"                      -> Tick
+            else                        -> throw IllegalArgumentException()
         }
     }
 }
@@ -107,6 +115,8 @@ enum class GatewayMethodName(val value: String) {
     Health("health"),
     LogsTail("logs.tail"),
     ModelsList("models.list"),
+    PluginApprovalList("plugin.approval.list"),
+    PluginApprovalResolve("plugin.approval.resolve"),
     SessionsList("sessions.list"),
     SessionsMessagesSubscribe("sessions.messages.subscribe"),
     SessionsSubscribe("sessions.subscribe"),
@@ -122,6 +132,8 @@ enum class GatewayMethodName(val value: String) {
             "health"                      -> Health
             "logs.tail"                   -> LogsTail
             "models.list"                 -> ModelsList
+            "plugin.approval.list"        -> PluginApprovalList
+            "plugin.approval.resolve"     -> PluginApprovalResolve
             "sessions.list"               -> SessionsList
             "sessions.messages.subscribe" -> SessionsMessagesSubscribe
             "sessions.subscribe"          -> SessionsSubscribe
@@ -170,6 +182,11 @@ data class GatewayMethodParams (
     val idempotencyKey: String? = null,
     val message: String? = null,
     val sessionKey: String? = null,
+
+    /**
+     * Per-turn override supported by the Gateway; does not patch session defaults.
+     */
+    val thinking: String? = null,
 
     @Json(name = "runId")
     val runID: String? = null,
@@ -224,6 +241,11 @@ enum class Mode(val value: String) {
  * The decisions the Gateway will accept for an exec approval. Mirror of OpenClaw's
  * `isApprovalDecision` / `DEFAULT_EXEC_APPROVAL_DECISIONS`. `'allow'` is NOT a member —
  * sending it is rejected as an invalid decision.
+ *
+ * The decisions the Gateway will accept for a plugin approval. Same union as exec
+ * (`ApprovalDecisionSchema` in `approvals-CiGTrkJW.d.ts` is shared by every approval kind)
+ * — re-typed under this module's own name so callers that only touch plugin approvals do
+ * not have to import the exec module for a type alias.
  */
 enum class ExecApprovalDecision(val value: String) {
     AllowAlways("allow-always"),
@@ -253,18 +275,18 @@ data class DeviceAuth (
 )
 
 sealed class GatewayMethodResult {
-    class ConnectResultValue(val value: ConnectResult)                                          : GatewayMethodResult()
-    class ExecApprovalRequestedPayloadArrayValue(val value: List<ExecApprovalRequestedPayload>) : GatewayMethodResult()
+    class ApprovalRequestedPayloadArrayValue(val value: List<ApprovalRequestedPayload>) : GatewayMethodResult()
+    class ConnectResultValue(val value: ConnectResult)                                  : GatewayMethodResult()
 
     public fun toJson(): String = klaxon.toJsonString(when (this) {
-        is ConnectResultValue                     -> this.value
-        is ExecApprovalRequestedPayloadArrayValue -> this.value
+        is ApprovalRequestedPayloadArrayValue -> this.value
+        is ConnectResultValue                 -> this.value
     })
 
     companion object {
         public fun fromJson(jv: JsonValue): GatewayMethodResult = when (jv.inside) {
+            is JsonArray<*> -> ApprovalRequestedPayloadArrayValue(jv.array?.let { klaxon.parseFromJsonArray<ApprovalRequestedPayload>(it) }!!)
             is JsonObject   -> ConnectResultValue(jv.obj?.let { klaxon.parseFromJsonObject<ConnectResult>(it) }!!)
-            is JsonArray<*> -> ExecApprovalRequestedPayloadArrayValue(jv.array?.let { klaxon.parseFromJsonArray<ExecApprovalRequestedPayload>(it) }!!)
             else            -> throw IllegalArgumentException()
         }
     }
@@ -276,13 +298,25 @@ sealed class GatewayMethodResult {
  * `exec.approval.requested` payload. The nested `request` is the real shape; the flat
  * fields are tolerated so a future/legacy Gateway that inlines them still parses instead of
  * silently producing an empty prompt.
+ *
+ * `plugin.approval.requested` payload (`PluginApprovalRequest` in
+ * `approval-types-CQ_BKP9V.d.ts`, confirmed on the wire by
+ * `buildRequestedApprovalEvent(record, 'plugin')` in `approval-shared- 1gFEjucV.mjs`):
+ * `{approvalKind?: 'plugin', id, request, createdAtMs, expiresAtMs}`. Unlike exec's
+ * compatibility fallback, the Gateway's OWN `PluginApprovalRequest` type declares `request`
+ * as required, never optional or flattened — but the flat-field merge below is kept anyway,
+ * at zero cost, so a future Gateway that inlines a field degrades instead of blanking the
+ * prompt (the same defensive posture the exec module documents its own reasoning for).
  */
-data class ExecApprovalRequestedPayload (
+data class ApprovalRequestedPayload (
     @Json(name = "agentId")
     val agentID: String? = null,
 
     /**
      * Decisions this specific request permits (policy may drop allow-always).
+     *
+     * Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
+     * the plugin surface — unlike exec, there is no subtraction step.
      */
     val allowedDecisions: List<String>? = null,
 
@@ -318,7 +352,7 @@ data class ExecApprovalRequestedPayload (
 
     val host: String? = null,
     val id: String,
-    val request: ExecApprovalRequestBody? = null,
+    val request: ExecApprovalListResultRequest? = null,
     val resolvedPath: String? = null,
     val security: String? = null,
     val sessionKey: String? = null,
@@ -327,18 +361,66 @@ data class ExecApprovalRequestedPayload (
     /**
      * Human-readable risk note, when the Gateway produced one.
      */
-    val warningText: String? = null
+    val warningText: String? = null,
+
+    val approvalKind: ApprovalKind? = null,
+    val description: String? = null,
+    val detail: String? = null,
+    val externalResolution: ExecApprovalListResultExternalResolution? = null,
+    val mcpTool: ExecApprovalListResultMCPTool? = null,
+
+    @Json(name = "pluginId")
+    val pluginID: String? = null,
+
+    @Json(name = "runId")
+    val runID: String? = null,
+
+    val scope: PluginApprovalScopeLike? = null,
+    val severity: PluginApprovalSeverity? = null,
+    val title: String? = null,
+
+    @Json(name = "toolCallId")
+    val toolCallID: String? = null,
+
+    val toolName: String? = null
+)
+
+enum class ApprovalKind(val value: String) {
+    Plugin("plugin");
+
+    companion object {
+        public fun fromValue(value: String): ApprovalKind = when (value) {
+            "plugin" -> Plugin
+            else     -> throw IllegalArgumentException()
+        }
+    }
+}
+
+data class ExecApprovalListResultExternalResolution (
+    val decisions: List<String>? = null,
+    val label: String
+)
+
+data class ExecApprovalListResultMCPTool (
+    val server: String,
+    val tool: String
 )
 
 /**
  * The `request` body OpenClaw nests inside the requested event.
+ *
+ * The `request` body OpenClaw nests inside the requested/resolved event —
+ * `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.
  */
-data class ExecApprovalRequestBody (
+data class ExecApprovalListResultRequest (
     @Json(name = "agentId")
     val agentID: String? = null,
 
     /**
      * Decisions this specific request permits (policy may drop allow-always).
+     *
+     * Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
+     * the plugin surface — unlike exec, there is no subtraction step.
      */
     val allowedDecisions: List<String>? = null,
 
@@ -374,8 +456,74 @@ data class ExecApprovalRequestBody (
     /**
      * Human-readable risk note, when the Gateway produced one.
      */
-    val warningText: String? = null
+    val warningText: String? = null,
+
+    val description: String? = null,
+    val detail: String? = null,
+    val externalResolution: RequestExternalResolution? = null,
+    val mcpTool: RequestMCPTool? = null,
+
+    @Json(name = "pluginId")
+    val pluginID: String? = null,
+
+    @Json(name = "runId")
+    val runID: String? = null,
+
+    val scope: PluginApprovalScopeLike? = null,
+    val severity: PluginApprovalSeverity? = null,
+    val title: String? = null,
+
+    @Json(name = "toolCallId")
+    val toolCallID: String? = null,
+
+    val toolName: String? = null
 )
+
+data class RequestExternalResolution (
+    val decisions: List<String>? = null,
+    val label: String
+)
+
+data class RequestMCPTool (
+    val server: String,
+    val tool: String
+)
+
+/**
+ * Loosely-typed mirror of `ApprovalScopeSchema` (`approvals-CiGTrkJW.d.ts`) — a
+ * discriminated union of owner-declared blast-radius facts. Display-only, never
+ * authorization; AgentDeck only needs enough of it to summarize one supporting line, so
+ * this is intentionally not the full 4-variant union.
+ */
+data class PluginApprovalScopeLike (
+    val amount: String? = null,
+    val automation: String? = null,
+    val command: String? = null,
+    val currency: String? = null,
+    val kind: String? = null,
+    val target: String? = null
+)
+
+/**
+ * `severity?: "info" | "warning" | "critical" | null` (`PluginApprovalRequestPayload`).
+ * Absent → `"warning"`, matching OpenClaw's own `buildPluginApprovalRequestMessage`
+ * fallback (`request.request.severity ?? "warning"`) — NOT `"info"`, which would understate
+ * a request the Gateway itself treats as needing the 🛡️ icon.
+ */
+enum class PluginApprovalSeverity(val value: String) {
+    Critical("critical"),
+    Info("info"),
+    Warning("warning");
+
+    companion object {
+        public fun fromValue(value: String): PluginApprovalSeverity = when (value) {
+            "critical" -> Critical
+            "info"     -> Info
+            "warning"  -> Warning
+            else       -> throw IllegalArgumentException()
+        }
+    }
+}
 
 /**
  * The Gateway answers `{ ok: true }`; `resolved` is kept for older builds.
@@ -420,6 +568,27 @@ data class ExecApprovalRequestBody (
  * silently producing an empty prompt.
  *
  * `exec.approval.resolved` payload (`buildResolvedEvent` in exec-approval).
+ *
+ * `plugin.approval.requested` payload (`PluginApprovalRequest` in
+ * `approval-types-CQ_BKP9V.d.ts`, confirmed on the wire by
+ * `buildRequestedApprovalEvent(record, 'plugin')` in `approval-shared- 1gFEjucV.mjs`):
+ * `{approvalKind?: 'plugin', id, request, createdAtMs, expiresAtMs}`. Unlike exec's
+ * compatibility fallback, the Gateway's OWN `PluginApprovalRequest` type declares `request`
+ * as required, never optional or flattened — but the flat-field merge below is kept anyway,
+ * at zero cost, so a future Gateway that inlines a field degrades instead of blanking the
+ * prompt (the same defensive posture the exec module documents its own reasoning for).
+ *
+ * `plugin.approval.resolved` payload (`PluginApprovalResolved`).
+ *
+ * `plugin.approval.removed` payload. NOT declared in any `.d.ts` shipped with the installed
+ * package — it is real wire protocol (confirmed at the string literal `event:
+ * "plugin.approval.removed"` in `agent-tools.before-tool- call-CHXgDzUI.mjs`, the
+ * embedded/TUI-local approval broker) but has no typed declaration because that broker is a
+ * runtime helper, not part of the generated `packages/gateway-protocol` schema surface the
+ * persisted-manager RPC path (the one AgentDeck's Gateway connection actually uses) ships
+ * types for. The payload shape read directly from that emitter is `{id}` — no decision, no
+ * reason. Documented here as best-effort/lightly-typed rather than SDK-confirmed for the
+ * persisted-manager path specifically.
  */
 data class ConnectResult (
     val accepted: Boolean? = null,
@@ -547,6 +716,9 @@ data class ConnectResult (
 
     /**
      * Decisions this specific request permits (policy may drop allow-always).
+     *
+     * Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
+     * the plugin surface — unlike exec, there is no subtraction step.
      */
     val allowedDecisions: List<String>? = null,
 
@@ -582,7 +754,7 @@ data class ConnectResult (
 
     val host: String? = null,
     val id: String? = null,
-    val request: ExecApprovalRequestBody? = null,
+    val request: ConnectResultRequest? = null,
     val resolvedPath: String? = null,
     val security: String? = null,
     val unavailableDecisions: List<String>? = null,
@@ -594,6 +766,23 @@ data class ConnectResult (
 
     val decision: String? = null,
     val resolvedBy: String? = null,
+    val approvalKind: ApprovalKind? = null,
+    val description: String? = null,
+    val detail: String? = null,
+    val externalResolution: ExecApprovalListResultExternalResolution? = null,
+    val mcpTool: ExecApprovalListResultMCPTool? = null,
+
+    @Json(name = "pluginId")
+    val pluginID: String? = null,
+
+    val scope: PluginApprovalScopeLike? = null,
+    val severity: PluginApprovalSeverity? = null,
+    val title: String? = null,
+
+    @Json(name = "toolCallId")
+    val toolCallID: String? = null,
+
+    val toolName: String? = null,
 
     @Json(name = "clientId")
     val clientID: String? = null,
@@ -704,6 +893,79 @@ data class Policy (
 
     @Json(name = "tickIntervalMs")
     val tickIntervalMS: Double? = null
+)
+
+/**
+ * The `request` body OpenClaw nests inside the requested event.
+ *
+ * The `request` body OpenClaw nests inside the requested/resolved event —
+ * `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.
+ */
+data class ConnectResultRequest (
+    @Json(name = "agentId")
+    val agentID: String? = null,
+
+    /**
+     * Decisions this specific request permits (policy may drop allow-always).
+     *
+     * Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
+     * the plugin surface — unlike exec, there is no subtraction step.
+     */
+    val allowedDecisions: List<String>? = null,
+
+    /**
+     * Approval POLICY ("on-miss" | "always" | …), never a question.
+     */
+    val ask: String? = null,
+
+    /**
+     * Sanitized command display text — the thing the user is approving.
+     */
+    val command: String? = null,
+
+    /**
+     * Gateway-side static analysis summary of the command.
+     */
+    val commandAnalysis: String? = null,
+
+    val commandArgv: List<String>? = null,
+
+    /**
+     * Non-node hosts send a preview instead of the full command.
+     */
+    val commandPreview: String? = null,
+
+    val cwd: String? = null,
+    val host: String? = null,
+    val resolvedPath: String? = null,
+    val security: String? = null,
+    val sessionKey: String? = null,
+    val unavailableDecisions: List<String>? = null,
+
+    /**
+     * Human-readable risk note, when the Gateway produced one.
+     */
+    val warningText: String? = null,
+
+    val description: String? = null,
+    val detail: String? = null,
+    val externalResolution: RequestExternalResolution? = null,
+    val mcpTool: RequestMCPTool? = null,
+
+    @Json(name = "pluginId")
+    val pluginID: String? = null,
+
+    @Json(name = "runId")
+    val runID: String? = null,
+
+    val scope: PluginApprovalScopeLike? = null,
+    val severity: PluginApprovalSeverity? = null,
+    val title: String? = null,
+
+    @Json(name = "toolCallId")
+    val toolCallID: String? = null,
+
+    val toolName: String? = null
 )
 
 data class Server (

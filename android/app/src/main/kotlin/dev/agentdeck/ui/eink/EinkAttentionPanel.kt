@@ -31,6 +31,7 @@ import dev.agentdeck.net.PromptOption
 import dev.agentdeck.net.SessionInfo
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.terrarium.renderer.einkColorEnabled
+import dev.agentdeck.util.SessionTone
 
 data class EinkAttentionFeatured(
     val sessionId: String,
@@ -94,7 +95,7 @@ fun EinkAttentionPanel(
     modifier: Modifier = Modifier,
 ) {
     val options = effectiveEinkAttentionOptions(featured.options)
-    val accent = if (einkColorEnabled) Color(0xFFBB7700) else Color.Black
+    val accent = if (einkColorEnabled) Color(SessionTone.AWAITING.paper) else Color.Black
     val label = agentLabel(featured.agentType)
     val subtitle = listOfNotNull(label, featured.modelName?.let { abbreviateModelName(it) })
         .joinToString(" / ")

@@ -1,0 +1,47 @@
+{
+  "records": [
+    {
+      "timestamp": "2026-09-28T00:00:00Z",
+      "payload": {
+        "type": "user",
+        "content": "hello"
+      }
+    },
+    {
+      "timestamp": "2026-09-28T00:00:01Z",
+      "payload": {
+        "type": "turn_start"
+      }
+    },
+    {
+      "timestamp": "2026-09-28T00:00:02.123Z",
+      "payload": {
+        "type": "assistant",
+        "operationType": "Say",
+        "content": "Hello there"
+      }
+    },
+    {
+      "timestamp": "2026-09-28T00:00:03Z",
+      "payload": {
+        "type": "assistant",
+        "operationType": "Reasoning",
+        "content": "must never appear"
+      }
+    },
+    {
+      "timestamp": "2026-09-28T00:00:04Z",
+      "payload": {
+        "type": "turn_end"
+      }
+    }
+  ],
+  "texts": [
+    "hello",
+    "Hello there"
+  ],
+  "timestamps": [
+    1790553600000,
+    1790553602123
+  ]
+}

@@ -1,0 +1,270 @@
+{
+  "quota": [
+    {
+      "note": "standard schema, Max plan — live capture 2026-09-19: TOKENS_LIMIT is the 5h credits window (percentage only), TIME_LIMIT the monthly MCP window with full numbers",
+      "limits": [
+        {
+          "type": "TIME_LIMIT",
+          "unit": 5,
+          "number": 1,
+          "usage": 4000,
+          "currentValue": 4000,
+          "remaining": 0,
+          "percentage": 100,
+          "nextResetTime": 1790588888997,
+          "usageDetails": [
+            {
+              "modelCode": "search-prime",
+              "usage": 3186
+            },
+            {
+              "modelCode": "web-reader",
+              "usage": 814
+            }
+          ]
+        },
+        {
+          "type": "TOKENS_LIMIT",
+          "unit": 3,
+          "number": 5,
+          "percentage": 1,
+          "nextResetTime": 1789845000174
+        }
+      ],
+      "level": "max",
+      "expected": {
+        "planType": "max",
+        "limitId": "standard",
+        "primary": {
+          "usedPercent": 1,
+          "windowMinutes": 300,
+          "resetsAt": "2026-09-19T19:10:00.174Z",
+          "quantity": "tokens"
+        },
+        "secondary": {
+          "usedPercent": 100,
+          "windowMinutes": 43200,
+          "resetsAt": "2026-09-28T09:48:08.997Z",
+          "quantity": "mcp"
+        }
+      }
+    },
+    {
+      "note": "credit schema, lite plan — CREDIT_LIMIT items told apart by unit (3=hours×5 session, 6=weeks×1 weekly); percent derived from currentValue/total when percentage is absent",
+      "limits": [
+        {
+          "type": "CREDIT_LIMIT",
+          "unit": 3,
+          "number": 5,
+          "currentValue": 240,
+          "total": 2000,
+          "remaining": 1760,
+          "nextResetTime": 1789845000174
+        },
+        {
+          "type": "CREDIT_LIMIT",
+          "unit": 6,
+          "number": 1,
+          "percentage": 42,
+          "nextResetTime": 1790588888997
+        }
+      ],
+      "level": "Lite",
+      "expected": {
+        "planType": "lite",
+        "limitId": "credit",
+        "primary": {
+          "usedPercent": 12,
+          "windowMinutes": 300,
+          "resetsAt": "2026-09-19T19:10:00.174Z",
+          "quantity": "tokens"
+        },
+        "secondary": {
+          "usedPercent": 42,
+          "windowMinutes": 10080,
+          "resetsAt": "2026-09-28T09:48:08.997Z",
+          "quantity": "tokens"
+        }
+      }
+    },
+    {
+      "note": "CREDIT_LIMIT capacity may ride `usage` instead of `total` — currentValue stays the consumed amount",
+      "limits": [
+        {
+          "type": "CREDIT_LIMIT",
+          "unit": 3,
+          "number": 5,
+          "currentValue": 500,
+          "usage": 2000
+        }
+      ],
+      "level": "lite",
+      "expected": {
+        "planType": "lite",
+        "limitId": "credit",
+        "primary": {
+          "usedPercent": 25,
+          "windowMinutes": 300,
+          "quantity": "tokens"
+        }
+      }
+    },
+    {
+      "note": "credit item with an unrecognized unit is skipped as a window but still marks the response's family",
+      "limits": [
+        {
+          "type": "CREDIT_LIMIT",
+          "unit": 9,
+          "percentage": 30
+        }
+      ],
+      "level": null,
+      "expected": {
+        "limitId": "credit"
+      }
+    },
+    {
+      "note": "5h window with no nextResetTime — absent is unknown, never a fabricated reset",
+      "limits": [
+        {
+          "type": "TOKENS_LIMIT",
+          "unit": 3,
+          "number": 5,
+          "percentage": 7
+        }
+      ],
+      "level": "max",
+      "expected": {
+        "planType": "max",
+        "limitId": "standard",
+        "primary": {
+          "usedPercent": 7,
+          "windowMinutes": 300,
+          "quantity": "tokens"
+        }
+      }
+    },
+    {
+      "note": "weekly preferred over MCP for the secondary slot when a schema reports both",
+      "limits": [
+        {
+          "type": "CREDIT_LIMIT",
+          "unit": 3,
+          "percentage": 10,
+          "nextResetTime": 1789845000174
+        },
+        {
+          "type": "CREDIT_LIMIT",
+          "unit": 6,
+          "percentage": 55,
+          "nextResetTime": 1790588888997
+        },
+        {
+          "type": "TIME_LIMIT",
+          "unit": 5,
+          "number": 1,
+          "percentage": 90,
+          "nextResetTime": 1790588888997
+        }
+      ],
+      "level": "pro",
+      "expected": {
+        "planType": "pro",
+        "limitId": "credit",
+        "primary": {
+          "usedPercent": 10,
+          "windowMinutes": 300,
+          "resetsAt": "2026-09-19T19:10:00.174Z",
+          "quantity": "tokens"
+        },
+        "secondary": {
+          "usedPercent": 55,
+          "windowMinutes": 10080,
+          "resetsAt": "2026-09-28T09:48:08.997Z",
+          "quantity": "tokens"
+        }
+      }
+    },
+    {
+      "note": "percentage above 100 clamps — the wire never carries >100%",
+      "limits": [
+        {
+          "type": "TOKENS_LIMIT",
+          "percentage": 137
+        }
+      ],
+      "level": "max",
+      "expected": {
+        "planType": "max",
+        "limitId": "standard",
+        "primary": {
+          "usedPercent": 100,
+          "windowMinutes": 300,
+          "quantity": "tokens"
+        }
+      }
+    },
+    {
+      "note": "unclassifiable items (unknown type, non-object) carry nothing; a plan level alone still rides",
+      "limits": [
+        {
+          "type": "SOMETHING_NEW",
+          "percentage": 40
+        },
+        "garbage",
+        null
+      ],
+      "level": "pro",
+      "expected": {
+        "planType": "pro",
+        "limitId": "standard"
+      }
+    },
+    {
+      "note": "empty item list read nothing — plan rides, family does not",
+      "limits": [],
+      "level": "pro",
+      "expected": {
+        "planType": "pro"
+      }
+    },
+    {
+      "note": "absent limits and absent level — no information at all",
+      "limits": null,
+      "level": null,
+      "expected": {}
+    }
+  ],
+  "paygKeys": [
+    {
+      "note": "community PAYG marker prefix",
+      "key": "sk-pay-abc123",
+      "payg": true
+    },
+    {
+      "note": "payg anywhere in the key",
+      "key": "key.with.payg.segment",
+      "payg": true
+    },
+    {
+      "note": "case-insensitive",
+      "key": "SK-PAY-XYZ",
+      "payg": true
+    },
+    {
+      "note": "a normal coding-plan key",
+      "key": "0a1b2c3d4e.f5g6h7i8j9",
+      "payg": false
+    },
+    {
+      "note": "empty is not a PAYG claim — it is no key at all",
+      "key": "",
+      "payg": false
+    },
+    {
+      "note": "null is no key",
+      "key": null,
+      "payg": false
+    }
+  ]
+}

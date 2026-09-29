@@ -224,7 +224,8 @@ final class OpenCodeCreature: Creature {
             cx: cx,
             bodyTopY: cy - bodyW * 0.8,
             bodyMetric: terrariumNameTagMetric(canvasWidth: canvasWidth, scale: scale),
-            backgroundColor: Self.nameBg
+            backgroundColor: Self.nameBg,
+            rank: visualState == .waiting ? .awaiting : visualState == .pulsing ? .working : .idle
         )
     }
 }

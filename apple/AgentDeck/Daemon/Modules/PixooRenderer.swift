@@ -382,9 +382,11 @@ final class PixooRenderer {
         let dataParticle: RGB = (0x70, 0xB0, 0xFF)
         let dataParticleGreen: RGB = (0x50, 0xF0, 0x90)
         let tankWall: RGB = (0x06, 0x0A, 0x10)
-        let stateIdle: RGB = (0x22, 0xC5, 0x5E)
-        let stateProcessing: RGB = (0x3B, 0x82, 0xF6)
-        let stateAwaiting: RGB = (0xF5, 0x9E, 0x0B)
+        // Session state palette (DESIGN.md §2.7) — same source as the Node
+        // renderer's STATE_COLORS, so both daemons paint one Pixoo.
+        let stateIdle: RGB = SessionTone.idle.rgb()
+        let stateProcessing: RGB = SessionTone.working.rgb()
+        let stateAwaiting: RGB = SessionTone.awaiting.rgb()
         let stateError: RGB = (0xEF, 0x44, 0x44)
         let white: RGB = (0xFF, 0xFF, 0xFF)
         let black: RGB = (0x00, 0x00, 0x00)
@@ -404,7 +406,6 @@ final class PixooRenderer {
 
     func renderSequence(dashboardState: DashboardState, frameCount: Int, intervalMs: Int = 100) -> [Data] {
         let state = dashboardState.state
-        let usagePct = dashboardState.fiveHourPercent ?? 0
         // Crayfish is drawn only when the OpenClaw Gateway is authenticated.
         // Reachability alone (`gatewayAvailable`) was misleading — an OpenClaw
         // process on localhost with no shared token would still light up the
@@ -427,7 +428,7 @@ final class PixooRenderer {
         }
 
         let hudCount = hudProviderCount(from: dashboardState)
-        let crayfishY = hudCount >= 2 ? 0.65 : (hudCount == 1 ? 0.72 : Self.cfDefaultY)
+        let crayfishY = hudCount > 0 ? Double(Self.height - hudCount * TerrariumRules.pixooUsageRowHeight - TerrariumRules.pixooUsageCreatureMargin) / Double(Self.height) : Self.cfDefaultY
         let crayfishRouting = hasGateway && dashboardState.siblingSessions.contains {
             $0.agentType == "openclaw" && $0.state == "processing"
         }
@@ -485,7 +486,7 @@ final class PixooRenderer {
                 glowPixel(&world, Int(round(particle.x)), Int(round(particle.y)), color, 0.5 * fadeAlpha)
             }
 
-            let tetraMaxY = hudCount >= 2 ? 46 : (hudCount == 1 ? 52 : (Self.sandTop - 3))
+            let tetraMaxY = hudCount > 0 ? Self.height - hudCount * TerrariumRules.pixooUsageRowHeight - 4 : (Self.sandTop - 3)
             updateTetras(animFrame: animFrame, surfaceY: Self.surfaceY, maxY: tetraMaxY)
             drawSurface(&world, animFrame: animFrame, surfaceY: Self.surfaceY, palette: palette, state: effectiveState)
 
@@ -515,14 +516,6 @@ final class PixooRenderer {
                 drawOfficialDotGlyph(&output, glyph: .openClaw, worldX: Self.cfDefaultX, worldY: crayfishY, state: crayfishRouting ? .processing : .idle, animFrame: animFrame, camera: camera, sessionToneIndex: 0, sick: dashboardState.gatewayHasError)
             }
 
-            if usagePct >= 90 {
-                let flashIntensity = (sin(Double(animFrame) * 0.2) + 1) * 0.08
-                for y in 0..<Self.height {
-                    for x in 0..<Self.width {
-                        glowPixel(&output, x, y, Self.colors.stateError, flashIntensity)
-                    }
-                }
-            }
 
             let sessionCount = creatureInstances.count
             if sessionCount >= 2 {
@@ -559,7 +552,6 @@ final class PixooRenderer {
     /// 9×9 official mark carries identity while the one-pixel perimeter rail
     /// alone carries processing/awaiting/error motion.
     func renderMicro(dashboardState: DashboardState) -> Data {
-        let usagePct = dashboardState.fiveHourPercent ?? 0
         let hasGateway = dashboardState.gatewayConnected || dashboardState.siblingSessions.contains { $0.agentType == "openclaw" }
         let gatewayHasError = dashboardState.gatewayHasError
 
@@ -575,7 +567,7 @@ final class PixooRenderer {
         let routing = dashboardState.siblingSessions.contains { $0.agentType == "openclaw" && $0.state == "processing" }
 
         let aggregate: MicroAggregate
-        if gatewayHasError || usagePct >= 90 {
+        if gatewayHasError {
             aggregate = .error
         } else if dominant?.state == .awaiting {
             aggregate = .awaiting
@@ -692,6 +684,7 @@ final class PixooRenderer {
             case .openCode: return (255, 246, 248)
             case .openClaw: return (255, 67, 84)
             case .kiro: return (124, 58, 237)
+            case .zai: return (31, 99, 236)  // Brand.zai (#1F63EC)
             case .antigravity:
                 let bands: [RGB] = [
                     (92, 214, 77), (245, 203, 36), (255, 132, 16),
@@ -771,10 +764,11 @@ final class PixooRenderer {
             ? nil : dashboardState.codexRateLimits?.secondary?.usedPercent
         var telemetry: [(Double, RGB)] = []
         for candidate: (Double?, RGB) in [
-            (dashboardState.fiveHourPercent, (42, 220, 154)),
-            (dashboardState.sevenDayPercent, (54, 154, 255)),
+            (dashboardState.usageStale == true ? nil : dashboardState.fiveHourPercent, (42, 220, 154)),
+            (dashboardState.usageStale == true ? nil : dashboardState.sevenDayPercent, (54, 154, 255)),
             (codexPrimary, (185, 86, 255)),
             (codexSecondary, (104, 116, 255)),
+            (dashboardState.zaiRateLimits?.primary?.stale == true ? nil : dashboardState.zaiRateLimits?.primary?.usedPercent, (31, 99, 236)),
         ] {
             if let raw = candidate.0 { telemetry.append((raw, candidate.1)) }
         }
@@ -783,7 +777,7 @@ final class PixooRenderer {
             let y = firstRailY + row
             for x in 0..<n { set(x, y, (5, 8, 14)) }
             let pct = max(0, min(100, item.0))
-            let color: RGB = pct >= 90 ? (255, 58, 72) : pct >= 70 ? (255, 183, 38) : item.1
+            let color: RGB = gaugeColor(pct, animFrame: animFrame, brand: item.1)
             set(0, y, item.1); set(1, y, item.1)
             let width = Int(round(pct / 100 * 29))
             if width > 0 { for x in 3..<(3 + width) { set(x, y, color) } }
@@ -1334,12 +1328,17 @@ final class PixooRenderer {
             guard window?.stale != true, let percent = window?.usedPercent else { return nil }
             return UsageWindow(percent: percent, resetsAt: window?.resetsAt)
         }
+        // Same contract for the z.ai window shape (which carries `quantity`).
+        func freshCodexWindow(_ window: ZaiWindow?) -> UsageWindow? {
+            guard window?.stale != true, let percent = window?.usedPercent else { return nil }
+            return UsageWindow(percent: percent, resetsAt: window?.resetsAt)
+        }
 
         var providers: [ProviderRow] = []
-        if dashboardState.usageStale != true, let fiveHour = dashboardState.fiveHourPercent {
+        if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil || dashboardState.sevenDayPercent != nil {
             providers.append(ProviderRow(
                 glyph: .claudeCode, brand: (255, 112, 76),
-                primary: UsageWindow(percent: fiveHour, resetsAt: dashboardState.fiveHourResetsAt),
+                primary: dashboardState.fiveHourPercent.map { UsageWindow(percent: $0, resetsAt: dashboardState.fiveHourResetsAt) },
                 secondary: dashboardState.sevenDayPercent.map {
                     UsageWindow(percent: $0, resetsAt: dashboardState.sevenDayResetsAt)
                 },
@@ -1356,10 +1355,20 @@ final class PixooRenderer {
                 subscriptionUntil: dashboardState.codexSubscriptionActiveUntil
             ))
         }
+        let zaiPrimary = freshCodexWindow(dashboardState.zaiRateLimits?.primary)
+        let zaiSecondary = freshCodexWindow(dashboardState.zaiRateLimits?.secondary)
+        if zaiPrimary != nil || zaiSecondary != nil {
+            providers.append(ProviderRow(
+                glyph: .zai, brand: (31, 99, 236),  // Brand.zai (#1F63EC)
+                primary: zaiPrimary,
+                secondary: zaiSecondary,
+                subscriptionUntil: nil
+            ))
+        }
         guard !providers.isEmpty else { return }
-
+        let seatedProviders = providers
         let timeColor: RGB = (0x60, 0x70, 0x80)
-        let firstY = providers.count > 1 ? 50 : 57
+        let firstY = Self.height - seatedProviders.count * TerrariumRules.pixooUsageRowHeight
 
         func drawCreatureMarker(_ provider: ProviderRow, rowY: Int) {
             guard let mask = OfficialDotGlyphs.masks[provider.glyph] else { return }
@@ -1446,7 +1455,7 @@ final class PixooRenderer {
             }
         }
 
-        for (index, provider) in providers.enumerated() {
+        for (index, provider) in seatedProviders.enumerated() {
             let rowY = firstY + index * 7
             for y in rowY..<(rowY + 7) {
                 for x in 0..<Self.width {
@@ -1517,6 +1526,11 @@ final class PixooRenderer {
                 return state == .processing ? Self.colors.crayfishRouting : Self.colors.crayfishBody
             case .kiro:
                 return state == .processing ? (167, 120, 255) : (124, 58, 237)
+            // The z.ai provider mark reaches this sprite only from the usage
+            // HUD, which never drives creature state — but the switch stays
+            // total over the glyph union. Brand.zai (#1F63EC).
+            case .zai:
+                return (31, 99, 236)
             case .antigravity:
                 return Self.colors.white
             }
@@ -1976,7 +1990,7 @@ final class PixooRenderer {
 
     private func hudProviderCount(from dashboardState: DashboardState) -> Int {
         var count = 0
-        if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil {
+        if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil || dashboardState.sevenDayPercent != nil {
             count += 1
         }
         func freshCodexWindow(_ window: CodexRateLimitWindow?) -> Bool {
@@ -1985,6 +1999,11 @@ final class PixooRenderer {
         let codexPrimary = freshCodexWindow(dashboardState.codexRateLimits?.primary)
         let codexSecondary = freshCodexWindow(dashboardState.codexRateLimits?.secondary)
         if codexPrimary || codexSecondary {
+            count += 1
+        }
+        let zai = dashboardState.zaiRateLimits
+        if (zai?.primary?.stale != true && zai?.primary?.usedPercent != nil)
+            || (zai?.secondary?.stale != true && zai?.secondary?.usedPercent != nil) {
             count += 1
         }
         return count
@@ -2023,10 +2042,9 @@ final class PixooRenderer {
             case .idle: clamp(baseY + 0.26, min: 0.60, max: 0.70)
             }
         }
-        if hudProviderCount >= 2 {
-            return min(y, 0.65)
-        } else if hudProviderCount == 1 {
-            return min(y, 0.72)
+        if hudProviderCount > 0 {
+            return min(y, Double(Self.height - hudProviderCount * TerrariumRules.pixooUsageRowHeight
+                - TerrariumRules.pixooUsageCreatureMargin) / Double(Self.height))
         }
         return y
     }
@@ -2036,12 +2054,8 @@ final class PixooRenderer {
     }
 
     private func gaugeColor(_ pct: Double, animFrame: Int, brand: RGB) -> RGB {
-        if pct >= 90 {
-            let pulse = (sin(Double(animFrame) * 0.2) + 1) * 0.3
-            return lerpColor(Self.colors.stateError, Self.colors.white, pulse)
-        }
-        if pct >= 70 { return Self.colors.stateAwaiting }
-        return brand
+        let rgb = UsageSeverity.colorHex(pct)
+        return (UInt8((rgb >> 16) & 255), UInt8((rgb >> 8) & 255), UInt8(rgb & 255))
     }
 
     func formatResetDetailed(_ resetsAt: String?) -> String {

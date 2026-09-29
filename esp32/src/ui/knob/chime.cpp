@@ -1,4 +1,10 @@
-#if defined(BOARD_T_EMBED)
+// board_config.h first: BOARD_HAS_SPEAKER comes from a board header, not from
+// a -D build flag, so the guard below cannot see it until this is included.
+#include "../../../boards/board_config.h"
+
+// T-Embed pager, and the paper surface with a codec (NM-EPD-420): a panel
+// whose repaint takes ~10 s cannot flash, so the ear is its fastest signal.
+#if defined(BOARD_T_EMBED) || (defined(BOARD_EINK_SURFACE) && defined(BOARD_HAS_SPEAKER))
 
 #include "chime.h"
 #include "../../audio/speaker_playback.h"
@@ -58,6 +64,8 @@ static void chimeTask(void* param) {
 namespace Chime {
 
 void playAttention() {
+    // A board whose codec never answered has nothing to play through.
+    if (!Audio::speakerAudible()) return;
     if (s_playing || Audio::playbackActive()) return;  // coalesce; never interrupt speech
     s_playing = true;
     if (xTaskCreate(chimeTask, "chime", 4096, nullptr, 1, nullptr) != pdPASS) {
@@ -67,4 +75,4 @@ void playAttention() {
 
 }  // namespace Chime
 
-#endif  // BOARD_T_EMBED
+#endif  // BOARD_T_EMBED || paper surface with a speaker

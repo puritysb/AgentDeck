@@ -16,6 +16,12 @@ fail() { echo -e "${RED}[FAIL]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Git topology detects linked worktrees regardless of their directory names.
+if [ "$(git -C "$PROJECT_DIR" rev-parse --absolute-git-dir)" != "$(cd "$PROJECT_DIR" && cd "$(git rev-parse --git-common-dir)" && pwd -P)" ]; then
+  fail "Run the installer from the persistent main checkout, not a linked worktree."
+  exit 1
+fi
+
 echo ""
 echo "========================================="
 echo "  AgentDeck Installer"
@@ -146,24 +152,32 @@ fi
 echo ""
 
 # --- Link plugin ---
-info "Linking plugin to Stream Deck..."
-cd "$PROJECT_DIR/plugin"
-streamdeck link bound.serendipity.agentdeck.sdPlugin 2>/dev/null || {
-  warn "streamdeck link failed — you may need to link manually"
-  warn "Run: cd plugin && streamdeck link bound.serendipity.agentdeck.sdPlugin"
-}
-ok "Plugin linked"
+info "Deploying and verifying the Stream Deck plugin..."
+cd "$PROJECT_DIR"
+pnpm plugin:deploy
+ok "Plugin runtime verified"
 
 echo ""
 
 # --- Link CLI ---
 info "Linking agentdeck CLI globally..."
 cd "$PROJECT_DIR/bridge"
-pnpm link --global 2>/dev/null || {
-  warn "pnpm link failed — you may need to link manually"
-  warn "Run: cd bridge && pnpm link --global"
-}
-ok "agentdeck CLI linked"
+# The link is reported by its OUTCOME, never announced. This used to swallow
+# stderr, warn, and then print "agentdeck CLI linked" unconditionally — so on a
+# pnpm that rejects the command the installer reported a link it had not made,
+# and the next `agentdeck …` either failed or silently resolved to an unrelated
+# global install. `pnpm link --global` is undocumented on pnpm 11 (`pnpm link
+# --help` documents only `pnpm link <dir>`) and reported as an outright
+# "unexpected argument" by at least one user's pnpm, so the failure is real and
+# version-dependent.
+if link_out=$(pnpm link --global 2>&1); then
+  ok "agentdeck CLI linked"
+else
+  warn "pnpm link failed — the agentdeck CLI is NOT on your PATH:"
+  printf '%s\n' "$link_out" | sed 's/^/    /'
+  warn "Every command in this README still works as: node $PROJECT_DIR/bridge/dist/cli.js <args>"
+  warn "For a normal install without linking a checkout, use: npx @agentdeck/setup"
+fi
 
 if node "$PROJECT_DIR/bridge/dist/cli.js" diag native >/dev/null; then
   ok "APME native database ready for $(node -v)"

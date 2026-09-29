@@ -51,6 +51,8 @@ enum MicroGlyphs {
         case .openCode: return (238, 238, 238)
         case .openClaw: return (255, 92, 92)
         case .kiro: return (124, 58, 237)
+        // Brand.zai (#1F63EC), measured from the upstream z.ai mark.
+        case .zai: return (31, 99, 236)
         case .antigravity:
             let bands: [RGB] = [
                 (92, 214, 77), (245, 203, 36), (255, 132, 16),

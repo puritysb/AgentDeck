@@ -19,7 +19,7 @@ import type { DashboardState, LayoutMode } from './dashboard.js';
 import type { CodexRateLimitWindow, ModelCatalogEntry, OllamaStatus, SessionInfo, TimelineEntry, TimelineEntryType } from '@agentdeck/shared';
 import {
   stateRank, sortSessions, assignDisplayNames,
-  timelineShouldRenderTaskRow, timelineTaskHeaderDisplay,
+  timelineShouldRenderTaskRow, timelineTaskHeaderDisplay, sessionStateWords,
 } from '@agentdeck/shared';
 
 // ===== Layout Breakpoints =====
@@ -185,16 +185,7 @@ function creatureBrandColor(agentType?: string): string {
 }
 
 function compactStateLabel(state: string): string {
-  switch (state) {
-    case 'processing': return 'PROC';
-    case 'awaiting_permission': return 'PERM';
-    case 'awaiting_option': return 'OPT';
-    case 'awaiting_diff': return 'DIFF';
-    case 'disconnected': return 'DISC';
-    case 'idle':
-    default:
-      return 'IDLE';
-  }
+  return sessionStateWords(state).tiny;
 }
 
 function currentSessionSummary(state: DashboardState, width: number): string {
@@ -622,7 +613,7 @@ function renderAgentLines(state: DashboardState, maxWidth: number, useLogo: bool
  * Per-model scoped weekly caps (e.g. the "Fable" cap) shown beneath the 5h/7d
  * gauges wherever both windows render. The account-wide 5h/7d can read low while
  * a scoped cap is the ACTIVE binding constraint — so surface each one. An inactive
- * cap stays visible but muted (dim gauge), only an active cap gets the percent
+ * cap stays visible in informational cyan; only an active cap gets the percent
  * ramp, mirroring the deck's treatment. `inlineReset` matches the host block's
  * layout (reset on the same line vs a dim line beneath).
  */
@@ -631,7 +622,7 @@ function renderScopedLimitLines(u: NonNullable<DashboardState['usage']>, gaugeW:
   for (const s of u.scopedLimits ?? []) {
     const pct = Math.round(s.percent);
     const label = truncText((s.label || 'model').replace(/\s+/g, ' ').trim(), 7);
-    const gauge = blockGauge(pct, gaugeW, !s.active);
+    const gauge = blockGauge(pct, gaugeW, u.usageStale === true, !s.active);
     const reset = resetTimeStr(s.resetsAt);
     if (inlineReset) {
       lines.push(` ${label} [${gauge}] ${pct}% ${colors.dim}${reset}${RESET}`);
@@ -676,6 +667,35 @@ function renderCodexLimitLines(
   return lines;
 }
 
+/** z.ai GLM Coding Plan usage lines (#348) — same gauge grammar. The secondary
+ *  window labels by its QUANTITY ("MCP" for tool calls), never a length. */
+function renderZaiLimitLines(
+  u: NonNullable<DashboardState['usage']>, gaugeW: number, inlineReset: boolean,
+): string[] {
+  const lines: string[] = [];
+  const zr = u.zaiRateLimits;
+  if (!zr) return lines;
+  const windows: Array<{ w: typeof zr.primary; label: string }> = [];
+  if (zr.primary) windows.push({ w: zr.primary, label: 'Z.AI 5h' });
+  if (zr.secondary) {
+    const isMcp = (zr.secondary as { quantity?: string }).quantity === 'mcp';
+    windows.push({ w: zr.secondary, label: isMcp ? 'Z.AI MCP' : 'Z.AI 7d' });
+  }
+  for (const { w, label } of windows) {
+    if (!w) continue;
+    const pct = Math.round(w.usedPercent);
+    const gauge = blockGauge(pct, gaugeW, w.stale === true);
+    const reset = w.stale === true ? 'stale' : resetTimeStr(w.resetsAt);
+    if (inlineReset) {
+      lines.push(` ${label} [${gauge}] ${pct}%${reset ? ` ${colors.dim}${reset}${RESET}` : ''}`);
+    } else {
+      lines.push(` ${label} [${gauge}] ${pct}%`);
+      if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
+    }
+  }
+  return lines;
+}
+
 function renderStatusLimitsLines(state: DashboardState, width: number): string[] {
   const lines: string[] = [];
   const u = state.usage;
@@ -695,6 +715,7 @@ function renderStatusLimitsLines(state: DashboardState, width: number): string[]
   }
   lines.push(...renderScopedLimitLines(u, gaugeW, false));
   lines.push(...renderCodexLimitLines(u, gaugeW, false));
+  lines.push(...renderZaiLimitLines(u, gaugeW, false));
   if (state.currentTool) {
     lines.push(` ${colors.tool}${truncText(state.currentTool, width - 2)}${RESET}`);
   }
@@ -728,6 +749,7 @@ function renderStatusLines(state: DashboardState, width: number): string[] {
     }
     lines.push(...renderScopedLimitLines(u, gaugeW, true));
     lines.push(...renderCodexLimitLines(u, gaugeW, true));
+    lines.push(...renderZaiLimitLines(u, gaugeW, true));
   }
   if (state.currentTool) lines.push(` ${colors.tool}Tool: ${truncText(state.currentTool, width - 8)}${RESET}`);
   if (state.modelName) lines.push(`${colors.dim} Model: ${state.modelName}${RESET}`);

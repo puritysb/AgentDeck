@@ -157,6 +157,15 @@ private class BrandIconSpec(
                 color = Color(0xFF7C3AED),
                 einkColor = Color(0xFF444444),
             )
+            // "zai" is the provider key emitted by zaiLimitRows for the LIMITS
+            // surfaces (the z.ai GLM Coding Plan provider, not a session agent
+            // type) — upstream mark from design/brand/zai.svg.
+            "zai" -> BrandIconSpec(
+                pathDataList = ZAI_PATHS,
+                viewBox = 30f,
+                color = Color(0xFF1F63EC),
+                einkColor = Color(0xFF444444),
+            )
             else -> null
         }
     }
@@ -193,6 +202,14 @@ private const val ANTIGRAVITY_PATH =
 // Kiro ghost — @lobehub/icons-static-svg@1.94.0, MIT (design/brand/kiro.svg)
 private const val KIRO_PATH =
     "M4.594 6.677C6.67-2.226 18.746-2.211 21.16 6.632c.353 1.297 1.725 7.582-1.673 13.747-1.545 2.797-5.841 5.49-6.99 1.883C8.6 25.477 3.315 24.1 5.789 18.609l-.318.143c-3.57 1.305-3.863-1.208-3.173-2.513.45-.84.727-1.335.937-1.897.353-.975.458-1.568.593-2.498.27-1.837.277-3.607.765-5.167zm8.37.01a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.214-.705 1.214-1.89 0-.622-.127-1.125-.367-1.455a1.014 1.014 0 00-.855-.435zm4.08 0a.92.92 0 00-.81.428c-.217.323-.33.825-.33 1.462 0 .705.15 1.89 1.14 1.89h.008c.757 0 1.215-.705 1.215-1.89 0-.622-.128-1.125-.368-1.455a1.014 1.014 0 00-.855-.435z"
+
+// z.ai mark — upstream logo.svg from z-cdn.chatglm.cn (design/brand/zai.svg,
+// viewBox 0 0 30 30): the Z's three strokes, mark without the app-icon plate.
+private val ZAI_PATHS = listOf(
+    "M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z",
+    "M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z",
+    "M24.3,7.1L13.14,22.91L5.7,22.91L16.86,7.1Z",
+)
 
 // OpenClaw — front-facing crayfish multi-path (viewBox 0 0 24 24)
 private val OPENCLAW_PATHS = listOf(

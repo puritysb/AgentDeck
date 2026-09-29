@@ -28,6 +28,12 @@ from matrix_sync_common import (  # noqa: E402
 )
 
 OFFLINE_HASH = "offline"
+# One failed frame fetch is "could not look", not "the daemon is gone": a busy
+# event loop or a daemon restart misses a 3 s request routinely. Paint OFFLINE
+# only once the daemon has been unreachable this long — the panel keeps its
+# last frame until then. The Timebox client never painted on a single miss,
+# which is why iDotMatrix alone flickered OFFLINE.
+OFFLINE_GRACE_SEC = 15.0
 
 async def fetch_frame(url: str) -> bytes:
     """Fetch the current 32x32 BMP frame from the AgentDeck bridge."""
@@ -294,7 +300,8 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
                 last_bridge_ok = time.monotonic()
             except urllib.error.URLError as ue:
                 print(f"Bridge API offline or unreachable (GET /pixoo/frame): {ue.reason}")
-                if connected and last_hash != OFFLINE_HASH:
+                if (connected and last_hash != OFFLINE_HASH
+                        and time.monotonic() - last_bridge_ok >= OFFLINE_GRACE_SEC):
                     print("Sending local OFFLINE frame to iDotMatrix...")
                     if await upload_offline_frame(idm_image):
                         last_hash = OFFLINE_HASH
@@ -302,7 +309,8 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
                 continue
             except Exception as fe:
                 print(f"Failed to fetch frame from bridge: {fe}")
-                if connected and last_hash != OFFLINE_HASH:
+                if (connected and last_hash != OFFLINE_HASH
+                        and time.monotonic() - last_bridge_ok >= OFFLINE_GRACE_SEC):
                     print("Sending local OFFLINE frame to iDotMatrix...")
                     if await upload_offline_frame(idm_image):
                         last_hash = OFFLINE_HASH

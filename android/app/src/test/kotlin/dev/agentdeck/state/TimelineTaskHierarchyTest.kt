@@ -4,12 +4,14 @@ import dev.agentdeck.ui.timeline.IN_FLIGHT_TASK_MAX_AGE_MS
 import dev.agentdeck.ui.timeline.ROTATING_ENTRY_MAX_AGE_MS
 import dev.agentdeck.ui.timeline.TimelineIconKey
 import dev.agentdeck.ui.timeline.isInFlightTask
+import dev.agentdeck.ui.timeline.ROTATING_ICON_KEY
 import dev.agentdeck.ui.timeline.isRotatingEntry
 import dev.agentdeck.ui.timeline.parseTimelineMarkdown
 import dev.agentdeck.ui.timeline.stripMarkdownInline
 import dev.agentdeck.ui.timeline.timelineDetailIsRedundant
 import dev.agentdeck.ui.timeline.timelinePromoteInformativeLead
 import dev.agentdeck.ui.timeline.timelineSummaryIsRedundantWithDetail
+import dev.agentdeck.ui.timeline.timelineDisplayIconKey
 import dev.agentdeck.ui.timeline.timelineIconKey
 import dev.agentdeck.ui.timeline.TimelineMarkdownLine
 import org.junit.Assert.assertEquals
@@ -325,6 +327,46 @@ class TimelineTaskHierarchyTest {
         )
         // Non-response types (e.g. the prompt on a merged turn) pass through.
         assertEquals(raw, timelinePromoteInformativeLead(raw, "chat_start"))
+    }
+
+    @Test
+    fun `a rotating row draws the running glyph, not its own`() {
+        // An open task_start spins. Before this rule Android rotated the
+        // static Checklist glyph, which reads as a glitch rather than a
+        // spinner; Apple already swapped in the circular arrow.
+        val open = entry("task_start", timestamp = 1_000L, taskId = "task-A")
+        assertTrue(isRotatingEntry(open, emptyList(), nowMs = 1_000L))
+        assertEquals(TimelineIconKey.Task, timelineIconKey(open.type, open.status))
+        assertEquals(ROTATING_ICON_KEY, timelineDisplayIconKey(open, emptyList(), nowMs = 1_000L))
+        assertEquals(TimelineIconKey.Running, ROTATING_ICON_KEY)
+    }
+
+    @Test
+    fun `a closed task returns to its own task glyph`() {
+        val open = entry("task_start", timestamp = 1_000L, taskId = "task-A")
+        val siblings = listOf(entry("task_end", timestamp = 1_010L, taskId = "task-A"))
+        assertFalse(isRotatingEntry(open, siblings, nowMs = 1_000L))
+        assertEquals(TimelineIconKey.Task, timelineDisplayIconKey(open, siblings, nowMs = 1_000L))
+    }
+
+    @Test
+    fun `an error closes a turn so the spinner stops beside its explanation`() {
+        // The TS and Swift mirrors both counted `error` as a completion; the
+        // Kotlin mirror had dropped it, so a failed request kept spinning
+        // right next to the error row that explained it.
+        val chat = entry("chat_start", timestamp = 1_000L, sessionId = "sess-1")
+        val err = entry("error", timestamp = 1_005L, sessionId = "sess-1")
+        assertFalse(
+            "a later same-session error must stop the spinner",
+            isRotatingEntry(chat, listOf(err), nowMs = 1_000L),
+        )
+    }
+
+    @Test
+    fun `an error in a different session leaves the turn spinning`() {
+        val chat = entry("chat_start", timestamp = 1_000L, sessionId = "sess-1")
+        val other = entry("error", timestamp = 1_005L, sessionId = "sess-2")
+        assertTrue(isRotatingEntry(chat, listOf(other), nowMs = 1_000L))
     }
 
     private fun entry(

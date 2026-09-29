@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-08-20
-revision: 2026-08-20
+reviewed: 2026-09-27
+revision: 2026-09-27
 source_of_truth: DESIGN.md
 validators: [python3 design/verify-tokens-sync.py, bash design/lint.sh]
 ---
@@ -98,13 +98,17 @@ Inside the product itself — menubar popup, e‑ink panels, terminal/CLI surfac
 
 | Role            | Marketing token   | Product UI hex  | Why it changes               |
 |-----------------|-------------------|-----------------|------------------------------|
-| OK / running    | `--kelp-500` `#2f8a7c` | `#52D988`  | Saturated to read at 6px dot |
+| OK / healthy    | `--kelp-500` `#2f8a7c` | `#52D988`  | Saturated to read at 6px dot |
 | Awaiting        | `--amber-500` `#c8923a` | `#FFA93D` | Hotter for menubar pulse     |
 | Error           | `--coral-500` `#c0573a` | `#FF6B6B` | Brighter on near‑black       |
-| Hub / link      | `--kelp-700` `#1f6157`  | `#3ED6E8` | Electric cyan = product chrome |
+| Activity / hub / link | `--kelp-700` `#1f6157`  | `#3ED6E8` | Electric cyan = product chrome and "an agent is working" |
 | Idle text       | `--ink-300` `#7c9694`   | `#7a8a9c` / `#9a9aa2` | Cooler grey on neutral OS chrome |
 | Dark surface    | `--ink-900` `#0e1f1f`   | `#0a1a2a` (popup) / `#0c0d10` (terminal) | Native macOS / TTY feel |
+| Aquarium water  | `--ink-900` `#0e1f1f`   | `#0A1628` / `#0F2744` / `#163B5C` (`--ui-water-*`) | The terrarium ground every Dashboard shares |
+| HUD text        | `--tide-50` / `--ink-300` | `#E2E8F0` / `#94A3B8` / `#64748B` (`--ui-hud-*`) | Cool greys that sit on blue water |
 | Light surface   | `--tide-50` `#f5f3ec`   | `#f6f3ee` (popup-light) | Closer to macOS Big Sur cream |
+
+**One meaning per hue.** Inside the product each bright has exactly one job: green is health (link up, quota normal, a passing check), cyan is activity and the product chrome (an agent is working, the AgentDeck mark, focus), amber is "needs you" and the only hue that pulses, red is failure, grey is quiet or unknown. A surface that paints work green makes health and activity indistinguishable; one that paints it blue makes it read as the Codex brand beside a Codex mark.
 
 Rule: **product UI may borrow marketing tokens, but marketing surfaces must never use product brights.** A press shot or hero illustration that mixes `#FFA93D` against `#f5f3ec` will look like a different brand.
 
@@ -112,12 +116,93 @@ The product brights are exposed in `design/tokens.css` under the `--ui-*` namesp
 
 ### 2.7 Status semantics
 
+Marketing and editorial surfaces (`--status-*`):
+
 | State        | Color    | Animation        | Meaning                          |
 |--------------|----------|------------------|----------------------------------|
 | `idle`       | ink‑300  | none             | Session exists, nothing happening |
 | `processing` | kelp‑500 | none (steady)    | Agent is actively working        |
 | `awaiting`   | amber‑500 | pulse 1.1s       | Agent needs YES/NO from you      |
 | `error`      | coral‑500 | none             | Failed run, attention required   |
+
+Product surfaces — every Dashboard, the menubar, the TUI, hardware — use the
+`--session-*` tokens, and every one of them shows a given session state the same
+way. The mapping, the paper variant and the words live in one place,
+`shared/src/session-state-presentation.ts`, and `pnpm generate-session-state`
+emits the Swift, Kotlin and ESP32 mirrors; no surface keeps its own
+state→colour switch.
+
+| Wire state | Tone | Dark screen | Paper | Label | Short (≤7) | Tiny (≤4) |
+|---|---|---|---|---|---|---|
+| `idle` | idle | `--session-idle` → `--ui-idle` | ×0.5 | Idle | `IDLE` | `IDLE` |
+| `processing` | working | `--session-working` → `--ui-cyan` | ×0.5 | Working | `WORKING` | `WORK` |
+| `awaiting_permission` | awaiting | `--session-awaiting` → `--ui-attn`, pulses | ×0.5 | Needs approval | `APPROVE` | `PERM` |
+| `awaiting_option` | awaiting | same | ×0.5 | Needs a choice | `CHOOSE` | `OPT` |
+| `awaiting_diff` | awaiting | same | ×0.5 | Review diff | `REVIEW` | `DIFF` |
+| `disconnected` | offline | `--session-offline` → `--ui-idle-dark` | ×0.5 | Offline | `OFFLINE` | `OFF` |
+
+A missing state is offline; an unknown state from a newer peer is a live, quiet
+session (idle), never an error. The three awaiting states share one tone because
+they are equally urgent; the words say what the person must do. Paper colours
+use the same ×0.5 rule as quota severity (§2.8), so small text keeps 4.5:1 on
+`--ui-popup-bg-light`. Shape stays redundant with colour (§6.4): rows prefix the
+short label with ● ◉ ⚠ ◇ □ ○ so the states survive a monochrome panel.
+
+---
+
+### 2.8 Subscription quota severity
+
+Every dashboard classifies the **consumed percentage of the same quota window**.
+The printed quantity may be “used” or “left”; color always follows **used**.
+For example, **82% used = 18% left = warning**, for every provider and device.
+
+| Used | Remaining equivalent | Meaning | Dark-screen token |
+|---|---|---|---|
+| below 70% | above 30% | Normal | `--ui-ok` (green) |
+| 70% to below 90% | above 10% through 30% | Warning | `--ui-attn` (amber) |
+| 90% or more | 10% or less | Critical | `--ui-error` (red) |
+| missing, invalid, stale or aged | unknown / last known | Not current | `--ui-idle-dark` (grey) |
+| known, non-binding model cap | informational | Inactive cap | `--ui-cyan` |
+
+Unknown/stale takes precedence over inactive. A quota is not a session state:
+all quota colors are **steady**, including exhausted quotas. Do not pulse red
+or wash the whole dashboard red because a window is near its limit.
+
+Provider identity stays on its logo/header. Put severity on the percentage and
+its gauge; keep the window label and reset time neutral. Full-bleed encoder
+tiles may retain a high-contrast neutral number over a severity-tinted fill.
+Always show the quantity/window and the number: color is supplemental. A
+monochrome panel keeps that text and proportional fill; a black/white/red panel
+uses red only for critical. Do not invent a different threshold for its palette.
+
+On paper/light backgrounds, use the shared paper palette (each RGB channel of
+the corresponding product token scaled by 0.5, rounded down). It preserves the
+semantic hue while meeting 4.5:1 text contrast against `--ui-popup-bg-light`.
+Bright values are for dark screens, not colored body text on white. Device
+brightness settings remain independent of severity.
+
+TTGO's usage-first view places a fully opaque severity-colored percentage
+on the dark card and a separate 3px bottom rail. A full-card tint must not
+reduce the number's contrast. Its optional terrarium gauges separate period
+and percentage into two rows.
+TC001 keeps its brand mark, a neutral window label, and a severity-colored
+percentage plus rail within the existing 32×8 footprint (`LU` abbreviates
+Luna so even `100%` fits). A remaining-reserve
+rail fills by remaining capacity, while its color follows consumed capacity.
+
+Stream Deck and D200H keep Claude's weekly account quota and worst per-model
+weekly cap (for example Fable) on **one key**, including when spare keys exist.
+Pressing that key cycles **7D + cap → 7D → cap**; the selection persists locally.
+If either reading is absent, show the available one without fabricating zero.
+SD+ rotation offers both **5H + 7D** and **5H + 7D + cap**, plus individual-window
+views. E2/E3 provider selections are independent, so selecting a subscription
+never moves the other dial. Antigravity is selectable when a confirmed plan is
+present, as a subscription card with no percentage or backend credit counter.
+
+Implementation: `shared/src/usage-severity.ts` consumes the color-token bindings
+and owns the boundaries. `pnpm generate-usage-severity` emits the C++, Swift and
+Kotlin mirrors; the shared regression tests gate boundaries, contrast and
+mirror drift. No dashboard should maintain its own threshold or RGB ramp.
 
 ---
 
@@ -150,7 +235,16 @@ font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
 | **Kicker**    | 12px                | 600    | 0.18em UPPER | **Mono.** Section header tag.   |
 | **Mono badge**| 11–12px             | 700    | 0.16em UPPER | **Mono.** Tier badges, command.|
 
-### 3.3 Rules
+### 3.3 Native product surfaces
+
+Native apps and firmware keep the two *roles*, not necessarily the bundled files:
+the sans role may resolve to the stack's system fallback (SF Pro on Apple,
+the platform sans on Android) and the mono role to the platform monospace. They
+never add a third design — no SF Rounded, no serif, no LVGL Montserrat where a
+Plex font is already built for that board. ESP32 boards that render Korean use
+the Plex-derived bitmap fonts in `esp32/src/ui/fonts/`.
+
+### 3.4 Rules
 - Use `font-feature-settings: "ss01", "cv11"` on sans body — Plex's stylistic alternates make Korean and Latin sit at consistent x‑height.
 - Use `font-feature-settings: "zero", "ss01"` on mono — slashed zero, single‑story `a`.
 - Italics: only on the **one** phrase of the hero that you want emphasized (in `--kelp-700`).
@@ -301,14 +395,51 @@ simultaneously.
 | Phone portrait | One near-full-width rail at a time, selected by an explicit `Sessions / System` control | Restore the normal body-text step; every rail scrolls inside the water-region budget |
 | Phone landscape | Two compact side rails | Compact type is acceptable because line length grows; both rails remain above Timeline |
 | Tablet / iPad / macOS | Two independent side rails with the terrarium retained as the visual centre | Regular or expanded type step; width grows only within a surface-safe cap |
-| Android E-ink | Static Sessions + terrarium + recent-work projection | Black-on-paper, no animated paging or moving history; padding and type scale with compact/regular/expanded reader size |
-| Native E-ink firmware | Card grid from the short-edge density SSOT | Preserve 1-bit hierarchy and refresh budget; orientation changes geometry, not density identity |
+| Android E-ink | Paper Board (§5.14) | Black-on-paper, no animated paging or moving history; padding and type scale with compact/regular/expanded reader size |
+| Native E-ink firmware | Paper Board (§5.14) on the short-edge density SSOT | Preserve 1-bit hierarchy and refresh budget; orientation changes geometry, not density identity |
 
 On compact portrait, the alternate rail must be named and directly reachable;
 silently hiding topology is not adaptation. On larger screens, do not stretch
 phone cards to fill space: spend extra room on line length, type, and breathing
 room while preserving the terrarium. All rails share the Timeline boundary and
 scroll internally when their content exceeds it.
+
+### 5.14 Paper Board (every e-ink surface)
+
+Paper is a different medium, not a dim tablet: it keeps its image without
+power, has no backlight, and every change costs a refresh. Panels also differ
+from each other, and the board uses what each one has instead of designing for
+the weakest. Every e-ink Dashboard — Android readers (Crema, Pantone) and
+native firmware (TRMNL 7.5", NM-EPD-420, LilyGo EPD47) — uses one board
+grammar, laid out per panel:
+
+| Zone | Content | Rule |
+|---|---|---|
+| Masthead | Mark · session count by state (`2 working · 3 idle`) · **as-of time** | A persisted image must say when it was true. Never a bare `S:5`. |
+| Needs you | Only when a session awaits. **Inverted block**: who, what it asks, the options | Inversion is paper's amber: the one loud thing, and it does not move. |
+| Working | One row per working session: brand mark · project (largest type) · live activity line | Real activity or nothing. No filler (`Working. Waiting for the next update.`). The zone heading names the state once; rows do not repeat it. |
+| Quiet | Idle sessions as one wrapped line of mark + name; offline as a count | Idle rows never take a working row's space. The mark disambiguates same-named sessions. |
+| Usage | Per provider: a line with mark · name · plan (`Codex  Pro · until Oct 10`), then its windows as aligned rows — window · bar · `42%` · `4h 37m`; captions `used` / `resets in` once | A plan belongs to its provider, never a loose note. Columns line up so the eye runs down the numbers; one bar width per zone. Absent providers are absent: one subscription is one group, a plan without metered windows is its line alone, none draws no zone. `!` at critical, `?` when stale. |
+| Done | Latest finished agent work: time · mark · project · one line | A judged task's summary first, otherwise an answered turn's first sentence. A prompt still waiting for its answer, automated turns, abandoned tasks and tool noise are not "done". |
+| Terrarium | The aquarium, in whatever space the text zones leave | Optional and never over a zone; dropped below a useful height rather than shown as a keyhole. |
+
+**Panel capabilities.** Tone, refresh and motion are properties of the panel,
+and each is used where it exists:
+
+| Capability | Native firmware (TRMNL 1-bit, NM-EPD-420 tri-colour, LilyGo EPD47 grey) | 16-level grey (Crema, Onyx) | Colour Kaleido (Pantone) |
+|---|---|---|---|
+| Tone | Black ink on white; no gradients or scenes. NM-EPD-420's red is spent only on what needs the reader; LilyGo's grey levels only on secondary ink | Terrarium in grey gradients; text zones stay black on white | Session hues (§2.7 paper palette) on the zone heading, the needs-you band and usage severity; brand marks in brand colour; colour terrarium |
+| Refresh | Per panel: TRMNL paints partial windows with a full clean about every fifth; NM-EPD-420 has only ~10 s full tri-colour cycles, so repaints wait for a settled change; LilyGo follows its page refresh policy | Per zone: sessions A2 fast, usage and done DU slow, needs-you one GC16 clean | Same zones; colour layers skip the software layer so the CFA samples colour |
+| Motion | None | Terrarium animates only while a creature is active, at ≤10 partial frames/s, and rests otherwise | Same as grey |
+| Sound | NM-EPD-420 only (ES8311 codec): a two-note chime when a session starts waiting on the reader, since a ~10 s repaint cannot flash; spoken replies route to it as `audio_out` | None | None |
+
+Judge a board by a human glance, not by data completeness: what a reader takes
+in within a second or two must be the few facts they act on.
+
+Layout: portrait puts Usage in the white space beside Now, then the terrarium, then Done (the terrarium yields about two fifths of its height when there is finished work, and Done shows as many items as that height holds); landscape reads text
+down one column beside a full-height terrarium window. Fixed zones so a change
+refreshes only its own zone; type sizes step, never shrink to fit. Empty states
+state facts (`No sessions`), never placeholders.
 
 ---
 
@@ -351,6 +482,26 @@ attention remain distinguishable at a distance and under reduced saturation.
 In dense spatial scenes, working and attention name tags remain explicit while
 idle name tags collapse; the bounded roster summary carries the omitted count.
 
+**A name tag never hides another resident.** In every aquarium view — the 3D
+aquarium on macOS/iPad and the Android tablet, and the 2D habitat on
+macOS/iPad and Android — tags resolve in priority order (focused, awaiting, working, idle;
+nearer residents first) and the tag that matters most is drawn on top (a
+RealityKit sort group in 3D, a single post-creature pass in 2D). Tag backings are
+translucent water, never opaque cards. A tag lying over another resident's body
+yields: its backing fades so the body shows through, and a WORKING badge fades
+with it — the badge is the state signal, not a card. In a dense tank (five or more residents) an idle tag collapses to a
+title-only chip low on its own body, and an idle chip that would collide with a
+tag already placed drops out — the roster still lists it. Paper (Android e-ink) has no translucency to spend, so it takes only the
+ordering half: priority tags paint last and a colliding idle tag drops out.
+ESP32 boards draw tags per creature and apply the density half — idle tags
+hide at the same resident count. Floor-standing residents (idle, waiting,
+asleep) are also spread apart before they are drawn, so the band layout's
+allowed half-overlap does not read as a pile (`floorSpacing`,
+`spreadFloorResidents`). The thresholds and
+opacities are `nativeLabel` in `shared/src/terrarium-rules.ts`, generated to
+Swift, Kotlin and C++; both platforms implement the same resolver
+(`ResidentLabelLayout`) and pin it with the same five tests.
+
 ---
 
 ## 7. Hardware surfaces
@@ -365,14 +516,14 @@ Each panel has its own pixel grid, dynamic range, and refresh rate. Designs MUST
 | Lenovo Tab dashboard | 1920×1200    | Always-on, slight burn-in risk      | Dark ink ground, calm motion       |
 | E-ink (D200H)        | 280×240      | 1-bit, slow refresh                 | High-contrast, hatch fills, mono   |
 | Pixoo64 LED          | 64×64        | LAN HTTP, fragile GIF buffer        | Terrarium + tiny device-side loop  |
-| iDotMatrix LED       | 32×32        | BLE, diffuser, constrained detail   | Native compact terrarium           |
-| Timebox Mini LED     | 11×11        | 121 LEDs, 4-bit packed color        | Official mark + perimeter status rail |
+| iDotMatrix LED       | 32×32        | BLE, diffuser, constrained detail   | Numeric fleet summary + event creatures |
+| Timebox Mini LED     | 11×11        | 121 LEDs, 4-bit packed color        | Expressive robot face / eyes       |
 | TC001 LED            | 32×8         | RGB matrix, blocky                  | Multi-mark status strip            |
 | IPS 10.1 office      | 1280×800     | Many pods/cards, glance distance    | Shape-coded state + text-first cards |
-| InkDeck native       | 800×480      | 1-bit, fixed card capacity          | Priority grid + exact hidden-state counts |
+| TRMNL 7.5" native       | 800×480      | 1-bit, fixed card capacity          | Priority grid + exact hidden-state counts |
 | ESP32 round AMOLED   | 466×466      | Round mask, low brightness          | Single creature centered           |
 
-Dot-matrix marks are generated from `design/brand/*.svg`; device code may tune color and surrounding motion, not invent replacement geometry. At 11×11, Timebox uses the dedicated Agent Beacon grammar: the 9×9 identity mark is stable and all motion lives on the one-pixel perimeter. At 32×32, iDotMatrix composes natively instead of reducing a completed 64×64 scene. Pixoo64 keeps HTTP load low by preloading a short loop for device-side playback.
+Dot-matrix agent marks are generated from `design/brand/*.svg`; event scenes preserve their geometry. Timebox Mini is the agents' collective face: eye poses and expressions convey activity, attention, responses and errors. It is an original robot face, not a redrawn provider mark. iDotMatrix prioritizes simultaneous waiting/work/result/live counts; a conversation earns the stage — the asked agent listening (`ASK`) until its reply, then the reply held for 45 s (`REPLY`) — and a new session earns a brief entrance; attention/errors preempt both. Node and Swift share generated pixel frames and executable parity tests. These expressive displays permit eye blinks and event-driven movement; only amber attention modulates status brightness. There is no timer-driven creature carousel. See [device semantics](docs/devices.md#idotmatrix-3232) for exact count and retention rules. Pixoo64 retains its existing renderer and transport policy.
 
 ---
 
@@ -394,7 +545,7 @@ Dot-matrix marks are generated from `design/brand/*.svg`; device code may tune c
 - **Korean**: 격식체 안 씁니다 — relaxed but precise. `~합니다` only for legal/footer. `~해요` and noun phrases everywhere else.
 - **Japanese**: です/ます 体, but trim particles for kickers.
 - **Numbers**: tabular nums in mono runs; never zero‑pad in display copy ("3 sessions", not "03").
-- **Connection-state lexicon**: daemon-link status copy is fixed per device class — SSOT + full table in [`shared/src/connection-status.ts`](shared/src/connection-status.ts). Self-connecting clients (Apple/Android apps, ESP32 including InkDeck, TUI) name the phase they are actually in: `Searching for AgentDeck...` (compact `Searching...`) / `Connecting...` / `Reconnecting...` / `No WiFi`; retry button `Search Again`. Daemon-rendered passive displays (Stream Deck, D200H, Pixoo, Timebox, iDotMatrix) show only the terminal `OFFLINE` (+ `Open AgentDeck` CTA) — they never claim Connecting/Reconnecting they can't perform. Swift/Kotlin mirrors (`ConnectionLexicon`) must be updated with the TS SSOT in the same commit. The visual grammar is a near-black field on emissive/color displays (paper white on e-ink), muted cyan AgentDeck accent where color exists, one dominant status line, and at most one quiet supporting line; tiny pixel displays may reduce this to a static sparse badge. `OFFLINE` means the daemon transport is absent, while a live daemon with zero sessions remains a separate empty-roster state. Raw error detail appears only on a self-connecting screen after a concrete failed attempt, beside an actionable retry/manual-connect control; discovery without a target is status, not error.
+- **Connection-state lexicon**: daemon-link status copy is fixed per device class — SSOT + full table in [`shared/src/connection-status.ts`](shared/src/connection-status.ts). Self-connecting clients (Apple/Android apps, ESP32 including TRMNL 7.5", TUI) name the phase they are actually in: `Searching for AgentDeck...` (compact `Searching...`) / `Connecting...` / `Reconnecting...` / `No WiFi`; retry button `Search Again`. Daemon-rendered passive displays (Stream Deck, D200H, Pixoo, Timebox, iDotMatrix) show only the terminal `OFFLINE` (+ `Open AgentDeck` CTA) — they never claim Connecting/Reconnecting they can't perform. Swift/Kotlin mirrors (`ConnectionLexicon`) must be updated with the TS SSOT in the same commit. The visual grammar is a near-black field on emissive/color displays (paper white on e-ink), muted cyan AgentDeck accent where color exists, one dominant status line, and at most one quiet supporting line; tiny pixel displays may reduce this to a static sparse badge. `OFFLINE` means the daemon transport is absent, while a live daemon with zero sessions remains a separate empty-roster state. Raw error detail appears only on a self-connecting screen after a concrete failed attempt, beside an actionable retry/manual-connect control; discovery without a target is status, not error.
 
 ---
 
@@ -433,6 +584,11 @@ docs/design-mockups/
 shared/src/design-tokens.ts              ← TS binding (mirror of tokens.css)
 apple/AgentDeck/UI/Common/DesignTokens.swift   ← Swift binding
 android/app/.../ui/theme/DesignTokens.kt       ← Compose binding
+shared/src/session-state-presentation.ts ← session state → tone / colour / words (§2.7)
+esp32/src/ui/product_palette.generated.h ← generated C++ token mirror (ESP32 has no hand binding)
+esp32/src/ui/session_state.generated.h, apple/.../SessionStatePresentation.generated.swift,
+android/.../util/SessionStatePresentation.kt   ← generated session-state mirrors
+design/native-palette-baseline.json      ← ratchet: raw colours in native Dashboard code may only go down
 ```
 
 `design/tokens.css` is the **single source of truth.** Every other token file

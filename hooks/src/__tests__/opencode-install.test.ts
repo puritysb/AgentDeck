@@ -95,7 +95,11 @@ describe('AgentDeckObserver event sequencing', () => {
   async function observer() {
     dir = mkdtempSync(join(tmpdir(), 'agentdeck-oc-run-'));
     const file = join(dir, 'agentdeck.mjs');
-    writeFileSync(file, opencodePluginSource(), 'utf-8');
+    // Sequencing tests must not read the maintainer's real daemon/container files.
+    writeFileSync(file, opencodePluginSource().replace(
+      'import { readFile } from "node:fs/promises";',
+      'const readFile = async () => { throw new Error("fixture: no registry"); };',
+    ), 'utf-8');
     const mod = await import(pathToFileURL(file).href);
     return mod.AgentDeckObserver({ directory: '/tmp/proj', client: null });
   }
@@ -107,6 +111,44 @@ describe('AgentDeckObserver event sequencing', () => {
     type: 'message.updated',
     properties: { info: { id: 'm1', sessionID: 's1', role: 'user', text: 'hi' } },
   };
+
+  it('forwards current permission and question request identities', async () => {
+    const { event } = await observer();
+    for (const wire of [
+      { type: 'permission.asked', properties: { sessionID: 's1', id: 'p1', permission: 'bash' } },
+      { type: 'permission.replied', properties: { sessionID: 's1', requestID: 'p1', reply: 'once' } },
+      { type: 'question.asked', properties: { sessionID: 's1', id: 'q1', questions: [{ question: 'Which target?' }] } },
+      { type: 'question.rejected', properties: { sessionID: 's1', requestID: 'q1' } },
+    ]) await event({ event: wire });
+    await flush();
+    expect(posts.find(p => p.event === 'opencode_permission_asked')?.body).toMatchObject({ permission_id: 'p1', title: 'bash' });
+    expect(posts.find(p => p.event === 'opencode_permission_replied')?.body).toMatchObject({ permission_id: 'p1' });
+    expect(posts.find(p => p.event === 'opencode_question_asked')?.body).toMatchObject({ question_id: 'q1', title: 'Which target?' });
+    expect(posts.find(p => p.event === 'opencode_question_rejected')?.body).toMatchObject({ question_id: 'q1' });
+  });
+
+  it('forwards legacy permission replies and header-only questions', async () => {
+    const { event } = await observer();
+    await event({ event: { type: 'permission.replied', properties: { sessionID: 's1', permissionID: 'legacy', response: 'once' } } });
+    await event({ event: { type: 'question.asked', properties: { sessionID: 's1', id: 'q', questions: [{ header: 'Target' }] } } });
+    await flush();
+    expect(posts.find(p => p.event === 'opencode_permission_replied')?.body.permission_id).toBe('legacy');
+    expect(posts.find(p => p.event === 'opencode_question_asked')?.body.title).toBe('Target');
+  });
+
+  it('keeps posting when every registry read is stuck awaiting OS access', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'agentdeck-oc-blocked-'));
+    const file = join(dir, 'agentdeck.mjs');
+    writeFileSync(file, opencodePluginSource().replace(
+      'import { readFile } from "node:fs/promises";',
+      'let reads = 0; const readFile = () => { if (++reads > 3) throw new Error("duplicate read"); return new Promise(() => {}); };',
+    ), 'utf8');
+    const mod = await import(pathToFileURL(file).href);
+    const { event } = await mod.AgentDeckObserver({ directory: '/tmp/proj', client: null });
+    await event({ event: userMessage });
+    await new Promise((r) => setTimeout(r, 850));
+    expect(posts.some((p) => p.event === 'opencode_user_prompt_submit')).toBe(true);
+  });
 
   it('posts one user_prompt_submit per user message, including after the turn settles', async () => {
     const { event } = await observer();

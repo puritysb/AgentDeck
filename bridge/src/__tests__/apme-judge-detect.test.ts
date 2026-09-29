@@ -104,3 +104,27 @@ describe('detectLocalJudgeProviders', () => {
     expect(await detectLocalJudgeProviders(50)).toEqual([]);
   });
 });
+
+describe('MLX discovery uses residency rather than downloads', () => {
+  it('offers only the resident model when another download appears first', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (!url.includes(':8800/')) throw new Error('offline');
+      if (url.endsWith('/health')) return Response.json({ loaded_model: 'gemma' });
+      if (url.endsWith('/metrics')) return Response.json({ summary: { in_flight: 0 } });
+      return Response.json({ data: [{ id: 'qwen' }, { id: 'gemma' }] });
+    }));
+    const found = await detectLocalJudgeProviders();
+    expect(found).toEqual([{ provider: 'mlx', label: 'Local MLX server', endpoint: 'http://127.0.0.1:8800/v1', models: ['gemma'] }]);
+  });
+
+  it('does not offer an ambiguous catalog-only MLX server', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (!url.includes(':8800/')) throw new Error('offline');
+      if (url.endsWith('/health')) return new Response(null, { status: 404 });
+      return Response.json({ data: [{ id: 'qwen' }, { id: 'gemma' }] });
+    }));
+    expect(await detectLocalJudgeProviders()).toEqual([]);
+  });
+});

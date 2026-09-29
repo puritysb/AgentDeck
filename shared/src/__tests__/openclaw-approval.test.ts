@@ -7,7 +7,11 @@
 // broken in the first place — a test written against `payload.command` would
 // have passed for the entire time no user could see a command.
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
+  isApprovalGoneError,
   parseExecApprovalRequest,
   decisionForOptionIndex,
   decisionForRespondValue,
@@ -206,5 +210,59 @@ describe('parseExecApprovalRequest — detail is most-decisive-first', () => {
     expect(bare.detail).toBeUndefined();
     const cwdOnly = parseExecApprovalRequest({ id: 'a3', request: { command: 'ls', cwd: '/tmp' } }, 0)!;
     expect(cwdOnly.detail).toBe('cwd: /tmp');
+  });
+});
+
+
+// ===== "this approval is gone" =====
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+interface ApprovalErrorVector {
+  name: string;
+  error: Record<string, unknown>;
+  gone: boolean;
+}
+
+describe('isApprovalGoneError — vectors shared with the Swift suite', () => {
+  // The strings are the Gateway's own (`src/infra/approval-errors.ts` plus the
+  // two `errorShape(...)` call sites in `approval-shared`), read out of the
+  // installed openclaw package. A fixture written from what this predicate
+  // happens to match would agree with it forever.
+  const { vectors } = JSON.parse(
+    readFileSync(join(repoRoot, 'shared', 'openclaw-approval-error-vectors.json'), 'utf8'),
+  ) as { vectors: ApprovalErrorVector[] };
+
+  it('covers both directions', () => {
+    expect(vectors.some((v) => v.gone)).toBe(true);
+    expect(vectors.some((v) => !v.gone)).toBe(true);
+  });
+
+  for (const v of vectors) {
+    it(v.name, () => {
+      expect(isApprovalGoneError(v.error)).toBe(v.gone);
+    });
+  }
+
+  it('reads a real Error with the fields the adapter attaches', () => {
+    // The Node adapter rejects with an Error carrying the frame's own `code`
+    // and `details`; a plain `new Error(message)` must still classify off the
+    // legacy message alone.
+    const structured = Object.assign(new Error('unknown or expired approval id'), {
+      gatewayCode: 'INVALID_REQUEST',
+      details: { reason: 'APPROVAL_NOT_FOUND' },
+    });
+    expect(isApprovalGoneError(structured)).toBe(true);
+    expect(isApprovalGoneError(new Error('unknown or expired approval id'))).toBe(true);
+    expect(isApprovalGoneError(new Error('Gateway disconnected'))).toBe(false);
+  });
+
+  it('claims nothing about what it cannot read', () => {
+    // The safe direction: a wrong "gone" discards a live approval the agent is
+    // still blocked on, a wrong "not gone" costs one more press.
+    expect(isApprovalGoneError(null)).toBe(false);
+    expect(isApprovalGoneError(undefined)).toBe(false);
+    expect(isApprovalGoneError(42)).toBe(false);
+    expect(isApprovalGoneError([])).toBe(false);
   });
 });

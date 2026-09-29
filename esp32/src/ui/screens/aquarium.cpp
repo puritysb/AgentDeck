@@ -8,6 +8,9 @@
 #include "../assets/logo.h"
 #include "../../state/agent_state.h"
 #include "config.h"
+#if defined(BOARD_TTGO)
+#include "../widgets/ttgo_usage.h"
+#endif
 
 #if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
 #include "ttgo_overlay.h"
@@ -61,7 +64,7 @@ lv_obj_t* aquariumCreate() {
     // Create the living scene. IPS10 uses the sprite/dirty-rect "office" (cheap on the big
     // panel — only moving agents flush); other boards keep the per-pixel aquarium terrarium.
 #if defined(BOARD_IPS10)
-    Office::init(screen);
+    // IPS10 workspace owns the whole display; no decorative office behind it.
 #else
     Terrarium::init(screen);
 #endif
@@ -69,6 +72,13 @@ lv_obj_t* aquariumCreate() {
 #if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     // Compact panels: simplified overlay (state + activity switching)
     TTGO::Overlay::init(screen);
+#if defined(BOARD_TTGO)
+    TTGO::Usage::create(screen);
+    if (TTGO::Usage::active()) {
+        lv_obj_add_flag(Terrarium::getCanvas(), LV_OBJ_FLAG_HIDDEN);
+        TTGO::Overlay::setVisible(false);
+    }
+#endif
 #else
     // Create HUD overlay
     HUD::init(screen);
@@ -263,9 +273,19 @@ void aquariumUpdate(float dt) {
 #if defined(IPS10_PERF_FORCE_RENDER)
     scrimHidden = true;  // TEMP: force render while disconnected so [PERF] can be read on serial
 #endif
-    if (scrimHidden) {
+    bool renderScene = scrimHidden;
+#if defined(BOARD_TTGO)
+    // Usage mode is a quiet, opaque dashboard: no scene rendering/SPI animation.
+    const bool usageOnly = TTGO::Usage::active();
+    if (usageOnly) lv_obj_add_flag(Terrarium::getCanvas(), LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_clear_flag(Terrarium::getCanvas(), LV_OBJ_FLAG_HIDDEN);
+    TTGO::Overlay::setVisible(!usageOnly && scrimHidden);
+    TTGO::Usage::update();
+    renderScene = renderScene && !usageOnly;
+#endif
+    if (renderScene) {
 #if defined(BOARD_IPS10)
-        Office::update(dt);
+        // Workspace updates bounded LVGL widgets in HUD::update().
 #else
         Terrarium::render(dt);
 #endif
@@ -273,6 +293,9 @@ void aquariumUpdate(float dt) {
 
 #if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     // Compact panels: update simplified overlay
+#if defined(BOARD_TTGO)
+    if (!usageOnly)
+#endif
     TTGO::Overlay::update();
 #else
     // Update HUD data
@@ -281,6 +304,11 @@ void aquariumUpdate(float dt) {
 }
 
 void aquariumSetConnectionStatus(ConnOverlayStatus status) {
+#if defined(BOARD_IPS10)
+    // The workspace retains inspectable last-known work with an offline banner.
+    // Do not cover the whole working surface during a temporary reconnect.
+    return;
+#endif
     if (!connScrim || !connStatusLabel) return;
 
     // Diagnostic: scrim transitions are the prime suspect for "black screen"

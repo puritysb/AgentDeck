@@ -17,7 +17,7 @@
 //       UInt16LE(pngLen + nChunks) + [0x00,0x00, i>0 ? 0x02 : 0x00] + UInt32LE(pngLen) + chunk
 //     concatenated, then written in MTU-sized BLE chunks.
 //
-// All connect/write awaits carry an explicit timeout (CLAUDE.md "External peer async I/O":
+// All connect/write awaits carry an explicit timeout (AGENTS.md "External peer async I/O":
 // timeout is the first-class signal; a silent BLE drop must not hang the daemon).
 
 import Foundation

@@ -133,10 +133,42 @@ describe('shouldHoldPreToolUse — precision guards (never hold auto-approved ca
     expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
   });
 
-  it('compound command: allow rule on the first segment suppresses the hold', () => {
+  it('compound command: every segment must be covered — an uncovered second segment still holds', () => {
+    // Claude Code matches each subcommand independently, so `Bash(git status *)`
+    // does not approve `git status && rm -rf /`: the prompt is genuine.
     writeSettings(homeDir, 'settings.json', { allow: ['Bash(git status:*)'] });
     expect(shouldHoldPreToolUse(baseCtx({
       toolInput: { command: 'git status && rm -rf /' },
+    })).hold).toBe(true);
+  });
+
+  it('compound command: allow rules plus the built-in read-only set covering every segment suppress the hold', () => {
+    writeSettings(homeDir, 'settings.json', { allow: ['Bash(npm test *)'] });
+    expect(shouldHoldPreToolUse(baseCtx({
+      toolInput: { command: 'cd packages/api && npm test -- --watch | tail -20' },
+    })).hold).toBe(false);
+  });
+
+  it('space-star allow rules (the form the permission dialog writes) suppress the hold', () => {
+    // The 2026-09-05 defect: only the legacy `:*` spelling was understood, so
+    // every `Bash(curl *)` rule matched nothing and each batch was held 25 s.
+    writeSettings(homeDir, 'settings.json', { allow: ['Bash(curl *)'] });
+    expect(shouldHoldPreToolUse(baseCtx({
+      permissionMode: 'acceptEdits',
+      toolInput: { command: 'curl -sL -A "Mozilla/5.0" https://example.com' },
+    })).hold).toBe(false);
+  });
+
+  it('acceptEdits auto-approves the filesystem commands without any rule', () => {
+    expect(shouldHoldPreToolUse(baseCtx({
+      permissionMode: 'acceptEdits',
+      toolInput: { command: 'mkdir -p data/out && cp a.json data/out/' },
+    })).hold).toBe(false);
+  });
+
+  it('built-in read-only commands never hold in default mode', () => {
+    expect(shouldHoldPreToolUse(baseCtx({
+      toolInput: { command: 'git status --short' },
     })).hold).toBe(false);
   });
 
@@ -176,8 +208,29 @@ describe('auto-approval learner (session "always allow" is invisible — learn i
   it('does NOT learn from device-decided releases', () => {
     const d = shouldHoldPreToolUse(baseCtx());
     gateReleased('sid-1', d.requestId!, { undecided: false, tool: 'Bash', toolInput: { command: 'git push origin master' } });
+
     noteToolEnd('sid-1', 'Bash');
     expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(true);
+  });
+
+  it('a release that recorded its tool_use_id learns only from ITS OWN PostToolUse (a parallel Bash must not teach it)', () => {
+    const d = shouldHoldPreToolUse(baseCtx());
+    gateReleased('sid-1', d.requestId!, {
+      undecided: true, tool: 'Bash', toolInput: { command: 'git push origin master' }, toolUseId: 'toolu_held',
+    });
+    // An unrelated allowlisted Bash finishing inside the 15-minute window
+    // must NOT teach the held signature.
+    noteToolEnd('sid-1', 'Bash', 'toolu_other');
+    const d2 = shouldHoldPreToolUse(baseCtx());
+    expect(d2.hold).toBe(true);
+    // Its own completion does teach it.
+    gateReleased('sid-1', d2.requestId!, {
+      undecided: true, tool: 'Bash', toolInput: { command: 'git push origin master' }, toolUseId: 'toolu_held2',
+    });
+    noteToolEnd('sid-1', 'Bash', 'toolu_held2');
+    const d3 = shouldHoldPreToolUse(baseCtx());
+    expect(d3.hold).toBe(false);
+    expect(d3.reason).toBe('signature learned auto-approved');
   });
 
   it('signature granularity: Bash uses the first two command tokens', () => {
@@ -262,15 +315,19 @@ describe('turn-end directive queue', () => {
 });
 
 describe('evaluatePermissionRules verdicts', () => {
-  it('none when no files exist', () => {
-    expect(evaluatePermissionRules('Bash', { command: 'ls' }, cwd)).toBe('none');
+  it('none when no files exist (and the command is not built-in read-only)', () => {
+    expect(evaluatePermissionRules('Bash', { command: 'npm test' }, cwd)).toBe('none');
+  });
+
+  it('built-in read-only commands are allow even with no rules', () => {
+    expect(evaluatePermissionRules('Bash', { command: 'ls' }, cwd)).toBe('allow');
   });
 
   it('exact vs prefix Bash specs', () => {
-    writeSettings(homeDir, 'settings.json', { allow: ['Bash(git status)'] });
-    expect(evaluatePermissionRules('Bash', { command: 'git status' }, cwd)).toBe('allow');
+    writeSettings(homeDir, 'settings.json', { allow: ['Bash(npm run build)'] });
+    expect(evaluatePermissionRules('Bash', { command: 'npm run build' }, cwd)).toBe('allow');
     _clearRulesCache();
-    expect(evaluatePermissionRules('Bash', { command: 'git status -sb' }, cwd)).toBe('none');
+    expect(evaluatePermissionRules('Bash', { command: 'npm run build --watch' }, cwd)).toBe('none');
   });
 
   it('deny beats allow', () => {

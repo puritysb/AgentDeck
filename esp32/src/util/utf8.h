@@ -36,6 +36,13 @@ inline void utf8TrimEnd(char* s) {
     s[utf8Boundary(s, n)] = '\0';
 }
 
+// A bounded UI row cannot pass embedded line breaks to GFX/LVGL print().
+inline void singleLine(char* s) {
+    if (!s) return;
+    utf8TrimEnd(s);
+    for (; *s; ++s) if ((uint8_t)*s < 0x20 || *s == 0x7f) *s = ' ';
+}
+
 // Number of UTF-8 code points (lead/ASCII bytes) in s.
 inline size_t utf8CharCount(const char* s) {
     size_t n = 0;

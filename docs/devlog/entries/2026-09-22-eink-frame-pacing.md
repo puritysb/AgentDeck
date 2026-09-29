@@ -1,0 +1,9 @@
+# 2026-09-22 — Vsync preview and fast e-ink partial animation
+
+- The monochrome loop waited 400ms after rendering and quantized the entire bitmap on every frame; Lenovo in e-ink override consequently ran around 2 FPS. It also attempted unsupported EPD property calls on the LCD.
+- Separate physical-panel detection from the dashboard layout override. LCD previews retain GPU composition and run on vsync, without EPD reflection/property calls. Physical e-ink requests aquarium-view A2 partial updates at up to 10Hz; normal/full refresh remains state-change driven, without periodic animation flashes.
+- Skip full-bitmap grayscale conversion during animation, retaining it for static/state frames. Vsync scheduling removes additive render-plus-sleep latency. Motion still uses the 400ms time unit, and finer 3.125ms integration avoids repeated positions at 60Hz while preserving the speed transition time constant.
+- Installed the signed 1.4.1 candidate on Lenovo twice. Final screen recording: 682 frames over 11.873222s, approximately 57.4 FPS. Android gfxinfo reported a 19ms median and 29ms p95 frame duration during recording, so this is not a claim of perfectly steady 60 FPS. Without recording, gfxinfo measured 598 frames over 10.191s (~58.7 FPS), 9ms median, 24ms p95 and 9.2% janky frames. Physical EPD refresh throughput and ghosting remain unverified because only Lenovo is connected.
+- Android 402 tests pass, including per-frame 60Hz motion and cadence-independent trajectories. Workspace build/typecheck and 4671 tests pass (2 skipped); protocol generation leaves no tracked drift; token sync passes. Design lint remains the 89 source baseline plus 3 ignored Ulanzi build-output findings.
+
+See [Android UI](docs/android-ui.md). Final recording is local under ignored `dist/eink-review/eink-fps-final.mp4`; no public release was made.

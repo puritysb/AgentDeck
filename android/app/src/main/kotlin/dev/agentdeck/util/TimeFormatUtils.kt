@@ -1,6 +1,9 @@
 package dev.agentdeck.util
 
+import dev.agentdeck.net.CodexLunaReserve
 import dev.agentdeck.net.CodexRateLimits
+import dev.agentdeck.net.ZaiRateLimits
+import dev.agentdeck.net.ZaiWindow
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -89,7 +92,13 @@ data class ProviderLimitRow(
      *  snapshot of a still-live window keeps its last true percent, but a weekly
      *  window's countdown says nothing about when that percent was measured. */
     val footnote: String? = null,
-)
+    /** `percent` is what REMAINS (the Codex Luna reserve), not what is used.
+     *  Renderers fill by it and colour by [usedPercent]. */
+    val remaining: Boolean = false,
+) {
+    /** The consumed share, whichever way [percent] reads — the colour ramp input. */
+    val usedPercent: Double get() = if (remaining) 100.0 - percent else percent
+}
 
 /**
  * Compact window label from a duration in minutes: whole days → "Nd", whole
@@ -114,6 +123,16 @@ fun windowLabel(minutes: Int?): String {
  */
 fun codexLimitRows(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMillis()): List<ProviderLimitRow> {
     if (limits == null) return emptyList()
+    // An exhausted account window hands the Codex rows to the Luna reserve,
+    // read as what is LEFT — the cross-surface rule (UsagePresentation).
+    activeLunaReserve(limits, nowMs)?.let { luna ->
+        return listOf(
+            ProviderLimitRow(
+                "codex", "luna", (100.0 - luna.usedPercent).coerceIn(0.0, 100.0),
+                luna.resetsAt, false, remaining = true,
+            ),
+        )
+    }
     return buildList {
         limits.primary?.let { p ->
             val pct = p.usedPercent
@@ -132,6 +151,76 @@ fun codexLimitRows(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMil
                 add(
                     ProviderLimitRow(
                         "codex", windowLabel(s.windowMinutes), pct, s.resetsAt, s.stale == true,
+                        CodexFreshnessRules.footnote(s.stale == true, limits.capturedAt, nowMs),
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The Luna reserve while it replaces the account windows — mirror of
+ * `selectedLunaReserve` (shared/src/usage-presentation.ts) with the generated
+ * [UsagePresentation.lunaActive] predicate. A reported reserve alone is not
+ * exhaustion: only a live account window at 100% selects it.
+ */
+fun activeLunaReserve(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMillis()): CodexLunaReserve? {
+    val reserve = limits?.lunaReserve ?: return null
+    fun epoch(iso: String?): Long? = iso?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
+    if (epoch(reserve.resetsAt)?.let { it <= nowMs } == true) return null
+    fun live(w: dev.agentdeck.net.CodexRateLimitWindow?): Double {
+        val used = w?.usedPercent ?: return -1.0
+        if (w.stale == true) return -1.0
+        if (epoch(w.resetsAt)?.let { it <= nowMs } == true) return -1.0
+        return used
+    }
+    return reserve.takeIf { UsagePresentation.lunaActive(live(limits.primary), live(limits.secondary), it.usedPercent) }
+}
+
+/**
+ * Codex + z.ai usage rows in one display list — every LIMITS surface renders
+ * THIS so the two providers' order cannot drift between surfaces (#348).
+ * Codex keeps the established seat, z.ai follows.
+ */
+fun providerLimitRows(
+    codex: CodexRateLimits?,
+    zai: ZaiRateLimits?,
+    nowMs: Long = System.currentTimeMillis(),
+): List<ProviderLimitRow> = codexLimitRows(codex, nowMs) + zaiLimitRows(zai, nowMs)
+
+/**
+ * z.ai (GLM Coding Plan) usage rows — the same window grammar as the Codex
+ * rows. The `agentType` "zai" resolves to the upstream z.ai mark in the
+ * BrandIcon registry (design/brand/zai.svg), so these gauges carry the real
+ * provider logo like [codexLimitRows] carries the Codex mark. The MCP
+ * tool-call quota labels by its QUANTITY ("mcp"), never its length. NOT gated
+ * by Claude's `usageStale`; each window carries its own stale flag (#348).
+ */
+fun zaiLimitRows(limits: ZaiRateLimits?, nowMs: Long = System.currentTimeMillis()): List<ProviderLimitRow> {
+    if (limits == null) return emptyList()
+    return buildList {
+        // The MCP tool-call quota is labeled by its QUANTITY, not its length —
+        // "MCP" must never read as token usage.
+        fun label(w: ZaiWindow): String =
+            if (w.quantity == "mcp") "mcp" else windowLabel(w.windowMinutes)
+        limits.primary?.let { p ->
+            val pct = p.usedPercent
+            if (pct != null) {
+                add(
+                    ProviderLimitRow(
+                        "zai", label(p), pct, p.resetsAt, p.stale == true,
+                        CodexFreshnessRules.footnote(p.stale == true, limits.capturedAt, nowMs),
+                    ),
+                )
+            }
+        }
+        limits.secondary?.let { s ->
+            val pct = s.usedPercent
+            if (pct != null) {
+                add(
+                    ProviderLimitRow(
+                        "zai", label(s), pct, s.resetsAt, s.stale == true,
                         CodexFreshnessRules.footnote(s.stale == true, limits.capturedAt, nowMs),
                     ),
                 )

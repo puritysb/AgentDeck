@@ -31,7 +31,7 @@ validators: [node scripts/build-design-system-viewer.mjs --check]
 
 ## 変更手順
 
-1. `CLAUDE.md` と所有文書を読みます。
+1. `AGENTS.md` と所有文書を読みます。
 2. ミラーや表示より先に正本仕様を更新します。
 3. 仕様を満たす最小のランタイム変更を実装します。
 4. 指定された validator と、実際の動作で失敗できる検証を実行します。

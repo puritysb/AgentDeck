@@ -127,6 +127,15 @@ actor WebSocketServer {
         } else {
             listener = try NWListener(using: params, on: nwPort)
         }
+        // An assignment must not orphan a live listener. A STARTED NWListener is
+        // retained by Network.framework until it is cancelled, and its
+        // `newConnectionHandler` holds this server weakly — so a replaced
+        // listener keeps its port bound for the life of the process and accepts
+        // connections that then reach a nil `self` and are answered for nobody
+        // (#306, observed on a different path: `*:9121 (LISTEN)` with six
+        // `CLOSE_WAIT` sockets in a client-mode app, inside the session-bridge
+        // range 9121-9139). `stop()` only ever cancels the CURRENT one.
+        self.listener?.cancel()
         self.listener = listener
 
         // Attach Bonjour service for mDNS discovery
@@ -137,6 +146,13 @@ actor WebSocketServer {
         let failedHandler = onListenerFailed
         // stateUpdateHandler fires on ioQueue (serial); ResumeGate is only touched there.
         let gate = ResumeGate()
+        // A start that does not reach `.ready` must leave nothing ASSIGNED.
+        // It leaks no port — a listener that never bound holds none, and the
+        // only throw here is pre-bind — but `self.listener` would keep pointing
+        // at a dead listener, and the Bonjour re-publish path above reads
+        // `self.listener?.service` on a timer. Hygiene, deliberately not
+        // claimed as the #306 fix.
+        do {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             listener.stateUpdateHandler = { state in
                 switch state {
@@ -167,6 +183,11 @@ actor WebSocketServer {
             }
 
             listener.start(queue: Self.ioQueue)
+        }
+        } catch {
+            listener.cancel()
+            if self.listener === listener { self.listener = nil }
+            throw error
         }
     }
 

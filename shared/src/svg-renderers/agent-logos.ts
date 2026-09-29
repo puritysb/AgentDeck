@@ -45,6 +45,21 @@ export const OPENCLAW_LOGO_PATHS = [
 ];
 const OPENCLAW_BODY_PATHS = OPENCLAW_LOGO_PATHS.slice(2);
 
+/**
+ * z.ai mark (design/brand/zai.svg — upstream logo.svg served from
+ * z-cdn.chatglm.cn, captured 2026-09-20). The official app-icon is a dark
+ * rounded plate with a white "Z"; these are the Z's three strokes verbatim
+ * (the polygon re-expressed as a path with identical coordinates), so
+ * consumers tint them the way every other mark here is tinted. viewBox is the
+ * upstream 0 0 30 30 — scale by /30, not /24.
+ */
+export const ZAI_LOGO_VIEWBOX = 30;
+export const ZAI_LOGO_PATHS = [
+  'M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z',
+  'M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z',
+  'M24.3,7.1L13.14,22.91L5.7,22.91L16.86,7.1Z',
+];
+
 function officialPathIcon(path: string, fill: string, size: number, opacity: number, cx: number, cy: number): string {
   const s = size / 24;
   return `<g transform="translate(${cx},${cy}) scale(${s.toFixed(3)}) translate(-12,-12)" opacity="${opacity}"><path d="${path}" fill="${fill}" fill-rule="evenodd" clip-rule="evenodd"/></g>`;

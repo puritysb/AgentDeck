@@ -1,0 +1,20 @@
+{
+  "type": "event",
+  "event": "plugin.approval.resolved",
+  "payload": {
+    "id": "plugin:c1a9d3e2-7b44-4b0a-9e6f-2f5c8a1d0e7b",
+    "decision": "allow-once",
+    "resolvedBy": "device:mac-01",
+    "ts": 1786940710000,
+    "request": {
+      "pluginId": "telegram",
+      "title": "Send message to #ops",
+      "description": "Post a status update to the #ops channel.",
+      "severity": "warning",
+      "toolName": "channel.send",
+      "allowedDecisions": ["allow-once", "allow-always", "deny"],
+      "agentId": "main",
+      "sessionKey": "agent:main:main"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PermissionMode, State, type StateSnapshot, type UsageEvent } from '../types.js';
-import { buildUsageEvent, mergeRelayedSessionUsage } from '../usage-event.js';
+import { buildSubscriptions, buildUsageEvent, mergeRelayedSessionUsage } from '../usage-event.js';
 import type { ApiUsageData } from '../usage-api.js';
 import { codexUsageFootnote } from '@agentdeck/shared';
 
@@ -59,6 +59,7 @@ describe('buildUsageEvent subscription quota scoping', () => {
       true,
     ) as UsageEvent;
 
+    expect(evt.tokenStatus).toBe("unknown"); // retract a prior auth failure on the wire
     expect(evt.fiveHourPercent).toBeUndefined();
     expect(evt.sevenDayPercent).toBeUndefined();
     expect(evt.extraUsageEnabled).toBeUndefined();
@@ -228,12 +229,12 @@ describe('buildUsageEvent staleness contract', () => {
     expect(JSON.parse(JSON.stringify(evt)).usageStale).toBe(false);
   });
 
-  it('keeps usageStale true when cached numbers ride a stale frame', () => {
-    // "Had data, now stale" — clients rely on the explicit true to SCRUB the
-    // percentages, so data-presence must never override an explicit flag.
+  it('retires cached quota on a stale frame', () => {
+    // Omit retired values at the producer so older renderers collapse too.
+    // Keep the explicit flag so retain-on-absent clients clear previous values.
     const evt = buildUsageEvent(
       snapshot({ modelName: 'claude-fable-5', billingType: 'subscription' }),
-      usage(),
+      usage({ scopedLimits: [{ label: 'model', percent: 80 }] }),
       true,
       undefined,
       undefined,
@@ -245,8 +246,18 @@ describe('buildUsageEvent staleness contract', () => {
       true,
     ) as UsageEvent;
 
-    expect(evt.fiveHourPercent).toBe(55);
-    expect(evt.usageStale).toBe(true);
+    const wire = JSON.parse(JSON.stringify(evt));
+    expect(wire.fiveHourPercent).toBeUndefined();
+    expect(wire.sevenDayPercent).toBeUndefined();
+    expect(wire.fiveHourResetsAt).toBeUndefined();
+    expect(wire.sevenDayResetsAt).toBeUndefined();
+    expect(wire.scopedLimits).toBeUndefined();
+    expect(wire.extraUsageEnabled).toBeUndefined();
+    expect(wire.extraUsageMonthlyLimit).toBeUndefined();
+    expect(wire.extraUsageUsedCredits).toBeUndefined();
+    expect(wire.extraUsageUtilization).toBeUndefined();
+    expect(wire.subscriptions).toEqual([]);
+    expect(wire.usageStale).toBe(true);
   });
 
   it('does not force usageStale when the cost-based API-billing percent is present', () => {
@@ -275,6 +286,21 @@ describe('buildUsageEvent Codex window normalization', () => {
       undefined, undefined, undefined, undefined,
       codexRateLimits,
     ] as Parameters<typeof buildUsageEvent>;
+
+  it.each([
+    [19, false, false],
+    [100, false, true],
+    [100, true, false],
+  ])('retires reserve for recovered or ended windows (%s, expired=%s)', (usedPercent, expired, keep) => {
+    const resetsAt = new Date(Date.now() + (expired ? -1 : 1) * 3600_000).toISOString();
+    const evt = buildUsageEvent(...codexArgs({
+      primary: { usedPercent, windowMinutes: 10080, resetsAt },
+      lunaReserve: { usedPercent: 10, available: true },
+    })) as UsageEvent;
+    const wire = JSON.parse(JSON.stringify(evt));
+    expect(wire.codexRateLimits.secondary.usedPercent).toBe(usedPercent);
+    expect(Boolean(wire.codexRateLimits.lunaReserve)).toBe(keep);
+  });
 
   it('marks an expired window stale and drops its resetsAt (no misleading "now")', () => {
     const expired = new Date(Date.now() - 30 * 60_000).toISOString();
@@ -368,7 +394,7 @@ describe('buildUsageEvent Codex window normalization', () => {
 
   it('routes a weekly window arriving in Codex\'s primary slot to the secondary (7D) wire slot', () => {
     // Codex reports the weekly (10080-min) window as `primary` with `secondary`
-    // null once the 5h window resets. Slot-based downstream clients (ESP32/InkDeck
+    // null once the 5h window resets. Slot-based downstream clients (ESP32/TRMNL 7.5"
     // firmware: primary=5H, secondary=7D) must receive it as `secondary`, and no
     // phantom `primary` (5h) window, so the 7D gauge shows and 5H stays empty.
     const future = new Date(Date.now() + 6 * 24 * 3600_000).toISOString();
@@ -465,7 +491,7 @@ describe('mergeRelayedSessionUsage', () => {
     expect(m.scopedLimits).toEqual([{ label: 'Fable', percent: 98, active: true }]);
     // The session asserts staleness about quota it never had — the daemon's own
     // explicit `false` must win, or the dashboard latches a "stale" badge over
-    // live percentages (CLAUDE.md wire-flag rule).
+    // live percentages (AGENTS.md wire-flag rule).
     expect(m.usageStale).toBe(false);
   });
 
@@ -498,6 +524,15 @@ describe('buildUsageEvent Codex plan reconciliation', () => {
       undefined, undefined, undefined, undefined, undefined,
       codexRateLimits,
     ] as Parameters<typeof buildUsageEvent>;
+
+  it('retires expired Luna metadata on the common wire for WiFi and serial clients', () => {
+    const expired = { usedPercent: 20, resetsAt: new Date(Date.now() - 60_000).toISOString() };
+    const live = { ...expired, resetsAt: future };
+    for (const [reserve, expected] of [[expired, undefined], [live, live]] as const) {
+      const evt = buildUsageEvent(...args({ secondary: { ...weekly, usedPercent: 100 }, lunaReserve: reserve }, undefined)) as UsageEvent;
+      expect(evt.codexRateLimits?.lunaReserve).toEqual(expected);
+    }
+  });
 
   it('voids a snapshot minted under a plan the account no longer holds', () => {
     // The exact shape a lapsed ChatGPT Plus leaves behind: the rollout still
@@ -541,7 +576,7 @@ describe('buildUsageEvent Codex plan reconciliation', () => {
   it('emits the account tier even with no rollout at all, so a client can RETRACT', () => {
     // Every client merges usage fields retain-on-absent, so omitting the key
     // means "no information" — the retired plan's gauge would stay pinned
-    // forever (the usageStale latch shape, CLAUDE.md).
+    // forever (the usageStale latch shape, AGENTS.md).
     const evt = buildUsageEvent(...args(null, { planType: 'free' })) as UsageEvent;
     expect(evt.codexRateLimits).toEqual({ planType: 'free' });
   });
@@ -557,5 +592,23 @@ describe('buildUsageEvent Codex plan reconciliation', () => {
     ) as UsageEvent;
 
     expect(evt.subscriptions).toEqual([{ name: 'ChatGPT Free' }]);
+  });
+});
+
+
+describe('subscription replacement snapshots', () => {
+  it('does not treat session billing or windowless cache as a current subscription', () => {
+    expect(buildSubscriptions(null, null, 'subscription')).toEqual([]);
+    expect(buildSubscriptions(null, usage({ fiveHourPercent: null, sevenDayPercent: null }), 'subscription')).toEqual([]);
+    expect(buildSubscriptions(null, usage({ inferredBillingType: 'api' }), 'subscription')).toEqual([]);
+  });
+
+  it('removes only Claude on failure and restores it on a fresh reading', () => {
+    const auth = { authMode: 'chatgpt', webAuthConnected: true, planType: 'plus' };
+    const live = buildSubscriptions(auth, usage(), 'subscription');
+    expect(live).toEqual([{ name: 'ChatGPT Plus', until: undefined }, { name: 'Claude' }]);
+    const stale = buildSubscriptions(auth, usage(), 'subscription', null, true);
+    expect(stale).toEqual([{ name: 'ChatGPT Plus', until: undefined }]);
+    expect(buildSubscriptions(auth, usage(), 'subscription')).toEqual(live);
   });
 });

@@ -1,0 +1,143 @@
+[
+  {
+    "name": "relative linked worktree",
+    "cwd": "task/src",
+    "files": {
+      "AgentDeck/.git/HEAD": "ref: refs/heads/master\n",
+      "AgentDeck/.git/worktrees/task/commondir": "../..\n",
+      "task/.git": "gitdir: ../AgentDeck/.git/worktrees/task\n"
+    },
+    "expected": "AgentDeck · task",
+    "compactExpected": "AgentDeck"
+  },
+  {
+    "name": "absolute linked worktree",
+    "cwd": "task/src",
+    "files": {
+      "AgentDeck/.git/HEAD": "ref: refs/heads/master\n",
+      "AgentDeck/.git/worktrees/task/commondir": "../..\n",
+      "task/.git": "gitdir: $ROOT/AgentDeck/.git/worktrees/task\n"
+    },
+    "expected": "AgentDeck · task",
+    "compactExpected": "AgentDeck"
+  },
+  {
+    "name": "absolute common directory",
+    "cwd": "task",
+    "files": {
+      "AgentDeck/.git/HEAD": "ref: refs/heads/master\n",
+      "AgentDeck/.git/worktrees/task/commondir": "$ROOT/AgentDeck/.git\n",
+      "task/.git": "gitdir: ../AgentDeck/.git/worktrees/task\n"
+    },
+    "expected": "AgentDeck · task",
+    "compactExpected": "AgentDeck"
+  },
+  {
+    "name": "Claude nested worktree",
+    "cwd": "AgentDeck/.claude/worktrees/zai-serial-window-minutes/bridge",
+    "files": {
+      "AgentDeck/.git/HEAD": "ref: refs/heads/master\n",
+      "AgentDeck/.git/worktrees/task/commondir": "../..\n",
+      "AgentDeck/.claude/worktrees/zai-serial-window-minutes/.git": "gitdir: ../../../.git/worktrees/task\n"
+    },
+    "expected": "AgentDeck · zai-serial-window-minutes",
+    "compactExpected": "AgentDeck"
+  },
+  {
+    "name": "same basename retains worktree distinction",
+    "cwd": "elsewhere/AgentDeck",
+    "files": {
+      "AgentDeck/.git/HEAD": "ref: refs/heads/master\n",
+      "AgentDeck/.git/worktrees/task/commondir": "../..\n",
+      "elsewhere/AgentDeck/.git": "gitdir: ../../AgentDeck/.git/worktrees/task\n"
+    },
+    "expected": "AgentDeck · AgentDeck",
+    "compactExpected": "AgentDeck"
+  },
+  {
+    "name": "spaces and Unicode",
+    "cwd": "작업 폴더/src",
+    "files": {
+      "Main Repo/.git/HEAD": "ref: refs/heads/main\n",
+      "Main Repo/.git/worktrees/task/commondir": "../..\n",
+      "작업 폴더/.git": "gitdir: ../Main Repo/.git/worktrees/task\n"
+    },
+    "expected": "Main Repo · 작업 폴더",
+    "compactExpected": "Main Repo"
+  },
+  {
+    "name": "detached worktree",
+    "cwd": "task",
+    "files": {
+      "AgentDeck/.git/HEAD": "ref: refs/heads/master\n",
+      "AgentDeck/.git/worktrees/task/commondir": "../..\n",
+      "task/.git": "gitdir: ../AgentDeck/.git/worktrees/task\n",
+      "AgentDeck/.git/worktrees/task/HEAD": "0123456789abcdef\n"
+    },
+    "expected": "AgentDeck · task",
+    "compactExpected": "AgentDeck"
+  },
+  {
+    "name": "submodule is its own project",
+    "cwd": "Parent/child/src",
+    "files": {
+      "Parent/.git/HEAD": "ref: refs/heads/main\n",
+      "Parent/child/.git": "gitdir: ../.git/modules/child\n",
+      "Parent/.git/modules/child/HEAD": "ref: refs/heads/main\n"
+    },
+    "expected": "child",
+    "compactExpected": "child"
+  },
+  {
+    "name": "missing common directory",
+    "cwd": "task",
+    "files": {
+      "task/.git": "gitdir: ../missing\n"
+    },
+    "expected": "task",
+    "compactExpected": "task"
+  },
+  {
+    "name": "missing common HEAD",
+    "cwd": "task",
+    "files": {
+      "task/.git": "gitdir: ../AgentDeck/.git/worktrees/task\n",
+      "AgentDeck/.git/worktrees/task/commondir": "../..\n"
+    },
+    "expected": "task",
+    "compactExpected": "task"
+  },
+  {
+    "name": "bare common repository",
+    "cwd": "task",
+    "files": {
+      "task/.git": "gitdir: ../repo.git/worktrees/task\n",
+      "repo.git/worktrees/task/commondir": "../..\n",
+      "repo.git/HEAD": "ref: refs/heads/main\n"
+    },
+    "expected": "task",
+    "compactExpected": "task"
+  },
+  {
+    "name": "malformed marker",
+    "cwd": "task",
+    "files": {
+      "AgentDeck/.git/HEAD": "ref: refs/heads/master\n",
+      "AgentDeck/.git/worktrees/task/commondir": "../..\n",
+      "task/.git": "not gitdir: ../AgentDeck/.git/worktrees/task\n"
+    },
+    "expected": "task",
+    "compactExpected": "task"
+  },
+  {
+    "name": "empty common pointer",
+    "cwd": "task",
+    "files": {
+      "AgentDeck/.git/HEAD": "ref: refs/heads/master\n",
+      "AgentDeck/.git/worktrees/task/commondir": "  \n",
+      "task/.git": "gitdir: ../AgentDeck/.git/worktrees/task\n"
+    },
+    "expected": "task",
+    "compactExpected": "task"
+  }
+]

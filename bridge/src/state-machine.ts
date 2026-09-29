@@ -95,8 +95,9 @@ export class StateMachine extends EventEmitter {
   private inFlightTools = 0;
   /** False for the daemon hub's global machine: it multiplexes EVERY observed
    *  session's hooks, so an unrelated session's tool activity must never
-   *  dismiss an AWAITING prompt (e.g. a held OpenClaw approval) or reopen
-   *  IDLE. Session bridges own exactly one agent and keep this true. */
+   *  dismiss an AWAITING prompt (e.g. a held OpenClaw approval). Liveness
+   *  still recovers IDLE/DISCONNECTED and refreshes PROCESSING timers.
+   *  Session bridges own exactly one agent and keep this true. */
   private readonly toolActivityRecovery: boolean;
 
   constructor(usageTracker: UsageTracker, opts?: { toolActivityRecovery?: boolean }) {
@@ -542,10 +543,16 @@ export class StateMachine extends EventEmitter {
   /** Tool activity (PreToolUse/PostToolUse and Codex equivalents) is dismissal
    *  evidence for AWAITING_* / recovery evidence for IDLE, with three guards:
    *
-   *  - Disabled entirely on the daemon hub's global machine
-   *    (`toolActivityRecovery: false`) — it multiplexes every observed
-   *    session, so "some session used a tool" proves nothing about the prompt
-   *    or turn this machine is displaying.
+   *  - The daemon hub's global machine (`toolActivityRecovery: false`)
+   *    multiplexes every observed session, so "some session used a tool"
+   *    proves nothing about the prompt or turn this machine is displaying —
+   *    but that only justifies refusing to *dismiss* what is on screen. The
+   *    guard therefore covers AWAITING_* only. Blocking it
+   *    from IDLE and DISCONNECTED too left the hub with no edge back to
+   *    PROCESSING after any session's stop, any session's session_end (the
+   *    wildcard → DISCONNECTED row), or the stuck timeout: session_start is
+   *    the only other way out and it never fires again for a session already
+   *    underway, so the hub latched at idle/disconnected while work ran.
    *  - AWAITING_*: a short grace after the prompt was drawn (a parallel tool
    *    or a late hook curl can land while a fresh prompt is genuinely open),
    *    and a tool END only counts when no other tool is still in flight —
@@ -553,19 +560,30 @@ export class StateMachine extends EventEmitter {
    *    finishing is not evidence the prompt was answered. A tool START from
    *    awaiting is always evidence (batch PreToolUse all fire before the
    *    prompt is drawn, so a new start means the turn resumed).
-   *  - IDLE: only a tool START recovers a dropped user_prompt_submit. A
-   *    straggler tool-END curl landing after Stop must not reopen a finished
-   *    session (nothing would ever re-close it).
+   *  - IDLE / DISCONNECTED: only a tool START recovers a dropped
+   *    user_prompt_submit. A straggler tool-END curl landing after Stop must
+   *    not reopen a finished session (nothing would ever re-close it).
    *
    *  A dismissal skipped by any guard is retried by the next hook — a
    *  keyboard-answered prompt always produces later tool activity or a stop. */
   private recoverProcessingFromToolActivity(kind: 'start' | 'end'): void {
-    if (!this.toolActivityRecovery) return;
+    // Tool activity while already PROCESSING is not a transition (there is no
+    // PROCESSING → PROCESSING row, so transition() would drop it), but it is
+    // proof the turn is alive: re-arm the hang backstop exactly as
+    // onPtyActivity() does for PTY-backed sessions. Without this a hook-only
+    // session decays to IDLE after STUCK_TIMEOUT_MS however busy it is, since
+    // no PTY bytes ever reach the machine.
+    if (this.state === State.PROCESSING) {
+      if (this.stuckTimer) this.armStuckTimer(STUCK_TIMEOUT_MS);
+      return;
+    }
+    if (!this.toolActivityRecovery
+      && this.state !== State.IDLE && this.state !== State.DISCONNECTED) return;
     const inAwaiting =
       this.state === State.AWAITING_PERMISSION ||
       this.state === State.AWAITING_OPTION ||
       this.state === State.AWAITING_DIFF;
-    if (this.state === State.IDLE && kind !== 'start') return;
+    if ((this.state === State.IDLE || this.state === State.DISCONNECTED) && kind !== 'start') return;
     if (inAwaiting) {
       if (Date.now() - this.awaitingEnteredAt < AWAITING_TOOL_DISMISS_GRACE_MS) {
         debug('SM', 'tool_activity within awaiting grace — keeping prompt');

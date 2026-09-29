@@ -1,0 +1,110 @@
+{
+  "$comment": "Codex Desktop ambient-suggestions prompt signatures. Replayed by bridge/src/__tests__/codex-ambient-hooks.test.ts and apple/AgentDeckTests/CodexAmbientHookRulesTests. `ambient: true` means the prompt belongs to a background thread the daemon must not record.",
+  "vectors": [
+    {
+      "name": "hyperpersonalized suggestions generator (live 2026-09-11)",
+      "prompt": "Overview\n\nGenerate 0 to 3 hyperpersonalized suggestions for what this user can do with Codex in this local project. The suggestions must be grounded in",
+      "ambient": true
+    },
+    {
+      "name": "generator prompt with its Markdown heading, verbatim from the hook (live 2026-09-29)",
+      "prompt": "# Overview\n\nGenerate 0 to 3 hyperpersonalized suggestions for what this user can do with Codex in this local project: /Users/puritysb/github/ViewTrans\n\nGet an",
+      "ambient": true
+    },
+    {
+      "name": "a user prompt headed Overview is not ambient",
+      "prompt": "# Overview\n\nRefactor the session list so rows sort by project",
+      "ambient": false
+    },
+    {
+      "name": "safety and compliance review of ambient suggestions (live 2026-09-11)",
+      "prompt": "You are an expert at upholding safety and compliance standards for Codex ambient suggestions.\n\nI will present a list of suggestions",
+      "ambient": true
+    },
+    {
+      "name": "leading whitespace and case do not hide the signature",
+      "prompt": "  overview\n\ngenerate 0 to 3 HyperPersonalized suggestions for what this user can do",
+      "ambient": true
+    },
+    {
+      "name": "a user prompt that mentions suggestions is not ambient",
+      "prompt": "Generate 3 suggestions for improving the README",
+      "ambient": false
+    },
+    {
+      "name": "the signature must be at the start, not quoted mid-prompt",
+      "prompt": "Why does Codex keep running 'Generate 0 to 3 hyperpersonalized suggestions' in the background?",
+      "ambient": false
+    },
+    {
+      "name": "ordinary work prompt",
+      "prompt": "AGENTS.md 및 프로젝트 메모리가 Astra 모델 사용에 적절하게 구성되어 있는지 점검하라.",
+      "ambient": false
+    },
+    {
+      "name": "codex exec image batch driven by another agent is real work",
+      "prompt": "Use your built-in image generation tool to create ONE square image and save it as ./1970s_mainframe_student.png",
+      "ambient": false
+    },
+    {
+      "name": "empty prompt",
+      "prompt": "",
+      "ambient": false
+    }
+  ],
+  "cwdComment": "Codex background workspaces. A hook whose cwd is Codex's own memory store belongs to the memory-consolidation agent Codex runs by itself (memories_1.sqlite job `memory_consolidate_global`, observed live 2026-09-27 as a WORKING 'memories' creature). `background: true` means the daemon must not record it. `codexHome` stands in for $CODEX_HOME when present.",
+  "cwdVectors": [
+    {
+      "name": "memory consolidation under the default home (live 2026-09-27)",
+      "cwd": "/Users/puritysb/.codex/memories",
+      "background": true
+    },
+    {
+      "name": "trailing slash",
+      "cwd": "/Users/puritysb/.codex/memories/",
+      "background": true
+    },
+    {
+      "name": "a file inside the memory store",
+      "cwd": "/Users/puritysb/.codex/memories/rollout_summaries",
+      "background": true
+    },
+    {
+      "name": "custom CODEX_HOME",
+      "cwd": "/opt/codex-home/memories",
+      "codexHome": "/opt/codex-home",
+      "background": true
+    },
+    {
+      "name": "custom CODEX_HOME still recognises the default suffix",
+      "cwd": "/Users/me/.codex/memories",
+      "codexHome": "/opt/codex-home",
+      "background": true
+    },
+    {
+      "name": "codex home itself is not the memory agent",
+      "cwd": "/Users/puritysb/.codex",
+      "background": false
+    },
+    {
+      "name": "a user project named memories",
+      "cwd": "/Users/puritysb/github/memories",
+      "background": false
+    },
+    {
+      "name": "a project that merely contains .codex in its path",
+      "cwd": "/Users/puritysb/github/app/.codex-memories",
+      "background": false
+    },
+    {
+      "name": "ordinary project",
+      "cwd": "/Users/puritysb/github/AgentDeck",
+      "background": false
+    },
+    {
+      "name": "empty cwd",
+      "cwd": "",
+      "background": false
+    }
+  ]
+}

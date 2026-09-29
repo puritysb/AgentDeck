@@ -1,66 +1,26 @@
-import { debug } from './logger.js';
-
-export interface OllamaModel {
-  name: string;
-  size: number;
-  sizeVram: number;
+import type { OllamaStatus } from '@agentdeck/shared';
+export type { OllamaStatus, OllamaModel } from '@agentdeck/shared';
+const BASE = 'http://127.0.0.1:11434';
+type Row = { name?: string; size?: number; size_vram?: number };
+async function probe(path: string): Promise<Row[] | null> {
+  try {
+    const response = await fetch(BASE + path, { signal: AbortSignal.timeout(2000) });
+    if (!response.ok) return null;
+    const body = await response.json() as { models?: Row[] };
+    if (!Array.isArray(body.models) || body.models.some(m => !m || typeof m.name !== 'string' || !m.name)) return null;
+    return body.models;
+  } catch { return null; }
 }
-
-export interface OllamaStatus {
-  available: boolean;
-  models: OllamaModel[];
-}
-
-const OLLAMA_BASE = 'http://127.0.0.1:11434';
-
 export class OllamaProbe {
   async getStatus(): Promise<OllamaStatus> {
-    try {
-      // Installed models via /api/tags — always consistent (no flicker)
-      const tagsRes = await fetch(`${OLLAMA_BASE}/api/tags`, {
-        signal: AbortSignal.timeout(2000),
-      });
-      if (!tagsRes.ok) {
-        return { available: false, models: [] };
-      }
-
-      const tagsData = (await tagsRes.json()) as { models?: Array<{
-        name?: string;
-        size?: number;
-      }> };
-
-      const installed = tagsData.models ?? [];
-      if (installed.length === 0) {
-        return { available: true, models: [] };
-      }
-
-      // Running models via /api/ps — enrich with VRAM info for loaded models
-      let vramMap: Map<string, number> = new Map();
-      try {
-        const psRes = await fetch(`${OLLAMA_BASE}/api/ps`, {
-          signal: AbortSignal.timeout(3000),
-        });
-        if (psRes.ok) {
-          const psData = (await psRes.json()) as { models?: Array<{
-            name?: string;
-            size_vram?: number;
-          }> };
-          for (const m of psData.models ?? []) {
-            if (m.name) vramMap.set(m.name, m.size_vram ?? 0);
-          }
-        }
-      } catch { /* ps failure is non-fatal */ }
-
-      const models: OllamaModel[] = installed.map((m) => ({
-        name: m.name ?? 'unknown',
-        size: m.size ?? 0,
-        sizeVram: vramMap.get(m.name ?? '') ?? 0,
-      }));
-
-      debug('OllamaProbe', `available, ${models.length} installed model(s), ${vramMap.size} loaded`);
-      return { available: true, models };
-    } catch {
-      return { available: false, models: [] };
-    }
+    const [installed, running] = await Promise.all([probe('/api/tags'), probe('/api/ps')]);
+    const vram = new Map((running ?? []).map(m => [m.name, m.size_vram ?? 0]));
+    return {
+      available: installed !== null || running !== null,
+      // Retain the installed-list and byte-count contract for released clients.
+      models: (installed ?? running ?? []).map(m => ({ name: m.name!, size: m.size ?? 0, sizeVram: vram.get(m.name) ?? 0 })),
+      installedModelsKnown: installed !== null,
+      residency: { known: running !== null, models: (running ?? []).map(m => m.name!) },
+    };
   }
 }

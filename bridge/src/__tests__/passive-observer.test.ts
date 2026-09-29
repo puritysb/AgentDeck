@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   activeKiroCliProcesses,
   CodexRolloutCache,
@@ -10,8 +10,10 @@ import {
   isCodexSessionProcessCommand,
   isKiroCliProcessCommand,
   isKiroIdeProcessCommand,
+  nextScanIntervalMs,
   observedStateAfterSilence,
   parseCimProcessTable,
+  PassiveSessionObserver,
   parseClaudeTranscript,
   parseCodexRollout,
   parseLsofRollouts,
@@ -833,5 +835,91 @@ describe('passive-observer parsers', () => {
     expect(isAntigravityProcessCommand('Antigravity Helper (Renderer)')).toBe(false);
     expect(isAntigravityProcessCommand('grep Antigravity')).toBe(false);
     expect(isAntigravityProcessCommand('node /usr/local/bin/agentdeck antigravity')).toBe(false);
+  });
+});
+
+describe('passive-observer scan resilience', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  const table = [{ pid: 1, ppid: 0, rssKb: 1024, tty: undefined, command: '/sbin/launchd' }];
+
+  /** collect() kicks the scan off in the background; let it settle. */
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  }
+
+  it('retains the process table when a scan comes back empty', async () => {
+    let processes = table;
+    const observer = new PassiveSessionObserver(async () => processes);
+
+    observer.collect([]);
+    await settle();
+    expect(observer.processes()).toEqual(table);
+
+    // collectProcessInfo() reports a timeout, a spawn failure or unparseable
+    // output as [] rather than throwing — and no running machine has zero
+    // processes. Concluding "every session ended" from that is what emptied
+    // the roster on a Windows host whose WMI query timed out on every scan.
+    processes = [];
+    vi.useFakeTimers({ now: Date.now() + 60_000 });
+    observer.collect([]);
+    await settle();
+    expect(observer.processes()).toEqual(table);
+  });
+
+  it('retains the last roster when a scan rejects', async () => {
+    const seeded = [{ id: 'observed:claude:abc', agentType: 'claude-code' }];
+    let fail = false;
+    const observer = new PassiveSessionObserver(async () => {
+      if (fail) throw new Error('ps: cannot read process table');
+      return table;
+    });
+    // Seed the cache directly: building a real observed session needs a
+    // transcript on disk, and the behaviour under test is the failure path.
+    (observer as unknown as { cached: unknown[] }).cached = seeded;
+
+    fail = true;
+    vi.useFakeTimers({ now: Date.now() + 60_000 });
+    expect(observer.collect([])).toEqual(seeded);
+    await settle();
+    expect(observer.collect([])).toEqual(seeded);
+  });
+
+  it('backs the scan cadence off to the cost of the last scan', () => {
+    // A fast host keeps the 5s floor…
+    expect(nextScanIntervalMs(0)).toBe(5_000);
+    expect(nextScanIntervalMs(200)).toBe(5_000);
+    // …a host where the process table costs ~11s does not run scans
+    // back-to-back forever…
+    expect(nextScanIntervalMs(11_000)).toBe(11_000);
+    // …and a pathological host is still rescanned within the ceiling.
+    expect(nextScanIntervalMs(10 * 60_000)).toBe(60_000);
+    expect(nextScanIntervalMs(Number.NaN)).toBe(5_000);
+  });
+
+  it.each([
+    { duration: 200, cooldown: 4_800, rejects: false },
+    { duration: 11_000, cooldown: 11_000, rejects: false },
+    { duration: 30_000, cooldown: 30_000, rejects: true },
+    { duration: 70_000, cooldown: 60_000, rejects: false },
+  ])('schedules a $duration ms scan with $cooldown ms remaining (rejects=$rejects)', async ({ duration, cooldown, rejects }) => {
+    vi.useFakeTimers({ now: 100_000 });
+    const reader = vi.fn(() => new Promise<never[]>((resolve, reject) => {
+      setTimeout(() => rejects ? reject(new Error('scan unavailable')) : resolve([]), duration);
+    }));
+    const observer = new PassiveSessionObserver(reader);
+    observer.collect([]);
+    observer.collect([]);
+    expect(reader).toHaveBeenCalledTimes(1); // no overlapping scan
+    await vi.advanceTimersByTimeAsync(duration);
+    observer.collect([]);
+    expect(reader).toHaveBeenCalledTimes(1); // completion is not a new scan
+    await vi.advanceTimersByTimeAsync(cooldown - 1);
+    observer.collect([]);
+    expect(reader).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    observer.collect([]);
+    expect(reader).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(duration);
   });
 });

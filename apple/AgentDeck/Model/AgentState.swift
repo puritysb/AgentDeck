@@ -24,16 +24,8 @@ enum AgentConnectionState: String, Codable, Sendable, CaseIterable {
         self == .processing
     }
 
-    var displayLabel: String {
-        switch self {
-        case .disconnected: "DISCONNECTED"
-        case .idle: "IDLE"
-        case .processing: "PROCESSING"
-        case .awaitingPermission: "PERMISSION"
-        case .awaitingOption: "SELECT"
-        case .awaitingDiff: "DIFF REVIEW"
-        }
-    }
+    /// Uppercase pill text from the shared session-state vocabulary.
+    var displayLabel: String { sessionWords.short }
 }
 
 // MARK: - Permission Mode
@@ -154,6 +146,32 @@ struct DashboardState: Sendable {
     var oauthConnected: Bool?
     var ollamaStatus: OllamaStatus?
     var usageStale: Bool?
+    var tokenStatus: String?
+
+    /// A quota failure is separate from session connectivity, and only an
+    /// EXPLICIT expiry is a failure claim.
+    ///
+    /// The sandboxed standalone daemon never reads Claude's OAuth entry
+    /// (`UsageAPIClient.directOAuthUsageSupported == false`), so it always
+    /// emits `tokenStatus: "unknown"` with `usageStale: true`, and
+    /// `effectiveOauthConnected()` reports `true` whenever any `claude-code`
+    /// session is cached. Synthesizing a reason from that trio told every
+    /// ordinary standalone user their quota was broken — the opposite of the
+    /// "reads as feature-complete, never as broken" rule in AGENTS.md
+    /// § App Store build invariants. `missing` is not a failure either: an
+    /// API-key or off-harness install has no OAuth credential by design, and
+    /// `usageStale` already means "no numbers", never "authorization failed".
+    var claudeUsageIssue: String? {
+        guard usageStale == true, tokenStatus == "expired" else { return nil }
+        return "Usage authorization expired"
+    }
+
+    /// Compact form for the shared USAGE / RATE LIMITS headers, which sit
+    /// beside Codex gauges — so it names the provider and stays short.
+    var claudeUsageBadge: String? {
+        claudeUsageIssue == nil ? nil : "Claude auth expired"
+    }
+
     var codexAuthMode: String?
     var codexWebAuthConnected: Bool?
     var codexPlanType: String?
@@ -161,6 +179,10 @@ struct DashboardState: Sendable {
     var codexSubscriptionActiveUntil: String?
     var codexLastRefreshAt: String?
     var codexRateLimits: CodexRateLimits?
+    /// z.ai GLM Coding Plan usage — a direct provider-account reading,
+    /// independent of every harness that may use the plan (#348).
+    var zaiRateLimits: ZaiRateLimits?
+    var mlxResidency: ModelResidency?
     var mlxModels: [String] = []
     var mlxModelCatalog: [String] = []
     var subscriptions: [SubscriptionInfo] = []

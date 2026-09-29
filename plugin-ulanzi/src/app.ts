@@ -1,3 +1,4 @@
+import { nextClaudeWeeklyMode, isClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
 /**
  * AgentDeck Ulanzi Studio plugin — Node.js main service entry.
  *
@@ -30,7 +31,7 @@ import { UlanziApiCtor, type UlanziApi, type UlanziMessage } from './ulanzi.js';
 import { DaemonClient } from './daemon-client.js';
 import { ReconnectSupervisor } from './reconnect-supervisor.js';
 import { StateStore } from './state-store.js';
-import { deckSignature } from './deck-signature.js';
+import { deckViewSignature } from './deck-signature.js';
 import { svgToBase64Png, GIF_ICON_SIZE, initRaster } from './raster.js';
 import { framesToGifBase64 } from './gif.js';
 import { launchCompanionApp } from './launch.js';
@@ -72,6 +73,9 @@ const daemon = new DaemonClient();
 const store = new StateStore();
 
 const instances = new Map<string, Instance>();
+let claudeWeeklyMode: ClaudeWeeklyMode = 'both';
+let savedSettings: Record<string, unknown> = {};
+let weeklyModeTouched = false;
 let view: DeckView = { mode: 'list', page: 0 };
 
 // Coalesce bursts of daemon broadcasts into at most one render per MIN_GAP.
@@ -164,7 +168,7 @@ function deckFor(animFrame: number, animated: boolean) {
   // quota gauges — this surface has no encoder LCD to carry usage.
   return buildSessionDeck(
     layoutInput(),
-    { ...view, animFrame, animated, showUsage: true, voiceState: store.voiceState },
+    { ...view, claudeWeeklyMode, animFrame, animated, showUsage: true, voiceState: store.voiceState },
     positions(),
   );
 }
@@ -293,7 +297,7 @@ function renderAll(): void {
   // voiceState is part of the signature: the VOICE tile is the only key that
   // changes on a voice_state event, and a sig that omits it swallows exactly
   // that repaint (the recurring deckSignature failure mode).
-  const sig = `${view.mode}|${view.openSessionId ?? ''}|${view.page ?? 0}|${store.voiceState}|${deckSignature(ev)}`;
+  const sig = deckViewSignature(ev, { ...view, claudeWeeklyMode, voiceState: store.voiceState }, positions());
   if (sig === lastDeckSig) return;
   lastDeckSig = sig;
   lastRenderAt = Date.now();
@@ -366,7 +370,16 @@ const studioSupervisor = new ReconnectSupervisor({
   log: (m) => dlog(TAG, m),
 });
 // Register handlers BEFORE the first connect so the initial open isn't missed.
-$UD.onConnected(() => { dinfo(TAG, 'Ulanzi Studio bridge connected'); studioSupervisor.noteOpen(); });
+$UD.onDidReceiveGlobalSettings((m) => {
+  const settings = m.settings ?? m.param;
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return;
+  savedSettings = settings as Record<string, unknown>;
+  if (!weeklyModeTouched && isClaudeWeeklyMode(savedSettings.claudeWeeklyMode)) {
+    claudeWeeklyMode = savedSettings.claudeWeeklyMode;
+    scheduleRender();
+  }
+});
+$UD.onConnected(() => { dinfo(TAG, 'Ulanzi Studio bridge connected'); studioSupervisor.noteOpen(); $UD.getGlobalSettings(); });
 $UD.onClose(() => { dlog(TAG, 'Ulanzi Studio bridge closed'); cancelActiveHold('studio socket closed'); studioSupervisor.noteClosed(); });
 $UD.onError((e) => { derr(TAG, `Ulanzi bridge error: ${e}`); studioSupervisor.noteClosed(); });
 studioSupervisor.start();
@@ -438,6 +451,13 @@ function onPress(m: UlanziMessage): void {
       break;
     case 'back':
       view = { mode: 'list', page: 0 };
+      renderAll();
+      break;
+    case 'weekly-mode':
+      claudeWeeklyMode = nextClaudeWeeklyMode(claudeWeeklyMode);
+      weeklyModeTouched = true;
+      savedSettings = { ...savedSettings, claudeWeeklyMode };
+      $UD.setGlobalSettings(savedSettings);
       renderAll();
       break;
     case 'page':

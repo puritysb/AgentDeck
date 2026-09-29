@@ -5,6 +5,7 @@
 #if defined(BOARD_HAS_SPEAKER)
 
 #include "speaker_playback.h"
+#include "pcm_write.h"
 #if defined(BOARD_SPK_CODEC_ES8311)
 #include "es8311_codec.h"
 #endif
@@ -134,11 +135,19 @@ static void playbackTask(void* param) {
 #if defined(BOARD_SPK_CODEC_ES8311)
     // Codec init must follow the I2S clock coming up: the ES8311 locks to MCLK,
     // so the clock has to already be running when its clock-manager registers
-    // are programmed. Re-run per utterance — it is ~40 I2C writes and it
-    // re-asserts the power amplifier, which is cheap next to a silent board.
+    // are programmed. IPS10 keeps its shared mic/playback codec live;
+    // other boards retain the per-utterance initialization path.
     // Failure is not fatal here: I2S keeps streaming into a silent codec, and
     // the log line is what tells the two apart.
-    if (!Es8311::begin((uint32_t)s_sampleRate)) {
+#if defined(BOARD_IPS10)
+    // Continuous microphone capture already owns a live ADC/DAC. Resetting
+    // this codec per reply toggled PA and consumed the first spoken samples
+    // during its analogue startup. Reconfigure only after stop/rate change.
+    const bool codecOk = Es8311::ensure((uint32_t)s_sampleRate);
+#else
+    const bool codecOk = Es8311::begin((uint32_t)s_sampleRate);
+#endif
+    if (!codecOk) {
         Serial.println("[Speaker] ES8311 init failed — samples will go nowhere");
     } else {
         Es8311::dumpRegs("after init, before samples");
@@ -153,6 +162,24 @@ static void playbackTask(void* param) {
     }
 
     uint8_t chunk[1024];
+    auto writePcm = [](const uint8_t* data, size_t len) { return s_i2s.write(data, len); };
+    auto aborted = []() { return s_abort; };
+#if defined(BOARD_IPS10)
+    // Reuse the playback task's existing stack buffer, no extra allocation.
+    // Clock 80 ms of zero PCM before touching the ring: DAC/PA startup or
+    // auto-mute release may consume silence, never the first speech samples.
+    memset(chunk, 0, sizeof(chunk));
+    size_t primed = 0;
+    const size_t primeBytes = size_t(s_sampleRate) * 2 * 80 / 1000;
+    while (!s_abort && primed < primeBytes) {
+        const size_t remaining = primeBytes - primed;
+        const size_t want = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
+        const size_t sent = Audio::writePcmFully(chunk, want, writePcm, aborted);
+        primed += sent;
+        if (sent != want) { s_abort = true; break; }
+    }
+    Serial.printf("[Speaker] primed %u/%u silent bytes before PCM\n", unsigned(primed), unsigned(primeBytes));
+#endif
     uint32_t lastDataMs = millis();
     while (!s_abort) {
         size_t got = 0;
@@ -161,8 +188,13 @@ static void playbackTask(void* param) {
         xSemaphoreGive(s_mutex);
 
         if (got > 0) {
-            s_i2s.write(chunk, got);
-            s_playedBytes += got;
+            const size_t sent = Audio::writePcmFully(chunk, got, writePcm, aborted);
+            s_playedBytes += sent;
+            if (sent != got) {
+                Serial.printf("[Speaker] incomplete I2S write %u/%u — stopping\n", unsigned(sent), unsigned(got));
+                s_abort = true;
+                break;
+            }
             lastDataMs = millis();
             continue;
         }

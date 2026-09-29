@@ -1,0 +1,101 @@
+import { describe, expect, it } from 'vitest';
+import { prepareForSerial, stableCardRoster, TIMELINE_HISTORY_BYTE_BUDGET } from '../esp32-serial.js';
+import type { BridgeEvent } from '@agentdeck/shared/protocol';
+
+const event = (census?: unknown, size = 1): BridgeEvent => ({
+  type: 'sessions_list',
+  sessions: Array.from({ length: size }, (_, i) => ({
+    id: `session-${i}`, port: 0, alive: true, agentType: 'claude-code', state: 'idle',
+    projectName: 'project', ...(census ? { subagents: census } : {}),
+  })),
+} as BridgeEvent);
+
+describe('IPS10 additive collaboration census', () => {
+  it('preserves explicit zero and a parent idle with active children', () => {
+    for (const active of [0, 3]) {
+      const out = prepareForSerial(event({ active, peak: 3, completed: 2 }), { deviceInfo: { board: 'ips_10' } }) as any;
+      expect(out.sessions[0].state).toBe('idle');
+      expect(out.sessions[0].subagents).toEqual({ active, peak: 3, completed: 2 });
+    }
+  });
+  it('leaves every other board and unidentified connection unchanged', () => {
+    const input = event({ active: 3, peak: 3, completed: 0 });
+    const baseline = prepareForSerial(event());
+    expect(prepareForSerial(input)).toEqual(baseline);
+    for (const board of ['86box', 'trmnl_75', 'ips_35', 'future-board']) {
+      expect(prepareForSerial(input, { deviceInfo: { board } })).toEqual(baseline);
+    }
+  });
+  it('does not invent a census from absent or malformed evidence', () => {
+    for (const c of [undefined, {}, { active: -1, peak: 1, completed: 0 }, { active: 1.2, peak: 2, completed: 0 }]) {
+      const out = prepareForSerial(event(c), { deviceInfo: { board: 'ips_10' } }) as any;
+      expect(out.sessions[0].subagents).toBeUndefined();
+    }
+  });
+  it('drops only the enhancement when the conservative frame budget is exceeded', () => {
+    const input = event({ active: 3, peak: 3, completed: 2 }, 10) as any;
+    for (const s of input.sessions) { s.question = '가'.repeat(40); s.activity = '나'.repeat(26); }
+    const out = prepareForSerial(input, { deviceInfo: { board: 'ips_10' } }) as any;
+    const baseline = prepareForSerial(input) as any;
+    expect(Buffer.byteLength(JSON.stringify(baseline))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
+    // Optional compact labels spend only spare bytes; IPS10's roster flag can
+    // leave less room than another board. Essential rows remain identical.
+    const essentials = (e: any) => ({ ...e, sessions: e.sessions.map(({ displayName: _label, ...row }: any) => row) });
+    expect(essentials(out)).toEqual({ ...essentials(baseline), rosterRotating: false });
+    expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
+    expect(out.sessions.every((s: any) => s.subagents === undefined)).toBe(true);
+    expect(out.sessions).toHaveLength(10);
+  });
+});
+
+describe('IPS10 stable card roster', () => {
+  const session = (id: string, state: string, startedAt: string, alive = true) =>
+    ({ id, port: 0, alive, agentType: 'claude-code', state, projectName: 'p', startedAt });
+
+  it('keeps every awaiting session, fills with the newest, and orders by id', () => {
+    const rows = [
+      session('k', 'idle', '2026-09-06T01:00:00Z'),
+      session('b', 'awaiting_permission', '2026-09-06T00:00:00Z'),
+      session('a', 'processing', '2026-09-06T05:00:00Z'),
+      session('z', 'idle', '2026-09-06T04:00:00Z'),
+      session('dead', 'processing', '2026-09-06T09:00:00Z', false),
+    ];
+    expect(stableCardRoster(rows, 3, 0).map((s) => s.id)).toEqual(['a', 'b', 'z']);
+    // A state change never changes the set: the same three come back.
+    rows[0].state = 'processing';
+    expect(stableCardRoster(rows, 3, 0).map((s) => s.id)).toEqual(['a', 'b', 'z']);
+    expect(stableCardRoster(rows.slice(0, 2), 3, 0).map((s) => s.id)).toEqual(['k', 'b']);
+  });
+
+  it('adds the coordination census and the roster total for IPS10 only', () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...session(`s${String(i).padStart(2, '0')}`, 'idle', `2026-09-06T0${i % 10}:00:00Z`),
+      coordination: { backgroundJobs: 1, spawnedActive: 2, spawnedCompleted: 0, messagesIn: 0, messagesOut: 0 },
+    }));
+    const out = prepareForSerial({ type: 'sessions_list', sessions: many } as any, { deviceInfo: { board: 'ips_10' } }) as any;
+    expect(out.sessions).toHaveLength(10);
+    expect(out.total).toBe(12);
+    expect(out.sessions[0].coordination).toEqual({ backgroundJobs: 1, spawnedActive: 2 });
+    const other = prepareForSerial({ type: 'sessions_list', sessions: many } as any, { deviceInfo: { board: '86box' } }) as any;
+    expect(other.total).toBeUndefined();
+    expect(other.sessions.every((s: any) => s.coordination === undefined)).toBe(true);
+  });
+});
+
+describe('IPS10 quota transport fidelity', () => {
+  it('preserves a missing 5h slot, actual window lengths, Luna (fleet-wide), and all subscription dates', () => {
+    const usage = { type: 'usage_update', codexRateLimits: {
+      secondary: { usedPercent: 100, windowMinutes: 10080 },
+      lunaReserve: { usedPercent: 32, resetsAt: '2099-01-01T00:00:00Z' },
+    }, subscriptions: [{ name: 'ChatGPT Pro' }, { name: 'Claude' }, { name: 'GLM Coding Plan' }, { name: 'Google AI Pro', until: '2099-02-03T00:00:00Z' }] } as BridgeEvent;
+    const out = prepareForSerial(usage, { deviceInfo: { board: 'ips_10' } }) as any;
+    expect(out.codexRateLimits.primary).toBeUndefined();
+    expect(out.codexRateLimits.secondary.windowMinutes).toBe(10080);
+    expect(out.codexRateLimits.lunaReserve.usedPercent).toBe(32);
+    expect(out.subscriptions).toHaveLength(4);
+    expect(out.subscriptions[3].until).toContain('2/3');
+    // Every board renders the reserve now (esp32/src/util/usage_rows.h), so the
+    // whitelist forwards it regardless of the connected board.
+    expect((prepareForSerial(usage) as any).codexRateLimits.lunaReserve.usedPercent).toBe(32);
+  });
+});

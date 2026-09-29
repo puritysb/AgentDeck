@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "product_palette.generated.h"  // design tokens + session state (generated)
 
 // ===== RGB565 color macros =====
 // Convert 24-bit RGB to 16-bit RGB565
@@ -11,9 +12,9 @@
 namespace Theme {
 
 // --- Background layers ---
-constexpr uint32_t DeepSea       = 0x0A1628;
-constexpr uint32_t MidWater      = 0x0F2744;
-constexpr uint32_t ShallowWater  = 0x163B5C;
+constexpr uint32_t DeepSea       = ProductPalette::UiWaterDeep;
+constexpr uint32_t MidWater      = ProductPalette::UiWaterMid;
+constexpr uint32_t ShallowWater  = ProductPalette::UiWaterShallow;
 
 // --- Sand & Rock ---
 constexpr uint32_t SandBase      = 0x2A1F14;
@@ -27,19 +28,22 @@ constexpr uint32_t KelpGreen     = 0x22C55E;
 constexpr uint32_t KelpDark      = 0x166534;
 
 // --- Octopus (Claude Code) ---
-constexpr uint32_t ClaudeBody      = 0xC07058;
+constexpr uint32_t ClaudeBody      = ProductPalette::BrandClaudeCode;
 constexpr uint32_t ClaudeBodyLight = 0xD08870;
 constexpr uint32_t ClaudeBodyDark  = 0xA05840;
 constexpr uint32_t ClaudeEye       = 0x2D1F16;
 
 // --- Cloud (Codex CLI) ---
-constexpr uint32_t CloudBody       = 0x5561E0;
+constexpr uint32_t CloudBody       = ProductPalette::BrandCodex;
 constexpr uint32_t CloudBodyLight  = 0x7B85F0;
 constexpr uint32_t CloudBodyDark   = 0x3A45C0;
-constexpr uint32_t CloudPrompt     = 0xE2E8F0;  // ">_" text color
+constexpr uint32_t CloudPrompt     = ProductPalette::UiHudText;  // ">_" text color
+
+// --- z.ai provider mark (Brand.zai, measured from the upstream logo) ---
+constexpr uint32_t ZaiBlue         = ProductPalette::BrandZai;
 
 // --- OpenCode (nested square) ---
-constexpr uint32_t OpenCodeOuter = 0xF1ECEC;
+constexpr uint32_t OpenCodeOuter = ProductPalette::BrandOpencodeOnDark;
 constexpr uint32_t OpenCodeInner = 0x4B4646;
 constexpr uint32_t OpenCodePulse = 0xCFCECD;
 
@@ -50,14 +54,14 @@ constexpr uint32_t AntigravityGreen = 0x2FD66D;
 constexpr uint32_t AntigravityYellow = 0xF3D233;
 
 // --- Kiro (ghost mark) ---
-constexpr uint32_t KiroMark = 0x7C3AED;
+constexpr uint32_t KiroMark = ProductPalette::BrandKiro;
 constexpr uint32_t AntigravityOrange = 0xFF8A18;
 constexpr uint32_t AntigravityRed = 0xFF4F47;
 constexpr uint32_t AntigravityPurple = 0xA85CC8;
 constexpr uint32_t AntigravityBlue = 0x247CFF;
 
 // --- Crayfish (OpenClaw) ---
-constexpr uint32_t CrayfishShell     = 0xFF4D4D;
+constexpr uint32_t CrayfishShell     = ProductPalette::BrandOpenclaw;
 constexpr uint32_t CrayfishDark      = 0x991B1B;
 constexpr uint32_t CrayfishEye       = 0x00E5CC;
 constexpr uint32_t CrayfishBodyLight = 0xFF6B6B;
@@ -70,32 +74,37 @@ constexpr uint32_t TetraFin    = 0xFF6B6B;
 // --- Bubble ---
 constexpr uint32_t BubbleWhite = 0xFFFFFF;  // rendered with alpha
 
-// --- HUD ---
-constexpr uint32_t HUDBg       = 0x000000;  // rendered at ~50% alpha
-constexpr uint32_t HUDText     = 0xE2E8F0;
-constexpr uint32_t HUDDim      = 0x94A3B8;
-constexpr uint32_t HUDFaint    = 0x64748B;  // fainter than HUDDim — cell footers (model · elapsed)
+// --- HUD --- (design tokens shared with the Apple and Android HUDs)
+constexpr uint32_t HUDBg       = ProductPalette::UiPopupBgDeep;  // rendered at ~50% alpha
+constexpr uint32_t HUDText     = ProductPalette::UiHudText;
+constexpr uint32_t HUDDim      = ProductPalette::UiHudSubtext;
+constexpr uint32_t HUDFaint    = ProductPalette::UiHudFaint;  // fainter than HUDDim — cell footers (model · elapsed)
 
-// --- Status colors ---
-constexpr uint32_t StatusGreen  = 0x22C55E;
-constexpr uint32_t StatusBlue   = 0x3B82F6;
-constexpr uint32_t StatusAmber  = 0xFBBF24;
-constexpr uint32_t StatusRed    = 0xEF4444;
-constexpr uint32_t StatusCyan   = 0x00E5FF;
-constexpr uint32_t StatusPurple = 0xA855F7;
+// --- Signal colors (DESIGN.md §2.6): one meaning per hue ---
+constexpr uint32_t StatusGreen  = ProductPalette::UiOk;     // health: link up, quota normal
+constexpr uint32_t StatusAmber  = ProductPalette::UiAttn;   // needs you — the only hue that pulses
+constexpr uint32_t StatusRed    = ProductPalette::UiError;  // failure
+constexpr uint32_t StatusCyan   = ProductPalette::UiCyan;   // activity / product chrome
+constexpr uint32_t StatusPurple = 0xA855F7;                 // category accent, not a state
+
+// --- Session state (DESIGN.md §2.7) — use these, or SessionState::color(), for a session ---
+constexpr uint32_t SessionIdle     = ProductPalette::SessionIdle;
+constexpr uint32_t SessionWorking  = ProductPalette::SessionWorking;
+constexpr uint32_t SessionAwaiting = ProductPalette::SessionAwaiting;
+constexpr uint32_t SessionOffline  = ProductPalette::SessionOffline;
 
 // --- Activity type colors (shared by the TTGO activity widget) ---
-constexpr uint32_t TLChatStart   = 0x22C55E;  // green
-constexpr uint32_t TLToolReq     = 0x3B82F6;  // blue
-constexpr uint32_t TLToolOk      = 0x00E5FF;  // cyan
-constexpr uint32_t TLError       = 0xEF4444;  // red
-constexpr uint32_t TLChatEnd     = 0xFBBF24;  // amber
-constexpr uint32_t TLModelCall   = 0xA855F7;  // purple
+constexpr uint32_t TLChatStart   = ProductPalette::UiOk;     // green
+constexpr uint32_t TLToolReq     = 0x3B82F6;                 // blue — category accent
+constexpr uint32_t TLToolOk      = ProductPalette::UiCyan;   // cyan
+constexpr uint32_t TLError       = ProductPalette::UiError;  // red
+constexpr uint32_t TLChatEnd     = ProductPalette::UiAttn;   // amber
+constexpr uint32_t TLModelCall   = 0xA855F7;                 // purple — category accent
 
 // --- LED cable (omitted on ESP32 but kept for reference) ---
-constexpr uint32_t LEDGreen  = 0x22C55E;
-constexpr uint32_t LEDAmber  = 0xFBBF24;
-constexpr uint32_t LEDRed    = 0xEF4444;
+constexpr uint32_t LEDGreen  = ProductPalette::UiOk;
+constexpr uint32_t LEDAmber  = ProductPalette::UiAttn;
+constexpr uint32_t LEDRed    = ProductPalette::UiError;
 
 }  // namespace Theme
 

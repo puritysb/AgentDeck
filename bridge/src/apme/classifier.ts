@@ -13,7 +13,20 @@
  */
 
 import type { ApmeStore } from './store.js';
-import { loadMlxSettings, resolveMlxModel } from '@agentdeck/shared';
+import {
+  loadMlxSettings,
+  guardedMlxFetch,
+  mlxBaseUrl,
+  APME_CLASSIFIER_SYSTEM_PROMPT,
+  APME_CLASSIFIER_MAX_TOKENS,
+  APME_CLASSIFIER_TIMEOUT_MS,
+  APME_CLASSIFIER_BACKEND_ORDER,
+  buildClassifierUserMessage,
+  normalizeClassifierLabel,
+  type ApmeClassifierBackend,
+} from '@agentdeck/shared';
+import { callFoundationModelsHelper } from '../foundation-models-helper.js';
+import { isPrunedPayload } from './payload-prune.js';
 
 // ─── TaskSignals — agent-agnostic feature vector ─────────────────────────────
 
@@ -80,6 +93,14 @@ export function computeSignals(store: ApmeStore, runId: string): TaskSignals {
   const ocToolNames = new Set<string>();
 
   for (const step of steps) {
+    // A pruned row (#302) is still valid JSON, so an unguarded JSON.parse
+    // below would silently read the marker's `pruned`/`prunedAt`/`bytes`
+    // keys as "this step had no command / no mode / no OpenClaw flags" —
+    // true by accident, not by measurement. `kind`-only counters (turn
+    // count, permission/diff prompts) don't read the payload at all and
+    // stay correct either way; only content extraction is skipped here.
+    const contentAvailable = !isPrunedPayload(step.payload);
+
     if (step.kind === 'PreToolUse' && step.toolName) {
       toolCounts[step.toolName] = (toolCounts[step.toolName] ?? 0) + 1;
 
@@ -87,7 +108,7 @@ export function computeSignals(store: ApmeStore, runId: string): TaskSignals {
       if (step.toolName === 'Edit') filesModified++;
       if (step.toolName === 'WebSearch' || step.toolName === 'WebFetch') webSearches++;
       if (step.toolName === 'Agent') agentDelegations++;
-      if (step.toolName === 'Bash') {
+      if (step.toolName === 'Bash' && contentAvailable) {
         try {
           const payload = JSON.parse(step.payload);
           const cmd = typeof payload.command === 'string' ? payload.command : '';
@@ -97,23 +118,25 @@ export function computeSignals(store: ApmeStore, runId: string): TaskSignals {
     }
 
     if (step.kind === 'UserPromptSubmit') turnCount++;
+    if (step.kind === 'permission_prompt') permissionRequests++;
+    if (step.kind === 'diff_prompt') diffReviews++;
 
     // State-based signals from step payloads
-    try {
-      const payload = JSON.parse(step.payload);
-      if (payload.mode === 'plan' || step.kind === 'mode_change') {
-        if (typeof payload.mode === 'string' && payload.mode === 'plan') planModeUsed = true;
-      }
-      if (step.kind === 'permission_prompt') permissionRequests++;
-      if (step.kind === 'diff_prompt') diffReviews++;
-      // OpenClaw signals
-      if (typeof payload.chatIsAutomated === 'boolean') isAutomated = payload.chatIsAutomated;
-      if (Array.isArray(payload.chatToolNames)) {
-        for (const t of payload.chatToolNames) {
-          if (typeof t === 'string') ocToolNames.add(t);
+    if (contentAvailable) {
+      try {
+        const payload = JSON.parse(step.payload);
+        if (payload.mode === 'plan' || step.kind === 'mode_change') {
+          if (typeof payload.mode === 'string' && payload.mode === 'plan') planModeUsed = true;
         }
-      }
-    } catch { /* ignore */ }
+        // OpenClaw signals
+        if (typeof payload.chatIsAutomated === 'boolean') isAutomated = payload.chatIsAutomated;
+        if (Array.isArray(payload.chatToolNames)) {
+          for (const t of payload.chatToolNames) {
+            if (typeof t === 'string') ocToolNames.add(t);
+          }
+        }
+      } catch { /* ignore */ }
+    }
   }
 
   const totalToolCalls = Object.values(toolCounts).reduce((a, b) => a + b, 0);
@@ -215,27 +238,112 @@ export function classifyRun(store: ApmeStore, runId: string): { signals: TaskSig
   return { signals, category };
 }
 
-// ──�� LLM-based classification (local MLX, cost-free) ──────────────────────
+// ─── LLM-assisted classification (local-only, never a paid backend) ────────
+//
+// Prompt text, label vocabulary, output cap, timeout and backend try-order
+// are the SSOT in shared/src/apme-classifier-rules.ts, generated into Swift
+// as ApmeClassifierRules.generated.swift. `task_category` selects the judge
+// rubric downstream, so the two daemons picking a different category for the
+// same task is a score difference — see #299. `APME_CLASSIFIER_BACKEND_ORDER`
+// never contains `api`/`openai`: classification runs on every closed task
+// with `unknown` rules, so routing it through a paid backend would bill the
+// user for a call the eval pipeline makes silently, whatever judge backend
+// they configured for actual eval scoring.
 
-const LLM_CLASSIFY_PROMPT = `You are a task classifier for coding agent sessions.
-Given the user's prompt and tool usage summary, classify this task into exactly ONE category.
+function toolSummaryFor(signals: TaskSignals): string {
+  return Object.entries(signals.toolCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([t, c]) => `${t}×${c}`)
+    .join(', ');
+}
 
-Categories:
-- planning: architecture design, plan mode, thinking about approach
-- research: searching code, reading docs, web search, investigating
-- coding: writing/editing code, creating files, implementing features
-- debugging: fixing bugs, running tests, investigating failures
-- refactoring: restructuring existing code without changing behavior
-- review: reading code for understanding, code review
-- ops: git operations, deployments, config changes, CI/CD
-- conversation: quick question, chat, no tools used
-- multi_agent: delegating to sub-agents
+function classifierUserMessage(taskPrompt: string, signals: TaskSignals): string {
+  return buildClassifierUserMessage({
+    taskPrompt: taskPrompt.slice(0, 500),
+    toolSummary: toolSummaryFor(signals),
+    totalToolCalls: signals.totalToolCalls,
+    filesModified: signals.filesModified,
+    filesCreated: signals.filesCreated,
+    sessionDurationSec: signals.sessionDurationSec,
+    turnCount: signals.turnCount,
+  });
+}
 
-Respond with ONLY the category name, nothing else.`;
+/** On-device Apple Intelligence, via the bundled Node helper
+ *  (`bridge/src/foundation-models-helper.ts`). Returns null on any failure —
+ *  unavailable framework, timeout, out-of-vocabulary answer — never throws;
+ *  the caller falls through to the next backend. */
+async function classifyWithFoundationModels(userMsg: string): Promise<TaskCategory | null> {
+  try {
+    const raw = await callFoundationModelsHelper(userMsg, APME_CLASSIFIER_SYSTEM_PROMPT, {
+      maxTokens: APME_CLASSIFIER_MAX_TOKENS,
+      timeoutMs: APME_CLASSIFIER_TIMEOUT_MS,
+    });
+    return normalizeClassifierLabel(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Local MLX server (default `http://127.0.0.1:8800`). Cost: $0 (the user
+ *  has already paid in GPU watts). Returns null on any failure. */
+async function classifyWithMlx(userMsg: string): Promise<TaskCategory | null> {
+  try {
+    const settings = loadMlxSettings();
+    const base = mlxBaseUrl(settings.endpoint);
+    const model = settings.model;
+
+    const resp = await guardedMlxFetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: APME_CLASSIFIER_SYSTEM_PROMPT },
+          { role: 'user', content: userMsg },
+        ],
+        temperature: 0,
+        max_tokens: APME_CLASSIFIER_MAX_TOKENS,
+      }),
+      signal: AbortSignal.timeout(APME_CLASSIFIER_TIMEOUT_MS),
+    });
+
+    if (!resp.ok) return null;
+    const json = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = json.choices?.[0]?.message?.content ?? '';
+    return normalizeClassifierLabel(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Dispatch one backend from `APME_CLASSIFIER_BACKEND_ORDER`. `'rules'` is
+ *  not a network call — the caller treats a null return from ANY backend
+ *  (including this one) as "try the next entry, or give up". Deliberately a
+ *  closed switch over the SSOT's own union: adding a backend here means
+ *  adding it to `ApmeClassifierBackend`, so `api`/`openai` cannot be reached
+ *  without an explicit, reviewable change to this function. */
+async function classifyWithBackend(
+  backend: ApmeClassifierBackend,
+  userMsg: string,
+): Promise<TaskCategory | null> {
+  switch (backend) {
+    case 'foundationModels':
+      return classifyWithFoundationModels(userMsg);
+    case 'mlx':
+      return classifyWithMlx(userMsg);
+    case 'rules':
+      return null;
+    default:
+      return null;
+  }
+}
 
 /**
- * Classify a run using the local MLX server. Falls back to rule-based
- * classification if MLX is unavailable. Cost: $0 (local inference).
+ * Classify a run using the LLM-assist backend order (SSOT: never `api`/
+ * `openai`). Falls back to rule-based classification when every backend is
+ * unavailable, unreachable, or answers outside the label vocabulary.
  */
 export async function classifyWithLlm(
   taskPrompt: string,
@@ -243,64 +351,13 @@ export async function classifyWithLlm(
 ): Promise<TaskCategory> {
   if (!taskPrompt || taskPrompt.trim().length < 5) return classify(signals);
 
-  const toolSummary = Object.entries(signals.toolCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([t, c]) => `${t}×${c}`)
-    .join(', ');
-
-  const userMsg = `Prompt: "${taskPrompt.slice(0, 500)}"
-Tools used: ${toolSummary || 'none'} (${signals.totalToolCalls} total)
-Files modified: ${signals.filesModified}, created: ${signals.filesCreated}
-Duration: ${signals.sessionDurationSec}s, turns: ${signals.turnCount}`;
-
-  try {
-    // Use the explicit llm.mlx pin before catalog discovery. mlx-vlm's model
-    // endpoint lists downloaded models, not just the loaded one; treating its
-    // first row as active can unload the operating model and hot-swap an old
-    // candidate. Only probe when the user has not pinned a model.
-    const pinnedModel = loadMlxSettings().model;
-    let probedModel: string | null = null;
-    const base = 'http://127.0.0.1:8800';
-    if (!pinnedModel) {
-      for (const path of ['/v1/models', '/models']) {
-        const mResp = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(2000) }).catch(() => null);
-        if (mResp?.ok) {
-          const mJson = await mResp.json() as { data?: Array<{ id?: string }> };
-          const first = mJson.data?.find(m => m.id && !m.id.toLowerCase().includes('nanollava'))?.id;
-          if (first) { probedModel = first; break; }
-        }
-      }
-    }
-    const model = resolveMlxModel(probedModel);
-
-    const resp = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: LLM_CLASSIFY_PROMPT },
-          { role: 'user', content: userMsg },
-        ],
-        temperature: 0,
-        max_tokens: 20,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!resp.ok) return classify(signals);
-    const json = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = json.choices?.[0]?.message?.content?.trim().toLowerCase().replace(/[^a-z_]/g, '') ?? '';
-
-    if (TASK_CATEGORIES.includes(raw as TaskCategory)) return raw as TaskCategory;
-    // Partial match
-    const match = TASK_CATEGORIES.find(c => raw.includes(c));
-    return match ?? classify(signals);
-  } catch {
-    // MLX not available — fall back to rules
-    return classify(signals);
+  const userMsg = classifierUserMessage(taskPrompt, signals);
+  for (const backend of APME_CLASSIFIER_BACKEND_ORDER) {
+    if (backend === 'rules') break;
+    const result = await classifyWithBackend(backend, userMsg);
+    if (result) return result;
   }
+  return classify(signals);
 }
 
 /** Classify with LLM if rule-based gives unknown, otherwise use rules. */

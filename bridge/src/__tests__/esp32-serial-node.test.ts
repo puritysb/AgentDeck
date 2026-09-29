@@ -4,7 +4,8 @@
  * Tests the actual serial bridge source functions (prepareForSerial,
  * handleSerialLine, port patterns) without requiring real serial hardware.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import * as logger from '../logger.js';
 import { SERIAL_FORWARDED_EVENTS, DISPLAY_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import type {
   StateUpdateEvent,
@@ -19,12 +20,14 @@ import {
   SERIAL_SESSIONS_CAP,
   handleSerialLine,
   capturePanicLine,
+  isVoiceDiagnosticLine,
   isRetryableSerialIoError,
   ESP32_PORT_PATTERNS,
   EXCLUDE_PATTERNS,
   isUnidentifiedForeign,
   isHalfOpenIdentifiedCdc,
   isSilentIdentifiedUart,
+  sanitizeRssiDbm,
   SERIAL_KEEPALIVE_JSON,
   budgetTimelineEntries,
   serialOpenFailureBackoffMs,
@@ -133,13 +136,23 @@ describe('handleSerialLine (source)', () => {
 
   it('parses device_info message and updates deviceInfo', () => {
     const conn = mockConn();
-    handleSerialLine(conn, '{"type":"device_info","board":"inkdeck","version":"1.0.0","wifiConfigured":false,"wifiConnected":false,"repaintCount":2757,"fullRefreshCount":461}');
+    handleSerialLine(conn, '{"type":"device_info","board":"trmnl_75","version":"1.0.0","wifiConfigured":false,"wifiConnected":false,"repaintCount":2757,"fullRefreshCount":461,"usageCodex5H":-1,"usageCodex7D":37}');
 
     expect(conn.deviceInfo).not.toBeNull();
-    expect(conn.deviceInfo!.board).toBe('inkdeck');
+    expect(conn.deviceInfo!.board).toBe('trmnl_75');
     expect(conn.deviceInfo!.version).toBe('1.0.0');
     expect(conn.deviceInfo!.repaintCount).toBe(2757);
     expect(conn.deviceInfo!.fullRefreshCount).toBe(461);
+    expect(conn.deviceInfo!.usageCodex5H).toBe(-1);
+    expect(conn.deviceInfo!.usageCodex7D).toBe(37);
+  });
+
+  it('carries the board-reported WiFi RSSI and drops implausible values', () => {
+    const conn = mockConn();
+    handleSerialLine(conn, '{"type":"device_info","board":"round_amoled","version":"1.4.0","wifiConfigured":true,"wifiConnected":true,"ip":"192.168.68.55","rssiDbm":-78}');
+    expect(conn.deviceInfo!.rssiDbm).toBe(-78);
+    handleSerialLine(conn, '{"type":"device_info","board":"round_amoled","version":"1.4.0","wifiConfigured":true,"wifiConnected":true,"rssiDbm":0}');
+    expect(conn.deviceInfo!.rssiDbm).toBeUndefined();
   });
 
   it('skips debug lines (non-JSON)', () => {
@@ -150,6 +163,84 @@ describe('handleSerialLine (source)', () => {
     handleSerialLine(conn, '');
 
     expect(conn.deviceInfo).toBeNull(); // Nothing parsed
+  });
+
+  it('retains numeric e-ink completion events without painted content', () => {
+    const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
+    try {
+      const conn = mockConn();
+      const event = '[EinkRefresh] count=12 full=1 startedMs=123456 durationMs=3500';
+      handleSerialLine(conn, event);
+      handleSerialLine(conn, event + ' private painted text');
+      handleSerialLine(conn, '[EinkRefresh] count=12 full=2 startedMs=1 durationMs=3');
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith('esp32-eink', `${conn.port}: ${event}`);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('retains hosted software-reset evidence without logging subsequent private lines', () => {
+    const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
+    try {
+      const conn = mockConn();
+      const failure = 'E (354179) H_SDIO_DRV: sdio_write_task: 0: Failed to send data: 258 1502 1502';
+      handleSerialLine(conn, '\x1b[0;31m' + failure + '\x1b[0m');
+      handleSerialLine(conn, 'E (354182) H_SDIO_DRV: Unrecoverable host sdio state');
+      handleSerialLine(conn, '[SdioTx] staged=1 bytes=1536 result=0');
+      handleSerialLine(conn, 'E (43) H_SDIO_DRV: private packet contents');
+      handleSerialLine(conn, '[SdioTx] staged=1 bytes=1536 result=0 token=secret');
+      handleSerialLine(conn, '[Voice] transcript: private speech');
+      expect(log).toHaveBeenCalledTimes(3);
+      expect(log).toHaveBeenCalledWith('esp32-transport', `${conn.port}: ${failure}`);
+      expect(conn.panicLogUntil).toBeUndefined();
+    } finally { log.mockRestore(); }
+  });
+
+  it('records allowed voice stages under normal serial ownership', () => {
+    const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
+    try {
+      const conn = mockConn();
+      handleSerialLine(conn, '[Voice] HTTP upload 85824 bytes -> 200 (attempt 1)');
+      handleSerialLine(conn, '[Voice] transcript: private speech');
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith('esp32-voice',
+        `${conn.port}: [Voice] HTTP upload 85824 bytes -> 200 (attempt 1)`);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('does not misclassify the normal I2C register probe as a panic', () => {
+    const conn = mockConn();
+    expect(capturePanicLine(conn, '[I2CDiag] --- register dump 0x18 (read-only) ---')).toBe(false);
+    expect(conn.panicLogUntil).toBeUndefined();
+    expect(capturePanicLine(conn, 'Core  0 register dump:')).toBe(true);
+  });
+
+  it.each([
+    '[WakeVoice] detected score=242',
+    '[WakeVoice] capture end samples=42912 queued=1',
+    '[Voice] HTTP upload attempt 1: 85824 bytes, internal heap 84 KB',
+    '[Voice] HTTP upload 85824 bytes -> 200 (attempt 1)',
+    '[Voice] HTTP upload 85824 bytes -> -2 (attempt 1)',
+    '[VoicePerf] uploadMs=198 minInternalKB=59 pressureWaits=2',
+    '[Speaker] played 28132/28132 bytes (0.9s), 0 frames dropped',
+    '[VoiceFeedback] state=waiting captureElapsedMs=0',
+    '[VoiceEndpoint] complete elapsedMs=2422 quietMs=1217 rms=99 threshold=209',
+  ])('retains a content-free voice milestone: %s', line => {
+    expect(isVoiceDiagnosticLine(line)).toBe(true);
+  });
+
+  it.each([
+    '[Voice] upload peer=192.168.68.100:9120',
+    '[WakeVoice] capture wake target=private-session noise=88 threshold=209',
+    '[VoiceFeedback] state=waiting captureElapsedMs=0 secret text',
+    '[Voice] transcript: private speech',
+    '{"type":"voice_result","text":"private speech"}',
+    '[Voice] ' + 'x'.repeat(500),
+  ])('does not log unapproved voice content: %s', line => {
+    expect(isVoiceDiagnosticLine(line)).toBe(false);
   });
 
   it('opens a panic capture window on crash markers and captures the dump', () => {
@@ -481,6 +572,23 @@ describe('prepareForSerial (source)', () => {
     const prepared = prepareForSerial(event) as any;
     expect(prepared.codexRateLimits.primary).toMatchObject({ usedPercent: 62, stale: true });
     expect(prepared.codexRateLimits.secondary).toMatchObject({ usedPercent: 31, stale: false });
+  });
+
+  it('forwards z.ai windowMinutes so serial boards label windows by length, not "P"/"S"', () => {
+    // The firmware's windowLabel prints the reported length ("5H"/"7D") and
+    // falls back to the generic "P"/"S" when windowMinutes is absent — the
+    // serial whitelist once dropped it and a TC001 read "P 1%" instead of
+    // "5H 1%" while the WiFi (unshrunk) path was fine.
+    const event: UsageEvent = {
+      type: 'usage_update', sessionDurationSec: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0,
+      zaiRateLimits: {
+        primary: { usedPercent: 1, windowMinutes: 300 },
+        secondary: { usedPercent: 43, windowMinutes: 10080, quantity: 'tokens' },
+      },
+    };
+    const prepared = prepareForSerial(event) as any;
+    expect(prepared.zaiRateLimits.primary).toMatchObject({ usedPercent: 1, windowMinutes: 300 });
+    expect(prepared.zaiRateLimits.secondary).toMatchObject({ usedPercent: 43, windowMinutes: 10080, quantity: 'tokens' });
   });
 
   it('passes through other events unchanged', () => {
@@ -852,7 +960,7 @@ describe('half-open identified UART recovery', () => {
 // A cache-seeded connection carries a stale deviceInfo (old buildHash / pre-OTA
 // fields) but deviceInfoFresh=false. The heartbeat identify loop must keep
 // re-requesting until a LIVE reply lands, or a board reflashed/OTA-updated on
-// the same port (e.g. inkdeck round8→round9) freezes at the cache seed in
+// the same port (e.g. trmnl_75 round8→round9) freezes at the cache seed in
 // /devices. Regression guard for the conn.deviceInfo→conn.deviceInfoFresh gate.
 
 const identifyConn = (over: Partial<SerialConnection> = {}): SerialConnection =>
@@ -870,14 +978,14 @@ describe('device-info re-identify gating', () => {
     expect(shouldRetryDeviceInfoIdentify(identifyConn())).toBe(true);
   });
 
-  it('retries a CACHE-SEEDED connection (stale deviceInfo, not yet fresh) — the inkdeck bug', () => {
+  it('retries a CACHE-SEEDED connection (stale deviceInfo, not yet fresh) — the trmnl_75 bug', () => {
     // Non-null deviceInfo used to freeze this connection at the cache seed.
-    const c = identifyConn({ deviceInfo: { board: 'inkdeck', buildHash: 'b6744e8f-dirty' } });
+    const c = identifyConn({ deviceInfo: { board: 'trmnl_75', buildHash: 'b6744e8f-dirty' } });
     expect(shouldRetryDeviceInfoIdentify(c)).toBe(true);
   });
 
   it('STOPS once a live device_info has landed on this connection', () => {
-    expect(shouldRetryDeviceInfoIdentify(identifyConn({ deviceInfoFresh: true, deviceInfo: { board: 'inkdeck' } }))).toBe(false);
+    expect(shouldRetryDeviceInfoIdentify(identifyConn({ deviceInfoFresh: true, deviceInfo: { board: 'trmnl_75' } }))).toBe(false);
   });
 
   it('stops after the request budget is exhausted', () => {
@@ -949,6 +1057,18 @@ describe('serialOpenFailureBackoffMs', () => {
   it('uses the flat 5-min block for EACCES (permanent) failures', () => {
     for (let n = 1; n <= 5; n++) {
       expect(serialOpenFailureBackoffMs(n, true)).toBe(300_000);
+    }
+  });
+});
+
+describe('sanitizeRssiDbm', () => {
+  it('keeps a plausible dBm reading, rounded', () => {
+    expect(sanitizeRssiDbm(-67.4)).toBe(-67);
+    expect(sanitizeRssiDbm(-120)).toBe(-120);
+  });
+  it('treats absent, zero, positive and non-numeric values as no reading', () => {
+    for (const v of [undefined, null, 0, -0.1, -0.49, 5, -121, Number.NaN, '-60']) {
+      expect(sanitizeRssiDbm(v)).toBeUndefined();
     }
   });
 });

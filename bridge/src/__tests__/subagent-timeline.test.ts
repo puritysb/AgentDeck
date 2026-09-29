@@ -3,6 +3,44 @@ import type { TimelineEntry } from '@agentdeck/shared';
 import { isSubagentOnlyHook, SubagentTimelineTracker } from '../subagent-timeline.js';
 
 describe('SubagentTimelineTracker', () => {
+  it('consumes Claude internal suggestion stops without inventing a worker or APME event', () => {
+    const entries: TimelineEntry[] = [];
+    const tracker = new SubagentTimelineTracker(entry => entries.push(entry));
+    // Captured from Claude 2.1.261 after a normal turn: no Agent invocation
+    // started this id, and the fork query explicitly has no agent type.
+    const result = tracker.handle({
+      eventName: 'SubagentStop', sessionId: 'parent', agentType: 'claude-code',
+      payload: { agent_id: 'suggestion', agent_type: '', last_assistant_message: '<no suggestion>' },
+    });
+    expect(result).toEqual({ childOnly: true });
+    expect(tracker.summary('parent')).toBeNull();
+    expect(entries).toEqual([]);
+  });
+
+  it.each([
+    ['claude-code', { agent_type: 'Explore' }],
+    ['claude-code', {}], // older payload without the field is not proof of an internal fork
+    ['codex-cli', { agent_type: '' }],
+  ])('preserves typed/legacy orphan and non-Claude stops (%s, %j)', (agentType, fields) => {
+    const tracker = new SubagentTimelineTracker(() => {});
+    const result = tracker.handle({
+      eventName: agentType === 'codex-cli' ? 'codex_subagent_stop' : 'SubagentStop',
+      sessionId: 'parent', agentType, payload: { agent_id: 'worker', ...fields },
+    });
+    expect(result.sampleEvent?.phase).toBe('completed');
+    expect(tracker.summary('parent')?.completed).toBe(1);
+  });
+
+  it('closes a known child even when its stop loses its type', () => {
+    const tracker = new SubagentTimelineTracker(() => {});
+    tracker.handle({ eventName: 'SubagentStart', sessionId: 'parent', agentType: 'claude-code',
+      payload: { agent_id: 'worker', agent_type: 'Explore' } });
+    const result = tracker.handle({ eventName: 'SubagentStop', sessionId: 'parent', agentType: 'claude-code',
+      payload: { agent_id: 'worker', agent_type: '' } });
+    expect(result.sampleEvent?.phase).toBe('completed');
+    expect(tracker.summary('parent')).toMatchObject({ active: 0, peak: 1, completed: 1 });
+  });
+
   it('collapses start and stop into existing compatible Timeline types', () => {
     const entries: TimelineEntry[] = [];
     let now = 1_000;
@@ -102,6 +140,33 @@ describe('SubagentTimelineTracker', () => {
         raw: 'Team reviewer · 릴리스 호환성 검토 완료',
       }),
     ]);
+  });
+
+  // Measured 2026-09-06: a claude-glm session that ran ZERO child agents
+  // carried six `subagent` completions named "Subagent" — one per TaskCreate
+  // item it checked off — and the collaboration lens drew six finished
+  // branches for it. A checklist item is an annotation, never a child.
+  it('records a task-list completion as info, never as a child agent', () => {
+    const entries: TimelineEntry[] = [];
+    const tracker = new SubagentTimelineTracker((entry) => entries.push(entry), () => 9_000);
+
+    const result = tracker.handle({
+      eventName: 'TaskCompleted',
+      payload: { task_id: '3', task_subject: 'b106 묶음 2/4 — 회사 4곳 원장 작성' },
+      sessionId: 'parent-1',
+      agentType: 'claude-code',
+    });
+
+    expect(result.childOnly).toBe(true);
+    expect(result.sampleEvent).toBeUndefined();
+    expect(result.infoEvent).toEqual({
+      label: 'task_completed',
+      detail: 'b106 묶음 2/4 — 회사 4곳 원장 작성',
+      ts: 9_000,
+    });
+    expect(result.censusChangedFor).toBeUndefined();
+    expect(tracker.summary('parent-1')).toBeNull();
+    expect(entries[0]).toMatchObject({ type: 'tool_resolved', raw: 'Task done · b106 묶음 2/4 — 회사 4곳 원장 작성' });
   });
 
   it('recognizes Codex lifecycle names and preserves the provider', () => {

@@ -184,6 +184,38 @@ export function isRotatingEntry(
 }
 
 /**
+ * The icon key a row draws WHILE its leading icon rotates.
+ *
+ * A rotating row shows the `running` circular arrow, not its own semantic
+ * glyph, and returns to its own key the instant rotation stops. Only `task` is
+ * visibly affected — every other rotating row already resolves to `running`
+ * (see {@link isRotatingEntry}) — but that one case is the whole point: a
+ * square glyph spinning on its centre reads as a glitch rather than a spinner.
+ *
+ * Apple spells this as `RotatingTimelineIcon(rotatingSymbolName:)` in
+ * TimelineStripView.swift. E-ink surfaces never rotate, so they always take
+ * {@link timelineIconKey} directly.
+ */
+export const TIMELINE_ROTATING_ICON_KEY: TimelineIconKey = 'running';
+
+/**
+ * The icon key to draw for `entry` right now: `running` while the row rotates,
+ * otherwise the row's own semantic key. Use this instead of
+ * {@link timelineIconKey} on any surface that animates the leading icon.
+ * Mirrored in Android TimelineIcons.kt — update both in the same commit.
+ */
+export function timelineDisplayIconKey(
+  entry: Pick<TimelineEntry, 'type' | 'status' | 'taskId'> &
+    Partial<Pick<TimelineEntry, 'sessionId' | 'ts'>>,
+  siblings: ReadonlyArray<RotatingSibling>,
+  nowMs?: number,
+): TimelineIconKey {
+  return isRotatingEntry(entry, siblings, nowMs)
+    ? TIMELINE_ROTATING_ICON_KEY
+    : timelineIconKey(entry);
+}
+
+/**
  * E-ink ASCII glyphs — bracket-padded so total width is constant (4 chars)
  * for column alignment on monospace bitmap fonts.
  */

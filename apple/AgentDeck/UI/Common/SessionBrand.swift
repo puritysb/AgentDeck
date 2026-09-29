@@ -5,9 +5,8 @@
 // file so both the menubar popup and the cross-platform MonitorScreen HUD
 // render agents with the same colors and the same path-rendered marks.
 //
-// Keep the palette in sync with:
-//   * `bridge/src/modules/…` agent color maps
-//   * `AgentStatusIcon`'s NSColor mirror (menubar rendering path)
+// Colours are the Brand design tokens (design/tokens.css --brand-*), via the
+// same lookup the renderers use — never a literal here.
 
 import SwiftUI
 
@@ -15,14 +14,12 @@ import SwiftUI
 enum SessionBrand {
     static func color(for agentType: String?) -> Color {
         switch agentType {
-        case "claude-code": return Color(red: 0.753, green: 0.439, blue: 0.345) // #C07058
-        case "codex-cli":   return Color(red: 0.38,  green: 0.40,  blue: 0.88)  // indigo
-        case "codex-app":   return Color(red: 0.38,  green: 0.40,  blue: 0.88)  // indigo
-        case "openclaw":    return Color(red: 1.0,   green: 0.30,  blue: 0.30)  // #FF4D4D
-        case "opencode":    return Color(red: 0.945, green: 0.925, blue: 0.925) // near-white
-        case "antigravity": return Color(red: 0.373, green: 0.388, blue: 0.408) // #5F6368
-        case "kiro-cli", "kiro-ide": return Color(red: 0.486, green: 0.227, blue: 0.929) // #7C3AED
-        case "daemon":      return Color(red: 0.55,  green: 0.55,  blue: 0.60)
+        case "claude-code", "codex-cli", "codex-app", "openclaw", "opencode",
+             "antigravity", "kiro-cli", "kiro-ide":
+            return StateColors.brand(agent: agentType)
+        // Provider key for the z.ai GLM Coding Plan usage surfaces (#348).
+        case "zai":         return DesignTokens.Brand.zai
+        case "daemon":      return DesignTokens.UI.idle
         default:            return Color.secondary
         }
     }
@@ -164,6 +161,9 @@ private struct AgentBrandIconSpec {
         case "opencode":    return .openCode
         case "antigravity": return .antigravity
         case "kiro-cli", "kiro-ide": return .kiro
+        // Provider key for the z.ai GLM Coding Plan usage surfaces (#348) —
+        // not a session agent type.
+        case "zai":         return .zai
         default:            return nil
         }
     }
@@ -202,6 +202,18 @@ private struct AgentBrandIconSpec {
         paths: [parse(kiroPath)],
         viewBox: 24,
         evenOddFill: true
+    )
+
+    /// z.ai mark — upstream logo.svg from z-cdn.chatglm.cn (design/brand/
+    /// zai.svg): the Z's three strokes, mark without the app-icon plate.
+    private static let zai = AgentBrandIconSpec(
+        paths: [
+            "M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z",
+            "M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z",
+            "M24.3,7.1L13.14,22.91L5.7,22.91L16.86,7.1Z",
+        ].map(parse),
+        viewBox: 30,
+        evenOddFill: false
     )
 
     private static func parse(_ pathData: String) -> Path {

@@ -52,6 +52,8 @@
       "docs/pages-site.md": "GitHub Pages build and publishing runbook. Operational steps for the site pipeline, not a design or specification surface.",
       "docs/otel-standardization-study.md": "Exploratory study. Nothing here is adopted, so binding it would imply a decision that was not made.",
       "docs/esp32-companion-concepts.md": "Exploratory concept study for the two Evaluation boards (T-Embed CC1101, T-Display-S3-Pro). Nothing here ships; it graduates into hardware-compatibility.md and devices.md when a board reaches Shipping.",
+      "docs/managed-replacement-inventory.md": "Working measurement for issue #273's replacement gates (launch arguments, terminal-only affordances). It records what the managed PTY path uniquely provides and corrects two rows of the issue table; it adopts nothing and binds no surface, so cataloguing it would imply a specification it is not. It graduates into the managed-sessions rule, or is retired, once the gates close.",
+      "docs/eink-face-research.md": "Research snapshot for issue #272 (voice-capable e-ink panel): live measurement + vendor hardware table + open decisions. Nothing here is an adopted decision — the shipped face set stays in eink-surface-contract.md (spec.eink-surface). This document graduates into that spec, or is retired, once the voice-grammar follow-up work resolves.",
       "docs/voice-setup.md": "Permission troubleshooting runbook for a single platform capability.",
       "docs/wake-word.md": "Engine evaluation notes for Porcupine / microWakeWord.",
       "docs/install.md": "User manual — indexed by README, not the catalog. It tells a reader how to use the product; the catalog documents how the product is designed and specified.",
@@ -62,7 +64,8 @@
       "docs/linux.md": "User manual (see docs/install.md). Platform setup steps rather than a platform contract.",
       "docs/troubleshooting.md": "User manual (see docs/install.md). Symptom-to-fix table, not a specification surface.",
       "docs/roadmap.md": "Forward-looking plan. Binding it would imply the catalog publishes commitments rather than the system as built.",
-      "docs/ENTERPRISE-ROADMAP.md": "Forward-looking plan (see docs/roadmap.md). Binding it would imply the catalog publishes commitments rather than the system as built."
+      "docs/ENTERPRISE-ROADMAP.md": "Forward-looking plan (see docs/roadmap.md). Binding it would imply the catalog publishes commitments rather than the system as built.",
+      "docs/marketing/ad-platform-revenue-research-2026-09-13.md": "Dated business research snapshot (ad-platform revenue options, Korean body). Nothing here is adopted; it records platform rules and sensitivity math for a decision not yet made, so cataloguing it would imply a policy the project has not set."
     }
   },
   "documents": [

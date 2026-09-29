@@ -1,3 +1,5 @@
+import { clearMlxSafetyForTests } from '@agentdeck/shared';
+import { withMlxResident } from './mlx-test-server.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -12,7 +14,19 @@ import {
   type TaskSignals,
   type TaskCategory,
 } from '../apme/classifier.js';
-import { clearMlxSettingsCache } from '@agentdeck/shared';
+import { clearMlxSettingsCache, APME_CLASSIFIER_BACKEND_ORDER, APME_CLASSIFIER_MAX_TOKENS } from '@agentdeck/shared';
+
+// The real Foundation Models helper spawns a subprocess and calls real
+// on-device Apple Intelligence — never invoke it from a unit test (slow,
+// nondeterministic, and it silently no-ops on any non-macOS CI runner
+// instead of failing loudly). Default: reject as unavailable, matching a
+// machine with no FM helper; individual tests override with
+// `mockResolvedValueOnce` / `mockRejectedValueOnce` to drive the FM leg.
+vi.mock('../foundation-models-helper.js', () => ({
+  callFoundationModelsHelper: vi.fn().mockRejectedValue(new Error('Foundation Models helper unavailable in tests')),
+}));
+import { callFoundationModelsHelper } from '../foundation-models-helper.js';
+const mockedCallFoundationModelsHelper = vi.mocked(callFoundationModelsHelper);
 
 async function makeStore(): Promise<ApmeStore> {
   const dir = mkdtempSync(join(tmpdir(), 'apme-cls-'));
@@ -141,12 +155,18 @@ describe('classifyWithLlm()', () => {
   let settingsDir: string;
 
   beforeEach(() => {
+    clearMlxSafetyForTests();
     settingsDir = mkdtempSync(join(tmpdir(), 'apme-classifier-settings-'));
     process.env.AGENTDECK_DATA_DIR = settingsDir;
     writeFileSync(join(settingsDir, 'settings.json'), JSON.stringify({
       llm: { mlx: { endpoint: 'http://127.0.0.1:8800', model: 'mlx-community/gemma-pinned' } },
     }));
     clearMlxSettingsCache();
+    // MLX is first in APME_CLASSIFIER_BACKEND_ORDER and Foundation Models
+    // second — default FM to "unavailable" so no test ever reaches the real
+    // helper subprocess, and so an MLX-only setup still answers from MLX.
+    mockedCallFoundationModelsHelper.mockReset();
+    mockedCallFoundationModelsHelper.mockRejectedValue(new Error('Foundation Models helper unavailable in tests'));
   });
 
   afterEach(() => {
@@ -161,7 +181,7 @@ describe('classifyWithLlm()', () => {
   it('uses the configured MLX pin without probing a stale download catalog', async () => {
     const urls: string[] = [];
     let sentModel = '';
-    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = withMlxResident((async (url: string | URL | Request, init?: RequestInit) => {
       urls.push(String(url));
       const body = JSON.parse(String(init?.body)) as { model: string };
       sentModel = body.model;
@@ -169,13 +189,110 @@ describe('classifyWithLlm()', () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
-    }) as typeof fetch;
+    }) as typeof fetch, 'mlx-community/gemma-pinned');
 
     const category = await classifyWithLlm('Investigate the current behavior', makeBaseSignals());
 
     expect(category).toBe('research');
     expect(sentModel).toBe('mlx-community/gemma-pinned');
     expect(urls).toEqual(['http://127.0.0.1:8800/chat/completions']);
+  });
+
+  it('prefers MLX when it answers with a valid label, never reaching Foundation Models', async () => {
+    mockedCallFoundationModelsHelper.mockImplementation(async () => {
+      throw new Error('Foundation Models must not be reached when MLX already answered');
+    });
+    globalThis.fetch = withMlxResident((async () => new Response(
+      JSON.stringify({ choices: [{ message: { content: 'debugging' } }] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch, 'mlx-community/gemma-pinned');
+
+    const category = await classifyWithLlm('Fix the failing test', makeBaseSignals());
+    expect(category).toBe('debugging');
+    expect(mockedCallFoundationModelsHelper).not.toHaveBeenCalled();
+  });
+
+  it('falls through to Foundation Models when MLX is unreachable — the no-MLX-server Mac', async () => {
+    globalThis.fetch = withMlxResident((async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch, 'mlx-community/gemma-pinned');
+    mockedCallFoundationModelsHelper.mockResolvedValueOnce('coding');
+
+    const category = await classifyWithLlm('Fix the failing test', makeBaseSignals());
+    expect(category).toBe('coding');
+    expect(mockedCallFoundationModelsHelper).toHaveBeenCalledTimes(1);
+  });
+
+  // ─── #299: backend order is the shared SSOT, never `api`/`openai` ────────
+
+  it('never includes a paid backend in the classifier try-order (SSOT invariant)', () => {
+    expect(APME_CLASSIFIER_BACKEND_ORDER).not.toContain('api');
+    expect(APME_CLASSIFIER_BACKEND_ORDER).not.toContain('openai');
+    expect(APME_CLASSIFIER_BACKEND_ORDER).not.toContain('openclaw');
+    // 'rules' is always last — it is not a network call, it means "give up".
+    expect(APME_CLASSIFIER_BACKEND_ORDER[APME_CLASSIFIER_BACKEND_ORDER.length - 1]).toBe('rules');
+  });
+
+  it('never calls a paid backend even when the eval judge is configured to `api` (mutation check)', async () => {
+    // A user who set the eval judge to the paid Anthropic leg must not have
+    // the classifier follow it — this is the exact defect #299 fixes on the
+    // Swift side (`callConfiguredJudge` used to route through whatever the
+    // user configured). Node's classifier has never read `apme.judge` at
+    // all; this test pins that structurally, not just today's default.
+    writeFileSync(join(settingsDir, 'settings.json'), JSON.stringify({
+      llm: { mlx: { endpoint: 'http://127.0.0.1:8800', model: 'mlx-community/gemma-pinned' } },
+      apme: { judge: { backend: 'api', model: 'claude-opus-5', apiKey: 'sk-test-should-never-be-used' } },
+    }));
+    clearMlxSettingsCache();
+
+    const urls: string[] = [];
+    globalThis.fetch = withMlxResident((async (url: string | URL | Request) => {
+      urls.push(String(url));
+      // MLX down — force the fall-through to `rules`.
+      throw new Error('connection refused');
+    }) as typeof fetch, 'mlx-community/gemma-pinned');
+
+    const category = await classifyWithLlm('Investigate the current behavior', makeBaseSignals());
+
+    // Every attempted URL must be the local MLX endpoint — never anthropic.com,
+    // openai.com, or any host that isn't 127.0.0.1.
+    for (const url of urls) {
+      expect(url).toMatch(/^http:\/\/127\.0\.0\.1:/);
+    }
+    // With MLX down and no other backend configured, we fall back to rules.
+    expect(category).toBe(classify(makeBaseSignals()));
+  });
+
+  it('falls back to the rule-based category when every backend answers with an out-of-vocabulary label', async () => {
+    globalThis.fetch = withMlxResident((async () => new Response(
+      JSON.stringify({ choices: [{ message: { content: 'this is not a category at all' } }] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch, 'mlx-community/gemma-pinned');
+
+    const signals = makeBaseSignals();
+    const category = await classifyWithLlm('Investigate the current behavior', signals);
+    expect(category).toBe(classify(signals));
+  });
+
+  it('falls through to the next backend when one answers but is unreachable, then to rules', async () => {
+    globalThis.fetch = withMlxResident((async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch, 'mlx-community/gemma-pinned');
+    const signals = makeBaseSignals();
+    const category = await classifyWithLlm('Investigate the current behavior', signals);
+    expect(category).toBe(classify(signals));
+  });
+
+  it('classification calls use the shared max_tokens cap and never the judge budget', async () => {
+    let sentMaxTokens: number | undefined;
+    globalThis.fetch = withMlxResident((async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { max_tokens?: number };
+      sentMaxTokens = body.max_tokens;
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'coding' } }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch, 'mlx-community/gemma-pinned');
+
+    await classifyWithLlm('Fix the bug', makeBaseSignals());
+    expect(sentMaxTokens).toBe(APME_CLASSIFIER_MAX_TOKENS);
+    expect(APME_CLASSIFIER_MAX_TOKENS).toBeLessThanOrEqual(20);
   });
 });
 

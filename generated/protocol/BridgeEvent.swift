@@ -52,6 +52,7 @@ struct ADBridgeEvent: Codable, Equatable {
     var gatewayHasError: Bool?
     /// MLX local server model list
     var mlxModels: [String]?
+    var mlxResidency: ADModelResidency?
     var modelCatalog: [ADModelCatalogEntry]?
     var modelName: String?
     /// Daemon-owned hardware/module health, intentionally loose for cross-version clients
@@ -127,6 +128,7 @@ struct ADBridgeEvent: Codable, Equatable {
     var tokenStatus: ADTokenStatus?
     var toolCalls: Double?
     var usageStale: Bool?
+    var zaiRateLimits: ADZaiRateLimits?
     var status: ADBridgeEventStatus?
     /// Transcribed user speech
     var text: String?
@@ -184,6 +186,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case gatewayConnected = "gatewayConnected"
         case gatewayHasError = "gatewayHasError"
         case mlxModels = "mlxModels"
+        case mlxResidency = "mlxResidency"
         case modelCatalog = "modelCatalog"
         case modelName = "modelName"
         case moduleHealth = "moduleHealth"
@@ -238,6 +241,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case tokenStatus = "tokenStatus"
         case toolCalls = "toolCalls"
         case usageStale = "usageStale"
+        case zaiRateLimits = "zaiRateLimits"
         case status = "status"
         case text = "text"
         case error = "error"
@@ -309,6 +313,7 @@ extension ADBridgeEvent {
         gatewayConnected: Bool?? = nil,
         gatewayHasError: Bool?? = nil,
         mlxModels: [String]?? = nil,
+        mlxResidency: ADModelResidency?? = nil,
         modelCatalog: [ADModelCatalogEntry]?? = nil,
         modelName: String?? = nil,
         moduleHealth: [String: JSONAny]?? = nil,
@@ -363,6 +368,7 @@ extension ADBridgeEvent {
         tokenStatus: ADTokenStatus?? = nil,
         toolCalls: Double?? = nil,
         usageStale: Bool?? = nil,
+        zaiRateLimits: ADZaiRateLimits?? = nil,
         status: ADBridgeEventStatus?? = nil,
         text: String?? = nil,
         error: String?? = nil,
@@ -414,6 +420,7 @@ extension ADBridgeEvent {
             gatewayConnected: gatewayConnected ?? self.gatewayConnected,
             gatewayHasError: gatewayHasError ?? self.gatewayHasError,
             mlxModels: mlxModels ?? self.mlxModels,
+            mlxResidency: mlxResidency ?? self.mlxResidency,
             modelCatalog: modelCatalog ?? self.modelCatalog,
             modelName: modelName ?? self.modelName,
             moduleHealth: moduleHealth ?? self.moduleHealth,
@@ -468,6 +475,7 @@ extension ADBridgeEvent {
             tokenStatus: tokenStatus ?? self.tokenStatus,
             toolCalls: toolCalls ?? self.toolCalls,
             usageStale: usageStale ?? self.usageStale,
+            zaiRateLimits: zaiRateLimits ?? self.zaiRateLimits,
             status: status ?? self.status,
             text: text ?? self.text,
             error: error ?? self.error,
@@ -887,6 +895,8 @@ struct ADCodexRateLimits: Codable, Equatable {
     var credits: ADCodexCredits?
     /// Limit identifier reported by Codex (e.g. "premium" for credit-based plans).
     var limitId: String?
+    /// Additional Luna-only pool, separate from the account 5h/7d windows.
+    var lunaReserve: ADCodexLunaReserve?
     /// Plan tier reported alongside the limits (e.g. "plus", "pro").
     var planType: String?
     var primary: ADCodexRateLimitWindow?
@@ -896,6 +906,7 @@ struct ADCodexRateLimits: Codable, Equatable {
         case capturedAt = "capturedAt"
         case credits = "credits"
         case limitId = "limitId"
+        case lunaReserve = "lunaReserve"
         case planType = "planType"
         case primary = "primary"
         case secondary = "secondary"
@@ -924,6 +935,7 @@ extension ADCodexRateLimits {
         capturedAt: String?? = nil,
         credits: ADCodexCredits?? = nil,
         limitId: String?? = nil,
+        lunaReserve: ADCodexLunaReserve?? = nil,
         planType: String?? = nil,
         primary: ADCodexRateLimitWindow?? = nil,
         secondary: ADCodexRateLimitWindow?? = nil
@@ -932,6 +944,7 @@ extension ADCodexRateLimits {
             capturedAt: capturedAt ?? self.capturedAt,
             credits: credits ?? self.credits,
             limitId: limitId ?? self.limitId,
+            lunaReserve: lunaReserve ?? self.lunaReserve,
             planType: planType ?? self.planType,
             primary: primary ?? self.primary,
             secondary: secondary ?? self.secondary
@@ -1001,6 +1014,75 @@ extension ADCodexCredits {
             balance: balance ?? self.balance,
             hasCredits: hasCredits ?? self.hasCredits,
             unlimited: unlimited ?? self.unlimited
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// Additional Luna-only pool, separate from the account 5h/7d windows.
+///
+/// Luna-only reserve window returned as an additional Codex rate-limit pool.
+// MARK: - ADCodexLunaReserve
+struct ADCodexLunaReserve: Codable, Equatable {
+    /// Whether the reserve is currently usable.
+    var available: Bool?
+    /// When the regular advanced-model allowance becomes available again.
+    var regularResetsAt: String?
+    /// The reserve's own reset, when supplied.
+    var resetsAt: String?
+    /// Percent of the reserve already consumed (0–100).
+    var usedPercent: Double
+
+    enum CodingKeys: String, CodingKey {
+        case available = "available"
+        case regularResetsAt = "regularResetsAt"
+        case resetsAt = "resetsAt"
+        case usedPercent = "usedPercent"
+    }
+}
+
+// MARK: ADCodexLunaReserve convenience initializers and mutators
+
+extension ADCodexLunaReserve {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADCodexLunaReserve.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        available: Bool?? = nil,
+        regularResetsAt: String?? = nil,
+        resetsAt: String?? = nil,
+        usedPercent: Double? = nil
+    ) -> ADCodexLunaReserve {
+        return ADCodexLunaReserve(
+            available: available ?? self.available,
+            regularResetsAt: regularResetsAt ?? self.regularResetsAt,
+            resetsAt: resetsAt ?? self.resetsAt,
+            usedPercent: usedPercent ?? self.usedPercent
         )
     }
 
@@ -1362,6 +1444,10 @@ struct ADTimelineEntry: Codable, Equatable {
     /// one-line judge summary
     var taskScore: Double?
     var taskSummary: String?
+    /// True for bounded per-tool rows produced from Claude Code hooks.
+    var toolEvent: Bool?
+    /// Claude hook tool invocation identity (distinct from an approval id).
+    var toolUseId: String?
     var ts: Double
     var type: ADTimelineEntryType
 
@@ -1386,6 +1472,8 @@ struct ADTimelineEntry: Codable, Equatable {
         case taskOutcome = "taskOutcome"
         case taskScore = "taskScore"
         case taskSummary = "taskSummary"
+        case toolEvent = "toolEvent"
+        case toolUseId = "toolUseId"
         case ts = "ts"
         case type = "type"
     }
@@ -1430,6 +1518,8 @@ extension ADTimelineEntry {
         taskOutcome: String?? = nil,
         taskScore: Double?? = nil,
         taskSummary: String?? = nil,
+        toolEvent: Bool?? = nil,
+        toolUseId: String?? = nil,
         ts: Double? = nil,
         type: ADTimelineEntryType? = nil
     ) -> ADTimelineEntry {
@@ -1454,6 +1544,8 @@ extension ADTimelineEntry {
             taskOutcome: taskOutcome ?? self.taskOutcome,
             taskScore: taskScore ?? self.taskScore,
             taskSummary: taskSummary ?? self.taskSummary,
+            toolEvent: toolEvent ?? self.toolEvent,
+            toolUseId: toolUseId ?? self.toolUseId,
             ts: ts ?? self.ts,
             type: type ?? self.type
         )
@@ -1538,6 +1630,63 @@ enum ADGatewayAuthStatus: String, Codable, Equatable {
 // for types that require the use of JSONAny, nor will the implementation of Hashable be
 // synthesized for types that have collections (such as arrays or dictionaries).
 
+/// A completed residency observation. Unknown is explicit; [] with known=true means none.
+///
+/// Optional additive metadata; old producers cannot prove non-residency.
+// MARK: - ADModelResidency
+struct ADModelResidency: Codable, Equatable {
+    var known: Bool
+    var models: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case known = "known"
+        case models = "models"
+    }
+}
+
+// MARK: ADModelResidency convenience initializers and mutators
+
+extension ADModelResidency {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADModelResidency.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        known: Bool? = nil,
+        models: [String]? = nil
+    ) -> ADModelResidency {
+        return ADModelResidency(
+            known: known ?? self.known,
+            models: models ?? self.models
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
 // MARK: - ADModelCatalogEntry
 struct ADModelCatalogEntry: Codable, Equatable {
     var available: Bool
@@ -1604,11 +1753,16 @@ extension ADModelCatalogEntry {
 // MARK: - ADOllamaStatus
 struct ADOllamaStatus: Codable, Equatable {
     var available: Bool
+    var installedModelsKnown: Bool?
     var models: [ADOllamaModel]
+    /// Optional additive metadata; old producers cannot prove non-residency.
+    var residency: ADModelResidency?
 
     enum CodingKeys: String, CodingKey {
         case available = "available"
+        case installedModelsKnown = "installedModelsKnown"
         case models = "models"
+        case residency = "residency"
     }
 }
 
@@ -1632,11 +1786,15 @@ extension ADOllamaStatus {
 
     func with(
         available: Bool? = nil,
-        models: [ADOllamaModel]? = nil
+        installedModelsKnown: Bool?? = nil,
+        models: [ADOllamaModel]? = nil,
+        residency: ADModelResidency?? = nil
     ) -> ADOllamaStatus {
         return ADOllamaStatus(
             available: available ?? self.available,
-            models: models ?? self.models
+            installedModelsKnown: installedModelsKnown ?? self.installedModelsKnown,
+            models: models ?? self.models,
+            residency: residency ?? self.residency
         )
     }
 
@@ -2263,9 +2421,15 @@ struct ADSessionInfo: Codable, Equatable {
     var askGroupIndex: Double?
     var contextPercent: Double?
     var controlMode: ADControlMode?
+    /// Cross-session coordination census — see CoordinationSummary. Same emission rule as
+    /// `subagents`: present with zeros once observed, absent only when this session has never
+    /// had a relation.
+    var coordination: ADCoordinationSummary?
     var currentTask: String?
     var currentTool: String?
     var cwd: String?
+    /// Optional compact device label; never a session identity or folding key.
+    var displayName: String?
     var effortLevel: String?
     var elapsedSec: Double?
     var foldedSessionIds: [String]?
@@ -2336,9 +2500,11 @@ struct ADSessionInfo: Codable, Equatable {
         case askGroupIndex = "askGroupIndex"
         case contextPercent = "contextPercent"
         case controlMode = "controlMode"
+        case coordination = "coordination"
         case currentTask = "currentTask"
         case currentTool = "currentTool"
         case cwd = "cwd"
+        case displayName = "displayName"
         case effortLevel = "effortLevel"
         case elapsedSec = "elapsedSec"
         case foldedSessionIds = "foldedSessionIds"
@@ -2394,9 +2560,11 @@ extension ADSessionInfo {
         askGroupIndex: Double?? = nil,
         contextPercent: Double?? = nil,
         controlMode: ADControlMode?? = nil,
+        coordination: ADCoordinationSummary?? = nil,
         currentTask: String?? = nil,
         currentTool: String?? = nil,
         cwd: String?? = nil,
+        displayName: String?? = nil,
         effortLevel: String?? = nil,
         elapsedSec: Double?? = nil,
         foldedSessionIds: [String]?? = nil,
@@ -2432,9 +2600,11 @@ extension ADSessionInfo {
             askGroupIndex: askGroupIndex ?? self.askGroupIndex,
             contextPercent: contextPercent ?? self.contextPercent,
             controlMode: controlMode ?? self.controlMode,
+            coordination: coordination ?? self.coordination,
             currentTask: currentTask ?? self.currentTask,
             currentTool: currentTool ?? self.currentTool,
             cwd: cwd ?? self.cwd,
+            displayName: displayName ?? self.displayName,
             effortLevel: effortLevel ?? self.effortLevel,
             elapsedSec: elapsedSec ?? self.elapsedSec,
             foldedSessionIds: foldedSessionIds ?? self.foldedSessionIds,
@@ -2476,6 +2646,98 @@ extension ADSessionInfo {
 enum ADControlMode: String, Codable, Equatable {
     case managed = "managed"
     case observed = "observed"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// Cross-session coordination census — see CoordinationSummary. Same emission rule as
+/// `subagents`: present with zeros once observed, absent only when this session has never
+/// had a relation.
+///
+/// Live cross-session coordination census for one session — the second axis beside
+/// `subagents`, for work divided WITHOUT a SubagentStart: `claude -p` workers spawned from a
+/// background Bash, peer sessions messaged over SendMessage, and background processes the
+/// session is waiting on. Measured 2026-09-06: a parent whose turn had closed read `idle` on
+/// every surface while six spawned workers ran and a 22-minute background job it would be
+/// re-invoked by was still going. Observed only — never inferred from shared project
+/// membership. Emitted with explicit zeros once a session has ever had a relation
+/// (retain-on-absent clients would otherwise latch the last count).
+// MARK: - ADCoordinationSummary
+struct ADCoordinationSummary: Codable, Equatable {
+    /// Background processes started by this session still running (argv names its scratchpad).
+    var backgroundJobs: Double
+    /// Name of the most recent peer messaged with, if the evidence carried one.
+    var lastPeerName: String?
+    /// Epoch ms of the most recent relation observation.
+    var lastRelationAt: Double?
+    /// Cross-session messages received / sent in this session.
+    var messagesIn: Double
+    var messagesOut: Double
+    /// Peer sessions spawned by this session whose process is still alive.
+    var spawnedActive: Double
+    /// Peer sessions spawned by this session that have ended.
+    var spawnedCompleted: Double
+
+    enum CodingKeys: String, CodingKey {
+        case backgroundJobs = "backgroundJobs"
+        case lastPeerName = "lastPeerName"
+        case lastRelationAt = "lastRelationAt"
+        case messagesIn = "messagesIn"
+        case messagesOut = "messagesOut"
+        case spawnedActive = "spawnedActive"
+        case spawnedCompleted = "spawnedCompleted"
+    }
+}
+
+// MARK: ADCoordinationSummary convenience initializers and mutators
+
+extension ADCoordinationSummary {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADCoordinationSummary.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        backgroundJobs: Double? = nil,
+        lastPeerName: String?? = nil,
+        lastRelationAt: Double?? = nil,
+        messagesIn: Double? = nil,
+        messagesOut: Double? = nil,
+        spawnedActive: Double? = nil,
+        spawnedCompleted: Double? = nil
+    ) -> ADCoordinationSummary {
+        return ADCoordinationSummary(
+            backgroundJobs: backgroundJobs ?? self.backgroundJobs,
+            lastPeerName: lastPeerName ?? self.lastPeerName,
+            lastRelationAt: lastRelationAt ?? self.lastRelationAt,
+            messagesIn: messagesIn ?? self.messagesIn,
+            messagesOut: messagesOut ?? self.messagesOut,
+            spawnedActive: spawnedActive ?? self.spawnedActive,
+            spawnedCompleted: spawnedCompleted ?? self.spawnedCompleted
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
 }
 
 /// On-demand review lifecycle for the REVIEW badge tile ('running' while the judge works).
@@ -2694,6 +2956,172 @@ enum ADVoiceAssistantState: String, Codable, Equatable {
     case listening = "listening"
     case processing = "processing"
     case speaking = "speaking"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// Z.ai (GLM Coding Plan) usage limits, fetched directly from the provider's monitor
+/// endpoint with the account's coding-plan key — an active account query like the Claude
+/// OAuth usage read, not a passive local-file snapshot. Same slot grammar as
+/// `CodexRateLimits`: `primary` is the 5-hour credits window, `secondary` the long window
+/// when the plan reports one (weekly credits on the credit schema, or the monthly MCP tool
+/// quota on the standard schema — `limitId` says which quantity the number belongs to, the
+/// same "which limit" axis Codex carries).
+// MARK: - ADZaiRateLimits
+struct ADZaiRateLimits: Codable, Equatable {
+    /// ISO-8601 instant this reading was fetched. Consumers derive age from it against their own
+    /// clock — same contract as `CodexRateLimits.capturedAt`: an active poll re-fetches
+    /// regularly, so an aged stamp means the poll is failing, and the reading dims rather than
+    /// reading as live.
+    var capturedAt: String?
+    /// Schema family the windows were read from: "standard" (TOKENS_LIMIT + TIME_LIMIT items) or
+    /// "credit" (credit-only schema, lite-tier plans).
+    var limitId: String?
+    /// Plan tier stamped into every snapshot ("lite" | "pro" | "max").
+    var planType: String?
+    var primary: ADZaiWindow?
+    var secondary: ADZaiWindow?
+
+    enum CodingKeys: String, CodingKey {
+        case capturedAt = "capturedAt"
+        case limitId = "limitId"
+        case planType = "planType"
+        case primary = "primary"
+        case secondary = "secondary"
+    }
+}
+
+// MARK: ADZaiRateLimits convenience initializers and mutators
+
+extension ADZaiRateLimits {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADZaiRateLimits.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        capturedAt: String?? = nil,
+        limitId: String?? = nil,
+        planType: String?? = nil,
+        primary: ADZaiWindow?? = nil,
+        secondary: ADZaiWindow?? = nil
+    ) -> ADZaiRateLimits {
+        return ADZaiRateLimits(
+            capturedAt: capturedAt ?? self.capturedAt,
+            limitId: limitId ?? self.limitId,
+            planType: planType ?? self.planType,
+            primary: primary ?? self.primary,
+            secondary: secondary ?? self.secondary
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// A z.ai quota window — the shared window shape plus WHICH QUANTITY it meters:
+/// token/credits windows (`tokens`) or the MCP tool-call quota (`mcp`). They are different
+/// kinds of usage rendered side by side, and a surface must never present an MCP gauge as
+/// token usage (or vice versa); the label follows the quantity ("5h" vs "MCP").
+// MARK: - ADZaiWindow
+struct ADZaiWindow: Codable, Equatable {
+    var quantity: ADQuantity?
+    /// ISO-8601 reset instant (converted from the rollout's unix `resets_at`).
+    var resetsAt: String?
+    /// True when this window's snapshot has expired (its `resets_at` slid into the past with no
+    /// fresher Codex activity). The passive rollout read is frozen, so the percent is
+    /// last-known-only — renderers should dim the gauge and show a "stale" marker instead of a
+    /// misleading "now" countdown. Set centrally in `buildUsageEvent`; `resetsAt` is cleared at
+    /// the same time so no formatter prints "now".
+    ///
+    /// This is the HARD signal — slot-based consumers (Pixoo renderers, ESP32 firmware) drop the
+    /// gauge entirely on it. A merely OLD snapshot of a still- live window must therefore never
+    /// set it; that rides `capturedAt` instead.
+    var stale: Bool?
+    var usedPercent: Double
+    /// Rolling window length in minutes (primary ≈ 300 = 5h, secondary ≈ 10080 = 7d).
+    var windowMinutes: Double
+
+    enum CodingKeys: String, CodingKey {
+        case quantity = "quantity"
+        case resetsAt = "resetsAt"
+        case stale = "stale"
+        case usedPercent = "usedPercent"
+        case windowMinutes = "windowMinutes"
+    }
+}
+
+// MARK: ADZaiWindow convenience initializers and mutators
+
+extension ADZaiWindow {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADZaiWindow.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        quantity: ADQuantity?? = nil,
+        resetsAt: String?? = nil,
+        stale: Bool?? = nil,
+        usedPercent: Double? = nil,
+        windowMinutes: Double? = nil
+    ) -> ADZaiWindow {
+        return ADZaiWindow(
+            quantity: quantity ?? self.quantity,
+            resetsAt: resetsAt ?? self.resetsAt,
+            stale: stale ?? self.stale,
+            usedPercent: usedPercent ?? self.usedPercent,
+            windowMinutes: windowMinutes ?? self.windowMinutes
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+enum ADQuantity: String, Codable, Equatable {
+    case mcp = "mcp"
+    case tokens = "tokens"
 }
 
 // MARK: - Helper functions for creating encoders and decoders

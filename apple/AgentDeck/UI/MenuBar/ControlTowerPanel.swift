@@ -309,7 +309,7 @@ struct ControlTowerPanel: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("\(glance.completedCount) completed")
-                            .font(.system(size: 23, weight: .semibold, design: .rounded))
+                            .font(.system(size: 23, weight: .semibold))
                             .foregroundStyle(TerrariumHUD.text)
                         Text(activityScopeLabel(glance))
                             .font(.system(size: 10))
@@ -818,25 +818,25 @@ struct ControlTowerPanel: View {
                     openStreamDeckDownloadPage()
                 } label: {
                     HStack(spacing: 4) {
-                        Circle().fill(Color.orange).frame(width: 5, height: 5)
+                        Circle().fill(DesignTokens.UI.attn).frame(width: 5, height: 5)
                         Text("Stream Deck+ setup")
                             .font(.system(size: 10, weight: .medium))
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.orange)
+                .foregroundStyle(DesignTokens.UI.attn)
             } else if !streamDeckDetection.pluginInstalled {
                 Button {
                     openStreamDeckPluginInstaller()
                 } label: {
                     HStack(spacing: 4) {
-                        Circle().fill(Color.orange).frame(width: 5, height: 5)
+                        Circle().fill(DesignTokens.UI.attn).frame(width: 5, height: 5)
                         Text("Install SD plugin")
                             .font(.system(size: 10, weight: .medium))
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.orange)
+                .foregroundStyle(DesignTokens.UI.attn)
             }
         }
     }
@@ -876,11 +876,6 @@ struct ControlTowerPanel: View {
                     .font(.system(size: 9.5, weight: .bold))
                     .kerning(0.5)
                     .foregroundStyle(TerrariumHUD.subtext)
-                if stateHolder.state.usageStale == true {
-                    Text("stale")
-                        .font(.system(size: 9))
-                        .foregroundStyle(DesignTokens.UI.attn)
-                }
                 Spacer()
             }
 
@@ -907,6 +902,12 @@ struct ControlTowerPanel: View {
 
             if hasCodex {
                 usageProviderHeader(agentType: "codex-cli", title: "Codex")
+                if let luna = codex?.activeLunaReserve() {
+                    // Account window exhausted: the Luna reserve replaces both
+                    // windows and reads as what is left.
+                    compactGauge(label: "Luna", percent: max(0, 100 - luna.usedPercent),
+                                 resetTime: luna.resetsAt, remaining: true)
+                } else {
                 if let primary = codex?.primary, let percent = primary.usedPercent {
                     compactGauge(
                         label: TopologyRail.windowLabel(primary.windowMinutes),
@@ -925,6 +926,7 @@ struct ControlTowerPanel: View {
                         footnote: CodexUsageFreshness.footnote(window: secondary, capturedAt: codex?.capturedAt)
                     )
                 }
+                }
                 if codex?.primary == nil, codex?.secondary == nil, let credits = codex?.credits {
                     HStack {
                         Text((codex?.limitId ?? "Credits").capitalized)
@@ -942,7 +944,32 @@ struct ControlTowerPanel: View {
                     .foregroundStyle(TerrariumHUD.subtext)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            if !hasClaude && !hasCodex {
+            // z.ai GLM Coding Plan (#348) — same compact grammar. The MCP
+            // window labels by its QUANTITY, never its length.
+            let zai = stateHolder.state.zaiRateLimits
+            let hasZai = zai?.primary?.usedPercent != nil || zai?.secondary?.usedPercent != nil
+            if hasZai {
+                usageProviderHeader(agentType: "zai", title: "z.ai")
+                if let primary = zai?.primary, let percent = primary.usedPercent {
+                    compactGauge(
+                        label: TopologyRail.windowLabel(primary.windowMinutes),
+                        percent: percent,
+                        resetTime: primary.resetsAt,
+                        stale: primary.stale == true,
+                        footnote: CodexUsageFreshness.footnote(stale: primary.stale == true, capturedAt: zai?.capturedAt)
+                    )
+                }
+                if let secondary = zai?.secondary, let percent = secondary.usedPercent {
+                    compactGauge(
+                        label: secondary.quantity == "mcp" ? "MCP" : TopologyRail.windowLabel(secondary.windowMinutes),
+                        percent: percent,
+                        resetTime: secondary.resetsAt,
+                        stale: secondary.stale == true,
+                        footnote: CodexUsageFreshness.footnote(stale: secondary.stale == true, capturedAt: zai?.capturedAt)
+                    )
+                }
+            }
+            if !hasClaude && !hasCodex && !hasZai {
                 Text("Quota data appears when a provider reports it.")
                     .font(.system(size: 10))
                     .foregroundStyle(TerrariumHUD.subtext)
@@ -1047,18 +1074,13 @@ struct ControlTowerPanel: View {
             || (stateHolder.state.costLimit != nil && stateHolder.state.costLimit! > 0)
             || codexHasGauge
         let externalDaemonActive = daemonService.isUsingExternalDaemon
-        if hasGauges || externalDaemonActive {
+        if hasGauges || (externalDaemonActive && stateHolder.state.usageStale != true) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Text("RATE LIMITS")
                         .font(.system(size: 10, weight: .bold))
                         .kerning(0.5)
                         .foregroundColor(TerrariumHUD.subtext)
-                    if stateHolder.state.usageStale == true {
-                        Text("stale")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.orange)
-                    }
                     Spacer()
                 }
                 let isApi = stateHolder.state.costLimit != nil && stateHolder.state.costLimit! > 0
@@ -1104,6 +1126,10 @@ struct ControlTowerPanel: View {
                         .kerning(0.5)
                         .foregroundColor(TerrariumHUD.subtext.opacity(0.8))
                         .padding(.top, 2)
+                    if let luna = codex.activeLunaReserve() {
+                        compactGauge(label: "Luna", percent: max(0, 100 - luna.usedPercent),
+                                     resetTime: luna.resetsAt, remaining: true)
+                    } else {
                     if let p = codex.primary, let pct = p.usedPercent {
                         compactGauge(
                             label: TopologyRail.windowLabel(p.windowMinutes),
@@ -1121,6 +1147,7 @@ struct ControlTowerPanel: View {
                             stale: s.stale == true,
                             footnote: CodexUsageFreshness.footnote(window: s, capturedAt: codex.capturedAt)
                         )
+                    }
                     }
                     if codex.primary == nil, codex.secondary == nil,
                        codex.credits != nil || codex.limitId != nil {
@@ -1161,7 +1188,7 @@ struct ControlTowerPanel: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(rateLimitsEmptyMessage)
                 .font(.system(size: 10))
-                .foregroundColor(connected ? TerrariumHUD.subtext : .orange)
+                .foregroundColor(connected ? TerrariumHUD.subtext : DesignTokens.UI.attn)
                 .fixedSize(horizontal: false, vertical: true)
             if !connected {
                 Button {
@@ -1225,7 +1252,7 @@ struct ControlTowerPanel: View {
                     if stateHolder.state.adminApiStale == true {
                         Text("stale")
                             .font(.system(size: 9))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(DesignTokens.UI.idleDark)
                     }
                     Spacer()
                 }
@@ -1298,7 +1325,7 @@ struct ControlTowerPanel: View {
         return s
     }
 
-    private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false, muted: Bool = false, footnote: String? = nil) -> some View {
+    private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false, muted: Bool = false, footnote: String? = nil, remaining: Bool = false) -> some View {
         // Expired Codex window: desaturate the fill and show a "stale" marker
         // instead of a (misleading) reset countdown. The % stays last-known.
         // `muted` = a non-binding per-model scoped cap: neutral, never the critical
@@ -1307,7 +1334,10 @@ struct ControlTowerPanel: View {
         // an aged snapshot of a still-live window is not current either, and its
         // reset countdown says nothing about when the number was measured.
         let dim = stale || (footnote?.isEmpty == false)
-        let color = (dim || muted) ? TerrariumHUD.subtext : gaugeColor(percent)
+        // `remaining`: percent is what is LEFT (the Codex Luna reserve); the
+        // bar fills by it while the colour ramp reads the used complement.
+        let used = remaining ? 100 - percent : percent
+        let color = (dim || muted) ? TerrariumHUD.subtext : gaugeColor(used)
         return HStack(spacing: 8) {
             Text(label)
                 .font(.system(size: 10, design: .monospaced))
@@ -1329,25 +1359,25 @@ struct ControlTowerPanel: View {
                 }
             }
             .frame(height: 6)
-            Text(customSuffix ?? "\(Int(percent))%")
+            Text(customSuffix ?? (remaining ? "\(Int(percent))% left" : "\(Int(percent))%"))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(color)
-                .frame(width: customSuffix != nil ? 75 : 36, alignment: .trailing)
+                .frame(width: customSuffix != nil ? 75 : remaining ? 62 : 36, alignment: .trailing)
             if customSuffix == nil {
                 if let note = footnote, !note.isEmpty {
                     Text(note)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.orange)
+                        .foregroundColor(DesignTokens.UI.idleDark)
                         .frame(width: 48, alignment: .trailing)
                 } else if stale {
                     Text("stale")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.orange)
+                        .foregroundColor(DesignTokens.UI.idleDark)
                         .frame(width: 48, alignment: .trailing)
                 } else if let reset = resetTime, let formatted = formatResetTime(reset) {
                     Text(formatted)
-                        .font(.system(size: 10, weight: percent >= 70 ? .semibold : .regular))
-                        .foregroundColor(percent >= 70 ? .orange : TerrariumHUD.subtext)
+                        .font(.system(size: 10))
+                        .foregroundColor(TerrariumHUD.subtext)
                         .frame(width: 48, alignment: .trailing)
                 }
             }
@@ -1453,7 +1483,7 @@ struct ControlTowerPanel: View {
         HStack(spacing: 8) {
             Image(systemName: "bolt.slash.fill")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(DesignTokens.UI.attn)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Daemon offline")
                     .font(.system(size: 11, weight: .semibold))
@@ -1469,21 +1499,21 @@ struct ControlTowerPanel: View {
             } label: {
                 Text("Restart")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(DesignTokens.Ink.s900)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(
-                        Capsule().fill(Color.orange)
+                        Capsule().fill(DesignTokens.UI.attn)
                     )
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(Color.orange.opacity(0.18))
+        .background(DesignTokens.UI.attn.opacity(0.18))
         .overlay(
             Rectangle()
-                .fill(Color.orange.opacity(0.45))
+                .fill(DesignTokens.UI.attn.opacity(0.45))
                 .frame(height: 0.5),
             alignment: .bottom
         )
@@ -1541,12 +1571,7 @@ struct ControlTowerPanel: View {
     }
 
     private func stateColor(_ state: AgentConnectionState) -> Color {
-        switch state {
-        case .processing: .cyan
-        case .awaitingPermission, .awaitingOption, .awaitingDiff: .orange
-        case .idle: .green
-        case .disconnected: .gray
-        }
+        StateColors.color(for: state)
     }
 
     private func rateLimitGauge(label: String, percent: Double, previousPercent: Double?, resetTime: String?) -> some View {
@@ -1563,12 +1588,12 @@ struct ControlTowerPanel: View {
             if !arrow.isEmpty {
                 Text(arrow)
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(arrow == "↑" ? .red : .green)
+                    .foregroundStyle(arrow == "↑" ? DesignTokens.UI.error : DesignTokens.UI.ok)
             }
             if let reset = resetTime, let formatted = formatResetTime(reset) {
                 Text(formatted)
-                    .font(.system(size: 10, weight: percent >= 70 ? .semibold : .regular))
-                    .foregroundColor(percent >= 70 ? .orange : TerrariumHUD.subtext)
+                    .font(.system(size: 10))
+                    .foregroundColor(TerrariumHUD.subtext)
             }
         }
     }
@@ -1678,9 +1703,7 @@ struct ControlTowerPanel: View {
     }
 
     private func gaugeColor(_ percent: Double) -> Color {
-        if percent >= 90 { return .red }
-        if percent >= 70 { return .orange }
-        return .green
+        return UsageSeverity.color(percent)
     }
 
     /// Returns "↑" if usage increased, "↓" if decreased, "" if no significant change

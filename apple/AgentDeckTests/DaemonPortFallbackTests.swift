@@ -149,6 +149,56 @@ final class DaemonPortFallbackTests: XCTestCase {
         )
         XCTAssertEqual(active, [9120])
     }
+
+    // MARK: - Which port to look for an external daemon on (#305)
+
+    /// The wedge: the in-process server's `onShutdown` handler calls
+    /// `connectToExternalDaemon()` with NO port, at the one moment the registry
+    /// is guaranteed empty — our own daemon.json row is going away and the
+    /// incoming CLI daemon has not bound yet. Resolving that to nil was a
+    /// terminal dead end (no rescheduled `start()`, and `port = 0` neutered the
+    /// health monitor's own `currentPort > 0` guard), so the app sat daemonless
+    /// AND clientless for 23 hours. Measured 2026-09-09; same signature 09-07
+    /// and 09-10.
+    func testEmptyRegistryFallsBackToTheCanonicalPortRatherThanNil() {
+        XCTAssertEqual(
+            DaemonService.resolveExternalDaemonPort(
+                knownPort: nil, registryPort: nil, canonicalPort: 9120),
+            9120
+        )
+    }
+
+    /// A caller that KNOWS the port (the stand-down path passes the canonical
+    /// one explicitly) outranks both, and the registry outranks the fallback —
+    /// the fallback is a last resort, not a preference.
+    func testKnownPortOutranksRegistryWhichOutranksTheCanonicalFallback() {
+        XCTAssertEqual(
+            DaemonService.resolveExternalDaemonPort(
+                knownPort: 9131, registryPort: 9122, canonicalPort: 9120),
+            9131
+        )
+        XCTAssertEqual(
+            DaemonService.resolveExternalDaemonPort(
+                knownPort: nil, registryPort: 9122, canonicalPort: 9120),
+            9122
+        )
+    }
+
+    /// Zero is not a port. It is what `port` is set to on every teardown path,
+    /// so it reaches here as a plausible-looking number; treating it as an
+    /// answer would probe port 0 forever instead of falling through.
+    func testZeroIsNotAnAnswerOnAnyOfTheThreeInputs() {
+        XCTAssertEqual(
+            DaemonService.resolveExternalDaemonPort(
+                knownPort: 0, registryPort: 0, canonicalPort: 9120),
+            9120
+        )
+        XCTAssertNil(
+            DaemonService.resolveExternalDaemonPort(
+                knownPort: nil, registryPort: nil, canonicalPort: 0)
+        )
+    }
+
 }
 
 // MARK: - withBudget

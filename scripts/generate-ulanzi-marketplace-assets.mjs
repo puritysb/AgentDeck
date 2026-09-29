@@ -25,7 +25,9 @@ import sharp from 'sharp';
 import { buildSessionDeck } from '../shared/dist/d200h-layout.js';
 
 const root = resolve(import.meta.dirname, '..');
-const out = resolve(root, 'marketplace/ulanzi/1.0.4');
+// One folder per plugin release, named from the version being shipped.
+const pluginVersion = JSON.parse(await readFile(resolve(root, 'plugin-ulanzi/package.json'), 'utf8')).version;
+const out = resolve(root, `marketplace/ulanzi/${pluginVersion}`);
 const media = resolve(root, 'docs/media');
 const brand = resolve(root, 'design/brand');
 
@@ -59,13 +61,13 @@ const backdrop = (w, h, cx = 0.5, cy = 0.55, r = 0.72) =>
 const SESSIONS = [
   { id: 's01', alive: true, agentType: 'openclaw', state: 'idle', projectName: 'gateway', modelName: 'OPENCLAW' },
   { id: 's02', alive: true, agentType: 'claude-code', state: 'processing', projectName: 'AgentDeck', modelName: 'opus-4' },
-  { id: 's03', alive: true, agentType: 'claude-code', state: 'awaiting_input', projectName: 'shared', modelName: 'opus-4' },
+  { id: 's03', alive: true, agentType: 'claude-code', state: 'awaiting_permission', projectName: 'shared', modelName: 'opus-4' },
   { id: 's04', alive: true, agentType: 'codex-cli', state: 'processing', projectName: 'bridge', modelName: 'gpt-5-codex' },
   { id: 's05', alive: true, agentType: 'codex-cli', state: 'idle', projectName: 'plugin', modelName: 'gpt-5-codex' },
   { id: 's06', alive: true, agentType: 'opencode', state: 'processing', projectName: 'esp32', modelName: 'opencode' },
   { id: 's07', alive: true, agentType: 'antigravity', state: 'idle', projectName: 'android', modelName: 'gemini' },
   { id: 's08', alive: true, agentType: 'antigravity', state: 'processing', projectName: 'docs', modelName: 'gemini' },
-  { id: 's09', alive: true, agentType: 'kiro-cli', state: 'awaiting_input', projectName: 'apple', modelName: 'kiro' },
+  { id: 's09', alive: true, agentType: 'kiro-cli', state: 'awaiting_option', projectName: 'apple', modelName: 'kiro' },
   { id: 's10', alive: true, agentType: 'kiro-cli', state: 'idle', projectName: 'setup', modelName: 'kiro' },
 ];
 

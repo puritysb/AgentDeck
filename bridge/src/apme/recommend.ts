@@ -44,7 +44,7 @@ export function unpricedLast(costPerQuality: number | null | undefined): number 
 }
 
 /**
- * Three-way, never subtraction — CLAUDE.md states the rule and this is the
+ * Three-way, never subtraction — AGENTS.md states the rule and this is the
  * first time the comparison has a named home to honour it in.
  *
  * Subtracting is not merely stylistic here: every unpriced key maps to

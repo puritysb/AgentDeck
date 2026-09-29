@@ -36,6 +36,10 @@ struct TopologyRail: View {
     @EnvironmentObject private var daemonService: DaemonService
     @EnvironmentObject private var preferences: AppPreferences
     #endif
+    @State private var displayedProviders: [String]? = nil
+    @State private var providerSaveError: String? = nil
+    private let providerNames = ["claude": "Claude", "codex": "Codex", "zai": "z.ai", "openclaw": "OpenClaw", "mlx": "MLX", "ollama": "Ollama", "antigravity": "Antigravity"]
+    private let providerOrder = ["claude", "codex", "zai", "openclaw", "mlx", "ollama", "antigravity"]
     @State private var hubPulse = false
 
     /// Landscape passes the water-region height so a long DOWNSTREAM
@@ -74,11 +78,34 @@ struct TopologyRail: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(TerrariumHUD.bg, in: RoundedRectangle(cornerRadius: 8))
         .opacity(stateHolder.state.bridgeConnected ? 1.0 : 0.6)
+        .task(id: stateHolder.connection.url) {
+            displayedProviders = nil
+            while !Task.isCancelled {
+                await syncProviders()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
     }
 
     private var railContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("UPSTREAM")
+            HStack {
+                sectionHeader("UPSTREAM")
+                Menu {
+                    ForEach(providerOrder, id: \.self) { id in
+                        Button {
+                            var next = displayedProviders ?? discoveredProviders
+                            if next.contains(id) { next.removeAll { $0 == id } } else { next.append(id) }
+                            Task { await syncProviders(save: next) }
+                        } label: {
+                            Label(providerNames[id] ?? id, systemImage: (displayedProviders ?? discoveredProviders).contains(id) ? "checkmark.circle.fill" : "circle")
+                        }
+                    }
+                } label: { Image(systemName: "slider.horizontal.3").accessibilityLabel("Displayed providers") }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
+            if let providerSaveError { Text(providerSaveError).font(.caption).foregroundStyle(.secondary) }
             upstreamRows
             hubZone
             sectionHeader("DOWNSTREAM")
@@ -197,44 +224,74 @@ struct TopologyRail: View {
         return .live
     }
 
-    /// Hub port surfaces in descending order of trust: explicit daemonService
-    /// port (populated when the Swift daemon is in-process) is unavailable
-    /// from this view (daemonService is only exposed to the menubar panel),
-    /// so we fall back to the state-level session port when we have one.
     private var daemonPortText: String {
-        if let port = stateHolder.state.daemonPort, port > 0 {
-            return String(port)
-        }
-        if let url = stateHolder.connection.url,
-           let parsed = URL(string: url),
-           let port = parsed.port {
-            return String(port)
-        }
-        return String(AppPreferences.defaultDaemonPort)
+        HubPortRules.portText(connectionURL: stateHolder.connection.url,
+                              daemonPort: stateHolder.state.daemonPort,
+                              fallback: AppPreferences.defaultDaemonPort)
+    }
+
+    private var discoveredProviders: [String] {
+        let s = stateHolder.state
+        var ids: [String] = []
+        if s.oauthConnected == true || !consumerCreatures(for: .claude).isEmpty { ids.append("claude") }
+        if s.codexRateLimits != nil || s.codexPlanType != nil { ids.append("codex") }
+        if s.zaiRateLimits != nil { ids.append("zai") }
+        if ProviderRailEvaluator.openClaw(state: s) != nil { ids.append("openclaw") }
+        if !s.mlxModels.isEmpty || s.mlxResidency?.known == true { ids.append("mlx") }
+        if s.ollamaStatus != nil { ids.append("ollama") }
+        if s.antigravityStatus?.planName != nil { ids.append("antigravity") }
+        return ids
+    }
+
+    @MainActor private func syncProviders(save: [String]? = nil) async {
+        guard let raw = stateHolder.connection.url,
+              var components = URLComponents(string: raw) else { return }
+        components.scheme = components.scheme == "wss" ? "https" : "http"
+        components.path = "/dashboard/providers"
+        guard let url = components.url else { return }
+        do {
+            var request = URLRequest(url: url, timeoutInterval: 5)
+            if let save {
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: ["providers": save])
+            }
+            var (data, response) = try await URLSession.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                if save != nil { providerSaveError = "Could not save provider display settings." }
+                return
+            }
+            var json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if json?["providers"] is NSNull, save == nil, stateHolder.state.bridgeConnected, !discoveredProviders.isEmpty {
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: ["providers": discoveredProviders, "initialize": true])
+                (data, response) = try await URLSession.shared.data(for: request)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+                json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            }
+            guard !Task.isCancelled, stateHolder.connection.url == raw else { return }
+            if let ids = json?["providers"] as? [String] { displayedProviders = ids }
+            providerSaveError = nil
+        } catch { if save != nil { providerSaveError = "Could not save provider display settings." } }
+    }
+
+    private func unavailableProvider(_ name: String) -> AnyView {
+        AnyView(ProviderRow(name: name, status: .dim, subtitle: nil, rateLimits: [], consumers: []))
     }
 
     // MARK: - Upstream rows
 
     private var upstreamRows: some View {
         VStack(alignment: .leading, spacing: 5) {
-            claudeRow
-            codexRow
-            openClawRow
-            mlxRow
-            ollamaRow
-            antigravityRow
-            // `showSubscriptionsSection` lives in the macOS-only Settings
-            // "Tank Status Sections" group; on iOS there is no toggle UI, so
-            // surface the footer whenever data is present (matches behaviour
-            // before the toggle was wired up).
-            #if os(macOS)
-            let subscriptionsAllowed = preferences.showSubscriptionsSection
-            #else
-            let subscriptionsAllowed = true
-            #endif
-            if subscriptionsAllowed && !stateHolder.state.subscriptions.isEmpty {
-                subscriptionsFooter
-            }
+            let visible = displayedProviders ?? discoveredProviders
+            if visible.contains("claude") { claudeRow }
+            if visible.contains("codex") { codexRow }
+            if visible.contains("zai") { zaiRow }
+            if visible.contains("openclaw") { openClawRow }
+            if visible.contains("mlx") { mlxRow }
+            if visible.contains("ollama") { ollamaRow }
+            if visible.contains("antigravity") { antigravityRow }
         }
     }
 
@@ -261,6 +318,10 @@ struct TopologyRail: View {
         switch stateHolder.state.agentType {
         case "claude-code": return .claude
         case "openclaw":    return .openclaw
+        // The daemon hub labels its aggregate frame `daemon` while an observed
+        // session drives it (2026-09-11); the catalog it carries is still the
+        // Gateway's whenever the Gateway is connected.
+        case "daemon":      return stateHolder.state.gatewayConnected == true ? .openclaw : .unknown
         default:            return .unknown
         }
     }
@@ -284,13 +345,11 @@ struct TopologyRail: View {
                 .filter(\.available)
                 .map { shortClaudeModel($0.name) }
         }()
-        let subtitle: String? = claudeModels.isEmpty
-            ? base.subtitle
-            : claudeModels.joined(separator: ", ")
+        let subtitle = claudeModels.isEmpty ? base.subtitle : claudeModels.joined(separator: ", ")
         return ProviderRow(
             name: "Claude",
-            status: base.status,
-            subtitle: subtitle,
+            status: stateHolder.state.oauthConnected == true ? .ok : .dim,
+            subtitle: subtitle == "Hooks on" ? nil : subtitle,
             rateLimits: rateLimitChips,
             consumers: consumerCreatures(for: .claude)
         )
@@ -298,7 +357,7 @@ struct TopologyRail: View {
 
     private var openClawRow: some View {
         guard let base = ProviderRailEvaluator.openClaw(state: stateHolder.state) else {
-            return AnyView(EmptyView())
+            return unavailableProvider("OpenClaw")
         }
         // Same catalog-ownership gate as Claude — only surface the catalog
         // under OpenClaw when an OpenClaw-hosted session is primary.
@@ -321,10 +380,9 @@ struct TopologyRail: View {
     }
 
     private var mlxRow: some View {
-        guard !stateHolder.state.mlxModels.isEmpty else { return AnyView(EmptyView()) }
-        let selected = stateHolder.state.mlxModels.joined(separator: ", ")
-        let extraCount = max(0, stateHolder.state.mlxModelCatalog.count - stateHolder.state.mlxModels.count)
-        let subtitle = extraCount > 0 ? "\(selected) · +\(extraCount) available" : selected
+        let residency = stateHolder.state.mlxResidency
+        guard !stateHolder.state.mlxModels.isEmpty || residency?.known == true else { return unavailableProvider("MLX") }
+        let subtitle = LocalModelPresentation.mlx(models: stateHolder.state.mlxModels, residency: residency)
         return AnyView(
             ProviderRow(
                 name: "MLX",
@@ -337,32 +395,9 @@ struct TopologyRail: View {
     }
 
     private var ollamaRow: some View {
-        guard let ollama = stateHolder.state.ollamaStatus else { return AnyView(EmptyView()) }
+        guard let ollama = stateHolder.state.ollamaStatus else { return unavailableProvider("Ollama") }
         let status: LEDStatus = ollama.available ? .ok : .dim
-        // Split installed models into chat vs embed. Embedding models
-        // (bge-*, nomic-embed, bert family, …) never sit resident between
-        // requests — Ollama pulls them per-call and unloads via keep_alive.
-        // Framing them with a loaded/unloaded badge is misleading, so we
-        // group them separately with the "always on-demand" semantics.
-        let chat = ollama.models.filter { ($0.kind ?? "chat") != "embed" }
-        let embed = ollama.models.filter { ($0.kind ?? "chat") == "embed" }
-
-        let subtitle: String? = {
-            guard ollama.available else { return "stopped" }
-            if chat.isEmpty && embed.isEmpty { return "installed, no models" }
-
-            var lines: [String] = []
-            if !chat.isEmpty {
-                let names = chat.map { m in
-                    m.sizeVram > 0 ? "\(m.name) (loaded)" : m.name
-                }.joined(separator: ", ")
-                lines.append("Chat: \(names)")
-            }
-            if !embed.isEmpty {
-                lines.append("Embed: \(embed.map(\.name).joined(separator: ", "))")
-            }
-            return lines.joined(separator: "\n")
-        }()
+        let subtitle = LocalModelPresentation.ollama(ollama)
 
         return AnyView(
             ProviderRow(
@@ -378,21 +413,24 @@ struct TopologyRail: View {
     /// Codex (ChatGPT) usage limits — Codex CLI writes a `rate_limits` snapshot
     /// (5h primary / weekly secondary) into its own local rollout files, so the
     /// daemon surfaces them here much like the Claude 5h/7d gauges. Reading the
-    /// user's own local files, not the OpenAI API. Subscription expiry continues
-    /// to live in the SUBSCRIPTIONS footer; this row is about live usage.
+    /// user's own local files, not the OpenAI API. The subscription date
+    /// appears beside the plan name, separately from quota reset times.
     /// Hidden when neither a plan nor any rate-limit data is present.
     private var codexRow: some View {
         let plan = stateHolder.state.codexPlanType
         let limits = stateHolder.state.codexRateLimits
         let hasLimits = limits != nil
         guard hasLimits || (plan?.isEmpty == false) else {
-            return AnyView(EmptyView())
+            return unavailableProvider("Codex")
         }
+        // The Luna chip's percent is what is LEFT; the subtitle says so.
+        let parts = [Self.codexSubtitle(plan: plan, limits: limits),
+                     limits?.activeLunaReserve() != nil ? "Luna reserve left" : nil].compactMap { $0 }
         return AnyView(
             ProviderRow(
                 name: "Codex",
                 status: .ok,
-                subtitle: Self.codexSubtitle(plan: plan, limits: limits),
+                subtitle: subscriptionSubtitle(parts.isEmpty ? nil : parts.joined(separator: " · "), plan: Self.chatGptPlanLabel(plan)),
                 rateLimits: codexRateLimitChips,
                 consumers: consumerCreatures(for: .codex)
             )
@@ -415,6 +453,61 @@ struct TopologyRail: View {
         return creditsText
     }
 
+    /// z.ai GLM Coding Plan row (#348). A direct provider-account reading: the
+    /// plan serves Claude Code, Codex and other CLIs from one quota, so the row
+    /// shows the plan tier + its rolling windows and names no harness. A
+    /// windowless block (pay-as-you-go key, or the display retirement) keeps
+    /// the row but drops the chips — absence of windows is never 0%.
+    private var zaiRow: some View {
+        guard let limits = stateHolder.state.zaiRateLimits else {
+            return unavailableProvider("z.ai")
+        }
+        return AnyView(
+            ProviderRow(
+                name: "z.ai",
+                status: limits.primary?.usedPercent != nil || limits.secondary?.usedPercent != nil ? .ok : .dim,
+                subtitle: Self.zaiSubtitle(limits),
+                rateLimits: zaiRateLimitChips,
+                consumers: []
+            )
+        )
+    }
+
+    static func zaiSubtitle(_ limits: ZaiRateLimits) -> String? {
+        guard let plan = ZaiQuotaRules.formatPlanName(limits.planType) else { return nil }
+        return "GLM Coding Plan \(plan)"
+    }
+
+    /// z.ai usage chips, mirroring the Codex window grammar. The MCP tool-call
+    /// quota is labeled by its QUANTITY, not its length — "MCP" must never
+    /// read as token usage; the countdown carries the horizon.
+    private var zaiRateLimitChips: [RateChip] {
+        guard let limits = stateHolder.state.zaiRateLimits else { return [] }
+        var chips: [RateChip] = []
+        func label(_ w: ZaiWindow) -> String {
+            w.quantity == "mcp" ? "MCP" : Self.windowLabel(w.windowMinutes)
+        }
+        if let p = limits.primary, let pct = p.usedPercent {
+            chips.append(.init(
+                label: label(p),
+                percent: pct,
+                reset: formatResetTime(p.resetsAt),
+                stale: p.stale == true,
+                footnote: CodexUsageFreshness.footnote(stale: p.stale == true, capturedAt: limits.capturedAt)
+            ))
+        }
+        if let s = limits.secondary, let pct = s.usedPercent {
+            chips.append(.init(
+                label: label(s),
+                percent: pct,
+                reset: formatResetTime(s.resetsAt),
+                stale: s.stale == true,
+                footnote: CodexUsageFreshness.footnote(stale: s.stale == true, capturedAt: limits.capturedAt)
+            ))
+        }
+        return chips
+    }
+
     /// Antigravity is a Google-hosted model product — when the bridge
     /// surfaces an active plan, it belongs in the upstream rail alongside
     /// Claude/OpenClaw/MLX/Ollama. Hidden when `planName` is nil or blank.
@@ -428,13 +521,13 @@ struct TopologyRail: View {
     private var antigravityRow: some View {
         guard let status = stateHolder.state.antigravityStatus,
               let plan = status.planName, !plan.isEmpty else {
-            return AnyView(EmptyView())
+            return unavailableProvider("Antigravity")
         }
         return AnyView(
             ProviderRow(
                 name: "Antigravity",
                 status: .ok,
-                subtitle: plan,
+                subtitle: subscriptionSubtitle(plan, plan: plan),
                 rateLimits: [],
                 consumers: consumerCreatures(for: .antigravity)
             )
@@ -452,28 +545,18 @@ struct TopologyRail: View {
         return s
     }
 
-    private var subscriptionsFooter: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text("SUBSCRIPTIONS")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .kerning(0.8)
-                .foregroundStyle(TerrariumHUD.subtext.opacity(0.8))
-            ForEach(Array(stateHolder.state.subscriptions.enumerated()), id: \.offset) { _, sub in
-                HStack(spacing: 4) {
-                    Text(sub.name)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(TerrariumHUD.text)
-                    let trailing = Self.subscriptionTrailing(for: sub.until, now: Date())
-                    if let trailing {
-                        Spacer(minLength: 4)
-                        Text(trailing.text)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(trailing.expired ? TerrariumHUD.ledAmber : TerrariumHUD.subtext)
-                    }
-                }
-            }
-        }
-        .padding(.top, 4)
+    private func subscriptionSubtitle(_ subtitle: String?, plan: String?) -> String? {
+        #if os(macOS)
+        guard preferences.showSubscriptionsSection else { return subtitle }
+        #endif
+        let until = stateHolder.state.subscriptions.first { $0.name == plan }?.until
+        return Self.withSubscriptionDate(subtitle, until: until, now: Date())
+    }
+
+    static func withSubscriptionDate(_ subtitle: String?, until: String?, now: Date) -> String? {
+        guard let trailing = subscriptionTrailing(for: until, now: now) else { return subtitle }
+        let date = trailing.expired ? "subscription date unconfirmed" : "subscription \(trailing.text)"
+        return [subtitle, date].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// Resolve what (if anything) sits to the right of the subscription
@@ -784,7 +867,7 @@ struct TopologyRail: View {
     }
 
     /// WiFi-WS ESP32 boards with no live USB serial path (e.g. a wirelessly
-    /// deployed InkDeck). Dual-homed boards are suppressed here — they render
+    /// deployed TRMNL 7.5"). Dual-homed boards are suppressed here — they render
     /// as USB-serial rows above (single-path transport dedup, serial wins).
     @ViewBuilder
     private func wifiEsp32Section(health: ModuleHealthState) -> some View {
@@ -960,14 +1043,8 @@ struct TopologyRail: View {
     /// daemon) via a separate `codexRateLimitChips` row, so this is no longer
     /// "the only provider with limits."
     ///
-    /// `stale` flag: surfaced prominently because stale usage data is the
-    /// single most common source of "the number is wrong" confusion. When
-    /// `state.usageStale == true` (bridge hasn't fetched fresh usage for >
-    /// 10 min — e.g. API backoff, sandbox OAuth blocked, daemon just woke
-    /// from sleep) we show `stale` in the reset slot instead of hiding
-    /// reset info silently. Either the chip becomes a loud marker of
-    /// "don't trust this yet" or it shows fresh data with a real reset
-    /// timer — no silent middle state.
+    /// Stale Claude quota is cleared by AgentStateHolder; the whole chip
+    /// disappears. Authentication details remain in Settings diagnostics.
     private var rateLimitChips: [RateChip] {
         // Progressive enhancement gate: Claude subscription quota gauges
         // depend on OAuth token / sibling relay data the sandboxed App
@@ -1020,6 +1097,16 @@ struct TopologyRail: View {
     /// with different windows still reads correctly.
     private var codexRateLimitChips: [RateChip] {
         guard let limits = stateHolder.state.codexRateLimits else { return [] }
+        // An exhausted account window hands the row to the Luna reserve,
+        // read as what is LEFT (the shared cross-surface rule).
+        if let luna = limits.activeLunaReserve() {
+            return [.init(
+                label: "Luna",
+                percent: max(0, 100 - luna.usedPercent),
+                reset: formatResetTime(luna.resetsAt),
+                remaining: true
+            )]
+        }
         var chips: [RateChip] = []
         if let p = limits.primary, let pct = p.usedPercent {
             chips.append(.init(
@@ -1217,6 +1304,9 @@ struct RateChip: Identifiable {
     /// Non-binding per-model scoped cap: render neutral, never the critical ramp,
     /// regardless of percent (issue #99 — inactive ≠ same critical treatment).
     var inactive: Bool = false
+    /// `percent` is what REMAINS (the Codex Luna reserve), not what is used:
+    /// the bar fills by it and the colour ramp reads the used complement.
+    var remaining: Bool = false
     /// Codex freshness note ("stale" / "3h ago") from `CodexUsageFreshness`.
     /// Takes the right-hand slot and dims the bar: a passively-read snapshot of a
     /// still-live window keeps its last true percent, but must not read as live.
@@ -1289,11 +1379,10 @@ private struct RateChipView: View {
     let chip: RateChip
 
     private var fillColor: Color {
-        // Inactive scoped cap: neutral, never the critical ramp regardless of %.
-        if chip.inactive { return TerrariumHUD.subtext }
-        if chip.percent >= 90 { return TerrariumHUD.ledRed }
-        if chip.percent >= 70 { return TerrariumHUD.ledAmber }
-        return TerrariumHUD.ledGreen
+        if chip.stale || chip.footnote?.isEmpty == false { return UsageSeverity.color(-1) }
+        if chip.inactive { return DesignTokens.UI.cyan }
+        let used = chip.remaining ? 100 - chip.percent : chip.percent
+        return UsageSeverity.color(used)
     }
 
     /// Visual opacity — dimmed when the underlying data is marked stale
@@ -1360,6 +1449,7 @@ private struct RateChipView: View {
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(chip.stale ? TerrariumHUD.subtext : fillColor)
                 .frame(width: 32, alignment: .trailing)
+                .accessibilityLabel(chip.remaining ? "\(Int(chip.percent)) percent left" : "\(Int(chip.percent)) percent used")
 
             rightSlot
         }
@@ -1430,5 +1520,30 @@ private struct RailContentHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+/// Which port the dashboard calls "the hub".
+///
+/// `daemonPort` is emitted by the Swift daemon ONLY (`DaemonServer`), and every
+/// client merges retain-on-absent, so after a Swift→Node handoff the retained
+/// value names a port nobody is listening on — the Swift daemon's own fallback
+/// :9121 outlived the handoff and was shown while the app was talking to Node
+/// on :9120. The connected URL is the one fact that always describes the hub
+/// actually answering, so it outranks the retained field.
+///
+/// Extracted from the view because a `private var` on a SwiftUI `View` cannot
+/// be reached from the test target — the original fix shipped with no gate.
+enum HubPortRules {
+    static func portText(connectionURL: String?, daemonPort: Int?, fallback: Int) -> String {
+        if let url = connectionURL, let port = URL(string: url)?.port {
+            return String(port)
+        }
+        // No connection (or a URL with no explicit port): the retained field is
+        // the best remaining evidence, and 0 means "never populated".
+        if let port = daemonPort, port > 0 {
+            return String(port)
+        }
+        return String(fallback)
     }
 }

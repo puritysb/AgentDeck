@@ -1,13 +1,13 @@
 #pragma once
-// Host shim for <GxEPD2_BW.h>. The e-ink InkDeck renders through a GxEPD2_BW
+// Host shim for <GxEPD2_BW.h>. The e-ink TRMNL 7.5" renders through a GxEPD2_BW
 // display object, which is an Adafruit_GFX subclass: all the geometry + text
 // primitives come from the *real* vendored Adafruit_GFX (pixel-exact), and this
 // shim only supplies drawPixel (into a 1-bit host framebuffer) plus the e-ink
 // lifecycle no-ops (init/refresh/power). Panel geometry is the env's SCREEN_W/H:
-// InkDeck's real 800×480 UC8179 (GxEPD2_750_GDEY075T7) for the inkdeck env, and
+// TRMNL 7.5"'s real 800×480 UC8179 (GxEPD2_750_GDEY075T7) for the trmnl_75 env, and
 // the XTeink panel sizes for the layout-preview envs — the responsive geometry
 // SSOT (ui/eink/eink_dashboard_layout.h) is shared with that fork, so rendering
-// it at their dimensions is what exercises its non-InkDeck density bands.
+// it at their dimensions is what exercises its non-TRMNL 7.5" density bands.
 #include "Adafruit_GFX.h"
 #include <cstdlib>
 #include <cstring>
@@ -15,7 +15,7 @@
 #define GxEPD_BLACK 0x0000
 #define GxEPD_WHITE 0xFFFF
 // The NM preview draws through this shim too (the preview envs define
-// BOARD_INKDECK for the render tree while selecting the NM face). Without a
+// BOARD_TRMNL_75 for the render tree while selecting the NM face). Without a
 // third ink value the tri-color panel previews as monochrome and no red
 // regression is visible in sim-out/.
 #define GxEPD_RED   0xF800
@@ -59,7 +59,7 @@ public:
     } else {
       ink = (uint8_t)(((color >> 5) & 0x3F) >> 2);   // same decode as the firmware canvas
 #if !defined(BOARD_SIM_EPD47)
-      // Only the EPD47's ED047TC2 has intermediate levels. The 1-bit InkDeck
+      // Only the EPD47's ED047TC2 has intermediate levels. The 1-bit TRMNL 7.5"
       // glass and the tri-color NM glass render any shade as solid ink, so
       // quantise here rather than let the preview promise a grey the panel
       // cannot produce.

@@ -1,3 +1,4 @@
+import { usageColor } from '@agentdeck/shared';
 /**
  * Full-bleed level-fill usage gauge.
  *
@@ -16,7 +17,8 @@
  * 200×100 Stream Deck+ encoder LCD views (`renderUsageEncoderBoth`,
  * `renderUsageEncoderSingle`).
  */
-import { Brand, UI, CLAUDE_LOGO_PATH, CODEX_LOGO_PATH } from '@agentdeck/shared';
+import { Brand, Tide, UI, CLAUDE_LOGO_PATH, CODEX_LOGO_PATH, ZAI_LOGO_PATHS, ZAI_LOGO_VIEWBOX, ANTIGRAVITY_PATH } from '@agentdeck/shared';
+import type { CodexLunaReserve } from '@agentdeck/shared';
 import { formatResetTime, splitResetTwoLine, formatScopedLabel } from '../utility-modes/usage.js';
 
 const W = 144;
@@ -31,36 +33,45 @@ const HEADLINE = '#ffffff';
 const COUNTDOWN = '#ffffff';
 
 /** Agent brand colour, used to tint the provider logo (NOT the fill — fill is severity). */
-const BRAND_COLOR: Record<'claude' | 'codex', string> = {
+const BRAND_COLOR: Record<'claude' | 'codex' | 'zai' | 'antigravity', string> = {
+  antigravity: Brand.antigravity,
   claude: Brand.claudeCode, // #C07058
   codex: Brand.codex,       // #6166E0
+  zai: Brand.zai,           // #1F63EC
 };
 
-/** Canonical provider brand mark (viewBox 0 0 24 24). Replaces the old identity dot. */
-const BRAND_LOGO_PATH: Record<'claude' | 'codex', string> = {
-  claude: CLAUDE_LOGO_PATH,
-  codex: CODEX_LOGO_PATH,
+/** Canonical provider brand marks. viewBox is 24 except z.ai's upstream mark. */
+const BRAND_LOGO_PATHS: Record<'claude' | 'codex' | 'zai' | 'antigravity', string[]> = {
+  antigravity: [ANTIGRAVITY_PATH],
+  claude: [CLAUDE_LOGO_PATH],
+  codex: [CODEX_LOGO_PATH],
+  zai: ZAI_LOGO_PATHS,
+};
+const BRAND_LOGO_VIEWBOX: Record<'claude' | 'codex' | 'zai' | 'antigravity', number> = {
+  antigravity: 24,
+  claude: 24,
+  codex: 24,
+  zai: ZAI_LOGO_VIEWBOX,
 };
 
 /**
  * Provider brand mark for the top-right corner (the agent identity, replacing
- * the old dot). The 24-unit path is scaled to `size` and centred on (cx,cy),
+ * the old dot). The path set is scaled to `size` and centred on (cx,cy),
  * filled with the brand colour, over a subtle dark scrim circle so it stays
  * legible even when a ~100% fill colours the whole tile. `dim` greys it for the
  * unknown tile.
  */
-function brandLogo(agent: 'claude' | 'codex', cx: number, cy: number, size: number, dim = false): string {
-  const s = size / 24;
+function brandLogo(agent: 'claude' | 'codex' | 'zai' | 'antigravity', cx: number, cy: number, size: number, dim = false): string {
+  const box = BRAND_LOGO_VIEWBOX[agent];
+  const s = size / box;
   const color = dim ? LABEL_DIM : BRAND_COLOR[agent];
   return (
     `<circle cx="${cx}" cy="${cy}" r="${(size / 2 + 3).toFixed(1)}" fill="${CHIP}" opacity="0.55"/>` +
-    `<g transform="translate(${cx},${cy}) scale(${s.toFixed(3)}) translate(-12,-12)">` +
-    `<path d="${BRAND_LOGO_PATH[agent]}" fill="${color}" fill-rule="evenodd"/></g>`
+    `<g transform="translate(${cx},${cy}) scale(${s.toFixed(3)}) translate(${-box / 2},${-box / 2})">` +
+    BRAND_LOGO_PATHS[agent].map((p) => `<path d="${p}" fill="${color}" fill-rule="evenodd"/>`).join('') +
+    `</g>`
   );
 }
-
-/** Desaturated fill for an expired (stale) window — last-known %, dimmed. */
-const STALE_FILL = '#64748b';
 
 /** Informational fill for an INACTIVE per-model scoped cap: a high but non-binding
  *  cap must stay visible yet never wear the critical (red) ramp. The product-UI
@@ -69,26 +80,23 @@ const STALE_FILL = '#64748b';
  *  so it stays out of the design-lint R2 count. Exported for the scoped-gauge test. */
 export const INACTIVE_FILL = UI.cyan;
 
-/** The >80% critical (alarm) fill. Named + exported so the scoped-gauge test can
+/** The ≥90% critical (alarm) fill. Named + exported so the scoped-gauge test can
  *  assert "active cap wears critical, inactive does not" without re-hardcoding the
  *  hex (which would add to the R2 baseline). */
-export const CRITICAL_FILL = '#ef4444';
+export const CRITICAL_FILL = UI.error;
 
-/** Severity ramp by USED percent: <=50 green, 50–80 amber, >80 red. A stale
+/** Severity ramp by USED percent: <70 green, 70–<90 amber, ≥90 red. A stale
  *  window drops to a muted grey so it reads as "not current"; an inactive scoped
  *  cap drops to the informational cyan so a high-but-non-binding cap never reads
  *  as a critical alarm (puritysb #99: inactive ≠ same critical treatment). Stale
  *  wins over inactive — "not current" is the stronger caveat. */
 function rampColor(used: number, stale = false, inactive = false): { fill: string; hi: string } {
-  if (stale) return { fill: STALE_FILL, hi: STALE_FILL };
-  if (inactive) return { fill: INACTIVE_FILL, hi: INACTIVE_FILL };
-  if (used > 80) return { fill: CRITICAL_FILL, hi: '#fca5a5' };
-  if (used > 50) return { fill: '#eab308', hi: '#fde047' };
-  return { fill: '#22c55e', hi: '#86efac' };
+  const fill = usageColor(used, { muted: stale, inactive });
+  return { fill, hi: fill };
 }
 
 export interface UsageGaugeData {
-  agent: 'claude' | 'codex';
+  agent: 'claude' | 'codex' | 'zai' | 'antigravity';
   /** Which rolling window this tile represents (drives the clip id + fallback). */
   window: '5h' | '7d';
   /** Tile label, e.g. "5H", "7D". Agent identity rides the brand dot, not a prefix. */
@@ -110,6 +118,24 @@ export interface UsageGaugeData {
    *  informational cyan instead of the severity ramp. Defaults false so the real
    *  5H/7D tiles are byte-unchanged. */
   inactive?: boolean;
+  luna?: CodexLunaReserve;
+}
+
+/** Dedicated Luna state: the moon is the focal mark, not a corner badge. */
+export function renderLunaReserveGauge(reserve: CodexLunaReserve): string {
+  const remaining = Math.round(Math.max(0, Math.min(100, 100 - reserve.usedPercent)));
+  const active = reserve.available !== false && remaining > 0;
+  const bg = UI.popupBgDeep;
+  const moon = active ? UI.attn : LABEL_DIM;
+  const reset = reserve.regularResetsAt ?? reserve.resetsAt;
+  return svgWrap(
+    `<rect width="${W}" height="${H}" rx="${RX}" fill="${bg}"/>` +
+    lunaGaugeHeader() +
+    lunaMark(72, 58, 29, moon, bg) +
+    `<text x="72" y="103" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="bold" fill="${usageColor(reserve.usedPercent)}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>` +
+    `<text x="72" y="121" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" font-weight="bold" fill="${active ? Tide.s50 : LABEL_DIM}">LUNA RESERVE</text>` +
+    (reset ? `<text x="72" y="138" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="${LABEL_DIM}">RESET IN ${esc(formatResetTime(reset))}</text>` : ''),
+  );
 }
 
 function esc(s: string): string {
@@ -120,6 +146,19 @@ function svgWrap(inner: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${inner}</svg>`;
 }
 
+/** Canonical right-open crescent used by Luna state views. */
+function lunaMark(cx: number, cy: number, radius: number, moon: string, bg: string): string {
+  return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${moon}"/>` +
+    // The reference mark is a waning crescent: the shadow disk is shifted
+    // upper-left, leaving the lit mass on the lower-right.
+    `<circle cx="${cx - Math.round(radius * 0.42)}" cy="${cy - Math.round(radius * 0.20)}" r="${radius}" fill="${bg}"/>`;
+}
+
+function lunaGaugeHeader(): string {
+  return `<text x="12" y="17" font-family="JetBrains Mono, monospace" font-size="11" font-weight="bold" fill="${HEADLINE}">CODEX</text>` +
+    brandLogo('codex', 126, 13, 14, false);
+}
+
 function clampPct(p: number): number {
   // Guard NaN/Infinity (an undocumented scoped percent could be non-finite) so a
   // gauge never renders "NaN%"; finite values are unchanged.
@@ -127,8 +166,9 @@ function clampPct(p: number): number {
 }
 
 export function renderUsageGauge(data: UsageGaugeData): string {
+  if (data.luna) return renderLunaReserveGauge(data.luna);
   const known = data.known !== false;
-  const agent = data.agent === 'codex' ? 'codex' : 'claude';
+  const agent = data.agent;
   const label = data.label || data.window.toUpperCase();
   const clipId = `ug-${agent}-${data.window}`;
   const clip = `<defs><clipPath id="${clipId}"><rect x="0" y="0" width="${W}" height="${H}" rx="${RX}"/></clipPath></defs>`;
@@ -234,7 +274,7 @@ export interface UsageEncoderSideCard {
 }
 
 export interface UsageEncoderData {
-  agent: 'claude' | 'codex';
+  agent: 'claude' | 'codex' | 'zai' | 'antigravity';
   /** Top-left title, e.g. "CLAUDE" / "CODEX". */
   title: string;
   fiveHour: UsageEncoderTank;
@@ -247,6 +287,25 @@ export interface UsageEncoderData {
   note?: string;
   /** Companion readout for the single-window 'both' view (see the interface). */
   sideCard?: UsageEncoderSideCard;
+  subscription?: UsageEncoderSideCard;
+  luna?: CodexLunaReserve;
+}
+
+/** Luna reserve view for the Stream Deck+ Codex encoder LCD. */
+function renderLunaReserveEncoder(reserve: CodexLunaReserve): string {
+  const remaining = Math.round(Math.max(0, Math.min(100, 100 - reserve.usedPercent)));
+  const active = reserve.available !== false && remaining > 0;
+  const bg = UI.popupBgDeep;
+  const moon = active ? UI.attn : LABEL_DIM;
+  const reset = reserve.regularResetsAt ?? reserve.resetsAt;
+  return encSvgWrap(
+    `<rect width="${ENC_W}" height="${ENC_H}" fill="${bg}"/>` +
+    encHeader({ agent: 'codex', title: 'CODEX' } as UsageEncoderData, false) +
+    lunaMark(34, 56, 27, moon, bg) +
+    `<text x="72" y="40" font-family="JetBrains Mono, monospace" font-size="13" font-weight="bold" fill="${active ? Tide.s50 : LABEL_DIM}">LUNA RESERVE</text>` +
+    `<text x="72" y="69" font-family="Arial,sans-serif" font-size="25" font-weight="bold" fill="${usageColor(reserve.usedPercent)}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>` +
+    (reset ? `<text x="72" y="88" font-family="JetBrains Mono, monospace" font-size="11" fill="${LABEL_DIM}">RESET IN ${esc(formatResetTime(reset))}</text>` : ''),
+  );
 }
 
 function encSvgWrap(inner: string): string {
@@ -256,7 +315,7 @@ function encSvgWrap(inner: string): string {
 /** Readable provider identity plus the canonical brand mark. Claude and Codex
  * otherwise share the same 5H/7D layout and are easy to confuse at a glance. */
 function encHeader(data: UsageEncoderData, muted = false): string {
-  const agent = data.agent === 'codex' ? 'codex' : 'claude';
+  const agent = data.agent;
   return (
     `<text x="5" y="13" font-family="JetBrains Mono, monospace" font-size="10" font-weight="bold" fill="${muted ? LABEL_DIM : HEADLINE}">${esc(data.title)}</text>`
     + brandLogo(agent, 188, 11, 14, muted)
@@ -344,7 +403,7 @@ function encPanel(
  *  tiny corner logo next to stark floating text, which read as "broken" when a
  *  single provider had no data. */
 function encNote(data: UsageEncoderData): string {
-  const agent = data.agent === 'codex' ? 'codex' : 'claude';
+  const agent = data.agent;
   const logoSize = 30;
   // brandLogo's x/y are the mark's CENTRE (see encHeader), so centre it on the
   // canvas: title above, mark in the middle, status line beneath.
@@ -396,6 +455,11 @@ function encSideCard(x: number, y: number, w: number, h: number, card: UsageEnco
  * therefore carries only what no gauge can: the subscription behind the quota.
  */
 export function renderUsageEncoderBoth(data: UsageEncoderData): string {
+  if (data.subscription) return encSvgWrap(
+    `<rect width="${ENC_W}" height="${ENC_H}" fill="${BG}"/>` + encHeader(data) +
+    encSideCard(4, 18, 192, 80, data.subscription),
+  );
+  if (data.luna) return renderLunaReserveEncoder(data.luna);
   if (data.note != null) return encNote(data);
   const y = 18, h = 80;
   const live = [data.fiveHour, data.sevenDay].filter((t) => t.known);
@@ -420,6 +484,7 @@ export function renderUsageEncoderBoth(data: UsageEncoderData): string {
 
 /** '5h' / '7d' view: one big full-bleed level-fill across the LCD. */
 export function renderUsageEncoderSingle(data: UsageEncoderData, window: '5h' | '7d'): string {
+  if (data.luna) return renderLunaReserveEncoder(data.luna);
   if (data.note != null) return encNote(data);
   const tank = window === '5h' ? data.fiveHour : data.sevenDay;
   return encSvgWrap(

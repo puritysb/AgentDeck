@@ -10,7 +10,13 @@
 #define LV_COLOR_DEPTH 16
 
 /* Memory */
+#if defined(BOARD_IPS10) && !defined(SIM_HOST)
+/* The P4 workspace's LVGL objects must not exhaust networking/DMA SRAM.
+ * Pixel draw/rotation buffers are allocated explicitly in display.cpp. */
+#define LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM
+#else
 #define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB
+#endif
 #define LV_USE_STDLIB_STRING LV_STDLIB_CLIB
 #define LV_USE_STDLIB_SPRINTF LV_STDLIB_CLIB
 

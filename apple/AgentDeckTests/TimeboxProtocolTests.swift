@@ -64,6 +64,23 @@ final class TimeboxProtocolTests: XCTestCase {
 
     // MARK: - Timebox Mini Agent Beacon
 
+    func testExhaustedQuotaDoesNotOverrideAgentBeacon() {
+        var state = DashboardState()
+        state.state = .idle
+        state.agentType = "claude-code"
+        state.fiveHourPercent = 20
+        let renderer = PixooRenderer()
+        let low = [UInt8](renderer.renderMicro(dashboardState: state))
+        state.fiveHourPercent = 100
+        let exhausted = [UInt8](renderer.renderMicro(dashboardState: state))
+        // Mid-rail pixels are steady in idle/error; corners animate over time.
+        XCTAssertEqual(pixel(low, 5, 0), pixel(exhausted, 5, 0))
+        state.gatewayHasError = true
+        let error = [UInt8](renderer.renderMicro(dashboardState: state))
+        XCTAssertNotEqual(pixel(low, 5, 0), pixel(error, 5, 0))
+    }
+
+
     private func pixel(_ buf: [UInt8], _ x: Int, _ y: Int) -> [UInt8] {
         let i = (y * 11 + x) * 3
         return [buf[i], buf[i + 1], buf[i + 2]]

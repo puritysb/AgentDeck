@@ -32,8 +32,24 @@ const liveResult = {
     spendControlReached: false,
     planType: 'plus',
     rateLimitReachedType: 'rate_limit_reached',
+    additionalRateLimits: [{
+      meteredFeature: 'gpt-5.6-luna',
+      limitName: 'Luna Reserve',
+      rateLimit: {
+        primary: { usedPercent: 18, windowDurationMins: 300, resetsAt: 1786459585 },
+      },
+    }],
   },
   rateLimitResetCredits: { availableCount: 0, credits: [] },
+  rateLimitsByLimitId: {
+    base_model_inference: {
+      limitId: 'base_model_inference',
+      limitName: 'gpt-reserve',
+      primary: { usedPercent: 18, windowDurationMins: 10080, resetsAt: 1786459585 },
+      secondary: null,
+      planType: 'plus',
+    },
+  },
 };
 
 // Both halves of the 2026-08-27 reading, copied off `account/rateLimits/read`
@@ -70,6 +86,12 @@ const SPARK_MISLABELLED_AS_ACCOUNT = {
 };
 
 describe('parseLiveCodexRateLimits', () => {
+  it('does not activate an additional reserve pool while ordinary quota is available', () => {
+    const result = structuredClone(liveResult);
+    result.rateLimits.primary.usedPercent = 19;
+    expect(parseLiveCodexRateLimits(result, '2026-08-05T12:00:00.000Z')?.lunaReserve).toBeUndefined();
+  });
+
   it('maps the app-server shape onto the wire shape', () => {
     const parsed = parseLiveCodexRateLimits(liveResult, '2026-08-05T12:00:00.000Z');
     expect(parsed).not.toBeNull();
@@ -77,6 +99,12 @@ describe('parseLiveCodexRateLimits', () => {
       usedPercent: 100,
       windowMinutes: 10080,
       resetsAt: new Date(1786459585 * 1000).toISOString(),
+    });
+    expect(parsed!.lunaReserve).toEqual({
+      usedPercent: 18,
+      resetsAt: new Date(1786459585 * 1000).toISOString(),
+      regularResetsAt: new Date(1786459585 * 1000).toISOString(),
+      available: true,
     });
     expect(parsed!.secondary).toBeUndefined();
     expect(parsed!.planType).toBe('plus');
@@ -252,6 +280,40 @@ describe('pickBestCodexRateLimits', () => {
     const passive = at('2026-08-05T13:00:00.000Z', 3);
     const live = at('2026-08-05T12:18:00.000Z', 100);
     expect(pickBestCodexRateLimits(passive, live)).toBe(passive);
+  });
+
+  it('preserves Luna metadata when the newer passive reading wins', () => {
+    const passive = {
+      ...at('2026-08-05T13:00:00.000Z', 100),
+      lunaReserve: undefined,
+    };
+    const live = {
+      ...at('2026-08-05T12:18:00.000Z', 100),
+      lunaReserve: { usedPercent: 10, regularResetsAt: '2026-08-06T00:00:00.000Z' },
+    };
+    const picked = pickBestCodexRateLimits(passive, live);
+    expect(picked?.primary?.usedPercent).toBe(100);
+    expect(picked?.lunaReserve?.usedPercent).toBe(10);
+  });
+
+  it('does not resurrect an old passive reserve when a fresh live answer omits it', () => {
+    const passive = {
+      ...at('2026-08-05T12:00:00.000Z', 100),
+      lunaReserve: { usedPercent: 10 },
+    };
+    for (const used of [19, 100]) {
+      const live = at('2026-08-05T13:00:00.000Z', used);
+      expect(pickBestCodexRateLimits(passive, live)?.lunaReserve).toBeUndefined();
+    }
+  });
+
+  it('does not carry cached live reserve into recovered ordinary quota', () => {
+    const live = {
+      ...at('2026-08-05T12:00:00.000Z', 100),
+      lunaReserve: { usedPercent: 10 },
+    };
+    const passive = at('2026-08-05T13:00:00.000Z', 19);
+    expect(pickBestCodexRateLimits(passive, live)?.lunaReserve).toBeUndefined();
   });
 
   it('handles either side being absent', () => {

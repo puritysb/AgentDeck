@@ -79,7 +79,7 @@ struct ConnectionOverlay: View {
 
     // Explicit slate color matching Android SlateText #94A3B8
     // (.secondary is too dim on dark card backgrounds, especially iPad)
-    private let slateText = Color(red: 0.58, green: 0.64, blue: 0.72)
+    private let slateText = DesignTokens.UI.hudSubtext
 
     private var isReconnecting: Bool { stateHolder.connection.isReconnecting }
     private var phase: ConnectionOverlayPhase {
@@ -95,7 +95,7 @@ struct ConnectionOverlay: View {
     var body: some View {
         // Scrim + centered card
         ZStack {
-            Color(red: 0.059, green: 0.086, blue: 0.157)
+            DesignTokens.UI.waterDeep
                 .opacity(0.8)
                 .ignoresSafeArea()
 
@@ -150,7 +150,7 @@ struct ConnectionOverlay: View {
                         Text("Connection error · \(error)")
                             .font(.caption)
                             .monospaced()
-                            .foregroundStyle(.red)
+                            .foregroundStyle(DesignTokens.UI.error)
                             .multilineTextAlignment(.center)
 
                     }
@@ -176,7 +176,7 @@ struct ConnectionOverlay: View {
                             // attempt gets a progress indicator.
                             if phase.showsActivityIndicator {
                                 ProgressView()
-                                    .tint(.cyan)
+                                    .tint(DesignTokens.UI.cyan)
                             }
 
                             if phase == .notFound {
@@ -200,7 +200,7 @@ struct ConnectionOverlay: View {
                                 stateHolder.connectTo(url: manualUrl)
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(.cyan)
+                            .tint(DesignTokens.UI.cyan)
                         }
                     }
 
@@ -214,7 +214,7 @@ struct ConnectionOverlay: View {
                 .frame(maxWidth: 360)
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(red: 0.118, green: 0.161, blue: 0.231).opacity(0.9))
+                        .fill(DesignTokens.UI.waterMid.opacity(0.9))
                 )
                         Spacer(minLength: 0)
                     }
@@ -249,7 +249,7 @@ struct ConnectionOverlay: View {
         VStack(spacing: 10) {
             Image(systemName: "wifi.exclamationmark")
                 .font(.title2)
-                .foregroundStyle(.yellow)
+                .foregroundStyle(DesignTokens.UI.attn)
             Text("Local Network access is off")
                 .font(.subheadline.bold())
                 .foregroundStyle(.white)
@@ -268,10 +268,10 @@ struct ConnectionOverlay: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .background(.yellow.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+                    .background(DesignTokens.UI.attn.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(.yellow.opacity(0.6), lineWidth: 1)
+                            .stroke(DesignTokens.UI.attn.opacity(0.6), lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -284,10 +284,10 @@ struct ConnectionOverlay: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 12).fill(.yellow.opacity(0.08)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(DesignTokens.UI.attn.opacity(0.08)))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(.yellow.opacity(0.3), lineWidth: 1)
+                .stroke(DesignTokens.UI.attn.opacity(0.3), lineWidth: 1)
         )
     }
 
@@ -308,10 +308,10 @@ struct ConnectionOverlay: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .background(.cyan.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+                    .background(DesignTokens.UI.cyan.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(.cyan.opacity(0.5), lineWidth: 1)
+                            .stroke(DesignTokens.UI.cyan.opacity(0.5), lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -326,7 +326,7 @@ struct ConnectionOverlay: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.bordered)
-            .tint(.cyan)
+            .tint(DesignTokens.UI.cyan)
             #endif
         }
     }
@@ -349,21 +349,21 @@ struct ConnectionOverlay: View {
                 if isLocal {
                     Text("local")
                         .font(.caption2)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(DesignTokens.UI.ok)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(.green.opacity(0.2), in: Capsule())
+                        .background(DesignTokens.UI.ok.opacity(0.2), in: Capsule())
                 }
                 if let agent = bridge.agentType {
                     Text(agent)
                         .font(.caption2)
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(DesignTokens.UI.cyan)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(.blue.opacity(0.2), in: Capsule())
+                        .background(DesignTokens.UI.cyan.opacity(0.2), in: Capsule())
                 }
                 Image(systemName: "arrow.right.circle.fill")
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(DesignTokens.UI.cyan)
             }
             .padding()
             .background(

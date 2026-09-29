@@ -2,29 +2,40 @@
 
 This directory contains the assets that are safe to upload to App Store Connect.
 
-## Upload order
+## Screenshot sets
 
-| Platform | Files | Apple slot |
-|---|---:|---|
-| macOS | 3 | Mac, 2880×1800 |
-| iPhone | 3 | 6.5-inch, 1284×2778 |
-| iPad | 3 | 13-inch, 2064×2752 |
+Localized screenshots live under `screenshots/{en,ko,ja}/{macOS,iPhone,iPad}/`.
+The current set contains five macOS images and four images per mobile platform.
+Raw source captures are under `screenshots-raw/`. Use only privacy-reviewed
+captures of the actual app with synthetic sessions; never publish real workspace
+names, conversations, desktop chrome or network addresses.
 
-The macOS images are privacy-safe captures of Device Preview, on-device APME settings, and opt-in Swift integrations. The iPhone set shows the value proposition, a live multi-agent dashboard, and an attention request. The iPad set shows the full dashboard, its focused permission state, and the distraction-free aquarium view. All are actual app UI captured from the current build with deterministic sample sessions, a normalized 9:41 status bar, English UI, and opaque PNG output. No image contains a developer-daemon-only panel or real user/session data.
-
-Do not upload images from `apple/appstore-screenshots/`. That directory is a raw historical capture archive and contains duplicate onboarding frames, developer desktops, browser windows, local project names, IP addresses, and device paths.
+Do not upload from `apple/appstore-screenshots/`: it is a historical archive,
+not the current submission package.
 
 ## App Preview videos
 
-One upload-ready App Preview is included per platform:
+The upload files are `previews/<platform>/agentdeck-preview.mp4` for
+`macOS`, `iPhone` and `iPad`. The macOS cut includes the aquarium, Collaboration
+and Dashboard settings. The mobile cuts were recaptured on 2026-09-23 from
+the current 1.5.0 Apple source and show the 3D aquarium, growing session roster,
+attention request and completion. Each mobile cut is 25 seconds. These English
+UI recordings are the canonical videos for all storefront languages; localized
+screenshots and metadata remain available. See the delivery record for actual
+portal upload and submission status.
 
-| Platform | File | Spec | Content |
-|---|---|---|---|
-| macOS | `previews/macOS/01-product-tour.mp4` | 1920×1080 · 16.5s | Device Preview → on-device APME → opt-in integrations |
-| iPhone | `previews/iPhone/01-live-dashboard.mp4` | 886×1920 · 15.5s | Live multi-agent dashboard → attention state |
-| iPad | `previews/iPad/01-live-dashboard.mp4` | 1200×1600 · 17.2s | Live multi-agent dashboard → attention state |
+Use 1920×1080 for Mac, 886×1920 for iPhone and 1200×1600 for portrait iPad.
+Previews must be 15–30 seconds, H.264 High Profile Level 4.0, progressive,
+30 fps, with a silent AAC track. Validate each final file before upload.
+Keep original recordings locally for provenance.
 
-All three are H.264 High Profile Level 4.0, progressive, 30 fps, 11 Mbps, silent, and below 500 MB. The iPhone and iPad videos are actual Simulator recordings driven by `scripts/appstore-screenshot-mock.mjs`; they contain only the deterministic `Sample Workspace`, `API Client`, and `Documentation` sessions. The macOS product tour uses only the three privacy-reviewed upload screenshots. Upload only the final files directly under `previews/<platform>/`; raw capture segments are intentionally not retained.
+## 1.5.0 delivery
+
+See [current Apple delivery record](macos-1.5.0.md). Localized update text is
+in [macOS metadata](macos-1.5.0-metadata.json) and
+[iOS metadata](ios-1.5.0-metadata.json). English is canonical; Korean and
+Japanese are translations. Preserve existing dashboard choices and identify
+3D as an optional preview. Apple update text must describe the Apple app only.
 
 ## Metadata and review material
 

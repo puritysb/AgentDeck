@@ -25,22 +25,41 @@ pnpm install            # postinstall (scripts/postinstall.mjs) is a no-op on Wi
 pnpm build              # shared → bridge, plugin, hooks
 pnpm test               # optional: run the Vitest suite
 
-# Register Claude Code hooks (writes a PowerShell one-liner hook command)
-node hooks/dist/install.js
+# Register daemon autostart and agent hooks from this checkout
+# Windows hooks use ~/.agentdeck/agentdeck-hook.ps1
+node bridge/dist/cli.js daemon install
 
-# Link the CLI + Stream Deck plugin
-cd bridge; pnpm link --global; cd ..
+# Link the Stream Deck plugin (then restart the Stream Deck app)
 cd plugin; streamdeck link bound.serendipity.agentdeck.sdPlugin; cd ..   # then restart the Stream Deck app
 ```
 
+These checkout instructions call the built CLI directly through Node. They do
+not require `pnpm link --global`, which some pnpm versions reject
+([#304](https://github.com/puritysb/AgentDeck/pull/304)). Registering the daemon
+creates and starts its per-user Scheduled Task; it does **not** put an
+`agentdeck` command on `PATH`. The task keeps running after this terminal closes
+and starts again at logon. Keep the checkout in place because the task refers
+to its built CLI; after moving it or changing Node installations, rerun the
+installation command from the new location.
+
+For a normal installation without a source checkout, use
+`npx @agentdeck/setup`; that installer also makes the `agentdeck` command
+available. Daemon installation does not by itself diagnose a Stream Deck
+plugin that remains OFFLINE; that connectivity report is tracked separately
+in [#303](https://github.com/puritysb/AgentDeck/issues/303).
+
 ## Run
 
+From the repository root:
+
 ```powershell
-agentdeck daemon install # hooks + per-user Scheduled Task
-# In another terminal:
-claude                  # supported default: normal observed launch
-agentdeck claude        # legacy managed ConPTY compatibility path
+node bridge/dist/cli.js status # verify the installed daemon
+claude                        # supported default: normal observed launch
 ```
+
+For the legacy managed ConPTY path, use `node bridge/dist/cli.js claude`.
+Every `agentdeck <args>` command elsewhere in this documentation can be run as
+`node bridge/dist/cli.js <args>` from this checkout.
 
 ## Windows differences (intentional)
 
@@ -53,8 +72,10 @@ design and gates live in
 [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
 [#273](https://github.com/puritysb/AgentDeck/issues/273). New ordinary Windows
 workflows should install the daemon and run agents normally.
-- **Hooks** — Claude Code hook entries run a `powershell -NoProfile -ExecutionPolicy Bypass -Command "…"` one-liner that reads `daemon.json`, probes `/health`, and POSTs the payload via `Invoke-RestMethod`.
+- **Hooks** — Claude Code hook entries run `powershell -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.agentdeck\agentdeck-hook.ps1" -HookEvent <Event>`; the script reads `daemon.json`, probes `/health`, and POSTs the payload via `Invoke-RestMethod`. The body must stay in a **script file** — Claude Code spawns hook commands through a POSIX shell (Git Bash) on Windows, which expands every `$name` out of an inlined `-Command` before PowerShell parses it.
 - **`agentdeck daemon install` / `uninstall`** — registers a per-user **Scheduled Task** `AgentDeckDaemon` with a logon trigger (built-in `schtasks.exe`, no admin elevation), the Windows analog of the macOS LaunchAgent. `install` registers + starts it now and installs Codex hooks; `uninstall` stops the daemon and removes the task. A real Windows Service is intentionally **not** used — it runs in session 0 with no desktop/device access, breaking USB-HID (D200H), audio (wake-word), and the Stream Deck app. See [daemon.md → Autostart](daemon.md#autostart-loginlogon).
+- **The daemon runs with no console window.** The task's action is `daemon autostart`, a launcher that spawns the daemon detached with no console and exits; an action that is the daemon itself gets a console attached by Task Scheduler, which showed up as a permanent terminal window and taskbar button for the whole session (no task setting suppresses it — `<Hidden>` only hides the task in the Task Scheduler UI). The daemon's output goes to `%USERPROFILE%\.agentdeck\daemon-stdout.log` / `daemon-stderr.log`, so a logon start is diagnosed from those files, not from a window; `agentdeck daemon status` reports what is serving. Mechanism, measurements and the rejected alternatives: [daemon.md → Autostart](daemon.md#autostart-loginlogon).
+- **Consequence for anything the daemon spawns: pass `windowsHide`.** The daemon has no console of its own, so a console-subsystem child gets a new console — with a window — unless the spawn sets CREATE_NO_WINDOW. This is why an unhidden `taskkill`/`adb` in a polling path shows up as an empty window blinking on the desktop. A vitest gate (`bridge/src/__tests__/windows-child-window.test.ts`) fails any `child_process` call that neither hides its window, nor runs a binary absent on Windows, nor carries an inline `windows-hide-exempt:` reason.
 - **Device modules** — `adb` is probed cross-platform; the `/dev/tty.*` USB-serial scan is skipped on Windows (COM-port enumeration not implemented). mDNS and `better-sqlite3` (APME) support Windows; D200H is driven by the Ulanzi Studio plugin over daemon WebSocket.
 - **APME hardware sampler** is darwin-only — it returns a minimal snapshot on Windows and the recommender treats that as "neutral".
 - **Native runtime identity matters** — the Scheduled Task pins the `node.exe` used by `agentdeck daemon install`. After changing Node installations, run `agentdeck diag native`; if its SQLite smoke test fails, rerun `npx @agentdeck/setup --yes` under Node 22, 24, or 26 so the task and `better-sqlite3` use the same ABI. Node 20 and odd-numbered Node releases are intentionally unsupported.

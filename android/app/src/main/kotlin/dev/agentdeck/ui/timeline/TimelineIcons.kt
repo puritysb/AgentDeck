@@ -174,6 +174,34 @@ fun turnHasLaterCompletion(entry: TimelineEntry, siblings: List<TimelineEntry>):
     return false
 }
 
+/**
+ * The icon key a row draws WHILE its leading icon rotates.
+ *
+ * A rotating row shows the [TimelineIconKey.Running] circular arrow, not its
+ * own semantic glyph, and returns to its own key the instant rotation stops.
+ * Only [TimelineIconKey.Task] is visibly affected — every other rotating row
+ * already resolves to Running — but that one case is the whole point: a square
+ * glyph spinning on its centre reads as a glitch rather than a spinner.
+ *
+ * Mirrors `TIMELINE_ROTATING_ICON_KEY` in shared/src/timeline-icons.ts and
+ * Apple's `RotatingTimelineIcon(rotatingSymbolName:)`.
+ */
+val ROTATING_ICON_KEY: TimelineIconKey = TimelineIconKey.Running
+
+/**
+ * The icon key to draw for [entry] right now: Running while the row rotates,
+ * otherwise the row's own semantic key. Use this instead of [timelineIconKey]
+ * anywhere the leading icon is animated. Mirrors `timelineDisplayIconKey` in
+ * shared/src/timeline-icons.ts.
+ */
+fun timelineDisplayIconKey(
+    entry: TimelineEntry,
+    siblings: List<TimelineEntry>,
+    nowMs: Long = System.currentTimeMillis(),
+): TimelineIconKey =
+    if (isRotatingEntry(entry, siblings, nowMs)) ROTATING_ICON_KEY
+    else timelineIconKey(entry.type, entry.status)
+
 fun isRotatingEntry(
     entry: TimelineEntry,
     siblings: List<TimelineEntry>,
@@ -186,7 +214,13 @@ fun isRotatingEntry(
         for (s in siblings) {
             if (s.timestamp < ts) continue
             if (!sameRotatingSession(entry.sessionId, s.sessionId)) continue
-            if (s.type == "chat_response" || s.type == "chat_end" || s.type == "model_response") return false
+            // `error` closes a turn as surely as a response does — a failed
+            // request emits one instead of a reply, and leaving it off this
+            // list kept the spinner turning next to its own explanation.
+            // Mirrors shared/src/timeline-icons.ts and Swift
+            // `timelineIsRotatingEntry`, both of which already had it.
+            if (s.type == "chat_response" || s.type == "chat_end" ||
+                s.type == "model_response" || s.type == "error") return false
             if (s.type == "chat_start" && s.timestamp > ts) return false
         }
         return true

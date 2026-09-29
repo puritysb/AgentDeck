@@ -4,7 +4,9 @@ dist/
 *.tsbuildinfo
 **/*.sdPlugin/bin/
 **/*.sdPlugin/logs/
-.claude/
+.claude/*
+!.claude/rules/
+!.claude/skills/
 
 # OS
 .DS_Store
@@ -13,6 +15,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# workmux task worktrees (AGENTS.md § Worktree auto cleanup)
+__worktrees/
 
 # Xcode user-specific state (window/editor state, breakpoints, schemes)
 **/xcuserdata/
@@ -23,6 +28,11 @@ Thumbs.db
 
 # Local diagnostic captures from development workflows
 diagnostics/
+# Playwright MCP browser-session logs and page snapshots (may include logged-in console pages)
+.playwright-mcp/
+
+# Local generation output (image/UI exploration runs); artifacts stay on disk
+output/
 
 # Temp
 *.tmp

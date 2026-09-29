@@ -1,6 +1,7 @@
 #include "display.h"
 #include "config.h"
 #include "../boards/board_config.h"
+#include "../util/memory.h"
 #include "fonts/font_noto_kr_12.h"
 #if defined(BOARD_IPS10) || defined(BOARD_T_DISPLAY_PRO) || defined(BOARD_T_EMBED)
 #include "fonts/font_noto_kr_16.h"
@@ -627,6 +628,7 @@ static bool touch_read_cst816s(uint16_t* x, uint16_t* y) {
 #include "../audio/mic_capture.h"
 #include "driver/ppa.h"            // ESP32-P4 2D Pixel-Processing Accelerator (HW rotate)
 #include "esp_heap_caps.h"
+#include "esp_private/esp_cache_private.h"  // same alignment query as the PPA driver
 #include "esp_memory_utils.h"      // esp_ptr_internal() — verify LVGL buffer is internal SRAM
 
 static jd9365_lcd* jc_tft = nullptr;
@@ -635,21 +637,30 @@ static i2c_master_bus_handle_t i2c_handle = nullptr;
 static uint16_t* rotated_buf = nullptr;
 static ppa_client_handle_t ppaClient = nullptr;   // null → fall back to CPU transpose
 static size_t rotBufSizeG = 0;
+static bool ppaRotationFailed = false;
 // One device-lifetime PPA target, sized to the largest LVGL flush slice below:
-// 1280 × 16 × RGB565 = 40,960 bytes. Three DMA-capable buffers share scarce
-// internal SRAM with ESP-Hosted; 24 lines left too little contiguous headroom
-// for the C6 SDIO RX pool and produced a deterministic reboot loop.
-static constexpr size_t IPS10_DRAW_LINES = 16;
+// 1280 × 8 × RGB565 = 20,480 bytes per buffer. Three device-lifetime buffers
+// stay in fast internal SRAM. The 16-line setup left only ~49 KiB after the
+// workspace/KWS initialized and refused every voice upload at the 60 KiB guard.
+// Eight lines return 60 KiB to ESP-Hosted without moving pixel writes to PSRAM.
+static constexpr size_t IPS10_DRAW_LINES = 8;
 #if defined(IPS10_PERF_HUD)
 volatile uint32_t g_flushInnerUs = 0;   // accumulated PPA+push time within the current frame
 volatile uint32_t g_bufInternal = 0;    // 1 = LVGL draw buffer is in internal SRAM, 0 = PSRAM
 #endif
 
+// Fixed, UI-task-owned counters: no allocation or cross-core reader.
+static uint32_t touchLastUs=0, touchGapMaxUs=0, touchReadMaxUs=0, touchPolls=0;
 static bool touch_read_gsl3680(uint16_t* x, uint16_t* y) {
+    const uint32_t start=micros();
+    if(touchLastUs && start-touchLastUs>touchGapMaxUs) touchGapMaxUs=start-touchLastUs;
+    touchLastUs=start; ++touchPolls;
     if (!tp_handle) return false;
     esp_lcd_touch_read_data(tp_handle);
     uint8_t cnt = 0;
     bool touched = esp_lcd_touch_get_coordinates(tp_handle, x, y, NULL, &cnt, 1);
+    const uint32_t elapsed=micros()-start;
+    if(elapsed>touchReadMaxUs) touchReadMaxUs=elapsed;
     return touched && cnt > 0;
 }
 
@@ -884,7 +895,8 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
 #if defined(IPS10_PERF_HUD)
     uint32_t _fs = micros();
 #endif
-    if (rotated_buf && ppaClient) {
+    bool rotated = false;
+    if (rotated_buf && ppaClient && !ppaRotationFailed) {
         // HARDWARE rotation: PPA does the 90° CCW transpose of the w×h flush block into
         // rotated_buf via 2D-DMA — no per-pixel CPU work. Mapping verified equal to the CPU
         // transpose: dst(i,j)=src(j,w-1-i), which is exactly a 90° CCW rotation. Pixels are
@@ -905,11 +917,15 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
         op.scale_x = 1.0f; op.scale_y = 1.0f;
         op.mode = PPA_TRANS_MODE_BLOCKING;
         if (ppa_do_scale_rotate_mirror(ppaClient, &op) == ESP_OK) {
-            uint32_t x_native = area->y1;
-            uint32_t y_native = BOARD_NATIVE_H - area->x2 - 1;
-            jc_tft->draw16bitbergbbitmap(x_native, y_native, h, w, rotated_buf);
+            rotated = true;
+        } else {
+            // Do not drop this frame or flood the UART on every later flush.
+            // Keep the device-lifetime client, but use CPU rotation from now on.
+            ppaRotationFailed = true;
+            Serial.println("[Display] PPA rotation failed — using CPU transpose");
         }
-    } else if (rotated_buf) {
+    }
+    if (rotated_buf && !rotated) {
         uint16_t* src = (uint16_t*)px_map;
         // CPU tiled transpose fallback (when PPA is unavailable).
         const uint32_t T = 32;
@@ -923,6 +939,8 @@ static void disp_flush(lv_display_t* display, const lv_area_t* area, uint8_t* px
                 }
             }
         }
+    }
+    if (rotated_buf) {
         uint32_t x_native = area->y1;
         uint32_t y_native = BOARD_NATIVE_H - area->x2 - 1;
         jc_tft->draw16bitbergbbitmap(x_native, y_native, h, w, rotated_buf);
@@ -1026,6 +1044,23 @@ void requestPortrait() { s_stripPortrait = true; }
 #endif
 
 #if defined(BOARD_IPS10)
+void recordFrameTiming(uint32_t viewUs, uint32_t lvglUs) {
+    static uint32_t since=0, loops=0, maxView=0, maxLvgl=0;
+    static uint64_t sumView=0, sumLvgl=0;
+    sumView+=viewUs; sumLvgl+=lvglUs; ++loops;
+    if(viewUs>maxView) maxView=viewUs;
+    if(lvglUs>maxLvgl) maxLvgl=lvglUs;
+    const uint32_t now=millis();
+    if(now-since<5000) return;
+    Serial.printf("[UIPerf] loops=%lu viewAvgUs=%lu viewMaxUs=%lu lvglAvgUs=%lu lvglMaxUs=%lu touchPolls=%lu touchGapMaxUs=%lu touchReadMaxUs=%lu freeblkKB=%u\n",
+        (unsigned long)loops, (unsigned long)(sumView/loops), (unsigned long)maxView,
+        (unsigned long)(sumLvgl/loops), (unsigned long)maxLvgl,
+        (unsigned long)touchPolls, (unsigned long)touchGapMaxUs, (unsigned long)touchReadMaxUs,
+        unsigned(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)/1024));
+    since=now; loops=maxView=maxLvgl=0; sumView=sumLvgl=0;
+    touchPolls=touchGapMaxUs=touchReadMaxUs=0;
+}
+
 void setTouchTrace(bool on) {
     s_touchTrace = on;
     esp_lcd_touch_gsl3680_set_trace(on);
@@ -1035,6 +1070,31 @@ void setTouchTrace(bool on) {
 bool hwI2cReadReg8(uint8_t addr, uint8_t reg, uint8_t* out) {
     if (!i2c_handle || !out) return false;
     return i2cReadReg(i2c_handle, addr, reg, out);
+}
+
+void hwCameraProbe() {
+    // Board-specific OV02C10 reference: sullb/esphome-p4-csi-camera.
+    // Reuse the existing SDA7/SCL8 bus; another controller on the same pins
+    // would take touch and the codec down. No sensor setup or video capture.
+    if (!i2c_handle) { Serial.println("[CameraProbe] bus unavailable"); return; }
+    i2c_device_config_t config{};
+    config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    config.device_address = 0x36;
+    config.scl_speed_hz = 100000;
+    i2c_master_dev_handle_t sensor = nullptr;
+    if (i2c_master_bus_add_device(i2c_handle, &config, &sensor) != ESP_OK) {
+        Serial.println("[CameraProbe] cannot access SCCB"); return;
+    }
+    uint8_t id[2]{};
+    bool readable = true;
+    for (uint8_t i = 0; i < 2; ++i) {
+        const uint8_t reg[2] = {0x30, uint8_t(0x0A + i)};
+        if (i2c_master_transmit_receive(sensor, reg, 2, &id[i], 1, 50) != ESP_OK) readable = false;
+    }
+    i2c_master_bus_rm_device(sensor);
+    const uint16_t value = (uint16_t(id[0]) << 8) | id[1];
+    Serial.printf("[CameraProbe] readable=%d id=0x%04X sensor=%s capture=not-initialized\n",
+                  int(readable), value, readable && value == 0x5602 ? "OV02C10" : "unknown");
 }
 
 bool hwI2cWriteReg8(uint8_t addr, uint8_t reg, uint8_t val) {
@@ -1262,16 +1322,24 @@ void displayInit() {
     // stay in internal DMA SRAM for PPA; size is bounded by IPS10_DRAW_LINES.
     {
         size_t rotBufSize = BOARD_NATIVE_H * IPS10_DRAW_LINES * sizeof(uint16_t);
+        // IDF 5.5 checks BOTH SRAM and PSRAM targets against the external
+        // cache alignment (128 on current P4 SDKs), not just the 64-byte L1.
+        size_t alignment = 0;
+        if (esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &alignment) != ESP_OK || !alignment) {
+            Serial.println("[Display] Cannot determine PPA alignment — aborting init");
+            return;
+        }
+        rotBufSize = (rotBufSize + alignment - 1) / alignment * alignment;
         rotBufSizeG = rotBufSize;
-        // 64-byte (L1 cache line) aligned — required when the PPA writes into this buffer.
-        rotated_buf = (uint16_t*)heap_caps_aligned_alloc(64, rotBufSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+        rotated_buf = (uint16_t*)heap_caps_aligned_alloc(alignment, rotBufSize, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
         if (!rotated_buf) {
-            rotated_buf = (uint16_t*)heap_caps_aligned_alloc(64, rotBufSize, MALLOC_CAP_SPIRAM);
+            rotated_buf = (uint16_t*)heap_caps_aligned_alloc(alignment, rotBufSize, MALLOC_CAP_SPIRAM);
         }
         if (!rotated_buf) {
             Serial.println("[Display] Failed to allocate rotated_buf!");
         } else {
-            Serial.println("[Display] Allocated rotated_buf successfully");
+            Serial.printf("[Display] Rotation buffer %p, %zu bytes, alignment=%zu, internal=%d\n",
+                          rotated_buf, rotBufSize, alignment, esp_ptr_internal(rotated_buf));
         }
     }
 
@@ -1478,7 +1546,7 @@ void displayInit() {
     static constexpr size_t BUF_LINES = 20;
 #elif defined(BOARD_IPS10)
     // IPS10 draw buffers live in INTERNAL SRAM (fast per-pixel render). Keep
-    // the two buffers plus rotated_buf at 16 lines each (about 123 KB total)
+    // the two buffers plus rotated_buf at 8 lines each (60 KiB total)
     // so ESP-Hosted retains a contiguous SDIO RX pool.
     static constexpr size_t BUF_LINES = IPS10_DRAW_LINES;
 #else
@@ -1525,6 +1593,7 @@ void displayInit() {
 #if defined(BOARD_IPS10)
     lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
     Serial.printf("[Display] LVGL initialized %dx%d (RGB565 native)\n", g_screenW, g_screenH);
+    logHeap("ips10-draw-buffers");
 #else
     lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565_SWAPPED);
     Serial.printf("[Display] LVGL initialized %dx%d (RGB565 swapped)\n", g_screenW, g_screenH);

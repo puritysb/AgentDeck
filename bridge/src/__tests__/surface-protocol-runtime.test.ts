@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   negotiateSurface,
+  CLAUDE_TOOL_EVENTS_CAPABILITY,
   parseHttpSurfaceIdentity,
   pullOtaResponseStatus,
   SURFACE_SERVER_VERSION,
@@ -96,6 +97,17 @@ describe('Surface Protocol HTTP identity', () => {
 });
 
 describe('Surface Protocol WebSocket negotiation', () => {
+  it('keeps Claude tool history opt-in for dashboard clients', () => {
+    const result = negotiateSurface({
+      protocol: 1,
+      clientId: 'push-2',
+      clientVersion: '0.1.0',
+      productId: 'push-2',
+      profiles: [{ id: 'dashboard-live/v1', capabilities: ['timeline.read', CLAUDE_TOOL_EVENTS_CAPABILITY] }],
+    });
+    expect(result.capabilities).toEqual(['timeline.read', CLAUDE_TOOL_EVENTS_CAPABILITY]);
+  });
+
   it('selects portable-reader/v1 and returns only the capability intersection', () => {
     const result = negotiateSurface({
       protocol: 1,
