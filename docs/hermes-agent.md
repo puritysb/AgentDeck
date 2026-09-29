@@ -20,6 +20,14 @@ in [the resource map](../design/RESOURCES.md). It is a third-party identity mark
 not an AgentDeck mascot or a claim of endorsement. Invented shell/crab/animal
 characters are explicitly excluded by the user's direction.
 
+For the later aquarium creature, the user's intended concept is a mermaid
+derived from the Nous girl portrait: preserve her dark bob, bangs, pale face,
+and recognizable silhouette while adding an underwater body and motion. This
+would be an AgentDeck-original adaptation, not an official Hermes mascot. The
+winged messenger remains a separate upstream illustration reference, not the
+chosen aquarium creature. The compact brand mark in this preview remains the
+unaltered Nous girl geometry.
+
 ## OpenClaw and Hermes have different observation contracts
 
 | Dimension | Existing OpenClaw integration | Hermes observer preview |
