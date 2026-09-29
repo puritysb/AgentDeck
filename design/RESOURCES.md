@@ -55,7 +55,7 @@ when regenerating constrained-device masks.
 `sha512-Inx1TYkjLH6YeHOIHeVW9+OM/xxRnk8TmcQVKquFUDBmE3X9sUuRGt7kALrrDBNNAbrWz7Qq6fAiFj9E9Mmw9Q==`.
 This table used to hold Kiro alone, which read as though Kiro were the one mark
 with a licensing question; the other five were simply undocumented. They stand
-or fall together, and they stand: the path geometry of all six is byte-identical
+or fall together, and they stand: the path geometry of the original six is byte-identical
 to upstream (verified 2026-08-16 against the packed tarball; `kiro.svg` differs
 only by a trailing newline and `antigravity.svg` only by a self-closing `<path/>`).
 
@@ -72,6 +72,16 @@ asked for anything beyond that.
 | Kiro ghost | `icons/kiro.svg` | Amazon.com, Inc. or its affiliates |
 | opencode | `icons/opencode.svg` | the opencode project |
 | OpenClaw | `icons/openclaw.svg` | the OpenClaw project |
+| Hermes Agent / Nous girl | `icons/hermesagent.svg` | Nous Research |
+
+Hermes was verified against the same pinned tarball on 2026-09-30. The
+current upstream desktop brand component and icon generator use the Nous girl
+(`NousResearch/hermes-agent@16c59d0e`, `assets/nous-girl-{black,white}.svg`).
+The CLI also uses a caduceus; the repository's older winged-messenger sprite
+has no confirmed current UI caller. Those are research references, not
+alternative generated masks. Preserve the official face geometry in
+`shared/src/svg-renderers/hermes-brand.ts`; its regression test compares every
+path against `design/brand/hermes.svg`. Native/matrix rollout is tracked in #423.
 
 Re-verify a mark against upstream with:
 

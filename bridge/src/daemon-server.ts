@@ -179,6 +179,7 @@ import { enableDebugLog, debug, debugThrottled } from './logger.js';
 import { LegacyRearmLedger } from './legacy-rearm-ledger.js';
 import { CodexOtelTracker, CODEX_OTEL_TRACES_PATH, spanNameSummary } from './codex-otel.js';
 import { HookCodexSessions } from './hook-codex-sessions.js';
+import { HermesSessions } from './hermes-sessions.js';
 import { ObservedTurnWatchdogs } from './observed-turn-watchdogs.js';
 import {
   getApmeInitFailure,
@@ -1195,11 +1196,11 @@ export function enrichGatewayTimelineEntry<T extends { agentType?: string; proje
 export function classifyObservedHookEvent(
   eventName: string,
   mapped: string,
-): { boundary: string; agentType: 'claude-code' | 'codex-cli' | 'opencode' | 'antigravity' | 'kiro-cli' | 'kiro-ide' } {
+): { boundary: string; agentType: 'claude-code' | 'codex-cli' | 'opencode' | 'antigravity' | 'kiro-cli' | 'kiro-ide' | 'hermes' } {
   if (eventName === 'codex_subagent_start' || eventName === 'codex_subagent_stop') {
     return { boundary: eventName, agentType: 'codex-cli' };
   }
-  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|notification|permission_asked|permission_replied)$/
+  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|notification|permission_asked|permission_replied)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
   return {
@@ -1209,6 +1210,7 @@ export function classifyObservedHookEvent(
     agentType: prefixed[1] === 'codex' ? 'codex-cli'
       : prefixed[1] === 'opencode' ? 'opencode'
       : prefixed[1] === 'antigravity' ? 'antigravity'
+      : prefixed[1] === 'hermes' ? 'hermes'
       : prefixed[1] === 'kiro_ide' ? 'kiro-ide'
       : 'kiro-cli',
   };
@@ -1578,6 +1580,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Codex sessions known only from `codex_*` hooks — the backstop for when the
   // process scan can't see one (lsof timeout, no rollout held open).
   const hookCodexSessions = new HookCodexSessions();
+  const hermesSessions = new HermesSessions();
   // Declared before the HTTP server: the PreToolUse route reads it to decide
   // whether this daemon can type into a session's terminal, and hooks start
   // arriving the moment the port binds — several hundred milliseconds before
@@ -1877,6 +1880,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'ok', mode: 'daemon', state: snap.state,
+        hermesObserver: 1,
         gateway: gatewayAdapter?.isAlive() ? 'connected' : 'disconnected',
         // A link that keeps reconnecting reads `connected` at every sample.
         // This is the field that says the samples were lying (null = stable).
@@ -2940,6 +2944,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // off. State-machine calls stay Claude-only (`mapped`): observed
         // codex/opencode *state* is owned by the passive observer's turn
         // semantics, not these hooks.
+        // Reject unsupported/stale Hermes events before generic attribution. Older
+        // Hermes callbacks must never invent Claude rows or resurrect a closed chat.
+        if (eventName.startsWith('hermes_') && !hermesSessions.note(eventName, json)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ received: false }));
+          return;
+        }
         const { boundary, agentType: hookAgentType } = classifyObservedHookEvent(eventName, mapped);
         const earlyHookSid = typeof json.session_id === 'string' && json.session_id
           ? json.session_id : 'daemon-hook';
@@ -4570,6 +4581,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // worth a broadcast of its own.
   codexOtel.onChanged = () => core.maybeBroadcastSessionsList();
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
+  hermesSessions.onChanged = () => core.maybeBroadcastSessionsList();
 
   // ===== Gateway adapter lifecycle =====
   // (gatewayAdapter + gatewayConnecting declared earlier, before HTTP server)
@@ -4588,7 +4600,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Swift's only Codex-app source, here a second opinion on top of the
     // observer. See bridge/src/codex-otel.ts.
     const observed = applyAwaitingOverlayToObserved(
-      hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions))),
+      hermesSessions.applyTo(hookCodexSessions.applyTo(codexOtel.applyTo(passiveSessionObserver.collect(sessions)))),
     )
       .map((s) => {
         // Steering feedback for observed Claude sessions: devices render

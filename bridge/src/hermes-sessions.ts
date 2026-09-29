@@ -1,0 +1,74 @@
+import type { ObservedSession } from './passive-observer.js';
+
+/** Hermes observer v1: a conversation survives turns, not explicit finalize.
+ * No process guessing, gateway singleton, transcript scraping, or steering. */
+export const HERMES_SILENCE_TTL_MS = 30 * 60_000;
+const MAX_SESSIONS = 128;
+const EVENTS = new Set(['session_start', 'user_prompt_submit', 'tool_start', 'tool_end', 'stop', 'session_end']);
+interface Entry { row: ObservedSession; lastAt: number; }
+
+export class HermesSessions {
+  private readonly sessions = new Map<string, Entry>();
+  private readonly ended = new Map<string, number>();
+  onChanged?: () => void;
+
+  /** False means this payload must not enter the generic timeline/APME path. */
+  note(event: string, payload: Record<string, unknown>, now = Date.now()): boolean {
+    const boundary = event.replace(/^hermes_/, '');
+    const sid = payload.session_id;
+    if (!event.startsWith('hermes_') || !EVENTS.has(boundary)
+      || typeof sid !== 'string' || !/^hermes-[a-f0-9]{32}$/.test(sid)) return false;
+    this.reap(now);
+    const opening = boundary === 'session_start' || boundary === 'user_prompt_submit';
+    if (opening) this.ended.delete(sid);
+    else if (this.ended.has(sid)) return false;
+    if (boundary === 'session_end') {
+      this.sessions.delete(sid);
+      this.ended.set(sid, now);
+      while (this.ended.size > MAX_SESSIONS) this.ended.delete(this.ended.keys().next().value!);
+      this.onChanged?.();
+      return true;
+    }
+    const old = this.sessions.get(sid);
+    // Recover from daemon restart only on real progress, never a stray Stop.
+    if (!old && !opening && boundary !== 'tool_start') return false;
+    const row: ObservedSession = old?.row ?? {
+      id: `observed:hermes:${sid}`, port: 0, pid: 0,
+      agentType: 'hermes', projectName: 'Hermes', alive: true,
+      state: 'idle', controlMode: 'observed', liveAnswerable: false,
+      startedAt: new Date(now).toISOString(),
+    };
+    if (typeof payload.project_name === 'string' && payload.project_name) row.projectName = payload.project_name.slice(0, 160);
+    if (typeof payload.cwd === 'string' && payload.cwd) row.cwd = payload.cwd;
+    if (typeof payload.model === 'string' && payload.model) row.modelName = payload.model.slice(0, 200);
+    row.lastActivityAt = now;
+    if (boundary === 'user_prompt_submit' || boundary === 'tool_start') row.state = 'processing';
+    if (boundary === 'stop') row.state = 'idle';
+    if (boundary === 'tool_start') {
+      row.currentTool = typeof payload.tool_name === 'string' ? payload.tool_name.slice(0, 120) : undefined;
+      row.currentTask = row.currentTool;
+    } else if (boundary === 'stop' || boundary === 'tool_end' || boundary === 'user_prompt_submit') {
+      row.currentTool = undefined;
+      row.currentTask = undefined;
+    }
+    this.sessions.delete(sid);
+    this.sessions.set(sid, { row, lastAt: now });
+    while (this.sessions.size > MAX_SESSIONS) this.sessions.delete(this.sessions.keys().next().value!);
+    this.onChanged?.();
+    return true;
+  }
+
+  private reap(now: number): void {
+    for (const [sid, entry] of this.sessions) {
+      if (now - entry.lastAt >= HERMES_SILENCE_TTL_MS) this.sessions.delete(sid);
+    }
+    for (const [sid, at] of this.ended) {
+      if (now - at >= HERMES_SILENCE_TTL_MS) this.ended.delete(sid);
+    }
+  }
+
+  applyTo(observed: ObservedSession[], now = Date.now()): ObservedSession[] {
+    this.reap(now);
+    return [...observed, ...[...this.sessions.values()].map(({ row }) => ({ ...row }))];
+  }
+}

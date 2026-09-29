@@ -82,3 +82,10 @@ describe('classifyObservedHookEvent', () => {
       .toEqual({ boundary: 'codex_bogus', agentType: 'claude-code' });
   });
 });
+
+describe('Hermes observer attribution', () => {
+  it.each(['session_start', 'user_prompt_submit', 'tool_start', 'tool_end', 'stop', 'session_end'])('%s stays Hermes', boundary => {
+    expect(classifyObservedHookEvent(`hermes_${boundary}`, `hermes_${boundary}`))
+      .toEqual({ boundary, agentType: 'hermes' });
+  });
+});

@@ -1513,6 +1513,23 @@ daemon
     }
   });
 
+program
+  .command('hermes-observer')
+  .description('Install the opt-in Hermes observer plugin (does not enable or launch Hermes)')
+  .option('--home <path>', 'Hermes profile home; defaults to HERMES_HOME or ~/.hermes')
+  .action(async (opts: { home?: string }) => {
+    const { installHermesObserver } = await import('@agentdeck/hooks');
+    try {
+      const target = installHermesObserver(opts.home);
+      log(`Hermes observer installed: ${target}`);
+      log('In the same Hermes profile, run: hermes plugins enable agentdeck-observer');
+      log('Restart Hermes after enabling. Requires an AgentDeck Node daemon with Hermes observation support.');
+    } catch (error) {
+      log(`Hermes observer installation failed: ${String(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
 daemon
   .command('install')
   .description('Install daemon auto-start (LaunchAgent on macOS, Scheduled Task on Windows, systemd --user unit on Linux)')

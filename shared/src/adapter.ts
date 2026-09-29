@@ -8,6 +8,7 @@ import type { TimelineEntry } from './timeline.js';
 export type AgentType =
   | 'claude-code'
   | 'openclaw'
+  | 'hermes'
   | 'codex-cli'
   | 'codex-app'
   | 'opencode'

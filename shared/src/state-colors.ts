@@ -4,6 +4,7 @@
  * TypeScript consumers import directly.
  * Native platforms (Android/Apple/ESP32) reference these hex values in comments.
  */
+import { Tide } from './design-tokens.js';
 import { State } from './states.js';
 import type { AgentType } from './adapter.js';
 
@@ -28,6 +29,7 @@ export function stateColor(state: string | undefined): string {
 
 export const AGENT_BRAND_COLORS: Record<string, string> = {
   'claude-code': '#C07058',  // terracotta
+  'hermes':      Tide.s100, // monochrome upstream mark on dark product surfaces
   'openclaw':    '#ff4d4d',  // red
   'codex-cli':   '#6366f1',  // indigo
   'codex-app':   '#6366f1',  // indigo

@@ -106,6 +106,7 @@ All surfaces follow the same rule:
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
+| Hermes observer monitoring (preview) | Relay only | Yes | Opt-in Python observer runs inside Hermes; Node daemon receives telemetry. Native daemon ingestion and native creature rendering remain tracked in #423. No App Store subprocess or installer. |
 | Claude Code hook monitoring | Yes | Yes | Local HTTP hook ingestion |
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
 | Existing terminal-session discovery | Limited | Yes | General `ps` / `lsof` / transcript discovery is CLI-only |

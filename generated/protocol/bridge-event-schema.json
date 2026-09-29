@@ -62,6 +62,7 @@
       "enum": [
         "claude-code",
         "openclaw",
+        "hermes",
         "codex-cli",
         "codex-app",
         "opencode",
