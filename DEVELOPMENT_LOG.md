@@ -41,6 +41,12 @@ macOS Release builds passed, as did the local ad-hoc-signed Release App Store
 invariant check. The final rig was captured for 24 seconds in the actual iPad
 Simulator using a deterministic local fixture.
 
+The user then identified the concept's paddle-like arms as unnatural. A focused
+built-in image edit (`hermes-mermaid-arms-v4.png`) preserves the head appearance
+and adds shoulder connections, elbow bends, wrists and asymmetric hand poses.
+The hand detail is an authoring reference to simplify at dashboard scale. This
+iteration changes concept references only, not the USDZ or runtime animation.
+
 ## 2026-09-30 — #423: Hermes observer preview and upstream identity research
 
 Hermes integration starts as explicit Node-daemon observation: the Python plugin

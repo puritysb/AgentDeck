@@ -62,3 +62,17 @@ microphone, ribbon, jewelry or symbol should be inferred from the accessory.
 Built-in image generation was used; both exact prompts and evaluation are in
 [hermes-identity-prompts.md](hermes-identity-prompts.md). This reference is not
 implemented faithfully in the current USDZ and has not received user approval.
+
+## Arm correction
+
+`hermes-mermaid-arms-v4.png` corrects the paddle-like arms in v3 while keeping
+its head, face, hair and accessory appearance. Shoulders now connect below the
+neck; bent elbows, slimmer wrists and small hands make the pose readable. One
+arm bends toward the torso while the other trails lower. Both depictions use
+the same pose. The generated fingers are more detailed than the eventual small
+runtime character needs; retain a thumb and grouped finger shape in the mesh.
+
+This is concept-only and does not replace the current USDZ. v4 guides the arm
+anatomy; the original Nous girl remains authoritative for head identity. The
+exact built-in image generation prompt is recorded in
+[hermes-identity-prompts.md](hermes-identity-prompts.md#arm-correction-v4).

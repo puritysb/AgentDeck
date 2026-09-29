@@ -36,3 +36,9 @@ contour fidelity and mesh implementation remain open. iOS Simulator Debug and
 macOS Release builds passed, as did the local ad-hoc-signed Release App Store
 invariant check. The final rig was captured for 24 seconds in the actual iPad
 Simulator using a deterministic local fixture.
+
+The user then identified the concept's paddle-like arms as unnatural. A focused
+built-in image edit (`hermes-mermaid-arms-v4.png`) preserves the head appearance
+and adds shoulder connections, elbow bends, wrists and asymmetric hand poses.
+The hand detail is an authoring reference to simplify at dashboard scale. This
+iteration changes concept references only, not the USDZ or runtime animation.

@@ -1,5 +1,21 @@
 # Hermes identity correction prompts
 
+## Arm correction, v4
+
+`hermes-mermaid-arms-v4.png` edits only the concept's arms/shoulder junctions,
+using v3 as the edit target with the built-in image generation tool. Visual
+inspection finds clearer shoulder/elbow/wrist connections and asymmetric
+resting poses while retaining the head's appearance. The fingers are more
+detailed than needed at dashboard scale; simplify them to a palm/finger group
+and thumb during modeling. This is still concept art, not a runtime mesh.
+
+### Exact arm-edit prompt
+
+Use case: precise-object-edit.
+Edit the attached Nous girl mermaid concept. Change ONLY the arms and their shoulder-to-torso junctions in BOTH the full-body view and enlarged view. Keep the head, white head accessory, hair, eyes, face shape, lips, expression, head pose, body/tail silhouette, colors, lighting, background and layout unchanged. Do not redraw or beautify the head.
+Replace the two boneless white paddle-shaped appendages with short, naturally connected stylized human arms. Show a subtle rounded shoulder on each outer side of the upper torso BELOW the neck, a gently tapered upper arm, a readable softly bent elbow, a slimmer wrist, and a small simplified hand with a visible thumb and a unified finger group. No mechanical joint balls or anatomical muscle detail. The hands should be small and graceful, not oversized mittens and not flippers.
+Give the arms a relaxed underwater pose with mild asymmetry: the near arm bends gently inward with the small hand beside the lower chest; the far arm is slightly lower and trails outward with its hand angled softly downward. Both shoulders remain relaxed, not shrugging. Keep arms compact and cute, but long enough for elbow and wrist to read. Maintain smooth pale skin and the modest teal bodice. Ensure no neck-mounted arms, detached hands, extra fingers, shoulder gaps, or arms embedded in hair. Match the same anatomy and pose in the enlarged depiction. Everything above the shoulders must remain exactly as supplied.
+
 Generated with the built-in image generation tool on 2026-09-30. The final
 accessory correction is saved as `hermes-mermaid-identity-v3.png`. This is an
 authoring reference, not the runtime model or an approved design. Preserve the

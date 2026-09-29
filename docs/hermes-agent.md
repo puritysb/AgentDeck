@@ -77,6 +77,10 @@ closely as possible. `hermes-mermaid-identity-v3.png` corrects the concept in tw
 image-generation passes, including removing a wrongly forked accessory tip.
 The original portrait remains authoritative; this new reference is not yet
 faithfully implemented in the USDZ or approved by the user.
+The subsequent `hermes-mermaid-arms-v4.png` corrects the concept's paddle-like
+arms with connected shoulders, bent elbows, wrists and asymmetric hand poses.
+This is an anatomy reference only; its detailed fingers should be simplified
+for the small runtime character. No corresponding USDZ update is claimed.
 
 | Criterion | Observed result | Status |
 |---|---|---|
