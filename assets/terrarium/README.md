@@ -273,3 +273,29 @@ source/export hashes and topology counts, and renders four 96 px views. Native
 import checks include clone isolation and repeated weight application. Neither
 these standalone checks nor the authored poses establish app integration,
 full deformation coverage, visual acceptance or physical-device performance.
+
+## Hermes: 2D turnaround first, then 3D by measurement
+
+Hermes is designed as a consistent set of 2D views before any mesh work. The
+brief for the image generator is `references/hermes-turnaround-brief.md`: it
+lists the views, canvas rules and the design decisions the user has already
+made. The generated views go under `references/turnaround/`.
+
+`fit-hermes-views.py` measures a built model against those views. For each view
+it segments the reference by colour into hair, light (skin, eyes, headset) and
+teal. It then renders the model from the matching orthographic camera with the
+same flat class colours, normalises both to the same height, and reports IoU
+per class plus the hair height/width ratios. Overlays go next to `fit.json`:
+red is reference only, cyan is model only, grey is shared.
+
+```sh
+blender --background <model.blend> --python assets/terrarium/fit-hermes-views.py -- \
+    --views front=<front.png>@0 three-quarter=<tq.png>@45 profile=<side.png>@90 back=<back.png>@180 \
+    --out diagnostics/hermes-mermaid/fit
+```
+
+These are proportion checks, not an aesthetic score. Against the older
+`hermes-mermaid-turnaround.png` (no headset, different face), the v18 model
+reports hair IoU 0.54 (front), 0.53 (side) and 0.70 (back). Its hair height is
+0.47 against the turnaround's 0.54: the model's hair is short relative to its
+body.
