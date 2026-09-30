@@ -30,13 +30,137 @@ unaltered Nous girl geometry.
 
 ## Native aquarium motion
 
-**Visual review remains open:** the user rejected the current USDZ after the
-iPad Simulator app capture. New concept references under
-`assets/terrarium/references/` move the face closer to the original Nous girl.
-The runtime mesh now has a skinned body and independent face controls, but
-fixed-view comparison still fails visual acceptance. The concept sheet is not
-a screenshot of the implemented model; passing tests is not visual acceptance.
+**Figure adaptation of the official mark (2026-09-30).** The identity source is
+the official Hermes Agent mark (`design/brand/hermes.svg`, the Nous girl). The
+generated concept sheets are **not** the source: they drifted to a round chibi
+face and low-poly facets that the mark never had, and a faceted chibi rebuild
+from them was rejected for exactly that face shape. The model adapts the mark
+the way figure lines (Nendoroid-style) adapt a mature character. The head and
+eyes grow and the lower face shortens, but every trait that identifies her in
+the mark is kept:
 
+| Trait in the mark | Model |
+|---|---|
+| Oval face tapering to a soft point | Analytic face with a chin taper and receding jaw (`face_z`); never a round face |
+| Long almond eyes, heavy upper lid covering the iris top, bold lash line with an outward tail, lid crease, thin lower line | Decal eye at a ~1.6:1 opening. The iris is clipped under the lid. Crease and lower line are separate strokes |
+| Small hooked nose stroke; small, dark, defined lips | Soft stroke; dark upper lip with a cupid's-bow dip, lighter lower lip |
+| Heavy blunt fringe to the lashes; side locks framing the cheeks; one stray strand over the cheek | Fringe sheet with a few splits; outer locks drop along the cheeks; `stray_strand` |
+| Jagged gloss band across the crown and fringe; small crescent sheen at the side | Real reflections on glossy hair with shallow strand grooves (not decals) |
+| Long bob whose ends flip outward in C-curls | Shell ends roll out and up; the `hermes_hair_*` curls sway |
+| White headset band with its yoke | Band over the crown sinking into the hair, a yoke at each side; earcups under the hair |
+| Ink on cream, smooth (no facets) | `ink-900` / `tide-50` tokens, smooth shading |
+
+**Reading the mark correctly (2026-09-30).** The mark's white arc is a
+**headset**, not a headband: the small shape where it meets the hair is the
+yoke, and the earcups are hidden under the hair. Its white strokes on the hair
+and the line of the face contour are **light**, not drawn lines. An experiment
+that copied them literally (ink outlines, cream gloss decals, unlit materials)
+read as a print sticker and was rejected in favour of the lit model. The
+model therefore has:
+
+- A headset band over the crown that sinks into the hair at both sides, with a
+  rounded yoke at each entry point. The earcups are omitted because they are
+  covered by the hair.
+- Satin black hair (roughness .52): one smooth mass with shallow, irregular
+  strand grooves, so the highlight breaks into the jagged band the mark draws.
+  It comes from real reflection, not a decal. A lacquer finish (roughness .30)
+  read as plastic. The only separate pieces are the two swaying ends, short
+  flips at the hem. Longer clumps stood off the shell as panels beside the ear.
+- The band stops at its yokes (±1.40 rad) and tucks into the hair there. Run
+  further, it showed as a white strip beside the cheek in profile.
+- The face follows the mark's calm expression rather than a wide-eyed chibi
+  one. It is an oval narrowing to a gently pointed chin. The almond eyes have
+  a heavy lid over the top of the iris, and the iris rests on the lower lid.
+  The lips are small and full. Tilting the lid line toward the nose read as
+  anger, so the tilt stays small.
+- Feature details are read off the mark itself. The mark hides the brows under
+  the fringe, but on the figure their absence read as a different person. Fine,
+  softly arched brows sit just under the hem (`BROW_Y`); there is no lid
+  crease. The
+  upper lashes are one heavy mass ending in three spiky outer lashes, with
+  small spikes on the lower lash line. The iris is solid ink with its highlight
+  at the upper outer side. The nose is a single hooked nostril stroke. The lips
+  are a dark M-shaped upper lip over a fuller lower lip, placed about 60% of
+  the way from eye to chin.
+- The hair falls in a few broad, uneven locks, not fine equal ridges. The ends
+  flip out and up; a wide flare read as a bell.
+- The bangs are the front of the hair shell itself (`FRINGE_K`), ending in one
+  continuous blunt hem. A separate fringe sheet showed as a seam across the
+  crown or a boxy visor, and notched splits read as bangs broken in the middle.
+- The body and tail are smooth. Diamond facets made the figure read as if it
+  were made of pieces.
+- Torso, arms and hands are **one fused surface**: voxel remesh plus smooth,
+  with torso rings resampled by Catmull-Rom (straight segments showed as
+  bands). Separate tubes and balls met the torso in visible steps. Skin
+  weights are computed per vertex. A vertex belongs to the arm only if the
+  arm's source surface is nearer than the torso's (`TORSO_BVH`); proximity
+  alone let hip skin follow a waving arm and stretch into spikes. Arm
+  ownership blends in across the shoulder. The skin/teal neckline is snapped
+  onto its curve after remeshing.
+- **Low-poly hair after the user's chosen concept crop (2026-10-01).** The bob is
+  larger and rounder (`RX .272`), collapse-decimated to about 3.5% and
+  flat-shaded, in near-black. The ends are shaped into the shell as broad
+  pointed locks that flick out and up (`tooth` in `column()`). Separate flick
+  clumps read as boxy flaps or sticks, and sharper teeth read as horns from the
+  front. The bangs carry a few pointed splits in the hem, not separate strand
+  pieces, and have no strand ridges, which read as slats. The headset band sits
+  forward, just behind the bangs, and is wider. Its clasp is a round white end
+  with a black dot and a small hook, after the concept. The swaying locks are
+  now rig joints only, at the longest side locks.
+- The iris sits high under the heavy lid, as in the mark. The jaw is a long,
+  nearly straight line to a small soft chin. Below the crown the hair falls in
+  a gentle wave: each lock swings side to side and in and out, with a phase
+  that drifts around the head.
+- No ink outline. The silhouette comes from lighting, as in any lit figure.
+
+**The face is designed in 2D first.** `assets/terrarium/hermes_face.py` is the
+single source for the face: outline, eyes (almond, heavy lid, bold liner with a
+thin wing, crease, lower lash, near-black iris), nose shadow and lips, all in
+head units. `python3 assets/terrarium/hermes_face.py <dir>` writes the review
+sheet. The user approved that sheet before any mesh was built. The Blender
+builder imports the same functions: the head's front width follows the sheet's
+outline, and every feature decal is a sheet shape projected onto the face. What
+is approved on the sheet is what lands on the model.
+
+Earlier face variants were tuned as numbers inside the 3D builder and never
+matched an approved face. They kept reading as a mannequin or a Mii, so they
+were discarded. The design tokens' ink family is green-tinted, so the sheet
+keeps each token's lightness and drops its hue. Otherwise the eyes and lips
+read teal.
+
+Construction rules, each learned from a rejected render:
+
+- **The head is built from silhouettes, not a warped ellipsoid.** A cube-sphere
+  is mapped onto three curves: front width, front profile and back profile.
+  Each horizontal section is a superellipse, flatter at the front. The curves
+  give a cranium over a face plane, cheeks that hold below the eyes, and a jaw
+  converging to a small chin. An ellipsoid tapered toward the chin read as a
+  mannequin egg in every variant.
+- **The head is fitted to the sheet**, with a small nose bridge added so the
+  three-quarter view has a profile.
+- **No custom split normals on the face.** Bending face normals toward a sphere
+  is the usual anime trick, but after Blender's USD export it renders as a
+  dotted speckle in RealityKit (verified against a no-normals control).
+- Face artwork is decals projected onto the face mesh (BVH). Each triangle is
+  oriented against the surface actually under it, because RealityKit culls back
+  faces and Blender does not. The builder asserts that none points into the
+  head.
+- **Hair is a collapse-decimated shell with the mark's silhouette, plus a few
+  clumps.** The large irregular planes match the concept's faceted bob. A fully
+  smooth shell read as a helmet; thirty-odd separate clumps read as messy
+  curtain stripes. Clumps are reserved for the flipped ends (one per side is
+  the swaying `hermes_hair_*` lock) and a few pointed bang tips.
+- Skin is warm `tide-100`; the arms reach the hips, with a mitten hand and thumb.
+- Side curtains wrap the face at eye level and fall back only below the cheek.
+  Pushing them back higher exposes the face edge.
+
+The schema-2 contract (13 bones, face/hair controls, `mouth_open` and
+`closed_lid_*`) is unchanged, so `HermesMermaid.swift`/`HermesSwim.swift` need
+no edits. All 9 `HermesAquariumTests` pass on macOS against the installed USDZ.
+`render-hermes-character.swift` mirrors the rig's initial hiding and takes
+`blink` to show the closed lid. Still open: an in-app iPad capture and the
+user's visual acceptance of the 3D face. Passing tests is not visual
+acceptance.
 
 The Blender source is `assets/terrarium/hermes-mermaid.blend`, reproducibly
 built by `build-hermes-mermaid.py`. Apple bundles its USDZ; a portable GLB is

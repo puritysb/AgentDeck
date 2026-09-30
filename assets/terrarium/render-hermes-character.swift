@@ -27,6 +27,14 @@ import Foundation
    anchor.addChild(light)
   }
   view.scene.addAnchor(anchor)
+  // Mirror HermesMermaid.Rig: closed lids and the mouth opening start hidden.
+  for name in ["mouth_open", "hermes_lid_left", "hermes_lid_right"] { root.findEntity(named: name)?.isEnabled = false }
+  if CommandLine.arguments.count > 3, CommandLine.arguments[3] == "blink" {
+   for side in ["left", "right"] {
+    root.findEntity(named: "hermes_eye_" + side)?.isEnabled = false
+    root.findEntity(named: "hermes_lid_" + side)?.isEnabled = true
+   }
+  }
   if CommandLine.arguments.count > 3 {
    let fraction: Float = CommandLine.arguments[3] == "half" ? 0.5 : 1
    func blink(_ node: Entity) {
