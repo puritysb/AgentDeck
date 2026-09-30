@@ -1,0 +1,34 @@
+{
+  "source": "Blender Studio Human Base Meshes v1.4.1",
+  "license": "CC0-1.0",
+  "head_eye_centers": {
+    "L": [
+      0.04401803,
+      -0.09320105,
+      0.17259991
+    ],
+    "R": [
+      -0.04401803,
+      -0.09320105,
+      0.17259991
+    ]
+  },
+  "credits": [
+    {
+      "name": "Body Female - Stylized",
+      "author": "Julien Kaspar",
+      "description": "Generic stylized topology. Based on the open source character \"Rain\""
+    },
+    {
+      "name": "Head - Stylized",
+      "author": "Julien Kaspar",
+      "description": "Generic stylized head topology"
+    },
+    {
+      "name": "Eye - Stylized",
+      "author": "Julien Kaspar",
+      "description": "Stylized eyeball without a cornea"
+    }
+  ],
+  "download": "https://download.blender.org/demo/asset-bundles/human-base-meshes/human-base-meshes-bundle-v1.4.1.zip"
+}

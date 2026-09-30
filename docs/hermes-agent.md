@@ -129,6 +129,52 @@ GLB is not a normalized, rigged runtime replacement. The existing app resource
 is unchanged. Next production work starts with the original-matching neutral
 head and separate head accessory; neither rejected experiment closes #428.
 
+### Connected character candidate v6 (not bundled)
+
+`assets/terrarium/hermes-character.blend` is a new, editable candidate, exported
+alongside USDZ and GLB. Its neutral face still fails the original Nous girl
+likeness gate. It is **not** the app resource `hermes-mermaid.usdz`; the existing
+app and its earlier 39 native tests continue to use that earlier model.
+
+The candidate uses the credited CC0 Blender Studio head/body topology in
+`sources/blender-studio-base.blend`. The crown accessory is separate from a
+continuous bob. Neck proportions, curved tail cross-sections, fitted neckline
+and shoulder/elbow/wrist bind positions were rebuilt. Hand weights are assigned
+from source anatomy, never inferred from tail height. Tail rings use monotonic
+arc-length ordering; the builder rejects reversed spans and hands bound to tail
+joints. These guards cover defects observed in actual renders.
+
+There are 13 deformation bones and 11 relative shape names: bilateral lid
+closure, two intermediate lid corrections, smile, concern, jaw, brow lift/frown
+and two lower-hair sways. Lids cover the actual eye surface without deforming
+the forehead/nose. For blink fraction `t`, use closure weight `t` and the matching
+middle correction `4*t*(1-t)`. All expressions and hair shapes start at zero.
+The rig manifest is `hermes-character-rig.json`. This candidate has a different
+face contract from the currently bundled rigid-control rig; copying its USDZ
+into the app alone is not a valid integration.
+
+`validate-hermes-character.swift` imports the actual USDZ using RealityKit and
+checks required bones/shapes, neutral defaults, independent clone weights,
+repeated application and Y-up bounds. `render-hermes-character.swift` captures
+the imported mesh directly through RealityKit in an isolated review view,
+without launching AgentDeck or its daemon. Blender and native images are kept
+separate: Cycles lighting is not evidence of aquarium appearance.
+
+| Candidate criterion | Current finding |
+|---|---|
+| Anatomy and tail topology | Sampled bent arms retain volume; hands no longer follow tail joints; the long folded tail seam is removed. All-angle extreme poses and finger articulation remain unverified. |
+| Head accessory | Narrow crown band with one asymmetric hooked end; the visible floating/folded strip was corrected. |
+| Original facial identity | **Incomplete.** Nose/lips, eye character and overall proportions still read as a generic stylized doll. |
+| Hair silhouette | **Incomplete.** Continuous topology and smooth crown improve seams, but the bob and side locks remain too thick and helmet-like. |
+| Expressions and finish | Native lid closure works without pulling down the whole forehead. Lid margins, garment/neck joins and expression combinations still need visual refinement; shader and small-scale readability are not accepted. |
+| Aquarium motion | Not integrated. The builder's working/waiting images are authored pose exercises, not samples of the shipped Swift controller or evidence of live interactions. |
+
+Reproduction commands and filenames are in `assets/terrarium/README.md`.
+The local inspection page is `diagnostics/hermes-mermaid/character-review.html`.
+Geometry and import checks are technical gates, not an aesthetic score. #428
+and Draft #427 remain open; no perfection, approval or completed replacement is
+claimed.
+
 ### Visual evaluation, 2026-09-30
 
 `evaluate-hermes-model.py` renders the actual saved Blender model from fixed

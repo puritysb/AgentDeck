@@ -244,3 +244,32 @@ surface quality and animation topology remain open in #428. See
 for pinned dependencies, sources, measured results and the production sequence.
 The original Nous girl outranks `references/hermes-mermaid-reconstruction-v5.png`,
 which is an experimental input, not an approved replacement design.
+
+
+## Connected Hermes character candidate (v6)
+
+This candidate does not replace the bundled `hermes-mermaid.usdz`. The original
+Nous girl likeness and final surface quality remain incomplete; see the single
+assessment in [the Hermes study](../../docs/hermes-agent.md#connected-character-candidate-v6-not-bundled).
+The full editable source is `hermes-character.blend`, with USDZ/GLB exports and
+`hermes-character-rig.json`. `build-hermes-portrait.py` is the head-authoring
+module; its separate study `.blend` stays in diagnostics. The normalized CC0
+source subset and attribution are retained under `sources/`.
+
+```sh
+blender --background --python-exit-code 1 --python assets/terrarium/build-hermes-character.py
+blender --background --python-exit-code 1 --python assets/terrarium/evaluate-hermes-character.py
+xcrun swiftc -parse-as-library assets/terrarium/validate-hermes-character.swift -o /tmp/hermes-asset-check
+/tmp/hermes-asset-check assets/terrarium/hermes-character.usdz
+xcrun swiftc -parse-as-library assets/terrarium/render-hermes-character.swift -o /tmp/hermes-native-preview
+/tmp/hermes-native-preview assets/terrarium/hermes-character.usdz diagnostics/hermes-mermaid/character-v6/native-neutral.png
+/tmp/hermes-native-preview assets/terrarium/hermes-character.usdz diagnostics/hermes-mermaid/character-v6/native-blink.png blink
+```
+
+Tested with Blender 5.2.2 and the local macOS RealityKit SDK. The builder creates
+neutral front/portrait/profile, working/waiting joint poses and full-blink
+renders. The evaluator checks weights and zero expression defaults, records
+source/export hashes and topology counts, and renders four 96 px views. Native
+import checks include clone isolation and repeated weight application. Neither
+these standalone checks nor the authored poses establish app integration,
+full deformation coverage, visual acceptance or physical-device performance.

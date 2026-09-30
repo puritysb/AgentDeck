@@ -1,0 +1,35 @@
+{
+  "schema": 3,
+  "boneNames": [
+    "spine",
+    "tail_base",
+    "tail_mid",
+    "tail_tip",
+    "fin",
+    "fin_left",
+    "fin_right",
+    "arm_left",
+    "elbow_left",
+    "wrist_left",
+    "arm_right",
+    "elbow_right",
+    "wrist_right"
+  ],
+  "faceShapes": [
+    "blink_left",
+    "blink_right",
+    "smile",
+    "concern",
+    "jaw_open",
+    "brow_lift",
+    "brow_frown",
+    "blink_mid_left",
+    "blink_mid_right"
+  ],
+  "hairShapes": [
+    "hair_sway_left",
+    "hair_sway_right"
+  ],
+  "source": "Blender Studio CC0 Human Base Meshes v1.4.1; Nous girl portrait adaptation",
+  "status": "candidate"
+}
