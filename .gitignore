@@ -118,3 +118,10 @@ _ds_gen/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# Hermes candidate build outputs and concept sheets live in the
+# assets-hermes-character-candidate GitHub prerelease, not in git (PR #427).
+assets/terrarium/hermes-character.blend
+assets/terrarium/hermes-character.usdz
+assets/terrarium/hermes-character.glb
+assets/terrarium/references/hermes-mermaid-*.png

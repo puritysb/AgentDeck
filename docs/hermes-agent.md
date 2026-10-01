@@ -132,7 +132,9 @@ head and separate head accessory; neither rejected experiment closes #428.
 ### Connected character candidate v6 (not bundled)
 
 `assets/terrarium/hermes-character.blend` is a new, editable candidate, exported
-alongside USDZ and GLB. Its neutral face still fails the original Nous girl
+alongside USDZ and GLB by `build-hermes-character.py`. These outputs are not
+committed; regenerate them or download the reviewed copies from the
+[`assets-hermes-character-candidate`](https://github.com/puritysb/AgentDeck/releases/tag/assets-hermes-character-candidate) prerelease. Its neutral face still fails the original Nous girl
 likeness gate. It is **not** the app resource `hermes-mermaid.usdz`; the existing
 app and its earlier 39 native tests continue to use that earlier model.
 

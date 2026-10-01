@@ -251,7 +251,10 @@ which is an experimental input, not an approved replacement design.
 This candidate does not replace the bundled `hermes-mermaid.usdz`. The original
 Nous girl likeness and final surface quality remain incomplete; see the single
 assessment in [the Hermes study](../../docs/hermes-agent.md#connected-character-candidate-v6-not-bundled).
-The full editable source is `hermes-character.blend`, with USDZ/GLB exports and
+`build-hermes-character.py` writes the editable `hermes-character.blend` and its
+USDZ/GLB exports; they are build outputs, not committed (`.gitignore`). Rebuild
+them with the first command below, or download the reviewed v6 outputs from the
+[`assets-hermes-character-candidate`](https://github.com/puritysb/AgentDeck/releases/tag/assets-hermes-character-candidate) prerelease. The rig contract stays in
 `hermes-character-rig.json`. `build-hermes-portrait.py` is the head-authoring
 module; its separate study `.blend` stays in diagnostics. The normalized CC0
 source subset and attribution are retained under `sources/`.
