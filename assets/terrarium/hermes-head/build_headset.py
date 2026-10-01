@@ -15,10 +15,10 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
 OUT = sys.argv[sys.argv.index("--") + 1]
-A = Vector((-1.70, 0.35, 2.85))     # her right end (hidden)
-B = Vector((1.70, 0.35, 2.85))      # her left end: the clasp
-C = Vector((0.0, -0.80, 3.95))      # crown, just behind the fringe; forward so the band arches over the front of the dome as in the master
-WIDTH, THICK, LIFT = 0.58, 0.09, 0.10   # master: a firm band (0.78 read as a plank once it sat forward)   # profile sheet: band ~0.45 wide; lift clears the facet jitter (+-0.05)
+A = Vector((-1.85, -0.55, 2.80))    # her right end (hidden)
+B = Vector((1.85, -0.55, 2.80))     # her left end: the clasp, at the side-front above the fringe corner (master; front sheet x ~1.85 at z 2.8)
+C = Vector((0.0, -0.95, 3.85))      # crown, just behind the fringe; forward so the band arches over the front of the dome as in the master
+WIDTH, THICK, LIFT = 0.46, 0.09, 0.10   # master: a firm band (0.78 read as a plank once it sat forward)   # profile sheet: band ~0.45 wide; lift clears the facet jitter (+-0.05)
 HIDE_BELOW_Z = 3.85                 # her right side dives under the hair from here
 N = 64
 

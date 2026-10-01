@@ -143,6 +143,8 @@ def build(head, mats, joint):
         _bake(hair, "hair_under", mats.get("under", mats["hair"]), head, False)
     else:
         facet_mass(hair.data)
+        # (smooth-shading the dome-to-fringe band was tried 2026-10-02: it read
+        # as a glossy plastic helmet and lost the faceted style; kept flat)
         _bake(hair, "portrait_bob", mats["hair"], head, False)
 
     # sway joints at the flick roots; the flick locks hang from them

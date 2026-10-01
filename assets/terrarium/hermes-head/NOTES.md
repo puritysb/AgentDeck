@@ -492,6 +492,49 @@ camera 2.121.
 
 Review sheet: `diagnostics/hermes-mermaid/nous-v19-natural/natural-review.png`.
 
+## Silhouette pass (2026-10-02, "until nothing differs")
+
+Driven by row-by-row ortho silhouette widths against the front and profile
+sheets (table in `diagnostics/hermes-mermaid/nous-v19-silhouette/silhouette-widths.txt`).
+
+**Edits:**
+- **E58:** the back moved in 0.45 (it was still deeper than the profile
+  sheet at every height), and the crown-front came forward 0.3. The sheet
+  is asymmetric: her right curtain hugs the face at z 2.0-1.4.
+- **E59/E60:** second steps on the same three gaps, plus her right lower
+  hair tucking in at the hem.
+- **E61:** the profile fringe tips hang to z ~1.75.
+- **E62:** 60% of E51 undone. E51 had left a waist at z 2.0-2.2, which
+  rendered as a brim.
+- **E63:** the fringe hangs nearly straight from the dome, as in the
+  profile sheet.
+- **Flips:** her right flips hook at z ~1.0-1.2 and reach less far out.
+
+**Silhouette result.** Front and profile are within ±0.2 model units at
+every height from z 2.6 to 0. There are two exceptions:
+- the profile fringe tip at z 1.8 (-0.40);
+- rows below the chin, where the sheets have no body.
+
+**Facets.** Vertical ring jitter is cut and the per-column ridge raised, so
+the faceting runs as strand planes from the crown, not horizontal bands.
+
+**Headset.** It now sits forward as the brief and the master say: the
+clasp is at the side-front above the fringe corner (B (1.85, -0.55, 2.8)),
+and the band is 0.46 wide. The front and profile sheets disagree on the
+clasp position, so the master decides.
+
+**Rejected.** Smooth-shading the dome-to-fringe band read as a glossy
+plastic helmet.
+
+**What remains (not silhouette).**
+- Under the app's high sun, the up-facing dome and the front-facing fringe
+  still meet in a visible light/dark edge. This is lighting and style; the
+  concepts are illustrations with painted light.
+- The master's fringe has thin splits; the blunt hem matches the front
+  sheet instead.
+
+Review sheet: `diagnostics/hermes-mermaid/nous-v19-silhouette/silhouette-review.png`.
+
 Known gaps (honest, as of the final sheet):
 
 - (Addressed by the topology pass:) the thick visor fringe and the grid facets.

@@ -35,14 +35,17 @@ def facet_mass(me, jitter=0.11, lift=0.035, axis_y=0.6):
         k = 0.25 if on_rim else 1.0    # rims (hems, the face window) keep their measured line
         if refined:
             k *= 0.0                   # dense fringe rows: full jitter read as a band of spikes
-        v.co += (tang * _hash(r, c, 1) * jitter * 0.8 + down * _hash(r, c, 2) * jitter * 0.75) * k
+        # sideways jitter only: vertical jitter staggered the rings and cut the
+        # surface into horizontal bands (a 'brim' read in RealityKit, 2026-10-02)
+        v.co += (tang * _hash(r, c, 1) * jitter * 0.8 + down * _hash(r, c, 2) * jitter * 0.15) * k
         # alternate ridge / groove by column: the concept's facets run as long
         # strand planes from the crown down, not as a random diamond quilt with
         # horizontal ring bands (RealityKit review, 2026-10-01)
         # (a strict +/- alternation read as a pleated lampshade; per-column random
         # heights give irregular strand planes)
         ridge = _hash(0, c, 7) if not refined else 0.0
-        v.co += radial * (ridge * 0.6 + _hash(r, c, 3) * 0.4) * lift * k
+        # the per-column ridge carries the facet look: strand planes from the crown down
+        v.co += radial * (ridge * 1.8 + _hash(r, c, 3) * 0.25) * lift * k
     quads = [f for f in bm.faces if len(f.verts) == 4]
     for f in quads:
         vs = list(f.verts)
