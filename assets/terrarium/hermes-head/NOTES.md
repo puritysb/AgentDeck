@@ -523,8 +523,15 @@ clasp is at the side-front above the fringe corner (B (1.85, -0.55, 2.8)),
 and the band is 0.46 wide. The front and profile sheets disagree on the
 clasp position, so the master decides.
 
-**Rejected.** Smooth-shading the dome-to-fringe band read as a glossy
-plastic helmet.
+**Rejected.**
+- Smooth-shading the dome-to-fringe band read as a glossy plastic helmet.
+- A brighter second material on the fringe front read as a separate blue
+  band.
+
+**Follow-up.** The fringe centre is 0.06 lower (`refine_fringe.HEM`), so the
+profile fringe tip now matches within 0.08. Her right upper flip hooks at
+z ~1.0. The sheet's flip tip is a thin hook, so single rows at z 1.2-1.4
+still trade ±0.3-0.7 against each other.
 
 **What remains (not silhouette).**
 - Under the app's high sun, the up-facing dome and the front-facing fringe

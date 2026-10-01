@@ -145,6 +145,8 @@ def build(head, mats, joint):
         facet_mass(hair.data)
         # (smooth-shading the dome-to-fringe band was tried 2026-10-02: it read
         # as a glossy plastic helmet and lost the faceted style; kept flat)
+        # (a brighter second material on the fringe front was tried 2026-10-02:
+        # it read as a separate blue band with a harder edge; kept one material)
         _bake(hair, "portrait_bob", mats["hair"], head, False)
 
     # sway joints at the flick roots; the flick locks hang from them

@@ -47,8 +47,8 @@ LOCKS = [
     # its ENDS flip outward. Wide blades rooted at z 2.1 read as earmuffs. Each
     # flip is now a narrow lock rooted on the bob (upper flips hook at jaw level, z ~0.6-1.0, as on the sheet; lower ones at the hem) that runs down the
     # surface and hooks out and up only at the hem, on both sides.
-    ("up_R1", [("hair", -78, 1.9, -0.05), ("hair", -80, 1.5, 0.06), ("hair", -82, 1.0, 0.12),
-               ("hair", -83, 0.62, 0.40), ("hair", -83, 0.80, 0.70), ("hair", -81, 1.02, 0.72)],
+    ("up_R1", [("hair", -78, 1.9, -0.05), ("hair", -80, 1.5, 0.06), ("hair", -82, 0.85, 0.12),
+               ("hair", -83, 0.45, 0.40), ("hair", -83, 0.66, 0.78), ("hair", -81, 1.02, 0.86)],
      [0.80, 0.80, 0.72, 0.50, 0.22, 0.0], 0.20),
     ("lo_R1", [("hair", -96, 1.1, -0.05), ("hair", -97, 0.3, 0.06), ("hair", -98, -0.25, 0.12),
                ("hair", -99, -0.48, 0.32), ("hair", -99, -0.30, 0.54), ("hair", -97, -0.08, 0.55)],
