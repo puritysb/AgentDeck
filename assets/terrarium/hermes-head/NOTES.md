@@ -537,8 +537,10 @@ still trade ±0.3-0.7 against each other.
 - Under the app's high sun, the up-facing dome and the front-facing fringe
   still meet in a visible light/dark edge. This is lighting and style; the
   concepts are illustrations with painted light.
-- The master's fringe has thin splits; the blunt hem matches the front
-  sheet instead.
+- (Resolved later on 2026-10-02.) Both references draw the fringe as locks
+  with narrow wedge splits. `refine_fringe.SPLITS` raises one hem vertex
+  per split, on a denser hem (CUTS 7, ~0.045 spacing). That gives five
+  slim splits, not the wide V that read as horns.
 
 Review sheet: `diagnostics/hermes-mermaid/nous-v19-silhouette/silhouette-review.png`.
 
