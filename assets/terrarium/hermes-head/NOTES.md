@@ -589,8 +589,13 @@ face extents per z):
   matches the master (p50-p5 46.3 vs 46.7).
 
 **Remaining.** In profile the eye is still a front-projected drawing, not a
-side-view eye. A real side eye would need a 3D eye or a view-dependent
-decal.
+side-view eye.
+
+E66 was tried and reverted: flattening the eye-level face front so the eye
+sits on a front-facing plane barely changed the profile read. A side-view
+eye needs real eye geometry (a recessed eyeball with iris/pupil, and lids
+as geometry). That changes how the `hermes_eye_*` / `hermes_pupil_*` /
+`hermes_lid_*` nodes are built, though not their names.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-profile/profile-review.png`.
 
