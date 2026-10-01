@@ -119,26 +119,28 @@ enum class GatewayMethodName(val value: String) {
     PluginApprovalResolve("plugin.approval.resolve"),
     SessionsList("sessions.list"),
     SessionsMessagesSubscribe("sessions.messages.subscribe"),
+    SessionsMessagesUnsubscribe("sessions.messages.unsubscribe"),
     SessionsSubscribe("sessions.subscribe"),
     SystemPresence("system-presence");
 
     companion object {
         public fun fromValue(value: String): GatewayMethodName = when (value) {
-            "chat.abort"                  -> ChatAbort
-            "chat.send"                   -> ChatSend
-            "connect"                     -> Connect
-            "exec.approval.list"          -> ExecApprovalList
-            "exec.approval.resolve"       -> ExecApprovalResolve
-            "health"                      -> Health
-            "logs.tail"                   -> LogsTail
-            "models.list"                 -> ModelsList
-            "plugin.approval.list"        -> PluginApprovalList
-            "plugin.approval.resolve"     -> PluginApprovalResolve
-            "sessions.list"               -> SessionsList
-            "sessions.messages.subscribe" -> SessionsMessagesSubscribe
-            "sessions.subscribe"          -> SessionsSubscribe
-            "system-presence"             -> SystemPresence
-            else                          -> throw IllegalArgumentException()
+            "chat.abort"                    -> ChatAbort
+            "chat.send"                     -> ChatSend
+            "connect"                       -> Connect
+            "exec.approval.list"            -> ExecApprovalList
+            "exec.approval.resolve"         -> ExecApprovalResolve
+            "health"                        -> Health
+            "logs.tail"                     -> LogsTail
+            "models.list"                   -> ModelsList
+            "plugin.approval.list"          -> PluginApprovalList
+            "plugin.approval.resolve"       -> PluginApprovalResolve
+            "sessions.list"                 -> SessionsList
+            "sessions.messages.subscribe"   -> SessionsMessagesSubscribe
+            "sessions.messages.unsubscribe" -> SessionsMessagesUnsubscribe
+            "sessions.subscribe"            -> SessionsSubscribe
+            "system-presence"               -> SystemPresence
+            else                            -> throw IllegalArgumentException()
         }
     }
 }

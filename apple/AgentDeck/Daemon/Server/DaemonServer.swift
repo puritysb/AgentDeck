@@ -446,6 +446,14 @@ enum CodexRolloutResponseReader {
     /// "desktop". `nil` means "could not read", never "not desktop" — the
     /// caller retries later rather than caching a guess.
     static func originatorIsDesktop(sessionId: String, sessionsRoot: URL? = nil) -> Bool? {
+        guard let originator = sessionMeta(sessionId: sessionId, sessionsRoot: sessionsRoot)?.originator else { return nil }
+        return originator.lowercased().contains("desktop")
+    }
+
+    /// The rollout's `session_meta` head: who opened the session and where.
+    /// `nil` means "could not read" — no file yet, or a first line longer
+    /// than the head window — never a claim about the run.
+    static func sessionMeta(sessionId: String, sessionsRoot: URL? = nil) -> CodexRolloutSessionMeta? {
         guard let file = locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot),
               let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
@@ -456,9 +464,10 @@ enum CodexRolloutResponseReader {
         if lineData.count == data.count, data.count == headBytes { return nil }
         guard let record = try? JSONSerialization.jsonObject(with: Data(lineData)) as? [String: Any],
               record["type"] as? String == "session_meta",
-              let payload = record["payload"] as? [String: Any],
-              let originator = payload["originator"] as? String else { return nil }
-        return originator.lowercased().contains("desktop")
+              let payload = record["payload"] as? [String: Any] else { return nil }
+        return CodexRolloutSessionMeta(
+            originator: payload["originator"] as? String,
+            cwd: payload["cwd"] as? String)
     }
 
     static func locateRollout(sessionId: String, sessionsRoot: URL? = nil) -> URL? {
@@ -1505,6 +1514,11 @@ final class DaemonServer {
     private var codexDesktopBySession: [String: Bool] = [:]
     private var codexOriginatorMissAt: [String: Double] = [:]
     private static let codexOriginatorRetrySeconds: Double = 60
+    /// Headless `codex exec` runs folded under the session that launched
+    /// them — see CodexExecChildren.swift. Hooks consult it before any parent
+    /// pipeline; the coordination tick resolves and completes children from
+    /// the process table.
+    private var codexExecChildren = CodexExecChildRegistry()
 
     /// The agent type a hook-observed Codex session row should carry.
     ///
@@ -5125,6 +5139,13 @@ final class DaemonServer {
     /// before the identifying hook.
     private func retractCodexAmbientThread(sessionId sid: String, json: [String: Any], reason: String = "ambient-suggestions") {
         DaemonLogger.shared.info("Codex \(reason) thread \(sid.prefix(14)): not the user's work, its hooks are not recorded")
+        retractCodexThreadState(sessionId: sid, bareId: (json["session_id"] as? String) ?? "")
+    }
+
+    /// Undo everything a Codex thread's hooks created before it was
+    /// classified as not-a-session (ambient suggestion thread, headless
+    /// child): its row, its hub-driver identity, its APME run.
+    private func retractCodexThreadState(sessionId sid: String, bareId bare: String) {
         codexOtelTurnIdBySession.removeValue(forKey: sid)
         if pushedSessionsById.removeValue(forKey: sid) != nil {
             cachedSessions.removeAll { $0.id == sid }
@@ -5134,10 +5155,137 @@ final class DaemonServer {
         if currentHookSessionId == sid { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
         // The collector keys Codex runs by the enriched payload's session id;
         // try the hook's key and the bare id so neither form leaves a run behind.
-        let bare = (json["session_id"] as? String) ?? ""
         for key in Set([sid, bare]) where !key.isEmpty {
             apmeCollector?.discardRun(sessionId: key)
         }
+    }
+
+    // MARK: - Headless codex exec children (CodexExecChildren.swift)
+
+    private static func codexBareId(_ sessionId: String) -> String {
+        sessionId.hasPrefix("codex:") ? String(sessionId.dropFirst("codex:".count)) : sessionId
+    }
+
+    /// The rollout head, read inside the sandbox's security scope when there
+    /// is one — the same discipline as `codexObservedAgentType`.
+    private func codexRolloutSessionMeta(sessionId: String) -> CodexRolloutSessionMeta? {
+        let bare = Self.codexBareId(sessionId)
+        return AppPreferences.shared.withCodexDirectoryAccess { dir -> CodexRolloutSessionMeta? in
+            CodexRolloutResponseReader.sessionMeta(
+                sessionId: bare,
+                sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))
+        } ?? CodexRolloutResponseReader.sessionMeta(sessionId: bare)
+    }
+
+    private func codexRolloutLastMessage(sessionId: String) -> String? {
+        let bare = Self.codexBareId(sessionId)
+        let text = AppPreferences.shared.withCodexDirectoryAccess { dir -> String? in
+            CodexRolloutResponseReader.lastAgentMessage(
+                sessionId: bare,
+                sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))
+        } ?? CodexRolloutResponseReader.lastAgentMessage(sessionId: bare)
+        return Self.nonEmptyString(text)
+    }
+
+    /// Sessions this daemon knows a pid for — the launchers a headless run may
+    /// descend from. Claude sessions register theirs through the hook header.
+    private func codexExecPeers() -> [CodexExecPeer] {
+        coordinationTracker.mergePeers([]).map { CodexExecPeer(sessionId: $0.sessionId, pid: $0.pid) }
+    }
+
+    /// Returns true when the hook belongs to a child (attached or pending) and
+    /// the caller must stop.
+    private func gateCodexExecChild(event: String, json: [String: Any], sessionId: String) async -> Bool {
+        let cwd = (json["cwd"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        var verdict = codexExecChildren.noteHook(
+            event: event,
+            sessionId: sessionId,
+            cwd: cwd,
+            processes: lastProcessTable,
+            peers: codexExecPeers(),
+            now: Date().timeIntervalSince1970,
+            sessionMeta: { codexRolloutSessionMeta(sessionId: sessionId) }
+        )
+        // The table the tick holds is up to 5 s old and a run that started
+        // since is not in it. One fresh sysctl read (once per session)
+        // attaches the child before its first hook mints a row.
+        if verdict.wantsFreshTable {
+            let fresh = await Task.detached(priority: .utility) { ProcessEnumerator.processTable() }.value
+            if !fresh.isEmpty {
+                lastProcessTable = fresh
+                verdict = codexExecChildren.noteHook(
+                    event: event, sessionId: sessionId, cwd: cwd,
+                    processes: fresh, peers: codexExecPeers(),
+                    now: Date().timeIntervalSince1970,
+                    sessionMeta: { codexRolloutSessionMeta(sessionId: sessionId) }
+                )
+            }
+        }
+        guard verdict.childOnly else { return false }
+        // Owned by hooks either way: `codex exec` exports its OTel spans in one
+        // batch at exit, which must not synthesize a row for the thread the
+        // roster deliberately left out.
+        codexObservationOwnership.receiveHook(event: event, sessionId: sessionId, now: Date())
+        let inline = Self.nonEmptyString(json["last_assistant_message"])
+        await applyCodexExecChildEvents(verdict.events, inlineSummary: inline)
+        return true
+    }
+
+    private func codexExecChildrenTick(table: [ProcessEnumerator.ProcessRow]) async {
+        let events = codexExecChildren.reconcile(
+            processes: table, peers: codexExecPeers(), now: Date().timeIntervalSince1970)
+        await applyCodexExecChildEvents(events, inlineSummary: nil)
+    }
+
+    private func applyCodexExecChildEvents(_ events: [CodexExecChildEvent], inlineSummary: String?) async {
+        for event in events {
+            switch event {
+            case .attached(let child):
+                await attachCodexExecChild(child)
+            case .stopped(let child):
+                await completeCodexExecChild(child, inlineSummary: inlineSummary)
+            }
+        }
+    }
+
+    private func codexExecChildPayload(_ child: CodexExecChild) -> [String: Any] {
+        var payload: [String: Any] = [
+            "session_id": child.parentSessionId,
+            "agent_id": Self.codexBareId(child.sessionId),
+            "agent_type": "codex exec",
+        ]
+        // The topic directory is the one thing that tells twelve siblings
+        // apart when the run said nothing.
+        if let cwd = child.cwd, let topic = Self.nonEmptyString(URL(fileURLWithPath: cwd).lastPathComponent) {
+            payload["task_subject"] = topic
+        }
+        return payload
+    }
+
+    /// Retract whatever the child's first hooks minted, then open it on the
+    /// parent's census exactly as a hook-declared child is.
+    private func attachCodexExecChild(_ child: CodexExecChild) async {
+        // A prompt row its early hooks put on the strip would otherwise spin
+        // until the idle eviction closed it.
+        if codexTurnAnchors.hasOpenTurn(sid: child.sessionId) {
+            appendCodexChatEnd(json: [:], sessionId: child.sessionId, interrupted: true)
+        }
+        retractCodexThreadState(sessionId: child.sessionId, bareId: Self.codexBareId(child.sessionId))
+        let parentType = pushedSessionsById[child.parentSessionId]?.agentType ?? "claude-code"
+        let topic = child.cwd.map { " (\(URL(fileURLWithPath: $0).lastPathComponent))" } ?? ""
+        DaemonLogger.shared.info(
+            "codex exec \(Self.codexBareId(child.sessionId).prefix(8)) is a child of \(parentType) \(child.parentSessionId.prefix(8))\(topic)")
+        _ = await handleSubagentTimelineHook(
+            event: "subagent_start", json: codexExecChildPayload(child), sessionId: child.parentSessionId)
+    }
+
+    private func completeCodexExecChild(_ child: CodexExecChild, inlineSummary: String?) async {
+        var payload = codexExecChildPayload(child)
+        if let summary = inlineSummary ?? codexRolloutLastMessage(sessionId: child.sessionId) {
+            payload["last_assistant_message"] = summary
+        }
+        _ = await handleSubagentTimelineHook(
+            event: "subagent_stop", json: payload, sessionId: child.parentSessionId)
     }
 
     private func handleSwitchAgent(_ target: String) {
@@ -5205,6 +5353,7 @@ final class DaemonServer {
                 guard let self else { return }
                 let table = await Task.detached(priority: .utility) { ProcessEnumerator.processTable() }.value
                 self.lastProcessTable = table
+                await self.codexExecChildrenTick(table: table)
                 let peers = self.coordinationTracker.mergePeers([])
                 guard !peers.isEmpty else { continue }
                 let rels = self.coordinationTracker.observe(table, peers: peers)
@@ -5558,6 +5707,15 @@ final class DaemonServer {
                 retractCodexAmbientThread(sessionId: sid, json: json)
                 return
             }
+        }
+
+        // A headless `codex exec` launched by another observed session is
+        // that session's child, not a session: its hooks drive the parent's
+        // subagent census and nothing else. While its parent is unresolved
+        // the hooks are held out rather than let through — a row minted now
+        // would have to be retracted five seconds later.
+        if isCodexEvent, let sid = sessionId, await gateCodexExecChild(event: event, json: json, sessionId: sid) {
+            return
         }
 
         if isCodexEvent, let sessionId {
@@ -6519,6 +6677,11 @@ final class DaemonServer {
                 if codexTurnAnchors.hasOpenTurn(sid: sid) {
                     appendCodexChatEnd(json: [:], sessionId: sid, interrupted: true)
                 }
+                // Codex has no SessionEnd hook, so leaving the roster IS a
+                // Codex run's close (the Node daemon's `sweepVanishedCodexRuns`).
+                // A run that outlives its session sat open until a restart;
+                // a later prompt on a re-engaged TUI opens a fresh run lazily.
+                apmeCollector?.handleHook(event: "session_end", data: ["session_id": sid, "agent_type": "codex-cli"])
             } else if sid.hasPrefix(Self.openCodeSessionPrefix) {
                 if openCodeTurnAnchors.hasOpenTurn(sid: sid) {
                     appendOpenCodeChatEnd(json: [:], sessionId: sid, interrupted: true)
@@ -8370,6 +8533,12 @@ final class DaemonServer {
     private func handleGatewayEvent(_ event: [String: Any]) {
         guard let type = event["type"] as? String else { return }
         switch type {
+        case "gateway_activity":
+            gatewaySessionState = gatewayPendingApproval != nil ? "awaiting_permission"
+                : (event["busy"] as? Bool == true ? "processing" : "idle")
+            if gatewaySessionState == "idle" { gatewayCurrentTool = nil }
+            broadcastStateUpdate()
+            broadcastSessionsList()
         case "gateway_chat":
             let chatPayload = event["payload"] as? [String: Any] ?? [:]
             let chatState = chatPayload["state"] as? String
@@ -8394,6 +8563,9 @@ final class DaemonServer {
                 gatewayPendingApproval = nil
             default:
                 gatewaySessionState = "processing"
+            }
+            if let busy = event["busy"] as? Bool {
+                gatewaySessionState = gatewayPendingApproval != nil ? "awaiting_permission" : (busy ? "processing" : "idle")
             }
             broadcastStateUpdate()
             // Only when the row's prompt actually went away — `default` fires on
@@ -8495,7 +8667,7 @@ final class DaemonServer {
                             "prompt": prompt,
                         ])
                     }
-                } else if entryType == "tool_exec" {
+                } else if entryType == "tool_exec", entry["liveProjection"] as? Bool != true {
                     // session.tool entries arrive via sessions.messages.subscribe.
                     // Routing + payload extraction lives in the static helper
                     // below so it stays unit-testable and so the start/end
@@ -8506,7 +8678,7 @@ final class DaemonServer {
                     let toolName = routed.data["tool_name"] as? String ?? ""
                     if routed.event == "tool_end" {
                         if gatewayCurrentTool == toolName { gatewayCurrentTool = nil }
-                    } else {
+                    } else if entry["timelineHidden"] as? Bool != true {
                         gatewayCurrentTool = toolName
                         if gatewaySessionState == "idle" { gatewaySessionState = "processing" }
                     }
@@ -12288,6 +12460,7 @@ final class DaemonServer {
     }
 
     private func appendGatewayTimelineEntry(_ rawEntry: [String: Any]) {
+        if rawEntry["timelineHidden"] as? Bool == true { return }
         var entry = DaemonTimelineEntry(
             ts: (rawEntry["ts"] as? NSNumber)?.doubleValue ?? rawEntry["ts"] as? Double ?? Date().timeIntervalSince1970 * 1000,
             type: rawEntry["type"] as? String ?? "event",
@@ -12320,7 +12493,7 @@ final class DaemonServer {
         // follow-up merges with the existing row by (type, taskId) instead
         // of stacking a duplicate. Non-task entries fall through to `add`
         // because their stable key is (ts, type).
-        if entry.type == "task_end", entry.taskId != nil {
+        if (entry.type == "task_end" && entry.taskId != nil) || rawEntry["upsert"] as? Bool == true {
             Task { await timelineStore.upsert(entry) }
         } else {
             // Gateway entries originate from the Node side (already projected /
@@ -12328,7 +12501,7 @@ final class DaemonServer {
             // dropped when projection mode is on.
             Task { await timelineStore.add(entry, bypassSuppression: true) }
         }
-        broadcastRaw(["type": "timeline_event", "entry": rawEntry] as [String: Any])
+        broadcastRaw(["type": "timeline_event", "entry": rawEntry, "upsert": rawEntry["upsert"] as? Bool ?? false] as [String: Any])
     }
 
     // MARK: - APME eval tick (30s loop)

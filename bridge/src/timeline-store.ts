@@ -384,14 +384,26 @@ export class BridgeTimelineStore {
     staleMs = 30 * 60_000,
     now = Date.now(),
     skipSessionIds?: ReadonlySet<string>,
+    opts?: {
+      /** Close only this session's open turns (bare id), whatever their age —
+       *  a session retracted while its prompt row was already on the strip. */
+      onlySessionId?: string;
+      /** Row text prefix instead of `Interrupted`. */
+      label?: string;
+    },
   ): number {
     let count = 0;
+    const label = opts?.label ?? 'Interrupted';
     const sorted = [...this.entries].sort((a, b) => a.ts - b.ts);
     for (let i = 0; i < sorted.length; i++) {
       const start = sorted[i];
       if (start.type !== 'chat_start' || !start.sessionId) continue;
-      if (skipSessionIds?.has(start.sessionId)) continue;
-      if (now - start.ts <= staleMs) continue;
+      if (opts?.onlySessionId != null) {
+        if (rawSessionId(start.sessionId) !== opts.onlySessionId) continue;
+      } else {
+        if (skipSessionIds?.has(start.sessionId)) continue;
+        if (now - start.ts <= staleMs) continue;
+      }
       // Next chat_start of the same session bounds this turn.
       let nextStartTs = Number.POSITIVE_INFINITY;
       let completed = false;
@@ -408,7 +420,7 @@ export class BridgeTimelineStore {
       this.addEntry({
         ts: Math.min(lastTurnTs + 1, nextStartTs - 1),
         type: 'chat_end',
-        raw: approxSec > 0 ? `Interrupted · ~${formatDurationSec(approxSec)}` : 'Interrupted · –',
+        raw: approxSec > 0 ? `${label} · ~${formatDurationSec(approxSec)}` : `${label} · –`,
         summaryKind: 'none',
         ...(start.agentType ? { agentType: start.agentType } : {}),
         ...(start.projectName ? { projectName: start.projectName } : {}),
@@ -492,7 +504,9 @@ export class BridgeTimelineStore {
     const tolerance = 1000;
     for (let i = this.entries.length - 1; i >= 0; i--) {
       const e = this.entries[i];
-      if (e.type === normalized.type && Math.abs(e.ts - normalized.ts) < tolerance) {
+      if (e.type === normalized.type && (!e.sessionId || !normalized.sessionId || e.sessionId === normalized.sessionId)
+        && (!e.runId || !normalized.runId || e.runId === normalized.runId)
+        && Math.abs(e.ts - normalized.ts) < tolerance) {
         this.entries[i] = {
           ...e,
           raw: normalized.raw,

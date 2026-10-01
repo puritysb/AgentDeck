@@ -64,7 +64,8 @@
     "generate-collaboration-presentation": "node scripts/generate-collaboration-presentation.mjs",
     "plugin:deploy": "node plugin/scripts/deploy.mjs",
     "plugin:check": "node plugin/scripts/deploy.mjs --check",
-    "generate-matrix-expressions": "tsx scripts/generate-matrix-expressions.mts"
+    "generate-matrix-expressions": "tsx scripts/generate-matrix-expressions.mts",
+    "generate-gateway-live-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-gateway-live-rules.mjs"
   },
   "engines": {
     "node": "22.x || 24.x || 26.x",

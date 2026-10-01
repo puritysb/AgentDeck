@@ -66,7 +66,8 @@ describe('OpenClaw chat error → timeline row', () => {
     expect(errors[0].detail).toContain('kind unavailable');
     expect(errors[0].detail).toContain('stop error');
     expect(errors[0].detail).toContain('run 95babe45');
-    expect(errors[0].detail).toContain('1 tool: bash');
+    // An approval without this run's identity must not be attributed to it.
+    expect(errors[0].detail).not.toContain('1 tool: bash');
     // A failed turn is still a turn: it gets the same time bounds as a close.
     expect(errors[0].startedAt).toBeTypeOf('number');
     expect(errors[0].endedAt).toBeTypeOf('number');
@@ -76,9 +77,9 @@ describe('OpenClaw chat error → timeline row', () => {
     const adapter = new OpenClawAdapter({ autoReconnect: false });
     const rows = collectTimeline(adapter);
 
-    // No lastPrompt → the delta path flags the chat as automated (cron).
-    gw(adapter, 'chat', { state: 'delta', runId: 'r2', sessionKey: 's1' });
-    gw(adapter, 'chat', errorFrame({ runId: 'r2' }));
+    // Explicit cron key establishes automation. Missing prompt alone does not.
+    gw(adapter, 'chat', { state: 'delta', runId: 'r2', sessionKey: 'agent:main:cron:test' });
+    gw(adapter, 'chat', errorFrame({ runId: 'r2', sessionKey: 'agent:main:cron:test' }));
 
     const err = rows.find((r) => r.type === 'error');
     // Without this an errored cron turn was indistinguishable from a user's.

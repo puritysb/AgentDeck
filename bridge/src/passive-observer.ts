@@ -22,6 +22,12 @@ import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import type { EnrichedSession } from './session-aggregator.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
+import {
+  isHeadlessCodexOriginator,
+  nearestAncestorPeer,
+  type CodexExecChildObservation,
+  type ExecChildPeer,
+} from './codex-exec-children.js';
 import { isCodexBackgroundCwd } from './codex-ambient-hooks.js';
 import { redactSecrets } from './utils/redact-secrets.js';
 import { stripUnsafeText, rawSessionId } from '@agentdeck/shared';
@@ -132,6 +138,11 @@ export interface ObservedSession extends EnrichedSession {
    *  while genuinely waiting, so any write after the overlay was set means the
    *  prompt is over. Absent when no transcript could be located. */
   lastActivityAt?: number;
+  /** Codex only: `session_meta.originator` (`codex-tui`, `Codex Desktop`,
+   *  `codex_exec`). Internal to the scan — `foldHeadlessCodexSessions` reads
+   *  it to fold headless runs under their launcher and strips it before the
+   *  roster is cached, so it never reaches the wire. */
+  codexOriginator?: string;
 }
 
 const SCAN_INTERVAL_MS = 5_000;
@@ -262,6 +273,13 @@ export class PassiveSessionObserver {
   private lastProcesses: ProcInfo[] = [];
   processes(): ProcInfo[] { return this.lastProcesses; }
 
+  /** Headless `codex exec` rollouts the last scan found, each with the
+   *  observed session its process descends from (or null). Those with a
+   *  parent are NOT in `collect()`'s roster — they are children, and
+   *  `CodexExecChildren.reconcile` folds them onto the parent's census. */
+  private cachedExecChildren: CodexExecChildObservation[] = [];
+  execChildren(): CodexExecChildObservation[] { return this.cachedExecChildren; }
+
   /** `collectProcesses` is injectable so the scan-failure paths (a rejection,
    *  an empty table) can be exercised without a real process table. */
   constructor(private readonly collectProcesses: () => Promise<ProcInfo[]> = collectProcessInfo) {}
@@ -316,13 +334,72 @@ export class PassiveSessionObserver {
       ...(await collectAntigravitySessions(processes)),
       ...(await collectKiroSessions(processes, this.kiroSessionCache)),
     ];
-    const next = dedupeObservedSessions(observed, managedSessions, processes);
+    const { roster, execChildren } = foldHeadlessCodexSessions(observed, processes);
+    const next = dedupeObservedSessions(roster, managedSessions, processes);
     // Only notify on real change — an unconditional callback would emit a
-    // sessions broadcast every SCAN_INTERVAL even when nothing moved.
-    const changed = JSON.stringify(next) !== JSON.stringify(this.cached);
+    // sessions broadcast every SCAN_INTERVAL even when nothing moved. A
+    // headless child appearing or leaving changes no roster row, so it is
+    // part of the comparison in its own right.
+    const changed = JSON.stringify(next) !== JSON.stringify(this.cached)
+      || JSON.stringify(execChildren) !== JSON.stringify(this.cachedExecChildren);
     this.cached = next;
+    this.cachedExecChildren = execChildren;
     if (changed) this.onRefreshed?.();
   }
+}
+
+/**
+ * Fold headless `codex exec` runs under the session that launched them.
+ *
+ * A `codex exec` process whose ancestry reaches another observed session's
+ * pid is that session's child — a Claude Bash running `xargs -P 4 codex exec`,
+ * a Codex spawning Codex. It leaves the roster (one batch put 49 topic-named
+ * rows on every deck, 2026-10-01) and is reported as an observation for the
+ * child registry instead. A headless run with no such ancestor — the user's
+ * own `codex exec` in a terminal — stays a top-level row, reported with
+ * `parent: null` so the registry can stop holding its hooks.
+ *
+ * `codexOriginator` is stripped from every row here: it is scan-internal.
+ */
+export function foldHeadlessCodexSessions(
+  observed: ObservedSession[],
+  processes: readonly ProcInfo[],
+): { roster: ObservedSession[]; execChildren: CodexExecChildObservation[] } {
+  const peers: ExecChildPeer[] = [];
+  for (const s of observed) {
+    if (!(typeof s.pid === 'number' && s.pid > 0) || !s.agentType) continue;
+    // A headless run is never a launcher here: a `codex exec` spawned by a
+    // folded child would otherwise attach to a row that is not rendered.
+    if (s.agentType === 'codex-cli' && isHeadlessCodexOriginator(s.codexOriginator)) continue;
+    peers.push({ sessionId: rawSessionId(s.id), pid: s.pid, agentType: s.agentType, projectName: s.projectName });
+  }
+  const roster: ObservedSession[] = [];
+  const execChildren: CodexExecChildObservation[] = [];
+  for (const session of observed) {
+    const { codexOriginator, ...row } = session;
+    const headless = session.agentType === 'codex-cli' && isHeadlessCodexOriginator(codexOriginator);
+    if (!headless || !(session.pid > 0)) {
+      roster.push(row);
+      continue;
+    }
+    const sessionId = rawSessionId(session.id);
+    const parent = nearestAncestorPeer(
+      session.pid,
+      processes,
+      peers.filter((p) => p.sessionId !== sessionId),
+    );
+    const startedAt = session.startedAt ? Date.parse(session.startedAt) : NaN;
+    execChildren.push({
+      sessionId,
+      pid: session.pid,
+      cwd: session.cwd,
+      parent,
+      ...(Number.isFinite(startedAt) ? { startedAt } : {}),
+      ...(session.goal ? { goal: session.goal } : {}),
+    });
+    if (!parent) roster.push(row);
+  }
+  return { roster, execChildren };
 }
 
 export function parseProcessTable(output: string): ProcInfo[] {
@@ -831,6 +908,7 @@ export async function collectCodexSessionsFromRollouts(
         contextPercent: parsed.contextPercent,
         totalTokens: parsed.totalTokens,
         lastActivityAt: snapshot.mtimeMs,
+        ...(parsed.originator ? { codexOriginator: parsed.originator } : {}),
       });
     }
   }

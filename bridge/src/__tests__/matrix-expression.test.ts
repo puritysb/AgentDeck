@@ -38,18 +38,18 @@ describe('expressive BLE matrices', () => {
     engine.updateSessions([], 0);
     engine.updateSessions([row('c', 'awaiting_permission'), row('x', 'error')], 100);
     engine.updateTimeline([{ ts: 100, type: 'chat_response' }]);
-    expect(engine.scene(100)).toMatchObject({ kind: 'waiting', glyph: 'summary', counts: [1, 0, 1, 1] });
+    expect(engine.scene(100)).toMatchObject({ kind: 'waiting', glyph: 'claudeCode', counts: [1, 0, 1, 1] });
     expect(renderMatrixScene(32, engine.scene(100))).not.toEqual(renderMatrixScene(32, engine.scene(1000)));
   });
-  it('holds a reply on stage for 45s, retains its count for 90s, and distinguishes unknown and idle', () => {
+  it('holds a reply on stage briefly, retains its count for 90s, and distinguishes unknown and idle', () => {
     const engine = new MatrixExpression();
     expect(engine.scene(0).kind).toBe('unknown');
     engine.updateSessions([row('c'), row('x', 'idle', 'codex-cli')], 0);
     engine.updateTimeline([{ ts: 100, type: 'chat_response', sessionId: 'x' }]);
     expect(engine.scene(100)).toMatchObject({ kind: 'reply', glyph: 'codex', counts: [0, 1, 1, 2] });
     for (let i = 0; i < 120; i++) engine.ingest({ type: 'timeline_event', entry: { ts: 101 + i, type: 'tool_exec' } }, 500);
-    expect(engine.scene(30100)).toMatchObject({ kind: 'reply', glyph: 'codex' });
-    expect(engine.scene(45100)).toMatchObject({ kind: 'done', glyph: 'summary', count: 1 });
+    expect(engine.scene(5100)).toMatchObject({ kind: 'reply', glyph: 'codex' });
+    expect(engine.scene(6100)).toMatchObject({ kind: 'done', glyph: 'summary', count: 1 });
     expect(engine.scene(90100)).toMatchObject({ kind: 'working', counts: [0, 1, 0, 2] });
     engine.updateSessions([], 90101);
     expect(engine.scene(90101).kind).toBe('idle');
@@ -76,6 +76,40 @@ describe('expressive BLE matrices', () => {
     expect(quiet.scene(8000).kind).not.toBe('asked');
     engine.updateSessions([row('o', 'awaiting_permission', 'openclaw')], 131000);
     expect(engine.scene(131000).kind).toBe('waiting');
+  });
+  it('rotates only the live attention owners and clears attention immediately', () => {
+    const engine = new MatrixExpression();
+    engine.updateSessions([row('a', 'awaiting_permission'), row('b', 'awaiting_option', 'codex-cli'), row('c')], 0);
+    expect(engine.scene(0)).toMatchObject({ kind: 'waiting', glyph: 'claudeCode', count: 2 });
+    expect(engine.scene(MATRIX_RULES.attentionMs)).toMatchObject({ glyph: 'codex' });
+    engine.updateSessions([row('a', 'idle'), row('b', 'idle', 'codex-cli'), row('c')], 7000);
+    expect(engine.scene(7000)).toMatchObject({ kind: 'working', glyph: 'summary' });
+  });
+  it('does not keep a historical conversation over a new turn, closed turn or missing roster', () => {
+    const engine = new MatrixExpression();
+    const event = (ts: number, type: string, sessionId = 'c') => engine.ingest({ type: 'timeline_event', entry: { ts, type, sessionId } }, ts);
+    event(1, 'chat_response');
+    expect(engine.scene(2).kind).toBe('unknown');
+    engine.updateSessions([row('c')], 2);
+    event(3, 'chat_start');
+    expect(engine.scene(3).kind).toBe('asked');
+    event(4, 'chat_end');
+    expect(engine.scene(4).kind).not.toBe('asked');
+    event(5, 'chat_start');
+    engine.updateSessions([row('c', 'idle')], 6);
+    expect(engine.scene(6).kind).not.toBe('asked');
+    event(7, 'chat_response');
+    engine.updateSessions([], 8);
+    expect(engine.scene(8).kind).not.toBe('reply');
+  });
+  it('upserts one session without retracting another result at the same timestamp', () => {
+    const engine = new MatrixExpression();
+    engine.updateSessions([row('a'), row('b')], 0);
+    for (const sessionId of ['a', 'b']) engine.ingest({ type: 'timeline_event', entry: { ts: 1, type: 'chat_response', sessionId } }, 1);
+    engine.ingest({ type: 'timeline_event', upsert: true, entry: { ts: 1, type: 'chat_response', sessionId: 'b', status: 'abandoned' } }, 2);
+    expect(engine.scene(2).counts[2]).toBe(1);
+    engine.ingest({ type: 'timeline_event', upsert: true, entry: { ts: 1, type: 'chat_response', sessionId: 'a', status: 'abandoned' } }, 3);
+    expect(engine.scene(3).counts[2]).toBe(0);
   });
   it('unknown agent identities are neutral, and face expressions survive 4-bit packing', () => {
     const engine = new MatrixExpression(); engine.updateSessions([], 0);
@@ -141,6 +175,13 @@ describe('expressive BLE matrices', () => {
       add(120002, { type: 'sessions_list', sessions: [row('c', 'idle')] });
       add(120003, { type: 'sessions_list', sessions: [row('c', 'idle'), row('f', 'processing', 'future')] });
       add(126003); add(126004, { type: 'sessions_list', sessions: Array.from({ length: 103 }, (_, i) => row(String(i), i === 0 ? 'awaiting_diff' : 'processing')) });
+      add(130000, { type: 'sessions_list', sessions: [row('a', 'awaiting_option'), row('b', 'awaiting_permission', 'codex-cli')] });
+      add(136000);
+      add(140000, { type: 'sessions_list', sessions: [row('a')] });
+      add(140001, { type: 'timeline_event', entry: { ts: 140001, type: 'chat_response', sessionId: 'a' } });
+      add(140002, { type: 'timeline_event', entry: { ts: 140002, type: 'chat_start', sessionId: 'a' } });
+      add(140003, { type: 'timeline_event', entry: { ts: 140003, type: 'chat_end', sessionId: 'a' } });
+      add(140004, { type: 'sessions_list', sessions: [] });
       const engine = new MatrixExpression();
       const expected = steps.map(({ now, event }) => {
         if (event) engine.ingest(event as MatrixBroadcast, now);

@@ -4,14 +4,14 @@ export const MATRIX_RULES = {
   frameMs: 750, frames: 8, arrivalMs: 6000, resultMs: 90000,
   responseMs: 6000, historyLimit: 96, rosterDots: 8, seenLimit: 1024,
   // A conversation is what the reader came to see: an agent's reply to a turn
-  // holds the stage for 45 s, and an open question keeps its agent listening
+  // holds the stage briefly, and an open question keeps its agent listening
   // until the reply lands (bounded, so a lost reply cannot pin the scene).
-  replyMs: 45000, askMs: 600000,
+  replyMs: 6000, askMs: 600000, attentionMs: 6000,
 } as const;
 export const MATRIX_POLICY = {
   awaitingPrefix: 'awaiting', stateKinds: { error: 'error', processing: 'working' },
   resultTypes: ['chat_response', 'task_end'], rejectedStatuses: ['abandoned', 'denied', 'pending'],
-  replyTypes: ['chat_response'], askTypes: ['chat_start'],
+  replyTypes: ['chat_response'], askTypes: ['chat_start'], closeTypes: ['chat_end', 'chat_response', 'task_end'],
   priority: ['waiting', 'error', 'done', 'working', 'idle'], urgent: ['waiting', 'error'],
   summaryKinds: ['waiting', 'working', 'done', 'idle'],
 } as const;
@@ -48,7 +48,9 @@ export function matrixResults(timeline: MatrixResult[], now: number): MatrixResu
 export function matrixInteraction(timeline: MatrixResult[], live: MatrixSession[], now: number):
     { kind: 'asked' | 'reply'; sessionId?: string; ts: number } | null {
   const conversational = (e: MatrixResult) => e.automated !== true && Number.isFinite(e.ts) && now >= e.ts;
-  const reply = timeline.filter(e => conversational(e) &&
+  const reply = timeline.filter(e => conversational(e) && live.some(s => s.id === e.sessionId) &&
+      !timeline.some(next => next.sessionId === e.sessionId && next.ts > e.ts && next.ts <= now &&
+        (MATRIX_POLICY.askTypes as readonly string[]).includes(next.type)) &&
       (MATRIX_POLICY.replyTypes as readonly string[]).includes(e.type) &&
       !(MATRIX_POLICY.rejectedStatuses as readonly string[]).includes(e.status ?? '') &&
       now - e.ts < MATRIX_RULES.replyMs)
@@ -57,9 +59,9 @@ export function matrixInteraction(timeline: MatrixResult[], live: MatrixSession[
   const ask = timeline.filter(e => conversational(e) && e.sessionId != null &&
       (MATRIX_POLICY.askTypes as readonly string[]).includes(e.type) && now - e.ts < MATRIX_RULES.askMs)
     .sort((a, b) => b.ts - a.ts)[0];
-  if (!ask || !live.some(s => s.id === ask.sessionId)) return null;
-  const answered = timeline.some(e => e.sessionId === ask.sessionId && e.ts >= ask.ts &&
-    (MATRIX_POLICY.resultTypes as readonly string[]).includes(e.type));
+  if (!ask || !live.some(s => s.id === ask.sessionId && matrixState(s.state) === 'working')) return null;
+  const answered = timeline.some(e => e.sessionId === ask.sessionId && e.ts >= ask.ts && e.ts <= now &&
+    (MATRIX_POLICY.closeTypes as readonly string[]).includes(e.type));
   return answered ? null : { kind: 'asked', sessionId: ask.sessionId, ts: ask.ts };
 }
 
@@ -99,7 +101,7 @@ export class MatrixExpression {
   updateTimeline(entries: MatrixResult[]): void {
     // Tool-event bursts must not evict a response before its retention window.
     // Keep rejected results too, so an upsert can retract a previous success.
-    this.timeline = entries.filter(e => (MATRIX_POLICY.resultTypes as readonly string[]).includes(e.type) ||
+    this.timeline = entries.filter(e => (MATRIX_POLICY.closeTypes as readonly string[]).includes(e.type) ||
         (MATRIX_POLICY.askTypes as readonly string[]).includes(e.type))
       .slice(-MATRIX_RULES.historyLimit);
   }
@@ -110,7 +112,7 @@ export class MatrixExpression {
       this.updateTimeline([...(event.entries ?? [])].sort((a, b) => a.ts - b.ts));
     } else if (event.type === 'timeline_event' && event.entry) {
       const entry = event.entry;
-      const index = event.upsert ? this.timeline.findIndex(e => e.ts === entry.ts && e.type === entry.type) : -1;
+      const index = event.upsert ? this.timeline.findIndex(e => e.ts === entry.ts && e.type === entry.type && e.sessionId === entry.sessionId) : -1;
       if (index >= 0) this.timeline[index] = entry; else this.timeline.push(entry);
       this.updateTimeline(this.timeline.sort((a, b) => a.ts - b.ts));
     }
@@ -126,7 +128,11 @@ export class MatrixExpression {
     const glyphOf = (sessionId?: string) =>
       MATRIX_AGENTS[live.find(s => s.id === sessionId)?.agentType ?? ''] ?? 'neutral';
     const interaction = matrixInteraction(this.timeline, live, now);
-    if (!(MATRIX_POLICY.urgent as readonly string[]).includes(kind)) {
+    if ((MATRIX_POLICY.urgent as readonly string[]).includes(kind)) {
+      const attention = live.filter(s => matrixState(s.state) === kind);
+      const hero = attention[Math.floor(Math.max(0, now) / MATRIX_RULES.attentionMs) % attention.length];
+      glyph = glyphOf(hero?.id);
+    } else if (this.sessions !== null) {
       if (interaction) {
         kind = interaction.kind; glyph = glyphOf(interaction.sessionId); responseAt = interaction.ts;
       } else if (arrival) { kind = 'arrival'; glyph = MATRIX_AGENTS[arrival.agentType ?? ''] ?? 'neutral'; }

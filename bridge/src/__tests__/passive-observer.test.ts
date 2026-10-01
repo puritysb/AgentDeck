@@ -3,6 +3,8 @@ import {
   activeKiroCliProcesses,
   CodexRolloutCache,
   collectCodexSessionsFromRollouts,
+  foldHeadlessCodexSessions,
+  type ProcInfo,
   collectKiroSessionsFromSnapshots,
   dedupeObservedSessions,
   isAntigravityProcessCommand,
@@ -921,5 +923,58 @@ describe('passive-observer scan resilience', () => {
     observer.collect([]);
     expect(reader).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(duration);
+  });
+});
+
+describe('foldHeadlessCodexSessions', () => {
+  const CWD = '/tmp/scratch/gen/work/2020s_ai_ai';
+  const claudeRow = {
+    id: 'observed:claude:4f55869a-38a5-494c-8577-7afad72aae35',
+    port: 0, pid: 71456, projectName: 'epoch-of-tech', agentType: 'claude-code' as const,
+    alive: true, state: 'processing' as const, controlMode: 'observed' as const,
+  };
+  const execRow = {
+    id: 'observed:codex:01a0f35b-74a5-7bc0-827d-ef80f440478e',
+    port: 0, pid: 49460, projectName: '2020s_ai_ai', agentType: 'codex-cli' as const,
+    alive: true, state: 'processing' as const, controlMode: 'observed' as const,
+    cwd: CWD, startedAt: '2026-09-30T17:27:32.000Z', goal: 'write the chapter',
+    codexOriginator: 'codex_exec',
+  };
+  const table: ProcInfo[] = [
+    { pid: 71456, ppid: 1872, rssKb: 1, command: 'claude' },
+    { pid: 17384, ppid: 71456, rssKb: 1, command: 'xargs -P 4 -I{} bash -c gen_one {}' },
+    { pid: 49451, ppid: 17384, rssKb: 1, command: `timeout 1500 codex exec -C ${CWD} -` },
+    { pid: 49460, ppid: 49451, rssKb: 1, command: `/x/bin/codex exec -C ${CWD} -` },
+  ];
+
+  it('drops a headless run that descends from an observed session and reports it as that session\'s child', () => {
+    const { roster, execChildren } = foldHeadlessCodexSessions([claudeRow, execRow], table);
+    expect(roster.map((s) => s.id)).toEqual([claudeRow.id]);
+    expect(execChildren).toEqual([{
+      sessionId: '01a0f35b-74a5-7bc0-827d-ef80f440478e',
+      pid: 49460,
+      cwd: CWD,
+      parent: { sessionId: '4f55869a-38a5-494c-8577-7afad72aae35', pid: 71456, agentType: 'claude-code', projectName: 'epoch-of-tech' },
+      startedAt: Date.parse('2026-09-30T17:27:32.000Z'),
+      goal: 'write the chapter',
+    }]);
+  });
+
+  it('keeps a headless run with no session ancestor as a row, reported with parent null', () => {
+    const orphanTable: ProcInfo[] = [
+      { pid: 500, ppid: 1, rssKb: 1, command: '/bin/zsh' },
+      { pid: 49460, ppid: 500, rssKb: 1, command: `/x/bin/codex exec -C ${CWD} -` },
+    ];
+    const { roster, execChildren } = foldHeadlessCodexSessions([claudeRow, execRow], orphanTable);
+    expect(roster.map((s) => s.id)).toEqual([claudeRow.id, execRow.id]);
+    expect(execChildren[0]?.parent).toBeNull();
+  });
+
+  it('never leaks codexOriginator onto a roster row and leaves TUI/desktop rows alone', () => {
+    const tui = { ...execRow, id: 'observed:codex:tui', codexOriginator: 'codex-tui' };
+    const { roster, execChildren } = foldHeadlessCodexSessions([claudeRow, tui], table);
+    expect(roster).toHaveLength(2);
+    expect(execChildren).toEqual([]);
+    for (const row of roster) expect(row).not.toHaveProperty('codexOriginator');
   });
 });

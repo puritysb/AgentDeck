@@ -24,11 +24,12 @@ import { prepareForSerial } from './esp32-serial.js';
 import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
-import { PassiveSessionObserver } from './passive-observer.js';
+import { PassiveSessionObserver, codexRolloutSummaryForSession, collectProcessInfo, type ProcInfo } from './passive-observer.js';
+import { CodexExecChildren, type CodexExecChild, type ExecChildPeer } from './codex-exec-children.js';
 import { HookClaudeSessions } from './hook-claude-sessions.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
-import { SubagentTimelineTracker } from './subagent-timeline.js';
+import { SubagentTimelineTracker, type SubagentTimelineResult } from './subagent-timeline.js';
 import { CoordinationTracker, type RelationObservation } from './coordination-evidence.js';
 import { HookOpenCodeSessions } from './hook-opencode-sessions.js';
 import {
@@ -123,6 +124,13 @@ const APME_ABANDONED_RUN_STALE_SEC = Math.max(
   600,
   Number(process.env.AGENTDECK_APME_ABANDON_SEC) || 7200,
 );
+/** How long a Codex session must be absent from every roster before its APME
+ *  run is closed. The agent idle gap, not a shorter grace: after a Stop the
+ *  hook row lives 60 s and presence then rests on the observer alone, which
+ *  cannot see a TUI's rollout on Windows or through a slow `lsof` — closing
+ *  sooner split a live session's run at every turn. At the idle gap the
+ *  collector would have closed the task anyway, so the run follows it. */
+const CODEX_RUN_VANISH_GRACE_MS = AGENT_IDLE_GAP_MS;
 /** Backlog tasks handed to the judge per eval tick when it is idle — see the drain. */
 const APME_TASK_JUDGE_DRAIN_PER_TICK = 1;
 /** How many backlog candidates the drain looks at to find one it may feed.
@@ -224,7 +232,6 @@ import {
 } from './session-transcript-timeline.js';
 import { kiroTimelineForSession } from './kiro-transcript-timeline.js';
 import { KiroTimelineFeed } from './kiro-timeline-feed.js';
-import { OpenClawTimelineFeed, OPENCLAW_FEED_INTERVAL_MS } from './openclaw-timeline-feed.js';
 import {
   DeviceVoiceReplyRouter, speakableReply, spokenDigest, pcmFromWav, type ReplySink,
 } from './device-voice-reply.js';
@@ -301,7 +308,7 @@ import { readFileSync, statSync, writeFileSync, appendFileSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
 import { sampleEventLoopDelay } from './event-loop-telemetry.js';
 import { tmpdir, networkInterfaces, type NetworkInterfaceInfo } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { homedir } from 'os';
 import {
   BRIDGE_WS_PORT,
@@ -1649,6 +1656,21 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // process scan can't see one (lsof timeout, no rollout held open).
   const hookCodexSessions = new HookCodexSessions();
   const hermesSessions = new HermesSessions();
+  // Headless `codex exec` runs folded under the session that launched them —
+  // see bridge/src/codex-exec-children.ts. Hooks consult it before any parent
+  // pipeline; the observer feeds it from process ancestry on every scan.
+  const codexExecChildren = new CodexExecChildren({
+    locateRollout: codexRolloutSummaryForSession,
+    lastMessage: lastAgentMessageFromCodexRollout,
+  });
+  // Codex sessions this daemon opened (or re-adopted) an APME run for. Codex
+  // has no SessionEnd hook, so a codex run's only close used to be the
+  // abandoned-run reaper — which skips every run the collector still holds.
+  // 6 runs from 9/29–9/30 sat open 26 h after their sessions exited
+  // (2026-10-01). A run whose session has left every roster for
+  // CODEX_RUN_VANISH_GRACE_MS is closed by `sweepVanishedCodexRuns`.
+  const codexApmeSessions = new Set<string>();
+  const codexRosterAbsentSince = new Map<string, number>();
   const hookClaudeSessions = new HookClaudeSessions();
   // Who last moved the hub's global state machine — see hub-state-identity.ts.
   const hubDriver = new HubStateDriverTracker();
@@ -1673,7 +1695,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   /** Produces live timeline rows for observed Kiro sessions — see the class
    *  doc for why Kiro needs a producer when hook agents do not. */
   const kiroTimelineFeed = new KiroTimelineFeed();
-  const openclawTimelineFeed = new OpenClawTimelineFeed();
   /** Kiro has no CLI hooks, so transcript rows also feed APME. These maps are
    *  bounded by the observer's current live set and discarded on disappearance. */
   const kiroApmeSessions = new Set<string>();
@@ -3141,7 +3162,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const eventName = pathname.slice('/hooks/'.length);
       let body = '';
       req.on('data', (c: Buffer) => { body += c; if (body.length > 1_000_000) req.destroy(); });
-      req.on('end', () => {
+      req.on('end', async () => {
         let json: Record<string, unknown> = {};
         try { json = body ? JSON.parse(body) : {}; } catch { /* ignore */ }
         // The hook shell's parent pid (`X-AgentDeck-Pid: $PPID` in the
@@ -3188,22 +3209,36 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           if (ambient.firstSeen && ambient.sessionId) {
             const sid = ambient.sessionId;
             log(`[agentdeck] Codex ${ambient.reason ?? 'background'} thread ${sid.slice(0, 8)}: not the user's work, its hooks are not recorded`);
-            hookCodexSessions.forget(sid);
-            codexOtel.forget(sid);
-            subagentTimeline?.forget(sid);
-            coordination.forget(sid);
-            hookSessionsSeen.delete(sid);
-            hookSessionLastSeenAt.delete(sid);
-            const runId = apme?.collector.getRunId(sid);
-            if (apme && runId) {
-              apme.collector.releaseRun(runId);
-              try { apme.store.deleteRun(runId); }
-              catch (err) { debug('APME', `deleteRun for ambient thread ${sid.slice(0, 8)} failed: ${String(err)}`); }
-            }
+            retractCodexThread(sid, 'ambient thread');
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ received: true, background: true }));
           return;
+        }
+        // A headless `codex exec` launched by another observed session is
+        // that session's child, not a session: its hooks drive the parent's
+        // subagent census (through the registry's lifecycle) and nothing
+        // else. While its parent is still unresolved the hooks are held out
+        // rather than let through — a row minted now would have to be
+        // retracted in five seconds.
+        if (eventName.startsWith('codex_')) {
+          let verdict = codexExecChildren.noteHook(
+            eventName, json, passiveSessionObserver.processes(), execChildPeers(),
+          );
+          // The table the observer holds is up to a scan old and a run that
+          // started since is not in it. One fresh `ps` (tens of ms, once per
+          // session) attaches the child before its first hook mints a row.
+          if (verdict.wantsFreshTable) {
+            const fresh = await collectProcessInfo().catch(() => [] as ProcInfo[]);
+            if (fresh.length > 0) {
+              verdict = codexExecChildren.noteHook(eventName, json, fresh, execChildPeers());
+            }
+          }
+          if (verdict.childOnly) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ received: true, child: true }));
+            return;
+          }
         }
         const earlyHookSid = typeof json.session_id === 'string' && json.session_id
           ? json.session_id : 'daemon-hook';
@@ -3523,6 +3558,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // vocabulary (user_prompt_submit / tool_start / …), so raw
             // codex_* / opencode_* names would silently skip turn management.
             apme.collector.ingestHook(hookSid, boundary, json);
+            if (hookAgentType === 'codex-cli' && apme.collector.getRunId(hookSid)) {
+              codexApmeSessions.add(hookSid);
+              codexRosterAbsentSince.delete(hookSid);
+            }
           }
           // Coordination evidence carried BY the hook itself: a received
           // cross-session envelope, a SendMessage call, a `claude -p` launch.
@@ -4880,6 +4919,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       if (persistRelation(rel)) changed = true;
     }
     if (changed) core.broadcastSessionsList().catch(() => {});
+    // Same cadence, same process table: attach headless `codex exec` runs to
+    // their launcher (the observer's exact pid→rollout link, or a pending
+    // hook-side run whose process is in this table now) and complete the
+    // ones whose process is gone.
+    codexExecChildren.reconcile(
+      passiveSessionObserver.execChildren(), passiveSessionObserver.processes(), execChildPeers(),
+    );
+    sweepVanishedCodexRuns();
   };
   const coordinationTimer = setInterval(coordinationTick, 5_000);
   coordinationTimer.unref?.();
@@ -4931,8 +4978,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       debug('daemon', `kiro timeline feed failed: ${String(err)}`);
     }
 
-    // NOTE: the OpenClaw transcript feed used to pump from here and must not —
-    // see `openclawFeedTimer` below for why this callback cannot drive it.
+    // OpenClaw activity is driven directly by subscribed Gateway events.
     core.maybeBroadcastSessionsList();
   };
   // OTel turn boundaries arrive in milliseconds where the observer only re-reads
@@ -4940,7 +4986,118 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // worth a broadcast of its own.
   codexOtel.onChanged = () => core.maybeBroadcastSessionsList();
   codexOtel.isBackgroundThread = (threadId) => codexAmbientSessions.isAmbient(threadId);
-  codexOtel.isHookOwnedThread = (threadId) => hookCodexSessions.knows(threadId);
+  // A folded child is owned too: `codex exec` exports its OTel spans in one
+  // batch at exit, which would otherwise synthesize a `codex-app` row for the
+  // thread the roster just deliberately left out.
+  codexOtel.isHookOwnedThread = (threadId) =>
+    hookCodexSessions.knows(threadId) || codexExecChildren.knows(threadId);
+  codexExecChildren.lifecycle = {
+    onStart(child) {
+      // Anything the child's first hooks minted before it was attached: its
+      // own hook row, an APME run, a hub-driver identity. Evidence lives on
+      // the parent from here.
+      retractCodexThread(child.sessionId, 'headless child');
+      // A prompt row its early hooks put on the strip would otherwise spin
+      // until the turn watchdog's 3-minute silence rule closed it.
+      core.bridgeTimeline.reapOrphanChatStarts(0, Date.now(), undefined, {
+        onlySessionId: child.sessionId, label: 'Folded into parent',
+      });
+      log(`[agentdeck] codex exec ${child.sessionId.slice(0, 8)} is a child of ${child.parentAgentType} ${child.parentSessionId.slice(0, 8)}`
+        + (child.cwd ? ` (${basename(child.cwd)})` : ''));
+      applyExecChildResult(child, subagentTimeline?.handle({
+        eventName: 'SubagentStart',
+        payload: execChildPayload(child),
+        sessionId: child.parentSessionId,
+        agentType: child.parentAgentType,
+        projectName: child.parentProjectName,
+      }));
+    },
+    onStop(child, summary) {
+      applyExecChildResult(child, subagentTimeline?.handle({
+        eventName: 'SubagentStop',
+        payload: { ...execChildPayload(child), ...(summary ? { last_assistant_message: summary } : {}) },
+        sessionId: child.parentSessionId,
+        agentType: child.parentAgentType,
+        projectName: child.parentProjectName,
+      }));
+    },
+  };
+  function execChildPayload(child: CodexExecChild): Record<string, unknown> {
+    return {
+      agent_id: child.sessionId,
+      agent_type: 'codex exec',
+      // The topic directory is the one thing that tells twelve siblings
+      // apart when the run said nothing.
+      ...(child.cwd ? { task_subject: basename(child.cwd) } : {}),
+    };
+  }
+  function applyExecChildResult(
+    child: CodexExecChild,
+    result: SubagentTimelineResult | undefined,
+  ): void {
+    if (!result) return;
+    if (result.sampleEvent) apme?.collector.noteSubagentLifecycle(child.parentSessionId, result.sampleEvent);
+    if (result.censusChangedFor) core.broadcastSessionsList().catch(() => {});
+  }
+  /** Observed sessions with a pid — the launchers a headless run may descend
+   *  from. Bare ids, since that is how hooks and the census name them. */
+  function execChildPeers(): ExecChildPeer[] {
+    const peers: ExecChildPeer[] = [];
+    for (const s of passiveSessionObserver.collect([])) {
+      if (!(typeof s.pid === 'number' && s.pid > 0) || !s.agentType) continue;
+      if (codexExecChildren.knows(rawSessionId(s.id))) continue;
+      peers.push({ sessionId: rawSessionId(s.id), pid: s.pid, agentType: s.agentType, projectName: s.projectName });
+    }
+    return peers;
+  }
+  /** Undo everything a Codex thread's hooks created before it was classified
+   *  as not-a-session (ambient suggestion thread, headless child). */
+  function retractCodexThread(sid: string, reason: string): void {
+    hookCodexSessions.forget(sid);
+    codexOtel.forget(sid);
+    subagentTimeline?.forget(sid);
+    coordination.forget(sid);
+    hookSessionsSeen.delete(sid);
+    hookSessionLastSeenAt.delete(sid);
+    codexApmeSessions.delete(sid);
+    codexRosterAbsentSince.delete(sid);
+    const runId = apme?.collector.getRunId(sid);
+    if (apme && runId) {
+      apme.collector.releaseRun(runId);
+      try { apme.store.deleteRun(runId); }
+      catch (err) { debug('APME', `deleteRun for ${reason} ${sid.slice(0, 8)} failed: ${String(err)}`); }
+    }
+  }
+  /** Close the APME run of a Codex session that has left every roster —
+   *  observer rows, hook rows and OTel-synthesized rows — for the grace
+   *  period. Codex has no SessionEnd hook, so this is a codex run's normal
+   *  close; the grace absorbs one failed `lsof` scan and the 60 s a hook row
+   *  outlives its Stop. */
+  function sweepVanishedCodexRuns(now = Date.now()): void {
+    if (!apme || codexApmeSessions.size === 0) return;
+    const present = new Set<string>();
+    for (const s of passiveSessionObserver.collect([])) {
+      if (s.agentType === 'codex-cli' || s.agentType === 'codex-app') present.add(rawSessionId(s.id));
+    }
+    for (const s of hookCodexSessions.snapshot()) present.add(s.sessionId);
+    for (const s of codexOtel.applyTo([], now)) present.add(rawSessionId(s.id));
+    for (const sid of codexApmeSessions) {
+      if (!apme.collector.getRunId(sid)) {
+        codexApmeSessions.delete(sid);
+        codexRosterAbsentSince.delete(sid);
+        continue;
+      }
+      if (present.has(sid)) { codexRosterAbsentSince.delete(sid); continue; }
+      const since = codexRosterAbsentSince.get(sid);
+      if (since == null) { codexRosterAbsentSince.set(sid, now); continue; }
+      if (now - since < CODEX_RUN_VANISH_GRACE_MS) continue;
+      try { apme.collector.closeRun(sid); }
+      catch (err) { debug('APME', `closeRun for vanished codex ${sid.slice(0, 8)} failed: ${String(err)}`); }
+      codexApmeSessions.delete(sid);
+      codexRosterAbsentSince.delete(sid);
+      debug('APME', `closed codex run ${sid.slice(0, 8)}: its session left the roster ${Math.round((now - since) / 1000)}s ago`);
+    }
+  }
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hermesSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
@@ -7254,64 +7411,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const permissionSweepTimer = setInterval(() => { sweepStalePending(60_000); }, 30_000);
   permissionSweepTimer.unref?.();
 
-  // OpenClaw is Gateway-observed, and that stream carries the prompt, the final
-  // response and the approvals it has to block on — never the tool calls. The
-  // only tools that ever reached the strip were the ones that happened to need
-  // approval, which is a biased sample rather than a log. This reads the
-  // transcript OpenClaw writes anyway and emits the rest.
-  //
-  // **This needs a timer of its own, and that is the whole point.** The pump
-  // originally hung off `passiveSessionObserver.onRefreshed`, which fires only
-  // when the observed PROCESS set changes (`scan()` compares `next` against the
-  // cache and calls back only on a difference). Every other transcript feed can
-  // ride that edge because its subject is in that set — a Kiro turn moves its
-  // own row's `state`/`lastActivityAt`, so Kiro activity wakes the Kiro feed.
-  // OpenClaw is reached over the Gateway WebSocket and has NO process row at
-  // all, so an OpenClaw turn moves nothing the observer can see: the feed woke
-  // only when some unrelated agent happened to start or stop, and on the first
-  // scan after boot (empty cache → populated, which always counts as a change).
-  // Measured 2026-08-23 on a live daemon: three consecutive OpenClaw turns each
-  // wrote a tool call to the store, the reader returned it, and the pump ran
-  // exactly twice — both at startup — so the timeline showed zero `tool_exec`
-  // rows. A producer must be driven by a signal its own subject can move.
-  //
-  // Gated on the SSOT presence predicate, not on the store: the rows are
-  // attributed to the virtual `openclaw-gateway` session, and that row exists
-  // only while the Gateway is authenticated. Emitting them otherwise would put
-  // activity under a session no surface is showing.
-  //
-  // Cadence matches the passive observer's own `SCAN_INTERVAL_MS`, which is the
-  // "seconds late, never instant" contract every transcript-observed agent
-  // already carries. The pump is synchronous fs work; measured against a real
-  // store it costs ~7 ms typically and ~28 ms in its worst case (the index
-  // parse plus the eight largest transcripts), so the duty cycle stays well
-  // under 1% of the interval it shares with the observer.
-  const openclawFeedTimer = setInterval(() => {
-    try {
-      if (!core.cachedGatewayConnected) return;
-      const rows = openclawTimelineFeed.pump();
-      // Logged because the silent path and the broken path look identical from
-      // outside: a tick that emits nothing writes nothing, so "no rows on the
-      // strip" cannot be told from "the pump never ran" without this line. That
-      // ambiguity is exactly what hid the `onRefreshed` coupling.
-      if (rows.length > 0) {
-        debug('daemon', `openclaw-feed emitting ${rows.length} row(s)`);
-      }
-      for (const entry of rows) {
-        core.bridgeTimeline.addEntry(entry);
-      }
-    } catch (err) {
-      debug('daemon', `openclaw timeline feed failed: ${String(err)}`);
-    }
-  }, OPENCLAW_FEED_INTERVAL_MS);
-  openclawFeedTimer.unref?.();
-
   // ===== Shutdown =====
   core.onShutdown(async () => {
     drainDaemonSockets();
     clearInterval(permissionSweepTimer);
     clearInterval(daemonInfoHealTimer);
-    clearInterval(openclawFeedTimer);
     drainAllPending();
     removeDaemonInfo();
     focusRelay.stop();

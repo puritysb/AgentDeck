@@ -188,6 +188,14 @@ describe('BridgeTimelineStore', () => {
     expect(history[0].sessionId).toBe('session-1');
   });
 
+  it('does not upsert a different OpenClaw run inside the timestamp tolerance', () => {
+    const base = { ts: 100, type: 'chat_response' as const, agentType: 'openclaw' as const, sessionId: 'openclaw-gateway' };
+    store.addEntry({ ...base, runId: 'a', raw: 'first response' });
+    store.addEntry({ ...base, ts: 101, runId: 'b', raw: 'second response' });
+    store.upsertEntry({ ...base, runId: 'a', raw: 'first summary' });
+    expect(store.getHistory().map(e => [e.runId, e.raw])).toEqual([['a', 'first summary'], ['b', 'second response']]);
+  });
+
   it('upsert adds new entry when no match exists', () => {
     store.addEntry(makeEntry({ ts: 100, type: 'tool_request' }));
     store.upsertEntry(makeEntry({ ts: 200, type: 'chat_end', raw: 'New entry' }));

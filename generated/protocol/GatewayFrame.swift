@@ -175,6 +175,7 @@ enum ADGatewayMethodName: String, Codable {
     case pluginApprovalResolve = "plugin.approval.resolve"
     case sessionsList = "sessions.list"
     case sessionsMessagesSubscribe = "sessions.messages.subscribe"
+    case sessionsMessagesUnsubscribe = "sessions.messages.unsubscribe"
     case sessionsSubscribe = "sessions.subscribe"
     case systemPresence = "system-presence"
 }

@@ -93,6 +93,8 @@ v3|deviceId|clientId|clientMode|role|scopesCSV|signedAtMs|token|nonce|platform|d
 | `chat.abort`              | `{ sessionKey, runId? }`                     | `{ aborted }`            |
 | `exec.approval.resolve`   | `{ id, decision: 'allow' \| 'deny' }`        | `{ resolved }`           |
 | `sessions.list`           | `{ kind? }`                                  | `{ sessions: GatewaySession[] }` |
+| `sessions.subscribe` | `{}` | broad session subscription |
+| `sessions.messages.subscribe` / `sessions.messages.unsubscribe` | `{ key }` | per-session subscription |
 
 `idempotencyKey`는 `crypto.randomUUID()` — Gateway가 재전송 중복을 식별한다. RPC 타임아웃 10s.
 
@@ -102,7 +104,12 @@ v3|deviceId|clientId|clientMode|role|scopesCSV|signedAtMs|token|nonce|platform|d
 |-----------------------------|-------------------------------------------------------|--------------------|
 | `connect.challenge`         | 연결 직후 (handshake)                                 | `nonce`, `expiresAt?` |
 | `chat` (state=`delta`)      | 응답 스트리밍 증분                                    | `runId`, `sessionKey`, `delta` |
-| `chat` (state=`final`)      | 턴 완료                                               | `response`, `tools`, `inputTokens`, `outputTokens`, `modelId` |
+| `chat` (state=`final`)      | 턴 완료 | `runId`, `sessionKey`, `message.content` |
+| `chat` (state=`status`) | 준비/모델 시작 | `runId`, `sessionKey`, `phase` |
+| `sessions.changed` | 실행 시작/종료 및 세션 변경 | `sessionKey`, `session.hasActiveRun`, `session.activeRunIds` |
+| `session.message` | 사용자 요청/모델 응답 | `sessionKey`, `message.role`, `message.content`, `message.__openclaw` |
+| `session.tool` | 도구 시작/진행/결과 | `runId`, `sessionKey`, `data.phase`, `data.toolCallId`, `data.args/result` |
+| `agent` | 실행 수명 및 상태 | `runId`, `sessionKey`, `stream`, `data.phase`, `data.terminalReply` |
 | `chat` (state=`aborted`)    | `chat.abort` 처리됨                                   | `runId` |
 | `chat` (state=`error`)      | 생성 실패                                             | `error` |
 | `exec.approval.requested`   | 툴 실행 승인 요청 (Bash, Write 등)                    | `id`, `tool`, `command?`, `reason?`, `options?` |
@@ -113,9 +120,12 @@ v3|deviceId|clientId|clientMode|role|scopesCSV|signedAtMs|token|nonce|platform|d
 
 ### chat 이벤트 해석 주의
 
-- `delta`는 텍스트 조각뿐 아니라 `tools` 배열도 포함할 수 있다 (tool 호출이 스트리밍 중 추가될 때).
-- `final`의 `response`는 전체 누적 텍스트. 클라이언트는 `delta`를 직접 누적하지 말고 `final.response`를 정답으로 사용하는 것을 권장.
-- `newSessionId`가 등장하면 Gateway가 새 세션을 생성한 것. 클라이언트는 `currentSessionKey`를 갱신해야 한다.
+- 2026.9.6 실측에서 `chat`은 assistant 전용이다. 요청은 `session.message`의 user, 도구는 `session.tool`의 `data`, 모델/usage는 assistant 메시지에서 읽는다.
+- `chat.status`, `agent.run_status/lifecycle`, `sessions.changed`의 현재 실행 목록이 WORKING을 시작한다. 첫 텍스트 delta까지 기다리면 도구 실행 중 크리처가 멈춰 보인다. `lastRunId`는 과거 실행이므로 사용하지 않는다.
+- `chat.final`과 lifecycle end는 같은 runId를 종료하며 완료 행은 한 번만 만든다. 다른 실행이 남아 있으면 WORKING을 유지한다.
+- 도구 start/update는 내부 추적만 하고 result에서 한 행을 남긴다. 정상적인 process poll/log/list는 생략하고 오류는 기록한다.
+- broad subscription에 더해 변경된 세션 키를 구독한다. hidden/headless 실행은 per-key subscription에만 전달될 수 있다. 연결 종료 시 구독과 실행 상태를 비운다.
+- 실제 캡처 회귀 자료는 [gateway-live fixture](../tests/parity/gateway-live/README.md)에 있다. Node/Swift 모두 같은 캡처를 재생한다.
 
 ## 세션 추적
 
