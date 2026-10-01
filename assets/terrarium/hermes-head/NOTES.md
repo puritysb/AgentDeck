@@ -469,6 +469,29 @@ front sheet is matched instead.
 
 Review sheet: `diagnostics/hermes-mermaid/nous-v19-faceshape/faceshape-review.png`.
 
+## Naturalness pass (2026-10-02)
+
+Ortho silhouette widths per height against the front and profile sheets:
+
+- **Earmuffs.** The flip locks were wide blades (1.3-1.4) rooted at z 2.1
+  and reached past the frame on her right. They read as earmuffs/wings, and
+  her left was 0.5 narrower than the sheet. `build_locks.py` now has six
+  narrow (≤0.8) locks on both sides. Each runs down the bob and hooks out
+  only at jaw level (z ~0.6-1.0, as on the sheet) or at the hem.
+- **E57:** the back of the bob was 0.4-0.8 deeper than the profile sheet;
+  about half of that was pulled in.
+- **Fringe on the brows:** `HEM_RAISE` is 0 (sheet hem z 1.86) and the
+  brows sit just under it (BROW_Y 0.008). The 0.10 raise had left a strip
+  of forehead.
+- **Eyes:** EW 0.086 (eye ~0.29 of the face width) with the almond kept at
+  h/w ~0.62. The previous pass had made the eyes too small.
+- **Neck:** the head joint is .196 (was .188), for a short visible neck.
+
+**Result:** 146k tris, 0 face folds, HermesAquariumTests 9/9, master
+camera 2.121.
+
+Review sheet: `diagnostics/hermes-mermaid/nous-v19-natural/natural-review.png`.
+
 Known gaps (honest, as of the final sheet):
 
 - (Addressed by the topology pass:) the thick visor fringe and the grid facets.

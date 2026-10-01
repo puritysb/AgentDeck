@@ -43,32 +43,28 @@ RING = 6         # cross-section vertices
 # cheek in profile.
 LOCKS = [
     # name, control points, widths (root..tip), thickness
-    # (framing locks removed 2026-10-01: a separate lock left skin showing between
-    # it and the curtain, a dark stripe across the cheek; the curtain edge itself
-    # now curls under the jaw, edits.json E13)
-    # was: framing locks: the curtain's INNER edge, where it touches the cheek (front
-    # sheet: hair inner edge = face outline; profile sheet: cheek bare back to
-    # y~-0.4), addressed by the cage vertices edits.json placed there (col 6/26).
-    # Only the tip curls a short way under the jaw toward the chin (front sheet
-    # tips at x~+-0.65, z~0.3). Placing it on the curtain's outer front face made
-    # it cross the curtain to reach the jaw and read as a chin strap (2026-10-01).
-    # her right (far side in the master): three thick C-curls stacked from ear to
-    # chin level, hooking out and up (master crop x~70-130, y~330-470)
-    # her right (near side in the master): thick C-curls stacked from CHIN level
-    # down (master rows 360-480, below the chin at 424), hooking out and up.
-    ("up_R1", [("hair", -76, 2.1, -0.05), ("hair", -78, 1.0, 0.10), ("hair", -80, 0.25, 0.10),
-               ("hair", -82, -0.05, 0.85), ("hair", -82, 0.35, 1.60), ("hair", -78, 0.85, 1.55)],
-     [1.75, 1.85, 1.6, 1.05, 0.45, 0.0], 0.36),
-    ("up_R2", [("hair", -96, 2.0, -0.05), ("hair", -97, 0.8, 0.10), ("hair", -98, -0.20, 0.12),
-               ("hair", -99, -0.55, 0.85), ("hair", -99, -0.15, 1.55), ("hair", -95, 0.32, 1.50)],
-     [1.8, 1.9, 1.65, 1.1, 0.45, 0.0], 0.36),
-    ("lo_R1", [("hair", -86, 1.0, -0.05), ("hair", -87, 0.0, 0.10), ("hair", -88, -0.55, 0.10),
-               ("hair", -89, -0.92, 0.75), ("hair", -89, -0.60, 1.40), ("hair", -85, -0.15, 1.38)],
-     [1.75, 1.85, 1.6, 1.0, 0.42, 0.0], 0.34),
-    # her left (far side in the master): one soft outward flip at the back hem
-    ("lo_L2", [("hair", 112, 0.9, -0.05), ("hair", 112, 0.0, 0.10), ("hair", 113, -0.40, 0.10),
-               ("hair", 114, -0.62, 0.55), ("hair", 114, -0.42, 1.00), ("hair", 112, -0.15, 0.98)],
-     [1.5, 1.6, 1.4, 0.9, 0.38, 0.0], 0.30),
+    # 2026-10-02 rework: the front sheet's bob falls close to the face and only
+    # its ENDS flip outward. Wide blades rooted at z 2.1 read as earmuffs. Each
+    # flip is now a narrow lock rooted on the bob (upper flips hook at jaw level, z ~0.6-1.0, as on the sheet; lower ones at the hem) that runs down the
+    # surface and hooks out and up only at the hem, on both sides.
+    ("up_R1", [("hair", -78, 1.9, -0.05), ("hair", -80, 1.15, 0.06), ("hair", -82, 0.65, 0.12),
+               ("hair", -83, 0.4, 0.45), ("hair", -83, 0.58, 0.78), ("hair", -81, 0.82, 0.80)],
+     [0.80, 0.80, 0.72, 0.50, 0.22, 0.0], 0.20),
+    ("lo_R1", [("hair", -96, 1.1, -0.05), ("hair", -97, 0.3, 0.06), ("hair", -98, -0.25, 0.12),
+               ("hair", -99, -0.48, 0.42), ("hair", -99, -0.30, 0.72), ("hair", -97, -0.08, 0.74)],
+     [0.78, 0.78, 0.70, 0.48, 0.20, 0.0], 0.20),
+    ("up_L1", [("hair", 78, 1.9, -0.05), ("hair", 80, 1.15, 0.06), ("hair", 82, 0.65, 0.12),
+               ("hair", 83, 0.4, 0.42), ("hair", 83, 0.56, 0.72), ("hair", 81, 0.78, 0.74)],
+     [0.76, 0.76, 0.68, 0.48, 0.20, 0.0], 0.20),
+    ("lo_L1", [("hair", 97, 1.1, -0.05), ("hair", 98, 0.3, 0.06), ("hair", 99, -0.25, 0.12),
+               ("hair", 100, -0.46, 0.40), ("hair", 100, -0.30, 0.68), ("hair", 98, -0.10, 0.70)],
+     [0.74, 0.74, 0.66, 0.46, 0.20, 0.0], 0.20),
+    ("lo_L2", [("hair", 118, 0.9, -0.05), ("hair", 118, 0.0, 0.08), ("hair", 119, -0.35, 0.10),
+               ("hair", 120, -0.52, 0.40), ("hair", 120, -0.36, 0.66), ("hair", 118, -0.16, 0.66)],
+     [0.70, 0.70, 0.62, 0.44, 0.18, 0.0], 0.18),
+    ("lo_R2", [("hair", -118, 0.9, -0.05), ("hair", -118, 0.0, 0.08), ("hair", -119, -0.35, 0.10),
+               ("hair", -120, -0.52, 0.40), ("hair", -120, -0.36, 0.66), ("hair", -118, -0.16, 0.66)],
+     [0.70, 0.70, 0.62, 0.44, 0.18, 0.0], 0.18),
 ]
 HAIR_AXIS_Y = 0.6   # hair mass widest-at depth (bootstrap HAIR_M)
 HEAD_AXIS_Y = 0.0

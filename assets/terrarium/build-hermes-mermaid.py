@@ -321,7 +321,7 @@ skin_mesh(body, weights)
 
 # ---------------------------------------------------------------- head ----
 spine = joint('hermes_spine', root)
-head = joint('hermes_head', spine, (0, .188, .006))   # v19: the concept's chin sits almost on the shoulders (was .215)
+head = joint('hermes_head', spine, (0, .196, .006))   # v19: the concept's chin sits almost on the shoulders (was .215)
 # The face is designed as a flat sheet in hermes_face.py (the approved 2D
 # source); this builder only shapes a head to fit that sheet and lays its
 # artwork on it unchanged.
