@@ -544,6 +544,26 @@ still trade ±0.3-0.7 against each other.
 
 Review sheet: `diagnostics/hermes-mermaid/nous-v19-silhouette/silhouette-review.png`.
 
+## Shadow pass (2026-10-02, "face side and jaw shadows look unnatural")
+
+The concept's face is flat-lit ivory. Its only shadow is a soft neck tone
+under the chin. The model stacked three shadows:
+- RealityKit's high-sun shading of the cheek sides and the jaw underside;
+- painted jaw-underside and side-plane shades;
+- a hard creased jaw edge.
+
+**Changes:**
+- Skin gets a small self-light (emission .22 of the ivory).
+- The painted underside and side-plane shades are removed; the neck tone
+  and the cast band are lighter.
+- The jaw crease is softened (ring 10: 0.45, ring 11: 0.3).
+
+**Result:** skin median 247/239/230 (master 246/235/226). The lower face
+reads flat-lit, with only a light neck tone.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-shadows/shadow-review.png`
+(columns: reference | before | after).
+
 Known gaps (honest, as of the final sheet):
 
 - (Addressed by the topology pass:) the thick visor fringe and the grid facets.

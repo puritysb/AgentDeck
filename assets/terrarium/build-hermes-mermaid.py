@@ -63,6 +63,10 @@ skin.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (.8
 # The concept's skin is matte: RealityKit's image light left a white hotspot on
 # the forehead and cheek at the default IOR, so the reflection is cut as for the hair.
 skin.node_tree.nodes['Principled BSDF'].inputs['IOR'].default_value = 1.15
+# The concept's face is flat-lit ivory: a little self-light so the side and
+# underside planes don't fall into heavy shadow under the app's high sun.
+skin.node_tree.nodes['Principled BSDF'].inputs['Emission Color'].default_value = (.80, .66, .57, 1)
+skin.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = .22
 # Glossy black: the mark's white strokes on the hair are light reflections, so
 # they must come from the material, not from painted decals.
 hair = material('Nous ink hair', 'ink-900', .35, .10, scale=.045, neutral=True)

@@ -145,15 +145,15 @@ def paint(face, F, base_srgb, jaw=None):
     # The neck sits in the jaw's shadow in the concept (228/202/187 against a
     # 252/236/226 face). RealityKit casts no such shadow and the app's high sun
     # lights the neck like the face, so it is painted darker than the target.
-    apply(smooth(-0.001, -0.008, Y - JAW) * HIT, (236, 212, 199))
+    apply(smooth(-0.001, -0.008, Y - JAW) * HIT, (244, 224, 212))   # 2026-10-02: lighter; the sheet's only shadow is a soft neck tone
     # Lift the albedo where the face front tilts down above the jaw (lower
     # cheeks and chin): the concept lights them like the rest of the face, but
     # the app's high sun leaves them dim. Clipped at white by the final clip.
     tilt = smooth(-0.05, -0.55, NY) * (Y > JAW + 0.002) * HIT
     ratio[:] = ratio * (1 + 0.14 * tilt[..., None])
     # a soft cast-shadow band right under the jaw, fading down the neck
-    apply(np.clip(smooth(-0.002, -0.006, Y - JAW) * smooth(-0.030, -0.012, Y - JAW), 0, 1) * HIT, (244, 226, 216))
-    apply(smooth(-0.15, -0.55, NY) * HIT * (Y > JAW - 0.012), (240, 225, 215))   # RealityKit already shades the underside
+    apply(np.clip(smooth(-0.002, -0.006, Y - JAW) * smooth(-0.030, -0.012, Y - JAW), 0, 1) * HIT, (248, 232, 222))
+    # (jaw-underside shade removed 2026-10-02: the concept's lower face is flat lit)
     # faint warm band under the fringe hem, strongest at the sides
     hem = F.HEM_Y + 0.016
     band = smooth(hem - 0.020, hem - 0.004, Y) * (Y < hem + 0.02) * (0.45 + 0.55 * smooth(0.02, 0.10, np.abs(X)))
@@ -181,7 +181,7 @@ def paint(face, F, base_srgb, jaw=None):
     # the face's side planes near the hair turn a little warmer and darker
     # (sheet cheek edges ~248/229/216 vs 252/236/226 lit)
     edge = smooth(0.35, 0.80, np.abs(NX)) * HIT * (Y > JAW + 0.004)
-    apply(edge, (240, 219, 206))
+    # (side-plane shade removed 2026-10-02: it read as dirty cheeks next to the flat-lit sheet)
     # faint cheek warmth under the eyes
     for s in (-1, 1):
         ck = np.exp(-(((X - s * 0.085) / 0.028) ** 2 + ((Y - (F.EYE_Y - 0.050)) / 0.018) ** 2))

@@ -67,9 +67,9 @@ def _jaw_crease(me):
         a, b = e.vertices
         ra, rb = R[a].value, R[b].value
         if ra == rb == 10:
-            attr.data[e.index].value = 0.85
+            attr.data[e.index].value = 0.45   # softer: a hard jaw edge made a cut-out shadow
         elif ra == rb == 11:
-            attr.data[e.index].value = 0.6
+            attr.data[e.index].value = 0.3
 
 
 def _bake(src, name, mat, parent, smooth, origin=Vector()):
