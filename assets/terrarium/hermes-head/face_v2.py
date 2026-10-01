@@ -91,7 +91,7 @@ def upper_liner(s):
     thick = lambda t: .0085 + .0070 * F.smooth(.05, .85, t) * (1 - .30 * F.smooth(.9, 1, t))   # ref: solid band ~0.0115 across the eye
     upper = [(F.top_arc(t, s)[0] * 1.01, F.top_arc(t, s)[1] + thick(t)) for t in (i / n for i in range(n + 1))]
     cx, cy = F.top_arc(1, s)
-    tip = (cx + s * .022, cy + .011)
+    tip = (cx + s * .013, cy + .010)   # shorter wing: projected onto the side of the face it smeared back in profile
     lid = [F.top_arc(t, s) for t in ((n - i) / n for i in range(n + 1))]
     return upper + [tip] + lid
 

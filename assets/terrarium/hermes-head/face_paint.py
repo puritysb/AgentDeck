@@ -70,7 +70,8 @@ def nose_form(face, F):
         # lips: upper and lower pout, a soft groove between lower lip and chin
         lip = (0.0022 * math.exp(-((x / 0.017) ** 2 + ((y - (ym + 0.0035)) / 0.0035) ** 2))
                + 0.0030 * math.exp(-((x / 0.015) ** 2 + ((y - (ym - 0.0050)) / 0.0040) ** 2))
-               - 0.0012 * math.exp(-((x / 0.014) ** 2 + ((y - (ym - 0.0120)) / 0.0030) ** 2)))
+               - 0.0040 * math.exp(-((x / 0.016) ** 2 + ((y - (ym - 0.0125)) / 0.0035) ** 2))   # groove under the lower lip (profile sheet)
+               + 0.0025 * math.exp(-((x / 0.018) ** 2 + ((y - (ym - 0.0230)) / 0.0050) ** 2)))  # chin pad
         # smooth union of tip and bridge (max() left a V crease on the bridge)
         form = (tip ** 4 + bridge ** 4) ** 0.25
         disp[v.index] = form + under + lip

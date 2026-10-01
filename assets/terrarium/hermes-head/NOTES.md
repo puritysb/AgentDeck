@@ -564,6 +564,36 @@ reads flat-lit, with only a light neck tone.
 Review: `diagnostics/hermes-mermaid/nous-v19-shadows/shadow-review.png`
 (columns: reference | before | after).
 
+## Profile pass (2026-10-02, "side view: shadows and face shape don't match")
+
+**Measurements** against the profile sheet (lit-face vs neck boundary per y,
+face extents per z):
+
+| | sheet | model |
+|---|---|---|
+| hair (start of cheek cover) | y -0.45 | y -0.2 (lower face read heavy and wide) |
+| neck front | y -0.28 | 0.15 further forward |
+| neck width | front sheet ~1.07 | 0.87 |
+| chin | — | 0.13 forward, 0.12 low |
+| groove under the lower lip | present | missing |
+
+**Edits:**
+- **E65:** the curtain inner edge comes 0.2 forward at cheek level, and the
+  chin moves back 0.07 and up 0.06 (between the master and the sheet).
+- **`head_v19._neck`:** the neck is now an ellipse (half-width 0.53, depth
+  0.38, centred at y 0.10).
+- **`face_paint.nose_form`:** a deeper lower-lip groove plus a chin pad.
+- **`face_v2.upper_liner`:** a shorter wing. Projected onto the side of the
+  face, it had smeared back along the cheek in profile.
+- **Skin emission 0.60.** The master-camera skin luminance spread now
+  matches the master (p50-p5 46.3 vs 46.7).
+
+**Remaining.** In profile the eye is still a front-projected drawing, not a
+side-view eye. A real side eye would need a 3D eye or a view-dependent
+decal.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-profile/profile-review.png`.
+
 Known gaps (honest, as of the final sheet):
 
 - (Addressed by the topology pass:) the thick visor fringe and the grid facets.

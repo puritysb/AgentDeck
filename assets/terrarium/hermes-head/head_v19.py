@@ -43,15 +43,17 @@ def _load():
 
 
 def _neck(me):
-    """Pull the blockout's neck rings (11, 12) in to the body's neck radius."""
+    """Shape the blockout's neck rings (11, 12) into the visible neck: an ellipse
+    as wide as the front sheet's neck (half-width ~0.53) but shallower, with
+    its front where the profile sheet has it (y ~ -0.28), 2026-10-02."""
     R = me.attributes["ring"].data
+    RX, RY, CY = 0.53, 0.38, 0.10
     for v in me.vertices:
         if R[v.index].value in (11, 12):
-            c = Vector((0.0, 0.05, 0.0))
-            d = Vector((v.co.x, v.co.y, 0)) - c
-            if d.length > NECK_R:
-                d = d.normalized() * NECK_R
-            v.co.x, v.co.y = c.x + d.x, c.y + d.y
+            dx, dy = v.co.x, v.co.y - CY
+            import math as _m
+            a = _m.atan2(dy / RY, dx / RX)
+            v.co.x, v.co.y = RX * _m.cos(a), CY + RY * _m.sin(a)
 
 
 def _jaw_crease(me):

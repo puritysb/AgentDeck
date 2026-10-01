@@ -66,7 +66,7 @@ skin.node_tree.nodes['Principled BSDF'].inputs['IOR'].default_value = 1.15
 # The concept's face is flat-lit ivory: a little self-light so the side and
 # underside planes don't fall into heavy shadow under the app's high sun.
 skin.node_tree.nodes['Principled BSDF'].inputs['Emission Color'].default_value = (.80, .66, .57, 1)
-skin.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = .22
+skin.node_tree.nodes['Principled BSDF'].inputs['Emission Strength'].default_value = 0.60
 # Glossy black: the mark's white strokes on the hair are light reflections, so
 # they must come from the material, not from painted decals.
 hair = material('Nous ink hair', 'ink-900', .35, .10, scale=.045, neutral=True)

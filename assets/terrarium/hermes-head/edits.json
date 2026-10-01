@@ -12335,5 +12335,98 @@
    -0.017,
    0
   ]
+ },
+ {
+  "note": "E65 (profile sheet, 2026-10-02): (a) the curtain inner edge comes forward 0.2 at cheek level (sheet hair starts at y ~-0.45, model ~-0.2: a wide, heavy lower face in profile); (b) the chin back 0.07 and up 0.06, splitting the master and the profile sheet."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 6,
+  "move": [
+   0,
+   -0.1,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "move": [
+   0,
+   -0.2,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "move": [
+   0,
+   -0.22,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "move": [
+   0,
+   -0.18,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "move": [
+   0,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   0.07,
+   0.06
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   0.035,
+   0.024
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   0.05,
+   0.04
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   0.025,
+   0.016
+  ]
  }
 ]
