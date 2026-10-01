@@ -594,7 +594,9 @@ side-view eye.
 E66 was tried and reverted: flattening the eye-level face front so the eye
 sits on a front-facing plane barely changed the profile read. A side-view
 eye needs real eye geometry (a recessed eyeball with iris/pupil, and lids
-as geometry). That changes how the `hermes_eye_*` / `hermes_pupil_*` /
+as geometry). `face_paint.eye_planes` (local flat sockets yawed 35 deg) was also tried and is
+not used: the socket stood proud of the cheek and made the profile eye larger.
+The geometry route changes how the `hermes_eye_*` / `hermes_pupil_*` /
 `hermes_lid_*` nodes are built, though not their names.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-profile/profile-review.png`.

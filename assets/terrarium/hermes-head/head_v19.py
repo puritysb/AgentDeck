@@ -105,6 +105,7 @@ def build(head, mats, joint):
     # nose form + painted shading measured from the concepts (face_paint.py)
     import face_paint
     from face_v2 import F as FV
+    # face_paint.eye_planes(face, FV)   # tried 2026-10-02: the flat socket stood proud of the cheek and made the profile eye larger; not used
     face_paint.nose_form(face, FV)
     base = mats["skin"].node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value
     srgb = [c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055 for c in base[:3]]

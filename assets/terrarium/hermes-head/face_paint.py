@@ -223,3 +223,34 @@ def uv_and_material(face, skin, im):
     tex = nt.nodes.new("ShaderNodeTexImage"); tex.image = im; tex.extension = "EXTEND"
     nt.links.new(tex.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
     me.materials.clear(); me.materials.append(m)
+
+def eye_planes(face, F, yaw_deg=35.0):
+    """Flatten the face around each eye onto a plane yawed outward.
+
+    The profile sheet draws a side eye about 0.6 of the front eye's width:
+    the eye sits on a plane facing mostly forward, turned ~35 deg outward.
+    On the round face the outer half of each projected eye lay on a ~60 deg
+    surface, so in profile the drawing read face-on. A local flat socket
+    plane foreshortens it the way the sheet does. Decals then project onto
+    it unchanged; the node/rig contract is untouched (2026-10-02).
+    """
+    me = face.data
+    t = math.tan(math.radians(yaw_deg))
+    rx, ry = F.EW * 0.85, F.EH_T * 1.9
+    for s in (-1, 1):
+        x0, y0 = s * F.EYE_X, F.EYE_Y
+        # face depth at the eye centre
+        zc = max((v.co.z for v in me.vertices if abs(v.co.x - x0) < 0.004 and abs(v.co.y - y0) < 0.004), default=None)
+        if zc is None:
+            continue
+        for v in me.vertices:
+            if v.co.z < 0.05:
+                continue
+            d = math.hypot((v.co.x - x0) / rx, (v.co.y - y0) / ry)
+            if d >= 1.8:
+                continue
+            w = 1.0 if d <= 1.0 else 1.0 - ((d - 1.0) / 0.8) ** 2 * (3 - 2 * (d - 1.0) / 0.8)
+            zp = zc - s * t * (v.co.x - x0) - 0.0015 * ((v.co.y - y0) / ry) ** 2
+            v.co.z = v.co.z + (zp - v.co.z) * w
+    me.update()
+
