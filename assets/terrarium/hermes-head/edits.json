@@ -9387,5 +9387,151 @@
    -0.0455,
    0
   ]
+ },
+ {
+  "note": "E55 (front overlay on the sheet, 2026-10-02): the face sides bulged 0.1-0.17 wider than the sheet at z 0.7-1.8 (the sheet's sides run straight). Head rings 4-8 narrowed."
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "cols": "all",
+  "scale": [
+   0.97,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "cols": "all",
+  "scale": [
+   0.95,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "cols": "all",
+  "scale": [
+   0.95,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "cols": "all",
+  "scale": [
+   0.95,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "scale": [
+   0.97,
+   1,
+   1
+  ]
+ },
+ {
+  "note": "E56b: the skull's temple (40-60 deg, z 1.85-2.4) sat only 0.04 inside the hair's outer surface beside the fringe corners. The facet jitter (+-0.035) let the skin poke through as jagged 'horns' above the outer eye corners. The temple moves radially inward 0.10-0.16 (head rings 3-5, cols 2-3)."
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "col": 2,
+  "move": [
+   -0.0707,
+   0.0707,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "col": 3,
+  "move": [
+   -0.0739,
+   0.0306,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "col": 1,
+  "move": [
+   -0.0153,
+   0.037,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 2,
+  "move": [
+   -0.1131,
+   0.1131,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 3,
+  "move": [
+   -0.1183,
+   0.049,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 1,
+  "move": [
+   -0.0245,
+   0.0591,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 2,
+  "move": [
+   -0.0566,
+   0.0566,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   -0.0591,
+   0.0245,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   -0.0122,
+   0.0296,
+   0
+  ]
  }
 ]

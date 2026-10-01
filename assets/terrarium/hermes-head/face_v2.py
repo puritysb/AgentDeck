@@ -39,12 +39,12 @@ F.__file__ = str(_SRC)
 exec(compile(_SRC.read_text(), str(_SRC), "exec"), F.__dict__)
 
 # ---- measured proportions (head units) -----------------------------------
-F.EYE_X, F.EYE_Y = 0.095, -0.036   # master: eyes a little closer relative to face length
-F.EW, F.EH_T, F.EH_B = 0.097, 0.034, 0.036   # master: eyes ~0.37 of the face width   # iteration 14: ref eye height/width ~0.7 (was 0.55)   # iteration 11: +10%, the master's eyes are ~15% larger relative to the face than candidate-02's   # EH_T is the lid line; the liner sits above it
-F.IRIS_R, F.IRIS_Y = (0.030, 0.035), 0.004   # master: iris fills more of the eye   # ref iris ~0.6 of the eye width, white visible both sides   # top hidden under the heavy lid (ref: iris top under a solid 0.0115 liner band)   # top clipped by the heavy lid, as in the guide
+F.EYE_X, F.EYE_Y = 0.098, -0.036   # sheet iris centres at x +-0.9 model units
+F.EW, F.EH_T, F.EH_B = 0.079, 0.025, 0.024   # 2026-10-02: eye width / face width 0.30 -> the sheet's ~0.24; almond h/w ~0.62
+F.IRIS_R, F.IRIS_Y = (0.024, 0.028), 0.003
 IRIS_DX = 0.010            # toward the nose
 F.BROW_Y, BROW_X, BROW_LEN = 0.020, 0.098, 0.080   # in the gap between the liner top (~z 1.69) and the hem (1.84)
-F.NOSE_Y, F.MOUTH_Y, F.LIP_W = -0.099, -0.140, 0.052   # E43b: halfway to the landmark mouth   # between the master solve and the front sheet (eye 1.35 / nose .88 / mouth .58)   # E22: master landmarks, the lower face is longer
+F.NOSE_Y, F.MOUTH_Y, F.LIP_W = -0.099, -0.131, 0.052   # sheet overlay: lips sat ~0.12 units low
 F.MODEL_HEM_Z, F.MODEL_CHIN_Z, F.MODEL_SCALE = 1.86, -0.14, 8.696
 
 

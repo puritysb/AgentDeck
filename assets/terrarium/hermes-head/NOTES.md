@@ -440,6 +440,35 @@ emission (strength 3.0). Crown→hem is now ~44→27, and the facets still read.
 
 **Rejected.** Albedo ×0.2 with emission 4.5 flattened the hair to grey.
 
+## Face-shape pass (2026-10-02, after the user's "the face shape is still odd")
+
+The diagnosis used a registered overlay of the Blender ortho front on the
+sheet, plus the face_v2 outlines drawn over the sheet. The outer face
+outline already matched within ~0.1. The odd read came from three things:
+
+1. **Round "surprised" eyes.** The almond was h/w ~0.8 (sheet ~0.62) with
+   white all round the iris. It was also ~25% too wide relative to the face
+   (eye/face 0.30 vs 0.24). Now: EW 0.079, EH 0.025/0.024, iris
+   0.024×0.028, EYE_X 0.098.
+2. **Forehead "horns".**
+   - The fringe's V-splits were wide and deep. The hem is now blunt
+     (`refine_fringe.HEM` capped at 1.90); the sheet's splits are hairline.
+   - **E56b:** the skull's temples sat only 0.04 inside the hair beside
+     the fringe corners, and the facet jitter let skin poke through. The
+     temples moved in 0.10-0.16.
+3. **Smaller fixes:**
+   - Mouth up 0.009 head units (it sat ~0.12 model units below the sheet's).
+   - **E55:** face sides narrowed 3-5% at z 0.7-1.8.
+
+E56 (pulling the curtain over the temples) was tried first and reverted: it
+did not address the cause.
+
+**Master camera:** 2.129 (face 0.767, features 0.272). Features drop
+because the master's fringe has splits the blunt hem no longer draws; the
+front sheet is matched instead.
+
+Review sheet: `diagnostics/hermes-mermaid/nous-v19-faceshape/faceshape-review.png`.
+
 Known gaps (honest, as of the final sheet):
 
 - (Addressed by the topology pass:) the thick visor fringe and the grid facets.
