@@ -1,6 +1,10 @@
 """Hermes (Nous girl) mermaid, built from the official mark (`design/brand/hermes.svg`).
 
-The face is designed as a flat sheet in `hermes_face.py` (the approved 2D source)
+v19: the head (skin, faceted hair, flicked locks, headset) is the measured
+blockout from `hermes-head/` (see its NOTES.md), converted by `head_v19.py`.
+The face artwork is the v18 drawing code with proportions re-measured from the
+guide (`hermes-head/face_v2.py`), laid on that head as decals.
+(v18 text follows.) The face is designed as a flat sheet in `hermes_face.py`
 and laid onto a head fitted to that sheet. The mark's white arc is a headset: its
 band runs over the crown into the hair, with a yoke at each side and the earcups
 hidden. Its white strokes on the hair are light, so the hair is satin black
@@ -20,11 +24,12 @@ from pathlib import Path
 import bpy, bmesh, math, re, json, sys
 from mathutils import Vector, Matrix
 from mathutils.bvhtree import BVHTree
+from mathutils.geometry import tessellate_polygon
 
 ROOT = Path(__file__).resolve().parents[2]
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 INSTALL = '--preview-only' not in argv
-OUT = Path(argv[argv.index('--out') + 1]) if '--out' in argv else ROOT / 'diagnostics/hermes-mermaid/nous-v18'
+OUT = Path(argv[argv.index('--out') + 1]) if '--out' in argv else ROOT / 'diagnostics/hermes-mermaid/nous-v19'
 OUT.mkdir(parents=True, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -51,10 +56,30 @@ def material(name, token, roughness=.8, specular=.15, glow=0.0, scale=1.0, neutr
     return m
 
 # Ink on cream: the mark's two tones are the design system's ink and tide sand.
-skin = material('Ivory skin', 'tide-100', .85, .08, glow=.12)   # the concept's warm cream reads grey under plain lighting
+skin = material('Ivory skin', 'tide-100', .75, .10, glow=.03)
+# v19: the master's warm ivory (sampled ~#f3e6da on the lit cheek), set directly;
+# tide-100 rendered grey-green and its glow flattened the face's soft shading.
+skin.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (.83, .69, .60, 1)   # measured under the app's lights against the concept's lit cheek (~247/235/226) without clipping
+# The concept's skin is matte: RealityKit's image light left a white hotspot on
+# the forehead and cheek at the default IOR, so the reflection is cut as for the hair.
+skin.node_tree.nodes['Principled BSDF'].inputs['IOR'].default_value = 1.15
 # Glossy black: the mark's white strokes on the hair are light reflections, so
 # they must come from the material, not from painted decals.
-hair = material('Nous ink hair', 'ink-900', .65, .15, scale=.045, neutral=True)
+hair = material('Nous ink hair', 'ink-900', .35, .10, scale=.045, neutral=True)
+# v19: the master's hair is a cool navy-black (mean sRGB ~ 29/34/43, facet
+# highlights up to ~100), not neutral: tinted base and a little more sheen.
+hair.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (.012, .015, .024, 1)
+# RealityKit's image light made any specular read as a flat grey sheen (median
+# 59 vs the concept's 27): the concept's facets are diffuse shade, so the
+# reflection is cut with a low IOR (UsdPreviewSurface carries ior, not
+# Blender's specular level).
+hair.node_tree.nodes['Principled BSDF'].inputs['IOR'].default_value = 1.12
+# The concept's hair is a near-flat ink (~26 sRGB top to bottom on the sheet);
+# under the app's high sun the crown read ~52 and the fringe hem ~16, a dark
+# band between. Lower albedo plus a faint navy emission narrows that range.
+_hb = hair.node_tree.nodes['Principled BSDF']
+_hb.inputs['Base Color'].default_value = tuple(c * 0.3 for c in _hb.inputs['Base Color'].default_value[:3]) + (1,)
+_hb.inputs['Emission Color'].default_value = (.0045, .0058, .0095, 1); _hb.inputs['Emission Strength'].default_value = 3.0
 hair_under = material('Hair under-layer', 'ink-900', .9, .05, scale=.12, neutral=True)
 line = material('Ink line', 'ink-900', .9, .0, scale=.30, neutral=True)
 iris = material('Iris', 'ink-900', .4, .3, scale=.22, neutral=True)
@@ -103,9 +128,9 @@ bone_specs = [('spine', None, (0, 0, 0)), ('tail_base', 'spine', (0, -.15, 0)),
               ('fin', 'tail_tip', (0, -.445, -.15)), ('fin_left', 'fin', (-.05, -.48, -.17)),
               ('fin_right', 'fin', (.05, -.48, -.17))]
 for side, label in [(-1, 'left'), (1, 'right')]:
-    bone_specs += [(f'arm_{label}', 'spine', (side * .050, -.030, .004)),
-                   (f'elbow_{label}', f'arm_{label}', (side * .098, -.115, .018)),
-                   (f'wrist_{label}', f'elbow_{label}', (side * .118, -.190, .036))]
+    bone_specs += [(f'arm_{label}', 'spine', (side * .068, -.030, .004)),       # v19: follow the broader shoulders
+                   (f'elbow_{label}', f'arm_{label}', (side * .118, -.115, .036)),
+                   (f'wrist_{label}', f'elbow_{label}', (side * .090, -.170, .094))]
 root = joint('resident_hermes')
 bpy.ops.object.armature_add(); rig = bpy.context.object; rig.name = 'hermes_skeleton'; rig.parent = root
 bpy.ops.object.mode_set(mode='EDIT'); rig.data.edit_bones.remove(rig.data.edit_bones[0])
@@ -161,11 +186,11 @@ def ellipsoid(name, parent, pos, radii, mat, seg=20, rings=12, smooth=True):
 # alternate rings half a step gives diamond facets; they read as a body in pieces.)
 SIDES = 24
 stations = [  # y, z-centre, rx, rz, kind
-    (.070, .000, .024, .023, 'skin'), (.010, .000, .025, .023, 'skin'),
-    (-.014, .000, .042, .032, 'skin'), (-.032, .000, .062, .044, 'skin'),
-    (-.054, .002, .066, .049, 'neck'),
-    (-.090, .004, .062, .050, 'teal'), (-.130, .003, .056, .046, 'teal'),
-    (-.180, .000, .080, .064, 'teal'), (-.232, -.012, .077, .061, 'teal'),
+    (.070, .000, .030, .027, 'skin'), (.010, .000, .031, .028, 'skin'),   # v19: thicker neck; the painted face neck (head_v19 NECK_R) sits just outside it
+    (-.014, .000, .068, .037, 'skin'), (-.032, .000, .106, .050, 'skin'),   # v19: the master's chibi body is chunky,
+    (-.054, .002, .106, .053, 'neck'),                                       # chest about as wide as the face
+    (-.090, .004, .084, .052, 'teal'), (-.130, .003, .072, .048, 'teal'),
+    (-.180, .000, .094, .066, 'teal'), (-.232, -.012, .086, .062, 'teal'),
     (-.288, -.034, .062, .051, 'teal'), (-.342, -.066, .045, .039, 'teal'),
     (-.392, -.104, .029, .027, 'teal'), (-.430, -.138, .016, .016, 'teal'),
     (-.452, -.160, .008, .008, 'teal')]
@@ -236,18 +261,20 @@ ARM_PATHS = {}
 parts = [body]
 TORSO_BVH = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())   # before the fusion
 for side, label in [(-1, 'left'), (1, 'right')]:
-    pts = [(side * .022, -.012, .001), (side * .048, -.030, .004), (side * .076, -.072, .010), (side * .098, -.115, .018),
-           (side * .110, -.155, .027), (side * .118, -.190, .036), (side * .121, -.214, .040), (side * .121, -.234, .041)]
-    radii = [.026, .021, .017, .014, .0125, .0105, .0100, .0090]
+    # v19: the master's rest pose has the elbows bent and the hands brought
+    # forward in front of the body (the swim pose adds small rotations on top)
+    pts = [(side * .034, -.012, .001), (side * .086, -.030, .004), (side * .110, -.072, .016), (side * .118, -.115, .036),
+           (side * .106, -.148, .070), (side * .090, -.170, .094), (side * .076, -.183, .108), (side * .070, -.190, .114)]
+    radii = [.032, .028, .024, .020, .018, .0155, .0145, .0130]   # v19: the master's soft, chunky arms
     ARM_PATHS[label] = ([Vector(p) for p in pts], radii)
     parts.append(tube('arm_' + label, root, pts[:-1], radii[:-1], skin, 16))
-    hand = ellipsoid('hand_' + label, root, (side * .121, -.214, .040), (.012, .022, .009), skin, 20, 12)
-    thumb = ellipsoid('thumb_' + label, root, (side * .113, -.206, .050), (.0055, .011, .0055), skin, 12, 8)
+    hand = ellipsoid('hand_' + label, root, (side * .072, -.192, .116), (.016, .022, .013), skin, 20, 12)
+    thumb = ellipsoid('thumb_' + label, root, (side * .060, -.184, .124), (.0070, .012, .0070), skin, 12, 8)
     parts += [hand, thumb]
 bpy.ops.object.select_all(action='DESELECT')
 for o in parts: o.select_set(True)
 bpy.context.view_layer.objects.active = body; bpy.ops.object.join()
-apply_mod(body, 'REMESH', mode='VOXEL', voxel_size=.0027)
+apply_mod(body, 'REMESH', mode='VOXEL', voxel_size=.0032)   # v19: the broader body at .0027 cost 110k tris; .0032 keeps the v18 budget
 apply_mod(body, 'SMOOTH', factor=.6, iterations=6)
 body.data.materials.clear(); body.data.materials.append(skin); body.data.materials.append(teal)
 for p_ in body.data.polygons: p_.use_smooth = True
@@ -294,12 +321,14 @@ skin_mesh(body, weights)
 
 # ---------------------------------------------------------------- head ----
 spine = joint('hermes_spine', root)
-head = joint('hermes_head', spine, (0, .215, .006))
+head = joint('hermes_head', spine, (0, .188, .006))   # v19: the concept's chin sits almost on the shoulders (was .215)
 # The face is designed as a flat sheet in hermes_face.py (the approved 2D
 # source); this builder only shapes a head to fit that sheet and lays its
 # artwork on it unchanged.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import hermes_face as F
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'hermes-head'))
+from face_v2 import F      # v18 drawing code, proportions re-measured from the guide
+import head_v19
 def palette_material(name, key, roughness=.8, specular=.1, glow=0.0):
     h = F.PALETTE[key][1:]; rgb = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
     rgb = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in rgb]
@@ -316,52 +345,19 @@ m_line = palette_material('Ink line', 'line', .9, .0)
 m_shade = palette_material('Nose shade', 'shade')
 m_lip = palette_material('Lower lip', 'lip', .6, .2)
 m_lipdark = palette_material('Upper lip', 'lip_dark', .6, .2)
-FA, FB, FC = F.FACE_W, -F.CHIN_Y, .150
-
-# Head construction from silhouettes: a cranium over a face plane. The front
-# width follows the sheet's face outline exactly; the side profile gives a
-# forehead, a flat eye plane, a small nose bridge, and a chin that sits slightly
-# forward while the jaw underside slopes back to the neck. Every horizontal
-# section is a superellipse (flatter at the front).
-H_TOP = .205
-def spline(points, y):
-    """Catmull-Rom through (y, value) keys ordered top to bottom."""
-    ys = [p[0] for p in points]
-    if y >= ys[0]: return points[0][1]
-    if y <= ys[-1]: return points[-1][1]
-    k = next(i for i in range(len(ys) - 1) if ys[i] >= y >= ys[i + 1])
-    p0, p1, p2, p3 = (points[max(k - 1, 0)][1], points[k][1], points[k + 1][1], points[min(k + 2, len(points) - 1)][1])
-    t = (ys[k] - y) / (ys[k] - ys[k + 1])
-    return .5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3)
-def width(y):
-    if y > .080: return spline([(H_TOP, 0), (.192, .075), (.150, .133), (.110, .153), (.080, F.half_width(.080))], y)
-    return F.half_width(y)
-FRONT = [(H_TOP, 0), (.192, .055), (.150, .103), (.080, .138), (.020, FC * .975), (-.050, FC),
-         (-.100, FC * .990), (-.136, FC * .955), (-.165, FC * .880), (-FB + .012, FC * .760), (-FB, FC * .66)]
-BACK = [(H_TOP, 0), (.192, .075), (.150, .140), (.080, .170), (.020, .178), (-.030, .168),
-        (-.070, .140), (-.105, .085), (-.140, .020), (-FB + .022, -.050), (-FB + .006, -FC * .45), (-FB, -FC * .55)]
-def section(y, phi):
-    s, c_ = math.sin(phi), math.cos(phi)
-    e = 2 / (2.6 if c_ > 0 else 2.1)
-    front, back = spline(FRONT, y), spline(BACK, y)
-    zc, depth = (front - back) / 2, (front + back) / 2
-    return Vector((width(y) * math.copysign(abs(s) ** e, s), y, zc + depth * math.copysign(abs(c_) ** e, c_)))
-bm = bmesh.new(); bmesh.ops.create_cube(bm, size=2)
-bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=29, use_grid_fill=True)
-for v in bm.verts:
-    u = v.co.normalized()                        # cube-sphere: no pole pinching
-    y = -FB + (u.y + 1) / 2 * (H_TOP + FB)
-    v.co = section(y, math.atan2(u.x, u.z)) if abs(u.y) < .9999 else Vector((0, y, 0))
-bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
-bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-face = bm_to('face', bm, skin, head, True)
-apply_mod(face, 'SUBSURF', levels=1, render_levels=1)
-# A small nose bridge and tip, so the three-quarter view has a profile.
-for v in face.data.vertices:
-    if v.co.z > .05:
-        ridge = smoothstep(-.060, -.104, v.co.y) * (1 - smoothstep(-.104, -.116, v.co.y))
-        v.co.z += .010 * ridge * math.exp(-(v.co.x / .012) ** 2)
-for p_ in face.data.polygons: p_.use_smooth = True
+# The head (skin, hair, locks, headset) is authored as a blockout in
+# assets/terrarium/hermes-head/ and fitted to the guide by measurement; see its
+# NOTES.md. head_v19 converts it into this frame and names the parts.
+face = head_v19.build(head, {'skin': skin, 'hair': hair, 'under': hair, 'white': white, 'dot': line_dark}, joint)   # under-layer in the same ink: a darker one showed through the lock seams as jagged teeth
+# The body's shoulders and chest face up into the app's high sun (cos ~0.78 vs
+# ~0.49 for the forward-facing face) and clipped to white under the chin. A
+# slightly darker body skin renders at the face's brightness there.
+skin_body = skin.copy(); skin_body.name = 'Ivory skin (body)'
+_b = skin_body.node_tree.nodes['Principled BSDF'].inputs['Base Color']
+_b.default_value = tuple(c * 0.70 for c in _b.default_value[:3]) + (1,)
+for _i, _m in enumerate(body.data.materials):
+    if _m == skin: body.data.materials[_i] = skin_body
+bpy.context.view_layer.update()
 FACE_BVH = BVHTree.FromObject(face, bpy.context.evaluated_depsgraph_get())
 def face_hit(x, y):
     hit, normal, _, _ = FACE_BVH.ray_cast(Vector((x, y, 1)), Vector((0, 0, -1)))
@@ -375,22 +371,48 @@ def face_z(x, y):
 def decal(name, parent, outline, depth, mat, cuts=3):
     """Sheet artwork on the face: subdivided, then every vertex projected onto the face mesh."""
     bm = bmesh.new(); verts = [bm.verts.new((x, y, 0)) for x, y in outline]
-    f = bm.faces.new(verts)
-    bmesh.ops.triangulate(bm, faces=[f], quad_method='BEAUTY', ngon_method='BEAUTY')
+    # Scanfill keeps every triangle inside a concave outline.
+    for tri in tessellate_polygon([[Vector((x, y, 0)) for x, y in outline]]):
+        try:
+            bm.faces.new([verts[i] for i in tri])
+        except ValueError:
+            pass
     bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=cuts, use_grid_fill=True)
+    # ...and no edge may stay long: a long triangle projected onto the curved face
+    # is a chord through the head that pokes out near one end. With v19's wider
+    # eyes the closed lid's wing reaches round the side of the face and did exactly
+    # that (a dark chip above the lid in the RealityKit blink check, 2026-10-01).
+    for _ in range(8):
+        long_edges = [e for e in bm.edges if e.calc_length() > .007]
+        if not long_edges: break
+        bmesh.ops.subdivide_edges(bm, edges=long_edges, cuts=1, use_grid_fill=True)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:])
     base = Vector((0, 0, 0)); p = parent
     while p is not None and p != head: base += p.location; p = p.parent
     surface = {}
     for v in bm.verts:
         x, y = v.co.x + base.x, v.co.y + base.y
         hit, normal = face_hit(x, y)
-        if hit is None or normal.z < .2:           # past the face plane: take the nearest surface point
-            hit, normal, _, _ = FACE_BVH.find_nearest(Vector((x, y, .2)))
+        # v19's face is round, so a ray from the front that hits its side is still
+        # right. v18 treated normal.z < .2 as "past the face plane" and snapped to
+        # the surface nearest (x, y, .2), which on this head threw the closed lid's
+        # side vertices onto the front: dark chips above the lids (2026-10-01).
+        if hit is None:                            # outside the silhouette: nearest surface from the mid-plane
+            hit, normal, _, _ = FACE_BVH.find_nearest(Vector((x, y, 0)))
         surface[v] = normal
         v.co = hit + normal * depth - base
+    # drop slivers the projection flattened to nothing: their normal is noise
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.calc_area() < 1e-10], context='FACES_ONLY')
     for f in bm.faces:  # RealityKit culls back faces: orient against the surface under each triangle
         f.normal_update()
-        if f.normal.dot(sum((surface[v] for v in f.verts), Vector())) < 0: f.normal_flip()
+        # judged exactly as the rest-pose check below does (nearest surface at the centre)
+        under = FACE_BVH.find_nearest(f.calc_center_median() + base)[1]
+        if f.normal.dot(under if under is not None else sum((surface[v] for v in f.verts), Vector())) < 0: f.normal_flip()
+    # faces standing edge-on to the surface (where a wide liner wing wraps round
+    # the side of the face) have an orientation decided by float noise, and
+    # cannot be seen from the front anyway
+    edge_on = [f for f in bm.faces if abs(f.normal.dot(FACE_BVH.find_nearest(f.calc_center_median() + base)[1])) < 0.15]
+    bmesh.ops.delete(bm, geom=edge_on, context='FACES_ONLY')
     return bm_to(name, bm, mat, parent)
 
 EYE_X, EYE_Y = F.EYE_X, F.EYE_Y
@@ -408,11 +430,12 @@ for side, label in [(-1, 'left'), (1, 'right')]:
     for i, spike in enumerate(F.lash_spikes(side)): decal(f'lash_spike_{label}_{i}', eye, spike, .0062, m_line, 1)
     for i, spike in enumerate(F.lower_spikes(side)): decal(f'lower_spike_{label}_{i}', eye, spike, .0054, m_line, 1)
     decal('upper_lash_' + label, eye, F.upper_liner(side), .0062, m_line)
+    decal('lid_crease_' + label, eye, F.crease(side), .0040, m_line, 2)
     lid = joint('hermes_lid_' + label, head, (side * EYE_X, EYE_Y, 0))
     decal('closed_lid_' + label, lid, F.closed_lid(side), .0070, m_line)
-    brow = joint('hermes_brow_' + label, head, (side * .076, F.BROW_Y, 0))   # fine brows just under the fringe hem
+    brow = joint('hermes_brow_' + label, head, (side * F.BROW_X, F.BROW_Y, 0))   # fine brows just under the fringe hem
     decal('eyebrow_' + label, brow, F.brow(side), .0036, m_line, 2)
-decal('nose_shadow', head, F.nose(), .0022, m_shade, 2)
+# v19: the nose is a form on the face plus painted shade (hermes-head/face_paint.py), not a line decal
 mouth = joint('hermes_mouth', head, (0, F.MOUTH_Y, 0))
 up = joint('hermes_lip_upper', mouth)
 decal('lip_upper', up, F.lip_upper(), .0030, m_lipdark, 2)
@@ -422,153 +445,12 @@ decal('lip_lower', lo, F.lip_lower(), .0026, m_lip, 2)
 decal('lip_lower_rim', lo, F.lip_lower_rim(), .0032, m_lipdark, 2)
 decal('mouth_open', mouth, F.mouth_open(), .0034, m_line, 2)
 
-# ---------------------------------------------------------------- hair ----
-# One smooth bob shell. Each column runs over the dome and down to its own end:
-# high at the front (hairline under the fringe), shoulder-long at the sides and
-# back, where the ends flip outward and up into the mark's C-curls.
-HC = Vector((0, .058, -.056)); RX, RY, RZ = .272, .226, .252   # the concept's big, round bob
-N, ROWS, SKIRT = 208, 40, 1.0
-FRINGE_K = .095   # skirt fraction at the front: hem at about y = .02, just above the brows
-# Shallow strand grooves: on glossy hair they break the reflection into the
-# jagged highlight band the mark draws, instead of a lacquered-plastic sheen.
-# Broad, uneven locks (the mark's hair falls in a few large strands), not a
-# fine corduroy of equal ridges.
-def groove(theta): return .0045 * math.cos(11 * theta + 1.2 * math.sin(2 * theta)) + .0020 * math.cos(23 * theta + .7)
-def column(theta, v):
-    m = smoothstep(.46, .62, abs(theta))             # 0 front, 1 side curtain
-    # The front columns run over the forehead and stop at the fringe hem, so the
-    # bangs are the shell itself: no separate sheet, no seam on the crown.
-    split = max(0.0, math.cos(15 * theta + .5)) ** 10     # a few pointed splits in the blunt bangs
-    s = v * lerp(math.pi / 2 + FRINGE_K * (1 + .45 * split) * SKIRT, math.pi / 2 + SKIRT, m)
-    squash = 1.0
-    if s <= math.pi / 2:
-        y = HC.y + RY * math.cos(s); rr = math.sin(s)
-    else:
-        k = (s - math.pi / 2) / SKIRT
-        side = abs(math.sin(theta)) ** 1.3
-        curl = smoothstep(.72, 1, k)
-        tuck = math.sin(math.pi * min(k / .78, 1)) * (k < .78) + (k >= .78) * 0
-        # The concept's ends: the hem breaks into pointed locks that flick out
-        # and up, strongest at the sides and back; between locks it tucks in.
-        tooth = max(0.0, math.cos(6 * theta + .9)) ** 2   # broad locks; sharper peaks read as horns from the front
-        rr = 1 - .11 * tuck * smoothstep(0, .5, k) + side * curl ** 1.4 * (.07 + .20 * tooth) - .08 * (1 - side) * curl
-        y = HC.y - .320 * k + side * curl ** 1.8 * (.030 + .060 * tooth)
-        # Below the cheek the curtains fall back so the jaw reads in profile; at eye
-        # level they must still wrap the face, or its edge shows through.
-        if math.cos(theta) > 0: squash = 1 - .45 * smoothstep(.35, .65, k) * math.cos(theta)
-    # Natural wave: below the crown each lock swings gently side to side and in and
-    # out as it falls, with a phase that drifts around the head, so the strand
-    # grooves ripple instead of running as straight parallel ridges.
-    fall = smoothstep(.30, .75, v) * m
-    tw = theta + .11 * fall * math.sin(2.4 * math.pi * v + 2.3 * theta)
-    rr *= 1 + .045 * fall * math.sin(2.0 * math.pi * v + 3.1 * theta + 1.0)
-    rr *= 1 + groove(tw) * smoothstep(.04, .30, v) * m   # no strand ridges on the bangs: they read as slats
-    return Vector((RX * rr * math.sin(tw), y, HC.z + RZ * rr * math.cos(tw) * squash))
-vs, fs = [Vector((0, HC.y + RY, HC.z))], []
-for j in range(1, ROWS + 1):
-    for i in range(N):
-        vs.append(column(2 * math.pi * i / N - math.pi, j / ROWS))
-for i in range(N): fs.append((0, 1 + (i + 1) % N, 1 + i))
-for j in range(ROWS - 1):
-    for i in range(N):
-        a = 1 + j * N + i; b = 1 + j * N + (i + 1) % N; fs.append((a, b, b + N, a + N))
-bob = mesh('portrait_bob', vs, fs, hair, head, True)
-bm = bmesh.new(); bm.from_mesh(bob.data)
-bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-5); bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=1e-5)
-bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:]); bm.to_mesh(bob.data); bm.free()
-# Collapse-decimate into large irregular planes: the concept's faceted bob. The
-# silhouette stays the mark's; only the surface breaks into facets.
-# Low-poly: collapse-decimate into large irregular planes and flat-shade them,
-# as in the concept's faceted bob.
-apply_mod(bob, 'DECIMATE', decimate_type='COLLAPSE', ratio=.035, use_symmetry=True, symmetry_axis='X')
-apply_mod(bob, 'SOLIDIFY', thickness=.010, offset=-1)
-for p in bob.data.polygons: p.use_smooth = False
-
-fringe = None   # the bangs are the front of the shell (see column())
-
-# (The mark's stray strand is left out: at aquarium scale it read as a crack.)
-
-# Hair clumps. The shell above carries the hair's volume; the
-# visible hair is ~30 tapered clumps with a raised ridge, flat-shaded so light
-# catches their planes the way it does on the concept's faceted bob. A single
-# smooth shell reads as a helmet however well it is shaped.
-def clump(name, parent, path, normals, widths, ridge, origin=Vector()):
-    vs, fs = [], []
-    n = len(path)
-    for i, (p, nrm, w, h) in enumerate(zip(path, normals, widths, ridge)):
-        t = (path[min(i + 1, n - 1)] - path[max(i - 1, 0)]).normalized()
-        b = t.cross(nrm).normalized(); nrm = b.cross(t).normalized()
-        vs += [p + b * w / 2 - origin, p + nrm * h - origin, p - b * w / 2 - origin, p - nrm * .004 - origin]
-    for i in range(n - 1):
-        for k in range(4):
-            a0 = i * 4 + k; a1 = i * 4 + (k + 1) % 4; fs.append((a0, a1, a1 + 4, a0 + 4))
-    fs.append((3, 2, 1, 0))
-    tip = len(vs); vs.append(path[-1] + (path[-1] - path[-2]).normalized() * .006 - origin)
-    for k in range(4): fs.append(((n - 1) * 4 + k, (n - 1) * 4 + (k + 1) % 4, tip))
-    o = mesh(name, vs, fs, hair, parent, True); fix_normals(o)
-    return o
-def shell_normal(theta, v):
-    e = 1e-3
-    d_t = column(theta + e, v) - column(theta - e, v); d_v = column(theta, min(1, v + e)) - column(theta, max(0, v - e))
-    nrm = d_t.cross(d_v).normalized()
-    return nrm if nrm.dot(column(theta, v) - HC) > 0 else -nrm
-# The ends are shaped into the shell (see `tooth` in column()); only the rig's
-# sway controls remain, placed at the longest side locks.
-for side_sign, label in ((-1, 'left'), (1, 'right')):
-    joint('hermes_hair_' + label, head, column(side_sign * 1.55, 1.0))
-
-# Hair-surface projection for the headband (the smooth under-layer, lifted clear of the clumps).
-_hair_bm = bmesh.new()
-_hair_bm.from_mesh(bob.data)
-HAIR_BVH = BVHTree.FromBMesh(_hair_bm)
-def hug(p, lift):
-    d = (HC - p).normalized(); hit, normal, _, _ = HAIR_BVH.ray_cast(p, d)
-    return (hit + normal * lift) if hit else p
-
-# Headset, not a headband: the white arc in the mark is a headset band, the small
-# shape where it meets the hair is its yoke, and the earcups sit under the hair.
-# The band runs over the crown and sinks into the hair at both sides; a yoke
-# marks each entry point.
-vs, fs = [], []; BETA = .86   # tilt toward +Z: the concept's band sits forward, just behind the bangs
-A_END = 1.40
-def band_lift(a): return .006 - .008 * smoothstep(1.30, A_END, abs(a))     # tucks into the hair at the yokes
-for j in range(49):
-    a = -A_END + 2 * A_END * j / 48
-    for d in (-.085, .085):
-        b = BETA + d
-        vs.append(hug(HC + Vector((RX * math.sin(a), RY * math.cos(a) * math.cos(b), RZ * math.cos(a) * math.sin(b))) * 1.6, band_lift(a)))
-def relax(vs, n):
-    for _ in range(n): vs = [vs[k] if k < 2 or k >= len(vs) - 2 else (vs[k - 2] + vs[k] * 2 + vs[k + 2]) / 4 for k in range(len(vs))]
-    return vs
-vs = relax(vs, 6)
-vs = [hug(HC + (v - HC) * 1.5, band_lift(-A_END + 2 * A_END * (k // 2) / 48)) for k, v in enumerate(vs)]; vs = relax(vs, 3)
-for j in range(48): fs.append((j * 2, j * 2 + 1, j * 2 + 3, j * 2 + 2))
-band = mesh('Nous_headband', vs, fs, white, head, True)
-apply_mod(band, 'SOLIDIFY', thickness=.008, offset=0)
-apply_mod(band, 'BEVEL', width=.0025, segments=2, limit_method='ANGLE')
-for p_ in band.data.polygons: p_.use_smooth = True
-# Yokes: a rounded block on each side where the band enters the hair.
-yokes = []
-for side, name in ((1, 'Nous_band_hook'), (-1, 'headset_yoke_left')):
-    k = round((side * 1.33 + A_END) / (2 * A_END) * 48)
-    c = (vs[2 * k] + vs[2 * k + 1]) / 2; along = (vs[2 * k + 2] - vs[2 * k]).normalized()
-    out = (c - HC).normalized()
-    frame = Matrix((out.cross(along).normalized(), along, out)).transposed()   # x across, y along the band, z out of the hair
-    # The concept's clasp: a round white end with a black dot, and a small white
-    # hook curling back up beneath it (the Nous mark's band end).
-    y = ellipsoid(name, head, Vector(), (.022, .022, .010), white, 20, 12)
-    for v in y.data.vertices: v.co = c + out * .004 + frame @ (v.co + Vector((0, -.010, 0)))
-    dot = ellipsoid(name + '_dot', head, Vector(), (.0085, .0085, .005), line_dark, 16, 10)
-    for v in dot.data.vertices: v.co = c + out * .013 + frame @ (v.co + Vector((0, -.010, 0)))
-    hook_pts = [c + out * .006 + frame @ Vector((side * .010 * math.sin(a_), -.026 - .012 * math.sin(a_ * .8) + .010 * (1 - math.cos(a_)) * .6, 0))
-                for a_ in [math.pi * 1.1 * i / 10 for i in range(11)]]
-    hook = tube(name + '_hook', head, hook_pts, [.0045 * (1 - .6 * i / 10) for i in range(11)], white, 8)
-    yokes += [y, dot, hook]
+# Hair, flicked locks and headset come from head_v19.build() above.
 
 # ------------------------------------------------------ rest-pose check ----
 # Face artwork is single-sided in RealityKit: every decal must face the viewer.
 decals = [o for o in head.children_recursive if o.type == 'MESH' and o.name not in
-          ('face', 'portrait_bob', 'portrait_fringe', 'Nous_headband', 'Nous_band_hook')
+          ('face', 'face_backing', 'portrait_bob', 'portrait_fringe', 'hair_under', 'Nous_headband', 'Nous_band_hook')
           and not o.name.startswith(('side_lock', 'hair_clump', 'hair_flick', 'bang_strand', 'bang_clump', 'headset', 'Nous_band_hook'))]
 for o in decals:
     offset = Vector(); q = o.parent

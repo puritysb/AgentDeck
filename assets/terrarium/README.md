@@ -299,3 +299,59 @@ These are proportion checks, not an aesthetic score. Against the older
 reports hair IoU 0.54 (front), 0.53 (side) and 0.70 (back). Its hair height is
 0.47 against the turnaround's 0.54: the model's hair is short relative to its
 body.
+
+## Hermes v19: measured head blockout in the app model
+
+The bundled `hermes-mermaid.usdz` now carries the v19 head, authored in
+[`hermes-head/`](hermes-head/NOTES.md). The head is a grey blockout, fitted by
+measurement: to the head-study front/profile, and to the master concept at a
+fitted camera (yaw 32°, elevation 4°). Its parts:
+
+- a skull/face cage;
+- one hair mass with the measured fringe hem;
+- flicked locks on her right, the layered side as drawn;
+- the headset band and clasp.
+
+Shape changes are addressed vertex moves in `hermes-head/edits.json`, never
+retuned seed formulas.
+
+`build-hermes-mermaid.py` keeps the v18 body, rig, export and schema-2 contract;
+`hermes-rig.json` is unchanged. It imports the head through
+`hermes-head/head_v19.py`:
+
+- **Frame:** 1 blockout unit = 1/8.696 m, bang line → HEM_Y, chin → CHIN_Y.
+- **Hair facets:** flat-shaded diamond facets along the designed flow grid
+  (`facets.py`). No Decimate.
+- **Flick locks:** hung from the existing `hermes_hair_left/right` sway joints.
+
+Face decals use the v18 drawing code with proportions re-measured from the
+guide (`hermes-head/face_v2.py`): eyes higher and wider apart, a heavier lid,
+a smaller iris set toward the nose, and brows between the liner and the hem.
+
+`decal()` changed in three ways for the round v19 face:
+- scanfill triangulation;
+- no decal edge left longer than 7 mm;
+- a ray that hits the face's side is kept. v18 snapped such vertices to the
+  surface nearest (x, y, .2), which threw them onto the front.
+
+The last two removed dark chips above the closed lids that appeared only in
+RealityKit.
+
+```sh
+sh assets/terrarium/hermes-head/run.sh <review_dir>        # blockout -> hermes-head-blockout.blend
+blender --background --python-exit-code 1 --python assets/terrarium/build-hermes-mermaid.py   # installs usdz/glb/blend
+```
+
+**Hair topology:** the visible hair is the sculpted cage with designed facets along its flow grid (`hermes-head/facets.py`); no Decimate. Hand-laid lock planes (`build_lock_planes.py`) were tried and dropped: they read as stepped blocks next to the master.
+
+**Face pass:** `hermes-head/face_paint.py` adds the nose form and bakes a measured shading texture (`hermes-head/face_shade.png`, regenerated per build and packed into the USDZ); the nose decal is gone.
+
+**Iteration loop and final review (2026-10-01):** `hermes-head/iterate.sh <dir>` judges the installed model against the master concept (fitted camera, landmark solve, RealityKit renders); see `hermes-head/NOTES.md`.
+
+**Verification (2026-10-01):**
+- `HermesAquariumTests` (9 tests) pass on macOS with the bundled asset.
+- RealityKit review renders (neutral, three-quarter, side, blink) are in
+  `diagnostics/hermes-mermaid/nous-v19/` (ignored).
+- Triangles: 148k (v18 142k). USDZ: 7.5 MB (v18 6.8 MB), including the 1024² face shading texture.
+
+**Not established:** physical-device frame time, and the user's visual acceptance.
