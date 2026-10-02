@@ -80,6 +80,7 @@ enum HermesMermaid {
             controls["hermes_head"]?.rotate(pose.head)
             controls["hermes_hair_left"]?.rotate([pose.hairLeft, 0, 0])
             controls["hermes_hair_right"]?.rotate([pose.hairRight, 0, 0])
+            controls["hermes_laptop_lid"]?.rotate([pose.laptopLid, 0, 0])   // optional prop control
             for (side, openness, angle) in [("left", pose.eyeLeft, pose.browLeft), ("right", pose.eyeRight, pose.browRight)] {
                 if let eye = controls["hermes_eye_" + side] {
                     eye.entity.scale = eye.rest.scale * [1, max(0.05, openness), 1]

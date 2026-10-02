@@ -175,7 +175,7 @@ def build(head, mats, joint):
 
     for n, o in src.items():
         if n.startswith("hermes_headset_"):
-            mat = mats["dot"] if n.endswith("dot") else mats["white"]
+            mat = mats["dot"] if "headset_dot" in n else mats["white"]
             _bake(o, "headset_" + n[len("hermes_headset_"):], mat, head, n.endswith("band"))
 
     for o in src.values():

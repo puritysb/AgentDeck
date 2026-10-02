@@ -961,6 +961,76 @@ lighter.
 
 The aquarium held ~57-60 fps with Hermes on a throttled phone.
 
+## Motion, Nous identity cues, headset ends and an agent laptop (2026-10-02)
+
+User feedback after watching her swim: "too awkward, make her cuter", "the
+original Hermes image's features don't come through", "the headset buried in
+the hair on the left is odd", and "could she swim holding a laptop, or
+otherwise look like an agent?".
+
+**Review tool.** A scratch `motion_preview.swift` compiles the app's own
+`HermesSwim.swift` and `HermesMermaid.swift`. It steps the controller at 60 Hz
+through idle -> working -> waiting -> idle -> error -> idle and applies the
+rig and body orientation as `AquariumResidents` does. It renders frames from
+a follow camera (`diagnostics/hermes-mermaid/nous-v19-agent/*.gif`).
+
+**What was awkward:**
+- Yaw followed sideways velocity up to +-66 deg. On every lap of the figure
+  eight she turned side-on and back, and the tail swung out flat.
+- She travelled upright, like a doll dragged sideways. The concepts swim
+  lying into the stroke, head leading, tail trailing; at rest the tail curls
+  forward in a J.
+- The head was locked to the body, there was no float, and the arms were
+  inert.
+
+**`HermesSwim` changes:**
+- Body yaw is capped at +-0.55 rad. A swim lean rolls the body up to
+  +-0.85 rad toward its sideways travel. Pitch is capped at +-0.30.
+- The head counter-rotates by half the body yaw and half the lean, so the
+  face stays readable. Idle adds a small playful tilt.
+- A soft vertical float rides on the path target.
+- The tail stroke is gentler: about 0.65 rad summed, down from about 1.1,
+  with follow-through at the tip and fin. At rest the tail curls forward by
+  0.30; it straightens as she speeds up.
+- A single eased twirl plays when work completes (`twirl`, from
+  `celebration`).
+- Arms paddle in small strokes. Working keeps both hands on the laptop and
+  types (wrist taps); the old forward arm swing pulled the hands off it.
+- New pose field `laptopLid`. `HermesMermaid.Rig` applies it to the optional
+  `hermes_laptop_lid` control.
+
+HermesAquariumTests pass. The 2D canvas fallback shares `roll`, so it gets
+the same lean.
+
+**Nous identity.** The official portrait
+(`~/.hermes/hermes-agent/assets/nous-girl-*.svg`) is recognised by:
+
+1. the jagged white shine band across the fringe;
+2. a single big outward curl;
+3. the thin headband with its hooked clip;
+4. solid black hair against white skin.
+
+The first was missing entirely. `hair_shine` now lays 10 wide zigzag glints
+across the front half of the hair. They are ray-cast onto the outer hair
+surface and lifted 1.5 mm, in an emissive white material.
+
+**Headset.** Her right end no longer dives under the hair. The band keeps a
+constant lift, and `build_headset.clasp()` builds a matching clasp at both
+ends. `head_v19` picks the dot material by `"headset_dot" in name`.
+
+**Laptop.** It is parented to `hermes_spine`:
+- the base sits at her hands, with a keyboard inset;
+- the lid is under `hermes_laptop_lid` at the far hinge, open about 105 deg;
+- an emissive teal-white screen with code lines faces her;
+- a glowing mark on the lid's back faces the viewer.
+
+`hermes-rig.json` gains two controls, `hermes_laptop_lid` and `laptop`.
+This is additive; no existing name changed.
+
+**Checked.** An isolated-dark-pixel scan finds no NaN pixels: the flags are
+gaps between glints and drawn lines, in hair or background colour, not
+0/0/0.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate

@@ -23,6 +23,7 @@
     "hermes_hair_left",
     "hermes_hair_right",
     "hermes_head",
+    "hermes_laptop_lid",
     "hermes_lid_left",
     "hermes_lid_right",
     "hermes_lip_lower",
@@ -30,7 +31,8 @@
     "hermes_mouth",
     "hermes_pupil_left",
     "hermes_pupil_right",
-    "hermes_spine"
+    "hermes_spine",
+    "laptop"
   ],
   "skinnedMeshes": [
     "fin_surface_left",

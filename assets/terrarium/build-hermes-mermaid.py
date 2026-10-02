@@ -450,6 +450,128 @@ for side, label in [(-1, 'left'), (1, 'right')]:
 eyes3d.build(F, head, face, bpy.data.objects.get('face_backing'), FACE_BVH, _eyes, _pupils, _lids,
              {'white': m_white, 'iris': m_iris, 'glow': m_glow, 'line': m_line, 'skin': skin, 'lidshadow': m_lidshadow},
              decal)
+# An agent's laptop, held at her waist (2026-10-02, user request: "make her look
+# like an agent"). Her hands rest at (+-0.09, -0.17, 0.094) in this frame, so
+# its sides sit in her hands. The hinge is on the far side: she looks at the
+# screen and the viewer sees the lid's back with a small glowing mark.
+# `hermes_laptop_lid` is an additive rig control (the app opens it further
+# while she works).
+def box(name, size, center, mat, parent):
+    sx, sy, sz = (c / 2 for c in size); cx, cy, cz = center
+    vs = [(cx + x * sx, cy + y * sy, cz + z * sz) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]
+    fs = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    o = mesh(name, vs, fs, mat, parent)
+    _b = bmesh.new(); _b.from_mesh(o.data)          # outward normals: RealityKit culls back faces
+    bmesh.ops.recalc_face_normals(_b, faces=_b.faces[:]); _b.to_mesh(o.data); _b.free()
+    return o
+
+def plane(name, w, h, center, mat, parent, facing=-1):
+    cx, cy, cz = center
+    vs = [(cx - w / 2, cy - h / 2, cz), (cx + w / 2, cy - h / 2, cz), (cx + w / 2, cy + h / 2, cz), (cx - w / 2, cy + h / 2, cz)]
+    return mesh(name, vs, [(0, 1, 2, 3)] if facing > 0 else [(0, 3, 2, 1)], mat, parent)
+
+m_laptop = material('Laptop shell', 'tide-50', .55, .15, glow=.25)
+m_keys = material('Laptop keys', 'ink-700', .7, .1, scale=.6, neutral=True)
+m_screen = bpy.data.materials.new('Laptop screen'); m_screen.use_nodes = True
+_sp = m_screen.node_tree.nodes['Principled BSDF']
+_sp.inputs['Base Color'].default_value = (0.55, 0.82, 0.80, 1)
+_sp.inputs['Emission Color'].default_value = (0.55, 0.85, 0.82, 1)
+_sp.inputs['Emission Strength'].default_value = 1.6
+m_code = material('Laptop code', 'ink-700', .8, .1, scale=.5, neutral=True)
+m_mark = bpy.data.materials.new('Laptop mark'); m_mark.use_nodes = True
+_mp = m_mark.node_tree.nodes['Principled BSDF']
+_mp.inputs['Base Color'].default_value = (0.55, 0.85, 0.82, 1)
+_mp.inputs['Emission Color'].default_value = (0.55, 0.85, 0.82, 1)
+_mp.inputs['Emission Strength'].default_value = 2.0
+
+LAP_W, LAP_D, LAP_T, LAP_H = 0.16, 0.105, 0.009, 0.10
+base_c = (0, -0.172, 0.12)
+laptop = joint('laptop', spine)
+box('laptop_base', (LAP_W, LAP_T, LAP_D), base_c, m_laptop, laptop)
+box('laptop_keys', (LAP_W * 0.84, 0.0012, LAP_D * 0.55), (0, -0.172 + LAP_T / 2 + 0.0006, 0.105), m_keys, laptop)
+lid = joint('hermes_laptop_lid', laptop, (0, -0.172 + LAP_T / 2, 0.12 + LAP_D / 2))
+lid.rotation_euler.x = 0.26                         # open ~105 deg, leaning away from her
+box('laptop_lid', (LAP_W, LAP_H, 0.006), (0, LAP_H / 2, 0), m_laptop, lid)
+plane('laptop_screen', LAP_W * 0.88, LAP_H * 0.82, (0, LAP_H * 0.52, -0.0032), m_screen, lid, facing=-1)
+for i, (x0, w) in enumerate(((-0.055, 0.050), (-0.050, 0.075), (-0.050, 0.035), (-0.045, 0.060), (-0.055, 0.042))):
+    plane(f'laptop_code_{i}', w, 0.0045, (x0 + w / 2, LAP_H * (0.80 - i * 0.12), -0.0036), m_code, lid, facing=-1)
+mark = bpy.data.objects.new('laptop_mark', bpy.data.meshes.new('laptop_mark'))
+_bm = bmesh.new()
+bmesh.ops.create_circle(_bm, cap_ends=True, segments=16, radius=0.011)
+for v in _bm.verts: v.co = Vector((v.co.x, v.co.y + LAP_H * 0.55, 0.0032))
+_bm.to_mesh(mark.data); _bm.free()
+scene.collection.objects.link(mark); mark.parent = lid; mark.data.materials.append(m_mark)
+
+# The official Nous girl's most recognisable cue: a jagged row of white glints
+# across the fringe (the anime "shine band"). Laid out in (angle, height)
+# around the head, then ray-cast onto the outer hair surface and lifted 1.5 mm.
+def hair_shine():
+    bob = bpy.data.objects.get('portrait_bob')
+    if bob is None:
+        return None
+    hb = BVHTree.FromObject(bob, bpy.context.evaluated_depsgraph_get())
+    axis_z = -0.05
+    def on_hair(theta, y):
+        d = Vector((math.sin(theta), 0, math.cos(theta)))
+        hit, n, _, _ = hb.ray_cast(Vector((0, y, axis_z)) + d * 0.8, -d)
+        if hit is None:
+            return None
+        return hit + (n if n.dot(d) > 0 else -n) * 0.0015
+    rnd = [0.37, 0.81, 0.12, 0.66, 0.93, 0.28, 0.55, 0.04, 0.72, 0.19, 0.88, 0.46, 0.61, 0.33, 0.97, 0.08, 0.51, 0.77,
+           0.24, 0.69, 0.42, 0.86, 0.15, 0.58]
+    bm = bmesh.new()
+    pieces = 0
+    centre_y = 0.135
+    span = math.radians(184)
+    n = 10
+    for i in range(n):
+        # wide jagged glints, nearly touching, as in the portrait's shine band
+        u0 = i / n + 0.012; u1 = (i + 1) / n - 0.012 - rnd[i] * 0.025
+        t0 = -span / 2 + span * u0; t1 = -span / 2 + span * u1
+        mid = (t0 + t1) / 2
+        y0 = centre_y - 0.024 * (abs(mid) / (span / 2)) ** 2 + (rnd[i + 3] - 0.5) * 0.006
+        spikes_up = 3 + i % 2
+        top = []
+        for k in range(spikes_up * 2 + 1):
+            f = k / (spikes_up * 2)
+            h = (0.006 if k % 2 == 0 else 0.015 + rnd[(i + k) % 24] * 0.020) * (math.sin(math.pi * f) ** 0.25)
+            top.append((t0 + (t1 - t0) * f, h))
+        bot = []
+        for k in range(5):
+            f = 1 - k / 4
+            h = (0.003 if k % 2 == 0 else 0.008 + rnd[(i + k + 7) % 24] * 0.012) * (math.sin(math.pi * f) ** 0.25)
+            bot.append((t0 + (t1 - t0) * f, -h))
+        outline = top + bot[1:-1]
+        pts = [on_hair(t, y0 + h) for t, h in outline]
+        if any(p is None for p in pts):
+            continue
+        # fan from the piece's centre so the concave zigzag triangulates cleanly
+        c = on_hair(mid, y0 + 0.002)
+        if c is None:
+            continue
+        cv = bm.verts.new(c); vs = [bm.verts.new(p) for p in pts]
+        for k in range(len(vs)):
+            try:
+                bm.faces.new((cv, vs[k], vs[(k + 1) % len(vs)]))
+            except ValueError:
+                pass
+        pieces += 1
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    for f in bm.faces:                              # face outward, away from the hair
+        f.normal_update()
+        if f.normal.dot(f.calc_center_median() - Vector((0, f.calc_center_median().y, axis_z))) < 0:
+            f.normal_flip()
+    o = bm_to('hair_shine', bm, m_shine, head)
+    print('hair shine glints', pieces)
+    return o
+
+m_shine = bpy.data.materials.new('Hair shine'); m_shine.use_nodes = True
+_ps = m_shine.node_tree.nodes['Principled BSDF']
+_ps.inputs['Base Color'].default_value = (0.80, 0.84, 0.90, 1)
+_ps.inputs['Roughness'].default_value = 0.6
+_ps.inputs['Emission Color'].default_value = (0.80, 0.84, 0.90, 1)
+_ps.inputs['Emission Strength'].default_value = 0.8
+hair_shine()
 # v19: the nose is a form on the face plus painted shade (hermes-head/face_paint.py), not a line decal
 mouth = joint('hermes_mouth', head, (0, F.MOUTH_Y, 0))
 up = joint('hermes_lip_upper', mouth)
@@ -466,7 +588,7 @@ decal('mouth_open', mouth, F.mouth_open(), .0034, m_line, 2)
 # Face artwork is single-sided in RealityKit: every decal must face the viewer.
 decals = [o for o in head.children_recursive if o.type == 'MESH' and o.name not in
           ('face', 'face_backing', 'portrait_bob', 'portrait_fringe', 'hair_under', 'Nous_headband', 'Nous_band_hook')
-          and not o.name.startswith(('eyeball_', 'eye_socket_', 'iris', 'pupil_', 'highlight', 'lid_shadow_', 'side_lock', 'hair_clump', 'hair_flick', 'bang_strand', 'bang_clump', 'headset', 'Nous_band_hook'))]
+          and not o.name.startswith(('hair_shine', 'eyeball_', 'eye_socket_', 'iris', 'pupil_', 'highlight', 'lid_shadow_', 'side_lock', 'hair_clump', 'hair_flick', 'bang_strand', 'bang_clump', 'headset', 'Nous_band_hook'))]
 for o in decals:
     offset = Vector(); q = o.parent
     while q is not None and q != head: offset += q.location; q = q.parent

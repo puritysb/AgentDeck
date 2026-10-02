@@ -46,12 +46,26 @@ struct HermesSwim {
     var blink: Float { eyelid(0) }
     var tail: Float { sin(phase) * (0.10 + min(1, simd_length(velocity) * 2) * 0.38 + effort * 0.10) }
     var fin: Float { sin(phase - 1.0) * (0.15 + min(1, simd_length(velocity) * 2) * 0.45 + effort * 0.12) }
-    var yaw: Float { max(-1.15, min(1.15, atan2(velocity.x, 0.22 + abs(velocity.z)))) }
-    var pitch: Float { max(-0.35, min(0.35, -velocity.z * 0.9 - velocity.y * 0.55)) }
-    var roll: Float { max(-0.55, min(0.55, -velocity.x * 1.3)) }
+    // She mostly faces the viewer and leans into her travel. Following the
+    // velocity up to +-66 deg turned her side-on and back on every lap of the
+    // figure eight, with the tail swinging out horizontally: she read as
+    // tumbling, not swimming (device review, 2026-10-02).
+    var bodyYaw: Float { max(-0.55, min(0.55, atan2(velocity.x, 0.45 + abs(velocity.z)) * 0.8)) }
+    /// One full turn when a task completes, eased so it starts and lands softly.
+    var twirl: Float {
+        guard celebration > 0 else { return 0 }
+        let t = min(1, max(0, (1 - celebration) / 0.55))
+        return 2 * .pi * t * t * (3 - 2 * t)
+    }
+    var yaw: Float { bodyYaw + twirl }
+    var pitch: Float { max(-0.30, min(0.30, -velocity.z * 0.6 - velocity.y * 0.4)) }
+    /// The concepts swim lying into the stroke: head leading, tail trailing.
+    /// Upright travel read as a doll being dragged sideways.
+    var roll: Float { max(-0.85, min(0.85, -velocity.x * 1.8)) }
     var arm: Float { attention * 1.4 + greeting * (0.55 + sin(phase) * 0.12) + celebration * 0.35 + effort * (0.18 + sin(phase) * 0.06) }
 
-    var headRoll: Float { greeting * 0.10 - sadness * 0.15 - roll * 0.25 }
+    var headRoll: Float { greeting * 0.10 - sadness * 0.15 - roll * 0.55
+        + sin(elapsed * 0.9 + offset) * 0.05 * (1 - effort) * (1 - sadness) }
     var headPitch: Float { effort * 0.12 + sadness * 0.2 }
     var rightArm: Float { arm * 0.25 + sin(phase + 1) * effort * 0.08 }
     var eyeHeight: Float { blink * (1 - sadness * 0.5 - effort * 0.15) }
@@ -70,6 +84,8 @@ struct HermesSwim {
         var eyeLeft, eyeRight: Float
         var pupil: SIMD2<Float>
         var browLeft, browRight, browLift, mouthOpen, mouthCurve: Float
+        /// Extra opening of the laptop lid beyond its modelled rest angle.
+        var laptopLid: Float
 
         func rotation(for bone: String) -> SIMD3<Float> {
             switch bone {
@@ -93,27 +109,36 @@ struct HermesSwim {
 
     var pose: Pose {
         let speed = min(1, simd_length(velocity) * 2)
-        let stroke = 0.12 + speed * 0.15 + effort * 0.04
+        // a gentle flick: base+mid+tip bends summed to ~1.1 rad at speed and the
+        // tail flopped out flat; now ~0.65 rad, with the follow-through at the tip
+        let stroke = 0.08 + speed * 0.10 + effort * 0.03
         let tap = sin(elapsed * 3.5 + offset) * effort
         let wave = sin(elapsed * 4.5 + offset) * greeting
         let tension = sadness * 0.8 + effort * 0.25
+        // small strokes only: her hands hold the laptop; quiet while she waits
+        let paddle = sin(phase + 0.5) * (0.03 + speed * 0.03) * (1 - attention)
         return Pose(
-            spine: [sin(phase - 0.15) * 0.025 + effort * 0.025, 0, -roll * 0.10],
-            tailBase: [sin(phase) * stroke, tailBank * 0.25, 0],
-            tailMid: [sin(phase - 0.65) * stroke * 1.3, tailBank * 0.35, 0],
+            spine: [sin(phase - 0.15) * 0.025 + effort * 0.025, 0, -roll * 0.20],
+            // at rest the tail curls forward under her (the concepts' J); it
+            // straightens to trail behind as she picks up speed
+            tailBase: [sin(phase) * stroke - 0.30 * (1 - speed), tailBank * 0.25, 0],
+            tailMid: [sin(phase - 0.65) * stroke * 1.2, tailBank * 0.35, 0],
             tailTip: [sin(phase - 1.3) * stroke * 1.5, tailBank * 0.4, 0],
-            fin: [sin(phase - 1.9) * stroke, 0, 0],
+            fin: [sin(phase - 1.9) * stroke * 1.3, 0, 0],
             finLeft: [sin(phase - 2.1) * 0.09, -0.04 - speed * 0.09, -0.05 - effort * 0.08],
             finRight: [sin(phase - 2.25) * 0.09, 0.04 + speed * 0.09, 0.05 + effort * 0.08],
-            armLeft: [-effort * 0.55, attention * 1.15 + greeting * 0.95 + effort * 0.45,
-                      -(0.04 + attention * 0.9 + greeting * 0.65 + effort * 0.28 + celebration * 0.14)],
-            elbowLeft: [-effort * 0.28, 0, -(0.08 + effort * (0.38 + tap * 0.08) + attention * 0.35 + greeting * 0.55)],
+            // working keeps both hands on the laptop and types (wrist taps);
+            // the big forward arm swing pulled them off it
+            armLeft: [-effort * 0.12, attention * 1.15 + greeting * 0.95 + effort * 0.10,
+                      -(0.04 + attention * 0.9 + greeting * 0.65 + effort * 0.06 + celebration * 0.14) + paddle],
+            elbowLeft: [-effort * 0.10, 0, -(0.08 + effort * (0.10 + tap * 0.08) + attention * 0.35 + greeting * 0.55)],
             wristLeft: [effort * tap * 0.16, wave * 0.35, wave * 0.15],
-            armRight: [-effort * 0.55 - sadness * 0.10, -effort * 0.45, 0.04 + effort * 0.28 + attention * 0.1],
-            elbowRight: [-effort * 0.28, 0, 0.08 + effort * (0.38 - tap * 0.08) + sadness * 0.15],
+            armRight: [-effort * 0.12 - sadness * 0.10, -effort * 0.10, 0.04 + effort * 0.06 + attention * 0.1 + paddle],
+            elbowRight: [-effort * 0.10, 0, 0.08 + effort * (0.10 - tap * 0.08) + sadness * 0.15],
             wristRight: [-effort * tap * 0.16, 0, 0],
+            // the head turns back toward the viewer by half the body's lean
             head: [effort * 0.09 + sadness * 0.10 - gaze.y * 0.12,
-                   gaze.x * 0.25, headRoll + sin(elapsed * 0.8 + offset) * 0.018],
+                   gaze.x * 0.25 - bodyYaw * 0.45, headRoll + sin(elapsed * 0.8 + offset) * 0.018],
             hairLeft: sin(phase - 1.6) * (0.018 + speed * 0.025) + roll * 0.06,
             hairRight: sin(phase - 1.9) * (0.015 + speed * 0.025) + roll * 0.06,
             eyeLeft: eyelid(0) * (1 - tension * 0.30),
@@ -123,7 +148,8 @@ struct HermesSwim {
             browRight: sadness * 0.18 - effort * 0.07 + attention * 0.09,
             browLift: attention * 0.006 - effort * 0.002,
             mouthOpen: attention * 0.35,
-            mouthCurve: greeting * 0.3 + celebration * 0.18 - sadness * 0.4)
+            mouthCurve: greeting * 0.3 + celebration * 0.18 - sadness * 0.4,
+            laptopLid: effort * 0.15 + sin(elapsed * 0.7 + offset) * 0.02)
     }
 
     mutating func step(_ delta: Float, home: SIMD3<Float>, size: Float,
@@ -145,7 +171,7 @@ struct HermesSwim {
         let t = elapsed * 0.34 + offset
         let radius = size * (0.85 + effort * 0.35) * (1 - attention * 0.85)
         var destination = home + SIMD3<Float>(sin(t) * radius,
-            sin(t * 1.37) * radius * 0.16,
+            sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07,   // a soft float
             sin(t * 0.83) * radius * 0.70)
         var nearest: SIMD3<Float>?
         var distance = Float.infinity
