@@ -125,3 +125,6 @@ assets/terrarium/hermes-character.blend
 assets/terrarium/hermes-character.usdz
 assets/terrarium/hermes-character.glb
 assets/terrarium/references/hermes-mermaid-*.png
+assets/terrarium/references/turnaround/head-study/*.png
+# Blender's automatic save backups
+*.blend1
