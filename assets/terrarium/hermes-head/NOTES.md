@@ -939,13 +939,27 @@ The master 3/4 puts the nose tip under the far eye's inner corner. At the
 fitted camera, that needs about twice the projection the profile sheet
 draws. The user chose the profile, so the nose stays as it is.
 
-**Open: on-device frame time.** It was not measured, because the phone
-was not on the Mac's network. A Debug build is installed on SBiPhone.
-The scratch feed (a copy of `scripts/appstore-demo-orchestrator.mjs` with
-an added `agentType: hermes` session, listening on 0.0.0.0) and the
-launch arguments
-`-AgentDeckScreenshotURL ws://<mac-ip>:9220 -prefs.dashboardType aquarium3d`
-are enough to run it once both are on one LAN.
+**On-device frame time (measured 2026-10-02).** SBiPhone (iPhone 14 Pro
+Max, iOS 26.6.2) ran a Debug build in the 3D aquarium, fed by a scratch
+copy of `scripts/appstore-demo-orchestrator.mjs` with an added
+`agentType: hermes` session. The Mac was on the phone's hotspot, so the
+feed went over IPv6 to `ws://[mac]:9220`. Instruments' Game Performance
+template was recorded over USB.
+
+| Run | Captured | Result |
+|---|---|---|
+| With Hermes | displayed frames for 5 s | 51 / 60 / 56 / 60 / 59 fps; frame intervals median 16.7 ms, p99 29 ms, 2 frames over 34 ms out of 286 |
+| With Hermes | AgentDeck GPU, run 1 | ~820 ms/s, ~14.3 ms per frame |
+| With Hermes | AgentDeck GPU, run 2 | ~630 ms/s |
+| Without Hermes | AgentDeck GPU | 760-840 ms/s |
+
+The device sat in thermal state **Serious** throughout: it was charging
+and running the hotspot. Each trace keeps only ~8 s of GPU data, and the
+runs caught different moments of the feed's cycle. So the GPU numbers are
+noisy, but Hermes is not a dominant cost: the run without Hermes was no
+lighter.
+
+The aquarium held ~57-60 fps with Hermes on a throttled phone.
 
 ## After the gate
 
