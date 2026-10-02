@@ -82,8 +82,11 @@ hair.node_tree.nodes['Principled BSDF'].inputs['IOR'].default_value = 1.12
 # under the app's high sun the crown read ~52 and the fringe hem ~16, a dark
 # band between. Lower albedo plus a faint navy emission narrows that range.
 _hb = hair.node_tree.nodes['Principled BSDF']
-_hb.inputs['Base Color'].default_value = tuple(c * 0.3 for c in _hb.inputs['Base Color'].default_value[:3]) + (1,)
-_hb.inputs['Emission Color'].default_value = (.0045, .0058, .0095, 1); _hb.inputs['Emission Strength'].default_value = 3.0
+# 2026-10-02: the official portrait's hair is solid black against white skin;
+# the navy glow read as blue-grey (p50 26/30/41 vs the concept's 18/24/32).
+# Near-neutral black now, with just enough albedo for the facets to show.
+_hb.inputs['Base Color'].default_value = (.0045, .0047, .0058, 1)
+_hb.inputs['Emission Color'].default_value = (.0040, .0042, .0052, 1); _hb.inputs['Emission Strength'].default_value = 1.1
 hair_under = material('Hair under-layer', 'ink-900', .9, .05, scale=.12, neutral=True)
 line = material('Ink line', 'ink-900', .9, .0, scale=.30, neutral=True)
 iris = material('Iris', 'ink-900', .4, .3, scale=.22, neutral=True)
@@ -470,8 +473,8 @@ def plane(name, w, h, center, mat, parent, facing=-1):
     vs = [(cx - w / 2, cy - h / 2, cz), (cx + w / 2, cy - h / 2, cz), (cx + w / 2, cy + h / 2, cz), (cx - w / 2, cy + h / 2, cz)]
     return mesh(name, vs, [(0, 1, 2, 3)] if facing > 0 else [(0, 3, 2, 1)], mat, parent)
 
-m_laptop = material('Laptop shell', 'tide-50', .55, .15, glow=.25)
-m_keys = material('Laptop keys', 'ink-700', .7, .1, scale=.6, neutral=True)
+m_laptop = material('Laptop shell', 'ink-700', .5, .2, glow=.10)   # dark, so the cream sticker reads
+m_keys = material('Laptop keys', 'ink-900', .7, .1, neutral=True)
 m_screen = bpy.data.materials.new('Laptop screen'); m_screen.use_nodes = True
 _sp = m_screen.node_tree.nodes['Principled BSDF']
 _sp.inputs['Base Color'].default_value = (0.55, 0.82, 0.80, 1)
@@ -484,23 +487,38 @@ _mp.inputs['Base Color'].default_value = (0.55, 0.85, 0.82, 1)
 _mp.inputs['Emission Color'].default_value = (0.55, 0.85, 0.82, 1)
 _mp.inputs['Emission Strength'].default_value = 2.0
 
-LAP_W, LAP_D, LAP_T, LAP_H = 0.16, 0.105, 0.009, 0.10
-base_c = (0, -0.172, 0.12)
+LAP_W, LAP_D, LAP_T, LAP_H = 0.24, 0.15, 0.012, 0.16   # big enough for the lid sticker to read
+LAP_Z = 0.15
+base_c = (0, -0.172, LAP_Z)
 laptop = joint('laptop', spine)
 box('laptop_base', (LAP_W, LAP_T, LAP_D), base_c, m_laptop, laptop)
-box('laptop_keys', (LAP_W * 0.84, 0.0012, LAP_D * 0.55), (0, -0.172 + LAP_T / 2 + 0.0006, 0.105), m_keys, laptop)
-lid = joint('hermes_laptop_lid', laptop, (0, -0.172 + LAP_T / 2, 0.12 + LAP_D / 2))
+box('laptop_keys', (LAP_W * 0.84, 0.0012, LAP_D * 0.55), (0, -0.172 + LAP_T / 2 + 0.0006, LAP_Z - LAP_D * 0.12), m_keys, laptop)
+lid = joint('hermes_laptop_lid', laptop, (0, -0.172 + LAP_T / 2, LAP_Z + LAP_D / 2))
 lid.rotation_euler.x = 0.26                         # open ~105 deg, leaning away from her
 box('laptop_lid', (LAP_W, LAP_H, 0.006), (0, LAP_H / 2, 0), m_laptop, lid)
 plane('laptop_screen', LAP_W * 0.88, LAP_H * 0.82, (0, LAP_H * 0.52, -0.0032), m_screen, lid, facing=-1)
-for i, (x0, w) in enumerate(((-0.055, 0.050), (-0.050, 0.075), (-0.050, 0.035), (-0.045, 0.060), (-0.055, 0.042))):
-    plane(f'laptop_code_{i}', w, 0.0045, (x0 + w / 2, LAP_H * (0.80 - i * 0.12), -0.0036), m_code, lid, facing=-1)
-mark = bpy.data.objects.new('laptop_mark', bpy.data.meshes.new('laptop_mark'))
-_bm = bmesh.new()
-bmesh.ops.create_circle(_bm, cap_ends=True, segments=16, radius=0.011)
-for v in _bm.verts: v.co = Vector((v.co.x, v.co.y + LAP_H * 0.55, 0.0032))
-_bm.to_mesh(mark.data); _bm.free()
-scene.collection.objects.link(mark); mark.parent = lid; mark.data.materials.append(m_mark)
+for i, (x0, w) in enumerate(((-0.085, 0.075), (-0.078, 0.11), (-0.078, 0.05), (-0.070, 0.09), (-0.085, 0.06))):
+    plane(f'laptop_code_{i}', w, 0.006, (x0 + w / 2, LAP_H * (0.80 - i * 0.12), -0.0036), m_code, lid, facing=-1)
+# the official character on the lid, facing the viewer: the canonical mark
+# (design/brand/hermes.svg) baked by hermes-head/make_laptop_sticker.sh
+_img = bpy.data.images.load(str(Path(__file__).resolve().parent / 'hermes-head' / 'laptop_sticker.png'))
+m_sticker = bpy.data.materials.new('Laptop sticker'); m_sticker.use_nodes = True
+_nt = m_sticker.node_tree; _pb = _nt.nodes['Principled BSDF']
+_tx = _nt.nodes.new('ShaderNodeTexImage'); _tx.image = _img; _tx.extension = 'CLIP'
+_nt.links.new(_tx.outputs['Color'], _pb.inputs['Base Color'])
+_nt.links.new(_tx.outputs['Color'], _pb.inputs['Emission Color'])   # reads in the dim tank
+_pb.inputs['Emission Strength'].default_value = 0.35
+_pb.inputs['Roughness'].default_value = 0.7
+STK = 0.135   # most of the 0.16 lid: it must read at aquarium distance
+_sm = bpy.data.meshes.new('laptop_sticker')
+_sm.from_pydata([(-STK / 2, LAP_H * 0.52 - STK / 2, 0.0034), (STK / 2, LAP_H * 0.52 - STK / 2, 0.0034),
+                 (STK / 2, LAP_H * 0.52 + STK / 2, 0.0034), (-STK / 2, LAP_H * 0.52 + STK / 2, 0.0034)], [], [(0, 1, 2, 3)])
+_uv = _sm.uv_layers.new(name='UVMap')
+for _l, _c in zip(_sm.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
+    _uv.data[_l.index].uv = _c
+# the lid's back faces +z (the viewer) but the sticker must read unmirrored from there
+sticker = bpy.data.objects.new('laptop_sticker', _sm); scene.collection.objects.link(sticker)
+sticker.parent = lid; _sm.materials.append(m_sticker)
 
 # The official Nous girl's most recognisable cue: a jagged row of white glints
 # across the fringe (the anime "shine band"). Laid out in (angle, height)

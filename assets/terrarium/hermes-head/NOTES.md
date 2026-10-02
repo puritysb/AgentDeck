@@ -1031,6 +1031,42 @@ This is additive; no existing name changed.
 gaps between glints and drawn lines, in hair or background colour, not
 0/0/0.
 
+## Nous sticker, bigger Hermes, black hair; longer hair rejected (2026-10-02)
+
+**Sticker.** The official character now sits on the laptop lid, facing the
+viewer. `make_laptop_sticker.sh` bakes the canonical mark
+(`design/brand/hermes.svg`, used as-is, never redrawn) in --ink-900 on a
+--tide-50 rounded square into `laptop_sticker.png`.
+
+- The colours are dark art on cream. The mark fills the portrait's black
+  areas, so cream-on-dark read as a photo negative.
+- The sticker covers 0.135 m of the 0.16 m lid.
+- The laptop grew from 0.16 x 0.105 x 0.10 lid to 0.24 x 0.15 x 0.16 lid.
+  Its shell is --ink-700, so the cream sticker stands out.
+
+**Bigger Hermes.** `AquariumResidents.hermesScale` = 1.35 enlarges her over
+the shared resident size. Her tag is divided by the same factor, so its text
+matches the other residents'.
+
+**Black hair.** The official portrait's hair is solid black against white
+skin. The old navy glow measured p50 26/30/41, bluish against the concept's
+18/24/32. The hair is now a near-neutral black: base (.0045, .0047, .0058)
+plus emission 1.1 of the same tint, measured p50 about 22/23/26.
+
+**Rejected: longer hair with one big C-curl.** Tried at full length
+(rings 11-13 down 0.10/0.30/0.60) and at half length, with a single large
+curl moved toward the front.
+
+- From the front, the bob became a shapeless black block and lost its
+  flared ends and flips.
+- A black curl against dark water is invisible. The portrait's curl reads
+  only because it is drawn with a white outline on white paper.
+
+Reverted. E73 is not in `edits.json`, and the two-tier flips stay.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-sticker/review.png`. Its right
+panel is at the app camera's distance.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate

@@ -218,7 +218,7 @@ final class AquariumResidents {
             guard let resident = residents[item.id] else { continue }
             // Canonical state controls visibility immediately, even while paused.
             resident.findEntity(named: "activity")?.isEnabled = item.activity == .working
-            resident.scale = .init(repeating: size)
+            resident.scale = .init(repeating: size * (item.kind == "hermes" ? Self.hermesScale : 1))
             if !animate {
                 resident.position = targets[item.id]!
                 hermesSwims[item.id]?.relocate(resident.position)
@@ -418,7 +418,8 @@ final class AquariumResidents {
             // Only awaiting attention pulses; other status colors stay steady.
             if let label = entity.findEntity(named: "label") {
                 let pulse: Float = item.activity == .waiting ? 1 + sin(Float(time) * 2.5) * 0.035 : 1
-                label.scale = .init(repeating: pulse)
+                // Hermes swims larger; her tag keeps the shared text size
+                label.scale = .init(repeating: pulse / (item.kind == "hermes" ? Self.hermesScale : 1))
             }
         }
         shoal.step(dt, residents: residents.values.map { $0.position }, wakes: wakes)
@@ -444,6 +445,10 @@ final class AquariumResidents {
         }
         return (positions, size)
     }
+
+    /// Hermes is drawn larger than the other residents so her face and the
+    /// Nous sticker on her laptop read at aquarium distance (2026-10-02).
+    static let hermesScale: Float = 1.35
 
     static func isGrounded(_ kind: String) -> Bool {
         kind == "claudecode" || kind == "openclaw"
