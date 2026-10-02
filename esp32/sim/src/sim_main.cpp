@@ -401,6 +401,12 @@ bool verifyIpsInteractions(const char* outdir) {
   // Reserve is selected only while a real regular limit is exhausted.
   g_state.codexPrimaryPercent=100;g_state.codexLunaPercent=32;advance();
   if(!ipsLabel(lv_screen_active(),"Luna left") || !ipsLabel(lv_screen_active(),"68%") || !save("ips10-luna"))return ipsFailure(__LINE__);
+  // Purchased credits join the reserve as a text balance, first; a zero
+  // balance is never shown.
+  g_state.codexCreditBalance=62500;advance();
+  if(!ipsLabel(lv_screen_active(),"Credits left") || !ipsLabel(lv_screen_active(),"62.5K") || !ipsLabel(lv_screen_active(),"Luna left") || !save("ips10-credits"))return ipsFailure(__LINE__);
+  g_state.codexCreditBalance=0;advance();
+  if(ipsLabel(lv_screen_active(),"Credits left"))return ipsFailure(__LINE__);
   g_state.codexPrimaryPercent=0;advance();
   if(ipsLabel(lv_screen_active(),"Luna left"))return ipsFailure(__LINE__);
   IPS10Workspace::voiceStarted("openclaw-personal");

@@ -204,6 +204,11 @@ struct DashboardState {
     // UsagePresentation::lunaActive owns that rule. -1 = absent.
     float codexLunaPercent = -1;
     char codexLunaReset[20] = {};
+    // Purchased-credit balance (usage_update codexRateLimits.credits). Shown
+    // only while an account window is exhausted and a balance remains —
+    // UsagePresentation::creditsActive owns that rule. -1 = absent or
+    // unparseable, 0 = hasCredits:false, INFINITY = unlimited.
+    double codexCreditBalance = -1;
     // z.ai GLM Coding Plan limits (#350) — a direct provider-account reading,
     // same slot grammar. The secondary window may meter MCP TOOL CALLS, not
     // tokens: `zaiSecondaryIsMcp` rides the wire `quantity` and renderers must
@@ -338,7 +343,7 @@ struct DashboardState {
         codexSecondaryPercent = -1.0f;
         codexPrimaryReset[0] = '\0';
         codexSecondaryReset[0] = '\0';
-        codexLunaPercent = -1; codexLunaReset[0] = '\0';
+        codexLunaPercent = -1; codexLunaReset[0] = '\0'; codexCreditBalance = -1;
         zaiPrimaryPercent = -1.0f;
         zaiSecondaryPercent = -1.0f;
         zaiPrimaryReset[0] = '\0';
@@ -382,7 +387,7 @@ struct DashboardState {
         codexSecondaryPercent = -1.0f;
         codexPrimaryReset[0] = '\0';
         codexSecondaryReset[0] = '\0';
-        codexLunaPercent = -1; codexLunaReset[0] = '\0';
+        codexLunaPercent = -1; codexLunaReset[0] = '\0'; codexCreditBalance = -1;
         zaiPrimaryPercent = -1.0f;
         zaiSecondaryPercent = -1.0f;
         zaiPrimaryReset[0] = '\0';

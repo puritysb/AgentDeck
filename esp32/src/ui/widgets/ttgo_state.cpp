@@ -3,6 +3,7 @@
 #include "../session_state.generated.h"
 #include "../display.h"
 #include "../../state/agent_state.h"
+#include "../../util/usage_rows.h"
 #include "../boards/board_config.h"
 #include "config.h"
 #include <cstring>
@@ -274,6 +275,10 @@ void update() {
     // "CX" prefix disambiguates the provider.
     float cxP5h = g_state.codexPrimaryPercent;
     float cxP7d = g_state.codexSecondaryPercent;
+    // Exhausted plan window + a balance: the credit balance replaces both
+    // Codex windows (what the account is spending now).
+    char cxCredits[8];
+    UsageRows::codexCreditsKey(g_state, cxCredits, sizeof(cxCredits));
     bool connected = hasData && (g_state.wsConnected || Net::serialConnected());
     unlockState();
 
@@ -311,7 +316,10 @@ void update() {
     if (showTankStatus) {
         if (hasClaude && hasCodex) {
             formatProviderUsage(first, sizeof(first), "CL", p5h, p7d);
-            formatProviderUsage(second, sizeof(second), "CX", cxP5h, cxP7d);
+            if (cxCredits[0]) snprintf(second, sizeof(second), "CX CR %s", cxCredits);
+            else formatProviderUsage(second, sizeof(second), "CX", cxP5h, cxP7d);
+        } else if (hasCodex && cxCredits[0]) {
+            snprintf(first, sizeof(first), "CX credits: %s", cxCredits);
         } else {
             const char* prefix = hasCodex ? "CX " : "";
             float u5 = hasCodex ? cxP5h : p5h;

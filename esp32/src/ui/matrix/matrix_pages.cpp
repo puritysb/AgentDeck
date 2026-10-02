@@ -1,6 +1,7 @@
 #include "util/usage_severity.generated.h"
 #ifdef BOARD_LED8X32
 #include "../../util/usage_presentation.generated.h"
+#include "../../util/usage_rows.h"
 #include "matrix_pages.h"
 #include "matrix_font.h"
 #include "official_dot_glyphs_generated.h"
@@ -352,6 +353,10 @@ void MatrixPages::renderCodex(CRGB* leds, float animTime) {
     // An exhausted account window hands the page to the Luna reserve, read as
     // what is LEFT (the shared UsagePresentation rule every surface uses).
     const bool remaining = UsagePresentation::lunaActive(primary, secondary, g_state.codexLunaPercent);
+    // Purchased credits outrank the reserve on this one-reading page: they
+    // are what the account is actually spending (selectedCodexCredits).
+    char credits[8];
+    UsageRows::codexCreditsKey(g_state, credits, sizeof(credits));
     if (remaining) {
         primary = 100.0f - g_state.codexLunaPercent;
         secondary = -1.0f;
@@ -363,7 +368,20 @@ void MatrixPages::renderCodex(CRGB* leds, float animTime) {
         renderDisconnectStatus(leds, animTime);
         return;
     }
-    renderGaugePair(leds, animTime, primary, primaryLabel, secondary, secondaryLabel, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224), remaining);
+    if (credits[0]) {
+        // A balance has no cap: the number in neutral white and no rail —
+        // a fill or a severity colour would be invented. "CR" rides along
+        // only when both fit the 23-pixel reading area ("CR950", not "CR62.5K").
+        drawOfficialMatrixGlyph(leds, 0, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224));
+        int x = 9;
+        if (MatrixFont::textWidth("CR") + 1 + MatrixFont::textWidth(credits) <= MATRIX_W - 9) {
+            MatrixFont::drawScrollText(leds, "CR", x, 1, CRGB(160, 170, 180), MATRIX_W, MATRIX_H);
+            x += MatrixFont::textWidth("CR") + 1;
+        }
+        MatrixFont::drawScrollText(leds, credits, x, 1, CRGB(200, 205, 215), MATRIX_W, MATRIX_H);
+    } else {
+        renderGaugePair(leds, animTime, primary, primaryLabel, secondary, secondaryLabel, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224), remaining);
+    }
     drawStateDot(leds, animTime);
 }
 

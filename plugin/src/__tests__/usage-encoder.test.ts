@@ -15,7 +15,7 @@ import {
   selectUsageDialProvider, getUsageDialSelections, resolveE2UsageProvider, resetE2UsageProvider,
   usageDialPreferences, restoreUsageDialPreferences,
 } from '../utility-modes/usage.js';
-import { renderUsageEncoderBoth } from '../renderers/usage-gauge.js';
+import { renderUsageEncoderBoth, renderUsageEncoderSingle } from '../renderers/usage-gauge.js';
 
 const CODEX_LIMITS = {
   primary: { usedPercent: 30, windowMinutes: 300, resetsAt: '2099-01-01T00:00:00Z' },
@@ -272,8 +272,41 @@ describe('renderUsageEncoderBoth — single live window', () => {
     }, true));
     expect(svg).toContain('>CODEX</text>');
     expect(svg).toContain('LUNA RESERVE');
-    expect(svg).toContain('89% LEFT');
+    expect(svg).toContain("89%<tspan"); expect(svg).toContain(">LEFT</tspan>");
     expect(svg).toContain('RESET IN');
+  });
+});
+
+describe('Codex purchased credits on the SD+ encoder', () => {
+  const exhausted = {
+    secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: new Date(Date.now() + 2 * 86400000).toISOString() },
+    credits: { hasCredits: true, unlimited: false, balance: '62500' },
+  };
+
+  it('replaces the exhausted gauge with the remaining balance', () => {
+    const svg = renderUsageEncoderBoth(buildCodexUsageEncoder({ codexRateLimits: exhausted }, true));
+    expect(svg).toContain('CREDITS LEFT');
+    expect(svg).toContain('>62.5K<');
+    expect(svg).toContain('RESET IN');
+    expect(svg).not.toContain('>100<');
+  });
+
+  it('shows credits and the Luna reserve side by side in the wide view, credits alone when zoomed', () => {
+    const enc = buildCodexUsageEncoder({ codexRateLimits: { ...exhausted, lunaReserve: { usedPercent: 0, available: true } } }, true);
+    const both = renderUsageEncoderBoth(enc);
+    expect(both).toContain('>62.5K<');
+    expect(both).toContain('>100%<');
+    expect(both).toContain('LUNA LEFT');
+    const zoom = renderUsageEncoderSingle(enc, '7d');
+    expect(zoom).toContain('CREDITS LEFT');
+    expect(zoom).not.toContain('LUNA');
+  });
+
+  it('shows nothing new while the plan still has room or the balance is zero', () => {
+    const inside = renderUsageEncoderBoth(buildCodexUsageEncoder({ codexRateLimits: { ...exhausted, secondary: { ...exhausted.secondary, usedPercent: 94 } } }, true));
+    expect(inside).not.toContain('CREDITS');
+    const broke = renderUsageEncoderBoth(buildCodexUsageEncoder({ codexRateLimits: { ...exhausted, credits: { hasCredits: false, unlimited: false, balance: '0' } } }, true));
+    expect(broke).not.toContain('CREDITS');
   });
 });
 

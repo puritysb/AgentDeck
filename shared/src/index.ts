@@ -52,5 +52,6 @@ export * from "./collaboration-presentation.js";
 export * from './usage-severity.js';
 
 export * from './claude-weekly-view.js';
+export * from './zai-pair-view.js';
 export * from './matrix-expression.js';
 export { GatewayLiveActivity, GATEWAY_LIVE_RULES } from './gateway-live-activity.js';

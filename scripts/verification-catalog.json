@@ -424,7 +424,8 @@
         "bridge/src/__tests__/hook-server-usage-relay.test.ts",
         "shared/src/__tests__/usage-*.test.ts",
         "shared/src/__tests__/codex-freshness-rules.test.ts",
-        "shared/src/__tests__/zai-quota.test.ts"
+        "shared/src/__tests__/zai-quota.test.ts",
+        "shared/src/__tests__/zai-pair-view.test.ts"
       ]
     },
     {

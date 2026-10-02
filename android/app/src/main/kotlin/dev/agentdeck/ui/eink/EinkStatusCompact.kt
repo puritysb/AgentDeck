@@ -161,11 +161,12 @@ private fun CodexGaugeRow(row: ProviderLimitRow) {
     ) {
         BrandIcon(agentType = row.agentType, isEink = true, size = 12.dp)
         Text(
-            text = "${row.label} ${blockGauge(row.percent)} ${row.percent.toInt()}%$staleMark",
+            text = "${row.label} ${row.value ?: "${blockGauge(row.percent)} ${row.percent.toInt()}%"}$staleMark",
             fontSize = 13.sp,
             lineHeight = 17.sp,
             fontFamily = FontFamily.Monospace,
-            color = gaugeColor(row.usedPercent),
+            // A balance has no severity; only a percentage takes the ramp.
+            color = if (row.value != null) Color.Black else gaugeColor(row.usedPercent),
             maxLines = 1,
         )
     }

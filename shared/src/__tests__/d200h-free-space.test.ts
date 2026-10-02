@@ -104,3 +104,46 @@ describe('usage free-space expansion', () => {
     expect(svgs).not.toContain('ugauge-zai-7d');
   });
 });
+
+describe('folded z.ai key (5H + MCP on one key, press cycles the view)', () => {
+  // 11 sessions on 15 keys leave one spare key: a four-key usage budget for
+  // six readings. Codex pairs first, then z.ai — Claude keeps 5H and 7D apart.
+  const eleven = Array.from({ length: 11 }, (_, i) => ({
+    id: `observed:claude:s${i}`, agentType: 'claude-code', state: 'idle', projectName: `p${i}`, cwd: `/p${i}`, window: 'x',
+  }));
+  const usageKeys = (zaiPairMode?: 'both' | 'first' | 'second') => {
+    const deck = buildSessionDeck({ ...ALL_THREE, allSessions: eleven } as any,
+      { mode: 'list', showUsage: true, zaiPairMode } as any, positions(15));
+    return [...deck.values()].filter((c) => {
+      const a = c?.action as { kind?: string; command?: { type?: string } } | null;
+      return a?.kind === 'zai-mode' || a?.kind === 'weekly-mode' || a?.command?.type === 'query_usage';
+    });
+  };
+
+  it('folds z.ai before Claude and makes that key cycle', () => {
+    const keys = usageKeys();
+    expect(keys).toHaveLength(4);
+    const zai = keys.filter((c) => (c.action as { kind?: string }).kind === 'zai-mode');
+    expect(zai).toHaveLength(1);
+    expect(zai[0].svg).toContain('>MCP<');
+    expect(zai[0].svg).toContain('>3<');
+    expect(zai[0].svg).toContain('>100<');
+    // Claude's two windows stay on their own keys.
+    expect(keys.filter((c) => c.svg.includes('>32<') && !c.svg.includes('>64<'))).toHaveLength(1);
+  });
+
+  it('shows only the selected z.ai reading in 5H and MCP modes', () => {
+    const zaiKey = (mode: 'first' | 'second') =>
+      usageKeys(mode).find((c) => (c.action as { kind?: string }).kind === 'zai-mode')!.svg;
+    expect(zaiKey('first')).toContain('>3<');
+    expect(zaiKey('first')).not.toContain('>MCP<');
+    expect(zaiKey('second')).toContain('>MCP<');
+    expect(zaiKey('second')).not.toContain('>3<');
+  });
+
+  it('keeps one z.ai window per key, with no cycle, when there is room', () => {
+    const deck = buildSessionDeck({ ...ALL_THREE, allSessions: oneSession } as any,
+      { mode: 'list', showUsage: true } as any, positions(15));
+    expect([...deck.values()].some((c) => (c?.action as { kind?: string } | null)?.kind === 'zai-mode')).toBe(false);
+  });
+});

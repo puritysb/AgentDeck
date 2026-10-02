@@ -253,6 +253,23 @@ bool SimScenes::apply(const char* name) {
     g_state.subscriptionCount = 2;
     return true;
   }
+  // Codex Pro with purchased credits once the weekly window is exhausted
+  // (the measured 2026-09-30 shape: 62,500 credits). Credits replace the
+  // Codex windows as a text balance, ahead of the Luna reserve beside it.
+  if (std::strcmp(name, "codex-credits") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.fiveHourPercent = 34; g_state.sevenDayPercent = 58;
+    g_state.codexPrimaryPercent = -1;
+    g_state.codexSecondaryPercent = 100; g_state.codexSecondaryMinutes = 10080;
+    setStr(g_state.codexSecondaryReset, sizeof(g_state.codexSecondaryReset), "2d 4h");
+    g_state.codexCreditBalance = 62500;
+    g_state.codexLunaPercent = 32;
+    setStr(g_state.codexLunaReset, sizeof(g_state.codexLunaReset), "4h 50m");
+    setStr(g_state.subscriptions[1].name, sizeof(g_state.subscriptions[1].name), "ChatGPT Pro");
+    setStr(g_state.subscriptions[1].until, sizeof(g_state.subscriptions[1].until), "~8/14");
+    g_state.subscriptionCount = 2;
+    return true;
+  }
   // The live daemon mix measured 2026-09-26: Claude reported as a bare
   // "Claude" subscription (no tier), Codex Pro with no 5h window, z.ai MCP
   // exhausted, Antigravity plan-only.
@@ -472,6 +489,6 @@ bool SimScenes::apply(const char* name) {
 }
 
 const char* SimScenes::catalog() {
-  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, live-mix, empty, idle, display-off, worktree-glance, working, multi, crowd, crowded, dense, permission, attention, "
+  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, codex-credits, live-mix, empty, idle, display-off, worktree-glance, working, multi, crowd, crowded, dense, permission, attention, "
          "demo:<agent>:<state>";
 }

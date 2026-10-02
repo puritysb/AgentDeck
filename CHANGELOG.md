@@ -47,6 +47,18 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Codex: once a plan window (5h or weekly) is exhausted and the account still
+  holds purchased credits, every usage surface shows the remaining balance
+  (`62.5K CREDITS LEFT`) in place of the exhausted window, with the time the plan
+  window resets. A zero balance shows nothing. Where a surface has room, the
+  Luna reserve stays beside it; a single-reading surface shows credits first.
+- Stream Deck / D200H: the Luna tile's `100% LEFT` no longer clips its final
+  letter; `LEFT` is set smaller than the number.
+- Stream Deck / D200H: when the usage row is crowded, z.ai's 5H and MCP windows
+  share one key. Each press switches it between both readings, 5H only and MCP
+  only, the same way the Claude weekly key switches with its per-model cap. A
+  row with room still gives each window its own key.
+
 ## 2026-09-28 — npm 1.6.0 · Apple 1.6.0 · ESP32 1.6.0 · Stream Deck 1.6.0 · Ulanzi 1.6.0
 
 - E-ink firmware (TRMNL 7.5", NM-EPD-420, EPD47) follows the Paper Board: only sessions that need you or are working get a card, idle sessions share one line of glyph + name, the masthead counts sessions by state, and filler copy is gone. A line break in an agent's answer no longer overprints Korean text. TRMNL no longer replaces the board with an ANSWER page after every finished turn; KEY1 cycles board → aquarium → digest.

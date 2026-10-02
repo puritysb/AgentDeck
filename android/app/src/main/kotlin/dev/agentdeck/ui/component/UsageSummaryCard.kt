@@ -6,6 +6,7 @@ import dev.agentdeck.util.UsageSeverity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -118,6 +119,7 @@ fun UsageSummaryCard(
                             suffix = row.footnote ?: if (row.stale) "stale" else if (row.remaining) "${row.percent.toInt()}% left" else null,
                             agentType = row.agentType,
                             remaining = row.remaining,
+                            value = row.value,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -202,12 +204,17 @@ private fun CompactGauge(
     // `percent` is what remains (the Codex Luna reserve): the bar fills by it,
     // the colour ramp reads the used complement.
     remaining: Boolean = false,
+    // A non-percent reading (the Codex credit balance, "62.5K"): printed in
+    // place of the percent, with no bar and no severity ramp — a balance has
+    // no cap to fill against.
+    value: String? = null,
 ) {
     val fraction = (percent / 100.0).coerceIn(0.0, 1.0).toFloat()
     val used = if (remaining) 100.0 - percent else percent
     val onPaper = MaterialTheme.colorScheme.surface.luminance() > 0.5f
-    val color = Color(if (muted) UsageSeverity.inactiveColor(onPaper)
-        else UsageSeverity.color(used, onPaper = onPaper))
+    val color = if (value != null) MaterialTheme.colorScheme.onSurface
+        else Color(if (muted) UsageSeverity.inactiveColor(onPaper)
+            else UsageSeverity.color(used, onPaper = onPaper))
 
     Column(modifier = modifier) {
         Row(
@@ -222,17 +229,21 @@ private fun CompactGauge(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            LinearProgressIndicator(
-                progress = { fraction },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = color,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
+            if (value != null) {
+                Spacer(modifier = Modifier.weight(1f))
+            } else {
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = color,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
+            }
             Text(
-                text = suffix ?: "${percent.toInt()}%",
+                text = value ?: suffix ?: "${percent.toInt()}%",
                 style = MaterialTheme.typography.bodySmall,
                 color = color,
             )

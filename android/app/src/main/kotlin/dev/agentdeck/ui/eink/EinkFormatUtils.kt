@@ -227,6 +227,9 @@ fun EinkTextGauge(
     // stays visible instead of vanishing — dropping stale rows made the gauge
     // disappear entirely once a window slid into the past.
     stale: Boolean = false,
+    // A non-percent reading (the Codex credit balance, "62.5K") printed in
+    // place of the bar + percent — a balance has no cap to fill against.
+    value: String? = null,
 ) {
     val pct = percent.coerceIn(0.0, 100.0).toInt()
     val filled = (pct * barLength / 100).coerceAtMost(barLength)
@@ -247,7 +250,7 @@ fun EinkTextGauge(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = "[$bar] $pct%${if (stale) "*" else ""}",
+            text = (value ?: "[$bar] $pct%") + if (stale) "*" else "",
             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             color = MaterialTheme.colorScheme.onSurface,
         )

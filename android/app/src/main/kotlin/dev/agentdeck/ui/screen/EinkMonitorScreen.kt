@@ -329,6 +329,9 @@ internal data class EinkLimitLine(
     val stale: Boolean = false,
     /** Time left until the window resets ("2h 15m"), or a freshness note when stale. */
     val reset: String? = null,
+    /** [percent] is what REMAINS (the Codex Luna reserve): the bar fills by it,
+     *  but severity reads the consumed complement. */
+    val remaining: Boolean = false,
 )
 
 internal fun buildEinkLimitRows(state: DashboardState, now: Instant = Instant.now()): List<EinkLimitLine> {
@@ -359,8 +362,10 @@ internal fun buildEinkLimitRows(state: DashboardState, now: Instant = Instant.no
         // The provider line above the windows names GLM; the row names only
         // the window, and the MCP quota by its quantity.
         val label = if (it.label.equals("mcp", ignoreCase = true)) "MCP" else it.label
-        rows.add(EinkLimitLine(label = label, percent = it.percent, agentType = it.agentType, stale = it.stale,
-            reset = it.footnote ?: it.resetIso?.let(::formatResetTime)))
+        // A credit balance rides `value` with no percent: it has no cap to fill.
+        rows.add(EinkLimitLine(label = label, percent = if (it.value != null) null else it.percent, value = it.value,
+            agentType = it.agentType, stale = it.stale, reset = it.footnote ?: it.resetIso?.let(::formatResetTime),
+            remaining = it.remaining))
     }
     return rows
 }

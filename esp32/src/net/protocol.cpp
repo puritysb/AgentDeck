@@ -11,6 +11,8 @@
 #include "../util/utf8.h"
 #include "config.h"
 #include <ArduinoJson.h>
+#include <cmath>
+#include <cstdlib>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -292,8 +294,28 @@ static void handleUsageUpdate(JsonObject& obj) {
     g_state.codexSecondaryReset[0] = '\0';
     g_state.codexLunaPercent = -1;
     g_state.codexLunaReset[0] = '\0';
+    g_state.codexCreditBalance = -1;
     if (obj["codexRateLimits"].is<JsonObject>()) {
         JsonObject cx = obj["codexRateLimits"].as<JsonObject>();
+        // Purchased credits. Codex reports the balance as a string ("62500");
+        // accept a number too. strtod on the JSON-owned buffer — no allocation.
+        if (cx["credits"].is<JsonObject>()) {
+            JsonObject cr = cx["credits"].as<JsonObject>();
+            if (cr["unlimited"].as<bool>()) {
+                g_state.codexCreditBalance = INFINITY;
+            } else if (cr["hasCredits"].is<bool>() && !cr["hasCredits"].as<bool>()) {
+                g_state.codexCreditBalance = 0;
+            } else if (cr["balance"].is<const char*>()) {
+                const char* text = cr["balance"].as<const char*>();
+                char* end = nullptr;
+                const double v = text ? strtod(text, &end) : 0;
+                if (text && end != text) while (*end == ' ' || *end == '\t') ++end;
+                if (text && end != text && *end == '\0' && std::isfinite(v)) g_state.codexCreditBalance = v;
+            } else if (cr["balance"].is<double>()) {
+                const double v = cr["balance"].as<double>();
+                if (std::isfinite(v)) g_state.codexCreditBalance = v;
+            }
+        }
         JsonObject luna = cx["lunaReserve"];
         if (luna["usedPercent"].is<float>() && !luna["stale"].as<bool>()) {
             g_state.codexLunaPercent = luna["usedPercent"].as<float>();

@@ -24,7 +24,7 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts 4ef45eb31899283cce390de3e20b41356ca3084a
+// SYNC-HASH shared/src/d200h-layout.ts 7f5dc168d8a976c727953ad7471ba635c4a377db
 // SYNC-HASH shared/src/session-utils.ts b8edbaa9b578b111b7b63851fe4cbe2e8b6821e0
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -231,6 +231,11 @@ public struct D200HUsage: Equatable, Sendable {
     /// Luna-only reserve pool. Non-nil → the Codex 5H/7D tiles are replaced by
     /// one LUNA tile (the reserve is the quota that binds while it lasts).
     public var lunaReserve: D200HLunaReserve?
+    /// Purchased-credit balance in `codexCreditBalance` terms (TS
+    /// usage-presentation.ts): -1 unknown/absent, 0 none, +infinity unlimited.
+    /// Shown as a CREDITS tile in place of the Codex windows only while a live
+    /// Codex window is exhausted (`UsagePresentation.creditsActive`).
+    public var codexCreditBalance: Double
 
     public init(
         fiveHourPercent: Double? = nil,
@@ -253,7 +258,8 @@ public struct D200HUsage: Equatable, Sendable {
         zaiSecondaryStale: Bool = false,
         zaiSecondaryIsMcp: Bool = false,
         zaiCapturedAt: String? = nil,
-        lunaReserve: D200HLunaReserve? = nil
+        lunaReserve: D200HLunaReserve? = nil,
+        codexCreditBalance: Double = -1
     ) {
         self.fiveHourPercent = fiveHourPercent
         self.sevenDayPercent = sevenDayPercent
@@ -276,6 +282,7 @@ public struct D200HUsage: Equatable, Sendable {
         self.zaiSecondaryIsMcp = zaiSecondaryIsMcp
         self.zaiCapturedAt = zaiCapturedAt
         self.lunaReserve = lunaReserve
+        self.codexCreditBalance = codexCreditBalance
     }
 }
 
@@ -395,6 +402,9 @@ public enum D200HSlotKind: Equatable, Sendable {
     /// Codex 5H/7D gauges while it lasts. `remainingPercent` is what is left,
     /// `active` = the moon still has mass (not EMPTY).
     case lunaReserve(remainingPercent: Double, active: Bool)
+    /// Purchased-credit tile (renderCodexCreditsTile): the balance being spent
+    /// once a Codex plan window is exhausted. A count, never a percentage.
+    case codexCredits(balance: Double)
 }
 
 public struct D200HUsagePairWindow: Equatable, Sendable {
@@ -791,10 +801,15 @@ public enum D200HLayoutModel {
         // reserve is the quota that binds (TS: `cx?.lunaReserve ? [] : …`).
         var codexTiles: [(D200HSlotKind, String, String)] = []
         var codexPair: [D200HUsagePairWindow] = []
+        let livePrimary = usage.codexPrimaryStale ? -1 : (usage.codexPrimaryPercent ?? -1)
+        let liveSecondary = usage.codexSecondaryStale ? -1 : (usage.codexSecondaryPercent ?? -1)
         let selectedLuna = UsagePresentation.lunaActive(
-            usage.codexPrimaryStale ? -1 : (usage.codexPrimaryPercent ?? -1), usage.codexSecondaryStale ? -1 : (usage.codexSecondaryPercent ?? -1),
+            livePrimary, liveSecondary,
             usage.lunaReserve?.usedPercent ?? -1) ? usage.lunaReserve : nil
-        if selectedLuna == nil {
+        // Purchased credits being spent once a plan window is exhausted (TS
+        // `selectedCodexCredits`). Like the reserve it replaces the windows.
+        let spending = UsagePresentation.creditsActive(livePrimary, liveSecondary, usage.codexCreditBalance)
+        if selectedLuna == nil && !spending {
             if let p = usage.codexPrimaryPercent {
                 let label = usageWindowLabel(usage.codexPrimaryWindowMinutes)
                 let footnote = codexFootnote(stale: usage.codexPrimaryStale, capturedAt: usage.codexCapturedAt)
@@ -848,26 +863,33 @@ public enum D200HLayoutModel {
         }
         // The Luna tile is its own logical reading — it counts toward strip
         // pressure exactly like a Codex window would (TS: `+ (lunaTile ? 1 : 0)`).
-        let lunaTile: (D200HSlotKind, String, String)? = selectedLuna.map { luna in
+        var lunaTile: (D200HSlotKind, String, String)? = selectedLuna.map { luna in
             let used = min(100, max(0, luna.usedPercent))
             let remaining = (100 - used).rounded()
             let active = luna.available != false && remaining > 0
             return (.lunaReserve(remainingPercent: remaining, active: active), "LUNA", "codex")
         }
+        let spendingTile: (D200HSlotKind, String, String)? = spending
+            ? (.codexCredits(balance: usage.codexCreditBalance), "CREDITS", "codex") : nil
         let pairedWeekly = scopedPair != nil && claudePair.contains { $0.label == "7D" }
-        let logicalCount = claudeTiles.count + codexTiles.count + zaiTiles.count
-            + (scopedTile == nil ? 0 : 1) - (pairedWeekly ? 1 : 0) + (lunaTile == nil ? 0 : 1)
+        let baseCount = claudeTiles.count + codexTiles.count + zaiTiles.count
+            + (scopedTile == nil ? 0 : 1) - (pairedWeekly ? 1 : 0) + (spendingTile == nil ? 0 : 1)
+        // Credits outrank the reserve: they are what the account is spending
+        // (TS: `if (spendingTile && lunaTile && baseCount + 1 > budget)`).
+        if spendingTile != nil && lunaTile != nil && baseCount + 1 > budget { lunaTile = nil }
+        let logicalCount = baseCount + (lunaTile == nil ? 0 : 1)
         let compactCodex = logicalCount > budget && codexPair.count == 2
-        let stillOverflows = logicalCount - (compactCodex ? 1 : 0) > budget
+        let afterCodex = logicalCount - (compactCodex ? 1 : 0)
+        // z.ai folds next, ahead of Claude (TS: Claude's 5H is the reading a
+        // user glances at; the folded z.ai key cycles 5H + MCP / 5H / MCP on
+        // the device — the preview shows its default "both" view).
+        let compactZai = afterCodex > budget && zaiPair.count == 2
+        let afterZai = afterCodex - (compactZai ? 1 : 0)
         let pairScopedWith7D = pairedWeekly
-        let compactClaude = stillOverflows && !pairScopedWith7D && claudePair.count == 2
-        // Third step of the same cascade (TS #348): with all three providers
-        // live the strip is six readings on three keys and z.ai compacts to a
-        // pair tile too — nothing dropped.
-        let afterClaude = logicalCount - (compactCodex ? 1 : 0) - (compactClaude ? 1 : 0)
-        let compactZai = afterClaude > budget && zaiPair.count == 2
+        let compactClaude = afterZai > budget && !pairScopedWith7D && claudePair.count == 2
+        let afterClaude = afterZai - (compactClaude ? 1 : 0)
         let compactAllClaude = scopedPair != nil && !claudePair.isEmpty
-            && afterClaude - (compactZai ? 1 : 0) > budget
+            && afterClaude > budget
         func cells(_ agent: String, _ tiles: [(D200HSlotKind, String, String)], _ pair: [D200HUsagePairWindow], compact: Bool) -> [(D200HSlotKind, String, String)] {
             compact ? [(.usagePair(agent: agent, windows: pair), pair.map(\.label).joined(separator: " · "), agent)] : tiles
         }
@@ -887,6 +909,7 @@ public enum D200HLayoutModel {
         }
         tiles.append(contentsOf: cells("codex", codexTiles, codexPair, compact: compactCodex))
         tiles.append(contentsOf: cells("zai", zaiTiles, zaiPair, compact: compactZai))
+        if let spendingTile { tiles.append(spendingTile) }
         if let lunaTile { tiles.append(lunaTile) }
         return tiles
     }

@@ -1973,6 +1973,17 @@ void update() {
             if (s < grp.rowCount) {
                 const auto& row = grp.rows[s];
                 lv_obj_clear_flag(t.col, LV_OBJ_FLAG_HIDDEN);
+                if (row.credits) {
+                    // A balance has no cap: the plan-slot treatment (empty
+                    // tank, text value) rather than a fill. "Credits" beside
+                    // "62.5K" needs the 94px tank; narrower ones say "CR".
+                    lv_label_set_text(t.period, GAUGE_SIZE >= 90 ? row.label : "CR");
+                    lv_obj_set_width(t.fill, 0);
+                    lv_label_set_text(t.pct, row.value);
+                    lv_obj_set_style_text_color(t.pct, lv_color_hex(Theme::HUDText), 0);
+                    lv_label_set_text(t.reset, row.reset);
+                    continue;
+                }
                 lv_label_set_text(t.period, row.label);
                 // A reserve fills by what is LEFT; colour still follows use.
                 updateGauge(t.fill, t.pct, t.reset, (float)row.shown(), row.reset, false);

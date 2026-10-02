@@ -1,4 +1,4 @@
-import { isClaudeWeeklyMode } from '@agentdeck/shared';
+import { isClaudeWeeklyMode, isZaiPairMode } from '@agentdeck/shared';
 /**
  * SessionSlotButton — v4 dynamic session-per-button action.
  *
@@ -338,6 +338,8 @@ export class SessionSlotButtonAction extends SingletonAction {
     slotMap.set(id, { slot, layout });
     const saved = ev.payload.settings?.claudeWeeklyMode;
     if (isClaudeWeeklyMode(saved)) manager.setWeeklyMode(saved, layout);
+    const savedZai = ev.payload.settings?.zaiPairMode;
+    if (isZaiPairMode(savedZai)) manager.setZaiMode(savedZai, layout);
 
     dlog('SesSlot', `willAppear: id=${id.slice(-6)} slot=${slot} (row=${row} col=${col} grid=${layout.columns}x${layout.rows}) daemon=${daemonConnected}`);
 
@@ -384,6 +386,17 @@ export class SessionSlotButtonAction extends SingletonAction {
         .map(async ([id]) => {
           const key = streamDeck.actions.getActionById(id);
           if (key) await key.setSettings({ ...await key.getSettings(), claudeWeeklyMode: mode });
+        }));
+      return;
+    }
+
+    if (result.action === 'cycle-zai-mode') {
+      const mode = manager.cycleZaiMode(layout);
+      refreshAll();
+      await Promise.all([...slotMap.entries()].filter(([, entry]) => entry.layout.deviceId === layout.deviceId)
+        .map(async ([id]) => {
+          const key = streamDeck.actions.getActionById(id);
+          if (key) await key.setSettings({ ...await key.getSettings(), zaiPairMode: mode });
         }));
       return;
     }

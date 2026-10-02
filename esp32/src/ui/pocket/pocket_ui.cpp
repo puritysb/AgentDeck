@@ -678,10 +678,12 @@ void update(float dt) {
         uint8_t subsCount = g_state.subscriptionCount;
         // The Luna reserve and z.ai window kind change what Usage shows.
         const int lunaKey = (int)g_state.codexLunaPercent * 2 + (g_state.zaiSecondaryIsMcp ? 1 : 0);
+        char creditKey[8];   // the Codex credit balance, while it is being spent
+        UsageRows::codexCreditsKey(g_state, creditKey, sizeof(creditKey));
         bool connected = g_state.wsConnected;
         unlockState();
-        snprintf(sig, sizeof(sig), "%d|%d|%d.%d.%d.%d.%d.%d.%d|%d|%d%d%d%d|%d|%d|%d%d|%.31s|%s",
-                 s_tab, count, c5, c7, x5, x7, z5, z7, lunaKey, subsCount,
+        snprintf(sig, sizeof(sig), "%d|%d|%d.%d.%d.%d.%d.%d.%d.%s|%d|%d%d%d%d|%d|%d|%d%d|%.31s|%s",
+                 s_tab, count, c5, c7, x5, x7, z5, z7, lunaKey, creditKey, subsCount,
                  connected ? 1 : 0, wifiUp ? 1 : 0, wsUp ? 1 : 0, serialUp ? 1 : 0,
                  Camera::lampDuty() > 0 ? 1 : 0,
                  power.voltageMv / 20, power.charging ? 1 : 0,

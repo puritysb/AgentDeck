@@ -161,7 +161,7 @@ private struct PixooPixelGrid: View {
 // colours, and subagent satellites. Usage layout and drawStateDot changes do
 // not alter the mirrored AGENTS pixels.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 36e70dcc07df4f1ced99a2108c9fc6345d0fe263
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 1c4e26c5f65cfd86b510f7a08a392bba76d1c645
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 

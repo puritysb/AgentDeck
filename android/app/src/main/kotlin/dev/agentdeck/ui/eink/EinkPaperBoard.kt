@@ -428,17 +428,24 @@ internal fun usageColumns(available: Dp, pct: Dp, time: Dp): UsageColumns {
 @Composable
 private fun UsageRow(row: EinkLimitLine, cols: UsageColumns, body: TextUnit) {
     val pct = (row.percent ?: 0.0).coerceIn(0.0, 100.0)
-    val critical = pct >= 90
+    // Severity reads the consumed share: a Luna reserve with 95% LEFT is not critical.
+    val used = if (row.remaining) 100.0 - pct else pct
+    val critical = row.value == null && used >= 90
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(UsageIndentW))
         Text(row.label, fontSize = body, lineHeight = body * 1.15f, fontFamily = FontFamily.Monospace, color = Ink,
             maxLines = 1, modifier = Modifier.width(cols.label))
-        Box(Modifier.width(cols.bar).height(12.dp).border(1.5.dp, Ink)) {
-            val fill = if (einkColorEnabled && !row.stale) Color(UsageSeverity.color(pct, onPaper = true)) else Ink
-            Box(Modifier.fillMaxHeight().fillMaxWidth((pct / 100.0).toFloat()).background(fill))
+        if (row.value != null) {
+            // A credit balance has no cap to fill against: no bar, just the figure.
+            Box(Modifier.width(cols.bar))
+        } else {
+            Box(Modifier.width(cols.bar).height(12.dp).border(1.5.dp, Ink)) {
+                val fill = if (einkColorEnabled && !row.stale) Color(UsageSeverity.color(used, onPaper = true)) else Ink
+                Box(Modifier.fillMaxHeight().fillMaxWidth((pct / 100.0).toFloat()).background(fill))
+            }
         }
         Text(
-            text = "${pct.toInt()}%" + if (row.stale) "?" else if (critical) "!" else "",
+            text = (row.value ?: "${pct.toInt()}%") + if (row.stale) "?" else if (critical) "!" else "",
             fontSize = usagePctFont(body),
             lineHeight = usagePctFont(body) * 1.15f,
             fontFamily = FontFamily.Monospace,

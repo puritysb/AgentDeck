@@ -114,9 +114,11 @@ void update() {
     const uint8_t count = UsageRows::tiles(groups, groupCount, tiles, CARD_CAP);
     if (count) lv_obj_add_flag(empty, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_clear_flag(empty, LV_OBJ_FLAG_HIDDEN);
-    // Geometry depends only on the tile count and which tiles are plans.
+    // Geometry depends only on the tile count and which tiles are text (a plan
+    // tier or a credit balance): the 16/28px faces carry digits and % only.
+    auto textTile = [](const UsageRows::Tile& t) { return t.isPlan() || t.group->rows[t.row].credits; };
     uint32_t shape = count;
-    for (uint8_t i = 0; i < count; ++i) shape |= (tiles[i].isPlan() ? 1u : 0u) << (8 + i);
+    for (uint8_t i = 0; i < count; ++i) shape |= (textTile(tiles[i]) ? 1u : 0u) << (8 + i);
     for (uint8_t slot = 0; slot < count; ++slot) {
         auto& c = cards[slot];
         const auto& tile = tiles[slot];
@@ -125,8 +127,9 @@ void update() {
             const auto r = cardRect(g_screenW, g_screenH, count, slot);
             lv_obj_set_pos(c.panel, r.x, r.y); lv_obj_set_size(c.panel, r.w, r.h);
             const bool compact = r.h < 42;
-            // The 28px face carries digits and % only; a plan tier uses 12px.
-            lv_obj_set_style_text_font(c.value, compact || tile.isPlan() ? &font_ttgo_plex_12 : r.h < 66 ? &font_ttgo_plex_16 : &font_ttgo_plex_28, 0);
+            // The 28px face carries digits and % only; a plan tier or a
+            // credit balance ("62.5K") uses the full-ASCII 12px face.
+            lv_obj_set_style_text_font(c.value, compact || textTile(tile) ? &font_ttgo_plex_12 : r.h < 66 ? &font_ttgo_plex_16 : &font_ttgo_plex_28, 0);
             lv_obj_align(c.title, LV_ALIGN_TOP_LEFT, 5, 3);
             lv_obj_align(c.value, compact ? LV_ALIGN_TOP_RIGHT : LV_ALIGN_CENTER, compact ? -5 : 0, compact ? 3 : -2);
             lv_obj_set_width(c.reset, r.w - 10);
@@ -148,9 +151,21 @@ void update() {
             lv_bar_set_value(c.bar, 0, LV_ANIM_OFF);
         } else {
             const auto& row = g.rows[tile.row];
-            snprintf(buf + n, sizeof(buf) - n, "%s", row.label);
+            // Compact cards put the value beside the title: "CODEX CREDITS"
+            // would run into "62.5K", so the balance's title shortens to "CR".
+            const bool compact = cardRect(g_screenW, g_screenH, count, slot).h < 42;
+            snprintf(buf + n, sizeof(buf) - n, "%s", row.credits && compact ? "CR" : row.label);
             for (int k = n; buf[k]; ++k) buf[k] = static_cast<char>(toupper(static_cast<unsigned char>(buf[k])));
             text(c.title, buf);
+            if (row.credits) {
+                // A balance has no cap: text value, empty bar, no severity.
+                text(c.value, row.value);
+                lv_obj_set_style_text_color(c.value, lv_color_hex(Theme::HUDText), 0);
+                if (row.reset[0]) snprintf(buf, sizeof(buf), "Plan reset %s", row.reset); else buf[0] = '\0';
+                text(c.reset, buf);
+                lv_bar_set_value(c.bar, 0, LV_ANIM_OFF);
+                continue;
+            }
             snprintf(buf, sizeof(buf), "%d%%", row.shown()); text(c.value, buf);
             // A reserve reads as what is left; its caption says so.
             if (row.reset[0]) snprintf(buf, sizeof(buf), "%s %s", row.left ? "Left, reset" : "Reset", row.reset);

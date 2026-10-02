@@ -537,10 +537,21 @@ uint32_t hashUsage(uint32_t h, const Snap& s, bool withResets) {
             const int shown = g.rows[r].shown();
             h = fnvStr(h, g.rows[r].label);
             h = fnv(h, &shown, sizeof(shown));
+            h = fnvStr(h, g.rows[r].value);   // credits balance ("62.5K")
             if (withResets) h = fnvStr(h, g.rows[r].reset);
         }
     }
     return h;
+}
+
+// The Codex credit balance while it replaces an exhausted plan window, or
+// nullptr. Faces that show a single raw Codex gauge (not the UsageRows table)
+// swap it for this text: credits are what the account is spending then.
+const char* codexCreditsText(const Snap& s) {
+    for (uint8_t i = 0; i < s.usageCount; i++)
+        if (s.usage[i].provider == UsageRows::CODEX && s.usage[i].rowCount && s.usage[i].rows[0].credits)
+            return s.usage[i].rows[0].value;
+    return nullptr;
 }
 
 uint32_t contentHash(const Snap& s) {
@@ -1004,12 +1015,21 @@ void drawGaugeBar(int16_t x, int16_t y, const UsageRows::Row& row, int16_t slotW
     char tag[8]; snprintf(tag, sizeof(tag), "%s", row.label);
     for (char* c = tag; *c; ++c) *c = (char)toupper((unsigned char)*c);
     textAt(x, y + 13, tag, &FreeSansBold9pt7b);
-    display.drawRect(bx, y, barW, barH, GxEPD_BLACK);
-    display.fillRect(bx + 2, y + 2, (int16_t)((barW - 4) * row.shown() / 100), barH - 4, GxEPD_BLACK);
-    char val[16]; snprintf(val, sizeof(val), row.left ? "%d%% left" : "%d%%", row.shown());
-    textAt(bx + barW + 6, y + 13, val, &FreeSans9pt7b);
+    char val[16]; row.valueText(val, sizeof(val));
+    if (row.hasBar()) {
+        display.drawRect(bx, y, barW, barH, GxEPD_BLACK);
+        display.fillRect(bx + 2, y + 2, (int16_t)((barW - 4) * row.shown() / 100), barH - 4, GxEPD_BLACK);
+        textAt(bx + barW + 6, y + 13, val, &FreeSans9pt7b);
+    } else {
+        // A credit balance has no cap to fill against: the number stands alone
+        // where the bar would be, bold like a headline value. "CREDITS" is
+        // wider than the tag column, so the value clears the tag, not TagW.
+        const int16_t vx = max(bx, (int16_t)(x + textWidth(tag, &FreeSansBold9pt7b) + 8));
+        textAt(vx, y + 13, val, &FreeSansBold9pt7b);
+    }
     if (row.reset[0]) {
-        char reset[32]; snprintf(reset, sizeof(reset), "resets %s", row.reset);
+        // Credits are spent until the plan window resets, so name what resets.
+        char reset[32]; snprintf(reset, sizeof(reset), row.credits ? "plan resets %s" : "resets %s", row.reset);
         textAt(bx, y + 30, reset, &FreeSans9pt7b);
     }
 }
@@ -1539,6 +1559,7 @@ uint32_t paperHash(const Snap& s, PaperFace face) {
         if (s.usageStale) return h;
         const float values[] = {s.fiveH, s.sevenD, s.codexP, s.codexS, s.zaiP, s.zaiS};
         for (float value : values) { const int percent = (int)value; h = fnv(h, &percent, sizeof(percent)); }
+        if (const char* credits = codexCreditsText(s)) h = fnvStr(h, credits);
         return fnv(h, &s.zaiIsMcp, sizeof(s.zaiIsMcp));
     }
     if (face == PaperFace::Decision) return fnv(h, &lastDecisionHash, sizeof(lastDecisionHash));
@@ -1668,6 +1689,16 @@ void drawMiniUsage(int16_t x, int16_t y, int16_t w, const char* label, float pct
     textRight(x + w, y + 10, value, CLASSIC_FONT);
 }
 
+// drawMiniUsage's row for a reading with no cap (the Codex credit balance):
+// same label and value columns, no bar — a fill would be invented.
+void drawMiniText(int16_t x, int16_t y, int16_t w, const char* label, const char* value) {
+    {
+        InkScope ink(EINK_INK_MUTED);
+        textAt(x, y + 10, label, CLASSIC_FONT);
+    }
+    textRight(x + w, y + 10, value, CLASSIC_FONT);
+}
+
 #if defined(AGENTDECK_EPD47_UI)
 void epd47Counts(const Snap& s, uint8_t& attention, uint8_t& processing) {
     attention = 0;
@@ -1758,6 +1789,17 @@ void drawEp47Footer(const Snap& s, int16_t y = 492) {
     }
 }
 
+void drawEp47Credits(int16_t x, int16_t y, int16_t w, const UsageRows::Row& row) {
+    textAt(x, y + 18, "CREDITS", &FreeSansBold12pt7b);
+    // No cap is exposed, so the balance takes the bar's place as a headline.
+    textAt(x, y + 56, row.value, &FreeSansBold18pt7b);
+    textRight(x + w, y + 56, "REMAINING", &FreeSans9pt7b);
+    char resetLine[48];
+    snprintf(resetLine, sizeof(resetLine), "PLAN RESET  %s", row.reset[0] ? row.reset : "waiting");
+    InkScope ink(EINK_INK_MUTED);
+    textAt(x, y + 78, resetLine, &FreeSans9pt7b);
+}
+
 void drawEp47Window(int16_t x, int16_t y, int16_t w, const char* label,
                     float pct, const char* reset, bool left = false) {
     textAt(x, y + 18, label, &FreeSansBold12pt7b);
@@ -1804,7 +1846,8 @@ void drawEp47ProviderCard(int16_t x, int16_t w, int16_t h, const UsageRows::Grou
         const auto& row = g.rows[r];
         char label[8]; snprintf(label, sizeof(label), "%s", row.label);
         for (char* c = label; *c; ++c) *c = (char)toupper((unsigned char)*c);
-        drawEp47Window(x + 24, wy, w - 48, label, (float)row.shown(), row.reset, row.left);
+        if (row.credits) drawEp47Credits(x + 24, wy, w - 48, row);
+        else drawEp47Window(x + 24, wy, w - 48, label, (float)row.shown(), row.reset, row.left);
     }
     if (!g.rowCount) {
         InkScope ink(EINK_INK_BODY);
@@ -1899,7 +1942,8 @@ void drawEp47Focus(const Snap& s) {
         drawMiniUsage(752, gaugeY, 174, "Claude", s.fiveH, 46);
         gaugeY += 48;
     }
-    if (s.codexP >= 0 || s.codexS >= 0) { drawMiniUsage(752, gaugeY, 174,
+    if (const char* credits = codexCreditsText(s)) { drawMiniText(752, gaugeY, 174, "Codex credits", credits); gaugeY += 48; }
+    else if (s.codexP >= 0 || s.codexS >= 0) { drawMiniUsage(752, gaugeY, 174,
         s.codexP >= 0 ? "Codex 5H" : "Codex 7D", s.codexP >= 0 ? s.codexP : s.codexS, 46); gaugeY += 48; }
     if (s.zaiP >= 0 || s.zaiS >= 0) drawMiniUsage(752, gaugeY, 174,
         s.zaiP >= 0 ? "Z.AI 5H" : (s.zaiIsMcp ? "Z.AI MCP" : "Z.AI 7D"),
@@ -1998,19 +2042,24 @@ void drawEp47Queue(const Snap& s) {
     // worth its space, and QUEUE previously made the user change tabs for it.
     // Only the windows the account exposes; the survivors share the width.
     constexpr int16_t railY = 452;
-    struct Rail { const char* label; float pct; };
+    struct Rail { const char* label; float pct; const char* text; };
     Rail rails[4];
     uint8_t railCount = 0;
-    if (s.fiveH >= 0)  rails[railCount++] = {"Claude 5H", s.fiveH};
-    if (s.sevenD >= 0) rails[railCount++] = {"Claude 7D", s.sevenD};
-    if (s.codexP >= 0) rails[railCount++] = {"Codex 5H", s.codexP};
-    if (s.codexS >= 0) rails[railCount++] = {"Codex 7D", s.codexS};
+    if (s.fiveH >= 0)  rails[railCount++] = {"Claude 5H", s.fiveH, nullptr};
+    if (s.sevenD >= 0) rails[railCount++] = {"Claude 7D", s.sevenD, nullptr};
+    // Exhausted plan window + a balance: one credits rail replaces both.
+    if (const char* credits = codexCreditsText(s)) rails[railCount++] = {"Codex credits", 0, credits};
+    else {
+        if (s.codexP >= 0) rails[railCount++] = {"Codex 5H", s.codexP, nullptr};
+        if (s.codexS >= 0) rails[railCount++] = {"Codex 7D", s.codexS, nullptr};
+    }
     if (railCount > 0) {
         display.drawFastHLine(24, railY - 14, W - 48, EINK_INK_RULE);
         const int16_t stride = (int16_t)((W - 48 + 14) / railCount);
         for (uint8_t rIdx = 0; rIdx < railCount; rIdx++) {
-            drawMiniUsage(24 + rIdx * stride, railY, stride - 14,
-                          rails[rIdx].label, rails[rIdx].pct, 64);
+            if (rails[rIdx].text) drawMiniText(24 + rIdx * stride, railY, stride - 14, rails[rIdx].label, rails[rIdx].text);
+            else drawMiniUsage(24 + rIdx * stride, railY, stride - 14,
+                               rails[rIdx].label, rails[rIdx].pct, 64);
         }
     }
     drawEp47Footer(s);
@@ -2054,14 +2103,20 @@ void drawEp47Home(const Snap& s) {
                 char label[24]; snprintf(label, sizeof(label), "%s %s", s.usage[g].name(), row.label);
                 textAt(24, ly, label, &FreeSans9pt7b);
                 const float pct = (float)row.shown();
-                display.fillRect(158, ly - 12, 196, 14, EINK_INK_TINT);
-                display.drawRect(156, ly - 14, 200, 18, GxEPD_BLACK);
-                if (pct >= 0) {
-                    const int fill = (int)(196 * min(100.0f, max(0.0f, pct)) / 100.0f);
-                    display.fillRect(158, ly - 12, fill, 14,
-                        UsageSeverity::level(pct) == UsageSeverity::Critical ? accentColor() : GxEPD_BLACK);
+                if (row.hasBar()) {
+                    display.fillRect(158, ly - 12, 196, 14, EINK_INK_TINT);
+                    display.drawRect(156, ly - 14, 200, 18, GxEPD_BLACK);
+                    if (pct >= 0) {
+                        const int fill = (int)(196 * min(100.0f, max(0.0f, pct)) / 100.0f);
+                        display.fillRect(158, ly - 12, fill, 14,
+                            UsageSeverity::level(pct) == UsageSeverity::Critical ? accentColor() : GxEPD_BLACK);
+                    }
+                } else {
+                    textAt(158, ly, "remaining", &FreeSans9pt7b);
                 }
-                char value[10]; snprintf(value, sizeof(value), pct >= 0 ? "%d%%" : "--", (int)pct);
+                char value[10];
+                if (row.credits) snprintf(value, sizeof(value), "%s", row.value);
+                else snprintf(value, sizeof(value), pct >= 0 ? "%d%%" : "--", (int)pct);
                 textRight(420, ly, value, &FreeSansBold9pt7b);
                 if (row.reset[0]) {
                     InkScope ink(EINK_INK_BODY);
@@ -2201,12 +2256,18 @@ void drawGlanceFace(const Snap& s) {
     }
     display.drawFastHLine(14, usageTop - 10, W - 28, GxEPD_BLACK);
     int16_t y = usageTop;
-    auto window = [&](const char* label, float pct, const char* reset) {
+    auto window = [&](const char* label, float pct, const char* reset, const char* credits) {
         if (pct < 0) return;
         textAt(14, y + 14, label, &FreeSans9pt7b);
-        display.drawRect(126, y + 2, 124, 12, GxEPD_BLACK);
-        display.fillRect(128, y + 4, (int16_t)(120 * min(100.0f, max(0.0f, pct)) / 100.0f), 8, GxEPD_BLACK);
-        char value[12]; snprintf(value, sizeof(value), "%d%%", (int)pct);
+        char value[12];
+        if (credits) {
+            // A balance has no cap: no bar, the number in the value column.
+            snprintf(value, sizeof(value), "%s", credits);
+        } else {
+            display.drawRect(126, y + 2, 124, 12, GxEPD_BLACK);
+            display.fillRect(128, y + 4, (int16_t)(120 * min(100.0f, max(0.0f, pct)) / 100.0f), 8, GxEPD_BLACK);
+            snprintf(value, sizeof(value), "%d%%", (int)pct);
+        }
         textRight(306, y + 14, value, &FreeSans9pt7b);
         textRight(W - 14, y + 12, reset, CLASSIC_FONT);
         y += 23;
@@ -2229,7 +2290,7 @@ void drawGlanceFace(const Snap& s) {
             char label[24]; snprintf(label, sizeof(label), "%s %s", s.usage[g].name(), row.label);
             for (char* c = label + strlen(s.usage[g].name()); *c; ++c) *c = (char)toupper((unsigned char)*c);
             char reset[28]; snprintf(reset, sizeof(reset), "%s%s", row.left ? "left " : "", row.reset);
-            window(label, (float)row.shown(), reset);
+            window(label, (float)row.shown(), reset, row.credits ? row.value : nullptr);
         }
     }
     if (!windowCount) { textAt(14, y + 12, "No usage limits", &FreeSans9pt7b); y += 23; }
@@ -2352,20 +2413,34 @@ void drawGlanceFace(const Snap& s) {
         rowY += 4;
     };
     providerBlock("claude-code", s.fiveH, s.fiveReset, s.sevenD, s.sevenReset);
-    providerBlock("codex-cli", s.codexP, s.codexPReset, s.codexS, s.codexSReset);
+    if (const char* credits = codexCreditsText(s)) {
+        // Exhausted plan window + a balance: the balance replaces both gauges.
+        drawAgentGlyph("codex-cli", x, rowY + 1, glyphSize);
+        drawMiniText(gaugeX, rowY, gaugeW, "CR", credits);
+        rowY += rowH + 4;
+    } else {
+        providerBlock("codex-cli", s.codexP, s.codexPReset, s.codexS, s.codexSReset);
+    }
     // The glance stays key-legend-free: the RESET/USER/BOOT keys on the top
     // edge only matter on the decide face, which labels them.
 #else
     const int16_t usageY = H - 38;
     const bool hasClaude = s.fiveH >= 0;
-    const bool hasCodex = s.codexP >= 0;
+    const char* codexCredits = codexCreditsText(s);
+    const bool hasCodex = codexCredits || s.codexP >= 0;
     const int16_t uw = (W - x - pad - 12) / 2;
+    // Exhausted plan window + a balance: Codex reads as its credit balance.
+    auto codex = [&](int16_t cx, int16_t cw) {
+        if (codexCredits) drawMiniText(cx, usageY, cw, "Codex credits", codexCredits);
+        else drawMiniUsage(cx, usageY, cw, "Codex", s.codexP, 46);
+    };
     if (hasClaude && hasCodex) {
         drawMiniUsage(x, usageY, uw, "Claude", s.fiveH, 46);
-        drawMiniUsage(x + uw + 12, usageY, uw, "Codex", s.codexP, 46);
-    } else if (hasClaude || hasCodex) {
-        drawMiniUsage(x, usageY, W - x - pad, hasClaude ? "Claude" : "Codex",
-                      hasClaude ? s.fiveH : s.codexP, 46);
+        codex(x + uw + 12, uw);
+    } else if (hasClaude) {
+        drawMiniUsage(x, usageY, W - x - pad, "Claude", s.fiveH, 46);
+    } else if (hasCodex) {
+        codex(x, W - x - pad);
     }
 #endif
 }

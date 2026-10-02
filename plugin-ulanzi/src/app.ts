@@ -1,4 +1,5 @@
 import { nextClaudeWeeklyMode, isClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
+import { nextZaiPairMode, isZaiPairMode, type ZaiPairMode } from '@agentdeck/shared';
 /**
  * AgentDeck Ulanzi Studio plugin — Node.js main service entry.
  *
@@ -76,6 +77,8 @@ const instances = new Map<string, Instance>();
 let claudeWeeklyMode: ClaudeWeeklyMode = 'both';
 let savedSettings: Record<string, unknown> = {};
 let weeklyModeTouched = false;
+let zaiPairMode: ZaiPairMode = 'both';
+let zaiModeTouched = false;
 let view: DeckView = { mode: 'list', page: 0 };
 
 // Coalesce bursts of daemon broadcasts into at most one render per MIN_GAP.
@@ -168,7 +171,7 @@ function deckFor(animFrame: number, animated: boolean) {
   // quota gauges — this surface has no encoder LCD to carry usage.
   return buildSessionDeck(
     layoutInput(),
-    { ...view, claudeWeeklyMode, animFrame, animated, showUsage: true, voiceState: store.voiceState },
+    { ...view, claudeWeeklyMode, zaiPairMode, animFrame, animated, showUsage: true, voiceState: store.voiceState },
     positions(),
   );
 }
@@ -297,7 +300,7 @@ function renderAll(): void {
   // voiceState is part of the signature: the VOICE tile is the only key that
   // changes on a voice_state event, and a sig that omits it swallows exactly
   // that repaint (the recurring deckSignature failure mode).
-  const sig = deckViewSignature(ev, { ...view, claudeWeeklyMode, voiceState: store.voiceState }, positions());
+  const sig = deckViewSignature(ev, { ...view, claudeWeeklyMode, zaiPairMode, voiceState: store.voiceState }, positions());
   if (sig === lastDeckSig) return;
   lastDeckSig = sig;
   lastRenderAt = Date.now();
@@ -376,6 +379,10 @@ $UD.onDidReceiveGlobalSettings((m) => {
   savedSettings = settings as Record<string, unknown>;
   if (!weeklyModeTouched && isClaudeWeeklyMode(savedSettings.claudeWeeklyMode)) {
     claudeWeeklyMode = savedSettings.claudeWeeklyMode;
+    scheduleRender();
+  }
+  if (!zaiModeTouched && isZaiPairMode(savedSettings.zaiPairMode)) {
+    zaiPairMode = savedSettings.zaiPairMode;
     scheduleRender();
   }
 });
@@ -457,6 +464,13 @@ function onPress(m: UlanziMessage): void {
       claudeWeeklyMode = nextClaudeWeeklyMode(claudeWeeklyMode);
       weeklyModeTouched = true;
       savedSettings = { ...savedSettings, claudeWeeklyMode };
+      $UD.setGlobalSettings(savedSettings);
+      renderAll();
+      break;
+    case 'zai-mode':
+      zaiPairMode = nextZaiPairMode(zaiPairMode);
+      zaiModeTouched = true;
+      savedSettings = { ...savedSettings, zaiPairMode };
       $UD.setGlobalSettings(savedSettings);
       renderAll();
       break;

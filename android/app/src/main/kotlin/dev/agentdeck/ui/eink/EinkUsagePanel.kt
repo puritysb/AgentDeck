@@ -47,7 +47,7 @@ fun EinkUsagePanel(
         // stale windows (marked "*") so an idle Codex 7d row doesn't vanish; the
         // brand mark identifies the provider (labels stay 5h/7d).
         providerLimitRows(usage.codexRateLimits, usage.zaiRateLimits).forEach { row ->
-            EinkTextGauge(label = row.label, percent = row.percent, agentType = row.agentType, stale = row.stale || row.footnote != null)
+            EinkTextGauge(label = row.label, percent = row.percent, agentType = row.agentType, stale = row.stale || row.footnote != null, value = row.value)
         }
 
         // Token counters

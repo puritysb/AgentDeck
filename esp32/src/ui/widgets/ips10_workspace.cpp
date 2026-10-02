@@ -554,15 +554,18 @@ void update() {
             visible(sl.label.obj,on);visible(sl.value.obj,on);visible(sl.track,on);visible(sl.reset.obj,on);
             if(!on)continue;
             const auto& r=g.rows[s];const int y=HeaderH+s*RowH;
-            snprintf(text,sizeof(text),"%s %s",r.label,r.left?"left":"used");sl.label.set(text);
+            // A credit balance ("Credits left  62.5K") has no cap: no rail and
+            // no severity ramp — a fill or a red number would be invented.
+            snprintf(text,sizeof(text),"%s %s",r.label,r.left||r.credits?"left":"used");sl.label.set(text);
             const int labelW=textWidth(text,&font_studio_16);
-            snprintf(text,sizeof(text),"%d%%",r.shown());sl.value.set(text);
+            if(r.credits)snprintf(text,sizeof(text),"%s",r.value);else snprintf(text,sizeof(text),"%d%%",r.shown());sl.value.set(text);
             const int valueW=textWidth(text,&font_studio_20);
             lv_obj_set_y(sl.label.obj,y+1);lv_obj_set_y(sl.value.obj,y-2);lv_obj_set_y(sl.track,y+24);
+            visible(sl.track,r.hasBar());
             lv_obj_set_width(sl.fill,r.shown()*BarW/100);
             // Percent and rail share severity, always based on USED even for reserves.
             lv_obj_set_style_bg_color(sl.fill,lv_color_hex(UsageSeverity::color(r.used)),0);
-            lv_obj_set_style_text_color(sl.value.obj,lv_color_hex(UsageSeverity::color(r.used)),0);
+            lv_obj_set_style_text_color(sl.value.obj,lv_color_hex(r.credits?Theme::HUDText:UsageSeverity::color(r.used)),0);
             // The faint reset countdown sits between label and percent,
             // right-aligned — one line per window, same form on every row.
             const int resetW=BarW-labelW-valueW-24;

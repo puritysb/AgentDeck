@@ -209,11 +209,53 @@ func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
             zaiSecondaryWindowMinutes: live.source.zaiRateLimits?.secondary?.windowMinutes,
             zaiSecondaryStale: live.source.zaiRateLimits?.secondary?.stale == true,
             zaiSecondaryIsMcp: live.source.zaiRateLimits?.secondary?.quantity == "mcp",
-            zaiCapturedAt: live.source.zaiRateLimits?.capturedAt
+            zaiCapturedAt: live.source.zaiRateLimits?.capturedAt,
+            // The fallbacks that replace an exhausted Codex window, pre-gated
+            // by the same shared rules the device applies (the layout mirror
+            // re-checks them against the windows above).
+            lunaReserve: live.source.codexRateLimits?.activeLunaReserve().map {
+                D200HLunaReserve(usedPercent: $0.usedPercent, resetsAt: $0.resetsAt,
+                                 regularResetsAt: $0.regularResetsAt, available: $0.available)
+            },
+            codexCreditBalance: live.source.codexRateLimits?.activeCodexCredits()?.balance ?? -1
         ),
         focusedSessionId: live.focusedSessionId,
         navigable: live.navigable
     )
+}
+
+/// Mirrors `creditCoinSvg` (shared/src/svg-renderers/usage-reserve-marks.ts):
+/// three stacked coins — rim band, bottom face, outlined top face — with an
+/// inner ring on the top coin. Drawn in the crescent's box so the credit and
+/// Luna tiles read as peers.
+struct PreviewCreditCoinStack: View {
+    let fill: Color
+    let rim: Color
+
+    var body: some View {
+        Canvas { context, canvas in
+            let rx = canvas.width / 2
+            let ry = max(2, rx * 0.36)
+            let step = max(2, rx * 0.42)
+            let stroke = max(1, rx * 0.1)
+            let cx = canvas.width / 2
+            // Vertically centre the stack: from top face (bottom − 2·step − ry)
+            // to the lowest face (bottom + step + ry).
+            let bottom = canvas.height / 2 + step / 2
+            for i in 0..<3 {
+                let y = bottom - CGFloat(i) * step
+                context.fill(Path(CGRect(x: cx - rx, y: y, width: rx * 2, height: step)), with: .color(fill))
+                context.fill(Path(ellipseIn: CGRect(x: cx - rx, y: y + step - ry, width: rx * 2, height: ry * 2)), with: .color(fill))
+                let face = Path(ellipseIn: CGRect(x: cx - rx, y: y - ry, width: rx * 2, height: ry * 2))
+                context.fill(face, with: .color(fill))
+                context.stroke(face, with: .color(rim), lineWidth: stroke)
+            }
+            let top = bottom - 2 * step
+            let irx = rx * 0.62, iry = max(1, ry * 0.55)
+            context.stroke(Path(ellipseIn: CGRect(x: cx - irx, y: top - iry, width: irx * 2, height: iry * 2)),
+                           with: .color(rim), lineWidth: stroke)
+        }
+    }
 }
 
 // MARK: - D200H Key
@@ -302,7 +344,7 @@ private struct D200HSlotTile: View {
             return StateColors.color(for: state).opacity(0.16)
         case .offlineGrid(_, _, _, _), .info:
             return Color.black.opacity(0.5)
-        case .usageGauge, .lunaReserve:
+        case .usageGauge, .lunaReserve, .codexCredits:
             return Color.black.opacity(0.42)
         case .empty:
             return Color.white.opacity(0.04)
@@ -423,10 +465,49 @@ private struct D200HSlotTile: View {
                         .offset(x: -size * 0.09, y: -size * 0.04)
                 }
                 .frame(maxHeight: .infinity)
-                Text(active ? "\(Int(remainingPercent))% LEFT" : "EMPTY")
-                    .font(.system(size: size * 0.15, weight: .heavy))
-                    .foregroundStyle(UsageSeverity.color(100 - remainingPercent))
+                // Number is the headline; LEFT is a label at half size
+                // (remainingPercentSvgText) — at one size "100% LEFT" overran
+                // the key and clipped its trailing T.
+                HStack(alignment: .firstTextBaseline, spacing: size * 0.02) {
+                    Text(active ? "\(Int(remainingPercent))%" : "EMPTY")
+                        .font(.system(size: size * 0.15, weight: .heavy))
+                    if active {
+                        Text("LEFT")
+                            .font(.system(size: size * 0.075, weight: .heavy))
+                    }
+                }
+                .foregroundStyle(UsageSeverity.color(100 - remainingPercent))
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            }
+            .padding(size * 0.08)
+        case .codexCredits(let balance):
+            // Mirrors renderCodexCreditsTile (d200h-layout.ts): an amber coin in
+            // the crescent's place, the balance ("62.5K") in sand — a count with
+            // no cap, so no severity ramp and no fill — over "CREDITS LEFT".
+            VStack(spacing: size * 0.02) {
+                HStack(alignment: .top) {
+                    Text("CODEX")
+                        .font(.system(size: size * 0.10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(DesignTokens.Tide.s50)
+                    Spacer(minLength: 0)
+                    CanonicalCreatureView(
+                        agentType: "codex-cli",
+                        size: size * 0.18,
+                        color: StateColors.brand(agent: "codex-cli")
+                    )
+                }
+                PreviewCreditCoinStack(fill: DesignTokens.UI.attn, rim: Color.black.opacity(0.42))
+                    .frame(width: size * 0.36, height: size * 0.34)
+                    .frame(maxHeight: .infinity)
+                Text(UsagePresentation.formatCreditBalance(balance))
+                    .font(.system(size: size * 0.18, weight: .heavy))
+                    .foregroundStyle(DesignTokens.Tide.s50)
                     .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text("CREDITS LEFT")
+                    .font(.system(size: size * 0.07, weight: .bold, design: .monospaced))
+                    .foregroundStyle(DesignTokens.Tide.s50)
                     .lineLimit(1)
             }
             .padding(size * 0.08)

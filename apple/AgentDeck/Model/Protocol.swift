@@ -511,6 +511,63 @@ extension CodexRateLimits {
         }
         return UsagePresentation.lunaActive(live(primary), live(secondary), reserve.usedPercent) ? reserve : nil
     }
+
+    /// Mirror of `codexCreditBalance` (shared/src/usage-presentation.ts): the
+    /// numeric balance `UsagePresentation.creditsActive` reads. Absent → -1,
+    /// unlimited → +infinity, `hasCredits == false` is an explicit zero, and an
+    /// unparseable balance is unknown (-1).
+    var creditBalance: Double {
+        guard let credits else { return -1 }
+        if credits.unlimited == true { return .infinity }
+        if credits.hasCredits == false { return 0 }
+        guard let raw = credits.balance?.trimmingCharacters(in: .whitespaces), !raw.isEmpty,
+              let value = Double(raw), value.isFinite else { return -1 }
+        return value
+    }
+
+    /// Purchased credits while they replace an exhausted plan window — mirror
+    /// of `selectedCodexCredits` in shared/src/usage-presentation.ts, gated by
+    /// the generated `UsagePresentation.creditsActive`. Only a live window at
+    /// 100% with a positive balance qualifies: a zero balance is not being
+    /// spent, and a windowless credit plan keeps its own "N credits" readout.
+    /// Where a surface fits one Codex reading only, this outranks the Luna
+    /// reserve — credits are what the account is actually spending.
+    func activeCodexCredits(now: Date = Date()) -> ActiveCodexCredits? {
+        func instant(_ iso: String?) -> Date? {
+            guard let iso else { return nil }
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        }
+        func live(_ window: CodexRateLimitWindow?) -> Double {
+            guard let window, window.stale != true, let used = window.usedPercent else { return -1 }
+            if let reset = instant(window.resetsAt), reset <= now { return -1 }
+            return used
+        }
+        let balance = creditBalance
+        guard UsagePresentation.creditsActive(live(primary), live(secondary), balance) else { return nil }
+        // The LATEST exhausted reset: credits are spent until every exhausted
+        // window is back, so the earlier reset would promise relief too soon.
+        let latest = [primary, secondary]
+            .compactMap { window -> (String, Date)? in
+                guard live(window) >= 100, let iso = window?.resetsAt, let at = instant(iso) else { return nil }
+                return (iso, at)
+            }
+            .max { $0.1 < $1.1 }
+        return ActiveCodexCredits(balance: balance, regularResetsAt: latest?.0)
+    }
+}
+
+/// Remaining purchased credits while they replace an exhausted plan window
+/// (`SelectedCodexCredits` in shared/src/usage-presentation.ts).
+struct ActiveCodexCredits: Equatable, Sendable {
+    /// Remaining balance; +infinity when unlimited.
+    var balance: Double
+    /// When the exhausted plan window resets and credits stop being spent.
+    var regularResetsAt: String?
+
+    /// "62.5K" — the generated `UsagePresentation.formatCreditBalance`.
+    var formatted: String { UsagePresentation.formatCreditBalance(balance) }
 }
 
 /// A z.ai quota window — the shared window shape plus WHICH QUANTITY it

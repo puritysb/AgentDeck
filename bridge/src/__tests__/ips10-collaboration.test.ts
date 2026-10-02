@@ -98,4 +98,14 @@ describe('IPS10 quota transport fidelity', () => {
     // whitelist forwards it regardless of the connected board.
     expect((prepareForSerial(usage) as any).codexRateLimits.lunaReserve.usedPercent).toBe(32);
   });
+
+  it('forwards the purchased-credit balance so boards can show it once a window is exhausted', () => {
+    const usage = { type: 'usage_update', codexRateLimits: {
+      primary: { usedPercent: 100, windowMinutes: 10080 },
+      credits: { hasCredits: true, unlimited: false, balance: '62500' },
+    } } as BridgeEvent;
+    expect((prepareForSerial(usage) as any).codexRateLimits.credits).toEqual({ hasCredits: true, unlimited: false, balance: '62500' });
+    const none = { type: 'usage_update', codexRateLimits: { primary: { usedPercent: 50, windowMinutes: 300 } } } as BridgeEvent;
+    expect((prepareForSerial(none) as any).codexRateLimits.credits).toBeUndefined();
+  });
 });

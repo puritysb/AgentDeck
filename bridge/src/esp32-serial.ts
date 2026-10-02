@@ -396,6 +396,12 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
               resetsAt: formatResetTime(e.codexRateLimits.lunaReserve.resetsAt),
               stale: e.codexRateLimits.lunaReserve.resetsAt ? Date.parse(e.codexRateLimits.lunaReserve.resetsAt) <= Date.now() : false },
           } : {}),
+          // Remaining purchased credits: boards show them only while a plan
+          // window is exhausted (UsagePresentation.creditsActive). ~60 bytes.
+          ...(e.codexRateLimits.credits ? {
+            credits: { hasCredits: e.codexRateLimits.credits.hasCredits, unlimited: e.codexRateLimits.credits.unlimited,
+              balance: e.codexRateLimits.credits.balance },
+          } : {}),
           primary: e.codexRateLimits.primary
             ? { usedPercent: e.codexRateLimits.primary.usedPercent, windowMinutes: e.codexRateLimits.primary.windowMinutes, resetsAt: formatResetTime(e.codexRateLimits.primary.resetsAt), stale: e.codexRateLimits.primary.stale }
             : undefined,

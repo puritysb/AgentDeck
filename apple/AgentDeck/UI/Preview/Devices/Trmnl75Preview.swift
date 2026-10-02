@@ -40,7 +40,10 @@
 // fails CI when the firmware drifts ahead of this mirror. Update this view and
 // re-pin whenever the firmware layout changes.
 //
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp f6fec2dc5745c04f7b90cbb8aa512abc9cccf5ec
+// The purchased-credit row the firmware draws once a Codex plan window is
+// exhausted is a data state this schematic's 5H/7D sample never reaches, like
+// the Luna reserve before it; band geometry is unchanged.
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 3851be60ad7d60faca7cabfcc3060b49324fcbb0
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI

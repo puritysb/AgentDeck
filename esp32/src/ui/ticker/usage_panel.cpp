@@ -94,6 +94,21 @@ void render(lv_obj_t* parent, int x, int y, int w, int h,
             const int sy = headerH + 4 + s * slotH;
             if (s < g.rowCount) {
                 const auto& r = g.rows[s];
+                if (r.credits) {
+                    // A balance has no cap: the number, no bar, and when the
+                    // exhausted plan window comes back.
+                    snprintf(value, sizeof(value), "%s", r.value);
+                    if (r.reset[0]) snprintf(caption, sizeof(caption), "Plan reset %s", r.reset);
+                    else snprintf(caption, sizeof(caption), "Remaining");
+                    // Narrow columns: "Credits" beside the balance would
+                    // overlap it, so the label shortens to "CR".
+                    lv_point_t lw, vw;
+                    lv_text_get_size(&lw, r.label, f.small, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+                    lv_text_get_size(&vw, value, f.value, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+                    const char* label = lw.x + vw.x + 6 <= inner ? r.label : "CR";
+                    slot(card, 8, sy, inner, slotH, label, value, -1, accent, caption, f);
+                    continue;
+                }
                 snprintf(value, sizeof(value), "%d%%", r.shown());
                 if (r.reset[0]) snprintf(caption, sizeof(caption), "%s %s", r.left ? "Left, reset" : "Reset", r.reset);
                 else snprintf(caption, sizeof(caption), "%s", r.left ? "Left" : "");
