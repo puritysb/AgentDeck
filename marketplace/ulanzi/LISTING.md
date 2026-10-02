@@ -10,13 +10,15 @@ content-record mismatch reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category. **Resolved:** the published record
 is `/contentView/1141` and resolves to AgentDeck.
 
-## Current review status — owner report (2026-09-24)
+## 1.6.0 public — listing verification (2026-10-03)
 
-Ulanzi is the remaining unapproved non-Apple store submission. The pending
-version is 1.4.0, which replaced the 1.3.0 review in place as recorded below.
-No duplicate review or replacement upload was created during this triage.
-The last independently verified public version remains 1.2.0; public delivery
-has not been rechecked. Follow [#314](https://github.com/puritysb/AgentDeck/issues/314).
+The signed-in published-work record and the normal public listing at
+<https://ugc.ulanzistudio.com/contentView/1141> both show **Version 1.6.0**,
+category **AI**, Windows/Mac and **D200, D200H, D200X**; Dial is not listed.
+This confirms delivery of the [1.6.0 submission](../../docs/devlog/entries/2026-09-28-store-submissions-160.md).
+No new upload or review replacement was needed. The exact approval time was not
+exposed by the listing, so this is the verification date, not an approval date.
+The older review receipts below are historical.
 
 ## 1.4.0 — existing review updated (2026-09-21)
 

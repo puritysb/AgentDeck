@@ -8,6 +8,21 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## 1.6.1 public — delivery readback (2026-10-03)
+
+The public listing serves 1.6.1. Play Console's publishing overview has no pending
+publication and reports the last publication on September 28. Submission 11,
+which contains **23 (1.6.1), full rollout**, and the English listing's **7-inch
+and 10-inch tablet screenshot changes**, reads **Released** (September 28, 09:42
+in the console).
+The individual public screenshot images have not yet been compared with the
+submitted files, so that narrow acceptance item in #414 remains open.
+
+The replacement Crema captures in [1.6.2/crema-capture.md](1.6.2/crema-capture.md)
+are prepared assets, not a released 1.6.2. Android UI has changed since their
+source commit `142f002c`; recapture from the next release APK before uploading
+those assets with a new release.
+
 ## 1.5.0 live — console verification (2026-09-24)
 
 Signed-in Play Console confirms production **active**, latest release **21
