@@ -17,7 +17,7 @@ import {
 } from './official-dot-glyphs.generated.js';
 
 export type RGB = readonly [number, number, number];
-export type MicroCreature = 'octopus' | 'jellyfish' | 'opencode' | 'crayfish' | 'antigravity' | 'kiro';
+export type MicroCreature = 'octopus' | 'jellyfish' | 'opencode' | 'crayfish' | 'antigravity' | 'kiro' | 'hermes';
 export type MicroAggregate = 'idle' | 'processing' | 'awaiting' | 'error';
 
 export const MICRO_SIZE = 11;
@@ -36,6 +36,8 @@ const AGENT_COLORS: Record<Exclude<OfficialDotGlyphName, 'antigravity'>, RGB> = 
   openCode: [238, 238, 238],
   openClaw: [255, 92, 92],
   kiro: [124, 58, 237],
+  // Brand.hermesOnDark (#FFFFFF), the upstream white Nous girl.
+  hermes: [240, 240, 240],
   // Brand.zai (#1F63EC), measured from the upstream z.ai mark.
   zai: [31, 99, 236],
 };
@@ -63,6 +65,7 @@ function officialName(creature: MicroCreature): OfficialDotGlyphName {
     case 'crayfish': return 'openClaw';
     case 'antigravity': return 'antigravity';
     case 'kiro': return 'kiro';
+    case 'hermes': return 'hermes';
   }
 }
 

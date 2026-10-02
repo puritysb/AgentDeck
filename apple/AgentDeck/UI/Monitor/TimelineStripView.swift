@@ -1186,6 +1186,7 @@ struct TimelineStripView: View {
         case "antigravity": "Antigravity"
         case "kiro-cli": "Kiro CLI"
         case "kiro-ide": "Kiro IDE"
+        case "hermes": "Hermes"
         case "daemon": "Daemon"
         case nil: ""
         default: "Agent"
@@ -1986,6 +1987,7 @@ struct TimelineSessionFilter: Equatable {
         case "antigravity": return "Antigravity"
         case "kiro-cli": return "Kiro CLI"
         case "kiro-ide": return "Kiro IDE"
+        case "hermes": return "Hermes"
         default: return sessionId
         }
     }

@@ -42,6 +42,7 @@ final class ESP32WifiOtaManager {
         case boardOffline(String, stage: String)
         case ackTimeout(stage: String, seq: Int?)
         case boardError(String)
+        case serialWakeTimeout(String, Int)
 
         var errorDescription: String? {
             switch self {
@@ -61,6 +62,8 @@ final class ESP32WifiOtaManager {
                 return "OTA \(stage)\(seq.map { " #\($0)" } ?? "") timed out"
             case .boardError(let message):
                 return message
+            case .serialWakeTimeout(let target, let seconds):
+                return "\(target) did not join WiFi within \(seconds)s after its USB serial port was released (is WiFi provisioned on the board?)"
             }
         }
     }
@@ -76,6 +79,10 @@ final class ESP32WifiOtaManager {
     var endAckTimeout: TimeInterval = 30
     var reconnectWait: TimeInterval = 20
     var maxReconnectResends = 12
+    /// Node parity (OTA_SERIAL_WAKE_WAIT_MS): a board driven over USB parks
+    /// its WiFi radio and restores it 30 s after serial JSON stops, then
+    /// associates and reopens its WebSocket.
+    var serialWakeWait: TimeInterval = 120
     private static let chunkSize = 1024
 
     /// Resolve `target` (board name / "board:ip" key / IP) to a unique online
@@ -88,6 +95,12 @@ final class ESP32WifiOtaManager {
     /// Called after a successful transfer so the owner can drop the roster
     /// entry — the board reboots into the new image and re-registers fresh.
     var onTransferComplete: ((_ key: String) -> Void)?
+    /// Close the serial port of the board named `target` and keep it closed
+    /// until released, so a board parked on USB rejoins WiFi. Returns the
+    /// held port, or nil when no serial connection carries that board.
+    var holdSerialBoard: ((_ target: String) async -> String?)?
+    /// End a hold taken by `holdSerialBoard`; the next poll reopens the port.
+    var releaseSerialHold: ((_ port: String) async -> Void)?
 
     private struct Waiter {
         let stage: String
@@ -169,6 +182,44 @@ final class ESP32WifiOtaManager {
         transferInFlight = true
         defer { transferInFlight = false }
 
+        let heldPort = try await wakeSerialParkedTarget(target, resolveTarget: resolveTarget)
+        do {
+            let result = try await transfer(target: target, firmware: firmware, resolveTarget: resolveTarget, liveConnection: liveConnection)
+            if let heldPort { await releaseSerialHold?(heldPort) }
+            return result
+        } catch {
+            if let heldPort { await releaseSerialHold?(heldPort) }
+            throw error
+        }
+    }
+
+    /// A board the daemon drives over USB parks its WiFi radio, so it has no
+    /// live socket to push to. Close just that board's serial port and wait
+    /// for it to register over WiFi. The hold outlasts the transfer — a port
+    /// reopened mid-OTA would re-park the radio under it. Mirrors
+    /// wakeSerialParkedOtaTarget (Node).
+    private func wakeSerialParkedTarget(
+        _ target: String,
+        resolveTarget: (String) throws -> ResolvedTarget
+    ) async throws -> String? {
+        if (try? resolveTarget(target)) != nil { return nil }
+        guard let holdSerialBoard, let port = await holdSerialBoard(target) else { return nil }
+        DaemonLogger.shared.info("[ESP32 OTA] \(target) is on USB serial with its WiFi radio parked — released \(port), waiting for it to join WiFi")
+        let deadline = Date().addingTimeInterval(serialWakeWait)
+        while Date() < deadline {
+            if (try? resolveTarget(target)) != nil { return port }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        await releaseSerialHold?(port)
+        throw OtaError.serialWakeTimeout(target, Int(serialWakeWait))
+    }
+
+    private func transfer(
+        target: String,
+        firmware: Data,
+        resolveTarget: (String) throws -> ResolvedTarget,
+        liveConnection: (_ key: String) -> WebSocketConnection?
+    ) async throws -> OtaResult {
         let resolved = try resolveTarget(target)
         guard resolved.otaSupported else {
             throw OtaError.notSupported(resolved.key, resolved.otaReason)

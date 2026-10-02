@@ -48,6 +48,13 @@ void addSession(const char* agentType, const char* state, const char* project) {
   // firmware supports.
   else if (std::strncmp(agentType, "kiro", 4) == 0)
     setStr(g_state.kiroNames[g_state.kiroCount++], 24, project);
+#if !defined(BOARD_TTGO)
+  else if (std::strcmp(agentType, "hermes") == 0 && g_state.hermesCount < 4)
+    setStr(g_state.hermesNames[g_state.hermesCount++], 24, project);
+#else
+  else if (std::strcmp(agentType, "hermes") == 0)
+    g_state.hermesCount++;
+#endif
 }
 
 // Append a timeline row the way protocol.cpp handleTimelineEvent does, so card
@@ -99,7 +106,7 @@ void base(CreatureState cs) {
 }
 
 // `demo:<agent>:<state>` — the creature-simulator web demo's agent × state
-// matrix (agents: claude|codex|opencode|openclaw|antigravity|kiro, states:
+// matrix (agents: claude|codex|opencode|openclaw|antigravity|kiro|hermes, states:
 // idle|working|asking|sleeping). Session shape and usage values mirror
 // scripts/render-creature-simulator.mjs buildSessions()/buildUsage() so the
 // ESP32 panels on the demo page stay visually coherent with the LED-matrix /
@@ -133,6 +140,7 @@ bool applyDemoScene(const char* agent, const char* state) {
       {"opencode", "opencode", "OpenCode"},
       {"antigravity", "antigravity", "Antigravity"},
       {"kiro", "kiro-cli", "Kiro"},
+      {"hermes", "hermes", "Hermes"},
   };
   bool known = std::strcmp(agent, "openclaw") == 0;
   const char* selectedState = working ? "processing"
@@ -253,6 +261,23 @@ bool SimScenes::apply(const char* name) {
     g_state.subscriptionCount = 2;
     return true;
   }
+  // Codex Pro with purchased credits once the weekly window is exhausted
+  // (the measured 2026-09-30 shape: 62,500 credits). Credits replace the
+  // Codex windows as a text balance, ahead of the Luna reserve beside it.
+  if (std::strcmp(name, "codex-credits") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.fiveHourPercent = 34; g_state.sevenDayPercent = 58;
+    g_state.codexPrimaryPercent = -1;
+    g_state.codexSecondaryPercent = 100; g_state.codexSecondaryMinutes = 10080;
+    setStr(g_state.codexSecondaryReset, sizeof(g_state.codexSecondaryReset), "2d 4h");
+    g_state.codexCreditBalance = 62500;
+    g_state.codexLunaPercent = 32;
+    setStr(g_state.codexLunaReset, sizeof(g_state.codexLunaReset), "4h 50m");
+    setStr(g_state.subscriptions[1].name, sizeof(g_state.subscriptions[1].name), "ChatGPT Pro");
+    setStr(g_state.subscriptions[1].until, sizeof(g_state.subscriptions[1].until), "~8/14");
+    g_state.subscriptionCount = 2;
+    return true;
+  }
   // The live daemon mix measured 2026-09-26: Claude reported as a bare
   // "Claude" subscription (no tier), Codex Pro with no 5h window, z.ai MCP
   // exhausted, Antigravity plan-only.
@@ -321,6 +346,15 @@ bool SimScenes::apply(const char* name) {
     addSession("claude-code", "idle", "site");
     addSession("codex-app", "idle", "epoch");
     addSession("kiro-cli", "idle", "AgentDeck");
+    return true;
+  }
+  // Hermes Agent (observed, read-only) beside two coding agents: the Nous girl
+  // mark must render as itself, in its own lane, never as another creature.
+  if (std::strcmp(name, "hermes") == 0) {
+    base(CreatureState::WORKING);
+    addSession("hermes", "processing", "Hermes (cli)");
+    addSession("claude-code", "idle", "AgentDeck");
+    addSession("kiro-cli", "idle", "hooks");
     return true;
   }
   if (std::strcmp(name, "multi") == 0) {
@@ -472,6 +506,6 @@ bool SimScenes::apply(const char* name) {
 }
 
 const char* SimScenes::catalog() {
-  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, live-mix, empty, idle, display-off, worktree-glance, working, multi, crowd, crowded, dense, permission, attention, "
+  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, codex-credits, live-mix, empty, idle, display-off, worktree-glance, working, multi, crowd, crowded, dense, permission, attention, "
          "demo:<agent>:<state>";
 }

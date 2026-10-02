@@ -314,4 +314,43 @@ final class ESP32SerialOpenBackoffTests: XCTestCase {
         }
     }
 }
+
+/// A board parked on USB serial has no WiFi socket; WiFi OTA releases only
+/// that board's port, waits for it on WiFi, and always reopens the port
+/// (Node parity: esp32-wifi-ota-serial-wake.test.ts).
+final class ESP32WifiOtaSerialWakeTests: XCTestCase {
+    @DaemonActor
+    func testWakeTimeoutReleasesTheHeldPort() async {
+        let ota = ESP32WifiOtaManager()
+        ota.serialWakeWait = 0.3
+        ota.resolveTarget = { throw ESP32WifiOtaManager.OtaError.noTarget($0) }
+        ota.liveConnection = { _ in nil }
+        var held: [String] = []
+        var released: [String] = []
+        ota.holdSerialBoard = { target in held.append(target); return "/dev/cu.usbmodemTEST" }
+        ota.releaseSerialHold = { released.append($0) }
+        do {
+            _ = try await ota.performOta(target: "trmnl_75", firmware: Data(count: 1024))
+            XCTFail("expected a wake timeout")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("did not join WiFi"), error.localizedDescription)
+        }
+        XCTAssertEqual(held, ["trmnl_75"])
+        XCTAssertEqual(released, ["/dev/cu.usbmodemTEST"])
+    }
+
+    @DaemonActor
+    func testBoardOnNeitherTransportKeepsTheNoTargetError() async {
+        let ota = ESP32WifiOtaManager()
+        ota.resolveTarget = { throw ESP32WifiOtaManager.OtaError.noTarget($0) }
+        ota.liveConnection = { _ in nil }
+        ota.holdSerialBoard = { _ in nil }
+        do {
+            _ = try await ota.performOta(target: "trmnl_75", firmware: Data(count: 1024))
+            XCTFail("expected noTarget")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("No online WiFi ESP32 target"), error.localizedDescription)
+        }
+    }
+}
 #endif

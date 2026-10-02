@@ -15,7 +15,7 @@ describe('identical quota severity on Stream Deck and Ulanzi', () => {
     const encoder = renderUsageEncoderBoth({ agent: 'codex', title: 'CODEX', luna: reserve,
       fiveHour: { label: '5H', usedPercent: 100, known: true }, sevenDay: { label: '7D', usedPercent: 0, known: true } });
     for (const svg of [renderLunaReserveGauge(reserve), renderLunaReserveTile(reserve), encoder]) {
-      expect(svg).toContain(`fill="${UI.attn}">18% LEFT</text>`);
+      expect(svg).toContain(`fill="${UI.attn}">18%<tspan`);
     }
   });
 });

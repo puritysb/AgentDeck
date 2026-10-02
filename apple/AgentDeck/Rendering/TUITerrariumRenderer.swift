@@ -34,7 +34,7 @@ import SwiftUI
 struct TerrariumPreviewConfig: Equatable {
     /// Agent identifiers, one per creature. Accepts:
     ///   "claude-code", "codex-cli", "opencode", "openclaw", "antigravity",
-    ///   "kiro-cli", "kiro-ide"
+    ///   "kiro-cli", "kiro-ide", "hermes"
     /// An identifier this build does not know renders as a NEUTRAL marker,
     /// never as Claude's octopus — see `glyph(for:state:)`.
     var agents: [String]
@@ -363,6 +363,10 @@ private enum TerrariumGridBuilder {
             // WORKING, matching how the other creatures signal it here.
             return state == "processing" ? ["(", "\u{25D5}", ")"]
                                          : ["(", "\u{25CB}", ")"]
+        case "hermes":
+            // Hermes CLI's own caduceus between waves; WORKING lifts the waves.
+            return state == "processing" ? ["\u{2248}", "\u{2624}", "\u{2248}"]
+                                         : ["~", "\u{2624}", "~"]
         default:
             // An agentType this build does not know renders as a neutral
             // marker, NOT as Claude's "(o)". The daemon ships separately and
@@ -382,6 +386,7 @@ private enum TerrariumGridBuilder {
         case "openclaw":    return "ow"
         case "kiro-cli":    return "kc"
         case "kiro-ide":    return "ki"
+        case "hermes":      return "hm"
         default:            return "a\(index)"
         }
     }

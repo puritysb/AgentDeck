@@ -85,6 +85,11 @@ struct LivingAquariumScene: View {
                     let library = try await Entity(contentsOf: residentURL)
                     residents.loadTemplates(library)
                     guard residents.templateCount == 6 else { throw CocoaError(.fileReadCorruptFile) }
+                    guard let hermesURL = Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz") else {
+                        throw CocoaError(.fileNoSuchFile)
+                    }
+                    residents.loadHermesTemplate(try await Entity(contentsOf: hermesURL))
+                    guard residents.templateCount == 7 else { throw CocoaError(.fileReadCorruptFile) }
                     content.add(residents.root)
                     residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
                     let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak residents, weak cameraRig] event in

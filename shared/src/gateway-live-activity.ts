@@ -8,6 +8,10 @@ export const GATEWAY_LIVE_RULES = {
   terminalPhases: ['end', 'error', 'aborted'],
   activePhases: ['start', 'model', 'finishing'],
   quietProcessActions: ['poll', 'log', 'list'],
+  /** One folded tool row keeps at most this many calls in its detail. */
+  foldDetailItems: 40,
+  /** Distinct subjects named in a folded row before it says "…". */
+  foldSubjects: 3,
 } as const;
 type ObjectValue = Record<string, unknown>;
 export const gatewayObject = (v: unknown): ObjectValue => v && typeof v === 'object' && !Array.isArray(v) ? v as ObjectValue : {};
@@ -19,6 +23,37 @@ export function gatewayMessageText(content: unknown): string {
 interface Run {
   sessionKey: string; runId?: string; startedAt: number; prompt?: string;
   response: string; closed: boolean; responseEmitted: boolean; automated: boolean;
+  /** Completed tool calls of this run, folded into ONE timeline row. */
+  toolRows?: string[]; toolRowTs?: number; toolRowStart?: number;
+}
+
+/**
+ * One row for all the tool calls of a run. OpenClaw walks its config or the
+ * web call by call (16 `openclaw · <key>` reads in two minutes, measured
+ * 2026-10-03), and one row per call buried the user's own question and the
+ * reply. A single call keeps its own label; several read
+ * `openclaw ×16 · channels, agents.main, messages.groupChat, …` (or
+ * `5 tools · exec ×2, read, openclaw ×2`), and the full list stays in detail.
+ */
+export function gatewayToolFoldRaw(items: readonly string[]): string {
+  if (items.length === 1) return items[0];
+  const parsed = items.map((item) => {
+    const failed = item.endsWith(' · failed');
+    const body = failed ? item.slice(0, -' · failed'.length) : item;
+    const cut = body.indexOf(' · ');
+    return { name: cut < 0 ? body : body.slice(0, cut), subject: cut < 0 ? '' : body.slice(cut + 3), failed };
+  });
+  const failed = parsed.filter((p) => p.failed).length;
+  const tail = failed ? ` · ${failed} failed` : '';
+  const names = [...new Set(parsed.map((p) => p.name))];
+  if (names.length === 1) {
+    const subjects = [...new Set(parsed.map((p) => p.subject).filter(Boolean))];
+    const shown = subjects.slice(0, GATEWAY_LIVE_RULES.foldSubjects).map((s) => s.length > 40 ? `${s.slice(0, 39)}…` : s);
+    const more = subjects.length > shown.length ? ', …' : '';
+    return `${names[0]} ×${items.length}${shown.length ? ` · ${shown.join(', ')}${more}` : ''}${tail}`;
+  }
+  const counts = names.map((n) => { const c = parsed.filter((p) => p.name === n).length; return c > 1 ? `${n} ×${c}` : n; });
+  return `${items.length} tools · ${counts.join(', ')}${tail}`;
 }
 interface Tool { name: string; input: unknown; ts: number; done: boolean }
 export interface GatewayLiveUpdate { entry: TimelineEntry; upsert?: boolean }
@@ -131,7 +166,20 @@ export class GatewayLiveActivity {
             const command = string(gatewayObject(tool.input).command) ?? string(gatewayObject(tool.input).path) ?? string(action);
             const output = gatewayMessageText(gatewayObject(result).content) || (typeof result === 'string' ? result : '');
             const raw = `${tool.name}${command ? ` · ${command.replace(/\s+/g, ' ')}` : ''}${failed ? ' · failed' : ''}`;
-            out.push({ entry: { ...this.row(run, 'tool_exec', now, raw, [`session: ${sessionKey}`, command, output].filter(Boolean).join('\n')), startedAt: tool.ts, endedAt: now } });
+            // Fold every completed call of this run into one row: the first
+            // call adds it, later calls upsert it in place (same ts + runId).
+            run.toolRows = [...(run.toolRows ?? []), raw.slice(0, GATEWAY_LIVE_RULES.rawLimit)];
+            run.toolRowTs ??= now;
+            run.toolRowStart ??= tool.ts;
+            const items = run.toolRows;
+            const detail = items.length === 1
+              ? [`session: ${sessionKey}`, command, output].filter(Boolean).join('\n')
+              : items.slice(-GATEWAY_LIVE_RULES.foldDetailItems).join('\n');
+            out.push({
+              entry: { ...this.row(run, 'tool_exec', run.toolRowTs, gatewayToolFoldRaw(items), detail),
+                startedAt: run.toolRowStart, endedAt: now },
+              ...(items.length > 1 ? { upsert: true } : {}),
+            });
           }
         }
       }

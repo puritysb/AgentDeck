@@ -191,6 +191,7 @@ extension PixooPreviewAgent {
         case "openclaw":               return .openclaw
         case "antigravity":            return .antigravity
         case "kiro-cli", "kiro-ide": return .kiro
+        case "hermes":               return .hermes
         default:                       return .claudeCode
         }
     }

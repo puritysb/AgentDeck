@@ -140,6 +140,7 @@ static lv_image_dsc_t s_glyphOpenCode;
 static lv_image_dsc_t s_glyphCodex;
 static lv_image_dsc_t s_glyphAntigravity;
 static lv_image_dsc_t s_glyphKiro;
+static lv_image_dsc_t s_glyphHermes;
 
 static void buildGlyph(lv_image_dsc_t& glyph, const uint8_t* data, int w, int h) {
     glyph.header.magic = LV_IMAGE_HEADER_MAGIC;
@@ -160,6 +161,7 @@ static void initGlyphs() {
     buildGlyph(s_glyphCodex, CODEX_A8, CODEX_W, CODEX_H);
     buildGlyph(s_glyphAntigravity, ANTIGRAVITY_A8, ANTIGRAVITY_W, ANTIGRAVITY_H);
     buildGlyph(s_glyphKiro, KIRO_A8, KIRO_W, KIRO_H);
+    buildGlyph(s_glyphHermes, HERMES_A8, HERMES_W, HERMES_H);
 }
 
 static const lv_image_dsc_t* glyphForAgent(const char* agentType) {
@@ -168,6 +170,7 @@ static const lv_image_dsc_t* glyphForAgent(const char* agentType) {
     if (strstr(agentType, "opencode")) return &s_glyphOpenCode;
     if (strstr(agentType, "antigravity")) return &s_glyphAntigravity;
     if (strstr(agentType, "kiro")) return &s_glyphKiro;
+    if (strcmp(agentType, "hermes") == 0) return &s_glyphHermes;
     if (strstr(agentType, "codex")) return &s_glyphCodex;
     if (strstr(agentType, "claude")) return &s_glyphClaude;
     return nullptr;
@@ -303,6 +306,7 @@ static uint32_t agentColor(const char* agentType) {
     if (strcmp(agentType, "opencode") == 0) return Theme::OpenCodeOuter;
     if (strcmp(agentType, "antigravity") == 0) return Theme::AntigravityMark;
     if (strncmp(agentType, "kiro", 4) == 0) return Theme::KiroMark;
+    if (strcmp(agentType, "hermes") == 0) return Theme::HermesMark;
     return Theme::HUDDim;
 }
 

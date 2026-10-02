@@ -267,6 +267,7 @@ static uint32_t agentColor(const char* agentType) {
     if (strcmp(agentType, "opencode") == 0) return Theme::OpenCodeOuter;
     if (strcmp(agentType, "antigravity") == 0) return Theme::AntigravityMark;
     if (strncmp(agentType, "kiro", 4) == 0) return Theme::KiroMark;
+    if (strcmp(agentType, "hermes") == 0) return Theme::HermesMark;
     // Unknown agent → neutral dim, never another agent's brand colour.
     return Theme::HUDDim;
 }
@@ -963,10 +964,12 @@ void update(float dt) {
                  g_state.codexPrimaryReset, g_state.codexSecondaryReset);
         // The Luna reserve and z.ai window kind change what Usage shows.
         const int lunaKey = (int)g_state.codexLunaPercent * 2 + (g_state.zaiSecondaryIsMcp ? 1 : 0);
+        char creditKey[8];   // the Codex credit balance, while it is being spent
+        UsageRows::codexCreditsKey(g_state, creditKey, sizeof(creditKey));
         unlockState();
-        snprintf(sig, sizeof(sig), "%d|%d.%d.%d.%d.%d.%d.%d|%s|%d|%d|%d%d%d%d|%d|%d%d|%.20s|%.6s%.10s%.36s|%.31s|%s",
+        snprintf(sig, sizeof(sig), "%d|%d.%d.%d.%d.%d.%d.%d.%s|%s|%d|%d|%d%d%d%d|%d|%d%d|%.20s|%.6s%.10s%.36s|%.31s|%s",
                  s_page,
-                 c5, c7, x5, x7, z5, z7, lunaKey, resets, subsCount, count,
+                 c5, c7, x5, x7, z5, z7, lunaKey, creditKey, resets, subsCount, count,
                  connected ? 1 : 0, wifiUp ? 1 : 0, wsUp ? 1 : 0, serialUp ? 1 : 0,
                  power.voltageMv / 20, power.charging ? 1 : 0, power.usbPowered ? 1 : 0,
                  s_flashText,

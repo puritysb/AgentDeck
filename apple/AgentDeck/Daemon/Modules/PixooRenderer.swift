@@ -62,6 +62,7 @@ final class PixooRenderer {
         case opencode
         case antigravity
         case kiro
+        case hermes
     }
 
     private enum CreatureState {
@@ -182,6 +183,7 @@ final class PixooRenderer {
     private static let opencodeAgents = Set(["opencode"])
     private static let antigravityAgents = Set(["antigravity"])
     private static let kiroAgents = Set(["kiro-cli", "kiro-ide"])
+    private static let hermesAgents = Set(["hermes"])
 
     private static let octopusGrid: [[Int]] = [
         [0,0,1,1,1,1,1,1,1,1,1,0,0],
@@ -507,6 +509,7 @@ final class PixooRenderer {
                 case .opencode: .openCode
                 case .antigravity: .antigravity
                 case .kiro: .kiro
+                case .hermes: .hermes
                 case .octopus: .claudeCode
                 }
                 drawOfficialDotGlyph(&output, glyph: glyph, worldX: creature.worldX, worldY: creature.worldY, state: spriteState, animFrame: animFrame + creature.phaseOffset, camera: camera, sessionToneIndex: sessionToneIndex, sizeScale: creature.sizeScale)
@@ -531,6 +534,8 @@ final class PixooRenderer {
                         antigravityPalette(for: i).yellow
                     case .kiro:
                         (124, 58, 237)
+                    case .hermes:
+                        (255, 255, 255)
                     case .octopus:
                         octopusPalette(for: i).body
                     }
@@ -586,6 +591,7 @@ final class PixooRenderer {
             creature =
                 dominant.agentType == "antigravity" ? .antigravity
                     : dominant.creatureType == .kiro ? .kiro
+                    : dominant.creatureType == .hermes ? .hermes
                     : dominant.creatureType == .cloud ? .codex
                     : (dominant.creatureType == .opencode ? .opencode : .octopus)
         } else if hasGateway {
@@ -651,6 +657,7 @@ final class PixooRenderer {
             case .opencode: return .openCode
             case .antigravity: return .antigravity
             case .kiro: return .kiro
+            case .hermes: return .hermes
             }
         }
         func priority(_ state: CreatureState) -> Int {
@@ -684,6 +691,7 @@ final class PixooRenderer {
             case .openCode: return (255, 246, 248)
             case .openClaw: return (255, 67, 84)
             case .kiro: return (124, 58, 237)
+            case .hermes: return (255, 255, 255)
             case .zai: return (31, 99, 236)  // Brand.zai (#1F63EC)
             case .antigravity:
                 let bands: [RGB] = [
@@ -888,14 +896,15 @@ final class PixooRenderer {
         let opencodeSlots = pixooSlots(for: .opencode, count: typeCounts[.opencode] ?? 0)
         let antigravitySlots = pixooSlots(for: .antigravity, count: typeCounts[.antigravity] ?? 0)
         let kiroSlots = pixooSlots(for: .kiro, count: typeCounts[.kiro] ?? 0)
-        var typeIndices: [CreatureKind: Int] = [.octopus: 0, .cloud: 0, .opencode: 0, .antigravity: 0, .kiro: 0]
+        let hermesSlots = pixooSlots(for: .hermes, count: typeCounts[.hermes] ?? 0)
+        var typeIndices: [CreatureKind: Int] = [.octopus: 0, .cloud: 0, .opencode: 0, .antigravity: 0, .kiro: 0, .hermes: 0]
 
         let hudCount = hudProviderCount(from: dashboardState)
         for (index, session) in aliveCoding.enumerated() {
             let kind = creatureType(for: session.agentType)
             let slotIndex = typeIndices[kind, default: 0]
             typeIndices[kind, default: 0] = slotIndex + 1
-            let slot = pixooSlot(for: kind, index: slotIndex, octopusSlots: octopusSlots, cloudSlots: cloudSlots, opencodeSlots: opencodeSlots, antigravitySlots: antigravitySlots, kiroSlots: kiroSlots)
+            let slot = pixooSlot(for: kind, index: slotIndex, octopusSlots: octopusSlots, cloudSlots: cloudSlots, opencodeSlots: opencodeSlots, antigravitySlots: antigravitySlots, kiroSlots: kiroSlots, hermesSlots: hermesSlots)
             let worldX = Double(slot.x)
             let worldY = stateY(session.state, kind: kind, baseY: Double(slot.y), hudProviderCount: hudCount)
 
@@ -941,7 +950,8 @@ final class PixooRenderer {
                 cloudSlots: cloudSlots,
                 opencodeSlots: opencodeSlots,
                 antigravitySlots: antigravitySlots,
-                kiroSlots: kiroSlots
+                kiroSlots: kiroSlots,
+                hermesSlots: hermesSlots
             )
             primary.worldY = stateY(preciseState, kind: primary.creatureType, baseY: Double(baseSlot.y), hudProviderCount: hudCount)
             creatureInstances[aliveCoding[primaryIndex].id] = primary
@@ -962,6 +972,8 @@ final class PixooRenderer {
             // Reuse the generated upper-right floating band until the shared
             // layout SSOT replaces the three hand-maintained mirrors.
             return CreatureLayout.layoutAntigravityCreatures(count: count)
+        case .hermes:
+            return CreatureLayout.layoutHermesCreatures(count: count)
         }
     }
 
@@ -972,7 +984,8 @@ final class PixooRenderer {
         cloudSlots: [CreatureSlot],
         opencodeSlots: [CreatureSlot],
         antigravitySlots: [CreatureSlot],
-        kiroSlots: [CreatureSlot]
+        kiroSlots: [CreatureSlot],
+        hermesSlots: [CreatureSlot]
     ) -> CreatureSlot {
         let slots: [CreatureSlot] = switch kind {
         case .octopus: octopusSlots
@@ -980,6 +993,7 @@ final class PixooRenderer {
         case .opencode: opencodeSlots
         case .antigravity: antigravitySlots
         case .kiro: kiroSlots
+        case .hermes: hermesSlots
         }
         guard !slots.isEmpty else { return CreatureSlot(x: 0.38, y: 0.42, scale: 1.0) }
         return slots[min(index, slots.count - 1)]
@@ -1526,6 +1540,9 @@ final class PixooRenderer {
                 return state == .processing ? Self.colors.crayfishRouting : Self.colors.crayfishBody
             case .kiro:
                 return state == .processing ? (167, 120, 255) : (124, 58, 237)
+            // Brand.hermesOnDark (#FFFFFF), the upstream white Nous girl.
+            case .hermes:
+                return state == .processing ? (255, 255, 255) : (230, 230, 230)
             // The z.ai provider mark reaches this sprite only from the usage
             // HUD, which never drives creature state — but the switch stays
             // total over the glyph union. Brand.zai (#1F63EC).
@@ -1542,6 +1559,37 @@ final class PixooRenderer {
             if t < 0.55 { return lerpColor((245, 203, 36), (255, 82, 65), (t - 0.25) / 0.3) }
             if t < 0.78 { return lerpColor((255, 82, 65), (183, 92, 182), (t - 0.55) / 0.23) }
             return lerpColor((183, 92, 182), (36, 126, 255), (t - 0.78) / 0.22)
+        }
+
+        // Hermes swims as the generated 2D mermaid (official Nous girl head over
+        // a kelp tail — scripts/generate-hermes-mermaid-2d.mjs), never as a
+        // floating head. Mirror of drawOfficialDotGlyph in pixoo-sprites.ts.
+        if glyph == .hermes {
+            let h = max(10, Int(round(Double(target) * 1.35)))
+            let w = max(7, Int(round(Double(h) * Double(HermesMermaidSprite.width) / Double(HermesMermaidSprite.height))))
+            let mx0 = Int(round(scx - Double(w) / 2))
+            let my0 = Int(round(scy - Double(h) / 2)) + bob
+            let flukeDx = state == .processing ? Int(round(sin(Double(animFrame) * 0.5))) : 0
+            func rgb(_ c: (Int, Int, Int)) -> RGB { (UInt8(c.0), UInt8(c.1), UInt8(c.2)) }
+            let layers: [([UInt8], RGB, Int)] = [
+                (HermesMermaidSprite.tail, rgb(HermesMermaidSprite.bodyColor), 0),
+                (HermesMermaidSprite.rim, rgb(HermesMermaidSprite.rimColor), 0),
+                (HermesMermaidSprite.fluke, rgb(HermesMermaidSprite.flukeColor), flukeDx),
+                (HermesMermaidSprite.head, base, 0),
+            ]
+            let MW = HermesMermaidSprite.width, MH = HermesMermaidSprite.height
+            for (layerMask, color, ox) in layers {
+                for dy in 0..<h {
+                    let sy = min(MH - 1, dy * MH / h)
+                    for dx in 0..<w {
+                        let sx = min(MW - 1, dx * MW / w)
+                        let alpha = Double(layerMask[sy * MW + sx]) / 255
+                        if alpha > 0.02 { blendPixel(&buf, mx0 + dx + ox, my0 + dy, color, alpha) }
+                    }
+                }
+            }
+            if state == .awaiting { drawQuestionBubble(&buf, centerX: mx0 + w + 1, centerY: my0) }
+            return
         }
 
         for dy in 0..<target {
@@ -1963,6 +2011,7 @@ final class PixooRenderer {
     private func creatureType(for agentType: String) -> CreatureKind {
         if Self.antigravityAgents.contains(agentType) { return .antigravity }
         if Self.kiroAgents.contains(agentType) { return .kiro }
+        if Self.hermesAgents.contains(agentType) { return .hermes }
         if Self.cloudAgents.contains(agentType) { return .cloud }
         if Self.opencodeAgents.contains(agentType) { return .opencode }
         return .octopus
@@ -1970,6 +2019,7 @@ final class PixooRenderer {
 
     private func isCreatureAgent(_ agentType: String) -> Bool {
         Self.codingAgents.contains(agentType) || Self.cloudAgents.contains(agentType) || Self.opencodeAgents.contains(agentType) || Self.antigravityAgents.contains(agentType) || Self.kiroAgents.contains(agentType)
+            || Self.hermesAgents.contains(agentType)
     }
 
     private func simplifiedState(_ state: AgentConnectionState) -> CreatureState {
@@ -2040,6 +2090,12 @@ final class PixooRenderer {
             case .processing: clamp(baseY - 0.04, min: 0.16, max: 0.30)
             case .awaiting: clamp(baseY + 0.16, min: 0.42, max: 0.54)
             case .idle: clamp(baseY + 0.26, min: 0.60, max: 0.70)
+            }
+        case .hermes:
+            switch state {
+            case .processing: clamp(baseY - 0.02, min: 0.24, max: 0.38)
+            case .awaiting: clamp(baseY + 0.14, min: 0.40, max: 0.52)
+            case .idle: clamp(baseY + 0.26, min: 0.56, max: 0.64)
             }
         }
         if hudProviderCount > 0 {

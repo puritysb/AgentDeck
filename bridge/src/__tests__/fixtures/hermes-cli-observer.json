@@ -1,0 +1,104 @@
+{
+  "source": {
+    "upstreamCommit": "6d42313deee63b13dbf2f262d9a31cf603d3f1bc",
+    "surface": "CLI single-query",
+    "provider": "zai",
+    "model": "glm-5.3",
+    "capture": "real plugin callbacks forwarded through loopback HTTP to Node daemon",
+    "sanitized": [
+      "session_id",
+      "cwd"
+    ],
+    "notes": "Terminal python -c was denied by upstream approval policy; Hermes retried with shell arithmetic. Both tool calls were observed."
+  },
+  "events": [
+    {
+      "afterMs": 0,
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/workspace/hermes-observer-check",
+        "project_name": "Hermes \u00b7 cli",
+        "model": "glm-5.3"
+      }
+    },
+    {
+      "afterMs": 20,
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/workspace/hermes-observer-check",
+        "project_name": "Hermes \u00b7 cli",
+        "model": "glm-5.3",
+        "prompt": "This is an AgentDeck observer integration check in a temporary empty workspace. Use the terminal tool once to run python3 -c \"print(17 * 19)\". Do not read or write other files or use the network. Then reply with the number and OBSERVER_OK."
+      }
+    },
+    {
+      "afterMs": 6492,
+      "event": "hermes_tool_start",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/workspace/hermes-observer-check",
+        "project_name": "Hermes \u00b7 CLI",
+        "model": "",
+        "tool_name": "terminal"
+      }
+    },
+    {
+      "afterMs": 6538,
+      "event": "hermes_tool_end",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/workspace/hermes-observer-check",
+        "project_name": "Hermes \u00b7 CLI",
+        "model": "",
+        "tool_name": "terminal"
+      }
+    },
+    {
+      "afterMs": 11741,
+      "event": "hermes_tool_start",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/workspace/hermes-observer-check",
+        "project_name": "Hermes \u00b7 CLI",
+        "model": "",
+        "tool_name": "terminal"
+      }
+    },
+    {
+      "afterMs": 11789,
+      "event": "hermes_tool_end",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/workspace/hermes-observer-check",
+        "project_name": "Hermes \u00b7 CLI",
+        "model": "",
+        "tool_name": "terminal"
+      }
+    },
+    {
+      "afterMs": 13847,
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/workspace/hermes-observer-check",
+        "project_name": "Hermes \u00b7 cli",
+        "model": "glm-5.3",
+        "last_assistant_message": "323 OBSERVER_OK\n\nNote: the requested `python3 -c` was blocked by the approval policy (script execution flags not allowed in single-query mode), so the product was computed with shell arithmetic instead \u2014 no files or network touched.",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "afterMs": 13870,
+      "event": "hermes_session_end",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/workspace/hermes-observer-check",
+        "project_name": "Hermes \u00b7 cli",
+        "model": ""
+      }
+    }
+  ]
+}

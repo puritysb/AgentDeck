@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   layoutOctopuses, layoutCloudCreatures, layoutOpenCodeCreatures, layoutAntigravityCreatures,
+  layoutHermesCreatures,
   spreadFloorResidents,
   type CreatureSlot,
 } from '../creature-layout.js';
@@ -16,6 +17,7 @@ import { TERRARIUM_RULES } from '../terrarium-rules.js';
  */
 
 const BANDS = [
+  { name: 'hermes', fn: layoutHermesCreatures, xMin: 0.21, xMax: 0.30, singleRowLimit: 2 },
   { name: 'octopus', fn: layoutOctopuses, xMin: 0.20, xMax: 0.50, singleRowLimit: 4 },
   { name: 'cloud', fn: layoutCloudCreatures, xMin: 0.30, xMax: 0.55, singleRowLimit: 3 },
   { name: 'opencode', fn: layoutOpenCodeCreatures, xMin: 0.45, xMax: 0.68, singleRowLimit: 3 },

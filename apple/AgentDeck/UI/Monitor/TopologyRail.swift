@@ -423,8 +423,10 @@ struct TopologyRail: View {
         guard hasLimits || (plan?.isEmpty == false) else {
             return unavailableProvider("Codex")
         }
-        // The Luna chip's percent is what is LEFT; the subtitle says so.
+        // The Luna chip's percent is what is LEFT; the subtitle says so, and
+        // names the mode when an exhausted plan is drawing on purchased credits.
         let parts = [Self.codexSubtitle(plan: plan, limits: limits),
+                     limits?.activeCodexCredits() != nil ? "Spending credits" : nil,
                      limits?.activeLunaReserve() != nil ? "Luna reserve left" : nil].compactMap { $0 }
         return AnyView(
             ProviderRow(
@@ -1097,15 +1099,31 @@ struct TopologyRail: View {
     /// with different windows still reads correctly.
     private var codexRateLimitChips: [RateChip] {
         guard let limits = stateHolder.state.codexRateLimits else { return [] }
-        // An exhausted account window hands the row to the Luna reserve,
-        // read as what is LEFT (the shared cross-surface rule).
-        if let luna = limits.activeLunaReserve() {
-            return [.init(
-                label: "Luna",
-                percent: max(0, 100 - luna.usedPercent),
-                reset: formatResetTime(luna.resetsAt),
-                remaining: true
-            )]
+        // An exhausted account window hands the row to its fallbacks — the
+        // purchased credits being spent, then the Luna reserve — both read as
+        // what is LEFT (the shared cross-surface rule). The row has room for
+        // two readings, so both show when both are live.
+        let spending = limits.activeCodexCredits()
+        let luna = limits.activeLunaReserve()
+        if spending != nil || luna != nil {
+            var chips: [RateChip] = []
+            if let spending {
+                chips.append(.init(
+                    label: "Credits",
+                    percent: 0,
+                    reset: formatResetTime(spending.regularResetsAt),
+                    valueText: "\(spending.formatted) left"
+                ))
+            }
+            if let luna {
+                chips.append(.init(
+                    label: "Luna",
+                    percent: max(0, 100 - luna.usedPercent),
+                    reset: formatResetTime(luna.resetsAt),
+                    remaining: true
+                ))
+            }
+            return chips
         }
         var chips: [RateChip] = []
         if let p = limits.primary, let pct = p.usedPercent {
@@ -1311,6 +1329,9 @@ struct RateChip: Identifiable {
     /// Takes the right-hand slot and dims the bar: a passively-read snapshot of a
     /// still-live window keeps its last true percent, but must not read as live.
     var footnote: String? = nil
+    /// A count, not a share of a cap (the Codex credit balance, "62.5K left"):
+    /// the chip drops its bar and severity ramp and prints this instead.
+    var valueText: String? = nil
 }
 
 struct ConsumerBadge: Identifiable {
@@ -1427,6 +1448,33 @@ private struct RateChipView: View {
     }
 
     var body: some View {
+        if let value = chip.valueText {
+            // No bar: a balance has no cap to fill against. The amber coin dot
+            // matches the device tiles' credit mark.
+            HStack(spacing: 6) {
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(DesignTokens.UI.attn)
+                        .frame(width: 5, height: 5)
+                    Text(chip.label)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(TerrariumHUD.subtext)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                Spacer(minLength: 4)
+                Text(value)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(DesignTokens.Tide.s50)
+                    .lineLimit(1)
+                rightSlot
+            }
+        } else {
+            gaugeBody
+        }
+    }
+
+    private var gaugeBody: some View {
         HStack(spacing: 6) {
             Text(chip.label)
                 .font(.system(size: 9, design: .monospaced))

@@ -21,6 +21,7 @@ const OFFICIAL_GLYPHS = [
   ['openClaw', 'openclaw'],
   ['antigravity', 'antigravity'],
   ['kiro', 'kiro'],
+  ['hermes', 'hermes'],
   ['zai', 'zai'],
 ];
 const STANDARD_MASK_SIZE = 24;

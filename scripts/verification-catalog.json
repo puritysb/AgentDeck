@@ -424,7 +424,8 @@
         "bridge/src/__tests__/hook-server-usage-relay.test.ts",
         "shared/src/__tests__/usage-*.test.ts",
         "shared/src/__tests__/codex-freshness-rules.test.ts",
-        "shared/src/__tests__/zai-quota.test.ts"
+        "shared/src/__tests__/zai-quota.test.ts",
+        "shared/src/__tests__/zai-pair-view.test.ts"
       ]
     },
     {
@@ -449,19 +450,21 @@
     {
       "id": "observed",
       "name": "Agent observation & hooks",
-      "question": "Are Claude, Codex, OpenCode, Kiro and Antigravity sessions seen, attributed and gated correctly from their hooks and transcripts?",
+      "question": "Are Claude, Codex, OpenCode, Kiro, Antigravity and Hermes sessions seen, attributed and gated correctly from their hooks and transcripts?",
       "icon": "◈",
       "match": [
         "hooks/src/__tests__/*.test.ts",
         "bridge/src/__tests__/hook-*.test.ts",
         "bridge/src/__tests__/claude-*.test.ts",
         "bridge/src/__tests__/codex-ambient-hooks.test.ts",
+        "bridge/src/__tests__/codex-exec-children.test.ts",
         "bridge/src/__tests__/codex-auth.test.ts",
         "bridge/src/__tests__/codex-hook-silence.test.ts",
         "bridge/src/__tests__/codex-otel.test.ts",
         "bridge/src/__tests__/codex-rollout-response.test.ts",
         "bridge/src/__tests__/codex-turn-manager.test.ts",
         "bridge/src/__tests__/kiro-*.test.ts",
+        "bridge/src/__tests__/hermes-sessions.test.ts",
         "bridge/src/__tests__/opencode-*.test.ts",
         "bridge/src/__tests__/observed-*.test.ts",
         "bridge/src/__tests__/passive-observer.test.ts",
@@ -589,6 +592,7 @@
         "shared/src/__tests__/idotmatrix-identity.test.ts",
         "shared/src/__tests__/mdns-identity.test.ts",
         "shared/src/__tests__/d200h-*.test.ts",
+        "scripts/__tests__/hermes-mermaid-2d.test.ts",
         "shared/src/__tests__/creature-layout.test.ts",
         "shared/src/__tests__/terrarium-rules.test.ts",
         "shared/src/__tests__/collaboration-presentation.test.ts",
@@ -621,6 +625,7 @@
         "plugin-ulanzi/src/__tests__/*.test.ts",
         "shared/src/__tests__/svg-renderers/*.test.ts",
         "shared/src/__tests__/brand-assets-contract.test.ts",
+        "shared/src/__tests__/hermes-brand.test.ts",
         "scripts/__tests__/plugin-deployment.test.ts"
       ]
     },

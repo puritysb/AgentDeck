@@ -410,7 +410,7 @@ actor PixooModule: DeviceModule {
             // Kiro included: MicroGlyphs already carries its official 24/9/8px
             // masks and violet, so leaving it out of this gate was the only thing
             // keeping the ghost off the dot-matrix devices.
-            let creatureAgents: Set<String> = ["claude-code", "codex-cli", "codex-app", "opencode", "antigravity", "kiro-cli", "kiro-ide"]
+            let creatureAgents: Set<String> = ["claude-code", "codex-cli", "codex-app", "opencode", "antigravity", "kiro-cli", "kiro-ide", "hermes"]
             if let at = eventAgentType, creatureAgents.contains(at) {
                 cachedState = event["state"] as? String ?? "disconnected"
                 cachedProject = event["projectName"] as? String

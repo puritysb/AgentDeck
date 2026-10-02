@@ -396,6 +396,12 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
               resetsAt: formatResetTime(e.codexRateLimits.lunaReserve.resetsAt),
               stale: e.codexRateLimits.lunaReserve.resetsAt ? Date.parse(e.codexRateLimits.lunaReserve.resetsAt) <= Date.now() : false },
           } : {}),
+          // Remaining purchased credits: boards show them only while a plan
+          // window is exhausted (UsagePresentation.creditsActive). ~60 bytes.
+          ...(e.codexRateLimits.credits ? {
+            credits: { hasCredits: e.codexRateLimits.credits.hasCredits, unlimited: e.codexRateLimits.credits.unlimited,
+              balance: e.codexRateLimits.credits.balance },
+          } : {}),
           primary: e.codexRateLimits.primary
             ? { usedPercent: e.codexRateLimits.primary.usedPercent, windowMinutes: e.codexRateLimits.primary.windowMinutes, resetsAt: formatResetTime(e.codexRateLimits.primary.resetsAt), stale: e.codexRateLimits.primary.stale }
             : undefined,
@@ -1622,7 +1628,11 @@ async function pollForDevices(): Promise<void> {
     for (const p of [...openFailures.keys()]) {
       if (!portSet.has(p)) openFailures.delete(p);
     }
+    for (const [p, until] of [...boardHoldUntil]) {
+      if (until <= nowTs) boardHoldUntil.delete(p);
+    }
     const allowedPorts = ports.filter((p) => {
+      if (boardHoldUntil.has(p)) return false;
       const until = foreignDenylistUntil.get(p);
       if (until && until > nowTs) {
         debug('ESP32', `Skipping denylisted non-AgentDeck port ${p} (${Math.ceil((until - nowTs) / 1000)}s left)`);
@@ -1945,6 +1955,38 @@ export function releaseESP32SerialPorts(reason: string): number {
     );
   }
   return released;
+}
+
+/**
+ * Ports deliberately left closed for one board, by port → hold expiry (epoch ms).
+ *
+ * A board driven over USB parks its WiFi radio (esp32/src/main.cpp,
+ * "serial-primary WiFi radio parking") and only restores it once the host has
+ * sent no serial JSON for SERIAL_TIMEOUT_MS. A WiFi OTA to that board therefore
+ * needs THIS board's port closed — not every port, which is what the flash
+ * lease does — for long enough that the board times serial out and rejoins
+ * WiFi. In memory on purpose: a daemon restart drops the hold and reopens.
+ */
+const boardHoldUntil = new Map<string, number>();
+
+/**
+ * Close the serial port of the board `matches` selects and keep it closed for
+ * `ms`. Returns the held port, or null when no open serial connection matches.
+ */
+export function holdESP32SerialBoard(matches: (board: string) => boolean, ms: number, reason: string): string | null {
+  const conn = connections.find((c) => c.deviceInfo?.board && matches(c.deviceInfo.board));
+  if (!conn) return null;
+  boardHoldUntil.set(conn.port, Date.now() + ms);
+  connections = connections.filter((c) => c !== conn);
+  conn.connected = false;
+  closeConnection(conn);
+  debug('ESP32', `Holding serial port ${conn.port} (${conn.deviceInfo?.board}) closed for ${Math.ceil(ms / 1000)}s: ${reason}`);
+  return conn.port;
+}
+
+/** End a hold early; the next poll reopens the port if it is still present. */
+export function releaseESP32SerialHold(port: string): void {
+  boardHoldUntil.delete(port);
 }
 
 export function stopESP32Serial(): void {

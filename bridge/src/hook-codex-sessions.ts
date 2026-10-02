@@ -38,8 +38,11 @@ const SILENT_TTL_MS = 30 * 60_000;
 
 /** Hook events that may create a row. */
 const OPENING_EVENTS = new Set(['codex_session_start', 'codex_user_prompt_submit']);
-/** Hook events that end a turn. `codex_turn_complete` is the notify-only fallback. */
-const TERMINAL_EVENTS = new Set(['codex_stop', 'codex_session_end', 'codex_turn_complete', 'codex_interrupt']);
+/** Hook events that end a turn. `codex_turn_complete` is the notify-only
+ *  fallback. Exported so the headless-child registry ends a child's run on
+ *  exactly the events that end a hook row's turn. */
+export const CODEX_TERMINAL_EVENTS: ReadonlySet<string> = new Set(['codex_stop', 'codex_session_end', 'codex_turn_complete', 'codex_interrupt']);
+const TERMINAL_EVENTS = CODEX_TERMINAL_EVENTS;
 /**
  * A finished session stays un-resurrectable this long — longer than its row
  * lives, so a trailing tool callback can't revive a creature 90 s after the turn

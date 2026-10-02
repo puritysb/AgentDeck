@@ -76,6 +76,18 @@ pool remains reported. Unknown windows never become zero. An exhausted Luna pool
 still shows its actual zero remaining allowance. Window labels follow reported
 lengths, including credit-based plans with no rolling duration.
 
+Purchased Codex credits follow the same gate (`selectedCodexCredits`, generated
+`creditsActive` / `formatCreditBalance`): shown only while a live plan window is
+exhausted AND a balance remains, because only then are credits what the account is
+spending. A zero or unreported balance shows nothing, never "0 credits"; a balance
+is a count with no cap, so it gets no severity colour and no fill. Credits replace
+the exhausted windows like Luna does; a surface with room for two Codex readings
+shows credits then Luna, and a single-reading surface shows credits alone (the D200H
+strip drops the Luna tile first when it is full). The balance is truncated, never
+rounded up (`62500` → `62.5K`), and `shared/credit-balance-vectors.json` is replayed
+by every mirror. This is separate from credit-only plans (no windows at all), which
+keep their existing credits readout.
+
 IPS10 places confirmed subscriptions (including plan-only Antigravity) inside USAGE,
 with reported subscription dates separate from reset countdowns. An unknown plan,
 a raw credit count, or an unlinked integration does not create a placeholder row.

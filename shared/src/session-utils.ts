@@ -35,7 +35,7 @@ export const OPENCODE_PENDING_REQUEST_LIMIT = 64;
  * `claude-code` as an agent and `observed:claude:` as an id.
  */
 export const OBSERVED_SESSION_AGENT_KEYS = [
-  'claude', 'codex', 'codex-app', 'opencode', 'antigravity', 'kiro', 'kiro-ide',
+  'claude', 'codex', 'codex-app', 'opencode', 'antigravity', 'kiro', 'kiro-ide', 'hermes',
 ] as const;
 
 /** `observed:<key>:` for every key above — the form clients actually match. */
@@ -91,12 +91,14 @@ export function sessionTier(state: string | undefined): SessionTier {
 
 /**
  * Rank agent types for stable ordering.
- * openclaw=0 (always first), claude-code=1, codex-cli=2, codex-app=3,
- * opencode=4, antigravity=5, kiro-cli=6, kiro-ide=7, others=8.
+ * openclaw=0 and hermes=0 (the general-purpose assistants, always first),
+ * claude-code=1, codex-cli=2, codex-app=3, opencode=4, antigravity=5,
+ * kiro-cli=6, kiro-ide=7, others=8.
  */
 export function agentTypeRank(agentType: string | undefined): number {
   switch (agentType) {
     case 'openclaw': return 0;
+    case 'hermes': return 0;
     case 'claude-code': return 1;
     case 'codex-cli': return 2;
     case 'codex-app': return 3;

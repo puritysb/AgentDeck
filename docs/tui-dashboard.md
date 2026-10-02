@@ -41,6 +41,7 @@ Three responsive layouts: wide (120+), standard (80-119), narrow (60-79).
 - Jellyfish/Codex CLI: small 10×8→5×2, large 20×16→10×4, xlarge 30×24→15×6; 6-lobe cloud shape matching Codex icon, indigo #6366F1, glow #A5B4FC
 - OpenCode: single-color hollow vertical ring matching the canonical evenodd logo geometry; no nested inner square or shaded fill
 - Kiro (`kiro-cli` and `kiro-ide` share one sprite — one agent behind two front ends): ghost glyph `\U0001F47B`, letter key `K`, violet. The two ids are never split, and an agent the TUI does not know still gets a neutral fallback rather than another agent's sprite
+- Hermes (`hermes`, the opt-in observer): the session list shows Hermes CLI's own caduceus `\u2624` (letter key `H`) in white, the dark-screen form of the upstream Nous girl. The TUI aquarium draws no Hermes sprite, as it draws none for Kiro or Antigravity
 
 ### Crayfish ROUTING
 

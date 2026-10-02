@@ -675,6 +675,40 @@ describe('SessionSlotManager list-view usage tiles', () => {
     expect(plainTypes.filter((t) => t === 'usage')).toHaveLength(4);
   });
 
+  it('seats the purchased-credit balance ahead of the Luna reserve once a Codex window is exhausted', () => {
+    const credits = { hasCredits: true, unlimited: false, balance: '62500' };
+    const exhausted = { ...CODEX_LIMITS, secondary: { ...CODEX_LIMITS.secondary!, usedPercent: 100 }, credits };
+    const manager = new SessionSlotManager();
+    manager.updateUsage({ fiveHourPercent: 42, sevenDayPercent: 17, codexRateLimits: exhausted });
+    manager.updateSessions(fewSessions(3));
+    expect(manager.getSlotConfig(14, SD_CLASSIC_LAYOUT)).toMatchObject({
+      type: 'usage', usageLabel: 'CREDITS', usageAgent: 'codex',
+      usageCredits: { balance: 62500 },
+    });
+    const types = Array.from({ length: 15 }, (_, i) => manager.getSlotConfig(i, SD_CLASSIC_LAYOUT).type);
+    expect(types.filter((t) => t === 'usage')).toHaveLength(3);
+
+    // With a reserve too, both are keys: credits first, then LUNA.
+    const both = new SessionSlotManager();
+    both.updateUsage({ fiveHourPercent: 42, sevenDayPercent: 17, codexRateLimits: {
+      ...exhausted, lunaReserve: { usedPercent: 32, available: true },
+    } });
+    both.updateSessions(fewSessions(3));
+    expect(both.getSlotConfig(13, SD_CLASSIC_LAYOUT)).toMatchObject({ usageLabel: 'CREDITS' });
+    expect(both.getSlotConfig(14, SD_CLASSIC_LAYOUT)).toMatchObject({ usageLabel: 'LUNA' });
+
+    // A zero balance is not being spent: the exhausted window stays.
+    const broke = new SessionSlotManager();
+    broke.updateUsage({ fiveHourPercent: 42, sevenDayPercent: 17, codexRateLimits: {
+      ...exhausted, credits: { hasCredits: false, unlimited: false, balance: '0' },
+    } });
+    broke.updateSessions(fewSessions(3));
+    const labels = Array.from({ length: 15 }, (_, i) => broke.getSlotConfig(i, SD_CLASSIC_LAYOUT))
+      .filter((c) => c.type === 'usage').map((c) => c.usageLabel);
+    expect(labels).not.toContain('CREDITS');
+    expect(labels).toContain('7D');
+  });
+
   it('does NOT reserve usage on Stream Deck+ (encoder carries usage)', () => {
     const manager = new SessionSlotManager();
     manager.updateUsage({ fiveHourPercent: 42, sevenDayPercent: 17, codexRateLimits: CODEX_LIMITS });
@@ -939,17 +973,52 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
     expect(slots.some(s => s.type === 'usage-page')).toBe(false);
   });
 
-  it('pages only when the row overflows and recovers when the usage set shrinks', () => {
+  it('folds z.ai onto one key instead of paging when that makes the row fit', () => {
+    const manager = new SessionSlotManager();
+    manager.updateUsage({ fiveHourPercent: 22, sevenDayPercent: 46,
+      codexRateLimits: { primary: { usedPercent: 30, windowMinutes: 300 }, secondary: { usedPercent: 12, windowMinutes: 10080 } },
+      zaiRateLimits: { primary: { usedPercent: 36, windowMinutes: 300 }, secondary: { usedPercent: 42, windowMinutes: 1440, quantity: 'mcp' } },
+    });
+    // Six readings on a five-key row: z.ai 5H + MCP share the last key.
+    const row = [10, 11, 12, 13, 14].map((i) => manager.getSlotConfig(i, SD_CLASSIC_LAYOUT));
+    expect(row.some((s) => s.type === 'usage-page')).toBe(false);
+    expect(row.map((s) => s.usageAgent)).toEqual(['claude', 'claude', 'codex', 'codex', 'zai']);
+    expect(row[4]).toMatchObject({ usageZaiCycle: true });
+    expect(row[4].usageZai?.map((g) => g.label)).toEqual(['5H', 'MCP']);
+    // A press cycles both → 5H → MCP → both.
+    expect(manager.handleSlotPress(14, SD_CLASSIC_LAYOUT)).toMatchObject({ action: 'cycle-zai-mode' });
+    const shown = () => manager.getSlotConfig(14, SD_CLASSIC_LAYOUT).usageZai?.map((g) => g.label);
+    expect(manager.cycleZaiMode(SD_CLASSIC_LAYOUT)).toBe('first');
+    expect(shown()).toEqual(['5H']);
+    expect(manager.cycleZaiMode(SD_CLASSIC_LAYOUT)).toBe('second');
+    expect(shown()).toEqual(['MCP']);
+    expect(manager.cycleZaiMode(SD_CLASSIC_LAYOUT)).toBe('both');
+    expect(shown()).toEqual(['5H', 'MCP']);
+  });
+
+  it('keeps one z.ai window per key when the row has room', () => {
+    const manager = new SessionSlotManager();
+    manager.updateUsage({ fiveHourPercent: 22, sevenDayPercent: 46,
+      zaiRateLimits: { primary: { usedPercent: 36, windowMinutes: 300 }, secondary: { usedPercent: 42, windowMinutes: 1440, quantity: 'mcp' } },
+    });
+    const row = [11, 12, 13, 14].map((i) => manager.getSlotConfig(i, SD_CLASSIC_LAYOUT));
+    expect(row.map((s) => s.usageLabel)).toEqual(['5H', '7D', '5H', 'MCP']);
+    expect(row.some((s) => s.usageZaiCycle)).toBe(false);
+  });
+
+  it('pages only when the row still overflows after folding, and recovers when the usage set shrinks', () => {
+    // Stream Deck Neo: four keys per row, three of them free for usage.
+    const NEO: DeckLayout = { columns: 4, rows: 2, keyCount: 8, family: 'streamdeckneo' };
     const manager = new SessionSlotManager();
     manager.updateUsage({ fiveHourPercent: 22, sevenDayPercent: 46,
       codexRateLimits: { primary: { usedPercent: 30, windowMinutes: 300 }, secondary: { usedPercent: 12, windowMinutes: 10080 } },
       zaiRateLimits: { primary: { usedPercent: 36, windowMinutes: 300 }, secondary: { usedPercent: 42, windowMinutes: 10080 } },
     });
-    expect(manager.getSlotConfig(14, SD_CLASSIC_LAYOUT)).toMatchObject({ type: 'usage-page', label: '1/2' });
-    manager.cycleUsagePage(SD_CLASSIC_LAYOUT);
-    expect(manager.getSlotConfig(14, SD_CLASSIC_LAYOUT)).toMatchObject({ type: 'usage-page', label: '2/2' });
-    manager.updateUsage({ fiveHourPercent: 22, sevenDayPercent: 46, codexRateLimits: { primary: { usedPercent: 30, windowMinutes: 300 }, secondary: { usedPercent: 12, windowMinutes: 10080 } }, zaiRateLimits: {} });
-    expect(manager.getSlotConfig(11, SD_CLASSIC_LAYOUT)).toMatchObject({ type: 'usage', usageAgent: 'claude' });
+    expect(manager.getSlotConfig(7, NEO)).toMatchObject({ type: 'usage-page', label: '1/2' });
+    manager.cycleUsagePage(NEO);
+    expect(manager.getSlotConfig(7, NEO)).toMatchObject({ type: 'usage-page', label: '2/2' });
+    manager.updateUsage({ fiveHourPercent: 22, sevenDayPercent: 46, codexRateLimits: {}, zaiRateLimits: {} });
+    expect(manager.getSlotConfig(6, NEO)).toMatchObject({ type: 'usage', usageAgent: 'claude' });
   });
 
   it('shares the weekly key with Fable even when there is spare capacity', () => {

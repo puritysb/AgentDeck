@@ -8,6 +8,7 @@
  */
 
 import type { AgentType } from '../adapter.js';
+import { HERMES_BRAND_PATHS } from './hermes-brand.js';
 import { dimColor, agentBrandColor } from '../state-colors.js';
 
 // Claude Code creature = the rusty robot (design/brand/claudecode.svg): blocky
@@ -182,6 +183,7 @@ interface MonoGlyph {
   eyes?: Array<[number, number, number]>; // cx, cy, r in the 24-unit viewBox
 }
 const AGENT_MONO_GLYPH: Record<string, MonoGlyph> = {
+  hermes: { paths: [...HERMES_BRAND_PATHS] },
   'claude-code': { paths: [ROBOT_CREATURE_PATH] },
   'codex-cli': { paths: [CODEX_LOGO_PATH] },
   'codex-app': { paths: [CODEX_LOGO_PATH] },
@@ -234,6 +236,7 @@ export function agentLogoIcon(
   cy = size / 2 + 12
 ): string {
   const brandColor = agentBrandColor(agent);
+  if (agent === 'hermes') return HERMES_BRAND_PATHS.map(path => officialPathIcon(path, brandColor, size, opacity, cx, cy)).join('');
 
   if (agent === 'claude-code') {
     return robotCreatureIcon(brandColor, size, opacity, cx, cy);
@@ -267,6 +270,7 @@ export function agentLogoWatermark(
   const brandColor = agentBrandColor(agent);
   const markOpacity = Math.min(opacity * 4, 0.9);
   const fill = dimColor(brandColor, 0.5);
+  if (agent === 'hermes') return HERMES_BRAND_PATHS.map(path => officialPathIcon(path, fill, 72, markOpacity, 72, 72)).join('');
 
   if (agent === 'claude-code') {
     return robotCreatureIcon(fill, 72, markOpacity, 72, 72);

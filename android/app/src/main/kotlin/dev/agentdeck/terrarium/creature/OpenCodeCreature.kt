@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -17,6 +18,8 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.PathParser
 import dev.agentdeck.terrarium.CreatureGeometry
+import dev.agentdeck.terrarium.HermesMermaid2D
+import dev.agentdeck.ui.theme.DesignTokens
 import dev.agentdeck.terrarium.CreatureNameTagStyle
 import dev.agentdeck.terrarium.creatureNameTagMetric
 import dev.agentdeck.terrarium.resolveCreatureNameTagLayout
@@ -88,6 +91,7 @@ class OpenCodeCreature(
     }
 
     private fun isKiro(): Boolean = renderedAgentType == "kiro-cli" || renderedAgentType == "kiro-ide"
+    private fun isHermes(): Boolean = renderedAgentType == "hermes"
 
     /** Update home position -- creature lerps naturally (no teleport). */
     fun setHomePosition(x: Float, y: Float, scale: Float) {
@@ -229,7 +233,7 @@ class OpenCodeCreature(
         }
     }
 
-    /** Draw the canonical OpenCode ring or Kiro ghost. */
+    /** Draw the canonical OpenCode ring, Kiro ghost or Hermes Nous girl. */
     private fun drawBrandMark(
         scope: DrawScope,
         cx: Float, cy: Float,
@@ -237,9 +241,10 @@ class OpenCodeCreature(
         alpha: Float,
     ) {
         val kiro = isKiro()
-        val baseColor = if (kiro) KIRO_PURPLE else OUTER_FRAME
-        val brightColor = if (kiro) KIRO_BRIGHT else OUTER_BRIGHT
-        val dimColor = if (kiro) KIRO_DIM else OUTER_DIM
+        val hermes = isHermes()
+        val baseColor = if (kiro) KIRO_PURPLE else if (hermes) HERMES_WHITE else OUTER_FRAME
+        val brightColor = if (kiro) KIRO_BRIGHT else if (hermes) HERMES_BRIGHT else OUTER_BRIGHT
+        val dimColor = if (kiro) KIRO_DIM else if (hermes) HERMES_DIM else OUTER_DIM
         val frameColor = when (visualState) {
             OctopusVisualState.SLEEPING -> dimColor
             OctopusVisualState.WORKING -> {
@@ -249,21 +254,55 @@ class OpenCodeCreature(
             else -> baseColor
         }
 
-        val viewBox = if (kiro) CreatureGeometry.KIRO_VIEWBOX else CreatureGeometry.OPENCODE_VIEWBOX
-        val path = if (kiro) kiroPath else openCodePath
+        val viewBox = when {
+            kiro -> CreatureGeometry.KIRO_VIEWBOX
+            hermes -> CreatureGeometry.HERMES_VIEWBOX
+            else -> CreatureGeometry.OPENCODE_VIEWBOX
+        }
+        // Hermes is three separate evenodd paths, drawn one by one.
+        val paths = when {
+            kiro -> listOf(kiroPath)
+            hermes -> hermesPaths
+            else -> listOf(openCodePath)
+        }
         val pathScale = size / viewBox
+        if (hermes) {
+            // A mermaid, never a floating head: the generated kelp tail under
+            // the official Nous girl head, whose crop fades into the tail
+            // (scripts/generate-hermes-mermaid-2d.mjs). Head keeps the mark's
+            // scale; the sprite extends below it.
+            val headFade = Brush.verticalGradient(
+                (HermesMermaid2D.FADE_START / HermesMermaid2D.VIEW_H) to frameColor,
+                (HermesMermaid2D.FADE_END / HermesMermaid2D.VIEW_H) to frameColor.copy(alpha = 0f),
+                startY = 0f, endY = HermesMermaid2D.VIEW_H,
+            )
+            val dim = if (visualState == OctopusVisualState.SLEEPING) 0.55f else 1f
+            val flukeDx = if (visualState == OctopusVisualState.WORKING) sin(time * 6f) * 0.5f else 0f
+            scope.withTransform({
+                translate(cx - size / 2f, cy - size / 2f)
+                scale(pathScale, pathScale, pivot = Offset.Zero)
+            }) {
+                drawPath(hermesTail, color = DesignTokens.Kelp.s500, alpha = alpha * dim)
+                drawPath(hermesRim, color = DesignTokens.Kelp.s700, alpha = alpha * dim)
+                withTransform({ translate(flukeDx, 0f) }) {
+                    drawPath(hermesFluke, color = DesignTokens.Kelp.s300, alpha = alpha * dim)
+                }
+                for (path in paths) drawPath(path, brush = headFade, alpha = alpha)
+            }
+            return
+        }
         scope.withTransform({
             translate(cx - size / 2f, cy - size / 2f)
             scale(pathScale, pathScale, pivot = Offset.Zero)
         }) {
-            drawPath(path, color = frameColor, alpha = alpha)
+            for (path in paths) drawPath(path, color = frameColor, alpha = alpha)
         }
 
         // Working state: subtle outer glow
         if (visualState == OctopusVisualState.WORKING) {
             val glowAlpha = (sin(time * 2f) * 0.15f + 0.15f) * alpha
             scope.drawRect(
-                color = if (kiro) KIRO_PURPLE else GLOW_COLOR,
+                color = if (kiro) KIRO_PURPLE else if (hermes) HERMES_WHITE else GLOW_COLOR,
                 alpha = glowAlpha,
                 topLeft = Offset(cx - size * 0.34f - 2f, cy - size * 0.43f - 2f),
                 size = Size(size * 0.68f + 4f, size * 0.86f + 4f),
@@ -395,6 +434,12 @@ class OpenCodeCreature(
         private val kiroPath = PathParser().parsePathString(CreatureGeometry.KIRO_PATH_DATA).toPath().apply {
             fillType = PathFillType.EvenOdd
         }
+        private val hermesPaths = CreatureGeometry.HERMES_PATH_DATA.map { data ->
+            PathParser().parsePathString(data).toPath().apply { fillType = PathFillType.EvenOdd }
+        }
+        private val hermesTail = PathParser().parsePathString(HermesMermaid2D.TAIL).toPath()
+        private val hermesRim = PathParser().parsePathString(HermesMermaid2D.RIM).toPath()
+        private val hermesFluke = PathParser().parsePathString(HermesMermaid2D.FLUKE).toPath()
         // Body size as fraction of canvas width
         private const val BODY_SIZE_FRACTION = 0.064f
 
@@ -414,5 +459,9 @@ class OpenCodeCreature(
         private val KIRO_PURPLE = Color(0xFF7C3AED)
         private val KIRO_BRIGHT = Color(0xFFA78BFA)
         private val KIRO_DIM = Color(0xFF6D5A8A)
+        // Brand.hermesOnDark — the upstream white Nous girl.
+        private val HERMES_WHITE = Color(0xFFF2F2F2)
+        private val HERMES_BRIGHT = Color(0xFFFFFFFF)
+        private val HERMES_DIM = Color(0xFF8A8A8A)
     }
 }

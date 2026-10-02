@@ -11,6 +11,8 @@
 #include "../util/utf8.h"
 #include "config.h"
 #include <ArduinoJson.h>
+#include <cmath>
+#include <cstdlib>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -292,8 +294,28 @@ static void handleUsageUpdate(JsonObject& obj) {
     g_state.codexSecondaryReset[0] = '\0';
     g_state.codexLunaPercent = -1;
     g_state.codexLunaReset[0] = '\0';
+    g_state.codexCreditBalance = -1;
     if (obj["codexRateLimits"].is<JsonObject>()) {
         JsonObject cx = obj["codexRateLimits"].as<JsonObject>();
+        // Purchased credits. Codex reports the balance as a string ("62500");
+        // accept a number too. strtod on the JSON-owned buffer — no allocation.
+        if (cx["credits"].is<JsonObject>()) {
+            JsonObject cr = cx["credits"].as<JsonObject>();
+            if (cr["unlimited"].as<bool>()) {
+                g_state.codexCreditBalance = INFINITY;
+            } else if (cr["hasCredits"].is<bool>() && !cr["hasCredits"].as<bool>()) {
+                g_state.codexCreditBalance = 0;
+            } else if (cr["balance"].is<const char*>()) {
+                const char* text = cr["balance"].as<const char*>();
+                char* end = nullptr;
+                const double v = text ? strtod(text, &end) : 0;
+                if (text && end != text) while (*end == ' ' || *end == '\t') ++end;
+                if (text && end != text && *end == '\0' && std::isfinite(v)) g_state.codexCreditBalance = v;
+            } else if (cr["balance"].is<double>()) {
+                const double v = cr["balance"].as<double>();
+                if (std::isfinite(v)) g_state.codexCreditBalance = v;
+            }
+        }
         JsonObject luna = cx["lunaReserve"];
         if (luna["usedPercent"].is<float>() && !luna["stale"].as<bool>()) {
             g_state.codexLunaPercent = luna["usedPercent"].as<float>();
@@ -426,6 +448,7 @@ static void handleSessionsList(JsonObject& obj) {
     g_state.opencodeCount = 0;
     g_state.antigravityCount = 0;
     g_state.kiroCount = 0;
+    g_state.hermesCount = 0;
     g_state.crayfishCount = 0;
 
     for (uint8_t i = 0; i < g_state.sessionCount; i++) {
@@ -527,6 +550,8 @@ static void handleSessionsList(JsonObject& obj) {
                 // kiro-cli and kiro-ide share one creature: they are the same
                 // agent seen through two front ends.
                 g_state.kiroCount++;
+            } else if (strcmp(g_state.sessions[i].agentType, "hermes") == 0) {
+                g_state.hermesCount++;
             } else if (strcmp(g_state.sessions[i].agentType, "claude-code") == 0) {
                 g_state.octopusCount++;
             }
@@ -732,6 +757,48 @@ static void handleSessionsList(JsonObject& obj) {
         }
     }
     }  // MAX_KIRO > 0
+
+#if !defined(BOARD_TTGO)  // no hermesNames on TTGO (see agent_state.h)
+    // Populate hermesNames for hermes creature name tags (same dedup logic)
+    if (MAX_HERMES > 0) {
+    char hermesRawNames[MAX_HERMES > 0 ? MAX_HERMES : 1][24];
+    uint8_t hermesNameIdx = 0;
+    for (uint8_t i = 0; i < g_state.sessionCount && hermesNameIdx < MAX_HERMES; i++) {
+        if (g_state.sessions[i].alive &&
+            strcmp(g_state.sessions[i].agentType, "hermes") == 0) {
+            const char* name = sessionDisplayName(g_state.sessions[i]);
+            if (name[0]) {
+                strncpy(hermesRawNames[hermesNameIdx], name, sizeof(hermesRawNames[hermesNameIdx]) - 1);
+                hermesRawNames[hermesNameIdx][sizeof(hermesRawNames[hermesNameIdx]) - 1] = '\0';
+            } else {
+                snprintf(hermesRawNames[hermesNameIdx], sizeof(hermesRawNames[hermesNameIdx]), "Hermes %d", hermesNameIdx + 1);
+            }
+            hermesNameIdx++;
+        }
+    }
+    for (uint8_t i = 0; i < hermesNameIdx; i++) {
+        bool hasDup = false;
+        for (uint8_t j = 0; j < hermesNameIdx; j++) {
+            if (j != i && strcmp(hermesRawNames[i], hermesRawNames[j]) == 0) {
+                hasDup = true;
+                break;
+            }
+        }
+        if (hasDup) {
+            uint8_t occurrence = 1;
+            for (uint8_t j = 0; j < i; j++) {
+                if (strcmp(hermesRawNames[i], hermesRawNames[j]) == 0) occurrence++;
+            }
+            snprintf(g_state.hermesNames[i], sizeof(g_state.hermesNames[i]),
+                     "%s #%d", hermesRawNames[i], occurrence);
+        } else {
+            strncpy(g_state.hermesNames[i], hermesRawNames[i],
+                    sizeof(g_state.hermesNames[i]) - 1);
+            g_state.hermesNames[i][sizeof(g_state.hermesNames[i]) - 1] = '\0';
+        }
+    }
+    }  // MAX_HERMES > 0
+#endif
 
     // No OpenClaw sessions: gate crayfish on authentication, not reachability.
     if (g_state.crayfishCount == 0) {

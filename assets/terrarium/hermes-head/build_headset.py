@@ -1,0 +1,154 @@
+"""The white headset band + clasp, laid on the hair.
+
+  blender --background <blend> --python build_headset.py -- <out.blend>
+
+Measured from the head-study sheet (white pixels, 2026-10-01): the band crosses
+the crown just behind the fringe (top ~ (0, -0.3, 4.35)), runs down her LEFT
+side to the clasp at ~ (1.7, 0.35, 2.85), and on her RIGHT it disappears under
+the hair below z ~3.85 (earcups hidden). In profile it leans forward ~24 deg.
+The centreline is the intersection of that plane with the outer hair surface;
+thickness is along the surface normal.
+"""
+import math, os, sys
+import bpy, bmesh
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
+
+OUT = sys.argv[sys.argv.index("--") + 1]
+A = Vector((-1.85, -0.55, 2.80))    # her right end (hidden)
+B = Vector((1.85, -0.55, 2.80))     # her left end: the clasp, at the side-front above the fringe corner (master; front sheet x ~1.85 at z 2.8)
+C = Vector((0.0, -0.95, 4.15))      # crown, just behind the fringe; forward so the band arches over the front of the dome as in the master (4.15 with E70's raised crown; was 3.85)
+WIDTH, THICK, LIFT = 0.46, 0.09, 0.10   # master: a firm band (0.78 read as a plank once it sat forward)   # profile sheet: band ~0.45 wide; lift clears the facet jitter (+-0.05)
+HIDE_BELOW_Z = 3.85                 # her right side dives under the hair from here
+N = 64
+
+X = (B - A).normalized()
+U = (C - (A + B) / 2); U = (U - X * U.dot(X)).normalized()
+O = (A + B) / 2 + U * 0.5
+PN = X.cross(U).normalized()        # plane normal
+
+dg = bpy.context.evaluated_depsgraph_get()
+# lay the band on the outermost hair: the lock planes when present
+src = bpy.data.objects.get("hermes_hair_planes") or bpy.data.objects["hermes_hair_cage"]
+ev = src.evaluated_get(dg)
+bmh = bmesh.new(); bmh.from_mesh(ev.to_mesh())
+HAIR = BVHTree.FromBMesh(bmh)
+
+
+def ang(p):
+    d = p - O
+    return math.atan2(d.dot(U), d.dot(X))
+
+
+a0, a1 = ang(B), ang(A)
+if a1 < a0:
+    a1 += 2 * math.pi
+pts, nors = [], []
+for i in range(N + 1):
+    a = a0 + (a1 - a0) * i / N
+    d = X * math.cos(a) + U * math.sin(a)
+    loc, nor, _, _ = HAIR.ray_cast(O + d * 8.0, -d)
+    if loc is None:
+        continue
+    # both ends sit on the hair (2026-10-02): her right end used to dive under
+    # it, which read as the band sunk into her head
+    pts.append(loc + nor * LIFT)
+    nors.append(nor)
+
+
+# A rigid band: smooth the centreline over the faceted lock planes, then make
+# every sample clear the hair by at least the lift (faceted ridges otherwise
+# dent it into a jagged strip, 2026-10-01).
+for _ in range(12):
+    pts = [pts[0]] + [(pts[i - 1] + pts[i] * 2 + pts[i + 1]) / 4 for i in range(1, len(pts) - 1)] + [pts[-1]]
+    nors = [nors[0]] + [(nors[i - 1] + nors[i] * 2 + nors[i + 1]).normalized() for i in range(1, len(nors) - 1)] + [nors[-1]]
+for i, (p, n) in enumerate(zip(pts, nors)):
+    loc, hn, _, _ = HAIR.ray_cast(p + n * 1.0, -n)
+    if loc is not None and (p - loc).dot(n) < 0.09:
+        pts[i] = loc + n * 0.09
+
+
+def material(name, rgb, rough=0.55):
+    m = bpy.data.materials.new(name)
+    m.diffuse_color = (*rgb, 1)
+    m.use_nodes = True
+    p = m.node_tree.nodes["Principled BSDF"]
+    p.inputs["Base Color"].default_value = (*rgb, 1)
+    p.inputs["Roughness"].default_value = rough
+    return m
+
+
+# a cool white: skin-mask scoring keys on warm light pixels (R-B > 5), so the
+# headset must not read as face in the fits
+WHITE = material("headset_white", (0.82, 0.84, 0.88))
+DOT = material("headset_dot", (0.02, 0.02, 0.025))
+
+bm = bmesh.new()
+rings = []
+for i, (p, n) in enumerate(zip(pts, nors)):
+    t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+    w = t.cross(n).normalized()
+    hw, ht = WIDTH / 2, THICK / 2
+    rings.append([bm.verts.new(p + w * sx * hw + n * sy * ht) for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1))])
+for r0, r1 in zip(rings, rings[1:]):
+    for k in range(4):
+        bm.faces.new((r0[k], r0[(k + 1) % 4], r1[(k + 1) % 4], r1[k]))
+bm.faces.new(rings[0]); bm.faces.new(list(reversed(rings[-1])))
+bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+me = bpy.data.meshes.new("hermes_headset_band"); bm.to_mesh(me); bm.free()
+band = bpy.data.objects.new("hermes_headset_band", me)
+bpy.context.scene.collection.objects.link(band)
+band.data.materials.append(WHITE)
+# (no bevel modifier, 2026-10-02: its 0.02-wide strips over ~0.11-long band
+# segments made sliver triangles, which RealityKit shaded as lines of black
+# NaN pixels; the concept's band is a crisp ribbon anyway)
+
+def disc(name, center, normal, r, h, mat, seg=20):
+    bm = bmesh.new()
+    ax = normal.normalized()
+    u = ax.orthogonal().normalized(); v = ax.cross(u)
+    top = [bm.verts.new(center + ax * h / 2 + (u * math.cos(2 * math.pi * k / seg) + v * math.sin(2 * math.pi * k / seg)) * r) for k in range(seg)]
+    bot = [bm.verts.new(center - ax * h / 2 + (u * math.cos(2 * math.pi * k / seg) + v * math.sin(2 * math.pi * k / seg)) * r) for k in range(seg)]
+    bm.faces.new(top); bm.faces.new(list(reversed(bot)))
+    for k in range(seg):
+        bm.faces.new((top[k], bot[k], bot[(k + 1) % seg], top[(k + 1) % seg]))
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new(name, me); bpy.context.scene.collection.objects.link(ob)
+    ob.data.materials.append(mat)
+    return ob
+
+
+def clasp(end, en, inward, suffix=""):
+    """A round end with a black dot and two short tails curling down and apart."""
+    tdir = inward.normalized()                  # along the band, toward the crown
+    down = -tdir
+    side = tdir.cross(en).normalized()
+    cc = end + en * 0.05 + down * 0.02
+    disc("hermes_headset_clasp" + suffix, cc, en, 0.14, 0.07, WHITE)   # master: a small round end
+    disc("hermes_headset_dot" + suffix, cc + en * 0.04, en, 0.045, 0.02, DOT)
+    for sgn in (-1, 1):
+        bm = bmesh.new()
+        path = [cc + down * 0.08 + side * sgn * 0.02 + en * 0.01,
+                cc + down * 0.14 + side * sgn * 0.06 + en * 0.02,
+                cc + down * 0.17 + side * sgn * 0.11 + en * 0.02]
+        rr = []
+        for i, p in enumerate(path):
+            w = 0.05 * (1 - i / len(path))
+            rr.append([bm.verts.new(p + side * dx + en * dy) for dx, dy in ((w, 0.02), (-w, 0.02), (-w, -0.02), (w, -0.02))])
+        for r0, r1 in zip(rr, rr[1:]):
+            for k in range(4):
+                bm.faces.new((r0[k], r0[(k + 1) % 4], r1[(k + 1) % 4], r1[k]))
+        bm.faces.new(rr[0]); bm.faces.new(list(reversed(rr[-1])))
+        bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+        me = bpy.data.meshes.new(f"hermes_headset_hook_{sgn}{suffix}"); bm.to_mesh(me); bm.free()
+        ob = bpy.data.objects.new(f"hermes_headset_hook_{'a' if sgn < 0 else 'b'}{suffix}", me)
+        bpy.context.scene.collection.objects.link(ob); ob.data.materials.append(WHITE)
+
+
+# her left end (the master's visible clasp) and, since the band no longer
+# tucks under the hair, a matching one at her right end
+clasp(pts[0], nors[0], pts[1] - pts[0])
+clasp(pts[-1], nors[-1], pts[-2] - pts[-1], "_r")
+bpy.ops.wm.save_as_mainfile(filepath=OUT)
+print("headset", len(pts), "band samples")

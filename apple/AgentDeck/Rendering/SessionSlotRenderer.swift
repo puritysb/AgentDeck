@@ -33,7 +33,7 @@
 // and taught `renderDetailInfo` to draw the pending prompt, and both live
 // outside this mirror's declared scope below. Recorded so the next reader does
 // not hunt for a missing port — the pin tracks the whole file, not the subset.
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 295bdd4d805932d0b151704602371cb5dbfba4b2
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts e6416330835b9f94cf83535e5691395b5e28422c
 //
 // Scope for this first pass:
 //   - renderSessionSlot (primary session button)
@@ -84,6 +84,8 @@ private struct AgentSlotPalette {
             return .init(primary: Color(hex: "#F1ECEC"), secondary: Color(hex: "#AFAFAF"))
         case "antigravity":
             return .init(primary: Color(hex: "#9AA0A6"), secondary: Color(hex: "#5F6368"))
+        case "hermes":
+            return .init(primary: Color(hex: "#FFFFFF"), secondary: Color(hex: "#9A9A9A"))
         default:
             // Unknown agent — a neutral slate, not OpenCode's cream. The
             // daemon can name an agent this build has never seen, and it

@@ -17,7 +17,9 @@
   "bugs": "https://github.com/puritysb/AgentDeck/issues",
   "files": [
     "dist",
-    "!dist/__tests__"
+    "!dist/__tests__",
+    "hermes-agentdeck",
+    "!hermes-agentdeck/__pycache__"
   ],
   "main": "dist/install.js",
   "types": "dist/install.d.ts",

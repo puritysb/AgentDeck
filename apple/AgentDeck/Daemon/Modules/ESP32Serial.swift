@@ -202,6 +202,30 @@ actor ESP32Serial {
         return (effective, released)
     }
 
+    /// Ports deliberately kept closed for one board, by port → expiry. A board
+    /// driven over USB parks its WiFi radio; a WiFi OTA closes only that
+    /// board's port so it rejoins WiFi (Node: holdESP32SerialBoard). In
+    /// memory: a daemon restart drops every hold.
+    private var boardHoldUntil: [String: Date] = [:]
+
+    /// Close the serial port carrying `board` and keep it closed for
+    /// `seconds`. Returns the held port, or nil when no connection carries it.
+    func holdBoard(_ board: String, seconds: TimeInterval, reason: String) -> String? {
+        guard let idx = connections.firstIndex(where: { $0.deviceInfo?.board == board }) else { return nil }
+        let conn = connections.remove(at: idx)
+        boardHoldUntil[conn.port] = Date().addingTimeInterval(seconds)
+        conn.readToken.invalidate()
+        try? conn.writeHandle?.close()
+        DaemonLogger.shared.info("ESP32 holding serial port \(conn.port) (\(board)) closed for \(Int(seconds))s: \(reason)")
+        publishStatusShadow()
+        return conn.port
+    }
+
+    /// End a hold early; the next poll reopens the port if it is still present.
+    func releaseHold(port: String) {
+        boardHoldUntil.removeValue(forKey: port)
+    }
+
     /// Idempotent by contract: resuming when nothing is suspended is a
     /// success (the CLI calls this from a `finally`).
     func resumeSerial() -> Bool {
@@ -631,11 +655,13 @@ actor ESP32Serial {
             failedPorts = failedPorts.filter { detected.contains($0.key) }
         }
         let now = Date()
+        boardHoldUntil = boardHoldUntil.filter { $0.value > now }
         publishStatusShadow()
 
         for port in ports {
             // Skip if already connected
             if connections.contains(where: { $0.port == port }) { continue }
+            if boardHoldUntil[port] != nil { continue }
             if openingPorts[port] != nil { continue }
 
             // Check failure blocklist. openFailureBackoff() is the single,

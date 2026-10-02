@@ -52,6 +52,7 @@ All surfaces follow the same rule:
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
+| Hermes mermaid aquarium resident | Yes | Yes | Bundled Blender-authored Nous girl-inspired mermaid; observed Hermes sessions drive working/waiting poses. Bounded 3D swimming, skinned body/tail/fin and arm joints, independently controlled gaze/lids/brows/mouth, and cosmetic neighbour greetings; no inferred delegation or new controls. Observation currently comes from the Hermes-capable Node receiver. Reduced Motion freezes movement. |
 | Optional native 3D aquarium | Yes | Yes | Device-local dashboard type; bundled Blender-authored habitat and canonical extruded agent meshes. RealityKit live session reconciliation, status labels and existing focus commands; standard dashboard retained. No runtime Blender or external model download. |
 | macOS dashboard and in-process daemon | Yes | — | Standalone Tier 1 product |
 | Experimental macOS collaboration lens | Yes | Yes | Opt-in Dashboard right rail; preserves Habitat, roster, timeline and existing controls. Reads the selected session's canonical task sample through existing local APME GET routes. Child branches require typed subagent evidence; live census is separate from historical starts/stops. No inferred project/team links, progress percentage or new steering commands. Missing/older endpoints degrade to roster + census. Read status and manual retry remain visible above the history; ended observations are collapsible and every capped list expands. Confirmed peer rows use the existing session-focus command, with back navigation and attention-first current-state shortcuts. A session can inspect its latest eight tasks and pin a historical task across refreshes; titles and summaries are separate. Live census details and ended observations are collapsible. |
@@ -132,6 +133,7 @@ hooks. An absent event during inactivity is not evidence of broken integration.
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
+| Hermes observer monitoring (preview) | Relay only | Yes | Opt-in Python observer runs inside Hermes and posts `hermes_*` hooks to a receiver advertising `hermesObserver: 1`. Both daemons ingest them (Node `HermesSessions`; Swift `HermesObserverGate` + `handleHermesHook`, with the same admission rules and process-exit close). The observer finds its receiver through `~/.agentdeck/daemon.json`, which the sandboxed App Store daemon does not write, so an App Store install receives Hermes only through a relaying Node daemon; unsigned/dev builds receive it directly. Rows are read-only (`controlMode: observed`): no device approvals, prompt injection or voice target. No App Store subprocess or installer. |
 | Claude Code hook monitoring | Yes | Yes | Local HTTP hook ingestion |
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
 | Existing terminal-session discovery | Limited | Yes | General `ps` / `lsof` / transcript discovery is CLI-only |

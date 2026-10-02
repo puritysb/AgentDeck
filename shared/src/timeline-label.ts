@@ -22,6 +22,7 @@ import type { TimelineEntry } from './timeline.js';
 export function agentDisplayLabel(agentType: string | undefined | null): string {
   switch (agentType) {
     case 'claude-code': return 'Claude';
+    case 'hermes':      return 'Hermes';
     case 'openclaw':    return 'OpenClaw';
     case 'codex-cli':   return 'Codex CLI';
     case 'codex-app':   return 'Codex App';

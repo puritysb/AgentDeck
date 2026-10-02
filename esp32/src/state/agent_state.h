@@ -72,7 +72,11 @@ constexpr uint8_t SESSION_OPTIONS_CAP = 6;
 // its repo. OpenClaw is identified by agent type; Hermes-style assistants run
 // under a normal agent CLI, so they are recognized by project name prefix
 // (case-insensitive "hermes").
+// An OBSERVED Hermes Agent row (agentType "hermes") is never a target: it is a
+// read-only observer with no prompt route, and its project label ("Hermes
+// (cli)") would otherwise match the name prefix and swallow the dictation.
 inline bool isGeneralAssistantSession(const char* agentType, const char* projectName) {
+    if (agentType && strcmp(agentType, "hermes") == 0) return false;
     if (agentType && strcmp(agentType, "openclaw") == 0) return true;
     if (projectName) {
         const char* h = "hermes";
@@ -204,6 +208,11 @@ struct DashboardState {
     // UsagePresentation::lunaActive owns that rule. -1 = absent.
     float codexLunaPercent = -1;
     char codexLunaReset[20] = {};
+    // Purchased-credit balance (usage_update codexRateLimits.credits). Shown
+    // only while an account window is exhausted and a balance remains —
+    // UsagePresentation::creditsActive owns that rule. -1 = absent or
+    // unparseable, 0 = hasCredits:false, INFINITY = unlimited.
+    double codexCreditBalance = -1;
     // z.ai GLM Coding Plan limits (#350) — a direct provider-account reading,
     // same slot grammar. The secondary window may meter MCP TOOL CALLS, not
     // tokens: `zaiSecondaryIsMcp` rides the wire `quantity` and renderers must
@@ -249,6 +258,7 @@ struct DashboardState {
     uint8_t opencodeCount;  // derived: opencode sessions alive
     uint8_t antigravityCount; // derived: antigravity sessions alive
     uint8_t kiroCount;      // derived: kiro-cli/kiro-ide sessions alive
+    uint8_t hermesCount;    // derived: hermes (observed Hermes Agent) sessions alive
     uint8_t crayfishCount;  // derived: openclaw sessions alive
     bool sessionClearPending;       // empty sessions_list debounce in progress
     uint32_t sessionClearPendingMs; // millis() when the empty list first arrived
@@ -259,6 +269,11 @@ struct DashboardState {
     char opencodeNames[10][24]; // display names for opencode instances
     char antigravityNames[10][24]; // display names for antigravity instances
     char kiroNames[10][24]; // display names for kiro instances
+#if !defined(BOARD_TTGO)
+    // TTGO draws no creature name tags, and its DRAM has no 96 bytes to spare
+    // (the Hermes rollout overflowed dram0_0_seg by 88 bytes with this array).
+    char hermesNames[4][24]; // display names for hermes instances (MAX_HERMES <= 4)
+#endif
 
     // Crayfish state (derived from sibling)
     CrayfishState crayfishState;
@@ -338,7 +353,7 @@ struct DashboardState {
         codexSecondaryPercent = -1.0f;
         codexPrimaryReset[0] = '\0';
         codexSecondaryReset[0] = '\0';
-        codexLunaPercent = -1; codexLunaReset[0] = '\0';
+        codexLunaPercent = -1; codexLunaReset[0] = '\0'; codexCreditBalance = -1;
         zaiPrimaryPercent = -1.0f;
         zaiSecondaryPercent = -1.0f;
         zaiPrimaryReset[0] = '\0';
@@ -382,7 +397,7 @@ struct DashboardState {
         codexSecondaryPercent = -1.0f;
         codexPrimaryReset[0] = '\0';
         codexSecondaryReset[0] = '\0';
-        codexLunaPercent = -1; codexLunaReset[0] = '\0';
+        codexLunaPercent = -1; codexLunaReset[0] = '\0'; codexCreditBalance = -1;
         zaiPrimaryPercent = -1.0f;
         zaiSecondaryPercent = -1.0f;
         zaiPrimaryReset[0] = '\0';
@@ -409,6 +424,7 @@ struct DashboardState {
         opencodeCount = 0;
         antigravityCount = 0;
         kiroCount = 0;
+        hermesCount = 0;
         crayfishCount = 0;
         memset(sessions, 0, sizeof(sessions));
         memset(sessionNames, 0, sizeof(sessionNames));
@@ -416,6 +432,9 @@ struct DashboardState {
         memset(opencodeNames, 0, sizeof(opencodeNames));
         memset(antigravityNames, 0, sizeof(antigravityNames));
         memset(kiroNames, 0, sizeof(kiroNames));
+#if !defined(BOARD_TTGO)
+        memset(hermesNames, 0, sizeof(hermesNames));
+#endif
         updateCreatureStates();
     }
 

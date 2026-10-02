@@ -43,6 +43,34 @@ final class GatewayLiveActivityTests: XCTestCase {
         XCTAssertFalse(live.busy)
     }
 
+    // Mirror of the TS fold test: one row for all tool calls of a run,
+    // updated in place, so a config walk cannot bury the prompt and reply.
+    func testToolCallsOfARunFoldIntoOneRow() {
+        var live = GatewayLiveActivity()
+        let key = "agent:main:test"
+        _ = live.ingest("session.message", ["sessionKey": key, "runId": "a", "message": ["role": "user", "content": "tone it down"]], now: 1)
+        func call(_ id: String, _ path: String, _ ts: Double, failed: Bool = false) -> [GatewayLiveUpdate] {
+            _ = live.ingest("session.tool", ["sessionKey": key, "runId": "a", "stream": "tool",
+                "data": ["phase": "start", "name": "openclaw", "toolCallId": id, "args": ["path": path]]], now: ts)
+            var data: [String: Any] = ["phase": "result", "name": "openclaw", "toolCallId": id]
+            if failed { data["isError"] = true }
+            return live.ingest("session.tool", ["sessionKey": key, "runId": "a", "stream": "tool", "data": data], now: ts + 1)
+        }
+        let first = call("1", "channels", 10)
+        XCTAssertEqual(first.count, 1)
+        XCTAssertFalse(first[0].upsert)
+        XCTAssertEqual(first[0].entry.raw, "openclaw · channels")
+        let second = call("2", "agents.main", 20)
+        XCTAssertTrue(second[0].upsert)
+        XCTAssertEqual(second[0].entry.ts, first[0].entry.ts)
+        _ = call("3", "messages.groupChat", 30)
+        let fourth = call("4", ".", 40, failed: true)
+        XCTAssertEqual(fourth[0].entry.raw, "openclaw ×4 · channels, agents.main, messages.groupChat, … · 1 failed")
+        XCTAssertEqual(fourth[0].entry.detail?.components(separatedBy: "\n").count, 4)
+        XCTAssertEqual(GatewayLiveActivity.toolFoldRaw(["exec · a", "read · b", "exec · c", "openclaw · d · failed"]),
+                       "4 tools · exec ×2, read, openclaw · 1 failed")
+    }
+
     func testConcurrentRunsAndLateToolResults() {
         var live = GatewayLiveActivity()
         let key = "agent:main:test"

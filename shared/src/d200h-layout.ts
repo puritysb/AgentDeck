@@ -1,6 +1,9 @@
 import { claudeWeeklyReadings, type ClaudeWeeklyMode } from './claude-weekly-view.js';
+import { zaiPairReadings, type ZaiPairMode } from './zai-pair-view.js';
 import { usageColor } from './usage-severity.js';
-import { selectedLunaReserve } from './usage-presentation.js';
+import { selectedLunaReserve, selectedCodexCredits, formatCreditBalance } from './usage-presentation.js';
+import type { SelectedCodexCredits } from './usage-presentation.js';
+import { remainingPercentSvgText, creditCoinSvg } from './svg-renderers/usage-reserve-marks.js';
 /**
  * D200H / deck layout engine used by the Ulanzi Studio plugin
  * (plugin-ulanzi) and Apple device previews. Given the current agent state it
@@ -286,8 +289,31 @@ export function renderLunaReserveTile(reserve: CodexLunaReserve): string {
     + `<g transform="translate(117,4) scale(0.75) translate(0,0)"><path d="${CODEX_LOGO_PATH}" fill="${Brand.codex}" fill-rule="evenodd"/></g>`
     + `<circle cx="72" cy="57" r="29" fill="${moon}"/>`
     + `<circle cx="60" cy="51" r="29" fill="${BG}"/>`
-    + `<text x="72" y="103" text-anchor="middle" font-family="Arial,sans-serif" font-size="27" font-weight="bold" fill="${usageColor(used)}">${active ? `${remaining}% LEFT` : 'EMPTY'}</text>`
+    + (active
+      ? remainingPercentSvgText({ x: 72, y: 103, size: 27, fill: usageColor(used), remaining })
+      : `<text x="72" y="103" text-anchor="middle" font-family="Arial,sans-serif" font-size="27" font-weight="bold" fill="${usageColor(used)}">EMPTY</text>`)
     + `<text x="72" y="121" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" font-weight="bold" fill="${DIM}">LUNA RESERVE</text>`
+    + (reset ? `<text x="72" y="138" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="${DIM}">RESET IN ${escXml(reset)}</text>` : '')
+    + `</svg>`;
+}
+
+/**
+ * Purchased-credit tile used in place of the Codex gauges once a plan window
+ * is exhausted and a balance remains (`selectedCodexCredits`). A balance is a
+ * count with no cap, so no severity ramp and no fill; the reset line says when
+ * the plan window returns and credits stop being spent.
+ */
+export function renderCodexCreditsTile(credits: SelectedCodexCredits): string {
+  const W = 144, H = 144, BG = UI.popupBgDeep, DIM = UI.idleDark;
+  const reset = formatResetCountdown(credits.regularResetsAt);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
+    + `<rect width="${W}" height="${H}" rx="12" fill="${BG}"/>`
+    + `<text x="12" y="17" font-family="JetBrains Mono, monospace" font-size="11" font-weight="bold" fill="${Tide.s50}">CODEX</text>`
+    + `<circle cx="126" cy="13" r="9" fill="${UI.popupBgMid}" opacity="0.8"/>`
+    + `<g transform="translate(117,4) scale(0.75) translate(0,0)"><path d="${CODEX_LOGO_PATH}" fill="${Brand.codex}" fill-rule="evenodd"/></g>`
+    + creditCoinSvg(72, 57, 26, UI.attn, BG)
+    + `<text x="72" y="104" text-anchor="middle" font-family="Arial,sans-serif" font-size="29" font-weight="bold" fill="${Tide.s50}">${escXml(formatCreditBalance(credits.balance))}</text>`
+    + `<text x="72" y="121" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" font-weight="bold" fill="${Tide.s50}">CREDITS LEFT</text>`
     + (reset ? `<text x="72" y="138" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="${DIM}">RESET IN ${escXml(reset)}</text>` : '')
     + `</svg>`;
 }
@@ -516,7 +542,7 @@ export function renderCreditsTile(data: { limitId?: string; balance?: string; un
  * button space hosts usage efficiently, one window per key instead of
  * compacted pairs).
  */
-function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.length, weeklyMode: ClaudeWeeklyMode = 'both'): SessionDeckCell[] {
+function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.length, weeklyMode: ClaudeWeeklyMode = 'both', zaiMode: ZaiPairMode = 'both'): SessionDeckCell[] {
   const action: DeckAction = { kind: 'command', command: { type: 'query_usage' } };
   const known = state.usageKnown !== false;
   const claudeWindows: UsageTankData[] = [];
@@ -530,13 +556,20 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   // key; the SD+ encoder can zoom into additional scoped caps separately.
   const cx = state.codexRateLimits;
   const luna = selectedLunaReserve(cx);
-  const lunaTile: SessionDeckCell | undefined = luna
+  // Purchased credits being spent once a plan window is exhausted. Like the
+  // Luna reserve it replaces the Codex windows; when both are live they are
+  // separate keys, and the reserve is the one that yields if the strip is full.
+  const spending = selectedCodexCredits(cx);
+  const spendingTile: SessionDeckCell | undefined = spending
+    ? { svg: renderCodexCreditsTile(spending), action }
+    : undefined;
+  let lunaTile: SessionDeckCell | undefined = luna
     ? { svg: renderLunaReserveTile(luna), action }
     : undefined;
   const allCodexWindows = [cx?.primary, cx?.secondary].filter((w): w is CodexRateLimitWindow => w != null);
   const worstScoped = known ? state.scopedLimits?.[0] : undefined;
   const scopedClaims = scopedLimitClaimsUsageKey(worstScoped, allCodexWindows.length);
-  const codexWindows = luna ? [] : codexWindowsBeside(allCodexWindows, scopedClaims);
+  const codexWindows = luna || spending ? [] : codexWindowsBeside(allCodexWindows, scopedClaims);
   // Keep the cap as data so every mode uses the same renderer and severity.
   const scopedTank: UsageTankData | undefined = scopedClaims && worstScoped
     ? {
@@ -586,11 +619,19 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
     ? { svg: renderCreditsTile({ limitId: cx.limitId, balance: cx.credits?.balance, unlimited: cx.credits?.unlimited }), action }
     : undefined;
   const pairedWeekly = scopedTank != null && claudeWindows.some(w => w.window === '7d');
-  const logicalCount = claudeWindows.length + codexWindowData.length + zaiWindowData.length
-    + (scopedTank ? 1 : 0) - (pairedWeekly ? 1 : 0) + (creditsTile ? 1 : 0) + (lunaTile ? 1 : 0);
+  const baseCount = claudeWindows.length + codexWindowData.length + zaiWindowData.length
+    + (scopedTank ? 1 : 0) - (pairedWeekly ? 1 : 0) + (creditsTile ? 1 : 0) + (spendingTile ? 1 : 0);
+  // Credits outrank the reserve: they are what the account is spending.
+  if (spendingTile && lunaTile && baseCount + 1 > budget) lunaTile = undefined;
+  const logicalCount = baseCount + (lunaTile ? 1 : 0);
   const compactCodex = logicalCount > budget && codexWindowData.length === 2;
   const afterCodex = logicalCount - (compactCodex ? 1 : 0);
-  const stillOverflows = afterCodex > budget;
+  // z.ai folds next, ahead of Claude: Claude's 5H is the reading a user
+  // glances at mid-session, while z.ai's 5H and MCP quota read fine on one
+  // key whose press cycles both → 5H → MCP (like the weekly key below).
+  const compactZai = afterCodex > budget && zaiWindowData.length === 2;
+  const afterZai = afterCodex - (compactZai ? 1 : 0);
+  const stillOverflows = afterZai > budget;
   // Weekly readings always share one key. 5H is the
   // window that actually moves during a session — it is the reading a user
   // glances at — while 7D and the per-model weekly cap are both weekly and are
@@ -601,12 +642,11 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   // Third step of the same cascade: with all three providers live the strip is
   // 6 logical readings on 3 keys, and every provider compacts to one pair tile
   // — nothing is dropped, each key keeps one provider's two windows.
-  const afterClaude = afterCodex - (compactClaude ? 1 : 0);
-  const compactZai = afterClaude > budget && zaiWindowData.length === 2;
+  const afterClaude = afterZai - (compactClaude ? 1 : 0);
   // Seven readings (Claude + its scoped cap, Codex, z.ai) need one
   // three-row Claude tile at the tightest budget; never truncate a provider.
   const compactAllClaude = scopedTank != null && claudeWindows.length > 0
-    && afterClaude - (compactZai ? 1 : 0) > budget;
+    && afterClaude > budget;
   const cellsFor = (agent: 'claude' | 'codex' | 'zai', windows: UsageTankData[], compact: boolean): SessionDeckCell[] => {
     if (compact && windows.length === 2) {
       return [{ svg: renderUsagePairGauge(agent, [windows[0], windows[1]]), action }];
@@ -636,7 +676,16 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
     if (selectedWeekly.length) tiles.push(renderReadings(selectedWeekly, weeklyAction));
   }
   tiles.push(...cellsFor('codex', codexWindowData, compactCodex));
-  tiles.push(...cellsFor('zai', zaiWindowData, compactZai));
+  if (compactZai) {
+    const readings = zaiPairReadings(zaiWindowData[0], zaiWindowData[1], zaiMode);
+    tiles.push({
+      svg: readings.length === 2 ? renderUsagePairGauge('zai', [readings[0], readings[1]]) : renderUsageGauge(readings[0]),
+      action: { kind: 'zai-mode' },
+    });
+  } else {
+    tiles.push(...cellsFor('zai', zaiWindowData, false));
+  }
+  if (spendingTile) tiles.push(spendingTile);
   if (lunaTile) tiles.push(lunaTile);
   if (creditsTile) tiles.push(creditsTile);
   return tiles;
@@ -828,6 +877,7 @@ export type DeckAction =
   | { kind: 'open'; sessionId: string }   // enter detail (+ focus_session)
   | { kind: 'back' }                      // return to list
   | { kind: 'weekly-mode' }              // cycle 7D + scoped / 7D / scoped
+  | { kind: 'zai-mode' }                 // cycle z.ai 5H + MCP / 5H / MCP
   | { kind: 'page'; delta: number }       // paginate current view
   | { kind: 'command'; command: ButtonCommand }
   | { kind: 'launch' }                    // daemon down → open the companion app locally
@@ -857,6 +907,8 @@ export interface DeckView {
    */
   showUsage?: boolean;
   claudeWeeklyMode?: ClaudeWeeklyMode;
+  /** Which z.ai reading a folded z.ai key shows (`buildUsageTiles`). */
+  zaiPairMode?: ZaiPairMode;
 }
 
 /** Row-major position order ("0_0","1_0",…,"4_2"). */
@@ -1029,7 +1081,7 @@ function buildList(
     // window per key instead of compacted pairs. The growth never takes a key
     // from a session — `spare` is computed AFTER the roster, and when sessions
     // overflow there is no spare by construction.
-    const stripTiles = buildUsageTiles(state, undefined, view.claudeWeeklyMode);
+    const stripTiles = buildUsageTiles(state, undefined, view.claudeWeeklyMode, view.zaiPairMode);
     const maxReserve = Math.max(0, slots.length - 1);
     const preferred = sortPositions(USAGE_PREFERRED_POS.filter((p) => slots.includes(p)));
     const stripCount = Math.min(stripTiles.length, USAGE_PREFERRED_POS.length, maxReserve);
@@ -1038,7 +1090,7 @@ function buildList(
     const budget = spare > 0
       ? Math.min(stripTiles.length + spare, maxReserve)
       : USAGE_PREFERRED_POS.length;
-    const usageTiles = spare > 0 ? buildUsageTiles(state, budget, view.claudeWeeklyMode) : stripTiles;
+    const usageTiles = spare > 0 ? buildUsageTiles(state, budget, view.claudeWeeklyMode, view.zaiPairMode) : stripTiles;
     const reserveCount = Math.min(usageTiles.length, budget, maxReserve);
     // Fill the strip from its RIGHT end so a missing tile frees the LEFTMOST key
     // (which flows back to sessions) and the gauges stay flush against the clock

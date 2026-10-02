@@ -12,7 +12,7 @@ const checkOnly = process.argv.includes('--check');
 
 /* Exact pin, not a floor: a silently dropped token is as much a regression as a
  * silently added one. Bump this deliberately when design/tokens.css changes. */
-const EXPECTED_TOKEN_COUNT = 112;
+const EXPECTED_TOKEN_COUNT = 114;
 const requiredFields = [
   'id',
   'title',
@@ -285,6 +285,7 @@ const AGENT_LABELS = {
   openClaw: 'OpenClaw',
   antigravity: 'Antigravity',
   kiro: 'Kiro',
+  hermes: 'Hermes',
 };
 
 function parseGlyphBlock(source, constant, size) {

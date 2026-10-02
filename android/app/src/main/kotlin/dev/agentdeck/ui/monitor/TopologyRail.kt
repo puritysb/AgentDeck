@@ -621,6 +621,9 @@ private data class RateChip(
     val stale: Boolean = false,
     /** `percent` is what remains (the Codex Luna reserve); colour reads the used complement. */
     val remaining: Boolean = false,
+    /** A non-percent reading (the Codex credit balance, "62.5K"): no bar, no
+     *  severity ramp — a balance has no cap to fill against. */
+    val value: String? = null,
 )
 
 @Composable
@@ -726,25 +729,33 @@ private fun RateChipView(chip: RateChip) {
             // wrapping impossible; the width fits the longest label a window or
             // a scoped model cap can produce. Mirrors the Swift rail.
             maxLines = 1,
-            modifier = Modifier.width(30.dp),
+            // A value chip has no bar, so its label ("credits") takes the
+            // bar's room instead of being clipped to the window-label width.
+            modifier = if (chip.value != null) Modifier.weight(1f) else Modifier.width(30.dp),
         )
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(5.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Color.White.copy(alpha = 0.10f)),
-        ) {
+        if (chip.value == null) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(fillFraction)
-                    .fillMaxSize()
-                    .background(fillColor.copy(alpha = barAlpha), RoundedCornerShape(2.dp)),
-            )
+                    .weight(1f)
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color.White.copy(alpha = 0.10f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fillFraction)
+                        .fillMaxSize()
+                        .background(fillColor.copy(alpha = barAlpha), RoundedCornerShape(2.dp)),
+                )
+            }
         }
         Text(
-            text = "${pct.toInt()}%",
-            color = if (chip.stale) TerrariumColors.HUDSubtext else fillColor,
+            text = chip.value ?: "${pct.toInt()}%",
+            color = when {
+                chip.stale -> TerrariumColors.HUDSubtext
+                chip.value != null -> TerrariumColors.HUDText
+                else -> fillColor
+            },
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,
             modifier = Modifier.width(32.dp),
@@ -870,6 +881,7 @@ private fun buildCodexRateChips(limits: CodexRateLimits?): List<RateChip> =
             reset = row.footnote ?: row.resetIso?.let { formatResetTime(it) },
             stale = row.stale || row.footnote != null,
             remaining = row.remaining,
+            value = row.value,
         )
     }
 

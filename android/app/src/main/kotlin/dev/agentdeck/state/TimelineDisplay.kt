@@ -382,6 +382,7 @@ data class TimelineSessionFilter(
                 "antigravity" -> "Antigravity"
                 "kiro-cli" -> "Kiro CLI"
                 "kiro-ide" -> "Kiro IDE"
+                "hermes" -> "Hermes"
                 else -> sessionId
             }
         }

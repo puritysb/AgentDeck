@@ -21,6 +21,7 @@ inline const char* agentDisplayLabel(const char* agentType) {
     if (strcmp(agentType, "antigravity") == 0) return "Antigravity";
     if (strcmp(agentType, "kiro-cli")    == 0) return "Kiro CLI";
     if (strcmp(agentType, "kiro-ide")    == 0) return "Kiro IDE";
+    if (strcmp(agentType, "hermes")      == 0) return "Hermes";
     if (strcmp(agentType, "monitor")     == 0) return "Monitor";
     if (strcmp(agentType, "daemon")      == 0) return "Daemon";
     return agentType; // unknown but non-empty — show the raw id rather than "Agent"

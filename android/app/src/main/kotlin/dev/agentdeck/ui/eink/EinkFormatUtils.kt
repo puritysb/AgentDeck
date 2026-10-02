@@ -68,14 +68,18 @@ fun stateRank(state: AgentState): Int = when (state) {
     AgentState.DISCONNECTED -> 3
 }
 
+// Mirror of shared/src/session-utils.ts agentTypeRank (it had fallen behind:
+// no Kiro, and "others" at 6 tied with kiro-cli).
 fun agentTypeRank(agentType: String?): Int = when (agentType) {
-    "openclaw" -> 0
+    "openclaw", "hermes" -> 0
     "claude-code" -> 1
     "codex-cli" -> 2
     "codex-app" -> 3
     "opencode" -> 4
     "antigravity" -> 5
-    else -> 6
+    "kiro-cli" -> 6
+    "kiro-ide" -> 7
+    else -> 8
 }
 
 // OpenClaw / Gateway visibility SSOT — hand-mirrored from
@@ -165,6 +169,7 @@ fun agentIcon(agentType: String?): String = when (agentType) {
     "opencode" -> "\u25A3"            // ▣ (nested square)
     "antigravity" -> "\u25B2"          // ▲ (Antigravity peak)
     "kiro-cli", "kiro-ide" -> "K"     // compact text fallback; creature uses the canonical ghost asset
+    "hermes" -> "\u2624"              // ☤ (Hermes CLI caduceus); creature uses the Nous girl mark
     else -> "\u25CF"                   // ● bullet
 }
 
@@ -227,6 +232,9 @@ fun EinkTextGauge(
     // stays visible instead of vanishing — dropping stale rows made the gauge
     // disappear entirely once a window slid into the past.
     stale: Boolean = false,
+    // A non-percent reading (the Codex credit balance, "62.5K") printed in
+    // place of the bar + percent — a balance has no cap to fill against.
+    value: String? = null,
 ) {
     val pct = percent.coerceIn(0.0, 100.0).toInt()
     val filled = (pct * barLength / 100).coerceAtMost(barLength)
@@ -247,7 +255,7 @@ fun EinkTextGauge(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = "[$bar] $pct%${if (stale) "*" else ""}",
+            text = (value ?: "[$bar] $pct%") + if (stale) "*" else "",
             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             color = MaterialTheme.colorScheme.onSurface,
         )

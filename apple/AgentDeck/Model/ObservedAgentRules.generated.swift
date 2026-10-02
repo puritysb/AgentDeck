@@ -23,6 +23,7 @@ enum ObservedAgentRules {
         "observed:antigravity:",
         "observed:kiro:",
         "observed:kiro-ide:",
+        "observed:hermes:",
     ]
 
     /// Agents whose observed per-tool rows would drown their own prompt and
@@ -34,6 +35,7 @@ enum ObservedAgentRules {
         "antigravity",
         "kiro-cli",
         "kiro-ide",
+        "hermes",
     ]
 
     /// Bare id form — unchanged when the id carries no observed prefix.

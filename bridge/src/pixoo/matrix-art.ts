@@ -102,7 +102,7 @@ export function renderMatrixBase(size: 11 | 32, kind: MatrixKind, glyph: string,
   // Event-only scene. A real entrance/response earns a short creature appearance;
   // there is no timer-driven species carousel hiding the information dashboard.
   for (let y = 7; y < 27; y++) for (let x = 0; x < 32; x++) put(x, y, UI.waterDeep, .3);
-  const label = { waiting: 'WAIT', error: 'ERR', done: 'DONE', working: 'WORK', idle: 'IDLE', unknown: 'SYNC', arrival: 'NEW', asked: 'ASK', reply: 'REPLY' }[kind];
+  const label = { waiting: 'WAIT', error: 'ERR', done: 'DONE', working: 'WORK', idle: 'IDLE', unknown: 'SYNC', arrival: 'NEW', asked: 'ASK', reply: 'SENT' }[kind];
   const text = new Uint8Array(64 * 64 * 3);
   drawText(text, 0, 0, label, color);
   for (let y = 0; y < 5; y++) for (let x = 0; x < label.length * 4; x++) {
@@ -119,7 +119,7 @@ export function renderMatrixBase(size: 11 | 32, kind: MatrixKind, glyph: string,
   const mask = OFFICIAL_DOT_GLYPHS[glyph as OfficialDotGlyphName];
   if (mask) {
     const brand: Record<string, string> = { claudeCode: Brand.claudeCode, codex: Brand.codex,
-      openCode: Brand.opencodeOnDark, openClaw: Brand.openclaw, antigravity: Brand.antigravity, kiro: Brand.kiro, zai: Brand.zai };
+      openCode: Brand.opencodeOnDark, openClaw: Brand.openclaw, antigravity: Brand.antigravity, kiro: Brand.kiro, hermes: Brand.hermesOnDark, zai: Brand.zai };
     for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
       const a = mask[Math.floor(y * 24 / side) * 24 + Math.floor(x * 24 / side)];
       if (a < 40 || y0 + y >= 27) continue;

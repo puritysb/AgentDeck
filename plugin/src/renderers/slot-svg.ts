@@ -96,6 +96,9 @@ export function renderSlotConfig(config: SessionSlotConfig, env: SlotRenderEnv):
       const rows = config.usageWeekly?.map(g => ({ ...g, usedPercent: g.percent }));
       if (rows?.length === 2) return renderUsagePairGauge('claude', [rows[0], rows[1]]);
       if (rows?.length === 1) return renderUsageGauge(rows[0]);
+      const zai = config.usageZai?.map(g => ({ ...g, usedPercent: g.percent }));
+      if (zai?.length === 2) return renderUsagePairGauge('zai', [zai[0], zai[1]]);
+      if (zai?.length === 1) return renderUsageGauge(zai[0]);
       return renderUsageGauge({
         agent: config.usageAgent ?? 'claude',
         window: config.usageWindow ?? '5h',
@@ -106,6 +109,7 @@ export function renderSlotConfig(config: SessionSlotConfig, env: SlotRenderEnv):
         footnote: config.usageFootnote,
         inactive: config.usageInactive === true,
         luna: config.usageLuna,
+        credits: config.usageCredits,
       });
 
     }

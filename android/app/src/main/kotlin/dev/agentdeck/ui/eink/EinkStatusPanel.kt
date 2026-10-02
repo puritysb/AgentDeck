@@ -79,7 +79,7 @@ fun EinkStatusPanel(
             ) {
                 BrandIcon(agentType = row.agentType, isEink = true, size = 11.dp)
                 Text(
-                    text = "${row.label} $bar ${row.percent.toInt()}%  $reset",
+                    text = "${row.label} ${row.value ?: "$bar ${row.percent.toInt()}%"}  $reset",
                     style = monoStyle,
                     color = MaterialTheme.colorScheme.onSurface,
                 )

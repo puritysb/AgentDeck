@@ -233,6 +233,10 @@ actor IDotMatrixModule: DeviceModule {
         // Honor circuit breaker.
         if let until = backoffUntil, Date() < until { return }
 
+        // Check the actual link before pixel dedup: a static scene otherwise never
+        // writes again and cannot discover a disconnected peripheral.
+        if connected, ble?.isConnected != true { await dropConnection() }
+
         // Ensure connected (lazy-creates the central → triggers the BT permission
         // prompt only for users who actually configured an iDotMatrix).
         if !connected {

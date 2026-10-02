@@ -103,6 +103,26 @@ export function layoutKiroCreatures(count: number): CreatureSlot[] {
   });
 }
 
+/** Hermes mermaids — left mid-water, INSIDE the visible tank.
+ *
+ * Below the Kiro ghosts (0.10–0.20) and left of the octopus band's upper edge
+ * (0.42+), clear of the session-list HUD (left 0.19), the crayfish floor
+ * territory and the floor rest strip (0.56+). A narrow band: Hermes runs few
+ * concurrent conversations per profile, and the shrink handles a crowd. */
+export function layoutHermesCreatures(count: number): CreatureSlot[] {
+  return layoutBand({
+    count,
+    xMin: 0.21,
+    xMax: 0.30,
+    frontY: 0.26,
+    backY: 0.36,
+    singleRowLimit: 2,
+    baseScale: 0.96,
+    minScale: 0.56,
+    creatureWidth: 0.086,
+  });
+}
+
 /**
  * Hard floor for the crowd-driven shrink. Below the per-band `minScale` so
  * tightly packed bands can still shrink enough to honor the overlap cap before

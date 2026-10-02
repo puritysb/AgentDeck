@@ -47,6 +47,44 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- ESP32 WiFi OTA reaches boards the daemon is driving over USB. Those boards
+  turn their WiFi radio off while serial is active, so `agentdeck esp32-ota`
+  used to fail with "No online WiFi ESP32 target". The daemon now closes that
+  one board's serial port, waits for it to join WiFi, updates it, and reopens
+  the port.
+- OpenClaw: all the tool calls of one turn fold into a single timeline row
+  (`openclaw ×16 · channels, agents.main, … · 1 failed`) that updates in
+  place, with the full list in its detail. A config walk no longer buries the
+  question and the reply.
+- Hermes Agent appears on every surface: the macOS/iOS and Android aquariums
+  (the Nous girl mermaid; Android gets a lightweight 3D resident), the Stream
+  Deck and D200H keys, the TUI session list, Pixoo, Timebox, iDotMatrix, the
+  LED matrix, the ESP32 LCD terrariums, HUDs and cards, and the e-ink screens.
+  Small surfaces draw the official Nous girl mark, generated from
+  `design/brand/hermes.svg`. The macOS app's own daemon now ingests Hermes
+  observer hooks too. An observed Hermes row is never chosen as the ESP32
+  voice target: it is read-only.
+- Hermes swims as a mermaid in every terrarium without the 3D aquarium
+  (Android 2D and e-ink terrariums, ESP32 boards, Pixoo 64): the official Nous
+  girl head over a kelp tail, instead of a floating head. Keys, lists and
+  cards keep the plain mark.
+- Like OpenClaw, a running Hermes CLI stays on screen while its process
+  lives, and Hermes sorts first with OpenClaw in every session list.
+- A Hermes conversation now closes when its Hermes process exits, so
+  `hermes -z` one-shot runs no longer linger as idle sessions for 30 minutes.
+
+- Codex: once a plan window (5h or weekly) is exhausted and the account still
+  holds purchased credits, every usage surface shows the remaining balance
+  (`62.5K CREDITS LEFT`) in place of the exhausted window, with the time the plan
+  window resets. A zero balance shows nothing. Where a surface has room, the
+  Luna reserve stays beside it; a single-reading surface shows credits first.
+- Stream Deck / D200H: the Luna tile's `100% LEFT` no longer clips its final
+  letter; `LEFT` is set smaller than the number.
+- Stream Deck / D200H: when the usage row is crowded, z.ai's 5H and MCP windows
+  share one key. Each press switches it between both readings, 5H only and MCP
+  only, the same way the Claude weekly key switches with its per-model cap. A
+  row with room still gives each window its own key.
+
 ## 2026-09-28 — npm 1.6.0 · Apple 1.6.0 · ESP32 1.6.0 · Stream Deck 1.6.0 · Ulanzi 1.6.0
 
 - E-ink firmware (TRMNL 7.5", NM-EPD-420, EPD47) follows the Paper Board: only sessions that need you or are working get a card, idle sessions share one line of glyph + name, the masthead counts sessions by state, and filler copy is gone. A line break in an agent's answer no longer overprints Korean text. TRMNL no longer replaces the board with an ANSWER page after every finished turn; KEY1 cycles board → aquarium → digest.

@@ -286,7 +286,7 @@ describe('buildSessionDeck list-view usage tiles', () => {
     expect(deck.get(STRIP_M)!.svg).toContain(CLAUDE_MARK);
     const luna = deck.get(STRIP_R)!.svg;
     expect(luna).toContain('LUNA RESERVE');
-    expect(luna).toContain('68% LEFT');   // remaining, not used
+    expect(luna).toContain('68%<tspan');   // remaining, not used
     expect(luna).toContain(CODEX_MARK);   // identity stays Codex
     // The displaced windows' percents render nowhere on the strip.
     const all = usageCells(deck).map((c) => c.svg).join('');
@@ -308,6 +308,56 @@ describe('buildSessionDeck list-view usage tiles', () => {
     expect(usageCells(restored)).toHaveLength(3);
     expect(usageCells(restored)[2].svg).toContain('>30<');
     expect(usageCells(restored)[2].svg).toContain('>100<');
+  });
+
+  it('shows the purchased-credit balance in place of an exhausted Codex window', () => {
+    const credits = { hasCredits: true, unlimited: false, balance: '62500' };
+    const exhausted = {
+      codexRateLimits: {
+        secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: '2099-01-01T00:00:00Z' },
+        planType: 'pro', credits,
+      },
+    };
+    const deck = buildSessionDeck(baseState(12, exhausted), { mode: 'list', showUsage: true }, POS);
+    expect(usageCells(deck)).toHaveLength(3);
+    const tile = deck.get(STRIP_R)!.svg;
+    expect(tile).toContain('62.5K');
+    expect(tile).toContain('CREDITS LEFT');
+    expect(tile).toContain(CODEX_MARK);
+    expect(usageCells(deck).map((c) => c.svg).join('')).not.toContain('>100<');
+
+    // Still inside the plan: credits are not being spent, so nothing changes.
+    const inside = buildSessionDeck(baseState(12, {
+      codexRateLimits: { ...exhausted.codexRateLimits, secondary: { ...exhausted.codexRateLimits.secondary, usedPercent: 94 } },
+    }), { mode: 'list', showUsage: true }, POS);
+    expect(usageCells(inside).map((c) => c.svg).join('')).not.toContain('CREDITS LEFT');
+    expect(usageCells(inside).map((c) => c.svg).join('')).toContain('>94<');
+
+    // Exhausted with nothing to spend: no credit tile, the exhausted window stays.
+    const broke = buildSessionDeck(baseState(12, {
+      codexRateLimits: { ...exhausted.codexRateLimits, credits: { hasCredits: false, unlimited: false, balance: '0' } },
+    }), { mode: 'list', showUsage: true }, POS);
+    expect(usageCells(broke).map((c) => c.svg).join('')).not.toContain('CREDITS LEFT');
+    expect(usageCells(broke).map((c) => c.svg).join('')).toContain('>100<');
+  });
+
+  it('keeps credits and the Luna reserve as separate keys, yielding the reserve when full', () => {
+    const both = {
+      codexRateLimits: {
+        secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: '2099-01-01T00:00:00Z' },
+        credits: { hasCredits: true, unlimited: false, balance: '1250' },
+        lunaReserve: { usedPercent: 40, available: true },
+      },
+    };
+    // Few sessions → spare keys join the usage budget, so both fit.
+    const roomy = usageCells(buildSessionDeck(baseState(1, both), { mode: 'list', showUsage: true }, POS)).map((c) => c.svg);
+    expect(roomy.some((svg) => svg.includes('1.2K'))).toBe(true);
+    expect(roomy.some((svg) => svg.includes('LUNA RESERVE'))).toBe(true);
+    // A full roster leaves only the three-key strip: Claude 5H/7D + credits.
+    const full = usageCells(buildSessionDeck(baseState(12, both), { mode: 'list', showUsage: true }, POS)).map((c) => c.svg);
+    expect(full).toHaveLength(3);
+    expect(full.some((svg) => svg.includes('1.2K'))).toBe(true);
+    expect(full.some((svg) => svg.includes('LUNA RESERVE'))).toBe(false);
   });
 
   it('falls back to trailing keys on a tiny deck where the strip is not placed', () => {

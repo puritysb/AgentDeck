@@ -902,11 +902,17 @@ struct ControlTowerPanel: View {
 
             if hasCodex {
                 usageProviderHeader(agentType: "codex-cli", title: "Codex")
-                if let luna = codex?.activeLunaReserve() {
-                    // Account window exhausted: the Luna reserve replaces both
-                    // windows and reads as what is left.
-                    compactGauge(label: "Luna", percent: max(0, 100 - luna.usedPercent),
-                                 resetTime: luna.resetsAt, remaining: true)
+                let spending = codex?.activeCodexCredits()
+                let luna = codex?.activeLunaReserve()
+                if spending != nil || luna != nil {
+                    // Account window exhausted: the purchased credits being spent
+                    // and the Luna reserve replace both windows — credits first,
+                    // both read as what is left.
+                    if let spending { compactCreditsRow(spending) }
+                    if let luna {
+                        compactGauge(label: "Luna", percent: max(0, 100 - luna.usedPercent),
+                                     resetTime: luna.resetsAt, remaining: true)
+                    }
                 } else {
                 if let primary = codex?.primary, let percent = primary.usedPercent {
                     compactGauge(
@@ -1126,9 +1132,14 @@ struct ControlTowerPanel: View {
                         .kerning(0.5)
                         .foregroundColor(TerrariumHUD.subtext.opacity(0.8))
                         .padding(.top, 2)
-                    if let luna = codex.activeLunaReserve() {
-                        compactGauge(label: "Luna", percent: max(0, 100 - luna.usedPercent),
-                                     resetTime: luna.resetsAt, remaining: true)
+                    let spending = codex.activeCodexCredits()
+                    let luna = codex.activeLunaReserve()
+                    if spending != nil || luna != nil {
+                        if let spending { compactCreditsRow(spending) }
+                        if let luna {
+                            compactGauge(label: "Luna", percent: max(0, 100 - luna.usedPercent),
+                                         resetTime: luna.resetsAt, remaining: true)
+                        }
                     } else {
                     if let p = codex.primary, let pct = p.usedPercent {
                         compactGauge(
@@ -1323,6 +1334,36 @@ struct ControlTowerPanel: View {
             s = String(s[s.startIndex..<range.lowerBound])
         }
         return s
+    }
+
+    /// Purchased credits being spent after an exhausted plan window. A balance
+    /// is a count with no cap, so there is no bar and no severity ramp — a
+    /// neutral readout with the amber coin mark the device tiles use, and the
+    /// reset of the exhausted window (when credits stop being spent).
+    private func compactCreditsRow(_ credits: ActiveCodexCredits) -> some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(DesignTokens.UI.attn)
+                    .frame(width: 6, height: 6)
+                Text("Credits")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(TerrariumHUD.subtext)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            Spacer(minLength: 0)
+            Text("\(credits.formatted) left")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(DesignTokens.Tide.s50)
+                .lineLimit(1)
+            if let reset = credits.regularResetsAt, let formatted = formatResetTime(reset) {
+                Text(formatted)
+                    .font(.system(size: 10))
+                    .foregroundColor(TerrariumHUD.subtext)
+                    .frame(width: 48, alignment: .trailing)
+            }
+        }
     }
 
     private func compactGauge(label: String, percent: Double, resetTime: String?, customSuffix: String? = nil, stale: Bool = false, muted: Bool = false, footnote: String? = nil, remaining: Bool = false) -> some View {

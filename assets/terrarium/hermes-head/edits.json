@@ -1,0 +1,12984 @@
+[
+ {
+  "note": "E1 2026-10-01: fringe corners wrap back to the face edge and meet the curtain front edge; curtain front face sits at y~-0.6 so no ledge under the dome."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "set": [
+   null,
+   null,
+   1.95
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "set": [
+   1.08,
+   -1.8,
+   1.93
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "set": [
+   1.3,
+   -1.58,
+   1.91
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "set": [
+   1.34,
+   -1.28,
+   1.87
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "set": [
+   1.4,
+   -0.95,
+   1.8
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 6,
+  "set": [
+   1.42,
+   -0.66,
+   1.74
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "set": [
+   2.2,
+   -0.55,
+   1.9
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "set": [
+   1.62,
+   -1.45,
+   2.2
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "set": [
+   1.8,
+   -1.05,
+   2.18
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 6,
+  "set": [
+   2.22,
+   -0.62,
+   2.15
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 7,
+  "set": [
+   2.45,
+   -0.2,
+   2.18
+  ]
+ },
+ {
+  "note": "E2: temples narrower so the face window top reads ~+-1.4 (ref 1.35) and fringe corners sit on, not inside, the skull."
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 2,
+  "set": [
+   1.22,
+   null,
+   null
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 3,
+  "set": [
+   1.45,
+   null,
+   null
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 4,
+  "set": [
+   1.62,
+   null,
+   null
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "col": 3,
+  "set": [
+   1.62,
+   null,
+   null
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "col": 4,
+  "set": [
+   1.75,
+   null,
+   null
+  ]
+ },
+ {
+  "note": "E3: curtain front edge follows the face contour down, then tucks behind the jaw."
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "set": [
+   1.42,
+   -0.62,
+   1.55
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "set": [
+   1.38,
+   -0.6,
+   1.15
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "set": [
+   1.2,
+   -0.42,
+   0.75
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "set": [
+   1.0,
+   -0.18,
+   0.35
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 6,
+  "set": [
+   0.98,
+   -0.02,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 6,
+  "set": [
+   1.08,
+   0.08,
+   -0.4
+  ]
+ },
+ {
+  "note": "E4: side mass is a moderate bell (+-2.65..2.85); the ref's +-3.2 flare is flicked LOCKS, to be added as separate shapes, not solid mass."
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "cols": [
+   7,
+   8,
+   9,
+   10,
+   11
+  ],
+  "scale": [
+   0.855,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "cols": [
+   7,
+   8,
+   9,
+   10,
+   11
+  ],
+  "scale": [
+   0.875,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "cols": [
+   7,
+   8,
+   9,
+   10,
+   11
+  ],
+  "scale": [
+   0.93,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "cols": [
+   7,
+   8,
+   9,
+   10,
+   11
+  ],
+  "scale": [
+   0.975,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "cols": [
+   7,
+   8,
+   9,
+   10
+  ],
+  "scale": [
+   1.12,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 7,
+  "set": [
+   null,
+   null,
+   -0.32
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 8,
+  "set": [
+   null,
+   null,
+   -0.34
+  ]
+ },
+ {
+  "note": "E5: rounder U jaw (ref jaw outline sat outside the model below the mouth), thicker neck (ref depth ~1.1)."
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "scale": [
+   1.093,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   1.18,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "scale": [
+   1.24,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "scale": [
+   1.12,
+   1.14,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "move": [
+   0,
+   0.175,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 12,
+  "cols": "all",
+  "scale": [
+   1.05,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0.125,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 12,
+  "cols": "all",
+  "move": [
+   0,
+   0.135,
+   0
+  ]
+ },
+ {
+  "note": "E6: curtain front edge further back so the cheek reads in profile (ref ~0.9 visible)."
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "move": [
+   0,
+   0.15,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "move": [
+   0,
+   0.15,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "set": [
+   1.3,
+   -0.3,
+   0.75
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "set": [
+   1.1,
+   -0.08,
+   0.35
+  ]
+ },
+ {
+  "note": "E7: curtain front face rounds into the dome instead of a flat panel with a notch under it."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "set": [
+   2.35,
+   -0.3,
+   1.92
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 7,
+  "set": [
+   2.25,
+   -0.32,
+   1.55
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 7,
+  "set": [
+   2.3,
+   -0.38,
+   1.15
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 7,
+  "set": [
+   2.35,
+   -0.4,
+   0.75
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 7,
+  "set": [
+   2.35,
+   -0.38,
+   0.35
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 7,
+  "set": [
+   2.25,
+   -0.33,
+   0.0
+  ]
+ },
+ {
+  "note": "E8: profile centre line forward at nose/mouth/chin (ref sat 0.1-0.2 ahead); chin a touch lower; curtain edge back 0.1 so the cheek reads in profile."
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 0,
+  "move": [
+   0,
+   -0.13,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "col": 0,
+  "move": [
+   0,
+   -0.11,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "col": 1,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   -0.1,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   -0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   -0.1,
+   -0.05
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   -0.05,
+   -0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "move": [
+   0,
+   0.1,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "move": [
+   0,
+   0.1,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "move": [
+   0,
+   0.08,
+   0
+  ]
+ },
+ {
+  "note": "E9 (trial): dome above the bang line lowered 8% and narrowed 5%->2% (crown->bang). The master 3/4's crown->bang : bang->chin is ~1.10 vs candidate-02's ~1.18, and the user saw the hair as slightly big. Skull crown lowered with it. Face and bang line untouched."
+ },
+ {
+  "obj": "hair",
+  "ring": -1,
+  "col": -1,
+  "mirror": false,
+  "scale": [
+   1,
+   1,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "cols": "all",
+  "scale": [
+   0.95,
+   0.95,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "cols": "all",
+  "scale": [
+   0.95,
+   0.95,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "cols": "all",
+  "scale": [
+   0.955,
+   0.955,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "cols": "all",
+  "scale": [
+   0.96,
+   0.96,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "cols": "all",
+  "scale": [
+   0.965,
+   0.965,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "cols": "all",
+  "scale": [
+   0.97,
+   0.97,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "cols": "all",
+  "scale": [
+   0.98,
+   0.98,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": -1,
+  "col": -1,
+  "mirror": false,
+  "scale": [
+   1,
+   1,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 0,
+  "cols": "all",
+  "scale": [
+   0.96,
+   0.96,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 1,
+  "cols": "all",
+  "scale": [
+   0.97,
+   0.97,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 2,
+  "cols": "all",
+  "scale": [
+   0.98,
+   0.98,
+   0.92
+  ],
+  "center": [
+   0,
+   0.6,
+   1.95
+  ]
+ },
+ {
+  "note": "E10 (trial): face grows VERTICALLY to match the master's face share (bang->chin / crown->chin ~48%; E9 was ~45% front, ~40% at elevated 3/4). Bang hem up 0.10 (less at the framing corner), hem tucked 0.10 toward the forehead so the overhang eats less face from above, chin down 0.06."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "move": [
+   0,
+   0.1,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   0.1,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0,
+   0.1,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   0.1,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "move": [
+   0,
+   0.1,
+   0.09
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "move": [
+   0,
+   0.0,
+   0.06
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 6,
+  "move": [
+   0,
+   0.0,
+   0.02
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "move": [
+   0,
+   0.04,
+   0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   0.04,
+   0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   0.04,
+   0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   0.04,
+   0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0,
+   0.04,
+   0.05
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.03
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.06
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.06
+  ]
+ },
+ {
+  "note": "E11: master-camera close-up (fit_master_camera.py, yaw 32 / elev 4) + measured front hem. The bang hem belongs at z~1.86 (candidate front hem measured 1.84-1.87; E10's +0.10 raise sat ~0.25 above the master), so the face grows from BELOW instead: chin 0.15 lower and 0.05 forward, mouth region 0.06 lower, lower cheeks 6% fuller and 0.05 forward (master cheek bulges under the near eye)."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "set": [
+   null,
+   null,
+   1.86
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "set": [
+   null,
+   null,
+   1.86
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "set": [
+   null,
+   null,
+   1.85
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "set": [
+   null,
+   null,
+   1.84
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "set": [
+   null,
+   null,
+   1.82
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "set": [
+   null,
+   null,
+   1.78
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "move": [
+   0,
+   0,
+   -0.08
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   0,
+   -0.08
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   0,
+   -0.08
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   0,
+   -0.08
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0,
+   0,
+   -0.08
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": [
+   0,
+   1,
+   2
+  ],
+  "move": [
+   0,
+   -0.05,
+   -0.15
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": [
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ],
+  "move": [
+   0,
+   0,
+   -0.08
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": [
+   0,
+   1,
+   2
+  ],
+  "move": [
+   0,
+   -0.04,
+   -0.08
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": [
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ],
+  "move": [
+   0,
+   0,
+   -0.05
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "scale": [
+   1.06,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": [
+   2,
+   3
+  ],
+  "move": [
+   0,
+   -0.05,
+   -0.04
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   1.06,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "cols": [
+   2,
+   3
+  ],
+  "move": [
+   0,
+   -0.04,
+   0
+  ]
+ },
+ {
+  "note": "E12: back of the hair deeper, per the master camera (master_rows.py: model 0.55-0.9 short at the back at every height; yaw uncertainty explains <=0.2). +0.30 at 180 deg (0.55 made candidate-02's profile bulge ~0.5 while the master still read deeper: the master exaggerates the back, so this splits the difference), fading toward 120 deg, the crown and the hem. Front view is unaffected; candidate-02's profile is shallower and is overruled by the master."
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 11,
+  "move": [
+   0.005,
+   0.0033,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 11,
+  "move": [
+   0.0099,
+   0.0066,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 11,
+  "move": [
+   0.0158,
+   0.0106,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 11,
+  "move": [
+   0.0188,
+   0.0125,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 11,
+  "move": [
+   0.0197,
+   0.0132,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 11,
+  "move": [
+   0.0197,
+   0.0132,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 11,
+  "move": [
+   0.0197,
+   0.0132,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 11,
+  "move": [
+   0.0197,
+   0.0132,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 11,
+  "move": [
+   0.0197,
+   0.0132,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 11,
+  "move": [
+   0.0188,
+   0.0125,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 11,
+  "move": [
+   0.0168,
+   0.0112,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 11,
+  "move": [
+   0.0139,
+   0.0093,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 11,
+  "move": [
+   0.0099,
+   0.0066,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 12,
+  "move": [
+   0.0141,
+   0.0141,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 12,
+  "move": [
+   0.0282,
+   0.0282,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 12,
+  "move": [
+   0.0451,
+   0.0451,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 12,
+  "move": [
+   0.0536,
+   0.0536,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 12,
+  "move": [
+   0.0564,
+   0.0564,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 12,
+  "move": [
+   0.0564,
+   0.0564,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 12,
+  "move": [
+   0.0564,
+   0.0564,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 12,
+  "move": [
+   0.0564,
+   0.0564,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 12,
+  "move": [
+   0.0564,
+   0.0564,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 12,
+  "move": [
+   0.0536,
+   0.0536,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 12,
+  "move": [
+   0.0479,
+   0.0479,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 12,
+  "move": [
+   0.0395,
+   0.0395,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 12,
+  "move": [
+   0.0282,
+   0.0282,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 13,
+  "move": [
+   0.0211,
+   0.0315,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 13,
+  "move": [
+   0.0421,
+   0.0631,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 13,
+  "move": [
+   0.0674,
+   0.1009,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 13,
+  "move": [
+   0.08,
+   0.1198,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 13,
+  "move": [
+   0.0843,
+   0.1261,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 13,
+  "move": [
+   0.0843,
+   0.1261,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 13,
+  "move": [
+   0.0843,
+   0.1261,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 13,
+  "move": [
+   0.0843,
+   0.1261,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 13,
+  "move": [
+   0.0843,
+   0.1261,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 13,
+  "move": [
+   0.08,
+   0.1198,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 13,
+  "move": [
+   0.0716,
+   0.1072,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 13,
+  "move": [
+   0.059,
+   0.0883,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 13,
+  "move": [
+   0.0421,
+   0.0631,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 14,
+  "move": [
+   0.0213,
+   0.0515,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 14,
+  "move": [
+   0.0427,
+   0.1031,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 14,
+  "move": [
+   0.0683,
+   0.1649,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 14,
+  "move": [
+   0.0812,
+   0.1959,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 14,
+  "move": [
+   0.0854,
+   0.2062,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 14,
+  "move": [
+   0.0854,
+   0.2062,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 14,
+  "move": [
+   0.0854,
+   0.2062,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 14,
+  "move": [
+   0.0854,
+   0.2062,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 14,
+  "move": [
+   0.0854,
+   0.2062,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 14,
+  "move": [
+   0.0812,
+   0.1959,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 14,
+  "move": [
+   0.0726,
+   0.1753,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 14,
+  "move": [
+   0.0598,
+   0.1443,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 14,
+  "move": [
+   0.0427,
+   0.1031,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 15,
+  "move": [
+   0.0136,
+   0.0682,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 15,
+  "move": [
+   0.0271,
+   0.1364,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 15,
+  "move": [
+   0.0434,
+   0.2182,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 15,
+  "move": [
+   0.0515,
+   0.2591,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 15,
+  "move": [
+   0.0543,
+   0.2727,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 15,
+  "move": [
+   0.0543,
+   0.2727,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 15,
+  "move": [
+   0.0543,
+   0.2727,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 15,
+  "move": [
+   0.0543,
+   0.2727,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 15,
+  "move": [
+   0.0543,
+   0.2727,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 15,
+  "move": [
+   0.0515,
+   0.2591,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 15,
+  "move": [
+   0.0461,
+   0.2318,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 15,
+  "move": [
+   0.038,
+   0.1909,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 15,
+  "move": [
+   0.0271,
+   0.1364,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 16,
+  "move": [
+   0.0,
+   0.075,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 16,
+  "move": [
+   0.0,
+   0.15,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 16,
+  "move": [
+   0.0,
+   0.24,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 16,
+  "move": [
+   0.0,
+   0.285,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 16,
+  "move": [
+   0.0,
+   0.3,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 16,
+  "move": [
+   0.0,
+   0.3,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 16,
+  "move": [
+   0.0,
+   0.3,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 16,
+  "move": [
+   0.0,
+   0.3,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 16,
+  "move": [
+   0.0,
+   0.3,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 16,
+  "move": [
+   0.0,
+   0.285,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 16,
+  "move": [
+   0.0,
+   0.255,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 16,
+  "move": [
+   0.0,
+   0.21,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 16,
+  "move": [
+   0.0,
+   0.15,
+   0.0
+  ]
+ },
+ {
+  "note": "E13: the curtain's inner edge (col 6/26) curls in under the jaw toward the chin, replacing the separate framing locks (front sheet: lock tips at x~+-0.65, z~0.3; a separate lock showed a stripe of cheek between it and the curtain)."
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "set": [
+   1.26,
+   -0.4,
+   0.75
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "set": [
+   1.02,
+   -0.62,
+   0.36
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 6,
+  "set": [
+   0.86,
+   -0.45,
+   0.04
+  ]
+ },
+ {
+  "note": "E14 (master fit, final-model comparison 2026-10-01): the master's hair is larger than the model's relative to the face (top/back/far side). Push the mass radially outward away from the face: +0.28 at the back, +0.22 at the dome/sides, fading to 0 at the face window (cols <= 6) and the fringe hem ring. (z component reduced to 35% in iteration 2: the crown rose above the master's.)"
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 0,
+  "move": [
+   0.0,
+   -0.0933,
+   0.0327
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 0,
+  "move": [
+   0.0,
+   -0.0981,
+   0.0309
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 0,
+  "move": [
+   0.0,
+   -0.1056,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 0,
+  "move": [
+   0.0,
+   -0.1157,
+   0.0223
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 0,
+  "move": [
+   0.0,
+   -0.1264,
+   0.0133
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 1,
+  "move": [
+   0.0182,
+   -0.0915,
+   0.0327
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 1,
+  "move": [
+   0.0191,
+   -0.0962,
+   0.0309
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 1,
+  "move": [
+   0.0206,
+   -0.1036,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 1,
+  "move": [
+   0.0226,
+   -0.1134,
+   0.0223
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 1,
+  "move": [
+   0.0247,
+   -0.124,
+   0.0133
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 2,
+  "move": [
+   0.0357,
+   -0.0862,
+   0.0327
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 2,
+  "move": [
+   0.0375,
+   -0.0906,
+   0.0309
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 2,
+  "move": [
+   0.0404,
+   -0.0976,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 2,
+  "move": [
+   0.0443,
+   -0.1069,
+   0.0223
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 2,
+  "move": [
+   0.0484,
+   -0.1168,
+   0.0133
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 3,
+  "move": [
+   0.0519,
+   -0.0776,
+   0.0327
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 3,
+  "move": [
+   0.0545,
+   -0.0816,
+   0.0309
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 3,
+  "move": [
+   0.0587,
+   -0.0878,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 3,
+  "move": [
+   0.0643,
+   -0.0962,
+   0.0223
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 3,
+  "move": [
+   0.0702,
+   -0.1051,
+   0.0133
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 4,
+  "move": [
+   0.066,
+   -0.066,
+   0.0327
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 4,
+  "move": [
+   0.0694,
+   -0.0694,
+   0.0309
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 4,
+  "move": [
+   0.0747,
+   -0.0747,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 4,
+  "move": [
+   0.0818,
+   -0.0818,
+   0.0223
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 4,
+  "move": [
+   0.0894,
+   -0.0894,
+   0.0133
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 5,
+  "move": [
+   0.0776,
+   -0.0519,
+   0.0327
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 5,
+  "move": [
+   0.0816,
+   -0.0545,
+   0.0309
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 5,
+  "move": [
+   0.0878,
+   -0.0587,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 5,
+  "move": [
+   0.0962,
+   -0.0643,
+   0.0223
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 5,
+  "move": [
+   0.1051,
+   -0.0702,
+   0.0133
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 6,
+  "move": [
+   0.0862,
+   -0.0357,
+   0.0327
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 6,
+  "move": [
+   0.0906,
+   -0.0375,
+   0.0309
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 6,
+  "move": [
+   0.0976,
+   -0.0404,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 6,
+  "move": [
+   0.1069,
+   -0.0443,
+   0.0223
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 6,
+  "move": [
+   0.1168,
+   -0.0484,
+   0.0133
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 7,
+  "move": [
+   0.0915,
+   -0.0182,
+   0.0327
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 7,
+  "move": [
+   0.0962,
+   -0.0191,
+   0.0309
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 7,
+  "move": [
+   0.1036,
+   -0.0206,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 7,
+  "move": [
+   0.1134,
+   -0.0226,
+   0.0223
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 7,
+  "move": [
+   0.124,
+   -0.0247,
+   0.0133
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 7,
+  "move": [
+   0.0718,
+   -0.0143,
+   0.0013
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 7,
+  "move": [
+   0.0719,
+   -0.0143,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   0.0719,
+   -0.0143,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 7,
+  "move": [
+   0.0719,
+   -0.0143,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 7,
+  "move": [
+   0.0719,
+   -0.0143,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 7,
+  "move": [
+   0.0599,
+   -0.0119,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 7,
+  "move": [
+   0.0479,
+   -0.0095,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 7,
+  "move": [
+   0.036,
+   -0.0072,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 7,
+  "move": [
+   0.024,
+   -0.0048,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 8,
+  "move": [
+   0.1037,
+   -0.0,
+   0.0363
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 8,
+  "move": [
+   0.109,
+   -0.0,
+   0.0343
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 8,
+  "move": [
+   0.1173,
+   -0.0,
+   0.0308
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 8,
+  "move": [
+   0.1285,
+   -0.0,
+   0.0247
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 8,
+  "move": [
+   0.1405,
+   -0.0,
+   0.0147
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 8,
+  "move": [
+   0.1465,
+   -0.0,
+   0.0026
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 8,
+  "move": [
+   0.1467,
+   -0.0,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "move": [
+   0.1467,
+   -0.0,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 8,
+  "move": [
+   0.1467,
+   -0.0,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 8,
+  "move": [
+   0.1467,
+   -0.0,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 8,
+  "move": [
+   0.1222,
+   -0.0,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 8,
+  "move": [
+   0.0978,
+   -0.0,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 8,
+  "move": [
+   0.0733,
+   -0.0,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 8,
+  "move": [
+   0.0489,
+   -0.0,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 9,
+  "move": [
+   0.1607,
+   0.032,
+   0.0573
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 9,
+  "move": [
+   0.1689,
+   0.0336,
+   0.0542
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 9,
+  "move": [
+   0.1818,
+   0.0362,
+   0.0486
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 9,
+  "move": [
+   0.1991,
+   0.0396,
+   0.0391
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 9,
+  "move": [
+   0.2177,
+   0.0433,
+   0.0233
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 9,
+  "move": [
+   0.227,
+   0.0451,
+   0.0041
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 9,
+  "move": [
+   0.2273,
+   0.0452,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "move": [
+   0.2273,
+   0.0452,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 9,
+  "move": [
+   0.2273,
+   0.0452,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 9,
+  "move": [
+   0.2273,
+   0.0452,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 9,
+  "move": [
+   0.1894,
+   0.0377,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 9,
+  "move": [
+   0.1515,
+   0.0301,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 9,
+  "move": [
+   0.1136,
+   0.0226,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 9,
+  "move": [
+   0.0758,
+   0.0151,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 10,
+  "move": [
+   0.1587,
+   0.0657,
+   0.0601
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 10,
+  "move": [
+   0.1668,
+   0.0691,
+   0.0569
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 10,
+  "move": [
+   0.1796,
+   0.0744,
+   0.051
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 10,
+  "move": [
+   0.1967,
+   0.0815,
+   0.041
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 10,
+  "move": [
+   0.215,
+   0.0891,
+   0.0244
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 10,
+  "move": [
+   0.2242,
+   0.0929,
+   0.0042
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 10,
+  "move": [
+   0.2245,
+   0.093,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 10,
+  "move": [
+   0.2245,
+   0.093,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 10,
+  "move": [
+   0.2245,
+   0.093,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 10,
+  "move": [
+   0.2245,
+   0.093,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 10,
+  "move": [
+   0.1871,
+   0.0775,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 10,
+  "move": [
+   0.1496,
+   0.062,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 10,
+  "move": [
+   0.1122,
+   0.0465,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 10,
+  "move": [
+   0.0748,
+   0.031,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 11,
+  "move": [
+   0.1489,
+   0.0995,
+   0.0627
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 11,
+  "move": [
+   0.1566,
+   0.1046,
+   0.0593
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 11,
+  "move": [
+   0.1685,
+   0.1126,
+   0.0532
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 11,
+  "move": [
+   0.1846,
+   0.1233,
+   0.0427
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 11,
+  "move": [
+   0.2018,
+   0.1348,
+   0.0255
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 11,
+  "move": [
+   0.2104,
+   0.1406,
+   0.0044
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 11,
+  "move": [
+   0.2106,
+   0.1407,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 11,
+  "move": [
+   0.2106,
+   0.1407,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 11,
+  "move": [
+   0.2106,
+   0.1407,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 11,
+  "move": [
+   0.2106,
+   0.1407,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 11,
+  "move": [
+   0.1755,
+   0.1173,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 11,
+  "move": [
+   0.1404,
+   0.0938,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 11,
+  "move": [
+   0.1053,
+   0.0704,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 11,
+  "move": [
+   0.0702,
+   0.0469,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 12,
+  "move": [
+   0.1312,
+   0.1312,
+   0.065
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 12,
+  "move": [
+   0.1379,
+   0.1379,
+   0.0615
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 12,
+  "move": [
+   0.1485,
+   0.1485,
+   0.0551
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 12,
+  "move": [
+   0.1626,
+   0.1626,
+   0.0443
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 12,
+  "move": [
+   0.1777,
+   0.1777,
+   0.0264
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 12,
+  "move": [
+   0.1853,
+   0.1853,
+   0.0046
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 12,
+  "move": [
+   0.1856,
+   0.1856,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 12,
+  "move": [
+   0.1856,
+   0.1856,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 12,
+  "move": [
+   0.1856,
+   0.1856,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 12,
+  "move": [
+   0.1856,
+   0.1856,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 12,
+  "move": [
+   0.1546,
+   0.1546,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 12,
+  "move": [
+   0.1237,
+   0.1237,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 12,
+  "move": [
+   0.0928,
+   0.0928,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 12,
+  "move": [
+   0.0619,
+   0.0619,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 13,
+  "move": [
+   0.106,
+   0.1587,
+   0.0668
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 13,
+  "move": [
+   0.1115,
+   0.1668,
+   0.0632
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 13,
+  "move": [
+   0.12,
+   0.1795,
+   0.0567
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 13,
+  "move": [
+   0.1314,
+   0.1966,
+   0.0455
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 13,
+  "move": [
+   0.1436,
+   0.2149,
+   0.0272
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 13,
+  "move": [
+   0.1498,
+   0.2241,
+   0.0047
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 13,
+  "move": [
+   0.1499,
+   0.2244,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 13,
+  "move": [
+   0.1499,
+   0.2244,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 13,
+  "move": [
+   0.1499,
+   0.2244,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 13,
+  "move": [
+   0.1499,
+   0.2244,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 13,
+  "move": [
+   0.125,
+   0.187,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 13,
+  "move": [
+   0.1,
+   0.1496,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 13,
+  "move": [
+   0.075,
+   0.1122,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 13,
+  "move": [
+   0.05,
+   0.0748,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 14,
+  "move": [
+   0.0745,
+   0.1799,
+   0.0682
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 14,
+  "move": [
+   0.0783,
+   0.1891,
+   0.0645
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 14,
+  "move": [
+   0.0843,
+   0.2036,
+   0.0579
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 14,
+  "move": [
+   0.0924,
+   0.223,
+   0.0464
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 14,
+  "move": [
+   0.101,
+   0.2437,
+   0.0277
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 14,
+  "move": [
+   0.1053,
+   0.2541,
+   0.0048
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 14,
+  "move": [
+   0.1054,
+   0.2545,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 14,
+  "move": [
+   0.1054,
+   0.2545,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 14,
+  "move": [
+   0.1054,
+   0.2545,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 14,
+  "move": [
+   0.1054,
+   0.2545,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 14,
+  "move": [
+   0.0878,
+   0.2121,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 14,
+  "move": [
+   0.0703,
+   0.1696,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 14,
+  "move": [
+   0.0527,
+   0.1272,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 14,
+  "move": [
+   0.0351,
+   0.0848,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 15,
+  "move": [
+   0.0385,
+   0.1934,
+   0.069
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 15,
+  "move": [
+   0.0404,
+   0.2033,
+   0.0653
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 15,
+  "move": [
+   0.0435,
+   0.2188,
+   0.0586
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 15,
+  "move": [
+   0.0477,
+   0.2396,
+   0.047
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 15,
+  "move": [
+   0.0521,
+   0.262,
+   0.028
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 15,
+  "move": [
+   0.0543,
+   0.2731,
+   0.0049
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 15,
+  "move": [
+   0.0544,
+   0.2735,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 15,
+  "move": [
+   0.0544,
+   0.2735,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 15,
+  "move": [
+   0.0544,
+   0.2735,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 15,
+  "move": [
+   0.0544,
+   0.2735,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 15,
+  "move": [
+   0.0453,
+   0.2279,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 15,
+  "move": [
+   0.0363,
+   0.1823,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 15,
+  "move": [
+   0.0272,
+   0.1367,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 15,
+  "move": [
+   0.0181,
+   0.0912,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "col": 16,
+  "move": [
+   0.0,
+   0.198,
+   0.0693
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 16,
+  "move": [
+   0.0,
+   0.2081,
+   0.0656
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 16,
+  "move": [
+   0.0,
+   0.224,
+   0.0588
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 16,
+  "move": [
+   0.0,
+   0.2453,
+   0.0472
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 16,
+  "move": [
+   0.0,
+   0.2682,
+   0.0282
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 16,
+  "move": [
+   0.0,
+   0.2797,
+   0.0049
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 16,
+  "move": [
+   0.0,
+   0.28,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 16,
+  "move": [
+   0.0,
+   0.28,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 16,
+  "move": [
+   0.0,
+   0.28,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 16,
+  "move": [
+   0.0,
+   0.28,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 16,
+  "move": [
+   0.0,
+   0.2333,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 16,
+  "move": [
+   0.0,
+   0.1867,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 16,
+  "move": [
+   0.0,
+   0.14,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 16,
+  "move": [
+   0.0,
+   0.0933,
+   0.0
+  ]
+ },
+ {
+  "note": "E15: fringe closer to the forehead (the master draws no projecting visor; candidate-02's profile overhang of ~0.6 is overruled): front rings 5-7, cols 0-5, back by 0.18-0.28."
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 0,
+  "move": [
+   0,
+   0.14,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "move": [
+   0,
+   0.22,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "move": [
+   0,
+   0.28,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   0,
+   0.12600000000000003,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   0.198,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   0.25200000000000006,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 2,
+  "move": [
+   0,
+   0.11200000000000002,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   0.17600000000000002,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0,
+   0.22400000000000003,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   0,
+   0.098,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   0.154,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   0.196,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 4,
+  "move": [
+   0,
+   0.084,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0,
+   0.132,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "move": [
+   0,
+   0.168,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 5,
+  "move": [
+   0,
+   0.07,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "move": [
+   0,
+   0.11,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "move": [
+   0,
+   0.14,
+   0
+  ]
+ },
+ {
+  "note": "E16: the fringe reads as locks, as in the master: shallow grooves at the lock boundaries (cols 1, 3) from the hem up to ring 5, and lock tips (cols 0, 2, 4) a touch lower."
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   0,
+   0.036,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   0.072,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   0.09,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   0,
+   0.032,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   0.064,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   0.08,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "move": [
+   0,
+   0,
+   -0.04
+  ]
+ },
+ {
+  "note": "E18 (iteration 4): V-ish jaw as in the master 3/4 and the front sheet (front width at z 0.6: ref 2.20, model 2.30)."
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   0.95,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "scale": [
+   0.88,
+   1,
+   1
+  ]
+ },
+ {
+  "note": "E17b (iteration 6, replaces E17/E19): the master's bob belles out and hangs lower at the BACK (model short 0.2-0.3 on the back edge, bottom high). A smooth radial push that grows down the back (cols 10-16, fading toward the sides so the front view keeps its width), with the hem lowered. E17's version started at the sides and at ring 9, which made a skirt in front and a notch in profile; E19's near-side hem flare made a flat shelf."
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 10,
+  "move": [
+   0.0058,
+   0.0024,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 10,
+  "move": [
+   0.0115,
+   0.0048,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 10,
+  "move": [
+   0.0202,
+   0.0084,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 10,
+  "move": [
+   0.0289,
+   0.012,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 10,
+  "move": [
+   0.039,
+   0.0161,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 10,
+  "move": [
+   0.0476,
+   0.0197,
+   -0.0125
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 10,
+  "move": [
+   0.052,
+   0.0215,
+   -0.0344
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 10,
+  "move": [
+   0.0433,
+   0.0179,
+   -0.0625
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 11,
+  "move": [
+   0.0166,
+   0.0111,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 11,
+  "move": [
+   0.0333,
+   0.0222,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 11,
+  "move": [
+   0.0582,
+   0.0389,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 11,
+  "move": [
+   0.0831,
+   0.0556,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 11,
+  "move": [
+   0.1122,
+   0.075,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 11,
+  "move": [
+   0.1372,
+   0.0917,
+   -0.04
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 11,
+  "move": [
+   0.1497,
+   0.1,
+   -0.11
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 11,
+  "move": [
+   0.1247,
+   0.0833,
+   -0.2
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 12,
+  "move": [
+   0.0239,
+   0.0239,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 12,
+  "move": [
+   0.0477,
+   0.0477,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 12,
+  "move": [
+   0.0835,
+   0.0835,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 12,
+  "move": [
+   0.1193,
+   0.1193,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 12,
+  "move": [
+   0.1611,
+   0.1611,
+   0.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 12,
+  "move": [
+   0.1969,
+   0.1969,
+   -0.0675
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 12,
+  "move": [
+   0.2148,
+   0.2148,
+   -0.1856
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 12,
+  "move": [
+   0.179,
+   0.179,
+   -0.3375
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 13,
+  "move": [
+   0.0222,
+   0.0333,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 13,
+  "move": [
+   0.0444,
+   0.0665,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 13,
+  "move": [
+   0.0778,
+   0.1164,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 13,
+  "move": [
+   0.1111,
+   0.1663,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 13,
+  "move": [
+   0.15,
+   0.2245,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 13,
+  "move": [
+   0.1833,
+   0.2744,
+   -0.08
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 13,
+  "move": [
+   0.2,
+   0.2993,
+   -0.22
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 13,
+  "move": [
+   0.1667,
+   0.2494,
+   -0.4
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 14,
+  "move": [
+   0.0153,
+   0.037,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 14,
+  "move": [
+   0.0306,
+   0.0739,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 14,
+  "move": [
+   0.0536,
+   0.1293,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 14,
+  "move": [
+   0.0765,
+   0.1848,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 14,
+  "move": [
+   0.1033,
+   0.2494,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 14,
+  "move": [
+   0.1263,
+   0.3049,
+   -0.08
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 14,
+  "move": [
+   0.1378,
+   0.3326,
+   -0.22
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 14,
+  "move": [
+   0.1148,
+   0.2772,
+   -0.4
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 15,
+  "move": [
+   0.0078,
+   0.0392,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 15,
+  "move": [
+   0.0156,
+   0.0785,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 15,
+  "move": [
+   0.0273,
+   0.1373,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 15,
+  "move": [
+   0.039,
+   0.1962,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 15,
+  "move": [
+   0.0527,
+   0.2648,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 15,
+  "move": [
+   0.0644,
+   0.3237,
+   -0.08
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 15,
+  "move": [
+   0.0702,
+   0.3531,
+   -0.22
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 15,
+  "move": [
+   0.0585,
+   0.2942,
+   -0.4
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 16,
+  "move": [
+   0.0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 16,
+  "move": [
+   0.0,
+   0.08,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 16,
+  "move": [
+   0.0,
+   0.14,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 16,
+  "move": [
+   0.0,
+   0.2,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 16,
+  "move": [
+   0.0,
+   0.27,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 16,
+  "move": [
+   0.0,
+   0.33,
+   -0.08
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 16,
+  "move": [
+   0.0,
+   0.36,
+   -0.22
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 16,
+  "move": [
+   0.0,
+   0.3,
+   -0.4
+  ]
+ },
+ {
+  "note": "E20 (iteration 7, master_rows): the far/back-side edge at the master camera is ~0.25 short at every height (silhouette there comes from azimuth ~120-135 deg). Cols 10-12, rings 2-10, radial +0.22."
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 10,
+  "move": [
+   0.0429,
+   0.0178,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 10,
+  "move": [
+   0.1093,
+   0.0453,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 10,
+  "move": [
+   0.122,
+   0.0505,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 10,
+  "move": [
+   0.122,
+   0.0505,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 10,
+  "move": [
+   0.122,
+   0.0505,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 10,
+  "move": [
+   0.122,
+   0.0505,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 10,
+  "move": [
+   0.122,
+   0.0505,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 10,
+  "move": [
+   0.0813,
+   0.0337,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 10,
+  "move": [
+   0.0407,
+   0.0168,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 11,
+  "move": [
+   0.0644,
+   0.043,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 11,
+  "move": [
+   0.1639,
+   0.1095,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 11,
+  "move": [
+   0.1829,
+   0.1222,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 11,
+  "move": [
+   0.1829,
+   0.1222,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 11,
+  "move": [
+   0.1829,
+   0.1222,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 11,
+  "move": [
+   0.1829,
+   0.1222,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 11,
+  "move": [
+   0.1829,
+   0.1222,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 11,
+  "move": [
+   0.1219,
+   0.0815,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 11,
+  "move": [
+   0.061,
+   0.0407,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 12,
+  "move": [
+   0.0438,
+   0.0438,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 12,
+  "move": [
+   0.1115,
+   0.1115,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 12,
+  "move": [
+   0.1245,
+   0.1245,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 12,
+  "move": [
+   0.1245,
+   0.1245,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 12,
+  "move": [
+   0.1245,
+   0.1245,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 12,
+  "move": [
+   0.1245,
+   0.1245,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 12,
+  "move": [
+   0.1245,
+   0.1245,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 12,
+  "move": [
+   0.083,
+   0.083,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 12,
+  "move": [
+   0.0415,
+   0.0415,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 13,
+  "move": [
+   0.0172,
+   0.0258,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 13,
+  "move": [
+   0.0438,
+   0.0656,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 13,
+  "move": [
+   0.0489,
+   0.0732,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 13,
+  "move": [
+   0.0489,
+   0.0732,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 13,
+  "move": [
+   0.0489,
+   0.0732,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 13,
+  "move": [
+   0.0489,
+   0.0732,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 13,
+  "move": [
+   0.0489,
+   0.0732,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 13,
+  "move": [
+   0.0326,
+   0.0488,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 13,
+  "move": [
+   0.0163,
+   0.0244,
+   0
+  ]
+ },
+ {
+  "note": "E21: the dome's front-top sits too far forward at the master camera (+0.5 past the master at row 70, above the fringe). Rings 1-3, cols 0-4, back by 0.25/0.18/0.08."
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 0,
+  "move": [
+   0,
+   0.25,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 1,
+  "move": [
+   0,
+   0.22,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 2,
+  "move": [
+   0,
+   0.19,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 3,
+  "move": [
+   0,
+   0.16,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 4,
+  "move": [
+   0,
+   0.13,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 0,
+  "move": [
+   0,
+   0.18,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 1,
+  "move": [
+   0,
+   0.158,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 2,
+  "move": [
+   0,
+   0.137,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 3,
+  "move": [
+   0,
+   0.115,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 4,
+  "move": [
+   0,
+   0.094,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 0,
+  "move": [
+   0,
+   0.08,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 1,
+  "move": [
+   0,
+   0.07,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 2,
+  "move": [
+   0,
+   0.061,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 3,
+  "move": [
+   0,
+   0.051,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 4,
+  "move": [
+   0,
+   0.042,
+   0
+  ]
+ },
+ {
+  "note": "E22 (iteration 9, landmark camera solve solve_camera.py: yaw 28-32, roll ~-11, residuals vs master): relative to the eyes the master's mouth sits 0.18 and chin 0.22 lower, and the hem ~0.3 higher; the master face is ~20% longer than candidate-02's. Lower face lengthened below eye level (ring 6 -0.02 ... chin -0.24); the hem rises 0.14 in refine_fringe.py and face_v2 moves nose/mouth down."
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.02
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.07
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.13
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.19
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.24
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.24
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 12,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.24
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "move": [
+   0,
+   0,
+   -0.07
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "move": [
+   0,
+   0,
+   -0.12
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 6,
+  "move": [
+   0,
+   0,
+   -0.16
+  ]
+ },
+ {
+  "note": "E23 (iteration 10, landmark residuals: master chin +0.27 toward the face direction, i.e. more forward; hem -0.27, i.e. the fringe sits further back): chin tip forward and pointier, full cheeks above a narrowing jaw, fringe hem back."
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "cols": "all",
+  "scale": [
+   1.04,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   0.93,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "scale": [
+   0.85,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   -0.056,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 2,
+  "move": [
+   0,
+   -0.024,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   -0.2,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   -0.14,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "move": [
+   0,
+   -0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "note": "E24 (iteration 11): the master's fringe splits reach ~0.35 above the hem; the row above the hem (ring 6, cols 0-5) moves up to z 2.45 so refine_fringe's cap lets the V splits open. The lower-face lengthening of E22 is eased (chin -0.24 -> -0.16) now that the eyes grow instead: the long face read older than the master's chibi proportions."
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "set": [
+   null,
+   null,
+   2.45
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "set": [
+   null,
+   null,
+   2.45
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "set": [
+   null,
+   null,
+   2.45
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "set": [
+   null,
+   null,
+   2.45
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "set": [
+   null,
+   null,
+   2.45
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "set": [
+   null,
+   null,
+   2.45
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.03
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.05
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.08
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.08
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 12,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.08
+  ]
+ },
+ {
+  "note": "E25 (iteration 12): the fringe hangs as one smooth convex sheet from the crown to the hem, most forward just above the hem (profile sheet), instead of the dome bulging out at z 3.0 over a fold at rings 5/6 (read as a mushroom brim in RealityKit). Cols 0-5, rings 3-7: y scaled from each column's ring-4 depth by one profile, rings 5/6 respaced to z 2.62/2.28."
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 0,
+  "set": [
+   null,
+   -1.618,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 0,
+  "set": [
+   null,
+   -1.859,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 0,
+  "set": [
+   null,
+   -1.878,
+   2.62
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "set": [
+   null,
+   -1.803,
+   2.28
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "set": [
+   null,
+   -1.618,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 1,
+  "set": [
+   null,
+   -1.577,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 1,
+  "set": [
+   null,
+   -1.813,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 1,
+  "set": [
+   null,
+   -1.831,
+   2.62
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "set": [
+   null,
+   -1.759,
+   2.28
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "set": [
+   null,
+   -1.577,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 2,
+  "set": [
+   null,
+   -1.473,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 2,
+  "set": [
+   null,
+   -1.693,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 2,
+  "set": [
+   null,
+   -1.71,
+   2.62
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "set": [
+   null,
+   -1.642,
+   2.28
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "set": [
+   null,
+   -1.473,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 3,
+  "set": [
+   null,
+   -1.304,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 3,
+  "set": [
+   null,
+   -1.499,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 3,
+  "set": [
+   null,
+   -1.513,
+   2.62
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "set": [
+   null,
+   -1.454,
+   2.28
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "set": [
+   null,
+   -1.304,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 4,
+  "set": [
+   null,
+   -1.062,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 4,
+  "set": [
+   null,
+   -1.221,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 4,
+  "set": [
+   null,
+   -1.233,
+   2.62
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "set": [
+   null,
+   -1.184,
+   2.28
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "set": [
+   null,
+   -1.062,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 5,
+  "set": [
+   null,
+   -0.765,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 5,
+  "set": [
+   null,
+   -0.879,
+   null
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 5,
+  "set": [
+   null,
+   -0.888,
+   2.62
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "set": [
+   null,
+   -0.852,
+   2.28
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "set": [
+   null,
+   -0.765,
+   null
+  ]
+ },
+ {
+  "note": "E26 (iteration 15, front-sheet face-width profile): the jaw was long and broad after E22 (front width at z 0.2: model 1.73 vs ref 1.37, chin at -0.34 vs ref ~0.1 with the mouth now at 0.44) and E23 had pushed the chin in front of the lips (y -1.59 vs lips -1.45; the profile sheet has the chin behind them). Chin up to -0.10 and back to y -1.36, jaw tapered (ring 9 x0.84, ring 8 x0.95)."
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.24
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.12
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.02
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   0.2,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   0.14,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   0.056,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 2,
+  "move": [
+   0,
+   0.024,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   0.84,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "scale": [
+   0.95,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 6,
+  "move": [
+   0,
+   0,
+   0.1
+  ]
+ },
+ {
+  "note": "E27 (iteration 20): split the difference on the chin between the master landmarks (0.24 lower) and the front sheet's width profile: chin -0.12. Crown +0.15 (master: top-of-hair to hem is 1.16x hem-to-chin, model 1.06x)."
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.05
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.12
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   -0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": -1,
+  "col": -1,
+  "mirror": false,
+  "move": [
+   0,
+   0,
+   0.15
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.15
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.14
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.11
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.07
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.03
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": -1,
+  "col": -1,
+  "mirror": false,
+  "move": [
+   0,
+   0,
+   0.12
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 0,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.12
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 1,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 2,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.06
+  ]
+ },
+ {
+  "note": "E28 (iteration 23, RealityKit master view): the curtains hug the cheeks at eye/cheek level and flare only toward the hem, as the master draws them; the side mass at rings 7-10, cols 7-9 comes in 0.15-0.2."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   -0.0785,
+   0.0156,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 7,
+  "move": [
+   -0.1412,
+   0.0281,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 7,
+  "move": [
+   -0.1569,
+   0.0312,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 7,
+  "move": [
+   -0.1098,
+   0.0219,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 7,
+  "move": [
+   -0.0471,
+   0.0094,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "move": [
+   -0.1,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 8,
+  "move": [
+   -0.18,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 8,
+  "move": [
+   -0.2,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 8,
+  "move": [
+   -0.14,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 8,
+  "move": [
+   -0.06,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "move": [
+   -0.0687,
+   -0.0137,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 9,
+  "move": [
+   -0.1236,
+   -0.0246,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 9,
+  "move": [
+   -0.1373,
+   -0.0273,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 9,
+  "move": [
+   -0.0961,
+   -0.0191,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 9,
+  "move": [
+   -0.0412,
+   -0.0082,
+   0
+  ]
+ },
+ {
+  "note": "E29 (iteration 24): the front and profile sheets end the side/back hair near chin level; E17b's hem drop halved (ring 13 -0.40 -> -0.20, ring 12 -0.22 -> -0.11) so the back hair no longer hangs past the neck in front view."
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 10,
+  "move": [
+   0,
+   0,
+   0.0172
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 10,
+  "move": [
+   0,
+   0,
+   0.0312
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 10,
+  "move": [
+   0,
+   0,
+   0.0063
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 11,
+  "move": [
+   0,
+   0,
+   0.055
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 11,
+  "move": [
+   0,
+   0,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 11,
+  "move": [
+   0,
+   0,
+   0.02
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 12,
+  "move": [
+   0,
+   0,
+   0.0928
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 12,
+  "move": [
+   0,
+   0,
+   0.1688
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 12,
+  "move": [
+   0,
+   0,
+   0.0338
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 13,
+  "move": [
+   0,
+   0,
+   0.11
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 13,
+  "move": [
+   0,
+   0,
+   0.2
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 13,
+  "move": [
+   0,
+   0,
+   0.04
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 14,
+  "move": [
+   0,
+   0,
+   0.11
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 14,
+  "move": [
+   0,
+   0,
+   0.2
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 14,
+  "move": [
+   0,
+   0,
+   0.04
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 15,
+  "move": [
+   0,
+   0,
+   0.11
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 15,
+  "move": [
+   0,
+   0,
+   0.2
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 15,
+  "move": [
+   0,
+   0,
+   0.04
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 16,
+  "move": [
+   0,
+   0,
+   0.11
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 16,
+  "move": [
+   0,
+   0,
+   0.2
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 16,
+  "move": [
+   0,
+   0,
+   0.04
+  ]
+ },
+ {
+  "note": "E30 (iteration 25, profile sheet): the curtain's front edge at cheek/jaw level sits ~0.3 too far forward (the sheet shows ~0.85 of cheek in front of it, the model ~0.45). Col 6 rings 8-12 back 0.25, col 7 back 0.15."
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "move": [
+   0,
+   0.15,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "move": [
+   0,
+   0.25,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "move": [
+   0,
+   0.25,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "move": [
+   0,
+   0.25,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 6,
+  "move": [
+   0,
+   0.2,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 7,
+  "move": [
+   0,
+   0.09,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 7,
+  "move": [
+   0,
+   0.15,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 7,
+  "move": [
+   0,
+   0.15,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 7,
+  "move": [
+   0,
+   0.15,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 7,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "note": "E31 (face pass 2, RealityKit front vs front sheet): the chin read as a V. The sheet's chin is broad and round: width 0.96 at z 0.1, ending at ~0.05; the model narrowed down to -0.10. Chin raised 0.08 and widened (ring 10 x1.28, ring 9 x1.04) so the jaw turns under in a soft U."
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.08
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "scale": [
+   1.28,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   1.04,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.05
+  ]
+ },
+ {
+  "note": "E32 (profile sheet, registered camera): the chin sits 0.12-0.17 in front of the sheet's at z 0.0-0.3 (the sheet's lower face recedes from the lips to the chin). Ring 9/10 centre columns moved back."
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   0.09,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 2,
+  "move": [
+   0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   0.15,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   0.11,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "move": [
+   0,
+   0.05,
+   0
+  ]
+ },
+ {
+  "note": "E33: chin back another 0.05 (profile sheet still 0.05 behind at z 0.1-0.3)."
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "move": [
+   0,
+   0.02,
+   0
+  ]
+ },
+ {
+  "note": "E34: the front sheet's chin is a soft point, not the broad U of E31 (width at z 0.1: sheet 0.96, model 1.21). Ring 10 x0.80, ring 9 x0.96."
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "scale": [
+   0.8,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   0.96,
+   1,
+   1
+  ]
+ },
+ {
+  "note": "E35 (jaw, from the profile sheet: the jaw edge runs level at z ~0 from the chin y -1.2 back to y -0.45, with the neck in shadow below): the cheek sides fall nearly vertically to a jawline (ring 10, widened and raised), the underside is a near-level plane to a neck junction (ring 11, raised to just under it). head_v19 creases both loops. The ring 9->10 taper had made the lower cheeks a downward-facing cone, shaded like a double chin."
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "set": [
+   null,
+   null,
+   -0.04
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "set": [
+   0.24,
+   null,
+   -0.04
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "set": [
+   0.47,
+   null,
+   -0.02
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 3,
+  "set": [
+   0.61,
+   null,
+   0.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 4,
+  "set": [
+   0.65,
+   null,
+   0.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 5,
+  "set": [
+   0.6,
+   null,
+   0.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 6,
+  "set": [
+   0.47,
+   null,
+   0.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 7,
+  "set": [
+   0.26,
+   null,
+   0.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": [
+   1,
+   2,
+   3
+  ],
+  "scale": [
+   1.04,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "set": [
+   null,
+   null,
+   -0.09
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 0,
+  "move": [
+   0,
+   0.1,
+   0
+  ]
+ },
+ {
+  "note": "E36 (supersedes E35's ring 9-11 positions): the jawline is a 3D curve that RISES toward the back, as the front sheet's face outline gives (half-width 0.48 @ z 0.1, 0.69 @ 0.2, 0.93 @ 0.4). Ring 10 = jaw edge on that curve; ring 9 = the cheek side just above it, kept wide so the cheek faces sideways; ring 11 = neck junction under a jaw underside that rises laterally. A level ring 10 made the lower cheeks a downward cone."
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "set": [
+   null,
+   -1.31,
+   0.24
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "set": [
+   0.47,
+   -1.24,
+   0.3
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 2,
+  "set": [
+   0.79,
+   -1.02,
+   0.35
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 3,
+  "set": [
+   1.0,
+   -0.67,
+   0.43
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 4,
+  "set": [
+   1.08,
+   -0.12,
+   0.5
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 5,
+  "set": [
+   1.0,
+   0.32,
+   0.5
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 6,
+  "set": [
+   0.78,
+   0.65,
+   0.5
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 7,
+  "set": [
+   0.44,
+   0.86,
+   0.5
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 8,
+  "set": [
+   null,
+   0.94,
+   0.5
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "set": [
+   null,
+   -1.2,
+   0.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "set": [
+   0.4,
+   -1.1,
+   0.1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "set": [
+   0.66,
+   -0.9,
+   0.22
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 3,
+  "set": [
+   0.86,
+   -0.6,
+   0.38
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 4,
+  "set": [
+   0.95,
+   -0.15,
+   0.48
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 5,
+  "set": [
+   0.88,
+   0.25,
+   0.48
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 6,
+  "set": [
+   0.68,
+   0.55,
+   0.48
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 7,
+  "set": [
+   0.38,
+   0.75,
+   0.48
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 8,
+  "set": [
+   null,
+   0.82,
+   0.48
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 0,
+  "set": [
+   null,
+   null,
+   -0.06
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 1,
+  "set": [
+   null,
+   null,
+   -0.04
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 2,
+  "set": [
+   null,
+   null,
+   0.02
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 3,
+  "set": [
+   null,
+   null,
+   0.1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 4,
+  "set": [
+   null,
+   null,
+   0.16
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 5,
+  "set": [
+   null,
+   null,
+   0.18
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 6,
+  "set": [
+   null,
+   null,
+   0.18
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 7,
+  "set": [
+   null,
+   null,
+   0.18
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 8,
+  "set": [
+   null,
+   null,
+   0.18
+  ]
+ },
+ {
+  "note": "E37: chin front more upright (profile sheet: lips->chin leans back ~22 deg; the model's 31 deg faced the chin down and away from the app's high sun, rendering it 182 against the face's 244)."
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   -0.03,
+   0
+  ]
+ },
+ {
+  "note": "E38: a pointed chin in front (sheet: the jaw lines leave the chin point at ~20 deg). Chin point lower, the jaw edge beside it higher and narrower; ring 10 crease raised to 1.0 in head_v19."
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "set": [
+   null,
+   null,
+   -0.04
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "set": [
+   0.34,
+   null,
+   0.14
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "set": [
+   0.63,
+   null,
+   0.27
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "set": [
+   0.44,
+   null,
+   0.33
+  ]
+ },
+ {
+  "note": "E39: the neck junction (ring 11) follows the rising jawline from behind. Seen from the front, a level ring 11 showed BELOW the jaw edge and drew a flat-bottomed chin."
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 0,
+  "set": [
+   null,
+   null,
+   -0.07
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 1,
+  "set": [
+   null,
+   null,
+   0.06
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 2,
+  "set": [
+   null,
+   null,
+   0.17
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 3,
+  "set": [
+   null,
+   null,
+   0.26
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 4,
+  "set": [
+   null,
+   null,
+   0.3
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 5,
+  "set": [
+   null,
+   null,
+   0.3
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 6,
+  "set": [
+   null,
+   null,
+   0.3
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 7,
+  "set": [
+   null,
+   null,
+   0.3
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 8,
+  "set": [
+   null,
+   null,
+   0.3
+  ]
+ },
+ {
+  "note": "E40 (master camera, 2026-10-02): the master's fringe lies ON the forehead (no visor gap) and the curtains hug the cheeks down to the jaw, flaring only at shoulder level. Fringe rows back toward the forehead; side mass rings 7-11, cols 7-10 pulled in."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   -0.0687,
+   0.0137,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 7,
+  "move": [
+   -0.1373,
+   0.0273,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 7,
+  "move": [
+   -0.151,
+   0.03,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 7,
+  "move": [
+   -0.1236,
+   0.0246,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 7,
+  "move": [
+   -0.0549,
+   0.0109,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "move": [
+   -0.1,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 8,
+  "move": [
+   -0.2,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 8,
+  "move": [
+   -0.22,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 8,
+  "move": [
+   -0.18,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 8,
+  "move": [
+   -0.08,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "move": [
+   -0.0981,
+   -0.0195,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 9,
+  "move": [
+   -0.1962,
+   -0.039,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 9,
+  "move": [
+   -0.2158,
+   -0.0429,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 9,
+  "move": [
+   -0.1765,
+   -0.0351,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 9,
+  "move": [
+   -0.0785,
+   -0.0156,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 10,
+  "move": [
+   -0.0647,
+   -0.0268,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 10,
+  "move": [
+   -0.1293,
+   -0.0536,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 10,
+  "move": [
+   -0.1423,
+   -0.0589,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 10,
+  "move": [
+   -0.1164,
+   -0.0482,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 10,
+  "move": [
+   -0.0517,
+   -0.0214,
+   0
+  ]
+ },
+ {
+  "note": "E41 (master camera): after the hem came down to the eyes (E40), crown->hem was 1.7x hem->chin against the master's ~1.24. The dome above the bang line is scaled 0.84 vertically about z 2.0, with the skull inside it."
+ },
+ {
+  "obj": "hair",
+  "ring": -1,
+  "col": -1,
+  "mirror": false,
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": -1,
+  "col": -1,
+  "mirror": false,
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 0,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 1,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 2,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "cols": "all",
+  "scale": [
+   1,
+   1,
+   0.84
+  ],
+  "center": [
+   0,
+   0.6,
+   2.0
+  ]
+ },
+ {
+  "note": "E42 (master camera): fuller cheeks. The master's near cheek bulges forward-outward below the eye; the front width already matches the sheet, so the volume goes into the 3/4 diagonal (cols 1-3): forward and slightly out."
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0.03,
+   -0.06,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0.05,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0.04,
+   -0.06,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "col": 1,
+  "move": [
+   0.02,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "col": 2,
+  "move": [
+   0.05,
+   -0.07,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "col": 3,
+  "move": [
+   0.04,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0.02,
+   -0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0.02,
+   -0.03,
+   0
+  ]
+ },
+ {
+  "note": "E43b (replaces E43-E46, which were reverted): lowering the whole jaw structure to the landmark solve's chin made the face long and rectangular, unlike the master's round chibi face. The landmark set (7 points) cannot see overall face proportion. Only the chin point comes down 0.12, fading to nothing by the jaw angle, and the chin moves forward 0.05."
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   0,
+   -0.12
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   0,
+   -0.1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 2,
+  "move": [
+   0,
+   0,
+   -0.06
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 3,
+  "move": [
+   0,
+   0,
+   -0.02
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   0,
+   -0.12
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   0,
+   -0.1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "move": [
+   0,
+   0,
+   -0.06
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 3,
+  "move": [
+   0,
+   0,
+   -0.02
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 0,
+  "move": [
+   0,
+   0,
+   -0.12
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 1,
+  "move": [
+   0,
+   0,
+   -0.1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 2,
+  "move": [
+   0,
+   0,
+   -0.06
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "col": 3,
+  "move": [
+   0,
+   0,
+   -0.02
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   -0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   -0.03,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   -0.04,
+   0
+  ]
+ },
+ {
+  "note": "E47: a softer, rounder chin (sheet and master both draw a soft rounded chin; E38 had made a sharp V). Jaw edge beside the chin widened, ring 9 above it to match; ring 10 crease back to 0.85."
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "set": [
+   0.46,
+   null,
+   null
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "set": [
+   0.74,
+   null,
+   null
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "set": [
+   0.54,
+   null,
+   null
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 2,
+  "set": [
+   0.86,
+   null,
+   null
+  ]
+ },
+ {
+  "note": "E48 (master-camera face-mask diff, face_diff_master.py): (a) the lower front of the face (chin + lower cheek toward the facing direction) sits ~0.3 too far back; (b) the near cheek is hidden ~0.25 early by the curtain's inner edge; (c) E42's fullness reached up to eye level and bulged the far cheek there."
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "col": 0,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "col": 1,
+  "move": [
+   0,
+   -0.06,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "col": 2,
+  "move": [
+   0,
+   -0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   -0.07,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 2,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   -0.06,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   -0.06,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 2,
+  "move": [
+   0,
+   -0.03,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   -0.02,
+   0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   -0.02,
+   0.03,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 6,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "move": [
+   0,
+   0.14,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "note": "E49 (faceted-cage hair restored): the dome bulged out over the fringe as a shelf at ring 4/5. Rings 4-5 front columns pulled back so the dome flows into the fringe."
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 0,
+  "move": [
+   0,
+   0.14,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 0,
+  "move": [
+   0,
+   0.08,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 1,
+  "move": [
+   0,
+   0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   0,
+   0.069,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 2,
+  "move": [
+   0,
+   0.1,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 2,
+  "move": [
+   0,
+   0.057,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 3,
+  "move": [
+   0,
+   0.08,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   0,
+   0.046,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 4,
+  "move": [
+   0,
+   0.06,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 4,
+  "move": [
+   0,
+   0.034,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 5,
+  "move": [
+   0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 5,
+  "move": [
+   0,
+   0.023,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 6,
+  "move": [
+   0,
+   0.02,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 6,
+  "move": [
+   0,
+   0.011,
+   0
+  ]
+ },
+ {
+  "note": "E50: the fringe falls nearly straight, as in the master: its hem had tucked 0.33 back from the ring-5 front, and the turn read as a mushroom brim. Rings 6-7 front columns forward."
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "move": [
+   0,
+   -0.2,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   -0.043,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   -0.171,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   -0.036,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0,
+   -0.143,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   -0.029,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   -0.114,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0,
+   -0.021,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "move": [
+   0,
+   -0.086,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "move": [
+   0,
+   -0.014,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "move": [
+   0,
+   -0.057,
+   0
+  ]
+ },
+ {
+  "note": "E51: the dome's lower rings (5-6) step out over the hugging curtains (E28/E40) and read as a shelf ringing the head. Rings 5-6 on the sides (cols 4-12) taper inward to meet the curtain."
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 4,
+  "move": [
+   -0.0109,
+   0.0109,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 4,
+  "move": [
+   -0.0284,
+   0.0284,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   -0.035,
+   0.035,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 5,
+  "move": [
+   -0.0244,
+   0.0163,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 5,
+  "move": [
+   -0.0635,
+   0.0425,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "move": [
+   -0.0782,
+   0.0522,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 6,
+  "move": [
+   -0.0374,
+   0.0155,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 6,
+  "move": [
+   -0.0972,
+   0.0402,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 6,
+  "move": [
+   -0.1196,
+   0.0495,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 7,
+  "move": [
+   -0.0466,
+   0.0093,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 7,
+  "move": [
+   -0.1213,
+   0.0241,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 7,
+  "move": [
+   -0.1492,
+   0.0297,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 8,
+  "move": [
+   -0.05,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 8,
+  "move": [
+   -0.13,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 8,
+  "move": [
+   -0.16,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 9,
+  "move": [
+   -0.0466,
+   -0.0093,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 9,
+  "move": [
+   -0.1213,
+   -0.0241,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 9,
+  "move": [
+   -0.1492,
+   -0.0297,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 10,
+  "move": [
+   -0.0374,
+   -0.0155,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 10,
+  "move": [
+   -0.0972,
+   -0.0402,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 10,
+  "move": [
+   -0.1196,
+   -0.0495,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 11,
+  "move": [
+   -0.0244,
+   -0.0163,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 11,
+  "move": [
+   -0.0635,
+   -0.0425,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 11,
+  "move": [
+   -0.0782,
+   -0.0522,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 12,
+  "move": [
+   -0.0109,
+   -0.0109,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 12,
+  "move": [
+   -0.0284,
+   -0.0284,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 12,
+  "move": [
+   -0.035,
+   -0.035,
+   0
+  ]
+ },
+ {
+  "note": "E52: the front of the hair is one smooth arc from crown to fringe hem, as in the profile sheet (z 3.59 y-1.58, 3.35 -1.78, 3.11 -1.94, 2.87 -2.04). Col 0 had stepped 0.6 forward per ring above z 3.27 and then turned vertical: the crease between dome and fringe. Cols 0-6 re-laid on that arc, scaled by each column's depth ratio."
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 0,
+  "move": [
+   0,
+   -0.3,
+   0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 1,
+  "move": [
+   0,
+   -0.294,
+   0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 2,
+  "move": [
+   0,
+   -0.276,
+   0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 3,
+  "move": [
+   0,
+   -0.24,
+   0.05
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 4,
+  "move": [
+   0,
+   -0.198,
+   0.043
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 5,
+  "move": [
+   0,
+   -0.144,
+   0.031
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "col": 6,
+  "move": [
+   0,
+   -0.09,
+   0.02
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 0,
+  "move": [
+   0,
+   -0.2,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 1,
+  "move": [
+   0,
+   -0.196,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 2,
+  "move": [
+   0,
+   -0.184,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 3,
+  "move": [
+   0,
+   -0.16,
+   0.1
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 4,
+  "move": [
+   0,
+   -0.132,
+   0.086
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 5,
+  "move": [
+   0,
+   -0.096,
+   0.062
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 6,
+  "move": [
+   0,
+   -0.06,
+   0.039
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 0,
+  "move": [
+   0,
+   0.06,
+   0.13
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 1,
+  "move": [
+   0,
+   0.059,
+   0.13
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 2,
+  "move": [
+   0,
+   0.055,
+   0.13
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 3,
+  "move": [
+   0,
+   0.048,
+   0.13
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 4,
+  "move": [
+   0,
+   0.04,
+   0.112
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 5,
+  "move": [
+   0,
+   0.029,
+   0.081
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 6,
+  "move": [
+   0,
+   0.018,
+   0.051
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 0,
+  "move": [
+   0,
+   -0.01,
+   0.14
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 1,
+  "move": [
+   0,
+   -0.01,
+   0.14
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 2,
+  "move": [
+   0,
+   -0.009,
+   0.14
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 3,
+  "move": [
+   0,
+   -0.008,
+   0.14
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 4,
+  "move": [
+   0,
+   -0.007,
+   0.12
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 5,
+  "move": [
+   0,
+   -0.005,
+   0.087
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 6,
+  "move": [
+   0,
+   -0.003,
+   0.055
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 0,
+  "move": [
+   0,
+   0.0,
+   0.06
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   0,
+   0.0,
+   0.06
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 2,
+  "move": [
+   0,
+   0.0,
+   0.06
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   0,
+   0.0,
+   0.06
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 4,
+  "move": [
+   0,
+   0.0,
+   0.051
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 5,
+  "move": [
+   0,
+   0.0,
+   0.037
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 6,
+  "move": [
+   0,
+   0.0,
+   0.023
+  ]
+ },
+ {
+  "note": "E53: side columns 7-12 had a bulge at ring 7 (z 1.95) over a waist at ring 8 (z 1.55): the band ringing the head. Rings 7-9 re-laid so the radius grows monotonically from ring 6 to ring 10 (the bob's bell)."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   0.0098,
+   -0.002,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 7,
+  "move": [
+   0.255,
+   -0.0507,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 7,
+  "move": [
+   0.2354,
+   -0.0468,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "move": [
+   0.0161,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 8,
+  "move": [
+   0.1976,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 8,
+  "move": [
+   0.1951,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "move": [
+   -0.0608,
+   -0.0121,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 9,
+  "move": [
+   0.1201,
+   0.0239,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 9,
+  "move": [
+   0.1319,
+   0.0262,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 10,
+  "move": [
+   -0.1294,
+   -0.0536,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 10,
+  "move": [
+   0.0436,
+   0.0181,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 10,
+  "move": [
+   0.0682,
+   0.0283,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 11,
+  "move": [
+   -0.0769,
+   -0.0513,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 11,
+  "move": [
+   0.0552,
+   0.0369,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 11,
+  "move": [
+   0.004,
+   0.0027,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 12,
+  "move": [
+   -0.0316,
+   -0.0316,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 12,
+  "move": [
+   0.0604,
+   0.0604,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 12,
+  "move": [
+   -0.0455,
+   -0.0455,
+   0
+  ]
+ },
+ {
+  "note": "E55 (front overlay on the sheet, 2026-10-02): the face sides bulged 0.1-0.17 wider than the sheet at z 0.7-1.8 (the sheet's sides run straight). Head rings 4-8 narrowed."
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "cols": "all",
+  "scale": [
+   0.97,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "cols": "all",
+  "scale": [
+   0.95,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "cols": "all",
+  "scale": [
+   0.95,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "cols": "all",
+  "scale": [
+   0.95,
+   1,
+   1
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "scale": [
+   0.97,
+   1,
+   1
+  ]
+ },
+ {
+  "note": "E56b: the skull's temple (40-60 deg, z 1.85-2.4) sat only 0.04 inside the hair's outer surface beside the fringe corners. The facet jitter (+-0.035) let the skin poke through as jagged 'horns' above the outer eye corners. The temple moves radially inward 0.10-0.16 (head rings 3-5, cols 2-3)."
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "col": 2,
+  "move": [
+   -0.0707,
+   0.0707,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "col": 3,
+  "move": [
+   -0.0739,
+   0.0306,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 3,
+  "col": 1,
+  "move": [
+   -0.0153,
+   0.037,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 2,
+  "move": [
+   -0.1131,
+   0.1131,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 3,
+  "move": [
+   -0.1183,
+   0.049,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 1,
+  "move": [
+   -0.0245,
+   0.0591,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 2,
+  "move": [
+   -0.0566,
+   0.0566,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   -0.0591,
+   0.0245,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   -0.0122,
+   0.0296,
+   0
+  ]
+ },
+ {
+  "note": "E57 (profile sheet, 2026-10-02): the back of the bob sat 0.4-0.8 deeper than the sheet from z 1.8 to 0.2 (E12/E17b/E20 followed the master's exaggerated back). Back columns 10-16, rings 5-12, radially in about half that."
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 10,
+  "move": [
+   -0.0115,
+   -0.0048,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 10,
+  "move": [
+   -0.0217,
+   -0.009,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 10,
+  "move": [
+   -0.0318,
+   -0.0132,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 10,
+  "move": [
+   -0.0404,
+   -0.0167,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 10,
+  "move": [
+   -0.0462,
+   -0.0191,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 10,
+  "move": [
+   -0.0462,
+   -0.0191,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 10,
+  "move": [
+   -0.0404,
+   -0.0167,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 10,
+  "move": [
+   -0.0318,
+   -0.0132,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 11,
+  "move": [
+   -0.0333,
+   -0.0222,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 11,
+  "move": [
+   -0.0624,
+   -0.0417,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 11,
+  "move": [
+   -0.0915,
+   -0.0611,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 11,
+  "move": [
+   -0.1164,
+   -0.0778,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 11,
+  "move": [
+   -0.133,
+   -0.0889,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 11,
+  "move": [
+   -0.133,
+   -0.0889,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 11,
+  "move": [
+   -0.1164,
+   -0.0778,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 11,
+  "move": [
+   -0.0915,
+   -0.0611,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 12,
+  "move": [
+   -0.0477,
+   -0.0477,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 12,
+  "move": [
+   -0.0895,
+   -0.0895,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 12,
+  "move": [
+   -0.1313,
+   -0.1313,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 12,
+  "move": [
+   -0.1671,
+   -0.1671,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 12,
+  "move": [
+   -0.1909,
+   -0.1909,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 12,
+  "move": [
+   -0.1909,
+   -0.1909,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 12,
+  "move": [
+   -0.1671,
+   -0.1671,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 12,
+  "move": [
+   -0.1313,
+   -0.1313,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 13,
+  "move": [
+   -0.0444,
+   -0.0665,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 13,
+  "move": [
+   -0.0833,
+   -0.1247,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 13,
+  "move": [
+   -0.1222,
+   -0.1829,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 13,
+  "move": [
+   -0.1556,
+   -0.2328,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 13,
+  "move": [
+   -0.1778,
+   -0.2661,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 13,
+  "move": [
+   -0.1778,
+   -0.2661,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 13,
+  "move": [
+   -0.1556,
+   -0.2328,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 13,
+  "move": [
+   -0.1222,
+   -0.1829,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 14,
+  "move": [
+   -0.0306,
+   -0.0739,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 14,
+  "move": [
+   -0.0574,
+   -0.1386,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 14,
+  "move": [
+   -0.0842,
+   -0.2033,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 14,
+  "move": [
+   -0.1072,
+   -0.2587,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 14,
+  "move": [
+   -0.1225,
+   -0.2956,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 14,
+  "move": [
+   -0.1225,
+   -0.2956,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 14,
+  "move": [
+   -0.1072,
+   -0.2587,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 14,
+  "move": [
+   -0.0842,
+   -0.2033,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 15,
+  "move": [
+   -0.0156,
+   -0.0785,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 15,
+  "move": [
+   -0.0293,
+   -0.1471,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 15,
+  "move": [
+   -0.0429,
+   -0.2158,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 15,
+  "move": [
+   -0.0546,
+   -0.2746,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 15,
+  "move": [
+   -0.0624,
+   -0.3139,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 15,
+  "move": [
+   -0.0624,
+   -0.3139,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 15,
+  "move": [
+   -0.0546,
+   -0.2746,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 15,
+  "move": [
+   -0.0429,
+   -0.2158,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.15,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.22,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.28,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.32,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.32,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.28,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.22,
+   0
+  ]
+ },
+ {
+  "note": "E58 (ortho silhouettes vs the front/profile sheets, 2026-10-02): (a) back still 0.45 deeper than the profile sheet at every height: back cols 10-16, rings 2-13 in by up to 0.45; (b) front of the hair at z 2.0-2.6 sat 0.3 behind the sheet: cols 0-4 rings 3-6 forward; (c) the sheet is asymmetric: her right curtain hugs the face at z 2.0-1.4 (0.3-0.6 narrower than the model), so cols 22-26 rings 6-9 come in there, non-mirrored."
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 10,
+  "move": [
+   -0.024,
+   -0.0099,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 10,
+  "move": [
+   -0.0527,
+   -0.0218,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 10,
+  "move": [
+   -0.0766,
+   -0.0317,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 10,
+  "move": [
+   -0.0958,
+   -0.0397,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 10,
+  "move": [
+   -0.1078,
+   -0.0446,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 10,
+  "move": [
+   -0.1078,
+   -0.0446,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 10,
+  "move": [
+   -0.1078,
+   -0.0446,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 10,
+  "move": [
+   -0.1078,
+   -0.0446,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 10,
+  "move": [
+   -0.1078,
+   -0.0446,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 10,
+  "move": [
+   -0.1078,
+   -0.0446,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 10,
+  "move": [
+   -0.1078,
+   -0.0446,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 10,
+  "move": [
+   -0.0958,
+   -0.0397,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 11,
+  "move": [
+   -0.0616,
+   -0.0412,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 11,
+  "move": [
+   -0.1355,
+   -0.0905,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 11,
+  "move": [
+   -0.1971,
+   -0.1317,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 11,
+  "move": [
+   -0.2464,
+   -0.1646,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 11,
+  "move": [
+   -0.2772,
+   -0.1852,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 11,
+  "move": [
+   -0.2772,
+   -0.1852,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 11,
+  "move": [
+   -0.2772,
+   -0.1852,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 11,
+  "move": [
+   -0.2772,
+   -0.1852,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 11,
+  "move": [
+   -0.2772,
+   -0.1852,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 11,
+  "move": [
+   -0.2772,
+   -0.1852,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 11,
+  "move": [
+   -0.2772,
+   -0.1852,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 11,
+  "move": [
+   -0.2464,
+   -0.1646,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 12,
+  "move": [
+   -0.0707,
+   -0.0707,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 12,
+  "move": [
+   -0.1556,
+   -0.1556,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 12,
+  "move": [
+   -0.2263,
+   -0.2263,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 12,
+  "move": [
+   -0.2828,
+   -0.2828,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 12,
+  "move": [
+   -0.3182,
+   -0.3182,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 12,
+  "move": [
+   -0.3182,
+   -0.3182,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 12,
+  "move": [
+   -0.3182,
+   -0.3182,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 12,
+  "move": [
+   -0.3182,
+   -0.3182,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 12,
+  "move": [
+   -0.3182,
+   -0.3182,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 12,
+  "move": [
+   -0.3182,
+   -0.3182,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 12,
+  "move": [
+   -0.3182,
+   -0.3182,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 12,
+  "move": [
+   -0.2828,
+   -0.2828,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 13,
+  "move": [
+   -0.0556,
+   -0.0831,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 13,
+  "move": [
+   -0.1222,
+   -0.1829,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 13,
+  "move": [
+   -0.1778,
+   -0.2661,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 13,
+  "move": [
+   -0.2222,
+   -0.3326,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 13,
+  "move": [
+   -0.25,
+   -0.3742,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 13,
+  "move": [
+   -0.25,
+   -0.3742,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 13,
+  "move": [
+   -0.25,
+   -0.3742,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 13,
+  "move": [
+   -0.25,
+   -0.3742,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 13,
+  "move": [
+   -0.25,
+   -0.3742,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 13,
+  "move": [
+   -0.25,
+   -0.3742,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 13,
+  "move": [
+   -0.25,
+   -0.3742,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 13,
+  "move": [
+   -0.2222,
+   -0.3326,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 14,
+  "move": [
+   -0.0383,
+   -0.0924,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 14,
+  "move": [
+   -0.0842,
+   -0.2033,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 14,
+  "move": [
+   -0.1225,
+   -0.2956,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 14,
+  "move": [
+   -0.1531,
+   -0.3696,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 14,
+  "move": [
+   -0.1722,
+   -0.4157,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 14,
+  "move": [
+   -0.1722,
+   -0.4157,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 14,
+  "move": [
+   -0.1722,
+   -0.4157,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 14,
+  "move": [
+   -0.1722,
+   -0.4157,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 14,
+  "move": [
+   -0.1722,
+   -0.4157,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 14,
+  "move": [
+   -0.1722,
+   -0.4157,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 14,
+  "move": [
+   -0.1722,
+   -0.4157,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 14,
+  "move": [
+   -0.1531,
+   -0.3696,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 15,
+  "move": [
+   -0.0195,
+   -0.0981,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 15,
+  "move": [
+   -0.0429,
+   -0.2158,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 15,
+  "move": [
+   -0.0624,
+   -0.3139,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 15,
+  "move": [
+   -0.078,
+   -0.3923,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 15,
+  "move": [
+   -0.0878,
+   -0.4414,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 15,
+  "move": [
+   -0.0878,
+   -0.4414,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 15,
+  "move": [
+   -0.0878,
+   -0.4414,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 15,
+  "move": [
+   -0.0878,
+   -0.4414,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 15,
+  "move": [
+   -0.0878,
+   -0.4414,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 15,
+  "move": [
+   -0.0878,
+   -0.4414,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 15,
+  "move": [
+   -0.0878,
+   -0.4414,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 15,
+  "move": [
+   -0.078,
+   -0.3923,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.1,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.22,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.32,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.4,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.45,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.45,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.45,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.45,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.45,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.45,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.45,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 16,
+  "move": [
+   -0.0,
+   -0.4,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 0,
+  "move": [
+   0,
+   -0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 0,
+  "move": [
+   0,
+   -0.28,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 0,
+  "move": [
+   0,
+   -0.3,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "move": [
+   0,
+   -0.22,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 1,
+  "move": [
+   0,
+   -0.114,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 1,
+  "move": [
+   0,
+   -0.266,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   0,
+   -0.285,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   -0.209,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 2,
+  "move": [
+   0,
+   -0.096,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 2,
+  "move": [
+   0,
+   -0.224,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 2,
+  "move": [
+   0,
+   -0.24,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   -0.176,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 3,
+  "move": [
+   0,
+   -0.072,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 3,
+  "move": [
+   0,
+   -0.168,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   0,
+   -0.18,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   -0.132,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "col": 4,
+  "move": [
+   0,
+   -0.042,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 4,
+  "move": [
+   0,
+   -0.098,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 4,
+  "move": [
+   0,
+   -0.105,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0,
+   -0.077,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 22,
+  "mirror": false,
+  "move": [
+   0.1155,
+   -0.0478,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 22,
+  "mirror": false,
+  "move": [
+   0.2079,
+   -0.0861,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 22,
+  "mirror": false,
+  "move": [
+   0.231,
+   -0.0957,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 22,
+  "mirror": false,
+  "move": [
+   0.1386,
+   -0.0574,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.1962,
+   -0.039,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.3531,
+   -0.0702,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.3923,
+   -0.078,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.2354,
+   -0.0468,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.25,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.45,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.5,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.3,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.2207,
+   0.0439,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.3972,
+   0.079,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.4414,
+   0.0878,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.2648,
+   0.0527,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 26,
+  "mirror": false,
+  "move": [
+   0.1386,
+   0.0574,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 26,
+  "mirror": false,
+  "move": [
+   0.2494,
+   0.1033,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 26,
+  "mirror": false,
+  "move": [
+   0.2772,
+   0.1148,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 26,
+  "mirror": false,
+  "move": [
+   0.1663,
+   0.0689,
+   0
+  ]
+ },
+ {
+  "note": "E59: second silhouette step. Her right still 0.26 out at z 1.6 (cols 23-25 ring 7 in 0.25 more); her left 0.16 narrow at z 2.4-2.2 (cols 7-9 rings 5-6 out, non-mirrored)."
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.0687,
+   -0.0137,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.1716,
+   -0.0341,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.1236,
+   -0.0246,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.1,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.25,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.18,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.0785,
+   0.0156,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.1962,
+   0.039,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.1412,
+   0.0281,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 7,
+  "mirror": false,
+  "move": [
+   0.0471,
+   -0.0094,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 7,
+  "mirror": false,
+  "move": [
+   0.0942,
+   -0.0187,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 7,
+  "mirror": false,
+  "move": [
+   0.0942,
+   -0.0187,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "mirror": false,
+  "move": [
+   0.0471,
+   -0.0094,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 8,
+  "mirror": false,
+  "move": [
+   0.08,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 8,
+  "mirror": false,
+  "move": [
+   0.16,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 8,
+  "mirror": false,
+  "move": [
+   0.16,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "mirror": false,
+  "move": [
+   0.08,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 9,
+  "mirror": false,
+  "move": [
+   0.0549,
+   0.0109,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 9,
+  "mirror": false,
+  "move": [
+   0.1098,
+   0.0219,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 9,
+  "mirror": false,
+  "move": [
+   0.1098,
+   0.0219,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "mirror": false,
+  "move": [
+   0.0549,
+   0.0109,
+   0
+  ]
+ },
+ {
+  "note": "E60: lower bob vs the front sheet. Her right lower hair tucks in (model 0.3-0.4 out at z 0.4..-0.2): cols 22-26 rings 10-13 in, non-mirrored. Her left hem 0.2 out at z -0.2: cols 6-10 ring 12-13 in, non-mirrored."
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 22,
+  "mirror": false,
+  "move": [
+   0.0665,
+   -0.0276,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 22,
+  "mirror": false,
+  "move": [
+   0.1386,
+   -0.0574,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 22,
+  "mirror": false,
+  "move": [
+   0.194,
+   -0.0804,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 22,
+  "mirror": false,
+  "move": [
+   0.194,
+   -0.0804,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.1059,
+   -0.0211,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.2207,
+   -0.0439,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.3089,
+   -0.0615,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 23,
+  "mirror": false,
+  "move": [
+   0.3089,
+   -0.0615,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.12,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.25,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.35,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 24,
+  "mirror": false,
+  "move": [
+   0.35,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.1059,
+   0.0211,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.2207,
+   0.0439,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.3089,
+   0.0615,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 25,
+  "mirror": false,
+  "move": [
+   0.3089,
+   0.0615,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 26,
+  "mirror": false,
+  "move": [
+   0.0665,
+   0.0276,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 26,
+  "mirror": false,
+  "move": [
+   0.1386,
+   0.0574,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 26,
+  "mirror": false,
+  "move": [
+   0.194,
+   0.0804,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 26,
+  "mirror": false,
+  "move": [
+   0.194,
+   0.0804,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 6,
+  "mirror": false,
+  "move": [
+   -0.0554,
+   0.023,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 6,
+  "mirror": false,
+  "move": [
+   -0.1109,
+   0.0459,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 7,
+  "mirror": false,
+  "move": [
+   -0.0883,
+   0.0176,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 7,
+  "mirror": false,
+  "move": [
+   -0.1765,
+   0.0351,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 8,
+  "mirror": false,
+  "move": [
+   -0.1,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 8,
+  "mirror": false,
+  "move": [
+   -0.2,
+   0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 9,
+  "mirror": false,
+  "move": [
+   -0.0883,
+   -0.0176,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 9,
+  "mirror": false,
+  "move": [
+   -0.1765,
+   -0.0351,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 10,
+  "mirror": false,
+  "move": [
+   -0.0554,
+   -0.023,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 10,
+  "mirror": false,
+  "move": [
+   -0.1109,
+   -0.0459,
+   0
+  ]
+ },
+ {
+  "note": "E61: the profile sheet's fringe tips hang to z ~1.75 in front of the forehead; front columns' hem down 0.07."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "move": [
+   0,
+   0,
+   -0.07
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   0,
+   -0.07
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   0,
+   -0.04
+  ]
+ },
+ {
+  "note": "E62: E51's taper of the dome's lower rings left a waist at z 2.0-2.2 (front silhouette 0.1-0.16 inside the sheet between a wider dome and wider curtains), which rendered as a brim ringing the head. 60% of E51 undone, so the dome flows convexly into the curtains as on the sheet."
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 4,
+  "move": [
+   0.0066,
+   -0.0066,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 4,
+  "move": [
+   0.017,
+   -0.017,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0.021,
+   -0.021,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 5,
+  "move": [
+   0.0147,
+   -0.0098,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 5,
+  "move": [
+   0.0381,
+   -0.0255,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "move": [
+   0.0469,
+   -0.0313,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 6,
+  "move": [
+   0.0224,
+   -0.0093,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 6,
+  "move": [
+   0.0583,
+   -0.0241,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 6,
+  "move": [
+   0.0718,
+   -0.0297,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 7,
+  "move": [
+   0.028,
+   -0.0056,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 7,
+  "move": [
+   0.0728,
+   -0.0145,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 7,
+  "move": [
+   0.0895,
+   -0.0178,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 8,
+  "move": [
+   0.03,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 8,
+  "move": [
+   0.078,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 8,
+  "move": [
+   0.096,
+   -0.0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 9,
+  "move": [
+   0.028,
+   0.0056,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 9,
+  "move": [
+   0.0728,
+   0.0145,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 9,
+  "move": [
+   0.0895,
+   0.0178,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 10,
+  "move": [
+   0.0224,
+   0.0093,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 10,
+  "move": [
+   0.0583,
+   0.0241,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 10,
+  "move": [
+   0.0718,
+   0.0297,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 11,
+  "move": [
+   0.0147,
+   0.0098,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 11,
+  "move": [
+   0.0381,
+   0.0255,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 11,
+  "move": [
+   0.0469,
+   0.0313,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "col": 12,
+  "move": [
+   0.0066,
+   0.0066,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 5,
+  "col": 12,
+  "move": [
+   0.017,
+   0.017,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 12,
+  "move": [
+   0.021,
+   0.021,
+   0
+  ]
+ },
+ {
+  "note": "E63 (profile sheet: fringe front at z 2.0 y -2.0, at z 1.8 y -1.84; the model's hem ring tucked 0.34 back under ring 6 and read as a brim): the fringe hem ring (7) and ring 6 front columns forward, so the bangs hang nearly straight from the dome as on the sheet."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 0,
+  "move": [
+   0,
+   -0.2,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 0,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 1,
+  "move": [
+   0,
+   -0.2,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0,
+   -0.18,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   -0.045,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   -0.15,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   -0.038,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 4,
+  "move": [
+   0,
+   -0.11,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 4,
+  "move": [
+   0,
+   -0.028,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 5,
+  "move": [
+   0,
+   -0.07,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 5,
+  "move": [
+   0,
+   -0.017,
+   0
+  ]
+ },
+ {
+  "note": "E65 (profile sheet, 2026-10-02): (a) the curtain inner edge comes forward 0.2 at cheek level (sheet hair starts at y ~-0.45, model ~-0.2: a wide, heavy lower face in profile); (b) the chin back 0.07 and up 0.06, splitting the master and the profile sheet."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 6,
+  "move": [
+   0,
+   -0.1,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "move": [
+   0,
+   -0.2,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "move": [
+   0,
+   -0.22,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "move": [
+   0,
+   -0.18,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "move": [
+   0,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 0,
+  "move": [
+   0,
+   0.07,
+   0.06
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 0,
+  "move": [
+   0,
+   0.035,
+   0.024
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "col": 1,
+  "move": [
+   0,
+   0.05,
+   0.04
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "col": 1,
+  "move": [
+   0,
+   0.025,
+   0.016
+  ]
+ },
+ {
+  "note": "E67 (2026-10-02): the curtain front edge comes forward from eye level to the jaw. Profile sheet and master both show the hair starting just behind the outer eye corner; the model showed ~40-50 sheet px of bare cheek there. Col 7 (outer) moves the full amount, col 6 (inner tuck, close to the cheek) 40%. Below the chin (rings 12-13) the hem goes slightly back instead: the profile sheet's hem ends ~50 px behind the chin and leaves the neck visible."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   0,
+   -0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 6,
+  "move": [
+   0,
+   -0.048,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 7,
+  "move": [
+   0,
+   -0.28,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "move": [
+   0,
+   -0.112,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 7,
+  "move": [
+   0,
+   -0.36,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "move": [
+   0,
+   -0.144,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 7,
+  "move": [
+   0,
+   -0.4,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "move": [
+   0,
+   -0.16,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 7,
+  "move": [
+   0,
+   -0.38,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "move": [
+   0,
+   -0.152,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 7,
+  "move": [
+   0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 6,
+  "move": [
+   0,
+   0.016,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 7,
+  "move": [
+   0,
+   0.1,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 6,
+  "move": [
+   0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "note": "E68 (2026-10-02): taper the lower face. Front-view skin width per row vs the front sheet (normalized by hem-to-chin) matched within 1-3% down to the nose, then ran 7-16% wide from the mouth to the jaw, which read as a round, chubby lower face in the front and master views. Scale x of the jaw rings."
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "cols": "all",
+  "scale": [
+   0.97,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "scale": [
+   0.93,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   0.87,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "scale": [
+   0.87,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "scale": [
+   0.92,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "note": "E69 (2026-10-02): flat anime face front at eye level. The face surface under the eyes turned 15 deg at the inner corner, 35 at the centre and 68-77 at the outer corner, so the far eye in the master view shrank to ~37% of the near eye (concept ~67%) and the profile eye faced sideways. Cols 1-3 come forward at the eye rings; x (front silhouette) unchanged."
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 1,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 2,
+  "move": [
+   0,
+   -0.15,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 3,
+  "move": [
+   0,
+   -0.2,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   0,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 2,
+  "move": [
+   0,
+   -0.25,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   0,
+   -0.35,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   -0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   -0.18,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   -0.28,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0,
+   -0.1,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   -0.15,
+   0
+  ]
+ },
+ {
+  "note": "E70 (2026-10-02): crown back up to the sheets' height. Registered on the front/profile sheets the crown sat ~47 sheet px low (it had been lowered for 'the head looks too big'); side by side the low dome read as a squashed cap. The user chose the sheet height. Pole and rings 0-4 rise, tapering to the curtain."
+ },
+ {
+  "obj": "hair",
+  "ring": -1,
+  "col": -1,
+  "move": [
+   0,
+   0,
+   0.38
+  ],
+  "mirror": false
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.36
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.32
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.24
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.14
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.05
+  ]
+ },
+ {
+  "note": "E71 (2026-10-02): fill the front-view ledge between the dome and the curtains. Registered on the front sheet, rows 260-300 (z ~1.76-2.11) ran 14-34 px narrower than the sheet while the dome above and the flare below matched; the sheet's outline is one smooth curve."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "move": [
+   0.15,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   0.1,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "move": [
+   0.1,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 8,
+  "move": [
+   0.06,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 7,
+  "move": [
+   0.04,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 9,
+  "move": [
+   0.04,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "move": [
+   0.12,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   0.08,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "move": [
+   0.08,
+   0,
+   0
+  ]
+ },
+ {
+  "note": "E72 (2026-10-02): the bob's bottom, measured on both registered sheets after the lower locks were removed (they had been the front corners). Ring 12 x1.05 and ring 13 x1.18 flare the ends outward as the sheets' bob does; the side columns of ring 13 drop 0.03. Front rows 466-514 now within 2-15 px of the sheet, profile hem within 4-14 px. (A tuck x0.77 with a +0.16 lift all round, tried first, left the back hem ~25 px high and, without the locks, the front corners 170 px narrow.)"
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "cols": "all",
+  "scale": [
+   1.05,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "cols": "all",
+  "scale": [
+   1.18,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "cols": [
+   6,
+   7,
+   8,
+   9,
+   10
+  ],
+  "move": [
+   0,
+   0,
+   -0.03
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "cols": [
+   11
+  ],
+  "move": [
+   0,
+   0,
+   -0.015
+  ]
+ }
+]

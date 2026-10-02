@@ -39,6 +39,10 @@
   --brand-antigravity: #5F6368;
   --brand-kiro:        #7C3AED;
   --brand-zai:         #1F63EC;
+  /* Hermes Agent's Nous girl ships as black and white variants upstream
+   * (assets/nous-girl-{black,white}.svg); white is the dark-screen form. */
+  --brand-hermes:      #000000;
+  --brand-hermes-on-dark: #FFFFFF;
   /* OpenCode's upstream mark is near-black; its light variant is the one
    * that stays legible on dark product screens (aquarium, LCD, LED). */
   --brand-opencode-on-dark: #F1ECEC;

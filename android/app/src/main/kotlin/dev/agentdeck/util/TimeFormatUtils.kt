@@ -1,5 +1,6 @@
 package dev.agentdeck.util
 
+import dev.agentdeck.net.CodexCredits
 import dev.agentdeck.net.CodexLunaReserve
 import dev.agentdeck.net.CodexRateLimits
 import dev.agentdeck.net.ZaiRateLimits
@@ -95,6 +96,11 @@ data class ProviderLimitRow(
     /** `percent` is what REMAINS (the Codex Luna reserve), not what is used.
      *  Renderers fill by it and colour by [usedPercent]. */
     val remaining: Boolean = false,
+    /** A reading that is not a percentage — the remaining Codex credit balance
+     *  ("62.5K"). When set, renderers print it in place of the percent and draw
+     *  no bar and no severity colour: a balance has no cap to fill against, so
+     *  a bar would be a fake percentage. [percent] is 0 and meaningless. */
+    val value: String? = null,
 ) {
     /** The consumed share, whichever way [percent] reads — the colour ramp input. */
     val usedPercent: Double get() = if (remaining) 100.0 - percent else percent
@@ -123,14 +129,27 @@ fun windowLabel(minutes: Int?): String {
  */
 fun codexLimitRows(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMillis()): List<ProviderLimitRow> {
     if (limits == null) return emptyList()
-    // An exhausted account window hands the Codex rows to the Luna reserve,
-    // read as what is LEFT — the cross-surface rule (UsagePresentation).
-    activeLunaReserve(limits, nowMs)?.let { luna ->
-        return listOf(
-            ProviderLimitRow(
-                "codex", "luna", (100.0 - luna.usedPercent).coerceIn(0.0, 100.0),
-                luna.resetsAt, false, remaining = true,
-            ),
+    // An exhausted account window hands the Codex rows to what the account can
+    // still spend — the cross-surface rule (UsagePresentation): the purchased
+    // credit balance, and the Luna reserve read as what is LEFT. Every Android
+    // Codex block has room for both, so both show; credits lead because they
+    // are what the account is actually drawing down.
+    val credits = activeCodexCredits(limits, nowMs)
+    val luna = activeLunaReserve(limits, nowMs)
+    if (credits != null || luna != null) {
+        return listOfNotNull(
+            credits?.let {
+                ProviderLimitRow(
+                    "codex", "credits", 0.0, it.regularResetsAt, false,
+                    value = UsagePresentation.formatCreditBalance(it.balance),
+                )
+            },
+            luna?.let {
+                ProviderLimitRow(
+                    "codex", "luna", (100.0 - it.usedPercent).coerceIn(0.0, 100.0),
+                    it.resetsAt, false, remaining = true,
+                )
+            },
         )
     }
     return buildList {
@@ -176,6 +195,53 @@ fun activeLunaReserve(limits: CodexRateLimits?, nowMs: Long = System.currentTime
         return used
     }
     return reserve.takeIf { UsagePresentation.lunaActive(live(limits.primary), live(limits.secondary), it.usedPercent) }
+}
+
+/** Remaining credits while they replace an exhausted plan window. */
+data class ActiveCodexCredits(
+    /** Remaining balance; +Infinity when unlimited. */
+    val balance: Double,
+    /** When the exhausted plan window resets and credits stop being spent. */
+    val regularResetsAt: String?,
+)
+
+/**
+ * The numeric balance [UsagePresentation.creditsActive] reads — mirror of
+ * `codexCreditBalance` (shared/src/usage-presentation.ts). Codex reports the
+ * balance as a string ("62500"); `hasCredits: false` is an explicit zero.
+ */
+fun codexCreditBalance(credits: CodexCredits?): Double {
+    if (credits == null) return -1.0
+    if (credits.unlimited == true) return Double.POSITIVE_INFINITY
+    if (credits.hasCredits == false) return 0.0
+    val n = credits.balance?.trim()?.takeIf { it.isNotEmpty() }?.toDoubleOrNull() ?: return -1.0
+    return if (n.isFinite()) n else -1.0
+}
+
+/**
+ * The credits reading once a plan window is exhausted — mirror of
+ * `selectedCodexCredits` (shared/src/usage-presentation.ts) with the generated
+ * [UsagePresentation.creditsActive] predicate. A zero or unreported balance
+ * with an exhausted window means nothing is being spent, so it returns null.
+ */
+fun activeCodexCredits(limits: CodexRateLimits?, nowMs: Long = System.currentTimeMillis()): ActiveCodexCredits? {
+    if (limits == null) return null
+    fun epoch(iso: String?): Long? = iso?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
+    fun live(w: dev.agentdeck.net.CodexRateLimitWindow?): Double {
+        val used = w?.usedPercent ?: return -1.0
+        if (w.stale == true) return -1.0
+        if (epoch(w.resetsAt)?.let { it <= nowMs } == true) return -1.0
+        return used
+    }
+    val balance = codexCreditBalance(limits.credits)
+    if (!UsagePresentation.creditsActive(live(limits.primary), live(limits.secondary), balance)) return null
+    // The LATEST exhausted reset: credits are spent until every exhausted
+    // window is back, so the earlier reset would promise relief too soon.
+    val regularResetsAt = listOfNotNull(limits.primary, limits.secondary)
+        .filter { live(it) >= 100 && epoch(it.resetsAt) != null }
+        .maxByOrNull { epoch(it.resetsAt)!! }
+        ?.resetsAt
+    return ActiveCodexCredits(balance, regularResetsAt)
 }
 
 /**

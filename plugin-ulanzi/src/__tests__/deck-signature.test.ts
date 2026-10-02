@@ -77,6 +77,11 @@ describe('D200H deckSignature — every render-affecting change must be visible'
     })).not.toBe(deckSignature({
       ...base, codexRateLimits: { lunaReserve: { usedPercent: 12, available: true } },
     }));
+    expect(deckSignature({
+      ...base, codexRateLimits: { credits: { hasCredits: true, unlimited: false, balance: '62500' } },
+    })).not.toBe(deckSignature({
+      ...base, codexRateLimits: { credits: { hasCredits: true, unlimited: false, balance: '62400' } },
+    }));
   });
 });
 

@@ -111,10 +111,27 @@ plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/plugin/
 tools/creature-simulator/sim-data.js
 tools/creature-simulator/sim-frames/
 tools/creature-simulator/previews/
-apple/DerivedData/
+# Xcode build output under any -derivedDataPath name (DerivedData-foo, DerivedData.bak, nested).
+# XCBuildData attachments record the full build-time shell environment, API keys included —
+# a suffixed directory slipped past the old exact-name rule and leaked tokens in PR #438.
+DerivedData*/
+*.xcbuilddata/
 .ds-sync/
 ds-bundle/
 _ds_gen/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# Hermes candidate build outputs and concept sheets live in the
+# assets-hermes-character-candidate GitHub prerelease, not in git (PR #427).
+assets/terrarium/hermes-character.blend
+assets/terrarium/hermes-character.usdz
+assets/terrarium/hermes-character.glb
+assets/terrarium/references/hermes-mermaid-*.png
+# The mermaid builder also writes a GLB beside the bundled USDZ; nothing consumes
+# it at runtime yet, and it is regenerated from hermes-mermaid.blend (PR #427).
+assets/terrarium/hermes-mermaid.glb
+assets/terrarium/references/turnaround/head-study/*.png
+# Blender's automatic save backups
+*.blend1

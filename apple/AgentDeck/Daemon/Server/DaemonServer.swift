@@ -446,6 +446,14 @@ enum CodexRolloutResponseReader {
     /// "desktop". `nil` means "could not read", never "not desktop" — the
     /// caller retries later rather than caching a guess.
     static func originatorIsDesktop(sessionId: String, sessionsRoot: URL? = nil) -> Bool? {
+        guard let originator = sessionMeta(sessionId: sessionId, sessionsRoot: sessionsRoot)?.originator else { return nil }
+        return originator.lowercased().contains("desktop")
+    }
+
+    /// The rollout's `session_meta` head: who opened the session and where.
+    /// `nil` means "could not read" — no file yet, or a first line longer
+    /// than the head window — never a claim about the run.
+    static func sessionMeta(sessionId: String, sessionsRoot: URL? = nil) -> CodexRolloutSessionMeta? {
         guard let file = locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot),
               let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
@@ -456,9 +464,10 @@ enum CodexRolloutResponseReader {
         if lineData.count == data.count, data.count == headBytes { return nil }
         guard let record = try? JSONSerialization.jsonObject(with: Data(lineData)) as? [String: Any],
               record["type"] as? String == "session_meta",
-              let payload = record["payload"] as? [String: Any],
-              let originator = payload["originator"] as? String else { return nil }
-        return originator.lowercased().contains("desktop")
+              let payload = record["payload"] as? [String: Any] else { return nil }
+        return CodexRolloutSessionMeta(
+            originator: payload["originator"] as? String,
+            cwd: payload["cwd"] as? String)
     }
 
     static func locateRollout(sessionId: String, sessionsRoot: URL? = nil) -> URL? {
@@ -1358,6 +1367,8 @@ final class DaemonServer {
     /// semantics, fed by the `opencode_*` observer-plugin hooks.
     private var openCodeTurnAnchors = ChatTurnAnchorTracker()
     private var openCodeLastPromptTopicBySession: [String: String] = [:]
+    /// `hermes_*` observer admission + process lifetime (HermesObserverGate).
+    private var hermesGate = HermesObserverGate()
 
     /// Codex threads that re-engaged after a terminal event (second prompt on
     /// the same thread id). Companion tasks are single-turn by construction,
@@ -1505,6 +1516,11 @@ final class DaemonServer {
     private var codexDesktopBySession: [String: Bool] = [:]
     private var codexOriginatorMissAt: [String: Double] = [:]
     private static let codexOriginatorRetrySeconds: Double = 60
+    /// Headless `codex exec` runs folded under the session that launched
+    /// them — see CodexExecChildren.swift. Hooks consult it before any parent
+    /// pipeline; the coordination tick resolves and completes children from
+    /// the process table.
+    private var codexExecChildren = CodexExecChildRegistry()
 
     /// The agent type a hook-observed Codex session row should carry.
     ///
@@ -3150,6 +3166,9 @@ final class DaemonServer {
                 // Full-health payload only — the unauthenticated LAN /health
                 // (httpAccessResponse) stays minimal.
                 "posture": posture.healthDict,
+                // The Hermes observer plugin posts only to a receiver that
+                // declares it (older daemons would mint Claude rows).
+                "hermesObserver": 1,
             ]
             if let m = focus.model { payload["modelName"] = m }
             if let e = focus.effort { payload["effortLevel"] = e }
@@ -5125,6 +5144,13 @@ final class DaemonServer {
     /// before the identifying hook.
     private func retractCodexAmbientThread(sessionId sid: String, json: [String: Any], reason: String = "ambient-suggestions") {
         DaemonLogger.shared.info("Codex \(reason) thread \(sid.prefix(14)): not the user's work, its hooks are not recorded")
+        retractCodexThreadState(sessionId: sid, bareId: (json["session_id"] as? String) ?? "")
+    }
+
+    /// Undo everything a Codex thread's hooks created before it was
+    /// classified as not-a-session (ambient suggestion thread, headless
+    /// child): its row, its hub-driver identity, its APME run.
+    private func retractCodexThreadState(sessionId sid: String, bareId bare: String) {
         codexOtelTurnIdBySession.removeValue(forKey: sid)
         if pushedSessionsById.removeValue(forKey: sid) != nil {
             cachedSessions.removeAll { $0.id == sid }
@@ -5134,10 +5160,137 @@ final class DaemonServer {
         if currentHookSessionId == sid { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
         // The collector keys Codex runs by the enriched payload's session id;
         // try the hook's key and the bare id so neither form leaves a run behind.
-        let bare = (json["session_id"] as? String) ?? ""
         for key in Set([sid, bare]) where !key.isEmpty {
             apmeCollector?.discardRun(sessionId: key)
         }
+    }
+
+    // MARK: - Headless codex exec children (CodexExecChildren.swift)
+
+    private static func codexBareId(_ sessionId: String) -> String {
+        sessionId.hasPrefix("codex:") ? String(sessionId.dropFirst("codex:".count)) : sessionId
+    }
+
+    /// The rollout head, read inside the sandbox's security scope when there
+    /// is one — the same discipline as `codexObservedAgentType`.
+    private func codexRolloutSessionMeta(sessionId: String) -> CodexRolloutSessionMeta? {
+        let bare = Self.codexBareId(sessionId)
+        return AppPreferences.shared.withCodexDirectoryAccess { dir -> CodexRolloutSessionMeta? in
+            CodexRolloutResponseReader.sessionMeta(
+                sessionId: bare,
+                sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))
+        } ?? CodexRolloutResponseReader.sessionMeta(sessionId: bare)
+    }
+
+    private func codexRolloutLastMessage(sessionId: String) -> String? {
+        let bare = Self.codexBareId(sessionId)
+        let text = AppPreferences.shared.withCodexDirectoryAccess { dir -> String? in
+            CodexRolloutResponseReader.lastAgentMessage(
+                sessionId: bare,
+                sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))
+        } ?? CodexRolloutResponseReader.lastAgentMessage(sessionId: bare)
+        return Self.nonEmptyString(text)
+    }
+
+    /// Sessions this daemon knows a pid for — the launchers a headless run may
+    /// descend from. Claude sessions register theirs through the hook header.
+    private func codexExecPeers() -> [CodexExecPeer] {
+        coordinationTracker.mergePeers([]).map { CodexExecPeer(sessionId: $0.sessionId, pid: $0.pid) }
+    }
+
+    /// Returns true when the hook belongs to a child (attached or pending) and
+    /// the caller must stop.
+    private func gateCodexExecChild(event: String, json: [String: Any], sessionId: String) async -> Bool {
+        let cwd = (json["cwd"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        var verdict = codexExecChildren.noteHook(
+            event: event,
+            sessionId: sessionId,
+            cwd: cwd,
+            processes: lastProcessTable,
+            peers: codexExecPeers(),
+            now: Date().timeIntervalSince1970,
+            sessionMeta: { codexRolloutSessionMeta(sessionId: sessionId) }
+        )
+        // The table the tick holds is up to 5 s old and a run that started
+        // since is not in it. One fresh sysctl read (once per session)
+        // attaches the child before its first hook mints a row.
+        if verdict.wantsFreshTable {
+            let fresh = await Task.detached(priority: .utility) { ProcessEnumerator.processTable() }.value
+            if !fresh.isEmpty {
+                lastProcessTable = fresh
+                verdict = codexExecChildren.noteHook(
+                    event: event, sessionId: sessionId, cwd: cwd,
+                    processes: fresh, peers: codexExecPeers(),
+                    now: Date().timeIntervalSince1970,
+                    sessionMeta: { codexRolloutSessionMeta(sessionId: sessionId) }
+                )
+            }
+        }
+        guard verdict.childOnly else { return false }
+        // Owned by hooks either way: `codex exec` exports its OTel spans in one
+        // batch at exit, which must not synthesize a row for the thread the
+        // roster deliberately left out.
+        codexObservationOwnership.receiveHook(event: event, sessionId: sessionId, now: Date())
+        let inline = Self.nonEmptyString(json["last_assistant_message"])
+        await applyCodexExecChildEvents(verdict.events, inlineSummary: inline)
+        return true
+    }
+
+    private func codexExecChildrenTick(table: [ProcessEnumerator.ProcessRow]) async {
+        let events = codexExecChildren.reconcile(
+            processes: table, peers: codexExecPeers(), now: Date().timeIntervalSince1970)
+        await applyCodexExecChildEvents(events, inlineSummary: nil)
+    }
+
+    private func applyCodexExecChildEvents(_ events: [CodexExecChildEvent], inlineSummary: String?) async {
+        for event in events {
+            switch event {
+            case .attached(let child):
+                await attachCodexExecChild(child)
+            case .stopped(let child):
+                await completeCodexExecChild(child, inlineSummary: inlineSummary)
+            }
+        }
+    }
+
+    private func codexExecChildPayload(_ child: CodexExecChild) -> [String: Any] {
+        var payload: [String: Any] = [
+            "session_id": child.parentSessionId,
+            "agent_id": Self.codexBareId(child.sessionId),
+            "agent_type": "codex exec",
+        ]
+        // The topic directory is the one thing that tells twelve siblings
+        // apart when the run said nothing.
+        if let cwd = child.cwd, let topic = Self.nonEmptyString(URL(fileURLWithPath: cwd).lastPathComponent) {
+            payload["task_subject"] = topic
+        }
+        return payload
+    }
+
+    /// Retract whatever the child's first hooks minted, then open it on the
+    /// parent's census exactly as a hook-declared child is.
+    private func attachCodexExecChild(_ child: CodexExecChild) async {
+        // A prompt row its early hooks put on the strip would otherwise spin
+        // until the idle eviction closed it.
+        if codexTurnAnchors.hasOpenTurn(sid: child.sessionId) {
+            appendCodexChatEnd(json: [:], sessionId: child.sessionId, interrupted: true)
+        }
+        retractCodexThreadState(sessionId: child.sessionId, bareId: Self.codexBareId(child.sessionId))
+        let parentType = pushedSessionsById[child.parentSessionId]?.agentType ?? "claude-code"
+        let topic = child.cwd.map { " (\(URL(fileURLWithPath: $0).lastPathComponent))" } ?? ""
+        DaemonLogger.shared.info(
+            "codex exec \(Self.codexBareId(child.sessionId).prefix(8)) is a child of \(parentType) \(child.parentSessionId.prefix(8))\(topic)")
+        _ = await handleSubagentTimelineHook(
+            event: "subagent_start", json: codexExecChildPayload(child), sessionId: child.parentSessionId)
+    }
+
+    private func completeCodexExecChild(_ child: CodexExecChild, inlineSummary: String?) async {
+        var payload = codexExecChildPayload(child)
+        if let summary = inlineSummary ?? codexRolloutLastMessage(sessionId: child.sessionId) {
+            payload["last_assistant_message"] = summary
+        }
+        _ = await handleSubagentTimelineHook(
+            event: "subagent_stop", json: payload, sessionId: child.parentSessionId)
     }
 
     private func handleSwitchAgent(_ target: String) {
@@ -5205,6 +5358,8 @@ final class DaemonServer {
                 guard let self else { return }
                 let table = await Task.detached(priority: .utility) { ProcessEnumerator.processTable() }.value
                 self.lastProcessTable = table
+                await self.codexExecChildrenTick(table: table)
+                self.sweepDepartedHermes()
                 let peers = self.coordinationTracker.mergePeers([])
                 guard !peers.isEmpty else { continue }
                 let rels = self.coordinationTracker.observe(table, peers: peers)
@@ -5486,6 +5641,14 @@ final class DaemonServer {
         guard let event = json["event"] as? String else { return }
         DaemonLogger.shared.debug("Hook", "Received: \(event)")
 
+        // Hermes has its own small lifecycle (handleHermesHook). It must not
+        // enter the generic pipeline below, whose unknown-event fallback mints
+        // Claude rows.
+        if event.hasPrefix("hermes_") {
+            handleHermesHook(event: event, json: json)
+            return
+        }
+
         // opencode_* lifecycle hooks (posted by AgentDeck's OpenCode observer
         // plugin, hooks/src/opencode-install.ts) ride the same observed-
         // session pipeline as codex_*: session ids are namespaced
@@ -5558,6 +5721,15 @@ final class DaemonServer {
                 retractCodexAmbientThread(sessionId: sid, json: json)
                 return
             }
+        }
+
+        // A headless `codex exec` launched by another observed session is
+        // that session's child, not a session: its hooks drive the parent's
+        // subagent census and nothing else. While its parent is unresolved
+        // the hooks are held out rather than let through — a row minted now
+        // would have to be retracted five seconds later.
+        if isCodexEvent, let sid = sessionId, await gateCodexExecChild(event: event, json: json, sessionId: sid) {
+            return
         }
 
         if isCodexEvent, let sessionId {
@@ -6312,6 +6484,13 @@ final class DaemonServer {
         esp32Ota.liveConnection = { [weak self] key in
             self?.liveWifiEsp32Connection(forKey: key)
         }
+        esp32Ota.holdSerialBoard = { [weak self] target in
+            guard let serial = self?.serialModule?.serial else { return nil }
+            return await serial.holdBoard(target, seconds: 30 * 60, reason: "WiFi OTA to \(target)")
+        }
+        esp32Ota.releaseSerialHold = { [weak self] port in
+            await self?.serialModule?.serial.releaseHold(port: port)
+        }
         esp32Ota.onTransferComplete = { [weak self] key in
             guard let self else { return }
             // Drop the roster row now — the board reboots into the new image
@@ -6407,6 +6586,9 @@ final class DaemonServer {
         // Standalone opencode sessions are always interactive multi-turn
         // conversations — the 180 s ghost TTL flapped a live-but-quiet turn.
         if sid.hasPrefix(openCodeSessionPrefix) { return openCodeIdleTTL }
+        // A Hermes conversation survives turns; 30 min of silence retires it
+        // (Node HERMES_SILENCE_TTL_MS). Process exit closes it sooner.
+        if sid.hasPrefix(HermesObserverGate.sessionPrefix) { return HermesObserverGate.silenceTTL }
         // A genuinely-awaiting session is quiet by nature (one Notification
         // then it waits on the user) — don't reap it in the 180 s ghost
         // window or its creature vanishes mid-decision. Answering fires a
@@ -6504,6 +6686,7 @@ final class DaemonServer {
         guard !expired.isEmpty else { return }
 
         for sid in expired {
+            hermesGate.forget(sessionKey: sid)
             let expiredEntry = pushedSessionsById[sid]
             let isPostTerminal = lastTerminalCodexEventBySession[sid]
                 .map { $0 < codexTerminalCutoff } ?? false
@@ -6519,6 +6702,11 @@ final class DaemonServer {
                 if codexTurnAnchors.hasOpenTurn(sid: sid) {
                     appendCodexChatEnd(json: [:], sessionId: sid, interrupted: true)
                 }
+                // Codex has no SessionEnd hook, so leaving the roster IS a
+                // Codex run's close (the Node daemon's `sweepVanishedCodexRuns`).
+                // A run that outlives its session sat open until a restart;
+                // a later prompt on a re-engaged TUI opens a fresh run lazily.
+                apmeCollector?.handleHook(event: "session_end", data: ["session_id": sid, "agent_type": "codex-cli"])
             } else if sid.hasPrefix(Self.openCodeSessionPrefix) {
                 if openCodeTurnAnchors.hasOpenTurn(sid: sid) {
                     appendOpenCodeChatEnd(json: [:], sessionId: sid, interrupted: true)
@@ -11261,6 +11449,8 @@ final class DaemonServer {
             source = ("codex_", "codex-cli")
         } else if event.hasPrefix("opencode_") {
             source = ("opencode_", "opencode")
+        } else if event.hasPrefix("hermes_") {
+            source = ("hermes_", "hermes")
         } else {
             source = nil
         }
@@ -11516,6 +11706,100 @@ final class DaemonServer {
     /// session entry's resolved name (skipping the "OpenCode" display
     /// fallback — an agent-name label on a timeline row is noise the
     /// clients' agent-tag fallback already covers), then the payload's cwd.
+    /// `hermes_*` observer hooks (hooks/hermes-agentdeck). Mirrors the Node
+    /// daemon's HermesSessions path: one observed row per conversation,
+    /// prompt → response turns on the timeline, APME through the agent-neutral
+    /// boundary, and no control surface — a read-only observer is not a prompt
+    /// endpoint, so the row stays `controlMode: observed`. The global state
+    /// machine is not driven, as on Node.
+    private func handleHermesHook(event: String, json: [String: Any]) {
+        let now = Date()
+        guard case let .accept(boundary, sessionId) = hermesGate.admit(event: event, payload: json, now: now) else {
+            DaemonLogger.shared.debug("Hook", "Hermes \(event) not admitted")
+            return
+        }
+        let apmeHook = Self.normalizeApmeObservedHook(
+            event: event,
+            json: apmeEnrichedHookPayload(json: json, sessionId: sessionId),
+            sessionId: sessionId
+        )
+        // The prompt boundary opens the task first so its chat row is tagged.
+        if boundary == "user_prompt_submit", let hook = apmeHook {
+            apmeCollector?.handleHook(event: hook.event, data: hook.payload)
+        }
+        if boundary == "session_end" {
+            if openCodeTurnAnchors.hasOpenTurn(sid: sessionId) {
+                appendOpenCodeChatEnd(json: json, sessionId: sessionId, interrupted: true, agentType: "hermes")
+            }
+            removeHermesRow(sessionId)
+        } else {
+            var entry = pushedSessionsById[sessionId] ?? DaemonSessionEntry(
+                id: sessionId, port: Int(port), pid: 0, projectName: "Hermes", agentType: "hermes",
+                tmuxSession: nil, tty: nil, parentTty: nil, startedAt: ISO8601DateFormatter().string(from: now))
+            if let name = Self.nonEmptyString(json["project_name"]) { entry.projectName = String(name.prefix(160)) }
+            if let model = Self.nonEmptyString(json["model"]) { entry.modelName = String(model.prefix(200)) }
+            entry.controlMode = "observed"
+            switch boundary {
+            case "user_prompt_submit":
+                entry.state = "processing"
+                entry.currentTool = nil
+            case "tool_start":
+                entry.state = "processing"
+                entry.currentTool = Self.nonEmptyString(json["tool_name"]).map { String($0.prefix(120)) }
+            case "tool_end":
+                entry.currentTool = nil
+            case "stop":
+                entry.state = "idle"
+                entry.currentTool = nil
+            default:
+                entry.state = entry.state ?? "idle"
+            }
+            pushedSessionsById[sessionId] = entry
+            upsertIntoCachedSessions(entry)
+            lastHookAtByPushedSession[sessionId] = now
+            if boundary == "user_prompt_submit" {
+                appendOpenCodeChatStart(json: json, sessionId: sessionId, agentType: "hermes")
+            } else if boundary == "stop" {
+                appendOpenCodeChatEnd(json: json, sessionId: sessionId,
+                    interrupted: (json["interrupted"] as? Bool) == true, agentType: "hermes")
+            }
+            broadcastSessionsList()
+        }
+        if boundary != "user_prompt_submit", let hook = apmeHook {
+            apmeCollector?.handleHook(event: hook.event, data: hook.payload)
+        }
+    }
+
+    private func removeHermesRow(_ sessionId: String) {
+        pushedSessionsById.removeValue(forKey: sessionId)
+        cachedSessions.removeAll { $0.id == sessionId }
+        lastHookAtByPushedSession.removeValue(forKey: sessionId)
+        openCodeTurnAnchors.clear(sid: sessionId)
+        openCodeLastPromptTopicBySession.removeValue(forKey: sessionId)
+        broadcastSessionsList()
+    }
+
+    /// Close conversations whose Hermes process exited without finalizing
+    /// (one-shot `hermes -z` hard-exits; kill, crash) as a finalize would. In
+    /// the App Sandbox `kill(pid, 0)` may be refused — that is `unknown`, and
+    /// the silence TTL stays the backstop.
+    private func sweepDepartedHermes() {
+        let now = Date()
+        let sweep = hermesGate.sweepDeparted(now: now)
+        // A live Hermes CLI keeps its row: refresh the eviction clock too.
+        for sessionId in sweep.refreshed where pushedSessionsById[sessionId] != nil {
+            lastHookAtByPushedSession[sessionId] = now
+        }
+        for sessionId in sweep.closed {
+            if openCodeTurnAnchors.hasOpenTurn(sid: sessionId) {
+                appendOpenCodeChatEnd(json: [:], sessionId: sessionId, interrupted: true, agentType: "hermes")
+            }
+            apmeCollector?.handleHook(event: "session_end", data: ["session_id": sessionId, "agent_type": "hermes"])
+            removeHermesRow(sessionId)
+            DaemonLogger.shared.info("Hermes \(sessionId.prefix(22)): its process exited without finalizing; conversation closed")
+        }
+    }
+
     private func openCodeTimelineProjectName(sessionId: String, json: [String: Any]) -> String? {
         if let p = Self.nonEmptyString(pushedSessionsById[sessionId]?.projectName),
            p != Self.openCodeFallbackProjectName {
@@ -11529,7 +11813,7 @@ final class DaemonServer {
     /// `user_prompt_submit` boundary (classifyObservedHookEvent), so a
     /// standalone `opencode` run gets the same prompt → response turn shape
     /// on the timeline as a direct `claude`/`codex` run.
-    private func appendOpenCodeChatStart(json: [String: Any], sessionId: String?) {
+    private func appendOpenCodeChatStart(json: [String: Any], sessionId: String?, agentType: String = "opencode") {
         guard let sessionId else { return }
         openCodeLastPromptTopicBySession.removeValue(forKey: sessionId)
         let prompt = claudeCodePromptText(from: json)
@@ -11542,7 +11826,7 @@ final class DaemonServer {
             detail: prompt.count > 100 ? String(prompt.prefix(1000)) : nil,
             approvalId: nil,
             status: nil,
-            agentType: "opencode",
+            agentType: agentType,
             repeatCount: nil,
             automated: nil
         )
@@ -11593,7 +11877,7 @@ final class DaemonServer {
     /// APME prompt boundary ran before this source-specific timeline path, so
     /// every row can use the session-scoped task id without borrowing another
     /// agent's task.
-    private func appendOpenCodeChatEnd(json: [String: Any], sessionId: String?, interrupted: Bool = false) {
+    private func appendOpenCodeChatEnd(json: [String: Any], sessionId: String?, interrupted: Bool = false, agentType: String = "opencode") {
         guard let sessionId else { return }
         let now = Date().timeIntervalSince1970 * 1000
         // Claim once at the top so chat_response and chat_end stamp the same
@@ -11619,7 +11903,7 @@ final class DaemonServer {
                 detail: assistantText.count > 100 ? String(assistantText.prefix(1000)) : nil,
                 approvalId: nil,
                 status: nil,
-                agentType: "opencode",
+                agentType: agentType,
                 repeatCount: nil,
                 automated: nil
             )
@@ -11647,7 +11931,7 @@ final class DaemonServer {
             detail: topicFromPrompt.map { "Prompt: \($0)" },
             approvalId: nil,
             status: nil,
-            agentType: "opencode",
+            agentType: agentType,
             repeatCount: nil,
             automated: nil
         )

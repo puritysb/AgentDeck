@@ -26,6 +26,7 @@ describe('OpenClaw visibility SSOT', () => {
 describe('agentTypeRank', () => {
   it('ranks known agents stably, with Kiro after the existing agent set', () => {
     expect(agentTypeRank('openclaw')).toBe(0);
+    expect(agentTypeRank('hermes')).toBe(0);
     expect(agentTypeRank('claude-code')).toBe(1);
     expect(agentTypeRank('codex-cli')).toBe(2);
     expect(agentTypeRank('codex-app')).toBe(3);

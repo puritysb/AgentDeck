@@ -437,7 +437,7 @@ export function summarizeOpenClawCronPrompt(text?: string): string {
  * the strip is built around.
  */
 export const TOOL_EXEC_SUPPRESSED_AGENTS = [
-  'codex-cli', 'codex-app', 'opencode', 'antigravity', 'kiro-cli', 'kiro-ide',
+  'codex-cli', 'codex-app', 'opencode', 'antigravity', 'kiro-cli', 'kiro-ide', 'hermes',
 ] as const;
 
 /** True when this agent's observed `tool_exec` rows must not be persisted. */

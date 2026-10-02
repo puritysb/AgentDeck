@@ -195,6 +195,7 @@ describe('pixoo creature sync — unknown agent types', () => {
       ['antigravity', 'antigravity'],
       ['kiro-cli', 'kiro'],
       ['kiro-ide', 'kiro'],
+      ['hermes', 'hermes'],
     ];
     for (const [agentType, creatureType] of expected) {
       const snapshot = getCreatureLayoutSnapshot([

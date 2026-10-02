@@ -25,6 +25,19 @@ class AquariumResidentsTest {
         assertTrue(aquariumResidents(unknown).isEmpty())
     }
 
+    @Test fun `Hermes swims as its own mermaid resident in its own band`() {
+        val state = DashboardState(agentState = AgentState.PROCESSING, agentType = "hermes",
+            sessionId = "observed:hermes:self").toTerrariumState()
+        assertEquals("hermes", aquariumResidents(state).single().kind)
+        val context = RuntimeEnvironment.getApplication() as Context
+        val bytes = context.assets.open("residents/hermes.glb").use { it.readBytes() }
+        assertEquals(0x46546C67, ByteBuffer.wrap(bytes, 0, 4).order(ByteOrder.LITTLE_ENDIAN).int) // "glTF"
+        assertTrue("resident template stays small", bytes.size < 2_500_000)
+        val hermes = state.openCodeCreatures.single()
+        val slot = vectorMarkSlots(listOf(hermes)).single()
+        assertEquals(layoutHermesCreatures(1).single(), slot)
+    }
+
     @Test fun `crowds remain bounded but focus and waiting sessions stay reachable`() {
         val idle = (0..47).map { AquariumResident("s$it", "codex", "Same project", OctopusVisualState.FLOATING) }
         val waiting = idle[20].copy(state = OctopusVisualState.ASKING)
@@ -66,7 +79,7 @@ class AquariumResidentsTest {
 
     @Test fun `exported templates contain only their original character hierarchy`() {
         val context = RuntimeEnvironment.getApplication()
-        for (kind in listOf("claudecode", "codex", "openclaw", "opencode", "antigravity", "kiro")) {
+        for (kind in listOf("claudecode", "codex", "openclaw", "opencode", "antigravity", "kiro", "hermes")) {
             val bytes = context.assets.open("residents/$kind.glb").use { it.readBytes() }
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             assertEquals(0x46546C67, buffer.int)

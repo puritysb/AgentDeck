@@ -44,6 +44,7 @@
       "docs"
     ],
     "exclusions": {
+      "docs/hermes-agent.md": "Integration research and opt-in preview runbook; full native/device rollout remains tracked in #423.",
       "docs/why-apme.md": "Rationale essay, Korean body. English is canonical in the catalog; bind it once translated.",
       "docs/apme-pipeline.md": "Implementation walkthrough, Korean body. Superseded for reader purposes by the cataloged arch.apme.",
       "docs/appstore-metadata-draft.md": "Store listing copy in three locales — marketing input, not a canonical spec.",

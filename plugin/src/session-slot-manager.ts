@@ -1,5 +1,6 @@
 import { claudeWeeklyReadings, nextClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
-import { selectedLunaReserve } from '@agentdeck/shared';
+import { selectedLunaReserve, selectedCodexCredits } from '@agentdeck/shared';
+import { nextZaiPairMode, zaiPairReadings, type ZaiPairMode } from '@agentdeck/shared';
 /**
  * SessionSlotManager — central state machine for v4 dynamic session-per-button layout.
  *
@@ -7,7 +8,7 @@ import { selectedLunaReserve } from '@agentdeck/shared';
  * - List View: each button shows one session (OC first, then CC by startedAt)
  * - Detail View: button 1=BACK, button 2=session info, buttons 3-7=options, button 8=ESC/STOP
  */
-import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits, CodexLunaReserve, ScopedUsageLimit } from '@agentdeck/shared';
+import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits, CodexLunaReserve, SelectedCodexCredits, ScopedUsageLimit } from '@agentdeck/shared';
 import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, formatScopedLabel, scopedLimitClaimsUsageKey, codexWindowsBeside, usageStripRank, usageWindowKind, usageWindowLabel, codexUsageFootnote, summarizeQuestionForKey, approvalReasonHead, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
@@ -44,7 +45,10 @@ export interface UsageGauge {
    *  strip in `USAGE_STRIP_ORDER`. */
   scoped?: boolean;
   luna?: CodexLunaReserve;
+  credits?: SelectedCodexCredits;
   weeklyPair?: [UsageGauge, UsageGauge];
+  /** z.ai's two windows folded onto one key when the usage row overflows. */
+  zaiPair?: [UsageGauge, UsageGauge];
 }
 
 const CLAUDE_USAGE_COLOR = Brand.claudeCode;
@@ -84,8 +88,12 @@ export interface SessionSlotConfig {
   usageResetsAt?: string;
   usageFootnote?: string;
   usageLuna?: CodexLunaReserve;
+  usageCredits?: SelectedCodexCredits;
   usageWeekly?: UsageGauge[];
   usageWeeklyCycle?: boolean;
+  /** Folded z.ai key: the readings it shows now, and that a press cycles them. */
+  usageZai?: UsageGauge[];
+  usageZaiCycle?: boolean;
   /** Scoped cap that isn't the binding one — muted ramp, never critical. */
   usageInactive?: boolean;
 }
@@ -287,6 +295,7 @@ export class SessionSlotManager {
   private _zaiSecondary: CodexWindowSnapshot | null = null;
   private _zaiSecondaryIsMcp = false;
   private _codexLunaReserve: CodexLunaReserve | undefined;
+  private _codexCredits: SelectedCodexCredits | undefined;
   /** When the Codex snapshot behind both windows was written (see
    *  `CodexRateLimits.capturedAt`). Freshness is derived per repaint from this,
    *  never stored as a boolean — a stored flag would freeze exactly like the
@@ -303,6 +312,15 @@ export class SessionSlotManager {
   cycleWeeklyMode(layout: DeckLayout = DEFAULT_LAYOUT): ClaudeWeeklyMode {
     const mode = nextClaudeWeeklyMode(this.weeklyModes.get(this.usagePageKey(layout)));
     this.setWeeklyMode(mode, layout);
+    return mode;
+  }
+  private readonly zaiModes = new Map<string, ZaiPairMode>();
+  setZaiMode(mode: ZaiPairMode, layout: DeckLayout = DEFAULT_LAYOUT): void {
+    this.zaiModes.set(this.usagePageKey(layout), mode);
+  }
+  cycleZaiMode(layout: DeckLayout = DEFAULT_LAYOUT): ZaiPairMode {
+    const mode = nextZaiPairMode(this.zaiModes.get(this.usagePageKey(layout)));
+    this.setZaiMode(mode, layout);
     return mode;
   }
   private readonly usagePages = new Map<string, number>();
@@ -454,6 +472,7 @@ export class SessionSlotManager {
       ? { percent: cx.secondary.usedPercent, resetsAt: cx.secondary.resetsAt, windowMinutes: cx.secondary.windowMinutes, stale: cx.secondary.stale === true }
       : null;
     this._codexLunaReserve = selectedLunaReserve(cx);
+    this._codexCredits = selectedCodexCredits(cx);
     this._codexCapturedAt = cx?.capturedAt;
     // Worst-first already (active desc, then percent desc) — only [0] can ever
     // reach a key, so the rest is dead work here. Paging through them lives on
@@ -463,7 +482,30 @@ export class SessionSlotManager {
 
   /** Known windows in strip order. Claude 7D and its worst scoped cap share
    * one logical key even when the bottom row has spare capacity. */
-  private usageGauges(): UsageGauge[] {
+  /**
+   * The usage row for this deck. When every reading would not fit the bottom
+   * row, z.ai's two windows fold onto one key first (a press cycles both →
+   * 5H → MCP, like the weekly key) so fewer readings are pushed to a second
+   * page. A row that fits keeps one window per key.
+   */
+  private usageGauges(layout?: DeckLayout): UsageGauge[] {
+    const gauges = this.allUsageGauges();
+    const room = layout ? this.usageRowCapacity(layout) : Infinity;
+    if (gauges.length <= room) return gauges;
+    const zai = gauges.filter((g) => g.agent === 'zai');
+    if (zai.length !== 2) return gauges;
+    const at = gauges.indexOf(zai[0]);
+    const folded: UsageGauge = { ...zai[0], zaiPair: [zai[0], zai[1]] };
+    return [...gauges.slice(0, at), folded, ...gauges.slice(at + 1).filter((g) => g !== zai[1])];
+  }
+
+  /** Keys the bottom row can give usage on this deck, before any folding. */
+  private usageRowCapacity(layout: DeckLayout): number {
+    if (isPlusFamily(layout.family) || layout.keyCount < 6) return 0;
+    return Math.min(layout.columns, layout.keyCount - 1);
+  }
+
+  private allUsageGauges(): UsageGauge[] {
     const gauges: UsageGauge[] = [];
     // Per WINDOW, not per account. The API reports 5h and 7d independently, so a
     // subscription can carry one and not the other; pushing the pair whenever
@@ -512,6 +554,17 @@ export class SessionSlotManager {
     // present window by its own length (windowMinutes), never by slot: Codex now
     // sometimes reports the weekly (10080-min) window as `primary` with
     // `secondary` null, so a slot-based "7D = secondary" would drop the gauge.
+    // Once a plan window is exhausted the fallbacks replace the Codex windows:
+    // the credits being spent first, then the Luna reserve. Each is its own
+    // key; the strip pages when they do not all fit.
+    if (this._codexCredits) {
+      gauges.push({
+        agent: 'codex', window: '5h', label: 'CREDITS',
+        percent: 100,
+        resetsAt: this._codexCredits.regularResetsAt,
+        known: true, color: CODEX_USAGE_COLOR, credits: this._codexCredits,
+      });
+    }
     if (this._codexLunaReserve) {
       gauges.push({
         agent: 'codex', window: '5h', label: 'LUNA',
@@ -520,7 +573,7 @@ export class SessionSlotManager {
         known: true, color: CODEX_USAGE_COLOR, luna: this._codexLunaReserve,
       });
     }
-    for (const w of this._codexLunaReserve ? [] : codexWindows) {
+    for (const w of this._codexLunaReserve || this._codexCredits ? [] : codexWindows) {
       gauges.push({
         agent: 'codex', window: usageWindowKind(w.windowMinutes), label: usageWindowLabel(w.windowMinutes) || '5H',
         percent: w.percent, resetsAt: w.resetsAt,
@@ -565,13 +618,12 @@ export class SessionSlotManager {
    * spare any. Use the full physical bottom row.
    */
   private usageReserve(layout: DeckLayout): number {
-    if (isPlusFamily(layout.family) || layout.keyCount < 6) return 0;
-    return Math.min(this.usageGauges().length, layout.columns, layout.keyCount - 1);
+    return Math.min(this.usageGauges(layout).length, this.usageRowCapacity(layout));
   }
 
   /** Cycle the usage strip for this deck layout when its bottom row overflows. */
   cycleUsagePage(layout: DeckLayout = DEFAULT_LAYOUT): void {
-    const gauges = this.usageGauges();
+    const gauges = this.usageGauges(layout);
     const capacity = this.usageReserve(layout);
     const key = this.usagePageKey(layout);
     if (capacity < 2 || gauges.length <= capacity) { this.usagePages.delete(key); return; }
@@ -692,7 +744,7 @@ export class SessionSlotManager {
 
   /** Handle button press. Returns action to take. */
   handleSlotPress(slot: number, layout?: DeckLayout): {
-    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'cycle-weekly-mode' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'none';
+    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'cycle-weekly-mode' | 'cycle-zai-mode' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'none';
     sessionId?: string;
     sessionPort?: number;
     optionIndex?: number;
@@ -756,7 +808,7 @@ export class SessionSlotManager {
         return { action: 'next-page' };
 
       case 'usage':
-        return { action: config.usageWeeklyCycle ? 'cycle-weekly-mode' : 'refresh-usage' };
+        return { action: config.usageWeeklyCycle ? 'cycle-weekly-mode' : config.usageZaiCycle ? 'cycle-zai-mode' : 'refresh-usage' };
 
       case 'usage-page':
         return { action: 'cycle-usage-page' };
@@ -834,7 +886,7 @@ export class SessionSlotManager {
     if (usageReserve > 0) {
       const blockStart = layout.keyCount - usageReserve;
       if (slot >= blockStart) {
-        const gauges = this.usageGauges();
+        const gauges = this.usageGauges(layout);
         const idx = slot - blockStart;
         const overflow = gauges.length > usageReserve;
         const perPage = overflow ? usageReserve - 1 : usageReserve;
@@ -863,8 +915,11 @@ export class SessionSlotManager {
             usageFootnote: g.footnote,
             usageInactive: g.inactive === true,
             usageLuna: g.luna,
+            usageCredits: g.credits,
             usageWeeklyCycle: g.weeklyPair != null,
             usageWeekly: g.weeklyPair ? claudeWeeklyReadings(g.weeklyPair[0], g.weeklyPair[1], this.weeklyModes.get(this.usagePageKey(layout))) : undefined,
+            usageZaiCycle: g.zaiPair != null,
+            usageZai: g.zaiPair ? zaiPairReadings(g.zaiPair[0], g.zaiPair[1], this.zaiModes.get(this.usagePageKey(layout))) : undefined,
           };
         }
         return { type: 'empty' };

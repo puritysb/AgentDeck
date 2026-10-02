@@ -270,9 +270,9 @@ available until replacements are validated. See the
 
 ## Agents
 
-AgentDeck is growing beyond coding workflows. **Hermes Agent integration is
-planned**; it is not available yet. The table below lists current integrations
-and how each is observed.
+AgentDeck is growing beyond coding workflows: **Hermes Agent** is supported as an
+opt-in preview (see the table). The table below lists current integrations and
+how each is observed.
 
 | Agent | Observation |
 |---|---|
@@ -283,6 +283,7 @@ and how each is observed.
 | **Kiro CLI / IDE** | Transcript observation; delayed, idle-only activity |
 | **Antigravity** | Passive observation through the CLI daemon |
 | **OpenClaw** | Experimental Gateway integration |
+| **Hermes Agent** | Preview: opt-in observer plugin (`agentdeck hermes-observer`, then `hermes plugins enable agentdeck-observer`); read-only |
 
 Run agents normally; AgentDeck reads their native events rather than scraping
 terminal screens. Kiro has no managed launcher, and the sandboxed Mac app needs

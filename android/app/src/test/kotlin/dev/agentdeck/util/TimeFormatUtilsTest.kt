@@ -1,5 +1,6 @@
 package dev.agentdeck.util
 
+import dev.agentdeck.net.CodexCredits
 import dev.agentdeck.net.CodexLunaReserve
 import dev.agentdeck.net.CodexRateLimits
 import dev.agentdeck.net.CodexRateLimitWindow
@@ -291,5 +292,86 @@ class TimeFormatUtilsTest {
             lunaReserve = CodexLunaReserve(usedPercent = 32.0, resetsAt = "2026-09-23T23:00:00Z"),
         )
         assertNull(activeLunaReserve(limits, now))
+    }
+
+    // --- Codex credits (mirror of shared/src/__tests__/usage-presentation.test.ts) ---
+
+    private val now = java.time.Instant.parse("2026-10-01T00:00:00Z").toEpochMilli()
+    private val credits = CodexCredits(hasCredits = true, unlimited = false, balance = "62500")
+    private fun weekly(used: Double, stale: Boolean? = null, resetsAt: String = "2026-10-03T00:00:00Z") =
+        CodexRateLimitWindow(usedPercent = used, windowMinutes = 10080, resetsAt = resetsAt, stale = stale)
+
+    @Test
+    fun `codexCreditBalance reads the wire balance, hasCredits false is zero`() {
+        assertEquals(-1.0, codexCreditBalance(null), 0.0)
+        assertEquals(62500.0, codexCreditBalance(credits), 0.0)
+        assertEquals(0.0, codexCreditBalance(CodexCredits(hasCredits = false, unlimited = false, balance = "0")), 0.0)
+        assertEquals(Double.POSITIVE_INFINITY, codexCreditBalance(CodexCredits(hasCredits = true, unlimited = true)), 0.0)
+        assertEquals(-1.0, codexCreditBalance(CodexCredits(hasCredits = true, unlimited = false, balance = "n/a")), 0.0)
+        // Padding is trimmed as on the TS/Swift mirrors; a blank balance is unknown.
+        assertEquals(62500.0, codexCreditBalance(CodexCredits(hasCredits = true, unlimited = false, balance = " 62500 ")), 0.0)
+        assertEquals(-1.0, codexCreditBalance(CodexCredits(hasCredits = true, unlimited = false, balance = "  ")), 0.0)
+    }
+
+    @Test
+    fun `credits show only while a live window is exhausted and a balance remains`() {
+        // The measured Pro shape: weekly at 94% with 62,500 purchased credits.
+        assertNull(activeCodexCredits(CodexRateLimits(primary = weekly(94.0), credits = credits), now))
+        val active = activeCodexCredits(CodexRateLimits(primary = weekly(100.0), credits = credits), now)
+        assertEquals(ActiveCodexCredits(62500.0, "2026-10-03T00:00:00Z"), active)
+        // Exhausted but nothing to spend: hidden, never "0".
+        assertNull(activeCodexCredits(CodexRateLimits(primary = weekly(100.0),
+            credits = CodexCredits(hasCredits = false, unlimited = false, balance = "0")), now))
+        // An ended or stale window is unknown, not exhausted.
+        assertNull(activeCodexCredits(CodexRateLimits(primary = weekly(100.0, stale = true), credits = credits), now))
+        assertNull(activeCodexCredits(CodexRateLimits(primary = weekly(100.0, resetsAt = "2026-09-30T00:00:00Z"), credits = credits), now))
+        // Credit-only plans (no windows) keep their own readout, not this one.
+        assertNull(activeCodexCredits(CodexRateLimits(credits = credits), now))
+    }
+
+    @Test
+    fun `credits report the latest exhausted reset`() {
+        val out = activeCodexCredits(CodexRateLimits(
+            primary = CodexRateLimitWindow(usedPercent = 100.0, windowMinutes = 300, resetsAt = "2026-10-01T03:00:00Z"),
+            secondary = CodexRateLimitWindow(usedPercent = 100.0, windowMinutes = 10080, resetsAt = "2026-10-05T00:00:00Z"),
+            credits = CodexCredits(hasCredits = true, unlimited = false, balance = "12"),
+        ), now)
+        assertEquals("2026-10-05T00:00:00Z", out?.regularResetsAt)
+    }
+
+    @Test
+    fun `codexLimitRows swaps exhausted windows for the credit balance`() {
+        val rows = codexLimitRows(CodexRateLimits(
+            primary = CodexRateLimitWindow(usedPercent = 40.0, windowMinutes = 300, resetsAt = "2026-10-01T03:00:00Z"),
+            secondary = weekly(100.0),
+            credits = credits,
+        ), now)
+        assertEquals(1, rows.size)
+        assertEquals("credits", rows[0].label)
+        assertEquals("62.5K", rows[0].value)
+        assertEquals("2026-10-03T00:00:00Z", rows[0].resetIso)
+    }
+
+    @Test
+    fun `codexLimitRows shows credits and the Luna reserve together`() {
+        val rows = codexLimitRows(CodexRateLimits(
+            primary = weekly(100.0),
+            credits = credits,
+            lunaReserve = CodexLunaReserve(usedPercent = 32.0, resetsAt = "2099-01-01T00:00:00Z"),
+        ), now)
+        assertEquals(listOf("credits", "luna"), rows.map { it.label })
+        assertEquals("62.5K", rows[0].value)
+        assertNull(rows[1].value)
+        assertTrue(rows[1].remaining)
+    }
+
+    @Test
+    fun `a zero balance leaves the exhausted windows alone`() {
+        val rows = codexLimitRows(CodexRateLimits(
+            primary = weekly(100.0),
+            credits = CodexCredits(hasCredits = false, unlimited = false, balance = "0"),
+        ), now)
+        assertEquals(listOf("7d"), rows.map { it.label })
+        assertNull(rows[0].value)
     }
 }

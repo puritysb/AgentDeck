@@ -1,6 +1,7 @@
 #include "util/usage_severity.generated.h"
 #ifdef BOARD_LED8X32
 #include "../../util/usage_presentation.generated.h"
+#include "../../util/usage_rows.h"
 #include "matrix_pages.h"
 #include "matrix_font.h"
 #include "official_dot_glyphs_generated.h"
@@ -352,6 +353,10 @@ void MatrixPages::renderCodex(CRGB* leds, float animTime) {
     // An exhausted account window hands the page to the Luna reserve, read as
     // what is LEFT (the shared UsagePresentation rule every surface uses).
     const bool remaining = UsagePresentation::lunaActive(primary, secondary, g_state.codexLunaPercent);
+    // Purchased credits outrank the reserve on this one-reading page: they
+    // are what the account is actually spending (selectedCodexCredits).
+    char credits[8];
+    UsageRows::codexCreditsKey(g_state, credits, sizeof(credits));
     if (remaining) {
         primary = 100.0f - g_state.codexLunaPercent;
         secondary = -1.0f;
@@ -363,7 +368,20 @@ void MatrixPages::renderCodex(CRGB* leds, float animTime) {
         renderDisconnectStatus(leds, animTime);
         return;
     }
-    renderGaugePair(leds, animTime, primary, primaryLabel, secondary, secondaryLabel, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224), remaining);
+    if (credits[0]) {
+        // A balance has no cap: the number in neutral white and no rail —
+        // a fill or a severity colour would be invented. "CR" rides along
+        // only when both fit the 23-pixel reading area ("CR950", not "CR62.5K").
+        drawOfficialMatrixGlyph(leds, 0, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224));
+        int x = 9;
+        if (MatrixFont::textWidth("CR") + 1 + MatrixFont::textWidth(credits) <= MATRIX_W - 9) {
+            MatrixFont::drawScrollText(leds, "CR", x, 1, CRGB(160, 170, 180), MATRIX_W, MATRIX_H);
+            x += MatrixFont::textWidth("CR") + 1;
+        }
+        MatrixFont::drawScrollText(leds, credits, x, 1, CRGB(200, 205, 215), MATRIX_W, MATRIX_H);
+    } else {
+        renderGaugePair(leds, animTime, primary, primaryLabel, secondary, secondaryLabel, OfficialDotGlyphs::CODEX, CRGB(97, 102, 224), remaining);
+    }
     drawStateDot(leds, animTime);
 }
 
@@ -417,7 +435,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     CrayfishState cfState = g_state.crayfishState;
 
     // Collect non-openclaw sessions with agent type
-    enum AgentKind { AGENT_CLAUDE, AGENT_CODEX, AGENT_OPENCODE, AGENT_ANTIGRAVITY, AGENT_KIRO,
+    enum AgentKind { AGENT_CLAUDE, AGENT_CODEX, AGENT_OPENCODE, AGENT_ANTIGRAVITY, AGENT_KIRO, AGENT_HERMES,
                      AGENT_KIND_COUNT };
     struct AgentInfo {
         char state[20];
@@ -427,7 +445,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     };
     AgentInfo agents[6];
     int agentCount = 0;
-    int claudeSeen = 0, codexSeen = 0, opencodeSeen = 0, antigravitySeen = 0, kiroSeen = 0;
+    int claudeSeen = 0, codexSeen = 0, opencodeSeen = 0, antigravitySeen = 0, kiroSeen = 0, hermesSeen = 0;
     bool openclawAlive = false;
 
     // TWO passes, and the order matters: one slot per DISTINCT agent kind
@@ -467,6 +485,9 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         } else if (strncmp(g_state.sessions[i].agentType, "kiro", 4) == 0) {
             agents[agentCount].kind = AGENT_KIRO;
             agents[agentCount].instanceIdx = kiroSeen++;
+        } else if (strcmp(g_state.sessions[i].agentType, "hermes") == 0) {
+            agents[agentCount].kind = AGENT_HERMES;
+            agents[agentCount].instanceIdx = hermesSeen++;
         } else if (strcmp(g_state.sessions[i].agentType, "claude-code") == 0) {
             agents[agentCount].kind = AGENT_CLAUDE;
             agents[agentCount].instanceIdx = claudeSeen++;
@@ -484,6 +505,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
                 case AGENT_OPENCODE:    opencodeSeen--; break;
                 case AGENT_ANTIGRAVITY: antigravitySeen--; break;
                 case AGENT_KIRO:        kiroSeen--; break;
+                case AGENT_HERMES:      hermesSeen--; break;
                 default:                claudeSeen--; break;
             }
             continue;
@@ -581,6 +603,11 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
                     // wrap — the preview stores a mid value, not a max.
                     baseColor = CRGB(49 + (uint8_t)(98 * pulse), 30 + (uint8_t)(60 * pulse), 87 + (uint8_t)(168 * pulse));
                     break;
+                case AGENT_HERMES:
+                    // White Nous girl (Brand.hermesOnDark). Mid-pulse (180,180,180)
+                    // matches MatrixTerminalPreviews; peak stays at 255.
+                    baseColor = CRGB(105 + (uint8_t)(150 * pulse), 105 + (uint8_t)(150 * pulse), 105 + (uint8_t)(150 * pulse));
+                    break;
                 default: // AGENT_CLAUDE
                     baseColor = CRGB(50 + (uint8_t)(150 * pulse), 30 + (uint8_t)(90 * pulse), 22 + (uint8_t)(68 * pulse));
                     break;
@@ -599,6 +626,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
                 case AGENT_OPENCODE: baseColor = CRGB(72, 67, 67);  break;  // dim warm gray (brand #F1ECEC)
                 case AGENT_ANTIGRAVITY: baseColor = CRGB(68, 70, 73); break;  // dim envelope for rainbow micro mark
                 case AGENT_KIRO:     baseColor = CRGB(58, 32, 103); break;  // dim Kiro purple (preview parity)
+                case AGENT_HERMES:   baseColor = CRGB(90, 90, 90);  break;  // dim white Nous girl (preview parity)
                 default:             baseColor = CRGB(80, 45, 35);  break;  // dim terracotta
             }
         }
@@ -620,6 +648,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
             case AGENT_OPENCODE: return OfficialDotGlyphs::OPEN_CODE;
             case AGENT_ANTIGRAVITY: return OfficialDotGlyphs::ANTIGRAVITY;
             case AGENT_KIRO: return OfficialDotGlyphs::KIRO;
+            case AGENT_HERMES: return OfficialDotGlyphs::HERMES;
             default: return OfficialDotGlyphs::CLAUDE_CODE;
         }
     };

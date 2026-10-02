@@ -23,6 +23,7 @@
  *   zoom 2.0 → octopus ~14px wide, crayfish ~24px wide
  */
 
+import { HERMES_MERMAID_W, HERMES_MERMAID_H, HERMES_MERMAID_LAYERS, HERMES_MERMAID_COLORS } from './hermes-mermaid.generated.js';
 import type { Camera } from './pixoo-camera.js';
 import { worldToScreen, isVisible } from './pixoo-camera.js';
 import { State, STATE_COLORS } from '@agentdeck/shared';
@@ -1277,6 +1278,9 @@ export function drawOfficialDotGlyph(
         return COLORS.white;
       case 'kiro':
         return state === 'sleeping' ? [0x4f, 0x2b, 0x7a] : state === 'working' ? [0xa7, 0x78, 0xff] : [0x7c, 0x3a, 0xed];
+      // Brand.hermesOnDark (#FFFFFF): the upstream white Nous girl, dimmed asleep.
+      case 'hermes':
+        return state === 'sleeping' ? [0x70, 0x70, 0x70] : state === 'working' ? [0xff, 0xff, 0xff] : [0xe6, 0xe6, 0xe6];
       // The z.ai provider mark is only reached from the usage HUD, which never
       // routes through this creature-state sprite — but the switch must stay
       // total over the glyph union. Brand.zai (#1F63EC).
@@ -1285,6 +1289,38 @@ export function drawOfficialDotGlyph(
     }
   };
   const base = solidColor();
+
+  // Hermes swims as the generated 2D mermaid (official Nous girl head over a
+  // kelp tail — scripts/generate-hermes-mermaid-2d.mjs), never as a floating
+  // head. Taller than the square mark box; the fluke beats while working.
+  if (glyph === 'hermes') {
+    const h = Math.max(10, Math.round(target * 1.35));
+    const w = Math.max(7, Math.round(h * HERMES_MERMAID_W / HERMES_MERMAID_H));
+    const mx0 = Math.round(scx - w / 2);
+    const my0 = Math.round(scy - h / 2) + bob;
+    const dim = state === 'sleeping' ? 0.55 : 1;
+    const shade = (c: readonly [number, number, number]): RGB => [Math.round(c[0] * dim), Math.round(c[1] * dim), Math.round(c[2] * dim)];
+    const flukeDx = state === 'working' ? Math.round(Math.sin(animFrame * 0.5)) : 0;
+    const layers: Array<[keyof typeof HERMES_MERMAID_LAYERS, RGB, number]> = [
+      ['tail', shade(HERMES_MERMAID_COLORS.body), 0],
+      ['rim', shade(HERMES_MERMAID_COLORS.rim), 0],
+      ['fluke', shade(HERMES_MERMAID_COLORS.fluke), flukeDx],
+      ['head', base, 0],
+    ];
+    for (const [layer, color, ox] of layers) {
+      const mask = HERMES_MERMAID_LAYERS[layer];
+      for (let dy = 0; dy < h; dy++) {
+        const sy = Math.min(HERMES_MERMAID_H - 1, Math.floor(dy * HERMES_MERMAID_H / h));
+        for (let dx = 0; dx < w; dx++) {
+          const sx = Math.min(HERMES_MERMAID_W - 1, Math.floor(dx * HERMES_MERMAID_W / w));
+          const alpha = mask[sy * HERMES_MERMAID_W + sx] / 255;
+          if (alpha > 0.02) blendPixel(buf, mx0 + dx + ox, my0 + dy, color, alpha);
+        }
+      }
+    }
+    if (state === 'asking') drawQuestionBubble(buf, mx0 + w + 1, my0);
+    return;
+  }
 
   for (let dy = 0; dy < target; dy++) {
     const sy = Math.min(OFFICIAL_DOT_GLYPH_SIZE - 1, Math.floor(dy * OFFICIAL_DOT_GLYPH_SIZE / target));

@@ -29,6 +29,7 @@ const AGENTS = {
   openclaw: { type: 'openclaw', name: 'OpenClaw' },
   antigravity: { type: 'antigravity', name: 'Antigravity' },
   kiro: { type: 'kiro-cli', name: 'Kiro' },
+  hermes: { type: 'hermes', name: 'Hermes' },
 };
 const STATES = ['idle', 'working', 'sleeping', 'asking'];
 
@@ -60,6 +61,7 @@ function buildSessions(selectedAgent, state) {
     { key: 'openclaw', id: 's-claw', alive: true, agentType: 'openclaw', state: selectedAgent === 'openclaw' && state === 'working' ? 'processing' : 'idle', projectName: 'OpenClaw', modelName: 'OPENCLAW' },
     { key: 'antigravity', id: 's-antigravity', alive: true, agentType: 'antigravity', state: selectedAgent === 'antigravity' ? simStateToBridge(state) : 'idle', projectName: 'Antigravity', modelName: 'gemini' },
     { key: 'kiro', id: 's-kiro', alive: true, agentType: 'kiro-cli', state: selectedAgent === 'kiro' ? simStateToBridge(state) : 'idle', projectName: 'Kiro', modelName: 'auto' },
+    { key: 'hermes', id: 's-hermes', alive: true, agentType: 'hermes', state: selectedAgent === 'hermes' ? simStateToBridge(state) : 'idle', projectName: 'Hermes (cli)', modelName: 'glm-5.3' },
   ];
   const selected = ordered.find((session) => session.key === selectedAgent);
   const rest = ordered.filter((session) => session.key !== selectedAgent);
@@ -306,6 +308,7 @@ function renderTuiData() {
           { id: 's-claw', state: agent === 'openclaw' && state === 'working' ? 'processing' : 'idle', name: 'OpenClaw', agentType: 'openclaw' },
           { id: 's-antigravity', state: agent === 'antigravity' ? simStateToBridge(state) : 'idle', name: 'Antigravity', agentType: 'antigravity' },
           { id: 's-kiro', state: agent === 'kiro' ? simStateToBridge(state) : 'idle', name: 'Kiro', agentType: 'kiro-cli' },
+          { id: 's-hermes', state: agent === 'hermes' ? simStateToBridge(state) : 'idle', name: 'Hermes', agentType: 'hermes' },
         ];
         setOctopi(ctx, sessions);
         setJellyfish(ctx, sessions);
@@ -320,7 +323,7 @@ function renderTuiData() {
           connectionStatus: 'connected',
           isStale: false,
           projectName: AGENTS[agent].name,
-          modelName: agent === 'claude' ? 'opus-4' : agent === 'codex' ? 'gpt-5-codex' : agent === 'opencode' ? 'opencode' : agent === 'antigravity' ? 'gemini' : agent === 'kiro' ? 'auto' : 'OPENCLAW',
+          modelName: agent === 'claude' ? 'opus-4' : agent === 'codex' ? 'gpt-5-codex' : agent === 'opencode' ? 'opencode' : agent === 'antigravity' ? 'gemini' : agent === 'kiro' ? 'auto' : agent === 'hermes' ? 'glm-5.3' : 'OPENCLAW',
           currentTool: state === 'working' ? 'Read file' : null,
           sessions: buildSessions(agent, state),
           usage: {
@@ -366,6 +369,7 @@ function renderTuiTerrariumData() {
           { id: 's-claw', state: agent === 'openclaw' && state === 'working' ? 'processing' : 'idle', name: 'OpenClaw', agentType: 'openclaw' },
           { id: 's-antigravity', state: agent === 'antigravity' ? simStateToBridge(state) : 'idle', name: 'Antigravity', agentType: 'antigravity' },
           { id: 's-kiro', state: agent === 'kiro' ? simStateToBridge(state) : 'idle', name: 'Kiro', agentType: 'kiro-cli' },
+          { id: 's-hermes', state: agent === 'hermes' ? simStateToBridge(state) : 'idle', name: 'Hermes', agentType: 'hermes' },
         ];
         setOctopi(ctx, sessions);
         setJellyfish(ctx, sessions);

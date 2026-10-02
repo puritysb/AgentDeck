@@ -7,7 +7,7 @@
  * platforms consume the generated mirrors of the same source.
  */
 import { State } from './states.js';
-import { Brand, UI } from './design-tokens.js';
+import { Brand, UI, Tide } from './design-tokens.js';
 import { SESSION_STATE_TONES, SESSION_TONE_COLORS, sessionToneColor } from './session-state-presentation.js';
 
 // ===== State Colors =====
@@ -37,6 +37,7 @@ export const AGENT_BRAND_COLORS: Record<string, string> = {
   'kiro-cli':    Brand.kiro,
   'kiro-ide':    Brand.kiro,
   'monitor':     UI.hudSubtext,
+  'hermes':      Brand.hermesOnDark, // upstream white Nous girl on dark product surfaces
 };
 
 /** Get agent brand color. Falls back to the neutral HUD grey for unknown types. */

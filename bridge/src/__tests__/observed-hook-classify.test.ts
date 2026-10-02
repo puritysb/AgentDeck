@@ -83,6 +83,13 @@ describe('classifyObservedHookEvent', () => {
   });
 });
 
+describe('Hermes observer attribution', () => {
+  it.each(['session_start', 'user_prompt_submit', 'tool_start', 'tool_end', 'stop', 'session_end'])('%s stays Hermes', boundary => {
+    expect(classifyObservedHookEvent(`hermes_${boundary}`, `hermes_${boundary}`))
+      .toEqual({ boundary, agentType: 'hermes' });
+  });
+});
+
 describe('classifyObservedHookEvent — Codex PermissionRequest / Interrupt', () => {
   it('permission_request keeps its own boundary (a wait, not a turn edge)', () => {
     expect(classifyObservedHookEvent('codex_permission_request', 'codex_permission_request'))

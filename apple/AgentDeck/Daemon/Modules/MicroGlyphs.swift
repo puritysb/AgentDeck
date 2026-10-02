@@ -9,7 +9,7 @@
 
 import Foundation
 
-enum MicroCreature { case octopus, codex, opencode, crayfish, antigravity, kiro }
+enum MicroCreature { case octopus, codex, opencode, crayfish, antigravity, kiro, hermes }
 enum MicroAggregate { case idle, processing, awaiting, error }
 
 enum MicroGlyphs {
@@ -41,6 +41,7 @@ enum MicroGlyphs {
         case .crayfish: return .openClaw
         case .antigravity: return .antigravity
         case .kiro: return .kiro
+        case .hermes: return .hermes
         }
     }
 
@@ -51,6 +52,7 @@ enum MicroGlyphs {
         case .openCode: return (238, 238, 238)
         case .openClaw: return (255, 92, 92)
         case .kiro: return (124, 58, 237)
+        case .hermes: return (240, 240, 240)
         // Brand.zai (#1F63EC), measured from the upstream z.ai mark.
         case .zai: return (31, 99, 236)
         case .antigravity:
