@@ -5,7 +5,8 @@ export const output = 'apple/AgentDeck/Daemon/Gateway/GatewayLiveActivity.genera
 export function emitSwift(rules) {
   let source = fs.readFileSync(root + 'scripts/templates/gateway-live-activity.swift', 'utf8');
   const values = { MAX_RUNS: rules.maxRuns, MAX_TOOLS: rules.maxTools, RAW_LIMIT: rules.rawLimit,
-    DETAIL_LIMIT: rules.detailLimit, TERMINAL: rules.terminalPhases, ACTIVE: rules.activePhases, QUIET: rules.quietProcessActions };
+    DETAIL_LIMIT: rules.detailLimit, TERMINAL: rules.terminalPhases, ACTIVE: rules.activePhases, QUIET: rules.quietProcessActions,
+    FOLD_DETAIL: rules.foldDetailItems, FOLD_SUBJECTS: rules.foldSubjects };
   for (const [key, value] of Object.entries(values)) source = source.replaceAll(`@${key}@`, JSON.stringify(value));
   return source;
 }

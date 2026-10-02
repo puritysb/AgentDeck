@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { GatewayLiveActivity, GATEWAY_LIVE_RULES } from '../gateway-live-activity.js';
+import { GatewayLiveActivity, GATEWAY_LIVE_RULES, gatewayToolFoldRaw } from '../gateway-live-activity.js';
 // @ts-expect-error generator is deliberately runnable without transpilation
 import { emitSwift, output } from '../../../scripts/generate-gateway-live-rules.mjs';
 const fixture = JSON.parse(readFileSync(new URL('../../../tests/parity/gateway-live/turn.json', import.meta.url), 'utf8'));
@@ -49,6 +49,36 @@ describe('Gateway live activity', () => {
     expect(live.ingest('agent', failed, 5)[0].entry.raw).toContain('failed');
     expect(live.ingest('session.tool', failed, 6)).toEqual([]);
     expect(live.busy).toBe(false);
+  });
+  it('folds every tool call of a run into one row, updated in place', () => {
+    // Measured 2026-10-03: a voice request walked OpenClaw's config with 16
+    // `openclaw · <key>` reads in two minutes, one timeline row each.
+    const live = new GatewayLiveActivity();
+    live.ingest('session.message', frame('a', { message: { role: 'user', content: 'tone the wake word down' } }), 1);
+    const call = (id: string, key: string, ts: number, extra = {}) => {
+      live.ingest('session.tool', frame('a', { stream: 'tool', data: { phase: 'start', name: 'openclaw', toolCallId: id, args: { path: key } } }), ts);
+      return live.ingest('session.tool', frame('a', { stream: 'tool', data: { phase: 'result', name: 'openclaw', toolCallId: id, ...extra } }), ts + 1);
+    };
+    const first = call('1', 'channels', 10);
+    expect(first).toHaveLength(1);
+    expect(first[0].upsert).toBeUndefined();
+    expect(first[0].entry.raw).toBe('openclaw · channels');
+    const second = call('2', 'agents.main', 20);
+    expect(second[0]).toMatchObject({ upsert: true, entry: { ts: first[0].entry.ts, runId: 'a', type: 'tool_exec' } });
+    call('3', 'messages.groupChat', 30);
+    const fourth = call('4', '.', 40, { isError: true });
+    expect(fourth[0].entry.raw).toBe('openclaw ×4 · channels, agents.main, messages.groupChat, … · 1 failed');
+    expect(fourth[0].entry.detail!.split('\n')).toEqual([
+      'openclaw · channels', 'openclaw · agents.main', 'openclaw · messages.groupChat', 'openclaw · . · failed',
+    ]);
+    expect(fourth[0].entry).toMatchObject({ startedAt: 10, endedAt: 41 });
+  });
+  it('labels a folded row by its calls', () => {
+    expect(gatewayToolFoldRaw(['exec · ls'])).toBe('exec · ls');
+    expect(gatewayToolFoldRaw(['exec · ls', 'exec · ls'])).toBe('exec ×2 · ls');
+    expect(gatewayToolFoldRaw(['exec · a', 'read · b', 'exec · c', 'openclaw · d · failed']))
+      .toBe('4 tools · exec ×2, read, openclaw · 1 failed');
+    expect(gatewayToolFoldRaw(['web', 'web'])).toBe('web ×2');
   });
   it('retains dispatched prompt and attributes a pending user message to its run', () => {
     const live = new GatewayLiveActivity();

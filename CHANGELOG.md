@@ -47,6 +47,10 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- OpenClaw: all the tool calls of one turn fold into a single timeline row
+  (`openclaw ×16 · channels, agents.main, … · 1 failed`) that updates in
+  place, with the full list in its detail. A config walk no longer buries the
+  question and the reply.
 - Hermes Agent appears on every surface: the macOS/iOS and Android aquariums
   (the Nous girl mermaid; Android gets a lightweight 3D resident), the Stream
   Deck and D200H keys, the TUI session list, Pixoo, Timebox, iDotMatrix, the

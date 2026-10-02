@@ -14,6 +14,8 @@ struct GatewayLiveActivity {
     private static let terminalPhases = ["end","error","aborted"]
     private static let activePhases = ["start","model","finishing"]
     private static let quietActions = ["poll","log","list"]
+    private static let foldDetailItems = 40
+    private static let foldSubjects = 3
     private struct Run {
         var sessionKey: String
         var runId: String?
@@ -23,6 +25,10 @@ struct GatewayLiveActivity {
         var closed = false
         var responseEmitted = false
         var automated = false
+        /// Completed tool calls of this run, folded into ONE timeline row.
+        var toolRows: [String] = []
+        var toolRowTs: Double?
+        var toolRowStart: Double?
     }
     private struct Tool { var name: String; var input: Any?; var ts: Double; var done = false }
     private var runs: [String: Run] = [:]
@@ -46,6 +52,34 @@ struct GatewayLiveActivity {
         runs[key] = run
         while order.count > Self.maxRuns { runs.removeValue(forKey: order.removeFirst()) }
     }
+    /// One label for all the tool calls of a run — mirror of
+    /// `gatewayToolFoldRaw` in shared/src/gateway-live-activity.ts.
+    static func toolFoldRaw(_ items: [String]) -> String {
+        if items.count == 1 { return items[0] }
+        let parsed: [(name: String, subject: String, failed: Bool)] = items.map { item in
+            let failed = item.hasSuffix(" · failed")
+            let body = failed ? String(item.dropLast(" · failed".count)) : item
+            guard let cut = body.range(of: " · ") else { return (body, "", failed) }
+            return (String(body[..<cut.lowerBound]), String(body[cut.upperBound...]), failed)
+        }
+        let failed = parsed.filter(\.failed).count
+        let tail = failed > 0 ? " · \(failed) failed" : ""
+        var names: [String] = []
+        for p in parsed where !names.contains(p.name) { names.append(p.name) }
+        if names.count == 1 {
+            var subjects: [String] = []
+            for p in parsed where !p.subject.isEmpty && !subjects.contains(p.subject) { subjects.append(p.subject) }
+            let shown = subjects.prefix(foldSubjects).map { $0.count > 40 ? String($0.prefix(39)) + "…" : $0 }
+            let more = subjects.count > shown.count ? ", …" : ""
+            return "\(names[0]) ×\(items.count)" + (shown.isEmpty ? "" : " · " + shown.joined(separator: ", ") + more) + tail
+        }
+        let counts = names.map { n -> String in
+            let c = parsed.filter { $0.name == n }.count
+            return c > 1 ? "\(n) ×\(c)" : n
+        }
+        return "\(items.count) tools · " + counts.joined(separator: ", ") + tail
+    }
+
     private func row(_ run: Run, _ type: String, _ ts: Double, _ raw: String, _ detail: String? = nil) -> DaemonTimelineEntry {
         var entry = DaemonTimelineEntry(ts: ts.rounded(.towardZero), type: type,
             raw: String(raw.prefix(Self.rawLimit)), detail: detail.flatMap { $0.isEmpty ? nil : String($0.prefix(Self.detailLimit)) },
@@ -138,10 +172,18 @@ struct GatewayLiveActivity {
                         let output = string(text(object(result)["content"])) ?? (result as? String) ?? ""
                         let compactCommand = command?.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
                         let raw = tool.name + (compactCommand.map { " · \($0)" } ?? "") + (failed ? " · failed" : "")
-                        let detail = (["session: \(sessionKey)", command, output].compactMap { $0 }).joined(separator: "\n")
-                        var entry = row(run, "tool_exec", now, raw, detail)
-                        entry.startedAt = tool.ts; entry.endedAt = now
-                        out.append(.init(entry: entry))
+                        // Fold every completed call of this run into one row: the
+                        // first call adds it, later calls upsert it in place.
+                        run.toolRows.append(String(raw.prefix(Self.rawLimit)))
+                        if run.toolRowTs == nil { run.toolRowTs = now }
+                        if run.toolRowStart == nil { run.toolRowStart = tool.ts }
+                        let items = run.toolRows
+                        let detail = items.count == 1
+                            ? (["session: \(sessionKey)", command, output].compactMap { $0 }).joined(separator: "\n")
+                            : items.suffix(Self.foldDetailItems).joined(separator: "\n")
+                        var entry = row(run, "tool_exec", run.toolRowTs ?? now, Self.toolFoldRaw(items), detail)
+                        entry.startedAt = run.toolRowStart; entry.endedAt = now
+                        out.append(.init(entry: entry, upsert: items.count > 1))
                     }
                 }
                 tools[toolKey] = tool
