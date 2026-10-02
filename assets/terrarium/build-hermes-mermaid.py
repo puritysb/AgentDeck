@@ -356,6 +356,15 @@ face = head_v19.build(head, {'skin': skin, 'hair': hair, 'under': hair, 'white':
 # The body's shoulders and chest face up into the app's high sun (cos ~0.78 vs
 # ~0.49 for the forward-facing face) and clipped to white under the chin. A
 # slightly darker body skin renders at the face's brightness there.
+# The rest of the skin (body, arms, sockets) follows the face's split, so neck
+# and shoulders don't glow flat white beside the painted face: albedo scaled
+# down (the sun clipped it) and a peach, colour-matched glow carrying the shade.
+import face_paint as _fp
+_p = skin.node_tree.nodes['Principled BSDF']
+_base = _p.inputs['Base Color'].default_value[:3]
+_p.inputs['Base Color'].default_value = tuple(c * _fp.FACE_ALBEDO ** 2.2 for c in _base) + (1,)
+_p.inputs['Emission Color'].default_value = tuple(c * t ** 2.2 for c, t in zip(_base, _fp.GLOW_TINT)) + (1,)
+_p.inputs['Emission Strength'].default_value = _fp.FACE_GLOW
 skin_body = skin.copy(); skin_body.name = 'Ivory skin (body)'
 _b = skin_body.node_tree.nodes['Principled BSDF'].inputs['Base Color']
 _b.default_value = tuple(c * 0.70 for c in _b.default_value[:3]) + (1,)

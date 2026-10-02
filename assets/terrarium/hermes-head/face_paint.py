@@ -25,6 +25,7 @@ from mathutils.bvhtree import BVHTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEX = os.path.join(HERE, "face_shade.png")
+GLOW_TEX = os.path.join(HERE, "face_glow.png")
 RES = 1024
 U0, U1, V0, V1 = -0.20, 0.20, -0.32, 0.08     # head-frame window the texture covers
 
@@ -34,6 +35,11 @@ def smooth(a, b, x):
     return t * t * (3 - 2 * t)
 
 
+FACE_ALBEDO = float(os.environ.get('HERMES_FACE_ALBEDO', 0.80))   # painted albedo scale
+FACE_GLOW = float(os.environ.get('HERMES_FACE_GLOW', 1.0))       # glow, relative to the painted colour
+# the glow carries the shade side, where RealityKit's lighting goes grey; the
+# sheet's shade is peach (228/202/187 against a 251/236/226 lit face)
+GLOW_TINT = tuple(float(c) for c in os.environ.get('HERMES_GLOW_TINT', '1,0.90,0.83').split(','))
 TIP = 0.040      # was 0.0330: the profile nose stands further proud of the bridge root
 RECESS = 0.011   # lower-face set-back at the chin (head-frame m)
 
@@ -70,7 +76,7 @@ def nose_form(face, F):
         # triangles: pinholes in RealityKit, which culls back faces)
         bridge = 0.0150 * t ** 1.25 * math.exp(-(x / w) ** 2) * min(1.0, max(0.0, (y - (yt - 0.006)) / 0.004))
         # the nostril underside tucks back under the tip
-        under = -0.0045 * math.exp(-((x / 0.0095) ** 2 + ((y - (yt - 0.0150)) / 0.0040) ** 2))
+        under = -0.0025 * math.exp(-((x / 0.0095) ** 2 + ((y - (yt - 0.0150)) / 0.0040) ** 2))
         # lips: upper and lower pout, a soft groove between lower lip and chin
         lip = (0.0022 * math.exp(-((x / 0.017) ** 2 + ((y - (ym + 0.0035)) / 0.0035) ** 2))
                + 0.0030 * math.exp(-((x / 0.015) ** 2 + ((y - (ym - 0.0050)) / 0.0040) ** 2))
@@ -81,7 +87,7 @@ def nose_form(face, F):
         # the profile sheet sets the mouth and chin back from the nose (lips
         # ~15-25, chin ~35 sheet px behind the tip); the face cage alone left
         # them nearly level with it, so the side view read as one convex curve
-        r = smooth(yt - 0.012, ym, y) * 0.55 + smooth(ym, ym - 0.040, y) * 0.45
+        r = smooth(yt - 0.016, ym - 0.004, y) * 0.55 + smooth(ym, ym - 0.040, y) * 0.45   # starts below the nostril tuck: from yt-0.012 the two left a step under the nose
         recess = -RECESS * r * math.exp(-(x / 0.075) ** 2)
         disp[v.index] = form + under + lip + recess
         v.co.z = z + disp[v.index]
@@ -168,26 +174,9 @@ def paint(face, F, base_srgb, jaw=None):
     hem = F.HEM_Y + 0.016
     band = smooth(hem - 0.020, hem - 0.004, Y) * (Y < hem + 0.02) * (0.45 + 0.55 * smooth(0.02, 0.10, np.abs(X)))
     apply(band, (244, 225, 213))
-    # the nose: the sheet's tip is ~8% of the face width (~0.024), with warm
-    # shade on both wings (230/207/195) and nostrils (197/178/171) along its
-    # lower edge. The first pass painted it at half that size and it vanished.
+    # (the nose is drawn after the blur below: painted before it, every mark
+    # came out a soft smudge where the sheet draws crisp shapes)
     yt = F.NOSE_Y + 0.003
-    for s in (-1, 1):
-        side = np.exp(-(((X - s * 0.0105) / 0.0050) ** 2 + ((Y - (yt - 0.003)) / 0.0050) ** 2))
-        apply(np.clip(side * 1.0, 0, 1), (216, 186, 174))   # stronger: the app's 5000 lx sun washes painted accents out
-        nost = np.exp(-(((X - s * 0.0062) / 0.0034) ** 2 + ((Y - (yt - 0.0075)) / 0.0019) ** 2))
-        apply(np.clip(nost * 1.3, 0, 1), (192, 166, 158))
-    under = np.exp(-((X / 0.006) ** 2 + ((Y - (yt - 0.0088)) / 0.0016) ** 2))
-    apply(np.clip(under * 0.9, 0, 1), (206, 178, 168))
-    # (a side-plane shade keyed on normals was tried: it rendered as stepped
-    # bars down the bridge, visible from the front. The 3/4 contour is left to
-    # the nose form and the lighting.)
-    # the sheet's bridge carries a light strip above the tip, not dark side lines
-    # (the side streaks of the previous pass read as a long grooved nose)
-    br = np.exp(-((X / 0.0030) ** 2)) * smooth(F.EYE_Y - 0.012, F.EYE_Y - 0.030, Y) * (Y > yt + 0.002)
-    apply(np.clip(br * 0.9, 0, 1), (255, 247, 240))
-    tipc = np.exp(-((X / 0.0095) ** 2 + ((Y - yt) / 0.0070) ** 2))
-    apply(np.clip(tipc * 0.9, 0, 1), (238, 205, 193))       # the tip is a touch pinker
     # the face's side planes near the hair turn a little warmer and darker
     # (sheet cheek edges ~248/229/216 vs 252/236/226 lit)
     edge = smooth(0.35, 0.80, np.abs(NX)) * HIT * (Y > JAW + 0.004)
@@ -201,11 +190,39 @@ def paint(face, F, base_srgb, jaw=None):
     for _ in range(3):
         for ax in (0, 1):
             ratio = sum(np.roll(ratio, i - 2, axis=ax) * k[i] for i in range(5))
-    # crisp marks after the blur: the sheet's nostrils are small definite shapes
-    for s in (-1, 1):
-        nost = np.exp(-(((X - s * 0.0058) / 0.0026) ** 2 + ((Y - (yt - 0.0078)) / 0.0013) ** 2))
-        apply(np.clip(nost * 1.4, 0, 1), (186, 160, 152))
-    img = np.clip(np.array(base_srgb)[None, None, :] * ratio, 0, 1)
+    # The nose as the front sheet draws it, crisp: a thin bright streak down
+    # the bridge, a rounded peach-tan tip (~0.024 wide, ~0.015 tall, its lower
+    # edge sharp and its top fading into the bridge) and two small curved
+    # nostril strokes. Edges are ~0.6 mm (1.5 texels) so they stay clean.
+    def edge_in(d, w=0.0006):            # 1 inside (d < 0), 0 outside, soft over w
+        return np.clip(0.5 - d / w, 0, 1)
+    # streak: the lower half of the bridge only, widest just above the tip
+    taper = smooth(F.EYE_Y - 0.034, yt + 0.010, Y) * smooth(yt + 0.002, yt + 0.007, Y)
+    streak = edge_in(np.abs(X + 0.0006) - 0.0007 * taper, 0.0005) * (taper > 0.05)
+    apply(np.clip(streak * 0.85, 0, 1) * HIT, (255, 251, 247))
+    # the master draws the bridge as a contour on its far side (-x for the
+    # master camera), from the far eye's inner corner into the tip. A soft,
+    # one-sided shade here is faint from the front and foreshortens into that
+    # line at 3/4 (two-sided streaks earlier read as a long grooved nose).
+    t_ = np.clip((Y - (yt + 0.004)) / ((F.EYE_Y - 0.012) - (yt + 0.004)), 0, 1)   # 0 at the tip top, 1 at the eye
+    path_x = -0.0062 - 0.0030 * t_ ** 1.5                                          # bows outward toward the eye
+    on = (Y > yt + 0.001) & (Y < F.EYE_Y - 0.010)
+    w_ = 0.0010 * (0.4 + 0.6 * np.sin(np.clip(t_, 0, 1) * np.pi) ** 0.5)
+    bridge_ln = edge_in(np.abs(X - path_x) - w_, 0.0009) * on * (1 - 0.6 * smooth(0.6, 1.0, t_))
+    apply(np.clip(bridge_ln * 0.85, 0, 1) * HIT, (222, 192, 180))
+    cy = yt - 0.0015
+    bulb = ((X / 0.0118) ** 4 + ((Y - cy) / 0.0078) ** 4) ** 0.25 - 1.0
+    tip = edge_in(bulb * 0.0078, 0.0008) * (0.25 + 0.75 * smooth(cy + 0.007, cy - 0.003, Y))
+    apply(np.clip(tip, 0, 1) * HIT, (228, 201, 189))
+    for s_ in (-1, 1):
+        # nostril: an arc of a circle centred outward-up of the stroke
+        ccx, ccy, rr = s_ * 0.0028, yt - 0.0010, 0.0062
+        dist = np.abs(np.hypot(X - ccx, Y - ccy) - rr)
+        ang = np.arctan2(Y - ccy, (X - ccx) * s_)             # 0 = outward
+        arc = (ang < -0.35) & (ang > -1.45)                   # the lower-outer quarter
+        w = 0.00055 * np.clip(np.sin((ang + 0.35) / -1.10 * np.pi), 0.25, 1)   # tapered ends
+        apply(edge_in(dist - w, 0.0005) * arc * HIT, (170, 140, 132))
+    img = np.clip(np.array(base_srgb)[None, None, :] * ratio, 0, 1) * FACE_ALBEDO
     rgba = np.concatenate([img, np.ones(X.shape + (1,))], 2).astype(np.float32)
     im = bpy.data.images.get("face_shade") or bpy.data.images.new("face_shade", RES, RES, alpha=False)
     im.pixels.foreach_set(rgba.ravel())
@@ -231,6 +248,21 @@ def uv_and_material(face, skin, im):
     nt = m.node_tree
     tex = nt.nodes.new("ShaderNodeTexImage"); tex.image = im; tex.extension = "EXTEND"
     nt.links.new(tex.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Base Color"])
+    # The skin's flat emission (it evens out the app's high sun) was added on
+    # top of the painted texture and washed every painted shade to white: the
+    # front render clipped at 255 where the sheet sits at 251/236/226, and the
+    # fringe-hem band, nose line and neck shadow vanished. The face glows with
+    # its own painting instead.
+    # USD carries a textured emissive at full value (Emission Strength is
+    # dropped), so the strength is baked into a darkened copy of the painting
+    glow = bpy.data.images.get("face_glow") or bpy.data.images.new("face_glow", im.size[0], im.size[1], alpha=False)
+    px = np.array(im.pixels[:], np.float32).reshape(-1, 4)
+    px[:, :3] *= np.array(GLOW_TINT, np.float32) * (FACE_GLOW / FACE_ALBEDO)
+    glow.pixels.foreach_set(px.ravel())
+    glow.filepath_raw = GLOW_TEX; glow.file_format = "PNG"; glow.save()
+    gtex = nt.nodes.new("ShaderNodeTexImage"); gtex.image = glow; gtex.extension = "EXTEND"
+    nt.links.new(gtex.outputs["Color"], nt.nodes["Principled BSDF"].inputs["Emission Color"])
+    nt.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 1.0
     me.materials.clear(); me.materials.append(m)
 
 def eye_planes(face, F, yaw_deg=35.0):

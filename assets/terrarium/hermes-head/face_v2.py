@@ -41,8 +41,9 @@ exec(compile(_SRC.read_text(), str(_SRC), "exec"), F.__dict__)
 # ---- measured proportions (head units) -----------------------------------
 F.EYE_X, F.EYE_Y = 0.098, -0.036   # sheet iris centres at x +-0.9 model units
 F.EW, F.EH_T, F.EH_B = 0.086, 0.027, 0.026   # sheet: eye ~0.29 of the face width, almond h/w ~0.62
-F.IRIS_R, F.IRIS_Y = (0.026, 0.030), 0.003
-IRIS_DX = 0.010            # toward the nose
+F.IRIS_R, F.IRIS_Y = (0.028, 0.032), 0.003   # front sheet: iris ~0.65 of the eye width (was 0.60)
+IRIS_DX = 0.003            # toward the nose: the sheet's irises sit only 2-5% of the eye width inward;
+                           # 0.010 read as cross-eyed once the eyes were 3D (gaze comes from the pupil joint)
 F.BROW_Y, BROW_X, BROW_LEN = 0.008, 0.098, 0.078# in the gap between the liner top (~z 1.69) and the hem (1.84)
 F.NOSE_Y, F.MOUTH_Y, F.LIP_W = -0.099, -0.131, 0.052   # sheet overlay: lips sat ~0.12 units low
 F.MODEL_HEM_Z, F.MODEL_CHIN_Z, F.MODEL_SCALE = 1.86, -0.14, 8.696
@@ -70,7 +71,7 @@ def pupil(s):
 
 def glint(s):
     # ref: one round highlight, upper-LEFT in both eyes (one light), not mirrored
-    return F.ellipse(-s * IRIS_DX - .011, .010, .0055, .0058, 20)
+    return F.ellipse(-s * IRIS_DX - .011, .010, .0047, .0050, 20)   # sheet glint ~0.11 of the eye width
 
 
 def glint_small(s):

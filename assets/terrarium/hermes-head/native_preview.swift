@@ -26,6 +26,7 @@ import Foundation
   case "side": camera.camera.fieldOfViewInDegrees = 22; camera.look(at: [0, 0.20, 0], from: [1.6, 0.22, 0], relativeTo: nil)
   case "profile": camera.camera.fieldOfViewInDegrees = 1.25; camera.look(at: [0.0, 0.215, -0.05], from: [40.0, 0.215, -0.05], relativeTo: nil)
   case "frontfar": camera.camera.fieldOfViewInDegrees = 1.25; camera.look(at: [0, 0.215, 0], from: [0, 0.215, 40.0], relativeTo: nil)
+  case "nosezoom": camera.camera.fieldOfViewInDegrees = 3.0; camera.look(at: [-0.012, 0.115, 0.16], from: [-0.012, 0.13, 1.6], relativeTo: nil)
   default: camera.look(at: [0, 0.035, 0], from: [0.9, 0.1, 2], relativeTo: nil)
   }
   anchor.addChild(camera)

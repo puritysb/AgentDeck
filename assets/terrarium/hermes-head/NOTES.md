@@ -700,6 +700,54 @@ some on the body) are present in the committed model at the same pixels.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-eyes3d/review.png`.
 
+## Skin, eyes and nose pass (2026-10-02, "face shadows, eye spacing and the nose bridge still differ")
+
+- **Shadows were being washed out.** The skin's flat emission colour was
+  added on top of the painted face texture. The front face clipped at 255
+  where the sheet sits at 251/236/226, so the fringe-hem band, nose marks
+  and neck shade never showed.
+  - The face now splits into two baked textures:
+    - `face_shade.png`: the painting x `FACE_ALBEDO` 0.80, so the 5000 lx
+      sun can't clip it;
+    - `face_glow.png`: the painting x `FACE_GLOW` 1.0 x `GLOW_TINT`
+      (1, .90, .83). It is peach because RealityKit's shade side goes grey.
+  - USD drops Emission Strength for a textured emissive, so the strength
+    is baked into the glow texture.
+  - Measured on the front skin: p50 248/235/222 vs the sheet's
+    251/236/226, and p10 224/208/191 vs 228/202/187. Before: p50
+    255/250/242 and p10 209/199/190, clipped.
+  - The rest of the skin (body, arms, sockets) gets the same split from the
+    same constants, so the neck and shoulders no longer glow flat white
+    beside the face.
+- **Eye spacing.** The irises sat 0.010 toward the nose (12% of the eye
+  width) and read as cross-eyed once the eyes were 3D. The sheet's sit 2-5%
+  inward, so `IRIS_DX` is now 0.003; gaze comes from the pupil joint.
+  - The iris is now 0.65 of the eye width (`IRIS_R` .028/.032).
+  - The glint radius is now .0047.
+- **Nose.** It is now painted after the blur, crisply, as the front sheet
+  draws it:
+  - a narrow bright streak on the lower bridge;
+  - a rounded peach-tan tip;
+  - two curved nostril strokes;
+  - a soft one-sided shade on the far (-x) side of the bridge. It is faint
+    from the front and becomes the master's bridge contour at 3/4.
+
+  The nostril tuck is halved (-0.0025): its crease read as a dark line.
+  A paint lift of the nose underside was tried and reverted: it read as a
+  white patch.
+- **Not matched, on purpose.** In the master the nose tip sits right under
+  the far eye's inner corner (11% of the way between the eyes). At the
+  fitted 32 deg, no nose depth allowed by the profile sheet gets past 33%,
+  and even 45 deg gives 24%. That is an illustration cheat.
+- **Known RealityKit artifact.** A few single black pixels lie along
+  curves on the nose side and the body. They are NaN shading: pure
+  0/0/0 against a 9/14/17 background. They are unaffected by IOR, UV
+  layout, the backing or the bookkeeping attributes, and vanish only with
+  flat shading. They are present in every earlier build, and sub-pixel at
+  aquarium scale.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-skin/review.png`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate
