@@ -388,8 +388,8 @@
   "ring": 12,
   "cols": "all",
   "scale": [
-   1.08,
-   1.39,
+   1.05,
+   1,
    1
   ],
   "center": [
@@ -12921,14 +12921,14 @@
   ]
  },
  {
-  "note": "E72 (2026-10-02): round the bob's bottom. The sheet's hair tucks in from row ~498 and ends ~535 (z ~-0.30); the model stayed full width to row ~546. Ring 12 comes in a little, ring 13 (the hem) rises and tucks in."
+  "note": "E72 (2026-10-02): the bob's bottom, measured on both registered sheets after the lower locks were removed (they had been the front corners). Ring 12 x1.05 and ring 13 x1.18 flare the ends outward as the sheets' bob does; the side columns of ring 13 drop 0.03. Front rows 466-514 now within 2-15 px of the sheet, profile hem within 4-14 px. (A tuck x0.77 with a +0.16 lift all round, tried first, left the back hem ~25 px high and, without the locks, the front corners 170 px narrow.)"
  },
  {
   "obj": "hair",
   "ring": 12,
   "cols": "all",
   "scale": [
-   0.9,
+   1.05,
    1,
    1
   ],
@@ -12943,7 +12943,7 @@
   "ring": 13,
   "cols": "all",
   "scale": [
-   0.77,
+   1.18,
    1,
    1
   ],
@@ -12956,11 +12956,29 @@
  {
   "obj": "hair",
   "ring": 13,
-  "cols": "all",
+  "cols": [
+   6,
+   7,
+   8,
+   9,
+   10
+  ],
   "move": [
    0,
    0,
-   0.16
+   -0.03
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "cols": [
+   11
+  ],
+  "move": [
+   0,
+   0,
+   -0.015
   ]
  }
 ]

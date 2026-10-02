@@ -849,8 +849,11 @@ Review: `diagnostics/hermes-mermaid/nous-v19-crown/review.png`.
 
 - **E71:** pushes hair rings 6-7 outward at the sides (col 8: +0.06 at
   ring 6, +0.27 at ring 7). Row 280 is now 506 vs 520 px; row 300 matches.
-- **E72:** ring 12 x0.90; ring 13 (the hem) x0.77 and +0.16 up. The hair
-  ends where the sheet's does.
+- **E72 (final values):** ring 12 x1.05; ring 13 x1.18, with its side columns
+  0.03 lower. Once the lower locks were gone, the hem itself had to supply
+  the bob's outward flare at the front corners. A first tuck (x0.77, +0.16
+  all round) left the back hem ~25 px high. Front rows 466-514 are now
+  within 2-15 px of the sheet and the profile hem within 4-14 px.
 - **Lower locks removed** (lo_L1, lo_L2, lo_R1, lo_R2):
   - from the front they dangled under the hem as claws;
   - in the master they made a cluster at the back;
