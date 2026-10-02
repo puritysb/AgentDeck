@@ -1067,6 +1067,31 @@ Reverted. E73 is not in `edits.json`, and the two-tier flips stay.
 Review: `diagnostics/hermes-mermaid/nous-v19-sticker/review.png`. Its right
 panel is at the app camera's distance.
 
+## State cues that survive the laptop (2026-10-02)
+
+**Problem.** A state review (idle -> working -> idle -> waiting -> error ->
+idle) found waiting and error nearly identical to idle. Only the mouth
+changed. The waiting cue was a raised arm, and it went up behind the
+bigger laptop and her hair, where it never showed.
+
+**Cues now, all driven by `HermesSwim.Pose`:**
+
+| State | Cue |
+|---|---|
+| Waiting | `laptopTurn` 1: she turns the laptop round about its own centre (the rig computes the pivot from its rest bounds), so the viewer sees `laptop_screen_alert`, an amber (--amber-500 / --status-awaiting) screen that pulses gently. The lid opens a little wider, her head lifts, and she bobs in place. |
+| Error | The lid sags half shut (`laptopLid` -0.95), her head bows and her spine slumps. |
+| Greeting | A small lift of the near hand plus a wrist wave; both hands otherwise stay on the laptop. |
+| Working | Typing (wrist taps). |
+| Done | The twirl. |
+
+**Tests.** The old waiting assertion (left arm raised above the right)
+became laptop-turn and alert assertions, plus an error-lid check. A new
+test on the bundled model checks that waiting turns the laptop in place
+(within 2 cm) and toggles the alert. 10/10 pass.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-states/states.png` and
+`states.gif`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate

@@ -499,6 +499,11 @@ box('laptop_lid', (LAP_W, LAP_H, 0.006), (0, LAP_H / 2, 0), m_laptop, lid)
 plane('laptop_screen', LAP_W * 0.88, LAP_H * 0.82, (0, LAP_H * 0.52, -0.0032), m_screen, lid, facing=-1)
 for i, (x0, w) in enumerate(((-0.085, 0.075), (-0.078, 0.11), (-0.078, 0.05), (-0.070, 0.09), (-0.085, 0.06))):
     plane(f'laptop_code_{i}', w, 0.006, (x0 + w / 2, LAP_H * (0.80 - i * 0.12), -0.0036), m_code, lid, facing=-1)
+# Waiting state: she turns the laptop round to show the viewer this amber
+# screen (--status-awaiting via --amber-500, the one status colour allowed to
+# animate). Hidden at rest; HermesMermaid.Rig enables it from pose.laptopAlert.
+m_alert = material('Laptop alert', 'amber-500', .5, .1, glow=.55)
+plane('laptop_screen_alert', LAP_W * 0.88, LAP_H * 0.82, (0, LAP_H * 0.52, -0.0042), m_alert, lid, facing=-1)
 # the official character on the lid, facing the viewer: the canonical mark
 # (design/brand/hermes.svg) baked by hermes-head/make_laptop_sticker.sh
 _img = bpy.data.images.load(str(Path(__file__).resolve().parent / 'hermes-head' / 'laptop_sticker.png'))
@@ -667,7 +672,7 @@ root.rotation_euler.x = 0
 
 # ------------------------------------------------------------- review ----
 for o in list(bpy.data.objects):
-    if o.name in ('mouth_open', 'closed_lid_left', 'closed_lid_right'): o.hide_render = True
+    if o.name in ('mouth_open', 'closed_lid_left', 'closed_lid_right', 'laptop_screen_alert'): o.hide_render = True
 scene.render.engine = 'BLENDER_EEVEE'
 scene.world = bpy.data.worlds.new('Water'); scene.world.use_nodes = True
 bg = scene.world.node_tree.nodes['Background']; bg.inputs[0].default_value = (.012, .035, .055, 1); bg.inputs[1].default_value = 1.2

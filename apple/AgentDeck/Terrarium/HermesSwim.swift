@@ -86,6 +86,10 @@ struct HermesSwim {
         var browLeft, browRight, browLift, mouthOpen, mouthCurve: Float
         /// Extra opening of the laptop lid beyond its modelled rest angle.
         var laptopLid: Float
+        /// 0 = screen toward her, 1 = turned round to show the viewer (waiting).
+        var laptopTurn: Float
+        /// Amber alert screen visibility (waiting); pulses while shown.
+        var laptopAlert: Float
 
         func rotation(for bone: String) -> SIMD3<Float> {
             switch bone {
@@ -118,7 +122,7 @@ struct HermesSwim {
         // small strokes only: her hands hold the laptop; quiet while she waits
         let paddle = sin(phase + 0.5) * (0.03 + speed * 0.03) * (1 - attention)
         return Pose(
-            spine: [sin(phase - 0.15) * 0.025 + effort * 0.025, 0, -roll * 0.20],
+            spine: [sin(phase - 0.15) * 0.025 + effort * 0.025 + sadness * 0.14, 0, -roll * 0.20],   // error: she slumps
             // at rest the tail curls forward under her (the concepts' J); it
             // straightens to trail behind as she picks up speed
             tailBase: [sin(phase) * stroke - 0.30 * (1 - speed), tailBank * 0.25, 0],
@@ -129,15 +133,19 @@ struct HermesSwim {
             finRight: [sin(phase - 2.25) * 0.09, 0.04 + speed * 0.09, 0.05 + effort * 0.08],
             // working keeps both hands on the laptop and types (wrist taps);
             // the big forward arm swing pulled them off it
-            armLeft: [-effort * 0.12, attention * 1.15 + greeting * 0.95 + effort * 0.10,
-                      -(0.04 + attention * 0.9 + greeting * 0.65 + effort * 0.06 + celebration * 0.14) + paddle],
-            elbowLeft: [-effort * 0.10, 0, -(0.08 + effort * (0.10 + tap * 0.08) + attention * 0.35 + greeting * 0.55)],
+            // hands stay on the laptop in every state (2026-10-02): a raised
+            // arm went up behind the laptop and her hair and never showed, so
+            // waiting is signalled by the laptop itself, and a greeting is a
+            // small lift of the near hand with a wave of the wrist
+            armLeft: [-effort * 0.12, greeting * 0.40 + effort * 0.10,
+                      -(0.04 + greeting * 0.30 + effort * 0.06 + celebration * 0.14) + paddle],
+            elbowLeft: [-effort * 0.10, 0, -(0.08 + effort * (0.10 + tap * 0.08) + greeting * 0.30)],
             wristLeft: [effort * tap * 0.16, wave * 0.35, wave * 0.15],
-            armRight: [-effort * 0.12 - sadness * 0.10, -effort * 0.10, 0.04 + effort * 0.06 + attention * 0.1 + paddle],
+            armRight: [-effort * 0.12 - sadness * 0.10, -effort * 0.10, 0.04 + effort * 0.06 + paddle],
             elbowRight: [-effort * 0.10, 0, 0.08 + effort * (0.10 - tap * 0.08) + sadness * 0.15],
             wristRight: [-effort * tap * 0.16, 0, 0],
             // the head turns back toward the viewer by half the body's lean
-            head: [effort * 0.09 + sadness * 0.10 - gaze.y * 0.12,
+            head: [effort * 0.09 + sadness * 0.28 - attention * 0.10 - gaze.y * 0.12,
                    gaze.x * 0.25 - bodyYaw * 0.45, headRoll + sin(elapsed * 0.8 + offset) * 0.018],
             hairLeft: sin(phase - 1.6) * (0.018 + speed * 0.025) + roll * 0.06,
             hairRight: sin(phase - 1.9) * (0.015 + speed * 0.025) + roll * 0.06,
@@ -149,7 +157,10 @@ struct HermesSwim {
             browLift: attention * 0.006 - effort * 0.002,
             mouthOpen: attention * 0.35,
             mouthCurve: greeting * 0.3 + celebration * 0.18 - sadness * 0.4,
-            laptopLid: effort * 0.15 + sin(elapsed * 0.7 + offset) * 0.02)
+            // error: the lid sags half shut; waiting: it opens a little wider
+            laptopLid: effort * 0.15 + attention * 0.12 - sadness * 0.95 + sin(elapsed * 0.7 + offset) * 0.02,
+            laptopTurn: attention,
+            laptopAlert: attention > 0.5 ? 0.85 + 0.15 * sin(elapsed * 2.5) : 0)
     }
 
     mutating func step(_ delta: Float, home: SIMD3<Float>, size: Float,
@@ -171,7 +182,8 @@ struct HermesSwim {
         let t = elapsed * 0.34 + offset
         let radius = size * (0.85 + effort * 0.35) * (1 - attention * 0.85)
         var destination = home + SIMD3<Float>(sin(t) * radius,
-            sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07,   // a soft float
+            sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07   // a soft float
+                + sin(elapsed * 3.4) * size * 0.05 * attention,                        // waiting: an eager bob
             sin(t * 0.83) * radius * 0.70)
         var nearest: SIMD3<Float>?
         var distance = Float.infinity

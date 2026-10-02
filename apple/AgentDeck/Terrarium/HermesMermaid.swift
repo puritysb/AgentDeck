@@ -47,6 +47,9 @@ enum HermesMermaid {
         }
         let skins: [Skin]
         let controls: [String: Control]
+        /// The laptop's centre in its parent's frame: it turns round about
+        /// this point, not about the spine origin it is parented at.
+        private var laptopPivot: SIMD3<Float>?
         var boneNames: Set<String> { Set(skins.flatMap(\.names)) }
         var isComplete: Bool {
             HermesMermaid.requiredBones.isSubset(of: boneNames)
@@ -72,6 +75,11 @@ enum HermesMermaid {
             controls["hermes_lid_left"]?.entity.isEnabled = false
             controls["hermes_lid_right"]?.entity.isEnabled = false
             controls["mouth_open"]?.entity.isEnabled = false
+            controls["laptop_screen_alert"]?.entity.isEnabled = false
+            if let laptop = controls["laptop"]?.entity, let parent = laptop.parent {
+                let bounds = laptop.visualBounds(relativeTo: parent)
+                if !bounds.isEmpty { laptopPivot = bounds.center }
+            }
         }
         func pose(_ swim: HermesSwim) { apply(swim.pose) }
         func apply(_ pose: HermesSwim.Pose) {
@@ -81,6 +89,16 @@ enum HermesMermaid {
             controls["hermes_hair_left"]?.rotate([pose.hairLeft, 0, 0])
             controls["hermes_hair_right"]?.rotate([pose.hairRight, 0, 0])
             controls["hermes_laptop_lid"]?.rotate([pose.laptopLid, 0, 0])   // optional prop control
+            if let laptop = controls["laptop"], let pivot = laptopPivot {
+                // turn about the laptop's own centre: p' = c + q (p - c)
+                let q = simd_quatf(angle: .pi * pose.laptopTurn, axis: [0, 1, 0])
+                laptop.entity.orientation = q * laptop.rest.rotation
+                laptop.entity.position = pivot + q.act(laptop.rest.translation - pivot)
+            }
+            if let alert = controls["laptop_screen_alert"] {
+                alert.entity.isEnabled = pose.laptopAlert > 0.01
+                alert.entity.scale = alert.rest.scale * (0.96 + 0.04 * pose.laptopAlert)
+            }
             for (side, openness, angle) in [("left", pose.eyeLeft, pose.browLeft), ("right", pose.eyeRight, pose.browRight)] {
                 if let eye = controls["hermes_eye_" + side] {
                     eye.entity.scale = eye.rest.scale * [1, max(0.05, openness), 1]

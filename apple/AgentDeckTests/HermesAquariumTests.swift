@@ -118,8 +118,18 @@ final class HermesAquariumTests: XCTestCase {
         XCTAssertNotEqual(pose.tailBase.x, pose.tailMid.x)
         XCTAssertNotEqual(pose.tailMid.x, pose.tailTip.x)
         XCTAssertNotEqual(pose.wristLeft.x, pose.wristRight.x)
+        // Waiting is shown with the laptop she holds: she turns it round to the
+        // viewer and its amber screen comes on. (A raised arm went up behind
+        // the laptop and her hair and never read on screen.)
         for _ in 0..<180 { swim.step(1/60, home: [0,3,0], size: 0.8, activity: .waiting, neighbours: [], aspect: 1.6) }
-        XCTAssertGreaterThan(abs(swim.pose.armLeft.z), abs(swim.pose.armRight.z) + 0.5)
+        XCTAssertGreaterThan(swim.pose.laptopTurn, 0.9)
+        XCTAssertGreaterThan(swim.pose.laptopAlert, 0.5)
+        // Error: the lid sags shut; idle: screen toward her, no alert.
+        for _ in 0..<180 { swim.step(1/60, home: [0,3,0], size: 0.8, activity: .error, neighbours: [], aspect: 1.6) }
+        XCTAssertLessThan(swim.pose.laptopLid, -0.6)
+        XCTAssertEqual(swim.pose.laptopAlert, 0)
+        for _ in 0..<300 { swim.step(1/60, home: [0,3,0], size: 0.8, activity: .idle, neighbours: [], aspect: 1.6) }
+        XCTAssertLessThan(swim.pose.laptopTurn, 0.05)
     }
 
     @MainActor
@@ -187,6 +197,30 @@ final class HermesAquariumTests: XCTestCase {
         state.hermesCreatures = []
         scene.sync(state, aspect: 1.6)
         XCTAssertTrue(scene.residents.isEmpty)
+    }
+
+    @MainActor
+    func testWaitingTurnsTheLaptopInPlaceAndShowsTheAlert() async throws {
+        let library = try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz")))
+        let root = try XCTUnwrap(library.findEntity(named: "resident_hermes")).clone(recursive: true)
+        let rig = HermesMermaid.Rig(root)
+        let laptop = try XCTUnwrap(root.findEntity(named: "laptop"))
+        // USD writes a mesh as an Xform and a Mesh prim of the same name; the
+        // rig toggles the innermost one, which is what draws
+        var alert = try XCTUnwrap(root.findEntity(named: "laptop_screen_alert"))
+        while let inner = alert.children.first(where: { $0.name == alert.name }) { alert = inner }
+        let parent = try XCTUnwrap(laptop.parent)
+        XCTAssertFalse(alert.isEnabled)
+        let centre = laptop.visualBounds(relativeTo: parent).center
+        var swim = HermesSwim(id: "w", position: [0, 3, 0])
+        for _ in 0..<240 { swim.step(1/60, home: [0, 3, 0], size: 0.8, activity: .waiting, neighbours: [], aspect: 1.6) }
+        rig.pose(swim)
+        XCTAssertTrue(alert.isEnabled)
+        // turned about its own centre: it stays in her hands, not swung behind her
+        XCTAssertLessThan(simd_distance(laptop.visualBounds(relativeTo: parent).center, centre), 0.02)
+        for _ in 0..<300 { swim.step(1/60, home: [0, 3, 0], size: 0.8, activity: .idle, neighbours: [], aspect: 1.6) }
+        rig.pose(swim)
+        XCTAssertFalse(alert.isEnabled)
     }
 }
 #endif
