@@ -1,4 +1,0 @@
-Target dependency graph (2 targets)
-Target 'AgentDeckTests_macOS' in project 'AgentDeck'
-➜ Explicit dependency on target 'AgentDeck_macOS' in project 'AgentDeck'
-Target 'AgentDeck_macOS' in project 'AgentDeck' (no dependencies)
