@@ -1,0 +1,58 @@
+{
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/HTTPServerMainThreadStallTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerMainThreadStallTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerMainThreadStallTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerMainThreadStallTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerMainThreadStallTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerMainThreadStallTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/HTTPServerParseTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerParseTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerParseTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerParseTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerParseTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HTTPServerParseTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/HermesAquariumTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesAquariumTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesAquariumTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesAquariumTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesAquariumTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesAquariumTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/HermesObserverGateTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesObserverGateTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesObserverGateTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesObserverGateTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesObserverGateTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HermesObserverGateTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/HookIdleTTLTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HookIdleTTLTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HookIdleTTLTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HookIdleTTLTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HookIdleTTLTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HookIdleTTLTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/HttpAccessPolicyTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HttpAccessPolicyTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HttpAccessPolicyTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HttpAccessPolicyTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HttpAccessPolicyTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/HttpAccessPolicyTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/IDotMatrixProtocolTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/IDotMatrixProtocolTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/IDotMatrixProtocolTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/IDotMatrixProtocolTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/IDotMatrixProtocolTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/IDotMatrixProtocolTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/ListenerLeakTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ListenerLeakTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ListenerLeakTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ListenerLeakTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ListenerLeakTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ListenerLeakTests.swiftdeps"
+  }
+}

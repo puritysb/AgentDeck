@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>13</integer>
+	<key>logs</key>
+	<dict>
+		<key>AA3B7AAE-D673-4C65-B56B-D1A7F024A31C</key>
+		<dict>
+			<key>auxiliaryLogUniqueIdentifier</key>
+			<string>2C3E2C0D-8B7D-4DDC-919B-0F2038C66A60</string>
+			<key>auxiliaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>18</integer>
+			</dict>
+			<key>className</key>
+			<string>IDESchemeActionsInvocationRecord</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>com.apple.dt.unit.cocoaUnitTest</string>
+			<key>fileName</key>
+			<string>Test-AgentDeck_macOS-2026.10.03_03-38-43-+0900.xcresult</string>
+			<key>hasAuxiliaryLog</key>
+			<true/>
+			<key>hasCoverageData</key>
+			<true/>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalCodeCoverage</key>
+				<real>0.059441416318080025</real>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>16</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>AgentDeck project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>AgentDeck_macOS</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Test AgentDeck_macOS</string>
+			<key>timeStartedRecording</key>
+			<real>812659123.03891098</real>
+			<key>timeStoppedRecording</key>
+			<real>812659165.29810905</real>
+			<key>title</key>
+			<string>Test AgentDeck_macOS</string>
+			<key>uniqueIdentifier</key>
+			<string>AA3B7AAE-D673-4C65-B56B-D1A7F024A31C</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

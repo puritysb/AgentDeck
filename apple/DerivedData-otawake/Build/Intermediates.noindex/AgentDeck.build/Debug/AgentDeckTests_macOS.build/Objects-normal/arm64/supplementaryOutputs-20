@@ -1,0 +1,51 @@
+{
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/TopologyRailHelpersTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TopologyRailHelpersTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TopologyRailHelpersTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TopologyRailHelpersTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TopologyRailHelpersTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TopologyRailHelpersTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/UnauthorizedCloseCodeTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnauthorizedCloseCodeTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnauthorizedCloseCodeTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnauthorizedCloseCodeTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnauthorizedCloseCodeTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnauthorizedCloseCodeTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/UnknownAgentForwardCompatTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnknownAgentForwardCompatTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnknownAgentForwardCompatTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnknownAgentForwardCompatTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnknownAgentForwardCompatTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UnknownAgentForwardCompatTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/UsageAPIClientThreadingTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageAPIClientThreadingTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageAPIClientThreadingTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageAPIClientThreadingTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageAPIClientThreadingTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageAPIClientThreadingTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/UsageRelayFreshnessTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageRelayFreshnessTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageRelayFreshnessTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageRelayFreshnessTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageRelayFreshnessTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageRelayFreshnessTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/UsageSeverityTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageSeverityTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageSeverityTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageSeverityTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageSeverityTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/UsageSeverityTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/ZaiQuotaRulesVectorsTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ZaiQuotaRulesVectorsTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ZaiQuotaRulesVectorsTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ZaiQuotaRulesVectorsTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ZaiQuotaRulesVectorsTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ZaiQuotaRulesVectorsTests.swiftdeps"
+  }
+}

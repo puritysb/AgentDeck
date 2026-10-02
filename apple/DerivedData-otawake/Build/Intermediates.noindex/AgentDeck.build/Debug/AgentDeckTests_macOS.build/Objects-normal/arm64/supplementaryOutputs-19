@@ -1,0 +1,51 @@
+{
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/SpokenDigestParityTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SpokenDigestParityTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SpokenDigestParityTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SpokenDigestParityTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SpokenDigestParityTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SpokenDigestParityTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/SwiftSurfaceProtocolTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SwiftSurfaceProtocolTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SwiftSurfaceProtocolTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SwiftSurfaceProtocolTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SwiftSurfaceProtocolTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/SwiftSurfaceProtocolTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/TerrariumCloudFoldTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCloudFoldTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCloudFoldTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCloudFoldTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCloudFoldTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCloudFoldTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/TerrariumCrayfishPresenceTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCrayfishPresenceTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCrayfishPresenceTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCrayfishPresenceTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCrayfishPresenceTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TerrariumCrayfishPresenceTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/TimeboxProtocolTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimeboxProtocolTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimeboxProtocolTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimeboxProtocolTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimeboxProtocolTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimeboxProtocolTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/TimelineCrossDaemonFormatTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineCrossDaemonFormatTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineCrossDaemonFormatTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineCrossDaemonFormatTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineCrossDaemonFormatTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineCrossDaemonFormatTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/TimelineTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/TimelineTests.swiftdeps"
+  }
+}

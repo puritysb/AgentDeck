@@ -6484,6 +6484,13 @@ final class DaemonServer {
         esp32Ota.liveConnection = { [weak self] key in
             self?.liveWifiEsp32Connection(forKey: key)
         }
+        esp32Ota.holdSerialBoard = { [weak self] target in
+            guard let serial = self?.serialModule?.serial else { return nil }
+            return await serial.holdBoard(target, seconds: 30 * 60, reason: "WiFi OTA to \(target)")
+        }
+        esp32Ota.releaseSerialHold = { [weak self] port in
+            await self?.serialModule?.serial.releaseHold(port: port)
+        }
         esp32Ota.onTransferComplete = { [weak self] key in
             guard let self else { return }
             // Drop the roster row now — the board reboots into the new image

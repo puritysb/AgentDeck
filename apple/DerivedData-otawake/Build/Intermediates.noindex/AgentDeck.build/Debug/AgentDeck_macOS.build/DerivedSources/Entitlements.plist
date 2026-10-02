@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.application-identifier</key>
+	<string>QF36NDHYHD.bound.serendipity.agent.deck</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>QF36NDHYHD</string>
+	<key>com.apple.developer.weatherkit</key>
+	<true/>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.device.bluetooth</key>
+	<true/>
+	<key>com.apple.security.device.serial</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.get-task-allow</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+</dict>
+</plist>

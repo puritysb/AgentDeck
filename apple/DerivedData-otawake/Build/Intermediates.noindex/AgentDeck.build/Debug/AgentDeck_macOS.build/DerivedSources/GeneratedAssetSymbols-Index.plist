@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>colors</key>
+	<array>
+		<dict>
+			<key>catalogPath</key>
+			<string>/Users/puritysb/github/__otawake/apple/AgentDeck/Resources/Assets.xcassets</string>
+			<key>objcSymbol</key>
+			<string>ACColorNameAccentColor</string>
+			<key>relativePath</key>
+			<string>./AccentColor.colorset</string>
+			<key>swiftSymbol</key>
+			<string>accent</string>
+		</dict>
+		<dict>
+			<key>catalogPath</key>
+			<string>/Users/puritysb/github/__otawake/apple/AgentDeck/Resources/Assets.xcassets</string>
+			<key>objcSymbol</key>
+			<string>ACColorNameLaunchBackground</string>
+			<key>relativePath</key>
+			<string>./LaunchBackground.colorset</string>
+			<key>swiftSymbol</key>
+			<string>launchBackground</string>
+		</dict>
+	</array>
+	<key>images</key>
+	<array>
+		<dict>
+			<key>catalogPath</key>
+			<string>/Users/puritysb/github/__otawake/apple/AgentDeck/Resources/Assets.xcassets</string>
+			<key>objcSymbol</key>
+			<string>ACImageNameAgentDeckIcon</string>
+			<key>relativePath</key>
+			<string>./AgentDeckIcon.imageset</string>
+			<key>swiftSymbol</key>
+			<string>agentDeckIcon</string>
+		</dict>
+		<dict>
+			<key>catalogPath</key>
+			<string>/Users/puritysb/github/__otawake/apple/AgentDeck/Resources/Assets.xcassets</string>
+			<key>objcSymbol</key>
+			<string>ACImageNameBrandAnthropic</string>
+			<key>relativePath</key>
+			<string>./BrandAnthropic.imageset</string>
+			<key>swiftSymbol</key>
+			<string>brandAnthropic</string>
+		</dict>
+	</array>
+	<key>symbols</key>
+	<array/>
+</dict>
+</plist>

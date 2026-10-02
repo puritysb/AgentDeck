@@ -47,6 +47,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- ESP32 WiFi OTA reaches boards the daemon is driving over USB. Those boards
+  turn their WiFi radio off while serial is active, so `agentdeck esp32-ota`
+  used to fail with "No online WiFi ESP32 target". The daemon now closes that
+  one board's serial port, waits for it to join WiFi, updates it, and reopens
+  the port.
 - OpenClaw: all the tool calls of one turn fold into a single timeline row
   (`openclaw ×16 · channels, agents.main, … · 1 failed`) that updates in
   place, with the full list in its detail. A config walk no longer buries the

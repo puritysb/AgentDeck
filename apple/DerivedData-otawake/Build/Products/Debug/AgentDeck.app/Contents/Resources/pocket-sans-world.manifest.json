@@ -1,0 +1,49 @@
+{
+  "fontPack": {
+    "id": "pocket-sans-world",
+    "version": 1,
+    "format": 4,
+    "size": 10903872,
+    "md5": "a6844503c142be1a62e4bac8be7c7802",
+    "sha256": "a1a15a6e9cdccd114cbaf34adb29fce08ad67d3dcd52b7970a77ab89db9ee753",
+    "licenseSpdx": "OFL-1.1"
+  },
+  "attribution": "PocketSansWorld is built from Noto Sans KR, JP, SC, Hebrew, and Noto Sans under the SIL Open Font License 1.1.",
+  "sources": [
+    {
+      "name": "Noto Sans KR",
+      "url": "https://github.com/google/fonts/tree/ec626514f79f831f1ab848a82114a0ce7e2d6372/ofl/notosanskr",
+      "revision": "ec626514f79f831f1ab848a82114a0ce7e2d6372",
+      "licenseSpdx": "OFL-1.1",
+      "attribution": "Noto Sans KR contributors"
+    },
+    {
+      "name": "Noto Sans SC",
+      "url": "https://github.com/google/fonts/tree/ec626514f79f831f1ab848a82114a0ce7e2d6372/ofl/notosanssc",
+      "revision": "ec626514f79f831f1ab848a82114a0ce7e2d6372",
+      "licenseSpdx": "OFL-1.1",
+      "attribution": "Noto Sans SC contributors"
+    },
+    {
+      "name": "Noto Sans JP",
+      "url": "https://github.com/google/fonts/tree/295d98a7a0c17c68f1341eaeea354e7960ea70d3/ofl/notosansjp",
+      "revision": "295d98a7a0c17c68f1341eaeea354e7960ea70d3",
+      "licenseSpdx": "OFL-1.1",
+      "attribution": "Noto Sans JP contributors"
+    },
+    {
+      "name": "Noto Sans",
+      "url": "https://github.com/notofonts/latin-greek-cyrillic",
+      "revision": "crosspoint-bundled-source",
+      "licenseSpdx": "OFL-1.1",
+      "attribution": "Noto Sans contributors"
+    },
+    {
+      "name": "Noto Sans Hebrew",
+      "url": "https://github.com/crosspoint-reader/crosspoint-reader/tree/94c0ba466cbb225a07f653d1c27f2a7261f1fb08/lib/EpdFont/builtinFonts/source/NotoSansHebrew",
+      "revision": "94c0ba466cbb225a07f653d1c27f2a7261f1fb08",
+      "licenseSpdx": "OFL-1.1",
+      "attribution": "The Noto Project Authors"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "learningPack": {
+    "id": "jp-n3-ko",
+    "version": 3,
+    "format": 1,
+    "size": 568324,
+    "md5": "34681b78b5a1d65bc787dc57e863cba7",
+    "licenseSpdx": "CC-BY-SA-4.0"
+  },
+  "attribution": "OpenJLPT/EDRDG/Waller/Tatoeba 기반; Pocket Daily 한국어 각색; CC BY-SA 4.0",
+  "sources": [
+    {
+      "name": "OpenJLPT cumulative N5-N3 dataset",
+      "url": "https://github.com/evanclan/OpenJLPT",
+      "revision": "c42fd9fa3777bfc1775446f7c418d549dfd6e4cf",
+      "licenseSpdx": "CC-BY-SA-4.0",
+      "attribution": "OpenJLPT; upstream EDRDG KANJIDIC2/JMdict, Jonathan Waller JLPT resources, and Tatoeba"
+    },
+    {
+      "name": "Pocket Daily Korean adaptations",
+      "url": "https://github.com/puritysb/pocket-daily-reader",
+      "revision": "pocket-ko-2026-08-29",
+      "licenseSpdx": "CC-BY-SA-4.0",
+      "attribution": "Korean meanings and translations by Pocket Daily contributors"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/CollaborationProjectionTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CollaborationProjectionTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CollaborationProjectionTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CollaborationProjectionTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CollaborationProjectionTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CollaborationProjectionTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/ConnectionOverlayTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ConnectionOverlayTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ConnectionOverlayTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ConnectionOverlayTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ConnectionOverlayTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/ConnectionOverlayTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/CreatureFloorSpacingTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CreatureFloorSpacingTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CreatureFloorSpacingTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CreatureFloorSpacingTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CreatureFloorSpacingTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/CreatureFloorSpacingTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/DaemonActorIndependenceTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonActorIndependenceTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonActorIndependenceTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonActorIndependenceTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonActorIndependenceTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonActorIndependenceTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/DaemonLoggerRotationTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonLoggerRotationTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonLoggerRotationTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonLoggerRotationTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonLoggerRotationTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonLoggerRotationTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/DaemonPortFallbackTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPortFallbackTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPortFallbackTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPortFallbackTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPortFallbackTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPortFallbackTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/DaemonPostureTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPostureTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPostureTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPostureTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPostureTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonPostureTests.swiftdeps"
+  },
+  "/Users/puritysb/github/__otawake/apple/AgentDeckTests/DaemonTopologyTests.swift" : {
+    "const-values" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonTopologyTests.swiftconstvalues",
+    "dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonTopologyTests.d",
+    "diagnostics" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonTopologyTests.dia",
+    "object" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonTopologyTests.o",
+    "swift-dependencies" : "/Users/puritysb/github/__otawake/apple/DerivedData-otawake/Build/Intermediates.noindex/AgentDeck.build/Debug/AgentDeckTests_macOS.build/Objects-normal/arm64/DaemonTopologyTests.swiftdeps"
+  }
+}

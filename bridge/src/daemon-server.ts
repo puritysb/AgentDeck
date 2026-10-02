@@ -251,7 +251,7 @@ import {
   describeDaemonPosture,
   resolveDaemonPosture,
 } from './network-posture.js';
-import { esp32ConnectionCount, getESP32DeviceInfo, onESP32Message, sendAuthProvisionToAll, sendWifiProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards, releaseESP32SerialPorts, sanitizeRssiDbm } from './esp32-serial.js';
+import { esp32ConnectionCount, getESP32DeviceInfo, onESP32Message, sendAuthProvisionToAll, sendWifiProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards, releaseESP32SerialPorts, holdESP32SerialBoard, releaseESP32SerialHold, sanitizeRssiDbm } from './esp32-serial.js';
 import { clampLeaseSeconds, clearLease, readLease, writeLease } from './esp32-flash-lease.js';
 import { loadWifiConfig } from './wifi-config.js';
 import { getAdbDeviceCountCached, getCachedAdbDevices } from './adb-reverse.js';
@@ -942,11 +942,12 @@ const OTA_MAX_RECONNECT_RESENDS = 12;
 // drive acks by otaId, with the ack timeouts shrunk so the drop→timeout→resend
 // cycle runs in milliseconds. Not used by production code.
 /** @internal */
-export function __setOtaTimeoutsForTest(t: { begin?: number; chunk?: number; end?: number; reconnectWait?: number }): void {
+export function __setOtaTimeoutsForTest(t: { begin?: number; chunk?: number; end?: number; reconnectWait?: number; serialWakeWait?: number }): void {
   if (t.begin != null) OTA_BEGIN_ACK_TIMEOUT_MS = t.begin;
   if (t.chunk != null) OTA_CHUNK_ACK_TIMEOUT_MS = t.chunk;
   if (t.end != null) OTA_END_ACK_TIMEOUT_MS = t.end;
   if (t.reconnectWait != null) OTA_RECONNECT_WAIT_MS = t.reconnectWait;
+  if (t.serialWakeWait != null) OTA_SERIAL_WAKE_WAIT_MS = t.serialWakeWait;
 }
 /** @internal */
 export function __resetWifiEsp32OtaState(): void {
@@ -958,6 +959,7 @@ export function __resetWifiEsp32OtaState(): void {
   OTA_CHUNK_ACK_TIMEOUT_MS = 30_000;
   OTA_END_ACK_TIMEOUT_MS = 30_000;
   OTA_RECONNECT_WAIT_MS = 20_000;
+  OTA_SERIAL_WAKE_WAIT_MS = 120_000;
 }
 /** @internal */
 export const __wifiOtaTestApi = {
@@ -976,7 +978,57 @@ export const __wifiOtaTestApi = {
   clearStagedFwForTest: (): void => { legacyStagedFwByBoard.clear(); stagedFwByIdentity.clear(); },
 };
 
+// A board the daemon drives over USB parks its WiFi radio, so a WiFi OTA to it
+// finds no live socket. The daemon closes just that board's serial port; the
+// board restores WiFi once it has heard no serial JSON for SERIAL_TIMEOUT_MS
+// (30 s, esp32/src/net/serial_client.cpp), then associates, resolves the
+// daemon over mDNS and opens its WebSocket. The hold outlasts the transfer —
+// a port reopened mid-OTA would re-park the radio under it.
+let OTA_SERIAL_WAKE_WAIT_MS = 120_000;
+const OTA_SERIAL_HOLD_MS = 30 * 60_000;
+
+function hasLiveWifiOtaTarget(target: string): boolean {
+  try {
+    findWifiOtaTarget(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Returns the held serial port when the target had to be woken off USB. */
+async function wakeSerialParkedOtaTarget(target: string): Promise<string | null> {
+  if (hasLiveWifiOtaTarget(target)) return null;
+  const canonicalTarget = canonicalBoardId(target);
+  const port = holdESP32SerialBoard(
+    (board) => canonicalBoardId(board) === canonicalTarget,
+    OTA_SERIAL_HOLD_MS,
+    `WiFi OTA to ${target}`,
+  );
+  if (!port) return null;
+  log(`[ESP32 OTA] ${target} is on USB serial with its WiFi radio parked — released ${port}, waiting for it to join WiFi`);
+  const deadline = Date.now() + OTA_SERIAL_WAKE_WAIT_MS;
+  while (Date.now() < deadline) {
+    if (hasLiveWifiOtaTarget(target)) return port;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  releaseESP32SerialHold(port);
+  throw new Error(
+    `${target} did not join WiFi within ${Math.round(OTA_SERIAL_WAKE_WAIT_MS / 1000)}s after its USB serial port was released` +
+      ' (is WiFi provisioned on the board?)',
+  );
+}
+
 async function performWifiEsp32Ota(core: BridgeCore, target: string, firmwarePath: string): Promise<Record<string, unknown>> {
+  const heldPort = await wakeSerialParkedOtaTarget(target);
+  try {
+    return await performLiveWifiEsp32Ota(core, target, firmwarePath);
+  } finally {
+    if (heldPort) releaseESP32SerialHold(heldPort);
+  }
+}
+
+async function performLiveWifiEsp32Ota(core: BridgeCore, target: string, firmwarePath: string): Promise<Record<string, unknown>> {
   const { key, device } = findWifiOtaTarget(target);
   if (device.otaSupported !== true) {
     throw new Error(`Target ${key} does not report OTA support${device.otaReason ? ` (${device.otaReason})` : ''}`);
