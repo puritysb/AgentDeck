@@ -85,6 +85,22 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   only, the same way the Claude weekly key switches with its per-model cap. A
   row with room still gives each window its own key.
 
+## 2026-10-03 — Apple 1.7.0
+
+- Add Hermes mermaid rendering to Apple aquariums and device previews. Hermes
+  sessions are read-only; App Store installations receive them through an
+  already configured relay, without an in-app installer or subprocess.
+- Improve Codex hook/OTel ownership and background-thread filtering, fold
+  attributable headless work into its parent, and preserve user-owned TOML
+  when configuring observation.
+- Recover OpenCode pending requests across directories and reconnects, and
+  improve Kiro transcript observation.
+- Show purchased Codex credits when a plan window is exhausted. Consolidate
+  each OpenClaw run's tool activity into one timeline row.
+- Wake USB-connected ESP32 displays for Wi-Fi OTA and improve matrix displays.
+- Reject malformed Hermes process IDs instead of probing a truncated or
+  wrapped process number.
+
 ## 2026-09-28 — npm 1.6.0 · Apple 1.6.0 · ESP32 1.6.0 · Stream Deck 1.6.0 · Ulanzi 1.6.0
 
 - E-ink firmware (TRMNL 7.5", NM-EPD-420, EPD47) follows the Paper Board: only sessions that need you or are working get a card, idle sessions share one line of glyph + name, the masthead counts sessions by state, and filler copy is gone. A line break in an agent's answer no longer overprints Korean text. TRMNL no longer replaces the board with an ANSWER page after every finished turn; KEY1 cycles board → aquarium → digest.

@@ -79,6 +79,27 @@ final class HermesObserverGateTests: XCTestCase {
         XCTAssertEqual(sweep.closed, [])
     }
 
+    func testMalformedPidNeverProbesAnUnrelatedProcess() {
+        for invalid in [7.5, 4_294_967_303.0, -4_294_967_289.0, Double.infinity, Double.nan] {
+            var gate = HermesObserverGate()
+            _ = gate.admit(event: "hermes_session_start", payload: ["session_id": sid, "pid": invalid], now: t0)
+            let sweep = gate.sweepDeparted(now: at(5)) { _ in
+                XCTFail("Malformed PID must not reach a process probe")
+                return .dead
+            }
+            XCTAssertEqual(sweep.closed, [])
+        }
+    }
+
+    func testMalformedPidUpdateRetainsTheLastValidIdentity() {
+        var gate = HermesObserverGate()
+        _ = gate.admit(event: "hermes_session_start", payload: ["session_id": sid, "pid": 7], now: t0)
+        _ = gate.admit(event: "hermes_tool_start", payload: ["session_id": sid, "pid": 8.5], now: at(1))
+        var probed: [Int32] = []
+        _ = gate.sweepDeparted(now: at(5)) { probed.append($0); return .alive }
+        XCTAssertEqual(probed, [7])
+    }
+
     func testOnlyNoSuchProcessReadsAsDead() {
         XCTAssertEqual(HermesObserverGate.probe(ProcessInfo.processInfo.processIdentifier), .alive)
         XCTAssertEqual(HermesObserverGate.probe(Int32.max), .dead)
