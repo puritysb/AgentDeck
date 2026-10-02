@@ -933,6 +933,20 @@ lash, liner, eye-edge and lip-line pixels.
 
 **Asset.** 152.9k tris in 59 meshes. HermesAquariumTests pass.
 
+## Decision: the nose follows the profile sheet (2026-10-02)
+
+The master 3/4 puts the nose tip under the far eye's inner corner. At the
+fitted camera, that needs about twice the projection the profile sheet
+draws. The user chose the profile, so the nose stays as it is.
+
+**Open: on-device frame time.** It was not measured, because the phone
+was not on the Mac's network. A Debug build is installed on SBiPhone.
+The scratch feed (a copy of `scripts/appstore-demo-orchestrator.mjs` with
+an added `agentType: hermes` session, listening on 0.0.0.0) and the
+launch arguments
+`-AgentDeckScreenshotURL ws://<mac-ip>:9220 -prefs.dashboardType aquarium3d`
+are enough to run it once both are on one LAN.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate
